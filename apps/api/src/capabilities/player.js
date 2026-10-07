@@ -7,7 +7,7 @@ import { csvToObjects } from '../csv.js';
 
 // ---------- sport profiles (the player's "cards") ----------
 
-const PROFILE_COLS = `p.id, p.role, p.level, p.position, p.jersey_no, p.club, p.experience_years, p.is_default,
+const PROFILE_COLS = `p.id, p.role, p.level, p.position, p.jersey_no, p.club, p.experience_years, p.hourly_rate_cents, p.is_default,
   s.slug AS sport_slug, s.name AS sport, s.emoji AS sport_emoji`;
 /** Default profile first, then oldest first. */
 const PROFILE_ORDER = 'ORDER BY p.is_default DESC, p.created_at, p.id';
@@ -18,6 +18,7 @@ const profileFields = {
   jersey_no: z.coerce.number().int().min(0).max(999),
   club: z.string().max(80),
   experience_years: z.coerce.number().int().min(0).max(80),
+  hourly_rate_cents: z.coerce.number().int().min(0).describe('coaches/physios/doctors: price per hour in minor units'),
   license_no: z.string().max(60).describe('encrypted at rest'),
 };
 
