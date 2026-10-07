@@ -38,6 +38,7 @@ env:
   # real certificate/domain is set up. Flip to "true" and redeploy to get HTTPS on the same port.
   ENABLE_TLS: "false"
   DB_PORT: 7255       # Postgres container, bound to 127.0.0.1
+  PUBLIC_IP: 13.250.133.109
 
 permissions:
   contents: read
@@ -312,3 +313,34 @@ jobs:
           PUBLIC_IP: 13.250.133.109
           KMS_KEY_ID: ${{ secrets.KMS_KEY_ID }}
           KMS_REGION: ap-southeast-1
+
+      # ---- Visibility without anyone logging in: the runner SSHes in and prints the server state into this log,
+      # so problems can be diagnosed from the run logs alone. Never prints .env or any secret.
+      - name: Server report
+        if: always()
+        continue-on-error: true
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ env.EC2_HOST }}
+          username: ${{ env.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          command_timeout: 2m
+          script: |
+            echo "== listeners on 9255/4255/7255"; sudo ss -ltnp 2>/dev/null | grep -E ':(9255|4255|7255)\b' || echo "nothing listening"
+            echo "== nginx sites enabled"; ls -1 /etc/nginx/sites-enabled 2>&1; sudo nginx -t 2>&1 | tail -2
+            echo "== pm2"; pm2 ls 2>&1 | head -20
+            echo "== docker (sportarena)"; sudo docker ps -a --filter name=sportarena --format '{{.Names}} | {{.Status}} | {{.Ports}}' 2>&1
+            echo "== host firewall"; sudo ufw status 2>&1 | head -12
+            echo "== local health"; curl -s -m 5 http://127.0.0.1:4255/health || echo "api: no answer"; echo
+            curl -s -m 5 -o /dev/null -w "nginx 9255 -> HTTP %{http_code}\n" http://127.0.0.1:9255/health || echo "nginx: no answer"
+            echo "== api log (last 25 lines)"; pm2 logs sportarena-api --lines 25 --nostream 2>&1 | tail -30
+            echo "== master key file"; ls -l /var/lib/sportarena 2>&1
+
+      # Reachability from the public internet (tells a closed security group apart from a stopped service).
+      - name: Public reachability probe
+        if: always()
+        continue-on-error: true
+        run: |
+          code=$(curl -s -m 10 -o /dev/null -w '%{http_code}' "http://${{ env.PUBLIC_IP }}:${{ env.NGINX_PORT }}/health" || true)
+          echo "GET http://${{ env.PUBLIC_IP }}:${{ env.NGINX_PORT }}/health from the internet -> HTTP ${code:-000}"
+          [ "$code" = "200" ] && echo "REACHABLE" || echo "NOT reachable (000 with a timeout usually means the security group blocks ${{ env.NGINX_PORT }}; connection refused means nothing listens)"

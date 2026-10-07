@@ -5,3 +5,4 @@
 - One concern per PR. Conventional Commit messages (`feat(scope): …`), clear body explaining the why.
 - Run `npm test` (needs Postgres; see README) before pushing. Never commit `.env` or secrets.
 - Features are added as capabilities in `apps/api/src/capabilities/*` (one definition → REST + OpenAPI + MCP). Personal identification data must use field-level encryption (`src/crypto.js`) and be audit-logged when decrypted.
+- **Never ask the maintainer to log in to EC2 or run commands on a server.** Do server work through GitHub Actions (the runner SSHes in with the repo secrets) and read the results yourself via the GitHub API (list runs, get job logs; start a run with a workflow dispatch). If a workflow doesn't give enough visibility, add diagnostics to it in a PR instead of asking for manual steps. Only ask the maintainer for what only they can do: secrets, IAM/KMS permissions, security-group rules, and merging.
