@@ -214,3 +214,5 @@ jobs:
           code=$(curl -s -m 10 -o /dev/null -w '%{http_code}' "http://${{ env.PUBLIC_IP }}:${{ env.NGINX_PORT }}/health" || true)
           echo "GET http://${{ env.PUBLIC_IP }}:${{ env.NGINX_PORT }}/health from the internet -> HTTP ${code:-000}"
           [ "$code" = "200" ] && echo "REACHABLE" || echo "NOT reachable (000 with a timeout usually means the security group blocks ${{ env.NGINX_PORT }}; connection refused means nothing listens)"
+          echo "web app  GET /            -> HTTP $(curl -s -m 10 -o /dev/null -w '%{http_code}' "http://${{ env.PUBLIC_IP }}:${{ env.NGINX_PORT }}/" || true)"
+          echo "api      GET /api/v1/sports -> HTTP $(curl -s -m 10 -o /dev/null -w '%{http_code}' "http://${{ env.PUBLIC_IP }}:${{ env.NGINX_PORT }}/api/v1/sports" || true)"

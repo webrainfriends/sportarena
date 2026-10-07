@@ -230,6 +230,25 @@ if ! NGINX_OUT="$(sudo nginx -t 2>&1)"; then
 fi
 sudo systemctl reload nginx      # graceful: existing connections/sites keep working
 
-curl -fsk "${SCHEME}://127.0.0.1:${NGINX_PORT}/health" >/dev/null || abort_deploy "Site is not reachable through nginx on ${NGINX_PORT}."
+# nginx needs a moment after a graceful reload before the new listener answers, so retry instead of checking once.
+# The check covers all three routes: API health, the web app at / and an API call that hits the database.
+# No code rollback past this point: nginx already serves the new site.
+check_site() {
+  local base="${SCHEME}://127.0.0.1:${NGINX_PORT}" b
+  curl -fsk "$base/health" >/dev/null 2>&1 || return 1
+  b="$(curl -fsk "$base/" 2>/dev/null || true)"; [[ "${b,,}" == *"<html"* ]] || return 1
+  b="$(curl -fsk "$base/api/v1/sports" 2>/dev/null || true)"; [[ "$b" == *'"slug"'* ]] || return 1
+}
+site_ok=0
+for i in $(seq 1 30); do
+  if check_site; then site_ok=1; echo "[deploy] site healthy through nginx after ${i}s"; break; fi
+  sleep 1
+done
+if [ "$site_ok" -ne 1 ]; then
+  echo "::error::Site is not reachable through nginx on ${NGINX_PORT} (30s)." | tee /tmp/sportarena-deploy-error.log
+  sudo nginx -t 2>&1 | tail -3 || true
+  sleep 2
+  exit 1
+fi
 echo "Deployed. ${SCHEME}://${PUBLIC_IP}:${NGINX_PORT}"
 [ "$SCHEME" = "https" ] || echo "NOTE: plain HTTP - not encrypted in transit. Set ENABLE_TLS to \"true\" in deploy.yml to switch to HTTPS."
