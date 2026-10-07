@@ -7,6 +7,7 @@ import { useNav } from '../nav';
 import { Btn, Card, Empty, ErrorBox, H1, H2, Loading, Screen, Seg, T } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { c, fam, toneFor, day } from '../theme';
+import { Billboard, Shop, Hire, Insure, useCols } from './marketplace';
 
 const LEVELS = ['beginner', 'amateur', 'semi_pro', 'pro'];
 const ROLES = ['athlete', 'coach', 'referee', 'physio', 'doctor'];
@@ -45,14 +46,6 @@ function parseStats(txt) {
     out[m[1].trim().toLowerCase().replace(/\s+/g, '_')] = Number(m[2]);
   }
   return out;
-}
-
-function useCols(max = 1120) {
-  const { width } = useWindowDimensions();
-  const inner = Math.min(width, max) - 32;
-  const cols = inner >= 980 ? 3 : inner >= 620 ? 2 : 1;
-  const gap = 14;
-  return { cols, gap, w: cols === 1 ? '100%' : Math.floor((inner - gap * (cols - 1)) / cols) };
 }
 
 // ---------- sport profile card ----------
@@ -172,7 +165,7 @@ function LogMatchSheet({ p, onClose, onDone }) {
 
 // ---------- dashboard ----------
 
-export function PlayerHome() {
+function MySports() {
   const { push } = useNav();
   const { toast } = useSession();
   const { cols, gap, w } = useCols();
@@ -212,6 +205,27 @@ export function PlayerHome() {
       <AddProfileSheet visible={add} onClose={() => setAdd(false)} first={!profiles.length} onDone={list.reload} />
       {log ? <LogMatchSheet p={log} onClose={() => setLog(null)} onDone={list.reload} /> : null}
     </Screen>
+  );
+}
+
+// ---------- player hub: sections ----------
+
+const SECTIONS = [['sports', 'My sports', MySports], ['billboard', 'Billboard', Billboard], ['shop', 'Shop', Shop], ['hire', 'Hire', Hire], ['insure', 'Insure', Insure]];
+let lastSection = 'sports'; // survive pushing into a sport page and coming back
+
+export function PlayerHome() {
+  const [sec, setSec] = useState(lastSection);
+  const pick = (v) => { lastSection = v; setSec(v); };
+  const Body = SECTIONS.find((x) => x[0] === sec)[2];
+  return (
+    <View style={{ flex: 1 }}>
+      <View style={{ backgroundColor: c.paper, borderBottomWidth: 1, borderColor: c.line }}>
+        <View style={{ width: '100%', maxWidth: 1120, alignSelf: 'center', paddingHorizontal: 16, paddingVertical: 6 }}>
+          <Seg options={SECTIONS.map(([value, label]) => ({ value, label }))} value={sec} onChange={pick} />
+        </View>
+      </View>
+      <View style={{ flex: 1 }}><Body key={sec} /></View>
+    </View>
   );
 }
 

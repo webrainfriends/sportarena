@@ -12,7 +12,7 @@ cap({
   name: 'list_providers', method: 'GET', path: '/providers', tag: 'Health', auth: 'public', summary: 'Find physios and doctors, optionally by sport.',
   input: z.object({ role: z.enum(['physio', 'doctor']).optional(), sport: z.string().optional(), ...page }),
   handler: (_, i) => many(
-    `SELECT ${PUBLIC_USER}, p.role AS provider_role, s.name AS sport, s.emoji AS sport_emoji, p.level FROM sport_profiles p JOIN users u ON u.id=p.user_id JOIN sports s ON s.id=p.sport_id
+    `SELECT ${PUBLIC_USER}, p.role AS provider_role, p.hourly_rate_cents, s.name AS sport, s.emoji AS sport_emoji, p.level FROM sport_profiles p JOIN users u ON u.id=p.user_id JOIN sports s ON s.id=p.sport_id
       WHERE p.role IN ('physio','doctor') AND ($1::text IS NULL OR p.role=$1) AND ($2::text IS NULL OR s.slug=$2) ORDER BY u.display_name LIMIT $3 OFFSET $4`, [i.role ?? null, i.sport ?? null, i.limit, i.offset]),
 });
 

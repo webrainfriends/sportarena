@@ -327,3 +327,71 @@ test('player module: default sport profile lists first; matches log + bulk impor
   const pub = await api('GET', `/people/${p.id}`);
   assert.ok(!JSON.stringify(pub.body).includes('Rivals'), 'match log is private to the player');
 });
+
+test('player marketplace: billboard, shop, coach hire', async () => {
+  const org = await signup(['athlete']);
+  const joiner = await signup(['athlete']);
+  const sponsor = await signup(['sponsor']);
+  const supplier = await signup(['supplier']);
+  const coach = await signup(['coach']);
+  const t = (u) => ({ token: u.token });
+
+  // billboard: team recruiting adds the accepted player to the roster; post fills up
+  const team = (await api('POST', '/teams', { ...t(org), body: { name: 'Board FC', sport: 'football' } })).body;
+  const post = await api('POST', '/billboard', { ...t(org), body: { kind: 'team_recruiting', title: 'Need a keeper', sport: 'football', team_id: team.id, positions_needed: 1 } });
+  assert.equal(post.status, 201, JSON.stringify(post.body));
+  assert.equal((await api('POST', '/billboard', { ...t(joiner), body: { kind: 'sponsor_call', title: 'Sponsor wanted athletes' } })).status, 403, 'only sponsors post sponsor calls');
+  assert.equal((await api('POST', '/billboard', { ...t(joiner), body: { kind: 'team_recruiting', title: 'Not my team', team_id: team.id } })).status, 403);
+  const listed = (await api('GET', '/billboard?kind=team_recruiting', { ...t(joiner) })).body;
+  assert.equal(listed[0].id, post.body.id);
+  assert.equal(listed[0].my_response, null);
+  assert.equal((await api('POST', `/billboard/${post.body.id}/responses`, { ...t(org), body: {} })).status, 400, 'no self-response');
+  const resp = await api('POST', `/billboard/${post.body.id}/responses`, { ...t(joiner), body: { message: 'I play in goal' } });
+  assert.equal(resp.status, 201);
+  assert.equal((await api('POST', `/billboard/${post.body.id}/responses`, { ...t(joiner), body: {} })).status, 409);
+  assert.equal((await api('GET', `/billboard/${post.body.id}/responses`, { ...t(joiner) })).status, 403);
+  const rs = (await api('GET', `/billboard/${post.body.id}/responses`, { ...t(org) })).body;
+  assert.equal(rs[0].response_id, resp.body.id);
+  assert.equal((await api('PATCH', `/billboard/responses/${resp.body.id}`, { ...t(joiner), body: { status: 'accepted' } })).status, 403);
+  assert.equal((await api('PATCH', `/billboard/responses/${resp.body.id}`, { ...t(org), body: { status: 'accepted' } })).status, 200);
+  const roster = (await api('GET', `/teams/${team.id}`)).body;
+  assert.ok(JSON.stringify(roster).includes(joiner.id), 'accepted player joined the roster');
+  assert.equal((await api('GET', '/billboard?kind=team_recruiting')).body.length, 0, 'filled posts leave the board');
+  assert.equal((await api('GET', '/me/billboard-responses', { ...t(joiner) })).body[0].response_status, 'accepted');
+  const sp = await api('POST', '/billboard', { ...t(org), body: { kind: 'sponsorship_wanted', title: 'Seeking kit sponsor' } });
+  assert.equal((await api('POST', `/billboard/${sp.body.id}/responses`, { ...t(joiner), body: {} })).status, 403, 'only sponsors answer sponsorship requests');
+  assert.equal((await api('POST', `/billboard/${sp.body.id}/responses`, { ...t(sponsor), body: {} })).status, 201);
+
+  // shop
+  assert.equal((await api('POST', '/shop/products', { ...t(joiner), body: { name: 'Ball', price_cents: 1000 } })).status, 403);
+  const prod = (await api('POST', '/shop/products', { ...t(supplier), body: { name: 'Match ball', category: 'equipment', sport: 'football', price_cents: 150000, stock: 3 } })).body;
+  assert.equal((await api('GET', '/shop/products?sport=football&q=ball')).body[0].id, prod.id);
+  const buy = (q) => api('POST', '/shop/orders', { ...t(joiner), body: { product_id: prod.id, quantity: q, ship_to: '12 MG Road, Pune' } });
+  assert.equal((await buy(5)).status, 409, 'cannot oversell');
+  const order = await buy(2);
+  assert.equal(order.status, 201);
+  assert.equal(order.body.total_cents, 300000);
+  assert.equal((await buy(2)).status, 409);
+  const { rows: [raw] } = await pool.query('SELECT * FROM shop_orders WHERE id=$1', [order.body.id]);
+  assert.ok(!JSON.stringify(raw).includes('MG Road'), 'delivery address encrypted at rest');
+  assert.equal((await api('GET', '/shop/orders', { ...t(joiner) })).body[0].ship_to, '12 MG Road, Pune');
+  assert.equal((await api('GET', '/shop/sales', { ...t(supplier) })).body.length, 1);
+  assert.equal((await api('PATCH', `/shop/orders/${order.body.id}`, { ...t(joiner), body: { status: 'shipped' } })).status, 403);
+  assert.equal((await api('PATCH', `/shop/orders/${order.body.id}`, { ...t(joiner), body: { status: 'cancelled' } })).status, 200);
+  assert.equal((await api('GET', '/shop/products')).body.find((p) => p.id === prod.id).stock, 3, 'cancel restocks');
+  assert.equal((await api('PATCH', `/shop/orders/${order.body.id}`, { ...t(supplier), body: { status: 'shipped' } })).status, 409);
+
+  // hire a coach
+  assert.equal((await api('POST', '/me/sport-profiles', { ...t(coach), body: { sport: 'football', role: 'coach', level: 'pro', hourly_rate_cents: 80000 } })).status, 201);
+  const found = (await api('GET', '/coaches?sport=football')).body.find((x) => x.id === coach.id);
+  assert.equal(found.hourly_rate_cents, 80000);
+  const at = inFuture(4, 9);
+  const hire = await api('POST', '/hires', { ...t(joiner), body: { coach_id: coach.id, sport: 'football', starts_at: at, duration_min: 90 } });
+  assert.equal(hire.status, 201, JSON.stringify(hire.body));
+  assert.equal(hire.body.total_cents, 120000);
+  assert.equal((await api('POST', '/hires', { ...t(org), body: { coach_id: coach.id, sport: 'football', starts_at: at } })).status, 409, 'double booking refused');
+  assert.equal((await api('POST', '/hires', { ...t(org), body: { coach_id: coach.id, sport: 'cricket', starts_at: inFuture(5) } })).status, 400);
+  assert.equal((await api('PATCH', `/hires/${hire.body.id}`, { ...t(joiner), body: { status: 'confirmed' } })).status, 403);
+  assert.equal((await api('PATCH', `/hires/${hire.body.id}`, { ...t(coach), body: { status: 'confirmed' } })).status, 200);
+  assert.equal((await api('GET', '/hires', { ...t(coach) })).body[0].i_am_coach, true);
+});
