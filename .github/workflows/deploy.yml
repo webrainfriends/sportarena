@@ -53,6 +53,26 @@ jobs:
     environment: production
 
     steps:
+      - name: Check SSH key
+        env:
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+        run: |
+          # Fails fast with a readable reason if the secret is not a usable private key, and prints the
+          # PUBLIC fingerprint so it can be compared with the key authorised on the instance
+          # (`ssh-keygen -lf ~/.ssh/authorized_keys` there). No secret material is printed.
+          if [ -z "${EC2_SSH_KEY:-}" ]; then echo "::error::EC2_SSH_KEY secret is empty"; exit 1; fi
+          KEYFILE="$(mktemp)"; trap 'rm -f "$KEYFILE"' EXIT
+          printf '%s\n' "$EC2_SSH_KEY" | tr -d '\r' > "$KEYFILE"; chmod 600 "$KEYFILE"
+          head -1 "$KEYFILE" | grep -q -- '-----BEGIN .*PRIVATE KEY-----' \
+            || { echo "::error::EC2_SSH_KEY must start with a '-----BEGIN ... PRIVATE KEY-----' line (paste the whole .pem, not a .ppk or the public key)"; exit 1; }
+          tail -1 "$KEYFILE" | grep -q -- '-----END .*PRIVATE KEY-----' \
+            || { echo "::error::EC2_SSH_KEY is missing its '-----END ... PRIVATE KEY-----' line (truncated paste?)"; exit 1; }
+          PUB="$(ssh-keygen -y -P '' -f "$KEYFILE" 2>/dev/null)" \
+            || { echo "::error::EC2_SSH_KEY could not be parsed (corrupted line breaks, or the key has a passphrase)"; exit 1; }
+          echo "Key OK. Public fingerprint (compare with the instance's authorized_keys):"
+          printf '%s\n' "$PUB" | ssh-keygen -lf -
+          echo "Connecting as ${{ env.EC2_USER }}@${{ env.EC2_HOST }}"
+
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
