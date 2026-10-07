@@ -76,6 +76,16 @@ jobs:
           printf '%s\n' "$PUB" | ssh-keygen -lf -
           echo "Connecting as ${{ env.EC2_USER }}@${{ env.EC2_HOST }}"
 
+      - name: AWS secrets check
+        env:
+          K_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          K_SECRET: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: |
+          # Reports presence only (never values), so a missing/misplaced secret is obvious from the log.
+          [ -n "$K_ID" ] && echo "AWS_ACCESS_KEY_ID: set" || echo "AWS_ACCESS_KEY_ID: MISSING"
+          [ -n "$K_SECRET" ] && echo "AWS_SECRET_ACCESS_KEY: set" || echo "AWS_SECRET_ACCESS_KEY: MISSING"
+          echo "Both must exist as Repository secrets (Settings > Secrets and variables > Actions > Repository secrets) or as secrets of the 'production' environment, with exactly these names."
+
       # ---- SSH access: the deploy key must be authorised on the instance. If it isn't, install it through AWS
       # EC2 Instance Connect (needs the AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY repo secrets - the same ones the
       # IAM user with ec2:DescribeInstances + ec2-instance-connect:SendSSHPublicKey). No one has to log in to the server.
@@ -127,8 +137,8 @@ jobs:
         if: steps.ssh_test.outcome == 'failure' && env.HAS_AWS_KEYS != 'true'
         run: |
           echo "::error::The server does not accept EC2_SSH_KEY for ${{ env.EC2_USER }}@${{ env.EC2_HOST }}, and no AWS keys are configured to authorise it automatically."
-          echo "Fix (no server login needed): add repo secrets AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY (an IAM user with"
-          echo "they need ec2:DescribeInstances and ec2-instance-connect:SendSSHPublicKey), then re-run. The workflow installs this key on the instance itself."
+          echo "Fix (no server login needed): add repo secrets AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY for an IAM user allowed ec2:DescribeInstances and ec2-instance-connect:SendSSHPublicKey, then re-run (see the 'AWS secrets check' step above for which one is missing)."
+          echo "The workflow then installs this key on the instance itself."
           echo "sportarena.pem's public key must be in ~ubuntu/.ssh/authorized_keys on the instance; with the AWS keys present this workflow adds it."
           exit 1
 
