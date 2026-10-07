@@ -29,7 +29,7 @@ export function Play() {
 
   return (
     <Screen>
-      <H1 style={{ marginTop: 8 }}>Play 🎮</H1>
+      <H1 style={{ marginTop: 8 }}>Play</H1>
       <Seg options={[{ value: 'events', label: 'Events', emoji: '🎟️', color: c.pink }, { value: 'teams', label: 'Teams', emoji: '🛡️', color: c.violet }, { value: 'venues', label: 'Venues', emoji: '🏟️', color: c.cyan }, { value: 'people', label: 'People', emoji: '🧑‍🤝‍🧑', color: c.orange }]} value={tab} onChange={setTab} />
       {(tab === 'events' || tab === 'teams') && sports.data ? <Seg options={[{ value: null, label: 'All sports', emoji: '✨' }, ...sportOpts(sports.data)]} value={sport} onChange={setSport} color={c.ink} /> : null}
 
@@ -46,12 +46,12 @@ export function Play() {
           })}
       </View>
 
-      <FormSheet visible={form === 'team'} onClose={() => setForm(null)} title="Start a team 🛡️" submitLabel="Create team"
+      <FormSheet visible={form === 'team'} onClose={() => setForm(null)} title="Start a team" submitLabel="Create team"
         fields={[{ key: 'name', label: 'Team name' }, { key: 'sport', label: 'Sport', type: 'choice', options: sportOpts(sports.data ?? []) }, { key: 'emoji', label: 'Mascot emoji', optional: true }, { key: 'city', label: 'City', optional: true }]}
-        onSubmit={async (v) => { const t = await api.post('/teams', v); list.reload(); push('Team', { id: t.id }); return 'Team created 🔥'; }} />
-      <FormSheet visible={form === 'event'} onClose={() => setForm(null)} title="Create an event 🎪" submitLabel="Publish"
+        onSubmit={async (v) => { const t = await api.post('/teams', v); list.reload(); push('Team', { id: t.id }); return 'Team created'; }} />
+      <FormSheet visible={form === 'event'} onClose={() => setForm(null)} title="Create an event" submitLabel="Publish"
         fields={[{ key: 'name', label: 'Event name' }, { key: 'sport', label: 'Sport', type: 'choice', options: sportOpts(sports.data ?? []) }, { key: 'kind', label: 'Type', type: 'choice', options: ['tournament', 'league', 'friendly', 'camp', 'trial'] }, { key: 'starts_on', label: 'Starts on (YYYY-MM-DD)', optional: true }, { key: 'description', label: 'Description', type: 'multiline', optional: true }]}
-        onSubmit={async (v) => { const e = await api.post('/events', v); list.reload(); push('Event', { id: e.id }); return 'Event is live 🎉'; }} />
+        onSubmit={async (v) => { const e = await api.post('/events', v); list.reload(); push('Event', { id: e.id }); return 'Event is live'; }} />
     </Screen>
   );
 }
@@ -71,7 +71,7 @@ export function Event({ id }) {
   const e = ev.data;
   const isOrg = e.organizer_id === user.id || has('admin');
   const reloadAll = () => { ev.reload(); fx.reload(); entries.reload(); };
-  const act = (fn, msg) => async () => { try { await fn(); toast(msg); reloadAll(); } catch (x) { toast('⚠️ ' + x.message); } };
+  const act = (fn, msg) => async () => { try { await fn(); toast(msg); reloadAll(); } catch (x) { toast('' + x.message); } };
   const eligible = (myTeams.data ?? []).filter((t) => t.sport === e.sport);
 
   return (
@@ -91,18 +91,18 @@ export function Event({ id }) {
 
       {isOrg ? (
         <Card color={c.limeSoft} style={{ marginTop: 14 }}>
-          <T weight="900" size={16}>🎛️ Organizer tools</T>
+          <T weight="900" size={16}>Organizer tools</T>
           {entries.data?.filter((x) => x.status === 'pending').map((x) => (
             <View key={x.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10 }}>
               <T weight="800" style={{ flex: 1 }}>{x.team_name ?? x.display_name} wants in</T>
-              <Btn small title="Accept" color={c.mint} ink={c.ink} onPress={act(() => api.patch(`/entries/${x.id}`, { status: 'accepted' }), 'Accepted ✅')} />
+              <Btn small title="Accept" color={c.mint} ink={c.ink} onPress={act(() => api.patch(`/entries/${x.id}`, { status: 'accepted' }), 'Accepted')} />
               <Btn small title="Pass" color={c.paper} ink={c.ink} onPress={act(() => api.patch(`/entries/${x.id}`, { status: 'rejected' }), 'Declined')} />
             </View>
           ))}
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
-            {!fx.data?.length && e.entrants.filter((x) => x.team_id).length > 1 ? <Btn small title="Auto-schedule" color={c.violet} onPress={act(() => api.post(`/events/${id}/schedule/round-robin`, { first_round_at: new Date(Date.now() + 2 * 864e5).toISOString() }), 'Round-robin created 🗓️')} /> : null}
+            {!fx.data?.length && e.entrants.filter((x) => x.team_id).length > 1 ? <Btn small title="Auto-schedule" color={c.violet} onPress={act(() => api.post(`/events/${id}/schedule/round-robin`, { first_round_at: new Date(Date.now() + 2 * 864e5).toISOString() }), 'Round-robin created')} /> : null}
             {e.status === 'open' ? <Btn small title="Start" color={c.cyan} ink={c.ink} onPress={act(() => api.patch(`/events/${id}`, { status: 'ongoing' }), 'Event is underway')} /> : null}
-            {e.status !== 'completed' ? <Btn small title="Finish & award" color={c.orange} onPress={act(() => api.post(`/events/${id}/complete`), 'Champions crowned 🏆')} /> : null}
+            {e.status !== 'completed' ? <Btn small title="Finish & award" color={c.orange} onPress={act(() => api.post(`/events/${id}/complete`), 'Champions crowned')} /> : null}
           </View>
         </Card>
       ) : null}
@@ -116,18 +116,18 @@ export function Event({ id }) {
         {tab === 'crew' && <>
           <H2>Teams & players</H2>
           {e.entrants.map((x) => <Row key={x.entry_id} onPress={() => (x.team_id ? push('Team', { id: x.team_id }) : push('Person', { id: x.user_id }))} left={<Bubble emoji={x.emoji ?? '🏃'} color={x.color ?? c.cyan} />} title={x.name ?? x.display_name} />)}
-          <H2 style={{ marginTop: 8 }}>Sponsors 💎</H2>
+          <H2 style={{ marginTop: 8 }}>Sponsors</H2>
           {e.sponsors.length ? e.sponsors.map((s) => <Row key={s.id} left={<Bubble emoji={s.emoji} color={c.sun} />} title={s.name} sub={s.in_kind ?? 'Title partner'} />) : <Empty emoji="💎" title="No sponsors yet" />}
         </>}
         {tab === 'reviews' && <Reviews type="event" id={id} />}
       </View>
 
       <FormSheet visible={joining} onClose={() => setJoining(false)} title="Join as…" submitLabel="Register"
-        fields={[{ key: 'team_id', label: 'Register', type: 'choice', options: [...eligible.map((t) => ({ value: t.id, label: `${t.emoji} ${t.name}` })), { value: 'solo', label: '🏃 Just me' }] }]}
-        onSubmit={async (v) => { await api.post(`/events/${id}/entries`, v.team_id === 'solo' ? {} : { team_id: v.team_id }); reloadAll(); return 'Registered — waiting for the organizer ✅'; }} />
+        fields={[{ key: 'team_id', label: 'Register', type: 'choice', options: [...eligible.map((t) => ({ value: t.id, label: `${t.emoji} ${t.name}` })), { value: 'solo', label: 'Just me' }] }]}
+        onSubmit={async (v) => { await api.post(`/events/${id}/entries`, v.team_id === 'solo' ? {} : { team_id: v.team_id }); reloadAll(); return 'Registered — waiting for the organizer'; }} />
       <FormSheet visible={!!score} onClose={() => setScore(null)} title={score ? `${score.home_name} vs ${score.away_name}` : ''} submitLabel="Save result"
         fields={[{ key: 'home_score', label: score?.home_name ?? 'Home', type: 'number' }, { key: 'away_score', label: score?.away_name ?? 'Away', type: 'number' }]}
-        onSubmit={async (v) => { await api.post(`/fixtures/${score.id}/result`, v); reloadAll(); return 'Result saved 📊'; }} />
+        onSubmit={async (v) => { await api.post(`/fixtures/${score.id}/result`, v); reloadAll(); return 'Result saved'; }} />
     </Screen>
   );
 }

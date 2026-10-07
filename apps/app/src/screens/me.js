@@ -9,7 +9,7 @@ import { FormSheet } from '../FormSheet';
 import { c, grad } from '../theme';
 
 const mask = (v) => (v ? '••••••••' : '—');
-const PII = [['email', '✉️ Email'], ['full_name', '🪪 Full name'], ['phone', '📱 Phone'], ['dob', '🎂 Date of birth'], ['national_id', '🆔 National ID'], ['address', '🏠 Address']];
+const PII = [['email', 'Email'], ['full_name', 'Full name'], ['phone', 'Phone'], ['dob', 'Date of birth'], ['national_id', 'National ID'], ['address', 'Address']];
 
 export function Me() {
   const { user, signOut, refresh, toast } = useSession();
@@ -45,7 +45,7 @@ export function Me() {
         <Card color={c.mintSoft}>
           <T size={12} color={c.mute} weight="700">Encrypted with AES-256-GCM before storage and decrypted only for you. Every read is audit-logged.</T>
           {PII.map(([k, l]) => (
-            <View key={k} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, borderBottomWidth: 1, borderColor: '#BFEFE0' }}>
+            <View key={k} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, borderBottomWidth: 1, borderColor: c.line }}>
               <T weight="800">{l}</T><T weight="700">{reveal ? user[k] ?? '—' : mask(user[k])}</T>
             </View>
           ))}
@@ -73,11 +73,11 @@ export function Me() {
       <Btn title="Log out" color={c.ink} onPress={signOut} style={{ marginTop: 28 }} />
 
       <FormSheet visible={edit} onClose={() => setEdit(false)} title="Edit details" initial={{ display_name: user.display_name, bio: user.bio, full_name: user.full_name, phone: user.phone, dob: user.dob, national_id: user.national_id, address: user.address }}
-        fields={[{ key: 'display_name', label: 'Display name', optional: true }, { key: 'bio', label: 'Bio', optional: true, type: 'multiline' }, { key: 'full_name', label: 'Full name 🔐', optional: true }, { key: 'phone', label: 'Phone 🔐', optional: true }, { key: 'dob', label: 'Date of birth (YYYY-MM-DD) 🔐', optional: true }, { key: 'national_id', label: 'National ID 🔐', optional: true }, { key: 'address', label: 'Address 🔐', optional: true, type: 'multiline' }]}
-        onSubmit={async (v) => { await api.patch('/me', v); await refresh(); return 'Saved & encrypted 🔐'; }} />
+        fields={[{ key: 'display_name', label: 'Display name', optional: true }, { key: 'bio', label: 'Bio', optional: true, type: 'multiline' }, { key: 'full_name', label: 'Full name', optional: true }, { key: 'phone', label: 'Phone', optional: true }, { key: 'dob', label: 'Date of birth (YYYY-MM-DD)', optional: true }, { key: 'national_id', label: 'National ID', optional: true }, { key: 'address', label: 'Address', optional: true, type: 'multiline' }]}
+        onSubmit={async (v) => { await api.patch('/me', v); await refresh(); return 'Saved & encrypted'; }} />
       <FormSheet visible={sp} onClose={() => setSp(false)} title="Add a sport role" submitLabel="Add"
-        fields={[{ key: 'sport', label: 'Sport', type: 'choice', options: (sports.data ?? []).map((s) => ({ value: s.slug, label: `${s.emoji} ${s.name}` })) }, { key: 'role', label: 'Role', type: 'choice', options: ['athlete', 'coach', 'referee', 'physio', 'doctor'] }, { key: 'level', label: 'Level', type: 'choice', options: ['beginner', 'amateur', 'semi_pro', 'pro'] }, { key: 'position', label: 'Position', optional: true }, { key: 'license_no', label: 'License no. 🔐', optional: true }]}
-        onSubmit={async (v) => { await api.post('/me/sport-profiles', v); return 'Added 🎽'; }} />
+        fields={[{ key: 'sport', label: 'Sport', type: 'choice', options: (sports.data ?? []).map((s) => ({ value: s.slug, label: `${s.emoji} ${s.name}` })) }, { key: 'role', label: 'Role', type: 'choice', options: ['athlete', 'coach', 'referee', 'physio', 'doctor'] }, { key: 'level', label: 'Level', type: 'choice', options: ['beginner', 'amateur', 'semi_pro', 'pro'] }, { key: 'position', label: 'Position', optional: true }, { key: 'license_no', label: 'License no.', optional: true }]}
+        onSubmit={async (v) => { await api.post('/me/sport-profiles', v); return 'Added'; }} />
       <FormSheet visible={tokForm} onClose={() => setTokForm(false)} title="New API token" submitLabel="Create" fields={[{ key: 'name', label: 'Name', placeholder: 'My Claude agent' }]}
         onSubmit={async (v) => { const t = await api.post('/me/tokens', v); setNewToken(t.token); toks.reload(); }} />
     </Screen>

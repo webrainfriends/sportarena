@@ -28,7 +28,7 @@ export default function Home() {
           <StatPill value={d?.points ?? '–'} label="POINTS" color={c.lime} />
           <StatPill value={d?.trophies ?? '–'} label="TROPHIES" color={c.paper} />
           <StatPill value={d?.teams?.length ?? '–'} label="TEAMS" color={c.paper} />
-          <StatPill value={d?.fit_to_play === 'cleared' ? '✅' : d?.fit_to_play === 'restricted' ? '⚠️' : d?.fit_to_play === 'not_cleared' ? '⛔' : '❔'} label="FIT TO PLAY" color={c.paper} />
+          <StatPill value={{ cleared: 'Cleared', restricted: 'Limited', not_cleared: 'Out' }[d?.fit_to_play] ?? '–'} label="FIT TO PLAY" color={c.paper} />
         </View>
       </GradCard>
 
