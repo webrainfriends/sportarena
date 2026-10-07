@@ -1,0 +1,15 @@
+{
+  "expo": {
+    "name": "SportArena",
+    "slug": "sportarena",
+    "version": "0.1.0",
+    "scheme": "sportarena",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#FFF6FB",
+    "ios": { "supportsTablet": true, "bundleIdentifier": "dev.sportarena.app" },
+    "android": { "package": "dev.sportarena.app", "adaptiveIcon": { "backgroundColor": "#FF2E93" } },
+    "web": { "bundler": "metro", "output": "single", "name": "SportArena", "shortName": "SportArena", "backgroundColor": "#FFF6FB", "themeColor": "#FF2E93" },
+    "extra": { "apiUrl": null }
+  }
+}

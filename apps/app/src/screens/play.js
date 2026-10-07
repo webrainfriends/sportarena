@@ -1,0 +1,188 @@
+import React, { useState } from 'react';
+import { View } from 'react-native';
+import { api } from '../api';
+import { useLoad } from '../hooks';
+import { useSession } from '../session';
+import { useNav } from '../nav';
+import { Avatar, Btn, Bubble, Card, Chip, Empty, ErrorBox, GradCard, H1, H2, Loading, Row, Screen, Seg, Section, StatPill, T, Tag } from '../ui';
+import { FormSheet } from '../FormSheet';
+import { FixtureCard, Reviews, StandingsTable, TrophyShelf, Stars } from '../blocks';
+import { c, grad, day, accentFor, money } from '../theme';
+
+const sportOpts = (sports) => sports.map((s) => ({ value: s.slug, label: `${s.emoji} ${s.name}` }));
+
+export function Play() {
+  const { has } = useSession();
+  const { push } = useNav();
+  const [tab, setTab] = useState('events');
+  const [sport, setSport] = useState(null);
+  const [q, setQ] = useState('');
+  const [form, setForm] = useState(null);
+  const sports = useLoad(() => api.get('/sports'), []);
+  const list = useLoad(() => {
+    const p = { sport: sport ?? undefined, limit: 50 };
+    if (tab === 'events') return api.get('/events', p);
+    if (tab === 'teams') return api.get('/teams', p);
+    if (tab === 'venues') return api.get('/venues', {});
+    return api.get('/people', { ...p, sport: undefined });
+  }, [tab, sport]);
+
+  return (
+    <Screen>
+      <H1 style={{ marginTop: 8 }}>Play 🎮</H1>
+      <Seg options={[{ value: 'events', label: 'Events', emoji: '🎟️', color: c.pink }, { value: 'teams', label: 'Teams', emoji: '🛡️', color: c.violet }, { value: 'venues', label: 'Venues', emoji: '🏟️', color: c.cyan }, { value: 'people', label: 'People', emoji: '🧑‍🤝‍🧑', color: c.orange }]} value={tab} onChange={setTab} />
+      {(tab === 'events' || tab === 'teams') && sports.data ? <Seg options={[{ value: null, label: 'All sports', emoji: '✨' }, ...sportOpts(sports.data)]} value={sport} onChange={setSport} color={c.ink} /> : null}
+
+      {tab === 'events' && has('organizer') ? <Btn title="Create an event" emoji="🎪" color={c.violet} onPress={() => setForm('event')} style={{ marginTop: 8 }} /> : null}
+      {tab === 'teams' ? <Btn title="Start a team" emoji="🛡️" color={c.pink} onPress={() => setForm('team')} style={{ marginTop: 8 }} /> : null}
+
+      <View style={{ gap: 12, marginTop: 14 }}>
+        {list.loading && !list.data ? <Loading /> : list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : !list.data.length ? <Empty title="Nothing here yet" sub="Be the one who starts it." /> :
+          list.data.map((x, i) => {
+            if (tab === 'events') return <Row key={x.id} onPress={() => push('Event', { id: x.id })} color={[c.pinkSoft, c.violetSoft, c.limeSoft, c.sunSoft][i % 4]} left={<Bubble emoji={x.banner_emoji} color={c.paper} />} title={x.name} sub={`${x.sport_emoji} ${x.sport} · ${x.entrants} in${x.starts_on ? ' · ' + day(x.starts_on) : ''}`} right={<Tag label={x.status} color={x.status === 'open' ? c.lime : c.sun} />} />;
+            if (tab === 'teams') return <Row key={x.id} onPress={() => push('Team', { id: x.id })} left={<Bubble emoji={x.emoji} color={x.color} />} title={x.name} sub={`${x.sport_emoji} ${x.sport} · ${x.members} members${x.city ? ' · ' + x.city : ''}`} />;
+            if (tab === 'venues') return <Row key={x.id} onPress={() => push('Venue', { id: x.id })} left={<Bubble emoji={x.emoji} color={c.cyan} />} title={x.name} sub={`${x.city ?? ''} · ${x.resources} bookable spots`} right={x.rating ? <T weight="900">⭐ {x.rating}</T> : null} />;
+            return <Row key={x.id} onPress={() => push('Person', { id: x.id })} left={<Avatar user={x} />} title={x.display_name} sub={`@${x.handle} · ${x.roles.join(', ')}`} />;
+          })}
+      </View>
+
+      <FormSheet visible={form === 'team'} onClose={() => setForm(null)} title="Start a team 🛡️" submitLabel="Create team"
+        fields={[{ key: 'name', label: 'Team name' }, { key: 'sport', label: 'Sport', type: 'choice', options: sportOpts(sports.data ?? []) }, { key: 'emoji', label: 'Mascot emoji', optional: true }, { key: 'city', label: 'City', optional: true }]}
+        onSubmit={async (v) => { const t = await api.post('/teams', v); list.reload(); push('Team', { id: t.id }); return 'Team created 🔥'; }} />
+      <FormSheet visible={form === 'event'} onClose={() => setForm(null)} title="Create an event 🎪" submitLabel="Publish"
+        fields={[{ key: 'name', label: 'Event name' }, { key: 'sport', label: 'Sport', type: 'choice', options: sportOpts(sports.data ?? []) }, { key: 'kind', label: 'Type', type: 'choice', options: ['tournament', 'league', 'friendly', 'camp', 'trial'] }, { key: 'starts_on', label: 'Starts on (YYYY-MM-DD)', optional: true }, { key: 'description', label: 'Description', type: 'multiline', optional: true }]}
+        onSubmit={async (v) => { const e = await api.post('/events', v); list.reload(); push('Event', { id: e.id }); return 'Event is live 🎉'; }} />
+    </Screen>
+  );
+}
+
+export function Event({ id }) {
+  const { user, has, toast } = useSession();
+  const { push } = useNav();
+  const [tab, setTab] = useState('table');
+  const [score, setScore] = useState(null);
+  const [joining, setJoining] = useState(false);
+  const ev = useLoad(() => api.get(`/events/${id}`), [id]);
+  const fx = useLoad(() => api.get('/fixtures', { event_id: id, limit: 100 }), [id]);
+  const myTeams = useLoad(() => (user ? api.get('/teams', { mine: true, limit: 50 }) : []), [id]);
+  const entries = useLoad(async () => (ev.data && ev.data.organizer_id === user.id ? api.get(`/events/${id}/entries`) : []), [ev.data?.organizer_id]);
+  if (ev.loading && !ev.data) return <Screen><Loading /></Screen>;
+  if (ev.error) return <Screen><ErrorBox error={ev.error} onRetry={ev.reload} /></Screen>;
+  const e = ev.data;
+  const isOrg = e.organizer_id === user.id || has('admin');
+  const reloadAll = () => { ev.reload(); fx.reload(); entries.reload(); };
+  const act = (fn, msg) => async () => { try { await fn(); toast(msg); reloadAll(); } catch (x) { toast('⚠️ ' + x.message); } };
+  const eligible = (myTeams.data ?? []).filter((t) => t.sport === e.sport);
+
+  return (
+    <Screen>
+      <GradCard colors={grad.hero}>
+        <T size={60}>{e.banner_emoji}</T>
+        <H1 color="#fff" style={{ fontSize: 30 }}>{e.name}</H1>
+        <T color="#fff" weight="800">{e.sport_emoji} {e.sport} · {e.kind}{e.starts_on ? ` · ${day(e.starts_on)}` : ''}{e.venue ? ` · 📍${e.venue.name}` : ''}</T>
+        <View style={{ flexDirection: 'row', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+          <Tag label={e.status} color={c.lime} /><Tag label={`${e.entrants.length} in`} color={c.sun} />{e.entry_fee_cents ? <Tag label={`Entry ${money(e.entry_fee_cents)}`} color={c.cyan} /> : null}
+          {e.rating?.n ? <Tag label={`⭐ ${e.rating.avg}`} color={c.pinkSoft} /> : null}
+        </View>
+      </GradCard>
+      {e.description ? <T style={{ marginTop: 12 }}>{e.description}</T> : null}
+
+      {e.status === 'open' && !isOrg && !e.entrants.some((x) => x.user_id === user.id || eligible.some((t) => t.id === x.team_id)) ? <Btn title="Join this event" emoji="🙋" onPress={() => setJoining(true)} style={{ marginTop: 14 }} /> : null}
+
+      {isOrg ? (
+        <Card color={c.limeSoft} style={{ marginTop: 14 }}>
+          <T weight="900" size={16}>🎛️ Organizer tools</T>
+          {entries.data?.filter((x) => x.status === 'pending').map((x) => (
+            <View key={x.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10 }}>
+              <T weight="800" style={{ flex: 1 }}>{x.team_name ?? x.display_name} wants in</T>
+              <Btn small title="Accept" color={c.mint} ink={c.ink} onPress={act(() => api.patch(`/entries/${x.id}`, { status: 'accepted' }), 'Accepted ✅')} />
+              <Btn small title="Pass" color={c.paper} ink={c.ink} onPress={act(() => api.patch(`/entries/${x.id}`, { status: 'rejected' }), 'Declined')} />
+            </View>
+          ))}
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
+            {!fx.data?.length && e.entrants.filter((x) => x.team_id).length > 1 ? <Btn small emoji="🗓️" title="Auto-schedule" color={c.violet} onPress={act(() => api.post(`/events/${id}/schedule/round-robin`, { first_round_at: new Date(Date.now() + 2 * 864e5).toISOString() }), 'Round-robin created 🗓️')} /> : null}
+            {e.status === 'open' ? <Btn small emoji="▶️" title="Start" color={c.cyan} ink={c.ink} onPress={act(() => api.patch(`/events/${id}`, { status: 'ongoing' }), 'Event is underway')} /> : null}
+            {e.status !== 'completed' ? <Btn small emoji="🏁" title="Finish & award" color={c.orange} onPress={act(() => api.post(`/events/${id}/complete`), 'Champions crowned 🏆')} /> : null}
+          </View>
+        </Card>
+      ) : null}
+
+      <View style={{ marginTop: 14 }}>
+        <Seg options={[{ value: 'table', label: 'Table', emoji: '📊' }, { value: 'games', label: 'Games', emoji: '⚽' }, { value: 'crew', label: 'Crew', emoji: '🤝' }, { value: 'reviews', label: 'Reviews', emoji: '💬' }]} value={tab} onChange={setTab} color={c.pink} />
+      </View>
+      <View style={{ gap: 12, marginTop: 8 }}>
+        {tab === 'table' && <StandingsTable rows={e.standings} />}
+        {tab === 'games' && (fx.data?.length ? fx.data.map((f) => <FixtureCard key={f.id} f={f} onScore={isOrg || f.referee_id === user.id ? setScore : null} />) : <Empty emoji="🗓️" title="No games scheduled" />)}
+        {tab === 'crew' && <>
+          <H2>Teams & players</H2>
+          {e.entrants.map((x) => <Row key={x.entry_id} onPress={() => (x.team_id ? push('Team', { id: x.team_id }) : push('Person', { id: x.user_id }))} left={<Bubble emoji={x.emoji ?? '🏃'} color={x.color ?? c.cyan} />} title={x.name ?? x.display_name} />)}
+          <H2 style={{ marginTop: 8 }}>Sponsors 💎</H2>
+          {e.sponsors.length ? e.sponsors.map((s) => <Row key={s.id} left={<Bubble emoji={s.emoji} color={c.sun} />} title={s.name} sub={s.in_kind ?? 'Title partner'} />) : <Empty emoji="💎" title="No sponsors yet" />}
+        </>}
+        {tab === 'reviews' && <Reviews type="event" id={id} />}
+      </View>
+
+      <FormSheet visible={joining} onClose={() => setJoining(false)} title="Join as…" submitLabel="Register"
+        fields={[{ key: 'team_id', label: 'Register', type: 'choice', options: [...eligible.map((t) => ({ value: t.id, label: `${t.emoji} ${t.name}` })), { value: 'solo', label: '🏃 Just me' }] }]}
+        onSubmit={async (v) => { await api.post(`/events/${id}/entries`, v.team_id === 'solo' ? {} : { team_id: v.team_id }); reloadAll(); return 'Registered — waiting for the organizer ✅'; }} />
+      <FormSheet visible={!!score} onClose={() => setScore(null)} title={score ? `${score.home_name} vs ${score.away_name}` : ''} submitLabel="Save result"
+        fields={[{ key: 'home_score', label: score?.home_name ?? 'Home', type: 'number' }, { key: 'away_score', label: score?.away_name ?? 'Away', type: 'number' }]}
+        onSubmit={async (v) => { await api.post(`/fixtures/${score.id}/result`, v); reloadAll(); return 'Result saved 📊'; }} />
+    </Screen>
+  );
+}
+
+export function Team({ id }) {
+  const { push } = useNav();
+  const t = useLoad(() => api.get(`/teams/${id}`), [id]);
+  if (t.loading && !t.data) return <Screen><Loading /></Screen>;
+  if (t.error) return <Screen><ErrorBox error={t.error} onRetry={t.reload} /></Screen>;
+  const x = t.data;
+  return (
+    <Screen>
+      <GradCard colors={[x.color, c.ink]}>
+        <T size={64}>{x.emoji}</T><H1 color="#fff" style={{ fontSize: 32 }}>{x.name}</H1>
+        <T color="#fff" weight="800">{x.sport_emoji} {x.sport}{x.city ? ` · ${x.city}` : ''} · {x.members.length} players</T>
+        {x.rating?.n ? <Stars n={x.rating.avg} /> : null}
+      </GradCard>
+      <Section title="Roster" emoji="👟" color={c.cyan}>
+        {x.members.map((m) => <Row key={m.id} onPress={() => push('Person', { id: m.id })} left={<Avatar user={m} />} title={`${m.jersey_no != null ? '#' + m.jersey_no + ' ' : ''}${m.display_name}`} sub={m.team_role} />)}
+      </Section>
+      <Section title="Trophy cabinet" emoji="🏆" color={c.sun}><TrophyShelf awards={x.awards} /></Section>
+      <Section title="Fan wall" emoji="💬" color={c.pink}><Reviews type="team" id={id} /></Section>
+    </Screen>
+  );
+}
+
+export function Person({ id }) {
+  const { user } = useSession();
+  const { push } = useNav();
+  const p = useLoad(() => api.get(`/people/${id}`), [id]);
+  const stats = useLoad(() => api.get(`/people/${id}/stats`), [id]);
+  const awards = useLoad(() => api.get('/awards', { user_id: id }), [id]);
+  if (p.loading && !p.data) return <Screen><Loading /></Screen>;
+  if (p.error) return <Screen><ErrorBox error={p.error} onRetry={p.reload} /></Screen>;
+  const x = p.data;
+  return (
+    <Screen>
+      <GradCard colors={[x.avatar_color, c.violet]}>
+        <View style={{ flexDirection: 'row', gap: 14, alignItems: 'center' }}>
+          <Avatar user={x} size={76} />
+          <View style={{ flex: 1 }}><H1 color="#fff" style={{ fontSize: 28 }}>{x.display_name}</H1><T color="#fff" weight="800">@{x.handle}</T>
+            <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>{x.roles.map((r) => <Tag key={r} label={r.replace('_', ' ')} color={c.lime} />)}</View></View>
+        </View>
+        {x.bio ? <T color="#fff" style={{ marginTop: 10 }}>{x.bio}</T> : null}
+      </GradCard>
+      <View style={{ flexDirection: 'row', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
+        <StatPill value={stats.data?.total_points ?? '–'} label="POINTS" color={c.lime} /><StatPill value={awards.data?.length ?? '–'} label="AWARDS" color={c.sun} /><StatPill value={x.rating?.avg ?? '–'} label="RATING" color={c.pinkSoft} />
+      </View>
+      {x.sport_profiles.length ? <Section title="Sports" emoji="🎽" color={c.cyan}>{x.sport_profiles.map((s, i) => <Row key={i} left={<Bubble emoji={s.emoji} color={c.cyanSoft} />} title={`${s.sport} · ${s.role}`} sub={`${s.level}${s.position ? ' · ' + s.position : ''}`} />)}</Section> : null}
+      {x.teams.length ? <Section title="Teams" emoji="🛡️" color={c.violet}>{x.teams.map((t) => <Row key={t.id} onPress={() => push('Team', { id: t.id })} left={<Bubble emoji={t.emoji} color={t.color} />} title={t.name} sub={t.role} />)}</Section> : null}
+      {stats.data?.by_metric?.length ? <Section title="Stats" emoji="📈" color={c.mint}>
+        <Card color={c.mintSoft}>{stats.data.by_metric.map((m, i) => <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 }}><T weight="800">{m.emoji} {m.metric}</T><T weight="900">{m.total} <T size={12} color={c.mute}>total · best {m.best}</T></T></View>)}</Card>
+      </Section> : null}
+      <Section title="Trophy cabinet" emoji="🏆" color={c.sun}><TrophyShelf awards={awards.data} /></Section>
+      <Section title="Props from the community" emoji="💬" color={c.pink}><Reviews type="user" id={id} canWrite={user.id !== id} /></Section>
+    </Screen>
+  );
+}

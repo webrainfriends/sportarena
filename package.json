@@ -15,5 +15,11 @@
     "app": "npm -w apps/app run start",
     "app:web": "npm -w apps/app run web",
     "setup": "node scripts/init-env.mjs"
+  },
+  "overrides": {
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-native": "0.86.3",
+    "react-native-web": "0.21.2"
   }
 }

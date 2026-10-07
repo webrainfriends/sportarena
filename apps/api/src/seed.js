@@ -52,6 +52,7 @@ await call('add_resource', venueMgr, { id: venue.id, kind: 'equipment', name: 'T
 
 const league = await call('create_event', org, { name: 'Neon League Season 1', sport: 'football', kind: 'league', description: 'The loudest 5-a-side league in town.', venue_id: venue.id, starts_on: soon(-14).slice(0, 10), banner_emoji: '🌈' });
 for (const t of teams) { const e = await call('enter_event', t.owner, { id: league.id, team_id: t.id }); await call('decide_entry', org, { id: e.id, status: 'accepted' }); }
+await call('update_event', org, { id: league.id, status: 'ongoing' });
 const rr = await call('generate_round_robin', org, { id: league.id, first_round_at: soon(-12) });
 // play the first 3 rounds' worth of games, leave the rest upcoming
 const fixtures = await call('list_fixtures', null, { event_id: league.id, limit: 50 });
