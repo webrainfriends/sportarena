@@ -1,0 +1,12 @@
+import './identity.js';
+import './teams.js';
+import './venues.js';
+import './events.js';
+import './scores.js';
+import './sponsors.js';
+import './supply.js';
+import './medical.js';
+import './insurance.js';
+import './community.js';
+import './home.js';
+export { capabilities } from '../registry.js';

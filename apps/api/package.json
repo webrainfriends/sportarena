@@ -1,0 +1,24 @@
+{
+  "name": "@sportarena/api",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node --env-file-if-exists=../../.env src/server.js",
+    "dev": "node --env-file-if-exists=../../.env --watch src/server.js",
+    "mcp": "node --env-file-if-exists=../../.env src/mcp-stdio.js",
+    "migrate": "node --env-file-if-exists=../../.env src/migrate.js",
+    "seed": "node --env-file-if-exists=../../.env src/seed.js",
+    "test": "node --test --test-concurrency=1 test/*.test.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "cors": "^2.8.5",
+    "express": "^5.2.1",
+    "express-rate-limit": "^7.5.0",
+    "helmet": "^8.1.0",
+    "jose": "^6.1.0",
+    "pg": "^8.23.1",
+    "zod": "^4.6.5"
+  }
+}

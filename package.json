@@ -1,0 +1,19 @@
+{
+  "name": "sportarena",
+  "private": true,
+  "version": "0.1.0",
+  "description": "SportArena \u2014 the API-first, MCP-first ecosystem for everyone who dreams of sport",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "api": "npm -w apps/api run start",
+    "api:dev": "npm -w apps/api run dev",
+    "migrate": "npm -w apps/api run migrate",
+    "seed": "npm -w apps/api run seed",
+    "test": "npm -w apps/api test",
+    "app": "npm -w apps/app run start",
+    "app:web": "npm -w apps/app run web",
+    "setup": "node scripts/init-env.mjs"
+  }
+}
