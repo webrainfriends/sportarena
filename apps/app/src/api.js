@@ -21,8 +21,8 @@ export const setUnauthorizedHandler = (fn) => { onUnauthorized = fn; };
 export class ApiError extends Error {
   constructor(status, body) {
     const first = body?.error?.details?.[0];
-    super(first ? `${first.path ? first.path + ': ' : ''}${first.message}` : body?.error?.message ?? `Request failed (${status})`);
-    this.status = status; this.code = body?.error?.code;
+    super(first?.message ? `${first.path ? first.path + ': ' : ''}${first.message}` : body?.error?.message ?? `Request failed (${status})`);
+    this.status = status; this.code = body?.error?.code; this.details = body?.error?.details;
   }
 }
 
