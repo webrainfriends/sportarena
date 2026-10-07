@@ -167,6 +167,14 @@ jobs:
           PUBLIC_HOST: ec2-13-250-133-109.ap-southeast-1.compute.amazonaws.com
           KMS_KEY_ID: ${{ secrets.KMS_KEY_ID }}
           KMS_REGION: ap-southeast-1
+          # optional payment providers: a provider is switched on when its keys exist (see docs/payments.md)
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+          PAYPAL_CLIENT_ID: ${{ secrets.PAYPAL_CLIENT_ID }}
+          PAYPAL_CLIENT_SECRET: ${{ secrets.PAYPAL_CLIENT_SECRET }}
+          PAYPAL_WEBHOOK_ID: ${{ secrets.PAYPAL_WEBHOOK_ID }}
+          PAYPAL_ENV: ${{ vars.PAYPAL_ENV }}
+          PAYMENT_CURRENCY: ${{ vars.PAYMENT_CURRENCY }}
         run: |
           set -euo pipefail
           KEYFILE="$(mktemp)"; trap 'rm -f "$KEYFILE"' EXIT
@@ -176,7 +184,7 @@ jobs:
           TARGET="${EC2_USER}@${EC2_HOST}"
           scp "${SSH_OPTS[@]}" scripts/deploy-remote.sh "$TARGET:/tmp/sportarena-deploy.sh"
           REMOTE_ENV=""
-          for v in APP_DIR BRANCH REPO_URL APP_PORT NGINX_PORT DB_PORT ENABLE_TLS PUBLIC_HOST PUBLIC_IP KMS_KEY_ID KMS_REGION; do
+          for v in APP_DIR BRANCH REPO_URL APP_PORT NGINX_PORT DB_PORT ENABLE_TLS PUBLIC_HOST PUBLIC_IP KMS_KEY_ID KMS_REGION STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET PAYPAL_CLIENT_ID PAYPAL_CLIENT_SECRET PAYPAL_WEBHOOK_ID PAYPAL_ENV PAYMENT_CURRENCY; do
             REMOTE_ENV+="$(printf '%s=%q ' "$v" "${!v:-}")"
           done
           timeout 20m ssh -T "${SSH_OPTS[@]}" "$TARGET" "env $REMOTE_ENV bash /tmp/sportarena-deploy.sh"
