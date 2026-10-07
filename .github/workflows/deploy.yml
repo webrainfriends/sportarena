@@ -152,7 +152,11 @@ jobs:
           envs: APP_DIR,BRANCH,REPO_URL,APP_PORT,NGINX_PORT,DB_PORT,ENABLE_TLS,PUBLIC_HOST,PUBLIC_IP,KMS_KEY_ID,KMS_REGION
           script_stop: true
           script: |
-            set -euo pipefail
+            set -Eeuo pipefail
+            # Persist why a deploy failed: the SSH session can drop its last output lines on a non-zero exit, so the
+            # 'Server report' step prints these files from a fresh session.
+            rm -f /tmp/sportarena-deploy-error.log /tmp/sportarena-nginx-error.log /tmp/sportarena-site.rejected
+            trap 'rc=$?; echo "deploy failed (exit $rc) at line $LINENO: $BASH_COMMAND" | tee /tmp/sportarena-deploy-error.log >&2; sleep 2' ERR
 
             if [ ! -d "$APP_DIR/.git" ]; then
               git clone --branch "$BRANCH" "$REPO_URL" "$APP_DIR"
@@ -165,11 +169,12 @@ jobs:
             git reset --hard "origin/$BRANCH"   # untracked .env is preserved
 
             abort_deploy() {
-              echo "::error::$1"
+              echo "::error::$1" | tee /tmp/sportarena-deploy-error.log
               if [ -n "$PREV_SHA" ]; then
                 echo "[deploy] restoring previous code ($PREV_SHA); the running app was not touched"
                 git reset --hard "$PREV_SHA"
               fi
+              sleep 2
               exit 1
             }
 
@@ -294,7 +299,7 @@ jobs:
             pm2 save
             ok=0
             for i in $(seq 1 30); do
-              if curl -fs "http://127.0.0.1:${APP_PORT}/health" >/dev/null 2>&1; then ok=1; break; fi
+              if curl -fs "http://127.0.0.1:${APP_PORT}/health" >/dev/null 2>&1; then ok=1; echo "[deploy] API healthy after ${i}s"; break; fi
               sleep 1
             done
             [ "$ok" -eq 1 ] || { pm2 logs sportarena-api --lines 40 --nostream || true; abort_deploy "API did not become healthy on $APP_PORT."; }
@@ -363,10 +368,14 @@ jobs:
             }
             NGINX
             sudo ln -sf "$SITE" /etc/nginx/sites-enabled/sportarena
-            if ! sudo nginx -t; then
+            if ! NGINX_OUT="$(sudo nginx -t 2>&1)"; then
               echo "::error::nginx rejected the sportarena site - removing it; existing sites are unaffected"
+              printf '%s\n' "$NGINX_OUT" | tee /tmp/sportarena-nginx-error.log
+              sudo cp "$SITE" /tmp/sportarena-site.rejected
+              sudo chmod 644 /tmp/sportarena-site.rejected
               sudo rm -f /etc/nginx/sites-enabled/sportarena "$SITE"
               sudo nginx -t
+              sleep 2
               exit 1
             fi
             sudo systemctl reload nginx      # graceful: existing connections/sites keep working
@@ -403,6 +412,9 @@ jobs:
             curl -s -m 5 -o /dev/null -w "nginx 9255 -> HTTP %{http_code}\n" http://127.0.0.1:9255/health || echo "nginx: no answer"
             echo "== api log (last 25 lines)"; pm2 logs sportarena-api --lines 25 --nostream 2>&1 | tail -30
             echo "== master key file"; ls -l /var/lib/sportarena 2>&1
+            echo "== last deploy error"; cat /tmp/sportarena-deploy-error.log 2>&1 || true
+            echo "== nginx error"; cat /tmp/sportarena-nginx-error.log 2>&1 || true
+            echo "== rejected nginx site"; cat /tmp/sportarena-site.rejected 2>&1 || true
 
       # Reachability from the public internet (tells a closed security group apart from a stopped service).
       - name: Public reachability probe
