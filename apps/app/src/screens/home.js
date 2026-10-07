@@ -23,7 +23,7 @@ export default function Home() {
       </View>
 
       <GradCard colors={grad.sunset} style={{ marginTop: 16 }}>
-        <T color={c.lime} weight="700" size={11} style={{ letterSpacing: 2 }}>YOUR SEASON</T>
+        <T color="#fff" weight="700" size={11} style={{ letterSpacing: 2.5, opacity: 0.7 }}>YOUR SEASON</T>
         <View style={{ flexDirection: 'row', gap: 10, marginTop: 10, flexWrap: 'wrap' }}>
           <StatPill value={d?.points ?? '–'} label="POINTS" color={c.lime} />
           <StatPill value={d?.trophies ?? '–'} label="TROPHIES" color={c.paper} />
@@ -57,7 +57,7 @@ export default function Home() {
         <Section title="Top athletes" action="Leaderboard" onAction={() => push('Leaderboard')} color={c.violet}>
           {f.top_athletes.map((a, i) => (
             <Row key={a.id} onPress={() => push('Person', { id: a.id })} left={<Avatar user={a} />} title={`${i + 1}. ${a.display_name}`} sub={`@${a.handle}`}
-              right={<Tag label={`${a.points} pts`} color={c.lime} ink={c.ink} />} />
+              right={<Tag label={`${a.points} pts`} color={c.ink} />} />
           ))}
         </Section>
 
