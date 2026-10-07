@@ -52,6 +52,8 @@ jobs:
     name: Deploy
     runs-on: ubuntu-latest
     environment: production
+    env:
+      HAS_AWS_KEYS: ${{ secrets.AWS_ACCESS_KEY_ID != '' && secrets.AWS_SECRET_ACCESS_KEY != '' }}
 
     steps:
       - name: Check SSH key
@@ -73,6 +75,62 @@ jobs:
           echo "Key OK. Public fingerprint (compare with the instance's authorized_keys):"
           printf '%s\n' "$PUB" | ssh-keygen -lf -
           echo "Connecting as ${{ env.EC2_USER }}@${{ env.EC2_HOST }}"
+
+      # ---- SSH access: the deploy key must be authorised on the instance. If it isn't, install it through AWS
+      # EC2 Instance Connect (needs the AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY repo secrets - the same ones the
+      # myhealthpal AWS workflow uses). No one has to log in to the server.
+      - name: Test SSH access
+        id: ssh_test
+        continue-on-error: true
+        env:
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+        run: |
+          KEYFILE="$(mktemp)"; trap 'rm -f "$KEYFILE"' EXIT
+          printf '%s\n' "$EC2_SSH_KEY" | tr -d '\r' > "$KEYFILE"; chmod 600 "$KEYFILE"
+          ssh -i "$KEYFILE" -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null \
+            "${{ env.EC2_USER }}@${{ env.EC2_HOST }}" 'echo "ssh ok as $(whoami)"'
+
+      - name: AWS credentials (for EC2 Instance Connect)
+        if: steps.ssh_test.outcome == 'failure' && env.HAS_AWS_KEYS == 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Authorize deploy key on the instance
+        if: steps.ssh_test.outcome == 'failure' && env.HAS_AWS_KEYS == 'true'
+        env:
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          KEYFILE="$(mktemp)"; trap 'rm -f "$KEYFILE" "$KEYFILE.pub"' EXIT
+          printf '%s\n' "$EC2_SSH_KEY" | tr -d '\r' > "$KEYFILE"; chmod 600 "$KEYFILE"
+          PUB="$(ssh-keygen -y -P '' -f "$KEYFILE")"
+          read -r INSTANCE_ID AZ < <(aws ec2 describe-instances --filters "Name=ip-address,Values=${{ env.PUBLIC_IP }}" \
+            --query 'Reservations[].Instances[].[InstanceId,Placement.AvailabilityZone]' --output text | head -1) \
+            || { echo "::error::Could not look up the instance (the AWS keys need ec2:DescribeInstances)."; exit 1; }
+          [ -n "${INSTANCE_ID:-}" ] || { echo "::error::No EC2 instance with public IP ${{ env.PUBLIC_IP }} found in ${{ env.AWS_REGION }}."; exit 1; }
+          echo "Instance $INSTANCE_ID in $AZ - pushing the deploy public key with EC2 Instance Connect (valid 60s)"
+          printf '%s\n' "$PUB" > "$KEYFILE.pub"
+          aws ec2-instance-connect send-ssh-public-key --instance-id "$INSTANCE_ID" --availability-zone "$AZ" \
+            --instance-os-user "${{ env.EC2_USER }}" --ssh-public-key "file://$KEYFILE.pub" >/dev/null \
+            || { echo "::error::EC2 Instance Connect refused. The AWS keys need ec2-instance-connect:SendSSHPublicKey on this instance, and the instance needs the ec2-instance-connect package (default on Ubuntu AMIs)."; exit 1; }
+          # make it permanent so later runs (and the deploy step) connect normally
+          printf '%s\n' "$PUB" | ssh -i "$KEYFILE" -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null \
+            "${{ env.EC2_USER }}@${{ env.EC2_HOST }}" \
+            'umask 077; mkdir -p ~/.ssh; touch ~/.ssh/authorized_keys; read -r k; grep -qxF "$k" ~/.ssh/authorized_keys || printf "%s\n" "$k" >> ~/.ssh/authorized_keys; echo "deploy key authorised"'
+          ssh -i "$KEYFILE" -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null \
+            "${{ env.EC2_USER }}@${{ env.EC2_HOST }}" 'echo "verified: ssh now works as $(whoami)"'
+
+      - name: Stop if SSH is still not possible
+        if: steps.ssh_test.outcome == 'failure' && env.HAS_AWS_KEYS != 'true'
+        run: |
+          echo "::error::The server does not accept EC2_SSH_KEY for ${{ env.EC2_USER }}@${{ env.EC2_HOST }}, and no AWS keys are configured to authorise it automatically."
+          echo "Fix (no server login needed): add repo secrets AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY (the same ones myhealthpal's AWS workflow uses;"
+          echo "they need ec2:DescribeInstances and ec2-instance-connect:SendSSHPublicKey), then re-run. The workflow installs this key on the instance itself."
+          echo "Or set EC2_SSH_KEY to the key already authorised on the instance (the one myhealthpal deploys with)."
+          exit 1
 
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1.0.3
