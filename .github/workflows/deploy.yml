@@ -84,6 +84,18 @@ jobs:
           # Reports presence only (never values), so a missing/misplaced secret is obvious from the log.
           [ -n "$K_ID" ] && echo "AWS_ACCESS_KEY_ID: set" || echo "AWS_ACCESS_KEY_ID: MISSING"
           [ -n "$K_SECRET" ] && echo "AWS_SECRET_ACCESS_KEY: set" || echo "AWS_SECRET_ACCESS_KEY: MISSING"
+          # Shape checks (length / line count / prefix only - never the values).
+          if [ -n "$K_ID" ]; then
+            if printf '%s' "$K_ID" | grep -Eq '^(AKIA|ASIA)[A-Z0-9]{16}$'; then echo "AWS_ACCESS_KEY_ID shape: OK (20 chars)"
+            else echo "::error::AWS_ACCESS_KEY_ID looks wrong: expected 20 chars starting AKIA (got ${#K_ID} chars, $(printf '%s\n' "$K_ID" | wc -l) line(s)); check for stray spaces/quotes or a pasted '=' prefix"; BAD=1; fi
+          fi
+          if [ -n "$K_SECRET" ]; then
+            LINES=$(printf '%s\n' "$K_SECRET" | wc -l)
+            if [ "$LINES" -gt 1 ]; then echo "::error::AWS_SECRET_ACCESS_KEY has $LINES lines - an AWS secret key is ONE line of 40 characters. It looks like a .pem/private key was pasted here by mistake. Paste the secret access key that pairs with AWS_ACCESS_KEY_ID (IAM > Users > Security credentials > Create access key)."; BAD=1
+            elif ! printf '%s' "$K_SECRET" | grep -Eq '^[A-Za-z0-9/+=]{40}$'; then echo "::error::AWS_SECRET_ACCESS_KEY looks wrong: expected 40 characters [A-Za-z0-9/+=] (got ${#K_SECRET}); check for stray spaces/quotes"; BAD=1
+            else echo "AWS_SECRET_ACCESS_KEY shape: OK (40 chars)"; fi
+          fi
+          [ "${BAD:-0}" = "1" ] && echo "Fix the secret(s) above, then re-run; the AWS-based key authorisation is skipped/failing until they are valid." || true
           echo "Both must exist as Repository secrets (Settings > Secrets and variables > Actions > Repository secrets) or as secrets of the 'production' environment, with exactly these names."
 
       # ---- SSH access: the deploy key must be authorised on the instance. If it isn't, install it through AWS
