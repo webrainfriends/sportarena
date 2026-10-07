@@ -10,6 +10,7 @@ import './associations.js';
 import './billboard.js';
 import './shop.js';
 import './hire.js';
+import './payments.js';
 import './sponsors.js';
 import './supply.js';
 import './medical.js';

@@ -38,4 +38,14 @@ export const config = {
   // Production refuses plain HTTP unless this is set explicitly (interim setups without a certificate).
   allowInsecureHttp: env.ALLOW_INSECURE_HTTP === 'true',
   corsOrigins: (env.CORS_ORIGINS ?? '*').split(','),
+  // Payments (redirect checkout; no card data ever touches this server). A provider is enabled when its keys are set.
+  appUrl: env.APP_URL,
+  payments: {
+    currency: (env.PAYMENT_CURRENCY ?? 'INR').toUpperCase(),
+    stripe: { secretKey: env.STRIPE_SECRET_KEY, webhookSecret: env.STRIPE_WEBHOOK_SECRET, base: env.STRIPE_API_BASE ?? 'https://api.stripe.com' },
+    paypal: {
+      clientId: env.PAYPAL_CLIENT_ID, secret: env.PAYPAL_CLIENT_SECRET, webhookId: env.PAYPAL_WEBHOOK_ID,
+      base: env.PAYPAL_API_BASE ?? (env.PAYPAL_ENV === 'live' ? 'https://api-m.paypal.com' : 'https://api-m.sandbox.paypal.com'),
+    },
+  },
 };

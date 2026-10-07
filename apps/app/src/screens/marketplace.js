@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { Pressable, View, useWindowDimensions } from 'react-native';
+import { Linking, Platform, Pressable, View, useWindowDimensions } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
-import { Avatar, Btn, Card, Empty, ErrorBox, H1, H2, Loading, Screen, Seg, T } from '../ui';
+import { Avatar, Btn, Card, Empty, ErrorBox, H1, H2, Loading, Screen, Seg, Sheet, T } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { c, toneFor, money, when, day } from '../theme';
 
@@ -24,8 +24,54 @@ const Pill = ({ label, fg = c.mute, bg = c.violetSoft }) => (
     <T weight="700" size={11} color={fg} style={{ letterSpacing: 0.3 }}>{label}</T>
   </View>
 );
-const STATUS = { pending: [c.sun, c.sunSoft], accepted: [c.lime, c.limeSoft], declined: [c.red, '#FFE4E6'], requested: [c.sun, c.sunSoft], confirmed: [c.lime, c.limeSoft], completed: [c.mute, c.violetSoft], cancelled: [c.red, '#FFE4E6'], placed: [c.sun, c.sunSoft], shipped: [c.cyan, c.cyanSoft], delivered: [c.lime, c.limeSoft], active: [c.lime, c.limeSoft], proposed: [c.sun, c.sunSoft] };
+const STATUS = { awaiting_payment: [c.sun, c.sunSoft], pending_payment: [c.sun, c.sunSoft], unpaid: [c.sun, c.sunSoft], paid: [c.lime, c.limeSoft], refunded: [c.mute, c.violetSoft], pending: [c.sun, c.sunSoft], accepted: [c.lime, c.limeSoft], declined: [c.red, '#FFE4E6'], requested: [c.sun, c.sunSoft], confirmed: [c.lime, c.limeSoft], completed: [c.mute, c.violetSoft], cancelled: [c.red, '#FFE4E6'], placed: [c.sun, c.sunSoft], shipped: [c.cyan, c.cyanSoft], delivered: [c.lime, c.limeSoft], active: [c.lime, c.limeSoft], proposed: [c.sun, c.sunSoft] };
 const StatusPill = ({ s }) => <Pill label={nice(s).toUpperCase()} fg={(STATUS[s] ?? [c.mute])[0]} bg={(STATUS[s] ?? [0, c.violetSoft])[1]} />;
+
+/** Hosted checkout: pick Stripe or PayPal, go to the provider, then confirm. Card details never touch SportArena. */
+function PaySheet({ target, onClose, onDone }) {
+  const { toast } = useSession();
+  const methods = useLoad(() => api.get('/payments/methods'), []);
+  const [pay, setPay] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+  const go = async (provider) => {
+    setBusy(true); setErr(null);
+    try {
+      const p = await api.post('/payments', { purpose_type: target.type, purpose_id: target.id, provider, return_url: Platform.OS === 'web' ? `${window.location.origin}${window.location.pathname}` : undefined });
+      setPay(p);
+      if (Platform.OS === 'web') window.location.assign(p.checkout_url); else await Linking.openURL(p.checkout_url);
+    } catch (e) { setErr(e.message); } finally { setBusy(false); }
+  };
+  const check = async () => {
+    setBusy(true); setErr(null);
+    try {
+      const r = await api.post(`/payments/${pay.id}/confirm`);
+      if (r.status === 'paid') { toast('Payment received ✓'); await onDone(); onClose(); } else setErr('Not paid yet — finish the checkout, then check again.');
+    } catch (e) { setErr(e.message); } finally { setBusy(false); }
+  };
+  const m = methods.data;
+  return (
+    <Sheet visible onClose={onClose} title="Pay securely">
+      <T size={14} color={c.mute}>{target.label} · <T weight="800" size={14}>{money(target.amount)}</T>{m ? ` (${m.currency})` : ''}</T>
+      {methods.loading && !m ? <Loading /> : !m?.providers.length ? (
+        <T weight="700" color={c.red}>Online payments aren't switched on for this server yet. Ask the administrator to add Stripe or PayPal keys.</T>
+      ) : pay ? (
+        <View style={{ gap: 10 }}>
+          <T size={14}>Checkout opened in {pay.provider === 'stripe' ? 'Stripe' : 'PayPal'}. When you're done, come back and check.</T>
+          <Btn title="I've paid — check payment" onPress={check} loading={busy} />
+          <Btn title="Reopen checkout" color={c.paper} onPress={() => (Platform.OS === 'web' ? window.location.assign(pay.checkout_url) : Linking.openURL(pay.checkout_url))} />
+        </View>
+      ) : (
+        <View style={{ gap: 10 }}>
+          {m.providers.includes('stripe') ? <Btn title="Pay with card (Stripe)" onPress={() => go('stripe')} loading={busy} /> : null}
+          {m.providers.includes('paypal') ? <Btn title="Pay with PayPal" color={c.paper} onPress={() => go('paypal')} loading={busy} /> : null}
+          <T size={12} color={c.mute}>You'll be taken to the provider's secure page. Your card details never reach SportArena.</T>
+        </View>
+      )}
+      {err ? <T color={c.red} weight="700">{err}</T> : null}
+    </Sheet>
+  );
+}
 
 const Head = ({ eyebrow, title, sub, right }) => (
   <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, marginTop: 6 }}>
@@ -219,6 +265,7 @@ export function Shop() {
   const [cat, setCat] = useState('all');
   const [buy, setBuy] = useState(null);
   const [sell, setSell] = useState(false);
+  const [paying, setPaying] = useState(null);
   const prods = useLoad(() => api.get('/shop/products', { category: cat === 'all' ? undefined : cat, limit: 60 }), [cat]);
   const orders = useLoad(() => api.get('/shop/orders', { limit: 20 }), []);
   const seller = has('supplier', 'sponsor');
@@ -264,7 +311,7 @@ export function Shop() {
             <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
               <T size={26}>{o.emoji}</T>
               <View style={{ flex: 1 }}><T weight="700" size={14}>{o.quantity} × {o.product_name}</T><T size={12} color={c.mute}>{money(o.total_cents)} · {day(o.created_at)} · from {o.seller_name}</T></View>
-              <View style={{ alignItems: 'flex-end', gap: 6 }}><StatusPill s={o.status} />{o.status === 'placed' ? <Pressable onPress={() => move(o, 'cancelled')}><T size={12} weight="700" color={c.red}>Cancel</T></Pressable> : null}</View>
+              <View style={{ alignItems: 'flex-end', gap: 6 }}><StatusPill s={o.status} />{o.status === 'awaiting_payment' ? <Btn small title="Pay now" onPress={() => setPaying({ type: 'shop_order', id: o.id, amount: o.total_cents, label: o.product_name })} /> : null}{['placed', 'awaiting_payment'].includes(o.status) ? <Pressable onPress={() => move(o, 'cancelled')}><T size={12} weight="700" color={c.red}>Cancel{o.status === 'placed' ? ' & refund' : ''}</T></Pressable> : null}</View>
             </View>
           </Card>
         ))}
@@ -293,9 +340,10 @@ export function Shop() {
       {buy ? (
         <FormSheet visible onClose={() => setBuy(null)} title={`Buy ${buy.name}`} submitLabel={`Place order`}
           initial={{ quantity: 1, ship_to: user.address ?? '' }}
-          fields={[{ key: 'quantity', label: `Quantity (${money(buy.price_cents)} each)`, type: 'number' }, { key: 'ship_to', label: 'Delivery address', type: 'multiline', hint: 'Encrypted at rest. Payment is arranged with the seller — nothing is charged in this version.' }]}
-          onSubmit={async (v) => { const o = await api.post('/shop/orders', { product_id: buy.id, ...v }); await Promise.all([prods.reload(), orders.reload()]); return `Ordered — ${money(o.total_cents)}`; }} />
+          fields={[{ key: 'quantity', label: `Quantity (${money(buy.price_cents)} each)`, type: 'number' }, { key: 'ship_to', label: 'Delivery address', type: 'multiline', hint: 'Encrypted at rest. You pay on the next step.' }]}
+          onSubmit={async (v) => { const o = await api.post('/shop/orders', { product_id: buy.id, ...v }); await Promise.all([prods.reload(), orders.reload()]); if (o.status === 'awaiting_payment') setPaying({ type: 'shop_order', id: o.id, amount: o.total_cents, label: buy.name }); return `Order placed — ${money(o.total_cents)}`; }} />
       ) : null}
+      {paying ? <PaySheet target={paying} onClose={() => setPaying(null)} onDone={async () => { await orders.reload(); await sales.reload(); }} /> : null}
       {sell ? (
         <FormSheet visible onClose={() => setSell(false)} title="List an item" submitLabel="List"
           fields={[
@@ -317,6 +365,7 @@ export function Hire() {
   const { w } = useCols();
   const [tab, setTab] = useState('coach');
   const [book, setBook] = useState(null);
+  const [paying, setPaying] = useState(null);
   const coaches = useLoad(() => api.get('/coaches', { limit: 50 }), []);
   const provs = useLoad(() => api.get('/providers', { limit: 50 }), []);
   const hires = useLoad(() => api.get('/hires', { limit: 30 }), []);
@@ -373,8 +422,10 @@ export function Hire() {
                 </View>
                 <View style={{ alignItems: 'flex-end', gap: 6 }}>
                   <StatusPill s={h.status} />
+                  {h.payment_status === 'unpaid' && h.status !== 'cancelled' ? <StatusPill s="unpaid" /> : h.payment_status === 'paid' ? <StatusPill s="paid" /> : null}
                   <View style={{ flexDirection: 'row', gap: 6 }}>
-                    {h.i_am_coach && h.status === 'requested' ? <Btn small title="Confirm" onPress={() => setHire(h, 'confirmed')} /> : null}
+                    {h.i_am_hirer && h.payment_status === 'unpaid' && h.status !== 'cancelled' ? <Btn small title={`Pay ${money(h.total_cents)}`} onPress={() => setPaying({ type: 'coach_hire', id: h.id, amount: h.total_cents, label: `Coaching · ${h.coach_name}` })} /> : null}
+                    {h.i_am_coach && h.status === 'requested' && h.payment_status !== 'unpaid' ? <Btn small title="Confirm" onPress={() => setHire(h, 'confirmed')} /> : null}
                     {h.i_am_coach && h.status === 'confirmed' ? <Btn small title="Complete" onPress={() => setHire(h, 'completed')} /> : null}
                     {['requested', 'confirmed'].includes(h.status) ? <Btn small title="Cancel" color={c.paper} ink={c.red} onPress={() => setHire(h, 'cancelled')} /> : null}
                   </View>
@@ -396,6 +447,7 @@ export function Hire() {
         </View>
       )}
 
+      {paying ? <PaySheet target={paying} onClose={() => setPaying(null)} onDone={reloadAll} /> : null}
       {book ? (
         <FormSheet visible onClose={() => setBook(null)} title={`Book ${book.x.display_name}`} submitLabel="Request booking"
           fields={[
@@ -405,8 +457,11 @@ export function Hire() {
           onSubmit={async ({ when: w2, duration_min, note }) => {
             const base = { starts_at: parseWhen(w2), duration_min: duration_min ?? (book.med ? 30 : 60) };
             if (book.med) await api.post('/appointments', { provider_id: book.x.id, ...base, reason: note });
-            else await api.post('/hires', { coach_id: book.x.id, sport: book.x.sport_slug, ...base, note });
-            await reloadAll(); setTab('mine'); return 'Request sent — waiting for confirmation';
+            let hire = null;
+            if (!book.med) hire = await api.post('/hires', { coach_id: book.x.id, sport: book.x.sport_slug, ...base, note });
+            await reloadAll(); setTab('mine');
+            if (hire?.payment_status === 'unpaid') setPaying({ type: 'coach_hire', id: hire.id, amount: hire.total_cents, label: `Coaching · ${book.x.display_name}` });
+            return hire?.payment_status === 'unpaid' ? 'Request sent — pay to let the coach confirm' : 'Request sent — waiting for confirmation';
           }} />
       ) : null}
     </Screen>
@@ -421,6 +476,7 @@ export function Insure() {
   const plans = useLoad(() => api.get('/insurance/plans', { cover_for: 'individual' }), []);
   const pol = useLoad(() => api.get('/insurance/policies', { limit: 30 }), []);
   const [buy, setBuy] = useState(null);
+  const [paying, setPaying] = useState(null);
   const active = (pol.data ?? []).filter((p) => p.effective_status === 'active');
   const covered = new Set(active.map((p) => p.plan_id));
 
@@ -462,18 +518,19 @@ export function Insure() {
             <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
               <T size={26}>{p.emoji}</T>
               <View style={{ flex: 1 }}><T weight="700" size={14}>{p.plan_name}</T><T size={12} color={c.mute}>{p.policy_no} · until {day(p.ends_on + 'T12:00:00')} · cover {money(p.coverage_cents)}</T></View>
-              <StatusPill s={p.effective_status === 'expired' ? 'completed' : p.effective_status} />
+              <View style={{ alignItems: 'flex-end', gap: 6 }}><StatusPill s={p.effective_status === 'expired' ? 'completed' : p.effective_status} />{p.status === 'pending_payment' ? <Btn small title="Pay now" onPress={() => setPaying({ type: 'insurance_policy', id: p.id, amount: p.amount_cents, label: p.plan_name })} /> : null}</View>
             </View>
           </Card>
         ))}
         <T size={12} color={c.mute}>Need to file a claim or cover a team or event? Open Ecosystem → Insurance.</T>
       </View>
 
+      {paying ? <PaySheet target={paying} onClose={() => setPaying(null)} onDone={pol.reload} /> : null}
       {buy ? (
         <FormSheet visible onClose={() => setBuy(null)} title={`Cover with ${buy.name}`} submitLabel="Buy policy"
           initial={{ months: 12 }}
           fields={[{ key: 'months', label: `Months (${money(buy.premium_cents)} each)`, type: 'number' }, { key: 'beneficiary', label: 'Beneficiary (encrypted)', optional: true }]}
-          onSubmit={async (v) => { const p = await api.post('/insurance/policies', { plan_id: buy.id, ...v }); await pol.reload(); return `You're covered — ${money(p.premium_cents)} for ${v.months} months`; }} />
+          onSubmit={async (v) => { const p = await api.post('/insurance/policies', { plan_id: buy.id, ...v }); await pol.reload(); if (p.status === 'pending_payment') { setPaying({ type: 'insurance_policy', id: p.id, amount: p.premium_cents, label: buy.name }); return 'Policy created — pay to activate it'; } return `You're covered — ${money(p.premium_cents)} for ${v.months} months`; }} />
       ) : null}
     </Screen>
   );

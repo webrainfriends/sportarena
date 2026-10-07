@@ -4,6 +4,7 @@ import { one, many, tx } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { audit, isAdmin, sportBySlugOrId } from '../helpers.js';
 import { decrypt, encrypt } from '../crypto.js';
+import { paymentsEnabled, refundFor } from '../payments/service.js';
 
 const cats = ['equipment', 'apparel', 'footwear', 'nutrition', 'medical', 'accessories', 'other'];
 const PRODUCT = `p.id, p.name, p.category, p.description, p.price_cents, p.stock, p.emoji, p.seller_id, u.display_name AS seller_name, s.slug AS sport_slug, s.name AS sport, s.emoji AS sport_emoji`;
@@ -35,7 +36,7 @@ cap({
 
 cap({
   name: 'buy_product', method: 'POST', path: '/shop/orders', tag: 'Shop', status: 201,
-  summary: 'Order an item. Stock is reserved atomically (never oversold). The delivery address is encrypted. Payment is not charged in this MVP.',
+  summary: 'Order an item. Stock is reserved atomically (never oversold). The delivery address is encrypted. When a payment provider is enabled the order starts as awaiting_payment — pay it with create_payment.',
   input: z.object({ product_id: id, quantity: z.number().int().min(1).max(50).default(1), ship_to: z.string().min(5).max(300).describe('delivery address, encrypted at rest') }),
   async handler({ user }, i) {
     return tx(async (c) => {
@@ -46,8 +47,8 @@ cap({
       }
       if (p.seller_id === user.id) throw badRequest('You cannot buy your own product');
       const { rows: [o] } = await c.query(
-        'INSERT INTO shop_orders(buyer_id, seller_id, product_id, quantity, unit_price_cents, total_cents, ship_to_enc) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id, product_id, quantity, unit_price_cents, total_cents, status, created_at',
-        [user.id, p.seller_id, p.id, i.quantity, p.price_cents, p.price_cents * i.quantity, encrypt(i.ship_to, 'shop_orders.ship_to')]);
+        'INSERT INTO shop_orders(buyer_id, seller_id, product_id, quantity, unit_price_cents, total_cents, status, ship_to_enc) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id, product_id, quantity, unit_price_cents, total_cents, status, created_at',
+        [user.id, p.seller_id, p.id, i.quantity, p.price_cents, p.price_cents * i.quantity, paymentsEnabled() && p.price_cents > 0 ? 'awaiting_payment' : 'placed', encrypt(i.ship_to, 'shop_orders.ship_to')]);
       return o;
     });
   },
@@ -76,17 +77,21 @@ cap({
 
 cap({
   name: 'update_shop_order', method: 'PATCH', path: '/shop/orders/:id', tag: 'Shop',
-  summary: 'Seller marks shipped/delivered; buyer (or seller) can cancel while still "placed", which restocks the item.',
+  summary: 'Seller marks a paid order shipped/delivered. Buyer (or seller) can cancel before it ships: stock is restocked and any payment is refunded.',
   input: z.object({ id, status: z.enum(['shipped', 'delivered', 'cancelled']) }),
   async handler({ user }, i) {
+    const o = await one('SELECT * FROM shop_orders WHERE id=$1', [i.id]);
+    if (!o) throw notFound('Order');
+    const isSeller = o.seller_id === user.id, isBuyer = o.buyer_id === user.id;
+    if (!isSeller && !isBuyer && !isAdmin(user)) throw forbidden();
+    if (i.status !== 'cancelled' && !isSeller && !isAdmin(user)) throw forbidden('Only the seller can ship or deliver');
+    const ok = i.status === 'cancelled' ? ['awaiting_payment', 'placed'].includes(o.status) : i.status === 'shipped' ? o.status === 'placed' : o.status === 'shipped';
+    if (!ok) throw conflict(o.status === 'awaiting_payment' && i.status === 'shipped' ? 'Waiting for the buyer to pay' : `Cannot move an order from ${o.status} to ${i.status}`);
+    // refund first: if the provider refuses, the order stays as it is
+    if (i.status === 'cancelled') await refundFor('shop_order', o.id);
     return tx(async (c) => {
-      const o = (await c.query('SELECT * FROM shop_orders WHERE id=$1 FOR UPDATE', [i.id])).rows[0];
-      if (!o) throw notFound('Order');
-      const isSeller = o.seller_id === user.id, isBuyer = o.buyer_id === user.id;
-      if (!isSeller && !isBuyer && !isAdmin(user)) throw forbidden();
-      if (i.status !== 'cancelled' && !isSeller && !isAdmin(user)) throw forbidden('Only the seller can ship or deliver');
-      const ok = i.status === 'cancelled' ? o.status === 'placed' : i.status === 'shipped' ? o.status === 'placed' : o.status === 'shipped';
-      if (!ok) throw conflict(`Cannot move an order from ${o.status} to ${i.status}`);
+      const cur = (await c.query('SELECT status FROM shop_orders WHERE id=$1 FOR UPDATE', [i.id])).rows[0];
+      if (cur.status !== o.status) throw conflict('The order just changed — refresh and try again');
       if (i.status === 'cancelled') await c.query('UPDATE shop_products SET stock = stock + $2 WHERE id=$1', [o.product_id, o.quantity]);
       return (await c.query('UPDATE shop_orders SET status=$2 WHERE id=$1 RETURNING id, status', [i.id, i.status])).rows[0];
     });

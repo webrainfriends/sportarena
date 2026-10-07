@@ -10,6 +10,7 @@ import { invoke, toErrorBody } from './invoke.js';
 import { buildOpenApi } from './openapi.js';
 import { createMcpServer } from './mcp.js';
 import { pool } from './db.js';
+import { webhookRouter } from './payments/webhooks.js';
 
 export function createApp() {
   const app = express();
@@ -23,6 +24,7 @@ export function createApp() {
     next();
   });
   app.use(cors({ origin: config.corsOrigins.includes('*') ? true : config.corsOrigins }));
+  app.use('/api/v1/webhooks', webhookRouter());
   app.use(express.json({ limit: '100kb' }));
   app.use(rateLimit({ windowMs: 60_000, limit: config.isProd ? 300 : 5000, standardHeaders: true, legacyHeaders: false }));
   // Responses can carry personal data: never let proxies/browsers cache them.
