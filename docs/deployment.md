@@ -52,6 +52,16 @@ Then open **http://13.250.133.109:9255**.
   makes the data unreadable — **back up `/var/lib/sportarena/master.key.enc`** and never delete the KMS key.
 - Postgres is bound to localhost and the API is reachable only through nginx.
 
+## Troubleshooting the SSH step
+The workflow's first step, **Check SSH key**, validates `EC2_SSH_KEY` and prints its public fingerprint.
+- `ssh: unable to authenticate ... [none publickey]` while that step says *Key OK*: the key is well-formed but is **not
+  the one the instance trusts for `ubuntu`**. Use the exact key `myhealthpal` deploys with, and compare fingerprints:
+  on the instance run `ssh-keygen -lf ~/.ssh/authorized_keys`, and locally `ssh-keygen -lf key.pem`
+  (the fingerprint printed by the step must appear in that list).
+- The step fails with a message: the secret is empty, truncated, a public key/`.ppk`, or passphrase-protected. Re-paste the
+  whole `.pem` including the BEGIN/END lines.
+- Test locally first: `ssh -i key.pem ubuntu@13.250.133.109`.
+
 ## Operating it
 ```bash
 pm2 logs sportarena-api
