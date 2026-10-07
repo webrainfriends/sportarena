@@ -35,5 +35,7 @@ export const config = {
   sslKeyFile: env.SSL_KEY_FILE,
   sslCertFile: env.SSL_CERT_FILE,
   trustProxy: env.TRUST_PROXY === 'true',
+  // Production refuses plain HTTP unless this is set explicitly (interim setups without a certificate).
+  allowInsecureHttp: env.ALLOW_INSECURE_HTTP === 'true',
   corsOrigins: (env.CORS_ORIGINS ?? '*').split(','),
 };

@@ -7,6 +7,7 @@ import { initKeys } from './crypto.js';
 
 await initKeys();   // fail fast if the master key can't be loaded
 await migrate();
+if (config.isProd && config.allowInsecureHttp) console.warn('[security] ALLOW_INSECURE_HTTP=true: serving over plain HTTP. Personal data is NOT encrypted in transit. Enable TLS before real users sign up.');
 const app = createApp();
 const server = config.sslKeyFile && config.sslCertFile
   ? createServer({ key: readFileSync(config.sslKeyFile), cert: readFileSync(config.sslCertFile), minVersion: 'TLSv1.2' }, app)

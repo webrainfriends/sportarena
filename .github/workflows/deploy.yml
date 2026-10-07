@@ -1,7 +1,8 @@
 # Deploys SportArena to the shared EC2 host (same host, user, SSH key and KMS key as myhealthpal).
 #
 # It runs side by side with the apps already on the box and never touches them:
-#   - nginx:    its own site file (sites-available/sportarena) on NGINX_PORT, TLS. Validated with `nginx -t`
+#   - nginx:    its own site file (sites-available/sportarena) on NGINX_PORT (plain HTTP for now; set
+#               ENABLE_TLS to "true" for HTTPS). Validated with `nginx -t`
 #               before a graceful reload; on any error our site is removed and the other sites keep serving.
 #   - API:      pm2 process "sportarena-api" on APP_PORT (reached only through nginx; keep it closed in the SG).
 #   - Postgres: Docker container "sportarena-postgres" (postgres:16-alpine) on 127.0.0.1:DB_PORT, volume
@@ -32,7 +33,10 @@ env:
   AWS_REGION: ap-southeast-1
   APP_DIR: sportarena
   APP_PORT: 4255      # API, reached only through nginx
-  NGINX_PORT: 9255    # public (TLS)
+  NGINX_PORT: 9255    # public
+  # INTERIM: plain HTTP. Personal data is NOT encrypted in transit until this is "true" (self-signed cert) or a
+  # real certificate/domain is set up. Flip to "true" and redeploy to get HTTPS on the same port.
+  ENABLE_TLS: "false"
   DB_PORT: 7255       # Postgres container, bound to 127.0.0.1
 
 permissions:
@@ -56,7 +60,7 @@ jobs:
           username: ${{ env.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           command_timeout: 20m
-          envs: APP_DIR,BRANCH,REPO_URL,APP_PORT,NGINX_PORT,DB_PORT,PUBLIC_HOST,KMS_KEY_ID,KMS_REGION
+          envs: APP_DIR,BRANCH,REPO_URL,APP_PORT,NGINX_PORT,DB_PORT,ENABLE_TLS,PUBLIC_HOST,PUBLIC_IP,KMS_KEY_ID,KMS_REGION
           script_stop: true
           script: |
             set -euo pipefail
@@ -180,7 +184,10 @@ jobs:
             set_env NODE_ENV production
             set_env PORT "$APP_PORT"
             set_env TRUST_PROXY true
-            set_env CORS_ORIGINS "https://${PUBLIC_HOST}:${NGINX_PORT}"
+            if [ "${ENABLE_TLS:-false}" = "true" ]; then SCHEME=https; set_env ALLOW_INSECURE_HTTP false; else SCHEME=http; set_env ALLOW_INSECURE_HTTP true
+              echo "::warning::Serving over plain HTTP (ENABLE_TLS=false): personal data is not encrypted in transit. Enable TLS before real users sign up."
+            fi
+            set_env CORS_ORIGINS "${SCHEME}://${PUBLIC_IP}:${NGINX_PORT},${SCHEME}://${PUBLIC_HOST}:${NGINX_PORT}"
             set_env KEY_PROVIDER aws-kms
             set_env KMS_KEY_ID "$KMS_KEY_ID"
             set_env KMS_REGION "$KMS_REGION"
@@ -203,14 +210,23 @@ jobs:
             done
             [ "$ok" -eq 1 ] || { pm2 logs sportarena-api --lines 40 --nostream || true; abort_deploy "API did not become healthy on $APP_PORT."; }
 
-            # ---- TLS certificate (self-signed until a real domain/cert is configured) ----
+            # ---- TLS (only when ENABLE_TLS=true): self-signed certificate until a real domain/cert exists ----
             SSL_DIR=/etc/nginx/ssl/sportarena
-            if [ ! -f "$SSL_DIR/fullchain.pem" ]; then
-              echo "[deploy] generating a self-signed certificate for ${PUBLIC_HOST}"
-              sudo mkdir -p "$SSL_DIR"
-              sudo openssl req -x509 -newkey rsa:2048 -nodes -days 825 -keyout "$SSL_DIR/privkey.pem" -out "$SSL_DIR/fullchain.pem" \
-                -subj "/CN=${PUBLIC_HOST}" -addext "subjectAltName=DNS:${PUBLIC_HOST}" >/dev/null 2>&1
-              sudo chmod 600 "$SSL_DIR/privkey.pem"
+            if [ "${ENABLE_TLS:-false}" = "true" ]; then
+              if [ ! -f "$SSL_DIR/fullchain.pem" ]; then
+                echo "[deploy] generating a self-signed certificate for ${PUBLIC_HOST}"
+                sudo mkdir -p "$SSL_DIR"
+                sudo openssl req -x509 -newkey rsa:2048 -nodes -days 825 -keyout "$SSL_DIR/privkey.pem" -out "$SSL_DIR/fullchain.pem" \
+                  -subj "/CN=${PUBLIC_HOST}" -addext "subjectAltName=DNS:${PUBLIC_HOST},IP:${PUBLIC_IP}" >/dev/null 2>&1
+                sudo chmod 600 "$SSL_DIR/privkey.pem"
+              fi
+              LISTEN_DIRECTIVE="${NGINX_PORT} ssl"
+              SSL_CONF="ssl_certificate     ${SSL_DIR}/fullchain.pem;
+                ssl_certificate_key ${SSL_DIR}/privkey.pem;
+                ssl_protocols TLSv1.2 TLSv1.3;"
+            else
+              LISTEN_DIRECTIVE="${NGINX_PORT}"
+              SSL_CONF="# TLS disabled (ENABLE_TLS=false)"
             fi
 
             # ---- nginx: our own site file only; other sites are never edited ----
@@ -218,11 +234,9 @@ jobs:
             SITE=/etc/nginx/sites-available/sportarena
             cat <<NGINX | sudo tee "$SITE" >/dev/null
             server {
-                listen ${NGINX_PORT} ssl;
+                listen ${LISTEN_DIRECTIVE};
                 server_name _;
-                ssl_certificate     ${SSL_DIR}/fullchain.pem;
-                ssl_certificate_key ${SSL_DIR}/privkey.pem;
-                ssl_protocols TLSv1.2 TLSv1.3;
+                ${SSL_CONF}
 
                 client_max_body_size 2m;
 
@@ -268,11 +282,13 @@ jobs:
             fi
             sudo systemctl reload nginx      # graceful: existing connections/sites keep working
 
-            curl -fsk "https://127.0.0.1:${NGINX_PORT}/health" >/dev/null || abort_deploy "Site is not reachable through nginx on ${NGINX_PORT}."
-            echo "Deployed. https://${PUBLIC_HOST}:${NGINX_PORT}  (self-signed certificate: your browser will warn once)"
+            curl -fsk "${SCHEME}://127.0.0.1:${NGINX_PORT}/health" >/dev/null || abort_deploy "Site is not reachable through nginx on ${NGINX_PORT}."
+            echo "Deployed. ${SCHEME}://${PUBLIC_IP}:${NGINX_PORT}"
+            [ "$SCHEME" = "https" ] || echo "NOTE: plain HTTP - not encrypted in transit. Set ENABLE_TLS to \"true\" in deploy.yml to switch to HTTPS."
         env:
           BRANCH: ${{ github.ref_name }}
           REPO_URL: https://github.com/${{ github.repository }}.git
           PUBLIC_HOST: ec2-13-250-133-109.ap-southeast-1.compute.amazonaws.com
+          PUBLIC_IP: 13.250.133.109
           KMS_KEY_ID: ${{ secrets.KMS_KEY_ID }}
           KMS_REGION: ap-southeast-1

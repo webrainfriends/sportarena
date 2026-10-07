@@ -17,9 +17,9 @@ export function createApp() {
   app.disable('x-powered-by');
 
   // Encryption in transit: in production plain HTTP is refused; HSTS pins browsers to HTTPS.
-  app.use(helmet({ hsts: { maxAge: 63072000, includeSubDomains: true, preload: true } }));
+  app.use(helmet({ hsts: config.allowInsecureHttp ? false : { maxAge: 63072000, includeSubDomains: true, preload: true } }));
   app.use((req, res, next) => {
-    if (config.isProd && !req.secure) return res.status(426).json({ error: { code: 'https_required', message: 'Use HTTPS' } });
+    if (config.isProd && !config.allowInsecureHttp && !req.secure) return res.status(426).json({ error: { code: 'https_required', message: 'Use HTTPS' } });
     next();
   });
   app.use(cors({ origin: config.corsOrigins.includes('*') ? true : config.corsOrigins }));
