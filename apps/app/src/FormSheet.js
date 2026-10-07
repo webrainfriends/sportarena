@@ -36,7 +36,7 @@ export function FormSheet({ visible, onClose, title, fields, initial = {}, submi
       ) : (
         <Field key={f.key} label={f.label + (f.optional ? ' (optional)' : '')} value={String(v[f.key] ?? '')} onChangeText={(x) => set(f.key, x)} secure={f.type === 'secret'} multiline={f.type === 'multiline'} keyboardType={f.type === 'number' ? 'numeric' : undefined} hint={f.hint} placeholder={f.placeholder} />
       ))}
-      {err ? <T color={c.red} weight="800">⚠️ {err}</T> : null}
+      {err ? <T color={c.red} weight="800">{err}</T> : null}
       <Btn title={submitLabel} onPress={submit} loading={busy} color={color} />
     </Sheet>
   );

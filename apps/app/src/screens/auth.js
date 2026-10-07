@@ -33,18 +33,18 @@ export default function Auth() {
 
   return (
     <Screen>
-      <LinearGradient colors={grad.hero} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ borderRadius: 20, padding: 26, marginTop: 20, overflow: 'hidden' }}>
-        <View style={{ position: 'absolute', right: -30, top: -20, width: 120, height: 260, backgroundColor: c.lime, opacity: 0.16, transform: [{ skewX: '-18deg' }] }} />
-        <View style={{ position: 'absolute', right: 60, top: -20, width: 36, height: 260, backgroundColor: '#fff', opacity: 0.08, transform: [{ skewX: '-18deg' }] }} />
+      <LinearGradient colors={grad.hero} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ borderRadius: 28, padding: 26, minHeight: 190, justifyContent: 'flex-end', marginTop: 20, overflow: 'hidden' }}>
+        <View style={{ position: 'absolute', right: -30, top: -20, width: 120, height: 260, backgroundColor: c.lime, opacity: 0.12, transform: [{ skewX: '-18deg' }] }} />
+        <View style={{ position: 'absolute', right: 60, top: -20, width: 36, height: 260, backgroundColor: c.lime, opacity: 0.2, transform: [{ skewX: '-18deg' }] }} />
         <Text style={[fam, { color: c.lime, fontWeight: '700', fontSize: 12, letterSpacing: 2.5 }]}>THE HOME OF SPORT</Text>
         <Text style={[fam, { color: '#fff', fontWeight: '800', fontSize: 40, letterSpacing: -1.2, marginTop: 10 }]}>SportArena</Text>
-        <T color="#C6D0EA" weight="500" size={15} style={{ marginTop: 8, lineHeight: 22 }}>Teams. Fixtures. Venues. Performance. Everything your game runs on, in one place.</T>
+        <T color="#A8BDB0" weight="500" size={15} style={{ marginTop: 8, lineHeight: 22 }}>Teams. Fixtures. Venues. Performance. Everything your game runs on, in one place.</T>
       </LinearGradient>
 
-      <View style={{ flexDirection: 'row', backgroundColor: '#E4E8F1', borderRadius: 12, padding: 4, marginTop: 20 }}>
+      <View style={{ flexDirection: 'row', backgroundColor: c.paper, borderWidth: 1, borderColor: c.line, borderRadius: 999, padding: 4, marginTop: 20 }}>
         {[['login', 'Log in'], ['register', 'Create account']].map(([k, l]) => (
-          <Pressable key={k} onPress={() => setMode(k)} style={{ flex: 1, paddingVertical: 11, borderRadius: 9, alignItems: 'center', backgroundColor: mode === k ? c.paper : 'transparent' }}>
-            <T weight="700" size={14} color={mode === k ? c.ink : c.mute}>{l}</T>
+          <Pressable key={k} onPress={() => setMode(k)} style={{ flex: 1, paddingVertical: 11, borderRadius: 999, alignItems: 'center', backgroundColor: mode === k ? c.lime : 'transparent' }}>
+            <T weight="700" size={14} color={mode === k ? c.on : c.mute}>{l}</T>
           </Pressable>
         ))}
       </View>
@@ -63,7 +63,7 @@ export default function Auth() {
                 {ROLES.map(([k, l]) => <Chip key={k} label={l} active={f.roles.includes(k)} onPress={() => toggle(k)} color={c.pink} />)}
               </View>
             </View>
-            <View style={{ backgroundColor: c.pinkSoft, borderRadius: 12, padding: 14, gap: 12 }}>
+            <View style={{ backgroundColor: c.violet, borderRadius: 14, padding: 14, gap: 12 }}>
               <View>
                 <T weight="700" size={14}>Private by design</T>
                 <T size={12} color={c.mute} style={{ marginTop: 2, lineHeight: 18 }}>Your email, name, phone and ID are encrypted before they reach our database and are only decrypted for you.</T>

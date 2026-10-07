@@ -36,7 +36,7 @@ export function Reviews({ type, id, canWrite = true }) {
       {user && canWrite ? <Btn title="Write a review" color={c.violet} onPress={() => setOpen(true)} /> : null}
       <FormSheet visible={open} onClose={() => setOpen(false)} title="Your review" submitLabel="Post it"
         fields={[{ key: 'rating', label: 'Rating', type: 'choice', options: [5, 4, 3, 2, 1].map((n) => ({ value: n, label: '⭐'.repeat(n) })) }, { key: 'body', label: 'What did you think?', type: 'multiline' }]}
-        onSubmit={async (v) => { await api.post('/testimonials', { subject_type: type, subject_id: id, ...v }); reload(); return 'Review posted ✨'; }} />
+        onSubmit={async (v) => { await api.post('/testimonials', { subject_type: type, subject_id: id, ...v }); reload(); return 'Review posted'; }} />
     </View>
   );
 }
@@ -65,7 +65,7 @@ export function FixtureCard({ f, onScore }) {
     <Card pad={12}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
         <Tag label={f.round ?? f.event_name ?? 'Game'} color={c.violetSoft} />
-        <T size={12} color={c.mute} weight="800">{done ? 'FULL TIME' : f.status === 'live' ? '🔴 LIVE' : new Date(f.scheduled_at).toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</T>
+        <T size={12} color={c.mute} weight="800">{done ? 'FULL TIME' : f.status === 'live' ? 'LIVE' : new Date(f.scheduled_at).toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</T>
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10, gap: 6 }}>
         <View style={{ flex: 1, alignItems: 'center' }}><T size={30}>{f.home_emoji}</T><T weight="900" size={13} style={{ textAlign: 'center' }}>{f.home_name}</T></View>
@@ -94,7 +94,7 @@ export function StandingsTable({ rows }) {
           <View style={{ width: 24 }}><T weight="900">{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : r.rank}</T></View>
           <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 }}><T size={18}>{r.emoji}</T><T weight="900" size={14} numberOfLines={1} style={{ flexShrink: 1 }}>{r.name}</T></View>
           {[r.played, r.won, r.drawn, r.lost, r.goal_diff > 0 ? `+${r.goal_diff}` : r.goal_diff].map((x, k) => <T key={k} size={13} style={th}>{x}</T>)}
-          <View style={{ width: 38, alignItems: 'center' }}><View style={{ backgroundColor: i === 0 ? c.lime : c.violetSoft, borderRadius: 8, paddingHorizontal: 6 }}><T weight="900">{r.points}</T></View></View>
+          <View style={{ width: 38, alignItems: 'center' }}><View style={{ backgroundColor: i === 0 ? c.lime : c.violet, borderRadius: 8, paddingHorizontal: 6 }}><T weight="800" color={i === 0 ? c.on : c.ink}>{r.points}</T></View></View>
         </View>
       ))}
     </Card>

@@ -36,7 +36,7 @@ export function SessionProvider({ children }) {
       {children}
       {toastMsg ? (
         <View pointerEvents="none" style={{ position: 'absolute', bottom: 110, left: 0, right: 0, alignItems: 'center' }}>
-          <View style={{ backgroundColor: c.ink, borderRadius: 999, paddingVertical: 12, paddingHorizontal: 20, maxWidth: '88%' }}><Text style={{ color: '#fff', fontWeight: '800' }}>{toastMsg}</Text></View>
+          <View style={{ backgroundColor: c.violet, borderRadius: 12, paddingVertical: 12, paddingHorizontal: 18, maxWidth: '88%', borderLeftWidth: 4, borderLeftColor: c.lime }}><Text style={{ color: '#fff', fontWeight: '600' }}>{toastMsg}</Text></View>
         </View>
       ) : null}
     </Ctx.Provider>
