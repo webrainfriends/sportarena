@@ -51,3 +51,10 @@ jobs:
           name: sportarena-web
           path: apps/app/dist
           retention-days: 14
+
+  deploy-script:
+    name: Deploy script syntax
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash -n scripts/deploy-remote.sh
