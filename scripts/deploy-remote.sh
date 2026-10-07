@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runs ON the EC2 host (copied and executed by .github/workflows/deploy.yml). Configuration arrives as environment
-# variables: APP_DIR BRANCH REPO_URL APP_PORT NGINX_PORT DB_PORT ENABLE_TLS PUBLIC_HOST PUBLIC_IP KMS_KEY_ID KMS_REGION.
+# variables: APP_DIR BRANCH REPO_URL APP_PORT NGINX_PORT DB_PORT ENABLE_TLS PUBLIC_HOST PUBLIC_IP KMS_KEY_ID KMS_REGION (+ optional STRIPE_*/PAYPAL_*/PAYMENT_CURRENCY).
 # Idempotent; see docs/deployment.md.
 set -Eeuo pipefail
 # Persist why a deploy failed: the SSH session can drop its last output lines on a non-zero exit, so the
@@ -136,6 +136,11 @@ set_env KEY_PROVIDER aws-kms
 set_env KMS_KEY_ID "$KMS_KEY_ID"
 set_env KMS_REGION "$KMS_REGION"
 set_env MASTER_KEY_FILE "$KEY_DIR/master.key.enc"
+# Payments: only written when provided, so a deploy without keys never wipes keys set earlier.
+for v in STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET PAYPAL_CLIENT_ID PAYPAL_CLIENT_SECRET PAYPAL_WEBHOOK_ID PAYPAL_ENV PAYMENT_CURRENCY; do
+  val="$(printf '%s' "${!v:-}" | tr -d '\r\n' | xargs)"
+  [ -n "$val" ] && set_env "$v" "$val"
+done
 # Generated once and never rotated by a deploy (that would sign everyone out).
 if [ -z "$(env_val SPORTARENA_JWT_SECRET)" ]; then
   echo "[deploy] generating SPORTARENA_JWT_SECRET (first deploy only)"

@@ -6,6 +6,7 @@ import { audit, isAdmin, mustFind } from '../helpers.js';
 import { decrypt, encrypt } from '../crypto.js';
 import { randomBytes } from 'node:crypto';
 import { canManageTeam } from './teams.js';
+import { paymentsEnabled } from '../payments/service.js';
 
 const mask = (n) => (n ? `••••${n.slice(-4)}` : null);
 
@@ -23,7 +24,7 @@ cap({
 
 cap({
   name: 'buy_policy', method: 'POST', path: '/insurance/policies', tag: 'Insurance', status: 201,
-  summary: 'Insure yourself (individual), a team you manage, or an event you organise. Policy number and beneficiary are encrypted.',
+  summary: 'Insure yourself (individual), a team you manage, or an event you organise. Policy number and beneficiary are encrypted. When a payment provider is enabled the policy is pending_payment until paid (create_payment).',
   input: z.object({ plan_id: id, subject_id: id.optional().describe('team or event id; omit for individual (you)'), months: z.number().int().min(1).max(36).default(12), beneficiary: z.string().max(200).optional() }),
   async handler({ user }, i) {
     const plan = await mustFind('insurance_plans', i.plan_id);
@@ -36,9 +37,9 @@ cap({
     }
     const policyNo = `SA-${randomBytes(5).toString('hex').toUpperCase()}`;
     const p = await one(
-      `INSERT INTO insurance_policies(plan_id, holder_id, subject_type, subject_id, policy_no_enc, beneficiary_enc, ends_on)
-       VALUES ($1,$2,$3,$4,$5,$6, current_date + make_interval(months => $7)::interval) RETURNING id, plan_id, subject_type, subject_id, status, starts_on, ends_on`,
-      [plan.id, user.id, plan.cover_for, subject, encrypt(policyNo, 'insurance_policies.policy_no'), encrypt(i.beneficiary, 'insurance_policies.beneficiary'), i.months]);
+      `INSERT INTO insurance_policies(plan_id, holder_id, subject_type, subject_id, policy_no_enc, beneficiary_enc, ends_on, amount_cents, status)
+       VALUES ($1,$2,$3,$4,$5,$6, current_date + make_interval(months => $7)::interval, $8, $9) RETURNING id, plan_id, subject_type, subject_id, status, starts_on, ends_on`,
+      [plan.id, user.id, plan.cover_for, subject, encrypt(policyNo, 'insurance_policies.policy_no'), encrypt(i.beneficiary, 'insurance_policies.beneficiary'), i.months, plan.premium_cents * i.months, paymentsEnabled() && plan.premium_cents > 0 ? 'pending_payment' : 'active']);
     return { ...p, policy_no: mask(policyNo), premium_cents: plan.premium_cents * i.months, coverage_cents: plan.coverage_cents };
   },
 });

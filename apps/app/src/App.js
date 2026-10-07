@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Platform, Pressable, StatusBar, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SessionProvider, useSession } from './session';
 import { NavProvider, useNav } from './nav';
 import { Avatar, Loading } from './ui';
+import { api } from './api';
 import { c, fam } from './theme';
 import Auth from './screens/auth';
 import Home from './screens/home';
@@ -80,10 +81,22 @@ function TabBar() {
 
 function Shell() {
   const { ready, user } = useSession();
-  const { tab, stack, back } = useNav();
+  const { tab, stack, back, goTab } = useNav();
+  const { toast } = useSession();
   const ins = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const wide = width >= 820;
+  // Back from Stripe/PayPal checkout (web): ?payment=<id>&result=success|cancel
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !user) return;
+    const q = new URLSearchParams(window.location.search);
+    const id = q.get('payment');
+    if (!id) return;
+    window.history.replaceState({}, '', window.location.pathname);
+    goTab('Player');
+    if (q.get('result') !== 'success') return toast('Payment cancelled — nothing was charged');
+    api.post(`/payments/${id}/confirm`).then((r) => toast(r.status === 'paid' ? 'Payment received ✓' : 'Payment is still processing — check back shortly')).catch((e) => toast(e.message));
+  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!ready) return <View style={{ flex: 1, backgroundColor: c.bg, justifyContent: 'center', padding: 24 }}><Loading /></View>;
   if (!user) return <View style={{ flex: 1, paddingTop: ins.top, backgroundColor: c.bg }}><Auth /></View>;
   const top = stack[stack.length - 1];
