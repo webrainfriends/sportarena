@@ -17,7 +17,7 @@ export function Reviews({ type, id, canWrite = true }) {
   if (loading && !data) return <Loading />;
   return (
     <View style={{ gap: 12 }}>
-      <Card color={c.sunSoft}>
+      <Card>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <View><T weight="900" size={28}>{data?.avg ?? '–'}</T><T size={12} color={c.mute}>{data?.n ?? 0} review{data?.n === 1 ? '' : 's'}</T></View>
           <Stars n={data?.avg ?? 0} size={20} />
@@ -33,7 +33,7 @@ export function Reviews({ type, id, canWrite = true }) {
           <T style={{ marginTop: 8 }}>{t.body}</T>
         </Card>
       )) : <Empty emoji="💬" title="No reviews yet" sub="Be the first to hype it up." />}
-      {user && canWrite ? <Btn title="Write a review" emoji="✍️" color={c.violet} onPress={() => setOpen(true)} /> : null}
+      {user && canWrite ? <Btn title="Write a review" color={c.violet} onPress={() => setOpen(true)} /> : null}
       <FormSheet visible={open} onClose={() => setOpen(false)} title="Your review" submitLabel="Post it"
         fields={[{ key: 'rating', label: 'Rating', type: 'choice', options: [5, 4, 3, 2, 1].map((n) => ({ value: n, label: '⭐'.repeat(n) })) }, { key: 'body', label: 'What did you think?', type: 'multiline' }]}
         onSubmit={async (v) => { await api.post('/testimonials', { subject_type: type, subject_id: id, ...v }); reload(); return 'Review posted ✨'; }} />
@@ -49,7 +49,7 @@ export function TrophyShelf({ awards }) {
   return (
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
       {awards.map((a, i) => (
-        <Card key={a.id ?? i} color={[c.sunSoft, c.pinkSoft, c.cyanSoft, c.limeSoft][i % 4]} style={{ width: 150 }} pad={12} tilt={i % 2 ? 1.5 : -1.5}>
+        <Card key={a.id ?? i} color={[c.sunSoft, c.pinkSoft, c.cyanSoft, c.limeSoft][i % 4]} style={{ width: 150 }} pad={12}>
           <T size={34}>{awardEmoji(a.kind)}</T>
           <T weight="900" size={14} style={{ marginTop: 4 }}>{a.name}</T>
           <Tag label={AWARD[a.kind]?.[1] ?? a.kind} color={c.ink} ink="#fff" style={{ marginTop: 6 }} />
@@ -69,13 +69,13 @@ export function FixtureCard({ f, onScore }) {
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10, gap: 6 }}>
         <View style={{ flex: 1, alignItems: 'center' }}><T size={30}>{f.home_emoji}</T><T weight="900" size={13} style={{ textAlign: 'center' }}>{f.home_name}</T></View>
-        <View style={{ backgroundColor: c.ink, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 6 }}>
-          <T color="#fff" weight="900" size={22}>{done ? `${f.home_score} – ${f.away_score}` : 'VS'}</T>
+        <View style={{ backgroundColor: c.violet, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 6 }}>
+          <T color="#fff" weight="800" size={20}>{done ? `${f.home_score} – ${f.away_score}` : 'VS'}</T>
         </View>
         <View style={{ flex: 1, alignItems: 'center' }}><T size={30}>{f.away_emoji}</T><T weight="900" size={13} style={{ textAlign: 'center' }}>{f.away_name}</T></View>
       </View>
       {f.resource_name ? <T size={12} color={c.mute} style={{ marginTop: 8, textAlign: 'center' }}>📍 {f.resource_name}</T> : null}
-      {onScore && !done ? <Btn small title="Enter result" emoji="📝" color={c.mint} ink={c.ink} onPress={() => onScore(f)} style={{ marginTop: 10, alignSelf: 'center' }} /> : null}
+      {onScore && !done ? <Btn small title="Enter result" color={c.mint} ink={c.ink} onPress={() => onScore(f)} style={{ marginTop: 10, alignSelf: 'center' }} /> : null}
     </Card>
   );
 }
@@ -85,16 +85,16 @@ export function StandingsTable({ rows }) {
   const th = { width: 30, textAlign: 'center' };
   return (
     <Card pad={10}>
-      <View style={{ flexDirection: 'row', paddingBottom: 6, borderBottomWidth: 2, borderColor: c.ink }}>
+      <View style={{ flexDirection: 'row', paddingBottom: 6, borderBottomWidth: 1.5, borderColor: c.line }}>
         <T weight="900" size={11} style={{ width: 24 }}>#</T><T weight="900" size={11} style={{ flex: 1 }}>TEAM</T>
         {['P', 'W', 'D', 'L', 'GD'].map((h) => <T key={h} weight="900" size={11} style={th}>{h}</T>)}<T weight="900" size={11} style={{ width: 38, textAlign: 'center' }}>PTS</T>
       </View>
       {rows.map((r, i) => (
-        <View key={r.team_id} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderBottomWidth: i < rows.length - 1 ? 1 : 0, borderColor: '#E7DFF5' }}>
+        <View key={r.team_id} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderBottomWidth: i < rows.length - 1 ? 1 : 0, borderColor: c.line }}>
           <View style={{ width: 24 }}><T weight="900">{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : r.rank}</T></View>
           <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 }}><T size={18}>{r.emoji}</T><T weight="900" size={14} numberOfLines={1} style={{ flexShrink: 1 }}>{r.name}</T></View>
           {[r.played, r.won, r.drawn, r.lost, r.goal_diff > 0 ? `+${r.goal_diff}` : r.goal_diff].map((x, k) => <T key={k} size={13} style={th}>{x}</T>)}
-          <View style={{ width: 38, alignItems: 'center' }}><View style={{ backgroundColor: i === 0 ? c.lime : c.sunSoft, borderWidth: 2, borderColor: c.ink, borderRadius: 10, paddingHorizontal: 6 }}><T weight="900">{r.points}</T></View></View>
+          <View style={{ width: 38, alignItems: 'center' }}><View style={{ backgroundColor: i === 0 ? c.lime : c.violetSoft, borderRadius: 8, paddingHorizontal: 6 }}><T weight="900">{r.points}</T></View></View>
         </View>
       ))}
     </Card>

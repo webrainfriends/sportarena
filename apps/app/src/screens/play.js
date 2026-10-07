@@ -33,8 +33,8 @@ export function Play() {
       <Seg options={[{ value: 'events', label: 'Events', emoji: '🎟️', color: c.pink }, { value: 'teams', label: 'Teams', emoji: '🛡️', color: c.violet }, { value: 'venues', label: 'Venues', emoji: '🏟️', color: c.cyan }, { value: 'people', label: 'People', emoji: '🧑‍🤝‍🧑', color: c.orange }]} value={tab} onChange={setTab} />
       {(tab === 'events' || tab === 'teams') && sports.data ? <Seg options={[{ value: null, label: 'All sports', emoji: '✨' }, ...sportOpts(sports.data)]} value={sport} onChange={setSport} color={c.ink} /> : null}
 
-      {tab === 'events' && has('organizer') ? <Btn title="Create an event" emoji="🎪" color={c.violet} onPress={() => setForm('event')} style={{ marginTop: 8 }} /> : null}
-      {tab === 'teams' ? <Btn title="Start a team" emoji="🛡️" color={c.pink} onPress={() => setForm('team')} style={{ marginTop: 8 }} /> : null}
+      {tab === 'events' && has('organizer') ? <Btn title="Create an event" color={c.violet} onPress={() => setForm('event')} style={{ marginTop: 8 }} /> : null}
+      {tab === 'teams' ? <Btn title="Start a team" color={c.pink} onPress={() => setForm('team')} style={{ marginTop: 8 }} /> : null}
 
       <View style={{ gap: 12, marginTop: 14 }}>
         {list.loading && !list.data ? <Loading /> : list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : !list.data.length ? <Empty title="Nothing here yet" sub="Be the one who starts it." /> :
@@ -87,7 +87,7 @@ export function Event({ id }) {
       </GradCard>
       {e.description ? <T style={{ marginTop: 12 }}>{e.description}</T> : null}
 
-      {e.status === 'open' && !isOrg && !e.entrants.some((x) => x.user_id === user.id || eligible.some((t) => t.id === x.team_id)) ? <Btn title="Join this event" emoji="🙋" onPress={() => setJoining(true)} style={{ marginTop: 14 }} /> : null}
+      {e.status === 'open' && !isOrg && !e.entrants.some((x) => x.user_id === user.id || eligible.some((t) => t.id === x.team_id)) ? <Btn title="Join this event" onPress={() => setJoining(true)} style={{ marginTop: 14 }} /> : null}
 
       {isOrg ? (
         <Card color={c.limeSoft} style={{ marginTop: 14 }}>
@@ -100,9 +100,9 @@ export function Event({ id }) {
             </View>
           ))}
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
-            {!fx.data?.length && e.entrants.filter((x) => x.team_id).length > 1 ? <Btn small emoji="🗓️" title="Auto-schedule" color={c.violet} onPress={act(() => api.post(`/events/${id}/schedule/round-robin`, { first_round_at: new Date(Date.now() + 2 * 864e5).toISOString() }), 'Round-robin created 🗓️')} /> : null}
-            {e.status === 'open' ? <Btn small emoji="▶️" title="Start" color={c.cyan} ink={c.ink} onPress={act(() => api.patch(`/events/${id}`, { status: 'ongoing' }), 'Event is underway')} /> : null}
-            {e.status !== 'completed' ? <Btn small emoji="🏁" title="Finish & award" color={c.orange} onPress={act(() => api.post(`/events/${id}/complete`), 'Champions crowned 🏆')} /> : null}
+            {!fx.data?.length && e.entrants.filter((x) => x.team_id).length > 1 ? <Btn small title="Auto-schedule" color={c.violet} onPress={act(() => api.post(`/events/${id}/schedule/round-robin`, { first_round_at: new Date(Date.now() + 2 * 864e5).toISOString() }), 'Round-robin created 🗓️')} /> : null}
+            {e.status === 'open' ? <Btn small title="Start" color={c.cyan} ink={c.ink} onPress={act(() => api.patch(`/events/${id}`, { status: 'ongoing' }), 'Event is underway')} /> : null}
+            {e.status !== 'completed' ? <Btn small title="Finish & award" color={c.orange} onPress={act(() => api.post(`/events/${id}/complete`), 'Champions crowned 🏆')} /> : null}
           </View>
         </Card>
       ) : null}
@@ -145,11 +145,11 @@ export function Team({ id }) {
         <T color="#fff" weight="800">{x.sport_emoji} {x.sport}{x.city ? ` · ${x.city}` : ''} · {x.members.length} players</T>
         {x.rating?.n ? <Stars n={x.rating.avg} /> : null}
       </GradCard>
-      <Section title="Roster" emoji="👟" color={c.cyan}>
+      <Section title="Roster" color={c.cyan}>
         {x.members.map((m) => <Row key={m.id} onPress={() => push('Person', { id: m.id })} left={<Avatar user={m} />} title={`${m.jersey_no != null ? '#' + m.jersey_no + ' ' : ''}${m.display_name}`} sub={m.team_role} />)}
       </Section>
-      <Section title="Trophy cabinet" emoji="🏆" color={c.sun}><TrophyShelf awards={x.awards} /></Section>
-      <Section title="Fan wall" emoji="💬" color={c.pink}><Reviews type="team" id={id} /></Section>
+      <Section title="Trophy cabinet" color={c.sun}><TrophyShelf awards={x.awards} /></Section>
+      <Section title="Fan wall" color={c.pink}><Reviews type="team" id={id} /></Section>
     </Screen>
   );
 }
@@ -176,13 +176,13 @@ export function Person({ id }) {
       <View style={{ flexDirection: 'row', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
         <StatPill value={stats.data?.total_points ?? '–'} label="POINTS" color={c.lime} /><StatPill value={awards.data?.length ?? '–'} label="AWARDS" color={c.sun} /><StatPill value={x.rating?.avg ?? '–'} label="RATING" color={c.pinkSoft} />
       </View>
-      {x.sport_profiles.length ? <Section title="Sports" emoji="🎽" color={c.cyan}>{x.sport_profiles.map((s, i) => <Row key={i} left={<Bubble emoji={s.emoji} color={c.cyanSoft} />} title={`${s.sport} · ${s.role}`} sub={`${s.level}${s.position ? ' · ' + s.position : ''}`} />)}</Section> : null}
-      {x.teams.length ? <Section title="Teams" emoji="🛡️" color={c.violet}>{x.teams.map((t) => <Row key={t.id} onPress={() => push('Team', { id: t.id })} left={<Bubble emoji={t.emoji} color={t.color} />} title={t.name} sub={t.role} />)}</Section> : null}
-      {stats.data?.by_metric?.length ? <Section title="Stats" emoji="📈" color={c.mint}>
+      {x.sport_profiles.length ? <Section title="Sports" color={c.cyan}>{x.sport_profiles.map((s, i) => <Row key={i} left={<Bubble emoji={s.emoji} color={c.cyanSoft} />} title={`${s.sport} · ${s.role}`} sub={`${s.level}${s.position ? ' · ' + s.position : ''}`} />)}</Section> : null}
+      {x.teams.length ? <Section title="Teams" color={c.violet}>{x.teams.map((t) => <Row key={t.id} onPress={() => push('Team', { id: t.id })} left={<Bubble emoji={t.emoji} color={t.color} />} title={t.name} sub={t.role} />)}</Section> : null}
+      {stats.data?.by_metric?.length ? <Section title="Stats" color={c.mint}>
         <Card color={c.mintSoft}>{stats.data.by_metric.map((m, i) => <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 }}><T weight="800">{m.emoji} {m.metric}</T><T weight="900">{m.total} <T size={12} color={c.mute}>total · best {m.best}</T></T></View>)}</Card>
       </Section> : null}
-      <Section title="Trophy cabinet" emoji="🏆" color={c.sun}><TrophyShelf awards={awards.data} /></Section>
-      <Section title="Props from the community" emoji="💬" color={c.pink}><Reviews type="user" id={id} canWrite={user.id !== id} /></Section>
+      <Section title="Trophy cabinet" color={c.sun}><TrophyShelf awards={awards.data} /></Section>
+      <Section title="Props from the community" color={c.pink}><Reviews type="user" id={id} canWrite={user.id !== id} /></Section>
     </Screen>
   );
 }
