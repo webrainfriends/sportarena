@@ -3,6 +3,9 @@
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { createMcpServer } from './mcp.js';
 import { authenticate } from './auth.js';
+import { initKeys } from './crypto.js';
+
+await initKeys();
 
 let cached;
 const getUser = async () => (cached ??= await authenticate(`Bearer ${process.env.SPORTARENA_TOKEN ?? ''}`));

@@ -10,9 +10,21 @@ import { createCipheriv, createDecipheriv, createHmac, hkdfSync, randomBytes, sc
 import { config } from './config.js';
 
 let keys;
+let unwrappedMaster = null;
+
+/** Call once at start-up. With KEY_PROVIDER=aws-kms this unwraps the master key via KMS. */
+export async function initKeys(kms) {
+  if (config.keyProvider === 'env') return;
+  if (config.keyProvider !== 'aws-kms') throw new Error(`Unknown KEY_PROVIDER ${config.keyProvider}`);
+  const { unwrapMasterKey } = await import('./kms.js');
+  unwrappedMaster = await unwrapMasterKey(config, kms);
+  keys = undefined;
+}
+
 function getKeys() {
   if (keys) return keys;
-  const master = Buffer.from(config.masterKey, 'base64');
+  const master = unwrappedMaster ?? (config.masterKey ? Buffer.from(config.masterKey, 'base64') : null);
+  if (!master) throw new Error('Encryption keys not initialised — call initKeys() first');
   if (master.length < 32) throw new Error('SPORTARENA_MASTER_KEY must be >= 32 bytes, base64-encoded');
   const derive = (info) => Buffer.from(hkdfSync('sha256', master, 'sportarena-v1', info, 32));
   keys = { enc: derive('field-encryption'), idx: derive('blind-index') };

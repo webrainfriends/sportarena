@@ -21,7 +21,14 @@ export const config = {
   databaseUrl: env.DATABASE_URL ?? 'postgres://postgres@/sportarena?host=/tmp',
   // Postgres in transit: set PGSSLMODE=require (or DATABASE_SSL=true) for TLS to the database.
   databaseSsl: env.DATABASE_SSL === 'true',
-  masterKey: secret('SPORTARENA_MASTER_KEY'),
+  // 'env': master key comes from SPORTARENA_MASTER_KEY.
+  // 'aws-kms': a random master key is generated once, wrapped by AWS KMS and stored in masterKeyFile
+  // (see scripts/kms-init.js); the app unwraps it at start-up, so the plaintext key never sits on disk.
+  keyProvider: env.KEY_PROVIDER ?? 'env',
+  masterKey: (env.KEY_PROVIDER ?? 'env') === 'env' ? secret('SPORTARENA_MASTER_KEY') : null,
+  kmsKeyId: env.KMS_KEY_ID,
+  kmsRegion: env.KMS_REGION ?? 'ap-southeast-1',
+  masterKeyFile: env.MASTER_KEY_FILE ?? '/var/lib/sportarena/master.key.enc',
   jwtSecret: secret('SPORTARENA_JWT_SECRET'),
   tokenTtl: env.TOKEN_TTL ?? '12h',
   // HTTPS: terminate TLS in-process (SSL_KEY_FILE/SSL_CERT_FILE) or behind a proxy (TRUST_PROXY=true).

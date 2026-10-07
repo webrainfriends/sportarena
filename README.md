@@ -85,6 +85,9 @@ The suite covers: ciphertext-only storage & column binding, role gating, API tok
 **8 parallel bookings for one court → exactly 1 wins**, referee/team clash detection, consent-gated medical records,
 insurance & claims, sponsorship approval rules, supply receiving, testimonials, and MCP ↔ REST ↔ OpenAPI parity.
 
+## Deployment
+AWS EC2 (pm2 + Docker Postgres + nginx, KMS-wrapped keys), side by side with other apps: see [`docs/deployment.md`](docs/deployment.md).
+
 ## Roadmap
 Payments & payouts · push notifications / live scores · knockout & group-stage brackets · media (photos/video highlights) ·
 KYC & credential verification · multi-currency & i18n · organizations/clubs · webhooks · offline mode in the app.

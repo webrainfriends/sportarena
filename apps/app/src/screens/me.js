@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Platform, Pressable, View } from 'react-native';
-import { api, API } from '../api';
+import { api, MCP_URL } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { useNav } from '../nav';
@@ -23,7 +23,6 @@ export function Me() {
   const toks = useLoad(() => api.get('/me/tokens'), []);
   const sports = useLoad(() => api.get('/sports'), []);
   const d = dash.data;
-  const mcpUrl = API.replace('/api/v1', '/mcp');
 
   return (
     <Screen>
@@ -60,7 +59,7 @@ export function Me() {
       <Section title="Agents & API (MCP)" emoji="🤖" color={c.violet}>
         <Card color={c.violetSoft}>
           <T weight="700">Everything in this app is also an API and an MCP tool. Create a token and plug SportArena into your AI agent.</T>
-          <T size={12} color={c.mute} style={{ marginTop: 6 }}>MCP endpoint: {mcpUrl}</T>
+          <T size={12} color={c.mute} style={{ marginTop: 6 }}>MCP endpoint: {MCP_URL}</T>
           {newToken ? <Card color={c.sunSoft} style={{ marginTop: 10 }} pad={12}><T weight="900">Copy it now — shown once</T><T selectable size={12} weight="700" style={{ marginTop: 4 }}>{newToken}</T></Card> : null}
           {toks.data?.filter((t) => !t.revoked_at).map((t) => (
             <View key={t.id} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
