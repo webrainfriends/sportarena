@@ -38,6 +38,7 @@ env:
   # real certificate/domain is set up. Flip to "true" and redeploy to get HTTPS on the same port.
   ENABLE_TLS: "false"
   DB_PORT: 7255       # Postgres container, bound to 127.0.0.1
+  PUBLIC_IP: 13.250.133.109
 
 permissions:
   contents: read
@@ -51,6 +52,8 @@ jobs:
     name: Deploy
     runs-on: ubuntu-latest
     environment: production
+    env:
+      HAS_AWS_KEYS: ${{ secrets.AWS_ACCESS_KEY_ID != '' && secrets.AWS_SECRET_ACCESS_KEY != '' }}
 
     steps:
       - name: Check SSH key
@@ -72,6 +75,62 @@ jobs:
           echo "Key OK. Public fingerprint (compare with the instance's authorized_keys):"
           printf '%s\n' "$PUB" | ssh-keygen -lf -
           echo "Connecting as ${{ env.EC2_USER }}@${{ env.EC2_HOST }}"
+
+      # ---- SSH access: the deploy key must be authorised on the instance. If it isn't, install it through AWS
+      # EC2 Instance Connect (needs the AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY repo secrets - the same ones the
+      # myhealthpal AWS workflow uses). No one has to log in to the server.
+      - name: Test SSH access
+        id: ssh_test
+        continue-on-error: true
+        env:
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+        run: |
+          KEYFILE="$(mktemp)"; trap 'rm -f "$KEYFILE"' EXIT
+          printf '%s\n' "$EC2_SSH_KEY" | tr -d '\r' > "$KEYFILE"; chmod 600 "$KEYFILE"
+          ssh -i "$KEYFILE" -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null \
+            "${{ env.EC2_USER }}@${{ env.EC2_HOST }}" 'echo "ssh ok as $(whoami)"'
+
+      - name: AWS credentials (for EC2 Instance Connect)
+        if: steps.ssh_test.outcome == 'failure' && env.HAS_AWS_KEYS == 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Authorize deploy key on the instance
+        if: steps.ssh_test.outcome == 'failure' && env.HAS_AWS_KEYS == 'true'
+        env:
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          KEYFILE="$(mktemp)"; trap 'rm -f "$KEYFILE" "$KEYFILE.pub"' EXIT
+          printf '%s\n' "$EC2_SSH_KEY" | tr -d '\r' > "$KEYFILE"; chmod 600 "$KEYFILE"
+          PUB="$(ssh-keygen -y -P '' -f "$KEYFILE")"
+          read -r INSTANCE_ID AZ < <(aws ec2 describe-instances --filters "Name=ip-address,Values=${{ env.PUBLIC_IP }}" \
+            --query 'Reservations[].Instances[].[InstanceId,Placement.AvailabilityZone]' --output text | head -1) \
+            || { echo "::error::Could not look up the instance (the AWS keys need ec2:DescribeInstances)."; exit 1; }
+          [ -n "${INSTANCE_ID:-}" ] || { echo "::error::No EC2 instance with public IP ${{ env.PUBLIC_IP }} found in ${{ env.AWS_REGION }}."; exit 1; }
+          echo "Instance $INSTANCE_ID in $AZ - pushing the deploy public key with EC2 Instance Connect (valid 60s)"
+          printf '%s\n' "$PUB" > "$KEYFILE.pub"
+          aws ec2-instance-connect send-ssh-public-key --instance-id "$INSTANCE_ID" --availability-zone "$AZ" \
+            --instance-os-user "${{ env.EC2_USER }}" --ssh-public-key "file://$KEYFILE.pub" >/dev/null \
+            || { echo "::error::EC2 Instance Connect refused. The AWS keys need ec2-instance-connect:SendSSHPublicKey on this instance, and the instance needs the ec2-instance-connect package (default on Ubuntu AMIs)."; exit 1; }
+          # make it permanent so later runs (and the deploy step) connect normally
+          printf '%s\n' "$PUB" | ssh -i "$KEYFILE" -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null \
+            "${{ env.EC2_USER }}@${{ env.EC2_HOST }}" \
+            'umask 077; mkdir -p ~/.ssh; touch ~/.ssh/authorized_keys; read -r k; grep -qxF "$k" ~/.ssh/authorized_keys || printf "%s\n" "$k" >> ~/.ssh/authorized_keys; echo "deploy key authorised"'
+          ssh -i "$KEYFILE" -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null \
+            "${{ env.EC2_USER }}@${{ env.EC2_HOST }}" 'echo "verified: ssh now works as $(whoami)"'
+
+      - name: Stop if SSH is still not possible
+        if: steps.ssh_test.outcome == 'failure' && env.HAS_AWS_KEYS != 'true'
+        run: |
+          echo "::error::The server does not accept EC2_SSH_KEY for ${{ env.EC2_USER }}@${{ env.EC2_HOST }}, and no AWS keys are configured to authorise it automatically."
+          echo "Fix (no server login needed): add repo secrets AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY (the same ones myhealthpal's AWS workflow uses;"
+          echo "they need ec2:DescribeInstances and ec2-instance-connect:SendSSHPublicKey), then re-run. The workflow installs this key on the instance itself."
+          echo "Or set EC2_SSH_KEY to the key already authorised on the instance (the one myhealthpal deploys with)."
+          exit 1
 
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1.0.3
@@ -312,3 +371,34 @@ jobs:
           PUBLIC_IP: 13.250.133.109
           KMS_KEY_ID: ${{ secrets.KMS_KEY_ID }}
           KMS_REGION: ap-southeast-1
+
+      # ---- Visibility without anyone logging in: the runner SSHes in and prints the server state into this log,
+      # so problems can be diagnosed from the run logs alone. Never prints .env or any secret.
+      - name: Server report
+        if: always()
+        continue-on-error: true
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ env.EC2_HOST }}
+          username: ${{ env.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          command_timeout: 2m
+          script: |
+            echo "== listeners on 9255/4255/7255"; sudo ss -ltnp 2>/dev/null | grep -E ':(9255|4255|7255)\b' || echo "nothing listening"
+            echo "== nginx sites enabled"; ls -1 /etc/nginx/sites-enabled 2>&1; sudo nginx -t 2>&1 | tail -2
+            echo "== pm2"; pm2 ls 2>&1 | head -20
+            echo "== docker (sportarena)"; sudo docker ps -a --filter name=sportarena --format '{{.Names}} | {{.Status}} | {{.Ports}}' 2>&1
+            echo "== host firewall"; sudo ufw status 2>&1 | head -12
+            echo "== local health"; curl -s -m 5 http://127.0.0.1:4255/health || echo "api: no answer"; echo
+            curl -s -m 5 -o /dev/null -w "nginx 9255 -> HTTP %{http_code}\n" http://127.0.0.1:9255/health || echo "nginx: no answer"
+            echo "== api log (last 25 lines)"; pm2 logs sportarena-api --lines 25 --nostream 2>&1 | tail -30
+            echo "== master key file"; ls -l /var/lib/sportarena 2>&1
+
+      # Reachability from the public internet (tells a closed security group apart from a stopped service).
+      - name: Public reachability probe
+        if: always()
+        continue-on-error: true
+        run: |
+          code=$(curl -s -m 10 -o /dev/null -w '%{http_code}' "http://${{ env.PUBLIC_IP }}:${{ env.NGINX_PORT }}/health" || true)
+          echo "GET http://${{ env.PUBLIC_IP }}:${{ env.NGINX_PORT }}/health from the internet -> HTTP ${code:-000}"
+          [ "$code" = "200" ] && echo "REACHABLE" || echo "NOT reachable (000 with a timeout usually means the security group blocks ${{ env.NGINX_PORT }}; connection refused means nothing listens)"

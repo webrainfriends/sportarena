@@ -52,6 +52,17 @@ Then open **http://13.250.133.109:9255**.
   makes the data unreadable — **back up `/var/lib/sportarena/master.key.enc`** and never delete the KMS key.
 - Postgres is bound to localhost and the API is reachable only through nginx.
 
+## Authorising the deploy key without logging in (EC2 Instance Connect)
+An EC2 key pair is only installed when an instance is *launched*, so a new `.pem` is rejected by an existing instance.
+The workflow fixes that itself: **Test SSH access** → if it fails and the AWS secrets exist, **Authorize deploy key on the
+instance** looks up the instance by its public IP, pushes the key's public half with EC2 Instance Connect (valid 60 s),
+connects, appends it to `~ubuntu/.ssh/authorized_keys` (idempotent) and verifies. Later runs connect normally.
+- Needs repo secrets `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` (same as myhealthpal's AWS workflow), whose IAM user allows
+  `ec2:DescribeInstances` and `ec2-instance-connect:SendSSHPublicKey` on the instance (the instance needs the
+  `ec2-instance-connect` package, default on Ubuntu AMIs).
+- Without them, the run stops with a message saying exactly this. The key then has to be one the instance already trusts.
+- The authorised key gives `ubuntu` access to the whole host, like myhealthpal's. Never commit a `.pem`; keep it only in the `EC2_SSH_KEY` secret.
+
 ## Troubleshooting the SSH step
 The workflow's first step, **Check SSH key**, validates `EC2_SSH_KEY` and prints its public fingerprint.
 - `ssh: unable to authenticate ... [none publickey]` while that step says *Key OK*: the key is well-formed but is **not
