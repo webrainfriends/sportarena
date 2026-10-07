@@ -251,3 +251,79 @@ test('MCP: same capabilities as REST, same auth rules', async () => {
   const openapi = await (await fetch(`${base}/api/v1/openapi.json`)).json();
   assert.equal(Object.values(openapi.paths).flatMap(Object.values).length, capabilities.length);
 });
+
+test('player module: default sport profile lists first; matches log + bulk import', async () => {
+  const p = await signup(['athlete']);
+  const other = await signup(['athlete']);
+  const prof = (sport, extra = {}) => api('POST', '/me/sport-profiles', { token: p.token, body: { sport, role: 'athlete', ...extra } });
+
+  const a = await prof('football', { position: 'Striker', jersey_no: 9, club: 'Neon FC', experience_years: 4 });
+  assert.equal(a.status, 201);
+  assert.equal(a.body.is_default, true, 'first profile becomes the default');
+  const b = await prof('cricket');
+  assert.equal(b.body.is_default, false);
+
+  let cards = (await api('GET', '/me/sport-profiles', { token: p.token })).body;
+  assert.deepEqual(cards.map((x) => x.sport_slug), ['football', 'cricket']);
+  assert.equal(cards[0].jersey_no, 9);
+  assert.equal(cards[0].summary.matches, 0);
+
+  // make cricket the default -> it jumps to the front, exactly one default
+  assert.equal((await api('POST', `/me/sport-profiles/${b.body.id}/default`, { token: p.token })).status, 200);
+  cards = (await api('GET', '/me/sport-profiles', { token: p.token })).body;
+  assert.deepEqual(cards.map((x) => [x.sport_slug, x.is_default]), [['cricket', true], ['football', false]]);
+  assert.equal((await api('POST', `/me/sport-profiles/${a.body.id}/default`, { token: other.token })).status, 404, "cannot touch someone else's profile");
+  assert.equal((await api('PATCH', `/me/sport-profiles/${a.body.id}`, { token: p.token, body: { club: 'Pixel FC', level: 'semi_pro' } })).status, 200);
+
+  // manual match
+  const m = await api('POST', '/me/matches', { token: p.token, body: { sport_profile_id: a.body.id, played_on: '2026-09-01', opponent: 'Rivals', score_for: 3, score_against: 1, rating: 8.5, minutes: 90, stats: { goals: 2, assists: 1 } } });
+  assert.equal(m.status, 201, JSON.stringify(m.body));
+  assert.equal((await api('POST', '/me/matches', { token: p.token, body: { sport_profile_id: a.body.id, played_on: '2026-09-01' } })).status, 201);
+  assert.equal((await api('POST', '/me/matches', { token: other.token, body: { sport_profile_id: a.body.id, played_on: '2026-09-01' } })).status, 404);
+
+  // bulk import: dry run, then real, then idempotent re-import
+  const csv = 'Played On,Opponent,Competition,Result,Score For,Score Against,Minutes,Rating,Goals,Assists\n'
+    + '2026-09-08,"Blue, Stars",League,W,2,0,90,7.5,1,1\n'
+    + '2026-09-15,Red Hawks,League,,1,1,75,6,0,0\n'
+    + '2026-09-22,Green Gulls,Cup,loss,0,2,90,5,0,0\n';
+  const imp = (body) => api('POST', '/me/matches/import', { token: p.token, body: { sport_profile_id: a.body.id, ...body } });
+  const dry = await imp({ csv, dry_run: true });
+  assert.equal(dry.status, 200, JSON.stringify(dry.body));
+  assert.equal(dry.body.importable, 3);
+  assert.equal(dry.body.preview[0].opponent, 'Blue, Stars');
+  assert.equal(dry.body.preview[1].result, 'draw', 'result inferred from score');
+  assert.equal((await api('GET', '/me/matches', { token: p.token })).body.length, 2, 'dry run writes nothing');
+
+  const bad = await imp({ csv: 'played_on,rating,goals\n2026-09-30,11,x\nnot-a-date,5,1\n' });
+  assert.equal(bad.status, 400);
+  assert.equal(bad.body.error.details.length, 2, 'row-level errors reported');
+  assert.equal((await api('GET', '/me/matches', { token: p.token })).body.length, 2, 'all-or-nothing');
+
+  const done = await imp({ csv });
+  assert.equal(done.body.imported, 3);
+  const again = await imp({ csv });
+  assert.equal(again.body.imported, 0);
+  assert.equal(again.body.skipped, 3);
+  assert.equal((await imp({ rows: [{ played_on: '2026-10-01', opponent: 'JSON FC', goals: 4 }] })).body.imported, 1);
+  assert.equal((await api('POST', '/me/matches/import', { token: other.token, body: { sport_profile_id: a.body.id, csv } })).status, 404);
+
+  cards = (await api('GET', '/me/sport-profiles', { token: p.token })).body;
+  const foot = cards.find((x) => x.sport_slug === 'football');
+  assert.equal(foot.summary.matches, 6);
+  assert.equal(foot.summary.wins, 2);
+  assert.equal(foot.summary.draws, 1);
+  assert.equal(foot.summary.losses, 1);
+  assert.equal(foot.metrics.find((x) => x.metric === 'goals').total, 7);
+  assert.equal(foot.metrics.find((x) => x.metric === 'goals').best, 4);
+  assert.equal(foot.form[0], null, 'newest match (no result) first');
+
+  // deleting the default promotes the next profile; matches go with the profile
+  const list = (await api('GET', '/me/matches', { token: p.token, })).body;
+  assert.equal((await api('DELETE', `/me/matches/${list[0].id}`, { token: p.token })).status, 200);
+  assert.equal((await api('DELETE', `/me/sport-profiles/${b.body.id}`, { token: p.token })).status, 200);
+  cards = (await api('GET', '/me/sport-profiles', { token: p.token })).body;
+  assert.deepEqual(cards.map((x) => [x.sport_slug, x.is_default]), [['football', true]]);
+
+  const pub = await api('GET', `/people/${p.id}`);
+  assert.ok(!JSON.stringify(pub.body).includes('Rivals'), 'match log is private to the player');
+});

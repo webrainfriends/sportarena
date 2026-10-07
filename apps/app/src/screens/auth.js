@@ -34,14 +34,14 @@ export default function Auth() {
   return (
     <Screen>
       <LinearGradient colors={grad.hero} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ borderRadius: 28, padding: 26, minHeight: 190, justifyContent: 'flex-end', marginTop: 20, overflow: 'hidden' }}>
-        <View style={{ position: 'absolute', right: -40, top: -20, width: 90, height: 300, backgroundColor: c.pink, opacity: 0.95, transform: [{ skewX: '-18deg' }] }} />
-        <View style={{ position: 'absolute', right: 60, top: -20, width: 18, height: 300, backgroundColor: '#fff', opacity: 0.18, transform: [{ skewX: '-18deg' }] }} />
+        <View style={{ position: 'absolute', right: -40, top: -60, width: 200, height: 200, borderRadius: 100, backgroundColor: '#fff', opacity: 0.12 }} />
+        <View style={{ position: 'absolute', right: 80, bottom: -60, width: 120, height: 120, borderRadius: 60, backgroundColor: '#fff', opacity: 0.08 }} />
         <Text style={[fam, { color: '#fff', opacity: 0.65, fontWeight: '700', fontSize: 12, letterSpacing: 2.5 }]}>THE HOME OF SPORT</Text>
         <Text style={[fam, { color: '#fff', fontWeight: '800', fontSize: 44, letterSpacing: -1.8, marginTop: 10 }]}>SportArena</Text>
-        <T color="#B9BDC8" weight="500" size={15} style={{ marginTop: 8, lineHeight: 22 }}>Teams. Fixtures. Venues. Performance. Everything your game runs on, in one place.</T>
+        <T color="#E0E7FF" weight="500" size={15} style={{ marginTop: 8, lineHeight: 22 }}>Teams. Fixtures. Venues. Performance. Everything your game runs on, in one place.</T>
       </LinearGradient>
 
-      <View style={{ flexDirection: 'row', backgroundColor: '#E9E6DD', borderRadius: 999, padding: 4, marginTop: 20 }}>
+      <View style={{ flexDirection: 'row', backgroundColor: '#E6EAF2', borderRadius: 999, padding: 4, marginTop: 20 }}>
         {[['login', 'Log in'], ['register', 'Create account']].map(([k, l]) => (
           <Pressable key={k} onPress={() => setMode(k)} style={{ flex: 1, paddingVertical: 11, borderRadius: 999, alignItems: 'center', backgroundColor: mode === k ? c.paper : 'transparent' }}>
             <T weight="700" size={14} color={mode === k ? c.ink : c.mute}>{l}</T>

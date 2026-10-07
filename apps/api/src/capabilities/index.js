@@ -3,6 +3,7 @@ import './teams.js';
 import './venues.js';
 import './events.js';
 import './scores.js';
+import './player.js';
 import './sponsors.js';
 import './supply.js';
 import './medical.js';

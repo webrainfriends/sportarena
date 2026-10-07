@@ -16,6 +16,7 @@ physios & doctors, suppliers and insurers. **API-first. MCP-first.** One React N
 | **Teams** | Create teams, manage rosters/jersey numbers, trophy cabinet, fan wall |
 | **Events & schedule** | Tournaments/leagues/camps/trials, entries + approval, **auto round-robin scheduling**, referee + team clash detection, results, **live standings with configurable points**, one-click "finish & award" (cup/silver/bronze) |
 | **Scores & awards** | Individual performances (goals, times…), personal stats/bests, leaderboards, cups/trophies/medals/MVP/badges |
+| **Player** | One card per sport profile (default always first), match-by-match performance with sport-specific stats, CSV/JSON bulk import with dry-run + row-level errors |
 | **Venues, grounds, courts, equipment** | Resource catalogue with capacity + hourly price, availability, **race-free bookings** (advisory-locked; equipment pools supported); fixtures can book the pitch atomically |
 | **Sponsors** | Brand profiles (encrypted contacts), offers to events/teams/athletes, accept/decline workflow |
 | **Supply chain** | Inventory, low-stock flags, supplier orders; receiving an order restocks atomically |
@@ -34,7 +35,7 @@ apps/api/src/capabilities/*.js   ← every feature is ONE definition: name, sche
 apps/app/                        ← Expo (React Native + react-native-web); talks only to the REST API
 ```
 
-REST, the generated OpenAPI spec and MCP tools **cannot drift**: there are 77 capabilities and the tests assert
+REST, the generated OpenAPI spec and MCP tools **cannot drift**: there are 85 capabilities and the tests assert
 `tools/list` and the OpenAPI operations both equal the registry. The mobile/web app is just another API client — no
 privileged backdoors — so anything a user can do in the app, an agent can do over MCP with the same permissions.
 

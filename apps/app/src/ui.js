@@ -9,8 +9,8 @@ const plain = (ch) => (typeof ch === 'string' ? ch.replace(EMOJI, '') : Array.is
 const surface = (col) => (col === c.orangeSoft ? col : c.paper);
 
 const lift = Platform.OS === 'web'
-  ? { boxShadow: '0 1px 2px rgba(14,16,20,0.04), 0 8px 24px rgba(14,16,20,0.06)' }
-  : { shadowColor: '#0E1014', shadowOpacity: 0.07, shadowRadius: 14, shadowOffset: { width: 0, height: 4 }, elevation: 2 };
+  ? { boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 6px 20px rgba(15,23,42,0.06)' }
+  : { shadowColor: '#0F172A', shadowOpacity: 0.07, shadowRadius: 14, shadowOffset: { width: 0, height: 4 }, elevation: 2 };
 
 /** Surface: white, hairline border, soft lift. */
 export function Card({ children, color = c.paper, style, onPress, pad = 16 }) {
@@ -25,8 +25,8 @@ export function GradCard({ children, colors = grad.hero, style, pad = 22, onPres
   const body = (
     <View style={[s.gradWrap, onPress ? null : style]}>
       <LinearGradient colors={colors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ padding: pad }}>
-        <View pointerEvents="none" style={{ position: 'absolute', right: -50, top: -30, bottom: -30, width: 70, backgroundColor: c.pink, opacity: 0.9, transform: [{ skewX: '-18deg' }] }} />
-        <View pointerEvents="none" style={{ position: 'absolute', right: 40, top: -30, bottom: -30, width: 14, backgroundColor: '#fff', opacity: 0.16, transform: [{ skewX: '-18deg' }] }} />
+        <View pointerEvents="none" style={{ position: 'absolute', right: -40, top: -60, width: 190, height: 190, borderRadius: 95, backgroundColor: '#fff', opacity: 0.12 }} />
+        <View pointerEvents="none" style={{ position: 'absolute', right: 70, bottom: -70, width: 120, height: 120, borderRadius: 60, backgroundColor: '#fff', opacity: 0.08 }} />
         {children}
       </LinearGradient>
     </View>
@@ -45,7 +45,6 @@ export function Section({ title, action, onAction, children, color = c.pink }) {
     <View style={{ marginTop: 28 }}>
       <View style={s.secRow}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 1 }}>
-          <View style={{ width: 6, height: 18, backgroundColor: c.pink, transform: [{ skewX: '-14deg' }] }} />
           <H2>{title}</H2>
         </View>
         {action ? <Pressable onPress={onAction}><T weight="700" size={13} color={c.pink}>{action}  ›</T></Pressable> : null}
@@ -120,7 +119,7 @@ export function Field({ label, value, onChangeText, secure, multiline, keyboardT
       {label ? <T weight="600" size={12} color={c.mute} style={{ letterSpacing: 0.4 }}>{label.toUpperCase()}</T> : null}
       <TextInput value={value ?? ''} onChangeText={onChangeText} secureTextEntry={secure} multiline={multiline} keyboardType={keyboardType} placeholder={placeholder}
         onFocus={() => setFocus(true)} onBlur={() => setFocus(false)}
-        autoCapitalize="none" placeholderTextColor="#A5A29A" style={[fam, s.input, focus && { borderColor: c.ink }, multiline && { minHeight: 80, textAlignVertical: 'top' }, Platform.OS === 'web' && { outlineStyle: 'none' }]} />
+        autoCapitalize="none" placeholderTextColor="#94A3B8" style={[fam, s.input, focus && { borderColor: c.ink }, multiline && { minHeight: 80, textAlignVertical: 'top' }, Platform.OS === 'web' && { outlineStyle: 'none' }]} />
       {hint ? <T size={12} color={c.mute}>{hint}</T> : null}
     </View>
   );
@@ -132,11 +131,11 @@ export const Seg = ({ options, value, onChange, color = c.violet }) => (
   </ScrollView>
 );
 
-export function Screen({ children, scroll = true, refreshing, onRefresh, padBottom = 28, style }) {
+export function Screen({ children, scroll = true, refreshing, onRefresh, padBottom = 28, style, wide }) {
   const Inner = scroll ? ScrollView : View;
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
-      <Inner style={{ flex: 1 }} contentContainerStyle={scroll ? { padding: 16, paddingBottom: padBottom, maxWidth: 720, width: '100%', alignSelf: 'center' } : undefined} showsVerticalScrollIndicator={false}>
+      <Inner style={{ flex: 1 }} contentContainerStyle={scroll ? { padding: 16, paddingBottom: padBottom, maxWidth: wide ? 1120 : 760, width: '100%', alignSelf: 'center' } : undefined} showsVerticalScrollIndicator={false}>
         {scroll ? children : <View style={[{ flex: 1, padding: 16 }, style]}>{children}</View>}
       </Inner>
     </View>
@@ -208,12 +207,12 @@ export function StatPill({ value, label, color = c.paper }) {
 const s = StyleSheet.create({
   card: { borderWidth: 1, borderColor: c.line, borderRadius: r.card, ...lift },
   gradWrap: { borderRadius: r.card + 4, overflow: 'hidden' },
-  btn: { borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  btn: { borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   chip: { borderWidth: 1, borderColor: c.line, backgroundColor: c.paper, borderRadius: r.pill, paddingVertical: 9, paddingHorizontal: 16 },
   tag: { borderRadius: 5, paddingHorizontal: 8, paddingVertical: 3, alignSelf: 'flex-start' },
   input: { borderWidth: 1.5, borderColor: c.line, borderRadius: r.input, backgroundColor: c.paper, paddingHorizontal: 16, paddingVertical: 14, fontSize: 15, fontWeight: '500', color: c.ink },
   secRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  scrim: { flex: 1, backgroundColor: 'rgba(14,16,20,0.5)', justifyContent: 'flex-end' },
+  scrim: { flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', justifyContent: 'flex-end' },
   sheet: { backgroundColor: c.bg, borderTopLeftRadius: 28, borderTopRightRadius: 28, maxHeight: '88%', overflow: 'hidden', width: '100%', maxWidth: 720, alignSelf: 'center' },
   stat: { borderRadius: 16, backgroundColor: c.paper, borderWidth: 1, borderColor: c.line, paddingVertical: 12, paddingHorizontal: 16, alignItems: 'center', minWidth: 82 },
 });
