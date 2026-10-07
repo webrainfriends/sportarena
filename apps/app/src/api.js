@@ -3,11 +3,15 @@ import { Platform } from 'react-native';
 import { storage } from './storage';
 
 const guess = () => {
-  if (process.env.EXPO_PUBLIC_API_URL) return process.env.EXPO_PUBLIC_API_URL;
+  // '' (set but empty) means same-origin: the web build is served by nginx next to /api (see docs/deployment.md)
+  const fromEnv = process.env.EXPO_PUBLIC_API_URL;
+  if (fromEnv !== undefined) return fromEnv;
   if (Platform.OS === 'web' && typeof location !== 'undefined') return `${location.protocol}//${location.hostname}:4000`;
   return Platform.OS === 'android' ? 'http://10.0.2.2:4000' : 'http://localhost:4000';
 };
 export const API = `${guess().replace(/\/$/, '')}/api/v1`;
+/** Absolute MCP endpoint for display (API may be a same-origin relative path on web). */
+export const MCP_URL = (API.startsWith('/') && typeof location !== 'undefined' ? location.origin : '') + API.replace('/api/v1', '/mcp');
 
 let token = null;
 export const setToken = (t) => { token = t; };

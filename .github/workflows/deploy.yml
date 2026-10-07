@@ -1,0 +1,275 @@
+# Deploys SportArena to the shared EC2 host (same host, user, SSH key and KMS key as myhealthpal).
+#
+# It runs side by side with the apps already on the box and never touches them:
+#   - nginx:    its own site file (sites-available/sportarena) on NGINX_PORT, TLS. Validated with `nginx -t`
+#               before a graceful reload; on any error our site is removed and the other sites keep serving.
+#   - API:      pm2 process "sportarena-api" on APP_PORT (reached only through nginx; keep it closed in the SG).
+#   - Postgres: Docker container "sportarena-postgres" (postgres:16-alpine) on 127.0.0.1:DB_PORT, volume
+#               sportarena_pgdata. Never recreated or wiped by a deploy.
+#   - Web:      Expo web build published to /var/www/sportarena-web, served by the same nginx site.
+#   - Keys:     the field-encryption master key is generated once, wrapped by AWS KMS (KMS_KEY_ID, via the
+#               instance role) and stored only in wrapped form. The app refuses to start without KMS access.
+#
+# One-time setup (see docs/deployment.md):
+#   1. Repo secrets (Settings -> Secrets and variables -> Actions), same values as myhealthpal:
+#        EC2_SSH_KEY  - private key (PEM) of the instance's key pair
+#        KMS_KEY_ID   - KMS key (ARN, id or alias) the instance role may GenerateDataKey/Decrypt with
+#   2. Security group: allow inbound TCP 9255. Do NOT open 7255 (DB) or 4255 (API) - both are for localhost.
+#   3. Run "Deploy to EC2" from the Actions tab. (To deploy on every merge to main instead, add
+#      `push: { branches: [main] }` under `on:`.)
+
+name: Deploy to EC2
+
+on:
+  workflow_dispatch:
+
+env:
+  EC2_HOST: ec2-13-250-133-109.ap-southeast-1.compute.amazonaws.com
+  EC2_USER: ubuntu
+  AWS_REGION: ap-southeast-1
+  APP_DIR: sportarena
+  APP_PORT: 4255      # API, reached only through nginx
+  NGINX_PORT: 9255    # public (TLS)
+  DB_PORT: 7255       # Postgres container, bound to 127.0.0.1
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-sportarena-ec2
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ env.EC2_HOST }}
+          username: ${{ env.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          command_timeout: 20m
+          envs: APP_DIR,BRANCH,REPO_URL,APP_PORT,NGINX_PORT,DB_PORT,PUBLIC_HOST,KMS_KEY_ID,KMS_REGION
+          script_stop: true
+          script: |
+            set -euo pipefail
+
+            if [ ! -d "$APP_DIR/.git" ]; then
+              git clone --branch "$BRANCH" "$REPO_URL" "$APP_DIR"
+            fi
+            cd "$APP_DIR"
+            APP_ROOT="$(pwd)"
+            PREV_SHA=$(git rev-parse HEAD 2>/dev/null || echo "")
+            git fetch origin "$BRANCH"
+            git checkout "$BRANCH"
+            git reset --hard "origin/$BRANCH"   # untracked .env is preserved
+
+            abort_deploy() {
+              echo "::error::$1"
+              if [ -n "$PREV_SHA" ]; then
+                echo "[deploy] restoring previous code ($PREV_SHA); the running app was not touched"
+                git reset --hard "$PREV_SHA"
+              fi
+              exit 1
+            }
+
+            # ---- preflight: nothing below changes the host until these pass ----
+            if [ -z "${KMS_KEY_ID:-}" ]; then
+              abort_deploy "KMS_KEY_ID secret is not set (use the same value as myhealthpal)."
+            fi
+            KMS_KEY_ID="$(printf '%s' "$KMS_KEY_ID" | tr -d '\r\n' | xargs)"
+            KMS_REGION="$(printf '%s' "${KMS_REGION:-ap-southeast-1}" | tr -d '\r\n' | xargs)"
+
+            port_in_use() { ss -ltnH "sport = :$1" 2>/dev/null | grep -q .; }
+            if port_in_use "$APP_PORT" && ! pm2 describe sportarena-api >/dev/null 2>&1; then
+              abort_deploy "Port $APP_PORT is already used by something that is not sportarena-api. Pick another APP_PORT."
+            fi
+            if port_in_use "$DB_PORT" && ! sudo docker inspect sportarena-postgres >/dev/null 2>&1; then
+              abort_deploy "Port $DB_PORT is already used by something that is not sportarena-postgres. Pick another DB_PORT."
+            fi
+            if port_in_use "$NGINX_PORT" && [ ! -e /etc/nginx/sites-enabled/sportarena ]; then
+              abort_deploy "Port $NGINX_PORT is already used by something that is not the sportarena nginx site."
+            fi
+
+            # ---- tooling (each is a no-op when the host already has it, e.g. from myhealthpal) ----
+            if ! command -v docker >/dev/null 2>&1; then
+              curl -fsSL https://get.docker.com | sudo sh
+              sudo usermod -aG docker "${USER:-ubuntu}"
+            fi
+            if ! command -v node >/dev/null 2>&1; then
+              curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+              sudo apt-get install -y nodejs
+            fi
+            if ! command -v pm2 >/dev/null 2>&1; then sudo npm install -g pm2; fi
+            if ! command -v psql >/dev/null 2>&1; then
+              sudo apt-get update && sudo apt-get install -y postgresql-client
+            fi
+            if ! command -v nginx >/dev/null 2>&1; then
+              sudo apt-get update && sudo apt-get install -y nginx
+              sudo systemctl enable --now nginx
+            fi
+            if [ "$(swapon --show --noheadings | wc -l)" -eq 0 ]; then
+              echo "[deploy] no swap found - creating 2G /swapfile"
+              if [ ! -f /swapfile ]; then
+                sudo fallocate -l 2G /swapfile || sudo dd if=/dev/zero of=/swapfile bs=1M count=2048
+                sudo chmod 600 /swapfile; sudo mkswap /swapfile
+              fi
+              sudo swapon /swapfile || true
+              grep -q '^/swapfile ' /etc/fstab || echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab >/dev/null
+            fi
+
+            echo "[deploy] installing dependencies"
+            NODE_OPTIONS=--max-old-space-size=1536 npm ci
+
+            # ---- master key: wrapped by KMS, created once ----
+            echo "[deploy] security preflight: AWS KMS"
+            KEY_DIR=/var/lib/sportarena
+            sudo mkdir -p "$KEY_DIR"
+            sudo chown "$(id -un):$(id -gn)" "$KEY_DIR"
+            sudo chmod 700 "$KEY_DIR"
+            (cd apps/api && KEY_PROVIDER=aws-kms KMS_KEY_ID="$KMS_KEY_ID" KMS_REGION="$KMS_REGION" MASTER_KEY_FILE="$KEY_DIR/master.key.enc" \
+              node scripts/kms-init.js) || abort_deploy "This server cannot use the KMS key (see [kms] lines above)."
+
+            # ---- web build (same-origin API: nginx proxies /api and /mcp) ----
+            echo "[deploy] building the app for web"
+            (cd apps/app && NODE_OPTIONS=--max-old-space-size=1536 CI=1 EXPO_PUBLIC_API_URL= npx expo export --platform web --output-dir dist) \
+              || abort_deploy "Web build failed - previous version still running."
+            WEB_ROOT=/var/www/sportarena-web
+            sudo rm -rf "$WEB_ROOT"; sudo mkdir -p "$WEB_ROOT"
+            sudo cp -r apps/app/dist/. "$WEB_ROOT"/
+
+            # ---- Postgres container: created once, never wiped by a deploy ----
+            DB_CONTAINER=sportarena-postgres
+            ENV_FILE="$APP_ROOT/.env"
+            touch "$ENV_FILE"; chmod 600 "$ENV_FILE"
+            set_env() {
+              grep -q "^$1=" "$ENV_FILE" || echo "$1=" >> "$ENV_FILE"
+              sed -i "s#^$1=.*#$1=$2#" "$ENV_FILE"
+            }
+            env_val() { grep "^$1=" "$ENV_FILE" | cut -d= -f2- || true; }
+
+            if ! sudo docker inspect "$DB_CONTAINER" >/dev/null 2>&1; then
+              echo "[deploy] creating $DB_CONTAINER on 127.0.0.1:${DB_PORT}"
+              DB_PASS_VAL=$(openssl rand -hex 16)
+              sudo docker run -d --name "$DB_CONTAINER" --restart unless-stopped \
+                -e POSTGRES_DB=sportarena -e POSTGRES_USER=sportarena -e POSTGRES_PASSWORD="${DB_PASS_VAL}" \
+                -p 127.0.0.1:${DB_PORT}:5432 \
+                -v sportarena_pgdata:/var/lib/postgresql/data \
+                postgres:16-alpine
+              set_env DATABASE_URL "postgres://sportarena:${DB_PASS_VAL}@127.0.0.1:${DB_PORT}/sportarena"
+            fi
+            ready=0
+            for i in $(seq 1 30); do
+              if sudo docker exec "$DB_CONTAINER" pg_isready -U sportarena >/dev/null 2>&1; then ready=1; break; fi
+              sleep 1
+            done
+            [ "$ready" -eq 1 ] || { sudo docker logs --tail 50 "$DB_CONTAINER"; abort_deploy "$DB_CONTAINER did not become ready."; }
+            # Never recreate automatically: the volume holds encrypted data, so a credential mismatch is a human decision.
+            if ! PGCONNECT_TIMEOUT=5 psql "$(env_val DATABASE_URL)" -c '\q' >/dev/null 2>&1; then
+              abort_deploy "Cannot connect to $DB_CONTAINER with DATABASE_URL in $ENV_FILE. Not recreating it (data would be lost). Fix the credentials manually."
+            fi
+
+            # ---- app environment ----
+            set_env NODE_ENV production
+            set_env PORT "$APP_PORT"
+            set_env TRUST_PROXY true
+            set_env CORS_ORIGINS "https://${PUBLIC_HOST}:${NGINX_PORT}"
+            set_env KEY_PROVIDER aws-kms
+            set_env KMS_KEY_ID "$KMS_KEY_ID"
+            set_env KMS_REGION "$KMS_REGION"
+            set_env MASTER_KEY_FILE "$KEY_DIR/master.key.enc"
+            # Generated once and never rotated by a deploy (that would sign everyone out).
+            if [ -z "$(env_val SPORTARENA_JWT_SECRET)" ]; then
+              echo "[deploy] generating SPORTARENA_JWT_SECRET (first deploy only)"
+              set_env SPORTARENA_JWT_SECRET "$(openssl rand -hex 48)"
+            fi
+
+            # ---- migrate + (re)start the API ----
+            (cd apps/api && npm run migrate)
+            pm2 delete sportarena-api >/dev/null 2>&1 || true
+            (cd apps/api && pm2 start src/server.js --name sportarena-api --node-args="--env-file=$ENV_FILE")
+            pm2 save
+            ok=0
+            for i in $(seq 1 30); do
+              if curl -fs "http://127.0.0.1:${APP_PORT}/health" >/dev/null 2>&1; then ok=1; break; fi
+              sleep 1
+            done
+            [ "$ok" -eq 1 ] || { pm2 logs sportarena-api --lines 40 --nostream || true; abort_deploy "API did not become healthy on $APP_PORT."; }
+
+            # ---- TLS certificate (self-signed until a real domain/cert is configured) ----
+            SSL_DIR=/etc/nginx/ssl/sportarena
+            if [ ! -f "$SSL_DIR/fullchain.pem" ]; then
+              echo "[deploy] generating a self-signed certificate for ${PUBLIC_HOST}"
+              sudo mkdir -p "$SSL_DIR"
+              sudo openssl req -x509 -newkey rsa:2048 -nodes -days 825 -keyout "$SSL_DIR/privkey.pem" -out "$SSL_DIR/fullchain.pem" \
+                -subj "/CN=${PUBLIC_HOST}" -addext "subjectAltName=DNS:${PUBLIC_HOST}" >/dev/null 2>&1
+              sudo chmod 600 "$SSL_DIR/privkey.pem"
+            fi
+
+            # ---- nginx: our own site file only; other sites are never edited ----
+            echo "[deploy] configuring nginx on port ${NGINX_PORT}"
+            SITE=/etc/nginx/sites-available/sportarena
+            cat <<NGINX | sudo tee "$SITE" >/dev/null
+            server {
+                listen ${NGINX_PORT} ssl;
+                server_name _;
+                ssl_certificate     ${SSL_DIR}/fullchain.pem;
+                ssl_certificate_key ${SSL_DIR}/privkey.pem;
+                ssl_protocols TLSv1.2 TLSv1.3;
+
+                client_max_body_size 2m;
+
+                location /api/ {
+                    proxy_pass http://127.0.0.1:${APP_PORT};
+                    proxy_http_version 1.1;
+                    proxy_set_header Host \$host;
+                    proxy_set_header X-Real-IP \$remote_addr;
+                    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+                    proxy_set_header X-Forwarded-Proto \$scheme;
+                }
+                location = /mcp {
+                    proxy_pass http://127.0.0.1:${APP_PORT};
+                    proxy_http_version 1.1;
+                    proxy_set_header Host \$host;
+                    proxy_set_header X-Real-IP \$remote_addr;
+                    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+                    proxy_set_header X-Forwarded-Proto \$scheme;
+                    proxy_read_timeout 120s;
+                }
+                location = /health {
+                    proxy_pass http://127.0.0.1:${APP_PORT};
+                    proxy_set_header X-Forwarded-Proto \$scheme;
+                }
+
+                root ${WEB_ROOT};
+                location /_expo/ {
+                    try_files \$uri =404;
+                    add_header Cache-Control "public, max-age=31536000, immutable";
+                }
+                location / {
+                    try_files \$uri \$uri/ /index.html;
+                    add_header Cache-Control "no-cache";
+                }
+            }
+            NGINX
+            sudo ln -sf "$SITE" /etc/nginx/sites-enabled/sportarena
+            if ! sudo nginx -t; then
+              echo "::error::nginx rejected the sportarena site - removing it; existing sites are unaffected"
+              sudo rm -f /etc/nginx/sites-enabled/sportarena "$SITE"
+              sudo nginx -t
+              exit 1
+            fi
+            sudo systemctl reload nginx      # graceful: existing connections/sites keep working
+
+            curl -fsk "https://127.0.0.1:${NGINX_PORT}/health" >/dev/null || abort_deploy "Site is not reachable through nginx on ${NGINX_PORT}."
+            echo "Deployed. https://${PUBLIC_HOST}:${NGINX_PORT}  (self-signed certificate: your browser will warn once)"
+        env:
+          BRANCH: ${{ github.ref_name }}
+          REPO_URL: https://github.com/${{ github.repository }}.git
+          PUBLIC_HOST: ec2-13-250-133-109.ap-southeast-1.compute.amazonaws.com
+          KMS_KEY_ID: ${{ secrets.KMS_KEY_ID }}
+          KMS_REGION: ap-southeast-1

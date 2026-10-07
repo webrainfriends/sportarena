@@ -12,6 +12,7 @@
     "test": "node --test --test-concurrency=1 test/*.test.js"
   },
   "dependencies": {
+    "@aws-sdk/client-kms": "^3.1147.0",
     "@modelcontextprotocol/sdk": "^1.32.1",
     "cors": "^2.8.5",
     "express": "^5.2.1",
