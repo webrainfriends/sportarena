@@ -15,12 +15,15 @@
 #        EC2_SSH_KEY  - private key (PEM) of the instance's key pair
 #        KMS_KEY_ID   - KMS key (ARN, id or alias) the instance role may GenerateDataKey/Decrypt with
 #   2. Security group: allow inbound TCP 9255. Do NOT open 7255 (DB) or 4255 (API) - both are for localhost.
-#   3. Run "Deploy to EC2" from the Actions tab. (To deploy on every merge to main instead, add
-#      `push: { branches: [main] }` under `on:`.)
+#   3. Merging to main deploys automatically; you can also run "Deploy to EC2" from the Actions tab.
+#      (The manual button only appears once main is the repository's DEFAULT branch - Settings -> General.
+#      The push trigger works regardless.)
 
 name: Deploy to EC2
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 env:

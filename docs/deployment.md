@@ -24,8 +24,8 @@ Docker Postgres + nginx) and the same credentials. Everything it creates is name
 3. **KMS:** nothing new if the instance role already has `kms:GenerateDataKey` + `kms:Decrypt` on that key (it does
    for myhealthpal). The first deploy creates the wrapped master key and verifies it can be unwrapped; the deploy
    aborts (before touching anything running) if it can't.
-4. Merge to `main`, then **Actions → Deploy to EC2 → Run workflow**. (Prefer deploy-on-merge? Add
-   `push: { branches: [main] }` under `on:`.)
+4. **Settings → General → Default branch → `main`.** (GitHub only shows the manual *Run workflow* button for workflows on the default branch.)
+5. Merging to `main` deploys automatically; or run **Actions → Deploy to EC2 → Run workflow** by hand.
 
 Then open `https://ec2-13-250-133-109.ap-southeast-1.compute.amazonaws.com:9255`.
 
