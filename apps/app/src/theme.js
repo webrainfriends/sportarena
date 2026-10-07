@@ -1,20 +1,19 @@
 import { Platform } from 'react-native';
-// SportArena design tokens — dark "night match" look: near-black green canvas, raised charcoal cards, one neon-lime accent.
-// Token names are kept stable (pink = primary accent, ink = text, paper = card surface) so every screen inherits the palette.
+// SportArena design tokens — "Ink & Signal": warm paper canvas, true-black ink, one vermilion signal accent.
+// Broadcast-scoreboard feel: big tabular numerals, tight heavy headlines, quiet surfaces.
+// Token names are stable (pink = signal accent, ink = text, paper = card, violet = ink-black surface) so every screen inherits it.
 export const c = {
-  bg: '#090D0B', paper: '#131916', ink: '#F2F6F0', mute: '#8B9892', line: '#212A25', on: '#0A1209',
-  pink: '#C8FF3D', violet: '#1D2622', cyan: '#5BD6FF', lime: '#C8FF3D', sun: '#FFC933', orange: '#FF7A3D', mint: '#2EE6A6', red: '#FF5A5F', blue: '#C8FF3D',
-  pinkSoft: '#222F10', violetSoft: '#1D2622', cyanSoft: '#0F2E38', limeSoft: '#222F10', sunSoft: '#33290D', mintSoft: '#0E3026', orangeSoft: '#3A2012',
+  bg: '#F4F2EC', paper: '#FFFFFF', ink: '#0E1014', mute: '#6C7079', line: '#E4E0D6', on: '#FFFFFF',
+  pink: '#FF4B1F', violet: '#14171C', cyan: '#2D62F5', lime: '#14935A', sun: '#F2A516', orange: '#FF4B1F', mint: '#14935A', red: '#D92D3A', blue: '#2D62F5',
+  pinkSoft: '#FFE8E0', violetSoft: '#ECE9E1', cyanSoft: '#E3EAFE', limeSoft: '#DFF3E8', sunSoft: '#FFF0D0', mintSoft: '#DFF3E8', orangeSoft: '#FFE8E0',
 };
 export const grad = {
-  hero: ['#0E1A12', '#14301D', '#1E4A29'],
-  sunset: ['#0E1A12', '#17361F', '#25602F'],
-  fresh: ['#0E1A12', '#0E3026', '#12674F'],
-  candy: ['#131916', '#1D2622', '#131916'],
-  night: ['#090D0B', '#14301D'],
+  hero: ['#12151A', '#1A1D26', '#2B1912'],
+  sunset: ['#12151A', '#1C1F29', '#3A1B10'],
+  fresh: ['#12151A', '#142A22', '#14935A'],
+  candy: ['#FFFFFF', '#F4F2EC', '#FFFFFF'],
+  night: ['#0E1014', '#1A1D26'],
 };
-/** Colours that read as "bright": text on top must be dark. */
-export const bright = (col) => [c.lime, c.sun, c.cyan, c.mint, c.orange, c.ink].includes(col);
 export const accents = [c.pink, c.violet, c.cyan, c.lime, c.sun, c.orange, c.mint];
 export const softOf = { [c.pink]: c.pinkSoft, [c.violet]: c.violetSoft, [c.cyan]: c.cyanSoft, [c.lime]: c.limeSoft, [c.sun]: c.sunSoft, [c.orange]: c.orangeSoft, [c.mint]: c.mintSoft };
 export const accentFor = (s = '') => accents[[...String(s)].reduce((a, ch) => a + ch.charCodeAt(0), 0) % accents.length];

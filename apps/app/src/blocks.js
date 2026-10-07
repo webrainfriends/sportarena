@@ -94,7 +94,7 @@ export function StandingsTable({ rows }) {
           <View style={{ width: 24 }}><T weight="900">{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : r.rank}</T></View>
           <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 }}><T size={18}>{r.emoji}</T><T weight="900" size={14} numberOfLines={1} style={{ flexShrink: 1 }}>{r.name}</T></View>
           {[r.played, r.won, r.drawn, r.lost, r.goal_diff > 0 ? `+${r.goal_diff}` : r.goal_diff].map((x, k) => <T key={k} size={13} style={th}>{x}</T>)}
-          <View style={{ width: 38, alignItems: 'center' }}><View style={{ backgroundColor: i === 0 ? c.lime : c.violet, borderRadius: 8, paddingHorizontal: 6 }}><T weight="800" color={i === 0 ? c.on : c.ink}>{r.points}</T></View></View>
+          <View style={{ width: 38, alignItems: 'center' }}><View style={{ backgroundColor: i === 0 ? c.ink : c.violetSoft, borderRadius: 8, paddingHorizontal: 6 }}><T weight="800" color={i === 0 ? '#fff' : c.ink}>{r.points}</T></View></View>
         </View>
       ))}
     </Card>
