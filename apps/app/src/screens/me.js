@@ -37,11 +37,11 @@ export function Me() {
         <StatPill value={d?.points ?? '–'} label="POINTS" color={c.lime} /><StatPill value={d?.trophies ?? '–'} label="TROPHIES" color={c.sun} /><StatPill value={d?.active_policies ?? '–'} label="POLICIES" color={c.cyan} />
       </View>
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-        <Btn small title="View my public page" emoji="👀" color={c.violet} onPress={() => push('Person', { id: user.id })} />
-        <Btn small title="Add a sport role" emoji="🎽" color={c.cyan} ink={c.ink} onPress={() => setSp(true)} />
+        <Btn small title="View my public page" color={c.violet} onPress={() => push('Person', { id: user.id })} />
+        <Btn small title="Add a sport role" color={c.cyan} ink={c.ink} onPress={() => setSp(true)} />
       </View>
 
-      <Section title="Private details" emoji="🔐" color={c.mint}>
+      <Section title="Private details" color={c.mint}>
         <Card color={c.mintSoft}>
           <T size={12} color={c.mute} weight="700">Encrypted with AES-256-GCM before storage and decrypted only for you. Every read is audit-logged.</T>
           {PII.map(([k, l]) => (
@@ -51,12 +51,12 @@ export function Me() {
           ))}
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
             <Btn small title={reveal ? 'Hide' : 'Reveal'} emoji={reveal ? '🙈' : '👁️'} color={c.ink} onPress={() => setReveal(!reveal)} />
-            <Btn small title="Edit" emoji="✏️" color={c.pink} onPress={() => setEdit(true)} />
+            <Btn small title="Edit" color={c.pink} onPress={() => setEdit(true)} />
           </View>
         </Card>
       </Section>
 
-      <Section title="Agents & API (MCP)" emoji="🤖" color={c.violet}>
+      <Section title="Agents & API (MCP)" color={c.violet}>
         <Card color={c.violetSoft}>
           <T weight="700">Everything in this app is also an API and an MCP tool. Create a token and plug SportArena into your AI agent.</T>
           <T size={12} color={c.mute} style={{ marginTop: 6 }}>MCP endpoint: {MCP_URL}</T>
@@ -66,11 +66,11 @@ export function Me() {
               <T weight="800">🔑 {t.name}</T><Btn small title="Revoke" color={c.paper} ink={c.red} onPress={async () => { await api.del(`/me/tokens/${t.id}`); toks.reload(); }} />
             </View>
           ))}
-          <Btn small title="New API token" emoji="➕" color={c.violet} onPress={() => setTokForm(true)} style={{ marginTop: 10, alignSelf: 'flex-start' }} />
+          <Btn small title="New API token" color={c.violet} onPress={() => setTokForm(true)} style={{ marginTop: 10, alignSelf: 'flex-start' }} />
         </Card>
       </Section>
 
-      <Btn title="Log out" emoji="👋" color={c.ink} onPress={signOut} style={{ marginTop: 28 }} />
+      <Btn title="Log out" color={c.ink} onPress={signOut} style={{ marginTop: 28 }} />
 
       <FormSheet visible={edit} onClose={() => setEdit(false)} title="Edit details" initial={{ display_name: user.display_name, bio: user.bio, full_name: user.full_name, phone: user.phone, dob: user.dob, national_id: user.national_id, address: user.address }}
         fields={[{ key: 'display_name', label: 'Display name', optional: true }, { key: 'bio', label: 'Bio', optional: true, type: 'multiline' }, { key: 'full_name', label: 'Full name 🔐', optional: true }, { key: 'phone', label: 'Phone 🔐', optional: true }, { key: 'dob', label: 'Date of birth (YYYY-MM-DD) 🔐', optional: true }, { key: 'national_id', label: 'National ID 🔐', optional: true }, { key: 'address', label: 'Address 🔐', optional: true, type: 'multiline' }]}

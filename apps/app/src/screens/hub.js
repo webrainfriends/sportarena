@@ -22,7 +22,7 @@ export function Hub() {
       <T color={c.mute} weight="700">Everything around the game, in one place.</T>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 14, marginTop: 16 }}>
         {TILES.map(([name, e, title, sub, col], i) => (
-          <Card key={name} color={col} style={{ width: '47%', flexGrow: 1 }} onPress={() => push(name)} tilt={i % 2 ? 1 : -1}>
+          <Card key={name} color={col} style={{ width: '47%', flexGrow: 1 }} onPress={() => push(name)}>
             <T size={42}>{e}</T><T weight="900" size={18} style={{ marginTop: 6 }}>{title}</T><T size={12} weight="700" style={{ opacity: 0.8 }}>{sub}</T>
           </Card>
         ))}
@@ -107,14 +107,14 @@ export function Insurance() {
   return (
     <Screen>
       <H1>Insurance 🛡️</H1><T color={c.mute} weight="700">Cover yourself, your squad or your whole event.</T>
-      <Section title="Your policies" emoji="📄" color={c.cyan}>
+      <Section title="Your policies" color={c.cyan}>
         {pol.data?.length ? pol.data.map((p) => (
           <Card key={p.id} color={c.cyanSoft}><View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}><Bubble emoji={p.emoji} color={c.paper} /><View style={{ flex: 1 }}><T weight="900">{p.plan_name}</T><T size={12} color={c.mute}>{p.insurer} · {p.policy_no} · until {day(p.ends_on)}</T></View><Tag label={p.effective_status} color={p.effective_status === 'active' ? c.lime : c.orange} /></View>
             <T size={13} style={{ marginTop: 6 }}>Covers up to <T weight="900">{money(p.coverage_cents)}</T> · {E[p.subject_type]} {p.subject_type}</T>
-            <Btn small title="File a claim" emoji="🚑" color={c.ink} onPress={() => setClaim(p)} style={{ marginTop: 8, alignSelf: 'flex-start' }} /></Card>
+            <Btn small title="File a claim" color={c.ink} onPress={() => setClaim(p)} style={{ marginTop: 8, alignSelf: 'flex-start' }} /></Card>
         )) : <Empty emoji="🛡️" title="Not covered yet" sub="Pick a plan below." />}
       </Section>
-      <Section title="Plans" emoji="✨" color={c.pink}>
+      <Section title="Plans" color={c.pink}>
         {plans.data?.map((p, i) => (
           <Card key={p.id} color={[c.pinkSoft, c.violetSoft, c.limeSoft][i % 3]}><View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}><Bubble emoji={p.emoji} color={c.paper} /><View style={{ flex: 1 }}><T weight="900" size={17}>{p.name}</T><T size={12} color={c.mute}>{p.insurer} · for {p.cover_for}</T></View></View>
             <T size={13} style={{ marginTop: 6 }}>{p.description}</T><View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}><T weight="900">{money(p.premium_cents)}<T size={12} color={c.mute}>/mo · cover {money(p.coverage_cents)}</T></T><Btn small title="Get cover" color={c.pink} onPress={() => setBuy(p)} /></View></Card>
@@ -140,14 +140,14 @@ export function Sponsors() {
   return (
     <Screen>
       <H1>Sponsors 💎</H1>
-      {has('sponsor') ? <View style={{ flexDirection: 'row', gap: 8, marginTop: 6, flexWrap: 'wrap' }}><Btn small title="Create brand" emoji="➕" color={c.violet} onPress={() => setForm('brand')} /><Btn small title="Propose a deal" emoji="🤝" color={c.pink} onPress={() => setForm('deal')} /></View> : null}
-      <Section title="Your deals" emoji="🤝" color={c.sun}>
+      {has('sponsor') ? <View style={{ flexDirection: 'row', gap: 8, marginTop: 6, flexWrap: 'wrap' }}><Btn small title="Create brand" color={c.violet} onPress={() => setForm('brand')} /><Btn small title="Propose a deal" color={c.pink} onPress={() => setForm('deal')} /></View> : null}
+      <Section title="Your deals" color={c.sun}>
         {deals.data?.length ? deals.data.map((d) => (
           <Card key={d.id} color={c.sunSoft}><View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}><Bubble emoji={d.sponsor_emoji} color={c.paper} /><View style={{ flex: 1 }}><T weight="900">{d.sponsor_name} → {d.target_type}</T><T size={12} color={c.mute}>{money(d.amount_cents)}{d.in_kind ? ` + ${d.in_kind}` : ''}</T></View><Tag label={d.status} color={d.status === 'active' ? c.lime : c.pinkSoft} /></View>
             {d.status === 'proposed' ? <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}><Btn small title="Accept" color={c.mint} ink={c.ink} onPress={() => act(() => api.patch(`/sponsorships/${d.id}`, { status: 'active' }), 'Deal on! 🎉')} /><Btn small title="Decline" color={c.paper} ink={c.red} onPress={() => act(() => api.patch(`/sponsorships/${d.id}`, { status: 'declined' }), 'Declined')} /></View> : null}</Card>
         )) : <Empty emoji="🤝" title="No deals yet" />}
       </Section>
-      <Section title="Brands" emoji="🌟" color={c.pink}>{dir.data?.map((s) => <Row key={s.id} left={<Bubble emoji={s.emoji} color={c.sun} />} title={s.name} sub={s.industry ?? s.website} />)}</Section>
+      <Section title="Brands" color={c.pink}>{dir.data?.map((s) => <Row key={s.id} left={<Bubble emoji={s.emoji} color={c.sun} />} title={s.name} sub={s.industry ?? s.website} />)}</Section>
       <FormSheet visible={form === 'brand'} onClose={() => setForm(null)} title="Create your brand" fields={[{ key: 'name', label: 'Brand name' }, { key: 'industry', label: 'Industry', optional: true }, { key: 'contact_email', label: 'Contact email', optional: true, hint: 'Encrypted — never shown publicly.' }]}
         onSubmit={async (v) => { await api.post('/sponsors', v); dir.reload(); return 'Brand created 💎'; }} />
       <FormSheet visible={form === 'deal'} onClose={() => setForm(null)} title="Propose sponsorship" submitLabel="Send offer"
@@ -166,8 +166,8 @@ export function Supply() {
   return (
     <Screen>
       <H1>Supply chain 📦</H1>
-      <Btn small title="Add stock item" emoji="➕" color={c.orange} onPress={() => setForm('item')} style={{ alignSelf: 'flex-start', marginTop: 6 }} />
-      <Section title="Inventory" emoji="🎒" color={c.orange}>
+      <Btn small title="Add stock item" color={c.orange} onPress={() => setForm('item')} style={{ alignSelf: 'flex-start', marginTop: 6 }} />
+      <Section title="Inventory" color={c.orange}>
         {inv.data?.length ? inv.data.map((i) => (
           <Card key={i.id} color={i.low_stock ? c.orangeSoft : c.paper} pad={12}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -176,11 +176,11 @@ export function Supply() {
               <T weight="900" size={20} style={{ minWidth: 34, textAlign: 'center' }}>{i.quantity}</T>
               <Btn small title="+" color={c.mint} ink={c.ink} onPress={() => act(() => api.post(`/inventory/${i.id}/adjust`, { delta: 1 }))} />
             </View>
-            {i.low_stock ? <Btn small title="Reorder" emoji="🚚" color={c.ink} onPress={() => setForm({ order: i })} style={{ marginTop: 8, alignSelf: 'flex-start' }} /> : null}
+            {i.low_stock ? <Btn small title="Reorder" color={c.ink} onPress={() => setForm({ order: i })} style={{ marginTop: 8, alignSelf: 'flex-start' }} /> : null}
           </Card>
         )) : <Empty emoji="📦" title="No stock tracked" />}
       </Section>
-      <Section title="Orders" emoji="🚚" color={c.cyan}>
+      <Section title="Orders" color={c.cyan}>
         {ord.data?.length ? ord.data.map((o) => (
           <Row key={o.id} left={<Bubble emoji="🚚" color={c.cyanSoft} />} title={`${o.quantity} × ${o.item_name}`} sub={`${o.supplier}${o.expected_on ? ' · by ' + day(o.expected_on) : ''}`}
             right={o.status === 'ordered' || o.status === 'shipped' ? <Btn small title="Received" color={c.mint} ink={c.ink} onPress={() => act(() => api.patch(`/supply-orders/${o.id}`, { status: 'received' }), 'Stock updated 📦')} /> : <Tag label={o.status} color={c.lime} />} />
