@@ -91,39 +91,6 @@ for (const [i, p] of players.slice(0, 4).entries()) await call('write_testimonia
 await call('write_testimonial', org, { subject_type: 'venue', subject_id: venue.id, rating: 5, body: 'Turf is immaculate.' });
 await call('create_booking', players[0], { resource_id: pitch.id, starts_at: soon(3, 18), ends_at: soon(3, 19), team_id: teams[0].id });
 
-// Player marketplace demo: supplier + shop, a coach for hire, billboard posts, a sponsor offer for Aarav.
-const supplier = await mk('nivia_store', 'Nivia Sports Store', ['supplier'], '🛍️', '#EA580C');
-for (const [name, category, sport, price, stock, emoji] of [
-  ['Match football (size 5)', 'equipment', 'football', 189900, 24, '⚽'], ['Studded boots', 'footwear', 'football', 349900, 12, '👟'], ['Pro cricket bat', 'equipment', 'cricket', 899900, 4, '🏏'],
-  ['Team jersey', 'apparel', 'football', 79900, 40, '👕'], ['Whey recovery shake', 'nutrition', undefined, 129900, 3, '🥤'], ['Shin guards', 'accessories', 'football', 49900, 0, '🛡️'],
-]) await call('create_product', supplier, { name, category, sport, price_cents: price, stock, emoji, description: 'Genuine, ships in 2 days.' });
-await call('add_sport_profile', coach, { sport: 'football', role: 'coach', level: 'pro', experience_years: 12, hourly_rate_cents: 120000 });
-await call('add_sport_profile', coach, { sport: 'cricket', role: 'coach', level: 'pro', experience_years: 8, hourly_rate_cents: 100000 });
-await call('add_sport_profile', physio, { sport: 'football', role: 'physio', level: 'pro', hourly_rate_cents: 90000 });
-await call('create_billboard_post', players[2], { kind: 'match_players', title: 'Need 2 players — Sunday 7-a-side', body: 'Friendly at Arena One, bring your own bibs.', sport: 'football', city: 'Pune', positions_needed: 2, starts_at: soon(4, 11) });
-await call('create_billboard_post', players[4], { kind: 'team_recruiting', title: 'Electric Eels need a goalkeeper', body: 'Season 1 squad, training Tue & Thu evenings.', sport: 'football', team_id: teams[2].id, city: 'Pune' });
-await call('create_billboard_post', players[6], { kind: 'sponsorship_wanted', title: 'Rising sprinter seeks kit sponsor', sport: 'athletics', budget_cents: 5000000 });
-await call('create_billboard_post', sponsor, { kind: 'sponsor_call', title: 'VoltDrink backs 5 amateur athletes', body: 'Content + local appearances in return.', budget_cents: 20000000 });
-await call('propose_sponsorship', sponsor, { sponsor_id: brand.id, target_type: 'athlete', target_id: players[0].id, amount_cents: 2500000, in_kind: 'A year of VoltDrink' });
-
-// Player module demo: Aarav plays two sports; cricket is his default card.
-const fb = (await one("SELECT p.id FROM sport_profiles p JOIN users u ON u.id=p.user_id WHERE u.handle='aarav' AND p.role='athlete'")).id;
-await call('update_sport_profile', players[0], { id: fb, jersey_no: 9, club: 'Neon Foxes', experience_years: 6 });
-const cr = await call('add_sport_profile', players[0], { sport: 'cricket', role: 'athlete', level: 'amateur', position: 'Opening batter', jersey_no: 18, club: 'Sunday XI', experience_years: 3, is_default: true });
-const day = (n) => new Date(Date.now() - n * 864e5).toISOString().slice(0, 10);
-await call('import_matches', players[0], { sport_profile_id: fb, csv: `played_on,opponent,competition,result,score_for,score_against,minutes,rating,goals,assists,shots
-${day(40)},Blue Stars,League,win,3,1,90,8.5,2,1,5
-${day(33)},Red Hawks,League,draw,1,1,90,6.5,0,1,2
-${day(26)},Green Gulls,Cup,loss,0,2,78,5.5,0,0,1
-${day(19)},Pixel Panthers,League,win,2,0,90,7.5,1,0,4
-${day(12)},Electric Eels,League,win,4,2,90,9,3,0,6
-` });
-await call('import_matches', players[0], { sport_profile_id: cr.id, csv: `played_on,opponent,competition,result,runs,balls_faced,fours,sixes
-${day(30)},Sunday Kings,Friendly,win,64,41,8,2
-${day(16)},Park Rangers,League,loss,12,18,1,0
-${day(5)},Old Boys,League,win,88,60,11,3
-` });
-
 console.log(`Seeded ${rr.created} fixtures. Log in with any of these (password: ${PASSWORD}):`);
 console.log('  admin@demo.sportarena.dev, kavya_events@…, aarav@…, arena_one@…, volt_drink@…, dr_rhea@…, ref_imran@… (all @demo.sportarena.dev)');
 await pool.end();
