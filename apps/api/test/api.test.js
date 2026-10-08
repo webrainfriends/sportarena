@@ -30,14 +30,6 @@ before(async () => {
 });
 after(async () => { server.close(); await pool.end(); });
 
-test('every persona can add a profile for any catalogue sport, including newly seeded ones', async () => {
-  for (const [role, slug] of [['athlete', 'judo'], ['coach', 'curling'], ['referee', 'sepak-takraw'], ['physio', 'diving'], ['doctor', 'weightlifting']]) {
-    const u = await signup([role]);
-    const r = await api('POST', '/me/sport-profiles', { token: u.token, body: { sport: slug, role, level: 'amateur' } });
-    assert.equal(r.status, 201, `${role}/${slug}: ${JSON.stringify(r.body)}`);
-  }
-});
-
 test('personal identification data is encrypted at rest and decrypts for its owner only', async () => {
   const u = await signup(['athlete'], { full_name: 'Priya Sharma', phone: '+91 98765 43210', national_id: 'ABCDE1234F', dob: '2001-04-09', address: '12 MG Road, Pune' });
   const { rows: [raw] } = await pool.query('SELECT * FROM users WHERE id=$1', [u.id]);
@@ -406,4 +398,12 @@ test('player marketplace: billboard, shop, coach hire', async () => {
   assert.equal((await api('PATCH', `/hires/${hire.body.id}`, { ...t(joiner), body: { status: 'confirmed' } })).status, 403);
   assert.equal((await api('PATCH', `/hires/${hire.body.id}`, { ...t(coach), body: { status: 'confirmed' } })).status, 200);
   assert.equal((await api('GET', '/hires', { ...t(coach) })).body[0].i_am_coach, true);
+});
+
+test('every persona can add a profile for any catalogue sport, including newly seeded ones', async () => {
+  for (const [role, slug] of [['athlete', 'judo'], ['coach', 'curling'], ['referee', 'sepak-takraw'], ['physio', 'diving'], ['doctor', 'weightlifting']]) {
+    const u = await signup([role]);
+    const r = await api('POST', '/me/sport-profiles', { token: u.token, body: { sport: slug, role, level: 'amateur' } });
+    assert.equal(r.status, 201, `${role}/${slug}: ${JSON.stringify(r.body)}`);
+  }
 });
