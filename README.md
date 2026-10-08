@@ -25,6 +25,7 @@ physios & doctors, suppliers and insurers. **API-first. MCP-first.** One React N
 | **Supply chain** | Inventory, low-stock flags, supplier orders; receiving an order restocks atomically |
 | **Health** | Find physios/doctors, appointments, **athlete-controlled consent**, encrypted clinical notes, fit-to-play status without clinical detail |
 | **Insurance** | Plans for individual / team / event, policies (encrypted number + beneficiary), claims with coverage checks, admin review |
+| **Verification** | Request a verified badge (gamer, coach, physio, doctor, sponsor, event) as a case with encrypted evidence; platform-team queue with reviewer checklist, decisions, expiry and revocation — see [docs/verification.md](docs/verification.md) |
 | **Community** | Ratings & testimonials for people, teams, events, venues, sponsors |
 
 ## Architecture: one capability registry → REST + OpenAPI + MCP

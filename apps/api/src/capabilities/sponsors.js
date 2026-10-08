@@ -1,3 +1,4 @@
+import { badgesFor, withBadges } from '../verification.js';
 import { z } from 'zod';
 import { cap, id, page, money } from '../registry.js';
 import { one, many } from '../db.js';
@@ -30,8 +31,8 @@ cap({
 
 cap({
   name: 'list_sponsors', method: 'GET', path: '/sponsors', tag: 'Sponsors', auth: 'public', summary: 'Sponsor directory (no contact details).',
-  input: z.object({ q: z.string().optional(), ...page }),
-  handler: (_, i) => many("SELECT id, name, industry, website, emoji FROM sponsors WHERE ($1::text IS NULL OR name ILIKE '%'||$1||'%') ORDER BY name LIMIT $2 OFFSET $3", [i.q ?? null, i.limit, i.offset]),
+  input: z.object({ q: z.string().optional(), mine: z.coerce.boolean().optional().describe('only brands you own (needs sign-in)'), ...page }),
+  handler: async ({ user }, i) => withBadges('sponsor', await many("SELECT id, name, industry, website, emoji FROM sponsors WHERE ($1::text IS NULL OR name ILIKE '%'||$1||'%') AND (NOT $4 OR owner_id = $5) ORDER BY name LIMIT $2 OFFSET $3", [i.q ?? null, i.limit, i.offset, !!i.mine, user?.id ?? null])),
 });
 
 cap({
@@ -40,7 +41,7 @@ cap({
   async handler({ user }, i) {
     const s = await mustFind('sponsors', i.id);
     const deals = await many("SELECT id, target_type, target_id, amount_cents, in_kind, starts_on, ends_on FROM sponsorships WHERE sponsor_id=$1 AND status='active'", [i.id]);
-    const out = { id: s.id, name: s.name, industry: s.industry, website: s.website, emoji: s.emoji, active_sponsorships: deals };
+    const out = { id: s.id, name: s.name, industry: s.industry, website: s.website, emoji: s.emoji, verified: (await badgesFor('sponsor', [s.id])).get(s.id) ?? [], active_sponsorships: deals };
     if (user && (isAdmin(user) || user.id === s.owner_id)) {
       await audit(null, user.id, 'read_pii', 'sponsors', s.id);
       Object.assign(out, decryptFields(s, 'sponsors', CONTACT));

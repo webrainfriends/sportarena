@@ -1,4 +1,5 @@
 import './identity.js';
+import './verification.js';
 import './teams.js';
 import './venues.js';
 import './venue-admin.js';

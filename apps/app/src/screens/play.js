@@ -1,3 +1,4 @@
+import { VerifiedBadges } from './verification';
 import React, { useState } from 'react';
 import { View } from 'react-native';
 import { api } from '../api';
@@ -169,7 +170,7 @@ export function Person({ id }) {
         <View style={{ flexDirection: 'row', gap: 14, alignItems: 'center' }}>
           <Avatar user={x} size={76} />
           <View style={{ flex: 1 }}><H1 color="#fff" style={{ fontSize: 28 }}>{x.display_name}</H1><T color="#fff" weight="800">@{x.handle}</T>
-            <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>{x.roles.map((r) => <Tag key={r} label={r.replace('_', ' ')} color={c.lime} />)}</View></View>
+            <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>{x.roles.map((r) => <Tag key={r} label={r.replace('_', ' ')} color={c.lime} />)}</View><VerifiedBadges list={x.verified} style={{ marginTop: 6 }} /></View>
         </View>
         {x.bio ? <T color="#fff" style={{ marginTop: 10 }}>{x.bio}</T> : null}
       </GradCard>

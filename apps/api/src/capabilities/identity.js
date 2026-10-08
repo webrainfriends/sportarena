@@ -5,6 +5,7 @@ import { badRequest, conflict, notFound, unauthorized } from '../errors.js';
 import { blindIndex, decryptFields, encrypt, encryptFields, hashPassword, newOpaqueToken, sha256, verifyPassword } from '../crypto.js';
 import { audit, PUBLIC_USER, sportBySlugOrId } from '../helpers.js';
 import { signToken } from '../auth.js';
+import { badgesFor, withBadges } from '../verification.js';
 
 const PII = ['full_name', 'phone', 'dob', 'national_id', 'address'];
 const pii = {
@@ -146,13 +147,13 @@ cap({
   input: z.object({ q: z.string().optional(), role: z.enum(profileRoles).optional(), sport: z.string().optional(), ...page }),
   async handler(_, i) {
     const sport = i.sport ? await sportBySlugOrId(i.sport) : null;
-    return many(
+    return withBadges('user', await many(
       `SELECT DISTINCT ${PUBLIC_USER} FROM users u LEFT JOIN sport_profiles p ON p.user_id = u.id
         WHERE ($1::text IS NULL OR u.handle ILIKE $1 || '%' OR u.display_name ILIKE '%' || $1 || '%')
           AND ($2::text IS NULL OR p.role = $2) AND ($3::uuid IS NULL OR p.sport_id = $3)
         ORDER BY u.display_name LIMIT $4 OFFSET $5`,
       [i.q ?? null, i.role ?? null, sport?.id ?? null, i.limit, i.offset],
-    );
+    ));
   },
 });
 
@@ -169,7 +170,7 @@ cap({
       one("SELECT round(avg(rating),2) AS avg, count(*)::int AS n FROM testimonials WHERE subject_type='user' AND subject_id=$1", [i.id]),
       many("SELECT t.id, t.name, t.emoji, t.color, m.role FROM team_members m JOIN teams t ON t.id = m.team_id WHERE m.user_id=$1 AND m.status='active'", [i.id]),
     ]);
-    return { ...u, sport_profiles: profiles, awards, rating, teams };
+    return { ...u, verified: (await badgesFor('user', [i.id])).get(i.id) ?? [], sport_profiles: profiles, awards, rating, teams };
   },
 });
 

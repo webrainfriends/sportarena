@@ -1,3 +1,4 @@
+import { badgesFor, withBadges } from '../verification.js';
 import { z } from 'zod';
 import { cap, id, page, money } from '../registry.js';
 import { one, many, query, tx } from '../db.js';
@@ -40,13 +41,13 @@ cap({
   input: z.object({ sport: z.string().optional(), status: z.enum(['draft', 'open', 'ongoing', 'completed', 'cancelled']).optional(), q: z.string().optional(), organizer_id: id.optional(), ...page }),
   async handler(_, i) {
     const sport = i.sport ? await sportBySlugOrId(i.sport) : null;
-    return many(
+    return withBadges('event', await many(
       `SELECT e.*, s.name AS sport, s.emoji AS sport_emoji, (SELECT count(*)::int FROM event_entries n WHERE n.event_id=e.id AND n.status='accepted') AS entrants
          FROM events e JOIN sports s ON s.id=e.sport_id
         WHERE ($1::uuid IS NULL OR e.sport_id=$1) AND ($2::text IS NULL OR e.status=$2) AND ($3::text IS NULL OR e.name ILIKE '%'||$3||'%')
           AND ($4::uuid IS NULL OR e.organizer_id=$4) AND e.status <> 'draft'
         ORDER BY e.starts_on NULLS LAST, e.created_at DESC LIMIT $5 OFFSET $6`,
-      [sport?.id ?? null, i.status ?? null, i.q ?? null, i.organizer_id ?? null, i.limit, i.offset]);
+      [sport?.id ?? null, i.status ?? null, i.q ?? null, i.organizer_id ?? null, i.limit, i.offset]));
   },
 });
 
@@ -63,7 +64,7 @@ cap({
       one("SELECT round(avg(rating),2) AS avg, count(*)::int AS n FROM testimonials WHERE subject_type='event' AND subject_id=$1", [i.id]),
       ev.venue_id ? one('SELECT id, name, city, emoji FROM venues WHERE id=$1', [ev.venue_id]) : null,
     ]);
-    return { ...ev, venue, entrants, standings: table, sponsors, rating };
+    return { ...ev, verified: (await badgesFor('event', [ev.id])).get(ev.id) ?? [], venue, entrants, standings: table, sponsors, rating };
   },
 });
 
