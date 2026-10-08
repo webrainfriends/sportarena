@@ -11,7 +11,7 @@ import { c } from '../theme';
 import { PaySheet } from '../PaySheet';
 import { currentDevice, disablePush, enablePush, pushSupport } from '../push';
 import { KIND } from './book';
-import { addDays, dateTimeIn, dayLabel, hoursSummary, localToIso, moneyIn, offerLabel, timeIn, todayIn } from '../vtime';
+import { addDays, dateTimeIn, dayLabel, fmtMin, hoursSummary, localToIso, moneyIn, offerLabel, timeIn, todayIn } from '../vtime';
 
 const open = (url) => (Platform.OS === 'web' ? window.open(url, '_blank', 'noopener') : Linking.openURL(url));
 const Line = ({ k, v, strong }) => <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 }}><T color={c.mute} weight={strong ? '700' : '500'}>{k}</T><T weight={strong ? '700' : '600'}>{v}</T></View>;
@@ -376,6 +376,24 @@ function PushCard({ prefs }) {
   );
 }
 
+/** Your active "tell me when a slot opens" alerts. */
+function AlertsList() {
+  const { toast } = useSession();
+  const list = useLoad(() => api.get('/me/slot-alerts'), []);
+  if (!list.data?.length) return <T size={13} color={c.mute}>No alerts. Open a venue and tap 🔔 Alert me to be told when a slot frees up.</T>;
+  return list.data.map((a) => (
+    <Card key={a.id} pad={12}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+        <View style={{ flex: 1 }}>
+          <T weight="700">{a.venue_name}{a.resource_name ? ` · ${a.resource_name}` : ''}</T>
+          <T size={12} color={c.mute}>{String(a.date_from).slice(0, 10)}{a.date_to !== a.date_from ? ` → ${String(a.date_to).slice(0, 10)}` : ''}{a.from_min != null ? ` · from ${fmtMin(a.from_min)}` : ''}{a.to_min != null ? ` until ${fmtMin(a.to_min)}` : ''}{a.slots > 1 ? ` · ${a.slots} slots` : ''}</T>
+        </View>
+        <Btn small title="Stop" color={c.paper} ink={c.red} onPress={async () => { try { await api.del(`/slot-alerts/${a.id}`); list.reload(); } catch (e) { toast(e.message); } }} />
+      </View>
+    </Card>
+  ));
+}
+
 export function Notifications() {
   const { toast } = useSession();
   const { push } = useNav();
@@ -406,6 +424,7 @@ export function Notifications() {
         ) : <Loading />}
       </Section>
       <Section title="Push" color={c.violet}><PushCard /></Section>
+      <Section title="Slot alerts" color={c.sun}><AlertsList /></Section>
       <Section title="Inbox" action={list.data?.unread ? 'Mark all read' : undefined} onAction={readAll} color={c.pink}>
         {list.loading && !list.data ? <Loading /> : list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : list.data.items.length ? list.data.items.map((n) => (
           <Row key={n.id} onPress={() => tap(n)} color={n.read_at ? c.paper : c.pinkSoft} left={<Bubble emoji={n.kind.includes('cancel') ? '❌' : n.kind.includes('remind') ? '⏰' : n.kind.includes('modif') ? '✏️' : '✅'} />}

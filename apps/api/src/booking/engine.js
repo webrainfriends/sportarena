@@ -308,6 +308,7 @@ export async function cancelBookings(c, bookingIds, { actor, byVenue, reason, wa
     await c.query("UPDATE bookings SET status='cancelled', refund_cents=$2, cancelled_at=now(), cancelled_by=$3, cancel_reason=$4, payment_status=$5, updated_at=now() WHERE id=$1",
       [id, refund, actor.id, reason ?? null, pay]);
     if (b.reservation_id) touched.add(b.reservation_id);
+    c.afterCommit?.(() => import('./alerts.js').then((m) => m.kickAlerts(venue.id))); // someone may be waiting for exactly this slot
     const what = `${b.resource_name} at ${venue.name}, ${b.starts_at.toISOString()}`;
     const data = { booking_id: id, reservation_id: b.reservation_id, venue_id: venue.id, refund_cents: refund };
     if (silent) { /* the caller sends its own message */ } else if (byVenue && b.user_id !== actor.id) {

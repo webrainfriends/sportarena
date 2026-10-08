@@ -235,7 +235,16 @@ cap({
     if (i.resource_id && (await mustFind('resources', i.resource_id)).venue_id !== i.id) throw badRequest('That area belongs to another venue');
     return one(`INSERT INTO discounts(venue_id, resource_id, name, code, kind, value, min_slots, weekdays, valid_from, valid_to, max_redemptions, per_user_limit, created_by)
                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
-      [i.id, i.resource_id ?? null, i.name, i.code ?? null, i.kind, i.value, i.min_slots, i.weekdays ?? null, i.valid_from ?? null, i.valid_to ?? null, i.max_redemptions ?? null, i.per_user_limit ?? null, user.id]);
+      [i.id, i.resource_id ?? null, i.name, i.code ?? null, i.kind, i.value, i.min_slots, i.weekdays ?? null, i.valid_from ?? null, i.valid_to ?? null, i.max_redemptions ?? null, i.per_user_limit ?? null, user.id]).then(async (d) => {
+      // an open offer (no code) is news for everyone who saved the venue
+      if (!d.code) {
+        const venue = await mustFind('venues', i.id, 'name');
+        for (const f of await many('SELECT user_id FROM favourite_venues WHERE venue_id=$1 AND removed_at IS NULL AND notify_offers AND user_id <> $2 LIMIT 2000', [i.id, user.id])) {
+          await notify(null, f.user_id, { kind: 'new_offer', title: `New offer at ${venue.name}`, body: d.name, data: { venue_id: i.id, discount_id: d.id } });
+        }
+      }
+      return d;
+    });
   },
 });
 cap({
@@ -326,6 +335,7 @@ cap({
   async handler({ user }, i) {
     await mustManage(user, i.id);
     const r = await pool.query('UPDATE venue_blocks SET released_at=now() WHERE released_at IS NULL AND venue_id=$1 AND (batch_id = $2 OR id = ANY($3::uuid[]))', [i.id, i.batch_id ?? null, i.ids ?? []]);
+    if (r.rowCount) import('../booking/alerts.js').then((m) => m.kickAlerts(i.id));
     return { released: r.rowCount };
   },
 });

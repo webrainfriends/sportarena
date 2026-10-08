@@ -10,6 +10,7 @@ import { useLayout } from '../layout';
 import { Bubble, Btn, Card, Empty, ErrorBox, Field, H1, Loading, Row, Screen, Seg, Section, Sheet, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { Gallery, VenueReviews } from './venue-media';
+import { AlertSheet } from './alerts';
 import { Calendar, StickyBar } from '../pickers';
 import { c } from '../theme';
 import { WEEKDAYS, addDays, dateTimeIn, dayLabel, fmtMin, moneyIn, offerLabel, openStatus, todayIn } from '../vtime';
@@ -28,7 +29,7 @@ export function BasketBar() {
 const Rating = ({ v }) => (v.reviews ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: c.mint, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 }}><T size={12} weight="700" color="#fff">★ {Number(v.rating).toFixed(1)}</T><T size={11} color="#fff">({v.reviews})</T></View> : <View style={{ backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 }}><T size={11} weight="700" color={c.mute}>New</T></View>);
 
 /** One venue in the discovery grid: photo, rating, price-from, offers, distance. */
-function VenueCard({ v, onOpen, picked, onPick, width }) {
+function VenueCard({ v, onOpen, picked, onPick, width, onFav }) {
   return (
     <Pressable onPress={onOpen} style={{ width }} accessibilityRole="button" accessibilityLabel={v.name}>
       <Card pad={0}>
@@ -36,6 +37,7 @@ function VenueCard({ v, onOpen, picked, onPick, width }) {
           {v.cover_url ? <Image source={{ uri: mediaUrl(v.cover_url) }} resizeMode="cover" style={{ width: '100%', height: '100%' }} /> : <LinearGradient colors={['#059669', '#0EA5E9']} style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><T size={52}>{v.emoji}</T></LinearGradient>}
           <View style={{ position: 'absolute', top: 10, left: 10 }}><Rating v={v} /></View>
           {v.offers ? <View style={{ position: 'absolute', bottom: 10, left: 10, backgroundColor: c.ink, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 }}><T size={11} weight="700" color="#fff">🏷️ {v.offers} offer{v.offers === 1 ? '' : 's'}</T></View> : null}
+          <Pressable onPress={onFav} hitSlop={8} accessibilityLabel={v.is_favourite ? 'Remove from favourites' : 'Save to favourites'} style={{ position: 'absolute', top: 8, right: 100, backgroundColor: 'rgba(255,255,255,0.92)', borderRadius: 14, width: 30, height: 28, alignItems: 'center', justifyContent: 'center' }}><T size={15} color={v.is_favourite ? c.pink : c.mute}>{v.is_favourite ? '♥' : '♡'}</T></Pressable>
           <Pressable onPress={onPick} hitSlop={8} accessibilityLabel={picked ? 'Remove from compare' : 'Add to compare'} style={{ position: 'absolute', top: 8, right: 8, backgroundColor: picked ? c.pink : 'rgba(255,255,255,0.92)', borderRadius: 14, paddingHorizontal: 10, paddingVertical: 6 }}>
             <T size={11} weight="700" color={picked ? '#fff' : c.ink}>{picked ? '✓ Compare' : '＋ Compare'}</T>
           </Pressable>
@@ -72,6 +74,8 @@ export function Book() {
   const mine = useLoad(() => api.get('/reservations', { limit: 20 }), []);
   const sports = useLoad(() => api.get('/sports'), []);
   const note = useLoad(() => api.get('/notifications', { unread: true, limit: 1 }), []);
+  const favs = useLoad(() => api.get('/me/favourites'), []);
+  const toggleFav = async (v) => { try { if (v.is_favourite) await api.del(`/venues/${v.id}/favourite`); else await api.post(`/venues/${v.id}/favourite`); venues.reload(); favs.reload(); } catch {} };
 
   // "available on <date> at <hour>" -> the venue search filters by a free court for that hour
   const win = useMemo(() => {
@@ -112,10 +116,15 @@ export function Book() {
         </Card>
       ) : null}
 
+      {favs.data?.length ? (
+        <Section title="Your favourites" color={c.pink}>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{favs.data.map((f) => <Pressable key={f.id} onPress={() => push('Venue', { id: f.id })} style={{ borderRadius: 999, borderWidth: 1, borderColor: c.line, backgroundColor: c.paper, paddingHorizontal: 14, paddingVertical: 8, flexDirection: 'row', gap: 6, alignItems: 'center' }}><T size={14}>{f.emoji}</T><T weight="700" size={13}>{f.name}</T>{f.offers ? <T size={11} color={c.lime} weight="700">🏷️ {f.offers}</T> : null}</Pressable>)}</View>
+        </Section>
+      ) : null}
       <View style={{ marginTop: 14 }}>
         {venues.loading && !venues.data ? <Loading /> : venues.error ? <ErrorBox error={venues.error} onRetry={venues.reload} /> : venues.data?.length ? (
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
-            {venues.data.map((v) => <VenueCard key={v.id} v={v} width={cardW} onOpen={() => push('Venue', { id: v.id, date: date ?? undefined })} picked={compare.includes(v.id)} onPick={() => toggleCompare(v.id)} />)}
+            {venues.data.map((v) => <VenueCard key={v.id} v={v} width={cardW} onFav={() => toggleFav(v)} onOpen={() => push('Venue', { id: v.id, date: date ?? undefined })} picked={compare.includes(v.id)} onPick={() => toggleCompare(v.id)} />)}
           </View>
         ) : <Empty emoji="🔎" title="No venues match" sub={date && hour != null ? 'Nothing is free at that time — try another hour or day.' : has('venue_manager', 'organizer') ? 'Register yours below.' : 'Try another sport or clear the filters.'} />}
       </View>
@@ -192,6 +201,8 @@ export function Venue({ id, date }) {
   const mine = useLoad(() => api.get('/me/venues').catch(() => []), []);
   const [tab, setTab] = useState('overview');
   const [month, setMonth] = useState(null);
+  const [alertOpen, setAlertOpen] = useState(false);
+  const [fav, setFav] = useState(null);
   const tz = v.data?.timezone ?? 'UTC';
   const m = month ?? (v.data ? todayIn(tz).slice(0, 7) : null);
   const cal = useLoad(() => (v.data ? api.get(`/venues/${id}/calendar`, { month: m }) : Promise.resolve(null)), [id, m, v.data?.id]);
@@ -225,6 +236,8 @@ export function Venue({ id, date }) {
           {x.map_links ? <Btn small title="Directions" color={c.paper} onPress={() => open(x.map_links.directions)} /> : null}
           {x.phone ? <Btn small title="📞 Call" color={c.paper} onPress={() => open(`tel:${x.phone.replace(/\s/g, '')}`)} /> : null}
           {x.website ? <Btn small title="Website" color={c.paper} onPress={() => open(x.website)} /> : null}
+          <Btn small title={(fav ?? x.is_favourite) ? '♥ Saved' : '♡ Save'} color={c.paper} onPress={async () => { const on = !(fav ?? x.is_favourite); try { if (on) await api.post(`/venues/${x.id}/favourite`); else await api.del(`/venues/${x.id}/favourite`); setFav(on); } catch {} }} />
+          <Btn small title="🔔 Alert me" color={c.paper} onPress={() => setAlertOpen(true)} />
           <Btn small title={compare.includes(x.id) ? '✓ In compare' : '＋ Compare'} color={c.paper} onPress={() => toggleCompare(x.id)} />
           {team ? <Btn small title="Manage venue" color={c.pink} onPress={() => push('Manage', { id: x.id })} /> : null}
         </View>
@@ -285,6 +298,7 @@ export function Venue({ id, date }) {
 
         {tab === 'reviews' ? <View style={{ marginTop: 8 }}><VenueReviews venueId={id} /></View> : null}
       </Screen>
+      <AlertSheet venue={x} visible={alertOpen} onClose={() => setAlertOpen(false)} />
       {x.active && x.resources.length ? <StickyBar title={from != null ? `From ${moneyIn(from, x.currency)}/hr` : x.name} sub={status.text} action="Book now" onAction={() => book()} bottom={L.floatingBar ? 84 : 0} /> : null}
     </View>
   );

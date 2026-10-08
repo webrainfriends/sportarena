@@ -74,3 +74,8 @@ Every notification (confirmations, changes, reminders, refunds, replies …) is 
 * **Browsers** use Web Push with VAPID keys. The deploy generates the key pair once on the server (`VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` in `.env`); the web app registers `sw.js` and subscribes. Browsers only allow this on **https**, so enable TLS for web push. Endpoints are limited to the real push services (Google, Mozilla, Apple, Microsoft); subscription keys are encrypted at rest.
 * Delivery is queued like email (`notification_deliveries`, channel `push`), sent right after the data commits and retried by the worker. Devices a provider rejects are switched off (`disabled_at`), never deleted. Tapping a push opens the booking or venue.
 * `get_push_config`, `register_push_device`, `list_push_devices`, `remove_push_device`, `send_test_push`.
+
+## Favourites and slot alerts
+
+* **Favourites:** `favourite_venue` / `unfavourite_venue` (soft) / `list_favourite_venues`; `get_venue` and `list_venues` return `is_favourite`. Fans who keep `notify_offers` on are told (in-app, push, email per their preferences) when a venue publishes an open offer (a discount without a promo code).
+* **Slot alerts:** `create_slot_alert` watches a venue for up to 60 days — optionally one court or a sport, weekdays, a time window and N slots in a row. If a match is free right now it is returned as `available_now` and no alert is created. Alerts are checked right after a cancellation or a released block at that venue and by the background worker; each fires once (`fulfilled`), and ones for dates gone by `expire`. Up to 20 active alerts per person. `list_slot_alerts`, `cancel_slot_alert`.
