@@ -22,7 +22,7 @@ export function FormSheet({ visible, onClose, title, fields, initial = {}, submi
       const out = {};
       for (const f of fields) {
         let x = f.type === 'choice' ? (v[f.key] ?? f.options[0]?.value ?? f.options[0]) : v[f.key];
-        if (x === '' || x === undefined) { if (!f.optional) throw new Error(`${f.label} is required`); continue; }
+        if (x === '' || x === undefined || (f.type === 'multi' && !x.length)) { if (!f.optional) throw new Error(`${f.label} is required`); continue; }
         out[f.key] = f.type === 'number' ? Number(x) : x;
       }
       const msg = await onSubmit(out);
@@ -38,6 +38,11 @@ export function FormSheet({ visible, onClose, title, fields, initial = {}, submi
         <TimeField key={f.key} label={f.label} value={v[f.key]} onChange={(x) => set(f.key, x)} optional={f.optional} step={f.step} hint={f.hint} />
       ) : f.type === 'choice' ? (
         <View key={f.key} style={{ gap: 6 }}><T weight="800" size={13}>{f.label}</T><Seg options={f.options} value={v[f.key] ?? f.options[0]?.value ?? f.options[0]} onChange={(x) => set(f.key, x)} color={c.pink} /></View>
+      ) : f.type === 'multi' ? (
+        <View key={f.key} style={{ gap: 6 }}><T weight="800" size={13}>{f.label}</T>
+          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+            {f.options.map((o) => { const cur = v[f.key] ?? []; return <Chip key={o.value} label={o.label} active={cur.includes(o.value)} onPress={() => set(f.key, cur.includes(o.value) ? cur.filter((x) => x !== o.value) : [...cur, o.value])} />; })}
+          </View></View>
       ) : (
         <Field key={f.key} label={f.label + (f.optional ? ' (optional)' : '')} value={String(v[f.key] ?? '')} onChangeText={(x) => set(f.key, x)} secure={f.type === 'secret'} multiline={f.type === 'multiline'} keyboardType={f.type === 'number' ? 'numeric' : undefined} hint={f.hint} placeholder={f.placeholder} />
       ))}
