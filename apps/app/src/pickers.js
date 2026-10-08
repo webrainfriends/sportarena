@@ -119,9 +119,9 @@ export function TimeField({ label, value, onChange, optional, step = 30, hint })
 }
 
 /** − 2 + control for quantities (units, players, hours). */
-export function Counter({ value, onChange, min = 1, max = 99, label, suffix }) {
+export function Counter({ value, onChange, min = 1, max = 99, label, suffix, step = 1 }) {
   const btn = (txt, d, off) => (
-    <Pressable disabled={off} onPress={() => onChange(value + d)} accessibilityLabel={d > 0 ? 'More' : 'Fewer'} style={{ width: 40, height: 40, borderRadius: 20, borderWidth: 1.5, borderColor: off ? c.line : c.pink, alignItems: 'center', justifyContent: 'center', opacity: off ? 0.4 : 1 }}>
+    <Pressable disabled={off} onPress={() => onChange(Math.min(max, Math.max(min, Math.round((value + d * step) * 100) / 100)))} accessibilityLabel={d > 0 ? 'More' : 'Fewer'} style={{ width: 40, height: 40, borderRadius: 20, borderWidth: 1.5, borderColor: off ? c.line : c.pink, alignItems: 'center', justifyContent: 'center', opacity: off ? 0.4 : 1 }}>
       <T size={20} weight="700" color={c.pink}>{txt}</T>
     </Pressable>
   );

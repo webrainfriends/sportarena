@@ -164,10 +164,10 @@ export function Book() {
         <Calendar month={month} onMonth={setMonth} value={date} minDate={todayStr} onChange={(d) => { setDate(d); setPickDate(false); }} />
         {date ? <Btn small title="Any day" color={c.paper} onPress={() => { setDate(null); setHour(null); setPickDate(false); }} /> : null}
       </Sheet>
-      <FormSheet visible={form} onClose={() => setForm(false)} title="Register a venue"
-        fields={[{ key: 'name', label: 'Venue name' }, { key: 'city', label: 'City', optional: true }, { key: 'address', label: 'Address', optional: true },
-          { key: 'currency', label: 'Currency (INR, USD, EUR…)', placeholder: 'INR', optional: true }, { key: 'timezone', label: 'Time zone', placeholder: 'Asia/Kolkata', hint: 'IANA name; opening hours and slots follow it', optional: true },
-          { key: 'latitude', label: 'Latitude', type: 'number', optional: true }, { key: 'longitude', label: 'Longitude', type: 'number', optional: true }]}
+      <FormSheet visible={form} onClose={() => setForm(false)} title="Register a venue" submitLabel="Create venue" initial={{ currency: 'INR', timezone: (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return 'UTC'; } })() }}
+        fields={[{ key: 'name', label: 'Venue name' }, { key: 'address', label: 'Address', optional: true }, { key: 'city', label: 'City', optional: true },
+          { key: 'latitude', lngKey: 'longitude', label: 'Map location', type: 'location', optional: true },
+          { key: 'currency', label: 'Currency', type: 'currency' }, { key: 'timezone', label: 'Time zone', type: 'timezone' }]}
         onSubmit={async (v) => { const x = await api.post('/venues', v); venues.reload(); push('Manage', { id: x.id }); return 'Venue created — follow the checklist to open for bookings'; }} />
     </Screen>
   );

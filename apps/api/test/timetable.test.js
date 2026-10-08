@@ -144,7 +144,7 @@ test('timetable: existing opening hours carry over; new courts inherit; bulk cre
   must(await api('POST', `/venues/${v.id}/hours`, { token: mgr.token, body: { hours: [1, 2, 3, 4, 5].map((weekday) => ({ weekday, opens: '09:00', closes: '18:00' })) } }));
   const before = must(await api('GET', `/venues/${v.id}/setup`, { token: mgr.token }));
   assert.equal(before.ready, false);
-  assert.equal(before.steps.find((s) => s.key === 'courts').done, true);
+  assert.equal(before.steps.find((s) => s.key === 'courts').done, false);
   assert.equal(before.steps.find((s) => s.key === 'timetable').done, false);
   const mon = onWeekday(1), sun = onWeekday(0);
   assert.equal((await avail(v, mon, a)).length, 9);
@@ -176,8 +176,14 @@ test('timetable: existing opening hours carry over; new courts inherit; bulk cre
   assert.equal((await api('POST', `/venues/${v.id}/timetable/copy`, { token: mgr.token, body: { from_resource_id: b.id, to_resource_ids: [a.id] } })).status, 200);
   assert.equal((await avail(v, sun, a)).length, 0, 'Hall A now has exactly what Hall B had');
 
+  // sport on many courts at once
+  must(await api('PATCH', `/venues/${v.id}/resources`, { token: mgr.token, body: { resource_ids: [a.id, b.id, ...made.map((x) => x.id)], sport: 'badminton' } }));
+  assert.equal((await api('PATCH', `/venues/${v.id}/resources`, { token: mgr.token, body: { resource_ids: [a.id], sport: 'no-such-sport' } })).status, 404);
+  assert.equal(must(await api('GET', `/venues/${v.id}/timetable`)).courts[0].sport_slug, 'badminton');
+
   // checklist
   const s = must(await api('GET', `/venues/${v.id}/setup`, { token: mgr.token }));
+  assert.equal(s.steps.find((x) => x.key === 'courts').done, true, 'every court has a sport now');
   assert.equal(s.steps.find((x) => x.key === 'timetable').done, true);
   assert.equal(s.steps.find((x) => x.key === 'pricing').done, true);
   assert.equal(s.ready, false, 'still needs invoice details and a contact');

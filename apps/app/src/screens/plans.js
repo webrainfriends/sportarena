@@ -94,8 +94,6 @@ export function PlansManager({ v }) {
   const plans = useLoad(() => api.get(`/venues/${v.id}/plans`), [v.id]);
   const report = useLoad(() => api.get(`/venues/${v.id}/plans/report`), [v.id]);
   const reload = () => { plans.reload(); report.reload(); };
-  const num = (x) => (x === undefined || x === '' ? undefined : Number(x));
-  const minor = (x) => Math.round(Number(x) * 100);
   const rows = report.data?.plans ?? [];
   return (
     <Section title="Memberships & passes" color={c.violet}>
@@ -117,14 +115,20 @@ export function PlansManager({ v }) {
         </Card>
       )) : <Empty emoji="🎟️" title="No plans yet" sub="Add a membership or a pass above." />}
       <FormSheet visible={form === 'membership'} onClose={() => setForm(null)} title="New membership" submitLabel="Create"
-        fields={[{ key: 'name', label: 'Name', placeholder: 'Gold member' }, { key: 'description', label: 'Description', optional: true },
-          { key: 'price', label: `Price (${v.currency})`, type: 'number' }, { key: 'duration_days', label: 'Lasts (days)', type: 'number' }, { key: 'discount_pct', label: '% off every booking', type: 'number' }]}
-        onSubmit={async ({ price, discount_pct, ...f }) => { await api.post(`/venues/${v.id}/plans`, { ...f, kind: 'membership', price_cents: minor(price), duration_days: num(f.duration_days), discount_bp: Math.round(discount_pct * 100) }); reload(); return 'Membership created'; }} />
+        fields={[{ key: 'name', label: 'Name', type: 'chips', options: ['Silver member', 'Gold member', 'Platinum member', 'Monthly member', 'Annual member'] },
+          { key: 'description', label: 'Description', optional: true },
+          { key: 'price_cents', label: 'Price', type: 'money', currency: v.currency },
+          { key: 'duration_days', label: 'Lasts', type: 'chips', default: 30, options: [{ value: 30, label: '1 month' }, { value: 90, label: '3 months' }, { value: 180, label: '6 months' }, { value: 365, label: '1 year' }] },
+          { key: 'discount_pct', label: 'Discount on every booking', type: 'stepper', min: 5, max: 90, step: 5, default: 10, suffix: '%' }]}
+        onSubmit={async ({ discount_pct, ...f }) => { await api.post(`/venues/${v.id}/plans`, { ...f, kind: 'membership', discount_bp: Math.round(discount_pct * 100) }); reload(); return 'Membership created'; }} />
       <FormSheet visible={form === 'pass'} onClose={() => setForm(null)} title="New pass" submitLabel="Create"
-        fields={[{ key: 'name', label: 'Name', placeholder: '10-session pass' }, { key: 'description', label: 'Description', optional: true },
-          { key: 'price', label: `Price (${v.currency})`, type: 'number' }, { key: 'sessions', label: 'Sessions', type: 'number' }, { key: 'valid_days', label: 'Usable for (days)', type: 'number' },
-          { key: 'session_value', label: `Most one session pays toward a booking (${v.currency}, blank = price ÷ sessions)`, type: 'number', optional: true }]}
-        onSubmit={async ({ price, session_value, ...f }) => { await api.post(`/venues/${v.id}/plans`, { ...f, kind: 'pass', price_cents: minor(price), sessions: num(f.sessions), valid_days: num(f.valid_days), ...(session_value ? { session_value_cents: minor(session_value) } : {}) }); reload(); return 'Pass created'; }} />
+        fields={[{ key: 'name', label: 'Name', type: 'chips', options: ['5-session pass', '10-session pass', '20-session pass', 'Coaching pack'] },
+          { key: 'description', label: 'Description', optional: true },
+          { key: 'price_cents', label: 'Price for the whole pass', type: 'money', currency: v.currency },
+          { key: 'sessions', label: 'Sessions', type: 'chips', default: 10, options: [5, 10, 20, 30, 50].map((n) => ({ value: n, label: String(n) })) },
+          { key: 'valid_days', label: 'Use within', type: 'chips', default: 90, options: [{ value: 30, label: '1 month' }, { value: 90, label: '3 months' }, { value: 180, label: '6 months' }, { value: 365, label: '1 year' }] },
+          { key: 'session_value_cents', label: 'Most one session pays toward a booking', type: 'money', currency: v.currency, optional: true, hint: 'Leave empty to use price ÷ sessions' }]}
+        onSubmit={async (f) => { await api.post(`/venues/${v.id}/plans`, { ...f, kind: 'pass' }); reload(); return 'Pass created'; }} />
     </Section>
   );
 }

@@ -14,11 +14,9 @@ import { useNav } from '../nav';
 import { WEEKDAYS, addDays, dateTimeIn, fmtMin, hoursSummary, localToIso, longDay, moneyIn, timeIn, todayIn } from '../vtime';
 import { Calendar } from '../pickers';
 
-const YN = [{ value: false, label: 'No' }, { value: true, label: 'Yes' }];
+const AMENITIES = ['Parking', 'Changing rooms', 'Showers', 'Lockers', 'Café', 'Floodlights', 'Equipment hire', 'Coaching', 'First aid', 'Seating', 'WiFi', 'Wheelchair access'];
 const TABS = [['schedule', 'Today'], ['timetable', 'Timetable & prices'], ['blocks', 'Block slots'], ['payments', 'Invoices'], ['plans', 'Memberships & passes'], ['discounts', 'Offers'], ['pricing', 'Courts & special rates'], ['media', 'Photos'], ['reviews', 'Reviews'], ['reports', 'Reports'], ['setup', 'Settings']];
 const num = (x) => (x === undefined || x === '' ? undefined : Number(x));
-const days = (s) => (s ? String(s).split(/[,\s]+/).filter(Boolean).map(Number) : undefined);
-const daysHint = 'Days as numbers, 0 = Sun … 6 = Sat, e.g. 1,2,3,4,5';
 
 export function Manage({ id }) {
   const v = useLoad(() => api.get(`/venues/${id}`), [id]);
@@ -92,17 +90,20 @@ function Schedule({ v }) {
         onSubmit={async (f) => { await api.del(`/bookings/${cancel.id}`, f); s.reload(); return 'Cancelled — customer notified and refunded'; }} />
       <FormSheet visible={ov} onClose={() => setOv(false)} title="Add a booking (override)" submitLabel="Book it" initial={{ date }}
         fields={[
-          { key: 'resource_id', label: 'Area', type: 'choice', options: v.resources.map((r) => ({ value: r.id, label: `${KIND[r.kind] ?? ''} ${r.name}` })) },
-          { key: 'date', label: 'Date', type: 'date' }, { key: 'start', label: 'Start time', type: 'time' }, { key: 'hours', label: 'Length in hours', type: 'number', placeholder: '1' },
-          { key: 'quantity', label: 'Units', type: 'number', optional: true }, { key: 'reason', label: 'Reason (audit log)', placeholder: 'League night, phone booking…' },
-          { key: 'guest_name', label: 'Walk-in guest name', optional: true }, { key: 'guest_phone', label: 'Guest phone', optional: true },
-          { key: 'price_cents', label: 'Price override (minor units; 0 = free)', type: 'number', optional: true },
-          { key: 'displace_conflicts', label: 'Cancel bookings in the way?', type: 'choice', options: YN },
+          { key: 'resource_id', label: 'Court', type: 'chips', options: v.resources.map((r) => ({ value: r.id, label: `${r.sport_emoji ?? KIND[r.kind] ?? ''} ${r.name}` })) },
+          { key: 'date', label: 'Date', type: 'date' }, { key: 'start', label: 'Starts', type: 'time' },
+          { key: 'hours', label: 'Length', type: 'chips', default: 1, options: [{ value: 0.5, label: '30 min' }, { value: 1, label: '1 hour' }, { value: 1.5, label: '1½ h' }, { value: 2, label: '2 hours' }, { value: 3, label: '3 hours' }, { value: 4, label: '4 hours' }] },
+          { key: 'quantity', label: 'Units', type: 'stepper', min: 1, max: 50, default: 1, show: (x) => (v.resources.find((r) => r.id === x.resource_id)?.capacity ?? 1) > 1, hint: 'This court takes several bookings at once' },
+          { key: 'reason', label: 'Why (kept in the audit log)', type: 'chips', options: ['Phone booking', 'Walk-in', 'League / tournament', 'Coaching', 'Member', 'Other'] },
+          { key: 'guest_name', label: 'Guest name', optional: true }, { key: 'guest_phone', label: 'Guest phone', input: 'phone', optional: true },
+          { key: 'normal_price', label: 'Charge the normal price', type: 'switch', default: true },
+          { key: 'price_cents', label: 'Price for this booking (0 = free)', type: 'money', currency: v.currency, show: (x) => !x.normal_price },
+          { key: 'displace_conflicts', label: 'Cancel bookings already in the way', type: 'switch', default: false, hint: 'Those customers are refunded and told' },
         ]}
         onSubmit={async (f) => {
           const starts_at = localToIso(f.date, f.start, tz);
           const ends_at = new Date(new Date(starts_at).getTime() + (f.hours ?? 1) * 3600e3).toISOString();
-          const out = await api.post(`/venues/${v.id}/override-bookings`, { items: [{ resource_id: f.resource_id, starts_at, ends_at, quantity: f.quantity ?? 1, price_cents: f.price_cents }], reason: f.reason, guest_name: f.guest_name, guest_phone: f.guest_phone, displace_conflicts: f.displace_conflicts });
+          const out = await api.post(`/venues/${v.id}/override-bookings`, { items: [{ resource_id: f.resource_id, starts_at, ends_at, quantity: f.quantity ?? 1, price_cents: f.normal_price ? undefined : f.price_cents }], reason: f.reason, guest_name: f.guest_name, guest_phone: f.guest_phone, displace_conflicts: f.displace_conflicts });
           s.reload(); return out.displaced_bookings ? `Booked — ${out.displaced_bookings} booking(s) cancelled and refunded` : 'Booked';
         }} />
     </>
@@ -128,15 +129,17 @@ function Blocks({ v }) {
       )) : <Empty emoji="✅" title="Nothing blocked" />}
       <FormSheet visible={form} onClose={() => setForm(false)} title="Block time" submitLabel="Block" initial={{ from_date: todayIn(tz), to_date: todayIn(tz) }}
         fields={[
-          { key: 'resource_id', label: 'Which area', type: 'choice', options: [{ value: '', label: 'Whole venue' }, ...v.resources.map((r) => ({ value: r.id, label: r.name }))] },
-          { key: 'from_date', label: 'From date', type: 'date' }, { key: 'to_date', label: 'To date', type: 'date' },
-          { key: 'start_time', label: 'Daily from', type: 'time', optional: true }, { key: 'end_time', label: 'Daily until', type: 'time', optional: true },
-          { key: 'weekdays', label: 'Only on these days', hint: daysHint, optional: true },
-          { key: 'kind', label: 'Kind', type: 'choice', options: ['maintenance', 'holiday', 'event', 'private', 'other'] }, { key: 'reason', label: 'Reason', optional: true },
-          { key: 'cancel_conflicting', label: 'Cancel & refund bookings already in that time?', type: 'choice', options: YN },
+          { key: 'resource_id', label: 'What to block', type: 'chips', blank: true, options: [{ value: '', label: 'Whole venue' }, ...v.resources.map((r) => ({ value: r.id, label: `${r.sport_emoji ?? ''} ${r.name}`.trim() }))] },
+          { key: 'from_date', label: 'From', type: 'date' }, { key: 'to_date', label: 'To', type: 'date' },
+          { key: 'all_day', label: 'All day', type: 'switch', default: true },
+          { key: 'start_time', label: 'Every day from', type: 'time', show: (x) => !x.all_day }, { key: 'end_time', label: 'Until', type: 'time', show: (x) => !x.all_day },
+          { key: 'weekdays', label: 'Only on these days', type: 'weekdays', optional: true, hint: 'Leave empty to block every day in the range' },
+          { key: 'kind', label: 'Why', type: 'chips', options: [{ value: 'maintenance', label: '🔧 Maintenance' }, { value: 'holiday', label: '🎉 Holiday' }, { value: 'event', label: '🏆 Event' }, { value: 'private', label: '🔒 Private hire' }, { value: 'other', label: 'Other' }] },
+          { key: 'reason', label: 'Note', optional: true },
+          { key: 'cancel_conflicting', label: 'Cancel & refund bookings already in that time', type: 'switch', default: false },
         ]}
         onSubmit={async (f) => {
-          const r = await api.post(`/venues/${v.id}/blocks`, { resource_ids: f.resource_id ? [f.resource_id] : [], from_date: f.from_date, to_date: f.to_date, start_time: f.start_time, end_time: f.end_time, weekdays: days(f.weekdays), kind: f.kind, reason: f.reason, cancel_conflicting: f.cancel_conflicting });
+          const r = await api.post(`/venues/${v.id}/blocks`, { resource_ids: f.resource_id ? [f.resource_id] : [], from_date: f.from_date, to_date: f.to_date, start_time: f.all_day ? undefined : f.start_time, end_time: f.all_day ? undefined : f.end_time, weekdays: f.weekdays, kind: f.kind, reason: f.reason, cancel_conflicting: f.cancel_conflicting });
           list.reload(); return `${r.blocks} blocks created${r.cancelled_bookings ? `, ${r.cancelled_bookings} booking(s) cancelled` : ''}`;
         }} />
     </Section>
@@ -147,48 +150,52 @@ function Blocks({ v }) {
 function Pricing({ v, reload }) {
   const { toast } = useSession();
   const card = useLoad(() => api.get(`/venues/${v.id}/price-rules`), [v.id]);
-  const sports = useLoad(() => api.get('/sports'), []);
   const [rule, setRule] = useState(false);
   const [area, setArea] = useState(false);
   const [edit, setEdit] = useState(null);
   const areaName = (rid) => v.resources.find((r) => r.id === rid)?.name ?? 'All areas';
   const done = () => { card.reload(); reload(); };
-  const sportOpts = [{ value: '', label: 'Any' }, ...(sports.data ?? []).map((s) => ({ value: s.slug, label: `${s.emoji} ${s.name}` }))];
   return (
     <>
-      <Section title="Courts, tables & areas" color={c.lime}>
+      <Section title="Courts" color={c.lime}>
         <T color={c.mute} size={13}>Each area has its own capacity (how many bookings at once — or units of kit), players per unit, slot length and base rate.</T>
         {v.resources.map((r) => (
           <Row key={r.id} onPress={() => setEdit(r)} title={`${KIND[r.kind] ?? ''} ${r.name}`}
-            sub={[r.sport, `capacity ${r.capacity}`, r.max_players && `${r.max_players} players`, `${r.slot_minutes}-min slots`, `${r.min_slots}–${r.max_slots} slots`].filter(Boolean).join(' · ')}
+            sub={[r.sport ? `${r.sport_emoji ?? ''} ${r.sport}`.trim() : '⚠ choose a sport', `capacity ${r.capacity}`, r.max_players && `${r.max_players} players`, `${r.slot_minutes}-min slots`, `${r.min_slots}–${r.max_slots} slots`].filter(Boolean).join(' · ')}
             right={<T weight="700">{moneyIn(r.hourly_rate_cents, v.currency)}/h</T>} />
         ))}
-        <Btn small title="+ Add area" color={c.violet} onPress={() => setArea(true)} style={{ alignSelf: 'flex-start' }} />
+        <Btn small title="+ Add a court" color={c.violet} onPress={() => setArea(true)} style={{ alignSelf: 'flex-start' }} />
       </Section>
-      <Section title="Rate rules" color={c.sun}>
-        <T color={c.mute} size={13}>Peak, off-peak, weekend or seasonal rates. The most specific rule wins; otherwise the area's base rate applies.</T>
+      <Section title="Special rates" color={c.sun}>
+        <T color={c.mute} size={13}>One-off rates for holidays, tournaments or events. They override the price categories on the days they apply. Everyday Peak / Off-peak prices live under Timetable & prices.</T>
         {card.data?.rules.length ? card.data.rules.map((r) => (
           <Row key={r.id} title={`${r.name} · ${moneyIn(r.hourly_rate_cents, v.currency)}/h`}
             sub={`${areaName(r.resource_id)} · ${r.start}–${r.end} · ${r.weekdays ? r.weekdays.map((d) => WEEKDAYS[d]).join(' ') : 'every day'}${r.valid_from || r.valid_to ? ` · ${r.valid_from?.slice(0, 10) ?? '…'} → ${r.valid_to?.slice(0, 10) ?? '…'}` : ''}`}
             right={<Btn small title="Delete" color={c.paper} ink={c.red} onPress={async () => { try { await api.del(`/price-rules/${r.id}`); done(); } catch (e) { toast(e.message); } }} />} />
-        )) : <Empty emoji="🏷️" title="No rate rules" sub="Everything is charged at the area's base rate." />}
-        <Btn small title="+ Add rate rule" color={c.violet} onPress={() => setRule(true)} style={{ alignSelf: 'flex-start' }} />
+        )) : <Empty emoji="🏷️" title="No special rates" sub="Prices follow your timetable categories." />}
+        <Btn small title="+ Special rate" color={c.violet} onPress={() => setRule(true)} style={{ alignSelf: 'flex-start' }} />
       </Section>
-      <FormSheet visible={rule} onClose={() => setRule(false)} title="New rate rule"
-        fields={[{ key: 'name', label: 'Name', placeholder: 'Weekday evening peak' }, { key: 'resource_id', label: 'Applies to', type: 'choice', options: [{ value: '', label: 'All areas' }, ...v.resources.map((r) => ({ value: r.id, label: r.name }))] },
-          { key: 'start', label: 'From', type: 'time' }, { key: 'end', label: 'Until', type: 'time' }, { key: 'hourly_rate_cents', label: 'Rate per hour (minor units)', type: 'number' },
-          { key: 'weekdays', label: 'Days', hint: daysHint, optional: true }, { key: 'valid_from', label: 'Valid from', type: 'date', optional: true }, { key: 'valid_to', label: 'Valid until', type: 'date', optional: true }, { key: 'priority', label: 'Priority', type: 'number', optional: true }]}
-        onSubmit={async (f) => { await api.post(`/venues/${v.id}/price-rules`, { ...f, resource_id: f.resource_id || undefined, weekdays: days(f.weekdays) }); done(); return 'Rule added'; }} />
-      <FormSheet visible={area} onClose={() => setArea(false)} title="Add an area"
-        fields={[{ key: 'kind', label: 'Type', type: 'choice', options: ['court', 'table', 'ground', 'pool', 'lane', 'rink', 'range', 'track', 'room', 'studio', 'equipment', 'other'] }, { key: 'name', label: 'Name', placeholder: 'Court 1' },
-          { key: 'sport', label: 'Sport', type: 'choice', options: sportOpts },
-          { key: 'capacity', label: 'Capacity (bookings at once / units)', type: 'number', optional: true }, { key: 'max_players', label: 'Players per unit', type: 'number', optional: true },
-          { key: 'hourly_rate_cents', label: 'Base rate per hour (minor units)', type: 'number', optional: true },
-          { key: 'slot_minutes', label: 'Slot length (15, 30, 45, 60, 90, 120)', type: 'number', optional: true }, { key: 'min_slots', label: 'Min slots per booking', type: 'number', optional: true }, { key: 'max_slots', label: 'Max slots per booking', type: 'number', optional: true }]}
-        onSubmit={async (f) => { await api.post(`/venues/${v.id}/resources`, { ...f, sport: f.sport || undefined }); done(); return 'Area added'; }} />
-      <FormSheet visible={!!edit} onClose={() => setEdit(null)} title={`Edit ${edit?.name ?? ''}`} initial={edit ? { name: edit.name, capacity: edit.capacity, max_players: edit.max_players ?? '', hourly_rate_cents: edit.hourly_rate_cents, slot_minutes: edit.slot_minutes, min_slots: edit.min_slots, max_slots: edit.max_slots } : {}}
-        fields={[{ key: 'name', label: 'Name' }, { key: 'capacity', label: 'Capacity', type: 'number' }, { key: 'max_players', label: 'Players per unit', type: 'number', optional: true }, { key: 'hourly_rate_cents', label: 'Base rate per hour (minor units)', type: 'number' },
-          { key: 'slot_minutes', label: 'Slot length (min)', type: 'number' }, { key: 'min_slots', label: 'Min slots', type: 'number' }, { key: 'max_slots', label: 'Max slots', type: 'number' }, { key: 'active', label: 'Available for booking?', type: 'choice', options: [{ value: true, label: 'Yes' }, { value: false, label: 'Retire it' }] }]}
+      <FormSheet visible={rule} onClose={() => setRule(false)} title="Special rate" submitLabel="Add"
+        fields={[{ key: 'name', label: 'What is it', type: 'chips', options: ['Holiday rate', 'Tournament', 'Festival', 'Happy hour', 'Special event'] },
+          { key: 'resource_id', label: 'Applies to', type: 'chips', blank: true, options: [{ value: '', label: 'All courts' }, ...v.resources.map((r) => ({ value: r.id, label: `${r.sport_emoji ?? ''} ${r.name}`.trim() }))] },
+          { key: 'hourly_rate_cents', label: 'Rate per hour', type: 'money', currency: v.currency },
+          { key: 'start', label: 'From', type: 'time', default: '00:00' }, { key: 'end', label: 'Until', type: 'time', default: '24:00' },
+          { key: 'weekdays', label: 'Days', type: 'weekdays', optional: true, hint: 'Leave empty for every day' },
+          { key: 'valid_from', label: 'Starts on', type: 'date', optional: true }, { key: 'valid_to', label: 'Ends on', type: 'date', optional: true }]}
+        onSubmit={async (f) => { await api.post(`/venues/${v.id}/price-rules`, { ...f, start: f.start ?? '00:00', end: f.end ?? '24:00', resource_id: f.resource_id || undefined }); done(); return 'Special rate added'; }} />
+      <FormSheet visible={area} onClose={() => setArea(false)} title="Add a court" submitLabel="Add"
+        fields={[{ key: 'sport', label: 'Sport', type: 'sport' }, { key: 'kind', label: 'Type', type: 'chips', options: [{ value: 'court', label: '🏟️ Court' }, { value: 'table', label: '🏓 Table' }, { value: 'ground', label: '🌿 Ground' }, { value: 'pool', label: '🏊 Pool' }, { value: 'lane', label: '🎳 Lane' }, { value: 'rink', label: '⛸️ Rink' }, { value: 'range', label: '🎯 Range' }, { value: 'track', label: '🏃 Track' }, { value: 'room', label: '🚪 Room' }, { value: 'studio', label: '🧘 Studio' }, { value: 'equipment', label: '🎒 Equipment' }, { value: 'other', label: 'Other' }] }, { key: 'name', label: 'Name', placeholder: 'Court 1' },
+          { key: 'hourly_rate_cents', label: 'Base rate per hour', type: 'money', currency: v.currency, optional: true, hint: 'Used where no price category applies' },
+          { key: 'slot_minutes', label: 'Slot length', type: 'chips', default: 60, options: [{ value: 15, label: '15 min' }, { value: 30, label: '30 min' }, { value: 45, label: '45 min' }, { value: 60, label: '1 hour' }, { value: 90, label: '1½ h' }, { value: 120, label: '2 hours' }] },
+          { key: 'capacity', label: 'Bookings at once', type: 'stepper', min: 1, max: 100, default: 1, hint: '1 for a court; more for a pool lane block or kit' }, { key: 'max_players', label: 'Players per court', type: 'stepper', min: 1, max: 100, default: 2 },
+          { key: 'min_slots', label: 'Fewest slots per booking', type: 'stepper', min: 1, max: 12, default: 1 }, { key: 'max_slots', label: 'Most slots per booking', type: 'stepper', min: 1, max: 24, default: 4 }]}
+        onSubmit={async (f) => { await api.post(`/venues/${v.id}/resources`, f); done(); return 'Court added'; }} />
+      <FormSheet visible={!!edit} onClose={() => setEdit(null)} title={`Edit ${edit?.name ?? ''}`} initial={edit ? { sport: edit.sport_slug ?? '', name: edit.name, capacity: edit.capacity, max_players: edit.max_players ?? 2, hourly_rate_cents: edit.hourly_rate_cents, slot_minutes: edit.slot_minutes, min_slots: edit.min_slots, max_slots: edit.max_slots, active: edit.active !== false } : {}}
+        fields={[{ key: 'sport', label: 'Sport', type: 'sport' }, { key: 'name', label: 'Name' },
+          { key: 'hourly_rate_cents', label: 'Base rate per hour', type: 'money', currency: v.currency }, { key: 'slot_minutes', label: 'Slot length', type: 'chips', options: [{ value: 15, label: '15 min' }, { value: 30, label: '30 min' }, { value: 45, label: '45 min' }, { value: 60, label: '1 hour' }, { value: 90, label: '1½ h' }, { value: 120, label: '2 hours' }] },
+          { key: 'capacity', label: 'Bookings at once', type: 'stepper', min: 1, max: 100 }, { key: 'max_players', label: 'Players per court', type: 'stepper', min: 1, max: 100 },
+          { key: 'min_slots', label: 'Fewest slots per booking', type: 'stepper', min: 1, max: 12 }, { key: 'max_slots', label: 'Most slots per booking', type: 'stepper', min: 1, max: 24 },
+          { key: 'active', label: 'Open for booking', type: 'switch', hint: 'Switch off to retire the court — existing bookings stay' }]}
         onSubmit={async (f) => { await api.patch(`/resources/${edit.id}`, f); done(); return 'Saved'; }} />
     </>
   );
@@ -208,13 +215,16 @@ function Discounts({ v }) {
           sub={[d.min_slots > 1 && `${d.min_slots}+ slots`, d.weekdays && d.weekdays.map((x) => WEEKDAYS[x]).join(' '), d.valid_to && `until ${d.valid_to.slice(0, 10)}`, `used ${d.redemptions}${d.max_redemptions ? `/${d.max_redemptions}` : ''}`, `given ${moneyIn(d.given_cents, v.currency)}`].filter(Boolean).join(' · ')}
           right={<Btn small title={d.active ? 'Stop' : 'Resume'} color={c.paper} onPress={async () => { try { await api.patch(`/discounts/${d.id}`, { active: !d.active }); list.reload(); } catch (e) { toast(e.message); } }} />} />
       )) : <Empty emoji="🏷️" title="No discounts yet" />}
-      <FormSheet visible={form} onClose={() => setForm(false)} title="New discount"
-        fields={[{ key: 'name', label: 'Name', placeholder: 'Book 3 slots, save 10%' }, { key: 'code', label: 'Promo code (blank = automatic)', optional: true },
-          { key: 'kind', label: 'Type', type: 'choice', options: [{ value: 'percent', label: 'Percent' }, { value: 'fixed', label: 'Fixed amount' }] }, { key: 'value', label: 'Value (percent, or minor units)', type: 'number' },
-          { key: 'min_slots', label: 'Minimum slots', type: 'number', optional: true }, { key: 'resource_id', label: 'Only for', type: 'choice', options: [{ value: '', label: 'All areas' }, ...v.resources.map((r) => ({ value: r.id, label: r.name }))] },
-          { key: 'weekdays', label: 'Only on days', hint: daysHint, optional: true }, { key: 'valid_from', label: 'From', type: 'date', optional: true }, { key: 'valid_to', label: 'Until', type: 'date', optional: true },
-          { key: 'max_redemptions', label: 'Max total uses', type: 'number', optional: true }, { key: 'per_user_limit', label: 'Max uses per customer', type: 'number', optional: true }]}
-        onSubmit={async (f) => { await api.post(`/venues/${v.id}/discounts`, { ...f, resource_id: f.resource_id || undefined, weekdays: days(f.weekdays) }); list.reload(); return 'Discount created'; }} />
+      <FormSheet visible={form} onClose={() => setForm(false)} title="New discount" submitLabel="Create"
+        fields={[{ key: 'name', label: 'Name', placeholder: 'Book 3 slots, save 10%' }, { key: 'code', label: 'Promo code', optional: true, hint: 'Leave empty to apply automatically' },
+          { key: 'kind', label: 'Type', type: 'choice', options: [{ value: 'percent', label: 'Percent off' }, { value: 'fixed', label: 'Fixed amount off' }] },
+          { key: 'value_pct', label: 'Percent off', type: 'stepper', min: 5, max: 100, step: 5, default: 10, suffix: '%', show: (x) => x.kind !== 'fixed' },
+          { key: 'value_amt', label: 'Amount off', type: 'money', currency: v.currency, show: (x) => x.kind === 'fixed' },
+          { key: 'min_slots', label: 'Needs at least this many slots', type: 'stepper', min: 1, max: 24, default: 1 },
+          { key: 'resource_id', label: 'Only for', type: 'chips', blank: true, options: [{ value: '', label: 'All courts' }, ...v.resources.map((r) => ({ value: r.id, label: `${r.sport_emoji ?? ''} ${r.name}`.trim() }))] },
+          { key: 'weekdays', label: 'Only on days', type: 'weekdays', optional: true }, { key: 'valid_from', label: 'From', type: 'date', optional: true }, { key: 'valid_to', label: 'Until', type: 'date', optional: true },
+          { key: 'max_redemptions', label: 'Total uses allowed', type: 'stepper', min: 0, max: 100000, step: 10, default: 0, hint: '0 = unlimited' }, { key: 'per_user_limit', label: 'Uses per customer', type: 'stepper', min: 0, max: 100, default: 0, hint: '0 = unlimited' }]}
+        onSubmit={async ({ value_pct, value_amt, ...f }) => { await api.post(`/venues/${v.id}/discounts`, { ...f, value: f.kind === 'fixed' ? value_amt : value_pct, resource_id: f.resource_id || undefined, min_slots: f.min_slots || undefined, max_redemptions: f.max_redemptions || undefined, per_user_limit: f.per_user_limit || undefined }); list.reload(); return 'Discount created'; }} />
     </Section>
   );
 }
@@ -325,28 +335,34 @@ function Setup({ v, reload }) {
         {owner ? <Btn small title="+ Add team member" color={c.violet} onPress={() => setSt(true)} style={{ alignSelf: 'flex-start' }} /> : null}
       </Section>
 
-      <FormSheet visible={prof} onClose={() => setProf(false)} title="Venue profile" initial={{ name: v.name, city: v.city ?? '', address: v.address ?? '', postal_code: v.postal_code ?? '', country: v.country ?? '', description: v.description ?? '', latitude: v.latitude ?? '', longitude: v.longitude ?? '', timezone: v.timezone, currency: v.currency, phone: v.phone ?? '', email: v.email ?? '', website: v.website ?? '', amenities: (v.amenities ?? []).join(', '), min_notice_minutes: v.min_notice_minutes, max_advance_days: v.max_advance_days, cancel_free_hours: v.cancel_free_hours, late_cancel_refund_percent: v.late_cancel_refund_percent, notify_owner: v.notify_owner }}
-        fields={[{ key: 'name', label: 'Name' }, { key: 'description', label: 'About', type: 'multiline', optional: true }, { key: 'address', label: 'Address', optional: true }, { key: 'city', label: 'City', optional: true }, { key: 'postal_code', label: 'Postal code', optional: true }, { key: 'country', label: 'Country', optional: true },
-          { key: 'latitude', label: 'Latitude', type: 'number', optional: true, hint: 'Right-click the spot in Google Maps to copy it' }, { key: 'longitude', label: 'Longitude', type: 'number', optional: true },
-          { key: 'timezone', label: 'Time zone (IANA)', placeholder: 'Asia/Kolkata' }, { key: 'currency', label: 'Currency (ISO)', placeholder: 'INR' },
-          { key: 'phone', label: 'Public phone', optional: true }, { key: 'email', label: 'Public email', optional: true }, { key: 'website', label: 'Website', optional: true }, { key: 'amenities', label: 'Amenities (comma separated)', optional: true },
-          { key: 'min_notice_minutes', label: 'Minimum notice (minutes)', type: 'number' }, { key: 'max_advance_days', label: 'Bookable up to (days ahead)', type: 'number' },
-          { key: 'cancel_free_hours', label: 'Free cancellation until (hours before)', type: 'number' }, { key: 'late_cancel_refund_percent', label: 'Refund after that (%)', type: 'number' },
-          { key: 'notify_owner', label: 'Notify the team of new bookings?', type: 'choice', options: [{ value: true, label: 'Yes' }, { value: false, label: 'No' }] }]}
-        onSubmit={(f) => save({ ...f, amenities: f.amenities ? f.amenities.split(',').map((x) => x.trim()).filter(Boolean) : [] })} />
+      <FormSheet visible={prof} onClose={() => setProf(false)} title="Venue profile" initial={{ name: v.name, city: v.city ?? '', address: v.address ?? '', postal_code: v.postal_code ?? '', country: v.country ?? '', description: v.description ?? '', latitude: v.latitude ?? '', longitude: v.longitude ?? '', timezone: v.timezone, currency: v.currency, phone: v.phone ?? '', email: v.email ?? '', website: v.website ?? '', amenities: v.amenities ?? [], min_notice_minutes: v.min_notice_minutes, max_advance_days: v.max_advance_days, cancel_free_hours: v.cancel_free_hours, late_cancel_refund_percent: v.late_cancel_refund_percent, notify_owner: v.notify_owner }}
+        fields={[{ key: 's1', type: 'section', label: 'About' }, { key: 'name', label: 'Name' }, { key: 'description', label: 'About the venue', type: 'multiline', optional: true },
+          { key: 'amenities', label: 'Facilities', type: 'multi', optional: true, options: [...new Set([...AMENITIES, ...(v.amenities ?? [])])] },
+          { key: 's2', type: 'section', label: 'Where' }, { key: 'address', label: 'Address', optional: true }, { key: 'city', label: 'City', optional: true }, { key: 'postal_code', label: 'Postal code', optional: true }, { key: 'country', label: 'Country', optional: true },
+          { key: 'latitude', lngKey: 'longitude', label: 'Map location', type: 'location', optional: true }, { key: 'timezone', label: 'Time zone', type: 'timezone' },
+          { key: 's3', type: 'section', label: 'Contact' }, { key: 'phone', label: 'Public phone', input: 'phone', optional: true }, { key: 'email', label: 'Public email', input: 'email', optional: true }, { key: 'website', label: 'Website', input: 'url', optional: true },
+          { key: 's4', type: 'section', label: 'Booking rules' },
+          { key: 'min_notice_minutes', label: 'Earliest booking before start', type: 'chips', options: [{ value: 0, label: 'Any time' }, { value: 30, label: '30 min' }, { value: 60, label: '1 hour' }, { value: 120, label: '2 hours' }, { value: 360, label: '6 hours' }, { value: 1440, label: '1 day' }] },
+          { key: 'max_advance_days', label: 'Bookable up to', type: 'stepper', min: 1, max: 365, step: 7, suffix: ' days' },
+          { key: 'cancel_free_hours', label: 'Free cancellation until', type: 'stepper', min: 0, max: 168, step: 6, suffix: ' h before' }, { key: 'late_cancel_refund_percent', label: 'Refund after that', type: 'stepper', min: 0, max: 100, step: 10, suffix: '%' },
+          { key: 'notify_owner', label: 'Notify the team of new bookings', type: 'switch' }]}
+        onSubmit={(f) => { const { s1, s2, s3, s4, ...rest } = f; return save({ ...rest, amenities: f.amenities ?? [] }); }} />
       <FormSheet visible={money} onClose={() => setMoney(false)} title="Money, tax & invoices" initial={{ currency: v.currency, payment_mode: v.payment_mode, tax_name: v.tax_name, tax_pct: v.tax_rate_bp / 100, tax_inclusive: v.tax_inclusive, legal_name: v.legal_name ?? '', tax_id: v.tax_id ?? '', billing_address: v.billing_address ?? '', invoice_prefix: v.invoice_prefix ?? '', loyalty_pct: (v.loyalty_earn_bp ?? 0) / 100, loyalty_expiry_months: v.loyalty_expiry_months ?? 12, loyalty_redeem_pct: (v.loyalty_max_redeem_bp ?? 5000) / 100 }}
-        fields={[{ key: 'currency', label: 'Currency (locked once the venue has bookings)', type: 'choice', options: (currencies.data ?? [{ code: v.currency, symbol: '', name: '' }]).map((x) => ({ value: x.code, label: `${x.code} ${x.symbol}` })) },
-          { key: 'payment_mode', label: 'How customers pay', type: 'choice', options: [{ value: 'pay_at_venue', label: 'At the venue' }, { value: 'online_optional', label: 'Online or at venue' }, { value: 'online_required', label: 'Online required' }] },
-          { key: 'tax_name', label: 'Tax name', placeholder: 'GST, VAT, Sales tax' }, { key: 'tax_pct', label: 'Tax rate (%)', type: 'number', optional: true },
-          { key: 'tax_inclusive', label: 'Are your listed prices tax-inclusive?', type: 'choice', options: [{ value: true, label: 'Yes, included' }, { value: false, label: 'No, add on top' }] },
-          { key: 'legal_name', label: 'Legal name on invoices', optional: true }, { key: 'tax_id', label: 'Tax / GST / VAT number', optional: true }, { key: 'billing_address', label: 'Billing address on invoices', optional: true, type: 'multiline' },
-          { key: 'invoice_prefix', label: 'Invoice prefix (2–8 capitals/digits)', optional: true },
-          { key: 'loyalty_pct', label: 'Loyalty: % of what customers pay given back as points (0 = off, max 50)', type: 'number', optional: true },
-          { key: 'loyalty_expiry_months', label: 'Points expire after (months)', type: 'number', optional: true },
-          { key: 'loyalty_redeem_pct', label: 'Points can pay up to (% of one booking)', type: 'number', optional: true }]}
-        onSubmit={async ({ tax_pct, loyalty_pct, loyalty_redeem_pct, ...f }) => save({ ...f, tax_rate_bp: Math.round((tax_pct ?? 0) * 100), loyalty_earn_bp: Math.round((loyalty_pct ?? 0) * 100), loyalty_max_redeem_bp: Math.round((loyalty_redeem_pct ?? 50) * 100) })} />
+        fields={[{ key: 's1', type: 'section', label: 'Payments' }, { key: 'currency', label: 'Currency (locked once the venue has bookings)', type: 'currency' },
+          { key: 'payment_mode', label: 'How customers pay', type: 'chips', options: [{ value: 'pay_at_venue', label: 'At the venue' }, { value: 'online_optional', label: 'Online or at venue' }, { value: 'online_required', label: 'Online only' }] },
+          { key: 's2', type: 'section', label: 'Tax' }, { key: 'tax_name', label: 'Tax', type: 'chips', options: ['GST', 'VAT', 'Sales tax', 'Service tax', 'Tax'] },
+          { key: 'tax_pct', label: 'Tax rate', type: 'stepper', min: 0, max: 40, step: 0.5, suffix: '%' },
+          { key: 'tax_inclusive', label: 'Listed prices already include tax', type: 'switch' },
+          { key: 's3', type: 'section', label: 'On your invoices' }, { key: 'legal_name', label: 'Legal name', optional: true }, { key: 'tax_id', label: 'Tax / GST / VAT number', optional: true }, { key: 'billing_address', label: 'Billing address', optional: true, type: 'multiline' },
+          { key: 'invoice_prefix', label: 'Invoice prefix', optional: true, hint: '2–8 capitals or digits, e.g. NELLAI' },
+          { key: 's4', type: 'section', label: 'Rewards' }, { key: 'loyalty_pct', label: 'Points given back', type: 'stepper', min: 0, max: 50, step: 1, suffix: '%', hint: '0 switches rewards off' },
+          { key: 'loyalty_expiry_months', label: 'Points expire after', type: 'stepper', min: 1, max: 60, step: 1, suffix: ' months', show: (x) => x.loyalty_pct > 0 },
+          { key: 'loyalty_redeem_pct', label: 'Points can pay up to', type: 'stepper', min: 10, max: 100, step: 10, suffix: '% of a booking', show: (x) => x.loyalty_pct > 0 }]}
+        onSubmit={async ({ s1, s2, s3, s4, tax_pct, loyalty_pct, loyalty_redeem_pct, loyalty_expiry_months, ...f }) => save({ ...f, tax_rate_bp: Math.round((tax_pct ?? 0) * 100), loyalty_earn_bp: Math.round((loyalty_pct ?? 0) * 100), ...(loyalty_pct > 0 ? { loyalty_expiry_months, loyalty_max_redeem_bp: Math.round((loyalty_redeem_pct ?? 50) * 100) } : {}) })} />
       <HoursEditor visible={hrs} onClose={() => setHrs(false)} v={v} onSaved={reload} />
-      <FormSheet visible={ct} onClose={() => setCt(false)} title="Add a contact" fields={[{ key: 'role', label: 'Role', type: 'choice', options: ['manager', 'reception', 'emergency', 'billing', 'general'] }, { key: 'name', label: 'Name', optional: true }, { key: 'phone', label: 'Phone', optional: true }, { key: 'email', label: 'Email', optional: true }, { key: 'is_public', label: 'Show to customers?', type: 'choice', options: YN }]}
+      <FormSheet visible={ct} onClose={() => setCt(false)} title="Add a contact" submitLabel="Add"
+        fields={[{ key: 'role', label: 'Role', type: 'chips', options: [{ value: 'manager', label: 'Manager' }, { value: 'reception', label: 'Reception' }, { value: 'emergency', label: 'Emergency' }, { value: 'billing', label: 'Billing' }, { value: 'general', label: 'General' }] },
+          { key: 'name', label: 'Name', optional: true }, { key: 'phone', label: 'Phone', input: 'phone', optional: true }, { key: 'email', label: 'Email', input: 'email', optional: true }, { key: 'is_public', label: 'Show to customers', type: 'switch', default: true }]}
         onSubmit={async (f) => { await api.post(`/venues/${v.id}/contacts`, f); contacts.reload(); return 'Contact added'; }} />
       <FormSheet visible={st} onClose={() => setSt(false)} title="Add a team member" fields={[{ key: 'handle', label: 'Their handle', hint: 'They can then manage bookings, blocks, pricing and reports' }]}
         onSubmit={async (f) => { await api.post(`/venues/${v.id}/staff`, f); staff.reload(); return 'Added'; }} />
@@ -407,7 +423,8 @@ function LoyaltyPanel({ v }) {
       )}
       <Btn small title="Give bonus points" color={c.violet} onPress={() => setGift(true)} style={{ marginTop: 10, alignSelf: 'flex-start' }} />
       <FormSheet visible={gift} onClose={() => setGift(false)} title="Give bonus points" submitLabel="Give points"
-        fields={[{ key: 'user_handle', label: 'Their handle' }, { key: 'points', label: `Points (1 point = ${v.currency} 0.01)`, type: 'number' }, { key: 'note', label: 'Why (they will see this)', placeholder: 'Sorry about the rained-off game' }]}
+        fields={[{ key: 'user_handle', label: 'Their handle' }, { key: 'points', label: `Points (1 point = ${v.currency} 0.01)`, type: 'chips', options: [{ value: 100, label: '100' }, { value: 500, label: '500' }, { value: 1000, label: '1,000' }, { value: 5000, label: '5,000' }, { value: 10000, label: '10,000' }] },
+          { key: 'note', label: 'Why (they will see this)', type: 'chips', options: ['Sorry about the cancelled game', 'Thanks for being a regular', 'Welcome gift', 'Tournament prize', 'Other'] }]}
         onSubmit={async (f) => { await api.post(`/venues/${v.id}/loyalty/bonus`, f); sum.reload(); return 'Points given'; }} />
     </Card>
   );
