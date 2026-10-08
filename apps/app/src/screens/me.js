@@ -7,16 +7,18 @@ import { useNav } from '../nav';
 import { Avatar, Btn, Card, Chip, Empty, GradCard, H1, Loading, Row, Screen, Section, StatPill, T, Tag, Bubble } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { c, grad } from '../theme';
+import { ROLES, roleLabel } from '../roles';
 
 const mask = (v) => (v ? '••••••••' : '—');
 const PII = [['email', 'Email'], ['full_name', 'Full name'], ['phone', 'Phone'], ['dob', 'Date of birth'], ['national_id', 'National ID'], ['address', 'Address']];
 
 export function Me() {
-  const { user, signOut, refresh, toast } = useSession();
+  const { user, signOut, refresh, toast, activeRole, setActiveRole } = useSession();
   const { push } = useNav();
   const [reveal, setReveal] = useState(false);
   const [edit, setEdit] = useState(false);
   const [sp, setSp] = useState(false);
+  const [rolesForm, setRolesForm] = useState(false);
   const [newToken, setNewToken] = useState(null);
   const [tokForm, setTokForm] = useState(false);
   const dash = useLoad(() => api.get('/dashboard'), []);
@@ -30,9 +32,16 @@ export function Me() {
         <View style={{ flexDirection: 'row', gap: 14, alignItems: 'center' }}>
           <Avatar user={user} size={72} />
           <View style={{ flex: 1 }}><H1 color="#fff" style={{ fontSize: 26 }}>{user.display_name}</H1><T color="#fff" weight="800">@{user.handle}</T>
-            <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>{user.roles.map((r) => <Tag key={r} label={r.replace('_', ' ')} color={c.lime} />)}</View></View>
+            <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>{user.roles.map((r) => <Tag key={r} label={roleLabel(r)} color={c.lime} />)}</View></View>
         </View>
       </GradCard>
+      <Section title="Acting as" color={c.cyan}>
+        <T size={13} color={c.mute}>One login, several roles. Pick the one you want to use right now — the app shows that role's tools.</T>
+        <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+          {user.roles.map((r) => <Chip key={r} label={roleLabel(r)} active={r === activeRole} onPress={() => { setActiveRole(r); toast(`Now acting as ${roleLabel(r)}`); }} />)}
+        </View>
+        <Btn small title="Add or remove roles" color={c.paper} ink={c.ink} onPress={() => setRolesForm(true)} style={{ marginTop: 10, alignSelf: 'flex-start' }} />
+      </Section>
       <View style={{ flexDirection: 'row', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
         <StatPill value={d?.points ?? '–'} label="POINTS" color={c.lime} /><StatPill value={d?.trophies ?? '–'} label="TROPHIES" color={c.sun} /><StatPill value={d?.active_policies ?? '–'} label="POLICIES" color={c.cyan} />
       </View>
@@ -72,6 +81,15 @@ export function Me() {
 
       <Btn title="Log out" color={c.ink} onPress={signOut} style={{ marginTop: 28 }} />
 
+      <FormSheet visible={rolesForm} onClose={() => setRolesForm(false)} title="Add or remove roles" submitLabel="Save" initial={{ roles: user.roles }}
+        fields={[{ key: 'roles', label: 'My roles (your venues, events and bookings are kept if you drop one)', type: 'multi', options: ROLES.map(([value, label]) => ({ value, label })) }]}
+        onSubmit={async (v) => {
+          const next = v.roles ?? [];
+          await api.patch('/me/roles', { add: next.filter((r) => !user.roles.includes(r)), remove: user.roles.filter((r) => !next.includes(r)) });
+          const me = await refresh();
+          if (!me.roles.includes(activeRole)) setActiveRole(me.roles[0]);
+          return 'Roles updated';
+        }} />
       <FormSheet visible={edit} onClose={() => setEdit(false)} title="Edit details" initial={{ display_name: user.display_name, bio: user.bio, full_name: user.full_name, phone: user.phone, dob: user.dob, national_id: user.national_id, address: user.address }}
         fields={[{ key: 'display_name', label: 'Display name', optional: true }, { key: 'bio', label: 'Bio', optional: true, type: 'multiline' }, { key: 'full_name', label: 'Full name', optional: true }, { key: 'phone', label: 'Phone', optional: true }, { key: 'dob', label: 'Date of birth (YYYY-MM-DD)', optional: true }, { key: 'national_id', label: 'National ID', optional: true }, { key: 'address', label: 'Address', optional: true, type: 'multiline' }]}
         onSubmit={async (v) => { await api.patch('/me', v); await refresh(); return 'Saved & encrypted'; }} />

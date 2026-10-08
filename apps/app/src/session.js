@@ -9,6 +9,8 @@ export const useSession = () => useContext(Ctx);
 export function SessionProvider({ children }) {
   const [state, setState] = useState({ ready: false, user: null });
   const [toastMsg, setToastMsg] = useState(null);
+  const [activeRole, setActive] = useState(null); // which of the user's roles the app is currently showing (view mode)
+  const setActiveRole = useCallback((r) => { setActive(r); storage.set('activeRole', r); }, []);
 
   const signOut = useCallback(async () => { setToken(null); await storage.del('token'); setState({ ready: true, user: null }); }, []);
   const signIn = useCallback(async ({ token, user }) => {
@@ -30,7 +32,19 @@ export function SessionProvider({ children }) {
   }, [signOut]);
 
   const toast = useCallback((msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 2600); }, []);
-  const value = useMemo(() => ({ ...state, signIn, signOut, refresh, toast, has: (...r) => state.user?.roles?.some((x) => r.includes(x) || x === 'admin') }), [state, signIn, signOut, refresh, toast]);
+  useEffect(() => {
+    const roles = state.user?.roles;
+    if (!roles?.length) return;
+    if (activeRole && roles.includes(activeRole)) return;
+    (async () => { const saved = await storage.get('activeRole'); setActive(saved && roles.includes(saved) ? saved : roles[0]); })();
+  }, [state.user, activeRole]);
+
+  // `has` follows the active role (admin always passes); `hasAny` checks every role the account holds.
+  const value = useMemo(() => ({
+    ...state, signIn, signOut, refresh, toast, activeRole, setActiveRole,
+    has: (...r) => state.user?.roles?.includes('admin') || r.includes(activeRole),
+    hasAny: (...r) => state.user?.roles?.some((x) => r.includes(x) || x === 'admin'),
+  }), [state, signIn, signOut, refresh, toast, activeRole, setActiveRole]);
   return (
     <Ctx.Provider value={value}>
       {children}
