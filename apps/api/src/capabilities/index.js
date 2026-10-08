@@ -5,6 +5,8 @@ import './disputes.js';
 import './providers.js';
 import './followups.js';
 import './teams.js';
+import './team-management.js';
+import './team-chat.js';
 import './venues.js';
 import './venue-admin.js';
 import './reservations.js';

@@ -5,8 +5,9 @@ import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { hasRole, isAdmin, mustFind, PUBLIC_USER, sportBySlugOrId } from '../helpers.js';
 import { canManageTeam } from './teams.js';
 
-const kinds = ['match_players', 'team_recruiting', 'sponsorship_wanted', 'sponsor_call'];
-const POST_COLS = `b.id, b.kind, b.title, b.body, b.city, b.starts_at, b.positions_needed, b.budget_cents, b.status, b.created_at, b.team_id,
+const kinds = ['match_players', 'team_recruiting', 'coach_wanted', 'sponsorship_wanted', 'sponsor_call'];
+const rateUnit = z.enum(['match', 'hour', 'month', 'season']);
+const POST_COLS = `b.id, b.kind, b.title, b.body, b.city, b.starts_at, b.positions_needed, b.budget_cents, b.rate_unit, b.status, b.created_at, b.team_id,
   s.slug AS sport_slug, s.name AS sport, s.emoji AS sport_emoji, t.name AS team_name, t.emoji AS team_emoji,
   u.id AS author_id, u.handle AS author_handle, u.display_name AS author_name, u.avatar_emoji AS author_emoji, u.avatar_color AS author_color,
   (SELECT count(*)::int FROM billboard_responses r WHERE r.post_id=b.id AND r.status='accepted') AS accepted`;
@@ -17,15 +18,16 @@ cap({
   summary: 'Post a demand on the billboard: players wanted for a match, a team recruiting, an athlete/team seeking a sponsor, or a sponsor calling for athletes (sponsors only).',
   input: z.object({
     kind: z.enum(kinds), title: z.string().min(3).max(100), body: z.string().max(1000).optional(), sport: z.string().optional(), team_id: id.optional(),
-    city: z.string().max(80).optional(), starts_at: z.string().datetime({ offset: true }).optional(), positions_needed: z.number().int().min(1).max(200).default(1), budget_cents: money.optional(),
+    city: z.string().max(80).optional(), starts_at: z.string().datetime({ offset: true }).optional(), positions_needed: z.number().int().min(1).max(200).default(1), budget_cents: money.optional(), rate_unit: rateUnit.optional().describe('what the budget pays per, e.g. per match — for team_recruiting / coach_wanted'),
   }),
   async handler({ user }, i) {
     if (i.kind === 'sponsor_call' && !hasRole(user, 'sponsor')) throw forbidden('Only sponsors can post sponsor calls');
+    if (i.kind === 'coach_wanted' && !i.team_id) throw badRequest('Pick the team you need a coach for');
     if (i.team_id && !(await canManageTeam(user, await mustFind('teams', i.team_id)))) throw forbidden('You do not manage that team');
     const sport = i.sport ? await sportBySlugOrId(i.sport) : null;
     if (i.sport && !sport) throw notFound('Sport');
-    return one('INSERT INTO billboard_posts(author_id, kind, sport_id, team_id, title, body, city, starts_at, positions_needed, budget_cents) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id, kind, title, status',
-      [user.id, i.kind, sport?.id ?? null, i.team_id ?? null, i.title, i.body, i.city, i.starts_at, i.positions_needed, i.budget_cents]);
+    return one('INSERT INTO billboard_posts(author_id, kind, sport_id, team_id, title, body, city, starts_at, positions_needed, budget_cents, rate_unit) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id, kind, title, status',
+      [user.id, i.kind, sport?.id ?? null, i.team_id ?? null, i.title, i.body, i.city, i.starts_at, i.positions_needed, i.budget_cents, i.rate_unit]);
   },
 });
 
@@ -95,8 +97,12 @@ cap({
       if (r.status !== 'pending') throw conflict(`Already ${r.status}`);
       if (i.status === 'accepted') {
         if (p.status !== 'open') throw conflict('This post is no longer open');
-        if (p.kind === 'team_recruiting' && p.team_id) {
-          await c.query(`INSERT INTO team_members(team_id, user_id, role, status) VALUES ($1,$2,'player','active') ON CONFLICT (team_id, user_id) DO UPDATE SET status='active'`, [p.team_id, r.responder_id]);
+        if ((p.kind === 'team_recruiting' || p.kind === 'coach_wanted') && p.team_id) {
+          // a recruiting post's budget is the agreed rate for whoever is taken on
+          const role = p.kind === 'coach_wanted' ? 'coach' : 'player';
+          await c.query(`INSERT INTO team_members(team_id, user_id, role, status, rate_cents, rate_unit) VALUES ($1,$2,$3,'active',$4,coalesce($5,'match'))
+                         ON CONFLICT (team_id, user_id) DO UPDATE SET status='active', role=CASE WHEN team_members.status='active' AND team_members.role IN ('manager','captain') THEN team_members.role ELSE EXCLUDED.role END, rate_cents=coalesce(EXCLUDED.rate_cents, team_members.rate_cents), rate_unit=EXCLUDED.rate_unit`,
+            [p.team_id, r.responder_id, role, p.budget_cents, p.rate_unit]);
         }
       }
       const { rows: [out] } = await c.query('UPDATE billboard_responses SET status=$2 WHERE id=$1 RETURNING id, post_id, status', [i.id, i.status]);

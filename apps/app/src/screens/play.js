@@ -1,4 +1,5 @@
 import { VerifiedBadges } from './verification';
+import { AvailabilityPicker, MySelections } from './team-manage';
 import React, { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { api } from '../api';
@@ -11,6 +12,21 @@ import { FixtureCard, Reviews, StandingsTable, TrophyShelf, Stars } from '../blo
 import { SportSelect } from '../sportpicker';
 import { c, grad, day, accentFor, money } from '../theme';
 
+
+/** Teams that invited you, with accept / decline. Hidden when there are none. */
+function TeamInvites({ onChanged }) {
+  const { user, toast } = useSession();
+  const { push } = useNav();
+  const inv = useLoad(() => (user ? api.get('/me/team-invites') : []), [user?.id]);
+  if (!inv.data?.length) return null;
+  const answer = async (x, accept) => { try { await api.post(`/teams/${x.team_id}/invitations/respond`, { accept }); toast(accept ? `Welcome to ${x.name}!` : 'Declined'); inv.reload(); onChanged(); if (accept) push('Team', { id: x.team_id }); } catch (e) { toast('' + e.message); } };
+  return (
+    <Section title="Team invitations" color={c.pink}>
+      {inv.data.map((x) => <Row key={x.team_id} left={<Bubble emoji={x.emoji} color={x.color} />} title={x.name} sub={`Invited as ${x.role}${x.rate_cents != null ? ` · ${money(x.rate_cents)} ${x.rate_unit}` : ''}`}
+        right={<View style={{ flexDirection: 'row', gap: 6 }}><Btn small title="Join" onPress={() => answer(x, true)} /><Btn small title="No" color={c.paper} ink={c.ink} onPress={() => answer(x, false)} /></View>} />)}
+    </Section>
+  );
+}
 
 export function Play() {
   const { has } = useSession();
@@ -50,6 +66,7 @@ export function Play() {
         </View>
       ) : null}
       {tab === 'events' && has('organizer') ? <Btn title="Create an event" color={c.violet} onPress={() => setForm('event')} style={{ marginTop: 8 }} /> : null}
+      {tab === 'teams' ? <TeamInvites onChanged={list.reload} /> : null}
       {tab === 'teams' ? <Btn title="Start a team" color={c.pink} onPress={() => setForm('team')} style={{ marginTop: 8 }} /> : null}
 
       <View style={{ gap: 12, marginTop: 14 }}>
@@ -151,6 +168,7 @@ export function Event({ id }) {
 
 export function Team({ id }) {
   const { push } = useNav();
+  const { user } = useSession();
   const t = useLoad(() => api.get(`/teams/${id}`), [id]);
   if (t.loading && !t.data) return <Screen><Loading /></Screen>;
   if (t.error) return <Screen><ErrorBox error={t.error} onRetry={t.reload} /></Screen>;
@@ -162,6 +180,12 @@ export function Team({ id }) {
         <T color="#fff" weight="800">{x.sport_emoji} {x.sport}{x.city ? ` · ${x.city}` : ''} · {x.members.length} players</T>
         {x.rating?.n ? <Stars n={x.rating.avg} /> : null}
       </GradCard>
+      {x.my_membership?.status === 'active' || x.can_manage ? <Btn title="💬 Team chat" color={c.violet} onPress={() => push('TeamChat', { id })} style={{ marginTop: 12 }} /> : null}
+      {x.can_manage ? <Btn title="⚙️ Manage team — roster, squads, recruiting, rates" onPress={() => push('TeamManage', { id })} style={{ marginTop: 12 }} /> : null}
+      {x.my_membership?.status === 'active' ? <>
+        <Section title="My availability" color={c.mint}><AvailabilityPicker teamId={id} userId={user.id} value={x.my_membership.availability} onDone={t.reload} /></Section>
+        <MySelections teamId={id} />
+      </> : null}
       <Section title="Roster" color={c.cyan}>
         {x.members.map((m) => <Row key={m.id} onPress={() => push('Person', { id: m.id })} left={<Avatar user={m} />} title={`${m.jersey_no != null ? '#' + m.jersey_no + ' ' : ''}${m.display_name}`} sub={m.team_role} />)}
       </Section>
