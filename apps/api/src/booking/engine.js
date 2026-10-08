@@ -425,7 +425,7 @@ export async function nextFreeSlot(c, ctx, resources, { from = new Date(), days 
 export const canManage = async (user, venueId, c = pool) => {
   if (!user) return false;
   if (user.roles?.includes('admin')) return true;
-  const r = await c.query('SELECT 1 FROM venues WHERE id=$1 AND owner_id=$2 UNION ALL SELECT 1 FROM venue_staff WHERE venue_id=$1 AND user_id=$2 AND removed_at IS NULL', [venueId, user.id]);
+  const r = await c.query('SELECT 1 FROM venues WHERE id=$1 AND owner_id=$2 UNION ALL SELECT 1 FROM venue_staff WHERE venue_id=$1 AND user_id=$2 AND removed_at IS NULL UNION ALL SELECT 1 FROM venues v JOIN organisations o ON o.id=v.organisation_id AND o.status=\'active\' JOIN organisation_members m ON m.organisation_id=o.id AND m.status=\'active\' AND m.role IN (\'owner\',\'admin\') WHERE v.id=$1 AND m.user_id=$2', [venueId, user.id]);
   return r.rowCount > 0;
 };
 

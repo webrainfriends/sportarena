@@ -8,16 +8,18 @@ import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { isAdmin, mustFind, PUBLIC_USER } from '../helpers.js';
 import { notify } from '../notify.js';
 import { canManageTeam } from './teams.js';
+import { hasOrgGrant } from '../org-access.js';
 
 const availability = z.enum(['available', 'tentative', 'unavailable', 'injured']);
 const rateUnit = z.enum(['match', 'hour', 'month', 'season']);
 const memberRole = z.enum(['captain', 'player', 'coach', 'manager', 'physio']);
 const squadRole = z.enum(['player', 'captain', 'vice_captain', 'substitute', 'coach', 'manager', 'physio']);
 
-/** owner, admin or a 'manager' member — money matters are not delegated to captains */
+/** owner, admin or a 'manager' member (or the team's organisation owner/admin/finance) — money is not delegated to captains or coaches */
 export async function canManageMoney(user, team) {
   if (isAdmin(user) || team.owner_id === user.id) return true;
-  return !!(await one("SELECT 1 FROM team_members WHERE team_id=$1 AND user_id=$2 AND status='active' AND role='manager'", [team.id, user.id]));
+  if (await one("SELECT 1 FROM team_members WHERE team_id=$1 AND user_id=$2 AND status='active' AND role='manager'", [team.id, user.id])) return true;
+  return hasOrgGrant(user, team.organisation_id, ['owner', 'admin', 'finance']); // coaches never get money access
 }
 
 const membership = (teamId, userId, client) => (client ?? { query }).query('SELECT * FROM team_members WHERE team_id=$1 AND user_id=$2', [teamId, userId]).then((r) => r.rows[0]);

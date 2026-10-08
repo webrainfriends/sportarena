@@ -5,6 +5,7 @@ import { one, many, query, tx } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { hasRole, isAdmin, mustFind, mustOwn, sportBySlugOrId, standings } from '../helpers.js';
 import { canManageTeam } from './teams.js';
+import { hasOrgGrant } from '../org-access.js';
 import { reserve } from './venues.js';
 import { notify } from '../notify.js';
 
@@ -13,7 +14,7 @@ const date = z.string().date();
 
 async function eventForOrganizer(user, eventId, c) {
   const ev = await mustFind('events', eventId, '*', c);
-  mustOwn(user, ev.organizer_id, 'event');
+  if (!(await hasOrgGrant(user, ev.organisation_id, ['owner', 'admin'], c))) mustOwn(user, ev.organizer_id, 'event');
   return ev;
 }
 
