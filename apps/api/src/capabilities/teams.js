@@ -5,6 +5,7 @@ import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { isSupportedCurrency } from '../currency.js';
 import { isAdmin, mustFind, mustOwn, PUBLIC_USER, sportBySlugOrId } from '../helpers.js';
 import { hiddenYouth, requireConsent } from '../youth.js';
+import { hasOrgGrant } from '../org-access.js';
 
 const color = z.string().regex(/^#[0-9a-fA-F]{6}$/);
 
