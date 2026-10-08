@@ -29,6 +29,7 @@ physios & doctors, suppliers and insurers. **API-first. MCP-first.** One React N
 | **Insurance** | Insurers, searchable/comparable plans (cover, exclusions, eligibility, term), purchase with terms snapshot, claim review lifecycle — see [docs/insurance.md](docs/insurance.md) |
 | **Doctors & physios** | Public provider profiles, weekly hours and bookable slots, server-side search (type, sport, location/remote, price, rating, verified), scoped and revocable consent — see [docs/health.md](docs/health.md) |
 | **Support & disputes** | Support tickets and disputes as one case model that links bookings, payments, events or games; user thread vs internal notes, SLA queue, escalation, immutable timeline — see [docs/cases.md](docs/cases.md) |
+| **Youth & guardians** | Verified guardian–child links (invite, accept, evidence, platform review, expiry), purpose-specific consent (participation, medical, media, contact), restricted youth visibility, pickup delegation and check-in, jurisdiction-configurable age policy — see [docs/guardians.md](docs/guardians.md) |
 | **Community** | Ratings & testimonials for people, teams, events, venues, sponsors |
 
 ## Architecture: one capability registry → REST + OpenAPI + MCP

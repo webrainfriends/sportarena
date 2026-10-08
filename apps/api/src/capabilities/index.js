@@ -27,6 +27,7 @@ import './player.js';
 import './ontology.js';
 import './games.js';
 import './associations.js';
+import './guardians.js';
 import './billboard.js';
 import './shop.js';
 import './hire.js';

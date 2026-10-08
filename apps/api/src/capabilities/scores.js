@@ -3,6 +3,7 @@ import { cap, id, page } from '../registry.js';
 import { one, many } from '../db.js';
 import { forbidden, notFound } from '../errors.js';
 import { isAdmin, mustFind, PUBLIC_USER, sportBySlugOrId } from '../helpers.js';
+import { NOT_YOUTH_SQL } from '../youth.js';
 
 cap({
   name: 'record_performance', method: 'POST', path: '/performances', tag: 'Scores & Awards', status: 201,
@@ -51,7 +52,7 @@ cap({
     const rows = await many(
       `SELECT ${PUBLIC_USER}, sum(p.points) AS points, sum(p.value) AS total, count(*)::int AS entries
          FROM performances p JOIN users u ON u.id=p.user_id
-        WHERE ($1::uuid IS NULL OR p.sport_id=$1) AND ($2::uuid IS NULL OR p.event_id=$2) AND ($3::text IS NULL OR p.metric=$3)
+        WHERE ${NOT_YOUTH_SQL} AND ($1::uuid IS NULL OR p.sport_id=$1) AND ($2::uuid IS NULL OR p.event_id=$2) AND ($3::text IS NULL OR p.metric=$3)
         GROUP BY u.id ORDER BY points DESC, total DESC LIMIT $4 OFFSET $5`, [sport?.id ?? null, i.event_id ?? null, i.metric ?? null, i.limit, i.offset]);
     return rows.map((r, n) => ({ rank: i.offset + n + 1, ...r }));
   },

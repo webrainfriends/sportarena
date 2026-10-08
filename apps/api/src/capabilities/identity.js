@@ -6,6 +6,7 @@ import { blindIndex, decryptFields, encrypt, encryptFields, hashPassword, newOpa
 import { audit, PUBLIC_USER, sportBySlugOrId } from '../helpers.js';
 import { signToken } from '../auth.js';
 import { badgesFor, withBadges } from '../verification.js';
+import { canSeeYouth, NOT_YOUTH_SQL, refreshYouth, YOUTH_SQL } from '../youth.js';
 
 const PII = ['full_name', 'phone', 'dob', 'national_id', 'address'];
 const pii = {
@@ -41,6 +42,7 @@ cap({
       [i.handle, i.display_name, i.roles, hashPassword(i.password), encrypt(i.email, 'users.email'), idx,
         enc.full_name_enc ?? null, enc.phone_enc ?? null, enc.dob_enc ?? null, enc.national_id_enc ?? null, enc.address_enc ?? null, i.avatar_emoji, i.avatar_color],
     );
+    if (i.dob) await refreshYouth(u.id, u.id);
     return { user: u, token: await signToken(u) };
   },
 });
@@ -88,6 +90,7 @@ cap({
     const keys = Object.keys(sets);
     if (!keys.length) throw badRequest('Nothing to update');
     await query(`UPDATE users SET ${keys.map((k, n) => `${k} = $${n + 2}`).join(', ')} WHERE id = $1`, [user.id, ...keys.map((k) => sets[k])]);
+    if (i.dob) await refreshYouth(user.id, user.id);
     return { ok: true, updated: keys.map((k) => k.replace(/_enc$/, '')) };
   },
 });
@@ -149,7 +152,7 @@ cap({
     const sport = i.sport ? await sportBySlugOrId(i.sport) : null;
     return withBadges('user', await many(
       `SELECT DISTINCT ${PUBLIC_USER} FROM users u LEFT JOIN sport_profiles p ON p.user_id = u.id
-        WHERE ($1::text IS NULL OR u.handle ILIKE $1 || '%' OR u.display_name ILIKE '%' || $1 || '%')
+        WHERE ${NOT_YOUTH_SQL} AND ($1::text IS NULL OR u.handle ILIKE $1 || '%' OR u.display_name ILIKE '%' || $1 || '%')
           AND ($2::text IS NULL OR p.role = $2) AND ($3::uuid IS NULL OR p.sport_id = $3)
         ORDER BY u.display_name LIMIT $4 OFFSET $5`,
       [i.q ?? null, i.role ?? null, sport?.id ?? null, i.limit, i.offset],
@@ -161,9 +164,15 @@ cap({
   name: 'get_person', method: 'GET', path: '/people/:id', tag: 'Directory', auth: 'public',
   summary: 'Public profile: roles per sport, trophy cabinet counts, average testimonial rating. No personal identification data.',
   input: z.object({ id }),
-  async handler(_, i) {
-    const u = await one(`SELECT ${PUBLIC_USER}, u.created_at FROM users u WHERE u.id = $1`, [i.id]);
+  async handler({ user }, i) {
+    const u = await one(`SELECT ${PUBLIC_USER}, u.created_at, ${YOUTH_SQL} AS is_youth FROM users u WHERE u.id = $1`, [i.id]);
     if (!u) throw notFound('Person');
+    // young people have no public profile: a missing and a restricted profile look the same to everyone but self, guardians and their team managers
+    if (u.is_youth) {
+      if (!(await canSeeYouth(user, i.id))) throw notFound('Person');
+      return { id: u.id, handle: u.handle, display_name: u.display_name, avatar_emoji: u.avatar_emoji, avatar_color: u.avatar_color, restricted: true };
+    }
+    delete u.is_youth;
     const [profiles, awards, rating, teams] = await Promise.all([
       many('SELECT p.role, p.level, p.position, p.is_default, s.slug, s.name AS sport, s.emoji FROM sport_profiles p JOIN sports s ON s.id = p.sport_id WHERE p.user_id = $1 ORDER BY p.is_default DESC, p.created_at, p.id', [i.id]),
       many('SELECT kind, count(*)::int AS n FROM awards WHERE user_id = $1 GROUP BY kind', [i.id]),

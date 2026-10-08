@@ -7,6 +7,7 @@ import { forbidden, notFound } from '../errors.js';
 import { isAdmin, mustFind, PUBLIC_USER } from '../helpers.js';
 import { notify } from '../notify.js';
 import { canManageTeam } from './teams.js';
+import { requireConsent } from '../youth.js';
 
 async function chatAccess(user, teamId) {
   const team = await mustFind('teams', teamId);
@@ -24,6 +25,7 @@ cap({
   input: z.object({ id, body: z.string().trim().min(1).max(2000), announcement: z.boolean().default(false) }),
   async handler({ user }, i) {
     const { team, manager } = await chatAccess(user, i.id);
+    await requireConsent(user.id, 'contact', 'messaging in the team chat');
     if (i.announcement && !manager) throw forbidden('Only owners and managers can post announcements');
     const m = await one('INSERT INTO team_messages(team_id, sender_id, body, announcement) VALUES ($1,$2,$3,$4) RETURNING id', [i.id, user.id, i.body, i.announcement]);
     await query('INSERT INTO team_chat_reads(team_id, user_id) VALUES ($1,$2) ON CONFLICT (team_id, user_id) DO UPDATE SET last_read_at=now()', [i.id, user.id]);

@@ -8,7 +8,7 @@ import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { isAdmin, mustFind, PUBLIC_USER } from '../helpers.js';
 import { notify } from '../notify.js';
 import { canManageTeam } from './teams.js';
-import { hasOrgGrant } from '../org-access.js';
+import { requireConsent } from '../youth.js';
 
 const availability = z.enum(['available', 'tentative', 'unavailable', 'injured']);
 const rateUnit = z.enum(['match', 'hour', 'month', 'season']);
@@ -108,6 +108,7 @@ cap({
     if (i.role === 'manager' && t.owner_id !== user.id && !isAdmin(user)) throw forbidden('Only the owner can invite a manager');
     if (i.rate_cents !== undefined && !(await canManageMoney(user, t))) throw forbidden('Only the owner or a manager can offer a rate');
     await mustFind('users', i.user_id, 'id');
+    await requireConsent(i.user_id, 'participation', 'joining a team');
     const prior = await membership(i.id, i.user_id);
     if (prior?.status === 'active') throw conflict('Already on the team');
     const row = await one(
@@ -132,6 +133,7 @@ cap({
   summary: 'Accept (you join the roster) or decline a team invitation addressed to you.', input: z.object({ id, accept: z.boolean() }),
   async handler({ user }, i) {
     const t = await mustFind('teams', i.id);
+    if (i.accept) await requireConsent(user.id, 'participation', 'joining a team');
     const r = await one("UPDATE team_members SET status=$3, joined_at=CASE WHEN $3='active' THEN now() ELSE joined_at END WHERE team_id=$1 AND user_id=$2 AND status='invited' RETURNING team_id, user_id, role, status", [i.id, user.id, i.accept ? 'active' : 'left']);
     if (!r) throw notFound('Invitation');
     await notify(null, t.owner_id, { kind: 'team_invite_reply', title: `${user.display_name} ${i.accept ? 'accepted' : 'declined'} your invitation to ${t.name}`, body: '', data: { team_id: t.id } });
@@ -175,6 +177,7 @@ cap({
       const roster = new Map((await c.query("SELECT user_id, availability FROM team_members WHERE team_id=$1 AND status='active'", [team.id])).rows.map((r) => [r.user_id, r]));
       const strangers = ids.filter((u) => !roster.has(u));
       if (strangers.length) throw badRequest('Only active team members can be selected', { user_ids: strangers });
+      for (const uid of ids) await requireConsent(uid, 'participation', 'being selected for a match or event', c);
       if (!i.allow_unavailable) {
         const out = ids.filter((u) => ['unavailable', 'injured'].includes(roster.get(u).availability));
         if (out.length) throw conflict('Some selected people are marked unavailable or injured', { user_ids: out });

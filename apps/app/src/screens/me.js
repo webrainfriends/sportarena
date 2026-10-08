@@ -51,6 +51,7 @@ export function Me() {
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
         <Btn small title="View my public page" color={c.violet} onPress={() => push('Person', { id: user.id })} />
         <Btn small title="Add a sport role" color={c.cyan} ink={c.ink} onPress={() => setSp(true)} />
+        <Btn small title="Family & guardians" color={c.paper} ink={c.ink} onPress={() => push('Family')} />
         <Btn small title="Support & disputes" color={c.paper} ink={c.ink} onPress={() => push('Support')} />
         <Btn small title="My organisations" color={c.paper} ink={c.ink} onPress={() => push('Orgs')} />
       </View>
