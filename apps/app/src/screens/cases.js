@@ -14,11 +14,12 @@ const when = (d) => (d ? new Date(d).toLocaleString() : '');
 const label = (s) => String(s).replace(/_/g, ' ');
 
 /** The new-ticket / new-dispute form. `links` pre-fills the record a case is about (e.g. from an invoice). */
-export function NewCaseSheet({ visible, onClose, kind: kind0 = 'support', links = [], onDone }) {
+export function NewCaseSheet({ visible, onClose, kind: kind0 = 'support', links = [], details = {}, category, onDone }) {
   const cats = useLoad(() => api.get('/cases/categories'), []);
   const options = (k) => (cats.data?.kinds[k] ?? []).map((x) => ({ value: x, label: label(x) }));
   return (
     <FormSheet visible={visible} onClose={onClose} title={kind0 === 'dispute' ? 'Raise a dispute' : 'Contact support'} submitLabel="Send"
+      initial={category ? { category_d: category, category } : {}}
       fields={[
         { key: 'kind', label: 'What is this?', type: 'choice', options: [{ value: 'support', label: 'Question / problem' }, { value: 'dispute', label: 'Dispute' }], default: kind0 },
         { key: 'category', label: 'Category', type: 'chips', options: options('support'), show: (v) => v.kind === 'support' },
@@ -27,12 +28,18 @@ export function NewCaseSheet({ visible, onClose, kind: kind0 = 'support', links 
         { key: 'description', label: 'What happened?', type: 'multiline', hint: 'Do not include passwords or card numbers.' },
         { key: 'priority', label: 'How urgent?', type: 'choice', options: [{ value: 'low', label: 'Low' }, { value: 'normal', label: 'Normal' }, { value: 'high', label: 'High' }], default: 'normal' },
         { key: 'contact_channel', label: 'Tell me about updates by', type: 'choice', options: [{ value: 'in_app', label: 'In app' }, { value: 'email', label: 'Email' }, { value: 'push', label: 'Push' }], default: 'in_app' },
+        { key: 'contested_field', label: 'Which value is wrong?', type: 'chips', options: ['score', 'outcome', 'rank', 'home_score', 'away_score'].map((x) => ({ value: x, label: label(x) })), show: (v) => v.kind === 'dispute' && (v.category_d ?? category) === 'game_data' },
+        { key: 'claimed_value', label: 'What should it be?', show: (v) => v.kind === 'dispute' && (v.category_d ?? category) === 'game_data' },
         { key: 'reference', label: 'Evidence link (optional)', optional: true, hint: 'An https:// link to a screenshot, receipt or document.' },
         { key: 'amount', label: 'Disputed amount (optional)', type: 'number', optional: true, show: (v) => v.kind === 'dispute' },
       ]}
       onSubmit={async (v) => {
         const body = { kind: v.kind, category: v.kind === 'dispute' ? v.category_d : v.category, subject: v.subject, description: v.description, priority: v.priority, contact_channel: v.contact_channel, links, evidence: v.reference ? [{ reference: v.reference }] : [] };
-        if (v.kind === 'dispute' && v.amount) body.details = { disputed_amount_cents: Math.round(v.amount * 100) };
+        if (v.kind === 'dispute') {
+          body.details = { ...details };
+          if (v.amount) body.details.disputed_amount_cents = Math.round(v.amount * 100);
+          if (body.category === 'game_data') Object.assign(body.details, { contested_field: v.contested_field, claimed_value: v.claimed_value });
+        }
         const r = await api.post('/cases', body);
         onDone?.(r);
         return `Case #${r.case_no} created`;
@@ -63,6 +70,9 @@ function CaseSheet({ id, onClose, onChange, staff }) {
   const active = x && ['open', 'in_progress', 'awaiting_user', 'escalated'].includes(x.status);
   const own = x && x.requester_id === user.id;
   const act = (name, body) => api.post(`/admin/cases/${id}/${name}`, body);
+  const [recs, setRecs] = useState(null);
+  const [refund, setRefund] = useState(false);
+  const paymentLink = x?.links.find((l) => l.entity_type === 'payment');
   return (
     <Sheet visible={!!id} onClose={() => { setEv(null); onClose(); }} title={x ? `Case #${x.case_no} · ${label(x.category)}` : 'Case'}>
       {d.loading && !x ? <Loading /> : d.error ? <ErrorBox error={d.error} onRetry={d.reload} /> : x ? <>
@@ -81,6 +91,9 @@ function CaseSheet({ id, onClose, onChange, staff }) {
           ? ev.map((e) => <T key={e.id} size={12} selectable>{e.label ?? 'Evidence'}: {e.reference ?? e.file_name}</T>)
           : <Btn small title="Show evidence (audit-logged)" color={c.violet} style={{ alignSelf: 'flex-start' }} onPress={() => run(async () => setEv(await api.get(`/admin/cases/${id}/evidence`)), 'Evidence opened and logged')} />) : null}
 
+        {staff && !own && x.links.length ? (recs
+          ? recs.map((r) => <T key={r.entity_id} size={12} selectable>{label(r.entity_type)}: {JSON.stringify(r.record)}</T>)
+          : <Btn small title="Show linked records (audit-logged)" color={c.violet} style={{ alignSelf: 'flex-start' }} onPress={() => run(async () => setRecs(await api.get(`/admin/cases/${id}/records`)), 'Opened and logged')} />) : null}
         {active ? <Field label={staff && !own ? 'Reply / note / outcome' : 'Reply'} value={text} onChangeText={setText} multiline /> : null}
         <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
           {active && own ? <Btn title="Send reply" color={c.pink} disabled={!text.trim()} onPress={() => run(() => api.post(`/cases/${id}/replies`, { body: text }), 'Sent')} /> : null}
@@ -92,9 +105,13 @@ function CaseSheet({ id, onClose, onChange, staff }) {
             <Btn small title="Ask for info" color={c.sun} ink={c.ink} disabled={!text.trim()} onPress={() => run(() => act('respond', { body: text, request_info: true }), 'Asked')} />
             <Btn small title="Internal note" color={c.violet} disabled={!text.trim()} onPress={() => run(() => act('notes', { body: text }), 'Note saved')} />
             <Btn small title="Escalate" color={c.paper} ink={c.red} disabled={text.trim().length < 5} onPress={() => run(() => act('escalate', { reason: text }), 'Escalated')} />
+            {paymentLink ? <Btn small title="Refund payment…" color={c.paper} ink={c.ink} onPress={() => setRefund(true)} /> : null}
             <Btn small title="Resolve" color={c.mint} ink={c.ink} disabled={text.trim().length < 5} onPress={() => run(() => act('resolve', { resolution: text }), 'Resolved')} />
           </> : null}
         </View>
+        {paymentLink ? <FormSheet visible={refund} onClose={() => setRefund(false)} title="Refund payment" submitLabel="Refund"
+          fields={[{ key: 'amount', label: 'Amount (leave empty for everything not yet refunded)', type: 'number', optional: true }, { key: 'reason', label: 'Reason', type: 'multiline' }]}
+          onSubmit={async (v) => { const r = await api.post(`/admin/payments/${paymentLink.entity_id}/refund`, { reason: v.reason, case_id: id, ...(v.amount ? { amount_cents: Math.round(v.amount * 100) } : {}) }); d.reload(); return `Refunded ${(r.refunded_now / 100).toFixed(2)} ${r.currency}`; }} /> : null}
         {staff && active && !own ? <T size={12} color={c.mute}>Refunds, cancellations and other changes are made with their own actions on the booking / payment, then described in the outcome. This screen never changes them.</T> : null}
       </> : null}
     </Sheet>
@@ -116,9 +133,40 @@ export function Support() {
       {list.loading && !list.data ? <Loading /> : list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : list.data?.length ? list.data.map((cs) => (
         <Row key={cs.id} onPress={() => setOpen(cs.id)} title={`#${cs.case_no} ${cs.subject}`} sub={`${label(cs.category)} · ${when(cs.created_at)}`} right={stateTag(cs.status)} />
       )) : <Empty emoji="💬" title="No cases yet" sub="When you contact support or raise a dispute it shows up here." />}
+      <GameDisputes />
       <NewCaseSheet visible={form} onClose={() => setForm(false)} onDone={(r) => { list.reload(); setOpen(r.id); }} />
       <CaseSheet id={open} onClose={() => setOpen(null)} onChange={list.reload} />
     </Screen>
+  );
+}
+
+/** Game officials: disputes about game data routed to me. */
+export function GameDisputes() {
+  const { toast } = useSession();
+  const list = useLoad(() => api.get('/game-disputes'), []);
+  const [open, setOpen] = useState(null);
+  const [reason, setReason] = useState('');
+  if (!list.data?.length) return null;
+  const decide = async (id, decision) => { try { await api.post(`/game-disputes/${id}/decision`, { decision, reason }); toast(decision === 'accept' ? 'Result corrected' : 'Dispute rejected'); setReason(''); setOpen(null); list.reload(); } catch (e) { toast(e.message); } };
+  return (
+    <Section title="Result disputes to decide" color={c.sun}>
+      {list.data.map((cs) => (
+        <Card key={cs.id} color={c.sunSoft} pad={12}>
+          <T weight="800">#{cs.case_no} {cs.subject}</T>
+          <T size={12} color={c.mute}>{label(cs.details.contested_field)}: {String(cs.details.current_value)} → {String(cs.details.claimed_value)}</T>
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+            <Btn small title="Read case" color={c.violet} onPress={() => setOpen(cs.id)} />
+          </View>
+          {open === cs.id ? <>
+            <Field label="Reason (the people involved will see it)" value={reason} onChangeText={setReason} multiline />
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <Btn small title="Accept & correct" color={c.mint} ink={c.ink} disabled={reason.trim().length < 5} onPress={() => decide(cs.id, 'accept')} />
+              <Btn small title="Reject" color={c.paper} ink={c.red} disabled={reason.trim().length < 5} onPress={() => decide(cs.id, 'reject')} />
+            </View>
+          </> : null}
+        </Card>
+      ))}
+    </Section>
   );
 }
 

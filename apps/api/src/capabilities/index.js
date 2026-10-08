@@ -1,6 +1,7 @@
 import './identity.js';
 import './verification.js';
 import './cases.js';
+import './disputes.js';
 import './teams.js';
 import './venues.js';
 import './venue-admin.js';

@@ -5,6 +5,7 @@ import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { Avatar, Btn, Card, Empty, ErrorBox, H1, H2, Loading, Screen, Seg, Sheet, T } from '../ui';
 import { FormSheet } from '../FormSheet';
+import { NewCaseSheet } from './cases';
 import { c, toneFor, money, when, day } from '../theme';
 
 const nice = (s) => String(s ?? '').replace(/_/g, ' ');
@@ -359,6 +360,7 @@ export function Hire() {
   const [tab, setTab] = useState('coach');
   const [book, setBook] = useState(null);
   const [paying, setPaying] = useState(null);
+  const [disp, setDisp] = useState(null);
   const coaches = useLoad(() => api.get('/coaches', { limit: 50 }), []);
   const provs = useLoad(() => api.get('/providers', { limit: 50 }), []);
   const hires = useLoad(() => api.get('/hires', { limit: 30 }), []);
@@ -421,6 +423,7 @@ export function Hire() {
                     {h.i_am_coach && h.status === 'requested' && h.payment_status !== 'unpaid' ? <Btn small title="Confirm" onPress={() => setHire(h, 'confirmed')} /> : null}
                     {h.i_am_coach && h.status === 'confirmed' ? <Btn small title="Complete" onPress={() => setHire(h, 'completed')} /> : null}
                     {['requested', 'confirmed'].includes(h.status) ? <Btn small title="Cancel" color={c.paper} ink={c.red} onPress={() => setHire(h, 'cancelled')} /> : null}
+                    {h.payment_status === 'paid' ? <Btn small title="Payment problem" color={c.paper} ink={c.ink} onPress={() => setDisp(h)} /> : null}
                   </View>
                 </View>
               </View>
@@ -441,6 +444,7 @@ export function Hire() {
       )}
 
       {paying ? <PaySheet target={paying} onClose={() => setPaying(null)} onDone={reloadAll} /> : null}
+      <NewCaseSheet visible={!!disp} onClose={() => setDisp(null)} kind="dispute" category="provider_payment" links={disp ? [{ type: 'coach_hire', id: disp.id }] : []} />
       {book ? (
         <FormSheet visible onClose={() => setBook(null)} title={`Book ${book.x.display_name}`} submitLabel="Request booking"
           fields={[
