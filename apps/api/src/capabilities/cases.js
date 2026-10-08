@@ -9,7 +9,8 @@ import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { decrypt, encrypt } from '../crypto.js';
 import { audit, isAdmin } from '../helpers.js';
 import { notify } from '../notify.js';
-import { ACTIVE, CATEGORIES, LINK_TYPES, PRIORITIES, REOPEN_WINDOW_DAYS, SLA_SQL, assertCanLink, prepEvidence, slaDue } from '../cases.js';
+import { officialCanHandle } from './disputes.js';
+import { ACTIVE, CATEGORIES, LINK_TYPES, PRIORITIES, REOPEN_WINDOW_DAYS, SLA_SQL, assertCanLink, prepEvidence, inferPaymentLink, slaDue, validateDispute } from '../cases.js';
 
 const TAG = 'Support & Disputes';
 const KINDS = ['support', 'dispute'];
@@ -22,11 +23,11 @@ const evidenceIn = z.object({
 const linkIn = z.object({ type: z.enum(LINK_TYPES), id });
 const details = z.object({
   disputed_amount_cents: z.coerce.number().int().min(0).optional(), currency: z.string().length(3).optional(),
-  contested_field: z.string().max(80).optional(), claimed_value: z.string().max(200).optional(),
+  contested_field: z.string().max(80).optional(), claimed_value: z.union([z.string().max(200), z.number()]).optional(), participant_id: id.optional(),
 }).strict().describe('structured, non-personal facts for disputes');
 
 const COLS = `c.id, c.case_no, c.kind, c.category, c.priority, c.status, c.subject, c.requester_id, c.assignee_id, c.contact_channel, c.details,
-  c.resolution, c.resolved_at, c.escalated_at, c.first_response_due, c.resolution_due, c.first_responded_at, c.created_at, c.updated_at, ${SLA_SQL} AS sla_state`;
+  c.routed_to, c.resolution, c.resolved_at, c.escalated_at, c.first_response_due, c.resolution_due, c.first_responded_at, c.created_at, c.updated_at, ${SLA_SQL} AS sla_state`;
 
 const logEvent = (c, caseId, actor, action, from, to, reason, { data = {}, visibility = 'public' } = {}) => c.query(
   'INSERT INTO case_events(case_id, actor_id, action, from_status, to_status, reason, data, visibility) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
@@ -76,7 +77,9 @@ cap({
     if (!CATEGORIES[i.kind].includes(i.category)) throw badRequest(`Category ${i.category} is not valid for a ${i.kind}`);
     if (i.kind === 'dispute' && !i.links.length) throw badRequest('A dispute must link the record it is about');
     if (i.details && i.kind !== 'dispute') throw badRequest('Structured details are only for disputes');
+    i.links = await inferPaymentLink(i);
     for (const l of i.links) await assertCanLink(user, l.type, l.id);
+    const checked = i.kind === 'dispute' ? await validateDispute(user, i) : { details: {}, routed_to: 'platform' };
     const prepared = i.evidence.map(prepEvidence);
     return tx(async (c) => {
       if (i.kind === 'dispute') for (const l of i.links) {
@@ -85,9 +88,9 @@ cap({
       }
       const due = slaDue(i.priority);
       const row = (await c.query(
-        `INSERT INTO cases(kind, category, priority, subject, requester_id, contact_channel, details, first_response_due, resolution_due) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-         RETURNING id, case_no, kind, category, priority, status, subject, first_response_due, resolution_due, created_at`,
-        [i.kind, i.category, i.priority, i.subject, user.id, i.contact_channel, JSON.stringify(i.details ?? {}), due.first, due.resolution])).rows[0];
+        `INSERT INTO cases(kind, category, priority, subject, requester_id, contact_channel, details, routed_to, first_response_due, resolution_due) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+         RETURNING id, case_no, kind, category, priority, status, subject, routed_to, first_response_due, resolution_due, created_at`,
+        [i.kind, i.category, i.priority, i.subject, user.id, i.contact_channel, JSON.stringify(checked.details), checked.routed_to, due.first, due.resolution])).rows[0];
       for (const l of i.links) await c.query('INSERT INTO case_links(case_id, entity_type, entity_id) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING', [row.id, l.type, l.id]);
       await addMessage(c, row.id, user.id, 'public', i.description);
       await saveEvidence(c, row.id, user.id, prepared);
@@ -115,7 +118,8 @@ cap({
   async handler({ user }, i) {
     const row = await one(`SELECT ${COLS} FROM cases c WHERE c.id=$1`, [i.id]);
     const staff = isAdmin(user) && row && row.requester_id !== user.id;
-    if (!row || (row.requester_id !== user.id && !isAdmin(user))) throw notFound('Case');
+    // game officials a dispute is routed to see the public thread, like the requester does
+    if (!row || (row.requester_id !== user.id && !isAdmin(user) && !(await officialCanHandle(user, row)))) throw notFound('Case');
     const vis = staff ? ['public', 'internal'] : ['public'];
     const [links, messages, evidence, history, people] = await Promise.all([
       many('SELECT entity_type, entity_id FROM case_links WHERE case_id=$1 ORDER BY created_at', [i.id]),
