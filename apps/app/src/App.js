@@ -15,6 +15,9 @@ import Auth from './screens/auth';
 import Home from './screens/home';
 import { Play, Event, Team, Person } from './screens/play';
 import { Book, Venue } from './screens/book';
+import { Basket, Reservation, Compare, Notifications } from './screens/reserve';
+import { Manage } from './screens/manage';
+import { BasketProvider } from './basket';
 import { Hub, Leaderboard, Awards, Health, Insurance, Sponsors, Supply } from './screens/hub';
 import { Me } from './screens/me';
 
@@ -22,8 +25,8 @@ import { PlayerHome, SportProfile, ImportMatches } from './screens/player';
 
 const TABS = [['Home', Home], ['Play', Play], ['Player', PlayerHome], ['Book', Book], ['Hub', Hub], ['Me', Me]];
 const LABEL = { Hub: 'Ecosystem' };
-const PAGES = { Event, Team, Person, Venue, Leaderboard, Awards, Health, Insurance, Sponsors, Supply, SportProfile, ImportMatches };
-const TITLES = { Event: 'Event', Team: 'Team', Person: 'Profile', Venue: 'Venue', Leaderboard: 'Leaderboard', Awards: 'Trophy room', Health: 'Health', Insurance: 'Insurance', Sponsors: 'Sponsors', Supply: 'Supply chain', SportProfile: 'Sport profile', ImportMatches: 'Import matches' };
+const PAGES = { Event, Team, Person, Venue, Basket, Reservation, Compare, Notifications, Manage, Leaderboard, Awards, Health, Insurance, Sponsors, Supply, SportProfile, ImportMatches };
+const TITLES = { Event: 'Event', Team: 'Team', Person: 'Profile', Venue: 'Venue', Basket: 'Basket', Reservation: 'Booking', Compare: 'Compare', Notifications: 'Notifications', Manage: 'Manage venue', Leaderboard: 'Leaderboard', Awards: 'Trophy room', Health: 'Health', Insurance: 'Insurance', Sponsors: 'Sponsors', Supply: 'Supply chain', SportProfile: 'Sport profile', ImportMatches: 'Import matches' };
 
 const TAB_LABEL = { Hub: 'More' };
 
@@ -121,7 +124,7 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <StatusBar barStyle="dark-content" />
-      <SessionProvider><NavProvider><Shell /></NavProvider></SessionProvider>
+      <SessionProvider><BasketProvider><NavProvider><Shell /></NavProvider></BasketProvider></SessionProvider>
     </SafeAreaProvider>
   );
 }

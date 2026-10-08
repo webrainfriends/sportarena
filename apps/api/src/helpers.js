@@ -1,5 +1,5 @@
 import { query, one } from './db.js';
-import { forbidden, notFound } from './errors.js';
+import { badRequest, forbidden, notFound } from './errors.js';
 
 export const PUBLIC_USER = 'u.id, u.handle, u.display_name, u.roles, u.bio, u.avatar_emoji, u.avatar_color';
 
@@ -44,4 +44,13 @@ export async function standings(eventId, client) {
     [eventId, ev.points_win, ev.points_draw, ev.points_loss],
   );
   return rows.map((r, i) => ({ rank: i + 1, ...r, goal_diff: r.goals_for - r.goals_against }));
+}
+
+/** Build a partial UPDATE from the allowed input keys that were actually sent. Returns the updated row, or throws if nothing was sent. */
+export async function patchRow(table, id, input, allowed, client) {
+  const keys = allowed.filter((k) => input[k] !== undefined);
+  if (!keys.length) throw badRequest('Nothing to update');
+  const row = (await (client ?? { query }).query(`UPDATE ${table} SET ${keys.map((k, n) => `${k}=$${n + 2}`).join(', ')} WHERE id=$1 RETURNING *`, [id, ...keys.map((k) => input[k])])).rows[0];
+  if (!row) throw notFound(table.replace(/s$/, '').replace(/_/g, ' '));
+  return row;
 }

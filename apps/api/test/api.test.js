@@ -239,7 +239,7 @@ test('MCP: same capabilities as REST, same auth rules', async () => {
   assert.equal(tools.length, capabilities.length);
   assert.ok(tools.find((t) => t.name === 'create_booking').inputSchema.properties.resource_id);
   const pub = await rpc('tools/call', { name: 'list_sports', arguments: {} });
-  assert.equal(pub.structuredContent.result.length, 12);
+  assert.ok(pub.structuredContent.result.length >= 12 && pub.structuredContent.result.some((s) => s.slug === 'basketball'));
   const anon = await rpc('tools/call', { name: 'get_me', arguments: {} });
   assert.equal(anon.isError, true);
   assert.equal(JSON.parse(anon.content[0].text).code, 'unauthorized');

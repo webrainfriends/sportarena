@@ -27,7 +27,7 @@ export class ApiError extends Error {
 }
 
 async function request(method, path, data) {
-  const qs = method === 'GET' && data ? '?' + new URLSearchParams(Object.entries(data).filter(([, v]) => v !== undefined && v !== null && v !== '').map(([k, v]) => [k, String(v)])) : '';
+  const qs = (method === 'GET' || method === 'DELETE') && data ? '?' + new URLSearchParams(Object.entries(data).filter(([, v]) => v !== undefined && v !== null && v !== '').map(([k, v]) => [k, String(v)])) : '';
   let res;
   try {
     res = await fetch(`${API}${path}${qs}`, {
@@ -49,6 +49,6 @@ export const api = {
   get: (p, q) => request('GET', p, q),
   post: (p, b) => request('POST', p, b ?? {}),
   patch: (p, b) => request('PATCH', p, b ?? {}),
-  del: (p) => request('DELETE', p),
+  del: (p, q) => request('DELETE', p, q),
 };
 export { storage };

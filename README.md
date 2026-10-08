@@ -20,6 +20,7 @@ physios & doctors, suppliers and insurers. **API-first. MCP-first.** One React N
 | **Scores & awards** | Individual performances (goals, times…), personal stats/bests, leaderboards, cups/trophies/medals/MVP/badges |
 | **Player** | One card per sport profile (default always first), match-by-match performance with sport-specific stats, CSV/JSON bulk import with dry-run + row-level errors |
 | **Venues, grounds, courts, equipment** | Resource catalogue with capacity + hourly price, availability, **race-free bookings** (advisory-locked; equipment pools supported); fixtures can book the pitch atomically |
+| **Venue management & reservations** | Any sport; many courts/tables per venue with their own capacity, players and slot length; geo + map links, hours, encrypted contacts, staff; peak/off-peak **pricing rules**, **discounts** & promo codes; **multi-slot / multi-court / multi-venue** atomic reservations, **compare venues**, modify & cancel with a refund policy; **bulk blocks**, admin **override**, **reports**, **notifications** — see [docs/venue-reservations.md](docs/venue-reservations.md) |
 | **Sponsors** | Brand profiles (encrypted contacts), offers to events/teams/athletes, accept/decline workflow |
 | **Supply chain** | Inventory, low-stock flags, supplier orders; receiving an order restocks atomically |
 | **Health** | Find physios/doctors, appointments, **athlete-controlled consent**, encrypted clinical notes, fit-to-play status without clinical detail |
@@ -37,7 +38,7 @@ apps/api/src/capabilities/*.js   ← every feature is ONE definition: name, sche
 apps/app/                        ← Expo (React Native + react-native-web); talks only to the REST API
 ```
 
-REST, the generated OpenAPI spec and MCP tools **cannot drift**: there are 106 capabilities and the tests assert
+REST, the generated OpenAPI spec and MCP tools **cannot drift**: there are 160+ capabilities and the tests assert
 `tools/list` and the OpenAPI operations both equal the registry. The mobile/web app is just another API client — no
 privileged backdoors — so anything a user can do in the app, an agent can do over MCP with the same permissions.
 
@@ -82,7 +83,7 @@ Demo logins (`@demo.sportarena.dev`): `aarav` (athlete), `kavya_events` (organiz
 On a physical phone set `EXPO_PUBLIC_API_URL=http://<your-LAN-ip>:4000`.
 
 ```bash
-npm test                 # 8 end-to-end suites against a real Postgres (TEST_DATABASE_URL to override)
+npm test                 # end-to-end suites against a real Postgres (TEST_DATABASE_URL to override)
 ```
 The suite covers: ciphertext-only storage & column binding, role gating, API tokens, tournament lifecycle,
 **8 parallel bookings for one court → exactly 1 wins**, referee/team clash detection, consent-gated medical records,
