@@ -107,9 +107,15 @@ export function FormSheet({ visible, onClose, title, fields, initial = {}, submi
     try {
       const out = {};
       for (const f of fields) {
-        let x = f.type === 'choice' ? (v[f.key] ?? f.options[0]?.value ?? f.options[0]) : v[f.key];
-        if (x === '' || x === undefined || (f.type === 'multi' && !x.length)) { if (!f.optional) throw new Error(`${f.label} is required`); continue; }
-        out[f.key] = f.type === 'number' ? Number(x) : x;
+        if (f.type === 'section' || (f.show && !f.show(v))) continue;
+        if (f.type === 'location') { const la = v[f.key], lo = v[f.lngKey]; if (la === '' || la === undefined || lo === '' || lo === undefined) { if (!f.optional) throw new Error('Set the location'); continue; } out[f.key] = Number(la); out[f.lngKey] = Number(lo); continue; }
+        const x = v[f.key];
+        if (f.blank && (x === '' || x === undefined)) continue;
+        if (f.type === 'switch' || f.type === 'stepper') { out[f.key] = x; continue; }
+        if (f.type === 'multi' || f.type === 'weekdays') { if (!x?.length) { if (!f.optional) throw new Error(`${f.label}: choose at least one`); continue; } out[f.key] = x; continue; }
+        if (x === '' || x === undefined || x === null) { if (!f.optional) throw new Error(`${f.label} is required`); continue; }
+        if (f.type === 'money') { const n = Number(String(x).replace(/,/g, '')); if (!(n >= 0)) throw new Error(`${f.label}: enter an amount`); out[f.key] = Math.round(n * 10 ** digits(f.currency)); }
+        else out[f.key] = f.type === 'number' ? Number(x) : x;
       }
       const msg = await onSubmit(out);
       onClose(); if (typeof msg === 'string') toast(msg);
@@ -164,20 +170,7 @@ export function FormSheet({ visible, onClose, title, fields, initial = {}, submi
 
   return (
     <Sheet visible={visible} onClose={onClose} title={title}>
-      {fields.map((f) => f.type === 'date' ? (
-        <DateField key={f.key} label={f.label} value={v[f.key]} onChange={(x) => set(f.key, x)} optional={f.optional} min={f.min} max={f.max} hint={f.hint} />
-      ) : f.type === 'time' ? (
-        <TimeField key={f.key} label={f.label} value={v[f.key]} onChange={(x) => set(f.key, x)} optional={f.optional} step={f.step} hint={f.hint} />
-      ) : f.type === 'choice' ? (
-        <View key={f.key} style={{ gap: 6 }}><T weight="800" size={13}>{f.label}</T><Seg options={f.options} value={v[f.key] ?? f.options[0]?.value ?? f.options[0]} onChange={(x) => set(f.key, x)} color={c.pink} /></View>
-      ) : f.type === 'multi' ? (
-        <View key={f.key} style={{ gap: 6 }}><T weight="800" size={13}>{f.label}</T>
-          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-            {f.options.map((o) => { const cur = v[f.key] ?? []; return <Chip key={o.value} label={o.label} active={cur.includes(o.value)} onPress={() => set(f.key, cur.includes(o.value) ? cur.filter((x) => x !== o.value) : [...cur, o.value])} />; })}
-          </View></View>
-      ) : (
-        <Field key={f.key} label={f.label + (f.optional ? ' (optional)' : '')} value={String(v[f.key] ?? '')} onChangeText={(x) => set(f.key, x)} secure={f.type === 'secret'} multiline={f.type === 'multiline'} keyboardType={f.type === 'number' ? 'numeric' : undefined} hint={f.hint} placeholder={f.placeholder} />
-      ))}
+      {fields.filter((f) => !f.show || f.show(v)).map((f) => <View key={f.key}>{control(f)}</View>)}
       {err ? <T color={c.red} weight="800">{err}</T> : null}
       <Btn title={submitLabel} onPress={submit} loading={busy} color={color} />
     </Sheet>
