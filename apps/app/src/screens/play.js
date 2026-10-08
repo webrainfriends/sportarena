@@ -1,11 +1,11 @@
 import { VerifiedBadges } from './verification';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { useNav } from '../nav';
-import { Avatar, Btn, Bubble, Card, Chip, Empty, ErrorBox, GradCard, H1, H2, Loading, Row, Screen, Seg, Section, StatPill, T, Tag } from '../ui';
+import { Field, Avatar, Btn, Bubble, Card, Chip, Empty, ErrorBox, GradCard, H1, H2, Loading, Row, Screen, Seg, Section, StatPill, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { FixtureCard, Reviews, StandingsTable, TrophyShelf, Stars } from '../blocks';
 import { SportSelect } from '../sportpicker';
@@ -18,14 +18,23 @@ export function Play() {
   const [tab, setTab] = useState('events');
   const [sport, setSport] = useState(null);
   const [q, setQ] = useState('');
+  const [dq, setDq] = useState('');
+  const [flags, setFlags] = useState({});
+  const [sort, setSort] = useState('soonest');
+  const [size, setSize] = useState(20);
   const [form, setForm] = useState(null);
+  useEffect(() => { const t = setTimeout(() => setDq(q.trim()), 350); return () => clearTimeout(t); }, [q]);
+  useEffect(() => setSize(20), [tab, sport, dq, flags, sort]);
+  const toggle = (k) => setFlags((f) => ({ ...f, [k]: !f[k] }));
   const list = useLoad(() => {
-    const p = { sport: sport ?? undefined, limit: 50 };
-    if (tab === 'events') return api.get('/events', p);
-    if (tab === 'teams') return api.get('/teams', p);
+    const p = { sport: sport ?? undefined, limit: size };
+    if (tab === 'events') return api.get('/events/search', { ...p, q: dq || undefined, sort, ...Object.fromEntries(Object.entries(flags).filter(([, v]) => v)) });
+    if (tab === 'teams') return api.get('/teams', { ...p, q: dq || undefined });
     if (tab === 'venues') return api.get('/venues', {});
-    return api.get('/people', { ...p, sport: undefined });
-  }, [tab, sport]);
+    return api.get('/people', { ...p, sport: undefined, q: dq || undefined });
+  }, [tab, sport, dq, flags, sort, size]);
+  const rows = tab === 'events' ? list.data?.items : list.data;
+  const total = tab === 'events' ? list.data?.total : rows?.length;
 
   return (
     <Screen>
@@ -33,17 +42,25 @@ export function Play() {
       <Seg options={[{ value: 'events', label: 'Events', emoji: '🎟️', color: c.pink }, { value: 'teams', label: 'Teams', emoji: '🛡️', color: c.violet }, { value: 'venues', label: 'Venues', emoji: '🏟️', color: c.cyan }, { value: 'people', label: 'People', emoji: '🧑‍🤝‍🧑', color: c.orange }]} value={tab} onChange={setTab} />
       {tab === 'events' || tab === 'teams' ? <View style={{ marginTop: 6 }}><SportSelect allLabel="All sports" value={sport} onChange={setSport} /></View> : null}
 
+      {tab !== 'venues' ? <View style={{ marginTop: 8 }}><Field value={q} onChangeText={setQ} placeholder={tab === 'events' ? 'Search events, cities, sports' : tab === 'teams' ? 'Search teams' : 'Search people'} /></View> : null}
+      {tab === 'events' ? (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }} accessibilityRole="toolbar">
+          {[['open_for_entry', 'Open to join'], ['free', 'Free entry'], ['seeking_sponsors', 'Needs sponsors'], ['verified', 'Verified']].map(([k, label]) => <Chip key={k} label={label} active={!!flags[k]} onPress={() => toggle(k)} />)}
+          <Chip label={sort === 'soonest' ? 'Sort: soonest' : sort === 'fee_low' ? 'Sort: lowest fee' : 'Sort: newest'} onPress={() => setSort((v) => (v === 'soonest' ? 'fee_low' : v === 'fee_low' ? 'newest' : 'soonest'))} />
+        </View>
+      ) : null}
       {tab === 'events' && has('organizer') ? <Btn title="Create an event" color={c.violet} onPress={() => setForm('event')} style={{ marginTop: 8 }} /> : null}
       {tab === 'teams' ? <Btn title="Start a team" color={c.pink} onPress={() => setForm('team')} style={{ marginTop: 8 }} /> : null}
 
       <View style={{ gap: 12, marginTop: 14 }}>
-        {list.loading && !list.data ? <Loading /> : list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : !list.data.length ? <Empty title="Nothing here yet" sub="Be the one who starts it." /> :
-          list.data.map((x, i) => {
-            if (tab === 'events') return <Row key={x.id} onPress={() => push('Event', { id: x.id })} color={[c.pinkSoft, c.violetSoft, c.limeSoft, c.sunSoft][i % 4]} left={<Bubble emoji={x.banner_emoji} color={c.paper} />} title={x.name} sub={`${x.sport_emoji} ${x.sport} · ${x.entrants} in${x.starts_on ? ' · ' + day(x.starts_on) : ''}`} right={<Tag label={x.status} color={x.status === 'open' ? c.lime : c.sun} />} />;
+        {list.loading && !list.data ? <Loading /> : list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : !rows.length ? (dq || Object.values(flags).some(Boolean) || sport ? <Empty title="No matches" sub="Try fewer filters or a different search." /> : <Empty title="Nothing here yet" sub="Be the one who starts it." />) :
+          rows.map((x, i) => {
+            if (tab === 'events') return <Row key={x.id} onPress={() => push('Event', { id: x.id })} color={[c.pinkSoft, c.violetSoft, c.limeSoft, c.sunSoft][i % 4]} left={<Bubble emoji={x.banner_emoji} color={c.paper} />} title={x.name} sub={`${x.sport_emoji} ${x.sport} · ${x.entrants} in${x.spots_left != null ? ` · ${x.spots_left} spots left` : ''}${x.city ? ' · ' + x.city : ''}${x.starts_on ? ' · ' + day(x.starts_on) : ''}${x.entry_fee_cents ? ' · ' + money(x.entry_fee_cents) : ' · Free'}`} right={<Tag label={x.registration_open ? 'open' : x.status === 'open' ? 'full / closed' : x.status} color={x.registration_open ? c.lime : c.sun} />} />;
             if (tab === 'teams') return <Row key={x.id} onPress={() => push('Team', { id: x.id })} left={<Bubble emoji={x.emoji} color={x.color} />} title={x.name} sub={`${x.sport_emoji} ${x.sport} · ${x.members} members${x.city ? ' · ' + x.city : ''}`} />;
             if (tab === 'venues') return <Row key={x.id} onPress={() => push('Venue', { id: x.id })} left={<Bubble emoji={x.emoji} color={c.cyan} />} title={x.name} sub={`${x.city ?? ''} · ${x.resources} bookable spots`} right={x.rating ? <T weight="900">⭐ {x.rating}</T> : null} />;
             return <Row key={x.id} onPress={() => push('Person', { id: x.id })} left={<Avatar user={x} />} title={x.display_name} sub={`@${x.handle} · ${x.roles.join(', ')}`} />;
           })}
+        {rows && total > rows.length && tab !== 'venues' ? <Btn small title={`Show more (${total - rows.length} more)`} color={c.paper} onPress={() => setSize((n) => n + 20)} /> : null}
       </View>
 
       <FormSheet visible={form === 'team'} onClose={() => setForm(null)} title="Start a team" submitLabel="Create team"
