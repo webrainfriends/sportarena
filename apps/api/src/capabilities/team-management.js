@@ -9,6 +9,7 @@ import { isAdmin, mustFind, PUBLIC_USER } from '../helpers.js';
 import { notify } from '../notify.js';
 import { canManageTeam } from './teams.js';
 import { requireConsent } from '../youth.js';
+import { hasOrgGrant } from '../org-access.js';
 
 const availability = z.enum(['available', 'tentative', 'unavailable', 'injured']);
 const rateUnit = z.enum(['match', 'hour', 'month', 'season']);
