@@ -141,7 +141,7 @@ MEDIA_DIR="$KEY_DIR/media"
 sudo mkdir -p "$MEDIA_DIR"; sudo chown "$(id -un):$(id -gn)" "$MEDIA_DIR"
 set_env MEDIA_DIR "$MEDIA_DIR"
 # Payments: only written when provided, so a deploy without keys never wipes keys set earlier.
-for v in STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET PAYPAL_CLIENT_ID PAYPAL_CLIENT_SECRET PAYPAL_WEBHOOK_ID PAYPAL_ENV PAYMENT_CURRENCY; do
+for v in STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET PAYPAL_CLIENT_ID PAYPAL_CLIENT_SECRET PAYPAL_WEBHOOK_ID PAYPAL_ENV PAYMENT_CURRENCY EXPO_ACCESS_TOKEN; do
   val="$(printf '%s' "${!v:-}" | tr -d '\r\n' | xargs)"
   [ -n "$val" ] && set_env "$v" "$val"
 done
@@ -149,6 +149,15 @@ done
 if [ -z "$(env_val SPORTARENA_JWT_SECRET)" ]; then
   echo "[deploy] generating SPORTARENA_JWT_SECRET (first deploy only)"
   set_env SPORTARENA_JWT_SECRET "$(openssl rand -hex 48)"
+fi
+
+# Web Push (browser notifications): a VAPID key pair, generated once and never rotated by a deploy (that would orphan every subscription).
+if [ -z "$(env_val VAPID_PUBLIC_KEY)" ]; then
+  echo "[deploy] generating VAPID keys for browser push (first deploy only)"
+  VAPID=$(node -e "const c=require('crypto');const e=c.createECDH('prime256v1');e.generateKeys();process.stdout.write(e.getPublicKey().toString('base64url')+' '+Buffer.from(e.getPrivateKey('hex').padStart(64,'0'),'hex').toString('base64url'))")
+  set_env VAPID_PUBLIC_KEY "${VAPID%% *}"
+  set_env VAPID_PRIVATE_KEY "${VAPID##* }"
+  set_env VAPID_SUBJECT "mailto:admin@${PUBLIC_HOST:-sportarena.app}"
 fi
 
 # ---- migrate + (re)start the API ----

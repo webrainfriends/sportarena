@@ -537,7 +537,7 @@ test('notifications: inbox, preferences, muted kinds, email queue + webhook disp
 
   assert.equal(must(await api('POST', '/notifications/read', { token: u.token, body: {} })).marked, 1);
   assert.equal(must(await api('GET', '/notifications', { token: u.token })).unread, 0);
-  assert.deepEqual(must(await api('GET', '/me/notification-preferences', { token: u.token })), { in_app: true, email: true, reminder_hours: 24, muted_kinds: [] });
+  assert.deepEqual(must(await api('GET', '/me/notification-preferences', { token: u.token })), { in_app: true, email: true, push: true, reminder_hours: 24, muted_kinds: [] });
 
   // switch email off and mute new_booking for the manager
   must(await api('PATCH', '/me/notification-preferences', { token: u.token, body: { email: false } }));

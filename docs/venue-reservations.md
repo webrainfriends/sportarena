@@ -35,7 +35,7 @@ OpenAPI and MCP, and the app uses nothing else. Engine code: `apps/api/src/booki
 
 In-app inbox (`/notifications`) is instant. Per-user preferences: channels (in-app, email), booking reminder lead time, muted kinds. Triggers: reservation confirmed, new booking (to the venue team), modified, cancelled (either side), displaced by an override, booking reminder, added as staff.
 
-Email is **queued** (`notification_deliveries`) and delivered by POSTing JSON to `NOTIFY_WEBHOOK_URL` (bearer `NOTIFY_WEBHOOK_SECRET`) — bridge it to SES/SendGrid/n8n. Without the URL mail stays queued. The server runs reminders + dispatch every `NOTIFY_INTERVAL_SECONDS` (default 60, `0` disables); admins can trigger a cycle with `POST /admin/notifications/dispatch`. Push notifications need device tokens the app doesn't collect yet, so they aren't offered.
+Email is **queued** (`notification_deliveries`) and delivered by POSTing JSON to `NOTIFY_WEBHOOK_URL` (bearer `NOTIFY_WEBHOOK_SECRET`) — bridge it to SES/SendGrid/n8n. Without the URL mail stays queued. The server runs reminders + dispatch every `NOTIFY_INTERVAL_SECONDS` (default 60, `0` disables); admins can trigger a cycle with `POST /admin/notifications/dispatch`. Push is described below.
 
 ## Known limits
 
@@ -65,3 +65,12 @@ Email is **queued** (`notification_deliveries`) and delivered by POSTing JSON to
 * **Booking wizard:** Court(s) → Date (availability calendar) → Time (slots grouped Morning / Afternoon / Evening / Night, multi-select, "slots per tap" for longer sessions, unit counters) → Review → basket checkout. Courts, dates and venues can be combined in one booking.
 * **Ticket:** booking code up front, **Add to calendar** (.ics on the web, share sheet on phones), invoices and payment below.
 * **Calendar and time pickers everywhere:** admin forms (blocks, overrides, rate rules, discounts, report period) use the same date and time pickers; the schedule has a day picker.
+
+## Push notifications
+
+Every notification (confirmations, changes, reminders, refunds, replies …) is also pushed to the person's phones and browsers when they've switched push on (per-user switch in preferences, per-device registration).
+
+* **Phones** (iOS and Android) use Expo's push service: the app registers its Expo push token (`register_push_device`, provider `expo`). Native builds need an EAS project id in `app.json` (`extra.eas.projectId`). `EXPO_ACCESS_TOKEN` (optional repo secret) raises Expo's limits.
+* **Browsers** use Web Push with VAPID keys. The deploy generates the key pair once on the server (`VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` in `.env`); the web app registers `sw.js` and subscribes. Browsers only allow this on **https**, so enable TLS for web push. Endpoints are limited to the real push services (Google, Mozilla, Apple, Microsoft); subscription keys are encrypted at rest.
+* Delivery is queued like email (`notification_deliveries`, channel `push`), sent right after the data commits and retried by the worker. Devices a provider rejects are switched off (`disabled_at`), never deleted. Tapping a push opens the booking or venue.
+* `get_push_config`, `register_push_device`, `list_push_devices`, `remove_push_device`, `send_test_push`.

@@ -4,6 +4,7 @@ import './venues.js';
 import './venue-admin.js';
 import './reservations.js';
 import './venue-media.js';
+import './push.js';
 import './invoices.js';
 import './events.js';
 import './scores.js';

@@ -9,6 +9,7 @@ import { Bubble, Btn, Card, Chip, Empty, ErrorBox, Field, H1, H2, Loading, Row, 
 import { FormSheet } from '../FormSheet';
 import { c } from '../theme';
 import { PaySheet } from '../PaySheet';
+import { currentDevice, disablePush, enablePush, pushSupport } from '../push';
 import { KIND } from './book';
 import { addDays, dateTimeIn, dayLabel, hoursSummary, localToIso, moneyIn, offerLabel, timeIn, todayIn } from '../vtime';
 
@@ -341,6 +342,40 @@ export function Compare({ ids }) {
 }
 
 // ------------------------------------------------------------------ notifications
+/** Turn push on or off for this phone / browser, see the devices that get push, send a test. */
+function PushCard({ prefs }) {
+  const { toast } = useSession();
+  const sup = useLoad(() => pushSupport(), []);
+  const devices = useLoad(() => api.get('/me/push-devices'), []);
+  const [mine, setMine] = useState(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { currentDevice().then(setMine); }, [devices.data]);
+  const here = devices.data?.some((d) => d.id === mine);
+  const toggle = async () => {
+    setBusy(true);
+    try { if (here) { await disablePush(mine); setMine(null); toast('Push turned off on this device'); } else { await enablePush(); toast('Push is on for this device 🔔'); } devices.reload(); }
+    catch (e) { toast(e.message); } finally { setBusy(false); }
+  };
+  return (
+    <Card>
+      <T weight="700">Push notifications</T>
+      <T size={13} color={c.mute} style={{ marginTop: 2 }}>Booking confirmations, changes, reminders and freed-up slots, straight to this device.</T>
+      {sup.data && !sup.data.ok ? <T size={13} color={c.mute} style={{ marginTop: 8 }}>{sup.data.reason}</T> : (
+        <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+          <Btn small title={here ? 'Turn off on this device' : 'Turn on for this device'} color={here ? c.paper : c.pink} onPress={toggle} loading={busy} />
+          {devices.data?.length ? <Btn small title="Send a test" color={c.paper} onPress={async () => { try { await api.post('/me/push-test'); toast('Test sent'); } catch (e) { toast(e.message); } }} /> : null}
+        </View>
+      )}
+      {devices.data?.length ? <View style={{ marginTop: 10 }}>{devices.data.map((d) => (
+        <View key={d.id} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 4 }}>
+          <T size={13}>{d.platform === 'web' ? '🌐' : d.platform === 'ios' ? '📱' : '🤖'} {d.label ?? d.platform}{d.id === mine ? ' · this device' : ''}</T>
+          <Btn small title="Remove" color={c.paper} ink={c.red} onPress={async () => { await api.del(`/me/push-devices/${d.id}`).catch(() => {}); devices.reload(); }} />
+        </View>
+      ))}</View> : null}
+    </Card>
+  );
+}
+
 export function Notifications() {
   const { toast } = useSession();
   const { push } = useNav();
@@ -363,11 +398,14 @@ export function Notifications() {
             <Seg options={[{ value: true, label: 'On' }, { value: false, label: 'Off' }]} value={p.in_app} onChange={(v) => setPref({ in_app: v })} color={c.pink} />
             <Line k="Email" v="" />
             <Seg options={[{ value: true, label: 'On' }, { value: false, label: 'Off' }]} value={p.email} onChange={(v) => setPref({ email: v })} color={c.pink} />
+            <Line k="Push" v="" />
+            <Seg options={[{ value: true, label: 'On' }, { value: false, label: 'Off' }]} value={p.push !== false} onChange={(v) => setPref({ push: v })} color={c.pink} />
             <Line k="Remind me before a booking" v="" />
             <Seg options={[2, 6, 12, 24, 48].map((h) => ({ value: h, label: `${h}h` }))} value={p.reminder_hours} onChange={(v) => setPref({ reminder_hours: v })} color={c.violet} />
           </Card>
         ) : <Loading />}
       </Section>
+      <Section title="Push" color={c.violet}><PushCard /></Section>
       <Section title="Inbox" action={list.data?.unread ? 'Mark all read' : undefined} onAction={readAll} color={c.pink}>
         {list.loading && !list.data ? <Loading /> : list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : list.data.items.length ? list.data.items.map((n) => (
           <Row key={n.id} onPress={() => tap(n)} color={n.read_at ? c.paper : c.pinkSoft} left={<Bubble emoji={n.kind.includes('cancel') ? '❌' : n.kind.includes('remind') ? '⏰' : n.kind.includes('modif') ? '✏️' : '✅'} />}

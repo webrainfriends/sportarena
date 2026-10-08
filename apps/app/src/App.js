@@ -8,6 +8,7 @@ import { Icon } from './icons';
 import { useLayout } from './layout';
 import { installWebShell } from './web';
 import { api } from './api';
+import { parseTarget, targetFor } from './push';
 import { c, fam } from './theme';
 
 installWebShell();
@@ -108,6 +109,24 @@ function Shell() {
       toast(r.status === 'paid' ? 'Payment received ✓' : 'Payment is still processing — check back shortly');
       if (r.purpose_type === 'venue_invoice') { const inv = await api.get(`/invoices/${r.purpose_id}`).catch(() => null); if (inv) { goTab('Book'); push('Reservation', { id: inv.reservation_id }); } }
     }).catch((e) => toast(e.message));
+  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
+  // A tapped push notification opens the right screen: from the web service worker (?open= or a message) or from the phone.
+  useEffect(() => {
+    if (!user) return undefined;
+    const go = ([name, params]) => { goTab('Book'); setTimeout(() => push(name, params), 0); };
+    if (Platform.OS === 'web') {
+      const q = new URLSearchParams(window.location.search);
+      if (q.get('open')) { window.history.replaceState({}, '', window.location.pathname); go(parseTarget(q.get('open'))); }
+      const onMsg = (e) => { if (e.data?.type === 'open') go(parseTarget(e.data.target)); };
+      navigator.serviceWorker?.addEventListener('message', onMsg);
+      return () => navigator.serviceWorker?.removeEventListener('message', onMsg);
+    }
+    let sub;
+    import('expo-notifications').then((N) => {
+      N.setNotificationHandler({ handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: true, shouldSetBadge: false }) });
+      sub = N.addNotificationResponseReceivedListener((r) => go(targetFor(r.notification.request.content.data)));
+    }).catch(() => {});
+    return () => sub?.remove();
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!ready) return <View style={{ flex: 1, backgroundColor: c.bg, justifyContent: 'center', padding: 24 }}><Loading /></View>;
   if (!user) return <View style={{ flex: 1, paddingTop: ins.top, backgroundColor: c.bg }}><Auth /></View>;
