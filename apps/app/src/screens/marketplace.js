@@ -495,6 +495,7 @@ export function Insure() {
                       <View style={{ flex: 1, backgroundColor: c.bg, borderRadius: 14, padding: 10 }}><T weight="800" size={18}>{money(p.premium_cents)}</T><T size={11} color={c.mute} weight="700">PER MONTH</T></View>
                     </View>
                     {p.description ? <T size={13} color={c.mute}>{p.description}</T> : null}
+                    {p.exclusions ? <T size={12} color={c.mute}>Not covered: {p.exclusions}</T> : null}
                     {covered.has(p.id) ? <Pill label="✓ YOU'RE COVERED" fg={c.lime} bg={c.limeSoft} /> : <Btn small title="Get covered" onPress={() => setBuy(p)} style={{ alignSelf: 'flex-start' }} />}
                   </View>
                 </Card>

@@ -26,6 +26,7 @@ physios & doctors, suppliers and insurers. **API-first. MCP-first.** One React N
 | **Health** | Find physios/doctors, appointments, **athlete-controlled consent**, encrypted clinical notes, fit-to-play status without clinical detail |
 | **Insurance** | Plans for individual / team / event, policies (encrypted number + beneficiary), claims with coverage checks, admin review |
 | **Verification** | Request a verified badge (gamer, coach, physio, doctor, sponsor, event) as a case with encrypted evidence; platform-team queue with reviewer checklist, decisions, expiry and revocation — see [docs/verification.md](docs/verification.md) |
+| **Insurance** | Insurers, searchable/comparable plans (cover, exclusions, eligibility, term), purchase with terms snapshot, claim review lifecycle — see [docs/insurance.md](docs/insurance.md) |
 | **Support & disputes** | Support tickets and disputes as one case model that links bookings, payments, events or games; user thread vs internal notes, SLA queue, escalation, immutable timeline — see [docs/cases.md](docs/cases.md) |
 | **Community** | Ratings & testimonials for people, teams, events, venues, sponsors |
 
