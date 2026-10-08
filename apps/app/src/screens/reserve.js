@@ -11,6 +11,7 @@ import { c } from '../theme';
 import { PaySheet } from '../PaySheet';
 import { PointsApplySheet, WalletApplySheet } from './wallet';
 import { PassApplySheet } from './plans';
+import { NewCaseSheet } from './cases';
 import { currentDevice, disablePush, enablePush, pushSupport } from '../push';
 import { KIND } from './book';
 import { addDays, dateTimeIn, dayLabel, fmtMin, localDate, hoursSummary, localToIso, moneyIn, offerLabel, timeIn, todayIn } from '../vtime';
@@ -121,6 +122,7 @@ function addToCalendar(r, toast) {
 export function Invoice({ id }) {
   const inv = useLoad(() => api.get(`/invoices/${id}`), [id]);
   const { toast } = useSession();
+  const [report, setReport] = useState(false);
   if (inv.loading && !inv.data) return <Screen><Loading /></Screen>;
   if (inv.error) return <Screen><ErrorBox error={inv.error} onRetry={inv.reload} /></Screen>;
   const d = inv.data;
@@ -154,6 +156,8 @@ export function Invoice({ id }) {
       </Card>
       {d.credit_notes?.length ? <Section title="Credit notes" color={c.sun}>{d.credit_notes.map((n) => <Row key={n.id} title={n.number} sub={n.refund_status} right={<T weight="700">−{money(n.total_cents)}</T>} />)}</Section> : null}
       {Platform.OS === 'web' ? <Btn title="Print / save as PDF" color={c.violet} onPress={() => window.print()} style={{ marginTop: 14 }} /> : <Btn title="Share" color={c.violet} onPress={() => toast('Open this on the web app to print or save as PDF')} style={{ marginTop: 14 }} />}
+      {!credit ? <Btn small title="Dispute this invoice" color={c.paper} ink={c.ink} onPress={() => setReport(true)} style={{ marginTop: 10, alignSelf: 'flex-start' }} /> : null}
+      <NewCaseSheet visible={report} onClose={() => setReport(false)} kind="dispute" links={[{ type: 'invoice', id }]} />
     </Screen>
   );
 }
@@ -162,6 +166,7 @@ export function Reservation({ id }) {
   const { toast } = useSession();
   const { push } = useNav();
   const r = useLoad(() => api.get(`/reservations/${id}`), [id]);
+  const [report, setReport] = useState(false);
   const [moving, setMoving] = useState(null);
   const [cancelAll, setCancelAll] = useState(false);
   const [paying, setPaying] = useState(null);
@@ -247,6 +252,8 @@ export function Reservation({ id }) {
       <FormSheet visible={cancelAll} onClose={() => setCancelAll(false)} title="Cancel the whole booking?" submitLabel="Yes, cancel everything" color={c.red}
         fields={[{ key: 'reason', label: 'Reason', optional: true }]}
         onSubmit={async (v) => { const out = await api.del(`/reservations/${id}`, v); r.reload(); return out.refund_cents ? `Cancelled — refund due ${moneyIn(out.refund_cents, x.currency)}` : 'Cancelled'; }} />
+      <Btn small title="Report a problem with this booking" color={c.paper} ink={c.ink} onPress={() => setReport(true)} style={{ marginTop: 14, alignSelf: 'flex-start' }} />
+      <NewCaseSheet visible={report} onClose={() => setReport(false)} kind="dispute" links={[{ type: 'reservation', id }]} />
     </Screen>
   );
 }

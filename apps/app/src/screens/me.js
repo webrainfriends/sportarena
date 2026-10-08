@@ -10,6 +10,7 @@ import { FavouriteSports } from '../sportpicker';
 import { c, grad } from '../theme';
 import { ROLES, roleLabel } from '../roles';
 import { VerificationQueue, VerificationSection } from './verification';
+import { CaseQueue } from './cases';
 
 const mask = (v) => (v ? '••••••••' : '—');
 const PII = [['email', 'Email'], ['full_name', 'Full name'], ['phone', 'Phone'], ['dob', 'Date of birth'], ['national_id', 'National ID'], ['address', 'Address']];
@@ -49,6 +50,7 @@ export function Me() {
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
         <Btn small title="View my public page" color={c.violet} onPress={() => push('Person', { id: user.id })} />
         <Btn small title="Add a sport role" color={c.cyan} ink={c.ink} onPress={() => setSp(true)} />
+        <Btn small title="Support & disputes" color={c.paper} ink={c.ink} onPress={() => push('Support')} />
       </View>
 
       <Section title="Favourite sports & games" color={c.sun}><FavouriteSports /></Section>
@@ -70,6 +72,7 @@ export function Me() {
 
       <VerificationSection />
       {user.roles.includes('admin') ? <VerificationQueue /> : null}
+      {user.roles.includes('admin') ? <CaseQueue /> : null}
 
       <Section title="Agents & API (MCP)" color={c.violet}>
         <Card color={c.violetSoft}>
