@@ -9,6 +9,7 @@ import { toLocal, fromLocal, addDays } from './time.js';
 import { reconcileInvoices, encryptBilling } from './invoices.js';
 import { paymentsEnabled } from '../payments/service.js';
 import { config } from '../config.js';
+import { memberDiscountBp } from './plans.js';
 
 const SLOT_MS = (r) => r.slot_minutes * 60_000;
 const uniq = (a) => [...new Set(a)];
@@ -42,17 +43,38 @@ export async function blockedBy(c, venueId, resourceId, start, end) {
 export async function loadVenueCtx(c, venueId) {
   const venue = (await c.query('SELECT * FROM venues WHERE id=$1', [venueId])).rows[0];
   if (!venue) throw notFound('Venue');
-  const [hours, rules] = await Promise.all([
+  const [hours, rules, windows, cats, catRates] = await Promise.all([
     c.query('SELECT weekday, opens_min, closes_min FROM venue_hours WHERE venue_id=$1 AND removed_at IS NULL ORDER BY weekday, opens_min', [venueId]),
     c.query('SELECT * FROM price_rules WHERE venue_id=$1 AND active', [venueId]),
+    c.query('SELECT * FROM schedule_windows WHERE venue_id=$1 AND removed_at IS NULL ORDER BY created_at, id', [venueId]),
+    c.query('SELECT id, name, color, hourly_rate_cents FROM price_categories WHERE venue_id=$1', [venueId]),
+    c.query('SELECT cr.* FROM category_rates cr JOIN price_categories pc ON pc.id=cr.category_id WHERE pc.venue_id=$1', [venueId]),
   ]);
-  return { venue, hours: hours.rows, rules: rules.rows };
+  return { venue, hours: hours.rows, rules: rules.rows, windows: windows.rows, categories: new Map(cats.rows.map((x) => [x.id, x])), catRates: new Map(catRates.rows.map((x) => [`${x.category_id}:${x.resource_id}`, x.hourly_rate_cents])) };
 }
 
-/** Opening intervals [opens, closes) in minutes for a local weekday; no hours configured = open 24h. */
-export function openIntervals(ctx, weekday) {
+/**
+ * Opening intervals [opens, closes) in minutes for a local weekday.
+ * With a timetable (schedule windows) a court is open exactly when a window applying to it says so (all courts' windows merged when no court is given);
+ * without one, the venue's opening hours apply, and no hours at all means open 24h.
+ */
+export function openIntervals(ctx, weekday, resource, date) {
+  if (ctx.venue.timetable_enabled) {
+    const iv = ctx.windows.filter((w) => w.weekdays.includes(weekday) && (!resource || w.resource_id === null || w.resource_id === resource.id) && (!date || inDateRange(date, w.valid_from, w.valid_to)))
+      .map((w) => [w.start_min, w.end_min]).sort((a, b) => a[0] - b[0]);
+    const merged = [];
+    for (const [o, e] of iv) { const last = merged[merged.length - 1]; if (last && o <= last[1]) last[1] = Math.max(last[1], e); else merged.push([o, e]); }
+    return merged;
+  }
   if (!ctx.hours.length) return [[0, 1440]];
   return ctx.hours.filter((h) => h.weekday === weekday).map((h) => [h.opens_min, h.closes_min]);
+}
+
+/** The timetable window that prices the slot starting at `start`: dated (seasonal) over everyday, a court's own over venue-wide, then the newest. */
+function windowAt(ctx, resource, l) {
+  return (ctx.windows ?? [])
+    .filter((w) => (w.resource_id === null || w.resource_id === resource.id) && w.weekdays.includes(l.weekday) && l.minutes >= w.start_min && l.minutes < w.end_min && inDateRange(l.date, w.valid_from, w.valid_to))
+    .sort((a, b) => ((b.valid_from || b.valid_to) ? 1 : 0) - ((a.valid_from || a.valid_to) ? 1 : 0) || (b.resource_id ? 1 : 0) - (a.resource_id ? 1 : 0) || b.created_at - a.created_at)[0];
 }
 
 // ------------------------------------------------------------------ pricing
@@ -66,7 +88,11 @@ export function hourlyRate(ctx, resource, start) {
     .filter((r) => (r.resource_id === null || r.resource_id === resource.id)
       && (!r.weekdays || r.weekdays.includes(l.weekday)) && l.minutes >= r.start_min && l.minutes < r.end_min && inDateRange(l.date, r.valid_from, r.valid_to))
     .sort((a, b) => (b.resource_id ? 1 : 0) - (a.resource_id ? 1 : 0) || b.priority - a.priority || b.created_at - a.created_at)[0];
-  return { rate: hit ? hit.hourly_rate_cents : resource.hourly_rate_cents, rule: hit ?? null };
+  if (hit) return { rate: hit.hourly_rate_cents, rule: hit, category: null }; // an explicit special rate beats the timetable category
+  const w = windowAt(ctx, resource, l);
+  const cat = w?.category_id ? ctx.categories.get(w.category_id) : null;
+  if (cat) return { rate: ctx.catRates.get(`${cat.id}:${resource.id}`) ?? cat.hourly_rate_cents, rule: null, category: cat };
+  return { rate: resource.hourly_rate_cents, rule: null, category: null };
 }
 
 /** Price of `quantity` units for [start, end), slot by slot (so a booking can straddle peak and off-peak). */
@@ -95,7 +121,7 @@ export function checkWindow(ctx, resource, start, end, { staff = false, now = ne
   if (slots > resource.max_slots) throw badRequest(`${resource.name} allows at most ${resource.max_slots} slots per booking`);
   const endMin = l.minutes + dur;
   if (endMin > 1440) throw badRequest('A booking cannot run past midnight — book the next day separately');
-  if (!openIntervals(ctx, l.weekday).some(([o, c]) => l.minutes >= o && endMin <= c)) throw badRequest(`${venue.name} is closed at that time`);
+  if (!openIntervals(ctx, l.weekday, resource, l.date).some(([o, c]) => l.minutes >= o && endMin <= c)) throw badRequest(`${venue.name} is closed at that time`);
   return { slots };
 }
 
@@ -146,15 +172,20 @@ export async function repriceReservation(c, reservationId) {
       const amount = discountAmount(d, el);
       if (amount > 0 && (!best || amount > best.amount)) best = { d, amount, el };
     }
+    const bp = await memberDiscountBp(c, rs.user_id, venueId);
+    if (bp > 0) { // a member's standing discount competes with the offers; the best single one wins
+      const base = group.reduce((s, i) => s + i.base_cents, 0), amount = Math.floor((base * bp) / 10000);
+      if (amount > 0 && (!best || amount > best.amount)) best = { d: null, amount, el: group };
+    }
     if (!best) continue;
-    if (best.d.code) usedCodes.add(best.d.code.toUpperCase());
+    if (best.d?.code) usedCodes.add(best.d.code.toUpperCase());
     // spread over the eligible lines pro rata, remainder to the biggest lines so cents always add up
     const base = best.el.reduce((s, i) => s + i.base_cents, 0);
     const shares = best.el.map((i) => ({ i, cents: Math.floor(best.amount * i.base_cents / base) }));
     let rest = best.amount - shares.reduce((s, x) => s + x.cents, 0);
     for (const s of [...shares].sort((a, b) => b.i.base_cents - a.i.base_cents)) { if (rest <= 0) break; s.cents++; rest--; }
     for (const s of shares) applied.set(s.i.id, s.cents);
-    await c.query('INSERT INTO discount_redemptions(discount_id, reservation_id, user_id, amount_cents) VALUES ($1,$2,$3,$4)', [best.d.id, reservationId, rs.user_id, best.amount]);
+    if (best.d) await c.query('INSERT INTO discount_redemptions(discount_id, reservation_id, user_id, amount_cents) VALUES ($1,$2,$3,$4)', [best.d.id, reservationId, rs.user_id, best.amount]);
   }
   for (const i of items) {
     const disc = applied.get(i.id) ?? 0;
@@ -337,7 +368,7 @@ export function daySlots(ctx, resource, date, { bookings, blocks, now = new Date
   const { venue } = ctx;
   const weekday = toLocal(fromLocal(date, 12 * 60, venue.timezone), venue.timezone).weekday;
   const out = [];
-  for (const [open, close] of openIntervals(ctx, weekday)) {
+  for (const [open, close] of openIntervals(ctx, weekday, resource, date)) {
     for (let m = Math.ceil(open / resource.slot_minutes) * resource.slot_minutes; m + resource.slot_minutes <= close; m += resource.slot_minutes) {
       const start = fromLocal(date, m, venue.timezone);
       const end = new Date(start.getTime() + SLOT_MS(resource));
@@ -350,7 +381,8 @@ export function daySlots(ctx, resource, date, { bookings, blocks, now = new Date
         else if (start < new Date(now.getTime() + venue.min_notice_minutes * 60_000)) status = 'too_soon';
         else if (start > new Date(now.getTime() + venue.max_advance_days * 864e5)) status = 'too_far';
       }
-      out.push({ starts_at: start, ends_at: end, free_units: free, status, price_cents: Math.round(hourlyRate(ctx, resource, start).rate * resource.slot_minutes / 60) });
+      const price = hourlyRate(ctx, resource, start);
+      out.push({ starts_at: start, ends_at: end, free_units: free, status, price_cents: Math.round(price.rate * resource.slot_minutes / 60), category: price.category ? { id: price.category.id, name: price.category.name, color: price.category.color } : null });
     }
   }
   return out;

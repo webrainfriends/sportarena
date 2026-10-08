@@ -4,6 +4,7 @@ import { AppError, badRequest, conflict, forbidden } from '../errors.js';
 import { provider, paymentsEnabled, enabledProviders } from './providers.js';
 import { markInvoicePaid } from '../booking/invoices.js';
 import { completeTopup, activateGiftCard } from '../wallet.js';
+import { activateUserPlan } from '../booking/plans.js';
 
 export { paymentsEnabled, enabledProviders };
 
@@ -30,6 +31,10 @@ export async function describePurpose(c, type, id) {
     const g = await q("SELECT purchaser_id AS payer_id, amount_cents AS amount, currency, status FROM gift_cards WHERE id=$1 FOR UPDATE");
     return g && { payerId: g.payer_id, amount: Number(g.amount), currency: g.currency, name: 'SportArena gift card', payable: g.status === 'awaiting_payment' };
   }
+  if (type === 'venue_plan') {
+    const u = await q("SELECT up.user_id AS payer_id, up.price_cents AS amount, up.currency, up.status, up.name, v.name AS venue FROM user_plans up JOIN venues v ON v.id=up.venue_id WHERE up.id=$1 FOR UPDATE OF up");
+    return u && { payerId: u.payer_id, amount: Number(u.amount), currency: u.currency, name: `${u.name} · ${u.venue}`, payable: u.status === 'awaiting_payment' };
+  }
   const p = await q('SELECT p.holder_id AS payer_id, p.amount_cents AS amount, p.status, pl.name FROM insurance_policies p JOIN insurance_plans pl ON pl.id=p.plan_id WHERE p.id=$1 FOR UPDATE OF p');
   return p && { payerId: p.payer_id, amount: Number(p.amount), name: p.name, payable: p.status === 'pending_payment' };
 }
@@ -44,6 +49,7 @@ async function fulfil(c, type, id) {
   if (type === 'venue_invoice') return markInvoicePaid(c, id, { method: 'online' });
   if (type === 'wallet_topup') return completeTopup(c, id);
   if (type === 'gift_card') return activateGiftCard(c, id);
+  if (type === 'venue_plan') return activateUserPlan(c, id);
   return (await c.query(sql, [id])).rowCount > 0;
 }
 

@@ -6,7 +6,7 @@ import { config } from '../config.js';
 import { describePurpose, enabledProviders, safeReturnBase, settle } from '../payments/service.js';
 import { provider } from '../payments/providers.js';
 
-const purposes = ['shop_order', 'coach_hire', 'insurance_policy', 'venue_invoice', 'wallet_topup', 'gift_card'];
+const purposes = ['shop_order', 'coach_hire', 'insurance_policy', 'venue_invoice', 'wallet_topup', 'gift_card', 'venue_plan'];
 
 cap({
   name: 'list_payment_methods', method: 'GET', path: '/payments/methods', tag: 'Payments', auth: 'public',

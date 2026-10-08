@@ -15,7 +15,7 @@ const event = (c, userId, venueId, delta, kind, invoiceId, note) => c.query('INS
 export async function earnForInvoice(c, inv) {
   const venue = (await c.query('SELECT id, name, currency, loyalty_earn_bp, loyalty_expiry_months FROM venues WHERE id=$1', [inv.venue_id])).rows[0];
   if (!venue?.loyalty_earn_bp) return 0;
-  const paidWithPoints = Number((await c.query("SELECT coalesce(sum(amount_cents - returned_cents),0) AS n FROM invoice_credits WHERE invoice_id=$1 AND source='points'", [inv.id])).rows[0].n);
+  const paidWithPoints = Number((await c.query("SELECT coalesce(sum(amount_cents - returned_cents),0) AS n FROM invoice_credits WHERE invoice_id=$1 AND source IN ('points','pass')", [inv.id])).rows[0].n);
   const points = Math.floor(((inv.total_cents - paidWithPoints) * venue.loyalty_earn_bp) / 10000);
   if (points <= 0) return 0;
   const made = await c.query(`INSERT INTO loyalty_lots(user_id, venue_id, invoice_id, kind, points, remaining, expires_at) VALUES ($1,$2,$3,'earn',$4,$4, now() + make_interval(months => $5)) ON CONFLICT DO NOTHING RETURNING id`, [inv.user_id, inv.venue_id, inv.id, points, venue.loyalty_expiry_months]);

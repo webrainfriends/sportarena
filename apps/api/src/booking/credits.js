@@ -1,6 +1,7 @@
 // Wallet credit applied to invoices, and giving it back when the invoice shrinks, is voided, or is refunded.
 import { walletCredit } from '../wallet.js';
 import { restorePoints } from './loyalty.js';
+import { restoreSessions } from './plans.js';
 import { conflict, forbidden, notFound } from '../errors.js';
 
 /** Lock an open invoice that `user` may pay, with what is still due. Refuses while a card checkout for it is in progress (no double payment). */
@@ -32,6 +33,7 @@ export async function returnCredits(c, invoiceIds, amount, { note, adjustInvoice
     await c.query('UPDATE invoice_credits SET returned_cents = returned_cents + $2 WHERE id=$1', [r.id, give]);
     if (adjustInvoice) await c.query('UPDATE invoices SET credits_cents = credits_cents - $2 WHERE id=$1', [r.invoice_id, give]);
     if (r.source === 'points') await restorePoints(c, { userId: r.user_id, venueId: r.venue_id, invoiceId: r.invoice_id, points: give, note });
+    else if (r.source === 'pass') await restoreSessions(c, r, give);
     else await walletCredit(c, r.user_id, r.currency, give, { kind: 'refund', refType: 'invoice', refId: r.invoice_id, note });
     left -= give; returned += give;
   }
