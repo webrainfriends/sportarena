@@ -14,7 +14,7 @@ const provider = http.createServer(async (req, res) => {
     return send(200, { id, url: `https://checkout.stripe.test/${id}` });
   }
   if (req.url.startsWith('/v1/checkout/sessions/')) { const s = fake.sessions[req.url.split('/').pop()]; return s ? send(200, s) : send(404, { error: { message: 'no such session' } }); }
-  if (req.url === '/v1/refunds') { const f = new URLSearchParams(raw); fake.refunds.push({ intent: f.get('payment_intent'), amount: Number(f.get('amount')) }); return send(200, { id: 're_1' }); }
+  if (req.url === '/v1/refunds') { const f = new URLSearchParams(raw); fake.refunds.push({ intent: f.get('payment_intent'), amount: Number(f.get('amount')) }); return setTimeout(() => send(200, { id: 're_1' }), fake.refundDelay ?? 0); }
   send(404, {});
 });
 await new Promise((r) => provider.listen(0, '127.0.0.1', r));
@@ -160,13 +160,17 @@ test('paying invoices from the wallet: partial + card for the rest, full cover, 
   assert.equal(must(await api('GET', `/invoices/${inv.id}`, { token: u.token })).status, 'paid');
 
   // cancelling an early booking: 400 goes straight back to the wallet, 600 back to the card
+  fake.refundDelay = 400; // keep the first refund in flight so a racing caller would double-process it
   must(await api('DELETE', `/bookings/${b1.bookings[0].id}`, { token: u.token }));
   assert.equal(await wallet(u), 40000, 'wallet-funded part refunded instantly');
   await wait(async () => fake.refunds.length >= 1);
   assert.equal(fake.refunds.at(-1).amount, 60000, 'only the card-funded part goes back to the card');
   assert.equal((await pool.query("SELECT refund_status, refund_to_credits_cents FROM invoices WHERE kind='credit_note' AND reservation_id=$1", [b1.id])).rows[0].refund_to_credits_cents, 40000);
-  await processRefunds();
-  assert.equal((await pool.query("SELECT refund_status FROM invoices WHERE kind='credit_note' AND reservation_id=$1", [b1.id])).rows[0].refund_status, 'done');
+  // the post-cancellation kick may still be running: the explicit call must not double-process, and the refund ends 'done'
+  await Promise.all([processRefunds(), processRefunds()]);
+  await wait(async () => (await pool.query("SELECT refund_status FROM invoices WHERE kind='credit_note' AND reservation_id=$1", [b1.id])).rows[0].refund_status === 'done');
+  assert.equal(fake.refunds.length, 1, 'the card was refunded exactly once, however many callers raced');
+  fake.refundDelay = 0;
 
   // full cover: the invoice is simply paid, in the wallet
   must(await adjust(u, 100000));
