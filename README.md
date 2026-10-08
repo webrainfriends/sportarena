@@ -12,7 +12,7 @@ physios & doctors, suppliers and insurers. **API-first. MCP-first.** One React N
 
 | Area | What you can do |
 |---|---|
-| **Identity & people** | Register with roles (athlete, coach, referee, organizer, venue manager, sponsor, physio, doctor, supplier); sport profiles per role; public profiles with no PII; API tokens |
+| **Identity & people** | Register with roles (athlete, coach, referee, organizer, venue manager, sponsor, physio, doctor, supplier, insurer); sport profiles per role; public profiles with no PII; API tokens |
 | **Teams** | Create teams, trophy cabinet, fan wall; **team management** — roster, player availability, invitations, recruiting players/coaches, per-event & per-match squads with roles, rates and a settlement ledger; **team chat** — see [docs/teams.md](docs/teams.md) |
 | **Events & schedule** | Tournaments/leagues/camps/trials, entries + approval, **auto round-robin scheduling**, referee + team clash detection, results, **live standings with configurable points**, one-click "finish & award" (cup/silver/bronze) |
 | **Player marketplace** | Billboard of demands (players wanted for a match, teams recruiting, sponsorship requests/calls) with accept/decline; sports shop with atomic stock + encrypted delivery address; hire coaches; book physios/doctors; buy personal insurance — all inside the Player tab |
@@ -26,7 +26,7 @@ physios & doctors, suppliers and insurers. **API-first. MCP-first.** One React N
 | **Health** | Find physios/doctors, appointments, **athlete-controlled consent**, encrypted clinical notes, fit-to-play status without clinical detail |
 | **Insurance** | Plans for individual / team / event, policies (encrypted number + beneficiary), claims with coverage checks, admin review |
 | **Verification** | Request a verified badge (gamer, coach, physio, doctor, sponsor, event) as a case with encrypted evidence; platform-team queue with reviewer checklist, decisions, expiry and revocation — see [docs/verification.md](docs/verification.md) |
-| **Insurance** | Insurers, searchable/comparable plans (cover, exclusions, eligibility, term), purchase with terms snapshot, claim review lifecycle — see [docs/insurance.md](docs/insurance.md) |
+| **Insurance** | An `insurer` role with its own desk (profile, plans + labelled offers, quote inbox, book of business, claims); searchable/comparable plans; quote requests for a person, team, event or tournament, tracked end to end; accept a quote → cover assigned → pay; renewals with reminders; encrypted document locker; claim review — see [docs/insurance.md](docs/insurance.md) |
 | **Doctors & physios** | Public provider profiles, weekly hours and bookable slots, server-side search (type, sport, location/remote, price, rating, verified), scoped and revocable consent — see [docs/health.md](docs/health.md) |
 | **Support & disputes** | Support tickets and disputes as one case model that links bookings, payments, events or games; user thread vs internal notes, SLA queue, escalation, immutable timeline — see [docs/cases.md](docs/cases.md) |
 | **Youth & guardians** | Verified guardian–child links (invite, accept, evidence, platform review, expiry), purpose-specific consent (participation, medical, media, contact), restricted youth visibility, pickup delegation and check-in, jurisdiction-configurable age policy — see [docs/guardians.md](docs/guardians.md) |

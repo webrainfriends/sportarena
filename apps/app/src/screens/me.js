@@ -54,6 +54,8 @@ export function Me() {
         <Btn small title="Family & guardians" color={c.paper} ink={c.ink} onPress={() => push('Family')} />
         <Btn small title="Support & disputes" color={c.paper} ink={c.ink} onPress={() => push('Support')} />
         <Btn small title="My organisations" color={c.paper} ink={c.ink} onPress={() => push('Orgs')} />
+        {user.roles.includes('insurer') ? <Btn small title="Insurer desk" color={c.violet} onPress={() => push('InsurerDesk')} /> : null}
+        <Btn small title="My insurance" color={c.paper} ink={c.ink} onPress={() => push('Insurance')} />
       </View>
 
       <Section title="Favourite sports & games" color={c.sun}><FavouriteSports /></Section>
@@ -101,6 +103,7 @@ export function Me() {
           await api.patch('/me/roles', { add: next.filter((r) => !user.roles.includes(r)), remove: user.roles.filter((r) => !next.includes(r)) });
           const me = await refresh();
           if (!me.roles.includes(activeRole)) setActiveRole(me.roles[0]);
+          if (next.includes('insurer') && !user.roles.includes('insurer')) { setActiveRole('insurer'); push('InsurerDesk'); return 'Insurer role added: set up your profile'; }
           return 'Roles updated';
         }} />
       <FormSheet visible={edit} onClose={() => setEdit(false)} title="Edit details" initial={{ display_name: user.display_name, bio: user.bio, full_name: user.full_name, phone: user.phone, dob: user.dob, national_id: user.national_id, address: user.address }}

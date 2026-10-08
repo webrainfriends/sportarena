@@ -29,10 +29,10 @@ cap({
       many("SELECT b.id, b.starts_at, b.ends_at, r.name AS resource_name, v.name AS venue_name FROM bookings b JOIN resources r ON r.id=b.resource_id JOIN venues v ON v.id=r.venue_id WHERE b.user_id=$1 AND b.status='confirmed' AND b.ends_at > now() ORDER BY b.starts_at LIMIT 5", [user.id]),
       one('SELECT coalesce(sum(points),0) AS points, count(*)::int AS entries FROM performances WHERE user_id=$1', [user.id]),
       one('SELECT count(*)::int AS n FROM awards WHERE user_id=$1 OR team_id IN (SELECT team_id FROM team_members WHERE user_id=$1)', [user.id]),
-      one("SELECT count(*)::int AS active FROM insurance_policies WHERE holder_id=$1 AND status='active' AND ends_on >= current_date", [user.id]),
+      one("SELECT count(*)::int AS active, count(*) FILTER (WHERE ends_on <= current_date + 30 AND NOT EXISTS (SELECT 1 FROM insurance_policies r WHERE r.renewed_from = insurance_policies.id))::int AS renewal_due FROM insurance_policies WHERE holder_id=$1 AND status='active' AND ends_on >= current_date", [user.id]),
       one('SELECT clearance FROM medical_records WHERE athlete_id=$1 AND clearance IS NOT NULL ORDER BY created_at DESC LIMIT 1', [user.id]),
       many("SELECT id, name, status, banner_emoji FROM events WHERE organizer_id=$1 AND status <> 'cancelled' ORDER BY created_at DESC LIMIT 5", [user.id]),
     ]);
-    return { user, teams, next_games: games, bookings, points: pts.points, score_entries: pts.entries, trophies: awards.n, active_policies: policies.active, fit_to_play: clearance?.clearance ?? 'unknown', my_events: events };
+    return { user, teams, next_games: games, bookings, points: pts.points, score_entries: pts.entries, trophies: awards.n, active_policies: policies.active, policies_to_renew: policies.renewal_due, fit_to_play: clearance?.clearance ?? 'unknown', my_events: events };
   },
 });
