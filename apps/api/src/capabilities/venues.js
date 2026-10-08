@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { cap, id, page, money } from '../registry.js';
 import { one, many, tx, pool } from '../db.js';
+import { inheritTimetable } from '../booking/timetable.js';
 import { conflict, forbidden, notFound, badRequest } from '../errors.js';
 import { isAdmin, mustFind, sportBySlugOrId } from '../helpers.js';
 import { lockResource, usedUnits, blockedBy, cancelBookings, mustManage, canManage } from '../booking/engine.js';
@@ -158,10 +159,14 @@ cap({
     await mustManage(user, i.id);
     const sport = i.sport ? await sportBySlugOrId(i.sport) : null;
     if (i.sport && !sport) throw notFound('Sport');
-    return one(
-      `INSERT INTO resources(venue_id, kind, name, sport_id, capacity, hourly_rate_cents, max_players, description, surface, indoor, slot_minutes, min_slots, max_slots)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
-      [i.id, i.kind, i.name, sport?.id ?? null, i.capacity, i.hourly_rate_cents, i.max_players ?? null, i.description ?? null, i.surface ?? null, i.indoor ?? null, i.slot_minutes, i.min_slots, i.max_slots]);
+    return tx(async (c) => {
+      const r = (await c.query(
+        `INSERT INTO resources(venue_id, kind, name, sport_id, capacity, hourly_rate_cents, max_players, description, surface, indoor, slot_minutes, min_slots, max_slots)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
+        [i.id, i.kind, i.name, sport?.id ?? null, i.capacity, i.hourly_rate_cents, i.max_players ?? null, i.description ?? null, i.surface ?? null, i.indoor ?? null, i.slot_minutes, i.min_slots, i.max_slots])).rows[0];
+      await inheritTimetable(c, i.id, r.id); // with a timetable on, a new court copies a sibling's so it is bookable straight away
+      return r;
+    });
   },
 });
 
