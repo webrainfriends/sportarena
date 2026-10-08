@@ -11,6 +11,7 @@ import { c, grad } from '../theme';
 import { ROLES, roleLabel } from '../roles';
 import { VerificationQueue, VerificationSection } from './verification';
 import { CaseQueue } from './cases';
+import { ProviderProfileSection } from './provider';
 
 const mask = (v) => (v ? '••••••••' : '—');
 const PII = [['email', 'Email'], ['full_name', 'Full name'], ['phone', 'Phone'], ['dob', 'Date of birth'], ['national_id', 'National ID'], ['address', 'Address']];
@@ -70,6 +71,7 @@ export function Me() {
         </Card>
       </Section>
 
+      {user.roles.some((r) => ['physio', 'doctor'].includes(r)) ? <ProviderProfileSection /> : null}
       <VerificationSection />
       {user.roles.includes('admin') ? <VerificationQueue /> : null}
       {user.roles.includes('admin') ? <CaseQueue /> : null}
