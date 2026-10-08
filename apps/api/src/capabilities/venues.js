@@ -6,6 +6,7 @@ import { isAdmin, mustFind, sportBySlugOrId } from '../helpers.js';
 import { lockResource, usedUnits, blockedBy, cancelBookings, mustManage, canManage } from '../booking/engine.js';
 import { validTimezone } from '../booking/time.js';
 import { publicMedia } from '../media.js';
+import { isSupportedCurrency, CURRENCIES } from '../currency.js';
 import { canManageTeam } from './teams.js';
 
 const dt = z.string().datetime({ offset: true });
@@ -23,8 +24,8 @@ export async function reserve(c, { resource_id, user_id, team_id, event_id, star
   const hours = (new Date(ends_at) - new Date(starts_at)) / 3.6e6;
   const price = Math.ceil(hours * res.hourly_rate_cents * quantity);
   return (await c.query(
-    `INSERT INTO bookings(resource_id, user_id, team_id, event_id, starts_at, ends_at, quantity, price_cents, base_cents, source, note)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$8,$9,$10) RETURNING *`,
+    `INSERT INTO bookings(resource_id, user_id, team_id, event_id, starts_at, ends_at, quantity, price_cents, base_cents, payable_cents, source, note)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$8,$8,$9,$10) RETURNING *`,
     [resource_id, user_id, team_id ?? null, event_id ?? null, starts_at, ends_at, quantity, price, event_id ? 'fixture' : 'user', note ?? null])).rows[0];
 }
 
@@ -47,7 +48,11 @@ export const venueProfile = {
   description: z.string().max(2000).optional(), country: z.string().max(60).optional(), postal_code: z.string().max(20).optional(),
   latitude: z.number().min(-90).max(90).optional(), longitude: z.number().min(-180).max(180).optional(),
   timezone: z.string().refine(validTimezone, 'Unknown IANA time zone, e.g. Asia/Kolkata').optional(),
-  currency: z.string().length(3).transform((x) => x.toUpperCase()).optional(),
+  currency: z.string().length(3).transform((x) => x.toUpperCase()).refine(isSupportedCurrency, `Supported currencies: ${Object.keys(CURRENCIES).join(', ')}`).optional(),
+  legal_name: z.string().max(120).optional(), tax_id: z.string().max(40).optional(), billing_address: z.string().max(300).optional(),
+  tax_name: z.string().min(1).max(20).optional(), tax_rate_bp: z.number().int().min(0).max(10000).describe('basis points: 1800 = 18%').optional(), tax_inclusive: z.boolean().optional(),
+  invoice_prefix: z.string().regex(/^[A-Z0-9]{2,8}$/, '2–8 capital letters or digits').optional(),
+  payment_mode: z.enum(['pay_at_venue', 'online_optional', 'online_required']).optional().describe('online modes need Stripe/PayPal switched on; online_required releases unpaid slots after a few minutes'),
   phone: z.string().max(30).optional(), email: z.string().email().optional(), website: z.string().url().optional(),
   amenities: z.array(z.string().min(1).max(40)).max(40).optional(),
   min_notice_minutes: z.number().int().min(0).max(10080).optional(), max_advance_days: z.number().int().min(1).max(730).optional(),
@@ -95,6 +100,7 @@ cap({
            (SELECT min(x) FROM (SELECT min(r.hourly_rate_cents) AS x FROM resources r WHERE r.venue_id=v.id AND r.active AND r.kind <> 'equipment' AND ($3::uuid IS NULL OR r.sport_id=$3)
                                 UNION ALL SELECT min(p.hourly_rate_cents) FROM price_rules p WHERE p.venue_id=v.id AND p.active AND (p.resource_id IS NULL OR $3::uuid IS NULL OR EXISTS (SELECT 1 FROM resources r2 WHERE r2.id=p.resource_id AND r2.sport_id=$3))) m) AS min_hourly_rate_cents,
            (SELECT coalesce(array_agg(DISTINCT s.slug), '{}') FROM resources r JOIN sports s ON s.id=r.sport_id WHERE r.venue_id=v.id AND r.active) AS sports,
+           (SELECT count(*)::int FROM discounts d WHERE d.venue_id=v.id AND d.active AND d.code IS NULL AND (d.valid_to IS NULL OR d.valid_to >= current_date)) AS offers,
            (SELECT '/api/v1/media/' || m.id FROM venue_media m WHERE m.venue_id=v.id AND m.removed_at IS NULL AND m.kind='photo' ORDER BY m.is_cover DESC, m.position, m.created_at LIMIT 1) AS cover_url
          FROM venues v
          WHERE v.active AND ($1::text IS NULL OR v.city ILIKE $1) AND ($2::text IS NULL OR v.name ILIKE '%'||$2||'%')

@@ -2,6 +2,7 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { config } from '../config.js';
 import { AppError } from '../errors.js';
+import { toMajor, fromMajor } from '../currency.js';
 
 const cfg = () => config.payments;
 export const stripeEnabled = () => !!cfg().stripe.secretKey;
@@ -17,7 +18,7 @@ async function call(provider, url, init) {
   const body = await res.json().catch(() => null);
   return { res, body };
 }
-const dec = (cents) => (cents / 100).toFixed(2);
+const dec = (amount, currency) => toMajor(amount, currency);
 
 // ---------------- Stripe ----------------
 const stripeAuth = () => ({ authorization: `Bearer ${cfg().stripe.secretKey}` });
@@ -45,8 +46,9 @@ export const stripe = {
     return stripe.fromSession(b);
   },
   fromSession: (s) => ({ paid: s.payment_status === 'paid', amount: s.amount_total, currency: String(s.currency ?? '').toUpperCase(), paymentRef: typeof s.payment_intent === 'string' ? s.payment_intent : s.payment_intent?.id ?? null }),
-  async refund(paymentRef, paymentId) {
-    const { res, body: b } = await call('Stripe', `${cfg().stripe.base}/v1/refunds`, { method: 'POST', headers: { ...stripeAuth(), 'content-type': 'application/x-www-form-urlencoded', 'idempotency-key': `refund-${paymentId}` }, body: form({ payment_intent: paymentRef }) });
+  /** Refund all of a payment, or `amount` minor units of it (`key` makes a partial refund idempotent). */
+  async refund(paymentRef, paymentId, { amount, key } = {}) {
+    const { res, body: b } = await call('Stripe', `${cfg().stripe.base}/v1/refunds`, { method: 'POST', headers: { ...stripeAuth(), 'content-type': 'application/x-www-form-urlencoded', 'idempotency-key': `refund-${key ?? paymentId}` }, body: form({ payment_intent: paymentRef, amount }) });
     if (!res.ok) throw fail('Stripe', res.status, b?.error?.message);
   },
   /** Verify a Stripe-Signature header against the raw request body (HMAC-SHA256, 5 minute tolerance). */
@@ -79,14 +81,14 @@ const ppJson = async (path, method = 'GET', data, extra = {}) => {
 };
 const fromOrder = (o) => {
   const cap = o?.purchase_units?.[0]?.payments?.captures?.[0];
-  return { paid: o?.status === 'COMPLETED' && cap?.status === 'COMPLETED', amount: cap ? Math.round(Number(cap.amount.value) * 100) : null, currency: cap?.amount?.currency_code ?? null, paymentRef: cap?.id ?? null };
+  return { paid: o?.status === 'COMPLETED' && cap?.status === 'COMPLETED', amount: cap ? fromMajor(cap.amount.value, cap.amount.currency_code) : null, currency: cap?.amount?.currency_code ?? null, paymentRef: cap?.id ?? null };
 };
 
 export const paypal = {
   async createCheckout({ paymentId, amount, currency, name, successUrl, cancelUrl }) {
     const { res, body: b } = await ppJson('/v2/checkout/orders', 'POST', {
       intent: 'CAPTURE',
-      purchase_units: [{ reference_id: paymentId, custom_id: paymentId, description: name.slice(0, 120), amount: { currency_code: currency, value: dec(amount) } }],
+      purchase_units: [{ reference_id: paymentId, custom_id: paymentId, description: name.slice(0, 120), amount: { currency_code: currency, value: dec(amount, currency) } }],
       payment_source: { paypal: { experience_context: { return_url: successUrl, cancel_url: cancelUrl, user_action: 'PAY_NOW', shipping_preference: 'NO_SHIPPING' } } },
     }, { 'paypal-request-id': `order-${paymentId}` });
     const url = b?.links?.find((l) => l.rel === 'payer-action' || l.rel === 'approve')?.href;
@@ -106,8 +108,8 @@ export const paypal = {
     if (!res.ok) throw fail('PayPal', res.status, b?.message);
     return fromOrder(b);
   },
-  async refund(captureRef, paymentId) {
-    const { res, body: b } = await ppJson(`/v2/payments/captures/${encodeURIComponent(captureRef)}/refund`, 'POST', {}, { 'paypal-request-id': `refund-${paymentId}` });
+  async refund(captureRef, paymentId, { amount, currency, key } = {}) {
+    const { res, body: b } = await ppJson(`/v2/payments/captures/${encodeURIComponent(captureRef)}/refund`, 'POST', amount ? { amount: { value: dec(amount, currency), currency_code: currency } } : {}, { 'paypal-request-id': `refund-${key ?? paymentId}` });
     if (!res.ok) throw fail('PayPal', res.status, b?.message);
   },
   async verifyWebhook(headers, event) {

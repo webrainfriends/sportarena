@@ -5,14 +5,17 @@ import { cap, id, page } from '../registry.js';
 import { one, many, tx, pool } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { mustFind, sportBySlugOrId, isAdmin } from '../helpers.js';
-import { notify, notifyVenueTeam, dispatchPending, queueReminders, inbox, DEFAULT_PREFS } from '../notify.js';
+import { notify, notifyVenueTeam, inbox, DEFAULT_PREFS } from '../notify.js';
+import { maintenanceCycle } from '../worker.js';
 import {
   loadVenueCtx, loadBusy, daySlots, nextFreeSlot, priceWindow, checkWindow, openIntervals, usedUnits, blockedBy,
-  createReservation, addLines, reservationView, repriceReservation, cancelBookings, lockResources, canManage, loadResources,
+  createReservation, applyPaymentDeadline, effectivePaymentMode, addLines, reservationView, repriceReservation, cancelBookings, lockResources, canManage, loadResources,
 } from '../booking/engine.js';
 import { fromLocal, toLocal, addDays } from '../booking/time.js';
 import { mapLinks } from './venues.js';
 import { canManageTeam } from './teams.js';
+import { config } from '../config.js';
+import { toMajor } from '../currency.js';
 
 const TAG = 'Venues & Booking';
 const dt = z.string().datetime({ offset: true });
@@ -23,8 +26,9 @@ const item = z.object({
   players: z.number().int().min(1).max(1000).optional(), note: z.string().max(300).optional(),
 });
 const basket = {
-  items: z.array(item).min(1).max(20).describe('Any number of slots, on any number of areas or venues (same currency). All succeed or none does.'),
+  items: z.array(item).min(1).max(20).describe('Any number of slots, on any number of areas or venues (each venue prices in its own currency). All succeed or none does.'),
   promo_codes: z.array(z.string().min(1).max(30)).max(5).default([]), note: z.string().max(300).optional(), team_id: id.optional(),
+  billing: z.object({ name: z.string().max(120).optional(), address: z.string().max(300).optional(), tax_id: z.string().max(40).optional() }).optional().describe('printed on the invoices (e.g. company name and tax number); encrypted at rest'),
 };
 
 // ------------------------------------------------------------------ availability
@@ -51,6 +55,40 @@ cap({
         slots: venue.active ? daySlots(ctx, r, i.date, busy) : [],
       })),
     };
+  },
+});
+
+cap({
+  name: 'venue_calendar', method: 'GET', path: '/venues/:id/calendar', tag: TAG, auth: 'public',
+  summary: 'Month calendar of availability for date pickers: for every day of `month` (YYYY-MM, venue local) the status (past | closed | full | limited | available | too_far), free and total slots, and the cheapest free slot price. Filter by sport or one area. One request per month instead of one per day.',
+  input: z.object({ id, month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'use YYYY-MM'), sport: z.string().optional(), resource_id: id.optional() }),
+  async handler(_, i) {
+    const ctx = await loadVenueCtx(pool, i.id);
+    const sport = i.sport ? await sportBySlugOrId(i.sport) : null;
+    if (i.sport && !sport) throw notFound('Sport');
+    const resources = await many(
+      `SELECT * FROM resources WHERE venue_id=$1 AND active AND ($2::uuid IS NULL OR sport_id=$2) AND ($3::uuid IS NULL OR id=$3) AND ($3::uuid IS NOT NULL OR kind <> 'equipment') ORDER BY name`, [i.id, sport?.id ?? null, i.resource_id ?? null]);
+    const { venue } = ctx;
+    const first = `${i.month}-01`;
+    const next = new Date(`${first}T00:00:00Z`); next.setUTCMonth(next.getUTCMonth() + 1);
+    const last = addDays(next.toISOString().slice(0, 10), -1);
+    const busy = await loadBusy(pool, i.id, fromLocal(first, 0, venue.timezone), fromLocal(addDays(last, 1), 0, venue.timezone));
+    const today = toLocal(new Date(), venue.timezone).date;
+    const limit = addDays(today, venue.max_advance_days);
+    const days = [];
+    for (let d = first; d <= last; d = addDays(d, 1)) {
+      if (d < today) { days.push({ date: d, status: 'past', free_slots: 0, total_slots: 0, from_price_cents: null }); continue; }
+      if (d > limit || !venue.active) { days.push({ date: d, status: 'too_far', free_slots: 0, total_slots: 0, from_price_cents: null }); continue; }
+      let free = 0, total = 0, from = null;
+      for (const r of resources) {
+        for (const s of daySlots(ctx, r, d, busy)) {
+          total++;
+          if (s.status === 'free') { free++; from = from == null ? s.price_cents : Math.min(from, s.price_cents); }
+        }
+      }
+      days.push({ date: d, status: total === 0 ? 'closed' : free === 0 ? 'full' : free / total <= 0.25 ? 'limited' : 'available', free_slots: free, total_slots: total, from_price_cents: from });
+    }
+    return { venue_id: i.id, month: i.month, timezone: venue.timezone, currency: venue.currency, today, days };
   },
 });
 
@@ -119,9 +157,10 @@ cap({
     }
     const best = (arr, key, dir = 1) => arr.filter((x) => key(x) != null).sort((a, b) => dir * (key(a) - key(b)))[0]?.venue.id ?? null;
     return {
-      venues: out,
+      venues: out, mixed_currencies: new Set(out.map((x) => x.venue.currency)).size > 1,
       highlights: {
-        cheapest_venue_id: best(out, (x) => (i.from ? x.window?.cheapest_price_cents : x.pricing?.from_hourly_cents)),
+        // prices in different currencies can't be ranked against each other
+        cheapest_venue_id: new Set(out.map((x) => x.venue.currency)).size > 1 ? null : best(out, (x) => (i.from ? x.window?.cheapest_price_cents : x.pricing?.from_hourly_cents)),
         nearest_venue_id: best(out, (x) => x.distance_km),
         top_rated_venue_id: best(out, (x) => x.rating, -1),
         most_available_venue_id: i.from ? best(out, (x) => x.window?.bookable_areas, -1) : null,
@@ -138,7 +177,7 @@ async function placeBasket(c, user, i, { collect }) {
     const t = await mustFind('teams', i.team_id, '*', c);
     if (!(await canManageTeam(user, t))) throw forbidden('You do not manage that team');
   }
-  const made = await createReservation(c, { user, items: i.items, promo_codes: i.promo_codes, note: i.note, team_id: i.team_id, collect });
+  const made = await createReservation(c, { user, items: i.items, promo_codes: i.promo_codes, note: i.note, team_id: i.team_id, billing: i.billing, collect });
   return made;
 }
 
@@ -159,6 +198,7 @@ cap({
       const { bookings, ...head } = e.view;
       return {
         ok: e.made.problems.length === 0, problems: e.made.problems, currency: head.currency, subtotal_cents: head.subtotal_cents, discount_cents: head.discount_cents, total_cents: head.total_cents,
+        tax_cents: head.tax_cents, payable_cents: head.payable_cents, totals: head.totals, invoices: head.invoices.map(({ number: _n, ...x }) => x), pay_within_minutes: e.made.payment_deadline ? config.holdMinutes : null,
         unapplied_codes: e.made.unused_codes, lines: bookings.map(({ id: _id, status: _s, payment_status: _p, refund_cents: _r, cancel_reason: _c, cancelled_at: _a, source: _o, ...l }) => l),
       };
     }
@@ -168,14 +208,15 @@ cap({
 
 cap({
   name: 'create_reservation', method: 'POST', path: '/reservations', tag: TAG, status: 201,
-  summary: 'Book one or many slots in one go — several slots on one court, several courts/tables, or courts at different venues (same currency). Atomic: every line is checked against opening hours, the slot grid, notice window, blocks and live capacity under per-area locks; if any fails (409/400) nothing is booked. Price rules and the best discount (automatic or your promo code) are applied. Pay at the venue; the venue team is notified.',
+  summary: 'Book one or many slots in one go — several slots on one court, several courts/tables, or courts at different venues, even in different currencies. Atomic: every line is checked against opening hours, the slot grid, notice window, blocks and live capacity under per-area locks; if any fails (409/400) nothing is booked. Price rules, the best discount (automatic or your promo code) and the venue tax are applied. You get one numbered invoice per venue in that venue currency: pay online (create_payment with purpose_type venue_invoice) or at the venue, depending on its payment mode — venues that require online payment hold your slots for a few minutes. The venue team is notified.',
   input: z.object(basket),
   async handler({ user }, i) {
     return tx(async (c) => {
       const made = await placeBasket(c, user, i, { collect: false });
       const view = await reservationView(c, made.reservationId);
       const summary = view.bookings.map((b) => `${b.resource_name} (${b.venue_name}) ${b.starts_at.toISOString()}`).join('; ');
-      await notify(c, user.id, { kind: 'reservation_confirmed', title: `Booked: ${view.code}`, body: `${view.bookings.length} slot(s): ${summary}. Total ${view.total_cents} (minor units), pay at the venue.`, data: { reservation_id: view.id, code: view.code } });
+      const owed = view.totals.map((t) => `${t.currency} ${toMajor(t.payable_cents, t.currency)}`).join(' + ');
+      await notify(c, user.id, { kind: 'reservation_confirmed', title: `Booked: ${view.code}`, body: `${view.bookings.length} slot(s): ${summary}. To pay: ${owed}.${made.payment_deadline ? ` Pay within ${config.holdMinutes} minutes or the slots are released.` : ''}`, data: { reservation_id: view.id, code: view.code } });
       for (const vid of made.venueIds) {
         const v = (await c.query('SELECT * FROM venues WHERE id=$1', [vid])).rows[0];
         await notifyVenueTeam(c, v, user.id, { kind: 'new_booking', title: `New booking ${view.code}`, body: `${user.display_name} booked ${view.bookings.filter((b) => b.venue_id === vid).length} slot(s).`, data: { reservation_id: view.id, venue_id: vid } });
@@ -217,7 +258,7 @@ cap({
 
 cap({
   name: 'add_reservation_items', method: 'POST', path: '/reservations/:id/items', tag: TAG, status: 201,
-  summary: 'Add more slots to a reservation you already hold (same currency). Same checks as create_reservation; totals and discounts are recomputed.',
+  summary: 'Add more slots to a reservation you already hold. Same checks as create_reservation; totals and discounts are recomputed.',
   input: z.object({ id, items: basket.items, team_id: id.optional() }),
   async handler({ user }, i) {
     return tx(async (c) => {
@@ -225,10 +266,8 @@ cap({
       if (!rs) throw notFound('Reservation');
       if (rs.user_id !== user.id) throw forbidden();
       if (rs.status !== 'confirmed') throw conflict('That reservation is cancelled — make a new one');
-      const res = await loadResources(c, i.items.map((x) => x.resource_id));
-      const cur = (await c.query('SELECT DISTINCT currency FROM venues WHERE id = ANY($1::uuid[])', [[...res.values()].map((r) => r.venue_id)])).rows.map((r) => r.currency);
-      if (cur.some((x) => x !== rs.currency)) throw badRequest(`This reservation is in ${rs.currency}`);
       const made = await addLines(c, rs, { userId: user.id, items: i.items, team_id: i.team_id });
+      await applyPaymentDeadline(c, rs.id, made.venueIds);
       const view = await reservationView(c, i.id);
       for (const vid of made.venueIds) {
         const v = (await c.query('SELECT * FROM venues WHERE id=$1', [vid])).rows[0];
@@ -346,9 +385,6 @@ cap({
 });
 cap({
   name: 'dispatch_notifications', method: 'POST', path: '/admin/notifications/dispatch', tag: 'Notifications', auth: ['admin'],
-  summary: 'Run one notification cycle now: queue due booking reminders and send queued emails through NOTIFY_WEBHOOK_URL (when configured). The server also does this on a timer.',
-  async handler() {
-    const reminders = await queueReminders();
-    return { reminders, ...(await dispatchPending()) };
-  },
+  summary: 'Run one maintenance cycle now: queue due booking reminders, send queued emails through NOTIFY_WEBHOOK_URL (when configured), release unpaid online-payment holds and process credit-note refunds. The server also does this on a timer.',
+  async handler() { return maintenanceCycle(); },
 });

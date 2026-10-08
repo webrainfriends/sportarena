@@ -225,9 +225,11 @@ test('multi-slot, multi-area and multi-venue baskets are atomic; both venues can
   // a line overlapping an earlier line of the same basket is caught too
   assert.equal((await api('POST', '/reservations', { token: other.token, body: { items: [L(one.b, 5, 9, 11), L(one.b, 5, 10, 12)] } })).status, 409);
 
-  // different currencies can't share a basket
+  // a basket can span currencies: each venue prices (and later invoices) in its own
   const usd = await makeVenue(m1, { currency: 'USD' });
-  assert.equal((await api('POST', '/reservations', { token: other.token, body: { items: [L(one.b, 6, 9, 10), L(usd.a, 6, 9, 10)] } })).status, 400);
+  const mixed = must(await api('POST', '/reservations', { token: other.token, body: { items: [L(one.b, 6, 9, 10), L(usd.a, 6, 9, 10)] } }), 201);
+  assert.equal(mixed.currency, 'MULTI');
+  assert.deepEqual(mixed.totals.map((t) => t.currency).sort(), ['INR', 'USD']);
 
   // add slots later
   const more = must(await api('POST', `/reservations/${res.id}/items`, { token: user.token, body: { items: [L(two.b, 4, 9, 10)] } }), 201);
@@ -426,8 +428,9 @@ test('admin override: bypass hours/blocks, comps, walk-in guests (encrypted), di
 
   // payment bookkeeping + no-show
   const bid = disp.bookings[0].id;
-  assert.equal(must(await api('POST', `/bookings/${bid}/payment`, { token: mgr.token, body: { status: 'paid' } })).payment_status, 'paid');
-  assert.equal((await api('POST', `/bookings/${bid}/payment`, { token: u.token, body: { status: 'paid' } })).status, 403);
+  assert.equal((await api('POST', `/bookings/${bid}/payment`, { token: mgr.token, body: { status: 'paid' } })).status, 400, 'invoiced bookings are settled through their invoice');
+  assert.equal((await api('POST', `/invoices/${disp.invoices[0].id}/paid`, { token: u.token, body: { method: 'cash' } })).status, 403);
+  assert.equal(must(await api('POST', `/invoices/${disp.invoices[0].id}/paid`, { token: mgr.token, body: { method: 'cash' } })).status, 'paid');
   assert.equal((await api('POST', `/bookings/${bid}/no-show`, { token: mgr.token })).status, 400, 'has not started yet');
   await pool.query("UPDATE bookings SET starts_at = now() - interval '2 hours', ends_at = now() - interval '1 hour' WHERE id=$1", [bid]);
   assert.equal(must(await api('POST', `/bookings/${bid}/no-show`, { token: mgr.token })).status, 'no_show');
@@ -454,7 +457,7 @@ test('reports: revenue, discounts, cancellations, utilisation, peaks, customers'
   assert.equal(s.net_cents, 390000);
   assert.equal(s.cancellations, 1);
   assert.equal(s.cancellation_fee_cents, 0);
-  assert.equal(s.refunded_cents, 100000);
+  assert.equal(s.refunded_cents, 0, 'nothing had been paid, so nothing is refunded');
   assert.equal(s.unit_hours, 4);
   assert.equal(s.outstanding_cents, 390000);
   assert.equal(s.average_booking_cents, 130000);
@@ -585,6 +588,57 @@ test('notifications: inbox, preferences, muted kinds, email queue + webhook disp
   assert.ok(r1.reminders >= 1);
   assert.equal((await notificationCycle()).reminders, 0, 'only once');
   assert.ok(must(await api('GET', '/notifications', { token: u.token })).items.some((x) => x.kind === 'booking_reminder'));
+  void v;
+});
+
+test('month calendar: per-day availability, price-from, closed days, past and out-of-window days', async () => {
+  const mgr = await signup(['venue_manager']);
+  const { v, a } = await makeVenue(mgr);
+  const u = await signup();
+  const month = dayPlus(5).slice(0, 7);
+  const cal = (q = {}) => api('GET', `/venues/${v.id}/calendar`, { query: { month, resource_id: a.id, ...q } });
+  const day = (c, d) => c.days.find((x) => x.date === d);
+
+  // fill Court A completely on day +5 (16 hourly slots = two 8-slot bookings) and mostly on day +6
+  const fill = (d, from, to) => api('POST', '/reservations', { token: u.token, body: { items: [{ resource_id: a.id, starts_at: at(d, from), ends_at: at(d, to) }] } });
+  must(await fill(5, 6, 14), 201); must(await fill(5, 14, 22), 201);
+  must(await fill(6, 6, 14), 201); must(await fill(6, 14, 18), 201);
+  // closed on one weekday
+  const closedDay = dayPlus(8), wd = new Date(`${closedDay}T00:00:00Z`).getUTCDay();
+  must(await api('POST', `/venues/${v.id}/hours`, { token: mgr.token, body: { hours: [0, 1, 2, 3, 4, 5, 6].filter((d) => d !== wd).map((weekday) => ({ weekday, opens: '06:00', closes: '22:00' })) } }));
+
+  const c = must(await cal());
+  assert.equal(c.currency, 'INR');
+  assert.equal(day(c, dayPlus(5)).status, 'full');
+  assert.equal(day(c, dayPlus(5)).free_slots, 0);
+  assert.equal(day(c, dayPlus(6)).status, 'limited');
+  assert.equal(day(c, dayPlus(6)).free_slots, 4);
+  assert.equal(day(c, dayPlus(6)).total_slots, 16);
+  assert.equal(day(c, closedDay).status, 'closed');
+  assert.equal(day(c, dayPlus(7)).status, 'available');
+  assert.equal(day(c, dayPlus(7)).from_price_cents, 100000);
+  assert.equal(c.days.length, new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5)), 0)).getUTCDate());
+  assert.equal(c.days.filter((x) => x.date < c.today).every((x) => x.status === 'past'), true);
+
+  // a rate rule shows up as the cheapest price; other areas widen the picture; the window limit applies
+  must(await api('POST', `/venues/${v.id}/price-rules`, { token: mgr.token, body: { name: 'Early bird', start: '06:00', end: '09:00', hourly_rate_cents: 60000, resource_id: a.id } }), 201);
+  assert.equal(day(must(await cal()), dayPlus(7)).from_price_cents, 60000);
+  const all = must(await api('GET', `/venues/${v.id}/calendar`, { query: { month } }));
+  assert.equal(day(all, dayPlus(5)).status, 'available', 'other courts are still free');
+  must(await api('PATCH', `/venues/${v.id}`, { token: mgr.token, body: { max_advance_days: 7 } }));
+  assert.equal(day(must(await cal()), dayPlus(9)).status, 'too_far');
+  assert.equal((await api('GET', `/venues/${v.id}/calendar`, { query: { month: '2026-13' } })).status, 400);
+});
+
+test('online payment modes fall back to pay-at-venue while no payment provider is configured', async () => {
+  const mgr = await signup(['venue_manager']);
+  const { v, a } = await makeVenue(mgr, { payment_mode: 'online_required' });
+  const u = await signup();
+  const r = must(await api('POST', '/reservations', { token: u.token, body: { items: [{ resource_id: a.id, starts_at: at(3, 10), ends_at: at(3, 11) }] } }), 201);
+  assert.equal(r.payment_deadline, null, 'no deadline when the venue cannot actually take payment');
+  assert.equal(r.awaiting_payment, false);
+  assert.equal(r.invoices[0].payment_mode, 'pay_at_venue');
+  assert.equal((await api('POST', '/payments', { token: u.token, body: { purpose_type: 'venue_invoice', purpose_id: r.invoices[0].id, provider: 'stripe' } })).status, 400);
   void v;
 });
 

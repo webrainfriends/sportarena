@@ -11,6 +11,8 @@ import { notify } from '../notify.js';
 import { canManage, mustManage, lockResources, usedUnits, createReservation, reservationView, cancelBookings } from '../booking/engine.js';
 import { hhmm, fmtMin, fromLocal, toLocal, addDays, dateRange } from '../booking/time.js';
 import { venueProfile, VENUE_PROFILE_FIELDS, KINDS } from './venues.js';
+import { markInvoicePaid, buyerOf } from '../booking/invoices.js';
+import { kickRefunds } from '../booking/refunds.js';
 
 const TAG = 'Venue management';
 const dt = z.string().datetime({ offset: true });
@@ -40,6 +42,11 @@ cap({
     .refine((i) => (i.latitude == null) === (i.longitude == null), 'latitude and longitude go together'),
   async handler({ user }, i) {
     await mustManage(user, i.id);
+    if (i.currency) {
+      const cur = await mustFind('venues', i.id, 'currency');
+      if (cur.currency !== i.currency && (await one('SELECT 1 FROM bookings b JOIN resources r ON r.id=b.resource_id WHERE r.venue_id=$1 LIMIT 1', [i.id])))
+        throw conflict(`This venue already has bookings in ${cur.currency}, so its currency can't change. Register a second venue for ${i.currency} instead.`);
+    }
     return patchRow('venues', i.id, i, ['name', 'city', 'address', 'emoji', 'active', ...VENUE_PROFILE_FIELDS]);
   },
 });
@@ -396,10 +403,11 @@ async function staffBooking(user, bookingId) {
 }
 cap({
   name: 'set_booking_payment', method: 'POST', path: '/bookings/:id/payment', tag: TAG,
-  summary: 'Record how a booking was settled at the venue: paid, unpaid, refunded (after a refund was handed back) or waived. Online card checkout for bookings is not wired in yet.',
+  summary: 'Record how a legacy booking (one made without a reservation, e.g. a fixture) was settled. Reservations are invoiced: use mark_invoice_paid.',
   input: z.object({ id, status: z.enum(['unpaid', 'paid', 'refunded', 'waived']) }),
   async handler({ user }, i) {
     const b = await staffBooking(user, i.id);
+    if (b.reservation_id) throw badRequest('This booking is invoiced — use mark_invoice_paid on its invoice instead');
     if (b.status === 'cancelled' && i.status === 'paid') throw badRequest('That booking is cancelled');
     return one('UPDATE bookings SET payment_status=$2, updated_at=now() WHERE id=$1 RETURNING id, status, price_cents, refund_cents, payment_status', [i.id, i.status]);
   },
@@ -455,8 +463,9 @@ cap({
       coalesce(sum(b.discount_cents) FILTER (WHERE ${ACTIVE}), 0)::int AS discount_cents,
       coalesce(sum(b.price_cents) FILTER (WHERE ${ACTIVE}), 0)::int AS net_cents,
       count(*) FILTER (WHERE b.status='cancelled')::int AS cancellations,
-      coalesce(sum(b.price_cents - b.refund_cents) FILTER (WHERE b.status='cancelled'), 0)::int AS cancellation_fee_cents,
-      coalesce(sum(b.refund_cents) FILTER (WHERE b.status='cancelled'), 0)::int AS refunded_cents,
+      coalesce(sum(b.payable_cents - b.refund_cents) FILTER (WHERE b.status='cancelled'), 0)::int AS cancellation_fee_cents,
+      coalesce(sum(b.refund_cents) FILTER (WHERE b.status='cancelled' AND b.payment_status IN ('refund_due','refunded')), 0)::int AS refunded_cents,
+      coalesce(sum(b.tax_cents) FILTER (WHERE ${ACTIVE}), 0)::int AS tax_cents,
       count(*) FILTER (WHERE b.status='no_show')::int AS no_shows`;
     const [tot, series, byRes, byDow, byHour, disc, cust, channels, hoursRows, blocks, payments] = await Promise.all([
       one(`SELECT ${sums} ${base}`, P.slice(0, 3)),
@@ -475,8 +484,8 @@ cap({
       many(`SELECT b.source, count(*)::int AS bookings, coalesce(sum(b.price_cents),0)::int AS net_cents ${base} AND ${ACTIVE} GROUP BY 1 ORDER BY 2 DESC`, P.slice(0, 3)),
       many('SELECT weekday, opens_min, closes_min FROM venue_hours WHERE venue_id=$1 AND removed_at IS NULL', [i.id]),
       many('SELECT resource_id, starts_at, ends_at FROM venue_blocks WHERE released_at IS NULL AND venue_id=$1 AND starts_at < $3 AND ends_at > $2', P.slice(0, 3)),
-      one(`SELECT coalesce(sum(b.price_cents) FILTER (WHERE b.payment_status='paid'),0)::int AS paid_cents,
-                  coalesce(sum(b.price_cents) FILTER (WHERE b.payment_status='unpaid' AND ${ACTIVE}),0)::int + coalesce(sum(b.price_cents - b.refund_cents) FILTER (WHERE b.payment_status='unpaid' AND b.status='cancelled'),0)::int AS outstanding_cents,
+      one(`SELECT coalesce(sum(b.payable_cents) FILTER (WHERE b.payment_status='paid'),0)::int AS paid_cents,
+                  coalesce(sum(b.payable_cents) FILTER (WHERE b.payment_status='unpaid' AND ${ACTIVE}),0)::int + coalesce(sum(b.payable_cents - b.refund_cents) FILTER (WHERE b.payment_status='unpaid' AND b.status='cancelled'),0)::int AS outstanding_cents,
                   coalesce(sum(b.refund_cents) FILTER (WHERE b.payment_status='refund_due'),0)::int AS refunds_owed_cents ${base} AND (${ACTIVE} OR b.status='cancelled')`, P.slice(0, 3)),
     ]);
     const resources = byRes.map((r) => {

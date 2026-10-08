@@ -31,9 +31,13 @@ export const localHHMM = (iso, tz) => { const p = parts(tz, Date.parse(iso)); re
 export const fmtMin = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 export const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-export const moneyIn = (cents = 0, currency = 'INR') => {
-  try { return new Intl.NumberFormat(undefined, { style: 'currency', currency, maximumFractionDigits: cents % 100 ? 2 : 0 }).format(cents / 100); }
-  catch { return `${currency} ${(cents / 100).toFixed(2)}`; }
+const digitsOf = (currency) => { try { return new Intl.NumberFormat('en', { style: 'currency', currency }).resolvedOptions().maximumFractionDigits; } catch { return 2; } };
+/** Minor units (paise, cents, whole yen …) in the currency's own format: ₹1,200 · $25.50 · ¥5,000. */
+export const moneyIn = (minor = 0, currency = 'INR') => {
+  const d = digitsOf(currency);
+  const major = minor / 10 ** d;
+  try { return new Intl.NumberFormat(undefined, { style: 'currency', currency, minimumFractionDigits: minor % 10 ** d ? d : 0, maximumFractionDigits: d }).format(major); }
+  catch { return `${currency} ${major.toFixed(d)}`; }
 };
 
 /** Summarise weekly hours: "Mon–Sun 06:00–22:00" (groups days that share the same hours). */
@@ -47,3 +51,26 @@ export function hoursSummary(hours) {
   }
   return out.join(' · ');
 }
+
+/** Wall-clock now in a zone: { date, minutes, weekday }. */
+export const nowIn = (tz) => { const p = parts(tz, Date.now()); return { date: `${p.year}-${p.month}-${p.day}`, minutes: Number(p.hour) * 60 + Number(p.minute), weekday: new Date(`${p.year}-${p.month}-${p.day}T00:00:00Z`).getUTCDay() }; };
+
+/** Is a venue open right now, and when does that change? hours = [{weekday, opens_min, closes_min}] (empty = 24h). */
+export function openStatus(hours, tz) {
+  if (!hours?.length) return { open: true, text: 'Open 24 hours' };
+  const n = nowIn(tz);
+  const today = hours.filter((h) => h.weekday === n.weekday).sort((a, b) => a.opens_min - b.opens_min);
+  const cur = today.find((h) => n.minutes >= h.opens_min && n.minutes < h.closes_min);
+  if (cur) return { open: true, text: `Open now · closes ${fmtClock(cur.closes_min)}` };
+  const later = today.find((h) => h.opens_min > n.minutes);
+  if (later) return { open: false, text: `Closed · opens ${fmtClock(later.opens_min)}` };
+  for (let k = 1; k <= 7; k++) { const d = (n.weekday + k) % 7; const h = hours.filter((x) => x.weekday === d).sort((a, b) => a.opens_min - b.opens_min)[0]; if (h) return { open: false, text: `Closed · opens ${k === 1 ? 'tomorrow' : WEEKDAYS[d]} ${fmtClock(h.opens_min)}` }; }
+  return { open: false, text: 'Closed' };
+}
+export const fmtClock = (m) => { const h = Math.floor(m / 60) % 24, mm = m % 60; return `${h % 12 || 12}${mm ? `:${String(mm).padStart(2, '0')}` : ''} ${h < 12 ? 'AM' : 'PM'}`; };
+
+/** "Weekday mornings · 15% off" — the name already says it when it mentions the saving. */
+export const offerLabel = (o, currency) => {
+  const v = o.kind === 'percent' ? `${o.value}% off` : `${moneyIn(o.value, currency)} off`;
+  return /off|%|save|free/i.test(o.name) ? o.name : `${o.name} · ${v}`;
+};

@@ -1,6 +1,6 @@
 # Payments (Stripe + PayPal)
 
-Shop orders, coach sessions and insurance policies are paid through **hosted checkout**: the person is sent to
+Shop orders, coach sessions, insurance policies and **venue booking invoices** are paid through **hosted checkout**: the person is sent to
 Stripe or PayPal, pays there, and comes back. Card details never reach SportArena (no PCI scope beyond redirecting).
 
 ## How it works
@@ -37,6 +37,6 @@ Stripe signatures are verified locally (HMAC, 5-minute tolerance); PayPal webhoo
 ## Known limits
 * Money lands in **your** Stripe/PayPal account. Paying sellers/coaches out (Stripe Connect / PayPal Payouts) is not built.
 * Unpaid orders hold their stock until paid or cancelled by the buyer (no automatic expiry yet).
-* Prices display as ₹ in the app; the charge uses `PAYMENT_CURRENCY`.
+* Shop orders, coach hires and policies are charged in `PAYMENT_CURRENCY`. **Venue invoices are charged in the venue's own currency** (see [venue-reservations.md](venue-reservations.md)); PayPal only accepts currencies your account supports.
 * Tested against local stand-ins of both provider APIs (`apps/api/test/payments.test.js`); run a sandbox payment end to
   end once real test keys are in place.

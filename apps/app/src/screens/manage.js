@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
@@ -8,10 +8,12 @@ import { FormSheet } from '../FormSheet';
 import { c } from '../theme';
 import { KIND } from './book';
 import { MediaManager, VenueReviews } from './venue-media';
-import { WEEKDAYS, addDays, dateTimeIn, fmtMin, hoursSummary, localToIso, moneyIn, timeIn, todayIn } from '../vtime';
+import { useNav } from '../nav';
+import { WEEKDAYS, addDays, dateTimeIn, fmtMin, hoursSummary, localToIso, longDay, moneyIn, timeIn, todayIn } from '../vtime';
+import { Calendar } from '../pickers';
 
 const YN = [{ value: false, label: 'No' }, { value: true, label: 'Yes' }];
-const TABS = [['schedule', 'Schedule'], ['blocks', 'Blocks'], ['pricing', 'Pricing'], ['discounts', 'Discounts'], ['media', 'Photos & videos'], ['reviews', 'Reviews'], ['reports', 'Reports'], ['setup', 'Setup']];
+const TABS = [['schedule', 'Schedule'], ['blocks', 'Blocks'], ['pricing', 'Pricing'], ['discounts', 'Discounts'], ['payments', 'Payments'], ['media', 'Photos & videos'], ['reviews', 'Reviews'], ['reports', 'Reports'], ['setup', 'Setup']];
 const num = (x) => (x === undefined || x === '' ? undefined : Number(x));
 const days = (s) => (s ? String(s).split(/[,\s]+/).filter(Boolean).map(Number) : undefined);
 const daysHint = 'Days as numbers, 0 = Sun … 6 = Sat, e.g. 1,2,3,4,5';
@@ -28,7 +30,7 @@ export function Manage({ id }) {
       <H1 style={{ marginTop: 8 }}>{x.emoji} {x.name}</H1>
       <T color={c.mute} weight="700">Venue console · {x.timezone} · {x.currency}{x.active ? '' : ' · HIDDEN'}</T>
       <View style={{ marginTop: 10 }}><Seg options={TABS.map(([value, label]) => ({ value, label }))} value={tab} onChange={setTab} color={c.violet} /></View>
-      {tab === 'schedule' ? <Schedule {...P} /> : tab === 'blocks' ? <Blocks {...P} /> : tab === 'pricing' ? <Pricing {...P} /> : tab === 'discounts' ? <Discounts {...P} /> : tab === 'media' ? <Section title="Photos & videos" color={c.cyan}><MediaManager venue={x} /></Section> : tab === 'reviews' ? <Section title="Reviews" color={c.pink}><VenueReviews venueId={x.id} /></Section> : tab === 'reports' ? <Reports {...P} /> : <Setup {...P} />}
+      {tab === 'schedule' ? <Schedule {...P} /> : tab === 'blocks' ? <Blocks {...P} /> : tab === 'pricing' ? <Pricing {...P} /> : tab === 'discounts' ? <Discounts {...P} /> : tab === 'payments' ? <Payments {...P} /> : tab === 'media' ? <Section title="Photos & videos" color={c.cyan}><MediaManager venue={x} /></Section> : tab === 'reviews' ? <Section title="Reviews" color={c.pink}><VenueReviews venueId={x.id} /></Section> : tab === 'reports' ? <Reports {...P} /> : <Setup {...P} />}
     </Screen>
   );
 }
@@ -37,17 +39,23 @@ export function Manage({ id }) {
 function Schedule({ v }) {
   const { toast } = useSession();
   const tz = v.timezone;
-  const [dayIdx, setDayIdx] = useState(1);
+  const [date, setDate] = useState(todayIn(tz));
+  const [calOpen, setCalOpen] = useState(false);
+  const [month, setMonth] = useState(todayIn(tz).slice(0, 7));
   const [ov, setOv] = useState(false);
   const [cancel, setCancel] = useState(null);
-  const date = addDays(todayIn(tz), dayIdx - 1);
   const from = localToIso(date, '00:00', tz), to = localToIso(addDays(date, 1), '00:00', tz);
   const s = useLoad(() => api.get(`/venues/${v.id}/schedule`, { from, to }), [v.id, date]);
   const act = async (fn, msg) => { try { await fn(); toast(msg); s.reload(); } catch (e) { toast(e.message); } };
   return (
     <>
       <Section title="Day view" color={c.lime}>
-        <Seg options={Array.from({ length: 15 }, (_, i) => ({ value: i, label: i === 0 ? 'Yesterday' : i === 1 ? 'Today' : new Date(`${addDays(todayIn(tz), i - 1)}T00:00:00Z`).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', timeZone: 'UTC' }) }))} value={dayIdx} onChange={setDayIdx} color={c.pink} />
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Btn small title="‹" color={c.paper} onPress={() => setDate(addDays(date, -1))} />
+          <Pressable onPress={() => { setMonth(date.slice(0, 7)); setCalOpen(true); }} style={{ flex: 1, minHeight: 40, borderRadius: 12, borderWidth: 1, borderColor: c.line, backgroundColor: c.paper, alignItems: 'center', justifyContent: 'center' }}><T weight="700">📅 {longDay(date)}</T></Pressable>
+          <Btn small title="›" color={c.paper} onPress={() => setDate(addDays(date, 1))} />
+          <Btn small title="Today" color={c.violet} onPress={() => setDate(todayIn(tz))} />
+        </View>
         <Btn small title="+ Add booking (override)" color={c.violet} onPress={() => setOv(true)} style={{ alignSelf: 'flex-start' }} />
         {s.loading && !s.data ? <Loading /> : s.error ? <ErrorBox error={s.error} onRetry={s.reload} /> : (
           <>
@@ -75,13 +83,14 @@ function Schedule({ v }) {
           </>
         )}
       </Section>
+      <Sheet visible={calOpen} onClose={() => setCalOpen(false)} title="Pick a day"><Calendar month={month} onMonth={setMonth} value={date} today={todayIn(tz)} onChange={(d) => { setDate(d); setCalOpen(false); }} /></Sheet>
       <FormSheet visible={!!cancel} onClose={() => setCancel(null)} title="Cancel this booking" submitLabel="Cancel & refund in full" color={c.red}
         fields={[{ key: 'reason', label: 'Reason (the customer sees it)', optional: true }]}
         onSubmit={async (f) => { await api.del(`/bookings/${cancel.id}`, f); s.reload(); return 'Cancelled — customer notified and refunded'; }} />
       <FormSheet visible={ov} onClose={() => setOv(false)} title="Add a booking (override)" submitLabel="Book it" initial={{ date }}
         fields={[
           { key: 'resource_id', label: 'Area', type: 'choice', options: v.resources.map((r) => ({ value: r.id, label: `${KIND[r.kind] ?? ''} ${r.name}` })) },
-          { key: 'date', label: 'Date (YYYY-MM-DD)' }, { key: 'start', label: 'Start (HH:MM)', placeholder: '18:00' }, { key: 'hours', label: 'Length in hours', type: 'number', placeholder: '1' },
+          { key: 'date', label: 'Date', type: 'date' }, { key: 'start', label: 'Start time', type: 'time' }, { key: 'hours', label: 'Length in hours', type: 'number', placeholder: '1' },
           { key: 'quantity', label: 'Units', type: 'number', optional: true }, { key: 'reason', label: 'Reason (audit log)', placeholder: 'League night, phone booking…' },
           { key: 'guest_name', label: 'Walk-in guest name', optional: true }, { key: 'guest_phone', label: 'Guest phone', optional: true },
           { key: 'price_cents', label: 'Price override (minor units; 0 = free)', type: 'number', optional: true },
@@ -117,8 +126,8 @@ function Blocks({ v }) {
       <FormSheet visible={form} onClose={() => setForm(false)} title="Block time" submitLabel="Block" initial={{ from_date: todayIn(tz), to_date: todayIn(tz) }}
         fields={[
           { key: 'resource_id', label: 'Which area', type: 'choice', options: [{ value: '', label: 'Whole venue' }, ...v.resources.map((r) => ({ value: r.id, label: r.name }))] },
-          { key: 'from_date', label: 'From date (YYYY-MM-DD)' }, { key: 'to_date', label: 'To date (YYYY-MM-DD)' },
-          { key: 'start_time', label: 'Daily from', placeholder: '00:00', optional: true }, { key: 'end_time', label: 'Daily until', placeholder: '24:00', optional: true },
+          { key: 'from_date', label: 'From date', type: 'date' }, { key: 'to_date', label: 'To date', type: 'date' },
+          { key: 'start_time', label: 'Daily from', type: 'time', optional: true }, { key: 'end_time', label: 'Daily until', type: 'time', optional: true },
           { key: 'weekdays', label: 'Only on these days', hint: daysHint, optional: true },
           { key: 'kind', label: 'Kind', type: 'choice', options: ['maintenance', 'holiday', 'event', 'private', 'other'] }, { key: 'reason', label: 'Reason', optional: true },
           { key: 'cancel_conflicting', label: 'Cancel & refund bookings already in that time?', type: 'choice', options: YN },
@@ -164,8 +173,8 @@ function Pricing({ v, reload }) {
       </Section>
       <FormSheet visible={rule} onClose={() => setRule(false)} title="New rate rule"
         fields={[{ key: 'name', label: 'Name', placeholder: 'Weekday evening peak' }, { key: 'resource_id', label: 'Applies to', type: 'choice', options: [{ value: '', label: 'All areas' }, ...v.resources.map((r) => ({ value: r.id, label: r.name }))] },
-          { key: 'start', label: 'From (HH:MM)', placeholder: '18:00' }, { key: 'end', label: 'Until (HH:MM)', placeholder: '22:00' }, { key: 'hourly_rate_cents', label: 'Rate per hour (minor units)', type: 'number' },
-          { key: 'weekdays', label: 'Days', hint: daysHint, optional: true }, { key: 'valid_from', label: 'Valid from (YYYY-MM-DD)', optional: true }, { key: 'valid_to', label: 'Valid until', optional: true }, { key: 'priority', label: 'Priority', type: 'number', optional: true }]}
+          { key: 'start', label: 'From', type: 'time' }, { key: 'end', label: 'Until', type: 'time' }, { key: 'hourly_rate_cents', label: 'Rate per hour (minor units)', type: 'number' },
+          { key: 'weekdays', label: 'Days', hint: daysHint, optional: true }, { key: 'valid_from', label: 'Valid from', type: 'date', optional: true }, { key: 'valid_to', label: 'Valid until', type: 'date', optional: true }, { key: 'priority', label: 'Priority', type: 'number', optional: true }]}
         onSubmit={async (f) => { await api.post(`/venues/${v.id}/price-rules`, { ...f, resource_id: f.resource_id || undefined, weekdays: days(f.weekdays) }); done(); return 'Rule added'; }} />
       <FormSheet visible={area} onClose={() => setArea(false)} title="Add an area"
         fields={[{ key: 'kind', label: 'Type', type: 'choice', options: ['court', 'table', 'ground', 'pool', 'lane', 'rink', 'range', 'track', 'room', 'studio', 'equipment', 'other'] }, { key: 'name', label: 'Name', placeholder: 'Court 1' },
@@ -200,7 +209,7 @@ function Discounts({ v }) {
         fields={[{ key: 'name', label: 'Name', placeholder: 'Book 3 slots, save 10%' }, { key: 'code', label: 'Promo code (blank = automatic)', optional: true },
           { key: 'kind', label: 'Type', type: 'choice', options: [{ value: 'percent', label: 'Percent' }, { value: 'fixed', label: 'Fixed amount' }] }, { key: 'value', label: 'Value (percent, or minor units)', type: 'number' },
           { key: 'min_slots', label: 'Minimum slots', type: 'number', optional: true }, { key: 'resource_id', label: 'Only for', type: 'choice', options: [{ value: '', label: 'All areas' }, ...v.resources.map((r) => ({ value: r.id, label: r.name }))] },
-          { key: 'weekdays', label: 'Only on days', hint: daysHint, optional: true }, { key: 'valid_from', label: 'From (YYYY-MM-DD)', optional: true }, { key: 'valid_to', label: 'Until', optional: true },
+          { key: 'weekdays', label: 'Only on days', hint: daysHint, optional: true }, { key: 'valid_from', label: 'From', type: 'date', optional: true }, { key: 'valid_to', label: 'Until', type: 'date', optional: true },
           { key: 'max_redemptions', label: 'Max total uses', type: 'number', optional: true }, { key: 'per_user_limit', label: 'Max uses per customer', type: 'number', optional: true }]}
         onSubmit={async (f) => { await api.post(`/venues/${v.id}/discounts`, { ...f, resource_id: f.resource_id || undefined, weekdays: days(f.weekdays) }); list.reload(); return 'Discount created'; }} />
     </Section>
@@ -209,20 +218,24 @@ function Discounts({ v }) {
 
 // ------------------------------------------------------------------ reports
 const Bar = ({ pct, color = c.pink }) => <View style={{ height: 8, borderRadius: 4, backgroundColor: c.violetSoft, overflow: 'hidden', flex: 1 }}><View style={{ width: `${Math.min(100, Math.max(0, pct))}%`, height: 8, backgroundColor: color }} /></View>;
-const RANGES = [['Last 7 days', -7, 0], ['Last 30 days', -30, 0], ['Last 90 days', -90, 0], ['Next 30 days', 0, 30]];
+const RANGES = [['Last 7 days', -7, 0], ['Last 30 days', -30, 0], ['Last 90 days', -90, 0], ['Next 30 days', 0, 30], ['Custom…', 0, 0]];
 function Reports({ v }) {
   const tz = v.timezone;
   const [ri, setRi] = useState(1);
+  const [custom, setCustom] = useState(null);
+  const [pick, setPick] = useState(false);
   const [, a, b] = RANGES[ri];
-  const from = addDays(todayIn(tz), a), to = addDays(todayIn(tz), b);
-  const r = useLoad(() => api.get(`/venues/${v.id}/reports`, { from, to, group_by: Math.abs(a - b) > 45 ? 'week' : 'day' }), [v.id, ri]);
+  const from = ri === 4 && custom ? custom.from : addDays(todayIn(tz), a), to = ri === 4 && custom ? custom.to : addDays(todayIn(tz), b);
+  const r = useLoad(() => api.get(`/venues/${v.id}/reports`, { from, to, group_by: (Date.parse(to) - Date.parse(from)) / 864e5 > 45 ? 'week' : 'day' }), [v.id, ri, custom?.from, custom?.to]);
   const money = (x) => moneyIn(x, v.currency);
   const peak = Math.max(1, ...(r.data?.by_hour ?? []).map((h) => h.bookings));
   const top = Math.max(1, ...(r.data?.series ?? []).map((s) => s.net_cents));
   return (
     <>
       <Section title="Report" color={c.cyan}>
-        <Seg options={RANGES.map(([label], value) => ({ value, label }))} value={ri} onChange={setRi} color={c.cyan} />
+        <Seg options={RANGES.map(([label], value) => ({ value, label: value === 4 && custom ? `${custom.from.slice(5)} → ${custom.to.slice(5)}` : label }))} value={ri} onChange={(i) => { if (i === 4) setPick(true); else setRi(i); }} color={c.cyan} />
+        <FormSheet visible={pick} onClose={() => setPick(false)} title="Report period" submitLabel="Show report" initial={{ from: custom?.from ?? addDays(todayIn(tz), -30), to: custom?.to ?? todayIn(tz) }}
+          fields={[{ key: 'from', label: 'From', type: 'date' }, { key: 'to', label: 'To', type: 'date' }]} onSubmit={async (f) => { if (f.to < f.from) throw new Error('The end date is before the start'); setCustom(f); setRi(4); }} />
         {r.loading && !r.data ? <Loading /> : r.error ? <ErrorBox error={r.error} onRetry={r.reload} /> : (() => {
           const s = r.data.summary;
           return (
@@ -267,6 +280,8 @@ function Setup({ v, reload }) {
   const [hrs, setHrs] = useState(false);
   const [ct, setCt] = useState(false);
   const [st, setSt] = useState(false);
+  const [money, setMoney] = useState(false);
+  const currencies = useLoad(() => api.get('/currencies'), []);
   const contacts = useLoad(() => api.get(`/venues/${v.id}/contacts`), [v.id]);
   const staff = useLoad(() => api.get(`/venues/${v.id}/staff`), [v.id]);
   const owner = v.owner_id === user.id;
@@ -284,6 +299,14 @@ function Setup({ v, reload }) {
             <Btn small title="Edit" onPress={() => setProf(true)} />
             <Btn small title={v.active ? 'Hide from search' : 'Show in search'} color={c.paper} onPress={async () => { try { await save({ active: !v.active }); } catch (e) { toast(e.message); } }} />
           </View>
+        </Card>
+      </Section>
+      <Section title="Money, tax & invoices" color={c.sun}>
+        <Card>
+          <T weight="700">{v.currency} · {v.payment_mode === 'pay_at_venue' ? 'Pay at the venue' : v.payment_mode === 'online_optional' ? 'Pay online or at the venue' : 'Online payment required'}</T>
+          <T size={13} color={c.mute}>{v.tax_rate_bp ? `${v.tax_name} ${v.tax_rate_bp / 100}% — prices ${v.tax_inclusive ? 'include' : 'exclude'} it` : 'No tax charged'} · Invoices from {v.legal_name ?? v.name}{v.tax_id ? ` · ${v.tax_name} ID ${v.tax_id}` : ''}</T>
+          <T size={12} color={c.mute}>Invoice numbers start {v.invoice_prefix ?? 'with an automatic prefix'}-{new Date().getFullYear()}-000001. Online payment needs Stripe or PayPal switched on for the server.</T>
+          <Btn small title="Edit money settings" color={c.violet} onPress={() => setMoney(true)} style={{ marginTop: 10, alignSelf: 'flex-start' }} />
         </Card>
       </Section>
       <Section title="Opening hours" color={c.lime}>
@@ -308,6 +331,14 @@ function Setup({ v, reload }) {
           { key: 'cancel_free_hours', label: 'Free cancellation until (hours before)', type: 'number' }, { key: 'late_cancel_refund_percent', label: 'Refund after that (%)', type: 'number' },
           { key: 'notify_owner', label: 'Notify the team of new bookings?', type: 'choice', options: [{ value: true, label: 'Yes' }, { value: false, label: 'No' }] }]}
         onSubmit={(f) => save({ ...f, amenities: f.amenities ? f.amenities.split(',').map((x) => x.trim()).filter(Boolean) : [] })} />
+      <FormSheet visible={money} onClose={() => setMoney(false)} title="Money, tax & invoices" initial={{ currency: v.currency, payment_mode: v.payment_mode, tax_name: v.tax_name, tax_pct: v.tax_rate_bp / 100, tax_inclusive: v.tax_inclusive, legal_name: v.legal_name ?? '', tax_id: v.tax_id ?? '', billing_address: v.billing_address ?? '', invoice_prefix: v.invoice_prefix ?? '' }}
+        fields={[{ key: 'currency', label: 'Currency (locked once the venue has bookings)', type: 'choice', options: (currencies.data ?? [{ code: v.currency, symbol: '', name: '' }]).map((x) => ({ value: x.code, label: `${x.code} ${x.symbol}` })) },
+          { key: 'payment_mode', label: 'How customers pay', type: 'choice', options: [{ value: 'pay_at_venue', label: 'At the venue' }, { value: 'online_optional', label: 'Online or at venue' }, { value: 'online_required', label: 'Online required' }] },
+          { key: 'tax_name', label: 'Tax name', placeholder: 'GST, VAT, Sales tax' }, { key: 'tax_pct', label: 'Tax rate (%)', type: 'number', optional: true },
+          { key: 'tax_inclusive', label: 'Are your listed prices tax-inclusive?', type: 'choice', options: [{ value: true, label: 'Yes, included' }, { value: false, label: 'No, add on top' }] },
+          { key: 'legal_name', label: 'Legal name on invoices', optional: true }, { key: 'tax_id', label: 'Tax / GST / VAT number', optional: true }, { key: 'billing_address', label: 'Billing address on invoices', optional: true, type: 'multiline' },
+          { key: 'invoice_prefix', label: 'Invoice prefix (2–8 capitals/digits)', optional: true }]}
+        onSubmit={async ({ tax_pct, ...f }) => save({ ...f, tax_rate_bp: Math.round((tax_pct ?? 0) * 100) })} />
       <HoursEditor visible={hrs} onClose={() => setHrs(false)} v={v} onSaved={reload} />
       <FormSheet visible={ct} onClose={() => setCt(false)} title="Add a contact" fields={[{ key: 'role', label: 'Role', type: 'choice', options: ['manager', 'reception', 'emergency', 'billing', 'general'] }, { key: 'name', label: 'Name', optional: true }, { key: 'phone', label: 'Phone', optional: true }, { key: 'email', label: 'Email', optional: true }, { key: 'is_public', label: 'Show to customers?', type: 'choice', options: YN }]}
         onSubmit={async (f) => { await api.post(`/venues/${v.id}/contacts`, f); contacts.reload(); return 'Contact added'; }} />
@@ -344,5 +375,71 @@ function HoursEditor({ visible, onClose, v, onSaved }) {
       <Btn title="Save hours" onPress={() => save(false)} loading={busy} />
       <Btn small title="Open 24 hours, every day" color={c.paper} onPress={() => save(true)} />
     </Sheet>
+  );
+}
+
+// ------------------------------------------------------------------ payments: invoices, receipts, refunds
+const METHODS = ['cash', 'card', 'upi', 'bank', 'other'];
+function Payments({ v }) {
+  const { toast } = useSession();
+  const { push } = useNav();
+  const [status, setStatus] = useState('open');
+  const [paying, setPaying] = useState(null);
+  const list = useLoad(() => api.get('/invoices', { venue_id: v.id, status: status || undefined, limit: 60 }), [v.id, status]);
+  const money = (n, cur = v.currency) => moneyIn(n, cur);
+  return (
+    <Section title="Invoices & payments" color={c.sun}>
+      <T color={c.mute} size={13}>Every booking gets a numbered invoice in {v.currency}. Record payments taken at the venue; online payments and card refunds are handled automatically.</T>
+      <Seg options={[{ value: 'open', label: 'To collect' }, { value: 'paid', label: 'Paid' }, { value: 'void', label: 'Void' }, { value: '', label: 'All' }]} value={status} onChange={setStatus} color={c.violet} />
+      {list.loading && !list.data ? <Loading /> : list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : list.data.length ? list.data.map((i) => (
+        <Card key={i.id}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <View style={{ flex: 1 }}>
+              <T weight="700">{i.kind === 'credit_note' ? 'Credit note' : 'Invoice'} {i.number}</T>
+              <T size={12} color={c.mute}>Booking {i.reservation_code} · {new Date(i.issued_at).toLocaleDateString()}{i.payment_method ? ` · ${i.payment_method}` : ''}{i.kind === 'credit_note' ? ` · refund ${i.refund_status}` : ''}</T>
+            </View>
+            <View style={{ alignItems: 'flex-end', gap: 4 }}><T weight="700">{i.kind === 'credit_note' ? '−' : ''}{money(i.total_cents, i.currency)}</T><Tag label={i.kind === 'credit_note' ? 'credit' : i.status} color={i.status === 'paid' ? c.mint : i.status === 'void' ? c.violetSoft : c.sun} /></View>
+          </View>
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+            {i.kind === 'invoice' && i.status === 'open' ? <Btn small title="Record payment" color={c.violet} onPress={() => setPaying(i)} /> : null}
+            {i.kind === 'credit_note' && ['manual', 'failed'].includes(i.refund_status) ? <Btn small title="Mark refund handed back" color={c.violet} onPress={async () => { try { await api.post(`/invoices/${i.id}/refunded`); toast('Marked as refunded'); list.reload(); } catch (e) { toast(e.message); } }} /> : null}
+            <Btn small title="View" color={c.paper} onPress={() => push('Invoice', { id: i.id })} />
+          </View>
+        </Card>
+      )) : <Empty emoji="🧾" title="Nothing here" sub={status === 'open' ? 'No unpaid invoices.' : undefined} />}
+      <FormSheet visible={!!paying} onClose={() => setPaying(null)} title={`Record payment · ${paying?.number ?? ''}`} submitLabel="Mark as paid"
+        fields={[{ key: 'method', label: `How was ${paying ? money(paying.total_cents, paying.currency) : ''} paid?`, type: 'choice', options: METHODS }]}
+        onSubmit={async (f) => { await api.post(`/invoices/${paying.id}/paid`, f); list.reload(); return 'Payment recorded — the customer has a receipt'; }} />
+    </Section>
+  );
+}
+
+/** Everything the signed-in person runs, per venue and per currency (currencies are never added together). */
+export function OwnerSummary() {
+  const { push } = useNav();
+  const [r, setR] = useState(1);
+  const ranges = [['Last 7 days', -7, 0], ['Last 30 days', -30, 0], ['Last 90 days', -90, 0], ['Next 30 days', 0, 30]];
+  const from = addDays(new Date().toISOString().slice(0, 10), ranges[r][1]), to = addDays(new Date().toISOString().slice(0, 10), ranges[r][2]);
+  const s = useLoad(() => api.get('/me/venue-summary', { from, to }), [r]);
+  return (
+    <Screen wide>
+      <H1 style={{ marginTop: 8 }}>All my venues</H1>
+      <Seg options={ranges.map(([label], value) => ({ value, label }))} value={r} onChange={setR} color={c.cyan} />
+      {s.loading && !s.data ? <Loading /> : s.error ? <ErrorBox error={s.error} onRetry={s.reload} /> : (
+        <>
+          <Section title="By currency" color={c.lime}>
+            {s.data.by_currency.length ? s.data.by_currency.map((t) => (
+              <Card key={t.currency}>
+                <T weight="700" size={17}>{t.currency} · {t.venues} venue{t.venues === 1 ? '' : 's'}</T>
+                {[['Bookings', t.bookings], ['Revenue', moneyIn(t.revenue_cents, t.currency)], ['Tax in revenue', moneyIn(t.tax_cents, t.currency)], ['Collected', moneyIn(t.collected_cents, t.currency)], ['To collect', moneyIn(t.outstanding_cents, t.currency)], ['Refunds owed', moneyIn(t.refunds_owed_cents, t.currency)]].map(([k, val]) => <View key={k} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 }}><T color={c.mute}>{k}</T><T weight="700">{val}</T></View>)}
+              </Card>
+            )) : <Empty emoji="🏟️" title="No venues yet" />}
+          </Section>
+          <Section title="By venue" color={c.pink}>
+            {s.data.venues.map((x) => <Row key={x.id} onPress={() => push('Manage', { id: x.id })} title={`${x.emoji} ${x.name}`} sub={`${x.currency} · ${x.bookings} bookings · to collect ${moneyIn(x.outstanding_cents, x.currency)}`} right={<T weight="700">{moneyIn(x.revenue_cents, x.currency)}</T>} />)}
+          </Section>
+        </>
+      )}
+    </Screen>
   );
 }

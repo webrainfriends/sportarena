@@ -17,10 +17,13 @@ export const many = async (text, params) => (await pool.query(text, params)).row
 
 export async function tx(fn) {
   const client = await pool.connect();
+  const hooks = [];
+  client.afterCommit = (f) => hooks.push(f); // side effects (refund attempts …) that must only run once the data is safely committed
   try {
     await client.query('BEGIN');
     const result = await fn(client);
     await client.query('COMMIT');
+    for (const f of hooks) { try { f(); } catch (e) { console.error('[afterCommit]', e.message); } }
     return result;
   } catch (e) {
     await client.query('ROLLBACK');
