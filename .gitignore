@@ -4,3 +4,4 @@ node_modules
 dist
 web-build
 *.log
+apps/api/data

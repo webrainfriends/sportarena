@@ -1,13 +1,13 @@
 import React, { useMemo, useState } from 'react';
-import { Linking, Platform, Pressable, View } from 'react-native';
-import { api } from '../api';
+import { Image, Linking, Platform, Pressable, View } from 'react-native';
+import { api, mediaUrl } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { useNav } from '../nav';
 import { useBasket } from '../basket';
 import { Bubble, Btn, Card, Chip, Empty, ErrorBox, Field, GradCard, H1, H2, Loading, Row, Screen, Seg, Section, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
-import { Reviews } from '../blocks';
+import { Gallery, VenueReviews } from './venue-media';
 import { c, grad } from '../theme';
 import { addDays, dateTimeIn, dayLabel, hoursSummary, moneyIn, timeIn, todayIn } from '../vtime';
 
@@ -81,7 +81,7 @@ export function Book() {
           </Card>
         ) : null}
         {venues.loading && !venues.data ? <Loading /> : venues.error ? <ErrorBox error={venues.error} onRetry={venues.reload} /> : venues.data?.length ? venues.data.map((v) => (
-          <Row key={v.id} onPress={() => push('Venue', { id: v.id })} left={<Bubble emoji={v.emoji} color={c.cyan} />} title={v.name}
+          <Row key={v.id} onPress={() => push('Venue', { id: v.id })} left={v.cover_url ? <Image source={{ uri: mediaUrl(v.cover_url) }} style={{ width: 46, height: 46, borderRadius: 14, backgroundColor: c.violetSoft }} /> : <Bubble emoji={v.emoji} color={c.cyan} />} title={v.name}
             sub={[v.city, `${v.resources} area${v.resources === 1 ? '' : 's'}`, v.distance_km != null ? `${v.distance_km} km` : null, v.min_hourly_rate_cents != null ? `from ${moneyIn(v.min_hourly_rate_cents, v.currency)}/h` : null].filter(Boolean).join(' · ')}
             right={<View style={{ alignItems: 'flex-end', gap: 6 }}>{v.rating ? <T weight="700">⭐ {v.rating}</T> : null}
               <Chip label={compare.includes(v.id) ? '✓ Compare' : '+ Compare'} active={compare.includes(v.id)} onPress={() => toggleCompare(v.id)} /></View>} />
@@ -162,8 +162,10 @@ export function Venue({ id }) {
       <GradCard colors={grad.fresh}>
         <T size={52}>{x.emoji}</T><H1 color="#fff" style={{ fontSize: 28 }}>{x.name}</H1>
         <T color="#fff" weight="800">{[x.address, x.city].filter(Boolean).join(', ')}</T>
+        {x.reviews ? <T color="#fff" weight="700" style={{ marginTop: 4 }}>★ {x.rating} · {x.reviews} review{x.reviews === 1 ? '' : 's'}</T> : null}
         {x.description ? <T color="#fff" style={{ marginTop: 6 }}>{x.description}</T> : null}
       </GradCard>
+      {x.media?.length ? <View style={{ marginTop: 12 }}><Gallery media={x.media} /></View> : null}
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
         {x.map_links ? <Btn small title="📍 Open in Maps" color={c.violet} onPress={() => open(x.map_links.google)} /> : null}
         {x.map_links ? <Btn small title="Directions" color={c.paper} onPress={() => open(x.map_links.directions)} /> : null}
@@ -218,7 +220,7 @@ export function Venue({ id }) {
         <BasketBar />
       </Section>
 
-      <Section title="Reviews" color={c.pink}><Reviews type="venue" id={id} /></Section>
+      <Section title="Ratings & reviews" color={c.pink}><VenueReviews venueId={id} /></Section>
     </Screen>
   );
 }

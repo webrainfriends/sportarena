@@ -7,9 +7,34 @@
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "backgroundColor": "#FFF6FB",
-    "ios": { "supportsTablet": true, "bundleIdentifier": "dev.sportarena.app" },
-    "android": { "package": "dev.sportarena.app", "adaptiveIcon": { "backgroundColor": "#FF2E93" } },
-    "web": { "bundler": "metro", "output": "single", "name": "SportArena", "shortName": "SportArena", "backgroundColor": "#FFF6FB", "themeColor": "#FF2E93" },
-    "extra": { "apiUrl": null }
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "dev.sportarena.app"
+    },
+    "android": {
+      "package": "dev.sportarena.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#FF2E93"
+      }
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single",
+      "name": "SportArena",
+      "shortName": "SportArena",
+      "backgroundColor": "#FFF6FB",
+      "themeColor": "#FF2E93"
+    },
+    "extra": {
+      "apiUrl": null
+    },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Choose photos and videos of your venue to show on its page."
+        }
+      ]
+    ]
   }
 }

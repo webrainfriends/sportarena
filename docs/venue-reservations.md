@@ -42,3 +42,11 @@ Email is **queued** (`notification_deliveries`) and delivered by POSTing JSON to
 * Payment is **at the venue**: staff record it with `set_booking_payment`; refunds are tracked as `refund_cents` / `refund_due`, not pushed to a card. Online checkout for reservations (the Stripe/PayPal flow used by shop orders) is the natural next step.
 * A booking can't cross midnight, and slot grids on a day with a clock change are not adjusted for the missing/extra hour.
 * A reservation spans venues only if they share a currency.
+
+## Photos, videos and reviews on the venue page
+
+* **Upload** (venue team): `PUT /api/v1/venues/:id/media` with the raw file as the body streams it to disk — photos up to 10 MB, videos up to 150 MB (MP4, MOV, WebM; JPEG, PNG, WebP, GIF). The `add_venue_media` capability does the same for files up to 8 MB sent base64-encoded (for agents). `add_venue_video_link` adds a YouTube or Vimeo video by link. A venue holds up to 100 items / 3 GB.
+* **Safety:** the file type is decided from the file's bytes (never from the client); SVG and anything else is refused; names are server-generated; media is served with `nosniff`, immutable caching and range support.
+* **Storage:** `MEDIA_DIR` (deployed as `/var/lib/sportarena/media`, outside the checkout and web root, so deploys never touch it). Removing a photo hides it; the file and row stay.
+* **Gallery order and cover:** `update_venue_media` (caption, cover), `reorder_venue_media`, `remove_venue_media`; `get_venue` returns the media, `list_venues` a `cover_url`.
+* **Reviews:** `venue_reviews` gives average, count, 1–5 distribution, a "played here" mark for reviewers with a finished booking, sorting and star filter. Guests review with `write_testimonial` (the venue team can't review its own venue). `reply_to_review` lets the team answer publicly; both directions notify.

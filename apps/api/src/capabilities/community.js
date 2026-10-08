@@ -3,6 +3,8 @@ import { cap, id, page } from '../registry.js';
 import { one, many } from '../db.js';
 import { badRequest, notFound } from '../errors.js';
 import { mustFind } from '../helpers.js';
+import { canManage } from '../booking/engine.js';
+import { notifyTeamOfReview } from './venue-media.js';
 
 const SUBJECTS = { user: 'users', team: 'teams', event: 'events', venue: 'venues', sponsor: 'sponsors' };
 
@@ -13,7 +15,11 @@ cap({
   async handler({ user }, i) {
     if (i.subject_type === 'user' && i.subject_id === user.id) throw badRequest('You cannot review yourself');
     await mustFind(SUBJECTS[i.subject_type], i.subject_id, 'id');
-    return one('INSERT INTO testimonials(author_id, subject_type, subject_id, rating, body) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (author_id, subject_type, subject_id) DO UPDATE SET rating=EXCLUDED.rating, body=EXCLUDED.body, created_at=now() RETURNING *', [user.id, i.subject_type, i.subject_id, i.rating, i.body]);
+    if (i.subject_type === 'venue' && (await canManage(user, i.subject_id))) throw badRequest('You cannot review a venue you run');
+    const fresh = i.subject_type === 'venue' && !(await one("SELECT 1 FROM testimonials WHERE author_id=$1 AND subject_type='venue' AND subject_id=$2", [user.id, i.subject_id]));
+    const saved = await one('INSERT INTO testimonials(author_id, subject_type, subject_id, rating, body) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (author_id, subject_type, subject_id) DO UPDATE SET rating=EXCLUDED.rating, body=EXCLUDED.body, created_at=now() RETURNING *', [user.id, i.subject_type, i.subject_id, i.rating, i.body]);
+    if (fresh) await notifyTeamOfReview(i.subject_id, user, i.rating);
+    return saved;
   },
 });
 
