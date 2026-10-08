@@ -2,11 +2,12 @@
 import { z } from 'zod';
 import { cap, id, page } from '../registry.js';
 import { one, many, tx } from '../db.js';
-import { badRequest, conflict, forbidden, notFound } from '../errors.js';
+import { badRequest, conflict, notFound } from '../errors.js';
 import { audit, mustFind } from '../helpers.js';
 import { isSupportedCurrency, CURRENCIES, exponent } from '../currency.js';
 import { balanceOf, walletCredit, walletDebit, redeemGiftCard, giftCardCode } from '../wallet.js';
 import { markInvoicePaid } from '../booking/invoices.js';
+import { lockPayableInvoice } from '../booking/credits.js';
 import { enabledProviders } from '../payments/service.js';
 
 const TAG = 'Wallet & gift cards';
@@ -53,14 +54,7 @@ cap({
   input: z.object({ id, amount_cents: z.number().int().min(1).optional() }),
   async handler({ user }, i) {
     return tx(async (c) => {
-      const inv = (await c.query("SELECT * FROM invoices WHERE id=$1 AND kind='invoice' FOR UPDATE", [i.id])).rows[0];
-      if (!inv) throw notFound('Invoice');
-      if (inv.user_id !== user.id) throw forbidden('This is not your invoice');
-      if (inv.status !== 'open') throw conflict('That invoice is not open');
-      const due = inv.total_cents - inv.credits_cents;
-      if (due <= 0) throw conflict('Nothing left to pay');
-      if ((await c.query("SELECT 1 FROM payments WHERE purpose_type='venue_invoice' AND purpose_id=$1 AND status='pending' AND provider_ref IS NOT NULL AND created_at > now() - interval '30 minutes'", [i.id])).rowCount)
-        throw conflict('A card checkout for this invoice is in progress — finish it, or try again in half an hour');
+      const { inv, due } = await lockPayableInvoice(c, user, i.id);
       const have = await balanceOf(c, user.id, inv.currency);
       const amount = Math.min(due, have, i.amount_cents ?? due);
       if (amount <= 0) throw conflict(`Your ${inv.currency} wallet is empty`);

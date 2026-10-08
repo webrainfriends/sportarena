@@ -8,6 +8,7 @@ import './push.js';
 import './favourites.js';
 import './waitlist.js';
 import './wallet.js';
+import './loyalty.js';
 import './invoices.js';
 import './events.js';
 import './scores.js';

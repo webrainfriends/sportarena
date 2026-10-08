@@ -3,6 +3,7 @@ import { Platform, Share, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
+import { useNav } from '../nav';
 import { Btn, Card, Empty, ErrorBox, Field, H1, Loading, Row, Screen, Seg, Section, Sheet, T, Tag } from '../ui';
 import { PaySheet } from '../PaySheet';
 import { c } from '../theme';
@@ -41,6 +42,8 @@ export function Wallet() {
   const w = useLoad(() => api.get('/me/wallet'), []);
   const cards = useLoad(() => api.get('/me/gift-cards'), []);
   const cur = useLoad(() => api.get('/currencies'), []);
+  const rewards = useLoad(() => api.get('/me/loyalty'), []);
+  const { push } = useNav();
   const [topup, setTopup] = useState(false);
   const [buy, setBuy] = useState(false);
   const [redeem, setRedeem] = useState(false);
@@ -82,6 +85,14 @@ export function Wallet() {
             title={`${moneyIn(g.amount_cents, g.currency)} gift card${g.code_hint ? ` · …${g.code_hint}` : ''}`} sub={g.status === 'awaiting_payment' ? 'Tap to pay' : g.status === 'redeemed' ? `Redeemed ${new Date(g.redeemed_at).toLocaleDateString()}` : g.expires_at ? `Valid until ${new Date(g.expires_at).toLocaleDateString()}` : ''}
             right={<Tag label={g.status.replace('_', ' ')} color={g.status === 'active' ? c.mint : g.status === 'awaiting_payment' ? c.sun : c.violetSoft} />} />
         )) : <T size={13} color={c.mute}>None yet.</T>}
+      </Section>
+
+      <Section title="Rewards" color={c.sun}>
+        {rewards.data?.length ? rewards.data.map((p) => (
+          <Row key={p.venue_id} onPress={() => push('Venue', { id: p.venue_id })} title={`${p.emoji ?? '⭐'} ${p.venue_name}`}
+            sub={p.expiring_soon > 0 ? `${p.expiring_soon} points expire by ${new Date(p.next_expiry).toLocaleDateString()}` : `Worth ${moneyIn(p.points, p.currency)} on your next booking there`}
+            right={<T weight="800">{p.points} pts</T>} />
+        )) : <T size={13} color={c.mute}>Venues that run a rewards programme give you points when you pay. They'll show up here.</T>}
       </Section>
 
       <Section title="Activity" color={c.cyan}>
@@ -137,6 +148,31 @@ export function WalletApplySheet({ invoice, onClose, onDone }) {
           <Btn title={use > 0 ? `Use ${moneyIn(use, invoice.currency)}` : 'Nothing to use'} disabled={use <= 0} loading={busy} onPress={async () => {
             setBusy(true);
             try { const r = await api.post(`/invoices/${invoice.id}/wallet`, {}); toast(r.paid ? 'Paid from your wallet ✓' : `${moneyIn(r.applied_cents, invoice.currency)} applied`); await onDone?.(); onClose(); } catch (e) { toast(e.message); } finally { setBusy(false); }
+          }} />
+        </View>
+      )}
+    </Sheet>
+  );
+}
+
+/** "Use my points" for an open invoice. */
+export function PointsApplySheet({ invoice, onClose, onDone }) {
+  const { toast } = useSession();
+  const r = useLoad(() => api.get('/me/loyalty'), []);
+  const [busy, setBusy] = useState(false);
+  const have = r.data?.find((p) => p.venue_id === invoice.venue_id)?.points ?? 0;
+  const due = invoice.total_cents - (invoice.credits_cents ?? 0);
+  const use = Math.min(have, due);
+  return (
+    <Sheet visible onClose={onClose} title="Pay with points">
+      {r.loading ? <Loading /> : (
+        <View style={{ gap: 10 }}>
+          <T>Your points here: <T weight="700">{have} = {moneyIn(have, invoice.currency)}</T></T>
+          <T>Amount due: <T weight="700">{moneyIn(due, invoice.currency)}</T></T>
+          <T color={c.mute} size={13}>The venue limits how much of one booking points can pay, so you may be able to use fewer than you have. Points paid this way don't earn new points.</T>
+          <Btn title={use > 0 ? 'Use my points' : 'No points to use'} disabled={use <= 0} loading={busy} onPress={async () => {
+            setBusy(true);
+            try { const x = await api.post(`/invoices/${invoice.id}/points`, {}); toast(x.paid ? 'Paid with points ✓' : `${x.points_used} points used`); await onDone?.(); onClose(); } catch (e) { toast(e.message); } finally { setBusy(false); }
           }} />
         </View>
       )}

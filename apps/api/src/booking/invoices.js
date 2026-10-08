@@ -6,6 +6,7 @@ import { encrypt, decrypt } from '../crypto.js';
 import { notify } from '../notify.js';
 import { toMajor } from '../currency.js';
 import { returnCredits } from './credits.js';
+import { earnForInvoice, clawBackPoints } from './loyalty.js';
 
 const ACTIVE = new Set(['confirmed', 'no_show']);
 const taxIn = (total, rate) => Math.round((total * rate) / (10000 + rate)); // payable always contains its tax
@@ -92,6 +93,7 @@ export async function reconcileInvoices(c, reservationId) {
     }
     if (delta < 0) {
       const credit = -delta;
+      await clawBackPoints(c, paid.map((d) => d.id), credit); // the points that money earned go back too
       // wallet-funded money goes straight back to the wallet; only the rest needs the card provider or the venue
       const toWallet = await returnCredits(c, paid.map((d) => d.id), credit, { note: `Refund for booking ${rs.code}` });
       const rest = credit - toWallet;
@@ -118,6 +120,7 @@ export async function markInvoicePaid(c, invoiceId, { method, by } = {}) {
   await c.query("UPDATE bookings b SET payment_status='paid' FROM resources r WHERE r.id=b.resource_id AND r.venue_id=$2 AND b.reservation_id=$1 AND b.status IN ('confirmed','no_show')", [inv.reservation_id, inv.venue_id]);
   const stillOpen = (await c.query("SELECT 1 FROM invoices WHERE reservation_id=$1 AND kind='invoice' AND status='open'", [inv.reservation_id])).rowCount;
   if (!stillOpen) await c.query('UPDATE reservations SET payment_deadline=NULL WHERE id=$1', [inv.reservation_id]);
+  await earnForInvoice(c, inv);
   await notify(c, inv.user_id, { kind: 'invoice_paid', title: `Payment received · ${inv.number}`, body: `${inv.currency} ${toMajor(inv.total_cents, inv.currency)} paid${by ? ` (${method ?? 'at the venue'})` : ' online'}. Your receipt is in the booking.`, data: { invoice_id: inv.id, reservation_id: inv.reservation_id, venue_id: inv.venue_id } });
   return true;
 }
