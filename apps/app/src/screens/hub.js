@@ -7,6 +7,7 @@ import { useNav } from '../nav';
 import { Avatar, Bubble, Btn, Card, Chip, Empty, ErrorBox, Field, GradCard, H1, H2, Loading, Row, Screen, Seg, Section, Sheet, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { SportSelect } from '../sportpicker';
+import { BookProviderSheet, ConsentManager } from './provider';
 import { c, grad, money, day, when } from '../theme';
 
 const TILES = [
@@ -66,7 +67,7 @@ export function Health() {
   const { user, has, toast } = useSession();
   const [tab, setTab] = useState('find');
   const [book, setBook] = useState(null);
-  const prov = useLoad(() => api.get('/providers', { limit: 50 }), []);
+  const prov = useLoad(() => api.get('/providers/search', { limit: 50, sort: 'rating' }), []);
   const appts = useLoad(() => api.get('/appointments', { limit: 30 }), []);
   const recs = useLoad(() => api.get('/medical/records', { limit: 30 }), []);
   const isProv = has('physio', 'doctor');
@@ -75,24 +76,26 @@ export function Health() {
     <Screen>
       <H1>Health</H1>
       <Card color={c.mintSoft} pad={12}><T weight="900">Consent-first medical privacy</T><T size={12} color={c.mute}>Notes are encrypted. Doctors and physios only see your records after you grant access — and every read is logged.</T></Card>
-      <View style={{ marginTop: 10 }}><Seg options={[{ value: 'find', label: 'Find a pro', emoji: '🔎' }, { value: 'appts', label: 'Appointments', emoji: '📅' }, { value: 'records', label: 'My records', emoji: '📋' }]} value={tab} onChange={setTab} color={c.mint} /></View>
+      <View style={{ marginTop: 10 }}><Seg options={[{ value: 'find', label: 'Find a pro', emoji: '🔎' }, { value: 'appts', label: 'Appointments', emoji: '📅' }, { value: 'records', label: 'My records', emoji: '📋' }, { value: 'consent', label: 'Access', emoji: '🔒' }]} value={tab} onChange={setTab} color={c.mint} /></View>
       <View style={{ gap: 10, marginTop: 8 }}>
         {tab === 'find' && (prov.loading ? <Loading /> : prov.data?.length ? prov.data.map((p, i) => (
-          <Row key={i} left={<Avatar user={p} />} title={p.display_name} sub={`${p.provider_role} · ${p.sport_emoji} ${p.sport}`} right={p.id !== user.id ? <Btn small title="Book" color={c.mint} ink={c.ink} onPress={() => setBook(p)} /> : null} />
+          <Row key={i} left={<Avatar user={p} />} title={p.display_name} sub={[p.provider_type, p.sports.join(', '), p.city, p.credential_verified ? '✓ verified' : null, p.rating ? `★ ${Number(p.rating).toFixed(1)}` : null, p.fee_cents ? money(p.fee_cents) : null].filter(Boolean).join(' · ')} right={p.id !== user.id ? <Btn small title="Book" color={c.mint} ink={c.ink} onPress={() => setBook(p)} /> : null} />
         )) : <Empty emoji="🩺" title="No providers yet" />)}
+        {tab === 'consent' && <ConsentManager />}
         {tab === 'appts' && (appts.data?.length ? appts.data.map((a) => (
           <Card key={a.id}><T weight="900">{a.athlete_id === user.id ? `With ${a.provider_name}` : `Athlete: ${a.athlete_name}`}</T><T size={13} color={c.mute}>{when(a.starts_at)} · {a.duration_min} min</T>{a.reason ? <T size={13} style={{ marginTop: 4 }}>“{a.reason}”</T> : null}
             <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, alignItems: 'center', flexWrap: 'wrap' }}><Tag label={a.status} color={a.status === 'confirmed' ? c.lime : c.sun} />
               {a.provider_id === user.id && a.status === 'requested' ? <Btn small title="Confirm" color={c.mint} ink={c.ink} onPress={() => act(() => api.patch(`/appointments/${a.id}`, { status: 'confirmed' }), 'Confirmed')} /> : null}
-              {a.athlete_id === user.id && a.status !== 'cancelled' ? <>
+              {['requested', 'confirmed'].includes(a.status) ? <Btn small title="Cancel" color={c.paper} ink={c.red} onPress={() => act(() => api.patch(`/appointments/${a.id}`, { status: 'cancelled' }), 'Cancelled')} /> : null}
+              {a.provider_id === user.id && a.status === 'confirmed' ? <Btn small title="Complete" color={c.mint} ink={c.ink} onPress={() => act(() => api.patch(`/appointments/${a.id}`, { status: 'completed' }), 'Completed')} /> : null}
+              {a.athlete_id === user.id && !['cancelled', 'completed'].includes(a.status) ? <>
                 <Btn small title="Share records" color={c.violet} onPress={() => act(() => api.post('/medical/grants', { provider_id: a.provider_id }), 'Access granted')} />
                 <Btn small title="Revoke" color={c.paper} ink={c.red} onPress={() => act(() => api.del(`/medical/grants/${a.provider_id}`), 'Access revoked')} /></> : null}
             </View></Card>
         )) : <Empty emoji="📅" title="No appointments" />)}
         {tab === 'records' && (recs.data?.length ? recs.data.map((r) => <Card key={r.id}><View style={{ flexDirection: 'row', gap: 8 }}><Tag label={r.kind} color={c.cyan} />{r.clearance ? <Tag label={r.clearance.replace('_', ' ')} color={r.clearance === 'cleared' ? c.lime : c.orange} /> : null}</View><T weight="900" style={{ marginTop: 6 }}>{r.summary}</T>{r.details ? <T size={13} color={c.mute}>{r.details}</T> : null}<T size={11} color={c.mute}>{r.provider_name} · {day(r.created_at)}</T></Card>) : <Empty emoji="📋" title="No records" sub="Records written by providers you've granted access appear here." />)}
       </View>
-      <FormSheet visible={!!book} onClose={() => setBook(null)} title={`Book ${book?.display_name ?? ''}`} fields={[{ key: 'when', label: 'Date & time (YYYY-MM-DD HH:MM)', placeholder: day(new Date(Date.now() + 864e5)) }, { key: 'reason', label: 'What is it about?', type: 'multiline', optional: true, hint: 'Encrypted — only you and the provider can read it.' }]}
-        onSubmit={async (v) => { const d = new Date(v.when.replace(' ', 'T')); if (isNaN(d)) throw new Error('Use the format 2026-11-02 17:30'); await api.post('/appointments', { provider_id: book.id, starts_at: d.toISOString(), reason: v.reason }); appts.reload(); setTab('appts'); return 'Requested'; }} />
+      {book ? <BookProviderSheet provider={book} onClose={() => setBook(null)} onDone={() => { appts.reload(); setTab('appts'); }} /> : null}
     </Screen>
   );
 }

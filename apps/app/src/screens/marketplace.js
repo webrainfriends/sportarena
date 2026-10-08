@@ -3,9 +3,10 @@ import { Linking, Platform, Pressable, View, useWindowDimensions } from 'react-n
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
-import { Avatar, Btn, Card, Empty, ErrorBox, H1, H2, Loading, Screen, Seg, Sheet, T } from '../ui';
+import { Avatar, Btn, Card, Chip, Empty, ErrorBox, Field, H1, H2, Loading, Screen, Seg, Sheet, T } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { NewCaseSheet } from './cases';
+import { BookProviderSheet } from './provider';
 import { c, toneFor, money, when, day } from '../theme';
 
 const nice = (s) => String(s ?? '').replace(/_/g, ' ');
@@ -365,7 +366,8 @@ export function Hire() {
   const [paying, setPaying] = useState(null);
   const [disp, setDisp] = useState(null);
   const coaches = useLoad(() => api.get('/coaches', { limit: 50 }), []);
-  const provs = useLoad(() => api.get('/providers', { limit: 50 }), []);
+  const [pf, setPf] = useState({ type: '', remote: false, verified: false, sort: 'rating', q: '' });
+  const provs = useLoad(() => api.get('/providers/search', { limit: 50, sort: pf.sort, ...(pf.type ? { type: pf.type } : {}), ...(pf.remote ? { remote: true } : {}), ...(pf.verified ? { verified: true } : {}), ...(pf.q.trim() ? { q: pf.q.trim() } : {}) }), [pf.type, pf.remote, pf.verified, pf.sort, pf.q]);
   const hires = useLoad(() => api.get('/hires', { limit: 30 }), []);
   const appts = useLoad(() => api.get('/appointments', { limit: 30 }), []);
   const reloadAll = () => Promise.all([hires.reload(), appts.reload()]);
@@ -379,7 +381,34 @@ export function Hire() {
       <Head eyebrow="HIRE" title="Build your team around you" sub="Book a coach or trainer, a physio or a doctor." />
       <View style={{ marginTop: 14 }}><Seg options={[{ value: 'coach', label: 'Coaches & trainers' }, { value: 'med', label: 'Physios & doctors' }, { value: 'mine', label: 'My bookings' }]} value={tab} onChange={setTab} /></View>
 
-      {tab !== 'mine' ? (
+      {tab === 'med' ? (
+        <View style={{ gap: 10, marginTop: 14 }}>
+          <Field value={pf.q} onChangeText={(q) => setPf({ ...pf, q })} placeholder="Search by name, clinic or speciality…" />
+          <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
+            {[['', 'Anyone'], ['physio', 'Physios'], ['doctor', 'Doctors']].map(([v, l]) => <Chip key={v} label={l} active={pf.type === v} onPress={() => setPf({ ...pf, type: v })} />)}
+            <Chip label="Remote" active={pf.remote} onPress={() => setPf({ ...pf, remote: !pf.remote })} />
+            <Chip label="✓ Verified" active={pf.verified} onPress={() => setPf({ ...pf, verified: !pf.verified })} />
+            {[['rating', 'Top rated'], ['fee', 'Lowest fee'], ['soonest', 'Soonest']].map(([v, l]) => <Chip key={v} label={l} active={pf.sort === v} onPress={() => setPf({ ...pf, sort: v })} />)}
+          </View>
+          {provs.error ? <ErrorBox error={provs.error} onRetry={provs.reload} /> : provs.loading && !provs.data ? <Loading /> : !provs.data?.length ? (
+            <Empty emoji="🩺" title="No providers match" sub="Try removing a filter." />
+          ) : provs.data.map((x) => (
+            <Card key={x.id} pad={14}>
+              <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
+                <Avatar user={x} size={48} />
+                <View style={{ flex: 1, gap: 3 }}>
+                  <T weight="800" size={15}>{x.display_name}{x.credential_verified ? ' ✓' : ''}</T>
+                  <T size={12} color={c.mute}>{[nice(x.provider_type), x.clinic, x.city, x.remote_ok ? 'remote' : null].filter(Boolean).join(' · ')}</T>
+                  {x.headline ? <T size={12}>{x.headline}</T> : null}
+                  <T size={12} color={c.mute}>{[x.rating ? `★ ${Number(x.rating).toFixed(1)} (${x.rating_count})` : 'No reviews yet', x.fee_cents ? `${money(x.fee_cents)} ${x.currency !== 'INR' ? x.currency : ''}`.trim() : 'Fee on request', x.accepting_patients === false ? 'not taking new patients' : null].filter(Boolean).join(' · ')}</T>
+                </View>
+                <Btn small title="Book" disabled={x.accepting_patients === false} onPress={() => setBook({ x, med: true })} />
+              </View>
+            </Card>
+          ))}
+        </View>
+      ) : null}
+      {tab === 'coach' ? (
         data.error ? <ErrorBox error={data.error} onRetry={data.reload} /> : data.loading && !data.data ? <Loading /> : !data.data?.length ? (
           <View style={{ marginTop: 14 }}><Empty emoji="🧑‍🏫" title="Nobody listed yet" sub="Coaches and clinicians appear here once they add a sport profile." /></View>
         ) : (
@@ -408,7 +437,8 @@ export function Hire() {
             })}
           </Grid>
         )
-      ) : (
+      ) : null}
+      {tab === 'mine' ? (
         <View style={{ gap: 10, marginTop: 14 }}>
           {!hires.data?.length && !appts.data?.length ? <Empty emoji="🗓️" title="No bookings yet" sub="Book a coach or clinician and it shows up here." /> : null}
           {(hires.data ?? []).map((h) => (
@@ -444,11 +474,12 @@ export function Hire() {
             </Card>
           ))}
         </View>
-      )}
+      ) : null}
 
       {paying ? <PaySheet target={paying} onClose={() => setPaying(null)} onDone={reloadAll} /> : null}
       <NewCaseSheet visible={!!disp} onClose={() => setDisp(null)} kind="dispute" category="provider_payment" links={disp ? [{ type: 'coach_hire', id: disp.id }] : []} />
-      {book ? (
+      {book?.med ? <BookProviderSheet provider={book.x} onClose={() => setBook(null)} onDone={async () => { await reloadAll(); setTab('mine'); }} /> : null}
+      {book && !book.med ? (
         <FormSheet visible onClose={() => setBook(null)} title={`Book ${book.x.display_name}`} submitLabel="Request booking"
           fields={[
             { key: 'when', label: 'When (2026-11-02 17:30)' }, { key: 'duration_min', label: 'Minutes', type: 'number', optional: true },
