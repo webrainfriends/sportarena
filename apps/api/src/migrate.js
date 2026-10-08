@@ -15,6 +15,9 @@ export async function migrate() {
     });
     console.log('migrated', f);
   }
+  // derive youth status for accounts that already have a date of birth (idempotent; nothing is removed or rewritten)
+  const n = await (await import('./youth.js')).backfillYouth();
+  if (n) console.log('youth status evaluated for', n, 'existing accounts');
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

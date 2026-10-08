@@ -4,6 +4,7 @@ import { one, many } from '../db.js';
 import { badRequest, conflict, forbidden } from '../errors.js';
 import { isAdmin, mustFind, PUBLIC_USER, sportBySlugOrId } from '../helpers.js';
 import { paymentsEnabled, refundFor } from '../payments/service.js';
+import { NOT_YOUTH_SQL } from '../youth.js';
 
 cap({
   name: 'list_coaches', method: 'GET', path: '/coaches', tag: 'Hire', auth: 'public', summary: 'Find coaches/trainers to hire, by sport, with their hourly rate.',
@@ -13,7 +14,7 @@ cap({
     return many(
       `SELECT ${PUBLIC_USER}, p.level, p.position, p.experience_years, p.club, p.hourly_rate_cents, s.slug AS sport_slug, s.name AS sport, s.emoji AS sport_emoji
          FROM sport_profiles p JOIN users u ON u.id=p.user_id JOIN sports s ON s.id=p.sport_id
-        WHERE p.role='coach' AND ($1::uuid IS NULL OR p.sport_id=$1) AND ($2::text IS NULL OR u.display_name ILIKE '%'||$2||'%' OR u.handle ILIKE $2||'%')
+        WHERE p.role='coach' AND ${NOT_YOUTH_SQL} AND ($1::uuid IS NULL OR p.sport_id=$1) AND ($2::text IS NULL OR u.display_name ILIKE '%'||$2||'%' OR u.handle ILIKE $2||'%')
         ORDER BY u.display_name LIMIT $3 OFFSET $4`, [sport?.id ?? null, i.q ?? null, i.limit, i.offset]);
   },
 });

@@ -8,10 +8,11 @@ import { paymentsEnabled, refundFor } from '../payments/service.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { audit, isAdmin, mustFind, PUBLIC_USER } from '../helpers.js';
 import { decrypt, encrypt } from '../crypto.js';
+import { guardianLink, hasConsent, requireConsent } from '../youth.js';
 
 const dt = z.string().datetime({ offset: true });
 /** Is there a current (not revoked, not expired) consent? `need='clearance'` accepts either scope; the default needs full record access. */
-const hasGrant = async (athleteId, providerId, need = 'full') => !!(await one(
+const hasGrant = async (athleteId, providerId, need = 'full') => (await hasConsent(athleteId, 'medical')) && !!(await one(
   "SELECT 1 FROM medical_grants WHERE athlete_id=$1 AND provider_id=$2 AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now()) AND ($3::text = 'clearance' OR scope = 'full')", [athleteId, providerId, need]));
 const logGrant = (c, athleteId, providerId, action, scope, expiresAt) => c.query('INSERT INTO medical_grant_events(athlete_id, provider_id, action, scope, expires_at) VALUES ($1,$2,$3,$4,$5)', [athleteId, providerId, action, scope ?? null, expiresAt ?? null]);
 
@@ -29,6 +30,7 @@ cap({
   input: z.object({ provider_id: id, starts_at: dt, duration_min: z.number().int().min(10).max(240).default(30), mode: z.enum(['in_person', 'remote']).default('in_person'), followup_id: id.optional().describe('the follow-up this appointment is for'), reason: z.string().max(1000).optional() }),
   async handler({ user }, i) {
     if (i.provider_id === user.id) throw badRequest('Cannot book yourself');
+    await requireConsent(user.id, 'medical', 'booking a health appointment');
     const p = await one("SELECT 1 FROM sport_profiles WHERE user_id=$1 AND role IN ('physio','doctor') UNION SELECT 1 FROM provider_profiles WHERE user_id=$1", [i.provider_id]);
     if (!p) throw badRequest('That person is not a registered physio or doctor');
     if (Date.parse(i.starts_at) < Date.now()) throw badRequest('Choose a time in the future');
@@ -117,6 +119,7 @@ cap({
     const p = await one("SELECT 1 FROM sport_profiles WHERE user_id=$1 AND role IN ('physio','doctor') UNION SELECT 1 FROM provider_profiles WHERE user_id=$1", [i.provider_id]);
     if (!p) throw badRequest('That person is not a registered physio or doctor');
     if (i.provider_id === user.id) throw badRequest('You cannot grant access to yourself');
+    await requireConsent(user.id, 'medical', 'sharing health records');
     const expires = i.expires_in_days ? new Date(Date.now() + i.expires_in_days * 864e5) : null;
     return tx(async (c) => {
       await c.query(
@@ -198,9 +201,11 @@ cap({
   summary: 'Fit-to-play status only (cleared / restricted / not_cleared) — no clinical detail. Visible to the athlete, consented providers and owners of teams the athlete plays for.',
   input: z.object({ id }),
   async handler({ user }, i) {
-    const ok = isAdmin(user) || user.id === i.id || (await hasGrant(i.id, user.id, 'clearance')) ||
+    const ok = isAdmin(user) || user.id === i.id || !!(await guardianLink(user.id, i.id)) || (await hasGrant(i.id, user.id, 'clearance')) ||
       !!(await one("SELECT 1 FROM team_members m JOIN teams t ON t.id=m.team_id WHERE m.user_id=$1 AND m.status='active' AND (t.owner_id=$2 OR EXISTS (SELECT 1 FROM team_members c WHERE c.team_id=t.id AND c.user_id=$2 AND c.role IN ('coach','manager','captain') AND c.status='active'))", [i.id, user.id]));
     if (!ok) throw forbidden();
+    // for a young person, anyone but themselves, their guardians and the platform team also needs current medical consent
+    if (!isAdmin(user) && user.id !== i.id && !(await guardianLink(user.id, i.id))) await requireConsent(i.id, 'medical', 'sharing fit-to-play status');
     const r = await one("SELECT clearance, created_at FROM medical_records WHERE athlete_id=$1 AND clearance IS NOT NULL ORDER BY created_at DESC LIMIT 1", [i.id]);
     return { athlete_id: i.id, status: r?.clearance ?? 'unknown', as_of: r?.created_at ?? null };
   },

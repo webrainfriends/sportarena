@@ -8,6 +8,7 @@ import { decryptFields, encryptFields } from '../crypto.js';
 import { notify } from '../notify.js';
 import { tx } from '../db.js';
 import { PUBLIC_USER } from '../helpers.js';
+import { NOT_YOUTH_SQL } from '../youth.js';
 
 const CONTACT = ['contact_name', 'contact_email', 'contact_phone'];
 const date = z.string().date();
@@ -88,7 +89,7 @@ cap({
       `SELECT ${PUBLIC_USER}, sp.pitch, sp.looking_for, sp.verified_sponsors_only,
               coalesce((SELECT array_agg(DISTINCT s.slug) FROM sport_profiles x JOIN sports s ON s.id=x.sport_id WHERE x.user_id=u.id), '{}') AS sports
          FROM sponsorship_profiles sp JOIN users u ON u.id=sp.user_id
-        WHERE sp.open_to_sponsors AND 'athlete' = ANY(u.roles)
+        WHERE sp.open_to_sponsors AND 'athlete' = ANY(u.roles) AND ${NOT_YOUTH_SQL}
           AND ($1::text IS NULL OR u.display_name ILIKE '%'||$1||'%' OR u.handle ILIKE '%'||$1||'%' OR sp.pitch ILIKE '%'||$1||'%')
           AND ($2::text IS NULL OR EXISTS (SELECT 1 FROM sport_profiles x JOIN sports s ON s.id=x.sport_id WHERE x.user_id=u.id AND s.slug=$2))
           AND ($3::text IS NULL OR $3 = ANY(sp.looking_for))
