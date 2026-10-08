@@ -250,7 +250,7 @@ test('online payment in the venue currency: Stripe checkout, confirm, partial re
   const cn = (await pool.query("SELECT * FROM invoices WHERE kind='credit_note' AND reservation_id=$1", [s.id])).rows[0];
   assert.equal(cn.total_cents, 5000);
   await wait(async () => (await pool.query("SELECT refund_attempts FROM invoices WHERE id=$1", [cn.id])).rows[0].refund_attempts >= 1);
-  await wait(async () => (await pool.query('SELECT refund_status FROM invoices WHERE id=$1', [cn.id])).rows[0].refund_status === 'pending');
+  await wait(async () => (await pool.query('SELECT refund_status, refund_claimed_at FROM invoices WHERE id=$1', [cn.id])).rows.map((r) => r.refund_status === 'pending' && r.refund_claimed_at === null)[0]);
   const worker = await processRefunds();
   assert.equal(worker.done, 1);
   const row = (await pool.query('SELECT * FROM invoices WHERE id=$1', [cn.id])).rows[0];
