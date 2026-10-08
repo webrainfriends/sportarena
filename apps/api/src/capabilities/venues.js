@@ -100,7 +100,7 @@ cap({
            AND ($4::text IS NULL OR $4 = ANY(v.amenities))
            AND ($9::timestamptz IS NULL OR EXISTS (
                  SELECT 1 FROM resources r WHERE r.venue_id=v.id AND r.active AND r.kind <> 'equipment' AND ($3::uuid IS NULL OR r.sport_id=$3)
-                   AND NOT EXISTS (SELECT 1 FROM venue_blocks k WHERE k.venue_id=v.id AND (k.resource_id IS NULL OR k.resource_id=r.id) AND k.starts_at < $10 AND k.ends_at > $9)
+                   AND NOT EXISTS (SELECT 1 FROM venue_blocks k WHERE k.released_at IS NULL AND k.venue_id=v.id AND (k.resource_id IS NULL OR k.resource_id=r.id) AND k.starts_at < $10 AND k.ends_at > $9)
                    AND r.capacity > coalesce((SELECT sum(b.quantity) FROM bookings b WHERE b.resource_id=r.id AND b.status IN ('confirmed','no_show') AND b.starts_at < $10 AND b.ends_at > $9), 0)))
        )
        SELECT * FROM base WHERE ($7::float8 IS NULL OR min_hourly_rate_cents IS NULL OR min_hourly_rate_cents <= $7)
@@ -120,7 +120,7 @@ cap({
     const v = await mustFind('venues', i.id);
     const [resources, hours, offers] = await Promise.all([
       many('SELECT r.*, s.name AS sport, s.slug AS sport_slug, s.emoji AS sport_emoji FROM resources r LEFT JOIN sports s ON s.id=r.sport_id WHERE r.venue_id=$1 AND r.active ORDER BY r.kind, r.name', [i.id]),
-      many('SELECT weekday, opens_min, closes_min FROM venue_hours WHERE venue_id=$1 ORDER BY weekday, opens_min', [i.id]),
+      many('SELECT weekday, opens_min, closes_min FROM venue_hours WHERE venue_id=$1 AND removed_at IS NULL ORDER BY weekday, opens_min', [i.id]),
       many("SELECT id, name, kind, value, min_slots, weekdays, valid_from, valid_to, resource_id FROM discounts WHERE venue_id=$1 AND active AND code IS NULL AND (valid_to IS NULL OR valid_to >= current_date) ORDER BY name", [i.id]),
     ]);
     return { ...v, map_links: mapLinks(v), resources, hours, open_around_the_clock: hours.length === 0, offers };
