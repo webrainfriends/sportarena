@@ -5,11 +5,9 @@ import { api } from '../api';
 import { useSession } from '../session';
 import { Btn, Card, Chip, Field, Screen, T } from '../ui';
 import { c, grad, fam } from '../theme';
+import { ROLES } from '../roles';
 
-const ROLES = [
-  ['athlete', 'Athlete'], ['coach', 'Coach'], ['referee', 'Referee'], ['organizer', 'Organizer'],
-  ['venue_manager', 'Venue'], ['sponsor', 'Sponsor'], ['physio', 'Physio'], ['doctor', 'Doctor'], ['supplier', 'Supplier'],
-];
+
 const DEMOS = [['aarav', 'Aarav · Athlete'], ['kavya_events', 'Kavya · Organizer'], ['arena_one', 'Arena One · Venue'], ['volt_drink', 'Volt · Sponsor'], ['dr_rhea', 'Dr Rhea · Doctor']];
 
 export default function Auth() {

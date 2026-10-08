@@ -92,6 +92,22 @@ cap({
 });
 
 cap({
+  name: 'update_my_roles', method: 'PATCH', path: '/me/roles', tag: 'Identity', auth: 'user',
+  summary: 'Add or drop roles on your account (one login can be athlete, coach, venue manager… at once). Dropping a role only removes the label — venues, events, bookings and profiles you created are kept. `admin` cannot be self-assigned; at least one role must remain.',
+  input: z.object({ add: z.array(z.enum(selfRoles)).default([]), remove: z.array(z.enum(selfRoles)).default([]) })
+    .refine((i) => i.add.length + i.remove.length > 0, 'Nothing to change'),
+  async handler({ user }, i) {
+    const next = [...new Set([...user.roles.filter((r) => !i.remove.includes(r)), ...i.add])];
+    if (!next.length) throw badRequest('Keep at least one role');
+    await tx(async (c) => {
+      await c.query('UPDATE users SET roles = $2 WHERE id = $1', [user.id, next]);
+      await audit(c, user.id, 'update_roles', 'users', user.id);
+    });
+    return { roles: next };
+  },
+});
+
+cap({
   name: 'create_api_token', method: 'POST', path: '/me/tokens', tag: 'Identity', auth: 'user', status: 201,
   summary: 'Create a long-lived API token (for scripts and MCP agents). The secret is shown once.',
   input: z.object({ name: z.string().min(1).max(60) }),
