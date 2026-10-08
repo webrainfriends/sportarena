@@ -13,6 +13,7 @@
   "dependencies": {
     "@expo/metro-runtime": "~57.0.16",
     "expo": "~57.0.27",
+    "expo-image-picker": "~57.0.20",
     "expo-linear-gradient": "~57.0.2",
     "expo-secure-store": "~57.0.4",
     "expo-status-bar": "~57.0.1",

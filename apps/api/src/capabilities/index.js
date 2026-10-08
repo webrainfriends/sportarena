@@ -3,6 +3,7 @@ import './teams.js';
 import './venues.js';
 import './venue-admin.js';
 import './reservations.js';
+import './venue-media.js';
 import './events.js';
 import './scores.js';
 import './player.js';

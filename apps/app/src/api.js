@@ -10,6 +10,8 @@ const guess = () => {
   return Platform.OS === 'android' ? 'http://10.0.2.2:4000' : 'http://localhost:4000';
 };
 export const API = `${guess().replace(/\/$/, '')}/api/v1`;
+/** Turn a relative media path from the API (/api/v1/media/…) into a loadable URL; absolute links pass through. */
+export const mediaUrl = (u) => (!u ? null : /^https?:/.test(u) ? u : `${API.replace(/\/api\/v1$/, '')}${u}`);
 /** Absolute MCP endpoint for display (API may be a same-origin relative path on web). */
 export const MCP_URL = (API.startsWith('/') && typeof location !== 'undefined' ? location.origin : '') + API.replace('/api/v1', '/mcp');
 
@@ -45,10 +47,22 @@ async function request(method, path, data) {
   return body;
 }
 
+/** Stream a file (Blob) to the API as the raw request body — used for photo/video uploads. */
+async function upload(path, blob, query = {}) {
+  const qs = new URLSearchParams(Object.entries(query).filter(([, v]) => v)).toString();
+  let res;
+  try { res = await fetch(`${API}${path}${qs ? `?${qs}` : ''}`, { method: 'PUT', headers: { 'content-type': blob.type || 'application/octet-stream', ...(token ? { authorization: `Bearer ${token}` } : {}) }, body: blob }); }
+  catch { throw new ApiError(0, { error: { message: `Can't reach the SportArena server at ${API}` } }); }
+  const body = await res.json().catch(() => null);
+  if (!res.ok) throw new ApiError(res.status, body);
+  return body;
+}
+
 export const api = {
   get: (p, q) => request('GET', p, q),
   post: (p, b) => request('POST', p, b ?? {}),
   patch: (p, b) => request('PATCH', p, b ?? {}),
   del: (p, q) => request('DELETE', p, q),
+  upload,
 };
 export { storage };

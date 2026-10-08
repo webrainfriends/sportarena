@@ -136,6 +136,10 @@ set_env KEY_PROVIDER aws-kms
 set_env KMS_KEY_ID "$KMS_KEY_ID"
 set_env KMS_REGION "$KMS_REGION"
 set_env MASTER_KEY_FILE "$KEY_DIR/master.key.enc"
+# Uploaded venue photos/videos live outside the repo checkout and the web root, so no deploy ever touches them.
+MEDIA_DIR="$KEY_DIR/media"
+sudo mkdir -p "$MEDIA_DIR"; sudo chown "$(id -un):$(id -gn)" "$MEDIA_DIR"
+set_env MEDIA_DIR "$MEDIA_DIR"
 # Payments: only written when provided, so a deploy without keys never wipes keys set earlier.
 for v in STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET PAYPAL_CLIENT_ID PAYPAL_CLIENT_SECRET PAYPAL_WEBHOOK_ID PAYPAL_ENV PAYMENT_CURRENCY; do
   val="$(printf '%s' "${!v:-}" | tr -d '\r\n' | xargs)"
@@ -189,6 +193,18 @@ server {
 
     client_max_body_size 2m;
 
+    # large uploads (venue videos): streamed straight to the API, never buffered by nginx
+    location ~ ^/api/v1/venues/[0-9a-f-]+/media$ {
+        client_max_body_size 160m;
+        proxy_request_buffering off;
+        proxy_read_timeout 600s;
+        proxy_pass http://127.0.0.1:${APP_PORT};
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
     location /api/ {
         proxy_pass http://127.0.0.1:${APP_PORT};
         proxy_http_version 1.1;

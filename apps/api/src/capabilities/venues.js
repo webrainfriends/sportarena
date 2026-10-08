@@ -5,6 +5,7 @@ import { conflict, forbidden, notFound, badRequest } from '../errors.js';
 import { isAdmin, mustFind, sportBySlugOrId } from '../helpers.js';
 import { lockResource, usedUnits, blockedBy, cancelBookings, mustManage, canManage } from '../booking/engine.js';
 import { validTimezone } from '../booking/time.js';
+import { publicMedia } from '../media.js';
 import { canManageTeam } from './teams.js';
 
 const dt = z.string().datetime({ offset: true });
@@ -93,7 +94,8 @@ cap({
            (SELECT count(*)::int FROM testimonials t WHERE t.subject_type='venue' AND t.subject_id=v.id) AS reviews,
            (SELECT min(x) FROM (SELECT min(r.hourly_rate_cents) AS x FROM resources r WHERE r.venue_id=v.id AND r.active AND r.kind <> 'equipment' AND ($3::uuid IS NULL OR r.sport_id=$3)
                                 UNION ALL SELECT min(p.hourly_rate_cents) FROM price_rules p WHERE p.venue_id=v.id AND p.active AND (p.resource_id IS NULL OR $3::uuid IS NULL OR EXISTS (SELECT 1 FROM resources r2 WHERE r2.id=p.resource_id AND r2.sport_id=$3))) m) AS min_hourly_rate_cents,
-           (SELECT coalesce(array_agg(DISTINCT s.slug), '{}') FROM resources r JOIN sports s ON s.id=r.sport_id WHERE r.venue_id=v.id AND r.active) AS sports
+           (SELECT coalesce(array_agg(DISTINCT s.slug), '{}') FROM resources r JOIN sports s ON s.id=r.sport_id WHERE r.venue_id=v.id AND r.active) AS sports,
+           (SELECT '/api/v1/media/' || m.id FROM venue_media m WHERE m.venue_id=v.id AND m.removed_at IS NULL AND m.kind='photo' ORDER BY m.is_cover DESC, m.position, m.created_at LIMIT 1) AS cover_url
          FROM venues v
          WHERE v.active AND ($1::text IS NULL OR v.city ILIKE $1) AND ($2::text IS NULL OR v.name ILIKE '%'||$2||'%')
            AND ($3::uuid IS NULL OR EXISTS (SELECT 1 FROM resources r WHERE r.venue_id=v.id AND r.active AND r.sport_id=$3))
@@ -118,12 +120,14 @@ cap({
   input: z.object({ id }),
   async handler(_, i) {
     const v = await mustFind('venues', i.id);
-    const [resources, hours, offers] = await Promise.all([
+    const [resources, hours, offers, media, rating] = await Promise.all([
       many('SELECT r.*, s.name AS sport, s.slug AS sport_slug, s.emoji AS sport_emoji FROM resources r LEFT JOIN sports s ON s.id=r.sport_id WHERE r.venue_id=$1 AND r.active ORDER BY r.kind, r.name', [i.id]),
       many('SELECT weekday, opens_min, closes_min FROM venue_hours WHERE venue_id=$1 AND removed_at IS NULL ORDER BY weekday, opens_min', [i.id]),
       many("SELECT id, name, kind, value, min_slots, weekdays, valid_from, valid_to, resource_id FROM discounts WHERE venue_id=$1 AND active AND code IS NULL AND (valid_to IS NULL OR valid_to >= current_date) ORDER BY name", [i.id]),
+      many('SELECT * FROM venue_media WHERE venue_id=$1 AND removed_at IS NULL ORDER BY is_cover DESC, position, created_at LIMIT 40', [i.id]),
+      one("SELECT round(avg(rating),2) AS rating, count(*)::int AS reviews FROM testimonials WHERE subject_type='venue' AND subject_id=$1", [i.id]),
     ]);
-    return { ...v, map_links: mapLinks(v), resources, hours, open_around_the_clock: hours.length === 0, offers };
+    return { ...v, map_links: mapLinks(v), resources, hours, open_around_the_clock: hours.length === 0, offers, media: media.map(publicMedia), ...rating };
   },
 });
 

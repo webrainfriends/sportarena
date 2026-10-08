@@ -11,6 +11,7 @@ import { buildOpenApi } from './openapi.js';
 import { createMcpServer } from './mcp.js';
 import { pool } from './db.js';
 import { webhookRouter } from './payments/webhooks.js';
+import { mediaRouter } from './media.js';
 
 export function createApp() {
   const app = express();
@@ -25,6 +26,9 @@ export function createApp() {
   });
   app.use(cors({ origin: config.corsOrigins.includes('*') ? true : config.corsOrigins }));
   app.use('/api/v1/webhooks', webhookRouter());
+  // Media: streaming upload + file serving (binary, so outside the JSON capability router); base64 uploads get a larger JSON limit on their own path.
+  app.use('/api/v1/venues/:id/media', express.json({ limit: '12mb' }));
+  app.use('/api/v1', mediaRouter());
   app.use(express.json({ limit: '100kb' }));
   app.use(rateLimit({ windowMs: 60_000, limit: config.isProd ? 300 : 5000, standardHeaders: true, legacyHeaders: false }));
   // Responses can carry personal data: never let proxies/browsers cache them.
