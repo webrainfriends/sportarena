@@ -9,6 +9,7 @@ import './favourites.js';
 import './waitlist.js';
 import './wallet.js';
 import './loyalty.js';
+import './plans.js';
 import './invoices.js';
 import './events.js';
 import './scores.js';

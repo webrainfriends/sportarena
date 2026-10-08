@@ -10,6 +10,7 @@ import { FormSheet } from '../FormSheet';
 import { c } from '../theme';
 import { PaySheet } from '../PaySheet';
 import { PointsApplySheet, WalletApplySheet } from './wallet';
+import { PassApplySheet } from './plans';
 import { currentDevice, disablePush, enablePush, pushSupport } from '../push';
 import { KIND } from './book';
 import { addDays, dateTimeIn, dayLabel, fmtMin, localDate, hoursSummary, localToIso, moneyIn, offerLabel, timeIn, todayIn } from '../vtime';
@@ -166,6 +167,8 @@ export function Reservation({ id }) {
   const [paying, setPaying] = useState(null);
   const [useWallet, setUseWallet] = useState(null);
   const [usePoints, setUsePoints] = useState(null);
+  const [usePass, setUsePass] = useState(null);
+  const myPlans = useLoad(() => api.get('/me/plans'), []);
   const rewards = useLoad(() => api.get('/me/loyalty'), []);
   if (r.loading && !r.data) return <Screen><Loading /></Screen>;
   if (r.error) return <Screen><ErrorBox error={r.error} onRetry={r.reload} /></Screen>;
@@ -223,6 +226,7 @@ export function Reservation({ id }) {
             </View>
             <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
               {inv.kind === 'invoice' && inv.status === 'open' ? <Btn small title="👛 Use wallet" color={c.violet} onPress={() => setUseWallet(inv)} /> : null}
+              {inv.kind === 'invoice' && inv.status === 'open' && myPlans.data?.some((p) => p.kind === 'pass' && p.status === 'active' && p.sessions_left > 0 && p.venue_id === inv.venue_id) ? <Btn small title="🎟️ Use pass" color={c.violet} onPress={() => setUsePass(inv)} /> : null}
               {inv.kind === 'invoice' && inv.status === 'open' && rewards.data?.some((p) => p.venue_id === inv.venue_id) ? <Btn small title="⭐ Use points" color={c.violet} onPress={() => setUsePoints(inv)} /> : null}
               {inv.kind === 'invoice' && inv.status === 'open' && inv.payment_mode !== 'pay_at_venue' ? <Btn small title={`Pay ${moneyIn(inv.total_cents - (inv.credits_cents ?? 0), inv.currency)} online`} onPress={() => setPaying(inv)} /> : null}
               {inv.kind === 'invoice' && inv.status === 'open' && inv.payment_mode !== 'online_required' ? <T size={12} color={c.mute} style={{ alignSelf: 'center' }}>or pay at the venue</T> : null}
@@ -235,6 +239,7 @@ export function Reservation({ id }) {
       {active.length ? <Btn title="Cancel the whole booking" color={c.paper} ink={c.red} onPress={() => setCancelAll(true)} style={{ marginTop: 14 }} /> : null}
       {active.length ? <Btn small title={`Add more at ${active[0].venue_name}`} color={c.paper} onPress={() => push('Venue', { id: active[0].venue_id })} style={{ marginTop: 10, alignSelf: 'flex-start' }} /> : null}
 
+      {usePass ? <PassApplySheet invoice={usePass} onClose={() => setUsePass(null)} onDone={r.reload} /> : null}
       {usePoints ? <PointsApplySheet invoice={usePoints} onClose={() => setUsePoints(null)} onDone={r.reload} /> : null}
       {useWallet ? <WalletApplySheet invoice={useWallet} onClose={() => setUseWallet(null)} onDone={r.reload} /> : null}
       {paying ? <PaySheet target={{ id: paying.id, label: `${paying.venue_name} · ${paying.number}`, amount: paying.total_cents - (paying.credits_cents ?? 0), currency: paying.currency }} onClose={() => setPaying(null)} onDone={r.reload} /> : null}

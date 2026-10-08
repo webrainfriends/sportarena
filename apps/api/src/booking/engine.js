@@ -9,6 +9,7 @@ import { toLocal, fromLocal, addDays } from './time.js';
 import { reconcileInvoices, encryptBilling } from './invoices.js';
 import { paymentsEnabled } from '../payments/service.js';
 import { config } from '../config.js';
+import { memberDiscountBp } from './plans.js';
 
 const SLOT_MS = (r) => r.slot_minutes * 60_000;
 const uniq = (a) => [...new Set(a)];
@@ -146,15 +147,20 @@ export async function repriceReservation(c, reservationId) {
       const amount = discountAmount(d, el);
       if (amount > 0 && (!best || amount > best.amount)) best = { d, amount, el };
     }
+    const bp = await memberDiscountBp(c, rs.user_id, venueId);
+    if (bp > 0) { // a member's standing discount competes with the offers; the best single one wins
+      const base = group.reduce((s, i) => s + i.base_cents, 0), amount = Math.floor((base * bp) / 10000);
+      if (amount > 0 && (!best || amount > best.amount)) best = { d: null, amount, el: group };
+    }
     if (!best) continue;
-    if (best.d.code) usedCodes.add(best.d.code.toUpperCase());
+    if (best.d?.code) usedCodes.add(best.d.code.toUpperCase());
     // spread over the eligible lines pro rata, remainder to the biggest lines so cents always add up
     const base = best.el.reduce((s, i) => s + i.base_cents, 0);
     const shares = best.el.map((i) => ({ i, cents: Math.floor(best.amount * i.base_cents / base) }));
     let rest = best.amount - shares.reduce((s, x) => s + x.cents, 0);
     for (const s of [...shares].sort((a, b) => b.i.base_cents - a.i.base_cents)) { if (rest <= 0) break; s.cents++; rest--; }
     for (const s of shares) applied.set(s.i.id, s.cents);
-    await c.query('INSERT INTO discount_redemptions(discount_id, reservation_id, user_id, amount_cents) VALUES ($1,$2,$3,$4)', [best.d.id, reservationId, rs.user_id, best.amount]);
+    if (best.d) await c.query('INSERT INTO discount_redemptions(discount_id, reservation_id, user_id, amount_cents) VALUES ($1,$2,$3,$4)', [best.d.id, reservationId, rs.user_id, best.amount]);
   }
   for (const i of items) {
     const disc = applied.get(i.id) ?? 0;

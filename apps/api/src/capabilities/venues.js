@@ -129,7 +129,7 @@ cap({
   input: z.object({ id }),
   async handler({ user }, i) {
     const v = await mustFind('venues', i.id);
-    const [resources, hours, offers, media, rating, fav, pts] = await Promise.all([
+    const [resources, hours, offers, media, rating, fav, pts, plans, member] = await Promise.all([
       many('SELECT r.*, s.name AS sport, s.slug AS sport_slug, s.emoji AS sport_emoji FROM resources r LEFT JOIN sports s ON s.id=r.sport_id WHERE r.venue_id=$1 AND r.active ORDER BY r.kind, r.name', [i.id]),
       many('SELECT weekday, opens_min, closes_min FROM venue_hours WHERE venue_id=$1 AND removed_at IS NULL ORDER BY weekday, opens_min', [i.id]),
       many("SELECT id, name, kind, value, min_slots, weekdays, valid_from, valid_to, resource_id FROM discounts WHERE venue_id=$1 AND active AND code IS NULL AND (valid_to IS NULL OR valid_to >= current_date) ORDER BY name", [i.id]),
@@ -137,8 +137,10 @@ cap({
       one("SELECT round(avg(rating),2) AS rating, count(*)::int AS reviews FROM testimonials WHERE subject_type='venue' AND subject_id=$1", [i.id]),
       one('SELECT count(*)::int AS favourites, coalesce(bool_or(user_id = $2::uuid), false) AS is_favourite FROM favourite_venues WHERE venue_id=$1 AND removed_at IS NULL', [i.id, user?.id ?? null]),
       user ? one('SELECT coalesce(sum(remaining),0)::int AS my_points FROM loyalty_lots WHERE user_id=$1 AND venue_id=$2 AND remaining > 0 AND expires_at > now()', [user.id, i.id]) : { my_points: 0 },
+      many('SELECT id, kind, name, description, price_cents, duration_days, discount_bp, sessions, session_value_cents, valid_days FROM venue_plans WHERE venue_id=$1 AND active ORDER BY kind DESC, price_cents', [i.id]),
+      user ? one("SELECT coalesce(max(discount_bp) FILTER (WHERE kind='membership' AND starts_at <= now()),0)::int AS my_member_discount_bp, max(expires_at) FILTER (WHERE kind='membership') AS my_membership_until, coalesce(sum(sessions_left) FILTER (WHERE kind='pass'),0)::int AS my_pass_sessions FROM user_plans WHERE user_id=$1 AND venue_id=$2 AND status='active' AND expires_at > now()", [user.id, i.id]) : { my_member_discount_bp: 0, my_membership_until: null, my_pass_sessions: 0 },
     ]);
-    return { ...v, map_links: mapLinks(v), resources, hours, open_around_the_clock: hours.length === 0, offers, media: media.map(publicMedia), ...rating, ...fav, ...pts };
+    return { ...v, map_links: mapLinks(v), resources, hours, open_around_the_clock: hours.length === 0, offers, media: media.map(publicMedia), ...rating, ...fav, ...pts, plans, ...member };
   },
 });
 

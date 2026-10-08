@@ -10,6 +10,7 @@ import { useLayout } from '../layout';
 import { Bubble, Btn, Card, Empty, ErrorBox, Field, H1, Loading, Row, Screen, Seg, Section, Sheet, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { Gallery, VenueReviews } from './venue-media';
+import { VenuePlans } from './plans';
 import { AlertSheet } from './alerts';
 import { Calendar, StickyBar } from '../pickers';
 import { c } from '../theme';
@@ -271,6 +272,7 @@ export function Venue({ id, date }) {
               <T size={13} color={c.mute} style={{ marginTop: 4 }}>Free cancellation until {x.cancel_free_hours}h before{x.late_cancel_refund_percent ? `, then ${x.late_cancel_refund_percent}% refunded` : ', then no refund'}. Book up to {x.max_advance_days} days ahead{x.min_notice_minutes ? `, at least ${x.min_notice_minutes} min before` : ''}.</T>
               <T size={13} color={c.mute}>{x.payment_mode === 'pay_at_venue' ? 'Pay at the venue.' : x.payment_mode === 'online_required' ? 'Pay online to confirm your slot.' : 'Pay online or at the venue.'}{x.tax_rate_bp ? ` ${x.tax_name} ${x.tax_rate_bp / 100}% ${x.tax_inclusive ? 'included' : 'added at checkout'}.` : ''}</T>
             </Card>
+            <VenuePlans venue={x} onChanged={v.reload} />
             {x.loyalty_earn_bp > 0 ? <Card color={c.sunSoft}><T weight="700" size={16}>⭐ Rewards</T><T size={13} color={c.mute} style={{ marginTop: 4 }}>Earn {x.loyalty_earn_bp / 100}% back in points on everything you pay here. Points are worth {x.currency} 0.01 each and pay up to {x.loyalty_max_redeem_bp / 100}% of a booking; they expire {x.loyalty_expiry_months} months after you earn them.</T>{x.my_points > 0 ? <T weight="700" style={{ marginTop: 4 }}>You have {x.my_points} points = {moneyIn(x.my_points, x.currency)}</T> : null}</Card> : null}
             {contacts.data?.length ? <Card>{contacts.data.map((ct) => <T key={ct.id} size={13} style={{ marginTop: 2 }}>☎️ {ct.role}: {[ct.name, ct.phone, ct.email].filter(Boolean).join(' · ')}</T>)}</Card> : null}
             <MapBox v={x} />

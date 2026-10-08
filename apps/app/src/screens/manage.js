@@ -8,12 +8,13 @@ import { FormSheet } from '../FormSheet';
 import { c } from '../theme';
 import { KIND } from './book';
 import { MediaManager, VenueReviews } from './venue-media';
+import { PlansManager } from './plans';
 import { useNav } from '../nav';
 import { WEEKDAYS, addDays, dateTimeIn, fmtMin, hoursSummary, localToIso, longDay, moneyIn, timeIn, todayIn } from '../vtime';
 import { Calendar } from '../pickers';
 
 const YN = [{ value: false, label: 'No' }, { value: true, label: 'Yes' }];
-const TABS = [['schedule', 'Schedule'], ['blocks', 'Blocks'], ['pricing', 'Pricing'], ['discounts', 'Discounts'], ['payments', 'Payments'], ['media', 'Photos & videos'], ['reviews', 'Reviews'], ['reports', 'Reports'], ['setup', 'Setup']];
+const TABS = [['schedule', 'Schedule'], ['blocks', 'Blocks'], ['pricing', 'Pricing'], ['discounts', 'Discounts'], ['payments', 'Payments'], ['plans', 'Memberships & passes'], ['media', 'Photos & videos'], ['reviews', 'Reviews'], ['reports', 'Reports'], ['setup', 'Setup']];
 const num = (x) => (x === undefined || x === '' ? undefined : Number(x));
 const days = (s) => (s ? String(s).split(/[,\s]+/).filter(Boolean).map(Number) : undefined);
 const daysHint = 'Days as numbers, 0 = Sun … 6 = Sat, e.g. 1,2,3,4,5';
@@ -30,7 +31,7 @@ export function Manage({ id }) {
       <H1 style={{ marginTop: 8 }}>{x.emoji} {x.name}</H1>
       <T color={c.mute} weight="700">Venue console · {x.timezone} · {x.currency}{x.active ? '' : ' · HIDDEN'}</T>
       <View style={{ marginTop: 10 }}><Seg options={TABS.map(([value, label]) => ({ value, label }))} value={tab} onChange={setTab} color={c.violet} /></View>
-      {tab === 'schedule' ? <Schedule {...P} /> : tab === 'blocks' ? <Blocks {...P} /> : tab === 'pricing' ? <Pricing {...P} /> : tab === 'discounts' ? <Discounts {...P} /> : tab === 'payments' ? <Payments {...P} /> : tab === 'media' ? <Section title="Photos & videos" color={c.cyan}><MediaManager venue={x} /></Section> : tab === 'reviews' ? <Section title="Reviews" color={c.pink}><VenueReviews venueId={x.id} /></Section> : tab === 'reports' ? <Reports {...P} /> : <Setup {...P} />}
+      {tab === 'schedule' ? <Schedule {...P} /> : tab === 'blocks' ? <Blocks {...P} /> : tab === 'pricing' ? <Pricing {...P} /> : tab === 'discounts' ? <Discounts {...P} /> : tab === 'payments' ? <Payments {...P} /> : tab === 'plans' ? <PlansManager {...P} /> : tab === 'media' ? <Section title="Photos & videos" color={c.cyan}><MediaManager venue={x} /></Section> : tab === 'reviews' ? <Section title="Reviews" color={c.pink}><VenueReviews venueId={x.id} /></Section> : tab === 'reports' ? <Reports {...P} /> : <Setup {...P} />}
     </Screen>
   );
 }

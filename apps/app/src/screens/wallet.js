@@ -6,6 +6,7 @@ import { useSession } from '../session';
 import { useNav } from '../nav';
 import { Btn, Card, Empty, ErrorBox, Field, H1, Loading, Row, Screen, Seg, Section, Sheet, T, Tag } from '../ui';
 import { PaySheet } from '../PaySheet';
+import { MyPlans } from './plans';
 import { c } from '../theme';
 import { moneyIn } from '../vtime';
 
@@ -86,6 +87,8 @@ export function Wallet() {
             right={<Tag label={g.status.replace('_', ' ')} color={g.status === 'active' ? c.mint : g.status === 'awaiting_payment' ? c.sun : c.violetSoft} />} />
         )) : <T size={13} color={c.mute}>None yet.</T>}
       </Section>
+
+      <MyPlans />
 
       <Section title="Rewards" color={c.sun}>
         {rewards.data?.length ? rewards.data.map((p) => (
