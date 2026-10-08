@@ -63,5 +63,6 @@ export const api = {
   post: (p, b) => request('POST', p, b ?? {}),
   patch: (p, b) => request('PATCH', p, b ?? {}),
   del: (p, q) => request('DELETE', p, q),
+  upload,
 };
 export { storage };

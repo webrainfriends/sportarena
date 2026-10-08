@@ -20,7 +20,7 @@ export async function notify(c, userId, { kind, title, body, data = {} }) {
 
 /** Everyone who runs a venue: owner + staff. */
 export async function venueTeam(c, venueId) {
-  const { rows } = await (c ?? pool).query('SELECT owner_id AS user_id FROM venues WHERE id=$1 UNION SELECT user_id FROM venue_staff WHERE venue_id=$1', [venueId]);
+  const { rows } = await (c ?? pool).query('SELECT owner_id AS user_id FROM venues WHERE id=$1 UNION SELECT user_id FROM venue_staff WHERE venue_id=$1 AND removed_at IS NULL', [venueId]);
   return rows.map((r) => r.user_id);
 }
 
