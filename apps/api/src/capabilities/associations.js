@@ -6,6 +6,7 @@ import { isAdmin, mustFind, PUBLIC_USER } from '../helpers.js';
 import { roles as roleDefs, ROSTER_ROLES, TARGET_TYPES, vocabularies } from '../ontology/iptc.js';
 import { validateAttributes, mergeAttributes } from '../ontology/fields.js';
 import { loadTarget, canManageTarget } from './games.js';
+import { hiddenYouth, requireConsent } from '../youth.js';
 
 const role = z.enum(Object.keys(roleDefs));
 const targetType = z.enum(TARGET_TYPES);
@@ -20,6 +21,7 @@ cap({
     const subjectId = i.user_id ?? user.id;
     const subject = await mustFind('users', subjectId, 'id, roles, handle');
     if (def.profile && !subject.roles.includes(def.profile)) throw conflict(`@${subject.handle} has no ${def.profile} profile, which the ${i.role} role needs`);
+    await requireConsent(subjectId, 'participation', 'taking part');
     const target = await loadTarget(i.target_type, i.target_id);
     const manager = await canManageTarget(user, i.target_type, target);
     const self = subjectId === user.id;
@@ -62,7 +64,7 @@ cap({
         if (!(await canManageTarget(user, i.target_type, await loadTarget(i.target_type, i.target_id)))) throw forbidden();
       }
     }
-    return many(
+    const rows = await many(
       `SELECT a.id AS association_id, a.role, a.target_type, a.target_id, a.status, a.position, a.uniform_no, a.player_status, a.attributes, a.started_at, a.ended_at, ${PUBLIC_USER},
               CASE a.target_type WHEN 'game' THEN (SELECT title FROM games WHERE id=a.target_id) WHEN 'team' THEN (SELECT name FROM teams WHERE id=a.target_id)
                                  WHEN 'event' THEN (SELECT name FROM events WHERE id=a.target_id) WHEN 'venue' THEN (SELECT name FROM venues WHERE id=a.target_id) END AS target_name
@@ -71,6 +73,8 @@ cap({
           AND ($4::text IS NULL OR a.role=$4) AND a.status=$5
         ORDER BY a.target_type, a.role, u.display_name LIMIT $6 OFFSET $7`,
       [who, i.target_type ?? null, i.target_id ?? null, i.role ?? null, i.status, i.limit, i.offset]);
+    const hidden = await hiddenYouth(user, rows.map((r) => r.id));
+    return rows.filter((r) => !hidden.has(r.id));
   },
 });
 

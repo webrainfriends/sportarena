@@ -7,6 +7,7 @@ import { MANAGER_ROLES, roles as roleDefs, vocabularies } from '../ontology/iptc
 import { validateAttributes, mergeAttributes } from '../ontology/fields.js';
 import { gameToJsonLd } from '../ontology/jsonld.js';
 import { canManageTeam } from './teams.js';
+import { NOT_YOUTH_SQL } from '../youth.js';
 
 const dt = z.string().datetime({ offset: true });
 const attrs = z.record(z.string(), z.any());
@@ -46,10 +47,10 @@ async function loadGame(gameId) {
 const participantsOf = (gameId) => many(
   `SELECT p.*, t.name AS team_name, t.emoji AS team_emoji, t.color AS team_color, u.handle, u.display_name AS person_name
      FROM game_participants p LEFT JOIN teams t ON t.id=p.team_id LEFT JOIN users u ON u.id=p.user_id
-    WHERE p.game_id=$1 ORDER BY p.side NULLS LAST, p.created_at`, [gameId]);
+    WHERE p.game_id=$1 AND (u.id IS NULL OR ${NOT_YOUTH_SQL}) ORDER BY p.side NULLS LAST, p.created_at`, [gameId]);
 const peopleOf = (gameId) => many(
   `SELECT a.id AS association_id, a.role, a.position, a.uniform_no, a.player_status, a.attributes, a.user_id, ${PUBLIC_USER}
-     FROM associations a JOIN users u ON u.id=a.user_id WHERE a.target_type='game' AND a.target_id=$1 AND a.status='active' ORDER BY a.role, u.display_name`, [gameId]);
+     FROM associations a JOIN users u ON u.id=a.user_id WHERE a.target_type='game' AND a.target_id=$1 AND a.status='active' AND ${NOT_YOUTH_SQL} ORDER BY a.role, u.display_name`, [gameId]);
 const actionsOf = (gameId) => many('SELECT * FROM game_actions WHERE game_id=$1 ORDER BY minute NULLS LAST, created_at LIMIT 1000', [gameId]);
 
 async function checkParticipant(c, game, p) {

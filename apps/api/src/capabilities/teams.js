@@ -4,6 +4,7 @@ import { one, many, query } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { isSupportedCurrency } from '../currency.js';
 import { isAdmin, mustFind, mustOwn, PUBLIC_USER, sportBySlugOrId } from '../helpers.js';
+import { hiddenYouth, requireConsent } from '../youth.js';
 
 const color = z.string().regex(/^#[0-9a-fA-F]{6}$/);
 
@@ -55,7 +56,9 @@ cap({
       one("SELECT round(avg(rating),2) AS avg, count(*)::int AS n FROM testimonials WHERE subject_type='team' AND subject_id=$1", [i.id]),
     ]);
     const mine = user ? await one('SELECT role, status, availability FROM team_members WHERE team_id=$1 AND user_id=$2', [i.id, user.id]) : null;
-    return { ...t, members, awards, rating, can_manage: !!user && (await canManageTeam(user, t)), my_membership: mine };
+    // young members are only listed for people who may see them (themselves, their guardians, the team's managers)
+    const hidden = await hiddenYouth(user, members.map((m) => m.id));
+    return { ...t, members: members.filter((m) => !hidden.has(m.id)), members_restricted: hidden.size, awards, rating, can_manage: !!user && (await canManageTeam(user, t)), my_membership: mine };
   },
 });
 
@@ -77,6 +80,7 @@ cap({
     const t = await mustFind('teams', i.id);
     if (!(await canManageTeam(user, t))) throw forbidden('Only team managers can edit the roster');
     await mustFind('users', i.user_id, 'id');
+    if (!(await one("SELECT 1 FROM team_members WHERE team_id=$1 AND user_id=$2 AND status='active'", [i.id, i.user_id]))) await requireConsent(i.user_id, 'participation', 'joining a team');
     return one(
       `INSERT INTO team_members(team_id, user_id, role, jersey_no, status) VALUES ($1,$2,$3,$4,'active')
        ON CONFLICT (team_id, user_id) DO UPDATE SET role=EXCLUDED.role, jersey_no=EXCLUDED.jersey_no, status='active' RETURNING *`,
