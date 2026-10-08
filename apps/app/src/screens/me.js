@@ -53,6 +53,7 @@ export function Me() {
         <Btn small title="Add a sport role" color={c.cyan} ink={c.ink} onPress={() => setSp(true)} />
         <Btn small title="Family & guardians" color={c.paper} ink={c.ink} onPress={() => push('Family')} />
         <Btn small title="Support & disputes" color={c.paper} ink={c.ink} onPress={() => push('Support')} />
+        <Btn small title="My organisations" color={c.paper} ink={c.ink} onPress={() => push('Orgs')} />
       </View>
 
       <Section title="Favourite sports & games" color={c.sun}><FavouriteSports /></Section>

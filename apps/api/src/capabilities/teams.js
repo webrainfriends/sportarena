@@ -8,10 +8,11 @@ import { hiddenYouth, requireConsent } from '../youth.js';
 
 const color = z.string().regex(/^#[0-9a-fA-F]{6}$/);
 
-/** owner, or a member with captain/manager role */
+/** owner, a member with captain/manager role, or an owner/admin/coach of the team's organisation */
 export async function canManageTeam(user, team) {
   if (isAdmin(user) || team.owner_id === user.id) return true;
-  return !!(await one("SELECT 1 FROM team_members WHERE team_id=$1 AND user_id=$2 AND status='active' AND role IN ('captain','manager')", [team.id, user.id]));
+  if (await one("SELECT 1 FROM team_members WHERE team_id=$1 AND user_id=$2 AND status='active' AND role IN ('captain','manager')", [team.id, user.id])) return true;
+  return hasOrgGrant(user, team.organisation_id, ['owner', 'admin', 'coach']); // delegated by the team's organisation
 }
 
 cap({
