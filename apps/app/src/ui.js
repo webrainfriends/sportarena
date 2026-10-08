@@ -1,7 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, ActivityIndicator } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { c, grad, r, accentFor, fam } from './theme';
+import { useLayout } from './layout';
 
 const EMOJI = /\s*(?:[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}]\uFE0F?\u200d?)+\s*$/u;
 const plain = (ch) => (typeof ch === 'string' ? ch.replace(EMOJI, '') : Array.isArray(ch) ? ch.map(plain) : ch);
@@ -60,8 +62,8 @@ export function Btn({ title, onPress, color: want = c.pink, ink = '#fff', style,
   const fg = plain ? (ink === '#fff' ? c.ink : ink) : '#fff';
   return (
     <Pressable disabled={disabled || loading} onPress={onPress}
-      style={({ pressed }) => [{ opacity: disabled ? 0.4 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] }, style]}>
-      <View style={[s.btn, { backgroundColor: color, borderWidth: plain ? 1 : 0, borderColor: c.line, paddingVertical: small ? 9 : 16, paddingHorizontal: small ? 16 : 24 }]}>
+      hitSlop={small ? 4 : 0} style={({ pressed }) => [{ opacity: disabled ? 0.4 : pressed ? 0.85 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] }, style]}>
+      <View style={[s.btn, { backgroundColor: color, borderWidth: plain ? 1 : 0, borderColor: c.line, paddingVertical: small ? 10 : 15, paddingHorizontal: small ? 18 : 24, minHeight: small ? 40 : 50 }]}>
         {loading ? <ActivityIndicator color={fg} /> : <T weight="700" size={small ? 13 : 15} color={fg} style={{ letterSpacing: 0.2 }}>{title}</T>}
       </View>
     </Pressable>
@@ -131,12 +133,15 @@ export const Seg = ({ options, value, onChange, color = c.violet }) => (
   </ScrollView>
 );
 
-export function Screen({ children, scroll = true, refreshing, onRefresh, padBottom = 28, style, wide }) {
+export function Screen({ children, scroll = true, refreshing, onRefresh, padBottom, style, wide }) {
+  const L = useLayout();
   const Inner = scroll ? ScrollView : View;
+  const bottom = padBottom ?? L.bottomPad;
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
-      <Inner style={{ flex: 1 }} contentContainerStyle={scroll ? { padding: 16, paddingBottom: padBottom, maxWidth: wide ? 1120 : 760, width: '100%', alignSelf: 'center' } : undefined} showsVerticalScrollIndicator={false}>
-        {scroll ? children : <View style={[{ flex: 1, padding: 16 }, style]}>{children}</View>}
+      <Inner style={{ flex: 1 }} contentContainerStyle={scroll ? { paddingHorizontal: L.gutter, paddingTop: 8, paddingBottom: bottom, maxWidth: wide ? L.contentMax : Math.min(L.contentMax, L.tablet ? 860 : 760), width: '100%', alignSelf: 'center' } : undefined}
+        showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
+        {scroll ? children : <View style={[{ flex: 1, padding: L.gutter }, style]}>{children}</View>}
       </Inner>
     </View>
   );
@@ -176,16 +181,24 @@ export const ErrorBox = ({ error, onRetry }) => (
   <Card color={c.orangeSoft}><T weight="700">{error?.message ?? 'Something went wrong'}</T>{onRetry ? <Btn small title="Try again" onPress={onRetry} style={{ marginTop: 10, alignSelf: 'flex-start' }} color={c.violet} /> : null}</Card>
 );
 
-/** Bottom sheet modal with a form body. */
+/** Phone: bottom sheet that rises from the edge. Tablet: centred form sheet, like an iPad modal. */
 export function Sheet({ visible, onClose, title, children }) {
+  const L = useLayout();
+  const ins = useSafeAreaInsets();
+  const sheet = L.tablet
+    ? { alignSelf: 'center', width: 580, maxWidth: '92%', maxHeight: '86%', borderRadius: 28, marginBottom: 'auto', marginTop: 'auto' }
+    : { width: '100%', maxHeight: '92%', borderTopLeftRadius: 28, borderTopRightRadius: 28 };
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={s.scrim}>
-        <Pressable style={{ flex: 1 }} onPress={onClose} />
-        <View style={s.sheet}>
-          <View style={{ alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: c.line, marginTop: 10 }} />
-          <ScrollView contentContainerStyle={{ padding: 18, gap: 14 }} keyboardShouldPersistTaps="handled">
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}><H2>{title}</H2><Pressable onPress={onClose} hitSlop={12}><T size={22} color={c.mute}>✕</T></Pressable></View>
+    <Modal visible={visible} transparent animationType={L.tablet ? 'fade' : 'slide'} onRequestClose={onClose} statusBarTranslucent>
+      <View style={[s.scrim, L.tablet && { justifyContent: 'center' }]}>
+        <Pressable style={L.tablet ? StyleSheet.absoluteFill : { flex: 1 }} onPress={onClose} />
+        <View style={[s.sheet, sheet]}>
+          {L.phone ? <View style={{ alignSelf: 'center', width: 40, height: 5, borderRadius: 3, backgroundColor: c.line, marginTop: 8 }} /> : null}
+          <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 20 + (L.phone ? ins.bottom : 0), gap: 14 }} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <H2>{title}</H2>
+              <Pressable onPress={onClose} hitSlop={14} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: c.violetSoft, alignItems: 'center', justifyContent: 'center' }}><T size={15} color={c.mute} weight="700">✕</T></Pressable>
+            </View>
             {children}
           </ScrollView>
         </View>
@@ -208,11 +221,11 @@ const s = StyleSheet.create({
   card: { borderWidth: 1, borderColor: c.line, borderRadius: r.card, ...lift },
   gradWrap: { borderRadius: r.card + 4, overflow: 'hidden' },
   btn: { borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  chip: { borderWidth: 1, borderColor: c.line, backgroundColor: c.paper, borderRadius: r.pill, paddingVertical: 9, paddingHorizontal: 16 },
+  chip: { borderWidth: 1, borderColor: c.line, backgroundColor: c.paper, borderRadius: r.pill, paddingVertical: 10, paddingHorizontal: 16, minHeight: 40, justifyContent: 'center' },
   tag: { borderRadius: 5, paddingHorizontal: 8, paddingVertical: 3, alignSelf: 'flex-start' },
-  input: { borderWidth: 1.5, borderColor: c.line, borderRadius: r.input, backgroundColor: c.paper, paddingHorizontal: 16, paddingVertical: 14, fontSize: 15, fontWeight: '500', color: c.ink },
+  input: { borderWidth: 1.5, borderColor: c.line, borderRadius: r.input, backgroundColor: c.paper, paddingHorizontal: 16, paddingVertical: 13, minHeight: 50, fontSize: 16, fontWeight: '500', color: c.ink },
   secRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   scrim: { flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: c.bg, borderTopLeftRadius: 28, borderTopRightRadius: 28, maxHeight: '88%', overflow: 'hidden', width: '100%', maxWidth: 720, alignSelf: 'center' },
+  sheet: { backgroundColor: c.bg, overflow: 'hidden' },
   stat: { borderRadius: 16, backgroundColor: c.paper, borderWidth: 1, borderColor: c.line, paddingVertical: 12, paddingHorizontal: 16, alignItems: 'center', minWidth: 82 },
 });
