@@ -127,9 +127,11 @@ export function Field({ label, value, onChangeText, secure, multiline, keyboardT
   );
 }
 
+// an option is a plain value or { value, label }; `value: null` is a real choice (e.g. "All"), so test for the key, not for null
+const optValue = (o) => (o !== null && typeof o === 'object' && 'value' in o ? o.value : o);
 export const Seg = ({ options, value, onChange, color = c.violet }) => (
   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 4, paddingRight: 8 }}>
-    {options.map((o) => <Chip key={o.value ?? o} label={o.label ?? o} emoji={o.emoji} active={(o.value ?? o) === value} onPress={() => onChange(o.value ?? o)} color={o.color ?? color} />)}
+    {options.map((o) => <Chip key={String(optValue(o))} label={o.label ?? o} emoji={o.emoji} active={optValue(o) === value} onPress={() => onChange(optValue(o))} color={o.color ?? color} />)}
   </ScrollView>
 );
 
