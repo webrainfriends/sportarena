@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import { cap, id, page } from '../registry.js';
 import { one, many, query } from '../db.js';
-import { conflict, forbidden, notFound } from '../errors.js';
+import { badRequest, conflict, forbidden, notFound } from '../errors.js';
+import { isSupportedCurrency } from '../currency.js';
 import { isAdmin, mustFind, mustOwn, PUBLIC_USER, sportBySlugOrId } from '../helpers.js';
 
 const color = z.string().regex(/^#[0-9a-fA-F]{6}$/);
@@ -15,11 +16,12 @@ export async function canManageTeam(user, team) {
 cap({
   name: 'create_team', method: 'POST', path: '/teams', tag: 'Teams', status: 201,
   summary: 'Create a team. You become its owner and manager.',
-  input: z.object({ name: z.string().min(2).max(60), sport: z.string(), emoji: z.string().max(8).optional(), color: color.optional(), city: z.string().max(80).optional() }),
+  input: z.object({ name: z.string().min(2).max(60), sport: z.string(), emoji: z.string().max(8).optional(), color: color.optional(), city: z.string().max(80).optional(), currency: z.string().length(3).toUpperCase().optional().describe('settlement currency, default INR') }),
   async handler({ user }, i) {
+    if (i.currency && !isSupportedCurrency(i.currency)) throw badRequest('Unsupported currency');
     const sport = await sportBySlugOrId(i.sport);
     if (!sport) throw notFound('Sport');
-    const t = await one('INSERT INTO teams(name, sport_id, owner_id, emoji, color, city) VALUES ($1,$2,$3,coalesce($4,\'🔥\'),coalesce($5,\'#7C4DFF\'),$6) RETURNING *', [i.name, sport.id, user.id, i.emoji, i.color, i.city]);
+    const t = await one('INSERT INTO teams(name, sport_id, owner_id, emoji, color, city, currency) VALUES ($1,$2,$3,coalesce($4,\'🔥\'),coalesce($5,\'#7C4DFF\'),$6,coalesce($7,\'INR\')) RETURNING *', [i.name, sport.id, user.id, i.emoji, i.color, i.city, i.currency]);
     await query("INSERT INTO team_members(team_id, user_id, role) VALUES ($1,$2,'manager')", [t.id, user.id]);
     return t;
   },
@@ -44,7 +46,7 @@ cap({
 cap({
   name: 'get_team', method: 'GET', path: '/teams/:id', tag: 'Teams', auth: 'public',
   summary: 'Team page: roster, trophy cabinet, rating.', input: z.object({ id }),
-  async handler(_, i) {
+  async handler({ user }, i) {
     const t = await one('SELECT t.*, s.name AS sport, s.emoji AS sport_emoji FROM teams t JOIN sports s ON s.id=t.sport_id WHERE t.id=$1', [i.id]);
     if (!t) throw notFound('Team');
     const [members, awards, rating] = await Promise.all([
@@ -52,7 +54,8 @@ cap({
       many('SELECT id, name, kind, awarded_at FROM awards WHERE team_id=$1 ORDER BY awarded_at DESC', [i.id]),
       one("SELECT round(avg(rating),2) AS avg, count(*)::int AS n FROM testimonials WHERE subject_type='team' AND subject_id=$1", [i.id]),
     ]);
-    return { ...t, members, awards, rating };
+    const mine = user ? await one('SELECT role, status, availability FROM team_members WHERE team_id=$1 AND user_id=$2', [i.id, user.id]) : null;
+    return { ...t, members, awards, rating, can_manage: !!user && (await canManageTeam(user, t)), my_membership: mine };
   },
 });
 
