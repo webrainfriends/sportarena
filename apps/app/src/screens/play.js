@@ -7,9 +7,9 @@ import { useNav } from '../nav';
 import { Avatar, Btn, Bubble, Card, Chip, Empty, ErrorBox, GradCard, H1, H2, Loading, Row, Screen, Seg, Section, StatPill, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { FixtureCard, Reviews, StandingsTable, TrophyShelf, Stars } from '../blocks';
+import { SportSelect } from '../sportpicker';
 import { c, grad, day, accentFor, money } from '../theme';
 
-const sportOpts = (sports) => sports.map((s) => ({ value: s.slug, label: `${s.emoji} ${s.name}` }));
 
 export function Play() {
   const { has } = useSession();
@@ -18,7 +18,6 @@ export function Play() {
   const [sport, setSport] = useState(null);
   const [q, setQ] = useState('');
   const [form, setForm] = useState(null);
-  const sports = useLoad(() => api.get('/sports'), []);
   const list = useLoad(() => {
     const p = { sport: sport ?? undefined, limit: 50 };
     if (tab === 'events') return api.get('/events', p);
@@ -31,7 +30,7 @@ export function Play() {
     <Screen>
       <H1 style={{ marginTop: 8 }}>Play</H1>
       <Seg options={[{ value: 'events', label: 'Events', emoji: '🎟️', color: c.pink }, { value: 'teams', label: 'Teams', emoji: '🛡️', color: c.violet }, { value: 'venues', label: 'Venues', emoji: '🏟️', color: c.cyan }, { value: 'people', label: 'People', emoji: '🧑‍🤝‍🧑', color: c.orange }]} value={tab} onChange={setTab} />
-      {(tab === 'events' || tab === 'teams') && sports.data ? <Seg options={[{ value: null, label: 'All sports', emoji: '✨' }, ...sportOpts(sports.data)]} value={sport} onChange={setSport} color={c.ink} /> : null}
+      {tab === 'events' || tab === 'teams' ? <View style={{ marginTop: 6 }}><SportSelect allLabel="All sports" value={sport} onChange={setSport} /></View> : null}
 
       {tab === 'events' && has('organizer') ? <Btn title="Create an event" color={c.violet} onPress={() => setForm('event')} style={{ marginTop: 8 }} /> : null}
       {tab === 'teams' ? <Btn title="Start a team" color={c.pink} onPress={() => setForm('team')} style={{ marginTop: 8 }} /> : null}
@@ -47,10 +46,10 @@ export function Play() {
       </View>
 
       <FormSheet visible={form === 'team'} onClose={() => setForm(null)} title="Start a team" submitLabel="Create team"
-        fields={[{ key: 'name', label: 'Team name' }, { key: 'sport', label: 'Sport', type: 'choice', options: sportOpts(sports.data ?? []) }, { key: 'emoji', label: 'Mascot emoji', optional: true }, { key: 'city', label: 'City', optional: true }]}
+        fields={[{ key: 'name', label: 'Team name' }, { key: 'sport', label: 'Sport', type: 'sport' }, { key: 'emoji', label: 'Mascot emoji', optional: true }, { key: 'city', label: 'City', optional: true }]}
         onSubmit={async (v) => { const t = await api.post('/teams', v); list.reload(); push('Team', { id: t.id }); return 'Team created'; }} />
       <FormSheet visible={form === 'event'} onClose={() => setForm(null)} title="Create an event" submitLabel="Publish"
-        fields={[{ key: 'name', label: 'Event name' }, { key: 'sport', label: 'Sport', type: 'choice', options: sportOpts(sports.data ?? []) }, { key: 'kind', label: 'Type', type: 'choice', options: ['tournament', 'league', 'friendly', 'camp', 'trial'] }, { key: 'starts_on', label: 'Starts on (YYYY-MM-DD)', optional: true }, { key: 'description', label: 'Description', type: 'multiline', optional: true }]}
+        fields={[{ key: 'name', label: 'Event name' }, { key: 'sport', label: 'Sport', type: 'sport' }, { key: 'kind', label: 'Type', type: 'choice', options: ['tournament', 'league', 'friendly', 'camp', 'trial'] }, { key: 'starts_on', label: 'Starts on (YYYY-MM-DD)', optional: true }, { key: 'description', label: 'Description', type: 'multiline', optional: true }]}
         onSubmit={async (v) => { const e = await api.post('/events', v); list.reload(); push('Event', { id: e.id }); return 'Event is live'; }} />
     </Screen>
   );

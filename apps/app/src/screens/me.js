@@ -6,6 +6,7 @@ import { useSession } from '../session';
 import { useNav } from '../nav';
 import { Avatar, Btn, Card, Chip, Empty, GradCard, H1, Loading, Row, Screen, Section, StatPill, T, Tag, Bubble } from '../ui';
 import { FormSheet } from '../FormSheet';
+import { FavouriteSports } from '../sportpicker';
 import { c, grad } from '../theme';
 import { ROLES, roleLabel } from '../roles';
 
@@ -23,7 +24,6 @@ export function Me() {
   const [tokForm, setTokForm] = useState(false);
   const dash = useLoad(() => api.get('/dashboard'), []);
   const toks = useLoad(() => api.get('/me/tokens'), []);
-  const sports = useLoad(() => api.get('/sports'), []);
   const d = dash.data;
 
   return (
@@ -49,6 +49,8 @@ export function Me() {
         <Btn small title="View my public page" color={c.violet} onPress={() => push('Person', { id: user.id })} />
         <Btn small title="Add a sport role" color={c.cyan} ink={c.ink} onPress={() => setSp(true)} />
       </View>
+
+      <Section title="Favourite sports & games" color={c.sun}><FavouriteSports /></Section>
 
       <Section title="Private details" color={c.mint}>
         <Card color={c.mintSoft}>
@@ -94,7 +96,7 @@ export function Me() {
         fields={[{ key: 'display_name', label: 'Display name', optional: true }, { key: 'bio', label: 'Bio', optional: true, type: 'multiline' }, { key: 'full_name', label: 'Full name', optional: true }, { key: 'phone', label: 'Phone', optional: true }, { key: 'dob', label: 'Date of birth (YYYY-MM-DD)', optional: true }, { key: 'national_id', label: 'National ID', optional: true }, { key: 'address', label: 'Address', optional: true, type: 'multiline' }]}
         onSubmit={async (v) => { await api.patch('/me', v); await refresh(); return 'Saved & encrypted'; }} />
       <FormSheet visible={sp} onClose={() => setSp(false)} title="Add a sport role" submitLabel="Add"
-        fields={[{ key: 'sport', label: 'Sport', type: 'choice', options: (sports.data ?? []).map((s) => ({ value: s.slug, label: `${s.emoji} ${s.name}` })) }, { key: 'role', label: 'Role', type: 'choice', options: ['athlete', 'coach', 'referee', 'physio', 'doctor'] }, { key: 'level', label: 'Level', type: 'choice', options: ['beginner', 'amateur', 'semi_pro', 'pro'] }, { key: 'position', label: 'Position', optional: true }, { key: 'license_no', label: 'License no.', optional: true }]}
+        fields={[{ key: 'sport', label: 'Sport', type: 'sport' }, { key: 'role', label: 'Role', type: 'choice', options: ['athlete', 'coach', 'referee', 'physio', 'doctor'] }, { key: 'level', label: 'Level', type: 'choice', options: ['beginner', 'amateur', 'semi_pro', 'pro'] }, { key: 'position', label: 'Position', optional: true }, { key: 'license_no', label: 'License no.', optional: true }]}
         onSubmit={async (v) => { await api.post('/me/sport-profiles', v); return 'Added'; }} />
       <FormSheet visible={tokForm} onClose={() => setTokForm(false)} title="New API token" submitLabel="Create" fields={[{ key: 'name', label: 'Name', placeholder: 'My Claude agent' }]}
         onSubmit={async (v) => { const t = await api.post('/me/tokens', v); setNewToken(t.token); toks.reload(); }} />

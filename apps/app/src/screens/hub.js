@@ -6,6 +6,7 @@ import { useSession } from '../session';
 import { useNav } from '../nav';
 import { Avatar, Bubble, Btn, Card, Chip, Empty, ErrorBox, GradCard, H1, H2, Loading, Row, Screen, Seg, Section, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
+import { SportSelect } from '../sportpicker';
 import { c, grad, money, day, when } from '../theme';
 
 const TILES = [
@@ -36,12 +37,11 @@ export function Hub() {
 export function Leaderboard() {
   const { push } = useNav();
   const [sport, setSport] = useState(null);
-  const sports = useLoad(() => api.get('/sports'), []);
   const lb = useLoad(() => api.get('/leaderboard', { sport: sport ?? undefined, limit: 50 }), [sport]);
   return (
     <Screen>
       <H1>Leaderboard</H1>
-      {sports.data ? <Seg options={[{ value: null, label: 'All', emoji: '✨' }, ...sports.data.map((s) => ({ value: s.slug, label: s.name, emoji: s.emoji }))]} value={sport} onChange={setSport} color={c.ink} /> : null}
+      <SportSelect allLabel="All sports" value={sport} onChange={setSport} />
       <View style={{ gap: 10, marginTop: 10 }}>
         {lb.loading && !lb.data ? <Loading /> : lb.data?.length ? lb.data.map((a) => (
           <Row key={a.id} color={a.rank === 1 ? c.sunSoft : c.paper} onPress={() => push('Person', { id: a.id })} left={<View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><T weight="900" size={20}>{a.rank === 1 ? '🥇' : a.rank === 2 ? '🥈' : a.rank === 3 ? '🥉' : a.rank}</T><Avatar user={a} /></View>}

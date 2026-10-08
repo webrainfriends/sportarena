@@ -13,6 +13,7 @@ import { Gallery, VenueReviews } from './venue-media';
 import { VenuePlans } from './plans';
 import { AlertSheet } from './alerts';
 import { Calendar, StickyBar } from '../pickers';
+import { SportSelect } from '../sportpicker';
 import { c } from '../theme';
 import { WEEKDAYS, addDays, dateTimeIn, dayLabel, fmtMin, moneyIn, offerLabel, openStatus, todayIn } from '../vtime';
 
@@ -73,7 +74,6 @@ export function Book() {
   const [pickDate, setPickDate] = useState(false);
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
   const mine = useLoad(() => api.get('/reservations', { limit: 20 }), []);
-  const sports = useLoad(() => api.get('/sports'), []);
   const note = useLoad(() => api.get('/notifications', { unread: true, limit: 1 }), []);
   const favs = useLoad(() => api.get('/me/favourites'), []);
   const toggleFav = async (v) => { try { if (v.is_favourite) await api.del(`/venues/${v.id}/favourite`); else await api.post(`/venues/${v.id}/favourite`); venues.reload(); favs.reload(); } catch {} };
@@ -105,7 +105,7 @@ export function Book() {
         <Pressable onPress={() => setFilters(true)} style={{ height: 50, paddingHorizontal: 16, borderRadius: 12, borderWidth: 1.5, borderColor: activeFilters ? c.pink : c.line, backgroundColor: c.paper, justifyContent: 'center' }}><T weight="700" color={activeFilters ? c.pink : c.ink}>⚙ Filters{activeFilters ? ` · ${activeFilters}` : ''}</T></Pressable>
         <Pressable onPress={() => push('Notifications')} style={{ height: 50, width: 50, borderRadius: 12, borderWidth: 1.5, borderColor: c.line, backgroundColor: c.paper, alignItems: 'center', justifyContent: 'center' }} accessibilityLabel="Notifications"><T size={18}>🔔</T>{note.data?.unread ? <View style={{ position: 'absolute', top: 6, right: 6, minWidth: 16, height: 16, borderRadius: 8, backgroundColor: c.pink, alignItems: 'center', justifyContent: 'center' }}><T size={10} weight="700" color="#fff">{note.data.unread}</T></View> : null}</Pressable>
       </View>
-      <View style={{ marginTop: 6 }}><Seg options={[{ value: '', label: '✨ All sports' }, ...(sports.data ?? []).map((s) => ({ value: s.slug, label: `${s.emoji} ${s.name}` }))]} value={sport} onChange={setSport} color={c.violet} /></View>
+      <View style={{ marginTop: 6 }}><SportSelect allLabel="All sports" value={sport || null} onChange={(x) => setSport(x ?? '')} /></View>
       <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
         <Pressable onPress={() => setPickDate(true)} style={{ borderRadius: 999, borderWidth: 1, borderColor: date ? c.pink : c.line, backgroundColor: date ? c.pinkSoft : c.paper, paddingHorizontal: 14, minHeight: 40, justifyContent: 'center' }}><T weight="700" size={13} color={date ? c.pink : c.ink}>📅 {date ? dayLabel(date, Math.round((Date.parse(date) - Date.parse(todayStr)) / 864e5)) : 'Any day'}</T></Pressable>
         {date ? <View style={{ flex: 1 }}><Seg options={[{ value: null, label: 'Any time' }, ...Array.from({ length: 16 }, (_, i) => ({ value: i + 6, label: `${(i + 6) % 12 || 12}${i + 6 < 12 ? 'am' : 'pm'}` }))]} value={hour} onChange={setHour} color={c.pink} /></View> : null}

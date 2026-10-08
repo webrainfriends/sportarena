@@ -155,3 +155,27 @@ test('slot alerts: released blocks, weekday filter, cancel, expiry, limits, swee
   assert.equal((await pool.query("SELECT count(*)::int AS n FROM slot_alerts WHERE user_id=$1 AND status='expired'", [u.id])).rows[0].n, 20, 'alerts for dates gone by expire');
   void court;
 });
+
+test('sports: every play type is covered, filterable, and favourite sports are per user and soft-removed', async () => {
+  const u = await signup(); const other = await signup();
+  for (const t of ['team', 'individual', 'board', 'esports']) {
+    const list = must(await api('GET', '/sports', { query: { play_type: t } }));
+    assert.ok(list.length >= 5 && list.every((s) => s.play_type === t), `${t} sports listed`);
+  }
+  const all = must(await api('GET', '/sports'));
+  assert.equal(all.find((s) => s.slug === 'football').play_type, 'team');
+  assert.equal(all.find((s) => s.slug === 'chess').play_type, 'board');
+  assert.equal(all.find((s) => s.slug === 'valorant').play_type, 'esports');
+  assert.equal(all.find((s) => s.slug === 'tennis').play_type, 'individual');
+  assert.equal(must(await api('GET', '/me/favourite-sports', { token: u.token })).length, 0);
+  must(await api('POST', '/sports/cricket/favourite', { token: u.token }), 201);
+  must(await api('POST', '/sports/chess/favourite', { token: u.token }), 201);
+  must(await api('POST', '/sports/chess/favourite', { token: u.token }), 201); // idempotent
+  assert.deepEqual(must(await api('GET', '/me/favourite-sports', { token: u.token })).map((s) => s.slug), ['chess', 'cricket']);
+  assert.equal(must(await api('GET', '/me/favourite-sports', { token: other.token })).length, 0, 'favourites are private');
+  must(await api('DELETE', '/sports/chess/favourite', { token: u.token }));
+  assert.deepEqual(must(await api('GET', '/me/favourite-sports', { token: u.token })).map((s) => s.slug), ['cricket']);
+  must(await api('POST', '/sports/chess/favourite', { token: u.token }), 201); // can be re-starred
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM favourite_sports WHERE user_id=$1', [u.id])).rows[0].n, 2, 'rows kept');
+  assert.equal((await api('POST', '/sports/nope-nothing/favourite', { token: u.token })).status, 404);
+});
