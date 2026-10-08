@@ -23,7 +23,10 @@ export const setUnauthorizedHandler = (fn) => { onUnauthorized = fn; };
 export class ApiError extends Error {
   constructor(status, body) {
     const first = body?.error?.details?.[0];
-    super(first?.message ? `${first.path ? first.path + ': ' : ''}${first.message}` : body?.error?.message ?? `Request failed (${status})`);
+    const nice = (path) => String(path).split('.').filter((x) => !/^\d+$/.test(x)).join(' › ').replace(/_(cents|bp)$/, '').replace(/_/g, ' ');
+    const plain = (m) => (/expected (number|int)/i.test(m) ? 'enter a number' : /received undefined|required/i.test(m) ? 'is required' : /^invalid input$/i.test(m) ? 'is not valid' : m);
+    const all = (body?.error?.details ?? []).filter((d) => d?.message).map((d) => `${d.path ? `${nice(d.path)}: ` : ''}${plain(d.message)}`);
+    super(all.length ? [...new Set(all)].join('; ') : body?.error?.message ?? `Request failed (${status})`);
     this.status = status; this.code = body?.error?.code; this.details = body?.error?.details;
   }
 }
