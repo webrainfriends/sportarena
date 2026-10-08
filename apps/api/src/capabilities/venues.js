@@ -85,7 +85,7 @@ cap({
     available_from: dt.optional(), available_to: dt.optional(),
     sort: z.enum(['name', 'distance', 'rating', 'price']).default('name'), ...page,
   }).refine((i) => (i.lat == null) === (i.lng == null), 'lat and lng go together').refine((i) => (i.available_from == null) === (i.available_to == null), 'available_from and available_to go together'),
-  async handler(_, i) {
+  async handler({ user }, i) {
     const sport = i.sport ? await sportBySlugOrId(i.sport) : null;
     if (i.sport && !sport) throw notFound('Sport');
     if (i.sort === 'distance' && i.lat == null) throw badRequest('sort=distance needs lat and lng');
@@ -101,6 +101,7 @@ cap({
                                 UNION ALL SELECT min(p.hourly_rate_cents) FROM price_rules p WHERE p.venue_id=v.id AND p.active AND (p.resource_id IS NULL OR $3::uuid IS NULL OR EXISTS (SELECT 1 FROM resources r2 WHERE r2.id=p.resource_id AND r2.sport_id=$3))) m) AS min_hourly_rate_cents,
            (SELECT coalesce(array_agg(DISTINCT s.slug), '{}') FROM resources r JOIN sports s ON s.id=r.sport_id WHERE r.venue_id=v.id AND r.active) AS sports,
            (SELECT count(*)::int FROM discounts d WHERE d.venue_id=v.id AND d.active AND d.code IS NULL AND (d.valid_to IS NULL OR d.valid_to >= current_date)) AS offers,
+           EXISTS (SELECT 1 FROM favourite_venues f WHERE f.venue_id=v.id AND f.user_id=$14::uuid AND f.removed_at IS NULL) AS is_favourite,
            (SELECT '/api/v1/media/' || m.id FROM venue_media m WHERE m.venue_id=v.id AND m.removed_at IS NULL AND m.kind='photo' ORDER BY m.is_cover DESC, m.position, m.created_at LIMIT 1) AS cover_url
          FROM venues v
          WHERE v.active AND ($1::text IS NULL OR v.city ILIKE $1) AND ($2::text IS NULL OR v.name ILIKE '%'||$2||'%')
@@ -116,7 +117,7 @@ cap({
        ORDER BY CASE WHEN $11 = 'distance' THEN distance_km END ASC NULLS LAST, CASE WHEN $11 = 'rating' THEN rating END DESC NULLS LAST,
                 CASE WHEN $11 = 'price' THEN min_hourly_rate_cents END ASC NULLS LAST, name
        LIMIT $12 OFFSET $13`,
-      [i.city ?? null, i.q ?? null, sport?.id ?? null, i.amenity ?? null, i.lat ?? null, i.lng ?? null, i.max_hourly_rate_cents ?? null, i.radius_km ?? null, i.available_from ?? null, i.available_to ?? null, i.sort, i.limit, i.offset]);
+      [i.city ?? null, i.q ?? null, sport?.id ?? null, i.amenity ?? null, i.lat ?? null, i.lng ?? null, i.max_hourly_rate_cents ?? null, i.radius_km ?? null, i.available_from ?? null, i.available_to ?? null, i.sort, i.limit, i.offset, user?.id ?? null]);
     return rows.map((v) => ({ ...v, map_links: mapLinks(v) }));
   },
 });
@@ -124,16 +125,17 @@ cap({
 cap({
   name: 'get_venue', method: 'GET', path: '/venues/:id', tag: 'Venues & Booking', auth: 'public', summary: 'Venue profile: location + map links, opening hours, policy, amenities, its courts/tables/grounds/equipment (each with capacity, players, slot length), and automatic discounts. Contacts: list_venue_contacts.',
   input: z.object({ id }),
-  async handler(_, i) {
+  async handler({ user }, i) {
     const v = await mustFind('venues', i.id);
-    const [resources, hours, offers, media, rating] = await Promise.all([
+    const [resources, hours, offers, media, rating, fav] = await Promise.all([
       many('SELECT r.*, s.name AS sport, s.slug AS sport_slug, s.emoji AS sport_emoji FROM resources r LEFT JOIN sports s ON s.id=r.sport_id WHERE r.venue_id=$1 AND r.active ORDER BY r.kind, r.name', [i.id]),
       many('SELECT weekday, opens_min, closes_min FROM venue_hours WHERE venue_id=$1 AND removed_at IS NULL ORDER BY weekday, opens_min', [i.id]),
       many("SELECT id, name, kind, value, min_slots, weekdays, valid_from, valid_to, resource_id FROM discounts WHERE venue_id=$1 AND active AND code IS NULL AND (valid_to IS NULL OR valid_to >= current_date) ORDER BY name", [i.id]),
       many('SELECT * FROM venue_media WHERE venue_id=$1 AND removed_at IS NULL ORDER BY is_cover DESC, position, created_at LIMIT 40', [i.id]),
       one("SELECT round(avg(rating),2) AS rating, count(*)::int AS reviews FROM testimonials WHERE subject_type='venue' AND subject_id=$1", [i.id]),
+      one('SELECT count(*)::int AS favourites, coalesce(bool_or(user_id = $2::uuid), false) AS is_favourite FROM favourite_venues WHERE venue_id=$1 AND removed_at IS NULL', [i.id, user?.id ?? null]),
     ]);
-    return { ...v, map_links: mapLinks(v), resources, hours, open_around_the_clock: hours.length === 0, offers, media: media.map(publicMedia), ...rating };
+    return { ...v, map_links: mapLinks(v), resources, hours, open_around_the_clock: hours.length === 0, offers, media: media.map(publicMedia), ...rating, ...fav };
   },
 });
 

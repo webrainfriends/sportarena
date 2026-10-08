@@ -5,16 +5,22 @@ import { config } from './config.js';
 import { decrypt } from './crypto.js';
 import { audit } from './helpers.js';
 
-export const DEFAULT_PREFS = { in_app: true, email: true, reminder_hours: 24, muted_kinds: [] };
+export const DEFAULT_PREFS = { in_app: true, email: true, push: true, reminder_hours: 24, muted_kinds: [] };
 
 /** Notify one user. Respects their channel switches and muted kinds. */
 export async function notify(c, userId, { kind, title, body, data = {} }) {
   const db = c ?? pool;
   const prefs = (await db.query('SELECT * FROM notification_prefs WHERE user_id=$1', [userId])).rows[0] ?? DEFAULT_PREFS;
-  if (prefs.muted_kinds.includes(kind) || (!prefs.in_app && !prefs.email)) return null;
+  if (prefs.muted_kinds.includes(kind) || (!prefs.in_app && !prefs.email && prefs.push === false)) return null;
   const n = (await db.query('INSERT INTO notifications(user_id, kind, title, body, data) VALUES ($1,$2,$3,$4,$5) RETURNING *', [userId, kind, title, body, data])).rows[0];
   if (prefs.email) await db.query("INSERT INTO notification_deliveries(notification_id, channel) VALUES ($1,'email')", [n.id]);
-  if (!prefs.in_app) await db.query('UPDATE notifications SET read_at=now() WHERE id=$1', [n.id]); // email-only: keep the inbox clean
+  if (!prefs.in_app) await db.query('UPDATE notifications SET read_at=now() WHERE id=$1', [n.id]); // no in-app channel: keep the inbox clean
+  // push goes straight to the person's phones / browsers, as soon as the data is committed
+  if (prefs.push !== false && (await db.query('SELECT 1 FROM push_devices WHERE user_id=$1 AND disabled_at IS NULL LIMIT 1', [userId])).rowCount) {
+    await db.query("INSERT INTO notification_deliveries(notification_id, channel) VALUES ($1,'push')", [n.id]);
+    const kick = () => import('./push.js').then((m) => m.dispatchPush()).catch((e) => console.error('[push]', e.message));
+    if (c?.afterCommit) c.afterCommit(kick); else setImmediate(kick);
+  }
   return n;
 }
 
@@ -52,13 +58,13 @@ export async function queueReminders() {
 /** Send queued emails via NOTIFY_WEBHOOK_URL (your SES/Sendgrid/n8n bridge). Without it they simply stay queued. */
 export async function dispatchPending({ limit = 50 } = {}) {
   const url = config.notifyWebhook.url;
-  const pending = Number((await one("SELECT count(*) AS n FROM notification_deliveries WHERE status='pending'")).n);
+  const pending = Number((await one("SELECT count(*) AS n FROM notification_deliveries WHERE status='pending' AND channel='email'")).n);
   if (!url) return { configured: false, pending, sent: 0, failed: 0 };
   let sent = 0, failed = 0;
   const { rows } = await query(
     `SELECT d.id, d.attempts, n.id AS notification_id, n.kind, n.title, n.body, n.data, n.user_id, u.email_enc
        FROM notification_deliveries d JOIN notifications n ON n.id=d.notification_id JOIN users u ON u.id=n.user_id
-      WHERE d.status='pending' ORDER BY d.created_at LIMIT $1`, [limit]);
+      WHERE d.status='pending' AND d.channel='email' ORDER BY d.created_at LIMIT $1`, [limit]);
   for (const d of rows) {
     // claim so two dispatchers never send the same email
     const claimed = await one("UPDATE notification_deliveries SET attempts=attempts+1 WHERE id=$1 AND status='pending' AND attempts=$2 RETURNING id", [d.id, d.attempts]);
@@ -84,7 +90,9 @@ export async function dispatchPending({ limit = 50 } = {}) {
 /** One tick of the background worker. */
 export async function notificationCycle() {
   const reminders = await queueReminders();
-  return { reminders, ...(await dispatchPending()) };
+  const { dispatchPush } = await import('./push.js');
+  const push = await dispatchPush();
+  return { reminders, push, ...(await dispatchPending()) };
 }
 
 export const inbox = (userId, { unread, limit, offset }) =>

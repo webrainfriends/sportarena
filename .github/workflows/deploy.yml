@@ -175,6 +175,8 @@ jobs:
           PAYPAL_WEBHOOK_ID: ${{ secrets.PAYPAL_WEBHOOK_ID }}
           PAYPAL_ENV: ${{ vars.PAYPAL_ENV }}
           PAYMENT_CURRENCY: ${{ vars.PAYMENT_CURRENCY }}
+          # optional: raises Expo push limits / enables enhanced security for phone push (https://expo.dev/accounts/_/settings/access-tokens)
+          EXPO_ACCESS_TOKEN: ${{ secrets.EXPO_ACCESS_TOKEN }}
         run: |
           set -euo pipefail
           KEYFILE="$(mktemp)"; trap 'rm -f "$KEYFILE"' EXIT
@@ -184,7 +186,7 @@ jobs:
           TARGET="${EC2_USER}@${EC2_HOST}"
           scp "${SSH_OPTS[@]}" scripts/deploy-remote.sh "$TARGET:/tmp/sportarena-deploy.sh"
           REMOTE_ENV=""
-          for v in APP_DIR BRANCH REPO_URL APP_PORT NGINX_PORT DB_PORT ENABLE_TLS PUBLIC_HOST PUBLIC_IP KMS_KEY_ID KMS_REGION STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET PAYPAL_CLIENT_ID PAYPAL_CLIENT_SECRET PAYPAL_WEBHOOK_ID PAYPAL_ENV PAYMENT_CURRENCY; do
+          for v in APP_DIR BRANCH REPO_URL APP_PORT NGINX_PORT DB_PORT ENABLE_TLS PUBLIC_HOST PUBLIC_IP KMS_KEY_ID KMS_REGION STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET PAYPAL_CLIENT_ID PAYPAL_CLIENT_SECRET PAYPAL_WEBHOOK_ID PAYPAL_ENV PAYMENT_CURRENCY EXPO_ACCESS_TOKEN; do
             REMOTE_ENV+="$(printf '%s=%q ' "$v" "${!v:-}")"
           done
           timeout 20m ssh -T "${SSH_OPTS[@]}" "$TARGET" "env $REMOTE_ENV bash /tmp/sportarena-deploy.sh"

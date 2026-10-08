@@ -26,13 +26,22 @@
       "themeColor": "#FF2E93"
     },
     "extra": {
-      "apiUrl": null
+      "apiUrl": null,
+      "eas": {
+        "projectId": null
+      }
     },
     "plugins": [
       [
         "expo-image-picker",
         {
           "photosPermission": "Choose photos and videos of your venue to show on its page."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#4F46E5"
         }
       ]
     ]

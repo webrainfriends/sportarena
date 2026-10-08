@@ -11,6 +11,7 @@ import { KIND } from './book';
 import { Calendar, Counter, Stepper, StickyBar, byPartOfDay } from '../pickers';
 import { addDays, longDay, moneyIn, offerLabel, timeIn, todayIn } from '../vtime';
 import { useLayout } from '../layout';
+import { AlertSheet } from './alerts';
 
 const STEPS = ['Court', 'Date', 'Time', 'Review'];
 
@@ -42,6 +43,7 @@ export function BookFlow({ venueId, resourceId, date: startDate }) {
   const [len, setLen] = useState(1);              // slots selected per tap
   const [qty, setQty] = useState({});             // courtId -> units
   const [sel, setSel] = useState({});             // `${courtId}|${starts_at}` -> { res, slot }
+  const [alertOpen, setAlertOpen] = useState(false);
   const tz = v.data?.timezone ?? 'UTC';
   const today = todayIn(tz);
   const m = month ?? today.slice(0, 7);
@@ -143,6 +145,7 @@ export function BookFlow({ venueId, resourceId, date: startDate }) {
               <Calendar month={m} onMonth={setMonth} value={date} days={cal.data?.days} currency={x.currency} today={today} onChange={(d) => { setDate(d); setStep(2); }} />
               {cal.loading && !cal.data ? <T size={12} color={c.mute} style={{ marginTop: 8 }}>Checking availability…</T> : null}
             </Card>
+            <Btn small title="🔔 Nothing that suits? Alert me when a slot opens" color={c.paper} onPress={() => setAlertOpen(true)} style={{ alignSelf: 'flex-start' }} />
             <T size={12} color={c.mute}>Prices show the cheapest free slot that day. {single ? '' : 'Availability covers all courts at this venue.'}</T>
           </View>
         ) : null}
@@ -188,6 +191,7 @@ export function BookFlow({ venueId, resourceId, date: startDate }) {
                 </Card>
               );
             })}
+            <Btn small title="🔔 Can't find a time? Alert me when one opens" color={c.paper} onPress={() => setAlertOpen(true)} style={{ alignSelf: 'flex-start' }} />
             <View style={{ flexDirection: 'row', gap: 14, flexWrap: 'wrap' }}>
               {[[c.pink, 'Selected'], [c.paper, 'Available'], [c.violetSoft, 'Sold out / closed']].map(([bg, l]) => <View key={l} style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}><View style={{ width: 14, height: 14, borderRadius: 4, backgroundColor: bg, borderWidth: 1, borderColor: c.line }} /><T size={11} color={c.mute}>{l}</T></View>)}
             </View>
@@ -219,6 +223,7 @@ export function BookFlow({ venueId, resourceId, date: startDate }) {
         ) : null}
         {step > 0 ? <Btn small title="‹ Back" color={c.paper} onPress={() => setStep(step - 1)} style={{ marginTop: 14, alignSelf: 'flex-start' }} /> : null}
       </Screen>
+      <AlertSheet venue={x} visible={alertOpen} onClose={() => setAlertOpen(false)} date={date ?? undefined} resourceId={single} />
       <StickyBar title={footer.title} sub={footer.sub} action={footer.action} onAction={next} disabled={footer.off} bottom={L.floatingBar ? 84 : 0} />
     </View>
   );

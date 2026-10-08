@@ -44,6 +44,11 @@ export const config = {
   holdMinutes: Number(env.PAYMENT_HOLD_MINUTES ?? 15),
   // Notifications: queued emails are POSTed as JSON to this webhook (your SES/SendGrid/n8n bridge). Unset = they stay queued.
   notifyWebhook: { url: env.NOTIFY_WEBHOOK_URL, secret: env.NOTIFY_WEBHOOK_SECRET },
+  // Push: phone apps go through the Expo push service; browsers through Web Push (VAPID keys, generated once by the deploy).
+  push: {
+    expoUrl: env.EXPO_PUSH_URL ?? 'https://exp.host/--/api/v2/push/send', expoToken: env.EXPO_ACCESS_TOKEN,
+    vapid: { publicKey: env.VAPID_PUBLIC_KEY, privateKey: env.VAPID_PRIVATE_KEY, subject: env.VAPID_SUBJECT ?? 'mailto:admin@sportarena.local' },
+  },
   // Background worker for booking reminders + email dispatch. 0 disables it (tests do).
   notifyIntervalSeconds: Number(env.NOTIFY_INTERVAL_SECONDS ?? 60),
   // Payments (redirect checkout; no card data ever touches this server). A provider is enabled when its keys are set.
