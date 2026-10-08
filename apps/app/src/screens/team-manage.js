@@ -41,8 +41,8 @@ export function TeamManage({ id }) {
   const [tab, setTab] = useState('roster');
   const team = useLoad(() => api.get(`/teams/${id}`), [id]);
   const roster = useLoad(() => api.get(`/teams/${id}/roster`), [id]);
-  if ((team.loading || roster.loading) && !roster.data) return <Screen><Loading /></Screen>;
   if (team.error || roster.error) return <Screen><ErrorBox error={team.error ?? roster.error} onRetry={() => { team.reload(); roster.reload(); }} /></Screen>;
+  if (!team.data || !roster.data) return <Screen><Loading /></Screen>;
   const t = team.data, r = roster.data;
   if (!r.can_manage) return <Screen><Empty emoji="🔒" title="Managers only" sub="Only the team owner or managers can manage this team." /></Screen>;
   const P = { t, r, reload: () => { team.reload(); roster.reload(); }, toast };
