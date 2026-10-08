@@ -19,6 +19,7 @@ import { Book, Venue } from './screens/book';
 import { BookFlow } from './screens/bookflow';
 import { Basket, Reservation, Compare, Notifications, Invoice } from './screens/reserve';
 import { Manage, OwnerSummary } from './screens/manage';
+import { Wallet } from './screens/wallet';
 import { BasketProvider } from './basket';
 import { Hub, Leaderboard, Awards, Health, Insurance, Sponsors, Supply } from './screens/hub';
 import { Me } from './screens/me';
@@ -27,8 +28,8 @@ import { PlayerHome, SportProfile, ImportMatches } from './screens/player';
 
 const TABS = [['Home', Home], ['Play', Play], ['Player', PlayerHome], ['Book', Book], ['Hub', Hub], ['Me', Me]];
 const LABEL = { Hub: 'Ecosystem' };
-const PAGES = { Event, Team, Person, Venue, BookFlow, Invoice, Basket, Reservation, Compare, Notifications, Manage, OwnerSummary, Leaderboard, Awards, Health, Insurance, Sponsors, Supply, SportProfile, ImportMatches };
-const TITLES = { Event: 'Event', Team: 'Team', Person: 'Profile', Venue: 'Venue', BookFlow: 'Book', Invoice: 'Invoice', Basket: 'Basket', Reservation: 'Booking', Compare: 'Compare', Notifications: 'Notifications', Manage: 'Manage venue', OwnerSummary: 'All my venues', Leaderboard: 'Leaderboard', Awards: 'Trophy room', Health: 'Health', Insurance: 'Insurance', Sponsors: 'Sponsors', Supply: 'Supply chain', SportProfile: 'Sport profile', ImportMatches: 'Import matches' };
+const PAGES = { Event, Team, Person, Venue, Wallet, BookFlow, Invoice, Basket, Reservation, Compare, Notifications, Manage, OwnerSummary, Leaderboard, Awards, Health, Insurance, Sponsors, Supply, SportProfile, ImportMatches };
+const TITLES = { Event: 'Event', Team: 'Team', Person: 'Profile', Venue: 'Venue', Wallet: 'Wallet', BookFlow: 'Book', Invoice: 'Invoice', Basket: 'Basket', Reservation: 'Booking', Compare: 'Compare', Notifications: 'Notifications', Manage: 'Manage venue', OwnerSummary: 'All my venues', Leaderboard: 'Leaderboard', Awards: 'Trophy room', Health: 'Health', Insurance: 'Insurance', Sponsors: 'Sponsors', Supply: 'Supply chain', SportProfile: 'Sport profile', ImportMatches: 'Import matches' };
 
 const TAB_LABEL = { Hub: 'More' };
 

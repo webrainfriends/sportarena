@@ -5,6 +5,8 @@
 import { encrypt, decrypt } from '../crypto.js';
 import { notify } from '../notify.js';
 import { toMajor } from '../currency.js';
+import { returnCredits } from './credits.js';
+import { earnForInvoice, clawBackPoints } from './loyalty.js';
 
 const ACTIVE = new Set(['confirmed', 'no_show']);
 const taxIn = (total, rate) => Math.round((total * rate) / (10000 + rate)); // payable always contains its tax
@@ -70,8 +72,12 @@ export async function reconcileInvoices(c, reservationId) {
       }
       if (open) {
         const changed = open.total_cents !== delta || open.lines.length !== docLines.length;
+        // the invoice got smaller than the wallet credit already put on it: give the excess back
+        if (open.credits_cents > delta) await returnCredits(c, [open.id], open.credits_cents - delta, { adjustInvoice: true, note: `Booking ${rs.code} changed` });
         await c.query(`UPDATE invoices SET lines=$2, total_cents=$3, tax_cents=$4, revision=revision+$9, tax_name=$5, tax_rate_bp=$6, tax_inclusive=$7, seller=$8 WHERE id=$1`,
           [open.id, JSON.stringify(docLines), delta, tax, money.tax_name, money.tax_rate_bp, money.tax_inclusive, seller(venue), changed ? 1 : 0]);
+        // wallet credit now covers all of it: it is paid
+        if ((await c.query('SELECT credits_cents FROM invoices WHERE id=$1', [open.id])).rows[0].credits_cents >= delta) await markInvoicePaid(c, open.id, { method: 'wallet', by: rs.user_id });
       } else {
         await c.query(
           `INSERT INTO invoices(kind, number, venue_id, reservation_id, user_id, currency, total_cents, tax_cents, tax_name, tax_rate_bp, tax_inclusive, seller, buyer_enc, lines)
@@ -81,17 +87,24 @@ export async function reconcileInvoices(c, reservationId) {
       await c.query("UPDATE bookings b SET payment_status='unpaid' FROM resources r WHERE r.id=b.resource_id AND r.venue_id=$2 AND b.reservation_id=$1 AND b.status IN ('confirmed','no_show') AND b.payment_status IN ('paid','unpaid')", [reservationId, venueId]);
       continue;
     }
-    if (open) await c.query("UPDATE invoices SET status='void', voided_at=now() WHERE id=$1", [open.id]);
+    if (open) {
+      if (open.credits_cents > 0) await returnCredits(c, [open.id], open.credits_cents, { adjustInvoice: true, note: `Booking ${rs.code} cancelled` });
+      await c.query("UPDATE invoices SET status='void', voided_at=now() WHERE id=$1", [open.id]);
+    }
     if (delta < 0) {
       const credit = -delta;
-      const online = (await c.query("SELECT 1 FROM payments WHERE purpose_type='venue_invoice' AND purpose_id = ANY($1::uuid[]) AND status IN ('paid','refunded')", [paid.map((d) => d.id)])).rowCount > 0;
+      await clawBackPoints(c, paid.map((d) => d.id), credit); // the points that money earned go back too
+      // wallet-funded money goes straight back to the wallet; only the rest needs the card provider or the venue
+      const toWallet = await returnCredits(c, paid.map((d) => d.id), credit, { note: `Refund for booking ${rs.code}` });
+      const rest = credit - toWallet;
+      const online = rest > 0 && (await c.query("SELECT 1 FROM payments WHERE purpose_type='venue_invoice' AND purpose_id = ANY($1::uuid[]) AND status IN ('paid','refunded')", [paid.map((d) => d.id)])).rowCount > 0;
       await c.query(
-        `INSERT INTO invoices(kind, number, venue_id, reservation_id, user_id, parent_id, currency, status, total_cents, tax_cents, tax_name, tax_rate_bp, tax_inclusive, seller, buyer_enc, lines, paid_at, refund_status)
-         VALUES ('credit_note',$1,$2,$3,$4,$5,$6,'paid',$7,$8,$9,$10,$11,$12,$13,$14, now(), $15)`,
+        `INSERT INTO invoices(kind, number, venue_id, reservation_id, user_id, parent_id, currency, status, total_cents, tax_cents, tax_name, tax_rate_bp, tax_inclusive, seller, buyer_enc, lines, paid_at, refund_status, refund_to_credits_cents, refunded_at)
+         VALUES ('credit_note',$1,$2,$3,$4,$5,$6,'paid',$7,$8,$9,$10,$11,$12,$13,$14, now(), $15, $16, CASE WHEN $15 = 'done' THEN now() END)`,
         [await nextNumber(c, venue, 'credit_note'), venueId, reservationId, rs.user_id, paid[paid.length - 1]?.id ?? null, money.currency, credit, taxIn(credit, venue.tax_rate_bp), money.tax_name, money.tax_rate_bp, money.tax_inclusive,
-          seller(venue), await buyerBlob(c, rs), JSON.stringify([{ description: `Credit for changed or cancelled bookings (${rs.code})`, amount_cents: credit, tax_cents: taxIn(credit, venue.tax_rate_bp) }]), online ? 'pending' : 'manual']);
+          seller(venue), await buyerBlob(c, rs), JSON.stringify([{ description: `Credit for changed or cancelled bookings (${rs.code})`, amount_cents: credit, tax_cents: taxIn(credit, venue.tax_rate_bp) }]), rest === 0 ? 'done' : online ? 'pending' : 'manual', toWallet]);
       if (online) c.afterCommit?.(() => import('./refunds.js').then((m) => m.kickRefunds()));
-      await c.query("UPDATE bookings b SET payment_status='refund_due' FROM resources r WHERE r.id=b.resource_id AND r.venue_id=$2 AND b.reservation_id=$1 AND b.status='cancelled' AND b.refund_cents > 0 AND b.payment_status IN ('paid','unpaid')", [reservationId, venueId]);
+      await c.query("UPDATE bookings b SET payment_status=$3 FROM resources r WHERE r.id=b.resource_id AND r.venue_id=$2 AND b.reservation_id=$1 AND b.status='cancelled' AND b.refund_cents > 0 AND b.payment_status IN ('paid','unpaid')", [reservationId, venueId, rest === 0 ? 'refunded' : 'refund_due']);
     }
     if (paid.length && target > 0) await c.query("UPDATE bookings b SET payment_status='paid' FROM resources r WHERE r.id=b.resource_id AND r.venue_id=$2 AND b.reservation_id=$1 AND b.status IN ('confirmed','no_show')", [reservationId, venueId]);
   }
@@ -107,6 +120,7 @@ export async function markInvoicePaid(c, invoiceId, { method, by } = {}) {
   await c.query("UPDATE bookings b SET payment_status='paid' FROM resources r WHERE r.id=b.resource_id AND r.venue_id=$2 AND b.reservation_id=$1 AND b.status IN ('confirmed','no_show')", [inv.reservation_id, inv.venue_id]);
   const stillOpen = (await c.query("SELECT 1 FROM invoices WHERE reservation_id=$1 AND kind='invoice' AND status='open'", [inv.reservation_id])).rowCount;
   if (!stillOpen) await c.query('UPDATE reservations SET payment_deadline=NULL WHERE id=$1', [inv.reservation_id]);
+  await earnForInvoice(c, inv);
   await notify(c, inv.user_id, { kind: 'invoice_paid', title: `Payment received · ${inv.number}`, body: `${inv.currency} ${toMajor(inv.total_cents, inv.currency)} paid${by ? ` (${method ?? 'at the venue'})` : ' online'}. Your receipt is in the booking.`, data: { invoice_id: inv.id, reservation_id: inv.reservation_id, venue_id: inv.venue_id } });
   return true;
 }

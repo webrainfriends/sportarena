@@ -98,6 +98,7 @@ export function Book() {
       <H1 style={{ marginTop: 8 }}>Book a court</H1>
       <T color={c.mute} weight="600">Find a venue, check live availability, book several slots at once.</T>
       <BasketBar />
+      <Pressable onPress={() => push('Wallet')} style={{ marginTop: 10 }}><Card pad={10}><View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><T weight="700">👛 Wallet & gift cards</T><T weight="700" color={c.pink}>Open ›</T></View></Card></Pressable>
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 14, alignItems: 'flex-end' }}>
         <View style={{ flex: 1 }}><Field value={q} onChangeText={setQ} placeholder="Search venues…" /></View>
         <Pressable onPress={() => setFilters(true)} style={{ height: 50, paddingHorizontal: 16, borderRadius: 12, borderWidth: 1.5, borderColor: activeFilters ? c.pink : c.line, backgroundColor: c.paper, justifyContent: 'center' }}><T weight="700" color={activeFilters ? c.pink : c.ink}>⚙ Filters{activeFilters ? ` · ${activeFilters}` : ''}</T></Pressable>
@@ -270,6 +271,7 @@ export function Venue({ id, date }) {
               <T size={13} color={c.mute} style={{ marginTop: 4 }}>Free cancellation until {x.cancel_free_hours}h before{x.late_cancel_refund_percent ? `, then ${x.late_cancel_refund_percent}% refunded` : ', then no refund'}. Book up to {x.max_advance_days} days ahead{x.min_notice_minutes ? `, at least ${x.min_notice_minutes} min before` : ''}.</T>
               <T size={13} color={c.mute}>{x.payment_mode === 'pay_at_venue' ? 'Pay at the venue.' : x.payment_mode === 'online_required' ? 'Pay online to confirm your slot.' : 'Pay online or at the venue.'}{x.tax_rate_bp ? ` ${x.tax_name} ${x.tax_rate_bp / 100}% ${x.tax_inclusive ? 'included' : 'added at checkout'}.` : ''}</T>
             </Card>
+            {x.loyalty_earn_bp > 0 ? <Card color={c.sunSoft}><T weight="700" size={16}>⭐ Rewards</T><T size={13} color={c.mute} style={{ marginTop: 4 }}>Earn {x.loyalty_earn_bp / 100}% back in points on everything you pay here. Points are worth {x.currency} 0.01 each and pay up to {x.loyalty_max_redeem_bp / 100}% of a booking; they expire {x.loyalty_expiry_months} months after you earn them.</T>{x.my_points > 0 ? <T weight="700" style={{ marginTop: 4 }}>You have {x.my_points} points = {moneyIn(x.my_points, x.currency)}</T> : null}</Card> : null}
             {contacts.data?.length ? <Card>{contacts.data.map((ct) => <T key={ct.id} size={13} style={{ marginTop: 2 }}>☎️ {ct.role}: {[ct.name, ct.phone, ct.email].filter(Boolean).join(' · ')}</T>)}</Card> : null}
             <MapBox v={x} />
           </View>

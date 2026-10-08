@@ -51,6 +51,8 @@ export const venueProfile = {
   currency: z.string().length(3).transform((x) => x.toUpperCase()).refine(isSupportedCurrency, `Supported currencies: ${Object.keys(CURRENCIES).join(', ')}`).optional(),
   legal_name: z.string().max(120).optional(), tax_id: z.string().max(40).optional(), billing_address: z.string().max(300).optional(),
   tax_name: z.string().min(1).max(20).optional(), tax_rate_bp: z.number().int().min(0).max(10000).describe('basis points: 1800 = 18%').optional(), tax_inclusive: z.boolean().optional(),
+  loyalty_earn_bp: z.number().int().min(0).max(5000).optional().describe('percent of what customers pay returned as loyalty points, in basis points (500 = 5%); 0 switches the programme off'),
+  loyalty_expiry_months: z.number().int().min(1).max(60).optional(), loyalty_max_redeem_bp: z.number().int().min(100).max(10000).optional().describe('largest share of one invoice that points may pay'),
   invoice_prefix: z.string().regex(/^[A-Z0-9]{2,8}$/, '2–8 capital letters or digits').optional(),
   payment_mode: z.enum(['pay_at_venue', 'online_optional', 'online_required']).optional().describe('online modes need Stripe/PayPal switched on; online_required releases unpaid slots after a few minutes'),
   phone: z.string().max(30).optional(), email: z.string().email().optional(), website: z.string().url().optional(),
@@ -127,15 +129,16 @@ cap({
   input: z.object({ id }),
   async handler({ user }, i) {
     const v = await mustFind('venues', i.id);
-    const [resources, hours, offers, media, rating, fav] = await Promise.all([
+    const [resources, hours, offers, media, rating, fav, pts] = await Promise.all([
       many('SELECT r.*, s.name AS sport, s.slug AS sport_slug, s.emoji AS sport_emoji FROM resources r LEFT JOIN sports s ON s.id=r.sport_id WHERE r.venue_id=$1 AND r.active ORDER BY r.kind, r.name', [i.id]),
       many('SELECT weekday, opens_min, closes_min FROM venue_hours WHERE venue_id=$1 AND removed_at IS NULL ORDER BY weekday, opens_min', [i.id]),
       many("SELECT id, name, kind, value, min_slots, weekdays, valid_from, valid_to, resource_id FROM discounts WHERE venue_id=$1 AND active AND code IS NULL AND (valid_to IS NULL OR valid_to >= current_date) ORDER BY name", [i.id]),
       many('SELECT * FROM venue_media WHERE venue_id=$1 AND removed_at IS NULL ORDER BY is_cover DESC, position, created_at LIMIT 40', [i.id]),
       one("SELECT round(avg(rating),2) AS rating, count(*)::int AS reviews FROM testimonials WHERE subject_type='venue' AND subject_id=$1", [i.id]),
       one('SELECT count(*)::int AS favourites, coalesce(bool_or(user_id = $2::uuid), false) AS is_favourite FROM favourite_venues WHERE venue_id=$1 AND removed_at IS NULL', [i.id, user?.id ?? null]),
+      user ? one('SELECT coalesce(sum(remaining),0)::int AS my_points FROM loyalty_lots WHERE user_id=$1 AND venue_id=$2 AND remaining > 0 AND expires_at > now()', [user.id, i.id]) : { my_points: 0 },
     ]);
-    return { ...v, map_links: mapLinks(v), resources, hours, open_around_the_clock: hours.length === 0, offers, media: media.map(publicMedia), ...rating, ...fav };
+    return { ...v, map_links: mapLinks(v), resources, hours, open_around_the_clock: hours.length === 0, offers, media: media.map(publicMedia), ...rating, ...fav, ...pts };
   },
 });
 

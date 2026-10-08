@@ -335,7 +335,7 @@ cap({
   async handler({ user }, i) {
     await mustManage(user, i.id);
     const r = await pool.query('UPDATE venue_blocks SET released_at=now() WHERE released_at IS NULL AND venue_id=$1 AND (batch_id = $2 OR id = ANY($3::uuid[]))', [i.id, i.batch_id ?? null, i.ids ?? []]);
-    if (r.rowCount) import('../booking/alerts.js').then((m) => m.kickAlerts(i.id));
+    if (r.rowCount) import('../booking/freed.js').then((m) => m.kickFreed(i.id));
     return { released: r.rowCount };
   },
 });
@@ -362,7 +362,7 @@ cap({
       if (i.displace_conflicts) {
         for (const it of i.items) {
           const room = (await c.query('SELECT capacity FROM resources WHERE id=$1', [it.resource_id])).rows[0].capacity;
-          let used = await usedUnits(c, it.resource_id, it.starts_at, it.ends_at);
+          let used = await usedUnits(c, it.resource_id, it.starts_at, it.ends_at, undefined, 'none');
           if (used + (it.quantity ?? 1) <= room) continue;
           const { rows: inWay } = await c.query("SELECT id, quantity FROM bookings WHERE resource_id=$1 AND status='confirmed' AND starts_at < $3 AND ends_at > $2 ORDER BY created_at DESC", [it.resource_id, it.starts_at, it.ends_at]);
           const out = [];

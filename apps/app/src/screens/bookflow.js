@@ -5,7 +5,7 @@ import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { useNav } from '../nav';
 import { useBasket } from '../basket';
-import { Btn, Card, Chip, Empty, ErrorBox, H1, Loading, Screen, Seg, T, Tag } from '../ui';
+import { Btn, Card, Chip, Empty, ErrorBox, H1, Loading, Screen, Seg, Sheet, T, Tag } from '../ui';
 import { c } from '../theme';
 import { KIND } from './book';
 import { Calendar, Counter, Stepper, StickyBar, byPartOfDay } from '../pickers';
@@ -44,6 +44,8 @@ export function BookFlow({ venueId, resourceId, date: startDate }) {
   const [qty, setQty] = useState({});             // courtId -> units
   const [sel, setSel] = useState({});             // `${courtId}|${starts_at}` -> { res, slot }
   const [alertOpen, setAlertOpen] = useState(false);
+  const [wl, setWl] = useState(null);           // a sold-out slot the person may queue for
+  const [wlBusy, setWlBusy] = useState(false);
   const tz = v.data?.timezone ?? 'UTC';
   const today = todayIn(tz);
   const m = month ?? today.slice(0, 7);
@@ -65,6 +67,7 @@ export function BookFlow({ venueId, resourceId, date: startDate }) {
   const keyOf = (rid, s) => `${rid}|${s.starts_at}`;
   const tapSlot = (res, slots, i) => {
     const s = slots[i];
+    if (s.status === 'booked' && !sel[keyOf(res.id, s)]) return setWl({ res, slot: s });
     const units = qty[res.id] ?? 1;
     const key = keyOf(res.id, s);
     if (sel[key]) {
@@ -177,10 +180,10 @@ export function BookFlow({ venueId, resourceId, date: startDate }) {
                           const on = !!sel[keyOf(cid, s)];
                           const free = s.status === 'free' && s.free_units >= (qty[cid] ?? 1);
                           return (
-                            <Pressable key={s.starts_at} disabled={!free && !on} onPress={() => tapSlot(res, slots, i)} accessibilityState={{ selected: on, disabled: !free }}
-                              style={{ borderRadius: 12, borderWidth: 1.5, borderColor: on ? c.pink : free ? c.line : 'transparent', backgroundColor: on ? c.pink : free ? c.paper : c.violetSoft, paddingVertical: 8, paddingHorizontal: 10, minWidth: 84, alignItems: 'center', opacity: free || on ? 1 : 0.5 }}>
+                            <Pressable key={s.starts_at} disabled={!free && !on && s.status !== 'booked'} onPress={() => tapSlot(res, slots, i)} accessibilityState={{ selected: on, disabled: !free }}
+                              style={{ borderRadius: 12, borderWidth: 1.5, borderColor: on ? c.pink : free ? c.line : 'transparent', backgroundColor: on ? c.pink : free ? c.paper : c.violetSoft, paddingVertical: 8, paddingHorizontal: 10, minWidth: 84, alignItems: 'center', opacity: free || on ? 1 : s.status === 'booked' ? 0.8 : 0.5 }}>
                               <T weight="700" size={13} color={on ? '#fff' : c.ink}>{timeIn(s.starts_at, tz)}</T>
-                              <T size={11} color={on ? '#fff' : c.mute}>{free ? moneyIn(s.price_cents * (qty[cid] ?? 1), x.currency) : s.status === 'blocked' ? 'closed' : s.status === 'booked' ? 'sold out' : s.status.replace('_', ' ')}</T>
+                              <T size={11} color={on ? '#fff' : c.mute}>{free ? moneyIn(s.price_cents * (qty[cid] ?? 1), x.currency) : s.status === 'blocked' ? 'closed' : s.status === 'booked' ? 'waitlist' : s.status.replace('_', ' ')}</T>
                               {free && r.capacity > 1 && s.free_units <= 2 ? <T size={9} color={on ? '#fff' : c.orange} weight="700">{s.free_units} left</T> : null}
                             </Pressable>
                           );
@@ -223,6 +226,14 @@ export function BookFlow({ venueId, resourceId, date: startDate }) {
         ) : null}
         {step > 0 ? <Btn small title="‹ Back" color={c.paper} onPress={() => setStep(step - 1)} style={{ marginTop: 14, alignSelf: 'flex-start' }} /> : null}
       </Screen>
+      <Sheet visible={!!wl} onClose={() => setWl(null)} title="Sold out — join the waitlist?">
+        {wl ? <T color={c.mute}>{wl.res.name} · {timeIn(wl.slot.starts_at, tz)}. If someone cancels, the first person in line gets the slot held for them for a few minutes and we notify you straight away.</T> : null}
+        <Btn title="Join the waitlist" loading={wlBusy} onPress={async () => {
+          setWlBusy(true);
+          try { const r = await api.post('/waitlist', { resource_id: wl.res.id, starts_at: wl.slot.starts_at, ends_at: wl.slot.ends_at, quantity: qty[wl.res.id] ?? 1 }); toast(`You're #${r.position} in line 🕒`); setWl(null); }
+          catch (e) { toast(e.message); setWl(null); grid.reload(); } finally { setWlBusy(false); }
+        }} />
+      </Sheet>
       <AlertSheet venue={x} visible={alertOpen} onClose={() => setAlertOpen(false)} date={date ?? undefined} resourceId={single} />
       <StickyBar title={footer.title} sub={footer.sub} action={footer.action} onAction={next} disabled={footer.off} bottom={L.floatingBar ? 84 : 0} />
     </View>

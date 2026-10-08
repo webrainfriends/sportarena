@@ -3,6 +3,7 @@ import { config } from '../config.js';
 import { AppError, badRequest, conflict, forbidden } from '../errors.js';
 import { provider, paymentsEnabled, enabledProviders } from './providers.js';
 import { markInvoicePaid } from '../booking/invoices.js';
+import { completeTopup, activateGiftCard } from '../wallet.js';
 
 export { paymentsEnabled, enabledProviders };
 
@@ -18,8 +19,16 @@ export async function describePurpose(c, type, id) {
     return h && { payerId: h.payer_id, amount: Number(h.amount), name: `Coaching session with ${h.display_name}`, payable: h.payment_status === 'unpaid' && h.status !== 'cancelled' };
   }
   if (type === 'venue_invoice') {
-    const i = await q("SELECT i.user_id AS payer_id, i.total_cents AS amount, i.currency, i.status, i.number, v.name, v.payment_mode FROM invoices i JOIN venues v ON v.id=i.venue_id WHERE i.id=$1 AND i.kind='invoice' FOR UPDATE OF i");
-    return i && { payerId: i.payer_id, amount: Number(i.amount), currency: i.currency, name: `Booking ${i.number} · ${i.name}`, payable: i.status === 'open' && i.payment_mode !== 'pay_at_venue' };
+    const i = await q("SELECT i.user_id AS payer_id, i.total_cents - i.credits_cents AS amount, i.currency, i.status, i.number, v.name, v.payment_mode FROM invoices i JOIN venues v ON v.id=i.venue_id WHERE i.id=$1 AND i.kind='invoice' FOR UPDATE OF i");
+    return i && { payerId: i.payer_id, amount: Number(i.amount), currency: i.currency, name: `Booking ${i.number} · ${i.name}`, payable: i.status === 'open' && i.payment_mode !== 'pay_at_venue' && Number(i.amount) > 0 };
+  }
+  if (type === 'wallet_topup') {
+    const t = await q("SELECT user_id AS payer_id, amount_cents AS amount, currency, status FROM wallet_topups WHERE id=$1 FOR UPDATE");
+    return t && { payerId: t.payer_id, amount: Number(t.amount), currency: t.currency, name: 'Wallet top-up', payable: t.status === 'awaiting_payment' };
+  }
+  if (type === 'gift_card') {
+    const g = await q("SELECT purchaser_id AS payer_id, amount_cents AS amount, currency, status FROM gift_cards WHERE id=$1 FOR UPDATE");
+    return g && { payerId: g.payer_id, amount: Number(g.amount), currency: g.currency, name: 'SportArena gift card', payable: g.status === 'awaiting_payment' };
   }
   const p = await q('SELECT p.holder_id AS payer_id, p.amount_cents AS amount, p.status, pl.name FROM insurance_policies p JOIN insurance_plans pl ON pl.id=p.plan_id WHERE p.id=$1 FOR UPDATE OF p');
   return p && { payerId: p.payer_id, amount: Number(p.amount), name: p.name, payable: p.status === 'pending_payment' };
@@ -33,6 +42,8 @@ async function fulfil(c, type, id) {
     insurance_policy: "UPDATE insurance_policies SET status='active' WHERE id=$1 AND status='pending_payment'",
   }[type];
   if (type === 'venue_invoice') return markInvoicePaid(c, id, { method: 'online' });
+  if (type === 'wallet_topup') return completeTopup(c, id);
+  if (type === 'gift_card') return activateGiftCard(c, id);
   return (await c.query(sql, [id])).rowCount > 0;
 }
 

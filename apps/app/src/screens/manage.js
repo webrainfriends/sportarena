@@ -331,14 +331,17 @@ function Setup({ v, reload }) {
           { key: 'cancel_free_hours', label: 'Free cancellation until (hours before)', type: 'number' }, { key: 'late_cancel_refund_percent', label: 'Refund after that (%)', type: 'number' },
           { key: 'notify_owner', label: 'Notify the team of new bookings?', type: 'choice', options: [{ value: true, label: 'Yes' }, { value: false, label: 'No' }] }]}
         onSubmit={(f) => save({ ...f, amenities: f.amenities ? f.amenities.split(',').map((x) => x.trim()).filter(Boolean) : [] })} />
-      <FormSheet visible={money} onClose={() => setMoney(false)} title="Money, tax & invoices" initial={{ currency: v.currency, payment_mode: v.payment_mode, tax_name: v.tax_name, tax_pct: v.tax_rate_bp / 100, tax_inclusive: v.tax_inclusive, legal_name: v.legal_name ?? '', tax_id: v.tax_id ?? '', billing_address: v.billing_address ?? '', invoice_prefix: v.invoice_prefix ?? '' }}
+      <FormSheet visible={money} onClose={() => setMoney(false)} title="Money, tax & invoices" initial={{ currency: v.currency, payment_mode: v.payment_mode, tax_name: v.tax_name, tax_pct: v.tax_rate_bp / 100, tax_inclusive: v.tax_inclusive, legal_name: v.legal_name ?? '', tax_id: v.tax_id ?? '', billing_address: v.billing_address ?? '', invoice_prefix: v.invoice_prefix ?? '', loyalty_pct: (v.loyalty_earn_bp ?? 0) / 100, loyalty_expiry_months: v.loyalty_expiry_months ?? 12, loyalty_redeem_pct: (v.loyalty_max_redeem_bp ?? 5000) / 100 }}
         fields={[{ key: 'currency', label: 'Currency (locked once the venue has bookings)', type: 'choice', options: (currencies.data ?? [{ code: v.currency, symbol: '', name: '' }]).map((x) => ({ value: x.code, label: `${x.code} ${x.symbol}` })) },
           { key: 'payment_mode', label: 'How customers pay', type: 'choice', options: [{ value: 'pay_at_venue', label: 'At the venue' }, { value: 'online_optional', label: 'Online or at venue' }, { value: 'online_required', label: 'Online required' }] },
           { key: 'tax_name', label: 'Tax name', placeholder: 'GST, VAT, Sales tax' }, { key: 'tax_pct', label: 'Tax rate (%)', type: 'number', optional: true },
           { key: 'tax_inclusive', label: 'Are your listed prices tax-inclusive?', type: 'choice', options: [{ value: true, label: 'Yes, included' }, { value: false, label: 'No, add on top' }] },
           { key: 'legal_name', label: 'Legal name on invoices', optional: true }, { key: 'tax_id', label: 'Tax / GST / VAT number', optional: true }, { key: 'billing_address', label: 'Billing address on invoices', optional: true, type: 'multiline' },
-          { key: 'invoice_prefix', label: 'Invoice prefix (2–8 capitals/digits)', optional: true }]}
-        onSubmit={async ({ tax_pct, ...f }) => save({ ...f, tax_rate_bp: Math.round((tax_pct ?? 0) * 100) })} />
+          { key: 'invoice_prefix', label: 'Invoice prefix (2–8 capitals/digits)', optional: true },
+          { key: 'loyalty_pct', label: 'Loyalty: % of what customers pay given back as points (0 = off, max 50)', type: 'number', optional: true },
+          { key: 'loyalty_expiry_months', label: 'Points expire after (months)', type: 'number', optional: true },
+          { key: 'loyalty_redeem_pct', label: 'Points can pay up to (% of one booking)', type: 'number', optional: true }]}
+        onSubmit={async ({ tax_pct, loyalty_pct, loyalty_redeem_pct, ...f }) => save({ ...f, tax_rate_bp: Math.round((tax_pct ?? 0) * 100), loyalty_earn_bp: Math.round((loyalty_pct ?? 0) * 100), loyalty_max_redeem_bp: Math.round((loyalty_redeem_pct ?? 50) * 100) })} />
       <HoursEditor visible={hrs} onClose={() => setHrs(false)} v={v} onSaved={reload} />
       <FormSheet visible={ct} onClose={() => setCt(false)} title="Add a contact" fields={[{ key: 'role', label: 'Role', type: 'choice', options: ['manager', 'reception', 'emergency', 'billing', 'general'] }, { key: 'name', label: 'Name', optional: true }, { key: 'phone', label: 'Phone', optional: true }, { key: 'email', label: 'Email', optional: true }, { key: 'is_public', label: 'Show to customers?', type: 'choice', options: YN }]}
         onSubmit={async (f) => { await api.post(`/venues/${v.id}/contacts`, f); contacts.reload(); return 'Contact added'; }} />
@@ -380,6 +383,33 @@ function HoursEditor({ visible, onClose, v, onSaved }) {
 
 // ------------------------------------------------------------------ payments: invoices, receipts, refunds
 const METHODS = ['cash', 'card', 'upi', 'bank', 'other'];
+function LoyaltyPanel({ v }) {
+  const [gift, setGift] = useState(false);
+  const sum = useLoad(() => api.get(`/venues/${v.id}/loyalty`), [v.id, v.loyalty_earn_bp]);
+  const d = sum.data;
+  if (!d) return null;
+  return (
+    <Card color={c.sunSoft}>
+      <T weight="700" size={16}>⭐ Loyalty points</T>
+      {!d.programme.enabled ? <T size={13} color={c.mute}>Off. Turn it on under Setup → Money settings to give customers a percentage back as points.</T> : (
+        <>
+          <T size={13} color={c.mute}>{d.programme.earn_bp / 100}% back · expire after {d.programme.expiry_months} months · pay up to {d.programme.max_redeem_bp / 100}% of a booking</T>
+          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
+            <StatPill label="Issued" value={String(d.issued)} />
+            <StatPill label="Redeemed" value={String(d.redeemed)} />
+            <StatPill label="Expired" value={String(d.expired)} />
+            <StatPill label="Outstanding" value={`${d.outstanding.members} people · ${moneyIn(d.outstanding.value_cents, d.currency)}`} />
+          </View>
+        </>
+      )}
+      <Btn small title="Give bonus points" color={c.violet} onPress={() => setGift(true)} style={{ marginTop: 10, alignSelf: 'flex-start' }} />
+      <FormSheet visible={gift} onClose={() => setGift(false)} title="Give bonus points" submitLabel="Give points"
+        fields={[{ key: 'user_handle', label: 'Their handle' }, { key: 'points', label: `Points (1 point = ${v.currency} 0.01)`, type: 'number' }, { key: 'note', label: 'Why (they will see this)', placeholder: 'Sorry about the rained-off game' }]}
+        onSubmit={async (f) => { await api.post(`/venues/${v.id}/loyalty/bonus`, f); sum.reload(); return 'Points given'; }} />
+    </Card>
+  );
+}
+
 function Payments({ v }) {
   const { toast } = useSession();
   const { push } = useNav();
@@ -390,6 +420,7 @@ function Payments({ v }) {
   return (
     <Section title="Invoices & payments" color={c.sun}>
       <T color={c.mute} size={13}>Every booking gets a numbered invoice in {v.currency}. Record payments taken at the venue; online payments and card refunds are handled automatically.</T>
+      <LoyaltyPanel v={v} />
       <Seg options={[{ value: 'open', label: 'To collect' }, { value: 'paid', label: 'Paid' }, { value: 'void', label: 'Void' }, { value: '', label: 'All' }]} value={status} onChange={setStatus} color={c.violet} />
       {list.loading && !list.data ? <Loading /> : list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : list.data.length ? list.data.map((i) => (
         <Card key={i.id}>
