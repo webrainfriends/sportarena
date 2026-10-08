@@ -15,8 +15,8 @@ import Auth from './screens/auth';
 import Home from './screens/home';
 import { Play, Event, Team, Person } from './screens/play';
 import { Book, Venue } from './screens/book';
-import { Basket, Reservation, Compare, Notifications } from './screens/reserve';
-import { Manage } from './screens/manage';
+import { Basket, Reservation, Compare, Notifications, Invoice } from './screens/reserve';
+import { Manage, OwnerSummary } from './screens/manage';
 import { BasketProvider } from './basket';
 import { Hub, Leaderboard, Awards, Health, Insurance, Sponsors, Supply } from './screens/hub';
 import { Me } from './screens/me';
@@ -25,8 +25,8 @@ import { PlayerHome, SportProfile, ImportMatches } from './screens/player';
 
 const TABS = [['Home', Home], ['Play', Play], ['Player', PlayerHome], ['Book', Book], ['Hub', Hub], ['Me', Me]];
 const LABEL = { Hub: 'Ecosystem' };
-const PAGES = { Event, Team, Person, Venue, Basket, Reservation, Compare, Notifications, Manage, Leaderboard, Awards, Health, Insurance, Sponsors, Supply, SportProfile, ImportMatches };
-const TITLES = { Event: 'Event', Team: 'Team', Person: 'Profile', Venue: 'Venue', Basket: 'Basket', Reservation: 'Booking', Compare: 'Compare', Notifications: 'Notifications', Manage: 'Manage venue', Leaderboard: 'Leaderboard', Awards: 'Trophy room', Health: 'Health', Insurance: 'Insurance', Sponsors: 'Sponsors', Supply: 'Supply chain', SportProfile: 'Sport profile', ImportMatches: 'Import matches' };
+const PAGES = { Event, Team, Person, Venue, Invoice, Basket, Reservation, Compare, Notifications, Manage, OwnerSummary, Leaderboard, Awards, Health, Insurance, Sponsors, Supply, SportProfile, ImportMatches };
+const TITLES = { Event: 'Event', Team: 'Team', Person: 'Profile', Venue: 'Venue', Invoice: 'Invoice', Basket: 'Basket', Reservation: 'Booking', Compare: 'Compare', Notifications: 'Notifications', Manage: 'Manage venue', OwnerSummary: 'All my venues', Leaderboard: 'Leaderboard', Awards: 'Trophy room', Health: 'Health', Insurance: 'Insurance', Sponsors: 'Sponsors', Supply: 'Supply chain', SportProfile: 'Sport profile', ImportMatches: 'Import matches' };
 
 const TAB_LABEL = { Hub: 'More' };
 
@@ -92,7 +92,7 @@ function Transition({ id, push, children }) {
 
 function Shell() {
   const { ready, user, toast } = useSession();
-  const { tab, stack, back, goTab } = useNav();
+  const { tab, stack, back, goTab, push } = useNav();
   const ins = useSafeAreaInsets();
   // Back from Stripe/PayPal checkout (web): ?payment=<id>&result=success|cancel
   useEffect(() => {
@@ -103,7 +103,10 @@ function Shell() {
     window.history.replaceState({}, '', window.location.pathname);
     goTab('Player');
     if (q.get('result') !== 'success') return toast('Payment cancelled — nothing was charged');
-    api.post(`/payments/${id}/confirm`).then((r) => toast(r.status === 'paid' ? 'Payment received ✓' : 'Payment is still processing — check back shortly')).catch((e) => toast(e.message));
+    api.post(`/payments/${id}/confirm`).then(async (r) => {
+      toast(r.status === 'paid' ? 'Payment received ✓' : 'Payment is still processing — check back shortly');
+      if (r.purpose_type === 'venue_invoice') { const inv = await api.get(`/invoices/${r.purpose_id}`).catch(() => null); if (inv) { goTab('Book'); push('Reservation', { id: inv.reservation_id }); } }
+    }).catch((e) => toast(e.message));
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!ready) return <View style={{ flex: 1, backgroundColor: c.bg, justifyContent: 'center', padding: 24 }}><Loading /></View>;
   if (!user) return <View style={{ flex: 1, paddingTop: ins.top, backgroundColor: c.bg }}><Auth /></View>;

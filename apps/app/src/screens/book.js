@@ -91,6 +91,7 @@ export function Book() {
       {has('venue_manager', 'organizer') ? (
         <Section title="Run a venue" color={c.violet}>
           <Btn title="Register a venue" color={c.violet} onPress={() => setForm(true)} />
+          <Row onPress={() => push('OwnerSummary')} left={<Bubble emoji="📊" color={c.violet} />} title="All my venues" sub="Revenue, tax and payments per venue and per currency" right={<T color={c.pink} weight="700">Open ›</T>} />
           <MyVenues />
         </Section>
       ) : null}

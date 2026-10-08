@@ -225,9 +225,11 @@ test('multi-slot, multi-area and multi-venue baskets are atomic; both venues can
   // a line overlapping an earlier line of the same basket is caught too
   assert.equal((await api('POST', '/reservations', { token: other.token, body: { items: [L(one.b, 5, 9, 11), L(one.b, 5, 10, 12)] } })).status, 409);
 
-  // different currencies can't share a basket
+  // a basket can span currencies: each venue prices (and later invoices) in its own
   const usd = await makeVenue(m1, { currency: 'USD' });
-  assert.equal((await api('POST', '/reservations', { token: other.token, body: { items: [L(one.b, 6, 9, 10), L(usd.a, 6, 9, 10)] } })).status, 400);
+  const mixed = must(await api('POST', '/reservations', { token: other.token, body: { items: [L(one.b, 6, 9, 10), L(usd.a, 6, 9, 10)] } }), 201);
+  assert.equal(mixed.currency, 'MULTI');
+  assert.deepEqual(mixed.totals.map((t) => t.currency).sort(), ['INR', 'USD']);
 
   // add slots later
   const more = must(await api('POST', `/reservations/${res.id}/items`, { token: user.token, body: { items: [L(two.b, 4, 9, 10)] } }), 201);
@@ -426,8 +428,9 @@ test('admin override: bypass hours/blocks, comps, walk-in guests (encrypted), di
 
   // payment bookkeeping + no-show
   const bid = disp.bookings[0].id;
-  assert.equal(must(await api('POST', `/bookings/${bid}/payment`, { token: mgr.token, body: { status: 'paid' } })).payment_status, 'paid');
-  assert.equal((await api('POST', `/bookings/${bid}/payment`, { token: u.token, body: { status: 'paid' } })).status, 403);
+  assert.equal((await api('POST', `/bookings/${bid}/payment`, { token: mgr.token, body: { status: 'paid' } })).status, 400, 'invoiced bookings are settled through their invoice');
+  assert.equal((await api('POST', `/invoices/${disp.invoices[0].id}/paid`, { token: u.token, body: { method: 'cash' } })).status, 403);
+  assert.equal(must(await api('POST', `/invoices/${disp.invoices[0].id}/paid`, { token: mgr.token, body: { method: 'cash' } })).status, 'paid');
   assert.equal((await api('POST', `/bookings/${bid}/no-show`, { token: mgr.token })).status, 400, 'has not started yet');
   await pool.query("UPDATE bookings SET starts_at = now() - interval '2 hours', ends_at = now() - interval '1 hour' WHERE id=$1", [bid]);
   assert.equal(must(await api('POST', `/bookings/${bid}/no-show`, { token: mgr.token })).status, 'no_show');
@@ -454,7 +457,7 @@ test('reports: revenue, discounts, cancellations, utilisation, peaks, customers'
   assert.equal(s.net_cents, 390000);
   assert.equal(s.cancellations, 1);
   assert.equal(s.cancellation_fee_cents, 0);
-  assert.equal(s.refunded_cents, 100000);
+  assert.equal(s.refunded_cents, 0, 'nothing had been paid, so nothing is refunded');
   assert.equal(s.unit_hours, 4);
   assert.equal(s.outstanding_cents, 390000);
   assert.equal(s.average_booking_cents, 130000);
@@ -585,6 +588,18 @@ test('notifications: inbox, preferences, muted kinds, email queue + webhook disp
   assert.ok(r1.reminders >= 1);
   assert.equal((await notificationCycle()).reminders, 0, 'only once');
   assert.ok(must(await api('GET', '/notifications', { token: u.token })).items.some((x) => x.kind === 'booking_reminder'));
+  void v;
+});
+
+test('online payment modes fall back to pay-at-venue while no payment provider is configured', async () => {
+  const mgr = await signup(['venue_manager']);
+  const { v, a } = await makeVenue(mgr, { payment_mode: 'online_required' });
+  const u = await signup();
+  const r = must(await api('POST', '/reservations', { token: u.token, body: { items: [{ resource_id: a.id, starts_at: at(3, 10), ends_at: at(3, 11) }] } }), 201);
+  assert.equal(r.payment_deadline, null, 'no deadline when the venue cannot actually take payment');
+  assert.equal(r.awaiting_payment, false);
+  assert.equal(r.invoices[0].payment_mode, 'pay_at_venue');
+  assert.equal((await api('POST', '/payments', { token: u.token, body: { purpose_type: 'venue_invoice', purpose_id: r.invoices[0].id, provider: 'stripe' } })).status, 400);
   void v;
 });
 

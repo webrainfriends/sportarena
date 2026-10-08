@@ -8,6 +8,7 @@ import { useBasket } from '../basket';
 import { Bubble, Btn, Card, Chip, Empty, ErrorBox, Field, H1, H2, Loading, Row, Screen, Seg, Section, Sheet, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { c } from '../theme';
+import { PaySheet } from '../PaySheet';
 import { KIND } from './book';
 import { addDays, dateTimeIn, dayLabel, hoursSummary, localToIso, moneyIn, timeIn, todayIn } from '../vtime';
 
@@ -34,8 +35,7 @@ export function Basket() {
     return () => { live = false; };
   }, [sig]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const currency = items[0]?.currency ?? 'INR';
-  const mixed = new Set(items.map((i) => i.currency)).size > 1;
+  const currencies = [...new Set(items.map((i) => i.currency))];
   const confirm = async () => {
     setBusy(true);
     try {
@@ -77,28 +77,76 @@ export function Basket() {
         {quote?.unapplied_codes?.length ? <T size={12} color={c.mute}>Not applied (a better offer is already used, or the code's conditions aren't met): {quote.unapplied_codes.join(', ')}</T> : null}
       </Section>
       <Card style={{ marginTop: 20 }}>
-        {mixed ? <T color={c.red} weight="700">These venues use different currencies — book them separately.</T> : !quote ? <Loading /> : quote.error ? <T color={c.red} weight="700">{quote.error}</T> : (
+        {!quote ? <Loading /> : quote.error ? <T color={c.red} weight="700">{quote.error}</T> : (
           <>
-            <Line k="Subtotal" v={moneyIn(quote.subtotal_cents, currency)} />
-            {quote.discount_cents ? <Line k="Discount" v={`− ${moneyIn(quote.discount_cents, currency)}`} /> : null}
-            <Line k="Total · pay at the venue" v={moneyIn(quote.total_cents, currency)} strong />
+            {currencies.length > 1 ? <T size={12} color={c.mute} style={{ marginBottom: 6 }}>Venues in {currencies.join(' and ')} — you'll get one invoice per venue, each in its own currency.</T> : null}
+            {(quote.totals ?? []).map((t) => (
+              <View key={t.currency}>
+                {currencies.length > 1 ? <T weight="700" size={12} color={c.mute} style={{ marginTop: 6 }}>{t.currency}</T> : null}
+                <Line k="Subtotal" v={moneyIn(t.subtotal_cents, t.currency)} />
+                {t.discount_cents ? <Line k="Discount" v={`− ${moneyIn(t.discount_cents, t.currency)}`} /> : null}
+                {t.tax_cents ? <Line k={quote.invoices?.find((i) => i.currency === t.currency)?.tax_inclusive === false ? 'Tax (added)' : 'Includes tax'} v={moneyIn(t.tax_cents, t.currency)} /> : null}
+                <Line k="To pay" v={moneyIn(t.payable_cents, t.currency)} strong />
+              </View>
+            ))}
+            {quote.pay_within_minutes ? <T size={12} color={c.orange} weight="700" style={{ marginTop: 8 }}>This venue needs payment up front — pay within {quote.pay_within_minutes} minutes or the slots are released.</T> : <T size={12} color={c.mute} style={{ marginTop: 8 }}>Pay online or at the venue, depending on the venue.</T>}
             {quote.problems?.filter((p) => p.index === undefined).map((p, k) => <T key={k} color={c.red} weight="700" size={13}>{p.message}</T>)}
           </>
         )}
       </Card>
-      <Btn title={quote?.ok ? `Confirm booking · ${moneyIn(quote.total_cents, currency)}` : 'Fix the highlighted slots to continue'} disabled={!quote?.ok || mixed} loading={busy} onPress={confirm} style={{ marginTop: 14 }} />
+      <Btn title={quote?.ok ? `Confirm booking · ${(quote.totals ?? []).map((t) => moneyIn(t.payable_cents, t.currency)).join(' + ')}` : 'Fix the highlighted slots to continue'} disabled={!quote?.ok} loading={busy} onPress={confirm} style={{ marginTop: 14 }} />
       <Btn small title="Empty basket" color={c.paper} onPress={clear} style={{ marginTop: 10, alignSelf: 'flex-start' }} />
     </Screen>
   );
 }
 
 // ------------------------------------------------------------------ reservation detail
+export function Invoice({ id }) {
+  const inv = useLoad(() => api.get(`/invoices/${id}`), [id]);
+  const { toast } = useSession();
+  if (inv.loading && !inv.data) return <Screen><Loading /></Screen>;
+  if (inv.error) return <Screen><ErrorBox error={inv.error} onRetry={inv.reload} /></Screen>;
+  const d = inv.data;
+  const money = (n) => moneyIn(n, d.currency);
+  const credit = d.kind === 'credit_note';
+  return (
+    <Screen>
+      <Card style={{ marginTop: 8 }} pad={20}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+          <View style={{ flex: 1 }}><T weight="700" size={22}>{credit ? 'CREDIT NOTE' : d.status === 'paid' ? 'RECEIPT / TAX INVOICE' : 'TAX INVOICE'}</T><T color={c.mute}>{d.number}</T></View>
+          <Tag label={credit ? (d.refund_status ?? 'issued') : d.status} color={d.status === 'paid' ? c.mint : d.status === 'void' ? c.violetSoft : c.sun} />
+        </View>
+        <View style={{ flexDirection: 'row', gap: 16, marginTop: 14, flexWrap: 'wrap' }}>
+          <View style={{ flex: 1, minWidth: 200 }}><T size={11} color={c.mute} weight="700">FROM</T><T weight="700">{d.seller.name}</T>{d.seller.address ? <T size={13}>{d.seller.address}</T> : null}{d.seller.tax_id ? <T size={13}>{d.tax_name} ID: {d.seller.tax_id}</T> : null}{d.seller.phone ? <T size={13}>{d.seller.phone}</T> : null}</View>
+          <View style={{ flex: 1, minWidth: 200 }}><T size={11} color={c.mute} weight="700">BILLED TO</T><T weight="700">{d.buyer?.name}</T>{d.buyer?.address ? <T size={13}>{d.buyer.address}</T> : null}{d.buyer?.tax_id ? <T size={13}>Tax ID: {d.buyer.tax_id}</T> : null}</View>
+        </View>
+        <T size={12} color={c.mute} style={{ marginTop: 10 }}>Issued {new Date(d.issued_at).toLocaleDateString()} · Booking {d.reservation_code} · {d.venue_name} · {d.currency}{d.paid_at && !credit ? ` · Paid ${new Date(d.paid_at).toLocaleDateString()}${d.payment_method ? ` (${d.payment_method})` : ''}` : ''}</T>
+        <View style={{ marginTop: 14, borderTopWidth: 1, borderColor: c.line }}>
+          {d.lines.map((l, k) => (
+            <View key={k} style={{ flexDirection: 'row', gap: 10, paddingVertical: 8, borderBottomWidth: 1, borderColor: c.line }}>
+              <View style={{ flex: 1 }}><T weight="600">{l.description}</T>{l.starts_at ? <T size={12} color={c.mute}>{new Date(l.starts_at).toLocaleString()} · {l.slots} slot{l.slots === 1 ? '' : 's'}{l.discount_cents ? ` · discount ${money(l.discount_cents)}` : ''}</T> : null}</View>
+              <T weight="700">{money(l.amount_cents)}</T>
+            </View>
+          ))}
+        </View>
+        <View style={{ marginTop: 10 }}>
+          {d.tax_rate_bp ? <Line k={`${d.tax_name} ${d.tax_rate_bp / 100}% ${d.tax_inclusive ? '(included)' : ''}`} v={money(d.tax_cents)} /> : null}
+          <Line k={credit ? 'Total credited' : d.status === 'paid' ? 'Total paid' : 'Total due'} v={`${credit ? '−' : ''}${money(d.total_cents)}`} strong />
+        </View>
+      </Card>
+      {d.credit_notes?.length ? <Section title="Credit notes" color={c.sun}>{d.credit_notes.map((n) => <Row key={n.id} title={n.number} sub={n.refund_status} right={<T weight="700">−{money(n.total_cents)}</T>} />)}</Section> : null}
+      {Platform.OS === 'web' ? <Btn title="Print / save as PDF" color={c.violet} onPress={() => window.print()} style={{ marginTop: 14 }} /> : <Btn title="Share" color={c.violet} onPress={() => toast('Open this on the web app to print or save as PDF')} style={{ marginTop: 14 }} />}
+    </Screen>
+  );
+}
+
 export function Reservation({ id }) {
   const { toast } = useSession();
   const { push } = useNav();
   const r = useLoad(() => api.get(`/reservations/${id}`), [id]);
   const [moving, setMoving] = useState(null);
   const [cancelAll, setCancelAll] = useState(false);
+  const [paying, setPaying] = useState(null);
   if (r.loading && !r.data) return <Screen><Loading /></Screen>;
   if (r.error) return <Screen><ErrorBox error={r.error} onRetry={r.reload} /></Screen>;
   const x = r.data;
@@ -131,14 +179,34 @@ export function Reservation({ id }) {
           </Card>
         ))}
       </Section>
-      <Card style={{ marginTop: 16 }}>
-        <Line k="Subtotal" v={moneyIn(x.subtotal_cents, x.currency)} />
-        {x.discount_cents ? <Line k="Discount" v={`− ${moneyIn(x.discount_cents, x.currency)}`} /> : null}
-        <Line k="Total · pay at the venue" v={moneyIn(x.total_cents, x.currency)} strong />
-      </Card>
+      {x.awaiting_payment ? <Card color={c.orangeSoft} style={{ marginTop: 14 }}><T weight="700" color={c.orange}>⏱ Pay by {new Date(x.payment_deadline).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} or these slots are released.</T></Card> : null}
+      <Section title="Invoices & payment" color={c.sun}>
+        {x.invoices.map((inv) => (
+          <Card key={inv.id} color={inv.status === 'void' ? c.violetSoft : c.paper}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <View style={{ flex: 1 }}>
+                <T weight="700">{inv.kind === 'credit_note' ? 'Credit note' : 'Invoice'} {inv.number}</T>
+                <T size={13} color={c.mute}>{inv.venue_name}{inv.tax_cents ? ` · ${inv.tax_inclusive ? 'includes' : 'plus'} ${moneyIn(inv.tax_cents, inv.currency)} tax` : ''}</T>
+                {inv.kind === 'credit_note' ? <T size={12} color={c.mute}>{{ pending: 'Refund on its way to your card', done: 'Refunded', manual: 'The venue returns this to you', failed: 'Refund needs attention — contact the venue' }[inv.refund_status] ?? ''}</T> : null}
+              </View>
+              <View style={{ alignItems: 'flex-end', gap: 4 }}>
+                <T weight="700">{inv.kind === 'credit_note' ? '−' : ''}{moneyIn(inv.total_cents, inv.currency)}</T>
+                <Tag label={inv.kind === 'credit_note' ? 'credited' : inv.status} color={inv.status === 'paid' ? c.mint : inv.status === 'void' ? c.violetSoft : c.sun} />
+              </View>
+            </View>
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+              {inv.kind === 'invoice' && inv.status === 'open' && inv.payment_mode !== 'pay_at_venue' ? <Btn small title={`Pay ${moneyIn(inv.total_cents, inv.currency)} online`} onPress={() => setPaying(inv)} /> : null}
+              {inv.kind === 'invoice' && inv.status === 'open' && inv.payment_mode !== 'online_required' ? <T size={12} color={c.mute} style={{ alignSelf: 'center' }}>or pay at the venue</T> : null}
+              <Btn small title="View invoice" color={c.paper} onPress={() => push('Invoice', { id: inv.id })} />
+            </View>
+          </Card>
+        ))}
+        {x.totals.length > 1 ? <T size={12} color={c.mute}>This booking spans venues that charge in different currencies, so it has separate totals and invoices.</T> : null}
+      </Section>
       {active.length ? <Btn title="Cancel the whole booking" color={c.paper} ink={c.red} onPress={() => setCancelAll(true)} style={{ marginTop: 14 }} /> : null}
       {active.length ? <Btn small title={`Add more at ${active[0].venue_name}`} color={c.paper} onPress={() => push('Venue', { id: active[0].venue_id })} style={{ marginTop: 10, alignSelf: 'flex-start' }} /> : null}
 
+      {paying ? <PaySheet target={{ id: paying.id, label: `${paying.venue_name} · ${paying.number}`, amount: paying.total_cents, currency: paying.currency }} onClose={() => setPaying(null)} onDone={r.reload} /> : null}
       <MoveSheet booking={moving} onClose={() => setMoving(null)} onDone={() => { setMoving(null); r.reload(); }} />
       <FormSheet visible={cancelAll} onClose={() => setCancelAll(false)} title="Cancel the whole booking?" submitLabel="Yes, cancel everything" color={c.red}
         fields={[{ key: 'reason', label: 'Reason', optional: true }]}

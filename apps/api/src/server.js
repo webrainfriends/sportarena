@@ -4,7 +4,7 @@ import { config } from './config.js';
 import { migrate } from './migrate.js';
 import { createApp } from './http.js';
 import { initKeys } from './crypto.js';
-import { notificationCycle } from './notify.js';
+import { maintenanceCycle } from './worker.js';
 
 await initKeys();   // fail fast if the master key can't be loaded
 await migrate();
@@ -15,12 +15,12 @@ const server = config.sslKeyFile && config.sslCertFile
   : app;
 server.listen(config.port, () => console.log(`SportArena API on ${config.sslKeyFile ? 'https' : 'http'}://localhost:${config.port}  (REST /api/v1 · MCP /mcp)`));
 
-// Booking reminders + queued emails. Claims are atomic in SQL, so running this on several instances is safe.
+// Booking reminders, queued emails, unpaid-hold release and refunds. Claims are atomic in SQL, so running this on several instances is safe.
 if (config.notifyIntervalSeconds > 0) {
   let running = false;
   setInterval(async () => {
     if (running) return;
     running = true;
-    try { await notificationCycle(); } catch (e) { console.error('[notify] cycle failed', e.message); } finally { running = false; }
+    try { await maintenanceCycle(); } catch (e) { console.error('[notify] cycle failed', e.message); } finally { running = false; }
   }, config.notifyIntervalSeconds * 1000).unref();
 }

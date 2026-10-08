@@ -39,9 +39,7 @@ Email is **queued** (`notification_deliveries`) and delivered by POSTing JSON to
 
 ## Known limits
 
-* Payment is **at the venue**: staff record it with `set_booking_payment`; refunds are tracked as `refund_cents` / `refund_due`, not pushed to a card. Online checkout for reservations (the Stripe/PayPal flow used by shop orders) is the natural next step.
 * A booking can't cross midnight, and slot grids on a day with a clock change are not adjusted for the missing/extra hour.
-* A reservation spans venues only if they share a currency.
 
 ## Photos, videos and reviews on the venue page
 
@@ -50,3 +48,12 @@ Email is **queued** (`notification_deliveries`) and delivered by POSTing JSON to
 * **Storage:** `MEDIA_DIR` (deployed as `/var/lib/sportarena/media`, outside the checkout and web root, so deploys never touch it). Removing a photo hides it; the file and row stay.
 * **Gallery order and cover:** `update_venue_media` (caption, cover), `reorder_venue_media`, `remove_venue_media`; `get_venue` returns the media, `list_venues` a `cover_url`.
 * **Reviews:** `venue_reviews` gives average, count, 1–5 distribution, a "played here" mark for reviewers with a finished booking, sorting and star filter. Guests review with `write_testimonial` (the venue team can't review its own venue). `reply_to_review` lets the team answer publicly; both directions notify.
+
+## Currencies, tax, invoices and payment
+
+* **Each venue prices in its own currency** (`list_currencies`; amounts are integers in minor units — paise, cents, whole yen). The currency is chosen in the venue settings and locked once the venue has bookings. Rates, discounts, reports and invoices are all in it. A single basket may mix venues of different currencies: you get one invoice per venue in that venue's currency, and totals are shown **per currency** (currencies are never added together; `owner_summary` and compare handle mixed currencies the same way).
+* **Tax:** `tax_name`, `tax_rate_bp` (1800 = 18%), `tax_inclusive`. Inclusive venues extract the tax from the listed price; exclusive venues add it at checkout. Quotes, invoices and reports show it.
+* **Invoices:** one numbered invoice per venue per reservation (`<PREFIX>-<year>-<6 digits>`, gapless per venue; credit notes `CN-…`), with a snapshot of the seller (legal name, tax id, address) and bill-to details (encrypted; the customer can add a company name/tax id when booking). `reconcileInvoices` runs after every change: it keeps one open invoice for what is still owed and never rewrites a paid one — a longer booking adds a supplementary invoice, a shorter or cancelled one issues a **credit note** (cancellation fees stay on the invoice).
+* **Paying:** a venue's `payment_mode` is `pay_at_venue` (staff record it with `mark_invoice_paid`), `online_optional`, or `online_required`. Online payment is Stripe/PayPal hosted checkout (`create_payment` with `purpose_type: venue_invoice`) in the **invoice's currency** (zero-decimal currencies like JPY are sent as whole units). With `online_required` the slots are held for `PAYMENT_HOLD_MINUTES` (default 15) and released, nothing charged, if the invoice is still unpaid; a payment that arrives after release is refunded automatically. Online modes fall back to pay-at-venue while no provider is configured.
+* **Refunds:** a credit note for an online payment is refunded through the provider — partial, idempotent per credit note, retried by the worker; cash/at-venue refunds are marked done by staff (`mark_credit_note_refunded`).
+* Venue team views: the Payments tab (invoices to collect, record payment, refunds to hand back) and `owner_summary` across all venues grouped by currency.

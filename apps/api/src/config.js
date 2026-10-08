@@ -40,6 +40,8 @@ export const config = {
   corsOrigins: (env.CORS_ORIGINS ?? '*').split(','),
   // Uploaded venue photos/videos. Must be a persistent directory (deploys never touch it). Files are never deleted.
   mediaDir: env.MEDIA_DIR ?? './data/media',
+  // Venues that require online payment hold the slots for this many minutes while the customer pays.
+  holdMinutes: Number(env.PAYMENT_HOLD_MINUTES ?? 15),
   // Notifications: queued emails are POSTed as JSON to this webhook (your SES/SendGrid/n8n bridge). Unset = they stay queued.
   notifyWebhook: { url: env.NOTIFY_WEBHOOK_URL, secret: env.NOTIFY_WEBHOOK_SECRET },
   // Background worker for booking reminders + email dispatch. 0 disables it (tests do).

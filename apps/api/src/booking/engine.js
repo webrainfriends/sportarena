@@ -6,6 +6,9 @@ import { pool } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { notify, notifyVenueTeam } from '../notify.js';
 import { toLocal, fromLocal, addDays } from './time.js';
+import { reconcileInvoices, encryptBilling } from './invoices.js';
+import { paymentsEnabled } from '../payments/service.js';
+import { config } from '../config.js';
 
 const SLOT_MS = (r) => r.slot_minutes * 60_000;
 const uniq = (a) => [...new Set(a)];
@@ -114,7 +117,7 @@ function eligibleItems(d, items, tz) {
 export async function repriceReservation(c, reservationId) {
   const rs = (await c.query('SELECT * FROM reservations WHERE id=$1 FOR UPDATE', [reservationId])).rows[0];
   const items = (await c.query(
-    `SELECT b.id, b.resource_id, b.starts_at, b.slots, b.base_cents, r.venue_id, v.timezone
+    `SELECT b.id, b.resource_id, b.starts_at, b.slots, b.base_cents, r.venue_id, v.timezone, v.tax_rate_bp, v.tax_inclusive
        FROM bookings b JOIN resources r ON r.id=b.resource_id JOIN venues v ON v.id=r.venue_id
       WHERE b.reservation_id=$1 AND b.status IN ('confirmed','no_show') ORDER BY b.created_at, b.id`, [reservationId])).rows;
   const codes = rs.promo_codes.map((x) => x.toUpperCase());
@@ -152,13 +155,19 @@ export async function repriceReservation(c, reservationId) {
   }
   for (const i of items) {
     const disc = applied.get(i.id) ?? 0;
-    await c.query('UPDATE bookings SET discount_cents=$2, price_cents=base_cents-$2 WHERE id=$1', [i.id, disc]);
+    const price = i.base_cents - disc;
+    const tax = i.tax_inclusive ? Math.round((price * i.tax_rate_bp) / (10000 + i.tax_rate_bp)) : Math.round((price * i.tax_rate_bp) / 10000);
+    await c.query('UPDATE bookings SET discount_cents=$2, price_cents=$3, tax_cents=$4, payable_cents=$5 WHERE id=$1', [i.id, disc, price, tax, price + (i.tax_inclusive ? 0 : tax)]);
   }
-  const t = (await c.query(
-    `SELECT coalesce(sum(base_cents),0)::int AS sub, coalesce(sum(discount_cents),0)::int AS disc, count(*)::int AS n
-       FROM bookings WHERE reservation_id=$1 AND status IN ('confirmed','no_show')`, [reservationId])).rows[0];
-  await c.query('UPDATE reservations SET subtotal_cents=$2, discount_cents=$3, total_cents=$2::int-$3::int, status=$4, updated_at=now() WHERE id=$1',
-    [reservationId, t.sub, t.disc, t.n ? 'confirmed' : 'cancelled']);
+  // totals: one set of figures per currency (a basket can span venues that price in different currencies)
+  const per = (await c.query(
+    `SELECT v.currency, coalesce(sum(b.base_cents),0)::int AS sub, coalesce(sum(b.discount_cents),0)::int AS disc, coalesce(sum(b.tax_cents),0)::int AS tax, coalesce(sum(b.payable_cents),0)::int AS payable, count(*)::int AS n
+       FROM bookings b JOIN resources r ON r.id=b.resource_id JOIN venues v ON v.id=r.venue_id
+      WHERE b.reservation_id=$1 AND b.status IN ('confirmed','no_show') GROUP BY v.currency`, [reservationId])).rows;
+  const single = per.length === 1 ? per[0] : null;
+  await c.query('UPDATE reservations SET currency=$7, subtotal_cents=$2, discount_cents=$3, total_cents=$2::int-$3::int, tax_cents=$4, payable_cents=$5, status=$6, updated_at=now() WHERE id=$1',
+    [reservationId, single?.sub ?? 0, single?.disc ?? 0, single?.tax ?? 0, single?.payable ?? 0, per.length ? 'confirmed' : 'cancelled', per.length > 1 ? 'MULTI' : single?.currency ?? rs.currency]);
+  await reconcileInvoices(c, reservationId);
   return { unused_codes: rs.promo_codes.filter((x) => !usedCodes.has(x.toUpperCase())) };
 }
 
@@ -198,14 +207,24 @@ export async function loadResources(c, ids) {
  * Create a reservation: one or many lines across one or many areas / venues, all-or-nothing.
  * `collect` (used by quotes) records per-line problems instead of throwing so the caller can show every issue at once.
  */
-export async function createReservation(c, { user, userId = user.id, items, promo_codes = [], note, ...rest }) {
+export async function createReservation(c, { user, userId = user.id, items, promo_codes = [], note, billing, ...rest }) {
   const resources = await loadResources(c, items.map((i) => i.resource_id));
   const currencies = await currenciesOf(c, [...resources.values()]);
-  if (currencies.length > 1) throw badRequest(`Venues in different currencies (${currencies.join(', ')}) can't share one reservation — book them separately`);
-  const rs = (await c.query('INSERT INTO reservations(code, user_id, currency, promo_codes, note) VALUES ($1,$2,$3,$4,$5) RETURNING *',
-    [newCode(), userId, currencies[0], promo_codes, note ?? null])).rows[0];
+  const rs = (await c.query('INSERT INTO reservations(code, user_id, currency, promo_codes, note, billing_enc) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *',
+    [newCode(), userId, currencies.length > 1 ? 'MULTI' : currencies[0], promo_codes, note ?? null, billing ? encryptBilling(billing) : null])).rows[0];
   const out = await addLines(c, rs, { userId, items, note, ...rest });
-  return { reservationId: rs.id, ...out };
+  const deadline = rest.staff ? null : await applyPaymentDeadline(c, rs.id, out.venueIds);
+  return { reservationId: rs.id, ...out, payment_deadline: deadline };
+}
+
+/** How a venue is really paid: online modes need a payment provider to be switched on, otherwise it is pay-at-venue. */
+export const effectivePaymentMode = (venue) => (venue.payment_mode !== 'pay_at_venue' && paymentsEnabled() ? venue.payment_mode : 'pay_at_venue');
+
+/** Venues that insist on online payment give the customer a few minutes to pay before the slots are released. */
+export async function applyPaymentDeadline(c, reservationId, venueIds) {
+  const { rows } = await c.query('SELECT * FROM venues WHERE id = ANY($1::uuid[])', [venueIds]);
+  if (!rows.some((v) => effectivePaymentMode(v) === 'online_required')) return null;
+  return (await c.query("UPDATE reservations SET payment_deadline = now() + make_interval(mins => $2) WHERE id=$1 RETURNING payment_deadline", [reservationId, config.holdMinutes])).rows[0].payment_deadline;
 }
 
 /** Place lines on an existing reservation (also used to add slots later). Locks every area first, in a stable order. */
@@ -247,26 +266,35 @@ export async function reservationView(c, id) {
   if (!rs) throw notFound('Reservation');
   const { rows: bookings } = await c.query(
     `SELECT b.id, b.resource_id, b.starts_at, b.ends_at, b.quantity, b.slots, b.players, b.status, b.base_cents, b.discount_cents, b.price_cents, b.refund_cents,
-            b.payment_status, b.source, b.team_id, b.note, b.cancel_reason, b.cancelled_at,
+            b.payment_status, b.source, b.team_id, b.note, b.cancel_reason, b.cancelled_at, b.tax_cents, b.payable_cents,
             r.name AS resource_name, r.kind, v.id AS venue_id, v.name AS venue_name, v.timezone, v.currency
        FROM bookings b JOIN resources r ON r.id=b.resource_id JOIN venues v ON v.id=r.venue_id
       WHERE b.reservation_id=$1 ORDER BY b.starts_at, b.id`, [id]);
-  return { ...rs, bookings };
+  const { rows: invoices } = await c.query(
+    `SELECT i.id, i.number, i.kind, i.status, i.venue_id, v.name AS venue_name, i.currency, i.total_cents, i.tax_cents, i.tax_inclusive, i.refund_status, i.issued_at, i.paid_at, v.payment_mode
+       FROM invoices i JOIN venues v ON v.id=i.venue_id WHERE i.reservation_id=$1 ORDER BY i.issued_at, i.number`, [id]);
+  const totals = new Map();
+  for (const b of bookings.filter((x) => x.status === 'confirmed' || x.status === 'no_show')) {
+    const t = totals.get(b.currency) ?? { currency: b.currency, subtotal_cents: 0, discount_cents: 0, total_cents: 0, tax_cents: 0, payable_cents: 0 };
+    t.subtotal_cents += b.base_cents; t.discount_cents += b.discount_cents; t.total_cents += b.price_cents; t.tax_cents += b.tax_cents; t.payable_cents += b.payable_cents;
+    totals.set(b.currency, t);
+  }
+  return { ...rs, billing_enc: undefined, bookings, invoices: invoices.map((i) => ({ ...i, payment_mode: effectivePaymentMode(i) })), totals: [...totals.values()], awaiting_payment: !!rs.payment_deadline && rs.status === 'confirmed' };
 }
 
 // ------------------------------------------------------------------ cancellation
 /** What a customer gets back for cancelling now. Venue-side cancellations are always refunded in full. */
 export function refundFor(venue, booking, { byVenue = false, now = new Date() } = {}) {
-  if (byVenue) return booking.price_cents;
+  if (byVenue) return booking.payable_cents;
   const cutoff = new Date(booking.starts_at.getTime() - venue.cancel_free_hours * 3_600_000);
-  return now <= cutoff ? booking.price_cents : Math.floor(booking.price_cents * venue.late_cancel_refund_percent / 100);
+  return now <= cutoff ? booking.payable_cents : Math.floor(booking.payable_cents * venue.late_cancel_refund_percent / 100);
 }
 
 /**
  * Cancel confirmed bookings (already authorised by the caller), update reservation totals and notify.
  * `byVenue` = initiated by the venue team: full refund, and the customer is told.
  */
-export async function cancelBookings(c, bookingIds, { actor, byVenue, reason }) {
+export async function cancelBookings(c, bookingIds, { actor, byVenue, reason, waive = false, silent = false }) {
   const out = [];
   const touched = new Set();
   for (const id of bookingIds) {
@@ -275,20 +303,20 @@ export async function cancelBookings(c, bookingIds, { actor, byVenue, reason }) 
     if (!b || b.status !== 'confirmed') continue;
     const venue = (await c.query('SELECT * FROM venues WHERE id=$1', [b.venue_id])).rows[0];
     if (!byVenue && b.starts_at <= new Date()) throw badRequest('That booking has already started');
-    const refund = refundFor(venue, b, { byVenue });
+    const refund = waive ? b.payable_cents : refundFor(venue, b, { byVenue });
     const pay = b.payment_status === 'paid' && refund > 0 ? 'refund_due' : b.payment_status;
     await c.query("UPDATE bookings SET status='cancelled', refund_cents=$2, cancelled_at=now(), cancelled_by=$3, cancel_reason=$4, payment_status=$5, updated_at=now() WHERE id=$1",
       [id, refund, actor.id, reason ?? null, pay]);
     if (b.reservation_id) touched.add(b.reservation_id);
     const what = `${b.resource_name} at ${venue.name}, ${b.starts_at.toISOString()}`;
     const data = { booking_id: id, reservation_id: b.reservation_id, venue_id: venue.id, refund_cents: refund };
-    if (byVenue && b.user_id !== actor.id) {
+    if (silent) { /* the caller sends its own message */ } else if (byVenue && b.user_id !== actor.id) {
       await notify(c, b.user_id, { kind: 'booking_cancelled', title: 'Your booking was cancelled by the venue', body: `${what}.${reason ? ` Reason: ${reason}.` : ''} You're refunded in full.`, data });
     } else {
       await notify(c, b.user_id, { kind: 'booking_cancelled', title: 'Booking cancelled', body: `${what}. Refund due: ${refund} (minor units).`, data });
       await notifyVenueTeam(c, venue, actor.id, { kind: 'booking_cancelled', title: 'A booking was cancelled', body: what, data });
     }
-    out.push({ id, refund_cents: refund, fee_cents: b.price_cents - refund });
+    out.push({ id, refund_cents: refund, fee_cents: b.payable_cents - refund });
   }
   for (const rid of touched) await repriceReservation(c, rid);
   return out;

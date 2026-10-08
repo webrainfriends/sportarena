@@ -31,9 +31,13 @@ export const localHHMM = (iso, tz) => { const p = parts(tz, Date.parse(iso)); re
 export const fmtMin = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 export const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-export const moneyIn = (cents = 0, currency = 'INR') => {
-  try { return new Intl.NumberFormat(undefined, { style: 'currency', currency, maximumFractionDigits: cents % 100 ? 2 : 0 }).format(cents / 100); }
-  catch { return `${currency} ${(cents / 100).toFixed(2)}`; }
+const digitsOf = (currency) => { try { return new Intl.NumberFormat('en', { style: 'currency', currency }).resolvedOptions().maximumFractionDigits; } catch { return 2; } };
+/** Minor units (paise, cents, whole yen …) in the currency's own format: ₹1,200 · $25.50 · ¥5,000. */
+export const moneyIn = (minor = 0, currency = 'INR') => {
+  const d = digitsOf(currency);
+  const major = minor / 10 ** d;
+  try { return new Intl.NumberFormat(undefined, { style: 'currency', currency, minimumFractionDigits: minor % 10 ** d ? d : 0, maximumFractionDigits: d }).format(major); }
+  catch { return `${currency} ${major.toFixed(d)}`; }
 };
 
 /** Summarise weekly hours: "Mon–Sun 06:00–22:00" (groups days that share the same hours). */

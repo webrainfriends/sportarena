@@ -8,10 +8,11 @@ import { FormSheet } from '../FormSheet';
 import { c } from '../theme';
 import { KIND } from './book';
 import { MediaManager, VenueReviews } from './venue-media';
+import { useNav } from '../nav';
 import { WEEKDAYS, addDays, dateTimeIn, fmtMin, hoursSummary, localToIso, moneyIn, timeIn, todayIn } from '../vtime';
 
 const YN = [{ value: false, label: 'No' }, { value: true, label: 'Yes' }];
-const TABS = [['schedule', 'Schedule'], ['blocks', 'Blocks'], ['pricing', 'Pricing'], ['discounts', 'Discounts'], ['media', 'Photos & videos'], ['reviews', 'Reviews'], ['reports', 'Reports'], ['setup', 'Setup']];
+const TABS = [['schedule', 'Schedule'], ['blocks', 'Blocks'], ['pricing', 'Pricing'], ['discounts', 'Discounts'], ['payments', 'Payments'], ['media', 'Photos & videos'], ['reviews', 'Reviews'], ['reports', 'Reports'], ['setup', 'Setup']];
 const num = (x) => (x === undefined || x === '' ? undefined : Number(x));
 const days = (s) => (s ? String(s).split(/[,\s]+/).filter(Boolean).map(Number) : undefined);
 const daysHint = 'Days as numbers, 0 = Sun … 6 = Sat, e.g. 1,2,3,4,5';
@@ -28,7 +29,7 @@ export function Manage({ id }) {
       <H1 style={{ marginTop: 8 }}>{x.emoji} {x.name}</H1>
       <T color={c.mute} weight="700">Venue console · {x.timezone} · {x.currency}{x.active ? '' : ' · HIDDEN'}</T>
       <View style={{ marginTop: 10 }}><Seg options={TABS.map(([value, label]) => ({ value, label }))} value={tab} onChange={setTab} color={c.violet} /></View>
-      {tab === 'schedule' ? <Schedule {...P} /> : tab === 'blocks' ? <Blocks {...P} /> : tab === 'pricing' ? <Pricing {...P} /> : tab === 'discounts' ? <Discounts {...P} /> : tab === 'media' ? <Section title="Photos & videos" color={c.cyan}><MediaManager venue={x} /></Section> : tab === 'reviews' ? <Section title="Reviews" color={c.pink}><VenueReviews venueId={x.id} /></Section> : tab === 'reports' ? <Reports {...P} /> : <Setup {...P} />}
+      {tab === 'schedule' ? <Schedule {...P} /> : tab === 'blocks' ? <Blocks {...P} /> : tab === 'pricing' ? <Pricing {...P} /> : tab === 'discounts' ? <Discounts {...P} /> : tab === 'payments' ? <Payments {...P} /> : tab === 'media' ? <Section title="Photos & videos" color={c.cyan}><MediaManager venue={x} /></Section> : tab === 'reviews' ? <Section title="Reviews" color={c.pink}><VenueReviews venueId={x.id} /></Section> : tab === 'reports' ? <Reports {...P} /> : <Setup {...P} />}
     </Screen>
   );
 }
@@ -267,6 +268,8 @@ function Setup({ v, reload }) {
   const [hrs, setHrs] = useState(false);
   const [ct, setCt] = useState(false);
   const [st, setSt] = useState(false);
+  const [money, setMoney] = useState(false);
+  const currencies = useLoad(() => api.get('/currencies'), []);
   const contacts = useLoad(() => api.get(`/venues/${v.id}/contacts`), [v.id]);
   const staff = useLoad(() => api.get(`/venues/${v.id}/staff`), [v.id]);
   const owner = v.owner_id === user.id;
@@ -284,6 +287,14 @@ function Setup({ v, reload }) {
             <Btn small title="Edit" onPress={() => setProf(true)} />
             <Btn small title={v.active ? 'Hide from search' : 'Show in search'} color={c.paper} onPress={async () => { try { await save({ active: !v.active }); } catch (e) { toast(e.message); } }} />
           </View>
+        </Card>
+      </Section>
+      <Section title="Money, tax & invoices" color={c.sun}>
+        <Card>
+          <T weight="700">{v.currency} · {v.payment_mode === 'pay_at_venue' ? 'Pay at the venue' : v.payment_mode === 'online_optional' ? 'Pay online or at the venue' : 'Online payment required'}</T>
+          <T size={13} color={c.mute}>{v.tax_rate_bp ? `${v.tax_name} ${v.tax_rate_bp / 100}% — prices ${v.tax_inclusive ? 'include' : 'exclude'} it` : 'No tax charged'} · Invoices from {v.legal_name ?? v.name}{v.tax_id ? ` · ${v.tax_name} ID ${v.tax_id}` : ''}</T>
+          <T size={12} color={c.mute}>Invoice numbers start {v.invoice_prefix ?? 'with an automatic prefix'}-{new Date().getFullYear()}-000001. Online payment needs Stripe or PayPal switched on for the server.</T>
+          <Btn small title="Edit money settings" color={c.violet} onPress={() => setMoney(true)} style={{ marginTop: 10, alignSelf: 'flex-start' }} />
         </Card>
       </Section>
       <Section title="Opening hours" color={c.lime}>
@@ -308,6 +319,14 @@ function Setup({ v, reload }) {
           { key: 'cancel_free_hours', label: 'Free cancellation until (hours before)', type: 'number' }, { key: 'late_cancel_refund_percent', label: 'Refund after that (%)', type: 'number' },
           { key: 'notify_owner', label: 'Notify the team of new bookings?', type: 'choice', options: [{ value: true, label: 'Yes' }, { value: false, label: 'No' }] }]}
         onSubmit={(f) => save({ ...f, amenities: f.amenities ? f.amenities.split(',').map((x) => x.trim()).filter(Boolean) : [] })} />
+      <FormSheet visible={money} onClose={() => setMoney(false)} title="Money, tax & invoices" initial={{ currency: v.currency, payment_mode: v.payment_mode, tax_name: v.tax_name, tax_pct: v.tax_rate_bp / 100, tax_inclusive: v.tax_inclusive, legal_name: v.legal_name ?? '', tax_id: v.tax_id ?? '', billing_address: v.billing_address ?? '', invoice_prefix: v.invoice_prefix ?? '' }}
+        fields={[{ key: 'currency', label: 'Currency (locked once the venue has bookings)', type: 'choice', options: (currencies.data ?? [{ code: v.currency, symbol: '', name: '' }]).map((x) => ({ value: x.code, label: `${x.code} ${x.symbol}` })) },
+          { key: 'payment_mode', label: 'How customers pay', type: 'choice', options: [{ value: 'pay_at_venue', label: 'At the venue' }, { value: 'online_optional', label: 'Online or at venue' }, { value: 'online_required', label: 'Online required' }] },
+          { key: 'tax_name', label: 'Tax name', placeholder: 'GST, VAT, Sales tax' }, { key: 'tax_pct', label: 'Tax rate (%)', type: 'number', optional: true },
+          { key: 'tax_inclusive', label: 'Are your listed prices tax-inclusive?', type: 'choice', options: [{ value: true, label: 'Yes, included' }, { value: false, label: 'No, add on top' }] },
+          { key: 'legal_name', label: 'Legal name on invoices', optional: true }, { key: 'tax_id', label: 'Tax / GST / VAT number', optional: true }, { key: 'billing_address', label: 'Billing address on invoices', optional: true, type: 'multiline' },
+          { key: 'invoice_prefix', label: 'Invoice prefix (2–8 capitals/digits)', optional: true }]}
+        onSubmit={async ({ tax_pct, ...f }) => save({ ...f, tax_rate_bp: Math.round((tax_pct ?? 0) * 100) })} />
       <HoursEditor visible={hrs} onClose={() => setHrs(false)} v={v} onSaved={reload} />
       <FormSheet visible={ct} onClose={() => setCt(false)} title="Add a contact" fields={[{ key: 'role', label: 'Role', type: 'choice', options: ['manager', 'reception', 'emergency', 'billing', 'general'] }, { key: 'name', label: 'Name', optional: true }, { key: 'phone', label: 'Phone', optional: true }, { key: 'email', label: 'Email', optional: true }, { key: 'is_public', label: 'Show to customers?', type: 'choice', options: YN }]}
         onSubmit={async (f) => { await api.post(`/venues/${v.id}/contacts`, f); contacts.reload(); return 'Contact added'; }} />
@@ -344,5 +363,71 @@ function HoursEditor({ visible, onClose, v, onSaved }) {
       <Btn title="Save hours" onPress={() => save(false)} loading={busy} />
       <Btn small title="Open 24 hours, every day" color={c.paper} onPress={() => save(true)} />
     </Sheet>
+  );
+}
+
+// ------------------------------------------------------------------ payments: invoices, receipts, refunds
+const METHODS = ['cash', 'card', 'upi', 'bank', 'other'];
+function Payments({ v }) {
+  const { toast } = useSession();
+  const { push } = useNav();
+  const [status, setStatus] = useState('open');
+  const [paying, setPaying] = useState(null);
+  const list = useLoad(() => api.get('/invoices', { venue_id: v.id, status: status || undefined, limit: 60 }), [v.id, status]);
+  const money = (n, cur = v.currency) => moneyIn(n, cur);
+  return (
+    <Section title="Invoices & payments" color={c.sun}>
+      <T color={c.mute} size={13}>Every booking gets a numbered invoice in {v.currency}. Record payments taken at the venue; online payments and card refunds are handled automatically.</T>
+      <Seg options={[{ value: 'open', label: 'To collect' }, { value: 'paid', label: 'Paid' }, { value: 'void', label: 'Void' }, { value: '', label: 'All' }]} value={status} onChange={setStatus} color={c.violet} />
+      {list.loading && !list.data ? <Loading /> : list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : list.data.length ? list.data.map((i) => (
+        <Card key={i.id}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <View style={{ flex: 1 }}>
+              <T weight="700">{i.kind === 'credit_note' ? 'Credit note' : 'Invoice'} {i.number}</T>
+              <T size={12} color={c.mute}>Booking {i.reservation_code} · {new Date(i.issued_at).toLocaleDateString()}{i.payment_method ? ` · ${i.payment_method}` : ''}{i.kind === 'credit_note' ? ` · refund ${i.refund_status}` : ''}</T>
+            </View>
+            <View style={{ alignItems: 'flex-end', gap: 4 }}><T weight="700">{i.kind === 'credit_note' ? '−' : ''}{money(i.total_cents, i.currency)}</T><Tag label={i.kind === 'credit_note' ? 'credit' : i.status} color={i.status === 'paid' ? c.mint : i.status === 'void' ? c.violetSoft : c.sun} /></View>
+          </View>
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+            {i.kind === 'invoice' && i.status === 'open' ? <Btn small title="Record payment" color={c.violet} onPress={() => setPaying(i)} /> : null}
+            {i.kind === 'credit_note' && ['manual', 'failed'].includes(i.refund_status) ? <Btn small title="Mark refund handed back" color={c.violet} onPress={async () => { try { await api.post(`/invoices/${i.id}/refunded`); toast('Marked as refunded'); list.reload(); } catch (e) { toast(e.message); } }} /> : null}
+            <Btn small title="View" color={c.paper} onPress={() => push('Invoice', { id: i.id })} />
+          </View>
+        </Card>
+      )) : <Empty emoji="🧾" title="Nothing here" sub={status === 'open' ? 'No unpaid invoices.' : undefined} />}
+      <FormSheet visible={!!paying} onClose={() => setPaying(null)} title={`Record payment · ${paying?.number ?? ''}`} submitLabel="Mark as paid"
+        fields={[{ key: 'method', label: `How was ${paying ? money(paying.total_cents, paying.currency) : ''} paid?`, type: 'choice', options: METHODS }]}
+        onSubmit={async (f) => { await api.post(`/invoices/${paying.id}/paid`, f); list.reload(); return 'Payment recorded — the customer has a receipt'; }} />
+    </Section>
+  );
+}
+
+/** Everything the signed-in person runs, per venue and per currency (currencies are never added together). */
+export function OwnerSummary() {
+  const { push } = useNav();
+  const [r, setR] = useState(1);
+  const ranges = [['Last 7 days', -7, 0], ['Last 30 days', -30, 0], ['Last 90 days', -90, 0], ['Next 30 days', 0, 30]];
+  const from = addDays(new Date().toISOString().slice(0, 10), ranges[r][1]), to = addDays(new Date().toISOString().slice(0, 10), ranges[r][2]);
+  const s = useLoad(() => api.get('/me/venue-summary', { from, to }), [r]);
+  return (
+    <Screen wide>
+      <H1 style={{ marginTop: 8 }}>All my venues</H1>
+      <Seg options={ranges.map(([label], value) => ({ value, label }))} value={r} onChange={setR} color={c.cyan} />
+      {s.loading && !s.data ? <Loading /> : s.error ? <ErrorBox error={s.error} onRetry={s.reload} /> : (
+        <>
+          <Section title="By currency" color={c.lime}>
+            {s.data.by_currency.length ? s.data.by_currency.map((t) => (
+              <Card key={t.currency}>
+                <T weight="700" size={17}>{t.currency} · {t.venues} venue{t.venues === 1 ? '' : 's'}</T>
+                {[['Bookings', t.bookings], ['Revenue', moneyIn(t.revenue_cents, t.currency)], ['Tax in revenue', moneyIn(t.tax_cents, t.currency)], ['Collected', moneyIn(t.collected_cents, t.currency)], ['To collect', moneyIn(t.outstanding_cents, t.currency)], ['Refunds owed', moneyIn(t.refunds_owed_cents, t.currency)]].map(([k, val]) => <View key={k} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 }}><T color={c.mute}>{k}</T><T weight="700">{val}</T></View>)}
+              </Card>
+            )) : <Empty emoji="🏟️" title="No venues yet" />}
+          </Section>
+          <Section title="By venue" color={c.pink}>
+            {s.data.venues.map((x) => <Row key={x.id} onPress={() => push('Manage', { id: x.id })} title={`${x.emoji} ${x.name}`} sub={`${x.currency} · ${x.bookings} bookings · to collect ${moneyIn(x.outstanding_cents, x.currency)}`} right={<T weight="700">{moneyIn(x.revenue_cents, x.currency)}</T>} />)}
+          </Section>
+        </>
+      )}
+    </Screen>
   );
 }

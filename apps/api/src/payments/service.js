@@ -2,6 +2,7 @@ import { one, many, tx } from '../db.js';
 import { config } from '../config.js';
 import { AppError, badRequest, conflict, forbidden } from '../errors.js';
 import { provider, paymentsEnabled, enabledProviders } from './providers.js';
+import { markInvoicePaid } from '../booking/invoices.js';
 
 export { paymentsEnabled, enabledProviders };
 
@@ -16,6 +17,10 @@ export async function describePurpose(c, type, id) {
     const h = await q("SELECT h.hirer_id AS payer_id, h.total_cents AS amount, h.status, h.payment_status, u.display_name FROM coach_hires h JOIN users u ON u.id=h.coach_id WHERE h.id=$1 FOR UPDATE OF h");
     return h && { payerId: h.payer_id, amount: Number(h.amount), name: `Coaching session with ${h.display_name}`, payable: h.payment_status === 'unpaid' && h.status !== 'cancelled' };
   }
+  if (type === 'venue_invoice') {
+    const i = await q("SELECT i.user_id AS payer_id, i.total_cents AS amount, i.currency, i.status, i.number, v.name, v.payment_mode FROM invoices i JOIN venues v ON v.id=i.venue_id WHERE i.id=$1 AND i.kind='invoice' FOR UPDATE OF i");
+    return i && { payerId: i.payer_id, amount: Number(i.amount), currency: i.currency, name: `Booking ${i.number} · ${i.name}`, payable: i.status === 'open' && i.payment_mode !== 'pay_at_venue' };
+  }
   const p = await q('SELECT p.holder_id AS payer_id, p.amount_cents AS amount, p.status, pl.name FROM insurance_policies p JOIN insurance_plans pl ON pl.id=p.plan_id WHERE p.id=$1 FOR UPDATE OF p');
   return p && { payerId: p.payer_id, amount: Number(p.amount), name: p.name, payable: p.status === 'pending_payment' };
 }
@@ -27,6 +32,7 @@ async function fulfil(c, type, id) {
     coach_hire: "UPDATE coach_hires SET payment_status='paid' WHERE id=$1 AND payment_status='unpaid' AND status<>'cancelled'",
     insurance_policy: "UPDATE insurance_policies SET status='active' WHERE id=$1 AND status='pending_payment'",
   }[type];
+  if (type === 'venue_invoice') return markInvoicePaid(c, id, { method: 'online' });
   return (await c.query(sql, [id])).rowCount > 0;
 }
 
@@ -59,7 +65,18 @@ export async function refund(payment) {
   if (payment.status !== 'paid') return;
   if (!payment.provider_payment_ref) throw new AppError(409, 'refund_unavailable', 'No provider reference to refund');
   await provider(payment.provider).refund(payment.provider_payment_ref, payment.id);
-  await one("UPDATE payments SET status='refunded', refunded_at=now() WHERE id=$1", [payment.id]);
+  await one("UPDATE payments SET status='refunded', refunded_at=now(), refunded_cents=amount_cents WHERE id=$1", [payment.id]);
+}
+
+/** Give back part of a paid payment (a credit note). `key` makes the provider call idempotent so a retry can't refund twice. Returns the amount refunded. */
+export async function refundPartial(payment, amount, key) {
+  const left = Number(payment.amount_cents) - Number(payment.refunded_cents ?? 0);
+  const give = Math.min(amount, left);
+  if (give <= 0) return 0;
+  if (!payment.provider_payment_ref) throw new AppError(409, 'refund_unavailable', 'No provider reference to refund');
+  await provider(payment.provider).refund(payment.provider_payment_ref, payment.id, { amount: give, currency: payment.currency, key });
+  await one("UPDATE payments SET refunded_cents = refunded_cents + $2, status = CASE WHEN refunded_cents + $2 >= amount_cents THEN 'refunded' ELSE status END, refunded_at = CASE WHEN refunded_cents + $2 >= amount_cents THEN now() ELSE refunded_at END WHERE id=$1", [payment.id, give]);
+  return give;
 }
 
 /** Refund whatever was paid for this purpose (called when the buyer cancels). */
