@@ -39,7 +39,7 @@ apps/api/src/capabilities/*.js   ← every feature is ONE definition: name, sche
 apps/app/                        ← Expo (React Native + react-native-web); talks only to the REST API
 ```
 
-REST, the generated OpenAPI spec and MCP tools **cannot drift**: there are 160+ capabilities and the tests assert
+REST, the generated OpenAPI spec and MCP tools **cannot drift**: there are 240+ capabilities and the tests assert
 `tools/list` and the OpenAPI operations both equal the registry. The mobile/web app is just another API client — no
 privileged backdoors — so anything a user can do in the app, an agent can do over MCP with the same permissions.
 
@@ -48,6 +48,8 @@ privileged backdoors — so anything a user can do in the app, an agent can do o
 2. Point your MCP client at `http://localhost:4000/mcp` with `Authorization: Bearer sa_…`
    (see [`.mcp.json.example`](.mcp.json.example); a stdio server is included too).
 3. Tool names match OpenAPI `operationId`s, e.g. `create_event`, `generate_round_robin`, `create_booking`, `record_result`, `buy_policy`.
+
+Full end-to-end picture (components, runtime flows, trust boundaries, deployment, failure modes): [docs/architecture.md](docs/architecture.md).
 
 ## Security model for personal data
 
@@ -62,7 +64,7 @@ privileged backdoors — so anything a user can do in the app, an agent can do o
 ### Known limits (next steps, deliberately not faked in the MVP)
 * The master key lives in an env var. For production use a KMS/HSM and rotate via the `v1.` ciphertext prefix (versioning is already in the format).
 * Provider/referee/physio/doctor roles are self-declared; add credential verification by an admin before real clinical use. (Consent still protects athletes: an unverified "doctor" sees nothing without a grant.)
-* Payments aren't wired in — prices, fees and premiums are tracked, not charged.
+* Payments use hosted checkout (Stripe/PayPal, see [docs/payments.md](docs/payments.md)); payouts to sellers, coaches and venues are not built.
 * Encryption at rest of the Postgres disk/backups is an infrastructure concern; this app encrypts the sensitive fields itself on top of it.
 * Web stores the token in `localStorage`; ship with a strict CSP (or move to httpOnly cookies) before launch.
 
@@ -94,5 +96,5 @@ insurance & claims, sponsorship approval rules, supply receiving, testimonials, 
 AWS EC2 (pm2 + Docker Postgres + nginx, KMS-wrapped keys), side by side with other apps: see [`docs/deployment.md`](docs/deployment.md).
 
 ## Roadmap
-Payments & payouts · push notifications / live scores · knockout & group-stage brackets · media (photos/video highlights) ·
-KYC & credential verification · multi-currency & i18n · organizations/clubs · webhooks · offline mode in the app.
+Payouts / settlement · live scores · knockout & group-stage brackets · media (photos/video highlights) ·
+KYC · multi-currency & i18n · organizations/clubs · webhooks · offline mode in the app.
