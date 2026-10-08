@@ -9,6 +9,7 @@ import { FormSheet } from '../FormSheet';
 import { FavouriteSports } from '../sportpicker';
 import { c, grad } from '../theme';
 import { ROLES, roleLabel } from '../roles';
+import { VerificationQueue, VerificationSection } from './verification';
 
 const mask = (v) => (v ? '••••••••' : '—');
 const PII = [['email', 'Email'], ['full_name', 'Full name'], ['phone', 'Phone'], ['dob', 'Date of birth'], ['national_id', 'National ID'], ['address', 'Address']];
@@ -66,6 +67,9 @@ export function Me() {
           </View>
         </Card>
       </Section>
+
+      <VerificationSection />
+      {user.roles.includes('admin') ? <VerificationQueue /> : null}
 
       <Section title="Agents & API (MCP)" color={c.violet}>
         <Card color={c.violetSoft}>
