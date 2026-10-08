@@ -6,14 +6,19 @@ import { useSession } from '../session';
 import { Btn, Card, Chip, Field, Screen, T } from '../ui';
 import { c, grad, fam } from '../theme';
 import { ROLES } from '../roles';
+import { INTENT_COPY } from '../market/intent';
 
 
 const DEMOS = [['aarav', 'Aarav · Athlete'], ['kavya_events', 'Kavya · Organizer'], ['arena_one', 'Arena One · Venue'], ['volt_drink', 'Volt · Sponsor'], ['dr_rhea', 'Dr Rhea · Doctor']];
 
-export default function Auth() {
+// `intent` (from the public marketplace) says what the visitor came to do, so the sign-in feels guided and returns them to it.
+const INTENT_ROLE = { advertise: 'sponsor' };
+
+export default function Auth({ intent, initialMode, onClose } = {}) {
   const { signIn } = useSession();
-  const [mode, setMode] = useState('login');
-  const [f, setF] = useState({ roles: ['athlete'] });
+  const [mode, setMode] = useState(initialMode ?? 'login');
+  const [f, setF] = useState({ roles: [INTENT_ROLE[intent?.action] ?? 'athlete'] });
+  const copy = intent ? INTENT_COPY[intent.action] : null;
   const [err, setErr] = useState(null);
   const [busy, setBusy] = useState(false);
   const set = (k) => (v) => setF((p) => ({ ...p, [k]: v }));
@@ -31,6 +36,14 @@ export default function Auth() {
 
   return (
     <Screen>
+      {onClose ? <Pressable onPress={onClose} style={{ paddingTop: 14, paddingBottom: 2, alignSelf: 'flex-start' }}><T color={c.pink} weight="700">‹ Back to the arena</T></Pressable> : null}
+      {copy ? (
+        <View style={{ backgroundColor: c.pinkSoft, borderRadius: 18, padding: 16, marginTop: 8, gap: 4 }}>
+          <T weight="800" size={16} color={c.pink}>{copy[0]}</T>
+          {intent.title ? <T weight="700" size={14}>“{intent.title}”</T> : null}
+          <T size={13} color={c.mute} style={{ lineHeight: 19 }}>{copy[1]}</T>
+        </View>
+      ) : null}
       <LinearGradient colors={grad.hero} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ borderRadius: 28, padding: 26, minHeight: 190, justifyContent: 'flex-end', marginTop: 20, overflow: 'hidden' }}>
         <View style={{ position: 'absolute', right: -40, top: -60, width: 200, height: 200, borderRadius: 100, backgroundColor: '#fff', opacity: 0.12 }} />
         <View style={{ position: 'absolute', right: 80, bottom: -60, width: 120, height: 120, borderRadius: 60, backgroundColor: '#fff', opacity: 0.08 }} />

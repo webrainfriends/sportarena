@@ -12,8 +12,8 @@ import { parseTarget, targetFor } from './push';
 import { c, fam } from './theme';
 
 installWebShell();
-import Auth from './screens/auth';
-import Home from './screens/home';
+import Home from './screens/feed';
+import Landing from './screens/landing';
 import { Play, Event, Team, Person } from './screens/play';
 import { Book, Venue } from './screens/book';
 import { BookFlow } from './screens/bookflow';
@@ -131,7 +131,7 @@ function Shell() {
     return () => sub?.remove();
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!ready) return <View style={{ flex: 1, backgroundColor: c.bg, justifyContent: 'center', padding: 24 }}><Loading /></View>;
-  if (!user) return <View style={{ flex: 1, paddingTop: ins.top, backgroundColor: c.bg }}><Auth /></View>;
+  if (!user) return <View style={{ flex: 1, backgroundColor: c.bg }}><Landing /></View>;
   const top = stack[stack.length - 1];
   const Page = top ? PAGES[top.name] : TABS.find((t) => t[0] === tab)[1];
   const prev = stack.length > 1 ? TITLES[stack[stack.length - 2].name] : tab === 'Hub' ? 'More' : tab;

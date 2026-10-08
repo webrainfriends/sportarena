@@ -32,4 +32,5 @@ import './medical.js';
 import './insurance.js';
 import './community.js';
 import './home.js';
+import './market.js';
 export { capabilities } from '../registry.js';
