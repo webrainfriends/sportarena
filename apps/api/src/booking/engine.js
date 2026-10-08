@@ -276,7 +276,7 @@ export async function reservationView(c, id) {
        FROM bookings b JOIN resources r ON r.id=b.resource_id JOIN venues v ON v.id=r.venue_id
       WHERE b.reservation_id=$1 ORDER BY b.starts_at, b.id`, [id]);
   const { rows: invoices } = await c.query(
-    `SELECT i.id, i.number, i.kind, i.status, i.venue_id, v.name AS venue_name, i.currency, i.total_cents, i.tax_cents, i.tax_inclusive, i.refund_status, i.issued_at, i.paid_at, v.payment_mode
+    `SELECT i.id, i.number, i.kind, i.status, i.venue_id, v.name AS venue_name, i.currency, i.total_cents, i.credits_cents, i.tax_cents, i.tax_inclusive, i.refund_status, i.issued_at, i.paid_at, v.payment_mode
        FROM invoices i JOIN venues v ON v.id=i.venue_id WHERE i.reservation_id=$1 ORDER BY i.issued_at, i.number`, [id]);
   const totals = new Map();
   for (const b of bookings.filter((x) => x.status === 'confirmed' || x.status === 'no_show')) {

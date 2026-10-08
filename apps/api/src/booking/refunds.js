@@ -18,7 +18,7 @@ export async function processRefunds({ limit = 20 } = {}) {
       const pays = await many(
         `SELECT p.* FROM payments p JOIN invoices i ON i.id=p.purpose_id AND p.purpose_type='venue_invoice'
           WHERE i.reservation_id=$1 AND i.venue_id=$2 AND i.kind='invoice' AND p.status IN ('paid','refunded') ORDER BY p.paid_at DESC`, [cn.reservation_id, cn.venue_id]);
-      let left = cn.total_cents;
+      let left = cn.total_cents - cn.refund_to_credits_cents; // the wallet-funded part was already returned
       for (const p of pays) { if (left <= 0) break; left -= await refundPartial(p, left, `cn-${cn.id}-${p.id}`); }
       // anything the card could not take back (cash part of a mixed payment) is returned by the venue
       const status = left > 0 ? 'manual' : 'done';

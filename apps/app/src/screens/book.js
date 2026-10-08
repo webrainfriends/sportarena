@@ -98,6 +98,7 @@ export function Book() {
       <H1 style={{ marginTop: 8 }}>Book a court</H1>
       <T color={c.mute} weight="600">Find a venue, check live availability, book several slots at once.</T>
       <BasketBar />
+      <Pressable onPress={() => push('Wallet')} style={{ marginTop: 10 }}><Card pad={10}><View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><T weight="700">👛 Wallet & gift cards</T><T weight="700" color={c.pink}>Open ›</T></View></Card></Pressable>
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 14, alignItems: 'flex-end' }}>
         <View style={{ flex: 1 }}><Field value={q} onChangeText={setQ} placeholder="Search venues…" /></View>
         <Pressable onPress={() => setFilters(true)} style={{ height: 50, paddingHorizontal: 16, borderRadius: 12, borderWidth: 1.5, borderColor: activeFilters ? c.pink : c.line, backgroundColor: c.paper, justifyContent: 'center' }}><T weight="700" color={activeFilters ? c.pink : c.ink}>⚙ Filters{activeFilters ? ` · ${activeFilters}` : ''}</T></Pressable>

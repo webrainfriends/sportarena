@@ -7,6 +7,7 @@ import './venue-media.js';
 import './push.js';
 import './favourites.js';
 import './waitlist.js';
+import './wallet.js';
 import './invoices.js';
 import './events.js';
 import './scores.js';

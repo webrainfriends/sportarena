@@ -20,7 +20,7 @@ export function PaySheet({ target, onClose, onDone }) {
   const go = async (provider) => {
     setBusy(true); setErr(null);
     try {
-      const p = await api.post('/payments', { purpose_type: 'venue_invoice', purpose_id: target.id, provider, return_url: Platform.OS === 'web' ? `${window.location.origin}${window.location.pathname}` : undefined });
+      const p = await api.post('/payments', { purpose_type: target.type ?? 'venue_invoice', purpose_id: target.id, provider, return_url: Platform.OS === 'web' ? `${window.location.origin}${window.location.pathname}` : undefined });
       setPay(p);
       if (Platform.OS === 'web') window.location.assign(p.checkout_url); else await Linking.openURL(p.checkout_url);
     } catch (e) { setErr(e.message); } finally { setBusy(false); }

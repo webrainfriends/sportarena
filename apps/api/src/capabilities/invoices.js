@@ -20,7 +20,7 @@ cap({
   handler: () => Object.entries(CURRENCIES).map(([code, c]) => ({ code, name: c.name, symbol: c.symbol, exponent: c.exp })),
 });
 
-const summaryCols = 'i.id, i.number, i.kind, i.status, i.venue_id, v.name AS venue_name, i.reservation_id, rs.code AS reservation_code, i.currency, i.total_cents, i.tax_cents, i.issued_at, i.paid_at, i.payment_method, i.refund_status, i.parent_id';
+const summaryCols = 'i.id, i.number, i.kind, i.status, i.venue_id, v.name AS venue_name, i.reservation_id, rs.code AS reservation_code, i.currency, i.total_cents, i.credits_cents, i.tax_cents, i.issued_at, i.paid_at, i.payment_method, i.refund_status, i.parent_id';
 cap({
   name: 'list_invoices', method: 'GET', path: '/invoices', tag: TAG,
   summary: 'Your invoices and credit notes (newest first). The venue team passes venue_id to list that venue\'s, filtered by status, kind or date.',
@@ -52,7 +52,7 @@ cap({
     ]);
     const { buyer_enc, ...rest } = inv;
     const online = (await one('SELECT payment_mode FROM venues WHERE id=$1', [inv.venue_id])).payment_mode !== 'pay_at_venue' && enabledProviders().length > 0;
-    return { ...rest, buyer: buyerOf(inv), payments, credit_notes: credits, can_pay_online: online && inv.kind === 'invoice' && inv.status === 'open' && inv.user_id === user.id, providers: enabledProviders(), amount: toMajor(inv.total_cents, inv.currency) };
+    return { ...rest, amount_due_cents: inv.status === 'open' ? inv.total_cents - inv.credits_cents : 0, buyer: buyerOf(inv), payments, credit_notes: credits, can_pay_online: online && inv.kind === 'invoice' && inv.status === 'open' && inv.user_id === user.id, providers: enabledProviders(), amount: toMajor(inv.total_cents, inv.currency) };
   },
 });
 
