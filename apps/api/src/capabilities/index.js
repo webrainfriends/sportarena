@@ -6,6 +6,7 @@ import './reservations.js';
 import './venue-media.js';
 import './push.js';
 import './favourites.js';
+import './favourite-sports.js';
 import './waitlist.js';
 import './wallet.js';
 import './loyalty.js';

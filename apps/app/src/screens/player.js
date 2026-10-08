@@ -8,6 +8,7 @@ import { useLayout } from '../layout';
 import { Btn, Card, Empty, ErrorBox, H1, H2, Loading, Screen, Seg, T } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { c, fam, toneFor, day } from '../theme';
+import { FavouriteSports } from '../sportpicker';
 import { Billboard, Shop, Hire, Insure, useCols } from './marketplace';
 
 const LEVELS = ['beginner', 'amateur', 'semi_pro', 'pro'];
@@ -105,17 +106,11 @@ function SportCard({ p, width, onOpen, onDefault, onLog, selected }) {
 
 // ---------- add / edit profile forms ----------
 
-function useSports() {
-  const sports = useLoad(() => api.get('/sports'), []);
-  return (sports.data ?? []).map((s) => ({ value: s.slug, label: `${s.emoji} ${s.name}` }));
-}
-
 function AddProfileSheet({ visible, onClose, onDone, first }) {
-  const sports = useSports();
   return (
     <FormSheet visible={visible} onClose={onClose} title="Add a sport profile" submitLabel="Add sport"
       fields={[
-        { key: 'sport', label: 'Sport', type: 'choice', options: sports },
+        { key: 'sport', label: 'Sport', type: 'sport' },
         { key: 'role', label: 'Role', type: 'choice', options: ROLES },
         { key: 'level', label: 'Level', type: 'choice', options: LEVELS },
         { key: 'position', label: 'Position', optional: true, placeholder: 'Striker, Opening bat…' },
@@ -228,6 +223,7 @@ function MySports() {
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap }}>{cards(w)}</View>
         )}
       </View>
+      <Card style={{ marginTop: 18 }}><H2>★ Favourite sports & games</H2><View style={{ marginTop: 8 }}><FavouriteSports /></View></Card>
       {sheets}
     </Screen>
   );

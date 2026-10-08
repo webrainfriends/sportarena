@@ -9,7 +9,6 @@ import { c, toneFor, money, when, day } from '../theme';
 
 const nice = (s) => String(s ?? '').replace(/_/g, ' ');
 const parseWhen = (s) => { const d = new Date(String(s).trim().replace(' ', 'T')); if (isNaN(d)) throw new Error('Use the format 2026-11-02 17:30'); return d.toISOString(); };
-const SPORT_ANY = { value: '', label: 'Any sport' };
 
 export function useCols(max = 1120) {
   const { width } = useWindowDimensions();
@@ -84,10 +83,6 @@ const Head = ({ eyebrow, title, sub, right }) => (
   </View>
 );
 
-function useSportOptions() {
-  const sports = useLoad(() => api.get('/sports'), []);
-  return (sports.data ?? []).map((s) => ({ value: s.slug, label: `${s.emoji} ${s.name}` }));
-}
 
 const Grid = ({ children }) => {
   const { gap } = useCols();
@@ -204,7 +199,6 @@ const FILTERS = [['all', 'All'], ['match_players', 'Matches'], ['team_recruiting
 export function Billboard() {
   const { has, toast } = useSession();
   const { w } = useCols();
-  const sports = useSportOptions();
   const [f, setF] = useState('all');
   const [post, setPost] = useState(false);
   const [resp, setResp] = useState(null);
@@ -237,7 +231,7 @@ export function Billboard() {
             { key: 'kind', label: 'What do you need?', type: 'choice', options: [{ value: 'match_players', label: 'Players for a match' }, { value: 'team_recruiting', label: 'Players for my team' }, { value: 'sponsorship_wanted', label: 'A sponsor' }, ...(has('sponsor') ? [{ value: 'sponsor_call', label: 'Athletes (as sponsor)' }] : [])] },
             { key: 'title', label: 'Headline', placeholder: 'Need 2 players for Sunday 7-a-side' },
             { key: 'body', label: 'Details', optional: true, type: 'multiline' },
-            { key: 'sport', label: 'Sport', type: 'choice', options: [SPORT_ANY, ...sports], optional: true },
+            { key: 'sport', label: 'Sport', type: 'sport', optional: true },
             { key: 'city', label: 'City', optional: true },
             { key: 'when', label: 'When (2026-11-02 17:30)', optional: true },
             { key: 'positions_needed', label: 'How many people?', type: 'number', optional: true },
@@ -261,7 +255,6 @@ const CATS = ['all', 'equipment', 'apparel', 'footwear', 'nutrition', 'medical',
 export function Shop() {
   const { user, has, toast } = useSession();
   const { w } = useCols();
-  const sports = useSportOptions();
   const [cat, setCat] = useState('all');
   const [buy, setBuy] = useState(null);
   const [sell, setSell] = useState(false);
@@ -348,7 +341,7 @@ export function Shop() {
         <FormSheet visible onClose={() => setSell(false)} title="List an item" submitLabel="List"
           fields={[
             { key: 'name', label: 'Name' }, { key: 'category', label: 'Category', type: 'choice', options: CATS.slice(1).concat('other') },
-            { key: 'sport', label: 'Sport', type: 'choice', options: [SPORT_ANY, ...sports], optional: true },
+            { key: 'sport', label: 'Sport', type: 'sport', optional: true },
             { key: 'price', label: 'Price (₹)', type: 'number' }, { key: 'stock', label: 'Stock', type: 'number' },
             { key: 'emoji', label: 'Emoji', optional: true }, { key: 'description', label: 'Description', optional: true, type: 'multiline' },
           ]}

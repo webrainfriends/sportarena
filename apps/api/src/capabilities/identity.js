@@ -132,11 +132,11 @@ cap({
 });
 
 cap({
-  name: 'list_sports', method: 'GET', path: '/sports', tag: 'Directory', auth: 'public', summary: 'All supported sports (Olympic summer/winter and Asian Games programmes and more). Filter by category or programme.',
-  input: z.object({ category: z.string().optional(), programme: z.enum(['olympic_summer', 'olympic_winter', 'asian_games']).optional() }),
+  name: 'list_sports', method: 'GET', path: '/sports', tag: 'Directory', auth: 'public', summary: 'All supported sports (Olympic summer/winter and Asian Games programmes and more). Each has a play_type (team, individual, board, esports). Filter by category, play_type or programme.',
+  input: z.object({ category: z.string().optional(), play_type: z.enum(['team', 'individual', 'board', 'esports']).optional(), programme: z.enum(['olympic_summer', 'olympic_winter', 'asian_games']).optional() }),
   handler: (_, i) => many(
-    'SELECT * FROM sports WHERE ($1::text IS NULL OR category = $1) AND ($2::text IS NULL OR $2 = ANY(programmes)) ORDER BY name',
-    [i.category ?? null, i.programme ?? null],
+    'SELECT * FROM sports WHERE ($1::text IS NULL OR category = $1) AND ($2::text IS NULL OR play_type = $2) AND ($3::text IS NULL OR $3 = ANY(programmes)) ORDER BY name',
+    [i.category ?? null, i.play_type ?? null, i.programme ?? null],
   ),
 });
 
