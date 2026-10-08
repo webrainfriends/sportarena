@@ -239,7 +239,11 @@ test('MCP: same capabilities as REST, same auth rules', async () => {
   assert.equal(tools.length, capabilities.length);
   assert.ok(tools.find((t) => t.name === 'create_booking').inputSchema.properties.resource_id);
   const pub = await rpc('tools/call', { name: 'list_sports', arguments: {} });
-  assert.ok(pub.structuredContent.result.length >= 12 && pub.structuredContent.result.some((s) => s.slug === 'basketball'));
+  assert.ok(pub.structuredContent.result.length >= 100 && pub.structuredContent.result.some((s) => s.slug === 'basketball'));
+  const slugs = new Set(pub.structuredContent.result.map((s) => s.slug));
+  for (const slug of ['judo', 'curling', 'sepak-takraw', 'diving', 'weightlifting', 'biathlon', 'kabaddi', 'table-tennis']) assert.ok(slugs.has(slug), `${slug} missing from the catalogue`);
+  const winter = await rpc('tools/call', { name: 'list_sports', arguments: { programme: 'olympic_winter' } });
+  assert.ok(winter.structuredContent.result.some((s) => s.slug === 'curling') && !winter.structuredContent.result.some((s) => s.slug === 'judo'));
   const anon = await rpc('tools/call', { name: 'get_me', arguments: {} });
   assert.equal(anon.isError, true);
   assert.equal(JSON.parse(anon.content[0].text).code, 'unauthorized');
@@ -394,4 +398,12 @@ test('player marketplace: billboard, shop, coach hire', async () => {
   assert.equal((await api('PATCH', `/hires/${hire.body.id}`, { ...t(joiner), body: { status: 'confirmed' } })).status, 403);
   assert.equal((await api('PATCH', `/hires/${hire.body.id}`, { ...t(coach), body: { status: 'confirmed' } })).status, 200);
   assert.equal((await api('GET', '/hires', { ...t(coach) })).body[0].i_am_coach, true);
+});
+
+test('every persona can add a profile for any catalogue sport, including newly seeded ones', async () => {
+  for (const [role, slug] of [['athlete', 'judo'], ['coach', 'curling'], ['referee', 'sepak-takraw'], ['physio', 'diving'], ['doctor', 'weightlifting']]) {
+    const u = await signup([role]);
+    const r = await api('POST', '/me/sport-profiles', { token: u.token, body: { sport: slug, role, level: 'amateur' } });
+    assert.equal(r.status, 201, `${role}/${slug}: ${JSON.stringify(r.body)}`);
+  }
 });

@@ -23,7 +23,7 @@ const csv = (schema) => z.union([z.array(schema), z.string().transform((s) => s.
 cap({
   name: 'create_sport', method: 'POST', path: '/sports', tag: TAG, auth: ['venue_manager', 'organizer'], status: 201,
   summary: 'Add a sport that is not in the catalogue yet so venues can offer it (a venue can host any sport). Returns the existing one if the name is already there.',
-  input: z.object({ name: z.string().min(2).max(40), emoji: z.string().max(8).optional(), scoring: z.enum(['points', 'time', 'distance', 'goals', 'sets']).default('points') }),
+  input: z.object({ name: z.string().min(2).max(40), emoji: z.string().max(8).optional(), scoring: z.enum(['points', 'time', 'distance', 'goals', 'sets', 'judged', 'weight', 'combat']).default('points') }),
   async handler(_, i) {
     const slug = i.name.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
     if (slug.length < 2) throw badRequest('Give the sport a name with letters or digits');
@@ -54,10 +54,10 @@ cap({
     for (const r of rows) if (r.c <= r.o) throw badRequest('closes must be after opens');
     for (const a of rows) for (const b of rows) if (a !== b && a.weekday === b.weekday && a.o < b.c && b.o < a.c) throw badRequest('Opening intervals on the same day overlap');
     await tx(async (c) => {
-      await c.query('UPDATE venue_hours SET removed_at=now() WHERE venue_id=$1 AND removed_at IS NULL', [i.id]);
+      await c.query('DELETE FROM venue_hours WHERE venue_id=$1', [i.id]);
       for (const r of rows) await c.query('INSERT INTO venue_hours(venue_id, weekday, opens_min, closes_min) VALUES ($1,$2,$3,$4)', [i.id, r.weekday, r.o, r.c]);
     });
-    return { hours: await many('SELECT weekday, opens_min, closes_min FROM venue_hours WHERE venue_id=$1 AND removed_at IS NULL ORDER BY weekday, opens_min', [i.id]), open_around_the_clock: rows.length === 0 };
+    return { hours: await many('SELECT weekday, opens_min, closes_min FROM venue_hours WHERE venue_id=$1 ORDER BY weekday, opens_min', [i.id]), open_around_the_clock: rows.length === 0 };
   },
 });
 
@@ -65,7 +65,7 @@ cap({
   name: 'list_my_venues', method: 'GET', path: '/me/venues', tag: TAG, summary: 'Venues you own or help run, with your role.',
   handler: ({ user }) => many(
     `SELECT v.id, v.name, v.emoji, v.city, v.active, 'owner' AS role FROM venues v WHERE v.owner_id=$1
-     UNION ALL SELECT v.id, v.name, v.emoji, v.city, v.active, s.role FROM venue_staff s JOIN venues v ON v.id=s.venue_id WHERE s.user_id=$1 AND s.removed_at IS NULL ORDER BY name`, [user.id]),
+     UNION ALL SELECT v.id, v.name, v.emoji, v.city, v.active, s.role FROM venue_staff s JOIN venues v ON v.id=s.venue_id WHERE s.user_id=$1 ORDER BY name`, [user.id]),
 });
 
 // ------------------------------------------------------------------ contacts (personal data: encrypted, audit-logged)
@@ -91,7 +91,7 @@ cap({
   async handler({ user }, i) {
     await mustFind('venues', i.id);
     const staff = await canManage(user, i.id);
-    const rows = await many('SELECT * FROM venue_contacts WHERE venue_id=$1 AND removed_at IS NULL AND ($2 OR is_public) ORDER BY created_at', [i.id, staff]);
+    const rows = await many('SELECT * FROM venue_contacts WHERE venue_id=$1 AND ($2 OR is_public) ORDER BY created_at', [i.id, staff]);
     if (rows.length) await audit(null, user.id, 'read_pii', 'venue_contacts', i.id);
     return rows.map((r) => ({ id: r.id, role: r.role, is_public: r.is_public, ...decryptFields(r, 'venue_contacts', CONTACT) }));
   },
@@ -102,7 +102,7 @@ cap({
   input: z.object({ id, contact_id: id }),
   async handler({ user }, i) {
     await mustManage(user, i.id);
-    if (!(await one('UPDATE venue_contacts SET removed_at=now() WHERE id=$1 AND venue_id=$2 AND removed_at IS NULL RETURNING id', [i.contact_id, i.id]))) throw notFound('Contact');
+    if (!(await one('DELETE FROM venue_contacts WHERE id=$1 AND venue_id=$2 RETURNING id', [i.contact_id, i.id]))) throw notFound('Contact');
     return { ok: true };
   },
 });
@@ -120,7 +120,7 @@ cap({
     await ownerOnly(user, i.id);
     const u = await one('SELECT id, handle, display_name FROM users WHERE handle=$1', [i.handle.toLowerCase()]);
     if (!u) throw notFound('User');
-    await one("INSERT INTO venue_staff(venue_id, user_id, role) VALUES ($1,$2,'manager') ON CONFLICT (venue_id, user_id) DO UPDATE SET removed_at=NULL RETURNING user_id", [i.id, u.id]);
+    await one("INSERT INTO venue_staff(venue_id, user_id, role) VALUES ($1,$2,'manager') ON CONFLICT (venue_id, user_id) DO NOTHING RETURNING user_id", [i.id, u.id]);
     await notify(null, u.id, { kind: 'venue_staff_added', title: 'You can now manage a venue', body: `${user.display_name} added you to the team.`, data: { venue_id: i.id } });
     return { ...u, role: 'manager' };
   },
@@ -130,14 +130,14 @@ cap({
   async handler({ user }, i) {
     await mustManage(user, i.id);
     return many(`SELECT u.id, u.handle, u.display_name, 'owner' AS role FROM venues v JOIN users u ON u.id=v.owner_id WHERE v.id=$1
-                 UNION ALL SELECT u.id, u.handle, u.display_name, s.role FROM venue_staff s JOIN users u ON u.id=s.user_id WHERE s.venue_id=$1 AND s.removed_at IS NULL`, [i.id]);
+                 UNION ALL SELECT u.id, u.handle, u.display_name, s.role FROM venue_staff s JOIN users u ON u.id=s.user_id WHERE s.venue_id=$1`, [i.id]);
   },
 });
 cap({
   name: 'remove_venue_staff', method: 'DELETE', path: '/venues/:id/staff/:user_id', tag: TAG, summary: 'Remove a staff member. Owner only.', input: z.object({ id, user_id: id }),
   async handler({ user }, i) {
     await ownerOnly(user, i.id);
-    await one('UPDATE venue_staff SET removed_at=now() WHERE venue_id=$1 AND user_id=$2 AND removed_at IS NULL RETURNING user_id', [i.id, i.user_id]);
+    await one('DELETE FROM venue_staff WHERE venue_id=$1 AND user_id=$2 RETURNING user_id', [i.id, i.user_id]);
     return { ok: true };
   },
 });
@@ -207,7 +207,7 @@ cap({
   async handler({ user }, i) {
     const r = await mustFind('price_rules', i.id);
     await mustManage(user, r.venue_id);
-    await one('UPDATE price_rules SET active=false WHERE id=$1 RETURNING id', [i.id]);
+    await one('DELETE FROM price_rules WHERE id=$1 RETURNING id', [i.id]);
     return { ok: true };
   },
 });
@@ -308,7 +308,7 @@ cap({
   async handler({ user }, i) {
     await mustManage(user, i.id);
     return many(`SELECT k.*, r.name AS resource_name FROM venue_blocks k LEFT JOIN resources r ON r.id=k.resource_id
-                  WHERE k.released_at IS NULL AND k.venue_id=$1 AND ($2::timestamptz IS NULL OR k.ends_at > $2) AND ($3::timestamptz IS NULL OR k.starts_at < $3) ORDER BY k.starts_at LIMIT $4 OFFSET $5`,
+                  WHERE k.venue_id=$1 AND ($2::timestamptz IS NULL OR k.ends_at > $2) AND ($3::timestamptz IS NULL OR k.starts_at < $3) ORDER BY k.starts_at LIMIT $4 OFFSET $5`,
       [i.id, i.from ?? null, i.to ?? null, i.limit, i.offset]);
   },
 });
@@ -318,7 +318,7 @@ cap({
   input: z.object({ id, batch_id: id.optional(), ids: csv(id).optional() }).refine((i) => i.batch_id || i.ids?.length, 'Give batch_id or ids'),
   async handler({ user }, i) {
     await mustManage(user, i.id);
-    const r = await pool.query('UPDATE venue_blocks SET released_at=now() WHERE released_at IS NULL AND venue_id=$1 AND (batch_id = $2 OR id = ANY($3::uuid[]))', [i.id, i.batch_id ?? null, i.ids ?? []]);
+    const r = await pool.query('DELETE FROM venue_blocks WHERE venue_id=$1 AND (batch_id = $2 OR id = ANY($3::uuid[]))', [i.id, i.batch_id ?? null, i.ids ?? []]);
     return { released: r.rowCount };
   },
 });
@@ -380,7 +380,7 @@ cap({
         WHERE r.venue_id=$1 AND b.starts_at < $3 AND b.ends_at > $2 AND ($4::uuid IS NULL OR b.resource_id=$4) AND ($5 OR b.status <> 'cancelled') ORDER BY b.starts_at, r.name`,
       [i.id, i.from, i.to, i.resource_id ?? null, i.include_cancelled]);
     if (rows.some((r) => r.guest_name_enc || r.guest_phone_enc)) await audit(null, user.id, 'read_pii', 'bookings', i.id);
-    const blocks = await many('SELECT id, resource_id, starts_at, ends_at, kind, reason, batch_id FROM venue_blocks WHERE released_at IS NULL AND venue_id=$1 AND starts_at < $3 AND ends_at > $2 AND ($4::uuid IS NULL OR resource_id IS NULL OR resource_id=$4) ORDER BY starts_at', [i.id, i.from, i.to, i.resource_id ?? null]);
+    const blocks = await many('SELECT id, resource_id, starts_at, ends_at, kind, reason, batch_id FROM venue_blocks WHERE venue_id=$1 AND starts_at < $3 AND ends_at > $2 AND ($4::uuid IS NULL OR resource_id IS NULL OR resource_id=$4) ORDER BY starts_at', [i.id, i.from, i.to, i.resource_id ?? null]);
     return {
       bookings: rows.map(({ guest_name_enc, guest_phone_enc, ...b }) => ({ ...b, ...(guest_name_enc || guest_phone_enc ? { guest: { name: guest_name_enc ? decryptFields({ guest_name_enc }, 'bookings', ['guest_name']).guest_name : null, phone: guest_phone_enc ? decryptFields({ guest_phone_enc }, 'bookings', ['guest_phone']).guest_phone : null } } : {}) })),
       blocks,
@@ -473,8 +473,8 @@ cap({
               FROM bookings b JOIN resources r ON r.id=b.resource_id JOIN users u ON u.id=b.user_id
              WHERE r.venue_id=$1 AND b.starts_at >= $2 AND b.starts_at < $3 AND ${ACTIVE} GROUP BY u.id ORDER BY spent_cents DESC`, P.slice(0, 3)),
       many(`SELECT b.source, count(*)::int AS bookings, coalesce(sum(b.price_cents),0)::int AS net_cents ${base} AND ${ACTIVE} GROUP BY 1 ORDER BY 2 DESC`, P.slice(0, 3)),
-      many('SELECT weekday, opens_min, closes_min FROM venue_hours WHERE venue_id=$1 AND removed_at IS NULL', [i.id]),
-      many('SELECT resource_id, starts_at, ends_at FROM venue_blocks WHERE released_at IS NULL AND venue_id=$1 AND starts_at < $3 AND ends_at > $2', P.slice(0, 3)),
+      many('SELECT weekday, opens_min, closes_min FROM venue_hours WHERE venue_id=$1', [i.id]),
+      many('SELECT resource_id, starts_at, ends_at FROM venue_blocks WHERE venue_id=$1 AND starts_at < $3 AND ends_at > $2', P.slice(0, 3)),
       one(`SELECT coalesce(sum(b.price_cents) FILTER (WHERE b.payment_status='paid'),0)::int AS paid_cents,
                   coalesce(sum(b.price_cents) FILTER (WHERE b.payment_status='unpaid' AND ${ACTIVE}),0)::int + coalesce(sum(b.price_cents - b.refund_cents) FILTER (WHERE b.payment_status='unpaid' AND b.status='cancelled'),0)::int AS outstanding_cents,
                   coalesce(sum(b.refund_cents) FILTER (WHERE b.payment_status='refund_due'),0)::int AS refunds_owed_cents ${base} AND (${ACTIVE} OR b.status='cancelled')`, P.slice(0, 3)),

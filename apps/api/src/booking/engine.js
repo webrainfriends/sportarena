@@ -28,7 +28,7 @@ export async function usedUnits(c, resourceId, start, end, excludeBooking) {
 /** A block (maintenance, holiday, ...) overlapping the window on this area or on the whole venue. */
 export async function blockedBy(c, venueId, resourceId, start, end) {
   return (await c.query(
-    'SELECT * FROM venue_blocks WHERE released_at IS NULL AND venue_id=$1 AND (resource_id IS NULL OR resource_id=$2) AND starts_at < $4 AND ends_at > $3 ORDER BY starts_at LIMIT 1',
+    'SELECT * FROM venue_blocks WHERE venue_id=$1 AND (resource_id IS NULL OR resource_id=$2) AND starts_at < $4 AND ends_at > $3 ORDER BY starts_at LIMIT 1',
     [venueId, resourceId, start, end])).rows[0] ?? null;
 }
 
@@ -37,7 +37,7 @@ export async function loadVenueCtx(c, venueId) {
   const venue = (await c.query('SELECT * FROM venues WHERE id=$1', [venueId])).rows[0];
   if (!venue) throw notFound('Venue');
   const [hours, rules] = await Promise.all([
-    c.query('SELECT weekday, opens_min, closes_min FROM venue_hours WHERE venue_id=$1 AND removed_at IS NULL ORDER BY weekday, opens_min', [venueId]),
+    c.query('SELECT weekday, opens_min, closes_min FROM venue_hours WHERE venue_id=$1 ORDER BY weekday, opens_min', [venueId]),
     c.query('SELECT * FROM price_rules WHERE venue_id=$1 AND active', [venueId]),
   ]);
   return { venue, hours: hours.rows, rules: rules.rows };
@@ -327,7 +327,7 @@ export async function loadBusy(c, venueId, from, to) {
   const [b, k] = await Promise.all([
     c.query(`SELECT b.resource_id, b.starts_at, b.ends_at, b.quantity FROM bookings b JOIN resources r ON r.id=b.resource_id
               WHERE r.venue_id=$1 AND b.status IN ('confirmed','no_show') AND b.starts_at < $3 AND b.ends_at > $2`, [venueId, from, to]),
-    c.query('SELECT resource_id, starts_at, ends_at FROM venue_blocks WHERE released_at IS NULL AND venue_id=$1 AND starts_at < $3 AND ends_at > $2', [venueId, from, to]),
+    c.query('SELECT resource_id, starts_at, ends_at FROM venue_blocks WHERE venue_id=$1 AND starts_at < $3 AND ends_at > $2', [venueId, from, to]),
   ]);
   return { bookings: b.rows, blocks: k.rows };
 }
@@ -355,7 +355,7 @@ export async function nextFreeSlot(c, ctx, resources, { from = new Date(), days 
 export const canManage = async (user, venueId, c = pool) => {
   if (!user) return false;
   if (user.roles?.includes('admin')) return true;
-  const r = await c.query('SELECT 1 FROM venues WHERE id=$1 AND owner_id=$2 UNION ALL SELECT 1 FROM venue_staff WHERE venue_id=$1 AND user_id=$2 AND removed_at IS NULL', [venueId, user.id]);
+  const r = await c.query('SELECT 1 FROM venues WHERE id=$1 AND owner_id=$2 UNION ALL SELECT 1 FROM venue_staff WHERE venue_id=$1 AND user_id=$2', [venueId, user.id]);
   return r.rowCount > 0;
 };
 

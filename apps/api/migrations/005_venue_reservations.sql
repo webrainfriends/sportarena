@@ -37,11 +37,10 @@ CREATE INDEX venues_geo ON venues (latitude, longitude) WHERE latitude IS NOT NU
 -- A venue with no rows is treated as open around the clock.
 CREATE TABLE venue_hours (
   id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  venue_id   uuid NOT NULL REFERENCES venues,
+  venue_id   uuid NOT NULL REFERENCES venues ON DELETE CASCADE,
   weekday    smallint NOT NULL CHECK (weekday BETWEEN 0 AND 6),  -- 0 = Sunday
   opens_min  int NOT NULL CHECK (opens_min BETWEEN 0 AND 1439),
   closes_min int NOT NULL CHECK (closes_min BETWEEN 1 AND 1440),
-  removed_at timestamptz,                                -- soft delete: hours are retired, never erased
   CHECK (closes_min > opens_min)
 );
 CREATE INDEX venue_hours_venue ON venue_hours (venue_id, weekday);
@@ -49,23 +48,21 @@ CREATE INDEX venue_hours_venue ON venue_hours (venue_id, weekday);
 -- Named people at the venue. Names / phones / emails are personal data: encrypted, audit-logged when read.
 CREATE TABLE venue_contacts (
   id        uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  venue_id  uuid NOT NULL REFERENCES venues,
+  venue_id  uuid NOT NULL REFERENCES venues ON DELETE CASCADE,
   role      text NOT NULL DEFAULT 'general',            -- manager | reception | emergency | billing | general
   name_enc  text,
   phone_enc text,
   email_enc text,
   is_public boolean NOT NULL DEFAULT false,             -- shown to every signed-in user, not just staff
-  removed_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX venue_contacts_venue ON venue_contacts (venue_id);
 
 -- People besides the owner who run the venue (can manage bookings, pricing, blocks, reports).
 CREATE TABLE venue_staff (
-  venue_id uuid NOT NULL REFERENCES venues,
-  user_id  uuid NOT NULL REFERENCES users,
+  venue_id uuid NOT NULL REFERENCES venues ON DELETE CASCADE,
+  user_id  uuid NOT NULL REFERENCES users ON DELETE CASCADE,
   role     text NOT NULL DEFAULT 'manager' CHECK (role IN ('manager','staff')),
-  removed_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (venue_id, user_id)
 );
@@ -90,8 +87,8 @@ ALTER TABLE resources
 -- No matching rule -> the area's own hourly_rate_cents.
 CREATE TABLE price_rules (
   id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  venue_id    uuid NOT NULL REFERENCES venues,
-  resource_id uuid REFERENCES resources,       -- null = every area of the venue
+  venue_id    uuid NOT NULL REFERENCES venues ON DELETE CASCADE,
+  resource_id uuid REFERENCES resources ON DELETE CASCADE,       -- null = every area of the venue
   name        text NOT NULL,
   weekdays    smallint[],                                         -- null = every day
   start_min   int NOT NULL DEFAULT 0    CHECK (start_min BETWEEN 0 AND 1439),
@@ -109,8 +106,8 @@ CREATE INDEX price_rules_venue ON price_rules (venue_id) WHERE active;
 -- Discounts: automatic (multi-slot, off-peak, weekday ...) or code-based. The best single discount applies per venue.
 CREATE TABLE discounts (
   id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  venue_id    uuid NOT NULL REFERENCES venues,
-  resource_id uuid REFERENCES resources,
+  venue_id    uuid NOT NULL REFERENCES venues ON DELETE CASCADE,
+  resource_id uuid REFERENCES resources ON DELETE CASCADE,
   name        text NOT NULL,
   code        text,                                               -- null = automatic
   kind        text NOT NULL CHECK (kind IN ('percent','fixed')),
@@ -131,14 +128,13 @@ CREATE UNIQUE INDEX discounts_code ON discounts (venue_id, upper(code)) WHERE co
 -- ---------------------------------------------------------------- blocks (maintenance, holidays, private hire ...)
 CREATE TABLE venue_blocks (
   id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  venue_id    uuid NOT NULL REFERENCES venues,
-  resource_id uuid REFERENCES resources,        -- null = the whole venue
+  venue_id    uuid NOT NULL REFERENCES venues ON DELETE CASCADE,
+  resource_id uuid REFERENCES resources ON DELETE CASCADE,        -- null = the whole venue
   starts_at   timestamptz NOT NULL,
   ends_at     timestamptz NOT NULL,
   kind        text NOT NULL DEFAULT 'other' CHECK (kind IN ('maintenance','holiday','event','private','other')),
   reason      text,
   batch_id    uuid NOT NULL,                                      -- one bulk request = one batch, released together
-  released_at timestamptz,                                        -- soft delete: a released block stays on record
   created_by  uuid REFERENCES users,
   created_at  timestamptz NOT NULL DEFAULT now(),
   CHECK (ends_at > starts_at)
@@ -167,7 +163,7 @@ CREATE INDEX reservations_user ON reservations (user_id, created_at DESC);
 ALTER TABLE bookings DROP CONSTRAINT bookings_status_check;
 ALTER TABLE bookings ADD CONSTRAINT bookings_status_check CHECK (status IN ('confirmed','cancelled','no_show'));
 ALTER TABLE bookings
-  ADD COLUMN reservation_id uuid REFERENCES reservations,
+  ADD COLUMN reservation_id uuid REFERENCES reservations ON DELETE CASCADE,
   ADD COLUMN slots          int,
   ADD COLUMN players        int CHECK (players >= 1),
   ADD COLUMN base_cents     int,                                   -- price before discount
@@ -187,8 +183,8 @@ CREATE INDEX bookings_reservation ON bookings (reservation_id);
 CREATE INDEX bookings_user_time ON bookings (user_id, starts_at DESC);
 
 CREATE TABLE discount_redemptions (
-  discount_id    uuid NOT NULL REFERENCES discounts,
-  reservation_id uuid NOT NULL REFERENCES reservations,
+  discount_id    uuid NOT NULL REFERENCES discounts ON DELETE CASCADE,
+  reservation_id uuid NOT NULL REFERENCES reservations ON DELETE CASCADE,
   user_id        uuid NOT NULL REFERENCES users,
   amount_cents   int NOT NULL,
   PRIMARY KEY (discount_id, reservation_id)
@@ -198,7 +194,7 @@ CREATE INDEX discount_redemptions_user ON discount_redemptions (discount_id, use
 -- ---------------------------------------------------------------- notifications
 CREATE TABLE notifications (
   id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id    uuid NOT NULL REFERENCES users,
+  user_id    uuid NOT NULL REFERENCES users ON DELETE CASCADE,
   kind       text NOT NULL,                                        -- reservation_confirmed | booking_cancelled | booking_modified | booking_reminder | ...
   title      text NOT NULL,
   body       text NOT NULL,
@@ -209,7 +205,7 @@ CREATE TABLE notifications (
 CREATE INDEX notifications_user ON notifications (user_id, created_at DESC);
 
 CREATE TABLE notification_prefs (
-  user_id        uuid PRIMARY KEY REFERENCES users,
+  user_id        uuid PRIMARY KEY REFERENCES users ON DELETE CASCADE,
   in_app         boolean NOT NULL DEFAULT true,
   email          boolean NOT NULL DEFAULT true,
   reminder_hours int NOT NULL DEFAULT 24 CHECK (reminder_hours BETWEEN 1 AND 168),
@@ -219,7 +215,7 @@ CREATE TABLE notification_prefs (
 -- Outbound channels (email today) are queued here and sent by the dispatcher; in-app is always instant.
 CREATE TABLE notification_deliveries (
   id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  notification_id uuid NOT NULL REFERENCES notifications,
+  notification_id uuid NOT NULL REFERENCES notifications ON DELETE CASCADE,
   channel         text NOT NULL CHECK (channel IN ('email')),
   status          text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','sent','failed')),
   attempts        int NOT NULL DEFAULT 0,
