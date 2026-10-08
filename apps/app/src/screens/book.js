@@ -168,7 +168,7 @@ export function Book() {
         fields={[{ key: 'name', label: 'Venue name' }, { key: 'address', label: 'Address', optional: true }, { key: 'city', label: 'City', optional: true },
           { key: 'latitude', lngKey: 'longitude', label: 'Map location', type: 'location', optional: true },
           { key: 'currency', label: 'Currency', type: 'currency' }, { key: 'timezone', label: 'Time zone', type: 'timezone' }]}
-        onSubmit={async (v) => { const x = await api.post('/venues', v); venues.reload(); push('Manage', { id: x.id }); return 'Venue created — follow the checklist to open for bookings'; }} />
+        onSubmit={async (v) => { const x = await api.post('/venues', v); venues.reload(); push('Manage', { id: x.id, wizard: true }); return 'Venue created — follow the checklist to open for bookings'; }} />
     </Screen>
   );
 }

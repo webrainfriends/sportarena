@@ -10,6 +10,7 @@ import { FormSheet } from '../FormSheet';
 import { DateField, TimeField } from '../pickers';
 import { c } from '../theme';
 import { WEEKDAYS, moneyIn } from '../vtime';
+import { PaintGrid } from './paintgrid';
 
 const COLORS = [['#4F46E5', 'Indigo'], ['#059669', 'Green'], ['#EA580C', 'Orange'], ['#E11D48', 'Red'], ['#0284C7', 'Blue'], ['#D97706', 'Amber'], ['#7C3AED', 'Purple']];
 const ORDER = [1, 2, 3, 4, 5, 6, 0]; // weeks start on Monday for an owner
@@ -19,7 +20,7 @@ const toMajorText = (minor, cur) => String(Number(minor) / 10 ** digits(cur));
 const hh = (t) => { const [h, m] = t.split(':'); return m === '00' ? String(Number(h)) : `${Number(h)}:${m}`; };
 
 /** The owner's launch checklist. Collapses to a single line once everything required is done. */
-export function SetupChecklist({ venueId, go }) {
+export function SetupChecklist({ venueId, go, onWizard }) {
   const s = useLoad(() => api.get(`/venues/${venueId}/setup`), [venueId]);
   const [open, setOpen] = useState(false);
   if (!s.data) return null;
@@ -36,6 +37,7 @@ export function SetupChecklist({ venueId, go }) {
           {!st.done ? <T size={12} weight="700" color={c.pink}>Do it ›</T> : null}
         </Pressable>
       ))}
+      {!d.ready && onWizard ? <Btn small title="▶ Guided setup" onPress={onWizard} style={{ marginTop: 10, alignSelf: 'flex-start' }} /> : null}
       {open ? <Btn small title="Hide" color={c.paper} onPress={() => setOpen(false)} style={{ marginTop: 10, alignSelf: 'flex-start' }} /> : null}
     </Card>
   );
@@ -188,6 +190,8 @@ export function Timetable({ v, reload }) {
   const { toast } = useSession();
   const tt = useLoad(() => api.get(`/venues/${v.id}/timetable`), [v.id]);
   const [bulk, setBulk] = useState(false);
+  const [paint, setPaint] = useState(false);
+  const [paintCourts, setPaintCourts] = useState([]);
   const [cat, setCat] = useState(null);       // {} new | category
   const [courts, setCourts] = useState(false);
   const [copy, setCopy] = useState(null);
@@ -216,13 +220,24 @@ export function Timetable({ v, reload }) {
         {!d.courts.length ? <Empty emoji="🏟️" title="Add your courts first" sub="Add several at once — Court 1 to Court 6 — then set their slots." /> : null}
         <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
           <Btn small title="＋ Add courts" color={c.violet} onPress={() => setCourts(true)} />
-          {d.courts.length ? <Btn small title="Open slots in bulk" onPress={() => setBulk(true)} /> : null}
+          {d.courts.length ? <Btn small title="🎨 Paint the week" onPress={() => { setPaintCourts(d.courts.map((x) => x.id)); setPaint(true); }} /> : null}
+          {d.courts.length ? <Btn small title="Open slots in bulk" color={c.violet} onPress={() => setBulk(true)} /> : null}
         </View>
         {d.courts_without_timetable.length ? <T size={13} color={c.red} weight="700">{d.courts.filter((x) => d.courts_without_timetable.includes(x.id)).map((x) => x.name).join(', ')} {d.courts_without_timetable.length > 1 ? 'have' : 'has'} no slots yet.</T> : null}
         {d.courts.map((x) => <CourtRow key={x.id} court={x} cats={cats} data={d} venue={v} onCopy={() => { setCopy(x); setPick([]); }} />)}
         <T size={12} color={c.mute}>Special rates (holidays, one-off events) live under "Courts & special rates" and override these categories on the days they apply.</T>
       </Section>
 
+      <Sheet visible={paint} onClose={() => setPaint(false)} title="Paint the weekly timetable">
+        {paint ? (
+          <View style={{ gap: 12 }}>
+            <T weight="800" size={13}>For which courts?</T>
+            <Toggle options={d.courts.map((x) => ({ value: x.id, label: `${x.sport_emoji ?? ''} ${x.name}`.trim() }))} value={paintCourts} onChange={setPaintCourts} />
+            <T size={12} color={c.mute}>The grid shows the first court you chose; saving applies it to all of them.</T>
+            <PaintGrid venue={v} data={d} courtIds={paintCourts} onSaved={() => { setPaint(false); refresh(); }} />
+          </View>
+        ) : null}
+      </Sheet>
       {bulk ? <BulkSlotsSheet venue={v} data={d} onClose={() => setBulk(false)} onDone={refresh} /> : null}
       {cat ? <CategorySheet venue={v} data={d} edit={cat.id ? cat : null} onClose={() => setCat(null)} onDone={refresh} /> : null}
       <Sheet visible={!!copy} onClose={() => setCopy(null)} title={`Copy ${copy?.name ?? ''} timetable to`}>
