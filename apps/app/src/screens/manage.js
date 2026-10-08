@@ -10,6 +10,8 @@ import { KIND } from './book';
 import { MediaManager, VenueReviews } from './venue-media';
 import { PlansManager } from './plans';
 import { SetupChecklist, Timetable } from './timetable';
+import { SetupWizard } from './venue-setup';
+import { DayBoard } from './dayboard';
 import { useNav } from '../nav';
 import { WEEKDAYS, addDays, dateTimeIn, fmtMin, hoursSummary, localToIso, longDay, moneyIn, timeIn, todayIn } from '../vtime';
 import { Calendar } from '../pickers';
@@ -18,9 +20,10 @@ const AMENITIES = ['Parking', 'Changing rooms', 'Showers', 'Lockers', 'Café', '
 const TABS = [['schedule', 'Today'], ['timetable', 'Timetable & prices'], ['blocks', 'Block slots'], ['payments', 'Invoices'], ['plans', 'Memberships & passes'], ['discounts', 'Offers'], ['pricing', 'Courts & special rates'], ['media', 'Photos'], ['reviews', 'Reviews'], ['reports', 'Reports'], ['setup', 'Settings']];
 const num = (x) => (x === undefined || x === '' ? undefined : Number(x));
 
-export function Manage({ id }) {
+export function Manage({ id, wizard: startWizard }) {
   const v = useLoad(() => api.get(`/venues/${id}`), [id]);
   const [tab, setTab] = useState('schedule');
+  const [wizard, setWizard] = useState(!!startWizard);
   if (v.loading && !v.data) return <Screen><Loading /></Screen>;
   if (v.error) return <Screen><ErrorBox error={v.error} onRetry={v.reload} /></Screen>;
   const x = v.data;
@@ -29,84 +32,12 @@ export function Manage({ id }) {
     <Screen wide>
       <H1 style={{ marginTop: 8 }}>{x.emoji} {x.name}</H1>
       <T color={c.mute} weight="700">Venue console · {x.timezone} · {x.currency}{x.active ? '' : ' · HIDDEN'}</T>
-      <SetupChecklist venueId={x.id} go={setTab} />
+      {wizard ? <SetupWizard v={x} onExit={() => { setWizard(false); v.reload(); }} goTab={setTab} /> : <SetupChecklist venueId={x.id} go={setTab} onWizard={() => setWizard(true)} />}
+      {wizard ? null : <>
       <View style={{ marginTop: 10 }}><Seg options={TABS.map(([value, label]) => ({ value, label }))} value={tab} onChange={setTab} color={c.violet} /></View>
-      {tab === 'schedule' ? <Schedule {...P} /> : tab === 'timetable' ? <Timetable {...P} /> : tab === 'blocks' ? <Blocks {...P} /> : tab === 'pricing' ? <Pricing {...P} /> : tab === 'discounts' ? <Discounts {...P} /> : tab === 'payments' ? <Payments {...P} /> : tab === 'plans' ? <PlansManager {...P} /> : tab === 'media' ? <Section title="Photos & videos" color={c.cyan}><MediaManager venue={x} /></Section> : tab === 'reviews' ? <Section title="Reviews" color={c.pink}><VenueReviews venueId={x.id} /></Section> : tab === 'reports' ? <Reports {...P} /> : <Setup {...P} />}
+      {tab === 'schedule' ? <DayBoard {...P} /> : tab === 'timetable' ? <Timetable {...P} /> : tab === 'blocks' ? <Blocks {...P} /> : tab === 'pricing' ? <Pricing {...P} /> : tab === 'discounts' ? <Discounts {...P} /> : tab === 'payments' ? <Payments {...P} /> : tab === 'plans' ? <PlansManager {...P} /> : tab === 'media' ? <Section title="Photos & videos" color={c.cyan}><MediaManager venue={x} /></Section> : tab === 'reviews' ? <Section title="Reviews" color={c.pink}><VenueReviews venueId={x.id} /></Section> : tab === 'reports' ? <Reports {...P} /> : <Setup {...P} />}
+      </>}
     </Screen>
-  );
-}
-
-// ------------------------------------------------------------------ schedule + override
-function Schedule({ v }) {
-  const { toast } = useSession();
-  const tz = v.timezone;
-  const [date, setDate] = useState(todayIn(tz));
-  const [calOpen, setCalOpen] = useState(false);
-  const [month, setMonth] = useState(todayIn(tz).slice(0, 7));
-  const [ov, setOv] = useState(false);
-  const [cancel, setCancel] = useState(null);
-  const from = localToIso(date, '00:00', tz), to = localToIso(addDays(date, 1), '00:00', tz);
-  const s = useLoad(() => api.get(`/venues/${v.id}/schedule`, { from, to }), [v.id, date]);
-  const act = async (fn, msg) => { try { await fn(); toast(msg); s.reload(); } catch (e) { toast(e.message); } };
-  return (
-    <>
-      <Section title="Day view" color={c.lime}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <Btn small title="‹" color={c.paper} onPress={() => setDate(addDays(date, -1))} />
-          <Pressable onPress={() => { setMonth(date.slice(0, 7)); setCalOpen(true); }} style={{ flex: 1, minHeight: 40, borderRadius: 12, borderWidth: 1, borderColor: c.line, backgroundColor: c.paper, alignItems: 'center', justifyContent: 'center' }}><T weight="700">📅 {longDay(date)}</T></Pressable>
-          <Btn small title="›" color={c.paper} onPress={() => setDate(addDays(date, 1))} />
-          <Btn small title="Today" color={c.violet} onPress={() => setDate(todayIn(tz))} />
-        </View>
-        <Btn small title="+ Add booking (override)" color={c.violet} onPress={() => setOv(true)} style={{ alignSelf: 'flex-start' }} />
-        {s.loading && !s.data ? <Loading /> : s.error ? <ErrorBox error={s.error} onRetry={s.reload} /> : (
-          <>
-            {s.data.blocks.map((b) => <Card key={b.id} color={c.sunSoft} pad={10}><T weight="700">⛔ {timeIn(b.starts_at, tz)}–{timeIn(b.ends_at, tz)} · {b.kind}{b.reason ? ` · ${b.reason}` : ''}</T><T size={12} color={c.mute}>{b.resource_id ? v.resources.find((r) => r.id === b.resource_id)?.name : 'Whole venue'}</T></Card>)}
-            {s.data.bookings.length ? s.data.bookings.map((b) => (
-              <Card key={b.id}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                  <View style={{ flex: 1 }}>
-                    <T weight="700">{timeIn(b.starts_at, tz)}–{timeIn(b.ends_at, tz)} · {b.resource_name}{b.quantity > 1 ? ` × ${b.quantity}` : ''}</T>
-                    <T size={13} color={c.mute}>{b.guest?.name ? `${b.guest.name}${b.guest.phone ? ` · ${b.guest.phone}` : ''} (walk-in)` : b.customer}{b.reservation_code ? ` · ${b.reservation_code}` : ''}{b.source === 'admin' ? ' · by venue' : ''}</T>
-                    {b.cancel_reason ? <T size={12} color={c.mute}>{b.cancel_reason}</T> : null}
-                  </View>
-                  <View style={{ alignItems: 'flex-end', gap: 4 }}><T weight="700">{moneyIn(b.price_cents, v.currency)}</T>
-                    <View style={{ flexDirection: 'row', gap: 4 }}><Tag label={b.status.replace('_', ' ')} color={b.status === 'confirmed' ? c.mint : b.status === 'no_show' ? c.orange : c.red} /><Tag label={b.payment_status.replace('_', ' ')} color={b.payment_status === 'paid' ? c.mint : c.sun} /></View></View>
-                </View>
-                {b.status !== 'cancelled' ? (
-                  <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-                    <Btn small title={b.payment_status === 'paid' ? 'Mark unpaid' : 'Mark paid'} color={c.violet} onPress={() => act(() => api.post(`/bookings/${b.id}/payment`, { status: b.payment_status === 'paid' ? 'unpaid' : 'paid' }), 'Updated')} />
-                    {new Date(b.starts_at) < new Date() && b.status === 'confirmed' ? <Btn small title="No-show" color={c.paper} onPress={() => act(() => api.post(`/bookings/${b.id}/no-show`), 'Marked no-show')} /> : null}
-                    {b.status === 'confirmed' ? <Btn small title="Cancel" color={c.paper} ink={c.red} onPress={() => setCancel(b)} /> : null}
-                  </View>
-                ) : null}
-              </Card>
-            )) : <Empty emoji="🗓️" title="No bookings this day" />}
-          </>
-        )}
-      </Section>
-      <Sheet visible={calOpen} onClose={() => setCalOpen(false)} title="Pick a day"><Calendar month={month} onMonth={setMonth} value={date} today={todayIn(tz)} onChange={(d) => { setDate(d); setCalOpen(false); }} /></Sheet>
-      <FormSheet visible={!!cancel} onClose={() => setCancel(null)} title="Cancel this booking" submitLabel="Cancel & refund in full" color={c.red}
-        fields={[{ key: 'reason', label: 'Reason (the customer sees it)', optional: true }]}
-        onSubmit={async (f) => { await api.del(`/bookings/${cancel.id}`, f); s.reload(); return 'Cancelled — customer notified and refunded'; }} />
-      <FormSheet visible={ov} onClose={() => setOv(false)} title="Add a booking (override)" submitLabel="Book it" initial={{ date }}
-        fields={[
-          { key: 'resource_id', label: 'Court', type: 'chips', options: v.resources.map((r) => ({ value: r.id, label: `${r.sport_emoji ?? KIND[r.kind] ?? ''} ${r.name}` })) },
-          { key: 'date', label: 'Date', type: 'date' }, { key: 'start', label: 'Starts', type: 'time' },
-          { key: 'hours', label: 'Length', type: 'chips', default: 1, options: [{ value: 0.5, label: '30 min' }, { value: 1, label: '1 hour' }, { value: 1.5, label: '1½ h' }, { value: 2, label: '2 hours' }, { value: 3, label: '3 hours' }, { value: 4, label: '4 hours' }] },
-          { key: 'quantity', label: 'Units', type: 'stepper', min: 1, max: 50, default: 1, show: (x) => (v.resources.find((r) => r.id === x.resource_id)?.capacity ?? 1) > 1, hint: 'This court takes several bookings at once' },
-          { key: 'reason', label: 'Why (kept in the audit log)', type: 'chips', options: ['Phone booking', 'Walk-in', 'League / tournament', 'Coaching', 'Member', 'Other'] },
-          { key: 'guest_name', label: 'Guest name', optional: true }, { key: 'guest_phone', label: 'Guest phone', input: 'phone', optional: true },
-          { key: 'normal_price', label: 'Charge the normal price', type: 'switch', default: true },
-          { key: 'price_cents', label: 'Price for this booking (0 = free)', type: 'money', currency: v.currency, show: (x) => !x.normal_price },
-          { key: 'displace_conflicts', label: 'Cancel bookings already in the way', type: 'switch', default: false, hint: 'Those customers are refunded and told' },
-        ]}
-        onSubmit={async (f) => {
-          const starts_at = localToIso(f.date, f.start, tz);
-          const ends_at = new Date(new Date(starts_at).getTime() + (f.hours ?? 1) * 3600e3).toISOString();
-          const out = await api.post(`/venues/${v.id}/override-bookings`, { items: [{ resource_id: f.resource_id, starts_at, ends_at, quantity: f.quantity ?? 1, price_cents: f.normal_price ? undefined : f.price_cents }], reason: f.reason, guest_name: f.guest_name, guest_phone: f.guest_phone, displace_conflicts: f.displace_conflicts });
-          s.reload(); return out.displaced_bookings ? `Booked — ${out.displaced_bookings} booking(s) cancelled and refunded` : 'Booked';
-        }} />
-    </>
   );
 }
 

@@ -189,3 +189,35 @@ test('timetable: existing opening hours carry over; new courts inherit; bulk cre
   assert.equal(s.ready, false, 'still needs invoice details and a contact');
   assert.equal((await api('GET', `/venues/${v.id}/setup`, { token: rando.token })).status, 403);
 });
+
+test('timetable: the painted weekly grid is saved in one call and replaces everyday windows only', async () => {
+  const mgr = await signup(['venue_manager']);
+  const v = await newVenue(mgr);
+  const a = await court(mgr, v, 'Grid A'), b = await court(mgr, v, 'Grid B');
+  const peak = await cat(mgr, v, 'Peak', 150000), off = await cat(mgr, v, 'Off-peak', 80000);
+  const rows = [
+    { weekdays: [1, 2, 3, 4, 5], start: '06:00', end: '17:00', category_id: off.id },
+    { weekdays: [1, 2, 3, 4, 5], start: '17:00', end: '22:00', category_id: peak.id },
+    { weekdays: [6, 0], start: '08:00', end: '20:00' },
+  ];
+  assert.equal((await api('POST', `/venues/${v.id}/timetable/weekly`, { token: mgr.token, body: { all_courts: true, rows: [rows[0], { ...rows[0], start: '10:00', end: '12:00' }] } })).status, 400, 'overlap refused');
+  assert.equal((await api('POST', `/venues/${v.id}/timetable/weekly`, { token: (await signup(['venue_manager'])).token, body: { all_courts: true, rows } })).status, 403);
+  must(await api('POST', `/venues/${v.id}/timetable/weekly`, { token: mgr.token, body: { all_courts: true, rows } }));
+  const mon = onWeekday(1), sat = onWeekday(6);
+  assert.equal((await avail(v, mon, a)).length, 16);
+  assert.equal((await avail(v, mon, a)).find((s) => hr(s) === 18).price_cents, 150000);
+  assert.equal((await avail(v, sat, b)).find((s) => hr(s) === 9).price_cents, 100000, 'no category = court base rate');
+  // a season survives a re-save; everyday windows are replaced
+  must(await apply(mgr, v, { resource_ids: [a.id], weekdays: [1], start: '10:00', end: '12:00', category_id: peak.id, valid_from: mon, valid_to: mon }));
+  must(await api('POST', `/venues/${v.id}/timetable/weekly`, { token: mgr.token, body: { resource_ids: [a.id], rows: [{ weekdays: [1], start: '09:00', end: '11:00', category_id: off.id }] } }));
+  const m = await avail(v, mon, a);
+  assert.deepEqual(m.map(hr), [9, 10, 11], 'everyday windows replaced; the season window still opens 10-12');
+  assert.equal(m.find((s) => hr(s) === 10).price_cents, 150000, 'the season prices over the everyday window');
+  assert.equal((await avail(v, mon, b)).length, 16, 'the other court is untouched');
+  // the schedule exposes what is owed so the desk can take payment
+  const u = await signup();
+  const bk = must(await api('POST', '/reservations', { token: u.token, body: { items: [{ resource_id: b.id, starts_at: fromLocal(mon, 9 * 60, 'UTC').toISOString(), ends_at: fromLocal(mon, 10 * 60, 'UTC').toISOString() }] } }), 201);
+  const sch = must(await api('GET', `/venues/${v.id}/schedule`, { token: mgr.token, query: { from: fromLocal(mon, 0, 'UTC').toISOString(), to: fromLocal(addDays(mon, 1), 0, 'UTC').toISOString() } }));
+  assert.equal(sch.bookings[0].open_invoice_id, bk.invoices[0].id);
+  assert.equal(sch.bookings[0].open_invoice_due_cents, 80000);
+});

@@ -106,6 +106,37 @@ cap({
 });
 
 cap({
+  name: 'set_weekly_timetable', method: 'POST', path: '/venues/:id/timetable/weekly', tag: TAG,
+  summary: "Save the whole everyday weekly timetable of the chosen courts in one go (what the painted grid sends): rows of weekdays + time range + category (omit for the court base rate). It replaces those courts' everyday windows; seasons (dated windows) are left alone. Rows must not overlap on a day.",
+  input: z.object({
+    id, resource_ids: z.array(id).min(1).max(100).optional(), all_courts: z.boolean().optional(),
+    rows: z.array(z.object({ weekdays, start: clock, end: clock, category_id: id.optional() })).max(300),
+  }).refine((i) => i.resource_ids?.length || i.all_courts, 'choose courts (resource_ids) or all_courts'),
+  async handler({ user }, i) {
+    await mustManage(user, i.id);
+    const rows = i.rows.map((r) => ({ days: r.weekdays, start: hhmm(r.start), end: hhmm(r.end), category_id: r.category_id ?? null }));
+    for (const r of rows) if (r.end <= r.start) throw badRequest('Each range must end after it starts');
+    for (const a of rows) for (const b of rows) if (a !== b && a.days.some((d) => b.days.includes(d)) && a.start < b.end && b.start < a.end) throw badRequest('Two ranges overlap on the same day');
+    return tx(async (c) => {
+      await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`timetable:${i.id}`]);
+      const cats = new Set((await c.query('SELECT id FROM price_categories WHERE venue_id=$1 AND active', [i.id])).rows.map((x) => x.id));
+      for (const r of rows) if (r.category_id && !cats.has(r.category_id)) throw badRequest('That category is not available for this venue');
+      const courts = (await c.query('SELECT id FROM resources WHERE venue_id=$1 AND active', [i.id])).rows.map((r) => r.id);
+      const targets = i.all_courts ? courts : i.resource_ids;
+      for (const t of targets) if (!courts.includes(t)) throw badRequest('One of those courts is not part of this venue');
+      await enableTimetable(c, i.id);
+      const batch = randomUUID();
+      for (const t of targets) {
+        await c.query('UPDATE schedule_windows SET removed_at=now() WHERE resource_id=$1 AND removed_at IS NULL AND valid_from IS NULL AND valid_to IS NULL', [t]);
+        for (const r of rows) await insertWindow(c, i.id, { resource_id: t, category_id: r.category_id, weekdays: r.days, start_min: r.start, end_min: r.end, batch_id: batch });
+      }
+      await syncHours(c, i.id);
+      return { courts: targets.length, windows: rows.length };
+    });
+  },
+});
+
+cap({
   name: 'copy_timetable', method: 'POST', path: '/venues/:id/timetable/copy', tag: TAG,
   summary: "Give other courts the same timetable as one court (replaces theirs). Handy after adding courts.",
   input: z.object({ id, from_resource_id: id, to_resource_ids: z.array(id).min(1).max(100) }),

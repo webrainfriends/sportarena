@@ -392,8 +392,10 @@ cap({
     await mustManage(user, i.id);
     const rows = await many(
       `SELECT b.id, b.reservation_id, b.resource_id, r.name AS resource_name, b.starts_at, b.ends_at, b.quantity, b.slots, b.players, b.status, b.source, b.price_cents, b.discount_cents, b.payment_status, b.note, b.cancel_reason,
-              u.id AS customer_id, u.display_name AS customer, b.guest_name_enc, b.guest_phone_enc, rs.code AS reservation_code
+              u.id AS customer_id, u.display_name AS customer, b.guest_name_enc, b.guest_phone_enc, rs.code AS reservation_code,
+              oi.id AS open_invoice_id, (oi.total_cents - oi.credits_cents) AS open_invoice_due_cents
          FROM bookings b JOIN resources r ON r.id=b.resource_id JOIN users u ON u.id=b.user_id LEFT JOIN reservations rs ON rs.id=b.reservation_id
+         LEFT JOIN invoices oi ON oi.reservation_id=b.reservation_id AND oi.venue_id=r.venue_id AND oi.kind='invoice' AND oi.status='open'
         WHERE r.venue_id=$1 AND b.starts_at < $3 AND b.ends_at > $2 AND ($4::uuid IS NULL OR b.resource_id=$4) AND ($5 OR b.status <> 'cancelled') ORDER BY b.starts_at, r.name`,
       [i.id, i.from, i.to, i.resource_id ?? null, i.include_cancelled]);
     if (rows.some((r) => r.guest_name_enc || r.guest_phone_enc)) await audit(null, user.id, 'read_pii', 'bookings', i.id);
