@@ -4,6 +4,7 @@ import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { useNav } from '../nav';
+import { useLayout } from '../layout';
 import { Btn, Card, Empty, ErrorBox, H1, H2, Loading, Screen, Seg, T } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { c, fam, toneFor, day } from '../theme';
@@ -50,14 +51,14 @@ function parseStats(txt) {
 
 // ---------- sport profile card ----------
 
-function SportCard({ p, width, onOpen, onDefault, onLog }) {
+function SportCard({ p, width, onOpen, onDefault, onLog, selected }) {
   const tone = toneFor(p.sport_slug);
   const s = p.summary;
   const top = p.metrics.slice(0, 3);
   const line = [p.position, p.jersey_no !== null ? `#${p.jersey_no}` : null, p.club].filter(Boolean).join(' · ');
   return (
     <Pressable onPress={onOpen} style={({ pressed }) => [{ width }, pressed ? { opacity: 0.94, transform: [{ scale: 0.99 }] } : null]}>
-      <View style={{ backgroundColor: c.paper, borderRadius: 20, borderWidth: p.is_default ? 2 : 1, borderColor: p.is_default ? tone[0] : c.line, overflow: 'hidden', ...(Platform.OS === 'web' ? { boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 8px 24px rgba(15,23,42,0.07)' } : { elevation: 2 }) }}>
+      <View style={{ backgroundColor: c.paper, borderRadius: 20, borderWidth: p.is_default || selected ? 2 : 1, borderColor: selected ? c.ink : p.is_default ? tone[0] : c.line, overflow: 'hidden', ...(Platform.OS === 'web' ? { boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 8px 24px rgba(15,23,42,0.07)' } : { elevation: 2 }) }}>
         <View style={{ height: 6, backgroundColor: tone[0] }} />
         <View style={{ padding: 16, gap: 14 }}>
           <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
@@ -168,42 +169,66 @@ function LogMatchSheet({ p, onClose, onDone }) {
 function MySports() {
   const { push } = useNav();
   const { toast } = useSession();
-  const { cols, gap, w } = useCols();
+  const { tablet } = useLayout();
+  const { gap, w } = useCols();
   const list = useLoad(() => api.get('/me/sport-profiles'), []);
   const [add, setAdd] = useState(false);
   const [log, setLog] = useState(null);
+  const [sel, setSel] = useState(null);
   const profiles = list.data ?? [];
   const totals = useMemo(() => profiles.reduce((a, p) => ({ matches: a.matches + p.summary.matches, wins: a.wins + p.summary.wins }), { matches: 0, wins: 0 }), [profiles]);
   const makeDefault = async (p) => { try { await api.post(`/me/sport-profiles/${p.id}/default`); await list.reload(); toast(`${p.sport} is now your default`); } catch (e) { toast(e.message); } };
+  const split = tablet && profiles.length > 0;
+  const selId = profiles.find((p) => p.id === sel)?.id ?? profiles[0]?.id;
 
+  const header = (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 }}>
+      <View style={{ flexShrink: 1 }}>
+        <H1 style={{ fontSize: 30 }}>My sports</H1>
+        <T size={14} color={c.mute} style={{ marginTop: 2 }}>{profiles.length ? `${profiles.length} sport${profiles.length > 1 ? 's' : ''} · ${totals.matches} match${totals.matches === 1 ? "" : "es"} · ${totals.wins} win${totals.wins === 1 ? "" : "s"}` : 'One card per sport you play.'}</T>
+      </View>
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        <Btn small title="Import" color={c.paper} onPress={() => push('ImportMatches', { id: selId ?? profiles[0]?.id })} disabled={!profiles.length} />
+        <Btn small title="+ Add sport" onPress={() => setAdd(true)} />
+      </View>
+    </View>
+  );
+  const cards = (width) => profiles.map((p) => (
+    <SportCard key={p.id} p={p} width={width} selected={split && p.id === selId} onOpen={() => (split ? setSel(p.id) : push('SportProfile', { id: p.id }))} onDefault={() => makeDefault(p)} onLog={() => setLog(p)} />
+  ));
+  const sheets = (
+    <>
+      <AddProfileSheet visible={add} onClose={() => setAdd(false)} first={!profiles.length} onDone={list.reload} />
+      {log ? <LogMatchSheet p={log} onClose={() => setLog(null)} onDone={list.reload} /> : null}
+    </>
+  );
+
+  // tablet: master–detail — the cards on the left, the selected sport's page on the right
+  if (split) {
+    return (
+      <View style={{ flex: 1, flexDirection: 'row' }}>
+        <View style={{ width: 396, borderRightWidth: 1, borderColor: c.line }}>
+          <Screen padBottom={130}>
+            {header}
+            <View style={{ gap: 14, marginTop: 16 }}>{cards('100%')}</View>
+          </Screen>
+        </View>
+        <View style={{ flex: 1 }}><SportProfile key={selId} id={selId} embedded onChanged={list.reload} onRemoved={() => { setSel(null); list.reload(); }} /></View>
+        {sheets}
+      </View>
+    );
+  }
   return (
     <Screen wide>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, marginTop: 6 }}>
-        <View style={{ flexShrink: 1 }}>
-          <T weight="700" size={12} color={c.pink} style={{ letterSpacing: 1.2 }}>PLAYER</T>
-          <H1 style={{ fontSize: 28 }}>My sports</H1>
-          <T size={14} color={c.mute} style={{ marginTop: 2 }}>{profiles.length ? `${profiles.length} sport${profiles.length > 1 ? 's' : ''} · ${totals.matches} matches logged · ${totals.wins} wins` : 'One card per sport you play.'}</T>
-        </View>
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          <Btn small title="Import matches" color={c.paper} onPress={() => push('ImportMatches', { id: profiles[0]?.id })} disabled={!profiles.length} />
-          <Btn small title="+ Add sport" onPress={() => setAdd(true)} />
-        </View>
-      </View>
-
+      {header}
       <View style={{ marginTop: 18 }}>
         {list.loading && !list.data ? <Loading /> : list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : !profiles.length ? (
           <Empty emoji="🏅" title="No sport profiles yet" sub="Add the sports you play to track your matches and performance — one card each, your favourite first." />
         ) : (
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap }}>
-            {profiles.map((p) => (
-              <SportCard key={p.id} p={p} width={w} onOpen={() => push('SportProfile', { id: p.id })} onDefault={() => makeDefault(p)} onLog={() => setLog(p)} />
-            ))}
-          </View>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap }}>{cards(w)}</View>
         )}
       </View>
-
-      <AddProfileSheet visible={add} onClose={() => setAdd(false)} first={!profiles.length} onDone={list.reload} />
-      {log ? <LogMatchSheet p={log} onClose={() => setLog(null)} onDone={list.reload} /> : null}
+      {sheets}
     </Screen>
   );
 }
@@ -215,14 +240,13 @@ let lastSection = 'sports'; // survive pushing into a sport page and coming back
 
 export function PlayerHome() {
   const [sec, setSec] = useState(lastSection);
+  const { gutter, contentMax } = useLayout();
   const pick = (v) => { lastSection = v; setSec(v); };
   const Body = SECTIONS.find((x) => x[0] === sec)[2];
   return (
     <View style={{ flex: 1 }}>
-      <View style={{ backgroundColor: c.paper, borderBottomWidth: 1, borderColor: c.line }}>
-        <View style={{ width: '100%', maxWidth: 1120, alignSelf: 'center', paddingHorizontal: 16, paddingVertical: 6 }}>
-          <Seg options={SECTIONS.map(([value, label]) => ({ value, label }))} value={sec} onChange={pick} />
-        </View>
+      <View style={{ width: '100%', maxWidth: contentMax, alignSelf: 'center', paddingHorizontal: gutter - 0, paddingTop: 8 }}>
+        <Seg options={SECTIONS.map(([value, label]) => ({ value, label }))} value={sec} onChange={pick} />
       </View>
       <View style={{ flex: 1 }}><Body key={sec} /></View>
     </View>
@@ -231,7 +255,7 @@ export function PlayerHome() {
 
 // ---------- one sport: detail + match log ----------
 
-export function SportProfile({ id }) {
+export function SportProfile({ id, embedded, onChanged, onRemoved }) {
   const { push, back } = useNav();
   const { toast } = useSession();
   const prof = useLoad(() => api.get('/me/sport-profiles'), []);
@@ -239,7 +263,7 @@ export function SportProfile({ id }) {
   const [edit, setEdit] = useState(false);
   const [log, setLog] = useState(false);
   const p = prof.data?.find((x) => x.id === id);
-  const reload = async () => { await Promise.all([prof.reload(), matches.reload()]); };
+  const reload = async () => { await Promise.all([prof.reload(), matches.reload()]); onChanged?.(); };
 
   if (prof.loading && !prof.data) return <Screen><Loading /></Screen>;
   if (prof.error) return <Screen><ErrorBox error={prof.error} onRetry={prof.reload} /></Screen>;
@@ -319,7 +343,7 @@ export function SportProfile({ id }) {
       </View>
 
       <View style={{ marginTop: 28, alignItems: 'flex-start' }}>
-        <Btn small title="Remove this sport" color={c.paper} ink={c.red} onPress={async () => { try { await api.del(`/me/sport-profiles/${p.id}`); toast('Sport removed'); back(); } catch (e) { toast(e.message); } }} />
+        <Btn small title="Remove this sport" color={c.paper} ink={c.red} onPress={async () => { try { await api.del(`/me/sport-profiles/${p.id}`); toast('Sport removed'); if (embedded) onRemoved?.(); else back(); } catch (e) { toast(e.message); } }} />
         <T size={12} color={c.mute} style={{ marginTop: 6 }}>Removing a sport also deletes the matches logged under it.</T>
       </View>
 
