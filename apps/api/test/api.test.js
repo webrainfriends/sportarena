@@ -30,6 +30,14 @@ before(async () => {
 });
 after(async () => { server.close(); await pool.end(); });
 
+test('every persona can add a profile for any catalogue sport, including newly seeded ones', async () => {
+  for (const [role, slug] of [['athlete', 'judo'], ['coach', 'curling'], ['referee', 'sepak-takraw'], ['physio', 'diving'], ['doctor', 'weightlifting']]) {
+    const u = await signup([role]);
+    const r = await api('POST', '/me/sport-profiles', { token: u.token, body: { sport: slug, role, level: 'amateur' } });
+    assert.equal(r.status, 201, `${role}/${slug}: ${JSON.stringify(r.body)}`);
+  }
+});
+
 test('personal identification data is encrypted at rest and decrypts for its owner only', async () => {
   const u = await signup(['athlete'], { full_name: 'Priya Sharma', phone: '+91 98765 43210', national_id: 'ABCDE1234F', dob: '2001-04-09', address: '12 MG Road, Pune' });
   const { rows: [raw] } = await pool.query('SELECT * FROM users WHERE id=$1', [u.id]);
@@ -239,7 +247,11 @@ test('MCP: same capabilities as REST, same auth rules', async () => {
   assert.equal(tools.length, capabilities.length);
   assert.ok(tools.find((t) => t.name === 'create_booking').inputSchema.properties.resource_id);
   const pub = await rpc('tools/call', { name: 'list_sports', arguments: {} });
-  assert.ok(pub.structuredContent.result.length >= 12 && pub.structuredContent.result.some((s) => s.slug === 'basketball'));
+  assert.ok(pub.structuredContent.result.length >= 100 && pub.structuredContent.result.some((s) => s.slug === 'basketball'));
+  const slugs = new Set(pub.structuredContent.result.map((s) => s.slug));
+  for (const slug of ['judo', 'curling', 'sepak-takraw', 'diving', 'weightlifting', 'biathlon', 'kabaddi', 'table-tennis']) assert.ok(slugs.has(slug), `${slug} missing from the catalogue`);
+  const winter = await rpc('tools/call', { name: 'list_sports', arguments: { programme: 'olympic_winter' } });
+  assert.ok(winter.structuredContent.result.some((s) => s.slug === 'curling') && !winter.structuredContent.result.some((s) => s.slug === 'judo'));
   const anon = await rpc('tools/call', { name: 'get_me', arguments: {} });
   assert.equal(anon.isError, true);
   assert.equal(JSON.parse(anon.content[0].text).code, 'unauthorized');

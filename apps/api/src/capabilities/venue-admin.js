@@ -23,7 +23,7 @@ const csv = (schema) => z.union([z.array(schema), z.string().transform((s) => s.
 cap({
   name: 'create_sport', method: 'POST', path: '/sports', tag: TAG, auth: ['venue_manager', 'organizer'], status: 201,
   summary: 'Add a sport that is not in the catalogue yet so venues can offer it (a venue can host any sport). Returns the existing one if the name is already there.',
-  input: z.object({ name: z.string().min(2).max(40), emoji: z.string().max(8).optional(), scoring: z.enum(['points', 'time', 'distance', 'goals', 'sets']).default('points') }),
+  input: z.object({ name: z.string().min(2).max(40), emoji: z.string().max(8).optional(), scoring: z.enum(['points', 'time', 'distance', 'goals', 'sets', 'judged', 'weight', 'combat']).default('points') }),
   async handler(_, i) {
     const slug = i.name.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
     if (slug.length < 2) throw badRequest('Give the sport a name with letters or digits');
