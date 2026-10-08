@@ -19,6 +19,10 @@ export async function describePurpose(c, type, id) {
     const h = await q("SELECT h.hirer_id AS payer_id, h.total_cents AS amount, h.status, h.payment_status, u.display_name FROM coach_hires h JOIN users u ON u.id=h.coach_id WHERE h.id=$1 FOR UPDATE OF h");
     return h && { payerId: h.payer_id, amount: Number(h.amount), name: `Coaching session with ${h.display_name}`, payable: h.payment_status === 'unpaid' && h.status !== 'cancelled' };
   }
+  if (type === 'appointment') {
+    const a = await q("SELECT a.athlete_id AS payer_id, a.fee_cents AS amount, a.currency, a.status, a.payment_status, u.display_name FROM appointments a JOIN users u ON u.id=a.provider_id WHERE a.id=$1 FOR UPDATE OF a");
+    return a && { payerId: a.payer_id, amount: Number(a.amount), currency: a.currency, name: `Appointment with ${a.display_name}`, payable: a.payment_status === 'unpaid' && ['requested', 'confirmed'].includes(a.status) };
+  }
   if (type === 'venue_invoice') {
     const i = await q("SELECT i.user_id AS payer_id, i.total_cents - i.credits_cents AS amount, i.currency, i.status, i.number, v.name, v.payment_mode FROM invoices i JOIN venues v ON v.id=i.venue_id WHERE i.id=$1 AND i.kind='invoice' FOR UPDATE OF i");
     return i && { payerId: i.payer_id, amount: Number(i.amount), currency: i.currency, name: `Booking ${i.number} · ${i.name}`, payable: i.status === 'open' && i.payment_mode !== 'pay_at_venue' && Number(i.amount) > 0 };
@@ -45,6 +49,7 @@ async function fulfil(c, type, id) {
     shop_order: "UPDATE shop_orders SET status='placed' WHERE id=$1 AND status='awaiting_payment'",
     coach_hire: "UPDATE coach_hires SET payment_status='paid' WHERE id=$1 AND payment_status='unpaid' AND status<>'cancelled'",
     insurance_policy: "UPDATE insurance_policies SET status='active' WHERE id=$1 AND status='pending_payment'",
+    appointment: "UPDATE appointments SET payment_status='paid', updated_at=now() WHERE id=$1 AND payment_status='unpaid' AND status IN ('requested','confirmed')",
   }[type];
   if (type === 'venue_invoice') return markInvoicePaid(c, id, { method: 'online' });
   if (type === 'wallet_topup') return completeTopup(c, id);
