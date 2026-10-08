@@ -42,6 +42,8 @@ export const config = {
   mediaDir: env.MEDIA_DIR ?? './data/media',
   // Venues that require online payment hold the slots for this many minutes while the customer pays.
   holdMinutes: Number(env.PAYMENT_HOLD_MINUTES ?? 15),
+  // A slot offered from the waitlist is held for the person at the head of the queue for this long.
+  waitlistHoldMinutes: Number(env.WAITLIST_HOLD_MINUTES ?? 15),
   // Notifications: queued emails are POSTed as JSON to this webhook (your SES/SendGrid/n8n bridge). Unset = they stay queued.
   notifyWebhook: { url: env.NOTIFY_WEBHOOK_URL, secret: env.NOTIFY_WEBHOOK_SECRET },
   // Push: phone apps go through the Expo push service; browsers through Web Push (VAPID keys, generated once by the deploy).

@@ -21,10 +21,13 @@ export async function lockResources(c, ids) {
 }
 
 /** Units of a resource already taken in [start, end). */
-export async function usedUnits(c, resourceId, start, end, excludeBooking) {
+export async function usedUnits(c, resourceId, start, end, excludeBooking, holdsFor) {
+  // Slots offered to someone from the waitlist are held for them: taken for everyone else. `holdsFor` = a user id (their own
+  // holds don't count against them) or 'none' (ignore holds: staff overrides).
   const r = await c.query(
-    "SELECT coalesce(sum(quantity),0)::int AS used FROM bookings WHERE resource_id=$1 AND status IN ('confirmed','no_show') AND starts_at < $3 AND ends_at > $2 AND ($4::uuid IS NULL OR id <> $4)",
-    [resourceId, start, end, excludeBooking ?? null]);
+    `SELECT (SELECT coalesce(sum(quantity),0) FROM bookings WHERE resource_id=$1 AND status IN ('confirmed','no_show') AND starts_at < $3 AND ends_at > $2 AND ($4::uuid IS NULL OR id <> $4))::int
+          + CASE WHEN $5::text = 'none' THEN 0 ELSE (SELECT coalesce(sum(w.quantity),0) FROM waitlist_entries w WHERE w.resource_id=$1 AND w.status='offered' AND w.offer_expires_at > now() AND w.starts_at < $3 AND w.ends_at > $2 AND ($5::text IS NULL OR w.user_id::text <> $5)) END::int AS used`,
+    [resourceId, start, end, excludeBooking ?? null, holdsFor ?? null]);
   return r.rows[0].used;
 }
 
@@ -185,7 +188,7 @@ async function placeLine(c, ctx, resource, line, { reservationId, userId, teamId
     const blk = await blockedBy(c, resource.venue_id, resource.id, start, end);
     if (blk) throw conflict(`${resource.name} is blocked then${blk.reason ? ` (${blk.reason})` : ''}`);
   }
-  const used = await usedUnits(c, resource.id, start, end);
+  const used = await usedUnits(c, resource.id, start, end, undefined, staff ? 'none' : userId);
   if (used + qty > resource.capacity) throw conflict(`${resource.name} is not available for that slot (${Math.max(0, resource.capacity - used)} of ${resource.capacity} free)`);
   const priced = priceWindow(ctx, resource, start, end, qty);
   const base = price ?? priced.base_cents;
@@ -243,6 +246,8 @@ export async function addLines(c, rs, { userId, items, team_id, staff = false, s
       problems.push({ index: idx, resource_id: res.id, code: e.code, message: e.message });
     }
   }
+  // anyone who just booked a slot they were queueing for is done waiting
+  for (const l of lines) await c.query("UPDATE waitlist_entries SET status='booked', reservation_id=$1 WHERE user_id=$2 AND resource_id=$3 AND status IN ('waiting','offered') AND starts_at < $5 AND ends_at > $4", [rs.id, userId, l.resource_id, l.starts_at, l.ends_at]);
   const { unused_codes } = await repriceReservation(c, rs.id);
   if (unused_codes.length) {
     // a code that exists but lost to a better discount (or isn't eligible yet) is reported back; one that exists nowhere is an error
@@ -308,7 +313,7 @@ export async function cancelBookings(c, bookingIds, { actor, byVenue, reason, wa
     await c.query("UPDATE bookings SET status='cancelled', refund_cents=$2, cancelled_at=now(), cancelled_by=$3, cancel_reason=$4, payment_status=$5, updated_at=now() WHERE id=$1",
       [id, refund, actor.id, reason ?? null, pay]);
     if (b.reservation_id) touched.add(b.reservation_id);
-    c.afterCommit?.(() => import('./alerts.js').then((m) => m.kickAlerts(venue.id))); // someone may be waiting for exactly this slot
+    c.afterCommit?.(() => import('./freed.js').then((m) => m.kickFreed(venue.id))); // someone may be waiting for exactly this slot
     const what = `${b.resource_name} at ${venue.name}, ${b.starts_at.toISOString()}`;
     const data = { booking_id: id, reservation_id: b.reservation_id, venue_id: venue.id, refund_cents: refund };
     if (silent) { /* the caller sends its own message */ } else if (byVenue && b.user_id !== actor.id) {
@@ -352,10 +357,14 @@ export function daySlots(ctx, resource, date, { bookings, blocks, now = new Date
 }
 
 /** Bookings and blocks of a venue overlapping [from, to). */
-export async function loadBusy(c, venueId, from, to) {
+export async function loadBusy(c, venueId, from, to, forUser) {
   const [b, k] = await Promise.all([
+    // bookings, plus slots held for someone at the head of a waitlist (not shown as held to that person themself)
     c.query(`SELECT b.resource_id, b.starts_at, b.ends_at, b.quantity FROM bookings b JOIN resources r ON r.id=b.resource_id
-              WHERE r.venue_id=$1 AND b.status IN ('confirmed','no_show') AND b.starts_at < $3 AND b.ends_at > $2`, [venueId, from, to]),
+              WHERE r.venue_id=$1 AND b.status IN ('confirmed','no_show') AND b.starts_at < $3 AND b.ends_at > $2
+             UNION ALL
+             SELECT w.resource_id, w.starts_at, w.ends_at, w.quantity FROM waitlist_entries w
+              WHERE w.venue_id=$1 AND w.status='offered' AND w.offer_expires_at > now() AND w.starts_at < $3 AND w.ends_at > $2 AND ($4::text IS NULL OR w.user_id::text <> $4)`, [venueId, from, to, forUser ?? null]),
     c.query('SELECT resource_id, starts_at, ends_at FROM venue_blocks WHERE released_at IS NULL AND venue_id=$1 AND starts_at < $3 AND ends_at > $2', [venueId, from, to]),
   ]);
   return { bookings: b.rows, blocks: k.rows };

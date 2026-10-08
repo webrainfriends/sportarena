@@ -36,7 +36,7 @@ cap({
   name: 'venue_availability', method: 'GET', path: '/venues/:id/availability', tag: TAG, auth: 'public',
   summary: 'Slot grid for one day (venue local date): every area with each slot\'s status (free | booked | blocked | past | too_soon | too_far), free units and price in that slot. This is what a booking screen renders. Filter by sport or a single area.',
   input: z.object({ id, date: z.string().date(), sport: z.string().optional(), resource_id: id.optional() }),
-  async handler(_, i) {
+  async handler({ user }, i) {
     const ctx = await loadVenueCtx(pool, i.id);
     const sport = i.sport ? await sportBySlugOrId(i.sport) : null;
     if (i.sport && !sport) throw notFound('Sport');
@@ -44,7 +44,7 @@ cap({
       `SELECT r.*, s.name AS sport, s.slug AS sport_slug, s.emoji AS sport_emoji FROM resources r LEFT JOIN sports s ON s.id=r.sport_id
         WHERE r.venue_id=$1 AND r.active AND ($2::uuid IS NULL OR r.sport_id=$2) AND ($3::uuid IS NULL OR r.id=$3) ORDER BY r.kind, r.name`, [i.id, sport?.id ?? null, i.resource_id ?? null]);
     const { venue } = ctx;
-    const busy = await loadBusy(pool, i.id, fromLocal(i.date, 0, venue.timezone), fromLocal(addDays(i.date, 1), 0, venue.timezone));
+    const busy = await loadBusy(pool, i.id, fromLocal(i.date, 0, venue.timezone), fromLocal(addDays(i.date, 1), 0, venue.timezone), user?.id);
     const wd = toLocal(fromLocal(i.date, 720, venue.timezone), venue.timezone).weekday;
     return {
       venue: { id: venue.id, name: venue.name, timezone: venue.timezone, currency: venue.currency, active: venue.active },
@@ -62,7 +62,7 @@ cap({
   name: 'venue_calendar', method: 'GET', path: '/venues/:id/calendar', tag: TAG, auth: 'public',
   summary: 'Month calendar of availability for date pickers: for every day of `month` (YYYY-MM, venue local) the status (past | closed | full | limited | available | too_far), free and total slots, and the cheapest free slot price. Filter by sport or one area. One request per month instead of one per day.',
   input: z.object({ id, month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'use YYYY-MM'), sport: z.string().optional(), resource_id: id.optional() }),
-  async handler(_, i) {
+  async handler({ user }, i) {
     const ctx = await loadVenueCtx(pool, i.id);
     const sport = i.sport ? await sportBySlugOrId(i.sport) : null;
     if (i.sport && !sport) throw notFound('Sport');
@@ -72,7 +72,7 @@ cap({
     const first = `${i.month}-01`;
     const next = new Date(`${first}T00:00:00Z`); next.setUTCMonth(next.getUTCMonth() + 1);
     const last = addDays(next.toISOString().slice(0, 10), -1);
-    const busy = await loadBusy(pool, i.id, fromLocal(first, 0, venue.timezone), fromLocal(addDays(last, 1), 0, venue.timezone));
+    const busy = await loadBusy(pool, i.id, fromLocal(first, 0, venue.timezone), fromLocal(addDays(last, 1), 0, venue.timezone), user?.id);
     const today = toLocal(new Date(), venue.timezone).date;
     const limit = addDays(today, venue.max_advance_days);
     const days = [];
@@ -310,7 +310,7 @@ cap({
         const blk = await blockedBy(c, res.venue_id, res.id, start, end);
         if (blk) throw conflict(`${res.name} is blocked then${blk.reason ? ` (${blk.reason})` : ''}`);
       }
-      const used = await usedUnits(c, res.id, start, end, b.id);
+      const used = await usedUnits(c, res.id, start, end, b.id, staff ? 'none' : user.id);
       if (used + qty > res.capacity) throw conflict(`${res.name} is not available for that slot (${Math.max(0, res.capacity - used)} of ${res.capacity} free)`);
       const base = b.source === 'admin' && b.base_cents === 0 ? 0 : priceWindow(ctx, res, start, end, qty).base_cents; // staff comps stay comps
       await c.query('UPDATE bookings SET resource_id=$2, starts_at=$3, ends_at=$4, quantity=$5, slots=$6, players=$7, base_cents=$8, price_cents=$8-discount_cents, reminded_at=NULL, updated_at=now() WHERE id=$1',
