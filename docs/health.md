@@ -43,4 +43,29 @@ for unverified providers (consent already protects athletes). Making verificatio
 `requested → confirmed → completed`, `cancelled` until completed; final states cannot change; the other party is
 notified; `cancelled_by` and `updated_at` are recorded.
 
-Payment, follow-ups and external booking: see the next health change.
+## Payment (SPOR-60)
+Appointments are a payable purpose (`payments.purpose_type = 'appointment'`) using the same hosted checkout as coach
+hires. The fee is the provider's consultation fee (or their hourly rate pro-rated); it is `unpaid` only when a payment
+provider is enabled and the fee is above zero. The provider cannot confirm or complete an unpaid appointment; cancelling a
+paid one refunds at the provider first (if the provider refuses, nothing is cancelled). The payment provider only ever sees
+"Appointment with <provider name>" and the amount, never the reason. Payouts to providers do not exist yet.
+
+## Follow-ups (SPOR-75, SPOR-76)
+`appointment_followups` link back to the appointment. The provider agrees `create_followup` (due date or window, plain
+`instruction_summary`, optional encrypted `details`). The athlete tracks them with `list_my_followups`, and can mark them
+done, cancel, change the date, or book the visit (`book_appointment` with `followup_id`: `due → booked → done`; a cancelled
+visit puts it back to `due`). Sensitive `details` are encrypted, readable by the athlete or by a provider with an active full
+consent, and every read is audit-logged. Provider-private clinical notes stay in `medical_records` and never appear here.
+The worker sends one generic reminder per follow-up (and per confirmed appointment) inside each user's reminder window;
+mute settings apply and the text never says what it is about.
+
+## Third-party booking (SPOR-77)
+A provider can say they take bookings on another site (`upsert_provider_profile.external_booking`, adapters in
+`src/health/external-booking.js`: `generic`, `calendly`, `cal_com`; https only, no credentials in the link, host checked
+per adapter). Patients get the address plus a mandatory notice that they are leaving SportArena
+(`start_external_booking`). Afterwards `link_external_booking` records the booking: only the external provider, reference,
+address, sync status and timestamps are stored, one SportArena appointment per `(provider, external provider, reference)`
+(repeat calls update, never duplicate; someone else's reference cannot be claimed). The provider (or their integration with
+an API token) reports changes with `reconcile_external_booking`, which applies the same status rules as everywhere else.
+No scraping and no stored third-party credentials. Where a system offers an API, an adapter can add a `sync` hook later;
+none is implemented yet.

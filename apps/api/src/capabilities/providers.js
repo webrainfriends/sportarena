@@ -9,12 +9,14 @@ import { PUBLIC_USER } from '../helpers.js';
 import { withBadges } from '../verification.js';
 import { addDays, fmtMin, hhmm, toLocal, validTimezone } from '../booking/time.js';
 import { MAX_RANGE_DAYS, loadSchedule, openSlots } from '../health/slots.js';
+import { ADAPTER_IDS, adapterFor } from '../health/external-booking.js';
 
 const TAG = 'Health';
 const TYPES = ['physio', 'doctor'];
 const SHORT = z.string().min(1).max(60);
 
-const PROFILE_COLS = `pp.headline, pp.bio, pp.clinic, pp.city, pp.in_person, pp.remote_ok, pp.languages, pp.specialties, pp.accepting_patients, pp.timezone, pp.slot_min`;
+const PROFILE_COLS = `pp.headline, pp.bio, pp.clinic, pp.city, pp.in_person, pp.remote_ok, pp.languages, pp.specialties, pp.accepting_patients, pp.timezone, pp.slot_min, pp.external_provider, pp.external_booking_url`;
+const external = ({ external_provider, external_booking_url, ...r }) => ({ ...r, external_booking: external_booking_url ? { provider: external_provider, label: adapterFor(external_provider)?.label ?? external_provider, url: external_booking_url } : null });
 
 cap({
   name: 'upsert_provider_profile', method: 'POST', path: '/me/provider-profile', tag: TAG, auth: ['physio', 'doctor'],
@@ -23,19 +25,22 @@ cap({
     provider_type: z.enum(TYPES), headline: z.string().max(120).nullable().optional(), bio: z.string().max(2000).nullable().optional(), clinic: z.string().max(120).nullable().optional(), city: z.string().max(80).nullable().optional(),
     in_person: z.boolean().optional(), remote_ok: z.boolean().optional(), languages: z.array(SHORT).max(10).optional(), specialties: z.array(SHORT).max(15).optional(), accepting_patients: z.boolean().optional(),
     currency: z.string().length(3).transform((x) => x.toUpperCase()).nullable().optional(), consult_fee_cents: money.nullable().optional(), timezone: z.string().max(60).optional(), slot_min: z.number().int().min(10).max(240).optional(), listed: z.boolean().optional(),
+    external_booking: z.object({ provider: z.enum(ADAPTER_IDS), url: z.string() }).nullable().optional().describe('where you take bookings on another site; patients are sent there with a clear notice. null removes it'),
   }),
   async handler({ user }, i) {
     if (!user.roles.includes(i.provider_type) && !user.roles.includes('admin')) throw badRequest(`Add the ${i.provider_type} role to your account first`);
     if (i.timezone && !validTimezone(i.timezone)) throw badRequest('Unknown time zone');
     if (!i.in_person && i.in_person !== undefined && i.remote_ok === false) throw badRequest('Offer in-person, remote or both');
+    if (i.external_booking) adapterFor(i.external_booking.provider).check(i.external_booking.url);
     const cur = await one('SELECT * FROM provider_profiles WHERE user_id=$1', [user.id]);
     const v = (k, d) => (i[k] === undefined ? cur?.[k] ?? d : i[k]);
+    const ext = i.external_booking === undefined ? [cur?.external_provider ?? null, cur?.external_booking_url ?? null] : i.external_booking ? [i.external_booking.provider, i.external_booking.url] : [null, null];
     return one(
-      `INSERT INTO provider_profiles(user_id, provider_type, headline, bio, clinic, city, in_person, remote_ok, languages, specialties, accepting_patients, currency, consult_fee_cents, timezone, slot_min, listed)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
-       ON CONFLICT (user_id) DO UPDATE SET provider_type=$2, headline=$3, bio=$4, clinic=$5, city=$6, in_person=$7, remote_ok=$8, languages=$9, specialties=$10, accepting_patients=$11, currency=$12, consult_fee_cents=$13, timezone=$14, slot_min=$15, listed=$16, updated_at=now()
+      `INSERT INTO provider_profiles(user_id, provider_type, headline, bio, clinic, city, in_person, remote_ok, languages, specialties, accepting_patients, currency, consult_fee_cents, timezone, slot_min, listed, external_provider, external_booking_url)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+       ON CONFLICT (user_id) DO UPDATE SET provider_type=$2, headline=$3, bio=$4, clinic=$5, city=$6, in_person=$7, remote_ok=$8, languages=$9, specialties=$10, accepting_patients=$11, currency=$12, consult_fee_cents=$13, timezone=$14, slot_min=$15, listed=$16, external_provider=$17, external_booking_url=$18, updated_at=now()
        RETURNING *`,
-      [user.id, i.provider_type, v('headline', null), v('bio', null), v('clinic', null), v('city', null), v('in_person', true), v('remote_ok', false), v('languages', []), v('specialties', []), v('accepting_patients', true), v('currency', null), v('consult_fee_cents', null), v('timezone', 'UTC'), v('slot_min', 30), v('listed', true)]);
+      [user.id, i.provider_type, v('headline', null), v('bio', null), v('clinic', null), v('city', null), v('in_person', true), v('remote_ok', false), v('languages', []), v('specialties', []), v('accepting_patients', true), v('currency', null), v('consult_fee_cents', null), v('timezone', 'UTC'), v('slot_min', 30), v('listed', true), ext[0], ext[1]]);
   },
 });
 
@@ -132,7 +137,7 @@ cap({
       rows = withSlots.slice(i.offset, i.offset + i.limit);
     } else rows = await many(`${sql} LIMIT $15 OFFSET $16`, [...params, i.limit, i.offset]);
     const out = await withBadges('user', rows);
-    return out.map(({ has_hours, ...r }) => ({ ...r, verified: r.verified, book: { capability: 'book_appointment', provider_id: r.id }, consent: { capability: 'grant_medical_access', provider_id: r.id } }));
+    return out.map(({ has_hours, ...r0 }) => external(r0)).map((r) => ({ ...r, book: { capability: 'book_appointment', provider_id: r.id }, consent: { capability: 'grant_medical_access', provider_id: r.id } }));
   },
 });
 
@@ -149,7 +154,7 @@ cap({
     if (!row || row.listed === false) throw notFound('Provider');
     const sched = await loadSchedule(i.id);
     const [withB] = await withBadges('user', [row]);
-    const { listed, ...pub } = withB;
+    const { listed, ...pub } = external(withB);
     return { ...pub, currency: pub.currency ?? config.payments.currency, hours: { timezone: sched.timezone, slot_min: sched.slot_min, windows: sched.windows.map((w) => ({ weekday: w.weekday, start: fmtMin(w.start_min), end: fmtMin(w.end_min) })) } };
   },
 });

@@ -3,6 +3,8 @@ import { cap, id, page } from '../registry.js';
 import { one, many, query, tx } from '../db.js';
 import { notify } from '../notify.js';
 import { isBookable } from '../health/slots.js';
+import { config } from '../config.js';
+import { paymentsEnabled, refundFor } from '../payments/service.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { audit, isAdmin, mustFind, PUBLIC_USER } from '../helpers.js';
 import { decrypt, encrypt } from '../crypto.js';
@@ -24,7 +26,7 @@ cap({
 cap({
   name: 'book_appointment', method: 'POST', path: '/appointments', tag: 'Health', status: 201,
   summary: 'Request an appointment with a physio/doctor. If the provider has published weekly hours the time must be one of list_provider_slots (and not clash with time off or another appointment); otherwise any free time can be requested. The reason is encrypted. The provider is notified.',
-  input: z.object({ provider_id: id, starts_at: dt, duration_min: z.number().int().min(10).max(240).default(30), reason: z.string().max(1000).optional() }),
+  input: z.object({ provider_id: id, starts_at: dt, duration_min: z.number().int().min(10).max(240).default(30), mode: z.enum(['in_person', 'remote']).default('in_person'), followup_id: id.optional().describe('the follow-up this appointment is for'), reason: z.string().max(1000).optional() }),
   async handler({ user }, i) {
     if (i.provider_id === user.id) throw badRequest('Cannot book yourself');
     const p = await one("SELECT 1 FROM sport_profiles WHERE user_id=$1 AND role IN ('physio','doctor') UNION SELECT 1 FROM provider_profiles WHERE user_id=$1", [i.provider_id]);
@@ -33,13 +35,29 @@ cap({
     return tx(async (c) => {
       // one booking at a time per provider so two people cannot take the same slot
       await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`appt:${i.provider_id}`]);
-      const prof = (await c.query('SELECT accepting_patients FROM provider_profiles WHERE user_id=$1', [i.provider_id])).rows[0];
+      const prof = (await c.query('SELECT accepting_patients, in_person, remote_ok, consult_fee_cents, currency FROM provider_profiles WHERE user_id=$1', [i.provider_id])).rows[0];
       if (prof && !prof.accepting_patients) throw conflict('This provider is not taking new appointments right now');
+      if (prof && (i.mode === 'remote' ? !prof.remote_ok : !prof.in_person)) throw badRequest(`This provider does not offer ${i.mode === 'remote' ? 'remote' : 'in-person'} appointments`);
+      let followup = null;
+      if (i.followup_id) {
+        followup = (await c.query('SELECT * FROM appointment_followups WHERE id=$1 AND athlete_id=$2 AND provider_id=$3 FOR UPDATE', [i.followup_id, user.id, i.provider_id])).rows[0];
+        if (!followup) throw notFound('Follow-up');
+        if (followup.status !== 'due') throw conflict(`That follow-up is ${followup.status}`);
+      }
+      // price: the provider's consultation fee, else the hourly rate on their sport profile for this length
+      let fee = prof?.consult_fee_cents == null ? null : Number(prof.consult_fee_cents);
+      if (fee === null) {
+        const rate = Number((await c.query("SELECT min(hourly_rate_cents) AS r FROM sport_profiles WHERE user_id=$1 AND role IN ('physio','doctor') AND hourly_rate_cents > 0", [i.provider_id])).rows[0].r ?? 0);
+        fee = Math.round((rate * i.duration_min) / 60);
+      }
       const slot = await isBookable(i.provider_id, i.starts_at, i.duration_min, c);
       if (slot.grid && !slot.ok) throw conflict('That time is not available. Pick one of the provider\'s open slots.');
       const clash = (await c.query("SELECT 1 FROM appointments WHERE provider_id=$1 AND status IN ('requested','confirmed') AND starts_at < $2::timestamptz + make_interval(mins => $3) AND starts_at + make_interval(mins => duration_min) > $2", [i.provider_id, i.starts_at, i.duration_min])).rows[0];
       if (clash) throw conflict('Provider is not free then');
-      const a = (await c.query('INSERT INTO appointments(athlete_id, provider_id, starts_at, duration_min, reason_enc) VALUES ($1,$2,$3,$4,$5) RETURNING id, athlete_id, provider_id, starts_at, duration_min, status', [user.id, i.provider_id, i.starts_at, i.duration_min, encrypt(i.reason, 'appointments.reason')])).rows[0];
+      const a = (await c.query(
+        'INSERT INTO appointments(athlete_id, provider_id, starts_at, duration_min, reason_enc, fee_cents, currency, payment_status, mode) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id, athlete_id, provider_id, starts_at, duration_min, status, mode, fee_cents, currency, payment_status',
+        [user.id, i.provider_id, i.starts_at, i.duration_min, encrypt(i.reason, 'appointments.reason'), fee, prof?.currency ?? config.payments.currency, paymentsEnabled() && fee > 0 ? 'unpaid' : 'not_required', i.mode])).rows[0];
+      if (followup) await c.query("UPDATE appointment_followups SET status='booked', booked_appointment_id=$2, updated_at=now() WHERE id=$1", [followup.id, a.id]);
       await notify(c, i.provider_id, { kind: 'appointment_requested', title: 'New appointment request', body: 'Open Health to confirm or decline it.', data: { appointment_id: a.id } });
       return a;
     });
@@ -73,7 +91,17 @@ cap({
       if (!isProvider && !isAthlete && !isAdmin(user)) throw forbidden();
       if (i.status !== 'cancelled' && !isProvider) throw forbidden('Only the provider can confirm or complete');
       if (!NEXT[a.status].includes(i.status)) throw conflict(`A ${a.status} appointment cannot become ${i.status}`);
-      const row = (await c.query('UPDATE appointments SET status=$2, updated_at=now(), cancelled_by=CASE WHEN $2 = \'cancelled\' THEN $3::uuid ELSE cancelled_by END WHERE id=$1 RETURNING id, athlete_id, provider_id, starts_at, duration_min, status', [i.id, i.status, user.id])).rows[0];
+      if (i.status === 'confirmed' && a.payment_status === 'unpaid') throw conflict('Waiting for the athlete to pay');
+      if (i.status === 'completed' && a.payment_status === 'unpaid') throw conflict('This appointment has not been paid for');
+      let payment = a.payment_status;
+      if (i.status === 'cancelled' && a.payment_status === 'paid') {
+        await refundFor('appointment', a.id);      // refund at the provider first; if it refuses nothing is cancelled
+        payment = 'refunded';
+      }
+      const row = (await c.query('UPDATE appointments SET status=$2, payment_status=$4, updated_at=now(), cancelled_by=CASE WHEN $2 = \'cancelled\' THEN $3::uuid ELSE cancelled_by END WHERE id=$1 RETURNING id, athlete_id, provider_id, starts_at, duration_min, status, payment_status', [i.id, i.status, user.id, payment])).rows[0];
+      // follow-ups follow the appointment they were booked into
+      if (i.status === 'completed') await c.query("UPDATE appointment_followups SET status='done', completed_at=now(), closed_by=$2, updated_at=now() WHERE booked_appointment_id=$1 AND status='booked'", [a.id, user.id]);
+      if (i.status === 'cancelled') await c.query("UPDATE appointment_followups SET status='due', booked_appointment_id=NULL, updated_at=now() WHERE booked_appointment_id=$1 AND status='booked'", [a.id]);
       const other = isProvider ? a.athlete_id : a.provider_id;
       if (other !== user.id) await notify(c, other, { kind: 'appointment_update', title: `Appointment ${i.status}`, body: 'Open Health to see the details.', data: { appointment_id: a.id } });
       return row;

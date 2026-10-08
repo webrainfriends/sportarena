@@ -87,9 +87,33 @@ export async function dispatchPending({ limit = 50 } = {}) {
   return { configured: true, pending: pending - sent, sent, failed };
 }
 
+/**
+ * Health reminders, atomically claimed (safe on several instances). Wording is generic on purpose: email and push leave the
+ * system in clear text, so they never say what the appointment or follow-up is about. Users' mute settings still apply (notify()).
+ */
+export async function queueHealthReminders() {
+  const appts = await pool.query(
+    `UPDATE appointments a SET reminded_at = now() FROM users u
+      LEFT JOIN notification_prefs p ON p.user_id = u.id
+     WHERE u.id = a.athlete_id AND a.status = 'confirmed' AND a.reminded_at IS NULL AND a.starts_at > now()
+       AND a.starts_at <= now() + make_interval(hours => coalesce(p.reminder_hours, 24))
+    RETURNING a.id, a.athlete_id, a.provider_id, a.starts_at`);
+  for (const a of appts.rows) {
+    for (const uid of [a.athlete_id, a.provider_id]) await notify(null, uid, { kind: 'appointment_reminder', title: 'Appointment coming up', body: `You have an appointment on ${a.starts_at.toISOString()}.`, data: { appointment_id: a.id } });
+  }
+  const fups = await pool.query(
+    `UPDATE appointment_followups f SET reminder_sent_at = now()
+      FROM users u LEFT JOIN notification_prefs p ON p.user_id = u.id
+     WHERE u.id = f.athlete_id AND f.status = 'due' AND f.reminder_sent_at IS NULL
+       AND f.due_on <= current_date + ceil(coalesce(p.reminder_hours, 24) / 24.0)::int
+    RETURNING f.id, f.athlete_id`);
+  for (const f of fups.rows) await notify(null, f.athlete_id, { kind: 'followup_reminder', title: 'Follow-up due', body: 'You have a follow-up coming up. Open Health to book it.', data: { followup_id: f.id } });
+  return appts.rowCount + fups.rowCount;
+}
+
 /** One tick of the background worker. */
 export async function notificationCycle() {
-  const reminders = await queueReminders();
+  const reminders = (await queueReminders()) + (await queueHealthReminders());
   const { dispatchPush } = await import('./push.js');
   const push = await dispatchPush();
   return { reminders, push, ...(await dispatchPending()) };
