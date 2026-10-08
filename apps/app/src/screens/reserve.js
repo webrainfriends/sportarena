@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Linking, Platform, ScrollView, View } from 'react-native';
+import { Linking, Platform, ScrollView, Share, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
@@ -10,7 +10,7 @@ import { FormSheet } from '../FormSheet';
 import { c } from '../theme';
 import { PaySheet } from '../PaySheet';
 import { KIND } from './book';
-import { addDays, dateTimeIn, dayLabel, hoursSummary, localToIso, moneyIn, timeIn, todayIn } from '../vtime';
+import { addDays, dateTimeIn, dayLabel, hoursSummary, localToIso, moneyIn, offerLabel, timeIn, todayIn } from '../vtime';
 
 const open = (url) => (Platform.OS === 'web' ? window.open(url, '_blank', 'noopener') : Linking.openURL(url));
 const Line = ({ k, v, strong }) => <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 }}><T color={c.mute} weight={strong ? '700' : '500'}>{k}</T><T weight={strong ? '700' : '600'}>{v}</T></View>;
@@ -101,6 +101,20 @@ export function Basket() {
 }
 
 // ------------------------------------------------------------------ reservation detail
+const icsTime = (iso) => new Date(iso).toISOString().replace(/[-:]|\.\d{3}/g, '');
+const icsText = (t) => String(t).replace(/([,;\\])/g, '\\$1').replace(/\n/g, '\\n');
+/** An .ics calendar file with one event per active slot (opens in Apple/Google/Outlook calendars). */
+export function icsFor(r) {
+  const ev = r.bookings.filter((b) => b.status === 'confirmed').map((b) => ['BEGIN:VEVENT', `UID:${b.id}@sportarena`, `DTSTAMP:${icsTime(new Date().toISOString())}`, `DTSTART:${icsTime(b.starts_at)}`, `DTEND:${icsTime(b.ends_at)}`, `SUMMARY:${icsText(`${b.resource_name} · ${b.venue_name}`)}`, `LOCATION:${icsText(b.venue_name)}`, `DESCRIPTION:${icsText(`SportArena booking ${r.code}`)}`, 'END:VEVENT'].join('\r\n'));
+  return ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//SportArena//Booking//EN', ...ev, 'END:VCALENDAR'].join('\r\n');
+}
+function addToCalendar(r, toast) {
+  if (Platform.OS === 'web') {
+    const url = URL.createObjectURL(new Blob([icsFor(r)], { type: 'text/calendar' }));
+    const a = document.createElement('a'); a.href = url; a.download = `booking-${r.code}.ics`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } else Share.share({ message: r.bookings.filter((b) => b.status === 'confirmed').map((b) => `${b.resource_name} · ${b.venue_name}: ${dateTimeIn(b.starts_at, b.timezone)}`).join('\n') + `\nBooking ${r.code}` }).catch(() => toast('Could not share'));
+}
+
 export function Invoice({ id }) {
   const inv = useLoad(() => api.get(`/invoices/${id}`), [id]);
   const { toast } = useSession();
@@ -156,8 +170,14 @@ export function Reservation({ id }) {
   };
   return (
     <Screen>
-      <H1 style={{ marginTop: 8 }}>Booking {x.code}</H1>
-      <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}><Tag label={x.status} color={x.status === 'confirmed' ? c.mint : c.red} /></View>
+      <Card style={{ marginTop: 8 }} pad={18}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <View><T size={11} weight="700" color={c.mute} style={{ letterSpacing: 1.2 }}>BOOKING CODE</T><T size={30} weight="800" style={{ letterSpacing: 3 }}>{x.code}</T></View>
+          <Tag label={x.awaiting_payment ? 'awaiting payment' : x.status} color={x.awaiting_payment ? c.orange : x.status === 'confirmed' ? c.mint : c.red} />
+        </View>
+        <T size={13} color={c.mute} style={{ marginTop: 6 }}>Show this code at the venue. {active[0] ? `Next: ${dateTimeIn(active[0].starts_at, active[0].timezone)}` : ''}</T>
+        {active.length ? <View style={{ flexDirection: 'row', gap: 8, marginTop: 12, flexWrap: 'wrap' }}><Btn small title="📅 Add to calendar" color={c.violet} onPress={() => addToCalendar(x, toast)} /><Btn small title={`Open ${active[0].venue_name}`} color={c.paper} onPress={() => push('Venue', { id: active[0].venue_id })} /></View> : null}
+      </Card>
       <Section title="Your slots" color={c.lime}>
         {x.bookings.map((b) => (
           <Card key={b.id} color={b.status === 'confirmed' ? c.paper : c.violetSoft}>
@@ -291,7 +311,7 @@ export function Compare({ ids }) {
                 <Line k="Hours" v={hoursSummary(col.hours)} />
                 <Line k="Free cancel" v={`${col.policy.cancel_free_hours}h before`} />
                 {v.amenities?.length ? <T size={12} color={c.mute} style={{ marginTop: 4 }}>{v.amenities.join(' · ')}</T> : null}
-                {col.offers.map((o) => <T key={o.id} size={12} color={c.lime} weight="700" style={{ marginTop: 4 }}>🏷️ {o.name}: {o.kind === 'percent' ? `${o.value}% off` : moneyIn(o.value, v.currency) + ' off'}</T>)}
+                {col.offers.map((o) => <T key={o.id} size={12} color={c.lime} weight="700" style={{ marginTop: 4 }}>🏷️ {offerLabel(o, v.currency)}</T>)}
                 {col.window ? (
                   <View style={{ marginTop: 10, gap: 6 }}>
                     <T weight="700">{col.window.bookable_areas ? `${col.window.bookable_areas} free at your time` : 'Nothing free at your time'}</T>

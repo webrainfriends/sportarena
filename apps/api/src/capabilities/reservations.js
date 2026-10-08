@@ -58,6 +58,40 @@ cap({
   },
 });
 
+cap({
+  name: 'venue_calendar', method: 'GET', path: '/venues/:id/calendar', tag: TAG, auth: 'public',
+  summary: 'Month calendar of availability for date pickers: for every day of `month` (YYYY-MM, venue local) the status (past | closed | full | limited | available | too_far), free and total slots, and the cheapest free slot price. Filter by sport or one area. One request per month instead of one per day.',
+  input: z.object({ id, month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'use YYYY-MM'), sport: z.string().optional(), resource_id: id.optional() }),
+  async handler(_, i) {
+    const ctx = await loadVenueCtx(pool, i.id);
+    const sport = i.sport ? await sportBySlugOrId(i.sport) : null;
+    if (i.sport && !sport) throw notFound('Sport');
+    const resources = await many(
+      `SELECT * FROM resources WHERE venue_id=$1 AND active AND ($2::uuid IS NULL OR sport_id=$2) AND ($3::uuid IS NULL OR id=$3) AND ($3::uuid IS NOT NULL OR kind <> 'equipment') ORDER BY name`, [i.id, sport?.id ?? null, i.resource_id ?? null]);
+    const { venue } = ctx;
+    const first = `${i.month}-01`;
+    const next = new Date(`${first}T00:00:00Z`); next.setUTCMonth(next.getUTCMonth() + 1);
+    const last = addDays(next.toISOString().slice(0, 10), -1);
+    const busy = await loadBusy(pool, i.id, fromLocal(first, 0, venue.timezone), fromLocal(addDays(last, 1), 0, venue.timezone));
+    const today = toLocal(new Date(), venue.timezone).date;
+    const limit = addDays(today, venue.max_advance_days);
+    const days = [];
+    for (let d = first; d <= last; d = addDays(d, 1)) {
+      if (d < today) { days.push({ date: d, status: 'past', free_slots: 0, total_slots: 0, from_price_cents: null }); continue; }
+      if (d > limit || !venue.active) { days.push({ date: d, status: 'too_far', free_slots: 0, total_slots: 0, from_price_cents: null }); continue; }
+      let free = 0, total = 0, from = null;
+      for (const r of resources) {
+        for (const s of daySlots(ctx, r, d, busy)) {
+          total++;
+          if (s.status === 'free') { free++; from = from == null ? s.price_cents : Math.min(from, s.price_cents); }
+        }
+      }
+      days.push({ date: d, status: total === 0 ? 'closed' : free === 0 ? 'full' : free / total <= 0.25 ? 'limited' : 'available', free_slots: free, total_slots: total, from_price_cents: from });
+    }
+    return { venue_id: i.id, month: i.month, timezone: venue.timezone, currency: venue.currency, today, days };
+  },
+});
+
 // ------------------------------------------------------------------ compare
 cap({
   name: 'compare_venues', method: 'GET', path: '/venue-comparison', tag: TAG, auth: 'public',

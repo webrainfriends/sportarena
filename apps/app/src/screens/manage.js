@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
@@ -9,7 +9,8 @@ import { c } from '../theme';
 import { KIND } from './book';
 import { MediaManager, VenueReviews } from './venue-media';
 import { useNav } from '../nav';
-import { WEEKDAYS, addDays, dateTimeIn, fmtMin, hoursSummary, localToIso, moneyIn, timeIn, todayIn } from '../vtime';
+import { WEEKDAYS, addDays, dateTimeIn, fmtMin, hoursSummary, localToIso, longDay, moneyIn, timeIn, todayIn } from '../vtime';
+import { Calendar } from '../pickers';
 
 const YN = [{ value: false, label: 'No' }, { value: true, label: 'Yes' }];
 const TABS = [['schedule', 'Schedule'], ['blocks', 'Blocks'], ['pricing', 'Pricing'], ['discounts', 'Discounts'], ['payments', 'Payments'], ['media', 'Photos & videos'], ['reviews', 'Reviews'], ['reports', 'Reports'], ['setup', 'Setup']];
@@ -38,17 +39,23 @@ export function Manage({ id }) {
 function Schedule({ v }) {
   const { toast } = useSession();
   const tz = v.timezone;
-  const [dayIdx, setDayIdx] = useState(1);
+  const [date, setDate] = useState(todayIn(tz));
+  const [calOpen, setCalOpen] = useState(false);
+  const [month, setMonth] = useState(todayIn(tz).slice(0, 7));
   const [ov, setOv] = useState(false);
   const [cancel, setCancel] = useState(null);
-  const date = addDays(todayIn(tz), dayIdx - 1);
   const from = localToIso(date, '00:00', tz), to = localToIso(addDays(date, 1), '00:00', tz);
   const s = useLoad(() => api.get(`/venues/${v.id}/schedule`, { from, to }), [v.id, date]);
   const act = async (fn, msg) => { try { await fn(); toast(msg); s.reload(); } catch (e) { toast(e.message); } };
   return (
     <>
       <Section title="Day view" color={c.lime}>
-        <Seg options={Array.from({ length: 15 }, (_, i) => ({ value: i, label: i === 0 ? 'Yesterday' : i === 1 ? 'Today' : new Date(`${addDays(todayIn(tz), i - 1)}T00:00:00Z`).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', timeZone: 'UTC' }) }))} value={dayIdx} onChange={setDayIdx} color={c.pink} />
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Btn small title="‹" color={c.paper} onPress={() => setDate(addDays(date, -1))} />
+          <Pressable onPress={() => { setMonth(date.slice(0, 7)); setCalOpen(true); }} style={{ flex: 1, minHeight: 40, borderRadius: 12, borderWidth: 1, borderColor: c.line, backgroundColor: c.paper, alignItems: 'center', justifyContent: 'center' }}><T weight="700">📅 {longDay(date)}</T></Pressable>
+          <Btn small title="›" color={c.paper} onPress={() => setDate(addDays(date, 1))} />
+          <Btn small title="Today" color={c.violet} onPress={() => setDate(todayIn(tz))} />
+        </View>
         <Btn small title="+ Add booking (override)" color={c.violet} onPress={() => setOv(true)} style={{ alignSelf: 'flex-start' }} />
         {s.loading && !s.data ? <Loading /> : s.error ? <ErrorBox error={s.error} onRetry={s.reload} /> : (
           <>
@@ -76,13 +83,14 @@ function Schedule({ v }) {
           </>
         )}
       </Section>
+      <Sheet visible={calOpen} onClose={() => setCalOpen(false)} title="Pick a day"><Calendar month={month} onMonth={setMonth} value={date} today={todayIn(tz)} onChange={(d) => { setDate(d); setCalOpen(false); }} /></Sheet>
       <FormSheet visible={!!cancel} onClose={() => setCancel(null)} title="Cancel this booking" submitLabel="Cancel & refund in full" color={c.red}
         fields={[{ key: 'reason', label: 'Reason (the customer sees it)', optional: true }]}
         onSubmit={async (f) => { await api.del(`/bookings/${cancel.id}`, f); s.reload(); return 'Cancelled — customer notified and refunded'; }} />
       <FormSheet visible={ov} onClose={() => setOv(false)} title="Add a booking (override)" submitLabel="Book it" initial={{ date }}
         fields={[
           { key: 'resource_id', label: 'Area', type: 'choice', options: v.resources.map((r) => ({ value: r.id, label: `${KIND[r.kind] ?? ''} ${r.name}` })) },
-          { key: 'date', label: 'Date (YYYY-MM-DD)' }, { key: 'start', label: 'Start (HH:MM)', placeholder: '18:00' }, { key: 'hours', label: 'Length in hours', type: 'number', placeholder: '1' },
+          { key: 'date', label: 'Date', type: 'date' }, { key: 'start', label: 'Start time', type: 'time' }, { key: 'hours', label: 'Length in hours', type: 'number', placeholder: '1' },
           { key: 'quantity', label: 'Units', type: 'number', optional: true }, { key: 'reason', label: 'Reason (audit log)', placeholder: 'League night, phone booking…' },
           { key: 'guest_name', label: 'Walk-in guest name', optional: true }, { key: 'guest_phone', label: 'Guest phone', optional: true },
           { key: 'price_cents', label: 'Price override (minor units; 0 = free)', type: 'number', optional: true },
@@ -118,8 +126,8 @@ function Blocks({ v }) {
       <FormSheet visible={form} onClose={() => setForm(false)} title="Block time" submitLabel="Block" initial={{ from_date: todayIn(tz), to_date: todayIn(tz) }}
         fields={[
           { key: 'resource_id', label: 'Which area', type: 'choice', options: [{ value: '', label: 'Whole venue' }, ...v.resources.map((r) => ({ value: r.id, label: r.name }))] },
-          { key: 'from_date', label: 'From date (YYYY-MM-DD)' }, { key: 'to_date', label: 'To date (YYYY-MM-DD)' },
-          { key: 'start_time', label: 'Daily from', placeholder: '00:00', optional: true }, { key: 'end_time', label: 'Daily until', placeholder: '24:00', optional: true },
+          { key: 'from_date', label: 'From date', type: 'date' }, { key: 'to_date', label: 'To date', type: 'date' },
+          { key: 'start_time', label: 'Daily from', type: 'time', optional: true }, { key: 'end_time', label: 'Daily until', type: 'time', optional: true },
           { key: 'weekdays', label: 'Only on these days', hint: daysHint, optional: true },
           { key: 'kind', label: 'Kind', type: 'choice', options: ['maintenance', 'holiday', 'event', 'private', 'other'] }, { key: 'reason', label: 'Reason', optional: true },
           { key: 'cancel_conflicting', label: 'Cancel & refund bookings already in that time?', type: 'choice', options: YN },
@@ -165,8 +173,8 @@ function Pricing({ v, reload }) {
       </Section>
       <FormSheet visible={rule} onClose={() => setRule(false)} title="New rate rule"
         fields={[{ key: 'name', label: 'Name', placeholder: 'Weekday evening peak' }, { key: 'resource_id', label: 'Applies to', type: 'choice', options: [{ value: '', label: 'All areas' }, ...v.resources.map((r) => ({ value: r.id, label: r.name }))] },
-          { key: 'start', label: 'From (HH:MM)', placeholder: '18:00' }, { key: 'end', label: 'Until (HH:MM)', placeholder: '22:00' }, { key: 'hourly_rate_cents', label: 'Rate per hour (minor units)', type: 'number' },
-          { key: 'weekdays', label: 'Days', hint: daysHint, optional: true }, { key: 'valid_from', label: 'Valid from (YYYY-MM-DD)', optional: true }, { key: 'valid_to', label: 'Valid until', optional: true }, { key: 'priority', label: 'Priority', type: 'number', optional: true }]}
+          { key: 'start', label: 'From', type: 'time' }, { key: 'end', label: 'Until', type: 'time' }, { key: 'hourly_rate_cents', label: 'Rate per hour (minor units)', type: 'number' },
+          { key: 'weekdays', label: 'Days', hint: daysHint, optional: true }, { key: 'valid_from', label: 'Valid from', type: 'date', optional: true }, { key: 'valid_to', label: 'Valid until', type: 'date', optional: true }, { key: 'priority', label: 'Priority', type: 'number', optional: true }]}
         onSubmit={async (f) => { await api.post(`/venues/${v.id}/price-rules`, { ...f, resource_id: f.resource_id || undefined, weekdays: days(f.weekdays) }); done(); return 'Rule added'; }} />
       <FormSheet visible={area} onClose={() => setArea(false)} title="Add an area"
         fields={[{ key: 'kind', label: 'Type', type: 'choice', options: ['court', 'table', 'ground', 'pool', 'lane', 'rink', 'range', 'track', 'room', 'studio', 'equipment', 'other'] }, { key: 'name', label: 'Name', placeholder: 'Court 1' },
@@ -201,7 +209,7 @@ function Discounts({ v }) {
         fields={[{ key: 'name', label: 'Name', placeholder: 'Book 3 slots, save 10%' }, { key: 'code', label: 'Promo code (blank = automatic)', optional: true },
           { key: 'kind', label: 'Type', type: 'choice', options: [{ value: 'percent', label: 'Percent' }, { value: 'fixed', label: 'Fixed amount' }] }, { key: 'value', label: 'Value (percent, or minor units)', type: 'number' },
           { key: 'min_slots', label: 'Minimum slots', type: 'number', optional: true }, { key: 'resource_id', label: 'Only for', type: 'choice', options: [{ value: '', label: 'All areas' }, ...v.resources.map((r) => ({ value: r.id, label: r.name }))] },
-          { key: 'weekdays', label: 'Only on days', hint: daysHint, optional: true }, { key: 'valid_from', label: 'From (YYYY-MM-DD)', optional: true }, { key: 'valid_to', label: 'Until', optional: true },
+          { key: 'weekdays', label: 'Only on days', hint: daysHint, optional: true }, { key: 'valid_from', label: 'From', type: 'date', optional: true }, { key: 'valid_to', label: 'Until', type: 'date', optional: true },
           { key: 'max_redemptions', label: 'Max total uses', type: 'number', optional: true }, { key: 'per_user_limit', label: 'Max uses per customer', type: 'number', optional: true }]}
         onSubmit={async (f) => { await api.post(`/venues/${v.id}/discounts`, { ...f, resource_id: f.resource_id || undefined, weekdays: days(f.weekdays) }); list.reload(); return 'Discount created'; }} />
     </Section>
@@ -210,20 +218,24 @@ function Discounts({ v }) {
 
 // ------------------------------------------------------------------ reports
 const Bar = ({ pct, color = c.pink }) => <View style={{ height: 8, borderRadius: 4, backgroundColor: c.violetSoft, overflow: 'hidden', flex: 1 }}><View style={{ width: `${Math.min(100, Math.max(0, pct))}%`, height: 8, backgroundColor: color }} /></View>;
-const RANGES = [['Last 7 days', -7, 0], ['Last 30 days', -30, 0], ['Last 90 days', -90, 0], ['Next 30 days', 0, 30]];
+const RANGES = [['Last 7 days', -7, 0], ['Last 30 days', -30, 0], ['Last 90 days', -90, 0], ['Next 30 days', 0, 30], ['Custom…', 0, 0]];
 function Reports({ v }) {
   const tz = v.timezone;
   const [ri, setRi] = useState(1);
+  const [custom, setCustom] = useState(null);
+  const [pick, setPick] = useState(false);
   const [, a, b] = RANGES[ri];
-  const from = addDays(todayIn(tz), a), to = addDays(todayIn(tz), b);
-  const r = useLoad(() => api.get(`/venues/${v.id}/reports`, { from, to, group_by: Math.abs(a - b) > 45 ? 'week' : 'day' }), [v.id, ri]);
+  const from = ri === 4 && custom ? custom.from : addDays(todayIn(tz), a), to = ri === 4 && custom ? custom.to : addDays(todayIn(tz), b);
+  const r = useLoad(() => api.get(`/venues/${v.id}/reports`, { from, to, group_by: (Date.parse(to) - Date.parse(from)) / 864e5 > 45 ? 'week' : 'day' }), [v.id, ri, custom?.from, custom?.to]);
   const money = (x) => moneyIn(x, v.currency);
   const peak = Math.max(1, ...(r.data?.by_hour ?? []).map((h) => h.bookings));
   const top = Math.max(1, ...(r.data?.series ?? []).map((s) => s.net_cents));
   return (
     <>
       <Section title="Report" color={c.cyan}>
-        <Seg options={RANGES.map(([label], value) => ({ value, label }))} value={ri} onChange={setRi} color={c.cyan} />
+        <Seg options={RANGES.map(([label], value) => ({ value, label: value === 4 && custom ? `${custom.from.slice(5)} → ${custom.to.slice(5)}` : label }))} value={ri} onChange={(i) => { if (i === 4) setPick(true); else setRi(i); }} color={c.cyan} />
+        <FormSheet visible={pick} onClose={() => setPick(false)} title="Report period" submitLabel="Show report" initial={{ from: custom?.from ?? addDays(todayIn(tz), -30), to: custom?.to ?? todayIn(tz) }}
+          fields={[{ key: 'from', label: 'From', type: 'date' }, { key: 'to', label: 'To', type: 'date' }]} onSubmit={async (f) => { if (f.to < f.from) throw new Error('The end date is before the start'); setCustom(f); setRi(4); }} />
         {r.loading && !r.data ? <Loading /> : r.error ? <ErrorBox error={r.error} onRetry={r.reload} /> : (() => {
           const s = r.data.summary;
           return (

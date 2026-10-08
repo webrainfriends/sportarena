@@ -57,3 +57,11 @@ Email is **queued** (`notification_deliveries`) and delivered by POSTing JSON to
 * **Paying:** a venue's `payment_mode` is `pay_at_venue` (staff record it with `mark_invoice_paid`), `online_optional`, or `online_required`. Online payment is Stripe/PayPal hosted checkout (`create_payment` with `purpose_type: venue_invoice`) in the **invoice's currency** (zero-decimal currencies like JPY are sent as whole units). With `online_required` the slots are held for `PAYMENT_HOLD_MINUTES` (default 15) and released, nothing charged, if the invoice is still unpaid; a payment that arrives after release is refunded automatically. Online modes fall back to pay-at-venue while no provider is configured.
 * **Refunds:** a credit note for an online payment is refunded through the provider — partial, idempotent per credit note, retried by the worker; cash/at-venue refunds are marked done by staff (`mark_credit_note_refunded`).
 * Venue team views: the Payments tab (invoices to collect, record payment, refunds to hand back) and `owner_summary` across all venues grouped by currency.
+
+## Booking experience (app)
+
+* **Discover:** venue cards with cover photo, rating, offers and price-from, filtered by sport, facilities, "available on this day and hour", and sorted by rating, price or distance; compare tray.
+* **Venue page:** photo hero with open-now status, Overview / Courts / Reviews tabs, a month calendar showing availability and the cheapest price per day (`venue_calendar`), opening hours with today highlighted, policy and tax, map (OpenStreetMap embed on web), and a pinned **Book now** bar.
+* **Booking wizard:** Court(s) → Date (availability calendar) → Time (slots grouped Morning / Afternoon / Evening / Night, multi-select, "slots per tap" for longer sessions, unit counters) → Review → basket checkout. Courts, dates and venues can be combined in one booking.
+* **Ticket:** booking code up front, **Add to calendar** (.ics on the web, share sheet on phones), invoices and payment below.
+* **Calendar and time pickers everywhere:** admin forms (blocks, overrides, rate rules, discounts, report period) use the same date and time pickers; the schedule has a day picker.

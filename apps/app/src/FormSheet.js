@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View } from 'react-native';
 import { Btn, Chip, Field, Sheet, T, Seg } from './ui';
 import { c } from './theme';
+import { DateField, TimeField } from './pickers';
 import { useSession } from './session';
 
 /**
@@ -31,7 +32,11 @@ export function FormSheet({ visible, onClose, title, fields, initial = {}, submi
 
   return (
     <Sheet visible={visible} onClose={onClose} title={title}>
-      {fields.map((f) => f.type === 'choice' ? (
+      {fields.map((f) => f.type === 'date' ? (
+        <DateField key={f.key} label={f.label} value={v[f.key]} onChange={(x) => set(f.key, x)} optional={f.optional} min={f.min} max={f.max} hint={f.hint} />
+      ) : f.type === 'time' ? (
+        <TimeField key={f.key} label={f.label} value={v[f.key]} onChange={(x) => set(f.key, x)} optional={f.optional} step={f.step} hint={f.hint} />
+      ) : f.type === 'choice' ? (
         <View key={f.key} style={{ gap: 6 }}><T weight="800" size={13}>{f.label}</T><Seg options={f.options} value={v[f.key] ?? f.options[0]?.value ?? f.options[0]} onChange={(x) => set(f.key, x)} color={c.pink} /></View>
       ) : (
         <Field key={f.key} label={f.label + (f.optional ? ' (optional)' : '')} value={String(v[f.key] ?? '')} onChangeText={(x) => set(f.key, x)} secure={f.type === 'secret'} multiline={f.type === 'multiline'} keyboardType={f.type === 'number' ? 'numeric' : undefined} hint={f.hint} placeholder={f.placeholder} />
