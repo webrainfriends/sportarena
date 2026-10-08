@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Linking, Platform, ScrollView, Share, View } from 'react-native';
+import { Linking, Platform, Pressable, ScrollView, Share, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
@@ -7,6 +7,7 @@ import { useNav } from '../nav';
 import { useBasket } from '../basket';
 import { Bubble, Btn, Card, Chip, Empty, ErrorBox, Field, H1, H2, Loading, Row, Screen, Seg, Section, Sheet, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
+import { Calendar } from '../pickers';
 import { c } from '../theme';
 import { PaySheet } from '../PaySheet';
 import { PointsApplySheet, WalletApplySheet } from './wallet';
@@ -287,24 +288,68 @@ function MoveSheet({ booking, onClose, onDone }) {
 
 // ------------------------------------------------------------------ compare
 const HOURS = Array.from({ length: 16 }, (_, i) => i + 6);
+const MAX_DAYS = 7;
+const rangeDays = (from, to) => Array.from({ length: Math.round((new Date(`${to}T00:00:00Z`) - new Date(`${from}T00:00:00Z`)) / 864e5) + 1 }, (_, i) => addDays(from, i));
+const dayText = (d) => new Date(`${d}T00:00:00Z`).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
+// nulls always sort last, whichever way the key runs
+const byKey = (key, dir = 1) => (a, b) => { const [x, y] = [key(a), key(b)]; return x == null && y == null ? 0 : x == null ? 1 : y == null ? -1 : dir * (x - y); };
+const SORTS = [
+  { value: 'default', label: 'As selected' },
+  { value: 'rating', label: '⭐ Top rated', cmp: (w) => (a, b) => byKey((x) => x.rating, -1)(a, b) || byKey((x) => x.reviews, -1)(a, b) },
+  { value: 'reviews', label: '💬 Most reviews', cmp: () => byKey((x) => x.reviews, -1) },
+  { value: 'distance', label: '📍 Nearby', cmp: () => byKey((x) => x.distance_km) },
+  { value: 'price', label: '💰 Cheapest', cmp: (w) => byKey((x) => (w ? x.window?.cheapest_price_cents : x.pricing?.from_hourly_cents)) },
+  { value: 'open', label: '✅ Most open', cmp: (w) => (w ? byKey((x) => x.window?.bookable_areas, -1) : byKey((x) => x.totals.areas, -1)) },
+];
+
 export function Compare({ ids }) {
   const { push } = useNav();
   const { add, toggleCompare } = useBasket();
   const { toast } = useSession();
-  const [dayIdx, setDayIdx] = useState(1);
+  const [range, setRange] = useState(null); // { from, to } — null until the first pick, then defaults to tomorrow
+  const [pickOpen, setPickOpen] = useState(false);
+  const [month, setMonth] = useState(null);
   const [hour, setHour] = useState(18);
   const [dur, setDur] = useState(1);
   const [useWindow, setUseWindow] = useState(true);
+  const [sort, setSort] = useState('default');
+  const [near, setNear] = useState(null);
+  const [locMsg, setLocMsg] = useState(null);
+  const [viewDay, setViewDay] = useState(null);
   // the first venue's zone anchors the window; venues in other zones will simply show "closed"
   const first = useLoad(() => api.get(`/venues/${ids[0]}`), []);
   const vtz = first.data?.timezone ?? 'UTC';
-  const date = addDays(todayIn(vtz), dayIdx);
-  const from = localToIso(date, `${String(hour).padStart(2, '0')}:00`, vtz);
-  const to = new Date(new Date(from).getTime() + dur * 3600e3).toISOString();
-  const cmp = useLoad(() => (first.data ? api.get('/venue-comparison', { ids: ids.join(','), ...(useWindow ? { from, to } : {}) }) : Promise.resolve(null)), [ids.join(','), first.data?.id, useWindow, from, to]);
+  const today = todayIn(vtz);
+  const tomorrow = addDays(today, 1);
+  const from_d = range?.from ?? tomorrow;
+  const to_d = range?.to ?? from_d;
+  const days = rangeDays(from_d, to_d);
+  const date = days.includes(viewDay) ? viewDay : from_d;
+  const win = (d) => { const f = localToIso(d, `${String(hour).padStart(2, '0')}:00`, vtz); return { from: f, to: new Date(new Date(f).getTime() + dur * 3600e3).toISOString() }; };
+  const { from, to } = win(date);
+  const loc = near ? { lat: near.lat, lng: near.lng } : {};
+  const cmp = useLoad(() => (first.data ? api.get('/venue-comparison', { ids: ids.join(','), ...loc, ...(useWindow ? { from, to } : {}) }) : Promise.resolve(null)), [ids.join(','), first.data?.id, useWindow, from, to, near]);
+  // the same hour on every other day in the range, to say "free on 3 of 5 days"
+  const others = useLoad(() => (first.data && useWindow && days.length > 1 ? Promise.all(days.filter((d) => d !== date).map((d) => api.get('/venue-comparison', { ids: ids.join(','), ...win(d) }).then((r) => [d, r]))) : Promise.resolve(null)), [ids.join(','), first.data?.id, useWindow, from_d, to_d, hour, dur, date]);
+  const freeDays = (id) => {
+    if (!cmp.data || !useWindow || days.length < 2) return null;
+    const mine = cmp.data.venues.find((x) => x.venue.id === id)?.window?.bookable_areas ? 1 : 0;
+    const more = (others.data ?? []).filter(([, r]) => r.venues.find((x) => x.venue.id === id)?.window?.bookable_areas).length;
+    return others.data ? mine + more : null;
+  };
+
+  const pick = (d) => setRange((r) => (!r || !r.from || r.to || d < r.from ? { from: d, to: null } : { from: r.from, to: d }));
+  const locate = () => {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) { setLocMsg('Location is not available here.'); return; }
+    navigator.geolocation.getCurrentPosition((p) => { setNear({ lat: p.coords.latitude, lng: p.coords.longitude }); setLocMsg(null); setSort('distance'); }, () => setLocMsg('Could not get your location.'), { timeout: 10000 });
+  };
+  const chooseSort = (v) => { if (v === 'distance' && !near) locate(); else setSort(v); };
 
   const best = cmp.data?.highlights ?? {};
   const badges = (id) => [id === best.cheapest_venue_id && '💰 Cheapest', id === best.nearest_venue_id && '📍 Nearest', id === best.top_rated_venue_id && '⭐ Top rated', id === best.most_available_venue_id && '✅ Most open', id === best.earliest_free_venue_id && '⏱️ Earliest free'].filter(Boolean);
+  const sorter = SORTS.find((x) => x.value === sort)?.cmp;
+  const columns = cmp.data ? (sorter ? [...cmp.data.venues].sort(sorter(useWindow)) : cmp.data.venues) : [];
+  const picking = range && !range.to;
   return (
     <Screen wide>
       <H1 style={{ marginTop: 8 }}>Compare venues</H1>
@@ -312,18 +357,36 @@ export function Compare({ ids }) {
         <Seg options={[{ value: true, label: 'Pick a time' }, { value: false, label: 'Just compare' }]} value={useWindow} onChange={setUseWindow} color={c.violet} />
         {useWindow ? (
           <>
-            <Seg options={Array.from({ length: 14 }, (_, i) => ({ value: i, label: dayLabel(addDays(todayIn(vtz), i), i) }))} value={dayIdx} onChange={setDayIdx} color={c.pink} />
+            <Pressable onPress={() => { setMonth(from_d.slice(0, 7)); setPickOpen(true); }} accessibilityLabel="Choose dates" style={{ borderWidth: 1.5, borderColor: c.line, borderRadius: 12, backgroundColor: c.paper, paddingHorizontal: 16, minHeight: 50, flexDirection: 'row', alignItems: 'center' }}>
+              <T style={{ flex: 1 }} weight="600">{from_d === to_d ? dayText(from_d) : `${dayText(from_d)}  →  ${dayText(to_d)}`}{days.length > 1 ? `  ·  ${days.length} days` : ''}</T>
+              <T size={18}>📅</T>
+            </Pressable>
+            {days.length > 1 ? <Seg options={days.map((d) => ({ value: d, label: dayLabel(d, d === today ? 0 : d === tomorrow ? 1 : 2) }))} value={date} onChange={setViewDay} color={c.pink} /> : null}
             <Seg options={HOURS.map((h) => ({ value: h, label: `${h % 12 || 12}${h < 12 ? 'am' : 'pm'}` }))} value={hour} onChange={setHour} color={c.violet} />
             <Seg options={[1, 2, 3].map((d) => ({ value: d, label: `${d}h` }))} value={dur} onChange={setDur} color={c.cyan} />
           </>
         ) : null}
       </Section>
+      <Section title="Rank by" color={c.violet}>
+        <Seg options={SORTS.map(({ value, label }) => ({ value, label }))} value={sort} onChange={chooseSort} color={c.ink} />
+        {locMsg ? <T size={12} color={c.mute}>{locMsg}</T> : near ? <T size={12} color={c.mute}>Distances are from your current location.</T> : <T size={12} color={c.mute}>Tap “Nearby” to rank by distance from where you are.</T>}
+      </Section>
+      <Sheet visible={pickOpen} onClose={() => setPickOpen(false)} title="Choose dates">
+        <Calendar month={month ?? from_d.slice(0, 7)} onMonth={setMonth} range={range ? { from: range.from, to: range.to } : { from: from_d, to: to_d }} today={today}
+          minDate={today} maxDate={picking ? addDays(range.from, MAX_DAYS - 1) : addDays(today, 90)} onChange={pick} />
+        <T size={12} color={c.mute}>{picking ? 'Now tap the last day (up to 7 days).' : 'Tap a day to start, then tap another to make a range. Tap once for a single day.'}</T>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <Btn small title="Done" color={c.violet} onPress={() => { if (picking) setRange({ from: range.from, to: range.from }); setViewDay(null); setPickOpen(false); }} />
+          <Btn small title="Tomorrow" color={c.paper} onPress={() => { setRange({ from: tomorrow, to: tomorrow }); setViewDay(null); setPickOpen(false); }} />
+        </View>
+      </Sheet>
       {cmp.loading && !cmp.data ? <Loading /> : cmp.error ? <ErrorBox error={cmp.error} onRetry={cmp.reload} /> : (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12, paddingVertical: 14 }}>
-          {cmp.data?.venues.map((col) => {
+          {columns.map((col, rank) => {
             const v = col.venue;
             return (
               <Card key={v.id} style={{ width: 290 }}>
+                {sort !== 'default' ? <T size={12} weight="700" color={c.mute}>#{rank + 1}</T> : null}
                 <T size={36}>{v.emoji}</T>
                 <H2>{v.name}</H2>
                 <T size={13} color={c.mute}>{[v.city, col.distance_km != null && `${col.distance_km} km`].filter(Boolean).join(' · ')}</T>
@@ -338,6 +401,7 @@ export function Compare({ ids }) {
                 {col.window ? (
                   <View style={{ marginTop: 10, gap: 6 }}>
                     <T weight="700">{col.window.bookable_areas ? `${col.window.bookable_areas} free at your time` : 'Nothing free at your time'}</T>
+                    {freeDays(v.id) != null ? <T size={12} color={c.mute}>Free on {freeDays(v.id)} of {days.length} days in your range</T> : null}
                     {col.window.areas.map((a) => (
                       <View key={a.resource_id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                         <T size={13} style={{ flex: 1 }} color={a.bookable ? c.ink : c.mute}>{a.name}{a.bookable ? '' : ` · ${a.reason}`}</T>
