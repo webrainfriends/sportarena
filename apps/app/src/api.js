@@ -61,11 +61,22 @@ async function upload(path, blob, query = {}) {
   return body;
 }
 
+/** Fetch a protected file (it needs the sign-in header, so it cannot be a plain link). Resolves to a Blob. */
+async function download(path) {
+  let res;
+  try { res = await fetch(`${API}${path}`, { headers: token ? { authorization: `Bearer ${token}` } : {} }); }
+  catch { throw new ApiError(0, { error: { message: `Can't reach the SportArena server at ${API}` } }); }
+  if (!res.ok) throw new ApiError(res.status, await res.json().catch(() => null));
+  return res.blob();
+}
+export const authHeader = () => (token ? { authorization: `Bearer ${token}` } : {});
+
 export const api = {
   get: (p, q) => request('GET', p, q),
   post: (p, b) => request('POST', p, b ?? {}),
   patch: (p, b) => request('PATCH', p, b ?? {}),
   del: (p, q) => request('DELETE', p, q),
   upload,
+  download,
 };
 export { storage };

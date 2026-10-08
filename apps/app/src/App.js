@@ -23,7 +23,9 @@ import { Basket, Reservation, Compare, Notifications, Invoice } from './screens/
 import { Manage, OwnerSummary } from './screens/manage';
 import { Wallet } from './screens/wallet';
 import { BasketProvider } from './basket';
-import { Hub, Leaderboard, Awards, Health, Insurance, Sponsors, Supply } from './screens/hub';
+import { Hub, Leaderboard, Awards, Health, Sponsors, Supply } from './screens/hub';
+import { Insurance, InsurerPage } from './screens/insurance';
+import { InsurerDesk } from './screens/insurer';
 import { Me } from './screens/me';
 import { Support } from './screens/cases';
 import { Family } from './screens/family';
@@ -32,8 +34,8 @@ import { PlayerHome, SportProfile, ImportMatches } from './screens/player';
 
 const TABS = [['Home', Home], ['Play', Play], ['Player', PlayerHome], ['Book', Book], ['Hub', Hub], ['Me', Me]];
 const LABEL = { Hub: 'Ecosystem' };
-const PAGES = { Event, Team, TeamManage, TeamChat, Person, Venue, Wallet, BookFlow, Invoice, Basket, Reservation, Compare, Notifications, Manage, OwnerSummary, Leaderboard, Awards, Health, Insurance, Sponsors, Supply, SportProfile, ImportMatches, Support, Family };
-const TITLES = { Event: 'Event', Team: 'Team', TeamManage: 'Manage team', TeamChat: 'Team chat', Person: 'Profile', Venue: 'Venue', Wallet: 'Wallet', BookFlow: 'Book', Invoice: 'Invoice', Basket: 'Basket', Reservation: 'Booking', Compare: 'Compare', Notifications: 'Notifications', Manage: 'Manage venue', OwnerSummary: 'All my venues', Leaderboard: 'Leaderboard', Awards: 'Trophy room', Health: 'Health', Insurance: 'Insurance', Sponsors: 'Sponsors', Supply: 'Supply chain', SportProfile: 'Sport profile', ImportMatches: 'Import matches', Support: 'Support', Family: 'Family & guardians' };
+const PAGES = { Event, Team, TeamManage, TeamChat, Person, Venue, Wallet, BookFlow, Invoice, Basket, Reservation, Compare, Notifications, Manage, OwnerSummary, Leaderboard, Awards, Health, Insurance, InsurerPage, InsurerDesk, Sponsors, Supply, SportProfile, ImportMatches, Support, Family };
+const TITLES = { Event: 'Event', Team: 'Team', TeamManage: 'Manage team', TeamChat: 'Team chat', Person: 'Profile', Venue: 'Venue', Wallet: 'Wallet', BookFlow: 'Book', Invoice: 'Invoice', Basket: 'Basket', Reservation: 'Booking', Compare: 'Compare', Notifications: 'Notifications', Manage: 'Manage venue', OwnerSummary: 'All my venues', Leaderboard: 'Leaderboard', Awards: 'Trophy room', Health: 'Health', Insurance: 'Insurance', InsurerPage: 'Insurer', InsurerDesk: 'Insurer desk', Sponsors: 'Sponsors', Supply: 'Supply chain', SportProfile: 'Sport profile', ImportMatches: 'Import matches', Support: 'Support', Family: 'Family & guardians' };
 
 const TAB_LABEL = { Hub: 'More' };
 
