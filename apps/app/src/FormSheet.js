@@ -14,6 +14,8 @@ const ZONES = ['Asia/Kolkata', 'Asia/Dubai', 'Asia/Singapore', 'Asia/Colombo', '
 const deviceZone = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return null; } };
 const allZones = () => { try { return Intl.supportedValuesOf('timeZone'); } catch { return ZONES; } };
 const KEYBOARD = { phone: 'phone-pad', email: 'email-address', url: 'url', decimal: 'decimal-pad' };
+const plain = (m) => (/expected (number|int)/i.test(m) ? 'Enter a number' : /received undefined|required/i.test(m) ? 'This is required' : /^invalid input$/i.test(m) ? 'This value is not valid' : /too small|>=/.test(m) ? `Too low — ${m}` : /too big|<=/.test(m) ? `Too high — ${m}` : m);
+const same = (a, b) => a === b || a?.replace(/_(cents|bp|minutes|days|months)$/, '') === b?.replace(/_(cents|bp|minutes|days|months)$/, '');
 const opt = (o) => (typeof o === 'object' ? o : { value: o, label: String(o) });
 
 /**
@@ -94,13 +96,14 @@ export function FormSheet({ visible, onClose, title, fields, initial = {}, submi
   const [v, setV] = useState(start);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
+  const [bad, setBad] = useState({});   // field key -> what is wrong with it
   const { toast } = useSession();
   const was = useRef(false);
-  useEffect(() => { if (visible && !was.current) { setV(start()); setErr(null); } was.current = visible; }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (visible && !was.current) { setV(start()); setErr(null); setBad({}); } was.current = visible; }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps
   const set = (k, x) => setV((p) => ({ ...p, [k]: x }));
 
   const submit = async () => {
-    setBusy(true); setErr(null);
+    setBusy(true); setErr(null); setBad({});
     try {
       const out = {};
       for (const f of fields) {
@@ -110,7 +113,19 @@ export function FormSheet({ visible, onClose, title, fields, initial = {}, submi
       }
       const msg = await onSubmit(out);
       onClose(); if (typeof msg === 'string') toast(msg);
-    } catch (e) { setErr(e.message); } finally { setBusy(false); }
+    } catch (e) {
+      // the server says which fields are wrong; show each under its own control, in the words of the form's labels
+      const det = Array.isArray(e.details) ? e.details : [];
+      const marks = {}; const loose = [];
+      for (const d of det) {
+        const path = String(d.path ?? '').split('.')[0];
+        const f = fields.find((x) => x.type !== 'section' && (same(x.key, path) || x.lngKey === path || x.apiKey === path));
+        if (f) marks[f.key] = plain(d.message ?? 'Not valid'); else loose.push(`${path ? `${path}: ` : ''}${plain(d.message ?? 'Not valid')}`);
+      }
+      const names = Object.keys(marks).map((k) => fields.find((x) => x.key === k)?.label).filter(Boolean);
+      setBad(marks);
+      setErr(names.length || loose.length ? [names.length ? `Please check: ${names.join(', ')}.` : null, ...loose].filter(Boolean).join(' ') : e.message);
+    } finally { setBusy(false); }
   };
 
   const lab = (f) => <T weight="800" size={13}>{f.label}{f.optional ? ' (optional)' : ''}</T>;
