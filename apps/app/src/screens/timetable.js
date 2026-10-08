@@ -77,7 +77,8 @@ function BulkSlotsSheet({ venue, data, onClose, onDone }) {
           <T weight="800" size={13}>Courts</T>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
             <Chip label="All courts" active={courts.length === data.courts.length && courts.length > 0} onPress={() => setCourts(courts.length === data.courts.length ? [] : data.courts.map((x) => x.id))} />
-            {data.courts.map((x) => <Chip key={x.id} label={x.name} active={courts.includes(x.id)} onPress={() => setCourts(courts.includes(x.id) ? courts.filter((y) => y !== x.id) : [...courts, x.id])} />)}
+            {[...new Map(data.courts.filter((x) => x.sport_slug).map((x) => [x.sport_slug, x])).values()].map((x) => { const ids = data.courts.filter((y) => y.sport_slug === x.sport_slug).map((y) => y.id); const on = ids.every((i) => courts.includes(i)); return <Chip key={x.sport_slug} label={`${x.sport_emoji ?? ''} All ${x.sport}`} active={on} onPress={() => setCourts(on ? courts.filter((i) => !ids.includes(i)) : [...new Set([...courts, ...ids])])} />; })}
+            {data.courts.map((x) => <Chip key={x.id} label={`${x.sport_emoji ?? ''} ${x.name}`.trim()} active={courts.includes(x.id)} onPress={() => setCourts(courts.includes(x.id) ? courts.filter((y) => y !== x.id) : [...courts, x.id])} />)}
           </View>
         </View>
         <View style={{ gap: 6 }}>
@@ -161,7 +162,7 @@ function CourtRow({ court, cats, data, onCopy, venue }) {
   return (
     <Card>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-        <T weight="800">{court.name} <T size={12} color={c.mute}>· {court.slot_minutes}-min slots · base {moneyIn(court.hourly_rate_cents, venue.currency)}/h</T></T>
+        <T weight="800">{court.sport_emoji ?? '🏟️'} {court.name} <T size={12} color={c.mute}>· {court.slot_minutes}-min slots · base {moneyIn(court.hourly_rate_cents, venue.currency)}/h</T></T>
         {data.courts.length > 1 ? <Btn small title="Copy to…" color={c.paper} onPress={onCopy} /> : null}
       </View>
       {!court.windows.length ? <T size={13} color={c.red} weight="700" style={{ marginTop: 6 }}>No slots yet — this court can't be booked.</T> : ORDER.map((d) => {
@@ -232,13 +233,13 @@ export function Timetable({ v, reload }) {
         </View>
       </Sheet>
       <FormSheet visible={courts} onClose={() => setCourts(false)} title="Add courts" submitLabel="Add"
-        fields={[{ key: 'kind', label: 'Type', type: 'choice', options: ['court', 'table', 'ground', 'pool', 'lane', 'rink', 'range', 'track', 'room', 'studio', 'other'] },
-          { key: 'name_prefix', label: 'Name', placeholder: 'Court → Court 1, Court 2…' }, { key: 'count', label: 'How many', type: 'number' },
-          { key: 'start_number', label: 'Start numbering at', type: 'number', optional: true },
-          { key: 'rate', label: `Base rate per hour (${v.currency}) — used where no category applies`, type: 'number', optional: true },
-          { key: 'slot_minutes', label: 'Slot length (15, 30, 45, 60, 90, 120 min)', type: 'number', optional: true },
-          { key: 'capacity', label: 'Bookings at once (1 for a court)', type: 'number', optional: true }, { key: 'max_players', label: 'Players per court', type: 'number', optional: true }]}
-        onSubmit={async ({ rate, ...f }) => { const r = await api.post(`/venues/${v.id}/resources/bulk`, { ...f, ...(rate !== undefined ? { hourly_rate_cents: toMinor(rate, v.currency) } : {}) }); refresh(); return `${r.created.length} added`; }} />
+        fields={[{ key: 'sport', label: 'Sport', type: 'sport' }, { key: 'kind', label: 'Type', type: 'chips', options: [{ value: 'court', label: '🏟️ Court' }, { value: 'table', label: '🏓 Table' }, { value: 'ground', label: '🌿 Ground' }, { value: 'pool', label: '🏊 Pool' }, { value: 'lane', label: '🎳 Lane' }, { value: 'rink', label: '⛸️ Rink' }, { value: 'range', label: '🎯 Range' }, { value: 'track', label: '🏃 Track' }, { value: 'room', label: '🚪 Room' }, { value: 'studio', label: '🧘 Studio' }, { value: 'other', label: 'Other' }] },
+          { key: 'name_prefix', label: 'Name', placeholder: 'Court  →  Court 1, Court 2…' }, { key: 'count', label: 'How many', type: 'stepper', min: 1, max: 30, default: 2 },
+          { key: 'start_number', label: 'Numbering starts at', type: 'stepper', min: 1, max: 99, default: 1 },
+          { key: 'hourly_rate_cents', label: 'Base rate per hour', type: 'money', currency: v.currency, optional: true, hint: 'Used where no price category applies' },
+          { key: 'slot_minutes', label: 'Slot length', type: 'chips', default: 60, options: [{ value: 30, label: '30 min' }, { value: 45, label: '45 min' }, { value: 60, label: '1 hour' }, { value: 90, label: '1½ h' }, { value: 120, label: '2 hours' }] },
+          { key: 'capacity', label: 'Bookings at once', type: 'stepper', min: 1, max: 100, default: 1 }, { key: 'max_players', label: 'Players per court', type: 'stepper', min: 1, max: 100, default: 2 }]}
+        onSubmit={async (f) => { const r = await api.post(`/venues/${v.id}/resources/bulk`, f); refresh(); return `${r.created.length} added`; }} />
     </>
   );
 }

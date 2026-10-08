@@ -65,7 +65,7 @@ cap({
     const [cats, rates, courts, wins] = await Promise.all([
       many('SELECT id, name, color, hourly_rate_cents, active FROM price_categories WHERE venue_id=$1 ORDER BY active DESC, hourly_rate_cents, name', [i.id]),
       many('SELECT cr.category_id, cr.resource_id, cr.hourly_rate_cents FROM category_rates cr JOIN price_categories pc ON pc.id=cr.category_id WHERE pc.venue_id=$1 AND cr.hourly_rate_cents IS NOT NULL', [i.id]),
-      many('SELECT id, name, kind, slot_minutes, hourly_rate_cents, capacity FROM resources WHERE venue_id=$1 AND active ORDER BY kind, name', [i.id]),
+      many('SELECT r.id, r.name, r.kind, r.slot_minutes, r.hourly_rate_cents, r.capacity, s.slug AS sport_slug, s.name AS sport, s.emoji AS sport_emoji FROM resources r LEFT JOIN sports s ON s.id=r.sport_id WHERE r.venue_id=$1 AND r.active ORDER BY r.kind, r.name', [i.id]),
       many('SELECT * FROM schedule_windows WHERE venue_id=$1 AND removed_at IS NULL ORDER BY start_min', [i.id]),
     ]);
     return {
@@ -164,14 +164,16 @@ cap({
   summary: 'Change settings on many courts at once: slot length, min/max slots per booking, capacity, base rate, or retire them (active=false). Only the fields you send change.',
   input: z.object({
     id, resource_ids: z.array(id).min(1).max(100), slot_minutes: slotMinutes.optional(), min_slots: z.number().int().min(1).max(48).optional(), max_slots: z.number().int().min(1).max(48).optional(),
-    capacity: z.number().int().min(1).max(1000).optional(), hourly_rate_cents: money.optional(), active: z.boolean().optional(),
+    capacity: z.number().int().min(1).max(1000).optional(), hourly_rate_cents: money.optional(), active: z.boolean().optional(), sport: z.string().optional().describe('sport slug or id: associates every chosen court with that sport'),
   }),
   async handler({ user }, i) {
     await mustManage(user, i.id);
+    const sport = i.sport ? await sportBySlugOrId(i.sport) : null;
+    if (i.sport && !sport) throw notFound('Sport');
     const { rows } = await pool.query(
-      `UPDATE resources SET slot_minutes=coalesce($3,slot_minutes), min_slots=coalesce($4,min_slots), max_slots=coalesce($5,max_slots), capacity=coalesce($6,capacity), hourly_rate_cents=coalesce($7,hourly_rate_cents), active=coalesce($8,active)
+      `UPDATE resources SET slot_minutes=coalesce($3,slot_minutes), min_slots=coalesce($4,min_slots), max_slots=coalesce($5,max_slots), capacity=coalesce($6,capacity), hourly_rate_cents=coalesce($7,hourly_rate_cents), active=coalesce($8,active), sport_id=coalesce($9,sport_id)
         WHERE venue_id=$1 AND id = ANY($2::uuid[]) AND coalesce($5,max_slots) >= coalesce($4,min_slots) RETURNING id`,
-      [i.id, i.resource_ids, i.slot_minutes ?? null, i.min_slots ?? null, i.max_slots ?? null, i.capacity ?? null, i.hourly_rate_cents ?? null, i.active ?? null]);
+      [i.id, i.resource_ids, i.slot_minutes ?? null, i.min_slots ?? null, i.max_slots ?? null, i.capacity ?? null, i.hourly_rate_cents ?? null, i.active ?? null, sport?.id ?? null]);
     if (rows.length !== new Set(i.resource_ids).size) throw badRequest('Some courts were not updated — check they belong to this venue and that max slots is at least min slots');
     return { updated: rows.length };
   },
@@ -188,12 +190,12 @@ cap({
     const [n, uncovered] = await Promise.all([
       one(`SELECT (SELECT count(*) FROM resources WHERE venue_id=$1 AND active)::int AS courts, (SELECT count(*) FROM price_categories WHERE venue_id=$1 AND active)::int AS categories,
                   (SELECT count(*) FROM venue_contacts WHERE venue_id=$1 AND removed_at IS NULL)::int AS contacts, (SELECT count(*) FROM venue_media WHERE venue_id=$1 AND removed_at IS NULL)::int AS photos,
-                  (SELECT count(*) FROM venue_plans WHERE venue_id=$1 AND active)::int AS plans, (SELECT count(*) FROM resources WHERE venue_id=$1 AND active AND hourly_rate_cents > 0)::int AS priced_courts`, [i.id]),
+                  (SELECT count(*) FROM venue_plans WHERE venue_id=$1 AND active)::int AS plans, (SELECT count(*) FROM resources WHERE venue_id=$1 AND active AND hourly_rate_cents > 0)::int AS priced_courts, (SELECT count(*) FROM resources WHERE venue_id=$1 AND active AND sport_id IS NULL)::int AS no_sport`, [i.id]),
       many('SELECT r.id, r.name FROM resources r WHERE r.venue_id=$1 AND r.active AND NOT EXISTS (SELECT 1 FROM schedule_windows w WHERE w.resource_id=r.id AND w.removed_at IS NULL)', [i.id]),
     ]);
     const hasPricing = n.categories > 0 || n.priced_courts > 0;
     const steps = [
-      { key: 'courts', title: 'Add your courts', done: n.courts > 0, detail: n.courts ? `${n.courts} court(s)` : 'Add the courts, tables or lanes people can book — add many at once.' },
+      { key: 'courts', title: 'Add your courts and their sport', done: n.courts > 0 && n.no_sport === 0, detail: !n.courts ? 'Add the courts, tables or lanes people can book — add many at once.' : n.no_sport ? `${n.no_sport} court(s) have no sport yet — so people can find them by sport` : `${n.courts} court(s)` },
       { key: 'timetable', title: 'Set the weekly timetable', done: v.timetable_enabled && n.courts > 0 && uncovered.length === 0, detail: !v.timetable_enabled ? 'Choose when each court is open, in bulk.' : uncovered.length ? `${uncovered.map((u) => u.name).join(', ')} have no slots yet` : 'Every court has slots' },
       { key: 'pricing', title: 'Price your slots', done: hasPricing, detail: hasPricing ? `${n.categories} categories` : 'Create categories like Peak and Off-peak, or give each court a rate.' },
       { key: 'payments', title: 'Money, tax & invoices', done: !!v.legal_name, detail: v.legal_name ? `${v.currency} · invoices as ${v.legal_name}` : 'Add the legal name and tax number that go on invoices.' },

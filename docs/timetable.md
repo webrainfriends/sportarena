@@ -24,3 +24,6 @@ Discounts, member discounts and promo codes apply on top, as before.
 
 ## Data
 Additive migration `014_timetable_categories.sql`: `price_categories`, `category_rates`, `schedule_windows` (soft-removed with `removed_at`), `venues.timetable_enabled`. Nothing is deleted.
+
+## Forms and controls (venue console)
+`FormSheet` picks the control that fits the answer instead of text boxes: steppers for counts and percentages, money fields typed in whole currency units (sent as minor units), switches for yes/no, chips for a few exclusive options, multi-select chips (facilities), weekday chips with Weekdays / Weekend / Every day shortcuts, date and time pickers, a sport picker (quick picks + search), currency and time-zone pickers, and a "use my location" button for the map position. Fields can show or hide based on other answers. Every court is created with a **sport**; the console flags courts without one and the launch checklist counts them (`bulk_update_resources` can set a sport on many courts at once). The timetable's bulk sheet has "All <sport>" shortcuts to select every court of a sport.
