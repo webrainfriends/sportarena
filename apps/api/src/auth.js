@@ -8,7 +8,7 @@ const secret = () => new TextEncoder().encode(config.jwtSecret);
 export const signToken = (user) =>
   new SignJWT({ roles: user.roles }).setProtectedHeader({ alg: 'HS256' }).setSubject(user.id).setIssuedAt().setExpirationTime(config.tokenTtl).sign(secret());
 
-const COLS = 'id, handle, display_name, roles, avatar_emoji, avatar_color, avatar_url';
+const COLS = 'id, handle, display_name, roles, avatar_emoji, avatar_color, avatar_url, avatar_cutout';
 
 /** Resolve a `Bearer` credential (JWT or `sa_` API token) to a user row, or null. */
 export async function authenticate(authorization) {
@@ -19,7 +19,7 @@ export async function authenticate(authorization) {
     const row = await one(
       `UPDATE api_tokens t SET last_used_at = now() FROM users u
         WHERE t.token_hash = $1 AND t.revoked_at IS NULL AND u.id = t.user_id
-        RETURNING u.id, u.handle, u.display_name, u.roles, u.avatar_emoji, u.avatar_color, u.avatar_url`,
+        RETURNING u.id, u.handle, u.display_name, u.roles, u.avatar_emoji, u.avatar_color, u.avatar_url, u.avatar_cutout`,
       [sha256(tok)],
     );
     return row;
