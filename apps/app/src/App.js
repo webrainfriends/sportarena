@@ -29,6 +29,7 @@ import { InsurerDesk } from './screens/insurer';
 import { Me } from './screens/me';
 import { Support } from './screens/cases';
 import { Family } from './screens/family';
+import { Orgs, Org } from './screens/org';
 import { CoachHome, CoachAthletes, CoachPlan, CoachCalendar, MyPlans } from './screens/coach';
 
 import { PlayerHome, SportProfile, ImportMatches } from './screens/player';
