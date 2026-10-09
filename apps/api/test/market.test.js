@@ -159,6 +159,9 @@ test('any account can set, see and remove a profile photo; photos only, never de
   assert.equal((await api('GET', `/people/${u.id}`, { token: u.token })).body.avatar_url, avatar_url);
   // photo uploads don't eat the 20-per-user allowance for post media
   for (let i = 0; i < 3; i++) assert.equal((await put(u.token, png)).status, 201);
+  const cut = await fetch(`${base}/api/v1/me/avatar?cutout=1`, { method: 'PUT', headers: { authorization: `Bearer ${u.token}` }, body: png });
+  assert.equal((await cut.json()).avatar_cutout, true);
+  assert.equal((await api('GET', '/me', { token: u.token })).body.avatar_cutout, true);
   assert.equal((await api('DELETE', '/me/avatar', { token: u.token })).status, 200);
   assert.equal((await api('GET', '/me', { token: u.token })).body.avatar_url, null);
   assert.equal((await fetch(`${base}${avatar_url}`)).status, 200, 'the old file is kept');

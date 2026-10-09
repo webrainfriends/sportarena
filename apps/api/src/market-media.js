@@ -66,7 +66,7 @@ export function marketMediaRouter() {
     } catch (e) { req.resume(); fail(res, e); }
   });
 
-  // PUT /api/v1/me/avatar   body = the raw photo (JPEG/PNG/WebP, up to 10 MB). Becomes the profile picture of any account, whatever its roles.
+  // PUT /api/v1/me/avatar[?cutout=1]   body = the raw photo (JPEG/PNG/WebP, up to 10 MB). cutout=1 marks a transparent PNG with the background removed. Becomes the profile picture of any account, whatever its roles.
   // Earlier photos stay stored (nothing is deleted); the emoji avatar remains the fallback.
   r.put('/me/avatar', rateLimit({ windowMs: 60_000, limit: config.isProd ? 20 : 1000, standardHeaders: true, legacyHeaders: false }), async (req, res) => {
     try {
@@ -75,8 +75,9 @@ export function marketMediaRouter() {
       if (Number(req.headers['content-length'] ?? 0) > MARKET_LIMITS.photoBytes) throw new AppError(413, 'too_large', `Images can be up to ${MARKET_LIMITS.photoBytes / 2 ** 20} MB`);
       const row = await store(req, user.id, 'avatar');
       const url = marketMediaUrl(row);
-      await query('UPDATE users SET avatar_url=$2 WHERE id=$1', [user.id, url]);
-      res.status(201).json({ avatar_url: url });
+      const cutout = req.query.cutout === '1' && row.content_type === 'image/png';
+      await query('UPDATE users SET avatar_url=$2, avatar_cutout=$3 WHERE id=$1', [user.id, url, cutout]);
+      res.status(201).json({ avatar_url: url, avatar_cutout: cutout });
     } catch (e) { req.resume(); fail(res, e); }
   });
 

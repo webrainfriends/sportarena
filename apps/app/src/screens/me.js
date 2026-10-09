@@ -42,6 +42,7 @@ export function Me() {
       </GradCard>
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
         <Btn small title={user.avatar_url ? '📷 Change photo' : '📷 Add profile photo'} color={c.paper} ink={c.ink} loading={photo.busy} onPress={photo.change} />
+        <Btn small title="Upload without cut-out" color={c.paper} ink={c.ink} disabled={photo.busy} onPress={() => photo.change({ asIs: true })} />
         {user.avatar_url ? <Btn small title="Remove photo" color={c.paper} ink={c.ink} disabled={photo.busy} onPress={photo.remove} /> : null}
       </View>
       <Section title="Acting as" color={c.cyan}>

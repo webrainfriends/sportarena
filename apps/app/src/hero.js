@@ -9,6 +9,7 @@ import { useLayout } from './layout';
 import { api, mediaUrl } from './api';
 import { useSession } from './session';
 import { pickMedia } from './market/media';
+import { removeBackground } from './cutout';
 
 const lift = Platform.OS === 'web'
   ? { boxShadow: '0 1px 2px rgba(15,23,42,0.05), 0 10px 28px rgba(15,23,42,0.12)' }
@@ -22,9 +23,17 @@ export function useAvatarPhoto() {
     setBusy(true);
     try { await fn(); await refresh(); toast(done); } catch (e) { toast(e.message); } finally { setBusy(false); }
   };
-  const change = async () => {
+  // web: remove the background first (falls back to the plain photo if the model can't load or finds no one); `asIs` skips it
+  const change = async ({ asIs = false } = {}) => {
     const file = await pickMedia({ photoOnly: true });
-    if (file) await run(() => api.upload('/me/avatar', file.blob), 'Profile photo updated');
+    if (!file) return;
+    await run(async () => {
+      if (Platform.OS === 'web' && !asIs) {
+        toast('Removing background…');
+        try { await api.upload('/me/avatar', await removeBackground(file.blob), { cutout: 1 }); return; } catch { toast('Couldn’t remove the background — using your photo as is'); }
+      }
+      await api.upload('/me/avatar', file.blob);
+    }, 'Profile photo updated');
   };
   const remove = () => run(() => api.del('/me/avatar'), 'Photo removed');
   return { change, remove, busy };
@@ -74,10 +83,10 @@ export function PlayerHero({ user, profile, onBell, onAvatar, pad = 16 }) {
         <View style={{ position: 'absolute', right: 0, top: 8, width: side, height: H - 8 }}>
           <Pressable accessibilityRole="button" accessibilityLabel="Open my profile" onPress={onAvatar} style={{ width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' }}>
             {user.avatar_url
-              ? <Image source={{ uri: mediaUrl(user.avatar_url) }} resizeMode="cover" accessibilityLabel={`${user.display_name} photo`} style={{ width: '100%', height: '100%', ...(Platform.OS === 'web' ? { objectPosition: 'top' } : null) }} />
+              ? <Image source={{ uri: mediaUrl(user.avatar_url) }} resizeMode={user.avatar_cutout ? 'contain' : 'cover'} accessibilityLabel={`${user.display_name} photo`} style={{ width: '100%', height: '100%', ...(Platform.OS === 'web' ? { objectPosition: user.avatar_cutout ? 'right bottom' : 'top' } : null) }} />
               : <Text style={{ fontSize: side * 0.6, marginTop: 20 }}>{user.avatar_emoji ?? '😎'}</Text>}
           </Pressable>
-          {user.avatar_url ? (
+          {user.avatar_url && !user.avatar_cutout ? (
             <>
               <LinearGradient pointerEvents="none" colors={['#fff', 'rgba(255,255,255,0)']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '45%' }} />
               <LinearGradient pointerEvents="none" colors={['rgba(255,255,255,0)', '#fff']} style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: '38%' }} />
