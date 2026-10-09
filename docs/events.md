@@ -16,4 +16,16 @@ create_event, list_events, get_event, update_event, enter_event, list_entries, d
 | Sponsor context | `events.seeking_sponsors`, `events.currency` (used by the sponsorship and ticketing slices). |
 
 ## Still open (separate slices)
-Entry-fee collection and ticketing (payments purpose), volunteer/coach opportunities, sponsorship discovery, reschedule clash re-check, IPTC `spEventStatus` mapping for competitions.
+Entry-fee collection and ticketing (payments purpose), volunteer/coach opportunities, sponsorship discovery, IPTC `spEventStatus` mapping for competitions.
+
+## Fixture officials (issue #88, slice 1)
+Capabilities: request_fixture_official, respond_fixture_official, release_fixture_official, withdraw_fixture_official, list_fixture_officials, list_my_official_assignments.
+
+* Lifecycle: `invited -> accepted -> completed`, plus `declined`, `withdrawn`, `released`, `cancelled`. Only accepted officials are crew. Every transition is appended to `fixture_official_history` (actor, reason, time); nothing is overwritten or deleted.
+* Roles: referee, umpire, linesman, scorer. Non-scorer roles need a `referee` sport profile for the event's sport.
+* `create_fixture` / `reschedule_fixture` with `referee_id` now send an invitation; `fixtures.referee_id` is a projection set when the referee accepts and cleared when they leave.
+* Fixtures store `duration_min`; clash checks use each fixture's own duration (no fixed 90 minutes). Accept, invite, create and reschedule share the same eligibility/clash rules (`src/officials.js`), serialised per official with an advisory lock.
+* Re-timing a fixture re-validates every open official; confirmed officials get `needs_ack` and are notified, and re-accept to acknowledge. Cancelling closes all open assignments.
+* Accepting mirrors an active `associations` row on the fixture's game (if one exists) so game-official permissions keep working.
+
+Not yet built (follow-up slices): referee verification type, availability/calendar, Officials Home UI, idempotent match console, result sign-off, incident reports.

@@ -136,8 +136,12 @@ test('fixture scheduling books the court and rejects referee/team clashes', asyn
   assert.equal((await api('POST', `/events/${ev.id}/fixtures`, { token: org.token, body: { ...f, referee_id: undefined } })).status, 409, 'court (and teams) are taken');
   const outsider = await signup(['organizer']);
   assert.equal((await api('POST', `/events/${ev.id}/fixtures`, { token: outsider.token, body: f })).status, 403);
-  // assigned referee may record the result and individual scores
+  // the referee is only invited; they become the fixture's referee once they accept
   const fx = (await api('GET', `/fixtures?event_id=${ev.id}`)).body[0];
+  assert.equal((await api('POST', `/fixtures/${fx.id}/result`, { token: ref.token, body: { home_score: 1, away_score: 0 } })).status, 403, 'invited is not confirmed');
+  const inv = (await api('GET', '/me/official-assignments', { token: ref.token })).body[0];
+  assert.equal((await api('POST', `/official-assignments/${inv.id}/respond`, { token: ref.token, body: { response: 'accept' } })).status, 200);
+  // assigned referee may record the result and individual scores
   assert.equal((await api('POST', `/fixtures/${fx.id}/result`, { token: ref.token, body: { home_score: 80, away_score: 75 } })).status, 200);
   const perf = await api('POST', '/performances', { token: ref.token, body: { user_id: caps[0].id, sport: 'basketball', metric: 'points', value: 31, points: 5, fixture_id: fx.id } });
   assert.equal(perf.status, 201);

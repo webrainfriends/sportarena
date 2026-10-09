@@ -8,11 +8,12 @@ import { canManageTeam } from './teams.js';
 import { hasOrgGrant } from '../org-access.js';
 import { reserve } from './venues.js';
 import { notify } from '../notify.js';
+import { OFFICIAL_ROLES, lockOfficial, assertOfficialEligible, recordHistory, closeOfficial } from '../officials.js';
 
 const dt = z.string().datetime({ offset: true });
 const date = z.string().date();
 
-async function eventForOrganizer(user, eventId, c) {
+export async function eventForOrganizer(user, eventId, c) {
   const ev = await mustFind('events', eventId, '*', c);
   if (!(await hasOrgGrant(user, ev.organisation_id, ['owner', 'admin'], c))) mustOwn(user, ev.organizer_id, 'event');
   return ev;
@@ -243,7 +244,7 @@ cap({
 
 cap({
   name: 'create_fixture', method: 'POST', path: '/events/:id/fixtures', tag: 'Schedule', status: 201,
-  summary: 'Schedule a game. If resource_id is given the court/ground is booked atomically; referee clashes are rejected.',
+  summary: 'Schedule a game. If resource_id is given the court/ground is booked atomically. A referee_id sends the referee an invitation (see respond_fixture_official); team clashes are rejected.',
   input: z.object({ id, home_team_id: id, away_team_id: id, scheduled_at: dt, duration_min: z.number().int().min(10).max(600).default(90), round: z.string().max(40).optional(), resource_id: id.optional(), referee_id: id.optional() }),
   async handler({ user }, i) {
     return tx(async (c) => {
@@ -253,19 +254,18 @@ cap({
       if (ok.rows[0].n !== 2) throw badRequest('Both teams must be accepted entrants of this event');
       const end = new Date(new Date(i.scheduled_at).getTime() + i.duration_min * 60000).toISOString();
       for (const team of [i.home_team_id, i.away_team_id]) {
-        const clash = await c.query("SELECT 1 FROM fixtures WHERE status IN ('scheduled','live') AND (home_team_id=$1 OR away_team_id=$1) AND scheduled_at < $3 AND scheduled_at + interval '90 minutes' > $2", [team, i.scheduled_at, end]);
+        const clash = await c.query("SELECT 1 FROM fixtures WHERE status IN ('scheduled','live') AND (home_team_id=$1 OR away_team_id=$1) AND scheduled_at < $3 AND scheduled_at + duration_min * interval '1 minute' > $2", [team, i.scheduled_at, end]);
         if (clash.rowCount) throw conflict('A team already has a game in that window');
       }
-      if (i.referee_id) {
-        const ref = await c.query("SELECT 1 FROM sport_profiles WHERE user_id=$1 AND role='referee' AND sport_id=$2", [i.referee_id, ev.sport_id]);
-        if (!ref.rowCount) throw badRequest('That person is not a referee for this sport');
-        const clash = await c.query("SELECT 1 FROM fixtures WHERE referee_id=$1 AND status IN ('scheduled','live') AND scheduled_at < $3 AND scheduled_at + interval '90 minutes' > $2", [i.referee_id, i.scheduled_at, end]);
-        if (clash.rowCount) throw conflict('Referee already has a game in that window');
-      }
+      if (i.referee_id) await lockOfficial(c, i.referee_id);
+      if (i.referee_id) await assertOfficialEligible(c, { sportId: ev.sport_id, userId: i.referee_id, role: 'referee', start: i.scheduled_at, durationMin: i.duration_min });
       if (i.resource_id) await reserve(c, { resource_id: i.resource_id, user_id: user.id, event_id: i.id, starts_at: i.scheduled_at, ends_at: end, note: `Fixture ${i.round ?? ''}`.trim() });
-      return (await c.query(
-        'INSERT INTO fixtures(event_id, round, home_team_id, away_team_id, resource_id, referee_id, scheduled_at) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *',
-        [i.id, i.round ?? null, i.home_team_id, i.away_team_id, i.resource_id ?? null, i.referee_id ?? null, i.scheduled_at])).rows[0];
+      const fx = (await c.query(
+        'INSERT INTO fixtures(event_id, round, home_team_id, away_team_id, resource_id, scheduled_at, duration_min) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *',
+        [i.id, i.round ?? null, i.home_team_id, i.away_team_id, i.resource_id ?? null, i.scheduled_at, i.duration_min])).rows[0];
+      // an organiser requests a referee; the fixture's referee_id is only set once they accept
+      if (i.referee_id) await inviteOfficial(c, user, ev, fx, i.referee_id, 'referee');
+      return fx;
     });
   },
 });
@@ -308,15 +308,65 @@ cap({
 });
 
 cap({
-  name: 'reschedule_fixture', method: 'PATCH', path: '/fixtures/:id', tag: 'Schedule', summary: 'Move, assign a referee to, or cancel a fixture.',
-  input: z.object({ id, scheduled_at: dt.optional(), referee_id: id.optional(), status: z.enum(['scheduled', 'live', 'cancelled']).optional() }),
+  name: 'reschedule_fixture', method: 'PATCH', path: '/fixtures/:id', tag: 'Schedule',
+  summary: 'Move, re-time, assign a referee to (invitation), or cancel a fixture. Officials are re-validated against the new time; confirmed officials must acknowledge a change.',
+  input: z.object({ id, scheduled_at: dt.optional(), duration_min: z.number().int().min(10).max(600).optional(), referee_id: id.optional(), status: z.enum(['scheduled', 'live', 'cancelled']).optional() }),
   async handler({ user }, i) {
-    const f = await mustFind('fixtures', i.id);
-    await eventForOrganizer(user, f.event_id);
-    if (f.status === 'completed') throw conflict('Completed fixtures are locked');
-    return one('UPDATE fixtures SET scheduled_at=coalesce($2,scheduled_at), referee_id=coalesce($3,referee_id), status=coalesce($4,status) WHERE id=$1 RETURNING *', [i.id, i.scheduled_at, i.referee_id, i.status]);
+    return tx(async (c) => {
+      const f = (await c.query('SELECT * FROM fixtures WHERE id=$1 FOR UPDATE', [i.id])).rows[0];
+      if (!f) throw notFound('fixture');
+      const ev = await eventForOrganizer(user, f.event_id, c);
+      if (f.status === 'completed') throw conflict('Completed fixtures are locked');
+      const start = i.scheduled_at ?? f.scheduled_at, dur = i.duration_min ?? f.duration_min;
+      const retimed = new Date(start).getTime() !== new Date(f.scheduled_at).getTime() || dur !== f.duration_min;
+      const open = (await c.query("SELECT * FROM fixture_officials WHERE fixture_id=$1 AND status IN ('invited','accepted') ORDER BY created_at, id", [f.id])).rows;
+      if (i.status !== 'cancelled') {
+        for (const fo of [...new Set(open.map((o) => o.user_id))].sort()) await lockOfficial(c, fo);
+        if (retimed) {
+          for (const fo of open) await assertOfficialEligible(c, { sportId: ev.sport_id, fixtureId: f.id, userId: fo.user_id, role: fo.role, start, durationMin: dur });
+        }
+      }
+      const out = (await c.query('UPDATE fixtures SET scheduled_at=$2, duration_min=$3, status=coalesce($4,status) WHERE id=$1 RETURNING *', [f.id, start, dur, i.status])).rows[0];
+      if (i.status === 'cancelled') {
+        for (const fo of open) {
+          await closeOfficial(c, fo, user.id, 'cancelled', 'Fixture cancelled');
+          await notify(c, fo.user_id, { kind: 'official_assignment', title: 'Fixture cancelled', body: `Your ${fo.role} assignment for ${ev.name} was cancelled.`, data: { fixture_id: f.id, official_id: fo.id } });
+        }
+        return out;
+      }
+      if (retimed) {
+        for (const fo of open) {
+          if (fo.status === 'accepted') await c.query('UPDATE fixture_officials SET needs_ack=true WHERE id=$1', [fo.id]);
+          await notify(c, fo.user_id, { kind: 'official_assignment', title: 'Fixture time changed', body: `${ev.name} now starts ${new Date(start).toISOString()}. Please ${fo.status === 'accepted' ? 'acknowledge' : 'respond'}.`, data: { fixture_id: f.id, official_id: fo.id } });
+        }
+      }
+      if (i.referee_id) {
+        for (const fo of open.filter((o) => o.role === 'referee' && o.user_id !== i.referee_id)) {
+          await closeOfficial(c, fo, user.id, 'released', 'Replaced by another referee');
+          await notify(c, fo.user_id, { kind: 'official_assignment', title: 'Assignment released', body: `You were replaced as referee for ${ev.name}.`, data: { fixture_id: f.id, official_id: fo.id } });
+        }
+        if (!open.some((o) => o.role === 'referee' && o.user_id === i.referee_id)) {
+          await lockOfficial(c, i.referee_id);
+          await inviteOfficial(c, user, ev, out, i.referee_id, 'referee');
+        }
+      }
+      return (await c.query('SELECT * FROM fixtures WHERE id=$1', [f.id])).rows[0];
+    });
   },
 });
+
+/** Create an invitation (never a silent confirmation) after the same eligibility checks as accepting. */
+export async function inviteOfficial(c, user, ev, fixture, userId, role) {
+  if (!OFFICIAL_ROLES.includes(role)) throw badRequest('Unknown official role');
+  await lockOfficial(c, userId);
+  await assertOfficialEligible(c, { sportId: ev.sport_id, fixtureId: fixture.id, userId, role, start: fixture.scheduled_at, durationMin: fixture.duration_min });
+  const dup = await c.query("SELECT 1 FROM fixture_officials WHERE fixture_id=$1 AND user_id=$2 AND role=$3 AND status IN ('invited','accepted')", [fixture.id, userId, role]);
+  if (dup.rowCount) throw conflict('That person already has this role on the fixture');
+  const fo = (await c.query("INSERT INTO fixture_officials(fixture_id, user_id, role, requested_by) VALUES ($1,$2,$3,$4) RETURNING *", [fixture.id, userId, role, user.id])).rows[0];
+  await recordHistory(c, fo.id, user.id, null, 'invited', null);
+  await notify(c, userId, { kind: 'official_assignment', title: 'Officiating request', body: `${ev.name}: you are asked to officiate as ${role} on ${new Date(fixture.scheduled_at).toISOString()}.`, data: { fixture_id: fixture.id, official_id: fo.id } });
+  return fo;
+}
 
 cap({
   name: 'record_result', method: 'POST', path: '/fixtures/:id/result', tag: 'Schedule',
