@@ -65,7 +65,7 @@ export function Play() {
           <Chip label={sort === 'soonest' ? 'Sort: soonest' : sort === 'fee_low' ? 'Sort: lowest fee' : 'Sort: newest'} onPress={() => setSort((v) => (v === 'soonest' ? 'fee_low' : v === 'fee_low' ? 'newest' : 'soonest'))} />
         </View>
       ) : null}
-      {tab === 'events' && has('organizer') ? <Btn title="Create an event" color={c.violet} onPress={() => setForm('event')} style={{ marginTop: 8 }} /> : null}
+      {tab === 'events' ? <Btn title="Create an event" color={c.violet} onPress={() => setForm('event')} style={{ marginTop: 8 }} /> : null}
       {tab === 'teams' ? <TeamInvites onChanged={list.reload} /> : null}
       {tab === 'teams' ? <Btn title="Start a team" color={c.pink} onPress={() => setForm('team')} style={{ marginTop: 8 }} /> : null}
 

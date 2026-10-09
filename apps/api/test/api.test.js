@@ -50,7 +50,7 @@ test('personal identification data is encrypted at rest and decrypts for its own
 test('auth, API tokens, role gating', async () => {
   assert.equal((await api('GET', '/me')).status, 401);
   const a = await signup(['athlete']);
-  assert.equal((await api('POST', '/events', { token: a.token, body: { name: 'Nope Cup', sport: 'football' } })).status, 403);
+  assert.equal((await api('GET', '/admin/cases', { token: a.token })).status, 403);
   assert.equal((await api('POST', '/auth/login', { body: { email: 'nobody@example.com', password: 'whatever-whatever' } })).status, 401);
   const login = await api('POST', '/auth/login', { body: { email: 'U2@example.com', password: 'correct-horse-battery' } });
   assert.equal(login.status, 200);

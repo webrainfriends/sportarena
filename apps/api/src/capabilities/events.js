@@ -19,7 +19,7 @@ async function eventForOrganizer(user, eventId, c) {
 }
 
 cap({
-  name: 'create_event', method: 'POST', path: '/events', tag: 'Events', auth: ['organizer'], status: 201,
+  name: 'create_event', method: 'POST', path: '/events', tag: 'Events', auth: 'user', status: 201,
   summary: 'Create a tournament, league, friendly, camp or trial. Points rules drive the standings.',
   input: z.object({
     name: z.string().min(2).max(100), sport: z.string(), kind: z.enum(['tournament', 'league', 'friendly', 'camp', 'trial']).default('tournament'),
