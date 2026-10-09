@@ -22,6 +22,7 @@ import './timetable.js';
 import './plans.js';
 import './invoices.js';
 import './events.js';
+import './officials.js';
 import './scores.js';
 import './player.js';
 import './ontology.js';
