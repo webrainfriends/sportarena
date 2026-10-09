@@ -15,6 +15,9 @@ const KINDS = ['skill', 'tactical', 'conditioning', 'strength', 'recovery', 'mob
 // status is always written out, never colour-only
 const STATUS = { draft: 'Draft', proposed: 'Awaiting athlete', active: 'Active', declined: 'Declined', change_requested: 'Changes requested', closed: 'Closed', pending: 'Awaiting athlete', accepted: 'Accepted', superseded: 'Replaced', scheduled: 'Scheduled', completed: 'Completed', skipped: 'Skipped', cancelled: 'Cancelled', confirmed: 'Confirmed', awaiting_response: 'Awaiting response' };
 const Status = ({ s }) => <Tag label={STATUS[s] ?? s} color={s === 'active' || s === 'completed' || s === 'accepted' || s === 'confirmed' ? c.lime : c.violetSoft} />;
+const TABS = ['Home', 'Play', 'Player', 'Book', 'Hub', 'Me'];
+// links may point at a tab (Hub, Me) or a pushed page; tabs must go through goTab or the page lookup is undefined
+const useOpen = () => { const { push, goTab } = useNav(); return (l) => (TABS.includes(l.screen) ? goTab(l.screen) : push(l.screen, l.params)); };
 const toIso = (v) => localToIso(v.date, v.time, tz);
 const sessionFields = [
   { key: 'title', label: 'Session title' },
@@ -26,13 +29,14 @@ const sessionFields = [
   { key: 'instructions', label: 'Instructions', type: 'multiline', optional: true },
 ];
 
-function Actions({ items, push }) {
+function Actions({ items, open }) {
   if (!items?.length) return <Empty emoji="✅" title="Nothing needs you right now" sub="New coaching requests, athlete replies and session feedback will appear here." />;
-  return items.map((a, i) => <Row key={`${a.kind}${i}`} title={a.title} sub={a.detail} right={<Tag label={a.ready ? 'Ready to confirm' : 'Open'} />} onPress={() => push(a.link.screen, a.link.params)} />);
+  return items.map((a, i) => <Row key={`${a.kind}${i}`} title={a.title} sub={a.detail} right={<Tag label={a.ready ? 'Ready to confirm' : 'Open'} />} onPress={() => open(a.link)} />);
 }
 
 export function CoachHome() {
   const { push } = useNav();
+  const open = useOpen();
   const { tablet: wide } = useLayout();
   const home = useLoad(() => api.get('/coach/home'), []);
   const cal = useLoad(() => api.get('/coach/calendar'), []);
@@ -56,21 +60,21 @@ export function CoachHome() {
         </T>
         {h.next_session ? <T color="#fff" weight="700" size={13}>Next: {h.next_session.title ?? 'Coaching session'} · {dateTimeIn(h.next_session.starts_at, tz)}</T> : null}
       </GradCard>
-      {h.warnings.map((w) => <Card key={w.kind} onPress={() => push(w.link.screen, w.link.params)}><T weight="700">⚠ {w.title}</T></Card>)}
+      {h.warnings.map((w) => <Card key={w.kind} onPress={() => open(w.link)}><T weight="700">⚠ {w.title}</T></Card>)}
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
         <Btn small title="My athletes" onPress={() => push('CoachAthletes')} />
         <Btn small title="Calendar" color={c.violet} onPress={() => push('CoachCalendar')} />
         <Btn small title="Training plans" color={c.paper} ink={c.ink} onPress={() => push('MyPlans', { as: 'coach' })} />
-        <Btn small title="Find a venue" color={c.paper} ink={c.ink} onPress={() => push('BookFlow')} />
+        <Btn small title="Find a venue" color={c.paper} ink={c.ink} onPress={() => open({ screen: 'Book' })} />
       </View>
       <View style={{ flexDirection: wide ? 'row' : 'column', gap: 16, alignItems: 'flex-start' }}>
         <View style={{ flex: 1, width: '100%' }}>
-          <Section title="Needs your action"><Actions items={h.inbox} push={push} /></Section>
+          <Section title="Needs your action"><Actions items={h.inbox} open={open} /></Section>
         </View>
         <View style={{ flex: 1, width: '100%' }}>
           <Section title="Today & this week" action="Full calendar" onAction={() => push('CoachCalendar')}>
             {cal.error ? <ErrorBox error={cal.error} onRetry={cal.reload} /> : !agenda.length ? <Empty emoji="🗓️" title="No sessions scheduled" sub="Accepted plan sessions, confirmed hires and your team's matches show up here." /> :
-              agenda.slice(0, 8).map((x) => <Row key={`${x.source_type}${x.source_id}`} title={x.title} sub={`${new Date(x.starts_at).toDateString() === today ? 'Today' : ''} ${dateTimeIn(x.starts_at, tz)}${x.conflict ? ' · Clash with another commitment' : ''}`} right={<Status s={x.status} />} onPress={() => push(x.link.screen, x.link.params)} />)}
+              agenda.slice(0, 8).map((x) => <Row key={`${x.source_type}${x.source_id}`} title={x.title} sub={`${new Date(x.starts_at).toDateString() === today ? 'Today' : ''} ${dateTimeIn(x.starts_at, tz)}${x.conflict ? ' · Clash with another commitment' : ''}`} right={<Status s={x.status} />} onPress={() => open(x.link)} />)}
           </Section>
           <Section title="My teams">
             {h.teams.length ? h.teams.map((t) => <Row key={t.id} title={`${t.emoji ?? ''} ${t.name}`} sub={`${t.sport} · ${t.members} players`} onPress={() => push('Team', { id: t.id })} />) : <Empty emoji="👥" title="No teams yet" sub="When a team adds you as its coach, it appears here." />}
@@ -206,7 +210,7 @@ export function CoachPlan({ id }) {
 }
 
 export function CoachCalendar() {
-  const { push } = useNav();
+  const open = useOpen();
   const cal = useLoad(() => api.get('/coach/calendar'), []);
   const items = (cal.data?.items ?? []).filter((x) => x.status !== 'cancelled');
   const byDay = items.reduce((m, x) => { const k = new Date(x.starts_at).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'short' }); (m[k] ??= []).push(x); return m; }, {});
@@ -218,7 +222,7 @@ export function CoachCalendar() {
         <Empty emoji="🗓️" title="Nothing scheduled" sub="Confirmed sessions, plan sessions and your team's matches will appear here." /> :
         Object.entries(byDay).map(([d, xs]) => (
           <Section key={d} title={d}>
-            {xs.map((x) => <Row key={`${x.source_type}${x.source_id}`} title={x.title} sub={`${dateTimeIn(x.starts_at, tz)}${x.context ? ` · ${x.context}` : ''}${x.conflict ? ' · Clash with another commitment' : ''}`} right={<Status s={x.status} />} onPress={() => push(x.link.screen, x.link.params)} />)}
+            {xs.map((x) => <Row key={`${x.source_type}${x.source_id}`} title={x.title} sub={`${dateTimeIn(x.starts_at, tz)}${x.context ? ` · ${x.context}` : ''}${x.conflict ? ' · Clash with another commitment' : ''}`} right={<Status s={x.status} />} onPress={() => open(x.link)} />)}
           </Section>
         ))}
     </Screen>
