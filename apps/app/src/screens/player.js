@@ -9,6 +9,7 @@ import { Btn, Card, Empty, ErrorBox, H1, H2, Loading, Screen, Seg, T } from '../
 import { FormSheet } from '../FormSheet';
 import { c, fam, toneFor, day } from '../theme';
 import { FavouriteSports } from '../sportpicker';
+import { AthleteToday } from './athlete-home';
 import { Billboard, Shop, Hire, Insure, useCols } from './marketplace';
 
 const LEVELS = ['beginner', 'amateur', 'semi_pro', 'pro'];
@@ -231,8 +232,8 @@ function MySports() {
 
 // ---------- player hub: sections ----------
 
-const SECTIONS = [['sports', 'My sports', MySports], ['billboard', 'Billboard', Billboard], ['shop', 'Shop', Shop], ['hire', 'Hire', Hire], ['insure', 'Insure', Insure]];
-let lastSection = 'sports'; // survive pushing into a sport page and coming back
+const SECTIONS = [['today', 'Today', AthleteToday], ['sports', 'My sports', MySports], ['billboard', 'Billboard', Billboard], ['shop', 'Shop', Shop], ['hire', 'Hire', Hire], ['insure', 'Insure', Insure]];
+let lastSection = 'today'; // survive pushing into a sport page and coming back
 
 export function PlayerHome() {
   const [sec, setSec] = useState(lastSection);

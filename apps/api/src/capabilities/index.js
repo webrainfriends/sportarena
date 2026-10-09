@@ -41,5 +41,6 @@ import './insurance-quotes.js';
 import './insurance-docs.js';
 import './community.js';
 import './home.js';
+import './athlete-schedule.js';
 import './market.js';
 export { capabilities } from '../registry.js';
