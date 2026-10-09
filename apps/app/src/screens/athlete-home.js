@@ -12,7 +12,7 @@ const KINDS = [['match', 'Matches'], ['team', 'Team'], ['event', 'Events'], ['tr
 const ICON = { match: '🏟️', team: '👥', event: '🏆', training: '🏋️', venue: '📍', health: '🩺' };
 const STATUS = { proposed: 'Proposed', awaiting_response: 'Awaiting your response', confirmed: 'Confirmed', completed: 'Completed', cancelled: 'Cancelled', open: 'Open', ongoing: 'Ongoing' };
 
-const ACTIONS = [
+export const ACTIONS = [
   ['🔎', 'Find a match', (n) => n.goTab('Play')],
   ['🧑‍🏫', 'Find a coach', (n) => n.goTab('Player')],
   ['👥', 'Create team', (n) => n.goTab('Play')],
@@ -21,7 +21,7 @@ const ACTIONS = [
   ['🩺', 'Physio / doctor', (n) => n.push('Health')],
 ];
 
-function Item({ x, reload }) {
+export function Item({ x, reload }) {
   const nav = useNav();
   const { toast } = useSession();
   const [busy, setBusy] = useState(false);

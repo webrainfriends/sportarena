@@ -53,7 +53,7 @@ function parseStats(txt) {
 
 // ---------- sport profile card ----------
 
-function SportCard({ p, width, onOpen, onDefault, onLog, selected }) {
+export function SportCard({ p, width, onOpen, onDefault, onLog, selected }) {
   const tone = toneFor(p.sport_slug);
   const s = p.summary;
   const top = p.metrics.slice(0, 3);
