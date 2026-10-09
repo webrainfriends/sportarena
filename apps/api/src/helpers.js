@@ -1,7 +1,7 @@
 import { query, one } from './db.js';
 import { badRequest, forbidden, notFound } from './errors.js';
 
-export const PUBLIC_USER = 'u.id, u.handle, u.display_name, u.roles, u.bio, u.avatar_emoji, u.avatar_color';
+export const PUBLIC_USER = 'u.id, u.handle, u.display_name, u.roles, u.bio, u.avatar_emoji, u.avatar_color, u.avatar_url';
 
 export const isAdmin = (user) => user?.roles?.includes('admin');
 export const hasRole = (user, ...r) => isAdmin(user) || r.some((x) => user?.roles?.includes(x));

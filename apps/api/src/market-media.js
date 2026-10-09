@@ -19,7 +19,7 @@ export const MARKET_LIMITS = { photoBytes: 10 * 2 ** 20, videoBytes: 60 * 2 ** 2
 const root = () => resolve(config.mediaDir, 'market');
 export const marketMediaUrl = (m) => `/api/v1/market/media/${m.id}`;
 
-async function store(stream, userId) {
+async function store(stream, userId, purpose = null) {
   const tmp = join(root(), 'tmp', `${randomUUID()}.part`);
   await mkdir(dirname(tmp), { recursive: true });
   const hash = createHash('sha256');
@@ -39,14 +39,15 @@ async function store(stream, userId) {
     const t = sniff(head);
     if (!t) throw badRequest('Unsupported file. Use JPEG, PNG, WebP or GIF images, or MP4, MOV or WebM videos.');
     if (t.kind === 'photo' && size > MARKET_LIMITS.photoBytes) throw new AppError(413, 'too_large', `Images can be up to ${MARKET_LIMITS.photoBytes / 2 ** 20} MB`);
-    const pending = await one('SELECT count(*)::int AS n FROM market_media WHERE uploader_id=$1 AND post_id IS NULL AND removed_at IS NULL', [userId]);
-    if (pending.n >= MARKET_LIMITS.perUserUnattached) throw new AppError(409, 'limit_reached', 'Attach your uploads to a post before adding more');
+    if (purpose === 'avatar' && (t.kind !== 'photo' || t.type === 'image/gif')) throw badRequest('Use a JPEG, PNG or WebP photo for your profile picture.');
+    const pending = await one('SELECT count(*)::int AS n FROM market_media WHERE uploader_id=$1 AND post_id IS NULL AND purpose IS NULL AND removed_at IS NULL', [userId]);
+    if (purpose !== 'avatar' && pending.n >= MARKET_LIMITS.perUserUnattached) throw new AppError(409, 'limit_reached', 'Attach your uploads to a post before adding more');
     const id = randomUUID();
     const file = `${id}.${t.ext}`;
     await mkdir(root(), { recursive: true });
     await rename(tmp, join(root(), file));
-    return one('INSERT INTO market_media(id, uploader_id, kind, content_type, file_name, size_bytes, sha256) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id, kind, content_type',
-      [id, userId, t.kind, t.type, file, size, hash.digest('hex')]);
+    return one('INSERT INTO market_media(id, uploader_id, kind, content_type, file_name, size_bytes, sha256, purpose) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id, kind, content_type',
+      [id, userId, t.kind, t.type, file, size, hash.digest('hex'), purpose]);
   } catch (e) { await rm(tmp, { force: true }); throw e; }
 }
 
@@ -62,6 +63,20 @@ export function marketMediaRouter() {
       if (Number(req.headers['content-length'] ?? 0) > MARKET_LIMITS.videoBytes) throw new AppError(413, 'too_large', 'File too large');
       const row = await store(req, user.id);
       res.status(201).json({ ...row, url: marketMediaUrl(row) });
+    } catch (e) { req.resume(); fail(res, e); }
+  });
+
+  // PUT /api/v1/me/avatar   body = the raw photo (JPEG/PNG/WebP, up to 10 MB). Becomes the profile picture of any account, whatever its roles.
+  // Earlier photos stay stored (nothing is deleted); the emoji avatar remains the fallback.
+  r.put('/me/avatar', rateLimit({ windowMs: 60_000, limit: config.isProd ? 20 : 1000, standardHeaders: true, legacyHeaders: false }), async (req, res) => {
+    try {
+      const user = await authenticate(req.headers.authorization);
+      if (!user) throw unauthorized();
+      if (Number(req.headers['content-length'] ?? 0) > MARKET_LIMITS.photoBytes) throw new AppError(413, 'too_large', `Images can be up to ${MARKET_LIMITS.photoBytes / 2 ** 20} MB`);
+      const row = await store(req, user.id, 'avatar');
+      const url = marketMediaUrl(row);
+      await query('UPDATE users SET avatar_url=$2 WHERE id=$1', [user.id, url]);
+      res.status(201).json({ avatar_url: url });
     } catch (e) { req.resume(); fail(res, e); }
   });
 

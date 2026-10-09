@@ -9,7 +9,7 @@ const kinds = ['match_players', 'team_recruiting', 'coach_wanted', 'sponsorship_
 const rateUnit = z.enum(['match', 'hour', 'month', 'season']);
 const POST_COLS = `b.id, b.kind, b.title, b.body, b.city, b.starts_at, b.positions_needed, b.budget_cents, b.rate_unit, b.status, b.created_at, b.team_id,
   s.slug AS sport_slug, s.name AS sport, s.emoji AS sport_emoji, t.name AS team_name, t.emoji AS team_emoji,
-  u.id AS author_id, u.handle AS author_handle, u.display_name AS author_name, u.avatar_emoji AS author_emoji, u.avatar_color AS author_color,
+  u.id AS author_id, u.handle AS author_handle, u.display_name AS author_name, u.avatar_emoji AS author_emoji, u.avatar_color AS author_color, u.avatar_url AS author_avatar_url,
   (SELECT count(*)::int FROM billboard_responses r WHERE r.post_id=b.id AND r.status='accepted') AS accepted`;
 const FROM = 'FROM billboard_posts b JOIN users u ON u.id=b.author_id LEFT JOIN sports s ON s.id=b.sport_id LEFT JOIN teams t ON t.id=b.team_id';
 

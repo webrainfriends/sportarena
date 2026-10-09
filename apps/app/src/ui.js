@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, ActivityIndicator } from 'react-native';
+import { Animated, Easing, Image, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, ActivityIndicator } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { c, grad, r, accentFor, fam } from './theme';
 import { useLayout } from './layout';
+import { mediaUrl } from './api';
 
 const EMOJI = /\s*(?:[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}]\uFE0F?\u200d?)+\s*$/u;
 const plain = (ch) => (typeof ch === 'string' ? ch.replace(EMOJI, '') : Array.isArray(ch) ? ch.map(plain) : ch);
@@ -88,7 +89,9 @@ export function Avatar({ user, size = 44, emoji, color }) {
   const bg = color ?? user?.avatar_color ?? accentFor(user?.handle);
   return (
     <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: bg, borderWidth: 2, borderColor: c.paper, alignItems: 'center', justifyContent: 'center', ...lift }}>
-      <Text style={{ fontSize: size * 0.5 }}>{emoji ?? user?.avatar_emoji ?? '😎'}</Text>
+      {user?.avatar_url && !emoji
+        ? <Image source={{ uri: mediaUrl(user.avatar_url) }} accessibilityLabel={`${user.display_name ?? 'Profile'} photo`} style={{ width: size - 4, height: size - 4, borderRadius: (size - 4) / 2 }} />
+        : <Text style={{ fontSize: size * 0.5 }}>{emoji ?? user?.avatar_emoji ?? '😎'}</Text>}
     </View>
   );
 }

@@ -138,7 +138,7 @@ function PostCard({ p, width, onRespond, onChanged }) {
           {meta ? <T size={13} color={c.mute} weight="600">{meta}</T> : null}
           {p.body ? <T size={14} color={c.ink} style={{ lineHeight: 20 }}>{p.body}</T> : null}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <Avatar user={{ avatar_emoji: p.author_emoji, avatar_color: p.author_color, handle: p.author_handle }} size={26} />
+            <Avatar user={{ avatar_emoji: p.author_emoji, avatar_color: p.author_color, avatar_url: p.author_avatar_url, handle: p.author_handle }} size={26} />
             <T size={13} color={c.mute} weight="600">{p.team_name ? `${p.team_emoji} ${p.team_name} · ` : ''}{p.author_name}</T>
           </View>
           {p.is_mine ? (
