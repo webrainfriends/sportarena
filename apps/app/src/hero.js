@@ -30,6 +30,8 @@ export function useAvatarPhoto() {
   return { change, remove, busy };
 }
 
+/** Width of the player-card column: phone-sized on every screen, like the reference. */
+export const COL = 520;
 const nice = (s) => String(s).replace(/_/g, ' ');
 /** Whole years from a YYYY-MM-DD date of birth (the signed-in user's own record). */
 export const ageOf = (dob) => {
@@ -61,42 +63,47 @@ export function PlayerHero({ user, profile, onBell, onAvatar, pad = 16 }) {
   const L = useLayout();
   const tone = profile ? toneFor(profile.sport_slug) : null;
   const [first, ...rest] = String(user.display_name).trim().split(/\s+/);
-  const H = L.tablet ? 340 : 300;
-  const side = L.tablet ? 340 : 190;
+  const W = Math.min(L.width, COL);
+  const H = 330;
+  const side = Math.round(W * 0.62);
+  const nameSize = W < 400 ? 36 : 40;
   return (
-    <View style={{ backgroundColor: tone ? tone[1] : c.pinkSoft, overflow: 'hidden' }}>
-      <LinearGradient colors={['rgba(255,255,255,0)', c.bg]} style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 120 }} pointerEvents="none" />
-      {profile ? <Text pointerEvents="none" style={{ position: 'absolute', left: -30, top: 70, fontSize: 230, opacity: 0.1 }}>{profile.sport_emoji}</Text> : null}
-      <View style={{ width: '100%', maxWidth: L.tablet ? 1000 : 640, alignSelf: 'center', height: H, paddingHorizontal: pad }}>
-        <View style={{ position: 'absolute', right: pad - 6, bottom: 0, width: side, height: H - 30, alignItems: 'center', justifyContent: 'flex-end' }}>
-          <Pressable accessibilityRole="button" accessibilityLabel="Open my profile" onPress={onAvatar} style={{ width: '100%', height: '100%', alignItems: 'center', justifyContent: 'flex-end' }}>
+    <View style={{ backgroundColor: '#fff', overflow: 'hidden' }}>
+      <View style={{ width: '100%', maxWidth: COL, alignSelf: 'center', height: H, paddingHorizontal: pad }}>
+        {profile ? <Text pointerEvents="none" style={{ position: 'absolute', left: -40, top: 60, fontSize: 250, opacity: 0.07 }}>{profile.sport_emoji}</Text> : null}
+        <View style={{ position: 'absolute', right: 0, top: 8, width: side, height: H - 8 }}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Open my profile" onPress={onAvatar} style={{ width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' }}>
             {user.avatar_url
-              ? <Image source={{ uri: mediaUrl(user.avatar_url) }} resizeMode="cover" accessibilityLabel={`${user.display_name} photo`} style={{ width: '100%', height: '100%', borderTopLeftRadius: 120, borderTopRightRadius: 120 }} />
-              : <Text style={{ fontSize: side * 0.62, marginBottom: 24 }}>{user.avatar_emoji ?? '😎'}</Text>}
+              ? <Image source={{ uri: mediaUrl(user.avatar_url) }} resizeMode="cover" accessibilityLabel={`${user.display_name} photo`} style={{ width: '100%', height: '100%', ...(Platform.OS === 'web' ? { objectPosition: 'top' } : null) }} />
+              : <Text style={{ fontSize: side * 0.6, marginTop: 20 }}>{user.avatar_emoji ?? '😎'}</Text>}
           </Pressable>
-          <Pressable accessibilityRole="button" accessibilityLabel="Change profile photo" disabled={photo.busy} onPress={photo.change} hitSlop={8} style={({ pressed }) => ({ position: 'absolute', right: 6, bottom: 46, width: 36, height: 36, borderRadius: 18, backgroundColor: c.paper, borderWidth: 1, borderColor: c.line, alignItems: 'center', justifyContent: 'center', opacity: photo.busy ? 0.5 : pressed ? 0.8 : 1, ...lift })}>
+          {user.avatar_url ? (
+            <>
+              <LinearGradient pointerEvents="none" colors={['#fff', 'rgba(255,255,255,0)']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '45%' }} />
+              <LinearGradient pointerEvents="none" colors={['rgba(255,255,255,0)', '#fff']} style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: '38%' }} />
+              {L.width > COL ? <LinearGradient pointerEvents="none" colors={['rgba(255,255,255,0)', '#fff']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: '18%' }} /> : null}
+              <LinearGradient pointerEvents="none" colors={['#fff', 'rgba(255,255,255,0)']} style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 36 }} />
+            </>
+          ) : null}
+          <Pressable accessibilityRole="button" accessibilityLabel="Change profile photo" disabled={photo.busy} onPress={photo.change} hitSlop={8} style={({ pressed }) => ({ position: 'absolute', right: pad, bottom: 64, width: 36, height: 36, borderRadius: 18, backgroundColor: c.paper, borderWidth: 1, borderColor: c.line, alignItems: 'center', justifyContent: 'center', opacity: photo.busy ? 0.5 : pressed ? 0.8 : 1, ...lift })}>
             <T size={16}>📷</T>
           </Pressable>
         </View>
-        <View style={{ position: 'absolute', left: pad, top: 14, right: pad, flexDirection: 'row', justifyContent: 'flex-end' }}>
+        <View style={{ position: 'absolute', right: pad, top: 14 }}>
           <RoundBtn icon="Bell" label="Notifications" onPress={onBell} />
         </View>
-        <View style={{ position: 'absolute', left: pad, top: 14, maxWidth: '56%', gap: 10 }}>
-          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-            {profile ? <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: c.paper, alignItems: 'center', justifyContent: 'center', ...lift }}><T size={22}>{profile.sport_emoji}</T></View> : null}
-            {profile?.club ? <Chip>{profile.club}</Chip> : null}
-          </View>
+        <View style={{ position: 'absolute', left: pad, top: 64, flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+          {profile ? <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: tone[1], alignItems: 'center', justifyContent: 'center' }}><T size={22}>{profile.sport_emoji}</T></View> : null}
+          {profile?.club ? <Chip>{profile.club}</Chip> : null}
         </View>
-        <View style={{ position: 'absolute', left: pad, top: 78, width: L.tablet ? '52%' : '58%' }}>
-          <T size={L.tablet ? 52 : 38} weight="800" numberOfLines={1} adjustsFontSizeToFit style={{ letterSpacing: -1.4, lineHeight: L.tablet ? 56 : 42 }}>{first}</T>
-          {rest.length ? <T size={L.tablet ? 52 : 38} weight="800" numberOfLines={1} adjustsFontSizeToFit style={{ letterSpacing: -1.4, lineHeight: L.tablet ? 56 : 42 }}>{rest.join(' ')}</T> : null}
+        <View style={{ position: 'absolute', left: pad, top: 116, width: '56%' }}>
+          <T size={nameSize} weight="800" numberOfLines={1} adjustsFontSizeToFit style={{ letterSpacing: -1.2, lineHeight: nameSize + 4 }}>{first}</T>
+          {rest.length ? <T size={nameSize} weight="800" numberOfLines={1} adjustsFontSizeToFit style={{ letterSpacing: -1.2, lineHeight: nameSize + 4 }}>{rest.join(' ')}</T> : null}
           <T size={14} weight="600" color={c.mute} style={{ marginTop: 4 }}>@{user.handle}</T>
         </View>
-        <View style={{ position: 'absolute', left: pad, bottom: 56, gap: 8 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            {profile && profile.jersey_no !== null && profile.jersey_no !== undefined ? <View style={{ minWidth: 34, height: 34, borderRadius: 10, backgroundColor: tone[0], alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 }}><T size={14} weight="800" color="#fff">{profile.jersey_no}</T></View> : null}
-            <T size={12} weight="700" color={c.mute} style={{ letterSpacing: 1.6 }}>{(profile?.position ?? (user.roles?.[0] ? roleLabel(user.roles[0]) : 'Athlete')).toUpperCase()}</T>
-          </View>
+        <View style={{ position: 'absolute', left: pad, bottom: 56, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          {profile && profile.jersey_no !== null && profile.jersey_no !== undefined ? <View style={{ minWidth: 30, height: 30, borderRadius: 9, backgroundColor: tone[0], alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 }}><T size={13} weight="800" color="#fff">{profile.jersey_no}</T></View> : null}
+          <T size={11} weight="700" color={c.mute} style={{ letterSpacing: 1.6 }}>{(profile?.position ?? (user.roles?.[0] ? roleLabel(user.roles[0]) : 'Athlete')).toUpperCase()}</T>
         </View>
       </View>
     </View>
@@ -107,9 +114,9 @@ export function PlayerHero({ user, profile, onBell, onAvatar, pad = 16 }) {
 export function StatTiles({ items, pad = 16 }) {
   const L = useLayout();
   return (
-    <View style={{ width: '100%', maxWidth: L.tablet ? 1000 : 640, alignSelf: 'center', flexDirection: 'row', gap: 10, paddingHorizontal: pad, marginTop: -44 }}>
+    <View style={{ width: '100%', maxWidth: COL, alignSelf: 'center', flexDirection: 'row', gap: 10, paddingHorizontal: pad, marginTop: -44 }}>
       {items.map(([label, value]) => (
-        <View key={label} style={{ flex: 1, minHeight: 96, justifyContent: 'space-between', backgroundColor: 'rgba(255,255,255,0.92)', borderRadius: 20, borderWidth: 1, borderColor: c.line, padding: 14, ...lift }}>
+        <View key={label} style={{ flex: 1, minHeight: 96, justifyContent: 'space-between', backgroundColor: 'rgba(255,255,255,0.78)', borderRadius: 20, borderWidth: 1, borderColor: c.line, padding: 14, ...lift }}>
           <T size={12} weight="600" color={c.mute} numberOfLines={1}>{label}</T>
           <T size={30} weight="800" style={{ letterSpacing: -0.8, textAlign: 'right', fontVariant: ['tabular-nums'] }}>{value}</T>
         </View>
@@ -122,7 +129,7 @@ export function StatTiles({ items, pad = 16 }) {
 export function NowStrip({ title, sub, date, onPress, pad = 16 }) {
   const L = useLayout();
   return (
-    <View style={{ width: '100%', maxWidth: L.tablet ? 1000 : 640, alignSelf: 'center', paddingHorizontal: pad, marginTop: 20 }}>
+    <View style={{ width: '100%', maxWidth: COL, alignSelf: 'center', paddingHorizontal: pad, marginTop: 20 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
         <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: c.pink, alignItems: 'center', justifyContent: 'center' }}><View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#fff' }} /></View>
         <T size={13} weight="700" color={c.pink}>Now discussing</T>
