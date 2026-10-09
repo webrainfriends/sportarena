@@ -38,7 +38,7 @@ cap({
     const enc = encryptFields(i, 'users', PII);
     const u = await one(
       `INSERT INTO users (handle, display_name, roles, password_hash, email_enc, email_idx, full_name_enc, phone_enc, dob_enc, national_id_enc, address_enc, avatar_emoji, avatar_color)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,coalesce($12,'😎'),coalesce($13,'#FF3D81')) RETURNING id, handle, display_name, roles, avatar_emoji, avatar_color`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,coalesce($12,'😎'),coalesce($13,'#FF3D81')) RETURNING id, handle, display_name, roles, avatar_emoji, avatar_color, avatar_url`,
       [i.handle, i.display_name, i.roles, hashPassword(i.password), encrypt(i.email, 'users.email'), idx,
         enc.full_name_enc ?? null, enc.phone_enc ?? null, enc.dob_enc ?? null, enc.national_id_enc ?? null, enc.address_enc ?? null, i.avatar_emoji, i.avatar_color],
     );
@@ -52,7 +52,7 @@ cap({
   summary: 'Exchange email + password for a bearer token.',
   input: z.object({ email: z.string().email(), password: z.string() }),
   async handler(_, i) {
-    const u = await one('SELECT id, handle, display_name, roles, avatar_emoji, avatar_color, password_hash FROM users WHERE email_idx = $1', [blindIndex(i.email)]);
+    const u = await one('SELECT id, handle, display_name, roles, avatar_emoji, avatar_color, avatar_url, password_hash FROM users WHERE email_idx = $1', [blindIndex(i.email)]);
     // always run a hash to keep timing similar for unknown emails
     const ok = verifyPassword(i.password, u?.password_hash ?? hashPassword('x'.repeat(12)));
     if (!u || !ok) throw unauthorized('Invalid email or password');
@@ -69,7 +69,7 @@ cap({
     await audit(null, user.id, 'read_pii', 'users', user.id);
     return {
       id: row.id, handle: row.handle, display_name: row.display_name, roles: row.roles, bio: row.bio,
-      avatar_emoji: row.avatar_emoji, avatar_color: row.avatar_color, created_at: row.created_at,
+      avatar_emoji: row.avatar_emoji, avatar_color: row.avatar_color, avatar_url: row.avatar_url, created_at: row.created_at,
       email: decryptFields(row, 'users', ['email']).email, ...decryptFields(row, 'users', PII),
     };
   },
@@ -92,6 +92,15 @@ cap({
     await query(`UPDATE users SET ${keys.map((k, n) => `${k} = $${n + 2}`).join(', ')} WHERE id = $1`, [user.id, ...keys.map((k) => sets[k])]);
     if (i.dob) await refreshYouth(user.id, user.id);
     return { ok: true, updated: keys.map((k) => k.replace(/_enc$/, '')) };
+  },
+});
+
+cap({
+  name: 'remove_my_avatar', method: 'DELETE', path: '/me/avatar', tag: 'Identity', auth: 'user',
+  summary: 'Go back to the emoji avatar. Upload a profile photo with PUT /me/avatar (raw JPEG/PNG/WebP body); earlier photo files are kept.',
+  async handler({ user }) {
+    await query('UPDATE users SET avatar_url = NULL WHERE id = $1', [user.id]);
+    return { ok: true };
   },
 });
 
@@ -170,7 +179,7 @@ cap({
     // young people have no public profile: a missing and a restricted profile look the same to everyone but self, guardians and their team managers
     if (u.is_youth) {
       if (!(await canSeeYouth(user, i.id))) throw notFound('Person');
-      return { id: u.id, handle: u.handle, display_name: u.display_name, avatar_emoji: u.avatar_emoji, avatar_color: u.avatar_color, restricted: true };
+      return { id: u.id, handle: u.handle, display_name: u.display_name, avatar_emoji: u.avatar_emoji, avatar_color: u.avatar_color, avatar_url: u.avatar_url, restricted: true };
     }
     delete u.is_youth;
     const [profiles, awards, rating, teams] = await Promise.all([

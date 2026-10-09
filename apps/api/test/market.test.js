@@ -142,3 +142,24 @@ test('posts are archived, never deleted; marketplace capabilities exist in REST,
   assert.ok(spec.paths['/market/posts']);
   assert.ok(capabilities.some((c) => c.name === 'list_market_posts' && c.auth === 'public'));
 });
+
+test('any account can set, see and remove a profile photo; photos only, never deleted', async () => {
+  const u = await signup(['athlete']);
+  const png = Buffer.concat([Buffer.from('89504e470d0a1a0a', 'hex'), Buffer.alloc(64)]);
+  const put = (token, body) => fetch(`${base}/api/v1/me/avatar`, { method: 'PUT', headers: token ? { authorization: `Bearer ${token}` } : {}, body });
+  assert.equal((await put(null, png)).status, 401);
+  assert.equal((await put(u.token, Buffer.from('not an image at all, plain text'))).status, 400);
+  assert.equal((await put(u.token, Buffer.concat([Buffer.from('GIF89a'), Buffer.alloc(64)]))).status, 400, 'GIFs are not profile photos');
+  const up = await put(u.token, png);
+  assert.equal(up.status, 201);
+  const { avatar_url } = await up.json();
+  assert.match(avatar_url, /^\/api\/v1\/market\/media\//);
+  assert.equal((await fetch(`${base}${avatar_url}`)).status, 200);
+  assert.equal((await api('GET', '/me', { token: u.token })).body.avatar_url, avatar_url);
+  assert.equal((await api('GET', `/people/${u.id}`, { token: u.token })).body.avatar_url, avatar_url);
+  // photo uploads don't eat the 20-per-user allowance for post media
+  for (let i = 0; i < 3; i++) assert.equal((await put(u.token, png)).status, 201);
+  assert.equal((await api('DELETE', '/me/avatar', { token: u.token })).status, 200);
+  assert.equal((await api('GET', '/me', { token: u.token })).body.avatar_url, null);
+  assert.equal((await fetch(`${base}${avatar_url}`)).status, 200, 'the old file is kept');
+});

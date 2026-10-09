@@ -29,7 +29,7 @@ cap({
   async handler(_, i) {
     const [summary, items] = await Promise.all([
       one('SELECT round(avg(rating),2) AS avg, count(*)::int AS n FROM testimonials WHERE subject_type=$1 AND subject_id=$2', [i.subject_type, i.subject_id]),
-      many('SELECT t.id, t.rating, t.body, t.created_at, u.id AS author_id, u.handle, u.display_name, u.avatar_emoji, u.avatar_color FROM testimonials t JOIN users u ON u.id=t.author_id WHERE t.subject_type=$1 AND t.subject_id=$2 ORDER BY t.created_at DESC LIMIT $3 OFFSET $4', [i.subject_type, i.subject_id, i.limit, i.offset]),
+      many('SELECT t.id, t.rating, t.body, t.created_at, u.id AS author_id, u.handle, u.display_name, u.avatar_emoji, u.avatar_color, u.avatar_url FROM testimonials t JOIN users u ON u.id=t.author_id WHERE t.subject_type=$1 AND t.subject_id=$2 ORDER BY t.created_at DESC LIMIT $3 OFFSET $4', [i.subject_type, i.subject_id, i.limit, i.offset]),
     ]);
     return { ...summary, items };
   },

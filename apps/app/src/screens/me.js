@@ -8,6 +8,7 @@ import { Avatar, Btn, Card, Chip, Empty, GradCard, H1, Loading, Row, Screen, Sec
 import { FormSheet } from '../FormSheet';
 import { FavouriteSports } from '../sportpicker';
 import { c, grad } from '../theme';
+import { useAvatarPhoto } from '../hero';
 import { ROLES, roleLabel } from '../roles';
 import { VerificationQueue, VerificationSection } from './verification';
 import { CaseQueue } from './cases';
@@ -25,6 +26,7 @@ export function Me() {
   const [rolesForm, setRolesForm] = useState(false);
   const [newToken, setNewToken] = useState(null);
   const [tokForm, setTokForm] = useState(false);
+  const photo = useAvatarPhoto();
   const dash = useLoad(() => api.get('/dashboard'), []);
   const toks = useLoad(() => api.get('/me/tokens'), []);
   const d = dash.data;
@@ -38,6 +40,10 @@ export function Me() {
             <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>{user.roles.map((r) => <Tag key={r} label={roleLabel(r)} color={c.lime} />)}</View></View>
         </View>
       </GradCard>
+      <View style={{ flexDirection: 'row', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+        <Btn small title={user.avatar_url ? '📷 Change photo' : '📷 Add profile photo'} color={c.paper} ink={c.ink} loading={photo.busy} onPress={photo.change} />
+        {user.avatar_url ? <Btn small title="Remove photo" color={c.paper} ink={c.ink} disabled={photo.busy} onPress={photo.remove} /> : null}
+      </View>
       <Section title="Acting as" color={c.cyan}>
         <T size={13} color={c.mute}>One login, several roles. Pick the one you want to use right now — the app shows that role's tools.</T>
         <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>

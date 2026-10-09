@@ -26,7 +26,7 @@ export function Reviews({ type, id, canWrite = true }) {
       {data?.items?.length ? data.items.map((t) => (
         <Card key={t.id}>
           <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
-            <Avatar user={{ avatar_color: t.avatar_color, avatar_emoji: t.avatar_emoji }} size={36} />
+            <Avatar user={{ avatar_color: t.avatar_color, avatar_emoji: t.avatar_emoji, avatar_url: t.avatar_url }} size={36} />
             <View style={{ flex: 1 }}><T weight="900">{t.display_name}</T><T size={11} color={c.mute}>@{t.handle} · {day(t.created_at)}</T></View>
             <Stars n={t.rating} size={12} />
           </View>

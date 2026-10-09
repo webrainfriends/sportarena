@@ -12,7 +12,7 @@ const ACTIVE_AD = "(p.sponsor_status='approved' AND now() BETWEEN p.promo_starts
 const COLS = `p.id, p.kind, p.title, p.body, p.city, p.starts_at, p.price_cents, p.positions, p.cta_label, p.link_url, p.visibility, p.status, p.created_at,
   p.sponsor_status, p.promo_starts_at, p.promo_ends_at, ${ACTIVE_AD} AS sponsored,
   s.slug AS sport_slug, s.name AS sport, s.emoji AS sport_emoji,
-  u.id AS author_id, u.handle AS author_handle, u.display_name AS author_name, u.avatar_emoji AS author_emoji, u.avatar_color AS author_color, u.roles AS author_roles,
+  u.id AS author_id, u.handle AS author_handle, u.display_name AS author_name, u.avatar_emoji AS author_emoji, u.avatar_color AS author_color, u.avatar_url AS author_avatar_url, u.roles AS author_roles,
   (SELECT count(*)::int FROM market_reactions r WHERE r.post_id=p.id AND r.active) AS reactions,
   (SELECT count(*)::int FROM market_comments c WHERE c.post_id=p.id AND c.archived_at IS NULL) AS comments,
   (SELECT count(*)::int FROM market_leads l WHERE l.post_id=p.id) AS applicants,
@@ -28,10 +28,10 @@ const VISIBLE = `p.archived_at IS NULL AND (
 
 /** Shape a row for the viewer. Visitors who are not signed in see who posted, but not a profile link or handle. */
 function shape(row, user) {
-  const { author_id, author_handle, author_roles, author_name, author_emoji, author_color, media, ...rest } = row;
+  const { author_id, author_handle, author_roles, author_name, author_emoji, author_color, author_avatar_url, media, ...rest } = row;
   const author = user
-    ? { id: author_id, handle: author_handle, display_name: author_name, avatar_emoji: author_emoji, avatar_color: author_color, roles: author_roles }
-    : { display_name: author_name, avatar_emoji: author_emoji, avatar_color: author_color };
+    ? { id: author_id, handle: author_handle, display_name: author_name, avatar_emoji: author_emoji, avatar_color: author_color, avatar_url: author_avatar_url, roles: author_roles }
+    : { display_name: author_name, avatar_emoji: author_emoji, avatar_color: author_color, avatar_url: author_avatar_url };
   return { ...rest, author, media: media.map((m) => ({ ...m, url: marketMediaUrl(m) })), login_required_for: user ? [] : ['profile', 'contact', 'apply', 'react', 'comment'] };
 }
 const args = (user) => [user?.id ?? null, !!isAdmin(user)];
@@ -127,7 +127,7 @@ cap({
   name: 'list_market_comments', method: 'GET', path: '/market/posts/:id/comments', tag: 'Marketplace', summary: 'Comments on a post (members only).', input: z.object({ id, ...page }),
   async handler({ user }, i) {
     await loadVisible(user, i.id);
-    return many(`SELECT c.id, c.body, c.created_at, u.id AS author_id, u.handle, u.display_name, u.avatar_emoji, u.avatar_color FROM market_comments c JOIN users u ON u.id=c.author_id
+    return many(`SELECT c.id, c.body, c.created_at, u.id AS author_id, u.handle, u.display_name, u.avatar_emoji, u.avatar_color, u.avatar_url FROM market_comments c JOIN users u ON u.id=c.author_id
                   WHERE c.post_id=$1 AND c.archived_at IS NULL ORDER BY c.created_at LIMIT $2 OFFSET $3`, [i.id, i.limit, i.offset]);
   },
 });
@@ -164,7 +164,7 @@ cap({
   name: 'list_market_leads', method: 'GET', path: '/market/posts/:id/applications', tag: 'Marketplace', summary: 'Applications on your post.', input: z.object({ id, ...page }),
   async handler({ user }, i) {
     await mineOrAdmin(user, i.id);
-    return many(`SELECT l.id, l.message, l.status, l.created_at, u.id AS user_id, u.handle, u.display_name, u.avatar_emoji, u.avatar_color, u.roles FROM market_leads l JOIN users u ON u.id=l.user_id
+    return many(`SELECT l.id, l.message, l.status, l.created_at, u.id AS user_id, u.handle, u.display_name, u.avatar_emoji, u.avatar_color, u.avatar_url, u.roles FROM market_leads l JOIN users u ON u.id=l.user_id
                   WHERE l.post_id=$1 ORDER BY l.created_at DESC LIMIT $2 OFFSET $3`, [i.id, i.limit, i.offset]);
   },
 });

@@ -41,11 +41,11 @@ const linkView = (l) => ({
   id: l.id, guardian_id: l.guardian_id, child_id: l.child_id, relationship: l.relationship, status: l.status, requested_by: l.requested_by,
   needs_existing_guardian_approval: !!l.needs_co && !l.co_guardian_ok_at, expires_at: l.expires_at, decided_at: l.decided_at, decision_note: l.decision_note,
   revoked_at: l.revoked_at, created_at: l.created_at, policy_version: l.policy_version,
-  guardian: l.guardian_name ? { id: l.guardian_id, display_name: l.guardian_name, avatar_emoji: l.guardian_emoji, avatar_color: l.guardian_color } : undefined,
-  child: l.child_name ? { id: l.child_id, display_name: l.child_name, avatar_emoji: l.child_emoji, avatar_color: l.child_color } : undefined,
+  guardian: l.guardian_name ? { id: l.guardian_id, display_name: l.guardian_name, avatar_emoji: l.guardian_emoji, avatar_color: l.guardian_color, avatar_url: l.guardian_avatar_url } : undefined,
+  child: l.child_name ? { id: l.child_id, display_name: l.child_name, avatar_emoji: l.child_emoji, avatar_color: l.child_color, avatar_url: l.child_avatar_url } : undefined,
 });
-const LINK_SELECT = `SELECT l.*, g.display_name AS guardian_name, g.avatar_emoji AS guardian_emoji, g.avatar_color AS guardian_color,
-    u.display_name AS child_name, u.avatar_emoji AS child_emoji, u.avatar_color AS child_color,
+const LINK_SELECT = `SELECT l.*, g.display_name AS guardian_name, g.avatar_emoji AS guardian_emoji, g.avatar_color AS guardian_color, g.avatar_url AS guardian_avatar_url,
+    u.display_name AS child_name, u.avatar_emoji AS child_emoji, u.avatar_color AS child_color, u.avatar_url AS child_avatar_url,
     (SELECT count(*) > 0 FROM guardian_links o WHERE o.child_id = l.child_id AND o.id <> l.id AND o.status = 'active' AND o.revoked_at IS NULL) AS needs_co
   FROM guardian_links l JOIN users g ON g.id = l.guardian_id JOIN users u ON u.id = l.child_id`;
 

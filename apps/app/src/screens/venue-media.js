@@ -152,7 +152,7 @@ export function VenueReviews({ venueId }) {
       {d.items.length ? d.items.map((x) => (
         <Card key={x.id}>
           <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
-            <Avatar user={{ avatar_color: x.avatar_color, avatar_emoji: x.avatar_emoji, handle: x.handle }} size={36} />
+            <Avatar user={{ avatar_color: x.avatar_color, avatar_emoji: x.avatar_emoji, avatar_url: x.avatar_url, handle: x.handle }} size={36} />
             <View style={{ flex: 1 }}><T weight="700">{x.display_name}</T><View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}><Stars n={x.rating} size={13} />{x.verified ? <Tag label="played here" color={c.mint} /> : null}</View></View>
             <T size={11} color={c.mute}>{new Date(x.created_at).toLocaleDateString()}</T>
           </View>

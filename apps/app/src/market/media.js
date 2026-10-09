@@ -8,17 +8,17 @@ const isWeb = Platform.OS === 'web';
 const h = React.createElement;
 
 /** Pick a photo / GIF / video. Web: hidden <input type=file>. Native: expo-image-picker. Resolves to { blob, name } or null. */
-export async function pickMedia() {
+export async function pickMedia({ photoOnly = false } = {}) {
   if (isWeb) {
     return new Promise((resolve) => {
       const input = document.createElement('input');
-      input.type = 'file'; input.accept = 'image/jpeg,image/png,image/webp,image/gif,video/mp4,video/quicktime,video/webm';
+      input.type = 'file'; input.accept = photoOnly ? 'image/jpeg,image/png,image/webp' : 'image/jpeg,image/png,image/webp,image/gif,video/mp4,video/quicktime,video/webm';
       input.onchange = () => resolve(input.files?.[0] ? { blob: input.files[0], name: input.files[0].name } : null);
       input.click();
     });
   }
   const ImagePicker = await import('expo-image-picker');
-  const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images', 'videos'], quality: 0.85 });
+  const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: photoOnly ? ['images'] : ['images', 'videos'], quality: 0.85, ...(photoOnly ? { allowsEditing: true, aspect: [1, 1] } : {}) });
   if (r.canceled || !r.assets?.[0]) return null;
   return { blob: await (await fetch(r.assets[0].uri)).blob(), name: r.assets[0].fileName };
 }

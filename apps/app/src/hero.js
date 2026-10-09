@@ -1,14 +1,33 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Platform, Pressable, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Avatar, T } from './ui';
 import { Icon } from './icons';
 import { c, glass, heroGrad, toneFor } from './theme';
 import { roleLabel } from './roles';
+import { api } from './api';
+import { useSession } from './session';
+import { pickMedia } from './market/media';
 
 const lift = Platform.OS === 'web'
   ? { boxShadow: '0 1px 2px rgba(15,23,42,0.05), 0 10px 28px rgba(15,23,42,0.12)' }
   : { shadowColor: '#0F172A', shadowOpacity: 0.12, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 4 };
+
+/** Profile photo for the signed-in account (any role): pick, upload, refresh the session; or go back to the emoji avatar. */
+export function useAvatarPhoto() {
+  const { refresh, toast } = useSession();
+  const [busy, setBusy] = useState(false);
+  const run = async (fn, done) => {
+    setBusy(true);
+    try { await fn(); await refresh(); toast(done); } catch (e) { toast(e.message); } finally { setBusy(false); }
+  };
+  const change = async () => {
+    const file = await pickMedia({ photoOnly: true });
+    if (file) await run(() => api.upload('/me/avatar', file.blob), 'Profile photo updated');
+  };
+  const remove = () => run(() => api.del('/me/avatar'), 'Photo removed');
+  return { change, remove, busy };
+}
 
 const Badge = ({ children }) => (
   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: glass.fill, borderColor: glass.line, borderWidth: 1, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 }}>
@@ -27,6 +46,7 @@ const RoundBtn = ({ icon, onPress, label }) => (
  * `profile` is the default entry from /me/sport-profiles (may be undefined until they add a sport).
  */
 export function PlayerHero({ user, profile, onBell, onAvatar, pad = 16 }) {
+  const photo = useAvatarPhoto();
   const tone = profile ? toneFor(profile.sport_slug)[0] : c.pink;
   const roles = (user.roles ?? []).slice(0, 3);
   return (
@@ -37,7 +57,12 @@ export function PlayerHero({ user, profile, onBell, onAvatar, pad = 16 }) {
         <RoundBtn icon="Bell" label="Notifications" onPress={onBell} />
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 14 }}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Open my profile" onPress={onAvatar}><Avatar user={user} size={88} /></Pressable>
+        <View>
+          <Pressable accessibilityRole="button" accessibilityLabel="Open my profile" onPress={onAvatar}><Avatar user={user} size={88} /></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="Change profile photo" disabled={photo.busy} onPress={photo.change} hitSlop={8} style={({ pressed }) => ({ position: 'absolute', right: -2, bottom: -2, width: 30, height: 30, borderRadius: 15, backgroundColor: c.paper, borderWidth: 1, borderColor: c.line, alignItems: 'center', justifyContent: 'center', opacity: photo.busy ? 0.5 : pressed ? 0.8 : 1 })}>
+            <T size={14}>📷</T>
+          </Pressable>
+        </View>
         <View style={{ flex: 1, gap: 4 }}>
           <T size={30} weight="800" color={glass.text} numberOfLines={2} style={{ letterSpacing: -0.8 }}>{user.display_name}</T>
           <T size={14} weight="600" color={glass.sub}>@{user.handle}</T>

@@ -120,7 +120,7 @@ cap({
     const organiser = isAdmin(user) || f.organizer_id === user.id;
     return many(
       `SELECT fo.id, fo.fixture_id, fo.user_id, fo.role, fo.status, fo.needs_ack, fo.created_at, fo.responded_at,
-              u.display_name, u.handle, u.avatar_emoji, u.avatar_color,
+              u.display_name, u.handle, u.avatar_emoji, u.avatar_color, u.avatar_url,
               ${organiser ? "fo.reason, (SELECT coalesce(json_agg(json_build_object('from', h.from_status, 'to', h.to_status, 'reason', h.reason, 'actor_id', h.actor_id, 'at', h.at) ORDER BY h.at, h.id), '[]') FROM fixture_official_history h WHERE h.fixture_official_id=fo.id) AS history" : 'NULL::text AS reason'}
          FROM fixture_officials fo JOIN users u ON u.id=fo.user_id
         WHERE fo.fixture_id=$1 AND ($2::boolean OR fo.status='accepted' OR fo.user_id=$3)
