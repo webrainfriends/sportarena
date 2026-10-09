@@ -7,13 +7,30 @@ import { c } from '../theme';
 const isWeb = Platform.OS === 'web';
 const h = React.createElement;
 
+/** Phone photos are often 5–12 MB: scale a profile photo down to 1200px JPEG in the browser so it uploads fast and fits any limit. */
+async function shrink(file, max = 1200) {
+  try {
+    const bmp = await createImageBitmap(file);
+    const k = Math.min(1, max / Math.max(bmp.width, bmp.height));
+    const cv = document.createElement('canvas');
+    cv.width = Math.round(bmp.width * k); cv.height = Math.round(bmp.height * k);
+    cv.getContext('2d').drawImage(bmp, 0, 0, cv.width, cv.height);
+    const out = await new Promise((r) => cv.toBlob(r, 'image/jpeg', 0.88));
+    return out ?? file;
+  } catch { return file; }
+}
+
 /** Pick a photo / GIF / video. Web: hidden <input type=file>. Native: expo-image-picker. Resolves to { blob, name } or null. */
 export async function pickMedia({ photoOnly = false } = {}) {
   if (isWeb) {
     return new Promise((resolve) => {
       const input = document.createElement('input');
       input.type = 'file'; input.accept = photoOnly ? 'image/jpeg,image/png,image/webp' : 'image/jpeg,image/png,image/webp,image/gif,video/mp4,video/quicktime,video/webm';
-      input.onchange = () => resolve(input.files?.[0] ? { blob: input.files[0], name: input.files[0].name } : null);
+      input.onchange = async () => {
+        const f = input.files?.[0];
+        if (!f) return resolve(null);
+        resolve({ blob: photoOnly ? await shrink(f) : f, name: f.name });
+      };
       input.click();
     });
   }
