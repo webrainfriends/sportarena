@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, Easing, Platform, Pressable, StatusBar, Text, View } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SessionProvider, useSession } from './session';
 import { NavProvider, useNav } from './nav';
@@ -40,31 +41,42 @@ const PAGES = { Event, Team, TeamManage, TeamChat, Person, Venue, Wallet, BookFl
 const TITLES = { Event: 'Event', Team: 'Team', TeamManage: 'Manage team', TeamChat: 'Team chat', Person: 'Profile', Venue: 'Venue', Wallet: 'Wallet', BookFlow: 'Book', Invoice: 'Invoice', Basket: 'Basket', Reservation: 'Booking', Compare: 'Compare', Notifications: 'Notifications', Manage: 'Manage venue', OwnerSummary: 'All my venues', Leaderboard: 'Leaderboard', Awards: 'Trophy room', Health: 'Health', Insurance: 'Insurance', InsurerPage: 'Insurer', InsurerDesk: 'Insurer desk', Sponsors: 'Sponsors', Supply: 'Supply chain', SportProfile: 'Sport profile', ImportMatches: 'Import matches', Support: 'Support', Family: 'Family & guardians', CoachHome: 'Coach home', CoachAthletes: 'My athletes', CoachPlan: 'Training plan', CoachCalendar: 'Coach calendar', MyPlans: 'Training plans', Orgs: 'My organisations', Org: 'Organisation' };
 
 const TAB_LABEL = { Hub: 'More' };
+// order in the bar; Book is the raised centre action, Me opens from the hero avatar and from More
+const BAR = ['Home', 'Play', 'Book', 'Player', 'Hub'];
 
 /** Bottom tab bar. Phone: edge-to-edge bar. Tablet / large screens: a floating pill, like an iPad app. */
 function TabBar() {
   const { tab, goTab } = useNav();
   const ins = useSafeAreaInsets();
   const { tablet, width } = useLayout();
-  const items = TABS.map(([name]) => {
-    const on = tab === name;
+  const items = BAR.map((name) => {
+    const on = tab === name || (name === 'Hub' && tab === 'Me');
+    const centre = name === 'Book';
     return (
-      <Pressable key={name} accessibilityRole="tab" accessibilityState={{ selected: on }} onPress={() => goTab(name)} style={({ pressed }) => ({ flex: 1, alignItems: 'center', justifyContent: 'center', minHeight: 52, opacity: pressed ? 0.6 : 1 })}>
-        <Icon name={name} on={on} color={on ? c.pink : c.mute} size={tablet ? 26 : 24} />
-        <Text numberOfLines={1} style={[fam, { fontSize: tablet ? 12 : 10.5, fontWeight: on ? '700' : '600', color: on ? c.pink : c.mute, marginTop: 3 }]}>{TAB_LABEL[name] ?? name}</Text>
+      <Pressable key={name} accessibilityRole="tab" accessibilityState={{ selected: on }} accessibilityLabel={TAB_LABEL[name] ?? name} onPress={() => goTab(name)} style={({ pressed }) => ({ flex: 1, alignItems: 'center', justifyContent: 'flex-end', minHeight: 52, opacity: pressed ? 0.6 : 1 })}>
+        {centre ? (
+          <LinearGradient colors={['#4F46E5', '#7C3AED']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: 54, height: 54, borderRadius: 27, alignItems: 'center', justifyContent: 'center', marginTop: -26, borderWidth: 4, borderColor: '#fff', ...(Platform.OS === 'web' ? { boxShadow: '0 8px 20px rgba(79,70,229,0.4)' } : { shadowColor: '#4F46E5', shadowOpacity: 0.4, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 8 }) }}>
+            <Icon name={name} on color="#fff" size={26} />
+          </LinearGradient>
+        ) : (
+          <View style={{ alignItems: 'center', justifyContent: 'center', paddingHorizontal: tablet ? 18 : 14, paddingVertical: 5, borderRadius: 16, backgroundColor: on ? c.pinkSoft : 'transparent' }}>
+            <Icon name={name} on={on} color={on ? c.pink : c.mute} size={tablet ? 26 : 23} />
+          </View>
+        )}
+        <Text numberOfLines={1} style={[fam, { fontSize: tablet ? 12 : 10.5, fontWeight: on ? '700' : '600', color: on ? c.pink : c.mute, marginTop: 2, marginBottom: 2 }]}>{TAB_LABEL[name] ?? name}</Text>
       </Pressable>
     );
   });
   if (!tablet) {
     return (
-      <View style={{ backgroundColor: 'rgba(255,255,255,0.97)', borderTopWidth: 1, borderColor: c.line, paddingBottom: ins.bottom, paddingTop: 4 }}>
-        <View style={{ flexDirection: 'row' }}>{items}</View>
+      <View style={{ backgroundColor: '#fff', borderTopWidth: 1, borderColor: c.line, paddingBottom: ins.bottom, paddingTop: 4 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-end' }}>{items}</View>
       </View>
     );
   }
   return (
     <View pointerEvents="box-none" style={{ position: 'absolute', left: 0, right: 0, bottom: Math.max(ins.bottom, 14), alignItems: 'center' }}>
-      <View style={{ flexDirection: 'row', width: Math.min(620, width - 48), paddingHorizontal: 10, paddingVertical: 6, backgroundColor: 'rgba(255,255,255,0.97)', borderRadius: 30, borderWidth: 1, borderColor: c.line, ...(Platform.OS === 'web' ? { boxShadow: '0 10px 40px rgba(15,23,42,0.16), 0 2px 6px rgba(15,23,42,0.06)' } : { shadowColor: '#0F172A', shadowOpacity: 0.16, shadowRadius: 24, shadowOffset: { width: 0, height: 10 }, elevation: 8 }) }}>
+      <View style={{ flexDirection: 'row', alignItems: 'flex-end', width: Math.min(620, width - 48), paddingHorizontal: 10, paddingVertical: 6, backgroundColor: 'rgba(255,255,255,0.97)', borderRadius: 30, borderWidth: 1, borderColor: c.line, ...(Platform.OS === 'web' ? { boxShadow: '0 10px 40px rgba(15,23,42,0.16), 0 2px 6px rgba(15,23,42,0.06)' } : { shadowColor: '#0F172A', shadowOpacity: 0.16, shadowRadius: 24, shadowOffset: { width: 0, height: 10 }, elevation: 8 }) }}>
         {items}
       </View>
     </View>

@@ -15,6 +15,9 @@ export const grad = {
   candy: ['#FFFFFF', '#F5F7FB', '#FFFFFF'],
   night: ['#1E293B', '#334155'],
 };
+// translucent surfaces for the player hero (white text on a deep gradient)
+export const glass = { fill: 'rgba(255,255,255,0.14)', line: 'rgba(255,255,255,0.22)', text: '#FFFFFF', sub: 'rgba(255,255,255,0.72)' };
+export const heroGrad = (tone = '#4F46E5') => ['#0B1020', '#1E1B4B', tone];
 // one colour family per sport card: [solid, soft tint, deep text-on-tint]
 export const sportTones = [
   ['#4F46E5', '#EEF0FF', '#3730A3'], ['#059669', '#DCFCE7', '#047857'], ['#EA580C', '#FFEDD5', '#C2410C'], ['#0284C7', '#E0F2FE', '#075985'],

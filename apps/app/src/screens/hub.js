@@ -15,18 +15,23 @@ const TILES = [
   ['Leaderboard', '🏅', 'Leaderboard', 'Points & glory', c.lime], ['Health', '🩺', 'Health', 'Physio · doctors · fit to play', c.mint],
   ['Insurance', '🛡️', 'Insurance', 'You · your team · your event', c.cyan], ['Sponsors', '💎', 'Sponsors', 'Brands & deals', c.sun],
   ['Supply', '📦', 'Supply chain', 'Kit, stock & orders', c.orange], ['Awards', '🏆', 'Trophy room', 'Cups, medals, MVPs', c.pink],
+  ['Wallet', '💳', 'Wallet', 'Balance, gift cards, loyalty', c.cyan], ['MyPlans', '📋', 'Training plans', 'Your plans & sessions', c.lime],
+  ['Family', '👨‍👩‍👧', 'Family', 'Guardians & consents', c.mint], ['Orgs', '🏢', 'Organisations', 'Clubs & associations', c.violet],
+  ['Support', '🛟', 'Support', 'Cases & disputes', c.orange],
 ];
 
 export function Hub() {
-  const { push } = useNav();
+  const { push, goTab } = useNav();
+  const { user } = useSession();
   return (
     <Screen>
       <H1 style={{ marginTop: 8 }}>Ecosystem</H1>
       <T color={c.mute} weight="500" style={{ marginTop: 2 }}>Everything around the game, in one place.</T>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 18 }}>
+      <Row onPress={() => goTab('Me')} left={<Avatar user={user} size={44} />} title={user.display_name} sub="My profile, roles & settings" right={<T color={c.pink} weight="700">›</T>} />
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 14 }}>
         {TILES.map(([name, e, title, sub]) => (
           <Card key={name} style={{ width: '48%', flexGrow: 1 }} onPress={() => push(name)} pad={16}>
-            <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: c.violet, alignItems: 'center', justifyContent: 'center' }}><T size={22}>{e}</T></View>
+            <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: c.pinkSoft, alignItems: 'center', justifyContent: 'center' }}><T size={22}>{e}</T></View>
             <T weight="700" size={16} style={{ marginTop: 14 }}>{title}</T>
             <T size={12} color={c.mute} style={{ marginTop: 2 }}>{sub}</T>
           </Card>

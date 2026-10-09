@@ -28,6 +28,7 @@ export const icons = {
     <Circle cx="12" cy="8.5" r="4" {...P(p)} fill={tint(p)} fillOpacity={0.16} />
     <Path d="M4.5 20.5c.6-4 3.5-6 7.5-6s6.9 2 7.5 6" {...P(p)} />
   </>),
+  Bell: wrap((p) => <Path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 1.5h-15zM10 20.5a2 2 0 0 0 4 0" {...P(p)} />),
   Back: wrap((p) => <Path d="M14.5 5.5 8 12l6.5 6.5" {...P(p)} strokeWidth={2.4} />),
 };
 export const Icon = ({ name, ...p }) => { const I = icons[name]; return I ? <I {...p} /> : null; };
