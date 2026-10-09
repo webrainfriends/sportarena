@@ -16,6 +16,13 @@ export async function canManageTeam(user, team) {
   return hasOrgGrant(user, team.organisation_id, ['owner', 'admin', 'coach']); // delegated by the team's organisation
 }
 
+/** Coaching work on a team (roster/availability view, schedule): an active coach member, or an organisation coach/owner/admin.
+ *  Deliberately narrower than canManageTeam — it never grants ownership, settlement/rates, finance or medical access. */
+export async function canCoachTeam(user, team) {
+  if (await canManageTeam(user, team)) return true;
+  return !!(await one("SELECT 1 FROM team_members WHERE team_id=$1 AND user_id=$2 AND status='active' AND role='coach'", [team.id, user.id]));
+}
+
 cap({
   name: 'create_team', method: 'POST', path: '/teams', tag: 'Teams', status: 201,
   summary: 'Create a team. You become its owner and manager.',

@@ -32,6 +32,8 @@ import './guardians.js';
 import './billboard.js';
 import './shop.js';
 import './hire.js';
+import './training-plans.js';
+import './coach.js';
 import './payments.js';
 import './sponsors.js';
 import './supply.js';
