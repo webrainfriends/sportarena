@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { Platform, Pressable, Text, View } from 'react-native';
+import { Image, Platform, Pressable, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Avatar, T } from './ui';
 import { Icon } from './icons';
-import { c, glass, heroGrad, toneFor } from './theme';
+import { c, toneFor } from './theme';
 import { roleLabel } from './roles';
-import { api } from './api';
+import { useLayout } from './layout';
+import { api, mediaUrl } from './api';
 import { useSession } from './session';
 import { pickMedia } from './market/media';
 
@@ -29,82 +30,135 @@ export function useAvatarPhoto() {
   return { change, remove, busy };
 }
 
-const Badge = ({ children }) => (
-  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: glass.fill, borderColor: glass.line, borderWidth: 1, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 }}>
-    {typeof children === 'string' ? <T size={12} weight="700" color={glass.text}>{children}</T> : children}
+const nice = (s) => String(s).replace(/_/g, ' ');
+/** Whole years from a YYYY-MM-DD date of birth (the signed-in user's own record). */
+export const ageOf = (dob) => {
+  const d = dob ? new Date(dob) : null;
+  if (!d || Number.isNaN(+d)) return null;
+  const n = new Date();
+  return n.getFullYear() - d.getFullYear() - (n < new Date(n.getFullYear(), d.getMonth(), d.getDate()) ? 1 : 0);
+};
+
+const Chip = ({ children, tone }) => (
+  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: tone ? tone[1] : c.paper, borderColor: tone ? tone[1] : c.line, borderWidth: 1, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6, alignSelf: 'flex-start' }}>
+    {typeof children === 'string' ? <T size={12} weight="700" color={tone ? tone[2] : c.ink}>{children}</T> : children}
   </View>
 );
 
 const RoundBtn = ({ icon, onPress, label }) => (
-  <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} hitSlop={8} style={({ pressed }) => ({ width: 40, height: 40, borderRadius: 20, backgroundColor: glass.fill, borderWidth: 1, borderColor: glass.line, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.7 : 1 })}>
-    <Icon name={icon} color="#fff" size={20} />
+  <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} hitSlop={8} style={({ pressed }) => ({ width: 40, height: 40, borderRadius: 20, backgroundColor: c.paper, borderWidth: 1, borderColor: c.line, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.7 : 1, ...lift })}>
+    <Icon name={icon} color={c.ink} size={20} />
   </Pressable>
 );
 
 /**
- * Player card header: identity on a deep gradient tinted by the player's default sport.
- * `profile` is the default entry from /me/sport-profiles (may be undefined until they add a sport).
+ * Player card header, light layout: name, sport/club chips and position on the left, the player's photo on the right
+ * (emoji avatar until they upload one), faded into a soft sport-tinted backdrop. `profile` is the default entry from
+ * /me/sport-profiles (may be undefined until they add a sport).
  */
 export function PlayerHero({ user, profile, onBell, onAvatar, pad = 16 }) {
   const photo = useAvatarPhoto();
-  const tone = profile ? toneFor(profile.sport_slug)[0] : c.pink;
-  const roles = (user.roles ?? []).slice(0, 3);
+  const L = useLayout();
+  const tone = profile ? toneFor(profile.sport_slug) : null;
+  const [first, ...rest] = String(user.display_name).trim().split(/\s+/);
+  const H = L.tablet ? 340 : 300;
+  const side = L.tablet ? 340 : 190;
   return (
-    <LinearGradient colors={heroGrad(tone)} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ paddingHorizontal: pad, paddingTop: 14, paddingBottom: 64, overflow: 'hidden', borderBottomLeftRadius: 32, borderBottomRightRadius: 32 }}>
-      {profile ? <Text pointerEvents="none" style={{ position: 'absolute', right: -24, top: 18, fontSize: 190, opacity: 0.12 }}>{profile.sport_emoji}</Text> : null}
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <T size={11} weight="700" color={glass.sub} style={{ letterSpacing: 2.4 }}>SPORTARENA</T>
-        <RoundBtn icon="Bell" label="Notifications" onPress={onBell} />
-      </View>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 14 }}>
-        <View>
-          <Pressable accessibilityRole="button" accessibilityLabel="Open my profile" onPress={onAvatar}><Avatar user={user} size={88} /></Pressable>
-          <Pressable accessibilityRole="button" accessibilityLabel="Change profile photo" disabled={photo.busy} onPress={photo.change} hitSlop={8} style={({ pressed }) => ({ position: 'absolute', right: -2, bottom: -2, width: 30, height: 30, borderRadius: 15, backgroundColor: c.paper, borderWidth: 1, borderColor: c.line, alignItems: 'center', justifyContent: 'center', opacity: photo.busy ? 0.5 : pressed ? 0.8 : 1 })}>
-            <T size={14}>📷</T>
+    <View style={{ backgroundColor: tone ? tone[1] : c.pinkSoft, overflow: 'hidden' }}>
+      <LinearGradient colors={['rgba(255,255,255,0)', c.bg]} style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 120 }} pointerEvents="none" />
+      {profile ? <Text pointerEvents="none" style={{ position: 'absolute', left: -30, top: 70, fontSize: 230, opacity: 0.1 }}>{profile.sport_emoji}</Text> : null}
+      <View style={{ width: '100%', maxWidth: L.tablet ? 1000 : 640, alignSelf: 'center', height: H, paddingHorizontal: pad }}>
+        <View style={{ position: 'absolute', right: pad - 6, bottom: 0, width: side, height: H - 30, alignItems: 'center', justifyContent: 'flex-end' }}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Open my profile" onPress={onAvatar} style={{ width: '100%', height: '100%', alignItems: 'center', justifyContent: 'flex-end' }}>
+            {user.avatar_url
+              ? <Image source={{ uri: mediaUrl(user.avatar_url) }} resizeMode="cover" accessibilityLabel={`${user.display_name} photo`} style={{ width: '100%', height: '100%', borderTopLeftRadius: 120, borderTopRightRadius: 120 }} />
+              : <Text style={{ fontSize: side * 0.62, marginBottom: 24 }}>{user.avatar_emoji ?? '😎'}</Text>}
+          </Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="Change profile photo" disabled={photo.busy} onPress={photo.change} hitSlop={8} style={({ pressed }) => ({ position: 'absolute', right: 6, bottom: 46, width: 36, height: 36, borderRadius: 18, backgroundColor: c.paper, borderWidth: 1, borderColor: c.line, alignItems: 'center', justifyContent: 'center', opacity: photo.busy ? 0.5 : pressed ? 0.8 : 1, ...lift })}>
+            <T size={16}>📷</T>
           </Pressable>
         </View>
-        <View style={{ flex: 1, gap: 4 }}>
-          <T size={30} weight="800" color={glass.text} numberOfLines={2} style={{ letterSpacing: -0.8 }}>{user.display_name}</T>
-          <T size={14} weight="600" color={glass.sub}>@{user.handle}</T>
+        <View style={{ position: 'absolute', left: pad, top: 14, right: pad, flexDirection: 'row', justifyContent: 'flex-end' }}>
+          <RoundBtn icon="Bell" label="Notifications" onPress={onBell} />
+        </View>
+        <View style={{ position: 'absolute', left: pad, top: 14, maxWidth: '56%', gap: 10 }}>
+          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+            {profile ? <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: c.paper, alignItems: 'center', justifyContent: 'center', ...lift }}><T size={22}>{profile.sport_emoji}</T></View> : null}
+            {profile?.club ? <Chip>{profile.club}</Chip> : null}
+          </View>
+        </View>
+        <View style={{ position: 'absolute', left: pad, top: 78, width: L.tablet ? '52%' : '58%' }}>
+          <T size={L.tablet ? 52 : 38} weight="800" numberOfLines={1} adjustsFontSizeToFit style={{ letterSpacing: -1.4, lineHeight: L.tablet ? 56 : 42 }}>{first}</T>
+          {rest.length ? <T size={L.tablet ? 52 : 38} weight="800" numberOfLines={1} adjustsFontSizeToFit style={{ letterSpacing: -1.4, lineHeight: L.tablet ? 56 : 42 }}>{rest.join(' ')}</T> : null}
+          <T size={14} weight="600" color={c.mute} style={{ marginTop: 4 }}>@{user.handle}</T>
+        </View>
+        <View style={{ position: 'absolute', left: pad, bottom: 56, gap: 8 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            {profile && profile.jersey_no !== null && profile.jersey_no !== undefined ? <View style={{ minWidth: 34, height: 34, borderRadius: 10, backgroundColor: tone[0], alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 }}><T size={14} weight="800" color="#fff">{profile.jersey_no}</T></View> : null}
+            <T size={12} weight="700" color={c.mute} style={{ letterSpacing: 1.6 }}>{(profile?.position ?? (user.roles?.[0] ? roleLabel(user.roles[0]) : 'Athlete')).toUpperCase()}</T>
+          </View>
         </View>
       </View>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 16 }}>
-        {profile ? <Badge><T size={14}>{profile.sport_emoji}</T><T size={12} weight="700" color={glass.text}>{profile.sport}</T></Badge> : null}
-        {profile?.club ? <Badge>{profile.club}</Badge> : null}
-        {profile?.position ? <Badge>{profile.position}</Badge> : null}
-        {profile?.jersey_no !== null && profile?.jersey_no !== undefined ? <Badge>{`#${profile.jersey_no}`}</Badge> : null}
-        {roles.map((r) => <Badge key={r}>{roleLabel(r)}</Badge>)}
-      </View>
-    </LinearGradient>
+    </View>
   );
 }
 
-/** White stat tiles that overlap the hero's lower edge. `items` = [[label, value], …]. */
+/** Frosted-white stat tiles with the value at the bottom-right, overlapping the hero's lower edge. `items` = [[label, value], …]. */
 export function StatTiles({ items, pad = 16 }) {
+  const L = useLayout();
   return (
-    <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: pad, marginTop: -44 }}>
+    <View style={{ width: '100%', maxWidth: L.tablet ? 1000 : 640, alignSelf: 'center', flexDirection: 'row', gap: 10, paddingHorizontal: pad, marginTop: -44 }}>
       {items.map(([label, value]) => (
-        <View key={label} style={{ flex: 1, backgroundColor: c.paper, borderRadius: 20, borderWidth: 1, borderColor: c.line, paddingVertical: 14, paddingHorizontal: 14, ...lift }}>
-          <T size={12} weight="600" color={c.mute}>{label}</T>
-          <T size={28} weight="800" style={{ letterSpacing: -0.8, marginTop: 6, fontVariant: ['tabular-nums'] }}>{value}</T>
+        <View key={label} style={{ flex: 1, minHeight: 96, justifyContent: 'space-between', backgroundColor: 'rgba(255,255,255,0.92)', borderRadius: 20, borderWidth: 1, borderColor: c.line, padding: 14, ...lift }}>
+          <T size={12} weight="600" color={c.mute} numberOfLines={1}>{label}</T>
+          <T size={30} weight="800" style={{ letterSpacing: -0.8, textAlign: 'right', fontVariant: ['tabular-nums'] }}>{value}</T>
         </View>
       ))}
     </View>
   );
 }
 
-/** "Now discussing" strip: a live dot plus a tappable headline row. */
-export function NowStrip({ title, sub, onPress, pad = 16 }) {
+/** "Now discussing" strip: a live dot plus a tappable card with a date column, like a news item. */
+export function NowStrip({ title, sub, date, onPress, pad = 16 }) {
+  const L = useLayout();
   return (
-    <View style={{ paddingHorizontal: pad, marginTop: 18 }}>
+    <View style={{ width: '100%', maxWidth: L.tablet ? 1000 : 640, alignSelf: 'center', paddingHorizontal: pad, marginTop: 20 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-        <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: c.lime }} />
+        <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: c.pink, alignItems: 'center', justifyContent: 'center' }}><View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#fff' }} /></View>
         <T size={13} weight="700" color={c.pink}>Now discussing</T>
       </View>
-      <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => ({ backgroundColor: c.paper, borderRadius: 20, borderWidth: 1, borderColor: c.line, padding: 14, opacity: pressed ? 0.9 : 1, ...lift })}>
-        <T weight="700" size={15} numberOfLines={2}>{title}</T>
-        {sub ? <T size={12} color={c.mute} style={{ marginTop: 4 }} numberOfLines={1}>{sub}</T> : null}
+      <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => ({ flexDirection: 'row', gap: 14, backgroundColor: c.paper, borderRadius: 20, borderWidth: 1, borderColor: c.line, padding: 14, opacity: pressed ? 0.9 : 1, ...lift })}>
+        {date ? <View style={{ alignItems: 'center', minWidth: 34 }}><T size={20} weight="800" color={c.mute} style={{ lineHeight: 22 }}>{date[0]}</T><T size={12} weight="600" color={c.mute}>{date[1]}</T></View> : null}
+        <View style={{ flex: 1 }}>
+          <T weight="700" size={15} numberOfLines={2}>{title}</T>
+          {sub ? <T size={12} color={c.mute} style={{ marginTop: 4 }} numberOfLines={1}>{sub}</T> : null}
+        </View>
       </Pressable>
+    </View>
+  );
+}
+
+/** "ABOUT": the facts on the player card. Rows with no value are left out (no placeholders). */
+export function AboutCard({ user, profile }) {
+  const rows = [
+    ['Full name', user.full_name], ['Sport', profile ? `${profile.sport_emoji} ${profile.sport}` : null], ['Role', profile ? nice(profile.role) : null],
+    ['Level', profile ? nice(profile.level) : null], ['Position', profile?.position], ['Club / team', profile?.club],
+    ['Jersey', profile?.jersey_no !== null && profile?.jersey_no !== undefined ? `#${profile.jersey_no}` : null],
+    ['Experience', profile?.experience_years ? `${profile.experience_years} yrs` : null],
+  ].filter(([, v]) => v);
+  if (!rows.length && !user.bio) return null;
+  return (
+    <View>
+      <T size={19} weight="700" style={{ letterSpacing: -0.3, marginBottom: 12 }}>About</T>
+      <View style={{ backgroundColor: c.paper, borderRadius: 20, borderWidth: 1, borderColor: c.line, padding: 16, gap: 12, ...lift }}>
+        {user.bio ? <T size={14} color={c.mute} style={{ lineHeight: 20 }}>{user.bio}</T> : null}
+        {rows.map(([k, v]) => (
+          <View key={k} style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, borderTopWidth: 1, borderColor: c.line, paddingTop: 12 }}>
+            <T size={13} color={c.mute} weight="600">{k}</T>
+            <T size={14} weight="700" style={{ flexShrink: 1, textAlign: 'right' }}>{v}</T>
+          </View>
+        ))}
+      </View>
     </View>
   );
 }

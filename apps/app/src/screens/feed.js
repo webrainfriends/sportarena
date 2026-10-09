@@ -10,7 +10,7 @@ import { c } from '../theme';
 import { MarketCard, KINDS } from '../market/MarketCard';
 import { Composer } from '../market/Composer';
 import { useMarketActions, useResumeIntent } from '../market/actions';
-import { PlayerHero, StatTiles, NowStrip } from '../hero';
+import { PlayerHero, StatTiles, NowStrip, AboutCard, ageOf } from '../hero';
 import { ACTIONS, Item } from './athlete-home';
 import { SportCard } from './player';
 import { localDate } from '../vtime';
@@ -118,13 +118,22 @@ export default function HomeTab() {
   const todays = items.filter((x) => !x.action_required && localDate(x.starts_at, x.all_day ? 'UTC' : zone) === today);
   const game = hi.data?.games?.[0];
   const pad = L.gutter;
+  const age = ageOf(user.dob);
+  const top = main?.metrics?.[0];
+  const tiles = [
+    ...(age !== null ? [['Age', age]] : []),
+    ['Matches', sports.data ? matches : '–'],
+    top ? [String(top.metric).replace(/_/g, ' ').replace(/^./, (ch) => ch.toUpperCase()), Number.isInteger(+top.total) ? +top.total : (+top.total).toFixed(1)] : ['Points', dash.data?.points ?? '–'],
+  ];
+  if (tiles.length < 3) tiles.push(['Points', dash.data?.points ?? '–']);
+  if (tiles.length < 3) tiles.push(['Trophies', dash.data?.trophies ?? '–']);
   const wrap = { paddingHorizontal: pad, width: '100%', maxWidth: L.tablet ? 1000 : 640, alignSelf: 'center' };
 
   const header = (
     <View>
       <PlayerHero user={user} profile={main} pad={pad} onBell={() => nav.push('Notifications')} onAvatar={() => nav.goTab('Me')} />
-      <StatTiles pad={pad} items={[['Matches', sports.data ? matches : '–'], ['Points', dash.data?.points ?? '–'], ['Trophies', dash.data?.trophies ?? '–']]} />
-      {game ? <NowStrip pad={pad} title={`${game.home_name} vs ${game.away_name}`} sub={`${new Date(game.scheduled_at).toLocaleString()}${game.event_name ? ` · ${game.event_name}` : ''}`} onPress={() => nav.goTab('Play')} /> : null}
+      <StatTiles pad={pad} items={tiles} />
+      {game ? <NowStrip pad={pad} title={`${game.home_name} vs ${game.away_name}`} date={[new Date(game.scheduled_at).getDate(), new Date(game.scheduled_at).toLocaleString(undefined, { month: 'short' })]} sub={`${new Date(game.scheduled_at).toLocaleString()}${game.event_name ? ` · ${game.event_name}` : ''}`} onPress={() => nav.goTab('Play')} /> : null}
       <View style={[wrap, { marginTop: 22 }]}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
           {ACTIONS.map(([emoji, label, go]) => <Chip key={label} label={`${emoji} ${label}`} onPress={() => go(nav)} />)}
@@ -144,6 +153,7 @@ export default function HomeTab() {
             <Card><View style={{ gap: 10, alignItems: 'flex-start' }}><T weight="700">Add the sports you play</T><T size={13} color={c.mute}>One card per sport tracks your matches, form and stats.</T><Btn small title="+ Add sport" onPress={() => nav.goTab('Player')} /></View></Card>
           )}
         </View>
+        <View style={{ marginTop: 26 }}><AboutCard user={user} profile={main} /></View>
         <View style={{ marginTop: 30 }}><Title>Community</Title></View>
       </View>
     </View>
