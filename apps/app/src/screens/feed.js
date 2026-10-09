@@ -10,7 +10,7 @@ import { c } from '../theme';
 import { MarketCard, KINDS } from '../market/MarketCard';
 import { Composer } from '../market/Composer';
 import { useMarketActions, useResumeIntent } from '../market/actions';
-import { PlayerHero, StatTiles, NowStrip, AboutCard, ageOf } from '../hero';
+import { PlayerHero, StatTiles, NowStrip, AboutCard, ageOf, COL } from '../hero';
 import { ACTIONS, Item } from './athlete-home';
 import { SportCard } from './player';
 import { localDate } from '../vtime';
@@ -38,7 +38,7 @@ function Rail({ push }) {
 }
 
 /** The member feed: a composer on top, then the same cards as the public page, LinkedIn-style, with reactions, comments and applications. */
-export function Feed({ header }) {
+export function Feed({ header, narrow }) {
   const { user } = useSession();
   const { push } = useNav();
   const L = useLayout();
@@ -81,8 +81,8 @@ export function Feed({ header }) {
     <View style={{ flex: 1 }}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: L.bottomPad }}>
         {header}
-        <View style={{ padding: L.gutter, width: '100%', maxWidth: L.tablet ? 1000 : 640, alignSelf: 'center' }}>
-          {L.tablet ? <View style={{ flexDirection: 'row', gap: 20, alignItems: 'flex-start' }}><View style={{ flex: 1.7 }}>{feed}</View><View style={{ flex: 1 }}><Rail push={push} /></View></View> : feed}
+        <View style={{ padding: L.gutter, width: '100%', maxWidth: narrow ? COL : L.tablet ? 1000 : 640, alignSelf: 'center' }}>
+          {L.tablet && !narrow ? <View style={{ flexDirection: 'row', gap: 20, alignItems: 'flex-start' }}><View style={{ flex: 1.7 }}>{feed}</View><View style={{ flex: 1 }}><Rail push={push} /></View></View> : feed}
         </View>
       </ScrollView>
       {compose ? <Composer visible onClose={() => setCompose(null)} initialKind={compose.kind ?? 'wanted'} ad={compose.ad} onPosted={() => load(0)} /> : null}
@@ -120,14 +120,11 @@ export default function HomeTab() {
   const pad = L.gutter;
   const age = ageOf(user.dob);
   const top = main?.metrics?.[0];
+  const topTile = top ? [String(top.metric).replace(/_/g, ' ').replace(/^./, (ch) => ch.toUpperCase()), Number.isInteger(+top.total) ? +top.total : (+top.total).toFixed(1)] : null;
   const tiles = [
-    ...(age !== null ? [['Age', age]] : []),
-    ['Matches', sports.data ? matches : '–'],
-    top ? [String(top.metric).replace(/_/g, ' ').replace(/^./, (ch) => ch.toUpperCase()), Number.isInteger(+top.total) ? +top.total : (+top.total).toFixed(1)] : ['Points', dash.data?.points ?? '–'],
-  ];
-  if (tiles.length < 3) tiles.push(['Points', dash.data?.points ?? '–']);
-  if (tiles.length < 3) tiles.push(['Trophies', dash.data?.trophies ?? '–']);
-  const wrap = { paddingHorizontal: pad, width: '100%', maxWidth: L.tablet ? 1000 : 640, alignSelf: 'center' };
+    age !== null ? ['Age', age] : null, ['Matches', sports.data ? matches : '–'], topTile, ['Points', dash.data?.points ?? '–'], ['Trophies', dash.data?.trophies ?? '–'],
+  ].filter(Boolean).slice(0, 3);
+  const wrap = { paddingHorizontal: pad, width: '100%', maxWidth: COL, alignSelf: 'center' };
 
   const header = (
     <View>
@@ -158,5 +155,5 @@ export default function HomeTab() {
       </View>
     </View>
   );
-  return <Feed header={header} />;
+  return <Feed header={header} narrow />;
 }
