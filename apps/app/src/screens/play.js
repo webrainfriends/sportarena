@@ -14,6 +14,8 @@ import { SportSelect } from '../sportpicker';
 import { c, grad, day, accentFor, money } from '../theme';
 
 
+const TEAM_COLOURS = [['#7C4DFF', 'Violet'], ['#4F46E5', 'Indigo'], ['#0EA5E9', 'Sky'], ['#10B981', 'Green'], ['#F59E0B', 'Amber'], ['#EF4444', 'Red'], ['#EC4899', 'Pink'], ['#0F172A', 'Slate']].map(([value, label]) => ({ value, label }));
+
 /** Teams that invited you, with accept / decline. Hidden when there are none. */
 function TeamInvites({ onChanged }) {
   const { user, toast } = useSession();
@@ -82,8 +84,9 @@ export function Play() {
       </View>
 
       <FormSheet visible={form === 'team'} onClose={() => setForm(null)} title="Start a team" submitLabel="Create team"
-        fields={[{ key: 'name', label: 'Team name' }, { key: 'sport', label: 'Sport', type: 'sport' }, { key: 'emoji', label: 'Mascot emoji', optional: true }, { key: 'city', label: 'City', optional: true }]}
-        onSubmit={async (v) => { const t = await api.post('/teams', v); list.reload(); push('Team', { id: t.id }); return 'Team created'; }} />
+        fields={[{ key: 'name', label: 'Team name' }, { key: 'sport', label: 'Sport', type: 'sport' }, { key: 'description', label: 'About the team', type: 'multiline', optional: true },
+          { key: 'emoji', label: 'Mascot emoji', optional: true }, { key: 'color', label: 'Team colour', type: 'chips', optional: true, options: TEAM_COLOURS }, { key: 'city', label: 'City', optional: true }]}
+        onSubmit={async (v) => { const t = await api.post('/teams', v); list.reload(); push('TeamWorkspace', { id: t.id }); return 'Team created — invite your players from the Roster tab'; }} />
       <FormSheet visible={form === 'event'} onClose={() => setForm(null)} title="Create an event" submitLabel="Publish"
         fields={[{ key: 'name', label: 'Event name' }, { key: 'sport', label: 'Sport', type: 'sport' }, { key: 'kind', label: 'Type', type: 'choice', options: ['tournament', 'league', 'friendly', 'camp', 'trial'] }, { key: 'starts_on', label: 'Starts on (YYYY-MM-DD)', optional: true }, { key: 'description', label: 'Description', type: 'multiline', optional: true }]}
         onSubmit={async (v) => { const e = await api.post('/events', v); list.reload(); push('Event', { id: e.id }); return 'Event is live'; }} />
@@ -186,7 +189,7 @@ export function Team({ id }) {
         {x.rating?.n ? <Stars n={x.rating.avg} /> : null}
       </GradCard>
       {x.my_membership?.status === 'active' || x.can_manage ? <Btn title="💬 Team chat" color={c.violet} onPress={() => push('TeamChat', { id })} style={{ marginTop: 12 }} /> : null}
-      {x.can_manage ? <Btn title="⚙️ Manage team — roster, squads, recruiting, rates" onPress={() => push('TeamManage', { id })} style={{ marginTop: 12 }} /> : null}
+      {x.can_manage || x.my_membership?.status === 'active' ? <Btn title={x.can_manage ? '🗂️ Team workspace — tasks, schedule, roster, squads' : '🗂️ Team workspace — tasks & schedule'} onPress={() => push('TeamWorkspace', { id })} style={{ marginTop: 12 }} /> : null}
       {x.my_membership?.status === 'active' ? <>
         <Section title="My availability" color={c.mint}><AvailabilityPicker teamId={id} userId={user.id} value={x.my_membership.availability} onDone={t.reload} /></Section>
         <MySelections teamId={id} />

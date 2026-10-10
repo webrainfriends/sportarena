@@ -10,7 +10,7 @@ import { Btn, Card, Chip, Empty, ErrorBox, Field, H1, Loading, Screen, Section, 
 import { FormSheet } from '../FormSheet';
 import { c, day, money } from '../theme';
 import { moneyIn } from '../vtime';
-import { DocumentsSheet, RequestSheet, StatusTag, dayY, nice } from './insurance';
+import { DocumentsSheet, QuoteRequestSheet, RequestSheet, StatusTag, dayY, nice } from './insurance';
 
 const cur = (cents, currency) => (currency ? moneyIn(Number(cents), currency) : money(Number(cents)));
 const major = (cents, currency) => { let d = 2; try { d = new Intl.NumberFormat('en', { style: 'currency', currency: currency ?? 'INR' }).resolvedOptions().maximumFractionDigits; } catch { /* keep 2 */ } return String(Number(cents) / 10 ** d); };
@@ -52,6 +52,7 @@ function Onboarding({ onDone }) {
 
 /** Pick one of your active plans that matches what was asked, then price it. */
 function QuoteFlow({ ask, onClose, onDone }) {
+  const { push } = useNav();
   const plans = useLoad(() => api.get('/insurance/my-plans', { status: 'active', limit: 100 }), []);
   const [plan, setPlan] = useState(null);
   const fits = (plans.data ?? []).filter((p) => p.cover_for === ask?.cover_for);
@@ -62,6 +63,7 @@ function QuoteFlow({ ask, onClose, onDone }) {
         {plans.loading ? <Loading /> : fits.length ? fits.map((p) => (
           <Card key={p.id} pad={12} onPress={() => setPlan(p)}><T weight="800">{p.emoji} {p.name}</T><T size={12} color={c.mute}>{cur(p.premium_cents, p.currency)}/mo · cover {cur(p.coverage_cents, p.currency)} · excess {cur(p.deductible_cents, p.currency)}</T></Card>
         )) : <Empty emoji="🛡️" title={`No active ${COVER[ask?.cover_for]?.toLowerCase() ?? ''} plan`} sub="Publish a plan of this kind first: a quote is always priced on one of your plans." />}
+        {!plans.loading && !fits.length ? <Btn title="Create a plan" onPress={() => { close(); push('InsurerDesk', { tab: 'plans' }); }} /> : null}
       </Sheet>
       <FormSheet visible={!!ask && !!plan} onClose={close} title={plan ? `Quote: ${plan.name}` : ''} submitLabel="Send quote" initial={{ months: Math.min(Math.max(ask?.months ?? 12, plan?.term_months.min ?? 1), plan?.term_months.max ?? 36), valid_days: 14 }}
         fields={[
@@ -124,6 +126,12 @@ export function InsuranceMarket({ onAsk }) {
   const [open, setOpen] = useState(null);
   const [ask, setAsk] = useState(null);
   const [tick, setTick] = useState(0);
+  const [planAsk, setPlanAsk] = useState(null);
+  const { refresh, setActiveRole, toast } = useSession();
+  const offers = useLoad(() => api.get('/insurance/plans', { limit: 30 }), [tick]);
+  const becomeInsurer = async () => {
+    try { await api.patch('/me/roles', { add: ['insurer'] }); await refresh(); setActiveRole('insurer'); push('InsurerDesk'); toast('Insurer role added: set up your profile'); } catch (e) { toast(e.message); }
+  };
   const m = useLoad(() => (isInsurer ? api.get('/insurance/market', { limit: 50, ...(cover ? { cover_for: cover } : {}) }) : Promise.resolve([])), [isInsurer, cover, tick]);
   return (
     <>
@@ -135,7 +143,7 @@ export function InsuranceMarket({ onAsk }) {
           {isInsurer ? <Btn small title="My insurer desk" color={c.paper} ink={c.ink} onPress={() => push('InsurerDesk')} /> : null}
         </View>
       </Card>
-      {!isInsurer ? <T size={13} color={c.mute}>Are you an insurer or agent? Add the Insurer role under Me to answer these requests.</T> : <>
+      {!isInsurer ? <Card pad={12}><T size={13} color={c.mute}>Are you an insurer or an agent? You can add the Insurer role next to your other roles (player, coach, referee, sponsor, event or venue manager), publish plans and answer these requests.</T><Btn small title="Become an insurer" onPress={becomeInsurer} style={{ marginTop: 8, alignSelf: 'flex-start' }} /></Card> : <>
         <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>{[['', 'All'], ...Object.entries(COVER)].map(([v, l]) => <Chip key={v} label={l} active={cover === v} onPress={() => setCover(v)} />)}</View>
         <InboxHint reloadKey={tick} />
         {m.loading && !m.data ? <Loading /> : m.error ? <ErrorBox error={m.error} onRetry={m.reload} /> : m.data?.length ? m.data.map((x) => (
@@ -147,6 +155,17 @@ export function InsuranceMarket({ onAsk }) {
           </Card>
         )) : <Empty emoji="📭" title="No open requests" sub="New requests appear here as soon as someone asks." />}
       </>}
+      <Section title="Plans on offer" color={c.pink}>
+        {offers.loading && !offers.data ? <Loading /> : offers.data?.length ? offers.data.map((p) => (
+          <Card key={p.id} pad={12}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}><T weight="800" style={{ flex: 1 }}>{p.emoji} {p.name}</T><Tag label={COVER[p.cover_for]} color={c.cyan} /></View>
+            <T size={12} color={c.mute}>{p.insurer}{p.insurer_verified ? ' ✓' : ''} · {cur(p.premium_cents, p.currency)}/mo · cover {cur(p.coverage_cents, p.currency)}</T>
+            {p.offer ? <T size={12} weight="700" color={c.orange}>Offer: {p.offer}</T> : null}
+            <Btn small title="Ask for a quote" onPress={() => setPlanAsk({ plan: p })} style={{ marginTop: 8, alignSelf: 'flex-start' }} />
+          </Card>
+        )) : <Empty emoji="🛡️" title="No plans yet" sub="Insurers publish their plans here. Once one is on sale it is listed on the Billboard." />}
+      </Section>
+      <QuoteRequestSheet target={planAsk} onClose={() => setPlanAsk(null)} onDone={() => setPlanAsk(null)} />
       <RequestSheet id={open} asInsurer onClose={() => setOpen(null)} onChanged={() => setTick((x) => x + 1)} onQuote={(req) => { setOpen(null); setAsk({ request_id: req.id, cover_for: req.cover_for, months: req.months }); }} />
       <QuoteFlow ask={ask} onClose={() => setAsk(null)} onDone={() => setTick((x) => x + 1)} />
     </>
@@ -274,6 +293,7 @@ function Plans() {
           {p.offer ? <T size={12} weight="700" color={c.orange}>Offer: {p.offer}</T> : null}
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
             <Btn small title="Edit" color={c.paper} ink={c.ink} onPress={() => setEdit(p)} />
+            {p.status === 'active' ? <Btn small title="Share to community" color={c.paper} ink={c.violet} onPress={async () => { try { await api.post('/market/posts', { kind: 'announcement', title: `${p.name}: ${COVER[p.cover_for]} insurance`.slice(0, 120), body: `${p.description ? `${p.description}\n\n` : ''}${cur(p.premium_cents, p.currency)} a month, cover up to ${cur(p.coverage_cents, p.currency)}.${p.offer ? ` Offer: ${p.offer}.` : ''} Ask for a quote under Billboard → Insurance.`.slice(0, 2000), cta_label: 'Get a quote' }); toast('Shared to the community feed. It is also listed on the Billboard.'); } catch (e) { toast(e.message); } }} /> : null}
             <Btn small title={p.status === 'active' ? 'Retire' : 'Put on sale'} color={c.paper} ink={p.status === 'active' ? c.red : c.pink} onPress={async () => { try { await api.patch(`/insurance/plans/${p.id}`, { status: p.status === 'active' ? 'retired' : 'active' }); plans.reload(); toast(p.status === 'active' ? 'Retired: sold policies keep their cover' : 'On sale again'); } catch (e) { toast(e.message); } }} />
           </View>
         </Card>
@@ -343,10 +363,10 @@ function Today({ me, setTab }) {
   );
 }
 
-export function InsurerDesk() {
+export function InsurerDesk({ tab: startTab }) {
   const { push } = useNav();
   const me = useLoad(() => api.get('/insurance/my-insurer'), []);
-  const [tab, setTab] = useState('today');
+  const [tab, setTab] = useState(startTab ?? 'today');
   const [ask, setAsk] = useState(null);
   const [direct, setDirect] = useState(false);
   const [tick, setTick] = useState(0);

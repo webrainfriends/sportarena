@@ -3,6 +3,7 @@ import { Linking, Platform, Pressable, View, useWindowDimensions } from 'react-n
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
+import { useNav } from '../nav';
 import { Avatar, Btn, Card, Chip, Empty, ErrorBox, Field, H1, H2, Loading, Screen, Seg, Sheet, T } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { NewCaseSheet } from './cases';
@@ -506,7 +507,8 @@ export function Hire() {
 // ======================= INSURE =======================
 
 export function Insure() {
-  const { toast } = useSession();
+  const { toast, user } = useSession();
+  const { push } = useNav();
   const { w } = useCols();
   const plans = useLoad(() => api.get('/insurance/plans', { cover_for: 'individual' }), []);
   const pol = useLoad(() => api.get('/insurance/policies', { limit: 30 }), []);
@@ -518,8 +520,18 @@ export function Insure() {
   return (
     <Screen wide>
       <Head eyebrow="INSURE" title="Play protected" sub="Personal accident and injury cover for training and match days." />
+      {user?.roles?.includes('insurer') ? (
+        <Card color={c.cyanSoft} pad={14} style={{ marginTop: 14 }}>
+          <T weight="900" size={16}>You are an insurer too</T>
+          <T size={13} color={c.mute}>Publish your plans (they are listed on the Billboard and can be shared to the community) and answer quote requests from players, teams, venues and events.</T>
+          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+            <Btn small title="Create a plan" onPress={() => push('InsurerDesk', { tab: 'plans' })} />
+            <Btn small title="Answer requests" color={c.paper} ink={c.ink} onPress={() => push('InsurerDesk', { tab: 'requests' })} />
+          </View>
+        </Card>
+      ) : null}
       {plans.error ? <ErrorBox error={plans.error} onRetry={plans.reload} /> : plans.loading && !plans.data ? <Loading /> : !plans.data?.length ? (
-        <View style={{ marginTop: 14 }}><Empty emoji="🛡️" title="No plans published yet" /></View>
+        <View style={{ marginTop: 14 }}><Empty emoji="🛡️" title="No plans published yet" sub="Insurers publish their plans here as soon as they are on sale." /></View>
       ) : (
         <Grid>
           {plans.data.map((p, n) => {
