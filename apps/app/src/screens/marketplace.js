@@ -3,11 +3,14 @@ import { Linking, Platform, Pressable, View, useWindowDimensions } from 'react-n
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
+import { useNav } from '../nav';
 import { Avatar, Btn, Card, Chip, Empty, ErrorBox, Field, H1, H2, Loading, Screen, Seg, Sheet, T } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { NewCaseSheet } from './cases';
 import { BookProviderSheet } from './provider';
 import { c, toneFor, money, when, day } from '../theme';
+import { InsuranceMarket } from './insurer';
+import { QuoteRequestSheet } from './insurance';
 
 const nice = (s) => String(s ?? '').replace(/_/g, ' ');
 const parseWhen = (s) => { const d = new Date(String(s).trim().replace(' ', 'T')); if (isNaN(d)) throw new Error('Use the format 2026-11-02 17:30'); return d.toISOString(); };
@@ -199,7 +202,7 @@ function SponsorInbox() {
   );
 }
 
-const FILTERS = [['all', 'All'], ['match_players', 'Matches'], ['team_recruiting', 'Teams'], ['sponsor', 'Sponsorship'], ['events', 'Events'], ['mine', 'My posts']];
+const FILTERS = [['all', 'All'], ['match_players', 'Matches'], ['team_recruiting', 'Teams'], ['sponsor', 'Sponsorship'], ['events', 'Events'], ['insurance', 'Insurance'], ['mine', 'My posts']];
 
 export function Billboard() {
   const { has, toast } = useSession();
@@ -207,13 +210,14 @@ export function Billboard() {
   const [f, setF] = useState('all');
   const [post, setPost] = useState(false);
   const [resp, setResp] = useState(null);
+  const [quote, setQuote] = useState(null);
   const q = f === 'mine' ? { mine: true, include_closed: true } : f === 'match_players' || f === 'team_recruiting' ? { kind: f } : {};
-  const posts = useLoad(() => (f === 'events' ? Promise.resolve([]) : api.get('/billboard', { ...q, limit: 50 })), [f]);
+  const posts = useLoad(() => (f === 'events' || f === 'insurance' ? Promise.resolve([]) : api.get('/billboard', { ...q, limit: 50 })), [f]);
   const events = useLoad(() => (f === 'all' || f === 'events' ? api.get('/events', { status: 'open', limit: 20 }) : Promise.resolve([])), [f]);
   const list = (posts.data ?? []).filter((p) => (f === 'sponsor' ? p.kind.startsWith('sponsor') : true));
   const join = async (e) => { try { await api.post(`/events/${e.id}/entries`, {}); toast(`Registered for ${e.name} — awaiting approval`); } catch (x) { toast(x.message); } };
   const loading = (posts.loading && !posts.data) || (events.loading && !events.data);
-  const empty = !loading && !list.length && !(events.data ?? []).length;
+  const empty = !loading && !list.length && !(events.data ?? []).length && f !== 'insurance';
 
   return (
     <Screen wide>
@@ -221,7 +225,7 @@ export function Billboard() {
         right={<Btn small title="+ Post a need" onPress={() => setPost(true)} />} />
       <View style={{ marginTop: 14 }}><Seg options={FILTERS.map(([value, label]) => ({ value, label }))} value={f} onChange={setF} /></View>
       {f === 'all' || f === 'sponsor' ? <SponsorInbox /> : null}
-      {posts.error ? <ErrorBox error={posts.error} onRetry={posts.reload} /> : loading ? <Loading /> : empty ? (
+      {f === 'insurance' ? <View style={{ marginTop: 14, gap: 10 }}><InsuranceMarket onAsk={() => setQuote({})} /></View> : posts.error ? <ErrorBox error={posts.error} onRetry={posts.reload} /> : loading ? <Loading /> : empty ? (
         <View style={{ marginTop: 14 }}><Empty emoji="📣" title="Nothing here yet" sub="Be the first — post that you need players, a team, or a sponsor." /></View>
       ) : (
         <Grid>
@@ -230,6 +234,7 @@ export function Billboard() {
         </Grid>
       )}
 
+      <QuoteRequestSheet target={quote} onClose={() => setQuote(null)} onDone={() => setQuote(null)} />
       {post ? (
         <FormSheet visible onClose={() => setPost(false)} title="Post on the billboard" submitLabel="Post"
           fields={[
@@ -502,7 +507,8 @@ export function Hire() {
 // ======================= INSURE =======================
 
 export function Insure() {
-  const { toast } = useSession();
+  const { toast, user } = useSession();
+  const { push } = useNav();
   const { w } = useCols();
   const plans = useLoad(() => api.get('/insurance/plans', { cover_for: 'individual' }), []);
   const pol = useLoad(() => api.get('/insurance/policies', { limit: 30 }), []);
@@ -514,8 +520,18 @@ export function Insure() {
   return (
     <Screen wide>
       <Head eyebrow="INSURE" title="Play protected" sub="Personal accident and injury cover for training and match days." />
+      {user?.roles?.includes('insurer') ? (
+        <Card color={c.cyanSoft} pad={14} style={{ marginTop: 14 }}>
+          <T weight="900" size={16}>You are an insurer too</T>
+          <T size={13} color={c.mute}>Publish your plans (they are listed on the Billboard and can be shared to the community) and answer quote requests from players, teams, venues and events.</T>
+          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+            <Btn small title="Create a plan" onPress={() => push('InsurerDesk', { tab: 'plans' })} />
+            <Btn small title="Answer requests" color={c.paper} ink={c.ink} onPress={() => push('InsurerDesk', { tab: 'requests' })} />
+          </View>
+        </Card>
+      ) : null}
       {plans.error ? <ErrorBox error={plans.error} onRetry={plans.reload} /> : plans.loading && !plans.data ? <Loading /> : !plans.data?.length ? (
-        <View style={{ marginTop: 14 }}><Empty emoji="🛡️" title="No plans published yet" /></View>
+        <View style={{ marginTop: 14 }}><Empty emoji="🛡️" title="No plans published yet" sub="Insurers publish their plans here as soon as they are on sale." /></View>
       ) : (
         <Grid>
           {plans.data.map((p, n) => {

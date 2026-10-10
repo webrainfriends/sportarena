@@ -1,9 +1,7 @@
 // Insurance documents (the "locker"): policy schedules, certificates, receipts, quotes and claim evidence kept with the policy.
 // Files live encrypted on the server's disk and are never deleted: removing a document only hides it (removed_at).
 // Upload and download are binary, so they are Express routes (mounted in http.js); listing and hiding are ordinary capabilities.
-import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { createHash } from 'node:crypto';
 import express from 'express';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
@@ -14,29 +12,22 @@ import { one, many, query } from '../db.js';
 import { AppError, badRequest, forbidden, notFound, unauthorized } from '../errors.js';
 import { toErrorBody } from '../invoke.js';
 import { audit, hasRole, isAdmin } from '../helpers.js';
-import { decrypt, encrypt } from '../crypto.js';
-import { sniff } from '../media.js';
+import { DOC_LIMITS, docHeaders, loadEncrypted, readBody, saveEncrypted, sniffDoc } from '../doc-store.js';
+import { standing } from './insurance.js';
 
-export const DOC_LIMITS = { bytes: 10 * 2 ** 20, perParent: 50 };
+export { DOC_LIMITS, sniffDoc };
 const KINDS = ['policy_schedule', 'certificate', 'receipt', 'quote', 'claim_evidence', 'other'];
-const root = () => resolve(config.mediaDir, 'insurance');
 
-/** PDF or a photo, decided from the bytes (never from what the client says). */
-export function sniffDoc(b) {
-  if (b.length >= 5 && b.subarray(0, 5).toString('latin1') === '%PDF-') return { type: 'application/pdf', ext: 'pdf' };
-  const t = sniff(b);
-  return t && t.kind === 'photo' ? { type: t.type, ext: t.ext } : null;
-}
-
-/** How `user` relates to the thing a document hangs on: 'holder' (the buyer/claimant), 'insurer' (the insurer that wrote it) or null. */
-async function relation(user, { policy_id, quote_id, claim_id }) {
+/** How `user` relates to the thing a document hangs on: 'holder' (the buyer/claimant, or whoever manages the covered team, event or venue), 'insurer' (the insurer that wrote it) or null. */
+export async function relation(user, { policy_id, quote_id, claim_id }) {
   const ins = hasRole(user, 'insurer') ? await one('SELECT id FROM insurers WHERE owner_id=$1', [user.id]) : null;
   let row;
-  if (policy_id) row = await one('SELECT p.holder_id AS holder, pl.insurer_id FROM insurance_policies p JOIN insurance_plans pl ON pl.id=p.plan_id WHERE p.id=$1', [policy_id]);
-  else if (quote_id) row = await one('SELECT buyer_id AS holder, insurer_id FROM insurance_quotes WHERE id=$1', [quote_id]);
+  if (policy_id) row = await one('SELECT p.holder_id AS holder, pl.insurer_id, p.subject_type AS kind, p.subject_id FROM insurance_policies p JOIN insurance_plans pl ON pl.id=p.plan_id WHERE p.id=$1', [policy_id]);
+  else if (quote_id) row = await one('SELECT buyer_id AS holder, insurer_id, cover_for AS kind, subject_id FROM insurance_quotes WHERE id=$1', [quote_id]);
   else if (claim_id) row = await one('SELECT cl.claimant_id AS holder, pl.insurer_id FROM insurance_claims cl JOIN insurance_policies p ON p.id=cl.policy_id JOIN insurance_plans pl ON pl.id=p.plan_id WHERE cl.id=$1', [claim_id]);
   if (!row) throw notFound('That policy, quote or claim');
   if (row.holder === user.id) return 'holder';
+  if (row.kind && row.kind !== 'individual' && !isAdmin(user) && (await standing(user, row.kind, row.subject_id)) === 'manage') return 'holder';   // whoever manages the covered team / event / venue
   if (ins && ins.id === row.insurer_id) return 'insurer';
   if (isAdmin(user)) return 'admin';
   throw notFound('That policy, quote or claim');
@@ -70,16 +61,6 @@ cap({
   },
 });
 
-async function readBody(req) {
-  const chunks = []; let size = 0;
-  for await (const chunk of req) {
-    size += chunk.length;
-    if (size > DOC_LIMITS.bytes) throw new AppError(413, 'too_large', `Documents can be up to ${DOC_LIMITS.bytes / 2 ** 20} MB`);
-    chunks.push(chunk);
-  }
-  return Buffer.concat(chunks);
-}
-
 export function insuranceDocsRouter() {
   const r = express.Router();
   const fail = (res, e) => { const { status, code, message, details } = toErrorBody(e); res.status(status).json({ error: { code, message, details } }); };
@@ -101,12 +82,7 @@ export function insuranceDocsRouter() {
       if (!buf.length) throw badRequest('Empty upload');
       const t = sniffDoc(buf);
       if (!t) throw badRequest('Unsupported file. Use a PDF or a JPEG, PNG, WebP or GIF image.');
-      const did = randomUUID(), file = `${did}.bin`, tmp = join(root(), `${did}.part`);
-      await mkdir(root(), { recursive: true });
-      try {
-        await writeFile(tmp, encrypt(buf.toString('base64'), 'insurance_documents.file'), { mode: 0o640, flag: 'wx' });
-        await rename(tmp, join(root(), file));
-      } catch (e) { await rm(tmp, { force: true }); throw e; }
+      const { id: did, file } = await saveEncrypted('insurance', 'insurance_documents.file', buf);
       const row = await one(
         `INSERT INTO insurance_documents(id, policy_id, quote_id, claim_id, kind, title, content_type, file_name, size_bytes, sha256, uploaded_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
          RETURNING id, policy_id, quote_id, claim_id, kind, title, content_type, size_bytes, created_at`,
@@ -125,9 +101,9 @@ export function insuranceDocsRouter() {
       const d = await one('SELECT * FROM insurance_documents WHERE id=$1 AND removed_at IS NULL', [req.params.id]);
       if (!d) throw notFound('Document');
       await relation(user, parentOf(d));
-      const bytes = Buffer.from(decrypt(await readFile(join(root(), d.file_name), 'utf8'), 'insurance_documents.file'), 'base64');
+      const bytes = await loadEncrypted('insurance', 'insurance_documents.file', d.file_name);
       await audit(null, user.id, 'read_pii', 'insurance_documents', d.id);
-      res.set({ 'Content-Type': d.content_type, 'Content-Length': String(bytes.length), 'Cache-Control': 'private, no-store', 'Content-Disposition': 'inline', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; sandbox" });
+      res.set(docHeaders(d.content_type, bytes));
       res.end(bytes);
     } catch (e) { fail(res, e.code === 'ENOENT' ? notFound('Document') : e); }
   });

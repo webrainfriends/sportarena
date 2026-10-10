@@ -10,12 +10,12 @@ import { Btn, Card, Chip, Empty, ErrorBox, Field, H1, Loading, Screen, Section, 
 import { FormSheet } from '../FormSheet';
 import { c, day, money } from '../theme';
 import { moneyIn } from '../vtime';
-import { DocumentsSheet, RequestSheet, StatusTag, dayY, nice } from './insurance';
+import { DocumentsSheet, QuoteRequestSheet, RequestSheet, StatusTag, dayY, nice } from './insurance';
 
 const cur = (cents, currency) => (currency ? moneyIn(Number(cents), currency) : money(Number(cents)));
 const major = (cents, currency) => { let d = 2; try { d = new Intl.NumberFormat('en', { style: 'currency', currency: currency ?? 'INR' }).resolvedOptions().maximumFractionDigits; } catch { /* keep 2 */ } return String(Number(cents) / 10 ** d); };
 const list = (v) => String(v ?? '').split(',').map((x) => x.trim()).filter(Boolean);
-const COVER = { individual: 'Individual', team: 'Team', event: 'Event / tournament' };
+const COVER = { individual: 'Individual', team: 'Team', event: 'Event / tournament', venue: 'Venue' };
 const TABS = [['today', 'Today'], ['requests', 'Requests'], ['quotes', 'Quotes'], ['policies', 'Policies'], ['claims', 'Claims'], ['plans', 'Plans'], ['profile', 'Profile']];
 
 const profileFields = (cur_) => [
@@ -52,30 +52,61 @@ function Onboarding({ onDone }) {
 
 /** Pick one of your active plans that matches what was asked, then price it. */
 function QuoteFlow({ ask, onClose, onDone }) {
+  const { push } = useNav();
   const plans = useLoad(() => api.get('/insurance/my-plans', { status: 'active', limit: 100 }), []);
-  const [plan, setPlan] = useState(null);
+  const [picked, setPicked] = useState([]);
+  const [step, setStep] = useState(1);
   const fits = (plans.data ?? []).filter((p) => p.cover_for === ask?.cover_for);
-  const close = () => { setPlan(null); onClose(); };
+  const chosen = fits.filter((p) => picked.includes(p.id));
+  const close = () => { setPicked([]); setStep(1); onClose(); };
+  const toggle = (pid) => setPicked((x) => (x.includes(pid) ? x.filter((i) => i !== pid) : [...x, pid]));
+  const minMonths = Math.max(1, ...chosen.map((p) => p.term_months.min ?? 1)), maxMonths = Math.min(36, ...chosen.map((p) => p.term_months.max ?? 36));
+  const fields = chosen.flatMap((p, i) => [
+    { type: 'section', label: `${p.emoji} ${p.name}` },
+    { key: `premium_${i}`, label: 'Premium per month', type: 'money', currency: p.currency, hint: `Plan price ${cur(p.premium_cents, p.currency)} a month` },
+    { key: `coverage_${i}`, label: 'Cover for this quote', type: 'money', currency: p.currency, optional: true, hint: `Leave empty for the plan's ${cur(p.coverage_cents, p.currency)}` },
+    { key: `deductible_${i}`, label: 'Excess for this quote', type: 'money', currency: p.currency, optional: true, hint: 'Leave empty for the plan\'s excess.' },
+  ]);
+  const initial = { months: Math.min(Math.max(ask?.months ?? 12, minMonths), maxMonths), valid_days: 14, ...Object.fromEntries(chosen.map((p, i) => [`premium_${i}`, major(p.premium_cents, p.currency)])) };
   return (
     <>
-      <Sheet visible={!!ask && !plan} onClose={close} title="Quote on which plan?">
-        {plans.loading ? <Loading /> : fits.length ? fits.map((p) => (
-          <Card key={p.id} pad={12} onPress={() => setPlan(p)}><T weight="800">{p.emoji} {p.name}</T><T size={12} color={c.mute}>{cur(p.premium_cents, p.currency)}/mo · cover {cur(p.coverage_cents, p.currency)} · excess {cur(p.deductible_cents, p.currency)}</T></Card>
-        )) : <Empty emoji="🛡️" title={`No active ${COVER[ask?.cover_for]?.toLowerCase() ?? ''} plan`} sub="Publish a plan of this kind first: a quote is always priced on one of your plans." />}
+      <Sheet visible={!!ask && step === 1} onClose={close} title="Quote with which plans?">
+        {plans.loading ? <Loading /> : fits.length ? <>
+          <T size={12} color={c.mute}>Pick one plan, or several to give the buyer a choice. You set the price and your own terms for each on the next step.</T>
+          {fits.map((p) => (
+            <Card key={p.id} pad={12} color={picked.includes(p.id) ? c.cyanSoft : undefined} onPress={() => toggle(p.id)}>
+              <T weight="800">{picked.includes(p.id) ? '☑' : '☐'} {p.emoji} {p.name}</T>
+              <T size={12} color={c.mute}>{cur(p.premium_cents, p.currency)}/mo · cover {cur(p.coverage_cents, p.currency)} · excess {cur(p.deductible_cents, p.currency)}</T>
+            </Card>
+          ))}
+          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+            <Btn title={picked.length ? `Continue with ${picked.length} plan${picked.length === 1 ? '' : 's'}` : 'Pick a plan'} disabled={!picked.length} onPress={() => setStep(2)} />
+            {fits.length > 1 ? <Btn small title={picked.length === fits.length ? 'Clear' : 'Select all'} color={c.paper} ink={c.ink} onPress={() => setPicked(picked.length === fits.length ? [] : fits.map((p) => p.id))} /> : null}
+          </View>
+        </> : <Empty emoji="🛡️" title={`No active ${COVER[ask?.cover_for]?.toLowerCase() ?? ''} plan`} sub="Publish a plan of this kind first: a quote is always priced on one of your plans." />}
+        {!plans.loading && !fits.length ? <Btn title="Create a plan" onPress={() => { close(); push('InsurerDesk', { tab: 'plans' }); }} /> : null}
       </Sheet>
-      <FormSheet visible={!!ask && !!plan} onClose={close} title={plan ? `Quote: ${plan.name}` : ''} submitLabel="Send quote" initial={{ months: Math.min(Math.max(ask?.months ?? 12, plan?.term_months.min ?? 1), plan?.term_months.max ?? 36), valid_days: 14 }}
+      <FormSheet visible={!!ask && step === 2 && !!chosen.length} onClose={() => setStep(1)} title={chosen.length === 1 ? `Quote: ${chosen[0].name}` : `Quote: ${chosen.length} plans`} submitLabel={chosen.length === 1 ? 'Send quote' : `Send ${chosen.length} quotes`} initial={initial}
         fields={[
-          { key: 'premium_cents', label: 'Premium per month', type: 'money', currency: plan?.currency, hint: plan ? `Plan price ${cur(plan.premium_cents, plan.currency)} a month` : undefined },
-          { key: 'months', label: 'Months', type: 'stepper', min: plan?.term_months.min ?? 1, max: plan?.term_months.max ?? 36, suffix: ' mo' },
-          { key: 'coverage_cents', label: 'Cover', type: 'money', currency: plan?.currency, optional: true, hint: plan ? `Leave empty for the plan's ${cur(plan.coverage_cents, plan.currency)}` : undefined },
-          { key: 'deductible_cents', label: 'Excess', type: 'money', currency: plan?.currency, optional: true, hint: 'Leave empty for the plan\'s excess.' },
-          { key: 'waiting_period_days', label: 'Waiting period (days)', type: 'number', optional: true, hint: 'Leave empty for the plan\'s waiting period.' },
+          ...fields,
+          { type: 'section', label: 'Terms for all' },
+          { key: 'months', label: 'Months', type: 'stepper', min: minMonths, max: maxMonths, suffix: ' mo' },
+          { key: 'waiting_period_days', label: 'Waiting period (days)', type: 'number', optional: true, hint: 'Leave empty for each plan\'s waiting period.' },
           { key: 'valid_days', label: 'Valid for (days)', type: 'stepper', min: 1, max: 90, suffix: ' d' },
+          { key: 'details', label: 'Your own terms', type: 'multiline', optional: true, hint: 'In your words: what is included, special conditions, club or multi-year discounts. The buyer sees this next to the plan\'s exclusions.' },
           { key: 'note', label: 'Note to the buyer', type: 'multiline', optional: true },
         ]}
         onSubmit={async (v) => {
-          await api.post('/insurance/quotes', { plan_id: plan.id, ...(ask.request_id ? { request_id: ask.request_id } : { buyer_id: ask.buyer_id, ...(ask.subject_id ? { subject_id: ask.subject_id } : {}) }), ...v });
-          onDone?.(); return 'Quote sent';
+          const who = ask.request_id ? { request_id: ask.request_id } : { buyer_id: ask.buyer_id, ...(ask.subject_id ? { subject_id: ask.subject_id } : {}) };
+          const shared = { months: v.months, valid_days: v.valid_days, waiting_period_days: v.waiting_period_days, details: v.details || undefined, note: v.note || undefined };
+          let sent = 0; const failed = [];
+          for (const [i, p] of chosen.entries()) {
+            try { await api.post('/insurance/quotes', { plan_id: p.id, ...who, ...shared, premium_cents: v[`premium_${i}`], coverage_cents: v[`coverage_${i}`], deductible_cents: v[`deductible_${i}`] }); sent++; }
+            catch (e) { failed.push(`${p.name}: ${e.message}`); }
+          }
+          if (!sent) throw new Error(failed.join('; '));
+          onDone?.(); close();
+          return failed.length ? `Sent ${sent} of ${chosen.length}. ${failed.join('; ')}` : sent === 1 ? 'Quote sent' : `${sent} quotes sent`;
         }} />
     </>
   );
@@ -99,6 +130,77 @@ function DirectOffer({ visible, onClose, onPick }) {
   );
 }
 
+// ------------------------------------------------------------------------------------------ marketplace (Billboard)
+
+/** Why the inbox may be empty: paused profile, own requests (you cannot quote yourself), or simply nothing open yet. */
+export function InboxHint({ reloadKey }) {
+  const s = useLoad(() => api.get('/insurance/insurer/summary'), [reloadKey]);
+  const i = s.data?.inbox;
+  if (!i) return null;
+  const notes = [
+    i.status !== 'active' ? 'Your insurer profile is suspended, so you do not receive requests.' : null,
+    i.status === 'active' && !i.accepting_requests ? 'You are paused: switch on "Accept new quote requests" in Profile to see the Billboard requests.' : null,
+    i.own_requests_hidden ? `${i.own_requests_hidden} open request${i.own_requests_hidden === 1 ? ' is' : 's are'} yours: an insurer cannot quote its own login. Use a separate account to ask for cover.` : null,
+    i.status === 'active' && i.accepting_requests && !i.market_open ? 'No one else has an open request right now. New ones appear here and you get a notification.' : null,
+  ].filter(Boolean);
+  return notes.length ? <Card color={c.sunSoft} pad={12}>{notes.map((t) => <T key={t} size={13}>{t}</T>)}</Card> : null;
+}
+
+/** The Billboard's Insurance tab: requests open to every insurer. Insurers answer them here; everyone can ask for cover. */
+export function InsuranceMarket({ onAsk }) {
+  const { user } = useSession();
+  const { push } = useNav();
+  const isInsurer = user?.roles?.includes('insurer');
+  const [cover, setCover] = useState('');
+  const [open, setOpen] = useState(null);
+  const [ask, setAsk] = useState(null);
+  const [tick, setTick] = useState(0);
+  const [planAsk, setPlanAsk] = useState(null);
+  const { refresh, setActiveRole, toast } = useSession();
+  const offers = useLoad(() => api.get('/insurance/plans', { limit: 30 }), [tick]);
+  const becomeInsurer = async () => {
+    try { await api.patch('/me/roles', { add: ['insurer'] }); await refresh(); setActiveRole('insurer'); push('InsurerDesk'); toast('Insurer role added: set up your profile'); } catch (e) { toast(e.message); }
+  };
+  const m = useLoad(() => (isInsurer ? api.get('/insurance/market', { limit: 50, ...(cover ? { cover_for: cover } : {}) }) : Promise.resolve([])), [isInsurer, cover, tick]);
+  return (
+    <>
+      <Card color={c.cyanSoft} pad={14}>
+        <T weight="900" size={16}>Insurance marketplace</T>
+        <T size={13} color={c.mute}>Players, coaches, teams, venues and event managers ask for cover here. Any insurer can send a quote, and the asker compares them all, chats with the insurers and accepts one.</T>
+        <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+          <Btn small title="Ask for insurance quotes" onPress={onAsk} />
+          {isInsurer ? <Btn small title="My insurer desk" color={c.paper} ink={c.ink} onPress={() => push('InsurerDesk')} /> : null}
+        </View>
+      </Card>
+      {!isInsurer ? <Card pad={12}><T size={13} color={c.mute}>Are you an insurer or an agent? You can add the Insurer role next to your other roles (player, coach, referee, sponsor, event or venue manager), publish plans and answer these requests.</T><Btn small title="Become an insurer" onPress={becomeInsurer} style={{ marginTop: 8, alignSelf: 'flex-start' }} /></Card> : <>
+        <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>{[['', 'All'], ...Object.entries(COVER)].map(([v, l]) => <Chip key={v} label={l} active={cover === v} onPress={() => setCover(v)} />)}</View>
+        <InboxHint reloadKey={tick} />
+        {m.loading && !m.data ? <Loading /> : m.error ? <ErrorBox error={m.error} onRetry={m.reload} /> : m.data?.length ? m.data.map((x) => (
+          <Card key={x.id} pad={12} onPress={() => setOpen(x.id)}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}><T weight="800" style={{ flex: 1 }}>{x.subject_name ?? COVER[x.cover_for]}</T>{x.my_quote_status ? <StatusTag s={x.my_quote_status} /> : <Tag label="Needs a quote" color={c.sun} />}</View>
+            <T size={12} color={c.mute}>{COVER[x.cover_for]} · {x.months} months{x.participants ? ` · ${x.participants} people` : ''}{x.sport ? ` · ${x.sport}` : ''}{x.city ? ` · ${x.city}` : ''} · {day(x.created_at)}</T>
+            <T size={12} color={c.mute}>{x.quotes ? `${x.quotes} quote${x.quotes === 1 ? '' : 's'} so far` : 'No quotes yet'}</T>
+            {true ? <Btn small title={x.my_quote_id ? 'Quote with another plan' : 'Send a quote'} onPress={() => setAsk({ request_id: x.id, cover_for: x.cover_for, months: x.months })} style={{ marginTop: 8, alignSelf: 'flex-start' }} /> : null}
+          </Card>
+        )) : <Empty emoji="📭" title="No open requests" sub="New requests appear here as soon as someone asks." />}
+      </>}
+      <Section title="Plans on offer" color={c.pink}>
+        {offers.loading && !offers.data ? <Loading /> : offers.data?.length ? offers.data.map((p) => (
+          <Card key={p.id} pad={12}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}><T weight="800" style={{ flex: 1 }}>{p.emoji} {p.name}</T><Tag label={COVER[p.cover_for]} color={c.cyan} /></View>
+            <T size={12} color={c.mute}>{p.insurer}{p.insurer_verified ? ' ✓' : ''} · {cur(p.premium_cents, p.currency)}/mo · cover {cur(p.coverage_cents, p.currency)}</T>
+            {p.offer ? <T size={12} weight="700" color={c.orange}>Offer: {p.offer}</T> : null}
+            <Btn small title="Ask for a quote" onPress={() => setPlanAsk({ plan: p })} style={{ marginTop: 8, alignSelf: 'flex-start' }} />
+          </Card>
+        )) : <Empty emoji="🛡️" title="No plans yet" sub="Insurers publish their plans here. Once one is on sale it is listed on the Billboard." />}
+      </Section>
+      <QuoteRequestSheet target={planAsk} onClose={() => setPlanAsk(null)} onDone={() => setPlanAsk(null)} />
+      <RequestSheet id={open} asInsurer onClose={() => setOpen(null)} onChanged={() => setTick((x) => x + 1)} onQuote={(req) => { setOpen(null); setAsk({ request_id: req.id, cover_for: req.cover_for, months: req.months }); }} />
+      <QuoteFlow ask={ask} onClose={() => setAsk(null)} onDone={() => setTick((x) => x + 1)} />
+    </>
+  );
+}
+
 // ------------------------------------------------------------------------------------------------------------- tabs
 
 function Requests({ onQuote, reloadKey }) {
@@ -108,12 +210,13 @@ function Requests({ onQuote, reloadKey }) {
   return (
     <Section title="Quote requests" color={c.sun}>
       <View style={{ flexDirection: 'row', gap: 6 }}><Chip label="To answer" active={only} onPress={() => setOnly(true)} /><Chip label="All open" active={!only} onPress={() => setOnly(false)} /></View>
+      <InboxHint reloadKey={reloadKey} />
       {r.loading && !r.data ? <Loading /> : r.error ? <ErrorBox error={r.error} onRetry={r.reload} /> : r.data?.length ? r.data.map((x) => (
         <Card key={x.id} pad={12} onPress={() => setOpen(x.id)}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}><T weight="800" style={{ flex: 1 }}>{x.subject_name ?? COVER[x.cover_for]}</T>{x.my_quote_status ? <StatusTag s={x.my_quote_status} /> : <Tag label="Needs a quote" color={c.sun} />}</View>
-          <T size={12} color={c.mute}>{COVER[x.cover_for]} · {x.months} months{x.participants ? ` · ${x.participants} people` : ''}{x.sport ? ` · ${x.sport}` : ''} · from {x.requester} · {day(x.created_at)}</T>
+          <T size={12} color={c.mute}>{COVER[x.cover_for]} · {x.months} months{x.participants ? ` · ${x.participants} people` : ''}{x.sport ? ` · ${x.sport}` : ''}{x.city ? ` · ${x.city}` : ''} · from {x.requester} · {day(x.created_at)}</T>
           {x.plan_name ? <T size={12} color={c.mute}>About your plan {x.plan_name}</T> : null}
-          {!x.insurer_id ? <T size={12} color={c.mute}>Open to all insurers</T> : null}
+          {!x.insurer_id ? <T size={12} color={c.mute}>Open to all insurers (Billboard)</T> : null}
         </Card>
       )) : <Empty emoji="📭" title={only ? 'Nothing waiting' : 'No open requests'} sub="New requests addressed to you, or open to every insurer, show up here." />}
       <RequestSheet id={open} asInsurer onClose={() => setOpen(null)} onChanged={r.reload} onQuote={(req) => { setOpen(null); onQuote({ request_id: req.id, cover_for: req.cover_for, months: req.months }); }} />
@@ -219,6 +322,7 @@ function Plans() {
           {p.offer ? <T size={12} weight="700" color={c.orange}>Offer: {p.offer}</T> : null}
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
             <Btn small title="Edit" color={c.paper} ink={c.ink} onPress={() => setEdit(p)} />
+            {p.status === 'active' ? <Btn small title="Share to community" color={c.paper} ink={c.violet} onPress={async () => { try { await api.post('/market/posts', { kind: 'announcement', title: `${p.name}: ${COVER[p.cover_for]} insurance`.slice(0, 120), body: `${p.description ? `${p.description}\n\n` : ''}${cur(p.premium_cents, p.currency)} a month, cover up to ${cur(p.coverage_cents, p.currency)}.${p.offer ? ` Offer: ${p.offer}.` : ''} Ask for a quote under Billboard → Insurance.`.slice(0, 2000), cta_label: 'Get a quote' }); toast('Shared to the community feed. It is also listed on the Billboard.'); } catch (e) { toast(e.message); } }} /> : null}
             <Btn small title={p.status === 'active' ? 'Retire' : 'Put on sale'} color={c.paper} ink={p.status === 'active' ? c.red : c.pink} onPress={async () => { try { await api.patch(`/insurance/plans/${p.id}`, { status: p.status === 'active' ? 'retired' : 'active' }); plans.reload(); toast(p.status === 'active' ? 'Retired: sold policies keep their cover' : 'On sale again'); } catch (e) { toast(e.message); } }} />
           </View>
         </Card>
@@ -288,10 +392,10 @@ function Today({ me, setTab }) {
   );
 }
 
-export function InsurerDesk() {
+export function InsurerDesk({ tab: startTab }) {
   const { push } = useNav();
   const me = useLoad(() => api.get('/insurance/my-insurer'), []);
-  const [tab, setTab] = useState('today');
+  const [tab, setTab] = useState(startTab ?? 'today');
   const [ask, setAsk] = useState(null);
   const [direct, setDirect] = useState(false);
   const [tick, setTick] = useState(0);

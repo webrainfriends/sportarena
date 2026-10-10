@@ -8,6 +8,7 @@ import { Avatar, Btn, Card, Chip, Empty, ErrorBox, Field, GradCard, H1, Loading,
 import { FormSheet } from '../FormSheet';
 import { c, when, day } from '../theme';
 import { moneyIn } from '../vtime';
+import { SubjectPanel } from './insurance';
 
 export const AVAIL = {
   available: ['✅', 'Available', c.mint], tentative: ['🤔', 'Maybe', c.sun], unavailable: ['⛔', 'Unavailable', c.orange], injured: ['🤕', 'Injured', c.pink],
@@ -46,7 +47,7 @@ export function TeamManage({ id }) {
   const t = team.data, r = roster.data;
   if (!r.can_manage) return <Screen><Empty emoji="🔒" title="Managers only" sub="Only the team owner or managers can manage this team." /></Screen>;
   const P = { t, r, reload: () => { team.reload(); roster.reload(); }, toast };
-  const tabs = [['roster', 'Roster'], ['squads', 'Matches & squads'], ['recruit', 'Recruit'], ...(r.can_manage_money ? [['money', 'Rates & settlement']] : [])];
+  const tabs = [['roster', 'Roster'], ['squads', 'Matches & squads'], ['recruit', 'Recruit'], ['docs', 'Documents & insurance'], ...(r.can_manage_money ? [['money', 'Rates & settlement']] : [])];
   return (
     <Screen wide>
       <GradCard colors={[t.color, c.ink]}>
@@ -54,13 +55,16 @@ export function TeamManage({ id }) {
         <T color="#fff" weight="800">Team management · {t.sport_emoji} {t.sport} · pays in {r.currency}</T>
       </GradCard>
       <View style={{ marginTop: 10 }}><Seg options={tabs.map(([value, label]) => ({ value, label }))} value={tab} onChange={setTab} color={c.violet} /></View>
-      {tab === 'roster' ? <RosterTab {...P} /> : tab === 'squads' ? <SquadsTab {...P} /> : tab === 'recruit' ? <RecruitTab {...P} /> : <MoneyTab {...P} />}
+      {tab === 'roster' ? <RosterTab {...P} /> : tab === 'squads' ? <SquadsTab {...P} /> : tab === 'recruit' ? <RecruitTab {...P} /> : tab === 'docs' ? <DocsTab {...P} /> : <MoneyTab {...P} />}
     </Screen>
   );
 }
 
+// ------------------------------------------------------------------ documents & insurance
+const DocsTab = ({ t }) => <SubjectPanel type="team" id={t.id} name={t.name} />;
+
 // ------------------------------------------------------------------ roster
-function RosterTab({ t, r, reload, toast }) {
+export function RosterTab({ t, r, reload, toast }) {
   const [sel, setSel] = useState(null);
   const [edit, setEdit] = useState(null);
   const [find, setFind] = useState(null);
@@ -147,7 +151,7 @@ function FindPeople({ mode, team, currency, money, onClose, onInvited }) {
 }
 
 // ------------------------------------------------------------------ matches & squads
-function SquadsTab({ t, r, toast }) {
+export function SquadsTab({ t, r, toast }) {
   const sch = useLoad(() => api.get(`/teams/${t.id}/schedule`), [t.id]);
   const [scope, setScope] = useState(null);
   if (sch.loading && !sch.data) return <Loading />;
@@ -227,7 +231,7 @@ function SquadEditor({ scope, t, r, toast, onClose, onSaved }) {
 }
 
 // ------------------------------------------------------------------ recruit
-function RecruitTab({ t, toast }) {
+export function RecruitTab({ t, toast }) {
   const posts = useLoad(() => api.get('/billboard', { mine: true, include_closed: true, limit: 50 }), [t.id]);
   const [form, setForm] = useState(null);
   const [open, setOpen] = useState(null);
@@ -284,7 +288,7 @@ function Responses({ post, toast, onClose, onChanged }) {
 }
 
 // ------------------------------------------------------------------ rates & settlement
-function MoneyTab({ t, r, toast }) {
+export function MoneyTab({ t, r, toast }) {
   const s = useLoad(() => api.get(`/teams/${t.id}/settlement`), [t.id]);
   const [who, setWho] = useState(null);
   const [add, setAdd] = useState(null);

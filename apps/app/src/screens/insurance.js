@@ -12,8 +12,8 @@ import { PaySheet } from '../PaySheet';
 import { c, day, money } from '../theme';
 import { moneyIn } from '../vtime';
 
-const COVER = { individual: 'Me', team: 'My team', event: 'Event or tournament' };
-const EMOJI = { individual: '🧍', team: '🛡️', event: '🎟️' };
+const COVER = { individual: 'Me', team: 'A team', event: 'Event or tournament', venue: 'A venue' };
+const EMOJI = { individual: '🧍', team: '🛡️', event: '🎟️', venue: '🏟️' };
 export const nice = (s = '') => String(s).replace(/_/g, ' ');
 const TONE = { offered: c.cyan, accepted: c.mint, active: c.mint, approved: c.mint, paid: c.mint, quoted: c.cyan, open: c.sun, submitted: c.sun, under_review: c.sun, pending_payment: c.sun, declined: c.violetSoft, withdrawn: c.violetSoft, cancelled: c.violetSoft, expired: c.violetSoft, rejected: c.red };
 export const StatusTag = ({ s }) => <Tag label={nice(s)} color={TONE[s] ?? c.violetSoft} />;
@@ -38,12 +38,19 @@ async function pickDocument() {
   return { blob: await (await fetch(r.assets[0].uri)).blob(), name: r.assets[0].fileName };
 }
 
-const KIND_LABEL = { policy_schedule: 'Policy schedule', certificate: 'Certificate', receipt: 'Receipt', quote: 'Quote', claim_evidence: 'Claim evidence', other: 'Other' };
+const KIND_LABEL = { policy: 'Policy', policy_schedule: 'Policy schedule', certificate: 'Certificate', receipt: 'Receipt', quote: 'Quote', claim_evidence: 'Claim evidence', other: 'Other' };
 
-/** The locker for one policy, quote or claim. `parent` is { policy_id } | { quote_id } | { claim_id }. */
-export function DocumentsSheet({ parent, title, kinds, onClose, onChanged, readOnly }) {
+/**
+ * The locker for one policy, quote or claim (`parent` is { policy_id } | { quote_id } | { claim_id }), or the documents folder of a
+ * team, event or venue (`subject` is { subject_type, subject_id }; `canEdit` says whether this person may add and hide files).
+ * `linkable` (policy lockers of a team / event / venue): each file can be saved to that folder.
+ */
+export function DocumentsSheet({ parent, subject, canEdit, linkable, title, kinds, onClose, onChanged, readOnly }) {
   const { user, toast } = useSession();
-  const docs = useLoad(() => (parent ? api.get('/insurance/documents', parent) : Promise.resolve([])), [JSON.stringify(parent)]);
+  const scope = subject ?? parent;
+  const base = subject ? '/documents' : '/insurance/documents';
+  const docs = useLoad(() => (scope ? api.get(base, scope) : Promise.resolve([])), [JSON.stringify(scope)]);
+  const mayRemove = (d) => (subject ? !!canEdit : d.uploaded_by === user.id);
   const [kind, setKind] = useState(null);
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
@@ -53,33 +60,35 @@ export function DocumentsSheet({ parent, title, kinds, onClose, onChanged, readO
     const f = await pickDocument();
     if (!f) return;
     setBusy(true);
-    try { await api.upload('/insurance/documents', f.blob, { ...parent, kind: k, title: name.trim() || (f.name ?? '').slice(0, 120) }); setName(''); await docs.reload(); onChanged?.(); toast('Saved to your documents'); }
+    try { await api.upload(base, f.blob, { ...scope, kind: k, title: name.trim() || (f.name ?? '').slice(0, 120) }); setName(''); await docs.reload(); onChanged?.(); toast('Saved to your documents'); }
     catch (e) { toast(e.message); } finally { setBusy(false); }
   };
   const open = async (d) => {
     try {
-      if (Platform.OS === 'web') { const url = URL.createObjectURL(await api.download(`/insurance/documents/${d.id}/file`)); window.open(url, '_blank', 'noopener'); setTimeout(() => URL.revokeObjectURL(url), 120000); }
+      if (Platform.OS === 'web') { const url = URL.createObjectURL(await api.download(`${base}/${d.id}/file`)); window.open(url, '_blank', 'noopener'); setTimeout(() => URL.revokeObjectURL(url), 120000); }
       else if (d.content_type.startsWith('image/')) setImg(d);
       else toast('Open PDFs in the web app');
     } catch (e) { toast(e.message); }
   };
-  const remove = async (d) => { try { await api.del(`/insurance/documents/${d.id}`); await docs.reload(); onChanged?.(); } catch (e) { toast(e.message); } };
+  const remove = async (d) => { try { await api.del(`${base}/${d.id}`); await docs.reload(); onChanged?.(); } catch (e) { toast(e.message); } };
+  const save = async (d) => { try { const r = await api.post('/documents/link', { insurance_document_id: d.id }); toast(r.already_linked ? 'Already in the documents folder' : 'Saved to the documents folder'); } catch (e) { toast(e.message); } };
   return (
-    <Sheet visible={!!parent} onClose={onClose} title={title}>
-      <T size={12} color={c.mute}>PDF or photo, up to 10 MB each. Files are encrypted on the server and only the policy holder and the insurer can open them. Removing one only hides it.</T>
+    <Sheet visible={!!scope} onClose={onClose} title={title}>
+      <T size={12} color={c.mute}>{subject ? 'PDF or photo, up to 10 MB each. Files are encrypted on the server. Everyone in the team, event or venue can open them; the people who manage it add and hide them. Removing one only hides it.' : 'PDF or photo, up to 10 MB each. Files are encrypted on the server and only the policy holder, the people who manage what is covered, and the insurer can open them. Removing one only hides it.'}</T>
       {docs.loading ? <Loading /> : docs.error ? <ErrorBox error={docs.error} onRetry={docs.reload} /> : docs.data?.length ? docs.data.map((d) => (
         <Card key={d.id} pad={12}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
             <T size={22}>{d.content_type === 'application/pdf' ? '📄' : '🖼️'}</T>
-            <View style={{ flex: 1 }}><T weight="700">{d.title}</T><T size={12} color={c.mute}>{KIND_LABEL[d.kind]} · {Math.max(1, Math.round(d.size_bytes / 1024))} KB · {day(d.created_at)}{d.uploaded_by !== user.id ? ` · from ${d.uploaded_by_name}` : ''}</T></View>
+            <View style={{ flex: 1 }}><T weight="700">{d.title}</T><T size={12} color={c.mute}>{KIND_LABEL[d.kind]} · {Math.max(1, Math.round(d.size_bytes / 1024))} KB · {day(d.created_at)}{d.uploaded_by !== user.id ? ` · from ${d.uploaded_by_name}` : ''}{d.from_insurance ? ' · policy paperwork' : ''}</T></View>
           </View>
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
             <Btn small title="Open" color={c.violet} onPress={() => open(d)} />
-            {d.uploaded_by === user.id ? <Btn small title="Remove" color={c.paper} ink={c.red} onPress={() => remove(d)} /> : null}
+            {linkable ? <Btn small title="Save to documents" color={c.paper} ink={c.violet} onPress={() => save(d)} /> : null}
+            {mayRemove(d) ? <Btn small title="Remove" color={c.paper} ink={c.red} onPress={() => remove(d)} /> : null}
           </View>
         </Card>
-      )) : <Empty emoji="🗂️" title="No documents yet" sub="Add your schedule, certificate or receipts so they are always at hand." />}
-      {readOnly ? null : <View style={{ gap: 8 }}>
+      )) : <Empty emoji="🗂️" title="No documents yet" sub={subject ? 'Add the approved or paid policy, certificate and receipts so everyone can find them.' : 'Add your schedule, certificate or receipts so they are always at hand.'} />}
+      {readOnly || (subject && !canEdit) ? null : <View style={{ gap: 8 }}>
         <T weight="800" size={13}>Add a document</T>
         {kinds.length > 1 ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{kinds.map((x) => <Chip key={x} label={KIND_LABEL[x]} active={x === k} onPress={() => setKind(x)} />)}</View> : null}
         <Field value={name} onChangeText={setName} placeholder="Name (optional)" />
@@ -88,32 +97,71 @@ export function DocumentsSheet({ parent, title, kinds, onClose, onChanged, readO
       <Modal visible={!!img} transparent animationType="fade" onRequestClose={() => setImg(null)}>
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.92)', justifyContent: 'center', padding: 12 }}>
           <Pressable onPress={() => setImg(null)} style={{ position: 'absolute', top: 24, right: 20, zIndex: 2, padding: 8 }}><T size={26} color="#fff">✕</T></Pressable>
-          {img ? <Image source={{ uri: `${API}/insurance/documents/${img.id}/file`, headers: authHeader() }} resizeMode="contain" style={{ width: '100%', height: 520 }} /> : null}
+          {img ? <Image source={{ uri: `${API}${base}/${img.id}/file`, headers: authHeader() }} resizeMode="contain" style={{ width: '100%', height: 520 }} /> : null}
         </View>
       </Modal>
     </Sheet>
   );
 }
 
+// ------------------------------------------------------------------------------------- team / event / venue panel
+
+/** Insurance and documents for a team, event or venue: its policies, open requests, "ask for quotes" and the documents folder. */
+export function SubjectPanel({ type, id, name, canEdit = true }) {
+  const { push } = useNav();
+  const [open, setOpen] = useState(false);
+  const [quote, setQuote] = useState(null);
+  const pol = useLoad(() => api.get('/insurance/policies', { limit: 50 }), [id]);
+  const reqs = useLoad(() => api.get('/insurance/quote-requests', { limit: 50 }), [id]);
+  const mine = (pol.data ?? []).filter((p) => p.subject_type === type && p.subject_id === id);
+  const asked = (reqs.data ?? []).filter((x) => x.cover_for === type && x.subject_id === id && ['open', 'quoted'].includes(x.status));
+  return (
+    <>
+      <Section title="Insurance" color={c.cyan}>
+        {pol.loading && !pol.data ? <Loading /> : mine.length ? mine.map((p) => (
+          <Card key={p.id} pad={12}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}><T weight="800" style={{ flex: 1 }}>{p.plan_name}</T><StatusTag s={p.effective_status} /></View>
+            <T size={12} color={c.mute}>{p.insurer} · {dayY(p.starts_on)} to {dayY(p.ends_on)}</T>
+          </Card>
+        )) : <Empty emoji="🛡️" title="Not insured yet" sub="Ask insurers for quotes, compare what comes back and keep the approved policy with the documents." />}
+        {asked.map((x) => <Card key={x.id} pad={12} onPress={() => push('Insurance')}><T weight="800">Quote request open</T><T size={12} color={c.mute}>{x.open_quotes ? `${x.open_quotes} quote${x.open_quotes === 1 ? '' : 's'} to review` : 'Waiting for quotes'} · {x.insurer ? `to ${x.insurer}` : 'open to all insurers'}</T></Card>)}
+        <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+          <Btn small title="Ask for insurance quotes" onPress={() => setQuote({ cover_for: type, subject_id: id })} />
+          <Btn small title="Open Insurance" color={c.paper} ink={c.ink} onPress={() => push('Insurance')} />
+        </View>
+      </Section>
+      <Section title="Documents" color={c.violet}>
+        <T size={13} color={c.mute}>Approved or paid policies, certificates and receipts. Everyone involved can open them{canEdit ? '; you add and hide them' : ''}.</T>
+        <Btn title="Open documents" onPress={() => setOpen(true)} style={{ alignSelf: 'flex-start' }} />
+      </Section>
+      <DocumentsSheet subject={open ? { subject_type: type, subject_id: id } : null} canEdit={canEdit} title={`${name}: documents`} kinds={['policy', 'certificate', 'receipt', 'quote', 'other']} onClose={() => setOpen(false)} />
+      <QuoteRequestSheet target={quote} onClose={() => setQuote(null)} onDone={() => { setQuote(null); reqs.reload(); }} />
+    </>
+  );
+}
+
 // ------------------------------------------------------------------------------------------------- asking and buying
 
-/** "Get a quote": for me, a team I manage or an event I organise. target = { plan?, insurer? } (either narrows who is asked). */
+/** "Get a quote": for me, a team I play or work in, an event I organise or a venue I run. target = { plan?, insurer? } (either narrows who is asked). */
 export function QuoteRequestSheet({ target, onClose, onDone }) {
   const { user } = useSession();
   const teams = useLoad(() => api.get('/teams', { mine: true }), []);
   const evs = useLoad(() => api.get('/events', { organizer_id: user.id, limit: 50 }), []);
+  const venues = useLoad(() => api.get('/me/venues').catch(() => []), []);
   const plan = target?.plan, insurer = target?.insurer;
   const mineTeams = teams.data ?? [];
   return (
     <FormSheet visible={!!target} onClose={onClose} title={plan ? `Quote for ${plan.name}` : insurer ? `Ask ${insurer.name}` : 'Ask for a quote'} submitLabel="Send request"
-      initial={{ cover_for: plan?.cover_for ?? 'individual', months: plan ? Math.min(Math.max(12, plan.term_months.min), plan.term_months.max) : 12 }}
+      initial={{ cover_for: plan?.cover_for ?? target?.cover_for ?? 'individual', ...(target?.subject_id ? { subject_id: target.subject_id } : {}), months: plan ? Math.min(Math.max(12, plan.term_months.min), plan.term_months.max) : 12 }}
       fields={[
-        ...(plan ? [] : [{ key: 'cover_for', label: 'What do you want covered?', type: 'choice', options: Object.entries(COVER).map(([value, label]) => ({ value, label })) }]),
-        { key: 'subject_id', label: 'Which team?', type: 'choice', options: mineTeams.map((t) => ({ value: t.id, label: `${t.emoji} ${t.name}` })), show: (v) => v.cover_for === 'team', hint: mineTeams.length ? undefined : 'You do not manage a team yet.' },
+        ...(plan ? [] : [{ key: 'cover_for', label: 'What do you want covered?', type: 'choice', options: Object.entries(COVER).map(([value, label]) => ({ value, label })), hint: insurer ? undefined : 'Without picking an insurer this goes to every insurer on the Billboard, and you can compare all the quotes that come back.' }]),
+        { key: 'subject_id', label: 'Which team?', type: 'choice', options: mineTeams.map((t) => ({ value: t.id, label: `${t.emoji} ${t.name}` })), show: (v) => v.cover_for === 'team', hint: mineTeams.length ? 'Players and coaches can ask; the team\'s managers compare and accept.' : 'You are not in a team yet.' },
         { key: 'subject_id', label: 'Which event or tournament?', type: 'choice', options: (evs.data ?? []).map((e) => ({ value: e.id, label: `${e.banner_emoji ?? '🏆'} ${e.name}` })), show: (v) => v.cover_for === 'event', hint: evs.data?.length ? undefined : 'You do not organise an event yet.' },
+        { key: 'subject_id', label: 'Which venue?', type: 'choice', options: (venues.data ?? []).map((x) => ({ value: x.id, label: `${x.emoji ?? '🏟️'} ${x.name}` })), show: (v) => v.cover_for === 'venue', hint: venues.data?.length ? undefined : 'You do not run a venue yet.' },
         { key: 'months', label: 'How long (months)', type: 'stepper', min: plan?.term_months.min ?? 1, max: plan?.term_months.max ?? 36, suffix: ' mo' },
         { key: 'participants', label: 'How many people are covered?', type: 'number', optional: true, show: (v) => v.cover_for !== 'individual', hint: 'Squad size or expected entrants: insurers price on this.' },
         { key: 'sport', label: 'Sport', type: 'sport', optional: true },
+        { key: 'city', label: 'City', type: 'text', optional: true, hint: 'So insurers near you find the request. Defaults to your team\'s or venue\'s city.' },
         { key: 'message', label: 'Anything the insurer should know', type: 'multiline', optional: true, hint: 'Encrypted. Only the insurers this goes to can read it.' },
       ]}
       onSubmit={async (v) => {
@@ -196,6 +244,7 @@ export function QuoteSheet({ id, onClose, onChanged, onPay }) {
             <T size={13} style={{ marginTop: 6 }}>Cover up to <T weight="800">{cur(d.coverage_cents, d.currency)}</T> · excess {cur(d.deductible_cents, d.currency)} · waiting period {d.waiting_period_days} days</T>
             <T size={12} color={c.mute} style={{ marginTop: 4 }}>Valid until {day(d.valid_until)}</T>
             {d.note ? <T size={13} style={{ marginTop: 6 }}>“{d.note}”</T> : null}
+            {d.details ? <T size={13} style={{ marginTop: 6 }}><T size={13} weight="800">Insurer's own terms: </T>{d.details}</T> : null}
           </Card>
           {d.exclusions ? <T size={13}><T size={13} weight="800">Not covered: </T>{d.exclusions}</T> : null}
           {d.conditions ? <T size={13}><T size={13} weight="800">Conditions: </T>{d.conditions}</T> : null}
@@ -260,7 +309,7 @@ export function RequestSheet({ id, asInsurer, onClose, onChanged, onQuote, onOpe
           ) : null}
           {live && asInsurer ? (
             <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-              <Btn title="Send a quote" onPress={() => onQuote?.(d)} />
+              <Btn title={d.quotes?.length ? 'Quote with another plan' : 'Send a quote'} onPress={() => onQuote?.(d)} />
               <Btn title="Pass" color={c.paper} ink={c.red} onPress={async () => { try { await api.post(`/insurance/quote-requests/${d.id}/decline`, {}); onChanged?.(); onClose(); toast('Passed on this request'); } catch (e) { toast(e.message); } }} />
             </View>
           ) : null}
@@ -273,6 +322,7 @@ export function RequestSheet({ id, asInsurer, onClose, onChanged, onQuote, onOpe
 
 /** Requests I made and offers sent to me, with where each one stands. */
 function QuotesSection({ reloadKey, onChanged, onPay }) {
+  const { user } = useSession();
   const reqs = useLoad(() => api.get('/insurance/quote-requests', { limit: 30 }), [reloadKey]);
   const offers = useLoad(() => api.get('/insurance/quotes', { limit: 50 }), [reloadKey]);
   const [open, setOpen] = useState(null);
@@ -290,7 +340,7 @@ function QuotesSection({ reloadKey, onChanged, onPay }) {
       {reqs.data?.length ? reqs.data.map((r) => (
         <Card key={r.id} pad={12} onPress={() => setOpen(r.id)}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}><T weight="800" style={{ flex: 1 }}>{EMOJI[r.cover_for]} {r.subject_name ?? COVER[r.cover_for]}</T><StatusTag s={r.status} /></View>
-          <T size={12} color={c.mute}>{r.insurer ? `To ${r.insurer}` : 'Open to all insurers'} · {r.months} months · asked {day(r.created_at)}</T>
+          <T size={12} color={c.mute}>{r.insurer ? `To ${r.insurer}` : 'Open to all insurers (Billboard)'} · {r.months} months · asked {day(r.created_at)}{r.requester_id !== user.id ? ` by ${r.requester}` : ''}</T>
           <T size={13} weight="700" color={r.open_quotes ? c.pink : c.mute}>{r.open_quotes ? `${r.open_quotes} quote${r.open_quotes === 1 ? '' : 's'} to review` : r.quotes ? `${r.quotes} quote${r.quotes === 1 ? '' : 's'} so far` : 'Waiting for quotes'}</T>
         </Card>
       )) : !direct.length ? <Empty emoji="📨" title="No requests yet" sub="Ask an insurer for a quote on yourself, your team or your event." /> : null}
@@ -349,7 +399,7 @@ export function Insurance() {
       {due.length ? <Card color={c.sunSoft} style={{ marginTop: 14 }} pad={12}><T weight="800">⏰ {due.length === 1 ? '1 policy is' : `${due.length} policies are`} due for renewal</T><T size={13} color={c.mute}>Renew before the end date so there is no gap in cover.</T></Card> : null}
 
       <Section title="Your policies" color={c.cyan}>
-        {pol.data?.length ? pol.data.map((p) => <PolicyCard key={p.id} p={p} onPay={setPaying} onClaim={setClaim} onRenew={setRenew} onDocs={(x) => setDocs({ policy_id: x.id, name: x.plan_name })} />) : <Empty emoji="🛡️" title="Not covered yet" sub="Pick a plan below, or ask for a quote." />}
+        {pol.data?.length ? pol.data.map((p) => <PolicyCard key={p.id} p={p} onPay={setPaying} onClaim={setClaim} onRenew={setRenew} onDocs={(x) => setDocs({ policy_id: x.id, name: x.plan_name, linkable: x.subject_type !== 'individual' })} />) : <Empty emoji="🛡️" title="Not covered yet" sub="Pick a plan below, or ask for a quote." />}
       </Section>
 
       <QuotesSection reloadKey={tick} onChanged={changed} onPay={setPaying} />
@@ -368,7 +418,7 @@ export function Insurance() {
       <Section title="Plans" color={c.pink}>
         <Field value={f.q} onChangeText={(q) => setF({ ...f, q })} placeholder="Search plans or insurers…" />
         <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
-          {[['', 'All'], ['individual', 'Individual'], ['team', 'Team'], ['event', 'Event']].map(([v, l]) => <Chip key={v} label={l} active={f.cover_for === v} onPress={() => setF({ ...f, cover_for: v })} />)}
+          {[['', 'All'], ['individual', 'Individual'], ['team', 'Team'], ['event', 'Event'], ['venue', 'Venue']].map(([v, l]) => <Chip key={v} label={l} active={f.cover_for === v} onPress={() => setF({ ...f, cover_for: v })} />)}
           {[['premium', 'Cheapest'], ['coverage', 'Most cover'], ['deductible', 'Lowest excess']].map(([v, l]) => <Chip key={v} label={l} active={f.sort === v} onPress={() => setF({ ...f, sort: v })} />)}
           <Chip label="✓ Verified insurers" active={f.verified} onPress={() => setF({ ...f, verified: !f.verified })} />
         </View>
@@ -407,7 +457,7 @@ export function Insurance() {
 
       <PlanSheets state={state} setState={setState} onChanged={changed} onPay={setPaying} />
       {paying ? <PaySheet target={paying} onClose={() => setPaying(null)} onDone={changed} /> : null}
-      <DocumentsSheet parent={docs ? (docs.policy_id ? { policy_id: docs.policy_id } : { claim_id: docs.claim_id }) : null} title={docs?.name ?? ''} kinds={docs?.policy_id ? ['policy_schedule', 'certificate', 'receipt', 'other'] : ['claim_evidence']} onClose={() => setDocs(null)} onChanged={changed} />
+      <DocumentsSheet linkable={!!docs?.linkable} parent={docs ? (docs.policy_id ? { policy_id: docs.policy_id } : { claim_id: docs.claim_id }) : null} title={docs?.name ?? ''} kinds={docs?.policy_id ? ['policy_schedule', 'certificate', 'receipt', 'other'] : ['claim_evidence']} onClose={() => setDocs(null)} onChanged={changed} />
       <FormSheet visible={!!claim} onClose={() => setClaim(null)} title="File a claim" submitLabel="Submit claim"
         fields={[{ key: 'amount', label: 'Amount (₹)', type: 'number' }, { key: 'incident_on', label: 'Date of the incident', type: 'date', optional: true }, { key: 'description', label: 'What happened?', type: 'multiline', hint: 'Encrypted at rest. Add photos or reports under Evidence once it is filed.' }]}
         onSubmit={async (v) => { await api.post(`/insurance/policies/${claim.id}/claims`, { description: v.description, amount_cents: Math.round(v.amount * 100), ...(v.incident_on ? { incident_on: v.incident_on } : {}) }); claims.reload(); return 'Claim submitted'; }} />
