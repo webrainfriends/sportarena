@@ -20,6 +20,7 @@ export const ACTIONS = [
   ['📍', 'Book venue', (n) => n.goTab('Book')],
   ['🏆', 'Create event', (n) => n.goTab('Play')],
   ['🩺', 'Physio / doctor', (n) => n.push('Health')],
+  ['💼', 'Open positions', (n) => n.push('Openings')],
 ];
 
 export function Item({ x, reload }) {

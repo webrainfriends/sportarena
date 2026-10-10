@@ -145,8 +145,8 @@ cap({
       pool.query("SELECT count(*)::int AS n FROM event_entries WHERE event_id=$1 AND status='accepted'", [i.id]),
       pool.query("SELECT coalesce(sum(fee_cents),0)::bigint AS cents, count(*)::int AS n FROM event_vendors WHERE event_id=$1 AND kind='sponsor' AND status='accepted'", [i.id]),
       pool.query("SELECT coalesce(sum(fee_cents),0)::bigint AS cents, count(*)::int AS n FROM event_vendors WHERE event_id=$1 AND kind <> 'sponsor' AND status='accepted'", [i.id]),
-      pool.query("SELECT coalesce(sum(fee_cents),0)::bigint AS cents, count(*)::int AS n FROM event_staff_assignments WHERE event_id=$1 AND status='accepted'", [i.id]),
-      pool.query("SELECT coalesce(sum(r.needed - (SELECT count(*) FROM event_staff_assignments a WHERE a.role_id=r.id AND a.status='accepted')), 0)::int AS n FROM event_staff_roles r WHERE r.event_id=$1 AND r.closed_at IS NULL", [i.id]),
+      pool.query("SELECT coalesce(sum(a.fee_cents),0)::bigint AS cents, count(*)::int AS n FROM event_staff_assignments a JOIN event_staff_roles r ON r.id=a.role_id WHERE a.event_id=$1 AND a.status='accepted' AND r.pay_direction='event_pays'", [i.id]),
+      pool.query("SELECT coalesce(sum(r.needed - (SELECT count(*) FROM event_staff_assignments a WHERE a.role_id=r.id AND a.status='accepted')), 0)::int AS n FROM event_staff_roles r WHERE r.event_id=$1 AND r.closed_at IS NULL AND r.pay_direction='event_pays'", [i.id]),
     ]);
     const entry_fees = Number(ev.entry_fee_cents) * entries.rows[0].n, sponsorship = Number(sponsors.rows[0].cents), pitch = Number(vendors.rows[0].cents), staffCost = Number(staff.rows[0].cents);
     return {

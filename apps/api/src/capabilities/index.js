@@ -28,6 +28,7 @@ import './event-invites.js';
 import './event-schedule.js';
 import './event-staff.js';
 import './event-vendors.js';
+import './event-openings.js';
 import './event-planning.js';
 import './event-venues.js';
 import './scores.js';

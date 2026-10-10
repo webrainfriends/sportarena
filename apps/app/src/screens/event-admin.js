@@ -10,12 +10,13 @@ import { FormSheet } from '../FormSheet';
 import { todayLocal } from '../pickers';
 import { BracketView, Bar, Crest, GameDays, MatchCard, PillTabs, SectionTitle, SetupSteps, StatTile, TeamCard, TournamentHero, dayKey, dayLabel } from '../tournament-ui';
 import { EventVenues } from './event-venues';
+import { ContractSheet, PositionDocs } from './openings';
 import { c } from '../theme';
 import { moneyIn } from '../vtime';
 
-const ROLES = [['referee', 'Referee'], ['umpire', 'Umpire'], ['linesman', 'Linesman'], ['scorer', 'Scorer'], ['doctor', 'Doctor'], ['physio', 'Physio'], ['medic', 'Medic'], ['volunteer', 'Volunteer'], ['security', 'Security'], ['other', 'Other']];
-const ROLE_ICON = { referee: '🟨', umpire: '🧑‍⚖️', linesman: '🚩', scorer: '📝', doctor: '🩺', physio: '💆', medic: '⛑️', volunteer: '🙋', security: '🛡️', other: '🔧' };
-const STATUS_COLOR = { accepted: c.limeSoft, invited: c.sunSoft, declined: c.orangeSoft, withdrawn: c.violetSoft, released: c.violetSoft, expired: c.violetSoft };
+const ROLES = [['retail', 'Retail stall'], ['catering', 'Catering'], ['vendor', 'Other vendor'], ['referee', 'Referee'], ['umpire', 'Umpire'], ['linesman', 'Linesman'], ['scorer', 'Scorer'], ['doctor', 'Doctor'], ['physio', 'Physio'], ['medic', 'Medic'], ['volunteer', 'Volunteer'], ['security', 'Security'], ['other', 'Other']];
+const ROLE_ICON = { retail: '🛍️', catering: '🍽️', vendor: '🏪', referee: '🟨', umpire: '🧑‍⚖️', linesman: '🚩', scorer: '📝', doctor: '🩺', physio: '💆', medic: '⛑️', volunteer: '🙋', security: '🛡️', other: '🔧' };
+const STATUS_COLOR = { accepted: c.limeSoft, invited: c.sunSoft, applied: c.cyanSoft, contract_sent: c.sunSoft, rejected: c.violetSoft, declined: c.orangeSoft, withdrawn: c.violetSoft, released: c.violetSoft, expired: c.violetSoft };
 const useDo = (toast, refresh) => async (fn, msg) => { try { const r = await fn(); toast(typeof msg === 'function' ? msg(r) : msg); refresh?.(); return r; } catch (x) { toast('' + x.message); return null; } };
 
 export function EventAdmin({ id }) {
@@ -266,8 +267,43 @@ function Bracket({ bracket, go }) {
 }
 
 // ---------------------------------------------------------------- crew
+const STATUS_LABEL = { applied: 'applied', contract_sent: 'contract sent', accepted: 'confirmed' };
+
+/** One application: what the person wrote, documents both ways, and the organiser's decision (accept = generate a contract). */
+function ReviewSheet({ a, e, onClose, reload, toast }) {
+  const [docs, setDocs] = useState(false), [accept, setAccept] = useState(false), [contract, setContract] = useState(false);
+  const vendor = a.pay_direction === 'applicant_pays';
+  const decide = async (decision, extra = {}) => { try { await api.post(`/staff-assignments/${a.id}/decide`, { decision, ...extra }); toast(decision === 'accept' ? 'Contract sent to the applicant' : 'Application declined'); reload(); onClose(); } catch (x) { toast('' + x.message); } };
+  return (
+    <Sheet visible onClose={onClose} title={a.display_name}>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+        <Tag label={`${ROLE_ICON[a.role]} ${a.title || a.role}`} /><Tag label={STATUS_LABEL[a.status] ?? a.status} color={STATUS_COLOR[a.status]} />
+        <Tag label={vendor ? `Stall fee ${moneyIn(a.proposed_fee_cents ?? a.fee_cents, e.currency)}` : `Fee ${moneyIn(a.proposed_fee_cents ?? a.fee_cents, e.currency)}`} color={c.limeSoft} />
+      </View>
+      <T size={12} color={c.mute}>@{a.handle}</T>
+      {a.message ? <Card pad={12}><T size={14}>{a.message}</T></Card> : <T color={c.mute}>No message from the applicant.</T>}
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+        <Btn small title={`Documents${a.documents ? ` (${a.documents})` : ''}`} color={c.violet} onPress={() => setDocs(true)} />
+        {a.contract_id ? <Btn small title="View contract" color={c.paper} ink={c.ink} onPress={() => setContract(true)} /> : null}
+      </View>
+      {a.status === 'applied' ? (
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <Btn title="Accept & create contract" color={c.lime} onPress={() => setAccept(true)} />
+          <Btn title="Decline" color={c.paper} ink={c.red} onPress={() => decide('reject')} />
+        </View>
+      ) : a.status === 'contract_sent' ? <T size={13} color={c.mute}>Waiting for {a.display_name} to accept the contract.</T> : null}
+      {['contract_sent', 'accepted'].includes(a.status) ? <Btn small title="Release" color={c.paper} ink={c.red} onPress={async () => { try { await api.post(`/staff-assignments/${a.id}/end`, {}); toast('Released'); reload(); onClose(); } catch (x) { toast('' + x.message); } }} style={{ alignSelf: 'flex-start' }} /> : null}
+      {docs ? <PositionDocs assignmentId={a.id} title={`${a.display_name} · documents`} onClose={() => setDocs(false)} onChanged={reload} /> : null}
+      {contract ? <ContractSheet id={a.contract_id} onClose={() => setContract(false)} onChanged={reload} /> : null}
+      <FormSheet visible={accept} onClose={() => setAccept(false)} title="Create the contract" submitLabel="Send contract" initial={{ fee: Number(a.proposed_fee_cents ?? a.fee_cents) || undefined }}
+        fields={[{ key: 'fee', label: vendor ? 'Stall fee the vendor pays' : 'Agreed fee', type: 'money', currency: e.currency, optional: true, hint: 'The contract is generated from the event, the position and this fee. The applicant reviews it and accepts to be confirmed.' }, { key: 'terms', label: 'Extra terms', type: 'multiline', optional: true, hint: 'Shown in the contract: reporting time, uniform, payment date, cancellation…' }]}
+        onSubmit={async (v) => { await decide('accept', { fee_cents: v.fee ?? undefined, terms: v.terms || undefined }); return null; }} />
+    </Sheet>
+  );
+}
+
 function Crew({ id, e, roles, staff, toast, reload }) {
-  const [open, setOpen] = useState(false), [find, setFind] = useState(null), [q, setQ] = useState('');
+  const [open, setOpen] = useState(false), [find, setFind] = useState(null), [q, setQ] = useState(''), [review, setReview] = useState(null), [applicantsOf, setApplicantsOf] = useState(null);
   const act = useDo(toast, reload);
   const cands = useLoad(() => (find ? api.get(`/events/${id}/staff-candidates`, { role: find.role, q: q || undefined, limit: 30 }) : Promise.resolve([])), [find?.id, q]);
   const filled = roles.reduce((n, r) => n + r.filled, 0), needed = roles.reduce((n, r) => n + r.needed, 0);
@@ -283,18 +319,27 @@ function Crew({ id, e, roles, staff, toast, reload }) {
             <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: c.pinkSoft, alignItems: 'center', justifyContent: 'center' }}><T size={22}>{ROLE_ICON[r.role]}</T></View>
             <View style={{ flex: 1 }}>
               <T weight="800" size={15}>{r.title || ROLES.find(([k]) => k === r.role)?.[1]}{r.closed_at ? ' · closed' : ''}</T>
-              <T size={12} color={c.mute}>{r.filled}/{r.needed} confirmed{r.pending ? ` · ${r.pending} waiting` : ''} · {r.fee_cents ? `${moneyIn(r.fee_cents, r.currency)} each` : 'unpaid'}</T>
+              <T size={12} color={c.mute}>{r.filled}/{r.needed} confirmed{r.pending ? ` · ${r.pending} waiting` : ''}{r.applicants ? ` · ${r.applicants} applied` : ''} · {r.pay_direction === 'applicant_pays' ? (r.fee_cents ? `stall fee ${moneyIn(r.fee_cents, r.currency)}` : 'no stall fee') : r.fee_cents ? `${moneyIn(r.fee_cents, r.currency)} each` : 'unpaid'}{r.is_public === false ? ' · hidden from the arena' : ''}</T>
             </View>
           </View>
           <View style={{ marginTop: 10 }}><Bar pct={(r.filled / r.needed) * 100} color={r.filled >= r.needed ? c.lime : c.pink} /></View>
-          {!r.closed_at ? <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}><Btn small title="Find people" onPress={() => { setFind(r); setQ(''); }} /><Btn small title="Close" color={c.paper} ink={c.ink} onPress={() => act(() => api.post(`/staff-roles/${r.id}/close`), 'Closed')} /></View> : null}
+          {!r.closed_at ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>{r.applicants ? <Btn small title={`Applicants (${r.applicants})`} color={c.lime} onPress={() => setApplicantsOf(r)} /> : null}<Btn small title="Find people" onPress={() => { setFind(r); setQ(''); }} /><Btn small title="Close" color={c.paper} ink={c.ink} onPress={() => act(() => api.post(`/staff-roles/${r.id}/close`), 'Closed')} /></View> : null}
         </Card>
       )) : <Empty emoji="🩺" title="No positions yet" sub="Referees, scorers, doctors, physios, volunteers and security." />}
       <SectionTitle title="Team sheet" />
       {staff.length ? staff.map((a) => (
         <Row key={a.id} left={<T size={24}>{ROLE_ICON[a.role]}</T>} title={a.display_name} sub={`${a.title || a.role}${a.fee_cents ? ` · ${moneyIn(a.fee_cents, e.currency)}` : ''}`}
-          right={<><View style={{ backgroundColor: STATUS_COLOR[a.status], borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 }}><T size={11} weight="800">{a.status}</T></View>{['invited', 'accepted'].includes(a.status) ? <Btn small title="Release" color={c.paper} ink={c.ink} onPress={() => act(() => api.post(`/staff-assignments/${a.id}/end`, {}), 'Released')} /> : null}</>} />
-      )) : <T color={c.mute}>Nobody invited yet.</T>}
+          right={<><View style={{ backgroundColor: STATUS_COLOR[a.status], borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 }}><T size={11} weight="800">{STATUS_LABEL[a.status] ?? a.status}</T></View>{['applied', 'contract_sent', 'accepted'].includes(a.status) && a.source === 'application' ? <Btn small title={a.status === 'applied' ? 'Review' : 'Details'} color={c.violet} onPress={() => setReview(a)} /> : null}{['invited', 'accepted'].includes(a.status) && a.source !== 'application' ? <Btn small title="Release" color={c.paper} ink={c.ink} onPress={() => act(() => api.post(`/staff-assignments/${a.id}/end`, {}), 'Released')} /> : null}</>} />
+      )) : <T color={c.mute}>Nobody invited or applied yet.</T>}
+      {applicantsOf ? (
+        <Sheet visible onClose={() => setApplicantsOf(null)} title={`Applicants · ${applicantsOf.title || ROLES.find(([k]) => k === applicantsOf.role)?.[1]}`}>
+          {staff.filter((a) => a.role_id === applicantsOf.id && ['applied', 'contract_sent'].includes(a.status)).map((a) => (
+            <Row key={a.id} title={a.display_name} sub={`${a.message ? a.message.slice(0, 80) : 'No message'}${a.documents ? ` · ${a.documents} doc${a.documents === 1 ? '' : 's'}` : ''}`} onPress={() => { setApplicantsOf(null); setReview(a); }}
+              right={<View style={{ backgroundColor: STATUS_COLOR[a.status], borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 }}><T size={11} weight="800">{STATUS_LABEL[a.status]}</T></View>} />
+          ))}
+        </Sheet>
+      ) : null}
+      {review ? <ReviewSheet a={staff.find((x) => x.id === review.id) ?? review} e={e} onClose={() => setReview(null)} reload={reload} toast={toast} /> : null}
 
       {find ? (
         <Sheet visible onClose={() => setFind(null)} title={`Find a ${find.title || find.role}`}>
@@ -305,9 +350,13 @@ function Crew({ id, e, roles, staff, toast, reload }) {
           )) : <Empty emoji="🔎" title="Nobody available" sub="Nobody with the right profile is free on these dates." />}
         </Sheet>
       ) : null}
-      <FormSheet visible={open} onClose={() => setOpen(false)} title="Open a position" submitLabel="Open position" initial={{ role: 'referee', needed: 1 }}
-        fields={[{ key: 'role', label: 'Role', type: 'chips', options: ROLES.map(([value, label]) => ({ value, label: `${ROLE_ICON[value]} ${label}` })) }, { key: 'needed', label: 'How many people', type: 'stepper', min: 1, max: 100, default: 1 }, { key: 'fee', label: 'Fee per person', type: 'money', currency: e.currency, optional: true }, { key: 'notes', label: 'Notes for applicants', type: 'multiline', optional: true }]}
-        onSubmit={async (v) => { await api.post(`/events/${id}/staff-roles`, { role: v.role, needed: v.needed || 1, fee_cents: v.fee || 0, notes: v.notes || undefined }); reload(); return 'Position opened'; }} />
+      <FormSheet visible={open} onClose={() => setOpen(false)} title="Open a position" submitLabel="Open position" initial={{ role: 'referee', needed: 1, is_public: true }}
+        fields={[{ key: 'role', label: 'Role', type: 'chips', options: ROLES.map(([value, label]) => ({ value, label: `${ROLE_ICON[value]} ${label}` })) }, { key: 'needed', label: 'How many people', type: 'stepper', min: 1, max: 100, default: 1 },
+          { key: 'fee', label: 'Fee per person', type: 'money', currency: e.currency, optional: true, show: (v) => !['retail', 'catering', 'vendor'].includes(v.role) },
+          { key: 'stall_fee', label: 'Stall fee the vendor pays you', type: 'money', currency: e.currency, optional: true, show: (v) => ['retail', 'catering', 'vendor'].includes(v.role) },
+          { key: 'notes', label: 'Notes for applicants', type: 'multiline', optional: true, hint: 'Hours, requirements, what to bring. Positions appear on the arena home page for everyone; people apply and you accept them here.' },
+          { key: 'is_public', label: 'Show on the arena for anyone to apply', type: 'switch', default: true }]}
+        onSubmit={async (v) => { await api.post(`/events/${id}/staff-roles`, { role: v.role, needed: v.needed || 1, fee_cents: (['retail', 'catering', 'vendor'].includes(v.role) ? v.stall_fee : v.fee) || 0, notes: v.notes || undefined, is_public: v.is_public !== false }); reload(); return 'Position opened — it is now on the arena'; }} />
     </>
   );
 }

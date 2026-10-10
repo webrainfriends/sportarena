@@ -13,5 +13,6 @@ export const INTENT_COPY = {
   post: ['Sign in to post', 'Share a wanted ad, match, schedule, sale or campaign with the arena.'],
   advertise: ['Sign in to advertise', 'Submit a campaign for review and reach the whole arena.'],
   book: ['Sign in to book this venue', 'Create a free account or log in. We will take you straight to the booking with your court and date ready.'],
+  apply_position: ['Sign in to apply', 'Create a free account or log in. We will bring you straight back to this position so you can apply and share your documents.'],
   join: ['Join the arena', 'One account for athletes, coaches, organizers, venues and sponsors.'],
 };
