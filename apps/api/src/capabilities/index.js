@@ -48,4 +48,8 @@ import './community.js';
 import './home.js';
 import './athlete-schedule.js';
 import './market.js';
+import './partners.js';
+import './partner-pricing.js';
+import './partner-contracts.js';
+import './partner-reports.js';
 export { capabilities } from '../registry.js';

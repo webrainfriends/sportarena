@@ -8,6 +8,7 @@ import { maintenanceCycle } from './worker.js';
 
 await initKeys();   // fail fast if the master key can't be loaded
 await migrate();
+await (await import('./platform.js')).bootstrapPlatformOwner();
 if (config.isProd && config.allowInsecureHttp) console.warn('[security] ALLOW_INSECURE_HTTP=true: serving over plain HTTP. Personal data is NOT encrypted in transit. Enable TLS before real users sign up.');
 const app = createApp();
 const server = config.sslKeyFile && config.sslCertFile

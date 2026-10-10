@@ -63,6 +63,8 @@ export function Me() {
         <Btn small title="Family & guardians" color={c.paper} ink={c.ink} onPress={() => push('Family')} />
         <Btn small title="Support & disputes" color={c.paper} ink={c.ink} onPress={() => push('Support')} />
         <Btn small title="My organisations" color={c.paper} ink={c.ink} onPress={() => push('Orgs')} />
+        {user.roles.includes('admin') ? <Btn small title="Partner management" color={c.pink} onPress={() => push('PartnerConsole')} /> : null}
+        {user.roles.some((r) => ['venue_manager', 'organizer'].includes(r)) ? <Btn small title="Partner account" color={c.paper} ink={c.ink} onPress={() => push('MyPartner')} /> : null}
         {user.roles.includes('insurer') ? <Btn small title="Insurer desk" color={c.violet} onPress={() => push('InsurerDesk')} /> : null}
         <Btn small title="My insurance" color={c.paper} ink={c.ink} onPress={() => push('Insurance')} />
       </View>

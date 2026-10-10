@@ -87,7 +87,7 @@ export function hourlyRate(ctx, resource, start) {
   const hit = ctx.rules
     .filter((r) => (r.resource_id === null || r.resource_id === resource.id)
       && (!r.weekdays || r.weekdays.includes(l.weekday)) && l.minutes >= r.start_min && l.minutes < r.end_min && inDateRange(l.date, r.valid_from, r.valid_to))
-    .sort((a, b) => (b.resource_id ? 1 : 0) - (a.resource_id ? 1 : 0) || b.priority - a.priority || b.created_at - a.created_at)[0];
+    .sort((a, b) => (b.source === 'platform' ? 1 : 0) - (a.source === 'platform' ? 1 : 0) || (b.resource_id ? 1 : 0) - (a.resource_id ? 1 : 0) || b.priority - a.priority || b.created_at - a.created_at)[0]; // platform pricing overrides venue-set rules
   if (hit) return { rate: hit.hourly_rate_cents, rule: hit, category: null }; // an explicit special rate beats the timetable category
   const w = windowAt(ctx, resource, l);
   const cat = w?.category_id ? ctx.categories.get(w.category_id) : null;
