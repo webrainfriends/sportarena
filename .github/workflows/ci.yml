@@ -1,9 +1,8 @@
 name: CI
 
 on:
+  # PRs only: merging to main is deployed by deploy.yml, which doesn't need a second identical CI run.
   pull_request:
-    branches: [main]
-  push:
     branches: [main]
   workflow_dispatch:   # run/build manually from the Actions tab
 
@@ -16,7 +15,7 @@ permissions:
 
 jobs:
   api:
-    name: API tests (Postgres)
+    name: API tests + deploy script syntax
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -33,11 +32,12 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm }
+      - run: bash -n scripts/deploy-remote.sh
       - run: npm ci
       - run: npm test
 
   app-web:
-    name: App web build
+    name: App web build (compile check)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -46,15 +46,3 @@ jobs:
       - run: npm ci
       - run: npx expo export --platform web
         working-directory: apps/app
-      - uses: actions/upload-artifact@v4
-        with:
-          name: sportarena-web
-          path: apps/app/dist
-          retention-days: 14
-
-  deploy-script:
-    name: Deploy script syntax
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: bash -n scripts/deploy-remote.sh
