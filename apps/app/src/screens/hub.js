@@ -14,7 +14,7 @@ import { c, grad, money, day, when } from '../theme';
 const TILES = [
   ['Leaderboard', '🏅', 'Leaderboard', 'Points & glory', c.lime], ['Health', '🩺', 'Health', 'Physio · doctors · fit to play', c.mint],
   ['Insurance', '🛡️', 'Insurance', 'You · your team · your event', c.cyan], ['Sponsors', '💎', 'Sponsors', 'Brands & deals', c.sun],
-  ['Supply', '📦', 'Supply chain', 'Kit, stock & orders', c.orange], ['EventInbox', '📨', 'Event requests', 'Invites & quotes for you', c.cyan], ['Awards', '🏆', 'Trophy room', 'Cups, medals, MVPs', c.pink],
+  ['Supply', '📦', 'Supply chain', 'Kit, stock & orders', c.orange], ['Openings', '💼', 'Open positions', 'Jobs, stalls & contracts at events', c.pink], ['EventInbox', '📨', 'Event requests', 'Invites & quotes for you', c.cyan], ['Awards', '🏆', 'Trophy room', 'Cups, medals, MVPs', c.pink],
   ['Wallet', '💳', 'Wallet', 'Balance, gift cards, loyalty', c.cyan], ['MyPlans', '📋', 'Training plans', 'Your plans & sessions', c.lime],
   ['Family', '👨‍👩‍👧', 'Family', 'Guardians & consents', c.mint], ['Orgs', '🏢', 'Organisations', 'Clubs & associations', c.violet],
   ['Support', '🛟', 'Support', 'Cases & disputes', c.orange],

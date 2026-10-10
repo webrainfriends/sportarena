@@ -64,3 +64,17 @@ All tables are additive and nothing is deleted: invitations, rules, seeds, calen
 * Game times are shown in the **venue's time zone** (`list_fixtures` and `get_event_bracket` return `venue_timezone`).
 * **Plan & budget** uses the same hero/tabs and shows the event's venue bookings on the Overview.
 * Tests guard the wiring that merges kept breaking: `app-routes.test.js` (every `push('Screen')` target is in `PAGES`), `app-jsx-names.test.js` (every JSX component is imported or declared) and `capability-registry.test.js` (every capability file is registered).
+
+## Open positions, applications and contracts
+
+Positions an organiser opens in the tournament console (**Crew → Open a position**) are a public job board, shown on the landing page, in the member feed and in **More → Open positions**. Crew roles (referee, umpire, linesman, scorer, doctor, physio, medic, volunteer, security, other) and vendor places (`retail`, `catering`, `vendor` — here the *vendor* pays the organiser a stall fee) work the same way. A position can be hidden from the board with `is_public: false`.
+
+| Step | Capability | Who |
+|---|---|---|
+| Browse | `list_open_positions`, `get_open_position` (public; filter by group, role, sport, city, text) | anyone |
+| Apply | `apply_to_position` — needs a login; visitors are sent through sign-in and brought back to the form | any signed-in user (not the organiser) |
+| Exchange documents | `PUT /staff-assignments/{id}/documents` (PDF/photo, encrypted), `list_staff_documents`, `GET /staff-documents/{id}/file`, `remove_staff_document` | applicant and organiser |
+| Accept → contract | `decide_application` (`accept` generates a contract with the agreed fee and extra terms; `reject` closes it) | organiser |
+| Sign | `respond_event_contract` — accepting confirms the place (and makes a vendor a vendor of the event); declining reopens it | the applicant |
+
+Status flow of an application: `applied → contract_sent → accepted` (or `rejected`, `declined`, `withdrawn`, `released`). Nothing is deleted: contracts are voided, documents hidden, every transition is in `event_staff_history`. Credentials are not required to apply (the organiser judges); calendar clashes and time off are checked when the contract is signed. Vendor fees count as income, not crew cost, in `get_event_commercials`.

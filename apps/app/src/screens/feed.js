@@ -6,6 +6,8 @@ import { useSession } from '../session';
 import { useNav } from '../nav';
 import { useLayout } from '../layout';
 import { Avatar, Btn, Card, Chip, Empty, ErrorBox, Loading, Row, Seg, T } from '../ui';
+import { HScroll } from '../pickers';
+import { OpenPositions, ResumeApply } from './openings';
 import { c } from '../theme';
 import { MarketCard, KINDS } from '../market/MarketCard';
 import { Composer } from '../market/Composer';
@@ -49,6 +51,7 @@ export function Feed({ header, narrow }) {
   const [busy, setBusy] = useState(true);
   const [err, setErr] = useState(null);
   const [compose, setCompose] = useState(null); // { kind?, ad? }
+  const [resumeApply, setResumeApply] = useState(null);
 
   const load = useCallback(async (offset) => {
     setBusy(true); setErr(null);
@@ -58,7 +61,7 @@ export function Feed({ header, narrow }) {
   useEffect(() => { load(0); }, [load]);
   const onPatch = useCallback((id, patch) => setRows((r) => r.map((p) => (p.id === id ? { ...p, ...patch } : p))), []);
   const { gate, sheets } = useMarketActions({ onPatch });
-  useResumeIntent(gate, user, { onPost: () => setCompose({}), onAdvertise: () => setCompose({ ad: true }), onBook: (b) => push('BookFlow', { venueId: b.venueId, resourceId: b.resourceId, date: b.date, time: b.time }) });
+  useResumeIntent(gate, user, { onPost: () => setCompose({}), onAdvertise: () => setCompose({ ad: true }), onBook: (b) => push('BookFlow', { venueId: b.venueId, resourceId: b.resourceId, date: b.date, time: b.time }), onApplyPosition: setResumeApply });
 
   const feed = (
     <View style={{ gap: 14 }}>
@@ -67,11 +70,15 @@ export function Feed({ header, narrow }) {
           <Avatar user={user} size={44} />
           <Pressable onPress={() => setCompose({})} style={{ flex: 1, borderWidth: 1, borderColor: c.line, borderRadius: 999, paddingVertical: 12, paddingHorizontal: 18 }}><T color={c.mute} weight="600">Start a post — wanted, match, sale, campaign…</T></Pressable>
         </View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, marginTop: 12 }}>
+        <HScroll style={{ marginTop: 12 }}>
           {Object.entries(KINDS).map(([k, v]) => <Pressable key={k} onPress={() => setCompose({ kind: k })} style={{ paddingVertical: 8, paddingHorizontal: 14, borderRadius: 999, backgroundColor: c.bg }}><T size={13} weight="700" color="#334155">{v.emoji} {v.label}</T></Pressable>)}
           <Pressable onPress={() => setCompose({ ad: true })} style={{ paddingVertical: 8, paddingHorizontal: 14, borderRadius: 999, backgroundColor: c.sunSoft }}><T size={13} weight="700" color="#92400E">⭐ Advertise</T></Pressable>
-        </ScrollView>
+        </HScroll>
       </Card>
+      {kind === null ? <View style={{ gap: 8 }}>
+        <T size={19} weight="700" style={{ letterSpacing: -0.3 }}>💼 Open positions</T>
+        <OpenPositions compact limit={3} onSeeAll={() => push('Openings')} onOpenMine={() => push('Openings')} />
+      </View> : null}
       <Seg options={[{ value: null, label: '✨ All' }, ...Object.entries(KINDS).map(([k, v]) => ({ value: k, label: `${v.emoji} ${v.label}` }))]} value={kind} onChange={setKind} />
       {err ? <ErrorBox error={err} onRetry={() => load(0)} /> : null}
       {busy && !rows.length ? <Loading /> : !rows.length && !err ? <Empty emoji="📭" title="Nothing here yet" sub="Be the first to post — athletes wanted, a match, kit for sale or a campaign." /> : rows.map((p) => <MarketCard key={p.id} p={p} user={user} gate={gate} feed />)}
@@ -88,6 +95,7 @@ export function Feed({ header, narrow }) {
       </ScrollView>
       {compose ? <Composer visible onClose={() => setCompose(null)} initialKind={compose.kind ?? 'wanted'} ad={compose.ad} onPosted={() => load(0)} /> : null}
       {sheets}
+      {resumeApply ? <ResumeApply positionId={resumeApply} onDone={() => setResumeApply(null)} /> : null}
     </View>
   );
 }
@@ -133,9 +141,9 @@ export default function HomeTab() {
       <StatTiles pad={pad} items={tiles} />
       {game ? <NowStrip pad={pad} title={`${game.home_name} vs ${game.away_name}`} date={[new Date(game.scheduled_at).getDate(), new Date(game.scheduled_at).toLocaleString(locale, { month: 'short' })]} sub={`${new Date(game.scheduled_at).toLocaleString(locale)}${game.event_name ? ` · ${game.event_name}` : ''}`} onPress={() => nav.goTab('Play')} /> : null}
       <View style={[wrap, { marginTop: 22 }]}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+        <HScroll>
           {ACTIONS.map(([emoji, label, go]) => <Chip key={label} label={`${emoji} ${label}`} onPress={() => go(nav)} />)}
-        </ScrollView>
+        </HScroll>
         {inbox.length ? <View style={{ marginTop: 26, gap: 10 }}><Title>{`Needs your response (${inbox.length})`}</Title>{inbox.map((x) => <Item key={`i${x.source_type}${x.source_id}`} x={x} reload={sched.reload} />)}</View> : null}
         <View style={{ marginTop: 26, gap: 10 }}>
           <Title action="Full schedule" onAction={() => nav.goTab('Player')}>Today</Title>
@@ -144,9 +152,9 @@ export default function HomeTab() {
         <View style={{ marginTop: 26 }}>
           <Title action="All sports" onAction={() => nav.goTab('Player')}>My sports</Title>
           {sports.error ? <ErrorBox error={sports.error} onRetry={sports.reload} /> : sports.loading && !sports.data ? <Loading /> : profiles.length ? (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 14, paddingBottom: 6 }}>
+            <HScroll gap={14}>
               {profiles.map((p) => <SportCard key={p.id} p={p} width={300} onOpen={() => nav.push('SportProfile', { id: p.id })} onDefault={() => makeDefault(p)} onLog={() => nav.push('SportProfile', { id: p.id })} />)}
-            </ScrollView>
+            </HScroll>
           ) : (
             <Card><View style={{ gap: 10, alignItems: 'flex-start' }}><T weight="700">Add the sports you play</T><T size={13} color={c.mute}>One card per sport tracks your matches, form and stats.</T><Btn small title="+ Add sport" onPress={() => nav.goTab('Player')} /></View></Card>
           )}

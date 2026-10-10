@@ -101,13 +101,14 @@ export function useMarketActions({ openAuth, onPatch }) {
 }
 
 /** After the visitor signs in, finish what they came to do (e.g. open the apply form for the post they tapped). */
-export function useResumeIntent(gate, user, { onPost, onAdvertise, onBook } = {}) {
+export function useResumeIntent(gate, user, { onPost, onAdvertise, onBook, onApplyPosition } = {}) {
   useEffect(() => {
     if (!user) return;
     const intent = takeIntent();
     if (intent?.action === 'post') return onPost?.();
     if (intent?.action === 'advertise') return onAdvertise?.();
     if (intent?.action === 'book') return onBook?.(intent);
+    if (intent?.action === 'apply_position') return onApplyPosition?.(intent.positionId);
     if (!intent?.postId) return;
     api.get(`/market/posts/${intent.postId}`).then((p) => gate(intent.action, p)).catch(() => {});
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps

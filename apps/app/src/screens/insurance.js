@@ -24,7 +24,7 @@ const ACTION = { requested: 'Request sent', quote_sent: 'Quote received', quote_
 
 // ----------------------------------------------------------------------------------------------------------- documents
 
-async function pickDocument() {
+export async function pickDocument() {
   if (Platform.OS === 'web') {
     return new Promise((resolve) => {
       const input = document.createElement('input');

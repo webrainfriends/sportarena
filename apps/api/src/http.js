@@ -15,6 +15,7 @@ import { mediaRouter } from './media.js';
 import { marketMediaRouter } from './market-media.js';
 import { insuranceDocsRouter } from './capabilities/insurance-docs.js';
 import { subjectDocsRouter } from './capabilities/subject-docs.js';
+import { staffDocsRouter } from './capabilities/event-openings.js';
 
 export function createApp() {
   const app = express();
@@ -35,6 +36,7 @@ export function createApp() {
   app.use('/api/v1', marketMediaRouter());
   app.use('/api/v1', insuranceDocsRouter());
   app.use('/api/v1', subjectDocsRouter());
+  app.use('/api/v1', staffDocsRouter());
   app.use(express.json({ limit: '100kb' }));
   app.use(rateLimit({ windowMs: 60_000, limit: config.isProd ? 300 : 5000, standardHeaders: true, legacyHeaders: false }));
   // Responses can carry personal data: never let proxies/browsers cache them.

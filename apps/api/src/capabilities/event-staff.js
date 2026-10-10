@@ -8,16 +8,19 @@ import { isAdmin, mustFind } from '../helpers.js';
 import { eventForOrganizer } from './events.js';
 import { notify } from '../notify.js';
 
-const ROLES = ['referee', 'umpire', 'linesman', 'scorer', 'doctor', 'physio', 'medic', 'volunteer', 'security', 'other'];
+export const ROLES = ['referee', 'umpire', 'linesman', 'scorer', 'doctor', 'physio', 'medic', 'volunteer', 'security', 'other', 'retail', 'catering', 'vendor'];
+/** Vendor positions: the applicant pays the organiser a stall fee and, once confirmed, becomes a vendor of the event. */
+export const VENDOR_ROLES = { retail: 'retail', catering: 'catering', vendor: 'other' };
 const OFFICIAL = ['referee', 'umpire', 'linesman'];
-const OPEN = ['invited', 'accepted'];
+const OPEN = ['invited', 'accepted', 'applied', 'contract_sent'];
 
-const lockPerson = (c, userId) => c.query("SELECT pg_advisory_xact_lock(hashtextextended('event_staff:' || $1::text, 0))", [userId]);
-const history = (c, assignmentId, actor, from, to, reason) => c.query('INSERT INTO event_staff_history(assignment_id, actor_id, from_status, to_status, reason) VALUES ($1,$2,$3,$4,$5)', [assignmentId, actor, from, to, reason ?? null]);
+export const lockPerson = (c, userId) => c.query("SELECT pg_advisory_xact_lock(hashtextextended('event_staff:' || $1::text, 0))", [userId]);
+export const history = (c, assignmentId, actor, from, to, reason) => c.query('INSERT INTO event_staff_history(assignment_id, actor_id, from_status, to_status, reason) VALUES ($1,$2,$3,$4,$5)', [assignmentId, actor, from, to, reason ?? null]);
 
 /** Credential, time-off and double-booking checks for a person on an event's dates. Call after lockPerson. */
-async function assertEligible(c, ev, role, userId) {
-  if (OFFICIAL.includes(role)) {
+export async function assertEligible(c, ev, role, userId, { credentials = true } = {}) {
+  if (!credentials) { /* applicants choose themselves: the organiser judges credentials, we only guard the calendar */ }
+  else if (OFFICIAL.includes(role)) {
     if (!(await c.query("SELECT 1 FROM sport_profiles WHERE user_id=$1 AND role='referee' AND sport_id=$2", [userId, ev.sport_id])).rowCount) throw badRequest('That person is not a referee for this sport');
   } else if (['doctor', 'physio', 'medic'].includes(role)) {
     const p = (await c.query('SELECT provider_type FROM provider_profiles WHERE user_id=$1', [userId])).rows[0];
@@ -33,14 +36,26 @@ async function assertEligible(c, ev, role, userId) {
   if (clash.rowCount) throw conflict(`That person is already committed to ${clash.rows[0].name} on those dates`);
 }
 
+/** A confirmed vendor position also makes the person a vendor of the event (so they can list products). Idempotent. */
+export async function confirmVendor(c, ev, role, userId, organiserId, feeCents) {
+  const kind = VENDOR_ROLES[role.role];
+  if (!kind) return null;
+  const dup = await c.query("SELECT id FROM event_vendors WHERE event_id=$1 AND kind=$2 AND vendor_user_id=$3 AND status IN ('invited','accepted')", [ev.id, kind, userId]);
+  if (dup.rowCount) {
+    return (await c.query("UPDATE event_vendors SET status='accepted', fee_cents=$2, responded_at=now() WHERE id=$1 RETURNING *", [dup.rows[0].id, feeCents])).rows[0];
+  }
+  return (await c.query("INSERT INTO event_vendors(event_id, kind, vendor_user_id, fee_cents, currency, notes, status, invited_by, responded_at) VALUES ($1,$2,$3,$4,$5,$6,'accepted',$7,now()) RETURNING *",
+    [ev.id, kind, userId, feeCents, role.currency, role.title || null, organiserId])).rows[0];
+}
+
 cap({
   name: 'define_staff_role', method: 'POST', path: '/events/:id/staff-roles', tag: 'Event staff', status: 201,
-  summary: 'Open a position for the event (referee, umpire, linesman, scorer, doctor, physio, medic, volunteer, security, other) with a headcount and fee.',
-  input: z.object({ id, role: z.enum(ROLES), title: z.string().max(100).optional(), needed: z.number().int().min(1).max(500).default(1), fee_cents: money.default(0), currency: z.string().length(3).optional(), notes: z.string().max(500).optional() }),
+  summary: 'Open a position for the event (referee, umpire, linesman, scorer, doctor, physio, medic, volunteer, security, other — or a vendor place: retail stall, catering, vendor) with a headcount and fee. Positions are public: any signed-in user can apply (see list_open_positions). For vendor places the fee is what the vendor pays the organiser.',
+  input: z.object({ id, role: z.enum(ROLES), title: z.string().max(100).optional(), needed: z.number().int().min(1).max(500).default(1), fee_cents: money.default(0), currency: z.string().length(3).optional(), notes: z.string().max(1000).optional(), is_public: z.boolean().default(true) }),
   async handler({ user }, i) {
     const ev = await eventForOrganizer(user, i.id);
-    return (await pool.query('INSERT INTO event_staff_roles(event_id, role, title, needed, fee_cents, currency, notes, created_by) VALUES ($1,$2,$3,$4,$5,upper($6),$7,$8) RETURNING *',
-      [i.id, i.role, i.title ?? null, i.needed, i.fee_cents, i.currency ?? ev.currency, i.notes ?? null, user.id])).rows[0];
+    return (await pool.query('INSERT INTO event_staff_roles(event_id, role, title, needed, fee_cents, currency, notes, created_by, pay_direction, is_public) VALUES ($1,$2,$3,$4,$5,upper($6),$7,$8,$9,$10) RETURNING *',
+      [i.id, i.role, i.title ?? null, i.needed, i.fee_cents, i.currency ?? ev.currency, i.notes ?? null, user.id, VENDOR_ROLES[i.role] ? 'applicant_pays' : 'event_pays', i.is_public])).rows[0];
   },
 });
 
@@ -51,7 +66,8 @@ cap({
     await mustFind('events', i.id, 'id');
     return many(
       `SELECT r.*, (SELECT count(*)::int FROM event_staff_assignments a WHERE a.role_id=r.id AND a.status='accepted') AS filled,
-              (SELECT count(*)::int FROM event_staff_assignments a WHERE a.role_id=r.id AND a.status='invited') AS pending
+              (SELECT count(*)::int FROM event_staff_assignments a WHERE a.role_id=r.id AND a.status='invited') AS pending,
+              (SELECT count(*)::int FROM event_staff_assignments a WHERE a.role_id=r.id AND a.status IN ('applied','contract_sent')) AS applicants
          FROM event_staff_roles r WHERE r.event_id=$1 ORDER BY r.created_at`, [i.id]);
   },
 });
@@ -110,7 +126,7 @@ cap({
       await mustFind('users', i.user_id, 'id', c);
       await lockPerson(c, i.user_id);
       await assertEligible(c, ev, role.role, i.user_id);
-      const dup = await c.query("SELECT 1 FROM event_staff_assignments WHERE role_id=$1 AND user_id=$2 AND status IN ('invited','accepted')", [role.id, i.user_id]);
+      const dup = await c.query("SELECT 1 FROM event_staff_assignments WHERE role_id=$1 AND user_id=$2 AND status IN ('invited','accepted','applied','contract_sent')", [role.id, i.user_id]);
       if (dup.rowCount) throw conflict('That person already has this position');
       const a = (await c.query('INSERT INTO event_staff_assignments(role_id, event_id, user_id, fee_cents, message, invited_by) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *',
         [role.id, ev.id, i.user_id, i.fee_cents ?? role.fee_cents, i.message ?? null, user.id])).rows[0];
@@ -142,6 +158,7 @@ cap({
       const to = i.accept ? 'accepted' : 'declined';
       const out = (await c.query('UPDATE event_staff_assignments SET status=$2, responded_at=now() WHERE id=$1 RETURNING *', [a.id, to])).rows[0];
       await history(c, a.id, user.id, 'invited', to, i.reason);
+      if (i.accept) await confirmVendor(c, ev, role, a.user_id, a.invited_by ?? ev.organizer_id, a.fee_cents);
       await notify(c, a.invited_by, { kind: 'event_staff', title: `Role offer ${to}`, body: `${ev.name}: a ${role.role} offer was ${to}.`, data: { event_id: ev.id, assignment_id: a.id } });
       return out;
     });
@@ -162,6 +179,9 @@ cap({
       const to = mine ? 'withdrawn' : 'released';
       const out = (await c.query('UPDATE event_staff_assignments SET status=$2, responded_at=coalesce(responded_at, now()) WHERE id=$1 RETURNING *', [a.id, to])).rows[0];
       await history(c, a.id, user.id, a.status, to, i.reason);
+      await c.query("UPDATE event_contracts SET status='void' WHERE assignment_id=$1 AND status='pending'", [a.id]);
+      const kind = VENDOR_ROLES[(await mustFind('event_staff_roles', a.role_id, 'role', c)).role];
+      if (kind && a.status === 'accepted') await c.query("UPDATE event_vendors SET status='ended' WHERE event_id=$1 AND kind=$2 AND vendor_user_id=$3 AND status='accepted'", [a.event_id, kind, a.user_id]);
       const ev = await mustFind('events', a.event_id, 'name, organizer_id', c);
       await notify(c, mine ? ev.organizer_id : a.user_id, { kind: 'event_staff', title: mine ? 'Staff member withdrew' : 'Role released', body: `${ev.name}: assignment ${to}.`, data: { event_id: a.event_id, assignment_id: a.id } });
       return out;
@@ -171,19 +191,27 @@ cap({
 
 cap({
   name: 'list_tournament_staff', method: 'GET', path: '/events/:id/staff-assignments', tag: 'Event staff', summary: 'Everyone invited or confirmed for the event, by position (organiser).',
-  input: z.object({ id, status: z.enum(['invited', 'accepted', 'declined', 'released', 'withdrawn', 'completed']).optional() }),
+  input: z.object({ id, status: z.enum(['invited', 'accepted', 'declined', 'released', 'withdrawn', 'completed', 'applied', 'contract_sent', 'rejected']).optional() }),
   async handler({ user }, i) {
     await eventForOrganizer(user, i.id);
     return many(
-      `SELECT a.*, r.role, r.title, u.handle, u.display_name FROM event_staff_assignments a JOIN event_staff_roles r ON r.id=a.role_id JOIN users u ON u.id=a.user_id
+      `SELECT a.*, r.role, r.title, r.pay_direction, u.handle, u.display_name,
+              (SELECT k.id FROM event_contracts k WHERE k.assignment_id=a.id AND k.status <> 'void' ORDER BY k.created_at DESC LIMIT 1) AS contract_id,
+              (SELECT k.status FROM event_contracts k WHERE k.assignment_id=a.id AND k.status <> 'void' ORDER BY k.created_at DESC LIMIT 1) AS contract_status,
+              (SELECT count(*)::int FROM event_staff_documents d WHERE d.assignment_id=a.id AND d.removed_at IS NULL) AS documents
+         FROM event_staff_assignments a JOIN event_staff_roles r ON r.id=a.role_id JOIN users u ON u.id=a.user_id
         WHERE a.event_id=$1 AND ($2::text IS NULL OR a.status=$2) ORDER BY r.created_at, a.created_at`, [i.id, i.status ?? null]);
   },
 });
 
 cap({
   name: 'list_my_staff_assignments', method: 'GET', path: '/me/staff-assignments', tag: 'Event staff', summary: 'Event roles offered to you or confirmed for you.',
-  input: z.object({ status: z.enum(['invited', 'accepted', 'declined', 'released', 'withdrawn', 'completed']).optional(), ...page }),
+  input: z.object({ status: z.enum(['invited', 'accepted', 'declined', 'released', 'withdrawn', 'completed', 'applied', 'contract_sent', 'rejected']).optional(), ...page }),
   handler: ({ user }, i) => many(
-    `SELECT a.*, r.role, r.title, e.name AS event_name, e.starts_on, e.ends_on, e.city FROM event_staff_assignments a JOIN event_staff_roles r ON r.id=a.role_id JOIN events e ON e.id=a.event_id
+    `SELECT a.*, r.role, r.title, r.pay_direction, r.currency, e.name AS event_name, e.starts_on, e.ends_on, e.city,
+            (SELECT k.id FROM event_contracts k WHERE k.assignment_id=a.id AND k.status <> 'void' ORDER BY k.created_at DESC LIMIT 1) AS contract_id,
+            (SELECT k.status FROM event_contracts k WHERE k.assignment_id=a.id AND k.status <> 'void' ORDER BY k.created_at DESC LIMIT 1) AS contract_status,
+            (SELECT count(*)::int FROM event_staff_documents d WHERE d.assignment_id=a.id AND d.removed_at IS NULL) AS documents
+       FROM event_staff_assignments a JOIN event_staff_roles r ON r.id=a.role_id JOIN events e ON e.id=a.event_id
       WHERE a.user_id=$1 AND ($2::text IS NULL OR a.status=$2) ORDER BY e.starts_on NULLS LAST, a.created_at DESC LIMIT $3 OFFSET $4`, [user.id, i.status ?? null, i.limit, i.offset]),
 });

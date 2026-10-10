@@ -12,6 +12,7 @@ import { setIntent } from '../market/intent';
 import { useSports } from '../sportpicker';
 import Auth from './auth';
 import { HScroll, VenueBooking } from './landing-venues';
+import { OpenPositions } from './openings';
 
 const isWeb = Platform.OS === 'web';
 const h = React.createElement;
@@ -204,6 +205,14 @@ export default function Landing() {
               <T color={c.mute} size={15} style={{ marginTop: 4 }}>See open slots and prices for courts and grounds near you. Pick a time, then log in or create an account to confirm.</T>
             </View>
             <VenueBooking wide={wide} sport={sport} onBook={(b) => { const i = { action: 'book', title: b.venueName, ...b }; setIntent(i); openAuth(i, 'register'); }} />
+          </View>
+
+          <View style={{ gap: 16 }}>
+            <View>
+              <T weight="800" size={wide ? 36 : 28} style={{ letterSpacing: -1.2 }}>Work at a tournament</T>
+              <T color={c.mute} size={15} style={{ marginTop: 4 }}>Referees, scorers, medics, volunteers, security, stalls and caterers wanted by organisers. Browse freely — log in to apply, share documents and sign your contract.</T>
+            </View>
+            <OpenPositions openAuth={(i) => openAuth(i)} limit={9} columns={wide ? 3 : 1} />
           </View>
 
           <View ref={feedRef} style={{ gap: 16, scrollMarginTop: 80 }}>
