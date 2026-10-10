@@ -1,6 +1,8 @@
 // Venue-local time helpers for the booking screens. The server owns all rules; the app only needs to turn a
 // venue-local wall-clock time into an instant (and back) for display and for forms that take "date + time".
 
+import { locale } from './locale';
+
 const fmts = new Map();
 const parts = (tz, ms) => {
   let f = fmts.get(tz);
@@ -10,8 +12,8 @@ const parts = (tz, ms) => {
 
 export const todayIn = (tz) => { const p = parts(tz, Date.now()); return `${p.year}-${p.month}-${p.day}`; };
 export const addDays = (date, n) => { const d = new Date(`${date}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
-export const dayLabel = (date, i) => (i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : new Date(`${date}T00:00:00Z`).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', timeZone: 'UTC' }));
-export const longDay = (date) => new Date(`${date}T00:00:00Z`).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'short', timeZone: 'UTC' });
+export const dayLabel = (date, i) => (i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : new Date(`${date}T00:00:00Z`).toLocaleDateString(locale, { weekday: 'short', day: 'numeric', timeZone: 'UTC' }));
+export const longDay = (date) => new Date(`${date}T00:00:00Z`).toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'short', timeZone: 'UTC' });
 
 /** 'HH:MM' on `date` in `tz` -> ISO instant. */
 export function localToIso(date, hhmm, tz) {
@@ -23,8 +25,8 @@ export function localToIso(date, hhmm, tz) {
   return new Date(t).toISOString();
 }
 
-export const timeIn = (iso, tz) => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', timeZone: tz });
-export const dateTimeIn = (iso, tz) => new Date(iso).toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', timeZone: tz });
+export const timeIn = (iso, tz) => new Date(iso).toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit', timeZone: tz });
+export const dateTimeIn = (iso, tz) => new Date(iso).toLocaleString(locale, { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', timeZone: tz });
 export const localDate = (iso, tz) => { const p = parts(tz, Date.parse(iso)); return `${p.year}-${p.month}-${p.day}`; };
 export const localHHMM = (iso, tz) => { const p = parts(tz, Date.parse(iso)); return `${p.hour}:${p.minute}`; };
 
@@ -36,7 +38,7 @@ const digitsOf = (currency) => { try { return new Intl.NumberFormat('en', { styl
 export const moneyIn = (minor = 0, currency = 'INR') => {
   const d = digitsOf(currency);
   const major = minor / 10 ** d;
-  try { return new Intl.NumberFormat(undefined, { style: 'currency', currency, minimumFractionDigits: minor % 10 ** d ? d : 0, maximumFractionDigits: d }).format(major); }
+  try { return new Intl.NumberFormat(locale, { style: 'currency', currency, minimumFractionDigits: minor % 10 ** d ? d : 0, maximumFractionDigits: d }).format(major); }
   catch { return `${currency} ${major.toFixed(d)}`; }
 };
 

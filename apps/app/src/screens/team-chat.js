@@ -4,9 +4,10 @@ import { api } from '../api';
 import { useSession } from '../session';
 import { Avatar, Btn, Card, Chip, Empty, ErrorBox, H1, Loading, Screen, T, Tag } from '../ui';
 import { c, fam } from '../theme';
+import { locale } from '../locale';
 
 const POLL_MS = 5000;
-const clock = (iso) => new Date(iso).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' });
+const clock = (iso) => new Date(iso).toLocaleString(locale, { weekday: 'short', hour: 'numeric', minute: '2-digit' });
 
 /** One conversation per team, for its members. New messages are fetched every few seconds while the screen is open. */
 export function TeamChat({ id }) {

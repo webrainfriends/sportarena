@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { locale } from '../locale';
 import { Platform, Pressable, ScrollView, TextInput, View, useWindowDimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { api } from '../api';
@@ -52,7 +53,7 @@ function useCountUp(to) {
 }
 const Stat = ({ value, label }) => {
   const n = useCountUp(value);
-  return <View style={{ minWidth: 110 }}><T color="#fff" weight="800" size={34} style={{ letterSpacing: -1 }}>{n.toLocaleString('en-IN')}</T><T color="#C7D2FE" weight="600" size={12} style={{ letterSpacing: 1.2 }}>{label}</T></View>;
+  return <View style={{ minWidth: 110 }}><T color="#fff" weight="800" size={34} style={{ letterSpacing: -1 }}>{n.toLocaleString(locale)}</T><T color="#C7D2FE" weight="600" size={12} style={{ letterSpacing: 1.2 }}>{label}</T></View>;
 };
 
 const Pill = ({ title, onPress, solid, color = '#fff', style }) => (
@@ -212,7 +213,7 @@ export default function Landing() {
             </View>
             <HScroll>
               {[[null, '✨ All'], ...Object.entries(KINDS).map(([k, v]) => [k, `${v.emoji} ${v.label}`])].map(([k, l]) => (
-                <Pressable key={l} onPress={() => setKind(k)} style={{ paddingVertical: 10, paddingHorizontal: 18, borderRadius: 999, backgroundColor: kind === k ? c.ink : c.paper, borderWidth: 1, borderColor: kind === k ? c.ink : c.line }}><T weight="700" size={14} color={kind === k ? '#fff' : '#334155'}>{l}</T></Pressable>
+                <Pressable key={l} onPress={() => setKind(k)} style={{ paddingVertical: 10, paddingHorizontal: 18, borderRadius: 999, backgroundColor: kind === k ? c.ink : c.paper, borderWidth: 1, borderColor: kind === k ? c.ink : c.line }}><T weight="700" size={14} color={kind === k ? c.inkOn : c.mute}>{l}</T></Pressable>
               ))}
             </HScroll>
             <View style={{ flexDirection: wide ? 'row' : 'column', gap: 10 }}>

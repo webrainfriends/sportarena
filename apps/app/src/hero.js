@@ -77,7 +77,7 @@ export function PlayerHero({ user, profile, onBell, onAvatar, pad = 16 }) {
   const side = Math.round(W * 0.62);
   const nameSize = W < 400 ? 36 : 40;
   return (
-    <View style={{ backgroundColor: '#fff', overflow: 'hidden' }}>
+    <View style={{ backgroundColor: c.paper, overflow: 'hidden' }}>
       <View style={{ width: '100%', maxWidth: COL, alignSelf: 'center', height: H, paddingHorizontal: pad }}>
         {profile ? <Text pointerEvents="none" style={{ position: 'absolute', left: -40, top: 60, fontSize: 250, opacity: 0.07 }}>{profile.sport_emoji}</Text> : null}
         <View style={{ position: 'absolute', right: 0, top: 8, width: side, height: H - 8 }}>
@@ -88,10 +88,10 @@ export function PlayerHero({ user, profile, onBell, onAvatar, pad = 16 }) {
           </Pressable>
           {user.avatar_url && !user.avatar_cutout ? (
             <>
-              <LinearGradient pointerEvents="none" colors={['#fff', 'rgba(255,255,255,0)']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '45%' }} />
-              <LinearGradient pointerEvents="none" colors={['rgba(255,255,255,0)', '#fff']} style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: '38%' }} />
-              {L.width > COL ? <LinearGradient pointerEvents="none" colors={['rgba(255,255,255,0)', '#fff']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: '18%' }} /> : null}
-              <LinearGradient pointerEvents="none" colors={['#fff', 'rgba(255,255,255,0)']} style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 36 }} />
+              <LinearGradient pointerEvents="none" colors={[c.paper, c.paper + '00']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '45%' }} />
+              <LinearGradient pointerEvents="none" colors={[c.paper + '00', c.paper]} style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: '38%' }} />
+              {L.width > COL ? <LinearGradient pointerEvents="none" colors={[c.paper + '00', c.paper]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: '18%' }} /> : null}
+              <LinearGradient pointerEvents="none" colors={[c.paper, c.paper + '00']} style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 36 }} />
             </>
           ) : null}
           <Pressable accessibilityRole="button" accessibilityLabel="Change profile photo" disabled={photo.busy} onPress={photo.change} hitSlop={8} style={({ pressed }) => ({ position: 'absolute', right: pad, bottom: 64, width: 36, height: 36, borderRadius: 18, backgroundColor: c.paper, borderWidth: 1, borderColor: c.line, alignItems: 'center', justifyContent: 'center', opacity: photo.busy ? 0.5 : pressed ? 0.8 : 1, ...lift })}>
@@ -125,7 +125,7 @@ export function StatTiles({ items, pad = 16 }) {
   return (
     <View style={{ width: '100%', maxWidth: COL, alignSelf: 'center', flexDirection: 'row', gap: 10, paddingHorizontal: pad, marginTop: -44 }}>
       {items.map(([label, value]) => (
-        <View key={label} style={{ flex: 1, minHeight: 96, justifyContent: 'space-between', backgroundColor: 'rgba(255,255,255,0.78)', borderRadius: 20, borderWidth: 1, borderColor: c.line, padding: 14, ...lift }}>
+        <View key={label} style={{ flex: 1, minHeight: 96, justifyContent: 'space-between', backgroundColor: c.paper, borderRadius: 20, borderWidth: 1, borderColor: c.line, padding: 14, ...lift }}>
           <T size={12} weight="600" color={c.mute} numberOfLines={1}>{label}</T>
           <T size={30} weight="800" style={{ letterSpacing: -0.8, textAlign: 'right', fontVariant: ['tabular-nums'] }}>{value}</T>
         </View>

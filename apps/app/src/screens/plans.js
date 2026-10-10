@@ -9,8 +9,9 @@ import { FormSheet } from '../FormSheet';
 import { PaySheet } from '../PaySheet';
 import { c } from '../theme';
 import { moneyIn } from '../vtime';
+import { locale } from '../locale';
 
-const until = (d) => new Date(d).toLocaleDateString();
+const until = (d) => new Date(d).toLocaleDateString(locale);
 
 /** On the venue page: what's for sale and what you already hold here. */
 export function VenuePlans({ venue, onChanged }) {

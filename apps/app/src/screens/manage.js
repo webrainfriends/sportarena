@@ -16,6 +16,7 @@ import { useNav } from '../nav';
 import { WEEKDAYS, addDays, dateTimeIn, fmtMin, hoursSummary, localToIso, longDay, moneyIn, timeIn, todayIn } from '../vtime';
 import { Calendar } from '../pickers';
 import { SubjectPanel } from './insurance';
+import { locale } from '../locale';
 
 const AMENITIES = ['Parking', 'Changing rooms', 'Showers', 'Lockers', 'Café', 'Floodlights', 'Equipment hire', 'Coaching', 'First aid', 'Seating', 'WiFi', 'Wheelchair access'];
 const TABS = [['schedule', 'Today'], ['timetable', 'Timetable & prices'], ['blocks', 'Block slots'], ['payments', 'Invoices'], ['plans', 'Memberships & passes'], ['discounts', 'Offers'], ['pricing', 'Courts & special rates'], ['media', 'Photos'], ['reviews', 'Reviews'], ['reports', 'Reports'], ['docs', 'Documents & insurance'], ['setup', 'Settings']];
@@ -379,7 +380,7 @@ function Payments({ v }) {
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
             <View style={{ flex: 1 }}>
               <T weight="700">{i.kind === 'credit_note' ? 'Credit note' : 'Invoice'} {i.number}</T>
-              <T size={12} color={c.mute}>Booking {i.reservation_code} · {new Date(i.issued_at).toLocaleDateString()}{i.payment_method ? ` · ${i.payment_method}` : ''}{i.kind === 'credit_note' ? ` · refund ${i.refund_status}` : ''}</T>
+              <T size={12} color={c.mute}>Booking {i.reservation_code} · {new Date(i.issued_at).toLocaleDateString(locale)}{i.payment_method ? ` · ${i.payment_method}` : ''}{i.kind === 'credit_note' ? ` · refund ${i.refund_status}` : ''}</T>
             </View>
             <View style={{ alignItems: 'flex-end', gap: 4 }}><T weight="700">{i.kind === 'credit_note' ? '−' : ''}{money(i.total_cents, i.currency)}</T><Tag label={i.kind === 'credit_note' ? 'credit' : i.status} color={i.status === 'paid' ? c.mint : i.status === 'void' ? c.violetSoft : c.sun} /></View>
           </View>

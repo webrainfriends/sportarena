@@ -6,6 +6,7 @@ import { useSession } from '../session';
 import { Avatar, Btn, Card, Chip, Empty, ErrorBox, Loading, Row, Seg, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { c } from '../theme';
+import { locale } from '../locale';
 
 const isWeb = Platform.OS === 'web';
 const h = React.createElement;
@@ -154,7 +155,7 @@ export function VenueReviews({ venueId }) {
           <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
             <Avatar user={{ avatar_color: x.avatar_color, avatar_emoji: x.avatar_emoji, avatar_url: x.avatar_url, handle: x.handle }} size={36} />
             <View style={{ flex: 1 }}><T weight="700">{x.display_name}</T><View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}><Stars n={x.rating} size={13} />{x.verified ? <Tag label="played here" color={c.mint} /> : null}</View></View>
-            <T size={11} color={c.mute}>{new Date(x.created_at).toLocaleDateString()}</T>
+            <T size={11} color={c.mute}>{new Date(x.created_at).toLocaleDateString(locale)}</T>
           </View>
           <T style={{ marginTop: 8 }}>{x.body}</T>
           {x.reply ? <View style={{ marginTop: 10, padding: 10, borderRadius: 10, backgroundColor: c.violetSoft }}><T size={12} weight="700">Reply from {x.reply.by ?? 'the venue'}</T><T size={13}>{x.reply.body}</T></View> : null}

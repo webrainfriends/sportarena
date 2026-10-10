@@ -10,6 +10,7 @@ import { Btn, Chip, Empty, ErrorBox, Field, GradCard, H1, Loading, Row, Screen, 
 import { FormSheet } from '../FormSheet';
 import { c, day } from '../theme';
 import { moneyIn } from '../vtime';
+import { locale } from '../locale';
 
 const fail = (toast) => (e) => toast('' + e.message);
 const useDo = (toast, refresh) => async (fn, msg) => { try { const r = await fn(); toast(typeof msg === 'function' ? msg(r) : msg); refresh?.(); return r; } catch (e) { fail(toast)(e); return null; } };
@@ -22,7 +23,7 @@ const STATUS_TAG = { draft: c.violetSoft, sent: c.cyanSoft, quoted: c.sunSoft, a
 const CATS = ['venue', 'officials', 'medical', 'equipment', 'catering', 'insurance', 'marketing', 'prizes', 'staff', 'transport', 'admin', 'contingency', 'sponsorship', 'entry_fees', 'tickets', 'merchandise', 'other'];
 const TASK_CATS = ['general', 'venue', 'people', 'officials', 'medical', 'equipment', 'catering', 'insurance', 'sponsors', 'marketing', 'safety', 'finance', 'legal', 'logistics'];
 const m = (cents, cur) => moneyIn(Number(cents ?? 0), cur);
-const when = (iso) => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+const when = (iso) => new Date(iso).toLocaleDateString(locale, { day: 'numeric', month: 'short' });
 
 export function EventPlan({ id }) {
   const { user, has, toast } = useSession();
