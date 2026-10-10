@@ -27,7 +27,7 @@ const effStatus = `CASE WHEN q.status='offered' AND q.valid_until < current_date
 
 const QUOTE_COLS = `q.id, q.request_id, q.insurer_id, i.name AS insurer, (i.verified_at IS NOT NULL) AS insurer_verified, q.plan_id, pl.name AS plan_name, pl.emoji, q.buyer_id, ub.display_name AS buyer,
   q.cover_for, q.subject_id, ${subjectName('q.cover_for', 'q.subject_id')} AS subject_name, q.months, q.premium_cents, q.premium_cents * q.months AS total_cents, q.coverage_cents, q.deductible_cents, q.waiting_period_days,
-  q.currency, q.note, q.valid_until, ${effStatus} AS status, q.policy_id, q.created_at, q.decided_at`;
+  q.currency, q.note, q.details, q.valid_until, ${effStatus} AS status, q.policy_id, q.created_at, q.decided_at`;
 const QUOTE_FROM = 'FROM insurance_quotes q JOIN insurers i ON i.id=q.insurer_id JOIN insurance_plans pl ON pl.id=q.plan_id JOIN users ub ON ub.id=q.buyer_id';
 const num = (r) => ({ ...r, premium_cents: Number(r.premium_cents), total_cents: Number(r.total_cents), coverage_cents: Number(r.coverage_cents), deductible_cents: Number(r.deductible_cents) });
 
@@ -182,11 +182,12 @@ cap({
 
 cap({
   name: 'create_quote', method: 'POST', path: '/insurance/quotes', tag: 'Insurance', auth: ['insurer'], status: 201,
-  summary: 'Send a priced quote on one of your active plans: either answering a quote request (request_id) or offered directly to a person (buyer_id, plus subject_id for a team or event). Premium is per month, like plans; you can change the cover, excess and waiting period from the plan\'s. It is valid for valid_days (default 14) and the buyer accepts or declines it. The plan\'s exclusions and conditions always apply. One live quote per request: withdraw it to send a revised one.',
+  summary: 'Send a priced quote on one of your active plans: either answering a quote request (request_id) or offered directly to a person (buyer_id, plus subject_id for a team or event). Premium is per month, like plans; you can change the cover, excess and waiting period from the plan\'s. It is valid for valid_days (default 14) and the buyer accepts or declines it. The plan\'s exclusions and conditions always apply. You can answer one request with several of your plans (one live quote per plan); withdraw a quote to send a revised one. `details` carries your own terms in plain words.',
   input: z.object({
     request_id: id.optional(), buyer_id: id.optional(), subject_id: id.optional(), plan_id: id, months: z.number().int().min(1).max(36).optional(), premium_cents: money,
     coverage_cents: money.refine((n) => n > 0).optional(), deductible_cents: money.optional(), waiting_period_days: z.number().int().min(0).max(730).optional(),
     valid_days: z.number().int().min(1).max(90).default(14), note: z.string().max(1000).optional(),
+    details: z.string().max(2000).optional().describe('your own terms in plain words: what is included, special conditions, discounts'),
   }).refine((q) => !!q.request_id !== !!q.buyer_id, 'Give request_id (answering a request) or buyer_id (a direct offer), not both'),
   async handler({ user }, i) {
     const ins = await myInsurer(user);
@@ -202,7 +203,7 @@ cap({
         if (!['open', 'quoted'].includes(req.status)) throw conflict(`That request is ${req.status}`);
         if (req.requester_id === user.id) throw badRequest('You cannot quote your own request');
         if (req.cover_for !== plan.cover_for) throw badRequest(`That request is for ${req.cover_for} cover but the plan covers ${plan.cover_for}`);
-        if ((await c.query("SELECT 1 FROM insurance_quotes q WHERE q.request_id=$1 AND q.insurer_id=$2 AND q.status='offered' AND q.valid_until >= current_date", [req.id, ins.id])).rowCount) throw conflict('You already have a live quote on this request: withdraw it to send a revised one');
+        if ((await c.query("SELECT 1 FROM insurance_quotes q WHERE q.request_id=$1 AND q.insurer_id=$2 AND q.plan_id=$3 AND q.status='offered' AND q.valid_until >= current_date", [req.id, ins.id, plan.id])).rowCount) throw conflict('You already have a live quote on this request for that plan: withdraw it to send a revised one');
         buyerId = req.requester_id; subject = req.subject_id; months ??= req.months;
       } else {
         if (i.buyer_id === user.id) throw badRequest('You cannot quote yourself');
@@ -219,9 +220,9 @@ cap({
       }
       checkTerm(plan, months);
       const q = (await c.query(
-        `INSERT INTO insurance_quotes(request_id, insurer_id, plan_id, buyer_id, cover_for, subject_id, months, premium_cents, coverage_cents, deductible_cents, waiting_period_days, currency, note, valid_until, created_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13, current_date + $14::int, $15) RETURNING id`,
-        [req?.id ?? null, ins.id, plan.id, buyerId, plan.cover_for, subject, months, i.premium_cents, i.coverage_cents ?? plan.coverage_cents, i.deductible_cents ?? plan.deductible_cents, i.waiting_period_days ?? plan.waiting_period_days, plan.currency, i.note ?? null, i.valid_days, user.id])).rows[0];
+        `INSERT INTO insurance_quotes(request_id, insurer_id, plan_id, buyer_id, cover_for, subject_id, months, premium_cents, coverage_cents, deductible_cents, waiting_period_days, currency, note, valid_until, created_by, details)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13, current_date + $14::int, $15, $16) RETURNING id`,
+        [req?.id ?? null, ins.id, plan.id, buyerId, plan.cover_for, subject, months, i.premium_cents, i.coverage_cents ?? plan.coverage_cents, i.deductible_cents ?? plan.deductible_cents, i.waiting_period_days ?? plan.waiting_period_days, plan.currency, i.note ?? null, i.valid_days, user.id, i.details ?? null])).rows[0];
       await logEvent(c, { request_id: req?.id, quote_id: q.id, insurer_id: ins.id, actor_id: user.id, action: 'quote_sent', detail: `${ins.name} sent a quote` });
       if (req) await c.query("UPDATE insurance_quote_requests SET status='quoted', updated_at=now() WHERE id=$1", [req.id]);
       await notify(c, buyerId, { kind: 'quote_update', title: 'You have a new insurance quote', body: `${ins.name} sent you a quote. Open it to compare and accept.`, data: { quote_id: q.id, request_id: req?.id ?? null } });

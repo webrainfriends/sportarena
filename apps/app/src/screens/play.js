@@ -132,6 +132,7 @@ export function Event({ id }) {
       {isOrg ? (
         <Card color={c.limeSoft} style={{ marginTop: 14 }}>
           <T weight="900" size={16}>Organizer tools</T>
+          <Btn small title="Tournament console" color={c.violet} onPress={() => push('EventAdmin', { id })} style={{ marginTop: 8, alignSelf: 'flex-start' }} />
           {entries.data?.filter((x) => x.status === 'pending').map((x) => (
             <View key={x.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10 }}>
               <T weight="800" style={{ flex: 1 }}>{x.team_name ?? x.display_name} wants in</T>

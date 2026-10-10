@@ -10,6 +10,7 @@ import { useMarketActions } from '../market/actions';
 import { setIntent } from '../market/intent';
 import { useSports } from '../sportpicker';
 import Auth from './auth';
+import { HScroll, VenueBooking } from './landing-venues';
 
 const isWeb = Platform.OS === 'web';
 const h = React.createElement;
@@ -196,22 +197,30 @@ export default function Landing() {
         <View style={[wrap, { paddingTop: 44, gap: 44 }]}>
           <Featured items={d?.featured ?? []} gate={gate} user={null} />
 
+          <View style={{ gap: 16 }}>
+            <View>
+              <T weight="800" size={wide ? 36 : 28} style={{ letterSpacing: -1.2 }}>Book a venue</T>
+              <T color={c.mute} size={15} style={{ marginTop: 4 }}>See open slots and prices for courts and grounds near you. Pick a time, then log in or create an account to confirm.</T>
+            </View>
+            <VenueBooking wide={wide} sport={sport} onBook={(b) => { const i = { action: 'book', title: b.venueName, ...b }; setIntent(i); openAuth(i, 'register'); }} />
+          </View>
+
           <View ref={feedRef} style={{ gap: 16, scrollMarginTop: 80 }}>
             <View>
               <T weight="800" size={wide ? 36 : 28} style={{ letterSpacing: -1.2 }}>What's happening in the arena</T>
               <T color={c.mute} size={15} style={{ marginTop: 4 }}>Opportunities, matches, schedules and kit — posted by the community. Sign in to apply, contact or follow anyone.</T>
             </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+            <HScroll>
               {[[null, '✨ All'], ...Object.entries(KINDS).map(([k, v]) => [k, `${v.emoji} ${v.label}`])].map(([k, l]) => (
                 <Pressable key={l} onPress={() => setKind(k)} style={{ paddingVertical: 10, paddingHorizontal: 18, borderRadius: 999, backgroundColor: kind === k ? c.ink : c.paper, borderWidth: 1, borderColor: kind === k ? c.ink : c.line }}><T weight="700" size={14} color={kind === k ? '#fff' : '#334155'}>{l}</T></Pressable>
               ))}
-            </ScrollView>
+            </HScroll>
             <View style={{ flexDirection: wide ? 'row' : 'column', gap: 10 }}>
-              <TextInput value={q} onChangeText={setQ} placeholder="Search wanted ads, matches, kit…" placeholderTextColor="#94A3B8" style={[fam, { flex: 1, backgroundColor: c.paper, borderRadius: 14, borderWidth: 1, borderColor: c.line, paddingHorizontal: 16, paddingVertical: 12, fontSize: 15 }, isWeb && { outlineStyle: 'none' }]} />
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, alignItems: 'center' }} style={{ flexGrow: 0 }}>
+              <TextInput value={q} onChangeText={setQ} placeholder="Search wanted ads, matches, kit…" placeholderTextColor="#94A3B8" style={[fam, { flex: wide ? 0 : undefined, width: wide ? 300 : undefined, backgroundColor: c.paper, borderRadius: 14, borderWidth: 1, borderColor: c.line, paddingHorizontal: 16, paddingVertical: 12, fontSize: 15 }, isWeb && { outlineStyle: 'none' }]} />
+              <HScroll gap={6} style={wide ? { flex: 1 } : undefined}>
                 <Pressable onPress={() => setSport(null)} style={{ paddingVertical: 8, paddingHorizontal: 14, borderRadius: 999, backgroundColor: sport ? c.paper : c.pinkSoft }}><T size={13} weight="700" color={c.pink}>All sports</T></Pressable>
-                {(sports.data ?? []).slice(0, 14).map((s) => <Pressable key={s.slug} onPress={() => setSport(s.slug === sport ? null : s.slug)} style={{ paddingVertical: 8, paddingHorizontal: 14, borderRadius: 999, backgroundColor: sport === s.slug ? c.pinkSoft : c.paper, borderWidth: 1, borderColor: sport === s.slug ? c.pink : c.line }}><T size={13} weight="700" color={sport === s.slug ? c.pink : '#334155'}>{s.emoji} {s.name}</T></Pressable>)}
-              </ScrollView>
+                {(sports.data ?? []).map((s) => <Pressable key={s.slug} onPress={() => setSport(s.slug === sport ? null : s.slug)} style={{ paddingVertical: 8, paddingHorizontal: 14, borderRadius: 999, backgroundColor: sport === s.slug ? c.pinkSoft : c.paper, borderWidth: 1, borderColor: sport === s.slug ? c.pink : c.line }}><T size={13} weight="700" color={sport === s.slug ? c.pink : '#334155'}>{s.emoji} {s.name}</T></Pressable>)}
+              </HScroll>
             </View>
 
             {err ? <T color={c.red} weight="600">{err}</T> : null}

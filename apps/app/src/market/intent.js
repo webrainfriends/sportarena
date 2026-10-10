@@ -12,5 +12,6 @@ export const INTENT_COPY = {
   react: ['Sign in to join the conversation', 'Like and comment once you are in.'],
   post: ['Sign in to post', 'Share a wanted ad, match, schedule, sale or campaign with the arena.'],
   advertise: ['Sign in to advertise', 'Submit a campaign for review and reach the whole arena.'],
+  book: ['Sign in to book this venue', 'Create a free account or log in. We will take you straight to the booking with your court and date ready.'],
   join: ['Join the arena', 'One account for athletes, coaches, organizers, venues and sponsors.'],
 };
