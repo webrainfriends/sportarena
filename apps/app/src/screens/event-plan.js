@@ -42,8 +42,8 @@ export function EventPlan({ id }) {
         <H1 color="#fff" style={{ fontSize: 26 }}>{e.name}</H1>
         <T color="#fff" weight="800">Planning{p.event.days_to_go != null ? ` · ${p.event.days_to_go >= 0 ? `${p.event.days_to_go} days to go` : `${-p.event.days_to_go} days ago`}` : ''}{e.starts_on ? ` · ${day(e.starts_on)}${e.ends_on && e.ends_on !== e.starts_on ? ` – ${day(e.ends_on)}` : ''}` : ''}</T>
       </GradCard>
-      <View style={{ marginTop: 10 }}><Seg options={[['overview', 'Overview'], ['requests', 'Contact & book'], ['budget', 'Budget'], ['tasks', 'Tasks']].map(([value, label]) => ({ value, label }))} value={tab} onChange={setTab} color={c.pink} /></View>
-      {tab === 'overview' ? <Overview {...P} go={setTab} /> : tab === 'requests' ? <Requests {...P} /> : tab === 'budget' ? <Budget {...P} /> : <Tasks {...P} />}
+      <View style={{ marginTop: 10 }}><Seg options={[['overview', 'Overview'], ['venue', 'Venue & courts'], ['requests', 'Contact & book'], ['budget', 'Budget'], ['tasks', 'Tasks']].map(([value, label]) => ({ value, label }))} value={tab} onChange={setTab} color={c.pink} /></View>
+      {tab === 'overview' ? <Overview {...P} go={setTab} /> : tab === 'venue' ? <View style={{ gap: 12, marginTop: 12 }}><EventVenues e={e} toast={toast} onChange={plan.reload} /></View> : tab === 'requests' ? <Requests {...P} /> : tab === 'budget' ? <Budget {...P} /> : <Tasks {...P} />}
     </Screen>
   );
 }
@@ -65,7 +65,7 @@ function Overview({ id, p, toast, push, reload, go }) {
         </Section>
       ) : null}
       <Section title="What is missing" color={c.orange}>
-        {p.todo.length ? p.todo.map((t) => <Row key={t} title={t} />) : <Empty emoji="✅" title="Nothing missing" sub="Venue, cover, crew and budget are in place." />}
+        {p.todo.length ? p.todo.map((t) => <Row key={t} title={t} onPress={/venue/i.test(t) ? () => go('venue') : /request/i.test(t) ? () => go('requests') : /budget/i.test(t) ? () => go('budget') : undefined} />) : <Empty emoji="✅" title="Nothing missing" sub="Venue, cover, crew and budget are in place." />}
       </Section>
       <Section title="Budget at a glance" color={c.mint}>
         <Row title={`Spend forecast ${m(s.expense.forecast_cents, s.currency)}`} sub={`paid ${m(s.expense.paid_cents, s.currency)} · still to pay ${m(s.expense.still_to_pay_cents, s.currency)}`} />

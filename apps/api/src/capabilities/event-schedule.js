@@ -97,7 +97,7 @@ const SCHEDULE_INPUT = {
 const scheduleInput = z.object(SCHEDULE_INPUT);
 
 /** Days the venue cannot host this event: event blackout days, the venue's public holidays, switched-off weekdays. */
-async function skippedDates(c, ev, venue, i, from, to) {
+export async function skippedDates(c, ev, venue, i, from, to) {
   const out = new Map();
   for (const r of (await c.query('SELECT on_date::text AS d, kind, label FROM event_calendar_days WHERE event_id=$1 AND removed_at IS NULL AND (venue_id IS NULL OR venue_id=$2) AND on_date BETWEEN $3 AND $4', [ev.id, venue.id, from, to])).rows) out.set(r.d, `${r.kind}${r.label ? `: ${r.label}` : ''}`);
   if (i.respect_holidays && venue.country) {
