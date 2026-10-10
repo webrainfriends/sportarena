@@ -11,6 +11,7 @@ import { FormSheet } from '../FormSheet';
 import { c, day } from '../theme';
 import { moneyIn } from '../vtime';
 import { locale } from '../locale';
+import { EventVenues } from './event-venues';
 
 const fail = (toast) => (e) => toast('' + e.message);
 const useDo = (toast, refresh) => async (fn, msg) => { try { const r = await fn(); toast(typeof msg === 'function' ? msg(r) : msg); refresh?.(); return r; } catch (e) { fail(toast)(e); return null; } };
