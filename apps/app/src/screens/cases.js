@@ -6,11 +6,12 @@ import { useSession } from '../session';
 import { FormSheet } from '../FormSheet';
 import { Btn, Card, Chip, Empty, ErrorBox, Field, H1, Loading, Row, Screen, Section, Seg, Sheet, T, Tag } from '../ui';
 import { c } from '../theme';
+import { locale } from '../locale';
 
 const STATE = { open: ['Open', c.sunSoft], in_progress: ['In progress', c.cyanSoft], awaiting_user: ['Needs your reply', c.orangeSoft], escalated: ['Escalated', c.pinkSoft], resolved: ['Resolved', c.lime], withdrawn: ['Withdrawn', c.violetSoft] };
 const SLA = { breached: ['SLA breached', c.pinkSoft], at_risk: ['SLA at risk', c.orangeSoft] };
 const stateTag = (s) => <Tag label={STATE[s]?.[0] ?? s} color={STATE[s]?.[1]} />;
-const when = (d) => (d ? new Date(d).toLocaleString() : '');
+const when = (d) => (d ? new Date(d).toLocaleString(locale) : '');
 const label = (s) => String(s).replace(/_/g, ' ');
 
 /** The new-ticket / new-dispute form. `links` pre-fills the record a case is about (e.g. from an invoice). */

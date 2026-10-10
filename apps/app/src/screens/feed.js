@@ -14,6 +14,7 @@ import { PlayerHero, StatTiles, NowStrip, AboutCard, ageOf, COL } from '../hero'
 import { ACTIONS, Item } from './athlete-home';
 import { SportCard } from './player';
 import { localDate } from '../vtime';
+import { locale } from '../locale';
 
 const PAGE = 10;
 
@@ -30,7 +31,7 @@ function Rail({ push }) {
       {games.data?.games?.length ? (
         <Card pad={16}>
           <T weight="800" size={15}>Coming up</T>
-          {games.data.games.slice(0, 4).map((g) => <T key={g.id} size={13} style={{ marginTop: 8 }}>{g.home_name} vs {g.away_name}<T size={12} color={c.mute}>  {new Date(g.scheduled_at).toLocaleDateString()}</T></T>)}
+          {games.data.games.slice(0, 4).map((g) => <T key={g.id} size={13} style={{ marginTop: 8 }}>{g.home_name} vs {g.away_name}<T size={12} color={c.mute}>  {new Date(g.scheduled_at).toLocaleDateString(locale)}</T></T>)}
         </Card>
       ) : null}
     </View>
@@ -68,7 +69,7 @@ export function Feed({ header, narrow }) {
         </View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, marginTop: 12 }}>
           {Object.entries(KINDS).map(([k, v]) => <Pressable key={k} onPress={() => setCompose({ kind: k })} style={{ paddingVertical: 8, paddingHorizontal: 14, borderRadius: 999, backgroundColor: c.bg }}><T size={13} weight="700" color="#334155">{v.emoji} {v.label}</T></Pressable>)}
-          <Pressable onPress={() => setCompose({ ad: true })} style={{ paddingVertical: 8, paddingHorizontal: 14, borderRadius: 999, backgroundColor: '#FEF3C7' }}><T size={13} weight="700" color="#92400E">⭐ Advertise</T></Pressable>
+          <Pressable onPress={() => setCompose({ ad: true })} style={{ paddingVertical: 8, paddingHorizontal: 14, borderRadius: 999, backgroundColor: c.sunSoft }}><T size={13} weight="700" color="#92400E">⭐ Advertise</T></Pressable>
         </ScrollView>
       </Card>
       <Seg options={[{ value: null, label: '✨ All' }, ...Object.entries(KINDS).map(([k, v]) => ({ value: k, label: `${v.emoji} ${v.label}` }))]} value={kind} onChange={setKind} />
@@ -130,7 +131,7 @@ export default function HomeTab() {
     <View>
       <PlayerHero user={user} profile={main} pad={pad} onBell={() => nav.push('Notifications')} onAvatar={() => nav.goTab('Me')} />
       <StatTiles pad={pad} items={tiles} />
-      {game ? <NowStrip pad={pad} title={`${game.home_name} vs ${game.away_name}`} date={[new Date(game.scheduled_at).getDate(), new Date(game.scheduled_at).toLocaleString(undefined, { month: 'short' })]} sub={`${new Date(game.scheduled_at).toLocaleString()}${game.event_name ? ` · ${game.event_name}` : ''}`} onPress={() => nav.goTab('Play')} /> : null}
+      {game ? <NowStrip pad={pad} title={`${game.home_name} vs ${game.away_name}`} date={[new Date(game.scheduled_at).getDate(), new Date(game.scheduled_at).toLocaleString(locale, { month: 'short' })]} sub={`${new Date(game.scheduled_at).toLocaleString(locale)}${game.event_name ? ` · ${game.event_name}` : ''}`} onPress={() => nav.goTab('Play')} /> : null}
       <View style={[wrap, { marginTop: 22 }]}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
           {ACTIONS.map(([emoji, label, go]) => <Chip key={label} label={`${emoji} ${label}`} onPress={() => go(nav)} />)}

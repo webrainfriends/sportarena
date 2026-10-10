@@ -114,7 +114,7 @@ export function VenueBooking({ wide, sport, onBook }) {
           })}
           {g && !courts.length ? <T color={c.mute}>This venue has not listed any courts yet.</T> : null}
 
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: c.ink, borderRadius: 20, padding: 14 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: c.violet, borderRadius: 20, padding: 14 }}>
             <View style={{ flex: 1 }}>
               <T weight="800" size={15} color="#fff" numberOfLines={1}>{pick ? `${pick.res.name} · ${timeIn(pick.slot.starts_at, tz)}` : 'Pick a time to continue'}</T>
               <T size={12} color="#94A3B8">{pick ? `${longDay(pick.date)} · ${moneyIn(pick.slot.price_cents, cur)} · pay after you log in` : 'You only log in once you have chosen.'}</T>

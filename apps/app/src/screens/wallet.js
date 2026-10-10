@@ -9,6 +9,7 @@ import { PaySheet } from '../PaySheet';
 import { MyPlans } from './plans';
 import { c } from '../theme';
 import { moneyIn } from '../vtime';
+import { locale } from '../locale';
 
 const digits = (cur) => { try { return new Intl.NumberFormat('en', { style: 'currency', currency: cur }).resolvedOptions().maximumFractionDigits; } catch { return 2; } };
 const toMinor = (text, cur) => Math.round(Number(String(text).replace(/,/g, '')) * 10 ** digits(cur));
@@ -83,7 +84,7 @@ export function Wallet() {
       <Section title="Gift cards you bought" color={c.pink}>
         {cards.data?.length ? cards.data.map((g) => (
           <Row key={g.id} onPress={() => (g.status === 'awaiting_payment' ? setPay({ id: g.id, type: 'gift_card', label: 'Gift card', amount: g.amount_cents, currency: g.currency }) : showCard(g))}
-            title={`${moneyIn(g.amount_cents, g.currency)} gift card${g.code_hint ? ` · …${g.code_hint}` : ''}`} sub={g.status === 'awaiting_payment' ? 'Tap to pay' : g.status === 'redeemed' ? `Redeemed ${new Date(g.redeemed_at).toLocaleDateString()}` : g.expires_at ? `Valid until ${new Date(g.expires_at).toLocaleDateString()}` : ''}
+            title={`${moneyIn(g.amount_cents, g.currency)} gift card${g.code_hint ? ` · …${g.code_hint}` : ''}`} sub={g.status === 'awaiting_payment' ? 'Tap to pay' : g.status === 'redeemed' ? `Redeemed ${new Date(g.redeemed_at).toLocaleDateString(locale)}` : g.expires_at ? `Valid until ${new Date(g.expires_at).toLocaleDateString(locale)}` : ''}
             right={<Tag label={g.status.replace('_', ' ')} color={g.status === 'active' ? c.mint : g.status === 'awaiting_payment' ? c.sun : c.violetSoft} />} />
         )) : <T size={13} color={c.mute}>None yet.</T>}
       </Section>
@@ -93,14 +94,14 @@ export function Wallet() {
       <Section title="Rewards" color={c.sun}>
         {rewards.data?.length ? rewards.data.map((p) => (
           <Row key={p.venue_id} onPress={() => push('Venue', { id: p.venue_id })} title={`${p.emoji ?? '⭐'} ${p.venue_name}`}
-            sub={p.expiring_soon > 0 ? `${p.expiring_soon} points expire by ${new Date(p.next_expiry).toLocaleDateString()}` : `Worth ${moneyIn(p.points, p.currency)} on your next booking there`}
+            sub={p.expiring_soon > 0 ? `${p.expiring_soon} points expire by ${new Date(p.next_expiry).toLocaleDateString(locale)}` : `Worth ${moneyIn(p.points, p.currency)} on your next booking there`}
             right={<T weight="800">{p.points} pts</T>} />
         )) : <T size={13} color={c.mute}>Venues that run a rewards programme give you points when you pay. They'll show up here.</T>}
       </Section>
 
       <Section title="Activity" color={c.cyan}>
         {d.recent.length ? d.recent.map((l) => (
-          <Row key={l.id} title={`${KIND[l.kind] ?? l.kind}${l.note ? ` · ${l.note}` : ''}`} sub={new Date(l.created_at).toLocaleString()}
+          <Row key={l.id} title={`${KIND[l.kind] ?? l.kind}${l.note ? ` · ${l.note}` : ''}`} sub={new Date(l.created_at).toLocaleString(locale)}
             right={<View style={{ alignItems: 'flex-end' }}><T weight="700" color={l.amount_cents > 0 ? c.lime : c.ink}>{l.amount_cents > 0 ? '+' : '−'}{moneyIn(Math.abs(Number(l.amount_cents)), l.currency)}</T><T size={11} color={c.mute}>bal {moneyIn(Number(l.balance_after), l.currency)}</T></View>} />
         )) : <Empty emoji="👛" title="No activity yet" />}
       </Section>
@@ -124,7 +125,7 @@ export function Wallet() {
             <T size={30} weight="800">{moneyIn(open.amount_cents, open.currency)}</T>
             {open.message ? <T color={c.mute}>"{open.message}"</T> : null}
             {open.code ? <Card color={c.sunSoft}><T size={11} weight="700" color={c.mute}>CODE</T><T size={26} weight="800" style={{ letterSpacing: 2 }}>{open.code}</T></Card> : null}
-            <T size={12} color={c.mute}>{open.status === 'redeemed' ? 'This card has been redeemed.' : open.expires_at ? `Valid until ${new Date(open.expires_at).toLocaleDateString()}. Works once, in ${open.currency}.` : ''}</T>
+            <T size={12} color={c.mute}>{open.status === 'redeemed' ? 'This card has been redeemed.' : open.expires_at ? `Valid until ${new Date(open.expires_at).toLocaleDateString(locale)}. Works once, in ${open.currency}.` : ''}</T>
             {open.status === 'active' ? <Btn title="Share" onPress={() => share(open)} /> : null}
           </View>
         ) : null}

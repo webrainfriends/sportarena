@@ -7,6 +7,7 @@ import { useNav } from '../nav';
 import { Btn, Card, Chip, Empty, ErrorBox, H2, Loading, Screen, Section, Tag, T } from '../ui';
 import { c } from '../theme';
 import { dateTimeIn, localDate } from '../vtime';
+import { locale } from '../locale';
 
 const KINDS = [['match', 'Matches'], ['team', 'Team'], ['event', 'Events'], ['training', 'Training'], ['venue', 'Venue'], ['health', 'Health']];
 const ICON = { match: '🏟️', team: '👥', event: '🏆', training: '🏋️', venue: '📍', health: '🩺' };
@@ -35,7 +36,7 @@ export function Item({ x, reload }) {
     else if (screen === 'Event' && params.id) nav.push('Event', params);
     else nav.goTab(x.kind === 'training' ? 'Player' : x.kind === 'venue' ? 'Book' : 'Play');
   };
-  const when = x.all_day ? new Date(x.starts_at).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' }) : dateTimeIn(x.starts_at, x.timezone);
+  const when = x.all_day ? new Date(x.starts_at).toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' }) : dateTimeIn(x.starts_at, x.timezone);
   const label = `${x.title}. ${when}. ${STATUS[x.status] ?? x.status}${x.conflict ? '. Overlaps another commitment' : ''}`;
   return (
     <Card onPress={open} style={{ minHeight: 44 }}>

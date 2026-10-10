@@ -9,6 +9,7 @@ import { FormSheet } from '../FormSheet';
 import { useLayout } from '../layout';
 import { c, grad } from '../theme';
 import { localToIso, dateTimeIn } from '../vtime';
+import { locale } from '../locale';
 
 const tz = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return 'UTC'; } })();
 const KINDS = ['skill', 'tactical', 'conditioning', 'strength', 'recovery', 'mobility'].map((value) => ({ value, label: value[0].toUpperCase() + value.slice(1) }));
@@ -56,7 +57,7 @@ export function CoachHome() {
           <StatPill value={h.counts.plans_awaiting_athlete} label="AWAITING ATHLETE" />
         </View>
         <T color="#fff" size={13} style={{ marginTop: 10 }}>
-          {h.verification ? `Verified coach · valid until ${new Date(h.verification.expires_at).toLocaleDateString()}` : 'Credential not verified'} · {h.sports.map((s) => s.name).join(', ') || 'No coaching sport yet'}
+          {h.verification ? `Verified coach · valid until ${new Date(h.verification.expires_at).toLocaleDateString(locale)}` : 'Credential not verified'} · {h.sports.map((s) => s.name).join(', ') || 'No coaching sport yet'}
         </T>
         {h.next_session ? <T color="#fff" weight="700" size={13}>Next: {h.next_session.title ?? 'Coaching session'} · {dateTimeIn(h.next_session.starts_at, tz)}</T> : null}
       </GradCard>
@@ -213,7 +214,7 @@ export function CoachCalendar() {
   const open = useOpen();
   const cal = useLoad(() => api.get('/coach/calendar'), []);
   const items = (cal.data?.items ?? []).filter((x) => x.status !== 'cancelled');
-  const byDay = items.reduce((m, x) => { const k = new Date(x.starts_at).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'short' }); (m[k] ??= []).push(x); return m; }, {});
+  const byDay = items.reduce((m, x) => { const k = new Date(x.starts_at).toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'short' }); (m[k] ??= []).push(x); return m; }, {});
   return (
     <Screen onRefresh={cal.reload}>
       <H1>Coach calendar</H1>

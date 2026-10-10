@@ -16,7 +16,7 @@ const LEVELS = ['beginner', 'amateur', 'semi_pro', 'pro'];
 const ROLES = ['athlete', 'coach', 'referee', 'physio', 'doctor'];
 const nice = (s) => String(s).replace(/_/g, ' ');
 const fmt = (n) => (n === null || n === undefined ? '–' : Number.isInteger(+n) ? String(+n) : (+n).toFixed(1));
-const RESULT = { win: ['W', c.lime, c.limeSoft], draw: ['D', c.mute, c.violetSoft], loss: ['L', c.red, '#FFE4E6'] };
+const RESULT = { win: ['W', c.lime, c.limeSoft], draw: ['D', c.mute, c.violetSoft], loss: ['L', c.red, c.redSoft] };
 
 const Pill = ({ label, fg = c.mute, bg = c.violetSoft }) => (
   <View style={{ backgroundColor: bg, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, alignSelf: 'flex-start' }}>

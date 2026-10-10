@@ -6,9 +6,10 @@ import { useSession } from '../session';
 import { Btn, Card, Empty, ErrorBox, H2, Loading, Row, Screen, Seg, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { c, money } from '../theme';
+import { locale } from '../locale';
 
 const ROLES = ['referee', 'umpire', 'linesman', 'scorer', 'doctor', 'physio', 'medic', 'volunteer', 'security', 'other'];
-const when = (iso) => (iso ? new Date(iso).toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—');
+const when = (iso) => (iso ? new Date(iso).toLocaleString(locale, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—');
 const rn = (n) => (n == null ? '–' : Number(n).toFixed(2));
 
 /** Organiser console for a tournament: invitations & seeding, schedule & bracket, staff, vendors & sponsors. */
