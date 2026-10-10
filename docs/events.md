@@ -51,3 +51,10 @@ One organiser console (`EventAdmin` screen, reached from **Organizer tools → T
 **Vendors, retail, sponsors** (`event-vendors.js`): `invite_event_vendor` (retail, catering, sponsor, other), `respond_event_vendor` (accepting a sponsor invitation records an active event sponsorship), `end_event_vendor`, `list_event_vendors`, `attach_event_product` / `detach_event_product` / `list_event_products` (shop products of confirmed retail vendors), `get_event_commercials` (entry fees, sponsorship, vendor fees, staff cost; recorded only, no payment collection).
 
 All tables are additive and nothing is deleted: invitations, rules, seeds, calendar days, staff and vendor places end in a status or `removed_at`.
+
+## Event venues and court bookings (`event-venues.js`)
+* `find_event_partners` (kind `venue`) and `find_venues_for_sports` now list **live** venues that have courts for the event's sport **or all-purpose courts** (a court with no sport set suits every sport). A multi-sport event with no sports chosen yet sees every venue that has courts. Venues still awaiting platform approval are hidden.
+* `get_event_venues` — every venue the event uses (chosen venue, open/finalized venue requests, court bookings including those made by the tournament scheduler) with its bookings, courts, slots and cost so far.
+* `preview_event_venue_booking` / `book_event_venue` — pick a venue, the event days and a daily time window; shows each court-day as free / booked / blocked / closed / skipped (opening hours, venue blocks, existing bookings, event blackout days and public holidays) with the price. Booking is all-or-nothing unless `skip_unavailable`; it adds a planned *venue* line to the event budget and sets the event venue if it has none.
+* `release_event_booking` — release one booking (the venue's cancellation policy decides any refund).
+* App: **Plan & budget → Venue & courts** (find a venue, pick days with the calendar, times with the time picker, courts as chips, see availability, book).

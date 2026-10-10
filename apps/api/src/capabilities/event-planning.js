@@ -33,7 +33,9 @@ cap({
     let slugs = i.sport ? [i.sport] : (await many("SELECT s.slug FROM event_disciplines d JOIN sports s ON s.id=d.sport_id WHERE d.event_id=$1 AND d.status <> 'cancelled'", [ev.id])).map((r) => r.slug);
     if (!slugs.length) slugs = [(await one('SELECT slug FROM sports WHERE id=$1', [ev.sport_id])).slug];
     const sp = await many('SELECT id FROM sports WHERE slug = ANY($1::text[])', [slugs]);
-    const sportIdsArr = sp.map((s) => s.id);
+    // a multi-sport event with no sports chosen yet (or none matching) can use any venue; courts not tagged with a sport suit every sport
+    const generic = !sp.length || (slugs.length === 1 && slugs[0] === 'multi-sport');
+    const sportIdsArr = generic ? [] : sp.map((s) => s.id);
     const args = [ev.id, i.q ? `%${i.q}%` : null, i.city ?? null, sportIdsArr, i.limit, i.offset];
     const asked = (col) => `EXISTS (SELECT 1 FROM event_requests r WHERE r.event_id=$1 AND r.kind=$7 AND r.${col} AND r.status IN ('draft','sent','quoted','accepted','finalized'))`;
     if (i.kind === 'team') {
@@ -45,9 +47,11 @@ cap({
     }
     if (i.kind === 'venue') {
       return many(`SELECT v.id, 'venue_id' AS key, v.name, v.emoji, v.city, count(r.id)::int AS detail_count, min(NULLIF(r.hourly_rate_cents,0)) AS from_rate_cents,
+                          count(r.id) FILTER (WHERE r.sport_id = ANY($4::uuid[]))::int AS sport_courts, count(r.id) FILTER (WHERE r.sport_id IS NULL)::int AS all_purpose_courts,
                           ${asked('venue_id=v.id')} AS already_asked
-                     FROM venues v JOIN resources r ON r.venue_id=v.id AND r.active AND r.sport_id = ANY($4::uuid[])
-                    WHERE ($2::text IS NULL OR v.name ILIKE $2) AND ($3::text IS NULL OR lower(v.city)=lower($3)) GROUP BY v.id ORDER BY v.name LIMIT $5 OFFSET $6`, [...args, 'venue']);
+                     FROM venues v JOIN resources r ON r.venue_id=v.id AND r.active AND (cardinality($4::uuid[]) = 0 OR r.sport_id IS NULL OR r.sport_id = ANY($4::uuid[]))
+                    WHERE v.active AND ($2::text IS NULL OR v.name ILIKE $2 OR v.city ILIKE $2) AND ($3::text IS NULL OR lower(v.city)=lower($3))
+                    GROUP BY v.id ORDER BY count(r.id) FILTER (WHERE r.sport_id = ANY($4::uuid[])) DESC, count(r.id) DESC, v.name LIMIT $5 OFFSET $6`, [...args, 'venue']);
     }
     if (i.kind === 'sponsor') {
       return many(`SELECT s.id, 'sponsor_id' AS key, s.name, s.emoji, s.industry AS city, ${asked('sponsor_id=s.id')} AS already_asked FROM sponsors s
@@ -71,7 +75,7 @@ cap({
 
 cap({
   name: 'find_venues_for_sports', method: 'GET', path: '/venue-finder', tag: TAG, auth: 'public',
-  summary: 'For each chosen sport, the venues that actually have courts/grounds for it (optionally in a city), with how many bookable spots and the lowest hourly rate — so an organiser can pick one venue per sport.',
+  summary: 'For each chosen sport, the venues that actually have courts/grounds for it (optionally in a city), (courts for that sport, plus all-purpose courts not tied to one sport) with how many bookable spots and the lowest hourly rate — so an organiser can pick one venue per sport.',
   input: z.object({ sports: z.string().min(1).describe('comma separated sport slugs'), city: z.string().max(80).optional() }),
   async handler(_, i) {
     const slugs = [...new Set(i.sports.split(',').map((s) => s.trim()).filter(Boolean))].slice(0, 30);
@@ -81,7 +85,8 @@ cap({
       if (!s) continue;
       out.push({ sport: s.slug, name: s.name, emoji: s.emoji, venues: await many(
         `SELECT v.id, v.name, v.emoji, v.city, count(r.id)::int AS spots, min(NULLIF(r.hourly_rate_cents,0)) AS from_rate_cents
-           FROM venues v JOIN resources r ON r.venue_id=v.id AND r.active AND r.sport_id=$1 WHERE ($2::text IS NULL OR lower(v.city)=lower($2)) GROUP BY v.id ORDER BY count(r.id) DESC, v.name LIMIT 20`, [s.id, i.city ?? null]) });
+           FROM venues v JOIN resources r ON r.venue_id=v.id AND r.active AND (r.sport_id=$1 OR r.sport_id IS NULL) WHERE v.active AND ($2::text IS NULL OR lower(v.city)=lower($2))
+          GROUP BY v.id ORDER BY count(r.id) FILTER (WHERE r.sport_id=$1) DESC, count(r.id) DESC, v.name LIMIT 20`, [s.id, i.city ?? null]) });
     }
     return out;
   },
