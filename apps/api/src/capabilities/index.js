@@ -42,6 +42,7 @@ import './insurance.js';
 import './insurance-desk.js';
 import './insurance-quotes.js';
 import './insurance-docs.js';
+import './subject-docs.js';
 import './community.js';
 import './home.js';
 import './athlete-schedule.js';

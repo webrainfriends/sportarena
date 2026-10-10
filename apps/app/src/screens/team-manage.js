@@ -8,6 +8,7 @@ import { Avatar, Btn, Card, Chip, Empty, ErrorBox, Field, GradCard, H1, Loading,
 import { FormSheet } from '../FormSheet';
 import { c, when, day } from '../theme';
 import { moneyIn } from '../vtime';
+import { SubjectPanel } from './insurance';
 
 export const AVAIL = {
   available: ['✅', 'Available', c.mint], tentative: ['🤔', 'Maybe', c.sun], unavailable: ['⛔', 'Unavailable', c.orange], injured: ['🤕', 'Injured', c.pink],
@@ -46,7 +47,7 @@ export function TeamManage({ id }) {
   const t = team.data, r = roster.data;
   if (!r.can_manage) return <Screen><Empty emoji="🔒" title="Managers only" sub="Only the team owner or managers can manage this team." /></Screen>;
   const P = { t, r, reload: () => { team.reload(); roster.reload(); }, toast };
-  const tabs = [['roster', 'Roster'], ['squads', 'Matches & squads'], ['recruit', 'Recruit'], ...(r.can_manage_money ? [['money', 'Rates & settlement']] : [])];
+  const tabs = [['roster', 'Roster'], ['squads', 'Matches & squads'], ['recruit', 'Recruit'], ['docs', 'Documents & insurance'], ...(r.can_manage_money ? [['money', 'Rates & settlement']] : [])];
   return (
     <Screen wide>
       <GradCard colors={[t.color, c.ink]}>
@@ -54,10 +55,13 @@ export function TeamManage({ id }) {
         <T color="#fff" weight="800">Team management · {t.sport_emoji} {t.sport} · pays in {r.currency}</T>
       </GradCard>
       <View style={{ marginTop: 10 }}><Seg options={tabs.map(([value, label]) => ({ value, label }))} value={tab} onChange={setTab} color={c.violet} /></View>
-      {tab === 'roster' ? <RosterTab {...P} /> : tab === 'squads' ? <SquadsTab {...P} /> : tab === 'recruit' ? <RecruitTab {...P} /> : <MoneyTab {...P} />}
+      {tab === 'roster' ? <RosterTab {...P} /> : tab === 'squads' ? <SquadsTab {...P} /> : tab === 'recruit' ? <RecruitTab {...P} /> : tab === 'docs' ? <DocsTab {...P} /> : <MoneyTab {...P} />}
     </Screen>
   );
 }
+
+// ------------------------------------------------------------------ documents & insurance
+const DocsTab = ({ t }) => <SubjectPanel type="team" id={t.id} name={t.name} />;
 
 // ------------------------------------------------------------------ roster
 function RosterTab({ t, r, reload, toast }) {

@@ -15,7 +15,7 @@ import { DocumentsSheet, RequestSheet, StatusTag, dayY, nice } from './insurance
 const cur = (cents, currency) => (currency ? moneyIn(Number(cents), currency) : money(Number(cents)));
 const major = (cents, currency) => { let d = 2; try { d = new Intl.NumberFormat('en', { style: 'currency', currency: currency ?? 'INR' }).resolvedOptions().maximumFractionDigits; } catch { /* keep 2 */ } return String(Number(cents) / 10 ** d); };
 const list = (v) => String(v ?? '').split(',').map((x) => x.trim()).filter(Boolean);
-const COVER = { individual: 'Individual', team: 'Team', event: 'Event / tournament' };
+const COVER = { individual: 'Individual', team: 'Team', event: 'Event / tournament', venue: 'Venue' };
 const TABS = [['today', 'Today'], ['requests', 'Requests'], ['quotes', 'Quotes'], ['policies', 'Policies'], ['claims', 'Claims'], ['plans', 'Plans'], ['profile', 'Profile']];
 
 const profileFields = (cur_) => [
@@ -99,6 +99,60 @@ function DirectOffer({ visible, onClose, onPick }) {
   );
 }
 
+// ------------------------------------------------------------------------------------------ marketplace (Billboard)
+
+/** Why the inbox may be empty: paused profile, own requests (you cannot quote yourself), or simply nothing open yet. */
+export function InboxHint({ reloadKey }) {
+  const s = useLoad(() => api.get('/insurance/insurer/summary'), [reloadKey]);
+  const i = s.data?.inbox;
+  if (!i) return null;
+  const notes = [
+    i.status !== 'active' ? 'Your insurer profile is suspended, so you do not receive requests.' : null,
+    i.status === 'active' && !i.accepting_requests ? 'You are paused: switch on "Accept new quote requests" in Profile to see the Billboard requests.' : null,
+    i.own_requests_hidden ? `${i.own_requests_hidden} open request${i.own_requests_hidden === 1 ? ' is' : 's are'} yours: an insurer cannot quote its own login. Use a separate account to ask for cover.` : null,
+    i.status === 'active' && i.accepting_requests && !i.market_open ? 'No one else has an open request right now. New ones appear here and you get a notification.' : null,
+  ].filter(Boolean);
+  return notes.length ? <Card color={c.sunSoft} pad={12}>{notes.map((t) => <T key={t} size={13}>{t}</T>)}</Card> : null;
+}
+
+/** The Billboard's Insurance tab: requests open to every insurer. Insurers answer them here; everyone can ask for cover. */
+export function InsuranceMarket({ onAsk }) {
+  const { user } = useSession();
+  const { push } = useNav();
+  const isInsurer = user?.roles?.includes('insurer');
+  const [cover, setCover] = useState('');
+  const [open, setOpen] = useState(null);
+  const [ask, setAsk] = useState(null);
+  const [tick, setTick] = useState(0);
+  const m = useLoad(() => (isInsurer ? api.get('/insurance/market', { limit: 50, ...(cover ? { cover_for: cover } : {}) }) : Promise.resolve([])), [isInsurer, cover, tick]);
+  return (
+    <>
+      <Card color={c.cyanSoft} pad={14}>
+        <T weight="900" size={16}>Insurance marketplace</T>
+        <T size={13} color={c.mute}>Players, coaches, teams, venues and event managers ask for cover here. Any insurer can send a quote, and the asker compares them all, chats with the insurers and accepts one.</T>
+        <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+          <Btn small title="Ask for insurance quotes" onPress={onAsk} />
+          {isInsurer ? <Btn small title="My insurer desk" color={c.paper} ink={c.ink} onPress={() => push('InsurerDesk')} /> : null}
+        </View>
+      </Card>
+      {!isInsurer ? <T size={13} color={c.mute}>Are you an insurer or agent? Add the Insurer role under Me to answer these requests.</T> : <>
+        <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>{[['', 'All'], ...Object.entries(COVER)].map(([v, l]) => <Chip key={v} label={l} active={cover === v} onPress={() => setCover(v)} />)}</View>
+        <InboxHint reloadKey={tick} />
+        {m.loading && !m.data ? <Loading /> : m.error ? <ErrorBox error={m.error} onRetry={m.reload} /> : m.data?.length ? m.data.map((x) => (
+          <Card key={x.id} pad={12} onPress={() => setOpen(x.id)}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}><T weight="800" style={{ flex: 1 }}>{x.subject_name ?? COVER[x.cover_for]}</T>{x.my_quote_status ? <StatusTag s={x.my_quote_status} /> : <Tag label="Needs a quote" color={c.sun} />}</View>
+            <T size={12} color={c.mute}>{COVER[x.cover_for]} · {x.months} months{x.participants ? ` · ${x.participants} people` : ''}{x.sport ? ` · ${x.sport}` : ''}{x.city ? ` · ${x.city}` : ''} · {day(x.created_at)}</T>
+            <T size={12} color={c.mute}>{x.quotes ? `${x.quotes} quote${x.quotes === 1 ? '' : 's'} so far` : 'No quotes yet'}</T>
+            {!x.my_quote_id ? <Btn small title="Send a quote" onPress={() => setAsk({ request_id: x.id, cover_for: x.cover_for, months: x.months })} style={{ marginTop: 8, alignSelf: 'flex-start' }} /> : null}
+          </Card>
+        )) : <Empty emoji="📭" title="No open requests" sub="New requests appear here as soon as someone asks." />}
+      </>}
+      <RequestSheet id={open} asInsurer onClose={() => setOpen(null)} onChanged={() => setTick((x) => x + 1)} onQuote={(req) => { setOpen(null); setAsk({ request_id: req.id, cover_for: req.cover_for, months: req.months }); }} />
+      <QuoteFlow ask={ask} onClose={() => setAsk(null)} onDone={() => setTick((x) => x + 1)} />
+    </>
+  );
+}
+
 // ------------------------------------------------------------------------------------------------------------- tabs
 
 function Requests({ onQuote, reloadKey }) {
@@ -108,12 +162,13 @@ function Requests({ onQuote, reloadKey }) {
   return (
     <Section title="Quote requests" color={c.sun}>
       <View style={{ flexDirection: 'row', gap: 6 }}><Chip label="To answer" active={only} onPress={() => setOnly(true)} /><Chip label="All open" active={!only} onPress={() => setOnly(false)} /></View>
+      <InboxHint reloadKey={reloadKey} />
       {r.loading && !r.data ? <Loading /> : r.error ? <ErrorBox error={r.error} onRetry={r.reload} /> : r.data?.length ? r.data.map((x) => (
         <Card key={x.id} pad={12} onPress={() => setOpen(x.id)}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}><T weight="800" style={{ flex: 1 }}>{x.subject_name ?? COVER[x.cover_for]}</T>{x.my_quote_status ? <StatusTag s={x.my_quote_status} /> : <Tag label="Needs a quote" color={c.sun} />}</View>
-          <T size={12} color={c.mute}>{COVER[x.cover_for]} · {x.months} months{x.participants ? ` · ${x.participants} people` : ''}{x.sport ? ` · ${x.sport}` : ''} · from {x.requester} · {day(x.created_at)}</T>
+          <T size={12} color={c.mute}>{COVER[x.cover_for]} · {x.months} months{x.participants ? ` · ${x.participants} people` : ''}{x.sport ? ` · ${x.sport}` : ''}{x.city ? ` · ${x.city}` : ''} · from {x.requester} · {day(x.created_at)}</T>
           {x.plan_name ? <T size={12} color={c.mute}>About your plan {x.plan_name}</T> : null}
-          {!x.insurer_id ? <T size={12} color={c.mute}>Open to all insurers</T> : null}
+          {!x.insurer_id ? <T size={12} color={c.mute}>Open to all insurers (Billboard)</T> : null}
         </Card>
       )) : <Empty emoji="📭" title={only ? 'Nothing waiting' : 'No open requests'} sub="New requests addressed to you, or open to every insurer, show up here." />}
       <RequestSheet id={open} asInsurer onClose={() => setOpen(null)} onChanged={r.reload} onQuote={(req) => { setOpen(null); onQuote({ request_id: req.id, cover_for: req.cover_for, months: req.months }); }} />

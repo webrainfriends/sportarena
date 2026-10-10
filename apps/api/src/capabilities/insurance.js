@@ -8,11 +8,13 @@ import { audit, hasRole, isAdmin, mustFind } from '../helpers.js';
 import { decrypt, encrypt } from '../crypto.js';
 import { randomBytes } from 'node:crypto';
 import { canManageTeam } from './teams.js';
+import { hasOrgGrant } from '../org-access.js';
 import { paymentsEnabled } from '../payments/service.js';
 
 export const mask = (n) => (n ? `••••${n.slice(-4)}` : null);
 
 const PLAN_STATUS = ['active', 'retired'];
+export const COVER_FOR = ['individual', 'team', 'event', 'venue'];
 export const ageOf = (dob) => { const d = new Date(dob); if (isNaN(d)) return null; const n = new Date(); let a = n.getFullYear() - d.getFullYear(); if (n < new Date(n.getFullYear(), d.getMonth(), d.getDate())) a--; return a; };
 
 /** One normalised plan card. Exclusions and conditions are always part of it: they are never hidden by sorting or ranking. */
@@ -90,7 +92,7 @@ cap({
   name: 'list_insurance_plans', method: 'GET', path: '/insurance/plans', tag: 'Insurance', auth: 'public',
   summary: 'Search insurance plans. Filter by what is covered (individual/team/event), sport, insurer, verified insurers, premium range, policy term, the buyer\'s age, and text; sort by premium, coverage, deductible or name. Every card carries the same normalised terms including exclusions and conditions, and nothing here is personal data. Only active plans unless you ask for retired ones.',
   input: z.object({
-    cover_for: z.enum(['individual', 'team', 'event']).optional(), q: z.string().max(80).optional(), sport: z.string().max(60).optional().describe('sport slug; plans for all sports also match'),
+    cover_for: z.enum(COVER_FOR).optional(), q: z.string().max(80).optional(), sport: z.string().max(60).optional().describe('sport slug; plans for all sports also match'),
     insurer_id: id.optional(), verified_insurer: z.coerce.boolean().optional(), max_premium_cents: z.coerce.number().int().min(0).optional(), min_premium_cents: z.coerce.number().int().min(0).optional(),
     min_coverage_cents: z.coerce.number().int().min(0).optional(), term_months: z.coerce.number().int().min(1).max(120).optional(), age: z.coerce.number().int().min(0).max(120).optional().describe('only plans this age may buy'),
     status: z.enum(PLAN_STATUS).default('active'), sort: z.enum(['premium', 'coverage', 'deductible', 'name']).default('premium'), ...page,
@@ -130,7 +132,7 @@ cap({
 });
 
 const planFields = {
-  name: z.string().min(2).max(120), cover_for: z.enum(['individual', 'team', 'event']), premium_cents: money, coverage_cents: money, description: z.string().max(1000).optional(), emoji: z.string().max(8).optional(),
+  name: z.string().min(2).max(120), cover_for: z.enum(COVER_FOR), premium_cents: money, coverage_cents: money, description: z.string().max(1000).optional(), emoji: z.string().max(8).optional(),
   currency: z.string().length(3).transform((x) => x.toUpperCase()).optional(), sports: z.array(z.string().max(60)).max(30).optional(), min_age: z.number().int().min(0).max(120).nullable().optional(), max_age: z.number().int().min(0).max(120).nullable().optional(),
   term_months_min: z.number().int().min(1).max(120).optional(), term_months_max: z.number().int().min(1).max(120).optional(), waiting_period_days: z.number().int().min(0).max(730).optional(), deductible_cents: money.optional(),
   exclusions: z.string().max(4000).nullable().optional(), conditions: z.string().max(4000).nullable().optional(),
@@ -186,18 +188,49 @@ cap({
   },
 });
 
-/** Who is being covered: you, a team you manage or an event you organise. Throws if you may not insure that subject; returns its id. */
-export async function checkSubject(user, coverFor, subjectId) {
-  if (coverFor !== 'individual' && !subjectId) throw badRequest('subject_id is required for team/event cover');
-  const subject = coverFor === 'individual' ? user.id : subjectId;
-  if (coverFor === 'team' && !(await canManageTeam(user, await mustFind('teams', subject)))) throw forbidden('You do not manage that team');
-  if (coverFor === 'event') {
-    const ev = await mustFind('events', subject);
-    if (!isAdmin(user) && ev.organizer_id !== user.id) throw forbidden('You do not organise that event');
+/**
+ * How `user` stands with what is to be covered: 'manage' (may buy, accept and renew: you, your team's / event's / venue's
+ * managers and organisers) or 'member' (may ask for quotes: the team's roster, an event's active sponsors, a venue's staff), else null.
+ */
+export async function standing(user, coverFor, subjectId) {
+  if (coverFor === 'individual') return 'manage';
+  if (!subjectId) throw badRequest(`subject_id is required for ${coverFor} cover`);
+  if (coverFor === 'team') {
+    const t = await mustFind('teams', subjectId);
+    if (await canManageTeam(user, t)) return 'manage';
+    return (await one("SELECT 1 FROM team_members WHERE team_id=$1 AND user_id=$2 AND status='active'", [t.id, user.id])) ? 'member' : null;
   }
-  return subject;
+  if (coverFor === 'event') {
+    const ev = await mustFind('events', subjectId);
+    if (isAdmin(user) || ev.organizer_id === user.id || await hasOrgGrant(user, ev.organisation_id, ['owner', 'admin'])) return 'manage';
+    return (await one("SELECT 1 FROM sponsorships s JOIN sponsors sp ON sp.id=s.sponsor_id WHERE s.target_type='event' AND s.target_id=$1 AND sp.owner_id=$2 AND s.status='active'", [ev.id, user.id])) ? 'member' : null;
+  }
+  const v = await mustFind('venues', subjectId);
+  if (isAdmin(user) || v.owner_id === user.id || await hasOrgGrant(user, v.organisation_id, ['owner', 'admin'])) return 'manage';
+  const staff = await one('SELECT role FROM venue_staff WHERE venue_id=$1 AND user_id=$2 AND removed_at IS NULL', [v.id, user.id]);
+  return staff ? (staff.role === 'manager' ? 'manage' : 'member') : null;
 }
-export const subjectName = (typeCol, idCol) => `CASE ${typeCol} WHEN 'team' THEN (SELECT name FROM teams WHERE id=${idCol}) WHEN 'event' THEN (SELECT name FROM events WHERE id=${idCol}) END`;
+
+/** Who is being covered: you, a team you manage, an event you organise or a venue you run. level 'request' also lets members and sponsors ask. Returns the subject id. */
+export async function checkSubject(user, coverFor, subjectId, level = 'manage') {
+  const s = await standing(user, coverFor, subjectId);
+  const subject = coverFor === 'individual' ? user.id : subjectId;
+  if (s === 'manage' || (level === 'request' && s === 'member')) return subject;
+  throw forbidden(level === 'request' ? `You are not part of that ${coverFor}` : `You do not manage that ${coverFor}`);
+}
+
+/** Ids of the teams, events and venues `user` manages: their quotes and policies are theirs to follow and decide. (ids are unique across tables) */
+export async function managedSubjects(user) {
+  const grant = "SELECT m.organisation_id FROM organisation_members m JOIN organisations o ON o.id=m.organisation_id WHERE m.user_id=$1 AND m.status='active' AND o.status='active'";
+  const r = await many(
+    `SELECT t.id FROM teams t WHERE t.owner_id=$1 OR EXISTS (SELECT 1 FROM team_members m WHERE m.team_id=t.id AND m.user_id=$1 AND m.status='active' AND m.role IN ('captain','manager'))
+        OR t.organisation_id IN (${grant} AND m.role IN ('owner','admin','coach'))
+     UNION SELECT e.id FROM events e WHERE e.organizer_id=$1 OR e.organisation_id IN (${grant} AND m.role IN ('owner','admin'))
+     UNION SELECT v.id FROM venues v WHERE v.owner_id=$1 OR EXISTS (SELECT 1 FROM venue_staff s WHERE s.venue_id=v.id AND s.user_id=$1 AND s.role='manager' AND s.removed_at IS NULL)
+        OR v.organisation_id IN (${grant} AND m.role IN ('owner','admin'))`, [user.id]);
+  return r.map((x) => x.id);
+}
+export const subjectName = (typeCol, idCol) => `CASE ${typeCol} WHEN 'team' THEN (SELECT name FROM teams WHERE id=${idCol}) WHEN 'event' THEN (SELECT name FROM events WHERE id=${idCol}) WHEN 'venue' THEN (SELECT name FROM venues WHERE id=${idCol}) END`;
 
 /**
  * Is `user` allowed to buy this plan for this subject? Throws a clear error otherwise; returns the subject id.
@@ -263,17 +296,17 @@ cap({
 
 cap({
   name: 'list_policies', method: 'GET', path: '/insurance/policies', tag: 'Insurance',
-  summary: 'Your policies (policy numbers masked; use get_policy for full details), each with days left, whether renewal is due (30 days before the end) or already done, and how many documents are stored. Filter renewal_due=true for the ones to renew.',
+  summary: 'Your policies, and those of the teams, events and venues you manage (policy numbers masked; use get_policy for full details), each with days left, whether renewal is due (30 days before the end) or already done, and how many documents are stored. Filter renewal_due=true for the ones to renew.',
   input: z.object({ renewal_due: z.coerce.boolean().optional(), ...page }),
   async handler({ user }, i) {
     const rows = await many(
       `SELECT p.*, pl.name AS plan_name, pl.insurer, pl.insurer_id, pl.coverage_cents, pl.emoji, (CASE WHEN p.ends_on < current_date AND p.status='active' THEN 'expired' ELSE p.status END) AS effective_status,
          (p.ends_on - current_date) AS days_left, (SELECT id FROM insurance_policies r WHERE r.renewed_from = p.id) AS renewed_by,
          (SELECT count(*)::int FROM insurance_documents d WHERE d.policy_id=p.id AND d.removed_at IS NULL) AS documents,
-         CASE p.subject_type WHEN 'team' THEN (SELECT name FROM teams WHERE id=p.subject_id) WHEN 'event' THEN (SELECT name FROM events WHERE id=p.subject_id) END AS subject_name
-       FROM insurance_policies p JOIN insurance_plans pl ON pl.id=p.plan_id WHERE p.holder_id=$1
+         ${subjectName('p.subject_type', 'p.subject_id')} AS subject_name
+       FROM insurance_policies p JOIN insurance_plans pl ON pl.id=p.plan_id WHERE (p.holder_id=$1 OR (p.subject_type<>'individual' AND p.subject_id = ANY($5::uuid[])))
          AND (NOT $4 OR (p.status='active' AND p.ends_on <= current_date + 30 AND NOT EXISTS (SELECT 1 FROM insurance_policies r WHERE r.renewed_from = p.id)))
-       ORDER BY p.created_at DESC LIMIT $2 OFFSET $3`, [user.id, i.limit, i.offset, !!i.renewal_due]);
+       ORDER BY p.created_at DESC LIMIT $2 OFFSET $3`, [user.id, i.limit, i.offset, !!i.renewal_due, await managedSubjects(user)]);
     return rows.map(({ policy_no_enc, beneficiary_enc, renewal_notice_days, ...r }) => ({
       ...r, policy_no: mask(decrypt(policy_no_enc, 'insurance_policies.policy_no')), days_left: Number(r.days_left),
       renewal_due: r.status === 'active' && Number(r.days_left) <= 30 && !r.renewed_by,

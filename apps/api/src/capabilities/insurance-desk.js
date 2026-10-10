@@ -7,7 +7,7 @@ import { badRequest, conflict } from '../errors.js';
 import { config } from '../config.js';
 import { audit } from '../helpers.js';
 import { decrypt, encrypt } from '../crypto.js';
-import { card, myInsurer, PLAN_SQL } from './insurance.js';
+import { card, COVER_FOR, myInsurer, PLAN_SQL, subjectName } from './insurance.js';
 
 const profileFields = {
   description: z.string().max(1000).nullable().optional(), headline: z.string().max(140).nullable().optional(), website: z.string().url().nullable().optional(),
@@ -85,7 +85,7 @@ cap({
     const ins = await myInsurer(user);
     const rows = await many(
       `SELECT p.id, p.plan_id, pl.name AS plan_name, p.holder_id, u.display_name AS holder, p.subject_type, p.subject_id,
-              CASE p.subject_type WHEN 'team' THEN (SELECT name FROM teams WHERE id=p.subject_id) WHEN 'event' THEN (SELECT name FROM events WHERE id=p.subject_id) END AS subject_name,
+              ${subjectName('p.subject_type', 'p.subject_id')} AS subject_name,
               p.status, (CASE WHEN p.ends_on < current_date AND p.status='active' THEN 'expired' ELSE p.status END) AS effective_status, p.starts_on, p.ends_on, (p.ends_on - current_date)::int AS days_left,
               p.amount_cents, (p.terms->>'coverage_cents')::bigint AS coverage_cents, p.quote_id, p.renewed_from,
               EXISTS (SELECT 1 FROM insurance_policies r WHERE r.renewed_from = p.id) AS renewed, p.policy_no_enc
@@ -99,13 +99,14 @@ cap({
 
 cap({
   name: 'get_insurer_summary', method: 'GET', path: '/insurance/insurer/summary', tag: 'Insurance', auth: ['insurer'],
-  summary: 'Your desk at a glance: requests waiting for a quote, quotes out, quotes accepted, live policies, policies expiring within 30 days that have not renewed, open claims, and premium written on live policies.',
+  summary: 'Your desk at a glance: requests waiting for a quote, quotes out, quotes accepted, live policies, policies expiring within 30 days that have not renewed, open claims, and premium written on live policies. `inbox` says whether you can receive open requests (profile active, accepting requests), how many open requests are on the Billboard, and how many open requests are your own (you cannot quote those).',
   input: z.object({}),
   async handler({ user }) {
     const ins = await myInsurer(user);
-    return one(
+    const takes = ins.accepting_requests && ins.status === 'active';
+    const s = await one(
       `SELECT
-         (SELECT count(*)::int FROM insurance_quote_requests r WHERE r.status IN ('open','quoted') AND (r.insurer_id=$1 OR (r.insurer_id IS NULL AND $2))
+         (SELECT count(*)::int FROM insurance_quote_requests r WHERE r.status IN ('open','quoted') AND r.requester_id<>$4 AND (r.insurer_id=$1 OR (r.insurer_id IS NULL AND $2))
             AND NOT EXISTS (SELECT 1 FROM insurance_quotes q WHERE q.request_id=r.id AND q.insurer_id=$1) AND NOT EXISTS (SELECT 1 FROM insurance_request_declines d WHERE d.request_id=r.id AND d.insurer_id=$1)) AS requests_waiting,
          (SELECT count(*)::int FROM insurance_quotes WHERE insurer_id=$1 AND status='offered' AND valid_until >= current_date) AS quotes_out,
          (SELECT count(*)::int FROM insurance_quotes WHERE insurer_id=$1 AND status='accepted') AS quotes_accepted,
@@ -114,7 +115,34 @@ cap({
             AND NOT EXISTS (SELECT 1 FROM insurance_policies r WHERE r.renewed_from=p.id)) AS expiring_soon,
          (SELECT count(*)::int FROM insurance_claims cl JOIN insurance_policies p ON p.id=cl.policy_id JOIN insurance_plans pl ON pl.id=p.plan_id WHERE pl.insurer_id=$1 AND cl.status IN ('submitted','under_review')) AS open_claims,
          (SELECT coalesce(sum(p.amount_cents),0)::bigint FROM insurance_policies p JOIN insurance_plans pl ON pl.id=p.plan_id WHERE pl.insurer_id=$1 AND p.status='active' AND p.ends_on >= current_date) AS premium_live_cents,
+         (SELECT count(*)::int FROM insurance_quote_requests r WHERE r.status IN ('open','quoted') AND r.insurer_id IS NULL AND r.requester_id<>$4) AS market_open,
+         (SELECT count(*)::int FROM insurance_quote_requests r WHERE r.status IN ('open','quoted') AND (r.insurer_id IS NULL OR r.insurer_id=$1) AND r.requester_id=$4) AS own_hidden,
          $3::text AS currency`,
-      [ins.id, ins.accepting_requests && ins.status === 'active', config.payments.currency]);
+      [ins.id, takes, config.payments.currency, user.id]);
+    const { market_open, own_hidden, ...rest } = s;
+    return { ...rest, inbox: { status: ins.status, accepting_requests: ins.accepting_requests, market_open, own_requests_hidden: own_hidden } };
+  },
+});
+
+cap({
+  name: 'list_insurance_market', method: 'GET', path: '/insurance/market', tag: 'Insurance', auth: ['insurer'],
+  summary: 'The insurance marketplace on the Billboard: requests open to every insurer (people, teams, events and venues asking for quotes), newest first, with what is wanted (cover, who or what, sport, city, people, months), how many quotes it already has and your own quote on it. Needs an active insurer profile that takes requests. Details a requester wrote in a note are only readable through get_quote_request. Answer with create_quote; pass on one with decline_quote_request.',
+  input: z.object({ cover_for: z.enum(COVER_FOR).optional(), sport: z.string().max(60).optional(), city: z.string().max(80).optional(), unanswered: z.coerce.boolean().optional().describe('only requests you have not quoted yet'), ...page }),
+  async handler({ user }, i) {
+    const ins = await myInsurer(user);
+    if (!(ins.accepting_requests && ins.status === 'active')) return [];
+    return many(
+      `SELECT r.id, r.cover_for, r.subject_id, CASE r.cover_for WHEN 'individual' THEN ur.display_name ELSE ${subjectName('r.cover_for', 'r.subject_id')} END AS subject_name, ur.display_name AS requester,
+              r.months, r.participants, r.sport, r.city, r.status, r.created_at,
+              (SELECT count(*)::int FROM insurance_quotes q WHERE q.request_id=r.id) AS quotes,
+              (SELECT q.id FROM insurance_quotes q WHERE q.request_id=r.id AND q.insurer_id=$1 ORDER BY q.created_at DESC LIMIT 1) AS my_quote_id,
+              (SELECT CASE WHEN q.status='offered' AND q.valid_until < current_date THEN 'expired' ELSE q.status END FROM insurance_quotes q WHERE q.request_id=r.id AND q.insurer_id=$1 ORDER BY q.created_at DESC LIMIT 1) AS my_quote_status
+         FROM insurance_quote_requests r JOIN users ur ON ur.id=r.requester_id
+        WHERE r.insurer_id IS NULL AND r.status IN ('open','quoted') AND r.requester_id<>$2
+          AND NOT EXISTS (SELECT 1 FROM insurance_request_declines d WHERE d.request_id=r.id AND d.insurer_id=$1)
+          AND ($3::text IS NULL OR r.cover_for=$3) AND ($4::text IS NULL OR r.sport=$4) AND ($5::text IS NULL OR r.city ILIKE '%' || $5 || '%')
+          AND (NOT $6 OR NOT EXISTS (SELECT 1 FROM insurance_quotes q WHERE q.request_id=r.id AND q.insurer_id=$1))
+        ORDER BY r.created_at DESC LIMIT $7 OFFSET $8`,
+      [ins.id, user.id, i.cover_for ?? null, i.sport ?? null, i.city ? i.city.replace(/[%_\\]/g, '\\$&') : null, !!i.unanswered, i.limit, i.offset]);
   },
 });
