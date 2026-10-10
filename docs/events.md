@@ -29,3 +29,6 @@ Capabilities: request_fixture_official, respond_fixture_official, release_fixtur
 * Accepting mirrors an active `associations` row on the fixture's game (if one exists) so game-official permissions keep working.
 
 Not yet built (follow-up slices): referee verification type, availability/calendar, Officials Home UI, idempotent match console, result sign-off, incident reports.
+
+## Multi-sport events
+For a school sports day, club festival or Olympics-style games (many sports, houses, qualifying rounds, one conflict-free timetable, crew, points, certificates) see [multi-sport-events.md](multi-sport-events.md).
