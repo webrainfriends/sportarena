@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Image, Pressable, View } from 'react-native';
 import { api, mediaUrl } from '../api';
 import { useLoad } from '../hooks';
@@ -8,7 +8,7 @@ import { useBasket } from '../basket';
 import { Btn, Card, Chip, Empty, ErrorBox, H1, Loading, Screen, Seg, Sheet, T, Tag } from '../ui';
 import { c } from '../theme';
 import { KIND } from './book';
-import { Calendar, Counter, Stepper, StickyBar, byPartOfDay } from '../pickers';
+import { Calendar, Counter, DayStrip, Stepper, StickyBar, byPartOfDay } from '../pickers';
 import { addDays, longDay, moneyIn, offerLabel, timeIn, todayIn } from '../vtime';
 import { useLayout } from '../layout';
 import { AlertSheet } from './alerts';
@@ -29,7 +29,7 @@ export const mergeRuns = (slots) => {
  * Booking wizard: Court(s) → Date (availability calendar) → Time (slots by part of day, multi-select) → Review.
  * Courts, dates and times can be combined freely — everything you pick lands in one basket / one booking.
  */
-export function BookFlow({ venueId, resourceId, date: startDate }) {
+export function BookFlow({ venueId, resourceId, date: startDate, time: startTime }) {
   const { toast } = useSession();
   const { push } = useNav();
   const { add, items: basketItems } = useBasket();
@@ -52,6 +52,17 @@ export function BookFlow({ venueId, resourceId, date: startDate }) {
   const single = courts.length === 1 ? courts[0] : undefined;
   const cal = useLoad(() => (v.data && step === 1 ? api.get(`/venues/${venueId}/calendar`, { month: m, resource_id: single, sport: single ? undefined : sport }) : Promise.resolve(null)), [venueId, m, single, sport, step, v.data?.id]);
   const grid = useLoad(() => (v.data && date && step === 2 ? api.get(`/venues/${venueId}/availability`, { date }) : Promise.resolve(null)), [venueId, date, step, v.data?.id]);
+
+  // arriving from the public page with a chosen time: pre-select that slot once, so it is one tap to review
+  const [preset, setPreset] = useState(startTime ?? null);
+  useEffect(() => {
+    if (!preset || !grid.data || !courts.length) return;
+    const res = v.data?.resources.find((r) => r.id === courts[0]);
+    const slots = grid.data.resources.find((r) => r.id === courts[0])?.slots ?? [];
+    const s = slots.find((q) => q.starts_at === preset && q.status === 'free');
+    setPreset(null);
+    if (s && res) setSel({ [`${res.id}|${s.starts_at}`]: { res, slot: s, date } });
+  }, [preset, grid.data]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (v.loading && !v.data) return <Screen><Loading /></Screen>;
   if (v.error) return <Screen><ErrorBox error={v.error} onRetry={v.reload} /></Screen>;
@@ -157,8 +168,9 @@ export function BookFlow({ venueId, resourceId, date: startDate }) {
           <View style={{ gap: 12 }}>
             <Card pad={12}>
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                <Pressable onPress={() => setStep(1)}><T weight="700">📅 {longDay(date)} <T color={c.pink} weight="700">change</T></T></Pressable>
+                <Pressable onPress={() => setStep(1)}><T weight="700">📅 {longDay(date)} <T color={c.pink} weight="700">full calendar</T></T></Pressable>
               </View>
+              <View style={{ marginTop: 10 }}><DayStrip from={today} value={date} onChange={(d) => { setDate(d); setSel({}); }} /></View>
               <View style={{ marginTop: 10 }}><Counter label={`Slots per tap${grid.data?.resources?.[0] ? ` (${len * grid.data.resources[0].slot_minutes} min)` : ''}`} value={len} onChange={setLen} min={1} max={8} /></View>
             </Card>
             {grid.loading && !grid.data ? <Loading /> : grid.error ? <ErrorBox error={grid.error} onRetry={grid.reload} /> : courts.map((cid) => {

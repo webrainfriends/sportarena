@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { Pressable, View } from 'react-native';
+import React, { useMemo, useRef, useState } from 'react';
+import { Pressable, ScrollView, View } from 'react-native';
 import { Btn, Chip, Field, Sheet, T } from './ui';
 import { c } from './theme';
 import { addDays, moneyIn, WEEKDAYS } from './vtime';
@@ -162,6 +162,58 @@ export function StickyBar({ title, sub, action, onAction, disabled, loading, bot
       <View style={{ flex: 1 }}><T weight="700" size={16}>{title}</T>{sub ? <T size={12} color={c.mute}>{sub}</T> : null}</View>
       <Btn title={action} onPress={onAction} disabled={disabled} loading={loading} />
     </View>
+  );
+}
+
+/** Horizontal scroller with ◀ ▶ buttons, so every chip is reachable without a trackpad or touch. */
+export function HScroll({ children, gap = 8, style }) {
+  const ref = useRef(null);
+  const [m, setM] = useState({ x: 0, w: 0, cw: 0 });
+  const left = m.x > 4, right = m.cw - m.w - m.x > 4;
+  const by = (dir) => ref.current?.scrollTo({ x: Math.max(0, m.x + dir * Math.max(160, m.w * 0.7)), animated: true });
+  const Arrow = ({ dir, show }) => (show ? (
+    <Pressable onPress={() => by(dir)} accessibilityRole="button" accessibilityLabel={dir < 0 ? 'Scroll left' : 'Scroll right'}
+      style={{ position: 'absolute', top: 0, bottom: 0, [dir < 0 ? 'left' : 'right']: 0, width: 34, alignItems: dir < 0 ? 'flex-start' : 'flex-end', justifyContent: 'center', zIndex: 2 }}>
+      <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: c.paper, borderWidth: 1, borderColor: c.line, alignItems: 'center', justifyContent: 'center', shadowColor: '#0F172A', shadowOpacity: 0.12, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } }}>
+        <T weight="800" size={15} color={c.ink}>{dir < 0 ? '‹' : '›'}</T>
+      </View>
+    </Pressable>
+  ) : null);
+  return (
+    <View style={[{ position: 'relative', minWidth: 0 }, style]}>
+      <ScrollView ref={ref} horizontal showsHorizontalScrollIndicator={false} scrollEventThrottle={32}
+        onScroll={(e) => setM((p) => ({ ...p, x: e.nativeEvent.contentOffset.x }))}
+        onLayout={(e) => setM((p) => ({ ...p, w: e.nativeEvent.layout.width }))}
+        onContentSizeChange={(cw) => setM((p) => ({ ...p, cw }))}
+        contentContainerStyle={{ gap, alignItems: 'center', paddingHorizontal: 2 }}>
+        {children}
+      </ScrollView>
+      <Arrow dir={-1} show={left} /><Arrow dir={1} show={right} />
+    </View>
+  );
+}
+
+
+/** Row of tall day pills (weekday over date), like a phone booking app. `avail` maps date -> 'available'|'limited'|'full'|'closed' for a dot. */
+export function DayStrip({ from, count = 14, value, onChange, avail }) {
+  const days = Array.from({ length: count }, (_, i) => addDays(from, i));
+  return (
+    <HScroll gap={8}>
+      {days.map((d, i) => {
+        const on = d === value, st = avail?.[d], off = st === 'full' || st === 'closed';
+        const dt = new Date(`${d}T00:00:00Z`);
+        return (
+          <Pressable key={d} onPress={() => onChange(d)} accessibilityRole="button" accessibilityState={{ selected: on }} accessibilityLabel={dt.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' })}
+            style={{ width: 54, paddingVertical: 10, borderRadius: 28, alignItems: 'center', gap: 6, backgroundColor: on ? c.pink : c.paper, borderWidth: 1, borderColor: on ? c.pink : c.line, opacity: off && !on ? 0.5 : 1 }}>
+            <T size={11} weight="700" color={on ? '#E0E7FF' : c.mute}>{i === 0 ? 'TODAY' : dt.toLocaleDateString(undefined, { weekday: 'short', timeZone: 'UTC' }).toUpperCase()}</T>
+            <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: on ? '#fff' : c.violetSoft, alignItems: 'center', justifyContent: 'center' }}>
+              <T size={15} weight="800" color={on ? c.pink : c.ink}>{dt.getUTCDate()}</T>
+            </View>
+            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: st && !off ? (on ? '#fff' : DOT[st]) : 'transparent' }} />
+          </Pressable>
+        );
+      })}
+    </HScroll>
   );
 }
 

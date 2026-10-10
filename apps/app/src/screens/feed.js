@@ -57,7 +57,7 @@ export function Feed({ header, narrow }) {
   useEffect(() => { load(0); }, [load]);
   const onPatch = useCallback((id, patch) => setRows((r) => r.map((p) => (p.id === id ? { ...p, ...patch } : p))), []);
   const { gate, sheets } = useMarketActions({ onPatch });
-  useResumeIntent(gate, user, { onPost: () => setCompose({}), onAdvertise: () => setCompose({ ad: true }), onBook: (b) => push('BookFlow', { venueId: b.venueId, resourceId: b.resourceId, date: b.date }) });
+  useResumeIntent(gate, user, { onPost: () => setCompose({}), onAdvertise: () => setCompose({ ad: true }), onBook: (b) => push('BookFlow', { venueId: b.venueId, resourceId: b.resourceId, date: b.date, time: b.time }) });
 
   const feed = (
     <View style={{ gap: 14 }}>
