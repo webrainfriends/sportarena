@@ -8,6 +8,7 @@ import { canManageTeam } from './teams.js';
 import { hasOrgGrant } from '../org-access.js';
 import { reserve } from './venues.js';
 import { notify } from '../notify.js';
+import { advanceKnockout, isKnockout } from '../tournament/advance.js';
 import { OFFICIAL_ROLES, lockOfficial, assertOfficialEligible, recordHistory, closeOfficial } from '../officials.js';
 
 const dt = z.string().datetime({ offset: true });
@@ -370,13 +371,26 @@ export async function inviteOfficial(c, user, ev, fixture, userId, role) {
 
 cap({
   name: 'record_result', method: 'POST', path: '/fixtures/:id/result', tag: 'Schedule',
-  summary: 'Record the final score (event organiser or the assigned referee). Updates standings.',
-  input: z.object({ id, home_score: z.number().int().min(0), away_score: z.number().int().min(0) }),
+  summary: 'Record the final score (event organiser or the assigned referee). Updates standings. A knockout game cannot end level: pass winner_team_id (e.g. after penalties). The winner moves into the next round of the bracket.',
+  input: z.object({ id, home_score: z.number().int().min(0), away_score: z.number().int().min(0), winner_team_id: id.optional() }),
   async handler({ user }, i) {
-    const f = await mustFind('fixtures', i.id);
-    const ev = await mustFind('events', f.event_id);
-    if (!isAdmin(user) && ![ev.organizer_id, f.referee_id].includes(user.id)) throw forbidden('Only the organiser or the assigned referee can record results');
-    return one("UPDATE fixtures SET home_score=$2, away_score=$3, status='completed' WHERE id=$1 RETURNING *", [i.id, i.home_score, i.away_score]);
+    return tx(async (c) => {
+      const f = (await c.query('SELECT * FROM fixtures WHERE id=$1 FOR UPDATE', [i.id])).rows[0];
+      if (!f) throw notFound('fixture');
+      const ev = await mustFind('events', f.event_id, '*', c);
+      if (!isAdmin(user) && ![ev.organizer_id, f.referee_id].includes(user.id)) throw forbidden('Only the organiser or the assigned referee can record results');
+      let winner = null;
+      if (isKnockout(f)) {
+        if (!f.home_team_id || !f.away_team_id) throw conflict('The teams for this game are not decided yet');
+        if (i.home_score !== i.away_score) winner = i.home_score > i.away_score ? f.home_team_id : f.away_team_id;
+        else if (i.winner_team_id && [f.home_team_id, f.away_team_id].includes(i.winner_team_id)) winner = i.winner_team_id;
+        else throw badRequest('A knockout game needs a winner: send winner_team_id (home or away team), e.g. after extra time or penalties');
+        if (i.winner_team_id && i.home_score !== i.away_score && i.winner_team_id !== winner) throw badRequest('winner_team_id contradicts the score');
+      }
+      const out = (await c.query("UPDATE fixtures SET home_score=$2, away_score=$3, status='completed', winner_team_id=$4 WHERE id=$1 RETURNING *", [i.id, i.home_score, i.away_score, winner])).rows[0];
+      if (winner) await advanceKnockout(c, out, winner);
+      return out;
+    });
   },
 });
 
@@ -393,6 +407,16 @@ cap({
       const ev = await eventForOrganizer(user, i.id, c);
       if (ev.status === 'completed') throw conflict('Already completed');
       const table = await standings(i.id, c);
+      const final = (await c.query("SELECT * FROM fixtures WHERE event_id=$1 AND round_kind='final' AND status='completed'", [i.id])).rows[0];
+      if (final) { // a knockout decides the podium, not the group table
+        const third = (await c.query("SELECT winner_team_id FROM fixtures WHERE event_id=$1 AND round_kind='third_place' AND status='completed'", [i.id])).rows[0];
+        const places = [final.winner_team_id, final.winner_team_id === final.home_team_id ? final.away_team_id : final.home_team_id, third?.winner_team_id];
+        const kinds = [['cup', 'Champions'], ['medal_silver', 'Runners-up'], ['medal_bronze', 'Third place']];
+        const awards = [];
+        for (const [n, team] of places.entries()) if (team) awards.push((await c.query('INSERT INTO awards(name, kind, event_id, team_id, awarded_by) VALUES ($1,$2,$3,$4,$5) RETURNING *', [`${ev.name} — ${kinds[n][1]}`, kinds[n][0], i.id, team, user.id])).rows[0]);
+        await c.query("UPDATE events SET status='completed' WHERE id=$1", [i.id]);
+        return { status: 'completed', standings: table, awards };
+      }
       const podium = [['cup', `${ev.name} — Champions`], ['medal_silver', `${ev.name} — Runners-up`], ['medal_bronze', `${ev.name} — Third place`]];
       const awards = [];
       for (const [n, [kind, name]] of podium.entries()) {
