@@ -57,9 +57,21 @@ function VenueCard({ v, onOpen, picked, onPick, width, onFav }) {
   );
 }
 
+/** "Register a venue" form: creates the venue, then opens its setup checklist. Shared by Book and Play > Venues. */
+export function RegisterVenue({ visible, onClose, onCreated }) {
+  const { push } = useNav();
+  return (
+    <FormSheet visible={visible} onClose={onClose} title="Register a venue" submitLabel="Create venue" initial={{ currency: 'INR', timezone: (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return 'UTC'; } })() }}
+      fields={[{ key: 'name', label: 'Venue name' }, { key: 'address', label: 'Address', optional: true }, { key: 'city', label: 'City', optional: true },
+        { key: 'latitude', lngKey: 'longitude', label: 'Map location', type: 'location', optional: true },
+        { key: 'currency', label: 'Currency', type: 'currency' }, { key: 'timezone', label: 'Time zone', type: 'timezone' }]}
+      onSubmit={async (v) => { const x = await api.post('/venues', v); onCreated?.(); push('Manage', { id: x.id, wizard: true }); return 'Venue created — follow the checklist to open for bookings'; }} />
+  );
+}
+
 export function Book() {
   const { push } = useNav();
-  const { has } = useSession();
+  const { has, hasAny } = useSession();
   const L = useLayout();
   const { compare, toggleCompare, clearCompare } = useBasket();
   const [form, setForm] = useState(false);
@@ -144,7 +156,7 @@ export function Book() {
         }) : <Empty emoji="🗓️" title="No upcoming bookings" sub="Pick a venue above." />}
       </Section>
 
-      {has('venue_manager', 'organizer') ? (
+      {hasAny('venue_manager', 'organizer') ? (
         <Section title="Run a venue" color={c.violet}>
           <Btn title="Register a venue" color={c.violet} onPress={() => setForm(true)} />
           <Row onPress={() => push('OwnerSummary')} left={<Bubble emoji="📊" color={c.violet} />} title="All my venues" sub="Revenue, tax and payments per venue and per currency" right={<T color={c.pink} weight="700">Open ›</T>} />
@@ -164,11 +176,7 @@ export function Book() {
         <Calendar month={month} onMonth={setMonth} value={date} minDate={todayStr} onChange={(d) => { setDate(d); setPickDate(false); }} />
         {date ? <Btn small title="Any day" color={c.paper} onPress={() => { setDate(null); setHour(null); setPickDate(false); }} /> : null}
       </Sheet>
-      <FormSheet visible={form} onClose={() => setForm(false)} title="Register a venue" submitLabel="Create venue" initial={{ currency: 'INR', timezone: (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return 'UTC'; } })() }}
-        fields={[{ key: 'name', label: 'Venue name' }, { key: 'address', label: 'Address', optional: true }, { key: 'city', label: 'City', optional: true },
-          { key: 'latitude', lngKey: 'longitude', label: 'Map location', type: 'location', optional: true },
-          { key: 'currency', label: 'Currency', type: 'currency' }, { key: 'timezone', label: 'Time zone', type: 'timezone' }]}
-        onSubmit={async (v) => { const x = await api.post('/venues', v); venues.reload(); push('Manage', { id: x.id, wizard: true }); return 'Venue created — follow the checklist to open for bookings'; }} />
+      <RegisterVenue visible={form} onClose={() => setForm(false)} onCreated={venues.reload} />
     </Screen>
   );
 }
