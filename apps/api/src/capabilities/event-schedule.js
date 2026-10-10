@@ -11,7 +11,8 @@ import { toLocal, fromLocal, addDays, weekdayOf } from '../booking/time.js';
 import { buildBracket, ROUND_LABEL, MAX_KNOCKOUT_TEAMS } from '../tournament/bracket.js';
 import { planSchedule, roundRobinPairs } from '../tournament/scheduler.js';
 import { seededTeams, acceptedTeams } from '../tournament/data.js';
-import { standings } from '../helpers.js';
+import { standings, audit } from '../helpers.js';
+import { eventWindow, windowFit, consentNeeded } from '../event-fit.js';
 
 const date = z.string().date();
 const MAX_SPAN_DAYS = 120;
@@ -93,6 +94,7 @@ const SCHEDULE_INPUT = {
   // knockout only
   team_ids: z.array(id).max(MAX_KNOCKOUT_TEAMS).optional(), from: z.enum(['seeds', 'standings']).default('seeds'), top_n: z.number().int().min(2).max(MAX_KNOCKOUT_TEAMS).optional(),
   third_place: z.boolean().default(false),
+  accept_mismatch: z.boolean().default(false).describe('consent to schedule games on days outside the event’s start/end dates'),
 };
 const scheduleInput = z.object(SCHEDULE_INPUT);
 
@@ -192,6 +194,7 @@ async function planStage(c, ev, i) {
   const teamInfo = new Map((await c.query('SELECT id, name, emoji, color FROM teams WHERE id = ANY($1)', [involved])).rows.map((t) => [t.id, t]));
   return {
     venue: { id: ctx.venue.id, name: ctx.venue.name, timezone: tz },
+    alignment: windowFit(await eventWindow(c, ev.id), placed.map((p) => ({ date: p.date, cents: 0 })), [], [], ctx.venue.currency, { edges: false }),
     format: i.format, teams: teamIds.length, byes,
     skipped_dates: Object.fromEntries(skip),
     items: items.map((it) => { const p = where.get(it.key); const h = teamInfo.get(it.home_team_id), a = teamInfo.get(it.away_team_id); return { ...it, home_name: h?.name ?? null, home_emoji: h?.emoji ?? null, home_color: h?.color ?? null, away_name: a?.name ?? null, away_emoji: a?.emoji ?? null, away_color: a?.color ?? null, scheduled_at: p?.start.toISOString() ?? null, ends_at: p?.end.toISOString() ?? null, duration_min: p?.minutes ?? null, local_date: p?.date ?? null, resource_id: p?.resource_id ?? null, resource_name: p ? names.get(p.resource_id) : null }; }),
@@ -230,6 +233,8 @@ cap({
       if (venueId) await lockResources(c, (await c.query('SELECT id FROM resources WHERE venue_id=$1', [venueId])).rows.map((r) => r.id));
       const plan = await planStage(c, ev, i);
       if (plan.unplaced.length) throw conflict(`${plan.unplaced.length} of ${plan.items.length} games do not fit in that window`, { unplaced: plan.unplaced, placed: plan.placed });
+      if (plan.alignment.consent_required && !i.accept_mismatch) throw conflict(plan.alignment.verdict, consentNeeded(plan.alignment));
+      if (plan.alignment.consent_required) await audit(c, user.id, 'accept_event_schedule_mismatch', 'events', ev.id);
 
       const stage = (await c.query('INSERT INTO event_stages(event_id, kind, name, position, config, created_by) VALUES ($1,$2,$3,(SELECT count(*) FROM event_stages WHERE event_id=$1),$4,$5) RETURNING *',
         [ev.id, i.format, i.format === 'round_robin' ? 'Group stage' : 'Knockout', { third_place: i.third_place, from: i.from, top_n: i.top_n ?? null, venue_id: plan.venue.id }, user.id])).rows[0];

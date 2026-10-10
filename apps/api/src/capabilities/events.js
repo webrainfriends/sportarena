@@ -10,6 +10,8 @@ import { reserve } from './venues.js';
 import { notify } from '../notify.js';
 import { advanceKnockout, isKnockout } from '../tournament/advance.js';
 import { createRequest } from '../event-planning.js';
+import { eventWindow, windowFit, consentNeeded } from '../event-fit.js';
+import { toLocal } from '../booking/time.js';
 import { OFFICIAL_ROLES, lockOfficial, assertOfficialEligible, recordHistory, closeOfficial } from '../officials.js';
 
 const dt = z.string().datetime({ offset: true });
@@ -279,7 +281,7 @@ cap({
 cap({
   name: 'create_fixture', method: 'POST', path: '/events/:id/fixtures', tag: 'Schedule', status: 201,
   summary: 'Schedule a game. If resource_id is given the court/ground is booked atomically. A referee_id sends the referee an invitation (see respond_fixture_official); team clashes are rejected.',
-  input: z.object({ id, home_team_id: id, away_team_id: id, scheduled_at: dt, duration_min: z.number().int().min(10).max(600).default(90), round: z.string().max(40).optional(), resource_id: id.optional(), referee_id: id.optional() }),
+  input: z.object({ id, home_team_id: id, away_team_id: id, scheduled_at: dt, duration_min: z.number().int().min(10).max(600).default(90), round: z.string().max(40).optional(), resource_id: id.optional(), referee_id: id.optional(), accept_mismatch: z.boolean().default(false).describe('consent to book a court on a day outside the event’s start/end dates') }),
   async handler({ user }, i) {
     return tx(async (c) => {
       const ev = await eventForOrganizer(user, i.id, c);
@@ -293,6 +295,11 @@ cap({
       }
       if (i.referee_id) await lockOfficial(c, i.referee_id);
       if (i.referee_id) await assertOfficialEligible(c, { sportId: ev.sport_id, userId: i.referee_id, role: 'referee', start: i.scheduled_at, durationMin: i.duration_min });
+      if (i.resource_id) {
+        const v = await one('SELECT v.timezone, v.currency FROM resources r JOIN venues v ON v.id=r.venue_id WHERE r.id=$1', [i.resource_id]);
+        const fit = v && windowFit(await eventWindow(c, i.id), [{ date: toLocal(i.scheduled_at, v.timezone).date, cents: 0 }], [], [], v.currency, { edges: false });
+        if (fit?.consent_required && !i.accept_mismatch) throw conflict(fit.verdict, consentNeeded(fit));
+      }
       if (i.resource_id) await reserve(c, { resource_id: i.resource_id, user_id: user.id, event_id: i.id, starts_at: i.scheduled_at, ends_at: end, note: `Fixture ${i.round ?? ''}`.trim() });
       const fx = (await c.query(
         'INSERT INTO fixtures(event_id, round, home_team_id, away_team_id, resource_id, scheduled_at, duration_min) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *',
