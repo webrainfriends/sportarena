@@ -38,6 +38,7 @@ export function Play() {
   const [sport, setSport] = useState(null);
   const [q, setQ] = useState('');
   const [dq, setDq] = useState('');
+  const venues = useLoad(() => api.get('/venues', { limit: 60 }), []);
   const [flags, setFlags] = useState({});
   const [sort, setSort] = useState('soonest');
   const [size, setSize] = useState(20);
@@ -88,8 +89,29 @@ export function Play() {
           { key: 'emoji', label: 'Mascot emoji', optional: true }, { key: 'color', label: 'Team colour', type: 'chips', optional: true, options: TEAM_COLOURS }, { key: 'city', label: 'City', optional: true }]}
         onSubmit={async (v) => { const t = await api.post('/teams', v); list.reload(); push('TeamWorkspace', { id: t.id }); return 'Team created — invite your players from the Roster tab'; }} />
       <FormSheet visible={form === 'event'} onClose={() => setForm(null)} title="Create an event" submitLabel="Publish"
-        fields={[{ key: 'name', label: 'Event name' }, { key: 'sport', label: 'Sport', type: 'sport' }, { key: 'kind', label: 'Type', type: 'choice', options: ['tournament', 'league', 'friendly', 'camp', 'trial'] }, { key: 'starts_on', label: 'Starts on (YYYY-MM-DD)', optional: true }, { key: 'description', label: 'Description', type: 'multiline', optional: true }]}
-        onSubmit={async (v) => { const e = await api.post('/events', v); list.reload(); push('Event', { id: e.id }); return 'Event is live'; }} />
+        initial={{ kind: 'tournament', currency: 'INR', points_win: 3, points_draw: 1, points_loss: 0 }}
+        fields={[
+          { key: 'name', label: 'Event name' }, { key: 'sport', label: 'Sport', type: 'sport' },
+          { key: 'kind', label: 'Type', type: 'choice', options: ['tournament', 'league', 'friendly', 'camp', 'trial'] },
+          { key: 'description', label: 'Description', type: 'multiline', optional: true },
+          { key: 'sec1', type: 'section', label: 'When & where' },
+          { key: 'starts_on', label: 'Starts on', type: 'date', optional: true }, { key: 'ends_on', label: 'Ends on', type: 'date', optional: true },
+          { key: 'city', label: 'City', optional: true },
+          { key: 'venue_id', label: 'Venue (courts are booked for your games)', type: 'chips', optional: true, options: (venues.data ?? []).map((v) => ({ value: v.id, label: `${v.emoji ?? '🏟️'} ${v.name}` })) },
+          { key: 'sec2', type: 'section', label: 'Entry' },
+          { key: 'capacity', label: 'Maximum teams / players', type: 'number', optional: true },
+          { key: 'registration_deadline', label: 'Registration closes (date)', type: 'date', optional: true },
+          { key: 'entry_fee_cents', label: 'Entry fee', type: 'money', currency: 'INR', optional: true },
+          { key: 'seeking_sponsors', label: 'Looking for sponsors', type: 'switch', optional: true },
+          { key: 'sec3', type: 'section', label: 'League table points' },
+          { key: 'points_win', label: 'Points for a win', type: 'number' }, { key: 'points_draw', label: 'Points for a draw', type: 'number' }, { key: 'points_loss', label: 'Points for a loss', type: 'number' },
+        ]}
+        onSubmit={async (v) => {
+          const body = { ...v }; for (const k of ['sec1', 'sec2', 'sec3']) delete body[k];
+          if (body.registration_deadline) body.registration_deadline = new Date(`${body.registration_deadline}T23:59:00`).toISOString();
+          for (const k of Object.keys(body)) if (body[k] === '' || body[k] === null || body[k] === undefined) delete body[k];
+          const e = await api.post('/events', body); list.reload(); push('Event', { id: e.id }); return 'Event is live — open Organizer tools → Tournament console to invite teams and schedule';
+        }} />
     </Screen>
   );
 }
