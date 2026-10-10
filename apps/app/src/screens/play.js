@@ -39,6 +39,7 @@ export function Play() {
   const [sport, setSport] = useState(null);
   const [q, setQ] = useState('');
   const [dq, setDq] = useState('');
+  const venues = useLoad(() => api.get('/venues', { limit: 60 }), []);
   const [flags, setFlags] = useState({});
   const [sort, setSort] = useState('soonest');
   const [size, setSize] = useState(20);

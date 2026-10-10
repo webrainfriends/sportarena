@@ -16,6 +16,7 @@ installWebShell();
 import Home from './screens/feed';
 import Landing from './screens/landing';
 import { Play, Event, Team, Person } from './screens/play';
+import { EventAdmin } from './screens/event-admin';
 import { TeamManage } from './screens/team-manage';
 import { TeamWorkspace } from './screens/team-workspace';
 import { TeamChat } from './screens/team-chat';
