@@ -87,6 +87,38 @@ export function DateField({ label, value, onChange, optional, min, max, hint }) 
   );
 }
 
+/** Pick a from–to range on one calendar: tap the first day, then the last (or "One day"). value/onChange use 'YYYY-MM-DD'. */
+export function DateRangeField({ label, from, to, onChange, optional, min, hint }) {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState({ from, to });
+  const [month, setMonth] = useState((from ?? todayLocal()).slice(0, 7));
+  const days = from && to ? Math.round((Date.parse(to) - Date.parse(from)) / 86400000) + 1 : 0;
+  const fmt = (d) => new Date(`${d}T00:00:00Z`).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
+  const pick = (d) => {
+    if (!draft.from || draft.to) return setDraft({ from: d, to: undefined });          // start a new range
+    if (d < draft.from) return setDraft({ from: d, to: undefined });
+    onChange({ from: draft.from, to: d }); setOpen(false);
+  };
+  return (
+    <View style={{ gap: 6 }}>
+      {label ? <T weight="600" size={12} color={c.mute} style={{ letterSpacing: 0.4 }}>{(label + (optional ? ' (optional)' : '')).toUpperCase()}</T> : null}
+      <Pressable onPress={() => { setDraft({ from, to }); setMonth((from ?? todayLocal()).slice(0, 7)); setOpen(true); }} style={{ borderWidth: 1.5, borderColor: c.line, borderRadius: 12, backgroundColor: c.paper, paddingHorizontal: 16, minHeight: 50, justifyContent: 'center', flexDirection: 'row', alignItems: 'center' }}>
+        <T style={{ flex: 1 }} color={from ? c.ink : '#94A3B8'} weight="600">{from ? `${fmt(from)}${to && to !== from ? ` → ${fmt(to)}` : ''}${days > 1 ? ` · ${days} days` : days === 1 ? ' · 1 day' : ''}` : 'Pick the dates'}</T>
+        <T size={18}>📅</T>
+      </Pressable>
+      {hint ? <T size={12} color={c.mute}>{hint}</T> : null}
+      <Sheet visible={open} onClose={() => setOpen(false)} title={label ?? 'Pick the dates'}>
+        <T color={c.mute} size={13}>{!draft.from ? 'Tap the first day' : draft.to ? 'Tap a new first day' : `From ${fmt(draft.from)} — now tap the last day`}</T>
+        <Calendar month={month} onMonth={setMonth} range={draft} minDate={min} onChange={pick} />
+        <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+          {draft.from && !draft.to ? <Btn small title="Just this one day" color={c.violet} onPress={() => { onChange({ from: draft.from, to: draft.from }); setOpen(false); }} /> : null}
+          {optional && from ? <Btn small title="Clear" color={c.paper} ink={c.ink} onPress={() => { onChange({ from: undefined, to: undefined }); setOpen(false); }} /> : null}
+        </View>
+      </Sheet>
+    </View>
+  );
+}
+
 const PARTS = [['Morning', 0, 12], ['Afternoon', 12, 17], ['Evening', 17, 21], ['Night', 21, 24]];
 /** Group items by the part of the local day they start in (BookMyShow-style Morning / Afternoon / Evening / Night). */
 export function byPartOfDay(items, hourOf) {

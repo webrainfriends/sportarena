@@ -55,4 +55,5 @@ import './market.js';
 import './multisport.js';
 import './multisport-play.js';
 import './multisport-ops.js';
+import './event-planning.js';
 export { capabilities } from '../registry.js';

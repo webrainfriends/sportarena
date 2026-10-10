@@ -9,6 +9,7 @@ import { useSession } from '../session';
 import { useNav } from '../nav';
 import { Field, Avatar, Btn, Bubble, Card, Chip, Empty, ErrorBox, GradCard, H1, H2, Loading, Row, Screen, Seg, Section, StatPill, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
+import { CreateEvent } from './event-create';
 import { FixtureCard, Reviews, StandingsTable, TrophyShelf, Stars } from '../blocks';
 import { SportSelect } from '../sportpicker';
 import { c, grad, day, accentFor, money } from '../theme';
@@ -87,9 +88,7 @@ export function Play() {
         fields={[{ key: 'name', label: 'Team name' }, { key: 'sport', label: 'Sport', type: 'sport' }, { key: 'description', label: 'About the team', type: 'multiline', optional: true },
           { key: 'emoji', label: 'Mascot emoji', optional: true }, { key: 'color', label: 'Team colour', type: 'chips', optional: true, options: TEAM_COLOURS }, { key: 'city', label: 'City', optional: true }]}
         onSubmit={async (v) => { const t = await api.post('/teams', v); list.reload(); push('TeamWorkspace', { id: t.id }); return 'Team created — invite your players from the Roster tab'; }} />
-      <FormSheet visible={form === 'event'} onClose={() => setForm(null)} title="Create an event" submitLabel="Publish"
-        fields={[{ key: 'name', label: 'Event name' }, { key: 'sport', label: 'Sport', type: 'sport' }, { key: 'kind', label: 'Type', type: 'choice', options: ['tournament', 'league', 'friendly', 'camp', 'trial'] }, { key: 'starts_on', label: 'Starts on (YYYY-MM-DD)', optional: true }, { key: 'description', label: 'Description', type: 'multiline', optional: true }]}
-        onSubmit={async (v) => { const e = await api.post('/events', v); list.reload(); push('Event', { id: e.id }); return 'Event is live'; }} />
+      <CreateEvent visible={form === 'event'} onClose={() => setForm(null)} onCreated={(e) => { list.reload(); push('EventPlan', { id: e.id }); }} />
     </Screen>
   );
 }
@@ -125,6 +124,7 @@ export function Event({ id }) {
         </View>
       </GradCard>
       {e.description ? <T style={{ marginTop: 12 }}>{e.description}</T> : null}
+      {isOrg ? <Btn title="Plan, contact & budget" color={c.pink} onPress={() => push('EventPlan', { id })} style={{ marginTop: 14 }} /> : null}
       {e.sport === 'Multi-sport games' ? <Btn title={isOrg ? 'Run the games programme' : 'Open the games programme'} color={c.violet} onPress={() => push('Games', { id })} style={{ marginTop: 14 }} /> : null}
 
       {e.status === 'open' && !isOrg && !e.entrants.some((x) => x.user_id === user.id || eligible.some((t) => t.id === x.team_id)) ? <Btn title="Join this event" onPress={() => setJoining(true)} style={{ marginTop: 14 }} /> : null}
