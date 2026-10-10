@@ -28,7 +28,7 @@ cap({
     const win = [user.id, from, to];
     const D = `${DEFAULT_MATCH_MIN} minutes`;
 
-    const [squads, games, entries, organised, bookings, hires, appts, follows] = await Promise.all([
+    const [squads, games, entries, organised, bookings, hires, appts, follows, gameSessions] = await Promise.all([
       many(`SELECT q.id, q.status, f.id AS fixture_id, f.scheduled_at AS starts_at, f.scheduled_at + interval '${D}' AS ends_at, e.name AS event_name, s.slug AS sport,
                    t.name AS team_name, h.name AS home_name, a.name AS away_name, rs.timezone AS tz
             FROM team_squads q JOIN fixtures f ON f.id=q.fixture_id JOIN events e ON e.id=f.event_id JOIN sports s ON s.id=e.sport_id
@@ -58,6 +58,13 @@ cap({
             WHERE a.athlete_id=$1 AND a.status IN ('requested','confirmed') AND a.starts_at >= $2::date AND a.starts_at < $3::date + 1`, win),
       many(`SELECT id, status, due_on, window_end FROM appointment_followups
             WHERE athlete_id=$1 AND status='due' AND coalesce(window_end, due_on) >= $2::date AND due_on <= $3::date`, win),
+      // multi-sport events: sessions of every discipline the person competes in, directly or through a team
+      many(`WITH pe AS (SELECT se.session_id, se.participant_id FROM event_session_entries se WHERE se.participant_id IS NOT NULL AND se.result_status <> 'scratched'
+                        UNION SELECT se.session_id, n.participant_id FROM event_session_entries se JOIN discipline_nominations n ON n.team_id=se.team_id AND n.status IN ('nominated','confirmed') WHERE se.result_status <> 'scratched')
+            SELECT s.id, s.label, s.status, s.scheduled_at AS starts_at, s.scheduled_at + s.duration_min * interval '1 minute' AS ends_at, e.name AS event_name, e.id AS event_id, sp.slug AS sport, coalesce(r.name, s.location) AS ground
+              FROM pe JOIN event_participants p ON p.id=pe.participant_id JOIN event_sessions s ON s.id=pe.session_id JOIN events e ON e.id=s.event_id
+              JOIN event_disciplines d ON d.id=s.discipline_id JOIN sports sp ON sp.id=d.sport_id LEFT JOIN resources r ON r.id=s.resource_id
+             WHERE p.user_id=$1 AND s.status IN ('scheduled','live') AND s.scheduled_at >= $2::date AND s.scheduled_at < $3::date + 1`, win),
     ]);
 
     const items = [];
@@ -72,6 +79,7 @@ cap({
         add({ kind: 'event', source_type: 'event', source_id: r.id, sport: r.sport, title: r.name, context: mine ? 'Organising' : 'Entered', starts_at: `${r.starts_on.toISOString?.().slice(0, 10) ?? r.starts_on}T00:00:00Z`, ends_at: r.ends_on ? `${r.ends_on.toISOString?.().slice(0, 10) ?? r.ends_on}T23:59:59Z` : null, all_day: true, status: mine ? r.status : r.entry_status === 'accepted' ? 'confirmed' : 'awaiting_response', link: { screen: 'Event', params: { id: r.id } }, actions: [] });
       }
     }
+    for (const r of gameSessions) add({ kind: 'match', source_type: 'event_session', source_id: r.id, sport: r.sport, title: r.label, context: `${r.event_name}${r.ground ? ` · ${r.ground}` : ''}`, starts_at: r.starts_at, ends_at: r.ends_at, status: 'confirmed', link: { screen: 'Games', params: { id: r.event_id } }, actions: [] });
     for (const r of bookings) add({ kind: 'venue', source_type: 'booking', source_id: r.id, title: r.venue_name, context: r.resource_name, starts_at: r.starts_at, ends_at: r.ends_at, timezone: r.tz ?? 'UTC', status: 'confirmed', link: { screen: 'Reservation', params: {} }, actions: [] });
     for (const r of hires) add({ kind: 'training', source_type: 'coach_hire', source_id: r.id, sport: r.sport, title: r.as_coach ? 'Coaching session' : 'Session with your coach', context: r.other_name, starts_at: r.starts_at, ends_at: r.ends_at, status: r.status === 'confirmed' ? 'confirmed' : 'proposed', action_required: r.as_coach && r.status === 'requested', link: { screen: 'Hub', params: {} }, actions: [] });
     for (const r of appts) add({ kind: 'health', source_type: 'appointment', source_id: r.id, title: r.provider_type === 'physio' ? 'Physio appointment' : r.provider_type === 'doctor' ? 'Doctor appointment' : 'Appointment', starts_at: r.starts_at, ends_at: r.ends_at, timezone: r.tz ?? 'UTC', status: r.status === 'confirmed' ? 'confirmed' : 'proposed', link: { screen: 'Health', params: {} }, actions: [] });

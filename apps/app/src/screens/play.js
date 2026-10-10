@@ -125,12 +125,14 @@ export function Event({ id }) {
         </View>
       </GradCard>
       {e.description ? <T style={{ marginTop: 12 }}>{e.description}</T> : null}
+      {e.sport === 'Multi-sport games' ? <Btn title={isOrg ? 'Run the games programme' : 'Open the games programme'} color={c.violet} onPress={() => push('Games', { id })} style={{ marginTop: 14 }} /> : null}
 
       {e.status === 'open' && !isOrg && !e.entrants.some((x) => x.user_id === user.id || eligible.some((t) => t.id === x.team_id)) ? <Btn title="Join this event" onPress={() => setJoining(true)} style={{ marginTop: 14 }} /> : null}
 
       {isOrg ? (
         <Card color={c.limeSoft} style={{ marginTop: 14 }}>
           <T weight="900" size={16}>Organizer tools</T>
+          <Btn small title="Tournament console" color={c.violet} onPress={() => push('EventAdmin', { id })} style={{ marginTop: 8, alignSelf: 'flex-start' }} />
           {entries.data?.filter((x) => x.status === 'pending').map((x) => (
             <View key={x.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10 }}>
               <T weight="800" style={{ flex: 1 }}>{x.team_name ?? x.display_name} wants in</T>

@@ -28,9 +28,9 @@ export async function standings(eventId, client) {
   const ev = await mustFind('events', eventId, '*', client);
   const { rows } = await (client ?? { query }).query(
     `WITH sides AS (
-       SELECT home_team_id AS team_id, home_score AS gf, away_score AS ga FROM fixtures WHERE event_id=$1 AND status='completed' AND home_team_id IS NOT NULL
+       SELECT home_team_id AS team_id, home_score AS gf, away_score AS ga FROM fixtures WHERE event_id=$1 AND status='completed' AND home_team_id IS NOT NULL AND coalesce(round_kind,'group')='group'
        UNION ALL
-       SELECT away_team_id, away_score, home_score FROM fixtures WHERE event_id=$1 AND status='completed' AND away_team_id IS NOT NULL)
+       SELECT away_team_id, away_score, home_score FROM fixtures WHERE event_id=$1 AND status='completed' AND away_team_id IS NOT NULL AND coalesce(round_kind,'group')='group')
      SELECT t.id AS team_id, t.name, t.emoji, t.color,
             count(s.team_id)::int AS played,
             count(*) FILTER (WHERE s.gf > s.ga)::int AS won,
