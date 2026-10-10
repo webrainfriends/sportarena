@@ -8,6 +8,7 @@ import './teams.js';
 import './organisations.js';
 import './team-management.js';
 import './team-chat.js';
+import './team-workspace.js';
 import './venues.js';
 import './venue-admin.js';
 import './reservations.js';

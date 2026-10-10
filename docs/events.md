@@ -11,6 +11,7 @@ create_event, list_events, get_event, update_event, enter_event, list_entries, d
 | Search | `GET /events/search` (`search_events`): `q` (name/description/city), `sport`, `kind`, `status`, `city`, `date_from`/`date_to` (overlap), `open_for_entry`, `free`, `max_fee_cents`, `seeking_sponsors`, `verified`, `organizer_id`, `sort` (`soonest`/`newest`/`fee_low`), `limit`/`offset`. Returns `{items,total,limit,offset}`; each card carries `link`, `entrants`, `spots_left`, `registration_open`, verified badges. `list_events` keeps its plain-array shape on the same filters. |
 | Capacity / deadline | `events.capacity`, `events.registration_deadline`; `enter_event` locks the event row, refuses after the deadline, and puts entrants on a **waitlist** when pending+accepted ≥ capacity. |
 | Accept past capacity | `decide_entry` refuses (409) when accepted ≥ capacity; entrant is notified. |
+| Sub-teams | A team entering an event may enter its master team or a sub-team created for that event (see [teams.md](teams.md#master-team-and-sub-teams)); RSVP/attendance works for either. |
 | Withdraw | `POST /entries/:id/withdraw` (entrant / team manager / admin); frees a spot and promotes the oldest waitlisted entry (notified). Withdrawn entrants can re-register. |
 | Status guard | `open → ongoing/cancelled`, `ongoing → cancelled`; `completed`/`cancelled` are terminal. Cancelling notifies entrants. Capacity cannot drop below accepted entries. |
 | Sponsor context | `events.seeking_sponsors`, `events.currency` (used by the sponsorship and ticketing slices). |

@@ -37,3 +37,27 @@ gives per-person due / paid totals. Money actions need the owner or a `manager`.
 One conversation per team, for active members only (`send_team_message`, `list_team_messages`, `mark_team_chat_read`,
 `list_my_team_chats` for unread counts, `delete_team_message` — soft delete; your own, or any as a manager). Managers can mark
 a message as an **announcement**, which notifies every member. The app polls every 5 seconds while the chat is open.
+
+## Team workspace (tasks, schedule, attendance)
+
+The team page opens a **workspace** (`TeamWorkspace` screen): a board, *My tasks*, *Schedule*, *Roster* and — for managers — *Squads*, *Recruit* and *Rates* (the existing management tabs). Nothing is deleted anywhere in it: tasks are archived, members who leave are marked `left`, sub-teams are archived with `update_team {archived:true}`.
+
+### Master team and sub-teams
+A team is a **master** team. For each tournament/event you can create a **sub-team** (`create_sub_team`, `POST /teams/:id/sub-teams`):
+* *same as master* — `copy_roster` (default) starts with the master's active roster, or
+* *different players* — `member_ids` (they must be on the master roster); change it later with `set_sub_team_roster` (`POST /teams/:id/sub-roster`).
+
+The master's roster is never touched. Whoever can manage the master (owner, managers, captains, org grants) can manage its sub-teams. A sub-team can be entered in the event like any team, or the master can enter directly — the event entry may point at either. `list_teams` hides sub-teams unless `mine=true` or `include_sub=true`; `get_team` returns `sub_teams` and `master_team`.
+
+### Task board
+`list_team_tasks` (columns *new / in_progress / review / done* plus each member's open-task count), `get_team_task`, `create_team_task`, `update_team_task` (status moves, tags, due date, assignees), `add_task_subtask` / `update_task_subtask` (checklist + progress), `comment_on_task`, `attach_task_file` (a media path or https link), `archive_team_task`. Any active member can create a task; managers, the creator and assignees can edit it; assignees and commenters are notified.
+
+### Attendance
+Separate from squad selection (the coach's pick): attendance is who actually turns up, per event or fixture.
+* `request_attendance` — managers ask the roster (or only the selected squad) to RSVP; everyone is notified.
+* `set_event_rsvp` — a member answers *going / maybe / no*; managers are told about a "no".
+* `confirm_attendance` — captain/manager confirms a going/maybe player (changing the answer clears it).
+* `check_in_attendee` — mark arrival on the day (works without an RSVP).
+* `list_event_attendance` — everyone with their answer, confirmation, check-in and counts. `get_team_workspace` returns the schedule with *my* RSVP for the side rail.
+
+An RSVP is only accepted for events the team (or its master) is entered in, or the sub-team's own event, and for the team's fixtures.
