@@ -180,7 +180,7 @@ function Plan({ e, toast }) {
 function Staff({ e, toast }) {
   const id = e.id;
   const roles = useLoad(() => api.get(`/events/${id}/staff-roles`), [id]);
-  const staff = useLoad(() => api.get(`/events/${id}/staff`), [id]);
+  const staff = useLoad(() => api.get(`/events/${id}/staff-assignments`), [id]);
   const [open, setOpen] = useState(false);
   const [find, setFind] = useState(null); // role being filled
   const [people, setPeople] = useState([]);

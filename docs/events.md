@@ -31,7 +31,7 @@ Capabilities: request_fixture_official, respond_fixture_official, release_fixtur
 
 Not yet built (follow-up slices): referee verification type, availability/calendar, Officials Home UI, idempotent match console, result sign-off, incident reports.
 
-## Tournament management (migration 027)
+## Tournament management (migration 029)
 One organiser console (`EventAdmin` screen, reached from **Organizer tools → Tournament console**) over these capabilities (REST + OpenAPI + MCP, tag *Tournament*, *Event staff*, *Event vendors*):
 
 **Invitations, rules, seeding** (`event-invites.js`)
@@ -46,7 +46,7 @@ One organiser console (`EventAdmin` screen, reached from **Organizer tools → T
 * Knockout: standard 1-v-N seeding, byes for the top seeds when the field is not a power of two (up to 32 teams), round of 32/16 → quarter → semi → final, optional third place. Later-round fixtures hold placeholders ("Winner Quarter-final 1") that fill in as `record_result` is called; a level knockout game needs `winner_team_id` (e.g. penalties); a result cannot change once the next round has started. `get_event_bracket` returns the rounds and champion. `complete_event` awards cup/silver/bronze from the final and third-place game. Group standings ignore knockout games.
 * Individual (non-team) entrants can be invited and registered but are not scheduled; fixtures are team-based.
 
-**Staff** (`event-staff.js`): `define_staff_role` (referee, umpire, linesman, scorer, doctor, physio, medic, volunteer, security, other; headcount + fee), `list_staff_roles`, `close_staff_role`, `search_staff_candidates`, `invite_staff`, `respond_staff_assignment`, `end_staff_assignment`, `list_event_staff`, `list_my_staff_assignments`. Referee roles need a referee sport profile for the sport; doctor/physio need a matching provider profile; provider time off and clashes with the person's other events on the same dates are refused. Every transition is appended to `event_staff_history`. Match-level officiating stays with the fixture-officials capabilities.
+**Staff** (`event-staff.js`): `define_staff_role` (referee, umpire, linesman, scorer, doctor, physio, medic, volunteer, security, other; headcount + fee), `list_staff_roles`, `close_staff_role`, `search_staff_candidates`, `invite_staff`, `respond_staff_assignment`, `end_staff_assignment`, `list_tournament_staff` (`GET /events/:id/staff-assignments`), `list_my_staff_assignments`. Referee roles need a referee sport profile for the sport; doctor/physio need a matching provider profile; provider time off and clashes with the person's other events on the same dates are refused. Every transition is appended to `event_staff_history`. Match-level officiating stays with the fixture-officials capabilities. Events run as multi-sport programmes (`docs/multi-sport-events.md`) use that module's own crew capabilities (`invite_event_staff`, shifts) instead.
 
 **Vendors, retail, sponsors** (`event-vendors.js`): `invite_event_vendor` (retail, catering, sponsor, other), `respond_event_vendor` (accepting a sponsor invitation records an active event sponsorship), `end_event_vendor`, `list_event_vendors`, `attach_event_product` / `detach_event_product` / `list_event_products` (shop products of confirmed retail vendors), `get_event_commercials` (entry fees, sponsorship, vendor fees, staff cost; recorded only, no payment collection).
 
