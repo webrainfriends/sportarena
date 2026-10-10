@@ -54,30 +54,59 @@ function Onboarding({ onDone }) {
 function QuoteFlow({ ask, onClose, onDone }) {
   const { push } = useNav();
   const plans = useLoad(() => api.get('/insurance/my-plans', { status: 'active', limit: 100 }), []);
-  const [plan, setPlan] = useState(null);
+  const [picked, setPicked] = useState([]);
+  const [step, setStep] = useState(1);
   const fits = (plans.data ?? []).filter((p) => p.cover_for === ask?.cover_for);
-  const close = () => { setPlan(null); onClose(); };
+  const chosen = fits.filter((p) => picked.includes(p.id));
+  const close = () => { setPicked([]); setStep(1); onClose(); };
+  const toggle = (pid) => setPicked((x) => (x.includes(pid) ? x.filter((i) => i !== pid) : [...x, pid]));
+  const minMonths = Math.max(1, ...chosen.map((p) => p.term_months.min ?? 1)), maxMonths = Math.min(36, ...chosen.map((p) => p.term_months.max ?? 36));
+  const fields = chosen.flatMap((p, i) => [
+    { type: 'section', label: `${p.emoji} ${p.name}` },
+    { key: `premium_${i}`, label: 'Premium per month', type: 'money', currency: p.currency, hint: `Plan price ${cur(p.premium_cents, p.currency)} a month` },
+    { key: `coverage_${i}`, label: 'Cover for this quote', type: 'money', currency: p.currency, optional: true, hint: `Leave empty for the plan's ${cur(p.coverage_cents, p.currency)}` },
+    { key: `deductible_${i}`, label: 'Excess for this quote', type: 'money', currency: p.currency, optional: true, hint: 'Leave empty for the plan\'s excess.' },
+  ]);
+  const initial = { months: Math.min(Math.max(ask?.months ?? 12, minMonths), maxMonths), valid_days: 14, ...Object.fromEntries(chosen.map((p, i) => [`premium_${i}`, major(p.premium_cents, p.currency)])) };
   return (
     <>
-      <Sheet visible={!!ask && !plan} onClose={close} title="Quote on which plan?">
-        {plans.loading ? <Loading /> : fits.length ? fits.map((p) => (
-          <Card key={p.id} pad={12} onPress={() => setPlan(p)}><T weight="800">{p.emoji} {p.name}</T><T size={12} color={c.mute}>{cur(p.premium_cents, p.currency)}/mo · cover {cur(p.coverage_cents, p.currency)} · excess {cur(p.deductible_cents, p.currency)}</T></Card>
-        )) : <Empty emoji="🛡️" title={`No active ${COVER[ask?.cover_for]?.toLowerCase() ?? ''} plan`} sub="Publish a plan of this kind first: a quote is always priced on one of your plans." />}
+      <Sheet visible={!!ask && step === 1} onClose={close} title="Quote with which plans?">
+        {plans.loading ? <Loading /> : fits.length ? <>
+          <T size={12} color={c.mute}>Pick one plan, or several to give the buyer a choice. You set the price and your own terms for each on the next step.</T>
+          {fits.map((p) => (
+            <Card key={p.id} pad={12} color={picked.includes(p.id) ? c.cyanSoft : undefined} onPress={() => toggle(p.id)}>
+              <T weight="800">{picked.includes(p.id) ? '☑' : '☐'} {p.emoji} {p.name}</T>
+              <T size={12} color={c.mute}>{cur(p.premium_cents, p.currency)}/mo · cover {cur(p.coverage_cents, p.currency)} · excess {cur(p.deductible_cents, p.currency)}</T>
+            </Card>
+          ))}
+          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+            <Btn title={picked.length ? `Continue with ${picked.length} plan${picked.length === 1 ? '' : 's'}` : 'Pick a plan'} disabled={!picked.length} onPress={() => setStep(2)} />
+            {fits.length > 1 ? <Btn small title={picked.length === fits.length ? 'Clear' : 'Select all'} color={c.paper} ink={c.ink} onPress={() => setPicked(picked.length === fits.length ? [] : fits.map((p) => p.id))} /> : null}
+          </View>
+        </> : <Empty emoji="🛡️" title={`No active ${COVER[ask?.cover_for]?.toLowerCase() ?? ''} plan`} sub="Publish a plan of this kind first: a quote is always priced on one of your plans." />}
         {!plans.loading && !fits.length ? <Btn title="Create a plan" onPress={() => { close(); push('InsurerDesk', { tab: 'plans' }); }} /> : null}
       </Sheet>
-      <FormSheet visible={!!ask && !!plan} onClose={close} title={plan ? `Quote: ${plan.name}` : ''} submitLabel="Send quote" initial={{ months: Math.min(Math.max(ask?.months ?? 12, plan?.term_months.min ?? 1), plan?.term_months.max ?? 36), valid_days: 14 }}
+      <FormSheet visible={!!ask && step === 2 && !!chosen.length} onClose={() => setStep(1)} title={chosen.length === 1 ? `Quote: ${chosen[0].name}` : `Quote: ${chosen.length} plans`} submitLabel={chosen.length === 1 ? 'Send quote' : `Send ${chosen.length} quotes`} initial={initial}
         fields={[
-          { key: 'premium_cents', label: 'Premium per month', type: 'money', currency: plan?.currency, hint: plan ? `Plan price ${cur(plan.premium_cents, plan.currency)} a month` : undefined },
-          { key: 'months', label: 'Months', type: 'stepper', min: plan?.term_months.min ?? 1, max: plan?.term_months.max ?? 36, suffix: ' mo' },
-          { key: 'coverage_cents', label: 'Cover', type: 'money', currency: plan?.currency, optional: true, hint: plan ? `Leave empty for the plan's ${cur(plan.coverage_cents, plan.currency)}` : undefined },
-          { key: 'deductible_cents', label: 'Excess', type: 'money', currency: plan?.currency, optional: true, hint: 'Leave empty for the plan\'s excess.' },
-          { key: 'waiting_period_days', label: 'Waiting period (days)', type: 'number', optional: true, hint: 'Leave empty for the plan\'s waiting period.' },
+          ...fields,
+          { type: 'section', label: 'Terms for all' },
+          { key: 'months', label: 'Months', type: 'stepper', min: minMonths, max: maxMonths, suffix: ' mo' },
+          { key: 'waiting_period_days', label: 'Waiting period (days)', type: 'number', optional: true, hint: 'Leave empty for each plan\'s waiting period.' },
           { key: 'valid_days', label: 'Valid for (days)', type: 'stepper', min: 1, max: 90, suffix: ' d' },
+          { key: 'details', label: 'Your own terms', type: 'multiline', optional: true, hint: 'In your words: what is included, special conditions, club or multi-year discounts. The buyer sees this next to the plan\'s exclusions.' },
           { key: 'note', label: 'Note to the buyer', type: 'multiline', optional: true },
         ]}
         onSubmit={async (v) => {
-          await api.post('/insurance/quotes', { plan_id: plan.id, ...(ask.request_id ? { request_id: ask.request_id } : { buyer_id: ask.buyer_id, ...(ask.subject_id ? { subject_id: ask.subject_id } : {}) }), ...v });
-          onDone?.(); return 'Quote sent';
+          const who = ask.request_id ? { request_id: ask.request_id } : { buyer_id: ask.buyer_id, ...(ask.subject_id ? { subject_id: ask.subject_id } : {}) };
+          const shared = { months: v.months, valid_days: v.valid_days, waiting_period_days: v.waiting_period_days, details: v.details || undefined, note: v.note || undefined };
+          let sent = 0; const failed = [];
+          for (const [i, p] of chosen.entries()) {
+            try { await api.post('/insurance/quotes', { plan_id: p.id, ...who, ...shared, premium_cents: v[`premium_${i}`], coverage_cents: v[`coverage_${i}`], deductible_cents: v[`deductible_${i}`] }); sent++; }
+            catch (e) { failed.push(`${p.name}: ${e.message}`); }
+          }
+          if (!sent) throw new Error(failed.join('; '));
+          onDone?.(); close();
+          return failed.length ? `Sent ${sent} of ${chosen.length}. ${failed.join('; ')}` : sent === 1 ? 'Quote sent' : `${sent} quotes sent`;
         }} />
     </>
   );
@@ -151,7 +180,7 @@ export function InsuranceMarket({ onAsk }) {
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}><T weight="800" style={{ flex: 1 }}>{x.subject_name ?? COVER[x.cover_for]}</T>{x.my_quote_status ? <StatusTag s={x.my_quote_status} /> : <Tag label="Needs a quote" color={c.sun} />}</View>
             <T size={12} color={c.mute}>{COVER[x.cover_for]} · {x.months} months{x.participants ? ` · ${x.participants} people` : ''}{x.sport ? ` · ${x.sport}` : ''}{x.city ? ` · ${x.city}` : ''} · {day(x.created_at)}</T>
             <T size={12} color={c.mute}>{x.quotes ? `${x.quotes} quote${x.quotes === 1 ? '' : 's'} so far` : 'No quotes yet'}</T>
-            {!x.my_quote_id ? <Btn small title="Send a quote" onPress={() => setAsk({ request_id: x.id, cover_for: x.cover_for, months: x.months })} style={{ marginTop: 8, alignSelf: 'flex-start' }} /> : null}
+            {true ? <Btn small title={x.my_quote_id ? 'Quote with another plan' : 'Send a quote'} onPress={() => setAsk({ request_id: x.id, cover_for: x.cover_for, months: x.months })} style={{ marginTop: 8, alignSelf: 'flex-start' }} /> : null}
           </Card>
         )) : <Empty emoji="📭" title="No open requests" sub="New requests appear here as soon as someone asks." />}
       </>}

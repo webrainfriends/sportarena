@@ -149,3 +149,19 @@ test('team documents: managers upload and hide, members read, outsiders see noth
   assert.equal(must(await api('GET', '/documents', { token: manager.token, query: q })).length, 1, 'hidden from the list');
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM subject_documents WHERE id=$1', [doc.id])).rows[0].n, 1, 'but never deleted');
 });
+
+test('an insurer answers one request with several plans and its own terms; the asker compares and accepts one', async () => {
+  const a = await insurer('Multi Alpha');
+  const basic = must(await plan(a, { name: 'Basic', cover_for: 'team' }), 201), gold = must(await plan(a, { name: 'Gold', cover_for: 'team', coverage_cents: 900000 }), 201);
+  const manager = await signup(['athlete']);
+  const team = must(await api('POST', '/teams', { token: manager.token, body: { name: 'Multi FC', sport: 'cricket' } }), 201);
+  const req = must(await api('POST', '/insurance/quote-requests', { token: manager.token, body: { cover_for: 'team', subject_id: team.id } }), 201);
+  const q1 = must(await api('POST', '/insurance/quotes', { token: a.token, body: { request_id: req.id, plan_id: basic.id, premium_cents: 60000, details: 'Includes net practice, 5% club discount' } }), 201);
+  const q2 = must(await api('POST', '/insurance/quotes', { token: a.token, body: { request_id: req.id, plan_id: gold.id, premium_cents: 95000 } }), 201);
+  assert.equal(q1.details, 'Includes net practice, 5% club discount');
+  assert.equal((await api('POST', '/insurance/quotes', { token: a.token, body: { request_id: req.id, plan_id: gold.id, premium_cents: 90000 } })).status, 409, 'one live quote per plan');
+  const got = must(await api('GET', '/insurance/quotes', { token: manager.token }));
+  assert.equal(got.length, 2);
+  must(await api('POST', `/insurance/quotes/${q2.id}/accept`, { token: manager.token, body: {} }), 201);
+  assert.equal(must(await api('GET', `/insurance/quotes/${q1.id}`, { token: manager.token })).status, 'declined', 'the other plan closes');
+});

@@ -49,7 +49,7 @@ An account holding the **`insurer`** role (picked at sign-up or added under Me �
   encrypted and only insurers the request went to can read it. Up to 20 open requests per person.
 * **`list_quote_requests`** (`view=mine|inbox`), **`get_quote_request`** — the inbox shows requests addressed to the insurer or open, minus the ones it passed on.
 * **`create_quote`** — a priced offer on one of the insurer's **active** plans (premium per month, optional different cover / excess / waiting period,
-  valid 1–90 days, a note), either answering a request or offered directly to a person/team/event (`buyer_id`). One live quote per insurer per request;
+  valid 1–90 days, a note and `details`: the insurer's own terms in plain words), either answering a request or offered directly to a person/team/event (`buyer_id`). An insurer can answer one request with **several plans** (the app lets it tick them and price each); one live quote per insurer per plan per request;
   `withdraw_quote` to revise. The plan's exclusions and conditions always apply and are shown with the quote.
 * **`accept_quote`** — creates the policy on the quoted price and terms (**cover assigned**), re-checking that the buyer still manages the team /
   organises the event and meets the plan's age and sport rules. With a payment provider enabled the policy is `pending_payment` until paid
@@ -102,6 +102,8 @@ No existing row is changed, dropped or rewritten, and nothing here is ever delet
 ## Migration `027_insurance_marketplace.sql`
 Additive: `venue` added to the allowed cover/subject types, `insurance_quote_requests.city`, an index for the open marketplace, and the `subject_documents` table
 (soft-delete only). Nothing is dropped, rewritten or deleted.
+
+Migration `028_quote_details.sql` adds `insurance_quotes.details` (additive).
 
 ## Not built yet
 Policy cancellation with pro-rata refunds, actual claim payouts (money movement: "paid" is a status, as payouts do not exist yet, see [architecture.md](architecture.md)),

@@ -244,6 +244,7 @@ export function QuoteSheet({ id, onClose, onChanged, onPay }) {
             <T size={13} style={{ marginTop: 6 }}>Cover up to <T weight="800">{cur(d.coverage_cents, d.currency)}</T> · excess {cur(d.deductible_cents, d.currency)} · waiting period {d.waiting_period_days} days</T>
             <T size={12} color={c.mute} style={{ marginTop: 4 }}>Valid until {day(d.valid_until)}</T>
             {d.note ? <T size={13} style={{ marginTop: 6 }}>“{d.note}”</T> : null}
+            {d.details ? <T size={13} style={{ marginTop: 6 }}><T size={13} weight="800">Insurer's own terms: </T>{d.details}</T> : null}
           </Card>
           {d.exclusions ? <T size={13}><T size={13} weight="800">Not covered: </T>{d.exclusions}</T> : null}
           {d.conditions ? <T size={13}><T size={13} weight="800">Conditions: </T>{d.conditions}</T> : null}
@@ -308,7 +309,7 @@ export function RequestSheet({ id, asInsurer, onClose, onChanged, onQuote, onOpe
           ) : null}
           {live && asInsurer ? (
             <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-              <Btn title="Send a quote" onPress={() => onQuote?.(d)} />
+              <Btn title={d.quotes?.length ? 'Quote with another plan' : 'Send a quote'} onPress={() => onQuote?.(d)} />
               <Btn title="Pass" color={c.paper} ink={c.red} onPress={async () => { try { await api.post(`/insurance/quote-requests/${d.id}/decline`, {}); onChanged?.(); onClose(); toast('Passed on this request'); } catch (e) { toast(e.message); } }} />
             </View>
           ) : null}
