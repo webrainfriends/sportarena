@@ -74,6 +74,23 @@ shows `policies_to_renew`. Insurers see who has renewed under `list_insurer_poli
 **encrypted at rest** (AES-256-GCM, `src/crypto.js`), readable only by the holder, the insurer that wrote the policy and admins, and every download is audit-logged.
 "Removing" a document only sets `removed_at`: the file and the row stay. Claim evidence is added by the claimant; schedules and certificates by either side.
 
+## The marketplace (Billboard) and who can ask
+* **Who can ask** (`request_quote`): anyone for themselves; for a **team** any active member (players, coaches, referees on the roster) and its managers; for an
+  **event** its organiser (or organisation owner/admin) and active sponsors; for a **venue** its owner and staff. Cover can now be `individual`, `team`, `event` or `venue`.
+* **Who decides**: buying, accepting, declining, cancelling and renewing stay with whoever *manages* the team / event / venue (so a player's request is accepted by the
+  manager). Quotes, requests and policies for a team, event or venue are visible to its managers (`list_quote_requests`, `list_quotes`, `list_policies`).
+* **Open requests are a marketplace**: a request without `insurer_id` is listed to every active insurer that takes requests, **notifies them all** (generic text, no details) and
+  appears on the Billboard's Insurance tab through **`list_insurance_market`** (`GET /insurance/market`: cover, subject, sport, city, people, months, quotes so far, your quote;
+  never the encrypted note). Any number of insurers can quote; the asker compares them all, can message each one, and accepts one (the rest close).
+* **Why is my inbox empty?** `get_insurer_summary.inbox` says whether the profile is active and accepting requests, how many open requests exist, and how many are the insurer's own
+  (a login cannot quote its own request). The desk and the Billboard show it as a plain sentence.
+
+## Documents of a team, event or venue
+`PUT /api/v1/documents?subject_type=team|event|venue&subject_id=…&kind=…&title=…` (raw file body), `GET /api/v1/documents/{id}/file`, `list_subject_documents`,
+`remove_subject_document`, and **`link_insurance_document`** which adds a policy document (schedule, certificate, receipt) to the folder of the team / event / venue the policy covers
+without copying it. Managers add and hide; members and sponsors can read. Same rules as the locker: PDF/images from the bytes, 10 MB, encrypted at rest, downloads audit-logged,
+hiding only sets `removed_at`. Policy lockers are also readable by the managers of what the policy covers.
+
 ## Claims by insurers
 The insurer that wrote a policy reads and reviews the claims on it (same state machine and rules as before: ordered moves, a reason to reject, never above the cover,
 never your own claim); other insurers cannot see them. Admins keep full access.
@@ -81,6 +98,10 @@ never your own claim); other insurers cannot see them. Admins keep full access.
 ## Migration `023_insurance_agency.sql`
 Additive only: new columns on `insurers`, `insurance_plans`, `insurance_policies`; new tables for quote requests, quotes, messages, events and documents.
 No existing row is changed, dropped or rewritten, and nothing here is ever deleted.
+
+## Migration `027_insurance_marketplace.sql`
+Additive: `venue` added to the allowed cover/subject types, `insurance_quote_requests.city`, an index for the open marketplace, and the `subject_documents` table
+(soft-delete only). Nothing is dropped, rewritten or deleted.
 
 ## Not built yet
 Policy cancellation with pro-rata refunds, actual claim payouts (money movement: "paid" is a status, as payouts do not exist yet, see [architecture.md](architecture.md)),

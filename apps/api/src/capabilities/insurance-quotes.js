@@ -8,14 +8,21 @@ import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { notify } from '../notify.js';
 import { audit, isAdmin, mustFind } from '../helpers.js';
 import { decrypt, encrypt } from '../crypto.js';
-import { checkCover, checkSubject, checkTerm, insertPolicy, loadPlan, myInsurer, subjectName, termsOf } from './insurance.js';
+import { checkCover, checkSubject, checkTerm, COVER_FOR, insertPolicy, loadPlan, managedSubjects, myInsurer, standing, subjectName, termsOf } from './insurance.js';
 
 const today = () => new Date().toISOString().slice(0, 10);
 const MAX_OPEN_REQUESTS = 20;
+const MAX_FANOUT = 500;
 const logEvent = (c, e) => c.query('INSERT INTO insurance_quote_events(request_id, quote_id, insurer_id, actor_id, action, detail) VALUES ($1,$2,$3,$4,$5,$6)', [e.request_id ?? null, e.quote_id ?? null, e.insurer_id ?? null, e.actor_id ?? null, e.action, e.detail ?? null]);
 const ownerOf = async (c, insurerId) => (await c.query('SELECT owner_id FROM insurers WHERE id=$1', [insurerId])).rows[0]?.owner_id;
 /** An open request is visible to every insurer taking requests; an addressed one only to that insurer. */
 const visibleTo = (r, ins) => !!ins && ins.status === 'active' && (r.insurer_id === ins.id || (r.insurer_id === null && ins.accepting_requests));
+/** The person who asked, or (for a team / event / venue) anyone who manages it: they follow the request, compare the quotes and decide. Admins only look. */
+const decides = async (user, row, ownerId) => ownerId === user.id || (row.cover_for !== 'individual' && !isAdmin(user) && (await standing(user, row.cover_for, row.subject_id)) === 'manage');
+/** Where the cover is: the team's or venue's city, or the venue an event is held at. */
+const cityOf = async (coverFor, subject) => coverFor === 'team' ? (await one('SELECT city FROM teams WHERE id=$1', [subject]))?.city
+  : coverFor === 'venue' ? (await one('SELECT city FROM venues WHERE id=$1', [subject]))?.city
+  : coverFor === 'event' ? (await one('SELECT v.city FROM events e JOIN venues v ON v.id=e.venue_id WHERE e.id=$1', [subject]))?.city : null;
 const effStatus = `CASE WHEN q.status='offered' AND q.valid_until < current_date THEN 'expired' ELSE q.status END`;
 
 const QUOTE_COLS = `q.id, q.request_id, q.insurer_id, i.name AS insurer, (i.verified_at IS NOT NULL) AS insurer_verified, q.plan_id, pl.name AS plan_name, pl.emoji, q.buyer_id, ub.display_name AS buyer,
@@ -28,11 +35,11 @@ const num = (r) => ({ ...r, premium_cents: Number(r.premium_cents), total_cents:
 
 cap({
   name: 'request_quote', method: 'POST', path: '/insurance/quote-requests', tag: 'Insurance', status: 201,
-  summary: 'Ask for an insurance quote for yourself, a team you manage, or an event/tournament you organise. Send it to one insurer (insurer_id, or implied by plan_id) or leave it open so every insurer taking requests can answer. Say what you want covered (participants, sport, months); the note is encrypted and only the insurers it goes to can read it. Then follow it with get_quote_request, and accept a quote with accept_quote.',
+  summary: 'Ask for an insurance quote for yourself, a team you play or work in, an event/tournament you organise or sponsor, or a venue you run. Send it to one insurer (insurer_id, or implied by plan_id) or leave it open so it appears in the insurers\' marketplace (Billboard) and every insurer taking requests can answer. You can send several requests to different insurers and collect several quotes. The people who manage the team, event or venue can compare and accept the quotes. Say what you want covered (participants, sport, months); the note is encrypted and only the insurers it goes to can read it. Then follow it with get_quote_request, and accept a quote with accept_quote.',
   input: z.object({
-    cover_for: z.enum(['individual', 'team', 'event']).optional().describe('inferred from plan_id when you give one'), subject_id: id.optional().describe('team or event id; omit for yourself'),
+    cover_for: z.enum(COVER_FOR).optional().describe('inferred from plan_id when you give one'), subject_id: id.optional().describe('team, event or venue id; omit for yourself'),
     plan_id: id.optional(), insurer_id: id.optional(), months: z.number().int().min(1).max(36).default(12), participants: z.number().int().min(1).max(100000).optional(),
-    sport: z.string().max(60).optional(), message: z.string().max(2000).optional(),
+    sport: z.string().max(60).optional(), city: z.string().max(80).optional().describe('where the cover is needed; defaults to the team\'s or venue\'s city'), message: z.string().max(2000).optional(),
   }),
   async handler({ user }, i) {
     let coverFor = i.cover_for, insurerId = i.insurer_id ?? null, plan = null;
@@ -45,7 +52,8 @@ cap({
       checkTerm(plan, i.months);
     }
     if (!coverFor) throw badRequest('Say what you want covered (cover_for) or pick a plan');
-    const subject = await checkSubject(user, coverFor, i.subject_id);
+    const subject = await checkSubject(user, coverFor, i.subject_id, 'request');
+    const city = i.city ?? (await cityOf(coverFor, subject)) ?? null;
     let ins = null;
     if (insurerId) {
       ins = await one('SELECT * FROM insurers WHERE id=$1', [insurerId]);
@@ -59,23 +67,27 @@ cap({
       const dup = (await c.query("SELECT 1 FROM insurance_quote_requests WHERE requester_id=$1 AND subject_id=$2 AND cover_for=$3 AND insurer_id IS NOT DISTINCT FROM $4 AND status IN ('open','quoted')", [user.id, subject, coverFor, insurerId])).rows[0];
       if (dup) throw conflict('You already have an open request for that');
       const r = (await c.query(
-        `INSERT INTO insurance_quote_requests(requester_id, insurer_id, plan_id, cover_for, subject_id, months, participants, sport, message_enc) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-         RETURNING id, insurer_id, plan_id, cover_for, subject_id, months, participants, sport, status, created_at`,
-        [user.id, insurerId, plan?.id ?? null, coverFor, subject, i.months, i.participants ?? null, i.sport ?? null, encrypt(i.message, 'insurance_quote_requests.message')])).rows[0];
+        `INSERT INTO insurance_quote_requests(requester_id, insurer_id, plan_id, cover_for, subject_id, months, participants, sport, message_enc, city) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+         RETURNING id, insurer_id, plan_id, cover_for, subject_id, months, participants, sport, city, status, created_at`,
+        [user.id, insurerId, plan?.id ?? null, coverFor, subject, i.months, i.participants ?? null, i.sport ?? null, encrypt(i.message, 'insurance_quote_requests.message'), city])).rows[0];
       await logEvent(c, { request_id: r.id, insurer_id: insurerId, actor_id: user.id, action: 'requested', detail: insurerId ? `Sent to ${ins.name}` : 'Open to all insurers' });
       if (ins?.owner_id) await notify(c, ins.owner_id, { kind: 'quote_request', title: 'New quote request', body: 'Someone asked you for an insurance quote.', data: { request_id: r.id } });
+      if (!insurerId) {   // open to all: tell every insurer that takes requests (generic text, no details), the Billboard has the rest
+        const owners = (await c.query("SELECT owner_id FROM insurers WHERE status='active' AND accepting_requests AND owner_id IS NOT NULL AND owner_id<>$1 ORDER BY created_at LIMIT $2", [user.id, MAX_FANOUT])).rows;
+        for (const o of owners) await notify(c, o.owner_id, { kind: 'quote_request', title: 'New insurance request on the Billboard', body: 'Someone is looking for insurance quotes. Open the Billboard to answer.', data: { request_id: r.id } });
+      }
       return r;
     });
   },
 });
 
 const REQ_COLS = `r.id, r.requester_id, ur.display_name AS requester, r.insurer_id, i.name AS insurer, r.plan_id, pl.name AS plan_name, r.cover_for, r.subject_id,
-  CASE r.cover_for WHEN 'individual' THEN ur.display_name ELSE ${subjectName('r.cover_for', 'r.subject_id')} END AS subject_name, r.months, r.participants, r.sport, r.status, r.created_at, r.updated_at`;
+  CASE r.cover_for WHEN 'individual' THEN ur.display_name ELSE ${subjectName('r.cover_for', 'r.subject_id')} END AS subject_name, r.months, r.participants, r.sport, r.city, r.status, r.created_at, r.updated_at`;
 const REQ_FROM = 'FROM insurance_quote_requests r JOIN users ur ON ur.id=r.requester_id LEFT JOIN insurers i ON i.id=r.insurer_id LEFT JOIN insurance_plans pl ON pl.id=r.plan_id';
 
 cap({
   name: 'list_quote_requests', method: 'GET', path: '/insurance/quote-requests', tag: 'Insurance',
-  summary: 'Your quote requests with how many quotes each has received (view=mine, default). As an insurer, view=inbox lists the requests you can answer (addressed to you or open to all), minus the ones you declined, with your own quote on each so you can see what still needs one.',
+  summary: 'Your quote requests, and those for the teams, events and venues you manage, with how many quotes each has received (view=mine, default). As an insurer, view=inbox lists the requests you can answer (addressed to you or open to all), minus the ones you declined, with your own quote on each so you can see what still needs one.',
   input: z.object({ view: z.enum(['mine', 'inbox']).default('mine'), status: z.enum(['open', 'quoted', 'accepted', 'cancelled', 'declined']).optional(), unanswered: z.coerce.boolean().optional().describe('inbox only: requests you have not quoted yet'), ...page }),
   async handler({ user }, i) {
     if (i.view === 'inbox') {
@@ -92,8 +104,8 @@ cap({
     return many(
       `SELECT ${REQ_COLS}, (SELECT count(*)::int FROM insurance_quotes q WHERE q.request_id=r.id AND (q.status='offered' AND q.valid_until >= current_date)) AS open_quotes,
           (SELECT count(*)::int FROM insurance_quotes q WHERE q.request_id=r.id) AS quotes
-         ${REQ_FROM} WHERE r.requester_id=$1 AND ($2::text IS NULL OR r.status=$2) ORDER BY r.created_at DESC LIMIT $3 OFFSET $4`,
-      [user.id, i.status ?? null, i.limit, i.offset]);
+         ${REQ_FROM} WHERE (r.requester_id=$1 OR (r.cover_for<>'individual' AND r.subject_id = ANY($5::uuid[]))) AND ($2::text IS NULL OR r.status=$2) ORDER BY r.created_at DESC LIMIT $3 OFFSET $4`,
+      [user.id, i.status ?? null, i.limit, i.offset, await managedSubjects(user)]);
   },
 });
 
@@ -101,7 +113,7 @@ cap({
 async function viewRequest(user, rid) {
   const r = await mustFind('insurance_quote_requests', rid);
   const ins = await myInsurer(user, { required: false });
-  const asRequester = r.requester_id === user.id;
+  const asRequester = await decides(user, r, r.requester_id);
   const asInsurer = visibleTo(r, ins) && !asRequester ? ins : null;
   if (!asRequester && !asInsurer && !isAdmin(user)) throw notFound('Quote request');
   return { r, ins: asInsurer, asRequester };
@@ -130,12 +142,12 @@ cap({
 
 cap({
   name: 'cancel_quote_request', method: 'POST', path: '/insurance/quote-requests/:id/cancel', tag: 'Insurance',
-  summary: 'Cancel your own quote request. Quotes still on offer for it are closed. Nothing is deleted: the request and its history stay in your tracker.',
+  summary: 'Cancel your own quote request (or one for a team, event or venue you manage). Quotes still on offer for it are closed. Nothing is deleted: the request and its history stay in your tracker.',
   input: z.object({ id }),
   async handler({ user }, i) {
     return tx(async (c) => {
       const r = (await c.query('SELECT * FROM insurance_quote_requests WHERE id=$1 FOR UPDATE', [i.id])).rows[0];
-      if (!r || r.requester_id !== user.id) throw notFound('Quote request');
+      if (!r || !(await decides(user, r, r.requester_id))) throw notFound('Quote request');
       if (!['open', 'quoted'].includes(r.status)) throw conflict(`A ${r.status} request cannot be cancelled`);
       const out = (await c.query("UPDATE insurance_quotes SET status='declined', decided_at=now(), updated_at=now() WHERE request_id=$1 AND status='offered' RETURNING id, insurer_id", [r.id])).rows;
       for (const q of out) { await logEvent(c, { request_id: r.id, quote_id: q.id, insurer_id: q.insurer_id, actor_id: user.id, action: 'quote_declined', detail: 'The request was cancelled' }); const o = await ownerOf(c, q.insurer_id); if (o) await notify(c, o, { kind: 'quote_update', title: 'A quote request was cancelled', body: 'A request you quoted was cancelled by the requester.', data: { request_id: r.id } }); }
@@ -200,7 +212,7 @@ cap({
         if (plan.cover_for === 'individual') subject = buyer.id;
         else {
           if (!i.subject_id) throw badRequest('subject_id (the team or event) is required for team/event cover');
-          if (!(await c.query(`SELECT 1 FROM ${plan.cover_for === 'team' ? 'teams' : 'events'} WHERE id=$1`, [i.subject_id])).rowCount) throw notFound(plan.cover_for === 'team' ? 'Team' : 'Event');
+          if (!(await c.query(`SELECT 1 FROM ${{ team: 'teams', event: 'events', venue: 'venues' }[plan.cover_for]} WHERE id=$1`, [i.subject_id])).rowCount) throw notFound(plan.cover_for);
           subject = i.subject_id;
         }
         if (Number((await c.query("SELECT count(*) AS n FROM insurance_quotes WHERE insurer_id=$1 AND buyer_id=$2 AND request_id IS NULL AND status='offered' AND valid_until >= current_date", [ins.id, buyerId])).rows[0].n) >= 3) throw conflict('That person already has 3 live offers from you');
@@ -239,13 +251,13 @@ cap({
 
 cap({
   name: 'list_quotes', method: 'GET', path: '/insurance/quotes', tag: 'Insurance',
-  summary: 'Quotes you received (view=received, default) or, as an insurer, quotes you sent (view=sent). Expired offers show as expired. Includes the total cost, cover, excess, waiting period and the date the quote is valid until.',
+  summary: 'Quotes you received, or received for the teams, events and venues you manage (view=received, default) or, as an insurer, quotes you sent (view=sent). Expired offers show as expired. Includes the total cost, cover, excess, waiting period and the date the quote is valid until.',
   input: z.object({ view: z.enum(['received', 'sent']).default('received'), status: z.enum(['offered', 'accepted', 'declined', 'withdrawn', 'expired']).optional(), ...page }),
   async handler({ user }, i) {
     const ins = i.view === 'sent' ? await myInsurer(user) : null;
     const rows = await many(
-      `SELECT * FROM (SELECT ${QUOTE_COLS} ${QUOTE_FROM} WHERE ${ins ? 'q.insurer_id=$1' : 'q.buyer_id=$1'}) x WHERE ($2::text IS NULL OR x.status=$2) ORDER BY x.created_at DESC LIMIT $3 OFFSET $4`,
-      [ins ? ins.id : user.id, i.status ?? null, i.limit, i.offset]);
+      `SELECT * FROM (SELECT ${QUOTE_COLS} ${QUOTE_FROM} WHERE ${ins ? 'q.insurer_id=$1' : "(q.buyer_id=$1 OR (q.cover_for<>'individual' AND q.subject_id = ANY($5::uuid[])))"}) x WHERE ($2::text IS NULL OR x.status=$2) ORDER BY x.created_at DESC LIMIT $3 OFFSET $4`,
+      [ins ? ins.id : user.id, i.status ?? null, i.limit, i.offset, ...(ins ? [] : [await managedSubjects(user)])]);
     return rows.map(num);
   },
 });
@@ -258,7 +270,7 @@ cap({
     const q = await one(`SELECT ${QUOTE_COLS}, pl.exclusions, pl.conditions, pl.currency AS plan_currency ${QUOTE_FROM} WHERE q.id=$1`, [i.id]);
     if (!q) throw notFound('Quote');
     const ins = await myInsurer(user, { required: false });
-    if (q.buyer_id !== user.id && !isAdmin(user) && !(ins && ins.id === q.insurer_id)) throw notFound('Quote');
+    if (!(await decides(user, q, q.buyer_id)) && !isAdmin(user) && !(ins && ins.id === q.insurer_id)) throw notFound('Quote');
     const events = await many('SELECT e.id, e.action, e.detail, e.created_at, u.display_name AS actor FROM insurance_quote_events e LEFT JOIN users u ON u.id=e.actor_id WHERE e.quote_id=$1 ORDER BY e.created_at, e.id', [q.id]);
     return { ...num(q), events };
   },
@@ -270,7 +282,7 @@ cap({
   input: z.object({ id, beneficiary: z.string().max(200).optional() }),
   async handler({ user }, i) {
     const probe = await one('SELECT * FROM insurance_quotes WHERE id=$1', [i.id]);
-    if (!probe || probe.buyer_id !== user.id) throw notFound('Quote');
+    if (!probe || !(await decides(user, probe, probe.buyer_id))) throw notFound('Quote');
     const plan = await loadPlan(probe.plan_id);
     const subject = await checkCover(user, plan, probe.cover_for === 'individual' ? undefined : probe.subject_id);
     return tx(async (c) => {
@@ -302,7 +314,7 @@ cap({
   async handler({ user }, i) {
     return tx(async (c) => {
       const q = (await c.query('SELECT * FROM insurance_quotes WHERE id=$1 FOR UPDATE', [i.id])).rows[0];
-      if (!q || q.buyer_id !== user.id) throw notFound('Quote');
+      if (!q || !(await decides(user, q, q.buyer_id))) throw notFound('Quote');
       if (q.status !== 'offered') throw conflict(`This quote is ${q.status}`);
       await c.query("UPDATE insurance_quotes SET status='declined', decided_at=now(), updated_at=now() WHERE id=$1", [q.id]);
       await logEvent(c, { request_id: q.request_id, quote_id: q.id, insurer_id: q.insurer_id, actor_id: user.id, action: 'quote_declined', detail: i.reason ?? null });
@@ -348,7 +360,7 @@ cap({
   input: z.object({ id, months: z.number().int().min(1).max(36).optional().describe('defaults to the length of the policy being renewed'), plan_id: id.optional(), beneficiary: z.string().max(200).optional() }),
   async handler({ user }, i) {
     const old = await mustFind('insurance_policies', i.id);
-    if (old.holder_id !== user.id) throw forbidden();
+    if (!(await decides(user, { cover_for: old.subject_type, subject_id: old.subject_id }, old.holder_id))) throw forbidden();
     if (old.status !== 'active') throw conflict(`A ${old.status.replace('_', ' ')} policy cannot be renewed`);
     const left = Math.round((new Date(old.ends_on) - new Date(today())) / 864e5);
     if (left > RENEW_WINDOW_DAYS) throw conflict(`Renewal opens ${RENEW_WINDOW_DAYS} days before the policy ends`);

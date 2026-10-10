@@ -8,6 +8,8 @@ import { FormSheet } from '../FormSheet';
 import { NewCaseSheet } from './cases';
 import { BookProviderSheet } from './provider';
 import { c, toneFor, money, when, day } from '../theme';
+import { InsuranceMarket } from './insurer';
+import { QuoteRequestSheet } from './insurance';
 
 const nice = (s) => String(s ?? '').replace(/_/g, ' ');
 const parseWhen = (s) => { const d = new Date(String(s).trim().replace(' ', 'T')); if (isNaN(d)) throw new Error('Use the format 2026-11-02 17:30'); return d.toISOString(); };
@@ -199,7 +201,7 @@ function SponsorInbox() {
   );
 }
 
-const FILTERS = [['all', 'All'], ['match_players', 'Matches'], ['team_recruiting', 'Teams'], ['sponsor', 'Sponsorship'], ['events', 'Events'], ['mine', 'My posts']];
+const FILTERS = [['all', 'All'], ['match_players', 'Matches'], ['team_recruiting', 'Teams'], ['sponsor', 'Sponsorship'], ['events', 'Events'], ['insurance', 'Insurance'], ['mine', 'My posts']];
 
 export function Billboard() {
   const { has, toast } = useSession();
@@ -207,13 +209,14 @@ export function Billboard() {
   const [f, setF] = useState('all');
   const [post, setPost] = useState(false);
   const [resp, setResp] = useState(null);
+  const [quote, setQuote] = useState(null);
   const q = f === 'mine' ? { mine: true, include_closed: true } : f === 'match_players' || f === 'team_recruiting' ? { kind: f } : {};
-  const posts = useLoad(() => (f === 'events' ? Promise.resolve([]) : api.get('/billboard', { ...q, limit: 50 })), [f]);
+  const posts = useLoad(() => (f === 'events' || f === 'insurance' ? Promise.resolve([]) : api.get('/billboard', { ...q, limit: 50 })), [f]);
   const events = useLoad(() => (f === 'all' || f === 'events' ? api.get('/events', { status: 'open', limit: 20 }) : Promise.resolve([])), [f]);
   const list = (posts.data ?? []).filter((p) => (f === 'sponsor' ? p.kind.startsWith('sponsor') : true));
   const join = async (e) => { try { await api.post(`/events/${e.id}/entries`, {}); toast(`Registered for ${e.name} — awaiting approval`); } catch (x) { toast(x.message); } };
   const loading = (posts.loading && !posts.data) || (events.loading && !events.data);
-  const empty = !loading && !list.length && !(events.data ?? []).length;
+  const empty = !loading && !list.length && !(events.data ?? []).length && f !== 'insurance';
 
   return (
     <Screen wide>
@@ -221,7 +224,7 @@ export function Billboard() {
         right={<Btn small title="+ Post a need" onPress={() => setPost(true)} />} />
       <View style={{ marginTop: 14 }}><Seg options={FILTERS.map(([value, label]) => ({ value, label }))} value={f} onChange={setF} /></View>
       {f === 'all' || f === 'sponsor' ? <SponsorInbox /> : null}
-      {posts.error ? <ErrorBox error={posts.error} onRetry={posts.reload} /> : loading ? <Loading /> : empty ? (
+      {f === 'insurance' ? <View style={{ marginTop: 14, gap: 10 }}><InsuranceMarket onAsk={() => setQuote({})} /></View> : posts.error ? <ErrorBox error={posts.error} onRetry={posts.reload} /> : loading ? <Loading /> : empty ? (
         <View style={{ marginTop: 14 }}><Empty emoji="📣" title="Nothing here yet" sub="Be the first — post that you need players, a team, or a sponsor." /></View>
       ) : (
         <Grid>
@@ -230,6 +233,7 @@ export function Billboard() {
         </Grid>
       )}
 
+      <QuoteRequestSheet target={quote} onClose={() => setQuote(null)} onDone={() => setQuote(null)} />
       {post ? (
         <FormSheet visible onClose={() => setPost(false)} title="Post on the billboard" submitLabel="Post"
           fields={[

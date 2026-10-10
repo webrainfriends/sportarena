@@ -1,4 +1,5 @@
 import { VerifiedBadges } from './verification';
+import { SubjectPanel } from './insurance';
 import { AvailabilityPicker, MySelections } from './team-manage';
 import React, { useEffect, useState } from 'react';
 import { View } from 'react-native';
@@ -96,6 +97,7 @@ export function Event({ id }) {
   const [tab, setTab] = useState('table');
   const [score, setScore] = useState(null);
   const [joining, setJoining] = useState(false);
+  const [panel, setPanel] = useState(false);
   const ev = useLoad(() => api.get(`/events/${id}`), [id]);
   const fx = useLoad(() => api.get('/fixtures', { event_id: id, limit: 100 }), [id]);
   const myTeams = useLoad(() => (user ? api.get('/teams', { mine: true, limit: 50 }) : []), [id]);
@@ -136,11 +138,13 @@ export function Event({ id }) {
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
             {!fx.data?.length && e.entrants.filter((x) => x.team_id).length > 1 ? <Btn small title="Auto-schedule" color={c.violet} onPress={act(() => api.post(`/events/${id}/schedule/round-robin`, { first_round_at: new Date(Date.now() + 2 * 864e5).toISOString() }), 'Round-robin created')} /> : null}
             {e.status === 'open' ? <Btn small title="Start" color={c.cyan} ink={c.ink} onPress={act(() => api.patch(`/events/${id}`, { status: 'ongoing' }), 'Event is underway')} /> : null}
+            <Btn small title="Insurance & documents" color={c.paper} ink={c.ink} onPress={() => setPanel((x) => !x)} />
             {e.status !== 'completed' ? <Btn small title="Finish & award" color={c.orange} onPress={act(() => api.post(`/events/${id}/complete`), 'Champions crowned')} /> : null}
           </View>
         </Card>
       ) : null}
 
+      {isOrg && panel ? <View style={{ marginTop: 14 }}><SubjectPanel type="event" id={id} name={e.name} /></View> : null}
       <View style={{ marginTop: 14 }}>
         <Seg options={[{ value: 'table', label: 'Table', emoji: '📊' }, { value: 'games', label: 'Games', emoji: '⚽' }, { value: 'crew', label: 'Crew', emoji: '🤝' }, { value: 'reviews', label: 'Reviews', emoji: '💬' }]} value={tab} onChange={setTab} color={c.pink} />
       </View>

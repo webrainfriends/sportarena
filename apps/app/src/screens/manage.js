@@ -15,9 +15,10 @@ import { DayBoard } from './dayboard';
 import { useNav } from '../nav';
 import { WEEKDAYS, addDays, dateTimeIn, fmtMin, hoursSummary, localToIso, longDay, moneyIn, timeIn, todayIn } from '../vtime';
 import { Calendar } from '../pickers';
+import { SubjectPanel } from './insurance';
 
 const AMENITIES = ['Parking', 'Changing rooms', 'Showers', 'Lockers', 'Café', 'Floodlights', 'Equipment hire', 'Coaching', 'First aid', 'Seating', 'WiFi', 'Wheelchair access'];
-const TABS = [['schedule', 'Today'], ['timetable', 'Timetable & prices'], ['blocks', 'Block slots'], ['payments', 'Invoices'], ['plans', 'Memberships & passes'], ['discounts', 'Offers'], ['pricing', 'Courts & special rates'], ['media', 'Photos'], ['reviews', 'Reviews'], ['reports', 'Reports'], ['setup', 'Settings']];
+const TABS = [['schedule', 'Today'], ['timetable', 'Timetable & prices'], ['blocks', 'Block slots'], ['payments', 'Invoices'], ['plans', 'Memberships & passes'], ['discounts', 'Offers'], ['pricing', 'Courts & special rates'], ['media', 'Photos'], ['reviews', 'Reviews'], ['reports', 'Reports'], ['docs', 'Documents & insurance'], ['setup', 'Settings']];
 const num = (x) => (x === undefined || x === '' ? undefined : Number(x));
 
 export function Manage({ id, wizard: startWizard }) {
@@ -35,7 +36,7 @@ export function Manage({ id, wizard: startWizard }) {
       {wizard ? <SetupWizard v={x} onExit={() => { setWizard(false); v.reload(); }} goTab={setTab} /> : <SetupChecklist venueId={x.id} go={setTab} onWizard={() => setWizard(true)} />}
       {wizard ? null : <>
       <View style={{ marginTop: 10 }}><Seg options={TABS.map(([value, label]) => ({ value, label }))} value={tab} onChange={setTab} color={c.violet} /></View>
-      {tab === 'schedule' ? <DayBoard {...P} /> : tab === 'timetable' ? <Timetable {...P} /> : tab === 'blocks' ? <Blocks {...P} /> : tab === 'pricing' ? <Pricing {...P} /> : tab === 'discounts' ? <Discounts {...P} /> : tab === 'payments' ? <Payments {...P} /> : tab === 'plans' ? <PlansManager {...P} /> : tab === 'media' ? <Section title="Photos & videos" color={c.cyan}><MediaManager venue={x} /></Section> : tab === 'reviews' ? <Section title="Reviews" color={c.pink}><VenueReviews venueId={x.id} /></Section> : tab === 'reports' ? <Reports {...P} /> : <Setup {...P} />}
+      {tab === 'schedule' ? <DayBoard {...P} /> : tab === 'timetable' ? <Timetable {...P} /> : tab === 'blocks' ? <Blocks {...P} /> : tab === 'pricing' ? <Pricing {...P} /> : tab === 'discounts' ? <Discounts {...P} /> : tab === 'payments' ? <Payments {...P} /> : tab === 'plans' ? <PlansManager {...P} /> : tab === 'media' ? <Section title="Photos & videos" color={c.cyan}><MediaManager venue={x} /></Section> : tab === 'reviews' ? <Section title="Reviews" color={c.pink}><VenueReviews venueId={x.id} /></Section> : tab === 'reports' ? <Reports {...P} /> : tab === 'docs' ? <SubjectPanel type="venue" id={x.id} name={x.name} /> : <Setup {...P} />}
       </>}
     </Screen>
   );
