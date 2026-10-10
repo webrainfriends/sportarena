@@ -2,8 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Switch, View } from 'react-native';
 import { Btn, Chip, Field, Sheet, T, Seg } from './ui';
 import { c } from './theme';
-import { Counter, DateField, TimeField } from './pickers';
-import { SportPicker } from './sportpicker';
+import { Counter, DateField, DateRangeField, TimeField } from './pickers';
+import { SportPicker, SportsMulti } from './sportpicker';
 import { api } from './api';
 import { useLoad } from './hooks';
 import { useSession } from './session';
@@ -30,6 +30,8 @@ const opt = (o) => (typeof o === 'object' ? o : { value: o, label: String(o) });
  *   multi {options}                         several of many
  *   weekdays                                day chips with Weekdays / Weekend / Every day shortcuts → [0..6]
  *   sport                                   search / quick-pick a sport → slug
+ *   sports                                  several sports (chips + add) → [slugs]
+ *   daterange {toKey}                       from–to on one calendar → key = start, toKey = end
  *   section {label}                         a heading between groups
  * `initial` is read each time the sheet opens. onSubmit(values) -> Promise; throws to show an error.
  */
@@ -78,7 +80,7 @@ function LocationPicker({ f, v, set }) {
   );
 }
 
-export function FormSheet({ visible, onClose, title, fields, initial = {}, submitLabel = 'Save', onSubmit, color = c.pink }) {
+export function FormSheet({ visible, onClose, title, fields, initial = {}, submitLabel = 'Save', onSubmit, color = c.pink, inline, onBack }) {
   const start = () => {
     const o = {};
     for (const f of fields) {
@@ -86,7 +88,7 @@ export function FormSheet({ visible, onClose, title, fields, initial = {}, submi
       if (f.type === 'money') o[f.key] = x === undefined || x === null || x === '' ? '' : String(Number(x) / 10 ** digits(f.currency));
       else if (f.type === 'stepper') o[f.key] = x ?? f.default ?? f.min ?? 0;
       else if (f.type === 'switch') o[f.key] = x ?? f.default ?? false;
-      else if (f.type === 'multi' || f.type === 'weekdays') o[f.key] = x ?? f.default ?? [];
+      else if (f.type === 'multi' || f.type === 'weekdays' || f.type === 'sports') o[f.key] = x ?? f.default ?? [];
       else if (f.type === 'choice' || f.type === 'chips') o[f.key] = x ?? f.default ?? (f.optional ? undefined : opt(f.options[0]).value);
       else if (x !== undefined) o[f.key] = x;
       if (f.type === 'location' && initial[f.lngKey] !== undefined) o[f.lngKey] = initial[f.lngKey];
@@ -99,7 +101,7 @@ export function FormSheet({ visible, onClose, title, fields, initial = {}, submi
   const [bad, setBad] = useState({});   // field key -> what is wrong with it
   const { toast } = useSession();
   const was = useRef(false);
-  useEffect(() => { if (visible && !was.current) { setV(start()); setErr(null); setBad({}); } was.current = visible; }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if ((visible || inline) && !was.current) { setV(start()); setErr(null); setBad({}); } was.current = visible || inline; }, [visible, inline]); // eslint-disable-line react-hooks/exhaustive-deps
   const set = (k, x) => setV((p) => ({ ...p, [k]: x }));
 
   const submit = async () => {
@@ -112,7 +114,8 @@ export function FormSheet({ visible, onClose, title, fields, initial = {}, submi
         const x = v[f.key];
         if (f.blank && (x === '' || x === undefined)) continue;
         if (f.type === 'switch' || f.type === 'stepper') { out[f.key] = x; continue; }
-        if (f.type === 'multi' || f.type === 'weekdays') { if (!x?.length) { if (!f.optional) throw new Error(`${f.label}: choose at least one`); continue; } out[f.key] = x; continue; }
+        if (f.type === 'daterange') { const a = v[f.key], b = v[f.toKey]; if (!a) { if (!f.optional) throw new Error(`${f.label}: pick the dates`); continue; } out[f.key] = a; out[f.toKey] = b ?? a; continue; }
+        if (f.type === 'multi' || f.type === 'weekdays' || f.type === 'sports') { if (!x?.length) { if (!f.optional) throw new Error(`${f.label}: choose at least one`); continue; } out[f.key] = x; continue; }
         if (x === '' || x === undefined || x === null) { if (!f.optional) throw new Error(`${f.label} is required`); continue; }
         if (f.type === 'money') { const n = Number(String(x).replace(/,/g, '')); if (!(n >= 0)) throw new Error(`${f.label}: enter an amount`); out[f.key] = Math.round(n * 10 ** digits(f.currency)); }
         else out[f.key] = f.type === 'number' ? Number(x) : x;
@@ -144,6 +147,8 @@ export function FormSheet({ visible, onClose, title, fields, initial = {}, submi
       case 'timezone': return <ZonePicker label={f.label} value={v[f.key]} onChange={(x) => set(f.key, x)} />;
       case 'currency': return <CurrencyPicker label={f.label} value={v[f.key]} onChange={(x) => set(f.key, x)} />;
       case 'location': return <LocationPicker f={f} v={v} set={set} />;
+      case 'daterange': return <DateRangeField label={f.label} from={v[f.key]} to={v[f.toKey]} onChange={({ from, to }) => { set(f.key, from); set(f.toKey, to); }} optional={f.optional} min={f.min} hint={f.hint} />;
+      case 'sports': return <SportsMulti label={f.label} value={v[f.key] ?? []} onChange={(x) => set(f.key, x)} optional={f.optional} />;
       case 'sport': return <SportPicker label={f.label} optional={f.optional} value={v[f.key]} onChange={(x) => set(f.key, x)} />;
       case 'stepper': return (
         <View style={{ gap: 6 }}><View style={{ flexDirection: 'row', alignItems: 'center' }}><View style={{ flex: 1 }}>{lab(f)}</View><Counter value={v[f.key]} onChange={(x) => set(f.key, x)} min={f.min ?? 0} max={f.max ?? 999} step={f.step ?? 1} suffix={f.suffix} /></View>{hint(f)}</View>);
@@ -168,11 +173,19 @@ export function FormSheet({ visible, onClose, title, fields, initial = {}, submi
     }
   };
 
-  return (
-    <Sheet visible={visible} onClose={onClose} title={title}>
+  const body = (
+    <>
       {fields.filter((f) => !f.show || f.show(v)).map((f) => <View key={f.key}>{control(f)}</View>)}
       {err ? <T color={c.red} weight="800">{err}</T> : null}
-      <Btn title={submitLabel} onPress={submit} loading={busy} color={color} />
-    </Sheet>
+      {onBack ? (
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <Btn title="Back" color={c.paper} ink={c.ink} onPress={onBack} style={{ flex: 1 }} />
+          <Btn title={submitLabel} onPress={submit} loading={busy} color={color} style={{ flex: 2 }} />
+        </View>
+      ) : <Btn title={submitLabel} onPress={submit} loading={busy} color={color} />}
+    </>
   );
+  // inline: the form lives inside a sheet that is already open (a wizard step) instead of opening its own
+  if (inline) return <View style={{ gap: 14 }}>{body}</View>;
+  return <Sheet visible={visible} onClose={onClose} title={title}>{body}</Sheet>;
 }

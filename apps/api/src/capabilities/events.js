@@ -9,6 +9,7 @@ import { hasOrgGrant } from '../org-access.js';
 import { reserve } from './venues.js';
 import { notify } from '../notify.js';
 import { advanceKnockout, isKnockout } from '../tournament/advance.js';
+import { createRequest } from '../event-planning.js';
 import { OFFICIAL_ROLES, lockOfficial, assertOfficialEligible, recordHistory, closeOfficial } from '../officials.js';
 
 const dt = z.string().datetime({ offset: true });
@@ -22,23 +23,55 @@ export async function eventForOrganizer(user, eventId, c) {
 
 cap({
   name: 'create_event', method: 'POST', path: '/events', tag: 'Events', auth: 'user', status: 201,
-  summary: 'Create a tournament, league, friendly, camp or trial. Points rules drive the standings.',
+  summary: 'Create an event with one sport, or several (a multi-sport event: each sport becomes a discipline of a games programme with houses, nominations and one timetable). Dates are a range; for each venue you want, a booking request is sent to the venue (say which sports it is for). Points rules drive the standings.',
   input: z.object({
-    name: z.string().min(2).max(100), sport: z.string(), kind: z.enum(['tournament', 'league', 'friendly', 'camp', 'trial']).default('tournament'),
+    name: z.string().min(2).max(100), sport: z.string().optional().describe('one sport (slug or id); or use sports'), sports: z.array(z.string()).min(1).max(30).optional().describe('one or more sport slugs; more than one makes a multi-sport event'),
+    kind: z.enum(['tournament', 'league', 'friendly', 'camp', 'trial']).default('tournament'),
     description: z.string().max(2000).optional(), venue_id: id.optional(), starts_on: date.optional(), ends_on: date.optional(),
+    venue_requests: z.array(z.object({ venue_id: id, sports: z.array(z.string()).max(30).optional(), message: z.string().max(1000).optional(), offer_cents: money.optional() })).max(20).optional()
+      .describe('venues to ask for a booking for the event dates; sports = which of the event\'s sports it is for'),
     points_win: z.number().int().default(3), points_draw: z.number().int().default(1), points_loss: z.number().int().default(0),
     entry_fee_cents: money.default(0), banner_emoji: z.string().max(8).optional(),
     city: z.string().max(80).optional(), capacity: z.number().int().min(1).max(100000).optional(), registration_deadline: dt.optional(),
     currency: z.string().length(3).default('INR'), seeking_sponsors: z.boolean().default(false),
   }),
   async handler({ user }, i) {
-    const sport = await sportBySlugOrId(i.sport);
-    if (!sport) throw notFound('Sport');
+    const want = [...new Set(i.sports?.length ? i.sports : i.sport ? [i.sport] : [])];
+    if (!want.length) throw badRequest('Choose at least one sport');
+    const picked = [];
+    for (const w of want) { const sp = await sportBySlugOrId(w); if (!sp) throw notFound('Sport'); if (!picked.some((x) => x.id === sp.id)) picked.push(sp); }
     if (i.starts_on && i.ends_on && i.ends_on < i.starts_on) throw badRequest('ends_on is before starts_on');
-    return one(
-      `INSERT INTO events(name, sport_id, organizer_id, kind, description, venue_id, starts_on, ends_on, points_win, points_draw, points_loss, entry_fee_cents, banner_emoji, status, city, capacity, registration_deadline, currency, seeking_sponsors)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,coalesce($13,'🏆'),'open',$14,$15,$16,upper($17),$18) RETURNING *`,
-      [i.name, sport.id, user.id, i.kind, i.description, i.venue_id, i.starts_on, i.ends_on, i.points_win, i.points_draw, i.points_loss, i.entry_fee_cents, i.banner_emoji, i.city, i.capacity, i.registration_deadline, i.currency, i.seeking_sponsors]);
+    const multi = picked.length > 1;
+    const anchor = multi ? await sportBySlugOrId('multi-sport') : picked[0];
+    return tx(async (c) => {
+      const ev = (await c.query(
+        `INSERT INTO events(name, sport_id, organizer_id, kind, description, venue_id, starts_on, ends_on, points_win, points_draw, points_loss, entry_fee_cents, banner_emoji, status, city, capacity, registration_deadline, currency, seeking_sponsors)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,coalesce($13,$19),'open',$14,$15,$16,upper($17),$18) RETURNING *`,
+        [i.name, anchor.id, user.id, i.kind, i.description, i.venue_id, i.starts_on, i.ends_on, i.points_win, i.points_draw, i.points_loss, i.entry_fee_cents, i.banner_emoji, i.city, i.capacity, i.registration_deadline, i.currency, i.seeking_sponsors, multi ? '🏅' : '🏆'])).rows[0];
+      let disciplines = [];
+      if (multi) {
+        await c.query('INSERT INTO event_programmes(event_id) VALUES ($1)', [ev.id]);
+        for (const sp of picked) {
+          disciplines.push((await c.query(
+            `INSERT INTO event_disciplines(event_id, sport_id, name, mode, result_type, created_by) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, name, mode`,
+            [ev.id, sp.id, sp.name, sp.play_type === 'team' ? 'team' : 'individual', sp.play_type === 'team' ? 'score' : sp.scoring === 'time' ? 'time' : sp.scoring === 'distance' ? 'distance' : 'score', user.id])).rows[0]);
+        }
+      }
+      const requests = [], skipped = [];
+      for (const vr of i.venue_requests ?? []) {
+        const v = (await c.query('SELECT id, name, owner_id FROM venues WHERE id=$1', [vr.venue_id])).rows[0];
+        if (!v) throw notFound('Venue');
+        const ids = [];
+        for (const w of vr.sports ?? picked.map((p) => p.slug)) { const sp = picked.find((p) => p.slug === w || p.id === w); if (!sp) throw badRequest(`${w} is not one of the event's sports`); ids.push(sp.id); }
+        if (v.owner_id === user.id) { // your own venue needs no request
+          if (!ev.venue_id) await c.query('UPDATE events SET venue_id=$2 WHERE id=$1', [ev.id, v.id]);
+          skipped.push({ venue_id: v.id, name: v.name, reason: 'You run this venue' });
+          continue;
+        }
+        requests.push(await createRequest(c, user, ev, { kind: 'venue', venue_id: v.id, sport_ids: ids, message: vr.message, offer_cents: vr.offer_cents, quantity: undefined }));
+      }
+      return { ...(await c.query('SELECT * FROM events WHERE id=$1', [ev.id])).rows[0], disciplines, venue_requests: requests.map((r) => ({ id: r.id, venue_id: r.venue_id, target_name: r.target_name, status: r.status })), venue_requests_skipped: skipped };
+    });
   },
 });
 
