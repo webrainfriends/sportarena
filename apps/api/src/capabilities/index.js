@@ -56,6 +56,7 @@ import './market.js';
 import './multisport.js';
 import './multisport-play.js';
 import './multisport-ops.js';
+import './event-planning.js';
 import './partners.js';
 import './partner-pricing.js';
 import './partner-reports.js';
