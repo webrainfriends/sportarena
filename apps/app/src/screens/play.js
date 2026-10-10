@@ -10,6 +10,7 @@ import { useNav } from '../nav';
 import { Field, Avatar, Btn, Bubble, Card, Chip, Empty, ErrorBox, GradCard, H1, H2, Loading, Row, Screen, Seg, Section, StatPill, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { CreateEvent } from './event-create';
+import { RegisterVenue } from './book';
 import { FixtureCard, Reviews, StandingsTable, TrophyShelf, Stars } from '../blocks';
 import { SportSelect } from '../sportpicker';
 import { c, grad, day, accentFor, money } from '../theme';
@@ -33,7 +34,7 @@ function TeamInvites({ onChanged }) {
 }
 
 export function Play() {
-  const { has } = useSession();
+  const { has, hasAny } = useSession();
   const { push } = useNav();
   const [tab, setTab] = useState('events');
   const [sport, setSport] = useState(null);
@@ -71,6 +72,7 @@ export function Play() {
         </View>
       ) : null}
       {tab === 'events' ? <Btn title="Create an event" color={c.violet} onPress={() => setForm('event')} style={{ marginTop: 8 }} /> : null}
+      {tab === 'venues' && hasAny('venue_manager', 'organizer') ? <Btn title="Register a venue" color={c.violet} onPress={() => setForm('venue')} style={{ marginTop: 8 }} /> : null}
       {tab === 'teams' ? <TeamInvites onChanged={list.reload} /> : null}
       {tab === 'teams' ? <Btn title="Start a team" color={c.pink} onPress={() => setForm('team')} style={{ marginTop: 8 }} /> : null}
 
@@ -85,6 +87,7 @@ export function Play() {
         {rows && total > rows.length && tab !== 'venues' ? <Btn small title={`Show more (${total - rows.length} more)`} color={c.paper} onPress={() => setSize((n) => n + 20)} /> : null}
       </View>
 
+      <RegisterVenue visible={form === 'venue'} onClose={() => setForm(null)} onCreated={list.reload} />
       <FormSheet visible={form === 'team'} onClose={() => setForm(null)} title="Start a team" submitLabel="Create team"
         fields={[{ key: 'name', label: 'Team name' }, { key: 'sport', label: 'Sport', type: 'sport' }, { key: 'description', label: 'About the team', type: 'multiline', optional: true },
           { key: 'emoji', label: 'Mascot emoji', optional: true }, { key: 'color', label: 'Team colour', type: 'chips', optional: true, options: TEAM_COLOURS }, { key: 'city', label: 'City', optional: true }]}
