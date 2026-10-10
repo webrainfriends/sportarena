@@ -40,6 +40,7 @@ export function EventVenues({ e, toast, onChange }) {
   return (
     <>
       <Btn title={list.data?.length ? 'Book more courts' : 'Find a venue & book courts'} onPress={() => setBook(true)} />
+      {list.data?.length ? <FitCard id={id} version={list.data} toast={toast} onChange={refresh} /> : null}
       {!list.data ? <Loading /> : !list.data.length ? (
         <Empty emoji="🏟️" title="No venue yet" sub="Pick a venue that has courts for your sport, see which days are free, and book them in one go." />
       ) : list.data.map((v) => {
@@ -76,11 +77,51 @@ export function EventVenues({ e, toast, onChange }) {
   );
 }
 
+const SEV = { high: [c.redSoft, '⚠️'], medium: [c.sunSoft, '⚡'], info: [c.cyanSoft, 'ℹ️'] };
+
+/** Does the booked court time match what the event plays? Wasted time before the first game / after the last one is highlighted with the saving. */
+function FitCard({ id, version, toast, onChange }) {
+  const fit = useLoad(() => api.get(`/events/${id}/fit`), [id, version]);
+  const [busy, setBusy] = useState(false);
+  const f = fit.data;
+  if (!f) return fit.loading ? <Loading /> : null;
+  const money = (cents, cur) => moneyIn(cents, cur);
+  const cur = f.venues[0]?.currency;
+  const releaseAll = async (ids) => {
+    setBusy(true);
+    try { for (const bid of ids) await api.post(`/event-bookings/${bid}/release`, { reason: 'Idle slot released after the efficiency check' }); toast(`${ids.length} idle slot${ids.length === 1 ? '' : 's'} released`); onChange?.(); } catch (x) { toast('' + x.message); } finally { setBusy(false); }
+  };
+  return (
+    <Card color={f.rating === 'efficient' ? c.limeSoft : f.rating === 'wasteful' ? c.redSoft : c.sunSoft} pad={14}>
+      <T weight="800" size={16}>{f.rating === 'efficient' ? '✅' : f.rating === 'wasteful' ? '⚠️' : '⚡'} Schedule & budget fit</T>
+      <T style={{ marginTop: 4 }}>{f.headline}</T>
+      {f.totals.booked_cents ? <T size={12} color={c.mute} style={{ marginTop: 4 }}>{money(f.totals.booked_cents, cur)} booked · {f.totals.utilisation_pct}% in use{f.totals.wasted_cents ? ` · ${money(f.totals.wasted_cents, cur)} wasted` : ''}</T> : null}
+      <View style={{ gap: 8, marginTop: 10 }}>
+        {f.findings.map((x, k) => <View key={k} style={{ backgroundColor: SEV[x.severity][0], borderRadius: 12, padding: 10 }}><T size={13}>{SEV[x.severity][1]} {x.message}</T></View>)}
+        {f.venues.filter((v) => v.compare.length > 1).map((v) => {
+          const keep = v.compare[0], rel = v.compare[1];
+          return (
+            <View key={v.venue_id} style={{ gap: 6 }}>
+              <T weight="700" size={13}>{v.venue_name}: compare</T>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <View style={{ flex: 1, backgroundColor: c.paper, borderRadius: 12, padding: 10 }}><T size={12} color={c.mute} weight="700">{keep.label}</T><T weight="800">{money(keep.cost_cents, v.currency)}</T><T size={12} color={c.red}>{money(keep.wasted_cents, v.currency)} wasted</T></View>
+                <View style={{ flex: 1, backgroundColor: c.paper, borderRadius: 12, padding: 10, borderWidth: 2, borderColor: c.mint }}><T size={12} color={c.mute} weight="700">{rel.label} · recommended</T><T weight="800">{money(rel.cost_cents, v.currency)}</T><T size={12} color={c.mint}>saves up to {money(rel.saves_cents, v.currency)}</T></View>
+              </View>
+              <Btn small title={`Release ${rel.release_booking_ids.length} idle slot${rel.release_booking_ids.length === 1 ? '' : 's'}`} loading={busy} onPress={() => releaseAll(rel.release_booking_ids)} style={{ alignSelf: 'flex-start' }} />
+            </View>
+          );
+        })}
+      </View>
+    </Card>
+  );
+}
+
 function BookSheet({ e, toast, onClose, onBooked }) {
   const id = e.id;
   const [q, setQ] = useState(''), [venue, setVenue] = useState(null), [step, setStep] = useState('setup');
   const found = useLoad(() => (venue ? Promise.resolve([]) : api.get(`/events/${id}/partners`, { kind: 'venue', q: q || undefined, limit: 30 })), [q, venue]);
-  const [range, setRange] = useState({ from: undefined, to: undefined });
+  const [range, setRange] = useState(() => { const s = e.starts_on?.slice(0, 10), z = e.ends_on?.slice(0, 10); return s && z && z >= todayLocal() ? { from: s < todayLocal() ? todayLocal() : s, to: z } : { from: undefined, to: undefined }; });
+  const [consent, setConsent] = useState(false);
   const [start, setStart] = useState('09:00'), [end, setEnd] = useState('18:00');
   const [holidays, setHolidays] = useState(true);
   const [courts, setCourts] = useState(null);           // null = all
@@ -95,12 +136,13 @@ function BookSheet({ e, toast, onClose, onBooked }) {
   const toggle = (cid) => setCourts((cur) => { const all = plan.courts.map((x) => x.id); const base = cur ?? all; const next = base.includes(cid) ? base.filter((x) => x !== cid) : [...base, cid]; return next.length === all.length ? null : next; });
   const submit = async (skip) => {
     setBusy(true);
-    try { const r = await api.post(`/events/${id}/venue-bookings`, { ...body, skip_unavailable: skip }); toast(`${r.booked} court booking${r.booked === 1 ? '' : 's'} made`); onBooked(); } catch (x) { setErr(x.message); } finally { setBusy(false); }
+    try { const r = await api.post(`/events/${id}/venue-bookings`, { ...body, skip_unavailable: skip, accept_mismatch: consent }); toast(`${r.booked} court booking${r.booked === 1 ? '' : 's'} made`); onBooked(); } catch (x) { setErr(x.message); } finally { setBusy(false); }
   };
   const dates = plan ? [...new Set(plan.rows.map((r) => r.date))] : [];
   const free = plan?.rows.filter((r) => r.status === 'free') ?? [];
   const bookedCourts = [...new Set(free.map((r) => r.resource_name))];
   const sub = plan?.summary.total_cents ?? 0, cur = plan?.venue.currency;
+  const al = plan?.alignment, mismatch = !!al?.consent_required;
   const title = !venue ? 'Choose a venue' : step === 'confirm' ? 'Review & confirm' : venue.name;
   return (
     <Sheet visible onClose={onClose} title={title}>
@@ -136,7 +178,13 @@ function BookSheet({ e, toast, onClose, onBooked }) {
           {plan.summary.unavailable ? <T size={12} color={c.mute}>{plan.summary.unavailable} slot(s) were not available and will be left out.</T> : null}
           {err ? <Card color={c.sunSoft}><T>{err}</T></Card> : null}
           <T size={12} color={c.mute}>Adds a planned “venue” line to the event budget. You can release a booking later; the venue’s cancellation policy decides any refund.</T>
-          <Btn title="Confirm & book" loading={busy} onPress={() => submit(plan.summary.unavailable > 0)} />
+          {mismatch ? (
+            <>
+              <MismatchNote al={al} cur={cur} onTrim={() => { setRange({ from: al.suggested_window.from_date, to: al.suggested_window.to_date }); setConsent(false); setStep('setup'); }} />
+              <Chip label={consent ? '✓ I understand — book these days anyway' : 'I understand — book these days anyway'} active={consent} onPress={() => setConsent(!consent)} />
+            </>
+          ) : null}
+          <Btn title={mismatch ? 'Confirm anyway & book' : 'Confirm & book'} loading={busy} disabled={mismatch && !consent} onPress={() => submit(plan.summary.unavailable > 0)} />
         </>
       ) : (
         <>
@@ -171,11 +219,24 @@ function BookSheet({ e, toast, onClose, onBooked }) {
                 </View>
               ))}
               <Card color={c.limeSoft}><T weight="800">{plan.summary.free} court-day{plan.summary.free === 1 ? '' : 's'} free · {moneyIn(plan.summary.total_cents, plan.venue.currency)}</T>{plan.summary.unavailable ? <T size={12} color={c.mute}>{plan.summary.unavailable} not available (see above)</T> : null}</Card>
-              <Btn title="Review booking" disabled={!plan.summary.free} onPress={() => setStep('confirm')} />
+              {mismatch ? <MismatchNote al={al} cur={cur} onTrim={() => { setRange({ from: al.suggested_window.from_date, to: al.suggested_window.to_date }); setConsent(false); }} /> : null}
+              <Btn title="Review booking" disabled={!plan.summary.free} onPress={() => { setConsent(false); setStep('confirm'); }} />
             </View>
           ) : !range.from ? <T color={c.mute}>Pick the event days to see which courts are free.</T> : null}
         </>
       )}
     </Sheet>
+  );
+}
+
+/** The requested days do not line up with the event's dates: say what is wasted and offer the matching alternative. */
+function MismatchNote({ al, cur, onTrim }) {
+  return (
+    <Card color={c.redSoft} pad={12}>
+      <T weight="800">⚠️ These days don’t match your event ({al.event.starts_on} → {al.event.ends_on})</T>
+      {al.issues.map((x) => <T key={x.code} size={13} style={{ marginTop: 4 }}>{x.message}</T>)}
+      <T size={13} weight="700" style={{ marginTop: 6 }}>{al.verdict}</T>
+      {al.suggested_window ? <Btn small title={`Use ${al.suggested_window.from_date} → ${al.suggested_window.to_date} instead`} onPress={onTrim} style={{ alignSelf: 'flex-start', marginTop: 8 }} /> : null}
+    </Card>
   );
 }

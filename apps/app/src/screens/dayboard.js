@@ -4,13 +4,13 @@ import { Pressable, ScrollView, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
-import { Btn, Card, Chip, Empty, ErrorBox, Loading, Section, Sheet, T, Tag } from '../ui';
+import { Btn, Card, Chip, Empty, ErrorBox, Loading, Row, Section, Sheet, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { Calendar } from '../pickers';
 import { useNav } from '../nav';
 import { c } from '../theme';
 import { KIND } from './book';
-import { addDays, localHHMM, localToIso, longDay, moneyIn, timeIn, todayIn } from '../vtime';
+import { addDays, dateTimeIn, localDate, localHHMM, localToIso, longDay, moneyIn, timeIn, todayIn } from '../vtime';
 
 const METHODS = [['cash', 'Cash'], ['upi', 'UPI'], ['card', 'Card'], ['bank', 'Bank transfer'], ['other', 'Other']];
 const ROW_H = 40, COL_W = 112, LABEL_W = 52;
@@ -81,7 +81,7 @@ export function DayBoard({ v }) {
                     if (b) {
                       const paid = b.payment_status === 'paid';
                       bg = paid ? '#BBF7D0' : '#FED7AA';
-                      body = startsHere || m === rows[0] ? <T size={11} weight="700" numberOfLines={2}>{b.guest?.name ?? b.customer}{b.quantity > 1 ? ` ×${b.quantity}` : ''}</T> : null;
+                      body = startsHere || m === rows[0] ? <T size={11} weight="700" numberOfLines={2}>{b.event_name ? `🏆 ${b.event_name}` : (b.guest?.name ?? b.customer)}{b.quantity > 1 ? ` ×${b.quantity}` : ''}</T> : null;
                       onPress = () => setPick(b);
                     } else if (blk) { bg = '#E2E8F0'; body = <T size={11} color={c.mute}>⛔ {blk.kind}</T>; onPress = () => toast(`Blocked: ${blk.kind}${blk.reason ? ` · ${blk.reason}` : ''}`); }
                     else if (s && s.status === 'free') { bg = '#fff'; body = <T size={11} color={c.mute}>{moneyIn(s.price_cents, v.currency)}</T>; onPress = () => open(r, s.starts_at); }
@@ -99,12 +99,14 @@ export function DayBoard({ v }) {
         <Btn small title="+ Add a booking" color={c.violet} onPress={() => { setOvInit({ date }); setOv(true); }} style={{ alignSelf: 'flex-start' }} />
       </Section>
 
+      <Upcoming v={v} tz={tz} reloadKey={sched.data} onOpen={(d) => setDate(d)} />
       <Sheet visible={!!pick} onClose={() => setPick(null)} title={pick ? `${pick.resource_name} · ${timeIn(pick.starts_at, tz)}–${timeIn(pick.ends_at, tz)}` : ''}>
         {pick ? (
           <View style={{ gap: 10 }}>
-            <T weight="800" size={16}>{pick.guest?.name ?? pick.customer}</T>
+            <T weight="800" size={16}>{pick.event_name ? `🏆 ${pick.event_name}` : (pick.guest?.name ?? pick.customer)}</T>
+            {pick.event_name ? <T size={13} color={c.mute}>Event booking · {pick.event_starts_on ? `${pick.event_starts_on} → ${pick.event_ends_on ?? '…'}` : 'dates not set'} · booked by {pick.customer}</T> : null}
             {pick.guest?.phone ? <T color={c.mute}>☎ {pick.guest.phone}</T> : null}
-            <T size={13} color={c.mute}>{pick.reservation_code ? `Booking ${pick.reservation_code}` : 'Venue booking'}{pick.source === 'admin' ? ' · made by the venue' : ''}</T>
+            <T size={13} color={c.mute}>{pick.reservation_code ? `Booking ${pick.reservation_code}` : pick.event_name ? 'Event court booking' : 'Venue booking'}{pick.source === 'admin' ? ' · made by the venue' : ''}</T>
             <View style={{ flexDirection: 'row', gap: 6 }}><Tag label={pick.status.replace('_', ' ')} color={pick.status === 'confirmed' ? c.mint : c.orange} /><Tag label={pick.payment_status.replace('_', ' ')} color={pick.payment_status === 'paid' ? c.mint : c.sun} /></View>
             <T weight="700">{moneyIn(pick.price_cents, v.currency)}{pick.open_invoice_due_cents ? ` · ${moneyIn(pick.open_invoice_due_cents, v.currency)} due` : ''}</T>
             {pick.open_invoice_id ? (
@@ -145,5 +147,36 @@ export function DayBoard({ v }) {
           board.reload(); return out.displaced_bookings ? `Booked — ${out.displaced_bookings} booking(s) cancelled and refunded` : 'Booked';
         }} />
     </>
+  );
+}
+
+const AHEAD_DAYS = 30;
+
+/** Everything booked at the venue over the next weeks, day by day — customers, walk-ins and event/tournament court bookings alike. */
+function Upcoming({ v, tz, reloadKey, onOpen }) {
+  const [only, setOnly] = useState('all');
+  const from = new Date().toISOString(), to = localToIso(addDays(todayIn(tz), AHEAD_DAYS), '00:00', tz);
+  const list = useLoad(() => api.get(`/venues/${v.id}/schedule`, { from, to }), [v.id, reloadKey]);
+  const all = (list.data?.bookings ?? []).filter((b) => b.status !== 'cancelled');
+  const rows = only === 'events' ? all.filter((b) => b.event_id) : all;
+  const byDay = rows.reduce((m, b) => { const d = localDate(b.starts_at, tz); return m.set(d, [...(m.get(d) ?? []), b]); }, new Map());
+  return (
+    <Section title={`Next ${AHEAD_DAYS} days`} color={c.cyan}>
+      <View style={{ flexDirection: 'row', gap: 6 }}>
+        <Chip label={`All (${all.length})`} active={only === 'all'} onPress={() => setOnly('all')} />
+        <Chip label={`🏆 Events & tournaments (${all.filter((b) => b.event_id).length})`} active={only === 'events'} onPress={() => setOnly('events')} />
+      </View>
+      {list.loading && !list.data ? <Loading /> : list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : !rows.length ? <Empty emoji="🗓️" title="Nothing booked yet" sub={only === 'events' ? 'Court bookings for events and tournaments appear here.' : 'New bookings appear here.'} /> : [...byDay.entries()].map(([d, bs]) => (
+        <View key={d} style={{ gap: 6 }}>
+          <T weight="800" size={13}>{longDay(d)}</T>
+          {bs.map((b) => (
+            <Row key={b.id} color={b.event_id ? c.sunSoft : c.paper} onPress={() => onOpen(d)}
+              title={`${b.event_name ? `🏆 ${b.event_name}` : (b.guest?.name ?? b.customer)} · ${b.resource_name}`}
+              sub={`${dateTimeIn(b.starts_at, tz)} – ${timeIn(b.ends_at, tz)}${b.event_id ? ` · event ${b.event_starts_on ?? '?'} → ${b.event_ends_on ?? '?'}` : ''}`}
+              right={<T weight="700" size={12}>{moneyIn(b.price_cents, v.currency)}</T>} />
+          ))}
+        </View>
+      ))}
+    </Section>
   );
 }

@@ -10,6 +10,8 @@ import { reserve } from './venues.js';
 import { skippedDates } from './event-schedule.js';
 import { loadVenueCtx, lockResources, blockedBy, usedUnits, openIntervals, priceWindow, cancelBookings } from '../booking/engine.js';
 import { fromLocal, addDays, hhmm, fmtMin } from '../booking/time.js';
+import { eventWindow, bookedDays, windowFit, consentNeeded, analyzeEventFit } from '../event-fit.js';
+import { audit } from '../helpers.js';
 
 const TAG = 'Event venues';
 const date = z.string().date();
@@ -58,20 +60,21 @@ async function check(c, ev, i) {
     window: { from, to, start_time: fmtMin(startMin), end_time: fmtMin(endMin) }, courts: resources.map((r) => ({ id: r.id, name: r.name })),
     rows, summary: { free: free.length, unavailable: rows.length - free.length, total_cents: free.reduce((s, r) => s + r.price_cents, 0) },
     skipped_dates: Object.fromEntries(skip),
+    alignment: windowFit(await eventWindow(c, ev.id), free.map((r) => ({ date: r.date, cents: r.price_cents })), await bookedDays(c, ev.id), [...skip.keys()], ctx.venue.currency),
   };
 }
 
 cap({
   name: 'preview_event_venue_booking', method: 'POST', path: '/events/:id/venue-bookings/preview', tag: TAG,
-  summary: 'Check which courts of a venue are free for the event’s days and times (opening hours, blocks, existing bookings, event blackout days, public holidays) and what they cost. Writes nothing.',
+  summary: 'Check which courts of a venue are free for the event’s days and times (opening hours, blocks, existing bookings, event blackout days, public holidays) and what they cost. `alignment` compares the days with the event’s start and end dates and says what would be wasted if they differ. Writes nothing.',
   input: z.object(BOOK_INPUT),
   async handler({ user }, i) { return tx(async (c) => check(c, await eventForOrganizer(user, i.id, c), i)); },
 });
 
 cap({
   name: 'book_event_venue', method: 'POST', path: '/events/:id/venue-bookings', tag: TAG, status: 201,
-  summary: 'Book the courts for the event’s days. By default every slot must be free (409 lists what is not); skip_unavailable books only the free ones. Adds a planned venue line to the event budget and sets the event venue when it has none.',
-  input: z.object({ ...BOOK_INPUT, skip_unavailable: z.boolean().default(false) }),
+  summary: 'Book the courts for the event’s days. By default every slot must be free (409 lists what is not); skip_unavailable books only the free ones. When the days do not match the event’s start/end dates the booking is refused (409 consent_required, with the wasted spend and a trimmed alternative) until the organiser repeats it with accept_mismatch=true. Adds a planned venue line to the event budget and sets the event venue when it has none.',
+  input: z.object({ ...BOOK_INPUT, skip_unavailable: z.boolean().default(false), accept_mismatch: z.boolean().default(false).describe('consent to book days that do not line up with the event’s start/end dates') }),
   async handler({ user }, i) {
     return tx(async (c) => {
       const ev = (await c.query('SELECT * FROM events WHERE id=$1 FOR UPDATE', [i.id])).rows[0];
@@ -84,13 +87,15 @@ cap({
       if (bad.length && !i.skip_unavailable) throw conflict(`${bad.length} slot(s) are not available`, { unavailable: bad });
       const free = plan.rows.filter((r) => r.status === 'free');
       if (!free.length) throw conflict('Nothing is available in that window', { unavailable: plan.rows });
+      if (plan.alignment.consent_required && !i.accept_mismatch) throw conflict(plan.alignment.verdict, consentNeeded(plan.alignment));
       const bookings = [];
       for (const r of free) bookings.push(await reserve(c, { resource_id: r.resource_id, user_id: user.id, event_id: ev.id, starts_at: r.starts_at, ends_at: r.ends_at, note: `Event: ${ev.name}` }));
       const total = bookings.reduce((s, b) => s + Number(b.price_cents), 0);
       if (!ev.venue_id) await c.query('UPDATE events SET venue_id=$2 WHERE id=$1', [ev.id, i.venue_id]);
       let line = null;
-      if (total > 0) line = (await c.query("INSERT INTO event_budget_lines(event_id, direction, category, name, planned_cents, created_by, notes) VALUES ($1,'expense','venue',$2,$3,$4,$5) RETURNING id", [ev.id, `Courts at ${plan.venue.name}`, total, user.id, `${bookings.length} court booking(s), ${plan.window.from} – ${plan.window.to}`])).rows[0];
-      return { venue: plan.venue, booked: bookings.length, total_cents: total, budget_line_id: line?.id ?? null, skipped: plan.rows.length - free.length, bookings: bookings.map((b) => ({ id: b.id, resource_id: b.resource_id, starts_at: b.starts_at, ends_at: b.ends_at, price_cents: Number(b.price_cents) })) };
+      if (total > 0) line = (await c.query("INSERT INTO event_budget_lines(event_id, direction, category, name, planned_cents, created_by, notes) VALUES ($1,'expense','venue',$2,$3,$4,$5) RETURNING id", [ev.id, `Courts at ${plan.venue.name}`, total, user.id, `${bookings.length} court booking(s), ${plan.window.from} – ${plan.window.to}${plan.alignment.consent_required ? ' · booked outside the event dates with the organiser’s consent' : ''}`])).rows[0];
+      if (plan.alignment.consent_required) await audit(c, user.id, 'accept_event_booking_mismatch', 'events', ev.id);
+      return { venue: plan.venue, alignment: plan.alignment, booked: bookings.length, total_cents: total, budget_line_id: line?.id ?? null, skipped: plan.rows.length - free.length, bookings: bookings.map((b) => ({ id: b.id, resource_id: b.resource_id, starts_at: b.starts_at, ends_at: b.ends_at, price_cents: Number(b.price_cents) })) };
     });
   },
 });
@@ -118,6 +123,13 @@ cap({
       };
     });
   },
+});
+
+cap({
+  name: 'get_event_fit', method: 'GET', path: '/events/:id/fit', tag: TAG,
+  summary: 'Efficiency check of the event’s bookings: compares every court booking, game, programme session and venue/vendor request with the event’s dates and with each other. Highlights booked time wasted before the first game or idle after the last one (or after the event ends), shows what it costs, and compares keeping everything with releasing the idle slots. Read-only; the same answer for the app and for agents.',
+  input: z.object({ id }),
+  async handler({ user }, i) { return analyzeEventFit(pool, await eventForOrganizer(user, i.id)); },
 });
 
 cap({
