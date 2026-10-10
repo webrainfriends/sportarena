@@ -13,6 +13,8 @@ import { hhmm, fmtMin, fromLocal, toLocal, addDays, dateRange } from '../booking
 import { venueProfile, VENUE_PROFILE_FIELDS, KINDS } from './venues.js';
 import { markInvoicePaid, buyerOf } from '../booking/invoices.js';
 import { kickRefunds } from '../booking/refunds.js';
+import { isPlatform } from '../platform.js';
+import { needsPriceApproval, fileRequest, applyPriceChange, recordPriceList } from '../pricing.js';
 
 const TAG = 'Venue management';
 const dt = z.string().datetime({ offset: true });
@@ -42,6 +44,11 @@ cap({
     .refine((i) => (i.latitude == null) === (i.longitude == null), 'latitude and longitude go together'),
   async handler({ user }, i) {
     await mustManage(user, i.id);
+    if (i.active === true && !isPlatform(user)) {
+      const st = await mustFind('venues', i.id, 'approval_status, paused_by_partner');
+      if (st.approval_status !== 'approved') throw forbidden('This venue goes live when the platform team approves it');
+      if (st.paused_by_partner) throw forbidden('This venue is paused by the platform team');
+    }
     if (i.currency) {
       const cur = await mustFind('venues', i.id, 'currency');
       if (cur.currency !== i.currency && (await one('SELECT 1 FROM bookings b JOIN resources r ON r.id=b.resource_id WHERE r.venue_id=$1 LIMIT 1', [i.id])))
@@ -71,8 +78,8 @@ cap({
 cap({
   name: 'list_my_venues', method: 'GET', path: '/me/venues', tag: TAG, summary: 'Venues you own or help run, with your role.',
   handler: ({ user }) => many(
-    `SELECT v.id, v.name, v.emoji, v.city, v.active, 'owner' AS role FROM venues v WHERE v.owner_id=$1
-     UNION ALL SELECT v.id, v.name, v.emoji, v.city, v.active, s.role FROM venue_staff s JOIN venues v ON v.id=s.venue_id WHERE s.user_id=$1 AND s.removed_at IS NULL ORDER BY name`, [user.id]),
+    `SELECT v.id, v.name, v.emoji, v.city, v.active, v.approval_status, 'owner' AS role FROM venues v WHERE v.owner_id=$1
+     UNION ALL SELECT v.id, v.name, v.emoji, v.city, v.active, v.approval_status, s.role FROM venue_staff s JOIN venues v ON v.id=s.venue_id WHERE s.user_id=$1 AND s.removed_at IS NULL ORDER BY name`, [user.id]),
 });
 
 // ------------------------------------------------------------------ contacts (personal data: encrypted, audit-logged)
@@ -163,9 +170,18 @@ cap({
     const r = await mustFind('resources', i.id);
     await mustManage(user, r.venue_id);
     const patch = { ...i };
+    let routed = null;
+    if (i.hourly_rate_cents !== undefined && i.hourly_rate_cents !== r.hourly_rate_cents) {
+      if (await needsPriceApproval(pool, user, r.venue_id)) {
+        routed = await fileRequest(pool, user, r.venue_id, 'base_rate', r.id, { hourly_rate_cents: i.hourly_rate_cents }, { hourly_rate_cents: r.hourly_rate_cents });
+        delete patch.hourly_rate_cents;
+      } else if (isPlatform(user)) patch.rate_source = 'platform';
+    }
     if (i.sport) { const s = await sportBySlugOrId(i.sport); if (!s) throw notFound('Sport'); patch.sport_id = s.id; }
     if ((patch.max_slots ?? r.max_slots) < (patch.min_slots ?? r.min_slots)) throw badRequest('max_slots must be at least min_slots');
-    return patchRow('resources', i.id, patch, ['kind', 'name', 'sport_id', 'capacity', 'hourly_rate_cents', 'max_players', 'description', 'surface', 'indoor', 'slot_minutes', 'min_slots', 'max_slots', 'active']);
+    if (routed && !Object.keys(patch).some((k) => k !== 'id')) return { ...r, ...routed };
+    const updated = await patchRow('resources', i.id, patch, ['kind', 'name', 'sport_id', 'capacity', 'hourly_rate_cents', 'rate_source', 'max_players', 'description', 'surface', 'indoor', 'slot_minutes', 'min_slots', 'max_slots', 'active']);
+    return routed ? { ...updated, ...routed } : updated;
   },
 });
 
@@ -182,13 +198,22 @@ cap({
   async handler({ user }, i) {
     await mustManage(user, i.id);
     if (i.resource_id) { const r = await mustFind('resources', i.resource_id); if (r.venue_id !== i.id) throw badRequest('That area belongs to another venue'); }
-    return one(`INSERT INTO price_rules(venue_id, resource_id, name, weekdays, start_min, end_min, hourly_rate_cents, valid_from, valid_to, priority)
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
-      [i.id, i.resource_id ?? null, i.name, i.weekdays ?? null, hhmm(i.start), hhmm(i.end), i.hourly_rate_cents, i.valid_from ?? null, i.valid_to ?? null, i.priority]);
+    const { id: venueId, ...rule } = i;
+    return tx(async (c) => {
+      if (await needsPriceApproval(c, user, venueId)) return fileRequest(c, user, venueId, 'rule_create', null, rule, null);
+      // platform staff create platform pricing; a venue still under review proposes rules as part of its application
+      const platform = isPlatform(user);
+      const row = (await c.query(
+        `INSERT INTO price_rules(venue_id, resource_id, name, weekdays, start_min, end_min, hourly_rate_cents, valid_from, valid_to, priority, source, approved_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+        [venueId, i.resource_id ?? null, i.name, i.weekdays ?? null, hhmm(i.start), hhmm(i.end), i.hourly_rate_cents, i.valid_from ?? null, i.valid_to ?? null, i.priority, platform ? 'platform' : 'venue', platform ? user.id : null])).rows[0];
+      if (platform) await recordPriceList(c, venueId, user.id, { note: `Rule "${i.name}" added` });
+      return row;
+    });
   },
 });
 cap({
-  name: 'list_price_rules', method: 'GET', path: '/venues/:id/price-rules', tag: TAG, auth: 'public', summary: 'The venue\'s published rate card (price rules + each area\'s base rate).', input: z.object({ id }),
+  name: 'list_price_rules', method: 'GET', path: '/venues/:id/price-rules', tag: TAG, auth: 'public', summary: 'The venue\'s published rate card (price rules + each area\'s base rate). This is the platform-approved price list: every figure shown to customers comes from here. Pending proposals are listed by list_price_requests.', input: z.object({ id }),
   async handler(_, i) {
     await mustFind('venues', i.id);
     const [rules, base] = await Promise.all([
@@ -206,7 +231,12 @@ cap({
     await mustManage(user, r.venue_id);
     const p = { ...i, start_min: i.start ? hhmm(i.start) : undefined, end_min: i.end ? hhmm(i.end) : undefined };
     if ((p.end_min ?? r.end_min) <= (p.start_min ?? r.start_min)) throw badRequest('end must be after start');
-    return patchRow('price_rules', i.id, p, ['name', 'weekdays', 'start_min', 'end_min', 'hourly_rate_cents', 'valid_from', 'valid_to', 'priority', 'active']);
+    if (await needsPriceApproval(pool, user, r.venue_id)) {
+      const { id: _id, ...change } = i;
+      return fileRequest(pool, user, r.venue_id, 'rule_update', r.id, change, { name: r.name, hourly_rate_cents: r.hourly_rate_cents, start: fmtMin(r.start_min), end: fmtMin(r.end_min), weekdays: r.weekdays, active: r.active });
+    }
+    if (isPlatform(user)) { p.source = 'platform'; p.approved_by = user.id; }
+    return patchRow('price_rules', i.id, p, ['name', 'weekdays', 'start_min', 'end_min', 'hourly_rate_cents', 'valid_from', 'valid_to', 'priority', 'active', 'source', 'approved_by']);
   },
 });
 cap({
@@ -214,6 +244,7 @@ cap({
   async handler({ user }, i) {
     const r = await mustFind('price_rules', i.id);
     await mustManage(user, r.venue_id);
+    if (await needsPriceApproval(pool, user, r.venue_id)) return fileRequest(pool, user, r.venue_id, 'rule_delete', r.id, {}, { name: r.name, hourly_rate_cents: r.hourly_rate_cents });
     await one('UPDATE price_rules SET active=false WHERE id=$1 RETURNING id', [i.id]);
     return { ok: true };
   },

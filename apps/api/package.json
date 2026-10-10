@@ -9,7 +9,7 @@
     "mcp": "node --env-file-if-exists=../../.env src/mcp-stdio.js",
     "migrate": "node --env-file-if-exists=../../.env src/migrate.js",
     "seed": "node --env-file-if-exists=../../.env src/seed.js",
-    "test": "node --test --test-concurrency=1 test/*.test.js"
+    "test": "PLATFORM_APPROVALS=off node --test --test-concurrency=1 test/*.test.js"
   },
   "dependencies": {
     "@aws-sdk/client-kms": "^3.1147.0",

@@ -28,6 +28,7 @@ import { BasketProvider } from './basket';
 import { Hub, Leaderboard, Awards, Health, Sponsors, Supply } from './screens/hub';
 import { Insurance, InsurerPage } from './screens/insurance';
 import { InsurerDesk } from './screens/insurer';
+import { PartnerConsole, MyPartner } from './screens/partners';
 import { Me } from './screens/me';
 import { Support } from './screens/cases';
 import { Family } from './screens/family';

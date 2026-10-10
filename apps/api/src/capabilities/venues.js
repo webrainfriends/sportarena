@@ -9,6 +9,9 @@ import { validTimezone } from '../booking/time.js';
 import { publicMedia } from '../media.js';
 import { isSupportedCurrency, CURRENCIES } from '../currency.js';
 import { canManageTeam } from './teams.js';
+import { approvalsOn, isPlatform } from '../platform.js';
+import { needsPriceApproval, fileRequest } from '../pricing.js';
+import { ensurePartnerFor } from './partners.js';
 
 const dt = z.string().datetime({ offset: true });
 
@@ -67,14 +70,19 @@ const coordsTogether = (i) => (i.latitude == null) === (i.longitude == null);
 
 cap({
   name: 'create_venue', method: 'POST', path: '/venues', tag: 'Venues & Booking', auth: ['venue_manager', 'organizer'], status: 201,
-  summary: 'Register a venue (stadium, sports complex, club) with its location, time zone, currency, contact line, amenities and booking/cancellation policy. Add courts/tables with add_resource and opening hours with set_venue_hours.',
+  summary: 'Register a venue (stadium, sports complex, club). It starts as `pending` and goes live once the platform team approves it (and its price list). Include its its location, time zone, currency, contact line, amenities and booking/cancellation policy. Add courts/tables with add_resource and opening hours with set_venue_hours.',
   input: z.object({ name: z.string().min(2).max(80), city: z.string().max(80).optional(), address: z.string().max(200).optional(), emoji: z.string().max(8).optional(), ...venueProfile })
     .refine(coordsTogether, 'latitude and longitude go together'),
   async handler({ user }, i) {
     const f = VENUE_PROFILE_FIELDS.filter((k) => i[k] !== undefined);
-    const cols = ['name', 'city', 'address', 'owner_id', 'emoji', ...f];
-    const vals = [i.name, i.city, i.address, user.id, i.emoji ?? '🏟️', ...f.map((k) => i[k])];
-    return one(`INSERT INTO venues(${cols.join(',')}) VALUES (${vals.map((_, n) => `$${n + 1}`).join(',')}) RETURNING *`, vals);
+    // A new venue is reviewed by the platform team before it can be found or booked; platform staff create approved venues.
+    const review = approvalsOn() && !isPlatform(user);
+    return tx(async (c) => {
+      const partnerId = await ensurePartnerFor(c, user, i);
+      const cols = ['name', 'city', 'address', 'owner_id', 'emoji', 'partner_id', 'approval_status', 'active', ...f];
+      const vals = [i.name, i.city, i.address, user.id, i.emoji ?? '🏟️', partnerId, review ? 'pending' : 'approved', !review, ...f.map((k) => i[k])];
+      return (await c.query(`INSERT INTO venues(${cols.join(',')}) VALUES (${vals.map((_, n) => `$${n + 1}`).join(',')}) RETURNING *`, vals)).rows[0];
+    });
   },
 });
 
@@ -160,11 +168,14 @@ cap({
     const sport = i.sport ? await sportBySlugOrId(i.sport) : null;
     if (i.sport && !sport) throw notFound('Sport');
     return tx(async (c) => {
+      // On a live venue the asking price goes to the platform; the area stays hidden until it is approved.
+      const routed = i.hourly_rate_cents > 0 && await needsPriceApproval(c, user, i.id);
       const r = (await c.query(
-        `INSERT INTO resources(venue_id, kind, name, sport_id, capacity, hourly_rate_cents, max_players, description, surface, indoor, slot_minutes, min_slots, max_slots)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
-        [i.id, i.kind, i.name, sport?.id ?? null, i.capacity, i.hourly_rate_cents, i.max_players ?? null, i.description ?? null, i.surface ?? null, i.indoor ?? null, i.slot_minutes, i.min_slots, i.max_slots])).rows[0];
+        `INSERT INTO resources(venue_id, kind, name, sport_id, capacity, hourly_rate_cents, max_players, description, surface, indoor, slot_minutes, min_slots, max_slots, active)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+        [i.id, i.kind, i.name, sport?.id ?? null, i.capacity, routed ? 0 : i.hourly_rate_cents, i.max_players ?? null, i.description ?? null, i.surface ?? null, i.indoor ?? null, i.slot_minutes, i.min_slots, i.max_slots, !routed])).rows[0];
       await inheritTimetable(c, i.id, r.id); // with a timetable on, a new court copies a sibling's so it is bookable straight away
+      if (routed) return { ...r, ...(await fileRequest(c, user, i.id, 'base_rate', r.id, { hourly_rate_cents: i.hourly_rate_cents, activate: true }, null)) };
       return r;
     });
   },

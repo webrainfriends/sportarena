@@ -10,6 +10,7 @@ import { mustFind, sportBySlugOrId } from '../helpers.js';
 import { mustManage } from '../booking/engine.js';
 import { hhmm } from '../booking/time.js';
 import { KINDS } from './venues.js';
+import { needsPriceApproval, fileRequest } from '../pricing.js';
 import { view, syncHours, enableTimetable, carve, insertWindow, dateKey, inheritTimetable } from '../booking/timetable.js';
 
 const TAG = 'Timetable & categories';
@@ -25,6 +26,7 @@ cap({
   async handler({ user }, i) {
     await mustManage(user, i.id);
     if (await one('SELECT 1 AS x FROM price_categories WHERE venue_id=$1 AND active AND lower(name)=lower($2)', [i.id, i.name])) throw conflict('You already have a category with that name');
+    if (await needsPriceApproval(pool, user, i.id)) return fileRequest(pool, user, i.id, 'category_create', null, { name: i.name, color: i.color, hourly_rate_cents: i.hourly_rate_cents }, null);
     return one('INSERT INTO price_categories(venue_id, name, color, hourly_rate_cents) VALUES ($1,$2,$3,$4) RETURNING *', [i.id, i.name, i.color ?? '#7c5cff', i.hourly_rate_cents]);
   },
 });
@@ -36,6 +38,10 @@ cap({
   async handler({ user }, i) {
     const cat = await mustFind('price_categories', i.id);
     await mustManage(user, cat.venue_id);
+    if (i.hourly_rate_cents !== undefined && await needsPriceApproval(pool, user, cat.venue_id)) {
+      const { id: _id, ...change } = i;
+      return fileRequest(pool, user, cat.venue_id, 'category_update', cat.id, change, { name: cat.name, hourly_rate_cents: cat.hourly_rate_cents });
+    }
     return one('UPDATE price_categories SET name=coalesce($2,name), color=coalesce($3,color), hourly_rate_cents=coalesce($4,hourly_rate_cents), active=coalesce($5,active) WHERE id=$1 RETURNING *',
       [i.id, i.name ?? null, i.color ?? null, i.hourly_rate_cents ?? null, i.active ?? null]);
   },
@@ -50,6 +56,7 @@ cap({
     await mustManage(user, cat.venue_id);
     const r = await mustFind('resources', i.resource_id);
     if (r.venue_id !== cat.venue_id) throw badRequest('That court belongs to another venue');
+    if (await needsPriceApproval(pool, user, cat.venue_id)) return fileRequest(pool, user, cat.venue_id, 'category_rate', cat.id, { resource_id: i.resource_id, hourly_rate_cents: i.hourly_rate_cents }, null);
     await one('INSERT INTO category_rates(category_id, resource_id, hourly_rate_cents) VALUES ($1,$2,$3) ON CONFLICT (category_id, resource_id) DO UPDATE SET hourly_rate_cents=EXCLUDED.hourly_rate_cents RETURNING 1 AS x', [i.id, i.resource_id, i.hourly_rate_cents]);
     return { ok: true };
   },
@@ -173,19 +180,21 @@ cap({
     const sport = i.sport ? await sportBySlugOrId(i.sport) : null;
     if (i.sport && !sport) throw notFound('Sport');
     return tx(async (c) => {
+      const routed = i.hourly_rate_cents > 0 && await needsPriceApproval(c, user, i.id); // live venue: courts stay hidden until the platform approves their rate
       const start = i.start_number ?? 1;
       const made = [];
       for (let n = 0; n < i.count; n++) {
         const name = `${i.name_prefix} ${start + n}`;
         if ((await c.query('SELECT 1 FROM resources WHERE venue_id=$1 AND active AND lower(name)=lower($2)', [i.id, name])).rowCount) throw conflict(`"${name}" already exists — change the prefix or the starting number`);
         const r = (await c.query(
-          `INSERT INTO resources(venue_id, kind, name, sport_id, capacity, hourly_rate_cents, max_players, surface, indoor, slot_minutes, min_slots, max_slots) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id, name, kind`,
-          [i.id, i.kind, name, sport?.id ?? null, i.capacity, i.hourly_rate_cents, i.max_players ?? null, i.surface ?? null, i.indoor ?? null, i.slot_minutes, i.min_slots, i.max_slots])).rows[0];
+          `INSERT INTO resources(venue_id, kind, name, sport_id, capacity, hourly_rate_cents, max_players, surface, indoor, slot_minutes, min_slots, max_slots, active) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id, name, kind`,
+          [i.id, i.kind, name, sport?.id ?? null, i.capacity, routed ? 0 : i.hourly_rate_cents, i.max_players ?? null, i.surface ?? null, i.indoor ?? null, i.slot_minutes, i.min_slots, i.max_slots, !routed])).rows[0];
         await inheritTimetable(c, i.id, r.id);
+        if (routed) await fileRequest(c, user, i.id, 'base_rate', r.id, { hourly_rate_cents: i.hourly_rate_cents, activate: true }, null);
         made.push(r);
       }
       await syncHours(c, i.id).catch(() => {});
-      return { created: made };
+      return { created: made, pending_platform_approval: routed };
     });
   },
 });
@@ -201,12 +210,17 @@ cap({
     await mustManage(user, i.id);
     const sport = i.sport ? await sportBySlugOrId(i.sport) : null;
     if (i.sport && !sport) throw notFound('Sport');
+    let rate = i.hourly_rate_cents ?? null, routed = 0;
+    if (rate !== null && await needsPriceApproval(pool, user, i.id)) { // the rate goes to the platform; the other settings apply now
+      for (const rid of new Set(i.resource_ids)) { await fileRequest(pool, user, i.id, 'base_rate', rid, { hourly_rate_cents: rate }, null); routed++; }
+      rate = null;
+    }
     const { rows } = await pool.query(
       `UPDATE resources SET slot_minutes=coalesce($3,slot_minutes), min_slots=coalesce($4,min_slots), max_slots=coalesce($5,max_slots), capacity=coalesce($6,capacity), hourly_rate_cents=coalesce($7,hourly_rate_cents), active=coalesce($8,active), sport_id=coalesce($9,sport_id)
         WHERE venue_id=$1 AND id = ANY($2::uuid[]) AND coalesce($5,max_slots) >= coalesce($4,min_slots) RETURNING id`,
-      [i.id, i.resource_ids, i.slot_minutes ?? null, i.min_slots ?? null, i.max_slots ?? null, i.capacity ?? null, i.hourly_rate_cents ?? null, i.active ?? null, sport?.id ?? null]);
+      [i.id, i.resource_ids, i.slot_minutes ?? null, i.min_slots ?? null, i.max_slots ?? null, i.capacity ?? null, rate, i.active ?? null, sport?.id ?? null]);
     if (rows.length !== new Set(i.resource_ids).size) throw badRequest('Some courts were not updated — check they belong to this venue and that max slots is at least min slots');
-    return { updated: rows.length };
+    return { updated: rows.length, rate_changes_sent_to_platform: routed };
   },
 });
 

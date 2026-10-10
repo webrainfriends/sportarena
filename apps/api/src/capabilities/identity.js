@@ -16,7 +16,7 @@ const pii = {
   national_id: z.string().min(3).max(40).optional(),
   address: z.string().max(300).optional(),
 };
-const selfRoles = roles.filter((r) => r !== 'admin');
+const selfRoles = roles.filter((r) => r !== 'admin' && r !== 'platform_admin'); // platform roles are only granted by the platform owner
 const profileRoles = ['athlete', 'coach', 'referee', 'physio', 'doctor'];
 
 cap({
