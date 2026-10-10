@@ -14,9 +14,20 @@ const taxIn = (total, rate) => Math.round((total * rate) / (10000 + rate)); // p
 async function nextNumber(c, venue, kind) {
   let prefix = venue.invoice_prefix;
   if (!prefix) {
+    // 3 letters of the name + a slice of the venue id; the prefix is unique, so on a clash take a longer slice of the id
     const base = venue.name.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 3).padEnd(3, 'X');
-    prefix = `${base}${venue.id.replace(/-/g, '').slice(0, 3).toUpperCase()}`;
-    await c.query('UPDATE venues SET invoice_prefix=$2 WHERE id=$1 AND invoice_prefix IS NULL', [venue.id, prefix]);
+    const hex = venue.id.replace(/-/g, '').toUpperCase();
+    for (let len = 3; len <= 5; len++) {
+      await c.query('SAVEPOINT invoice_prefix');
+      try {
+        await c.query('UPDATE venues SET invoice_prefix=$2 WHERE id=$1 AND invoice_prefix IS NULL', [venue.id, `${base}${hex.slice(0, len)}`]);
+        await c.query('RELEASE SAVEPOINT invoice_prefix');
+        break;
+      } catch (e) {
+        await c.query('ROLLBACK TO SAVEPOINT invoice_prefix');
+        if (e.code !== '23505' || len === 5) throw e;
+      }
+    }
     prefix = (await c.query('SELECT invoice_prefix FROM venues WHERE id=$1', [venue.id])).rows[0].invoice_prefix;
   }
   const { seq } = (await c.query(
