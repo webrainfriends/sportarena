@@ -6,12 +6,13 @@ import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { useNav } from '../nav';
-import { Btn, Chip, Empty, ErrorBox, Field, GradCard, H1, Loading, Row, Screen, Seg, Section, Sheet, StatPill, T, Tag } from '../ui';
+import { Btn, Chip, Empty, ErrorBox, Field, H1, Loading, Row, Screen, Seg, Section, Sheet, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { c, day } from '../theme';
 import { moneyIn } from '../vtime';
 import { locale } from '../locale';
 import { EventVenues } from './event-venues';
+import { PillTabs, StatTile, TournamentHero } from '../tournament-ui';
 
 const fail = (toast) => (e) => toast('' + e.message);
 const useDo = (toast, refresh) => async (fn, msg) => { try { const r = await fn(); toast(typeof msg === 'function' ? msg(r) : msg); refresh?.(); return r; } catch (e) { fail(toast)(e); return null; } };
@@ -38,12 +39,11 @@ export function EventPlan({ id }) {
   const P = { id, e, p, toast, push, reload: plan.reload, user, has };
   return (
     <Screen wide>
-      <GradCard colors={[c.violet, c.pink]}>
-        <T size={40}>{e.banner_emoji}</T>
-        <H1 color="#fff" style={{ fontSize: 26 }}>{e.name}</H1>
-        <T color="#fff" weight="800">Planning{p.event.days_to_go != null ? ` · ${p.event.days_to_go >= 0 ? `${p.event.days_to_go} days to go` : `${-p.event.days_to_go} days ago`}` : ''}{e.starts_on ? ` · ${day(e.starts_on)}${e.ends_on && e.ends_on !== e.starts_on ? ` – ${day(e.ends_on)}` : ''}` : ''}</T>
-      </GradCard>
-      <View style={{ marginTop: 10 }}><Seg options={[['overview', 'Overview'], ['venue', 'Venue & courts'], ['requests', 'Contact & book'], ['budget', 'Budget'], ['tasks', 'Tasks']].map(([value, label]) => ({ value, label }))} value={tab} onChange={setTab} color={c.pink} /></View>
+      <TournamentHero e={e} tone="#7C3AED" note="Planning"
+        stats={[{ icon: '📨', value: p.requests.total, label: 'Requests' }, { icon: '✅', value: p.tasks.done, label: 'Tasks done' }, { icon: '⏳', value: p.tasks.open, label: 'Tasks open' }, { icon: '💰', value: p.budget.summary.cap_used_pct != null ? `${p.budget.summary.cap_used_pct}%` : '—', label: 'Of budget cap' }]} />
+      <View style={{ marginTop: 12 }}>
+        <PillTabs value={tab} onChange={setTab} tabs={[{ key: 'overview', label: 'Overview', icon: '🏁' }, { key: 'venue', label: 'Venue & courts', icon: '🏟️' }, { key: 'requests', label: 'Contact & book', icon: '📨', badge: p.requests.waiting_for_you.length || undefined }, { key: 'budget', label: 'Budget', icon: '💰' }, { key: 'tasks', label: 'Tasks', icon: '✅', badge: p.tasks.overdue || undefined }]} />
+      </View>
       {tab === 'overview' ? <Overview {...P} go={setTab} /> : tab === 'venue' ? <View style={{ gap: 12, marginTop: 12 }}><EventVenues e={e} toast={toast} onChange={plan.reload} /></View> : tab === 'requests' ? <Requests {...P} /> : tab === 'budget' ? <Budget {...P} /> : <Tasks {...P} />}
     </Screen>
   );
@@ -51,14 +51,24 @@ export function EventPlan({ id }) {
 
 // ------------------------------------------------------------------ overview
 function Overview({ id, p, toast, push, reload, go }) {
+  const venues = useLoad(() => api.get(`/events/${id}/venues`), [id]);
   const s = p.budget.summary;
   const done = useDo(toast, reload);
   return (
     <>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14 }}>
-        <StatPill value={p.requests.total} label="REQUESTS" /><StatPill value={p.tasks.open} label="TASKS OPEN" color={p.tasks.overdue ? c.sun : c.paper} />
-        <StatPill value={p.tasks.overdue} label="OVERDUE" /><StatPill value={s.cap_used_pct != null ? `${s.cap_used_pct}%` : '—'} label="OF BUDGET CAP" />
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 14 }}>
+        <StatTile icon="📤" label="Spend forecast" value={m(s.expense.forecast_cents, s.currency)} tone={c.sunSoft} />
+        <StatTile icon="📥" label="Income forecast" value={m(s.income.forecast_cents, s.currency)} tone={c.limeSoft} />
+        <StatTile icon="📊" label="Net" value={m(s.net_forecast_cents, s.currency)} />
       </View>
+      <Section title="Venue & courts" color={c.cyan}>
+        {!venues.data ? <Loading /> : venues.data.length ? venues.data.map((v) => (
+          <Row key={v.id} left={<T size={26}>{v.emoji ?? '🏟️'}</T>} title={v.name} onPress={() => go('venue')}
+            sub={v.summary.slots ? `${v.summary.slots} booking${v.summary.slots === 1 ? '' : 's'} · ${v.summary.courts} court${v.summary.courts === 1 ? '' : 's'} · ${m(v.summary.total_cents, v.currency)}${v.summary.from ? ` · ${new Date(v.summary.from).toLocaleDateString(locale, { day: 'numeric', month: 'short', timeZone: v.timezone })}–${new Date(v.summary.to).toLocaleDateString(locale, { day: 'numeric', month: 'short', timeZone: v.timezone })}` : ''}` : v.requests.length ? `Request ${v.requests[0].status}` : 'No courts booked yet'}
+            right={<Tag label={v.chosen ? 'Event venue' : 'In talks'} color={v.chosen ? c.limeSoft : c.sunSoft} />} />
+        )) : <Empty emoji="🏟️" title="No venue yet" sub="Pick a venue with courts for your sport and book the event days." />}
+        <Btn small title={venues.data?.length ? 'Manage venue & courts' : 'Find a venue'} color={c.paper} ink={c.ink} style={{ alignSelf: 'flex-start' }} onPress={() => go('venue')} />
+      </Section>
       {p.event.multi_sport ? <Btn title="Open the games programme (sports, teams, timetable)" color={c.violet} style={{ marginTop: 12 }} onPress={() => push('Games', { id })} /> : null}
       {p.requests.waiting_for_you.length ? (
         <Section title="Waiting for you to finalize" color={c.sun}>

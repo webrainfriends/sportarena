@@ -189,11 +189,12 @@ async function planStage(c, ev, i) {
   const { placed, unplaced } = planSchedule({ matches, days, durationMin: i.match_duration_min, restMin: i.rest_min, maxPerTeamPerDay: i.max_per_team_per_day, teamBusy });
   const where = new Map(placed.map((p) => [p.key, p]));
   const names = new Map(resources.map((r) => [r.id, r.name]));
+  const teamInfo = new Map((await c.query('SELECT id, name, emoji, color FROM teams WHERE id = ANY($1)', [involved])).rows.map((t) => [t.id, t]));
   return {
     venue: { id: ctx.venue.id, name: ctx.venue.name, timezone: tz },
     format: i.format, teams: teamIds.length, byes,
     skipped_dates: Object.fromEntries(skip),
-    items: items.map((it) => { const p = where.get(it.key); return { ...it, scheduled_at: p?.start.toISOString() ?? null, ends_at: p?.end.toISOString() ?? null, duration_min: p?.minutes ?? null, local_date: p?.date ?? null, resource_id: p?.resource_id ?? null, resource_name: p ? names.get(p.resource_id) : null }; }),
+    items: items.map((it) => { const p = where.get(it.key); const h = teamInfo.get(it.home_team_id), a = teamInfo.get(it.away_team_id); return { ...it, home_name: h?.name ?? null, home_emoji: h?.emoji ?? null, home_color: h?.color ?? null, away_name: a?.name ?? null, away_emoji: a?.emoji ?? null, away_color: a?.color ?? null, scheduled_at: p?.start.toISOString() ?? null, ends_at: p?.end.toISOString() ?? null, duration_min: p?.minutes ?? null, local_date: p?.date ?? null, resource_id: p?.resource_id ?? null, resource_name: p ? names.get(p.resource_id) : null }; }),
     unplaced: unplaced.map((u) => ({ ...u })),
     placed: placed.length,
   };
@@ -263,8 +264,8 @@ cap({
     await mustFind('events', i.id, 'id');
     const rows = await many(
       `SELECT f.id, f.round, f.round_kind, f.bracket_slot AS slot, f.status, f.scheduled_at, f.duration_min, f.home_team_id, f.away_team_id, f.home_score, f.away_score, f.winner_team_id,
-              f.home_placeholder, f.away_placeholder, f.win_feeds_fixture_id, f.lose_feeds_fixture_id, h.name AS home_name, h.emoji AS home_emoji, a.name AS away_name, a.emoji AS away_emoji, r.name AS resource_name
-         FROM fixtures f LEFT JOIN teams h ON h.id=f.home_team_id LEFT JOIN teams a ON a.id=f.away_team_id LEFT JOIN resources r ON r.id=f.resource_id
+              f.home_placeholder, f.away_placeholder, f.win_feeds_fixture_id, f.lose_feeds_fixture_id, h.name AS home_name, h.emoji AS home_emoji, a.name AS away_name, a.emoji AS away_emoji, r.name AS resource_name, ve.timezone AS venue_timezone
+         FROM fixtures f LEFT JOIN teams h ON h.id=f.home_team_id LEFT JOIN teams a ON a.id=f.away_team_id LEFT JOIN resources r ON r.id=f.resource_id LEFT JOIN venues ve ON ve.id=r.venue_id
         WHERE f.event_id=$1 AND f.round_kind IS NOT NULL AND f.round_kind <> 'group' AND f.status <> 'cancelled' ORDER BY f.scheduled_at, f.bracket_slot`, [i.id]);
     const rounds = ROUND_ORDER.map((kind) => ({ kind, label: ROUND_LABEL[kind], games: rows.filter((r) => r.round_kind === kind).sort((x, y) => x.slot - y.slot) })).filter((r) => r.games.length);
     const final = rows.find((r) => r.round_kind === 'final' && r.status === 'completed');
