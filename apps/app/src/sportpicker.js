@@ -89,6 +89,19 @@ export function SportSelect({ label, value, onChange, optional, allLabel }) {
   );
 }
 
+/** Several sports: chips for what is chosen (tap to remove) and a dropdown to add more. value is an array of slugs. */
+export function SportsMulti({ label, value = [], onChange, optional }) {
+  const sports = useSports();
+  const by = new Map((sports.data ?? []).map((x) => [x.slug, x]));
+  return (
+    <View style={{ gap: 8 }}>
+      {label ? <T weight="800" size={13}>{label}{optional ? ' (optional)' : ''}</T> : null}
+      {value.length ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{value.map((slug) => <Chip key={slug} active label={`${by.get(slug)?.emoji ?? ''} ${by.get(slug)?.name ?? slug}  ✕`} onPress={() => onChange(value.filter((x) => x !== slug))} />)}</View> : null}
+      <SportSelect value={null} label={value.length ? 'Add another sport' : undefined} onChange={(slug) => { if (slug && !value.includes(slug)) onChange([...value, slug]); }} />
+    </View>
+  );
+}
+
 // form field (FormSheet type 'sport')
 export const SportPicker = (p) => <SportSelect {...p} />;
 
