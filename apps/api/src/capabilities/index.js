@@ -52,4 +52,7 @@ import './community.js';
 import './home.js';
 import './athlete-schedule.js';
 import './market.js';
+import './multisport.js';
+import './multisport-play.js';
+import './multisport-ops.js';
 export { capabilities } from '../registry.js';

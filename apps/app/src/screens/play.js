@@ -125,6 +125,7 @@ export function Event({ id }) {
         </View>
       </GradCard>
       {e.description ? <T style={{ marginTop: 12 }}>{e.description}</T> : null}
+      {e.sport === 'Multi-sport games' ? <Btn title={isOrg ? 'Run the games programme' : 'Open the games programme'} color={c.violet} onPress={() => push('Games', { id })} style={{ marginTop: 14 }} /> : null}
 
       {e.status === 'open' && !isOrg && !e.entrants.some((x) => x.user_id === user.id || eligible.some((t) => t.id === x.team_id)) ? <Btn title="Join this event" onPress={() => setJoining(true)} style={{ marginTop: 14 }} /> : null}
 

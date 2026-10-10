@@ -401,11 +401,15 @@ cap({
 
 cap({
   name: 'complete_event', method: 'POST', path: '/events/:id/complete', tag: 'Events',
-  summary: 'Close an event and auto-award the cup (1st), silver and bronze medals (2nd/3rd) from the final standings.', input: z.object({ id }),
+  summary: 'Close an event and auto-award the cup (1st), silver and bronze medals (2nd/3rd) from the final standings. A multi-sport event needs every discipline finalized or cancelled first (or force).', input: z.object({ id, force: z.boolean().default(false) }),
   async handler({ user }, i) {
     return tx(async (c) => {
       const ev = await eventForOrganizer(user, i.id, c);
       if (ev.status === 'completed') throw conflict('Already completed');
+      if (!i.force) {
+        const open = (await c.query("SELECT name FROM event_disciplines WHERE event_id=$1 AND status NOT IN ('completed','cancelled') ORDER BY name", [i.id])).rows;
+        if (open.length) throw conflict(`${open.length} discipline(s) are not finalized yet: ${open.slice(0, 5).map((d) => d.name).join(', ')}${open.length > 5 ? '…' : ''}`, { disciplines: open.map((d) => d.name) });
+      }
       const table = await standings(i.id, c);
       const final = (await c.query("SELECT * FROM fixtures WHERE event_id=$1 AND round_kind='final' AND status='completed'", [i.id])).rows[0];
       if (final) { // a knockout decides the podium, not the group table
