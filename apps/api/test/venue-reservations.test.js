@@ -652,3 +652,17 @@ test('module is exposed through REST, OpenAPI and MCP from one definition', asyn
   assert.ok(openapi.paths['/venue-comparison'] ?? Object.keys(openapi.paths).some((p) => p.includes('venue-comparison')));
   assert.equal((await api('POST', '/reservations', { body: { items: [] } })).status, 401);
 });
+
+test('invoice prefixes are unique: a venue whose default prefix is taken still gets numbered invoices', async () => {
+  const mgr = await signup(['venue_manager']);
+  const first = await makeVenue(mgr), second = await makeVenue(mgr);
+  // simulate the 1-in-4096 clash: the first venue already holds the prefix the second would derive
+  const clash = `ARE${second.v.id.replace(/-/g, '').slice(0, 3).toUpperCase()}`;
+  await pool.query('UPDATE venues SET invoice_prefix=$2 WHERE id=$1', [first.v.id, clash]);
+  const user = await signup();
+  const res = must(await api('POST', '/reservations', { token: user.token, body: { items: [{ resource_id: second.a.id, starts_at: at(2, 9), ends_at: at(2, 10) }] } }), 201);
+  const inv = (await pool.query('SELECT number FROM invoices WHERE reservation_id=$1', [res.id])).rows;
+  assert.equal(inv.length, 1);
+  assert.ok(!inv[0].number.startsWith(`${clash}-`), 'the clashing prefix is not reused');
+  assert.match(inv[0].number, /^ARE[0-9A-F]{4,5}-\d{4}-000001$/);
+});
