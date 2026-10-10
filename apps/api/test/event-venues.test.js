@@ -48,6 +48,7 @@ test('venue finder lists courts for the sport and all-purpose courts, not other 
   assert.ok(names.includes('General Hall') && names.includes('Hoops Centre'), names.join());
   assert.ok(!names.includes('Tennis Club'), 'a tennis-only venue does not suit basketball');
   assert.equal(found[0].name, 'Hoops Centre', 'venues with courts for the sport come first');
+  assert.ok('cover_url' in found[0], 'results carry the cover photo (null when none)');
   assert.equal(found.find((v) => v.name === 'General Hall').all_purpose_courts, 2);
   assert.deepEqual((await api('GET', `/venue-finder?sports=basketball`)).body[0].venues.map((v) => v.name).sort(), ['General Hall', 'Hoops Centre']);
   const multi = must(await api('POST', '/events', { token: org.token, body: { name: 'Games', sport: 'multi-sport', kind: 'tournament' } }), 201);
@@ -93,6 +94,7 @@ test('check, book, list and release the courts for an event; budget line, holida
   const venues = must(await api('GET', `/events/${ev.id}/venues`, { token: org.token }));
   assert.equal(venues.length, 1); assert.equal(venues[0].chosen, true);
   assert.equal(venues[0].summary.slots, 2); assert.equal(venues[0].summary.total_cents, 300000);
+  assert.ok('cover_url' in venues[0]); assert.equal(venues[0].country, 'IN');
 
   // release one: refund policy applies, slot frees up, summary shrinks
   const rel = must(await api('POST', `/event-bookings/${venues[0].bookings[0].id}/release`, { token: org.token, body: { reason: 'Moved' } }));

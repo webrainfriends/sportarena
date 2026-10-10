@@ -47,7 +47,7 @@ cap({
     }
     if (i.kind === 'venue') {
       return many(`SELECT v.id, 'venue_id' AS key, v.name, v.emoji, v.city, count(r.id)::int AS detail_count, min(NULLIF(r.hourly_rate_cents,0)) AS from_rate_cents,
-                          count(r.id) FILTER (WHERE r.sport_id = ANY($4::uuid[]))::int AS sport_courts, count(r.id) FILTER (WHERE r.sport_id IS NULL)::int AS all_purpose_courts,
+                          count(r.id) FILTER (WHERE r.sport_id = ANY($4::uuid[]))::int AS sport_courts, count(r.id) FILTER (WHERE r.sport_id IS NULL)::int AS all_purpose_courts, (SELECT '/api/v1/media/' || m.id FROM venue_media m WHERE m.venue_id=v.id AND m.removed_at IS NULL AND m.kind='photo' ORDER BY m.is_cover DESC, m.position, m.created_at LIMIT 1) AS cover_url,
                           ${asked('venue_id=v.id')} AS already_asked
                      FROM venues v JOIN resources r ON r.venue_id=v.id AND r.active AND (cardinality($4::uuid[]) = 0 OR r.sport_id IS NULL OR r.sport_id = ANY($4::uuid[]))
                     WHERE v.active AND ($2::text IS NULL OR v.name ILIKE $2 OR v.city ILIKE $2) AND ($3::text IS NULL OR lower(v.city)=lower($3))

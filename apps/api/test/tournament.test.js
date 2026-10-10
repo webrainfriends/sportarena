@@ -163,6 +163,7 @@ test('knockout: holiday-aware non-overlapping schedule, byes-free 8-team QF → 
   assert.deepEqual(Object.keys(pv.body.skipped_dates).sort(), [day(3), day(4)]);
   assert.match(pv.body.skipped_dates[day(3)], /Festival/);
   const items = pv.body.items;
+  assert.ok(items.filter((x) => x.home_team_id).every((x) => x.home_name && x.away_name), 'preview items carry team names');
   for (const it of items) assert.ok(![day(3), day(4)].includes(it.local_date), 'holidays and rest days are skipped');
   const ov = (a, b) => a.scheduled_at < b.ends_at && b.scheduled_at < a.ends_at;
   for (const [i, a] of items.entries()) for (const b of items.slice(i + 1)) {
@@ -186,6 +187,8 @@ test('knockout: holiday-aware non-overlapping schedule, byes-free 8-team QF → 
   const gen = await api('POST', `/events/${ev.id}/schedule`, { token: w.org.token, body });
   assert.equal(gen.status, 201, JSON.stringify(gen.body));
   assert.equal(gen.body.created, 8);
+  const listed = (await api('GET', `/fixtures?event_id=${ev.id}&limit=100`)).body;
+  assert.ok(listed.length === 8 && listed.every((f) => f.venue_timezone === 'UTC'), 'fixtures carry the venue time zone so clients show venue-local times');
   assert.equal((await pool.query("SELECT count(*)::int AS n FROM bookings WHERE event_id=$1 AND status='confirmed'", [ev.id])).rows[0].n, 8, 'courts are booked');
   assert.equal((await api('POST', `/events/${ev.id}/schedule`, { token: w.org.token, body })).status, 409, 'cannot generate the knockout twice');
 

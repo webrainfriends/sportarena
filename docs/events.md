@@ -58,3 +58,9 @@ All tables are additive and nothing is deleted: invitations, rules, seeds, calen
 * `preview_event_venue_booking` / `book_event_venue` — pick a venue, the event days and a daily time window; shows each court-day as free / booked / blocked / closed / skipped (opening hours, venue blocks, existing bookings, event blackout days and public holidays) with the price. Booking is all-or-nothing unless `skip_unavailable`; it adds a planned *venue* line to the event budget and sets the event venue if it has none.
 * `release_event_booking` — release one booking (the venue's cancellation policy decides any refund).
 * App: **Plan & budget → Venue & courts** (find a venue, pick days with the calendar, times with the time picker, courts as chips, see availability, book).
+
+## Tournament console and plan screens (app)
+* **Tournament console** (Event → Organizer tools): dark hero with live numbers (teams, games played, court bookings, crew), a *set up your tournament* stepper that jumps to the next missing step, and tabs for Teams (ranked recommendations with strength bars, seeds, invitations, rules as steppers/chips), Schedule (game-day strip, match cards, plan forms with calendar range, steppers and switches), Bracket (a real tree with connectors, byes and a champion banner), Venue (photo cards, courts, release), Crew (positions with fill bars, search-and-invite) and Business (money tiles, sponsor/vendor invites picked from a search list).
+* Game times are shown in the **venue's time zone** (`list_fixtures` and `get_event_bracket` return `venue_timezone`).
+* **Plan & budget** uses the same hero/tabs and shows the event's venue bookings on the Overview.
+* Tests guard the wiring that merges kept breaking: `app-routes.test.js` (every `push('Screen')` target is in `PAGES`), `app-jsx-names.test.js` (every JSX component is imported or declared) and `capability-registry.test.js` (every capability file is registered).
