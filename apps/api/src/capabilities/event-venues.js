@@ -102,7 +102,7 @@ cap({
   async handler({ user }, i) {
     const ev = await eventForOrganizer(user, i.id);
     const venues = await many(
-      `SELECT v.id, v.name, v.emoji, v.city, v.address, v.currency, v.timezone FROM venues v
+      `SELECT v.id, v.name, v.emoji, v.city, v.country, v.address, v.currency, v.timezone, (SELECT '/api/v1/media/' || m.id FROM venue_media m WHERE m.venue_id=v.id AND m.removed_at IS NULL AND m.kind='photo' ORDER BY m.is_cover DESC, m.position, m.created_at LIMIT 1) AS cover_url FROM venues v
         WHERE v.id = $2 OR v.id IN (SELECT venue_id FROM event_requests WHERE event_id=$1 AND kind='venue' AND venue_id IS NOT NULL AND status IN ('sent','quoted','accepted','finalized'))
            OR v.id IN (SELECT r.venue_id FROM bookings b JOIN resources r ON r.id=b.resource_id WHERE b.event_id=$1 AND b.status='confirmed') ORDER BY v.name`, [ev.id, ev.venue_id]);
     const bookings = await many(
