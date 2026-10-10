@@ -170,7 +170,7 @@ cap({
 });
 
 cap({
-  name: 'list_event_staff', method: 'GET', path: '/events/:id/staff', tag: 'Event staff', summary: 'Everyone invited or confirmed for the event, by position (organiser).',
+  name: 'list_tournament_staff', method: 'GET', path: '/events/:id/staff-assignments', tag: 'Event staff', summary: 'Everyone invited or confirmed for the event, by position (organiser).',
   input: z.object({ id, status: z.enum(['invited', 'accepted', 'declined', 'released', 'withdrawn', 'completed']).optional() }),
   async handler({ user }, i) {
     await eventForOrganizer(user, i.id);

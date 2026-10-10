@@ -303,7 +303,7 @@ test('event staff: credentials, time off, clashes, headcount; history is kept', 
   assert.deepEqual((await pool.query('SELECT to_status FROM event_staff_history WHERE assignment_id=$1 ORDER BY at, id', [inv.body.id])).rows.map((r) => r.to_status), ['invited', 'accepted', 'released']);
   const roles = (await api('GET', `/events/${ev.id}/staff-roles`)).body;
   assert.equal(roles[0].filled, 1);
-  assert.equal((await api('GET', `/events/${ev.id}/staff?status=accepted`, { token: w.org.token })).body.length, 1);
+  assert.equal((await api('GET', `/events/${ev.id}/staff-assignments?status=accepted`, { token: w.org.token })).body.length, 1);
   assert.equal((await api('GET', '/me/staff-assignments', { token: ref2.token })).body.length, 1);
 
   // doctors / physios: provider profile required, time off blocks
