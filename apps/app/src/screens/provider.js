@@ -6,14 +6,15 @@ import { useSession } from '../session';
 import { FormSheet } from '../FormSheet';
 import { Btn, Card, Chip, Empty, ErrorBox, Field, Loading, Section, Sheet, T, Tag } from '../ui';
 import { c, money, when } from '../theme';
+import { locale } from '../locale';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const SPECIALTIES = ['sports medicine', 'knee', 'shoulder', 'back', 'acl', 'rehab', 'nutrition', 'concussion'];
 
 /** Group ISO slot instants by the day they fall on in the provider's time zone. */
 const byDay = (slots, tz) => {
-  const day = new Intl.DateTimeFormat('en-GB', { timeZone: tz, weekday: 'short', day: 'numeric', month: 'short' });
-  const time = new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false });
+  const day = new Intl.DateTimeFormat(locale, { timeZone: tz, weekday: 'short', day: 'numeric', month: 'short' });
+  const time = new Intl.DateTimeFormat(locale, { timeZone: tz, hour: 'numeric', minute: '2-digit' });
   const out = new Map();
   for (const s of slots) { const k = day.format(new Date(s)); out.set(k, [...(out.get(k) ?? []), { iso: s, label: time.format(new Date(s)) }]); }
   return [...out.entries()];
@@ -141,7 +142,7 @@ export function ConsentManager() {
       {g.loading && !g.data ? <Loading /> : g.error ? <ErrorBox error={g.error} onRetry={g.reload} /> : g.data.grants.length ? g.data.grants.map((x) => (
         <Card key={x.provider_id} pad={12}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <View style={{ flex: 1 }}><T weight="800">{x.provider_name}</T><T size={12} color={c.mute}>{x.scope === 'full' ? 'Records and fit-to-play' : 'Fit-to-play status only'}{x.expires_at ? ` · until ${new Date(x.expires_at).toLocaleDateString()}` : ''}</T></View>
+            <View style={{ flex: 1 }}><T weight="800">{x.provider_name}</T><T size={12} color={c.mute}>{x.scope === 'full' ? 'Records and fit-to-play' : 'Fit-to-play status only'}{x.expires_at ? ` · until ${new Date(x.expires_at).toLocaleDateString(locale)}` : ''}</T></View>
             <Tag label={STATE[x.state][0]} color={STATE[x.state][1]} />
           </View>
           {x.state === 'active' ? <Btn small title="Withdraw access" color={c.paper} ink={c.red} style={{ alignSelf: 'flex-start', marginTop: 8 }} onPress={() => act(() => api.del(`/medical/grants/${x.provider_id}`), 'Access withdrawn')} /> : null}

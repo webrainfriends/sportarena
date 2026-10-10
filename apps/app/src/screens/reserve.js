@@ -16,6 +16,7 @@ import { NewCaseSheet } from './cases';
 import { currentDevice, disablePush, enablePush, pushSupport } from '../push';
 import { KIND } from './book';
 import { addDays, dateTimeIn, dayLabel, fmtMin, localDate, hoursSummary, localToIso, moneyIn, offerLabel, timeIn, todayIn } from '../vtime';
+import { locale } from '../locale';
 
 const open = (url) => (Platform.OS === 'web' ? window.open(url, '_blank', 'noopener') : Linking.openURL(url));
 const Line = ({ k, v, strong }) => <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 }}><T color={c.mute} weight={strong ? '700' : '500'}>{k}</T><T weight={strong ? '700' : '600'}>{v}</T></View>;
@@ -140,11 +141,11 @@ export function Invoice({ id }) {
           <View style={{ flex: 1, minWidth: 200 }}><T size={11} color={c.mute} weight="700">FROM</T><T weight="700">{d.seller.name}</T>{d.seller.address ? <T size={13}>{d.seller.address}</T> : null}{d.seller.tax_id ? <T size={13}>{d.tax_name} ID: {d.seller.tax_id}</T> : null}{d.seller.phone ? <T size={13}>{d.seller.phone}</T> : null}</View>
           <View style={{ flex: 1, minWidth: 200 }}><T size={11} color={c.mute} weight="700">BILLED TO</T><T weight="700">{d.buyer?.name}</T>{d.buyer?.address ? <T size={13}>{d.buyer.address}</T> : null}{d.buyer?.tax_id ? <T size={13}>Tax ID: {d.buyer.tax_id}</T> : null}</View>
         </View>
-        <T size={12} color={c.mute} style={{ marginTop: 10 }}>Issued {new Date(d.issued_at).toLocaleDateString()} · Booking {d.reservation_code} · {d.venue_name} · {d.currency}{d.paid_at && !credit ? ` · Paid ${new Date(d.paid_at).toLocaleDateString()}${d.payment_method ? ` (${d.payment_method})` : ''}` : ''}</T>
+        <T size={12} color={c.mute} style={{ marginTop: 10 }}>Issued {new Date(d.issued_at).toLocaleDateString(locale)} · Booking {d.reservation_code} · {d.venue_name} · {d.currency}{d.paid_at && !credit ? ` · Paid ${new Date(d.paid_at).toLocaleDateString(locale)}${d.payment_method ? ` (${d.payment_method})` : ''}` : ''}</T>
         <View style={{ marginTop: 14, borderTopWidth: 1, borderColor: c.line }}>
           {d.lines.map((l, k) => (
             <View key={k} style={{ flexDirection: 'row', gap: 10, paddingVertical: 8, borderBottomWidth: 1, borderColor: c.line }}>
-              <View style={{ flex: 1 }}><T weight="600">{l.description}</T>{l.starts_at ? <T size={12} color={c.mute}>{new Date(l.starts_at).toLocaleString()} · {l.slots} slot{l.slots === 1 ? '' : 's'}{l.discount_cents ? ` · discount ${money(l.discount_cents)}` : ''}</T> : null}</View>
+              <View style={{ flex: 1 }}><T weight="600">{l.description}</T>{l.starts_at ? <T size={12} color={c.mute}>{new Date(l.starts_at).toLocaleString(locale)} · {l.slots} slot{l.slots === 1 ? '' : 's'}{l.discount_cents ? ` · discount ${money(l.discount_cents)}` : ''}</T> : null}</View>
               <T weight="700">{money(l.amount_cents)}</T>
             </View>
           ))}
@@ -214,7 +215,7 @@ export function Reservation({ id }) {
           </Card>
         ))}
       </Section>
-      {x.awaiting_payment ? <Card color={c.orangeSoft} style={{ marginTop: 14 }}><T weight="700" color={c.orange}>⏱ Pay by {new Date(x.payment_deadline).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} or these slots are released.</T></Card> : null}
+      {x.awaiting_payment ? <Card color={c.orangeSoft} style={{ marginTop: 14 }}><T weight="700" color={c.orange}>⏱ Pay by {new Date(x.payment_deadline).toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' })} or these slots are released.</T></Card> : null}
       <Section title="Invoices & payment" color={c.sun}>
         {x.invoices.map((inv) => (
           <Card key={inv.id} color={inv.status === 'void' ? c.violetSoft : c.paper}>
@@ -290,7 +291,7 @@ function MoveSheet({ booking, onClose, onDone }) {
 const HOURS = Array.from({ length: 16 }, (_, i) => i + 6);
 const MAX_DAYS = 7;
 const rangeDays = (from, to) => Array.from({ length: Math.round((new Date(`${to}T00:00:00Z`) - new Date(`${from}T00:00:00Z`)) / 864e5) + 1 }, (_, i) => addDays(from, i));
-const dayText = (d) => new Date(`${d}T00:00:00Z`).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
+const dayText = (d) => new Date(`${d}T00:00:00Z`).toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
 // nulls always sort last, whichever way the key runs
 const byKey = (key, dir = 1) => (a, b) => { const [x, y] = [key(a), key(b)]; return x == null && y == null ? 0 : x == null ? 1 : y == null ? -1 : dir * (x - y); };
 const SORTS = [
@@ -538,7 +539,7 @@ export function Notifications() {
       <Section title="Inbox" action={list.data?.unread ? 'Mark all read' : undefined} onAction={readAll} color={c.pink}>
         {list.loading && !list.data ? <Loading /> : list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : list.data.items.length ? list.data.items.map((n) => (
           <Row key={n.id} onPress={() => tap(n)} color={n.read_at ? c.paper : c.pinkSoft} left={<Bubble emoji={n.kind.includes('cancel') ? '❌' : n.kind.includes('remind') ? '⏰' : n.kind.includes('modif') ? '✏️' : '✅'} />}
-            title={n.title} sub={`${n.body} · ${new Date(n.created_at).toLocaleString()}`} />
+            title={n.title} sub={`${n.body} · ${new Date(n.created_at).toLocaleString(locale)}`} />
         )) : <Empty emoji="🔕" title="Nothing yet" sub="Booking confirmations, changes and reminders land here." />}
       </Section>
     </Screen>

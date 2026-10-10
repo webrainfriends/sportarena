@@ -10,11 +10,12 @@ import { useSession } from '../session';
 import { Btn, Chip, Empty, ErrorBox, Field, GradCard, H1, Loading, Row, Screen, Seg, Section, Sheet, StatPill, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { c } from '../theme';
+import { locale } from '../locale';
 
 const fail = (toast) => (e) => toast('' + e.message);
 const zone = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch { return 'UTC'; } };
-const hm = (iso) => new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-const dayName = (iso) => new Date(iso).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+const hm = (iso) => new Date(iso).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
+const dayName = (iso) => new Date(iso).toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short' });
 const localIso = (date, time) => new Date(`${date}T${time}:00`).toISOString();
 const STAGE = { qualifying: 'Qualifier', heat: 'Heat', round_robin: 'League', knockout: 'Knockout', quarter_final: 'Quarter-final', semi_final: 'Semi-final', third_place: 'Third place', final: 'Final' };
 const ROLES = ['referee', 'umpire', 'judge', 'starter', 'timekeeper', 'scorer', 'physio', 'doctor', 'first_aider', 'volunteer'];

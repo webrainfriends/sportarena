@@ -11,6 +11,7 @@ import { FormSheet } from '../FormSheet';
 import { PaySheet } from '../PaySheet';
 import { c, day, money } from '../theme';
 import { moneyIn } from '../vtime';
+import { locale } from '../locale';
 
 const COVER = { individual: 'Me', team: 'A team', event: 'Event or tournament', venue: 'A venue' };
 const EMOJI = { individual: '🧍', team: '🛡️', event: '🎟️', venue: '🏟️' };
@@ -18,7 +19,7 @@ export const nice = (s = '') => String(s).replace(/_/g, ' ');
 const TONE = { offered: c.cyan, accepted: c.mint, active: c.mint, approved: c.mint, paid: c.mint, quoted: c.cyan, open: c.sun, submitted: c.sun, under_review: c.sun, pending_payment: c.sun, declined: c.violetSoft, withdrawn: c.violetSoft, cancelled: c.violetSoft, expired: c.violetSoft, rejected: c.red };
 export const StatusTag = ({ s }) => <Tag label={nice(s)} color={TONE[s] ?? c.violetSoft} />;
 const cur = (cents, currency) => (currency ? moneyIn(Number(cents), currency) : money(Number(cents)));
-export const dayY = (v) => new Date(v).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+export const dayY = (v) => new Date(v).toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' });
 const ACTION = { requested: 'Request sent', quote_sent: 'Quote received', quote_accepted: 'Quote accepted, cover assigned', quote_declined: 'Quote declined', quote_withdrawn: 'Quote withdrawn', quote_expired: 'Quote expired', accepted: 'Request closed', cancelled: 'Request cancelled', insurer_declined: 'Insurer passed' };
 
 // ----------------------------------------------------------------------------------------------------------- documents

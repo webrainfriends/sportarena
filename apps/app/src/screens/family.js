@@ -6,8 +6,9 @@ import { useSession } from '../session';
 import { FormSheet } from '../FormSheet';
 import { Btn, Card, Empty, ErrorBox, H1, Loading, Row, Screen, Section, Sheet, T, Tag } from '../ui';
 import { c } from '../theme';
+import { locale } from '../locale';
 
-const when = (d) => (d ? new Date(d).toLocaleDateString() : '');
+const when = (d) => (d ? new Date(d).toLocaleDateString(locale) : '');
 const label = (s) => String(s).replace(/_/g, ' ');
 const STATE = {
   invited: ['Waiting for an answer', c.sunSoft], accepted: ['Add proof', c.orangeSoft], pending_review: ['Being checked', c.cyanSoft], active: ['Verified', c.lime],
@@ -66,7 +67,7 @@ function Pickup({ child, onClose }) {
           right={x.active ? <Btn small title="Withdraw" color={c.paper} ink={c.red} onPress={async () => { try { await api.del(`/youth/pickup-delegates/${x.id}`); toast('Withdrawn'); d.reload(); } catch (e) { toast(e.message); } }} /> : null} />
       )) : <Empty emoji="🚸" title="No one else is allowed to collect" sub="Only verified guardians can collect until you add someone." />}
       <T weight="800" size={13}>Recent check-ins</T>
-      {hist.data?.length ? hist.data.map((h) => <T key={h.id} size={12} color={c.mute}>{new Date(h.at).toLocaleString()} · {h.kind === 'drop_off' ? 'Arrived' : 'Collected'}</T>) : <T size={12} color={c.mute}>Nothing recorded yet. Coaches and guardians check children in and out from the team.</T>}
+      {hist.data?.length ? hist.data.map((h) => <T key={h.id} size={12} color={c.mute}>{new Date(h.at).toLocaleString(locale)} · {h.kind === 'drop_off' ? 'Arrived' : 'Collected'}</T>) : <T size={12} color={c.mute}>Nothing recorded yet. Coaches and guardians check children in and out from the team.</T>}
       <FormSheet visible={form} onClose={() => setForm(false)} title="Allow someone to collect" submitLabel="Allow"
         fields={[
           { key: 'delegate_handle', label: 'Their username (if they have an account)', optional: true, hint: 'Leave empty to add just a name.' },

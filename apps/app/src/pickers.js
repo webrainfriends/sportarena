@@ -3,6 +3,7 @@ import { Pressable, ScrollView, View } from 'react-native';
 import { Btn, Chip, Field, Sheet, T } from './ui';
 import { c } from './theme';
 import { addDays, moneyIn, WEEKDAYS } from './vtime';
+import { locale } from './locale';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 export const shiftMonth = (m, n) => { const [y, mo] = m.split('-').map(Number); const d = new Date(Date.UTC(y, mo - 1 + n, 1)); return d.toISOString().slice(0, 7); };
@@ -10,7 +11,7 @@ export const monthOf = (date) => date.slice(0, 7);
 const todayLocal = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 export { todayLocal };
 
-const DOT = { available: c.mint, limited: c.sun, full: c.red, closed: '#94A3B8' };
+const DOT = { available: c.mint, limited: c.sun, full: c.red, closed: c.mute };
 const NO_PICK = new Set(['past', 'closed', 'full', 'too_far']);
 
 /**
@@ -75,7 +76,7 @@ export function DateField({ label, value, onChange, optional, min, max, hint }) 
     <View style={{ gap: 6 }}>
       {label ? <T weight="600" size={12} color={c.mute} style={{ letterSpacing: 0.4 }}>{(label + (optional ? ' (optional)' : '')).toUpperCase()}</T> : null}
       <Pressable onPress={() => { setMonth((value ?? todayLocal()).slice(0, 7)); setOpen(true); }} style={{ borderWidth: 1.5, borderColor: c.line, borderRadius: 12, backgroundColor: c.paper, paddingHorizontal: 16, minHeight: 50, justifyContent: 'center', flexDirection: 'row', alignItems: 'center' }}>
-        <T style={{ flex: 1 }} color={value ? c.ink : '#94A3B8'} weight="600">{value ? new Date(`${value}T00:00:00Z`).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) : 'Pick a date'}</T>
+        <T style={{ flex: 1 }} color={value ? c.ink : c.mute} weight="600">{value ? new Date(`${value}T00:00:00Z`).toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) : 'Pick a date'}</T>
         <T size={18}>📅</T>
       </Pressable>
       {hint ? <T size={12} color={c.mute}>{hint}</T> : null}
@@ -93,7 +94,7 @@ export function DateRangeField({ label, from, to, onChange, optional, min, hint 
   const [draft, setDraft] = useState({ from, to });
   const [month, setMonth] = useState((from ?? todayLocal()).slice(0, 7));
   const days = from && to ? Math.round((Date.parse(to) - Date.parse(from)) / 86400000) + 1 : 0;
-  const fmt = (d) => new Date(`${d}T00:00:00Z`).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
+  const fmt = (d) => new Date(`${d}T00:00:00Z`).toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
   const pick = (d) => {
     if (!draft.from || draft.to) return setDraft({ from: d, to: undefined });          // start a new range
     if (d < draft.from) return setDraft({ from: d, to: undefined });
@@ -103,7 +104,7 @@ export function DateRangeField({ label, from, to, onChange, optional, min, hint 
     <View style={{ gap: 6 }}>
       {label ? <T weight="600" size={12} color={c.mute} style={{ letterSpacing: 0.4 }}>{(label + (optional ? ' (optional)' : '')).toUpperCase()}</T> : null}
       <Pressable onPress={() => { setDraft({ from, to }); setMonth((from ?? todayLocal()).slice(0, 7)); setOpen(true); }} style={{ borderWidth: 1.5, borderColor: c.line, borderRadius: 12, backgroundColor: c.paper, paddingHorizontal: 16, minHeight: 50, justifyContent: 'center', flexDirection: 'row', alignItems: 'center' }}>
-        <T style={{ flex: 1 }} color={from ? c.ink : '#94A3B8'} weight="600">{from ? `${fmt(from)}${to && to !== from ? ` → ${fmt(to)}` : ''}${days > 1 ? ` · ${days} days` : days === 1 ? ' · 1 day' : ''}` : 'Pick the dates'}</T>
+        <T style={{ flex: 1 }} color={from ? c.ink : c.mute} weight="600">{from ? `${fmt(from)}${to && to !== from ? ` → ${fmt(to)}` : ''}${days > 1 ? ` · ${days} days` : days === 1 ? ' · 1 day' : ''}` : 'Pick the dates'}</T>
         <T size={18}>📅</T>
       </Pressable>
       {hint ? <T size={12} color={c.mute}>{hint}</T> : null}
@@ -134,7 +135,7 @@ export function TimeField({ label, value, onChange, optional, step = 30, hint })
     <View style={{ gap: 6 }}>
       {label ? <T weight="600" size={12} color={c.mute} style={{ letterSpacing: 0.4 }}>{(label + (optional ? ' (optional)' : '')).toUpperCase()}</T> : null}
       <Pressable onPress={() => setOpen(true)} style={{ borderWidth: 1.5, borderColor: c.line, borderRadius: 12, backgroundColor: c.paper, paddingHorizontal: 16, minHeight: 50, justifyContent: 'center', flexDirection: 'row', alignItems: 'center' }}>
-        <T style={{ flex: 1 }} color={value ? c.ink : '#94A3B8'} weight="600">{value ? fmt(value) : 'Pick a time'}</T><T size={18}>🕒</T>
+        <T style={{ flex: 1 }} color={value ? c.ink : c.mute} weight="600">{value ? fmt(value) : 'Pick a time'}</T><T size={18}>🕒</T>
       </Pressable>
       {hint ? <T size={12} color={c.mute}>{hint}</T> : null}
       <Sheet visible={open} onClose={() => setOpen(false)} title={label ?? 'Pick a time'}>
@@ -235,9 +236,9 @@ export function DayStrip({ from, count = 14, value, onChange, avail }) {
         const on = d === value, st = avail?.[d], off = st === 'full' || st === 'closed';
         const dt = new Date(`${d}T00:00:00Z`);
         return (
-          <Pressable key={d} onPress={() => onChange(d)} accessibilityRole="button" accessibilityState={{ selected: on }} accessibilityLabel={dt.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' })}
+          <Pressable key={d} onPress={() => onChange(d)} accessibilityRole="button" accessibilityState={{ selected: on }} accessibilityLabel={dt.toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' })}
             style={{ width: 54, paddingVertical: 10, borderRadius: 28, alignItems: 'center', gap: 6, backgroundColor: on ? c.pink : c.paper, borderWidth: 1, borderColor: on ? c.pink : c.line, opacity: off && !on ? 0.5 : 1 }}>
-            <T size={11} weight="700" color={on ? '#E0E7FF' : c.mute}>{i === 0 ? 'TODAY' : dt.toLocaleDateString(undefined, { weekday: 'short', timeZone: 'UTC' }).toUpperCase()}</T>
+            <T size={11} weight="700" color={on ? '#E0E7FF' : c.mute}>{i === 0 ? 'TODAY' : dt.toLocaleDateString(locale, { weekday: 'short', timeZone: 'UTC' }).toUpperCase()}</T>
             <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: on ? '#fff' : c.violetSoft, alignItems: 'center', justifyContent: 'center' }}>
               <T size={15} weight="800" color={on ? c.pink : c.ink}>{dt.getUTCDate()}</T>
             </View>

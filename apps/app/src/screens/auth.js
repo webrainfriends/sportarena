@@ -52,7 +52,7 @@ export default function Auth({ intent, initialMode, onClose } = {}) {
         <T color="#E0E7FF" weight="500" size={15} style={{ marginTop: 8, lineHeight: 22 }}>Teams. Fixtures. Venues. Performance. Everything your game runs on, in one place.</T>
       </LinearGradient>
 
-      <View style={{ flexDirection: 'row', backgroundColor: '#E6EAF2', borderRadius: 999, padding: 4, marginTop: 20 }}>
+      <View style={{ flexDirection: 'row', backgroundColor: c.line, borderRadius: 999, padding: 4, marginTop: 20 }}>
         {[['login', 'Log in'], ['register', 'Create account']].map(([k, l]) => (
           <Pressable key={k} onPress={() => setMode(k)} style={{ flex: 1, paddingVertical: 11, borderRadius: 999, alignItems: 'center', backgroundColor: mode === k ? c.paper : 'transparent' }}>
             <T weight="700" size={14} color={mode === k ? c.ink : c.mute}>{l}</T>

@@ -6,6 +6,7 @@ import { Avatar, Btn, Card, Empty, Loading, Tag, T } from './ui';
 import { FormSheet } from './FormSheet';
 import { useSession } from './session';
 import { c, day } from './theme';
+import { locale } from './locale';
 
 export const Stars = ({ n = 0, size = 16 }) => <T size={size}>{'⭐'.repeat(Math.round(n))}{'▫️'.repeat(5 - Math.round(n))}</T>;
 
@@ -65,7 +66,7 @@ export function FixtureCard({ f, onScore }) {
     <Card pad={12}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
         <Tag label={f.round ?? f.event_name ?? 'Game'} color={c.violetSoft} />
-        <T size={12} color={c.mute} weight="800">{done ? 'FULL TIME' : f.status === 'live' ? 'LIVE' : new Date(f.scheduled_at).toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</T>
+        <T size={12} color={c.mute} weight="800">{done ? 'FULL TIME' : f.status === 'live' ? 'LIVE' : new Date(f.scheduled_at).toLocaleString(locale, { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</T>
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10, gap: 6 }}>
         <View style={{ flex: 1, alignItems: 'center' }}><T size={30}>{f.home_emoji}</T><T weight="900" size={13} style={{ textAlign: 'center' }}>{f.home_name}</T></View>
@@ -94,7 +95,7 @@ export function StandingsTable({ rows }) {
           <View style={{ width: 24 }}><T weight="900">{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : r.rank}</T></View>
           <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 }}><T size={18}>{r.emoji}</T><T weight="900" size={14} numberOfLines={1} style={{ flexShrink: 1 }}>{r.name}</T></View>
           {[r.played, r.won, r.drawn, r.lost, r.goal_diff > 0 ? `+${r.goal_diff}` : r.goal_diff].map((x, k) => <T key={k} size={13} style={th}>{x}</T>)}
-          <View style={{ width: 38, alignItems: 'center' }}><View style={{ backgroundColor: i === 0 ? c.ink : c.violetSoft, borderRadius: 8, paddingHorizontal: 6 }}><T weight="800" color={i === 0 ? '#fff' : c.ink}>{r.points}</T></View></View>
+          <View style={{ width: 38, alignItems: 'center' }}><View style={{ backgroundColor: i === 0 ? c.ink : c.violetSoft, borderRadius: 8, paddingHorizontal: 6 }}><T weight="800" color={i === 0 ? c.inkOn : c.ink}>{r.points}</T></View></View>
         </View>
       ))}
     </Card>

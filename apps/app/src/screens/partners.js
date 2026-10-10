@@ -10,6 +10,7 @@ import { Btn, Card, Chip, Empty, ErrorBox, Field, H1, Loading, Row, Screen, Sect
 import { FormSheet } from '../FormSheet';
 import { c } from '../theme';
 import { moneyIn } from '../vtime';
+import { locale } from '../locale';
 
 const cash = (cents, cur = 'INR') => moneyIn(Number(cents ?? 0), cur);
 const d10 = (d) => (d ? String(d).slice(0, 10) : '');
@@ -138,7 +139,7 @@ function PartnerSheet({ id, onClose, onChanged }) {
           {x.venues_list.map((v) => <Row key={v.id} title={v.name} sub={`${v.city ?? ''} · ${v.resources} areas${v.paused_by_partner ? ' · paused' : ''}`} right={<St s={v.approval_status} />} />)}
         </Section>
         <Section title="Contracts" color={c.cyan}>{x.contracts.length ? x.contracts.map((k) => <Row key={k.id} title={`${k.contract_no} · v${k.version}`} sub={`${pct(k.terms.commission_bp)} · ${k.terms.settlement_cycle} · from ${d10(k.effective_from)}`} right={<St s={k.status} />} />) : <T color={c.mute}>No contract yet.</T>}</Section>
-        <Section title="Timeline" color={c.violet}>{x.timeline.slice(0, 10).map((e) => <T key={e.id} size={12} color={c.mute}>{new Date(e.created_at).toLocaleString()} · {e.actor ?? 'system'} · {label(e.action)}{e.detail?.reason ? ` — ${e.detail.reason}` : ''}</T>)}</Section>
+        <Section title="Timeline" color={c.violet}>{x.timeline.slice(0, 10).map((e) => <T key={e.id} size={12} color={c.mute}>{new Date(e.created_at).toLocaleString(locale)} · {e.actor ?? 'system'} · {label(e.action)}{e.detail?.reason ? ` — ${e.detail.reason}` : ''}</T>)}</Section>
       </> : null}
       <FormSheet visible={!!form} onClose={() => setForm(null)} title={form?.title ?? ''} submitLabel={form?.submit} initial={form?.initial} fields={form?.fields ?? []}
         onSubmit={async (v) => { await form.run(v); p.reload(); rev.reload(); onChanged(); return 'Saved'; }} />
@@ -244,7 +245,7 @@ function ContractView({ id, onClose, onChanged, platform }) {
       {k.loading && !x ? <Loading /> : x ? <>
         <View style={{ flexDirection: 'row', gap: 6 }}><St s={x.status} /><Tag label={`v${x.version}`} /></View>
         <Card color={c.paper} pad={12}><T size={13} style={{ lineHeight: 20 }}>{x.body}</T></Card>
-        <T size={11} color={c.mute}>Fingerprint {x.body_sha256.slice(0, 16)}… {x.accepted_at ? `· accepted ${new Date(x.accepted_at).toLocaleString()}` : ''}</T>
+        <T size={11} color={c.mute}>Fingerprint {x.body_sha256.slice(0, 16)}… {x.accepted_at ? `· accepted ${new Date(x.accepted_at).toLocaleString(locale)}` : ''}</T>
         <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
           {!platform && x.status === 'sent' ? <><Btn small title="Accept contract" onPress={() => act(() => api.post(`/contracts/${id}/response`, { action: 'accept' }), 'Contract accepted')} /><Btn small title="Decline" color={c.paper} ink={c.red} onPress={() => act(() => api.post(`/contracts/${id}/response`, { action: 'decline' }), 'Declined')} /></> : null}
           {platform && x.status === 'draft' ? <Btn small title="Send to partner" onPress={() => act(() => api.post(`/admin/contracts/${id}/send`), 'Sent')} /> : null}

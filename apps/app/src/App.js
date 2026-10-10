@@ -10,7 +10,8 @@ import { useLayout } from './layout';
 import { installWebShell } from './web';
 import { api } from './api';
 import { parseTarget, targetFor } from './push';
-import { c, fam } from './theme';
+import { AccountButton } from './account';
+import { c, dark, fam } from './theme';
 
 installWebShell();
 import Home from './screens/feed';
@@ -42,8 +43,8 @@ import { PlayerHome, SportProfile, ImportMatches } from './screens/player';
 
 const TABS = [['Home', Home], ['Play', Play], ['Player', PlayerHome], ['Book', Book], ['Hub', Hub], ['Me', Me]];
 const LABEL = { Hub: 'Ecosystem' };
-const PAGES = { Event, Team, TeamManage, TeamWorkspace, TeamChat, Person, Venue, Wallet, BookFlow, Invoice, Basket, Reservation, Compare, Notifications, Manage, OwnerSummary, Leaderboard, Awards, Health, Insurance, InsurerPage, InsurerDesk, Sponsors, Supply, SportProfile, ImportMatches, Support, Family, CoachHome, CoachAthletes, CoachPlan, CoachCalendar, MyPlans, Orgs, Org, Games, EventPlan, EventInbox };
-const TITLES = { Event: 'Event', Team: 'Team', TeamManage: 'Manage team', TeamWorkspace: 'Team workspace', TeamChat: 'Team chat', Person: 'Profile', Venue: 'Venue', Wallet: 'Wallet', BookFlow: 'Book', Invoice: 'Invoice', Basket: 'Basket', Reservation: 'Booking', Compare: 'Compare', Notifications: 'Notifications', Manage: 'Manage venue', OwnerSummary: 'All my venues', Leaderboard: 'Leaderboard', Awards: 'Trophy room', Health: 'Health', Insurance: 'Insurance', InsurerPage: 'Insurer', InsurerDesk: 'Insurer desk', Sponsors: 'Sponsors', Supply: 'Supply chain', SportProfile: 'Sport profile', ImportMatches: 'Import matches', Support: 'Support', Family: 'Family & guardians', CoachHome: 'Coach home', CoachAthletes: 'My athletes', CoachPlan: 'Training plan', CoachCalendar: 'Coach calendar', MyPlans: 'Training plans', Orgs: 'My organisations', Org: 'Organisation', Games: 'Games programme', EventPlan: 'Plan & budget', EventInbox: 'Event requests' };
+const PAGES = { Event, EventAdmin, PartnerConsole, MyPartner, Team, TeamManage, TeamWorkspace, TeamChat, Person, Venue, Wallet, BookFlow, Invoice, Basket, Reservation, Compare, Notifications, Manage, OwnerSummary, Leaderboard, Awards, Health, Insurance, InsurerPage, InsurerDesk, Sponsors, Supply, SportProfile, ImportMatches, Support, Family, CoachHome, CoachAthletes, CoachPlan, CoachCalendar, MyPlans, Orgs, Org, Games, EventPlan, EventInbox };
+const TITLES = { Event: 'Event', EventAdmin: 'Tournament console', PartnerConsole: 'Partner management', MyPartner: 'Partner account', Team: 'Team', TeamManage: 'Manage team', TeamWorkspace: 'Team workspace', TeamChat: 'Team chat', Person: 'Profile', Venue: 'Venue', Wallet: 'Wallet', BookFlow: 'Book', Invoice: 'Invoice', Basket: 'Basket', Reservation: 'Booking', Compare: 'Compare', Notifications: 'Notifications', Manage: 'Manage venue', OwnerSummary: 'All my venues', Leaderboard: 'Leaderboard', Awards: 'Trophy room', Health: 'Health', Insurance: 'Insurance', InsurerPage: 'Insurer', InsurerDesk: 'Insurer desk', Sponsors: 'Sponsors', Supply: 'Supply chain', SportProfile: 'Sport profile', ImportMatches: 'Import matches', Support: 'Support', Family: 'Family & guardians', CoachHome: 'Coach home', CoachAthletes: 'My athletes', CoachPlan: 'Training plan', CoachCalendar: 'Coach calendar', MyPlans: 'Training plans', Orgs: 'My organisations', Org: 'Organisation', Games: 'Games programme', EventPlan: 'Plan & budget', EventInbox: 'Event requests' };
 
 const TAB_LABEL = { Hub: 'More' };
 // order in the bar; Book is the raised centre action, Me opens from the hero avatar and from More
@@ -60,7 +61,7 @@ function TabBar() {
     return (
       <Pressable key={name} accessibilityRole="tab" accessibilityState={{ selected: on }} accessibilityLabel={TAB_LABEL[name] ?? name} onPress={() => goTab(name)} style={({ pressed }) => ({ flex: 1, alignItems: 'center', justifyContent: 'flex-end', minHeight: 52, opacity: pressed ? 0.6 : 1 })}>
         {centre ? (
-          <LinearGradient colors={['#4F46E5', '#7C3AED']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: 54, height: 54, borderRadius: 27, alignItems: 'center', justifyContent: 'center', marginTop: -26, borderWidth: 4, borderColor: '#fff', ...(Platform.OS === 'web' ? { boxShadow: '0 8px 20px rgba(79,70,229,0.4)' } : { shadowColor: '#4F46E5', shadowOpacity: 0.4, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 8 }) }}>
+          <LinearGradient colors={['#4F46E5', '#7C3AED']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: 54, height: 54, borderRadius: 27, alignItems: 'center', justifyContent: 'center', marginTop: -26, borderWidth: 4, borderColor: c.paper, ...(Platform.OS === 'web' ? { boxShadow: '0 8px 20px rgba(79,70,229,0.4)' } : { shadowColor: '#4F46E5', shadowOpacity: 0.4, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 8 }) }}>
             <Icon name={name} on color="#fff" size={26} />
           </LinearGradient>
         ) : (
@@ -74,14 +75,14 @@ function TabBar() {
   });
   if (!tablet) {
     return (
-      <View style={{ backgroundColor: '#fff', borderTopWidth: 1, borderColor: c.line, paddingBottom: ins.bottom, paddingTop: 4 }}>
+      <View style={{ backgroundColor: c.paper, borderTopWidth: 1, borderColor: c.line, paddingBottom: ins.bottom, paddingTop: 4 }}>
         <View style={{ flexDirection: 'row', alignItems: 'flex-end' }}>{items}</View>
       </View>
     );
   }
   return (
     <View pointerEvents="box-none" style={{ position: 'absolute', left: 0, right: 0, bottom: Math.max(ins.bottom, 14), alignItems: 'center' }}>
-      <View style={{ flexDirection: 'row', alignItems: 'flex-end', width: Math.min(620, width - 48), paddingHorizontal: 10, paddingVertical: 6, backgroundColor: 'rgba(255,255,255,0.97)', borderRadius: 30, borderWidth: 1, borderColor: c.line, ...(Platform.OS === 'web' ? { boxShadow: '0 10px 40px rgba(15,23,42,0.16), 0 2px 6px rgba(15,23,42,0.06)' } : { shadowColor: '#0F172A', shadowOpacity: 0.16, shadowRadius: 24, shadowOffset: { width: 0, height: 10 }, elevation: 8 }) }}>
+      <View style={{ flexDirection: 'row', alignItems: 'flex-end', width: Math.min(620, width - 48), paddingHorizontal: 10, paddingVertical: 6, backgroundColor: c.paper, borderRadius: 30, borderWidth: 1, borderColor: c.line, ...(Platform.OS === 'web' ? { boxShadow: '0 10px 40px rgba(15,23,42,0.16), 0 2px 6px rgba(15,23,42,0.06)' } : { shadowColor: '#0F172A', shadowOpacity: 0.16, shadowRadius: 24, shadowOffset: { width: 0, height: 10 }, elevation: 8 }) }}>
         {items}
       </View>
     </View>
@@ -99,6 +100,20 @@ function NavBar({ title, onBack, backLabel }) {
           <Text style={[fam, { color: c.pink, fontSize: 16, fontWeight: '600', marginLeft: -2 }]}>{backLabel}</Text>
         </Pressable>
         <Text numberOfLines={1} style={[fam, { position: 'absolute', left: 90, right: 90, textAlign: 'center', fontWeight: '700', fontSize: 16, color: c.ink }]} pointerEvents="none">{title}</Text>
+        <View style={{ marginLeft: 'auto' }}><AccountButton /></View>
+      </View>
+    </View>
+  );
+}
+
+/** Slim bar above the tab screens so the account menu (and Log out) is always one tap away. */
+function TopBar() {
+  const { gutter, contentMax } = useLayout();
+  return (
+    <View style={{ backgroundColor: c.bg }}>
+      <View style={{ width: '100%', maxWidth: contentMax, alignSelf: 'center', height: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: gutter }}>
+        <Text style={[fam, { fontSize: 18, fontWeight: '800', color: c.ink, letterSpacing: -0.4 }]}>SportArena</Text>
+        <AccountButton />
       </View>
     </View>
   );
@@ -122,6 +137,8 @@ function Shell() {
   const { ready, user, toast } = useSession();
   const { tab, stack, back, goTab, push } = useNav();
   const ins = useSafeAreaInsets();
+  // Logging out (from any screen) starts the next session from Home, not from a leftover pushed screen.
+  useEffect(() => { if (ready && !user) goTab('Home'); }, [ready, user]); // eslint-disable-line react-hooks/exhaustive-deps
   // Back from Stripe/PayPal checkout (web): ?payment=<id>&result=success|cancel
   useEffect(() => {
     if (Platform.OS !== 'web' || !user) return;
@@ -162,7 +179,7 @@ function Shell() {
   const pageKey = top ? `${top.name}:${stack.length}:${top.params?.id ?? ''}` : tab;
   return (
     <View style={{ flex: 1, backgroundColor: c.bg, paddingTop: ins.top, paddingLeft: ins.left, paddingRight: ins.right }}>
-      {top ? <NavBar title={TITLES[top.name]} backLabel={prev} onBack={back} /> : null}
+      {top ? <NavBar title={TITLES[top.name]} backLabel={prev} onBack={back} /> : <TopBar />}
       <Transition id={pageKey} push={!!top}><Page key={pageKey} {...(top?.params ?? {})} /></Transition>
       <TabBar />
     </View>
@@ -172,7 +189,7 @@ function Shell() {
 export default function App() {
   return (
     <SafeAreaProvider>
-      <StatusBar barStyle="dark-content" />
+      <StatusBar barStyle={dark ? 'light-content' : 'dark-content'} />
       <SessionProvider><BasketProvider><NavProvider><Shell /></NavProvider></BasketProvider></SessionProvider>
     </SafeAreaProvider>
   );

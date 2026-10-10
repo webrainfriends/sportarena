@@ -74,12 +74,12 @@ export function Btn({ title, onPress, color: want = c.pink, ink = '#fff', style,
 export function Chip({ label, active, onPress }) {
   return (
     <Pressable onPress={onPress} style={[s.chip, active ? { backgroundColor: c.ink, borderColor: c.ink } : null]}>
-      <T weight="600" size={13} color={active ? '#fff' : c.mute}>{label}</T>
+      <T weight="600" size={13} color={active ? c.inkOn : c.mute}>{label}</T>
     </Pressable>
   );
 }
 
-const TAG = { [c.sun]: [c.sunSoft, '#9A6400'], [c.cyan]: [c.cyanSoft, c.cyan], [c.mint]: [c.mintSoft, c.mint], [c.orange]: [c.pinkSoft, c.pink], [c.pinkSoft]: [c.pinkSoft, c.pink], [c.violetSoft]: [c.violetSoft, c.mute], [c.ink]: [c.ink, '#fff'], [c.red]: [c.red, '#fff'] };
+const TAG = { [c.sun]: [c.sunSoft, '#9A6400'], [c.cyan]: [c.cyanSoft, c.cyan], [c.mint]: [c.mintSoft, c.mint], [c.orange]: [c.pinkSoft, c.pink], [c.pinkSoft]: [c.pinkSoft, c.pink], [c.violetSoft]: [c.violetSoft, c.mute], [c.ink]: [c.ink, c.inkOn], [c.red]: [c.red, '#fff'] };
 export const Tag = ({ label, color = c.violetSoft, style }) => {
   const [bg, fg] = TAG[color] ?? [c.violetSoft, c.mute];
   return <View style={[s.tag, { backgroundColor: bg }, style]}><T weight="700" size={10.5} color={fg} style={{ letterSpacing: 0.9 }}>{String(label).toUpperCase()}</T></View>;
@@ -124,7 +124,7 @@ export function Field({ label, value, onChangeText, secure, multiline, keyboardT
       {label ? <T weight="600" size={12} color={c.mute} style={{ letterSpacing: 0.4 }}>{label.toUpperCase()}</T> : null}
       <TextInput value={value ?? ''} onChangeText={onChangeText} secureTextEntry={secure} multiline={multiline} keyboardType={keyboardType} placeholder={placeholder}
         onFocus={() => setFocus(true)} onBlur={() => setFocus(false)}
-        autoCapitalize="none" placeholderTextColor="#94A3B8" style={[fam, s.input, focus && { borderColor: c.ink }, multiline && { minHeight: 80, textAlignVertical: 'top' }, Platform.OS === 'web' && { outlineStyle: 'none' }]} />
+        autoCapitalize="none" placeholderTextColor={c.mute} style={[fam, s.input, focus && { borderColor: c.ink }, multiline && { minHeight: 80, textAlignVertical: 'top' }, Platform.OS === 'web' && { outlineStyle: 'none' }]} />
       {hint ? <T size={12} color={c.mute}>{hint}</T> : null}
     </View>
   );
@@ -230,7 +230,7 @@ const s = StyleSheet.create({
   tag: { borderRadius: 5, paddingHorizontal: 8, paddingVertical: 3, alignSelf: 'flex-start' },
   input: { borderWidth: 1.5, borderColor: c.line, borderRadius: r.input, backgroundColor: c.paper, paddingHorizontal: 16, paddingVertical: 13, minHeight: 50, fontSize: 16, fontWeight: '500', color: c.ink },
   secRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  scrim: { flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', justifyContent: 'flex-end' },
+  scrim: { flex: 1, backgroundColor: 'rgba(5,8,18,0.55)', justifyContent: 'flex-end' },
   sheet: { backgroundColor: c.bg, overflow: 'hidden' },
   stat: { borderRadius: 16, backgroundColor: c.paper, borderWidth: 1, borderColor: c.line, paddingVertical: 12, paddingHorizontal: 16, alignItems: 'center', minWidth: 82 },
 });
