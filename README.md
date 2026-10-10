@@ -13,7 +13,7 @@ physios & doctors, suppliers and insurers. **API-first. MCP-first.** One React N
 | Area | What you can do |
 |---|---|
 | **Identity & people** | Register with roles (athlete, coach, referee, organizer, venue manager, sponsor, physio, doctor, supplier, insurer); sport profiles per role; public profiles with no PII; API tokens |
-| **Teams** | Create teams, trophy cabinet, fan wall; **team management** — roster, player availability, invitations, recruiting players/coaches, per-event & per-match squads with roles, rates and a settlement ledger; **team chat** — see [docs/teams.md](docs/teams.md) |
+| **Teams** | Create teams, trophy cabinet, fan wall; **team management** — roster, player availability, invitations, recruiting players/coaches, per-event & per-match squads with roles, rates and a settlement ledger; **team chat**; **team workspace** — task board, master team + per-event sub-teams, RSVP/attendance — see [docs/teams.md](docs/teams.md) |
 | **Events & schedule** | Tournaments/leagues/camps/trials, entries + approval, **auto round-robin scheduling**, referee + team clash detection, results, **live standings with configurable points**, one-click "finish & award" (cup/silver/bronze) |
 | **Coaching** | Coach home, relationship-governed athlete roster, shared training plans (propose → athlete accepts/changes, versioned revisions), coach calendar, scoped team-coach roster view — [docs/coaching.md](docs/coaching.md) |
 | **Player marketplace** | Billboard of demands (players wanted for a match, teams recruiting, sponsorship requests/calls) with accept/decline; sports shop with atomic stock + encrypted delivery address; hire coaches; book physios/doctors; buy personal insurance — all inside the Player tab |

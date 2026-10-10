@@ -60,7 +60,7 @@ export function TeamManage({ id }) {
 }
 
 // ------------------------------------------------------------------ roster
-function RosterTab({ t, r, reload, toast }) {
+export function RosterTab({ t, r, reload, toast }) {
   const [sel, setSel] = useState(null);
   const [edit, setEdit] = useState(null);
   const [find, setFind] = useState(null);
@@ -147,7 +147,7 @@ function FindPeople({ mode, team, currency, money, onClose, onInvited }) {
 }
 
 // ------------------------------------------------------------------ matches & squads
-function SquadsTab({ t, r, toast }) {
+export function SquadsTab({ t, r, toast }) {
   const sch = useLoad(() => api.get(`/teams/${t.id}/schedule`), [t.id]);
   const [scope, setScope] = useState(null);
   if (sch.loading && !sch.data) return <Loading />;
@@ -227,7 +227,7 @@ function SquadEditor({ scope, t, r, toast, onClose, onSaved }) {
 }
 
 // ------------------------------------------------------------------ recruit
-function RecruitTab({ t, toast }) {
+export function RecruitTab({ t, toast }) {
   const posts = useLoad(() => api.get('/billboard', { mine: true, include_closed: true, limit: 50 }), [t.id]);
   const [form, setForm] = useState(null);
   const [open, setOpen] = useState(null);
@@ -284,7 +284,7 @@ function Responses({ post, toast, onClose, onChanged }) {
 }
 
 // ------------------------------------------------------------------ rates & settlement
-function MoneyTab({ t, r, toast }) {
+export function MoneyTab({ t, r, toast }) {
   const s = useLoad(() => api.get(`/teams/${t.id}/settlement`), [t.id]);
   const [who, setWho] = useState(null);
   const [add, setAdd] = useState(null);
