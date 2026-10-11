@@ -44,7 +44,7 @@ export function createApp() {
   app.use((_, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
 
   const authLimiter = rateLimit({ windowMs: 15 * 60_000, limit: config.isProd ? 20 : 1000, standardHeaders: true, legacyHeaders: false });
-  app.use(['/api/v1/auth/login', '/api/v1/auth/register'], authLimiter);
+  app.use(['/api/v1/auth/login', '/api/v1/auth/register', '/api/v1/auth/refresh'], authLimiter);
 
   app.get('/', (_, res) => res.json({ name: 'SportArena', api: '/api/v1', openapi: '/api/v1/openapi.json', mcp: '/mcp', tools: capabilities.length }));
   app.get('/health', async (_, res) => { await pool.query('select 1'); res.json({ ok: true }); });
@@ -58,7 +58,7 @@ export function createApp() {
       try {
         const user = await authenticate(req.headers.authorization);
         const body = ['POST', 'PATCH'].includes(c.method) ? (req.body ?? {}) : {};
-        const result = await invoke(c, user, { ...req.query, ...body, ...req.params });
+        const result = await invoke(c, user, { ...req.query, ...body, ...req.params }, { ip: req.ip, userAgent: req.headers['user-agent'] });
         res.status(c.status ?? 200).json(result);
       } catch (e) {
         const { status, code, message, details } = toErrorBody(e);

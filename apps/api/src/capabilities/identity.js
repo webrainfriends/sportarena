@@ -1,10 +1,11 @@
 import { z } from 'zod';
 import { cap, id, page, roles } from '../registry.js';
 import { one, many, query, tx } from '../db.js';
-import { badRequest, conflict, notFound, unauthorized } from '../errors.js';
+import { badRequest, conflict, forbidden, notFound, unauthorized } from '../errors.js';
+import { RESOURCE_TYPES, SCOPES, scopeAllows } from '../scopes.js';
 import { blindIndex, decryptFields, encrypt, encryptFields, hashPassword, newOpaqueToken, sha256, verifyPassword } from '../crypto.js';
 import { audit, PUBLIC_USER, sportBySlugOrId } from '../helpers.js';
-import { signToken } from '../auth.js';
+import { startSession } from '../sessions.js';
 import { badgesFor, withBadges } from '../verification.js';
 import { canSeeYouth, NOT_YOUTH_SQL, refreshYouth, YOUTH_SQL } from '../youth.js';
 
@@ -32,7 +33,7 @@ cap({
     avatar_color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
     ...pii,
   }),
-  async handler(_, i) {
+  async handler({ meta }, i) {
     const idx = blindIndex(i.email);
     if (await one('SELECT 1 FROM users WHERE email_idx = $1 OR handle = $2', [idx, i.handle])) throw conflict('Email or handle already registered');
     const enc = encryptFields(i, 'users', PII);
@@ -43,21 +44,21 @@ cap({
         enc.full_name_enc ?? null, enc.phone_enc ?? null, enc.dob_enc ?? null, enc.national_id_enc ?? null, enc.address_enc ?? null, i.avatar_emoji, i.avatar_color],
     );
     if (i.dob) await refreshYouth(u.id, u.id);
-    return { user: u, token: await signToken(u) };
+    return { user: u, ...(await startSession(u, meta)) };
   },
 });
 
 cap({
   name: 'login', method: 'POST', path: '/auth/login', tag: 'Identity', auth: 'public',
-  summary: 'Exchange email + password for a bearer token.',
+  summary: 'Exchange email + password for a session: a short-lived access token (bearer) plus a rotating refresh_token (use refresh_session). Each sign-in is a revocable server session (see list_sessions, logout).',
   input: z.object({ email: z.string().email(), password: z.string() }),
-  async handler(_, i) {
+  async handler({ meta }, i) {
     const u = await one('SELECT id, handle, display_name, roles, avatar_emoji, avatar_color, avatar_url, avatar_cutout, password_hash FROM users WHERE email_idx = $1', [blindIndex(i.email)]);
     // always run a hash to keep timing similar for unknown emails
     const ok = verifyPassword(i.password, u?.password_hash ?? hashPassword('x'.repeat(12)));
     if (!u || !ok) throw unauthorized('Invalid email or password');
     delete u.password_hash;
-    return { user: u, token: await signToken(u) };
+    return { user: u, ...(await startSession(u, meta)) };
   },
 });
 
@@ -120,19 +121,38 @@ cap({
   },
 });
 
+const tokenResource = z.object({ type: z.enum(RESOURCE_TYPES), id });
 cap({
   name: 'create_api_token', method: 'POST', path: '/me/tokens', tag: 'Identity', auth: 'user', status: 201,
-  summary: 'Create a long-lived API token (for scripts and MCP agents). The secret is shown once.',
-  input: z.object({ name: z.string().min(1).max(60) }),
+  summary: 'Create an API token for scripts and MCP agents, limited to the scopes you choose (read, write, payment, clinical, admin; default read), an optional expiry and optional venue/team/event/organisation restrictions. A token can never do more than you can, and never more than the token that created it. The secret is shown once.',
+  input: z.object({
+    name: z.string().min(1).max(60),
+    scopes: z.array(z.enum(SCOPES)).min(1).default(['read']).describe('read < write; payment, clinical and admin must be granted explicitly'),
+    expires_at: z.string().datetime({ offset: true }).optional().describe('ISO timestamp; omit for a token that never expires'),
+    resources: z.array(tokenResource).max(50).default([]).describe('restrict to these venues/teams/events/organisations'),
+  }),
   async handler({ user }, i) {
+    const cred = user.credential;
+    if (cred && !i.scopes.every((s) => scopeAllows(cred.scopes, s))) throw forbidden('A token cannot create a token with scopes it does not have itself');
+    if (i.expires_at && new Date(i.expires_at).getTime() <= Date.now()) throw badRequest('Expiry must be in the future');
+    if (i.scopes.includes('admin') && !user.roles.includes('admin')) throw badRequest('Only admins can create admin-scoped tokens');
     const token = newOpaqueToken();
-    const row = await one('INSERT INTO api_tokens(user_id, name, token_hash) VALUES ($1,$2,$3) RETURNING id, name, created_at', [user.id, i.name, sha256(token)]);
-    return { ...row, token };
+    const scopes = [...new Set(i.scopes)];
+    const row = await one(
+      `INSERT INTO api_tokens(user_id, name, token_hash, scopes, expires_at, resources) VALUES ($1,$2,$3,$4,$5,$6)
+       RETURNING id, name, scopes, expires_at, resources, created_at`,
+      [user.id, i.name, sha256(token), scopes, i.expires_at ?? null, JSON.stringify(i.resources)],
+    );
+    return { ...row, legacy_full: false, token };
   },
 });
 cap({
-  name: 'list_api_tokens', method: 'GET', path: '/me/tokens', tag: 'Identity', auth: 'user', summary: 'List your API tokens (no secrets).',
-  handler: ({ user }) => many('SELECT id, name, created_at, last_used_at, revoked_at FROM api_tokens WHERE user_id=$1 ORDER BY created_at DESC', [user.id]),
+  name: 'list_api_tokens', method: 'GET', path: '/me/tokens', tag: 'Identity', auth: 'user',
+  summary: 'List your API tokens (no secrets) with scopes, expiry, resource restrictions and last use. `legacy_full` marks tokens created before scopes existed: they keep full access until you revoke them.',
+  handler: ({ user }) => many(
+    `SELECT id, name, scopes, expires_at, resources, created_at, last_used_at, revoked_at,
+            ('full' = ANY(scopes)) AS legacy_full, (expires_at IS NOT NULL AND expires_at <= now()) AS expired
+       FROM api_tokens WHERE user_id=$1 ORDER BY created_at DESC, id`, [user.id]),
 });
 cap({
   name: 'revoke_api_token', method: 'DELETE', path: '/me/tokens/:id', tag: 'Identity', auth: 'user', summary: 'Revoke an API token.',
