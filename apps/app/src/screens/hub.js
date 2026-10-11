@@ -181,6 +181,7 @@ export function Health() {
 
 export function Sponsors() {
   const { has, user, toast } = useSession();
+  const { push } = useNav();
   const [form, setForm] = useState(null);
   const [offerTo, setOfferTo] = useState(null);
   const [q, setQ] = useState('');
@@ -214,6 +215,7 @@ export function Sponsors() {
             {d.deliverables ? <T size={12}><T size={12} weight="800">Deliverables: </T>{d.deliverables}</T> : null}
             {d.message ? <T size={12} color={c.mute}>“{d.message}”</T> : null}
             {d.decision_reason ? <T size={12} color={c.mute}>Reply: {d.decision_reason}</T> : null}
+            {d.agreement_ref ? <Btn small title={`Open agreement ${d.agreement_ref}`} color={c.violet} style={{ alignSelf: 'flex-start', marginTop: 8 }} onPress={() => push('SponsorDeal', { id: d.id })} /> : null}
             {d.status === 'proposed' && !d.i_am_sponsor ? <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}><Btn small title="Accept" color={c.mint} ink={c.ink} onPress={() => act(() => api.patch(`/sponsorships/${d.id}`, { status: 'active' }), 'Deal on!')} /><Btn small title="Decline" color={c.paper} ink={c.red} onPress={() => act(() => api.patch(`/sponsorships/${d.id}`, { status: 'declined' }), 'Declined')} />{d.target_type === 'athlete' ? <Btn small title="Accept & show on sponsor page" color={c.paper} ink={c.ink} onPress={() => act(() => api.patch(`/sponsorships/${d.id}`, { status: 'active', show_publicly: true }), 'Deal on, shown publicly')} /> : null}</View> : null}
             {d.status === 'proposed' && d.i_am_sponsor ? <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}><Btn small title="Withdraw offer" color={c.paper} ink={c.red} onPress={() => act(() => api.post(`/sponsorships/${d.id}/withdraw`), 'Offer withdrawn')} /></View> : null}
             {d.status === 'active' ? <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}><Btn small title="End deal" color={c.paper} ink={c.red} onPress={() => act(() => api.patch(`/sponsorships/${d.id}`, { status: 'ended' }), 'Deal ended')} /></View> : null}
@@ -241,8 +243,15 @@ export function Sponsors() {
         fields={[{ key: 'sponsor_id', label: 'Brand', type: 'choice', options: (mine.data ?? []).map((s) => ({ value: s.id, label: `${s.emoji} ${s.name}` })) },
           { key: 'amount', label: 'Amount (₹, 0 if only in-kind)', type: 'number' }, { key: 'in_kind', label: 'In-kind support', optional: true },
           { key: 'starts_on', label: 'Starts', type: 'date' }, { key: 'ends_on', label: 'Ends', type: 'date' },
+          { key: 'sec', type: 'section', label: 'Fixed-term monthly support (optional)' },
+          { key: 'instalments', label: 'Monthly payments (0 = none)', type: 'stepper', min: 0, max: 36, default: 0 },
+          { key: 'currency', label: 'Currency', type: 'chips', options: ['INR', 'SGD', 'USD', 'EUR', 'GBP', 'AED'], default: 'INR', show: (v) => v.instalments > 0 }, { key: 'monthly_cents', label: 'Each month', type: 'money', currency: 'INR', show: (v) => v.instalments > 0 }, { key: 'first_due_on', label: 'First payment due', type: 'date', show: (v) => v.instalments > 0 },
           { key: 'objectives', label: 'Objectives', type: 'multiline', optional: true }, { key: 'deliverables', label: 'What you expect from the athlete', type: 'multiline' }, { key: 'message', label: 'Personal message', type: 'multiline', optional: true }]}
-        onSubmit={async (v) => { await api.post('/sponsorships', { target_type: 'athlete', target_id: offerTo.id, ...v, amount_cents: Math.round((v.amount ?? 0) * 100), amount: undefined }); deals.reload(); return 'Offer sent — they will be notified'; }} />
+        onSubmit={async (v) => {
+          const { instalments, currency, monthly_cents, first_due_on, sec, ...rest } = v;
+          const lines = instalments > 0 ? [{ kind: 'money', label: 'Monthly support', currency, amount_cents: monthly_cents, cadence: 'monthly', first_due_on, instalments }] : undefined;
+          await api.post('/sponsorships', { target_type: 'athlete', target_id: offerTo.id, ...rest, amount_cents: Math.round((v.amount ?? 0) * 100), amount: undefined, lines }); deals.reload(); return 'Offer sent — they will be notified';
+        }} />
     </Screen>
   );
 }
