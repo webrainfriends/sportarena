@@ -79,7 +79,7 @@ capabilities/*.js  ->  registry
 ### 2.4 Encryption and audit
 * `crypto.js`: AES-256-GCM per value, random IV, ciphertext bound to `table.column` through AAD, format
   `v1.<iv>.<tag>.<ct>`. Keys derive by HKDF from the master key. `blindIndex` (HMAC-SHA256) allows equality lookup
-  (email login) without plaintext. Passwords use scrypt.
+  (email login) without plaintext. Passwords use scrypt, derived asynchronously off the event loop with bounded concurrency (see `docs/operations.md`).
 * `kms.js`: `KEY_PROVIDER=env` (local dev) or `aws-kms`. In KMS mode the master key is unwrapped at start-up from
   `MASTER_KEY_FILE`; the process refuses to start if it cannot be.
 * `helpers.js` `audit(client, actor, action, entity, id)` writes `audit_log` (who, what, when, never values). It is
@@ -117,7 +117,7 @@ sequenceDiagram
   participant D as Postgres
   C->>A: POST /auth/login {email, password}
   A->>D: lookup by blind index of email
-  A->>A: scrypt verify, sign HS256 JWT (12h)
+  A->>A: async scrypt verify (bounded pool, 503 when saturated), sign HS256 JWT (12h)
   A-->>C: token
   C->>A: any call, Authorization: Bearer token
   A->>A: auth.js verifies JWT or sha256-hashed sa_ API token

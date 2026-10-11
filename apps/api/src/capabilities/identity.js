@@ -41,13 +41,17 @@ cap({
     const u = await one(
       `INSERT INTO users (handle, display_name, roles, password_hash, email_enc, email_idx, full_name_enc, phone_enc, dob_enc, national_id_enc, address_enc, avatar_emoji, avatar_color)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,coalesce($12,'😎'),coalesce($13,'#FF3D81')) RETURNING id, handle, display_name, roles, avatar_emoji, avatar_color, avatar_url, avatar_cutout`,
-      [i.handle, i.display_name, i.roles, hashPassword(i.password), encrypt(i.email, 'users.email'), idx,
+      [i.handle, i.display_name, i.roles, await hashPassword(i.password), encrypt(i.email, 'users.email'), idx,
         enc.full_name_enc ?? null, enc.phone_enc ?? null, enc.dob_enc ?? null, enc.national_id_enc ?? null, enc.address_enc ?? null, i.avatar_emoji, i.avatar_color],
     );
     if (i.dob) await refreshYouth(u.id, u.id);
     return { user: u, ...(await startSession(u, meta)) };
   },
 });
+
+// Unknown emails still pay for one full scrypt verification so response time doesn't reveal account existence.
+let decoy;
+const decoyHash = () => (decoy ??= hashPassword('x'.repeat(12)));
 
 cap({
   name: 'login', method: 'POST', path: '/auth/login', tag: 'Identity', auth: 'public',
@@ -56,7 +60,7 @@ cap({
   async handler({ meta }, i) {
     const u = await one('SELECT id, handle, display_name, roles, avatar_emoji, avatar_color, avatar_url, avatar_cutout, password_hash FROM users WHERE email_idx = $1', [blindIndex(i.email)]);
     // always run a hash to keep timing similar for unknown emails
-    const ok = verifyPassword(i.password, u?.password_hash ?? hashPassword('x'.repeat(12)));
+    const ok = await verifyPassword(i.password, u?.password_hash ?? await decoyHash());
     if (!u || !ok) throw unauthorized('Invalid email or password');
     delete u.password_hash;
     // Two-step verification: the password alone only earns a short-lived challenge; login_mfa completes the sign-in.

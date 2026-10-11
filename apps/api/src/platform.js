@@ -32,7 +32,7 @@ export async function bootstrapPlatformOwner(log = console) {
   const row = await one(
     `INSERT INTO users(handle, display_name, roles, password_hash, email_enc, email_idx, avatar_emoji, avatar_color)
      VALUES ($1,$2,'{admin,platform_admin}',$3,$4,$5,'🏛️','#4F46E5') RETURNING id`,
-    [handle, name, hashPassword(password), encrypt(email, 'users.email'), blindIndex(email)]);
+    [handle, name, await hashPassword(password), encrypt(email, 'users.email'), blindIndex(email)]);
   log.log(`[platform] created platform owner account "${handle}"`);
   return row.id;
 }

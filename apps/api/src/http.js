@@ -77,6 +77,7 @@ export function createApp() {
         res.status(c.status ?? 200).json(result);
       } catch (e) {
         const { status, code, message, details } = toErrorBody(e);
+        if (status === 503 && details?.retry_after_seconds) res.set('Retry-After', String(details.retry_after_seconds));
         res.status(status).json({ error: { code, message, details } });
       }
     });

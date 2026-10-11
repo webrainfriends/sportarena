@@ -286,7 +286,7 @@ cap({
     const row = await tx(async (c) => {
       const u = (await c.query(
         `INSERT INTO users(handle, display_name, roles, password_hash, email_enc, email_idx, avatar_emoji, avatar_color) VALUES ($1,$2,'{admin}',$3,$4,$5,'🏛️','#4F46E5') RETURNING id, handle, display_name, roles`,
-        [i.handle, i.display_name, hashPassword(i.password), encrypt(i.email, 'users.email'), blindIndex(i.email)])).rows[0];
+        [i.handle, i.display_name, await hashPassword(i.password), encrypt(i.email, 'users.email'), blindIndex(i.email)])).rows[0];
       await audit(c, user.id, 'create_platform_user', 'users', u.id);
       return u;
     });
