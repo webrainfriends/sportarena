@@ -203,3 +203,75 @@ test('every new capability is on the shared registry (REST + MCP + OpenAPI)', ()
     assert.ok(capabilities.some((c) => c.name === name), name);
   }
 });
+
+test('metric tie-break uses the date the best value was achieved, and points of non-best results do not count', async () => {
+  const t = await meet('athletics', 2);
+  const [x, y] = t.people;
+  // x: best 10.9 on 3 March, plus two slower runs; y: only 10.9 on 3 March
+  for (const [who, value, achieved_on] of [[x, 11.5, '2026-01-01'], [x, 12.0, '2026-02-01'], [x, 10.9, '2026-03-03'], [y, 10.9, '2026-03-03']]) {
+    const r = await submit(t, who, { value, achieved_on });
+    assert.equal(r.status, 201, JSON.stringify(r.body));
+    assert.equal((await approve(t, r.body)).status, 200);
+  }
+  const lb = (await api('GET', `/leaderboard?sport=athletics&metric=100m_time_s&event_id=${t.ev.id}`)).body;
+  assert.deepEqual(lb.map((r) => r.rank), [1, 1], 'equal best value on the same day: extra slower results must not break the tie');
+  assert.ok(lb.every((r) => String(r.best_on).startsWith('2026-03-03') || new Date(r.best_on).toISOString().startsWith('2026-03-0')), 'best_on is the date of the best result');
+  assert.ok(lb.every((r) => Number(r.points) === Number(lb[0].points)), 'points shown for a metric board are those of the best result');
+  // an earlier achievement of the same best value wins
+  const z = await signup(['athlete']);
+  await pool.query("INSERT INTO event_entries(event_id, user_id, status) VALUES ($1,$2,'accepted')", [t.ev.id, z.id]);
+  const rz = await submit(t, z, { value: 10.9, achieved_on: '2026-02-20' });
+  await approve(t, rz.body);
+  const lb2 = (await api('GET', `/leaderboard?sport=athletics&metric=100m_time_s&event_id=${t.ev.id}`)).body;
+  assert.equal(lb2[0].id, z.id);
+  assert.deepEqual(lb2.map((r) => r.rank), [1, 2, 2]);
+});
+
+test('category and season filters and pagination across pages', async () => {
+  const t = await meet('athletics', 5);
+  for (const [k, who] of t.people.entries()) {
+    const r = await submit(t, who, { value: 10 + k, achieved_on: '2025-06-01' });
+    await approve(t, r.body);
+  }
+  const cat = (await pool.query("SELECT category FROM sports WHERE slug='athletics'")).rows[0].category;
+  const q = `sport=athletics&metric=100m_time_s&event_id=${t.ev.id}`;
+  assert.equal((await api('GET', `/leaderboard?${q}&category=${encodeURIComponent(cat)}`)).body.length, 5);
+  assert.equal((await api('GET', `/leaderboard?${q}&category=${encodeURIComponent(cat)}-other`)).body.length, 0);
+  assert.equal((await api('GET', `/leaderboard?${q}&season=2025`)).body.length, 5);
+  assert.equal((await api('GET', `/leaderboard?${q}&season=2026`)).body.length, 0);
+  const seen = [];
+  for (const offset of [0, 2, 4]) {
+    const pg = (await api('GET', `/leaderboard?${q}&limit=2&offset=${offset}`)).body;
+    pg.forEach((r, k) => assert.equal(r.rank, offset + k + 1));
+    seen.push(...pg.map((r) => r.id));
+  }
+  assert.deepEqual(seen, t.people.map((p) => p.id), 'pages join up without gaps or repeats');
+});
+
+test('rejecting follows the same separation of duties as approving', async () => {
+  const t = await meet();
+  const [a] = t.people;
+  const r = (await submit(t, a, { value: 11 })).body;
+  const reject = (by) => api('POST', `/performances/${r.id}/reject`, { token: by.token, body: { reason: 'timing sheet does not match' } });
+  assert.equal((await reject(t.org)).status, 403, 'the submitter cannot reject');
+  assert.equal((await reject(a)).status, 403, 'the athlete cannot reject');
+  assert.equal((await reject(t.outsider)).status, 403);
+  assert.equal((await reject(t.other)).status, 200);
+});
+
+test('a correction carries the evidence, has its own history, and the superseded row logs its real previous status', async () => {
+  const t = await meet('athletics', 1);
+  const [a] = t.people;
+  const ra = (await submit(t, a, { value: 11, evidence_ref: 'https://example.com/sheet/1' })).body;
+  await approve(t, ra);
+  await api('POST', `/performances/${ra.id}/dispute`, { token: a.token, body: { reason: 'timer started late' } });
+  const fix = (await api('POST', `/performances/${ra.id}/correct`, { token: t.org.token, body: { value: 11.8, reason: 'photo finish review' } })).body;
+  assert.equal(fix.evidence_ref, 'https://example.com/sheet/1');
+  await approve(t, fix);
+  const newHist = (await api('GET', `/performances/${fix.id}/history`, { token: a.token })).body;
+  assert.deepEqual(newHist.map((h) => h.action), ['submitted', 'approved']);
+  assert.equal(newHist[0].note, 'photo finish review');
+  const oldHist = (await api('GET', `/performances/${ra.id}/history`, { token: a.token })).body;
+  assert.deepEqual(oldHist.map((h) => h.action), ['submitted', 'approved', 'disputed', 'corrected', 'superseded']);
+  assert.equal(oldHist.at(-1).from_status, 'disputed');
+});

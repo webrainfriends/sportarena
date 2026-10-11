@@ -34,6 +34,7 @@ const provider = async (role = 'physio', profile = {}) => {
   const u = await signup([role]);
   must(await api('POST', '/me/sport-profiles', { token: u.token, body: { sport: 'football', role } }), 201);
   must(await api('POST', '/me/provider-profile', { token: u.token, body: { provider_type: role, ...profile } }));
+  await pool.query("INSERT INTO verification_cases(type, subject_type, subject_id, requested_by, status, rules_version, decided_at, expires_at) VALUES ($1,'user',$2,$2,'approved',1,now(), now() + interval '300 days')", [role, u.id]);
   return u;
 };
 const at = (days, hour = 10) => { const d = new Date(Date.now() + days * 864e5); d.setUTCHours(hour, 0, 0, 0); return d.toISOString(); };
@@ -120,6 +121,7 @@ test('follow-ups: summary for the athlete, sensitive details encrypted and conse
   assert.equal(must(await api('GET', `/followups/${f.id}`, { token: ath.token })).status, 'due', 'cancelled visit puts it back to due');
   const visit2 = must(await api('POST', '/appointments', { token: ath.token, body: { provider_id: doc.id, starts_at: at(9, 16), followup_id: f.id } }), 201);
   must(await api('PATCH', `/appointments/${visit2.id}`, { token: doc.token, body: { status: 'confirmed' } }));
+  await pool.query("UPDATE appointments SET starts_at = now() - interval '2 hours' WHERE id=$1", [visit2.id]);
   must(await api('PATCH', `/appointments/${visit2.id}`, { token: doc.token, body: { status: 'completed' } }));
   const done = must(await api('GET', `/followups/${f.id}`, { token: ath.token }));
   assert.equal(done.status, 'done'); assert.ok(done.completed_at);

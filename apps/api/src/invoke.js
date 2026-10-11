@@ -1,16 +1,22 @@
 import { ZodError } from 'zod';
 import { AppError, forbidden, unauthorized } from './errors.js';
 import { hasRole } from './helpers.js';
+import { enforceResources, enforceScope } from './scopes.js';
+import { enforceMfa } from './account-security.js';
 
 /** The one place a capability is executed — REST and MCP both go through here. */
-export async function invoke(capability, user, rawInput) {
+export async function invoke(capability, user, rawInput, meta = {}) {
   const { auth } = capability;
   if (auth !== 'public') {
     if (!user) throw unauthorized();
     if (Array.isArray(auth) && !hasRole(user, ...auth)) throw forbidden(`Requires one of the roles: ${auth.join(', ')}`);
   }
+  if (auth !== 'public') enforceScope(user?.credential, capability); // public capabilities need no token at all
+  if (auth !== 'public') enforceMfa(user, capability); // step-up for sensitive roles' clinical/admin actions (MFA_ENFORCE)
   const input = capability.input.parse(rawInput ?? {});
-  return capability.handler({ user }, input);
+  // API tokens: the token's scope/resources AND the user's own permissions must both allow it (checked before the handler runs).
+  enforceResources(user?.credential, capability, input);
+  return capability.handler({ user, meta }, input);
 }
 
 /** Normalise any thrown value into {status, code, message, details}. */

@@ -34,12 +34,22 @@ export const config = {
   // up to `maxQueue` more wait. Beyond that requests get 503 + Retry-After.
   hashing: { concurrency: Number(env.HASH_CONCURRENCY ?? 2), maxQueue: Number(env.HASH_MAX_QUEUE ?? 64) },
   tokenTtl: env.TOKEN_TTL ?? '12h',
+  tokenTtl: env.TOKEN_TTL ?? '12h', // access-token lifetime
+  refreshTtlDays: Number(env.REFRESH_TTL_DAYS ?? 30), // sliding: each rotation extends the session by this much
+  requireSession: env.AUTH_REQUIRE_SESSION === 'true', // refuse pre-session JWTs that carry no session id
   // HTTPS: terminate TLS in-process (SSL_KEY_FILE/SSL_CERT_FILE) or behind a proxy (TRUST_PROXY=true).
   sslKeyFile: env.SSL_KEY_FILE,
   sslCertFile: env.SSL_CERT_FILE,
   trustProxy: env.TRUST_PROXY === 'true',
   // Production refuses plain HTTP unless this is set explicitly (interim setups without a certificate).
   allowInsecureHttp: env.ALLOW_INSECURE_HTTP === 'true',
+  // Web cookie sessions. 'auto' marks cookies Secure when the request arrived over HTTPS (TRUST_PROXY honours X-Forwarded-Proto);
+  // plain-HTTP interim setups (ALLOW_INSECURE_HTTP) cannot carry Secure cookies. Origins allowed to send credentials = CORS_ORIGINS (never '*').
+  cookieSecure: env.COOKIE_SECURE ?? 'auto',
+  cookieSameSite: env.COOKIE_SAMESITE ?? 'lax',
+  // MFA policy: when true, people holding doctor/physio/admin/platform_admin roles must have two-step verification enabled and verified
+  // in their session to use clinical- or admin-class capabilities. Off by default so rollout never locks anyone out; turn on once they have enrolled.
+  mfaEnforce: env.MFA_ENFORCE === 'true',
   corsOrigins: (env.CORS_ORIGINS ?? '*').split(','),
   // Uploaded venue photos/videos. Must be a persistent directory (deploys never touch it). Files are never deleted.
   mediaDir: env.MEDIA_DIR ?? './data/media',
@@ -53,6 +63,13 @@ export const config = {
   push: {
     expoUrl: env.EXPO_PUSH_URL ?? 'https://exp.host/--/api/v2/push/send', expoToken: env.EXPO_ACCESS_TOKEN,
     vapid: { publicKey: env.VAPID_PUBLIC_KEY, privateKey: env.VAPID_PRIVATE_KEY, subject: env.VAPID_SUBJECT ?? 'mailto:admin@sportarena.local' },
+  },
+  // Clinical actions need a current doctor/physio verification case (src/clinical-access.js, docs/verification.md).
+  clinical: {
+    // Days after an EXPIRED (never revoked) credential during which a provider may still complete existing appointments. 0 = no grace.
+    graceDays: Number(env.CLINICAL_GRACE_DAYS ?? 0),
+    // Optional allow-list of credential jurisdictions, e.g. "IN,GB". Empty = any (including unrecorded).
+    jurisdictions: (env.CLINICAL_JURISDICTIONS ?? '').split(',').map((s) => s.trim().toUpperCase()).filter(Boolean),
   },
   // Background worker for booking reminders + email dispatch. 0 disables it (tests do).
   notifyIntervalSeconds: Number(env.NOTIFY_INTERVAL_SECONDS ?? 60),

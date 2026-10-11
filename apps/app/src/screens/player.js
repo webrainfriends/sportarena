@@ -42,17 +42,6 @@ const Stat = ({ value, label, tone }) => (
   </View>
 );
 
-/** Parse "goals=2, assists 1" into {goals:2, assists:1}. */
-function parseStats(txt) {
-  const out = {};
-  for (const part of String(txt ?? '').split(/[,\n;]/).map((x) => x.trim()).filter(Boolean)) {
-    const m = part.match(/^([A-Za-z][\w ]*?)\s*[=:\s]\s*(-?\d+(?:\.\d+)?)$/);
-    if (!m) throw new Error(`Couldn't read "${part}" — use name=number, e.g. goals=2, assists=1`);
-    out[m[1].trim().toLowerCase().replace(/\s+/g, '_')] = Number(m[2]);
-  }
-  return out;
-}
-
 /** Make a sport profile the default (the one shown first on Home and the player card). One helper for every screen that lists profiles. */
 export function useMakeDefault(reload) {
   const { toast } = useSession();
@@ -172,24 +161,52 @@ function EditProfileSheet({ p, onClose, onDone }) {
   );
 }
 
+/** The columns for every match type of the sport (AI-tailored, IPTC-grounded on the server); one request per type, cached server-side. */
+async function loadTemplates(slug) {
+  const first = await api.get(`/sports/${slug}/match-template`);
+  if (first.match_types.length < 2) return [first];
+  return Promise.all(first.match_types.map((t) => api.get(`/sports/${slug}/match-template`, { match_type: t })));
+}
+
+const TYPE_LABELS = { t20: 'T20', odi: 'ODI' };
+const typeLabel = (t) => TYPE_LABELS[t] ?? nice(t).replace(/^./, (x) => x.toUpperCase());
+
 function LogMatchSheet({ p, onClose, onDone }) {
   const today = new Date().toISOString().slice(0, 10);
+  const tpl = useLoad(() => loadTemplates(p.sport_slug), [p.sport_slug]);
+  const templates = tpl.data ?? [];
+  const labels = templates[0]?.score_labels ?? { score_for: 'Your score', score_against: 'Their score' };
+  const types = templates[0]?.match_types ?? [];
+  const typed = types.length > 1;
+  const columnFields = templates.flatMap((t) => t.columns.map((col) => ({
+    key: `stat:${t.match_type ?? ''}:${col.key}`, label: col.label, type: col.kind === 'decimal' ? 'number' : 'stepper', optional: true, min: 0, max: col.max ?? 999,
+    show: (v) => !typed || v.match_type === t.match_type,
+  })));
   return (
     <FormSheet visible onClose={onClose} title={`Log a ${p.sport} match`} submitLabel="Save match"
-      initial={{ played_on: today }}
+      initial={{ played_on: today, match_type: types[0] }}
       fields={[
-        { key: 'played_on', label: 'Date (YYYY-MM-DD)' },
+        { key: 'played_on', label: 'Date', type: 'date', max: today },
+        ...(typed ? [{ key: 'match_type', label: 'Match type', type: 'chips', options: types.map((t) => ({ value: t, label: typeLabel(t) })) }] : []),
         { key: 'opponent', label: 'Opponent', optional: true },
         { key: 'competition', label: 'Competition', optional: true, placeholder: 'League, Cup, Friendly' },
         { key: 'venue', label: 'Venue', optional: true },
-        { key: 'score_for', label: 'Your score', optional: true, type: 'number' },
-        { key: 'score_against', label: 'Their score', optional: true, type: 'number' },
+        { key: 'score_for', label: labels.score_for, optional: true, type: 'number' },
+        { key: 'score_against', label: labels.score_against, optional: true, type: 'number' },
         { key: 'minutes', label: 'Minutes played', optional: true, type: 'number' },
         { key: 'rating', label: 'Your rating (0–10)', optional: true, type: 'number' },
-        { key: 'stats', label: 'Your numbers', optional: true, placeholder: 'goals=2, assists=1', hint: 'name=number pairs, comma separated — any stat your sport tracks.' },
+        ...(columnFields.length ? [{ key: 'stats_section', type: 'section', label: 'Your numbers' }, ...columnFields] : []),
         { key: 'notes', label: 'Notes', optional: true, type: 'multiline' },
       ]}
-      onSubmit={async ({ stats, ...v }) => { await api.post('/me/matches', { ...v, sport_profile_id: p.id, stats: parseStats(stats) }); await onDone(); return 'Match saved'; }} />
+      onSubmit={async (v) => {
+        const stats = {}, body = {};
+        for (const [k, x] of Object.entries(v)) {
+          if (k.startsWith('stat:')) { const n = Number(x); if (n > 0) stats[k.split(':')[2]] = n; } else body[k] = x;
+        }
+        await api.post('/me/matches', { ...body, sport_profile_id: p.id, stats });
+        await onDone();
+        return 'Match saved';
+      }} />
   );
 }
 
@@ -442,7 +459,8 @@ export function SportProfile({ id, embedded, onChanged, onRemoved }) {
 
 // ---------- bulk import ----------
 
-const TEMPLATE = 'played_on,opponent,competition,venue,result,score_for,score_against,minutes,rating,goals,assists\n2026-09-08,Blue Stars,League,Home ground,win,2,0,90,7.5,1,1\n2026-09-15,Red Hawks,League,Away,draw,1,1,75,6.0,0,0\n';
+/** CSV header for the sport: the common columns plus this sport's own stat columns (no example rows — nothing invented). */
+const csvTemplate = (cols) => `${['played_on', 'match_type', 'opponent', 'competition', 'venue', 'result', 'score_for', 'score_against', 'minutes', 'rating', ...cols].join(',')}\n`;
 
 export function ImportMatches({ id }) {
   const { back } = useNav();
@@ -455,6 +473,10 @@ export function ImportMatches({ id }) {
   const [err, setErr] = useState(null);
   const profiles = list.data ?? [];
   const target = sel ?? profiles[0]?.id;
+  const sport = profiles.find((x) => x.id === target)?.sport_slug;
+  const tpl = useLoad(() => (sport ? api.get(`/sports/${sport}/match-template`) : Promise.resolve(null)), [sport]);
+  const statCols = (tpl.data?.columns ?? []).map((x) => x.key);
+  const TEMPLATE = csvTemplate(statCols);
 
   const pickFile = () => {
     if (Platform.OS !== 'web') return;
@@ -492,13 +514,13 @@ export function ImportMatches({ id }) {
       <Card style={{ marginTop: 12 }}>
         <T weight="800" size={13}>2 · Your file</T>
         <T size={12.5} color={c.mute} style={{ marginTop: 4, lineHeight: 18 }}>
-          First row is the header. <T weight="700" size={12.5}>played_on</T> (YYYY-MM-DD) is required. Optional: opponent, competition, venue, result (win/draw/loss — or worked out from the score), score_for, score_against, minutes, rating (0–10), notes. Any other column — goals, assists, runs, wickets… — is saved as a number for that match.
+          First row is the header. <T weight="700" size={12.5}>played_on</T> (YYYY-MM-DD) is required. Optional: opponent, competition, venue, result (win/draw/loss — or worked out from the score), score_for, score_against, minutes, rating (0–10), notes. Also match_type{tpl.data?.match_types?.length > 1 ? ` (${tpl.data.match_types.join(', ')})` : ''}. {statCols.length ? <>This sport's number columns: <T weight="700" size={12.5}>{statCols.join(', ')}</T>.</> : 'Any other column is saved as a number for that match.'}
         </T>
         <View style={{ flexDirection: 'row', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
           {Platform.OS === 'web' ? <Btn small title="Choose CSV file" color={c.paper} onPress={pickFile} /> : null}
           {Platform.OS === 'web' ? <Btn small title="Download template" color={c.paper} onPress={download} /> : <Btn small title="Use template" color={c.paper} onPress={() => { setCsv(TEMPLATE); setPrev(null); }} />}
         </View>
-        <TextInput multiline value={csv} onChangeText={(x) => { setCsv(x); setPrev(null); setErr(null); }} placeholder={'…or paste CSV here\nplayed_on,opponent,goals\n2026-09-08,Blue Stars,2'} placeholderTextColor="#94A3B8" autoCapitalize="none" autoCorrect={false}
+        <TextInput multiline value={csv} onChangeText={(x) => { setCsv(x); setPrev(null); setErr(null); }} placeholder={`…or paste CSV here\n${TEMPLATE}`} placeholderTextColor="#94A3B8" autoCapitalize="none" autoCorrect={false}
           style={[fam, { marginTop: 12, minHeight: 150, borderWidth: 1.5, borderColor: c.line, borderRadius: 12, padding: 12, fontSize: 13, color: c.ink, backgroundColor: c.bg, textAlignVertical: 'top' }, Platform.OS === 'web' && { outlineStyle: 'none', fontFamily: 'ui-monospace, Menlo, monospace' }]} />
         {tooBig ? <T size={12} color={c.red} weight="700" style={{ marginTop: 6 }}>That's over the 80,000 character limit — split the file into seasons.</T> : null}
       </Card>

@@ -13,6 +13,7 @@ import { ROLES, roleLabel } from '../roles';
 import { VerificationQueue, VerificationSection } from './verification';
 import { CaseQueue } from './cases';
 import { ProviderProfileSection } from './provider';
+import { SecuritySection, TokensSection } from './security';
 
 const mask = (v) => (v ? '••••••••' : '—');
 const PII = [['email', 'Email'], ['full_name', 'Full name'], ['phone', 'Phone'], ['dob', 'Date of birth'], ['national_id', 'National ID'], ['address', 'Address']];
@@ -24,10 +25,7 @@ export function Me() {
   const [edit, setEdit] = useState(false);
   const [sp, setSp] = useState(false);
   const [rolesForm, setRolesForm] = useState(false);
-  const [newToken, setNewToken] = useState(null);
-  const [tokForm, setTokForm] = useState(false);
   const photo = useAvatarPhoto();
-  const toks = useLoad(() => api.get('/me/tokens'), []);
 
   return (
     <Screen>
@@ -80,19 +78,8 @@ export function Me() {
       {user.roles.includes('admin') ? <VerificationQueue /> : null}
       {user.roles.includes('admin') ? <CaseQueue /> : null}
 
-      <Section title="Agents & API (MCP)" color={c.violet}>
-        <Card color={c.violetSoft}>
-          <T weight="700">Everything in this app is also an API and an MCP tool. Create a token and plug SportArena into your AI agent.</T>
-          <T size={12} color={c.mute} style={{ marginTop: 6 }}>MCP endpoint: {MCP_URL}</T>
-          {newToken ? <Card color={c.sunSoft} style={{ marginTop: 10 }} pad={12}><T weight="900">Copy it now — shown once</T><T selectable size={12} weight="700" style={{ marginTop: 4 }}>{newToken}</T></Card> : null}
-          {toks.data?.filter((t) => !t.revoked_at).map((t) => (
-            <View key={t.id} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
-              <T weight="800">🔑 {t.name}</T><Btn small title="Revoke" color={c.paper} ink={c.red} onPress={async () => { await api.del(`/me/tokens/${t.id}`); toks.reload(); }} />
-            </View>
-          ))}
-          <Btn small title="New API token" color={c.violet} onPress={() => setTokForm(true)} style={{ marginTop: 10, alignSelf: 'flex-start' }} />
-        </Card>
-      </Section>
+      <SecuritySection />
+      <TokensSection mcpUrl={MCP_URL} />
 
       <Btn title="Log out" color={c.ink} onPress={signOut} style={{ marginTop: 28 }} />
 
@@ -110,8 +97,6 @@ export function Me() {
         fields={[{ key: 'display_name', label: 'Display name', optional: true }, { key: 'bio', label: 'Bio', optional: true, type: 'multiline' }, { key: 'full_name', label: 'Full name', optional: true }, { key: 'phone', label: 'Phone', optional: true }, { key: 'dob', label: 'Date of birth (YYYY-MM-DD)', optional: true }, { key: 'national_id', label: 'National ID', optional: true }, { key: 'address', label: 'Address', optional: true, type: 'multiline' }]}
         onSubmit={async (v) => { await api.patch('/me', v); await refresh(); return 'Saved & encrypted'; }} />
       <AddProfileSheet visible={sp} onClose={() => setSp(false)} first={false} onDone={async () => {}} />
-      <FormSheet visible={tokForm} onClose={() => setTokForm(false)} title="New API token" submitLabel="Create" fields={[{ key: 'name', label: 'Name', placeholder: 'My Claude agent' }]}
-        onSubmit={async (v) => { const t = await api.post('/me/tokens', v); setNewToken(t.token); toks.reload(); }} />
     </Screen>
   );
 }

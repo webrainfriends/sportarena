@@ -3,6 +3,7 @@ import { Linking, Platform, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
+import { useNav } from '../nav';
 import { FormSheet } from '../FormSheet';
 import { Avatar, Btn, Card, Chip, Empty, ErrorBox, Field, Loading, Section, Sheet, T, Tag } from '../ui';
 import { c, money, when } from '../theme';
@@ -131,6 +132,68 @@ export function ProviderProfileSection() {
   );
 }
 
+const CRED = {
+  verified: ['Verified', c.lime, 'Your professional verification is current. You can write records, follow-ups and confirm appointments for athletes who shared access.'],
+  grace: ['Expired, short grace', c.sunSoft, 'Your verification has expired. For a short time you can only complete appointments already confirmed. Renew now to keep working.'],
+  expired: ['Expired', c.orangeSoft, 'Your verification has expired, so new clinical actions are paused. Existing records stay safe and the athlete can still read them.'],
+  revoked: ['Revoked', c.pinkSoft, 'The platform team revoked your verification, so clinical actions are paused. Submit a new verification to restore access.'],
+  pending: ['Being reviewed', c.cyanSoft, 'Your verification is with the review team. Clinical actions open as soon as it is approved.'],
+  not_verified: ['Not verified', c.orangeSoft, 'Athletes can share records with you, but you cannot write or read them until your registration is verified.'],
+  role_mismatch: ['Does not match your role', c.orangeSoft, 'Your verified credential does not match the doctor or physio role on your account.'],
+  sport_scope: ['Different sport', c.orangeSoft, 'Your credential covers another sport than this athlete plays. Submit a verification for that sport.'],
+  jurisdiction: ['Region not accepted', c.orangeSoft, 'Your credential was issued in a region the platform does not currently accept.'],
+};
+
+/** Provider: is my professional verification current for clinical work, and where do I renew it? */
+export function ClinicalStatusCard() {
+  const { goTab } = useNav();
+  const st = useLoad(() => api.get('/medical/credential'), []);
+  const d = st.data;
+  const [label, color, text] = d ? (CRED[d.state] ?? CRED.not_verified) : [];
+  return (
+    <Card color={c.paper} pad={12}>
+      <T weight="900">Your professional verification</T>
+      {st.loading && !d ? <Loading /> : st.error ? <ErrorBox error={st.error} onRetry={st.reload} /> : (
+        <View style={{ gap: 6, marginTop: 6 }}>
+          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}><Tag label={label} color={color} />{d.expires_at ? <T size={12} color={c.mute}>{d.state === 'verified' ? 'valid until' : 'ended'} {new Date(d.expires_at).toLocaleDateString(locale)}</T> : null}</View>
+          <T size={13}>{text}</T>
+          {d.renewal ? <Btn small title={d.state === 'not_verified' ? 'Get verified' : 'Renew verification'} color={c.pink} style={{ alignSelf: 'flex-start' }} onPress={() => goTab('Me')} /> : null}
+          {d.renewal ? <T size={11} color={c.mute}>Opens Me, then Verification, where you attach your registration. Renewals are linked to your earlier case.</T> : null}
+        </View>
+      )}
+    </Card>
+  );
+}
+
+/** Athlete: choose how much of the history a provider sees, with a warning when their verification is not current. */
+export function ShareRecordsSheet({ provider, onClose, onDone }) {
+  const { toast } = useSession();
+  const detail = useLoad(() => (provider ? api.get(`/providers/${provider.id}`).catch(() => null) : Promise.resolve(null)), [provider?.id]);
+  const [history, setHistory] = useState('since_grant');
+  const [busy, setBusy] = useState(false);
+  if (!provider) return null;
+  const unverified = detail.data && !(detail.data.verified ?? []).length;
+  const share = async () => {
+    setBusy(true);
+    try {
+      const r = await api.post('/medical/grants', { provider_id: provider.id, history });
+      toast(r.warning ?? 'Access granted'); onDone?.(); onClose();
+    } catch (e) { toast(e.message); } finally { setBusy(false); }
+  };
+  return (
+    <Sheet visible onClose={onClose} title={`Share records with ${provider.name}`}>
+      {unverified ? <Card color={c.orangeSoft} pad={12}><T weight="800" size={13}>This provider is not verified right now</T><T size={12}>You can still share, but they will not be able to open or add records until their professional verification is approved or renewed. You can withdraw access at any time.</T></Card> : null}
+      <T weight="800" size={13}>What can they see?</T>
+      <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
+        <Chip label="Their own notes and anything from now on" active={history === 'since_grant'} onPress={() => setHistory('since_grant')} />
+        <Chip label="My whole history" active={history === 'all'} onPress={() => setHistory('all')} />
+      </View>
+      <T size={12} color={c.mute}>{history === 'all' ? 'They will also see records written earlier by other providers.' : 'Earlier records from other providers stay private.'} You always see everything yourself.</T>
+      <Btn title="Share" color={c.violet} loading={busy} onPress={share} />
+    </Sheet>
+  );
+}
+
 /** Athlete: who can see my records, with scope and expiry, and a button to withdraw. */
 export function ConsentManager() {
   const { toast } = useSession();
@@ -143,9 +206,10 @@ export function ConsentManager() {
       {g.loading && !g.data ? <Loading /> : g.error ? <ErrorBox error={g.error} onRetry={g.reload} /> : g.data.grants.length ? g.data.grants.map((x) => (
         <Card key={x.provider_id} pad={12}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <View style={{ flex: 1 }}><T weight="800">{x.provider_name}</T><T size={12} color={c.mute}>{x.scope === 'full' ? 'Records and fit-to-play' : 'Fit-to-play status only'}{x.expires_at ? ` · until ${new Date(x.expires_at).toLocaleDateString(locale)}` : ''}</T></View>
+            <View style={{ flex: 1 }}><T weight="800">{x.provider_name}</T><T size={12} color={c.mute}>{x.scope === 'full' ? (x.history_scope === 'all' ? 'Records and fit-to-play, whole history' : 'Records and fit-to-play, from the grant onward') : 'Fit-to-play status only'}{x.expires_at ? ` · until ${new Date(x.expires_at).toLocaleDateString(locale)}` : ''}</T></View>
             <Tag label={STATE[x.state][0]} color={STATE[x.state][1]} />
           </View>
+          {x.state === 'active' && x.provider_verified === false ? <T size={12} color={c.red} style={{ marginTop: 6 }}>Their professional verification is not current, so they cannot open or add records until it is renewed.</T> : null}
           {x.state === 'active' ? <Btn small title="Withdraw access" color={c.paper} ink={c.red} style={{ alignSelf: 'flex-start', marginTop: 8 }} onPress={() => act(() => api.del(`/medical/grants/${x.provider_id}`), 'Access withdrawn')} /> : null}
         </Card>
       )) : <Empty emoji="🔒" title="Nobody has access" sub="Share records with a provider from an appointment." />}

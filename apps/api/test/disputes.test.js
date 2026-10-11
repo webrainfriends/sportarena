@@ -110,6 +110,7 @@ test('provider payment dispute: payee or payer, tied to the engagement, no clini
   // a physio/doctor appointment can be linked as the engagement; staff never see its clinical text
   const physio = await signup(['physio']);
   await api('POST', '/me/sport-profiles', { token: physio.token, body: { sport: 'football', role: 'physio' } });
+  await pool.query("INSERT INTO verification_cases(type, subject_type, subject_id, requested_by, status, rules_version, decided_at, expires_at) VALUES ($1,'user',$2,$2,'approved',1,now(), now() + interval '300 days')", ['physio', physio.id]);
   const appt = must(await api('POST', '/appointments', { token: hirer.token, body: { provider_id: physio.id, starts_at: future(5), reason: 'secret knee injury details' } }), 201);
   const c2 = must(await dispute(physio, 'other', [{ type: 'appointment', id: appt.id }], undefined, { description: 'Not yet paid for the session' }), 201);
   const rec = must(await api('GET', `/admin/cases/${c2.id}/records`, { token: admin.token }));
