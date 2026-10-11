@@ -6,6 +6,7 @@ import { useSession } from '../session';
 import { useNav } from '../nav';
 import { Avatar, Btn, Card, Empty, ErrorBox, GradCard, H1, H2, Loading, Row, Screen, Section, StatPill, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
+import { CoachToolGrid } from './coaching';
 import { useLayout } from '../layout';
 import { c, grad } from '../theme';
 import { localToIso, dateTimeIn } from '../vtime';
@@ -62,15 +63,7 @@ export function CoachHome() {
         {h.next_session ? <T color="#fff" weight="700" size={13}>Next: {h.next_session.title ?? 'Coaching session'} · {dateTimeIn(h.next_session.starts_at, tz)}</T> : null}
       </GradCard>
       {h.warnings.map((w) => <Card key={w.kind} onPress={() => open(w.link)}><T weight="700">⚠ {w.title}</T></Card>)}
-      <View style={{ flexDirection: 'row', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-        <Btn small title="Coach desk" onPress={() => push('CoachDesk')} />
-        <Btn small title="Request board" color={c.violet} onPress={() => push('CoachBoard')} />
-        <Btn small title="My athletes" color={c.paper} ink={c.ink} onPress={() => push('CoachAthletes')} />
-        <Btn small title="Profile & hours" color={c.paper} ink={c.ink} onPress={() => push('CoachSetup')} />
-        <Btn small title="Calendar" color={c.paper} ink={c.ink} onPress={() => push('CoachCalendar')} />
-        <Btn small title="Training plans" color={c.paper} ink={c.ink} onPress={() => push('MyPlans', { as: 'coach' })} />
-        <Btn small title="Find a venue" color={c.paper} ink={c.ink} onPress={() => open({ screen: 'Book' })} />
-      </View>
+      <View style={{ marginTop: 14, marginBottom: 6 }}><CoachToolGrid push={push} counts={{ board: h.counts.requests || null }} /></View>
       <View style={{ flexDirection: wide ? 'row' : 'column', gap: 16, alignItems: 'flex-start' }}>
         <View style={{ flex: 1, width: '100%' }}>
           <Section title="Needs your action"><Actions items={h.inbox} open={open} /></Section>

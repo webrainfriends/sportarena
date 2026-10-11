@@ -1,16 +1,17 @@
 import React, { useState } from 'react';
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { useNav } from '../nav';
-import { Btn, Card, Chip, Empty, ErrorBox, H2, Loading, Screen, Section, Tag, T } from '../ui';
+import { Btn, Card, Chip, Empty, ErrorBox, H2, Loading, Screen, Section, Seg, Tag, T } from '../ui';
+import { HScroll } from '../pickers';
 import { c } from '../theme';
 import { dateTimeIn, localDate } from '../vtime';
 import { locale } from '../locale';
 
-const KINDS = [['match', 'Matches'], ['team', 'Team'], ['event', 'Events'], ['training', 'Training'], ['venue', 'Venue'], ['health', 'Health']];
-const ICON = { match: '🏟️', team: '👥', event: '🏆', training: '🏋️', venue: '📍', health: '🩺' };
+export const KINDS = [['match', 'Matches'], ['team', 'Team'], ['event', 'Events'], ['training', 'Coaching'], ['health', 'Health'], ['venue', 'Venues'], ['duty', 'Duty']];
+const ICON = { match: '🏟️', team: '👥', event: '🏆', training: '🏋️', venue: '📍', health: '🩺', duty: '📋' };
 const STATUS = { proposed: 'Proposed', awaiting_response: 'Awaiting your response', confirmed: 'Confirmed', completed: 'Completed', cancelled: 'Cancelled', open: 'Open', ongoing: 'Ongoing' };
 
 export const ACTIONS = [
@@ -35,6 +36,8 @@ export function Item({ x, reload }) {
     const { screen, params = {} } = x.link ?? {};
     if (screen === 'Health') nav.push('Health');
     else if (screen === 'Event' && params.id) nav.push('Event', params);
+    else if (['CoachCommitments', 'CoachPlan', 'MyPlans', 'Games'].includes(screen) && (screen !== 'CoachPlan' || params.id)) nav.push(screen, params);
+    else if (x.kind === 'duty' || x.kind === 'event') nav.goTab('Play');
     else nav.goTab(x.kind === 'training' ? 'Player' : x.kind === 'venue' ? 'Book' : 'Play');
   };
   const when = x.all_day ? new Date(x.starts_at).toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' }) : dateTimeIn(x.starts_at, x.timezone);
@@ -96,5 +99,54 @@ export function AthleteToday() {
         </>
       )}
     </Screen>
+  );
+}
+
+const RANGES = [['today', 'Today', 1], ['week', '7 days', 7], ['month', '30 days', 30]];
+const addDaysIso = (d, n) => { const x = new Date(`${d}T00:00:00Z`); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
+
+/**
+ * Everything on the person's calendar, whatever their roles: matches, team fixtures, events and tournaments, coaching sessions and
+ * commitments, physio/doctor appointments (as patient or provider), venue bookings and duty. Grouped by day, filterable by kind.
+ */
+export function HomeSchedule({ onFull }) {
+  const [range, setRange] = useState('week'), [kind, setKind] = useState(null);
+  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const today = localDate(new Date().toISOString(), zone);
+  const days = RANGES.find((r) => r[0] === range)[2];
+  const sched = useLoad(() => api.get('/me/sport-schedule', { from: today, to: addDaysIso(today, days - 1) }), [range]);
+  const all = sched.data?.items ?? [];
+  const items = all.filter((x) => !kind || x.kind === kind);
+  const need = items.filter((x) => x.action_required);
+  const rest = items.filter((x) => !x.action_required);
+  const counts = Object.fromEntries(KINDS.map(([k]) => [k, all.filter((x) => x.kind === k).length]));
+  const byDay = new Map();
+  for (const x of rest) { const d = localDate(x.starts_at, x.all_day ? 'UTC' : zone); byDay.set(d, [...(byDay.get(d) ?? []), x]); }
+  const label = (d) => (d === today ? 'Today' : d === addDaysIso(today, 1) ? 'Tomorrow' : new Date(`${d}T12:00:00`).toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'short' }));
+  return (
+    <View style={{ gap: 12 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+        <T size={19} weight="700" style={{ letterSpacing: -0.3 }}>My schedule</T>
+        {onFull ? <Pressable onPress={onFull}><T size={13} weight="700" color={c.pink}>Full schedule  ›</T></Pressable> : null}
+      </View>
+      <Seg options={RANGES.map(([value, l]) => ({ value, label: l }))} value={range} onChange={setRange} color={c.pink} />
+      <HScroll>
+        <Chip label={`All · ${all.length}`} active={!kind} onPress={() => setKind(null)} />
+        {KINDS.filter(([k]) => counts[k] || kind === k).map(([k, l]) => <Chip key={k} label={`${ICON[k]} ${l} · ${counts[k]}`} active={kind === k} onPress={() => setKind(kind === k ? null : k)} />)}
+      </HScroll>
+      {sched.error ? <ErrorBox error={sched.error} onRetry={sched.reload} /> : sched.loading && !sched.data ? <Loading /> : (
+        <>
+          {sched.data.conflicts ? <T size={13} weight="700" color={c.red}>⚠ {sched.data.conflicts} overlapping commitment{sched.data.conflicts === 1 ? '' : 's'}</T> : null}
+          {need.length ? <View style={{ gap: 10 }}><T size={13} weight="800" color={c.sun}>NEEDS YOUR RESPONSE · {need.length}</T>{need.map((x) => <Item key={`n${x.source_type}${x.source_id}`} x={x} reload={sched.reload} />)}</View> : null}
+          {[...byDay.entries()].map(([d, xs]) => (
+            <View key={d} style={{ gap: 10 }}>
+              <T size={13} weight="800" color={d === today ? c.pink : c.mute}>{label(d).toUpperCase()}</T>
+              {xs.map((x) => <Item key={`${d}${x.source_type}${x.source_id}`} x={x} reload={sched.reload} />)}
+            </View>
+          ))}
+          {!items.length ? <Empty emoji="🗓️" title={kind ? 'Nothing of this kind' : range === 'today' ? 'Nothing scheduled today' : 'A clear stretch'} sub={kind ? 'Try another filter or a longer range.' : 'Matches, events, coaching, appointments and bookings all land here as soon as you add them.'} /> : null}
+        </>
+      )}
+    </View>
   );
 }
