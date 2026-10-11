@@ -16,6 +16,7 @@ import { marketMediaRouter } from './market-media.js';
 import { insuranceDocsRouter } from './capabilities/insurance-docs.js';
 import { subjectDocsRouter } from './capabilities/subject-docs.js';
 import { staffDocsRouter } from './capabilities/event-openings.js';
+import { liveRouter } from './live.js';
 
 export function createApp() {
   const app = express();
@@ -47,6 +48,8 @@ export function createApp() {
 
   app.get('/', (_, res) => res.json({ name: 'SportArena', api: '/api/v1', openapi: '/api/v1/openapi.json', mcp: '/mcp', tools: capabilities.length }));
   app.get('/health', async (_, res) => { await pool.query('select 1'); res.json({ ok: true }); });
+
+  app.use('/api/v1', liveRouter());
 
   const v1 = express.Router();
   v1.get('/openapi.json', (_, res) => res.json(buildOpenApi()));

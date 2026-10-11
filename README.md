@@ -104,5 +104,5 @@ insurance & claims, sponsorship approval rules, supply receiving, testimonials, 
 AWS EC2 (pm2 + Docker Postgres + nginx, KMS-wrapped keys), side by side with other apps: see [`docs/deployment.md`](docs/deployment.md).
 
 ## Roadmap
-Payouts / settlement · live scores · knockout & group-stage brackets · media (photos/video highlights) ·
+Payouts / settlement · knockout & group-stage brackets · media (photos/video highlights) ·
 KYC · multi-currency & i18n · organizations/clubs · webhooks · offline mode in the app.
