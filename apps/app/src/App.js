@@ -17,7 +17,6 @@ installWebShell();
 import Home from './screens/feed';
 import Landing from './screens/landing';
 import { Play, Event, Team, Person } from './screens/play';
-import { EventAdmin } from './screens/event-admin';
 import { TeamManage } from './screens/team-manage';
 import { TeamWorkspace } from './screens/team-workspace';
 import { TeamChat } from './screens/team-chat';
@@ -36,14 +35,11 @@ import { Support } from './screens/cases';
 import { Family } from './screens/family';
 import { Orgs, Org } from './screens/org';
 import { Games } from './screens/games';
-import { EventPlan, EventInbox } from './screens/event-plan';
+import { EventInbox } from './screens/event-plan';
 import { Openings } from './screens/openings';
 import { EventCommand } from './screens/event-command';
-import { EventDepartments } from './screens/event-departments';
-import { EventBoard } from './screens/event-board';
-import { EventFixtures, MatchCentre } from './screens/match-centre';
+import { MatchCentre } from './screens/match-centre';
 import { ScoreSheet } from './screens/score-sheet';
-import { EventResults } from './screens/event-results';
 import { CoachHome, CoachAthletes, CoachPlan, CoachCalendar, MyPlans } from './screens/coach';
 import { CoachProfile, CoachRequest, CoachBoard, CoachDesk, CoachSetup } from './screens/coaching';
 import { CoachRates, CoachCommitments, CoachReviews, CoachAnalytics } from './screens/coach-business';
@@ -53,8 +49,8 @@ import { PlayerHome, SportProfile, ImportMatches } from './screens/player';
 
 const TABS = [['Home', Home], ['Play', Play], ['Player', PlayerHome], ['Book', Book], ['Hub', Hub], ['Me', Me]];
 const LABEL = { Hub: 'Ecosystem' };
-const PAGES = { Event, EventAdmin, PartnerConsole, MyPartner, Team, TeamManage, TeamWorkspace, TeamChat, Person, Venue, Wallet, BookFlow, Invoice, Basket, Reservation, Compare, Notifications, Manage, OwnerSummary, Leaderboard, Awards, Health, Insurance, InsurerPage, InsurerDesk, Sponsors, Supply, SportProfile, ImportMatches, Support, Family, CoachHome, CoachAthletes, CoachPlan, CoachCalendar, MyPlans, Orgs, Org, Games, EventPlan, EventInbox, Openings, CoachProfile, CoachRequest, CoachBoard, CoachDesk, CoachSetup, CoachRates, CoachCommitments, CoachReviews, CoachAnalytics, TrainingVenue, RecurringVenue, EventCommand, EventDepartments, EventBoard, EventFixtures, MatchCentre, ScoreSheet, EventResults };
-const TITLES = { Event: 'Event', EventAdmin: 'Tournament console', PartnerConsole: 'Partner management', MyPartner: 'Partner account', Team: 'Team', TeamManage: 'Manage team', TeamWorkspace: 'Team workspace', TeamChat: 'Team chat', Person: 'Profile', Venue: 'Venue', Wallet: 'Wallet', BookFlow: 'Book', Invoice: 'Invoice', Basket: 'Basket', Reservation: 'Booking', Compare: 'Compare', Notifications: 'Notifications', Manage: 'Manage venue', OwnerSummary: 'All my venues', Leaderboard: 'Leaderboard', Awards: 'Trophy room', Health: 'Health', Insurance: 'Insurance', InsurerPage: 'Insurer', InsurerDesk: 'Insurer desk', Sponsors: 'Sponsors', Supply: 'Supply chain', SportProfile: 'Sport profile', ImportMatches: 'Import matches', Support: 'Support', Family: 'Family & guardians', CoachHome: 'Coach home', CoachAthletes: 'My athletes', CoachPlan: 'Training plan', CoachCalendar: 'Coach calendar', MyPlans: 'Training plans', Orgs: 'My organisations', Org: 'Organisation', Games: 'Games programme', EventPlan: 'Plan & budget', EventInbox: 'Event requests', Openings: 'Open positions', CoachProfile: 'Coach', CoachRequest: 'Coaching request', CoachBoard: 'Request board', CoachDesk: 'Coach desk', CoachSetup: 'Profile & hours', CoachRates: 'Rate cards', CoachCommitments: 'Commitments', CoachReviews: 'Reviews', CoachAnalytics: 'Analytics', TrainingVenue: 'Court for coaching', RecurringVenue: 'Recurring booking', EventCommand: 'Command', EventDepartments: 'Departments', EventBoard: 'Plans & boards', EventFixtures: 'Games', MatchCentre: 'Live match', ScoreSheet: 'Score sheet', EventResults: 'Results' };
+const PAGES = { Event, PartnerConsole, MyPartner, Team, TeamManage, TeamWorkspace, TeamChat, Person, Venue, Wallet, BookFlow, Invoice, Basket, Reservation, Compare, Notifications, Manage, OwnerSummary, Leaderboard, Awards, Health, Insurance, InsurerPage, InsurerDesk, Sponsors, Supply, SportProfile, ImportMatches, Support, Family, CoachHome, CoachAthletes, CoachPlan, CoachCalendar, MyPlans, Orgs, Org, Games, EventInbox, Openings, CoachProfile, CoachRequest, CoachBoard, CoachDesk, CoachSetup, CoachRates, CoachCommitments, CoachReviews, CoachAnalytics, TrainingVenue, RecurringVenue, EventCommand, MatchCentre, ScoreSheet };
+const TITLES = { Event: 'Event', PartnerConsole: 'Partner management', MyPartner: 'Partner account', Team: 'Team', TeamManage: 'Manage team', TeamWorkspace: 'Team workspace', TeamChat: 'Team chat', Person: 'Profile', Venue: 'Venue', Wallet: 'Wallet', BookFlow: 'Book', Invoice: 'Invoice', Basket: 'Basket', Reservation: 'Booking', Compare: 'Compare', Notifications: 'Notifications', Manage: 'Manage venue', OwnerSummary: 'All my venues', Leaderboard: 'Leaderboard', Awards: 'Trophy room', Health: 'Health', Insurance: 'Insurance', InsurerPage: 'Insurer', InsurerDesk: 'Insurer desk', Sponsors: 'Sponsors', Supply: 'Supply chain', SportProfile: 'Sport profile', ImportMatches: 'Import matches', Support: 'Support', Family: 'Family & guardians', CoachHome: 'Coach home', CoachAthletes: 'My athletes', CoachPlan: 'Training plan', CoachCalendar: 'Coach calendar', MyPlans: 'Training plans', Orgs: 'My organisations', Org: 'Organisation', Games: 'Games programme', EventInbox: 'Event requests', Openings: 'Open positions', CoachProfile: 'Coach', CoachRequest: 'Coaching request', CoachBoard: 'Request board', CoachDesk: 'Coach desk', CoachSetup: 'Profile & hours', CoachRates: 'Rate cards', CoachCommitments: 'Commitments', CoachReviews: 'Reviews', CoachAnalytics: 'Analytics', TrainingVenue: 'Court for coaching', RecurringVenue: 'Recurring booking', EventCommand: 'Event console', MatchCentre: 'Live match', ScoreSheet: 'Score sheet' };
 
 const TAB_LABEL = { Hub: 'More' };
 // order in the bar; Book is the raised centre action, Me opens from the hero avatar and from More

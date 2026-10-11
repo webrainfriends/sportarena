@@ -1,22 +1,10 @@
-// Official results of an event: standings, the podium, and every approved score sheet. Only published sheets show here.
+// Results tab of the event console: standings, the podium, and every approved score sheet. Only published sheets show here.
 import React, { useState } from 'react';
 import { View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
-import { A, ACard, AEmpty, AHero, AScreen, ASection, AT, AG, LiveBadge, PodiumCard } from '../arena';
+import { A, ACard, AEmpty, ASection, AT, LiveBadge, PodiumCard } from '../arena';
 import { ErrorBox, Loading, Sheet, T } from '../ui';
-
-export function EventResults({ id }) {
-  const ev = useLoad(() => api.get(`/events/${id}`), [id]);
-  if (ev.error) return <AScreen><ErrorBox error={ev.error} onRetry={ev.reload} /></AScreen>;
-  if (!ev.data) return <AScreen><Loading /></AScreen>;
-  return (
-    <AScreen>
-      <AHero kicker="Official results" title={ev.data.name} sub={ev.data.status === 'completed' ? 'Final standings' : 'Updated as score sheets are published'} tone={AG.hero} emoji="🏆" />
-      <ResultsTab id={id} e={ev.data} />
-    </AScreen>
-  );
-}
 
 export function ResultsTab({ id, e }) {
   const table = useLoad(() => api.get(`/events/${id}/standings`), [id]);

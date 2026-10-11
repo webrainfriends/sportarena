@@ -1,4 +1,4 @@
-// Fixtures of an event, and the Match Centre: the referee's live console (kick off, score with the sport's own buttons, track
+// The Match Centre, and the Games tab of the event console: the referee's live console (kick off, score with the sport's own buttons, track
 // fouls and cards, undo, pause, full time) that doubles as a live scoreboard for everyone else.
 import React, { useState } from 'react';
 import { Pressable, View } from 'react-native';
@@ -7,13 +7,12 @@ import { useLoad } from '../hooks';
 import { useLiveFixture, usePoll } from '../live';
 import { useSession } from '../session';
 import { useNav } from '../nav';
-import { A, ABtn, ACard, AChip, AEmpty, AScreen, ASection, AT, LiveBadge, ReasonSheet, ScoreTicker } from '../arena';
-import { Loading, ErrorBox, Sheet, T } from '../ui';
-import { dayLabel } from '../tournament-ui';
+import { A, ABracket, ABtn, ACard, AChip, AEmpty, AScreen, ASection, AT, ReasonSheet, ScoreTicker } from '../arena';
+import { Loading, Sheet, T } from '../ui';
+import { GamesByDay, SchedulePlanner } from './event-schedule';
 
 const key = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 const clockOf = (s) => (s == null ? '' : `${Math.floor(s / 60)}'`);
-const timeOf = (iso) => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
 // ---------------------------------------------------------------- Match Centre
 export function MatchCentre({ id }) {
@@ -157,66 +156,45 @@ function RecapCard({ id, f }) {
   );
 }
 
-// ---------------------------------------------------------------- Fixtures of an event
-export function EventFixtures({ id }) {
-  const { user } = useSession();
-  const ev = useLoad(() => api.get(`/events/${id}`), [id]);
-  if (ev.error) return <AScreen><ErrorBox error={ev.error} onRetry={ev.reload} /></AScreen>;
-  if (!ev.data) return <AScreen><Loading /></AScreen>;
-  return <AScreen><FixturesTab id={id} isOrg={!!user && (ev.data.organizer_id === user.id || user.roles?.includes('admin'))} /></AScreen>;
-}
-
-export function FixturesTab({ id, isOrg }) {
+// ---------------------------------------------------------------- Games tab of the event console
+/** Live games, the schedule by day, planning tools and the knockout bracket. Results are entered through the match centre and score sheet only. */
+export function FixturesTab({ id, isOrg, games, accepted, venues, bracket, reload, goVenue }) {
   const { toast } = useSession();
   const { push } = useNav();
-  const list = useLoad(() => api.get('/fixtures', { event_id: id, limit: 100 }), [id]);
   const ticker = useLoad(() => api.get(`/events/${id}/live`), [id]);
+  const [view, setView] = useState('schedule');
   const [fix, setFix] = useState(null);
   const [busy, setBusy] = useState(false);
   usePoll(ticker.reload, 6000);
-  const rows = list.data ?? [];
   const inPlay = ticker.data ?? [];
   const playing = new Set(inPlay.map((g) => g.fixture.id));
-  const upcoming = rows.filter((x) => x.status === 'scheduled' || x.status === 'postponed');
-  const done = rows.filter((x) => x.status === 'completed');
-  const open = (fid) => push('MatchCentre', { id: fid });
+  const waiting = games.filter((x) => x.status === 'finished' && !playing.has(x.id));
+  const open = (g) => push('MatchCentre', { id: g.id ?? g.fixture?.id });
   const check = async () => {
     setBusy(true);
     try { setFix(await api.post(`/events/${id}/ai/schedule-fix`, { min_rest_min: 30 })); } catch (x) { toast('' + x.message); } finally { setBusy(false); }
   };
-  if (list.error) return <ErrorBox error={list.error} onRetry={list.reload} />;
-  if (!list.data) return <Loading />;
   return (
     <>
       <ASection title="Happening now" sub={inPlay.length ? 'Tap a game to open its match centre' : undefined} />
-      {inPlay.length ? inPlay.map((g) => <ScoreTicker key={g.fixture.id} g={g} onPress={() => open(g.fixture.id)} compact />) : <AEmpty emoji="📺" title="No game is on" sub="Live and just-finished games show up here." />}
+      {inPlay.length ? inPlay.map((g) => <ScoreTicker key={g.fixture.id} g={g} onPress={() => open(g)} compact />) : <AEmpty emoji="📺" title="No game is on" sub="Live and just-finished games show up here." />}
+      {waiting.map((x) => <ACard key={x.id} onPress={() => push('ScoreSheet', { id: x.id })} pad={14} tone={A.cyan}><AT weight="800">📝 {x.home_name} vs {x.away_name} is at full time: score sheet waiting</AT></ACard>)}
 
-      <ASection title="Up next" action={isOrg ? 'Check clashes' : undefined} onAction={check} />
-      {busy ? <T color="#A79FCB">Checking the schedule…</T> : null}
-      {upcoming.length ? upcoming.map((x) => (
-        <ACard key={x.id} onPress={() => open(x.id)} pad={14}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <View style={{ flex: 1 }}>
-              <AT size={15} weight="800">{x.home_emoji ?? '🛡️'} {x.home_name ?? x.home_placeholder ?? 'TBD'}  vs  {x.away_emoji ?? '🛡️'} {x.away_name ?? x.away_placeholder ?? 'TBD'}</AT>
-              <AT size={12} color={A.mute} style={{ marginTop: 3 }}>{dayLabel(x.scheduled_at, x.venue_timezone)} · {timeOf(x.scheduled_at)}{x.resource_name ? ` · ${x.resource_name}` : ''}{x.round ? ` · ${x.round}` : ''}</AT>
-            </View>
-            <LiveBadge status={x.status} />
-          </View>
-        </ACard>
-      )) : <AEmpty emoji="🗓️" title="Nothing scheduled" sub={isOrg ? 'Generate the schedule from the Tournament console.' : 'Fixtures will appear here.'} />}
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        <AChip label="🗓️ Schedule" active={view === 'schedule'} onPress={() => setView('schedule')} />
+        <AChip label="🏆 Bracket" active={view === 'bracket'} onPress={() => setView('bracket')} />
+      </View>
 
-      <ASection title="Results" />
-      {done.length ? done.map((x) => (
-        <ACard key={x.id} onPress={() => open(x.id)} pad={14}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <AT size={14} weight="800" style={{ flex: 1 }}>{x.home_name} <AT size={16} weight="900" color={A.cyan} num>{x.home_score}–{x.away_score}</AT> {x.away_name}</AT>
-            <LiveBadge status="completed" />
-          </View>
-        </ACard>
-      )) : <AT size={13} color={A.mute}>Published results appear here.</AT>}
-      {rows.filter((x) => x.status === 'finished' && !playing.has(x.id)).map((x) => (
-        <ACard key={x.id} onPress={() => push('ScoreSheet', { id: x.id })} pad={14} tone={A.cyan}><AT weight="800">📝 {x.home_name} vs {x.away_name} is at full time: score sheet waiting</AT></ACard>
-      ))}
+      {view === 'schedule' ? (
+        <>
+          <ASection title="Games" sub={games.length ? `${games.length} scheduled` : undefined} action={isOrg && games.length ? 'Check clashes' : undefined} onAction={check} />
+          {busy ? <AT size={13} color={A.mute}>Checking the schedule…</AT> : null}
+          <GamesByDay games={games} onOpen={open} />
+          {isOrg ? <SchedulePlanner id={id} accepted={accepted} venues={venues} reload={reload} goVenue={goVenue} /> : null}
+        </>
+      ) : bracket?.rounds?.length ? <ABracket data={bracket} onGame={open} /> : (
+        <AEmpty emoji="🏆" title="No knockout yet" sub="Seed the teams, book courts, then plan a knockout: quarter-finals, semi-finals and the final fill in as results are published." action={isOrg ? 'Plan the knockout' : undefined} onAction={() => setView('schedule')} />
+      )}
 
       <Sheet visible={!!fix} onClose={() => setFix(null)} title={fix?.ok ? 'Schedule is clean ✅' : 'Schedule clashes'}>
         {fix ? (
@@ -224,7 +202,7 @@ export function FixturesTab({ id, isOrg }) {
             <T size={14} color="#334155">{fix.advice}</T>
             {fix.ai ? <T size={11} color="#64748B">Advice written by AI. Proposed times come from the built-in clash check.</T> : null}
             {fix.proposals?.map((p) => {
-              const g = rows.find((x) => x.id === p.fixture_id);
+              const g = games.find((x) => x.id === p.fixture_id);
               return <T key={p.fixture_id} weight="700">{g ? `${g.home_name ?? 'TBD'} vs ${g.away_name ?? 'TBD'}` : 'Game'} → move to {new Date(p.move_to).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}</T>;
             })}
           </>

@@ -1,4 +1,4 @@
-// Venue & courts for an event: the venues it uses, the court bookings (made here, by the tournament scheduler or by a
+// Venue & courts tab of the event console: the venues it uses, the court bookings (made here, by the tournament scheduler or by a
 // finalized venue request), and a guided flow: pick a venue (photo cards), pick days / times / courts with live
 // availability, review, confirm.
 import React, { useEffect, useMemo, useState } from 'react';
@@ -7,6 +7,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { api, mediaUrl } from '../api';
 import { useLoad } from '../hooks';
 import { Btn, Card, Chip, Empty, Field, Loading, Row, Sheet, T, Tag } from '../ui';
+import { A, ABtn, ACard, AEmpty, AT, ATag } from '../arena';
 import { DateRangeField, TimeField, todayLocal } from '../pickers';
 import { c } from '../theme';
 import { locale } from '../locale';
@@ -20,11 +21,11 @@ const STATUS = { free: ['Free', c.limeSoft, c.ink], booked: ['Booked', c.orange,
 /** Cover photo (or a gradient with the emoji) with an optional price badge, like a listing card. */
 function Photo({ v, height = 130, badge, children }) {
   return (
-    <View style={{ height, borderRadius: 18, overflow: 'hidden', backgroundColor: c.violetSoft }}>
+    <View style={{ height, borderRadius: 18, overflow: 'hidden', backgroundColor: A.panel2 }}>
       {v.cover_url ? <Image source={{ uri: mediaUrl(v.cover_url) }} resizeMode="cover" style={{ position: 'absolute', width: '100%', height: '100%' }} />
-        : <LinearGradient colors={['#059669', '#0EA5E9']} style={{ position: 'absolute', width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' }}><T size={48}>{v.emoji ?? '🏟️'}</T></LinearGradient>}
+        : <LinearGradient colors={['#7C3AED', '#EC4899']} style={{ position: 'absolute', width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' }}><T size={48}>{v.emoji ?? '🏟️'}</T></LinearGradient>}
       <LinearGradient colors={['transparent', 'rgba(0,0,0,0.55)']} style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: height * 0.6 }} />
-      {badge ? <View style={{ position: 'absolute', right: 10, bottom: 10, backgroundColor: c.pink, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 5 }}><T color="#fff" weight="800" size={13}>{badge}</T></View> : null}
+      {badge ? <View style={{ position: 'absolute', right: 10, bottom: 10, backgroundColor: A.magenta, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 5 }}><T color="#fff" weight="800" size={13}>{badge}</T></View> : null}
       {children}
     </View>
   );
@@ -39,15 +40,15 @@ export function EventVenues({ e, toast, onChange }) {
   const release = async (b) => { try { await api.post(`/event-bookings/${b.id}/release`, {}); toast('Court released'); refresh(); } catch (x) { toast('' + x.message); } };
   return (
     <>
-      <Btn title={list.data?.length ? 'Book more courts' : 'Find a venue & book courts'} onPress={() => setBook(true)} />
+      <ABtn title={list.data?.length ? 'Book more courts' : 'Find a venue & book courts'} onPress={() => setBook(true)} />
       {list.data?.length ? <FitCard id={id} version={list.data} toast={toast} onChange={refresh} /> : null}
       {!list.data ? <Loading /> : !list.data.length ? (
-        <Empty emoji="🏟️" title="No venue yet" sub="Pick a venue that has courts for your sport, see which days are free, and book them in one go." />
+        <AEmpty emoji="🏟️" title="No venue yet" sub="Pick a venue that has courts for your sport, see which days are free, and book them in one go." />
       ) : list.data.map((v) => {
         const live = v.bookings.filter((b) => b.status === 'confirmed');
         const days = [...new Set(live.map((b) => b.starts_at.slice(0, 10)))];
         return (
-          <Card key={v.id} pad={12}>
+          <ACard key={v.id} pad={12} style={{ gap: 10 }}>
             <Photo v={v} badge={v.summary.total_cents ? moneyIn(v.summary.total_cents, v.currency) : undefined}>
               <View style={{ position: 'absolute', left: 12, bottom: 10, right: 90 }}>
                 <T color="#fff" weight="800" size={18} numberOfLines={1}>{v.name}</T>
@@ -55,21 +56,26 @@ export function EventVenues({ e, toast, onChange }) {
               </View>
               {v.chosen ? <View style={{ position: 'absolute', left: 10, top: 10, backgroundColor: 'rgba(255,255,255,0.92)', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 }}><T size={11} weight="800" color="#0F172A">EVENT VENUE</T></View> : null}
             </Photo>
-            <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
-              <Tag label={`${v.summary.courts} court${v.summary.courts === 1 ? '' : 's'}`} color={c.cyanSoft} />
-              <Tag label={`${v.summary.slots} booking${v.summary.slots === 1 ? '' : 's'}`} color={c.violetSoft} />
-              {v.requests.map((r) => <Tag key={r.id} label={`request ${r.status}`} color={c.pinkSoft} />)}
+            <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+              <ATag tone={A.cyan} label={`${v.summary.courts} court${v.summary.courts === 1 ? '' : 's'}`} />
+              <ATag tone={A.violet} label={`${v.summary.slots} booking${v.summary.slots === 1 ? '' : 's'}`} />
+              {v.requests.map((r) => <ATag key={r.id} tone={A.magenta} label={`request ${r.status}`} />)}
             </View>
             {days.map((d) => (
-              <View key={d} style={{ marginTop: 10, gap: 6 }}>
-                <T weight="700" size={13} color={c.mute}>{fmtDay(d)}</T>
+              <View key={d} style={{ gap: 6 }}>
+                <AT weight="800" size={13} color={A.mute}>{fmtDay(d)}</AT>
                 {live.filter((b) => b.starts_at.slice(0, 10) === d).map((b) => (
-                  <Row key={b.id} title={b.resource_name} sub={`${fmtTime(b.starts_at, v.timezone)} – ${fmtTime(b.ends_at, v.timezone)}${b.price_cents ? ` · ${moneyIn(b.price_cents, v.currency)}` : ''}`}
-                    right={new Date(b.starts_at) > new Date() ? <Btn small title="Release" color={c.paper} ink={c.ink} onPress={() => release(b)} /> : <Tag label="past" />} />
+                  <View key={b.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: A.panel2, borderRadius: 14, padding: 10 }}>
+                    <View style={{ flex: 1 }}>
+                      <AT size={14} weight="800">{b.resource_name}</AT>
+                      <AT size={12} weight="600" color={A.mute}>{fmtTime(b.starts_at, v.timezone)} – {fmtTime(b.ends_at, v.timezone)}{b.price_cents ? ` · ${moneyIn(b.price_cents, v.currency)}` : ''}</AT>
+                    </View>
+                    {new Date(b.starts_at) > new Date() ? <ABtn small tone="ghost" title="Release" onPress={() => release(b)} /> : <ATag tone={A.mute} label="past" />}
+                  </View>
                 ))}
               </View>
             ))}
-          </Card>
+          </ACard>
         );
       })}
       {book ? <BookSheet e={e} toast={toast} onClose={() => setBook(false)} onBooked={() => { setBook(false); refresh(); }} /> : null}
@@ -77,7 +83,7 @@ export function EventVenues({ e, toast, onChange }) {
   );
 }
 
-const SEV = { high: [c.redSoft, '⚠️'], medium: [c.sunSoft, '⚡'], info: [c.cyanSoft, 'ℹ️'] };
+const SEV = { high: [A.red, '⚠️'], medium: [A.sun, '⚡'], info: [A.cyan, 'ℹ️'] };
 
 /** Does the booked court time match what the event plays? Wasted time before the first game / after the last one is highlighted with the saving. */
 function FitCard({ id, version, toast, onChange }) {
@@ -92,27 +98,27 @@ function FitCard({ id, version, toast, onChange }) {
     try { for (const bid of ids) await api.post(`/event-bookings/${bid}/release`, { reason: 'Idle slot released after the efficiency check' }); toast(`${ids.length} idle slot${ids.length === 1 ? '' : 's'} released`); onChange?.(); } catch (x) { toast('' + x.message); } finally { setBusy(false); }
   };
   return (
-    <Card color={f.rating === 'efficient' ? c.limeSoft : f.rating === 'wasteful' ? c.redSoft : c.sunSoft} pad={14}>
-      <T weight="800" size={16}>{f.rating === 'efficient' ? '✅' : f.rating === 'wasteful' ? '⚠️' : '⚡'} Schedule & budget fit</T>
-      <T style={{ marginTop: 4 }}>{f.headline}</T>
-      {f.totals.booked_cents ? <T size={12} color={c.mute} style={{ marginTop: 4 }}>{money(f.totals.booked_cents, cur)} booked · {f.totals.utilisation_pct}% in use{f.totals.wasted_cents ? ` · ${money(f.totals.wasted_cents, cur)} wasted` : ''}</T> : null}
-      <View style={{ gap: 8, marginTop: 10 }}>
-        {f.findings.map((x, k) => <View key={k} style={{ backgroundColor: SEV[x.severity][0], borderRadius: 12, padding: 10 }}><T size={13}>{SEV[x.severity][1]} {x.message}</T></View>)}
+    <ACard tone={f.rating === 'efficient' ? A.green : f.rating === 'wasteful' ? A.red : A.sun} style={{ gap: 8 }}>
+      <AT size={16} weight="900">{f.rating === 'efficient' ? '✅' : f.rating === 'wasteful' ? '⚠️' : '⚡'} Schedule & budget fit</AT>
+      <AT size={14} weight="600">{f.headline}</AT>
+      {f.totals.booked_cents ? <AT size={12} weight="600" color={A.mute}>{money(f.totals.booked_cents, cur)} booked · {f.totals.utilisation_pct}% in use{f.totals.wasted_cents ? ` · ${money(f.totals.wasted_cents, cur)} wasted` : ''}</AT> : null}
+      <View style={{ gap: 8 }}>
+        {f.findings.map((x, k) => <View key={k} style={{ backgroundColor: `${SEV[x.severity][0]}22`, borderRadius: 12, padding: 10, borderWidth: 1, borderColor: `${SEV[x.severity][0]}66` }}><AT size={13} weight="600">{SEV[x.severity][1]} {x.message}</AT></View>)}
         {f.venues.filter((v) => v.compare.length > 1).map((v) => {
           const keep = v.compare[0], rel = v.compare[1];
           return (
             <View key={v.venue_id} style={{ gap: 6 }}>
-              <T weight="700" size={13}>{v.venue_name}: compare</T>
+              <AT weight="800" size={13}>{v.venue_name}: compare</AT>
               <View style={{ flexDirection: 'row', gap: 8 }}>
-                <View style={{ flex: 1, backgroundColor: c.paper, borderRadius: 12, padding: 10 }}><T size={12} color={c.mute} weight="700">{keep.label}</T><T weight="800">{money(keep.cost_cents, v.currency)}</T><T size={12} color={c.red}>{money(keep.wasted_cents, v.currency)} wasted</T></View>
-                <View style={{ flex: 1, backgroundColor: c.paper, borderRadius: 12, padding: 10, borderWidth: 2, borderColor: c.mint }}><T size={12} color={c.mute} weight="700">{rel.label} · recommended</T><T weight="800">{money(rel.cost_cents, v.currency)}</T><T size={12} color={c.mint}>saves up to {money(rel.saves_cents, v.currency)}</T></View>
+                <View style={{ flex: 1, backgroundColor: A.panel2, borderRadius: 12, padding: 10 }}><AT size={12} color={A.mute} weight="700">{keep.label}</AT><AT weight="800">{money(keep.cost_cents, v.currency)}</AT><AT size={12} color={A.red}>{money(keep.wasted_cents, v.currency)} wasted</AT></View>
+                <View style={{ flex: 1, backgroundColor: A.panel2, borderRadius: 12, padding: 10, borderWidth: 2, borderColor: A.green }}><AT size={12} color={A.mute} weight="700">{rel.label} · recommended</AT><AT weight="800">{money(rel.cost_cents, v.currency)}</AT><AT size={12} color={A.green}>saves up to {money(rel.saves_cents, v.currency)}</AT></View>
               </View>
-              <Btn small title={`Release ${rel.release_booking_ids.length} idle slot${rel.release_booking_ids.length === 1 ? '' : 's'}`} loading={busy} onPress={() => releaseAll(rel.release_booking_ids)} style={{ alignSelf: 'flex-start' }} />
+              <ABtn small title={`Release ${rel.release_booking_ids.length} idle slot${rel.release_booking_ids.length === 1 ? '' : 's'}`} loading={busy} onPress={() => releaseAll(rel.release_booking_ids)} style={{ alignSelf: 'flex-start' }} />
             </View>
           );
         })}
       </View>
-    </Card>
+    </ACard>
   );
 }
 

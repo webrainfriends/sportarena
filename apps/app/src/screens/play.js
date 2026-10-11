@@ -92,7 +92,7 @@ export function Play() {
         fields={[{ key: 'name', label: 'Team name' }, { key: 'sport', label: 'Sport', type: 'sport' }, { key: 'description', label: 'About the team', type: 'multiline', optional: true },
           { key: 'emoji', label: 'Mascot emoji', optional: true }, { key: 'color', label: 'Team colour', type: 'chips', optional: true, options: TEAM_COLOURS }, { key: 'city', label: 'City', optional: true }]}
         onSubmit={async (v) => { const t = await api.post('/teams', v); list.reload(); push('TeamWorkspace', { id: t.id }); return 'Team created — invite your players from the Roster tab'; }} />
-      <CreateEvent visible={form === 'event'} onClose={() => setForm(null)} onCreated={(e) => { list.reload(); push('EventPlan', { id: e.id }); }} />
+      <CreateEvent visible={form === 'event'} onClose={() => setForm(null)} onCreated={(e) => { list.reload(); push('EventCommand', { id: e.id }); }} />
     </Screen>
   );
 }
@@ -129,7 +129,7 @@ export function Event({ id }) {
       </GradCard>
       {e.description ? <T style={{ marginTop: 12 }}>{e.description}</T> : null}
       {isOrg ? <Btn title="⚡ Command centre" color={c.violet} onPress={() => push('EventCommand', { id })} style={{ marginTop: 14 }} /> : null}
-      {isOrg ? <Btn title="Plan, contact & budget" color={c.pink} onPress={() => push('EventPlan', { id })} style={{ marginTop: 14 }} /> : null}
+      {isOrg ? <Btn title="⚡ Event console" color={c.violet} onPress={() => push('EventCommand', { id })} style={{ marginTop: 14 }} /> : null}
       {e.sport === 'Multi-sport games' ? <Btn title={isOrg ? 'Run the games programme' : 'Open the games programme'} color={c.violet} onPress={() => push('Games', { id })} style={{ marginTop: 14 }} /> : null}
 
       {e.status === 'open' && !isOrg && !e.entrants.some((x) => x.user_id === user.id || eligible.some((t) => t.id === x.team_id)) ? <Btn title="Join this event" onPress={() => setJoining(true)} style={{ marginTop: 14 }} /> : null}
@@ -137,7 +137,6 @@ export function Event({ id }) {
       {isOrg ? (
         <Card color={c.limeSoft} style={{ marginTop: 14 }}>
           <T weight="900" size={16}>Organizer tools</T>
-          <Btn small title="Tournament console" color={c.violet} onPress={() => push('EventAdmin', { id })} style={{ marginTop: 8, alignSelf: 'flex-start' }} />
           {entries.data?.filter((x) => x.status === 'pending').map((x) => (
             <View key={x.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10 }}>
               <T weight="800" style={{ flex: 1 }}>{x.team_name ?? x.display_name} wants in</T>
