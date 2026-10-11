@@ -52,6 +52,7 @@ const doctor = async () => {
   const u = await signup(['doctor']);
   ok(await api('POST', '/me/sport-profiles', { token: u.token, body: { sport: 'football', role: 'doctor' } }), 201);
   ok(await api('POST', '/me/provider-profile', { token: u.token, body: { provider_type: 'doctor', consult_fee_cents: 120000 } }));
+  await pool.query("INSERT INTO verification_cases(type, subject_type, subject_id, requested_by, status, rules_version, decided_at, expires_at) VALUES ('doctor','user',$1,$1,'approved',1,now(), now() + interval '300 days')", [u.id]);   // current credential, as clinical actions now require
   return u;
 };
 const hire = async (athlete, coach) => ok(await api('POST', '/hires', { token: athlete.token, body: { coach_id: coach.id, sport: 'football', starts_at: inFuture(30 + slot++, 9), duration_min: 60 } }), 201);
