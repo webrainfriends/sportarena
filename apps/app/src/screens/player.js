@@ -25,8 +25,8 @@ const Pill = ({ label, fg = c.mute, bg = c.violetSoft }) => (
 );
 
 const FormDots = ({ form }) => (
-  <View style={{ flexDirection: 'row', gap: 5, alignItems: 'center' }}>
-    {form.length === 0 ? <T size={12} color={c.mute}>No matches yet — played ones show up here</T> : [...form].reverse().map((r, n) => {
+  <View style={{ flexDirection: 'row', gap: 5, alignItems: 'center', flexWrap: 'wrap', flexShrink: 1 }}>
+    {form.length === 0 ? <T size={12} color={c.mute}>No matches yet</T> : [...form].reverse().map((r, n) => {
       const [l, fg, bg] = RESULT[r] ?? ['–', c.mute, c.violetSoft];
       return <View key={n} style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: bg, alignItems: 'center', justifyContent: 'center' }}><T weight="800" size={11} color={fg}>{l}</T></View>;
     })}
@@ -68,30 +68,26 @@ export function SportCard({ p, width, onOpen, onDefault, onLog, selected }) {
     <Pressable onPress={onOpen} style={({ pressed }) => [{ width }, pressed ? { opacity: 0.94, transform: [{ scale: 0.99 }] } : null]}>
       <View style={{ backgroundColor: c.paper, borderRadius: 20, borderWidth: p.is_default || selected ? 2 : 1, borderColor: selected ? c.ink : p.is_default ? tone[0] : c.line, overflow: 'hidden', ...(Platform.OS === 'web' ? { boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 8px 24px rgba(15,23,42,0.07)' } : { elevation: 2 }) }}>
         <View style={{ height: 6, backgroundColor: tone[0] }} />
-        <View style={{ padding: 16, gap: 14 }}>
+        <View style={{ padding: 14, gap: 12 }}>
           <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
-            <View style={{ width: 52, height: 52, borderRadius: 16, backgroundColor: tone[1], alignItems: 'center', justifyContent: 'center' }}>
-              <T size={28}>{p.sport_emoji}</T>
+            <View style={{ width: 48, height: 48, borderRadius: 15, backgroundColor: tone[1], alignItems: 'center', justifyContent: 'center' }}>
+              <T size={26}>{p.sport_emoji}</T>
             </View>
             <View style={{ flex: 1, gap: 4 }}>
-              <T weight="800" size={18} style={{ letterSpacing: -0.3 }}>{p.sport}</T>
+              <T weight="800" size={18} numberOfLines={1} style={{ letterSpacing: -0.3 }}>{p.sport}</T>
               <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
                 <Pill label={nice(p.role)} fg={tone[2]} bg={tone[1]} />
                 <Pill label={nice(p.level)} />
               </View>
             </View>
-            {p.is_default ? <Pill label="★ DEFAULT" fg="#fff" bg={tone[0]} /> : (
-              <Pressable onPress={onDefault} hitSlop={8} style={{ borderWidth: 1, borderColor: c.line, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 }}>
-                <T weight="700" size={11} color={c.mute}>☆ Make default</T>
-              </Pressable>
-            )}
+            <T size={22} color={c.mute}>›</T>
           </View>
           {line ? <T size={13} color={c.mute} weight="600">{line}</T> : null}
           {p.official_summary?.matches ? <Pill label={`✓ ${p.official_summary.matches} OFFICIAL · ${s.matches - p.official_summary.matches} LOGGED BY YOU`} fg={tone[2]} bg={tone[1]} /> : null}
           <View style={{ flexDirection: 'row', gap: 8 }}>
             <Stat value={s.matches} label="MATCHES" tone={tone} />
             <Stat value={`${s.wins}-${s.draws}-${s.losses}`} label="W-D-L" />
-            <Stat value={fmt(s.avg_rating)} label="AVG RATING" />
+            <Stat value={fmt(s.avg_rating)} label="RATING" />
           </View>
           {top.length ? (
             <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
@@ -102,11 +98,38 @@ export function SportCard({ p, width, onOpen, onDefault, onLog, selected }) {
               ))}
             </View>
           ) : null}
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <FormDots form={p.form} />
-            <Pressable onPress={onLog} hitSlop={8}><T weight="800" size={13} color={tone[0]}>+ Log match</T></Pressable>
+          {s.matches > 0 ? <FormDots form={p.form} /> : null}
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <Pressable onPress={onLog} style={{ flex: 1, minHeight: 44, borderRadius: 12, backgroundColor: tone[1], alignItems: 'center', justifyContent: 'center' }}>
+              <T weight="800" size={13.5} color={tone[2]}>+ Log match</T>
+            </Pressable>
+            {p.is_default ? (
+              <View style={{ flex: 1, minHeight: 44, borderRadius: 12, backgroundColor: tone[0], alignItems: 'center', justifyContent: 'center' }}><T weight="800" size={13} color="#fff">★ Default</T></View>
+            ) : (
+              <Pressable onPress={onDefault} style={{ flex: 1, minHeight: 44, borderRadius: 12, borderWidth: 1, borderColor: c.line, alignItems: 'center', justifyContent: 'center' }}>
+                <T weight="700" size={13} color={c.mute}>☆ Make default</T>
+              </Pressable>
+            )}
           </View>
         </View>
+      </View>
+    </Pressable>
+  );
+}
+
+/** Compact one-line sport row — the rail on wide screens, where the selected sport's full page sits beside it. */
+function SportRow({ p, selected, onPress }) {
+  const tone = toneFor(p.sport_slug);
+  const s = p.summary;
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => [{ opacity: pressed ? 0.9 : 1 }]}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 16, backgroundColor: selected ? tone[1] : c.paper, borderWidth: selected ? 2 : 1, borderColor: selected ? tone[0] : c.line }}>
+        <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: tone[1], alignItems: 'center', justifyContent: 'center' }}><T size={24}>{p.sport_emoji}</T></View>
+        <View style={{ flex: 1 }}>
+          <T weight="800" size={16} numberOfLines={1}>{p.sport}</T>
+          <T size={12} color={c.mute} numberOfLines={1}>{nice(p.role)} · {nice(p.level)} · {s.matches} match{s.matches === 1 ? '' : 'es'}</T>
+        </View>
+        {p.is_default ? <T size={16} color={tone[0]}>★</T> : null}
       </View>
     </Pressable>
   );
@@ -172,7 +195,7 @@ function LogMatchSheet({ p, onClose, onDone }) {
 
 function MySports() {
   const { push } = useNav();
-  const { tablet } = useLayout();
+  const { width: winW, phone } = useLayout();
   const { gap, w } = useCols();
   const list = useLoad(() => api.get('/me/sport-profiles'), []);
   const detected = useLoad(() => api.get('/me/detected-sports'), []);
@@ -183,18 +206,18 @@ function MySports() {
   const profiles = list.data ?? [];
   const totals = useMemo(() => profiles.reduce((a, p) => ({ matches: a.matches + p.summary.matches, wins: a.wins + p.summary.wins }), { matches: 0, wins: 0 }), [profiles]);
   const makeDefault = useMakeDefault(list.reload);
-  const split = tablet && profiles.length > 0;
+  const split = winW >= 1024 && profiles.length > 0;
   const selId = profiles.find((p) => p.id === sel)?.id ?? profiles[0]?.id;
 
   const header = (
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 }}>
-      <View style={{ flexShrink: 1 }}>
-        <H1 style={{ fontSize: 30 }}>My sports</H1>
-        <T size={14} color={c.mute} style={{ marginTop: 2 }}>{profiles.length ? `${profiles.length} sport${profiles.length > 1 ? 's' : ''} · ${totals.matches} match${totals.matches === 1 ? "" : "es"} · ${totals.wins} win${totals.wins === 1 ? "" : "s"}` : 'One card per sport you play.'}</T>
+    <View style={{ gap: 12 }}>
+      <View>
+        <H1 style={{ fontSize: phone ? 26 : 30 }}>My sports</H1>
+        <T size={14} color={c.mute} style={{ marginTop: 2 }}>{profiles.length ? `${profiles.length} sport${profiles.length > 1 ? 's' : ''} · ${totals.matches} match${totals.matches === 1 ? '' : 'es'} · ${totals.wins} win${totals.wins === 1 ? '' : 's'}` : 'One card per sport you play.'}</T>
       </View>
       <View style={{ flexDirection: 'row', gap: 8 }}>
-        <Btn small title="Import" color={c.paper} onPress={() => push('ImportMatches', { id: selId ?? profiles[0]?.id })} disabled={!profiles.length} />
-        <Btn small title="+ Add sport" onPress={() => setAdd(true)} />
+        <Btn small title="+ Add sport" onPress={() => setAdd(true)} style={{ flex: 1 }} />
+        <Btn small title="Import matches" color={c.paper} onPress={() => push('ImportMatches', { id: selId ?? profiles[0]?.id })} disabled={!profiles.length} style={{ flex: 1 }} />
       </View>
     </View>
   );
@@ -222,7 +245,10 @@ function MySports() {
         <View style={{ width: 396, borderRightWidth: 1, borderColor: c.line }}>
           <Screen padBottom={130}>
             {header}
-            <View style={{ gap: 14, marginTop: 16 }}>{found}{cards('100%')}</View>
+            <View style={{ gap: 10, marginTop: 16 }}>
+              {found}
+              {profiles.map((p) => <SportRow key={p.id} p={p} selected={p.id === selId} onPress={() => setSel(p.id)} />)}
+            </View>
           </Screen>
         </View>
         <View style={{ flex: 1 }}><SportProfile key={selId} id={selId} embedded onChanged={list.reload} onRemoved={() => { setSel(null); list.reload(); }} /></View>
@@ -231,7 +257,7 @@ function MySports() {
     );
   }
   return (
-    <Screen wide>
+    <Screen>
       {header}
       <View style={{ marginTop: 18 }}>
         {list.loading && !list.data ? <Loading /> : list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : !profiles.length ? (
@@ -271,6 +297,7 @@ export function PlayerHome() {
 
 export function SportProfile({ id, embedded, onChanged, onRemoved }) {
   const { push, back } = useNav();
+  const { phone } = useLayout();
   const { toast } = useSession();
   const prof = useLoad(() => api.get('/me/sport-profiles'), []);
   const [src, setSrc] = useState('all');
@@ -291,18 +318,18 @@ export function SportProfile({ id, embedded, onChanged, onRemoved }) {
 
   return (
     <Screen>
-      <View style={{ backgroundColor: tone[0], borderRadius: 22, padding: 20, overflow: 'hidden' }}>
+      <View style={{ backgroundColor: tone[0], borderRadius: 22, padding: phone ? 16 : 20, overflow: 'hidden' }}>
         <View pointerEvents="none" style={{ position: 'absolute', right: -40, top: -60, width: 200, height: 200, borderRadius: 100, backgroundColor: '#fff', opacity: 0.14 }} />
         <View style={{ flexDirection: 'row', gap: 14, alignItems: 'center' }}>
-          <View style={{ width: 64, height: 64, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.22)', alignItems: 'center', justifyContent: 'center' }}><T size={34}>{p.sport_emoji}</T></View>
+          <View style={{ width: phone ? 56 : 64, height: phone ? 56 : 64, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.22)', alignItems: 'center', justifyContent: 'center' }}><T size={phone ? 30 : 34}>{p.sport_emoji}</T></View>
           <View style={{ flex: 1 }}>
-            <T weight="800" size={26} color="#fff" style={{ letterSpacing: -0.6 }}>{p.sport}</T>
+            <T weight="800" size={phone ? 24 : 26} color="#fff" numberOfLines={1} style={{ letterSpacing: -0.6 }}>{p.sport}</T>
             <T size={14} color="#fff" weight="600" style={{ opacity: 0.9 }}>{[nice(p.role), nice(p.level), p.position, p.jersey_no !== null ? `#${p.jersey_no}` : null, p.club].filter(Boolean).join(' · ')}</T>
             {p.is_default ? <View style={{ marginTop: 6 }}><Pill label="★ DEFAULT SPORT" fg={tone[2]} bg="#fff" /></View> : null}
           </View>
         </View>
-        <View style={{ flexDirection: 'row', gap: 8, marginTop: 16 }}>
-          {[[s.matches, 'MATCHES'], [`${s.wins}-${s.draws}-${s.losses}`, 'W-D-L'], [fmt(s.avg_rating), 'AVG RATING'], [s.minutes, 'MINUTES']].map(([v, l]) => (
+        <View style={{ flexDirection: 'row', gap: 6, marginTop: 14 }}>
+          {[[s.matches, 'MATCHES'], [`${s.wins}-${s.draws}-${s.losses}`, 'W-D-L'], [fmt(s.avg_rating), 'RATING'], [s.minutes, 'MINUTES']].map(([v, l]) => (
             <View key={l} style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.18)', borderRadius: 14, paddingVertical: 10, alignItems: 'center' }}>
               <T weight="800" size={18} color="#fff" style={{ fontVariant: ['tabular-nums'] }}>{v}</T><T weight="700" size={9.5} color="#fff" style={{ letterSpacing: 0.8, opacity: 0.85 }}>{l}</T>
             </View>
@@ -310,11 +337,13 @@ export function SportProfile({ id, embedded, onChanged, onRemoved }) {
         </View>
       </View>
 
-      <View style={{ flexDirection: 'row', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
-        <Btn small title="+ Log match" onPress={() => setLog(true)} />
-        <Btn small title="Import CSV" color={c.paper} onPress={() => push('ImportMatches', { id: p.id })} />
-        <Btn small title="Edit" color={c.paper} onPress={() => setEdit(true)} />
-        {!p.is_default ? <Btn small title="☆ Make default" color={c.paper} onPress={act(() => api.post(`/me/sport-profiles/${p.id}/default`), 'Default updated')} /> : null}
+      <View style={{ gap: 8, marginTop: 14 }}>
+        <Btn title="+ Log match" onPress={() => setLog(true)} />
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <Btn small title="Import CSV" color={c.paper} onPress={() => push('ImportMatches', { id: p.id })} style={{ flex: 1 }} />
+          <Btn small title="Edit" color={c.paper} onPress={() => setEdit(true)} style={{ flex: 1 }} />
+          {!p.is_default ? <Btn small title="☆ Default" color={c.paper} onPress={act(() => api.post(`/me/sport-profiles/${p.id}/default`), 'Default updated')} style={{ flex: 1 }} /> : null}
+        </View>
       </View>
 
       {p.metrics.length ? (
@@ -322,7 +351,7 @@ export function SportProfile({ id, embedded, onChanged, onRemoved }) {
           <H2 style={{ marginTop: 24 }}>Career numbers</H2>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 10 }}>
             {p.metrics.map((m) => (
-              <View key={m.metric} style={{ backgroundColor: c.paper, borderWidth: 1, borderColor: c.line, borderRadius: 16, paddingVertical: 12, paddingHorizontal: 16, minWidth: 104 }}>
+              <View key={m.metric} style={{ backgroundColor: c.paper, borderWidth: 1, borderColor: c.line, borderRadius: 16, paddingVertical: 12, paddingHorizontal: 14, ...(phone ? { flexBasis: '47%', flexGrow: 1 } : { minWidth: 104 }) }}>
                 <T weight="800" size={22} style={{ fontVariant: ['tabular-nums'], letterSpacing: -0.5 }}>{fmt(m.total)}</T>
                 <T weight="700" size={11} color={c.mute} style={{ letterSpacing: 0.5 }}>{nice(m.metric).toUpperCase()}</T>
                 <T size={11} color={c.mute} style={{ marginTop: 2 }}>best {fmt(m.best)} · {m.matches} match{m.matches === 1 ? '' : 'es'}</T>
@@ -349,7 +378,7 @@ export function SportProfile({ id, embedded, onChanged, onRemoved }) {
               <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
                 <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: bg ?? c.violetSoft, alignItems: 'center', justifyContent: 'center' }}><T weight="800" size={15} color={fg ?? c.mute}>{l ?? (m.rank ? `#${m.rank}` : '–')}</T></View>
                 <View style={{ flex: 1, gap: 2 }}>
-                  <T weight="700" size={15}>{title}{m.score_for !== null && m.score_against !== null ? `  ${fmt(m.score_for)}–${fmt(m.score_against)}` : ''}</T>
+                  <T weight="700" size={15} numberOfLines={2}>{title}{m.score_for !== null && m.score_against !== null ? `  ${fmt(m.score_for)}–${fmt(m.score_against)}` : ''}</T>
                   <T size={12} color={c.mute}>{[day(m.played_on + 'T12:00:00'), m.competition, m.venue, m.minutes ? `${m.minutes}'` : null, m.rating !== null ? `★ ${fmt(m.rating)} (your rating)` : null].filter(Boolean).join(' · ')}</T>
                 </View>
               </View>
@@ -359,10 +388,10 @@ export function SportProfile({ id, embedded, onChanged, onRemoved }) {
                 {Object.entries(m.stats).map(([k, v]) => <Pill key={k} label={`${fmt(v)} ${nice(k)}`} fg={tone[2]} bg={tone[1]} />)}
               </View>
               {m.notes ? <T size={13} color={c.mute} style={{ marginTop: 8 }}>{m.notes}</T> : null}
-              <View style={{ flexDirection: 'row', gap: 16, flexWrap: 'wrap', marginTop: 10 }}>
+              <View style={{ flexDirection: 'row', columnGap: 18, rowGap: 12, flexWrap: 'wrap', marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderColor: c.line }}>
                 {official ? (
                   <>
-                    {m.fixture_id ? <Pressable hitSlop={8} onPress={() => push('MatchCentre', { id: m.fixture_id })}><T size={13} weight="700" color={tone[0]}>View match</T></Pressable> : null}
+                    {m.fixture_id ? <Pressable hitSlop={10} onPress={() => push('MatchCentre', { id: m.fixture_id })}><T size={13} weight="700" color={tone[0]}>View match</T></Pressable> : null}
                     {m.event_id ? <Pressable hitSlop={8} onPress={() => push('Event', { id: m.event_id })}><T size={13} weight="700" color={tone[0]}>View event</T></Pressable> : null}
                     <Pressable hitSlop={8} onPress={() => setNote(m)}><T size={13} weight="700" color={c.mute}>{m.notes || m.rating !== null ? 'Edit my note' : 'Add my note / rating'}</T></Pressable>
                     <Pressable hitSlop={8} onPress={() => push('Support', {})}><T size={13} weight="700" color={c.mute}>Report wrong result</T></Pressable>
@@ -380,9 +409,9 @@ export function SportProfile({ id, embedded, onChanged, onRemoved }) {
         })}
       </View>
 
-      <View style={{ marginTop: 28, alignItems: 'flex-start' }}>
-        <Btn small title="Remove this sport" color={c.paper} ink={c.red} onPress={async () => { try { await api.del(`/me/sport-profiles/${p.id}`); toast('Sport removed'); if (embedded) onRemoved?.(); else back(); } catch (e) { toast(e.message); } }} />
-        <T size={12} color={c.mute} style={{ marginTop: 6 }}>Removing a sport deletes the matches you logged under it. Official matches stay on your history and reappear if you add the sport again.</T>
+      <View style={{ marginTop: 32, paddingTop: 18, borderTopWidth: 1, borderColor: c.line, gap: 8 }}>
+        <Btn small title="Remove this sport" color={c.paper} ink={c.red} onPress={async () => { try { await api.del(`/me/sport-profiles/${p.id}`); toast('Sport removed'); if (embedded) onRemoved?.(); else back(); } catch (e) { toast(e.message); } }} style={{ alignSelf: phone ? 'stretch' : 'flex-start' }} />
+        <T size={12} color={c.mute}>Removing a sport deletes the matches you logged under it. Official matches stay on your history and reappear if you add the sport again.</T>
       </View>
 
       {edit ? <EditProfileSheet p={p} onClose={() => setEdit(false)} onDone={reload} /> : null}
