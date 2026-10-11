@@ -63,6 +63,7 @@ import './subject-docs.js';
 import './community.js';
 import './home.js';
 import './athlete-schedule.js';
+import './athlete-performance.js';
 import './passport.js';
 import './athlete-blocks.js';
 import './market.js';
