@@ -160,7 +160,7 @@ export const sportTemplates = {
   badminton: {
     game: [f('discipline', 'Discipline', 'enum', { options: ['singles', 'doubles', 'mixed_doubles'] })],
     participant: [num('games_won', 'Games won', { max: 3 }), num('points_total', 'Total points')],
-    association: [num('smashes', 'Smash winners'), num('service_faults', 'Service faults')],
+    association: [num('smashes', 'Smash winners'), num('net_kills', 'Net kills'), num('winners', 'Winners'), num('unforced_errors', 'Unforced errors'), num('service_faults', 'Service faults')],
   },
   volleyball: {
     game: [f('beach', 'Beach volleyball', 'boolean')],

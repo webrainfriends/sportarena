@@ -5,6 +5,8 @@ import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { encrypt } from '../crypto.js';
 import { csvToObjects } from '../csv.js';
 import { ACTIVITIES_CTE, ACTIVITY_COLS } from '../athlete-history.js';
+import { matchTemplate, matchTypesFor } from '../match-template.js';
+import { sportBySlugOrId } from '../helpers.js';
 
 // ---------- sport profiles (the player's "cards") ----------
 
@@ -158,6 +160,7 @@ const matchCore = z.object({
   minutes: z.preprocess((v) => (v === null || v === '' ? undefined : v), z.coerce.number().int().min(0).max(1000).optional()),
   rating: num.pipe(z.number().min(0).max(10).optional()),
   notes: text(500),
+  match_type: text(30),
 });
 const CORE_KEYS = Object.keys(matchCore.shape);
 
@@ -183,19 +186,18 @@ function normaliseMatch(raw) {
   return { value: { ...m, stats } };
 }
 
-const MATCH_COLS = `m.id, m.sport_profile_id, to_char(m.played_on,'YYYY-MM-DD') AS played_on, m.opponent, m.venue, m.competition, m.result,
-  m.score_for, m.score_against, m.minutes, m.rating, m.notes, m.stats, m.source, m.created_at`;
-const COLS = ['user_id', 'sport_profile_id', 'played_on', 'opponent', 'venue', 'competition', 'result', 'score_for', 'score_against', 'minutes', 'rating', 'notes', 'stats', 'source'];
-const rowParams = (userId, profileId, m, source) => [userId, profileId, m.played_on, m.opponent ?? null, m.venue ?? null, m.competition ?? null, m.result ?? null, m.score_for ?? null, m.score_against ?? null, m.minutes ?? null, m.rating ?? null, m.notes ?? null, JSON.stringify(m.stats), source];
+const COLS = ['user_id', 'sport_profile_id', 'played_on', 'opponent', 'venue', 'competition', 'result', 'score_for', 'score_against', 'minutes', 'rating', 'notes', 'stats', 'source', 'match_type'];
+const rowParams = (userId, profileId, m, source) => [userId, profileId, m.played_on, m.opponent ?? null, m.venue ?? null, m.competition ?? null, m.result ?? null, m.score_for ?? null, m.score_against ?? null, m.minutes ?? null, m.rating ?? null, m.notes ?? null, JSON.stringify(m.stats), source, m.match_type ?? null];
 
 cap({
   name: 'record_match', method: 'POST', path: '/me/matches', tag: 'Player', status: 201,
-  summary: 'Log one match under a sport profile. `stats` holds sport-specific numbers (goals, assists, runs, wickets, …).',
+  summary: 'Log one match under a sport profile. `stats` holds the numbers of the columns from get_match_template for that sport and match type (e.g. smashes for badminton, runs for cricket).',
   input: z.object({
     sport_profile_id: id, played_on: z.string().date(), opponent: z.string().max(80).optional(), venue: z.string().max(80).optional(), competition: z.string().max(80).optional(),
     result: z.enum(['win', 'draw', 'loss']).optional(), score_for: z.number().optional(), score_against: z.number().optional(),
     minutes: z.number().int().min(0).max(1000).optional(), rating: z.number().min(0).max(10).optional(), notes: z.string().max(500).optional(),
     stats: z.record(z.string(), z.number()).default({}),
+    match_type: z.string().regex(/^[a-z][a-z0-9_]{0,29}$/).optional().describe('singles, doubles, t20 … — see get_match_template'),
   }),
   async handler({ user }, i) {
     await ownProfile(user.id, i.sport_profile_id);
@@ -204,6 +206,18 @@ cap({
     if (r.errors) throw badRequest('Invalid match', r.errors);
     const ph = COLS.map((_, n) => `$${n + 1}`).join(',');
     return one(`INSERT INTO player_matches(${COLS.join(',')}) VALUES (${ph}) RETURNING id`, rowParams(user.id, sport_profile_id, r.value, 'manual'));
+  },
+});
+
+cap({
+  name: 'get_match_template', method: 'GET', path: '/sports/:sport/match-template', tag: 'Player',
+  summary: 'The columns to fill in when logging a match of this sport and match type (e.g. badminton singles vs doubles): built from the IPTC Sport Schema statistics and the Olympic / Asian Games programmes, tailored by AI when it is configured and otherwise built in. Also lists the sport\'s match types and how to label the two scores (games won, goals for…). Use the returned keys in `stats`.',
+  input: z.object({ sport: z.string().max(60), match_type: z.string().max(30).optional() }),
+  async handler(_, i) {
+    const sport = await sportBySlugOrId(i.sport);
+    if (!sport) throw notFound('Sport');
+    if (i.match_type && !matchTypesFor(sport).includes(i.match_type)) throw badRequest(`Unknown match type for ${sport.name}. Choose one of: ${matchTypesFor(sport).join(', ')}`);
+    return matchTemplate(sport, i.match_type);
   },
 });
 

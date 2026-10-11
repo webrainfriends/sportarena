@@ -77,7 +77,7 @@ WITH credited AS (
          o.source_type, o.source_id, o.game_id, o.fixture_id, o.event_id, o.sport_id, sp.id AS sport_profile_id, o.kind, o.title,
          o.played_at, (o.played_at AT TIME ZONE 'UTC')::date AS played_on, o.opponent, o.competition, o.venue, o.result, o.rank,
          o.score_for, o.score_against, o.minutes, coalesce(n.rating, lm.rating) AS rating, coalesce(n.notes, lm.notes) AS notes,
-         o.stats, o.recorded_by, o.outcome_type, l.player_match_id AS linked_match_id, o.played_at AS created_at
+         o.stats, o.recorded_by, o.outcome_type, l.player_match_id AS linked_match_id, o.played_at AS created_at, NULL::text AS match_type
     FROM off o
     LEFT JOIN sport_profiles sp ON sp.user_id = $1 AND sp.sport_id = o.sport_id AND sp.role = 'athlete'
     LEFT JOIN player_match_links l ON l.user_id = $1 AND l.source_type = o.source_type AND l.source_id = o.source_id AND l.removed_at IS NULL
@@ -88,7 +88,7 @@ WITH credited AS (
          CASE m.source WHEN 'import' THEN 'imported' ELSE 'manual' END, CASE m.source WHEN 'import' THEN 'imported' ELSE 'self_reported' END,
          'player_match', m.id, NULL::uuid, NULL::uuid, NULL::uuid, sp.sport_id, m.sport_profile_id, 'match', NULL::text,
          (m.played_on + time '12:00')::timestamp AT TIME ZONE 'UTC', m.played_on, m.opponent, m.competition, m.venue, m.result, NULL::int,
-         m.score_for, m.score_against, m.minutes, m.rating, m.notes, m.stats, m.user_id, NULL::text, NULL::uuid, m.created_at
+         m.score_for, m.score_against, m.minutes, m.rating, m.notes, m.stats, m.user_id, NULL::text, NULL::uuid, m.created_at, m.match_type
     FROM player_matches m JOIN sport_profiles sp ON sp.id = m.sport_profile_id
    WHERE m.user_id = $1 AND m.archived_at IS NULL
      AND NOT EXISTS (SELECT 1 FROM player_match_links l JOIN off o ON o.source_type = l.source_type AND o.source_id = l.source_id
@@ -98,5 +98,5 @@ WITH credited AS (
 /** Columns of one logical activity, as the API returns them (the viewer is always the athlete themselves). */
 export const ACTIVITY_COLS = `a.id, a.activity_id, a.source, a.provenance, a.verification, a.source_type, a.source_id, a.game_id, a.fixture_id, a.event_id,
   a.sport_id, a.sport_profile_id, a.kind, a.title, a.played_at, to_char(a.played_on,'YYYY-MM-DD') AS played_on, a.opponent, a.competition, a.venue,
-  a.result, a.rank, a.score_for, a.score_against, a.minutes, a.rating, a.notes, a.stats, a.recorded_by, a.outcome_type, a.linked_match_id, a.created_at,
+  a.result, a.rank, a.score_for, a.score_against, a.minutes, a.rating, a.notes, a.stats, a.recorded_by, a.outcome_type, a.linked_match_id, a.created_at, a.match_type,
   (NOT a.is_official) AS can_delete, false AS can_edit, true AS can_add_personal_note`;
