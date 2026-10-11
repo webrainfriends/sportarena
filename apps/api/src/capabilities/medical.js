@@ -9,6 +9,7 @@ import { paymentsEnabled, refundFor } from '../payments/service.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { audit, isAdmin, mustFind, PUBLIC_USER } from '../helpers.js';
 import { decrypt, encrypt } from '../crypto.js';
+import { clinicalCredential, requireVerifiedProvider } from '../clinical-access.js';
 import { guardianLink, hasConsent, requireConsent } from '../youth.js';
 
 const dt = z.string().datetime({ offset: true });
@@ -35,6 +36,7 @@ cap({
     const p = await one("SELECT 1 FROM sport_profiles WHERE user_id=$1 AND role IN ('physio','doctor') UNION SELECT 1 FROM provider_profiles WHERE user_id=$1", [i.provider_id]);
     if (!p) throw badRequest('That person is not a registered physio or doctor');
     if (Date.parse(i.starts_at) < Date.now()) throw badRequest('Choose a time in the future');
+    await requireVerifiedProvider(i.provider_id, { action: 'book_appointment', athleteId: user.id, forOther: true });
     return tx(async (c) => {
       // one booking at a time per provider so two people cannot take the same slot
       await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`appt:${i.provider_id}`]);
@@ -88,6 +90,13 @@ cap({
       const a = (await c.query('SELECT * FROM appointments WHERE id=$1 FOR UPDATE', [i.id])).rows[0];
       if (!a) throw notFound('Appointment');
       const isProvider = a.provider_id === user.id, isAthlete = a.athlete_id === user.id;
+      if (!isProvider && !isAthlete && !isAdmin(user)) throw forbidden();
+      if (i.status !== 'cancelled' && !isProvider) throw forbidden('Only the provider can confirm or complete');
+      // confirming or completing is a clinical action: needs a current credential (completing an existing appointment may use the configured grace)
+      if (i.status !== 'cancelled' && isProvider) await requireVerifiedProvider(user.id, { action: 'update_appointment', athleteId: a.athlete_id, allowGrace: i.status === 'completed' });
+      if (!NEXT[a.status].includes(i.status)) throw conflict(`A ${a.status} appointment cannot become ${i.status}`);
+      if (i.status === 'confirmed' && a.payment_status === 'unpaid') throw conflict('Waiting for the athlete to pay');
+      if (i.status === 'completed' && a.payment_status === 'unpaid') throw conflict('This appointment has not been paid for');
       assertTransition(a, i.status, { isProvider, isCustomer: isAthlete, isAdmin: isAdmin(user) }, { noun: 'appointment', customerWord: 'athlete' });
       await setTransitionContext(c, user.id, i.reason);
       let payment = a.payment_status;
@@ -127,6 +136,8 @@ cap({
     if (!p) throw badRequest('That person is not a registered physio or doctor');
     if (i.provider_id === user.id) throw badRequest('You cannot grant access to yourself');
     await requireConsent(user.id, 'medical', 'sharing health records');
+    // consent is the athlete's choice even for a provider whose credential lapsed, but they are told, and the provider cannot use it until verified
+    const cred = await clinicalCredential(i.provider_id, { athleteId: user.id });
     const expires = i.expires_in_days ? new Date(Date.now() + i.expires_in_days * 864e5) : null;
     return tx(async (c) => {
       await c.query(
@@ -135,7 +146,7 @@ cap({
       await logGrant(c, user.id, i.provider_id, 'grant', i.scope, expires);
       await audit(c, user.id, 'grant_medical', 'users', i.provider_id);
       await notify(c, i.provider_id, { kind: 'consent_granted', title: 'An athlete shared access with you', body: 'Open Health to see who.', data: { athlete_id: user.id } });
-      return { ok: true, scope: i.scope, expires_at: expires };
+      return { ok: true, scope: i.scope, expires_at: expires, provider_verified: cred.ok, ...(cred.ok ? {} : { warning: `This ${cred.type}'s professional verification is not current (${cred.reason}). They cannot view or write records until it is renewed; your consent stays in place.`, credential_reason: cred.reason }) };
     });
   },
 });
@@ -180,8 +191,9 @@ cap({
 cap({
   name: 'add_medical_record', method: 'POST', path: '/medical/records', tag: 'Health', auth: ['physio', 'doctor'], status: 201,
   summary: 'Provider writes an injury/checkup/clearance/rehab note for an athlete who granted access. Text is encrypted.',
-  input: z.object({ athlete_id: id, kind: z.enum(['injury', 'checkup', 'clearance', 'rehab', 'note']), clearance: z.enum(['cleared', 'restricted', 'not_cleared']).optional(), summary: z.string().min(1).max(500), details: z.string().max(5000).optional() }),
+  input: z.object({ athlete_id: id, sport_id: id.optional().describe('the sport this concerns; needed when your credential is limited to one sport and the athlete plays several'), kind: z.enum(['injury', 'checkup', 'clearance', 'rehab', 'note']), clearance: z.enum(['cleared', 'restricted', 'not_cleared']).optional(), summary: z.string().min(1).max(500), details: z.string().max(5000).optional() }),
   async handler({ user }, i) {
+    await requireVerifiedProvider(user.id, { action: 'add_medical_record', athleteId: i.athlete_id, sportId: i.sport_id ?? null });
     if (!(await hasGrant(i.athlete_id, user.id))) throw forbidden('The athlete has not granted you access');
     const r = await one('INSERT INTO medical_records(athlete_id, provider_id, kind, clearance, summary_enc, details_enc) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, athlete_id, kind, clearance, created_at',
       [i.athlete_id, user.id, i.kind, i.clearance ?? null, encrypt(i.summary, 'medical_records.summary'), encrypt(i.details, 'medical_records.details')]);
@@ -196,7 +208,10 @@ cap({
   input: z.object({ athlete_id: id.optional(), ...page }),
   async handler({ user }, i) {
     const athlete = i.athlete_id ?? user.id;
-    if (athlete !== user.id && !(await hasGrant(athlete, user.id))) throw forbidden('The athlete has not granted you access');
+    if (athlete !== user.id) {
+      await requireVerifiedProvider(user.id, { action: 'list_medical_records', athleteId: athlete });
+      if (!(await hasGrant(athlete, user.id))) throw forbidden('The athlete has not granted you access');
+    }
     const rows = await many('SELECT r.*, p.display_name AS provider_name FROM medical_records r JOIN users p ON p.id=r.provider_id WHERE r.athlete_id=$1 ORDER BY r.created_at DESC LIMIT $2 OFFSET $3', [athlete, i.limit, i.offset]);
     await audit(null, user.id, 'read_clinical', 'medical_records', athlete);
     return rows.map(({ summary_enc, details_enc, ...r }) => ({ ...r, summary: decrypt(summary_enc, 'medical_records.summary'), details: decrypt(details_enc, 'medical_records.details') }));
@@ -208,12 +223,24 @@ cap({
   summary: 'Fit-to-play status only (cleared / restricted / not_cleared) — no clinical detail. Visible to the athlete, consented providers and owners of teams the athlete plays for.',
   input: z.object({ id }),
   async handler({ user }, i) {
-    const ok = isAdmin(user) || user.id === i.id || !!(await guardianLink(user.id, i.id)) || (await hasGrant(i.id, user.id, 'clearance')) ||
+    const ok = isAdmin(user) || user.id === i.id || !!(await guardianLink(user.id, i.id)) || ((await hasGrant(i.id, user.id, 'clearance')) && (await clinicalCredential(user.id, { athleteId: i.id })).ok) ||
       !!(await one("SELECT 1 FROM team_members m JOIN teams t ON t.id=m.team_id WHERE m.user_id=$1 AND m.status='active' AND (t.owner_id=$2 OR EXISTS (SELECT 1 FROM team_members c WHERE c.team_id=t.id AND c.user_id=$2 AND c.role IN ('coach','manager','captain') AND c.status='active'))", [i.id, user.id]));
     if (!ok) throw forbidden();
     // for a young person, anyone but themselves, their guardians and the platform team also needs current medical consent
     if (!isAdmin(user) && user.id !== i.id && !(await guardianLink(user.id, i.id))) await requireConsent(i.id, 'medical', 'sharing fit-to-play status');
     const r = await one("SELECT clearance, created_at FROM medical_records WHERE athlete_id=$1 AND clearance IS NOT NULL ORDER BY created_at DESC LIMIT 1", [i.id]);
     return { athlete_id: i.id, status: r?.clearance ?? 'unknown', as_of: r?.created_at ?? null };
+  },
+});
+
+cap({
+  name: 'get_my_clinical_status', method: 'GET', path: '/medical/credential', tag: 'Health', auth: ['physio', 'doctor'],
+  summary: 'Provider: is your professional verification current for clinical actions (records, follow-ups, confirming appointments, incidents)? Returns state (verified / expired / revoked / pending / not_verified), expiry, the grace and emergency policy, and the renewal route (`submit_verification`, linked by previous_case_id). Checked live, so a lapse or revocation shows immediately.',
+  input: z.object({}),
+  async handler({ user }) {
+    const c = await clinicalCredential(user.id, { allowGrace: true });
+    return { verified: c.ok && !c.grace, can_act: c.ok, state: c.ok ? (c.grace ? 'grace' : 'verified') : c.reason, profession: c.type, case_id: c.case_id, expires_at: c.expires_at,
+      grace_days: config.clinical.graceDays, emergency_exception: 'Event doctors/physios may log serious or emergency incidents with a stated reason while unverified; this is audited.',
+      renewal: c.ok && !c.grace ? null : c.renewal };
   },
 });

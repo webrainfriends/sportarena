@@ -51,6 +51,13 @@ export const config = {
     expoUrl: env.EXPO_PUSH_URL ?? 'https://exp.host/--/api/v2/push/send', expoToken: env.EXPO_ACCESS_TOKEN,
     vapid: { publicKey: env.VAPID_PUBLIC_KEY, privateKey: env.VAPID_PRIVATE_KEY, subject: env.VAPID_SUBJECT ?? 'mailto:admin@sportarena.local' },
   },
+  // Clinical actions need a current doctor/physio verification case (src/clinical-access.js, docs/verification.md).
+  clinical: {
+    // Days after an EXPIRED (never revoked) credential during which a provider may still complete existing appointments. 0 = no grace.
+    graceDays: Number(env.CLINICAL_GRACE_DAYS ?? 0),
+    // Optional allow-list of credential jurisdictions, e.g. "IN,GB". Empty = any (including unrecorded).
+    jurisdictions: (env.CLINICAL_JURISDICTIONS ?? '').split(',').map((s) => s.trim().toUpperCase()).filter(Boolean),
+  },
   // Background worker for booking reminders + email dispatch. 0 disables it (tests do).
   notifyIntervalSeconds: Number(env.NOTIFY_INTERVAL_SECONDS ?? 60),
   // Payments (redirect checkout; no card data ever touches this server). A provider is enabled when its keys are set.

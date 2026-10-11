@@ -2,6 +2,7 @@
 // announcements, certificates, trophies and the organiser dashboard.
 import { randomBytes } from 'node:crypto';
 import { z } from 'zod';
+import { CLINICAL_TYPES, requireVerifiedProvider } from '../clinical-access.js';
 import { cap, id, page } from '../registry.js';
 import { one, many, tx, pool } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
@@ -265,6 +266,7 @@ cap({
   summary: 'On-site doctor, physio or first aider logs an injury/illness. Clinical text is encrypted; every read is audit-logged. A "not_cleared" outcome puts the participant on a medical hold (they cannot be nominated and are flagged on the timetable) until a later "cleared".',
   input: z.object({
     id, participant_id: id.optional(), session_id: id.optional(), severity: z.enum(['minor', 'moderate', 'serious', 'emergency']), outcome: z.enum(['treated_on_site', 'referred', 'ambulance', 'hospital']),
+    emergency_reason: z.string().min(5).max(300).optional().describe('Only for serious/emergency incidents: why you are logging without a current verified credential. Audited and kept with the incident.'),
     return_to_play: z.enum(['cleared', 'restricted', 'not_cleared']).optional(), summary: z.string().min(2).max(500), details: z.string().max(5000).optional(), occurred_at: dt.optional(),
   }),
   async handler({ user }, i) {
@@ -272,6 +274,14 @@ cap({
       const { ev, scope } = await eventAccess(c, user, i.id);
       const medic = scope.staff.some((s) => MEDICAL_ROLES.includes(s.role));
       if (!medic && !isAdmin(user)) throw forbidden('Only the event\'s accepted doctors, physios and first aiders can log incidents');
+      // doctors/physios on cover need a current credential; first aiders have no platform credential. Emergencies may proceed with a stated reason (audited, stored).
+      const proTypes = [...new Set(scope.staff.map((s) => s.role).filter((r) => CLINICAL_TYPES.includes(r)))];
+      let override = false;
+      if (proTypes.length && !(isAdmin(user) && !medic)) {
+        const urgent = ['serious', 'emergency'].includes(i.severity);
+        const cred = await requireVerifiedProvider(user.id, { action: 'report_medical_incident', types: proTypes, emergencyReason: urgent ? i.emergency_reason : null });
+        override = !!cred.override;
+      }
       let p = null;
       if (i.participant_id) {
         p = (await c.query('SELECT * FROM event_participants WHERE id=$1 AND event_id=$2 FOR UPDATE', [i.participant_id, ev.id])).rows[0];
@@ -279,9 +289,9 @@ cap({
       }
       if (i.session_id && !(await c.query('SELECT 1 FROM event_sessions WHERE id=$1 AND event_id=$2', [i.session_id, ev.id])).rowCount) throw badRequest('Unknown session');
       const row = (await c.query(
-        `INSERT INTO event_medical_incidents(event_id, session_id, participant_id, reporter_id, severity, outcome, return_to_play, summary_enc, details_enc, occurred_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,coalesce($10, now())) RETURNING id, event_id, session_id, participant_id, severity, outcome, return_to_play, occurred_at, created_at`,
-        [ev.id, i.session_id ?? null, i.participant_id ?? null, user.id, i.severity, i.outcome, i.return_to_play ?? null, encrypt(i.summary, 'event_medical_incidents.summary'), encrypt(i.details, 'event_medical_incidents.details'), i.occurred_at ?? null])).rows[0];
+        `INSERT INTO event_medical_incidents(event_id, session_id, participant_id, reporter_id, severity, outcome, return_to_play, summary_enc, details_enc, occurred_at, credential_override, credential_override_enc)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,coalesce($10, now()),$11,$12) RETURNING id, event_id, session_id, participant_id, severity, outcome, return_to_play, occurred_at, created_at`,
+        [ev.id, i.session_id ?? null, i.participant_id ?? null, user.id, i.severity, i.outcome, i.return_to_play ?? null, encrypt(i.summary, 'event_medical_incidents.summary'), encrypt(i.details, 'event_medical_incidents.details'), i.occurred_at ?? null, override, override ? encrypt(i.emergency_reason, 'event_medical_incidents.override') : null])).rows[0];
       await audit(c, user.id, 'write_clinical', 'event_medical_incidents', row.id);
       if (p && i.return_to_play) {
         const hold = i.return_to_play === 'not_cleared';
