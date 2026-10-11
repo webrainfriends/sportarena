@@ -12,9 +12,10 @@ const asItem = (kind) => (x) => (kind === 'team'
 
 /**
  * @param {{ kind?: 'person'|'team', label: string, value: {id:string,label:string}[], onChange: (v: any[]) => void, multi?: boolean,
- *           options?: any[], sport?: string, role?: string, optional?: boolean, mine?: boolean }} p
+ *           options?: any[], sport?: string, role?: string, optional?: boolean, mine?: boolean, noun?: string }} p
  */
-export function EntityPicker({ kind = 'person', label, value = [], onChange, multi = false, options, sport, role, optional, mine }) {
+export function EntityPicker({ kind = 'person', label, value = [], onChange, multi = false, options, sport, role, optional, mine, noun }) {
+  const what = noun ?? (kind === 'team' ? 'team' : 'person');
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
   const [found, setFound] = useState([]);
@@ -45,10 +46,10 @@ export function EntityPicker({ kind = 'person', label, value = [], onChange, mul
       <AT size={12} weight="800" color={A.mute} style={{ letterSpacing: 0.6 }}>{`${label}${optional ? ' (OPTIONAL)' : ''}`.toUpperCase()}</AT>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
         {value.map((v) => <AChip key={v.id} active label={`${v.emoji ?? ''} ${v.label} ✕`.trim()} onPress={() => onChange(value.filter((x) => x.id !== v.id))} />)}
-        <AChip label={value.length && !multi ? 'Change' : `+ ${multi ? 'Add' : 'Pick'} ${kind === 'team' ? 'team' : 'person'}`} onPress={() => { setQ(''); setOpen(true); }} />
+        <AChip label={value.length && !multi ? 'Change' : `+ ${multi ? 'Add' : 'Pick'} ${what}`} onPress={() => { setQ(''); setOpen(true); }} />
       </View>
       <Sheet visible={open} onClose={() => setOpen(false)} title={label}>
-        <Field value={q} onChangeText={setQ} placeholder={kind === 'team' ? 'Search teams…' : 'Search by name or @handle…'} />
+        <Field value={q} onChangeText={setQ} placeholder={noun ? `Search ${noun}s…` : kind === 'team' ? 'Search teams…' : 'Search by name or @handle…'} />
         {busy ? <T size={12} color="#94A3B8">Searching…</T> : null}
         {!busy && !list.length ? <T size={13} color="#94A3B8">{known ? 'Nobody matches.' : q.trim() ? 'No results.' : 'Type to search.'}</T> : null}
         <View style={{ gap: 8 }}>

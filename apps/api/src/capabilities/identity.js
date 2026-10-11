@@ -6,6 +6,7 @@ import { RESOURCE_TYPES, SCOPES, scopeAllows } from '../scopes.js';
 import { blindIndex, decryptFields, encrypt, encryptFields, hashPassword, newOpaqueToken, sha256, verifyPassword } from '../crypto.js';
 import { audit, PUBLIC_USER, sportBySlugOrId } from '../helpers.js';
 import { startSession } from '../sessions.js';
+import { issueToken } from '../account-security.js';
 import { badgesFor, withBadges } from '../verification.js';
 import { canSeeYouth, NOT_YOUTH_SQL, refreshYouth, YOUTH_SQL } from '../youth.js';
 
@@ -50,7 +51,7 @@ cap({
 
 cap({
   name: 'login', method: 'POST', path: '/auth/login', tag: 'Identity', auth: 'public',
-  summary: 'Exchange email + password for a session: a short-lived access token (bearer) plus a rotating refresh_token (use refresh_session). Each sign-in is a revocable server session (see list_sessions, logout).',
+  summary: 'Exchange email + password for a session (if two-step verification is on you get mfa_required + mfa_token instead; finish with login_mfa): a short-lived access token (bearer) plus a rotating refresh_token (use refresh_session). Each sign-in is a revocable server session (see list_login_sessions, logout).',
   input: z.object({ email: z.string().email(), password: z.string() }),
   async handler({ meta }, i) {
     const u = await one('SELECT id, handle, display_name, roles, avatar_emoji, avatar_color, avatar_url, avatar_cutout, password_hash FROM users WHERE email_idx = $1', [blindIndex(i.email)]);
@@ -58,6 +59,10 @@ cap({
     const ok = verifyPassword(i.password, u?.password_hash ?? hashPassword('x'.repeat(12)));
     if (!u || !ok) throw unauthorized('Invalid email or password');
     delete u.password_hash;
+    // Two-step verification: the password alone only earns a short-lived challenge; login_mfa completes the sign-in.
+    if (await one('SELECT 1 FROM user_mfa WHERE user_id = $1 AND enabled_at IS NOT NULL AND disabled_at IS NULL', [u.id])) {
+      return { mfa_required: true, mfa_token: await issueToken(u.id, 'mfa_login', 5) };
+    }
     return { user: u, ...(await startSession(u, meta)) };
   },
 });

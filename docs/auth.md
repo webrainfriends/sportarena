@@ -1,6 +1,31 @@
 # Authentication, sessions and API tokens (issue #60)
 
-This page grows with each slice of #60. Sections below describe what is implemented today.
+Everything in issue #60 in one place: scoped API tokens, revocable sessions, cookie sessions for the web, account security (email
+verification, password recovery, two-step verification) and the screens that use them.
+
+## Summary and rollout checklist
+
+| Area | Migration | Switch / config | Default |
+|---|---|---|---|
+| Token scopes, expiry, resources | `052_api_token_scopes.sql` | none | existing tokens keep `full`; new tokens default to `read` |
+| Server sessions, refresh rotation | `053_auth_sessions.sql` | `TOKEN_TTL`, `REFRESH_TTL_DAYS`, `AUTH_REQUIRE_SESSION` | pre-session JWTs work until they expire |
+| Web cookies, CSRF, origins | none | `CORS_ORIGINS`, `COOKIE_SECURE`, `COOKIE_SAMESITE` | web clients that send `X-SA-Client: web` get cookies |
+| Account security | `054_account_security.sql` | `MFA_ENFORCE`, `NOTIFY_WEBHOOK_URL`, `APP_URL` | MFA optional; enforcement **off** |
+
+Suggested order: deploy; check `CORS_ORIGINS` and HTTPS; make sure `NOTIFY_WEBHOOK_URL` works (recovery depends on it); have doctors, physios and
+admins turn on two-step verification in **Me > Account security**; then set `MFA_ENFORCE=true`; later set `AUTH_REQUIRE_SESSION=true` and shorten
+`TOKEN_TTL`. Rollback of any step is described in its section; no step deletes data, and migrations only add columns and tables.
+
+## Screens (Me, and the log-in screen)
+
+- **Me > Account security**: email confirmation state (send/confirm), two-step verification (turn on with QR code or key, confirm a code, save the
+  one-time recovery codes; turn off with password + code), change password, and **Where you are signed in** (devices with last activity, sign out
+  one device, sign out everywhere). Loading, empty and error states are shown; all buttons are standard touch-size controls with accessible roles.
+- **Me > Agents & API**: create a token with a name, permission chips (read, write, payments, health data, admin for admins), an expiry chosen on
+  the calendar picker and an optional search-and-pick of the venues, teams, events or organisations it is limited to. The list shows permissions,
+  expiry, last use and limits; tokens created before permissions existed are flagged **Full access** with a hint to replace them. The secret is shown once.
+- **Log in**: "Forgot your password?" (request a code, then choose a new password; links from the email open the app with the code filled in),
+  the two-step code screen after the password, and confirmation of the email link (`?verify_email=`).
 
 ## API token scopes
 
@@ -82,3 +107,93 @@ claim is ignored). Revocation then no longer applies, which is the only loss.
 - `/auth/refresh` shares the per-IP auth rate limiter with login and register.
 - Per-account lockout and email-based recovery arrive with the account-security slice.
 - Revoking a session does not revoke API tokens; revoke those separately (`revoke_api_token`).
+
+## Web cookie sessions, CSRF and origin policy
+
+The web app authenticates with cookies; native apps, scripts and agents keep using `Authorization: Bearer`.
+
+| Cookie | HttpOnly | Path | Holds |
+|---|---|---|---|
+| `sa_session` | yes | `/` | the access JWT (session-bound, see above) |
+| `sa_refresh` | yes | `/api/v1/auth` | the one-time refresh token |
+| `sa_csrf` | no | `/` | random CSRF token, echoed by the page in `X-CSRF-Token` |
+
+All are `Secure` (when the request arrived over HTTPS; see `COOKIE_SECURE`) and `SameSite=Lax` (`COOKIE_SAMESITE`). A client opts into cookie mode by
+sending `X-SA-Client: web` to `login`, `register` or `refresh_session`; those responses then set the cookies and **omit `token` and `refresh_token`
+from the body** (`cookie_session: true`). Without the header (native, agents) tokens are returned in the body exactly as before.
+
+**CSRF protection** applies to every state-changing request (POST/PATCH/PUT/DELETE) that authenticates by cookie (no `Authorization` header):
+1. `Origin` (or, if absent, `Referer`) must be in the allowlist, otherwise `403 csrf_origin`.
+2. `X-CSRF-Token` must equal the `sa_csrf` cookie (double-submit, constant-time compare), otherwise `403 csrf_token`.
+`login`/`register` in web mode check the Origin only (there is no session to forge yet), which blocks login-CSRF. Cookie refresh and logout require
+both. An explicit `Authorization` header skips CSRF (browsers never add it themselves) and wins over cookies. **MCP (`/mcp`) never accepts cookies.**
+Safe methods (GET/HEAD/OPTIONS) are not checked; responses are readable only by allowed origins.
+
+**Origin policy / CORS.** `CORS_ORIGINS` is a comma-separated allowlist (the deploy script sets it to the public web origin). Listed origins get
+`Access-Control-Allow-Credentials: true`; `*` still allows other origins to call the API with bearer tokens but **never** with credentials. If the
+list holds no explicit origin (local development) only same-origin cookie writes are accepted (Origin host equals the request `Host`). Behind
+nginx, `Host` has no port, so production must set `CORS_ORIGINS` explicitly (it does).
+
+### Web app behaviour
+- The web build writes no credential to `localStorage` (the storage layer refuses the keys) and on load deletes any `token` left by earlier builds.
+- Migration: people with an old localStorage bearer sign in once more; their previous token is not converted into a cookie. Pre-session JWTs elsewhere are unaffected.
+- On `401` the client refreshes once (serialised, so rotation never double-spends a token) and retries; if that fails the user is signed out.
+- Native keeps the access and refresh tokens in SecureStore (Keychain/Keystore).
+
+### Configuration and limits
+- `COOKIE_SECURE` (`auto` | `true` | `false`, default `auto` = request is HTTPS), `COOKIE_SAMESITE` (default `lax`), `CORS_ORIGINS`.
+- Plain-HTTP interim deployments (`ALLOW_INSECURE_HTTP`) cannot set `Secure` cookies; enable HTTPS before relying on cookie sessions there.
+- Cross-site embedding (different registrable domain between app and API) would need `COOKIE_SAMESITE=none` plus HTTPS; not supported by default.
+- Rollback: reverting the web build restores bearer-in-body behaviour (the body-token path for non-`X-SA-Client` callers is unchanged).
+
+## Account security: email verification, password recovery, two-step verification (MFA)
+
+| Capability | Route | Notes |
+|---|---|---|
+| `request_email_verification` | `POST /me/email/verification` | emails a single-use code/link, valid 24 h; max 5 per account per hour (`429`) |
+| `verify_email` | `POST /auth/verify-email` (public) | sets `users.email_verified_at` |
+| `request_password_reset` | `POST /auth/password-reset` (public) | always answers identically (no account enumeration); max 3 tokens per account per hour; per-IP limiter |
+| `reset_password` | `POST /auth/password-reset/confirm` (public) | single-use, 30 min; sets the password, **revokes every session**, voids other outstanding reset tokens, emails a notice |
+| `get_security_status` | `GET /me/security` | email verified, MFA on/pending, recovery codes left, role requirement |
+| `mfa_setup` | `POST /me/mfa/setup` | needs the password; returns secret + `otpauth://` URI; inactive until confirmed |
+| `mfa_enable` | `POST /me/mfa/enable` | confirm a code; returns 10 recovery codes **once** |
+| `login_mfa` | `POST /auth/login/mfa` (public) | finishes a sign-in that returned `mfa_required` + `mfa_token` |
+| `verify_mfa` | `POST /me/mfa/verify` | step-up: mark this session verified (code or recovery code) |
+| `mfa_disable` | `POST /me/mfa/disable` | password + code; other sessions revoked |
+| `admin_reset_mfa` | `POST /admin/users/:user_id/mfa-reset` | admin recovery for lost factor + codes; target signed out everywhere; audit-logged |
+
+**Tokens.** Verification, reset and login-challenge secrets are random 256-bit values stored only as SHA-256 hashes (`account_tokens`), consumed
+by one atomic `UPDATE ... WHERE used_at IS NULL AND expires_at > now()` (single use, concurrency safe).
+
+**Email delivery** reuses the existing notification outbox (`notify.js`, sent by the dispatcher to `NOTIFY_WEBHOOK_URL`) via `notifySecurity()`:
+security mail ignores mute/channel preferences, is created already-read, keeps the one-time secret **encrypted** (`data.secret_enc`), substitutes it
+into the text only at send time, then erases it from the row. Without a webhook the mail stays queued (encrypted) as for every other email.
+Links use `APP_URL` (`?verify_email=<code>`, `?reset_password=<code>`); the plain code is always included too.
+
+**TOTP.** RFC 6238 (SHA-1, 6 digits, 30 s, +/-1 step drift). The secret is field-encrypted (`user_mfa.secret_enc`); each accepted time step is
+recorded so a code cannot be replayed. Recovery codes (`xxxxx-xxxxx`) are stored hashed and work once. With MFA on, `login` returns
+`{ mfa_required: true, mfa_token }` (no session, no cookies); `login_mfa` completes it (challenge: 5 minutes, 5 wrong tries, single use).
+A session that completed MFA has `mfa_verified_at`. Wrong codes are limited per account across all MFA endpoints (10 in 15 minutes, then `429`).
+
+**Who needs MFA (decision).** Roles `doctor`, `physio`, `admin`, `platform_admin` hold clinical or platform-wide power. When `MFA_ENFORCE=true`
+they must have MFA enabled **and** a verified session to use `clinical`- or `admin`-class capabilities (including creating admin/clinical API tokens):
+`403 mfa_enrollment_required` or `403 mfa_required` (step up with `verify_mfa`). Enrolment, step-up, sign-out, session and password management stay
+reachable. Organisers' payments are **not** MFA-gated (payments are protected by the token `payment` scope, provider checks and audit); anyone may
+enable MFA voluntarily. API tokens are not re-challenged (creating an admin/clinical token is the gated step).
+`MFA_ENFORCE` defaults to **off** so rollout cannot lock anyone out: have doctors/physios/admins enrol first, then set `MFA_ENFORCE=true`.
+
+**Compromise handling.** Password reset, password change, MFA disable and admin MFA reset all revoke sessions (reasons `password_reset`,
+`password_changed`, `mfa_disabled`, `mfa_reset`) and send the owner a notice email.
+
+### Migration `054_account_security.sql` (additive)
+`users.email_verified_at` (existing accounts stay unverified; login does not require verification), `account_tokens`, `user_mfa`, `mfa_recovery_codes`,
+`auth_sessions.mfa_verified_at`. Disabled/replaced MFA factors are kept (`disabled_at`, `disabled_reason`), never overwritten or deleted. The only
+removal is the intentional erasure of a one-time secret from a sent email row. Rollback: revert the code; the tables stay unused. Anyone with MFA on
+would then sign in with a password only, so do not roll back without telling those users.
+
+### Failure modes and limits
+- No webhook configured: emails (including reset links) stay queued; recovery is impossible until `NOTIFY_WEBHOOK_URL` is set. Admin MFA reset is the fallback for MFA, not for passwords.
+- Per-IP limits on login/refresh/reset/verify share the existing auth limiter (20 per 15 minutes in production).
+- Lost authenticator and recovery codes: an admin resets MFA (`admin_reset_mfa`); there is no self-service bypass by design.
+- Email verification is informational today (it gates nothing); it is exposed so features can require it.
+- Not implemented: recovery-code regeneration without disabling MFA, WebAuthn/passkeys, SMS codes.

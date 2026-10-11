@@ -39,6 +39,13 @@ export const config = {
   trustProxy: env.TRUST_PROXY === 'true',
   // Production refuses plain HTTP unless this is set explicitly (interim setups without a certificate).
   allowInsecureHttp: env.ALLOW_INSECURE_HTTP === 'true',
+  // Web cookie sessions. 'auto' marks cookies Secure when the request arrived over HTTPS (TRUST_PROXY honours X-Forwarded-Proto);
+  // plain-HTTP interim setups (ALLOW_INSECURE_HTTP) cannot carry Secure cookies. Origins allowed to send credentials = CORS_ORIGINS (never '*').
+  cookieSecure: env.COOKIE_SECURE ?? 'auto',
+  cookieSameSite: env.COOKIE_SAMESITE ?? 'lax',
+  // MFA policy: when true, people holding doctor/physio/admin/platform_admin roles must have two-step verification enabled and verified
+  // in their session to use clinical- or admin-class capabilities. Off by default so rollout never locks anyone out; turn on once they have enrolled.
+  mfaEnforce: env.MFA_ENFORCE === 'true',
   corsOrigins: (env.CORS_ORIGINS ?? '*').split(','),
   // Uploaded venue photos/videos. Must be a persistent directory (deploys never touch it). Files are never deleted.
   mediaDir: env.MEDIA_DIR ?? './data/media',
