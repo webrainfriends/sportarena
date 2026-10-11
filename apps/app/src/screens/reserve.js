@@ -13,6 +13,7 @@ import { PaySheet } from '../PaySheet';
 import { PointsApplySheet, WalletApplySheet } from './wallet';
 import { PassApplySheet } from './plans';
 import { NewCaseSheet } from './cases';
+import { AttachSessionsSheet } from './training-venue';
 import { currentDevice, disablePush, enablePush, pushSupport } from '../push';
 import { KIND } from './book';
 import { addDays, dateTimeIn, dayLabel, fmtMin, localDate, hoursSummary, localToIso, moneyIn, offerLabel, timeIn, todayIn } from '../vtime';
@@ -172,6 +173,7 @@ export function Reservation({ id }) {
   const [moving, setMoving] = useState(null);
   const [cancelAll, setCancelAll] = useState(false);
   const [paying, setPaying] = useState(null);
+  const [attaching, setAttaching] = useState(false);
   const [useWallet, setUseWallet] = useState(null);
   const [usePoints, setUsePoints] = useState(null);
   const [usePass, setUsePass] = useState(null);
@@ -215,6 +217,21 @@ export function Reservation({ id }) {
           </Card>
         ))}
       </Section>
+      <Section title="Coaching on this booking" color={c.cyan}>
+        {x.sessions?.length ? x.sessions.map((s) => (
+          <Card key={s.link_id} pad={12}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <View style={{ flex: 1 }}>
+                <T weight="700">{s.title ?? (s.audience !== 'individual' && s.team_name ? `${s.team_name} coaching` : `${s.coach_name} with ${s.athlete_name}`)}</T>
+                <T size={12} color={c.mute}>{s.sport} · {dateTimeIn(s.starts_at, x.bookings[0]?.timezone)}{s.audience !== 'individual' ? ` · ${s.audience}` : ''}</T>
+              </View>
+              {x.status === 'confirmed' ? <Btn small title="Detach" color={c.paper} ink={c.ink} onPress={async () => { try { await api.del(`/training/venues/links/${s.link_id}`); await r.reload(); toast('Detached — the booking stays'); } catch (e) { toast(e.message); } }} /> : null}
+            </View>
+          </Card>
+        )) : <T size={13} color={c.mute}>Training here with a coach? Attach the coaching session so both of you see the venue on your schedule.</T>}
+        {active.length ? <Btn small title="＋ Attach a coaching session" color={c.cyan} ink={c.ink} onPress={() => setAttaching(true)} style={{ alignSelf: 'flex-start' }} /> : null}
+      </Section>
+      {attaching ? <AttachSessionsSheet reservation={x} onClose={() => setAttaching(false)} onDone={r.reload} /> : null}
       {x.awaiting_payment ? <Card color={c.orangeSoft} style={{ marginTop: 14 }}><T weight="700" color={c.orange}>⏱ Pay by {new Date(x.payment_deadline).toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' })} or these slots are released.</T></Card> : null}
       <Section title="Invoices & payment" color={c.sun}>
         {x.invoices.map((inv) => (

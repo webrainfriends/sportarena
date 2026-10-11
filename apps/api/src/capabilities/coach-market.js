@@ -16,6 +16,7 @@ import { fmtMin, hhmm, validTimezone } from '../booking/time.js';
 import { MAX_RANGE_DAYS, loadCoachSchedule, openCoachSlots } from '../coach-slots.js';
 import { AUDIENCES, cardFor, clientFor, priceFor } from '../coach-pricing.js';
 import { commitmentBusy } from '../coach-commitments.js';
+import { venueText } from '../session-links.js';
 
 const TAG = 'Coach marketplace';
 const SHORT = z.string().min(1).max(60);
@@ -339,7 +340,7 @@ cap({
 });
 
 // ----------------------------------------------------------------------------------------------- schedule + money
-const SESSION_COLS = `h.id, h.starts_at, h.duration_min, h.total_cents, h.status, h.payment_status, h.note, h.coach_id, h.hirer_id, s.name AS sport, s.emoji AS sport_emoji, s.slug AS sport_slug`;
+const SESSION_COLS = `h.id, h.starts_at, h.duration_min, h.total_cents, h.status, h.payment_status, h.note, h.coach_id, h.hirer_id, s.name AS sport, s.emoji AS sport_emoji, s.slug AS sport_slug, h.audience, h.participants, h.series_id, ${venueText('coach_hire', 'h.id')}`;
 
 cap({
   name: 'coaching_overview', method: 'GET', path: '/coaching/overview', tag: TAG,

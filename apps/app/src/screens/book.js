@@ -111,6 +111,10 @@ export function Book() {
       <H1 style={{ marginTop: 8 }}>Book a court</H1>
       <T color={c.mute} weight="600">Find a venue, check live availability, book several slots at once.</T>
       <BasketBar />
+      <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+        <Btn small title="🔁 Recurring or bulk booking" color={c.violet} onPress={() => push('RecurringVenue')} />
+        <Btn small title="🏋️ Court for my coaching" color={c.paper} ink={c.ink} onPress={() => push('TrainingVenue')} />
+      </View>
       <Pressable onPress={() => push('Wallet')} style={{ marginTop: 10 }}><Card pad={10}><View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><T weight="700">👛 Wallet & gift cards</T><T weight="700" color={c.pink}>Open ›</T></View></Card></Pressable>
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 14, alignItems: 'flex-end' }}>
         <View style={{ flex: 1 }}><Field value={q} onChangeText={setQ} placeholder="Search venues…" /></View>

@@ -7,6 +7,7 @@ import { RELATIONSHIP_SQL, hiddenYouth, sessionKinds } from '../coaching.js';
 import { canCoachTeam } from './teams.js';
 import { badgesFor } from '../verification.js';
 import { loggedMap, occurrences, plain } from '../coach-commitments.js';
+import { venueText } from '../session-links.js';
 
 const TAG = 'Coach';
 const COACH = ['coach'];
@@ -87,10 +88,10 @@ cap({
     if ((Date.parse(to) - Date.parse(from)) / 86400000 > 92) throw badRequest('Range is limited to 92 days');
     const win = [user.id, from, to];
     const [hires, sessions, fixtures, commitments] = await Promise.all([
-      many(`SELECT h.id, h.status, h.starts_at, h.starts_at + h.duration_min * interval '1 minute' AS ends_at, h.hirer_id AS athlete_id, coalesce(tm.name, ev.name, u.display_name) AS athlete_name, h.audience, s.slug AS sport
+      many(`SELECT h.id, h.status, h.starts_at, h.starts_at + h.duration_min * interval '1 minute' AS ends_at, h.hirer_id AS athlete_id, coalesce(tm.name, ev.name, u.display_name) AS athlete_name, h.audience, s.slug AS sport, ${venueText('coach_hire', 'h.id')}
               FROM coach_hires h JOIN users u ON u.id=h.hirer_id LEFT JOIN teams tm ON tm.id=h.team_id LEFT JOIN events ev ON ev.id=h.event_id LEFT JOIN sports s ON s.id=h.sport_id
              WHERE h.coach_id=$1 AND h.status IN ('requested','confirmed') AND h.starts_at >= $2::date AND h.starts_at < $3::date + 1`, win),
-      many(`SELECT x.id, x.status, x.title, x.kind, x.starts_at, x.starts_at + x.duration_min * interval '1 minute' AS ends_at, p.id AS plan_id, p.athlete_id, u.display_name AS athlete_name, s.slug AS sport, x.booking_id
+      many(`SELECT x.id, x.status, x.title, x.kind, x.starts_at, x.starts_at + x.duration_min * interval '1 minute' AS ends_at, p.id AS plan_id, p.athlete_id, u.display_name AS athlete_name, s.slug AS sport, x.booking_id, ${venueText('training_session', 'x.id')}
               FROM training_sessions x JOIN training_plans p ON p.id=x.plan_id JOIN users u ON u.id=p.athlete_id LEFT JOIN sports s ON s.id=p.sport_id
              WHERE p.coach_id=$1 AND x.status IN ('scheduled','completed') AND x.starts_at >= $2::date AND x.starts_at < $3::date + 1`, win),
       many(`SELECT f.id, f.status, f.scheduled_at AS starts_at, f.scheduled_at + interval '90 minutes' AS ends_at, t.id AS team_id, t.name AS team_name, h.name AS home_name, a.name AS away_name, s.slug AS sport
@@ -102,8 +103,8 @@ cap({
     ]);
     const log = await loggedMap(commitments.map((c) => c.id));
     let items = [
-      ...hires.map((r) => ({ kind: 'hire', source_type: 'coach_hire', source_id: r.id, title: r.audience === 'individual' ? `Session with ${r.athlete_name}` : `${r.audience[0].toUpperCase()}${r.audience.slice(1)} coaching · ${r.athlete_name}`, athlete_id: r.audience === 'individual' ? r.athlete_id : undefined, sport: r.sport, starts_at: r.starts_at, ends_at: r.ends_at, status: r.status === 'confirmed' ? 'confirmed' : 'awaiting_response', link: { screen: 'CoachDesk', params: {} } })),
-      ...sessions.map((r) => ({ kind: 'plan_session', source_type: 'training_session', source_id: r.id, title: r.title, context: r.athlete_name, athlete_id: r.athlete_id, sport: r.sport, starts_at: r.starts_at, ends_at: r.ends_at, status: r.status, booking_id: r.booking_id, link: { screen: 'CoachPlan', params: { id: r.plan_id } } })),
+      ...hires.map((r) => ({ kind: 'hire', source_type: 'coach_hire', source_id: r.id, title: r.audience === 'individual' ? `Session with ${r.athlete_name}` : `${r.audience[0].toUpperCase()}${r.audience.slice(1)} coaching · ${r.athlete_name}`, athlete_id: r.audience === 'individual' ? r.athlete_id : undefined, sport: r.sport, starts_at: r.starts_at, ends_at: r.ends_at, venue: r.venue, status: r.status === 'confirmed' ? 'confirmed' : 'awaiting_response', link: { screen: 'CoachDesk', params: {} } })),
+      ...sessions.map((r) => ({ kind: 'plan_session', source_type: 'training_session', source_id: r.id, title: r.title, context: r.athlete_name, athlete_id: r.athlete_id, sport: r.sport, starts_at: r.starts_at, ends_at: r.ends_at, status: r.status, booking_id: r.booking_id, venue: r.venue, link: { screen: 'CoachPlan', params: { id: r.plan_id } } })),
       ...commitments.flatMap((c) => occurrences(plain(c), from, to, log).map((o) => ({ kind: 'commitment', source_type: 'coach_commitment', source_id: `${c.id}:${o.on_date}`, title: c.title, context: [c.client, c.kind].filter(Boolean).join(' · '), sport: c.sport_slug, starts_at: o.starts_at, ends_at: o.ends_at, status: o.logged?.status === 'delivered' ? 'completed' : 'confirmed', link: { screen: 'CoachCommitments', params: {} } }))),
       ...fixtures.map((r) => ({ kind: 'match', source_type: 'fixture', source_id: `${r.id}`, title: `${r.home_name} v ${r.away_name}`, context: r.team_name, team_id: r.team_id, sport: r.sport, starts_at: r.starts_at, ends_at: r.ends_at, status: 'confirmed', link: { screen: 'Team', params: { id: r.team_id } } })),
     ].map((x) => ({ timezone: 'UTC', conflict: false, ...x }));
