@@ -82,3 +82,41 @@ claim is ignored). Revocation then no longer applies, which is the only loss.
 - `/auth/refresh` shares the per-IP auth rate limiter with login and register.
 - Per-account lockout and email-based recovery arrive with the account-security slice.
 - Revoking a session does not revoke API tokens; revoke those separately (`revoke_api_token`).
+
+## Web cookie sessions, CSRF and origin policy
+
+The web app authenticates with cookies; native apps, scripts and agents keep using `Authorization: Bearer`.
+
+| Cookie | HttpOnly | Path | Holds |
+|---|---|---|---|
+| `sa_session` | yes | `/` | the access JWT (session-bound, see above) |
+| `sa_refresh` | yes | `/api/v1/auth` | the one-time refresh token |
+| `sa_csrf` | no | `/` | random CSRF token, echoed by the page in `X-CSRF-Token` |
+
+All are `Secure` (when the request arrived over HTTPS; see `COOKIE_SECURE`) and `SameSite=Lax` (`COOKIE_SAMESITE`). A client opts into cookie mode by
+sending `X-SA-Client: web` to `login`, `register` or `refresh_session`; those responses then set the cookies and **omit `token` and `refresh_token`
+from the body** (`cookie_session: true`). Without the header (native, agents) tokens are returned in the body exactly as before.
+
+**CSRF protection** applies to every state-changing request (POST/PATCH/PUT/DELETE) that authenticates by cookie (no `Authorization` header):
+1. `Origin` (or, if absent, `Referer`) must be in the allowlist, otherwise `403 csrf_origin`.
+2. `X-CSRF-Token` must equal the `sa_csrf` cookie (double-submit, constant-time compare), otherwise `403 csrf_token`.
+`login`/`register` in web mode check the Origin only (there is no session to forge yet), which blocks login-CSRF. Cookie refresh and logout require
+both. An explicit `Authorization` header skips CSRF (browsers never add it themselves) and wins over cookies. **MCP (`/mcp`) never accepts cookies.**
+Safe methods (GET/HEAD/OPTIONS) are not checked; responses are readable only by allowed origins.
+
+**Origin policy / CORS.** `CORS_ORIGINS` is a comma-separated allowlist (the deploy script sets it to the public web origin). Listed origins get
+`Access-Control-Allow-Credentials: true`; `*` still allows other origins to call the API with bearer tokens but **never** with credentials. If the
+list holds no explicit origin (local development) only same-origin cookie writes are accepted (Origin host equals the request `Host`). Behind
+nginx, `Host` has no port, so production must set `CORS_ORIGINS` explicitly (it does).
+
+### Web app behaviour
+- The web build writes no credential to `localStorage` (the storage layer refuses the keys) and on load deletes any `token` left by earlier builds.
+- Migration: people with an old localStorage bearer sign in once more; their previous token is not converted into a cookie. Pre-session JWTs elsewhere are unaffected.
+- On `401` the client refreshes once (serialised, so rotation never double-spends a token) and retries; if that fails the user is signed out.
+- Native keeps the access and refresh tokens in SecureStore (Keychain/Keystore).
+
+### Configuration and limits
+- `COOKIE_SECURE` (`auto` | `true` | `false`, default `auto` = request is HTTPS), `COOKIE_SAMESITE` (default `lax`), `CORS_ORIGINS`.
+- Plain-HTTP interim deployments (`ALLOW_INSECURE_HTTP`) cannot set `Secure` cookies; enable HTTPS before relying on cookie sessions there.
+- Cross-site embedding (different registrable domain between app and API) would need `COOKIE_SAMESITE=none` plus HTTPS; not supported by default.
+- Rollback: reverting the web build restores bearer-in-body behaviour (the body-token path for non-`X-SA-Client` callers is unchanged).
