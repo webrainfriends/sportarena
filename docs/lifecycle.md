@@ -54,6 +54,20 @@ serialise on the lock: one wins, the others get 409, and the provider is called 
 cancelled. A repeated refund attempt also finds no remaining `paid` payment. Notifications are inserted inside the same
 transaction (so they exist only for committed transitions) and push delivery is dispatched after commit.
 
+## In the app (mobile and web)
+
+* **Health > Appointments** (`screens/hub.js`) and **My coaching / Coach desk** (`screens/coaching.js`) show a
+  **History** button on every appointment and session. It opens `TimelineSheet` (`src/Timeline.js`), which reads
+  `get_appointment_timeline` / `get_hire_timeline` and shows who did what and when, the reason, and a refund note.
+  States: loading, empty ("Nothing recorded yet"), error with Try again. Both parties see the same entries.
+* **Cancel / decline** asks for an optional reason in the shared `Confirm` sheet (`askReason`); it is sent as `reason`.
+  The confirm text says whether the payment is refunded. A refused move (409) shows the server's plain-language message.
+* **Complete** on an appointment is only offered once the start time has passed (the server enforces it too).
+* Accessibility: `Btn` now exposes `accessibilityRole="button"`, a label (default: its title) and busy/disabled state;
+  `Field` labels its input; timeline entries are single labelled items. Touch targets keep the existing 40 px minimum.
+* Verified: `expo export --platform web` bundles (484 modules); the app JSX-name and route tests pass. Not verified:
+  a native device run or a browser walk-through (no device or browser in this environment).
+
 ## Migration and rollback
 
 `043_engagement_status_history.sql` adds one table, triggers and a backfill; rollback: drop the two status triggers (the table can stay, it holds history).
@@ -65,6 +79,5 @@ restore the old CHECK constraints.
 
 * The provider refund still runs inside the database transaction (under the row lock). If the transaction fails after
   the provider accepted the refund, the payment record already says `refunded`, a retry finds nothing left to refund and
-  the key prevents a double refund; the engagement is then cancelled on retry. The UI for the timeline is delivered in
-  57-1c.
+  the key prevents a double refund; the engagement is then cancelled on retry. 
 * Status changes made by `update_followup` (appointments) are recorded with no actor.
