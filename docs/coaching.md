@@ -1,35 +1,32 @@
-# Coaching marketplace
+# Coach Command Center and shared training plans
 
-One flow for athletes and coaches: **find or post → compare → book → pay → track → review**. Everything is a capability
-(`apps/api/src/capabilities/hire.js`, `coach-market.js`), so REST, OpenAPI and MCP behave the same as the app.
+Coach-facing slice over canonical records (issue #87). The training-plan model is shared: the athlete sees and answers the same plan the coach proposes. There is no separate coach or athlete plan table.
 
-## Athlete
-* **Find a coach** — `GET /coaches` filters by sport, name/speciality, city, in-person/online, max hourly rate, minimum rating, verified credential and
-  "has open hours"; sorts by rating, rate, most sessions or name. `GET /coaches/:id` is the public profile (about, sports and rates, rating
-  breakdown, reviews, sessions coached, weekly hours).
-* **Book** — `GET /coaches/:id/slots` returns real open start times from the coach's weekly hours minus sessions already requested/confirmed.
-  `POST /hires` enforces the grid when the coach published hours, and refuses coaches who are not taking new athletes. A coach with no hours
-  gets a proposed time instead.
-* **Post a request** — `POST /coach-requests` (sport, goal, level, delivery, city, hourly budget, sessions per week, preferred days, start date).
-  Coaches of that sport are notified. `GET /coach-requests/:id` shows every answer with rate, first session, rating, verification and sessions coached.
-  `POST /coach-responses/:id/decision` accepts (creates the hire, declines the other answers) or declines. `POST /coach-requests/:id/close` closes it.
-* **Track** — `GET /coaching/overview` (upcoming sessions, sessions waiting for payment, sessions to review, answers waiting, what you owe and have booked)
-  and `GET /coaching/payments` (ledger with paid/refunded dates).
-* **Review** — `POST /hires/:id/review`: one 1–5 review per completed session, written by the athlete who booked it.
+## Who counts as "my athlete"
+Only explicit, current relationships (`src/coaching.js`, `RELATIONSHIP_SQL`):
+- a **confirmed or completed coach hire**;
+- a **team** where the coach is an active `coach` member and the athlete an active player;
+- an **active cohort** the coach leads, with the athlete enrolled;
+- a **plan the athlete has accepted** and not closed.
 
-## Coach
-* `POST /me/coach-profile`, `POST /me/coach-availability` (weekly hours in your own time zone; replaced windows are kept as history).
-* `GET /coach-requests` (board, default only your sports) → `POST /coach-requests/:id/respond` (rate, first session, message; answering again
-  edits it) → `POST /coach-responses/:id/withdraw`.
-* An accepted answer is already agreed by the coach, so **paying confirms the session** (`payments/service.js` `fulfil`); a hire booked directly still
-  needs the coach to confirm after payment.
-* `GET /coaching/overview` (coach side: to confirm, upcoming, earned vs awaiting payment, rating, unanswered reviews, open requests) and
-  `GET /coaching/payments?as=coach`. Reply to a review once with `POST /coach-reviews/:id/reply`.
+Public search or an unaccepted request never creates a relationship. A cancelled hire, a member who left, a withdrawn enrolment or a closed plan ends it. Young people are shown only when `canSeeYouth` allows (guardian or consent). Coach endpoints never return medical, health-provider or contact data.
 
-## Rules
-* Minors cannot post requests or appear in coach search; at most 5 open requests per athlete.
-* Nothing is deleted: closed/filled requests, declined/withdrawn answers and replaced hours stay as history.
-* Only the athlete of a completed session can review it; ratings come from `coach_reviews` only.
-* With no payment provider configured, sessions are `not_required` and shown as "pay direct"; they confirm without payment.
+## Plan lifecycle
+`draft → proposed → active`, or `declined` / `change_requested`; `closed` at any time by either party.
+- Revisions are append-only. Once proposed, content is immutable; only the athlete's response is recorded.
+- Any change to an accepted plan is a new revision that the athlete must accept. While it is pending the previously accepted sessions stay as they were.
+- On acceptance the revision's sessions are applied: moved or edited future sessions are updated, future sessions left out are marked `cancelled` (kept, never deleted), new ones are created.
+- Completed or skipped sessions are never changed. The athlete's effort (1–10) and feedback are non-clinical and final once recorded; the coach adds feedback afterwards.
+- Plan mutations lock the plan row, so concurrent proposals or responses resolve to exactly one winner.
+- When the relationship ends, history stays; the coach can no longer create, revise or propose. The athlete can always close a plan, which cancels future sessions.
 
-Migration: `031_coach_marketplace.sql` (additive).
+## Endpoints (all capabilities, so REST, OpenAPI and MCP)
+`coach_home`, `coach_athletes`, `coach_calendar`, `coach_team_roster`, `create/list/archive_coach_template`, `create_training_plan`, `edit_training_plan_draft`, `start_training_plan_revision`, `propose_training_plan`, `respond_training_plan`, `close_training_plan`, `list_training_plans`, `get_training_plan`, `update_training_session`.
+
+The coach calendar is a read projection: every item carries `source_type` and `source_id` (coach hire, training session, fixture), nothing is copied, and overlaps are flagged.
+
+## Team coach permissions
+`canCoachTeam` (in `capabilities/teams.js`) allows an active team coach, or anyone who passes `canManageTeam`, to view the roster and availability through `coach_team_roster`. It grants no ownership, rate, settlement, finance or medical access, and `canManageTeam` is unchanged.
+
+## Not in this change (follow-ups)
+Match preparation and post-match review, performance analytics with provenance, the AI coaching assistant, template sharing with teams or organisations, team training sessions and attendance, coach availability and buffers (#56), rule packs (#68), the concierge framework (#72), and earnings/opportunity links (#67, #71) — none of these exist on main yet.
