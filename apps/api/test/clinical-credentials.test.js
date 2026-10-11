@@ -107,6 +107,7 @@ test('follow-ups, appointment confirm/complete, booking, clearance re-check the 
   try {
     assert.equal((await api('POST', '/medical/records', { token: doc.token, body: rec(ath) })).body.error.details.reason, 'expired', 'grace never covers new records');
     assert.equal(must(await api('GET', '/medical/credential', { token: doc.token })).state, 'grace');
+    await pool.query("UPDATE appointments SET starts_at = now() - interval '2 hours' WHERE id=$1", [appt.id]);   // completing needs a start time that has passed
     must(await api('PATCH', `/appointments/${appt.id}`, { token: doc.token, body: { status: 'completed' } }));
     assert.ok((await pool.query("SELECT 1 FROM audit_log WHERE actor_id=$1 AND action='credential_check_grace'", [doc.id])).rowCount >= 1);
     await pool.query("UPDATE verification_cases SET status='revoked' WHERE id=$1", [caseId]);

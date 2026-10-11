@@ -94,7 +94,6 @@ cap({
       if (i.status !== 'cancelled' && !isProvider) throw forbidden('Only the provider can confirm or complete');
       // confirming or completing is a clinical action: needs a current credential (completing an existing appointment may use the configured grace)
       if (i.status !== 'cancelled' && isProvider) await requireVerifiedProvider(user.id, { action: 'update_appointment', athleteId: a.athlete_id, allowGrace: i.status === 'completed' });
-      if (!NEXT[a.status].includes(i.status)) throw conflict(`A ${a.status} appointment cannot become ${i.status}`);
       if (i.status === 'confirmed' && a.payment_status === 'unpaid') throw conflict('Waiting for the athlete to pay');
       if (i.status === 'completed' && a.payment_status === 'unpaid') throw conflict('This appointment has not been paid for');
       assertTransition(a, i.status, { isProvider, isCustomer: isAthlete, isAdmin: isAdmin(user) }, { noun: 'appointment', customerWord: 'athlete' });
