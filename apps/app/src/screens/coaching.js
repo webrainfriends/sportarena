@@ -12,6 +12,7 @@ import { FormSheet } from '../FormSheet';
 import { SportSelect } from '../sportpicker';
 import { Counter, DateField, DayStrip, HScroll, TimeField } from '../pickers';
 import { NewCaseSheet } from './cases';
+import { SeriesBookingSheet, VenueLine } from './training-venue';
 import { BookProviderSheet } from './provider';
 import { Grid, PaySheet, Pill, StatusPill, nice, useCols } from './marketplace';
 import { c, grad, toneFor } from '../theme';
@@ -100,7 +101,7 @@ export function BookCoachSheet({ coach, onClose, onDone }) {
   const card = cards.find((k) => k.id === cardId) ?? null;
   const [hours, setHours] = useState(60), [people, setPeople] = useState(1), [teamId, setTeamId] = useState(null), [eventId, setEventId] = useState(null);
   const [day, setDay] = useState(null), [pick, setPick] = useState(null), [date, setDate] = useState(), [time, setTime] = useState(), [note, setNote] = useState('');
-  const [busy, setBusy] = useState(false), [err, setErr] = useState(null);
+  const [busy, setBusy] = useState(false), [err, setErr] = useState(null), [repeat, setRepeat] = useState(false);
   const teams = useLoad(() => (card?.audience === 'team' ? api.get('/teams', { mine: true, limit: 50 }) : Promise.resolve([])), [card?.audience]);
   const events = useLoad(() => (card?.audience === 'event' ? api.get('/events', { organizer_id: user.id, limit: 50 }) : Promise.resolve([])), [card?.audience]);
   const mins = card && card.unit !== 'hour' ? card.duration_min ?? 60 : hours;
@@ -182,6 +183,8 @@ export function BookCoachSheet({ coach, onClose, onDone }) {
       </Card>
       {err ? <T color={c.red} weight="800">{err}</T> : null}
       <Btn title="Request booking" loading={busy} disabled={!startsAt || need} onPress={send} />
+      <Btn title="🔁 Repeat weekly or pick several dates" color={c.paper} ink={c.ink} disabled={need} onPress={() => setRepeat(true)} />
+      {repeat ? <SeriesBookingSheet coach={coach} card={card} people={people} teamId={teamId} eventId={eventId} minutes={mins} onClose={() => setRepeat(false)} onDone={() => onDone?.({ payment_status: 'not_required', series: true })} onFinish={onClose} /> : null}
     </Sheet>
   );
 }
@@ -337,6 +340,7 @@ function Session({ h, who, children }) {
           <Pressable onPress={() => h.coach_id && who === 'coach' && push('CoachProfile', { id: h.coach_id })}><T weight="800" size={15}>{who === 'coach' ? h.coach_name : h.athlete_name}</T></Pressable>
           <T size={12} color={c.mute}>{h.sport_emoji} {h.sport} · {dateTimeIn(h.starts_at, deviceTz)} · {h.duration_min} min</T>
           {h.note ? <T size={12} color={c.mute} numberOfLines={2}>“{h.note}”</T> : null}
+          {['requested', 'confirmed'].includes(h.status) && new Date(h.starts_at) > new Date() ? <VenueLine venue={h.venue} onBook={() => push('TrainingVenue', { ids: [h.id] })} /> : null}
         </View>
         <View style={{ alignItems: 'flex-end', gap: 6 }}>
           <StatusPill s={h.status} />
@@ -366,6 +370,7 @@ function MyCoaching({ ov, reloadOverview, goFind, goRequests }) {
         <Tile value={a.spend.sessions_completed} label="DONE" />
       </View>
       {user.roles.includes('coach') ? <Btn small title="Open my coach desk" color={c.violet} onPress={() => push('CoachDesk')} style={{ alignSelf: 'flex-start', marginTop: 8 }} /> : null}
+      {a.upcoming.filter((h) => !h.venue).length ? <Card color={c.cyanSoft} pad={12} onPress={() => push('TrainingVenue')} style={{ marginTop: 8 }}><T weight="800">📍 {a.upcoming.filter((h) => !h.venue).length} upcoming session{a.upcoming.filter((h) => !h.venue).length === 1 ? '' : 's'} without a court</T><T size={12} color={c.mute}>Book one venue for several sessions at once, or a court per session. The coach is told.</T></Card> : null}
       {empty ? <View style={{ marginTop: 10 }}><Empty emoji="🧑‍🏫" title="No coaching yet" sub="Book a coach or post a request. Your sessions, payments and reviews all live here." /><Btn small title="Find a coach" onPress={goFind} style={{ alignSelf: 'center' }} /></View> : null}
 
       {a.awaiting_payment.length || a.to_review.length || a.requests.new_answers ? (
@@ -853,6 +858,7 @@ export function CoachDesk() {
         <Btn small title="My public profile" color={c.paper} ink={c.ink} onPress={() => push('CoachProfile', { id: user.id })} />
       </View>
 
+      {k.upcoming.filter((h) => h.status === 'confirmed' && !h.venue).length ? <Card color={c.cyanSoft} pad={12} onPress={() => push('TrainingVenue')} style={{ marginTop: 12 }}><T weight="800">📍 {k.upcoming.filter((h) => h.status === 'confirmed' && !h.venue).length} confirmed session{k.upcoming.filter((h) => h.status === 'confirmed' && !h.venue).length === 1 ? '' : 's'} without a court</T><T size={12} color={c.mute}>Book a venue for them in one go; the athlete or team is told.</T></Card> : null}
       {k.to_confirm.length ? (
         <Section title="To confirm">
           {k.to_confirm.map((h) => (

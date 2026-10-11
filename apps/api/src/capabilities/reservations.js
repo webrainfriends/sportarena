@@ -172,7 +172,7 @@ cap({
 
 // ------------------------------------------------------------------ reservations
 /** Shared by quote and create so the numbers can never differ. */
-async function placeBasket(c, user, i, { collect }) {
+export async function placeBasket(c, user, i, { collect }) {
   if (i.team_id) {
     const t = await mustFind('teams', i.team_id, '*', c);
     if (!(await canManageTeam(user, t))) throw forbidden('You do not manage that team');
@@ -181,7 +181,7 @@ async function placeBasket(c, user, i, { collect }) {
   return made;
 }
 
-class Rollback extends Error {}
+export class Rollback extends Error {}
 
 cap({
   name: 'quote_reservation', method: 'POST', path: '/reservations/quote', tag: TAG,

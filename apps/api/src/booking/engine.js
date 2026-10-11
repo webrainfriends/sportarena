@@ -2,6 +2,7 @@
 // Everything that touches capacity runs inside a caller-supplied transaction after taking the per-resource advisory lock,
 // so no combination of concurrent requests can oversell an area.
 import { randomBytes } from 'node:crypto';
+import { linkedForReservation } from '../session-links.js';
 import { pool } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { notify, notifyVenueTeam } from '../notify.js';
@@ -306,6 +307,7 @@ export async function reservationView(c, id) {
             r.name AS resource_name, r.kind, v.id AS venue_id, v.name AS venue_name, v.timezone, v.currency
        FROM bookings b JOIN resources r ON r.id=b.resource_id JOIN venues v ON v.id=r.venue_id
       WHERE b.reservation_id=$1 ORDER BY b.starts_at, b.id`, [id]);
+  const sessions = await linkedForReservation(id, c);
   const { rows: invoices } = await c.query(
     `SELECT i.id, i.number, i.kind, i.status, i.venue_id, v.name AS venue_name, i.currency, i.total_cents, i.credits_cents, i.tax_cents, i.tax_inclusive, i.refund_status, i.issued_at, i.paid_at, v.payment_mode
        FROM invoices i JOIN venues v ON v.id=i.venue_id WHERE i.reservation_id=$1 ORDER BY i.issued_at, i.number`, [id]);
@@ -315,7 +317,7 @@ export async function reservationView(c, id) {
     t.subtotal_cents += b.base_cents; t.discount_cents += b.discount_cents; t.total_cents += b.price_cents; t.tax_cents += b.tax_cents; t.payable_cents += b.payable_cents;
     totals.set(b.currency, t);
   }
-  return { ...rs, billing_enc: undefined, bookings, invoices: invoices.map((i) => ({ ...i, payment_mode: effectivePaymentMode(i) })), totals: [...totals.values()], awaiting_payment: !!rs.payment_deadline && rs.status === 'confirmed' };
+  return { ...rs, billing_enc: undefined, bookings, sessions, invoices: invoices.map((i) => ({ ...i, payment_mode: effectivePaymentMode(i) })), totals: [...totals.values()], awaiting_payment: !!rs.payment_deadline && rs.status === 'confirmed' };
 }
 
 // ------------------------------------------------------------------ cancellation
