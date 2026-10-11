@@ -8,6 +8,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { fam } from './theme';
 import { useLayout } from './layout';
 import { Field, Sheet } from './ui';
+// The native animation driver does not exist on the web; asking for it logs a warning and falls back to JS anyway.
+const NATIVE = Platform.OS !== 'web';
 
 export const A = {
   bg: '#0A0716', panel: '#151030', panel2: '#1E1745', line: 'rgba(255,255,255,0.10)', ink: '#F8F5FF', mute: '#A79FCB',
@@ -73,7 +75,7 @@ export function AHero({ kicker, title, sub, emoji, tone = AG.hero, children }) {
 /** Gradient pill button with a springy press. tone: hero | neon | lime | live | sun | ghost */
 export function ABtn({ title, onPress, tone = 'hero', small, disabled, loading, style }) {
   const sc = useRef(new Animated.Value(1)).current;
-  const to = (v) => Animated.spring(sc, { toValue: v, useNativeDriver: true, speed: 40, bounciness: 8 }).start();
+  const to = (v) => Animated.spring(sc, { toValue: v, useNativeDriver: NATIVE, speed: 40, bounciness: 8 }).start();
   const ghost = tone === 'ghost';
   const ink = INK_ON[tone] ?? '#fff';
   const inner = (
@@ -146,7 +148,7 @@ export function LiveBadge({ status, label }) {
   const o = useRef(new Animated.Value(1)).current;
   useEffect(() => {
     if (!st.pulse || reduce) return undefined;
-    const a = Animated.loop(Animated.sequence([Animated.timing(o, { toValue: 0.25, duration: 700, easing: Easing.inOut(Easing.quad), useNativeDriver: true }), Animated.timing(o, { toValue: 1, duration: 700, easing: Easing.inOut(Easing.quad), useNativeDriver: true })]));
+    const a = Animated.loop(Animated.sequence([Animated.timing(o, { toValue: 0.25, duration: 700, easing: Easing.inOut(Easing.quad), useNativeDriver: NATIVE }), Animated.timing(o, { toValue: 1, duration: 700, easing: Easing.inOut(Easing.quad), useNativeDriver: NATIVE })]));
     a.start();
     return () => a.stop();
   }, [st.pulse, reduce, o]);
@@ -170,7 +172,7 @@ function Pop({ value, size = 44, color = A.ink }) {
   const sc = useRef(new Animated.Value(1)).current;
   const prev = useRef(value);
   useEffect(() => {
-    if (prev.current !== value) { prev.current = value; sc.setValue(1.35); Animated.spring(sc, { toValue: 1, useNativeDriver: true, speed: 14, bounciness: 14 }).start(); }
+    if (prev.current !== value) { prev.current = value; sc.setValue(1.35); Animated.spring(sc, { toValue: 1, useNativeDriver: NATIVE, speed: 14, bounciness: 14 }).start(); }
   }, [value, sc]);
   return <Animated.View style={{ transform: [{ scale: sc }] }}><AT size={size} weight="900" num color={color} style={{ textShadowColor: `${color}88`, textShadowRadius: 14 }}>{value ?? 0}</AT></Animated.View>;
 }
