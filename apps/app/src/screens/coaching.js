@@ -2,7 +2,7 @@
 //   Athlete: Hire (find a coach · post a request · my coaching) -> CoachProfile -> BookCoachSheet, CoachRequest (compare answers).
 //   Coach:   CoachDesk (confirm, complete, earnings, reviews), CoachBoard (answer requests), CoachSetup (profile + weekly hours).
 import React, { useEffect, useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { Linking, Pressable, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
@@ -18,8 +18,12 @@ import { c, grad, toneFor } from '../theme';
 import { dateTimeIn, localDate, localToIso, moneyIn, timeIn, todayIn, WEEKDAYS } from '../vtime';
 
 const deviceTz = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return 'UTC'; } })();
-const price = (cents, currency = 'INR') => moneyIn(Number(cents ?? 0), currency);
+export const price = (cents, currency = 'INR') => moneyIn(Number(cents ?? 0), currency);
 const rateOf = (x, currency) => (x.hourly_rate_cents ? `${price(x.hourly_rate_cents, currency)}/hr` : 'Rate on request');
+export const AUDIENCES = [['individual', 'Individual'], ['group', 'Group'], ['team', 'Team'], ['event', 'Event']];
+export const UNIT = { hour: '/hr', session: '/session', day: '/day', month: '/month', package: ' package' };
+export const cardPrice = (k, currency) => `${price(k.price_cents, currency)}${UNIT[k.unit]}${k.per_person ? ' per person' : ''}`;
+export const audienceTag = (r) => (r.audience && r.audience !== 'individual' ? `${r.audience[0].toUpperCase()}${r.audience.slice(1)}${r.team_name ? `: ${r.team_name}` : r.event_name ? `: ${r.event_name}` : ''}${r.participants > 1 ? ` · ${r.participants} people` : ''}` : null);
 const DELIVERY = { in_person: 'In person', online: 'Online', both: 'In person & online', either: 'In person or online' };
 const LEVELS = ['beginner', 'amateur', 'semi_pro', 'pro'].map((value) => ({ value, label: nice(value).replace(/^./, (x) => x.toUpperCase()) }));
 const DAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
@@ -35,8 +39,8 @@ const RatingLine = ({ avg, n, size = 13 }) => (n
   ? <T size={size}><T size={size} weight="800" color={c.sun}>★ {Number(avg).toFixed(1)}</T><T size={size} color={c.mute}> ({n} review{n === 1 ? '' : 's'})</T></T>
   : <T size={size} color={c.mute}>New · no reviews yet</T>);
 const Verified = () => <Pill label="✓ VERIFIED" fg={c.lime} bg={c.limeSoft} />;
-const Tile = ({ value, label, hot }) => <StatPill value={value} label={label} color={hot ? c.lime : c.paper} />;
-const Head = ({ eyebrow, title, sub, right }) => (
+export const Tile = ({ value, label, hot }) => <StatPill value={value} label={label} color={hot ? c.lime : c.paper} />;
+export const Head = ({ eyebrow, title, sub, right }) => (
   <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, marginTop: 6 }}>
     <View style={{ flexShrink: 1 }}>
       <T weight="700" size={12} color={c.pink} style={{ letterSpacing: 1.2 }}>{eyebrow}</T>
@@ -48,7 +52,7 @@ const Head = ({ eyebrow, title, sub, right }) => (
 );
 
 /** A yes/no question before something that cannot be undone (cancel, accept). */
-function Confirm({ visible, title, body, yes, danger, onYes, onClose }) {
+export function Confirm({ visible, title, body, yes, danger, onYes, onClose }) {
   const [busy, setBusy] = useState(false);
   if (!visible) return null;
   return (
@@ -84,32 +88,72 @@ function ReviewSheet({ hire, onClose, onDone }) {
 }
 
 // ================================================================================== BOOK A SESSION
-/** Pick a real open slot from the coach's weekly hours; a coach without hours gets a proposed date and time instead. */
+/**
+ * Book from one of the coach's rate cards (individual, group, team or event) or their standard hourly rate. With open hours you
+ * pick a real slot; otherwise you propose a date and time. A team or event booking names the team or event it is for.
+ */
 export function BookCoachSheet({ coach, onClose, onDone }) {
-  const { toast } = useSession();
-  const [duration, setDuration] = useState(60);
+  const { toast, user } = useSession();
+  const detail = useLoad(() => api.get(`/coaches/${coach.id}`), [coach.id]);
+  const cards = (detail.data?.rate_cards ?? []).filter((k) => !k.sport_slug || k.sport_slug === coach.sport_slug);
+  const [cardId, setCardId] = useState(null);
+  const card = cards.find((k) => k.id === cardId) ?? null;
+  const [hours, setHours] = useState(60), [people, setPeople] = useState(1), [teamId, setTeamId] = useState(null), [eventId, setEventId] = useState(null);
   const [day, setDay] = useState(null), [pick, setPick] = useState(null), [date, setDate] = useState(), [time, setTime] = useState(), [note, setNote] = useState('');
   const [busy, setBusy] = useState(false), [err, setErr] = useState(null);
-  const slots = useLoad(() => api.get(`/coaches/${coach.id}/slots`, { from: new Date().toISOString(), to: new Date(Date.now() + 21 * 864e5).toISOString(), duration_min: duration }), [coach.id, duration]);
+  const teams = useLoad(() => (card?.audience === 'team' ? api.get('/teams', { mine: true, limit: 50 }) : Promise.resolve([])), [card?.audience]);
+  const events = useLoad(() => (card?.audience === 'event' ? api.get('/events', { organizer_id: user.id, limit: 50 }) : Promise.resolve([])), [card?.audience]);
+  const mins = card && card.unit !== 'hour' ? card.duration_min ?? 60 : hours;
+  const slots = useLoad(() => (mins <= 480 ? api.get(`/coaches/${coach.id}/slots`, { from: new Date().toISOString(), to: new Date(Date.now() + 21 * 864e5).toISOString(), duration_min: mins }) : Promise.resolve({ grid: false, slots: [], timezone: 'UTC' })), [coach.id, mins]);
   const d = slots.data, tz = d?.timezone ?? 'UTC';
   const byDay = {};
-  for (const s of d?.slots ?? []) (byDay[localDate(s, tz)] ??= []).push(s);
+  for (const x of d?.slots ?? []) (byDay[localDate(x, tz)] ??= []).push(x);
   const first = todayIn(tz), avail = Object.fromEntries(Object.keys(byDay).map((k) => [k, 'available']));
   const chosenDay = day ?? Object.keys(byDay).sort()[0];
   const startsAt = d?.grid ? pick : date && time ? localToIso(date, time, deviceTz) : null;
-  const cost = Math.round((Number(coach.hourly_rate_cents ?? 0) * duration) / 60);
+  const rate = card ? Number(card.price_cents) : Number(coach.hourly_rate_cents ?? 0);
+  const base = !card || card.unit === 'hour' ? Math.round((rate * mins) / 60) : rate;
+  const cost = card?.per_person ? base * people : base;
+  const need = card?.audience === 'team' ? !teamId : card?.audience === 'event' ? !eventId : false;
+  const choose = (k) => { setCardId(k?.id ?? null); setPeople(k ? k.min_participants : 1); setTeamId(null); setEventId(null); setPick(null); setDay(null); };
   const send = async () => {
     setBusy(true); setErr(null);
     try {
-      const hire = await api.post('/hires', { coach_id: coach.id, sport: coach.sport_slug, starts_at: startsAt, duration_min: duration, ...(note.trim() ? { note: note.trim() } : {}) });
+      const hire = await api.post('/hires', { coach_id: coach.id, sport: coach.sport_slug, starts_at: startsAt, duration_min: mins, ...(note.trim() ? { note: note.trim() } : {}),
+        ...(card ? { rate_card_id: card.id, participants: people, ...(teamId ? { team_id: teamId } : {}), ...(eventId ? { event_id: eventId } : {}) } : {}) });
       toast(hire.payment_status === 'unpaid' ? 'Requested — pay to let the coach confirm' : 'Requested — the coach will confirm');
       await onDone(hire); onClose();
     } catch (e) { setErr(e.message); } finally { setBusy(false); }
   };
   return (
     <Sheet visible onClose={onClose} title={`Book ${coach.display_name}`}>
-      <T size={13} color={c.mute}>{coach.sport_emoji} {coach.sport} · {rateOf(coach, coach.currency)}</T>
-      <Counter label="Session length" value={duration} onChange={(x) => { setDuration(x); setPick(null); }} min={30} max={240} step={15} suffix=" min" />
+      <T size={13} color={c.mute}>{coach.sport_emoji} {coach.sport}</T>
+      {cards.length ? (
+        <View style={{ gap: 8 }}>
+          <T weight="800" size={13}>What do you need?</T>
+          <View style={{ gap: 8 }}>
+            {coach.hourly_rate_cents ? <Card pad={12} color={!card ? c.pinkSoft : c.paper} onPress={() => choose(null)}><View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><T weight="700">Standard hourly rate</T><T weight="800">{rateOf(coach, coach.currency)}</T></View><T size={12} color={c.mute}>One person</T></Card> : null}
+            {cards.map((k) => (
+              <Card key={k.id} pad={12} color={card?.id === k.id ? c.pinkSoft : c.paper} onPress={() => choose(k)}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}><View style={{ flex: 1 }}><T weight="700">{k.title}{k.is_intro ? ' · trial' : ''}</T></View><T weight="800">{cardPrice(k, coach.currency)}</T></View>
+                <T size={12} color={c.mute}>{[nice(k.audience), k.duration_min && k.unit !== 'hour' ? `${k.duration_min} min` : null, k.audience !== 'individual' ? `${k.min_participants}${k.max_participants ? `–${k.max_participants}` : '+'} people` : null, k.sessions_included ? `${k.sessions_included} sessions` : null].filter(Boolean).join(' · ')}</T>
+                {k.description ? <T size={12} color={c.mute}>{k.description}</T> : null}
+              </Card>
+            ))}
+          </View>
+        </View>
+      ) : null}
+      {card && card.audience !== 'individual' ? <Counter label="How many people" value={people} onChange={setPeople} min={card.min_participants} max={card.max_participants ?? 500} /> : null}
+      {card?.audience === 'team' ? (
+        <View style={{ gap: 6 }}><T weight="800" size={13}>Which team</T>
+          {teams.loading && !teams.data ? <Loading /> : !teams.data?.length ? <T size={13} color={c.mute}>You are not on a team yet — create or join one first.</T> : <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>{teams.data.map((t) => <Chip key={t.id} label={`${t.emoji ?? ''} ${t.name}`.trim()} active={teamId === t.id} onPress={() => setTeamId(t.id)} />)}</View>}
+          <T size={12} color={c.mute}>Only a manager or captain of the team can book for it.</T></View>
+      ) : null}
+      {card?.audience === 'event' ? (
+        <View style={{ gap: 6 }}><T weight="800" size={13}>Which event</T>
+          {events.loading && !events.data ? <Loading /> : !events.data?.length ? <T size={13} color={c.mute}>You are not organising an event yet.</T> : <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>{events.data.map((e) => <Chip key={e.id} label={e.name} active={eventId === e.id} onPress={() => setEventId(e.id)} />)}</View>}</View>
+      ) : null}
+      {!card || card.unit === 'hour' ? <Counter label="Session length" value={hours} onChange={(x) => { setHours(x); setPick(null); }} min={30} max={card ? 480 : 240} step={15} suffix=" min" /> : <T size={13} color={c.mute}>Session length is set by the coach: {mins >= 60 ? `${Math.floor(mins / 60)} h${mins % 60 ? ` ${mins % 60} min` : ''}` : `${mins} min`}.</T>}
       {slots.loading && !d ? <Loading /> : slots.error ? <ErrorBox error={slots.error} onRetry={slots.reload} /> : d.grid ? (
         Object.keys(byDay).length ? (
           <View style={{ gap: 10 }}>
@@ -117,7 +161,7 @@ export function BookCoachSheet({ coach, onClose, onDone }) {
             <DayStrip from={first} count={21} value={chosenDay} onChange={(x) => { setDay(x); setPick(null); }} avail={avail} />
             <T weight="800" size={13}>Open times</T>
             <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-              {(byDay[chosenDay] ?? []).map((s) => <Chip key={s} label={timeIn(s, tz)} active={pick === s} onPress={() => setPick(s)} />)}
+              {(byDay[chosenDay] ?? []).map((x) => <Chip key={x} label={timeIn(x, tz)} active={pick === x} onPress={() => setPick(x)} />)}
               {!(byDay[chosenDay] ?? []).length ? <T size={13} color={c.mute}>Nothing open that day — try another.</T> : null}
             </View>
             <T size={12} color={c.mute}>Times shown in the coach's time zone ({tz}).</T>
@@ -125,18 +169,19 @@ export function BookCoachSheet({ coach, onClose, onDone }) {
         ) : <Empty emoji="📅" title="No open slots in the next three weeks" sub="Try a shorter session, or post a request and let coaches propose a time." />
       ) : (
         <View style={{ gap: 10 }}>
-          <T size={13} color={c.mute}>This coach has not published open hours, so propose a time and they will confirm it or suggest another.</T>
+          <T size={13} color={c.mute}>{mins > 480 ? 'This is a full-day booking.' : 'This coach has not published open hours.'} Propose a date and time and they will confirm it or suggest another.</T>
           <DateField label="Date" value={date} onChange={setDate} min={first} />
           <TimeField label="Start time" value={time} onChange={setTime} step={15} hint="In your time zone." />
         </View>
       )}
       <Field label="What do you want to work on? (optional)" value={note} onChangeText={setNote} multiline />
       <Card color={c.pinkSoft} pad={12}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><T weight="700">Total</T><T weight="800">{coach.hourly_rate_cents ? price(cost, coach.currency) : 'Agreed with the coach'}</T></View>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><T weight="700">Total</T><T weight="800">{rate ? price(cost, coach.currency) : 'Agreed with the coach'}</T></View>
+        {card?.unit === 'package' && card.sessions_included ? <T size={12} color={c.mute}>Covers {card.sessions_included} sessions; the coach schedules the rest with you.</T> : null}
         <T size={12} color={c.mute}>You pay after the request; the coach confirms once it is paid. Cancel any time and a paid session is refunded.</T>
       </Card>
       {err ? <T color={c.red} weight="800">{err}</T> : null}
-      <Btn title="Request session" loading={busy} disabled={!startsAt} onPress={send} />
+      <Btn title="Request booking" loading={busy} disabled={!startsAt || need} onPress={send} />
     </Sheet>
   );
 }
@@ -144,14 +189,21 @@ export function BookCoachSheet({ coach, onClose, onDone }) {
 // ================================================================================== POST A REQUEST
 export function PostRequestSheet({ visible, onClose, onDone, currency = 'INR' }) {
   const today = todayIn(deviceTz);
+  const { user } = useSession();
+  const teams = useLoad(() => (visible ? api.get('/teams', { mine: true, limit: 50 }) : Promise.resolve([])), [visible]);
+  const events = useLoad(() => (visible ? api.get('/events', { organizer_id: user.id, limit: 50 }) : Promise.resolve([])), [visible]);
   return (
     <FormSheet visible={visible} onClose={onClose} title="Tell coaches what you need" submitLabel="Post request"
-      initial={{ delivery: 'either', sessions_per_week: 2 }}
+      initial={{ delivery: 'either', sessions_per_week: 2, audience: 'individual', participants: 10 }}
       fields={[
+        { key: 'audience', label: 'Who is the coaching for', type: 'chips', options: AUDIENCES.map(([value, label]) => ({ value, label })) },
+        { key: 'team_id', label: teams.data?.length ? 'Which team' : 'Which team (you are not on a team yet)', type: 'chips', optional: true, options: (teams.data ?? []).map((t) => ({ value: t.id, label: t.name })), show: (v) => v.audience === 'team' && !!teams.data?.length },
+        { key: 'event_id', label: events.data?.length ? 'Which event' : 'Which event (you are not organising one yet)', type: 'chips', optional: true, options: (events.data ?? []).map((e) => ({ value: e.id, label: e.name })), show: (v) => v.audience === 'event' && !!events.data?.length },
+        { key: 'participants', label: 'How many people', type: 'stepper', min: 2, max: 500, default: 10, show: (v) => v.audience !== 'individual' },
         { key: 'sport', label: 'Sport', type: 'sport' },
         { key: 'title', label: 'Headline', hint: 'One line coaches will see first.' },
-        { key: 'goal', label: 'Your goals and background', type: 'multiline', optional: true },
-        { key: 'level', label: 'Your level', type: 'chips', options: LEVELS, optional: true },
+        { key: 'goal', label: 'Goals and background', type: 'multiline', optional: true },
+        { key: 'level', label: 'Level', type: 'chips', options: LEVELS, optional: true },
         { key: 'delivery', label: 'Where', type: 'choice', options: [{ value: 'either', label: 'Either' }, { value: 'in_person', label: 'In person' }, { value: 'online', label: 'Online' }] },
         { key: 'city', label: 'City', optional: true, show: (v) => v.delivery !== 'online' },
         { key: 'budget_max_cents', label: 'Most you would pay per hour', type: 'money', currency, optional: true },
@@ -159,7 +211,7 @@ export function PostRequestSheet({ visible, onClose, onDone, currency = 'INR' })
         { key: 'preferred_days', label: 'Preferred days', type: 'weekdays', optional: true },
         { key: 'start_by', label: 'Want to start by', type: 'date', min: today, optional: true },
       ]}
-      onSubmit={async (v) => { await api.post('/coach-requests', v); await onDone?.(); return 'Posted — coaches of this sport have been told'; }} />
+      onSubmit={async (v) => { await api.post('/coach-requests', v); await onDone?.(); return 'Posted — coaches see it in Community and on Open positions'; }} />
   );
 }
 
@@ -167,13 +219,13 @@ export function PostRequestSheet({ visible, onClose, onDone, currency = 'INR' })
 function FindCoaches({ onPost, onBook }) {
   const { push } = useNav();
   const { w } = useCols();
-  const [f, setF] = useState({ q: '', sport: null, delivery: null, verified: false, rated: false, hours: false, sort: 'rating', max: undefined, city: '' });
+  const [f, setF] = useState({ q: '', sport: null, delivery: null, verified: false, rated: false, hours: false, audience: null, intro: false, sort: 'rating', max: undefined, city: '' });
   const [more, setMore] = useState(false);
   const q = useDebounced(f.q);
   const list = useLoad(() => api.get('/coaches', {
     limit: 50, sort: f.sort, ...(q.trim() ? { q: q.trim() } : {}), ...(f.sport ? { sport: f.sport } : {}), ...(f.delivery ? { delivery: f.delivery } : {}),
-    ...(f.verified ? { verified: true } : {}), ...(f.rated ? { min_rating: 4 } : {}), ...(f.hours ? { has_hours: true } : {}), ...(f.max ? { max_rate_cents: f.max } : {}), ...(f.city.trim() ? { city: f.city.trim() } : {}),
-  }), [q, f.sport, f.delivery, f.verified, f.rated, f.hours, f.sort, f.max, f.city]);
+    ...(f.verified ? { verified: true } : {}), ...(f.rated ? { min_rating: 4 } : {}), ...(f.hours ? { has_hours: true } : {}), ...(f.audience ? { audience: f.audience } : {}), ...(f.intro ? { intro_offer: true } : {}), ...(f.max ? { max_rate_cents: f.max } : {}), ...(f.city.trim() ? { city: f.city.trim() } : {}),
+  }), [q, f.sport, f.delivery, f.verified, f.rated, f.hours, f.audience, f.intro, f.sort, f.max, f.city]);
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
   const cur = list.data?.[0]?.currency ?? 'INR';
   const active = [f.max, f.city.trim()].filter(Boolean).length;
@@ -186,6 +238,7 @@ function FindCoaches({ onPost, onBook }) {
       </GradCard>
       <Field value={f.q} onChangeText={(x) => set('q', x)} placeholder="Search by name, speciality or headline…" />
       <SportSelect value={f.sport} onChange={(x) => set('sport', x)} allLabel="All sports" />
+      <HScroll>{[[null, 'Anyone'], ...AUDIENCES.map(([v, l]) => [v, `For ${l.toLowerCase()}s`])].map(([v, l]) => <Chip key={l} label={l} active={f.audience === v} onPress={() => set('audience', v)} />)}<Chip label="🎁 Trial offer" active={f.intro} onPress={() => set('intro', !f.intro)} /></HScroll>
       <HScroll>
         {[[null, 'Any place'], ['in_person', 'In person'], ['online', 'Online']].map(([v, l]) => <Chip key={l} label={l} active={f.delivery === v} onPress={() => set('delivery', v)} />)}
         <Chip label="✓ Verified" active={f.verified} onPress={() => set('verified', !f.verified)} />
@@ -207,7 +260,7 @@ function FindCoaches({ onPost, onBook }) {
                     <Avatar user={x} size={52} />
                     <View style={{ flex: 1, gap: 3 }}>
                       <T weight="800" size={15}>{x.display_name}</T>
-                      {x.headline ? <T size={12} color={c.mute} numberOfLines={1}>{x.headline}</T> : null}
+                      {x.tagline || x.headline ? <T size={12} color={c.mute} numberOfLines={1}>{x.tagline ?? x.headline}</T> : null}
                       <RatingLine avg={x.rating} n={x.rating_count} size={12} />
                     </View>
                   </View>
@@ -217,6 +270,8 @@ function FindCoaches({ onPost, onBook }) {
                     <Pill label={DELIVERY[x.delivery].toUpperCase()} />
                     {x.city ? <Pill label={x.city.toUpperCase()} /> : null}
                     {x.has_hours ? <Pill label="📅 OPEN HOURS" /> : null}
+                    {x.has_intro ? <Pill label="🎁 TRIAL" fg={c.sun} bg={c.sunSoft} /> : null}
+                    {(x.audiences ?? []).filter((a) => a !== 'individual').map((a) => <Pill key={a} label={`${a.toUpperCase()}S`} />)}
                     {x.accepting === false ? <Pill label="FULL" fg={c.red} bg={c.redSoft} /> : null}
                   </View>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
@@ -463,7 +518,7 @@ export function CoachProfile({ id }) {
           <Avatar user={p} size={72} />
           <View style={{ flex: 1, gap: 4 }}>
             <T color="#fff" weight="800" size={22}>{p.display_name}</T>
-            {p.profile.headline ? <T color="#fff" size={13} style={{ opacity: 0.9 }}>{p.profile.headline}</T> : null}
+            {p.profile.tagline ?? p.profile.headline ? <T color="#fff" size={13} style={{ opacity: 0.9 }}>{p.profile.tagline ?? p.profile.headline}</T> : null}
             <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>{verified ? <Verified /> : null}{p.profile.city ? <Pill label={p.profile.city.toUpperCase()} /> : null}<Pill label={DELIVERY[p.profile.delivery].toUpperCase()} /></View>
           </View>
         </View>
@@ -481,6 +536,26 @@ export function CoachProfile({ id }) {
         {p.profile.languages?.length ? <T size={12} color={c.mute}>Speaks {p.profile.languages.join(', ')}</T> : null}
       </Section>
 
+      {p.rate_cards.length ? (
+        <Section title="Services & prices">
+          {p.rate_cards.map((k) => (
+            <Card key={k.id} pad={12}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
+                <View style={{ flex: 1 }}><T weight="800">{k.title}</T><View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginTop: 4 }}><Pill label={`FOR ${k.audience.toUpperCase()}`} />{k.is_intro ? <Pill label="🎁 TRIAL OFFER" fg={c.sun} bg={c.sunSoft} /> : null}{k.sport ? <Pill label={k.sport.toUpperCase()} /> : null}</View></View>
+                <T weight="800" size={15}>{cardPrice(k, cur)}</T>
+              </View>
+              <T size={12} color={c.mute} style={{ marginTop: 4 }}>{[k.duration_min && k.unit !== 'hour' ? `${k.duration_min} min` : null, k.audience !== 'individual' ? `${k.min_participants}${k.max_participants ? `–${k.max_participants}` : '+'} people` : null, k.sessions_included ? `${k.sessions_included} sessions` : null, DELIVERY[k.delivery]].filter(Boolean).join(' · ')}</T>
+              {k.description ? <T size={13} style={{ marginTop: 4 }}>{k.description}</T> : null}
+            </Card>
+          ))}
+        </Section>
+      ) : null}
+      {p.specialisations.length ? (
+        <Section title="Specialisations">
+          {p.specialisations.map((z) => <Card key={z.id} pad={12}><T weight="800">{z.emoji} {z.name}</T><T size={12} color={c.mute}>{[z.sport, z.levels.length ? `for ${z.levels.map(nice).join(', ')}` : null, z.years != null ? `${z.years} yrs` : null, z.certification].filter(Boolean).join(' · ')}</T></Card>)}
+        </Section>
+      ) : null}
+      {p.profile.intro_video_url ? <Btn small title="▶ Watch introduction" color={c.paper} ink={c.ink} onPress={() => Linking.openURL(p.profile.intro_video_url)} style={{ alignSelf: 'flex-start', marginTop: 8 }} /> : null}
       <Section title="Sports & rates">
         {p.sports.map((s) => (
           <Card key={s.slug} pad={12} color={sp?.slug === s.slug && p.sports.length > 1 ? c.pinkSoft : c.paper} onPress={() => setSport(s.slug)}>
@@ -516,6 +591,7 @@ export function CoachProfile({ id }) {
         ) : <T size={13} color={c.mute}>No reviews yet. Reviews come only from athletes who finished a session.</T>}
         {p.reviews.map((r) => (
           <Card key={r.id} pad={12}>
+            {r.pinned ? <T size={11} weight="800" color={c.sun} style={{ marginBottom: 4 }}>📌 PINNED BY THE COACH</T> : null}
             <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
               <Avatar user={{ avatar_emoji: r.avatar_emoji, avatar_color: r.avatar_color, avatar_url: r.avatar_url, display_name: r.author_name }} size={34} />
               <View style={{ flex: 1 }}><T weight="700">{r.author_name}</T><Stars value={r.rating} size={12} /></View>
@@ -555,23 +631,52 @@ const answerTags = (all) => {
 
 function RespondSheet({ r, mine, onClose, onDone }) {
   const today = todayIn(deviceTz);
+  const { push } = useNav();
+  const cards = useLoad(() => api.get('/coach/rate-cards'), []);
+  const fit = (cards.data ?? []).filter((k) => k.active && k.audience === r.audience && (!k.sport_slug || k.sport_slug === r.sport_slug));
+  if (cards.loading && !cards.data) return <Sheet visible onClose={onClose} title="Answer"><Loading /></Sheet>;
+  if (r.audience !== 'individual' && !fit.length) {
+    return (
+      <Sheet visible onClose={onClose} title="Add a rate card first">
+        <T size={14} color={c.mute}>This request is for a {r.audience}. Quote one of your {r.audience} rate cards so the price is clear. You have none for {r.sport} yet.</T>
+        <Btn title={`Create a ${r.audience} rate card`} onPress={() => { onClose(); push('CoachRates'); }} />
+      </Sheet>
+    );
+  }
+  const byId = Object.fromEntries(fit.map((k) => [k.id, k]));
   return (
-    <FormSheet visible onClose={onClose} title={mine ? 'Update your answer' : `Answer: ${r.title}`} submitLabel={mine ? 'Update answer' : 'Send answer'} initial={{ duration_min: mine?.duration_min ?? 60, rate_cents_hour: mine ? Number(mine.rate_cents_hour) : undefined }}
+    <FormSheet visible onClose={onClose} title={mine ? 'Update your answer' : `Answer: ${r.title}`} submitLabel={mine ? 'Update answer' : 'Send answer'} initial={{ duration_min: mine?.duration_min ?? 60, rate_cents_hour: mine && !mine.rate_card_id ? Number(mine.rate_cents_hour) : undefined, rate_card_id: mine?.rate_card_id ?? undefined }}
       fields={[
-        { key: 'rate_cents_hour', label: 'Your rate per hour', type: 'money', currency: r.currency, optional: true, hint: 'Leave empty to use your profile rate for this sport.' },
+        ...(fit.length ? [{ key: 'rate_card_id', label: 'Quote from your rate cards', type: 'chips', optional: r.audience === 'individual', options: fit.map((k) => ({ value: k.id, label: `${k.title} · ${cardPrice(k, r.currency)}` })) }] : []),
+        { key: 'rate_cents_hour', label: 'Your rate per hour', type: 'money', currency: r.currency, optional: true, hint: 'Leave empty to use your profile rate for this sport.', show: (v) => !v.rate_card_id },
         { key: 'date', label: 'First session: date', type: 'date', min: today },
         { key: 'time', label: 'First session: start time', type: 'time', step: 15 },
-        { key: 'duration_min', label: 'Session length', type: 'stepper', min: 15, max: 480, step: 15, default: 60, suffix: ' min' },
+        { key: 'duration_min', label: 'Session length', type: 'stepper', min: 15, max: 480, step: 15, default: 60, suffix: ' min', show: (v) => !v.rate_card_id || byId[v.rate_card_id]?.unit === 'hour' },
         { key: 'message', label: 'Message to the athlete', type: 'multiline', optional: true },
       ]}
-      onSubmit={async (v) => { await api.post(`/coach-requests/${r.id}/respond`, { starts_at: localToIso(v.date, v.time, deviceTz), duration_min: v.duration_min, ...(v.rate_cents_hour !== undefined ? { rate_cents_hour: v.rate_cents_hour } : {}), ...(v.message ? { message: v.message } : {}) }); await onDone(); return 'Answer sent — the athlete has been told'; }} />
+      onSubmit={async (v) => { await api.post(`/coach-requests/${r.id}/respond`, { starts_at: localToIso(v.date, v.time, deviceTz), ...(v.duration_min ? { duration_min: v.duration_min } : {}), ...(v.rate_card_id ? { rate_card_id: v.rate_card_id } : v.rate_cents_hour !== undefined ? { rate_cents_hour: v.rate_cents_hour } : {}), ...(v.message ? { message: v.message } : {}) }); await onDone(); return 'Answer sent — the athlete has been told'; }} />
+  );
+}
+
+/** A person who wants to coach a sport: adds it as a coaching profile with their hourly rate. Also makes them a coach. */
+export function AddCoachSportSheet({ visible, onClose, onDone, initialSport, currency = 'INR' }) {
+  return (
+    <FormSheet visible={visible} onClose={onClose} title="Coach this sport" submitLabel="Add and continue" initial={{ sport: initialSport, level: 'amateur', experience_years: 1 }}
+      fields={[
+        { key: 'sport', label: 'Sport', type: 'sport' },
+        { key: 'level', label: 'Level you coach at', type: 'chips', options: LEVELS },
+        { key: 'hourly_rate_cents', label: 'Your usual rate per hour', type: 'money', currency, optional: true, hint: 'You can add rate cards for groups, teams and events later.' },
+        { key: 'experience_years', label: 'Years coaching', type: 'stepper', min: 0, max: 60, default: 1 },
+      ]}
+      onSubmit={async (v) => { await api.post('/me/sport-profiles', { ...v, role: 'coach' }); await onDone?.(); return 'You can now answer requests in this sport'; }} />
   );
 }
 
 export function CoachRequest({ id }) {
-  const { toast } = useSession();
+  const { toast, refresh } = useSession();
   const { push, goTab } = useNav();
   const q = useLoad(() => api.get(`/coach-requests/${id}`), [id]);
+  const [addSport, setAddSport] = useState(false);
   const [accept, setAccept] = useState(null), [closing, setClosing] = useState(false), [respond, setRespond] = useState(false), [paying2, setPaying] = useState(null), [withdraw, setWithdraw] = useState(null);
   const r = q.data;
   if (q.loading && !r) return <Screen><Loading /></Screen>;
@@ -591,7 +696,7 @@ export function CoachRequest({ id }) {
       <Card pad={16} style={{ marginTop: 8 }}>
         <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
           <T size={30}>{r.sport_emoji}</T>
-          <View style={{ flex: 1 }}><T weight="800" size={18}>{r.title}</T><T size={12} color={c.mute}>{r.sport}{r.level ? ` · ${nice(r.level)}` : ''}</T></View>
+          <View style={{ flex: 1 }}><T weight="800" size={18}>{r.title}</T><T size={12} color={c.mute}>{r.sport}{r.level ? ` · ${nice(r.level)}` : ''}</T>{audienceTag(r) ? <View style={{ marginTop: 4 }}><Pill label={`FOR ${audienceTag(r).toUpperCase()}`} fg={c.pink} bg={c.pinkSoft} /></View> : null}</View>
           <StatusPill s={r.status} />
         </View>
         {r.goal ? <T size={14} style={{ marginTop: 10 }}>{r.goal}</T> : null}
@@ -648,7 +753,13 @@ export function CoachRequest({ id }) {
               ) : null}
               {r.my_response.status === 'accepted' ? <Btn small title="Open coach desk" onPress={() => push('CoachDesk')} style={{ alignSelf: 'flex-start', marginTop: 10 }} /> : null}
             </Card>
-          ) : r.status === 'open' ? <Btn title="Answer this request" onPress={() => setRespond(true)} /> : <T size={13} color={c.mute}>This request is no longer open.</T>}
+          ) : r.status !== 'open' ? <T size={13} color={c.mute}>This request is no longer open.</T> : !r.can_respond?.is_coach || !r.can_respond?.coaches_this_sport ? (
+            <Card color={c.sunSoft} pad={14}>
+              <T weight="800">{!r.can_respond?.is_coach ? 'Only coaches can answer' : `You do not coach ${r.sport} yet`}</T>
+              <T size={13} color={c.mute}>Add {r.sport} as a coaching sport with your rate and you can answer straight away. It takes a minute.</T>
+              <Btn small title={`Coach ${r.sport}`} onPress={() => setAddSport(true)} style={{ alignSelf: 'flex-start', marginTop: 8 }} />
+            </Card>
+          ) : <Btn title="Answer this request" onPress={() => setRespond(true)} />}
         </Section>
       )}
 
@@ -657,6 +768,7 @@ export function CoachRequest({ id }) {
       <Confirm visible={closing} title="Close this request?" yes="Close request" danger onClose={() => setClosing(false)} onYes={close} body="Coaches with pending answers are told. The request stays in your history." />
       <Confirm visible={!!withdraw} title="Withdraw your answer?" yes="Withdraw" danger onClose={() => setWithdraw(null)} body="The athlete will no longer see it."
         onYes={async () => { try { await api.post(`/coach-responses/${withdraw.id}/withdraw`); setWithdraw(null); await q.reload(); toast('Answer withdrawn'); } catch (e) { toast(e.message); } }} />
+      <AddCoachSportSheet visible={addSport} onClose={() => setAddSport(false)} initialSport={r.sport_slug} currency={r.currency} onDone={async () => { await refresh(); await q.reload(); }} />
       {respond ? <RespondSheet r={r} mine={r.my_response?.status === 'pending' ? r.my_response : null} onClose={() => setRespond(false)} onDone={q.reload} /> : null}
       {paying2 ? <PaySheet target={paying2} onClose={() => setPaying(null)} onDone={q.reload} /> : null}
     </Screen>
@@ -664,34 +776,43 @@ export function CoachRequest({ id }) {
 }
 
 // ================================================================================== COACH SIDE
-export function CoachBoard() {
+/** Open coaching requests as cards. Coaches see their own sports first; `defaultAll` shows every sport (Open positions). */
+export function CoachRequestList({ defaultAll = false }) {
   const { push } = useNav();
-  const [all, setAll] = useState(false), [sport, setSport] = useState(null);
+  const [all, setAll] = useState(defaultAll), [sport, setSport] = useState(null);
   const q = useLoad(() => api.get('/coach-requests', { limit: 50, ...(sport ? { sport } : {}), ...(all ? { all_sports: true } : {}) }), [all, sport]);
   return (
-    <Screen onRefresh={q.reload}>
-      <Head eyebrow="COACH" title="Request board" sub="Athletes looking for a coach. Answer with your rate and a first session; they choose." />
+    <View>
       <View style={{ marginTop: 12, gap: 8 }}>
-        <SportSelect value={sport} onChange={setSport} allLabel="My sports" />
-        {!sport ? <View style={{ flexDirection: 'row' }}><Chip label="Include sports I do not coach" active={all} onPress={() => setAll(!all)} /></View> : null}
+        <SportSelect value={sport} onChange={setSport} allLabel={defaultAll ? 'All sports' : 'My sports'} />
+        {!sport && !defaultAll ? <View style={{ flexDirection: 'row' }}><Chip label="Include sports I do not coach" active={all} onPress={() => setAll(!all)} /></View> : null}
       </View>
       <View style={{ gap: 10, marginTop: 12 }}>
         {q.error ? <ErrorBox error={q.error} onRetry={q.reload} /> : q.loading && !q.data ? <Loading /> : !q.data?.length ? (
-          <Empty emoji="📭" title="No open requests" sub="New requests from athletes in your sports appear here and you are notified." />
+          <Empty emoji="📭" title="No open requests" sub="Athletes, groups, teams and events looking for a coach appear here, and coaches of the sport are notified." />
         ) : q.data.map((r) => (
           <Card key={r.id} pad={14} onPress={() => push('CoachRequest', { id: r.id })}>
             <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
               <Avatar user={{ avatar_emoji: r.athlete_avatar_emoji, avatar_color: r.athlete_avatar_color, avatar_url: r.athlete_avatar_url, handle: r.athlete_handle, display_name: r.athlete_display_name }} size={44} />
               <View style={{ flex: 1 }}>
                 <T weight="800" size={15}>{r.title}</T>
-                <T size={12} color={c.mute}>{[r.athlete_display_name, `${r.sport_emoji} ${r.sport}`, r.level ? nice(r.level) : null, r.city, DELIVERY[r.delivery]].filter(Boolean).join(' · ')}</T>
+                <T size={12} color={c.mute}>{[r.athlete_display_name, `${r.sport_emoji} ${r.sport}`, audienceTag(r), r.level ? nice(r.level) : null, r.city, DELIVERY[r.delivery]].filter(Boolean).join(' · ')}</T>
                 <T size={12} color={c.mute}>{[r.sessions_per_week ? `${r.sessions_per_week}×/week` : null, r.budget_max_cents ? `up to ${price(r.budget_max_cents, r.currency)}/hr` : null, `${r.responses} answer${r.responses === 1 ? '' : 's'} so far`].filter(Boolean).join(' · ')}</T>
               </View>
-              {r.my_response ? <StatusPill s={r.my_response.status} /> : <Btn small title="Answer" onPress={() => push('CoachRequest', { id: r.id })} />}
+              {r.my_response ? <StatusPill s={r.my_response.status} /> : <Btn small title="View & answer" onPress={() => push('CoachRequest', { id: r.id })} />}
             </View>
           </Card>
         ))}
       </View>
+    </View>
+  );
+}
+
+export function CoachBoard() {
+  return (
+    <Screen>
+      <Head eyebrow="COACH" title="Request board" sub="Athletes, groups, teams and events looking for a coach. Answer with your rate and a first session; they choose." />
+      <CoachRequestList />
     </Screen>
   );
 }
@@ -723,8 +844,12 @@ export function CoachDesk() {
       </View>
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
         <Btn small title={k.board_open ? `Request board · ${k.board_open} open` : 'Request board'} onPress={() => push('CoachBoard')} />
+        <Btn small title="Schedule" color={c.paper} ink={c.ink} onPress={() => push('CoachCalendar')} />
+        <Btn small title="Commitments" color={c.paper} ink={c.ink} onPress={() => push('CoachCommitments')} />
+        <Btn small title="Rate cards" color={c.paper} ink={c.ink} onPress={() => push('CoachRates')} />
+        <Btn small title="Reviews" color={c.paper} ink={c.ink} onPress={() => push('CoachReviews')} />
+        <Btn small title="Analytics" color={c.paper} ink={c.ink} onPress={() => push('CoachAnalytics')} />
         <Btn small title="My athletes" color={c.paper} ink={c.ink} onPress={() => push('CoachAthletes')} />
-        <Btn small title="Calendar" color={c.paper} ink={c.ink} onPress={() => push('CoachCalendar')} />
         <Btn small title="My public profile" color={c.paper} ink={c.ink} onPress={() => push('CoachProfile', { id: user.id })} />
       </View>
 
@@ -813,14 +938,14 @@ function HoursEditor({ initial, onSave }) {
 }
 
 export function CoachSetup() {
-  const { user } = useSession();
+  const { user, refresh } = useSession();
   const { push } = useNav();
   const d = useLoad(() => api.get(`/coaches/${user.id}`).catch((e) => (/not found/i.test(e.message) ? { empty: true } : Promise.reject(e))), [user.id]);
-  const [edit, setEdit] = useState(false);
+  const [edit, setEdit] = useState(false), [addSport, setAddSport] = useState(false);
   if (d.loading && !d.data) return <Screen><Loading /></Screen>;
   if (d.error) return <Screen><ErrorBox error={d.error} onRetry={d.reload} /></Screen>;
   const p = d.data;
-  if (p.empty) return <Screen><Empty emoji="🧑‍🏫" title="Add a coaching sport first" sub="Create a sport profile with the Coach role and your hourly rate, then come back to set up your public profile." /><Btn title="Open my sports" onPress={() => push('SportProfile')} style={{ alignSelf: 'center' }} /></Screen>;
+  if (p.empty) return <Screen><Empty emoji="🧑‍🏫" title="Add a coaching sport first" sub="Add a sport you coach with your rate, then set up your public profile, rate cards and hours." /><Btn title="Add a coaching sport" onPress={() => setAddSport(true)} style={{ alignSelf: 'center' }} /><AddCoachSportSheet visible={addSport} onClose={() => setAddSport(false)} onDone={async () => { await refresh(); await d.reload(); }} /></Screen>;
   const pr = p.profile;
   return (
     <Screen onRefresh={d.reload}>
@@ -828,21 +953,28 @@ export function CoachSetup() {
       <Section title="Public profile" action="Edit" onAction={() => setEdit(true)}>
         <Card pad={14}>
           <T weight="800" size={16}>{pr.headline ?? 'Add a headline'}</T>
+          {pr.tagline ? <T size={13} color={c.pink} weight="700">{pr.tagline}</T> : null}
+          <T size={12} color={c.mute}>{`Coaches ${(pr.serves ?? ['individual']).map((x) => `${x}s`).join(', ')}${pr.travel_km ? ` · travels up to ${pr.travel_km} km` : ''}`}</T>
           <T size={13} color={c.mute}>{[pr.city, DELIVERY[pr.delivery], pr.accepting ? 'taking new athletes' : 'not taking new athletes', pr.listed ? null : 'hidden from search'].filter(Boolean).join(' · ')}</T>
           <T size={13} style={{ marginTop: 6 }}>{pr.about ?? 'Write a short introduction so athletes know your approach.'}</T>
           {pr.specialties?.length ? <T size={12} color={c.mute} style={{ marginTop: 6 }}>Specialities: {pr.specialties.join(', ')}</T> : null}
         </Card>
-        <T size={12} color={c.mute}>Your hourly rate per sport is on your sport profiles.</T>
-        <Btn small title="Rates & sports" color={c.paper} ink={c.ink} onPress={() => push('SportProfile')} style={{ alignSelf: 'flex-start' }} />
+        <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+          <Btn small title="Rate cards & specialisations" onPress={() => push('CoachRates')} />
+          <Btn small title="Add a sport I coach" color={c.paper} ink={c.ink} onPress={() => setAddSport(true)} />
+        </View>
         <Btn small title="See how athletes see me" color={c.paper} ink={c.ink} onPress={() => push('CoachProfile', { id: user.id })} style={{ alignSelf: 'flex-start' }} />
       </Section>
       <Section title={`Weekly hours · ${p.hours.timezone}`}>
         <T size={13} color={c.mute}>Athletes can book only inside these hours, one slot every {p.hours.slot_min} minutes. With no hours, athletes propose a time and you confirm.</T>
         <HoursEditor initial={p.hours.windows} onSave={async (windows) => { await api.post('/me/coach-availability', { windows }); await d.reload(); }} />
       </Section>
-      <FormSheet visible={edit} onClose={() => setEdit(false)} title="Edit public profile" submitLabel="Save" initial={{ ...pr, bio: pr.about, specialties: (pr.specialties ?? []).join(', '), languages: (pr.languages ?? []).join(', ') }}
+      <FormSheet visible={edit} onClose={() => setEdit(false)} title="Edit public profile" submitLabel="Save" initial={{ ...pr, serves: pr.serves ?? ['individual'], travel_km: pr.travel_km ?? 0, bio: pr.about, specialties: (pr.specialties ?? []).join(', '), languages: (pr.languages ?? []).join(', ') }}
         fields={[
-          { key: 'headline', label: 'Headline', optional: true }, { key: 'bio', label: 'About you', type: 'multiline', optional: true },
+          { key: 'headline', label: 'Headline', optional: true }, { key: 'tagline', label: 'Tagline (one line ad)', optional: true, hint: 'Shown on your card in search.' },
+          { key: 'serves', label: 'Who you coach', type: 'multi', options: AUDIENCES.map(([value, label]) => ({ value, label: `${label}s` })) },
+          { key: 'travel_km', label: 'Willing to travel (km)', type: 'stepper', min: 0, max: 500, step: 5, default: 0, suffix: ' km' },
+          { key: 'intro_video_url', label: 'Introduction video link (https)', optional: true }, { key: 'bio', label: 'About you', type: 'multiline', optional: true },
           { key: 'city', label: 'City', optional: true },
           { key: 'delivery', label: 'How you coach', type: 'choice', options: [{ value: 'in_person', label: 'In person' }, { value: 'online', label: 'Online' }, { value: 'both', label: 'Both' }] },
           { key: 'specialties', label: 'Specialities', optional: true, hint: 'Separate with commas.' }, { key: 'languages', label: 'Languages', optional: true, hint: 'Separate with commas.' },
@@ -852,9 +984,10 @@ export function CoachSetup() {
         ]}
         onSubmit={async (v) => {
           const list = (x) => (x ?? '').split(',').map((s) => s.trim()).filter(Boolean);
-          await api.post('/me/coach-profile', { headline: v.headline ?? null, bio: v.bio ?? null, city: v.city ?? null, delivery: v.delivery, specialties: list(v.specialties), languages: list(v.languages), timezone: v.timezone, slot_min: v.slot_min, accepting: v.accepting, listed: v.listed });
+          await api.post('/me/coach-profile', { tagline: v.tagline ?? null, intro_video_url: v.intro_video_url ?? null, serves: v.serves?.length ? v.serves : ['individual'], travel_km: v.travel_km || null, headline: v.headline ?? null, bio: v.bio ?? null, city: v.city ?? null, delivery: v.delivery, specialties: list(v.specialties), languages: list(v.languages), timezone: v.timezone, slot_min: v.slot_min, accepting: v.accepting, listed: v.listed });
           await d.reload(); return 'Profile saved';
         }} />
+      <AddCoachSportSheet visible={addSport} onClose={() => setAddSport(false)} onDone={async () => { await refresh(); await d.reload(); }} />
     </Screen>
   );
 }

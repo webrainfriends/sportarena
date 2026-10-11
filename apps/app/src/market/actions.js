@@ -87,6 +87,7 @@ export function useMarketActions({ openAuth, onPatch }) {
       if (action === 'profile') { if (post.author?.id) push('Person', { id: post.author.id }); }
       else if (action === 'react' && extra === 'comments') setSheet({ type: 'comments', post });
       else if (action === 'react') { const r = await api.post(`/market/posts/${post.id}/react`); onPatch?.(post.id, { my_reaction: r.reacted, reactions: r.reactions }); }
+      else if (post.coach_request_id && (action === 'apply' || action === 'contact' || action === 'manage')) push('CoachRequest', { id: post.coach_request_id }); // a coaching request is answered on its own page
       else if (action === 'apply' || action === 'contact') setSheet({ type: 'apply', post });
       else if (action === 'manage') setSheet({ type: 'leads', post });
     } catch (e) { toast(e.message); }

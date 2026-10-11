@@ -8,6 +8,7 @@ import { useSession } from '../session';
 import { Btn, Card, Chip, Empty, ErrorBox, Field, H1, Loading, Row, Screen, Seg, Sheet, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { pickDocument } from './insurance';
+import { CoachRequestList } from './coaching';
 import { setIntent } from '../market/intent';
 import { c, day } from '../theme';
 import { moneyIn } from '../vtime';
@@ -233,9 +234,11 @@ export function Openings() {
   return (
     <Screen wide>
       <H1>Open positions</H1>
-      <T color={c.mute} style={{ marginTop: 4 }}>Referees, scorers, doctors, volunteers, security, stalls and caterers wanted by tournaments. Apply, share documents and sign the contract here.</T>
-      <View style={{ marginVertical: 10 }}><Seg options={[{ value: 'browse', label: 'Browse' }, { value: 'mine', label: 'My applications' }]} value={tab} onChange={setTab} color={c.pink} /></View>
-      {tab === 'browse' ? <OpenPositions key={key} columns={2} onChanged={() => setKey((k) => k + 1)} onOpenMine={() => setTab('mine')} /> : user ? <MyApplications /> : null}
+      <T color={c.mute} style={{ marginTop: 4 }}>Referees, scorers, doctors, volunteers, security, stalls and caterers wanted by tournaments, and athletes, groups, teams and events looking for a coach. Apply or answer, share documents and sign the contract here.</T>
+      <View style={{ marginVertical: 10 }}><Seg options={[{ value: 'browse', label: 'Browse' }, { value: 'coaching', label: 'Coaching requests' }, { value: 'mine', label: 'My applications' }]} value={tab} onChange={setTab} color={c.pink} /></View>
+      {tab === 'coaching' ? (user ? <CoachRequestList defaultAll /> : <T color={c.mute}>Sign in to see athletes, groups, teams and events looking for a coach.</T>) : null}
+      {tab === 'browse' ? <OpenPositions key={key} columns={2} onChanged={() => setKey((k) => k + 1)} onOpenMine={() => setTab('mine')} /> : null}
+      {tab === 'mine' && user ? <MyApplications /> : null}
     </Screen>
   );
 }
