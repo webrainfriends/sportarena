@@ -1,5 +1,6 @@
 // The Match Centre, and the Games tab of the event console: the referee's live console (kick off, score with the sport's own buttons, track
 // fouls and cards, undo, pause, full time) that doubles as a live scoreboard for everyone else.
+import { locale } from '../locale';
 import React, { useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { api } from '../api';
@@ -203,7 +204,7 @@ export function FixturesTab({ id, isOrg, games, accepted, venues, bracket, reloa
             {fix.ai ? <T size={11} color="#64748B">Advice written by AI. Proposed times come from the built-in clash check.</T> : null}
             {fix.proposals?.map((p) => {
               const g = games.find((x) => x.id === p.fixture_id);
-              return <T key={p.fixture_id} weight="700">{g ? `${g.home_name ?? 'TBD'} vs ${g.away_name ?? 'TBD'}` : 'Game'} → move to {new Date(p.move_to).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}</T>;
+              return <T key={p.fixture_id} weight="700">{g ? `${g.home_name ?? 'TBD'} vs ${g.away_name ?? 'TBD'}` : 'Game'} → move to {new Date(p.move_to).toLocaleString(locale, { weekday: 'short', hour: 'numeric', minute: '2-digit' })}</T>;
             })}
           </>
         ) : null}

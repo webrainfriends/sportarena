@@ -1,5 +1,6 @@
 // Department plans as kanban boards. Each department follows its own board; "My day" gathers the tasks assigned to you across
 // events; "Run sheet" lines up every dated task of the event in time order. Move cards with the arrows (and reorder with up/down).
+import { locale } from '../locale';
 import React, { useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 import { api } from '../api';
@@ -11,8 +12,8 @@ import { ErrorBox, Field, Loading, Sheet, T } from '../ui';
 import { DateField, TimeField } from '../pickers';
 
 const PRIO = { low: ['Low', A.mute], normal: ['Normal', A.cyan], high: ['High', A.sun], urgent: ['Urgent', A.red] };
-const dayName = (iso) => new Date(iso).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' });
-const hhmm = (iso) => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+const dayName = (iso) => new Date(iso).toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short' });
+const hhmm = (iso) => new Date(iso).toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' });
 // a local calendar date + time of day -> an instant the API accepts
 const instant = (date, time) => (date && time ? new Date(`${date}T${time}:00`).toISOString() : undefined);
 
@@ -214,7 +215,7 @@ function CardSheet({ id, deptId, eventId, onClose, onChanged }) {
           <Field value={msg} onChangeText={setMsg} placeholder="Write a comment…" />
           <ABtn small title="Comment" disabled={!msg.trim()} onPress={() => act(async () => { await api.post(`/cards/${id}/comments`, { body: msg.trim() }); setMsg(''); })} />
           <T weight="800" style={{ marginTop: 6 }}>History</T>
-          {c.history.map((h) => <T key={h.id} size={12} color="#64748B">{new Date(h.at).toLocaleString([], { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })} · {h.actor_name} · {h.action}{h.from_column ? ` ${h.from_column} → ${h.to_column}` : ''}{h.note ? ` (${h.note})` : ''}</T>)}
+          {c.history.map((h) => <T key={h.id} size={12} color="#64748B">{new Date(h.at).toLocaleString(locale, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })} · {h.actor_name} · {h.action}{h.from_column ? ` ${h.from_column} → ${h.to_column}` : ''}{h.note ? ` (${h.note})` : ''}</T>)}
           <ABtn small tone="ghost" title="Archive task" onPress={() => act(async () => { await api.patch(`/cards/${id}`, { archived: true }); onClose(); })} />
         </>
       )}
