@@ -5,6 +5,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { c, grad, r, accentFor, fam } from './theme';
 import { useLayout } from './layout';
 import { mediaUrl } from './api';
+// The native animation driver does not exist on the web; asking for it logs a warning and falls back to JS anyway.
+const NATIVE = Platform.OS !== 'web';
 
 const EMOJI = /\s*(?:[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}]\uFE0F?\u200d?)+\s*$/u;
 const plain = (ch) => (typeof ch === 'string' ? ch.replace(EMOJI, '') : Array.isArray(ch) ? ch.map(plain) : ch);
@@ -156,8 +158,8 @@ export function Loading() {
   const o = useRef(new Animated.Value(0.45)).current;
   useEffect(() => {
     const a = Animated.loop(Animated.sequence([
-      Animated.timing(o, { toValue: 1, duration: 700, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-      Animated.timing(o, { toValue: 0.45, duration: 700, easing: Easing.inOut(Easing.quad), useNativeDriver: true })]));
+      Animated.timing(o, { toValue: 1, duration: 700, easing: Easing.inOut(Easing.quad), useNativeDriver: NATIVE }),
+      Animated.timing(o, { toValue: 0.45, duration: 700, easing: Easing.inOut(Easing.quad), useNativeDriver: NATIVE })]));
     a.start();
     return () => a.stop();
   }, [o]);
