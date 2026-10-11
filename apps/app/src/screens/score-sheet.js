@@ -1,5 +1,6 @@
 // The score sheet: referee fixes the totals and submits, both team managers sign (or dispute), the organiser approves or sends it
 // back, and publishing makes it the official result. Every role sees only the buttons that are theirs.
+import { locale } from '../locale';
 import React, { useState } from 'react';
 import { View } from 'react-native';
 import { api } from '../api';
@@ -145,7 +146,7 @@ export function ScoreSheet({ id }) {
 
       <ASection title="History" />
       <View style={{ gap: 6 }}>
-        {s.history.map((h, i) => <AT key={i} size={12.5} color={A.mute}>{new Date(h.at).toLocaleString([], { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })} · {h.actor_name} · <AT size={12.5} weight="800" color={A.ink}>{h.action}</AT>{h.note ? ` · ${h.note}` : ''}</AT>)}
+        {s.history.map((h, i) => <AT key={i} size={12.5} color={A.mute}>{new Date(h.at).toLocaleString(locale, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })} · {h.actor_name} · <AT size={12.5} weight="800" color={A.ink}>{h.action}</AT>{h.note ? ` · ${h.note}` : ''}</AT>)}
       </View>
 
       <ReasonSheet visible={ask === 'dispute'} onClose={() => setAsk(null)} title="Dispute this sheet" sub="Tell the organiser what is wrong." presets={['Wrong score', 'A goal is missing', 'A goal should not count', 'Wrong winner']} confirmLabel="Send dispute" tone="sun"

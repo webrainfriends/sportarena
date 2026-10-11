@@ -14,7 +14,7 @@ import { useDo } from './console-utils';
 // Game times are venue-local (a 7 pm game in Mumbai is 7 pm for everyone), so every helper takes the venue's time zone.
 export const dayLabel = (iso, tz) => new Date(iso).toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short', timeZone: tz || undefined });
 export const dayKey = (iso, tz) => new Date(iso).toLocaleDateString('en-CA', { timeZone: tz || undefined }); // YYYY-MM-DD
-const time = (iso, tz) => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', timeZone: tz || undefined });
+const time = (iso, tz) => new Date(iso).toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit', timeZone: tz || undefined });
 
 /** One game as a card: crests, names, time or score, court and round. */
 export function GameRow({ f, onPress }) {

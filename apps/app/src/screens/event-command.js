@@ -1,6 +1,7 @@
 // Event console: the one place to run an event from first idea to the final whistle. Setup checklist, teams and invitations, departments,
 // hiring, boards, games (live, schedule, bracket), venue, sponsors, requests, budget and official results, plus lifecycle controls
 // (open, start, pause, resume, end). It replaces the separate Tournament console and Plan & budget screens: one feature, one place.
+import { locale } from '../locale';
 import React, { useState } from 'react';
 import { View } from 'react-native';
 import { api } from '../api';
@@ -25,7 +26,7 @@ import { GameRow } from './event-schedule';
 const STEPS = [['draft', 'Setup'], ['open', 'Open'], ['ongoing', 'Running'], ['completed', 'Ended']];
 const rank = { draft: 0, open: 1, ongoing: 2, paused: 2, completed: 3, cancelled: 3 };
 const TONE = { draft: AG.neon, open: AG.neon, ongoing: AG.hero, paused: AG.sun, completed: ['#059669', '#34D399'], cancelled: ['#475569', '#334155'] };
-const when = (d) => (d ? new Date(`${String(d).slice(0, 10)}T00:00:00`).toLocaleDateString([], { day: 'numeric', month: 'short' }) : null);
+const when = (d) => (d ? new Date(`${String(d).slice(0, 10)}T00:00:00`).toLocaleDateString(locale, { day: 'numeric', month: 'short' }) : null);
 
 /** Every fixture of the event: the API returns at most 100 per page, so keep paging (a big tournament has hundreds). */
 async function allFixtures(id) {
@@ -207,7 +208,7 @@ function Overview({ id, e, isOrg, go, D, games, accepted, money }) {
           <ASection title="Event log" sub="Every status change" />
           <ACard pad={12} style={{ gap: 6 }}>
             {[...hist.data].reverse().slice(0, 6).map((h) => (
-              <AT key={h.id} size={12.5} color={A.mute}>{new Date(h.at).toLocaleString([], { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })} · <AT size={12.5} weight="800" color={A.ink}>{h.from_status} → {h.to_status}</AT>{h.actor_name ? ` · ${h.actor_name}` : ''}{h.reason ? ` · ${h.reason}` : ''}</AT>
+              <AT key={h.id} size={12.5} color={A.mute}>{new Date(h.at).toLocaleString(locale, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })} · <AT size={12.5} weight="800" color={A.ink}>{h.from_status} → {h.to_status}</AT>{h.actor_name ? ` · ${h.actor_name}` : ''}{h.reason ? ` · ${h.reason}` : ''}</AT>
             ))}
           </ACard>
         </>
