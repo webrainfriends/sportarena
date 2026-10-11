@@ -5,7 +5,7 @@ import { badRequest, conflict, forbidden, notFound, unauthorized } from '../erro
 import { RESOURCE_TYPES, SCOPES, scopeAllows } from '../scopes.js';
 import { blindIndex, decryptFields, encrypt, encryptFields, hashPassword, newOpaqueToken, sha256, verifyPassword } from '../crypto.js';
 import { audit, PUBLIC_USER, sportBySlugOrId } from '../helpers.js';
-import { signToken } from '../auth.js';
+import { startSession } from '../sessions.js';
 import { badgesFor, withBadges } from '../verification.js';
 import { canSeeYouth, NOT_YOUTH_SQL, refreshYouth, YOUTH_SQL } from '../youth.js';
 
@@ -33,7 +33,7 @@ cap({
     avatar_color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
     ...pii,
   }),
-  async handler(_, i) {
+  async handler({ meta }, i) {
     const idx = blindIndex(i.email);
     if (await one('SELECT 1 FROM users WHERE email_idx = $1 OR handle = $2', [idx, i.handle])) throw conflict('Email or handle already registered');
     const enc = encryptFields(i, 'users', PII);
@@ -44,21 +44,21 @@ cap({
         enc.full_name_enc ?? null, enc.phone_enc ?? null, enc.dob_enc ?? null, enc.national_id_enc ?? null, enc.address_enc ?? null, i.avatar_emoji, i.avatar_color],
     );
     if (i.dob) await refreshYouth(u.id, u.id);
-    return { user: u, token: await signToken(u) };
+    return { user: u, ...(await startSession(u, meta)) };
   },
 });
 
 cap({
   name: 'login', method: 'POST', path: '/auth/login', tag: 'Identity', auth: 'public',
-  summary: 'Exchange email + password for a bearer token.',
+  summary: 'Exchange email + password for a session: a short-lived access token (bearer) plus a rotating refresh_token (use refresh_session). Each sign-in is a revocable server session (see list_sessions, logout).',
   input: z.object({ email: z.string().email(), password: z.string() }),
-  async handler(_, i) {
+  async handler({ meta }, i) {
     const u = await one('SELECT id, handle, display_name, roles, avatar_emoji, avatar_color, avatar_url, avatar_cutout, password_hash FROM users WHERE email_idx = $1', [blindIndex(i.email)]);
     // always run a hash to keep timing similar for unknown emails
     const ok = verifyPassword(i.password, u?.password_hash ?? hashPassword('x'.repeat(12)));
     if (!u || !ok) throw unauthorized('Invalid email or password');
     delete u.password_hash;
-    return { user: u, token: await signToken(u) };
+    return { user: u, ...(await startSession(u, meta)) };
   },
 });
 

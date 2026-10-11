@@ -13,7 +13,7 @@ const PAYMENT = new Set([
   'record_budget_payment', 'void_budget_payment', 'record_staff_payment', 'generate_settlement', 'add_settlement_adjustment', 'decide_settlement',
 ]);
 // Credential / role management must not be reachable with a narrow token (otherwise a read token could mint a wider one).
-const ACCOUNT = new Set(['create_api_token', 'revoke_api_token', 'list_api_tokens', 'update_my_roles']);
+const ACCOUNT = new Set(['create_api_token', 'revoke_api_token', 'list_api_tokens', 'update_my_roles', 'list_login_sessions', 'revoke_login_session', 'logout', 'logout_all', 'change_my_password']);
 const CLINICAL_TAGS = new Set(['Athlete health']);
 const CLINICAL_PATH = /^\/(medical|appointments|followups|me\/(wellness|body-pain|loads|workload|readiness)|people\/:id\/clearance)/;
 
