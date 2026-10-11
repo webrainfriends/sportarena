@@ -76,11 +76,12 @@ export function PlayerHero({ user, profile, onBell, onAvatar, pad = 16 }) {
   const H = 330;
   const side = Math.round(W * 0.62);
   const nameSize = W < 400 ? 36 : 40;
+  const about = aboutFacts(user, profile);
   return (
     <View style={{ backgroundColor: c.paper, overflow: 'hidden' }}>
-      <View style={{ width: '100%', maxWidth: COL, alignSelf: 'center', height: H, paddingHorizontal: pad }}>
+      <View style={{ width: '100%', maxWidth: COL, alignSelf: 'center', minHeight: H, paddingHorizontal: pad }}>
         {profile ? <Text pointerEvents="none" style={{ position: 'absolute', left: -40, top: 60, fontSize: 250, opacity: 0.07 }}>{profile.sport_emoji}</Text> : null}
-        <View style={{ position: 'absolute', right: 0, top: 8, width: side, height: H - 8 }}>
+        <View style={{ position: 'absolute', right: 0, top: 8, bottom: 0, width: side }}>
           <Pressable accessibilityRole="button" accessibilityLabel="Open my profile" onPress={onAvatar} style={{ width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' }}>
             {user.avatar_url
               ? <Image source={{ uri: mediaUrl(user.avatar_url) }} resizeMode={user.avatar_cutout ? 'contain' : 'cover'} accessibilityLabel={`${user.display_name} photo`} style={{ width: '100%', height: '100%', ...(Platform.OS === 'web' ? { objectPosition: user.avatar_cutout ? 'right bottom' : 'top' } : null) }} />
@@ -101,18 +102,27 @@ export function PlayerHero({ user, profile, onBell, onAvatar, pad = 16 }) {
         <View style={{ position: 'absolute', right: pad, top: 14 }}>
           <RoundBtn icon="Bell" label="Notifications" onPress={onBell} />
         </View>
-        <View style={{ position: 'absolute', left: pad, top: 64, flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-          {profile ? <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: tone[1], alignItems: 'center', justifyContent: 'center' }}><T size={22}>{profile.sport_emoji}</T></View> : null}
-          {profile?.club ? <Chip>{profile.club}</Chip> : null}
-        </View>
-        <View style={{ position: 'absolute', left: pad, top: 116, width: '56%' }}>
-          <T size={nameSize} weight="800" numberOfLines={1} adjustsFontSizeToFit style={{ letterSpacing: -1.2, lineHeight: nameSize + 4 }}>{first}</T>
-          {rest.length ? <T size={nameSize} weight="800" numberOfLines={1} adjustsFontSizeToFit style={{ letterSpacing: -1.2, lineHeight: nameSize + 4 }}>{rest.join(' ')}</T> : null}
-          <T size={14} weight="600" color={c.mute} style={{ marginTop: 4 }}>@{user.handle}</T>
-        </View>
-        <View style={{ position: 'absolute', left: pad, bottom: 56, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          {profile && profile.jersey_no !== null && profile.jersey_no !== undefined ? <View style={{ minWidth: 30, height: 30, borderRadius: 9, backgroundColor: tone[0], alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 }}><T size={13} weight="800" color="#fff">{profile.jersey_no}</T></View> : null}
-          <T size={11} weight="700" color={c.mute} style={{ letterSpacing: 1.6 }}>{(profile?.position ?? (user.roles?.[0] ? roleLabel(user.roles[0]) : 'Athlete')).toUpperCase()}</T>
+        <View style={{ width: '58%', paddingTop: 64, paddingBottom: 62 }}>
+          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            {profile ? <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: tone[1], alignItems: 'center', justifyContent: 'center' }}><T size={22}>{profile.sport_emoji}</T></View> : null}
+            {profile?.club ? <Chip>{profile.club}</Chip> : null}
+          </View>
+          <View style={{ marginTop: 14 }}>
+            <T size={nameSize} weight="800" numberOfLines={1} adjustsFontSizeToFit style={{ letterSpacing: -1.2, lineHeight: nameSize + 4 }}>{first}</T>
+            {rest.length ? <T size={nameSize} weight="800" numberOfLines={1} adjustsFontSizeToFit style={{ letterSpacing: -1.2, lineHeight: nameSize + 4 }}>{rest.join(' ')}</T> : null}
+            <T size={14} weight="600" color={c.mute} style={{ marginTop: 4 }}>@{user.handle}</T>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 14 }}>
+            {profile && profile.jersey_no !== null && profile.jersey_no !== undefined ? <View style={{ minWidth: 30, height: 30, borderRadius: 9, backgroundColor: tone[0], alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 }}><T size={14} weight="800" color="#fff">{profile.jersey_no}</T></View> : null}
+            <T size={11} weight="700" color={c.mute} style={{ letterSpacing: 1.6 }}>{(profile?.position ?? (user.roles?.[0] ? roleLabel(user.roles[0]) : 'Athlete')).toUpperCase()}</T>
+          </View>
+          {about.length || user.bio ? (
+            <View style={{ marginTop: 14 }} accessibilityLabel="About">
+              <T size={11} weight="800" color={c.mute} style={{ letterSpacing: 1.6 }}>ABOUT</T>
+              {user.bio ? <T size={13} color={c.ink} numberOfLines={4} style={{ lineHeight: 19, marginTop: 4 }}>{user.bio}</T> : null}
+              {about.length ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>{about.map(([k, v]) => <Chip key={k}><T size={12} color={c.mute} weight="600">{k}</T><T size={12} weight="800">{v}</T></Chip>)}</View> : null}
+            </View>
+          ) : null}
         </View>
       </View>
     </View>
@@ -152,6 +162,15 @@ export function NowStrip({ title, sub, date, onPress, pad = 16 }) {
       </Pressable>
     </View>
   );
+}
+
+/** The facts shown under "About" in the banner: only what is known, no placeholders. */
+export function aboutFacts(user, profile) {
+  return [
+    ['Role', profile ? nice(profile.role) : null], ['Level', profile ? nice(profile.level) : null],
+    ['Experience', profile?.experience_years ? `${profile.experience_years} yrs` : null],
+    ['Name', user.full_name && user.full_name !== user.display_name ? user.full_name : null],
+  ].filter(([, v]) => v);
 }
 
 /** "ABOUT": the facts on the player card. Rows with no value are left out (no placeholders). */

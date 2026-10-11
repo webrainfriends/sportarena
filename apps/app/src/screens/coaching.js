@@ -88,6 +88,41 @@ function ReviewSheet({ hire, onClose, onDone }) {
   );
 }
 
+/** Round icon tiles on a soft panel, four to a row: the way to browse by type, or to reach the tools of a screen. */
+export function IconGrid({ items, value, onChange, cols = 4, tint = c.pinkSoft }) {
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', rowGap: 14 }}>
+      {items.map((it) => {
+        const on = value !== undefined && value === it.value;
+        return (
+          <Pressable key={String(it.key ?? it.value ?? it.label)} onPress={() => (it.onPress ? it.onPress() : onChange?.(it.value))} accessibilityRole="button" accessibilityLabel={it.label}
+            style={({ pressed }) => ({ width: `${100 / cols}%`, alignItems: 'center', gap: 6, paddingHorizontal: 2, opacity: pressed ? 0.8 : 1 })}>
+            <View style={{ width: 62, height: 62, borderRadius: 31, backgroundColor: on ? c.pink : c.paper, borderWidth: on ? 0 : 1, borderColor: c.line, alignItems: 'center', justifyContent: 'center', shadowColor: '#0F172A', shadowOpacity: 0.08, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 2 }}>
+              <T size={28}>{it.emoji}</T>
+              {it.badge ? <View style={{ position: 'absolute', top: -2, right: -2, minWidth: 20, height: 20, borderRadius: 10, backgroundColor: c.red, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 }}><T size={11} weight="800" color="#fff">{it.badge}</T></View> : null}
+            </View>
+            <T size={12} weight={on ? '800' : '600'} color={on ? c.pink : c.mute} style={{ textAlign: 'center' }} numberOfLines={2}>{it.label}</T>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+/** The coach's tools as one tidy grid (desk, board, athletes, profile, schedule, rates, commitments, reviews, analytics, courts…). */
+export function CoachToolGrid({ push, counts = {} }) {
+  const tools = [
+    ['🗂️', 'Desk', 'CoachDesk'], ['📬', 'Request board', 'CoachBoard', counts.board], ['🏃', 'Athletes', 'CoachAthletes'], ['🪪', 'Profile & hours', 'CoachSetup'],
+    ['📅', 'Schedule', 'CoachCalendar'], ['🏷️', 'Rate cards', 'CoachRates'], ['📑', 'Commitments', 'CoachCommitments'], ['⭐', 'Reviews', 'CoachReviews', counts.reviews],
+    ['📈', 'Analytics', 'CoachAnalytics'], ['📝', 'Training plans', 'MyPlans', null, { as: 'coach' }], ['📍', 'Courts', 'TrainingVenue', counts.courts], ['🔁', 'Recurring booking', 'RecurringVenue'],
+  ];
+  return (
+    <Card pad={16} color={c.violetSoft}>
+      <IconGrid items={tools.map(([emoji, label, page, badge, params]) => ({ emoji, label, badge, onPress: () => push(page, params ?? {}) }))} />
+    </Card>
+  );
+}
+
 // ================================================================================== BOOK A SESSION
 /**
  * Book from one of the coach's rate cards (individual, group, team or event) or their standard hourly rate. With open hours you
@@ -223,7 +258,9 @@ function FindCoaches({ onPost, onBook }) {
   const { push } = useNav();
   const { w } = useCols();
   const [f, setF] = useState({ q: '', sport: null, delivery: null, verified: false, rated: false, hours: false, audience: null, intro: false, sort: 'rating', max: undefined, city: '' });
-  const [more, setMore] = useState(false);
+  const [more, setMore] = useState(false), [showAll, setShowAll] = useState(false);
+  const everyone = useLoad(() => api.get('/coaches', { limit: 100 }), []);
+  const types = [...(everyone.data ?? []).reduce((m, x) => m.set(x.sport_slug, { slug: x.sport_slug, name: x.sport, emoji: x.sport_emoji, n: (m.get(x.sport_slug)?.n ?? 0) + 1 }), new Map()).values()].sort((a, b) => b.n - a.n || a.name.localeCompare(b.name));
   const q = useDebounced(f.q);
   const list = useLoad(() => api.get('/coaches', {
     limit: 50, sort: f.sort, ...(q.trim() ? { q: q.trim() } : {}), ...(f.sport ? { sport: f.sport } : {}), ...(f.delivery ? { delivery: f.delivery } : {}),
@@ -240,7 +277,13 @@ function FindCoaches({ onPost, onBook }) {
         <Btn small title="Post a request" color={c.paper} ink={c.pink} onPress={onPost} style={{ alignSelf: 'flex-start', marginTop: 10 }} />
       </GradCard>
       <Field value={f.q} onChangeText={(x) => set('q', x)} placeholder="Search by name, speciality or headline…" />
-      <SportSelect value={f.sport} onChange={(x) => set('sport', x)} allLabel="All sports" />
+      <GradCard colors={grad.hero} pad={16}>
+        <T color="#fff" weight="800" size={17}>Type of coach</T>
+        <T color="#fff" size={12} style={{ opacity: 0.85, marginBottom: 12 }}>Pick a sport to see the coaches who teach it.</T>
+        <Card pad={14} color={c.violetSoft}>
+          <IconGrid value={f.sport ?? null} onChange={(v) => set('sport', v)} items={[{ value: null, key: 'all', emoji: '✨', label: 'All coaches' }, ...types.slice(0, showAll ? 40 : 10).map((t) => ({ value: t.slug, emoji: t.emoji, label: t.name })), { key: 'more', emoji: showAll ? '▴' : '⋯', label: showAll ? 'Fewer' : 'More', onPress: () => setShowAll(!showAll) }]} />
+        </Card>
+      </GradCard>
       <HScroll>{[[null, 'Anyone'], ...AUDIENCES.map(([v, l]) => [v, `For ${l.toLowerCase()}s`])].map(([v, l]) => <Chip key={l} label={l} active={f.audience === v} onPress={() => set('audience', v)} />)}<Chip label="🎁 Trial offer" active={f.intro} onPress={() => set('intro', !f.intro)} /></HScroll>
       <HScroll>
         {[[null, 'Any place'], ['in_person', 'In person'], ['online', 'Online']].map(([v, l]) => <Chip key={l} label={l} active={f.delivery === v} onPress={() => set('delivery', v)} />)}
@@ -839,25 +882,18 @@ export function CoachDesk() {
   };
   return (
     <Screen wide onRefresh={reloadAll}>
-      <Head eyebrow="COACH" title="Coach desk" sub="Confirm sessions, track earnings and answer reviews." right={<Btn small title="Profile & hours" color={c.violet} onPress={() => push('CoachSetup')} />} />
-      <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap', marginTop: 14 }}>
-        <Tile value={k.upcoming.length} label="UPCOMING" />
-        <Tile value={k.to_confirm.length} label="TO CONFIRM" hot={k.to_confirm.length > 0} />
-        <Tile value={price(k.earnings.earned_cents, cur)} label="EARNED" />
-        <Tile value={price(k.earnings.awaiting_payment_cents, cur)} label="AWAITING PAYMENT" />
-        <Tile value={k.rating.n ? `${Number(k.rating.avg).toFixed(1)}★` : '—'} label="RATING" />
-      </View>
-      <View style={{ flexDirection: 'row', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-        <Btn small title={k.board_open ? `Request board · ${k.board_open} open` : 'Request board'} onPress={() => push('CoachBoard')} />
-        <Btn small title="Schedule" color={c.paper} ink={c.ink} onPress={() => push('CoachCalendar')} />
-        <Btn small title="Commitments" color={c.paper} ink={c.ink} onPress={() => push('CoachCommitments')} />
-        <Btn small title="Rate cards" color={c.paper} ink={c.ink} onPress={() => push('CoachRates')} />
-        <Btn small title="Reviews" color={c.paper} ink={c.ink} onPress={() => push('CoachReviews')} />
-        <Btn small title="Analytics" color={c.paper} ink={c.ink} onPress={() => push('CoachAnalytics')} />
-        <Btn small title="My athletes" color={c.paper} ink={c.ink} onPress={() => push('CoachAthletes')} />
-        <Btn small title="My public profile" color={c.paper} ink={c.ink} onPress={() => push('CoachProfile', { id: user.id })} />
-      </View>
-
+      <GradCard colors={grad.hero} style={{ marginTop: 8 }}>
+        <T color="#fff" weight="700" size={11} style={{ letterSpacing: 2.5, opacity: 0.8 }}>COACH DESK</T>
+        <T color="#fff" weight="800" size={24} style={{ marginTop: 2 }}>Your coaching, at a glance</T>
+        <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap', marginTop: 12 }}>
+          <Tile value={k.upcoming.length} label="UPCOMING" />
+          <Tile value={k.to_confirm.length} label="TO CONFIRM" hot={k.to_confirm.length > 0} />
+          <Tile value={price(k.earnings.earned_cents, cur)} label="EARNED" />
+          <Tile value={price(k.earnings.awaiting_payment_cents, cur)} label="TO COLLECT" />
+          <Tile value={k.rating.n ? `${Number(k.rating.avg).toFixed(1)}★` : '—'} label="RATING" />
+        </View>
+      </GradCard>
+      <View style={{ marginTop: 14 }}><CoachToolGrid push={push} counts={{ board: k.board_open || null, reviews: k.unanswered_reviews.length || null, courts: k.upcoming.filter((h) => h.status === 'confirmed' && !h.venue).length || null }} /></View>
       {k.upcoming.filter((h) => h.status === 'confirmed' && !h.venue).length ? <Card color={c.cyanSoft} pad={12} onPress={() => push('TrainingVenue')} style={{ marginTop: 12 }}><T weight="800">📍 {k.upcoming.filter((h) => h.status === 'confirmed' && !h.venue).length} confirmed session{k.upcoming.filter((h) => h.status === 'confirmed' && !h.venue).length === 1 ? '' : 's'} without a court</T><T size={12} color={c.mute}>Book a venue for them in one go; the athlete or team is told.</T></Card> : null}
       {k.to_confirm.length ? (
         <Section title="To confirm">

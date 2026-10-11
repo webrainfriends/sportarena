@@ -12,10 +12,9 @@ import { c } from '../theme';
 import { MarketCard, KINDS } from '../market/MarketCard';
 import { Composer } from '../market/Composer';
 import { useMarketActions, useResumeIntent } from '../market/actions';
-import { PlayerHero, StatTiles, NowStrip, AboutCard, ageOf, COL } from '../hero';
-import { ACTIONS, Item } from './athlete-home';
+import { PlayerHero, StatTiles, NowStrip, ageOf, COL } from '../hero';
+import { ACTIONS, HomeSchedule } from './athlete-home';
 import { SportCard } from './player';
-import { localDate } from '../vtime';
 import { locale } from '../locale';
 
 const PAGE = 10;
@@ -114,17 +113,11 @@ export default function HomeTab() {
   const L = useLayout();
   const dash = useLoad(() => api.get('/dashboard'), []);
   const sports = useLoad(() => api.get('/me/sport-profiles'), []);
-  const sched = useLoad(() => api.get('/me/sport-schedule'), []);
   const hi = useLoad(() => api.get('/market/highlights'), []);
   const profiles = sports.data ?? [];
   const makeDefault = async (p) => { try { await api.post(`/me/sport-profiles/${p.id}/default`); await sports.reload(); toast(`${p.sport} is now your default`); } catch (e) { toast(e.message); } };
   const main = profiles.find((p) => p.is_default) ?? profiles[0];
   const matches = profiles.reduce((a, p) => a + p.summary.matches, 0);
-  const items = sched.data?.items ?? [];
-  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const today = localDate(new Date().toISOString(), zone);
-  const inbox = items.filter((x) => x.action_required);
-  const todays = items.filter((x) => !x.action_required && localDate(x.starts_at, x.all_day ? 'UTC' : zone) === today);
   const game = hi.data?.games?.[0];
   const pad = L.gutter;
   const age = ageOf(user.dob);
@@ -144,11 +137,7 @@ export default function HomeTab() {
         <HScroll>
           {ACTIONS.map(([emoji, label, go]) => <Chip key={label} label={`${emoji} ${label}`} onPress={() => go(nav)} />)}
         </HScroll>
-        {inbox.length ? <View style={{ marginTop: 26, gap: 10 }}><Title>{`Needs your response (${inbox.length})`}</Title>{inbox.map((x) => <Item key={`i${x.source_type}${x.source_id}`} x={x} reload={sched.reload} />)}</View> : null}
-        <View style={{ marginTop: 26, gap: 10 }}>
-          <Title action="Full schedule" onAction={() => nav.goTab('Player')}>Today</Title>
-          {sched.error ? <ErrorBox error={sched.error} onRetry={sched.reload} /> : sched.loading && !sched.data ? <Loading /> : todays.length ? todays.map((x) => <Item key={`t${x.source_type}${x.source_id}`} x={x} reload={sched.reload} />) : <Empty emoji="🗓️" title="Nothing scheduled today" sub="Find a match, book a venue or hire a coach to fill your week." />}
-        </View>
+        <View style={{ marginTop: 26 }}><HomeSchedule onFull={() => nav.goTab('Player')} /></View>
         <View style={{ marginTop: 26 }}>
           <Title action="All sports" onAction={() => nav.goTab('Player')}>My sports</Title>
           {sports.error ? <ErrorBox error={sports.error} onRetry={sports.reload} /> : sports.loading && !sports.data ? <Loading /> : profiles.length ? (
@@ -159,7 +148,6 @@ export default function HomeTab() {
             <Card><View style={{ gap: 10, alignItems: 'flex-start' }}><T weight="700">Add the sports you play</T><T size={13} color={c.mute}>One card per sport tracks your matches, form and stats.</T><Btn small title="+ Add sport" onPress={() => nav.goTab('Player')} /></View></Card>
           )}
         </View>
-        <View style={{ marginTop: 26 }}><AboutCard user={user} profile={main} /></View>
         <View style={{ marginTop: 30 }}><Title>Community</Title></View>
       </View>
     </View>
