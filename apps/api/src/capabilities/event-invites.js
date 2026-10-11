@@ -73,8 +73,8 @@ cap({
     const rules = await loadRules(pool, ev.id);
     if (i.target === 'individuals') {
       const rows = await many(
-        `SELECT u.id AS user_id, u.handle, u.display_name, coalesce(sum(p.points),0)::float AS rating, count(p.id)::int AS played
-           FROM sport_profiles sp JOIN users u ON u.id=sp.user_id LEFT JOIN performances p ON p.user_id=u.id AND p.sport_id=sp.sport_id
+        `SELECT u.id AS user_id, u.handle, u.display_name, coalesce(sum(p.official_points),0)::float AS rating, count(p.id)::int AS played
+           FROM sport_profiles sp JOIN users u ON u.id=sp.user_id LEFT JOIN performances p ON p.user_id=u.id AND p.sport_id=sp.sport_id AND p.provenance='approved_competition' AND p.status='approved'
           WHERE sp.sport_id=$1 AND sp.role='athlete'
             AND NOT EXISTS (SELECT 1 FROM event_entries e WHERE e.event_id=$2 AND e.user_id=u.id AND e.status <> 'withdrawn')
             AND NOT EXISTS (SELECT 1 FROM event_invitations n WHERE n.event_id=$2 AND n.user_id=u.id AND n.status='invited')
