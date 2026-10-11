@@ -167,3 +167,31 @@ test('MCP gives the same decision and machine code as REST', async () => {
   assert.ok(!st.isError); assert.equal(JSON.parse(st.content[0].text).state, 'verified');
   assert.equal((await api('GET', '/medical/credential', { token: ath.token })).status, 403, 'athletes have no provider status');
 });
+
+test('least-privilege history: a provider sees what they wrote and what came after the grant; the athlete always sees all', async () => {
+  const ath = await athleteIn(), a = await pro('doctor'), b = await pro('physio');
+  await verify(a, 'doctor'); await verify(b, 'physio');
+  must(await api('POST', '/medical/grants', { token: ath.token, body: { provider_id: a.id } }), 201);
+  must(await api('POST', '/medical/records', { token: a.token, body: rec(ath, { summary: 'Old note by A' }) }), 201);
+  await pool.query("UPDATE medical_records SET created_at = now() - interval '30 days' WHERE athlete_id=$1", [ath.id]);
+  const list = async (u) => must(await api('GET', `/medical/records?athlete_id=${ath.id}`, { token: u.token })).map((r) => r.summary).sort();
+
+  const g = must(await api('POST', '/medical/grants', { token: ath.token, body: { provider_id: b.id } }), 201);
+  assert.equal(g.history, 'since_grant');
+  assert.deepEqual(await list(b), [], 'earlier history is not visible to a newly granted provider');
+  must(await api('POST', '/medical/records', { token: b.token, body: rec(ath, { summary: 'New note by B' }) }), 201);
+  must(await api('POST', '/medical/records', { token: a.token, body: rec(ath, { summary: 'New note by A' }) }), 201);
+  assert.deepEqual(await list(b), ['New note by A', 'New note by B'], 'records written since the grant are visible');
+  assert.deepEqual(await list(a), ['New note by A', 'New note by B', 'Old note by A']);
+  // the athlete shares the whole history explicitly
+  assert.equal(must(await api('POST', '/medical/grants', { token: ath.token, body: { provider_id: b.id, history: 'all' } }), 201).history, 'all');
+  assert.equal((await list(b)).length, 3);
+  // the athlete always sees everything, with each grant's scope and the provider's credential state
+  assert.equal(must(await api('GET', '/medical/records', { token: ath.token })).length, 3);
+  const grants = must(await api('GET', '/medical/grants', { token: ath.token })).grants;
+  assert.equal(grants.find((x) => x.provider_id === b.id).history_scope, 'all');
+  assert.equal(grants.find((x) => x.provider_id === a.id).provider_verified, true);
+  await pool.query("UPDATE verification_cases SET status='revoked' WHERE subject_id=$1", [a.id]);
+  const after = must(await api('GET', '/medical/grants', { token: ath.token })).grants.find((x) => x.provider_id === a.id);
+  assert.equal(after.provider_verified, false); assert.equal(after.credential_reason, 'revoked');
+});

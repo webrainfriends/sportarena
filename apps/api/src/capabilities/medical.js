@@ -129,8 +129,8 @@ cap({
 
 cap({
   name: 'grant_medical_access', method: 'POST', path: '/medical/grants', tag: 'Health', status: 201,
-  summary: 'Consent: let a physio/doctor see your records (scope `full`, can also write) or only your fit-to-play status (scope `clearance`). Optionally for a limited number of days. You can revoke at any time; the history of grants and revocations is kept.',
-  input: z.object({ provider_id: id, scope: z.enum(['full', 'clearance']).default('full'), expires_in_days: z.number().int().min(1).max(730).optional() }),
+  summary: 'Consent: let a physio/doctor see your records (scope `full`, can also write) or only your fit-to-play status (scope `clearance`). Optionally for a limited number of days. By default the provider sees records they write plus anything written from now on; choose history `all` to share earlier records too. You can revoke at any time; the history of grants and revocations is kept.',
+  input: z.object({ provider_id: id, scope: z.enum(['full', 'clearance']).default('full'), expires_in_days: z.number().int().min(1).max(730).optional(), history: z.enum(['since_grant', 'all']).default('since_grant').describe('how far back the provider may read records written by others: since_grant (default) or all (your whole history)') }),
   async handler({ user }, i) {
     const p = await one("SELECT 1 FROM sport_profiles WHERE user_id=$1 AND role IN ('physio','doctor') UNION SELECT 1 FROM provider_profiles WHERE user_id=$1", [i.provider_id]);
     if (!p) throw badRequest('That person is not a registered physio or doctor');
@@ -141,12 +141,12 @@ cap({
     const expires = i.expires_in_days ? new Date(Date.now() + i.expires_in_days * 864e5) : null;
     return tx(async (c) => {
       await c.query(
-        `INSERT INTO medical_grants(athlete_id, provider_id, scope, expires_at) VALUES ($1,$2,$3,$4)
-         ON CONFLICT (athlete_id, provider_id) DO UPDATE SET scope=$3, expires_at=$4, revoked_at=NULL, granted_at=now()`, [user.id, i.provider_id, i.scope, expires]);
+        `INSERT INTO medical_grants(athlete_id, provider_id, scope, expires_at, history_scope) VALUES ($1,$2,$3,$4,$5)
+         ON CONFLICT (athlete_id, provider_id) DO UPDATE SET scope=$3, expires_at=$4, history_scope=$5, revoked_at=NULL, granted_at=now()`, [user.id, i.provider_id, i.scope, expires, i.history]);
       await logGrant(c, user.id, i.provider_id, 'grant', i.scope, expires);
       await audit(c, user.id, 'grant_medical', 'users', i.provider_id);
       await notify(c, i.provider_id, { kind: 'consent_granted', title: 'An athlete shared access with you', body: 'Open Health to see who.', data: { athlete_id: user.id } });
-      return { ok: true, scope: i.scope, expires_at: expires, provider_verified: cred.ok, ...(cred.ok ? {} : { warning: `This ${cred.type}'s professional verification is not current (${cred.reason}). They cannot view or write records until it is renewed; your consent stays in place.`, credential_reason: cred.reason }) };
+      return { ok: true, scope: i.scope, history: i.history, expires_at: expires, provider_verified: cred.ok, ...(cred.ok ? {} : { warning: `This ${cred.type}'s professional verification is not current (${cred.reason}). They cannot view or write records until it is renewed; your consent stays in place.`, credential_reason: cred.reason }) };
     });
   },
 });
@@ -171,9 +171,11 @@ cap({
   input: z.object({ ...page }),
   async handler({ user }, i) {
     const grants = await many(
-      `SELECT g.provider_id, u.display_name AS provider_name, g.scope, g.granted_at, g.expires_at, g.revoked_at,
+      `SELECT g.provider_id, u.display_name AS provider_name, g.scope, g.history_scope, g.granted_at, g.expires_at, g.revoked_at,
               CASE WHEN g.revoked_at IS NOT NULL THEN 'revoked' WHEN g.expires_at IS NOT NULL AND g.expires_at <= now() THEN 'expired' ELSE 'active' END AS state
          FROM medical_grants g JOIN users u ON u.id=g.provider_id WHERE g.athlete_id=$1 ORDER BY g.granted_at DESC LIMIT $2 OFFSET $3`, [user.id, i.limit, i.offset]);
+    // tell the athlete whose professional verification is not current (computed live, same rule as the clinical gate)
+    for (const g of grants) { const cr = await clinicalCredential(g.provider_id, { athleteId: user.id }); g.provider_verified = cr.ok; g.credential_reason = cr.ok ? null : cr.reason; }
     const history = await many('SELECT e.provider_id, u.display_name AS provider_name, e.action, e.scope, e.expires_at, e.created_at FROM medical_grant_events e JOIN users u ON u.id=e.provider_id WHERE e.athlete_id=$1 ORDER BY e.created_at DESC LIMIT 100', [user.id]);
     return { grants, history };
   },
@@ -184,7 +186,7 @@ cap({
   summary: 'Provider: athletes whose consent is currently active, with scope and expiry. Names only; clinical records still need list_medical_records (audit-logged).',
   input: z.object({ ...page }),
   handler: ({ user }, i) => many(
-    `SELECT u.id AS athlete_id, u.display_name, u.handle, g.scope, g.granted_at, g.expires_at FROM medical_grants g JOIN users u ON u.id=g.athlete_id
+    `SELECT u.id AS athlete_id, u.display_name, u.handle, g.scope, g.history_scope, g.granted_at, g.expires_at FROM medical_grants g JOIN users u ON u.id=g.athlete_id
       WHERE g.provider_id=$1 AND g.revoked_at IS NULL AND (g.expires_at IS NULL OR g.expires_at > now()) ORDER BY u.display_name LIMIT $2 OFFSET $3`, [user.id, i.limit, i.offset]),
 });
 
@@ -204,15 +206,19 @@ cap({
 
 cap({
   name: 'list_medical_records', method: 'GET', path: '/medical/records', tag: 'Health',
-  summary: 'Athletes: your own records. Providers: pass athlete_id (requires consent). Decrypted; every read is audit-logged.',
+  summary: 'Athletes: your own records (all of them). Providers: pass athlete_id (requires a current verified credential and consent); you see records you wrote plus those written since the grant, or the whole history if the athlete shared it (history `all`). Decrypted; every read is audit-logged.',
   input: z.object({ athlete_id: id.optional(), ...page }),
   async handler({ user }, i) {
     const athlete = i.athlete_id ?? user.id;
+    // least privilege: a provider reads what they wrote, plus what was written since the grant; earlier records by others only if the athlete chose history `all`
+    let scopeSince = null;
     if (athlete !== user.id) {
       await requireVerifiedProvider(user.id, { action: 'list_medical_records', athleteId: athlete });
       if (!(await hasGrant(athlete, user.id))) throw forbidden('The athlete has not granted you access');
+      const g = await one('SELECT history_scope, granted_at FROM medical_grants WHERE athlete_id=$1 AND provider_id=$2', [athlete, user.id]);
+      if (g.history_scope !== 'all') scopeSince = g.granted_at;
     }
-    const rows = await many('SELECT r.*, p.display_name AS provider_name FROM medical_records r JOIN users p ON p.id=r.provider_id WHERE r.athlete_id=$1 ORDER BY r.created_at DESC LIMIT $2 OFFSET $3', [athlete, i.limit, i.offset]);
+    const rows = await many('SELECT r.*, p.display_name AS provider_name FROM medical_records r JOIN users p ON p.id=r.provider_id WHERE r.athlete_id=$1 AND ($4::timestamptz IS NULL OR r.provider_id=$5 OR r.created_at >= $4) ORDER BY r.created_at DESC LIMIT $2 OFFSET $3', [athlete, i.limit, i.offset, scopeSince, user.id]);
     await audit(null, user.id, 'read_clinical', 'medical_records', athlete);
     return rows.map(({ summary_enc, details_enc, ...r }) => ({ ...r, summary: decrypt(summary_enc, 'medical_records.summary'), details: decrypt(details_enc, 'medical_records.details') }));
   },
