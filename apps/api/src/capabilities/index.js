@@ -1,4 +1,5 @@
 import './identity.js';
+import './sessions.js';
 import './verification.js';
 import './cases.js';
 import './disputes.js';

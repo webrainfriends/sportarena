@@ -5,8 +5,8 @@ import { sha256 } from './crypto.js';
 
 const secret = () => new TextEncoder().encode(config.jwtSecret);
 
-export const signToken = (user) =>
-  new SignJWT({ roles: user.roles }).setProtectedHeader({ alg: 'HS256' }).setSubject(user.id).setIssuedAt().setExpirationTime(config.tokenTtl).sign(secret());
+export const signToken = (user, sessionId) =>
+  new SignJWT({ roles: user.roles }).setProtectedHeader({ alg: 'HS256' }).setSubject(user.id).setJti(sessionId ?? crypto.randomUUID()).setIssuedAt().setExpirationTime(config.tokenTtl).sign(secret());
 
 const COLS = 'id, handle, display_name, roles, avatar_emoji, avatar_color, avatar_url, avatar_cutout';
 
@@ -32,7 +32,19 @@ export async function authenticate(authorization) {
   }
   try {
     const { payload } = await jwtVerify(tok, secret(), { algorithms: ['HS256'] });
-    return await one(`SELECT ${COLS} FROM users WHERE id = $1`, [payload.sub]);
+    // Session-bound tokens (jti = auth_sessions.id) are valid only while the server session is active: logout, revoke and
+    // password change take effect on the very next request. Tokens issued before sessions existed carry no session row and
+    // live out their (short) TTL; set AUTH_REQUIRE_SESSION=true to refuse them immediately.
+    const s = await one(`SELECT 1 FROM auth_sessions WHERE id::text = $1 AND user_id = $2 AND revoked_at IS NULL AND expires_at > now()`, [payload.jti ?? '', payload.sub]);
+    if (!s && (payload.jti ? await one('SELECT 1 FROM auth_sessions WHERE id::text = $1', [payload.jti]) : config.requireSession)) return null;
+    const user = await one(`SELECT ${COLS} FROM users WHERE id = $1`, [payload.sub]);
+    if (!user) return null;
+    if (s) {
+      Object.defineProperty(user, 'session_id', { value: payload.jti, enumerable: false });
+      // cheap, throttled activity stamp for the sessions list
+      query("UPDATE auth_sessions SET last_seen_at = now() WHERE id = $1 AND last_seen_at < now() - interval '1 minute'", [payload.jti]).catch(() => {});
+    }
+    return user;
   } catch {
     return null;
   }

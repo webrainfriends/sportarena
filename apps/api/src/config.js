@@ -30,7 +30,9 @@ export const config = {
   kmsRegion: env.KMS_REGION ?? 'ap-southeast-1',
   masterKeyFile: env.MASTER_KEY_FILE ?? '/var/lib/sportarena/master.key.enc',
   jwtSecret: secret('SPORTARENA_JWT_SECRET'),
-  tokenTtl: env.TOKEN_TTL ?? '12h',
+  tokenTtl: env.TOKEN_TTL ?? '12h', // access-token lifetime
+  refreshTtlDays: Number(env.REFRESH_TTL_DAYS ?? 30), // sliding: each rotation extends the session by this much
+  requireSession: env.AUTH_REQUIRE_SESSION === 'true', // refuse pre-session JWTs that carry no session id
   // HTTPS: terminate TLS in-process (SSL_KEY_FILE/SSL_CERT_FILE) or behind a proxy (TRUST_PROXY=true).
   sslKeyFile: env.SSL_KEY_FILE,
   sslCertFile: env.SSL_CERT_FILE,
