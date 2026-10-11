@@ -419,6 +419,7 @@ cap({
       if (!f) throw notFound('fixture');
       const ev = await mustFind('events', f.event_id, '*', c);
       if (!isAdmin(user) && ![ev.organizer_id, f.referee_id].includes(user.id)) throw forbidden('Only the organiser or the assigned referee can record results');
+      if ((await c.query("SELECT 1 FROM score_sheets WHERE fixture_id=$1 AND status IN ('draft','submitted','approved','rejected','published')", [i.id])).rowCount) throw conflict('This game has a score sheet; finish it there (submit, sign, approve, publish) or revise the published result');
       let winner = null;
       if (isKnockout(f)) {
         if (!f.home_team_id || !f.away_team_id) throw conflict('The teams for this game are not decided yet');
