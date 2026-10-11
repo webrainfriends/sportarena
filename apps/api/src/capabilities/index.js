@@ -24,6 +24,7 @@ import './plans.js';
 import './invoices.js';
 import './events.js';
 import './event-lifecycle.js';
+import './event-departments.js';
 import './officials.js';
 import './event-invites.js';
 import './event-schedule.js';
