@@ -16,6 +16,7 @@ import { PlayerHero, StatTiles, NowStrip, ageOf, COL } from '../hero';
 import { ACTIONS, HomeSchedule } from './athlete-home';
 import { AddProfileSheet, SportCard, useMakeDefault } from './player';
 import { locale } from '../locale';
+import { QuickLogFab, QuickLogSheet, ReadinessCard, useReadiness } from './wellness';
 
 const PAGE = 10;
 
@@ -114,6 +115,8 @@ export default function HomeTab() {
   const dash = useLoad(() => api.get('/dashboard'), []);
   const sports = useLoad(() => api.get('/me/sport-profiles'), []);
   const hi = useLoad(() => api.get('/market/highlights'), []);
+  const rd = useReadiness();
+  const [quickLog, setQuickLog] = useState(false);
   const profiles = sports.data ?? [];
   const makeDefault = useMakeDefault(sports.reload);
   const [addSport, setAddSport] = useState(false);
@@ -133,6 +136,7 @@ export default function HomeTab() {
     <View>
       <PlayerHero user={user} profile={main} pad={pad} onBell={() => nav.push('Notifications')} onAvatar={() => nav.goTab('Me')} />
       <StatTiles pad={pad} items={tiles} />
+      <View style={[wrap, { marginTop: 14 }]}><ReadinessCard rd={rd} onLog={() => setQuickLog(true)} onOpen={() => nav.push('Health')} /></View>
       {game ? <NowStrip pad={pad} title={`${game.home_name} vs ${game.away_name}`} date={[new Date(game.scheduled_at).getDate(), new Date(game.scheduled_at).toLocaleString(locale, { month: 'short' })]} sub={`${new Date(game.scheduled_at).toLocaleString(locale)}${game.event_name ? ` · ${game.event_name}` : ''}`} onPress={() => nav.goTab('Play')} /> : null}
       <View style={[wrap, { marginTop: 22 }]}>
         <HScroll>
@@ -153,5 +157,12 @@ export default function HomeTab() {
       </View>
     </View>
   );
-  return <><Feed header={header} narrow /><AddProfileSheet visible={addSport} onClose={() => setAddSport(false)} first={!profiles.length} onDone={sports.reload} /></>;
+  return (
+    <View style={{ flex: 1 }}>
+      <Feed header={header} narrow />
+      <QuickLogFab onPress={() => setQuickLog(true)} bottom={L.tablet ? 110 : 20} />
+      <QuickLogSheet visible={quickLog} onClose={() => setQuickLog(false)} onDone={rd.reload} />
+      <AddProfileSheet visible={addSport} onClose={() => setAddSport(false)} first={!profiles.length} onDone={sports.reload} />
+    </View>
+  );
 }
