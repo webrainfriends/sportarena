@@ -10,6 +10,7 @@ import { useSession } from '../session';
 import { useNav } from '../nav';
 import { Avatar, Btn, Card, Chip, Empty, ErrorBox, Field, GradCard, H1, H2, Loading, Screen, Section, Seg, Sheet, StatPill, T } from '../ui';
 import { FormSheet } from '../FormSheet';
+import { TimelineSheet } from '../Timeline';
 import { SportSelect } from '../sportpicker';
 import { Counter, DateField, DayStrip, HScroll, TimeField } from '../pickers';
 import { NewCaseSheet } from './cases';
@@ -53,15 +54,17 @@ export const Head = ({ eyebrow, title, sub, right }) => (
 );
 
 /** A yes/no question before something that cannot be undone (cancel, accept). */
-export function Confirm({ visible, title, body, yes, danger, onYes, onClose }) {
-  const [busy, setBusy] = useState(false);
+export function Confirm({ visible, title, body, yes, danger, onYes, onClose, askReason }) {
+  const [busy, setBusy] = useState(false), [reason, setReason] = useState('');
+  useEffect(() => { if (!visible) setReason(''); }, [visible]);
   if (!visible) return null;
   return (
     <Sheet visible onClose={onClose} title={title}>
       {typeof body === 'string' ? <T size={14} color={c.mute}>{body}</T> : body}
+      {askReason ? <Field label={askReason} value={reason} onChangeText={setReason} multiline maxLength={500} hint="Optional. Both of you can see it in the booking history." /> : null}
       <View style={{ flexDirection: 'row', gap: 8 }}>
         <Btn title="Not now" color={c.paper} ink={c.ink} onPress={onClose} style={{ flex: 1 }} />
-        <Btn title={yes} color={danger ? c.red : c.pink} loading={busy} style={{ flex: 1 }} onPress={async () => { setBusy(true); try { await onYes(); } finally { setBusy(false); } }} />
+        <Btn title={yes} color={danger ? c.red : c.pink} loading={busy} style={{ flex: 1 }} onPress={async () => { setBusy(true); try { await onYes(reason.trim() || undefined); } finally { setBusy(false); } }} />
       </View>
     </Sheet>
   );
@@ -372,6 +375,8 @@ const paying = (hire, coachName) => ({ type: 'coach_hire', id: hire.id, amount: 
 
 function Session({ h, who, children }) {
   const { push } = useNav();
+  const { user } = useSession();
+  const [hist, setHist] = useState(false);
   return (
     <Card pad={14}>
       <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
@@ -390,7 +395,8 @@ function Session({ h, who, children }) {
           {h.payment_status === 'unpaid' ? <StatusPill s="unpaid" /> : h.payment_status === 'paid' ? <StatusPill s="paid" /> : null}
         </View>
       </View>
-      {children ? <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>{children}</View> : null}
+      <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>{children}<Btn small title="History" color={c.paper} ink={c.mute} accessibilityLabel="Show the history of this session" onPress={() => setHist(true)} /></View>
+      {hist ? <TimelineSheet kind="hire" id={h.id} meId={user.id} title="Session history" onClose={() => setHist(false)} /> : null}
     </Card>
   );
 }
@@ -402,7 +408,7 @@ function MyCoaching({ ov, reloadOverview, goFind, goRequests }) {
   const ledger = useLoad(() => api.get('/coaching/payments', { as: 'athlete', limit: 30 }), []);
   const a = ov.athlete, cur = ov.currency;
   const reloadAll = () => Promise.all([reloadOverview(), ledger.reload()]);
-  const doCancel = async () => { try { await api.patch(`/hires/${cancel.id}`, { status: 'cancelled' }); setCancel(null); await reloadAll(); toast(cancel.payment_status === 'paid' ? 'Cancelled — your payment is refunded' : 'Session cancelled'); } catch (e) { toast(e.message); } };
+  const doCancel = async (reason) => { try { await api.patch(`/hires/${cancel.id}`, { status: 'cancelled', ...(reason ? { reason } : {}) }); setCancel(null); await reloadAll(); toast(cancel.payment_status === 'paid' ? 'Cancelled — your payment is refunded' : 'Session cancelled'); } catch (e) { toast(e.message); } };
   const empty = !a.upcoming.length && !ledger.data?.length && !a.to_review.length;
   return (
     <View style={{ gap: 6, marginTop: 14 }}>
@@ -462,7 +468,7 @@ function MyCoaching({ ov, reloadOverview, goFind, goRequests }) {
 
       {payTarget ? <PaySheet target={payTarget} onClose={() => setPayTarget(null)} onDone={reloadAll} /> : null}
       {rev ? <ReviewSheet hire={rev} onClose={() => setRev(null)} onDone={reloadAll} /> : null}
-      <Confirm visible={!!cancel} title="Cancel this session?" yes="Cancel session" danger onClose={() => setCancel(null)} onYes={doCancel}
+      <Confirm visible={!!cancel} title="Cancel this session?" yes="Cancel session" danger askReason="Why are you cancelling?" onClose={() => setCancel(null)} onYes={doCancel}
         body={cancel ? `${cancel.coach_name} will be told.${cancel.payment_status === 'paid' ? ' Your payment is refunded.' : ''}` : ''} />
       <NewCaseSheet visible={!!disp} onClose={() => setDisp(null)} kind="dispute" category="provider_payment" links={disp ? [{ type: 'coach_hire', id: disp.id }] : []} />
     </View>
@@ -826,8 +832,8 @@ export function CoachDesk() {
   if (!o.coach) return <Screen><Empty emoji="🧑‍🏫" title="This is for coaches" sub="Add the coach role in your profile to take bookings." /></Screen>;
   const k = o.coach, cur = o.currency;
   const reloadAll = () => Promise.all([ov.reload(), ledger.reload()]);
-  const move = async () => {
-    try { await api.patch(`/hires/${act.h.id}`, { status: act.status }); setAct(null); await reloadAll(); toast({ confirmed: 'Confirmed', completed: 'Marked complete — the athlete can now review', cancelled: 'Declined' }[act.status]); } catch (e) { toast(e.message); setAct(null); }
+  const move = async (reason) => {
+    try { await api.patch(`/hires/${act.h.id}`, { status: act.status, ...(reason && act.status === 'cancelled' ? { reason } : {}) }); setAct(null); await reloadAll(); toast({ confirmed: 'Confirmed', completed: 'Marked complete — the athlete can now review', cancelled: 'Declined' }[act.status]); } catch (e) { toast(e.message); setAct(null); }
   };
   return (
     <Screen wide onRefresh={reloadAll}>
@@ -885,7 +891,7 @@ export function CoachDesk() {
         ))}
       </Section>
 
-      <Confirm visible={!!act} title={act?.status === 'confirmed' ? 'Confirm this session?' : act?.status === 'completed' ? 'Mark as complete?' : 'Cancel this session?'} yes={act?.status === 'confirmed' ? 'Confirm' : act?.status === 'completed' ? 'Mark complete' : 'Cancel session'} danger={act?.status === 'cancelled'} onClose={() => setAct(null)} onYes={move}
+      <Confirm visible={!!act} title={act?.status === 'confirmed' ? 'Confirm this session?' : act?.status === 'completed' ? 'Mark as complete?' : 'Cancel this session?'} yes={act?.status === 'confirmed' ? 'Confirm' : act?.status === 'completed' ? 'Mark complete' : 'Cancel session'} danger={act?.status === 'cancelled'} askReason={act?.status === 'cancelled' ? 'Why is it being cancelled?' : undefined} onClose={() => setAct(null)} onYes={move}
         body={act ? `${act.h.athlete_name} · ${dateTimeIn(act.h.starts_at, deviceTz)}.${act.status === 'cancelled' && act.h.payment_status === 'paid' ? ' Their payment is refunded.' : ''}${act.status === 'completed' ? ' They will be asked to review the session.' : ''}` : ''} />
       <FormSheet visible={!!reply} onClose={() => setReply(null)} title="Reply to review" submitLabel="Post reply" fields={[{ key: 'reply', label: 'Your reply (public, one per review)', type: 'multiline' }]}
         onSubmit={async (v) => { await api.post(`/coach-reviews/${reply.id}/reply`, { reply: v.reply }); await ov.reload(); return 'Reply posted'; }} />

@@ -6,6 +6,7 @@ import { checkSlotAlerts } from './booking/alerts.js';
 import { processWaitlist } from './booking/waitlist.js';
 import { expireLoyalty } from './booking/loyalty.js';
 import { expireUserPlans } from './booking/plans.js';
+import { expireStaleRequests } from './lifecycle.js';
 import { expireQuotes, sendRenewalReminders } from './insurance-cycle.js';
 
 export async function maintenanceCycle() {
@@ -14,8 +15,9 @@ export async function maintenanceCycle() {
   const waitlist = await processWaitlist();
   const points_expired = await expireLoyalty();
   const plans_expired = await expireUserPlans();
+  const requests_expired = await expireStaleRequests();
   const alerts = await checkSlotAlerts();
   const quotes_expired = await expireQuotes();
   const renewal_reminders = await sendRenewalReminders();
-  return { holds_released: holds, refunds, waitlist, points_expired, plans_expired, alerts_fulfilled: alerts, quotes_expired, renewal_reminders, ...(await notificationCycle()) };
+  return { holds_released: holds, refunds, waitlist, points_expired, plans_expired, alerts_fulfilled: alerts, quotes_expired, requests_expired, renewal_reminders, ...(await notificationCycle()) };
 }
