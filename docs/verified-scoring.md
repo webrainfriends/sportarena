@@ -28,16 +28,16 @@ Points an athlete types on practice are stored in the legacy `points` column as 
 `submitted → approved | rejected`, `approved → disputed → approved | rejected`, `approved | disputed → (correction submitted) → approved supersedes the original`.
 
 * Submit (`POST /performances` with `event_id`/`fixture_id`): validates the athlete is entered in the event (individual entry, team entry or multi-sport roster) and plays for one of the fixture's teams, that the fixture belongs to the event, that the sport matches the event (or one of its disciplines), the unit/range/whole-number rule and a non-future `achieved_on`. One live result per athlete + fixture + metric (409 otherwise).
-* Approve / reject (`POST /performances/:id/approve|reject`): the approver must be an official as above, **not the submitter and not the athlete** (separation of duties). A different official or admin is needed if the organiser submitted.
+* Approve / reject (`POST /performances/:id/approve|reject`): the approver (and the rejecter) must be an official as above, **not the submitter and not the athlete** (separation of duties applies equally to approve and reject). A different official or admin is needed if the organiser submitted.
 * Dispute (`POST /performances/:id/dispute`): the athlete or an official; the result is removed from standings until decided.
-* Correct (`POST /performances/:id/correct`): creates a new `submitted` row pointing at the original (`supersedes_id`). The original keeps counting until a different official approves the correction, which marks it `superseded`. Nothing is deleted; `GET /performances/:id/history` shows every step with actor and reason (table `performance_log`).
+* Correct (`POST /performances/:id/correct`): creates a new `submitted` row pointing at the original (`supersedes_id`). The original keeps counting until a different official approves the correction, which marks it `superseded`. The correction copies the original's `evidence_ref`, gets its own `submitted` history entry (with the reason and the id it supersedes), and when it is approved the original's history records `superseded` from its real previous status (`approved` or `disputed`). Nothing is deleted; `GET /performances/:id/history` shows every step with actor and reason (table `performance_log`).
 * Idempotency: send `client_key` on `POST /performances`; a retry returns the original row. A per-athlete/fixture/metric advisory lock makes concurrent duplicate submissions resolve to one `201` and `409`s.
 
 ## Rankings
 `GET /leaderboard` uses approved competition results only, excludes youth profiles as before, and supports `sport`, `event_id`, `metric`, `category` (sport category) and `season` (year of `achieved_on`).
 
 * No metric: official points, higher first. Ties: more approved results, then earliest approval.
-* With a metric: best approved value in the metric's direction (lowest time wins). Ties: earlier `achieved_on`, then more official points.
+* With a metric: best approved value in the metric's direction (lowest time wins). Ties: the earlier `achieved_on` **of the best result itself** (`best_on`; slower or older results never influence it), then the official points of that best result only (not a sum across the athlete's other results).
 * Athletes equal on every tie-break share a rank (`rank()`); paging is deterministic (`rank`, tie-break keys, then user id) and ranks are correct across pages. A metric with different directions in different sports requires `sport` (400).
 
 `GET /people/:id/stats` shows approved results publicly; the athlete (or an admin) also sees labelled practice/imported figures, never added to `total_points`. `GET /feed` top athletes and event-invite ratings use official points only. The dashboard returns `points` (official), `practice_entries` and `pending_results`.
