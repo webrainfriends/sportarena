@@ -96,7 +96,9 @@ test('move: reorders within and across columns, stamps done, blocked needs a rea
   assert.deepEqual(detail.body.history.map((h) => `${h.action}:${h.from_column ?? ''}>${h.to_column ?? ''}`), ['created:>backlog', 'moved:backlog>blocked', 'moved:blocked>done', 'moved:done>doing']);
   const cm = await api('POST', `/cards/${a.id}/comments`, { token: lead.token, body: { body: 'Barriers arrive at 9' } });
   assert.equal(cm.status, 201);
-  assert.equal((await api('GET', `/cards/${a.id}`, { token: mem.token })).body.comments.length, 1);
+  const seen = (await api('GET', `/cards/${a.id}`, { token: mem.token })).body.comments;
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].comment_id, cm.body.id, 'comments carry their own id, not the author\'s');
   assert.ok(b.id);
 });
 

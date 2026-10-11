@@ -237,7 +237,7 @@ cap({
     if (!card) throw notFound('Card');
     needWork(await access(user, card.department_id));
     const [comments, history] = await Promise.all([
-      many(`SELECT m.*, ${PUBLIC_USER} FROM event_card_comments m JOIN users u ON u.id=m.author_id WHERE m.card_id=$1 ORDER BY m.created_at`, [i.id]),
+      many(`SELECT m.id AS comment_id, m.card_id, m.body, m.created_at, ${PUBLIC_USER} FROM event_card_comments m JOIN users u ON u.id=m.author_id WHERE m.card_id=$1 ORDER BY m.created_at`, [i.id]),
       many('SELECT h.*, u.display_name AS actor_name FROM event_card_history h JOIN users u ON u.id=h.actor_id WHERE h.card_id=$1 ORDER BY h.at', [i.id]),
     ]);
     return { ...card, comments, history };

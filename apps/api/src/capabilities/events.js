@@ -338,7 +338,7 @@ cap({
 
 cap({
   name: 'list_fixtures', method: 'GET', path: '/fixtures', tag: 'Schedule', auth: 'public', summary: 'Game schedule and results, filterable by event, team, referee or date.',
-  input: z.object({ event_id: id.optional(), team_id: id.optional(), referee_id: id.optional(), from: dt.optional(), to: dt.optional(), status: z.enum(['scheduled', 'live', 'completed', 'cancelled']).optional(), ...page }),
+  input: z.object({ event_id: id.optional(), team_id: id.optional(), referee_id: id.optional(), from: dt.optional(), to: dt.optional(), status: z.enum(['scheduled', 'live', 'paused', 'finished', 'completed', 'cancelled', 'postponed', 'abandoned']).optional(), ...page }),
   handler: (_, i) => many(
     `SELECT f.*, h.name AS home_name, h.emoji AS home_emoji, h.color AS home_color, a.name AS away_name, a.emoji AS away_emoji, a.color AS away_color, e.name AS event_name, r.name AS resource_name, ve.timezone AS venue_timezone
        FROM fixtures f JOIN events e ON e.id=f.event_id LEFT JOIN teams h ON h.id=f.home_team_id LEFT JOIN teams a ON a.id=f.away_team_id LEFT JOIN resources r ON r.id=f.resource_id LEFT JOIN venues ve ON ve.id=r.venue_id

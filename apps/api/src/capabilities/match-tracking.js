@@ -173,7 +173,8 @@ cap({
     const f = (await pool.query("SELECT f.id, e.status AS es FROM fixtures f JOIN events e ON e.id=f.event_id WHERE f.id=$1", [i.id])).rows[0];
     if (!f || f.es === 'draft') throw notFound('Fixture');
     const x = user ? await fixtureContext(user, i.id) : null;
-    return liveState(i.id, null, { sinceSeq: i.since_seq, limit: i.limit, includeVoided: !!x?.canScore });
+    const state = await liveState(i.id, null, { sinceSeq: i.since_seq, limit: i.limit, includeVoided: !!x?.canScore });
+    return { ...state, viewer: { can_score: !!x?.canScore, organiser: !!x?.organiser, manages: x?.side ?? null } };
   },
 });
 

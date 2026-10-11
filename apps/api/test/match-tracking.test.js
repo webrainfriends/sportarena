@@ -130,6 +130,8 @@ test('live reads are public, pollable by since_seq; voids are only shown to offi
   assert.equal((await api('GET', `/fixtures/${fx}/live?since_seq=2`)).body.events.length, 1);
   const off = await api('GET', `/fixtures/${fx}/live`, { token: ref.token });
   assert.equal(off.body.events.length, 3);
+  assert.deepEqual(off.body.viewer, { can_score: true, organiser: false, manages: null });
+  assert.deepEqual(pub.body.viewer, { can_score: false, organiser: false, manages: null }, 'a visitor can only watch');
   assert.equal(off.body.events.find((e) => e.voided_at).void_reason, 'Wrong side');
   const tick = await api('GET', `/events/${ev.id}/live`);
   assert.equal(tick.body.length, 1);

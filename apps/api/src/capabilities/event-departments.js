@@ -233,7 +233,7 @@ cap({
     const scope = await departmentScope(user, ev);
     if (i.department_id) await dept(i.department_id);
     const rows = await many(
-      `SELECT m.id, m.department_id, d.name AS department, d.colour, d.kind, m.role, m.title, m.status, m.accreditation, m.joined_at, m.phone_enc, m.dob_enc, m.id_number_enc, ${PUBLIC_USER}
+      `SELECT m.id AS member_id, m.department_id, d.name AS department, d.colour, d.kind, m.role, m.title, m.status, m.accreditation, m.joined_at, m.phone_enc, m.dob_enc, m.id_number_enc, ${PUBLIC_USER}
          FROM event_department_members m JOIN event_departments d ON d.id=m.department_id JOIN users u ON u.id=m.user_id
         WHERE m.event_id=$1 AND ($2::uuid IS NULL OR m.department_id=$2) AND ($3::text IS NULL OR m.status=$3)
         ORDER BY d.created_at, m.role DESC, u.display_name LIMIT $4 OFFSET $5`, [i.id, i.department_id ?? null, i.status ?? null, i.limit, i.offset]);

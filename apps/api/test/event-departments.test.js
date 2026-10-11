@@ -70,6 +70,8 @@ test('invite, accept with personal details, roster hides them unless asked; read
   const plain = await api('GET', `/events/${ev.id}/roster`, { token: org.token });
   assert.equal(plain.status, 200);
   assert.equal(plain.body[0].phone, undefined);
+  assert.equal(plain.body[0].member_id, inv.body.id, 'the roster row carries the membership id');
+  assert.equal(plain.body[0].id, vol.id, 'and id is the person');
   assert.deepEqual(plain.body[0].has_details, { phone: true, dob: true, id_number: true });
   assert.equal(Number((await pool.query("SELECT count(*) FROM audit_log WHERE action='read_roster_pii'")).rows[0].count), before, 'no audit row without a decrypted read');
   const full = await api('GET', `/events/${ev.id}/roster?include_pii=true`, { token: org.token });
