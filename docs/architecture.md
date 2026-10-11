@@ -201,9 +201,10 @@ API log tail, public reachability probe). There are no metrics, tracing, structu
 | Master key cannot be unwrapped | API refuses to start; deploy aborts before touching the running app |
 | Postgres down | `/health` fails, requests 5xx; data volume is untouched by deploys |
 | Provider webhook missed | return page or manual check settles the payment; idempotent |
-| Provider refund refused | cancellation does not proceed (orders/hires); booking refunds retry up to 6 times, then `manual` |
-| Email bridge unset or down | emails stay queued in `notification_deliveries`; in-app and push still work |
-| Worker overlap / several instances | atomic SQL claims prevent double processing |
+| Provider refund refused | cancellation does not proceed (orders/hires); booking refunds retry with exponential backoff up to 6 times, then `failed` and a dead job an admin can requeue (`docs/operations.md`) |
+| Email bridge unset or down | emails stay queued in `notification_deliveries` with backoff, then dead-lettered; holds, refunds and push are unaffected; in-app still works |
+| Worker overlap / several instances | atomic SQL claims (`FOR UPDATE SKIP LOCKED`, leases) prevent double processing; a crashed claim is recovered when its lease expires |
+| Notification cannot be stored | savepoint isolates it; the money/hold change commits and a `notify.retry` job retries |
 | nginx config invalid | site removed, no reload, other apps unaffected |
 | Plain HTTP in production | personal data crosses the network unencrypted until TLS is enabled |
 

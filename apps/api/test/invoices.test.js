@@ -251,6 +251,10 @@ test('online payment in the venue currency: Stripe checkout, confirm, partial re
   assert.equal(cn.total_cents, 5000);
   await wait(async () => (await pool.query("SELECT refund_attempts FROM invoices WHERE id=$1", [cn.id])).rows[0].refund_attempts >= 1);
   await wait(async () => (await pool.query('SELECT refund_status, refund_claimed_at FROM invoices WHERE id=$1', [cn.id])).rows.map((r) => r.refund_status === 'pending' && r.refund_claimed_at === null)[0]);
+  const backoff = (await pool.query('SELECT refund_next_attempt_at FROM invoices WHERE id=$1', [cn.id])).rows[0].refund_next_attempt_at;
+  assert.ok(backoff > new Date(), 'a failed refund backs off before the next attempt');
+  assert.equal((await processRefunds()).done, 0, 'not retried before the backoff has passed');
+  await pool.query('UPDATE invoices SET refund_next_attempt_at=NULL WHERE id=$1', [cn.id]);
   const worker = await processRefunds();
   assert.equal(worker.done, 1);
   const row = (await pool.query('SELECT * FROM invoices WHERE id=$1', [cn.id])).rows[0];

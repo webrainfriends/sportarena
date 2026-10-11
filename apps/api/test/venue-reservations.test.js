@@ -571,6 +571,7 @@ test('notifications: inbox, preferences, muted kinds, email queue + webhook disp
     assert.equal(hits[0].auth, 'Bearer s3cret');
     assert.match(hits[0].body.to, /@example\.com$/);
     assert.equal(hits[0].body.channel, 'email');
+    await pool.query("UPDATE notification_deliveries SET next_attempt_at = NULL WHERE status='pending'"); // skip the backoff wait
     out = must(await api('POST', '/admin/notifications/dispatch', { token: admin.token, body: {} }));
     assert.equal((await pool.query("SELECT count(*)::int AS n FROM notification_deliveries WHERE status='pending'")).rows[0].n, 0, 'everything delivered on retry');
   } finally {
