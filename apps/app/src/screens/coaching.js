@@ -13,7 +13,6 @@ import { SportSelect } from '../sportpicker';
 import { Counter, DateField, DayStrip, HScroll, TimeField } from '../pickers';
 import { NewCaseSheet } from './cases';
 import { SeriesBookingSheet, VenueLine } from './training-venue';
-import { BookProviderSheet } from './provider';
 import { Grid, PaySheet, Pill, StatusPill, nice, useCols } from './marketplace';
 import { c, grad, toneFor } from '../theme';
 import { dateTimeIn, localDate, localToIso, moneyIn, timeIn, todayIn, WEEKDAYS } from '../vtime';
@@ -469,55 +468,6 @@ function MyCoaching({ ov, reloadOverview, goFind, goRequests }) {
   );
 }
 
-function Providers() {
-  const { toast } = useSession();
-  const [book, setBook] = useState(null);
-  const [pf, setPf] = useState({ type: '', remote: false, verified: false, sort: 'rating', q: '' });
-  const provs = useLoad(() => api.get('/providers/search', { limit: 50, sort: pf.sort, ...(pf.type ? { type: pf.type } : {}), ...(pf.remote ? { remote: true } : {}), ...(pf.verified ? { verified: true } : {}), ...(pf.q.trim() ? { q: pf.q.trim() } : {}) }), [pf.type, pf.remote, pf.verified, pf.sort, pf.q]);
-  const appts = useLoad(() => api.get('/appointments', { limit: 30 }), []);
-  const setAppt = async (a, status) => { try { await api.patch(`/appointments/${a.id}`, { status }); await appts.reload(); toast(`Appointment ${status}`); } catch (e) { toast(e.message); } };
-  return (
-    <View style={{ gap: 10, marginTop: 14 }}>
-      <Field value={pf.q} onChangeText={(q) => setPf({ ...pf, q })} placeholder="Search by name, clinic or speciality…" />
-      <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
-        {[['', 'Anyone'], ['physio', 'Physios'], ['doctor', 'Doctors']].map(([v, l]) => <Chip key={v} label={l} active={pf.type === v} onPress={() => setPf({ ...pf, type: v })} />)}
-        <Chip label="Remote" active={pf.remote} onPress={() => setPf({ ...pf, remote: !pf.remote })} />
-        <Chip label="✓ Verified" active={pf.verified} onPress={() => setPf({ ...pf, verified: !pf.verified })} />
-        {[['rating', 'Top rated'], ['fee', 'Lowest fee'], ['soonest', 'Soonest']].map(([v, l]) => <Chip key={v} label={l} active={pf.sort === v} onPress={() => setPf({ ...pf, sort: v })} />)}
-      </View>
-      {provs.error ? <ErrorBox error={provs.error} onRetry={provs.reload} /> : provs.loading && !provs.data ? <Loading /> : !provs.data?.length ? (
-        <Empty emoji="🩺" title="No providers match" sub="Try removing a filter." />
-      ) : provs.data.map((x) => (
-        <Card key={x.id} pad={14}>
-          <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
-            <Avatar user={x} size={48} />
-            <View style={{ flex: 1, gap: 3 }}>
-              <T weight="800" size={15}>{x.display_name}{x.credential_verified ? ' ✓' : ''}</T>
-              <T size={12} color={c.mute}>{[nice(x.provider_type), x.clinic, x.city, x.remote_ok ? 'remote' : null].filter(Boolean).join(' · ')}</T>
-              {x.headline ? <T size={12}>{x.headline}</T> : null}
-              <T size={12} color={c.mute}>{[x.rating ? `★ ${Number(x.rating).toFixed(1)} (${x.rating_count})` : 'No reviews yet', x.fee_cents ? `${price(x.fee_cents, x.currency)}` : 'Fee on request', x.accepting_patients === false ? 'not taking new patients' : null].filter(Boolean).join(' · ')}</T>
-            </View>
-            <Btn small title="Book" disabled={x.accepting_patients === false} onPress={() => setBook(x)} />
-          </View>
-        </Card>
-      ))}
-      <H2 style={{ marginTop: 14 }}>My appointments</H2>
-      {!appts.data?.length ? <T size={13} color={c.mute}>No appointments yet.</T> : appts.data.map((a) => (
-        <Card key={a.id} pad={14}>
-          <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
-            <View style={{ flex: 1 }}><T weight="800" size={15}>Appointment · {a.provider_name}</T><T size={12} color={c.mute}>{dateTimeIn(a.starts_at, deviceTz)} · {a.duration_min} min{a.reason ? ` · ${a.reason}` : ''}</T></View>
-            <View style={{ alignItems: 'flex-end', gap: 6 }}>
-              <StatusPill s={a.status} />
-              {['requested', 'confirmed'].includes(a.status) ? <Btn small title="Cancel" color={c.paper} ink={c.red} onPress={() => setAppt(a, 'cancelled')} /> : null}
-            </View>
-          </View>
-        </Card>
-      ))}
-      {book ? <BookProviderSheet provider={book} onClose={() => setBook(null)} onDone={appts.reload} /> : null}
-    </View>
-  );
-}
-
 export function Hire() {
   const [tab, setTab] = useState('find');
   const [post, setPost] = useState(false), [book, setBook] = useState(null), [paying2, setPaying] = useState(null);
@@ -528,7 +478,6 @@ export function Hire() {
     { value: 'find', label: 'Find a coach' },
     { value: 'requests', label: waiting ? `My requests · ${waiting} new` : 'My requests' },
     { value: 'mine', label: todo ? `My coaching · ${todo}` : 'My coaching' },
-    { value: 'med', label: 'Physios & doctors' },
   ];
   return (
     <Screen wide onRefresh={ov.reload}>
@@ -537,7 +486,6 @@ export function Hire() {
       {tab === 'find' ? <FindCoaches onPost={() => setPost(true)} onBook={setBook} /> : null}
       {tab === 'requests' ? <MyRequests onPost={() => setPost(true)} reloadOverview={ov.reload} /> : null}
       {tab === 'mine' ? (ov.error ? <ErrorBox error={ov.error} onRetry={ov.reload} /> : !o ? <Loading /> : <MyCoaching ov={o} reloadOverview={ov.reload} goFind={() => setTab('find')} goRequests={() => setTab('requests')} />) : null}
-      {tab === 'med' ? <Providers /> : null}
       <PostRequestSheet visible={post} onClose={() => setPost(false)} currency={o?.currency} onDone={async () => { await ov.reload(); setTab('requests'); }} />
       {book ? <BookCoachSheet coach={book} onClose={() => setBook(null)} onDone={async (hire) => { await ov.reload(); setTab('mine'); if (hire.payment_status === 'unpaid') setPaying(paying(hire, book.display_name)); }} /> : null}
       {paying2 ? <PaySheet target={paying2} onClose={() => setPaying(null)} onDone={ov.reload} /> : null}

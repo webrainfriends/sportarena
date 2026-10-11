@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { useNav } from '../nav';
-import { Btn, Card, Chip, Empty, ErrorBox, H2, Loading, Screen, Section, Seg, Tag, T } from '../ui';
+import { Btn, Card, Chip, Empty, ErrorBox, Loading, Seg, Tag, T } from '../ui';
 import { HScroll } from '../pickers';
 import { c } from '../theme';
 import { dateTimeIn, localDate } from '../vtime';
@@ -12,6 +12,8 @@ import { locale } from '../locale';
 
 export const KINDS = [['match', 'Matches'], ['team', 'Team'], ['event', 'Events'], ['training', 'Coaching'], ['health', 'Health'], ['venue', 'Venues'], ['duty', 'Duty']];
 const ICON = { match: '🏟️', team: '👥', event: '🏆', training: '🏋️', venue: '📍', health: '🩺', duty: '📋' };
+// Colour-coded pills: match = red, training/coaching = blue, recovery/health = green, everything else neutral.
+const TONE = { match: [c.red, c.redSoft], training: [c.cyan, c.cyanSoft], health: [c.mint, c.mintSoft] };
 const STATUS = { proposed: 'Proposed', awaiting_response: 'Awaiting your response', confirmed: 'Confirmed', completed: 'Completed', cancelled: 'Cancelled', open: 'Open', ongoing: 'Ongoing' };
 
 export const ACTIONS = [
@@ -43,7 +45,7 @@ export function Item({ x, reload }) {
   const when = x.all_day ? new Date(x.starts_at).toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' }) : dateTimeIn(x.starts_at, x.timezone);
   const label = `${x.title}. ${when}. ${STATUS[x.status] ?? x.status}${x.conflict ? '. Overlaps another commitment' : ''}`;
   return (
-    <Card onPress={open} style={{ minHeight: 44 }}>
+    <Card onPress={open} style={{ minHeight: 44, borderLeftWidth: 4, borderLeftColor: (TONE[x.kind] ?? [c.line])[0] }}>
       <View accessible accessibilityLabel={label} style={{ gap: 6 }}>
         <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
           <T size={22}>{ICON[x.kind]}</T>
@@ -51,7 +53,7 @@ export function Item({ x, reload }) {
             <T weight="700" numberOfLines={2}>{x.title}</T>
             <T size={13} color={c.mute}>{when}{x.timezone && x.timezone !== 'UTC' ? ` (${x.timezone})` : ''}{x.context ? ` · ${x.context}` : ''}</T>
           </View>
-          <Tag label={STATUS[x.status] ?? x.status} color={x.action_required ? c.sunSoft : c.violetSoft} />
+          <Tag label={STATUS[x.status] ?? x.status} color={x.action_required ? c.sunSoft : (TONE[x.kind] ?? [0, c.violetSoft])[1]} />
         </View>
         {x.conflict ? <T size={13} weight="700" color={c.red}>⚠ Overlaps another commitment. Nothing was changed, so check each one.</T> : null}
         {x.actions?.includes('respond_to_selection') ? (
@@ -65,43 +67,6 @@ export function Item({ x, reload }) {
   );
 }
 
-export function AthleteToday() {
-  const nav = useNav();
-  const [kind, setKind] = useState(null);
-  const sched = useLoad(() => api.get('/me/sport-schedule', kind ? { kinds: kind } : {}), [kind]);
-  const items = sched.data?.items ?? [];
-  const today = localDate(new Date().toISOString(), Intl.DateTimeFormat().resolvedOptions().timeZone);
-  const isToday = (x) => localDate(x.starts_at, x.all_day ? 'UTC' : Intl.DateTimeFormat().resolvedOptions().timeZone) === today;
-  const todays = items.filter(isToday);
-  const inbox = items.filter((x) => x.action_required);
-
-  return (
-    <Screen refreshing={sched.loading && !!sched.data} onRefresh={sched.reload}>
-      <H2>My sport</H2>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
-        {ACTIONS.map(([emoji, label, go]) => <Btn key={label} small color={c.paper} ink={c.ink} title={`${emoji} ${label}`} onPress={() => go(nav)} />)}
-      </View>
-
-      {sched.loading && !sched.data ? <Loading /> : sched.error ? <ErrorBox error={sched.error} onRetry={sched.reload} /> : (
-        <>
-          {inbox.length ? <Section title={`Needs your response (${inbox.length})`}><View style={{ gap: 10 }}>{inbox.map((x) => <Item key={`i${x.source_type}${x.source_id}`} x={x} reload={sched.reload} />)}</View></Section> : null}
-          <Section title="Today"><View style={{ gap: 10 }}>
-            {todays.length ? todays.map((x) => <Item key={`t${x.source_type}${x.source_id}`} x={x} reload={sched.reload} />) : <Empty emoji="🗓️" title="Nothing scheduled today" sub="Find a match, book a venue or hire a coach to fill your week." />}
-          </View></Section>
-          <Section title="Next 14 days">
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 }} accessibilityRole="toolbar">
-              <Chip label="All" active={!kind} onPress={() => setKind(null)} />
-              {KINDS.map(([k, l]) => <Chip key={k} label={l} active={kind === k} onPress={() => setKind(kind === k ? null : k)} />)}
-            </View>
-            {sched.data?.conflicts ? <T size={13} weight="700" color={c.red} style={{ marginBottom: 8 }}>⚠ {sched.data.conflicts} overlapping commitments</T> : null}
-            <View style={{ gap: 10 }}>{items.length ? items.map((x) => <Item key={`w${x.source_type}${x.source_id}`} x={x} reload={sched.reload} />) : <Empty emoji="✨" title="A clear fortnight" sub="Nothing on your calendar yet." />}</View>
-          </Section>
-        </>
-      )}
-    </Screen>
-  );
-}
-
 const RANGES = [['today', 'Today', 1], ['week', '7 days', 7], ['month', '30 days', 30]];
 const addDaysIso = (d, n) => { const x = new Date(`${d}T00:00:00Z`); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
 
@@ -109,8 +74,8 @@ const addDaysIso = (d, n) => { const x = new Date(`${d}T00:00:00Z`); x.setUTCDat
  * Everything on the person's calendar, whatever their roles: matches, team fixtures, events and tournaments, coaching sessions and
  * commitments, physio/doctor appointments (as patient or provider), venue bookings and duty. Grouped by day, filterable by kind.
  */
-export function HomeSchedule({ onFull }) {
-  const [range, setRange] = useState('week'), [kind, setKind] = useState(null);
+export function HomeSchedule() {
+  const [range, setRange] = useState('today'), [kind, setKind] = useState(null);
   const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const today = localDate(new Date().toISOString(), zone);
   const days = RANGES.find((r) => r[0] === range)[2];
@@ -125,10 +90,7 @@ export function HomeSchedule({ onFull }) {
   const label = (d) => (d === today ? 'Today' : d === addDaysIso(today, 1) ? 'Tomorrow' : new Date(`${d}T12:00:00`).toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'short' }));
   return (
     <View style={{ gap: 12 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <T size={19} weight="700" style={{ letterSpacing: -0.3 }}>My schedule</T>
-        {onFull ? <Pressable onPress={onFull}><T size={13} weight="700" color={c.pink}>Full schedule  ›</T></Pressable> : null}
-      </View>
+      <T size={19} weight="700" style={{ letterSpacing: -0.3 }}>My schedule</T>
       <Seg options={RANGES.map(([value, l]) => ({ value, label: l }))} value={range} onChange={setRange} color={c.pink} />
       <HScroll>
         <Chip label={`All · ${all.length}`} active={!kind} onPress={() => setKind(null)} />
@@ -144,7 +106,7 @@ export function HomeSchedule({ onFull }) {
               {xs.map((x) => <Item key={`${d}${x.source_type}${x.source_id}`} x={x} reload={sched.reload} />)}
             </View>
           ))}
-          {!items.length ? <Empty emoji="🗓️" title={kind ? 'Nothing of this kind' : range === 'today' ? 'Nothing scheduled today' : 'A clear stretch'} sub={kind ? 'Try another filter or a longer range.' : 'Matches, events, coaching, appointments and bookings all land here as soon as you add them.'} /> : null}
+          {!items.length ? <Empty emoji="🗓️" title={kind ? 'Nothing of this kind' : range === 'today' ? 'Rest day' : 'A clear stretch'} sub={kind ? 'Try another filter or a longer range.' : range === 'today' ? 'Nothing scheduled today. Recovery counts too. Switch to 7 or 30 days to see what is coming.' : 'Matches, events, coaching, appointments and bookings all land here as soon as you add them.'} /> : null}
         </>
       )}
     </View>

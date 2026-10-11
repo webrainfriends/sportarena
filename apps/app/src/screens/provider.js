@@ -4,9 +4,10 @@ import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { FormSheet } from '../FormSheet';
-import { Btn, Card, Chip, Empty, ErrorBox, Field, Loading, Section, Sheet, T, Tag } from '../ui';
+import { Avatar, Btn, Card, Chip, Empty, ErrorBox, Field, Loading, Section, Sheet, T, Tag } from '../ui';
 import { c, money, when } from '../theme';
 import { locale } from '../locale';
+import { moneyIn } from '../vtime';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const SPECIALTIES = ['sports medicine', 'knee', 'shoulder', 'back', 'acl', 'rehab', 'nutrition', 'concussion'];
@@ -208,4 +209,43 @@ function FollowupDetails({ id }) {
   if (d.loading && !d.data) return <Loading />;
   if (d.error) return <ErrorBox error={d.error} onRetry={d.reload} />;
   return <Card color={c.violetSoft} pad={10} style={{ marginTop: 6 }}><T size={13}>{d.data.details_visible ? d.data.details : 'The athlete no longer shares these details with you.'}</T></Card>;
+}
+
+/**
+ * Find a physio or doctor: search by name, clinic or speciality, filter by type, remote and verified, sort by rating, fee or soonest slot.
+ * The single place to find a health professional (Health -> Find a pro); booking opens the same sheet as everywhere else.
+ */
+export function ProviderSearch({ onBooked }) {
+  const { user } = useSession();
+  const [book, setBook] = useState(null);
+  const [pf, setPf] = useState({ type: '', remote: false, verified: false, sort: 'rating', q: '' });
+  const provs = useLoad(() => api.get('/providers/search', { limit: 50, sort: pf.sort, ...(pf.type ? { type: pf.type } : {}), ...(pf.remote ? { remote: true } : {}), ...(pf.verified ? { verified: true } : {}), ...(pf.q.trim() ? { q: pf.q.trim() } : {}) }), [pf.type, pf.remote, pf.verified, pf.sort, pf.q]);
+  return (
+    <View style={{ gap: 10 }}>
+      <Field value={pf.q} onChangeText={(q) => setPf({ ...pf, q })} placeholder="Search by name, clinic or speciality…" />
+      <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
+        {[['', 'Anyone'], ['physio', 'Physios'], ['doctor', 'Doctors']].map(([v, l]) => <Chip key={v} label={l} active={pf.type === v} onPress={() => setPf({ ...pf, type: v })} />)}
+        <Chip label="Remote" active={pf.remote} onPress={() => setPf({ ...pf, remote: !pf.remote })} />
+        <Chip label="✓ Verified" active={pf.verified} onPress={() => setPf({ ...pf, verified: !pf.verified })} />
+        {[['rating', 'Top rated'], ['fee', 'Lowest fee'], ['soonest', 'Soonest']].map(([v, l]) => <Chip key={v} label={l} active={pf.sort === v} onPress={() => setPf({ ...pf, sort: v })} />)}
+      </View>
+      {provs.error ? <ErrorBox error={provs.error} onRetry={provs.reload} /> : provs.loading && !provs.data ? <Loading /> : !provs.data?.length ? (
+        <Empty emoji="🩺" title="No providers match" sub="Try removing a filter." />
+      ) : provs.data.map((x) => (
+        <Card key={x.id} pad={14}>
+          <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
+            <Avatar user={x} size={48} />
+            <View style={{ flex: 1, gap: 3 }}>
+              <T weight="800" size={15}>{x.display_name}{x.credential_verified ? ' ✓' : ''}</T>
+              <T size={12} color={c.mute}>{[String(x.provider_type ?? '').replace(/_/g, ' '), x.clinic, x.city, x.remote_ok ? 'remote' : null].filter(Boolean).join(' · ')}</T>
+              {x.headline ? <T size={12}>{x.headline}</T> : null}
+              <T size={12} color={c.mute}>{[x.rating ? `★ ${Number(x.rating).toFixed(1)} (${x.rating_count})` : 'No reviews yet', x.fee_cents ? moneyIn(Number(x.fee_cents), x.currency ?? 'INR') : 'Fee on request', x.accepting_patients === false ? 'not taking new patients' : null].filter(Boolean).join(' · ')}</T>
+            </View>
+            {x.id !== user.id ? <Btn small title="Book" disabled={x.accepting_patients === false} onPress={() => setBook(x)} /> : null}
+          </View>
+        </Card>
+      ))}
+      {book ? <BookProviderSheet provider={book} onClose={() => setBook(null)} onDone={() => { setBook(null); onBooked?.(); }} /> : null}
+    </View>
+  );
 }
