@@ -9,11 +9,12 @@ import { HScroll } from '../pickers';
 import { c } from '../theme';
 import { dateTimeIn, localDate } from '../vtime';
 import { locale } from '../locale';
+import { AddBlockButton, BlockSheet, MonthGrid, RsvpBar } from './schedule-calendar';
 
-export const KINDS = [['match', 'Matches'], ['team', 'Team'], ['event', 'Events'], ['training', 'Coaching'], ['health', 'Health'], ['venue', 'Venues'], ['duty', 'Duty']];
-const ICON = { match: '🏟️', team: '👥', event: '🏆', training: '🏋️', venue: '📍', health: '🩺', duty: '📋' };
+export const KINDS = [['match', 'Matches'], ['team', 'Team'], ['event', 'Events'], ['training', 'Coaching'], ['health', 'Health'], ['venue', 'Venues'], ['duty', 'Duty'], ['recovery', 'Recovery']];
+const ICON = { match: '🏟️', team: '👥', event: '🏆', training: '🏋️', venue: '📍', health: '🩺', duty: '📋', recovery: '🧘' };
 // Colour-coded pills: match = red, training/coaching = blue, recovery/health = green, everything else neutral.
-const TONE = { match: [c.red, c.redSoft], training: [c.cyan, c.cyanSoft], health: [c.mint, c.mintSoft] };
+const TONE = { match: [c.red, c.redSoft], training: [c.cyan, c.cyanSoft], health: [c.mint, c.mintSoft], recovery: [c.mint, c.mintSoft] };
 const STATUS = { proposed: 'Proposed', awaiting_response: 'Awaiting your response', confirmed: 'Confirmed', completed: 'Completed', cancelled: 'Cancelled', open: 'Open', ongoing: 'Ongoing' };
 
 export const ACTIONS = [
@@ -34,8 +35,13 @@ export function Item({ x, reload }) {
     setBusy(true);
     try { await api.patch(`/squads/${x.source_id}`, { status }); toast(status === 'confirmed' ? 'Confirmed' : 'Declined'); await reload(); } catch (e) { toast(e.message); } finally { setBusy(false); }
   };
+  const archive = async () => {
+    setBusy(true);
+    try { await api.post(`/me/blocks/${x.source_id}/archive`); toast('Removed from your calendar'); await reload(); } catch (e) { toast(e.message); } finally { setBusy(false); }
+  };
   const open = () => {
     const { screen, params = {} } = x.link ?? {};
+    if (x.kind === 'recovery') return;
     if (screen === 'Health') nav.push('Health');
     else if (screen === 'Event' && params.id) nav.push('Event', params);
     else if (['CoachCommitments', 'CoachPlan', 'MyPlans', 'Games'].includes(screen) && (screen !== 'CoachPlan' || params.id)) nav.push(screen, params);
@@ -56,6 +62,8 @@ export function Item({ x, reload }) {
           <Tag label={STATUS[x.status] ?? x.status} color={x.action_required ? c.sunSoft : (TONE[x.kind] ?? [0, c.violetSoft])[1]} />
         </View>
         {x.conflict ? <T size={13} weight="700" color={c.red}>⚠ Overlaps another commitment. Nothing was changed, so check each one.</T> : null}
+        {x.rsvp ? <RsvpBar x={x} reload={reload} /> : null}
+        {x.actions?.includes('archive_athlete_block') ? <View style={{ flexDirection: 'row' }}><Btn small title="Remove" color={c.paper} ink={c.ink} disabled={busy} onPress={archive} /></View> : null}
         {x.actions?.includes('respond_to_selection') ? (
           <View style={{ flexDirection: 'row', gap: 8 }}>
             <Btn small title="Confirm" disabled={busy} onPress={() => respond('confirmed')} />
@@ -68,6 +76,7 @@ export function Item({ x, reload }) {
 }
 
 const RANGES = [['today', 'Today', 1], ['week', '7 days', 7], ['month', '30 days', 30]];
+const VIEWS = [...RANGES.map(([value, label]) => ({ value, label })), { value: 'month-view', label: 'Calendar' }];
 const addDaysIso = (d, n) => { const x = new Date(`${d}T00:00:00Z`); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
 
 /**
@@ -76,12 +85,16 @@ const addDaysIso = (d, n) => { const x = new Date(`${d}T00:00:00Z`); x.setUTCDat
  */
 export function HomeSchedule() {
   const [range, setRange] = useState('today'), [kind, setKind] = useState(null);
+  const [month, setMonth] = useState(null), [picked, setPicked] = useState(null), [block, setBlock] = useState(false);
   const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const today = localDate(new Date().toISOString(), zone);
-  const days = RANGES.find((r) => r[0] === range)[2];
-  const sched = useLoad(() => api.get('/me/sport-schedule', { from: today, to: addDaysIso(today, days - 1) }), [range]);
+  const days = (RANGES.find((r) => r[0] === range) ?? [0, 0, 1])[2];
+  const inMonth = range === 'month-view';
+  const mon = month ?? today.slice(0, 7);
+  const lastOfMonth = `${mon}-${String(new Date(Date.UTC(+mon.slice(0, 4), +mon.slice(5, 7), 0)).getUTCDate()).padStart(2, '0')}`;
+  const sched = useLoad(() => api.get('/me/sport-schedule', inMonth ? { from: `${mon}-01`, to: lastOfMonth } : { from: today, to: addDaysIso(today, days - 1) }), [range, mon]);
   const all = sched.data?.items ?? [];
-  const items = all.filter((x) => !kind || x.kind === kind);
+  const items = all.filter((x) => (!kind || x.kind === kind) && (!inMonth || !picked || localDate(x.starts_at, x.all_day ? 'UTC' : zone) === picked));
   const need = items.filter((x) => x.action_required);
   const rest = items.filter((x) => !x.action_required);
   const counts = Object.fromEntries(KINDS.map(([k]) => [k, all.filter((x) => x.kind === k).length]));
@@ -90,8 +103,12 @@ export function HomeSchedule() {
   const label = (d) => (d === today ? 'Today' : d === addDaysIso(today, 1) ? 'Tomorrow' : new Date(`${d}T12:00:00`).toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'short' }));
   return (
     <View style={{ gap: 12 }}>
-      <T size={19} weight="700" style={{ letterSpacing: -0.3 }}>My schedule</T>
-      <Seg options={RANGES.map(([value, l]) => ({ value, label: l }))} value={range} onChange={setRange} color={c.pink} />
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+        <T size={19} weight="700" style={{ letterSpacing: -0.3 }}>My schedule</T>
+        <AddBlockButton onPress={() => setBlock(true)} />
+      </View>
+      <Seg options={VIEWS} value={range} onChange={(v) => { setRange(v); if (v === 'month-view') setPicked(today); }} color={c.pink} />
+      {inMonth ? <MonthGrid month={mon} onMonth={(m) => { setMonth(m); setPicked(null); }} items={all} selected={picked} onSelect={(d) => setPicked(picked === d ? null : d)} /> : null}
       <HScroll>
         <Chip label={`All · ${all.length}`} active={!kind} onPress={() => setKind(null)} />
         {KINDS.filter(([k]) => counts[k] || kind === k).map(([k, l]) => <Chip key={k} label={`${ICON[k]} ${l} · ${counts[k]}`} active={kind === k} onPress={() => setKind(kind === k ? null : k)} />)}
@@ -109,6 +126,7 @@ export function HomeSchedule() {
           {!items.length ? <Empty emoji="🗓️" title={kind ? 'Nothing of this kind' : range === 'today' ? 'Rest day' : 'A clear stretch'} sub={kind ? 'Try another filter or a longer range.' : range === 'today' ? 'Nothing scheduled today. Recovery counts too. Switch to 7 or 30 days to see what is coming.' : 'Matches, events, coaching, appointments and bookings all land here as soon as you add them.'} /> : null}
         </>
       )}
+      <BlockSheet visible={block} date={inMonth ? picked ?? undefined : undefined} onClose={() => setBlock(false)} onDone={sched.reload} />
     </View>
   );
 }
