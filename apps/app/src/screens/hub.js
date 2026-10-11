@@ -7,7 +7,7 @@ import { useNav } from '../nav';
 import { Avatar, Bubble, Btn, Card, Chip, Empty, ErrorBox, Field, GradCard, H1, H2, Loading, Row, Screen, Seg, Section, Sheet, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { SportSelect } from '../sportpicker';
-import { AddFollowupSheet, ConsentManager, FollowupsPanel, ProviderSearch } from './provider';
+import { AddFollowupSheet, ClinicalStatusCard, ConsentManager, FollowupsPanel, ProviderSearch, ShareRecordsSheet } from './provider';
 import { PaySheet } from '../PaySheet';
 import { RecoveryPanel } from './wellness';
 import { c, grad, money, day, when } from '../theme';
@@ -144,6 +144,7 @@ export function Health() {
   const [tab, setTab] = useState(has('athlete') ? 'recovery' : 'find');
   const [paying, setPaying] = useState(null);
   const [fu, setFu] = useState(null);
+  const [share, setShare] = useState(null);
   const appts = useLoad(() => api.get('/appointments', { limit: 30 }), []);
   const recs = useLoad(() => api.get('/medical/records', { limit: 30 }), []);
   const isProv = has('physio', 'doctor');
@@ -152,6 +153,7 @@ export function Health() {
     <Screen>
       <H1>Health</H1>
       <Card color={c.mintSoft} pad={12}><T weight="900">Consent-first medical privacy</T><T size={12} color={c.mute}>Notes are encrypted. Doctors and physios only see your records after you grant access — and every read is logged.</T></Card>
+      {isProv ? <View style={{ marginTop: 10 }}><ClinicalStatusCard /></View> : null}
       <View style={{ marginTop: 10 }}><Seg options={[...(has('athlete') ? [{ value: 'recovery', label: 'Recovery', emoji: '💚' }] : []), { value: 'find', label: 'Find a pro', emoji: '🔎' }, { value: 'appts', label: 'Appointments', emoji: '📅' }, { value: 'records', label: 'My records', emoji: '📋' }, { value: 'followups', label: 'Follow-ups', emoji: '🗓️' }, { value: 'consent', label: 'Access', emoji: '🔒' }]} value={tab} onChange={setTab} color={c.mint} /></View>
       <View style={{ gap: 10, marginTop: 8 }}>
         {tab === 'recovery' && <RecoveryPanel />}
@@ -167,13 +169,14 @@ export function Health() {
               {['requested', 'confirmed'].includes(a.status) ? <Btn small title="Cancel" color={c.paper} ink={c.red} onPress={() => act(() => api.patch(`/appointments/${a.id}`, { status: 'cancelled' }), 'Cancelled')} /> : null}
               {a.provider_id === user.id && a.status === 'confirmed' ? <Btn small title="Complete" color={c.mint} ink={c.ink} onPress={() => act(() => api.patch(`/appointments/${a.id}`, { status: 'completed' }), 'Completed')} /> : null}
               {a.athlete_id === user.id && !['cancelled', 'completed'].includes(a.status) ? <>
-                <Btn small title="Share records" color={c.violet} onPress={() => act(() => api.post('/medical/grants', { provider_id: a.provider_id }), 'Access granted')} />
+                <Btn small title="Share records" color={c.violet} onPress={() => setShare({ id: a.provider_id, name: a.provider_name })} />
                 <Btn small title="Revoke" color={c.paper} ink={c.red} onPress={() => act(() => api.del(`/medical/grants/${a.provider_id}`), 'Access revoked')} /></> : null}
             </View></Card>
         )) : <Empty emoji="📅" title="No appointments" />)}
         {tab === 'records' && (recs.data?.length ? recs.data.map((r) => <Card key={r.id}><View style={{ flexDirection: 'row', gap: 8 }}><Tag label={r.kind} color={c.cyan} />{r.clearance ? <Tag label={r.clearance.replace('_', ' ')} color={r.clearance === 'cleared' ? c.lime : c.orange} /> : null}</View><T weight="900" style={{ marginTop: 6 }}>{r.summary}</T>{r.details ? <T size={13} color={c.mute}>{r.details}</T> : null}<T size={11} color={c.mute}>{r.provider_name} · {day(r.created_at)}</T></Card>) : <Empty emoji="📋" title="No records" sub="Records written by providers you've granted access appear here." />)}
       </View>
       {paying ? <PaySheet target={paying} onClose={() => setPaying(null)} onDone={appts.reload} /> : null}
+      <ShareRecordsSheet provider={share} onClose={() => setShare(null)} onDone={() => { appts.reload(); }} />
       <AddFollowupSheet appointment={fu} onClose={() => setFu(null)} onDone={() => { setFu(null); }} />
     </Screen>
   );

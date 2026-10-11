@@ -103,6 +103,15 @@ Policies (explicit, never silent):
   Unset = any (default).
 * **Audit**: every check writes `credential_check_allowed|denied|grace` (entity `clinical:<action>[:reason]`, athlete id) - never clinical text.
 
-Limitations: a provider with a `full` grant still reads the athlete's full history (least-privilege historical access is a
-separate slice); sport scope is evaluated from the case's `sport_id` against the supplied `sport_id` or the athlete's sport profiles.
+Least-privilege history (59-1b): a grant has `history_scope`. `since_grant` (default for new grants) lets the provider read the
+records they wrote plus anything written since the grant; `all` (the athlete's explicit choice, `history: 'all'` on
+`grant_medical_access`) also shows earlier records by other providers. Grants that existed before migration 050 are backfilled to
+`all` so nothing the athlete already shared changes; granting again narrows it. Re-granting restarts the `since_grant` window.
+The athlete always sees every record. `list_my_grants` returns `history_scope`, `provider_verified` and `credential_reason`.
+
+UI (Health): providers see **Your professional verification** (state, expiry, why actions are blocked, a Renew/Get verified button to
+Me > Verification). Athletes get a share sheet (what the provider can see, a warning when the provider is not verified) and a
+warning in the Access list for providers whose verification lapsed. Server messages for blocked actions are shown as-is.
+
+Limitations: sport scope is evaluated from the case's `sport_id` against the supplied `sport_id` or the athlete's sport profiles.
 Existing data is untouched; migration 049 only adds nullable/defaulted columns (rollback: leave them, older code ignores them).
