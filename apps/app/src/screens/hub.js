@@ -9,6 +9,7 @@ import { FormSheet } from '../FormSheet';
 import { SportSelect } from '../sportpicker';
 import { AddFollowupSheet, ConsentManager, FollowupsPanel, ProviderSearch } from './provider';
 import { PaySheet } from '../PaySheet';
+import { RecoveryPanel } from './wellness';
 import { c, grad, money, day, when } from '../theme';
 
 const TILES = [
@@ -140,7 +141,7 @@ export function Awards() {
 
 export function Health() {
   const { user, has, toast } = useSession();
-  const [tab, setTab] = useState('find');
+  const [tab, setTab] = useState(has('athlete') ? 'recovery' : 'find');
   const [paying, setPaying] = useState(null);
   const [fu, setFu] = useState(null);
   const appts = useLoad(() => api.get('/appointments', { limit: 30 }), []);
@@ -151,8 +152,9 @@ export function Health() {
     <Screen>
       <H1>Health</H1>
       <Card color={c.mintSoft} pad={12}><T weight="900">Consent-first medical privacy</T><T size={12} color={c.mute}>Notes are encrypted. Doctors and physios only see your records after you grant access — and every read is logged.</T></Card>
-      <View style={{ marginTop: 10 }}><Seg options={[{ value: 'find', label: 'Find a pro', emoji: '🔎' }, { value: 'appts', label: 'Appointments', emoji: '📅' }, { value: 'records', label: 'My records', emoji: '📋' }, { value: 'followups', label: 'Follow-ups', emoji: '🗓️' }, { value: 'consent', label: 'Access', emoji: '🔒' }]} value={tab} onChange={setTab} color={c.mint} /></View>
+      <View style={{ marginTop: 10 }}><Seg options={[...(has('athlete') ? [{ value: 'recovery', label: 'Recovery', emoji: '💚' }] : []), { value: 'find', label: 'Find a pro', emoji: '🔎' }, { value: 'appts', label: 'Appointments', emoji: '📅' }, { value: 'records', label: 'My records', emoji: '📋' }, { value: 'followups', label: 'Follow-ups', emoji: '🗓️' }, { value: 'consent', label: 'Access', emoji: '🔒' }]} value={tab} onChange={setTab} color={c.mint} /></View>
       <View style={{ gap: 10, marginTop: 8 }}>
+        {tab === 'recovery' && <RecoveryPanel />}
         {tab === 'find' && <ProviderSearch onBooked={() => { appts.reload(); setTab('appts'); }} />}
         {tab === 'consent' && <ConsentManager />}
         {tab === 'followups' && <FollowupsPanel />}
