@@ -64,6 +64,7 @@ import './community.js';
 import './home.js';
 import './athlete-schedule.js';
 import './passport.js';
+import './athlete-blocks.js';
 import './market.js';
 import './multisport.js';
 import './multisport-play.js';
