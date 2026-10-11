@@ -9,6 +9,8 @@ import { notify } from '../notify.js';
 import { tx } from '../db.js';
 import { PUBLIC_USER } from '../helpers.js';
 import { NOT_YOUTH_SQL } from '../youth.js';
+import { LINE, buildSchedule } from '../sponsor-schedule.js';
+import { saveLines, generateObligations, cancelFutureObligations, logHistory } from '../sponsor-agreements.js';
 
 const CONTACT = ['contact_name', 'contact_email', 'contact_phone'];
 const date = z.string().date();
@@ -106,13 +108,18 @@ cap({
   input: z.object({
     sponsor_id: id, target_type: z.enum(['event', 'team', 'athlete']), target_id: id, amount_cents: money.default(0), in_kind: z.string().max(200).optional(),
     starts_on: date.optional(), ends_on: date.optional(), objectives: z.string().max(1000).optional(), deliverables: z.string().max(1500).optional(), message: z.string().max(1000).optional(),
+    lines: z.array(LINE).max(12).optional().describe('structured contribution lines (money / goods / endorsement, one-off or fixed-term recurring). Reviewable with preview_sponsorship_schedule; obligations are generated when the recipient accepts this exact version'),
+    timezone: z.string().max(60).default('UTC'),
   }),
   async handler({ user }, i) {
     const s = await mustFind('sponsors', i.sponsor_id);
     mustOwn(user, s.owner_id, 'sponsor');
     if (i.starts_on && i.ends_on && i.ends_on < i.starts_on) throw badRequest('ends_on is before starts_on');
+    const lines = i.lines ?? [];
+    const plan = lines.length ? buildSchedule(lines, { starts_on: i.starts_on, ends_on: i.ends_on }) : null; // validates every line and the whole schedule up front
+    const cash = plan ? Object.entries(plan.committed) : [];
     if (i.target_type === 'athlete') {
-      if (!i.amount_cents && !i.in_kind) throw badRequest('Offer money, in-kind support, or both');
+      if (!i.amount_cents && !i.in_kind && !lines.length) throw badRequest('Offer money, in-kind support, an endorsement, or a mix');
       if (!i.deliverables || !i.starts_on || !i.ends_on) throw badRequest('State the deliverables and the period (starts_on and ends_on) of the sponsorship');
     }
     const owner = await targetOwner(i.target_type, i.target_id);
@@ -130,7 +137,12 @@ cap({
       const row = (await c.query(
         `INSERT INTO sponsorships(sponsor_id, target_type, target_id, amount_cents, in_kind, starts_on, ends_on, proposed_by, objectives, deliverables, message, visibility)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
-        [i.sponsor_id, i.target_type, i.target_id, i.amount_cents, i.in_kind, i.starts_on, i.ends_on, user.id, i.objectives ?? null, i.deliverables ?? null, i.message ?? null, i.target_type === 'athlete' ? 'private' : 'public'])).rows[0];
+        [i.sponsor_id, i.target_type, i.target_id, i.amount_cents || (cash.length === 1 ? cash[0][1] : 0), i.in_kind, i.starts_on, i.ends_on, user.id, i.objectives ?? null, i.deliverables ?? null, i.message ?? null, i.target_type === 'athlete' ? 'private' : 'public'])).rows[0];
+      if (lines.length) {
+        Object.assign(row, (await c.query("UPDATE sponsorships SET agreement_ref='SPA-'||upper(substr(id::text,1,8)), timezone=$2, currency=$3 WHERE id=$1 RETURNING agreement_ref, timezone, currency, terms_version", [row.id, i.timezone, cash.length === 1 ? cash[0][0] : null])).rows[0]);
+        await saveLines(c, row.id, 1, lines);
+      }
+      await logHistory(c, row.id, 1, user.id, 'proposed');
       await notify(c, owner, { kind: 'sponsorship_offer', title: 'You have a sponsorship offer', body: `${s.name} sent an offer. Open it to review and answer.`, data: { sponsorship_id: row.id } });
       return row;
     });
@@ -173,7 +185,7 @@ cap({
 cap({
   name: 'decide_sponsorship', method: 'PATCH', path: '/sponsorships/:id', tag: 'Sponsors',
   summary: 'Target owner accepts/declines an offer (athletes can add a reason and choose whether the deal is shown publicly on the sponsor page, default private); either side can end an active deal.',
-  input: z.object({ id, status: z.enum(['active', 'declined', 'ended']), reason: z.string().max(500).optional(), show_publicly: z.boolean().optional() }),
+  input: z.object({ id, status: z.enum(['active', 'declined', 'ended']), reason: z.string().max(500).optional(), show_publicly: z.boolean().optional(), version: z.coerce.number().int().positive().optional().describe('the exact terms version being accepted; required for an agreement with contribution lines, and a stale version is rejected') }),
   async handler({ user }, i) {
     return tx(async (c) => {
       const d = (await c.query('SELECT * FROM sponsorships WHERE id=$1 FOR UPDATE', [i.id])).rows[0];
@@ -187,8 +199,19 @@ cap({
       if (['declined', 'ended', 'withdrawn'].includes(d.status)) throw conflict(`Sponsorship already ${d.status}`);
       if (i.status === 'ended' && d.status !== 'active') throw badRequest('Only active deals can be ended');
       if (i.status !== 'ended' && d.status !== 'proposed') throw conflict(`Sponsorship is already ${d.status}`);
+      const hasLines = (await c.query('SELECT 1 FROM sponsorship_lines WHERE sponsorship_id=$1 AND version=$2 LIMIT 1', [d.id, d.terms_version])).rowCount > 0;
+      if (i.status === 'active' && hasLines) {
+        if (i.version == null) throw badRequest('Accept a specific version of the terms (version)');
+        if (i.version !== d.terms_version) throw conflict(`These terms changed (now version ${d.terms_version}); review them again before accepting`);
+      }
       const visibility = i.status === 'active' && d.target_type === 'athlete' && i.show_publicly !== undefined ? (i.show_publicly ? 'public' : 'private') : d.visibility;
       const row = (await c.query('UPDATE sponsorships SET status=$2, decision_reason=coalesce($3, decision_reason), decided_at=now(), decided_by=$4, visibility=$5 WHERE id=$1 RETURNING *', [i.id, i.status, i.reason ?? null, user.id, visibility])).rows[0];
+      if (i.status === 'active' && hasLines) {
+        await c.query('UPDATE sponsorships SET accepted_version=terms_version WHERE id=$1', [d.id]);
+        await generateObligations(c, d.id);
+      }
+      if (i.status === 'ended') await cancelFutureObligations(c, d.id);
+      await logHistory(c, d.id, d.terms_version, user.id, { active: 'accepted', declined: 'declined', ended: 'ended' }[i.status], i.reason);
       const word = { active: 'accepted', declined: 'declined', ended: 'ended' }[i.status];
       await notify(c, isSponsor && !isTarget ? owner : sp.owner_id, { kind: 'sponsorship_update', title: `Sponsorship ${word}`, body: i.status === 'declined' && i.reason ? i.reason : `A sponsorship with ${sp.name} was ${word}.`, data: { sponsorship_id: d.id } });
       return row;

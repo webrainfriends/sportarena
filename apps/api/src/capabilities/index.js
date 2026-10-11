@@ -53,6 +53,7 @@ import './training-plans.js';
 import './coach.js';
 import './payments.js';
 import './sponsors.js';
+import './sponsorship-agreements.js';
 import './supply.js';
 import './medical.js';
 import './insurance.js';
