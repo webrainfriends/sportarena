@@ -93,7 +93,7 @@ cap({
 cap({
   name: 'submit_verification', method: 'POST', path: '/verification/cases', tag: TAG, status: 201,
   summary: 'Raise a verification case with the platform team for yourself (gamer / coach / physio / doctor), or for a sponsor or event you own. Attach the evidence the rules require; files and references are encrypted and only the review team can read them. A badge that is about to expire (30 days) or has expired can be renewed the same way.',
-  input: z.object({ type: z.enum(TYPES), subject_id: id.optional().describe('sponsor or event id; omit for yourself'), sport: id.optional().describe('sport id the claim is about'), claim_note: z.string().max(1000).optional(), evidence: z.array(evidenceIn).min(1).max(MAX_EVIDENCE) }),
+  input: z.object({ type: z.enum(TYPES), subject_id: id.optional().describe('sponsor or event id; omit for yourself'), sport: id.optional().describe('sport id the claim is about; a doctor/physio credential with a sport only covers athletes of that sport'), jurisdiction: z.string().min(2).max(40).optional().describe('where the registration was issued (e.g. a country code); used when the platform restricts accepted jurisdictions'), claim_note: z.string().max(1000).optional(), evidence: z.array(evidenceIn).min(1).max(MAX_EVIDENCE) }),
   async handler({ user }, i) {
     const subject = await resolveSubject(user, i.type, i.subject_id);
     const missing = missingEvidence(i.type, i.evidence.map((e) => e.kind));
@@ -104,8 +104,8 @@ cap({
       if (prev && OPEN.includes(prev.status)) throw conflict('There is already an open verification case for this. Add evidence to it or withdraw it first.');
       if (prev?.status === 'approved' && prev.expires_at > new Date(Date.now() + RENEW_WINDOW_DAYS * 864e5)) throw conflict('This is already verified. You can renew within 30 days of expiry.');
       const row = (await c.query(
-        `INSERT INTO verification_cases(type, subject_type, subject_id, sport_id, requested_by, claim_note, rules_version, previous_case_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id, case_no, type, subject_type, subject_id, status, submitted_at`,
-        [i.type, RULES[i.type].subject, subject.id, i.sport ?? null, user.id, i.claim_note ?? null, RULES_VERSION, prev?.id ?? null])).rows[0];
+        `INSERT INTO verification_cases(type, subject_type, subject_id, sport_id, requested_by, claim_note, rules_version, previous_case_id, jurisdiction) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id, case_no, type, subject_type, subject_id, status, submitted_at`,
+        [i.type, RULES[i.type].subject, subject.id, i.sport ?? null, user.id, i.claim_note ?? null, RULES_VERSION, prev?.id ?? null, i.jurisdiction?.toUpperCase() ?? null])).rows[0];
       for (const p of prepared) await insertEvidence(c, row.id, user.id, p);
       await logEvent(c, row.id, user.id, 'submit', null, 'submitted', i.claim_note);
       for (const a of await adminIds(c)) await notify(c, a, { kind: 'verification_submitted', title: `Verification case #${row.case_no}`, body: `${user.display_name} asked for ${RULES[i.type].label} (${subject.name}).`, data: { case_id: row.id } });

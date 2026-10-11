@@ -378,6 +378,7 @@ test('hiring referees, physios and doctors; shifts never overlap; medical cover 
   assert.equal((await api('PATCH', `/sessions/${h2.id}`, { token: T, body: { scheduled_at: at(5, 9, 10), location: 'Track B' } })).status, 200);
 
   const ref = await signup(['referee']), physio = await signup(['physio']), doctor = await signup(['doctor']), plain = await signup(['athlete']), tennisRef = await signup(['referee']);
+  for (const [u, type] of [[physio, 'physio'], [doctor, 'doctor']]) await pool.query("INSERT INTO verification_cases(type, subject_type, subject_id, requested_by, status, rules_version, decided_at, expires_at) VALUES ($1,'user',$2,$2,'approved',1,now(), now() + interval '300 days')", [type, u.id]);
   assert.equal((await api('POST', '/me/sport-profiles', { token: ref.token, body: { sport: 'athletics', role: 'referee' } })).status, 201);
   assert.equal((await api('POST', '/me/sport-profiles', { token: tennisRef.token, body: { sport: 'tennis', role: 'referee' } })).status, 201);
   const found = (await api('GET', `/events/${ev.id}/crew/search`, { token: T, query: { role: 'referee', sport: 'athletics' } })).body;
@@ -460,6 +461,20 @@ test('hiring referees, physios and doctors; shifts never overlap; medical cover 
   assert.ok((await pool.query("SELECT 1 FROM notifications WHERE user_id=$1 AND kind='event_medical'", [org.id])).rowCount >= 1);
   await api('POST', `/events/${ev.id}/medical-incidents`, { token: doctor.token, body: { participant_id: kid.id, severity: 'minor', outcome: 'treated_on_site', return_to_play: 'cleared', summary: 'X-ray clear' } });
   assert.equal((await nominate(T, other, kid)).status, 201, 'hold lifted');
+
+  // lapsed credential: routine incidents are blocked at once; serious ones may proceed only with a stated, audited reason
+  await pool.query("UPDATE verification_cases SET expires_at = now() - interval '1 day' WHERE subject_id=$1", [physio.id]);
+  const minor = { participant_id: kid.id, severity: 'minor', outcome: 'treated_on_site', summary: 'Blister' };
+  const lapsed = await api('POST', `/events/${ev.id}/medical-incidents`, { token: physio.token, body: minor });
+  assert.equal(lapsed.status, 403); assert.equal(lapsed.body.error.code, 'credential_required'); assert.equal(lapsed.body.error.details.reason, 'expired');
+  assert.equal((await api('POST', `/events/${ev.id}/medical-incidents`, { token: physio.token, body: { ...minor, emergency_reason: 'no one else on site' } })).status, 403, 'the exception is for serious incidents only');
+  const serious = { ...minor, severity: 'serious', outcome: 'ambulance', summary: 'Collapsed on track' };
+  assert.equal((await api('POST', `/events/${ev.id}/medical-incidents`, { token: physio.token, body: serious })).status, 403, 'a reason is required');
+  const emerg = await api('POST', `/events/${ev.id}/medical-incidents`, { token: physio.token, body: { ...serious, emergency_reason: 'only clinician on site, athlete collapsed' } });
+  assert.equal(emerg.status, 201, JSON.stringify(emerg.body));
+  const ov = (await pool.query('SELECT credential_override, credential_override_enc FROM event_medical_incidents WHERE id=$1', [emerg.body.id])).rows[0];
+  assert.equal(ov.credential_override, true); assert.ok(!ov.credential_override_enc.includes('collapsed'));
+  assert.ok((await pool.query("SELECT 1 FROM audit_log WHERE actor_id=$1 AND action='credential_emergency_override'", [physio.id])).rowCount >= 1);
 
   // dashboard
   const dash = (await api('GET', `/events/${ev.id}/dashboard`, { token: T })).body;

@@ -30,6 +30,13 @@ versioned; each case records the version it was submitted under).
 * A reviewer cannot claim, read or decide their own request, and only the claiming reviewer can decide.
 * Nothing is deleted: cases, evidence and the append-only `verification_events` history (actor, action, before/after status, reason, time) are kept.
 
+## Clinical enforcement (issue #59)
+A `doctor` / `physio` badge is the gate for clinical writes and reads of other people's records: `src/clinical-access.js` re-checks
+the case in the database on every call (approved, unrevoked, unexpired, profession matches the role, optional sport/jurisdiction),
+so expiry or revocation applies immediately. Cases may carry an optional `jurisdiction` (set on `submit_verification`).
+Grace, emergency exception, error codes and the per-action table are in `docs/health.md` (Clinical credential).
+Config: `CLINICAL_GRACE_DAYS` (default 0), `CLINICAL_JURISDICTIONS` (default any).
+
 ## UI
 Me → **Verification** (request, track, add evidence, resubmit, withdraw); admins also get the **Verification queue** there.
 Verified people show a "✓ Verified …" badge on their public profile.

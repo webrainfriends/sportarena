@@ -8,6 +8,7 @@ import { one, many, tx } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { audit, isAdmin } from '../helpers.js';
 import { decrypt, encrypt } from '../crypto.js';
+import { requireVerifiedProvider } from '../clinical-access.js';
 import { notify } from '../notify.js';
 import { DISCLOSURE, adapterFor } from '../health/external-booking.js';
 
@@ -33,6 +34,7 @@ cap({
       const a = (await c.query('SELECT * FROM appointments WHERE id=$1 FOR UPDATE', [i.appointment_id])).rows[0];
       if (!a || a.provider_id !== user.id) throw notFound('Appointment');
       if (!['confirmed', 'completed'].includes(a.status)) throw conflict('Follow-ups can be agreed once the appointment is confirmed');
+      await requireVerifiedProvider(user.id, { action: 'create_followup', athleteId: a.athlete_id });
       if (i.details && !(await hasFullGrant(a.athlete_id, user.id, c))) throw forbidden('The athlete has not granted you access to sensitive details');
       const row = (await c.query(
         'INSERT INTO appointment_followups(appointment_id, athlete_id, provider_id, due_on, window_end, instruction_summary, details_enc) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id, appointment_id, status, due_on, window_end, instruction_summary',

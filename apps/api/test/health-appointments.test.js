@@ -34,6 +34,7 @@ const provider = async (role = 'physio', profile = {}) => {
   const u = await signup([role]);
   must(await api('POST', '/me/sport-profiles', { token: u.token, body: { sport: 'football', role } }), 201);
   must(await api('POST', '/me/provider-profile', { token: u.token, body: { provider_type: role, ...profile } }));
+  await pool.query("INSERT INTO verification_cases(type, subject_type, subject_id, requested_by, status, rules_version, decided_at, expires_at) VALUES ($1,'user',$2,$2,'approved',1,now(), now() + interval '300 days')", [role, u.id]);
   return u;
 };
 const at = (days, hour = 10) => { const d = new Date(Date.now() + days * 864e5); d.setUTCHours(hour, 0, 0, 0); return d.toISOString(); };

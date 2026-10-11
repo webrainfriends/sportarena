@@ -136,6 +136,7 @@ test('consent is per purpose, expires, and stops new actions when withdrawn or l
 test('medical consent gates appointments, grants, records and fit-to-play status for a young person', async () => {
   const parent = await signup(); const child = await kid(15); const doc = await signup(['doctor']); const coach = await signup(['coach']);
   await pool.query("INSERT INTO sport_profiles(user_id, sport_id, role) SELECT $1, id, 'doctor' FROM sports WHERE slug='football'", [doc.id]);
+  await pool.query("INSERT INTO verification_cases(type, subject_type, subject_id, requested_by, status, rules_version, decided_at, expires_at) VALUES ($1,'user',$2,$2,'approved',1,now(), now() + interval '300 days')", ['doctor', doc.id]);
   await verifiedGuardian(parent, child);
   must(await allow(parent, child, 'participation'), 201);
   const t = await team(coach);

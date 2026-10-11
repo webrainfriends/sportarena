@@ -160,7 +160,10 @@ test('health data needs athlete consent, is encrypted, and consent is revocable'
   const athlete = await signup(['athlete']);
   const doc = await signup(['doctor']);
   const stranger = await signup(['doctor']);
-  for (const d of [doc, stranger]) await api('POST', '/me/sport-profiles', { token: d.token, body: { sport: 'football', role: 'doctor' } });
+  for (const d of [doc, stranger]) {
+    await api('POST', '/me/sport-profiles', { token: d.token, body: { sport: 'football', role: 'doctor' } });
+    await pool.query("INSERT INTO verification_cases(type, subject_type, subject_id, requested_by, status, rules_version, decided_at, expires_at) VALUES ($1,'user',$2,$2,'approved',1,now(), now() + interval '300 days')", ['doctor', d.id]);
+  }
   const rec = { athlete_id: athlete.id, kind: 'injury', clearance: 'restricted', summary: 'Grade 2 ankle sprain', details: 'Left ATFL, 3 weeks rehab' };
   assert.equal((await api('POST', '/medical/records', { token: doc.token, body: rec })).status, 403, 'no consent yet');
   await api('POST', '/medical/grants', { token: athlete.token, body: { provider_id: doc.id } });
