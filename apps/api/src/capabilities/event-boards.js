@@ -5,6 +5,7 @@ import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { mustFind, PUBLIC_USER } from '../helpers.js';
 import { notify } from '../notify.js';
 import { departmentScope } from './event-departments.js';
+import { eventForOrganizer } from './events.js';
 
 const TAG = 'Event boards';
 const key = z.string().regex(/^[a-z][a-z0-9_]{0,23}$/);
@@ -272,5 +273,41 @@ cap({
           AND ($2::uuid IS NULL OR c.department_id=$2) AND ($3::date IS NULL OR coalesce(c.starts_at::date, c.due_on) >= $3) AND ($4::date IS NULL OR coalesce(c.starts_at::date, c.due_on) <= $4)
         ORDER BY coalesce(c.starts_at, c.due_on::timestamptz), c.created_at`, [i.id, i.department_id ?? null, i.from ?? null, i.to ?? null]);
     return s.organiser ? rows : rows.filter((r) => s.member.has(r.department_id) || s.led.has(r.department_id));
+  },
+});
+
+// ------------------------------------------------------------------ the older planning checklist, brought onto a board
+const TASK_COLUMN = { todo: 'backlog', doing: 'doing', blocked: 'blocked', done: 'done' };
+const CHECKLIST_NAME = 'Event checklist';
+
+cap({
+  name: 'import_event_tasks', method: 'POST', path: '/events/:id/tasks/import', tag: TAG,
+  summary: 'Bring the event\'s planning checklist (the older task list) onto a kanban board in an "Event checklist" department, so there is one place for tasks. Safe to repeat: tasks already imported are skipped, and the original tasks are left as they are. dry_run only counts what would come over.',
+  input: z.object({ id, dry_run: z.boolean().default(false) }),
+  async handler({ user }, i) {
+    return tx(async (c) => {
+      await eventForOrganizer(user, i.id, c);
+      const tasks = (await c.query(
+        `SELECT t.*, u.display_name AS owner_name FROM event_tasks t LEFT JOIN users u ON u.id=t.owner_id
+          WHERE t.event_id=$1 AND t.status <> 'dropped' AND NOT EXISTS (SELECT 1 FROM event_cards k WHERE k.legacy_task_id=t.id)
+          ORDER BY t.due_on NULLS LAST, t.created_at`, [i.id])).rows;
+      if (i.dry_run || !tasks.length) return { pending: tasks.length, imported: 0 };
+      let dept = (await c.query("SELECT * FROM event_departments WHERE event_id=$1 AND lower(name)=lower($2) AND status='active'", [i.id, CHECKLIST_NAME])).rows[0];
+      dept ??= (await c.query("INSERT INTO event_departments(event_id, name, kind, description, colour, created_by) VALUES ($1,$2,'operations','Tasks from the planning checklist','#06B6D4',$3) RETURNING *", [i.id, CHECKLIST_NAME, user.id])).rows[0];
+      let plan = (await c.query("SELECT * FROM event_plans WHERE department_id=$1 AND status='active' ORDER BY created_at LIMIT 1", [dept.id])).rows[0];
+      plan ??= (await c.query('INSERT INTO event_plans(event_id, department_id, title, columns, created_by) VALUES ($1,$2,$3,$4::jsonb,$5) RETURNING *', [i.id, dept.id, CHECKLIST_NAME, JSON.stringify(DEFAULT_COLUMNS), user.id])).rows[0];
+      const next = Object.fromEntries((await c.query("SELECT column_key, count(*)::int AS n FROM event_cards WHERE plan_id=$1 AND status='active' GROUP BY column_key", [plan.id])).rows.map((r) => [r.column_key, r.n]));
+      for (const t of tasks) {
+        const col = TASK_COLUMN[t.status] ?? 'backlog';
+        const note = [t.notes, t.owner_name ? `Owner: ${t.owner_name}` : null, `Category: ${t.category}`].filter(Boolean).join('\n');
+        const card = (await c.query(
+          `INSERT INTO event_cards(plan_id, department_id, event_id, column_key, position, title, description, priority, due_on, blocked_reason, created_by, done_at, legacy_task_id)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id`,
+          [plan.id, dept.id, i.id, col, next[col] ?? 0, t.title.slice(0, 160), note, t.priority, t.due_on, col === 'blocked' ? 'Marked blocked in the old checklist' : null, user.id, col === 'done' ? t.completed_at ?? new Date() : null, t.id])).rows[0];
+        next[col] = (next[col] ?? 0) + 1;
+        await log(c, card.id, user.id, 'created', null, col, 'Imported from the planning checklist');
+      }
+      return { pending: 0, imported: tasks.length, department_id: dept.id, plan_id: plan.id };
+    });
   },
 });

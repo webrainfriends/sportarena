@@ -1,7 +1,7 @@
 # Event planning: create, contact, book, budget
 
 Everything an organiser does around an event, as capabilities (REST + OpenAPI + MCP, tag **Event planning**) and in the
-app (`Play → Create an event`, then **Plan, contact & budget** on the event page; counterparts answer in
+app (`Play → Create an event`, then **⚡ Event console → Business** (Requests and Budget) on the event page; counterparts answer in
 **More → Event requests**).
 
 ## Creating an event

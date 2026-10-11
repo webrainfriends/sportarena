@@ -1,4 +1,4 @@
-# Event Command Centre
+# Event console (the Command Centre)
 
 Run an event from first idea to the final whistle: lifecycle (open, start, **pause**, resume, end), departments and rosters,
 a kanban board per department, fixtures, **live match tracking**, sport-aware scoring (Olympic / Asian Games style), a
@@ -40,7 +40,20 @@ Claude is used when `ANTHROPIC_API_KEY` is set (`AI_MODEL`, default `claude-sonn
 Prompts carry facts only (sport, scores, event kinds, counts, team names), never people's names or ids; user text is quoted as data; answers are schema-validated, cached in `ai_outputs`, and real model calls are audit-logged.
 The deploy workflow passes `ANTHROPIC_API_KEY` (secret) and `AI_MODEL` (variable) to the server only when they are set.
 
-## App
-"Arena" look (`apps/app/src/arena.js`): deep midnight canvas, electric gradients, pulsing LIVE badges, score numbers that pop. Event screens opt in; the rest of the app keeps its theme.
-Screens: `EventCommand` (hub, reached from the event page for organisers), `EventDepartments`, `EventBoard`, `EventFixtures`, `MatchCentre` (referee console and public scoreboard), `ScoreSheet`, `EventResults`.
-Inputs use the right control: pickers for dates and times, search-and-pick (`entity-picker.js`) for people, chips for fixed choices, steppers for numbers.
+## App: one Event console
+The event page has a single **⚡ Event console** button. It replaced three overlapping screens (Tournament console, Plan & budget, and the first version of this console); nothing was dropped, everything moved here:
+
+| Tab | What is in it |
+|---|---|
+| Overview | live numbers, *get the event ready* checklist (venue, teams, seeds, schedule, bracket, departments, hiring, boards, sponsors), AI planner, up-next game, money, event log |
+| Teams | entries and seeding, ranked recommendations, search-and-pick team invites, invitations, invite rules |
+| People | **Departments** (invitations, roster, accreditation) and **Hiring** (positions, find people, applicants, contracts, documents, team sheet) |
+| Boards | kanban per department, my day, run sheet; **bring the older planning checklist onto a board** (`import_event_tasks`, safe to repeat, originals kept) |
+| Games | live scoreboards, schedule by day, plan group stage / knockout with preview, days off, holidays, clash check, bracket |
+| Venue | venue cards, court bookings, schedule-and-budget fit, guided booking |
+| Business | **Partners** (sponsors, vendors, what is on sale), **Requests** (contact and quote), **Budget** (lines, payments, cap) |
+| Results | standings, podium, published score sheets |
+
+Deep links: `push('EventCommand', { id, tab })`. A match opens the **Match centre** (referee console and public scoreboard) and then the **Score sheet**; there is no other way to enter an official result.
+Arena look (`apps/app/src/arena.js`): deep midnight canvas, electric gradients, pulsing LIVE badges, score numbers that pop. Inputs use the right control: pickers for dates and times, search-and-pick (`entity-picker.js`) for people and teams, chips for fixed choices, steppers for numbers.
+Requests and Budget keep their original screens' light/dark palette on a panel inside the console.
