@@ -506,7 +506,7 @@ function WaitlistList() {
 
 export function Notifications() {
   const { toast } = useSession();
-  const { push } = useNav();
+  const { push, goTab } = useNav();
   const list = useLoad(() => api.get('/notifications', { limit: 50 }), []);
   const prefs = useLoad(() => api.get('/me/notification-preferences'), []);
   const setPref = async (patch) => { try { await api.patch('/me/notification-preferences', patch); prefs.reload(); } catch (e) { toast(e.message); } };
@@ -514,6 +514,8 @@ export function Notifications() {
   const tap = async (n) => {
     if (!n.read_at) { await api.post('/notifications/read', { ids: [n.id] }); list.reload(); }
     if (n.data?.reservation_id) push('Reservation', { id: n.data.reservation_id });
+    else if (n.data?.request_id) push('CoachRequest', { id: n.data.request_id });
+    else if (n.data?.hire_id || n.data?.review_id) { if (['coach_hire_request', 'coach_review', 'coach_response_accepted'].includes(n.kind)) push('CoachDesk'); else goTab('Player'); }
   };
   const p = prefs.data;
   return (

@@ -14,6 +14,8 @@ import { notify } from '../notify.js';
 import { paymentsEnabled } from '../payments/service.js';
 import { fmtMin, hhmm, validTimezone } from '../booking/time.js';
 import { MAX_RANGE_DAYS, loadCoachSchedule, openCoachSlots } from '../coach-slots.js';
+import { AUDIENCES, cardFor, clientFor, priceFor } from '../coach-pricing.js';
+import { commitmentBusy } from '../coach-commitments.js';
 
 const TAG = 'Coach marketplace';
 const SHORT = z.string().min(1).max(60);
@@ -44,17 +46,19 @@ cap({
     headline: z.string().max(120).nullable().optional(), bio: z.string().max(2000).nullable().optional(), city: z.string().max(80).nullable().optional(),
     delivery: z.enum(['in_person', 'online', 'both']).optional(), specialties: z.array(SHORT).max(15).optional(), languages: z.array(SHORT).max(10).optional(),
     timezone: z.string().max(60).optional(), slot_min: z.number().int().min(15).max(240).optional(), accepting: z.boolean().optional(), listed: z.boolean().optional(),
+    tagline: z.string().max(140).nullable().optional(), intro_video_url: z.string().url().max(300).startsWith('https://').nullable().optional(),
+    serves: z.array(z.enum(AUDIENCES)).min(1).optional(), travel_km: z.number().int().min(0).max(1000).nullable().optional(),
   }),
   async handler({ user }, i) {
     if (i.timezone && !validTimezone(i.timezone)) throw badRequest('Unknown time zone');
     const cur = await one('SELECT * FROM coach_profiles WHERE user_id=$1', [user.id]);
     const v = (k, d) => (i[k] === undefined ? cur?.[k] ?? d : i[k]);
     return one(
-      `INSERT INTO coach_profiles(user_id, headline, bio, city, delivery, specialties, languages, timezone, slot_min, accepting, listed)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-       ON CONFLICT (user_id) DO UPDATE SET headline=$2, bio=$3, city=$4, delivery=$5, specialties=$6, languages=$7, timezone=$8, slot_min=$9, accepting=$10, listed=$11, updated_at=now()
+      `INSERT INTO coach_profiles(user_id, headline, bio, city, delivery, specialties, languages, timezone, slot_min, accepting, listed, tagline, intro_video_url, serves, travel_km)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+       ON CONFLICT (user_id) DO UPDATE SET headline=$2, bio=$3, city=$4, delivery=$5, specialties=$6, languages=$7, timezone=$8, slot_min=$9, accepting=$10, listed=$11, tagline=$12, intro_video_url=$13, serves=$14, travel_km=$15, updated_at=now()
        RETURNING *`,
-      [user.id, v('headline', null), v('bio', null), v('city', null), v('delivery', 'in_person'), v('specialties', []), v('languages', []), v('timezone', 'UTC'), v('slot_min', 60), v('accepting', true), v('listed', true)]);
+      [user.id, v('headline', null), v('bio', null), v('city', null), v('delivery', 'in_person'), v('specialties', []), v('languages', []), v('timezone', 'UTC'), v('slot_min', 60), v('accepting', true), v('listed', true), v('tagline', null), v('intro_video_url', null), v('serves', ['individual']), v('travel_km', null)]);
   },
 });
 
@@ -86,21 +90,23 @@ cap({
   async handler(_, i) {
     const u = await one(`SELECT ${PUBLIC_USER} FROM users u WHERE u.id=$1 AND ${NOT_YOUTH_SQL} AND EXISTS (SELECT 1 FROM sport_profiles p WHERE p.user_id=u.id AND p.role='coach')`, [i.id]);
     if (!u) throw notFound('Coach');
-    const [profile, sports, summary, spread, reviews, stats, sched, badges] = await Promise.all([
-      one('SELECT headline, bio AS about, city, delivery, specialties, languages, accepting, listed, timezone, slot_min FROM coach_profiles WHERE user_id=$1', [i.id]),
+    const [profile, sports, summary, spread, reviews, stats, sched, badges, rateCards, specs] = await Promise.all([
+      one('SELECT headline, tagline, intro_video_url, serves, travel_km, bio AS about, city, delivery, specialties, languages, accepting, listed, timezone, slot_min FROM coach_profiles WHERE user_id=$1', [i.id]),
       many("SELECT s.slug, s.name, s.emoji, p.level, p.hourly_rate_cents, p.experience_years, p.club FROM sport_profiles p JOIN sports s ON s.id=p.sport_id WHERE p.user_id=$1 AND p.role='coach' ORDER BY s.name", [i.id]),
       one('SELECT round(avg(rating)::numeric, 2)::float8 AS avg, count(*)::int AS n FROM coach_reviews WHERE coach_id=$1', [i.id]),
       many('SELECT rating, count(*)::int AS n FROM coach_reviews WHERE coach_id=$1 GROUP BY rating', [i.id]),
-      many('SELECT r.id, r.rating, r.body, r.reply, r.replied_at, r.created_at, a.display_name AS author_name, a.avatar_emoji, a.avatar_color, a.avatar_url FROM coach_reviews r JOIN users a ON a.id=r.reviewer_id WHERE r.coach_id=$1 ORDER BY r.created_at DESC LIMIT 10', [i.id]),
+      many('SELECT r.id, r.rating, r.body, r.reply, r.replied_at, r.created_at, r.pinned, a.display_name AS author_name, a.avatar_emoji, a.avatar_color, a.avatar_url FROM coach_reviews r JOIN users a ON a.id=r.reviewer_id WHERE r.coach_id=$1 ORDER BY r.pinned DESC, r.created_at DESC LIMIT 10', [i.id]),
       one("SELECT count(*) FILTER (WHERE status='completed')::int AS sessions_done, count(DISTINCT hirer_id) FILTER (WHERE status IN ('confirmed','completed'))::int AS athletes FROM coach_hires WHERE coach_id=$1", [i.id]),
       loadCoachSchedule(i.id),
       badgesFor('user', [i.id]),
+      many(`SELECT k.id, k.title, k.audience, k.delivery, k.unit, k.price_cents, k.per_person, k.duration_min, k.min_participants, k.max_participants, k.sessions_included, k.is_intro, k.description, s.slug AS sport_slug, s.name AS sport FROM coach_rate_cards k LEFT JOIN sports s ON s.id=k.sport_id WHERE k.coach_id=$1 AND k.archived_at IS NULL AND k.active ORDER BY k.is_intro DESC, k.audience, k.price_cents`, [i.id]),
+      many('SELECT z.id, z.name, z.levels, z.years, z.certification, s.slug AS sport_slug, s.name AS sport, s.emoji FROM coach_specialisations z JOIN sports s ON s.id=z.sport_id WHERE z.coach_id=$1 AND z.archived_at IS NULL ORDER BY s.name, z.name', [i.id]),
     ]);
     const next = sched.windows.length ? (await openCoachSlots(i.id, new Date(), new Date(Date.now() + 14 * 864e5), { schedule: sched }))[0] ?? null : null;
     return {
       ...u, currency: config.payments.currency, profile: profile ?? { delivery: 'in_person', accepting: true, listed: true, timezone: 'UTC', slot_min: 60, specialties: [], languages: [] }, sports,
       rating: { avg: summary.avg, count: summary.n, breakdown: [5, 4, 3, 2, 1].map((r) => ({ rating: r, count: spread.find((x) => x.rating === r)?.n ?? 0 })) },
-      reviews, stats, verified: badges.get(i.id) ?? [], next_available_at: next,
+      reviews, stats, rate_cards: rateCards, specialisations: specs, verified: badges.get(i.id) ?? [], next_available_at: next,
       hours: { timezone: sched.timezone, slot_min: sched.slot_min, windows: sched.windows.map((w) => ({ weekday: w.weekday, start: fmtMin(w.start_min), end: fmtMin(w.end_min) })) },
     };
   },
@@ -123,6 +129,7 @@ const requestInput = z.object({
   sport: z.string(), title: z.string().min(3).max(120), goal: z.string().max(1000).optional(), level: z.enum(LEVELS).optional(),
   delivery: z.enum(['in_person', 'online', 'either']).default('either'), city: z.string().max(80).optional(), budget_max_cents: money.optional(),
   sessions_per_week: z.number().int().min(1).max(14).optional(), preferred_days: z.array(day).max(7).default([]), start_by: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  audience: z.enum(AUDIENCES).default('individual'), participants: z.number().int().min(1).max(500).default(1), team_id: id.optional(), event_id: id.optional(),
 });
 
 cap({
@@ -133,12 +140,16 @@ cap({
     if (await isYouth(user.id)) throw forbidden('A parent or guardian needs to arrange coaching for you');
     const sport = await sportBySlugOrId(i.sport);
     if (!sport) throw badRequest('Unknown sport');
+    const client = await clientFor(user, i);
     const open = await one("SELECT count(*)::int AS n FROM coach_requests WHERE athlete_id=$1 AND status='open'", [user.id]);
     if (open.n >= 5) throw conflict('You already have 5 open requests — close one first');
     const r = await one(
-      `INSERT INTO coach_requests(athlete_id, sport_id, title, goal, level, delivery, city, budget_max_cents, sessions_per_week, preferred_days, start_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
-      [user.id, sport.id, i.title, i.goal ?? null, i.level ?? null, i.delivery, i.city ?? null, i.budget_max_cents ?? null, i.sessions_per_week ?? null, [...new Set(i.preferred_days)].sort(), i.start_by ?? null]);
+      `INSERT INTO coach_requests(athlete_id, sport_id, title, goal, level, delivery, city, budget_max_cents, sessions_per_week, preferred_days, start_by, audience, participants, team_id, event_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
+      [user.id, sport.id, i.title, i.goal ?? null, i.level ?? null, i.delivery, i.city ?? null, i.budget_max_cents ?? null, i.sessions_per_week ?? null, [...new Set(i.preferred_days)].sort(), i.start_by ?? null, i.audience, i.audience === 'individual' ? 1 : i.participants, client.team_id, client.event_id]);
+    // publish it in the Community feed too, so coaches find it where everyone looks; the card opens the request
+    const facts = [i.audience !== 'individual' ? `${i.audience[0].toUpperCase()}${i.audience.slice(1)}${i.audience !== 'team' && i.participants > 1 ? ` of ${i.participants}` : ''}` : null, i.sessions_per_week ? `${i.sessions_per_week}×/week` : null, i.budget_max_cents != null ? `up to ${(i.budget_max_cents / 100).toLocaleString('en')}/hr` : null].filter(Boolean).join(' · ');
+    await one("INSERT INTO market_posts(author_id, kind, title, body, sport_id, city, positions, cta_label, visibility, coach_request_id) VALUES ($1,'wanted',$2,$3,$4,$5,1,'Answer as coach','public',$6) RETURNING id", [user.id, `Coach wanted: ${i.title}`.slice(0, 120), [i.goal, facts].filter(Boolean).join('\n') || null, sport.id, i.city ?? null, r.id]);
     // tell coaches of this sport who are accepting athletes (in-app, respects their mute settings)
     const coaches = await many("SELECT DISTINCT p.user_id FROM sport_profiles p LEFT JOIN coach_profiles cp ON cp.user_id=p.user_id JOIN users u ON u.id=p.user_id WHERE p.role='coach' AND p.sport_id=$1 AND p.user_id <> $2 AND coalesce(cp.accepting, true) AND coalesce(cp.listed, true) LIMIT 200", [sport.id, user.id]);
     for (const c of coaches) await notify(null, c.user_id, { kind: 'coach_request_new', title: `New ${sport.name} coaching request`, body: i.title, data: { request_id: r.id } });
@@ -146,7 +157,7 @@ cap({
   },
 });
 
-const REQUEST_COLS = `r.id, r.title, r.goal, r.level, r.delivery, r.city, r.budget_max_cents, r.sessions_per_week, r.preferred_days, r.start_by, r.status, r.created_at, r.closed_at, s.slug AS sport_slug, s.name AS sport, s.emoji AS sport_emoji`;
+const REQUEST_COLS = `r.audience, r.participants, r.team_id, r.event_id, (SELECT name FROM teams WHERE id=r.team_id) AS team_name, (SELECT name FROM events WHERE id=r.event_id) AS event_name, r.id, r.title, r.goal, r.level, r.delivery, r.city, r.budget_max_cents, r.sessions_per_week, r.preferred_days, r.start_by, r.status, r.created_at, r.closed_at, s.slug AS sport_slug, s.name AS sport, s.emoji AS sport_emoji`;
 
 cap({
   name: 'my_coach_requests', method: 'GET', path: '/coach-requests/mine', tag: TAG,
@@ -159,8 +170,8 @@ cap({
 });
 
 cap({
-  name: 'list_coach_requests', method: 'GET', path: '/coach-requests', tag: TAG, auth: ['coach'],
-  summary: 'Coach: open requests from athletes. By default only sports you coach. Shows whether you already answered. Athlete contact details are never shown.',
+  name: 'list_coach_requests', method: 'GET', path: '/coach-requests', tag: TAG,
+  summary: 'Open coaching requests from athletes (also shown in Community and on Open positions). Coaches see their own sports by default; pass all_sports for every sport. Shows whether you already answered. Shows whether you already answered. Athlete contact details are never shown.',
   input: z.object({ sport: z.string().optional(), all_sports: z.coerce.boolean().optional(), q: z.string().optional(), ...page }),
   async handler({ user }, i) {
     const sport = i.sport ? await sportBySlugOrId(i.sport) : null;
@@ -179,7 +190,7 @@ cap({
 
 const responseRows = (requestId, where, params) => many(
   `SELECT x.id, x.coach_id, x.rate_cents_hour, x.message, x.proposed_starts_at, x.duration_min, x.status, x.hire_id, x.created_at, x.decided_at,
-          (x.rate_cents_hour * x.duration_min / 60)::bigint AS first_session_cents, ${PUBLIC_USER.replace('u.id, ', '')}, ${rated},
+          coalesce(x.total_cents, (x.rate_cents_hour * x.duration_min / 60))::bigint AS first_session_cents, x.rate_card_id, (SELECT title FROM coach_rate_cards k WHERE k.id=x.rate_card_id) AS rate_card_title, ${PUBLIC_USER.replace('u.id, ', '')}, ${rated},
           (SELECT count(*)::int FROM coach_hires h WHERE h.coach_id=u.id AND h.status='completed') AS sessions_done,
           EXISTS (SELECT 1 FROM verification_cases v WHERE v.subject_type='user' AND v.subject_id=u.id AND v.type='coach' AND v.status='approved' AND v.expires_at > now()) AS credential_verified
      FROM coach_request_responses x JOIN users u ON u.id=x.coach_id WHERE x.request_id=$1 ${where} ORDER BY (x.status='pending') DESC, x.created_at, x.id`, [requestId, ...params]);
@@ -192,16 +203,16 @@ cap({
     const r = await one(`SELECT ${REQUEST_COLS}, r.athlete_id, ${ATHLETE} FROM coach_requests r JOIN sports s ON s.id=r.sport_id JOIN users a ON a.id=r.athlete_id WHERE r.id=$1`, [i.id]);
     if (!r) throw notFound('Request');
     const mine = r.athlete_id === user.id;
-    if (!mine && !user.roles.includes('coach') && !isAdmin(user)) throw forbidden();
     const responses = mine ? await responseRows(r.id, "AND x.status <> 'withdrawn'", []) : await responseRows(r.id, 'AND x.coach_id=$2', [user.id]);
-    return { ...r, currency: config.payments.currency, i_am_owner: mine, responses: mine ? responses : [], my_response: mine ? null : responses[0] ?? null };
+    const coachSports = mine ? [] : (await many("SELECT s.slug FROM sport_profiles p JOIN sports s ON s.id=p.sport_id WHERE p.user_id=$1 AND p.role='coach'", [user.id])).map((x) => x.slug);
+    return { ...r, currency: config.payments.currency, can_respond: mine ? null : { is_coach: user.roles.includes('coach'), coaches_this_sport: coachSports.includes(r.sport_slug), open: r.status === 'open' }, i_am_owner: mine, responses: mine ? responses : [], my_response: mine ? null : responses[0] ?? null };
   },
 });
 
 cap({
   name: 'respond_to_coach_request', method: 'POST', path: '/coach-requests/:id/respond', tag: TAG, auth: ['coach'], status: 201,
   summary: 'Coach: answer an open request with your hourly rate, a message and the first session time you propose. Answering again before the athlete decides updates your answer. The athlete accepts or declines.',
-  input: z.object({ id, rate_cents_hour: money.optional().describe('defaults to your rate for this sport'), message: z.string().max(1000).optional(), starts_at: z.string().datetime({ offset: true }), duration_min: z.number().int().min(15).max(480).default(60) }),
+  input: z.object({ id, rate_card_id: id.optional().describe('quote one of your rate cards (must match the request\'s audience); sets the price'), rate_cents_hour: money.optional().describe('defaults to your rate for this sport'), message: z.string().max(1000).optional(), starts_at: z.string().datetime({ offset: true }), duration_min: z.number().int().min(15).max(480).default(60) }),
   async handler({ user }, i) {
     const r = await one('SELECT r.*, s.name AS sport_name FROM coach_requests r JOIN sports s ON s.id=r.sport_id WHERE r.id=$1', [i.id]);
     if (!r) throw notFound('Request');
@@ -209,13 +220,19 @@ cap({
     if (r.status !== 'open') throw conflict('This request is no longer open');
     futureOnly(i.starts_at);
     const prof = await mustCoach(user.id, r.sport_id);
-    const rate = i.rate_cents_hour ?? Number(prof.hourly_rate_cents ?? 0);
-    if (await clashes(null, user.id, i.starts_at, i.duration_min)) throw conflict('You already have a session then');
+    const card = i.rate_card_id ? await cardFor(user.id, i.rate_card_id, { audience: r.audience, participants: r.participants }) : null;
+    if (!card && r.audience !== 'individual') throw badRequest(`This request is for a ${r.audience}: quote one of your ${r.audience} rate cards`);
+    if (card?.sport_id && card.sport_id !== r.sport_id) throw badRequest('That rate card is for a different sport');
+    const mins = card && card.unit !== 'hour' ? card.duration_min ?? i.duration_min : i.duration_min;
+    const quoted = card ? priceFor(card, mins, r.participants) : null;
+    const rate = card ? Math.round(((quoted ?? 0) * 60) / mins) : i.rate_cents_hour ?? Number(prof.hourly_rate_cents ?? 0);
+    if (await clashes(null, user.id, i.starts_at, mins)) throw conflict('You already have a session then');
+    if ((await commitmentBusy(user.id, new Date(i.starts_at), new Date(+new Date(i.starts_at) + mins * 60_000))).length) throw conflict('You have another commitment then');
     const cur = await one('SELECT id, status FROM coach_request_responses WHERE request_id=$1 AND coach_id=$2', [r.id, user.id]);
     if (cur && ['accepted', 'declined'].includes(cur.status)) throw conflict(`Your answer was already ${cur.status}`);
     const saved = cur
-      ? await one("UPDATE coach_request_responses SET rate_cents_hour=$2, message=$3, proposed_starts_at=$4, duration_min=$5, status='pending' WHERE id=$1 RETURNING *", [cur.id, rate, i.message ?? null, i.starts_at, i.duration_min])
-      : await one('INSERT INTO coach_request_responses(request_id, coach_id, rate_cents_hour, message, proposed_starts_at, duration_min) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *', [r.id, user.id, rate, i.message ?? null, i.starts_at, i.duration_min]);
+      ? await one("UPDATE coach_request_responses SET rate_cents_hour=$2, message=$3, proposed_starts_at=$4, duration_min=$5, rate_card_id=$6, total_cents=$7, status='pending' WHERE id=$1 RETURNING *", [cur.id, rate, i.message ?? null, i.starts_at, mins, card?.id ?? null, quoted])
+      : await one('INSERT INTO coach_request_responses(request_id, coach_id, rate_cents_hour, message, proposed_starts_at, duration_min, rate_card_id, total_cents) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *', [r.id, user.id, rate, i.message ?? null, i.starts_at, mins, card?.id ?? null, quoted]);
     await notify(null, r.athlete_id, { kind: 'coach_request_response', title: `${user.display_name} answered your ${r.sport_name} request`, body: r.title, data: { request_id: r.id, response_id: saved.id } });
     return saved;
   },
@@ -238,7 +255,7 @@ cap({
   async handler({ user }, i) {
     return tx(async (c) => {
       const x = (await c.query(
-        `SELECT x.*, r.athlete_id, r.sport_id, r.title, r.status AS request_status, s.name AS sport_name
+        `SELECT x.*, r.athlete_id, r.sport_id, r.title, r.status AS request_status, r.audience, r.participants, r.team_id, r.event_id, s.name AS sport_name
            FROM coach_request_responses x JOIN coach_requests r ON r.id=x.request_id JOIN sports s ON s.id=r.sport_id WHERE x.id=$1 FOR UPDATE OF x, r`, [i.id])).rows[0];
       if (!x) throw notFound('Answer');
       if (x.athlete_id !== user.id) throw forbidden('Only the athlete who posted the request can decide');
@@ -252,14 +269,15 @@ cap({
       futureOnly(x.proposed_starts_at);
       await mustCoachTx(c, x.coach_id, x.sport_id);
       if (await clashes(c, x.coach_id, x.proposed_starts_at, x.duration_min)) throw conflict('The coach is no longer free at that time — ask them to propose another');
-      const cost = total(x.rate_cents_hour, x.duration_min);
+      const cost = x.total_cents != null ? Number(x.total_cents) : total(x.rate_cents_hour, x.duration_min);
       const pay = paymentsEnabled() && cost > 0 ? 'unpaid' : 'not_required';
       const hire = (await c.query(
-        `INSERT INTO coach_hires(hirer_id, coach_id, sport_id, starts_at, duration_min, rate_cents_hour, total_cents, note, payment_status, status, request_response_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id, coach_id, starts_at, duration_min, total_cents, status, payment_status`,
-        [user.id, x.coach_id, x.sport_id, x.proposed_starts_at, x.duration_min, x.rate_cents_hour, cost, x.title, pay, pay === 'unpaid' ? 'requested' : 'confirmed', x.id])).rows[0];
+        `INSERT INTO coach_hires(hirer_id, coach_id, sport_id, starts_at, duration_min, rate_cents_hour, total_cents, note, payment_status, status, request_response_id, audience, participants, team_id, event_id, rate_card_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING id, coach_id, starts_at, duration_min, total_cents, status, payment_status, audience, participants`,
+        [user.id, x.coach_id, x.sport_id, x.proposed_starts_at, x.duration_min, x.rate_cents_hour, cost, x.title, pay, pay === 'unpaid' ? 'requested' : 'confirmed', x.id, x.audience, x.participants, x.team_id, x.event_id, x.rate_card_id])).rows[0];
       await c.query("UPDATE coach_request_responses SET status='accepted', decided_at=now(), hire_id=$2 WHERE id=$1", [x.id, hire.id]);
       await c.query("UPDATE coach_requests SET status='filled', filled_by=$2, closed_at=now() WHERE id=$1", [x.request_id, x.coach_id]);
+      await c.query("UPDATE market_posts SET status='closed' WHERE coach_request_id=$1", [x.request_id]);
       const others = (await c.query("UPDATE coach_request_responses SET status='declined', decided_at=now() WHERE request_id=$1 AND status='pending' RETURNING coach_id", [x.request_id])).rows;
       for (const o of others) await notify(c, o.coach_id, { kind: 'coach_response_declined', title: 'The athlete chose another coach', body: `${x.sport_name}: ${x.title}`, data: { request_id: x.request_id } });
       await notify(c, x.coach_id, { kind: 'coach_response_accepted', title: `${user.display_name} chose you`, body: pay === 'unpaid' ? 'The session is confirmed as soon as they pay.' : 'The first session is confirmed.', data: { hire_id: hire.id, request_id: x.request_id } });
@@ -277,6 +295,7 @@ cap({
       if (r.athlete_id !== user.id) throw forbidden('Only the athlete who posted the request can close it');
       if (r.status !== 'open') throw conflict(`Already ${r.status}`);
       await c.query("UPDATE coach_requests SET status='closed', closed_at=now() WHERE id=$1", [r.id]);
+      await c.query("UPDATE market_posts SET status='closed' WHERE coach_request_id=$1", [r.id]);
       const gone = (await c.query("UPDATE coach_request_responses SET status='declined', decided_at=now() WHERE request_id=$1 AND status='pending' RETURNING coach_id", [r.id])).rows;
       for (const g of gone) await notify(c, g.coach_id, { kind: 'coach_response_declined', title: 'A request you answered was closed', body: r.title, data: { request_id: r.id } });
       return { id: r.id, status: 'closed' };
@@ -316,7 +335,7 @@ cap({
 cap({
   name: 'list_coach_reviews', method: 'GET', path: '/coaches/:id/reviews', tag: TAG, auth: 'public',
   summary: 'Reviews of a coach, newest first.', input: z.object({ id, ...page }),
-  handler: (_, i) => many('SELECT r.id, r.rating, r.body, r.reply, r.replied_at, r.created_at, a.display_name AS author_name, a.avatar_emoji, a.avatar_color, a.avatar_url FROM coach_reviews r JOIN users a ON a.id=r.reviewer_id WHERE r.coach_id=$1 ORDER BY r.created_at DESC, r.id LIMIT $2 OFFSET $3', [i.id, i.limit, i.offset]),
+  handler: (_, i) => many('SELECT r.id, r.rating, r.body, r.reply, r.replied_at, r.created_at, r.pinned, a.display_name AS author_name, a.avatar_emoji, a.avatar_color, a.avatar_url FROM coach_reviews r JOIN users a ON a.id=r.reviewer_id WHERE r.coach_id=$1 ORDER BY r.pinned DESC, r.created_at DESC, r.id LIMIT $2 OFFSET $3', [i.id, i.limit, i.offset]),
 });
 
 // ----------------------------------------------------------------------------------------------- schedule + money

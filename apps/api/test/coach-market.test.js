@@ -38,10 +38,19 @@ test('post a need, coaches answer, athlete accepts one: a hire is created and th
   const athlete = await signup(['athlete']), c1 = await coachOf(), c2 = await coachOf(), other = await coachOf('tennis');
   const req = ok(await api('POST', '/coach-requests', { token: athlete.token, body: { sport: 'football', title: 'Goalkeeping twice a week', delivery: 'in_person', budget_max_cents: 70000, sessions_per_week: 2, preferred_days: [2, 4, 2] } }), 201);
   assert.deepEqual(req.preferred_days, [2, 4]);
+  // it is also a Community card that points back at the request
+  const feed = ok(await api('GET', '/market/posts?kind=wanted', { token: c1.token })).find((x) => x.coach_request_id === req.id);
+  assert.ok(feed && feed.title.startsWith('Coach wanted') && feed.is_mine === false, 'request is published in the community feed');
+  // any signed-in person can open the request; the page tells them what is missing before they can answer
+  const peek = ok(await api('GET', `/coach-requests/${req.id}`, { token: other.token }));
+  assert.deepEqual(peek.can_respond, { is_coach: true, coaches_this_sport: false, open: true });
+  const fan = await signup(['athlete']);
+  assert.equal(ok(await api('GET', `/coach-requests/${req.id}`, { token: fan.token })).can_respond.is_coach, false);
+  assert.equal(ok(await api('GET', '/coach-requests?all_sports=true', { token: fan.token })).some((r) => r.id === req.id), true, 'visible on Open positions for everyone signed in');
   // the board shows it to football coaches only
   assert.equal(ok(await api('GET', '/coach-requests', { token: c1.token })).filter((r) => r.id === req.id).length, 1);
   assert.equal(ok(await api('GET', '/coach-requests', { token: other.token })).filter((r) => r.id === req.id).length, 0, 'tennis coach does not see football request by default');
-  assert.equal((await api('GET', '/coach-requests', { token: athlete.token })).status, 403);
+  assert.equal(ok(await api('GET', '/coach-requests?all_sports=true', { token: athlete.token })).some((r) => r.id === req.id), false, 'you do not see your own request on the board');
   assert.equal((await api('POST', `/coach-requests/${req.id}/respond`, { token: other.token, body: { starts_at: inFuture(3) } })).status, 400, 'must coach the sport');
   assert.equal((await api('POST', `/coach-requests/${req.id}/respond`, { token: athlete.token, body: { starts_at: inFuture(3) } })).status, 403);
   const a1 = ok(await api('POST', `/coach-requests/${req.id}/respond`, { token: c1.token, body: { starts_at: inFuture(3), message: 'Happy to help', rate_cents_hour: 55000 } }), 201);
@@ -61,6 +70,7 @@ test('post a need, coaches answer, athlete accepts one: a hire is created and th
   assert.equal(done.hire.total_cents, 55000); assert.equal(done.hire.status, 'confirmed', 'no payment provider in tests: confirmed straight away');
   const after2 = ok(await api('GET', `/coach-requests/${req.id}`, { token: athlete.token }));
   assert.equal(after2.status, 'filled');
+  assert.equal(ok(await api('GET', '/market/posts?kind=wanted', { token: c1.token })).some((x) => x.coach_request_id === req.id), false, 'a filled request leaves the open feed');
   assert.deepEqual(after2.responses.map((r) => r.status).sort(), ['accepted', 'declined']);
   assert.equal((await api('POST', `/coach-responses/${a2.id}/decision`, { token: athlete.token, body: { decision: 'accept' } })).status, 409, 'already declined');
   assert.equal((await api('POST', `/coach-requests/${req.id}/respond`, { token: c2.token, body: { starts_at: inFuture(5) } })).status, 409, 'request is filled');

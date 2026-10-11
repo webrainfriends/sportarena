@@ -33,3 +33,11 @@ One flow for athletes and coaches: **find or post → compare → book → pay �
 * With no payment provider configured, sessions are `not_required` and shown as "pay direct"; they confirm without payment.
 
 Migration: `031_coach_marketplace.sql` (additive).
+
+## Coach business tools (`coach-business.js`, migration `032_coach_business.sql`)
+* **Rate cards** — `POST/PATCH/GET /coach/rate-cards`: a named price for one kind of work. Audience `individual | group | team | event`, unit `hour | session | day | month | package`, per-person pricing, headcount limits, trial offers. Retired cards are archived, never deleted. `POST /hires` with `rate_card_id` takes price, length and audience from the card; team bookings need a team the booker manages, event bookings the organiser.
+* **Specialisations** — `POST/GET/DELETE(archive) /coach/specialisations`; shown on the profile, searchable, and used to group reports.
+* **Contracts & commitments** — `POST/GET/PATCH /coach/commitments`, `POST /coach/commitments/:id/log`. A weekly pattern or one-off date; occurrences are computed, what happened is logged (delivered / skipped / cancelled). They appear in `/coach/calendar`, block athlete booking and open-slot search, and creating one reports clashes with existing sessions.
+* **Testimonials** — coaches write testimonials for athletes they actively coach (`/coach/athletes/:id/testimonial`), ask for a review once per completed session, and pin up to three reviews.
+* **Analytics & statement** — `GET /coach/analytics` (income, sessions, hours, clients, repeat rate, ratings, cancellations, request win rate, utilisation of open hours, breakdowns by month / client type / sport / rate card / specialisation) and `GET /coach/report` (CSV statement).
+* **Discoverability** — a posted coach request is also a Community card (`market_posts.coach_request_id`, kind `wanted`) and appears under Open positions → Coaching requests. Any signed-in person can open it; if they are not yet a coach for that sport the page offers "Coach <sport>", which adds the sport profile and the coach role.
