@@ -10,7 +10,8 @@ import { FormSheet } from '../FormSheet';
 import { c, fam, toneFor, day } from '../theme';
 import { FavouriteSports } from '../sportpicker';
 import { AthleteToday } from './athlete-home';
-import { Billboard, Shop, Hire, Insure, useCols } from './marketplace';
+import { Billboard, Shop, Insure, useCols } from './marketplace';
+import { Hire } from './coaching';
 
 const LEVELS = ['beginner', 'amateur', 'semi_pro', 'pro'];
 const ROLES = ['athlete', 'coach', 'referee', 'physio', 'doctor'];

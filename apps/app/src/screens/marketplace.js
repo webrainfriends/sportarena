@@ -7,12 +7,11 @@ import { useNav } from '../nav';
 import { Avatar, Btn, Card, Chip, Empty, ErrorBox, Field, H1, H2, Loading, Screen, Seg, Sheet, T } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { NewCaseSheet } from './cases';
-import { BookProviderSheet } from './provider';
 import { c, toneFor, money, when, day } from '../theme';
 import { InsuranceMarket } from './insurer';
 import { QuoteRequestSheet } from './insurance';
 
-const nice = (s) => String(s ?? '').replace(/_/g, ' ');
+export const nice = (s) => String(s ?? '').replace(/_/g, ' ');
 const parseWhen = (s) => { const d = new Date(String(s).trim().replace(' ', 'T')); if (isNaN(d)) throw new Error('Use the format 2026-11-02 17:30'); return d.toISOString(); };
 
 export function useCols(max = 1120) {
@@ -23,16 +22,16 @@ export function useCols(max = 1120) {
   return { cols, gap, w: cols === 1 ? '100%' : Math.floor((inner - gap * (cols - 1)) / cols) };
 }
 
-const Pill = ({ label, fg = c.mute, bg = c.violetSoft }) => (
+export const Pill = ({ label, fg = c.mute, bg = c.violetSoft }) => (
   <View style={{ backgroundColor: bg, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, alignSelf: 'flex-start' }}>
     <T weight="700" size={11} color={fg} style={{ letterSpacing: 0.3 }}>{label}</T>
   </View>
 );
-const STATUS = { awaiting_payment: [c.sun, c.sunSoft], pending_payment: [c.sun, c.sunSoft], unpaid: [c.sun, c.sunSoft], paid: [c.lime, c.limeSoft], refunded: [c.mute, c.violetSoft], pending: [c.sun, c.sunSoft], accepted: [c.lime, c.limeSoft], declined: [c.red, c.redSoft], requested: [c.sun, c.sunSoft], confirmed: [c.lime, c.limeSoft], completed: [c.mute, c.violetSoft], cancelled: [c.red, c.redSoft], placed: [c.sun, c.sunSoft], shipped: [c.cyan, c.cyanSoft], delivered: [c.lime, c.limeSoft], active: [c.lime, c.limeSoft], proposed: [c.sun, c.sunSoft] };
-const StatusPill = ({ s }) => <Pill label={nice(s).toUpperCase()} fg={(STATUS[s] ?? [c.mute])[0]} bg={(STATUS[s] ?? [0, c.violetSoft])[1]} />;
+const STATUS = { awaiting_payment: [c.sun, c.sunSoft], pending_payment: [c.sun, c.sunSoft], unpaid: [c.sun, c.sunSoft], paid: [c.lime, c.limeSoft], refunded: [c.mute, c.violetSoft], pending: [c.sun, c.sunSoft], accepted: [c.lime, c.limeSoft], declined: [c.red, c.redSoft], requested: [c.sun, c.sunSoft], confirmed: [c.lime, c.limeSoft], completed: [c.mute, c.violetSoft], cancelled: [c.red, c.redSoft], placed: [c.sun, c.sunSoft], shipped: [c.cyan, c.cyanSoft], delivered: [c.lime, c.limeSoft], active: [c.lime, c.limeSoft], open: [c.lime, c.limeSoft], filled: [c.mute, c.violetSoft], pay_direct: [c.mute, c.violetSoft], proposed: [c.sun, c.sunSoft] };
+export const StatusPill = ({ s }) => <Pill label={nice(s).toUpperCase()} fg={(STATUS[s] ?? [c.mute])[0]} bg={(STATUS[s] ?? [0, c.violetSoft])[1]} />;
 
 /** Hosted checkout: pick Stripe or PayPal, go to the provider, then confirm. Card details never touch SportArena. */
-function PaySheet({ target, onClose, onDone }) {
+export function PaySheet({ target, onClose, onDone }) {
   const { toast } = useSession();
   const methods = useLoad(() => api.get('/payments/methods'), []);
   const [pay, setPay] = useState(null);
@@ -89,7 +88,7 @@ const Head = ({ eyebrow, title, sub, right }) => (
 );
 
 
-const Grid = ({ children }) => {
+export const Grid = ({ children }) => {
   const { gap } = useCols();
   return <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap, marginTop: 14 }}>{children}</View>;
 };
@@ -356,149 +355,6 @@ export function Shop() {
             { key: 'emoji', label: 'Emoji', optional: true }, { key: 'description', label: 'Description', optional: true, type: 'multiline' },
           ]}
           onSubmit={async ({ price, ...v }) => { await api.post('/shop/products', { ...v, price_cents: Math.round(price * 100) }); await prods.reload(); return 'Listed'; }} />
-      ) : null}
-    </Screen>
-  );
-}
-
-// ======================= HIRE =======================
-
-export function Hire() {
-  const { toast } = useSession();
-  const { w } = useCols();
-  const [tab, setTab] = useState('coach');
-  const [book, setBook] = useState(null);
-  const [paying, setPaying] = useState(null);
-  const [disp, setDisp] = useState(null);
-  const coaches = useLoad(() => api.get('/coaches', { limit: 50 }), []);
-  const [pf, setPf] = useState({ type: '', remote: false, verified: false, sort: 'rating', q: '' });
-  const provs = useLoad(() => api.get('/providers/search', { limit: 50, sort: pf.sort, ...(pf.type ? { type: pf.type } : {}), ...(pf.remote ? { remote: true } : {}), ...(pf.verified ? { verified: true } : {}), ...(pf.q.trim() ? { q: pf.q.trim() } : {}) }), [pf.type, pf.remote, pf.verified, pf.sort, pf.q]);
-  const hires = useLoad(() => api.get('/hires', { limit: 30 }), []);
-  const appts = useLoad(() => api.get('/appointments', { limit: 30 }), []);
-  const reloadAll = () => Promise.all([hires.reload(), appts.reload()]);
-  const setHire = async (h, status) => { try { await api.patch(`/hires/${h.id}`, { status }); await reloadAll(); toast(`Booking ${status}`); } catch (e) { toast(e.message); } };
-  const setAppt = async (a, status) => { try { await api.patch(`/appointments/${a.id}`, { status }); await reloadAll(); toast(`Appointment ${status}`); } catch (e) { toast(e.message); } };
-  const data = tab === 'coach' ? coaches : provs;
-  const rate = (x) => (x.hourly_rate_cents ? `${money(x.hourly_rate_cents)}/hr` : 'Rate on request');
-
-  return (
-    <Screen wide>
-      <Head eyebrow="HIRE" title="Build your team around you" sub="Book a coach or trainer, a physio or a doctor." />
-      <View style={{ marginTop: 14 }}><Seg options={[{ value: 'coach', label: 'Coaches & trainers' }, { value: 'med', label: 'Physios & doctors' }, { value: 'mine', label: 'My bookings' }]} value={tab} onChange={setTab} /></View>
-
-      {tab === 'med' ? (
-        <View style={{ gap: 10, marginTop: 14 }}>
-          <Field value={pf.q} onChangeText={(q) => setPf({ ...pf, q })} placeholder="Search by name, clinic or speciality…" />
-          <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
-            {[['', 'Anyone'], ['physio', 'Physios'], ['doctor', 'Doctors']].map(([v, l]) => <Chip key={v} label={l} active={pf.type === v} onPress={() => setPf({ ...pf, type: v })} />)}
-            <Chip label="Remote" active={pf.remote} onPress={() => setPf({ ...pf, remote: !pf.remote })} />
-            <Chip label="✓ Verified" active={pf.verified} onPress={() => setPf({ ...pf, verified: !pf.verified })} />
-            {[['rating', 'Top rated'], ['fee', 'Lowest fee'], ['soonest', 'Soonest']].map(([v, l]) => <Chip key={v} label={l} active={pf.sort === v} onPress={() => setPf({ ...pf, sort: v })} />)}
-          </View>
-          {provs.error ? <ErrorBox error={provs.error} onRetry={provs.reload} /> : provs.loading && !provs.data ? <Loading /> : !provs.data?.length ? (
-            <Empty emoji="🩺" title="No providers match" sub="Try removing a filter." />
-          ) : provs.data.map((x) => (
-            <Card key={x.id} pad={14}>
-              <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
-                <Avatar user={x} size={48} />
-                <View style={{ flex: 1, gap: 3 }}>
-                  <T weight="800" size={15}>{x.display_name}{x.credential_verified ? ' ✓' : ''}</T>
-                  <T size={12} color={c.mute}>{[nice(x.provider_type), x.clinic, x.city, x.remote_ok ? 'remote' : null].filter(Boolean).join(' · ')}</T>
-                  {x.headline ? <T size={12}>{x.headline}</T> : null}
-                  <T size={12} color={c.mute}>{[x.rating ? `★ ${Number(x.rating).toFixed(1)} (${x.rating_count})` : 'No reviews yet', x.fee_cents ? `${money(x.fee_cents)} ${x.currency !== 'INR' ? x.currency : ''}`.trim() : 'Fee on request', x.accepting_patients === false ? 'not taking new patients' : null].filter(Boolean).join(' · ')}</T>
-                </View>
-                <Btn small title="Book" disabled={x.accepting_patients === false} onPress={() => setBook({ x, med: true })} />
-              </View>
-            </Card>
-          ))}
-        </View>
-      ) : null}
-      {tab === 'coach' ? (
-        data.error ? <ErrorBox error={data.error} onRetry={data.reload} /> : data.loading && !data.data ? <Loading /> : !data.data?.length ? (
-          <View style={{ marginTop: 14 }}><Empty emoji="🧑‍🏫" title="Nobody listed yet" sub="Coaches and clinicians appear here once they add a sport profile." /></View>
-        ) : (
-          <Grid>
-            {data.data.map((x, n) => {
-              const tone = toneFor(x.sport ?? x.sport_slug);
-              return (
-                <View key={`${x.id}${n}`} style={{ width: w }}>
-                  <Card pad={14}>
-                    <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
-                      <Avatar user={x} size={48} />
-                      <View style={{ flex: 1, gap: 3 }}>
-                        <T weight="800" size={15}>{x.display_name}</T>
-                        <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
-                          <Pill label={`${x.sport_emoji} ${x.sport}`} fg={tone[2]} bg={tone[1]} /><Pill label={nice(x.provider_role ?? 'coach').toUpperCase()} />
-                        </View>
-                      </View>
-                    </View>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
-                      <View><T weight="800" size={15}>{rate(x)}</T><T size={12} color={c.mute}>{[nice(x.level), x.experience_years ? `${x.experience_years} yrs` : null].filter(Boolean).join(' · ')}</T></View>
-                      <Btn small title="Book" onPress={() => setBook({ x, med: tab === 'med' })} />
-                    </View>
-                  </Card>
-                </View>
-              );
-            })}
-          </Grid>
-        )
-      ) : null}
-      {tab === 'mine' ? (
-        <View style={{ gap: 10, marginTop: 14 }}>
-          {!hires.data?.length && !appts.data?.length ? <Empty emoji="🗓️" title="No bookings yet" sub="Book a coach or clinician and it shows up here." /> : null}
-          {(hires.data ?? []).map((h) => (
-            <Card key={h.id} pad={14}>
-              <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
-                <View style={{ flex: 1 }}>
-                  <T weight="800" size={15}>{h.i_am_coach ? `Session with ${h.hirer_name}` : `Coaching with ${h.coach_name}`}</T>
-                  <T size={12} color={c.mute}>{h.sport_emoji} {h.sport} · {when(h.starts_at)} · {h.duration_min} min · {money(h.total_cents)}</T>
-                </View>
-                <View style={{ alignItems: 'flex-end', gap: 6 }}>
-                  <StatusPill s={h.status} />
-                  {h.payment_status === 'unpaid' && h.status !== 'cancelled' ? <StatusPill s="unpaid" /> : h.payment_status === 'paid' ? <StatusPill s="paid" /> : null}
-                  <View style={{ flexDirection: 'row', gap: 6 }}>
-                    {h.i_am_hirer && h.payment_status === 'unpaid' && h.status !== 'cancelled' ? <Btn small title={`Pay ${money(h.total_cents)}`} onPress={() => setPaying({ type: 'coach_hire', id: h.id, amount: h.total_cents, label: `Coaching · ${h.coach_name}` })} /> : null}
-                    {h.i_am_coach && h.status === 'requested' && h.payment_status !== 'unpaid' ? <Btn small title="Confirm" onPress={() => setHire(h, 'confirmed')} /> : null}
-                    {h.i_am_coach && h.status === 'confirmed' ? <Btn small title="Complete" onPress={() => setHire(h, 'completed')} /> : null}
-                    {['requested', 'confirmed'].includes(h.status) ? <Btn small title="Cancel" color={c.paper} ink={c.red} onPress={() => setHire(h, 'cancelled')} /> : null}
-                    {h.payment_status === 'paid' ? <Btn small title="Payment problem" color={c.paper} ink={c.ink} onPress={() => setDisp(h)} /> : null}
-                  </View>
-                </View>
-              </View>
-            </Card>
-          ))}
-          {(appts.data ?? []).map((a) => (
-            <Card key={a.id} pad={14}>
-              <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
-                <View style={{ flex: 1 }}><T weight="800" size={15}>Appointment · {a.provider_name}</T><T size={12} color={c.mute}>{when(a.starts_at)} · {a.duration_min} min{a.reason ? ` · ${a.reason}` : ''}</T></View>
-                <View style={{ alignItems: 'flex-end', gap: 6 }}>
-                  <StatusPill s={a.status} />
-                  {['requested', 'confirmed'].includes(a.status) ? <Btn small title="Cancel" color={c.paper} ink={c.red} onPress={() => setAppt(a, 'cancelled')} /> : null}
-                </View>
-              </View>
-            </Card>
-          ))}
-        </View>
-      ) : null}
-
-      {paying ? <PaySheet target={paying} onClose={() => setPaying(null)} onDone={reloadAll} /> : null}
-      <NewCaseSheet visible={!!disp} onClose={() => setDisp(null)} kind="dispute" category="provider_payment" links={disp ? [{ type: 'coach_hire', id: disp.id }] : []} />
-      {book?.med ? <BookProviderSheet provider={book.x} onClose={() => setBook(null)} onDone={async () => { await reloadAll(); setTab('mine'); }} /> : null}
-      {book && !book.med ? (
-        <FormSheet visible onClose={() => setBook(null)} title={`Book ${book.x.display_name}`} submitLabel="Request booking"
-          fields={[
-            { key: 'when', label: 'When (2026-11-02 17:30)' }, { key: 'duration_min', label: 'Minutes', type: 'number', optional: true },
-            { key: 'note', label: book.med ? 'Reason (encrypted)' : 'What do you want to work on?', optional: true, type: 'multiline' },
-          ]}
-          onSubmit={async ({ when: w2, duration_min, note }) => {
-            const base = { starts_at: parseWhen(w2), duration_min: duration_min ?? (book.med ? 30 : 60) };
-            if (book.med) await api.post('/appointments', { provider_id: book.x.id, ...base, reason: note });
-            let hire = null;
-            if (!book.med) hire = await api.post('/hires', { coach_id: book.x.id, sport: book.x.sport_slug, ...base, note });
-            await reloadAll(); setTab('mine');
-            if (hire?.payment_status === 'unpaid') setPaying({ type: 'coach_hire', id: hire.id, amount: hire.total_cents, label: `Coaching · ${book.x.display_name}` });
-            return hire?.payment_status === 'unpaid' ? 'Request sent — pay to let the coach confirm' : 'Request sent — waiting for confirmation';
-          }} />
       ) : null}
     </Screen>
   );

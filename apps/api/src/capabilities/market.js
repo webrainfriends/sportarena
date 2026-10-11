@@ -10,7 +10,7 @@ const kinds = ['wanted', 'match', 'schedule', 'sale', 'campaign', 'announcement'
 const ACTIVE_AD = "(p.sponsor_status='approved' AND now() BETWEEN p.promo_starts_at AND p.promo_ends_at)";
 
 const COLS = `p.id, p.kind, p.title, p.body, p.city, p.starts_at, p.price_cents, p.positions, p.cta_label, p.link_url, p.visibility, p.status, p.created_at,
-  p.sponsor_status, p.promo_starts_at, p.promo_ends_at, ${ACTIVE_AD} AS sponsored,
+  p.coach_request_id, p.sponsor_status, p.promo_starts_at, p.promo_ends_at, ${ACTIVE_AD} AS sponsored,
   s.slug AS sport_slug, s.name AS sport, s.emoji AS sport_emoji,
   u.id AS author_id, u.handle AS author_handle, u.display_name AS author_name, u.avatar_emoji AS author_emoji, u.avatar_color AS author_color, u.avatar_url AS author_avatar_url, u.roles AS author_roles,
   (SELECT count(*)::int FROM market_reactions r WHERE r.post_id=p.id AND r.active) AS reactions,

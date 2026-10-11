@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { venueText } from '../session-links.js';
 import { cap } from '../registry.js';
 import { many } from '../db.js';
 import { badRequest } from '../errors.js';
@@ -50,7 +51,7 @@ cap({
             FROM bookings b JOIN resources r ON r.id=b.resource_id JOIN venues v ON v.id=r.venue_id
             WHERE b.user_id=$1 AND b.status='confirmed' AND b.starts_at >= $2::date AND b.starts_at < $3::date + 1`, win),
       many(`SELECT h.id, h.status, h.starts_at, h.starts_at + h.duration_min * interval '1 minute' AS ends_at, s.slug AS sport,
-                   CASE WHEN h.hirer_id=$1 THEN cu.display_name ELSE hu.display_name END AS other_name, (h.coach_id=$1) AS as_coach
+                   CASE WHEN h.hirer_id=$1 THEN cu.display_name ELSE hu.display_name END AS other_name, (h.coach_id=$1) AS as_coach, ${venueText('coach_hire', 'h.id')}
             FROM coach_hires h JOIN users cu ON cu.id=h.coach_id JOIN users hu ON hu.id=h.hirer_id LEFT JOIN sports s ON s.id=h.sport_id
             WHERE (h.hirer_id=$1 OR h.coach_id=$1) AND h.status IN ('requested','confirmed') AND h.starts_at >= $2::date AND h.starts_at < $3::date + 1`, win),
       many(`SELECT a.id, a.status, a.starts_at, a.starts_at + a.duration_min * interval '1 minute' AS ends_at, p.provider_type, p.timezone AS tz
@@ -81,7 +82,7 @@ cap({
     }
     for (const r of gameSessions) add({ kind: 'match', source_type: 'event_session', source_id: r.id, sport: r.sport, title: r.label, context: `${r.event_name}${r.ground ? ` · ${r.ground}` : ''}`, starts_at: r.starts_at, ends_at: r.ends_at, status: 'confirmed', link: { screen: 'Games', params: { id: r.event_id } }, actions: [] });
     for (const r of bookings) add({ kind: 'venue', source_type: 'booking', source_id: r.id, title: r.venue_name, context: r.resource_name, starts_at: r.starts_at, ends_at: r.ends_at, timezone: r.tz ?? 'UTC', status: 'confirmed', link: { screen: 'Reservation', params: {} }, actions: [] });
-    for (const r of hires) add({ kind: 'training', source_type: 'coach_hire', source_id: r.id, sport: r.sport, title: r.as_coach ? 'Coaching session' : 'Session with your coach', context: r.other_name, starts_at: r.starts_at, ends_at: r.ends_at, status: r.status === 'confirmed' ? 'confirmed' : 'proposed', action_required: r.as_coach && r.status === 'requested', link: { screen: 'Hub', params: {} }, actions: [] });
+    for (const r of hires) add({ kind: 'training', source_type: 'coach_hire', source_id: r.id, sport: r.sport, title: r.as_coach ? 'Coaching session' : 'Session with your coach', context: [r.other_name, r.venue].filter(Boolean).join(' · '), starts_at: r.starts_at, ends_at: r.ends_at, status: r.status === 'confirmed' ? 'confirmed' : 'proposed', action_required: r.as_coach && r.status === 'requested', link: { screen: 'Hub', params: {} }, actions: [] });
     for (const r of appts) add({ kind: 'health', source_type: 'appointment', source_id: r.id, title: r.provider_type === 'physio' ? 'Physio appointment' : r.provider_type === 'doctor' ? 'Doctor appointment' : 'Appointment', starts_at: r.starts_at, ends_at: r.ends_at, timezone: r.tz ?? 'UTC', status: r.status === 'confirmed' ? 'confirmed' : 'proposed', link: { screen: 'Health', params: {} }, actions: [] });
     for (const r of follows) add({ kind: 'health', source_type: 'followup', source_id: r.id, title: 'Health follow-up due', starts_at: `${r.due_on.toISOString?.().slice(0, 10) ?? r.due_on}T00:00:00Z`, ends_at: r.window_end ? `${r.window_end.toISOString?.().slice(0, 10) ?? r.window_end}T23:59:59Z` : null, all_day: true, status: 'awaiting_response', action_required: true, link: { screen: 'Health', params: {} }, actions: [] });
 

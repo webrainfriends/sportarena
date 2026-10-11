@@ -141,6 +141,25 @@ test('coach hire: pay with PayPal (capture on confirm), coach confirms after pay
   assert.deepEqual(fake.paypalRefunds, [`CAP_${orderId}`]);
 });
 
+test('coach request: an accepted answer is reserved until paid, then the payment itself confirms the session', async () => {
+  const coach = await signup(['coach']), athlete = await signup(['athlete']);
+  await api('POST', '/me/sport-profiles', { token: coach.token, body: { sport: 'football', role: 'coach', hourly_rate_cents: 50000 } });
+  const req = (await api('POST', '/coach-requests', { token: athlete.token, body: { sport: 'football', title: 'Weekly sessions' } })).body;
+  const ans = (await api('POST', `/coach-requests/${req.id}/respond`, { token: coach.token, body: { starts_at: future(3), duration_min: 90 } })).body;
+  const done = (await api('POST', `/coach-responses/${ans.id}/decision`, { token: athlete.token, body: { decision: 'accept' } })).body;
+  assert.equal(done.hire.status, 'requested'); assert.equal(done.hire.payment_status, 'unpaid'); assert.equal(done.hire.total_cents, 75000);
+  const ov = (await api('GET', '/coaching/overview', { token: athlete.token })).body;
+  assert.deepEqual(ov.athlete.awaiting_payment.map((h) => h.id), [done.hire.id]); assert.equal(ov.athlete.spend.due_cents, 75000);
+  const p = (await api('POST', '/payments', { token: athlete.token, body: { purpose_type: 'coach_hire', purpose_id: done.hire.id, provider: 'paypal' } })).body;
+  fake.paypalOrders[p.checkout_url.split('/').pop()].approved = true;
+  assert.equal((await api('POST', `/payments/${p.id}/confirm`, { token: athlete.token })).body.status, 'paid');
+  const mine = (await api('GET', '/hires', { token: coach.token })).body.find((h) => h.id === done.hire.id);
+  assert.equal(mine.status, 'confirmed', 'no extra confirm step: the coach agreed when answering'); assert.equal(mine.payment_status, 'paid');
+  const earn = (await api('GET', '/coaching/payments?as=coach', { token: coach.token })).body;
+  assert.equal(earn[0].payment_status, 'paid'); assert.ok(earn[0].paid_at);
+  assert.equal((await api('GET', '/coaching/overview', { token: coach.token })).body.coach.earnings.earned_cents, 75000);
+});
+
 test('insurance: policy is pending until paid; PayPal approval webhook captures and activates', async () => {
   const admin = await signup(['athlete']); await pool.query("UPDATE users SET roles='{admin}' WHERE id=$1", [admin.id]);
   const holder = await signup(['athlete']);

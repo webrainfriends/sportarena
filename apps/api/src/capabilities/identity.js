@@ -218,6 +218,8 @@ cap({
            is_default = sport_profiles.is_default OR EXCLUDED.is_default
          RETURNING id, sport_id, role, level, position, jersey_no, club, experience_years, is_default`,
         [user.id, sport.id, i.role, i.level, i.position ?? null, encrypt(i.license_no, 'sport_profiles.license_no'), i.jersey_no ?? null, i.club ?? null, i.experience_years ?? null, i.hourly_rate_cents ?? null, makeDefault]);
+      // coaching in a sport makes you a coach: the coach desk, request board and answers all need the role
+      if (i.role === 'coach') await c.query("UPDATE users SET roles = array_append(roles, 'coach') WHERE id=$1 AND NOT ('coach' = ANY(roles))", [user.id]);
       return row;
     });
   },
