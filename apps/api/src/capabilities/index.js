@@ -40,6 +40,7 @@ import './guardians.js';
 import './billboard.js';
 import './shop.js';
 import './hire.js';
+import './coach-market.js';
 import './training-plans.js';
 import './coach.js';
 import './payments.js';
