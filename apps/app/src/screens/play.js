@@ -55,8 +55,9 @@ export function Play() {
     if (tab === 'venues') return api.get('/venues', {});
     return api.get('/people', { ...p, sport: undefined, q: dq || undefined });
   }, [tab, sport, dq, flags, sort, size]);
-  const rows = tab === 'events' ? list.data?.items : list.data;
-  const total = tab === 'events' ? list.data?.total : rows?.length;
+  const raw = tab === 'events' ? list.data?.items : list.data;
+  const rows = Array.isArray(raw) ? raw : [];
+  const total = tab === 'events' ? list.data?.total ?? rows.length : rows.length;
 
   return (
     <Screen>
@@ -84,7 +85,7 @@ export function Play() {
             if (tab === 'venues') return <Row key={x.id} onPress={() => push('Venue', { id: x.id })} left={<Bubble emoji={x.emoji} color={c.cyan} />} title={x.name} sub={`${x.city ?? ''} · ${x.resources} bookable spots`} right={x.rating ? <T weight="900">⭐ {x.rating}</T> : null} />;
             return <Row key={x.id} onPress={() => push('Person', { id: x.id })} left={<Avatar user={x} />} title={x.display_name} sub={`@${x.handle} · ${(x.roles ?? []).join(', ')}`} />;
           })}
-        {rows && total > rows.length && tab !== 'venues' ? <Btn small title={`Show more (${total - rows.length} more)`} color={c.paper} onPress={() => setSize((n) => n + 20)} /> : null}
+        {total > rows.length && tab !== 'venues' ? <Btn small title={`Show more (${total - rows.length} more)`} color={c.paper} onPress={() => setSize((n) => n + 20)} /> : null}
       </View>
 
       <RegisterVenue visible={form === 'venue'} onClose={() => setForm(null)} onCreated={list.reload} />
