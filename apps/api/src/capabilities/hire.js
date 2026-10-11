@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import { cap, id, page } from '../registry.js';
-import { one, many } from '../db.js';
-import { badRequest, conflict, forbidden } from '../errors.js';
+import { one, many, tx } from '../db.js';
+import { badRequest, conflict, forbidden, notFound } from '../errors.js';
+import { assertTransition, setTransitionContext, refundKey, timelineFor } from '../lifecycle.js';
 import { isAdmin, mustFind, PUBLIC_USER, sportBySlugOrId } from '../helpers.js';
 import { paymentsEnabled, refundFor } from '../payments/service.js';
 import { NOT_YOUTH_SQL } from '../youth.js';
@@ -170,24 +171,38 @@ cap({
 });
 
 cap({
-  name: 'update_hire', method: 'PATCH', path: '/hires/:id', tag: 'Hire', summary: 'Coach confirms (once the session is paid) and completes; either party can cancel — a paid session is refunded.',
-  input: z.object({ id, status: z.enum(['confirmed', 'completed', 'cancelled']) }),
+  name: 'get_hire_timeline', method: 'GET', path: '/hires/:id/timeline', tag: 'Hire',
+  summary: 'The append-only history of one coaching session (who moved it from which status to which, when, why and the payment state), oldest first. Only the coach and the hirer can read it.',
+  input: z.object({ id, ...page }),
   async handler({ user }, i) {
-    const h = await mustFind('coach_hires', i.id);
-    const isCoach = h.coach_id === user.id, isHirer = h.hirer_id === user.id;
-    if (!isCoach && !isHirer && !isAdmin(user)) throw forbidden();
-    if (i.status !== 'cancelled' && !isCoach) throw forbidden('Only the coach can confirm or complete');
-    if (['completed', 'cancelled'].includes(h.status)) throw conflict(`Already ${h.status}`);
-    if (i.status === 'confirmed' && h.payment_status === 'unpaid') throw conflict('Waiting for the hirer to pay');
-    if (i.status === 'cancelled' && h.payment_status === 'paid') {
-      await refundFor('coach_hire', h.id);
-      await one("UPDATE coach_hires SET payment_status='refunded' WHERE id=$1", [h.id]);
-    }
-    if (i.status === 'cancelled') await one("UPDATE session_venue_links SET released_at=now(), release_reason='session cancelled' WHERE session_type='coach_hire' AND session_id=$1 AND released_at IS NULL RETURNING id", [h.id]);
-    const out = await one("UPDATE coach_hires SET status=$2, completed_at=CASE WHEN $2='completed' THEN now() ELSE completed_at END, cancelled_by=CASE WHEN $2='cancelled' THEN $3::uuid ELSE cancelled_by END WHERE id=$1 RETURNING id, status, payment_status", [i.id, i.status, user.id]);
-    const other = isCoach ? h.hirer_id : h.coach_id;
-    const verb = { confirmed: 'confirmed your coaching session', completed: 'marked your session complete — leave a review', cancelled: 'cancelled the coaching session' }[i.status];
-    if (other !== user.id) await notify(null, other, { kind: `coach_hire_${i.status}`, title: `${user.display_name} ${verb}`, body: '', data: { hire_id: h.id } });
-    return out;
+    const h = await mustFind('coach_hires', i.id, 'id, coach_id, hirer_id, status');
+    if (h.coach_id !== user.id && h.hirer_id !== user.id) throw forbidden();
+    return { hire_id: h.id, status: h.status, entries: await timelineFor('hire', h.id, user.id, i) };
+  },
+});
+
+cap({
+  name: 'update_hire', method: 'PATCH', path: '/hires/:id', tag: 'Hire', summary: 'Coach confirms (once the session is paid) and completes; either party can cancel — a paid session is refunded. Moves follow requested -> confirmed -> completed (cancel until completed; unanswered requests expire on their own). Completing needs payment (if required) and a start time that has passed; completed, cancelled and expired are final.',
+  input: z.object({ id, status: z.enum(['confirmed', 'completed', 'cancelled']), reason: z.string().trim().max(500).optional().describe('why (kept, encrypted, in the session timeline)') }),
+  async handler({ user }, i) {
+    return tx(async (c) => {
+      const h = (await c.query('SELECT * FROM coach_hires WHERE id=$1 FOR UPDATE', [i.id])).rows[0];
+      if (!h) throw notFound('Hire');
+      const isCoach = h.coach_id === user.id, isHirer = h.hirer_id === user.id;
+      assertTransition(h, i.status, { isProvider: isCoach, isCustomer: isHirer, isAdmin: isAdmin(user) }, { noun: 'coaching session', customerWord: 'hirer' });
+      await setTransitionContext(c, user.id, i.reason);
+      let payment = h.payment_status;
+      if (i.status === 'cancelled' && payment === 'paid') {
+        await refundFor('coach_hire', h.id, { key: refundKey('coach_hire', h.id) });   // refund at the provider first; if it refuses nothing is cancelled
+        payment = 'refunded';
+      }
+      const out = (await c.query("UPDATE coach_hires SET status=$2, payment_status=$4, completed_at=CASE WHEN $2='completed' THEN now() ELSE completed_at END, cancelled_by=CASE WHEN $2='cancelled' THEN $3::uuid ELSE cancelled_by END WHERE id=$1 AND status=$5 RETURNING id, status, payment_status", [i.id, i.status, user.id, payment, h.status])).rows[0];
+      if (!out) throw conflict('This session was just changed by someone else; reload and try again');
+      if (i.status === 'cancelled') await c.query("UPDATE session_venue_links SET released_at=now(), release_reason='session cancelled' WHERE session_type='coach_hire' AND session_id=$1 AND released_at IS NULL", [h.id]);
+      const other = isCoach ? h.hirer_id : h.coach_id;
+      const verb = { confirmed: 'confirmed your coaching session', completed: 'marked your session complete — leave a review', cancelled: 'cancelled the coaching session' }[i.status];
+      if (other !== user.id) await notify(c, other, { kind: `coach_hire_${i.status}`, title: `${user.display_name} ${verb}`, body: '', data: { hire_id: h.id } });
+      return out;
+    });
   },
 });

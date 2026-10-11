@@ -127,8 +127,11 @@ cap({
       if (perf.user_id === user.id) throw forbidden('You cannot approve your own result');
       const row = (await c.query("UPDATE performances SET status='approved', decided_by=$2, decided_at=now(), decision_note=$3 WHERE id=$1 RETURNING *", [perf.id, user.id, i.note ?? null])).rows[0];
       if (perf.supersedes_id) {
-        const old = (await c.query("UPDATE performances SET status='superseded' WHERE id=$1 AND status IN ('approved','disputed') RETURNING status", [perf.supersedes_id])).rows[0];
-        if (old) await logStep(c, perf.supersedes_id, user.id, 'superseded', 'approved', 'superseded', `Replaced by ${perf.id}`, null);
+        const prev = (await c.query("SELECT status FROM performances WHERE id=$1 AND status IN ('approved','disputed') FOR UPDATE", [perf.supersedes_id])).rows[0];
+        if (prev) {
+          await c.query("UPDATE performances SET status='superseded' WHERE id=$1", [perf.supersedes_id]);
+          await logStep(c, perf.supersedes_id, user.id, 'superseded', prev.status, 'superseded', `Replaced by ${perf.id}`, null);
+        }
       }
       return row;
     },
@@ -137,11 +140,12 @@ cap({
 
 cap({
   name: 'reject_performance', method: 'POST', path: '/performances/:id/reject', tag: TAG_PERF,
-  summary: 'Reject a submitted or disputed competition result with a reason; it stays on record but never counts. Same people as approval, and not the athlete.',
+  summary: 'Reject a submitted or disputed competition result with a reason; it stays on record but never counts. Same people and separation of duties as approval: not the person who submitted it and not the athlete.',
   input: z.object({ id, reason: z.string().min(3).max(500) }),
   handler: ({ user }, i) => transition(user, i.id, {
     from: ['submitted', 'disputed'], to: 'rejected', action: 'rejected', note: i.reason, needNote: true,
     async mutate(c, perf) {
+      if (perf.recorded_by === user.id) throw forbidden('A different official must reject a result you submitted');
       if (perf.user_id === user.id) throw forbidden('You cannot decide your own result');
       return (await c.query("UPDATE performances SET status='rejected', decided_by=$2, decided_at=now(), decision_note=$3 WHERE id=$1 RETURNING *", [perf.id, user.id, i.reason])).rows[0];
     },
@@ -175,9 +179,10 @@ cap({
       const pending = (await c.query("SELECT id FROM performances WHERE supersedes_id=$1 AND status='submitted'", [perf.id])).rows[0];
       if (pending) throw conflict('A correction for this result is already waiting for approval', { performance_id: pending.id });
       const row = (await c.query(
-        `INSERT INTO performances(user_id, sport_id, event_id, fixture_id, metric, value, points, recorded_by, provenance, status, unit, direction, rule_version, official_points, achieved_on, supersedes_id, decision_note)
-         VALUES ($1,$2,$3,$4,$5,$6,0,$7,'approved_competition','submitted',$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
-        [perf.user_id, perf.sport_id, perf.event_id, perf.fixture_id, perf.metric, i.value, user.id, rule.unit, rule.direction, rule.version, officialPoints(rule, i.value), perf.achieved_on, perf.id, i.reason])).rows[0];
+        `INSERT INTO performances(user_id, sport_id, event_id, fixture_id, metric, value, points, recorded_by, provenance, status, unit, direction, rule_version, official_points, achieved_on, supersedes_id, decision_note, evidence_ref)
+         VALUES ($1,$2,$3,$4,$5,$6,0,$7,'approved_competition','submitted',$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
+        [perf.user_id, perf.sport_id, perf.event_id, perf.fixture_id, perf.metric, i.value, user.id, rule.unit, rule.direction, rule.version, officialPoints(rule, i.value), perf.achieved_on, perf.id, i.reason, perf.evidence_ref])).rows[0];
+      await logStep(c, row.id, user.id, 'submitted', null, 'submitted', i.reason, { value: row.value, official_points: row.official_points, supersedes: perf.id });
       return row;
     },
   }),
@@ -272,9 +277,14 @@ cap({
     const keys = i.metric ? `${bestOrder}, first_on ASC, points DESC` : 'points DESC, entries DESC, first_approved ASC';
     const rankKeys = i.metric ? `${bestOrder}, first_on ASC, points DESC` : 'points DESC, entries DESC, first_approved ASC';
     const rows = await many(
-      `WITH agg AS (
-         SELECT u.id AS uid, sum(p.official_points) AS points, ${best} AS best, count(*)::int AS entries, min(p.achieved_on) AS first_on, min(p.decided_at) AS first_approved
+      `WITH base AS (
+         SELECT u.id AS uid, ${best} AS best, count(*)::int AS entries, sum(p.official_points) AS total_points, min(p.decided_at) AS first_approved
            FROM performances p JOIN users u ON u.id=p.user_id JOIN sports s ON s.id=p.sport_id WHERE ${filter} GROUP BY u.id),
+       at_best AS (
+         SELECT u.id AS uid, min(p.achieved_on) AS first_on, max(p.official_points) AS best_points
+           FROM performances p JOIN users u ON u.id=p.user_id JOIN sports s ON s.id=p.sport_id JOIN base b ON b.uid=u.id AND p.value=b.best WHERE ${filter} GROUP BY u.id),
+       agg AS (
+         SELECT b.uid, ${i.metric ? 'a.best_points' : 'b.total_points'} AS points, b.best, b.entries, a.first_on, b.first_approved FROM base b JOIN at_best a ON a.uid=b.uid),
        ranked AS (SELECT agg.*, rank() OVER (ORDER BY ${rankKeys}) AS rank FROM agg)
        SELECT ${PUBLIC_USER}, r.rank::int AS rank, r.points, r.best, r.entries, r.first_on AS best_on, 'Approved competition result' AS evidence_label
          FROM ranked r JOIN users u ON u.id=r.uid ORDER BY r.rank, ${keys}, u.id LIMIT $6 OFFSET $7`, [...args, i.limit, i.offset]);
