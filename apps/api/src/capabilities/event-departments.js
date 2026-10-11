@@ -25,7 +25,7 @@ const kind = z.enum(Object.keys(DEPARTMENT_KINDS));
 const colour = z.string().regex(/^#[0-9A-Fa-f]{6}$/).describe('hex colour, e.g. from the colour picker');
 const PII = ['phone', 'dob', 'id_number'];
 
-const isOrganiser = async (user, ev, c) => isAdmin(user) || user.id === ev.organizer_id || (await hasOrgGrant(user, ev.organisation_id, ['owner', 'admin'], c));
+export const isOrganiser = async (user, ev, c) => isAdmin(user) || user.id === ev.organizer_id || (await hasOrgGrant(user, ev.organisation_id, ['owner', 'admin'], c));
 
 /** Who the caller is for this event: organiser, lead of some departments, or just a member of some. */
 export async function departmentScope(user, ev, c) {

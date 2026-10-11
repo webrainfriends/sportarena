@@ -26,6 +26,7 @@ import './events.js';
 import './event-lifecycle.js';
 import './event-departments.js';
 import './event-boards.js';
+import './match-tracking.js';
 import './officials.js';
 import './event-invites.js';
 import './event-schedule.js';
