@@ -7,7 +7,7 @@ import { useNav } from '../nav';
 import { Avatar, Bubble, Btn, Card, Chip, Empty, ErrorBox, Field, GradCard, H1, H2, Loading, Row, Screen, Seg, Section, Sheet, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { SportSelect } from '../sportpicker';
-import { AddFollowupSheet, BookProviderSheet, ConsentManager, FollowupsPanel } from './provider';
+import { AddFollowupSheet, ConsentManager, FollowupsPanel, ProviderSearch } from './provider';
 import { PaySheet } from '../PaySheet';
 import { c, grad, money, day, when } from '../theme';
 
@@ -72,10 +72,8 @@ export function Awards() {
 export function Health() {
   const { user, has, toast } = useSession();
   const [tab, setTab] = useState('find');
-  const [book, setBook] = useState(null);
   const [paying, setPaying] = useState(null);
   const [fu, setFu] = useState(null);
-  const prov = useLoad(() => api.get('/providers/search', { limit: 50, sort: 'rating' }), []);
   const appts = useLoad(() => api.get('/appointments', { limit: 30 }), []);
   const recs = useLoad(() => api.get('/medical/records', { limit: 30 }), []);
   const isProv = has('physio', 'doctor');
@@ -86,9 +84,7 @@ export function Health() {
       <Card color={c.mintSoft} pad={12}><T weight="900">Consent-first medical privacy</T><T size={12} color={c.mute}>Notes are encrypted. Doctors and physios only see your records after you grant access — and every read is logged.</T></Card>
       <View style={{ marginTop: 10 }}><Seg options={[{ value: 'find', label: 'Find a pro', emoji: '🔎' }, { value: 'appts', label: 'Appointments', emoji: '📅' }, { value: 'records', label: 'My records', emoji: '📋' }, { value: 'followups', label: 'Follow-ups', emoji: '🗓️' }, { value: 'consent', label: 'Access', emoji: '🔒' }]} value={tab} onChange={setTab} color={c.mint} /></View>
       <View style={{ gap: 10, marginTop: 8 }}>
-        {tab === 'find' && (prov.loading ? <Loading /> : prov.data?.length ? prov.data.map((p, i) => (
-          <Row key={i} left={<Avatar user={p} />} title={p.display_name} sub={[p.provider_type, p.sports.join(', '), p.city, p.credential_verified ? '✓ verified' : null, p.rating ? `★ ${Number(p.rating).toFixed(1)}` : null, p.fee_cents ? money(p.fee_cents) : null].filter(Boolean).join(' · ')} right={p.id !== user.id ? <Btn small title="Book" color={c.mint} ink={c.ink} onPress={() => setBook(p)} /> : null} />
-        )) : <Empty emoji="🩺" title="No providers yet" />)}
+        {tab === 'find' && <ProviderSearch onBooked={() => { appts.reload(); setTab('appts'); }} />}
         {tab === 'consent' && <ConsentManager />}
         {tab === 'followups' && <FollowupsPanel />}
         {tab === 'appts' && (appts.data?.length ? appts.data.map((a) => (
@@ -108,7 +104,6 @@ export function Health() {
       </View>
       {paying ? <PaySheet target={paying} onClose={() => setPaying(null)} onDone={appts.reload} /> : null}
       <AddFollowupSheet appointment={fu} onClose={() => setFu(null)} onDone={() => { setFu(null); }} />
-      {book ? <BookProviderSheet provider={book} onClose={() => setBook(null)} onDone={() => { appts.reload(); setTab('appts'); }} /> : null}
     </Screen>
   );
 }

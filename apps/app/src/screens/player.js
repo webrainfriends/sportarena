@@ -9,7 +9,6 @@ import { Btn, Card, Empty, ErrorBox, H1, H2, Loading, Screen, Seg, T } from '../
 import { FormSheet } from '../FormSheet';
 import { c, fam, toneFor, day } from '../theme';
 import { FavouriteSports } from '../sportpicker';
-import { AthleteToday } from './athlete-home';
 import { Billboard, Shop, Insure, useCols } from './marketplace';
 import { Hire } from './coaching';
 
@@ -50,6 +49,12 @@ function parseStats(txt) {
     out[m[1].trim().toLowerCase().replace(/\s+/g, '_')] = Number(m[2]);
   }
   return out;
+}
+
+/** Make a sport profile the default (the one shown first on Home and the player card). One helper for every screen that lists profiles. */
+export function useMakeDefault(reload) {
+  const { toast } = useSession();
+  return async (p) => { try { await api.post(`/me/sport-profiles/${p.id}/default`); await reload(); toast(`${p.sport} is now your default`); } catch (e) { toast(e.message); } };
 }
 
 // ---------- sport profile card ----------
@@ -108,7 +113,7 @@ export function SportCard({ p, width, onOpen, onDefault, onLog, selected }) {
 
 // ---------- add / edit profile forms ----------
 
-function AddProfileSheet({ visible, onClose, onDone, first }) {
+export function AddProfileSheet({ visible, onClose, onDone, first }) {
   return (
     <FormSheet visible={visible} onClose={onClose} title="Add a sport profile" submitLabel="Add sport"
       fields={[
@@ -119,6 +124,7 @@ function AddProfileSheet({ visible, onClose, onDone, first }) {
         { key: 'jersey_no', label: 'Jersey number', optional: true, type: 'number' },
         { key: 'club', label: 'Club / team', optional: true },
         { key: 'experience_years', label: 'Years playing', optional: true, type: 'number' },
+        { key: 'license_no', label: 'Licence number', optional: true },
         ...(first ? [] : [{ key: 'make_default', label: 'Make this my default?', type: 'choice', options: [{ value: 'no', label: 'No' }, { value: 'yes', label: 'Yes — list it first' }] }]),
       ]}
       onSubmit={async ({ make_default, ...v }) => { await api.post('/me/sport-profiles', { ...v, is_default: make_default === 'yes' }); await onDone(); return 'Sport added'; }} />
@@ -165,7 +171,6 @@ function LogMatchSheet({ p, onClose, onDone }) {
 
 function MySports() {
   const { push } = useNav();
-  const { toast } = useSession();
   const { tablet } = useLayout();
   const { gap, w } = useCols();
   const list = useLoad(() => api.get('/me/sport-profiles'), []);
@@ -174,7 +179,7 @@ function MySports() {
   const [sel, setSel] = useState(null);
   const profiles = list.data ?? [];
   const totals = useMemo(() => profiles.reduce((a, p) => ({ matches: a.matches + p.summary.matches, wins: a.wins + p.summary.wins }), { matches: 0, wins: 0 }), [profiles]);
-  const makeDefault = async (p) => { try { await api.post(`/me/sport-profiles/${p.id}/default`); await list.reload(); toast(`${p.sport} is now your default`); } catch (e) { toast(e.message); } };
+  const makeDefault = useMakeDefault(list.reload);
   const split = tablet && profiles.length > 0;
   const selId = profiles.find((p) => p.id === sel)?.id ?? profiles[0]?.id;
 
@@ -233,8 +238,8 @@ function MySports() {
 
 // ---------- player hub: sections ----------
 
-const SECTIONS = [['today', 'Today', AthleteToday], ['sports', 'My sports', MySports], ['billboard', 'Billboard', Billboard], ['shop', 'Shop', Shop], ['hire', 'Hire', Hire], ['insure', 'Insure', Insure]];
-let lastSection = 'today'; // survive pushing into a sport page and coming back
+const SECTIONS = [['sports', 'My sports', MySports], ['billboard', 'Billboard', Billboard], ['shop', 'Shop', Shop], ['hire', 'Hire', Hire], ['insure', 'Insure', Insure]];
+let lastSection = 'sports'; // survive pushing into a sport page and coming back
 
 export function PlayerHome() {
   const [sec, setSec] = useState(lastSection);

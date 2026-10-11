@@ -4,9 +4,9 @@ import { api, MCP_URL } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { useNav } from '../nav';
-import { Avatar, Btn, Card, Chip, Empty, GradCard, H1, Loading, Row, Screen, Section, StatPill, T, Tag, Bubble } from '../ui';
+import { Avatar, Btn, Card, Chip, GradCard, H1, Screen, Section, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
-import { FavouriteSports } from '../sportpicker';
+import { AddProfileSheet } from './player';
 import { c, grad } from '../theme';
 import { useAvatarPhoto } from '../hero';
 import { ROLES, roleLabel } from '../roles';
@@ -27,9 +27,7 @@ export function Me() {
   const [newToken, setNewToken] = useState(null);
   const [tokForm, setTokForm] = useState(false);
   const photo = useAvatarPhoto();
-  const dash = useLoad(() => api.get('/dashboard'), []);
   const toks = useLoad(() => api.get('/me/tokens'), []);
-  const d = dash.data;
 
   return (
     <Screen>
@@ -52,24 +50,14 @@ export function Me() {
         </View>
         <Btn small title="Add or remove roles" color={c.paper} ink={c.ink} onPress={() => setRolesForm(true)} style={{ marginTop: 10, alignSelf: 'flex-start' }} />
       </Section>
-      <View style={{ flexDirection: 'row', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
-        <StatPill value={d?.points ?? '–'} label="POINTS" color={c.lime} /><StatPill value={d?.trophies ?? '–'} label="TROPHIES" color={c.sun} /><StatPill value={d?.active_policies ?? '–'} label="POLICIES" color={c.cyan} />
-      </View>
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
         <Btn small title="View my public page" color={c.violet} onPress={() => push('Person', { id: user.id })} />
         <Btn small title="Add a sport role" color={c.cyan} ink={c.ink} onPress={() => setSp(true)} />
         {user.roles.includes('coach') ? <Btn small title="Coach home" color={c.violet} onPress={() => push('CoachHome')} /> : null}
-        <Btn small title="My training plans" color={c.paper} ink={c.ink} onPress={() => push('MyPlans')} />
-        <Btn small title="Family & guardians" color={c.paper} ink={c.ink} onPress={() => push('Family')} />
-        <Btn small title="Support & disputes" color={c.paper} ink={c.ink} onPress={() => push('Support')} />
-        <Btn small title="My organisations" color={c.paper} ink={c.ink} onPress={() => push('Orgs')} />
         {user.roles.includes('admin') ? <Btn small title="Partner management" color={c.pink} onPress={() => push('PartnerConsole')} /> : null}
         {user.roles.some((r) => ['venue_manager', 'organizer'].includes(r)) ? <Btn small title="Partner account" color={c.paper} ink={c.ink} onPress={() => push('MyPartner')} /> : null}
         {user.roles.includes('insurer') ? <Btn small title="Insurer desk" color={c.violet} onPress={() => push('InsurerDesk')} /> : null}
-        <Btn small title="My insurance" color={c.paper} ink={c.ink} onPress={() => push('Insurance')} />
       </View>
-
-      <Section title="Favourite sports & games" color={c.sun}><FavouriteSports /></Section>
 
       <Section title="Private details" color={c.mint}>
         <Card color={c.mintSoft}>
@@ -120,9 +108,7 @@ export function Me() {
       <FormSheet visible={edit} onClose={() => setEdit(false)} title="Edit details" initial={{ display_name: user.display_name, bio: user.bio, full_name: user.full_name, phone: user.phone, dob: user.dob, national_id: user.national_id, address: user.address }}
         fields={[{ key: 'display_name', label: 'Display name', optional: true }, { key: 'bio', label: 'Bio', optional: true, type: 'multiline' }, { key: 'full_name', label: 'Full name', optional: true }, { key: 'phone', label: 'Phone', optional: true }, { key: 'dob', label: 'Date of birth (YYYY-MM-DD)', optional: true }, { key: 'national_id', label: 'National ID', optional: true }, { key: 'address', label: 'Address', optional: true, type: 'multiline' }]}
         onSubmit={async (v) => { await api.patch('/me', v); await refresh(); return 'Saved & encrypted'; }} />
-      <FormSheet visible={sp} onClose={() => setSp(false)} title="Add a sport role" submitLabel="Add"
-        fields={[{ key: 'sport', label: 'Sport', type: 'sport' }, { key: 'role', label: 'Role', type: 'choice', options: ['athlete', 'coach', 'referee', 'physio', 'doctor'] }, { key: 'level', label: 'Level', type: 'choice', options: ['beginner', 'amateur', 'semi_pro', 'pro'] }, { key: 'position', label: 'Position', optional: true }, { key: 'license_no', label: 'License no.', optional: true }]}
-        onSubmit={async (v) => { await api.post('/me/sport-profiles', v); return 'Added'; }} />
+      <AddProfileSheet visible={sp} onClose={() => setSp(false)} first={false} onDone={async () => {}} />
       <FormSheet visible={tokForm} onClose={() => setTokForm(false)} title="New API token" submitLabel="Create" fields={[{ key: 'name', label: 'Name', placeholder: 'My Claude agent' }]}
         onSubmit={async (v) => { const t = await api.post('/me/tokens', v); setNewToken(t.token); toks.reload(); }} />
     </Screen>

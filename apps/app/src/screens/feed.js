@@ -14,7 +14,7 @@ import { Composer } from '../market/Composer';
 import { useMarketActions, useResumeIntent } from '../market/actions';
 import { PlayerHero, StatTiles, NowStrip, ageOf, COL } from '../hero';
 import { ACTIONS, HomeSchedule } from './athlete-home';
-import { SportCard } from './player';
+import { AddProfileSheet, SportCard, useMakeDefault } from './player';
 import { locale } from '../locale';
 
 const PAGE = 10;
@@ -108,14 +108,15 @@ const Title = ({ children, action, onAction }) => (
 
 /** Home tab: a player card on top (identity, stats, what's on today), then the community feed. */
 export default function HomeTab() {
-  const { user, toast } = useSession();
+  const { user } = useSession();
   const nav = useNav();
   const L = useLayout();
   const dash = useLoad(() => api.get('/dashboard'), []);
   const sports = useLoad(() => api.get('/me/sport-profiles'), []);
   const hi = useLoad(() => api.get('/market/highlights'), []);
   const profiles = sports.data ?? [];
-  const makeDefault = async (p) => { try { await api.post(`/me/sport-profiles/${p.id}/default`); await sports.reload(); toast(`${p.sport} is now your default`); } catch (e) { toast(e.message); } };
+  const makeDefault = useMakeDefault(sports.reload);
+  const [addSport, setAddSport] = useState(false);
   const main = profiles.find((p) => p.is_default) ?? profiles[0];
   const matches = profiles.reduce((a, p) => a + p.summary.matches, 0);
   const game = hi.data?.games?.[0];
@@ -137,7 +138,7 @@ export default function HomeTab() {
         <HScroll>
           {ACTIONS.map(([emoji, label, go]) => <Chip key={label} label={`${emoji} ${label}`} onPress={() => go(nav)} />)}
         </HScroll>
-        <View style={{ marginTop: 26 }}><HomeSchedule onFull={() => nav.goTab('Player')} /></View>
+        <View style={{ marginTop: 26 }}><HomeSchedule /></View>
         <View style={{ marginTop: 26 }}>
           <Title action="All sports" onAction={() => nav.goTab('Player')}>My sports</Title>
           {sports.error ? <ErrorBox error={sports.error} onRetry={sports.reload} /> : sports.loading && !sports.data ? <Loading /> : profiles.length ? (
@@ -145,12 +146,12 @@ export default function HomeTab() {
               {profiles.map((p) => <SportCard key={p.id} p={p} width={300} onOpen={() => nav.push('SportProfile', { id: p.id })} onDefault={() => makeDefault(p)} onLog={() => nav.push('SportProfile', { id: p.id })} />)}
             </HScroll>
           ) : (
-            <Card><View style={{ gap: 10, alignItems: 'flex-start' }}><T weight="700">Add the sports you play</T><T size={13} color={c.mute}>One card per sport tracks your matches, form and stats.</T><Btn small title="+ Add sport" onPress={() => nav.goTab('Player')} /></View></Card>
+            <Card><View style={{ gap: 10, alignItems: 'flex-start' }}><T weight="700">Add the sports you play</T><T size={13} color={c.mute}>One card per sport tracks your matches, form and stats.</T><Btn small title="+ Add sport" onPress={() => setAddSport(true)} /></View></Card>
           )}
         </View>
         <View style={{ marginTop: 30 }}><Title>Community</Title></View>
       </View>
     </View>
   );
-  return <Feed header={header} narrow />;
+  return <><Feed header={header} narrow /><AddProfileSheet visible={addSport} onClose={() => setAddSport(false)} first={!profiles.length} onDone={sports.reload} /></>;
 }
