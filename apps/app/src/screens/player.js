@@ -26,7 +26,7 @@ const Pill = ({ label, fg = c.mute, bg = c.violetSoft }) => (
 
 const FormDots = ({ form }) => (
   <View style={{ flexDirection: 'row', gap: 5, alignItems: 'center' }}>
-    {form.length === 0 ? <T size={12} color={c.mute}>No matches yet</T> : [...form].reverse().map((r, n) => {
+    {form.length === 0 ? <T size={12} color={c.mute}>No matches yet — played ones show up here</T> : [...form].reverse().map((r, n) => {
       const [l, fg, bg] = RESULT[r] ?? ['–', c.mute, c.violetSoft];
       return <View key={n} style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: bg, alignItems: 'center', justifyContent: 'center' }}><T weight="800" size={11} color={fg}>{l}</T></View>;
     })}
@@ -87,6 +87,7 @@ export function SportCard({ p, width, onOpen, onDefault, onLog, selected }) {
             )}
           </View>
           {line ? <T size={13} color={c.mute} weight="600">{line}</T> : null}
+          {p.official_summary?.matches ? <Pill label={`✓ ${p.official_summary.matches} OFFICIAL · ${s.matches - p.official_summary.matches} LOGGED BY YOU`} fg={tone[2]} bg={tone[1]} /> : null}
           <View style={{ flexDirection: 'row', gap: 8 }}>
             <Stat value={s.matches} label="MATCHES" tone={tone} />
             <Stat value={`${s.wins}-${s.draws}-${s.losses}`} label="W-D-L" />
@@ -113,9 +114,9 @@ export function SportCard({ p, width, onOpen, onDefault, onLog, selected }) {
 
 // ---------- add / edit profile forms ----------
 
-export function AddProfileSheet({ visible, onClose, onDone, first }) {
+export function AddProfileSheet({ visible, onClose, onDone, first, sport }) {
   return (
-    <FormSheet visible={visible} onClose={onClose} title="Add a sport profile" submitLabel="Add sport"
+    <FormSheet visible={visible} onClose={onClose} title="Add a sport profile" submitLabel="Add sport" initial={sport ? { sport } : undefined}
       fields={[
         { key: 'sport', label: 'Sport', type: 'sport' },
         { key: 'role', label: 'Role', type: 'choice', options: ROLES },
@@ -174,7 +175,9 @@ function MySports() {
   const { tablet } = useLayout();
   const { gap, w } = useCols();
   const list = useLoad(() => api.get('/me/sport-profiles'), []);
+  const detected = useLoad(() => api.get('/me/detected-sports'), []);
   const [add, setAdd] = useState(false);
+  const [addSport, setAddSport] = useState(null);
   const [log, setLog] = useState(null);
   const [sel, setSel] = useState(null);
   const profiles = list.data ?? [];
@@ -195,12 +198,19 @@ function MySports() {
       </View>
     </View>
   );
+  const found = (detected.data ?? []).map((d) => (
+    <Card key={d.sport_slug} pad={14}>
+      <T weight="800" size={14}>{d.sport_emoji} {d.sport} — played on SportArena</T>
+      <T size={12.5} color={c.mute} style={{ marginTop: 2 }}>{d.matches} official match{d.matches === 1 ? '' : 'es'} · {d.wins}-{d.draws}-{d.losses}{d.last_played ? ` · last ${day(d.last_played + 'T12:00:00')}` : ''}. Add the sport to see them on its card — nothing else is filled in for you.</T>
+      <View style={{ marginTop: 10, alignItems: 'flex-start' }}><Btn small title={`+ Add ${d.sport}`} onPress={() => { setAddSport(d.sport_slug); setAdd(true); }} /></View>
+    </Card>
+  ));
   const cards = (width) => profiles.map((p) => (
     <SportCard key={p.id} p={p} width={width} selected={split && p.id === selId} onOpen={() => (split ? setSel(p.id) : push('SportProfile', { id: p.id }))} onDefault={() => makeDefault(p)} onLog={() => setLog(p)} />
   ));
   const sheets = (
     <>
-      <AddProfileSheet visible={add} onClose={() => setAdd(false)} first={!profiles.length} onDone={list.reload} />
+      <AddProfileSheet visible={add} sport={addSport} onClose={() => { setAdd(false); setAddSport(null); }} first={!profiles.length} onDone={async () => { await Promise.all([list.reload(), detected.reload()]); }} />
       {log ? <LogMatchSheet p={log} onClose={() => setLog(null)} onDone={list.reload} /> : null}
     </>
   );
@@ -212,7 +222,7 @@ function MySports() {
         <View style={{ width: 396, borderRightWidth: 1, borderColor: c.line }}>
           <Screen padBottom={130}>
             {header}
-            <View style={{ gap: 14, marginTop: 16 }}>{cards('100%')}</View>
+            <View style={{ gap: 14, marginTop: 16 }}>{found}{cards('100%')}</View>
           </Screen>
         </View>
         <View style={{ flex: 1 }}><SportProfile key={selId} id={selId} embedded onChanged={list.reload} onRemoved={() => { setSel(null); list.reload(); }} /></View>
@@ -225,10 +235,11 @@ function MySports() {
       {header}
       <View style={{ marginTop: 18 }}>
         {list.loading && !list.data ? <Loading /> : list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : !profiles.length ? (
-          <Empty emoji="🏅" title="No sport profiles yet" sub="Add the sports you play to track your matches and performance — one card each, your favourite first." />
+          <Empty emoji="🏅" title="No sport profiles yet" sub="Add the sports you play — matches you log yourself and games you play in through SportArena events appear on each card automatically." />
         ) : (
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap }}>{cards(w)}</View>
         )}
+        {found.length > 0 && !split ? <View style={{ gap: 10, marginTop: 14 }}>{found}</View> : null}
       </View>
       <Card style={{ marginTop: 18 }}><H2>★ Favourite sports & games</H2><View style={{ marginTop: 8 }}><FavouriteSports /></View></Card>
       {sheets}
@@ -262,8 +273,11 @@ export function SportProfile({ id, embedded, onChanged, onRemoved }) {
   const { push, back } = useNav();
   const { toast } = useSession();
   const prof = useLoad(() => api.get('/me/sport-profiles'), []);
-  const matches = useLoad(() => api.get('/me/matches', { sport_profile_id: id, limit: 100 }), [id]);
+  const [src, setSrc] = useState('all');
+  const matches = useLoad(() => api.get('/me/matches', { sport_profile_id: id, source: src, limit: 100 }), [id, src]);
   const [edit, setEdit] = useState(false);
+  const [note, setNote] = useState(null);
+  const [linking, setLinking] = useState(null);
   const [log, setLog] = useState(false);
   const p = prof.data?.find((x) => x.id === id);
   const reload = async () => { await Promise.all([prof.reload(), matches.reload()]); onChanged?.(); };
@@ -319,27 +333,48 @@ export function SportProfile({ id, embedded, onChanged, onRemoved }) {
       ) : null}
 
       <H2 style={{ marginTop: 24 }}>Match log</H2>
+      <View style={{ marginTop: 10 }}>
+        <Seg options={[{ value: 'all', label: 'All' }, { value: 'official', label: `Official${p.official_summary?.matches ? ` · ${p.official_summary.matches}` : ''}` }, { value: 'self', label: 'My logs' }]} value={src} onChange={setSrc} />
+      </View>
       <View style={{ gap: 10, marginTop: 10 }}>
         {matches.loading && !matches.data ? <Loading /> : !matches.data?.length ? (
-          <Empty emoji="📋" title="No matches yet" sub="Log one by hand, or import a whole season from a CSV." />
+          <Empty emoji="📋" title="No matches yet" sub="Matches you log yourself or play in through SportArena events will appear here automatically." />
         ) : matches.data.map((m) => {
           const [l, fg, bg] = RESULT[m.result] ?? [null];
+          const official = m.provenance.startsWith('official');
+          const tag = official ? (m.event_id ? 'Verified competition' : 'Official match') : m.provenance === 'imported' ? 'Imported by you' : 'Logged by you';
+          const title = m.kind === 'competition' ? (m.title ?? 'Competition') : m.opponent ? `vs ${m.opponent}` : (m.title ?? 'Match');
           return (
             <Card key={m.id} pad={14}>
               <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
-                <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: bg ?? c.violetSoft, alignItems: 'center', justifyContent: 'center' }}><T weight="800" size={15} color={fg ?? c.mute}>{l ?? '–'}</T></View>
-                <View style={{ flex: 1 }}>
-                  <T weight="700" size={15}>{m.opponent ? `vs ${m.opponent}` : 'Match'}{m.score_for !== null && m.score_against !== null ? `  ${fmt(m.score_for)}–${fmt(m.score_against)}` : ''}</T>
-                  <T size={12} color={c.mute}>{[day(m.played_on + 'T12:00:00'), m.competition, m.venue, m.minutes ? `${m.minutes}'` : null, m.rating !== null ? `★ ${fmt(m.rating)}` : null].filter(Boolean).join(' · ')}</T>
+                <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: bg ?? c.violetSoft, alignItems: 'center', justifyContent: 'center' }}><T weight="800" size={15} color={fg ?? c.mute}>{l ?? (m.rank ? `#${m.rank}` : '–')}</T></View>
+                <View style={{ flex: 1, gap: 2 }}>
+                  <T weight="700" size={15}>{title}{m.score_for !== null && m.score_against !== null ? `  ${fmt(m.score_for)}–${fmt(m.score_against)}` : ''}</T>
+                  <T size={12} color={c.mute}>{[day(m.played_on + 'T12:00:00'), m.competition, m.venue, m.minutes ? `${m.minutes}'` : null, m.rating !== null ? `★ ${fmt(m.rating)} (your rating)` : null].filter(Boolean).join(' · ')}</T>
                 </View>
-                <Pressable hitSlop={10} onPress={act(() => api.del(`/me/matches/${m.id}`), 'Match deleted')}><T size={13} color={c.mute} weight="700">Delete</T></Pressable>
               </View>
-              {Object.keys(m.stats).length ? (
-                <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
-                  {Object.entries(m.stats).map(([k, v]) => <Pill key={k} label={`${fmt(v)} ${nice(k)}`} fg={tone[2]} bg={tone[1]} />)}
-                </View>
-              ) : null}
+              <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginTop: 10, alignItems: 'center' }}>
+                <Pill label={(official ? '✓ ' : '') + tag.toUpperCase()} fg={official ? tone[2] : c.mute} bg={official ? tone[1] : c.violetSoft} />
+                {m.linked_match_id ? <Pill label="LINKED TO YOUR LOG" /> : null}
+                {Object.entries(m.stats).map(([k, v]) => <Pill key={k} label={`${fmt(v)} ${nice(k)}`} fg={tone[2]} bg={tone[1]} />)}
+              </View>
               {m.notes ? <T size={13} color={c.mute} style={{ marginTop: 8 }}>{m.notes}</T> : null}
+              <View style={{ flexDirection: 'row', gap: 16, flexWrap: 'wrap', marginTop: 10 }}>
+                {official ? (
+                  <>
+                    {m.fixture_id ? <Pressable hitSlop={8} onPress={() => push('MatchCentre', { id: m.fixture_id })}><T size={13} weight="700" color={tone[0]}>View match</T></Pressable> : null}
+                    {m.event_id ? <Pressable hitSlop={8} onPress={() => push('Event', { id: m.event_id })}><T size={13} weight="700" color={tone[0]}>View event</T></Pressable> : null}
+                    <Pressable hitSlop={8} onPress={() => setNote(m)}><T size={13} weight="700" color={c.mute}>{m.notes || m.rating !== null ? 'Edit my note' : 'Add my note / rating'}</T></Pressable>
+                    <Pressable hitSlop={8} onPress={() => push('Support', {})}><T size={13} weight="700" color={c.mute}>Report wrong result</T></Pressable>
+                  </>
+                ) : (
+                  <>
+                    <Pressable hitSlop={8} onPress={async () => { try { const cand = await api.get(`/me/matches/${m.id}/link-candidates`); if (!cand.length) toast('No official match found for that day'); else setLinking({ m, cand }); } catch (e) { toast(e.message); } }}><T size={13} weight="700" color={tone[0]}>Link to official match</T></Pressable>
+                    <Pressable hitSlop={10} onPress={act(() => api.del(`/me/matches/${m.id}`), 'Match deleted')}><T size={13} color={c.mute} weight="700">Delete</T></Pressable>
+                  </>
+                )}
+                {m.linked_match_id ? <Pressable hitSlop={8} onPress={act(() => api.post(`/me/matches/${m.linked_match_id}/unlink`), 'Unlinked — your log counts on its own again')}><T size={13} weight="700" color={c.mute}>Unlink</T></Pressable> : null}
+              </View>
             </Card>
           );
         })}
@@ -347,11 +382,22 @@ export function SportProfile({ id, embedded, onChanged, onRemoved }) {
 
       <View style={{ marginTop: 28, alignItems: 'flex-start' }}>
         <Btn small title="Remove this sport" color={c.paper} ink={c.red} onPress={async () => { try { await api.del(`/me/sport-profiles/${p.id}`); toast('Sport removed'); if (embedded) onRemoved?.(); else back(); } catch (e) { toast(e.message); } }} />
-        <T size={12} color={c.mute} style={{ marginTop: 6 }}>Removing a sport also deletes the matches logged under it.</T>
+        <T size={12} color={c.mute} style={{ marginTop: 6 }}>Removing a sport deletes the matches you logged under it. Official matches stay on your history and reappear if you add the sport again.</T>
       </View>
 
       {edit ? <EditProfileSheet p={p} onClose={() => setEdit(false)} onDone={reload} /> : null}
       {log ? <LogMatchSheet p={p} onClose={() => setLog(false)} onDone={reload} /> : null}
+      {note ? (
+        <FormSheet visible onClose={() => setNote(null)} title="Your note on this match" submitLabel="Save"
+          initial={{ rating: note.rating ?? '', notes: note.notes ?? '' }}
+          fields={[{ key: 'rating', label: 'Your rating (0–10)', optional: true, type: 'number', hint: 'Private to you. Never changes the official result.' }, { key: 'notes', label: 'Notes', optional: true, type: 'multiline' }]}
+          onSubmit={async (v) => { await api.post(`/me/official-matches/${note.source_type}/${note.source_id}/note`, { rating: v.rating === '' || v.rating === undefined ? null : Number(v.rating), notes: v.notes || null }); await reload(); return 'Note saved'; }} />
+      ) : null}
+      {linking ? (
+        <FormSheet visible onClose={() => setLinking(null)} title="Link to the official match" submitLabel="Link — count it once"
+          fields={[{ key: 'pick', label: 'This looks like an official match already in SportArena. Link them so it is counted once.', type: 'choice', options: linking.cand.map((x) => ({ value: `${x.source_type}:${x.source_id}`, label: `${day(x.played_on + 'T12:00:00')} · ${x.opponent ? `vs ${x.opponent}` : x.title ?? 'Match'}${x.competition ? ` · ${x.competition}` : ''}` })) }]}
+          onSubmit={async ({ pick }) => { const [source_type, source_id] = pick.split(':'); await api.post(`/me/matches/${linking.m.id}/link`, { source_type, source_id }); await reload(); return 'Linked'; }} />
+      ) : null}
     </Screen>
   );
 }
