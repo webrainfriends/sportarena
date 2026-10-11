@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { Animated, Text, View } from 'react-native';
-import { api, setToken, setUnauthorizedHandler, storage } from './api';
+import { Platform } from 'react-native';
+import { api, setSessionTokens, setTokensHandler, setUnauthorizedHandler, storage } from './api';
 import { c } from './theme';
 
 const Ctx = createContext(null);
@@ -12,9 +13,17 @@ export function SessionProvider({ children }) {
   const [activeRole, setActive] = useState(null); // which of the user's roles the app is currently showing (view mode)
   const setActiveRole = useCallback((r) => { setActive(r); storage.set('activeRole', r); }, []);
 
-  const signOut = useCallback(async () => { setToken(null); await storage.del('token'); setState({ ready: true, user: null }); }, []);
-  const signIn = useCallback(async ({ token, user }) => {
-    setToken(token); await storage.set('token', token);
+  const signOut = useCallback(async () => {
+    try { await api.post('/auth/logout'); } catch { /* already signed out, or offline: still clear this device */ }
+    setSessionTokens(null);
+    await Promise.all([storage.del('token'), storage.del('refresh')]);
+    setState({ ready: true, user: null });
+  }, []);
+  const signIn = useCallback(async (res) => {
+    // Web: the server set HttpOnly cookies, so the response carries no secret and nothing is stored by the page.
+    // Native: keep the tokens in the platform keychain (SecureStore).
+    if (res.token) { setSessionTokens(res); await storage.set('token', res.token); if (res.refresh_token) await storage.set('refresh', res.refresh_token); }
+    const user = res.user;
     // load the full (decrypted) /me so private fields are available straight away
     let me = user; try { me = await api.get('/me'); } catch {}
     setState({ ready: true, user: me });
@@ -22,14 +31,23 @@ export function SessionProvider({ children }) {
   const refresh = useCallback(async () => { const me = await api.get('/me'); setState((s) => ({ ...s, user: me })); return me; }, []);
 
   useEffect(() => {
-    setUnauthorizedHandler(signOut);
+    // Local-only reset used when the server already says we're signed out (no logout round trip).
+    setUnauthorizedHandler(async () => { setSessionTokens(null); await Promise.all([storage.del('token'), storage.del('refresh')]); setState({ ready: true, user: null }); });
+    setTokensHandler(async (t) => { await storage.set('token', t.token); await storage.set('refresh', t.refresh_token); });
     (async () => {
-      const t = await storage.get('token');
+      if (Platform.OS === 'web') {
+        // Migration: earlier builds kept the bearer token in localStorage where any script could read it. Remove it; the
+        // HttpOnly cookie session (if any) takes over, otherwise the person signs in once more.
+        await storage.del('token'); await storage.del('refresh');
+        try { setState({ ready: true, user: await api.get('/me') }); } catch { setState({ ready: true, user: null }); }
+        return;
+      }
+      const [t, r] = await Promise.all([storage.get('token'), storage.get('refresh')]);
       if (!t) return setState({ ready: true, user: null });
-      setToken(t);
-      try { setState({ ready: true, user: await api.get('/me') }); } catch { await signOut(); }
+      setSessionTokens({ token: t, refresh_token: r });
+      try { setState({ ready: true, user: await api.get('/me') }); } catch { setState({ ready: true, user: null }); }
     })();
-  }, [signOut]);
+  }, []);
 
   const toast = useCallback((msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 2600); }, []);
   useEffect(() => {

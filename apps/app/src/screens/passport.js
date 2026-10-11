@@ -15,14 +15,14 @@ const unitOf = (u) => (u === 's' ? ' s' : u === 'm' ? ' m' : '');
 const AWARD = { cup: '🏆', trophy: '🏅', medal_gold: '🥇', medal_silver: '🥈', medal_bronze: '🥉', mvp: '🌟', badge: '🎖️' };
 
 /** A scannable QR code drawn as one SVG path (white quiet zone included). */
-export function QrCode({ value, size = 200 }) {
+export function QrCode({ value, size = 200, label = "QR code for the passport link" }) {
   const q = qrcode(0, 'M');
   q.addData(value); q.make();
   const n = q.getModuleCount(), quiet = 2, total = n + quiet * 2;
   let d = '';
   for (let r = 0; r < n; r++) for (let col = 0; col < n; col++) if (q.isDark(r, col)) d += `M${col + quiet} ${r + quiet}h1v1h-1z`;
   return (
-    <View accessible accessibilityLabel="QR code for the passport link" style={{ width: size, height: size, backgroundColor: '#fff', borderRadius: 12, overflow: 'hidden' }}>
+    <View accessible accessibilityLabel={label} style={{ width: size, height: size, backgroundColor: '#fff', borderRadius: 12, overflow: 'hidden' }}>
       <Svg width={size} height={size} viewBox={`0 0 ${total} ${total}`}>
         <Rect width={total} height={total} fill="#fff" />
         <Path d={d} fill="#000" />

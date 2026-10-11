@@ -128,7 +128,7 @@ export default function HomeTab() {
   const top = main?.metrics?.[0];
   const topTile = top ? [String(top.metric).replace(/_/g, ' ').replace(/^./, (ch) => ch.toUpperCase()), Number.isInteger(+top.total) ? +top.total : (+top.total).toFixed(1)] : null;
   const tiles = [
-    age !== null ? ['Age', age] : null, ['Matches', sports.data ? matches : '–'], topTile, ['Points', dash.data?.points ?? '–'], ['Trophies', dash.data?.trophies ?? '–'],
+    age !== null ? ['Age', age] : null, ['Matches', sports.data ? matches : '–'], ['Official pts', dash.data?.points ?? '–', dash.data ? ['Approved results', dash.data.practice_entries ? `${dash.data.practice_entries} practice (not ranked)` : null, dash.data.pending_results ? `${dash.data.pending_results} awaiting approval` : null].filter(Boolean).join(' · ') : null], topTile, ['Trophies', dash.data?.trophies ?? '–'],
   ].filter(Boolean).slice(0, 3);
   const wrap = { paddingHorizontal: pad, width: '100%', maxWidth: COL, alignSelf: 'center' };
 

@@ -15,8 +15,33 @@ export const mediaUrl = (u) => (!u ? null : /^https?:/.test(u) ? u : `${API.repl
 /** Absolute MCP endpoint for display (API may be a same-origin relative path on web). */
 export const MCP_URL = (API.startsWith('/') && typeof location !== 'undefined' ? location.origin : '') + API.replace('/api/v1', '/mcp');
 
+const isWeb = Platform.OS === 'web';
+// Native: the access + refresh tokens live in memory and in the platform keychain (SecureStore). Web: they are HttpOnly cookies that
+// JavaScript cannot read, so there is nothing to keep here; the page only echoes the (non-secret) CSRF cookie back as a header.
 let token = null;
-export const setToken = (t) => { token = t; };
+let refreshToken = null;
+export const setSessionTokens = (t) => { if (isWeb) return; token = t?.token ?? null; refreshToken = t?.refresh_token ?? null; };
+let onTokens = () => {};
+export const setTokensHandler = (fn) => { onTokens = fn; };
+const csrfToken = () => { try { const m = /(?:^|; )sa_csrf=([^;]+)/.exec(document.cookie); return m ? decodeURIComponent(m[1]) : null; } catch { return null; } };
+const webAuth = () => (isWeb ? { 'x-sa-client': 'web', ...(csrfToken() ? { 'x-csrf-token': csrfToken() } : {}) } : {});
+const withAuth = (h = {}) => ({ ...h, ...(token ? { authorization: `Bearer ${token}` } : {}), ...webAuth() });
+const creds = isWeb ? { credentials: 'include' } : {};
+/** True when a sign-in exists that could be refreshed (native tokens held, or web where the cookie is invisible to us). */
+const canRefresh = () => (isWeb ? Boolean(csrfToken()) : Boolean(refreshToken));
+let refreshing = null;
+/** Exchange the refresh token for new ones. Serialised: parallel callers share one request (rotation allows each token only once). */
+export function refreshSession() {
+  refreshing ??= (async () => {
+    try {
+      const res = await fetch(`${API}/auth/refresh`, { method: 'POST', ...creds, headers: withAuth({ 'content-type': 'application/json' }), body: JSON.stringify(isWeb ? {} : { refresh_token: refreshToken }) });
+      if (!res.ok) return false;
+      if (!isWeb) { const b = await res.json(); setSessionTokens(b); onTokens(b); }
+      return true;
+    } catch { return false; } finally { refreshing = null; }
+  })();
+  return refreshing;
+}
 let onUnauthorized = () => {};
 export const setUnauthorizedHandler = (fn) => { onUnauthorized = fn; };
 
@@ -30,12 +55,12 @@ export class ApiError extends Error {
   }
 }
 
-async function request(method, path, data) {
+async function request(method, path, data, retried = false) {
   const qs = (method === 'GET' || method === 'DELETE') && data ? '?' + new URLSearchParams(Object.entries(data).filter(([, v]) => v !== undefined && v !== null && v !== '').map(([k, v]) => [k, String(v)])) : '';
   let res;
   try {
     res = await fetch(`${API}${path}${qs}`, {
-      method, headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) },
+      method, ...creds, headers: withAuth({ 'content-type': 'application/json' }),
       body: method !== 'GET' && method !== 'DELETE' && data ? JSON.stringify(data) : undefined,
     });
   } catch {
@@ -43,7 +68,8 @@ async function request(method, path, data) {
   }
   const body = await res.json().catch(() => null);
   if (!res.ok) {
-    if (res.status === 401 && token) onUnauthorized();
+    if (res.status === 401 && !retried && !path.startsWith('/auth/') && canRefresh() && await refreshSession()) return request(method, path, data, true);
+    if (res.status === 401 && (token || isWeb) && !path.startsWith('/auth/')) onUnauthorized();
     throw new ApiError(res.status, body);
   }
   return body;
@@ -53,7 +79,7 @@ async function request(method, path, data) {
 async function upload(path, blob, query = {}) {
   const qs = new URLSearchParams(Object.entries(query).filter(([, v]) => v)).toString();
   let res;
-  try { res = await fetch(`${API}${path}${qs ? `?${qs}` : ''}`, { method: 'PUT', headers: { 'content-type': blob.type || 'application/octet-stream', ...(token ? { authorization: `Bearer ${token}` } : {}) }, body: blob }); }
+  try { res = await fetch(`${API}${path}${qs ? `?${qs}` : ''}`, { method: 'PUT', ...creds, headers: withAuth({ 'content-type': blob.type || 'application/octet-stream' }), body: blob }); }
   catch { throw new ApiError(0, { error: { message: `Can't reach the SportArena server at ${API}` } }); }
   const body = await res.json().catch(() => null);
   if (!res.ok) throw new ApiError(res.status, body);
@@ -63,12 +89,12 @@ async function upload(path, blob, query = {}) {
 /** Fetch a protected file (it needs the sign-in header, so it cannot be a plain link). Resolves to a Blob. */
 async function download(path) {
   let res;
-  try { res = await fetch(`${API}${path}`, { headers: token ? { authorization: `Bearer ${token}` } : {} }); }
+  try { res = await fetch(`${API}${path}`, { ...creds, headers: withAuth() }); }
   catch { throw new ApiError(0, { error: { message: `Can't reach the SportArena server at ${API}` } }); }
   if (!res.ok) throw new ApiError(res.status, await res.json().catch(() => null));
   return res.blob();
 }
-export const authHeader = () => (token ? { authorization: `Bearer ${token}` } : {});
+export const authHeader = () => (token ? { authorization: `Bearer ${token}` } : {}); // web: empty - the cookie is sent by the browser
 
 export const api = {
   get: (p, q) => request('GET', p, q),

@@ -112,6 +112,7 @@ test('coach hours drive bookable slots; booking off-grid is refused; profile sho
   // review needs a completed session, by the athlete, once
   assert.equal((await api('POST', `/hires/${hire.id}/review`, { token: athlete.token, body: { rating: 5 } })).status, 409);
   ok(await api('PATCH', `/hires/${hire.id}`, { token: coach.token, body: { status: 'confirmed' } }));
+  await pool.query("UPDATE coach_hires SET starts_at = now() - interval '2 hours' WHERE id=$1", [hire.id]); // it has to have started to be completed
   ok(await api('PATCH', `/hires/${hire.id}`, { token: coach.token, body: { status: 'completed' } }));
   assert.equal((await api('POST', `/hires/${hire.id}/review`, { token: coach.token, body: { rating: 5 } })).status, 403);
   const review = ok(await api('POST', `/hires/${hire.id}/review`, { token: athlete.token, body: { rating: 4, body: 'Sharp drills' } }), 201);

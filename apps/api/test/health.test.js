@@ -13,10 +13,11 @@ const api = async (method, path, { token, body, query } = {}) => {
 };
 const must = (r, status = 200) => { assert.equal(r.status, status, JSON.stringify(r.body)); return r.body; };
 const signup = async (roles = ['athlete'], name) => { n++; const r = await api('POST', '/auth/register', { body: { handle: `hl_${n}_${roles[0]}`, display_name: name ?? `Health ${n}`, email: `hl${n}@example.com`, password: 'correct-horse-battery', roles } }); assert.equal(r.status, 201); return { ...r.body.user, token: r.body.token }; };
-const provider = async (role, name, sport = 'football', profile) => {
+const provider = async (role, name, sport = 'football', profile, verified = true) => {
   const u = await signup([role], name);
   must(await api('POST', '/me/sport-profiles', { token: u.token, body: { sport, role, hourly_rate_cents: 60000 } }), 201);
   if (profile) must(await api('POST', '/me/provider-profile', { token: u.token, body: { provider_type: role, ...profile } }));
+  if (verified) await verify(u, role);
   return u;
 };
 const verify = (u, type) => pool.query("INSERT INTO verification_cases(type, subject_type, subject_id, requested_by, status, rules_version, decided_at, expires_at) VALUES ($1,'user',$2,$2,'approved',1,now(), now() + interval '300 days')", [type, u.id]);
@@ -33,11 +34,10 @@ after(async () => { server.close(); await pool.end(); });
 
 test('provider profile + search: public-safe fields, filters, sorts, pagination, empty state', async () => {
   const ana = await provider('physio', 'Ana Physio', 'football', { headline: 'Sports injury rehab', bio: 'Ten years in football rehab', clinic: 'Core Clinic', city: 'Pune', remote_ok: true, languages: ['English', 'Hindi'], specialties: ['knee', 'acl'], consult_fee_cents: 80000 });
-  const raj = await provider('doctor', 'Raj Doctor', 'tennis', { city: 'Mumbai', specialties: ['sports medicine'], languages: ['English'], consult_fee_cents: 150000, accepting_patients: false });
-  const sam = await provider('physio', 'Sam Legacy', 'football'); // sport profile only, no provider profile
-  const hidden = await provider('physio', 'Hidden Hank', 'football', { city: 'Pune', listed: false });
+  const raj = await provider('doctor', 'Raj Doctor', 'tennis', { city: 'Mumbai', specialties: ['sports medicine'], languages: ['English'], consult_fee_cents: 150000, accepting_patients: false }, false);
+  const sam = await provider('physio', 'Sam Legacy', 'football', undefined, false); // sport profile only, no provider profile, not verified
+  const hidden = await provider('physio', 'Hidden Hank', 'football', { city: 'Pune', listed: false }, false);
   const patient = await signup(['athlete']);
-  await verify(ana, 'physio');
   must(await api('POST', '/testimonials', { token: patient.token, body: { subject_type: 'user', subject_id: ana.id, rating: 5, body: 'Great rehab plan' } }), 201);
 
   assert.equal((await api('POST', '/me/provider-profile', { token: patient.token, body: { provider_type: 'physio' } })).status, 403, 'only providers');
