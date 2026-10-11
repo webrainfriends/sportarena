@@ -5,7 +5,7 @@ import { Pressable, ScrollView, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
-import { A, AAvatar, ABtn, ACard, AChip, AEmpty, AHero, AScreen, ASection, AT, ATabs, AG, DeptChip, ReasonSheet } from '../arena';
+import { A, AAvatar, ABtn, ACard, AChip, AEmpty, ASection, AT, ATabs, DeptChip, ReasonSheet } from '../arena';
 import { EntityPicker } from '../entity-picker';
 import { ErrorBox, Field, Loading, Sheet, T } from '../ui';
 import { DateField, TimeField } from '../pickers';
@@ -16,25 +16,33 @@ const hhmm = (iso) => new Date(iso).toLocaleTimeString([], { hour: 'numeric', mi
 // a local calendar date + time of day -> an instant the API accepts
 const instant = (date, time) => (date && time ? new Date(`${date}T${time}:00`).toISOString() : undefined);
 
-export function EventBoard({ id }) {
-  const { user } = useSession();
-  const ev = useLoad(() => api.get(`/events/${id}`), [id]);
-  if (ev.error) return <AScreen><ErrorBox error={ev.error} onRetry={ev.reload} /></AScreen>;
-  if (!ev.data) return <AScreen><Loading /></AScreen>;
+/** The older planning checklist (a plain task list) lives on a board now: one place for tasks. Offered once, safe to repeat, nothing is removed. */
+function ChecklistImport({ id, onDone }) {
+  const { toast } = useSession();
+  const pending = useLoad(() => api.post(`/events/${id}/tasks/import`, { dry_run: true }), [id]);
+  const [busy, setBusy] = useState(false);
+  if (!pending.data?.pending) return null;
+  const go = async () => {
+    setBusy(true);
+    try { const r = await api.post(`/events/${id}/tasks/import`, {}); toast(`${r.imported} task${r.imported === 1 ? '' : 's'} are on the board`); pending.reload(); onDone(); } catch (x) { toast('' + x.message); } finally { setBusy(false); }
+  };
   return (
-    <AScreen>
-      <AHero kicker="Plans & boards" title={ev.data.name} sub="Every department's tasks, in one place" tone={AG.lime} emoji="🗂️" />
-      <BoardTab id={id} isOrg={!!user && (ev.data.organizer_id === user.id || user.roles?.includes('admin'))} />
-    </AScreen>
+    <ACard tone={A.cyan} style={{ gap: 8 }}>
+      <AT size={16} weight="900">📋 {pending.data.pending} task{pending.data.pending === 1 ? '' : 's'} in your planning checklist</AT>
+      <AT size={13} color={A.mute}>Bring them onto a board so the whole team works from one place. The original list is kept.</AT>
+      <ABtn small title="Bring them onto a board" tone="neon" onPress={go} loading={busy} style={{ alignSelf: 'flex-start' }} />
+    </ACard>
   );
 }
 
 export function BoardTab({ id, isOrg }) {
   const [view, setView] = useState('board');
+  const [version, setVersion] = useState(0);
   return (
     <>
       <ATabs value={view} onChange={setView} tabs={[{ key: 'board', label: 'Boards', icon: '🗂️' }, { key: 'mine', label: 'My day', icon: '☀️' }, { key: 'timeline', label: 'Run sheet', icon: '⏱️' }]} />
-      {view === 'board' && <Boards id={id} isOrg={isOrg} />}
+      {view === 'board' && isOrg ? <ChecklistImport id={id} onDone={() => setVersion((v) => v + 1)} /> : null}
+      {view === 'board' && <Boards key={version} id={id} isOrg={isOrg} />}
       {view === 'mine' && <MyDay id={id} />}
       {view === 'timeline' && <RunSheet id={id} />}
     </>

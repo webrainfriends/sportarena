@@ -136,3 +136,49 @@ test('schedules: my schedule spans events; event timeline is time-ordered and sc
   assert.equal(plans.body[0].counts.done, 1);
   assert.ok(dept.id);
 });
+
+test('the older planning checklist comes onto a board once, keeping the original tasks', async () => {
+  const org = await signup(['organizer']), other = await signup(['organizer']);
+  const ev = (await api('POST', '/events', { token: org.token, body: { name: `Import Cup ${++n}`, sport: 'football', starts_on: '2031-08-10', ends_on: '2031-08-11' } })).body;
+  const mk = async (b) => (await api('POST', `/events/${ev.id}/tasks`, { token: org.token, body: b })).body;
+  const t1 = await mk({ title: 'Book the ground', category: 'venue', due_on: '2031-07-01', priority: 'high' });
+  const t2 = await mk({ title: 'Order medals', category: 'equipment', notes: 'Gold, silver, bronze' });
+  const t3 = await mk({ title: 'Ask a sponsor', category: 'sponsors' });
+  const t4 = await mk({ title: 'Drop me', category: 'general' });
+  await api('PATCH', `/event-tasks/${t1.id}`, { token: org.token, body: { status: 'done' } });
+  await api('PATCH', `/event-tasks/${t2.id}`, { token: org.token, body: { status: 'doing' } });
+  await api('PATCH', `/event-tasks/${t3.id}`, { token: org.token, body: { status: 'blocked' } });
+  await api('PATCH', `/event-tasks/${t4.id}`, { token: org.token, body: { status: 'dropped' } });
+
+  assert.equal((await api('POST', `/events/${ev.id}/tasks/import`, { token: other.token, body: {} })).status, 403);
+  const dry = await api('POST', `/events/${ev.id}/tasks/import`, { token: org.token, body: { dry_run: true } });
+  assert.deepEqual(dry.body, { pending: 3, imported: 0 });
+  assert.equal((await api('GET', `/events/${ev.id}/departments`, { token: org.token })).body.length, 0, 'a dry run creates nothing');
+
+  const done = await api('POST', `/events/${ev.id}/tasks/import`, { token: org.token, body: {} });
+  assert.equal(done.status, 200, JSON.stringify(done.body));
+  assert.equal(done.body.imported, 3);
+  const board = (await api('GET', `/plans/${done.body.plan_id}/board`, { token: org.token })).body;
+  const at = (key) => board.columns.find((c) => c.key === key).cards;
+  assert.deepEqual(at('done').map((c) => c.title), ['Book the ground']);
+  assert.ok(at('done')[0].done_at);
+  assert.equal(at('done')[0].priority, 'high');
+  assert.equal(at('done')[0].due_on.slice(0, 10), '2031-07-01');
+  assert.deepEqual(at('doing').map((c) => c.title), ['Order medals']);
+  assert.match(at('doing')[0].description, /Gold, silver, bronze/);
+  assert.deepEqual(at('blocked').map((c) => c.title), ['Ask a sponsor']);
+  assert.ok(at('blocked')[0].blocked_reason);
+  assert.equal(board.columns.flatMap((c) => c.cards).some((c) => c.title === 'Drop me'), false, 'dropped tasks stay behind');
+
+  const again = await api('POST', `/events/${ev.id}/tasks/import`, { token: org.token, body: {} });
+  assert.deepEqual(again.body, { pending: 0, imported: 0 }, 'safe to repeat');
+  const depts = (await api('GET', `/events/${ev.id}/departments`, { token: org.token })).body;
+  assert.equal(depts.length, 1);
+  assert.equal(depts[0].name, 'Event checklist');
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM event_tasks WHERE event_id=$1', [ev.id])).rows[0].n, 4, 'the original tasks are untouched');
+  const late = await mk({ title: 'A newer task', category: 'general' });
+  const more = await api('POST', `/events/${ev.id}/tasks/import`, { token: org.token, body: {} });
+  assert.equal(more.body.imported, 1, 'later tasks come over on the next import');
+  assert.equal(more.body.plan_id, done.body.plan_id, 'into the same board');
+  assert.ok(late.id);
+});

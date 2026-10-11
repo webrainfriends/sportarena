@@ -291,3 +291,154 @@ export function AStepper({ label, value, onChange, min = 0, max = 999, color = A
     </View>
   );
 }
+
+/** Thin progress bar. */
+export const ABar = ({ pct = 0, color = A.violet, height = 8 }) => (
+  <View style={{ height, borderRadius: height / 2, backgroundColor: A.panel2, overflow: 'hidden' }}>
+    <View style={{ width: `${Math.max(0, Math.min(100, pct))}%`, height, borderRadius: height / 2, backgroundColor: color }} />
+  </View>
+);
+
+/** Round team badge: the team's colour with its emoji. */
+export const ACrest = ({ emoji, color = A.violet, size = 44, ring }) => (
+  <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: color, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: ring ?? 'rgba(255,255,255,0.35)' }}>
+    <Text style={{ fontSize: size * 0.5 }}>{emoji ?? '🛡️'}</Text>
+  </View>
+);
+
+/** A list row: left visual, title and sub-line, optional right side. */
+export function ARow({ left, title, sub, right, onPress, tone }) {
+  return (
+    <ACard onPress={onPress} pad={12} tone={tone}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        {left}
+        <View style={{ flex: 1 }}>
+          <AT size={15} weight="800">{title}</AT>
+          {sub ? <AT size={12.5} weight="600" color={A.mute} style={{ marginTop: 2 }}>{sub}</AT> : null}
+        </View>
+        {right ? <View style={{ alignItems: 'flex-end', gap: 6 }}>{right}</View> : null}
+      </View>
+    </ACard>
+  );
+}
+
+/** Small coloured status sticker for lists (invited, accepted, applied …). */
+const TAG_TONE = { accepted: A.green, confirmed: A.green, active: A.green, completed: A.green, invited: A.sun, applied: A.cyan, contract_sent: A.sun, pending: A.sun, rejected: A.mute, declined: A.red, withdrawn: A.mute, released: A.mute, expired: A.mute, closed: A.mute };
+export const ATag = ({ label, tone }) => {
+  const col = tone ?? TAG_TONE[String(label).toLowerCase().replace(/ /g, '_')] ?? A.violet;
+  return <View style={{ alignSelf: 'flex-start', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, backgroundColor: `${col}2E`, borderWidth: 1, borderColor: `${col}88` }}><AT size={10.5} weight="900" color={col} style={{ letterSpacing: 0.8 }}>{String(label).toUpperCase()}</AT></View>;
+};
+
+/** Number tile: icon, big value, caption. */
+export const AStat = ({ icon, value, label, tone }) => (
+  <ACard pad={12} tone={tone} style={{ flexGrow: 1, flexBasis: 78, alignItems: 'center' }}>
+    {icon ? <AT size={20}>{icon}</AT> : null}
+    <AT size={20} weight="900" num style={{ marginTop: 2 }}>{value}</AT>
+    <AT size={10.5} weight="800" color={A.mute} style={{ letterSpacing: 0.8 }}>{String(label).toUpperCase()}</AT>
+  </ACard>
+);
+
+/** Checklist with a progress header; the first unfinished step is lit up with its action. steps: [{ key, title, sub, done, cta, onPress }]. */
+export function ASetupSteps({ title = 'Get the event ready', steps }) {
+  const done = steps.filter((s) => s.done).length;
+  const next = steps.find((s) => !s.done);
+  return (
+    <ACard tone={done === steps.length ? A.green : A.violet} style={{ gap: 4 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+        <AT size={17} weight="900">{done === steps.length ? 'All set 🎉' : title}</AT>
+        <AT size={13} weight="900" color={A.cyan} num>{done}/{steps.length}</AT>
+      </View>
+      <View style={{ marginVertical: 8 }}><ABar pct={(done / steps.length) * 100} color={done === steps.length ? A.green : A.magenta} /></View>
+      {steps.map((s, i) => {
+        const isNext = next?.key === s.key;
+        return (
+          <Pressable key={s.key} onPress={s.onPress} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, borderTopWidth: i ? 1 : 0, borderColor: A.line }}>
+            <View style={{ width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: s.done ? A.green : isNext ? A.magenta : A.panel2 }}>
+              <AT size={12.5} weight="900" color={s.done || isNext ? '#fff' : A.mute}>{s.done ? '✓' : i + 1}</AT>
+            </View>
+            <View style={{ flex: 1 }}>
+              <AT size={14} weight="800" color={s.done ? A.mute : A.ink} style={s.done ? { textDecorationLine: 'line-through' } : null}>{s.title}</AT>
+              {s.sub ? <AT size={12} weight="600" color={A.mute}>{s.sub}</AT> : null}
+            </View>
+            {isNext && s.cta ? <ABtn small title={s.cta} onPress={s.onPress} /> : <AT size={18} color={A.mute}>›</AT>}
+          </Pressable>
+        );
+      })}
+    </ACard>
+  );
+}
+
+// ---------------------------------------------------------------- knockout bracket
+const SLOT_H = 112, CARD_H = 92, COL_W = 196, GAP_W = 30;
+const dayShort = (iso, tz) => new Date(iso).toLocaleDateString([], { day: 'numeric', month: 'short', timeZone: tz || undefined });
+const clockShort = (iso, tz) => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', timeZone: tz || undefined });
+
+function BracketGame({ g, onPress }) {
+  const done = g.status === 'completed';
+  const hw = done && g.winner_team_id === g.home_team_id, aw = done && g.winner_team_id === g.away_team_id;
+  const side = (name, emoji, ph, score, won) => (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, height: CARD_H / 2 - 4, paddingHorizontal: 10, backgroundColor: won ? `${A.green}2E` : 'transparent' }}>
+      <AT size={16}>{name ? emoji ?? '🏅' : '❔'}</AT>
+      <AT size={12} weight={won ? '900' : '600'} color={name ? A.ink : A.mute} numberOfLines={1} style={{ flex: 1 }}>{name ?? ph ?? 'TBD'}</AT>
+      {done ? <AT size={14} weight={won ? '900' : '600'} color={won ? A.ink : A.mute} num>{score}</AT> : null}
+    </View>
+  );
+  return (
+    <Pressable onPress={onPress} disabled={!onPress} style={{ width: COL_W, height: CARD_H, borderRadius: 14, backgroundColor: A.panel, borderWidth: 1, borderColor: done ? `${A.green}99` : g.status === 'live' ? A.red : A.line, overflow: 'hidden', justifyContent: 'center' }}>
+      {side(g.home_name, g.home_emoji, g.home_placeholder, g.home_score, hw)}
+      <View style={{ height: 1, backgroundColor: A.line }} />
+      {side(g.away_name, g.away_emoji, g.away_placeholder, g.away_score, aw)}
+      <AT size={10} color={A.mute} weight="700" style={{ position: 'absolute', right: 8, bottom: 1 }}>{g.status === 'live' ? 'LIVE' : g.status !== 'completed' && g.scheduled_at ? `${dayShort(g.scheduled_at, g.venue_timezone)} ${clockShort(g.scheduled_at, g.venue_timezone)}` : ''}</AT>
+    </Pressable>
+  );
+}
+
+function Connector({ count, height }) {
+  const slot = height / count;
+  return (
+    <View style={{ width: GAP_W, height }}>
+      {Array.from({ length: Math.floor(count / 2) }, (_, i) => (
+        <View key={i} style={{ position: 'absolute', left: 0, top: (2 * i + 0.5) * slot, height: slot, width: GAP_W / 2, borderTopWidth: 2, borderBottomWidth: 2, borderRightWidth: 2, borderColor: A.line }}>
+          <View style={{ position: 'absolute', left: GAP_W / 2 - 2, top: slot / 2 - 1, width: GAP_W / 2 + 2, height: 2, backgroundColor: A.line }} />
+        </View>
+      ))}
+    </View>
+  );
+}
+
+/** The whole knockout as scrolling columns (Round of 16 → … → Final), the bronze game and the champion. onGame(g) opens a game. */
+export function ABracket({ data, onGame }) {
+  const rounds = (data?.rounds ?? []).filter((r) => r.kind !== 'third_place');
+  const third = data?.rounds?.find((r) => r.kind === 'third_place')?.games?.[0];
+  if (!rounds.length) return null;
+  const R = rounds.length, H = 2 ** (R - 1) * SLOT_H;
+  return (
+    <View style={{ gap: 12 }}>
+      {data.champion ? (
+        <View style={[{ borderRadius: 22, overflow: 'hidden' }, glow(A.sun, 0.35, 18)]}>
+          <LinearGradient colors={AG.sun} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ padding: 16, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <AT size={40}>🏆</AT>
+            <View style={{ flex: 1 }}><AT size={12} weight="900" color="#0A0716" style={{ letterSpacing: 1.2 }}>CHAMPIONS</AT><AT size={22} weight="900" color="#0A0716">{data.champion.name}</AT></View>
+          </LinearGradient>
+        </View>
+      ) : null}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingVertical: 6, paddingHorizontal: 2 }}>
+        {rounds.map((r, i) => {
+          const slots = 2 ** (R - 1 - i), slotH = H / slots;
+          return (
+            <React.Fragment key={r.kind}>
+              <View style={{ width: COL_W }}>
+                <AT size={12} weight="800" color={A.mute} style={{ marginBottom: 8, letterSpacing: 0.6 }}>{r.label.toUpperCase()}</AT>
+                <View style={{ height: H }}>
+                  {r.games.map((g) => <View key={g.id} style={{ position: 'absolute', top: (g.slot ?? 0) * slotH + (slotH - CARD_H) / 2 }}><BracketGame g={g} onPress={onGame ? () => onGame(g) : undefined} /></View>)}
+                </View>
+              </View>
+              {i < R - 1 ? <View style={{ paddingTop: 28 }}><Connector count={slots} height={H} /></View> : null}
+            </React.Fragment>
+          );
+        })}
+      </ScrollView>
+      {third ? <View style={{ gap: 6 }}><AT size={12} weight="800" color={A.mute} style={{ letterSpacing: 0.6 }}>THIRD PLACE</AT><BracketGame g={third} onPress={onGame ? () => onGame(third) : undefined} /></View> : null}
+    </View>
+  );
+}

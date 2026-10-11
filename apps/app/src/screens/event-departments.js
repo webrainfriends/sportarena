@@ -5,7 +5,7 @@ import { Switch, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
-import { A, AAvatar, ABtn, ACard, AChip, AEmpty, AHero, AScreen, ASection, AT, AG, DeptChip } from '../arena';
+import { A, AAvatar, ABtn, ACard, AChip, AEmpty, ASection, AT, DeptChip } from '../arena';
 import { EntityPicker } from '../entity-picker';
 import { ErrorBox, Field, Loading, Sheet, T } from '../ui';
 import { Counter } from '../pickers';
@@ -28,19 +28,6 @@ function DobField({ value, onChange }) {
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{MONTHS.map((n, i) => <AChip key={n} label={n} active={m === i + 1} onPress={() => put(y, i + 1, d)} />)}</View>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}><T weight="700">Day</T><Counter value={Math.min(d, days)} onChange={(x) => put(y, m, x)} min={1} max={days} /></View>
     </View>
-  );
-}
-
-export function EventDepartments({ id }) {
-  const { user } = useSession();
-  const ev = useLoad(() => api.get(`/events/${id}`), [id]);
-  if (ev.error) return <AScreen><ErrorBox error={ev.error} onRetry={ev.reload} /></AScreen>;
-  if (!ev.data) return <AScreen><Loading /></AScreen>;
-  return (
-    <AScreen>
-      <AHero kicker="Departments" title={ev.data.name} sub="Teams behind the event, and who is in them" tone={AG.neon} emoji="🧩" />
-      <DepartmentsTab id={id} isOrg={!!user && (ev.data.organizer_id === user.id || user.roles?.includes('admin'))} />
-    </AScreen>
   );
 }
 

@@ -130,7 +130,7 @@ export function ScoreSheet({ id }) {
         ) : null}
         {v.organiser && s.status === 'published' ? <ABtn title="Correct this result" tone="ghost" small onPress={() => setAsk('revise')} /> : null}
         {(v.can_score || v.organiser) ? <ABtn title="🤖 AI review" tone="neon" small loading={busy} onPress={async () => { const r = await run(() => api.post(`/score-sheets/${s.id}/ai/review`)); if (r) setReview(r); }} /> : null}
-        {s.status === 'published' ? <ABtn title="See event results" tone="neon" small onPress={() => push('EventResults', { id: f.event_id })} /> : null}
+        {s.status === 'published' ? <ABtn title="See event results" tone="neon" small onPress={() => push('EventCommand', { id: f.event_id, tab: 'results' })} /> : null}
       </View>
 
       {review ? (
