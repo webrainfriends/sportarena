@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { cap, id, page } from '../registry.js';
 import { one, many, query, tx } from '../db.js';
 import { notify } from '../notify.js';
-import { assertTransition } from '../lifecycle.js';
+import { assertTransition, setTransitionContext, refundKey, timelineFor } from '../lifecycle.js';
 import { isBookable } from '../health/slots.js';
 import { config } from '../config.js';
 import { paymentsEnabled, refundFor } from '../payments/service.js';
@@ -82,16 +82,17 @@ cap({
 cap({
   name: 'update_appointment', method: 'PATCH', path: '/appointments/:id', tag: 'Health',
   summary: 'Provider confirms/completes; either party can cancel. Moves follow the shared lifecycle (src/lifecycle.js): requested -> confirmed -> completed, cancel until completed, unanswered requests expire on their own. Completing needs payment (if required) and a start time that has passed. A final appointment (completed, cancelled, expired) cannot be changed. The other party is notified.',
-  input: z.object({ id, status: z.enum(['confirmed', 'completed', 'cancelled']) }),
+  input: z.object({ id, status: z.enum(['confirmed', 'completed', 'cancelled']), reason: z.string().trim().max(500).optional().describe('why (kept, encrypted, in the appointment timeline)') }),
   async handler({ user }, i) {
     return tx(async (c) => {
       const a = (await c.query('SELECT * FROM appointments WHERE id=$1 FOR UPDATE', [i.id])).rows[0];
       if (!a) throw notFound('Appointment');
       const isProvider = a.provider_id === user.id, isAthlete = a.athlete_id === user.id;
       assertTransition(a, i.status, { isProvider, isCustomer: isAthlete, isAdmin: isAdmin(user) }, { noun: 'appointment', customerWord: 'athlete' });
+      await setTransitionContext(c, user.id, i.reason);
       let payment = a.payment_status;
       if (i.status === 'cancelled' && a.payment_status === 'paid') {
-        await refundFor('appointment', a.id);      // refund at the provider first; if it refuses nothing is cancelled
+        await refundFor('appointment', a.id, { key: refundKey('appointment', a.id) });      // refund at the provider first; if it refuses nothing is cancelled
         payment = 'refunded';
       }
       const row = (await c.query('UPDATE appointments SET status=$2, payment_status=$4, updated_at=now(), cancelled_by=CASE WHEN $2 = \'cancelled\' THEN $3::uuid ELSE cancelled_by END WHERE id=$1 AND status=$5 RETURNING id, athlete_id, provider_id, starts_at, duration_min, status, payment_status', [i.id, i.status, user.id, payment, a.status])).rows[0];
@@ -103,6 +104,17 @@ cap({
       if (other !== user.id) await notify(c, other, { kind: 'appointment_update', title: `Appointment ${i.status}`, body: 'Open Health to see the details.', data: { appointment_id: a.id } });
       return row;
     });
+  },
+});
+
+cap({
+  name: 'get_appointment_timeline', method: 'GET', path: '/appointments/:id/timeline', tag: 'Health',
+  summary: 'The append-only history of one appointment (who moved it from which status to which, when, why and the payment state), oldest first. Only the athlete and the provider can read it; reasons are decrypted for them and the read is audit-logged.',
+  input: z.object({ id, ...page }),
+  async handler({ user }, i) {
+    const a = await mustFind('appointments', i.id, 'id, athlete_id, provider_id, status');
+    if (a.athlete_id !== user.id && a.provider_id !== user.id) throw forbidden();
+    return { appointment_id: a.id, status: a.status, entries: await timelineFor('appointment', a.id, user.id, i) };
   },
 });
 

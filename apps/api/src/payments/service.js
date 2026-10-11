@@ -83,11 +83,11 @@ export async function settle(paymentId, result) {
 }
 
 /** Refund a paid payment at the provider and mark it refunded. Throws if the provider refuses. */
-export async function refund(payment) {
+export async function refund(payment, { key } = {}) {
   if (payment.status !== 'paid') return;
   if (!payment.provider_payment_ref) throw new AppError(409, 'refund_unavailable', 'No provider reference to refund');
-  await provider(payment.provider).refund(payment.provider_payment_ref, payment.id);
-  await one("UPDATE payments SET status='refunded', refunded_at=now(), refunded_cents=amount_cents WHERE id=$1", [payment.id]);
+  await provider(payment.provider).refund(payment.provider_payment_ref, payment.id, key ? { key } : undefined);
+  await one("UPDATE payments SET status='refunded', refunded_at=now(), refunded_cents=amount_cents WHERE id=$1 AND status='paid'", [payment.id]);
 }
 
 /** Give back part of a paid payment (a credit note). `key` makes the provider call idempotent so a retry can't refund twice. Returns the amount refunded. */
@@ -102,9 +102,9 @@ export async function refundPartial(payment, amount, key) {
 }
 
 /** Refund whatever was paid for this purpose (called when the buyer cancels). */
-export async function refundFor(type, id) {
-  const paid = await many("SELECT * FROM payments WHERE purpose_type=$1 AND purpose_id=$2 AND status='paid'", [type, id]);
-  for (const p of paid) await refund(p);
+export async function refundFor(type, id, { key } = {}) {
+  const paid = await many("SELECT * FROM payments WHERE purpose_type=$1 AND purpose_id=$2 AND status='paid' ORDER BY created_at, id", [type, id]);
+  for (const p of paid) await refund(p, key ? { key: `${key}-${p.id}` } : undefined);
   return paid.length > 0;
 }
 
