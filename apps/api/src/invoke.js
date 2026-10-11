@@ -1,6 +1,7 @@
 import { ZodError } from 'zod';
 import { AppError, forbidden, unauthorized } from './errors.js';
 import { hasRole } from './helpers.js';
+import { enforceResources, enforceScope } from './scopes.js';
 
 /** The one place a capability is executed — REST and MCP both go through here. */
 export async function invoke(capability, user, rawInput) {
@@ -9,7 +10,10 @@ export async function invoke(capability, user, rawInput) {
     if (!user) throw unauthorized();
     if (Array.isArray(auth) && !hasRole(user, ...auth)) throw forbidden(`Requires one of the roles: ${auth.join(', ')}`);
   }
+  enforceScope(user?.credential, capability);
   const input = capability.input.parse(rawInput ?? {});
+  // API tokens: the token's scope/resources AND the user's own permissions must both allow it (checked before the handler runs).
+  enforceResources(user?.credential, capability, input);
   return capability.handler({ user }, input);
 }
 
