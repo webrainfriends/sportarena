@@ -1,6 +1,7 @@
 // "Arena": the vibrant look of the event command centre — electric gradients on a deep midnight canvas, bold type, glowing
 // live states and sticker-like chips, made for a Gen-Z crowd that lives on its phone. Event screens opt in by using these
 // components; the rest of the app keeps its calmer theme. Fixed dark palette on purpose: scoreboards read best that way.
+import { locale } from './locale';
 import React, { useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, Animated, Easing, Platform, Pressable, ScrollView, Text, View, ActivityIndicator } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -370,8 +371,8 @@ export function ASetupSteps({ title = 'Get the event ready', steps }) {
 
 // ---------------------------------------------------------------- knockout bracket
 const SLOT_H = 112, CARD_H = 92, COL_W = 196, GAP_W = 30;
-const dayShort = (iso, tz) => new Date(iso).toLocaleDateString([], { day: 'numeric', month: 'short', timeZone: tz || undefined });
-const clockShort = (iso, tz) => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', timeZone: tz || undefined });
+const dayShort = (iso, tz) => new Date(iso).toLocaleDateString(locale, { day: 'numeric', month: 'short', timeZone: tz || undefined });
+const clockShort = (iso, tz) => new Date(iso).toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit', timeZone: tz || undefined });
 
 function BracketGame({ g, onPress }) {
   const done = g.status === 'completed';

@@ -4,7 +4,7 @@ import { useSession } from './session';
 import { Btn, Chip, Field, Sheet, T } from './ui';
 import { Icon } from './icons';
 import { c, themeMode, scheme, THEME_KEY } from './theme';
-import { LOCALE_KEY, LOCALES, deviceZone, followsDevice, locale, localeLabel, asLocale, fmtDateTime } from './locale';
+import { LOCALE_KEY, LOCALES, deviceZone, followsDevice, locale, localeLabel, asLocale, fmtDateTime, localeSearchText } from './locale';
 import { storage } from './storage';
 
 // Theme and language are read when the app loads (screens bake the tokens in), so a change is stored and the app restarts.
@@ -23,7 +23,7 @@ export function AccountSheet({ visible, onClose }) {
   const [open, setOpen] = useState(false);
   const pickTheme = async (m) => { if (m === themeMode) return; await remember(THEME_KEY, m === 'system' ? null : m); restart(); };
   const pickLocale = async (tag) => { if (tag === locale && !followsDevice) return; await remember(LOCALE_KEY, tag); restart(); };
-  const list = LOCALES.filter((t) => `${localeLabel(t)} ${t}`.toLowerCase().includes(q.trim().toLowerCase())).slice(0, 40);
+  const list = LOCALES.filter((t) => localeSearchText(t).includes(q.trim().toLowerCase())).slice(0, 40);
   const typed = asLocale(q);
   return (
     <Sheet visible={visible} onClose={onClose} title={user ? `@${user.handle}` : 'Account'}>

@@ -67,6 +67,15 @@ export const localeLabel = (tag) => {
     return `${lang}${region ? ` · ${region}` : ''} (${tag})`;
   } catch { return tag; }
 };
+/** Everything a locale can be found by: its own-language label, the English names of language and country, and the tag. */
+export const localeSearchText = (tag) => {
+  try {
+    const l = new Intl.Locale(tag);
+    const en = new Intl.DisplayNames(['en'], { type: 'language' }).of(l.language);
+    const enRegion = l.region ? new Intl.DisplayNames(['en'], { type: 'region' }).of(l.region) : '';
+    return `${localeLabel(tag)} ${en} ${enRegion} ${tag}`.toLowerCase();
+  } catch { return String(tag).toLowerCase(); }
+};
 /** Any valid BCP 47 tag the person types (e.g. "en-SG") can be chosen even if it is not in the list. */
 export const asLocale = (text) => { const t = String(text).trim().replace(/_/g, '-'); return /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(t) && valid(t) ? t : null; };
 

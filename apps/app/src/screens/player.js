@@ -5,10 +5,12 @@ import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { useNav } from '../nav';
 import { useLayout } from '../layout';
-import { Btn, Card, Empty, ErrorBox, H1, H2, Loading, Screen, Seg, T } from '../ui';
+import { Btn, Card, Chip, Empty, ErrorBox, H1, H2, Loading, Screen, Seg, T } from '../ui';
+import { HScroll } from '../pickers';
 import { FormSheet } from '../FormSheet';
 import { c, fam, toneFor, day } from '../theme';
 import { FavouriteSports } from '../sportpicker';
+import { RecordsSection } from './performance';
 import { Billboard, Shop, Insure, useCols } from './marketplace';
 import { Hire } from './coaching';
 
@@ -301,6 +303,7 @@ export function SportProfile({ id, embedded, onChanged, onRemoved }) {
   const { toast } = useSession();
   const prof = useLoad(() => api.get('/me/sport-profiles'), []);
   const [src, setSrc] = useState('all');
+  const [season, setSeason] = useState('all');
   const matches = useLoad(() => api.get('/me/matches', { sport_profile_id: id, source: src, limit: 100 }), [id, src]);
   const [edit, setEdit] = useState(false);
   const [note, setNote] = useState(null);
@@ -314,6 +317,8 @@ export function SportProfile({ id, embedded, onChanged, onRemoved }) {
   if (!p) return <Screen><Empty title="Sport profile not found" /></Screen>;
   const tone = toneFor(p.sport_slug);
   const s = p.summary;
+  const seasons = [...new Set((matches.data ?? []).map((m) => m.played_on.slice(0, 4)))];
+  const shown = (matches.data ?? []).filter((m) => season === 'all' || m.played_on.startsWith(season));
   const act = (fn, msg) => async () => { try { await fn(); await reload(); if (msg) toast(msg); } catch (e) { toast(e.message); } };
 
   return (
@@ -361,14 +366,18 @@ export function SportProfile({ id, embedded, onChanged, onRemoved }) {
         </>
       ) : null}
 
+      <H2 style={{ marginTop: 24 }}>Personal records</H2>
+      <View style={{ marginTop: 10 }}><RecordsSection sport={p.sport_slug} /></View>
+
       <H2 style={{ marginTop: 24 }}>Match log</H2>
       <View style={{ marginTop: 10 }}>
         <Seg options={[{ value: 'all', label: 'All' }, { value: 'official', label: `Official${p.official_summary?.matches ? ` · ${p.official_summary.matches}` : ''}` }, { value: 'self', label: 'My logs' }]} value={src} onChange={setSrc} />
       </View>
+      {seasons.length > 1 ? <View style={{ marginTop: 10 }}><HScroll><Chip label="All seasons" active={season === 'all'} onPress={() => setSeason('all')} />{seasons.map((y) => <Chip key={y} label={y} active={season === y} onPress={() => setSeason(y)} />)}</HScroll></View> : null}
       <View style={{ gap: 10, marginTop: 10 }}>
-        {matches.loading && !matches.data ? <Loading /> : !matches.data?.length ? (
+        {matches.loading && !matches.data ? <Loading /> : !shown.length ? (
           <Empty emoji="📋" title="No matches yet" sub="Matches you log yourself or play in through SportArena events will appear here automatically." />
-        ) : matches.data.map((m) => {
+        ) : shown.map((m) => {
           const [l, fg, bg] = RESULT[m.result] ?? [null];
           const official = m.provenance.startsWith('official');
           const tag = official ? (m.event_id ? 'Verified competition' : 'Official match') : m.provenance === 'imported' ? 'Imported by you' : 'Logged by you';
@@ -399,7 +408,7 @@ export function SportProfile({ id, embedded, onChanged, onRemoved }) {
                 ) : (
                   <>
                     <Pressable hitSlop={8} onPress={async () => { try { const cand = await api.get(`/me/matches/${m.id}/link-candidates`); if (!cand.length) toast('No official match found for that day'); else setLinking({ m, cand }); } catch (e) { toast(e.message); } }}><T size={13} weight="700" color={tone[0]}>Link to official match</T></Pressable>
-                    <Pressable hitSlop={10} onPress={act(() => api.del(`/me/matches/${m.id}`), 'Match deleted')}><T size={13} color={c.mute} weight="700">Delete</T></Pressable>
+                    <Pressable hitSlop={10} onPress={act(() => api.del(`/me/matches/${m.id}`), 'Match removed')}><T size={13} color={c.mute} weight="700">Remove</T></Pressable>
                   </>
                 )}
                 {m.linked_match_id ? <Pressable hitSlop={8} onPress={act(() => api.post(`/me/matches/${m.linked_match_id}/unlink`), 'Unlinked — your log counts on its own again')}><T size={13} weight="700" color={c.mute}>Unlink</T></Pressable> : null}

@@ -1,6 +1,7 @@
 // Coaching, both sides of the marketplace.
 //   Athlete: Hire (find a coach · post a request · my coaching) -> CoachProfile -> BookCoachSheet, CoachRequest (compare answers).
 //   Coach:   CoachDesk (confirm, complete, earnings, reviews), CoachBoard (answer requests), CoachSetup (profile + weekly hours).
+import { locale } from '../locale';
 import React, { useEffect, useState } from 'react';
 import { Linking, Pressable, View } from 'react-native';
 import { api } from '../api';
@@ -444,7 +445,7 @@ function MyCoaching({ ov, reloadOverview, goFind, goRequests }) {
                 <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
                   <View style={{ flex: 1 }}>
                     <T weight="700">{p.counterparty_name}</T>
-                    <T size={12} color={c.mute}>{p.sport_emoji} {p.sport} · {dateTimeIn(p.starts_at, deviceTz)}{p.paid_at ? ` · paid ${new Date(p.paid_at).toLocaleDateString()}` : ''}{p.refunded_at ? ` · refunded ${new Date(p.refunded_at).toLocaleDateString()}` : ''}</T>
+                    <T size={12} color={c.mute}>{p.sport_emoji} {p.sport} · {dateTimeIn(p.starts_at, deviceTz)}{p.paid_at ? ` · paid ${new Date(p.paid_at).toLocaleDateString(locale)}` : ''}{p.refunded_at ? ` · refunded ${new Date(p.refunded_at).toLocaleDateString(locale)}` : ''}</T>
                   </View>
                   <View style={{ alignItems: 'flex-end', gap: 4 }}>
                     <T weight="800">{price(p.total_cents, p.currency)}</T>
@@ -591,7 +592,7 @@ export function CoachProfile({ id }) {
             <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
               <Avatar user={{ avatar_emoji: r.avatar_emoji, avatar_color: r.avatar_color, avatar_url: r.avatar_url, display_name: r.author_name }} size={34} />
               <View style={{ flex: 1 }}><T weight="700">{r.author_name}</T><Stars value={r.rating} size={12} /></View>
-              <T size={11} color={c.mute}>{new Date(r.created_at).toLocaleDateString()}</T>
+              <T size={11} color={c.mute}>{new Date(r.created_at).toLocaleDateString(locale)}</T>
             </View>
             {r.body ? <T size={13} style={{ marginTop: 6 }}>{r.body}</T> : null}
             {r.reply ? <View style={{ marginTop: 8, backgroundColor: c.violetSoft, borderRadius: 10, padding: 10 }}><T size={12} weight="800" color={c.mute}>Reply from {p.display_name}</T><T size={13}>{r.reply}</T></View> : null}
@@ -877,7 +878,7 @@ export function CoachDesk() {
         {ledger.error ? <ErrorBox error={ledger.error} onRetry={ledger.reload} /> : ledger.loading && !ledger.data ? <Loading /> : !ledger.data?.length ? <T size={13} color={c.mute}>Nothing yet.</T> : ledger.data.map((p) => (
           <Card key={p.id} pad={12}>
             <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
-              <View style={{ flex: 1 }}><T weight="700">{p.counterparty_name}</T><T size={12} color={c.mute}>{p.sport_emoji} {p.sport} · {dateTimeIn(p.starts_at, deviceTz)}{p.paid_at ? ` · paid ${new Date(p.paid_at).toLocaleDateString()}` : ''}</T></View>
+              <View style={{ flex: 1 }}><T weight="700">{p.counterparty_name}</T><T size={12} color={c.mute}>{p.sport_emoji} {p.sport} · {dateTimeIn(p.starts_at, deviceTz)}{p.paid_at ? ` · paid ${new Date(p.paid_at).toLocaleDateString(locale)}` : ''}</T></View>
               <View style={{ alignItems: 'flex-end', gap: 4 }}><T weight="800">{price(p.total_cents, p.currency)}</T><StatusPill s={p.status === 'cancelled' && p.payment_status === 'unpaid' ? 'cancelled' : p.payment_status === 'not_required' ? 'pay_direct' : p.payment_status} /></View>
             </View>
           </Card>

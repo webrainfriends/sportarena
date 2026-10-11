@@ -230,11 +230,11 @@ cap({
 });
 
 cap({
-  name: 'delete_match', method: 'DELETE', path: '/me/matches/:id', tag: 'Player', summary: 'Delete one match you logged or imported. Official games/fixtures are not yours to delete — correct them through the game/result or dispute workflow.',
+  name: 'delete_match', method: 'DELETE', path: '/me/matches/:id', tag: 'Player', summary: 'Remove one match you logged or imported (it is archived, never erased). Official games/fixtures are not yours to delete — correct them through the game/result or dispute workflow.',
   input: z.object({ id: z.string().max(80) }),
   async handler({ user }, i) {
     if (!id.safeParse(i.id).success) throw forbidden('Official matches cannot be deleted from My Sports — report a wrong result through the dispute flow');
-    const r = await query('DELETE FROM player_matches WHERE id=$1 AND user_id=$2', [i.id, user.id]);
+    const r = await query('UPDATE player_matches SET archived_at=now() WHERE id=$1 AND user_id=$2 AND archived_at IS NULL', [i.id, user.id]);
     if (!r.rowCount) throw notFound('Match');
     await query('UPDATE player_match_links SET removed_at=now() WHERE player_match_id=$1 AND removed_at IS NULL', [i.id]);
     return { ok: true };
@@ -256,7 +256,7 @@ async function candidatesFor(userId, m) {
     [userId, m.played_on, m.opponent, m.sport_id]);
 }
 async function ownManual(userId, matchId) {
-  const m = await one("SELECT m.id, to_char(m.played_on,'YYYY-MM-DD') AS played_on, m.opponent, sp.sport_id FROM player_matches m JOIN sport_profiles sp ON sp.id=m.sport_profile_id WHERE m.id=$1 AND m.user_id=$2", [matchId, userId]);
+  const m = await one("SELECT m.id, to_char(m.played_on,'YYYY-MM-DD') AS played_on, m.opponent, sp.sport_id FROM player_matches m JOIN sport_profiles sp ON sp.id=m.sport_profile_id WHERE m.id=$1 AND m.user_id=$2 AND m.archived_at IS NULL", [matchId, userId]);
   if (!m) throw notFound('Match');
   return m;
 }
@@ -344,7 +344,7 @@ cap({
       if (r.errors) errors.push({ row: n + 1, errors: r.errors }); else valid.push({ row: n + 1, ...r.value });
     });
     const key = (m) => [m.played_on, (m.opponent ?? '').toLowerCase(), (m.competition ?? '').toLowerCase()].join('|');
-    const have = new Set((await many("SELECT to_char(played_on,'YYYY-MM-DD') AS played_on, opponent, competition FROM player_matches WHERE sport_profile_id=$1", [i.sport_profile_id])).map((m) => key({ ...m, opponent: m.opponent ?? undefined, competition: m.competition ?? undefined })));
+    const have = new Set((await many("SELECT to_char(played_on,'YYYY-MM-DD') AS played_on, opponent, competition FROM player_matches WHERE sport_profile_id=$1 AND archived_at IS NULL", [i.sport_profile_id])).map((m) => key({ ...m, opponent: m.opponent ?? undefined, competition: m.competition ?? undefined })));
     const fresh = [], skipped = [];
     for (const m of valid) {
       if (have.has(key(m))) skipped.push(m.row); else { have.add(key(m)); fresh.push(m); }

@@ -90,7 +90,7 @@ WITH credited AS (
          (m.played_on + time '12:00')::timestamp AT TIME ZONE 'UTC', m.played_on, m.opponent, m.competition, m.venue, m.result, NULL::int,
          m.score_for, m.score_against, m.minutes, m.rating, m.notes, m.stats, m.user_id, NULL::text, NULL::uuid, m.created_at
     FROM player_matches m JOIN sport_profiles sp ON sp.id = m.sport_profile_id
-   WHERE m.user_id = $1
+   WHERE m.user_id = $1 AND m.archived_at IS NULL
      AND NOT EXISTS (SELECT 1 FROM player_match_links l JOIN off o ON o.source_type = l.source_type AND o.source_id = l.source_id
                       WHERE l.player_match_id = m.id AND l.user_id = $1 AND l.removed_at IS NULL)
 )`;

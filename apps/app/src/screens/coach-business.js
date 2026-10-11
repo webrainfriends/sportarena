@@ -1,5 +1,6 @@
 // The coach as a business: rate cards and specialisations, contracts & commitments with a delivery log, testimonials in both
 // directions, and analytics with a downloadable statement. Reached from the Coach desk.
+import { locale } from '../locale';
 import React, { useState } from 'react';
 import { Platform, Pressable, View } from 'react-native';
 import { api } from '../api';
@@ -237,7 +238,7 @@ export function CoachReviews() {
             <Card key={r.id} pad={14}>
               <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
                 <Avatar user={{ avatar_emoji: r.avatar_emoji, avatar_color: r.avatar_color, avatar_url: r.avatar_url, display_name: r.author_name }} size={36} />
-                <View style={{ flex: 1 }}><T weight="700">{r.author_name}</T><Stars value={r.rating} /><T size={11} color={c.mute}>{[r.sport, r.audience !== 'individual' ? nice(r.audience) : null, new Date(r.session_at).toLocaleDateString()].filter(Boolean).join(' · ')}</T></View>
+                <View style={{ flex: 1 }}><T weight="700">{r.author_name}</T><Stars value={r.rating} /><T size={11} color={c.mute}>{[r.sport, r.audience !== 'individual' ? nice(r.audience) : null, new Date(r.session_at).toLocaleDateString(locale)].filter(Boolean).join(' · ')}</T></View>
                 {r.pinned ? <Pill label="📌 PINNED" fg={c.sun} bg={c.sunSoft} /> : null}
               </View>
               {r.body ? <T size={13} style={{ marginTop: 6 }}>{r.body}</T> : null}
@@ -255,7 +256,7 @@ export function CoachReviews() {
           {!toAsk.length ? <Empty emoji="🙌" title="Nothing waiting" sub="Completed sessions that have no review yet appear here, so you can ask once." /> : toAsk.map((h) => (
             <Card key={h.id} pad={12}>
               <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
-                <View style={{ flex: 1 }}><T weight="700">{h.hirer_name}</T><T size={12} color={c.mute}>{h.sport_emoji} {h.sport} · {new Date(h.starts_at).toLocaleDateString()}{h.audience !== 'individual' ? ` · ${nice(h.audience)}` : ''}</T></View>
+                <View style={{ flex: 1 }}><T weight="700">{h.hirer_name}</T><T size={12} color={c.mute}>{h.sport_emoji} {h.sport} · {new Date(h.starts_at).toLocaleDateString(locale)}{h.audience !== 'individual' ? ` · ${nice(h.audience)}` : ''}</T></View>
                 {h.review_requested_at ? <T size={12} weight="700" color={c.mute}>Asked ✓</T> : <Btn small title="Ask for a review" onPress={() => ask(h)} />}
               </View>
             </Card>
