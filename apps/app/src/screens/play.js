@@ -128,6 +128,7 @@ export function Event({ id }) {
         </View>
       </GradCard>
       {e.description ? <T style={{ marginTop: 12 }}>{e.description}</T> : null}
+      {isOrg ? <Btn title="⚡ Command centre" color={c.violet} onPress={() => push('EventCommand', { id })} style={{ marginTop: 14 }} /> : null}
       {isOrg ? <Btn title="Plan, contact & budget" color={c.pink} onPress={() => push('EventPlan', { id })} style={{ marginTop: 14 }} /> : null}
       {e.sport === 'Multi-sport games' ? <Btn title={isOrg ? 'Run the games programme' : 'Open the games programme'} color={c.violet} onPress={() => push('Games', { id })} style={{ marginTop: 14 }} /> : null}
 
