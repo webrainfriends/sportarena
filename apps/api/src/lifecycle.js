@@ -3,11 +3,34 @@
 //   completed, cancelled and expired are final: nothing leaves them (no resurrection).
 // `expired` is only ever set by the maintenance sweep, never requested through the API.
 import { pool, tx } from './db.js';
+import { encrypt, decrypt } from './crypto.js';
+import { audit } from './helpers.js';
 import { conflict, forbidden } from './errors.js';
 import { notify } from './notify.js';
 import { refundFor } from './payments/service.js';
 
 export const NEXT = { requested: ['confirmed', 'cancelled', 'expired'], confirmed: ['completed', 'cancelled'], completed: [], cancelled: [], expired: [] };
+/**
+ * Tell the history trigger who is acting and why for the rest of this transaction (it resets at commit/rollback).
+ * The reason is encrypted because it may mention health details.
+ */
+export async function setTransitionContext(c, actorId, reason) {
+  await c.query("SELECT set_config('app.actor_id', $1, true), set_config('app.reason_enc', $2, true)", [actorId ?? '', encrypt(reason?.trim() || null, 'status_history.reason') ?? '']);
+}
+
+/** Refund key: one refund per engagement, however many times or from however many requests it is attempted. */
+export const refundKey = (purpose, id) => `${purpose}-${id}-cancel`;
+
+/** Ordered history of one engagement (oldest first). Caller has already checked the viewer is a party. */
+export async function timelineFor(kind, subjectId, viewerId, { limit, offset }) {
+  const rows = (await pool.query(
+    `SELECT h.id, h.from_status, h.to_status, h.actor_id, u.display_name AS actor_name, h.reason_enc, h.payment_status, h.backfilled, h.at
+       FROM engagement_status_history h LEFT JOIN users u ON u.id=h.actor_id
+      WHERE h.kind=$1 AND h.subject_id=$2 ORDER BY h.at, h.seq LIMIT $3 OFFSET $4`, [kind, subjectId, limit, offset])).rows;
+  if (rows.some((r) => r.reason_enc)) await audit(null, viewerId, 'read_clinical', kind === 'appointment' ? 'appointments' : 'coach_hires', subjectId);
+  return rows.map(({ reason_enc, actor_name, ...r }) => ({ ...r, actor_name: r.actor_id ? actor_name : null, by_system: !r.actor_id && !r.backfilled && r.from_status !== null, reason: decrypt(reason_enc, 'status_history.reason') }));
+}
+
 export const FINAL = Object.keys(NEXT).filter((s) => NEXT[s].length === 0);
 
 /**
@@ -49,8 +72,9 @@ export async function expireStaleRequests({ limit = 200 } = {}) {
         const done = await tx(async (c) => {
           const r = (await c.query(`SELECT * FROM ${s.table} WHERE id=$1 AND status='requested' AND starts_at < now() FOR UPDATE SKIP LOCKED`, [id])).rows[0];
           if (!r) return false;
+          await setTransitionContext(c, null, 'Not confirmed before the start time');
           let payment = r.payment_status;
-          if (payment === 'paid') { await refundFor(s.purpose, r.id); payment = 'refunded'; }
+          if (payment === 'paid') { await refundFor(s.purpose, r.id, { key: refundKey(s.purpose, r.id) }); payment = 'refunded'; }
           const upd = await c.query(`UPDATE ${s.table} SET status='expired', payment_status=$2 WHERE id=$1 AND status='requested'`, [r.id, payment]);
           if (!upd.rowCount) return false;
           if (s.table === 'appointments') await c.query("UPDATE appointment_followups SET status='due', booked_appointment_id=NULL, updated_at=now() WHERE booked_appointment_id=$1 AND status='booked'", [r.id]);
