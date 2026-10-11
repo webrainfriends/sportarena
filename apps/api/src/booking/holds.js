@@ -1,6 +1,7 @@
 // Venues that require online payment hold a customer's slots for a few minutes. If the invoice is still unpaid when
 // the deadline passes, the slots are released (cancelled, nothing charged) and the customer is told.
 import { many, tx } from '../db.js';
+import { logger } from '../logger.js';
 import { notify } from '../notify.js';
 import { cancelBookings, effectivePaymentMode } from './engine.js';
 
@@ -26,7 +27,7 @@ export async function expireUnpaidHolds() {
         released += ids.length;
       }
       await c.query('UPDATE reservations SET payment_deadline=NULL WHERE id=$1', [r.id]);
-    }); } catch (e) { console.error(JSON.stringify({ level: 'error', msg: 'hold release failed', reservation_id: r.id, error: String(e.message).slice(0, 300) })); }
+    }); } catch (e) { logger.error('hold release failed', { reservation_id: r.id, error: String(e.message).slice(0, 300) }); }
   }
   return released;
 }

@@ -17,12 +17,30 @@ import { insuranceDocsRouter } from './capabilities/insurance-docs.js';
 import { subjectDocsRouter } from './capabilities/subject-docs.js';
 import { staffDocsRouter } from './capabilities/event-openings.js';
 import { liveRouter } from './live.js';
+import { randomUUID } from 'node:crypto';
+import { logger, runWithContext } from './logger.js';
+import { recordRequest } from './metrics.js';
 
 export function createApp() {
   const app = express();
   if (config.trustProxy) app.set('trust proxy', 1);
   app.disable('x-powered-by');
 
+  // Correlation id: accept a sane incoming x-request-id (so a proxy/client can trace a call end to end), else generate one.
+  // It is echoed on the response and attached to every log line written while the request runs. Path only (no query string/body) is logged.
+  app.use((req, res, next) => {
+    const incoming = req.get('x-request-id');
+    const request_id = incoming && /^[A-Za-z0-9._-]{8,64}$/.test(incoming) ? incoming : randomUUID();
+    req.id = request_id;
+    res.set('X-Request-Id', request_id);
+    const t0 = performance.now();
+    res.on('finish', () => {
+      const ms = performance.now() - t0;
+      recordRequest(res.statusCode, ms);
+      if (config.accessLog && req.path !== '/health') runWithContext({ request_id }, () => logger.info('request', { method: req.method, path: req.path, status: res.statusCode, ms: Math.round(ms) }));
+    });
+    runWithContext({ request_id }, next);
+  });
   // Encryption in transit: in production plain HTTP is refused; HSTS pins browsers to HTTPS.
   app.use(helmet({ hsts: config.allowInsecureHttp ? false : { maxAge: 63072000, includeSubDomains: true, preload: true } }));
   app.use((req, res, next) => {
@@ -48,6 +66,12 @@ export function createApp() {
 
   app.get('/', (_, res) => res.json({ name: 'SportArena', api: '/api/v1', openapi: '/api/v1/openapi.json', mcp: '/mcp', tools: capabilities.length }));
   app.get('/health', async (_, res) => { await pool.query('select 1'); res.json({ ok: true }); });
+  // Unauthenticated probe for uptime monitors: is a background worker alive? 503 when none has beaten recently.
+  app.get('/health/worker', async (_, res) => {
+    const r = (await pool.query("SELECT extract(epoch FROM now() - max(last_beat_at))::int AS age FROM worker_heartbeats WHERE status = 'running'")).rows[0];
+    const ok = r.age !== null && r.age <= config.workerStaleSeconds;
+    res.status(ok ? 200 : 503).json({ ok, last_beat_age_seconds: r.age });
+  });
 
   app.use('/api/v1', liveRouter());
 
