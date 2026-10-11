@@ -11,3 +11,4 @@ export const unauthorized = (m = 'Authentication required') => new AppError(401,
 export const forbidden = (m = 'You are not allowed to do that') => new AppError(403, 'forbidden', m);
 export const notFound = (what = 'Resource') => new AppError(404, 'not_found', `${what} not found`);
 export const conflict = (m, d) => new AppError(409, 'conflict', m, d);
+export const unprocessable = (m, d) => new AppError(422, 'unprocessable', m, d);

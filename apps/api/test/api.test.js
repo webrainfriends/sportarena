@@ -146,10 +146,13 @@ test('fixture scheduling books the court and rejects referee/team clashes', asyn
   const perf = await api('POST', '/performances', { token: ref.token, body: { user_id: caps[0].id, sport: 'basketball', metric: 'points', value: 31, points: 5, fixture_id: fx.id } });
   assert.equal(perf.status, 201);
   assert.equal((await api('POST', '/performances', { token: caps[1].token, body: { user_id: caps[0].id, sport: 'basketball', metric: 'points', value: 99 } })).status, 403);
-  assert.equal((await api('POST', '/performances', { token: caps[0].token, body: { sport: 'basketball', metric: 'points', value: 12, points: 1 } })).status, 201, 'self-logged practice');
+  assert.equal((await api('POST', '/performances', { token: caps[0].token, body: { sport: 'basketball', metric: 'points', value: 12, points: 1000000 } })).status, 201, 'self-logged practice');
+  assert.equal((await api('GET', '/leaderboard?sport=basketball')).body.length, 0, 'nothing counts until an official approves it, and practice never counts');
+  assert.equal((await api('POST', `/performances/${perf.body.id}/approve`, { token: ref.token })).status, 403, 'the submitter cannot approve their own submission');
+  assert.equal((await api('POST', `/performances/${perf.body.id}/approve`, { token: org.token })).status, 200);
   const lb = (await api('GET', '/leaderboard?sport=basketball')).body;
   assert.equal(lb[0].id, caps[0].id);
-  assert.equal(lb[0].points, 6);
+  assert.equal(lb[0].points, 31, 'derived on the server from the value, not from the points the referee or athlete typed');
   assert.equal((await api('GET', `/people/${caps[0].id}/stats`)).body.by_metric[0].best, 31);
 });
 

@@ -228,12 +228,12 @@ export function Person({ id }) {
         {x.bio ? <T color="#fff" style={{ marginTop: 10 }}>{x.bio}</T> : null}
       </GradCard>
       <View style={{ flexDirection: 'row', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
-        <StatPill value={stats.data?.total_points ?? '–'} label="POINTS" color={c.lime} /><StatPill value={awards.data?.length ?? '–'} label="AWARDS" color={c.sun} /><StatPill value={x.rating?.avg ?? '–'} label="RATING" color={c.pinkSoft} />
+        <StatPill value={stats.data?.total_points ?? '–'} label="OFFICIAL PTS" color={c.lime} /><StatPill value={awards.data?.length ?? '–'} label="AWARDS" color={c.sun} /><StatPill value={x.rating?.avg ?? '–'} label="RATING" color={c.pinkSoft} />
       </View>
       {x.sport_profiles.length ? <Section title="Sports" color={c.cyan}>{x.sport_profiles.map((s, i) => <Row key={i} left={<Bubble emoji={s.emoji} color={c.cyanSoft} />} title={`${s.sport} · ${s.role}`} sub={`${s.level}${s.position ? ' · ' + s.position : ''}`} />)}</Section> : null}
       {x.teams.length ? <Section title="Teams" color={c.violet}>{x.teams.map((t) => <Row key={t.id} onPress={() => push('Team', { id: t.id })} left={<Bubble emoji={t.emoji} color={t.color} />} title={t.name} sub={t.role} />)}</Section> : null}
       {stats.data?.by_metric?.length ? <Section title="Stats" color={c.mint}>
-        <Card color={c.mintSoft}>{stats.data.by_metric.map((m, i) => <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 }}><T weight="800">{m.emoji} {m.metric}</T><T weight="900">{m.total} <T size={12} color={c.mute}>total · best {m.best}</T></T></View>)}</Card>
+        <Card color={c.mintSoft}>{stats.data.by_metric.map((m, i) => <View key={i} style={{ paddingVertical: 4 }}><View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><T weight="800">{m.emoji} {m.metric.replace(/_/g, ' ')}</T><T weight="900">{m.unit === 's' ? m.lowest : m.best} <T size={12} color={c.mute}>{m.unit === 's' ? 's best' : 'best'} · {m.entries} {m.entries === 1 ? 'entry' : 'entries'}</T></T></View><T size={11} color={c.mute}>{m.evidence_label}</T></View>)}</Card>
       </Section> : null}
       <Section title="Trophy cabinet" color={c.sun}><TrophyShelf awards={awards.data} /></Section>
       <Section title="Props from the community" color={c.pink}><Reviews type="user" id={id} canWrite={user.id !== id} /></Section>
