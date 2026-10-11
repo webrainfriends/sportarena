@@ -43,6 +43,9 @@ export const config = {
   // plain-HTTP interim setups (ALLOW_INSECURE_HTTP) cannot carry Secure cookies. Origins allowed to send credentials = CORS_ORIGINS (never '*').
   cookieSecure: env.COOKIE_SECURE ?? 'auto',
   cookieSameSite: env.COOKIE_SAMESITE ?? 'lax',
+  // MFA policy: when true, people holding doctor/physio/admin/platform_admin roles must have two-step verification enabled and verified
+  // in their session to use clinical- or admin-class capabilities. Off by default so rollout never locks anyone out; turn on once they have enrolled.
+  mfaEnforce: env.MFA_ENFORCE === 'true',
   corsOrigins: (env.CORS_ORIGINS ?? '*').split(','),
   // Uploaded venue photos/videos. Must be a persistent directory (deploys never touch it). Files are never deleted.
   mediaDir: env.MEDIA_DIR ?? './data/media',

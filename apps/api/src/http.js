@@ -51,7 +51,7 @@ export function createApp() {
   app.use((_, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
 
   const authLimiter = rateLimit({ windowMs: 15 * 60_000, limit: config.isProd ? 20 : 1000, standardHeaders: true, legacyHeaders: false });
-  app.use(['/api/v1/auth/login', '/api/v1/auth/register', '/api/v1/auth/refresh'], authLimiter);
+  app.use(['/api/v1/auth/login', '/api/v1/auth/register', '/api/v1/auth/refresh', '/api/v1/auth/password-reset', '/api/v1/auth/verify-email'], authLimiter);
 
   app.get('/', (_, res) => res.json({ name: 'SportArena', api: '/api/v1', openapi: '/api/v1/openapi.json', mcp: '/mcp', tools: capabilities.length }));
   app.get('/health', async (_, res) => { await pool.query('select 1'); res.json({ ok: true }); });
@@ -68,7 +68,7 @@ export function createApp() {
         const web = usesWebCookies(c, req);
         if (web && c.name === 'refresh_session' && !body.refresh_token && req.cookies?.[REFRESH_COOKIE]) body.refresh_token = req.cookies[REFRESH_COOKIE];
         let result = await invoke(c, user, { ...req.query, ...body, ...req.params }, { ip: req.ip, userAgent: req.headers['user-agent'] });
-        if (web) {
+        if (web && result.token) {
           // Web clients never see the secrets: they go into HttpOnly cookies; the body only says who is signed in.
           const { token, refresh_token, ...rest } = result;
           setWebCookies(req, res, { token, refresh_token });

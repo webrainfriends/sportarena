@@ -10,12 +10,12 @@ const newRefreshSecret = () => 'sr_' + randomBytes(32).toString('base64url');
 const trim = (s, n) => (s ? String(s).slice(0, n) : null);
 
 /** Open a session for a user and return the access JWT plus the first refresh token. */
-export async function startSession(user, meta = {}) {
+export async function startSession(user, meta = {}, { mfa = false } = {}) {
   const refresh = newRefreshSecret();
   const session = await tx(async (c) => {
     const s = (await c.query(
-      `INSERT INTO auth_sessions(user_id, expires_at, user_agent, ip) VALUES ($1, now() + make_interval(days => $2), $3, $4) RETURNING id, expires_at`,
-      [user.id, config.refreshTtlDays, trim(meta.userAgent, 300), trim(meta.ip, 64)])).rows[0];
+      `INSERT INTO auth_sessions(user_id, expires_at, user_agent, ip, mfa_verified_at) VALUES ($1, now() + make_interval(days => $2), $3, $4, CASE WHEN $5 THEN now() END) RETURNING id, expires_at`,
+      [user.id, config.refreshTtlDays, trim(meta.userAgent, 300), trim(meta.ip, 64), mfa])).rows[0];
     await c.query('INSERT INTO refresh_tokens(session_id, token_hash, expires_at) VALUES ($1,$2,$3)', [s.id, sha256(refresh), s.expires_at]);
     return s;
   });

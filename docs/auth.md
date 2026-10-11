@@ -120,3 +120,55 @@ nginx, `Host` has no port, so production must set `CORS_ORIGINS` explicitly (it 
 - Plain-HTTP interim deployments (`ALLOW_INSECURE_HTTP`) cannot set `Secure` cookies; enable HTTPS before relying on cookie sessions there.
 - Cross-site embedding (different registrable domain between app and API) would need `COOKIE_SAMESITE=none` plus HTTPS; not supported by default.
 - Rollback: reverting the web build restores bearer-in-body behaviour (the body-token path for non-`X-SA-Client` callers is unchanged).
+
+## Account security: email verification, password recovery, two-step verification (MFA)
+
+| Capability | Route | Notes |
+|---|---|---|
+| `request_email_verification` | `POST /me/email/verification` | emails a single-use code/link, valid 24 h; max 5 per account per hour (`429`) |
+| `verify_email` | `POST /auth/verify-email` (public) | sets `users.email_verified_at` |
+| `request_password_reset` | `POST /auth/password-reset` (public) | always answers identically (no account enumeration); max 3 tokens per account per hour; per-IP limiter |
+| `reset_password` | `POST /auth/password-reset/confirm` (public) | single-use, 30 min; sets the password, **revokes every session**, voids other outstanding reset tokens, emails a notice |
+| `get_security_status` | `GET /me/security` | email verified, MFA on/pending, recovery codes left, role requirement |
+| `mfa_setup` | `POST /me/mfa/setup` | needs the password; returns secret + `otpauth://` URI; inactive until confirmed |
+| `mfa_enable` | `POST /me/mfa/enable` | confirm a code; returns 10 recovery codes **once** |
+| `login_mfa` | `POST /auth/login/mfa` (public) | finishes a sign-in that returned `mfa_required` + `mfa_token` |
+| `verify_mfa` | `POST /me/mfa/verify` | step-up: mark this session verified (code or recovery code) |
+| `mfa_disable` | `POST /me/mfa/disable` | password + code; other sessions revoked |
+| `admin_reset_mfa` | `POST /admin/users/:user_id/mfa-reset` | admin recovery for lost factor + codes; target signed out everywhere; audit-logged |
+
+**Tokens.** Verification, reset and login-challenge secrets are random 256-bit values stored only as SHA-256 hashes (`account_tokens`), consumed
+by one atomic `UPDATE ... WHERE used_at IS NULL AND expires_at > now()` (single use, concurrency safe).
+
+**Email delivery** reuses the existing notification outbox (`notify.js`, sent by the dispatcher to `NOTIFY_WEBHOOK_URL`) via `notifySecurity()`:
+security mail ignores mute/channel preferences, is created already-read, keeps the one-time secret **encrypted** (`data.secret_enc`), substitutes it
+into the text only at send time, then erases it from the row. Without a webhook the mail stays queued (encrypted) as for every other email.
+Links use `APP_URL` (`?verify_email=<code>`, `?reset_password=<code>`); the plain code is always included too.
+
+**TOTP.** RFC 6238 (SHA-1, 6 digits, 30 s, +/-1 step drift). The secret is field-encrypted (`user_mfa.secret_enc`); each accepted time step is
+recorded so a code cannot be replayed. Recovery codes (`xxxxx-xxxxx`) are stored hashed and work once. With MFA on, `login` returns
+`{ mfa_required: true, mfa_token }` (no session, no cookies); `login_mfa` completes it (challenge: 5 minutes, 5 wrong tries, single use).
+A session that completed MFA has `mfa_verified_at`. Wrong codes are limited per account across all MFA endpoints (10 in 15 minutes, then `429`).
+
+**Who needs MFA (decision).** Roles `doctor`, `physio`, `admin`, `platform_admin` hold clinical or platform-wide power. When `MFA_ENFORCE=true`
+they must have MFA enabled **and** a verified session to use `clinical`- or `admin`-class capabilities (including creating admin/clinical API tokens):
+`403 mfa_enrollment_required` or `403 mfa_required` (step up with `verify_mfa`). Enrolment, step-up, sign-out, session and password management stay
+reachable. Organisers' payments are **not** MFA-gated (payments are protected by the token `payment` scope, provider checks and audit); anyone may
+enable MFA voluntarily. API tokens are not re-challenged (creating an admin/clinical token is the gated step).
+`MFA_ENFORCE` defaults to **off** so rollout cannot lock anyone out: have doctors/physios/admins enrol first, then set `MFA_ENFORCE=true`.
+
+**Compromise handling.** Password reset, password change, MFA disable and admin MFA reset all revoke sessions (reasons `password_reset`,
+`password_changed`, `mfa_disabled`, `mfa_reset`) and send the owner a notice email.
+
+### Migration `054_account_security.sql` (additive)
+`users.email_verified_at` (existing accounts stay unverified; login does not require verification), `account_tokens`, `user_mfa`, `mfa_recovery_codes`,
+`auth_sessions.mfa_verified_at`. Disabled/replaced MFA factors are kept (`disabled_at`, `disabled_reason`), never overwritten or deleted. The only
+removal is the intentional erasure of a one-time secret from a sent email row. Rollback: revert the code; the tables stay unused. Anyone with MFA on
+would then sign in with a password only, so do not roll back without telling those users.
+
+### Failure modes and limits
+- No webhook configured: emails (including reset links) stay queued; recovery is impossible until `NOTIFY_WEBHOOK_URL` is set. Admin MFA reset is the fallback for MFA, not for passwords.
+- Per-IP limits on login/refresh/reset/verify share the existing auth limiter (20 per 15 minutes in production).
+- Lost authenticator and recovery codes: an admin resets MFA (`admin_reset_mfa`); there is no self-service bypass by design.
+- Email verification is informational today (it gates nothing); it is exposed so features can require it.
+- Not implemented: recovery-code regeneration without disabling MFA, WebAuthn/passkeys, SMS codes.

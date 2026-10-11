@@ -8,7 +8,7 @@ export const SESSION_COOKIE = 'sa_session';
 export const REFRESH_COOKIE = 'sa_refresh';
 export const CSRF_COOKIE = 'sa_csrf';
 const SAFE = new Set(['GET', 'HEAD', 'OPTIONS']);
-const COOKIE_CAPS = new Set(['login', 'register', 'refresh_session']);
+const COOKIE_CAPS = new Set(['login', 'login_mfa', 'register', 'refresh_session']);
 
 export function parseCookies(header) {
   const out = {};
@@ -77,7 +77,7 @@ export function cookieAuth(req, res, next) {
   if (req.headers.authorization) return next(); // explicit bearer wins; browsers never add it by themselves
   const unsafe = !SAFE.has(req.method);
   const credentialed = hasSession || Boolean(cookies[REFRESH_COOKIE]);
-  const loginLike = /^\/api\/v1\/auth\/(login|register)$/.test(req.path);
+  const loginLike = /^\/api\/v1\/auth\/(login|login\/mfa|register|password-reset|password-reset\/confirm|verify-email)$/.test(req.path);
   if (unsafe && (credentialed || (isWebClient(req) && req.headers.origin))) {
     if (!originAllowed(req)) return res.status(403).json({ error: { code: 'csrf_origin', message: 'This request came from an origin that is not allowed' } });
     if (credentialed && !loginLike && !csrfValid(req, cookies)) return res.status(403).json({ error: { code: 'csrf_token', message: 'Missing or invalid CSRF token. Reload the page and try again.' } });

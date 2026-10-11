@@ -35,12 +35,15 @@ export async function authenticate(authorization) {
     // Session-bound tokens (jti = auth_sessions.id) are valid only while the server session is active: logout, revoke and
     // password change take effect on the very next request. Tokens issued before sessions existed carry no session row and
     // live out their (short) TTL; set AUTH_REQUIRE_SESSION=true to refuse them immediately.
-    const s = await one(`SELECT 1 FROM auth_sessions WHERE id::text = $1 AND user_id = $2 AND revoked_at IS NULL AND expires_at > now()`, [payload.jti ?? '', payload.sub]);
+    const s = await one(`SELECT mfa_verified_at IS NOT NULL AS mfa_verified,
+                           EXISTS (SELECT 1 FROM user_mfa m WHERE m.user_id = $2 AND m.enabled_at IS NOT NULL AND m.disabled_at IS NULL) AS mfa_enabled
+                      FROM auth_sessions WHERE id::text = $1 AND user_id = $2 AND revoked_at IS NULL AND expires_at > now()`, [payload.jti ?? '', payload.sub]);
     if (!s && (payload.jti ? await one('SELECT 1 FROM auth_sessions WHERE id::text = $1', [payload.jti]) : config.requireSession)) return null;
     const user = await one(`SELECT ${COLS} FROM users WHERE id = $1`, [payload.sub]);
     if (!user) return null;
     if (s) {
       Object.defineProperty(user, 'session_id', { value: payload.jti, enumerable: false });
+      Object.defineProperty(user, 'security', { value: { mfa_enabled: s.mfa_enabled, mfa_verified: s.mfa_verified }, enumerable: false });
       // cheap, throttled activity stamp for the sessions list
       query("UPDATE auth_sessions SET last_seen_at = now() WHERE id = $1 AND last_seen_at < now() - interval '1 minute'", [payload.jti]).catch(() => {});
     }
