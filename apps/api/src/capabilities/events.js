@@ -97,7 +97,7 @@ async function searchEvents(i) {
   const w = ["e.status <> 'draft'"];
   if (sport) w.push(`e.sport_id=${p(sport.id)}`);
   if (i.status) w.push(`e.status=${p(i.status)}`);
-  else w.push("e.status IN ('open','ongoing')");
+  else w.push("e.status IN ('open','ongoing','paused')");
   if (i.kind) w.push(`e.kind=${p(i.kind)}`);
   if (i.organizer_id) w.push(`e.organizer_id=${p(i.organizer_id)}`);
   if (i.q) w.push(`(e.name ILIKE ${p(`%${i.q}%`)} OR e.description ILIKE $${args.length} OR e.city ILIKE $${args.length})`);
@@ -155,7 +155,7 @@ cap({
   },
 });
 
-const NEXT_STATUS = { draft: ['open', 'cancelled'], open: ['ongoing', 'cancelled'], ongoing: ['cancelled'], completed: [], cancelled: [] };
+const NEXT_STATUS = { draft: ['open', 'cancelled'], open: ['ongoing', 'cancelled'], ongoing: ['cancelled'], paused: ['cancelled'], completed: [], cancelled: [] };
 
 cap({
   name: 'update_event', method: 'PATCH', path: '/events/:id', tag: 'Events', summary: 'Edit an event you organise. Status moves open → ongoing/cancelled only; cancelling notifies entrants.',
@@ -441,7 +441,7 @@ cap({
 
 cap({
   name: 'complete_event', method: 'POST', path: '/events/:id/complete', tag: 'Events',
-  summary: 'Close an event and auto-award the cup (1st), silver and bronze medals (2nd/3rd) from the final standings. A multi-sport event needs every discipline finalized or cancelled first (or force).', input: z.object({ id, force: z.boolean().default(false) }),
+  summary: 'Close an event and auto-award the cup (1st), silver and bronze medals (2nd/3rd) from the final standings. A multi-sport event needs every discipline finalized or cancelled first (or force).', input: z.object({ id, force: z.boolean().default(false), reason: z.string().max(300).optional() }),
   async handler({ user }, i) {
     return tx(async (c) => {
       const ev = await eventForOrganizer(user, i.id, c);
@@ -458,7 +458,7 @@ cap({
         const kinds = [['cup', 'Champions'], ['medal_silver', 'Runners-up'], ['medal_bronze', 'Third place']];
         const awards = [];
         for (const [n, team] of places.entries()) if (team) awards.push((await c.query('INSERT INTO awards(name, kind, event_id, team_id, awarded_by) VALUES ($1,$2,$3,$4,$5) RETURNING *', [`${ev.name} — ${kinds[n][1]}`, kinds[n][0], i.id, team, user.id])).rows[0]);
-        await c.query("UPDATE events SET status='completed' WHERE id=$1", [i.id]);
+        await c.query("UPDATE events SET status='completed', ended_at=now(), ended_by=$2, status_changed_by=$2, status_reason=$3, status_changed_at=clock_timestamp() WHERE id=$1", [i.id, user.id, i.reason ?? null]);
         return { status: 'completed', standings: table, awards };
       }
       const podium = [['cup', `${ev.name} — Champions`], ['medal_silver', `${ev.name} — Runners-up`], ['medal_bronze', `${ev.name} — Third place`]];
@@ -467,7 +467,7 @@ cap({
         if (!table[n] || table[n].played === 0) continue;
         awards.push((await c.query('INSERT INTO awards(name, kind, event_id, team_id, awarded_by) VALUES ($1,$2,$3,$4,$5) RETURNING *', [name, kind, i.id, table[n].team_id, user.id])).rows[0]);
       }
-      await c.query("UPDATE events SET status='completed' WHERE id=$1", [i.id]);
+      await c.query("UPDATE events SET status='completed', ended_at=now(), ended_by=$2, status_changed_by=$2, status_reason=$3, status_changed_at=clock_timestamp() WHERE id=$1", [i.id, user.id, i.reason ?? null]);
       return { status: 'completed', standings: table, awards };
     });
   },
