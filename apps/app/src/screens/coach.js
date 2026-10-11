@@ -63,8 +63,11 @@ export function CoachHome() {
       </GradCard>
       {h.warnings.map((w) => <Card key={w.kind} onPress={() => open(w.link)}><T weight="700">⚠ {w.title}</T></Card>)}
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-        <Btn small title="My athletes" onPress={() => push('CoachAthletes')} />
-        <Btn small title="Calendar" color={c.violet} onPress={() => push('CoachCalendar')} />
+        <Btn small title="Coach desk" onPress={() => push('CoachDesk')} />
+        <Btn small title="Request board" color={c.violet} onPress={() => push('CoachBoard')} />
+        <Btn small title="My athletes" color={c.paper} ink={c.ink} onPress={() => push('CoachAthletes')} />
+        <Btn small title="Profile & hours" color={c.paper} ink={c.ink} onPress={() => push('CoachSetup')} />
+        <Btn small title="Calendar" color={c.paper} ink={c.ink} onPress={() => push('CoachCalendar')} />
         <Btn small title="Training plans" color={c.paper} ink={c.ink} onPress={() => push('MyPlans', { as: 'coach' })} />
         <Btn small title="Find a venue" color={c.paper} ink={c.ink} onPress={() => open({ screen: 'Book' })} />
       </View>

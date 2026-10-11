@@ -37,7 +37,7 @@ cap({
       one("SELECT count(*)::int AS n FROM training_plans WHERE coach_id=$1 AND status='proposed'", [user.id]),
     ]);
     const inbox = [
-      ...requests.map((r) => ({ kind: 'hire_request', title: `Coaching request from ${r.hirer_name}`, detail: r.payment_status === 'unpaid' ? 'Waiting for payment' : 'Ready to confirm', ready: toConfirm.some((x) => x.id === r.id), at: r.starts_at, link: { screen: 'Hub', params: { section: 'hires' }, source_type: 'coach_hire', source_id: r.id } })),
+      ...requests.map((r) => ({ kind: 'hire_request', title: `Coaching request from ${r.hirer_name}`, detail: r.payment_status === 'unpaid' ? 'Waiting for payment' : 'Ready to confirm', ready: toConfirm.some((x) => x.id === r.id), at: r.starts_at, link: { screen: 'CoachDesk', params: {}, source_type: 'coach_hire', source_id: r.id } })),
       ...planReplies.map((r) => ({ kind: 'plan_reply', title: `${r.athlete_name}: ${r.response === 'declined' ? 'declined' : 'asked for changes to'} "${r.title}"`, link: { screen: 'CoachPlan', params: { id: r.id }, source_type: 'training_plan', source_id: r.id } })),
       ...feedbackWaiting.map((r) => ({ kind: 'session_feedback', title: `Review ${r.athlete_name}'s session "${r.title}"`, link: { screen: 'CoachPlan', params: { id: r.plan_id }, source_type: 'training_session', source_id: r.id } })),
       ...invites.map((r) => ({ kind: 'team_invite', title: `Team invitation: ${r.name}`, link: { screen: 'Team', params: { id: r.id }, source_type: 'team', source_id: r.id } })),
@@ -98,7 +98,7 @@ cap({
              WHERE f.status IN ('scheduled','live') AND f.scheduled_at >= $2::date AND f.scheduled_at < $3::date + 1`, win),
     ]);
     let items = [
-      ...hires.map((r) => ({ kind: 'hire', source_type: 'coach_hire', source_id: r.id, title: `Session with ${r.athlete_name}`, athlete_id: r.athlete_id, sport: r.sport, starts_at: r.starts_at, ends_at: r.ends_at, status: r.status === 'confirmed' ? 'confirmed' : 'awaiting_response', link: { screen: 'Hub', params: { section: 'hires' } } })),
+      ...hires.map((r) => ({ kind: 'hire', source_type: 'coach_hire', source_id: r.id, title: `Session with ${r.athlete_name}`, athlete_id: r.athlete_id, sport: r.sport, starts_at: r.starts_at, ends_at: r.ends_at, status: r.status === 'confirmed' ? 'confirmed' : 'awaiting_response', link: { screen: 'CoachDesk', params: {} } })),
       ...sessions.map((r) => ({ kind: 'plan_session', source_type: 'training_session', source_id: r.id, title: r.title, context: r.athlete_name, athlete_id: r.athlete_id, sport: r.sport, starts_at: r.starts_at, ends_at: r.ends_at, status: r.status, booking_id: r.booking_id, link: { screen: 'CoachPlan', params: { id: r.plan_id } } })),
       ...fixtures.map((r) => ({ kind: 'match', source_type: 'fixture', source_id: `${r.id}`, title: `${r.home_name} v ${r.away_name}`, context: r.team_name, team_id: r.team_id, sport: r.sport, starts_at: r.starts_at, ends_at: r.ends_at, status: 'confirmed', link: { screen: 'Team', params: { id: r.team_id } } })),
     ].map((x) => ({ timezone: 'UTC', conflict: false, ...x }));
