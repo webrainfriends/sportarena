@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
@@ -6,13 +6,15 @@ import { useSession } from '../session';
 import { useNav } from '../nav';
 import { Avatar, Bubble, Btn, Card, Chip, Empty, ErrorBox, Field, GradCard, H1, H2, Loading, Row, Screen, Seg, Section, Sheet, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
-import { SportSelect } from '../sportpicker';
+import { SportSelect, SportPicker } from '../sportpicker';
+import { EntityPicker } from '../entity-picker';
+import { DateField } from '../pickers';
 import { AddFollowupSheet, ConsentManager, FollowupsPanel, ProviderSearch } from './provider';
 import { PaySheet } from '../PaySheet';
 import { TimelineSheet } from '../Timeline';
 import { Confirm } from './coaching';
 import { RecoveryPanel } from './wellness';
-import { c, grad, money, day, when } from '../theme';
+import { c, grad, money, day, when, withUnit, unitName } from '../theme';
 
 const TILES = [
   ['Leaderboard', '🏅', 'Leaderboard', 'Points & glory', c.lime], ['Health', '🩺', 'Health', 'Physio · doctors · fit to play', c.mint],
@@ -45,22 +47,117 @@ export function Hub() {
 }
 
 const STATUS_TAG = { recorded: ['Private', null], submitted: ['Waiting for approval', 'sun'], approved: ['Approved', 'lime'], disputed: ['Disputed — not counted', 'orangeSoft'], rejected: ['Rejected', 'orangeSoft'], superseded: ['Replaced by a correction', 'cyanSoft'] };
-const fmtValue = (r) => (r.unit === 's' ? `${r.value} s` : r.unit === 'm' ? `${r.value} m` : `${r.value}`);
+const STEP = { submitted: 'Submitted', approved: 'Approved', rejected: 'Rejected', disputed: 'Problem reported', corrected: 'Correction proposed', superseded: 'Replaced by a correction' };
 const thisYear = new Date().getFullYear();
+const todayIso = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+const newKey = () => `ui-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+const fixtureLabel = (f) => `${f.home_name ?? 'TBC'} vs ${f.away_name ?? 'TBC'} · ${day(f.scheduled_at)}`;
 
-function ResultRow({ r, mine, userId, onAct }) {
+function ResultRow({ r, mine, onAct, onHistory }) {
   const [label, tone] = STATUS_TAG[r.status] ?? [r.status, null];
   const official = r.provenance === 'approved_competition';
   return (
     <Card>
-      <T weight="900">{r.emoji} {r.metric.replace(/_/g, ' ')} · {fmtValue(r)}</T>
+      <T weight="900">{r.emoji} {r.metric.replace(/_/g, ' ')} · {withUnit(r.value, r.unit)}</T>
       <T size={12} color={c.mute}>{mine ? '' : `${r.display_name} · `}{r.event_name ? `${r.event_name} · ` : ''}{day(r.achieved_on)}{official && r.official_points != null ? ` · ${r.official_points} official pts` : ''}</T>
+      {r.decision_note && ['disputed', 'rejected'].includes(r.status) ? <T size={12} color={c.mute} style={{ marginTop: 4 }}>Reason: {r.decision_note}</T> : null}
+      {r.evidence_ref ? <T size={12} color={c.mute} numberOfLines={1}>Evidence: {r.evidence_ref}</T> : null}
       <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginTop: 8, alignItems: 'center' }}>
         <Tag label={r.evidence_label} color={official ? c.mintSoft : c.violetSoft} />
         {tone ? <Tag label={label} color={c[tone]} /> : null}
         {onAct}
+        {official && onHistory ? <Btn small title="History" color={c.paper} ink={c.ink} onPress={() => onHistory(r.id)} /> : null}
       </View>
     </Card>
+  );
+}
+
+/** Every step a result went through, with who and why. */
+function HistorySheet({ id, onClose }) {
+  const h = useLoad(() => (id ? api.get(`/performances/${id}/history`) : Promise.resolve([])), [id]);
+  return (
+    <Sheet visible={!!id} onClose={onClose} title="Result history">
+      {h.loading && !h.data ? <Loading /> : h.error ? <ErrorBox error={h.error} onRetry={h.reload} /> : h.data?.length ? h.data.map((l) => (
+        <Card key={l.id}>
+          <T weight="800">{STEP[l.action] ?? l.action}</T>
+          <T size={12} color={c.mute}>{l.actor} · {when(l.at)}</T>
+          {l.note ? <T size={13} style={{ marginTop: 4 }}>{l.note}</T> : null}
+          {l.snapshot?.value !== undefined ? <T size={12} color={c.mute}>Recorded value {l.snapshot.value}{l.snapshot.official_points != null ? ` · ${l.snapshot.official_points} official pts` : ''}</T> : null}
+        </Card>
+      )) : <Empty emoji="🕘" title="No history yet" sub="Steps appear here as officials decide on this result." />}
+    </Sheet>
+  );
+}
+
+/** An official submits a competition result: event, optional game, athlete, metric, value, date and evidence. A second official approves it. */
+function SubmitResultSheet({ visible, onClose, events, onDone }) {
+  const { toast } = useSession();
+  const [eventId, setEventId] = useState(null);
+  const [fixtureId, setFixtureId] = useState(null);
+  const [sport, setSport] = useState(null);
+  const [athlete, setAthlete] = useState([]);
+  const [metric, setMetric] = useState(null);
+  const [other, setOther] = useState(false);
+  const [value, setValue] = useState('');
+  const [date, setDate] = useState(todayIso());
+  const [evidence, setEvidence] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+  const key = useRef(newKey());
+  const fixtures = useLoad(() => (eventId ? api.get('/fixtures', { event_id: eventId, limit: 50 }) : Promise.resolve([])), [eventId]);
+  const known = useLoad(() => (sport ? api.get('/scoring-rules', { sport }) : Promise.resolve(null)), [sport]);
+  const rule = useLoad(() => (sport && metric ? api.get('/scoring-rules', { sport, metric }) : Promise.resolve(null)), [sport, metric]);
+  useEffect(() => { if (visible) setErr(null); }, [visible]);
+  const pickEvent = (e) => { setEventId(e.id); setFixtureId(null); setAthlete([]); if (e.sport_slug) { setSport(e.sport_slug); setMetric(null); setOther(false); } };
+  const unit = rule.data?.rule?.unit;
+  const submit = async () => {
+    setErr(null);
+    const n = Number(String(value).replace(',', '.'));
+    if (!eventId) return setErr('Pick the event this result belongs to.');
+    if (!sport) return setErr('Pick the sport.');
+    if (!athlete.length) return setErr('Pick the athlete.');
+    if (!metric?.trim()) return setErr('Say what was measured.');
+    if (value === '' || !Number.isFinite(n)) return setErr('Enter the result as a number.');
+    setBusy(true);
+    try {
+      await api.post('/performances', { user_id: athlete[0].id, sport, metric: metric.trim(), value: n, event_id: eventId, fixture_id: fixtureId ?? undefined, achieved_on: date || undefined, evidence_ref: evidence.trim() || undefined, client_key: key.current });
+      key.current = newKey();
+      setValue(''); setAthlete([]); setEvidence('');
+      toast('Result submitted — a second official needs to approve it');
+      onDone(); onClose();
+    } catch (e) { setErr(e.message); } finally { setBusy(false); }
+  };
+  return (
+    <Sheet visible={visible} onClose={onClose} title="Submit a competition result">
+      {!events?.length ? <Empty emoji="🗓️" title="No events to submit for" sub="Results can be submitted for events you organise or officiate." /> : <>
+        <View style={{ gap: 6 }}>
+          <T weight="800" size={13}>Event</T>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{events.map((e) => <Chip key={e.id} label={e.name} active={e.id === eventId} onPress={() => pickEvent(e)} />)}</View>
+        </View>
+        {eventId ? <View style={{ gap: 6 }}>
+          <T weight="800" size={13}>Game (optional)</T>
+          {fixtures.loading && !fixtures.data ? <Loading /> : fixtures.error ? <ErrorBox error={fixtures.error} onRetry={fixtures.reload} /> : <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+            <Chip label="Whole event" active={fixtureId === null} onPress={() => setFixtureId(null)} />
+            {(fixtures.data ?? []).map((f) => <Chip key={f.id} label={fixtureLabel(f)} active={f.id === fixtureId} onPress={() => setFixtureId(f.id)} />)}
+          </View>}
+        </View> : null}
+        <SportPicker label="Sport" value={sport} onChange={(s) => { setSport(s); setMetric(null); setOther(false); }} />
+        <EntityPicker kind="person" label="Athlete" value={athlete} onChange={setAthlete} sport={sport ?? undefined} />
+        {sport ? <View style={{ gap: 6 }}>
+          <T weight="800" size={13}>What was measured</T>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+            {(known.data?.metrics ?? []).map((m) => <Chip key={m.metric} label={m.metric.replace(/_/g, ' ')} active={!other && metric === m.metric} onPress={() => { setOther(false); setMetric(m.metric); }} />)}
+            <Chip label="Another metric" active={other} onPress={() => { setOther(true); setMetric(''); }} />
+          </View>
+          {other ? <Field label="Metric name" value={metric ?? ''} onChangeText={setMetric} placeholder="goals, assists, 100m_time_s …" hint="Names ending in _s are timed in seconds, names ending in _m are distances in metres; anything else is a whole-number count." /> : null}
+        </View> : null}
+        <Field label={`Result${unit ? ` (${unitName(unit)})` : ''}`} value={value} onChangeText={(x) => setValue(x.replace(/[^0-9.,]/g, ''))} keyboardType="decimal-pad" hint={rule.data?.rule ? `${rule.data.rule.direction === 'lower' ? 'Lower is better.' : 'Higher is better.'} Allowed ${rule.data.rule.min} to ${rule.data.rule.max}.` : undefined} />
+        <DateField label="Date achieved" value={date} onChange={setDate} max={todayIso()} />
+        <Field label="Evidence reference (optional)" value={evidence} onChangeText={setEvidence} placeholder="Link or timing-sheet number" />
+        {err ? <T color={c.red} weight="800" accessibilityRole="alert">{err}</T> : null}
+        <Btn title="Submit result" color={c.pink} loading={busy} onPress={submit} />
+      </>}
+    </Sheet>
   );
 }
 
@@ -70,63 +167,114 @@ export function Leaderboard() {
   const [tab, setTab] = useState('rank');
   const [sport, setSport] = useState(null);
   const [season, setSeason] = useState(null);
+  const [category, setCategory] = useState(null);
   const [metric, setMetric] = useState(null);
-  const [form, setForm] = useState(null); // 'practice' | { reject: id } | { dispute: id }
-  const rules = useLoad(() => (sport ? api.get('/scoring-rules', { sport }) : Promise.resolve(null)), [sport]);
-  const lb = useLoad(() => api.get('/leaderboard', { sport: sport ?? undefined, metric: metric ?? undefined, season: season ?? undefined, limit: 50 }), [sport, metric, season]);
-  const mine = useLoad(() => api.get('/performances', { user_id: user.id, limit: 100 }), [user.id]);
-  const queue = useLoad(() => api.get('/performances', { status: 'submitted', limit: 100 }), []);
+  const [lim, setLim] = useState(25);
+  const [evFilter, setEvFilter] = useState(null);
+  const [history, setHistory] = useState(null);
+  const [form, setForm] = useState(null); // 'practice' | 'submit' | { reject: id } | { dispute: id } | { correct: {id, unit} }
   const isOfficial = has('organizer', 'referee', 'admin');
-  const act = async (fn, msg) => { try { await fn(); toast(msg); mine.reload(); queue.reload(); lb.reload(); } catch (e) { toast('' + e.message); } };
-  const pickSport = (v) => { setSport(v); setMetric(null); };
+  const sports = useLoad(() => api.get('/sports'), []);
+  const rules = useLoad(() => (sport ? api.get('/scoring-rules', { sport }) : Promise.resolve(null)), [sport]);
+  const lb = useLoad(() => api.get('/leaderboard', { sport: sport ?? undefined, metric: metric ?? undefined, season: season ?? undefined, category: category ?? undefined, limit: lim }), [sport, metric, season, category, lim]);
+  const mine = useLoad(() => api.get('/performances', { user_id: user.id, limit: 100 }), [user.id]);
+  const queue = useLoad(() => (isOfficial ? Promise.all([api.get('/performances', { status: 'submitted', limit: 100 }), api.get('/performances', { status: 'disputed', limit: 100 })]).then(([a, b]) => [...b, ...a].filter((r) => r.provenance === 'approved_competition')) : Promise.resolve([])), [isOfficial]);
+  const events = useLoad(async () => {
+    if (!isOfficial) return [];
+    const admin = has('admin');
+    const [open, done, fx] = await Promise.all([
+      api.get('/events', admin ? { limit: 50 } : { organizer_id: user.id, limit: 50 }),
+      api.get('/events', admin ? { status: 'completed', limit: 50 } : { organizer_id: user.id, status: 'completed', limit: 50 }),
+      admin ? Promise.resolve([]) : api.get('/fixtures', { referee_id: user.id, limit: 100 }),
+    ]);
+    const seen = new Map();
+    for (const e of [...open, ...done]) seen.set(e.id, e);
+    for (const f of fx) if (!seen.has(f.event_id)) seen.set(f.event_id, { id: f.event_id, name: f.event_name });
+    return [...seen.values()];
+  }, [isOfficial]);
+  const evResults = useLoad(() => (evFilter ? api.get('/performances', { event_id: evFilter, provenance: 'approved_competition', limit: 100 }) : Promise.resolve([])), [evFilter]);
+  const refresh = () => { mine.reload(); queue.reload(); lb.reload(); evResults.reload(); };
+  const act = async (fn, msg) => { try { await fn(); toast(msg); refresh(); } catch (e) { toast('' + e.message); } };
+  const pickSport = (v) => { setSport(v); setMetric(null); setLim(25); };
   const lower = lb.data?.[0]?.ranking === 'lower_is_better';
-  const todo = (queue.data ?? []).filter((r) => r.provenance === 'approved_competition');
+  const metricRule = rules.data?.metrics?.find((m) => m.metric === metric)?.rule;
+  const categories = [...new Set((sports.data ?? []).map((s) => s.category).filter(Boolean))].sort();
+  const todo = queue.data ?? [];
+  const workRow = (r) => {
+    const blocked = r.recorded_by === user.id || r.user_id === user.id;
+    return (
+      <ResultRow key={r.id} r={r} onHistory={setHistory} onAct={<>
+        {['submitted', 'disputed'].includes(r.status) ? (blocked ? <Tag label="Waiting for another official" color={c.sunSoft} /> : <>
+          <Btn small title="Approve" color={c.mint} ink={c.ink} onPress={() => act(() => api.post(`/performances/${r.id}/approve`, {}), 'Result approved')} />
+          <Btn small title="Reject" color={c.paper} ink={c.red} onPress={() => setForm({ reject: r.id })} /></>) : null}
+        {['approved', 'disputed'].includes(r.status) ? <Btn small title="Correct" color={c.paper} ink={c.ink} onPress={() => setForm({ correct: { id: r.id, unit: r.unit } })} /> : null}
+      </>} />
+    );
+  };
   return (
     <Screen>
       <H1>Leaderboard</H1>
-      <Seg options={[{ value: 'rank', label: 'Rankings', emoji: '🏆' }, { value: 'mine', label: 'My results', emoji: '📈' }, ...(isOfficial ? [{ value: 'approve', label: `To approve${todo.length ? ` (${todo.length})` : ''}`, emoji: '✅' }] : [])]} value={tab} onChange={setTab} />
+      <Seg options={[{ value: 'rank', label: 'Rankings', emoji: '🏆' }, { value: 'mine', label: 'My results', emoji: '📈' }, ...(isOfficial ? [{ value: 'approve', label: `Officials${todo.length ? ` (${todo.length})` : ''}`, emoji: '✅' }] : [])]} value={tab} onChange={setTab} />
       {tab === 'rank' ? <>
         <SportSelect allLabel="All sports" value={sport} onChange={pickSport} />
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
-          <Chip label="All time" active={season === null} onPress={() => setSeason(null)} />
-          {[0, 1, 2].map((k) => <Chip key={k} label={`${thisYear - k}`} active={season === thisYear - k} onPress={() => setSeason(thisYear - k)} />)}
+        {categories.length ? <View accessibilityLabel="Sport category filter" style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+          <Chip label="All categories" active={category === null} onPress={() => { setCategory(null); setLim(25); }} />
+          {categories.map((k) => <Chip key={k} label={k.replace(/_/g, ' ')} active={category === k} onPress={() => { setCategory(k); setLim(25); }} />)}
+        </View> : null}
+        <View accessibilityLabel="Season filter" style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+          <Chip label="All time" active={season === null} onPress={() => { setSeason(null); setLim(25); }} />
+          {[0, 1, 2].map((k) => <Chip key={k} label={`${thisYear - k}`} active={season === thisYear - k} onPress={() => { setSeason(thisYear - k); setLim(25); }} />)}
         </View>
         {sport && rules.data?.metrics?.length ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
           <Chip label="Overall points" active={metric === null} onPress={() => setMetric(null)} />
           {rules.data.metrics.map((m) => <Chip key={m.metric} label={`${m.metric.replace(/_/g, ' ')}${m.rule.direction === 'lower' ? ' ↓' : ''}`} active={metric === m.metric} onPress={() => setMetric(m.metric)} />)}
         </View> : null}
-        <T size={12} color={c.mute} style={{ marginTop: 8 }}>Only results approved by event officials count. Practice you log yourself never changes the rankings. {metric ? (lower ? 'Lowest time ranks first; equal times go to whoever achieved it first.' : 'Highest value ranks first; equal values go to whoever achieved it first.') : 'Ties go to the athlete with more approved results, then the one approved earliest.'}</T>
+        <T size={12} color={c.mute} style={{ marginTop: 8 }}>Only results approved by event officials count. Practice you log yourself never changes the rankings. {metric ? (lower ? 'Lowest time ranks first; equal times go to whoever achieved that time first.' : 'Highest value ranks first; equal values go to whoever achieved that value first.') : 'Ties go to the athlete with more approved results, then the one approved earliest.'}</T>
         <View style={{ gap: 10, marginTop: 10 }}>
-          {lb.loading && !lb.data ? <Loading /> : lb.error ? <ErrorBox error={lb.error} onRetry={lb.reload} /> : lb.data?.length ? lb.data.map((a) => (
-            <Row key={a.id} color={a.rank === 1 ? c.sunSoft : c.paper} onPress={() => push('Person', { id: a.id })} left={<View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><T weight="900" size={20}>{a.rank === 1 ? '🥇' : a.rank === 2 ? '🥈' : a.rank === 3 ? '🥉' : `#${a.rank}`}</T><Avatar user={a} size={40} /></View>}
-              title={a.display_name} sub={`${a.entries} approved result${a.entries === 1 ? '' : 's'} · ${a.evidence_label}`} right={<Tag label={metric ? `${a.best}${lower ? ' s' : ''}` : `${a.points} pts`} color={c.lime} />} />
-          )) : <Empty emoji="📈" title="No approved results yet" sub="Results appear here once an event official approves them." />}
+          {lb.loading && !lb.data ? <Loading /> : lb.error ? <ErrorBox error={lb.error} onRetry={lb.reload} /> : lb.data?.length ? <>
+            {lb.data.map((a) => (
+              <Row key={a.id} color={a.rank === 1 ? c.sunSoft : c.paper} onPress={() => push('Person', { id: a.id })} left={<View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><T weight="900" size={20}>{a.rank === 1 ? '🥇' : a.rank === 2 ? '🥈' : a.rank === 3 ? '🥉' : `#${a.rank}`}</T><Avatar user={a} size={40} /></View>}
+                title={a.display_name} sub={`${a.entries} approved result${a.entries === 1 ? '' : 's'} · ${a.evidence_label}`} right={<Tag label={metric ? withUnit(a.best, metricRule?.unit ?? (lower ? 's' : 'count')) : `${a.points} pts`} color={c.lime} />} />
+            ))}
+            {lb.data.length >= lim ? <Btn title="Show more" color={c.paper} ink={c.ink} onPress={() => setLim(lim + 25)} /> : null}
+          </> : <Empty emoji="📈" title="No approved results yet" sub={season || category || sport ? 'Nothing matches these filters. Try widening them.' : 'Results appear here once an event official approves them.'} />}
         </View>
       </> : null}
       {tab === 'mine' ? <View style={{ gap: 10, marginTop: 10 }}>
         <Btn title="Log practice" color={c.violet} onPress={() => setForm('practice')} />
-        <T size={12} color={c.mute}>Practice is private to you and labelled as self-reported. Competition results are submitted by event officials and appear here once entered.</T>
-        {mine.loading && !mine.data ? <Loading /> : mine.error ? <ErrorBox error={mine.error} onRetry={mine.reload} /> : mine.data?.length ? mine.data.filter((r) => r.user_id === user.id).map((r) => (
-          <ResultRow key={r.id} r={r} mine userId={user.id} onAct={r.provenance === 'approved_competition' && ['approved', 'submitted'].includes(r.status) ? <Btn small title="Something's wrong" color={c.paper} ink={c.red} onPress={() => setForm({ dispute: r.id })} /> : null} />
+        <T size={12} color={c.mute}>Practice is private to you and labelled as self-reported (or imported, with your evidence). Competition results are submitted by event officials and appear here once entered.</T>
+        {mine.loading && !mine.data ? <Loading /> : mine.error ? <ErrorBox error={mine.error} onRetry={mine.reload} /> : mine.data?.filter((r) => r.user_id === user.id).length ? mine.data.filter((r) => r.user_id === user.id).map((r) => (
+          <ResultRow key={r.id} r={r} mine onHistory={setHistory} onAct={r.provenance === 'approved_competition' && ['approved', 'submitted'].includes(r.status) ? <Btn small title="Something's wrong" color={c.paper} ink={c.red} onPress={() => setForm({ dispute: r.id })} /> : null} />
         )) : <Empty emoji="📝" title="No results yet" sub="Log a practice session to start your history." />}
       </View> : null}
-      {tab === 'approve' ? <View style={{ gap: 10, marginTop: 10 }}>
-        <T size={12} color={c.mute}>A result needs a second official: you can’t approve one you submitted, or your own.</T>
-        {queue.loading && !queue.data ? <Loading /> : queue.error ? <ErrorBox error={queue.error} onRetry={queue.reload} /> : todo.length ? todo.map((r) => (
-          <ResultRow key={r.id} r={r} userId={user.id} onAct={r.recorded_by === user.id || r.user_id === user.id ? <Tag label="Waiting for another official" color={c.sunSoft} /> : <>
-            <Btn small title="Approve" color={c.mint} ink={c.ink} onPress={() => act(() => api.post(`/performances/${r.id}/approve`, {}), 'Result approved')} />
-            <Btn small title="Reject" color={c.paper} ink={c.red} onPress={() => setForm({ reject: r.id })} /></>} />
-        )) : <Empty emoji="✅" title="Nothing waiting" sub="Submitted results that need approval show up here." />}
+      {tab === 'approve' && isOfficial ? <View style={{ gap: 10, marginTop: 10 }}>
+        <Btn title="Submit a result" color={c.pink} onPress={() => setForm('submit')} />
+        <T size={12} color={c.mute}>A result needs a second official: you can’t approve or reject one you submitted, or your own. Disputed results are listed first and are not counted until decided.</T>
+        <H2>Waiting for a decision</H2>
+        {queue.loading && !queue.data ? <Loading /> : queue.error ? <ErrorBox error={queue.error} onRetry={queue.reload} /> : todo.length ? todo.map((r) => workRow(r)) : <Empty emoji="✅" title="Nothing waiting" sub="Submitted and disputed results that need a decision show up here." />}
+        <H2>Results for an event</H2>
+        {events.loading && !events.data ? <Loading /> : events.error ? <ErrorBox error={events.error} onRetry={events.reload} /> : <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+          {(events.data ?? []).length ? events.data.map((e) => <Chip key={e.id} label={e.name} active={evFilter === e.id} onPress={() => setEvFilter(evFilter === e.id ? null : e.id)} />) : <T size={12} color={c.mute}>You have no events to manage results for.</T>}
+        </View>}
+        {evFilter ? (evResults.loading && !evResults.data ? <Loading /> : evResults.error ? <ErrorBox error={evResults.error} onRetry={evResults.reload} /> : evResults.data?.length ? evResults.data.map((r) => workRow(r)) : <Empty emoji="📈" title="No results for this event" sub="Submit the first one above." />) : null}
       </View> : null}
+      {tab === 'approve' && !isOfficial ? <Empty emoji="🔒" title="Officials only" sub="Only event organisers, referees and admins can approve results." /> : null}
+      <HistorySheet id={history} onClose={() => setHistory(null)} />
+      <SubmitResultSheet visible={form === 'submit'} onClose={() => setForm(null)} events={events.data} onDone={refresh} />
       <FormSheet visible={form === 'practice'} onClose={() => setForm(null)} title="Log practice" submitLabel="Save practice"
-        fields={[{ key: 'sport', label: 'Sport', type: 'sport' }, { key: 'metric', label: 'What did you measure?', hint: 'For example goals, assists or 100m_time_s' }, { key: 'value', label: 'Result', type: 'number', input: 'decimal', hint: 'Seconds for a time, metres for a distance, otherwise a count' }, { key: 'achieved_on', label: 'Date', type: 'date', optional: true }]}
-        onSubmit={async (v) => { await api.post('/performances', { sport: v.sport, metric: v.metric, value: Number(v.value), achieved_on: v.achieved_on || undefined }); setForm(null); toast('Practice saved'); mine.reload(); }} />
+        fields={[{ key: 'sport', label: 'Sport', type: 'sport' }, { key: 'metric', label: 'What did you measure?', hint: 'For example goals, assists or 100m_time_s' }, { key: 'value', label: 'Result', type: 'number', input: 'decimal', hint: 'Seconds for a time, metres for a distance, otherwise a count' }, { key: 'achieved_on', label: 'Date', type: 'date', optional: true, max: todayIso() },
+          { key: 'imported', label: 'Imported from another app or device', type: 'switch', hint: 'Labelled as imported evidence. It still never changes official rankings.' },
+          { key: 'evidence_ref', label: 'Evidence reference', hint: 'A link or an id from the source app', show: (v) => !!v.imported }]}
+        onSubmit={async (v) => { await api.post('/performances', { sport: v.sport, metric: v.metric, value: Number(v.value), achieved_on: v.achieved_on || undefined, imported: v.imported || undefined, evidence_ref: v.imported ? v.evidence_ref : undefined }); setForm(null); toast(v.imported ? 'Imported result saved' : 'Practice saved'); mine.reload(); }} />
       <FormSheet visible={!!form?.reject} onClose={() => setForm(null)} title="Reject this result" submitLabel="Reject result" color={c.red}
         fields={[{ key: 'reason', label: 'Why is it being rejected?', type: 'multiline' }]}
-        onSubmit={async (v) => { await api.post(`/performances/${form.reject}/reject`, { reason: v.reason }); setForm(null); toast('Result rejected'); queue.reload(); }} />
+        onSubmit={async (v) => { await api.post(`/performances/${form.reject}/reject`, { reason: v.reason }); setForm(null); toast('Result rejected'); refresh(); }} />
       <FormSheet visible={!!form?.dispute} onClose={() => setForm(null)} title="Report a problem with this result" submitLabel="Report problem" color={c.red}
         fields={[{ key: 'reason', label: 'What is wrong?', type: 'multiline', hint: 'The result stops counting in the rankings until an official has reviewed it.' }]}
-        onSubmit={async (v) => { await api.post(`/performances/${form.dispute}/dispute`, { reason: v.reason }); setForm(null); toast('Reported — an official will review it'); mine.reload(); lb.reload(); }} />
+        onSubmit={async (v) => { await api.post(`/performances/${form.dispute}/dispute`, { reason: v.reason }); setForm(null); toast('Reported — an official will review it'); refresh(); }} />
+      <FormSheet visible={!!form?.correct} onClose={() => setForm(null)} title="Correct this result" submitLabel="Propose correction"
+        fields={[{ key: 'value', label: `Corrected result (${unitName(form?.correct?.unit)})`, type: 'number', input: 'decimal', hint: 'The original keeps counting until a different official approves the correction.' }, { key: 'reason', label: 'Why is it being corrected?', type: 'multiline' }]}
+        onSubmit={async (v) => { await api.post(`/performances/${form.correct.id}/correct`, { value: Number(v.value), reason: v.reason }); setForm(null); toast('Correction sent for approval'); refresh(); }} />
     </Screen>
   );
 }
