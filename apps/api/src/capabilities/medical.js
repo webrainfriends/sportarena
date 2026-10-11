@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { cap, id, page } from '../registry.js';
 import { one, many, query, tx } from '../db.js';
 import { notify } from '../notify.js';
+import { assertTransition } from '../lifecycle.js';
 import { isBookable } from '../health/slots.js';
 import { config } from '../config.js';
 import { paymentsEnabled, refundFor } from '../payments/service.js';
@@ -78,29 +79,23 @@ cap({
   },
 });
 
-// requested -> confirmed | cancelled, confirmed -> completed | cancelled; completed and cancelled are final
-const NEXT = { requested: ['confirmed', 'cancelled'], confirmed: ['completed', 'cancelled'], completed: [], cancelled: [] };
-
 cap({
   name: 'update_appointment', method: 'PATCH', path: '/appointments/:id', tag: 'Health',
-  summary: 'Provider confirms/completes; either party can cancel. Moves must follow requested -> confirmed -> completed (cancel is possible until completed); a final appointment cannot be changed. The other party is notified.',
+  summary: 'Provider confirms/completes; either party can cancel. Moves follow the shared lifecycle (src/lifecycle.js): requested -> confirmed -> completed, cancel until completed, unanswered requests expire on their own. Completing needs payment (if required) and a start time that has passed. A final appointment (completed, cancelled, expired) cannot be changed. The other party is notified.',
   input: z.object({ id, status: z.enum(['confirmed', 'completed', 'cancelled']) }),
   async handler({ user }, i) {
     return tx(async (c) => {
       const a = (await c.query('SELECT * FROM appointments WHERE id=$1 FOR UPDATE', [i.id])).rows[0];
       if (!a) throw notFound('Appointment');
       const isProvider = a.provider_id === user.id, isAthlete = a.athlete_id === user.id;
-      if (!isProvider && !isAthlete && !isAdmin(user)) throw forbidden();
-      if (i.status !== 'cancelled' && !isProvider) throw forbidden('Only the provider can confirm or complete');
-      if (!NEXT[a.status].includes(i.status)) throw conflict(`A ${a.status} appointment cannot become ${i.status}`);
-      if (i.status === 'confirmed' && a.payment_status === 'unpaid') throw conflict('Waiting for the athlete to pay');
-      if (i.status === 'completed' && a.payment_status === 'unpaid') throw conflict('This appointment has not been paid for');
+      assertTransition(a, i.status, { isProvider, isCustomer: isAthlete, isAdmin: isAdmin(user) }, { noun: 'appointment', customerWord: 'athlete' });
       let payment = a.payment_status;
       if (i.status === 'cancelled' && a.payment_status === 'paid') {
         await refundFor('appointment', a.id);      // refund at the provider first; if it refuses nothing is cancelled
         payment = 'refunded';
       }
-      const row = (await c.query('UPDATE appointments SET status=$2, payment_status=$4, updated_at=now(), cancelled_by=CASE WHEN $2 = \'cancelled\' THEN $3::uuid ELSE cancelled_by END WHERE id=$1 RETURNING id, athlete_id, provider_id, starts_at, duration_min, status, payment_status', [i.id, i.status, user.id, payment])).rows[0];
+      const row = (await c.query('UPDATE appointments SET status=$2, payment_status=$4, updated_at=now(), cancelled_by=CASE WHEN $2 = \'cancelled\' THEN $3::uuid ELSE cancelled_by END WHERE id=$1 AND status=$5 RETURNING id, athlete_id, provider_id, starts_at, duration_min, status, payment_status', [i.id, i.status, user.id, payment, a.status])).rows[0];
+      if (!row) throw conflict('This appointment was just changed by someone else; reload and try again');
       // follow-ups follow the appointment they were booked into
       if (i.status === 'completed') await c.query("UPDATE appointment_followups SET status='done', completed_at=now(), closed_by=$2, updated_at=now() WHERE booked_appointment_id=$1 AND status='booked'", [a.id, user.id]);
       if (i.status === 'cancelled') await c.query("UPDATE appointment_followups SET status='due', booked_appointment_id=NULL, updated_at=now() WHERE booked_appointment_id=$1 AND status='booked'", [a.id]);

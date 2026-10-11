@@ -120,6 +120,7 @@ test('follow-ups: summary for the athlete, sensitive details encrypted and conse
   assert.equal(must(await api('GET', `/followups/${f.id}`, { token: ath.token })).status, 'due', 'cancelled visit puts it back to due');
   const visit2 = must(await api('POST', '/appointments', { token: ath.token, body: { provider_id: doc.id, starts_at: at(9, 16), followup_id: f.id } }), 201);
   must(await api('PATCH', `/appointments/${visit2.id}`, { token: doc.token, body: { status: 'confirmed' } }));
+  await pool.query("UPDATE appointments SET starts_at = now() - interval '2 hours' WHERE id=$1", [visit2.id]);
   must(await api('PATCH', `/appointments/${visit2.id}`, { token: doc.token, body: { status: 'completed' } }));
   const done = must(await api('GET', `/followups/${f.id}`, { token: ath.token }));
   assert.equal(done.status, 'done'); assert.ok(done.completed_at);

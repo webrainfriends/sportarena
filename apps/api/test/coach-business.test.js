@@ -137,6 +137,7 @@ test('testimonials both ways: need a relationship, review nudges once, pin at mo
   const pub = ok(await api('GET', `/testimonials?subject_type=user&subject_id=${athlete.id}`));
   assert.equal(pub.n, 1, 'shows on the athlete\'s public profile');
   assert.equal((await api('POST', `/hires/${h1.id}/request-review`, { token: coach.token })).status, 409, 'not completed yet');
+  await pool.query("UPDATE coach_hires SET starts_at = now() - interval '2 hours' WHERE id=$1", [h1.id]); // it has to have started to be completed
   ok(await api('PATCH', `/hires/${h1.id}`, { token: coach.token, body: { status: 'completed' } }));
   ok(await api('POST', `/hires/${h1.id}/request-review`, { token: coach.token }));
   assert.equal((await api('POST', `/hires/${h1.id}/request-review`, { token: coach.token })).status, 409, 'once only');
@@ -144,7 +145,7 @@ test('testimonials both ways: need a relationship, review nudges once, pin at mo
   const reviews = [];
   for (const d of [3, 4, 5, 6]) {
     const h = d === 3 ? h1 : await mk(d);
-    if (d !== 3) ok(await api('PATCH', `/hires/${h.id}`, { token: coach.token, body: { status: 'completed' } }));
+    if (d !== 3) { await pool.query("UPDATE coach_hires SET starts_at = now() - interval '2 hours' WHERE id=$1", [h.id]); ok(await api('PATCH', `/hires/${h.id}`, { token: coach.token, body: { status: 'completed' } })); }
     reviews.push(ok(await api('POST', `/hires/${h.id}/review`, { token: athlete.token, body: { rating: 5 } }), 201));
   }
   for (const r of reviews.slice(0, 3)) ok(await api('POST', `/coach-reviews/${r.id}/pin`, { token: coach.token, body: { pinned: true } }));
@@ -171,10 +172,12 @@ test('analytics and statement over rate-card sessions; an answer to a team reque
   assert.equal(seen.responses[0].rate_card_title, 'Squad clinic'); assert.equal(seen.team_name, 'Hill Rovers');
   const done = ok(await api('POST', `/coach-responses/${ans.id}/decision`, { token: manager.token, body: { decision: 'accept' } }));
   assert.equal(done.hire.audience, 'team'); assert.equal(done.hire.total_cents, 120000); assert.equal(done.hire.participants, 14);
+  await pool.query("UPDATE coach_hires SET starts_at = now() - interval '2 hours' WHERE id=$1", [done.hire.id]); // it has to have started to be completed
   ok(await api('PATCH', `/hires/${done.hire.id}`, { token: coach.token, body: { status: 'completed' } }));
   // an individual session on the standard rate, completed, plus a cancelled one
   const h = ok(await api('POST', '/hires', { token: athlete.token, body: { coach_id: coach.id, sport: 'football', starts_at: dayAt(5, 9), duration_min: 60 } }), 201);
   ok(await api('PATCH', `/hires/${h.id}`, { token: coach.token, body: { status: 'confirmed' } }));
+  await pool.query("UPDATE coach_hires SET starts_at = now() - interval '2 hours' WHERE id=$1", [h.id]); // it has to have started to be completed
   ok(await api('PATCH', `/hires/${h.id}`, { token: coach.token, body: { status: 'completed' } }));
   const x = ok(await api('POST', '/hires', { token: athlete.token, body: { coach_id: coach.id, sport: 'football', starts_at: dayAt(6, 9), duration_min: 60 } }), 201);
   ok(await api('PATCH', `/hires/${x.id}`, { token: athlete.token, body: { status: 'cancelled' } }));
