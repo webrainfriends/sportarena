@@ -2,6 +2,7 @@
 // One definition -> REST route, OpenAPI operation, and MCP tool. Business rules live in the
 // handler, so REST clients, the mobile/web app and AI agents all get identical behaviour.
 import { z } from 'zod';
+import { classify } from './scopes.js';
 
 export const capabilities = [];
 
@@ -18,7 +19,8 @@ export const capabilities = [];
  */
 export function cap(c) {
   if (capabilities.some((x) => x.name === c.name)) throw new Error(`duplicate capability ${c.name}`);
-  capabilities.push({ auth: 'user', input: z.object({}), ...c });
+  const full = { auth: 'user', input: z.object({}), ...c };
+  capabilities.push({ ...full, scope: classify(full) }); // token-scope class: read | write | payment | clinical | admin
 }
 
 // shared schema pieces
