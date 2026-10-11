@@ -4,7 +4,7 @@ import { useSession } from './session';
 import { Btn, Chip, Field, Sheet, T } from './ui';
 import { Icon } from './icons';
 import { c, themeMode, scheme, THEME_KEY } from './theme';
-import { LOCALE_KEY, LOCALES, deviceZone, followsDevice, locale, localeLabel, fmtDateTime } from './locale';
+import { LOCALE_KEY, LOCALES, deviceZone, followsDevice, locale, localeLabel, asLocale, fmtDateTime } from './locale';
 import { storage } from './storage';
 
 // Theme and language are read when the app loads (screens bake the tokens in), so a change is stored and the app restarts.
@@ -23,7 +23,8 @@ export function AccountSheet({ visible, onClose }) {
   const [open, setOpen] = useState(false);
   const pickTheme = async (m) => { if (m === themeMode) return; await remember(THEME_KEY, m === 'system' ? null : m); restart(); };
   const pickLocale = async (tag) => { if (tag === locale && !followsDevice) return; await remember(LOCALE_KEY, tag); restart(); };
-  const list = LOCALES.filter((t) => `${localeLabel(t)} ${t}`.toLowerCase().includes(q.trim().toLowerCase())).slice(0, 12);
+  const list = LOCALES.filter((t) => `${localeLabel(t)} ${t}`.toLowerCase().includes(q.trim().toLowerCase())).slice(0, 40);
+  const typed = asLocale(q);
   return (
     <Sheet visible={visible} onClose={onClose} title={user ? `@${user.handle}` : 'Account'}>
       <View style={{ gap: 6 }}>
@@ -41,10 +42,12 @@ export function AccountSheet({ visible, onClose }) {
         </Pressable>
         {open ? (
           <View style={{ gap: 8 }}>
-            <Field value={q} onChangeText={setQ} placeholder="Search language or country" />
+            <Field value={q} onChangeText={setQ} placeholder="Search language or country, e.g. Singapore or en-SG" />
             <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
+              {typed && !list.includes(typed) ? <Chip key={typed} label={localeLabel(typed)} active={typed === locale && !followsDevice} onPress={() => pickLocale(typed)} /> : null}
               {list.map((t) => <Chip key={t} label={localeLabel(t)} active={t === locale && !followsDevice} onPress={() => pickLocale(t)} />)}
             </View>
+            {!list.length && !typed ? <T size={12} color={c.mute}>Nothing matches. Try a country or language name, or a tag like en-SG.</T> : null}
             {!followsDevice ? <Btn small title="Use my device's settings" color={c.paper} ink={c.ink} onPress={() => pickLocale(null)} style={{ alignSelf: 'flex-start' }} /> : null}
           </View>
         ) : null}

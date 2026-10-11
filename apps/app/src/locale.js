@@ -49,14 +49,26 @@ export const locale = chosenLocale && valid(chosenLocale) ? chosenLocale : detec
 export const timeZone = deviceZone; // always the device's own zone; venue times are shown in the venue's zone by vtime.js
 export const followsDevice = !chosenLocale;
 
-/** Languages offered in the picker (the app's own text is English for now; dates, times, numbers and currency follow the pick). */
+const EN_REGIONS = ['IN', 'SG', 'GB', 'US', 'AU', 'CA', 'NZ', 'IE', 'ZA', 'AE', 'MY', 'PH', 'HK', 'PK', 'BD', 'LK', 'NG', 'KE'];
+/** Languages and regions offered in the picker (the app's own text is English for now; dates, times, numbers and currency follow the pick).
+ *  English is offered for every region we know, so someone in Singapore can pick English (Singapore) rather than a nearby country. */
 export const LOCALES = [
-  'en-IN', 'en-GB', 'en-US', 'en-AU', 'en-CA', 'hi-IN', 'bn-IN', 'ta-IN', 'te-IN', 'mr-IN', 'gu-IN', 'kn-IN', 'ml-IN', 'pa-IN', 'ur-PK', 'ar-AE', 'ar-SA',
-  'fr-FR', 'de-DE', 'es-ES', 'es-MX', 'pt-BR', 'pt-PT', 'it-IT', 'nl-NL', 'sv-SE', 'pl-PL', 'tr-TR', 'ru-RU', 'ja-JP', 'ko-KR', 'zh-CN', 'zh-TW', 'id-ID', 'th-TH', 'vi-VN',
+  ...EN_REGIONS.map((r) => `en-${r}`),
+  'hi-IN', 'bn-IN', 'bn-BD', 'ta-IN', 'ta-SG', 'ta-LK', 'te-IN', 'mr-IN', 'gu-IN', 'kn-IN', 'ml-IN', 'pa-IN', 'ur-PK', 'ne-NP', 'si-LK', 'ar-AE', 'ar-SA',
+  'zh-SG', 'zh-CN', 'zh-TW', 'zh-HK', 'ms-MY', 'ms-SG', 'id-ID', 'th-TH', 'vi-VN', 'fil-PH', 'ja-JP', 'ko-KR',
+  'fr-FR', 'fr-CA', 'de-DE', 'es-ES', 'es-MX', 'pt-BR', 'pt-PT', 'it-IT', 'nl-NL', 'sv-SE', 'pl-PL', 'tr-TR', 'ru-RU',
 ].filter(valid);
+/** "English · Singapore (en-SG)" — searchable by language, country or tag. */
 export const localeLabel = (tag) => {
-  try { return `${new Intl.DisplayNames([tag], { type: 'language', languageDisplay: 'standard' }).of(tag)} (${tag})`; } catch { return tag; }
+  try {
+    const l = new Intl.Locale(tag);
+    const lang = new Intl.DisplayNames([tag], { type: 'language' }).of(l.language);
+    const region = l.region ? new Intl.DisplayNames([tag], { type: 'region' }).of(l.region) : null;
+    return `${lang}${region ? ` · ${region}` : ''} (${tag})`;
+  } catch { return tag; }
 };
+/** Any valid BCP 47 tag the person types (e.g. "en-SG") can be chosen even if it is not in the list. */
+export const asLocale = (text) => { const t = String(text).trim().replace(/_/g, '-'); return /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(t) && valid(t) ? t : null; };
 
 // ---- formatters: always the chosen locale and zone, never a hard-coded one ----
 const d = (v) => (v instanceof Date ? v : new Date(v));

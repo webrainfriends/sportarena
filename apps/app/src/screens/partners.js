@@ -2,7 +2,7 @@
 // negotiate and set prices, contracts, settlements, reports, platform staff) and a "My partner account" page for venue owners.
 // Everything here is the same REST API agents use over MCP; the platform-only actions are rejected by the server for anyone else.
 import React, { useState } from 'react';
-import { Platform, View } from 'react-native';
+import { Platform, Switch, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
@@ -48,26 +48,42 @@ function VenuePicker({ visible, onClose, onPick, title = 'Pick a venue' }) {
 }
 
 // ------------------------------------------------------------------ pricing assistant (shared)
+const digitsOf = (cur) => { try { return new Intl.NumberFormat('en', { style: 'currency', currency: cur }).resolvedOptions().maximumFractionDigits; } catch { return 2; } };
+
+/** The platform price list for one venue: the assistant's suggestion, every rate editable, then applied as platform pricing. */
 function SuggestionSheet({ venue, onClose, onDone }) {
   const s = useLoad(() => (venue ? api.get(`/admin/venues/${venue.id}/pricing-suggestion`) : Promise.resolve(null)), [venue?.id]);
   const act = useAct(onDone);
+  const [rates, setRates] = useState({});
+  const [withRules, setWithRules] = useState(false);
   const d = s.data;
+  const dg = digitsOf(d?.currency ?? 'INR');
+  const shown = (r) => (rates[r.resource_id] ?? (r.suggested_cents ?? r.current_cents) / 10 ** dg);
+  const edited = (r) => Number(String(shown(r)).replace(/,/g, ''));
+  const bad = d?.resources.some((r) => !(edited(r) >= 0));
   const apply = () => act(async () => {
-    await api.post(`/admin/venues/${venue.id}/pricing`, {
-      base_rates: d.resources.filter((r) => r.suggested_cents).map((r) => ({ resource_id: r.resource_id, hourly_rate_cents: r.suggested_cents })),
-      rules: d.suggested_rules.map(({ area, ...r }) => r), factors: Object.fromEntries(d.factors.map((f) => [f.key, f.adjust_pct])), note: 'Platform price list from the pricing assistant',
-    });
-    onClose();
+    const base_rates = d.resources.map((r) => ({ resource_id: r.resource_id, hourly_rate_cents: Math.round(edited(r) * 10 ** dg) })).filter((r, i) => r.hourly_rate_cents !== d.resources[i].current_cents);
+    // suggested rules follow the figures you typed: scale each rule by (your base rate / suggested base rate)
+    const rules = withRules ? d.suggested_rules.map(({ area, ...r }) => { const base = d.resources.find((x) => x.resource_id === r.resource_id); const k = base?.suggested_cents ? Math.round(edited(base) * 10 ** dg) / base.suggested_cents : 1; return { ...r, hourly_rate_cents: Math.round(r.hourly_rate_cents * k / 100) * 100 }; }) : [];
+    if (!base_rates.length && !rules.length) throw new Error('Nothing to change: edit a rate or switch on the peak / off-peak rules');
+    await api.post(`/admin/venues/${venue.id}/pricing`, { base_rates, rules, factors: Object.fromEntries(d.factors.map((f) => [f.key, f.adjust_pct])), note: 'Platform price list set by the platform team' });
+    setRates({}); onClose();
   }, 'Price list applied: it now overrides the venue\'s own prices');
   return (
     <Sheet visible={!!venue} onClose={onClose} title={`Price list · ${venue?.name ?? ''}`}>
       {s.loading ? <Loading /> : s.error ? <ErrorBox error={s.error} onRetry={s.reload} /> : d ? <>
-        <T size={13} color={c.mute}>Built from comparable venues, demand, rating, facilities and discounts. You decide; nothing changes until you apply.</T>
+        <T size={13} color={c.mute}>The assistant\'s suggestion is pre-filled. Type any rate to override it; nothing changes until you apply, and then it replaces what the venue set.</T>
         {d.factors.map((f) => <Row key={f.key} title={`${f.label}  ${f.adjust_pct > 0 ? '+' : ''}${f.adjust_pct}%`} sub={f.detail} color={c.violetSoft} />)}
-        <T weight="800" style={{ marginTop: 6 }}>Base rates (×{d.multiplier})</T>
-        {d.resources.map((r) => <Row key={r.resource_id} title={r.name} sub={`now ${cash(r.current_cents, d.currency)} · ${r.baseline_source} ${r.baseline_cents ? cash(r.baseline_cents, d.currency) : '—'}`} right={<T weight="800">{r.suggested_cents ? cash(r.suggested_cents, d.currency) : 'set manually'}</T>} />)}
-        <T size={12} color={c.mute}>Plus {d.suggested_rules.length} peak / weekend / off-peak rules (platform rules always win over venue rules).</T>
-        <Btn title="Apply as the platform price list" onPress={apply} style={{ marginTop: 8 }} />
+        <T weight="800" style={{ marginTop: 6 }}>Hourly rate per area ({d.currency})</T>
+        {d.resources.map((r) => <View key={r.resource_id} style={{ gap: 4 }}>
+          <Field label={`${r.name} · now ${cash(r.current_cents, d.currency)} · ${r.baseline_source} ${r.baseline_cents ? cash(r.baseline_cents, d.currency) : '—'}`} value={String(shown(r))} onChangeText={(v) => setRates({ ...rates, [r.resource_id]: v })} keyboardType="decimal-pad" />
+          {r.suggested_cents ? <Btn small title={`Use suggestion ${cash(r.suggested_cents, d.currency)}`} color={c.paper} ink={c.ink} onPress={() => setRates({ ...rates, [r.resource_id]: String(r.suggested_cents / 10 ** dg) })} style={{ alignSelf: 'flex-start' }} /> : null}
+        </View>)}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8 }}>
+          <Switch value={withRules} onValueChange={setWithRules} />
+          <T size={13} style={{ flex: 1 }}>Also add the suggested weekday-evening, weekend and weekday-daytime rules ({d.suggested_rules.length})</T>
+        </View>
+        <Btn title="Apply as the platform price list" onPress={apply} disabled={bad} style={{ marginTop: 8 }} />
       </> : null}
     </Sheet>
   );
