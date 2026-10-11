@@ -60,7 +60,7 @@ cap({
     if (blocking.length && !i.force) throw conflict(`${blocking.length} game(s) are still live or paused; finish them or end with force`, { fixtures: blocking.map((f) => f.id) });
     if (blocking.length && !i.reason) throw conflict('Ending with games still running needs a reason');
     const complete = capabilities.find((x) => x.name === 'complete_event');
-    const out = await complete.handler({ user }, { id: i.id, force: i.force, reason: i.reason });
+    const out = await complete.handler({ user }, complete.input.parse({ id: i.id, force: i.force, reason: i.reason }));
     if (blocking.length) await many("UPDATE fixtures SET status='abandoned', paused_by_event=false WHERE event_id=$1 AND status IN ('live','paused') RETURNING id", [i.id]);
     return { ...out, ended_by: user.id };
   },
