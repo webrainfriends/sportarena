@@ -6,8 +6,9 @@
 //  * Format: "v1.<iv>.<tag>.<ciphertext>" (base64url). The version prefix lets us rotate keys later.
 //  * blindIndex() = HMAC-SHA256 of the normalised value: equality lookup (e.g. login by email)
 //    without storing the plaintext.
-import { createCipheriv, createDecipheriv, createHmac, hkdfSync, randomBytes, scryptSync, timingSafeEqual, createHash } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHmac, hkdfSync, randomBytes, scrypt, timingSafeEqual, createHash } from 'node:crypto';
 import { config } from './config.js';
+import { AppError } from './errors.js';
 
 let keys;
 let unwrappedMaster = null;
@@ -54,17 +55,54 @@ export function blindIndex(value) {
   return createHmac('sha256', getKeys().idx).update(String(value).trim().toLowerCase()).digest('hex');
 }
 
-export function hashPassword(password) {
+// ---- Password hashing -------------------------------------------------------------------------
+// scrypt runs on the libuv thread pool (async), so a burst of logins never blocks the event loop.
+// A bounded semaphore caps concurrent derivations (each uses ~16 MiB and a pool thread) and a bounded
+// wait queue turns overload into a fast 503 + Retry-After instead of unbounded memory/latency.
+// Stored format is unchanged: scrypt$<salt b64url>$<hash b64url>, N=16384 r=8 p=1, 64-byte key.
+const SCRYPT = { N: 16384, r: 8, p: 1 };
+const gate = {
+  active: 0, queue: [], peakQueue: 0, rejected: 0, completed: 0,
+  get limit() { return Math.max(1, Number(config.hashing?.concurrency) || 2); },
+  get maxQueue() { return Math.max(0, Number(config.hashing?.maxQueue ?? 64)); },
+};
+
+export function hashingStats() {
+  return { active: gate.active, queued: gate.queue.length, peak_queued: gate.peakQueue, rejected: gate.rejected, completed: gate.completed, concurrency: gate.limit, max_queue: gate.maxQueue };
+}
+
+function acquire() {
+  if (gate.active < gate.limit) { gate.active++; return Promise.resolve(); }
+  if (gate.queue.length >= gate.maxQueue) {
+    gate.rejected++;
+    return Promise.reject(new AppError(503, 'busy', 'The server is busy signing people in. Please try again in a moment.', { retry_after_seconds: 2 }));
+  }
+  return new Promise((resolve) => { gate.queue.push(resolve); gate.peakQueue = Math.max(gate.peakQueue, gate.queue.length); });
+}
+function release() {
+  const next = gate.queue.shift();
+  if (next) next(); else gate.active--;
+}
+
+function derive(password, salt, len) {
+  return new Promise((resolve, reject) => scrypt(password, salt, len, SCRYPT, (e, k) => (e ? reject(e) : resolve(k))));
+}
+async function limitedDerive(password, salt, len) {
+  await acquire();
+  try { return await derive(password, salt, len); } finally { gate.completed++; release(); }
+}
+
+export async function hashPassword(password) {
   const salt = randomBytes(16);
-  const hash = scryptSync(password, salt, 64, { N: 16384, r: 8, p: 1 });
+  const hash = await limitedDerive(password, salt, 64);
   return `scrypt$${salt.toString('base64url')}$${hash.toString('base64url')}`;
 }
 
-export function verifyPassword(password, stored) {
-  const [alg, salt, hash] = stored.split('$');
-  if (alg !== 'scrypt') return false;
+export async function verifyPassword(password, stored) {
+  const [alg, salt, hash] = String(stored ?? '').split('$');
+  if (alg !== 'scrypt' || !salt || !hash) return false;
   const expected = Buffer.from(hash, 'base64url');
-  const actual = scryptSync(password, Buffer.from(salt, 'base64url'), expected.length, { N: 16384, r: 8, p: 1 });
+  const actual = await limitedDerive(password, Buffer.from(salt, 'base64url'), expected.length);
   return timingSafeEqual(actual, expected);
 }
 

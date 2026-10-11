@@ -30,6 +30,9 @@ export const config = {
   kmsRegion: env.KMS_REGION ?? 'ap-southeast-1',
   masterKeyFile: env.MASTER_KEY_FILE ?? '/var/lib/sportarena/master.key.enc',
   jwtSecret: secret('SPORTARENA_JWT_SECRET'),
+  // Password hashing (scrypt) runs off the event loop; at most `concurrency` derivations run at once and
+  // up to `maxQueue` more wait. Beyond that requests get 503 + Retry-After.
+  hashing: { concurrency: Number(env.HASH_CONCURRENCY ?? 2), maxQueue: Number(env.HASH_MAX_QUEUE ?? 64) },
   tokenTtl: env.TOKEN_TTL ?? '12h',
   // HTTPS: terminate TLS in-process (SSL_KEY_FILE/SSL_CERT_FILE) or behind a proxy (TRUST_PROXY=true).
   sslKeyFile: env.SSL_KEY_FILE,

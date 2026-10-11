@@ -19,7 +19,7 @@ if (await one("SELECT 1 FROM users WHERE handle='aarav'")) { console.log('Alread
 const mk = async (handle, display_name, roles, emoji, color, extra = {}) =>
   (await call('register', null, { handle, display_name, email: `${handle}@demo.sportarena.dev`, password: PASSWORD, roles, avatar_emoji: emoji, avatar_color: color, ...extra })).user;
 
-const admin = await one("INSERT INTO users(handle, display_name, roles, password_hash, email_enc, email_idx, avatar_emoji, avatar_color) VALUES ('admin','Arena Admin','{admin}',$1,$2,$3,'👑','#FFC400') RETURNING id, handle, display_name, roles", [hashPassword(PASSWORD), encrypt('admin@demo.sportarena.dev', 'users.email'), blindIndex('admin@demo.sportarena.dev')]);
+const admin = await one("INSERT INTO users(handle, display_name, roles, password_hash, email_enc, email_idx, avatar_emoji, avatar_color) VALUES ('admin','Arena Admin','{admin}',$1,$2,$3,'👑','#FFC400') RETURNING id, handle, display_name, roles", [await hashPassword(PASSWORD), encrypt('admin@demo.sportarena.dev', 'users.email'), blindIndex('admin@demo.sportarena.dev')]);
 const org = await mk('kavya_events', 'Kavya (Organizer)', ['organizer', 'athlete'], '🎪', '#7C4DFF', { full_name: 'Kavya Menon', phone: '+91 90000 00001' });
 const venueMgr = await mk('arena_one', 'Arena One', ['venue_manager'], '🏟️', '#00E5A8');
 const sponsor = await mk('volt_drink', 'VoltDrink', ['sponsor'], '⚡', '#FFD600');
