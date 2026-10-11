@@ -1,5 +1,7 @@
 # Events (SPOR-54 / SPOR-56 / SPOR-129)
 
+> Running an event end to end (pause/resume, departments, boards, live scoring, score-sheet approval, AI help): see [event-command-centre.md](event-command-centre.md).
+
 One canonical event capability (`apps/api/src/capabilities/events.js`); SPOR-54 and SPOR-56 are the same epic and are tracked here together.
 
 ## Inventory (what already existed)
