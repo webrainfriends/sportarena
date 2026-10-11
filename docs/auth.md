@@ -1,6 +1,31 @@
 # Authentication, sessions and API tokens (issue #60)
 
-This page grows with each slice of #60. Sections below describe what is implemented today.
+Everything in issue #60 in one place: scoped API tokens, revocable sessions, cookie sessions for the web, account security (email
+verification, password recovery, two-step verification) and the screens that use them.
+
+## Summary and rollout checklist
+
+| Area | Migration | Switch / config | Default |
+|---|---|---|---|
+| Token scopes, expiry, resources | `052_api_token_scopes.sql` | none | existing tokens keep `full`; new tokens default to `read` |
+| Server sessions, refresh rotation | `053_auth_sessions.sql` | `TOKEN_TTL`, `REFRESH_TTL_DAYS`, `AUTH_REQUIRE_SESSION` | pre-session JWTs work until they expire |
+| Web cookies, CSRF, origins | none | `CORS_ORIGINS`, `COOKIE_SECURE`, `COOKIE_SAMESITE` | web clients that send `X-SA-Client: web` get cookies |
+| Account security | `054_account_security.sql` | `MFA_ENFORCE`, `NOTIFY_WEBHOOK_URL`, `APP_URL` | MFA optional; enforcement **off** |
+
+Suggested order: deploy; check `CORS_ORIGINS` and HTTPS; make sure `NOTIFY_WEBHOOK_URL` works (recovery depends on it); have doctors, physios and
+admins turn on two-step verification in **Me > Account security**; then set `MFA_ENFORCE=true`; later set `AUTH_REQUIRE_SESSION=true` and shorten
+`TOKEN_TTL`. Rollback of any step is described in its section; no step deletes data, and migrations only add columns and tables.
+
+## Screens (Me, and the log-in screen)
+
+- **Me > Account security**: email confirmation state (send/confirm), two-step verification (turn on with QR code or key, confirm a code, save the
+  one-time recovery codes; turn off with password + code), change password, and **Where you are signed in** (devices with last activity, sign out
+  one device, sign out everywhere). Loading, empty and error states are shown; all buttons are standard touch-size controls with accessible roles.
+- **Me > Agents & API**: create a token with a name, permission chips (read, write, payments, health data, admin for admins), an expiry chosen on
+  the calendar picker and an optional search-and-pick of the venues, teams, events or organisations it is limited to. The list shows permissions,
+  expiry, last use and limits; tokens created before permissions existed are flagged **Full access** with a hint to replace them. The secret is shown once.
+- **Log in**: "Forgot your password?" (request a code, then choose a new password; links from the email open the app with the code filled in),
+  the two-step code screen after the password, and confirmation of the email link (`?verify_email=`).
 
 ## API token scopes
 
