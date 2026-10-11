@@ -59,12 +59,12 @@ export function Section({ title, action, onAction, children, color = c.pink }) {
   );
 }
 
-export function Btn({ title, onPress, color: want = c.pink, ink = '#fff', style, small, disabled, loading }) {
+export function Btn({ title, onPress, color: want = c.pink, ink = '#fff', style, small, disabled, loading, accessibilityLabel }) {
   const color = want === c.cyan || want === c.mint || want === c.sun || want === c.ink || want === c.lime ? c.violet : want === c.orange ? c.pink : want;
   const plain = color === c.paper;
   const fg = plain ? (ink === '#fff' ? c.ink : ink) : '#fff';
   return (
-    <Pressable disabled={disabled || loading} onPress={onPress}
+    <Pressable disabled={disabled || loading} onPress={onPress} accessibilityRole="button" accessibilityLabel={accessibilityLabel ?? title} accessibilityState={{ disabled: !!(disabled || loading), busy: !!loading }}
       hitSlop={small ? 4 : 0} style={({ pressed }) => [{ opacity: disabled ? 0.4 : pressed ? 0.85 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] }, style]}>
       <View style={[s.btn, { backgroundColor: color, borderWidth: plain ? 1 : 0, borderColor: c.line, paddingVertical: small ? 10 : 15, paddingHorizontal: small ? 18 : 24, minHeight: small ? 40 : 50 }]}>
         {loading ? <ActivityIndicator color={fg} /> : <T weight="700" size={small ? 13 : 15} color={fg} style={{ letterSpacing: 0.2 }}>{title}</T>}
@@ -119,12 +119,12 @@ export const Bubble = ({ emoji, color = c.sun, size = 46 }) => (
   </View>
 );
 
-export function Field({ label, value, onChangeText, secure, multiline, keyboardType, placeholder, hint }) {
+export function Field({ label, value, onChangeText, secure, multiline, keyboardType, placeholder, hint, maxLength }) {
   const [focus, setFocus] = useState(false);
   return (
     <View style={{ gap: 6 }}>
       {label ? <T weight="600" size={12} color={c.mute} style={{ letterSpacing: 0.4 }}>{label.toUpperCase()}</T> : null}
-      <TextInput value={value ?? ''} onChangeText={onChangeText} secureTextEntry={secure} multiline={multiline} keyboardType={keyboardType} placeholder={placeholder}
+      <TextInput value={value ?? ''} onChangeText={onChangeText} accessibilityLabel={label ?? placeholder} maxLength={maxLength} secureTextEntry={secure} multiline={multiline} keyboardType={keyboardType} placeholder={placeholder}
         onFocus={() => setFocus(true)} onBlur={() => setFocus(false)}
         autoCapitalize="none" placeholderTextColor={c.mute} style={[fam, s.input, focus && { borderColor: c.ink }, multiline && { minHeight: 80, textAlignVertical: 'top' }, Platform.OS === 'web' && { outlineStyle: 'none' }]} />
       {hint ? <T size={12} color={c.mute}>{hint}</T> : null}

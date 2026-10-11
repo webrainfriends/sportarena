@@ -9,6 +9,8 @@ import { FormSheet } from '../FormSheet';
 import { SportSelect } from '../sportpicker';
 import { AddFollowupSheet, ConsentManager, FollowupsPanel, ProviderSearch } from './provider';
 import { PaySheet } from '../PaySheet';
+import { TimelineSheet } from '../Timeline';
+import { Confirm } from './coaching';
 import { RecoveryPanel } from './wellness';
 import { c, grad, money, day, when } from '../theme';
 
@@ -144,6 +146,7 @@ export function Health() {
   const [tab, setTab] = useState(has('athlete') ? 'recovery' : 'find');
   const [paying, setPaying] = useState(null);
   const [fu, setFu] = useState(null);
+  const [hist, setHist] = useState(null), [cancelA, setCancelA] = useState(null);
   const appts = useLoad(() => api.get('/appointments', { limit: 30 }), []);
   const recs = useLoad(() => api.get('/medical/records', { limit: 30 }), []);
   const isProv = has('physio', 'doctor');
@@ -164,8 +167,9 @@ export function Health() {
               {a.athlete_id === user.id && a.payment_status === 'unpaid' && a.status !== 'cancelled' ? <Btn small title={`Pay ${money(a.fee_cents)}`} color={c.pink} onPress={() => setPaying({ type: 'appointment', id: a.id, amount: a.fee_cents, currency: a.currency, label: `Appointment with ${a.provider_name}` })} /> : null}
               {a.provider_id === user.id && ['confirmed', 'completed'].includes(a.status) ? <Btn small title="Add follow-up" color={c.violet} onPress={() => setFu(a)} /> : null}
               {a.provider_id === user.id && a.status === 'requested' ? <Btn small title="Confirm" color={c.mint} ink={c.ink} onPress={() => act(() => api.patch(`/appointments/${a.id}`, { status: 'confirmed' }), 'Confirmed')} /> : null}
-              {['requested', 'confirmed'].includes(a.status) ? <Btn small title="Cancel" color={c.paper} ink={c.red} onPress={() => act(() => api.patch(`/appointments/${a.id}`, { status: 'cancelled' }), 'Cancelled')} /> : null}
-              {a.provider_id === user.id && a.status === 'confirmed' ? <Btn small title="Complete" color={c.mint} ink={c.ink} onPress={() => act(() => api.patch(`/appointments/${a.id}`, { status: 'completed' }), 'Completed')} /> : null}
+              {['requested', 'confirmed'].includes(a.status) ? <Btn small title="Cancel" color={c.paper} ink={c.red} onPress={() => setCancelA(a)} /> : null}
+              <Btn small title="History" color={c.paper} ink={c.mute} accessibilityLabel="Show the history of this appointment" onPress={() => setHist(a.id)} />
+              {a.provider_id === user.id && a.status === 'confirmed' && new Date(a.starts_at) <= new Date() ? <Btn small title="Complete" color={c.mint} ink={c.ink} onPress={() => act(() => api.patch(`/appointments/${a.id}`, { status: 'completed' }), 'Completed')} /> : null}
               {a.athlete_id === user.id && !['cancelled', 'completed'].includes(a.status) ? <>
                 <Btn small title="Share records" color={c.violet} onPress={() => act(() => api.post('/medical/grants', { provider_id: a.provider_id }), 'Access granted')} />
                 <Btn small title="Revoke" color={c.paper} ink={c.red} onPress={() => act(() => api.del(`/medical/grants/${a.provider_id}`), 'Access revoked')} /></> : null}
@@ -173,6 +177,10 @@ export function Health() {
         )) : <Empty emoji="📅" title="No appointments" />)}
         {tab === 'records' && (recs.data?.length ? recs.data.map((r) => <Card key={r.id}><View style={{ flexDirection: 'row', gap: 8 }}><Tag label={r.kind} color={c.cyan} />{r.clearance ? <Tag label={r.clearance.replace('_', ' ')} color={r.clearance === 'cleared' ? c.lime : c.orange} /> : null}</View><T weight="900" style={{ marginTop: 6 }}>{r.summary}</T>{r.details ? <T size={13} color={c.mute}>{r.details}</T> : null}<T size={11} color={c.mute}>{r.provider_name} · {day(r.created_at)}</T></Card>) : <Empty emoji="📋" title="No records" sub="Records written by providers you've granted access appear here." />)}
       </View>
+      {hist ? <TimelineSheet kind="appointment" id={hist} meId={user.id} title="Appointment history" onClose={() => setHist(null)} /> : null}
+      <Confirm visible={!!cancelA} title="Cancel this appointment?" yes="Cancel appointment" danger askReason="Why are you cancelling?" onClose={() => setCancelA(null)}
+        body={cancelA ? `${cancelA.athlete_id === user.id ? cancelA.provider_name : cancelA.athlete_name} will be told.${cancelA.payment_status === 'paid' ? ' The payment is refunded.' : ''}` : ''}
+        onYes={async (reason) => { await act(() => api.patch(`/appointments/${cancelA.id}`, { status: 'cancelled', ...(reason ? { reason } : {}) }), cancelA.payment_status === 'paid' ? 'Cancelled — the payment is refunded' : 'Cancelled'); setCancelA(null); }} />
       {paying ? <PaySheet target={paying} onClose={() => setPaying(null)} onDone={appts.reload} /> : null}
       <AddFollowupSheet appointment={fu} onClose={() => setFu(null)} onDone={() => { setFu(null); }} />
     </Screen>
