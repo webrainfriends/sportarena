@@ -8,7 +8,8 @@ export async function expireUnpaidHolds() {
   const due = await many("SELECT id, user_id, code FROM reservations WHERE status='confirmed' AND payment_deadline IS NOT NULL AND payment_deadline < now() ORDER BY payment_deadline LIMIT 50");
   let released = 0;
   for (const r of due) {
-    await tx(async (c) => {
+    // one reservation failing (the others are independent) must not stop the rest; it is retried on the next cycle
+    try { await tx(async (c) => {
       const rs = (await c.query('SELECT * FROM reservations WHERE id=$1 FOR UPDATE', [r.id])).rows[0];
       if (!rs || rs.status !== 'confirmed' || !rs.payment_deadline || rs.payment_deadline > new Date()) return;
       // venues whose invoice is open and has never been paid, and that still require online payment
@@ -25,7 +26,7 @@ export async function expireUnpaidHolds() {
         released += ids.length;
       }
       await c.query('UPDATE reservations SET payment_deadline=NULL WHERE id=$1', [r.id]);
-    });
+    }); } catch (e) { console.error(JSON.stringify({ level: 'error', msg: 'hold release failed', reservation_id: r.id, error: String(e.message).slice(0, 300) })); }
   }
   return released;
 }

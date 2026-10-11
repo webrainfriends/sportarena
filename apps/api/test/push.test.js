@@ -106,6 +106,8 @@ test('notifications reach phones: payload, preferences, rejected devices, retrie
   await wait(() => expo.received.length >= 1);
   await wait(async () => (await pool.query("SELECT 1 FROM notification_deliveries WHERE channel='push' AND status='pending' AND last_error LIKE '%503%'")).rowCount);
   expo.mode = 'ok'; expo.received.length = 0;
+  assert.equal((await dispatchPush()).sent, 0, 'a failed push backs off before it is retried');
+  await pool.query("UPDATE notification_deliveries SET next_attempt_at = NULL WHERE channel='push' AND status='pending'");
   const r = await dispatchPush();
   assert.equal(r.sent, 1);
   assert.equal(expo.received.length, 1);

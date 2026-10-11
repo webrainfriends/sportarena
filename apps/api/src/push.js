@@ -4,6 +4,7 @@
 import { config } from './config.js';
 import { decrypt } from './crypto.js';
 import { many, one, query } from './db.js';
+import { failDelivery } from './notify.js';
 
 const MAX_ATTEMPTS = 5;
 const payloadOf = (n) => ({ title: n.title.slice(0, 80), body: n.body.slice(0, 178), data: { kind: n.kind, notification_id: n.id, ...n.data } });
@@ -46,10 +47,11 @@ export async function dispatchPush({ limit = 50 } = {}) {
   const todo = await many(
     `SELECT d.id, d.attempts, n.id AS notification_id, n.kind, n.title, n.body, n.data, n.user_id
        FROM notification_deliveries d JOIN notifications n ON n.id=d.notification_id
-      WHERE d.status='pending' AND d.channel='push' ORDER BY d.created_at LIMIT $1`, [limit]);
+      WHERE d.status='pending' AND d.channel='push' AND (d.next_attempt_at IS NULL OR d.next_attempt_at <= now())
+        AND (d.claimed_at IS NULL OR d.claimed_at < now() - interval '5 minutes') ORDER BY d.created_at LIMIT $1`, [limit]);
   const out = { sent: 0, failed: 0, devices_disabled: 0 };
   for (const d of todo) {
-    const claimed = await one("UPDATE notification_deliveries SET attempts=attempts+1 WHERE id=$1 AND status='pending' AND attempts=$2 RETURNING id", [d.id, d.attempts]);
+    const claimed = await one("UPDATE notification_deliveries SET attempts=attempts+1, claimed_at=now() WHERE id=$1 AND status='pending' AND attempts=$2 RETURNING id", [d.id, d.attempts]);
     if (!claimed) continue;
     const devices = await many('SELECT * FROM push_devices WHERE user_id=$1 AND disabled_at IS NULL', [d.user_id]);
     const payload = payloadOf({ ...d, id: d.notification_id });
@@ -63,11 +65,11 @@ export async function dispatchPush({ limit = 50 } = {}) {
     }
     if (delivered || !errors.length) {
       // nobody left to push to (all devices gone) also counts as done: the in-app inbox still has it
-      await query("UPDATE notification_deliveries SET status='sent', sent_at=now(), last_error=$2 WHERE id=$1", [d.id, delivered ? null : 'no active device']);
+      await query("UPDATE notification_deliveries SET status='sent', sent_at=now(), last_error=$2, claimed_at=NULL WHERE id=$1", [d.id, delivered ? null : 'no active device']);
       out.sent++;
     } else {
       out.failed++;
-      await query("UPDATE notification_deliveries SET last_error=$2, status=CASE WHEN attempts >= $3 THEN 'failed' ELSE 'pending' END WHERE id=$1", [d.id, errors[0].slice(0, 300), MAX_ATTEMPTS]);
+      await failDelivery('push', { ...d, attempts: d.attempts + 1 }, errors[0], MAX_ATTEMPTS);
     }
   }
   return out;

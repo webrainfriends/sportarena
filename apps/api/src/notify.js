@@ -1,15 +1,36 @@
 // Notifications: in-app inbox (instant) + email queue (sent by the dispatcher through a webhook you configure).
 // Callers pass their transaction client so a rolled-back booking never leaves a stray notification behind.
-import { pool, query, many, one } from './db.js';
+import { pool, query, many, one, tx } from './db.js';
+import { backoffMs, enqueue, recordDead, requeueHooks, runJobs } from './jobs.js';
 import { config } from './config.js';
 import { decrypt, encrypt } from './crypto.js';
 import { audit } from './helpers.js';
 
 export const DEFAULT_PREFS = { in_app: true, email: true, push: true, reminder_hours: 24, muted_kinds: [] };
 
-/** Notify one user. Respects their channel switches and muted kinds. */
-export async function notify(c, userId, { kind, title, body, data = {} }) {
-  const db = c ?? pool;
+/**
+ * Notify one user. Respects their channel switches and muted kinds.
+ * Inside a caller's transaction the writes run in a SAVEPOINT: if the notification cannot be stored, only the notification is
+ * rolled back (the money / hold / booking change commits) and a durable `notify.retry` job is written to try again later.
+ */
+export async function notify(c, userId, msg) {
+  if (!c) return deliver(pool, null, userId, msg);
+  await c.query('SAVEPOINT notify_sp');
+  try {
+    const n = await deliver(c, c, userId, msg);
+    await c.query('RELEASE SAVEPOINT notify_sp');
+    return n;
+  } catch (e) {
+    await c.query('ROLLBACK TO SAVEPOINT notify_sp'); // throws (and aborts the caller) only if the connection itself is broken
+    console.error(JSON.stringify({ level: 'warn', msg: 'notification deferred to retry job', kind: msg.kind, error: String(e.message).slice(0, 200) }));
+    await c.query('SAVEPOINT notify_job_sp');
+    try { await enqueue(c, { category: 'notify', kind: 'notify.retry', payload: { user_id: userId, ...msg }, maxAttempts: 8 }); await c.query('RELEASE SAVEPOINT notify_job_sp'); }
+    catch (e2) { await c.query('ROLLBACK TO SAVEPOINT notify_job_sp'); console.error(JSON.stringify({ level: 'error', msg: 'could not defer notification', error: String(e2.message).slice(0, 200) })); }
+    return null;
+  }
+}
+
+async function deliver(db, c, userId, { kind, title, body, data = {} }) {
   const prefs = (await db.query('SELECT * FROM notification_prefs WHERE user_id=$1', [userId])).rows[0] ?? DEFAULT_PREFS;
   if (prefs.muted_kinds.includes(kind) || (!prefs.in_app && !prefs.email && prefs.push === false)) return null;
   const n = (await db.query('INSERT INTO notifications(user_id, kind, title, body, data) VALUES ($1,$2,$3,$4,$5) RETURNING *', [userId, kind, title, body, data])).rows[0];
@@ -49,39 +70,55 @@ export async function notifyVenueTeam(c, venue, exceptUserId, msg) {
   for (const u of await venueTeam(c, venue.id)) if (u !== exceptUserId) await notify(c, u, msg);
 }
 
-/** Queue reminders for bookings starting within each user's reminder window. Atomic claim, so safe on several instances. */
-export async function queueReminders() {
-  const { rows } = await pool.query(
-    `UPDATE bookings b SET reminded_at = now()
-      FROM resources r, venues v, reservations rs
-      LEFT JOIN notification_prefs p ON p.user_id = rs.user_id
-     WHERE b.status='confirmed' AND b.reminded_at IS NULL AND b.reservation_id = rs.id AND r.id=b.resource_id AND v.id=r.venue_id
-       AND b.starts_at > now() AND b.starts_at <= now() + make_interval(hours => coalesce(p.reminder_hours, 24))
-    RETURNING b.id, b.user_id, b.starts_at, b.ends_at, r.name AS resource_name, v.name AS venue_name, v.id AS venue_id, b.reservation_id`);
-  for (const b of rows) {
-    await notify(null, b.user_id, {
-      kind: 'booking_reminder', title: `Coming up: ${b.resource_name} at ${b.venue_name}`,
-      body: `Your booking starts ${b.starts_at.toISOString()}. Need to change plans? Modify or cancel in the app.`,
-      data: { booking_id: b.id, reservation_id: b.reservation_id, venue_id: b.venue_id },
-    });
-  }
-  return rows.length;
+/**
+ * Queue reminders for bookings starting within each user's reminder window. Rows are locked (SKIP LOCKED, so several instances
+ * never double-send) and `reminded_at` is set in the SAME transaction as the notification: a crash before commit leaves the
+ * booking un-reminded (retried), never marked-but-unsent. A notification that cannot be stored becomes a durable retry job
+ * (see notify()), so the reminder is still accounted for.
+ */
+export async function queueReminders({ limit = 200 } = {}) {
+  return tx(async (c) => {
+    const { rows } = await c.query(
+      `SELECT b.id, b.user_id, b.starts_at, r.name AS resource_name, v.name AS venue_name, v.id AS venue_id, b.reservation_id
+         FROM bookings b JOIN resources r ON r.id=b.resource_id JOIN venues v ON v.id=r.venue_id JOIN reservations rs ON rs.id=b.reservation_id
+         LEFT JOIN notification_prefs p ON p.user_id = rs.user_id
+        WHERE b.status='confirmed' AND b.reminded_at IS NULL
+          AND b.starts_at > now() AND b.starts_at <= now() + make_interval(hours => coalesce(p.reminder_hours, 24))
+        ORDER BY b.starts_at LIMIT $1 FOR UPDATE OF b SKIP LOCKED`, [limit]);
+    for (const b of rows) {
+      await notify(c, b.user_id, {
+        kind: 'booking_reminder', title: `Coming up: ${b.resource_name} at ${b.venue_name}`,
+        body: `Your booking starts ${b.starts_at.toISOString()}. Need to change plans? Modify or cancel in the app.`,
+        data: { booking_id: b.id, reservation_id: b.reservation_id, venue_id: b.venue_id },
+      });
+      await c.query('UPDATE bookings SET reminded_at = now() WHERE id=$1', [b.id]);
+    }
+    return rows.length;
+  });
 }
 
-/** Send queued emails via NOTIFY_WEBHOOK_URL (your SES/Sendgrid/n8n bridge). Without it they simply stay queued. */
+const EMAIL_LEASE = "interval '5 minutes'";
+
+/**
+ * Send queued emails via NOTIFY_WEBHOOK_URL (your SES/Sendgrid/n8n bridge). Without it they simply stay queued.
+ * Deliveries are claimed with FOR UPDATE SKIP LOCKED plus a lease (a crashed sender's claim expires), failures back off
+ * exponentially, and a delivery that runs out of attempts is dead-lettered (visible to admins, requeueable).
+ */
 export async function dispatchPending({ limit = 50 } = {}) {
   const url = config.notifyWebhook.url;
   const pending = Number((await one("SELECT count(*) AS n FROM notification_deliveries WHERE status='pending' AND channel='email'")).n);
   if (!url) return { configured: false, pending, sent: 0, failed: 0 };
   let sent = 0, failed = 0;
   const { rows } = await query(
-    `SELECT d.id, d.attempts, n.id AS notification_id, n.kind, n.title, n.body, n.data, n.user_id, u.email_enc
-       FROM notification_deliveries d JOIN notifications n ON n.id=d.notification_id JOIN users u ON u.id=n.user_id
-      WHERE d.status='pending' AND d.channel='email' ORDER BY d.created_at LIMIT $1`, [limit]);
+    `WITH due AS (
+       SELECT id FROM notification_deliveries
+        WHERE status='pending' AND channel='email' AND (next_attempt_at IS NULL OR next_attempt_at <= now())
+          AND (claimed_at IS NULL OR claimed_at < now() - ${EMAIL_LEASE})
+        ORDER BY created_at LIMIT $1 FOR UPDATE SKIP LOCKED),
+     claimed AS (UPDATE notification_deliveries d SET attempts=d.attempts+1, claimed_at=now() FROM due WHERE d.id=due.id RETURNING d.id, d.attempts, d.notification_id)
+     SELECT c.id, c.attempts, n.id AS notification_id, n.kind, n.title, n.body, n.data, n.user_id, u.email_enc
+       FROM claimed c JOIN notifications n ON n.id=c.notification_id JOIN users u ON u.id=n.user_id ORDER BY n.created_at`, [limit]);
   for (const d of rows) {
-    // claim so two dispatchers never send the same email
-    const claimed = await one("UPDATE notification_deliveries SET attempts=attempts+1 WHERE id=$1 AND status='pending' AND attempts=$2 RETURNING id", [d.id, d.attempts]);
-    if (!claimed) continue;
     try {
       await audit(null, null, 'dispatch_email', 'notifications', d.notification_id);
       const res = await fetch(url, {
@@ -95,42 +132,88 @@ export async function dispatchPending({ limit = 50 } = {}) {
       sent++;
     } catch (e) {
       failed++;
-      await query("UPDATE notification_deliveries SET last_error=$2, status=CASE WHEN attempts >= 5 THEN 'failed' ELSE 'pending' END WHERE id=$1", [d.id, String(e.message).slice(0, 300)]);
+      await failDelivery('email', d, e);
     }
   }
   return { configured: true, pending: pending - sent, sent, failed };
 }
 
+export const DELIVERY_MAX_ATTEMPTS = 5;
+
+/** Record a failed email/push delivery: back off, or after the last attempt mark it failed and dead-letter it. */
+export async function failDelivery(channel, d, error, maxAttempts = DELIVERY_MAX_ATTEMPTS) {
+  const msg = String(error?.message ?? error).slice(0, 300);
+  const dead = d.attempts >= maxAttempts;
+  await query(
+    `UPDATE notification_deliveries SET last_error=$2, claimed_at=NULL, status=CASE WHEN $3::boolean THEN 'failed' ELSE 'pending' END,
+            next_attempt_at=CASE WHEN $3::boolean THEN NULL ELSE now() + make_interval(secs => $4::float8) END WHERE id=$1`,
+    [d.id, msg, dead, backoffMs(d.attempts, { baseMs: 20_000, capMs: 1_800_000 }) / 1000]);
+  if (dead) await recordDead(null, { category: channel, kind: `${channel}.delivery`, dedupeKey: d.id, payload: { delivery_id: d.id, notification_id: d.notification_id }, error: msg, attempts: d.attempts });
+}
+
+// A dead delivery goes back to pending with a fresh attempt budget.
+for (const channel of ['email', 'push']) {
+  requeueHooks[`${channel}.delivery`] = async ({ delivery_id }) => {
+    await query("UPDATE notification_deliveries SET status='pending', attempts=0, claimed_at=NULL, next_attempt_at=NULL WHERE id=$1 AND status='failed'", [delivery_id]);
+  };
+}
+
+/** Retry a notification that could not be stored inside its originating transaction. */
+export const notifyHandlers = {
+  'notify.retry': async ({ user_id, ...msg }) => { await notify(null, user_id, msg); },
+};
+
 /**
  * Health reminders, atomically claimed (safe on several instances). Wording is generic on purpose: email and push leave the
  * system in clear text, so they never say what the appointment or follow-up is about. Users' mute settings still apply (notify()).
+ * As with booking reminders, the sent-marker is committed together with the notification.
  */
-export async function queueHealthReminders() {
-  const appts = await pool.query(
-    `UPDATE appointments a SET reminded_at = now() FROM users u
-      LEFT JOIN notification_prefs p ON p.user_id = u.id
-     WHERE u.id = a.athlete_id AND a.status = 'confirmed' AND a.reminded_at IS NULL AND a.starts_at > now()
-       AND a.starts_at <= now() + make_interval(hours => coalesce(p.reminder_hours, 24))
-    RETURNING a.id, a.athlete_id, a.provider_id, a.starts_at`);
-  for (const a of appts.rows) {
-    for (const uid of [a.athlete_id, a.provider_id]) await notify(null, uid, { kind: 'appointment_reminder', title: 'Appointment coming up', body: `You have an appointment on ${a.starts_at.toISOString()}.`, data: { appointment_id: a.id } });
-  }
-  const fups = await pool.query(
-    `UPDATE appointment_followups f SET reminder_sent_at = now()
-      FROM users u LEFT JOIN notification_prefs p ON p.user_id = u.id
-     WHERE u.id = f.athlete_id AND f.status = 'due' AND f.reminder_sent_at IS NULL
-       AND f.due_on <= current_date + ceil(coalesce(p.reminder_hours, 24) / 24.0)::int
-    RETURNING f.id, f.athlete_id`);
-  for (const f of fups.rows) await notify(null, f.athlete_id, { kind: 'followup_reminder', title: 'Follow-up due', body: 'You have a follow-up coming up. Open Health to book it.', data: { followup_id: f.id } });
-  return appts.rowCount + fups.rowCount;
+export async function queueHealthReminders({ limit = 200 } = {}) {
+  const appts = await tx(async (c) => {
+    const { rows } = await c.query(
+      `SELECT a.id, a.athlete_id, a.provider_id, a.starts_at FROM appointments a JOIN users u ON u.id = a.athlete_id
+         LEFT JOIN notification_prefs p ON p.user_id = u.id
+        WHERE a.status = 'confirmed' AND a.reminded_at IS NULL AND a.starts_at > now()
+          AND a.starts_at <= now() + make_interval(hours => coalesce(p.reminder_hours, 24))
+        ORDER BY a.starts_at LIMIT $1 FOR UPDATE OF a SKIP LOCKED`, [limit]);
+    for (const a of rows) {
+      for (const uid of [a.athlete_id, a.provider_id]) await notify(c, uid, { kind: 'appointment_reminder', title: 'Appointment coming up', body: `You have an appointment on ${a.starts_at.toISOString()}.`, data: { appointment_id: a.id } });
+      await c.query('UPDATE appointments SET reminded_at = now() WHERE id=$1', [a.id]);
+    }
+    return rows.length;
+  });
+  const fups = await tx(async (c) => {
+    const { rows } = await c.query(
+      `SELECT f.id, f.athlete_id FROM appointment_followups f JOIN users u ON u.id = f.athlete_id LEFT JOIN notification_prefs p ON p.user_id = u.id
+        WHERE f.status = 'due' AND f.reminder_sent_at IS NULL AND f.due_on <= current_date + ceil(coalesce(p.reminder_hours, 24) / 24.0)::int
+        ORDER BY f.due_on LIMIT $1 FOR UPDATE OF f SKIP LOCKED`, [limit]);
+    for (const f of rows) {
+      await notify(c, f.athlete_id, { kind: 'followup_reminder', title: 'Follow-up due', body: 'You have a follow-up coming up. Open Health to book it.', data: { followup_id: f.id } });
+      await c.query('UPDATE appointment_followups SET reminder_sent_at = now() WHERE id=$1', [f.id]);
+    }
+    return rows.length;
+  });
+  return appts + fups;
 }
 
-/** One tick of the background worker. */
+/** Run one step so its failure cannot stop the next one. */
+export async function isolated(category, fn, fallback = null) {
+  try { return { ok: true, value: await fn() }; }
+  catch (e) {
+    console.error(JSON.stringify({ level: 'error', msg: 'maintenance step failed', category, error: String(e.message).slice(0, 300) }));
+    return { ok: false, error: String(e.message).slice(0, 300), value: fallback };
+  }
+}
+
+/** One tick of the background worker. Reminders, retries, push and email are independent: one failing never blocks the rest. */
 export async function notificationCycle() {
-  const reminders = (await queueReminders()) + (await queueHealthReminders());
   const { dispatchPush } = await import('./push.js');
-  const push = await dispatchPush();
-  return { reminders, push, ...(await dispatchPending()) };
+  const reminders = await isolated('reminders', async () => (await queueReminders()) + (await queueHealthReminders()), 0);
+  const retries = await isolated('notify', () => runJobs('notify', notifyHandlers), null);
+  const push = await isolated('push', () => dispatchPush(), null);
+  const email = await isolated('email', () => dispatchPending(), { configured: !!config.notifyWebhook.url, pending: 0, sent: 0, failed: 0 });
+  const errors = Object.fromEntries(Object.entries({ reminders, notify: retries, push, email }).filter(([, r]) => !r.ok).map(([k, r]) => [k, r.error]));
+  return { reminders: reminders.value, push: push.value, ...email.value, ...(Object.keys(errors).length ? { errors } : {}) };
 }
 
 export const inbox = (userId, { unread, limit, offset }) =>
