@@ -1,6 +1,7 @@
 // Photos, GIFs and short videos attached to marketplace posts. Same rules as venue media: type decided from the bytes,
 // server-generated file names, rows retired with removed_at (files are never deleted).
 import { createHash, randomUUID } from 'node:crypto';
+import { requireApproved } from './access.js';
 import { createWriteStream } from 'node:fs';
 import { mkdir, rename, rm, stat } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
@@ -60,6 +61,7 @@ export function marketMediaRouter() {
     try {
       const user = await authenticate(req.headers.authorization);
       if (!user) throw unauthorized();
+      requireApproved(user);
       if (Number(req.headers['content-length'] ?? 0) > MARKET_LIMITS.videoBytes) throw new AppError(413, 'too_large', 'File too large');
       const row = await store(req, user.id);
       res.status(201).json({ ...row, url: marketMediaUrl(row) });
@@ -72,6 +74,7 @@ export function marketMediaRouter() {
     try {
       const user = await authenticate(req.headers.authorization);
       if (!user) throw unauthorized();
+      requireApproved(user);
       if (Number(req.headers['content-length'] ?? 0) > MARKET_LIMITS.photoBytes) throw new AppError(413, 'too_large', `Images can be up to ${MARKET_LIMITS.photoBytes / 2 ** 20} MB`);
       const row = await store(req, user.id, 'avatar');
       const url = marketMediaUrl(row);

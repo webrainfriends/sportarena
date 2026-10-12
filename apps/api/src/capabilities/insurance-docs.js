@@ -2,6 +2,7 @@
 // Files live encrypted on the server's disk and are never deleted: removing a document only hides it (removed_at).
 // Upload and download are binary, so they are Express routes (mounted in http.js); listing and hiding are ordinary capabilities.
 import { createHash } from 'node:crypto';
+import { requireApproved } from '../access.js';
 import express from 'express';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
@@ -71,6 +72,7 @@ export function insuranceDocsRouter() {
     try {
       const user = await authenticate(req.headers.authorization);
       if (!user) throw unauthorized();
+      requireApproved(user);
       const q = z.object({ policy_id: id.optional(), quote_id: id.optional(), claim_id: id.optional(), kind: z.enum(KINDS).default('other'), title: z.string().min(1).max(120).optional() })
         .refine((x) => [x.policy_id, x.quote_id, x.claim_id].filter(Boolean).length === 1, 'Give exactly one of policy_id, quote_id, claim_id').parse(req.query);
       if (Number(req.headers['content-length'] ?? 0) > DOC_LIMITS.bytes) throw new AppError(413, 'too_large', 'File too large');
