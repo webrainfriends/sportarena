@@ -38,6 +38,20 @@ Then open **http://13.250.133.109:9255**.
   volume holds encrypted user data).
 - If anything fails before the cut-over, the previous code and running app stay in place.
 
+## Custom domain (gotmygame.com)
+`scripts/configure-domain.sh` (called at the end of every deploy, modelled on myhealthpal's) adds a **separate** nginx site
+`sites-available/sportarena-domain` that answers only for `gotmygame.com` / `www.gotmygame.com` on ports 80/443 and forwards
+everything to the existing `:9255` site (so `:9255` keeps working and stays the single place that routes web, `/api/` and `/mcp`).
+- It never claims `default_server`, so other apps on 80/443 (e.g. `eyemyhealth.com`) keep their own hostnames; it skips if a
+  non-nginx process holds 80/443; every change goes through `nginx -t` and is rolled back on failure; it never fails the deploy.
+- **Your steps (only you can do these):** add DNS **A records** for `@` and `www` pointing at `13.250.133.109`, and allow
+  inbound TCP **80** and **443** in the security group. The first deploy after DNS resolves obtains a free Let's Encrypt
+  certificate (auto-renewed by certbot's timer) and redirects http→https. Until then the domain is served over plain HTTP, or
+  skipped if DNS isn't pointed yet - the deploy log's `[domain]` lines say which.
+- Optional repo secret `LETSENCRYPT_EMAIL` for expiry notices. Set `APP_DOMAIN` to empty in `deploy.yml` to turn it off.
+- Behind the domain, the `:9255` site passes through the domain's `X-Forwarded-Proto`, so the API sees `https` (Secure cookies);
+  the domain's origins are added to `CORS_ORIGINS`. For Google sign-in add the domain to the OAuth authorised origins.
+
 ## Security notes
 - **⚠️ In transit — currently plain HTTP.** `ENABLE_TLS: "false"` in `deploy.yml` serves the site over HTTP on 9255, so
   passwords, personal data and tokens cross the internet unencrypted until TLS is on. Treat this as demo/testing only:
