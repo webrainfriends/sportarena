@@ -8,6 +8,7 @@ import { audit, PUBLIC_USER, sportBySlugOrId } from '../helpers.js';
 import { startSession } from '../sessions.js';
 import { issueToken } from '../account-security.js';
 import { badgesFor, withBadges } from '../verification.js';
+import { profileCredentials } from '../education.js';
 import { canSeeYouth, NOT_YOUTH_SQL, refreshYouth, YOUTH_SQL } from '../youth.js';
 
 const PII = ['full_name', 'phone', 'dob', 'national_id', 'address'];
@@ -200,7 +201,7 @@ cap({
 
 cap({
   name: 'get_person', method: 'GET', path: '/people/:id', tag: 'Directory', auth: 'public',
-  summary: 'Public profile: roles per sport, trophy cabinet counts, average testimonial rating. No personal identification data.',
+  summary: 'Public profile: roles per sport, trophy cabinet counts, average testimonial rating, and the certificates and badges the person chose to show. No personal identification data.',
   input: z.object({ id }),
   async handler({ user }, i) {
     const u = await one(`SELECT ${PUBLIC_USER}, u.created_at, ${YOUTH_SQL} AS is_youth FROM users u WHERE u.id = $1`, [i.id]);
@@ -211,13 +212,14 @@ cap({
       return { id: u.id, handle: u.handle, display_name: u.display_name, avatar_emoji: u.avatar_emoji, avatar_color: u.avatar_color, avatar_url: u.avatar_url, restricted: true };
     }
     delete u.is_youth;
-    const [profiles, awards, rating, teams] = await Promise.all([
+    const [profiles, awards, rating, teams, credentials] = await Promise.all([
       many('SELECT p.role, p.level, p.position, p.is_default, s.slug, s.name AS sport, s.emoji FROM sport_profiles p JOIN sports s ON s.id = p.sport_id WHERE p.user_id = $1 ORDER BY p.is_default DESC, p.created_at, p.id', [i.id]),
       many('SELECT kind, count(*)::int AS n FROM awards WHERE user_id = $1 GROUP BY kind', [i.id]),
       one("SELECT round(avg(rating),2) AS avg, count(*)::int AS n FROM testimonials WHERE subject_type='user' AND subject_id=$1", [i.id]),
       many("SELECT t.id, t.name, t.emoji, t.color, m.role FROM team_members m JOIN teams t ON t.id = m.team_id WHERE m.user_id=$1 AND m.status='active'", [i.id]),
+      profileCredentials(i.id),
     ]);
-    return { ...u, verified: (await badgesFor('user', [i.id])).get(i.id) ?? [], sport_profiles: profiles, awards, rating, teams };
+    return { ...u, verified: (await badgesFor('user', [i.id])).get(i.id) ?? [], sport_profiles: profiles, awards, rating, teams, credentials };
   },
 });
 

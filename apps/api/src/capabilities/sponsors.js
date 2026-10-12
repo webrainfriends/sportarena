@@ -127,8 +127,10 @@ cap({
       if (i.target_type === 'athlete') {
         if (i.target_id === user.id) throw badRequest('You cannot sponsor yourself');
         const prof = (await c.query("SELECT sp.open_to_sponsors, sp.verified_sponsors_only FROM sponsorship_profiles sp JOIN users u ON u.id=sp.user_id WHERE sp.user_id=$1 AND 'athlete' = ANY(u.roles)", [i.target_id])).rows[0];
-        if (!prof?.open_to_sponsors) throw conflict('This athlete is not open to sponsorship offers');
-        if (prof.verified_sponsors_only && !(await badgesFor('sponsor', [s.id])).get(s.id)?.length) throw forbidden('This athlete only accepts offers from verified sponsors');
+        // an institution's introduction (which the athlete consented to) lets that one sponsor make an offer even when discovery is off
+        const introduced = !prof?.open_to_sponsors && (await c.query("SELECT 1 FROM enquiry_sponsor_links l JOIN enquiries e ON e.id=l.enquiry_id WHERE l.sponsor_id=$1 AND e.athlete_id=$2 AND l.status='introduced' AND e.sponsor_consent", [s.id, i.target_id])).rowCount > 0;
+        if (!prof?.open_to_sponsors && !introduced) throw conflict('This athlete is not open to sponsorship offers');
+        if (prof?.verified_sponsors_only && !(await badgesFor('sponsor', [s.id])).get(s.id)?.length) throw forbidden('This athlete only accepts offers from verified sponsors');
         const open = (await c.query("SELECT 1 FROM sponsorships WHERE sponsor_id=$1 AND target_type='athlete' AND target_id=$2 AND status='proposed'", [s.id, i.target_id])).rows[0];
         if (open) throw conflict('You already have an open offer to this athlete');
         const declined = (await c.query("SELECT 1 FROM sponsorships WHERE sponsor_id=$1 AND target_type='athlete' AND target_id=$2 AND status='declined' AND decided_at > now() - make_interval(days => $3)", [s.id, i.target_id, DECLINE_COOLDOWN_DAYS])).rows[0];

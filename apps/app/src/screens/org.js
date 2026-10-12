@@ -10,8 +10,9 @@ import { Btn, Chip, Empty, ErrorBox, Field, GradCard, H1, Loading, Row, Screen, 
 import { FormSheet } from '../FormSheet';
 import { c, day } from '../theme';
 import { moneyIn } from '../vtime';
+import { Admissions } from './admissions';
 
-const KINDS = [['club', 'Club'], ['academy', 'Academy'], ['school', 'School'], ['other', 'Other']];
+const KINDS = [['club', 'Club'], ['academy', 'Academy'], ['school', 'School'], ['college', 'College'], ['university', 'University'], ['other', 'Other']];
 const ROLE_LABEL = { owner: 'Owner', admin: 'Admin', coach: 'Coach', finance: 'Finance' };
 const ROLE_HELP = { owner: 'Full control', admin: 'People, cohorts and linked assets', coach: 'Their cohorts and attendance', finance: 'Money only' };
 const STAFF = ['owner', 'admin'];
@@ -67,7 +68,7 @@ export function Org({ id }) {
   if (!org.data || !dash.data) return <Screen><Loading /></Screen>;
   const o = org.data, d = dash.data, role = d.role, archived = o.status === 'archived';
   const P = { o, d, role, archived, toast, reload: () => { org.reload(); dash.reload(); } };
-  const tabs = [['overview', 'Overview'], ...(role !== 'finance' ? [['cohorts', 'Cohorts']] : []), ['people', 'People'], ...(role !== 'finance' ? [['assets', 'Teams, events & venues']] : [])];
+  const tabs = [['overview', 'Overview'], ...(role !== 'finance' ? [['cohorts', 'Cohorts']] : []), ['people', 'People'], ...(role !== 'finance' ? [['assets', 'Teams, events & venues']] : []), ...(STAFF.includes(role) ? [['admissions', 'Admissions']] : [])];
   return (
     <Screen wide>
       <GradCard colors={[c.violet, c.ink]}>
@@ -76,7 +77,7 @@ export function Org({ id }) {
       </GradCard>
       {archived ? <View style={{ marginTop: 10 }}><Empty emoji="🗄️" title="This organisation is archived" sub="Everything is kept and readable. Ask an owner to restore it to make changes." /></View> : null}
       <View style={{ marginTop: 10 }}><Seg options={tabs.map(([value, label]) => ({ value, label }))} value={tab} onChange={setTab} color={c.violet} /></View>
-      {tab === 'overview' ? <Overview {...P} /> : tab === 'cohorts' ? <Cohorts {...P} /> : tab === 'people' ? <People {...P} /> : <Assets {...P} />}
+      {tab === 'overview' ? <Overview {...P} /> : tab === 'cohorts' ? <Cohorts {...P} /> : tab === 'people' ? <People {...P} /> : tab === 'admissions' ? <Admissions {...P} /> : <Assets {...P} />}
     </Screen>
   );
 }
