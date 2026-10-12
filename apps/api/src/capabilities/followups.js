@@ -168,8 +168,6 @@ cap({
 
 cap({
   name: 'reconcile_external_booking', credential: true, method: 'POST', path: '/appointments/external/reconcile', tag: TAG, auth: ['physio', 'doctor'],
-  summary: 'Provider (or their integration, using an API token): report what happened to a booking on your own system. Its status and time are brought into the matching SportArena appointment, with the same transition rules as everywhere else (no duplicates, no going back from completed or cancelled). Repeating the same update is harmless.',
-  name: 'reconcile_external_booking', method: 'POST', path: '/appointments/external/reconcile', tag: TAG, auth: ['physio', 'doctor'],
   summary: 'Provider (or their integration, using an API token): report what happened to a booking on your own system. Its status and time are brought into the matching Gotmygame appointment, with the same transition rules as everywhere else (no duplicates, no going back from completed or cancelled). Repeating the same update is harmless.',
   input: z.object({ external_reference: z.string().min(2).max(120), status: z.enum(['requested', 'confirmed', 'completed', 'cancelled']).optional(), starts_at: z.string().datetime({ offset: true }).optional(), duration_min: z.number().int().min(10).max(240).optional() }),
   async handler({ user }, i) {
@@ -187,12 +185,13 @@ const reconcile = (user, i) =>
       const a = (await c.query("SELECT * FROM appointments WHERE provider_id=$1 AND source='external' AND external_reference=$2 FOR UPDATE", [user.id, i.external_reference])).rows[0];
       if (!a) throw notFound('External booking');
       let status = a.status;
+      // the credential is judged before the transition rules, so a lapsed provider is told so whatever the booking's state
+      if (i.status && i.status !== a.status && i.status !== 'cancelled') await requireVerifiedProvider(user.id, { action: 'reconcile_external_booking', athleteId: a.athlete_id, allowGrace: i.status === 'completed' });
       if (i.status && i.status !== a.status) {
         // same rules as update_appointment (state map, payment, start time), judged against the time the provider reports
         try { assertTransition({ ...a, starts_at: i.starts_at ?? a.starts_at }, i.status, { isProvider: true, isCustomer: false }, { noun: 'appointment', customerWord: 'athlete' }); } catch (e) { throw Object.assign(e, { markSyncError: a.id }); }
         status = i.status;
       }
-      if (status !== a.status && status !== 'cancelled') await requireVerifiedProvider(user.id, { action: 'reconcile_external_booking', athleteId: a.athlete_id, allowGrace: status === 'completed' });
       const starts = i.starts_at ?? a.starts_at, dur = i.duration_min ?? a.duration_min;
       if ((+new Date(starts) !== +new Date(a.starts_at) || dur !== a.duration_min) && ['requested', 'confirmed'].includes(status)) {
         const clash = (await c.query("SELECT 1 FROM appointments WHERE provider_id=$1 AND id<>$2 AND status IN ('requested','confirmed') AND starts_at < $3::timestamptz + make_interval(mins => $4) AND starts_at + make_interval(mins => duration_min) > $3", [user.id, a.id, starts, dur])).rows[0];
