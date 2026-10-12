@@ -63,9 +63,9 @@ cap({
   async handler({ user }, i) {
     if (user.credential) throw badRequest('Password changes are not available to API tokens');
     const row = await one('SELECT password_hash FROM users WHERE id = $1', [user.id]);
-    if (!verifyPassword(i.current_password, row.password_hash)) throw unauthorized('Current password is incorrect');
+    if (!(await verifyPassword(i.current_password, row.password_hash))) throw unauthorized('Current password is incorrect');
     if (i.current_password === i.new_password) throw badRequest('Choose a different password');
-    await one('UPDATE users SET password_hash = $2 WHERE id = $1 RETURNING id', [user.id, hashPassword(i.new_password)]);
+    await one('UPDATE users SET password_hash = $2 WHERE id = $1 RETURNING id', [user.id, await hashPassword(i.new_password)]);
     return { ok: true, signed_out_elsewhere: await revokeUserSessions(user.id, 'password_changed', user.session_id ?? null) };
   },
 });
