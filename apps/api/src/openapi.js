@@ -34,7 +34,7 @@ export function buildOpenApi(serverUrl = '/api/v1') {
   }
   return {
     openapi: '3.1.0',
-    info: { title: 'SportArena API', version: '0.1.0', description: 'API-first sports ecosystem. Every operation is also exposed as an MCP tool of the same name at /mcp.' },
+    info: { title: 'Gotmygame API', version: '0.1.0', description: 'API-first sports ecosystem. Every operation is also exposed as an MCP tool of the same name at /mcp.' },
     servers: [{ url: serverUrl }],
     paths,
     components: {

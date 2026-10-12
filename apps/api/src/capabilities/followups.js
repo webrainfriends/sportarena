@@ -107,7 +107,7 @@ cap({
 // ------------------------------------------------------------------ external booking (SPOR-77)
 cap({
   name: 'start_external_booking', method: 'GET', path: '/providers/:id/external-booking', tag: TAG,
-  summary: 'If this provider takes bookings on another site, get the address to send the person to, plus the notice that must be shown before they leave SportArena. Nothing personal is added to the link. Afterwards call link_external_booking to record the booking here.',
+  summary: 'If this provider takes bookings on another site, get the address to send the person to, plus the notice that must be shown before they leave Gotmygame. Nothing personal is added to the link. Afterwards call link_external_booking to record the booking here.',
   input: z.object({ id }),
   async handler(_, i) {
     const p = await one('SELECT external_provider, external_booking_url, listed FROM provider_profiles WHERE user_id=$1', [i.id]);
@@ -121,7 +121,7 @@ const EXT_STATUS = z.enum(['requested', 'confirmed']);
 
 cap({
   name: 'link_external_booking', method: 'POST', path: '/appointments/external', tag: TAG, status: 201,
-  summary: 'Record a booking made on the provider\'s own site as a SportArena appointment. The athlete calls it with provider_id after booking; the provider calls it with athlete_id to register one for a patient. Only the external reference, address and times are stored. The same reference is always the same appointment (calling again updates it, never duplicates it). No reason or clinical text is taken here.',
+  summary: 'Record a booking made on the provider\'s own site as a Gotmygame appointment. The athlete calls it with provider_id after booking; the provider calls it with athlete_id to register one for a patient. Only the external reference, address and times are stored. The same reference is always the same appointment (calling again updates it, never duplicates it). No reason or clinical text is taken here.',
   input: z.object({ provider_id: id.optional(), athlete_id: id.optional(), external_reference: z.string().min(2).max(120), starts_at: z.string().datetime({ offset: true }), duration_min: z.number().int().min(10).max(240).default(30), mode: z.enum(['in_person', 'remote']).default('in_person'), status: EXT_STATUS.default('requested'), external_url: z.string().max(500).optional() }),
   async handler({ user }, i) {
     const asProvider = !!i.athlete_id && !i.provider_id;
@@ -163,7 +163,7 @@ cap({
 
 cap({
   name: 'reconcile_external_booking', method: 'POST', path: '/appointments/external/reconcile', tag: TAG, auth: ['physio', 'doctor'],
-  summary: 'Provider (or their integration, using an API token): report what happened to a booking on your own system. Its status and time are brought into the matching SportArena appointment, with the same transition rules as everywhere else (no duplicates, no going back from completed or cancelled). Repeating the same update is harmless.',
+  summary: 'Provider (or their integration, using an API token): report what happened to a booking on your own system. Its status and time are brought into the matching Gotmygame appointment, with the same transition rules as everywhere else (no duplicates, no going back from completed or cancelled). Repeating the same update is harmless.',
   input: z.object({ external_reference: z.string().min(2).max(120), status: z.enum(['requested', 'confirmed', 'completed', 'cancelled']).optional(), starts_at: z.string().datetime({ offset: true }).optional(), duration_min: z.number().int().min(10).max(240).optional() }),
   async handler({ user }, i) {
     try { return await reconcile(user, i); } catch (e) {

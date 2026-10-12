@@ -123,7 +123,7 @@ function TopBar() {
   return (
     <View style={{ backgroundColor: c.bg }}>
       <View style={{ width: '100%', maxWidth: contentMax, alignSelf: 'center', height: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: gutter }}>
-        <Text style={[fam, { fontSize: 18, fontWeight: '800', color: c.ink, letterSpacing: -0.4 }]}>SportArena</Text>
+        <Text style={[fam, { fontSize: 18, fontWeight: '800', color: c.ink, letterSpacing: -0.4 }]}>Gotmygame</Text>
         <AccountButton />
       </View>
     </View>

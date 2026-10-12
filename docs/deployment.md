@@ -1,9 +1,9 @@
 # Deploying to EC2
 
-SportArena deploys to an EC2 host that also runs other apps, using GitHub Actions → SSH → pm2 +
+Gotmygame deploys to an EC2 host that also runs other apps, using GitHub Actions → SSH → pm2 +
 Docker Postgres + nginx) and the same credentials. Everything it creates is namespaced, so existing apps are untouched.
 
-| Thing | SportArena | Notes |
+| Thing | Gotmygame | Notes |
 |---|---|---|
 | Public site (nginx) | **9255** (plain HTTP for now; HTTPS via `ENABLE_TLS`) | own file `/etc/nginx/sites-available/sportarena`; other sites are never edited |
 | Postgres (Docker, 127.0.0.1 only) | **7255** | container `sportarena-postgres`, volume `sportarena_pgdata`, db/user `sportarena` |
@@ -30,7 +30,7 @@ Docker Postgres + nginx) and the same credentials. Everything it creates is name
 Then open **http://13.250.133.109:9255**.
 
 ## Why it can't break the existing nginx
-- Preflight aborts if 4255 / 7255 / 9255 are already used by something that isn't SportArena.
+- Preflight aborts if 4255 / 7255 / 9255 are already used by something that isn't Gotmygame.
 - Only `sites-available/sportarena` (and its symlink) is written. `nginx -t` runs before reload; if it fails, our site
   is removed and nothing is reloaded. Reload is graceful (`systemctl reload`), never a restart.
 - The Postgres container is only created if absent and **never wiped** by a deploy; a credential mismatch aborts the

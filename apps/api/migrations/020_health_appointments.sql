@@ -15,7 +15,7 @@ ALTER TABLE appointments
   ADD COLUMN external_url         text,
   ADD COLUMN external_sync_status text CHECK (external_sync_status IN ('linked','synced','stale','error')),
   ADD COLUMN external_synced_at   timestamptz;
--- the same external booking can only ever be one SportArena appointment
+-- the same external booking can only ever be one Gotmygame appointment
 CREATE UNIQUE INDEX appointments_external_ref ON appointments (provider_id, external_provider, external_reference) WHERE external_reference IS NOT NULL;
 
 -- Providers who book through another site say where; this is public discovery data.

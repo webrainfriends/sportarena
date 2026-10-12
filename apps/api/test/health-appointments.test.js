@@ -156,7 +156,7 @@ test('external booking: validated links with a disclosure, one appointment per r
   assert.equal(must(await api('GET', '/providers/search', { query: { q: 'Appt' } })).find((p) => p.id === doc.id).external_booking.provider, 'calendly');
 
   const start = must(await api('GET', `/providers/${doc.id}/external-booking`, { token: ath.token }));
-  assert.equal(start.external.url, 'https://calendly.com/dr-physio/30min'); assert.match(start.disclosure, /leave SportArena/);
+  assert.equal(start.external.url, 'https://calendly.com/dr-physio/30min'); assert.match(start.disclosure, /leave Gotmygame/);
   assert.ok(!start.external.url.includes(ath.id) && !start.external.url.includes('@'), 'no personal data in the link');
 
   const body = { provider_id: doc.id, external_reference: 'EXT-100', starts_at: at(8), duration_min: 30 };

@@ -1,6 +1,6 @@
 # Unified athlete history (My Sports)
 
-One sporting history per athlete: what they **logged themselves** (`player_matches`: manual / CSV import) and what SportArena **officially knows** (finished `games`, completed `fixtures`) are composed at read time by `apps/api/src/athlete-history.js`. Nothing is copied into `player_matches`; canonical tables stay authoritative, so a corrected result changes the athlete's history and totals immediately.
+One sporting history per athlete: what they **logged themselves** (`player_matches`: manual / CSV import) and what Gotmygame **officially knows** (finished `games`, completed `fixtures`) are composed at read time by `apps/api/src/athlete-history.js`. Nothing is copied into `player_matches`; canonical tables stay authoritative, so a corrected result changes the athlete's history and totals immediately.
 
 ## Source of truth
 

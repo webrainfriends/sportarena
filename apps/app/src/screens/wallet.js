@@ -57,7 +57,7 @@ export function Wallet() {
 
   const showCard = async (g) => { try { setOpen(await api.get(`/gift-cards/${g.id}`)); } catch (e) { toast(e.message); } };
   const share = (g) => {
-    const text = `🎁 A ${moneyIn(g.amount_cents, g.currency)} SportArena gift card for you${g.message ? `: "${g.message}"` : ''}. Redeem code ${g.code} in the app (Wallet → Redeem).`;
+    const text = `🎁 A ${moneyIn(g.amount_cents, g.currency)} Gotmygame gift card for you${g.message ? `: "${g.message}"` : ''}. Redeem code ${g.code} in the app (Wallet → Redeem).`;
     if (Platform.OS === 'web' && navigator.clipboard) navigator.clipboard.writeText(text).then(() => toast('Message copied — paste it to your friend'));
     else Share.share({ message: text }).catch(() => {});
   };

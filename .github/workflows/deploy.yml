@@ -1,4 +1,4 @@
-# Deploys SportArena to its EC2 host over SSH with the sportarena.pem deploy key (repo secret EC2_SSH_KEY).
+# Deploys Gotmygame to its EC2 host over SSH with the sportarena.pem deploy key (repo secret EC2_SSH_KEY).
 #
 # It runs side by side with the apps already on the box and never touches them:
 #   - nginx:    its own site file (sites-available/sportarena) on NGINX_PORT (plain HTTP for now; set

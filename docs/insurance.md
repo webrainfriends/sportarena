@@ -34,7 +34,7 @@ existing plans and copied each existing plan's terms onto its policies. No row w
 
 ## Insurers as a role of their own (agency)
 An account holding the **`insurer`** role (picked at sign-up or added under Me → Add or remove roles) runs an insurer **desk**
-(Me → Insurer desk). SportArena is the marketplace and record-keeper, not the underwriter: insurers set their own terms and prices.
+(Me → Insurer desk). Gotmygame is the marketplace and record-keeper, not the underwriter: insurers set their own terms and prices.
 
 | Step | Capability | Notes |
 |---|---|---|
