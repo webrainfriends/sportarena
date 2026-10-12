@@ -16,6 +16,8 @@ import { Hire } from './coaching';
 
 const LEVELS = ['beginner', 'amateur', 'semi_pro', 'pro'];
 const ROLES = ['athlete', 'coach', 'referee', 'physio', 'doctor'];
+/** Roles that play, coach or officiate a sport; physios, doctors and sponsors serve everyone and need no sport attached. */
+const SPORT_ROLES = ['athlete', 'coach', 'referee'];
 const nice = (s) => String(s).replace(/_/g, ' ');
 const fmt = (n) => (n === null || n === undefined ? '–' : Number.isInteger(+n) ? String(+n) : (+n).toFixed(1));
 const RESULT = { win: ['W', c.lime, c.limeSoft], draw: ['D', c.mute, c.violetSoft], loss: ['L', c.red, c.redSoft] };
@@ -214,6 +216,8 @@ function LogMatchSheet({ p, onClose, onDone }) {
 
 function MySports() {
   const { push } = useNav();
+  const { user } = useSession();
+  const noSportNeeded = !(user.roles ?? []).some((r) => SPORT_ROLES.includes(r));
   const { width: winW, phone } = useLayout();
   const { gap, w } = useCols();
   const list = useLoad(() => api.get('/me/sport-profiles'), []);
@@ -279,7 +283,9 @@ function MySports() {
     <Screen>
       {header}
       <View style={{ marginTop: 18 }}>
-        {list.loading && !list.data ? <Loading /> : list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : !profiles.length ? (
+        {list.loading && !list.data ? <Loading /> : list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : !profiles.length && noSportNeeded ? (
+          <Empty emoji="🩺" title="No sport needed" sub="Physios, doctors and sponsors work across all sports, so nothing has to be attached to a sport. Add a sport only if you also play, coach or officiate." />
+        ) : !profiles.length ? (
           <Empty emoji="🏅" title="No sport profiles yet" sub="Add the sports you play — matches you log yourself and games you play in through Gotmygame events appear on each card automatically." />
         ) : (
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap }}>{cards(w)}</View>
