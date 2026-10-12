@@ -56,6 +56,10 @@ resource indirectly (e.g. a booking id whose venue is not in the input) are not 
 Expired or revoked tokens match no row at authentication, so they fail with `401` on the next request. `last_used_at` is updated on use.
 `GET /me/tokens` returns scopes, expiry, resources, last use, `expired` and `legacy_full`; secrets and hashes are never returned.
 
+**Parity.** The OpenAPI document (`/api/v1/openapi.json`) states each operation's required scope as `x-required-scope` (and in its description); public operations carry none.
+MCP tools enforce the same class through the same `invoke()` path. Tests: `capability-registry.test.js` (OpenAPI), `token-scopes.test.js` (REST and MCP: write token, resource-restricted token, expired/revoked token), `web-cookie-auth.test.js` (the web `storage.js` never writes credential keys).
+The decision that email verification is informational is recorded under Account security (PR #176).
+
 ### Migration `052_api_token_scopes.sql` (additive)
 - Adds `scopes text[]`, `expires_at`, `resources jsonb`, a CHECK on known scope names and an index.
 - **Existing tokens are deliberately migrated to the documented legacy scope `full`**: they keep working exactly as before (all the owner can

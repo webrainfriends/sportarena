@@ -15,3 +15,22 @@ test('every capability file is imported, so its routes and tools exist', () => {
   const orphans = files.filter((f) => /\bcap\(/.test(sources[f]) && !reachable.has(f));
   assert.deepEqual(orphans, [], `not imported (directly or transitively) from capabilities/index.js: ${orphans.join(', ')}`);
 });
+
+// REST/OpenAPI/MCP parity for token scopes: the OpenAPI document states the scope each operation needs.
+test('OpenAPI exposes each capability\'s required token scope', async () => {
+  const { buildOpenApi } = await import('../src/openapi.js');
+  const { capabilities } = await import('../src/capabilities/index.js');
+  const doc = buildOpenApi();
+  const ops = Object.values(doc.paths).flatMap((p) => Object.values(p));
+  const byId = Object.fromEntries(ops.map((o) => [o.operationId, o]));
+  for (const c of capabilities) {
+    const op = byId[c.name];
+    assert.ok(op, `${c.name} is in the OpenAPI document`);
+    if (c.auth === 'public') { assert.equal(op['x-required-scope'], undefined, `${c.name} is public`); continue; }
+    assert.ok(['read', 'write', 'payment', 'clinical', 'admin'].includes(c.scope), `${c.name} has a scope`);
+    assert.equal(op['x-required-scope'], c.scope, c.name);
+    assert.match(op.description, new RegExp(`\\\`${c.scope}\\\``), `${c.name} description names its scope`);
+  }
+  assert.equal(byId.create_payment['x-required-scope'], 'payment');
+  assert.equal(byId.list_medical_records['x-required-scope'], 'clinical');
+});

@@ -14,6 +14,9 @@ export function buildOpenApi(serverUrl = '/api/v1') {
     const params = pp.map((n) => ({ name: n, in: 'path', required: true, schema: props[n] ?? { type: 'string' } }));
     const op = {
       operationId: c.name, summary: c.summary, tags: [c.tag],
+      // The API-token scope class this operation needs (read | write | payment | clinical | admin); a signed-in session is not limited by it.
+      description: c.auth === 'public' ? undefined : `Required API-token scope: \`${c.scope}\`${c.scope === 'read' ? ' (or write)' : ''}. Tokens with the legacy \`full\` scope pass every class.`,
+      'x-required-scope': c.auth === 'public' ? undefined : c.scope,
       security: c.auth === 'public' ? [] : [{ bearerAuth: [] }],
       'x-mcp-tool': c.name,
       'x-required-roles': Array.isArray(c.auth) ? c.auth : undefined,
