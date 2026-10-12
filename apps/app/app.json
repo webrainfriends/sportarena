@@ -14,7 +14,8 @@
     "android": {
       "package": "dev.sportarena.app",
       "adaptiveIcon": {
-        "backgroundColor": "#FF2E93"
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#EEEAF4"
       }
     },
     "web": {
@@ -22,8 +23,9 @@
       "output": "single",
       "name": "Gotmygame",
       "shortName": "Gotmygame",
-      "backgroundColor": "#FFF6FB",
-      "themeColor": "#FF2E93"
+      "backgroundColor": "#EEEAF4",
+      "themeColor": "#FF2E93",
+      "favicon": "./public/favicon.png"
     },
     "extra": {
       "apiUrl": null,
@@ -44,6 +46,12 @@
           "color": "#4F46E5"
         }
       ]
-    ]
+    ],
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#EEEAF4"
+    }
   }
 }
