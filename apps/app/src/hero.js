@@ -134,10 +134,11 @@ export function StatTiles({ items, pad = 16 }) {
   const L = useLayout();
   return (
     <View style={{ width: '100%', maxWidth: COL, alignSelf: 'center', flexDirection: 'row', gap: 10, paddingHorizontal: pad, marginTop: -44 }}>
-      {items.map(([label, value]) => (
+      {items.map(([label, value, sub]) => (
         <View key={label} style={{ flex: 1, minHeight: 96, justifyContent: 'space-between', backgroundColor: c.paper, borderRadius: 20, borderWidth: 1, borderColor: c.line, padding: 14, ...lift }}>
           <T size={12} weight="600" color={c.mute} numberOfLines={1}>{label}</T>
           <T size={30} weight="800" style={{ letterSpacing: -0.8, textAlign: 'right', fontVariant: ['tabular-nums'] }}>{value}</T>
+          {sub ? <T size={10} color={c.mute} numberOfLines={2} style={{ textAlign: 'right' }}>{sub}</T> : null}
         </View>
       ))}
     </View>

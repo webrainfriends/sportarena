@@ -20,6 +20,7 @@ import { liveRouter } from './live.js';
 import { randomUUID } from 'node:crypto';
 import { logger, runWithContext } from './logger.js';
 import { recordRequest } from './metrics.js';
+import { clearWebCookies, cookieAuth, credentialedOrigins, REFRESH_COOKIE, setWebCookies, usesWebCookies } from './web-session.js';
 
 export function createApp() {
   const app = express();
@@ -47,7 +48,13 @@ export function createApp() {
     if (config.isProd && !config.allowInsecureHttp && !req.secure) return res.status(426).json({ error: { code: 'https_required', message: 'Use HTTPS' } });
     next();
   });
-  app.use(cors({ origin: config.corsOrigins.includes('*') ? true : config.corsOrigins }));
+  // CORS: credentials (cookies) are only ever allowed for explicitly listed origins, never with a wildcard.
+  app.use(cors((req, cb) => {
+    const origin = req.headers.origin;
+    if (origin && credentialedOrigins().includes(origin)) return cb(null, { origin: true, credentials: true });
+    cb(null, { origin: config.corsOrigins.includes('*'), credentials: false });
+  }));
+  app.use(cookieAuth);
   app.use('/api/v1/webhooks', webhookRouter());
   // Media: streaming upload + file serving (binary, so outside the JSON capability router); base64 uploads get a larger JSON limit on their own path.
   app.use('/api/v1/venues/:id/media', express.json({ limit: '12mb' }));
@@ -62,7 +69,7 @@ export function createApp() {
   app.use((_, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
 
   const authLimiter = rateLimit({ windowMs: 15 * 60_000, limit: config.isProd ? 20 : 1000, standardHeaders: true, legacyHeaders: false });
-  app.use(['/api/v1/auth/login', '/api/v1/auth/register'], authLimiter);
+  app.use(['/api/v1/auth/login', '/api/v1/auth/register', '/api/v1/auth/refresh', '/api/v1/auth/password-reset', '/api/v1/auth/verify-email'], authLimiter);
 
   app.get('/', (_, res) => res.json({ name: 'SportArena', api: '/api/v1', openapi: '/api/v1/openapi.json', mcp: '/mcp', tools: capabilities.length }));
   app.get('/health', async (_, res) => { await pool.query('select 1'); res.json({ ok: true }); });
@@ -81,8 +88,16 @@ export function createApp() {
     v1[c.method.toLowerCase()](c.path, async (req, res) => {
       try {
         const user = await authenticate(req.headers.authorization);
-        const body = ['POST', 'PATCH'].includes(c.method) ? (req.body ?? {}) : {};
-        const result = await invoke(c, user, { ...req.query, ...body, ...req.params });
+        const body = ['POST', 'PATCH'].includes(c.method) ? { ...(req.body ?? {}) } : {};
+        const web = usesWebCookies(c, req);
+        if (web && c.name === 'refresh_session' && !body.refresh_token && req.cookies?.[REFRESH_COOKIE]) body.refresh_token = req.cookies[REFRESH_COOKIE];
+        let result = await invoke(c, user, { ...req.query, ...body, ...req.params }, { ip: req.ip, userAgent: req.headers['user-agent'] });
+        if (web && result.token) {
+          // Web clients never see the secrets: they go into HttpOnly cookies; the body only says who is signed in.
+          const { token, refresh_token, ...rest } = result;
+          setWebCookies(req, res, { token, refresh_token });
+          result = { ...rest, cookie_session: true };
+        } else if (['logout', 'logout_all'].includes(c.name) && req.cookies?.sa_session) clearWebCookies(req, res);
         res.status(c.status ?? 200).json(result);
       } catch (e) {
         const { status, code, message, details } = toErrorBody(e);

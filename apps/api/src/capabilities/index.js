@@ -1,4 +1,6 @@
 import './identity.js';
+import './sessions.js';
+import './account-security.js';
 import './verification.js';
 import './cases.js';
 import './jobs.js';
@@ -54,6 +56,7 @@ import './training-plans.js';
 import './coach.js';
 import './payments.js';
 import './sponsors.js';
+import './sponsorship-agreements.js';
 import './supply.js';
 import './medical.js';
 import './insurance.js';

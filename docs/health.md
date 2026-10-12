@@ -28,8 +28,8 @@ case), availability window; sorts `rating`, `fee`, `name`, `soonest`. Results ar
 into `book_appointment` and `grant_medical_access`. With an availability window the candidate set is capped at 200
 before paging. `list_providers` and providers without a profile keep working.
 
-Verification: search shows and filters on the badge from the verification service; booking and consent are **not** blocked
-for unverified providers (consent already protects athletes). Making verification mandatory is an open product decision.
+Verification: search shows and filters on the badge from the verification service. Clinical actions additionally
+**require a current doctor/physio credential** (issue #59) on top of athlete consent: see "Clinical credential" below.
 
 ## Consent (revocable, auditable)
 * `grant_medical_access` now takes a `scope` (`full` = records and fit-to-play, `clearance` = fit-to-play status only) and
@@ -69,3 +69,49 @@ address, sync status and timestamps are stored, one SportArena appointment per `
 an API token) reports changes with `reconcile_external_booking`, which applies the same status rules as everywhere else.
 No scraping and no stored third-party credentials. Where a system offers an API, an adapter can add a `sync` hook later;
 none is implemented yet.
+
+## Clinical credential (issue #59)
+Self-declaring `doctor`/`physio` is not enough. Both are required, every time, resolved live from the database
+(`src/clinical-access.js`, backed by `verification_cases`, no re-login needed):
+
+1. a current **verified credential** (approved, not revoked, not expired, profession matches the account's role, sport scope and,
+   if configured, jurisdiction fit), and
+2. the athlete's **consent** (`medical_grants`) where the action touches an athlete's records.
+
+| Action | Credential | Consent |
+|---|---|---|
+| `add_medical_record`, `list_medical_records` (provider read), `create_followup` | required | required (full) |
+| `update_appointment` confirm / complete (provider) | required (complete may use grace) | existing booking |
+| `book_appointment` | the **provider** must be current | athlete's medical consent |
+| `get_clearance` via a clearance grant | required | required |
+| `report_medical_incident` (event doctor/physio) | required, emergency exception | event staffing |
+| `grant_medical_access` | not required; response carries `provider_verified` + `warning` | athlete's choice |
+| cancelling an appointment, athlete reading own records | never blocked | - |
+
+Blocked calls return `403` with code `credential_required` and `details: { reason, profession, expires_at, renewal }`; `reason` is one of
+`not_verified | pending | expired | revoked | role_mismatch | sport_scope | jurisdiction`. `renewal` names the route:
+`submit_verification` with the profession (the new case is linked to the earlier one via `previous_case_id`).
+`get_my_clinical_status` (`GET /medical/credential`) returns the same state for the signed-in provider.
+
+Policies (explicit, never silent):
+* **Grace**: `CLINICAL_GRACE_DAYS` (default `0` = none). After *expiry only* (never revocation) a provider may complete an
+  already-confirmed appointment for that many days. New records, follow-ups and reads are never covered.
+* **Emergency exception**: an event doctor/physio with a lapsed credential may log a `serious`/`emergency` incident only with
+  `emergency_reason`. It is audited (`credential_emergency_override`) and stored with the incident (`credential_override`, encrypted reason).
+  First aiders have no platform credential and are unaffected.
+* **Jurisdiction**: `submit_verification` accepts `jurisdiction`; set `CLINICAL_JURISDICTIONS=IN,GB` to accept only those.
+  Unset = any (default).
+* **Audit**: every check writes `credential_check_allowed|denied|grace` (entity `clinical:<action>[:reason]`, athlete id) - never clinical text.
+
+Least-privilege history (59-1b): a grant has `history_scope`. `since_grant` (default for new grants) lets the provider read the
+records they wrote plus anything written since the grant; `all` (the athlete's explicit choice, `history: 'all'` on
+`grant_medical_access`) also shows earlier records by other providers. Grants that existed before migration 050 are backfilled to
+`all` so nothing the athlete already shared changes; granting again narrows it. Re-granting restarts the `since_grant` window.
+The athlete always sees every record. `list_my_grants` returns `history_scope`, `provider_verified` and `credential_reason`.
+
+UI (Health): providers see **Your professional verification** (state, expiry, why actions are blocked, a Renew/Get verified button to
+Me > Verification). Athletes get a share sheet (what the provider can see, a warning when the provider is not verified) and a
+warning in the Access list for providers whose verification lapsed. Server messages for blocked actions are shown as-is.
+
+Limitations: sport scope is evaluated from the case's `sport_id` against the supplied `sport_id` or the athlete's sport profiles.
+Existing data is untouched; migration 049 only adds nullable/defaulted columns (rollback: leave them, older code ignores them).

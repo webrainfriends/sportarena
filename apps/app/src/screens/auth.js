@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Platform, Pressable, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { api } from '../api';
 import { useSession } from '../session';
@@ -21,17 +21,47 @@ export default function Auth({ intent, initialMode, onClose } = {}) {
   const copy = intent ? INTENT_COPY[intent.action] : null;
   const [err, setErr] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [info, setInfo] = useState(null);
+  const [mfaToken, setMfaToken] = useState(null);
+
+  // Links from security emails open the app with ?reset_password=<code> or ?verify_email=<code>.
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof location === 'undefined') return;
+    const q = new URLSearchParams(location.search);
+    const clean = () => { try { window.history.replaceState(null, '', location.pathname); } catch { /* ignore */ } };
+    if (q.get('reset_password')) { setF((p) => ({ ...p, code: q.get('reset_password') })); setMode('reset'); clean(); }
+    else if (q.get('verify_email')) {
+      api.post('/auth/verify-email', { token: q.get('verify_email') }).then(() => setInfo('Your email is confirmed. You can log in.'), (e) => setErr(e.message));
+      clean();
+    }
+  }, []);
   const set = (k) => (v) => setF((p) => ({ ...p, [k]: v }));
   const toggle = (r) => setF((p) => ({ ...p, roles: p.roles.includes(r) ? p.roles.filter((x) => x !== r) : [...p.roles, r] }));
 
   const submit = async () => {
-    setBusy(true); setErr(null);
+    setBusy(true); setErr(null); setInfo(null);
     try {
+      if (mode === 'forgot') {
+        const r = await api.post('/auth/password-reset', { email: f.email });
+        setInfo(r.message); setMode('reset'); return;
+      }
+      if (mode === 'reset') {
+        await api.post('/auth/password-reset/confirm', { token: (f.code ?? '').trim(), new_password: f.password });
+        setF((p) => ({ ...p, password: '', code: '' })); setMode('login'); setInfo('Password changed. Log in with your new password.'); return;
+      }
+      if (mode === 'mfa') {
+        await signIn(await api.post('/auth/login/mfa', { mfa_token: mfaToken, code: (f.mfa ?? '').trim() }));
+        return;
+      }
       const res = mode === 'login'
         ? await api.post('/auth/login', { email: f.email, password: f.password })
         : await api.post('/auth/register', { handle: (f.handle ?? '').toLowerCase(), display_name: f.display_name, email: f.email, password: f.password, roles: f.roles.length ? f.roles : ['athlete'], phone: f.phone || undefined, full_name: f.full_name || undefined });
+      if (res.mfa_required) { setMfaToken(res.mfa_token); setF((p) => ({ ...p, mfa: '', password: '' })); setMode('mfa'); return; }
       await signIn(res);
-    } catch (e) { setErr(e.message); } finally { setBusy(false); }
+    } catch (e) {
+      setErr(e.message);
+      if (mode === 'mfa' && /sign in again|expired/i.test(e.message)) { setMode('login'); setMfaToken(null); }
+    } finally { setBusy(false); }
   };
 
   return (
@@ -52,21 +82,40 @@ export default function Auth({ intent, initialMode, onClose } = {}) {
         <T color="#E0E7FF" weight="500" size={15} style={{ marginTop: 8, lineHeight: 22 }}>Teams. Fixtures. Venues. Performance. Everything your game runs on, in one place.</T>
       </LinearGradient>
 
-      <View style={{ flexDirection: 'row', backgroundColor: c.line, borderRadius: 999, padding: 4, marginTop: 20 }}>
+      {['login', 'register'].includes(mode) ? <View style={{ flexDirection: 'row', backgroundColor: c.line, borderRadius: 999, padding: 4, marginTop: 20 }}>
         {[['login', 'Log in'], ['register', 'Create account']].map(([k, l]) => (
           <Pressable key={k} onPress={() => setMode(k)} style={{ flex: 1, paddingVertical: 11, borderRadius: 999, alignItems: 'center', backgroundColor: mode === k ? c.paper : 'transparent' }}>
             <T weight="700" size={14} color={mode === k ? c.ink : c.mute}>{l}</T>
           </Pressable>
         ))}
-      </View>
+      </View> : null}
       <Card style={{ marginTop: 12 }} pad={20}>
         <View style={{ gap: 16 }}>
           {mode === 'register' && <>
             <Field label="Handle" value={f.handle} onChangeText={set('handle')} placeholder="goal_machine" hint="Letters, numbers and _ · shown publicly" />
             <Field label="Display name" value={f.display_name} onChangeText={set('display_name')} placeholder="Priya Sharma" />
           </>}
-          <Field label="Email" value={f.email} onChangeText={set('email')} keyboardType="email-address" placeholder="you@example.com" />
-          <Field label="Password" value={f.password} onChangeText={set('password')} secure placeholder="10+ characters" />
+          {info ? <T color={c.mint} weight="700" size={13} accessibilityRole="alert">{info}</T> : null}
+          {mode === 'mfa' ? <>
+            <T weight="800" size={16}>Two-step verification</T>
+            <T size={13} color={c.mute}>Enter the 6-digit code from your authenticator app, or one of your recovery codes.</T>
+            <Field label="Code" value={f.mfa} onChangeText={set('mfa')} placeholder="123456" keyboardType="number-pad" />
+          </> : null}
+          {mode === 'forgot' ? <>
+            <T weight="800" size={16}>Reset your password</T>
+            <T size={13} color={c.mute}>Enter your account email. If it has an account, we send a reset code that works once for 30 minutes.</T>
+            <Field label="Email" value={f.email} onChangeText={set('email')} keyboardType="email-address" placeholder="you@example.com" />
+          </> : null}
+          {mode === 'reset' ? <>
+            <T weight="800" size={16}>Choose a new password</T>
+            <T size={13} color={c.mute}>Paste the code from the email. You will be signed out on all your devices.</T>
+            <Field label="Reset code" value={f.code} onChangeText={set('code')} placeholder="sp_..." />
+            <Field label="New password" value={f.password} onChangeText={set('password')} secure placeholder="10+ characters" />
+          </> : null}
+          {['login', 'register'].includes(mode) ? <>
+            <Field label="Email" value={f.email} onChangeText={set('email')} keyboardType="email-address" placeholder="you@example.com" />
+            <Field label="Password" value={f.password} onChangeText={set('password')} secure placeholder="10+ characters" />
+          </> : null}
           {mode === 'register' && <>
             <View style={{ gap: 8 }}>
               <T weight="600" size={12} color={c.mute} style={{ letterSpacing: 0.4 }}>I AM A…</T>
@@ -84,7 +133,10 @@ export default function Auth({ intent, initialMode, onClose } = {}) {
             </View>
           </>}
           {err ? <T color={c.red} weight="600" size={13}>{err}</T> : null}
-          <Btn title={mode === 'login' ? 'Log in' : 'Create my account'} onPress={submit} loading={busy} />
+          <Btn title={{ login: 'Log in', register: 'Create my account', mfa: 'Verify and log in', forgot: 'Send reset code', reset: 'Change password' }[mode]} onPress={submit} loading={busy} />
+          {mode === 'login' ? <Pressable onPress={() => { setErr(null); setInfo(null); setMode('forgot'); }} accessibilityRole="button" style={{ alignSelf: 'center', paddingVertical: 8 }}><T color={c.pink} weight="700" size={13}>Forgot your password?</T></Pressable> : null}
+          {mode === 'forgot' ? <Pressable onPress={() => { setErr(null); setMode('reset'); }} accessibilityRole="button" style={{ alignSelf: 'center', paddingVertical: 8 }}><T color={c.pink} weight="700" size={13}>I already have a code</T></Pressable> : null}
+          {['forgot', 'reset', 'mfa'].includes(mode) ? <Pressable onPress={() => { setErr(null); setInfo(null); setMfaToken(null); setMode('login'); }} accessibilityRole="button" style={{ alignSelf: 'center', paddingVertical: 8 }}><T color={c.mute} weight="700" size={13}>Back to log in</T></Pressable> : null}
         </View>
       </Card>
 

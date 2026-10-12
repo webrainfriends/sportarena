@@ -5,7 +5,7 @@ import { logger } from './logger.js';
 import { recordStep } from './metrics.js';
 import { backoffMs, enqueue, recordDead, requeueHooks, runJobs } from './jobs.js';
 import { config } from './config.js';
-import { decrypt } from './crypto.js';
+import { decrypt, encrypt } from './crypto.js';
 import { audit } from './helpers.js';
 
 export const DEFAULT_PREFS = { in_app: true, email: true, push: true, reminder_hours: 24, muted_kinds: [] };
@@ -45,6 +45,19 @@ async function deliver(db, c, userId, { kind, title, body, data = {} }) {
     if (c?.afterCommit) c.afterCommit(kick); else setImmediate(kick);
   }
   return n;
+}
+
+/**
+ * Security email (verification link, password reset, alerts). Always sent: ignores mute and channel preferences, and is marked
+ * read so it never shows as an unread inbox item. A one-time secret is kept encrypted in data.secret_enc and substituted for
+ * {{secret}} only when the email is dispatched, then erased - the plaintext secret is never stored in the outbox.
+ */
+export async function notifySecurity(userId, { kind, title, body, secret = null }) {
+  const data = secret ? { secret_enc: encrypt(secret, 'notifications.secret') } : {};
+  const n = (await query('INSERT INTO notifications(user_id, kind, title, body, data, read_at) VALUES ($1,$2,$3,$4,$5, now()) RETURNING id', [userId, kind, title, body, data])).rows[0];
+  await query("INSERT INTO notification_deliveries(notification_id, channel) VALUES ($1,'email')", [n.id]);
+  setImmediate(() => dispatchPending().catch(() => {})); // deliver promptly when a webhook is configured
+  return n.id;
 }
 
 /** Everyone who runs a venue: owner + staff. */
@@ -113,10 +126,11 @@ export async function dispatchPending({ limit = 50 } = {}) {
       const res = await fetch(url, {
         method: 'POST', signal: AbortSignal.timeout(10_000),
         headers: { 'content-type': 'application/json', ...(config.notifyWebhook.secret ? { authorization: `Bearer ${config.notifyWebhook.secret}` } : {}) },
-        body: JSON.stringify({ channel: 'email', to: decrypt(d.email_enc, 'users.email'), subject: d.title, text: d.body, kind: d.kind, data: d.data, notification_id: d.notification_id }),
+        body: JSON.stringify({ channel: 'email', to: decrypt(d.email_enc, 'users.email'), subject: d.title, text: d.data?.secret_enc ? d.body.replaceAll('{{secret}}', decrypt(d.data.secret_enc, 'notifications.secret')) : d.body, kind: d.kind, data: { ...d.data, secret_enc: undefined }, notification_id: d.notification_id }),
       });
       if (!res.ok) throw new Error(`webhook answered ${res.status}`);
-      await query("UPDATE notification_deliveries SET status='sent', sent_at=now(), last_error=NULL, claimed_at=NULL WHERE id=$1", [d.id]);
+      await query("UPDATE notification_deliveries SET status='sent', sent_at=now(), last_error=NULL WHERE id=$1", [d.id]);
+      if (d.data?.secret_enc) await query("UPDATE notifications SET data = data - 'secret_enc', body = replace(body, '{{secret}}', '[sent by email]') WHERE id=$1", [d.notification_id]);
       sent++;
     } catch (e) {
       failed++;

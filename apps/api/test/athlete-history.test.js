@@ -200,3 +200,37 @@ test('openapi exposes the new capabilities', async () => {
   const spec = (await api('GET', '/openapi.json')).body;
   for (const p of ['/me/detected-sports', '/me/matches/{id}/link', '/me/matches/{id}/unlink', '/me/matches/{id}/link-candidates', '/me/official-matches/{source_type}/{source_id}/note']) assert.ok(spec.paths[p], p);
 });
+
+test('match templates follow the sport and match type: badminton has no goals, AI tailors but is validated', async () => {
+  const { setAiTransport } = await import('../src/ai.js');
+  const { clearTemplateCache } = await import('../src/match-template.js');
+  const u = await signup();
+  setAiTransport(null); clearTemplateCache();
+  const t = (await api('GET', '/sports/badminton/match-template', { token: u.token })).body;
+  assert.equal(t.source, 'iptc');
+  assert.deepEqual(t.match_types, ['singles', 'doubles', 'mixed_doubles']);
+  assert.equal(t.score_labels.score_for, 'Games won');
+  const keys = t.columns.map((c) => c.key);
+  assert.ok(keys.includes('smashes') && !keys.includes('goals') && !keys.includes('assists'));
+  assert.equal((await api('GET', '/sports/badminton/match-template?match_type=t20', { token: u.token })).status, 400);
+  assert.ok((await api('GET', '/sports/football/match-template', { token: u.token })).body.columns.some((c) => c.key === 'goals'));
+  // a sport with no IPTC template still gets sensible columns from its scoring family
+  assert.ok((await api('GET', '/sports/table-tennis/match-template', { token: u.token })).body.columns.length > 0);
+
+  // AI answer: goal columns are dropped for a sport that scores no goals, odd keys are rejected outright
+  setAiTransport(async () => JSON.stringify({ columns: [{ key: 'goals', label: 'Goals' }, { key: 'smash_winners', label: 'Smash winners' }, { key: 'net_kills', label: 'Net kills' }] }));
+  clearTemplateCache();
+  const d = (await api('GET', '/sports/badminton/match-template?match_type=doubles', { token: u.token })).body;
+  assert.equal(d.source, 'ai');
+  assert.deepEqual(d.columns.map((c) => c.key), ['smash_winners', 'net_kills']);
+  setAiTransport(async () => JSON.stringify({ columns: [{ key: 'Bad Key!', label: 'x' }] }));
+  clearTemplateCache();
+  assert.equal((await api('GET', '/sports/badminton/match-template?match_type=singles', { token: u.token })).body.source, 'iptc');
+  setAiTransport(null); clearTemplateCache();
+
+  // the match type is kept with the match
+  const p = await profile(u, 'badminton');
+  const m = await api('POST', '/me/matches', { token: u.token, body: { sport_profile_id: p.id, played_on: '2026-02-01', match_type: 'doubles', stats: { smashes: 7 } } });
+  assert.equal(m.status, 201, JSON.stringify(m.body));
+  assert.equal((await history(u, `sport_profile_id=${p.id}`))[0].match_type, 'doubles');
+});

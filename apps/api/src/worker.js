@@ -7,6 +7,7 @@ import { checkSlotAlerts } from './booking/alerts.js';
 import { processWaitlist } from './booking/waitlist.js';
 import { expireLoyalty } from './booking/loyalty.js';
 import { expireUserPlans } from './booking/plans.js';
+import { expireStaleRequests } from './lifecycle.js';
 import { expireQuotes, sendRenewalReminders } from './insurance-cycle.js';
 
 export const STEPS = [
@@ -21,15 +22,14 @@ export const STEPS = [
 ];
 
 export async function maintenanceCycle() {
-  const out = {}; const errors = {};
-  for (const [category, key, fn, fallback] of STEPS) {
-    const r = await isolated(category, () => fn(), fallback);
-    out[key] = r.value;
-    if (!r.ok) errors[category] = r.error;
-  }
-  const notif = await isolated('notifications', () => notificationCycle(), {});
-  if (!notif.ok) errors.notifications = notif.error;
-  if (notif.value?.errors) Object.assign(errors, notif.value.errors);
-  const { errors: _drop, ...rest } = notif.value ?? {};
-  return { ...out, ...rest, ...(Object.keys(errors).length ? { errors } : {}) };
+  const holds = await expireUnpaidHolds();
+  const refunds = await processRefunds();
+  const waitlist = await processWaitlist();
+  const points_expired = await expireLoyalty();
+  const plans_expired = await expireUserPlans();
+  const requests_expired = await expireStaleRequests();
+  const alerts = await checkSlotAlerts();
+  const quotes_expired = await expireQuotes();
+  const renewal_reminders = await sendRenewalReminders();
+  return { holds_released: holds, refunds, waitlist, points_expired, plans_expired, alerts_fulfilled: alerts, quotes_expired, requests_expired, renewal_reminders, ...(await notificationCycle()) };
 }
