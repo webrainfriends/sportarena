@@ -192,8 +192,8 @@ jobs:
           PLATFORM_ADMIN_PASSWORD: ${{ secrets.PLATFORM_ADMIN_PASSWORD }}
           # two-step verification for doctors/physios/admins is ON in production; set the repo variable MFA_ENFORCE=false only as a temporary rollout opt-out (docs/auth.md)
           MFA_ENFORCE: ${{ vars.MFA_ENFORCE }}
-          # Sign in with Google: the public OAuth client id (repository variable); unset hides the button
-          GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
+          # Sign in with Google: the public OAuth client id (a repository variable, or a secret of the same name); unset leaves the Google button disabled
+          GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID || secrets.GOOGLE_CLIENT_ID }}
           # the Google account that approves/rejects other people's access and holds the platform owner role (docs/auth.md); override with the repo variable
           SUPER_ADMIN_EMAIL: ${{ vars.SUPER_ADMIN_EMAIL || 'rraja.edge@gmail.com' }}
         run: |
@@ -229,6 +229,7 @@ jobs:
             echo "== pm2"; pm2 ls 2>&1 | head -20
             echo "== docker (sportarena)"; sudo docker ps -a --filter name=sportarena --format '{{.Names}} | {{.Status}} | {{.Ports}}' 2>&1
             echo "== host firewall"; sudo ufw status 2>&1 | head -12
+            echo "== google sign-in config (server side)"; curl -s -m 5 http://127.0.0.1:4255/api/v1/auth/config | sed -E 's/"google_client_id":"[^"]+"/"google_client_id":"<set>"/'; echo; grep -c '^GOOGLE_CLIENT_ID=.' ~/sportarena/.env | sed 's/^/GOOGLE_CLIENT_ID lines in .env: /'; grep -c '^SUPER_ADMIN_EMAIL=.' ~/sportarena/.env | sed 's/^/SUPER_ADMIN_EMAIL lines in .env: /'
             echo "== local health"; curl -s -m 5 http://127.0.0.1:4255/health || echo "api: no answer"; echo
             curl -s -m 5 -o /dev/null -w "nginx 9255 -> HTTP %{http_code}\n" http://127.0.0.1:9255/health || echo "nginx: no answer"
             echo "== worker health"; curl -s -m 5 -w " (HTTP %{http_code})\n" http://127.0.0.1:4255/health/worker || echo "worker probe: no answer"; pm2 logs sportarena-worker --lines 15 --nostream 2>&1 | tail -18
