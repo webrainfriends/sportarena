@@ -141,10 +141,20 @@ MEDIA_DIR="$KEY_DIR/media"
 sudo mkdir -p "$MEDIA_DIR"; sudo chown "$(id -un):$(id -gn)" "$MEDIA_DIR"
 set_env MEDIA_DIR "$MEDIA_DIR"
 # Payments: only written when provided, so a deploy without keys never wipes keys set earlier.
-for v in STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET PAYPAL_CLIENT_ID PAYPAL_CLIENT_SECRET PAYPAL_WEBHOOK_ID PAYPAL_ENV PAYMENT_CURRENCY EXPO_ACCESS_TOKEN ANTHROPIC_API_KEY AI_MODEL WORKER_MODE PLATFORM_ADMIN_EMAIL PLATFORM_ADMIN_HANDLE PLATFORM_ADMIN_NAME PLATFORM_ADMIN_PASSWORD; do
+for v in STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET PAYPAL_CLIENT_ID PAYPAL_CLIENT_SECRET PAYPAL_WEBHOOK_ID PAYPAL_ENV PAYMENT_CURRENCY EXPO_ACCESS_TOKEN ANTHROPIC_API_KEY AI_MODEL PLATFORM_ADMIN_EMAIL PLATFORM_ADMIN_HANDLE PLATFORM_ADMIN_NAME PLATFORM_ADMIN_PASSWORD; do
   val="$(printf '%s' "${!v:-}" | tr -d '\r\n' | xargs)"
   [ -n "$val" ] && set_env "$v" "$val"
 done
+# Background processing: production runs the separate pm2 worker by default (maintenance leaves the API process, so slow
+# jobs/email/hashing never share an event loop with request handling). Explicit opt-out: repository variable WORKER_MODE=inprocess.
+WORKER_MODE_EFFECTIVE="$(printf '%s' "${WORKER_MODE:-}" | tr -d '\r\n' | xargs)"
+case "$WORKER_MODE_EFFECTIVE" in
+  ""|external) WORKER_MODE_EFFECTIVE=external ;;
+  inprocess) ;;
+  *) echo "::warning::Unknown WORKER_MODE '$WORKER_MODE_EFFECTIVE'; using external."; WORKER_MODE_EFFECTIVE=external ;;
+esac
+set_env WORKER_MODE "$WORKER_MODE_EFFECTIVE"
+echo "[deploy] WORKER_MODE=$WORKER_MODE_EFFECTIVE"
 # Generated once and never rotated by a deploy (that would sign everyone out).
 if [ -z "$(env_val SPORTARENA_JWT_SECRET)" ]; then
   echo "[deploy] generating SPORTARENA_JWT_SECRET (first deploy only)"
@@ -164,7 +174,7 @@ fi
 (cd apps/api && npm run migrate)
 pm2 delete sportarena-api >/dev/null 2>&1 || true
 (cd apps/api && pm2 start src/server.js --name sportarena-api --node-args="--env-file=$ENV_FILE")
-# Optional separate worker (repository variable WORKER_MODE=external): maintenance leaves the API process. Default keeps it in-process.
+# Separate worker (default; opt out with repository variable WORKER_MODE=inprocess, which also removes the worker process).
 pm2 delete sportarena-worker >/dev/null 2>&1 || true
 if [ "$(env_val WORKER_MODE)" = "external" ]; then
   (cd apps/api && pm2 start src/worker-main.js --name sportarena-worker --node-args="--env-file=$ENV_FILE" --kill-timeout 30000)
@@ -175,6 +185,15 @@ for i in $(seq 1 30); do
   if curl -fs "http://127.0.0.1:${APP_PORT}/health" >/dev/null 2>&1; then ok=1; echo "[deploy] API healthy after ${i}s"; break; fi
   sleep 1
 done
+# Non-fatal: confirm the separate worker is beating (the first beat is written at start-up).
+if [ "$(env_val WORKER_MODE)" = "external" ]; then
+  wok=0
+  for i in $(seq 1 20); do
+    if curl -fs "http://127.0.0.1:${APP_PORT}/health/worker" >/dev/null 2>&1; then wok=1; echo "[deploy] worker beating after ${i}s"; break; fi
+    sleep 1
+  done
+  [ "$wok" -eq 1 ] || { echo "::warning::sportarena-worker is not beating yet (see 'Server report' / pm2 logs sportarena-worker)."; pm2 logs sportarena-worker --lines 20 --nostream || true; }
+fi
 [ "$ok" -eq 1 ] || { pm2 logs sportarena-api --lines 40 --nostream || true; abort_deploy "API did not become healthy on $APP_PORT."; }
 
 # ---- TLS (only when ENABLE_TLS=true): self-signed certificate until a real domain/cert exists ----

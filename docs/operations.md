@@ -82,7 +82,7 @@ An email bridge outage never blocks holds or refunds (separate step, reported as
 ### Residual limitations
 * Holds, waitlist, loyalty, plans, alerts and quotes remain state-driven sweeps over their own tables (their rows already are the
   durable queue, with atomic SQL claims); only retries, outbox and dead letters use the `jobs` table.
-* Maintenance runs inside the API process by default; see "Running the worker" below to move it out.
+* In production maintenance runs in the separate worker by default (the deploy sets `WORKER_MODE=external`); the code default for dev/tests is in-process. See "Running the worker" below to move it out.
 
 ## Running the worker
 
@@ -90,13 +90,17 @@ Maintenance (holds, refunds, waitlist, loyalty, reminders, retries, email, push)
 
 | `WORKER_MODE` | Behaviour |
 |---|---|
-| unset / `inprocess` (default) | The API process runs the cycle on a timer (every `NOTIFY_INTERVAL_SECONDS`, 0 disables). Fully backwards compatible. |
+| unset / `inprocess` (code default; dev and tests; production opt-out) | The API process runs the cycle on a timer (every `NOTIFY_INTERVAL_SECONDS`, 0 disables). Fully backwards compatible. |
 | `external` | The API does **no** maintenance; run `npm run worker` (`apps/api/src/worker-main.js`, pm2 process `sportarena-worker`). Set it on both processes. |
 
 Claims are atomic in SQL, so a second worker (or an API still running in-process during a rollout) never double-processes.
-Deploy: set the repository variable `WORKER_MODE=external`; `scripts/deploy-remote.sh` then starts `sportarena-worker` under pm2
-with a 30 s kill timeout. Note the deploy only writes `WORKER_MODE` when the variable is non-empty, so to go back to in-process set
-it to `inprocess` (the worker process is removed on that deploy).
+**Production deploys run the separate worker by default.** `.github/workflows/deploy.yml` forwards `vars.WORKER_MODE || 'external'`,
+and `scripts/deploy-remote.sh` writes the effective value to `.env` on every deploy (so API and worker always agree), starts the pm2
+process `sportarena-worker` (30 s kill timeout) after the API, and waits up to 20 s for `/health/worker` to answer (a warning, not a
+failure, if it does not). Explicit opt-out: set the repository variable `WORKER_MODE=inprocess`; the next deploy writes it, removes
+the worker process and the API runs maintenance itself again. Any other value is treated as `external` with a warning. The secret
+names are unchanged. This path has been syntax-checked (`bash -n`, YAML parse) but not run against the real host; the first
+deploy's "Server report" (`== worker health`, `pm2 ls`) is the evidence to read.
 
 ### Graceful shutdown
 `SIGTERM` / `SIGINT` (pm2 stop/restart, deploys): the process stops starting new cycles, waits for the cycle in flight (the API also
@@ -127,7 +131,7 @@ runs / failures / mean ms) are stored in its heartbeat and shown by `get_worker_
 ### Runbook
 | Symptom | Check | Action |
 |---|---|---|
-| `/health/worker` 503 | `pm2 ls`, `pm2 logs sportarena-worker`; the deploy "Server report" prints both | Restart via a deploy (workflow dispatch). If `WORKER_MODE=external` is set but no worker runs, nothing is processed. |
+| `/health/worker` 503 | `pm2 ls`, `pm2 logs sportarena-worker`; the deploy "Server report" prints both | Restart via a deploy (workflow dispatch). If `WORKER_MODE=external` (the production default) but no worker runs, nothing is processed. |
 | Reminders / email late | `get_worker_health`: `oldest_due_seconds`, category `failures` | Fix the cause (e.g. `NOTIFY_WEBHOOK_URL`); deliveries retry with backoff by themselves. |
 | Dead letters growing | `list_jobs` (status `dead`) | Fix the cause, then `requeue_job` for each; refunds keep their intent so no double refund. |
 | Login 503 `busy` | `get_metrics`: `hashing.rejected`, `event_loop_delay_ms` | Raise `HASH_CONCURRENCY` (up to spare cores) or add an API instance. |

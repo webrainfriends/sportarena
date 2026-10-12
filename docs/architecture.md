@@ -219,5 +219,5 @@ These are observations, not changes made here. Each would need its own ADR and P
 2. **Alerting**: ship the structured logs and `/admin/metrics` to an external system and alert on `/health/worker` and dead letters.
 3. **Payouts / settlement entity** for venues, coaches and providers (none exists; blocks payout disputes).
 4. **Staff roles** beyond `admin` (support, finance) for least-privilege operations.
-5. **Scaling the worker**: a separate worker process exists (`WORKER_MODE=external`); run more than one only if cycle time grows.
+5. **Scaling the worker**: a separate worker process exists (`WORKER_MODE=external`, the production default); run more than one only if cycle time grows.
 6. **Migration numbering**: duplicate prefixes work only because ordering is by full filename.

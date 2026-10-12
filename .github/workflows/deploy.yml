@@ -180,7 +180,8 @@ jobs:
           # optional: switches on Claude-written recaps, plan ideas and sheet reviews (docs/event-command-centre.md); without it they use built-in rules
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           AI_MODEL: ${{ vars.AI_MODEL }}
-          WORKER_MODE: ${{ vars.WORKER_MODE }}
+          # background processing: the separate pm2 worker is the default; set the repository variable WORKER_MODE=inprocess to opt out (docs/operations.md)
+          WORKER_MODE: ${{ vars.WORKER_MODE || 'external' }}
           # platform owner account (see docs/partners.md): created on first start; the password is a repo secret and never stored in git
           PLATFORM_ADMIN_EMAIL: ${{ vars.PLATFORM_ADMIN_EMAIL || 'platform@sportarena.com' }}
           PLATFORM_ADMIN_HANDLE: ${{ vars.PLATFORM_ADMIN_HANDLE || 'platformarena' }}
