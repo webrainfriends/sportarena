@@ -149,6 +149,7 @@ for v in STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET PAYPAL_CLIENT_ID PAYPAL_CLIENT_
   val="$(printf '%s' "${!v:-}" | tr -d '\r\n' | xargs)"
   [ -n "$val" ] && set_env "$v" "$val"
 done
+[ -n "$(printf '%s' "${GOOGLE_CLIENT_ID:-}" | tr -d '\r\n' | xargs)" ] && echo "[deploy] GOOGLE_CLIENT_ID received (Google sign-in on)" || echo "::warning::GOOGLE_CLIENT_ID is empty in this run: set it as a repository variable (or secret) named GOOGLE_CLIENT_ID; until then the Google button stays disabled."
 # Background processing: production runs the separate pm2 worker by default (maintenance leaves the API process, so slow
 # jobs/email/hashing never share an event loop with request handling). Explicit opt-out: repository variable WORKER_MODE=inprocess.
 WORKER_MODE_EFFECTIVE="$(printf '%s' "${WORKER_MODE:-}" | tr -d '\r\n' | xargs)"
