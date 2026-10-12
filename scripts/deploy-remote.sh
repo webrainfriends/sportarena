@@ -141,7 +141,7 @@ MEDIA_DIR="$KEY_DIR/media"
 sudo mkdir -p "$MEDIA_DIR"; sudo chown "$(id -un):$(id -gn)" "$MEDIA_DIR"
 set_env MEDIA_DIR "$MEDIA_DIR"
 # Payments: only written when provided, so a deploy without keys never wipes keys set earlier.
-for v in STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET PAYPAL_CLIENT_ID PAYPAL_CLIENT_SECRET PAYPAL_WEBHOOK_ID PAYPAL_ENV PAYMENT_CURRENCY EXPO_ACCESS_TOKEN ANTHROPIC_API_KEY AI_MODEL PLATFORM_ADMIN_EMAIL PLATFORM_ADMIN_HANDLE PLATFORM_ADMIN_NAME PLATFORM_ADMIN_PASSWORD; do
+for v in STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET PAYPAL_CLIENT_ID PAYPAL_CLIENT_SECRET PAYPAL_WEBHOOK_ID PAYPAL_ENV PAYMENT_CURRENCY EXPO_ACCESS_TOKEN ANTHROPIC_API_KEY AI_MODEL WORKER_MODE PLATFORM_ADMIN_EMAIL PLATFORM_ADMIN_HANDLE PLATFORM_ADMIN_NAME PLATFORM_ADMIN_PASSWORD; do
   val="$(printf '%s' "${!v:-}" | tr -d '\r\n' | xargs)"
   [ -n "$val" ] && set_env "$v" "$val"
 done
@@ -164,6 +164,11 @@ fi
 (cd apps/api && npm run migrate)
 pm2 delete sportarena-api >/dev/null 2>&1 || true
 (cd apps/api && pm2 start src/server.js --name sportarena-api --node-args="--env-file=$ENV_FILE")
+# Optional separate worker (repository variable WORKER_MODE=external): maintenance leaves the API process. Default keeps it in-process.
+pm2 delete sportarena-worker >/dev/null 2>&1 || true
+if [ "$(env_val WORKER_MODE)" = "external" ]; then
+  (cd apps/api && pm2 start src/worker-main.js --name sportarena-worker --node-args="--env-file=$ENV_FILE" --kill-timeout 30000)
+fi
 pm2 save
 ok=0
 for i in $(seq 1 30); do

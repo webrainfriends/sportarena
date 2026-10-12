@@ -10,6 +10,8 @@
 // A worker that crashes after claiming leaves status='running' with an expiring lease; the next claim picks it up.
 import { randomUUID } from 'node:crypto';
 import { pool } from './db.js';
+import { logger, runWithContext } from './logger.js';
+import { inc } from './metrics.js';
 
 export const WORKER_ID = `${process.pid}-${randomUUID().slice(0, 8)}`;
 export const DEFAULT_LEASE_SECONDS = 300;
@@ -81,17 +83,19 @@ export async function failJob(job, error, { db, backoff = backoffMs } = {}) {
 export async function runJobs(category, handlers, opts = {}) {
   const out = { claimed: 0, succeeded: 0, retried: 0, dead: 0 };
   for (const job of await claimJobs(category, opts)) {
-    out.claimed++;
+    out.claimed++; inc('jobs_claimed_total'); inc('job_attempts_total');
     const handler = handlers[job.kind];
-    try {
-      if (!handler) throw new Error(`no handler for ${job.kind}`);
-      await handler(job.payload, job);
-      if (await completeJob(job)) out.succeeded++;
-    } catch (e) {
-      const res = await failJob(job, e, opts).catch(() => 'stale');
-      if (res === 'retry') out.retried++; else if (res === 'dead') out.dead++;
-      console.error(JSON.stringify({ level: 'warn', msg: 'job failed', job_id: job.id, category, kind: job.kind, attempt: job.attempts, outcome: res, error: clip(e) }));
-    }
+    await runWithContext({ job_id: job.id }, async () => {
+      try {
+        if (!handler) throw new Error(`no handler for ${job.kind}`);
+        await handler(job.payload, job);
+        if (await completeJob(job)) { out.succeeded++; inc('jobs_succeeded_total'); }
+      } catch (e) {
+        const res = await failJob(job, e, opts).catch(() => 'stale');
+        if (res === 'retry') { out.retried++; inc('jobs_retried_total'); } else if (res === 'dead') { out.dead++; inc('jobs_dead_total'); }
+        logger.warn('job failed', { category, kind: job.kind, attempt: job.attempts, outcome: res, error: clip(e) });
+      }
+    });
   }
   return out;
 }

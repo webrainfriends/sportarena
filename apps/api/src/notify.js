@@ -1,6 +1,8 @@
 // Notifications: in-app inbox (instant) + email queue (sent by the dispatcher through a webhook you configure).
 // Callers pass their transaction client so a rolled-back booking never leaves a stray notification behind.
 import { pool, query, many, one, tx } from './db.js';
+import { logger } from './logger.js';
+import { recordStep } from './metrics.js';
 import { backoffMs, enqueue, recordDead, requeueHooks, runJobs } from './jobs.js';
 import { config } from './config.js';
 import { decrypt, encrypt } from './crypto.js';
@@ -22,10 +24,10 @@ export async function notify(c, userId, msg) {
     return n;
   } catch (e) {
     await c.query('ROLLBACK TO SAVEPOINT notify_sp'); // throws (and aborts the caller) only if the connection itself is broken
-    console.error(JSON.stringify({ level: 'warn', msg: 'notification deferred to retry job', kind: msg.kind, error: String(e.message).slice(0, 200) }));
+    logger.warn('notification deferred to retry job', { kind: msg.kind, error: String(e.message).slice(0, 200) });
     await c.query('SAVEPOINT notify_job_sp');
     try { await enqueue(c, { category: 'notify', kind: 'notify.retry', payload: { user_id: userId, ...msg }, maxAttempts: 8 }); await c.query('RELEASE SAVEPOINT notify_job_sp'); }
-    catch (e2) { await c.query('ROLLBACK TO SAVEPOINT notify_job_sp'); console.error(JSON.stringify({ level: 'error', msg: 'could not defer notification', error: String(e2.message).slice(0, 200) })); }
+    catch (e2) { await c.query('ROLLBACK TO SAVEPOINT notify_job_sp'); logger.error('could not defer notification', { error: String(e2.message).slice(0, 200) }); }
     return null;
   }
 }
@@ -198,10 +200,13 @@ export async function queueHealthReminders({ limit = 200 } = {}) {
 
 /** Run one step so its failure cannot stop the next one. */
 export async function isolated(category, fn, fallback = null) {
-  try { return { ok: true, value: await fn() }; }
+  const t0 = performance.now();
+  try { const value = await fn(); recordStep(category, { ok: true, ms: performance.now() - t0 }); return { ok: true, value }; }
   catch (e) {
-    console.error(JSON.stringify({ level: 'error', msg: 'maintenance step failed', category, error: String(e.message).slice(0, 300) }));
-    return { ok: false, error: String(e.message).slice(0, 300), value: fallback };
+    const error = String(e.message).slice(0, 300);
+    recordStep(category, { ok: false, ms: performance.now() - t0, error });
+    logger.error('maintenance step failed', { category, error });
+    return { ok: false, error, value: fallback };
   }
 }
 

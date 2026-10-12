@@ -9,6 +9,7 @@
   "scripts": {
     "api": "npm -w apps/api run start",
     "api:dev": "npm -w apps/api run dev",
+    "worker": "npm -w apps/api run worker",
     "migrate": "npm -w apps/api run migrate",
     "seed": "npm -w apps/api run seed",
     "test": "npm -w apps/api test",

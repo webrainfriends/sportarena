@@ -5,7 +5,12 @@ import { migrate } from './migrate.js';
 import { createApp } from './http.js';
 import { initKeys } from './crypto.js';
 import { maintenanceCycle } from './worker.js';
+import { createWorker, onShutdown, runsMaintenanceInProcess } from './worker-runtime.js';
+import { pool } from './db.js';
+import { startMetrics } from './metrics.js';
+import { logger } from './logger.js';
 
+startMetrics();
 await initKeys();   // fail fast if the master key can't be loaded
 await migrate();
 await (await import('./platform.js')).bootstrapPlatformOwner();
@@ -14,14 +19,21 @@ const app = createApp();
 const server = config.sslKeyFile && config.sslCertFile
   ? createServer({ key: readFileSync(config.sslKeyFile), cert: readFileSync(config.sslCertFile), minVersion: 'TLSv1.2' }, app)
   : app;
-server.listen(config.port, () => console.log(`SportArena API on ${config.sslKeyFile ? 'https' : 'http'}://localhost:${config.port}  (REST /api/v1 · MCP /mcp)`));
+const listener = server.listen(config.port, () => console.log(`SportArena API on ${config.sslKeyFile ? 'https' : 'http'}://localhost:${config.port}  (REST /api/v1 · MCP /mcp)`));
 
 // Booking reminders, queued emails, unpaid-hold release and refunds. Claims are atomic in SQL, so running this on several instances is safe.
-if (config.notifyIntervalSeconds > 0) {
-  let running = false;
-  setInterval(async () => {
-    if (running) return;
-    running = true;
-    try { await maintenanceCycle(); } catch (e) { console.error('[notify] cycle failed', e.message); } finally { running = false; }
-  }, config.notifyIntervalSeconds * 1000).unref();
+// WORKER_MODE=external hands all of this to the separate worker process (npm run worker).
+let worker = null;
+if (runsMaintenanceInProcess(config)) {
+  worker = createWorker({ mode: 'inprocess', intervalSeconds: config.notifyIntervalSeconds, cycle: maintenanceCycle });
+  await worker.start();
+} else if (config.workerMode === 'external') {
+  logger.info('maintenance runs in the external worker (WORKER_MODE=external)');
 }
+
+// Graceful shutdown: stop accepting connections, let the maintenance cycle in flight finish, close the pool.
+onShutdown(async () => {
+  await worker?.stop();
+  await new Promise((resolve) => { listener.close(() => resolve()); listener.closeIdleConnections?.(); });
+  await pool.end();
+});

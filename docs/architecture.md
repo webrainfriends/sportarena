@@ -190,9 +190,14 @@ PostgreSQL 14+ (16 in CI/prod), AWS KMS and EC2 (Instance Connect for key author
 service, Web Push (VAPID), an operator-configured email bridge webhook, GitHub Actions, nginx, pm2, Docker (host only).
 
 ## 7. Observability
-Deliberately minimal today: `/health` (`select 1`), tagged `console.log/error` lines collected by pm2 and Docker logs,
-the `audit_log` table for sensitive reads, and a "Server report" step in the deploy workflow (pm2, nginx, docker, ports,
-API log tail, public reachability probe). There are no metrics, tracing, structured logs or alerting.
+* **Logs:** one JSON line per event (`src/logger.js`) with `X-Request-Id` correlation on HTTP, and `worker_id` / `cycle_id` / `job_id`
+  in the worker; no bodies, tokens or personal data. Collected by pm2 and Docker logs.
+* **Health:** `/health` (`select 1`), `/health/worker` (heartbeat age), admin `get_worker_health` (workers, per-category last run,
+  job lag, dead letters).
+* **Metrics:** admin `get_metrics` (event-loop delay, memory, HTTP counters, hashing queue, job gauges); worker counters in heartbeats.
+* The `audit_log` table for sensitive reads and the deploy workflow's "Server report" step (pm2, nginx, docker, ports, API and worker
+  log tails, public reachability probe).
+* Still absent: distributed tracing and external alerting/metric scraping. See `docs/operations.md`.
 
 ## 8. Failure modes
 
@@ -211,8 +216,8 @@ API log tail, public reachability probe). There are no metrics, tracing, structu
 ## Gaps and proposed ADRs
 These are observations, not changes made here. Each would need its own ADR and PR.
 1. **TLS with a real domain** (Let's Encrypt) in place of plain HTTP / self-signed.
-2. **Observability**: structured logging, request ids, metrics and alerts.
+2. **Alerting**: ship the structured logs and `/admin/metrics` to an external system and alert on `/health/worker` and dead letters.
 3. **Payouts / settlement entity** for venues, coaches and providers (none exists; blocks payout disputes).
 4. **Staff roles** beyond `admin` (support, finance) for least-privilege operations.
-5. **Dedicated worker process** if the in-process maintenance loop becomes a scaling concern.
+5. **Scaling the worker**: a separate worker process exists (`WORKER_MODE=external`); run more than one only if cycle time grows.
 6. **Migration numbering**: duplicate prefixes work only because ordering is by full filename.

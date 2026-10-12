@@ -8,6 +8,7 @@ Docker Postgres + nginx) and the same credentials. Everything it creates is name
 | Public site (nginx) | **9255** (plain HTTP for now; HTTPS via `ENABLE_TLS`) | own file `/etc/nginx/sites-available/sportarena`; other sites are never edited |
 | Postgres (Docker, 127.0.0.1 only) | **7255** | container `sportarena-postgres`, volume `sportarena_pgdata`, db/user `sportarena` |
 | API (pm2, localhost via nginx) | 4255 | process `sportarena-api`; not exposed |
+| Worker (pm2, optional) | none | process `sportarena-worker`, only when the repository variable `WORKER_MODE=external` is set (see `docs/operations.md`) |
 | Web build | `/var/www/sportarena-web` | Expo web export, same origin as the API |
 | App dir / env | `~/sportarena`, `~/sportarena/.env` (mode 600) | created on first deploy |
 | Master key | `/var/lib/sportarena/master.key.enc` | **wrapped by AWS KMS**; plaintext never on disk |
@@ -74,6 +75,8 @@ The workflow's first step, **Check SSH key**, validates `EC2_SSH_KEY` and prints
 ## Operating it
 ```bash
 pm2 logs sportarena-api
+pm2 logs sportarena-worker             # only when WORKER_MODE=external
+curl -s localhost:4255/health/worker   # 200 while a worker is beating, 503 otherwise
 sudo docker logs sportarena-postgres
 psql "$(grep ^DATABASE_URL ~/sportarena/.env | cut -d= -f2-)"   # DB shell (on the host)
 sudo nginx -t && sudo systemctl reload nginx

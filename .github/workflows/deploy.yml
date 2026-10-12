@@ -180,6 +180,7 @@ jobs:
           # optional: switches on Claude-written recaps, plan ideas and sheet reviews (docs/event-command-centre.md); without it they use built-in rules
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           AI_MODEL: ${{ vars.AI_MODEL }}
+          WORKER_MODE: ${{ vars.WORKER_MODE }}
           # platform owner account (see docs/partners.md): created on first start; the password is a repo secret and never stored in git
           PLATFORM_ADMIN_EMAIL: ${{ vars.PLATFORM_ADMIN_EMAIL || 'platform@sportarena.com' }}
           PLATFORM_ADMIN_HANDLE: ${{ vars.PLATFORM_ADMIN_HANDLE || 'platformarena' }}
@@ -194,7 +195,7 @@ jobs:
           TARGET="${EC2_USER}@${EC2_HOST}"
           scp "${SSH_OPTS[@]}" scripts/deploy-remote.sh "$TARGET:/tmp/sportarena-deploy.sh"
           REMOTE_ENV=""
-          for v in APP_DIR BRANCH REPO_URL APP_PORT NGINX_PORT DB_PORT ENABLE_TLS PUBLIC_HOST PUBLIC_IP KMS_KEY_ID KMS_REGION STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET PAYPAL_CLIENT_ID PAYPAL_CLIENT_SECRET PAYPAL_WEBHOOK_ID PAYPAL_ENV PAYMENT_CURRENCY EXPO_ACCESS_TOKEN ANTHROPIC_API_KEY AI_MODEL PLATFORM_ADMIN_EMAIL PLATFORM_ADMIN_HANDLE PLATFORM_ADMIN_NAME PLATFORM_ADMIN_PASSWORD; do
+          for v in APP_DIR BRANCH REPO_URL APP_PORT NGINX_PORT DB_PORT ENABLE_TLS PUBLIC_HOST PUBLIC_IP KMS_KEY_ID KMS_REGION STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET PAYPAL_CLIENT_ID PAYPAL_CLIENT_SECRET PAYPAL_WEBHOOK_ID PAYPAL_ENV PAYMENT_CURRENCY EXPO_ACCESS_TOKEN ANTHROPIC_API_KEY AI_MODEL WORKER_MODE PLATFORM_ADMIN_EMAIL PLATFORM_ADMIN_HANDLE PLATFORM_ADMIN_NAME PLATFORM_ADMIN_PASSWORD; do
             REMOTE_ENV+="$(printf '%s=%q ' "$v" "${!v:-}")"
           done
           timeout 20m ssh -T "${SSH_OPTS[@]}" "$TARGET" "env $REMOTE_ENV bash /tmp/sportarena-deploy.sh"
@@ -218,6 +219,7 @@ jobs:
             echo "== host firewall"; sudo ufw status 2>&1 | head -12
             echo "== local health"; curl -s -m 5 http://127.0.0.1:4255/health || echo "api: no answer"; echo
             curl -s -m 5 -o /dev/null -w "nginx 9255 -> HTTP %{http_code}\n" http://127.0.0.1:9255/health || echo "nginx: no answer"
+            echo "== worker health"; curl -s -m 5 -w " (HTTP %{http_code})\n" http://127.0.0.1:4255/health/worker || echo "worker probe: no answer"; pm2 logs sportarena-worker --lines 15 --nostream 2>&1 | tail -18
             echo "== api log (last 25 lines)"; pm2 logs sportarena-api --lines 25 --nostream 2>&1 | tail -30
             echo "== master key file"; ls -l /var/lib/sportarena 2>&1
             echo "== last deploy error"; cat /tmp/sportarena-deploy-error.log 2>&1 || true

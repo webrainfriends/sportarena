@@ -72,6 +72,12 @@ export const config = {
     jurisdictions: (env.CLINICAL_JURISDICTIONS ?? '').split(',').map((s) => s.trim().toUpperCase()).filter(Boolean),
   },
   // Background worker for booking reminders + email dispatch. 0 disables it (tests do).
+  // WORKER_MODE: 'inprocess' (default) runs maintenance inside the API process; 'external' leaves it to `npm run worker`
+  // (set it on both processes). A worker is considered stale after WORKER_STALE_SECONDS without a heartbeat.
+  workerMode: env.WORKER_MODE === 'external' ? 'external' : 'inprocess',
+  workerStaleSeconds: Number(env.WORKER_STALE_SECONDS ?? 180),
+  // One JSON access line per request (method, path, status, ms, request id; never bodies or tokens).
+  accessLog: (env.ACCESS_LOG ?? (isProd ? 'true' : 'false')) === 'true',
   notifyIntervalSeconds: Number(env.NOTIFY_INTERVAL_SECONDS ?? 60),
   // Payments (redirect checkout; no card data ever touches this server). A provider is enabled when its keys are set.
   appUrl: env.APP_URL,
