@@ -69,7 +69,7 @@ export function SponsorDeal({ id }) {
               {x.status === 'scheduled' && x.kind === 'goods' && sponsor ? <Btn small title="Record dispatch" color={c.orange} style={{ alignSelf: 'flex-start', marginTop: 6 }} onPress={() => setForm({ kind: 'dispatch', o: x })} /> : null}
               {x.status === 'scheduled' && x.kind === 'endorsement' && d.role === x.promoter && !x.submissions.some((s) => s.status !== 'revision_requested') ? <Btn small title="Submit evidence" color={c.violet} style={{ alignSelf: 'flex-start', marginTop: 6 }} onPress={() => setForm({ kind: 'submit', o: x })} /> : null}
             </Card>)) : <Empty emoji="🗓️" title="Nothing scheduled" />}
-          <T size={12} color={c.mute}>Payments here are tracked, not collected: sportarena does not hold or transfer these funds. A payment counts as received only after the recipient confirms it.</T>
+          <T size={12} color={c.mute}>Payments here are tracked, not collected: Gotmygame does not hold or transfer these funds. A payment counts as received only after the recipient confirms it.</T>
         </Section>) : null}
       <Section title="History" color={c.lime}>
         {d.history.map((h) => <T key={h.id} size={12} color={c.mute}>{new Date(h.created_at).toLocaleDateString()} · {h.action.replace(/_/g, ' ')}{h.version ? ` (v${h.version})` : ''} · {h.actor ?? 'system'}{h.reason ? ` — ${h.reason}` : ''}</T>)}

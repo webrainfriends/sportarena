@@ -10,6 +10,7 @@ import { audit, isAdmin } from '../helpers.js';
 import { decrypt, encrypt } from '../crypto.js';
 import { requireVerifiedProvider } from '../clinical-access.js';
 import { notify } from '../notify.js';
+import { assertTransition, setTransitionContext } from '../lifecycle.js';
 import { DISCLOSURE, adapterFor } from '../health/external-booking.js';
 
 const TAG = 'Health';
@@ -108,7 +109,7 @@ cap({
 // ------------------------------------------------------------------ external booking (SPOR-77)
 cap({
   name: 'start_external_booking', method: 'GET', path: '/providers/:id/external-booking', tag: TAG,
-  summary: 'If this provider takes bookings on another site, get the address to send the person to, plus the notice that must be shown before they leave SportArena. Nothing personal is added to the link. Afterwards call link_external_booking to record the booking here.',
+  summary: 'If this provider takes bookings on another site, get the address to send the person to, plus the notice that must be shown before they leave Gotmygame. Nothing personal is added to the link. Afterwards call link_external_booking to record the booking here.',
   input: z.object({ id }),
   async handler(_, i) {
     const p = await one('SELECT external_provider, external_booking_url, listed FROM provider_profiles WHERE user_id=$1', [i.id]);
@@ -119,11 +120,12 @@ cap({
 });
 
 const EXT_STATUS = z.enum(['requested', 'confirmed']);
-const NEXT = { requested: ['confirmed', 'cancelled'], confirmed: ['completed', 'cancelled'], completed: [], cancelled: [] };
 
 cap({
   name: 'link_external_booking', credential: true, method: 'POST', path: '/appointments/external', tag: TAG, status: 201,
   summary: 'Record a booking made on the provider\'s own site as a SportArena appointment. The athlete calls it with provider_id after booking; the provider calls it with athlete_id to register one for a patient. Only the external reference, address and times are stored. The same reference is always the same appointment (calling again updates it, never duplicates it). No reason or clinical text is taken here.',
+  name: 'link_external_booking', method: 'POST', path: '/appointments/external', tag: TAG, status: 201,
+  summary: 'Record a booking made on the provider\'s own site as a Gotmygame appointment. The athlete calls it with provider_id after booking; the provider calls it with athlete_id to register one for a patient. Only the external reference, address and times are stored. The same reference is always the same appointment (calling again updates it, never duplicates it). No reason or clinical text is taken here.',
   input: z.object({ provider_id: id.optional(), athlete_id: id.optional(), external_reference: z.string().min(2).max(120), starts_at: z.string().datetime({ offset: true }), duration_min: z.number().int().min(10).max(240).default(30), mode: z.enum(['in_person', 'remote']).default('in_person'), status: EXT_STATUS.default('requested'), external_url: z.string().max(500).optional() }),
   async handler({ user }, i) {
     const asProvider = !!i.athlete_id && !i.provider_id;
@@ -167,6 +169,8 @@ cap({
 cap({
   name: 'reconcile_external_booking', credential: true, method: 'POST', path: '/appointments/external/reconcile', tag: TAG, auth: ['physio', 'doctor'],
   summary: 'Provider (or their integration, using an API token): report what happened to a booking on your own system. Its status and time are brought into the matching SportArena appointment, with the same transition rules as everywhere else (no duplicates, no going back from completed or cancelled). Repeating the same update is harmless.',
+  name: 'reconcile_external_booking', method: 'POST', path: '/appointments/external/reconcile', tag: TAG, auth: ['physio', 'doctor'],
+  summary: 'Provider (or their integration, using an API token): report what happened to a booking on your own system. Its status and time are brought into the matching Gotmygame appointment, with the same transition rules as everywhere else (no duplicates, no going back from completed or cancelled). Repeating the same update is harmless.',
   input: z.object({ external_reference: z.string().min(2).max(120), status: z.enum(['requested', 'confirmed', 'completed', 'cancelled']).optional(), starts_at: z.string().datetime({ offset: true }).optional(), duration_min: z.number().int().min(10).max(240).optional() }),
   async handler({ user }, i) {
     try { return await reconcile(user, i); } catch (e) {
@@ -184,7 +188,8 @@ const reconcile = (user, i) =>
       if (!a) throw notFound('External booking');
       let status = a.status;
       if (i.status && i.status !== a.status) {
-        if (!NEXT[a.status].includes(i.status)) throw Object.assign(conflict(`A ${a.status} appointment cannot become ${i.status}`), { markSyncError: a.id });
+        // same rules as update_appointment (state map, payment, start time), judged against the time the provider reports
+        try { assertTransition({ ...a, starts_at: i.starts_at ?? a.starts_at }, i.status, { isProvider: true, isCustomer: false }, { noun: 'appointment', customerWord: 'athlete' }); } catch (e) { throw Object.assign(e, { markSyncError: a.id }); }
         status = i.status;
       }
       if (status !== a.status && status !== 'cancelled') await requireVerifiedProvider(user.id, { action: 'reconcile_external_booking', athleteId: a.athlete_id, allowGrace: status === 'completed' });
@@ -193,6 +198,7 @@ const reconcile = (user, i) =>
         const clash = (await c.query("SELECT 1 FROM appointments WHERE provider_id=$1 AND id<>$2 AND status IN ('requested','confirmed') AND starts_at < $3::timestamptz + make_interval(mins => $4) AND starts_at + make_interval(mins => duration_min) > $3", [user.id, a.id, starts, dur])).rows[0];
         if (clash) throw conflict('That time clashes with another appointment');
       }
+      await setTransitionContext(c, user.id, 'Reported by the provider\'s booking system');
       const row = (await c.query("UPDATE appointments SET status=$2, starts_at=$3, duration_min=$4, external_sync_status='synced', external_synced_at=now(), updated_at=now(), cancelled_by=CASE WHEN $2='cancelled' AND status<>'cancelled' THEN $5::uuid ELSE cancelled_by END WHERE id=$1 RETURNING id, athlete_id, provider_id, starts_at, duration_min, status, external_sync_status, external_synced_at", [a.id, status, starts, dur, user.id])).rows[0];
       if (status === 'completed' && a.status !== 'completed') await c.query("UPDATE appointment_followups SET status='done', completed_at=now(), closed_by=$2, updated_at=now() WHERE booked_appointment_id=$1 AND status='booked'", [a.id, user.id]);
       if (status === 'cancelled' && a.status !== 'cancelled') await c.query("UPDATE appointment_followups SET status='due', booked_appointment_id=NULL, updated_at=now() WHERE booked_appointment_id=$1 AND status='booked'", [a.id]);

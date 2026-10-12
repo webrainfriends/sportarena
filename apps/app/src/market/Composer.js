@@ -77,7 +77,7 @@ export function Composer({ visible, onClose, onPosted, initialKind = 'wanted', a
         </View>
       </View>
 
-      {ad ? <T size={12} color={c.mute}>Campaigns are reviewed by the SportArena team before they appear as Sponsored on the home page. You will be notified when it is approved.</T> : (
+      {ad ? <T size={12} color={c.mute}>Campaigns are reviewed by the Gotmygame team before they appear as Sponsored on the home page. You will be notified when it is approved.</T> : (
         <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <Chip label="🌍 Public" active={f.visibility === 'public' && !f.sponsored} onPress={() => setF((p) => ({ ...p, visibility: 'public', sponsored: false }))} />
           <Chip label="🔒 Members only" active={f.visibility === 'members' && !f.sponsored} onPress={() => setF((p) => ({ ...p, visibility: 'members', sponsored: false }))} />

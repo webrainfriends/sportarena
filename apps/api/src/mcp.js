@@ -6,7 +6,7 @@ import { invoke, toErrorBody } from './invoke.js';
 export function createMcpServer(getUser) {
   const server = new McpServer(
     { name: 'sportarena', version: '0.1.0' },
-    { instructions: 'SportArena: manage athletes, coaches, referees, teams, events, fixtures, scores, venues & bookings, sponsors, supply chain, health and insurance. Personal identification data is encrypted at rest; reads of it are audit-logged. Authenticate with a bearer token (create_api_token).' },
+    { instructions: 'Gotmygame: manage athletes, coaches, referees, teams, events, fixtures, scores, venues & bookings, sponsors, supply chain, health and insurance. Personal identification data is encrypted at rest; reads of it are audit-logged. Authenticate with a bearer token (create_api_token).' },
   );
   for (const c of capabilities) {
     server.registerTool(

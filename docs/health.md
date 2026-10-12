@@ -62,9 +62,9 @@ mute settings apply and the text never says what it is about.
 ## Third-party booking (SPOR-77)
 A provider can say they take bookings on another site (`upsert_provider_profile.external_booking`, adapters in
 `src/health/external-booking.js`: `generic`, `calendly`, `cal_com`; https only, no credentials in the link, host checked
-per adapter). Patients get the address plus a mandatory notice that they are leaving SportArena
+per adapter). Patients get the address plus a mandatory notice that they are leaving Gotmygame
 (`start_external_booking`). Afterwards `link_external_booking` records the booking: only the external provider, reference,
-address, sync status and timestamps are stored, one SportArena appointment per `(provider, external provider, reference)`
+address, sync status and timestamps are stored, one Gotmygame appointment per `(provider, external provider, reference)`
 (repeat calls update, never duplicate; someone else's reference cannot be claimed). The provider (or their integration with
 an API token) reports changes with `reconcile_external_booking`, which applies the same status rules as everywhere else.
 No scraping and no stored third-party credentials. Where a system offers an API, an adapter can add a `sync` hook later;

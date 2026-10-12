@@ -171,7 +171,7 @@ export const OFFICIATING_ROLES = ['referee', 'umpire', 'judge', 'starter', 'time
 /** A crew member must hold the platform role their post needs (a doctor post needs the doctor role, etc.). */
 export function assertCanHold(userRoles, role) {
   const need = ROLE_NEEDS[role];
-  if (need && !userRoles.includes(need) && !userRoles.includes('admin')) throw badRequest(`That person does not have the ${need} role on SportArena`);
+  if (need && !userRoles.includes(need) && !userRoles.includes('admin')) throw badRequest(`That person does not have the ${need} role on Gotmygame`);
 }
 
 /** Final placings of a discipline from its completed sessions: [{ rank, participant_id | team_id, house_id }]. */

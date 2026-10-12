@@ -83,13 +83,14 @@ const SEARCH_INPUT = {
   status: z.enum(['draft', 'open', 'ongoing', 'completed', 'cancelled']).optional(), organizer_id: id.optional(), city: z.string().max(80).optional(),
   date_from: date.optional(), date_to: date.optional(), open_for_entry: flag.optional(), free: flag.optional(),
   max_fee_cents: money.optional(), seeking_sponsors: flag.optional(), verified: flag.optional(),
+  as_official: flag.optional().describe('only events where you are the organiser, an accepted official (referee, umpire, judge, starter, timekeeper, scorer) or a fixture referee; needs sign-in'),
   sort: z.enum(['soonest', 'newest', 'fee_low']).default('soonest'), ...page,
 };
 const REG_OPEN = `(e.status='open' AND (e.registration_deadline IS NULL OR e.registration_deadline > now())
   AND (e.capacity IS NULL OR (SELECT count(*) FROM event_entries n WHERE n.event_id=e.id AND n.status IN ('accepted','pending')) < e.capacity))`;
 
 /** Server-side event search shared by `list_events` and `search_events`. Public-safe card rows + total. */
-async function searchEvents(i) {
+async function searchEvents(i, user) {
   const sport = i.sport ? await sportBySlugOrId(i.sport) : null;
   if (i.sport && !sport) return { items: [], total: 0, limit: i.limit, offset: i.offset };
   const args = [];
@@ -108,6 +109,11 @@ async function searchEvents(i) {
   if (i.free) w.push('e.entry_fee_cents = 0');
   if (i.max_fee_cents !== undefined) w.push(`e.entry_fee_cents <= ${p(i.max_fee_cents)}`);
   if (i.seeking_sponsors) w.push('e.seeking_sponsors');
+  if (i.as_official) {
+    if (!user) return { items: [], total: 0, limit: i.limit, offset: i.offset };
+    const u = p(user.id);
+    w.push(`(e.organizer_id=${u} OR EXISTS (SELECT 1 FROM event_staff st WHERE st.event_id=e.id AND st.user_id=${u} AND st.status='accepted' AND st.role IN ('referee','umpire','judge','starter','timekeeper','scorer')) OR EXISTS (SELECT 1 FROM fixtures f WHERE f.event_id=e.id AND f.referee_id=${u}))`);
+  }
   if (i.verified) w.push("EXISTS (SELECT 1 FROM verification_cases vc WHERE vc.subject_type='event' AND vc.subject_id=e.id AND vc.status='approved' AND vc.expires_at > now())");
   const where = w.join(' AND ');
   const order = { soonest: 'e.starts_on NULLS LAST, e.created_at DESC', newest: 'e.created_at DESC', fee_low: 'e.entry_fee_cents, e.starts_on NULLS LAST' }[i.sort];
@@ -129,13 +135,13 @@ cap({
   name: 'search_events', method: 'GET', path: '/events/search', tag: 'Events', auth: 'public',
   summary: 'Search events (server-side filters, sort and paging): text, sport, kind, city, date range, open-for-entry, fee, sponsors wanted, verified. Returns cards + total.',
   input: z.object(SEARCH_INPUT),
-  handler: (_, i) => searchEvents(i),
+  handler: ({ user }, i) => searchEvents(i, user),
 });
 
 cap({
   name: 'list_events', method: 'GET', path: '/events', tag: 'Events', auth: 'public', summary: 'Discover events (same filters as search_events; plain array).',
   input: z.object(SEARCH_INPUT),
-  async handler(_, i) { return (await searchEvents(i)).items; },
+  async handler({ user }, i) { return (await searchEvents(i, user)).items; },
 });
 
 cap({

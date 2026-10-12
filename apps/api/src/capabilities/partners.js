@@ -86,7 +86,7 @@ cap({
       const keys = Object.keys(cols);
       const row = (await c.query(`INSERT INTO partners(code, status, owner_id, created_by${keys.length ? ', ' + keys.join(',') : ''}) VALUES ($1,'onboarding',$2,$3${keys.map((_, n) => `,$${n + 4}`).join('')}) RETURNING *`, [code, owner.id, user.id, ...keys.map((k) => cols[k])])).rows[0];
       await event(c, row.id, user.id, 'onboarded');
-      await notify(c, owner.id, { kind: 'partner_onboarding', title: 'You are being onboarded as a SportArena partner', body: 'The platform team started your partner account. Complete your details to go live.', data: { partner_id: row.id } });
+      await notify(c, owner.id, { kind: 'partner_onboarding', title: 'You are being onboarded as a Gotmygame partner', body: 'The platform team started your partner account. Complete your details to go live.', data: { partner_id: row.id } });
       return view(row);
     });
   },

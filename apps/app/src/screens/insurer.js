@@ -36,7 +36,7 @@ function Onboarding({ onDone }) {
   return (
     <Screen>
       <H1>Insurer desk</H1>
-      <T color={c.mute} weight="700">Offer cover to players, teams and events on SportArena.</T>
+      <T color={c.mute} weight="700">Offer cover to players, teams and events on Gotmygame.</T>
       <Card color={c.cyanSoft} style={{ marginTop: 16 }}>
         <T weight="900" size={17}>Get started in four steps</T>
         {['Create your insurer profile', 'Add your licence number so we can verify you', 'Publish your first plan (and advertise it with an offer)', 'Answer quote requests and track your policies'].map((t, i) => <T key={t} size={14} style={{ marginTop: 6 }}>{i + 1}. {t}</T>)}

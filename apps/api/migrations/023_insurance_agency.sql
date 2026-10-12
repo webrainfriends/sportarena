@@ -3,7 +3,7 @@
 -- Additive only: nothing existing is changed, dropped or rewritten, and nothing here is ever deleted (rows are retired with a status
 -- or removed_at; the event logs are append-only).
 
--- An insurer can now be run by a SportArena account holding the `insurer` role.
+-- An insurer can now be run by a Gotmygame account holding the `insurer` role.
 ALTER TABLE insurers
   ADD COLUMN owner_id           uuid REFERENCES users,
   ADD COLUMN headline           text,
