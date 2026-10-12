@@ -262,7 +262,7 @@ cap({
 // ---------------------------------------------------------------- medical incidents
 
 cap({
-  name: 'report_medical_incident', method: 'POST', path: '/events/:id/medical-incidents', tag: TAG, status: 201,
+  name: 'report_medical_incident', credential: true, method: 'POST', path: '/events/:id/medical-incidents', tag: TAG, status: 201,
   summary: 'On-site doctor, physio or first aider logs an injury/illness. Clinical text is encrypted; every read is audit-logged. A "not_cleared" outcome puts the participant on a medical hold (they cannot be nominated and are flagged on the timetable) until a later "cleared".',
   input: z.object({
     id, participant_id: id.optional(), session_id: id.optional(), severity: z.enum(['minor', 'moderate', 'serious', 'emergency']), outcome: z.enum(['treated_on_site', 'referred', 'ambulance', 'hospital']),

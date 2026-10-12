@@ -20,7 +20,7 @@ export function buildOpenApi(serverUrl = '/api/v1') {
       responses: {
         [c.status ?? 200]: { description: 'OK', content: { 'application/json': { schema: {} } } },
         400: { $ref: '#/components/responses/Error' }, 401: { $ref: '#/components/responses/Error' },
-        403: { $ref: '#/components/responses/Error' }, 404: { $ref: '#/components/responses/Error' }, 409: { $ref: '#/components/responses/Error' },
+        403: { $ref: c.credential ? '#/components/responses/CredentialRequired' : '#/components/responses/Error' }, 404: { $ref: '#/components/responses/Error' }, 409: { $ref: '#/components/responses/Error' },
       },
     };
     const rest = Object.fromEntries(Object.entries(props).filter(([k]) => !pp.includes(k)));
@@ -39,7 +39,9 @@ export function buildOpenApi(serverUrl = '/api/v1') {
     paths,
     components: {
       securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer', description: 'JWT from /auth/login or an sa_… API token' } },
-      responses: { Error: { description: 'Error', content: { 'application/json': { schema: { type: 'object', properties: { error: { type: 'object', properties: { code: { type: 'string' }, message: { type: 'string' }, details: {} } } } } } } } },
+      responses: {
+        CredentialRequired: { description: 'Forbidden. `credential_required` when the doctor/physio has no current verified professional credential (details: reason, profession, expires_at, renewal), otherwise the usual forbidden error. See GET /medical/credential.', content: { 'application/json': { schema: { type: 'object', properties: { error: { type: 'object', properties: { code: { type: 'string', enum: ['credential_required', 'forbidden'] }, message: { type: 'string' }, details: { type: 'object', properties: { reason: { type: 'string', enum: ['not_verified', 'pending', 'expired', 'revoked', 'role_mismatch', 'sport_scope', 'jurisdiction'] }, profession: { type: 'string' }, expires_at: { type: ['string', 'null'] }, renewal: { type: 'object' } } } } } } } } } },
+        Error: { description: 'Error', content: { 'application/json': { schema: { type: 'object', properties: { error: { type: 'object', properties: { code: { type: 'string' }, message: { type: 'string' }, details: {} } } } } } } } },
     },
   };
 }
