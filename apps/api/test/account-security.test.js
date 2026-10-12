@@ -145,7 +145,7 @@ test('MFA: set-up, enable, challenge at login, replay protection, recovery codes
   const u = await register();
   assert.equal((await api('POST', '/me/mfa/setup', { token: u.token, body: { password: 'wrong-password-here' } })).status, 401);
   const setup = await api('POST', '/me/mfa/setup', { token: u.token, body: { password: PW } });
-  assert.match(setup.body.otpauth_uri, /^otpauth:\/\/totp\/SportArena:/);
+  assert.match(setup.body.otpauth_uri, /^otpauth:\/\/totp\/Gotmygame:/);
   const secret = secretOf(setup);
   const dbRow = (await pool.query('SELECT * FROM user_mfa WHERE user_id=$1', [u.user.id])).rows[0];
   assert.ok(!JSON.stringify(dbRow).includes(secret), 'secret is field-encrypted at rest');

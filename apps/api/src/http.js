@@ -71,7 +71,7 @@ export function createApp() {
   const authLimiter = rateLimit({ windowMs: 15 * 60_000, limit: config.isProd ? 20 : 1000, standardHeaders: true, legacyHeaders: false });
   app.use(['/api/v1/auth/login', '/api/v1/auth/register', '/api/v1/auth/refresh', '/api/v1/auth/password-reset', '/api/v1/auth/verify-email'], authLimiter);
 
-  app.get('/', (_, res) => res.json({ name: 'SportArena', api: '/api/v1', openapi: '/api/v1/openapi.json', mcp: '/mcp', tools: capabilities.length }));
+  app.get('/', (_, res) => res.json({ name: 'Gotmygame', api: '/api/v1', openapi: '/api/v1/openapi.json', mcp: '/mcp', tools: capabilities.length }));
   app.get('/health', async (_, res) => { await pool.query('select 1'); res.json({ ok: true }); });
   // Unauthenticated probe for uptime monitors: is a background worker alive? 503 when none has beaten recently.
   app.get('/health/worker', async (_, res) => {

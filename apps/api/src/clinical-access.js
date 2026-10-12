@@ -81,3 +81,17 @@ export async function requireVerifiedProvider(providerId, { action, athleteId = 
   if (forOther) throw new AppError(403, 'credential_required', `This ${cred.type}'s professional verification is not current, so they cannot take clinical appointments right now.`, { reason: cred.reason, profession: cred.type });
   throw new AppError(403, 'credential_required', MESSAGES[cred.reason].replace('{p}', cred.type), { reason: cred.reason, profession: cred.type, expires_at: cred.expires_at, renewal: cred.renewal });
 }
+
+/**
+ * Atomic re-check for a clinical WRITE (59-2a). Call inside the write's transaction with the credential returned by requireVerifiedProvider.
+ * It takes a shared row lock on the verification case (`FOR SHARE`) and re-reads it under that lock: a revocation (an UPDATE of that row)
+ * waits until the write commits, and a revocation that already committed is seen here, so nothing is written after the revocation
+ * is committed. An emergency override has no case to lock and is skipped (it is audited instead).
+ */
+export async function lockCredential(c, cred) {
+  if (cred.override || !cred.case_id) return;
+  const v = (await c.query("SELECT type, status, expires_at, (status='approved' AND expires_at > now()) AS live FROM verification_cases WHERE id=$1 FOR SHARE", [cred.case_id])).rows[0];
+  if (v && v.status === 'approved' && (v.live || cred.grace)) return;
+  const reason = !v ? 'not_verified' : v.status === 'revoked' ? 'revoked' : v.status === 'approved' ? 'expired' : 'not_verified';
+  throw new AppError(403, 'credential_required', MESSAGES[reason].replace('{p}', cred.type), { reason, profession: cred.type, expires_at: v?.expires_at ?? null });
+}

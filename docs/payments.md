@@ -1,7 +1,7 @@
 # Payments (Stripe + PayPal)
 
 Shop orders, coach sessions, insurance policies and **venue booking invoices** are paid through **hosted checkout**: the person is sent to
-Stripe or PayPal, pays there, and comes back. Card details never reach SportArena (no PCI scope beyond redirecting).
+Stripe or PayPal, pays there, and comes back. Card details never reach Gotmygame (no PCI scope beyond redirecting).
 
 ## How it works
 1. The app creates the thing (order / hire / policy). With a provider enabled it starts **unpaid**

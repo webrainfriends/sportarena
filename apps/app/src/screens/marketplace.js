@@ -30,7 +30,7 @@ export const Pill = ({ label, fg = c.mute, bg = c.violetSoft }) => (
 const STATUS = { expired: [c.mute, c.violetSoft], awaiting_payment: [c.sun, c.sunSoft], pending_payment: [c.sun, c.sunSoft], unpaid: [c.sun, c.sunSoft], paid: [c.lime, c.limeSoft], refunded: [c.mute, c.violetSoft], pending: [c.sun, c.sunSoft], accepted: [c.lime, c.limeSoft], declined: [c.red, c.redSoft], requested: [c.sun, c.sunSoft], confirmed: [c.lime, c.limeSoft], completed: [c.mute, c.violetSoft], cancelled: [c.red, c.redSoft], placed: [c.sun, c.sunSoft], shipped: [c.cyan, c.cyanSoft], delivered: [c.lime, c.limeSoft], active: [c.lime, c.limeSoft], open: [c.lime, c.limeSoft], filled: [c.mute, c.violetSoft], pay_direct: [c.mute, c.violetSoft], proposed: [c.sun, c.sunSoft] };
 export const StatusPill = ({ s }) => <Pill label={nice(s).toUpperCase()} fg={(STATUS[s] ?? [c.mute])[0]} bg={(STATUS[s] ?? [0, c.violetSoft])[1]} />;
 
-/** Hosted checkout: pick Stripe or PayPal, go to the provider, then confirm. Card details never touch SportArena. */
+/** Hosted checkout: pick Stripe or PayPal, go to the provider, then confirm. Card details never touch Gotmygame. */
 export function PaySheet({ target, onClose, onDone }) {
   const { toast } = useSession();
   const methods = useLoad(() => api.get('/payments/methods'), []);
@@ -68,7 +68,7 @@ export function PaySheet({ target, onClose, onDone }) {
         <View style={{ gap: 10 }}>
           {m.providers.includes('stripe') ? <Btn title="Pay with card (Stripe)" onPress={() => go('stripe')} loading={busy} /> : null}
           {m.providers.includes('paypal') ? <Btn title="Pay with PayPal" color={c.paper} onPress={() => go('paypal')} loading={busy} /> : null}
-          <T size={12} color={c.mute}>You'll be taken to the provider's secure page. Your card details never reach SportArena.</T>
+          <T size={12} color={c.mute}>You'll be taken to the provider's secure page. Your card details never reach Gotmygame.</T>
         </View>
       )}
       {err ? <T color={c.red} weight="700">{err}</T> : null}

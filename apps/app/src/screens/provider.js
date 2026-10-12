@@ -60,7 +60,7 @@ export function BookProviderSheet({ provider, followupId, onClose, onDone }) {
       {external ? (
         <Card color={c.sunSoft} pad={12}>
           <T weight="800" size={13}>This provider takes bookings on {external.label}</T>
-          <T size={12} color={c.mute}>You will leave SportArena. The booking is made on a site run by the provider, under their terms and privacy policy, and SportArena does not see what you enter there. Come back and add the booking so it shows in your appointments.</T>
+          <T size={12} color={c.mute}>You will leave Gotmygame. The booking is made on a site run by the provider, under their terms and privacy policy, and Gotmygame does not see what you enter there. Come back and add the booking so it shows in your appointments.</T>
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
             <Btn small title={`Open ${external.label}`} color={c.violet} onPress={leave} />
             <Btn small title="I've booked — add it here" color={c.paper} ink={c.ink} onPress={() => setExt(true)} />
@@ -122,7 +122,7 @@ export function ProviderProfileSection() {
           { key: 'in_person', label: 'See patients in person', type: 'switch' }, { key: 'remote_ok', label: 'Offer remote consultations', type: 'switch' },
           { key: 'specialties', label: 'Specialties', type: 'multi', optional: true, options: SPECIALTIES }, { key: 'languages', label: 'Languages (comma separated)', optional: true },
           { key: 'fee', label: 'Consultation fee (₹)', type: 'number', optional: true }, { key: 'timezone', label: 'Time zone', type: 'timezone' }, { key: 'slot_min', label: 'Appointment length (minutes)', type: 'stepper', min: 10, max: 240, step: 5 },
-          { key: 'ext_provider', label: 'Take bookings on another site?', type: 'choice', options: [{ value: 'none', label: 'No' }, { value: 'calendly', label: 'Calendly' }, { value: 'cal_com', label: 'Cal.com' }, { value: 'generic', label: 'My own site' }], hint: 'Patients are sent there with a notice that they are leaving SportArena.' }, { key: 'ext_url', label: 'Booking page address (https://…)', optional: true, show: (v) => v.ext_provider !== 'none' },
+          { key: 'ext_provider', label: 'Take bookings on another site?', type: 'choice', options: [{ value: 'none', label: 'No' }, { value: 'calendly', label: 'Calendly' }, { value: 'cal_com', label: 'Cal.com' }, { value: 'generic', label: 'My own site' }], hint: 'Patients are sent there with a notice that they are leaving Gotmygame.' }, { key: 'ext_url', label: 'Booking page address (https://…)', optional: true, show: (v) => v.ext_provider !== 'none' },
           { key: 'accepting_patients', label: 'Accepting new appointments', type: 'switch' }, { key: 'listed', label: 'Show me in search', type: 'switch' }]} />
       <FormSheet visible={form === 'hours'} onClose={() => setForm(null)} title="Opening hours" submitLabel="Save hours"
         initial={{ days, start: p?.hours.windows[0]?.start ?? '09:00', end: p?.hours.windows[0]?.end ?? '17:00' }}
@@ -157,7 +157,7 @@ export function ClinicalStatusCard() {
         <View style={{ gap: 6, marginTop: 6 }}>
           <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}><Tag label={label} color={color} />{d.expires_at ? <T size={12} color={c.mute}>{d.state === 'verified' ? 'valid until' : 'ended'} {new Date(d.expires_at).toLocaleDateString(locale)}</T> : null}</View>
           <T size={13}>{text}</T>
-          {d.renewal ? <Btn small title={d.state === 'not_verified' ? 'Get verified' : 'Renew verification'} color={c.pink} style={{ alignSelf: 'flex-start' }} onPress={() => goTab('Me')} /> : null}
+          {d.renewal ? <Btn small title={d.state === 'not_verified' ? 'Get verified' : 'Renew verification'} accessibilityLabel={d.state === 'not_verified' ? 'Get your professional verification. Opens the Me tab' : 'Renew your professional verification. Opens the Me tab'} color={c.pink} style={{ alignSelf: 'flex-start' }} onPress={() => goTab('Me')} /> : null}
           {d.renewal ? <T size={11} color={c.mute}>Opens Me, then Verification, where you attach your registration. Renewals are linked to your earlier case.</T> : null}
         </View>
       )}

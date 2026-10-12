@@ -34,7 +34,7 @@ const ago = (iso) => {
 export function deviceLabel(ua) {
   if (!ua) return 'Unknown device';
   const os = /iPhone|iPad/.test(ua) ? 'iOS' : /Android/.test(ua) ? 'Android' : /Windows/.test(ua) ? 'Windows' : /Mac OS X|Macintosh/.test(ua) ? 'macOS' : /Linux/.test(ua) ? 'Linux' : null;
-  const app = /Expo|okhttp|CFNetwork/.test(ua) ? 'SportArena app' : /Edg\//.test(ua) ? 'Edge' : /Chrome\//.test(ua) ? 'Chrome' : /Firefox\//.test(ua) ? 'Firefox' : /Safari\//.test(ua) ? 'Safari' : 'App or browser';
+  const app = /Expo|okhttp|CFNetwork/.test(ua) ? 'Gotmygame app' : /Edg\//.test(ua) ? 'Edge' : /Chrome\//.test(ua) ? 'Chrome' : /Firefox\//.test(ua) ? 'Firefox' : /Safari\//.test(ua) ? 'Safari' : 'App or browser';
   return os ? `${app} on ${os}` : app;
 }
 const copy = async (text, toast, what) => {
@@ -126,7 +126,7 @@ export function TokensSection({ mcpUrl }) {
   return (
     <Section title="Agents & API (MCP)" color={c.violet}>
       <Card color={c.violetSoft}>
-        <T weight="700">Everything in this app is also an API and an MCP tool. Create a token, choose what it may do, and plug SportArena into your AI agent.</T>
+        <T weight="700">Everything in this app is also an API and an MCP tool. Create a token, choose what it may do, and plug Gotmygame into your AI agent.</T>
         <T size={12} color={c.mute} style={{ marginTop: 6 }}>MCP endpoint: {mcpUrl}</T>
         {secret ? (
           <Card color={c.sunSoft} style={{ marginTop: 10 }} pad={12}>

@@ -173,7 +173,8 @@ export function Leaderboard() {
   const [evFilter, setEvFilter] = useState(null);
   const [history, setHistory] = useState(null);
   const [form, setForm] = useState(null); // 'practice' | 'submit' | { reject: id } | { dispute: id } | { correct: {id, unit} }
-  const isOfficial = has('organizer', 'referee', 'admin');
+  const crew = useLoad(() => api.get('/events', { as_official: true, limit: 1 }), []); // accepted officiating crew need not hold an organiser/referee role
+  const isOfficial = has('organizer', 'referee', 'admin') || (crew.data?.length ?? 0) > 0;
   const sports = useLoad(() => api.get('/sports'), []);
   const rules = useLoad(() => (sport ? api.get('/scoring-rules', { sport }) : Promise.resolve(null)), [sport]);
   const lb = useLoad(() => api.get('/leaderboard', { sport: sport ?? undefined, metric: metric ?? undefined, season: season ?? undefined, category: category ?? undefined, limit: lim }), [sport, metric, season, category, lim]);
@@ -182,14 +183,13 @@ export function Leaderboard() {
   const events = useLoad(async () => {
     if (!isOfficial) return [];
     const admin = has('admin');
-    const [open, done, fx] = await Promise.all([
-      api.get('/events', admin ? { limit: 50 } : { organizer_id: user.id, limit: 50 }),
-      api.get('/events', admin ? { status: 'completed', limit: 50 } : { organizer_id: user.id, status: 'completed', limit: 50 }),
-      admin ? Promise.resolve([]) : api.get('/fixtures', { referee_id: user.id, limit: 100 }),
+    const scope = admin ? {} : { as_official: true };
+    const [open, done] = await Promise.all([
+      api.get('/events', { ...scope, limit: 50 }),
+      api.get('/events', { ...scope, status: 'completed', limit: 50 }),
     ]);
     const seen = new Map();
     for (const e of [...open, ...done]) seen.set(e.id, e);
-    for (const f of fx) if (!seen.has(f.event_id)) seen.set(f.event_id, { id: f.event_id, name: f.event_name });
     return [...seen.values()];
   }, [isOfficial]);
   const evResults = useLoad(() => (evFilter ? api.get('/performances', { event_id: evFilter, provenance: 'approved_competition', limit: 100 }) : Promise.resolve([])), [evFilter]);

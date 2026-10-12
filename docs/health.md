@@ -62,9 +62,9 @@ mute settings apply and the text never says what it is about.
 ## Third-party booking (SPOR-77)
 A provider can say they take bookings on another site (`upsert_provider_profile.external_booking`, adapters in
 `src/health/external-booking.js`: `generic`, `calendly`, `cal_com`; https only, no credentials in the link, host checked
-per adapter). Patients get the address plus a mandatory notice that they are leaving SportArena
+per adapter). Patients get the address plus a mandatory notice that they are leaving Gotmygame
 (`start_external_booking`). Afterwards `link_external_booking` records the booking: only the external provider, reference,
-address, sync status and timestamps are stored, one SportArena appointment per `(provider, external provider, reference)`
+address, sync status and timestamps are stored, one Gotmygame appointment per `(provider, external provider, reference)`
 (repeat calls update, never duplicate; someone else's reference cannot be claimed). The provider (or their integration with
 an API token) reports changes with `reconcile_external_booking`, which applies the same status rules as everywhere else.
 No scraping and no stored third-party credentials. Where a system offers an API, an adapter can add a `sync` hook later;
@@ -82,11 +82,13 @@ Self-declaring `doctor`/`physio` is not enough. Both are required, every time, r
 |---|---|---|
 | `add_medical_record`, `list_medical_records` (provider read), `create_followup` | required | required (full) |
 | `update_appointment` confirm / complete (provider) | required (complete may use grace) | existing booking |
+| `link_external_booking` (provider registering for a patient), `reconcile_external_booking` moving a booking to confirmed / completed | required (completed may use grace) | existing booking |
+| `update_followup` by the provider: mark done (may use grace) or reschedule | required | existing follow-up |
 | `book_appointment` | the **provider** must be current | athlete's medical consent |
 | `get_clearance` via a clearance grant | required | required |
 | `report_medical_incident` (event doctor/physio) | required, emergency exception | event staffing |
 | `grant_medical_access` | not required; response carries `provider_verified` + `warning` | athlete's choice |
-| cancelling an appointment, athlete reading own records | never blocked | - |
+| cancelling an appointment or follow-up (either side), an athlete booking externally or editing their own follow-up, athlete reading own records | never blocked | - |
 
 Blocked calls return `403` with code `credential_required` and `details: { reason, profession, expires_at, renewal }`; `reason` is one of
 `not_verified | pending | expired | revoked | role_mismatch | sport_scope | jurisdiction`. `renewal` names the route:
@@ -101,6 +103,14 @@ Policies (explicit, never silent):
   First aiders have no platform credential and are unaffected.
 * **Jurisdiction**: `submit_verification` accepts `jurisdiction`; set `CLINICAL_JURISDICTIONS=IN,GB` to accept only those.
   Unset = any (default).
+* **Cancel is exempt**: cancelling (appointment, external booking, follow-up) only withdraws care and carries no clinical content, so a lapsed
+  or revoked provider can always release a patient's slot. Provider-side follow-up *done* and *reschedule* are care management and are gated.
+* **Atomic writes**: `add_medical_record` checks the credential, then inserts inside one transaction that first takes `SELECT ... FOR SHARE`
+  on the verification case and on the athlete's grant row and re-reads them under that lock. A revocation (an UPDATE of that case) therefore
+  waits for an in-flight write, and a revocation that already committed is seen by the write, so nothing is stored after a revocation commits.
+  The earlier unlocked check still runs first for the audit trail and error messages.
+* **Machine contract**: operations that can return `credential_required` (`credential: true` on the capability) list the `CredentialRequired`
+  403 response in OpenAPI; MCP tools return the same code and details.
 * **Audit**: every check writes `credential_check_allowed|denied|grace` (entity `clinical:<action>[:reason]`, athlete id) - never clinical text.
 
 Least-privilege history (59-1b): a grant has `history_scope`. `since_grant` (default for new grants) lets the provider read the

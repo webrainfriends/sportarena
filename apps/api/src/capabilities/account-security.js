@@ -49,7 +49,7 @@ cap({
     if ((await one('SELECT email_verified_at FROM users WHERE id=$1', [user.id])).email_verified_at) return { ok: true, already_verified: true };
     if (await recentTokens(user.id, 'email_verify') >= 5) throw tooMany();
     const secret = await issueToken(user.id, 'email_verify', 24 * 60);
-    await notifySecurity(user.id, { kind: 'security_email_verify', title: 'Confirm your SportArena email', body: `Confirm your email address with this code: {{secret}}\n${link('?verify_email=', '{{secret}}')}\nIt works once and expires in 24 hours. If you did not ask for this, ignore this email.`, secret });
+    await notifySecurity(user.id, { kind: 'security_email_verify', title: 'Confirm your Gotmygame email', body: `Confirm your email address with this code: {{secret}}\n${link('?verify_email=', '{{secret}}')}\nIt works once and expires in 24 hours. If you did not ask for this, ignore this email.`, secret });
     return { ok: true, already_verified: false };
   },
 });
@@ -74,7 +74,7 @@ cap({
     const u = await one('SELECT id FROM users WHERE email_idx = $1', [blindIndex(i.email)]);
     if (u && await recentTokens(u.id, 'password_reset') < 3) {
       const secret = await issueToken(u.id, 'password_reset', 30);
-      await notifySecurity(u.id, { kind: 'security_password_reset', title: 'Reset your SportArena password', body: `Use this code to choose a new password: {{secret}}\n${link('?reset_password=', '{{secret}}')}\nIt works once and expires in 30 minutes. If you did not ask for this, ignore this email; your password has not changed.`, secret });
+      await notifySecurity(u.id, { kind: 'security_password_reset', title: 'Reset your Gotmygame password', body: `Use this code to choose a new password: {{secret}}\n${link('?reset_password=', '{{secret}}')}\nIt works once and expires in 30 minutes. If you did not ask for this, ignore this email; your password has not changed.`, secret });
     }
     return { ok: true, message: 'If that email has an account, a reset link is on its way.' };
   },
@@ -94,7 +94,7 @@ cap({
     });
     if (!t) throw badRequest('This reset link has expired or was already used. Request a new one.');
     const signedOut = await revokeUserSessions(t.user_id, 'password_reset');
-    await notifySecurity(t.user_id, { kind: 'security_password_changed', title: 'Your SportArena password was changed', body: 'Your password was reset and you were signed out everywhere. If this was not you, reset it again now and contact support.' });
+    await notifySecurity(t.user_id, { kind: 'security_password_changed', title: 'Your Gotmygame password was changed', body: 'Your password was reset and you were signed out everywhere. If this was not you, reset it again now and contact support.' });
     return { ok: true, signed_out_sessions: signedOut };
   },
 });
@@ -153,7 +153,7 @@ cap({
       return true;
     });
     if (!ok) { await audit(null, user.id, 'mfa_code_failed', 'users', user.id); throw unauthorized('That code is not valid. Check the code and try again.'); }
-    await notifySecurity(user.id, { kind: 'security_mfa_enabled', title: 'Two-step verification is on', body: 'Two-step verification was turned on for your SportArena account. If this was not you, reset your password and contact support.' });
+    await notifySecurity(user.id, { kind: 'security_mfa_enabled', title: 'Two-step verification is on', body: 'Two-step verification was turned on for your Gotmygame account. If this was not you, reset your password and contact support.' });
     return { ok: true, recovery_codes: codes };
   },
 });
@@ -180,7 +180,7 @@ cap({
     await query("UPDATE user_mfa SET disabled_at = now(), disabled_reason = 'user' WHERE id=$1", [f.id]);
     await audit(null, user.id, 'mfa_disabled', 'users', user.id);
     const out = await revokeUserSessions(user.id, 'mfa_disabled', user.session_id ?? null);
-    await notifySecurity(user.id, { kind: 'security_mfa_disabled', title: 'Two-step verification was turned off', body: 'Two-step verification was turned off for your SportArena account. If this was not you, reset your password now.' });
+    await notifySecurity(user.id, { kind: 'security_mfa_disabled', title: 'Two-step verification was turned off', body: 'Two-step verification was turned off for your Gotmygame account. If this was not you, reset your password now.' });
     return { ok: true, signed_out_elsewhere: out };
   },
 });

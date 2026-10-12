@@ -9,7 +9,7 @@ import { moneyIn } from './vtime';
 
 /**
  * Hosted checkout for one invoice, in the invoice's own currency: pick Stripe or PayPal, pay on the provider's page, then confirm.
- * target = { id, label, amount, currency }. Card details never touch SportArena.
+ * target = { id, label, amount, currency }. Card details never touch Gotmygame.
  */
 export function PaySheet({ target, onClose, onDone }) {
   const { toast } = useSession();
@@ -48,7 +48,7 @@ export function PaySheet({ target, onClose, onDone }) {
         <View style={{ gap: 10 }}>
           {m.providers.includes('stripe') ? <Btn title="Pay with card (Stripe)" onPress={() => go('stripe')} loading={busy} /> : null}
           {m.providers.includes('paypal') ? <Btn title="Pay with PayPal" color={c.paper} onPress={() => go('paypal')} loading={busy} /> : null}
-          <T size={12} color={c.mute}>You'll be charged in {target.currency}. You'll be taken to the provider's secure page; your card details never reach SportArena.</T>
+          <T size={12} color={c.mute}>You'll be charged in {target.currency}. You'll be taken to the provider's secure page; your card details never reach Gotmygame.</T>
         </View>
       )}
       {err ? <T color={c.red} weight="700">{err}</T> : null}

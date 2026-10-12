@@ -145,7 +145,7 @@ function People({ o, role, archived, toast }) {
       </Section>
       {pending.data?.length ? <Section title="Waiting for a reply" color={c.sun}>{pending.data.map((m) => <Row key={m.id} title={m.display_name} sub={`@${m.handle} · invited as ${ROLE_LABEL[m.org_role]}`} onPress={manage ? () => setSel(m) : undefined} />)}</Section> : null}
       <FormSheet visible={invite} onClose={() => setInvite(false)} title="Invite to this organisation" submitLabel="Send invitation"
-        fields={[{ key: 'person', label: 'Handle or email', hint: 'They need a SportArena account. Nothing is shared until they accept.' }, { key: 'role', label: 'Role', type: 'chips', options: Object.entries(ROLE_LABEL).filter(([k]) => role === 'owner' || k !== 'owner').map(([value, label]) => ({ value, label })) }]}
+        fields={[{ key: 'person', label: 'Handle or email', hint: 'They need a Gotmygame account. Nothing is shared until they accept.' }, { key: 'role', label: 'Role', type: 'chips', options: Object.entries(ROLE_LABEL).filter(([k]) => role === 'owner' || k !== 'owner').map(([value, label]) => ({ value, label })) }]}
         onSubmit={async (v) => { await api.post(`/organisations/${o.id}/members`, v); refresh(); return 'Invitation sent'; }} />
       <Sheet visible={!!sel} onClose={() => setSel(null)} title={sel?.display_name ?? ''}>
         {sel ? (
