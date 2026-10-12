@@ -47,6 +47,12 @@ export function refreshSession() {
 let onUnauthorized = () => {};
 export const setUnauthorizedHandler = (fn) => { onUnauthorized = fn; };
 
+// The API refuses clinical/admin actions until the person's two-step verification is set up (or confirmed in this session).
+// The app shows a banner with a link to the set-up screen instead of a bare error.
+export const MFA_CODES = ['mfa_enrollment_required', 'mfa_required'];
+let onMfaRequired = () => {};
+export const setMfaRequiredHandler = (fn) => { onMfaRequired = fn; };
+
 export class ApiError extends Error {
   constructor(status, body) {
     const nice = (path) => String(path).split('.').filter((x) => !/^\d+$/.test(x)).join(' › ').replace(/_(cents|bp)$/, '').replace(/_/g, ' ');
@@ -72,6 +78,7 @@ async function request(method, path, data, retried = false) {
   if (!res.ok) {
     if (res.status === 401 && !retried && !path.startsWith('/auth/') && canRefresh() && await refreshSession()) return request(method, path, data, true);
     if (res.status === 401 && (token || isWeb) && !path.startsWith('/auth/')) onUnauthorized();
+    if (res.status === 403 && MFA_CODES.includes(body?.error?.code)) onMfaRequired({ code: body.error.code, message: body.error.message });
     throw new ApiError(res.status, body);
   }
   return body;

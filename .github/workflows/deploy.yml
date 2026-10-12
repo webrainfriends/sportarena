@@ -189,6 +189,8 @@ jobs:
           PLATFORM_ADMIN_HANDLE: ${{ vars.PLATFORM_ADMIN_HANDLE || 'platformarena' }}
           PLATFORM_ADMIN_NAME: ${{ vars.PLATFORM_ADMIN_NAME || 'PlatformArena' }}
           PLATFORM_ADMIN_PASSWORD: ${{ secrets.PLATFORM_ADMIN_PASSWORD }}
+          # two-step verification for doctors/physios/admins is ON in production; set the repo variable MFA_ENFORCE=false only as a temporary rollout opt-out (docs/auth.md)
+          MFA_ENFORCE: ${{ vars.MFA_ENFORCE }}
         run: |
           set -euo pipefail
           KEYFILE="$(mktemp)"; trap 'rm -f "$KEYFILE"' EXIT
