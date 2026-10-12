@@ -193,7 +193,7 @@ jobs:
           # two-step verification for doctors/physios/admins is ON in production; set the repo variable MFA_ENFORCE=false only as a temporary rollout opt-out (docs/auth.md)
           MFA_ENFORCE: ${{ vars.MFA_ENFORCE }}
           # Sign in with Google: the public OAuth client id (a repository variable, or a secret of the same name); unset leaves the Google button disabled
-          GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID || secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID || secrets.GOOGLE_CLIENT_ID || '909476957194-i5f2gqpq98eka6nfdau8ngdk6cic0r52.apps.googleusercontent.com' }}
           # the Google account that approves/rejects other people's access and holds the platform owner role (docs/auth.md); override with the repo variable
           SUPER_ADMIN_EMAIL: ${{ vars.SUPER_ADMIN_EMAIL || 'rraja.edge@gmail.com' }}
         run: |
