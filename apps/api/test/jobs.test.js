@@ -265,3 +265,11 @@ test('maintenance categories are isolated: a crashing step is reported and the r
     assert.ok('refunds' in out && 'waitlist' in out, 'later steps ran');
   } finally { mod.STEPS[0][2] = original; }
 });
+
+test('maintenance runs the stale-requests expiry step and isolates the notification cycle', async () => {
+  const mod = await import('../src/worker.js');
+  assert.ok(mod.STEPS.some(([name, key]) => name === 'requests' && key === 'requests_expired'));
+  const out = await maintenanceCycle();
+  assert.ok('requests_expired' in out && out.requests_expired != null, 'requests step ran');
+  assert.ok(!out.errors, JSON.stringify(out.errors));
+});
