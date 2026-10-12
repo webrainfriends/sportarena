@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Serves SportArena on its own domain (gotmygame.com + www.) on the standard ports 80/443, alongside - never instead
+# Serves Gotmygame on its own domain (gotmygame.com + www.) on the standard ports 80/443, alongside - never instead
 # of - the existing http://<host>:9255 site that deploy-remote.sh already configures.
 #
 # It adds a separate nginx site that answers only for $DOMAIN and www.$DOMAIN and forwards every request to that
@@ -93,7 +93,7 @@ render_config() {
   local with_tls="$1"
   cat <<EOF
 # Managed by scripts/configure-domain.sh - rewritten on every deploy.
-# Forwards $SERVER_NAMES to the SportArena site on port ${UPSTREAM_PORT}.
+# Forwards $SERVER_NAMES to the Gotmygame site on port ${UPSTREAM_PORT}.
 server {
     listen 80;
     server_name ${SERVER_NAMES};

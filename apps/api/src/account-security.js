@@ -54,7 +54,7 @@ export function matchStep(secretB32, code, now = Date.now()) {
   for (const s of [cur, cur - 1, cur + 1]) if (totp(secretB32, s) === c) return s;
   return null;
 }
-export const otpauthUri = (secret, label) => `otpauth://totp/SportArena:${encodeURIComponent(label)}?secret=${secret}&issuer=SportArena&algorithm=SHA1&digits=6&period=${STEP}`;
+export const otpauthUri = (secret, label) => `otpauth://totp/Gotmygame:${encodeURIComponent(label)}?secret=${secret}&issuer=Gotmygame&algorithm=SHA1&digits=6&period=${STEP}`;
 
 export const newRecoveryCode = () => { const r = base32(randomBytes(7)).toLowerCase().slice(0, 10); return `${r.slice(0, 5)}-${r.slice(5)}`; };
 export const normalizeRecovery = (c) => String(c).toLowerCase().replace(/[^a-z2-7]/g, '');

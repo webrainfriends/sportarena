@@ -61,7 +61,7 @@ cap({
   name: 'send_test_push', method: 'POST', path: '/me/push-test', tag: TAG, summary: 'Send yourself a test notification (in-app, plus push to your registered devices).',
   async handler({ user }) {
     const devices = (await one('SELECT count(*)::int AS n FROM push_devices WHERE user_id=$1 AND disabled_at IS NULL', [user.id])).n;
-    await notify(null, user.id, { kind: 'test', title: 'Push is working 🎉', body: 'This is a test notification from SportArena.', data: {} });
+    await notify(null, user.id, { kind: 'test', title: 'Push is working 🎉', body: 'This is a test notification from Gotmygame.', data: {} });
     return { devices };
   },
 });

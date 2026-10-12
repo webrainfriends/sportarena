@@ -57,7 +57,7 @@ cap({
 
 cap({
   name: 'invite_event_staff', method: 'POST', path: '/events/:id/staff', tag: TAG, status: 201,
-  summary: 'Hire a referee, umpire, judge, scorer, physio, doctor, first aider or volunteer for the event with an agreed rate. They must accept. A doctor post needs the doctor role on SportArena, a physio post the physio role, officiating posts the referee role.',
+  summary: 'Hire a referee, umpire, judge, scorer, physio, doctor, first aider or volunteer for the event with an agreed rate. They must accept. A doctor post needs the doctor role on Gotmygame, a physio post the physio role, officiating posts the referee role.',
   input: z.object({ id, user_id: id, role: staffRole, sport: z.string().optional().describe('officials: the sport they will officiate; omit for any'), rate_cents: z.number().int().min(0).max(100000000).default(0), currency: z.string().length(3).optional(), notes: z.string().max(500).optional() }),
   async handler({ user }, i) {
     return tx(async (c) => {

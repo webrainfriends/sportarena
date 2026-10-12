@@ -1,4 +1,4 @@
-// SportArena ontology, modelled on the IPTC Sport Schema (https://github.com/iptc/sport-schema,
+// Gotmygame ontology, modelled on the IPTC Sport Schema (https://github.com/iptc/sport-schema,
 // CC-BY 4.0, (c) IPTC). The ontology is code, not data: classes, properties and controlled
 // vocabularies are the app's shared language; instances (games, teams, people, associations)
 // live in Postgres and are mapped onto these classes via `table`/`mapsTo`.
@@ -12,7 +12,7 @@ const sport = (n) => `sport:${n}`;
 /** TBox: classes. `table` = where instances live in this app (null = modelled only). */
 export const classes = {
   Agent:               { label: 'Agent', parent: null, abstract: true, comment: 'Anything that can take part in sport: individuals, teams, clubs, governing bodies.' },
-  Individual:          { label: 'Individual', parent: 'Agent', table: 'users', comment: 'A person with a SportArena profile.' },
+  Individual:          { label: 'Individual', parent: 'Agent', table: 'users', comment: 'A person with a Gotmygame profile.' },
   Athlete:             { label: 'Athlete', parent: 'Individual', roleKind: 'athlete', comment: 'Individual taking part as a competitor (player).' },
   Associate:           { label: 'Associate', parent: 'Individual', roleKind: 'associate', comment: 'Non-competing person tied to a team/game: coach, manager, physio, doctor…' },
   Official:            { label: 'Official', parent: 'Individual', roleKind: 'official', comment: 'Referee, umpire, scorer, timekeeper…' },
@@ -66,7 +66,7 @@ export const properties = {
   dateOfBirth:         { iri: sport('dateOfBirth'), domain: ['Individual'], range: 'xsd:date', sensitive: true, comment: 'Personal data: never exposed publicly; encrypted at rest.' },
 };
 
-/** Controlled vocabularies (IPTC NewsCodes `sp*` + SportArena roles). */
+/** Controlled vocabularies (IPTC NewsCodes `sp*` + Gotmygame roles). */
 export const vocabularies = {
   eventStatus: { source: 'spEventStatus', terms: ['pre-event', 'mid-event', 'post-event', 'postponed', 'suspended', 'halted', 'forfeited', 'rescheduled', 'delayed', 'canceled', 'intermission', 'if-necessary', 'discarded'] },
   eventOutcome: { source: 'spEventOutcome', terms: ['win', 'loss', 'tie', 'undecided', 'show', 'place'] },

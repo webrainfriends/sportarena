@@ -1,5 +1,5 @@
 /**
- * Unified athlete history (#100): ONE read model over what an athlete logged themselves (player_matches) and what SportArena
+ * Unified athlete history (#100): ONE read model over what an athlete logged themselves (player_matches) and what Gotmygame
  * officially knows (games, fixtures). Nothing is copied — canonical tables stay authoritative, so a corrected result changes the
  * athlete's history and totals immediately. `$1` is always the athlete's immutable user id.
  *

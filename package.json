@@ -2,7 +2,7 @@
   "name": "sportarena",
   "private": true,
   "version": "0.1.0",
-  "description": "SportArena \u2014 the API-first, MCP-first ecosystem for everyone who dreams of sport",
+  "description": "Gotmygame \u2014 the API-first, MCP-first ecosystem for everyone who dreams of sport",
   "workspaces": [
     "apps/*"
   ],

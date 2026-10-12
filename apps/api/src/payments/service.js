@@ -33,7 +33,7 @@ export async function describePurpose(c, type, id) {
   }
   if (type === 'gift_card') {
     const g = await q("SELECT purchaser_id AS payer_id, amount_cents AS amount, currency, status FROM gift_cards WHERE id=$1 FOR UPDATE");
-    return g && { payerId: g.payer_id, amount: Number(g.amount), currency: g.currency, name: 'SportArena gift card', payable: g.status === 'awaiting_payment' };
+    return g && { payerId: g.payer_id, amount: Number(g.amount), currency: g.currency, name: 'Gotmygame gift card', payable: g.status === 'awaiting_payment' };
   }
   if (type === 'venue_plan') {
     const u = await q("SELECT up.user_id AS payer_id, up.price_cents AS amount, up.currency, up.status, up.name, v.name AS venue FROM user_plans up JOIN venues v ON v.id=up.venue_id WHERE up.id=$1 FOR UPDATE OF up");

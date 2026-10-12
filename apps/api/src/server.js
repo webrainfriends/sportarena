@@ -19,7 +19,7 @@ const app = createApp();
 const server = config.sslKeyFile && config.sslCertFile
   ? createServer({ key: readFileSync(config.sslKeyFile), cert: readFileSync(config.sslCertFile), minVersion: 'TLSv1.2' }, app)
   : app;
-const listener = server.listen(config.port, () => console.log(`SportArena API on ${config.sslKeyFile ? 'https' : 'http'}://localhost:${config.port}  (REST /api/v1 · MCP /mcp)`));
+const listener = server.listen(config.port, () => console.log(`Gotmygame API on ${config.sslKeyFile ? 'https' : 'http'}://localhost:${config.port}  (REST /api/v1 · MCP /mcp)`));
 
 // Booking reminders, queued emails, unpaid-hold release and refunds. Claims are atomic in SQL, so running this on several instances is safe.
 // WORKER_MODE=external hands all of this to the separate worker process (npm run worker).
