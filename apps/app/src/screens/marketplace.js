@@ -362,16 +362,25 @@ export function Shop() {
 
 // ======================= INSURE =======================
 
+const VIA = [['athlete', 'As an athlete'], ['team', 'Via team'], ['event', 'Via event'], ['venue', 'Via venue']];
+const routeLabel = ({ via, capacity }, p) => (via === 'athlete' ? 'COVERED AS AN ATHLETE' : `${via.toUpperCase()}: ${p.subject_name ?? ''} · ${nice(capacity)}`.toUpperCase());
+
 export function Insure() {
   const { toast, user } = useSession();
   const { push } = useNav();
   const { w } = useCols();
   const plans = useLoad(() => api.get('/insurance/plans', { cover_for: 'individual' }), []);
   const pol = useLoad(() => api.get('/insurance/policies', { limit: 30 }), []);
+  const cov = useLoad(() => api.get('/insurance/policies', { covering_me: true, limit: 50 }), []);
   const [buy, setBuy] = useState(null);
   const [paying, setPaying] = useState(null);
-  const active = (pol.data ?? []).filter((p) => p.effective_status === 'active');
+  const active = (pol.data ?? []).filter((p) => p.effective_status === 'active' && p.subject_type === 'individual');
   const covered = new Set(active.map((p) => p.plan_id));
+  // One list: what protects me (athlete / team / event / venue, from covering_me) plus what I hold or manage (pay, renew), each policy once.
+  const byId = new Map();
+  for (const p of cov.data ?? []) byId.set(p.id, { ...p, routes: p.covered_via });
+  for (const p of pol.data ?? []) byId.set(p.id, { ...(byId.get(p.id) ?? {}), ...p, routes: byId.get(p.id)?.routes ?? [{ via: p.subject_type === 'individual' ? 'athlete' : p.subject_type, capacity: p.subject_type === 'individual' ? 'athlete' : 'manager' }] });
+  const rows = [...byId.values()];
 
   return (
     <Screen wide>
@@ -415,13 +424,25 @@ export function Insure() {
         </Grid>
       )}
 
-      <H2 style={{ marginTop: 28 }}>My policies</H2>
+      <H2 style={{ marginTop: 28 }}>My cover</H2>
+      <T size={13} color={c.mute}>Everything that protects you: your own policies as an athlete, and the team, event and venue cover you are part of as a player, physio, doctor, official or sponsor.</T>
+      {pol.error || cov.error ? <ErrorBox error={pol.error ?? cov.error} onRetry={() => { pol.reload(); cov.reload(); }} /> : null}
+      <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
+        {VIA.map(([k, label]) => <Pill key={k} label={`${label}: ${rows.filter((r) => r.routes.some((x) => x.via === k)).length}`} fg={rows.some((r) => r.routes.some((x) => x.via === k)) ? c.lime : c.mute} bg={rows.some((r) => r.routes.some((x) => x.via === k)) ? c.limeSoft : c.violetSoft} />)}
+      </View>
       <View style={{ gap: 10, marginTop: 10 }}>
-        {!pol.data?.length ? <T size={13} color={c.mute}>No policies yet.</T> : pol.data.map((p) => (
+        {!rows.length ? <T size={13} color={c.mute}>Nothing covers you yet. Get a plan above, or ask your team or event organiser to insure the squad or the event.</T> : rows.map((p) => (
           <Card key={p.id} pad={12}>
             <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
               <T size={26}>{p.emoji}</T>
-              <View style={{ flex: 1 }}><T weight="700" size={14}>{p.plan_name}</T><T size={12} color={c.mute}>{p.policy_no} · until {day(p.ends_on + 'T12:00:00')} · cover {money(p.coverage_cents)}</T></View>
+              <View style={{ flex: 1, gap: 2 }}>
+                <T weight="700" size={14}>{p.plan_name}</T>
+                <T size={12} color={c.mute}>{p.policy_no ? `${p.policy_no} · ` : ''}until {p.ends_on ? day(`${String(p.ends_on).slice(0, 10)}T12:00:00`) : '—'} · cover {money(p.coverage_cents)}</T>
+                <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
+                  {p.routes.map((x, n) => <Pill key={n} label={routeLabel(x, p)} fg={c.violet} bg={c.violetSoft} />)}
+                  {p.held_by_me || p.holder_id === user?.id ? <Pill label="HELD BY YOU" fg={c.mute} bg={c.bg} /> : null}
+                </View>
+              </View>
               <View style={{ alignItems: 'flex-end', gap: 6 }}><StatusPill s={p.effective_status === 'expired' ? 'completed' : p.effective_status} />{p.status === 'pending_payment' ? <Btn small title="Pay now" onPress={() => setPaying({ type: 'insurance_policy', id: p.id, amount: p.amount_cents, label: p.plan_name })} /> : null}</View>
             </View>
           </Card>
