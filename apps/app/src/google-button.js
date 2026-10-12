@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Platform, View } from 'react-native';
 import { api } from './api';
+import { T } from './ui';
+import { c } from './theme';
 
 const SRC = 'https://accounts.google.com/gsi/client';
 let loading;
@@ -11,15 +13,16 @@ const loadScript = () => (loading ??= new Promise((ok, fail) => {
   document.head.appendChild(el);
 }));
 
-/** "Sign in with Google" (web). Renders nothing until the server reports a Google client id, so it is hidden where Google sign-in is not set up. */
+/** "Sign in with Google" (web). Until the server has a Google client id (GOOGLE_CLIENT_ID) it shows a disabled button that says so, so the option is always visible. */
 export default function GoogleButton({ onCredential, onError }) {
   const [clientId, setClientId] = useState(null);
+  const [off, setOff] = useState(false);
   const box = useRef(null);
   const cb = useRef({ onCredential, onError });
   cb.current = { onCredential, onError };
   useEffect(() => {
     if (Platform.OS !== 'web') return;
-    api.get('/auth/config').then((r) => setClientId(r.google_client_id), () => {});
+    api.get('/auth/config').then((r) => (r.google_client_id ? setClientId(r.google_client_id) : setOff(true)), () => setOff(true));
   }, []);
   useEffect(() => {
     if (!clientId || !box.current) return undefined;
@@ -31,6 +34,16 @@ export default function GoogleButton({ onCredential, onError }) {
     }).catch((e) => cb.current.onError?.(e.message));
     return () => { gone = true; };
   }, [clientId]);
-  if (!clientId) return null;
+  if (!clientId) {
+    if (!off) return null;
+    return (
+      <View accessibilityRole="button" accessibilityState={{ disabled: true }} style={{ alignItems: 'center', gap: 4 }}>
+        <View style={{ width: 300, maxWidth: '100%', height: 44, borderRadius: 999, borderWidth: 1, borderColor: c.line, backgroundColor: c.bg, alignItems: 'center', justifyContent: 'center', opacity: 0.7 }}>
+          <T weight="700" size={14} color={c.mute}>Continue with Google</T>
+        </View>
+        <T size={11} color={c.mute}>Google sign-in is not switched on for this site yet.</T>
+      </View>
+    );
+  }
   return <View ref={box} style={{ alignItems: 'center', minHeight: 44 }} />;
 }
