@@ -87,7 +87,7 @@ cap({
     const t = await tx(async (c) => {
       const row = await consumeToken(i.token, 'password_reset', c);
       if (!row) return null;
-      await c.query('UPDATE users SET password_hash = $2 WHERE id = $1', [row.user_id, hashPassword(i.new_password)]);
+      await c.query('UPDATE users SET password_hash = $2 WHERE id = $1', [row.user_id, await hashPassword(i.new_password)]);
       await c.query("UPDATE account_tokens SET used_at = now() WHERE user_id = $1 AND purpose = 'password_reset' AND used_at IS NULL", [row.user_id]);
       await audit(c, row.user_id, 'password_reset', 'users', row.user_id);
       return row;
@@ -122,7 +122,7 @@ cap({
   async handler({ user }, i) {
     if (user.credential) throw badRequest('Not available to API tokens');
     const row = await one('SELECT password_hash FROM users WHERE id=$1', [user.id]);
-    if (!verifyPassword(i.password, row.password_hash)) throw unauthorized('Password is incorrect');
+    if (!(await verifyPassword(i.password, row.password_hash))) throw unauthorized('Password is incorrect');
     const secret = newTotpSecret();
     await tx(async (c) => {
       const live = (await c.query('SELECT id, enabled_at FROM user_mfa WHERE user_id=$1 AND disabled_at IS NULL FOR UPDATE', [user.id])).rows[0];
@@ -175,7 +175,7 @@ cap({
   async handler({ user }, i) {
     if (user.credential) throw badRequest('Not available to API tokens');
     const row = await one('SELECT password_hash FROM users WHERE id=$1', [user.id]);
-    if (!verifyPassword(i.password, row.password_hash)) throw unauthorized('Password is incorrect');
+    if (!(await verifyPassword(i.password, row.password_hash))) throw unauthorized('Password is incorrect');
     const f = await checkSecondFactor(user.id, i.code);
     await query("UPDATE user_mfa SET disabled_at = now(), disabled_reason = 'user' WHERE id=$1", [f.id]);
     await audit(null, user.id, 'mfa_disabled', 'users', user.id);
