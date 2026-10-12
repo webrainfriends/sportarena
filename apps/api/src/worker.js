@@ -23,15 +23,18 @@ export const STEPS = [
 ];
 
 export async function maintenanceCycle() {
-  const out = {}; const errors = {};
-  for (const [category, key, fn, fallback] of STEPS) {
-    const r = await isolated(category, () => fn(), fallback);
+  const out = {};
+  const errors = {};
+  for (const [name, key, fn, fallback] of STEPS) {
+    const r = await isolated(name, fn, fallback);
     out[key] = r.value;
-    if (!r.ok) errors[category] = r.error;
+    if (!r.ok) errors[name] = r.error;
   }
+  // Notifications run isolated too (it isolates its own sub-steps and reports them in `errors`).
   const notif = await isolated('notifications', () => notificationCycle(), {});
+  const { errors: notifErrors, ...notifRest } = notif.value || {};
+  Object.assign(out, notifRest);
+  Object.assign(errors, notifErrors || {});
   if (!notif.ok) errors.notifications = notif.error;
-  if (notif.value?.errors) Object.assign(errors, notif.value.errors);
-  const { errors: _drop, ...rest } = notif.value ?? {};
-  return { ...out, ...rest, ...(Object.keys(errors).length ? { errors } : {}) };
+  return Object.keys(errors).length ? { ...out, errors } : out;
 }

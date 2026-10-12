@@ -21,8 +21,10 @@ const isWeb = Platform.OS === 'web';
 let token = null;
 let refreshToken = null;
 export const setSessionTokens = (t) => { if (isWeb) return; token = t?.token ?? null; refreshToken = t?.refresh_token ?? null; };
-let onTokens = () => {};
-export const setTokensHandler = (fn) => { onTokens = fn; };
+// Held on an object, not a bare `let`: on web the minifier folds `isWeb` and drops the only read, which used to leave the assignment pointing at an
+// undeclared variable ("onTokens is not defined" → blank page in production builds).
+const handlers = { tokens: () => {} };
+export const setTokensHandler = (fn) => { handlers.tokens = fn; };
 const csrfToken = () => { try { const m = /(?:^|; )sa_csrf=([^;]+)/.exec(document.cookie); return m ? decodeURIComponent(m[1]) : null; } catch { return null; } };
 const webAuth = () => (isWeb ? { 'x-sa-client': 'web', ...(csrfToken() ? { 'x-csrf-token': csrfToken() } : {}) } : {});
 const withAuth = (h = {}) => ({ ...h, ...(token ? { authorization: `Bearer ${token}` } : {}), ...webAuth() });
@@ -36,7 +38,7 @@ export function refreshSession() {
     try {
       const res = await fetch(`${API}/auth/refresh`, { method: 'POST', ...creds, headers: withAuth({ 'content-type': 'application/json' }), body: JSON.stringify(isWeb ? {} : { refresh_token: refreshToken }) });
       if (!res.ok) return false;
-      if (!isWeb) { const b = await res.json(); setSessionTokens(b); onTokens(b); }
+      if (!isWeb) { const b = await res.json(); setSessionTokens(b); handlers.tokens(b); }
       return true;
     } catch { return false; } finally { refreshing = null; }
   })();
@@ -44,6 +46,12 @@ export function refreshSession() {
 }
 let onUnauthorized = () => {};
 export const setUnauthorizedHandler = (fn) => { onUnauthorized = fn; };
+
+// The API refuses clinical/admin actions until the person's two-step verification is set up (or confirmed in this session).
+// The app shows a banner with a link to the set-up screen instead of a bare error.
+export const MFA_CODES = ['mfa_enrollment_required', 'mfa_required'];
+let onMfaRequired = () => {};
+export const setMfaRequiredHandler = (fn) => { onMfaRequired = fn; };
 
 export class ApiError extends Error {
   constructor(status, body) {
@@ -64,12 +72,13 @@ async function request(method, path, data, retried = false) {
       body: method !== 'GET' && method !== 'DELETE' && data ? JSON.stringify(data) : undefined,
     });
   } catch {
-    throw new ApiError(0, { error: { message: `Can't reach the SportArena server at ${API}` } });
+    throw new ApiError(0, { error: { message: `Can't reach the Gotmygame server at ${API}` } });
   }
   const body = await res.json().catch(() => null);
   if (!res.ok) {
     if (res.status === 401 && !retried && !path.startsWith('/auth/') && canRefresh() && await refreshSession()) return request(method, path, data, true);
     if (res.status === 401 && (token || isWeb) && !path.startsWith('/auth/')) onUnauthorized();
+    if (res.status === 403 && MFA_CODES.includes(body?.error?.code)) onMfaRequired({ code: body.error.code, message: body.error.message });
     throw new ApiError(res.status, body);
   }
   return body;
@@ -80,7 +89,7 @@ async function upload(path, blob, query = {}) {
   const qs = new URLSearchParams(Object.entries(query).filter(([, v]) => v)).toString();
   let res;
   try { res = await fetch(`${API}${path}${qs ? `?${qs}` : ''}`, { method: 'PUT', ...creds, headers: withAuth({ 'content-type': blob.type || 'application/octet-stream' }), body: blob }); }
-  catch { throw new ApiError(0, { error: { message: `Can't reach the SportArena server at ${API}` } }); }
+  catch { throw new ApiError(0, { error: { message: `Can't reach the Gotmygame server at ${API}` } }); }
   const body = await res.json().catch(() => null);
   if (!res.ok) throw new ApiError(res.status, body);
   return body;
@@ -90,7 +99,7 @@ async function upload(path, blob, query = {}) {
 async function download(path) {
   let res;
   try { res = await fetch(`${API}${path}`, { ...creds, headers: withAuth() }); }
-  catch { throw new ApiError(0, { error: { message: `Can't reach the SportArena server at ${API}` } }); }
+  catch { throw new ApiError(0, { error: { message: `Can't reach the Gotmygame server at ${API}` } }); }
   if (!res.ok) throw new ApiError(res.status, await res.json().catch(() => null));
   return res.blob();
 }

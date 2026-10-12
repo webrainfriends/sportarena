@@ -2,6 +2,8 @@ import { randomBytes } from 'node:crypto';
 
 const env = process.env;
 const isProd = env.NODE_ENV === 'production';
+/** MFA policy default: on in production unless MFA_ENFORCE=false (explicit opt-out); elsewhere only when MFA_ENFORCE=true. */
+export const mfaDefault = (e) => (e.NODE_ENV === 'production' ? e.MFA_ENFORCE !== 'false' : e.MFA_ENFORCE === 'true');
 
 function secret(name) {
   const v = env[name];
@@ -48,8 +50,9 @@ export const config = {
   cookieSecure: env.COOKIE_SECURE ?? 'auto',
   cookieSameSite: env.COOKIE_SAMESITE ?? 'lax',
   // MFA policy: when true, people holding doctor/physio/admin/platform_admin roles must have two-step verification enabled and verified
-  // in their session to use clinical- or admin-class capabilities. Off by default so rollout never locks anyone out; turn on once they have enrolled.
-  mfaEnforce: env.MFA_ENFORCE === 'true',
+  // in their session to use clinical- or admin-class capabilities. ON by default in production (MFA_ENFORCE=false is the explicit, documented opt-out
+  // for a rollout window while people enrol); off in development/test unless MFA_ENFORCE=true.
+  mfaEnforce: mfaDefault(env),
   corsOrigins: (env.CORS_ORIGINS ?? '*').split(','),
   // Uploaded venue photos/videos. Must be a persistent directory (deploys never touch it). Files are never deleted.
   mediaDir: env.MEDIA_DIR ?? './data/media',
@@ -75,6 +78,8 @@ export const config = {
   // WORKER_MODE: 'inprocess' (default) runs maintenance inside the API process; 'external' leaves it to `npm run worker`
   // (set it on both processes). A worker is considered stale after WORKER_STALE_SECONDS without a heartbeat.
   workerMode: env.WORKER_MODE === 'external' ? 'external' : 'inprocess',
+  // A maintenance category failing this many cycles in a row is reported by get_worker_health (and makes it unhealthy).
+  stepFailureThreshold: Math.max(1, Number(env.STEP_FAILURE_THRESHOLD ?? 3)),
   workerStaleSeconds: Number(env.WORKER_STALE_SECONDS ?? 180),
   // One JSON access line per request (method, path, status, ms, request id; never bodies or tokens).
   accessLog: (env.ACCESS_LOG ?? (isProd ? 'true' : 'false')) === 'true',

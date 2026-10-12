@@ -192,3 +192,26 @@ test('agreement detail lists payments, deliveries and submissions for participan
   assert.equal(g.obligations[0].payments[0].status, 'reported');
   assert.equal(g.legacy_amount_cents, undefined);
 });
+
+test('event budget shows agreed sponsorship dues and confirmed receipts apart from income lines; an offer is never income', async () => {
+  const sponsor = await signup(['sponsor']), org = await signup(['organizer']), b = await brand(sponsor, `EvBrand${n}`);
+  const ev = must(await api('POST', '/events', { token: org.token, body: { name: 'Sponsored Cup', sport: 'football' } }), 201);
+  const offer = (extra = {}) => api('POST', '/sponsorships', { token: sponsor.token, body: { sponsor_id: b.id, target_type: 'event', target_id: ev.id, deliverables: 'Logo on the board', ...period, lines: [{ ...money, instalments: 2, first_due_on: '2030-01-15' }], ...extra } });
+  const budget = async () => must(await api('GET', `/events/${ev.id}/budget`, { token: org.token }));
+  const deal = must(await offer(), 201);
+  let s = (await budget()).sponsorship;
+  assert.deepEqual(s.by_currency, [], 'an unanswered offer is not income');
+  assert.equal(s.offers_awaiting_answer, 1);
+  must(await api('PATCH', `/sponsorships/${deal.id}`, { token: org.token, body: { status: 'active', version: 1 } }));
+  s = (await budget()).sponsorship;
+  assert.equal(s.by_currency[0].currency, 'SGD'); assert.equal(s.by_currency[0].committed_cents, 100000); assert.equal(s.by_currency[0].received_cents, 0);
+  const due = (await api('GET', '/sponsorship-obligations', { token: org.token, query: { sponsorship_id: deal.id } })).body.obligations[0];
+  const pay = must(await api('POST', `/sponsorship-obligations/${due.id}/payments`, { token: sponsor.token, body: { amount_cents: 50000, currency: 'SGD', method: 'bank_transfer', reference: 'EV1', paid_on: '2030-01-16' } }), 201);
+  s = (await budget()).sponsorship;
+  assert.equal(s.by_currency[0].received_cents, 0, 'a reported payment is not received'); assert.equal(s.by_currency[0].reported_unverified_cents, 50000);
+  must(await api('PATCH', `/sponsorship-payments/${pay.id}`, { token: org.token, body: { status: 'confirmed' } }));
+  s = (await budget()).sponsorship;
+  assert.equal(s.by_currency[0].received_cents, 50000); assert.equal(s.by_currency[0].outstanding_cents, 50000);
+  assert.equal((await budget()).summary.income.received_cents, 0, 'budget income lines are untouched, so nothing is counted twice');
+  assert.equal((await api('GET', `/events/${ev.id}/budget`, { token: sponsor.token })).status, 403, 'the sponsor does not read the organiser budget');
+});

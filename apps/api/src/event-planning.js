@@ -64,7 +64,7 @@ export async function createRequest(c, user, ev, i, { insuranceRequest } = {}) {
     const u = (await q(c, 'SELECT id, display_name, roles FROM users WHERE id=$1', [i.user_id]))[0];
     if (!u) throw notFound('User');
     const need = NEEDS_ROLE[i.kind];
-    if (need && !u.roles.includes(need)) throw badRequest(`That person is not registered as ${need === 'referee' ? 'a referee' : `a ${need}`} on SportArena`);
+    if (need && !u.roles.includes(need)) throw badRequest(`That person is not registered as ${need === 'referee' ? 'a referee' : `a ${need}`} on Gotmygame`);
     recipient = u.id; name = u.display_name;
   }
   if (recipient === user.id) throw badRequest('You cannot send a request to yourself');

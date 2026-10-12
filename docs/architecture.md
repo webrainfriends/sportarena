@@ -1,6 +1,6 @@
 # End-to-end architecture (SPOR-3)
 
-Current-state description of SportArena as built in this repository. It documents what exists today; where something
+Current-state description of Gotmygame as built in this repository. It documents what exists today; where something
 is missing it says so under [Gaps and proposed ADRs](#gaps-and-proposed-adrs) rather than describing it as built.
 
 ## 1. System context
@@ -178,7 +178,7 @@ Known limits are listed in the README (roles are self-declared apart from verifi
 
 ## 5. Deployment topology
 Details in [deployment.md](deployment.md). Summary: GitHub Actions `Deploy to EC2` (on push to `main`, `production`
-environment) SSHes in and runs `scripts/deploy-remote.sh`, which writes only SportArena-owned artefacts: pm2 process
+environment) SSHes in and runs `scripts/deploy-remote.sh`, which writes only Gotmygame-owned artefacts: pm2 process
 `sportarena-api` (4255), Docker container `sportarena-postgres` (volume `sportarena_pgdata`, never recreated by a
 deploy), nginx site `sportarena` (9255, serves `/var/www/sportarena-web`, proxies `/api` and `/mcp`), `~/sportarena/.env`
 (mode 600) and the KMS-wrapped master key. nginx is validated with `nginx -t` before a graceful reload, and a health
@@ -219,5 +219,5 @@ These are observations, not changes made here. Each would need its own ADR and P
 2. **Alerting**: ship the structured logs and `/admin/metrics` to an external system and alert on `/health/worker` and dead letters.
 3. **Payouts / settlement entity** for venues, coaches and providers (none exists; blocks payout disputes).
 4. **Staff roles** beyond `admin` (support, finance) for least-privilege operations.
-5. **Scaling the worker**: a separate worker process exists (`WORKER_MODE=external`); run more than one only if cycle time grows.
+5. **Scaling the worker**: a separate worker process exists (`WORKER_MODE=external`, the production default); run more than one only if cycle time grows.
 6. **Migration numbering**: duplicate prefixes work only because ordering is by full filename.

@@ -39,6 +39,26 @@ Burst-of-50 p95 at concurrency 2 (1131 ms) meets the target; the loop stall drop
 Numbers are from a shared sandbox; re-run the script on the production host before relying on them. It measures
 the CPU-bound hashing path only, not network or database time.
 
+### Measured end to end (`scripts/measure-load.mjs`, real PostgreSQL, separate worker process, HTTP)
+`MEASURE_DB_OK=1 DATABASE_URL=<throwaway db> node scripts/measure-load.mjs 500 50 2` enqueues 500 durable jobs (a handler with ~15 ms
+simulated I/O), starts the worker as a separate process (real maintenance cycle every tick) and, while it drains, fires 50 simultaneous
+`POST /auth/login` requests (pilot burst, `HASH_CONCURRENCY=2`). It writes `loadtest_*` users and `loadtest` jobs and never deletes, so use
+a throwaway database.
+
+| Measure | Target | Measured |
+|---|---|---|
+| Login burst of 50, no job load: p50 / p95 / max | p95 < 1.5 s, no 503 | 673 / 1143 / 1188 ms, all 200 |
+| Login burst of 50 while the worker drains 500 jobs | same | 685 / 1185 / 1227 ms, all 200 |
+| Job throughput (single worker, 25 jobs per claim) | n/a | 57.9 jobs/s (500 jobs drained in 8.6 s) |
+| Oldest-due job lag (500 enqueued at once; max sampled every 100 ms) | < max(`WORKER_STALE_SECONDS`, 300 s) | 8.5 s (the backlog's age at the last job, bounded by the handler time, not by the queue) |
+| Enqueue to done, per job: p50 / p95 / max | n/a | 4.7 / 8.2 / 8.6 s |
+
+Honest caveats: these were measured in a 4 vCPU **development container** (Node 22, Postgres 16 on the same host, API, load client and
+database competing for the same CPUs), **not on the production host**; re-run the script there before relying on them. The lag figure
+is a worst case created by enqueueing the whole backlog at the same instant; steady-state lag is roughly one cycle interval
+(`NOTIFY_INTERVAL_SECONDS`). The job handler is a stand-in for I/O, so job throughput is a floor for the queue plumbing, not a measure of
+email or refund work.
+
 ## Durable background processing
 
 ### Why PostgreSQL and no external queue
@@ -61,7 +81,17 @@ throughput passes a few hundred jobs per second or work needs sub-second latency
 ### Category isolation
 `maintenanceCycle` runs holds, refunds, waitlist, loyalty, plans, alerts, quotes, renewals and then notifications (reminders,
 notification retries, push, email), each in its own try/catch. A failing step is logged and returned under `errors.<category>`;
-the rest still run. Holds are additionally isolated per reservation.
+the rest still run. Holds are additionally isolated per reservation. The loop is driven by the `STEPS` table in `apps/api/src/worker.js`
+(a category is added there, with a fallback value), and `notificationCycle()` is isolated too.
+
+### Policy for sweep-style categories
+Holds, waitlist, loyalty, plans, alerts, quotes and stale requests are not queued per item: each cycle re-scans its own table with
+atomic, idempotent SQL, so a failed run is simply repeated on the next cycle (nothing is lost, nothing runs twice). They are therefore
+not retried with backoff or dead-lettered. Instead repeated failure is made visible: the worker counts consecutive failures per
+category (`consecutive_failures` in its heartbeat stats), and once a category on a live worker has failed `STEP_FAILURE_THRESHOLD`
+cycles in a row (default 3) `get_worker_health` lists it under `repeated_failures` (worker, category, count, last error) and reports
+`healthy=false`. A single success clears it. Work that must not be repeated blindly (refunds, email, push, notification retries) uses
+the durable `jobs` table with retry, backoff and dead letters.
 
 ### Notifications can no longer undo money movement
 `notify()` called inside a caller's transaction writes in a `SAVEPOINT`. If the notification cannot be stored, only that is rolled
@@ -82,7 +112,7 @@ An email bridge outage never blocks holds or refunds (separate step, reported as
 ### Residual limitations
 * Holds, waitlist, loyalty, plans, alerts and quotes remain state-driven sweeps over their own tables (their rows already are the
   durable queue, with atomic SQL claims); only retries, outbox and dead letters use the `jobs` table.
-* Maintenance runs inside the API process by default; see "Running the worker" below to move it out.
+* In production maintenance runs in the separate worker by default (the deploy sets `WORKER_MODE=external`); the code default for dev/tests is in-process. See "Running the worker" below to move it out.
 
 ## Running the worker
 
@@ -90,13 +120,17 @@ Maintenance (holds, refunds, waitlist, loyalty, reminders, retries, email, push)
 
 | `WORKER_MODE` | Behaviour |
 |---|---|
-| unset / `inprocess` (default) | The API process runs the cycle on a timer (every `NOTIFY_INTERVAL_SECONDS`, 0 disables). Fully backwards compatible. |
+| unset / `inprocess` (code default; dev and tests; production opt-out) | The API process runs the cycle on a timer (every `NOTIFY_INTERVAL_SECONDS`, 0 disables). Fully backwards compatible. |
 | `external` | The API does **no** maintenance; run `npm run worker` (`apps/api/src/worker-main.js`, pm2 process `sportarena-worker`). Set it on both processes. |
 
 Claims are atomic in SQL, so a second worker (or an API still running in-process during a rollout) never double-processes.
-Deploy: set the repository variable `WORKER_MODE=external`; `scripts/deploy-remote.sh` then starts `sportarena-worker` under pm2
-with a 30 s kill timeout. Note the deploy only writes `WORKER_MODE` when the variable is non-empty, so to go back to in-process set
-it to `inprocess` (the worker process is removed on that deploy).
+**Production deploys run the separate worker by default.** `.github/workflows/deploy.yml` forwards `vars.WORKER_MODE || 'external'`,
+and `scripts/deploy-remote.sh` writes the effective value to `.env` on every deploy (so API and worker always agree), starts the pm2
+process `sportarena-worker` (30 s kill timeout) after the API, and waits up to 20 s for `/health/worker` to answer (a warning, not a
+failure, if it does not). Explicit opt-out: set the repository variable `WORKER_MODE=inprocess`; the next deploy writes it, removes
+the worker process and the API runs maintenance itself again. Any other value is treated as `external` with a warning. The secret
+names are unchanged. This path has been syntax-checked (`bash -n`, YAML parse) but not run against the real host; the first
+deploy's "Server report" (`== worker health`, `pm2 ls`) is the evidence to read.
 
 ### Graceful shutdown
 `SIGTERM` / `SIGINT` (pm2 stop/restart, deploys): the process stops starting new cycles, waits for the cycle in flight (the API also
@@ -107,7 +141,8 @@ forces exit 1. Work interrupted by a crash (SIGKILL, power loss) is recovered by
 * `GET /health/worker` (no auth, for uptime monitors): 200 while a worker has beaten within `WORKER_STALE_SECONDS` (default 180), else 503.
 * `get_worker_health` (`GET /admin/worker-health`, admin; also MCP): every worker with last beat, last cycle (duration, errors), cycles /
   failed cycles, per-category last run, runs and failures; job queue depth by category and status; oldest due job (lag); dead letters.
-  `healthy=false` when no live worker exists or work is overdue by more than max(`WORKER_STALE_SECONDS`, 300 s).
+  `repeated_failures` lists categories failing several cycles in a row (see "Policy for sweep-style categories").
+  `healthy=false` when no live worker exists, work is overdue by more than max(`WORKER_STALE_SECONDS`, 300 s), or a category is repeatedly failing.
 * Heartbeats live in `worker_heartbeats` (migration 058); rows are kept after a worker stops.
 
 ### Logs and correlation ids
@@ -127,7 +162,7 @@ runs / failures / mean ms) are stored in its heartbeat and shown by `get_worker_
 ### Runbook
 | Symptom | Check | Action |
 |---|---|---|
-| `/health/worker` 503 | `pm2 ls`, `pm2 logs sportarena-worker`; the deploy "Server report" prints both | Restart via a deploy (workflow dispatch). If `WORKER_MODE=external` is set but no worker runs, nothing is processed. |
+| `/health/worker` 503 | `pm2 ls`, `pm2 logs sportarena-worker`; the deploy "Server report" prints both | Restart via a deploy (workflow dispatch). If `WORKER_MODE=external` (the production default) but no worker runs, nothing is processed. |
 | Reminders / email late | `get_worker_health`: `oldest_due_seconds`, category `failures` | Fix the cause (e.g. `NOTIFY_WEBHOOK_URL`); deliveries retry with backoff by themselves. |
 | Dead letters growing | `list_jobs` (status `dead`) | Fix the cause, then `requeue_job` for each; refunds keep their intent so no double refund. |
 | Login 503 `busy` | `get_metrics`: `hashing.rejected`, `event_loop_delay_ms` | Raise `HASH_CONCURRENCY` (up to spare cores) or add an API instance. |

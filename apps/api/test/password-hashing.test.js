@@ -63,3 +63,24 @@ test('overload returns a fast 503 busy error instead of queueing without bound',
   assert.equal(hashingStats().active, 0);
   assert.equal(hashingStats().queued, 0);
 });
+
+// hashPassword/verifyPassword return Promises: using one un-awaited makes `!verifyPassword(...)` always false
+// (any password accepted) and stores a Promise as the new hash. Guard every call site in src/.
+test('every hashPassword/verifyPassword call in src is awaited or returned', async () => {
+  const { readdirSync, readFileSync, statSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const files = [];
+  const walk = (d) => { for (const f of readdirSync(d)) { const p = join(d, f); statSync(p).isDirectory() ? walk(p) : p.endsWith('.js') && files.push(p); } };
+  walk(new URL('../src', import.meta.url).pathname);
+  const bad = [];
+  for (const f of files.filter((p) => !p.endsWith('/crypto.js'))) {
+    readFileSync(f, 'utf8').split('\n').forEach((line, i) => {
+      for (const m of line.matchAll(/\b(hashPassword|verifyPassword)\(/g)) {
+        const before = line.slice(0, m.index).trimEnd().replace(/\($/, '');
+        const cached = /\?\?=$/.test(before);   // `x ??= hashPassword(...)` caches the promise and callers await it
+        if (!/(await|return)$/.test(before) && !cached && !/^(import|export)/.test(line.trim())) bad.push(`${f}:${i + 1}`);
+      }
+    });
+  }
+  assert.deepEqual(bad, []);
+});

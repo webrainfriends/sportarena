@@ -9,7 +9,7 @@ import { paymentsEnabled, refundFor } from '../payments/service.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { audit, isAdmin, mustFind, PUBLIC_USER } from '../helpers.js';
 import { decrypt, encrypt } from '../crypto.js';
-import { clinicalCredential, requireVerifiedProvider } from '../clinical-access.js';
+import { clinicalCredential, lockCredential, requireVerifiedProvider } from '../clinical-access.js';
 import { guardianLink, hasConsent, requireConsent } from '../youth.js';
 
 const dt = z.string().datetime({ offset: true });
@@ -27,7 +27,7 @@ cap({
 });
 
 cap({
-  name: 'book_appointment', method: 'POST', path: '/appointments', tag: 'Health', status: 201,
+  name: 'book_appointment', credential: true, method: 'POST', path: '/appointments', tag: 'Health', status: 201,
   summary: 'Request an appointment with a physio/doctor. If the provider has published weekly hours the time must be one of list_provider_slots (and not clash with time off or another appointment); otherwise any free time can be requested. The reason is encrypted. The provider is notified.',
   input: z.object({ provider_id: id, starts_at: dt, duration_min: z.number().int().min(10).max(240).default(30), mode: z.enum(['in_person', 'remote']).default('in_person'), followup_id: id.optional().describe('the follow-up this appointment is for'), reason: z.string().max(1000).optional() }),
   async handler({ user }, i) {
@@ -82,7 +82,7 @@ cap({
 });
 
 cap({
-  name: 'update_appointment', method: 'PATCH', path: '/appointments/:id', tag: 'Health',
+  name: 'update_appointment', credential: true, method: 'PATCH', path: '/appointments/:id', tag: 'Health',
   summary: 'Provider confirms/completes; either party can cancel. Moves follow the shared lifecycle (src/lifecycle.js): requested -> confirmed -> completed, cancel until completed, unanswered requests expire on their own. Completing needs payment (if required) and a start time that has passed. A final appointment (completed, cancelled, expired) cannot be changed. The other party is notified.',
   input: z.object({ id, status: z.enum(['confirmed', 'completed', 'cancelled']), reason: z.string().trim().max(500).optional().describe('why (kept, encrypted, in the appointment timeline)') }),
   async handler({ user }, i) {
@@ -190,21 +190,27 @@ cap({
 });
 
 cap({
-  name: 'add_medical_record', method: 'POST', path: '/medical/records', tag: 'Health', auth: ['physio', 'doctor'], status: 201,
+  name: 'add_medical_record', credential: true, method: 'POST', path: '/medical/records', tag: 'Health', auth: ['physio', 'doctor'], status: 201,
   summary: 'Provider writes an injury/checkup/clearance/rehab note for an athlete who granted access. Text is encrypted.',
   input: z.object({ athlete_id: id, sport_id: id.optional().describe('the sport this concerns; needed when your credential is limited to one sport and the athlete plays several'), kind: z.enum(['injury', 'checkup', 'clearance', 'rehab', 'note']), clearance: z.enum(['cleared', 'restricted', 'not_cleared']).optional(), summary: z.string().min(1).max(500), details: z.string().max(5000).optional() }),
   async handler({ user }, i) {
-    await requireVerifiedProvider(user.id, { action: 'add_medical_record', athleteId: i.athlete_id, sportId: i.sport_id ?? null });
+    const cred = await requireVerifiedProvider(user.id, { action: 'add_medical_record', athleteId: i.athlete_id, sportId: i.sport_id ?? null });
     if (!(await hasGrant(i.athlete_id, user.id))) throw forbidden('The athlete has not granted you access');
-    const r = await one('INSERT INTO medical_records(athlete_id, provider_id, kind, clearance, summary_enc, details_enc) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, athlete_id, kind, clearance, created_at',
-      [i.athlete_id, user.id, i.kind, i.clearance ?? null, encrypt(i.summary, 'medical_records.summary'), encrypt(i.details, 'medical_records.details')]);
+    // atomic: the credential case and the athlete's grant are locked FOR SHARE and re-read in the same transaction as the insert, so a
+    // revocation / withdrawal that commits first is seen here and one that commits later waits for this write (nothing lands after it)
+    const r = await tx(async (c) => {
+      await lockCredential(c, cred);
+      if (!(await c.query("SELECT 1 FROM medical_grants WHERE athlete_id=$1 AND provider_id=$2 AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now()) AND scope='full' FOR SHARE", [i.athlete_id, user.id])).rows[0]) throw forbidden('The athlete has not granted you access');
+      return (await c.query('INSERT INTO medical_records(athlete_id, provider_id, kind, clearance, summary_enc, details_enc) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, athlete_id, kind, clearance, created_at',
+        [i.athlete_id, user.id, i.kind, i.clearance ?? null, encrypt(i.summary, 'medical_records.summary'), encrypt(i.details, 'medical_records.details')])).rows[0];
+    });
     await audit(null, user.id, 'write_clinical', 'medical_records', r.id);
     return r;
   },
 });
 
 cap({
-  name: 'list_medical_records', method: 'GET', path: '/medical/records', tag: 'Health',
+  name: 'list_medical_records', credential: true, method: 'GET', path: '/medical/records', tag: 'Health',
   summary: 'Athletes: your own records (all of them). Providers: pass athlete_id (requires a current verified credential and consent); you see records you wrote plus those written since the grant, or the whole history if the athlete shared it (history `all`). Decrypted; every read is audit-logged.',
   input: z.object({ athlete_id: id.optional(), ...page }),
   async handler({ user }, i) {
@@ -224,7 +230,7 @@ cap({
 });
 
 cap({
-  name: 'get_clearance', method: 'GET', path: '/people/:id/clearance', tag: 'Health',
+  name: 'get_clearance', credential: true, method: 'GET', path: '/people/:id/clearance', tag: 'Health',
   summary: 'Fit-to-play status only (cleared / restricted / not_cleared) — no clinical detail. Visible to the athlete, consented providers and owners of teams the athlete plays for.',
   input: z.object({ id }),
   async handler({ user }, i) {

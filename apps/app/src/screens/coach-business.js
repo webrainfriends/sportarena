@@ -312,7 +312,7 @@ export function CoachAnalytics() {
     try {
       const r = await api.get('/coach/report', { from, to });
       if (Platform.OS === 'web' && typeof document !== 'undefined') { const u = URL.createObjectURL(new Blob([r.csv], { type: 'text/csv' })); const l = document.createElement('a'); l.href = u; l.download = r.filename; l.click(); URL.revokeObjectURL(u); toast(`${r.rows} lines exported`); }
-      else toast('Open SportArena in a browser to download the statement');
+      else toast('Open Gotmygame in a browser to download the statement');
     } catch (e) { toast(e.message); }
   };
   const maxMonth = Math.max(1, ...(d?.by_month ?? []).map((m) => m.income_cents));

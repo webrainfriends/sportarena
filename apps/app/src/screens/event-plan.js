@@ -155,6 +155,14 @@ export function Budget({ id, p, toast, reload }) {
         {s.spend_cap_cents ? <Row title={`${s.cap_used_pct}% of the ${m(s.spend_cap_cents, cur)} cap`} sub={`still to pay ${m(s.expense.still_to_pay_cents, cur)}`} /> : null}
         {s.suggested_entry_fee_income_cents ? <Row title={`${s.entries_accepted} entries × fee = ${m(s.suggested_entry_fee_income_cents, cur)}`} sub="Add it as an income line to include it in the forecast" /> : null}
       </Section>
+      {b.data.sponsorship?.by_currency.length || b.data.sponsorship?.offers_awaiting_answer ? (
+        <Section title="Sponsorship agreements" color={c.cyan}>
+          {b.data.sponsorship.by_currency.map((a) => (
+            <Row key={a.currency} title={`${a.currency}: ${m(a.received_cents, a.currency)} received of ${m(a.committed_cents, a.currency)} committed`}
+              sub={`${m(a.outstanding_cents, a.currency)} outstanding${a.overdue_cents ? ` · ${m(a.overdue_cents, a.currency)} overdue` : ''}${a.reported_unverified_cents ? ` · ${m(a.reported_unverified_cents, a.currency)} reported, not yet confirmed` : ''}`} />))}
+          {b.data.sponsorship.offers_awaiting_answer ? <T size={12} color={c.mute}>{b.data.sponsorship.offers_awaiting_answer} offer(s) not yet accepted — not counted as income.</T> : null}
+          <T size={12} color={c.mute}>Agreed sponsorship dues are shown separately from the income lines above so nothing is counted twice. Only payments you confirmed count as received.</T>
+        </Section>) : null}
       {['expense', 'income'].map((dir) => (
         <Section key={dir} title={dir === 'expense' ? 'Spend' : 'Income'} color={dir === 'expense' ? c.orange : c.lime}>
           {group(dir).length ? group(dir).map((l) => {

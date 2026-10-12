@@ -184,7 +184,7 @@ cap({
     const recap = await generate({
       kind: `recap_${i.tone}`, subjectId: i.id, entity: 'fixtures', user, facts, schema: recapSchema, maxTokens: 900,
       shape: '{"headline":string (max 100 characters),"body":string (max 120 words),"hashtags":[string] (max 5)}',
-      fallback: () => ({ headline: lead, body: `${lead} in ${st.ruleset.label}.${st.score.sets?.length ? ` Sets: ${st.score.sets.map((s) => `${s.home}–${s.away}`).join(', ')}.` : ''}${published ? '' : ' (Not official until the score sheet is published.)'}`, hashtags: ['#SportArena'] }),
+      fallback: () => ({ headline: lead, body: `${lead} in ${st.ruleset.label}.${st.score.sets?.length ? ` Sets: ${st.score.sets.map((s) => `${s.home}–${s.away}`).join(', ')}.` : ''}${published ? '' : ' (Not official until the score sheet is published.)'}`, hashtags: ['#Gotmygame'] }),
       system: `You write short sports match recaps. Tone: ${{ hype: 'energetic and fun for Gen Z, punchy lines, a few emojis, never cringe', neutral: 'clear and friendly', formal: 'formal press-release style' }[i.tone]}. Use only the teams, score and moments in the data; never invent player names, stats or quotes. Keep the body under 120 words.`,
       prompt: `Match facts: ${data(facts)}`,
     });

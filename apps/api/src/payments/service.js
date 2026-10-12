@@ -33,7 +33,7 @@ export async function describePurpose(c, type, id) {
   }
   if (type === 'gift_card') {
     const g = await q("SELECT purchaser_id AS payer_id, amount_cents AS amount, currency, status FROM gift_cards WHERE id=$1 FOR UPDATE");
-    return g && { payerId: g.payer_id, amount: Number(g.amount), currency: g.currency, name: 'SportArena gift card', payable: g.status === 'awaiting_payment' };
+    return g && { payerId: g.payer_id, amount: Number(g.amount), currency: g.currency, name: 'Gotmygame gift card', payable: g.status === 'awaiting_payment' };
   }
   if (type === 'venue_plan') {
     const u = await q("SELECT up.user_id AS payer_id, up.price_cents AS amount, up.currency, up.status, up.name, v.name AS venue FROM user_plans up JOIN venues v ON v.id=up.venue_id WHERE up.id=$1 FOR UPDATE OF up");
@@ -47,7 +47,7 @@ export async function describePurpose(c, type, id) {
 async function fulfil(c, type, id) {
   const sql = {
     shop_order: "UPDATE shop_orders SET status='placed' WHERE id=$1 AND status='awaiting_payment'",
-    coach_hire: "UPDATE coach_hires SET payment_status='paid', status=CASE WHEN request_response_id IS NOT NULL AND status='requested' THEN 'confirmed' ELSE status END WHERE id=$1 AND payment_status='unpaid' AND status<>'cancelled'",
+    coach_hire: "UPDATE coach_hires SET payment_status='paid', status=CASE WHEN request_response_id IS NOT NULL AND status='requested' THEN 'confirmed' ELSE status END WHERE id=$1 AND payment_status='unpaid' AND status IN ('requested','confirmed')",
     insurance_policy: "UPDATE insurance_policies SET status='active' WHERE id=$1 AND status='pending_payment'",
     appointment: "UPDATE appointments SET payment_status='paid', updated_at=now() WHERE id=$1 AND payment_status='unpaid' AND status IN ('requested','confirmed')",
   }[type];

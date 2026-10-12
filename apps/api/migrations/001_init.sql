@@ -1,4 +1,4 @@
--- SportArena MVP schema.
+-- Gotmygame MVP schema.
 -- Convention: columns ending in _enc hold AES-256-GCM ciphertext (see src/crypto.js);
 -- columns ending in _idx hold HMAC-SHA256 blind indexes used only for exact-match lookups.
 CREATE EXTENSION IF NOT EXISTS pgcrypto;

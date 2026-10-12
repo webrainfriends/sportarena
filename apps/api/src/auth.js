@@ -21,13 +21,14 @@ export async function authenticate(authorization) {
       `UPDATE api_tokens t SET last_used_at = now() FROM users u
         WHERE t.token_hash = $1 AND t.revoked_at IS NULL AND (t.expires_at IS NULL OR t.expires_at > now()) AND u.id = t.user_id
         RETURNING u.id, u.handle, u.display_name, u.roles, u.avatar_emoji, u.avatar_color, u.avatar_url, u.avatar_cutout,
-                  t.id AS _tid, t.scopes AS _scopes, t.resources AS _resources, t.expires_at AS _exp`,
+                  t.id AS _tid, t.scopes AS _scopes, t.resources AS _resources, t.expires_at AS _exp,
+                  EXISTS (SELECT 1 FROM user_mfa m WHERE m.user_id = u.id AND m.enabled_at IS NOT NULL AND m.disabled_at IS NULL) AS _mfa`,
       [sha256(tok)],
     );
     if (!row) return null;
-    const { _tid, _scopes, _resources, _exp, ...user } = row;
+    const { _tid, _scopes, _resources, _exp, _mfa, ...user } = row;
     // Non-enumerable so it is never serialised into a response; invoke() reads it to enforce scope/resources.
-    Object.defineProperty(user, 'credential', { value: { type: 'api_token', id: _tid, scopes: _scopes, resources: _resources, expires_at: _exp }, enumerable: false });
+    Object.defineProperty(user, 'credential', { value: { type: 'api_token', id: _tid, scopes: _scopes, resources: _resources, expires_at: _exp, owner_mfa_enabled: _mfa }, enumerable: false });
     return user;
   }
   try {

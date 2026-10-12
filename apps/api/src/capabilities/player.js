@@ -55,7 +55,7 @@ function foldMetrics(rows) {
 
 cap({
   name: 'list_my_sport_profiles', method: 'GET', path: '/me/sport-profiles', tag: 'Player',
-  summary: 'Your sport profiles as dashboard cards — the default profile is always first. Each card carries the match summary over your whole history (what you logged plus official SportArena games/fixtures you played — counted once), `official_summary` (official only), `self_summary` (logged/imported only), totals per metric and recent form.',
+  summary: 'Your sport profiles as dashboard cards — the default profile is always first. Each card carries the match summary over your whole history (what you logged plus official Gotmygame games/fixtures you played — counted once), `official_summary` (official only), `self_summary` (logged/imported only), totals per metric and recent form.',
   async handler({ user }) {
     const [profiles, sums, metrics, form] = await Promise.all([
       many(`SELECT ${PROFILE_COLS} FROM sport_profiles p JOIN sports s ON s.id=p.sport_id WHERE p.user_id=$1 ${PROFILE_ORDER}`, [user.id]),
@@ -90,7 +90,7 @@ cap({
 
 cap({
   name: 'list_my_detected_sports', method: 'GET', path: '/me/detected-sports', tag: 'Player',
-  summary: 'Sports where SportArena officially knows you played (finished games, fixtures you were confirmed in) but you have no athlete sport profile yet. Nothing about level/club/position is invented — add the sport and this history appears on its card at once.',
+  summary: 'Sports where Gotmygame officially knows you played (finished games, fixtures you were confirmed in) but you have no athlete sport profile yet. Nothing about level/club/position is invented — add the sport and this history appears on its card at once.',
   async handler({ user }) {
     return many(`${ACTIVITIES_CTE}
       SELECT s.slug AS sport_slug, s.name AS sport, s.emoji AS sport_emoji, count(*)::int AS matches,
@@ -223,7 +223,7 @@ cap({
 
 cap({
   name: 'list_my_matches', method: 'GET', path: '/me/matches', tag: 'Player',
-  summary: 'Your unified match history, newest first: matches you logged or imported plus official SportArena games/fixtures you played, each once and tagged with `provenance` (manual | imported | official_game | official_fixture) and `verification`. Official rows have a source reference (game_id / fixture_id / event_id), cannot be deleted here, and carry your private rating/notes if you added any. Without sport_profile_id, official sports you have no profile for are included too (sport_profile_id null).',
+  summary: 'Your unified match history, newest first: matches you logged or imported plus official Gotmygame games/fixtures you played, each once and tagged with `provenance` (manual | imported | official_game | official_fixture) and `verification`. Official rows have a source reference (game_id / fixture_id / event_id), cannot be deleted here, and carry your private rating/notes if you added any. Without sport_profile_id, official sports you have no profile for are included too (sport_profile_id null).',
   input: z.object({
     sport_profile_id: id.optional(), sport: z.string().max(60).optional().describe('sport slug'),
     source: z.enum(['all', 'self', 'official']).default('all'),

@@ -1,14 +1,14 @@
 # Deploying to EC2
 
-SportArena deploys to an EC2 host that also runs other apps, using GitHub Actions → SSH → pm2 +
+Gotmygame deploys to an EC2 host that also runs other apps, using GitHub Actions → SSH → pm2 +
 Docker Postgres + nginx) and the same credentials. Everything it creates is namespaced, so existing apps are untouched.
 
-| Thing | SportArena | Notes |
+| Thing | Gotmygame | Notes |
 |---|---|---|
 | Public site (nginx) | **9255** (plain HTTP for now; HTTPS via `ENABLE_TLS`) | own file `/etc/nginx/sites-available/sportarena`; other sites are never edited |
 | Postgres (Docker, 127.0.0.1 only) | **7255** | container `sportarena-postgres`, volume `sportarena_pgdata`, db/user `sportarena` |
 | API (pm2, localhost via nginx) | 4255 | process `sportarena-api`; not exposed |
-| Worker (pm2, optional) | none | process `sportarena-worker`, only when the repository variable `WORKER_MODE=external` is set (see `docs/operations.md`) |
+| Worker (pm2) | none | process `sportarena-worker`, started by default (API gets `WORKER_MODE=external`); opt out with repository variable `WORKER_MODE=inprocess` (see `docs/operations.md`) |
 | Web build | `/var/www/sportarena-web` | Expo web export, same origin as the API |
 | App dir / env | `~/sportarena`, `~/sportarena/.env` (mode 600) | created on first deploy |
 | Master key | `/var/lib/sportarena/master.key.enc` | **wrapped by AWS KMS**; plaintext never on disk |
@@ -30,13 +30,27 @@ Docker Postgres + nginx) and the same credentials. Everything it creates is name
 Then open **http://13.250.133.109:9255**.
 
 ## Why it can't break the existing nginx
-- Preflight aborts if 4255 / 7255 / 9255 are already used by something that isn't SportArena.
+- Preflight aborts if 4255 / 7255 / 9255 are already used by something that isn't Gotmygame.
 - Only `sites-available/sportarena` (and its symlink) is written. `nginx -t` runs before reload; if it fails, our site
   is removed and nothing is reloaded. Reload is graceful (`systemctl reload`), never a restart.
 - The Postgres container is only created if absent and **never wiped** by a deploy; a credential mismatch aborts the
   deploy for a human to fix (we deliberately never recreate it automatically, because the
   volume holds encrypted user data).
 - If anything fails before the cut-over, the previous code and running app stay in place.
+
+## Custom domain (gotmygame.com)
+`scripts/configure-domain.sh` (called at the end of every deploy, modelled on myhealthpal's) adds a **separate** nginx site
+`sites-available/sportarena-domain` that answers only for `gotmygame.com` / `www.gotmygame.com` on ports 80/443 and forwards
+everything to the existing `:9255` site (so `:9255` keeps working and stays the single place that routes web, `/api/` and `/mcp`).
+- It never claims `default_server`, so other apps on 80/443 (e.g. `eyemyhealth.com`) keep their own hostnames; it skips if a
+  non-nginx process holds 80/443; every change goes through `nginx -t` and is rolled back on failure; it never fails the deploy.
+- **Your steps (only you can do these):** add DNS **A records** for `@` and `www` pointing at `13.250.133.109`, and allow
+  inbound TCP **80** and **443** in the security group. The first deploy after DNS resolves obtains a free Let's Encrypt
+  certificate (auto-renewed by certbot's timer) and redirects http→https. Until then the domain is served over plain HTTP, or
+  skipped if DNS isn't pointed yet - the deploy log's `[domain]` lines say which.
+- Optional repo secret `LETSENCRYPT_EMAIL` for expiry notices. Set `APP_DOMAIN` to empty in `deploy.yml` to turn it off.
+- Behind the domain, the `:9255` site passes through the domain's `X-Forwarded-Proto`, so the API sees `https` (Secure cookies);
+  the domain's origins are added to `CORS_ORIGINS`. For Google sign-in add the domain to the OAuth authorised origins.
 
 ## Security notes
 - **⚠️ In transit — currently plain HTTP.** `ENABLE_TLS: "false"` in `deploy.yml` serves the site over HTTP on 9255, so
@@ -75,7 +89,7 @@ The workflow's first step, **Check SSH key**, validates `EC2_SSH_KEY` and prints
 ## Operating it
 ```bash
 pm2 logs sportarena-api
-pm2 logs sportarena-worker             # only when WORKER_MODE=external
+pm2 logs sportarena-worker             # absent only if WORKER_MODE=inprocess
 curl -s localhost:4255/health/worker   # 200 while a worker is beating, 503 otherwise
 sudo docker logs sportarena-postgres
 psql "$(grep ^DATABASE_URL ~/sportarena/.env | cut -d= -f2-)"   # DB shell (on the host)

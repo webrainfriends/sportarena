@@ -118,7 +118,7 @@ cap({
     const { org, role: mine } = await orgFor(user, i.id, STAFF, { write: true });
     if (i.role === 'owner' && mine !== 'owner') throw forbidden('Only an owner can invite another owner');
     const u = await person(i.person);
-    if (!u) throw notFound('Person (they need a SportArena account first)');
+    if (!u) throw notFound('Person (they need a Gotmygame account first)');
     const m = await one("INSERT INTO organisation_members(organisation_id, user_id, role, invited_by) VALUES ($1,$2,$3,$4) RETURNING id, organisation_id, user_id, role, status, invited_at", [i.id, u.id, i.role, user.id]); // live-membership unique index -> 409 on repeat
     await notify(null, u.id, { kind: 'org_invite', title: `Invitation to ${org.name}`, body: `You have been invited to join ${org.name} as ${i.role}.`, data: { organisation_id: i.id } });
     await audit(null, user.id, 'invite_org_member', 'organisations', i.id);

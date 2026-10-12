@@ -1,4 +1,4 @@
-# 🏆 SportArena
+# 🏆 Gotmygame
 
 **One platform for everyone who dreams of sport** — athletes, coaches, referees, organizers, venues, sponsors,
 physios & doctors, suppliers and insurers. **API-first. MCP-first.** One React Native codebase for iOS, Android and web.

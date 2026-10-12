@@ -1,4 +1,4 @@
-# Deploys SportArena to its EC2 host over SSH with the sportarena.pem deploy key (repo secret EC2_SSH_KEY).
+# Deploys Gotmygame to its EC2 host over SSH with the sportarena.pem deploy key (repo secret EC2_SSH_KEY).
 #
 # It runs side by side with the apps already on the box and never touches them:
 #   - nginx:    its own site file (sites-available/sportarena) on NGINX_PORT (plain HTTP for now; set
@@ -15,7 +15,7 @@
 #   1. Repo secrets (Settings -> Secrets and variables -> Actions):
 #        EC2_SSH_KEY  - the sportarena.pem private key (whole file, incl. BEGIN/END lines)
 #        KMS_KEY_ID   - KMS key (ARN, id or alias) the instance role may GenerateDataKey/Decrypt with
-#   2. Security group: allow inbound TCP 9255. Do NOT open 7255 (DB) or 4255 (API) - both are for localhost.
+#   2. Security group: allow inbound TCP 9255.  For gotmygame.com also allow 80 and 443 and point its A records (@ and www) at the instance IP. Do NOT open 7255 (DB) or 4255 (API) - both are for localhost.
 #   3. Merging to main deploys automatically; you can also run "Deploy to EC2" from the Actions tab.
 #      (The manual button only appears once main is the repository's DEFAULT branch - Settings -> General.
 #      The push trigger works regardless.)
@@ -39,6 +39,8 @@ env:
   ENABLE_TLS: "false"
   DB_PORT: 7255       # Postgres container, bound to 127.0.0.1
   PUBLIC_IP: 13.250.133.109
+  # The app's own domain, served on 80/443 in addition to NGINX_PORT (scripts/configure-domain.sh). Empty turns it off.
+  APP_DOMAIN: gotmygame.com
 
 permissions:
   contents: read
@@ -165,6 +167,7 @@ jobs:
           BRANCH: ${{ github.ref_name }}
           REPO_URL: https://github.com/${{ github.repository }}.git
           PUBLIC_HOST: ec2-13-250-133-109.ap-southeast-1.compute.amazonaws.com
+          LETSENCRYPT_EMAIL: ${{ secrets.LETSENCRYPT_EMAIL }}   # optional: certificate expiry notices
           KMS_KEY_ID: ${{ secrets.KMS_KEY_ID }}
           KMS_REGION: ap-southeast-1
           # optional payment providers: a provider is switched on when its keys exist (see docs/payments.md)
@@ -180,12 +183,15 @@ jobs:
           # optional: switches on Claude-written recaps, plan ideas and sheet reviews (docs/event-command-centre.md); without it they use built-in rules
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           AI_MODEL: ${{ vars.AI_MODEL }}
-          WORKER_MODE: ${{ vars.WORKER_MODE }}
+          # background processing: the separate pm2 worker is the default; set the repository variable WORKER_MODE=inprocess to opt out (docs/operations.md)
+          WORKER_MODE: ${{ vars.WORKER_MODE || 'external' }}
           # platform owner account (see docs/partners.md): created on first start; the password is a repo secret and never stored in git
           PLATFORM_ADMIN_EMAIL: ${{ vars.PLATFORM_ADMIN_EMAIL || 'platform@sportarena.com' }}
           PLATFORM_ADMIN_HANDLE: ${{ vars.PLATFORM_ADMIN_HANDLE || 'platformarena' }}
           PLATFORM_ADMIN_NAME: ${{ vars.PLATFORM_ADMIN_NAME || 'PlatformArena' }}
           PLATFORM_ADMIN_PASSWORD: ${{ secrets.PLATFORM_ADMIN_PASSWORD }}
+          # two-step verification for doctors/physios/admins is ON in production; set the repo variable MFA_ENFORCE=false only as a temporary rollout opt-out (docs/auth.md)
+          MFA_ENFORCE: ${{ vars.MFA_ENFORCE }}
         run: |
           set -euo pipefail
           KEYFILE="$(mktemp)"; trap 'rm -f "$KEYFILE"' EXIT
@@ -195,7 +201,7 @@ jobs:
           TARGET="${EC2_USER}@${EC2_HOST}"
           scp "${SSH_OPTS[@]}" scripts/deploy-remote.sh "$TARGET:/tmp/sportarena-deploy.sh"
           REMOTE_ENV=""
-          for v in APP_DIR BRANCH REPO_URL APP_PORT NGINX_PORT DB_PORT ENABLE_TLS PUBLIC_HOST PUBLIC_IP KMS_KEY_ID KMS_REGION STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET PAYPAL_CLIENT_ID PAYPAL_CLIENT_SECRET PAYPAL_WEBHOOK_ID PAYPAL_ENV PAYMENT_CURRENCY EXPO_ACCESS_TOKEN ANTHROPIC_API_KEY AI_MODEL WORKER_MODE PLATFORM_ADMIN_EMAIL PLATFORM_ADMIN_HANDLE PLATFORM_ADMIN_NAME PLATFORM_ADMIN_PASSWORD; do
+          for v in APP_DIR BRANCH REPO_URL APP_PORT NGINX_PORT DB_PORT ENABLE_TLS PUBLIC_HOST PUBLIC_IP APP_DOMAIN LETSENCRYPT_EMAIL KMS_KEY_ID KMS_REGION STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET PAYPAL_CLIENT_ID PAYPAL_CLIENT_SECRET PAYPAL_WEBHOOK_ID PAYPAL_ENV PAYMENT_CURRENCY EXPO_ACCESS_TOKEN ANTHROPIC_API_KEY AI_MODEL WORKER_MODE PLATFORM_ADMIN_EMAIL PLATFORM_ADMIN_HANDLE PLATFORM_ADMIN_NAME PLATFORM_ADMIN_PASSWORD; do
             REMOTE_ENV+="$(printf '%s=%q ' "$v" "${!v:-}")"
           done
           timeout 20m ssh -T "${SSH_OPTS[@]}" "$TARGET" "env $REMOTE_ENV bash /tmp/sportarena-deploy.sh"
@@ -214,6 +220,8 @@ jobs:
           script: |
             echo "== listeners on 9255/4255/7255"; sudo ss -ltnp 2>/dev/null | grep -E ':(9255|4255|7255)\b' || echo "nothing listening"
             echo "== nginx sites enabled"; ls -1 /etc/nginx/sites-enabled 2>&1; sudo nginx -t 2>&1 | tail -2
+            echo "== nginx routing map (read-only: file, listen, server_name, location, proxy_pass, root)"; sudo sh -c 'for f in /etc/nginx/sites-enabled/* /etc/nginx/conf.d/*.conf; do [ -e "$f" ] || continue; echo "-- $f ($(readlink -f "$f"))"; grep -nE "^[[:space:]]*(listen|server_name|location|proxy_pass|root|return|default_server)\b" "$f" | head -60; done' 2>&1
+            echo "== nginx sites-available (all names)"; ls -1 /etc/nginx/sites-available 2>&1 | head -60
             echo "== pm2"; pm2 ls 2>&1 | head -20
             echo "== docker (sportarena)"; sudo docker ps -a --filter name=sportarena --format '{{.Names}} | {{.Status}} | {{.Ports}}' 2>&1
             echo "== host firewall"; sudo ufw status 2>&1 | head -12

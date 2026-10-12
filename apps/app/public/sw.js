@@ -4,8 +4,8 @@ self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
 
 self.addEventListener('push', (event) => {
   let p = {};
-  try { p = event.data ? event.data.json() : {}; } catch { p = { title: 'SportArena', body: event.data ? event.data.text() : '' }; }
-  event.waitUntil(self.registration.showNotification(p.title || 'SportArena', {
+  try { p = event.data ? event.data.json() : {}; } catch { p = { title: 'Gotmygame', body: event.data ? event.data.text() : '' }; }
+  event.waitUntil(self.registration.showNotification(p.title || 'Gotmygame', {
     body: p.body || '', icon: '/icon-192.png', badge: '/icon-192.png', tag: p.data && p.data.notification_id, data: p.data || {},
   }));
 });
