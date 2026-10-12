@@ -92,8 +92,8 @@ cap({
 
 const decision = z.enum(['pending', 'approved', 'rejected']);
 cap({
-  name: 'list_access_requests', method: 'GET', path: '/admin/access-requests', tag: 'Identity', auth: ['platform_admin'],
-  summary: 'Super admin: people who signed in with Google, newest first. Filter by status (default pending). Shows handle, display name, decrypted email (audit-logged) and the decision so far.',
+  name: 'list_access_requests', method: 'GET', path: '/admin/access-requests', tag: 'Identity', auth: ['admin', 'platform_admin'],
+  summary: 'Platform team: people who signed in with Google, newest first. Filter by status (default pending). Shows handle, display name, decrypted email (audit-logged) and the decision so far.',
   input: z.object({ status: decision.default('pending'), ...page }),
   async handler({ user }, i) {
     const rows = await many(
@@ -106,8 +106,8 @@ cap({
 });
 
 cap({
-  name: 'decide_access', method: 'POST', path: '/admin/access-requests/:user_id', tag: 'Identity', auth: ['platform_admin'],
-  summary: 'Super admin: approve or reject a person\'s access. Approved = they can add and change things; rejected = they are signed out and cannot sign in with Google (reversible: decide again). Nothing is deleted. Audit-logged.',
+  name: 'decide_access', method: 'POST', path: '/admin/access-requests/:user_id', tag: 'Identity', auth: ['admin', 'platform_admin'],
+  summary: 'Platform team: approve or reject a person\'s access. Approved = they can add and change things; rejected = they are signed out and cannot sign in with Google (reversible: decide again). Nothing is deleted. Audit-logged.',
   input: z.object({ user_id: id, decision: z.enum(['approved', 'rejected']) }),
   async handler({ user }, i) {
     if (i.user_id === user.id) throw badRequest('You cannot change your own access');
