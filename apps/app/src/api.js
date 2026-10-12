@@ -47,6 +47,12 @@ export function refreshSession() {
 let onUnauthorized = () => {};
 export const setUnauthorizedHandler = (fn) => { onUnauthorized = fn; };
 
+// The API refuses clinical/admin actions until the person's two-step verification is set up (or confirmed in this session).
+// The app shows a banner with a link to the set-up screen instead of a bare error.
+export const MFA_CODES = ['mfa_enrollment_required', 'mfa_required'];
+let onMfaRequired = () => {};
+export const setMfaRequiredHandler = (fn) => { onMfaRequired = fn; };
+
 export class ApiError extends Error {
   constructor(status, body) {
     const nice = (path) => String(path).split('.').filter((x) => !/^\d+$/.test(x)).join(' › ').replace(/_(cents|bp)$/, '').replace(/_/g, ' ');
@@ -66,12 +72,13 @@ async function request(method, path, data, retried = false) {
       body: method !== 'GET' && method !== 'DELETE' && data ? JSON.stringify(data) : undefined,
     });
   } catch {
-    throw new ApiError(0, { error: { message: `Can't reach the SportArena server at ${API}` } });
+    throw new ApiError(0, { error: { message: `Can't reach the Gotmygame server at ${API}` } });
   }
   const body = await res.json().catch(() => null);
   if (!res.ok) {
     if (res.status === 401 && !retried && !path.startsWith('/auth/') && canRefresh() && await refreshSession()) return request(method, path, data, true);
     if (res.status === 401 && (token || isWeb) && !path.startsWith('/auth/')) onUnauthorized();
+    if (res.status === 403 && MFA_CODES.includes(body?.error?.code)) onMfaRequired({ code: body.error.code, message: body.error.message });
     throw new ApiError(res.status, body);
   }
   return body;
@@ -82,7 +89,7 @@ async function upload(path, blob, query = {}) {
   const qs = new URLSearchParams(Object.entries(query).filter(([, v]) => v)).toString();
   let res;
   try { res = await fetch(`${API}${path}${qs ? `?${qs}` : ''}`, { method: 'PUT', ...creds, headers: withAuth({ 'content-type': blob.type || 'application/octet-stream' }), body: blob }); }
-  catch { throw new ApiError(0, { error: { message: `Can't reach the SportArena server at ${API}` } }); }
+  catch { throw new ApiError(0, { error: { message: `Can't reach the Gotmygame server at ${API}` } }); }
   const body = await res.json().catch(() => null);
   if (!res.ok) throw new ApiError(res.status, body);
   return body;
@@ -92,7 +99,7 @@ async function upload(path, blob, query = {}) {
 async function download(path) {
   let res;
   try { res = await fetch(`${API}${path}`, { ...creds, headers: withAuth() }); }
-  catch { throw new ApiError(0, { error: { message: `Can't reach the SportArena server at ${API}` } }); }
+  catch { throw new ApiError(0, { error: { message: `Can't reach the Gotmygame server at ${API}` } }); }
   if (!res.ok) throw new ApiError(res.status, await res.json().catch(() => null));
   return res.blob();
 }

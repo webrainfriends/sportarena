@@ -146,3 +146,27 @@ test('legacy tokens are migrated to a visible full scope and keep working; they 
   // listing never returns the secret or its hash
   assert.ok(!JSON.stringify(row).includes(secret) && !('token_hash' in row));
 });
+
+test('MCP parity: a write token calls a write tool; a team-restricted token is refused for an unlisted team; dead tokens fail on /mcp', async () => {
+  const u = await signup(['athlete']);
+  const wr = await mint(u, { name: 'mcp writer', scopes: ['write'] });
+  const made = await rpc('create_team', { name: 'MCP FC', sport: 'football' }, wr.token);
+  assert.ok(made.ok?.id, JSON.stringify(made));
+  assert.equal((await rpc('list_medical_records', {}, wr.token)).error.code, 'forbidden', 'write is not clinical');
+
+  const mine = (await api('POST', '/teams', { token: u.token, body: { name: 'Allowed FC', sport: 'football' } })).body;
+  const other = (await api('POST', '/teams', { token: u.token, body: { name: 'Unlisted FC', sport: 'football' } })).body;
+  const rt = await mint(u, { name: 'one team', scopes: ['write'], resources: [{ type: 'team', id: mine.id }] });
+  assert.equal((await rpc('update_team', { id: other.id, name: 'Hijack' }, rt.token)).error.code, 'forbidden', 'unlisted team denied over MCP');
+  assert.equal((await api('PATCH', `/teams/${other.id}`, { token: rt.token, body: { name: 'Hijack' } })).status, 403, 'and over REST');
+  assert.ok((await rpc('update_team', { id: mine.id, name: 'Renamed FC' }, rt.token)).ok, 'listed team allowed over MCP');
+
+  // raw /mcp requests with an expired or revoked token are refused (no tool result is produced)
+  const raw = (token) => fetch(`${base}/mcp`, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', authorization: `Bearer ${token}` }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'get_me', arguments: {} } }) }).then(async (r) => ({ status: r.status, text: await r.text() }));
+  await pool.query("UPDATE api_tokens SET expires_at = now() - interval '1 second' WHERE id=$1", [rt.id]);
+  assert.equal((await rpc('get_me', {}, rt.token)).error.code, 'unauthorized', 'expired');
+  assert.equal((await api('DELETE', `/me/tokens/${wr.id}`, { token: u.token })).status, 200);
+  const gone = await raw(wr.token);
+  assert.doesNotMatch(gone.text, new RegExp(u.id), 'a revoked token never reaches the tool');
+  assert.equal((await rpc('create_team', { name: 'After revoke', sport: 'football' }, wr.token)).error.code, 'unauthorized');
+});

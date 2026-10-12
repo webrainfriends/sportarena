@@ -1,4 +1,4 @@
-// Platform (SportArena team) helpers: who counts as platform staff, the bootstrap of the platform owner account,
+// Platform (Gotmygame team) helpers: who counts as platform staff, the bootstrap of the platform owner account,
 // the approval switch, the contract text and the explainable "assistant" scoring used by the partner module.
 import { createHash } from 'node:crypto';
 import { config } from './config.js';
@@ -46,7 +46,7 @@ export const DEFAULT_TERMS = {
 
 export const DEFAULT_TEMPLATE = `PARTNER VENUE AGREEMENT  {{contract_no}}
 
-Between SportArena (the "Platform") and {{partner_legal_name}} (the "Partner"){{venue_clause}}.
+Between Gotmygame (the "Platform") and {{partner_legal_name}} (the "Partner"){{venue_clause}}.
 
 1. TERM. Effective {{effective_from}}{{effective_to_clause}}, for {{term_months}} months{{auto_renew_clause}}. Either side may end it with {{notice_days}} days' written notice.
 2. LISTING AND PRICING. The Platform lists the Partner's venue and publishes the price list the Platform sets for it, taking into account location, demand, rating, facilities and discounts. The Partner may propose price changes through the Platform; a change takes effect only once the Platform approves it.

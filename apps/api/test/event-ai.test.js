@@ -165,10 +165,10 @@ test('match recap: gated until published for outsiders, no player names reach th
   assert.equal(pub.body.official, true);
   assert.doesNotMatch(pub.body.body, /Not official/);
 
-  const calls = stub(JSON.stringify({ headline: 'Home side edge a thriller 🔥', body: 'Two early goals and a late scare. That is how you do it.', hashtags: ['#SportArena', '#MatchDay'] }));
+  const calls = stub(JSON.stringify({ headline: 'Home side edge a thriller 🔥', body: 'Two early goals and a late scare. That is how you do it.', hashtags: ['#Gotmygame', '#MatchDay'] }));
   const ai = await post(t.org, `/fixtures/${t.fx}/ai/recap`, { tone: 'hype' });
   assert.equal(ai.body.ai, true);
-  assert.deepEqual(ai.body.hashtags, ['#SportArena', '#MatchDay']);
+  assert.deepEqual(ai.body.hashtags, ['#Gotmygame', '#MatchDay']);
   const prompt = calls[0].messages[0].content;
   assert.ok(prompt.includes(t.home.name) && prompt.includes(t.away.name), 'team names are included');
   assert.equal(prompt.includes(t.rando.display_name), false, 'player names never reach the model');

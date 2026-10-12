@@ -10,10 +10,10 @@ verification, password recovery, two-step verification) and the screens that use
 | Token scopes, expiry, resources | `052_api_token_scopes.sql` | none | existing tokens keep `full`; new tokens default to `read` |
 | Server sessions, refresh rotation | `053_auth_sessions.sql` | `TOKEN_TTL`, `REFRESH_TTL_DAYS`, `AUTH_REQUIRE_SESSION` | pre-session JWTs work until they expire |
 | Web cookies, CSRF, origins | none | `CORS_ORIGINS`, `COOKIE_SECURE`, `COOKIE_SAMESITE` | web clients that send `X-SA-Client: web` get cookies |
-| Account security | `054_account_security.sql` | `MFA_ENFORCE`, `NOTIFY_WEBHOOK_URL`, `APP_URL` | MFA optional; enforcement **off** |
+| Account security | `054_account_security.sql` | `MFA_ENFORCE`, `NOTIFY_WEBHOOK_URL`, `APP_URL` | enforcement **on in production** (`MFA_ENFORCE=false` is the opt-out); off in dev/test |
 
 Suggested order: deploy; check `CORS_ORIGINS` and HTTPS; make sure `NOTIFY_WEBHOOK_URL` works (recovery depends on it); have doctors, physios and
-admins turn on two-step verification in **Me > Account security**; then set `MFA_ENFORCE=true`; later set `AUTH_REQUIRE_SESSION=true` and shorten
+admins turn on two-step verification in **Me > Account security**; MFA enforcement is already on in production, so do the enrolment first: set the repo variable `MFA_ENFORCE=false` for the first deploy of this change, enrol, then remove the variable (the deploy workflow passes it to `.env`; note a deploy only writes it when set, so set it back to `true` explicitly to re-enable); later set `AUTH_REQUIRE_SESSION=true` and shorten
 `TOKEN_TTL`. Rollback of any step is described in its section; no step deletes data, and migrations only add columns and tables.
 
 ## Screens (Me, and the log-in screen)
@@ -55,6 +55,10 @@ resource indirectly (e.g. a booking id whose venue is not in the input) are not 
 
 Expired or revoked tokens match no row at authentication, so they fail with `401` on the next request. `last_used_at` is updated on use.
 `GET /me/tokens` returns scopes, expiry, resources, last use, `expired` and `legacy_full`; secrets and hashes are never returned.
+
+**Parity.** The OpenAPI document (`/api/v1/openapi.json`) states each operation's required scope as `x-required-scope` (and in its description); public operations carry none.
+MCP tools enforce the same class through the same `invoke()` path. Tests: `capability-registry.test.js` (OpenAPI), `token-scopes.test.js` (REST and MCP: write token, resource-restricted token, expired/revoked token), `web-cookie-auth.test.js` (the web `storage.js` never writes credential keys).
+The decision that email verification is informational is recorded under Account security (PR #176).
 
 ### Migration `052_api_token_scopes.sql` (additive)
 - Adds `scopes text[]`, `expires_at`, `resources jsonb`, a CHECK on known scope names and an index.
@@ -175,12 +179,23 @@ recorded so a code cannot be replayed. Recovery codes (`xxxxx-xxxxx`) are stored
 `{ mfa_required: true, mfa_token }` (no session, no cookies); `login_mfa` completes it (challenge: 5 minutes, 5 wrong tries, single use).
 A session that completed MFA has `mfa_verified_at`. Wrong codes are limited per account across all MFA endpoints (10 in 15 minutes, then `429`).
 
-**Who needs MFA (decision).** Roles `doctor`, `physio`, `admin`, `platform_admin` hold clinical or platform-wide power. When `MFA_ENFORCE=true`
-they must have MFA enabled **and** a verified session to use `clinical`- or `admin`-class capabilities (including creating admin/clinical API tokens):
-`403 mfa_enrollment_required` or `403 mfa_required` (step up with `verify_mfa`). Enrolment, step-up, sign-out, session and password management stay
-reachable. Organisers' payments are **not** MFA-gated (payments are protected by the token `payment` scope, provider checks and audit); anyone may
-enable MFA voluntarily. API tokens are not re-challenged (creating an admin/clinical token is the gated step).
-`MFA_ENFORCE` defaults to **off** so rollout cannot lock anyone out: have doctors/physios/admins enrol first, then set `MFA_ENFORCE=true`.
+**Who needs MFA (decision).** Roles `doctor`, `physio`, `admin`, `platform_admin` hold clinical or platform-wide power. Enforcement is **on by default in
+production** (`NODE_ENV=production` and `MFA_ENFORCE` not `false`); in development and tests it is off unless `MFA_ENFORCE=true`. `MFA_ENFORCE=false` in production is the
+explicit opt-out, meant only for a rollout window. When enforced, those roles must have MFA enabled **and** a verified session to use `clinical`- or `admin`-class
+capabilities (including creating admin/clinical API tokens): `403 mfa_enrollment_required` or `403 mfa_required` (step up with `verify_mfa`). Enrolment, step-up,
+sign-out, session and password management stay reachable. The app turns either error into a banner "Set up two-step verification to continue" with a button to
+**Me > Account security**. Organisers' payments are **not** MFA-gated (payments are protected by the token `payment` scope, provider checks and audit); anyone may enable MFA voluntarily.
+
+**API tokens and MFA.** A token has no MFA session. Tokens created since scopes existed were minted through the MFA-gated, admin-class `create_api_token`, but legacy
+`full` tokens never were. So, when enforcement applies, a token with scope `full`, `clinical` or `admin` used by a sensitive-role owner for a clinical/admin-class
+capability is refused with `403 mfa_enrollment_required` unless the owner has an enrolled MFA factor. Narrow (`read`/`write`/`payment`) tokens are not affected.
+
+**Rollout (enrol first).** 1) Before deploying this default to production, set the repo variable `MFA_ENFORCE=false` (or accept that doctors/physios/admins are asked to enrol on first use).
+2) Tell them to enrol under **Me > Account security**. 3) Remove the variable / set `MFA_ENFORCE=true`. Rollback is the same variable; no data is touched.
+
+**Email verification (decision).** Verification is **informational**: `email_verified` is shown and used for trust signals, but no action is gated on it. The issue's
+protection for sensitive actions is MFA (a second factor is stronger than an unverified mailbox), password recovery already goes only to the address on file, and
+gating would lock out existing accounts, none of which were verified when `email_verified_at` was introduced.
 
 **Compromise handling.** Password reset, password change, MFA disable and admin MFA reset all revoke sessions (reasons `password_reset`,
 `password_changed`, `mfa_disabled`, `mfa_reset`) and send the owner a notice email.

@@ -405,7 +405,7 @@ function Crew({ id, toast }) {
         {(incidents.data ?? []).length ? incidents.data.map((m) => <Row key={m.id} title={`${m.full_name ?? 'Participant'} · ${m.severity}`} sub={`${m.outcome.replace('_', ' ')}${m.return_to_play ? ` · ${m.return_to_play.replace('_', ' ')}` : ''}`} />) : <Empty emoji="🩺" title="No incidents" sub="Event doctors and physios log incidents from their own account. You see severity and fitness only, never clinical text." />}
       </Section>
       <FormSheet visible={hire} onClose={() => setHire(false)} title="Hire crew" submitLabel="Send invitation" initial={{ role: 'referee', rate: '' }}
-        fields={[{ key: 'role', label: 'Role', type: 'chips', options: ROLES }, { key: 'handle', label: 'Their handle', hint: 'A doctor post needs the doctor role on SportArena, a physio post the physio role, officials the referee role.' },
+        fields={[{ key: 'role', label: 'Role', type: 'chips', options: ROLES }, { key: 'handle', label: 'Their handle', hint: 'A doctor post needs the doctor role on Gotmygame, a physio post the physio role, officials the referee role.' },
           { key: 'sport', label: 'Sport they officiate', type: 'sport', optional: true, show: (v) => ['referee', 'umpire', 'judge', 'starter', 'timekeeper'].includes(v.role) }, { key: 'rate', label: 'Fee (whole currency units)', type: 'number', optional: true }]}
         onSubmit={async (v) => { await api.post(`/events/${id}/staff`, { user_id: await findUser(v.handle), role: v.role, sport: v.sport || undefined, rate_cents: Math.round(Number(v.rate || 0) * 100) }); refresh(); return 'Invitation sent'; }} />
       {shift ? (

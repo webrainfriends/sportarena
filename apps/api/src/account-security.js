@@ -54,14 +54,14 @@ export function matchStep(secretB32, code, now = Date.now()) {
   for (const s of [cur, cur - 1, cur + 1]) if (totp(secretB32, s) === c) return s;
   return null;
 }
-export const otpauthUri = (secret, label) => `otpauth://totp/SportArena:${encodeURIComponent(label)}?secret=${secret}&issuer=SportArena&algorithm=SHA1&digits=6&period=${STEP}`;
+export const otpauthUri = (secret, label) => `otpauth://totp/Gotmygame:${encodeURIComponent(label)}?secret=${secret}&issuer=Gotmygame&algorithm=SHA1&digits=6&period=${STEP}`;
 
 export const newRecoveryCode = () => { const r = base32(randomBytes(7)).toLowerCase().slice(0, 10); return `${r.slice(0, 5)}-${r.slice(5)}`; };
 export const normalizeRecovery = (c) => String(c).toLowerCase().replace(/[^a-z2-7]/g, '');
 export const hashRecovery = (c) => sha256(`recovery:${normalizeRecovery(c)}`);
 
 // ---- policy ----
-/** Roles that hold clinical or platform-wide power. MFA is enforced for their clinical/admin-class actions when MFA_ENFORCE=true. */
+/** Roles that hold clinical or platform-wide power. MFA is enforced for their clinical/admin-class actions when MFA enforcement is on (default in production). */
 export const MFA_ROLES = ['doctor', 'physio', 'admin', 'platform_admin'];
 // Capabilities that must stay reachable so a person can enrol, step up, sign out or recover.
 export const MFA_EXEMPT = new Set([
@@ -71,9 +71,18 @@ export const MFA_EXEMPT = new Set([
 
 /** Step-up policy for sensitive actions. `security` is attached to the user by authenticate(). */
 export function enforceMfa(user, capability) {
-  if (!config.mfaEnforce || !user || user.credential) return; // API tokens: their creation was itself an MFA-gated, admin-class action
+  if (!config.mfaEnforce || !user) return;
   if (!['clinical', 'admin'].includes(capability.scope) || MFA_EXEMPT.has(capability.name)) return;
   if (!user.roles.some((r) => MFA_ROLES.includes(r))) return;
+  if (user.credential) {
+    // API tokens carry no MFA session. Tokens minted since scopes existed were created behind the (MFA-gated) admin-class create_api_token,
+    // but legacy 'full' tokens never were, so any token that can reach clinical/admin actions needs its owner to have an enrolled factor.
+    const sc = user.credential.scopes ?? [];
+    if (sc.some((x) => ['full', 'clinical', 'admin'].includes(x)) && !user.credential.owner_mfa_enabled) {
+      throw new AppError(403, 'mfa_enrollment_required', 'The owner of this API token needs two-step verification for this action. Set it up under Account security first.');
+    }
+    return;
+  }
   const s = user.security ?? {};
   if (!s.mfa_enabled) throw new AppError(403, 'mfa_enrollment_required', 'Your role needs two-step verification for this action. Set it up under Account security first.');
   if (!s.mfa_verified) throw new AppError(403, 'mfa_required', 'Confirm your two-step verification code to continue (verify_mfa).');

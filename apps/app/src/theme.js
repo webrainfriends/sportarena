@@ -1,6 +1,6 @@
 import { Appearance, Platform } from 'react-native';
 import { locale } from './locale';
-// SportArena design tokens — "Fresh Court": a bright, airy light theme. Cool off-white canvas, white cards with
+// Gotmygame design tokens — "Fresh Court": a bright, airy light theme. Cool off-white canvas, white cards with
 // soft shadows, one confident indigo accent plus a small family of sport colours. Colourful hero panels carry white text.
 // Token names are stable (pink = primary accent, ink = text, paper = card, violet = strong slate for dark buttons)
 // so every screen inherits the theme.

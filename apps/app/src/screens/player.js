@@ -242,7 +242,7 @@ function MySports() {
   );
   const found = (detected.data ?? []).map((d) => (
     <Card key={d.sport_slug} pad={14}>
-      <T weight="800" size={14}>{d.sport_emoji} {d.sport} — played on SportArena</T>
+      <T weight="800" size={14}>{d.sport_emoji} {d.sport} — played on Gotmygame</T>
       <T size={12.5} color={c.mute} style={{ marginTop: 2 }}>{d.matches} official match{d.matches === 1 ? '' : 'es'} · {d.wins}-{d.draws}-{d.losses}{d.last_played ? ` · last ${day(d.last_played + 'T12:00:00')}` : ''}. Add the sport to see them on its card — nothing else is filled in for you.</T>
       <View style={{ marginTop: 10, alignItems: 'flex-start' }}><Btn small title={`+ Add ${d.sport}`} onPress={() => { setAddSport(d.sport_slug); setAdd(true); }} /></View>
     </Card>
@@ -280,7 +280,7 @@ function MySports() {
       {header}
       <View style={{ marginTop: 18 }}>
         {list.loading && !list.data ? <Loading /> : list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : !profiles.length ? (
-          <Empty emoji="🏅" title="No sport profiles yet" sub="Add the sports you play — matches you log yourself and games you play in through SportArena events appear on each card automatically." />
+          <Empty emoji="🏅" title="No sport profiles yet" sub="Add the sports you play — matches you log yourself and games you play in through Gotmygame events appear on each card automatically." />
         ) : (
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap }}>{cards(w)}</View>
         )}
@@ -393,7 +393,7 @@ export function SportProfile({ id, embedded, onChanged, onRemoved }) {
       {seasons.length > 1 ? <View style={{ marginTop: 10 }}><HScroll><Chip label="All seasons" active={season === 'all'} onPress={() => setSeason('all')} />{seasons.map((y) => <Chip key={y} label={y} active={season === y} onPress={() => setSeason(y)} />)}</HScroll></View> : null}
       <View style={{ gap: 10, marginTop: 10 }}>
         {matches.loading && !matches.data ? <Loading /> : !shown.length ? (
-          <Empty emoji="📋" title="No matches yet" sub="Matches you log yourself or play in through SportArena events will appear here automatically." />
+          <Empty emoji="📋" title="No matches yet" sub="Matches you log yourself or play in through Gotmygame events will appear here automatically." />
         ) : shown.map((m) => {
           const [l, fg, bg] = RESULT[m.result] ?? [null];
           const official = m.provenance.startsWith('official');
@@ -450,7 +450,7 @@ export function SportProfile({ id, embedded, onChanged, onRemoved }) {
       ) : null}
       {linking ? (
         <FormSheet visible onClose={() => setLinking(null)} title="Link to the official match" submitLabel="Link — count it once"
-          fields={[{ key: 'pick', label: 'This looks like an official match already in SportArena. Link them so it is counted once.', type: 'choice', options: linking.cand.map((x) => ({ value: `${x.source_type}:${x.source_id}`, label: `${day(x.played_on + 'T12:00:00')} · ${x.opponent ? `vs ${x.opponent}` : x.title ?? 'Match'}${x.competition ? ` · ${x.competition}` : ''}` })) }]}
+          fields={[{ key: 'pick', label: 'This looks like an official match already in Gotmygame. Link them so it is counted once.', type: 'choice', options: linking.cand.map((x) => ({ value: `${x.source_type}:${x.source_id}`, label: `${day(x.played_on + 'T12:00:00')} · ${x.opponent ? `vs ${x.opponent}` : x.title ?? 'Match'}${x.competition ? ` · ${x.competition}` : ''}` })) }]}
           onSubmit={async ({ pick }) => { const [source_type, source_id] = pick.split(':'); await api.post(`/me/matches/${linking.m.id}/link`, { source_type, source_id }); await reload(); return 'Linked'; }} />
       ) : null}
     </Screen>

@@ -14,13 +14,16 @@ export function buildOpenApi(serverUrl = '/api/v1') {
     const params = pp.map((n) => ({ name: n, in: 'path', required: true, schema: props[n] ?? { type: 'string' } }));
     const op = {
       operationId: c.name, summary: c.summary, tags: [c.tag],
+      // The API-token scope class this operation needs (read | write | payment | clinical | admin); a signed-in session is not limited by it.
+      description: c.auth === 'public' ? undefined : `Required API-token scope: \`${c.scope}\`${c.scope === 'read' ? ' (or write)' : ''}. Tokens with the legacy \`full\` scope pass every class.`,
+      'x-required-scope': c.auth === 'public' ? undefined : c.scope,
       security: c.auth === 'public' ? [] : [{ bearerAuth: [] }],
       'x-mcp-tool': c.name,
       'x-required-roles': Array.isArray(c.auth) ? c.auth : undefined,
       responses: {
         [c.status ?? 200]: { description: 'OK', content: { 'application/json': { schema: {} } } },
         400: { $ref: '#/components/responses/Error' }, 401: { $ref: '#/components/responses/Error' },
-        403: { $ref: '#/components/responses/Error' }, 404: { $ref: '#/components/responses/Error' }, 409: { $ref: '#/components/responses/Error' },
+        403: { $ref: c.credential ? '#/components/responses/CredentialRequired' : '#/components/responses/Error' }, 404: { $ref: '#/components/responses/Error' }, 409: { $ref: '#/components/responses/Error' },
       },
     };
     const rest = Object.fromEntries(Object.entries(props).filter(([k]) => !pp.includes(k)));
@@ -34,12 +37,14 @@ export function buildOpenApi(serverUrl = '/api/v1') {
   }
   return {
     openapi: '3.1.0',
-    info: { title: 'SportArena API', version: '0.1.0', description: 'API-first sports ecosystem. Every operation is also exposed as an MCP tool of the same name at /mcp.' },
+    info: { title: 'Gotmygame API', version: '0.1.0', description: 'API-first sports ecosystem. Every operation is also exposed as an MCP tool of the same name at /mcp.' },
     servers: [{ url: serverUrl }],
     paths,
     components: {
       securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer', description: 'JWT from /auth/login or an sa_… API token' } },
-      responses: { Error: { description: 'Error', content: { 'application/json': { schema: { type: 'object', properties: { error: { type: 'object', properties: { code: { type: 'string' }, message: { type: 'string' }, details: {} } } } } } } } },
+      responses: {
+        CredentialRequired: { description: 'Forbidden. `credential_required` when the doctor/physio has no current verified professional credential (details: reason, profession, expires_at, renewal), otherwise the usual forbidden error. See GET /medical/credential.', content: { 'application/json': { schema: { type: 'object', properties: { error: { type: 'object', properties: { code: { type: 'string', enum: ['credential_required', 'forbidden'] }, message: { type: 'string' }, details: { type: 'object', properties: { reason: { type: 'string', enum: ['not_verified', 'pending', 'expired', 'revoked', 'role_mismatch', 'sport_scope', 'jurisdiction'] }, profession: { type: 'string' }, expires_at: { type: ['string', 'null'] }, renewal: { type: 'object' } } } } } } } } } },
+        Error: { description: 'Error', content: { 'application/json': { schema: { type: 'object', properties: { error: { type: 'object', properties: { code: { type: 'string' }, message: { type: 'string' }, details: {} } } } } } } } },
     },
   };
 }

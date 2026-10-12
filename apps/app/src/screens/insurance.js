@@ -249,7 +249,7 @@ export function QuoteSheet({ id, onClose, onChanged, onPay }) {
           </Card>
           {d.exclusions ? <T size={13}><T size={13} weight="800">Not covered: </T>{d.exclusions}</T> : null}
           {d.conditions ? <T size={13}><T size={13} weight="800">Conditions: </T>{d.conditions}</T> : null}
-          {d.events.map((e) => <T key={e.id} size={12} color={c.mute}>• {ACTION[e.action] ?? nice(e.action)} · {e.actor ?? 'SportArena'} · {day(e.created_at)}{e.detail ? ` · ${e.detail}` : ''}</T>)}
+          {d.events.map((e) => <T key={e.id} size={12} color={c.mute}>• {ACTION[e.action] ?? nice(e.action)} · {e.actor ?? 'Gotmygame'} · {day(e.created_at)}{e.detail ? ` · ${e.detail}` : ''}</T>)}
           {live ? (
             <View style={{ gap: 8 }}>
               <Field value={ben} onChangeText={setBen} placeholder="Beneficiary (optional, encrypted)" />

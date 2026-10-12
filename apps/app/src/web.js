@@ -13,7 +13,7 @@ export function installWebShell() {
   meta('mobile-web-app-capable', 'yes');
   meta('apple-mobile-web-app-capable', 'yes');
   meta('apple-mobile-web-app-status-bar-style', dark ? 'black-translucent' : 'default');
-  meta('apple-mobile-web-app-title', 'SportArena');
+  meta('apple-mobile-web-app-title', 'Gotmygame');
   const link = (rel, href, extra = {}) => { const l = document.createElement('link'); l.rel = rel; l.href = href; Object.assign(l, extra); document.head.appendChild(l); };
   link('manifest', '/manifest.webmanifest');
   link('apple-touch-icon', '/icon-192.png');

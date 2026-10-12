@@ -1,14 +1,14 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Platform, Pressable, StatusBar, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SessionProvider, useSession } from './session';
 import { NavProvider, useNav } from './nav';
-import { Loading } from './ui';
+import { Btn, Loading } from './ui';
 import { Icon } from './icons';
 import { useLayout } from './layout';
 import { installWebShell } from './web';
-import { api } from './api';
+import { api, setMfaRequiredHandler } from './api';
 import { parseTarget, targetFor } from './push';
 import { AccountButton } from './account';
 import { c, dark, fam } from './theme';
@@ -123,7 +123,7 @@ function TopBar() {
   return (
     <View style={{ backgroundColor: c.bg }}>
       <View style={{ width: '100%', maxWidth: contentMax, alignSelf: 'center', height: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: gutter }}>
-        <Text style={[fam, { fontSize: 18, fontWeight: '800', color: c.ink, letterSpacing: -0.4 }]}>SportArena</Text>
+        <Text style={[fam, { fontSize: 18, fontWeight: '800', color: c.ink, letterSpacing: -0.4 }]}>Gotmygame</Text>
         <AccountButton />
       </View>
     </View>
@@ -144,10 +144,31 @@ function Transition({ id, push, children }) {
   );
 }
 
+/** Shown when the API says this role must set up (or confirm) two-step verification before a health/admin action. */
+function MfaNotice({ info, onGo, onClose }) {
+  const { gutter, contentMax } = useLayout();
+  const enrol = info.code === 'mfa_enrollment_required';
+  return (
+    <View accessibilityRole="alert" style={{ backgroundColor: c.orangeSoft, borderBottomWidth: 1, borderColor: c.line }}>
+      <View style={{ width: '100%', maxWidth: contentMax, alignSelf: 'center', paddingHorizontal: gutter, paddingVertical: 10 }}>
+        <Text style={[fam, { fontWeight: '700', color: c.ink }]}>{enrol ? 'Set up two-step verification to continue' : 'Confirm your two-step verification to continue'}</Text>
+        <Text style={[fam, { color: c.mute, fontSize: 13, marginTop: 2 }]}>{enrol ? 'Your role handles health or platform data, so this action needs two-step verification.' : 'Sign out and sign in again with your authenticator code (or a recovery code), then retry.'}</Text>
+        <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
+          <Btn small title={enrol ? 'Set up two-step verification' : 'Open account security'} onPress={onGo} />
+          <Btn small title="Dismiss" onPress={onClose} color={c.mute} />
+        </View>
+      </View>
+    </View>
+  );
+}
+
 function Shell() {
   const { ready, user, toast } = useSession();
   const { tab, stack, back, goTab, push } = useNav();
   const ins = useSafeAreaInsets();
+  const [mfa, setMfa] = useState(null);
+  useEffect(() => { setMfaRequiredHandler(setMfa); return () => setMfaRequiredHandler(() => {}); }, []);
+  useEffect(() => { if (!user) setMfa(null); }, [user]);
   // Logging out (from any screen) starts the next session from Home, not from a leftover pushed screen.
   useEffect(() => { if (ready && !user) goTab('Home'); }, [ready, user]); // eslint-disable-line react-hooks/exhaustive-deps
   // Back from Stripe/PayPal checkout (web): ?payment=<id>&result=success|cancel
@@ -192,6 +213,7 @@ function Shell() {
   return (
     <View style={{ flex: 1, backgroundColor: c.bg, paddingTop: ins.top, paddingLeft: ins.left, paddingRight: ins.right }}>
       {top ? <NavBar title={TITLES[top.name]} backLabel={prev} onBack={back} /> : <TopBar />}
+      {mfa ? <MfaNotice info={mfa} onGo={() => { setMfa(null); goTab('Me'); }} onClose={() => setMfa(null)} /> : null}
       <Transition id={pageKey} push={!!top}><Page key={pageKey} {...(top?.params ?? {})} /></Transition>
       <TabBar />
     </View>

@@ -177,7 +177,7 @@ function Partners() {
       </Block>
       <PartnerSheet id={open} onClose={() => setOpen(null)} onChanged={l.reload} />
       <FormSheet visible={add} onClose={() => setAdd(false)} title="Onboard a partner" submitLabel="Start onboarding"
-        fields={[{ key: 'owner', label: 'Owner\'s SportArena handle', hint: 'They must have an account (venue manager). They are told and can complete their details.' }, { key: 'name', label: 'Partner name' }, { key: 'legal_name', label: 'Legal name', optional: true }, { key: 'kind', label: 'Type', type: 'chips', options: ['venue_operator', 'club', 'academy', 'school', 'other'].map((k) => ({ value: k, label: label(k) })), default: 'venue_operator' }, { key: 'city', label: 'City', optional: true }]}
+        fields={[{ key: 'owner', label: 'Owner\'s Gotmygame handle', hint: 'They must have an account (venue manager). They are told and can complete their details.' }, { key: 'name', label: 'Partner name' }, { key: 'legal_name', label: 'Legal name', optional: true }, { key: 'kind', label: 'Type', type: 'chips', options: ['venue_operator', 'club', 'academy', 'school', 'other'].map((k) => ({ value: k, label: label(k) })), default: 'venue_operator' }, { key: 'city', label: 'City', optional: true }]}
         onSubmit={async (v) => { const r = await api.post('/admin/partners', Object.fromEntries(Object.entries(v).filter(([, x]) => x !== '' && x != null))); l.reload(); setOpen(r.id); return `${r.code} created`; }} />
     </>
   );
@@ -417,7 +417,7 @@ const TABS = [['overview', 'Overview'], ['partners', 'Partners'], ['approvals', 
 export function PartnerConsole() {
   const { user } = useSession();
   const [tab, setTab] = useState('overview');
-  if (!user.roles.includes('admin')) return <Screen><H1>Partner management</H1><Empty emoji="🔒" title="Platform team only" sub="This console is for SportArena platform staff." /></Screen>;
+  if (!user.roles.includes('admin')) return <Screen><H1>Partner management</H1><Empty emoji="🔒" title="Platform team only" sub="This console is for Gotmygame platform staff." /></Screen>;
   const body = { overview: <Overview go={setTab} />, partners: <Partners />, approvals: <Approvals />, pricing: <Pricing />, contracts: <Contracts />, settlements: <Settlements />, reports: <Reports />, team: <Team /> }[tab];
   return (
     <Screen wide>

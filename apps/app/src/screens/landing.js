@@ -38,7 +38,7 @@ function useWebCss() {
   useEffect(() => {
     if (!isWeb || document.getElementById('sa-landing-css')) return;
     const s = document.createElement('style'); s.id = 'sa-landing-css'; s.textContent = CSS; document.head.appendChild(s);
-    document.title = 'SportArena — find athletes, matches, venues & sponsors';
+    document.title = 'Gotmygame — find athletes, matches, venues & sponsors';
   }, []);
 }
 
@@ -184,7 +184,7 @@ export default function Landing() {
       {/* sticky nav */}
       <View style={{ backgroundColor: 'rgba(11,16,32,0.96)', borderBottomWidth: 1, borderColor: 'rgba(255,255,255,0.08)', zIndex: 5 }}>
         <View style={[wrap, { height: 64, flexDirection: 'row', alignItems: 'center', gap: 14 }]}>
-          <T color="#fff" weight="800" size={22} style={{ letterSpacing: -0.8 }}>🏟️ SportArena</T>
+          <T color="#fff" weight="800" size={22} style={{ letterSpacing: -0.8 }}>🏟️ Gotmygame</T>
           <View style={{ flex: 1 }} />
           {wide ? [['Opportunities', browse], ['Advertise', () => start('advertise')]].map(([l, f]) => <Pressable key={l} onPress={f}><T color="#C7D2FE" weight="700" size={14}>{l}</T></Pressable>) : null}
           <Pressable onPress={() => start('login')}><T color="#fff" weight="700" size={14}>Log in</T></Pressable>
@@ -280,7 +280,7 @@ export default function Landing() {
 
         <View style={{ backgroundColor: '#0B1020', marginTop: 56, paddingVertical: 36 }}>
           <View style={[wrap, { flexDirection: wide ? 'row' : 'column', gap: 14, justifyContent: 'space-between' }]}>
-            <View><T color="#fff" weight="800" size={20}>🏟️ SportArena</T><T color="#94A3B8" size={13} style={{ marginTop: 4 }}>The home of sport. Teams · Fixtures · Venues · Performance.</T></View>
+            <View><T color="#fff" weight="800" size={20}>🏟️ Gotmygame</T><T color="#94A3B8" size={13} style={{ marginTop: 4 }}>The home of sport. Teams · Fixtures · Venues · Performance.</T></View>
             <View style={{ flexDirection: 'row', gap: 22 }}>
               <Pressable onPress={() => start('login')}><T color="#C7D2FE" weight="700" size={13}>Log in</T></Pressable>
               <Pressable onPress={() => start('join')}><T color="#C7D2FE" weight="700" size={13}>Create account</T></Pressable>

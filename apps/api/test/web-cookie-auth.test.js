@@ -166,8 +166,31 @@ test('CORS: credentials only for listed origins, never with a wildcard', async (
 test('the web app never writes credentials to web storage and removes any left by earlier builds', async () => {
   const { readFileSync } = await import('node:fs');
   const src = (f) => readFileSync(new URL(`../../app/src/${f}`, import.meta.url), 'utf8');
-  assert.match(src('storage.js'), /SECRET_KEYS = new Set\(\['token', 'refresh'\]\)/, 'web storage refuses credential keys');
-  assert.match(src('storage.js'), /webOk\(k\)/);
+  // Behavioural: load the real apps/app/src/storage.js with Platform.OS='web', a stub localStorage and a stub SecureStore.
+  const mod = src('storage.js').replace(/^import .*$/gm, '').replace('export const storage', 'const storage') + '\nreturn storage;';
+  const load = (os) => {
+    const ls = new Map(); const secure = new Map();
+    globalThis.localStorage = { getItem: (k) => (ls.has(k) ? ls.get(k) : null), setItem: (k, v) => { ls.set(k, String(v)); }, removeItem: (k) => { ls.delete(k); } };
+    const SecureStore = { getItemAsync: async (k) => secure.get(k) ?? null, setItemAsync: async (k, v) => { secure.set(k, v); }, deleteItemAsync: async (k) => { secure.delete(k); } };
+    return { storage: new Function('Platform', 'SecureStore', mod)({ OS: os }, SecureStore), ls, secure };
+  };
+  try {
+    const web = load('web');
+    await web.storage.set('token', 'eyJ.secret.jwt'); await web.storage.set('refresh', 'rt_secret');
+    assert.deepEqual([...web.ls.keys()], [], 'credential keys are never written to localStorage');
+    assert.equal(await web.storage.get('token'), null);
+    await web.storage.set('role', 'coach');
+    assert.equal(web.ls.get('role'), 'coach', 'harmless preferences still persist');
+    web.ls.set('token', 'legacy-bearer'); web.ls.set('refresh', 'legacy-refresh'); // left by an earlier build
+    assert.equal(await web.storage.get('token'), null, 'a legacy token is not even readable');
+    await web.storage.del('token'); await web.storage.del('refresh');
+    assert.equal(web.ls.has('token') || web.ls.has('refresh'), false, 'del clears legacy tokens');
+    // native keeps using the secure store
+    const native = load('ios');
+    await native.storage.set('token', 'abc');
+    assert.equal(native.secure.get('token'), 'abc'); assert.equal(native.ls.size, 0);
+  } finally { delete globalThis.localStorage; }
+  // session.js cannot be executed without React Native; its web start-up path is checked structurally.
   const session = src('session.js');
   assert.match(session, /Platform\.OS === 'web'[\s\S]{0,400}storage\.del\('token'\)/, 'legacy localStorage token is removed on load');
   assert.doesNotMatch(src('api.js'), /localStorage/, 'the API client keeps no credentials in web storage');

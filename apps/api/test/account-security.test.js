@@ -7,7 +7,7 @@ const { pool } = await import('../src/db.js');
 const { migrate } = await import('../src/migrate.js');
 const { createApp } = await import('../src/http.js');
 const { config } = await import('../src/config.js');
-const { decrypt } = await import('../src/crypto.js');
+const { decrypt, sha256 } = await import('../src/crypto.js');
 const { totp, currentStep } = await import('../src/account-security.js');
 const { dispatchPending } = await import('../src/notify.js');
 
@@ -145,7 +145,7 @@ test('MFA: set-up, enable, challenge at login, replay protection, recovery codes
   const u = await register();
   assert.equal((await api('POST', '/me/mfa/setup', { token: u.token, body: { password: 'wrong-password-here' } })).status, 401);
   const setup = await api('POST', '/me/mfa/setup', { token: u.token, body: { password: PW } });
-  assert.match(setup.body.otpauth_uri, /^otpauth:\/\/totp\/SportArena:/);
+  assert.match(setup.body.otpauth_uri, /^otpauth:\/\/totp\/Gotmygame:/);
   const secret = secretOf(setup);
   const dbRow = (await pool.query('SELECT * FROM user_mfa WHERE user_id=$1', [u.user.id])).rows[0];
   assert.ok(!JSON.stringify(dbRow).includes(secret), 'secret is field-encrypted at rest');
@@ -239,6 +239,42 @@ test('MFA enforcement for sensitive roles: clinical/admin-class actions need an 
   // switched off by default: nothing is locked out until the operator enables it
   const d2 = await register(['doctor']);
   assert.equal((await api('GET', '/medical/patients', { token: d2.token })).status, 200);
+});
+
+test('MFA enforcement reaches API tokens: legacy full / clinical / admin tokens need an enrolled owner', async () => {
+  const doc = await register(['doctor']);
+  const mk = async (u, scopes, tag) => { const sec = `sa_mfa_${tag}_${u.user.id.replace(/-/g, '')}`; await pool.query('INSERT INTO api_tokens(user_id, name, token_hash, scopes) VALUES ($1,$2,$3,$4)', [u.user.id, tag, sha256(sec), scopes]); return sec; };
+  const full = await mk(doc, ['full'], 'full');
+  const clin = await mk(doc, ['clinical'], 'clin');
+  const readTok = await mk(doc, ['read'], 'read');
+  // enforcement off (default in test): unchanged
+  assert.equal((await api('GET', '/medical/patients', { token: full })).status, 200);
+  config.mfaEnforce = true;
+  try {
+    for (const t of [full, clin]) {
+      const r = await api('GET', '/medical/patients', { token: t });
+      assert.equal(r.status, 403); assert.equal(r.body.error.code, 'mfa_enrollment_required');
+    }
+    assert.equal((await api('GET', '/medical/patients', { token: readTok })).status, 403, 'a read token still lacks the clinical scope');
+    assert.equal((await api('GET', '/me', { token: full })).status, 200, 'non-sensitive actions are unaffected');
+    await enrol(doc);
+    assert.equal((await api('GET', '/medical/patients', { token: full })).status, 200, 'enrolled owner: the token works again');
+    assert.equal((await api('GET', '/medical/patients', { token: clin })).status, 200);
+    // an athlete's legacy full token is not a sensitive role: unaffected
+    const ath = await register(['athlete']);
+    const af = await mk(ath, ['full'], 'ath');
+    assert.equal((await api('GET', '/me', { token: af })).status, 200);
+  } finally { config.mfaEnforce = false; }
+});
+
+test('MFA_ENFORCE default: on in production unless MFA_ENFORCE=false; off elsewhere unless true', async () => {
+  const { mfaDefault } = await import('../src/config.js');
+  assert.equal(mfaDefault({ NODE_ENV: 'production' }), true);
+  assert.equal(mfaDefault({ NODE_ENV: 'production', MFA_ENFORCE: 'false' }), false, 'explicit opt-out');
+  assert.equal(mfaDefault({ NODE_ENV: 'production', MFA_ENFORCE: 'true' }), true);
+  assert.equal(mfaDefault({ NODE_ENV: 'development' }), false);
+  assert.equal(mfaDefault({}), false);
+  assert.equal(mfaDefault({ NODE_ENV: 'test', MFA_ENFORCE: 'true' }), true);
 });
 
 test('admin MFA reset: disables the factor, signs the user out everywhere, audit-logged, admin only', async () => {
