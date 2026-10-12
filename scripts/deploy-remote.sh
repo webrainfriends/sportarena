@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runs ON the EC2 host (copied and executed by .github/workflows/deploy.yml). Configuration arrives as environment
-# variables: APP_DIR BRANCH REPO_URL APP_PORT NGINX_PORT DB_PORT ENABLE_TLS PUBLIC_HOST PUBLIC_IP KMS_KEY_ID KMS_REGION (+ optional STRIPE_*/PAYPAL_*/PAYMENT_CURRENCY).
+# variables: APP_DIR BRANCH REPO_URL APP_PORT NGINX_PORT DB_PORT ENABLE_TLS PUBLIC_HOST PUBLIC_IP APP_DOMAIN LETSENCRYPT_EMAIL KMS_KEY_ID KMS_REGION (+ optional STRIPE_*/PAYPAL_*/PAYMENT_CURRENCY).
 # Idempotent; see docs/deployment.md.
 set -Eeuo pipefail
 # Persist why a deploy failed: the SSH session can drop its last output lines on a non-zero exit, so the
@@ -131,7 +131,11 @@ set_env TRUST_PROXY true
 if [ "${ENABLE_TLS:-false}" = "true" ]; then SCHEME=https; set_env ALLOW_INSECURE_HTTP false; else SCHEME=http; set_env ALLOW_INSECURE_HTTP true
   echo "::warning::Serving over plain HTTP (ENABLE_TLS=false): personal data is not encrypted in transit. Enable TLS before real users sign up."
 fi
-set_env CORS_ORIGINS "${SCHEME}://${PUBLIC_IP}:${NGINX_PORT},${SCHEME}://${PUBLIC_HOST}:${NGINX_PORT}"
+CORS="${SCHEME}://${PUBLIC_IP}:${NGINX_PORT},${SCHEME}://${PUBLIC_HOST}:${NGINX_PORT}"
+if [ -n "${APP_DOMAIN:-}" ]; then   # the custom domain (scripts/configure-domain.sh) may be served over http until its certificate exists
+  CORS+=",https://${APP_DOMAIN},https://www.${APP_DOMAIN},http://${APP_DOMAIN},http://www.${APP_DOMAIN}"
+fi
+set_env CORS_ORIGINS "$CORS"
 set_env KEY_PROVIDER aws-kms
 set_env KMS_KEY_ID "$KMS_KEY_ID"
 set_env KMS_REGION "$KMS_REGION"
@@ -200,6 +204,12 @@ fi
 echo "[deploy] configuring nginx on port ${NGINX_PORT}"
 SITE=/etc/nginx/sites-available/sportarena
 cat <<NGINX | sudo tee "$SITE" >/dev/null
+# When the gotmygame.com site (scripts/configure-domain.sh) forwards here it has already terminated TLS; keep its
+# X-Forwarded-Proto so the API sees https (Secure cookies). Direct hits on this port keep using \$scheme.
+map \$http_x_forwarded_proto \$sportarena_proto {
+    default \$scheme;
+    https   https;
+}
 server {
     listen ${LISTEN_DIRECTIVE};
     server_name _;
@@ -217,7 +227,7 @@ server {
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header X-Forwarded-Proto \$sportarena_proto;
     }
 
     # large uploads (venue videos): streamed straight to the API, never buffered by nginx
@@ -230,7 +240,7 @@ server {
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header X-Forwarded-Proto \$sportarena_proto;
     }
     location /api/ {
         proxy_pass http://127.0.0.1:${APP_PORT};
@@ -238,7 +248,7 @@ server {
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header X-Forwarded-Proto \$sportarena_proto;
     }
     location = /mcp {
         proxy_pass http://127.0.0.1:${APP_PORT};
@@ -246,12 +256,12 @@ server {
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header X-Forwarded-Proto \$sportarena_proto;
         proxy_read_timeout 120s;
     }
     location = /health {
         proxy_pass http://127.0.0.1:${APP_PORT};
-        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header X-Forwarded-Proto \$sportarena_proto;
     }
 
     root ${WEB_ROOT};
@@ -298,5 +308,10 @@ if [ "$site_ok" -ne 1 ]; then
   sleep 2
   exit 1
 fi
+# ---- custom domain on 80/443 (separate site that forwards to the :NGINX_PORT site; never fails the deploy) ----
+DOMAIN="${APP_DOMAIN:-}" UPSTREAM_PORT="$NGINX_PORT" LETSENCRYPT_EMAIL="${LETSENCRYPT_EMAIL:-}" \
+  bash "$APP_ROOT/scripts/configure-domain.sh" || echo "[deploy] custom domain setup skipped - the :${NGINX_PORT} site is unaffected"
+
 echo "Deployed. ${SCHEME}://${PUBLIC_IP}:${NGINX_PORT}"
+[ -z "${APP_DOMAIN:-}" ] || echo "Also served at: http(s)://${APP_DOMAIN} (https once DNS points here and the certificate is issued)"
 [ "$SCHEME" = "https" ] || echo "NOTE: plain HTTP - not encrypted in transit. Set ENABLE_TLS to \"true\" in deploy.yml to switch to HTTPS."
