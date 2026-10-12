@@ -193,7 +193,7 @@ fi
 local_a() { getent ahostsv4 "$1" 2>/dev/null | awk '$2 == "STREAM" {print $1}' | sort -u | tr '\n' ' ' || true; }
 public_dns() {   # <type> <name> [ipv4-only]
   local answers
-  answers="$(curl -fsS --max-time 8 "https://dns.google/resolve?name=$2&type=$1" 2>/dev/null | grep -o '"data":"[^"]*"' | cut -d'"' -f4 || true)"
+  answers="$(curl -fsS --max-time 8 "https://dns.google/resolve?name=$2&type=$1" 2>/dev/null | sed 's/"Authority".*//' | grep -o '"data":"[^"]*"' | cut -d'"' -f4 || true)"   # Answer section only: an empty answer carries the zone's SOA under "Authority"
   if [ -n "${3:-}" ]; then answers="$(grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' <<<"$answers" || true)"; fi
   printf '%s' "$answers" | tr '\n' ' '
 }
