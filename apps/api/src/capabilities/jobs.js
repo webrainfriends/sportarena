@@ -35,7 +35,7 @@ cap({
 
 cap({
   name: 'get_worker_health', method: 'GET', path: '/admin/worker-health', tag: TAG, auth: ['admin'],
-  summary: 'Platform team: background worker health. Each worker process with its last heartbeat, last maintenance cycle, per-category last run / attempts / failures, plus job queue depth, oldest due job (lag) and dead letters. `healthy` is true when a worker has beaten within the stale window and nothing is long overdue.',
+  summary: 'Platform team: background worker health. Each worker process with its last heartbeat, last maintenance cycle, per-category last run / attempts / failures, plus job queue depth, oldest due job (lag) and dead letters. `repeated_failures` lists maintenance categories that failed several cycles in a row. `healthy` is true when a worker has beaten within the stale window, nothing is long overdue and no category is repeatedly failing.',
   async handler() {
     const { rows: workers } = await pool.query(
       `SELECT worker_id, mode, host, status, interval_seconds, started_at, last_beat_at, last_cycle_at, last_cycle_ms, cycles, failed_cycles, last_error, stats,
@@ -45,9 +45,15 @@ cap({
     const queue = await jobStats();
     const lag = Math.max(0, ...queue.map((q) => q.oldest_due_seconds));
     const dead = queue.filter((q) => q.status === 'dead').reduce((a, q) => a + q.n, 0);
+    // Sweep-style categories (holds, waitlist, loyalty, plans, alerts, quotes, requests) are re-run idempotently every cycle, so a
+    // single failure heals itself; a category failing several cycles in a row on a live worker is surfaced here and flips `healthy`.
+    const repeated_failures = live.flatMap((w) => Object.entries(w.stats?.steps ?? {})
+      .filter(([, s]) => (s.consecutive_failures ?? 0) >= config.stepFailureThreshold)
+      .map(([category, s]) => ({ worker_id: w.worker_id, category, consecutive_failures: s.consecutive_failures, last_error: s.last_error ?? null })));
     return {
-      healthy: live.length > 0 && lag <= Math.max(config.workerStaleSeconds, 300),
+      healthy: live.length > 0 && lag <= Math.max(config.workerStaleSeconds, 300) && repeated_failures.length === 0,
       stale_after_seconds: config.workerStaleSeconds,
+      repeated_failures,
       workers: workers.map((w) => ({ ...w, alive: live.includes(w) })),
       jobs: { queue, oldest_due_seconds: lag, dead },
     };

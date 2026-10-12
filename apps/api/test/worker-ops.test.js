@@ -154,3 +154,97 @@ test('the standalone worker process starts, beats, logs JSON with a worker id, a
   assert.ok(json.some((l) => l.msg === 'worker stopped'));
   assert.equal(out.includes(process.env.SPORTARENA_MASTER_KEY), false, 'secrets are never logged');
 });
+
+test('login answers 503 busy with Retry-After over HTTP when password hashing is saturated', async () => {
+  const login = () => fetch(`${base}/api/v1/auth/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'nobody-busy@example.com', password: 'whatever-123' }) });
+  assert.equal((await login()).status, 401, 'warm-up (computes the decoy hash) is a normal 401');
+  const prev = { ...config.hashing };
+  config.hashing.concurrency = 1; config.hashing.maxQueue = 0;   // one derivation at a time, nobody may wait
+  let results;
+  try { results = await Promise.all(Array.from({ length: 6 }, login)); } finally { Object.assign(config.hashing, prev); }
+  const statuses = results.map((r) => r.status);
+  assert.ok(statuses.includes(401), `at least one login is served: ${statuses}`);
+  const busy = results.filter((r) => r.status === 503);
+  assert.ok(busy.length >= 1, `saturation is rejected, not queued: ${statuses}`);
+  assert.equal(statuses.filter((s) => s !== 401 && s !== 503).length, 0, 'nothing else (no 500)');
+  assert.equal(busy[0].headers.get('retry-after'), '2');
+  const body = await busy[0].json();
+  assert.equal(body.error?.code ?? body.code, 'busy');
+  assert.equal(JSON.stringify(body).includes('nobody-busy'), false, 'no credentials echoed');
+  assert.equal((await login()).status, 401, 'back to normal once the burst is over');
+});
+
+test('an API process started with WORKER_MODE=external runs no maintenance; the same process in-process does', async () => {
+  const entry = fileURLToPath(new URL('../src/server.js', import.meta.url));
+  const run = async (mode) => {
+    const port = 20000 + Math.floor(Math.random() * 20000);
+    const child = spawn(process.execPath, [entry], { env: { ...process.env, DATABASE_URL: DB, PORT: String(port), NOTIFY_INTERVAL_SECONDS: '1', WORKER_MODE: mode, ACCESS_LOG: 'false' }, stdio: ['ignore', 'pipe', 'pipe'] });
+    let out = '';
+    child.stdout.on('data', (d) => { out += d; }); child.stderr.on('data', (d) => { out += d; });
+    const exited = new Promise((resolve) => child.on('exit', resolve));
+    try {
+      await wait(async () => { try { return (await fetch(`http://127.0.0.1:${port}/health`)).ok; } catch { return false; } });
+      if (mode === 'inprocess') {
+        const row = await wait(async () => (await pool.query("SELECT * FROM worker_heartbeats WHERE mode='inprocess' AND worker_id LIKE $1 AND cycles::int >= 1", [`${child.pid}-%`])).rows[0]);
+        assert.equal(row.status, 'running');
+      } else {
+        await new Promise((r) => setTimeout(r, 3500));   // > 3 intervals: a worker would have beaten by now
+        const { rows } = await pool.query('SELECT 1 FROM worker_heartbeats WHERE worker_id LIKE $1', [`${child.pid}-%`]);
+        assert.equal(rows.length, 0, 'external-mode API wrote no heartbeat, so it ran no cycle');
+        assert.ok(out.includes('external worker'), 'it says maintenance is left to the worker');
+      }
+    } finally { child.kill('SIGTERM'); await Promise.race([exited, new Promise((r) => setTimeout(r, 5000))]); child.kill('SIGKILL'); }
+  };
+  await run('external');
+  await run('inprocess');
+});
+
+test('admin-only operations (list_jobs, requeue_job, get_worker_health, get_metrics): 401 anonymous, 403 non-admin, 200 admin, over REST and MCP', async () => {
+  const [job] = (await pool.query("INSERT INTO jobs(category, kind, status) VALUES ('authz','authz.task','dead') RETURNING id")).rows;
+  const rest = [['GET', '/api/v1/admin/jobs'], ['POST', `/api/v1/admin/jobs/${job.id}/requeue`], ['GET', '/api/v1/admin/worker-health'], ['GET', '/api/v1/admin/metrics']];
+  const call = (method, path, token) => fetch(`${base}${path}`, { method, headers: { ...(token ? { authorization: `Bearer ${token}` } : {}), 'content-type': 'application/json' }, ...(method === 'POST' ? { body: '{}' } : {}) });
+  for (const [m, p] of rest) {
+    assert.equal((await call(m, p)).status, 401, `${m} ${p} anonymous`);
+    assert.equal((await call(m, p, user.token)).status, 403, `${m} ${p} non-admin`);
+  }
+  assert.equal((await pool.query('SELECT status FROM jobs WHERE id=$1', [job.id])).rows[0].status, 'dead', 'a refused requeue changed nothing');
+
+  const rpc = async (name, args, token) => {
+    const r = await fetch(`${base}/mcp`, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', ...(token ? { authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }) });
+    return (await r.json()).result;
+  };
+  const tools = [['list_jobs', {}], ['requeue_job', { id: job.id }], ['get_worker_health', {}], ['get_metrics', {}]];
+  for (const [name, args] of tools) {
+    const anon = await rpc(name, args);
+    assert.equal(anon.isError, true); assert.equal(JSON.parse(anon.content[0].text).code, 'unauthorized', `${name} anonymous`);
+    const non = await rpc(name, args, user.token);
+    assert.equal(non.isError, true); assert.equal(JSON.parse(non.content[0].text).code, 'forbidden', `${name} non-admin`);
+  }
+  assert.equal((await pool.query('SELECT status FROM jobs WHERE id=$1', [job.id])).rows[0].status, 'dead');
+  assert.equal((await call('GET', '/api/v1/admin/jobs', admin.token)).status, 200);
+  assert.equal((await call('GET', '/api/v1/admin/metrics', admin.token)).status, 200);
+  for (const [name, args] of tools) assert.notEqual((await rpc(name, args, admin.token)).isError, true, `${name} admin over MCP`);
+  assert.equal((await pool.query('SELECT status FROM jobs WHERE id=$1', [job.id])).rows[0].status, 'queued', 'admin requeue over MCP worked');
+});
+
+test('a maintenance category failing several cycles in a row is surfaced by worker health; one success clears it', async () => {
+  const mod = await import('../src/worker.js');
+  const original = mod.STEPS[0][2];
+  mod.STEPS[0][2] = async () => { throw new Error('holds keep failing'); };
+  const w = createWorker({ mode: 'external', intervalSeconds: 60, workerId: 'test-repeat', cycle: mod.maintenanceCycle });
+  try {
+    await w.start();
+    for (let i = 0; i < config.stepFailureThreshold - 1; i++) await w.tick();
+    let h = await (await get('/api/v1/admin/worker-health', admin.token)).json();
+    assert.equal(h.repeated_failures.length, 0, 'below the threshold nothing is raised');
+    await w.tick();
+    h = await (await get('/api/v1/admin/worker-health', admin.token)).json();
+    const f = h.repeated_failures.find((x) => x.worker_id === 'test-repeat' && x.category === 'holds');
+    assert.ok(f && f.consecutive_failures >= config.stepFailureThreshold && f.last_error === 'holds keep failing');
+    assert.equal(h.healthy, false);
+    mod.STEPS[0][2] = original;
+    await w.tick();
+    h = await (await get('/api/v1/admin/worker-health', admin.token)).json();
+    assert.equal(h.repeated_failures.length, 0, 'recovered');
+  } finally { mod.STEPS[0][2] = original; await w.stop(); }
+});

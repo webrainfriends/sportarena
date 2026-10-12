@@ -5,7 +5,7 @@ import { monitorEventLoopDelay } from 'node:perf_hooks';
 const started = Date.now();
 let loop;
 const counters = new Map();
-const steps = new Map();   // category -> { runs, failures, last_run_at, last_ok, last_error, last_ms, total_ms }
+const steps = new Map();   // category -> { runs, failures, consecutive_failures, last_run_at, last_ok, last_error, last_ms, total_ms }
 const http = { requests: 0, errors_5xx: 0, errors_4xx: 0, total_ms: 0, by_status: {} };
 
 export function startMetrics() {
@@ -15,8 +15,9 @@ export function startMetrics() {
 export const inc = (name, by = 1) => counters.set(name, (counters.get(name) ?? 0) + by);
 
 export function recordStep(category, { ok, ms, error }) {
-  const s = steps.get(category) ?? { runs: 0, failures: 0, total_ms: 0 };
+  const s = steps.get(category) ?? { runs: 0, failures: 0, consecutive_failures: 0, total_ms: 0 };
   s.runs++; s.total_ms += ms; s.last_ms = Math.round(ms); s.last_run_at = new Date().toISOString(); s.last_ok = ok;
+  s.consecutive_failures = ok ? 0 : (s.consecutive_failures ?? 0) + 1;
   if (!ok) { s.failures++; s.last_error = String(error ?? '').slice(0, 200); }
   steps.set(category, s);
   inc(ok ? 'steps_ok_total' : 'steps_failed_total');
