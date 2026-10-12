@@ -217,6 +217,8 @@ jobs:
           script: |
             echo "== listeners on 9255/4255/7255"; sudo ss -ltnp 2>/dev/null | grep -E ':(9255|4255|7255)\b' || echo "nothing listening"
             echo "== nginx sites enabled"; ls -1 /etc/nginx/sites-enabled 2>&1; sudo nginx -t 2>&1 | tail -2
+            echo "== nginx routing map (read-only: file, listen, server_name, location, proxy_pass, root)"; sudo sh -c 'for f in /etc/nginx/sites-enabled/* /etc/nginx/conf.d/*.conf; do [ -e "$f" ] || continue; echo "-- $f ($(readlink -f "$f"))"; grep -nE "^[[:space:]]*(listen|server_name|location|proxy_pass|root|return|default_server)\b" "$f" | head -60; done' 2>&1
+            echo "== nginx sites-available (all names)"; ls -1 /etc/nginx/sites-available 2>&1 | head -60
             echo "== pm2"; pm2 ls 2>&1 | head -20
             echo "== docker (sportarena)"; sudo docker ps -a --filter name=sportarena --format '{{.Names}} | {{.Status}} | {{.Ports}}' 2>&1
             echo "== host firewall"; sudo ufw status 2>&1 | head -12
