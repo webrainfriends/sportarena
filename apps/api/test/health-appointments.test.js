@@ -180,6 +180,11 @@ test('external booking: validated links with a disclosure, one appointment per r
   must(await api('POST', '/appointments/external/reconcile', { token: doc.token, body: { external_reference: 'EXT-100', status: 'confirmed' } })); // repeating is harmless
   assert.equal((await pool.query("SELECT count(*)::int AS n FROM appointments WHERE external_reference='EXT-100'")).rows[0].n, 1);
   assert.ok((await pool.query("SELECT 1 FROM notifications WHERE user_id=$1 AND kind='appointment_update'", [ath.id])).rowCount >= 1);
+  // the sync goes through the shared lifecycle: the provider is the recorded actor, and the same rules apply (not completed before it starts)
+  const tl = must(await api('GET', `/appointments/${c1.id}/timeline`, { token: ath.token })).entries;
+  assert.deepEqual([tl.at(-1).to_status, tl.at(-1).actor_id, tl.at(-1).by_system], ['confirmed', doc.id, false], 'history names the provider, not the system');
+  assert.equal((await api('POST', '/appointments/external/reconcile', { token: doc.token, body: { external_reference: 'EXT-100', status: 'completed' } })).status, 409, 'cannot complete an appointment that has not started');
+  assert.equal(must(await api('GET', `/appointments/${c1.id}/timeline`, { token: ath.token })).entries.length, tl.length, 'a refused move leaves no history');
   must(await api('POST', '/appointments/external/reconcile', { token: doc.token, body: { external_reference: 'EXT-100', status: 'cancelled' } }));
   const bad = await api('POST', '/appointments/external/reconcile', { token: doc.token, body: { external_reference: 'EXT-100', status: 'confirmed' } });
   assert.equal(bad.status, 409); assert.equal((await pool.query("SELECT external_sync_status FROM appointments WHERE external_reference='EXT-100'")).rows[0].external_sync_status, 'error');

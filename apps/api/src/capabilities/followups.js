@@ -10,6 +10,7 @@ import { audit, isAdmin } from '../helpers.js';
 import { decrypt, encrypt } from '../crypto.js';
 import { requireVerifiedProvider } from '../clinical-access.js';
 import { notify } from '../notify.js';
+import { assertTransition, setTransitionContext } from '../lifecycle.js';
 import { DISCLOSURE, adapterFor } from '../health/external-booking.js';
 
 const TAG = 'Health';
@@ -117,7 +118,6 @@ cap({
 });
 
 const EXT_STATUS = z.enum(['requested', 'confirmed']);
-const NEXT = { requested: ['confirmed', 'cancelled'], confirmed: ['completed', 'cancelled'], completed: [], cancelled: [] };
 
 cap({
   name: 'link_external_booking', method: 'POST', path: '/appointments/external', tag: TAG, status: 201,
@@ -181,7 +181,8 @@ const reconcile = (user, i) =>
       if (!a) throw notFound('External booking');
       let status = a.status;
       if (i.status && i.status !== a.status) {
-        if (!NEXT[a.status].includes(i.status)) throw Object.assign(conflict(`A ${a.status} appointment cannot become ${i.status}`), { markSyncError: a.id });
+        // same rules as update_appointment (state map, payment, start time), judged against the time the provider reports
+        try { assertTransition({ ...a, starts_at: i.starts_at ?? a.starts_at }, i.status, { isProvider: true, isCustomer: false }, { noun: 'appointment', customerWord: 'athlete' }); } catch (e) { throw Object.assign(e, { markSyncError: a.id }); }
         status = i.status;
       }
       const starts = i.starts_at ?? a.starts_at, dur = i.duration_min ?? a.duration_min;
@@ -189,6 +190,7 @@ const reconcile = (user, i) =>
         const clash = (await c.query("SELECT 1 FROM appointments WHERE provider_id=$1 AND id<>$2 AND status IN ('requested','confirmed') AND starts_at < $3::timestamptz + make_interval(mins => $4) AND starts_at + make_interval(mins => duration_min) > $3", [user.id, a.id, starts, dur])).rows[0];
         if (clash) throw conflict('That time clashes with another appointment');
       }
+      await setTransitionContext(c, user.id, 'Reported by the provider\'s booking system');
       const row = (await c.query("UPDATE appointments SET status=$2, starts_at=$3, duration_min=$4, external_sync_status='synced', external_synced_at=now(), updated_at=now(), cancelled_by=CASE WHEN $2='cancelled' AND status<>'cancelled' THEN $5::uuid ELSE cancelled_by END WHERE id=$1 RETURNING id, athlete_id, provider_id, starts_at, duration_min, status, external_sync_status, external_synced_at", [a.id, status, starts, dur, user.id])).rows[0];
       if (status === 'completed' && a.status !== 'completed') await c.query("UPDATE appointment_followups SET status='done', completed_at=now(), closed_by=$2, updated_at=now() WHERE booked_appointment_id=$1 AND status='booked'", [a.id, user.id]);
       if (status === 'cancelled' && a.status !== 'cancelled') await c.query("UPDATE appointment_followups SET status='due', booked_appointment_id=NULL, updated_at=now() WHERE booked_appointment_id=$1 AND status='booked'", [a.id]);

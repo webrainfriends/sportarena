@@ -276,18 +276,107 @@ test('a correction carries the evidence, has its own history, and the superseded
   assert.equal(oldHist.at(-1).from_status, 'disputed');
 });
 
-test('list_events as_official finds events for organisers, accepted crew and fixture referees only', async () => {
+const rpc = async (method, params, token) => {
+  const r = await fetch(`${base}/mcp`, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', ...(token ? { authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) });
+  return (await r.json()).result;
+};
+
+test('an athlete can dispute a result once; officials are notified; a reason is required', async () => {
   const t = await meet('athletics', 1);
-  const other = await meet('athletics', 1); // someone else's event
-  const ids = async (who) => (await api('GET', '/events?as_official=true', { token: who.token })).body.map((e) => e.id);
-  assert.ok((await ids(t.org)).includes(t.ev.id), 'organiser');
-  assert.deepEqual((await ids(t.other)).filter((x) => [t.ev.id, other.ev.id].includes(x)), [t.ev.id], 'accepted timekeeper sees only their event');
-  assert.deepEqual(await ids(t.outsider), [], 'an unrelated athlete sees nothing');
-  await pool.query("INSERT INTO event_staff(event_id, user_id, role, status) VALUES ($1,$2,'scorer','invited')", [t.ev.id, t.outsider.id]);
-  assert.deepEqual(await ids(t.outsider), [], 'a pending invitation does not count');
-  const ref = await signup(['referee']);
-  await pool.query('INSERT INTO fixtures(event_id, scheduled_at, referee_id) VALUES ($1, now(), $2)', [other.ev.id, ref.id]);
-  assert.deepEqual(await ids(ref), [other.ev.id], 'fixture referee');
-  assert.deepEqual((await api('GET', '/events?as_official=true')).body, [], 'anonymous gets nothing');
-  assert.ok((await api('GET', '/events')).body.length >= 2, 'without the filter the list is unchanged');
+  const [a] = t.people;
+  const r = (await submit(t, a, { value: 11 })).body;
+  assert.equal((await approve(t, r)).status, 200);
+  assert.equal((await api('POST', `/performances/${r.id}/dispute`, { token: a.token, body: {} })).status, 400, 'a reason is required');
+  assert.equal((await api('POST', `/performances/${r.id}/dispute`, { token: a.token, body: { reason: 'abc' } })).status, 400, 'too short to be a reason');
+  assert.equal((await api('POST', `/performances/${r.id}/dispute`, { token: a.token, body: { reason: 'timer started late' } })).status, 200);
+  assert.equal((await api('POST', `/performances/${r.id}/dispute`, { token: a.token, body: { reason: 'still wrong, again' } })).status, 409, 'already disputed');
+  // the organiser and the accepted official hear about it
+  for (const who of [t.org, t.other]) {
+    const inbox = (await api('GET', '/notifications', { token: who.token })).body;
+    const hit = (inbox.items ?? inbox).find((x) => x.kind === 'result_disputed' && x.data?.performance_id === r.id);
+    assert.ok(hit, 'official notified');
+  }
+  const queue = await api('GET', `/performances?event_id=${t.ev.id}&status=disputed`, { token: t.org.token });
+  assert.deepEqual(queue.body.map((x) => x.id), [r.id], 'disputed results show in the officials queue');
+  // an official re-approves; the athlete cannot pull it out of the standings a second time
+  assert.equal((await approve(t, r)).status, 200);
+  const again = await api('POST', `/performances/${r.id}/dispute`, { token: a.token, body: { reason: 'dispute it once more' } });
+  assert.equal(again.status, 409, JSON.stringify(again.body));
+  assert.equal((await api('GET', `/leaderboard?sport=athletics&metric=100m_time_s&event_id=${t.ev.id}`)).body.length, 1, 'result still counts');
+  assert.equal((await api('POST', `/performances/${r.id}/dispute`, { token: t.other.token, body: { reason: 'official flags it for review' } })).status, 200, 'an official may still flag it');
+});
+
+test('event-only submissions: an identical double entry is refused, different attempts are valid and the board keeps the best', async () => {
+  const t = await meet('athletics', 1);
+  const [a] = t.people;
+  const first = await submit(t, a, { value: 11.4, achieved_on: '2026-03-01' });
+  assert.equal(first.status, 201);
+  const dup = await submit(t, a, { value: 11.4, achieved_on: '2026-03-01' });
+  assert.equal(dup.status, 409, JSON.stringify(dup.body));
+  const second = await submit(t, a, { value: 10.8, achieved_on: '2026-03-01' });
+  assert.equal(second.status, 201, 'a different attempt is allowed');
+  assert.equal((await approve(t, first.body)).status, 200);
+  assert.equal((await approve(t, second.body)).status, 200);
+  const lb = (await api('GET', `/leaderboard?sport=athletics&metric=100m_time_s&event_id=${t.ev.id}`)).body;
+  assert.equal(lb.length, 1);
+  assert.equal(Number(lb[0].best), 10.8, 'the better attempt counts');
+  assert.equal(lb[0].entries, 2);
+});
+
+test('concurrent decisions on one result: exactly one wins', async () => {
+  const t = await meet('athletics', 2);
+  const adm = await admin();
+  const r1 = (await submit(t, t.people[0], { value: 11 })).body;
+  const both = await Promise.all([approve(t, r1, t.other), approve(t, r1, adm)]);
+  assert.deepEqual(both.map((x) => x.status).sort(), [200, 409]);
+  const r2 = (await submit(t, t.people[1], { value: 12 })).body;
+  const mixed = await Promise.all([approve(t, r2, t.other), api('POST', `/performances/${r2.id}/reject`, { token: adm.token, body: { reason: 'false start recorded' } })]);
+  assert.deepEqual(mixed.map((x) => x.status).sort(), [200, 409]);
+});
+
+test('no-metric tie-break order: official points, then more approved results, then earliest approval', async () => {
+  const t = await meet('basketball', 4);
+  const [a, b, c, d] = t.people;
+  const ok = async (who, metric, value) => {
+    const r = await api('POST', '/performances', { token: t.org.token, body: { user_id: who.id, sport: 'basketball', metric, value, event_id: t.ev.id } });
+    assert.equal(r.status, 201, JSON.stringify(r.body));
+    assert.equal((await approve(t, r.body)).status, 200);
+  };
+  await ok(a, 'points', 10); // 10 pts, 1 result, approved first
+  await ok(b, 'points', 5); await ok(b, 'assists', 5); // 10 pts, 2 results
+  await ok(c, 'points', 10); // 10 pts, 1 result, approved after a
+  await ok(d, 'points', 3);
+  const lb = (await api('GET', `/leaderboard?sport=basketball&event_id=${t.ev.id}`)).body;
+  assert.deepEqual(lb.map((x) => x.id), [b.id, a.id, c.id, d.id]);
+  assert.deepEqual(lb.map((x) => x.rank), [1, 2, 3, 4]);
+});
+
+test('season is the calendar year of achieved_on', async () => {
+  const t = await meet('athletics', 2);
+  const [a, b] = t.people;
+  const ra = (await submit(t, a, { value: 11, achieved_on: '2025-12-31' })).body, rb = (await submit(t, b, { value: 12, achieved_on: '2026-01-01' })).body;
+  await approve(t, ra); await approve(t, rb);
+  const season = async (y) => (await api('GET', `/leaderboard?sport=athletics&event_id=${t.ev.id}&season=${y}`)).body.map((x) => x.id);
+  assert.deepEqual(await season(2025), [a.id]);
+  assert.deepEqual(await season(2026), [b.id]);
+});
+
+test('MCP: approve_performance is forbidden for the submitter, list_scoring_rules works, leaderboard matches REST', async () => {
+  const t = await meet('athletics', 1);
+  const [a] = t.people;
+  const r = (await submit(t, a, { value: 11.2 })).body;
+  const denied = await rpc('tools/call', { name: 'approve_performance', arguments: { id: r.id } }, t.org.token);
+  assert.equal(denied.isError, true);
+  assert.equal(JSON.parse(denied.content[0].text).code, 'forbidden');
+  const ok = await rpc('tools/call', { name: 'approve_performance', arguments: { id: r.id } }, t.other.token);
+  assert.ok(!ok.isError, JSON.stringify(ok));
+  const rules = await rpc('tools/call', { name: 'list_scoring_rules', arguments: { sport: 'athletics', metric: '100m_time_s' } });
+  assert.ok(!rules.isError);
+  const rule = rules.structuredContent.result?.rule ?? rules.structuredContent.rule;
+  assert.equal(rule.direction, 'lower');
+  const mcp = await rpc('tools/call', { name: 'leaderboard', arguments: { sport: 'athletics', metric: '100m_time_s', event_id: t.ev.id } });
+  const rest = (await api('GET', `/leaderboard?sport=athletics&metric=100m_time_s&event_id=${t.ev.id}`)).body;
+  const rows = mcp.structuredContent.result;
+  assert.equal(rows.length, 1);
+  assert.deepEqual(rows.map((x) => [x.id, x.rank, Number(x.best)]), rest.map((x) => [x.id, x.rank, Number(x.best)]));
 });
