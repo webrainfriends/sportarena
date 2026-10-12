@@ -12,6 +12,7 @@ import { useAvatarPhoto } from '../hero';
 import { ROLES, roleLabel } from '../roles';
 import { VerificationQueue, VerificationSection } from './verification';
 import { CaseQueue } from './cases';
+import { AccessRequests } from './partners';
 import { ProviderProfileSection } from './provider';
 import { SecuritySection, TokensSection } from './security';
 
@@ -75,6 +76,7 @@ export function Me() {
 
       {user.roles.some((r) => ['physio', 'doctor'].includes(r)) ? <ProviderProfileSection /> : null}
       <VerificationSection />
+      {user.roles.includes('admin') ? <Section title="Login approvals (platform team)" color={c.orange}><AccessRequests /></Section> : null}
       {user.roles.includes('admin') ? <VerificationQueue /> : null}
       {user.roles.includes('admin') ? <CaseQueue /> : null}
 
