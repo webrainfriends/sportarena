@@ -294,11 +294,41 @@ cap({
   },
 });
 
+/**
+ * Every way `$1` (a user) is protected by a policy someone else may hold: as an athlete on their own policy, or through the
+ * team they are on, the event they play, work or sponsor, or the venue they staff. One row per (policy, route, capacity).
+ */
+const COVER_LINKS = `
+  SELECT p.id AS policy_id, 'athlete' AS via, 'athlete' AS capacity FROM insurance_policies p WHERE p.subject_type='individual' AND p.subject_id=$1
+  UNION ALL SELECT p.id, 'team', m.role FROM insurance_policies p JOIN team_members m ON m.team_id=p.subject_id AND m.user_id=$1 AND m.status='active' WHERE p.subject_type='team'
+  UNION ALL SELECT p.id, 'event', 'player' FROM insurance_policies p JOIN event_entries en ON en.event_id=p.subject_id AND en.user_id=$1 AND en.status='accepted' WHERE p.subject_type='event'
+  UNION ALL SELECT p.id, 'event', m.role FROM insurance_policies p JOIN event_entries en ON en.event_id=p.subject_id AND en.status='accepted' AND en.team_id IS NOT NULL
+    JOIN team_members m ON m.team_id=en.team_id AND m.user_id=$1 AND m.status='active' WHERE p.subject_type='event'
+  UNION ALL SELECT p.id, 'event', 'participant' FROM insurance_policies p JOIN event_participants ep ON ep.event_id=p.subject_id AND ep.user_id=$1 AND ep.status='active' WHERE p.subject_type='event'
+  UNION ALL SELECT p.id, 'event', es.role FROM insurance_policies p JOIN event_staff es ON es.event_id=p.subject_id AND es.user_id=$1 AND es.status='accepted' WHERE p.subject_type='event'
+  UNION ALL SELECT p.id, 'event', r.role FROM insurance_policies p JOIN event_staff_assignments a ON a.event_id=p.subject_id AND a.user_id=$1 AND a.status IN ('accepted','completed')
+    JOIN event_staff_roles r ON r.id=a.role_id WHERE p.subject_type='event'
+  UNION ALL SELECT p.id, p.subject_type, 'sponsor' FROM insurance_policies p JOIN sponsorships s ON s.target_type=p.subject_type AND s.target_id=p.subject_id AND s.status='active'
+    JOIN sponsors sp ON sp.id=s.sponsor_id AND sp.owner_id=$1 WHERE p.subject_type IN ('team','event')
+  UNION ALL SELECT p.id, 'venue', CASE WHEN v.owner_id=$1 THEN 'owner' ELSE vs.role END FROM insurance_policies p JOIN venues v ON v.id=p.subject_id
+    LEFT JOIN venue_staff vs ON vs.venue_id=v.id AND vs.user_id=$1 AND vs.removed_at IS NULL WHERE p.subject_type='venue' AND (v.owner_id=$1 OR vs.user_id IS NOT NULL)`;
+
 cap({
   name: 'list_policies', method: 'GET', path: '/insurance/policies', tag: 'Insurance',
-  summary: 'Your policies, and those of the teams, events and venues you manage (policy numbers masked; use get_policy for full details), each with days left, whether renewal is due (30 days before the end) or already done, and how many documents are stored. Filter renewal_due=true for the ones to renew.',
-  input: z.object({ renewal_due: z.coerce.boolean().optional(), ...page }),
+  summary: 'Your policies, and those of the teams, events and venues you manage (policy numbers masked; use get_policy for full details), each with days left, whether renewal is due (30 days before the end) or already done, and how many documents are stored. Filter renewal_due=true for the ones to renew. Pass covering_me=true instead for every active policy that protects you, whoever holds it: your own as an athlete, or through your team, an event you play, work or sponsor, or a venue you staff, each with the routes (via) and your capacity (athlete, player, physio, doctor, sponsor, ...). Those rows never carry the holder\'s policy number.',
+  input: z.object({ renewal_due: z.coerce.boolean().optional(), covering_me: z.coerce.boolean().optional(), ...page }),
   async handler({ user }, i) {
+    if (i.covering_me) {
+      const rows = await many(
+        `WITH link AS (${COVER_LINKS})
+         SELECT p.id, p.plan_id, p.subject_type, p.subject_id, p.status, p.starts_on, p.ends_on, pl.name AS plan_name, pl.insurer, pl.emoji, coalesce(p.terms->>'coverage_cents', pl.coverage_cents::text)::bigint AS coverage_cents,
+           (CASE WHEN p.ends_on < current_date AND p.status='active' THEN 'expired' ELSE p.status END) AS effective_status, (p.ends_on - current_date) AS days_left, (p.holder_id=$1) AS held_by_me,
+           ${subjectName('p.subject_type', 'p.subject_id')} AS subject_name,
+           (SELECT jsonb_agg(DISTINCT jsonb_build_object('via', l.via, 'capacity', l.capacity)) FROM link l WHERE l.policy_id=p.id) AS covered_via
+         FROM insurance_policies p JOIN insurance_plans pl ON pl.id=p.plan_id
+         WHERE EXISTS (SELECT 1 FROM link l WHERE l.policy_id=p.id) AND (p.status='active' OR p.holder_id=$1) ORDER BY (p.ends_on < current_date), p.ends_on LIMIT $2 OFFSET $3`, [user.id, i.limit, i.offset]);
+      return rows.map((r) => ({ ...r, coverage_cents: Number(r.coverage_cents), days_left: Number(r.days_left) }));
+    }
     const rows = await many(
       `SELECT p.*, pl.name AS plan_name, pl.insurer, pl.insurer_id, pl.coverage_cents, pl.emoji, (CASE WHEN p.ends_on < current_date AND p.status='active' THEN 'expired' ELSE p.status END) AS effective_status,
          (p.ends_on - current_date) AS days_left, (SELECT id FROM insurance_policies r WHERE r.renewed_from = p.id) AS renewed_by,

@@ -165,3 +165,29 @@ test('an insurer answers one request with several plans and its own terms; the a
   must(await api('POST', `/insurance/quotes/${q2.id}/accept`, { token: manager.token, body: {} }), 201);
   assert.equal(must(await api('GET', `/insurance/quotes/${q1.id}`, { token: manager.token })).status, 'declined', 'the other plan closes');
 });
+
+test('covering_me lists cover as an athlete and through a team, event or sponsorship, with the capacity, and never to outsiders', async () => {
+  const a = await insurer('Cover Alpha');
+  const ip = must(await plan(a, { name: 'Solo' }), 201), tp = must(await plan(a, { name: 'Squad', cover_for: 'team' }), 201), ep = must(await plan(a, { name: 'Meet', cover_for: 'event' }), 201);
+  const manager = await signup(['athlete']), physio = await signup(['physio']), sponsor = await signup(['sponsor']), doc = await signup(['doctor']), outsider = await signup(['athlete']);
+  const team = must(await api('POST', '/teams', { token: manager.token, body: { name: 'Cover FC', sport: 'football', city: 'Pune' } }), 201);
+  const ev = must(await api('POST', '/events', { token: manager.token, body: { name: 'Cover Cup', sport: 'football' } }), 201);
+  const brand = must(await api('POST', '/sponsors', { token: sponsor.token, body: { name: 'CoverBrand', contact_email: 'cb@brand.example' } }), 201);
+  await pool.query("INSERT INTO team_members(team_id, user_id, role) VALUES ($1,$2,'physio')", [team.id, physio.id]);
+  await pool.query("INSERT INTO event_staff(event_id, user_id, role, status) VALUES ($1,$2,'doctor','accepted')", [ev.id, doc.id]);
+  await pool.query("INSERT INTO sponsorships(sponsor_id, target_type, target_id, amount_cents, status, proposed_by) VALUES ($1,'event',$2,0,'active',$3)", [brand.id, ev.id, sponsor.id]);
+  must(await api('POST', '/insurance/policies', { token: manager.token, body: { plan_id: tp.id, subject_id: team.id, months: 3 } }), 201);
+  must(await api('POST', '/insurance/policies', { token: manager.token, body: { plan_id: ep.id, subject_id: ev.id, months: 3 } }), 201);
+  must(await api('POST', '/insurance/policies', { token: manager.token, body: { plan_id: ip.id } }), 201);
+
+  const mine = async (u) => must(await api('GET', '/insurance/policies', { token: u.token, query: { covering_me: 'true' } }));
+  const physioCover = await mine(physio);
+  assert.deepEqual(physioCover.map((p) => p.plan_name), ['Squad']);
+  assert.deepEqual(physioCover[0].covered_via, [{ via: 'team', capacity: 'physio' }]);
+  assert.equal(physioCover[0].subject_name, 'Cover FC');
+  assert.equal('policy_no' in physioCover[0], false, 'the holder\'s policy number is not shown');
+  assert.deepEqual((await mine(doc)).map((p) => [p.plan_name, p.covered_via[0].capacity]), [['Meet', 'doctor']]);
+  assert.deepEqual((await mine(sponsor)).map((p) => [p.plan_name, p.covered_via[0].capacity]), [['Meet', 'sponsor']]);
+  assert.deepEqual((await mine(outsider)).length, 0);
+  assert.deepEqual((await mine(manager)).map((p) => p.plan_name).sort(), ['Solo', 'Squad'], 'the captain is covered by their own policies as athlete and through the team');
+});
