@@ -21,8 +21,10 @@ const isWeb = Platform.OS === 'web';
 let token = null;
 let refreshToken = null;
 export const setSessionTokens = (t) => { if (isWeb) return; token = t?.token ?? null; refreshToken = t?.refresh_token ?? null; };
-let onTokens = () => {};
-export const setTokensHandler = (fn) => { onTokens = fn; };
+// Held on an object, not a bare `let`: on web the minifier folds `isWeb` and drops the only read, which used to leave the assignment pointing at an
+// undeclared variable ("onTokens is not defined" → blank page in production builds).
+const handlers = { tokens: () => {} };
+export const setTokensHandler = (fn) => { handlers.tokens = fn; };
 const csrfToken = () => { try { const m = /(?:^|; )sa_csrf=([^;]+)/.exec(document.cookie); return m ? decodeURIComponent(m[1]) : null; } catch { return null; } };
 const webAuth = () => (isWeb ? { 'x-sa-client': 'web', ...(csrfToken() ? { 'x-csrf-token': csrfToken() } : {}) } : {});
 const withAuth = (h = {}) => ({ ...h, ...(token ? { authorization: `Bearer ${token}` } : {}), ...webAuth() });
@@ -36,7 +38,7 @@ export function refreshSession() {
     try {
       const res = await fetch(`${API}/auth/refresh`, { method: 'POST', ...creds, headers: withAuth({ 'content-type': 'application/json' }), body: JSON.stringify(isWeb ? {} : { refresh_token: refreshToken }) });
       if (!res.ok) return false;
-      if (!isWeb) { const b = await res.json(); setSessionTokens(b); onTokens(b); }
+      if (!isWeb) { const b = await res.json(); setSessionTokens(b); handlers.tokens(b); }
       return true;
     } catch { return false; } finally { refreshing = null; }
   })();
