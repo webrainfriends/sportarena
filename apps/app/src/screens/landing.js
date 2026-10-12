@@ -14,6 +14,7 @@ import Auth from './auth';
 import { Logo } from '../logo';
 import { HScroll, VenueBooking } from './landing-venues';
 import { OpenPositions } from './openings';
+import { PromoCard } from '../promo';
 
 const isWeb = Platform.OS === 'web';
 const h = React.createElement;
@@ -68,14 +69,14 @@ const Pill = ({ title, onPress, solid, color = '#fff', style }) => (
 
 function Hero({ counts, onJoin, onBrowse, onAdvertise, wide }) {
   const nums = counts ? [[counts.people, 'ATHLETES & MEMBERS'], [counts.teams, 'TEAMS'], [counts.venues, 'VENUES'], [counts.live_events, 'LIVE EVENTS'], [counts.open_calls, 'OPEN CALLS']].filter(([v]) => v > 0) : [];
-  const body = (
-    <View style={{ paddingHorizontal: 20, paddingTop: wide ? 96 : 56, paddingBottom: wide ? 96 : 56, maxWidth: 1240, width: '100%', alignSelf: 'center', gap: 22 }}>
+  const text = (
+    <View style={{ flex: 1, gap: 22 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
         {isWeb ? h('span', { className: 'sa-live' }) : <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: '#34D399' }} />}
         <T color="#C7D2FE" weight="700" size={12} style={{ letterSpacing: 2.5 }}>THE HOME OF SPORT · LIVE NOW</T>
       </View>
       {isWeb
-        ? h('div', { className: 'sa-rise', style: { fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 900, letterSpacing: '-0.04em', lineHeight: 1.02, fontSize: wide ? 88 : 46, color: '#fff', maxWidth: 900 } }, 'Where every game finds its ', h('span', { className: 'sa-shine' }, 'players, venues & sponsors.'))
+        ? h('div', { className: 'sa-rise', style: { fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 900, letterSpacing: '-0.04em', lineHeight: 1.02, fontSize: wide ? 72 : 44, color: '#fff', maxWidth: 900 } }, 'Where every game finds its ', h('span', { className: 'sa-shine' }, 'players, venues & sponsors.'))
         : <T color="#fff" weight="800" size={40} style={{ letterSpacing: -1.5 }}>Where every game finds its players, venues & sponsors.</T>}
       <T color="#E0E7FF" size={wide ? 20 : 16} weight="500" style={{ lineHeight: wide ? 30 : 24, maxWidth: 680 }}>Athletes wanted. Matches to join. Fixtures to follow. Kit to buy. Campaigns that move the crowd. One arena for athletes, coaches, organizers, venues and sponsors.</T>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 6 }}>
@@ -86,10 +87,15 @@ function Hero({ counts, onJoin, onBrowse, onAdvertise, wide }) {
       {nums.length ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 30, marginTop: 24 }}>{nums.map(([v, l]) => <Stat key={l} value={v} label={l} />)}</View> : null}
     </View>
   );
+  // the promo card (web) autoplays beside the headline on wide screens and under it on phones
+  const body = (
+    <View style={{ paddingHorizontal: 20, paddingTop: wide ? 72 : 48, paddingBottom: wide ? 72 : 48, maxWidth: 1240, width: '100%', alignSelf: 'center', marginHorizontal: 'auto', flexDirection: wide ? 'row' : 'column', alignItems: wide ? 'center' : 'stretch', gap: wide ? 56 : 36 }}>
+      {text}
+      {isWeb ? <View style={{ alignItems: 'center' }}><PromoCard onJoin={onJoin} width={wide ? 360 : 300} /></View> : null}
+    </View>
+  );
   if (!isWeb) return <LinearGradient colors={BRAND} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>{body}</LinearGradient>;
   return h('div', { className: 'sa-hero', style: { position: 'relative', overflow: 'hidden' } },
-    // an optional hero video dropped at /hero.mp4 plays under the colour wash; if it isn't there, only the animation shows
-    h('video', { src: '/hero.mp4', autoPlay: true, muted: true, loop: true, playsInline: true, onError: (e) => { e.currentTarget.style.display = 'none'; }, style: { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: 0.35, mixBlendMode: 'screen' } }),
     ...FLOATERS.map((e, i) => h('span', { key: i, className: 'sa-float', style: { left: `${wide ? 56 + ((i * 7.7) % 40) : (i * 8.3 + 4) % 92}%`, top: `${[8, 62, 24, 74, 12, 50, 80, 30, 66, 6, 44, 18][i]}%`, fontSize: [54, 70, 44, 62, 50, 78, 46, 66, 56, 48, 72, 60][i], animationDelay: `${-i * 0.9}s`, animationDuration: `${6 + (i % 4)}s`, opacity: wide ? 0.55 : 0.28 } }, e)),
     h('div', { style: { position: 'absolute', inset: 0, background: 'radial-gradient(circle at 80% 20%, rgba(236,72,153,.28), transparent 45%), radial-gradient(circle at 10% 90%, rgba(56,189,248,.22), transparent 40%)', pointerEvents: 'none' } }),
     h('div', { style: { position: 'relative' } }, body));
