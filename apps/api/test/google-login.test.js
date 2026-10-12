@@ -2,6 +2,7 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 
 process.env.DATABASE_URL = process.env.TEST_DATABASE_URL ?? 'postgres://postgres@/sportarena_test?host=/tmp';
+process.env.SUPER_ADMIN_EMAIL = 'rraja.edge@gmail.com';
 process.env.GOOGLE_CLIENT_ID = 'test-client.apps.googleusercontent.com';
 const { pool } = await import('../src/db.js');
 const { migrate } = await import('../src/migrate.js');
