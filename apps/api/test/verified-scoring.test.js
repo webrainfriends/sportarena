@@ -275,3 +275,19 @@ test('a correction carries the evidence, has its own history, and the superseded
   assert.deepEqual(oldHist.map((h) => h.action), ['submitted', 'approved', 'disputed', 'corrected', 'superseded']);
   assert.equal(oldHist.at(-1).from_status, 'disputed');
 });
+
+test('list_events as_official finds events for organisers, accepted crew and fixture referees only', async () => {
+  const t = await meet('athletics', 1);
+  const other = await meet('athletics', 1); // someone else's event
+  const ids = async (who) => (await api('GET', '/events?as_official=true', { token: who.token })).body.map((e) => e.id);
+  assert.ok((await ids(t.org)).includes(t.ev.id), 'organiser');
+  assert.deepEqual((await ids(t.other)).filter((x) => [t.ev.id, other.ev.id].includes(x)), [t.ev.id], 'accepted timekeeper sees only their event');
+  assert.deepEqual(await ids(t.outsider), [], 'an unrelated athlete sees nothing');
+  await pool.query("INSERT INTO event_staff(event_id, user_id, role, status) VALUES ($1,$2,'scorer','invited')", [t.ev.id, t.outsider.id]);
+  assert.deepEqual(await ids(t.outsider), [], 'a pending invitation does not count');
+  const ref = await signup(['referee']);
+  await pool.query('INSERT INTO fixtures(event_id, scheduled_at, referee_id) VALUES ($1, now(), $2)', [other.ev.id, ref.id]);
+  assert.deepEqual(await ids(ref), [other.ev.id], 'fixture referee');
+  assert.deepEqual((await api('GET', '/events?as_official=true')).body, [], 'anonymous gets nothing');
+  assert.ok((await api('GET', '/events')).body.length >= 2, 'without the filter the list is unchanged');
+});
