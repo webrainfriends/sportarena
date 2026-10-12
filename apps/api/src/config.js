@@ -2,6 +2,8 @@ import { randomBytes } from 'node:crypto';
 
 const env = process.env;
 const isProd = env.NODE_ENV === 'production';
+/** MFA policy default: on in production unless MFA_ENFORCE=false (explicit opt-out); elsewhere only when MFA_ENFORCE=true. */
+export const mfaDefault = (e) => (e.NODE_ENV === 'production' ? e.MFA_ENFORCE !== 'false' : e.MFA_ENFORCE === 'true');
 
 function secret(name) {
   const v = env[name];
@@ -48,8 +50,9 @@ export const config = {
   cookieSecure: env.COOKIE_SECURE ?? 'auto',
   cookieSameSite: env.COOKIE_SAMESITE ?? 'lax',
   // MFA policy: when true, people holding doctor/physio/admin/platform_admin roles must have two-step verification enabled and verified
-  // in their session to use clinical- or admin-class capabilities. Off by default so rollout never locks anyone out; turn on once they have enrolled.
-  mfaEnforce: env.MFA_ENFORCE === 'true',
+  // in their session to use clinical- or admin-class capabilities. ON by default in production (MFA_ENFORCE=false is the explicit, documented opt-out
+  // for a rollout window while people enrol); off in development/test unless MFA_ENFORCE=true.
+  mfaEnforce: mfaDefault(env),
   corsOrigins: (env.CORS_ORIGINS ?? '*').split(','),
   // Uploaded venue photos/videos. Must be a persistent directory (deploys never touch it). Files are never deleted.
   mediaDir: env.MEDIA_DIR ?? './data/media',
