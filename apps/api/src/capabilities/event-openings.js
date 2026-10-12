@@ -2,6 +2,7 @@
 // can apply; both sides exchange documents; the organiser accepts and a contract is generated; the applicant accepts the contract to be
 // confirmed. Nothing is deleted: applications, contracts and documents only move through statuses (or are hidden).
 import { createHash } from 'node:crypto';
+import { requireApproved } from '../access.js';
 import express from 'express';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
@@ -245,6 +246,7 @@ export function staffDocsRouter() {
     try {
       const user = await authenticate(req.headers.authorization);
       if (!user) throw unauthorized();
+      requireApproved(user);
       const q = z.object({ id, title: z.string().min(1).max(120).optional() }).parse({ id: req.params.id, title: req.query.title });
       if (Number(req.headers['content-length'] ?? 0) > DOC_LIMITS.bytes) throw new AppError(413, 'too_large', 'File too large');
       const { a } = await assignmentAccess(user, q.id);

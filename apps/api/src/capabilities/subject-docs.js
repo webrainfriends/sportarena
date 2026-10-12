@@ -2,6 +2,7 @@
 // people who run it want to keep together. Managers add and hide; members and sponsors with a stake can read. A row holds its own
 // encrypted file, or points at a document already stored with a policy (nothing is copied twice). Files are never deleted.
 import { createHash } from 'node:crypto';
+import { requireApproved } from '../access.js';
 import express from 'express';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
@@ -84,6 +85,7 @@ export function subjectDocsRouter() {
     try {
       const user = await authenticate(req.headers.authorization);
       if (!user) throw unauthorized();
+      requireApproved(user);
       const q = z.object({ subject_type: z.enum(SUBJECTS), subject_id: id, kind: z.enum(KINDS).default('other'), title: z.string().min(1).max(120).optional(), policy_id: id.optional() }).parse(req.query);
       if (Number(req.headers['content-length'] ?? 0) > DOC_LIMITS.bytes) throw new AppError(413, 'too_large', 'File too large');
       needManage(await access(user, q.subject_type, q.subject_id));

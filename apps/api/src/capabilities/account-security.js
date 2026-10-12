@@ -195,7 +195,7 @@ cap({
     try { await checkSecondFactor(ch.user_id, i.code); }
     catch (e) { await query('UPDATE account_tokens SET attempts = attempts + 1 WHERE id=$1', [ch.id]); throw e; }
     if (!(await one('UPDATE account_tokens SET used_at = now() WHERE id=$1 AND used_at IS NULL RETURNING id', [ch.id]))) throw unauthorized('This sign-in was already completed.');
-    const u = await one('SELECT id, handle, display_name, roles, avatar_emoji, avatar_color, avatar_url, avatar_cutout FROM users WHERE id=$1', [ch.user_id]);
+    const u = await one('SELECT id, handle, display_name, roles, avatar_emoji, avatar_color, avatar_url, avatar_cutout, access_status FROM users WHERE id=$1', [ch.user_id]);
     return { user: u, ...(await startSession(u, meta, { mfa: true })) };
   },
 });

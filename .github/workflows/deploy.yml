@@ -192,6 +192,8 @@ jobs:
           PLATFORM_ADMIN_PASSWORD: ${{ secrets.PLATFORM_ADMIN_PASSWORD }}
           # two-step verification for doctors/physios/admins is ON in production; set the repo variable MFA_ENFORCE=false only as a temporary rollout opt-out (docs/auth.md)
           MFA_ENFORCE: ${{ vars.MFA_ENFORCE }}
+          # Sign in with Google: the public OAuth client id (repository variable); unset hides the button
+          GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
         run: |
           set -euo pipefail
           KEYFILE="$(mktemp)"; trap 'rm -f "$KEYFILE"' EXIT

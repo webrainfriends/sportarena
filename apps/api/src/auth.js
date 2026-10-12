@@ -8,7 +8,7 @@ const secret = () => new TextEncoder().encode(config.jwtSecret);
 export const signToken = (user, sessionId) =>
   new SignJWT({ roles: user.roles }).setProtectedHeader({ alg: 'HS256' }).setSubject(user.id).setJti(sessionId ?? crypto.randomUUID()).setIssuedAt().setExpirationTime(config.tokenTtl).sign(secret());
 
-const COLS = 'id, handle, display_name, roles, avatar_emoji, avatar_color, avatar_url, avatar_cutout';
+const COLS = 'id, handle, display_name, roles, avatar_emoji, avatar_color, avatar_url, avatar_cutout, access_status';
 
 /** Resolve a `Bearer` credential (JWT or `sa_` API token) to a user row, or null. */
 export async function authenticate(authorization) {
@@ -20,7 +20,7 @@ export async function authenticate(authorization) {
     const row = await one(
       `UPDATE api_tokens t SET last_used_at = now() FROM users u
         WHERE t.token_hash = $1 AND t.revoked_at IS NULL AND (t.expires_at IS NULL OR t.expires_at > now()) AND u.id = t.user_id
-        RETURNING u.id, u.handle, u.display_name, u.roles, u.avatar_emoji, u.avatar_color, u.avatar_url, u.avatar_cutout,
+        RETURNING u.id, u.handle, u.display_name, u.roles, u.avatar_emoji, u.avatar_color, u.avatar_url, u.avatar_cutout, u.access_status,
                   t.id AS _tid, t.scopes AS _scopes, t.resources AS _resources, t.expires_at AS _exp,
                   EXISTS (SELECT 1 FROM user_mfa m WHERE m.user_id = u.id AND m.enabled_at IS NOT NULL AND m.disabled_at IS NULL) AS _mfa`,
       [sha256(tok)],

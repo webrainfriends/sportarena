@@ -11,6 +11,7 @@ import { installWebShell } from './web';
 import { api, setMfaRequiredHandler } from './api';
 import { parseTarget, targetFor } from './push';
 import { AccountButton } from './account';
+import { BetaBanner } from './beta-banner';
 import { c, dark, fam } from './theme';
 
 installWebShell();
@@ -205,13 +206,14 @@ function Shell() {
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
   if (PASSPORT_TOKEN) return <View style={{ flex: 1, backgroundColor: c.bg, paddingTop: ins.top }}><PassportPublic token={PASSPORT_TOKEN} /></View>;
   if (!ready) return <View style={{ flex: 1, backgroundColor: c.bg, justifyContent: 'center', padding: 24 }}><Loading /></View>;
-  if (!user) return <View style={{ flex: 1, backgroundColor: c.bg }}><Landing /></View>;
+  if (!user) return <View style={{ flex: 1, backgroundColor: c.bg, paddingTop: ins.top }}><BetaBanner /><View style={{ flex: 1 }}><Landing /></View></View>;
   const top = stack[stack.length - 1];
   const Page = top ? PAGES[top.name] : TABS.find((t) => t[0] === tab)[1];
   const prev = stack.length > 1 ? TITLES[stack[stack.length - 2].name] : tab === 'Hub' ? 'More' : tab;
   const pageKey = top ? `${top.name}:${stack.length}:${top.params?.id ?? ''}` : tab;
   return (
     <View style={{ flex: 1, backgroundColor: c.bg, paddingTop: ins.top, paddingLeft: ins.left, paddingRight: ins.right }}>
+      <BetaBanner />
       {top ? <NavBar title={TITLES[top.name]} backLabel={prev} onBack={back} /> : <TopBar />}
       {mfa ? <MfaNotice info={mfa} onGo={() => { setMfa(null); goTab('Me'); }} onClose={() => setMfa(null)} /> : null}
       <Transition id={pageKey} push={!!top}><Page key={pageKey} {...(top?.params ?? {})} /></Transition>

@@ -3,6 +3,7 @@ import { AppError, forbidden, unauthorized } from './errors.js';
 import { hasRole } from './helpers.js';
 import { enforceResources, enforceScope } from './scopes.js';
 import { enforceMfa } from './account-security.js';
+import { enforceApproved } from './access.js';
 
 /** The one place a capability is executed — REST and MCP both go through here. */
 export async function invoke(capability, user, rawInput, meta = {}) {
@@ -13,6 +14,7 @@ export async function invoke(capability, user, rawInput, meta = {}) {
   }
   if (auth !== 'public') enforceScope(user?.credential, capability); // public capabilities need no token at all
   if (auth !== 'public') enforceMfa(user, capability); // step-up for sensitive roles' clinical/admin actions (MFA_ENFORCE)
+  if (auth !== 'public') enforceApproved(user, capability); // people awaiting approval can look but not add or change anything
   const input = capability.input.parse(rawInput ?? {});
   // API tokens: the token's scope/resources AND the user's own permissions must both allow it (checked before the handler runs).
   enforceResources(user?.credential, capability, input);

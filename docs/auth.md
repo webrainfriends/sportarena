@@ -16,6 +16,22 @@ Suggested order: deploy; check `CORS_ORIGINS` and HTTPS; make sure `NOTIFY_WEBHO
 admins turn on two-step verification in **Me > Account security**; MFA enforcement is already on in production, so do the enrolment first: set the repo variable `MFA_ENFORCE=false` for the first deploy of this change, enrol, then remove the variable (the deploy workflow passes it to `.env`; note a deploy only writes it when set, so set it back to `true` explicitly to re-enable); later set `AUTH_REQUIRE_SESSION=true` and shorten
 `TOKEN_TTL`. Rollback of any step is described in its section; no step deletes data, and migrations only add columns and tables.
 
+## Sign in with Google and access approval
+
+- **Log in / Create account** show a "Continue with Google" button when `GOOGLE_CLIENT_ID` is set (repository variable, passed to `.env` by the deploy;
+  create a Web OAuth client in Google Cloud Console and add the site origin as an authorised JavaScript origin). The page gets the ID token from Google and
+  sends it to `POST /auth/google` (`login_google`), which verifies signature, issuer, audience, expiry and `email_verified`. `GET /auth/config` tells the page
+  the client id. Migration `059_google_login.sql` adds `users.google_sub`.
+- An existing account with the same email is linked. If that account's email was never verified, its password is replaced by an unusable one and its sessions
+  are signed out (protects against someone pre-registering your address); reset the password by email to use it again.
+- **Approval** (migration `060_access_approval.sql`, `users.access_status`): a brand-new Google account is `pending`. Existing accounts and password sign-ups stay
+  `approved`. A non-approved account can use every screen read-only: `invoke()` refuses any non-GET capability (and the upload routes) with `approval_pending`,
+  except sign-out, token refresh, password change, email verification and two-step verification. A banner explains this.
+- **Super admin**: `SUPER_ADMIN_EMAIL` (default `rraja.edge@gmail.com`). When that Google account signs in it is approved and holds `admin` + `platform_admin`.
+  It approves or rejects others in **Partner management > Access requests** (`list_access_requests`, `decide_access`). Rejecting signs the person out and blocks
+  Google sign-in; deciding again re-approves. Nothing is deleted and every decision is audit-logged.
+- Every screen shows a beta banner: the site is under beta testing and not for public or commercial use.
+
 ## Screens (Me, and the log-in screen)
 
 - **Me > Account security**: email confirmation state (send/confirm), two-step verification (turn on with QR code or key, confirm a code, save the

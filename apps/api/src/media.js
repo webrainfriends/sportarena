@@ -1,6 +1,7 @@
 // Venue media storage on the server's persistent disk. Files are written once under a server-generated name, their type is
 // decided from the bytes (never from the client), and rows are retired with removed_at — files are never deleted.
 import { createHash, randomUUID } from 'node:crypto';
+import { requireApproved } from './access.js';
 import { createWriteStream } from 'node:fs';
 import { mkdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
@@ -110,6 +111,7 @@ export function mediaRouter() {
     try {
       const user = await authenticate(req.headers.authorization);
       if (!user) throw unauthorized();
+      requireApproved(user);
       if (!/^[0-9a-f-]{36}$/.test(req.params.id)) throw notFound('Venue');
       await mustManage(user, req.params.id);
       const declared = Number(req.headers['content-length'] ?? 0);

@@ -35,7 +35,10 @@ export const config = {
   // Password hashing (scrypt) runs off the event loop; at most `concurrency` derivations run at once and
   // up to `maxQueue` more wait. Beyond that requests get 503 + Retry-After.
   hashing: { concurrency: Number(env.HASH_CONCURRENCY ?? 2), maxQueue: Number(env.HASH_MAX_QUEUE ?? 64) },
-  tokenTtl: env.TOKEN_TTL ?? '12h',
+  // Sign in with Google: the OAuth client id (public) from Google Cloud Console. Unset = the Google button is hidden and the endpoint refuses.
+  googleClientId: env.GOOGLE_CLIENT_ID,
+  // The Google account that approves or rejects everyone else's access (and holds the platform owner role).
+  superAdminEmail: env.SUPER_ADMIN_EMAIL ?? 'rraja.edge@gmail.com',
   tokenTtl: env.TOKEN_TTL ?? '12h', // access-token lifetime
   refreshTtlDays: Number(env.REFRESH_TTL_DAYS ?? 30), // sliding: each rotation extends the session by this much
   requireSession: env.AUTH_REQUIRE_SESSION === 'true', // refuse pre-session JWTs that carry no session id

@@ -411,19 +411,39 @@ function Team() {
   );
 }
 
-const TABS = [['overview', 'Overview'], ['partners', 'Partners'], ['approvals', 'Venue approvals'], ['pricing', 'Pricing'], ['contracts', 'Contracts'], ['settlements', 'Settlements'], ['reports', 'Reports'], ['team', 'Platform team']];
+function AccessRequests() {
+  const [status, setStatus] = useState('pending');
+  const l = useLoad(() => api.get('/admin/access-requests', { status, limit: 50 }), [status]);
+  const act = useAct(l.reload);
+  const decide = (u, decision) => act(() => api.post(`/admin/access-requests/${u.id}`, { decision }), decision === 'approved' ? 'Approved' : 'Rejected');
+  return (
+    <>
+      <T size={13} color={c.mute}>People who signed in with Google. Until you approve them they can look around but cannot add or change anything. Rejecting signs them out; you can change your mind later.</T>
+      <Seg options={['pending', 'approved', 'rejected'].map((s) => ({ value: s, label: label(s) }))} value={status} onChange={setStatus} />
+      <Block state={l} empty={status === 'pending' ? 'Nobody is waiting for approval.' : 'Nobody here yet.'}>
+        {(l.data ?? []).map((u) => <Row key={u.id} title={u.display_name} sub={`${u.email} · @${u.handle} · ${new Date(u.created_at).toLocaleDateString()}`}
+          right={<View style={{ flexDirection: 'row', gap: 6 }}>
+            {u.access_status !== 'approved' ? <Btn small title="Approve" onPress={() => decide(u, 'approved')} /> : null}
+            {u.access_status !== 'rejected' ? <Btn small title="Reject" color={c.paper} ink={c.red} onPress={() => decide(u, 'rejected')} /> : null}
+          </View>} />)}
+      </Block>
+    </>
+  );
+}
+
+const TABS = [['overview', 'Overview'], ['partners', 'Partners'], ['approvals', 'Venue approvals'], ['pricing', 'Pricing'], ['contracts', 'Contracts'], ['settlements', 'Settlements'], ['reports', 'Reports'], ['team', 'Platform team'], ['access', 'Access requests']];
 
 /** The platform team's partner-management console. */
 export function PartnerConsole() {
   const { user } = useSession();
   const [tab, setTab] = useState('overview');
   if (!user.roles.includes('admin')) return <Screen><H1>Partner management</H1><Empty emoji="🔒" title="Platform team only" sub="This console is for Gotmygame platform staff." /></Screen>;
-  const body = { overview: <Overview go={setTab} />, partners: <Partners />, approvals: <Approvals />, pricing: <Pricing />, contracts: <Contracts />, settlements: <Settlements />, reports: <Reports />, team: <Team /> }[tab];
+  const body = { overview: <Overview go={setTab} />, partners: <Partners />, approvals: <Approvals />, pricing: <Pricing />, contracts: <Contracts />, settlements: <Settlements />, reports: <Reports />, team: <Team />, access: <AccessRequests /> }[tab];
   return (
     <Screen wide>
       <H1>Partner management</H1>
       <T color={c.mute} weight="700">Onboard, price, contract and settle with venue partners.</T>
-      <View style={{ marginVertical: 8 }}><Seg options={TABS.map(([value, l]) => ({ value, label: l }))} value={tab} onChange={setTab} /></View>
+      <View style={{ marginVertical: 8 }}><Seg options={TABS.filter(([k]) => k !== 'access' || user.roles.includes('platform_admin')).map(([value, l]) => ({ value, label: l }))} value={tab} onChange={setTab} /></View>
       {body}
     </Screen>
   );

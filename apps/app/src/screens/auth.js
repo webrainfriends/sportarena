@@ -7,6 +7,7 @@ import { Btn, Card, Chip, Field, Screen, T } from '../ui';
 import { c, grad, fam } from '../theme';
 import { ROLES } from '../roles';
 import { INTENT_COPY } from '../market/intent';
+import GoogleButton from '../google-button';
 
 
 const DEMOS = [['aarav', 'Aarav · Athlete'], ['kavya_events', 'Kavya · Organizer'], ['arena_one', 'Arena One · Venue'], ['volt_drink', 'Volt · Sponsor'], ['dr_rhea', 'Dr Rhea · Doctor']];
@@ -37,6 +38,15 @@ export default function Auth({ intent, initialMode, onClose } = {}) {
   }, []);
   const set = (k) => (v) => setF((p) => ({ ...p, [k]: v }));
   const toggle = (r) => setF((p) => ({ ...p, roles: p.roles.includes(r) ? p.roles.filter((x) => x !== r) : [...p.roles, r] }));
+
+  const withGoogle = async (credential) => {
+    setBusy(true); setErr(null); setInfo(null);
+    try {
+      const res = await api.post('/auth/google', { credential });
+      if (res.mfa_required) { setMfaToken(res.mfa_token); setF((p) => ({ ...p, mfa: '' })); setMode('mfa'); return; }
+      await signIn(res);
+    } catch (e) { setErr(e.message); } finally { setBusy(false); }
+  };
 
   const submit = async () => {
     setBusy(true); setErr(null); setInfo(null);
@@ -134,6 +144,11 @@ export default function Auth({ intent, initialMode, onClose } = {}) {
           </>}
           {err ? <T color={c.red} weight="600" size={13}>{err}</T> : null}
           <Btn title={{ login: 'Log in', register: 'Create my account', mfa: 'Verify and log in', forgot: 'Send reset code', reset: 'Change password' }[mode]} onPress={submit} loading={busy} />
+          {['login', 'register'].includes(mode) ? <>
+            <T size={12} color={c.mute} style={{ textAlign: 'center' }}>or</T>
+            <GoogleButton onCredential={withGoogle} onError={setErr} />
+            <T size={11} color={c.mute} style={{ textAlign: 'center', lineHeight: 16 }}>New Google accounts are checked by the administrator before they can add or change anything. Until then you can look around read-only.</T>
+          </> : null}
           {mode === 'login' ? <Pressable onPress={() => { setErr(null); setInfo(null); setMode('forgot'); }} accessibilityRole="button" style={{ alignSelf: 'center', paddingVertical: 8 }}><T color={c.pink} weight="700" size={13}>Forgot your password?</T></Pressable> : null}
           {mode === 'forgot' ? <Pressable onPress={() => { setErr(null); setMode('reset'); }} accessibilityRole="button" style={{ alignSelf: 'center', paddingVertical: 8 }}><T color={c.pink} weight="700" size={13}>I already have a code</T></Pressable> : null}
           {['forgot', 'reset', 'mfa'].includes(mode) ? <Pressable onPress={() => { setErr(null); setInfo(null); setMfaToken(null); setMode('login'); }} accessibilityRole="button" style={{ alignSelf: 'center', paddingVertical: 8 }}><T color={c.mute} weight="700" size={13}>Back to log in</T></Pressable> : null}

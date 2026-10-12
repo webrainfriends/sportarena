@@ -58,7 +58,7 @@ cap({
   summary: 'Exchange email + password for a session (if two-step verification is on you get mfa_required + mfa_token instead; finish with login_mfa): a short-lived access token (bearer) plus a rotating refresh_token (use refresh_session). Each sign-in is a revocable server session (see list_login_sessions, logout).',
   input: z.object({ email: z.string().email(), password: z.string() }),
   async handler({ meta }, i) {
-    const u = await one('SELECT id, handle, display_name, roles, avatar_emoji, avatar_color, avatar_url, avatar_cutout, password_hash FROM users WHERE email_idx = $1', [blindIndex(i.email)]);
+    const u = await one('SELECT id, handle, display_name, roles, avatar_emoji, avatar_color, avatar_url, avatar_cutout, access_status, password_hash FROM users WHERE email_idx = $1', [blindIndex(i.email)]);
     // always run a hash to keep timing similar for unknown emails
     const ok = await verifyPassword(i.password, u?.password_hash ?? await decoyHash());
     if (!u || !ok) throw unauthorized('Invalid email or password');
@@ -79,7 +79,7 @@ cap({
     await audit(null, user.id, 'read_pii', 'users', user.id);
     return {
       id: row.id, handle: row.handle, display_name: row.display_name, roles: row.roles, bio: row.bio,
-      avatar_emoji: row.avatar_emoji, avatar_color: row.avatar_color, avatar_url: row.avatar_url, avatar_cutout: row.avatar_cutout, created_at: row.created_at,
+      avatar_emoji: row.avatar_emoji, avatar_color: row.avatar_color, avatar_url: row.avatar_url, avatar_cutout: row.avatar_cutout, access_status: row.access_status, created_at: row.created_at,
       email: decryptFields(row, 'users', ['email']).email, ...decryptFields(row, 'users', PII),
     };
   },
