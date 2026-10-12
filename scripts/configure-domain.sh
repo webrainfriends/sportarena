@@ -189,10 +189,25 @@ if [ -n "$SKIP_CERTBOT" ]; then
 fi
 
 # Asking Let's Encrypt before DNS points here only burns its failed-validation rate limit - check first.
+# Let's Encrypt validates against public DNS, so that is asked too (this host's resolver can lag behind or differ).
+local_a() { getent ahostsv4 "$1" 2>/dev/null | awk '$2 == "STREAM" {print $1}' | sort -u | tr '\n' ' ' || true; }
+public_dns() {   # <type> <name> [ipv4-only]
+  local answers
+  answers="$(curl -fsS --max-time 8 "https://dns.google/resolve?name=$2&type=$1" 2>/dev/null | grep -o '"data":"[^"]*"' | cut -d'"' -f4 || true)"
+  if [ -n "${3:-}" ]; then answers="$(grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' <<<"$answers" || true)"; fi
+  printf '%s' "$answers" | tr '\n' ' '
+}
 public_ip="$(curl -fsS --max-time 5 https://checkip.amazonaws.com 2>/dev/null | tr -d '[:space:]' || true)"
-domain_ip="$(getent ahostsv4 "$DOMAIN" 2>/dev/null | awk 'NR==1 {print $1}' || true)"
-if [ -z "$public_ip" ] || [ "$domain_ip" != "$public_ip" ]; then
-  log "$DOMAIN resolves to '${domain_ip:-nothing}', this host is '${public_ip:-unknown}' - add a DNS A record for $DOMAIN (and www) pointing at this host; HTTPS will be set up on the next deploy after that"
+local_ips="$(local_a "$DOMAIN")"
+public_ips="$(public_dns A "$DOMAIN" v4)"
+public_aaaa="$(public_dns AAAA "$DOMAIN")"
+log "DNS for $DOMAIN: this host sees [${local_ips}], public DNS A [${public_ips}] AAAA [${public_aaaa}] NS [$(public_dns NS "$DOMAIN")]; this host is '${public_ip:-unknown}'"
+log "DNS for www.$DOMAIN: this host sees [$(local_a "www.$DOMAIN")], public DNS A [$(public_dns A "www.$DOMAIN" v4)]"
+if [ -n "$public_aaaa" ]; then
+  log "$DOMAIN also has an AAAA (IPv6) record - browsers and Let's Encrypt prefer it, so delete it unless an IPv6 server answers there"
+fi
+if [ -z "$public_ip" ] || ! grep -qwF "$public_ip" <<<"$local_ips $public_ips"; then
+  log "$DOMAIN does not resolve to this host ('${public_ip:-unknown}') - add a DNS A record for $DOMAIN (and www) pointing at it, with no other A/AAAA records on the same name; HTTPS will be set up on the next deploy after that"
   exit 0
 fi
 
