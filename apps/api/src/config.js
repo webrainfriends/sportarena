@@ -75,6 +75,8 @@ export const config = {
   // WORKER_MODE: 'inprocess' (default) runs maintenance inside the API process; 'external' leaves it to `npm run worker`
   // (set it on both processes). A worker is considered stale after WORKER_STALE_SECONDS without a heartbeat.
   workerMode: env.WORKER_MODE === 'external' ? 'external' : 'inprocess',
+  // A maintenance category failing this many cycles in a row is reported by get_worker_health (and makes it unhealthy).
+  stepFailureThreshold: Math.max(1, Number(env.STEP_FAILURE_THRESHOLD ?? 3)),
   workerStaleSeconds: Number(env.WORKER_STALE_SECONDS ?? 180),
   // One JSON access line per request (method, path, status, ms, request id; never bodies or tokens).
   accessLog: (env.ACCESS_LOG ?? (isProd ? 'true' : 'false')) === 'true',
