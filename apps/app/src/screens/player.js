@@ -8,7 +8,9 @@ import { useLayout } from '../layout';
 import { Btn, Card, Chip, Empty, ErrorBox, H1, H2, Loading, Screen, Seg, T } from '../ui';
 import { HScroll } from '../pickers';
 import { FormSheet } from '../FormSheet';
-import { c, fam, toneFor, day } from '../theme';
+import { LinearGradient } from 'expo-linear-gradient';
+import { c, fam, day } from '../theme';
+import { sportTheme, recordOf, recordLabel } from '../sport-theme';
 import { FavouriteSports } from '../sportpicker';
 import { RecordsSection } from './performance';
 import { Billboard, Shop, Insure, useCols } from './marketplace';
@@ -53,53 +55,55 @@ export function useMakeDefault(reload) {
 // ---------- sport profile card ----------
 
 export function SportCard({ p, width, onOpen, onDefault, onLog, selected }) {
-  const tone = toneFor(p.sport_slug);
+  const th = sportTheme(p.sport_slug);
+  const tone = th.tone;
   const s = p.summary;
   const top = p.metrics.slice(0, 3);
   const line = [p.position, p.jersey_no !== null ? `#${p.jersey_no}` : null, p.club].filter(Boolean).join(' · ');
+  const R = th.radius;
   return (
     <Pressable onPress={onOpen} style={({ pressed }) => [{ width }, pressed ? { opacity: 0.94, transform: [{ scale: 0.99 }] } : null]}>
-      <View style={{ backgroundColor: c.paper, borderRadius: 20, borderWidth: p.is_default || selected ? 2 : 1, borderColor: selected ? c.ink : p.is_default ? tone[0] : c.line, overflow: 'hidden', ...(Platform.OS === 'web' ? { boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 8px 24px rgba(15,23,42,0.07)' } : { elevation: 2 }) }}>
-        <View style={{ height: 6, backgroundColor: tone[0] }} />
-        <View style={{ padding: 14, gap: 12 }}>
+      <View style={{ backgroundColor: c.paper, borderRadius: R, borderWidth: p.is_default || selected ? 2 : 1, borderColor: selected ? c.ink : p.is_default ? tone[0] : c.line, overflow: 'hidden', ...(Platform.OS === 'web' ? { boxShadow: `0 1px 2px rgba(15,23,42,0.04), 0 10px 28px ${tone[0]}2E` } : { elevation: 3 }) }}>
+        <LinearGradient colors={th.grad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ padding: 14, overflow: 'hidden' }}>
+          <T size={92} style={{ position: 'absolute', right: -6, bottom: -26, opacity: 0.16 }} pointerEvents="none">{th.motif}</T>
           <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
-            <View style={{ width: 48, height: 48, borderRadius: 15, backgroundColor: tone[1], alignItems: 'center', justifyContent: 'center' }}>
-              <T size={26}>{p.sport_emoji}</T>
+            <View style={{ width: 50, height: 50, borderRadius: Math.min(R - 6, 25), backgroundColor: 'rgba(255,255,255,0.24)', alignItems: 'center', justifyContent: 'center' }}>
+              <T size={27}>{p.sport_emoji}</T>
             </View>
-            <View style={{ flex: 1, gap: 4 }}>
-              <T weight="800" size={18} numberOfLines={1} style={{ letterSpacing: -0.3 }}>{p.sport}</T>
-              <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
-                <Pill label={nice(p.role)} fg={tone[2]} bg={tone[1]} />
-                <Pill label={nice(p.level)} />
-              </View>
+            <View style={{ flex: 1, gap: 2 }}>
+              <T weight="800" size={19} color="#fff" numberOfLines={1} style={{ letterSpacing: -0.4 }}>{p.sport}</T>
+              <T size={12} weight="600" color="#fff" numberOfLines={1} style={{ opacity: 0.88 }}>{nice(p.role)} · {nice(p.level)}</T>
             </View>
-            <T size={22} color={c.mute}>›</T>
+            <T size={22} color="#fff" style={{ opacity: 0.8 }}>›</T>
           </View>
+          <T size={12} weight="600" color="#fff" numberOfLines={1} style={{ opacity: 0.85, marginTop: 10, fontStyle: 'italic' }}>{th.vibe}</T>
+        </LinearGradient>
+        <View style={{ padding: 14, gap: 12 }}>
           {line ? <T size={13} color={c.mute} weight="600">{line}</T> : null}
           {p.official_summary?.matches ? <Pill label={`✓ ${p.official_summary.matches} OFFICIAL · ${s.matches - p.official_summary.matches} LOGGED BY YOU`} fg={tone[2]} bg={tone[1]} /> : null}
           <View style={{ flexDirection: 'row', gap: 8 }}>
-            <Stat value={s.matches} label="MATCHES" tone={tone} />
-            <Stat value={`${s.wins}-${s.draws}-${s.losses}`} label="W-D-L" />
+            <Stat value={s.matches} label={th.noun} tone={tone} />
+            <Stat value={recordOf(th, s)} label={recordLabel(th, s)} />
             <Stat value={fmt(s.avg_rating)} label="RATING" />
           </View>
           {top.length ? (
             <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
               {top.map((m) => (
-                <View key={m.metric} style={{ flexDirection: 'row', alignItems: 'baseline', gap: 5, backgroundColor: c.bg, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6 }}>
-                  <T weight="800" size={15} style={{ fontVariant: ['tabular-nums'] }}>{fmt(m.total)}</T><T size={12} color={c.mute} weight="600">{nice(m.metric)}</T>
+                <View key={m.metric} style={{ flexDirection: 'row', alignItems: 'baseline', gap: 5, backgroundColor: tone[1], borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6 }}>
+                  <T weight="800" size={15} color={tone[2]} style={{ fontVariant: ['tabular-nums'] }}>{fmt(m.total)}</T><T size={12} color={tone[2]} weight="600">{nice(m.metric)}</T>
                 </View>
               ))}
             </View>
           ) : null}
           {s.matches > 0 ? <FormDots form={p.form} /> : null}
           <View style={{ flexDirection: 'row', gap: 8 }}>
-            <Pressable onPress={onLog} style={{ flex: 1, minHeight: 44, borderRadius: 12, backgroundColor: tone[1], alignItems: 'center', justifyContent: 'center' }}>
-              <T weight="800" size={13.5} color={tone[2]}>+ Log match</T>
+            <Pressable onPress={onLog} style={{ flex: 1, minHeight: 44, borderRadius: Math.min(R - 6, 14), backgroundColor: tone[1], alignItems: 'center', justifyContent: 'center' }}>
+              <T weight="800" size={13.5} color={tone[2]}>+ Log {th.one}</T>
             </Pressable>
             {p.is_default ? (
-              <View style={{ flex: 1, minHeight: 44, borderRadius: 12, backgroundColor: tone[0], alignItems: 'center', justifyContent: 'center' }}><T weight="800" size={13} color="#fff">★ Default</T></View>
+              <View style={{ flex: 1, minHeight: 44, borderRadius: Math.min(R - 6, 14), backgroundColor: tone[0], alignItems: 'center', justifyContent: 'center' }}><T weight="800" size={13} color="#fff">★ Default</T></View>
             ) : (
-              <Pressable onPress={onDefault} style={{ flex: 1, minHeight: 44, borderRadius: 12, borderWidth: 1, borderColor: c.line, alignItems: 'center', justifyContent: 'center' }}>
+              <Pressable onPress={onDefault} style={{ flex: 1, minHeight: 44, borderRadius: Math.min(R - 6, 14), borderWidth: 1, borderColor: c.line, alignItems: 'center', justifyContent: 'center' }}>
                 <T weight="700" size={13} color={c.mute}>☆ Make default</T>
               </Pressable>
             )}
@@ -112,15 +116,17 @@ export function SportCard({ p, width, onOpen, onDefault, onLog, selected }) {
 
 /** Compact one-line sport row — the rail on wide screens, where the selected sport's full page sits beside it. */
 function SportRow({ p, selected, onPress }) {
-  const tone = toneFor(p.sport_slug);
+  const th = sportTheme(p.sport_slug);
+  const tone = th.tone;
   const s = p.summary;
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [{ opacity: pressed ? 0.9 : 1 }]}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 16, backgroundColor: selected ? tone[1] : c.paper, borderWidth: selected ? 2 : 1, borderColor: selected ? tone[0] : c.line }}>
-        <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: tone[1], alignItems: 'center', justifyContent: 'center' }}><T size={24}>{p.sport_emoji}</T></View>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: Math.min(th.radius, 20), backgroundColor: selected ? tone[1] : c.paper, borderWidth: selected ? 2 : 1, borderColor: selected ? tone[0] : c.line, overflow: 'hidden' }}>
+        <View style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 5, backgroundColor: tone[0] }} />
+        <LinearGradient colors={th.grad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: 44, height: 44, borderRadius: Math.min(th.radius - 4, 14), marginLeft: 4, alignItems: 'center', justifyContent: 'center' }}><T size={24}>{p.sport_emoji}</T></LinearGradient>
         <View style={{ flex: 1 }}>
-          <T weight="800" size={16} numberOfLines={1}>{p.sport}</T>
-          <T size={12} color={c.mute} numberOfLines={1}>{nice(p.role)} · {nice(p.level)} · {s.matches} match{s.matches === 1 ? '' : 'es'}</T>
+          <T weight="800" size={16} color={selected ? tone[2] : c.ink} numberOfLines={1}>{p.sport}</T>
+          <T size={12} color={c.mute} numberOfLines={1}>{nice(p.role)} · {nice(p.level)} · {s.matches} {s.matches === 1 ? th.one : th.one === 'match' ? 'matches' : `${th.one}s`}</T>
         </View>
         {p.is_default ? <T size={16} color={tone[0]}>★</T> : null}
       </View>
@@ -338,7 +344,8 @@ export function SportProfile({ id, embedded, onChanged, onRemoved }) {
   if (prof.loading && !prof.data) return <Screen><Loading /></Screen>;
   if (prof.error) return <Screen><ErrorBox error={prof.error} onRetry={prof.reload} /></Screen>;
   if (!p) return <Screen><Empty title="Sport profile not found" /></Screen>;
-  const tone = toneFor(p.sport_slug);
+  const th = sportTheme(p.sport_slug);
+  const tone = th.tone;
   const s = p.summary;
   const seasons = [...new Set((matches.data ?? []).map((m) => m.played_on.slice(0, 4)))];
   const shown = (matches.data ?? []).filter((m) => season === 'all' || m.played_on.startsWith(season));
@@ -346,8 +353,8 @@ export function SportProfile({ id, embedded, onChanged, onRemoved }) {
 
   return (
     <Screen>
-      <View style={{ backgroundColor: tone[0], borderRadius: 22, padding: phone ? 16 : 20, overflow: 'hidden' }}>
-        <View pointerEvents="none" style={{ position: 'absolute', right: -40, top: -60, width: 200, height: 200, borderRadius: 100, backgroundColor: '#fff', opacity: 0.14 }} />
+      <LinearGradient colors={th.grad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ borderRadius: th.radius + 4, padding: phone ? 16 : 20, overflow: 'hidden' }}>
+        <T size={phone ? 150 : 190} pointerEvents="none" style={{ position: 'absolute', right: -12, top: -18, opacity: 0.16 }}>{th.motif}</T>
         <View style={{ flexDirection: 'row', gap: 14, alignItems: 'center' }}>
           <View style={{ width: phone ? 56 : 64, height: phone ? 56 : 64, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.22)', alignItems: 'center', justifyContent: 'center' }}><T size={phone ? 30 : 34}>{p.sport_emoji}</T></View>
           <View style={{ flex: 1 }}>
@@ -357,16 +364,16 @@ export function SportProfile({ id, embedded, onChanged, onRemoved }) {
           </View>
         </View>
         <View style={{ flexDirection: 'row', gap: 6, marginTop: 14 }}>
-          {[[s.matches, 'MATCHES'], [`${s.wins}-${s.draws}-${s.losses}`, 'W-D-L'], [fmt(s.avg_rating), 'RATING'], [s.minutes, 'MINUTES']].map(([v, l]) => (
+          {[[s.matches, th.noun], [recordOf(th, s), recordLabel(th, s)], [fmt(s.avg_rating), 'RATING'], [s.minutes, 'MINUTES']].map(([v, l]) => (
             <View key={l} style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.18)', borderRadius: 14, paddingVertical: 10, alignItems: 'center' }}>
               <T weight="800" size={18} color="#fff" style={{ fontVariant: ['tabular-nums'] }}>{v}</T><T weight="700" size={9.5} color="#fff" style={{ letterSpacing: 0.8, opacity: 0.85 }}>{l}</T>
             </View>
           ))}
         </View>
-      </View>
+      </LinearGradient>
 
       <View style={{ gap: 8, marginTop: 14 }}>
-        <Btn title="+ Log match" onPress={() => setLog(true)} />
+        <Btn title={`+ Log ${th.one}`} color={tone[0]} onPress={() => setLog(true)} />
         <View style={{ flexDirection: 'row', gap: 8 }}>
           <Btn small title="Import CSV" color={c.paper} onPress={() => push('ImportMatches', { id: p.id })} style={{ flex: 1 }} />
           <Btn small title="Edit" color={c.paper} onPress={() => setEdit(true)} style={{ flex: 1 }} />

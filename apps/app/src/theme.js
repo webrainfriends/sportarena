@@ -1,5 +1,6 @@
 import { Appearance, Platform } from 'react-native';
 import { locale } from './locale';
+import { HAS_SPORT_THEME, sportTheme } from './sport-theme';
 // Gotmygame design tokens — "Fresh Court": a bright, airy light theme. Cool off-white canvas, white cards with
 // soft shadows, one confident indigo accent plus a small family of sport colours. Colourful hero panels carry white text.
 // Token names are stable (pink = primary accent, ink = text, paper = card, violet = strong slate for dark buttons)
@@ -48,7 +49,7 @@ export const sportTones = [
   ['#4F46E5', '#EEF0FF', '#3730A3'], ['#059669', '#DCFCE7', '#047857'], ['#EA580C', '#FFEDD5', '#C2410C'], ['#0284C7', '#E0F2FE', '#075985'],
   ['#DB2777', '#FCE7F3', '#9D174D'], ['#D97706', '#FEF3C7', '#92400E'], ['#7C3AED', '#F3E8FF', '#5B21B6'],
 ];
-export const toneFor = (s = '') => sportTones[[...String(s)].reduce((a, ch) => a + ch.charCodeAt(0), 0) % sportTones.length];
+export const toneFor = (s = '') => HAS_SPORT_THEME(s) ? sportTheme(s).tone : sportTones[[...String(s)].reduce((a, ch) => a + ch.charCodeAt(0), 0) % sportTones.length];
 export const accents = [c.pink, c.violet, c.cyan, c.lime, c.sun, c.orange, c.mint];
 export const softOf = { [c.pink]: c.pinkSoft, [c.violet]: c.violetSoft, [c.cyan]: c.cyanSoft, [c.lime]: c.limeSoft, [c.sun]: c.sunSoft, [c.orange]: c.orangeSoft, [c.mint]: c.mintSoft };
 export const accentFor = (s = '') => accents[[...String(s)].reduce((a, ch) => a + ch.charCodeAt(0), 0) % accents.length];
