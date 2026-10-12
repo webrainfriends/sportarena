@@ -5,6 +5,7 @@ import { badRequest, conflict, forbidden, notFound, unprocessable } from '../err
 import { ruleFor, validateValue, officialPoints, EVIDENCE_LABELS, RANKING_RULES } from '../scoring/performance-rules.js';
 import { isAdmin, mustFind, PUBLIC_USER, sportBySlugOrId } from '../helpers.js';
 import { NOT_YOUTH_SQL } from '../youth.js';
+import { notify } from '../notify.js';
 
 const TAG_PERF = 'Scores & Awards';
 const label = (p) => EVIDENCE_LABELS[p] ?? p;
@@ -90,6 +91,10 @@ cap({
       if (fx) {
         const clash = (await c.query("SELECT id FROM performances WHERE user_id=$1 AND fixture_id=$2 AND metric=$3 AND provenance='approved_competition' AND status IN ('submitted','approved','disputed')", [target, fx.id, i.metric])).rows[0];
         if (clash) throw conflict('A result for this athlete and metric already exists for that game. Correct it instead of submitting another.', { performance_id: clash.id });
+      } else {
+        // Event-only results (no game): several attempts are valid (the leaderboard keeps the best), but the same figure on the same day is a double entry.
+        const same = (await c.query("SELECT id FROM performances WHERE user_id=$1 AND event_id=$2 AND fixture_id IS NULL AND metric=$3 AND value=$4 AND achieved_on=coalesce($5::date, current_date) AND provenance='approved_competition' AND status IN ('submitted','approved','disputed')", [target, ev.id, i.metric, i.value, i.achieved_on ?? null])).rows[0];
+        if (same) throw conflict('The same result for this athlete, event, metric, value and date already exists. If this is a different attempt, change the value or the date.', { performance_id: same.id });
       }
       const row = (await c.query(
         `INSERT INTO performances(user_id, sport_id, event_id, fixture_id, metric, value, points, recorded_by, provenance, status, unit, direction, rule_version, official_points, achieved_on, evidence_ref, client_key)
@@ -154,13 +159,24 @@ cap({
 
 cap({
   name: 'dispute_performance', method: 'POST', path: '/performances/:id/dispute', tag: TAG_PERF,
-  summary: 'The athlete (or an official) flags a competition result as wrong. It is taken out of the official standings until an official approves it again, rejects it, or corrects it.',
+  summary: 'The athlete (or an official) flags a competition result as wrong, with a reason. It is taken out of the official standings until an official approves it again, rejects it, or corrects it, and the event organiser and officials are notified (it also appears in list_performances status=disputed). An athlete can dispute a given result once; a second dispute is a 409.',
   input: z.object({ id, reason: z.string().min(5).max(1000) }),
   handler: ({ user }, i) => transition(user, i.id, {
     from: ['submitted', 'approved'], to: 'disputed', action: 'disputed', note: i.reason, needOfficial: false, needNote: true,
     async mutate(c, perf, official) {
       if (!official && perf.user_id !== user.id) throw forbidden('Only the athlete or an official can dispute this result');
-      return (await c.query("UPDATE performances SET status='disputed', decision_note=$2 WHERE id=$1 RETURNING *", [perf.id, i.reason])).rows[0];
+      if (!official) {
+        // An athlete gets one dispute per result: it cannot be pulled out of the standings again and again once an official has looked at it.
+        const used = (await c.query("SELECT 1 FROM performance_log WHERE performance_id=$1 AND action='disputed' LIMIT 1", [perf.id])).rows[0];
+        if (used) throw conflict('This result was already disputed and reviewed. Ask the event organiser to correct it if it is still wrong.');
+      }
+      const row = (await c.query("UPDATE performances SET status='disputed', decision_note=$2 WHERE id=$1 RETURNING *", [perf.id, i.reason])).rows[0];
+      const ev = perf.event_id ? (await c.query('SELECT name FROM events WHERE id=$1', [perf.event_id])).rows[0] : null;
+      for (const uid of new Set(await officialsOf(c, perf))) {
+        if (uid === user.id) continue;
+        await notify(c, uid, { kind: 'result_disputed', title: `Result disputed${ev ? `: ${ev.name}` : ''}`, body: `A result was disputed and removed from the standings until you decide it: ${i.reason.slice(0, 150)}`, data: { performance_id: perf.id, event_id: perf.event_id } });
+      }
+      return row;
     },
   }),
 });
