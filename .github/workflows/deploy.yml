@@ -194,6 +194,8 @@ jobs:
           MFA_ENFORCE: ${{ vars.MFA_ENFORCE }}
           # Sign in with Google: the public OAuth client id (repository variable); unset hides the button
           GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
+          # the Google account that approves/rejects other people's access and holds the platform owner role (docs/auth.md); override with the repo variable
+          SUPER_ADMIN_EMAIL: ${{ vars.SUPER_ADMIN_EMAIL || 'rraja.edge@gmail.com' }}
         run: |
           set -euo pipefail
           KEYFILE="$(mktemp)"; trap 'rm -f "$KEYFILE"' EXIT
@@ -203,7 +205,7 @@ jobs:
           TARGET="${EC2_USER}@${EC2_HOST}"
           scp "${SSH_OPTS[@]}" scripts/deploy-remote.sh "$TARGET:/tmp/sportarena-deploy.sh"
           REMOTE_ENV=""
-          for v in APP_DIR BRANCH REPO_URL APP_PORT NGINX_PORT DB_PORT ENABLE_TLS PUBLIC_HOST PUBLIC_IP APP_DOMAIN LETSENCRYPT_EMAIL KMS_KEY_ID KMS_REGION STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET PAYPAL_CLIENT_ID PAYPAL_CLIENT_SECRET PAYPAL_WEBHOOK_ID PAYPAL_ENV PAYMENT_CURRENCY EXPO_ACCESS_TOKEN ANTHROPIC_API_KEY AI_MODEL WORKER_MODE PLATFORM_ADMIN_EMAIL PLATFORM_ADMIN_HANDLE PLATFORM_ADMIN_NAME PLATFORM_ADMIN_PASSWORD; do
+          for v in APP_DIR BRANCH REPO_URL APP_PORT NGINX_PORT DB_PORT ENABLE_TLS PUBLIC_HOST PUBLIC_IP APP_DOMAIN LETSENCRYPT_EMAIL KMS_KEY_ID KMS_REGION STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET PAYPAL_CLIENT_ID PAYPAL_CLIENT_SECRET PAYPAL_WEBHOOK_ID PAYPAL_ENV PAYMENT_CURRENCY EXPO_ACCESS_TOKEN ANTHROPIC_API_KEY AI_MODEL WORKER_MODE PLATFORM_ADMIN_EMAIL PLATFORM_ADMIN_HANDLE PLATFORM_ADMIN_NAME PLATFORM_ADMIN_PASSWORD GOOGLE_CLIENT_ID SUPER_ADMIN_EMAIL; do
             REMOTE_ENV+="$(printf '%s=%q ' "$v" "${!v:-}")"
           done
           timeout 20m ssh -T "${SSH_OPTS[@]}" "$TARGET" "env $REMOTE_ENV bash /tmp/sportarena-deploy.sh"

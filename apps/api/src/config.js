@@ -37,8 +37,8 @@ export const config = {
   hashing: { concurrency: Number(env.HASH_CONCURRENCY ?? 2), maxQueue: Number(env.HASH_MAX_QUEUE ?? 64) },
   // Sign in with Google: the OAuth client id (public) from Google Cloud Console. Unset = the Google button is hidden and the endpoint refuses.
   googleClientId: env.GOOGLE_CLIENT_ID,
-  // The Google account that approves or rejects everyone else's access (and holds the platform owner role).
-  superAdminEmail: env.SUPER_ADMIN_EMAIL ?? 'rraja.edge@gmail.com',
+  // The Google account that approves or rejects everyone else's access (and holds the platform owner role). Set by the deploy workflow; unset = nobody gets it.
+  superAdminEmail: env.SUPER_ADMIN_EMAIL,
   tokenTtl: env.TOKEN_TTL ?? '12h', // access-token lifetime
   refreshTtlDays: Number(env.REFRESH_TTL_DAYS ?? 30), // sliding: each rotation extends the session by this much
   requireSession: env.AUTH_REQUIRE_SESSION === 'true', // refuse pre-session JWTs that carry no session id

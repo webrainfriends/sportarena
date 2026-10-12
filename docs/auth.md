@@ -27,7 +27,7 @@ admins turn on two-step verification in **Me > Account security**; MFA enforceme
 - **Approval** (migration `060_access_approval.sql`, `users.access_status`): a brand-new Google account is `pending`. Existing accounts and password sign-ups stay
   `approved`. A non-approved account can use every screen read-only: `invoke()` refuses any non-GET capability (and the upload routes) with `approval_pending`,
   except sign-out, token refresh, password change, email verification and two-step verification. A banner explains this.
-- **Super admin**: `SUPER_ADMIN_EMAIL` (default `rraja.edge@gmail.com`). When that Google account signs in it is approved and holds `admin` + `platform_admin`.
+- **Super admin**: `SUPER_ADMIN_EMAIL`, set in `deploy.yml` (repository variable `SUPER_ADMIN_EMAIL` overrides it; no email is hard-coded in the app code; unset = nobody gets the role). When that Google account signs in it is approved and holds `admin` + `platform_admin`.
   It approves or rejects others in **Partner management > Access requests** (`list_access_requests`, `decide_access`). Rejecting signs the person out and blocks
   Google sign-in; deciding again re-approves. Nothing is deleted and every decision is audit-logged.
 - Every screen shows a beta banner: the site is under beta testing and not for public or commercial use.
