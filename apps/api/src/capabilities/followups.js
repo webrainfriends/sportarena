@@ -24,7 +24,7 @@ const hasFullGrant = async (athleteId, providerId, c) => !!(await (c ? (t, p) =>
   "SELECT 1 FROM medical_grants WHERE athlete_id=$1 AND provider_id=$2 AND scope='full' AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now())", [athleteId, providerId]));
 
 cap({
-  name: 'create_followup', method: 'POST', path: '/followups', tag: TAG, auth: ['physio', 'doctor'], status: 201,
+  name: 'create_followup', credential: true, method: 'POST', path: '/followups', tag: TAG, auth: ['physio', 'doctor'], status: 201,
   summary: 'Provider: agree a follow-up with the athlete after an appointment. `instruction_summary` is what the athlete reads (keep it practical, not a diagnosis); optional `details` are sensitive, stored encrypted and need the athlete\'s active full consent to write. The athlete is notified without any detail.',
   input: z.object({ appointment_id: id, due_on: date, window_end: date.optional(), instruction_summary: z.string().min(3).max(500), details: z.string().max(3000).optional() }),
   async handler({ user }, i) {
@@ -76,7 +76,7 @@ cap({
 });
 
 cap({
-  name: 'update_followup', method: 'PATCH', path: '/followups/:id', tag: TAG,
+  name: 'update_followup', credential: true, method: 'PATCH', path: '/followups/:id', tag: TAG,
   summary: 'Complete, cancel or reschedule an open follow-up. Either party can mark it done or cancel it; reschedule (a new due_on / window_end) is allowed for the athlete or the provider while it is due. To book the visit use book_appointment with followup_id: the follow-up becomes `booked`, then `done` when that appointment is completed (or back to `due` if it is cancelled).',
   input: z.object({ id, status: z.enum(['done', 'cancelled']).optional(), due_on: date.optional(), window_end: date.nullable().optional() }).refine((v) => v.status || v.due_on || v.window_end !== undefined, 'Give a status or a new date'),
   async handler({ user }, i) {
@@ -84,6 +84,8 @@ cap({
       const f = (await c.query('SELECT * FROM appointment_followups WHERE id=$1 FOR UPDATE', [i.id])).rows[0];
       if (!f || (f.athlete_id !== user.id && f.provider_id !== user.id && !isAdmin(user))) throw notFound('Follow-up');
       if (!['due', 'booked'].includes(f.status)) throw conflict(`This follow-up is already ${f.status}`);
+      // provider-side done / reschedule is clinical care management and needs a current credential (done may use the wind-down grace); cancel is never blocked
+      if (f.provider_id === user.id && f.athlete_id !== user.id && i.status !== 'cancelled') await requireVerifiedProvider(user.id, { action: 'update_followup', athleteId: f.athlete_id, allowGrace: i.status === 'done' });
       if (i.status === 'done') {
         await c.query("UPDATE appointment_followups SET status='done', completed_at=now(), closed_by=$2, updated_at=now() WHERE id=$1", [f.id, user.id]);
       } else if (i.status === 'cancelled') {
@@ -120,7 +122,7 @@ const EXT_STATUS = z.enum(['requested', 'confirmed']);
 const NEXT = { requested: ['confirmed', 'cancelled'], confirmed: ['completed', 'cancelled'], completed: [], cancelled: [] };
 
 cap({
-  name: 'link_external_booking', method: 'POST', path: '/appointments/external', tag: TAG, status: 201,
+  name: 'link_external_booking', credential: true, method: 'POST', path: '/appointments/external', tag: TAG, status: 201,
   summary: 'Record a booking made on the provider\'s own site as a SportArena appointment. The athlete calls it with provider_id after booking; the provider calls it with athlete_id to register one for a patient. Only the external reference, address and times are stored. The same reference is always the same appointment (calling again updates it, never duplicates it). No reason or clinical text is taken here.',
   input: z.object({ provider_id: id.optional(), athlete_id: id.optional(), external_reference: z.string().min(2).max(120), starts_at: z.string().datetime({ offset: true }), duration_min: z.number().int().min(10).max(240).default(30), mode: z.enum(['in_person', 'remote']).default('in_person'), status: EXT_STATUS.default('requested'), external_url: z.string().max(500).optional() }),
   async handler({ user }, i) {
@@ -130,6 +132,7 @@ cap({
     if (asProvider && !user.roles.some((r) => ['physio', 'doctor'].includes(r))) throw forbidden('Only a physio or doctor can register a booking for a patient');
     if (providerId === athleteId) throw badRequest('A provider cannot book themselves');
     if (!asProvider && i.status !== 'requested') throw forbidden('Only the provider can mark a booking confirmed');
+    if (asProvider) await requireVerifiedProvider(user.id, { action: 'link_external_booking', athleteId });
     return tx(async (c) => {
       const prof = (await c.query('SELECT external_provider, external_booking_url FROM provider_profiles WHERE user_id=$1', [providerId])).rows[0];
       const ad = prof?.external_booking_url && adapterFor(prof.external_provider);
@@ -162,7 +165,7 @@ cap({
 });
 
 cap({
-  name: 'reconcile_external_booking', method: 'POST', path: '/appointments/external/reconcile', tag: TAG, auth: ['physio', 'doctor'],
+  name: 'reconcile_external_booking', credential: true, method: 'POST', path: '/appointments/external/reconcile', tag: TAG, auth: ['physio', 'doctor'],
   summary: 'Provider (or their integration, using an API token): report what happened to a booking on your own system. Its status and time are brought into the matching SportArena appointment, with the same transition rules as everywhere else (no duplicates, no going back from completed or cancelled). Repeating the same update is harmless.',
   input: z.object({ external_reference: z.string().min(2).max(120), status: z.enum(['requested', 'confirmed', 'completed', 'cancelled']).optional(), starts_at: z.string().datetime({ offset: true }).optional(), duration_min: z.number().int().min(10).max(240).optional() }),
   async handler({ user }, i) {
@@ -184,6 +187,7 @@ const reconcile = (user, i) =>
         if (!NEXT[a.status].includes(i.status)) throw Object.assign(conflict(`A ${a.status} appointment cannot become ${i.status}`), { markSyncError: a.id });
         status = i.status;
       }
+      if (status !== a.status && status !== 'cancelled') await requireVerifiedProvider(user.id, { action: 'reconcile_external_booking', athleteId: a.athlete_id, allowGrace: status === 'completed' });
       const starts = i.starts_at ?? a.starts_at, dur = i.duration_min ?? a.duration_min;
       if ((+new Date(starts) !== +new Date(a.starts_at) || dur !== a.duration_min) && ['requested', 'confirmed'].includes(status)) {
         const clash = (await c.query("SELECT 1 FROM appointments WHERE provider_id=$1 AND id<>$2 AND status IN ('requested','confirmed') AND starts_at < $3::timestamptz + make_interval(mins => $4) AND starts_at + make_interval(mins => duration_min) > $3", [user.id, a.id, starts, dur])).rows[0];

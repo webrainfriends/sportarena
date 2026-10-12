@@ -157,7 +157,7 @@ export function ClinicalStatusCard() {
         <View style={{ gap: 6, marginTop: 6 }}>
           <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}><Tag label={label} color={color} />{d.expires_at ? <T size={12} color={c.mute}>{d.state === 'verified' ? 'valid until' : 'ended'} {new Date(d.expires_at).toLocaleDateString(locale)}</T> : null}</View>
           <T size={13}>{text}</T>
-          {d.renewal ? <Btn small title={d.state === 'not_verified' ? 'Get verified' : 'Renew verification'} color={c.pink} style={{ alignSelf: 'flex-start' }} onPress={() => goTab('Me')} /> : null}
+          {d.renewal ? <Btn small title={d.state === 'not_verified' ? 'Get verified' : 'Renew verification'} accessibilityLabel={d.state === 'not_verified' ? 'Get your professional verification. Opens the Me tab' : 'Renew your professional verification. Opens the Me tab'} color={c.pink} style={{ alignSelf: 'flex-start' }} onPress={() => goTab('Me')} /> : null}
           {d.renewal ? <T size={11} color={c.mute}>Opens Me, then Verification, where you attach your registration. Renewals are linked to your earlier case.</T> : null}
         </View>
       )}
