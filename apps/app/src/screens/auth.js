@@ -8,6 +8,7 @@ import { c, grad, fam } from '../theme';
 import { ROLES } from '../roles';
 import { INTENT_COPY } from '../market/intent';
 import GoogleButton from '../google-button';
+import { Logo } from '../logo';
 
 
 const DEMOS = [['aarav', 'Aarav · Athlete'], ['kavya_events', 'Kavya · Organizer'], ['arena_one', 'Arena One · Venue'], ['volt_drink', 'Volt · Sponsor'], ['dr_rhea', 'Dr Rhea · Doctor']];
@@ -87,6 +88,7 @@ export default function Auth({ intent, initialMode, onClose } = {}) {
       <LinearGradient colors={grad.hero} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ borderRadius: 28, padding: 26, minHeight: 190, justifyContent: 'flex-end', marginTop: 20, overflow: 'hidden' }}>
         <View style={{ position: 'absolute', right: -40, top: -60, width: 200, height: 200, borderRadius: 100, backgroundColor: '#fff', opacity: 0.12 }} />
         <View style={{ position: 'absolute', right: 80, bottom: -60, width: 120, height: 120, borderRadius: 60, backgroundColor: '#fff', opacity: 0.08 }} />
+        <Logo size={96} style={{ marginBottom: 14 }} />
         <Text style={[fam, { color: '#fff', opacity: 0.65, fontWeight: '700', fontSize: 12, letterSpacing: 2.5 }]}>THE HOME OF SPORT</Text>
         <Text style={[fam, { color: '#fff', fontWeight: '800', fontSize: 44, letterSpacing: -1.8, marginTop: 10 }]}>Gotmygame</Text>
         <T color="#E0E7FF" weight="500" size={15} style={{ marginTop: 8, lineHeight: 22 }}>Teams. Fixtures. Venues. Performance. Everything your game runs on, in one place.</T>

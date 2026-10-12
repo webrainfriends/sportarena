@@ -11,6 +11,7 @@ import { useMarketActions } from '../market/actions';
 import { setIntent } from '../market/intent';
 import { useSports } from '../sportpicker';
 import Auth from './auth';
+import { Logo } from '../logo';
 import { HScroll, VenueBooking } from './landing-venues';
 import { OpenPositions } from './openings';
 
@@ -184,7 +185,8 @@ export default function Landing() {
       {/* sticky nav */}
       <View style={{ backgroundColor: 'rgba(11,16,32,0.96)', borderBottomWidth: 1, borderColor: 'rgba(255,255,255,0.08)', zIndex: 5 }}>
         <View style={[wrap, { height: 64, flexDirection: 'row', alignItems: 'center', gap: 14 }]}>
-          <T color="#fff" weight="800" size={22} style={{ letterSpacing: -0.8 }}>🏟️ Gotmygame</T>
+          <Logo size={44} />
+          <T color="#fff" weight="800" size={22} style={{ letterSpacing: -0.8 }}>Gotmygame</T>
           <View style={{ flex: 1 }} />
           {wide ? [['Opportunities', browse], ['Advertise', () => start('advertise')]].map(([l, f]) => <Pressable key={l} onPress={f}><T color="#C7D2FE" weight="700" size={14}>{l}</T></Pressable>) : null}
           <Pressable onPress={() => start('login')}><T color="#fff" weight="700" size={14}>Log in</T></Pressable>

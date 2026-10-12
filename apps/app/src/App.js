@@ -12,6 +12,7 @@ import { api, setMfaRequiredHandler } from './api';
 import { parseTarget, targetFor } from './push';
 import { AccountButton } from './account';
 import { BetaBanner } from './beta-banner';
+import { Logo } from './logo';
 import { c, dark, fam } from './theme';
 
 installWebShell();
@@ -124,7 +125,10 @@ function TopBar() {
   return (
     <View style={{ backgroundColor: c.bg }}>
       <View style={{ width: '100%', maxWidth: contentMax, alignSelf: 'center', height: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: gutter }}>
-        <Text style={[fam, { fontSize: 18, fontWeight: '800', color: c.ink, letterSpacing: -0.4 }]}>Gotmygame</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Logo size={34} />
+          <Text style={[fam, { fontSize: 18, fontWeight: '800', color: c.ink, letterSpacing: -0.4 }]}>Gotmygame</Text>
+        </View>
         <AccountButton />
       </View>
     </View>

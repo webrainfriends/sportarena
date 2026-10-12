@@ -16,6 +16,7 @@ export function installWebShell() {
   meta('apple-mobile-web-app-title', 'Gotmygame');
   const link = (rel, href, extra = {}) => { const l = document.createElement('link'); l.rel = rel; l.href = href; Object.assign(l, extra); document.head.appendChild(l); };
   link('manifest', '/manifest.webmanifest');
+  link('icon', '/favicon.png', { type: 'image/png' });
   link('apple-touch-icon', '/icon-192.png');
   const style = document.createElement('style');
   style.id = 'sa-shell';
