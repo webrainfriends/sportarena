@@ -22,6 +22,13 @@ admins turn on two-step verification in **Me > Account security**; MFA enforceme
   create a Web OAuth client in Google Cloud Console and add the site origin as an authorised JavaScript origin). The page gets the ID token from Google and
   sends it to `POST /auth/google` (`login_google`), which verifies signature, issuer, audience, expiry and `email_verified`. `GET /auth/config` tells the page
   the client id. Migration `059_google_login.sql` adds `users.google_sub`.
+- **Sign in with Apple** (migration `062_apple_login.sql`, `users.apple_sub`): same rules as Google (shared in `social-login.js`: link by email, new accounts `pending`).
+  Apple configuration: primary App ID `dev.gotmygame.app` (team `8DTG43KWPH`, config `APPLE_APP_ID`), domain `gotmygame.com`, return URL
+  `https://gotmygame.com/api/v1/auth/apple/callback`. The web button needs a **Services ID** configured with that domain and return URL: set its identifier as the
+  repository variable (or secret) `APPLE_CLIENT_ID`; unset = the Apple button is disabled. Flow: the button opens `/api/v1/auth/apple/start` (sets a signed-in-browser
+  state cookie, redirects to Apple); Apple POSTs the id token to the callback, which checks state + nonce, verifies signature/issuer/audience/expiry against Apple's keys,
+  sets the HttpOnly session cookies and returns to the app (two-step users continue at the code screen). `POST /auth/apple` (`login_apple`) accepts an identity token directly
+  for native apps (audience = the app id). Apple only gives the name on first sign-in and may hide the email (private relay); an existing Apple account is found by its id.
 - An existing account with the same email is linked. If that account's email was never verified, its password is replaced by an unusable one and its sessions
   are signed out (protects against someone pre-registering your address); reset the password by email to use it again.
 - **Approval** (migration `060_access_approval.sql`, `users.access_status`): a brand-new Google account is `pending`. Existing accounts and password sign-ups stay

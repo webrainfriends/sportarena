@@ -17,6 +17,7 @@ import { insuranceDocsRouter } from './capabilities/insurance-docs.js';
 import { subjectDocsRouter } from './capabilities/subject-docs.js';
 import { staffDocsRouter } from './capabilities/event-openings.js';
 import { liveRouter } from './live.js';
+import { appleWebRouter } from './apple-web.js';
 import { randomUUID } from 'node:crypto';
 import { logger, runWithContext } from './logger.js';
 import { recordRequest } from './metrics.js';
@@ -69,7 +70,7 @@ export function createApp() {
   app.use((_, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
 
   const authLimiter = rateLimit({ windowMs: 15 * 60_000, limit: config.isProd ? 20 : 1000, standardHeaders: true, legacyHeaders: false });
-  app.use(['/api/v1/auth/login', '/api/v1/auth/register', '/api/v1/auth/google', '/api/v1/auth/refresh', '/api/v1/auth/password-reset', '/api/v1/auth/verify-email'], authLimiter);
+  app.use(['/api/v1/auth/login', '/api/v1/auth/register', '/api/v1/auth/google', '/api/v1/auth/apple', '/api/v1/auth/refresh', '/api/v1/auth/password-reset', '/api/v1/auth/verify-email'], authLimiter);
 
   app.get('/', (_, res) => res.json({ name: 'Gotmygame', api: '/api/v1', openapi: '/api/v1/openapi.json', mcp: '/mcp', tools: capabilities.length }));
   app.get('/health', async (_, res) => { await pool.query('select 1'); res.json({ ok: true }); });
@@ -80,6 +81,7 @@ export function createApp() {
     res.status(ok ? 200 : 503).json({ ok, last_beat_age_seconds: r.age });
   });
 
+  app.use('/api/v1', appleWebRouter());
   app.use('/api/v1', liveRouter());
 
   const v1 = express.Router();
