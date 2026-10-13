@@ -19,3 +19,6 @@ All use the same API (`/api/v1`).
   (`apple-touch-icon.png`, standalone manifest, safe-area aware shell in `src/web.js`).
 * `public/sw.js` caches only the static shell (works offline-to-open); `/api` and `/mcp` are never cached. Web push on iOS works for the
   installed Home Screen app (iOS 16.4+).
+
+* The App ID `dev.gotmygame.app` is managed in the Apple developer console (Sign in with Apple + Push Notifications on), so EAS capability
+  syncing is switched off (`EXPO_NO_CAPABILITY_SYNC=1`) in the workflow; set it too when running `eas credentials` locally.
