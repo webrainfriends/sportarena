@@ -37,6 +37,8 @@ export const config = {
   hashing: { concurrency: Number(env.HASH_CONCURRENCY ?? 2), maxQueue: Number(env.HASH_MAX_QUEUE ?? 64) },
   // Sign in with Google: the OAuth client id (public) from Google Cloud Console. Unset = the Google button is hidden and the endpoint refuses.
   googleClientId: env.GOOGLE_CLIENT_ID,
+  // The iOS OAuth client id (public) used by the native app's Google button; its tokens carry this audience instead of the web client id.
+  googleIosClientId: env.GOOGLE_IOS_CLIENT_ID ?? '909476957194-bmrrif4q7qdffemon7mrrm3puoovbg5r.apps.googleusercontent.com',
   // Sign in with Apple. appleClientId = the Services ID (web button; public). appleAppId = the app's bundle id (primary App ID, used by the native button).
   // Both are accepted as the id token's audience. Unset appleClientId = the Apple button is hidden and the endpoint refuses web sign-in.
   appleClientId: env.APPLE_CLIENT_ID,
