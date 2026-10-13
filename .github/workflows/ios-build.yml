@@ -44,7 +44,9 @@ jobs:
           EXPO_ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           EXPO_ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           EXPO_APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          EXPO_APPLE_TEAM_TYPE: COMPANY_OR_ORGANIZATION
+          EXPO_APPLE_TEAM_TYPE: INDIVIDUAL
+          # the App ID already exists in Apple (Sign in with Apple, push) and is managed by hand; EAS must not try to re-sync its capabilities
+          EXPO_NO_CAPABILITY_SYNC: '1'
           PROFILE: ${{ inputs.profile }}
           SUBMIT: ${{ inputs.submit && inputs.profile == 'production' && '--auto-submit' || '' }}
         run: eas build --platform ios --profile "$PROFILE" --non-interactive --no-wait $SUBMIT
