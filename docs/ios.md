@@ -9,8 +9,9 @@ All use the same API (`/api/v1`).
 * Release builds call `https://gotmygame.com` (set per profile in `eas.json` via `EXPO_PUBLIC_API_URL`; with no override a non-dev
   build also falls back to it). `npm run app` / `npm run ios` still use the local API.
 * Building: Actions → **iOS build** → pick a profile (tick *submit* for TestFlight). One-time maintainer setup: add the repo secret
-  `EXPO_TOKEN`, run `eas init` once locally or in the dashboard to fill `extra.eas.projectId` (needed for push tokens), and link the
-  Apple developer account in EAS (it manages certificates/profiles).
+  `EXPO_TOKEN`, run `eas init` once locally or in the dashboard to fill `extra.eas.projectId` (needed for push tokens), and add the
+  secrets `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8` (App Store Connect API key, Admin role) and `APPLE_TEAM_ID` so EAS can manage
+  certificates/profiles without an Apple password or 2FA. If the team is an individual, change `EXPO_APPLE_TEAM_TYPE` in the workflow to `INDIVIDUAL`.
 * Push on iPhone uses Expo push tokens (`push.js`); tokens, session and secure storage use the iOS keychain.
 
 ## Browser / Home Screen
