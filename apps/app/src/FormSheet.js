@@ -4,6 +4,7 @@ import { Btn, Chip, Field, Sheet, T, Seg } from './ui';
 import { c } from './theme';
 import { Counter, DateField, DateRangeField, TimeField } from './pickers';
 import { SportPicker, SportsMulti } from './sportpicker';
+import { RegionPicker } from './region-picker';
 import { api } from './api';
 import { useLoad } from './hooks';
 import { useSession } from './session';
@@ -151,6 +152,7 @@ export function FormSheet({ visible, onClose, title, fields, initial = {}, submi
       case 'location': return <LocationPicker f={f} v={v} set={set} />;
       case 'daterange': return <DateRangeField label={f.label} from={v[f.key]} to={v[f.toKey]} onChange={({ from, to }) => { set(f.key, from); set(f.toKey, to); }} optional={f.optional} min={f.min} hint={f.hint} />;
       case 'sports': return <SportsMulti label={f.label} value={v[f.key] ?? []} onChange={(x) => set(f.key, x)} optional={f.optional} />;
+      case 'region': return <RegionPicker label={f.label} optional={f.optional} value={v[f.key]} onChange={(x) => set(f.key, x)} hint={f.hint} />;
       case 'sport': return <SportPicker label={f.label} optional={f.optional} value={v[f.key]} onChange={(x) => set(f.key, x)} />;
       case 'stepper': return (
         <View style={{ gap: 6 }}><View style={{ flexDirection: 'row', alignItems: 'center' }}><View style={{ flex: 1 }}>{lab(f)}</View><Counter value={v[f.key]} onChange={(x) => set(f.key, x)} min={f.min ?? 0} max={f.max ?? 999} step={f.step ?? 1} suffix={f.suffix} /></View>{hint(f)}</View>);

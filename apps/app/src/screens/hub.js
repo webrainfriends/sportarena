@@ -17,6 +17,7 @@ import { RecoveryPanel } from './wellness';
 import { c, grad, money, day, when, withUnit, unitName } from '../theme';
 
 const TILES = [
+  ['Billboard', '📣', 'Billboard', 'Wanted, for sale & ads', c.pink], ['Shop', '🛍️', 'Shop', 'Kit, gear & orders', c.orange], ['Insure', '🛡️', 'My cover', 'What covers me today', c.cyan],
   ['Leaderboard', '🏅', 'Leaderboard', 'Points & glory', c.lime], ['Health', '🩺', 'Health', 'Physio · doctors · fit to play', c.mint],
   ['Insurance', '🛡️', 'Insurance', 'You · your team · your event', c.cyan], ['Sponsors', '💎', 'Sponsors', 'Brands & deals', c.sun],
   ['Supply', '📦', 'Supply chain', 'Kit, stock & orders', c.orange], ['Openings', '💼', 'Open positions', 'Jobs, stalls & contracts at events', c.pink], ['EventInbox', '📨', 'Event requests', 'Invites & quotes for you', c.cyan], ['Awards', '🏆', 'Trophy room', 'Cups, medals, MVPs', c.pink],
@@ -30,7 +31,7 @@ export function Hub() {
   const { user } = useSession();
   return (
     <Screen>
-      <H1 style={{ marginTop: 8 }}>Ecosystem</H1>
+      <H1 style={{ marginTop: 8 }}>More</H1>
       <T color={c.mute} weight="500" style={{ marginTop: 2 }}>Everything around the game, in one place.</T>
       <Row onPress={() => goTab('Me')} left={<Avatar user={user} size={44} />} title={user.display_name} sub="My profile, roles & settings" right={<T color={c.pink} weight="700">›</T>} />
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 14 }}>

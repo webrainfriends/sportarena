@@ -43,7 +43,7 @@ Points an athlete types on practice are stored in the legacy `points` column as 
 `GET /people/:id/stats` shows approved results publicly; the athlete (or an admin) also sees labelled practice/imported figures, never added to `total_points`. `GET /feed` top athletes and event-invite ratings use official points only. The dashboard returns `points` (official), `practice_entries` and `pending_results`.
 
 ## App
-Leaderboard screen (Ecosystem > Leaderboard):
+Leaderboard screen (More > Leaderboard):
 * **Rankings**: sport, sport category, season and metric filters, "Show more" paging, unit-aware values (seconds, metres or plain counts from the scoring rule), evidence label, and a plain-language tie-break explanation.
 * **My results**: log practice, or switch on "Imported from another app or device" and give an evidence reference to log imported evidence (both labelled, neither ever ranked); evidence/status tags, a **History** button (calls `GET /performances/:id/history`) and "Something's wrong" to dispute.
 * **Officials** (organisers, referees, accepted officiating crew, admins): **Submit a result** (event picker, optional game picker, sport, athlete search-and-pick, metric chips or a custom metric, numeric value with the unit and direction from the rule, date picker, optional evidence reference; retries are idempotent through `client_key`), the decision queue (disputed results first, then submitted; approve, reject with a reason, or **Correct** with a reason), and a per-event list of every result with History and Correct.

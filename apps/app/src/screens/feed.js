@@ -12,11 +12,9 @@ import { c } from '../theme';
 import { MarketCard, KINDS } from '../market/MarketCard';
 import { Composer } from '../market/Composer';
 import { useMarketActions, useResumeIntent } from '../market/actions';
-import { PlayerHero, StatTiles, NowStrip, ageOf, COL } from '../hero';
-import { ACTIONS, HomeSchedule } from './athlete-home';
-import { AddProfileSheet, SportCard, useMakeDefault } from './player';
+import { PlayerHero, COL } from '../hero';
+import { ACTIONS, HomeReminders } from './athlete-home';
 import { locale } from '../locale';
-import { QuickLogFab, QuickLogSheet, ReadinessCard, useReadiness } from './wellness';
 
 const PAGE = 10;
 
@@ -107,52 +105,25 @@ const Title = ({ children, action, onAction }) => (
   </View>
 );
 
-/** Home tab: a player card on top (identity, stats, what's on today), then the community feed. */
+/** Home: who I am, what is coming up, open jobs and the community feed. Playing stats live in Player; planning and booking in Schedule. */
 export default function HomeTab() {
   const { user } = useSession();
   const nav = useNav();
   const L = useLayout();
-  const dash = useLoad(() => api.get('/dashboard'), []);
   const sports = useLoad(() => api.get('/me/sport-profiles'), []);
-  const hi = useLoad(() => api.get('/market/highlights'), []);
-  const rd = useReadiness();
-  const [quickLog, setQuickLog] = useState(false);
   const profiles = sports.data ?? [];
-  const makeDefault = useMakeDefault(sports.reload);
-  const [addSport, setAddSport] = useState(false);
   const main = profiles.find((p) => p.is_default) ?? profiles[0];
-  const matches = profiles.reduce((a, p) => a + p.summary.matches, 0);
-  const game = hi.data?.games?.[0];
   const pad = L.gutter;
-  const age = ageOf(user.dob);
-  const top = main?.metrics?.[0];
-  const topTile = top ? [String(top.metric).replace(/_/g, ' ').replace(/^./, (ch) => ch.toUpperCase()), Number.isInteger(+top.total) ? +top.total : (+top.total).toFixed(1)] : null;
-  const tiles = [
-    age !== null ? ['Age', age] : null, ['Matches', sports.data ? matches : '–'], ['Official pts', dash.data?.points ?? '–', dash.data ? ['Approved results', dash.data.practice_entries ? `${dash.data.practice_entries} practice (not ranked)` : null, dash.data.pending_results ? `${dash.data.pending_results} awaiting approval` : null].filter(Boolean).join(' · ') : null], topTile, ['Trophies', dash.data?.trophies ?? '–'],
-  ].filter(Boolean).slice(0, 3);
   const wrap = { paddingHorizontal: pad, width: '100%', maxWidth: COL, alignSelf: 'center' };
 
   const header = (
     <View>
       <PlayerHero user={user} profile={main} pad={pad} onBell={() => nav.push('Notifications')} onAvatar={() => nav.goTab('Me')} />
-      <StatTiles pad={pad} items={tiles} />
-      <View style={[wrap, { marginTop: 14 }]}><ReadinessCard rd={rd} onLog={() => setQuickLog(true)} onOpen={() => nav.push('Health')} /></View>
-      {game ? <NowStrip pad={pad} title={`${game.home_name} vs ${game.away_name}`} date={[new Date(game.scheduled_at).getDate(), new Date(game.scheduled_at).toLocaleString(locale, { month: 'short' })]} sub={`${new Date(game.scheduled_at).toLocaleString(locale)}${game.event_name ? ` · ${game.event_name}` : ''}`} onPress={() => nav.goTab('Play')} /> : null}
-      <View style={[wrap, { marginTop: 22 }]}>
+      <View style={[wrap, { marginTop: 18 }]}>
         <HScroll>
           {ACTIONS.map(([emoji, label, go]) => <Chip key={label} label={`${emoji} ${label}`} onPress={() => go(nav)} />)}
         </HScroll>
-        <View style={{ marginTop: 26 }}><HomeSchedule /></View>
-        <View style={{ marginTop: 26 }}>
-          <Title action="All sports" onAction={() => nav.goTab('Player')}>My sports</Title>
-          {sports.error ? <ErrorBox error={sports.error} onRetry={sports.reload} /> : sports.loading && !sports.data ? <Loading /> : profiles.length ? (
-            <HScroll gap={14}>
-              {profiles.map((p) => <SportCard key={p.id} p={p} width={300} onOpen={() => nav.push('SportProfile', { id: p.id })} onDefault={() => makeDefault(p)} onLog={() => nav.push('SportProfile', { id: p.id })} />)}
-            </HScroll>
-          ) : (
-            <Card><View style={{ gap: 10, alignItems: 'flex-start' }}><T weight="700">Add the sports you play</T><T size={13} color={c.mute}>One card per sport tracks your matches, form and stats.</T><Btn small title="+ Add sport" onPress={() => setAddSport(true)} /></View></Card>
-          )}
-        </View>
+        <View style={{ marginTop: 22 }}><HomeReminders /></View>
         <View style={{ marginTop: 30 }}><Title>Community</Title></View>
       </View>
     </View>
@@ -160,9 +131,6 @@ export default function HomeTab() {
   return (
     <View style={{ flex: 1 }}>
       <Feed header={header} narrow />
-      <QuickLogFab onPress={() => setQuickLog(true)} bottom={L.tablet ? 110 : 20} />
-      <QuickLogSheet visible={quickLog} onClose={() => setQuickLog(false)} onDone={rd.reload} />
-      <AddProfileSheet visible={addSport} onClose={() => setAddSport(false)} first={!profiles.length} onDone={sports.reload} />
     </View>
   );
 }

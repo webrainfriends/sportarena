@@ -18,11 +18,11 @@ const TONE = { match: [c.red, c.redSoft], training: [c.cyan, c.cyanSoft], health
 const STATUS = { proposed: 'Proposed', awaiting_response: 'Awaiting your response', confirmed: 'Confirmed', completed: 'Completed', cancelled: 'Cancelled', open: 'Open', ongoing: 'Ongoing' };
 
 export const ACTIONS = [
-  ['🔎', 'Find a match', (n) => n.goTab('Play')],
-  ['🧑‍🏫', 'Find a coach', (n) => n.goTab('Player')],
-  ['👥', 'Create team', (n) => n.goTab('Play')],
-  ['📍', 'Book venue', (n) => n.goTab('Book')],
-  ['🏆', 'Create event', (n) => n.goTab('Play')],
+  ['🔎', 'Find a match', (n) => n.goTab('Explore')],
+  ['🧑‍🏫', 'Find a coach', (n) => n.goTab('Schedule', { section: 'coach' })],
+  ['📍', 'Book venue', (n) => n.goTab('Schedule', { section: 'book' })],
+  ['👥', 'Create team', (n) => n.goTab('Schedule', { section: 'manage' })],
+  ['🏆', 'Create event', (n) => n.goTab('Schedule', { section: 'manage' })],
   ['🩺', 'Physio / doctor', (n) => n.push('Health')],
   ['💼', 'Open positions', (n) => n.push('Openings')],
 ];
@@ -45,8 +45,7 @@ export function Item({ x, reload }) {
     if (screen === 'Health') nav.push('Health');
     else if (screen === 'Event' && params.id) nav.push('Event', params);
     else if (['CoachCommitments', 'CoachPlan', 'MyPlans', 'Games'].includes(screen) && (screen !== 'CoachPlan' || params.id)) nav.push(screen, params);
-    else if (x.kind === 'duty' || x.kind === 'event') nav.goTab('Play');
-    else nav.goTab(x.kind === 'training' ? 'Player' : x.kind === 'venue' ? 'Book' : 'Play');
+    else nav.goTab('Schedule', { section: x.kind === 'training' ? 'coach' : x.kind === 'venue' ? 'book' : x.kind === 'duty' || x.kind === 'event' ? 'manage' : 'agenda' });
   };
   const when = x.all_day ? new Date(x.starts_at).toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' }) : dateTimeIn(x.starts_at, x.timezone);
   const label = `${x.title}. ${when}. ${STATUS[x.status] ?? x.status}${x.conflict ? '. Overlaps another commitment' : ''}`;
@@ -127,6 +126,34 @@ export function HomeSchedule() {
         </>
       )}
       <BlockSheet visible={block} date={inMonth ? picked ?? undefined : undefined} onClose={() => setBlock(false)} onDone={sched.reload} />
+    </View>
+  );
+}
+
+/** Home: reminders for the next 7 days, from the same calendar the Schedule tab manages. Needs-response items come first. */
+export function HomeReminders() {
+  const nav = useNav();
+  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const today = localDate(new Date().toISOString(), zone);
+  const sched = useLoad(() => api.get('/me/sport-schedule', { from: today, to: addDaysIso(today, 6) }), [today]);
+  const items = sched.data?.items ?? [];
+  const need = items.filter((x) => x.action_required);
+  const next = items.filter((x) => !x.action_required).slice(0, need.length ? 3 : 5);
+  return (
+    <View style={{ gap: 10 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+        <T size={19} weight="700" style={{ letterSpacing: -0.3 }}>🔔 Coming up</T>
+        <Btn small title="Open schedule" color={c.paper} ink={c.ink} onPress={() => nav.goTab('Schedule')} />
+      </View>
+      {sched.error ? <ErrorBox error={sched.error} onRetry={sched.reload} /> : sched.loading && !sched.data ? <Loading /> : (
+        <>
+          {sched.data.conflicts ? <T size={13} weight="700" color={c.red}>⚠ {sched.data.conflicts} overlapping commitment{sched.data.conflicts === 1 ? '' : 's'}</T> : null}
+          {need.length ? <T size={13} weight="800" color={c.sun}>NEEDS YOUR RESPONSE · {need.length}</T> : null}
+          {need.map((x) => <Item key={`n${x.source_type}${x.source_id}`} x={x} reload={sched.reload} />)}
+          {next.map((x) => <Item key={`${x.source_type}${x.source_id}${x.starts_at}`} x={x} reload={sched.reload} />)}
+          {!items.length ? <Empty emoji="🗓️" title="Nothing in the next 7 days" sub="Matches, events, coaching, appointments and bookings show up here as soon as you add them." /> : null}
+        </>
+      )}
     </View>
   );
 }

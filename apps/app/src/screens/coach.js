@@ -17,7 +17,7 @@ const KINDS = ['skill', 'tactical', 'conditioning', 'strength', 'recovery', 'mob
 // status is always written out, never colour-only
 const STATUS = { draft: 'Draft', proposed: 'Awaiting athlete', active: 'Active', declined: 'Declined', change_requested: 'Changes requested', closed: 'Closed', pending: 'Awaiting athlete', accepted: 'Accepted', superseded: 'Replaced', scheduled: 'Scheduled', completed: 'Completed', skipped: 'Skipped', cancelled: 'Cancelled', confirmed: 'Confirmed', awaiting_response: 'Awaiting response' };
 const Status = ({ s }) => <Tag label={STATUS[s] ?? s} color={s === 'active' || s === 'completed' || s === 'accepted' || s === 'confirmed' ? c.lime : c.violetSoft} />;
-const TABS = ['Home', 'Play', 'Player', 'Book', 'Hub', 'Me'];
+const TABS = ['Home', 'Explore', 'Schedule', 'Player', 'Hub', 'Me', 'Play', 'Book']; // Play and Book are the old names of Explore and Schedule
 // links may point at a tab (Hub, Me) or a pushed page; tabs must go through goTab or the page lookup is undefined
 const useOpen = () => { const { push, goTab } = useNav(); return (l) => (TABS.includes(l.screen) ? goTab(l.screen) : push(l.screen, l.params)); };
 const toIso = (v) => localToIso(v.date, v.time, tz);

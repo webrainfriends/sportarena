@@ -108,7 +108,7 @@ export function Book() {
 
   return (
     <Screen wide>
-      <H1 style={{ marginTop: 8 }}>Book a court</H1>
+      <H1 style={{ marginTop: 8 }}>Book a venue</H1>
       <T color={c.mute} weight="600">Find a venue, check live availability, book several slots at once.</T>
       <BasketBar />
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>

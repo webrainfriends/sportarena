@@ -18,12 +18,14 @@ import { c, dark, fam } from './theme';
 installWebShell();
 import Home from './screens/feed';
 import Landing from './screens/landing';
-import { Play, Event, Team, Person } from './screens/play';
+import { Explore, Event, Team, Person } from './screens/play';
 import { TeamManage } from './screens/team-manage';
 import { TeamWorkspace } from './screens/team-workspace';
 import { TeamChat } from './screens/team-chat';
-import { Book, Venue } from './screens/book';
+import { Venue } from './screens/book';
+import { Schedule } from './screens/schedule';
 import { BookFlow } from './screens/bookflow';
+import { Billboard, Shop, Insure } from './screens/marketplace';
 import { Basket, Reservation, Compare, Notifications, Invoice } from './screens/reserve';
 import { Manage, OwnerSummary } from './screens/manage';
 import { Wallet } from './screens/wallet';
@@ -55,14 +57,14 @@ import { MyPassport, PassportPublic } from './screens/passport';
 // A coach or scout opening a passport link (web) sees the athlete's CV without signing in.
 const PASSPORT_TOKEN = Platform.OS === 'web' && typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('passport') : null;
 
-const TABS = [['Home', Home], ['Play', Play], ['Player', PlayerHome], ['Book', Book], ['Hub', Hub], ['Me', Me]];
-const LABEL = { Hub: 'Ecosystem' };
-const PAGES = { Pathways, Programme, Institution, Enquiry, Passport: MyPassport, Event, PartnerConsole, MyPartner, Team, TeamManage, TeamWorkspace, TeamChat, Person, Venue, Wallet, BookFlow, Invoice, Basket, Reservation, Compare, Notifications, Manage, OwnerSummary, Leaderboard, Awards, Health, Insurance, InsurerPage, InsurerDesk, Sponsors, SponsorDeal, Supply, SportProfile, ImportMatches, Support, Family, CoachHome, CoachAthletes, CoachPlan, CoachCalendar, MyPlans, Orgs, Org, Games, EventInbox, Openings, CoachProfile, CoachRequest, CoachBoard, CoachDesk, CoachSetup, CoachRates, CoachCommitments, CoachReviews, CoachAnalytics, TrainingVenue, RecurringVenue, EventCommand, MatchCentre, ScoreSheet };
-const TITLES = { Pathways: 'Learn & study sport', Programme: 'Programme', Institution: 'Institution', Enquiry: 'Enquiry', Passport: 'Player passport', Event: 'Event', PartnerConsole: 'Partner management', MyPartner: 'Partner account', Team: 'Team', TeamManage: 'Manage team', TeamWorkspace: 'Team workspace', TeamChat: 'Team chat', Person: 'Profile', Venue: 'Venue', Wallet: 'Wallet', BookFlow: 'Book', Invoice: 'Invoice', Basket: 'Basket', Reservation: 'Booking', Compare: 'Compare', Notifications: 'Notifications', Manage: 'Manage venue', OwnerSummary: 'All my venues', Leaderboard: 'Leaderboard', Awards: 'Trophy room', Health: 'Health', Insurance: 'Insurance', InsurerPage: 'Insurer', InsurerDesk: 'Insurer desk', Sponsors: 'Sponsors', SponsorDeal: 'Sponsorship agreement', Supply: 'Supply chain', SportProfile: 'Sport profile', ImportMatches: 'Import matches', Support: 'Support', Family: 'Family & guardians', CoachHome: 'Coach home', CoachAthletes: 'My athletes', CoachPlan: 'Training plan', CoachCalendar: 'Coach calendar', MyPlans: 'Training plans', Orgs: 'My organisations', Org: 'Organisation', Games: 'Games programme', EventInbox: 'Event requests', Openings: 'Open positions', CoachProfile: 'Coach', CoachRequest: 'Coaching request', CoachBoard: 'Request board', CoachDesk: 'Coach desk', CoachSetup: 'Profile & hours', CoachRates: 'Rate cards', CoachCommitments: 'Commitments', CoachReviews: 'Reviews', CoachAnalytics: 'Analytics', TrainingVenue: 'Court for coaching', RecurringVenue: 'Recurring booking', EventCommand: 'Event console', MatchCentre: 'Live match', ScoreSheet: 'Score sheet' };
+const TABS = [['Home', Home], ['Explore', Explore], ['Schedule', Schedule], ['Player', PlayerHome], ['Hub', Hub], ['Me', Me]];
+const PAGES = { Billboard, Shop, Insure, Pathways, Programme, Institution, Enquiry, Passport: MyPassport, Event, PartnerConsole, MyPartner, Team, TeamManage, TeamWorkspace, TeamChat, Person, Venue, Wallet, BookFlow, Invoice, Basket, Reservation, Compare, Notifications, Manage, OwnerSummary, Leaderboard, Awards, Health, Insurance, InsurerPage, InsurerDesk, Sponsors, SponsorDeal, Supply, SportProfile, ImportMatches, Support, Family, CoachHome, CoachAthletes, CoachPlan, CoachCalendar, MyPlans, Orgs, Org, Games, EventInbox, Openings, CoachProfile, CoachRequest, CoachBoard, CoachDesk, CoachSetup, CoachRates, CoachCommitments, CoachReviews, CoachAnalytics, TrainingVenue, RecurringVenue, EventCommand, MatchCentre, ScoreSheet };
+const TITLES = { Billboard: 'Billboard', Shop: 'Shop', Insure: 'My cover', Pathways: 'Learn & study sport', Programme: 'Programme', Institution: 'Institution', Enquiry: 'Enquiry', Passport: 'Player passport', Event: 'Event', PartnerConsole: 'Partner management', MyPartner: 'Partner account', Team: 'Team', TeamManage: 'Manage team', TeamWorkspace: 'Team workspace', TeamChat: 'Team chat', Person: 'Profile', Venue: 'Venue', Wallet: 'Wallet', BookFlow: 'Book', Invoice: 'Invoice', Basket: 'Basket', Reservation: 'Booking', Compare: 'Compare', Notifications: 'Notifications', Manage: 'Manage venue', OwnerSummary: 'All my venues', Leaderboard: 'Leaderboard', Awards: 'Trophy room', Health: 'Health', Insurance: 'Insurance', InsurerPage: 'Insurer', InsurerDesk: 'Insurer desk', Sponsors: 'Sponsors', SponsorDeal: 'Sponsorship agreement', Supply: 'Supply chain', SportProfile: 'Sport profile', ImportMatches: 'Import matches', Support: 'Support', Family: 'Family & guardians', CoachHome: 'Coach home', CoachAthletes: 'My athletes', CoachPlan: 'Training plan', CoachCalendar: 'Coach calendar', MyPlans: 'Training plans', Orgs: 'My organisations', Org: 'Organisation', Games: 'Games programme', EventInbox: 'Event requests', Openings: 'Open positions', CoachProfile: 'Coach', CoachRequest: 'Coaching request', CoachBoard: 'Request board', CoachDesk: 'Coach desk', CoachSetup: 'Profile & hours', CoachRates: 'Rate cards', CoachCommitments: 'Commitments', CoachReviews: 'Reviews', CoachAnalytics: 'Analytics', TrainingVenue: 'Court for coaching', RecurringVenue: 'Recurring booking', EventCommand: 'Event console', MatchCentre: 'Live match', ScoreSheet: 'Score sheet' };
 
 const TAB_LABEL = { Hub: 'More' };
-// order in the bar; Book is the raised centre action, Me opens from the hero avatar and from More
-const BAR = ['Home', 'Play', 'Book', 'Player', 'Hub'];
+// Home: feed, reminders, jobs · Explore: find events, teams, people · More (raised centre): everything around the game
+// Schedule: create, book, track and manage · Player: matches, scores and AI insights. Me opens from the hero avatar and from More.
+const BAR = ['Home', 'Explore', 'Hub', 'Schedule', 'Player'];
 
 /** Bottom tab bar. Phone: edge-to-edge bar. Tablet / large screens: a floating pill, like an iPad app. */
 function TabBar() {
@@ -71,7 +73,7 @@ function TabBar() {
   const { tablet, width } = useLayout();
   const items = BAR.map((name) => {
     const on = tab === name || (name === 'Hub' && tab === 'Me');
-    const centre = name === 'Book';
+    const centre = name === 'Hub';
     return (
       <Pressable key={name} accessibilityRole="tab" accessibilityState={{ selected: on }} accessibilityLabel={TAB_LABEL[name] ?? name} onPress={() => goTab(name)} style={({ pressed }) => ({ flex: 1, alignItems: 'center', justifyContent: 'flex-end', minHeight: 52, opacity: pressed ? 0.6 : 1 })}>
         {centre ? (
@@ -184,17 +186,17 @@ function Shell() {
     const id = q.get('payment');
     if (!id) return;
     window.history.replaceState({}, '', window.location.pathname);
-    goTab('Player');
+    goTab('Schedule');
     if (q.get('result') !== 'success') return toast('Payment cancelled — nothing was charged');
     api.post(`/payments/${id}/confirm`).then(async (r) => {
       toast(r.status === 'paid' ? 'Payment received ✓' : 'Payment is still processing — check back shortly');
-      if (r.purpose_type === 'venue_invoice') { const inv = await api.get(`/invoices/${r.purpose_id}`).catch(() => null); if (inv) { goTab('Book'); push('Reservation', { id: inv.reservation_id }); } }
+      if (r.purpose_type === 'venue_invoice') { const inv = await api.get(`/invoices/${r.purpose_id}`).catch(() => null); if (inv) { goTab('Schedule'); push('Reservation', { id: inv.reservation_id }); } }
     }).catch((e) => toast(e.message));
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
   // A tapped push notification opens the right screen: from the web service worker (?open= or a message) or from the phone.
   useEffect(() => {
     if (!user) return undefined;
-    const go = ([name, params]) => { goTab('Book'); setTimeout(() => push(name, params), 0); };
+    const go = ([name, params]) => { goTab('Schedule'); setTimeout(() => push(name, params), 0); };
     if (Platform.OS === 'web') {
       const q = new URLSearchParams(window.location.search);
       if (q.get('open')) { window.history.replaceState({}, '', window.location.pathname); go(parseTarget(q.get('open'))); }

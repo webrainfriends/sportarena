@@ -742,7 +742,7 @@ export function CoachRequest({ id }) {
             </Card>
           ))}
           {r.status === 'open' ? <Btn small title="Close this request" color={c.paper} ink={c.red} onPress={() => setClosing(true)} style={{ alignSelf: 'flex-start' }} /> : null}
-          {r.status === 'filled' ? <Btn small title="Go to my coaching" onPress={() => goTab('Player')} style={{ alignSelf: 'flex-start' }} /> : null}
+          {r.status === 'filled' ? <Btn small title="Go to my coaching" onPress={() => goTab('Schedule', { section: 'coach' })} style={{ alignSelf: 'flex-start' }} /> : null}
         </Section>
       ) : (
         <Section title="Your answer">
