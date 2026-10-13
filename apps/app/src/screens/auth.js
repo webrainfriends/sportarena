@@ -8,6 +8,7 @@ import { c, grad, fam } from '../theme';
 import { ROLES } from '../roles';
 import { INTENT_COPY } from '../market/intent';
 import GoogleButton from '../google-button';
+import AppleButton from '../apple-button';
 import { Logo } from '../logo';
 
 
@@ -32,6 +33,8 @@ export default function Auth({ intent, initialMode, onClose } = {}) {
     const q = new URLSearchParams(location.search);
     const clean = () => { try { window.history.replaceState(null, '', location.pathname); } catch { /* ignore */ } };
     if (q.get('reset_password')) { setF((p) => ({ ...p, code: q.get('reset_password') })); setMode('reset'); clean(); }
+    else if (q.get('apple_error')) { setErr(q.get('apple_error')); clean(); }
+    else if (q.get('apple_mfa')) { setMfaToken(q.get('apple_mfa')); setF((p) => ({ ...p, mfa: '' })); setMode('mfa'); clean(); }
     else if (q.get('verify_email')) {
       api.post('/auth/verify-email', { token: q.get('verify_email') }).then(() => setInfo('Your email is confirmed. You can log in.'), (e) => setErr(e.message));
       clean();
@@ -149,7 +152,8 @@ export default function Auth({ intent, initialMode, onClose } = {}) {
           {['login', 'register'].includes(mode) ? <>
             <T size={12} color={c.mute} style={{ textAlign: 'center' }}>or</T>
             <GoogleButton onCredential={withGoogle} onError={setErr} />
-            <T size={11} color={c.mute} style={{ textAlign: 'center', lineHeight: 16 }}>New Google accounts are checked by the administrator before they can add or change anything. Until then you can look around read-only.</T>
+            <AppleButton />
+            <T size={11} color={c.mute} style={{ textAlign: 'center', lineHeight: 16 }}>New Google or Apple accounts are checked by the administrator before they can add or change anything. Until then you can look around read-only.</T>
           </> : null}
           {mode === 'login' ? <Pressable onPress={() => { setErr(null); setInfo(null); setMode('forgot'); }} accessibilityRole="button" style={{ alignSelf: 'center', paddingVertical: 8 }}><T color={c.pink} weight="700" size={13}>Forgot your password?</T></Pressable> : null}
           {mode === 'forgot' ? <Pressable onPress={() => { setErr(null); setMode('reset'); }} accessibilityRole="button" style={{ alignSelf: 'center', paddingVertical: 8 }}><T color={c.pink} weight="700" size={13}>I already have a code</T></Pressable> : null}

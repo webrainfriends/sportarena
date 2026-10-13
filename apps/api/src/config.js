@@ -37,6 +37,11 @@ export const config = {
   hashing: { concurrency: Number(env.HASH_CONCURRENCY ?? 2), maxQueue: Number(env.HASH_MAX_QUEUE ?? 64) },
   // Sign in with Google: the OAuth client id (public) from Google Cloud Console. Unset = the Google button is hidden and the endpoint refuses.
   googleClientId: env.GOOGLE_CLIENT_ID,
+  // Sign in with Apple. appleClientId = the Services ID (web button; public). appleAppId = the app's bundle id (primary App ID, used by the native button).
+  // Both are accepted as the id token's audience. Unset appleClientId = the Apple button is hidden and the endpoint refuses web sign-in.
+  appleClientId: env.APPLE_CLIENT_ID,
+  appleAppId: env.APPLE_APP_ID ?? 'dev.gotmygame.app',
+  appleRedirectUri: env.APPLE_REDIRECT_URI ?? 'https://gotmygame.com/api/v1/auth/apple/callback',
   // The Google account that approves or rejects everyone else's access (and holds the platform owner role). Set by the deploy workflow; unset = nobody gets it.
   superAdminEmail: env.SUPER_ADMIN_EMAIL,
   tokenTtl: env.TOKEN_TTL ?? '12h', // access-token lifetime

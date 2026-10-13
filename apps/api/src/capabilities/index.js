@@ -1,5 +1,6 @@
 import './identity.js';
 import './google-login.js';
+import './apple-login.js';
 import './sessions.js';
 import './account-security.js';
 import './verification.js';

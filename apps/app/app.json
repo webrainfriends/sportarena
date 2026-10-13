@@ -9,7 +9,8 @@
     "backgroundColor": "#FFF6FB",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "dev.sportarena.app"
+      "bundleIdentifier": "dev.gotmygame.app",
+      "usesAppleSignIn": true
     },
     "android": {
       "package": "dev.sportarena.app",

@@ -8,7 +8,7 @@ export const SESSION_COOKIE = 'sa_session';
 export const REFRESH_COOKIE = 'sa_refresh';
 export const CSRF_COOKIE = 'sa_csrf';
 const SAFE = new Set(['GET', 'HEAD', 'OPTIONS']);
-const COOKIE_CAPS = new Set(['login', 'login_mfa', 'login_google', 'register', 'refresh_session']);
+const COOKIE_CAPS = new Set(['login', 'login_mfa', 'login_google', 'login_apple', 'register', 'refresh_session']);
 
 export function parseCookies(header) {
   const out = {};
@@ -74,6 +74,8 @@ export function cookieAuth(req, res, next) {
   const cookies = parseCookies(req.headers.cookie);
   req.cookies = cookies;
   const hasSession = Boolean(cookies[SESSION_COOKIE]);
+  // Apple's form_post callback is a cross-site POST; it is protected by the signed state cookie and the signed id token instead.
+  if (req.path === '/api/v1/auth/apple/callback') return next();
   if (req.headers.authorization) return next(); // explicit bearer wins; browsers never add it by themselves
   const unsafe = !SAFE.has(req.method);
   const credentialed = hasSession || Boolean(cookies[REFRESH_COOKIE]);

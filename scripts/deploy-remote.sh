@@ -145,11 +145,12 @@ MEDIA_DIR="$KEY_DIR/media"
 sudo mkdir -p "$MEDIA_DIR"; sudo chown "$(id -un):$(id -gn)" "$MEDIA_DIR"
 set_env MEDIA_DIR "$MEDIA_DIR"
 # Payments: only written when provided, so a deploy without keys never wipes keys set earlier.
-for v in STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET PAYPAL_CLIENT_ID PAYPAL_CLIENT_SECRET PAYPAL_WEBHOOK_ID PAYPAL_ENV PAYMENT_CURRENCY EXPO_ACCESS_TOKEN ANTHROPIC_API_KEY AI_MODEL WORKER_MODE PLATFORM_ADMIN_EMAIL PLATFORM_ADMIN_HANDLE PLATFORM_ADMIN_NAME PLATFORM_ADMIN_PASSWORD MFA_ENFORCE GOOGLE_CLIENT_ID SUPER_ADMIN_EMAIL; do
+for v in STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET PAYPAL_CLIENT_ID PAYPAL_CLIENT_SECRET PAYPAL_WEBHOOK_ID PAYPAL_ENV PAYMENT_CURRENCY EXPO_ACCESS_TOKEN ANTHROPIC_API_KEY AI_MODEL WORKER_MODE PLATFORM_ADMIN_EMAIL PLATFORM_ADMIN_HANDLE PLATFORM_ADMIN_NAME PLATFORM_ADMIN_PASSWORD MFA_ENFORCE GOOGLE_CLIENT_ID APPLE_CLIENT_ID SUPER_ADMIN_EMAIL; do
   val="$(printf '%s' "${!v:-}" | tr -d '\r\n' | xargs)"
   [ -n "$val" ] && set_env "$v" "$val"
 done
 [ -n "$(printf '%s' "${GOOGLE_CLIENT_ID:-}" | tr -d '\r\n' | xargs)" ] && echo "[deploy] GOOGLE_CLIENT_ID received (Google sign-in on)" || echo "::warning::GOOGLE_CLIENT_ID is empty in this run: set it as a repository variable (or secret) named GOOGLE_CLIENT_ID; until then the Google button stays disabled."
+[ -n "$(printf '%s' "${APPLE_CLIENT_ID:-}" | tr -d '\r\n' | xargs)" ] && echo "[deploy] APPLE_CLIENT_ID received (Apple sign-in on)" || echo "::warning::APPLE_CLIENT_ID is empty in this run: set the Apple Services ID as a repository variable (or secret) named APPLE_CLIENT_ID; until then the Apple button stays disabled."
 # Background processing: production runs the separate pm2 worker by default (maintenance leaves the API process, so slow
 # jobs/email/hashing never share an event loop with request handling). Explicit opt-out: repository variable WORKER_MODE=inprocess.
 WORKER_MODE_EFFECTIVE="$(printf '%s' "${WORKER_MODE:-}" | tr -d '\r\n' | xargs)"
