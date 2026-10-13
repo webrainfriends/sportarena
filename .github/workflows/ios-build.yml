@@ -41,6 +41,22 @@ jobs:
           printf '%s\n' "$ASC_KEY_P8" > "$RUNNER_TEMP/asc.p8"
         env:
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+      - name: Give EAS submit the App Store Connect key (runner only, not committed)
+        working-directory: apps/app
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          node -e '
+            const fs = require("fs");
+            const j = JSON.parse(fs.readFileSync("eas.json", "utf8"));
+            Object.assign(j.submit.production.ios, {
+              ascApiKeyPath: process.env.RUNNER_TEMP + "/asc.p8",
+              ascApiKeyIssuerId: process.env.ASC_ISSUER_ID,
+              ascApiKeyId: process.env.ASC_KEY_ID,
+            });
+            fs.writeFileSync("eas.json", JSON.stringify(j, null, 2));
+          '
       - name: Submit latest finished build to TestFlight
         if: ${{ inputs.submit_latest }}
         working-directory: apps/app
