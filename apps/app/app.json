@@ -10,7 +10,15 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "dev.gotmygame.app",
-      "usesAppleSignIn": true
+      "usesAppleSignIn": true,
+      "buildNumber": "1",
+      "config": {
+        "usesNonExemptEncryption": false
+      },
+      "infoPlist": {
+        "UIViewControllerBasedStatusBarAppearance": true
+      },
+      "requireFullScreen": false
     },
     "android": {
       "package": "dev.sportarena.app",
@@ -38,7 +46,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Choose photos and videos of your venue to show on its page."
+          "photosPermission": "Choose photos and videos of your venue to show on its page.",
+          "cameraPermission": "Take photos of your venue, team or profile to share them in the app."
         }
       ],
       [
@@ -53,6 +62,7 @@
       "image": "./assets/splash.png",
       "resizeMode": "contain",
       "backgroundColor": "#EEEAF4"
-    }
+    },
+    "description": "One platform for everyone who dreams of sport"
   }
 }

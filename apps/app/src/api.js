@@ -7,6 +7,8 @@ const guess = () => {
   const fromEnv = process.env.EXPO_PUBLIC_API_URL;
   if (fromEnv !== undefined) return fromEnv;
   if (Platform.OS === 'web' && typeof location !== 'undefined') return `${location.protocol}//${location.hostname}:4000`;
+  // Installed iOS/Android builds talk to production (eas.json also sets EXPO_PUBLIC_API_URL); only a dev run falls back to the local API.
+  if (!__DEV__) return 'https://gotmygame.com';
   return Platform.OS === 'android' ? 'http://10.0.2.2:4000' : 'http://localhost:4000';
 };
 export const API = `${guess().replace(/\/$/, '')}/api/v1`;

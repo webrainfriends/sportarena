@@ -1,0 +1,39 @@
+name: iOS build
+
+# Manual only: the maintainer starts iOS builds (and optional TestFlight submit) from the Actions tab.
+# Needs the repo secret EXPO_TOKEN (expo.dev access token) and, for the first run, an Apple developer account linked in EAS
+# (see docs/ios.md). The runner only queues the build on EAS; it never touches the server or the database.
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: EAS build profile
+        type: choice
+        options: [preview, production, development]
+        default: preview
+      submit:
+        description: Submit the finished build to TestFlight (production profile only)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  ios:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+      - name: Build (queued on EAS)
+        working-directory: apps/app
+        env:
+          PROFILE: ${{ inputs.profile }}
+          SUBMIT: ${{ inputs.submit && inputs.profile == 'production' && '--auto-submit' || '' }}
+        run: eas build --platform ios --profile "$PROFILE" --non-interactive --no-wait $SUBMIT
