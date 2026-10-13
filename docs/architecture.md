@@ -41,8 +41,11 @@ flowchart LR
 
 ### 2.1 Clients (`apps/app`)
 * Expo (React Native + react-native-web). One code base for iOS, Android and web.
-* `App.js` holds a bottom tab bar (Home, Play, Player, Book, Ecosystem, Me) plus a pushed-page stack; providers are
-  session, navigation and basket.
+* `App.js` holds a bottom tab bar plus a pushed-page stack; providers are session, navigation and basket. The bar is
+  **Home** (feed, 7-day reminders, open jobs) · **Explore** (find events, teams, people) · **More** (raised centre: everything
+  around the game, and Me) · **Schedule** (create, book, track and manage: calendar, venues, coaches, events and teams) ·
+  **Player** (matches and scores per sport, and AI insights compared with players in your region, level and sport).
+  `goTab(name, { section })` opens a tab on a given section; the old names Play and Book still resolve to Explore and Schedule.
 * `src/api.js` is the only way the app reaches the backend: a thin REST client. The base URL is
   `EXPO_PUBLIC_API_URL` (empty on web means same origin).
 * Tokens live in `expo-secure-store` on native and `localStorage` on web (known limit, see README).

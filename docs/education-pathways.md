@@ -8,7 +8,7 @@ people to sponsors and issues certificates and badges.
 `school`. Its admissions team are the organisation's `owner` and `admin` members (membership is checked live, so removing someone
 cuts access at once). There is no separate "college" account. In the app: **Organisations → (your institution) → Admissions**.
 
-## Athlete journey (app: Ecosystem → Learn & study)
+## Athlete journey (app: More → Learn & study)
 
 | Step | Capability |
 |---|---|

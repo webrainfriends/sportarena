@@ -230,7 +230,7 @@ cap({
     sport: z.string().describe('sport slug or id'), role: z.enum(profileRoles),
     level: z.enum(['beginner', 'amateur', 'semi_pro', 'pro']).default('beginner'),
     position: z.string().max(60).optional(), license_no: z.string().max(60).optional(),
-    jersey_no: z.number().int().min(0).max(999).optional(), club: z.string().max(80).optional(), experience_years: z.number().int().min(0).max(80).optional(), hourly_rate_cents: z.number().int().min(0).optional(),
+    jersey_no: z.number().int().min(0).max(999).optional(), club: z.string().max(80).optional(), region: z.string().trim().max(80).optional(), experience_years: z.number().int().min(0).max(80).optional(), hourly_rate_cents: z.number().int().min(0).optional(),
     is_default: z.boolean().default(false),
   }),
   async handler({ user }, i) {
@@ -243,12 +243,12 @@ cap({
       const makeDefault = first || i.is_default;
       if (makeDefault) await c.query('UPDATE sport_profiles SET is_default=false WHERE user_id=$1 AND is_default', [user.id]);
       const { rows: [row] } = await c.query(
-        `INSERT INTO sport_profiles (user_id, sport_id, role, level, position, license_no_enc, jersey_no, club, experience_years, hourly_rate_cents, is_default) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+        `INSERT INTO sport_profiles (user_id, sport_id, role, level, position, license_no_enc, jersey_no, club, experience_years, hourly_rate_cents, is_default, region) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
          ON CONFLICT (user_id, sport_id, role) DO UPDATE SET level = EXCLUDED.level, position = EXCLUDED.position, license_no_enc = coalesce(EXCLUDED.license_no_enc, sport_profiles.license_no_enc),
-           jersey_no = coalesce(EXCLUDED.jersey_no, sport_profiles.jersey_no), club = coalesce(EXCLUDED.club, sport_profiles.club), experience_years = coalesce(EXCLUDED.experience_years, sport_profiles.experience_years), hourly_rate_cents = coalesce(EXCLUDED.hourly_rate_cents, sport_profiles.hourly_rate_cents),
+           jersey_no = coalesce(EXCLUDED.jersey_no, sport_profiles.jersey_no), club = coalesce(EXCLUDED.club, sport_profiles.club), region = coalesce(EXCLUDED.region, sport_profiles.region), experience_years = coalesce(EXCLUDED.experience_years, sport_profiles.experience_years), hourly_rate_cents = coalesce(EXCLUDED.hourly_rate_cents, sport_profiles.hourly_rate_cents),
            is_default = sport_profiles.is_default OR EXCLUDED.is_default
-         RETURNING id, sport_id, role, level, position, jersey_no, club, experience_years, is_default`,
-        [user.id, sport.id, i.role, i.level, i.position ?? null, encrypt(i.license_no, 'sport_profiles.license_no'), i.jersey_no ?? null, i.club ?? null, i.experience_years ?? null, i.hourly_rate_cents ?? null, makeDefault]);
+         RETURNING id, sport_id, role, level, position, jersey_no, club, region, experience_years, is_default`,
+        [user.id, sport.id, i.role, i.level, i.position ?? null, encrypt(i.license_no, 'sport_profiles.license_no'), i.jersey_no ?? null, i.club ?? null, i.experience_years ?? null, i.hourly_rate_cents ?? null, makeDefault, i.region || null]);
       // coaching in a sport makes you a coach: the coach desk, request board and answers all need the role
       if (i.role === 'coach') await c.query("UPDATE users SET roles = array_append(roles, 'coach') WHERE id=$1 AND NOT ('coach' = ANY(roles))", [user.id]);
       return row;

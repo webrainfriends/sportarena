@@ -25,6 +25,6 @@ No individual-specific subsystem: athletes are just another `target_type` of the
   `withdrawn`.
 
 ## App
-Ecosystem → Sponsors: athletes get an "Open to sponsors" switch and pitch editor; sponsors search opted-in athletes and
+More → Sponsors: athletes get an "Open to sponsors" switch and pitch editor; sponsors search opted-in athletes and
 send an offer; both sides see every deal with its terms, status and reply, and can accept, decline, withdraw or end.
 The Billboard inbox shows the same terms.

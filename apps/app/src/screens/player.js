@@ -13,8 +13,8 @@ import { c, fam, day } from '../theme';
 import { sportTheme, recordOf, recordLabel } from '../sport-theme';
 import { FavouriteSports } from '../sportpicker';
 import { RecordsSection } from './performance';
-import { Billboard, Shop, Insure, useCols } from './marketplace';
-import { Hire } from './coaching';
+import { useCols } from './marketplace';
+import { Insights } from './player-insights';
 
 const LEVELS = ['beginner', 'amateur', 'semi_pro', 'pro'];
 const ROLES = ['athlete', 'coach', 'referee', 'physio', 'doctor'];
@@ -59,7 +59,7 @@ export function SportCard({ p, width, onOpen, onDefault, onLog, selected }) {
   const tone = th.tone;
   const s = p.summary;
   const top = p.metrics.slice(0, 3);
-  const line = [p.position, p.jersey_no !== null ? `#${p.jersey_no}` : null, p.club].filter(Boolean).join(' · ');
+  const line = [p.position, p.jersey_no !== null ? `#${p.jersey_no}` : null, p.club, p.region].filter(Boolean).join(' · ');
   const R = th.radius;
   return (
     <Pressable onPress={onOpen} style={({ pressed }) => [{ width }, pressed ? { opacity: 0.94, transform: [{ scale: 0.99 }] } : null]}>
@@ -146,6 +146,7 @@ export function AddProfileSheet({ visible, onClose, onDone, first, sport }) {
         { key: 'position', label: 'Position', optional: true, placeholder: 'Striker, Opening bat…' },
         { key: 'jersey_no', label: 'Jersey number', optional: true, type: 'number' },
         { key: 'club', label: 'Club / team', optional: true },
+        { key: 'region', label: 'Where you play', type: 'region', optional: true, hint: 'Used to compare you with players nearby. Only totals are ever compared.' },
         { key: 'experience_years', label: 'Years playing', optional: true, type: 'number' },
         { key: 'license_no', label: 'Licence number', optional: true },
         ...(first ? [] : [{ key: 'make_default', label: 'Make this my default?', type: 'choice', options: [{ value: 'no', label: 'No' }, { value: 'yes', label: 'Yes — list it first' }] }]),
@@ -154,15 +155,16 @@ export function AddProfileSheet({ visible, onClose, onDone, first, sport }) {
   );
 }
 
-function EditProfileSheet({ p, onClose, onDone }) {
+export function EditProfileSheet({ p, onClose, onDone }) {
   return (
     <FormSheet visible onClose={onClose} title={`Edit ${p.sport}`}
-      initial={{ level: p.level, position: p.position ?? '', jersey_no: p.jersey_no ?? '', club: p.club ?? '', experience_years: p.experience_years ?? '' }}
+      initial={{ level: p.level, position: p.position ?? '', jersey_no: p.jersey_no ?? '', club: p.club ?? '', region: p.region ?? '', experience_years: p.experience_years ?? '' }}
       fields={[
         { key: 'level', label: 'Level', type: 'choice', options: LEVELS },
         { key: 'position', label: 'Position', optional: true },
         { key: 'jersey_no', label: 'Jersey number', optional: true, type: 'number' },
         { key: 'club', label: 'Club / team', optional: true },
+        { key: 'region', label: 'Where you play', type: 'region', optional: true, hint: 'Used to compare you with players nearby. Only totals are ever compared.' },
         { key: 'experience_years', label: 'Years playing', optional: true, type: 'number' },
       ]}
       onSubmit={async (v) => { await api.patch(`/me/sport-profiles/${p.id}`, v); await onDone(); return 'Profile updated'; }} />
@@ -306,14 +308,16 @@ function MySports() {
 
 // ---------- player hub: sections ----------
 
-const SECTIONS = [['sports', 'My sports', MySports], ['billboard', 'Billboard', Billboard], ['shop', 'Shop', Shop], ['hire', 'Hire', Hire], ['insure', 'Insure', Insure]];
+// Player: everything about how you play. Matches and scores per sport as before, plus AI insights that compare you with other players.
+const sections = () => [['sports', 'My sports', MySports], ['insights', 'Insights', Insights]];
 let lastSection = 'sports'; // survive pushing into a sport page and coming back
 
 export function PlayerHome() {
   const [sec, setSec] = useState(lastSection);
   const { gutter, contentMax } = useLayout();
   const pick = (v) => { lastSection = v; setSec(v); };
-  const Body = SECTIONS.find((x) => x[0] === sec)[2];
+  const SECTIONS = sections(); // built at render time: player-insights imports this file back
+  const Body = SECTIONS.find((x) => x[0] === sec)?.[2] ?? MySports;
   return (
     <View style={{ flex: 1 }}>
       <View style={{ width: '100%', maxWidth: contentMax, alignSelf: 'center', paddingHorizontal: gutter - 0, paddingTop: 8 }}>

@@ -10,7 +10,7 @@ import { sportBySlugOrId } from '../helpers.js';
 
 // ---------- sport profiles (the player's "cards") ----------
 
-const PROFILE_COLS = `p.id, p.role, p.level, p.position, p.jersey_no, p.club, p.experience_years, p.hourly_rate_cents, p.is_default,
+const PROFILE_COLS = `p.id, p.role, p.level, p.position, p.jersey_no, p.club, p.region, p.experience_years, p.hourly_rate_cents, p.is_default,
   s.slug AS sport_slug, s.name AS sport, s.emoji AS sport_emoji`;
 /** Default profile first, then oldest first. */
 const PROFILE_ORDER = 'ORDER BY p.is_default DESC, p.created_at, p.id';
@@ -20,6 +20,7 @@ const profileFields = {
   position: z.string().max(60),
   jersey_no: z.coerce.number().int().min(0).max(999),
   club: z.string().max(80),
+  region: z.string().trim().max(80).describe('where you play: city or area, used to compare you with players nearby'),
   experience_years: z.coerce.number().int().min(0).max(80),
   hourly_rate_cents: z.coerce.number().int().min(0).describe('coaches/physios/doctors: price per hour in minor units'),
   license_no: z.string().max(60).describe('encrypted at rest'),
@@ -103,7 +104,7 @@ cap({
 
 cap({
   name: 'update_sport_profile', method: 'PATCH', path: '/me/sport-profiles/:id', tag: 'Player',
-  summary: 'Edit one of your sport profiles (level, position, jersey, club, experience, licence number).',
+  summary: 'Edit one of your sport profiles (level, position, jersey, club, region, experience, licence number).',
   input: z.object({ id, ...Object.fromEntries(Object.entries(profileFields).map(([k, v]) => [k, v.optional()])) }),
   async handler({ user }, i) {
     await ownProfile(user.id, i.id);

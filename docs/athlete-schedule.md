@@ -22,7 +22,7 @@ Notes:
 Not in this PR: training plans, medication/adherence, Learn a Sport (depends on #68/#72).
 
 ## App
-One schedule, on **Home**: today by default (a quiet "Rest day" when it is empty), with 7- and 30-day ranges, kind filters, a "needs your response" inbox and overlap warnings. Items are colour-coded on the left edge (match red, coaching blue, health green). The Player tab no longer has a separate Today screen; it opens on **My sports**.
+One schedule, under the **Schedule** tab (Home shows the next 7 days as reminders and links here): today by default (a quiet "Rest day" when it is empty), with 7- and 30-day ranges, kind filters, a "needs your response" inbox and overlap warnings. Items are colour-coded on the left edge (match red, coaching blue, health green). The Player tab has no Today screen; it opens on **My sports**, next to **Insights**.
 Related merges in the same pass: one add-sport sheet and one make-default helper (Home, My sports and Me share them); Favourite sports live only in My sports; physios and doctors are found and booked only under Health → Find a pro (with search, remote/verified filters and sorting), and Me no longer repeats the Hub shortcuts.
 
 ## Calendar, personal blocks and RSVP (migration 038)
