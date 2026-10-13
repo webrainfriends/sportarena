@@ -15,6 +15,7 @@ import { csvToObjects } from '../csv.js';
 import { notify } from '../notify.js';
 import { orgFor, orgRole } from '../org-access.js';
 
+const ORG_KINDS = ['club', 'academy', 'school', 'college', 'university', 'other'];
 const ROLES = ['owner', 'admin', 'coach', 'finance'];
 const STAFF = ['owner', 'admin'];
 const role = z.enum(ROLES);
@@ -42,7 +43,7 @@ async function cohortFor(user, cohortId, { write = false, c } = {}) {
 cap({
   name: 'create_organisation', method: 'POST', path: '/organisations', tag: 'Organisations', status: 201,
   summary: 'Create a workspace for a club, academy or school. You become its owner.',
-  input: z.object({ name: z.string().min(2).max(80), kind: z.enum(['club', 'academy', 'school', 'other']).default('club'), city: z.string().max(80).optional() }),
+  input: z.object({ name: z.string().min(2).max(80), kind: z.enum(ORG_KINDS).default('club'), city: z.string().max(80).optional() }),
   handler: ({ user }, i) => tx(async (c) => {
     const org = (await c.query('INSERT INTO organisations(name, kind, city, created_by) VALUES ($1,$2,$3,$4) RETURNING *', [i.name, i.kind, i.city ?? null, user.id])).rows[0];
     await c.query("INSERT INTO organisation_members(organisation_id, user_id, role, status, joined_at, invited_by) VALUES ($1,$2,'owner','active',now(),$2)", [org.id, user.id]);
@@ -76,7 +77,7 @@ cap({
 
 cap({
   name: 'update_organisation', method: 'PATCH', path: '/organisations/:id', tag: 'Organisations', summary: 'Rename or edit the organisation (owner/admin).',
-  input: z.object({ id, name: z.string().min(2).max(80).optional(), kind: z.enum(['club', 'academy', 'school', 'other']).optional(), city: z.string().max(80).optional() }),
+  input: z.object({ id, name: z.string().min(2).max(80).optional(), kind: z.enum(ORG_KINDS).optional(), city: z.string().max(80).optional() }),
   async handler({ user }, i) {
     await orgFor(user, i.id, STAFF, { write: true });
     if (i.name === undefined && i.kind === undefined && i.city === undefined) throw badRequest('Nothing to update');

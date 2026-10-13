@@ -13,6 +13,7 @@ import { CreateEvent } from './event-create';
 import { RegisterVenue } from './book';
 import { FixtureCard, Reviews, StandingsTable, TrophyShelf, Stars } from '../blocks';
 import { SportSelect } from '../sportpicker';
+import { CredentialList } from './pathways';
 import { c, grad, day, accentFor, money, withUnit } from '../theme';
 
 
@@ -236,6 +237,7 @@ export function Person({ id }) {
       {stats.data?.by_metric?.length ? <Section title="Stats" color={c.mint}>
         <Card color={c.mintSoft}>{stats.data.by_metric.map((m, i) => <View key={i} style={{ paddingVertical: 4 }}><View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><T weight="800">{m.emoji} {m.metric.replace(/_/g, ' ')}</T><T weight="900">{withUnit(m.unit === 's' ? m.lowest : m.best, m.unit)} <T size={12} color={c.mute}>best · {m.entries} {m.entries === 1 ? 'entry' : 'entries'}</T></T></View><T size={11} color={c.mute}>{m.evidence_label}</T></View>)}</Card>
       </Section> : null}
+      {x.credentials?.length ? <Section title="Certificates & badges" color={c.mint}><CredentialList list={x.credentials} /></Section> : null}
       <Section title="Trophy cabinet" color={c.sun}><TrophyShelf awards={awards.data} /></Section>
       <Section title="Props from the community" color={c.pink}><Reviews type="user" id={id} canWrite={user.id !== id} /></Section>
     </Screen>

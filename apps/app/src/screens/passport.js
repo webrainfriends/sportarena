@@ -8,6 +8,7 @@ import { useSession } from '../session';
 import { Avatar, Btn, Card, Empty, ErrorBox, H1, H2, Loading, Screen, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { c, day, toneFor } from '../theme';
+import { CredentialList } from './pathways';
 
 const nice = (s) => String(s).replace(/_/g, ' ');
 const num = (v) => (v === null || v === undefined ? '–' : Number.isInteger(+v) ? String(+v) : String(Math.round(+v * 100) / 100));
@@ -116,6 +117,14 @@ export function PassportCard({ data }) {
         </Card>
       ) : null}
 
+      {data.credentials?.length ? (
+        <Card pad={16}>
+          <H2>Certificates & badges</H2>
+          <T size={12} color={c.mute} style={{ marginTop: 2, marginBottom: 10 }}>Issued by the institutions named; each can be checked with its code.</T>
+          <CredentialList list={data.credentials} />
+        </Card>
+      ) : null}
+
       {data.awards?.length ? (
         <Card pad={16}>
           <H2>Achievements</H2>
@@ -165,7 +174,7 @@ export function MyPassport() {
               <View style={{ flex: 1 }}>
                 <T weight="700">{l.label || 'Passport link'}</T>
                 <T size={12} color={c.mute}>{l.status === 'active' ? `Expires ${day(l.expires_at)}` : l.status === 'expired' ? `Expired ${day(l.expires_at)}` : `Turned off ${day(l.revoked_at)}`} · opened {l.view_count} time{l.view_count === 1 ? '' : 's'}</T>
-                <T size={12} color={c.mute}>Shows: {['show_matches', 'show_results', 'show_awards'].filter((k) => l[k]).map((k) => ({ show_matches: 'matches', show_results: 'results', show_awards: 'awards' }[k])).join(', ') || 'profile only'}</T>
+                <T size={12} color={c.mute}>Shows: {['show_matches', 'show_results', 'show_awards', 'show_credentials'].filter((k) => l[k]).map((k) => ({ show_matches: 'matches', show_results: 'results', show_awards: 'awards', show_credentials: 'certificates' }[k])).join(', ') || 'profile only'}</T>
               </View>
               <Tag label={l.status} color={l.status === 'active' ? c.mint : c.violetSoft} />
             </View>
@@ -176,19 +185,20 @@ export function MyPassport() {
 
       <H2 style={{ marginTop: 26 }}>What people will see</H2>
       <View style={{ marginTop: 10 }}>{prev.error ? <ErrorBox error={prev.error} onRetry={prev.reload} /> : !prev.data ? <Loading /> : <PassportCard data={prev.data} />}</View>
-      <T size={12} color={c.mute} style={{ marginTop: 14 }}>Never shown: email, phone, date of birth, address, private notes or health data. Each link can hide match history, results or awards.</T>
+      <T size={12} color={c.mute} style={{ marginTop: 14 }}>Never shown: email, phone, date of birth, address, private notes or health data. Each link can hide match history, results, awards or certificates.</T>
 
       {form ? (
         <FormSheet visible onClose={() => setForm(false)} title="New passport link" submitLabel="Create link"
-          initial={{ expires_in_days: 30, show_matches: true, show_results: true, show_awards: true }}
+          initial={{ expires_in_days: 30, show_matches: true, show_results: true, show_awards: true, show_credentials: true }}
           fields={[
             { key: 'label', label: 'Who is it for', optional: true, placeholder: 'Academy scout, club trial…' },
             { key: 'expires_in_days', label: 'Stops working after', type: 'chips', options: [{ value: 7, label: '7 days' }, { value: 30, label: '30 days' }, { value: 90, label: '90 days' }] },
             { key: 'show_matches', label: 'Show match history by season', type: 'switch' },
             { key: 'show_results', label: 'Show approved results', type: 'switch' },
             { key: 'show_awards', label: 'Show awards', type: 'switch' },
+            { key: 'show_credentials', label: 'Show certificates & badges', type: 'switch' },
           ]}
-          onSubmit={async (v) => { const l = await api.post('/me/passport-links', { label: v.label || undefined, expires_in_days: Number(v.expires_in_days), show_matches: !!v.show_matches, show_results: !!v.show_results, show_awards: !!v.show_awards }); setFresh(l); await links.reload(); return 'Link created'; }} />
+          onSubmit={async (v) => { const l = await api.post('/me/passport-links', { label: v.label || undefined, expires_in_days: Number(v.expires_in_days), show_matches: !!v.show_matches, show_results: !!v.show_results, show_awards: !!v.show_awards, show_credentials: !!v.show_credentials }); setFresh(l); await links.reload(); return 'Link created'; }} />
       ) : null}
     </Screen>
   );

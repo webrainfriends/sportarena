@@ -22,7 +22,7 @@ const TILES = [
   ['Supply', '📦', 'Supply chain', 'Kit, stock & orders', c.orange], ['Openings', '💼', 'Open positions', 'Jobs, stalls & contracts at events', c.pink], ['EventInbox', '📨', 'Event requests', 'Invites & quotes for you', c.cyan], ['Awards', '🏆', 'Trophy room', 'Cups, medals, MVPs', c.pink],
   ['Wallet', '💳', 'Wallet', 'Balance, gift cards, loyalty', c.cyan], ['MyPlans', '📋', 'Training plans', 'Your plans & sessions', c.lime],
   ['Family', '👨‍👩‍👧', 'Family', 'Guardians & consents', c.mint], ['Orgs', '🏢', 'Organisations', 'Clubs & associations', c.violet],
-  ['Support', '🛟', 'Support', 'Cases & disputes', c.orange],
+  ['Pathways', '🎓', 'Learn & study', 'Rules, courses & colleges', c.cyan], ['Support', '🛟', 'Support', 'Cases & disputes', c.orange],
 ];
 
 export function Hub() {
@@ -338,6 +338,20 @@ export function Health() {
   );
 }
 
+/** Athletes that colleges and academies introduced to the sponsor's brands (the athlete agreed to this). */
+function Introductions({ brands, onOffer }) {
+  const list = useLoad(async () => (await Promise.all(brands.map(async (b) => (await api.get(`/sponsors/${b.id}/introductions`, { status: 'introduced', limit: 50 })).map((x) => ({ ...x, brand: b.name }))))).flat(), [brands.map((b) => b.id).join()]);
+  if (!list.data?.length) return null;
+  return (
+    <Section title="Introduced by institutions" color={c.mint}>
+      {list.data.map((a) => (
+        <Row key={a.id} left={<Avatar user={{ ...a, avatar_emoji: a.avatar_emoji, avatar_color: a.avatar_color }} />} title={a.display_name} sub={`${a.institution}${a.programme_title ? ` · ${a.programme_title}` : ''}${a.sport ? ` · ${a.sport}` : ''}${a.note ? `\n“${a.note}”` : ''}\nFor ${a.brand}`}
+          right={<Btn small title="Send offer" onPress={() => onOffer(a)} />} />
+      ))}
+    </Section>
+  );
+}
+
 export function Sponsors() {
   const { has, user, toast } = useSession();
   const { push } = useNav();
@@ -381,6 +395,7 @@ export function Sponsors() {
           </Card>
         )) : <Empty emoji="🤝" title="No deals yet" />}
       </Section>
+      {has('sponsor') && mine.data?.length ? <Introductions brands={mine.data} onOffer={(a) => setOfferTo({ id: a.athlete_id, display_name: a.display_name })} /> : null}
       {has('sponsor') ? (
         <Section title="Athletes open to sponsors" color={c.cyan}>
           <Field value={q} onChangeText={setQ} placeholder="Search athletes by name or pitch…" />

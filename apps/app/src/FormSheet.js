@@ -16,6 +16,8 @@ const allZones = () => { try { return Intl.supportedValuesOf('timeZone'); } catc
 const KEYBOARD = { phone: 'phone-pad', email: 'email-address', url: 'url', decimal: 'decimal-pad' };
 const plain = (m) => (/expected (number|int)/i.test(m) ? 'Enter a number' : /received undefined|required/i.test(m) ? 'This is required' : /^invalid input$/i.test(m) ? 'This value is not valid' : /too small|>=/.test(m) ? `Too low — ${m}` : /too big|<=/.test(m) ? `Too high — ${m}` : m);
 const same = (a, b) => a === b || a?.replace(/_(cents|bp|minutes|days|months)$/, '') === b?.replace(/_(cents|bp|minutes|days|months)$/, '');
+/** A money field's currency may follow another field in the same form: currency: (values) => 'INR'. */
+const curOf = (f, v) => (typeof f.currency === 'function' ? f.currency(v) : f.currency);
 const opt = (o) => (typeof o === 'object' ? o : { value: o, label: String(o) });
 
 /**
@@ -85,7 +87,7 @@ export function FormSheet({ visible, onClose, title, fields, initial = {}, submi
     const o = {};
     for (const f of fields) {
       const x = initial[f.key];
-      if (f.type === 'money') o[f.key] = x === undefined || x === null || x === '' ? '' : String(Number(x) / 10 ** digits(f.currency));
+      if (f.type === 'money') o[f.key] = x === undefined || x === null || x === '' ? '' : String(Number(x) / 10 ** digits(curOf(f, initial)));
       else if (f.type === 'stepper') o[f.key] = x ?? f.default ?? f.min ?? 0;
       else if (f.type === 'switch') o[f.key] = x ?? f.default ?? false;
       else if (f.type === 'multi' || f.type === 'weekdays' || f.type === 'sports') o[f.key] = x ?? f.default ?? [];
@@ -117,7 +119,7 @@ export function FormSheet({ visible, onClose, title, fields, initial = {}, submi
         if (f.type === 'daterange') { const a = v[f.key], b = v[f.toKey]; if (!a) { if (!f.optional) throw new Error(`${f.label}: pick the dates`); continue; } out[f.key] = a; out[f.toKey] = b ?? a; continue; }
         if (f.type === 'multi' || f.type === 'weekdays' || f.type === 'sports') { if (!x?.length) { if (!f.optional) throw new Error(`${f.label}: choose at least one`); continue; } out[f.key] = x; continue; }
         if (x === '' || x === undefined || x === null) { if (!f.optional) throw new Error(`${f.label} is required`); continue; }
-        if (f.type === 'money') { const n = Number(String(x).replace(/,/g, '')); if (!(n >= 0)) throw new Error(`${f.label}: enter an amount`); out[f.key] = Math.round(n * 10 ** digits(f.currency)); }
+        if (f.type === 'money') { const n = Number(String(x).replace(/,/g, '')); if (!(n >= 0)) throw new Error(`${f.label}: enter an amount`); out[f.key] = Math.round(n * 10 ** digits(curOf(f, v))); }
         else out[f.key] = f.type === 'number' ? Number(x) : x;
       }
       const msg = await onSubmit(out);
@@ -155,7 +157,7 @@ export function FormSheet({ visible, onClose, title, fields, initial = {}, submi
       case 'switch': return (
         <View style={{ gap: 4 }}><View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}><View style={{ flex: 1 }}>{lab(f)}</View><Switch value={!!v[f.key]} onValueChange={(x) => set(f.key, x)} trackColor={{ true: c.pink }} /></View>{hint(f)}</View>);
       case 'money': return (
-        <View style={{ gap: 6 }}><Field label={`${f.label}${f.optional ? ' (optional)' : ''}`} value={String(v[f.key] ?? '')} onChangeText={(x) => set(f.key, x.replace(/[^0-9.,]/g, ''))} keyboardType="decimal-pad" placeholder={`${f.currency ?? ''} ${f.placeholder ?? '0'}`.trim()} hint={f.hint} /></View>);
+        <View style={{ gap: 6 }}><Field label={`${f.label}${f.optional ? ' (optional)' : ''}`} value={String(v[f.key] ?? '')} onChangeText={(x) => set(f.key, x.replace(/[^0-9.,]/g, ''))} keyboardType="decimal-pad" placeholder={`${curOf(f, v) ?? ''} ${f.placeholder ?? '0'}`.trim()} hint={f.hint} /></View>);
       case 'weekdays': return (
         <View style={{ gap: 6 }}>{lab(f)}
           <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}><Chip label="Weekdays" onPress={() => set(f.key, [1, 2, 3, 4, 5])} /><Chip label="Weekend" onPress={() => set(f.key, [6, 0])} /><Chip label="Every day" onPress={() => set(f.key, [0, 1, 2, 3, 4, 5, 6])} /></View>
