@@ -1,0 +1,50 @@
+name: iOS build
+
+# Manual only: the maintainer starts iOS builds (and optional TestFlight submit) from the Actions tab.
+# Needs the repo secrets EXPO_TOKEN (expo.dev access token), ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8 (App Store Connect API key, lets EAS
+# create/refresh the Apple certificates with no Apple password or 2FA) and APPLE_TEAM_ID (see docs/ios.md). The runner only queues the build on EAS; it never touches the server or the database.
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: EAS build profile
+        type: choice
+        options: [preview, production, development]
+        default: preview
+      submit:
+        description: Submit the finished build to TestFlight (production profile only)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  ios:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+      - name: Write App Store Connect key
+        run: |
+          umask 077
+          printf '%s\n' "$ASC_KEY_P8" > "$RUNNER_TEMP/asc.p8"
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+      - name: Build (queued on EAS)
+        working-directory: apps/app
+        env:
+          EXPO_ASC_API_KEY_PATH: ${{ runner.temp }}/asc.p8
+          EXPO_ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          EXPO_ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          EXPO_APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          EXPO_APPLE_TEAM_TYPE: COMPANY_OR_ORGANIZATION
+          PROFILE: ${{ inputs.profile }}
+          SUBMIT: ${{ inputs.submit && inputs.profile == 'production' && '--auto-submit' || '' }}
+        run: eas build --platform ios --profile "$PROFILE" --non-interactive --no-wait $SUBMIT
