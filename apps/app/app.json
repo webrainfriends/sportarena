@@ -43,6 +43,7 @@
       }
     },
     "plugins": [
+      "expo-apple-authentication",
       [
         "expo-image-picker",
         {

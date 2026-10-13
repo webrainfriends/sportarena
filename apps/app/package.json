@@ -14,6 +14,8 @@
     "@expo/metro-runtime": "~57.0.16",
     "@mediapipe/tasks-vision": "^0.10.14",
     "expo": "~57.0.27",
+    "expo-apple-authentication": "~57.0.2",
+    "expo-crypto": "^57.0.4",
     "expo-image-picker": "~57.0.20",
     "expo-linear-gradient": "~57.0.2",
     "expo-notifications": "~57.0.22",

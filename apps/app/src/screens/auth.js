@@ -52,6 +52,15 @@ export default function Auth({ intent, initialMode, onClose } = {}) {
     } catch (e) { setErr(e.message); } finally { setBusy(false); }
   };
 
+  const withApple = async ({ credential, name, nonce }) => {
+    setBusy(true); setErr(null); setInfo(null);
+    try {
+      const res = await api.post('/auth/apple', { credential, name, nonce });
+      if (res.mfa_required) { setMfaToken(res.mfa_token); setF((p) => ({ ...p, mfa: '' })); setMode('mfa'); return; }
+      await signIn(res);
+    } catch (e) { setErr(e.message); } finally { setBusy(false); }
+  };
+
   const submit = async () => {
     setBusy(true); setErr(null); setInfo(null);
     try {
@@ -152,7 +161,7 @@ export default function Auth({ intent, initialMode, onClose } = {}) {
           {['login', 'register'].includes(mode) ? <>
             <T size={12} color={c.mute} style={{ textAlign: 'center' }}>or</T>
             <GoogleButton onCredential={withGoogle} onError={setErr} />
-            <AppleButton />
+            <AppleButton onCredential={withApple} onError={setErr} />
             <T size={11} color={c.mute} style={{ textAlign: 'center', lineHeight: 16 }}>New Google or Apple accounts are checked by the administrator before they can add or change anything. Until then you can look around read-only.</T>
           </> : null}
           {mode === 'login' ? <Pressable onPress={() => { setErr(null); setInfo(null); setMode('forgot'); }} accessibilityRole="button" style={{ alignSelf: 'center', paddingVertical: 8 }}><T color={c.pink} weight="700" size={13}>Forgot your password?</T></Pressable> : null}
