@@ -12,7 +12,11 @@ on:
         options: [preview, production, development]
         default: preview
       submit:
-        description: Submit the finished build to TestFlight (production profile only)
+        description: Build, then submit the new build to TestFlight (production profile only)
+        type: boolean
+        default: false
+      submit_latest:
+        description: Don't build; just send the latest finished production build to TestFlight
         type: boolean
         default: false
 
@@ -37,7 +41,16 @@ jobs:
           printf '%s\n' "$ASC_KEY_P8" > "$RUNNER_TEMP/asc.p8"
         env:
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+      - name: Submit latest finished build to TestFlight
+        if: ${{ inputs.submit_latest }}
+        working-directory: apps/app
+        env:
+          EXPO_ASC_API_KEY_PATH: ${{ runner.temp }}/asc.p8
+          EXPO_ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          EXPO_ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: eas submit --platform ios --profile production --latest --non-interactive --no-wait
       - name: Build (queued on EAS)
+        if: ${{ !inputs.submit_latest }}
         working-directory: apps/app
         env:
           EXPO_ASC_API_KEY_PATH: ${{ runner.temp }}/asc.p8
