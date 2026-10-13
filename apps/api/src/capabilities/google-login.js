@@ -14,15 +14,15 @@ const jwks = createRemoteJWKSet(new URL('https://www.googleapis.com/oauth2/v3/ce
 /** Check a Google ID token (signature, issuer, audience, expiry) and return its claims. Replaceable in tests. */
 export const googleVerifier = {
   async verify(credential) {
-    const { payload } = await jwtVerify(credential, jwks, { issuer: ['https://accounts.google.com', 'accounts.google.com'], audience: config.googleClientId });
+    const { payload } = await jwtVerify(credential, jwks, { issuer: ['https://accounts.google.com', 'accounts.google.com'], audience: [config.googleClientId, config.googleIosClientId].filter(Boolean) });
     return payload;
   },
 };
 
 cap({
   name: 'get_auth_config', method: 'GET', path: '/auth/config', tag: 'Identity', auth: 'public',
-  summary: 'Which sign-in options this site offers. google_client_id / apple_client_id are the public client ids for the "Sign in with Google" / "Sign in with Apple" buttons (null when that option is not set up).',
-  handler: async () => ({ google_client_id: config.googleClientId ?? null, apple_client_id: config.appleClientId ?? null }),
+  summary: 'Which sign-in options this site offers. google_client_id / apple_client_id are the public client ids for the "Sign in with Google" / "Sign in with Apple" buttons (google_ios_client_id is the one the native iOS app uses) (null when that option is not set up).',
+  handler: async () => ({ google_client_id: config.googleClientId ?? null, google_ios_client_id: config.googleClientId ? config.googleIosClientId ?? null : null, apple_client_id: config.appleClientId ?? null }),
 });
 
 cap({

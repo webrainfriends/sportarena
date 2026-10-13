@@ -3,7 +3,7 @@
     "name": "Gotmygame",
     "slug": "gotmygame",
     "version": "0.1.0",
-    "scheme": "sportarena",
+    "scheme": ["sportarena", "com.googleusercontent.apps.909476957194-bmrrif4q7qdffemon7mrrm3puoovbg5r"],
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "backgroundColor": "#FFF6FB",
@@ -44,6 +44,7 @@
     },
     "plugins": [
       "expo-apple-authentication",
+      "expo-web-browser",
       [
         "expo-image-picker",
         {

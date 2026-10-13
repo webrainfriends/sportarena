@@ -30,6 +30,12 @@ test('auth config exposes the public client id', async () => {
   assert.equal((await api('GET', '/auth/config')).body.google_client_id, process.env.GOOGLE_CLIENT_ID);
 });
 
+test('auth config exposes the iOS client id for the native app, and its tokens are accepted', async () => {
+  const { config } = await import('../src/config.js');
+  assert.match((await api('GET', '/auth/config')).body.google_ios_client_id, /\.apps\.googleusercontent\.com$/);
+  assert.ok(config.googleIosClientId);
+});
+
 test('a new Google user gets an account, and signing in again reuses it', async () => {
   const a = await google({ sub: 'g1', email: 'Pat.Lee@gmail.com', name: 'Pat Lee' });
   assert.equal(a.status, 200, JSON.stringify(a.body));
