@@ -11,6 +11,7 @@ import { audit, isAdmin, mustFind, PUBLIC_USER } from '../helpers.js';
 import { decrypt, encrypt } from '../crypto.js';
 import { clinicalCredential, lockCredential, requireVerifiedProvider } from '../clinical-access.js';
 import { guardianLink, hasConsent, requireConsent } from '../youth.js';
+import { currentClearance } from '../clearance.js';
 import { SERVICE_SELECT } from './provider-services.js';
 import { bestOffer } from './provider-offers.js';
 import { redeemPackage } from './provider-packages.js';
@@ -247,16 +248,16 @@ cap({
 
 cap({
   name: 'get_clearance', credential: true, method: 'GET', path: '/people/:id/clearance', tag: 'Health',
-  summary: 'Fit-to-play status only (cleared / restricted / not_cleared) — no clinical detail. Visible to the athlete, consented providers and owners of teams the athlete plays for.',
-  input: z.object({ id }),
+  summary: 'Fit-to-play status only (cleared / restricted / not_cleared / expired / unknown) with validity, review flag and the restrictions the doctor chose to share — never diagnosis or notes. Visible to the athlete, consented providers and owners of teams the athlete plays for.',
+  input: z.object({ id, sport_id: id.optional().describe('limit to decisions for one sport (general decisions always apply)') }),
   async handler({ user }, i) {
     const ok = isAdmin(user) || user.id === i.id || !!(await guardianLink(user.id, i.id)) || ((await hasGrant(i.id, user.id, 'clearance')) && (await clinicalCredential(user.id, { athleteId: i.id })).ok) ||
       !!(await one("SELECT 1 FROM team_members m JOIN teams t ON t.id=m.team_id WHERE m.user_id=$1 AND m.status='active' AND (t.owner_id=$2 OR EXISTS (SELECT 1 FROM team_members c WHERE c.team_id=t.id AND c.user_id=$2 AND c.role IN ('coach','manager','captain') AND c.status='active'))", [i.id, user.id]));
     if (!ok) throw forbidden();
     // for a young person, anyone but themselves, their guardians and the platform team also needs current medical consent
     if (!isAdmin(user) && user.id !== i.id && !(await guardianLink(user.id, i.id))) await requireConsent(i.id, 'medical', 'sharing fit-to-play status');
-    const r = await one("SELECT clearance, created_at FROM medical_records WHERE athlete_id=$1 AND clearance IS NOT NULL ORDER BY created_at DESC LIMIT 1", [i.id]);
-    return { athlete_id: i.id, status: r?.clearance ?? 'unknown', as_of: r?.created_at ?? null };
+    const r = await currentClearance(i.id, { sportId: i.sport_id ?? null });
+    return { athlete_id: i.id, status: r.status, as_of: r.as_of, valid_until: r.valid_until, review_due: r.review_due, restrictions: r.restrictions };
   },
 });
 
