@@ -305,7 +305,6 @@ export function Health() {
   const visits = useLoad(() => api.get('/medical/encounters', { limit: 30 }), []);
   const isProv = has('physio', 'doctor') && !!user.roles?.some((r) => r === 'physio' || r === 'doctor');   // a platform admin is not a clinician
   const region = useLoad(() => api.get('/me/health/region'), []);
-  const isProv = has('physio', 'doctor');
   const act = async (fn, msg) => { try { await fn(); toast(msg); appts.reload(); } catch (e) { toast('' + e.message); } };
   return (
     <Screen>
