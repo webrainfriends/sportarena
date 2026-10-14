@@ -14,6 +14,22 @@ side and keeps them apart.
 
 Providers publish configurable services (`upsert_provider_service`, `archive_provider_service`, `list_my_provider_services`; patients use `list_provider_services`). A service has a title, public description (never clinical detail), category, delivery modes, duration and cancellation text. Prices are append-only versions (`provider_service_prices`) carrying currency and a tax class (`unspecified|taxable|exempt|zero_rated|out_of_scope`); no rate or tax determination is made here. `book_appointment` accepts `service_id`: it uses the service duration and the price in force, and snapshots service, price version, tax class and cancellation text on the appointment, so later price edits or archiving never change it. Bookings without a service keep using the legacy consultation fee, and the prepay guard is unchanged. Not yet built (later slices of #210): offers, packages, pay-later policy, invoices/receivables, tax reports, treatment plans.
 
+## Offers (issue #210, slice 2)
+
+Providers create time-limited percentage or fixed-amount offers (`upsert_provider_offer`, `archive_provider_offer`, `list_my_provider_offers`), automatic or behind a code, for chosen services or all of them, with total and per-patient limits. `quote_appointment` returns the server-authoritative list price, discount and total; `book_appointment` (with `service_id` and optional `offer_code`) charges exactly that and records the offer, list price and discount on the appointment plus one redemption row (unique per appointment, so retries cannot double count; counted under the provider booking lock, so limits hold under concurrency). Offers never stack: the best single one wins; a code that cannot be used is rejected. Cancelled or expired appointments stop counting toward limits; archiving an offer leaves booked discounts intact. Fixed offers only apply in their own currency. Packages, subscriptions and pay-later remain for later slices. These are separate from venue discounts because they belong to a provider and apply to appointments.
+
+## Exercise library and treatment plans (issue #210, slice 4)
+
+**Library.** A physio/doctor keeps their own exercises (`upsert_exercise`, `archive_exercise`, `list_my_exercises`): title, body region, equipment tags, difficulty, goal, language, instructions, precautions and an optional https media link that must carry its source and licence. Saving an existing exercise appends a new version; plans keep the version they used. The library starts empty (no seeded content) and the list returns the real count. A governed shared library is not built yet.
+
+**Plans.** `create_treatment_plan` needs a current verified credential and the patient's active **full** consent (clearance-only is refused), re-checked under lock inside the write. A plan has numbered versions: one editable draft (`update_plan_draft`, refused with 409 if `base_version` is stale), published versions that are immutable (`publish_plan_version` supersedes the previous one and sends a generic notification), and `revise_treatment_plan` to start a new draft from the published one. Items carry exercise version, phase, side, sets, reps, hold/rest, times per week, load and unit, tempo, a patient note and stop instructions; every field is optional except the exercise. Goals, instructions and notes are encrypted; **private notes are never returned to the patient**, and drafts are invisible to them. Patients acknowledge a version (`acknowledge_plan_version`) and keep read access to their own published plans even after consent is revoked; the provider loses access at once on revocation, expiry or credential lapse. Reads are audit-logged. Status: draft → active ⇄ paused → completed/discharged (final). Not yet built: dated session occurrences, check-ins, adherence, clip feedback, clinician-governed alternatives (later slices).
+## Practice tax profile and revenue report (issue #210, slice 5)
+
+The platform makes **no tax determination and hard-codes no rate**. A provider records their practice tax profile (`set_tax_profile`: legal billing name, jurisdiction, registered / not registered, registration number encrypted) and the rate for their `taxable` services with its source (`set_tax_rate`, source required). Both are append-only and effective-dated: the version in force at an appointment's creation (or at payment time for the collected basis) is the one used, so a later change never rewrites earlier periods. Prices are treated as **tax-inclusive** (tax-exclusive charging is a later slice). `practice_revenue_report` groups appointment revenue by currency and tax class (never summing currencies): `billed` = confirmed/completed appointments by start date, `collected` = paid appointment payments by payment date net of refunds (a partial refund reduces tax proportionally). Per line, tax = round half-up of `gross × r / (100% + r)`, so net + tax = gross; exempt, zero-rated, out-of-scope and unclassified services carry no tax, and taxable lines without a registration or rate are flagged (`untaxed_taxable_lines`). Dates use the provider's time zone. It is a management report, not a tax invoice, return or compliance statement; packages, subscriptions and pay-later are not included yet. Invoices with immutable tax snapshots, credit notes, CSV export and a receivables ageing worklist come in later slices.
+## Prepaid packages (issue #210, slice 3)
+
+Providers define packages of 2+ sessions of one service (`upsert_provider_package`, `archive_provider_package`, `list_my_provider_packages`; public `list_provider_packages`) with an optional validity in days and refund terms shown before purchase. A patient buys one (`buy_provider_package`; needs medical consent and a verified provider), which snapshots the terms and waits for payment through the canonical payments flow (`purpose_type: physio_package`, amount read from the DB, no service or clinical detail sent to the processor). Payment activates it and starts the expiry clock. `book_appointment` with `patient_package_id` spends one session (fee 0): the package row is locked under the provider booking lock, and one redemption row per appointment is unique, so concurrent or retried bookings cannot overspend. Cancelled/expired appointments give their session back. A package cannot be combined with an offer code. Paid-package refunds are not automated yet: terms are stated and handled by the provider (later slice with invoices/credit notes). Subscriptions (recurring charges) are not built; none are created automatically.
+
 ## Provider profile and hours
 * `upsert_provider_profile` (physio/doctor): headline, bio, clinic, city, in-person / remote, languages, specialties, fee,
   time zone, slot length, `accepting_patients`, `listed` (false hides the provider from search). Never put patient
@@ -146,3 +162,77 @@ Existing -> gap -> change: follow-ups were single dated items; there was no pati
 
 Not in this slice: pushing action due dates into `appointment_followups` / the unified schedule, monitored diaries with thresholds, physio rehab-plan links, screens.
 Rollback: leave the tables.
+## Sports clearance decisions (issue #212, slice 3a)
+Existing -> gap -> change: clearance was a single enum on a free-text record, with no assessor, context, restrictions or expiry, so an old "cleared" never aged out.
+Added (migration 069, additive; `medical_records.clearance` untouched): `clinical_clearances`; capabilities `issue_clearance`, `withdraw_clearance`, `list_clearances`
+(scope `clinical`); `get_clearance` and the dashboard `fit_to_play` now use the shared projection in `src/clearance.js`.
+
+* Only a verified **doctor** with the athlete's full consent decides (credential case recorded). A decision has assessment date, optional sport and activity context,
+  graded `restrictions`, a required `valid_until` (unless `not_cleared`) and optional `review_by`. It is independent of payment, appointment completion and rehab progress.
+* Decisions are immutable (DB trigger, never deleted). A new decision supersedes the live one for the same athlete + sport; a doctor can withdraw one with a reason.
+* Projection (`get_clearance`, home): status `cleared | restricted | not_cleared | expired | unknown`, `valid_until`, `review_due`, and the restrictions the doctor chose to share -
+  never diagnosis or `internal_note`. Past `valid_until` the status is `expired`, not "cleared". With several sports the worst current status wins; `sport_id` narrows it.
+  Whichever of a structured decision and a legacy clearance record is newer is the latest word, so an older "cleared" from either source cannot mask a newer "not cleared".
+* Access to the projection is unchanged (athlete, guardians, consented clearance-scope providers, team staff, admin); the new fields add no private text.
+
+Not in this slice: automatic review tasks/reminders, event-incident linkage, screens. Rollback: leave the table; `get_clearance` falls back to the legacy record when it is empty.
+## Referrals (issue #212, slice 2c)
+Existing -> gap -> change: no way to refer a patient with controlled sharing. Added (migration 067, additive): `clinical_referrals` and append-only
+`clinical_referral_events`; capabilities `create_referral`, `update_referral`, `respond_referral_consent`, `list_referrals`, `get_referral_history` (scope `clinical`).
+
+* A verified **doctor** with the athlete's full consent drafts a referral to a verified platform doctor/physio **or** an external provider, choosing the urgency and
+  the exact `shared` items. The recipient can read nothing else - no records, notes or reports are reachable through a referral.
+* The athlete must consent to **each** referral (`respond_referral_consent`). Until then the recipient cannot see it and is not notified. Declining, or declining later,
+  withdraws it and access ends at once. Expired, withdrawn or closed referrals hide their content. Being on the same team/clinic grants nothing.
+* Platform lifecycle: `draft -> sent -> acknowledged -> accepted | declined -> booked (appointment between recipient and athlete) -> completed (optional return summary) -> closed`;
+  the referrer may `withdraw` or `close`. Each role can only take its own steps; no one edits the other's records.
+* External referrals are labelled `status_known: false`: the platform produces the letter (after consent) but never infers receipt, acceptance or completion.
+* Encrypted, audit-logged, generic notifications.
+
+Not in this slice: attaching existing records/reports by reference, e-delivery to external clinics, screens. Rollback: leave the tables.
+## Investigations and results review (issue #212, slice 2b)
+Existing -> gap -> change: reports/results had no ownership or review trail. Added (migration 066, additive): `clinical_investigations`, `clinical_results`
+(versioned, append-only), `clinical_investigation_events` (append-only); capabilities `request_investigation`, `upload_investigation_result`,
+`review_investigation_result`, `update_investigation_outcome`, `reassign_investigation`, `list_investigations`, `get_investigation_history` (scope `clinical`).
+
+* Status: `requested` (awaiting result) -> `received` -> `reviewed` -> `patient_informed` -> `closed`. **Receiving or opening a result is never a review**: only the
+  responsible doctor's `review_investigation_result` (naming the exact result version) sets `reviewed`; `doctor_reviewed` per result reflects that alone.
+* A request is a manual/external record - it does not send a lab order. Priority and review-due date are the clinician's choice; no thresholds are applied
+  and values, units and the source's own reference intervals are stored exactly as supplied. Automatic extraction must be flagged `unverified_extraction`.
+* Duplicate uploads (same values + document) return the existing result. A different result after review is a new version: review reopens, earlier versions stay.
+* The review queue (`list_investigations` without `athlete_id`) is the doctor's own work across currently consenting patients, urgent and overdue first.
+  `reassign_investigation` (absence cover) requires the cover doctor to be verified and to hold the athlete's own consent; notes are never shown to the athlete.
+* Athletes always see their own tests and results regardless of any other state. Notifications are generic. Encrypted; audit-logged.
+
+Not in this slice: file upload/storage UI (a `document_ref` to existing private storage is recorded), automated coverage rules, linking to encounters, screens.
+Rollback: leave the tables.
+## Problems, allergies and medications (issue #212, slice 2a)
+Existing -> gap -> change: no structured patient context existed (only free-text records). Added (migration 065, additive): `clinical_context_entries`
+and `clinical_context_declarations`; capabilities `add_context_entry`, `reconcile_context_entry`, `set_context_declaration`, `list_context` (scope `clinical`).
+
+* Patients record their own entries (`patient_reported`, `unverified`). A verified **doctor** with the athlete's full consent records, confirms, disputes or
+  corrects (`clinician_recorded`/`confirmed`). Physios can read (credential + consent) but not write. Athletes may correct only their own entry that no doctor has reviewed.
+* Append-only: a correction is a new entry that supersedes the old one (kept, `include_history`); a DB trigger blocks edits and deletes; concurrent
+  corrections of one entry have a single winner (409 for the rest).
+* `list_context` reports a state per kind: `entries`, `none_reported` (explicit declaration, refused while live entries exist) or `unknown` (the default).
+  Missing data is never shown as "none". Nothing infers adherence or safety, and there is no prescribing, dose or interaction logic.
+* Encrypted at rest, audit-logged; history scope of the grant applies to entries written by others.
+
+Not in this slice: UI screens, linking entries to encounters, guardian access. Rollback: leave the tables.
+## Structured encounters (issue #212, doctor workspace slice 1)
+Existing -> gap -> change: `medical_records` holds one free-text note per entry and `appointments` only a lifecycle; there was no signed,
+versioned consultation. Added (migration 064, additive; nothing converted from legacy text): `clinical_encounters`.
+
+* `create_encounter` / `update_encounter` / `sign_encounter` / `amend_encounter` / `void_encounter` / `list_encounters` / `get_encounter`
+  (doctor only; REST + OpenAPI + MCP, token scope `clinical`). SOAP or free template; observations need value, unit and measurement time.
+* Same gates as records: current verified **doctor** credential and the athlete's active **full** consent, re-checked under `FOR SHARE` locks in the
+  signing transaction, so a revocation that commits first blocks the signature. The credential case relied on is stored.
+* States `draft -> ready -> signed`, or `voided` with a reason. Edits carry `version`; a stale version is a 409. Signed rows are immutable in
+  the API **and** by a database trigger; corrections are linked `amendment` encounters that are signed separately. One live encounter per
+  appointment. Copied-forward text must be marked reviewed before signing.
+* Working notes (`content`) are clinician-only. The athlete sees only the **visit summary** of signed encounters (Health > My records) and can
+  acknowledge it - that records "read", not agreement or recovery. Other consented doctors see signed notes only, within the grant's history scope.
+* Notifications are generic; all content is encrypted (`clinical_encounters.*`); reads and signatures are audit-logged.
+
+Not in this slice (tracked in #212): problems/allergies/medications, care plans, results review, referrals, clearance versions, practice billing and
+tax (shared with #210/#71), teleconsultation, guardian access to summaries. Rollback: leave the table; older code ignores it.
