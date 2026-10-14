@@ -84,9 +84,6 @@ export const config = {
     // Optional allow-list of credential jurisdictions, e.g. "IN,GB". Empty = any (including unrecorded).
     jurisdictions: (env.CLINICAL_JURISDICTIONS ?? '').split(',').map((s) => s.trim().toUpperCase()).filter(Boolean),
   },
-  // Health-data governance (src/health-regimes.js): the country this deployment stores health data in (ISO alpha-2, e.g. "AE"). Used by the
-  // compliance posture to flag people whose country requires data to stay in-country (UAE) or needs a transfer assessment (China).
-  health: { hostingCountry: (env.HEALTH_DATA_HOSTING_COUNTRY ?? '').trim().toUpperCase() || null },
   // Background worker for booking reminders + email dispatch. 0 disables it (tests do).
   // WORKER_MODE: 'inprocess' (default) runs maintenance inside the API process; 'external' leaves it to `npm run worker`
   // (set it on both processes). A worker is considered stale after WORKER_STALE_SECONDS without a heartbeat.
