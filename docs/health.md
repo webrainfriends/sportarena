@@ -138,6 +138,19 @@ warning in the Access list for providers whose verification lapsed. Server messa
 Limitations: sport scope is evaluated from the case's `sport_id` against the supplied `sport_id` or the athlete's sport profiles.
 Existing data is untouched; migration 049 only adds nullable/defaulted columns (rollback: leave them, older code ignores them).
 
+## Problems, allergies and medications (issue #212, slice 2a)
+Existing -> gap -> change: no structured patient context existed (only free-text records). Added (migration 065, additive): `clinical_context_entries`
+and `clinical_context_declarations`; capabilities `add_context_entry`, `reconcile_context_entry`, `set_context_declaration`, `list_context` (scope `clinical`).
+
+* Patients record their own entries (`patient_reported`, `unverified`). A verified **doctor** with the athlete's full consent records, confirms, disputes or
+  corrects (`clinician_recorded`/`confirmed`). Physios can read (credential + consent) but not write. Athletes may correct only their own entry that no doctor has reviewed.
+* Append-only: a correction is a new entry that supersedes the old one (kept, `include_history`); a DB trigger blocks edits and deletes; concurrent
+  corrections of one entry have a single winner (409 for the rest).
+* `list_context` reports a state per kind: `entries`, `none_reported` (explicit declaration, refused while live entries exist) or `unknown` (the default).
+  Missing data is never shown as "none". Nothing infers adherence or safety, and there is no prescribing, dose or interaction logic.
+* Encrypted at rest, audit-logged; history scope of the grant applies to entries written by others.
+
+Not in this slice: UI screens, linking entries to encounters, guardian access. Rollback: leave the tables.
 ## Structured encounters (issue #212, doctor workspace slice 1)
 Existing -> gap -> change: `medical_records` holds one free-text note per entry and `appointments` only a lifecycle; there was no signed,
 versioned consultation. Added (migration 064, additive; nothing converted from legacy text): `clinical_encounters`.
