@@ -69,7 +69,7 @@ const Round = ({ label, onPress, children, active, badge }) => (
 );
 
 /** Add to cart; once it is in the cart the same spot becomes a − / + stepper (capped by stock). `compact` = a round "+" that sits on the photo. */
-function AddControl({ p, big, compact }) {
+function AddControl({ p, big, compact, size }) {
   const { user, toast } = useSession();
   const { set, lineOf } = useCart();
   const [busy, setBusy] = useState(false);
@@ -77,7 +77,7 @@ function AddControl({ p, big, compact }) {
   const run = async (body) => { setBusy(true); try { await set(body); } catch (e) { toast(e.message); } finally { setBusy(false); } };
   if (p.seller_id === user?.id) return compact ? null : <Pill label="YOUR LISTING" />;
   if (p.stock < 1) return compact ? null : <T size={13} weight="700" color={c.red}>Sold out</T>;
-  const h = big ? 50 : compact ? 38 : 36;
+  const h = size ?? (big ? 50 : compact ? 38 : 36);
   const lift = compact ? { shadowColor: '#312E81', shadowOpacity: 0.3, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } } : null;
   if (!line) {
     if (compact) return <Pressable onPress={() => run({ product_id: p.id, add: 1 })} disabled={busy} accessibilityRole="button" accessibilityLabel={`Add ${p.name} to cart`} style={[{ width: h, height: h, borderRadius: h / 2, backgroundColor: c.pink, alignItems: 'center', justifyContent: 'center', opacity: busy ? 0.6 : 1 }, lift]}><T size={24} weight="700" color="#fff" style={{ marginTop: -2 }}>+</T></Pressable>;
@@ -132,7 +132,7 @@ function ProductCard({ p, w, onOpen, onHeart }) {
   );
 }
 
-/** A bar that floats above the content while the cart has something in it: how many, how much, how much you save. */
+/** A small pill that floats at the corner while the cart has something in it: count and total, tap to open the cart. */
 function CartBar({ above = 0 }) {
   const { push } = useNav();
   const { cart } = useCart();
@@ -140,15 +140,12 @@ function CartBar({ above = 0 }) {
   const s = cart.summary;
   if (!s.units) return null;
   return (
-    <View pointerEvents="box-none" style={{ position: 'absolute', left: 0, right: 0, bottom: above + (L.floatingBar ? 92 : 12), alignItems: 'center', paddingHorizontal: 12 }}>
-      <Pressable onPress={() => push('ShopCart')} accessibilityRole="button" accessibilityLabel="View cart"
-        style={{ width: '100%', maxWidth: 560, backgroundColor: c.pink, borderRadius: 20, paddingVertical: 12, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 12, shadowColor: '#312E81', shadowOpacity: 0.3, shadowRadius: 18, shadowOffset: { width: 0, height: 8 } }}>
-        <T size={22}>🛒</T>
-        <View style={{ flex: 1 }}>
-          <T weight="800" size={15} color="#fff">{s.units} item{s.units === 1 ? '' : 's'} · {money(s.total_cents)}</T>
-          {s.savings_cents > 0 ? <T size={12} weight="700" color="#C7F9E4">You save {money(s.savings_cents)}</T> : null}
-        </View>
-        <T weight="800" size={14} color="#fff">View cart ›</T>
+    <View pointerEvents="box-none" style={{ position: 'absolute', right: 14, bottom: above + (L.floatingBar ? 96 : 14), alignItems: 'flex-end' }}>
+      <Pressable onPress={() => push('ShopCart')} accessibilityRole="button" accessibilityLabel={`View cart, ${s.units} items, ${money(s.total_cents)}`}
+        style={{ backgroundColor: c.pink, borderRadius: 999, paddingVertical: 10, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 8, shadowColor: '#312E81', shadowOpacity: 0.3, shadowRadius: 14, shadowOffset: { width: 0, height: 6 } }}>
+        <T size={17}>🛒</T>
+        <T weight="800" size={14} color="#fff">{s.units} · {money(s.total_cents)}</T>
+        {s.savings_cents > 0 ? <T weight="800" size={11} color="#C7F9E4">save {money(s.savings_cents)}</T> : null}
       </Pressable>
     </View>
   );
@@ -344,8 +341,8 @@ export function ShopProduct({ id }) {
   const res = useLoad(() => api.get(`/shop/products/${id}`), [id, user?.id]);
   const [at, setAt] = useState(0);
   const [zoom, setZoom] = useState(null);
-  const [qty, setQty] = useState(1);
   const [busy, setBusy] = useState(false);
+  const { count } = useCart();
   const rail = useRef(null);
   const p = res.data;
   if (res.error) return <Screen><ErrorBox error={res.error} onRetry={res.reload} /></Screen>;
@@ -353,7 +350,7 @@ export function ShopProduct({ id }) {
   const mine = p.seller_id === user?.id;
   const line = lineOf(p.id);
   const phone = L.phone;
-  const buyNow = async () => { setBusy(true); try { await set({ product_id: p.id, quantity: Math.max(qty, line?.quantity ?? 0) }); push('ShopCart'); } catch (e) { toast(e.message); } finally { setBusy(false); } };
+  const buyNow = async () => { setBusy(true); try { await set({ product_id: p.id, quantity: Math.max(1, line?.quantity ?? 0) }); push('ShopCart'); } catch (e) { toast(e.message); } finally { setBusy(false); } };
   const share = async () => {
     const url = Platform.OS === 'web' ? window.location.href : undefined;
     try {
@@ -365,14 +362,20 @@ export function ShopProduct({ id }) {
   const canBuy = !mine && p.stock > 0;
   const hero = (
     <Gallery p={p} at={at} setAt={setAt} scrollRef={rail} onZoom={setZoom} radius={phone ? 0 : 24}>
-      <View style={{ position: 'absolute', left: 14, top: 14, right: 14, flexDirection: 'row', justifyContent: 'space-between' }}>
-        <View />
+      <View style={{ position: 'absolute', left: 14, top: 14, right: 14, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        {p.discount_pct ? <View style={{ backgroundColor: GOOD, borderRadius: 10, paddingHorizontal: 11, paddingVertical: 5 }}><T size={13} weight="800" color="#fff">{p.discount_pct}% OFF</T></View> : <View />}
         <View style={{ flexDirection: 'row', gap: 10 }}>
+          <Float label={`Cart, ${count} items`} onPress={() => push('ShopCart')}><T size={18}>🛒</T>{count ? <View style={{ position: 'absolute', top: -3, right: -3, minWidth: 18, height: 18, borderRadius: 9, backgroundColor: c.pink, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 }}><T size={10} weight="800" color="#fff">{count}</T></View> : null}</Float>
           <Float label="Share" onPress={share}><T size={17}>↗</T></Float>
           {!mine ? <Heart p={p} onChange={() => res.reload()} style={{ width: 40, height: 40, borderRadius: 20 }} /> : null}
         </View>
       </View>
-      {p.discount_pct ? <View style={{ position: 'absolute', left: 14, bottom: p.images.length > 1 ? 38 : 14, backgroundColor: GOOD, borderRadius: 10, paddingHorizontal: 11, paddingVertical: 5 }}><T size={13} weight="800" color="#fff">{p.discount_pct}% OFF</T></View> : null}
+      {canBuy ? (
+        <View style={{ position: 'absolute', right: 14, bottom: p.images.length > 1 ? 34 : 14, left: 14, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }} pointerEvents="box-none">
+          <Pressable onPress={buyNow} disabled={busy} accessibilityRole="button" accessibilityLabel="Buy now" style={{ height: 38, borderRadius: 19, paddingHorizontal: 16, backgroundColor: 'rgba(15,23,42,0.88)', alignItems: 'center', justifyContent: 'center', opacity: busy ? 0.6 : 1 }}><T size={13} weight="800" color="#fff">Buy now ›</T></Pressable>
+          <AddControl p={p} compact size={46} />
+        </View>
+      ) : null}
     </Gallery>
   );
   const thumbs = p.images.length > 1 ? (
@@ -392,13 +395,6 @@ export function ShopProduct({ id }) {
       {p.compare_at_cents > p.price_cents ? <T size={13} weight="700" color={GOOD}>You save {money(p.compare_at_cents - p.price_cents)} on each</T> : null}
       <T size={13} weight="800" color={stock[1]}>{stock[0]}</T>
       {p.highlights?.length ? <View style={{ gap: 6, marginTop: 4 }}>{p.highlights.map((h) => <View key={h} style={{ flexDirection: 'row', gap: 8 }}><T color={GOOD} weight="800">✓</T><T size={14} style={{ flex: 1, lineHeight: 20 }}>{h}</T></View>)}</View> : null}
-      {canBuy && !line && !phone ? <Counter value={qty} onChange={setQty} min={1} max={Math.min(p.stock, 50)} label="Quantity" /> : null}
-      {canBuy && !phone ? (
-        <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
-          <AddControl p={p} big />
-          <Btn title="Buy now" color={c.violet} onPress={buyNow} loading={busy} style={{ flex: 1 }} />
-        </View>
-      ) : null}
       {mine ? <Pill label="THIS IS YOUR LISTING — edit it from Orders & selling" /> : null}
       {p.description ? <View style={{ marginTop: 8 }}><H2>About this item</H2><T size={14} color={c.mute} style={{ marginTop: 6, lineHeight: 21 }}>{p.description}</T></View> : null}
       <Card pad={12} color={c.paper} style={{ marginTop: 6 }}><T size={12} color={c.mute} style={{ lineHeight: 18 }}>🔒 Your delivery address is encrypted. Pay securely once for everything in your cart; cancel before it ships for a full refund.</T></Card>
@@ -406,7 +402,7 @@ export function ShopProduct({ id }) {
   );
   return (
     <View style={{ flex: 1 }}>
-      <Screen wide padBottom={phone ? 120 : 150}>
+      <Screen wide padBottom={phone ? 90 : 150}>
         {phone ? (
           <View style={{ marginHorizontal: -16, marginTop: -8 }}>{hero}</View>
         ) : null}
@@ -426,13 +422,7 @@ export function ShopProduct({ id }) {
           </View>
         ) : null}
       </Screen>
-      {phone && canBuy ? (
-        <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: c.paper, borderTopWidth: 1, borderColor: c.line, paddingHorizontal: 16, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-          <View><T size={11} color={c.mute} weight="700">PRICE</T><T weight="800" size={20}>{money(p.price_cents)}</T></View>
-          <AddControl p={p} big />
-          <Btn title="Buy now" color={c.violet} onPress={buyNow} loading={busy} style={{ minWidth: 110 }} />
-        </View>
-      ) : <CartBar />}
+      {line ? <CartBar /> : null}
       {zoom != null ? <Lightbox p={p} start={zoom} onClose={() => setZoom(null)} /> : null}
     </View>
   );
@@ -523,7 +513,7 @@ export function ShopCart() {
   }
   return (
     <View style={{ flex: 1 }}>
-      <Screen padBottom={L.floatingBar ? 220 : 130}>
+      <Screen padBottom={L.floatingBar ? 190 : 120}>
         <H1 style={{ fontSize: 26, marginTop: 8 }}>Your cart <T size={16} color={c.mute} weight="600">· {s.units} item{s.units === 1 ? '' : 's'}</T></H1>
         {s.savings_cents > 0 ? <Card pad={12} color={c.limeSoft} style={{ marginTop: 10 }}><T weight="800" color={GOOD} size={14}>🎉 You're saving {money(s.savings_cents)} on this order</T></Card> : null}
         {bySeller.map(([seller, items]) => (
@@ -558,9 +548,12 @@ export function ShopCart() {
         ) : null}
       </Screen>
       {s.lines ? (
-        <View style={{ position: 'absolute', left: L.floatingBar ? 24 : 0, right: L.floatingBar ? 24 : 0, bottom: L.floatingBar ? 92 : 0, backgroundColor: c.paper, borderTopWidth: L.floatingBar ? 0 : 1, borderWidth: L.floatingBar ? 1 : 0, borderColor: c.line, borderRadius: L.floatingBar ? 20 : 0, paddingHorizontal: 16, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 12, alignSelf: 'center', maxWidth: L.floatingBar ? 760 : undefined, shadowColor: '#0F172A', shadowOpacity: L.floatingBar ? 0.12 : 0, shadowRadius: 16 }}>
-          <View style={{ flex: 1 }}><T weight="800" size={18}>{money(s.total_cents)}</T>{s.savings_cents > 0 ? <T size={12} weight="700" color={GOOD}>You save {money(s.savings_cents)}</T> : <T size={12} color={c.mute}>{s.units} item{s.units === 1 ? '' : 's'}</T>}</View>
-          <Btn title="Place order" onPress={place} loading={busy} style={{ minWidth: 170 }} />
+        <View pointerEvents="box-none" style={{ position: 'absolute', right: 14, bottom: L.floatingBar ? 96 : 14, alignItems: 'flex-end' }}>
+          <Pressable onPress={place} disabled={busy} accessibilityRole="button" accessibilityLabel={`Place order, ${money(s.total_cents)}`}
+            style={{ backgroundColor: c.pink, borderRadius: 999, paddingVertical: 12, paddingLeft: 18, paddingRight: 14, flexDirection: 'row', alignItems: 'center', gap: 10, opacity: busy ? 0.7 : 1, shadowColor: '#312E81', shadowOpacity: 0.3, shadowRadius: 14, shadowOffset: { width: 0, height: 6 } }}>
+            <View><T weight="800" size={15} color="#fff">{money(s.total_cents)}</T>{s.savings_cents > 0 ? <T size={10} weight="700" color="#C7F9E4">you save {money(s.savings_cents)}</T> : null}</View>
+            <T weight="800" size={14} color="#fff">{busy ? 'Placing…' : 'Place order ›'}</T>
+          </Pressable>
         </View>
       ) : null}
       {paying ? <PaySheet target={paying} onClose={() => setPaying(null)} onDone={async () => setDone((d) => (d ? { ...d, status: 'placed' } : d))} /> : null}
