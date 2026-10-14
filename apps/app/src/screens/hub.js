@@ -15,6 +15,8 @@ import { PaySheet } from '../PaySheet';
 import { TimelineSheet } from '../Timeline';
 import { Confirm } from './coaching';
 import { RecoveryPanel } from './wellness';
+import { DoctorEntry } from './doctor';
+import { MyHealthFile } from './health-file';
 import { c, grad, money, day, when, withUnit, unitName } from '../theme';
 
 const TILES = [
@@ -307,7 +309,9 @@ export function Health() {
     <Screen>
       <H1>Health</H1>
       <Card color={c.mintSoft} pad={12}><T weight="900">Consent-first medical privacy</T><T size={12} color={c.mute}>Notes are encrypted. Doctors and physios only see your records after you grant access — and every read is logged.</T></Card>
+      {has('doctor') ? <View style={{ marginTop: 10 }}><DoctorEntry /></View> : null}
       {isProv ? <View style={{ marginTop: 10 }}><ClinicalStatusCard /></View> : null}
+      <View style={{ marginTop: 10 }}><Seg options={[...(has('athlete') ? [{ value: 'recovery', label: 'Recovery', emoji: '💚' }] : []), { value: 'find', label: 'Find a pro', emoji: '🔎' }, { value: 'appts', label: 'Appointments', emoji: '📅' }, { value: 'records', label: 'My records', emoji: '📋' }, { value: 'file', label: 'My file', emoji: '🗂️' }, { value: 'followups', label: 'Follow-ups', emoji: '🗓️' }, { value: 'consent', label: 'Access', emoji: '🔒' }]} value={tab} onChange={setTab} color={c.mint} /></View>
       <View style={{ marginTop: 10 }}><Seg options={[...(has('athlete') ? [{ value: 'recovery', label: 'Recovery', emoji: '💚' }] : []), { value: 'find', label: 'Find a pro', emoji: '🔎' }, ...(isProv ? [{ value: 'practice', label: 'My practice', emoji: '🩺' }] : []), { value: 'rehab', label: 'My plans', emoji: '📝' }, { value: 'appts', label: 'Appointments', emoji: '📅' }, { value: 'records', label: 'My records', emoji: '📋' }, { value: 'followups', label: 'Follow-ups', emoji: '🗓️' }, { value: 'consent', label: 'Access', emoji: '🔒' }]} value={tab} onChange={setTab} color={c.mint} /></View>
       <View style={{ gap: 10, marginTop: 8 }}>
         {tab === 'recovery' && <RecoveryPanel />}
@@ -315,6 +319,7 @@ export function Health() {
         {tab === 'practice' && isProv && <PracticePanel />}
         {tab === 'rehab' && <MyRehab />}
         {tab === 'consent' && <ConsentManager />}
+        {tab === 'file' && <MyHealthFile />}
         {tab === 'followups' && <FollowupsPanel />}
         {tab === 'appts' && (appts.data?.length ? appts.data.map((a) => (
           <Card key={a.id}><T weight="900">{a.athlete_id === user.id ? `With ${a.provider_name}` : `Athlete: ${a.athlete_name}`}</T><T size={13} color={c.mute}>{when(a.starts_at)} · {a.duration_min} min</T>{a.reason ? <T size={13} style={{ marginTop: 4 }}>“{a.reason}”</T> : null}
