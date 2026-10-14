@@ -96,21 +96,35 @@ cap({
 const LISTED = "o.status='active' AND ip.listed";
 const PROG_SPORTS = `coalesce((SELECT json_agg(json_build_object('id', s.id, 'slug', s.slug, 'name', s.name, 'emoji', s.emoji) ORDER BY s.name) FROM programme_sports ps JOIN sports s ON s.id=ps.sport_id WHERE ps.programme_id=p.id AND ps.removed_at IS NULL), '[]'::json)`;
 
+const csv = (max) => z.string().trim().max(max).optional().transform((v) => (v ? v.split(',').map((x) => x.trim()).filter(Boolean).slice(0, 12) : undefined));
+const multi = {
+  sports: csv(300).describe('comma-separated sport slugs'), general: z.enum(['true', 'false']).optional().transform((v) => v === 'true').describe('also (or only) general sports programmes that are not tied to one sport'),
+  countries: csv(500).describe('comma-separated countries'),
+};
+/** Sport ids to match (null = any sport), whether general programmes count, and lower-cased countries (null = anywhere). */
+async function multiFilter(i, single) {
+  const slugs = [...new Set([...(i.sports ?? []), ...(single ? [single] : [])])];
+  const ids = [];
+  for (const sl of slugs) ids.push((await sportOr404(sl)).id);
+  return { ids: ids.length || i.general ? ids : null, general: !!i.general, countries: i.countries?.length ? i.countries.map((x) => x.toLowerCase()) : null };
+}
+
 cap({
   name: 'search_institutions', method: 'GET', path: '/institutions', tag: TAG, auth: 'public',
   summary: 'Colleges, universities and academies that list themselves on the platform. Filter by name, sport they teach, country, city or type. No contact details here; sign in and open the institution to get them.',
-  input: z.object({ q: z.string().trim().max(80).optional(), sport: z.string().optional(), country: z.string().max(60).optional(), city: z.string().max(80).optional(), kind: z.enum(['academy', 'school', 'college', 'university', 'club', 'other']).optional(), region: z.string().trim().max(80).optional().describe('a city or country; matches either'), ...page }),
+  input: z.object({ q: z.string().trim().max(80).optional(), sport: z.string().optional(), country: z.string().max(60).optional(), city: z.string().max(80).optional(), kind: z.enum(['academy', 'school', 'college', 'university', 'club', 'other']).optional(), region: z.string().trim().max(80).optional().describe('a city or country; matches either'), ...multi, ...page }),
   async handler(_, i) {
-    const sport = i.sport ? await sportOr404(i.sport) : null;
+    const f = await multiFilter(i, i.sport);
     const rows = await many(
       `SELECT o.id, o.name, o.kind, o.city, ip.country, ip.about, ip.website,
               (SELECT count(*)::int FROM programmes p WHERE p.organisation_id=o.id AND p.status='active') AS programmes
          FROM organisations o JOIN institution_profiles ip ON ip.organisation_id=o.id
         WHERE ${LISTED} AND ($1::text IS NULL OR o.name ILIKE '%'||$1||'%') AND ($2::text IS NULL OR lower(ip.country)=lower($2)) AND ($3::text IS NULL OR lower(o.city)=lower($3))
           AND ($4::text IS NULL OR o.kind=$4) AND ($8::text IS NULL OR o.city ILIKE '%'||$8||'%' OR ip.country ILIKE '%'||$8||'%')
-          AND ($5::uuid IS NULL OR EXISTS (SELECT 1 FROM programmes p JOIN programme_sports ps ON ps.programme_id=p.id AND ps.removed_at IS NULL WHERE p.organisation_id=o.id AND p.status='active' AND ps.sport_id=$5))
+          AND ($5::uuid[] IS NULL OR EXISTS (SELECT 1 FROM programmes p WHERE p.organisation_id=o.id AND p.status='active' AND (EXISTS (SELECT 1 FROM programme_sports ps WHERE ps.programme_id=p.id AND ps.removed_at IS NULL AND ps.sport_id = ANY($5)) OR ($9 AND NOT EXISTS (SELECT 1 FROM programme_sports ps WHERE ps.programme_id=p.id AND ps.removed_at IS NULL)))))
+          AND ($10::text[] IS NULL OR lower(ip.country) = ANY($10))
         ORDER BY o.name, o.id LIMIT $6 OFFSET $7`,
-      [i.q ?? null, i.country ?? null, i.city ?? null, i.kind ?? null, sport?.id ?? null, i.limit, i.offset, i.region ?? null]);
+      [i.q ?? null, i.country ?? null, i.city ?? null, i.kind ?? null, f.ids, i.limit, i.offset, i.region ?? null, f.general, f.countries]);
     const r = await ratingsFor('institution', rows.map((x) => x.id));
     return rows.map((x) => ({ ...x, rating: r.get(x.id)?.rating ?? null, reviews: r.get(x.id)?.reviews ?? 0 }));
   },
@@ -216,19 +230,20 @@ cap({
 cap({
   name: 'search_programmes', method: 'GET', path: '/programmes', tag: TAG, auth: 'public',
   summary: 'Find courses, certifications, diplomas and degrees at listed institutions. Filter by sport, type, how it is taught, country, city or words in the title. Sorted by next intake.',
-  input: z.object({ q: z.string().trim().max(80).optional(), sport: z.string().optional(), kind: z.enum(KINDS).optional(), mode: z.enum(MODES).optional(), country: z.string().max(60).optional(), city: z.string().max(80).optional(), region: z.string().trim().max(80).optional().describe('a city or country; matches either'), ...page }),
+  input: z.object({ q: z.string().trim().max(80).optional(), sport: z.string().optional(), kind: z.enum(KINDS).optional(), mode: z.enum(MODES).optional(), country: z.string().max(60).optional(), city: z.string().max(80).optional(), region: z.string().trim().max(80).optional().describe('a city or country; matches either'), ...multi, ...page }),
   async handler(_, i) {
-    const sport = i.sport ? await sportOr404(i.sport) : null;
+    const f = await multiFilter(i, i.sport);
     const rows = await many(
       `SELECT p.id, p.title, p.kind, p.mode, p.description, p.duration_months, p.fee_minor, p.currency, p.next_intake_on, ${PROG_SPORTS} AS sports,
               o.id AS organisation_id, o.name AS institution, o.kind AS institution_kind, o.city, ip.country
          FROM programmes p JOIN organisations o ON o.id=p.organisation_id JOIN institution_profiles ip ON ip.organisation_id=o.id
         WHERE p.status='active' AND ${LISTED}
-          AND ($1::text IS NULL OR p.title ILIKE '%'||$1||'%' OR o.name ILIKE '%'||$1||'%') AND ($2::uuid IS NULL OR EXISTS (SELECT 1 FROM programme_sports ps WHERE ps.programme_id=p.id AND ps.removed_at IS NULL AND ps.sport_id=$2))
+          AND ($1::text IS NULL OR p.title ILIKE '%'||$1||'%' OR o.name ILIKE '%'||$1||'%') AND ($2::uuid[] IS NULL OR EXISTS (SELECT 1 FROM programme_sports ps WHERE ps.programme_id=p.id AND ps.removed_at IS NULL AND ps.sport_id = ANY($2)) OR ($10 AND NOT EXISTS (SELECT 1 FROM programme_sports ps WHERE ps.programme_id=p.id AND ps.removed_at IS NULL)))
+          AND ($11::text[] IS NULL OR lower(ip.country) = ANY($11))
           AND ($3::text IS NULL OR p.kind=$3) AND ($4::text IS NULL OR p.mode=$4) AND ($5::text IS NULL OR lower(ip.country)=lower($5)) AND ($6::text IS NULL OR lower(o.city)=lower($6))
           AND ($9::text IS NULL OR o.city ILIKE '%'||$9||'%' OR ip.country ILIKE '%'||$9||'%')
         ORDER BY p.next_intake_on NULLS LAST, p.title, p.id LIMIT $7 OFFSET $8`,
-      [i.q ?? null, sport?.id ?? null, i.kind ?? null, i.mode ?? null, i.country ?? null, i.city ?? null, i.limit, i.offset, i.region ?? null]);
+      [i.q ?? null, f.ids, i.kind ?? null, i.mode ?? null, i.country ?? null, i.city ?? null, i.limit, i.offset, i.region ?? null, f.general, f.countries]);
     const r = await ratingsFor('programme', rows.map((x) => x.id));
     return rows.map((x) => ({ ...x, rating: r.get(x.id)?.rating ?? null, reviews: r.get(x.id)?.reviews ?? 0 }));
   },

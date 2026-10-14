@@ -9,6 +9,7 @@ import { Btn, Card, Chip, Empty, ErrorBox, Field, Loading, Row, Section, Seg, T,
 import { FormSheet } from '../FormSheet';
 import { SportsMulti } from '../sportpicker';
 import { RegionPicker } from '../region-picker';
+import { COUNTRIES } from '../countries';
 import { c, when } from '../theme';
 import { moneyIn } from '../vtime';
 
@@ -77,6 +78,42 @@ export function BucketButton({ type, id }) {
   );
 }
 
+
+/** Several countries: chips for the chosen ones (tap to remove) and a search that suggests matching countries. */
+export function CountriesMulti({ label: title, value = [], onChange, hint }) {
+  const [q, setQ] = useState('');
+  const typed = q.trim().toLowerCase();
+  const found = typed ? COUNTRIES.filter((x) => x.toLowerCase().includes(typed) && !value.includes(x)).slice(0, 8) : [];
+  return (
+    <View style={{ gap: 8 }}>
+      {title ? <T weight="800" size={13}>{title}</T> : null}
+      {value.length ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{value.map((x) => <Chip key={x} active label={`🌍 ${x}  ✕`} onPress={() => onChange(value.filter((y) => y !== x))} />)}</View> : null}
+      <Field value={q} onChangeText={setQ} placeholder={value.length ? 'Add another country…' : 'Search a country…'} />
+      {found.length ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{found.map((x) => <Chip key={x} label={x} onPress={() => { onChange([...value, x]); setQ(''); }} />)}</View> : null}
+      {hint ? <T size={12} color={c.mute}>{hint}</T> : null}
+    </View>
+  );
+}
+
+/** Sport filter for study search: any sport, general sports (not tied to one sport), and/or specific sports (multi-select). */
+export function SportFilter({ any, onAny, general, onGeneral, slugs, onSlugs }) {
+  return (
+    <View style={{ gap: 8 }}>
+      <T weight="800" size={13}>Sports</T>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+        <Chip label="✨ Any sport" active={any} onPress={() => onAny(!any)} />
+        <Chip label="🏅 General sports" active={general && !any} onPress={() => { onGeneral(!general); if (any) onAny(false); }} />
+      </View>
+      {any ? <T size={12} color={c.mute}>Showing everything, whatever the sport.</T> : (
+        <>
+          <T size={12} color={c.mute}>General sports = coaching, sports science, management and other courses not tied to one sport.</T>
+          <SportsMulti value={slugs} onChange={onSlugs} />
+        </>
+      )}
+    </View>
+  );
+}
+
 // ------------------------------------------------------------------ explore
 function SuggestionCard({ inst, push, onSaved }) {
   const { toast } = useSession();
@@ -106,34 +143,36 @@ function SuggestionCard({ inst, push, onSaved }) {
 
 export function Explore({ push, onSaved }) {
   const ctx = useLoad(() => api.get('/me/study/context'), []);
-  const [basis, setBasis] = useState('both'), [slugs, setSlugs] = useState(null), [region, setRegion] = useState(null);
+  const [any, setAny] = useState(false), [general, setGeneral] = useState(false), [slugs, setSlugs] = useState(null);
+  const [countries, setCountries] = useState([]), [region, setRegion] = useState(null);
   const [q, setQ] = useState(''), [kind, setKind] = useState(null), [mode, setMode] = useState(null);
   const [ai, setAi] = useState(null), [busy, setBusy] = useState(false), [aiErr, setAiErr] = useState(null);
   useEffect(() => { if (ctx.data) { setSlugs((s) => s ?? ctx.data.sports.map((x) => x.slug)); setRegion((r) => r ?? ctx.data.regions[0] ?? ''); } }, [ctx.data]);
-  const useSports = basis !== 'region' ? (slugs ?? []) : [], useRegion = basis !== 'sports' ? (region ?? '') : '';
-  const params = { q: q.trim() || undefined, sport: useSports.length === 1 ? useSports[0] : undefined, region: useRegion || undefined, kind: kind || undefined, mode: mode || undefined, limit: 50 };
+  const picked = any ? [] : (slugs ?? []);
+  const reset = (set) => (v) => { set(v); setAi(null); };
   const ready = slugs !== null;
-  const progs = useLoad(() => (ready ? api.get('/programmes', params) : Promise.resolve(null)), [ready, q, kind, mode, basis, useRegion, useSports.join(',')]);
-  const insts = useLoad(() => (ready ? api.get('/institutions', { q: params.q, sport: params.sport, region: params.region, limit: 20 }) : Promise.resolve(null)), [ready, q, basis, useRegion, useSports.join(',')]);
-  const need = basis !== 'region' && !useSports.length ? 'Pick at least one sport' : basis !== 'sports' && !useRegion ? 'Say which region to look in' : null;
+  const sportsQ = !any && (picked.length || general) ? { sports: picked.join(',') || undefined, general: general ? 'true' : undefined } : {};
+  const placeQ = { countries: countries.join(',') || undefined, region: region || undefined };
+  const params = { q: q.trim() || undefined, ...sportsQ, ...placeQ, kind: kind || undefined, mode: mode || undefined, limit: 50 };
+  const dep = [ready, q, kind, mode, any, general, picked.join(','), countries.join(','), region];
+  const progs = useLoad(() => (ready ? api.get('/programmes', params) : Promise.resolve(null)), dep);
+  const insts = useLoad(() => (ready ? api.get('/institutions', { q: params.q, ...sportsQ, ...placeQ, limit: 20 }) : Promise.resolve(null)), dep);
+  const hasPlace = countries.length > 0 || !!region;
+  const need = !any && !picked.length && !general ? 'Pick a sport, General sports or Any sport' : (any || (!picked.length && general)) && !hasPlace ? 'Choose a country or region' : null;
   const ask = async (refresh) => {
     setBusy(true); setAiErr(null);
-    try { setAi(await api.post('/me/study/discover', { basis, sports: useSports.length ? useSports : undefined, region: useRegion || undefined, refresh })); } catch (e) { setAiErr(e.message); }
+    try { setAi(await api.post('/me/study/discover', { sports: any || general || !picked.length ? undefined : picked, any_sport: any || (general && !picked.length), countries, region: region || undefined, refresh })); } catch (e) { setAiErr(e.message); }
     setBusy(false);
   };
   if (ctx.error) return <ErrorBox error={ctx.error} onRetry={ctx.reload} />;
   if (!ctx.data) return <Loading />;
   return (
     <>
-      <Section title="Where do you want to study?" color={c.violet}>
-        <Seg value={basis} onChange={(v) => { setBasis(v); setAi(null); }} color={c.violet} options={[{ value: 'both', label: 'My sports + region' }, { value: 'sports', label: 'My sports' }, { value: 'region', label: 'My region' }]} />
-        {basis !== 'region' ? (
-          <>
-            <SportsMulti label="Sports" value={slugs ?? []} onChange={(v) => { setSlugs(v); setAi(null); }} />
-            {!ctx.data.sports.length ? <T size={12} color={c.mute}>Add sports to your profile and they will be filled in here for you.</T> : null}
-          </>
-        ) : null}
-        {basis !== 'sports' ? <RegionPicker label="Region (city, state or country)" value={region ?? ''} onChange={(v) => { setRegion(v); setAi(null); }} hint={ctx.data.regions.length ? 'Filled in from your sport profile.' : undefined} /> : null}
+      <Section title="What and where?" color={c.violet}>
+        <SportFilter any={any} onAny={reset(setAny)} general={general} onGeneral={reset(setGeneral)} slugs={slugs ?? []} onSlugs={reset(setSlugs)} />
+        {!ctx.data.sports.length ? <T size={12} color={c.mute}>Add sports to your profile and they will be filled in here for you.</T> : null}
+        <CountriesMulti label="Countries" value={countries} onChange={reset(setCountries)} hint="Pick several to compare. Leave empty to search near your region only." />
+        <RegionPicker label="City or area" optional value={region ?? ''} onChange={reset(setRegion)} hint={ctx.data.regions.length ? 'Filled in from your sport profile.' : undefined} />
         <Field value={q} onChangeText={setQ} placeholder="Narrow by course or college name…" />
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
           <Chip label="Any level" active={!kind} onPress={() => setKind(null)} />
@@ -155,13 +194,13 @@ export function Explore({ push, onSaved }) {
             <T size={12} color={c.mute}>{ai.cached ? 'Saved result from a recent search. ' : ''}{ai.disclaimer}</T>
             {ai.institutions.map((x) => <SuggestionCard key={x.id} inst={x} push={push} onSaved={onSaved} />)}
           </>
-        ) : <Empty emoji="🔎" title="No suggestions" sub="Try a wider region or fewer sports." />) : null}
+        ) : <Empty emoji="🔎" title="No suggestions" sub="Try more countries or a different sport." />) : null}
       </Section>
 
       <Section title="On Sportarena: ask them directly" color={c.cyan}>
         {progs.error ? <ErrorBox error={progs.error} onRetry={progs.reload} /> : !progs.data ? <Loading /> : progs.data.length ? progs.data.map((p) => (
           <Row key={p.id} title={p.title} onPress={() => push('Programme', { id: p.id })}
-            sub={`${p.institution} · ${place(p)}\n${label(KINDS, p.kind)} · ${label(MODES, p.mode)}${p.reviews ? ` · ★ ${p.rating.toFixed(1)} (${p.reviews})` : ''}`}
+            sub={`${p.institution} · ${place(p)}\n${label(KINDS, p.kind)} · ${label(MODES, p.mode)}${p.sports.length ? '' : ' · General sports'}${p.reviews ? ` · ★ ${p.rating.toFixed(1)} (${p.reviews})` : ''}`}
             right={p.fee_minor != null ? <Tag label={moneyIn(p.fee_minor, p.currency)} /> : null} />
         )) : <Empty emoji="🏫" title="No listed courses match yet" sub="Institutions appear here once they list themselves. The AI suggestions above cover the rest." />}
         {insts.data?.length ? insts.data.map((o) => <Row key={o.id} title={o.name} sub={`${place(o)} · ${o.programmes} programme${o.programmes === 1 ? '' : 's'}${o.reviews ? ` · ★ ${o.rating.toFixed(1)} (${o.reviews})` : ''}`} onPress={() => push('Institution', { id: o.id })} />) : null}

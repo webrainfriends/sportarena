@@ -28,16 +28,16 @@ own (a parent or guardian does it for them).
 
 | Step | Capability |
 |---|---|
-| Sports and region pre-filled from your sport profiles (change either, or search by sports, region or both) | `get_study_context` |
+| Sports and region pre-filled from your sport profiles (change either; "Any sport" and "General sports" are options; several sports and several countries can be chosen) | `get_study_context` |
 | AI lists universities, colleges and academies with courses, certifications, diplomas and degrees: contacts, admissions process, entry requirements, fees and intakes | `discover_study_options` |
 | Open an AI-suggested institution or course | `get_study_institution` · `get_study_programme` |
 | Save an institution or course (listed or AI-suggested) with a stage, deadline and notes; move it along; remove it (kept, restorable) | `save_to_bucket` · `update_bucket_item` · `list_bucket` |
 | Rate and review an institution or a course (one review system for the whole platform) | `write_testimonial` · `list_testimonials` with subject type `institution`, `programme`, `study_institution`, `study_programme` |
 
 AI suggestions are stored in a shared catalogue (`study_institutions`, `study_programmes`), always shown as **unverified**, and cached for 30 days per
-sports+region question (8 fresh searches per person per hour). The model is told not to invent ratings or reviews: ratings come only from
+sports+places question (8 fresh searches per person per hour). The model is told not to invent ratings or reviews: ratings come only from
 platform users' reviews. A review from someone whose enquiry reached admitted/enrolled is flagged as an enrolled student. Staff of a listed
-institution cannot review it. Search endpoints accept `region` (city or country) and return `rating` and `reviews`.
+institution cannot review it. Search endpoints accept `region` (city or country), `sports` (comma list), `general=true` (programmes not tied to one sport) and `countries` (comma list) and return `rating` and `reviews`.
 
 ## Institution journey (Admissions tab)
 

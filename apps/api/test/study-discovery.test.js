@@ -70,16 +70,19 @@ test('context comes from the profile; discovery uses it, cleans the AI output, c
   assert.equal(calls, 1, 'second identical search is served from the cache');
   must(await api('POST', '/me/study/discover', { token: u.token, body: { refresh: true } }));
   assert.equal(calls, 2);
-  const regionOnly = must(await api('POST', '/me/study/discover', { token: u.token, body: { basis: 'region', region: 'Kerala' } }));
+  const regionOnly = must(await api('POST', '/me/study/discover', { token: u.token, body: { any_sport: true, countries: ['India', 'Kenya'] } }));
   assert.equal(regionOnly.sports.length, 0);
-  assert.equal(regionOnly.region, 'Kerala');
+  assert.equal(regionOnly.any_sport, true);
+  assert.deepEqual(regionOnly.countries, ['India', 'Kenya']);
+  assert.match(lastPrompt, /India; Kenya/);
+  assert.equal((await api('POST', '/me/study/discover', { token: (await signup()).token, body: { any_sport: true } })).status, 400, 'any sport needs a place');
   const cnt = await pool.query('SELECT count(*)::int AS n FROM study_institutions');
   assert.equal(cnt.rows[0].n, 1, 'the same institution is never stored twice');
 });
 
 test('bucket list: save, stage, note, remove and restore; reviews feed the rating', async () => {
   const u = await signup(), v = await signup();
-  const found = must(await api('POST', '/me/study/discover', { token: u.token, body: { basis: 'region', region: 'Leicester' } }));
+  const found = must(await api('POST', '/me/study/discover', { token: u.token, body: { any_sport: true, countries: ['Leicester'] } }));
   const inst = found.institutions[0], prog = inst.programmes[0];
 
   const item = must(await api('POST', '/me/bucket', { token: u.token, body: { target_type: 'study_programme', target_id: prog.id, note: 'Ask about scholarships', target_date: '2027-01-15' } }), 201);
@@ -118,4 +121,26 @@ test('bucket list: save, stage, note, remove and restore; reviews feed the ratin
   assert.equal(again.note, 'Ask about scholarships', 'the note is kept');
   const kept = await pool.query('SELECT count(*)::int AS n FROM study_bucket');
   assert.equal(kept.rows[0].n, 2, 'nothing was deleted');
+});
+
+test('listed search: several sports, general programmes, several countries', async () => {
+  const owner = await signup();
+  const tennis = (await api('GET', '/sports')).body.find((s) => s.slug === 'tennis'), football = (await api('GET', '/sports')).body.find((s) => s.slug === 'football');
+  const mk = async (name, city, country, sportIds) => {
+    const org = must(await api('POST', '/organisations', { token: owner.token, body: { name, kind: 'college', city } }), 201);
+    must(await api('PATCH', `/organisations/${org.id}/institution`, { token: owner.token, body: { website: 'https://x.example', country, listed: true } }));
+    must(await api('POST', `/organisations/${org.id}/programmes`, { token: owner.token, body: { title: `${name} programme`, kind: 'course', sport_ids: sportIds } }), 201);
+    return org;
+  };
+  await mk('Alpha College', 'Pune', 'India', [tennis.id]);
+  await mk('Beta College', 'Nairobi', 'Kenya', []);
+  await mk('Gamma College', 'Leeds', 'United Kingdom', [football.id]);
+  const names = async (qs) => (await api('GET', `/programmes?${qs}`)).body.map((p) => p.institution).sort();
+  assert.deepEqual(await names('sports=tennis,football'), ['Alpha College', 'Gamma College']);
+  assert.deepEqual(await names('general=true'), ['Beta College']);
+  assert.deepEqual(await names('sports=tennis&general=true'), ['Alpha College', 'Beta College']);
+  assert.deepEqual(await names('countries=India,Kenya'), ['Alpha College', 'Beta College']);
+  assert.deepEqual(await names('countries=india&sports=football'), []);
+  const inst = (await api('GET', '/institutions?countries=Kenya,United%20Kingdom&general=true')).body.map((o) => o.name);
+  assert.deepEqual(inst, ['Beta College']);
 });

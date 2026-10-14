@@ -122,18 +122,25 @@ async function hydrate(instIds, sportIds = []) {
 
 cap({
   name: 'discover_study_options', method: 'POST', path: '/me/study/discover', tag: TAG,
-  summary: 'Use AI to list universities, colleges and academies with courses, certifications, diplomas and degrees for the sports on your profile and/or in your region. basis `sports`, `region` or `both` (default). Sports and region default to your profile and can be overridden. Results are AI suggestions (unverified): contact details and processes must be confirmed with the institution. Answers are cached for 30 days; `refresh` asks again.',
-  input: z.object({ sports: z.array(z.string().min(1)).max(6).optional(), region: z.string().trim().max(80).optional(), basis: z.enum(['sports', 'region', 'both']).default('both'), refresh: z.boolean().default(false) }),
+  summary: 'Use AI to list universities, colleges and academies with courses, certifications, diplomas and degrees for the sports you choose (default: the sports on your profile; `any_sport` for general sports courses) in the countries and/or region you choose (default: the region on your profile). Results are AI suggestions (unverified): contact details and processes must be confirmed with the institution. Answers are cached for 30 days; `refresh` asks again.',
+  input: z.object({
+    sports: z.array(z.string().min(1)).max(6).optional().describe('sport slugs; leave out to use the sports on your profile'),
+    any_sport: z.boolean().default(false).describe('ignore sports: search general sports courses (coaching, sports science, management) in any sport'),
+    countries: z.array(z.string().trim().min(2).max(60)).max(6).default([]), region: z.string().trim().max(80).optional().describe('a city or state, optional'),
+    refresh: z.boolean().default(false),
+  }),
   async handler({ user }, i) {
     const dflt = await profileDefaults(user);
-    const slugs = i.basis === 'region' ? [] : [...new Set((i.sports?.length ? i.sports : dflt.sports).map((s) => s.toLowerCase()))].slice(0, 6);
-    const region = i.basis === 'sports' ? null : (i.region || dflt.region || null);
-    if (i.basis !== 'region' && !slugs.length) throw badRequest('Add a sport to your profile or choose the sports to search for');
-    if (i.basis !== 'sports' && !region) throw badRequest('Say which region (a city, state or country) to search in');
+    const slugs = i.any_sport ? [] : [...new Set((i.sports ?? dflt.sports).map((s) => s.toLowerCase()))].slice(0, 6);
+    const countries = [...new Set(i.countries)];
+    const region = i.region || (!countries.length && !i.sports ? dflt.region : null) || null;
+    const places = [region, ...countries].filter(Boolean);
+    if (!slugs.length && !i.any_sport && !places.length) throw badRequest('Choose a sport (or "any sport") and where to look');
+    if (!slugs.length && !places.length) throw badRequest('Choose at least one country or region when searching any sport');
     const sports = slugs.length ? await many('SELECT id, slug, name, emoji FROM sports WHERE slug = ANY($1)', [slugs]) : [];
     if (slugs.length && sports.length !== slugs.length) throw badRequest('One of the sports does not exist');
-    const key = sha256(JSON.stringify({ s: [...slugs].sort(), r: region?.toLowerCase() ?? null, m: aiModel() }));
-    const meta = { sports, region, basis: i.basis, disclaimer: 'AI-generated suggestions, not endorsements. Confirm fees, dates, contacts and the application process with the institution before you apply.' };
+    const key = sha256(JSON.stringify({ s: [...slugs].sort(), p: places.map((x) => x.toLowerCase()).sort(), m: aiModel() }));
+    const meta = { sports, any_sport: !slugs.length, countries, region, disclaimer: 'AI-generated suggestions, not endorsements. Confirm fees, dates, contacts and the application process with the institution before you apply.' };
     const sportIds = sports.map((s) => s.id);
 
     if (!i.refresh) {
@@ -145,11 +152,11 @@ cap({
     if (recent.n >= HOURLY_LIMIT) throw new AppError(429, 'rate_limited', 'You have searched a lot in the last hour. Try again a little later.');
     await audit(null, user.id, 'ai_study_discover', 'study_discoveries', null);
 
-    const where = region ? `in or near ${quoteData(region, 80)}` : 'anywhere in the world';
+    const where = places.length ? `in or near ${places.map((x) => quoteData(x, 80)).join(', ')} (spread across these places)` : 'anywhere in the world';
     const what = sports.length ? `for these sports: ${sports.map((s) => `${s.name} (slug ${s.slug})`).join(', ')}` : 'in any sport (general sport coaching, sports science and management)';
     const out = await askJson({
       system: SYSTEM, shape: SHAPE, schema: outSchema, maxTokens: 7000, timeoutMs: 90_000,
-      user: `List up to 6 institutions ${where} that offer sport courses, certifications, diplomas or degrees ${what}. Give up to 3 programmes each. <data>region: ${quoteData(region ?? 'any', 80)}</data>`,
+      user: `List up to ${places.length > 1 ? 8 : 6} institutions ${where} that offer sport courses, certifications, diplomas or degrees ${what}. Give up to 3 programmes each. <data>places: ${quoteData(places.join('; ') || 'any', 300)}</data>`,
     });
     if (!out?.institutions.length) throw new AppError(502, 'ai_failed', 'We could not get suggestions just now. Please try again in a minute.');
     const bySlug = new Map(sports.map((s) => [s.slug, s.id]));
@@ -157,7 +164,7 @@ cap({
       const saved = await saveCatalogue(c, out, bySlug);
       await c.query(
         `INSERT INTO study_discoveries(key, region, sport_slugs, institution_ids) VALUES ($1,$2,$3,$4)
-         ON CONFLICT (key) DO UPDATE SET institution_ids=$4, created_at=now()`, [key, region, slugs, saved]);
+         ON CONFLICT (key) DO UPDATE SET institution_ids=$4, created_at=now()`, [key, places.join('; ') || null, slugs, saved]);
       return saved;
     });
     return { ...meta, ai: true, cached: false, institutions: await hydrate(ids, sportIds) };
