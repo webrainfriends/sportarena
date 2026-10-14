@@ -87,11 +87,11 @@ function Hero({ counts, onJoin, onBrowse, onAdvertise, wide }) {
       {nums.length ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 30, marginTop: 24 }}>{nums.map(([v, l]) => <Stat key={l} value={v} label={l} />)}</View> : null}
     </View>
   );
-  // the promo card (web) autoplays beside the headline on wide screens and under it on phones
+  // the promo card autoplays beside the headline on wide screens and under it on phones
   const body = (
     <View style={{ paddingHorizontal: 20, paddingTop: wide ? 72 : 48, paddingBottom: wide ? 72 : 48, maxWidth: 1240, width: '100%', alignSelf: 'center', marginHorizontal: 'auto', flexDirection: wide ? 'row' : 'column', alignItems: wide ? 'center' : 'stretch', gap: wide ? 56 : 36 }}>
       {text}
-      {isWeb ? <View style={{ alignItems: 'center' }}><PromoCard onJoin={onJoin} width={wide ? 360 : 300} /></View> : null}
+      <View style={{ alignItems: 'center' }}><PromoCard onJoin={onJoin} width={wide ? 360 : 300} /></View>
     </View>
   );
   if (!isWeb) return <LinearGradient colors={BRAND} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>{body}</LinearGradient>;
