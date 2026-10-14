@@ -15,6 +15,7 @@ import { useMarketActions, useResumeIntent } from '../market/actions';
 import { PlayerHero, COL } from '../hero';
 import { ACTIONS, HomeReminders } from './athlete-home';
 import { locale } from '../locale';
+import { DoctorEntry } from './doctor';
 
 const PAGE = 10;
 
@@ -123,6 +124,7 @@ export default function HomeTab() {
         <HScroll>
           {ACTIONS.map(([emoji, label, go]) => <Chip key={label} label={`${emoji} ${label}`} onPress={() => go(nav)} />)}
         </HScroll>
+        <View style={{ marginTop: 16 }}><DoctorEntry /></View>
         <View style={{ marginTop: 22 }}><HomeReminders /></View>
         <View style={{ marginTop: 30 }}><Title>Community</Title></View>
       </View>

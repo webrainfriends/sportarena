@@ -75,6 +75,7 @@ import './encounters.js';
 import './provider-services.js';
 import './provider-offers.js';
 import './treatment-plans.js';
+import './insurance-panel.js';
 import './provider-tax.js';
 import './provider-packages.js';
 import './insurance.js';

@@ -16,6 +16,8 @@ import { PaySheet } from '../PaySheet';
 import { TimelineSheet } from '../Timeline';
 import { Confirm } from './coaching';
 import { RecoveryPanel } from './wellness';
+import { DoctorEntry } from './doctor';
+import { MyHealthFile } from './health-file';
 import { c, grad, money, day, when, withUnit, unitName } from '../theme';
 
 const TILES = [
@@ -312,12 +314,18 @@ export function Health() {
       {region.data && (!region.data.country || region.data.needs_notice) ? <Card color={c.sunSoft} pad={12} onPress={() => setTab('consent')} style={{ marginTop: 10 }}><T weight="900">{region.data.country ? 'The privacy rules changed — please read them' : 'Choose the country whose health-privacy rules apply to you'}</T><T size={12} color={c.mute}>Eleven countries are supported. It takes a minute and tells you your rights, deadlines and who can see what.</T><T size={12} weight="800" color={c.pink} style={{ marginTop: 6 }}>Open Privacy ›</T></Card> : null}
       {isProv ? <View style={{ marginTop: 10 }}><ClinicalStatusCard /></View> : null}
       <View style={{ marginTop: 10 }}><Seg options={[...(has('athlete') ? [{ value: 'recovery', label: 'Recovery', emoji: '💚' }] : []), { value: 'find', label: 'Find a pro', emoji: '🔎' }, ...(isProv ? [{ value: 'practice', label: 'My practice', emoji: '🩺' }] : []), { value: 'rehab', label: 'My plans', emoji: '📝' }, { value: 'appts', label: 'Appointments', emoji: '📅' }, { value: 'records', label: 'My records', emoji: '📋' }, { value: 'followups', label: 'Follow-ups', emoji: '🗓️' }, { value: 'consent', label: 'Privacy', emoji: '🔒' }]} value={tab} onChange={setTab} color={c.mint} /></View>
+      {has('doctor') ? <View style={{ marginTop: 10 }}><DoctorEntry /></View> : null}
+      {isProv ? <View style={{ marginTop: 10 }}><ClinicalStatusCard /></View> : null}
+      <View style={{ marginTop: 10 }}><Seg options={[...(has('athlete') ? [{ value: 'recovery', label: 'Recovery', emoji: '💚' }] : []), { value: 'find', label: 'Find a pro', emoji: '🔎' }, { value: 'appts', label: 'Appointments', emoji: '📅' }, { value: 'records', label: 'My records', emoji: '📋' }, { value: 'file', label: 'My file', emoji: '🗂️' }, { value: 'followups', label: 'Follow-ups', emoji: '🗓️' }, { value: 'consent', label: 'Access', emoji: '🔒' }]} value={tab} onChange={setTab} color={c.mint} /></View>
+      <View style={{ marginTop: 10 }}><Seg options={[...(has('athlete') ? [{ value: 'recovery', label: 'Recovery', emoji: '💚' }] : []), { value: 'find', label: 'Find a pro', emoji: '🔎' }, ...(isProv ? [{ value: 'practice', label: 'My practice', emoji: '🩺' }] : []), { value: 'rehab', label: 'My plans', emoji: '📝' }, { value: 'appts', label: 'Appointments', emoji: '📅' }, { value: 'records', label: 'My records', emoji: '📋' }, { value: 'followups', label: 'Follow-ups', emoji: '🗓️' }, { value: 'consent', label: 'Access', emoji: '🔒' }]} value={tab} onChange={setTab} color={c.mint} /></View>
       <View style={{ gap: 10, marginTop: 8 }}>
         {tab === 'recovery' && <RecoveryPanel />}
         {tab === 'find' && <ProviderSearch onBooked={() => { appts.reload(); setTab('appts'); }} />}
         {tab === 'practice' && isProv && <PracticePanel />}
         {tab === 'rehab' && <MyRehab />}
         {tab === 'consent' && <PrivacyHub onChanged={region.reload} />}
+        {tab === 'consent' && <ConsentManager />}
+        {tab === 'file' && <MyHealthFile />}
         {tab === 'followups' && <FollowupsPanel />}
         {tab === 'appts' && (appts.data?.length ? appts.data.map((a) => (
           <Card key={a.id}><T weight="900">{a.athlete_id === user.id ? `With ${a.provider_name}` : `Athlete: ${a.athlete_name}`}</T><T size={13} color={c.mute}>{when(a.starts_at)} · {a.duration_min} min</T>{a.reason ? <T size={13} style={{ marginTop: 4 }}>“{a.reason}”</T> : null}

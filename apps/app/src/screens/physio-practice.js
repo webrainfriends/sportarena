@@ -8,6 +8,7 @@ import { PaySheet } from '../PaySheet';
 import { Btn, Card, Chip, Empty, ErrorBox, Field, GradCard, Loading, Section, Seg, Sheet, StatPill, T, Tag } from '../ui';
 import { PracticeCompliance } from './health-privacy';
 import { Counter, DateField, DateRangeField } from '../pickers';
+import { ProviderPanels } from './insurance-panel';
 import { c, day } from '../theme';
 import { moneyIn } from '../vtime';
 
@@ -380,6 +381,7 @@ export function PracticePanel() {
     <View style={{ gap: 10 }}>
       <Seg options={[{ value: 'overview', label: 'Overview', emoji: '🏠' }, { value: 'services', label: 'Services', emoji: '🩺' }, { value: 'offers', label: 'Offers', emoji: '🏷️' }, { value: 'packages', label: 'Packages', emoji: '🎟️' }, { value: 'plans', label: 'Plans', emoji: '📝' }, { value: 'library', label: 'Exercises', emoji: '🏃' }, { value: 'money', label: 'Tax & revenue', emoji: '🧾' }, { value: 'compliance', label: 'Compliance', emoji: '🛡️' }]} value={tab} onChange={setTab} color={c.violet} />
       {tab === 'overview' && <Overview go={setTab} />}
+      <Seg options={[{ value: 'services', label: 'Services', emoji: '🩺' }, { value: 'offers', label: 'Offers', emoji: '🏷️' }, { value: 'packages', label: 'Packages', emoji: '🎟️' }, { value: 'plans', label: 'Plans', emoji: '📝' }, { value: 'library', label: 'Exercises', emoji: '🏃' }, { value: 'money', label: 'Tax & revenue', emoji: '🧾' }, { value: 'panels', label: 'Insurance', emoji: '🛡️' }]} value={tab} onChange={setTab} color={c.violet} />
       {tab === 'services' && <Services currency={currency} />}
       {tab === 'offers' && <Offers currency={currency} />}
       {tab === 'packages' && <Packages currency={currency} />}
@@ -387,6 +389,7 @@ export function PracticePanel() {
       {tab === 'library' && <Library />}
       {tab === 'money' && <TaxRevenue currency={currency} />}
       {tab === 'compliance' && <PracticeCompliance />}
+      {tab === 'panels' && <ProviderPanels />}
     </View>
   );
 }

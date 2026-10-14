@@ -54,6 +54,7 @@ export function Me() {
         <Btn small title="View my public page" color={c.violet} onPress={() => push('Person', { id: user.id })} />
         {user.roles.includes('athlete') ? <Btn small title="Player passport & QR" color={c.pink} onPress={() => push('Passport')} /> : null}
         <Btn small title="Add a sport role" color={c.cyan} ink={c.ink} onPress={() => setSp(true)} />
+        {user.roles.includes('doctor') ? <Btn small title="Doctor workspace" color={c.mint} ink={c.ink} onPress={() => push('DoctorHome')} /> : null}
         {user.roles.includes('coach') ? <Btn small title="Coach home" color={c.violet} onPress={() => push('CoachHome')} /> : null}
         {user.roles.includes('admin') ? <Btn small title="Partner management" color={c.pink} onPress={() => push('PartnerConsole')} /> : null}
         {user.roles.some((r) => ['venue_manager', 'organizer'].includes(r)) ? <Btn small title="Partner account" color={c.paper} ink={c.ink} onPress={() => push('MyPartner')} /> : null}
