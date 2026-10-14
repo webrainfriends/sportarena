@@ -9,6 +9,7 @@ import { Avatar, Btn, Card, Chip, Empty, ErrorBox, Field, Loading, Section, Shee
 import { c, money, when } from '../theme';
 import { locale } from '../locale';
 import { moneyIn } from '../vtime';
+import { PaySheet } from '../PaySheet';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const SPECIALTIES = ['sports medicine', 'knee', 'shoulder', 'back', 'acl', 'rehab', 'nutrition', 'concussion'];
@@ -36,6 +37,16 @@ export function BookProviderSheet({ provider, followupId, onClose, onDone }) {
   const [mode, setMode] = useState('in_person');
   const [busy, setBusy] = useState(false);
   const [ext, setExt] = useState(false);
+  const services = useLoad(() => (provider ? api.get(`/providers/${provider.id}/services`).catch(() => []) : Promise.resolve([])), [provider?.id]);
+  const packs = useLoad(() => (provider ? api.get(`/providers/${provider.id}/packages`).catch(() => []) : Promise.resolve([])), [provider?.id]);
+  const owned = useLoad(() => (provider ? api.get('/me/packages').catch(() => []) : Promise.resolve([])), [provider?.id]);
+  const [svc, setSvc] = useState(null), [code, setCode] = useState(''), [usePkg, setUsePkg] = useState(null), [quote, setQuote] = useState(null), [quoteErr, setQuoteErr] = useState(null), [payPkg, setPayPkg] = useState(null);
+  const askQuote = async (s = svc) => {
+    setQuote(null); setQuoteErr(null);
+    if (!s) return;
+    try { setQuote(await api.get(`/providers/${provider.id}/quote`, { service_id: s.id, ...(code.trim() ? { offer_code: code.trim() } : {}) })); } catch (e) { setQuoteErr(e.message); }
+  };
+  const usable = (owned.data ?? []).filter((k) => svc && k.service_id === svc.id && k.provider_id === provider?.id && k.sessions_left > 0);
   if (!provider) return null;
   const d = detail.data, grid = slots.data?.grid;
   const external = d?.external_booking;
@@ -44,7 +55,7 @@ export function BookProviderSheet({ provider, followupId, onClose, onDone }) {
     setBusy(true);
     try {
       const starts_at = grid ? pick : new Date(when2.replace(' ', 'T')).toISOString();
-      await api.post('/appointments', { provider_id: provider.id, starts_at, duration_min: grid ? slots.data.slot_min : 30, mode: d && d.in_person === false ? 'remote' : mode, reason: reason || undefined, ...(followupId ? { followup_id: followupId } : {}) });
+      await api.post('/appointments', { provider_id: provider.id, starts_at, ...(svc ? { service_id: svc.id, ...(usePkg ? { patient_package_id: usePkg } : code.trim() ? { offer_code: code.trim() } : {}) } : { duration_min: grid ? slots.data.slot_min : 30 }), mode: svc && !svc.delivery_modes.includes(mode) ? svc.delivery_modes[0] : d && d.in_person === false ? 'remote' : mode, reason: reason || undefined, ...(followupId ? { followup_id: followupId } : {}) });
       toast('Request sent — waiting for confirmation'); onDone?.(); onClose();
     } catch (e) { toast(e.message?.includes('Invalid time') ? 'Use the format 2026-11-02 17:30' : e.message); } finally { setBusy(false); }
   };
@@ -67,6 +78,34 @@ export function BookProviderSheet({ provider, followupId, onClose, onDone }) {
           </View>
         </Card>
       ) : null}
+      {services.data?.length ? (
+        <View style={{ gap: 6 }}>
+          <T weight="800" size={13}>Service</T>
+          <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
+            <Chip label="General consultation" active={!svc} onPress={() => { setSvc(null); setQuote(null); setUsePkg(null); }} />
+            {services.data.map((s) => <Chip key={s.id} label={`${s.title} · ${s.duration_min} min · ${moneyIn(Number(s.price_cents), s.currency)}`} active={svc?.id === s.id} onPress={() => { setSvc(s); setUsePkg(null); askQuote(s); }} />)}
+          </View>
+          {svc?.cancellation_policy ? <T size={12} color={c.mute}>Cancellation: {svc.cancellation_policy}</T> : null}
+          {svc && !usePkg ? <>
+            <Field label="Offer code (optional)" value={code} onChangeText={setCode} placeholder="e.g. SPRING10" />
+            <Btn small title="Check price" color={c.violet} style={{ alignSelf: 'flex-start' }} onPress={() => askQuote()} />
+            {quote ? <Card color={c.mintSoft} pad={10}><T weight="800">{moneyIn(quote.total_cents, quote.currency)}{quote.discount_cents ? ` (was ${moneyIn(quote.list_price_cents, quote.currency)})` : ''}</T>{quote.offer ? <T size={12} color={c.mute}>Offer applied: {quote.offer.title}</T> : null}</Card> : quoteErr ? <T size={12} color={c.red}>{quoteErr}</T> : null}
+          </> : null}
+          {usable.length ? <View style={{ gap: 6 }}><T weight="800" size={13}>Use a package session</T><View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>{usable.map((k) => <Chip key={k.id} label={`${k.title} · ${k.sessions_left} left`} active={usePkg === k.id} onPress={() => setUsePkg(usePkg === k.id ? null : k.id)} />)}</View>{usePkg ? <T size={12} color={c.mute}>Nothing more to pay for this visit.</T> : null}</View> : null}
+        </View>
+      ) : null}
+      {packs.data?.filter((k) => !svc || k.service_id === svc.id).length ? (
+        <Card pad={10}>
+          <T weight="800" size={13}>Packages from this provider</T>
+          {packs.data.filter((k) => !svc || k.service_id === svc.id).map((k) => (
+            <View key={k.id} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 6 }}>
+              <View style={{ flex: 1 }}><T size={13} weight="700">{k.title}</T><T size={11} color={c.mute}>{k.sessions} sessions · {moneyIn(Number(k.price_cents), k.currency)}{k.valid_days ? ` · valid ${k.valid_days} days` : ''}{k.refund_terms ? ` · ${k.refund_terms}` : ''}</T></View>
+              <Btn small title="Buy" color={c.cyan} onPress={async () => { try { const b = await api.post(`/provider-packages/${k.id}/buy`, {}); owned.reload(); if (b.status === 'awaiting_payment') setPayPkg({ type: 'physio_package', id: b.id, amount: Number(b.price_cents), currency: b.currency, label: k.title }); else toast('Package ready to use'); } catch (e) { toast(e.message); } }} />
+            </View>
+          ))}
+        </Card>
+      ) : null}
+      {payPkg ? <PaySheet target={payPkg} onClose={() => setPayPkg(null)} onDone={owned.reload} /> : null}
       {slots.loading && !slots.data ? <Loading /> : slots.error ? <ErrorBox error={slots.error} onRetry={slots.reload} /> : grid ? (
         slots.data.slots.length ? byDay(slots.data.slots, slots.data.timezone).map(([day, list]) => (
           <View key={day} style={{ gap: 6 }}>
@@ -77,7 +116,7 @@ export function BookProviderSheet({ provider, followupId, onClose, onDone }) {
       ) : <Field label="When (2026-11-02 17:30)" value={when2} onChangeText={setWhen} />}
       {grid ? <T size={12} color={c.mute}>Times shown in {slots.data.timezone}.</T> : <T size={12} color={c.mute}>This provider has not published opening hours yet, so they will confirm or suggest another time.</T>}
       {both ? <View style={{ flexDirection: 'row', gap: 6 }}>{[['in_person', 'In person'], ['remote', 'Remote']].map(([v, l]) => <Chip key={v} label={l} active={mode === v} onPress={() => setMode(v)} />)}</View> : null}
-      {d?.consult_fee_cents ? <T size={13}>Fee: <T weight="800">{money(d.consult_fee_cents)}</T> — you pay after the request, before the provider confirms.</T> : null}
+      {d?.consult_fee_cents && !svc ? <T size={13}>Fee: <T weight="800">{money(d.consult_fee_cents)}</T> — you pay after the request, before the provider confirms.</T> : null}
       <Field label="What is it about? (encrypted — only you and the provider can read it)" value={reason} onChangeText={setReason} multiline />
       <Btn title="Request appointment" color={c.pink} loading={busy} disabled={grid ? !pick : !when2.trim()} onPress={send} />
       <FormSheet visible={ext} onClose={() => setExt(false)} title="Add your booking" submitLabel="Add to my appointments"
