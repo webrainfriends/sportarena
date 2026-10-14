@@ -10,6 +10,7 @@ A self-declared role (athlete, coach, physio, doctor…) never counts as verifie
 | `coach` | your profile | `coach` role | photo ID + coaching certificate or federation licence | 24 mo |
 | `physio` | your profile | `physio` role | photo ID + professional licence | 12 mo |
 | `doctor` | your profile | `doctor` role | photo ID + medical council registration | 12 mo |
+| `insurer` | your profile | `insurer` role | insurance regulator licence + business registration or authorisation letter | 12 mo (approval also marks the insurer profile verified; revoking clears it) |
 | `sponsor` | a sponsor you own | sponsor owner | business registration + domain proof or authorisation letter | 12 mo |
 | `event` | an event you organise | organiser | sanction letter, venue confirmation or public listing | 12 mo |
 
@@ -37,6 +38,13 @@ so expiry or revocation applies immediately. Cases may carry an optional `jurisd
 Grace, emergency exception, error codes and the per-action table are in `docs/health.md` (Clinical credential).
 Config: `CLINICAL_GRACE_DAYS` (default 0), `CLINICAL_JURISDICTIONS` (default any).
 
+## Onboarding timeline & document access
+Physios, doctors, insurers, sponsors (and every other type) follow one timeline: **documents submitted → review queue → platform review → decision → verified & public**.
+* `list_my_onboarding` (`GET /me/onboarding`): one card per thing you can get verified (by role, plus each sponsor you own) with state, next step and required-document progress.
+* `get_verification_timeline` (`GET /verification/cases/:id/timeline`): stages (done / current / upcoming / blocked), `next_step` with who must act, the required / one-of documents with which are provided or missing.
+* Documents stay AES-256-GCM encrypted. `get_verification_document` returns one only to the uploader or to someone the uploader shared it with (`share_verification_documents`: one person, chosen documents or all, 1–365 days, revocable with `revoke_verification_share`, listed by `list_verification_shares` / `list_verification_shared_with_me`). Everyone else gets `404`; every read is written to `audit_log`. Platform reviewers keep their separate, audit-logged evidence read.
+* Shares are never deleted, only revoked (`revoked_at`). Migration `071` only widens the type check and adds `verification_shares`.
+
 ## UI
-Me → **Verification** (request, track, add evidence, resubmit, withdraw); admins also get the **Verification queue** there.
+Me → **Onboarding & verification**: a light, card-per-role board; tapping a card opens the vertical timeline with the next step, a documents checklist (upload per slot, view, add), and a *Who can see these documents* panel (search-and-pick a person, choose 7/30/90 days, revoke); admins also get the **Verification queue** there.
 Verified people show a "✓ Verified …" badge on their public profile.
