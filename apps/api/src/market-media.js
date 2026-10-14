@@ -41,7 +41,7 @@ async function store(stream, userId, purpose = null) {
     if (!t) throw badRequest('Unsupported file. Use JPEG, PNG, WebP or GIF images, or MP4, MOV or WebM videos.');
     if (t.kind === 'photo' && size > MARKET_LIMITS.photoBytes) throw new AppError(413, 'too_large', `Images can be up to ${MARKET_LIMITS.photoBytes / 2 ** 20} MB`);
     if (purpose === 'avatar' && (t.kind !== 'photo' || t.type === 'image/gif')) throw badRequest('Use a JPEG, PNG or WebP photo for your profile picture.');
-    const pending = await one('SELECT count(*)::int AS n FROM market_media WHERE uploader_id=$1 AND post_id IS NULL AND purpose IS NULL AND removed_at IS NULL', [userId]);
+    const pending = await one('SELECT count(*)::int AS n FROM market_media WHERE uploader_id=$1 AND post_id IS NULL AND product_id IS NULL AND purpose IS NULL AND removed_at IS NULL', [userId]);
     if (purpose !== 'avatar' && pending.n >= MARKET_LIMITS.perUserUnattached) throw new AppError(409, 'limit_reached', 'Attach your uploads to a post before adding more');
     const id = randomUUID();
     const file = `${id}.${t.ext}`;

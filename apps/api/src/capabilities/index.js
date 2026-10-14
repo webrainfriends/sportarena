@@ -53,6 +53,7 @@ import './associations.js';
 import './guardians.js';
 import './billboard.js';
 import './shop.js';
+import './shop-cart.js';
 import './hire.js';
 import './coach-market.js';
 import './coach-business.js';
