@@ -33,7 +33,7 @@ after(async () => { server.close(); await pool.end(); });
 
 test('rules are public and describe evidence + checklist per type', async () => {
   const r = must(await api('GET', '/verification/rules'));
-  assert.deepEqual(r.types.map((t) => t.type).sort(), ['coach', 'doctor', 'event', 'gamer', 'physio', 'sponsor']);
+  assert.deepEqual(r.types.map((t) => t.type).sort(), ['coach', 'doctor', 'event', 'gamer', 'insurer', 'physio', 'sponsor']);
   assert.ok(r.types.every((t) => t.checklist.length >= 3 && t.validity_months > 0));
 });
 
