@@ -124,17 +124,17 @@ cap({
   async handler({ user }, i) {
     await mustFind('venues', i.id, 'id');
     const [sum, dist, items, mine] = await Promise.all([
-      one("SELECT round(avg(rating),2) AS avg, count(*)::int AS count FROM testimonials WHERE subject_type='venue' AND subject_id=$1", [i.id]),
-      many("SELECT rating, count(*)::int AS n FROM testimonials WHERE subject_type='venue' AND subject_id=$1 GROUP BY rating", [i.id]),
+      one("SELECT round(avg(rating),2) AS avg, count(*)::int AS count FROM testimonials WHERE subject_type='venue' AND subject_id=$1 AND status='published' AND visibility='public'", [i.id]),
+      many("SELECT rating, count(*)::int AS n FROM testimonials WHERE subject_type='venue' AND subject_id=$1 AND status='published' AND visibility='public' GROUP BY rating", [i.id]),
       many(
-        `SELECT t.id, t.rating, t.body, t.created_at, t.reply_body, t.replied_at, u.id AS author_id, u.handle, u.display_name, u.avatar_emoji, u.avatar_color, u.avatar_url, ru.display_name AS replied_by,
+        `SELECT t.id, t.rating, t.body, t.created_at, t.updated_at, t.verification, t.reply_body, t.replied_at, u.id AS author_id, u.handle, u.display_name, u.avatar_emoji, u.avatar_color, u.avatar_url, ru.display_name AS replied_by,
                 EXISTS (SELECT 1 FROM bookings b JOIN resources r ON r.id=b.resource_id WHERE r.venue_id=$1 AND b.user_id=t.author_id AND b.status='confirmed' AND b.ends_at < now()) AS verified
            FROM testimonials t JOIN users u ON u.id=t.author_id LEFT JOIN users ru ON ru.id=t.reply_by
-          WHERE t.subject_type='venue' AND t.subject_id=$1 AND ($2::int IS NULL OR t.rating=$2)
+          WHERE t.subject_type='venue' AND t.subject_id=$1 AND t.status='published' AND t.visibility='public' AND ($2::int IS NULL OR t.rating=$2)
           ORDER BY CASE WHEN $3='verified' THEN (EXISTS (SELECT 1 FROM bookings b JOIN resources r ON r.id=b.resource_id WHERE r.venue_id=$1 AND b.user_id=t.author_id AND b.status='confirmed' AND b.ends_at < now())) END DESC NULLS LAST,
                    CASE WHEN $3='highest' THEN t.rating END DESC, CASE WHEN $3='lowest' THEN t.rating END ASC, t.created_at DESC
           LIMIT $4 OFFSET $5`, [i.id, i.stars ?? null, i.sort, i.limit, i.offset]),
-      user ? one("SELECT id, rating, body FROM testimonials WHERE subject_type='venue' AND subject_id=$1 AND author_id=$2", [i.id, user.id]) : null,
+      user ? one("SELECT id, rating, body, status FROM testimonials WHERE subject_type='venue' AND subject_id=$1 AND author_id=$2", [i.id, user.id]) : null,
     ]);
     const distribution = Object.fromEntries([5, 4, 3, 2, 1].map((s) => [s, dist.find((d) => d.rating === s)?.n ?? 0]));
     return {

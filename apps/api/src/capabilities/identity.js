@@ -240,7 +240,7 @@ cap({
     const [profiles, awards, rating, teams, credentials] = await Promise.all([
       many('SELECT p.role, p.level, p.position, p.is_default, s.slug, s.name AS sport, s.emoji FROM sport_profiles p JOIN sports s ON s.id = p.sport_id WHERE p.user_id = $1 ORDER BY p.is_default DESC, p.created_at, p.id', [i.id]),
       many('SELECT kind, count(*)::int AS n FROM awards WHERE user_id = $1 GROUP BY kind', [i.id]),
-      one("SELECT round(avg(rating),2) AS avg, count(*)::int AS n FROM testimonials WHERE subject_type='user' AND subject_id=$1", [i.id]),
+      one("SELECT round(avg(rating),2) AS avg, count(*)::int AS n FROM testimonials WHERE subject_type='user' AND subject_id=$1 AND status='published' AND visibility='public'", [i.id]),
       many("SELECT t.id, t.name, t.emoji, t.color, m.role FROM team_members m JOIN teams t ON t.id = m.team_id WHERE m.user_id=$1 AND m.status='active'", [i.id]),
       profileCredentials(i.id),
     ]);

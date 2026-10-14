@@ -106,8 +106,8 @@ cap({
            CASE WHEN $5::float8 IS NULL OR v.latitude IS NULL THEN NULL ELSE round((6371 * 2 * asin(sqrt(
              power(sin(radians(v.latitude - $5) / 2), 2) + cos(radians($5)) * cos(radians(v.latitude)) * power(sin(radians(v.longitude - $6) / 2), 2))))::numeric, 2) END AS distance_km,
            (SELECT count(*)::int FROM resources r WHERE r.venue_id=v.id AND r.active) AS resources,
-           (SELECT round(avg(rating),2) FROM testimonials t WHERE t.subject_type='venue' AND t.subject_id=v.id) AS rating,
-           (SELECT count(*)::int FROM testimonials t WHERE t.subject_type='venue' AND t.subject_id=v.id) AS reviews,
+           (SELECT round(avg(rating),2) FROM testimonials t WHERE t.subject_type='venue' AND t.subject_id=v.id AND t.status='published' AND t.visibility='public') AS rating,
+           (SELECT count(*)::int FROM testimonials t WHERE t.subject_type='venue' AND t.subject_id=v.id AND t.status='published' AND t.visibility='public') AS reviews,
            (SELECT min(x) FROM (SELECT min(r.hourly_rate_cents) AS x FROM resources r WHERE r.venue_id=v.id AND r.active AND r.kind <> 'equipment' AND ($3::uuid IS NULL OR r.sport_id=$3)
                                 UNION ALL SELECT min(p.hourly_rate_cents) FROM price_rules p WHERE p.venue_id=v.id AND p.active AND (p.resource_id IS NULL OR $3::uuid IS NULL OR EXISTS (SELECT 1 FROM resources r2 WHERE r2.id=p.resource_id AND r2.sport_id=$3))) m) AS min_hourly_rate_cents,
            (SELECT coalesce(array_agg(DISTINCT s.slug), '{}') FROM resources r JOIN sports s ON s.id=r.sport_id WHERE r.venue_id=v.id AND r.active) AS sports,
@@ -143,7 +143,7 @@ cap({
       many('SELECT weekday, opens_min, closes_min FROM venue_hours WHERE venue_id=$1 AND removed_at IS NULL ORDER BY weekday, opens_min', [i.id]),
       many("SELECT id, name, kind, value, min_slots, weekdays, valid_from, valid_to, resource_id FROM discounts WHERE venue_id=$1 AND active AND code IS NULL AND (valid_to IS NULL OR valid_to >= current_date) ORDER BY name", [i.id]),
       many('SELECT * FROM venue_media WHERE venue_id=$1 AND removed_at IS NULL ORDER BY is_cover DESC, position, created_at LIMIT 40', [i.id]),
-      one("SELECT round(avg(rating),2) AS rating, count(*)::int AS reviews FROM testimonials WHERE subject_type='venue' AND subject_id=$1", [i.id]),
+      one("SELECT round(avg(rating),2) AS rating, count(*)::int AS reviews FROM testimonials WHERE subject_type='venue' AND subject_id=$1 AND status='published' AND visibility='public'", [i.id]),
       one('SELECT count(*)::int AS favourites, coalesce(bool_or(user_id = $2::uuid), false) AS is_favourite FROM favourite_venues WHERE venue_id=$1 AND removed_at IS NULL', [i.id, user?.id ?? null]),
       user ? one('SELECT coalesce(sum(remaining),0)::int AS my_points FROM loyalty_lots WHERE user_id=$1 AND venue_id=$2 AND remaining > 0 AND expires_at > now()', [user.id, i.id]) : { my_points: 0 },
       many('SELECT id, kind, name, description, price_cents, duration_days, discount_bp, sessions, session_value_cents, valid_days FROM venue_plans WHERE venue_id=$1 AND active ORDER BY kind DESC, price_cents', [i.id]),

@@ -154,7 +154,7 @@ cap({
       many(`SELECT e.id AS entry_id, t.id AS team_id, t.name, t.emoji, t.color, u.id AS user_id, u.handle, u.display_name FROM event_entries e LEFT JOIN teams t ON t.id=e.team_id LEFT JOIN users u ON u.id=e.user_id WHERE e.event_id=$1 AND e.status='accepted'`, [i.id]),
       standings(i.id),
       many("SELECT sp.id, sp.name, sp.emoji, ss.in_kind FROM sponsorships ss JOIN sponsors sp ON sp.id=ss.sponsor_id WHERE ss.target_type='event' AND ss.target_id=$1 AND ss.status='active'", [i.id]),
-      one("SELECT round(avg(rating),2) AS avg, count(*)::int AS n FROM testimonials WHERE subject_type='event' AND subject_id=$1", [i.id]),
+      one("SELECT round(avg(rating),2) AS avg, count(*)::int AS n FROM testimonials WHERE subject_type='event' AND subject_id=$1 AND status='published' AND visibility='public'", [i.id]),
       ev.venue_id ? one('SELECT id, name, city, emoji FROM venues WHERE id=$1', [ev.venue_id]) : null,
     ]);
     return { ...ev, verified: (await badgesFor('event', [ev.id])).get(ev.id) ?? [], venue, entrants, standings: table, sponsors, rating };

@@ -105,8 +105,8 @@ cap({
         SELECT ${PUBLIC_USER}, t.provider_type, ${PROFILE_COLS}, coalesce(pp.currency, $1) AS currency,
                coalesce(pp.consult_fee_cents, (SELECT min(x.hourly_rate_cents) FROM sport_profiles x WHERE x.user_id=u.id AND x.role IN ('physio','doctor') AND x.hourly_rate_cents > 0)) AS fee_cents,
                coalesce((SELECT array_agg(DISTINCT s.slug ORDER BY s.slug) FROM sport_profiles x JOIN sports s ON s.id=x.sport_id WHERE x.user_id=u.id AND x.role IN ('physio','doctor')), '{}') AS sports,
-               (SELECT round(avg(r.rating)::numeric, 2) FROM testimonials r WHERE r.subject_type='user' AND r.subject_id=u.id) AS rating,
-               (SELECT count(*)::int FROM testimonials r WHERE r.subject_type='user' AND r.subject_id=u.id) AS rating_count,
+               (SELECT round(avg(r.rating)::numeric, 2) FROM testimonials r WHERE r.subject_type='user' AND r.subject_id=u.id AND r.status='published' AND r.visibility='public') AS rating,
+               (SELECT count(*)::int FROM testimonials r WHERE r.subject_type='user' AND r.subject_id=u.id AND r.status='published' AND r.visibility='public') AS rating_count,
                EXISTS (SELECT 1 FROM verification_cases v WHERE v.subject_type='user' AND v.subject_id=u.id AND v.type=t.provider_type AND v.status='approved' AND v.expires_at > now()) AS credential_verified,
                (SELECT count(*) FROM provider_availability a WHERE a.provider_id=u.id AND a.removed_at IS NULL) > 0 AS has_hours
           FROM users u LEFT JOIN provider_profiles pp ON pp.user_id=u.id
@@ -149,7 +149,7 @@ cap({
     const row = await one(
       `SELECT ${PUBLIC_USER}, pp.provider_type, ${PROFILE_COLS}, pp.currency, pp.consult_fee_cents, pp.listed,
               coalesce((SELECT array_agg(DISTINCT s.slug) FROM sport_profiles x JOIN sports s ON s.id=x.sport_id WHERE x.user_id=u.id AND x.role IN ('physio','doctor')), '{}') AS sports,
-              (SELECT round(avg(rating)::numeric, 2) FROM testimonials t WHERE t.subject_type='user' AND t.subject_id=u.id) AS rating, (SELECT count(*)::int FROM testimonials t WHERE t.subject_type='user' AND t.subject_id=u.id) AS rating_count
+              (SELECT round(avg(rating)::numeric, 2) FROM testimonials t WHERE t.subject_type='user' AND t.subject_id=u.id AND t.status='published' AND t.visibility='public') AS rating, (SELECT count(*)::int FROM testimonials t WHERE t.subject_type='user' AND t.subject_id=u.id AND t.status='published' AND t.visibility='public') AS rating_count
          FROM users u LEFT JOIN provider_profiles pp ON pp.user_id=u.id WHERE u.id=$1 AND (pp.user_id IS NOT NULL OR EXISTS (SELECT 1 FROM sport_profiles x WHERE x.user_id=u.id AND x.role IN ('physio','doctor')))`, [i.id]);
     if (!row || row.listed === false) throw notFound('Provider');
     const sched = await loadSchedule(i.id);
