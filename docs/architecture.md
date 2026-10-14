@@ -95,7 +95,7 @@ capabilities/*.js  ->  registry
   currency are verified against the record; a mismatch fails the payment and fulfils nothing.
 * Webhooks (`/api/v1/webhooks/*`) are mounted before the JSON parser so the raw body can be signature-checked
   (Stripe HMAC locally, PayPal via `verify-webhook-signature`). A non-2xx response makes the provider retry.
-* Payable purposes: shop order, coach hire, insurance policy, venue invoice (`payments.purpose_type`).
+* Payable purposes: shop order (or a whole shop cart: `shop_checkout`, see [shop.md](shop.md)), coach hire, insurance policy, venue invoice (`payments.purpose_type`).
   Refund helpers `refund`, `refundPartial`, `refundFor` live in `payments/service.js`.
 * Not built: payouts to sellers, coaches or venues.
 

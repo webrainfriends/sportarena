@@ -122,6 +122,34 @@ test('shop order: pay with Stripe (confirm + webhook), refund on cancel, no cros
   assert.equal((await api('GET', '/shop/orders', { token: buyer.token })).body.find((x) => x.id === o3.id).status, 'awaiting_payment');
 });
 
+test('shop cart: one payment for the whole checkout, a cancelled line is refunded alone', async () => {
+  const seller = await signup(['supplier']); const buyer = await signup(['athlete']); const other = await signup(['athlete']);
+  const mk = async (b) => (await api('POST', '/shop/products', { token: seller.token, body: b })).body;
+  const ball = await mk({ name: 'Cart ball', price_cents: 2000, stock: 5 }); const cap = await mk({ name: 'Cart cap', price_cents: 1000, stock: 5 });
+  await api('POST', '/shop/cart/items', { token: buyer.token, body: { product_id: ball.id, quantity: 2 } });
+  await api('POST', '/shop/cart/items', { token: buyer.token, body: { product_id: cap.id, quantity: 1 } });
+  const co = (await api('POST', '/shop/cart/checkout', { token: buyer.token, body: { ship_to: '12 MG Road, Pune' } })).body;
+  assert.equal(co.status, 'awaiting_payment');
+  assert.equal(co.amount_due_cents, 5000);
+  const pay = (u) => api('POST', '/payments', { token: u.token, body: { purpose_type: 'shop_checkout', purpose_id: co.checkout_id, provider: 'stripe' } });
+  assert.equal((await pay(other)).status, 403, 'not your checkout');
+  const p = await pay(buyer);
+  assert.equal(p.status, 201, JSON.stringify(p.body));
+  assert.equal(p.body.amount_cents, 5000, 'amount is the sum of the lines, read from the DB');
+  fake.stripeSessions[p.body.checkout_url.split('/').pop()].payment_status = 'paid';
+  assert.equal((await api('POST', `/payments/${p.body.id}/confirm`, { token: buyer.token })).body.status, 'paid');
+  const mine = (await api('GET', '/shop/orders', { token: buyer.token })).body.filter((o) => o.checkout_id === co.checkout_id);
+  assert.deepEqual(mine.map((o) => o.status), ['placed', 'placed'], 'all lines placed by the one payment');
+  assert.equal((await pay(buyer)).status, 409, 'cannot pay twice');
+  const capLine = mine.find((o) => o.product_name === 'Cart cap');
+  const before = fake.stripeRefunds.length;
+  assert.equal((await api('PATCH', `/shop/orders/${capLine.id}`, { token: buyer.token, body: { status: 'cancelled' } })).status, 200);
+  assert.equal(fake.stripeRefunds.length, before + 1, 'Stripe was asked to refund that line');
+  const { rows: [row] } = await pool.query('SELECT status, refunded_cents FROM payments WHERE id=$1', [p.body.id]);
+  assert.equal(Number(row.refunded_cents), 1000);
+  assert.equal(row.status, 'paid', 'the rest of the payment stands');
+});
+
 test('coach hire: pay with PayPal (capture on confirm), coach confirms after payment, cancel refunds', async () => {
   const coach = await signup(['coach']), hirer = await signup(['athlete']);
   await api('POST', '/me/sport-profiles', { token: coach.token, body: { sport: 'football', role: 'coach', hourly_rate_cents: 80000 } });

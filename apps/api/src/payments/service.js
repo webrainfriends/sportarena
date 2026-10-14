@@ -15,6 +15,11 @@ export async function describePurpose(c, type, id) {
     const o = await q('SELECT o.id, o.buyer_id AS payer_id, o.total_cents AS amount, o.status, p.name FROM shop_orders o JOIN shop_products p ON p.id=o.product_id WHERE o.id=$1 FOR UPDATE OF o');
     return o && { payerId: o.payer_id, amount: Number(o.amount), name: o.name, payable: o.status === 'awaiting_payment' };
   }
+  if (type === 'shop_checkout') {
+    // everything bought together in one cart: pay what is still awaiting payment (lines cancelled meanwhile drop out)
+    const o = (await c.query("SELECT min(buyer_id::text)::uuid AS payer_id, coalesce(sum(total_cents) FILTER (WHERE status='awaiting_payment'), 0) AS amount, count(*) FILTER (WHERE status='awaiting_payment')::int AS due FROM shop_orders WHERE checkout_id=$1", [id])).rows[0];
+    return o?.payer_id && { payerId: o.payer_id, amount: Number(o.amount), name: `Gotmygame Shop order (${o.due} item${o.due === 1 ? '' : 's'})`, payable: o.due > 0 };
+  }
   if (type === 'coach_hire') {
     const h = await q("SELECT h.hirer_id AS payer_id, h.total_cents AS amount, h.status, h.payment_status, u.display_name FROM coach_hires h JOIN users u ON u.id=h.coach_id WHERE h.id=$1 FOR UPDATE OF h");
     return h && { payerId: h.payer_id, amount: Number(h.amount), name: `Coaching session with ${h.display_name}`, payable: h.payment_status === 'unpaid' && h.status !== 'cancelled' };
@@ -47,6 +52,7 @@ export async function describePurpose(c, type, id) {
 async function fulfil(c, type, id) {
   const sql = {
     shop_order: "UPDATE shop_orders SET status='placed' WHERE id=$1 AND status='awaiting_payment'",
+    shop_checkout: "UPDATE shop_orders SET status='placed' WHERE checkout_id=$1 AND status='awaiting_payment'",
     coach_hire: "UPDATE coach_hires SET payment_status='paid', status=CASE WHEN request_response_id IS NOT NULL AND status='requested' THEN 'confirmed' ELSE status END WHERE id=$1 AND payment_status='unpaid' AND status IN ('requested','confirmed')",
     insurance_policy: "UPDATE insurance_policies SET status='active' WHERE id=$1 AND status='pending_payment'",
     appointment: "UPDATE appointments SET payment_status='paid', updated_at=now() WHERE id=$1 AND payment_status='unpaid' AND status IN ('requested','confirmed')",
