@@ -15,6 +15,7 @@ import { CaseQueue } from './cases';
 import { AccessRequests } from './partners';
 import { ProviderProfileSection } from './provider';
 import { SecuritySection, TokensSection } from './security';
+import { HealthComplianceDesk } from './health-privacy';
 
 const mask = (v) => (v ? '••••••••' : '—');
 const PII = [['email', 'Email'], ['full_name', 'Full name'], ['phone', 'Phone'], ['dob', 'Date of birth'], ['national_id', 'National ID'], ['address', 'Address']];
@@ -79,6 +80,7 @@ export function Me() {
       {user.roles.includes('admin') ? <Section title="Login approvals (platform team)" color={c.orange}><AccessRequests /></Section> : null}
       {user.roles.includes('admin') ? <VerificationQueue /> : null}
       {user.roles.includes('admin') ? <CaseQueue /> : null}
+      {user.roles.includes('admin') ? <HealthComplianceDesk /> : null}
 
       <SecuritySection />
       <TokensSection mcpUrl={MCP_URL} />
