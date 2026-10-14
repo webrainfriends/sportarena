@@ -138,8 +138,8 @@ cap({
     const v = await mustFind('venues', i.id);
     const [areas, stats, peers, disc] = await Promise.all([
       many('SELECT id, name, kind, sport_id, hourly_rate_cents, indoor FROM resources WHERE venue_id=$1 AND active AND kind <> \'equipment\' ORDER BY name', [i.id]),
-      one(`SELECT (SELECT round(avg(rating),2)::float8 FROM testimonials WHERE subject_type='venue' AND subject_id=$1) AS rating,
-                  (SELECT count(*)::int FROM testimonials WHERE subject_type='venue' AND subject_id=$1) AS reviews,
+      one(`SELECT (SELECT round(avg(rating),2)::float8 FROM testimonials WHERE subject_type='venue' AND subject_id=$1 AND status='published' AND visibility='public') AS rating,
+                  (SELECT count(*)::int FROM testimonials WHERE subject_type='venue' AND subject_id=$1 AND status='published' AND visibility='public') AS reviews,
                   (SELECT coalesce(sum(extract(epoch FROM b.ends_at - b.starts_at) / 3600 * b.quantity),0)::float8 FROM bookings b JOIN resources r ON r.id=b.resource_id
                     WHERE r.venue_id=$1 AND b.status IN ('confirmed','no_show') AND b.starts_at > now() - interval '30 days' AND b.starts_at < now()) AS unit_hours`, [i.id]),
       many(`SELECT r.kind, r.sport_id, r.hourly_rate_cents FROM resources r JOIN venues pv ON pv.id=r.venue_id

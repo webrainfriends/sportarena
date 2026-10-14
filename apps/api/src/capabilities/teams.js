@@ -68,7 +68,7 @@ cap({
     const [members, awards, rating] = await Promise.all([
       many(`SELECT ${PUBLIC_USER}, m.role AS team_role, m.jersey_no FROM team_members m JOIN users u ON u.id=m.user_id WHERE m.team_id=$1 AND m.status='active' ORDER BY m.jersey_no NULLS LAST, u.display_name`, [i.id]),
       many('SELECT id, name, kind, awarded_at FROM awards WHERE team_id=$1 ORDER BY awarded_at DESC', [i.id]),
-      one("SELECT round(avg(rating),2) AS avg, count(*)::int AS n FROM testimonials WHERE subject_type='team' AND subject_id=$1", [i.id]),
+      one("SELECT round(avg(rating),2) AS avg, count(*)::int AS n FROM testimonials WHERE subject_type='team' AND subject_id=$1 AND status='published' AND visibility='public'", [i.id]),
     ]);
     const mine = user ? await one('SELECT role, status, availability FROM team_members WHERE team_id=$1 AND user_id=$2', [i.id, user.id]) : null;
     // young members are only listed for people who may see them (themselves, their guardians, the team's managers)

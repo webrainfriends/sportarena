@@ -13,8 +13,8 @@ export const PRODUCT = `p.id, p.name, p.category, p.description, p.price_cents, 
   CASE WHEN p.compare_at_cents > p.price_cents THEN round(100.0 * (p.compare_at_cents - p.price_cents) / p.compare_at_cents)::int END AS discount_pct,
   u.display_name AS seller_name, s.slug AS sport_slug, s.name AS sport, s.emoji AS sport_emoji,
   coalesce((SELECT json_agg(json_build_object('id', m.id, 'url', '/api/v1/market/media/' || m.id) ORDER BY m.position, m.created_at) FROM market_media m WHERE m.product_id = p.id AND m.removed_at IS NULL), '[]'::json) AS images,
-  (SELECT round(avg(t.rating), 1)::float FROM testimonials t WHERE t.subject_type = 'product' AND t.subject_id = p.id) AS rating,
-  (SELECT count(*)::int FROM testimonials t WHERE t.subject_type = 'product' AND t.subject_id = p.id) AS rating_count,
+  (SELECT round(avg(t.rating), 1)::float FROM testimonials t WHERE t.subject_type = 'product' AND t.subject_id = p.id AND t.status = 'published' AND t.visibility = 'public') AS rating,
+  (SELECT count(*)::int FROM testimonials t WHERE t.subject_type = 'product' AND t.subject_id = p.id AND t.status = 'published' AND t.visibility = 'public') AS rating_count,
   coalesce((SELECT sum(o.quantity)::int FROM shop_orders o WHERE o.product_id = p.id AND o.status <> 'cancelled'), 0) AS sold,
   EXISTS (SELECT 1 FROM shop_wishlist w WHERE w.product_id = p.id AND w.user_id = $1 AND w.active) AS wishlisted`;
 export const PRODUCT_FROM = 'FROM shop_products p JOIN users u ON u.id = p.seller_id LEFT JOIN sports s ON s.id = p.sport_id';

@@ -112,7 +112,7 @@ cap({
       const resources = await many(
         `SELECT r.*, s.name AS sport, s.slug AS sport_slug FROM resources r LEFT JOIN sports s ON s.id=r.sport_id WHERE r.venue_id=$1 AND r.active AND ($2::uuid IS NULL OR r.sport_id=$2) ORDER BY r.kind, r.name`, [vid, sport?.id ?? null]);
       const [rating, offers] = await Promise.all([
-        one("SELECT round(avg(rating),2) AS rating, count(*)::int AS reviews FROM testimonials WHERE subject_type='venue' AND subject_id=$1", [vid]),
+        one("SELECT round(avg(rating),2) AS rating, count(*)::int AS reviews FROM testimonials WHERE subject_type='venue' AND subject_id=$1 AND status='published' AND visibility='public'", [vid]),
         many("SELECT id, name, kind, value, min_slots, weekdays, valid_to, resource_id FROM discounts WHERE venue_id=$1 AND active AND code IS NULL AND (valid_to IS NULL OR valid_to >= current_date)", [vid]),
       ]);
       const areas = resources.filter((r) => r.kind !== 'equipment');

@@ -3,7 +3,7 @@
 // testimonials in both directions, and reports. Hires, requests and reviews live in hire.js / coach-market.js.
 import { z } from 'zod';
 import { cap, id, page, money } from '../registry.js';
-import { one, many } from '../db.js';
+import { one, many, tx } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { sportBySlugOrId } from '../helpers.js';
 import { config } from '../config.js';
@@ -248,7 +248,12 @@ cap({
   async handler({ user }, i) {
     if (i.id === user.id) throw badRequest('You cannot review yourself');
     await requireRelationship(user, i.id);
-    const saved = await one("INSERT INTO testimonials(author_id, subject_type, subject_id, rating, body) VALUES ($1,'user',$2,$3,$4) ON CONFLICT (author_id, subject_type, subject_id) DO UPDATE SET rating=EXCLUDED.rating, body=EXCLUDED.body, created_at=now() RETURNING *", [user.id, i.id, i.rating, i.body]);
+    const saved = await tx(async (c) => {
+      const prev = (await c.query("SELECT * FROM testimonials WHERE author_id=$1 AND subject_type='user' AND subject_id=$2 FOR UPDATE", [user.id, i.id])).rows[0];
+      if (prev?.status === 'hidden') throw badRequest('This testimonial was hidden by moderation and cannot be edited');
+      if (prev) await c.query("INSERT INTO testimonial_revisions(testimonial_id, action, actor_id, rating, body, status) VALUES ($1,'edit',$2,$3,$4,$5)", [prev.id, user.id, prev.rating, prev.body, prev.status]);
+      return (await c.query("INSERT INTO testimonials(author_id, subject_type, subject_id, rating, body, verification) VALUES ($1,'user',$2,$3,$4,'verified_interaction') ON CONFLICT (author_id, subject_type, subject_id) DO UPDATE SET rating=EXCLUDED.rating, body=EXCLUDED.body, status='published', verification='verified_interaction', updated_at=now() RETURNING *", [user.id, i.id, i.rating, i.body])).rows[0];
+    });
     await notify(null, i.id, { kind: 'testimonial_received', title: `${user.display_name} (your coach) wrote about you`, body: i.body.slice(0, 140), data: { testimonial_id: saved.id } });
     return saved;
   },
@@ -259,7 +264,7 @@ cap({
   summary: 'Your testimonials. dir=received: reviews of you from athletes, teams and events you coached (with the session, your reply and whether it is pinned). dir=given: testimonials you wrote for athletes.',
   input: z.object({ dir: z.enum(['received', 'given']).default('received'), ...page }),
   async handler({ user }, i) {
-    if (i.dir === 'given') return many("SELECT t.id, t.rating, t.body, t.created_at, u.id AS athlete_id, u.display_name AS athlete_name, u.avatar_emoji, u.avatar_color, u.avatar_url FROM testimonials t JOIN users u ON u.id=t.subject_id WHERE t.author_id=$1 AND t.subject_type='user' ORDER BY t.created_at DESC LIMIT $2 OFFSET $3", [user.id, i.limit, i.offset]);
+    if (i.dir === 'given') return many("SELECT t.id, t.rating, t.body, t.created_at, u.id AS athlete_id, u.display_name AS athlete_name, u.avatar_emoji, u.avatar_color, u.avatar_url FROM testimonials t JOIN users u ON u.id=t.subject_id WHERE t.author_id=$1 AND t.subject_type='user' AND t.status='published' ORDER BY t.created_at DESC LIMIT $2 OFFSET $3", [user.id, i.limit, i.offset]);
     return many(
       `SELECT r.id, r.rating, r.body, r.reply, r.replied_at, r.pinned, r.created_at, a.display_name AS author_name, a.avatar_emoji, a.avatar_color, a.avatar_url, h.audience, h.starts_at AS session_at, s.name AS sport
          FROM coach_reviews r JOIN users a ON a.id=r.reviewer_id JOIN coach_hires h ON h.id=r.hire_id LEFT JOIN sports s ON s.id=h.sport_id WHERE r.coach_id=$1 ORDER BY r.created_at DESC, r.id LIMIT $2 OFFSET $3`, [user.id, i.limit, i.offset]);

@@ -37,8 +37,8 @@ cap({
   name: 'list_favourite_venues', method: 'GET', path: '/me/favourites', tag: TAG, summary: 'Your saved venues with rating, cover photo, price-from and offers (most recently saved first).',
   handler: ({ user }) => many(
     `SELECT v.id, v.name, v.emoji, v.city, v.currency, v.timezone, f.notify_offers, f.created_at AS saved_at,
-            (SELECT round(avg(rating),2) FROM testimonials t WHERE t.subject_type='venue' AND t.subject_id=v.id) AS rating,
-            (SELECT count(*)::int FROM testimonials t WHERE t.subject_type='venue' AND t.subject_id=v.id) AS reviews,
+            (SELECT round(avg(rating),2) FROM testimonials t WHERE t.subject_type='venue' AND t.subject_id=v.id AND t.status='published' AND t.visibility='public') AS rating,
+            (SELECT count(*)::int FROM testimonials t WHERE t.subject_type='venue' AND t.subject_id=v.id AND t.status='published' AND t.visibility='public') AS reviews,
             (SELECT min(r.hourly_rate_cents) FROM resources r WHERE r.venue_id=v.id AND r.active AND r.kind <> 'equipment') AS min_hourly_rate_cents,
             (SELECT count(*)::int FROM discounts d WHERE d.venue_id=v.id AND d.active AND d.code IS NULL AND (d.valid_to IS NULL OR d.valid_to >= current_date)) AS offers,
             (SELECT '/api/v1/media/' || m.id FROM venue_media m WHERE m.venue_id=v.id AND m.removed_at IS NULL AND m.kind='photo' ORDER BY m.is_cover DESC, m.position LIMIT 1) AS cover_url
