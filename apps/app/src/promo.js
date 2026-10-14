@@ -1,11 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Platform } from 'react-native';
+import { Animated, Easing, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 
 const h = React.createElement;
 const SCENE_MS = 3400;
 
 /**
- * Portrait promo card for the landing page (web only). It loops forever, muted, from the moment the page opens.
+ * Portrait promo card for the landing page (web and native). It loops forever, muted, from the moment the page opens.
  *
  * Real footage wins: drop a 9:16 video at `public/promo.mp4` (up to 2160×3840) and it plays instead of the built-in
  * scenes. Otherwise the card runs one motion-graphic scene per feature, and each scene shows a real photo if one is
@@ -35,7 +36,64 @@ const CSS = `
 @media (prefers-reduced-motion: reduce) { .sa-promo-zoom, .sa-promo-emoji { animation: none; } }
 `;
 
+/** Native (iOS/Android) version of the card: the same scenes, driven by Animated instead of CSS. */
+function PromoCardNative({ onJoin, width }) {
+  const [i, setI] = useState(0);
+  const enter = useRef(new Animated.Value(0)).current;
+  const bar = useRef(new Animated.Value(0)).current;
+  const bob = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const t = setInterval(() => setI((n) => (n + 1) % SCENES.length), SCENE_MS);
+    return () => clearInterval(t);
+  }, []);
+  useEffect(() => {
+    enter.setValue(0); bar.setValue(0);
+    Animated.timing(enter, { toValue: 1, duration: 700, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+    Animated.timing(bar, { toValue: 1, duration: SCENE_MS, easing: Easing.linear, useNativeDriver: true }).start();
+  }, [i, enter, bar]);
+  useEffect(() => {
+    const loop = Animated.loop(Animated.sequence([
+      Animated.timing(bob, { toValue: 1, duration: 1600, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+      Animated.timing(bob, { toValue: 0, duration: 1600, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+    ]));
+    loop.start();
+    return () => loop.stop();
+  }, [bob]);
+
+  const sc = SCENES[i];
+  const height = Math.round(width * 16 / 9);
+  const rise = enter.interpolate({ inputRange: [0, 1], outputRange: [22, 0] });
+  return (
+    <View accessibilityRole="summary" accessibilityLabel="Gotmygame in 30 seconds" style={{ width, height, maxWidth: '100%', borderRadius: 34, overflow: 'hidden', backgroundColor: '#0B1020', borderWidth: 6, borderColor: '#0B1020', shadowColor: '#7C3AED', shadowOpacity: 0.45, shadowRadius: 30, shadowOffset: { width: 0, height: 18 }, elevation: 12 }}>
+      <LinearGradient key={sc.id} colors={[sc.colors[0], sc.colors[1], '#0B1020']} locations={[0, 0.6, 1]} start={{ x: 0.2, y: 0 }} end={{ x: 0.8, y: 1 }} style={StyleSheet.absoluteFill}>
+        <Animated.Text style={{ position: 'absolute', top: '17%', left: 0, right: 0, textAlign: 'center', fontSize: Math.round(width * 0.36), transform: [{ translateY: bob.interpolate({ inputRange: [0, 1], outputRange: [0, -14] }) }, { rotate: bob.interpolate({ inputRange: [0, 1], outputRange: ['-5deg', '6deg'] }) }] }}>{sc.emoji}</Animated.Text>
+        <Animated.View style={{ position: 'absolute', left: 22, right: 22, bottom: 86, opacity: enter, transform: [{ translateY: rise }] }}>
+          <Text style={{ fontSize: 12, fontWeight: '800', letterSpacing: 2.4, color: '#E0E7FF' }}>{sc.kicker}</Text>
+          <Text style={{ fontSize: Math.round(width * 0.115), fontWeight: '900', letterSpacing: -1.2, lineHeight: Math.round(width * 0.12), marginTop: 6, marginBottom: 8, color: '#fff' }}>{sc.title}</Text>
+          <Text style={{ fontSize: 15, lineHeight: 21, color: '#E0E7FF', fontWeight: '500' }}>{sc.text}</Text>
+        </Animated.View>
+      </LinearGradient>
+      <View style={{ position: 'absolute', top: 14, left: 16, right: 16, flexDirection: 'row', gap: 4 }}>
+        {SCENES.map((s, k) => (
+          <View key={s.id} style={{ flex: 1, height: 3, borderRadius: 2, backgroundColor: 'rgba(255,255,255,.28)', overflow: 'hidden' }}>
+            {k < i ? <View style={{ flex: 1, backgroundColor: '#fff' }} />
+              : k === i ? <Animated.View style={{ flex: 1, backgroundColor: '#fff', transform: [{ translateX: bar.interpolate({ inputRange: [0, 1], outputRange: [-1000, 0] }) }] }} /> : null}
+          </View>
+        ))}
+      </View>
+      <Pressable onPress={onJoin} accessibilityRole="button" style={{ position: 'absolute', left: 18, right: 18, bottom: 18, borderRadius: 999, paddingVertical: 14, paddingHorizontal: 18, backgroundColor: '#fff', alignItems: 'center' }}>
+        <Text style={{ color: '#3730A3', fontWeight: '800', fontSize: 15 }}>Join the arena — it’s free</Text>
+      </Pressable>
+    </View>
+  );
+}
+
 export function PromoCard({ onJoin, width = 340 }) {
+  return Platform.OS === 'web' ? <PromoCardWeb onJoin={onJoin} width={width} /> : <PromoCardNative onJoin={onJoin} width={width} />;
+}
+
+function PromoCardWeb({ onJoin, width }) {
   const [i, setI] = useState(0);
   const [video, setVideo] = useState(false);
   const [hidden, setHidden] = useState(false);
@@ -57,8 +115,6 @@ export function PromoCard({ onJoin, width = 340 }) {
     document.addEventListener('visibilitychange', f);
     return () => document.removeEventListener('visibilitychange', f);
   }, []);
-  if (Platform.OS !== 'web') return null;
-
   const sc = SCENES[i];
   const height = Math.round(width * 16 / 9);
   const frame = {
