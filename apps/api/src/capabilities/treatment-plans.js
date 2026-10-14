@@ -114,7 +114,7 @@ async function render(planId, viewer) {
   const versions = await many(`SELECT * FROM treatment_plan_versions WHERE plan_id=$1 ${isProvider ? '' : "AND status IN ('published','superseded')"} ORDER BY version DESC`, [planId]);
   const out = [];
   for (const v of versions) {
-    const items = await many(`SELECT i.*, x.title, x.body_region, x.instructions, x.precautions, x.media_url, x.version AS exercise_version FROM treatment_plan_items i JOIN exercise_versions x ON x.id=i.exercise_version_id WHERE i.plan_version_id=$1 ORDER BY i.position`, [v.id]);
+    const items = await many(`SELECT i.*, x.exercise_id, x.title, x.body_region, x.instructions, x.precautions, x.media_url, x.version AS exercise_version FROM treatment_plan_items i JOIN exercise_versions x ON x.id=i.exercise_version_id WHERE i.plan_version_id=$1 ORDER BY i.position`, [v.id]);
     out.push({
       id: v.id, version: v.version, status: v.status, review_date: v.review_date, material_change: v.material_change, published_at: v.published_at, acknowledged_at: v.acknowledged_at,
       goals: decrypt(v.goals_enc, 'treatment_plans.goals'), patient_instructions: decrypt(v.patient_instructions_enc, 'treatment_plans.instructions'),

@@ -7,6 +7,7 @@ import { useNav } from '../nav';
 import { Avatar, Bubble, Btn, Card, Chip, Empty, ErrorBox, Field, GradCard, H1, H2, Loading, Row, Screen, Seg, Section, Sheet, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { AddFollowupSheet, ClinicalStatusCard, ConsentManager, FollowupsPanel, ProviderSearch, ShareRecordsSheet } from './provider';
+import { MyRehab, PracticePanel } from './physio-practice';
 import { SportSelect, SportPicker } from '../sportpicker';
 import { EntityPicker } from '../entity-picker';
 import { DateField } from '../pickers';
@@ -294,7 +295,7 @@ export function Awards() {
 
 export function Health() {
   const { user, has, toast } = useSession();
-  const [tab, setTab] = useState(has('athlete') ? 'recovery' : 'find');
+  const [tab, setTab] = useState(has('athlete') ? 'recovery' : has('physio', 'doctor') ? 'practice' : 'find');
   const [paying, setPaying] = useState(null);
   const [fu, setFu] = useState(null);
   const [share, setShare] = useState(null);
@@ -311,9 +312,12 @@ export function Health() {
       {has('doctor') ? <View style={{ marginTop: 10 }}><DoctorEntry /></View> : null}
       {isProv ? <View style={{ marginTop: 10 }}><ClinicalStatusCard /></View> : null}
       <View style={{ marginTop: 10 }}><Seg options={[...(has('athlete') ? [{ value: 'recovery', label: 'Recovery', emoji: '💚' }] : []), { value: 'find', label: 'Find a pro', emoji: '🔎' }, { value: 'appts', label: 'Appointments', emoji: '📅' }, { value: 'records', label: 'My records', emoji: '📋' }, { value: 'file', label: 'My file', emoji: '🗂️' }, { value: 'followups', label: 'Follow-ups', emoji: '🗓️' }, { value: 'consent', label: 'Access', emoji: '🔒' }]} value={tab} onChange={setTab} color={c.mint} /></View>
+      <View style={{ marginTop: 10 }}><Seg options={[...(has('athlete') ? [{ value: 'recovery', label: 'Recovery', emoji: '💚' }] : []), { value: 'find', label: 'Find a pro', emoji: '🔎' }, ...(isProv ? [{ value: 'practice', label: 'My practice', emoji: '🩺' }] : []), { value: 'rehab', label: 'My plans', emoji: '📝' }, { value: 'appts', label: 'Appointments', emoji: '📅' }, { value: 'records', label: 'My records', emoji: '📋' }, { value: 'followups', label: 'Follow-ups', emoji: '🗓️' }, { value: 'consent', label: 'Access', emoji: '🔒' }]} value={tab} onChange={setTab} color={c.mint} /></View>
       <View style={{ gap: 10, marginTop: 8 }}>
         {tab === 'recovery' && <RecoveryPanel />}
         {tab === 'find' && <ProviderSearch onBooked={() => { appts.reload(); setTab('appts'); }} />}
+        {tab === 'practice' && isProv && <PracticePanel />}
+        {tab === 'rehab' && <MyRehab />}
         {tab === 'consent' && <ConsentManager />}
         {tab === 'file' && <MyHealthFile />}
         {tab === 'followups' && <FollowupsPanel />}
