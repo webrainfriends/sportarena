@@ -17,13 +17,14 @@ export const aiConfigured = () => Boolean(process.env.ANTHROPIC_API_KEY) || Bool
 export const quoteData = (v, max = 400) => String(v ?? '').replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
 
 /** @returns {Promise<string|null>} the model's text, or null when AI is not configured or the call failed. */
-export async function ask({ system, user, maxTokens = 800 }) {
+export async function ask({ system, user, maxTokens = 800, timeoutMs = TIMEOUT_MS }) {
+  // `user` is a string, or an array of content blocks (text, image, document) when a file is being read.
   if (!aiConfigured()) return null;
   const body = { model: aiModel(), max_tokens: maxTokens, system, messages: [{ role: 'user', content: user }] };
   try {
     if (transport) return await transport(body);
     const res = await fetch(API, {
-      method: 'POST', signal: AbortSignal.timeout(TIMEOUT_MS),
+      method: 'POST', signal: AbortSignal.timeout(timeoutMs),
       headers: { 'content-type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' }, body: JSON.stringify(body),
     });
     if (!res.ok) { console.warn(`[ai] request failed (${res.status})`); return null; }

@@ -234,3 +234,90 @@ test('match templates follow the sport and match type: badminton has no goals, A
   assert.equal(m.status, 201, JSON.stringify(m.body));
   assert.equal((await history(u, `sport_profile_id=${p.id}`))[0].match_type, 'doubles');
 });
+
+// ---------------------------------------------------------------------------------------------- import from a file
+import { deflateRawSync } from 'node:zlib';
+function zip(files) {
+  const parts = [], central = [];
+  let off = 0;
+  for (const [name, text] of Object.entries(files)) {
+    const nm = Buffer.from(name), raw = Buffer.from(text), data = deflateRawSync(raw);
+    const lh = Buffer.alloc(30); lh.writeUInt32LE(0x04034b50, 0); lh.writeUInt16LE(8, 8); lh.writeUInt32LE(data.length, 18); lh.writeUInt32LE(raw.length, 22); lh.writeUInt16LE(nm.length, 26);
+    const ch = Buffer.alloc(46); ch.writeUInt32LE(0x02014b50, 0); ch.writeUInt16LE(8, 10); ch.writeUInt32LE(data.length, 20); ch.writeUInt32LE(raw.length, 24); ch.writeUInt16LE(nm.length, 28); ch.writeUInt32LE(off, 42);
+    parts.push(lh, nm, data); central.push(ch, nm); off += 30 + nm.length + data.length;
+  }
+  const cd = Buffer.concat(central), end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0); end.writeUInt16LE(central.length / 2, 10); end.writeUInt32LE(cd.length, 12); end.writeUInt32LE(off, 16);
+  return Buffer.concat([...parts, cd, end]);
+}
+const PNG = Buffer.from('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c6360000002000001e221bc330000000049454e44ae426082', 'hex');
+const putFile = async (u, profileId, body) => {
+  const r = await fetch(`${base}/api/v1/me/matches/extract?sport_profile_id=${profileId}`, { method: 'PUT', headers: { authorization: `Bearer ${u.token}`, 'content-type': 'application/octet-stream' }, body });
+  return { status: r.status, body: await r.json() };
+};
+
+test('import reads CSV, Excel and Word files; PDFs and photos go through AI and are only a proposal', async () => {
+  const { setAiTransport } = await import('../src/ai.js');
+  setAiTransport(null);
+  const u = await signup(), other = await signup();
+  const bp = await profile(u, 'badminton');
+
+  // CSV: tab-separated is accepted too, and a missing played_on header is explained
+  const csv = await putFile(u, bp.id, 'played_on,opponent,smashes\n2026-05-01,Ravi,12\n');
+  assert.equal(csv.status, 200, JSON.stringify(csv.body));
+  assert.equal(csv.body.rows, 1); assert.equal(csv.body.via, 'file'); assert.equal(csv.body.kind, 'csv');
+  assert.equal((await putFile(u, bp.id, 'played_on\topponent\n2026-05-02\tAsha\n')).body.csv, 'played_on,opponent\n2026-05-02,Asha\n');
+  assert.equal((await putFile(u, bp.id, 'date,opponent\n2026-05-02,Asha\n')).status, 400);
+  assert.equal((await putFile(u, bp.id, Buffer.alloc(0))).status, 400);
+  assert.equal((await putFile(other, bp.id, csv.body.csv)).status, 404, 'only your own profile');
+
+  // Excel: shared strings, a date stored as a day number, an empty cell in the middle
+  const xlsx = zip({
+    'xl/workbook.xml': '<workbook/>',
+    'xl/sharedStrings.xml': '<sst><si><t>played_on</t></si><si><t>opponent</t></si><si><t>smashes</t></si><si><t>Blue &amp; Co</t></si></sst>',
+    'xl/worksheets/sheet1.xml': '<worksheet><sheetData><row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" t="s"><v>1</v></c><c r="C1" t="s"><v>2</v></c></row><row r="2"><c r="A2"><v>46143</v></c><c r="B2" t="s"><v>3</v></c><c r="C2"><v>9</v></c></row></sheetData></worksheet>',
+  });
+  const x = await putFile(u, bp.id, xlsx);
+  assert.equal(x.status, 200, JSON.stringify(x.body));
+  assert.equal(x.body.kind, 'xlsx');
+  assert.equal(x.body.csv, 'played_on,opponent,smashes\n2026-05-01,Blue & Co,9\n');
+  const checked = await api('POST', '/me/matches/import', { token: u.token, body: { sport_profile_id: bp.id, csv: x.body.csv, dry_run: true } });
+  assert.equal(checked.body.importable, 1, 'the extracted CSV goes straight through the normal import check');
+
+  // Word: a table with a played_on header is read directly; without one it needs AI
+  const cellx = (t) => `<w:tc><w:p><w:r><w:t>${t}</w:t></w:r></w:p></w:tc>`;
+  const tbl = (rows) => `<w:document><w:body><w:tbl>${rows.map((r) => `<w:tr>${r.map(cellx).join('')}</w:tr>`).join('')}</w:tbl></w:body></w:document>`;
+  const docx = zip({ 'word/document.xml': tbl([['Played on', 'Opponent', 'Result'], ['2026-06-01', 'Kiran', 'win']]) });
+  const w = await putFile(u, bp.id, docx);
+  assert.equal(w.status, 200, JSON.stringify(w.body));
+  assert.equal(w.body.csv, 'Played on,Opponent,Result\n2026-06-01,Kiran,win\n');
+  const prose = zip({ 'word/document.xml': '<w:document><w:body><w:p><w:r><w:t>1 June 2026 beat Kiran 21-15</w:t></w:r></w:p></w:body></w:document>' });
+
+  // PDF / photo / prose without AI configured: an honest, actionable error
+  const pdf = Buffer.from('%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF');
+  for (const f of [pdf, PNG, prose]) {
+    const r = await putFile(u, bp.id, f);
+    assert.equal(r.status, 503, JSON.stringify(r.body));
+    assert.match(r.body.error.message, /CSV or Excel/);
+  }
+
+  // With AI: the model sees the document or image itself; the answer must still be a CSV with played_on
+  let seen;
+  setAiTransport(async (b) => { seen = b; return '```csv\nplayed_on,opponent,smashes\n2026-07-01,Meera,5\n```'; });
+  const p = await putFile(u, bp.id, pdf);
+  assert.equal(p.status, 200, JSON.stringify(p.body));
+  assert.equal(p.body.via, 'ai'); assert.equal(p.body.kind, 'pdf');
+  assert.equal(p.body.csv, 'played_on,opponent,smashes\n2026-07-01,Meera,5\n');
+  assert.equal(seen.messages[0].content[0].type, 'document');
+  assert.match(seen.system, /smashes/, 'the sport columns guide the model');
+  assert.equal((await putFile(u, bp.id, PNG)).body.kind, 'image');
+  assert.equal(seen.messages[0].content[0].type, 'image');
+  assert.equal((await putFile(u, bp.id, prose)).status, 200);
+  setAiTransport(async () => 'NO_MATCHES');
+  assert.equal((await putFile(u, bp.id, pdf)).status, 400);
+  setAiTransport(async () => 'Sorry, I cannot read this');
+  assert.equal((await putFile(u, bp.id, pdf)).status, 400);
+  setAiTransport(null);
+  // nothing was imported by reading files
+  assert.equal((await history(u)).length, 0);
+});

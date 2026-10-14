@@ -44,3 +44,10 @@ A logged match and an official one are **never merged silently**. `GET /me/match
 ## Limits / deferred
 
 Substitute appearance is unconfirmed (excluded). Approved-competition provenance (#58), versioned metrics (#68), and an official bulk import by handle are not built; the model keys everything on `user_id`, so they plug in as new source rows in the projection. Youth rules: the endpoints only ever return the signed-in athlete's own rows.
+
+## Importing from a file
+
+`PUT /api/v1/me/matches/extract?sport_profile_id=…` takes the raw file (CSV/TSV/TXT, XLSX, DOCX, PDF, PNG, JPEG, WebP, GIF; max 10 MB) and answers `{ csv, rows, via, kind }`. Nothing is stored and nothing is imported: the app shows the CSV, then runs `import_matches` with `dry_run` and only then imports, so the existing duplicate rule and all-or-nothing validation apply to every source.
+
+* CSV/TSV/semicolon text, XLSX (first sheet with data; Excel date numbers converted) and DOCX tables with a `played_on` header are read directly (`via: "file"`).
+* PDFs, photos and free-form Word text are read by Claude (`via: "ai"`, sport columns guide the model, nothing invented). Without `ANTHROPIC_API_KEY` the endpoint answers `503` with a message pointing to CSV/Excel.
