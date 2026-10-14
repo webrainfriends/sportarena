@@ -12,6 +12,7 @@ import { decrypt, encrypt } from '../crypto.js';
 import { clinicalCredential, lockCredential, requireVerifiedProvider } from '../clinical-access.js';
 import { guardianLink, hasConsent, requireConsent } from '../youth.js';
 import { currentClearance } from '../clearance.js';
+import { checkGrantBorder, checkTelehealthBorder } from '../health/privacy.js';
 import { SERVICE_SELECT } from './provider-services.js';
 import { bestOffer } from './provider-offers.js';
 import { redeemPackage } from './provider-packages.js';
@@ -41,6 +42,7 @@ cap({
     if (!p) throw badRequest('That person is not a registered physio or doctor');
     if (Date.parse(i.starts_at) < Date.now()) throw badRequest('Choose a time in the future');
     await requireVerifiedProvider(i.provider_id, { action: 'book_appointment', athleteId: user.id, forOther: true });
+    if (i.mode === 'remote') await checkTelehealthBorder(user.id, i.provider_id);   // a patient with a country regime consults remotely only with a provider registered there
     return tx(async (c) => {
       // one booking at a time per provider so two people cannot take the same slot
       await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`appt:${i.provider_id}`]);
@@ -146,7 +148,7 @@ cap({
 cap({
   name: 'grant_medical_access', method: 'POST', path: '/medical/grants', tag: 'Health', status: 201,
   summary: 'Consent: let a physio/doctor see your records (scope `full`, can also write) or only your fit-to-play status (scope `clearance`). Optionally for a limited number of days. By default the provider sees records they write plus anything written from now on; choose history `all` to share earlier records too. You can revoke at any time; the history of grants and revocations is kept.',
-  input: z.object({ provider_id: id, scope: z.enum(['full', 'clearance']).default('full'), expires_in_days: z.number().int().min(1).max(730).optional(), history: z.enum(['since_grant', 'all']).default('since_grant').describe('how far back the provider may read records written by others: since_grant (default) or all (your whole history)') }),
+  input: z.object({ provider_id: id, scope: z.enum(['full', 'clearance']).default('full'), expires_in_days: z.number().int().min(1).max(730).optional(), history: z.enum(['since_grant', 'all']).default('since_grant').describe('how far back the provider may read records written by others: since_grant (default) or all (your whole history)'), cross_border_ack: z.boolean().default(false).describe('confirm sharing with a provider registered in another country (or one who has not said where); required when your health-privacy country differs, see get_my_health_privacy') }),
   async handler({ user }, i) {
     const p = await one("SELECT 1 FROM sport_profiles WHERE user_id=$1 AND role IN ('physio','doctor') UNION SELECT 1 FROM provider_profiles WHERE user_id=$1", [i.provider_id]);
     if (!p) throw badRequest('That person is not a registered physio or doctor');
@@ -155,14 +157,17 @@ cap({
     // consent is the athlete's choice even for a provider whose credential lapsed, but they are told, and the provider cannot use it until verified
     const cred = await clinicalCredential(i.provider_id, { athleteId: user.id });
     const expires = i.expires_in_days ? new Date(Date.now() + i.expires_in_days * 864e5) : null;
+    // country rules (docs/health-compliance.md): sharing across a border needs the patient's acknowledgement, and a keep-it-in-country regime refuses it
+    const border = await checkGrantBorder(user.id, i.provider_id, { ack: i.cross_border_ack });
     return tx(async (c) => {
       await c.query(
-        `INSERT INTO medical_grants(athlete_id, provider_id, scope, expires_at, history_scope) VALUES ($1,$2,$3,$4,$5)
-         ON CONFLICT (athlete_id, provider_id) DO UPDATE SET scope=$3, expires_at=$4, history_scope=$5, revoked_at=NULL, granted_at=now()`, [user.id, i.provider_id, i.scope, expires, i.history]);
+        `INSERT INTO medical_grants(athlete_id, provider_id, scope, expires_at, history_scope, patient_regime, provider_regime, cross_border_ack_at) VALUES ($1,$2,$3,$4,$5,$6,$7,CASE WHEN $8::boolean THEN now() END)
+         ON CONFLICT (athlete_id, provider_id) DO UPDATE SET scope=$3, expires_at=$4, history_scope=$5, revoked_at=NULL, granted_at=now(), patient_regime=$6, provider_regime=$7, cross_border_ack_at=CASE WHEN $8::boolean THEN now() END`, [user.id, i.provider_id, i.scope, expires, i.history, border.patient, border.provider, border.cross_border]);
       await logGrant(c, user.id, i.provider_id, 'grant', i.scope, expires);
+      if (border.cross_border) await c.query("INSERT INTO health_privacy_events(user_id, action, regime, detail) VALUES ($1,'cross_border_ack',$2,$3)", [user.id, border.patient, `provider ${i.provider_id} registered in ${border.provider ?? 'unrecorded'}`]);
       await audit(c, user.id, 'grant_medical', 'users', i.provider_id);
       await notify(c, i.provider_id, { kind: 'consent_granted', title: 'An athlete shared access with you', body: 'Open Health to see who.', data: { athlete_id: user.id } });
-      return { ok: true, scope: i.scope, history: i.history, expires_at: expires, provider_verified: cred.ok, ...(cred.ok ? {} : { warning: `This ${cred.type}'s professional verification is not current (${cred.reason}). They cannot view or write records until it is renewed; your consent stays in place.`, credential_reason: cred.reason }) };
+      return { ok: true, scope: i.scope, history: i.history, expires_at: expires, cross_border: border.cross_border, provider_verified: cred.ok, ...(cred.ok ? {} : { warning: `This ${cred.type}'s professional verification is not current (${cred.reason}). They cannot view or write records until it is renewed; your consent stays in place.`, credential_reason: cred.reason }) };
     });
   },
 });
