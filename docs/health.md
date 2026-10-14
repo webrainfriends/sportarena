@@ -240,3 +240,41 @@ versioned consultation. Added (migration 064, additive; nothing converted from l
 
 Not in this slice (tracked in #212): problems/allergies/medications, care plans, results review, referrals, clearance versions, practice billing and
 tax (shared with #210/#71), teleconsultation, guardian access to summaries. Rollback: leave the table; older code ignores it.
+
+## Health-data governance across 11 countries (US, UK, Canada, UAE, India, Singapore, Malaysia, China, Japan, Australia, New Zealand)
+
+Existing -> gap -> change: consent, encryption, audit, credentials and MFA already existed, but there was no notion of *whose rules apply*, no way for a person to see who used their data or exercise their rights, no breach clock and no view of how a deployment measures up. Added (migration 070, additive; nothing dropped or rewritten): `users.health_country`, `health_notice_acceptances`, `health_data_requests` (+ append-only events), `privacy_incidents` (+ append-only events). All of it lives in the one Health screen (**Privacy** tab for everyone, **My practice → Overview / Compliance** for clinicians) and in **Me → Health privacy (platform team)**. No second console was added.
+
+**What this is and is not.** The catalogue (`src/health-regimes.js`, public via `list_health_regimes`) is *operator reference configuration*: laws, regulator, doctors' and physios' regulators and associations, consent model, rights deadline, first breach clock, retention, cross-border rule, remote-care and minors notes, with a `reviewed_on` date and a disclaimer on every response. It is **not legal advice and not a compliance certificate**. Where a law has no fixed number the entry says so and the platform's own 30-day commitment is used (`access_days.statutory: false`). Binding rules come from statutes and their regulators; professional associations (AMA, BMA, ...) issue ethics codes on top. Counsel must confirm every entry (and state, provincial and emirate rules) before an operator relies on it. Bump `REGIME_VERSION` when an entry changes: people who accepted the earlier notice are asked again.
+
+| Country | Main rules mapped | Rights answer | First breach clock | Records kept | Cross-border |
+|---|---|---|---|---|---|
+| US | HIPAA (+ HITECH, state laws, 42 CFR Part 2) | 30 days | 60 days | 6 y (state law often longer) | open, BAA needed |
+| UK | UK GDPR, DPA 2018, Caldicott | 1 month | 72 h to ICO | 8 y; children to 25 | safeguards |
+| Canada | PIPEDA + provincial (PHIPA, HIA, Quebec Law 25) | 30 days | as soon as feasible | 10 y (e.g. Ontario); children to 28 | safeguards |
+| UAE | ICT Health Law 2/2019, PDPL | 30 days (platform) | promptly | 25 y | **localised** (stays in UAE) |
+| India | DPDP Act + Rules, NMC telemedicine, ABDM | 30 days (platform) | 72 h report to the Board | 3 y minimum | safeguards |
+| Singapore | PDPA, Healthcare Services Act | 30 days | 3 days once notifiable | 6 y | safeguards |
+| Malaysia | PDPA 2010 (2024 amendment), PHFS Act | 21 days | 72 h | 7 y | safeguards |
+| China | PIPL, DSL, CSL, medical-records measures | 30 days (platform) | promptly | 15 y outpatient | **restricted** (CAC route + separate consent) |
+| Japan | APPI, Medical Care Act, MHLW guidelines | without delay (30 d platform) | ~3-5 days prelim, 30 d final | 5 y | safeguards |
+| Australia | Privacy Act/APPs, NDB scheme, My Health Records Act | 30 days | assess in 30 days | 7 y; children to 25 | safeguards |
+| New Zealand | Privacy Act 2020, Health Information Privacy Code | 20 working days | ~72 h | 10 y | safeguards |
+
+**Region and notice.** `get_my_health_region` / `set_my_health_region` (patients choose their own country; clinicians the country of their practice). Choosing needs `accept_notice: true` and records the notice version. Once a country is chosen, `grant_medical_access` is refused with `409 health_notice_required` until the current notice is accepted. With no country chosen behaviour is unchanged (existing data and flows are untouched).
+
+**Cross-border remote care.** `book_appointment` with `mode: remote` where patient and clinician chose different countries returns `409 cross_border_care` (which rules apply, the patient's transfer rule) until the patient sends `acknowledge_cross_border: true`. Unknown countries are never blocked.
+
+**Who accessed my data.** `list_my_health_access_log` shows every clinical read/write by a physio or doctor and every blocked attempt (who, what, when; never clinical content), derived from the credential-check audit trail that every clinical capability already writes.
+
+**Rights requests.** `create_health_data_request` (access, correction, restriction, objection, erasure) stamps the due date of the person's country; one open request per kind; `withdraw_health_data_request`. Platform team: `list_health_data_request_queue` (overdue first) and `resolve_health_data_request`. Fulfilling restriction, erasure or objection **never deletes**: it ends every active provider consent at once (grant history stays) and sets `retain_until` from the country's retention rule (children: the later of last entry + adult years and the birthday age; the DOB read is audit-logged). The patient keeps their own copy. Every step lands in `health_data_request_events` (append-only; DB triggers refuse updates and deletes).
+
+**Export / portability.** `export_my_health_data` returns a decrypted machine-readable copy (appointments, records, problems/allergies/medicines, follow-ups, consents and history, fit-to-play decisions, requests; newest 5000 per list), audit-logged and recorded as a fulfilled `export` request. Exercise plans, care plans, referrals and test results are not in the file yet: they are answered through an access request.
+
+**Incident register.** Clinicians `report_privacy_incident` (kind, severity, country, people affected, event if it happened at one, description with no names). The regulator clock of the chosen country starts from awareness (`regulator_due_at`, null = "as soon as practicable"); admins are notified. `update_privacy_incident` (platform team) moves it open -> assessed -> notified -> closed, records when the regulator and the people were told, and refuses to close without a notification unless a reason is given. `regulator_overdue` is computed.
+
+**Posture and practice checklist.** `get_health_compliance_posture` (platform team) reports key protection (KMS), MFA enforcement and enrolment, TLS, licence-jurisdiction allow-list, declared hosting country (`HEALTH_DATA_HOSTING_COUNTRY`) against localised/restricted countries, unread notices, overdue requests and incident clocks. `get_my_practice_compliance` (clinician) checks region, notice, current credential, licence country vs practice country, MFA and open incident clocks. Both return findings, never a pass certificate.
+
+**Event coverage data.** On-site incident logs stay encrypted, minimum-necessary (organisers see fit-to-play only) and audit-logged as before; privacy incidents can name the event; the event's country is chosen when reporting. Country retention rules do not yet govern event incident logs (nothing is deleted either way).
+
+Not in this slice: automatic erasure/retention jobs (nothing is ever auto-deleted), data-subject requests routed to individual practices rather than the platform team, per-province Canadian and per-state US rule sets, signed BAAs/processing agreements, exporting plans/results/referrals in the data file, notifications of the regulator itself. Rollback: leave the tables.

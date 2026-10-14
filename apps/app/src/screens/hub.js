@@ -6,8 +6,9 @@ import { useSession } from '../session';
 import { useNav } from '../nav';
 import { Avatar, Bubble, Btn, Card, Chip, Empty, ErrorBox, Field, GradCard, H1, H2, Loading, Row, Screen, Seg, Section, Sheet, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
-import { AddFollowupSheet, ClinicalStatusCard, ConsentManager, FollowupsPanel, ProviderSearch, ShareRecordsSheet } from './provider';
+import { AddFollowupSheet, ClinicalStatusCard, FollowupsPanel, ProviderSearch, ShareRecordsSheet } from './provider';
 import { MyRehab, PracticePanel } from './physio-practice';
+import { PrivacyHub } from './health-privacy';
 import { SportSelect, SportPicker } from '../sportpicker';
 import { EntityPicker } from '../entity-picker';
 import { DateField } from '../pickers';
@@ -304,11 +305,15 @@ export function Health() {
   const recs = useLoad(() => api.get('/medical/records', { limit: 30 }), []);
   const visits = useLoad(() => api.get('/medical/encounters', { limit: 30 }), []);
   const isProv = has('physio', 'doctor');
+  const region = useLoad(() => api.get('/me/health/region'), []);
   const act = async (fn, msg) => { try { await fn(); toast(msg); appts.reload(); } catch (e) { toast('' + e.message); } };
   return (
     <Screen>
       <H1>Health</H1>
       <Card color={c.mintSoft} pad={12}><T weight="900">Consent-first medical privacy</T><T size={12} color={c.mute}>Notes are encrypted. Doctors and physios only see your records after you grant access — and every read is logged.</T></Card>
+      {region.data && (!region.data.country || region.data.needs_notice) ? <Card color={c.sunSoft} pad={12} onPress={() => setTab('consent')} style={{ marginTop: 10 }}><T weight="900">{region.data.country ? 'The privacy rules changed — please read them' : 'Choose the country whose health-privacy rules apply to you'}</T><T size={12} color={c.mute}>Eleven countries are supported. It takes a minute and tells you your rights, deadlines and who can see what.</T><T size={12} weight="800" color={c.pink} style={{ marginTop: 6 }}>Open Privacy ›</T></Card> : null}
+      {isProv ? <View style={{ marginTop: 10 }}><ClinicalStatusCard /></View> : null}
+      <View style={{ marginTop: 10 }}><Seg options={[...(has('athlete') ? [{ value: 'recovery', label: 'Recovery', emoji: '💚' }] : []), { value: 'find', label: 'Find a pro', emoji: '🔎' }, ...(isProv ? [{ value: 'practice', label: 'My practice', emoji: '🩺' }] : []), { value: 'rehab', label: 'My plans', emoji: '📝' }, { value: 'appts', label: 'Appointments', emoji: '📅' }, { value: 'records', label: 'My records', emoji: '📋' }, { value: 'followups', label: 'Follow-ups', emoji: '🗓️' }, { value: 'consent', label: 'Privacy', emoji: '🔒' }]} value={tab} onChange={setTab} color={c.mint} /></View>
       {has('doctor') ? <View style={{ marginTop: 10 }}><DoctorEntry /></View> : null}
       {isProv ? <View style={{ marginTop: 10 }}><ClinicalStatusCard /></View> : null}
       <View style={{ marginTop: 10 }}><Seg options={[...(has('athlete') ? [{ value: 'recovery', label: 'Recovery', emoji: '💚' }] : []), { value: 'find', label: 'Find a pro', emoji: '🔎' }, { value: 'appts', label: 'Appointments', emoji: '📅' }, { value: 'records', label: 'My records', emoji: '📋' }, { value: 'file', label: 'My file', emoji: '🗂️' }, { value: 'followups', label: 'Follow-ups', emoji: '🗓️' }, { value: 'consent', label: 'Access', emoji: '🔒' }]} value={tab} onChange={setTab} color={c.mint} /></View>
@@ -318,6 +323,7 @@ export function Health() {
         {tab === 'find' && <ProviderSearch onBooked={() => { appts.reload(); setTab('appts'); }} />}
         {tab === 'practice' && isProv && <PracticePanel />}
         {tab === 'rehab' && <MyRehab />}
+        {tab === 'consent' && <PrivacyHub onChanged={region.reload} />}
         {tab === 'consent' && <ConsentManager />}
         {tab === 'file' && <MyHealthFile />}
         {tab === 'followups' && <FollowupsPanel />}

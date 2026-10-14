@@ -67,6 +67,7 @@ import './supply.js';
 import './medical.js';
 import './care-plans.js';
 import './clearances.js';
+import './health-privacy.js';
 import './referrals.js';
 import './investigations.js';
 import './clinical-context.js';
