@@ -146,6 +146,22 @@ warning in the Access list for providers whose verification lapsed. Server messa
 Limitations: sport scope is evaluated from the case's `sport_id` against the supplied `sport_id` or the athlete's sport profiles.
 Existing data is untouched; migration 049 only adds nullable/defaulted columns (rollback: leave them, older code ignores them).
 
+## Versioned care plans (issue #212, slice 2d)
+Existing -> gap -> change: follow-ups were single dated items; there was no patient-specific plan with goals, owners and versions. Added (migration 068, additive):
+`clinical_care_plans`, `clinical_care_plan_versions`, `clinical_care_plan_entries`; capabilities `create_care_plan`, `update_care_plan_draft`, `publish_care_plan`,
+`revise_care_plan`, `set_care_plan_state`, `log_care_plan_entry`, `list_care_plans`, `get_care_plan` (scope `clinical`).
+
+* A verified **doctor** with the athlete's full consent drafts goals (with baseline), patient-visible instructions, a review interval and actions (responsible person,
+  due date, completion criteria). The patient sees nothing until `publish_care_plan`. Drafts use `row_version` (stale = 409).
+* Published versions are immutable (API and DB trigger) and never deleted. A revision copies the published version (action keys are kept), and publishing it supersedes
+  the previous one, which stays in history. Plan state: `draft -> active <-> paused -> completed`; completing is the doctor's decision, not inferred.
+* The patient logs `completed` / `unable` / `symptom` in a separate append-only log; it cannot rewrite instructions. Action state is derived: `open`, `done_reported`
+  (patient said so), `unable`, `confirmed` / `cancelled` (doctor only - medically confirmed is distinct from task done). `overdue` only means the date passed: there is
+  no adherence score and nothing is adjusted automatically. Symptom notes are not monitored in real time and say so.
+* Encrypted, audit-logged, generic notifications; the athlete keeps read access regardless of consent or credential state.
+
+Not in this slice: pushing action due dates into `appointment_followups` / the unified schedule, monitored diaries with thresholds, physio rehab-plan links, screens.
+Rollback: leave the tables.
 ## Sports clearance decisions (issue #212, slice 3a)
 Existing -> gap -> change: clearance was a single enum on a free-text record, with no assessor, context, restrictions or expiry, so an old "cleared" never aged out.
 Added (migration 069, additive; `medical_records.clearance` untouched): `clinical_clearances`; capabilities `issue_clearance`, `withdraw_clearance`, `list_clearances`
