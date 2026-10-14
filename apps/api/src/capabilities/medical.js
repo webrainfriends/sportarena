@@ -11,6 +11,7 @@ import { audit, isAdmin, mustFind, PUBLIC_USER } from '../helpers.js';
 import { decrypt, encrypt } from '../crypto.js';
 import { clinicalCredential, lockCredential, requireVerifiedProvider } from '../clinical-access.js';
 import { guardianLink, hasConsent, requireConsent } from '../youth.js';
+import { crossBorderCheck, requireHealthNotice } from '../health-governance.js';
 import { currentClearance } from '../clearance.js';
 import { checkGrantBorder, checkTelehealthBorder } from '../health/privacy.js';
 import { SERVICE_SELECT } from './provider-services.js';
@@ -34,7 +35,7 @@ cap({
 cap({
   name: 'book_appointment', credential: true, method: 'POST', path: '/appointments', tag: 'Health', status: 201,
   summary: 'Request an appointment with a physio/doctor. If the provider has published weekly hours the time must be one of list_provider_slots (and not clash with time off or another appointment); otherwise any free time can be requested. The reason is encrypted. The provider is notified.',
-  input: z.object({ provider_id: id, starts_at: dt, duration_min: z.number().int().min(10).max(240).optional().describe('defaults to the service duration, else 30'), mode: z.enum(['in_person', 'remote']).default('in_person'), service_id: id.optional().describe('a service from list_provider_services; its duration and current price are used and snapshotted'), offer_code: z.string().trim().max(30).optional().describe('an offer code for that service (see quote_appointment)'), patient_package_id: id.optional().describe('spend one session of your prepaid package for this service (see list_my_packages); nothing more is charged'), followup_id: id.optional().describe('the follow-up this appointment is for'), reason: z.string().max(1000).optional() }),
+  input: z.object({ provider_id: id, starts_at: dt, duration_min: z.number().int().min(10).max(240).optional().describe('defaults to the service duration, else 30'), mode: z.enum(['in_person', 'remote']).default('in_person'), service_id: id.optional().describe('a service from list_provider_services; its duration and current price are used and snapshotted'), offer_code: z.string().trim().max(30).optional().describe('an offer code for that service (see quote_appointment)'), patient_package_id: id.optional().describe('spend one session of your prepaid package for this service (see list_my_packages); nothing more is charged'), followup_id: id.optional().describe('the follow-up this appointment is for'), acknowledge_cross_border: z.boolean().optional().describe('remote care only: confirm you understand the clinician practises under another country\'s rules'), reason: z.string().max(1000).optional() }),
   async handler({ user }, i) {
     if (i.provider_id === user.id) throw badRequest('Cannot book yourself');
     await requireConsent(user.id, 'medical', 'booking a health appointment');
@@ -43,6 +44,7 @@ cap({
     if (Date.parse(i.starts_at) < Date.now()) throw badRequest('Choose a time in the future');
     await requireVerifiedProvider(i.provider_id, { action: 'book_appointment', athleteId: user.id, forOther: true });
     if (i.mode === 'remote') await checkTelehealthBorder(user.id, i.provider_id);   // a patient with a country regime consults remotely only with a provider registered there
+    if (i.mode === 'remote') await crossBorderCheck(user.id, i.provider_id, i.acknowledge_cross_border);
     return tx(async (c) => {
       // one booking at a time per provider so two people cannot take the same slot
       await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`appt:${i.provider_id}`]);
@@ -154,6 +156,7 @@ cap({
     if (!p) throw badRequest('That person is not a registered physio or doctor');
     if (i.provider_id === user.id) throw badRequest('You cannot grant access to yourself');
     await requireConsent(user.id, 'medical', 'sharing health records');
+    await requireHealthNotice(user.id);
     // consent is the athlete's choice even for a provider whose credential lapsed, but they are told, and the provider cannot use it until verified
     const cred = await clinicalCredential(i.provider_id, { athleteId: user.id });
     const expires = i.expires_in_days ? new Date(Date.now() + i.expires_in_days * 864e5) : null;

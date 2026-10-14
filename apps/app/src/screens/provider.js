@@ -10,6 +10,7 @@ import { c, money, when } from '../theme';
 import { locale } from '../locale';
 import { moneyIn } from '../vtime';
 import { PaySheet } from '../PaySheet';
+import { CoveredProviders } from './insurance-panel';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const SPECIALTIES = ['sports medicine', 'knee', 'shoulder', 'back', 'acl', 'rehab', 'nutrition', 'concussion'];
@@ -46,6 +47,7 @@ export function BookProviderSheet({ provider, followupId, onClose, onDone }) {
     if (!s) return;
     try { setQuote(await api.get(`/providers/${provider.id}/quote`, { service_id: s.id, ...(code.trim() ? { offer_code: code.trim() } : {}) })); } catch (e) { setQuoteErr(e.message); }
   };
+  const panels = useLoad(() => (provider ? api.get(`/providers/${provider.id}/insurers`).catch(() => []) : Promise.resolve([])), [provider?.id]);
   const usable = (owned.data ?? []).filter((k) => svc && k.service_id === svc.id && k.provider_id === provider?.id && k.sessions_left > 0);
   if (!provider) return null;
   const d = detail.data, grid = slots.data?.grid;
@@ -78,6 +80,7 @@ export function BookProviderSheet({ provider, followupId, onClose, onDone }) {
           </View>
         </Card>
       ) : null}
+      {panels.data?.length ? <T size={12} color={c.mute}>On the panel of: {panels.data.map((x) => `${x.insurer}${x.cashless ? ' (cashless)' : ''}`).join(', ')}. Check your policy for what is covered.</T> : null}
       {services.data?.length ? (
         <View style={{ gap: 6 }}>
           <T weight="800" size={13}>Service</T>
@@ -321,7 +324,7 @@ function FollowupDetails({ id }) {
 export function ProviderSearch({ onBooked }) {
   const { user } = useSession();
   const [book, setBook] = useState(null);
-  const [pf, setPf] = useState({ type: '', remote: false, verified: false, sort: 'rating', q: '' });
+  const [pf, setPf] = useState({ type: '', remote: false, verified: false, sort: 'rating', q: '', covered: false });
   const provs = useLoad(() => api.get('/providers/search', { limit: 50, sort: pf.sort, ...(pf.type ? { type: pf.type } : {}), ...(pf.remote ? { remote: true } : {}), ...(pf.verified ? { verified: true } : {}), ...(pf.q.trim() ? { q: pf.q.trim() } : {}) }), [pf.type, pf.remote, pf.verified, pf.sort, pf.q]);
   return (
     <View style={{ gap: 10 }}>
@@ -329,10 +332,11 @@ export function ProviderSearch({ onBooked }) {
       <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
         {[['', 'Anyone'], ['physio', 'Physios'], ['doctor', 'Doctors']].map(([v, l]) => <Chip key={v} label={l} active={pf.type === v} onPress={() => setPf({ ...pf, type: v })} />)}
         <Chip label="Remote" active={pf.remote} onPress={() => setPf({ ...pf, remote: !pf.remote })} />
+        <Chip label="🛡️ Covered by my insurance" active={pf.covered} onPress={() => setPf({ ...pf, covered: !pf.covered })} />
         <Chip label="✓ Verified" active={pf.verified} onPress={() => setPf({ ...pf, verified: !pf.verified })} />
         {[['rating', 'Top rated'], ['fee', 'Lowest fee'], ['soonest', 'Soonest']].map(([v, l]) => <Chip key={v} label={l} active={pf.sort === v} onPress={() => setPf({ ...pf, sort: v })} />)}
       </View>
-      {provs.error ? <ErrorBox error={provs.error} onRetry={provs.reload} /> : provs.loading && !provs.data ? <Loading /> : !provs.data?.length ? (
+      {pf.covered ? <CoveredProviders filters={pf} onBook={(x) => setBook(x)} /> : provs.error ? <ErrorBox error={provs.error} onRetry={provs.reload} /> : provs.loading && !provs.data ? <Loading /> : !provs.data?.length ? (
         <Empty emoji="🩺" title="No providers match" sub="Try removing a filter." />
       ) : provs.data.map((x) => (
         <Card key={x.id} pad={14}>

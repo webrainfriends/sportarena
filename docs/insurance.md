@@ -43,6 +43,17 @@ An account holding the **`insurer`** role (picked at sign-up or added under Me �
 | Be found | `list_insurers` (`sport`, `accepting`), `get_insurer` | Public profile with active plans. |
 | Run the desk | `get_insurer_summary`, `list_insurer_policies`, `list_claims?as_insurer=true` | Book of business with holder display names only: no beneficiary, no date of birth, no contact data. The policy number is shown in full and every read is audit-logged. |
 
+## Panel doctors and physios
+
+An insurer links physios/doctors to its **panel** so people covered by that insurer can find the right provider. Gotmygame records the arrangement; it does not process claims or settle "cashless" billing (that flag is information shown to patients).
+
+* **Both sides agree.** `invite_panel_provider` (insurer) → provider `respond_panel_link` (accepting needs a current verified credential); or `request_panel_membership` (provider) → insurer approves with terms via `respond_panel_link`. Nobody is listed without consent. `update_panel_member` edits terms; `end_panel_membership` ends a link from either side (rows and an append-only event history are kept, never deleted). `list_my_panel` shows links for the signed-in insurer or provider.
+* **Terms per link:** cashless (information), network reference, kinds of cover (`individual`, `team`, `group`, `organisation`, `event`; none = all), which of the insurer's plans (none = all), validity dates.
+* **Finding providers.** `list_covered_providers` returns, for the caller's own active policies (own cover, a team they play in, an event they are in), the providers on that insurer's panel whose terms match that kind of cover and plan, with which cover applies; no policy numbers. Public: `list_insurer_panel` (an insurer's current panel) and `list_provider_insurers` (the panels a provider is on). A provider only appears while the link is active, inside its dates, the profile is listed **and** their clinical credential is current right now (checked live).
+* **App.** Insurer desk → **Panel**; physio/doctor → Health → My practice → **Insurance**; patients → Health → Find a pro → **Covered by my insurance**; the booking sheet shows which panels a provider is on.
+* Migration `070_insurance_panels.sql` (additive).
+* Group and organisation cover are accepted as labels on a link but resolve to people only once those cover types exist (next change).
+
 ## Quotes (request → quote → accept → cover)
 * **`request_quote`** — a person, the manager of a team or the organiser of an event/tournament asks one insurer (`insurer_id`, or implied by
   `plan_id`) or leaves it **open** to every insurer taking requests. Participants, sport and months are the pricing inputs; the free-text note is

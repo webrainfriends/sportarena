@@ -280,6 +280,7 @@ cap({
       } else to = i.decision === 'reject' ? 'rejected' : 'needs_info';
       await c.query('UPDATE verification_cases SET status=$2, checklist=$3, decision_reason=$4, decided_at=now(), expires_at=$5, updated_at=now() WHERE id=$1', [row.id, to, JSON.stringify(i.checklist), i.reason ?? null, expires]);
       await logEvent(c, row.id, user.id, i.decision, 'in_review', to, i.reason);
+      if (to === 'approved' && row.type === 'insurer') await c.query('UPDATE insurers SET verified_at=now(), verified_by=$2 WHERE owner_id=$1', [row.subject_id, user.id]);
       const label = rule.label;
       await notify(c, row.requested_by, {
         kind: 'verification_decision', data: { case_id: row.id },
@@ -301,6 +302,7 @@ cap({
       if (row.status !== 'approved') throw conflict('Only an approved badge can be revoked');
       await c.query("UPDATE verification_cases SET status='revoked', decision_reason=$2, updated_at=now() WHERE id=$1", [row.id, i.reason]);
       await logEvent(c, row.id, user.id, 'revoke', 'approved', 'revoked', i.reason);
+      if (row.type === 'insurer') await c.query('UPDATE insurers SET verified_at=NULL, verified_by=NULL WHERE owner_id=$1', [row.subject_id]);
       await notify(c, row.requested_by, { kind: 'verification_decision', title: `${RULES[row.type].label} badge revoked`, body: i.reason, data: { case_id: row.id } });
       return { id: row.id, status: 'revoked' };
     });
