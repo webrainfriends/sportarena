@@ -40,7 +40,7 @@ test('a new Google user gets an account, and signing in again reuses it', async 
   const a = await google({ sub: 'g1', email: 'Pat.Lee@gmail.com', name: 'Pat Lee' });
   assert.equal(a.status, 200, JSON.stringify(a.body));
   assert.equal(a.body.user.display_name, 'Pat Lee');
-  assert.match(a.body.user.handle, /^[a-z0-9_]{3,24}$/);
+  assert.match(a.body.user.handle, /^pat_\d{5}$/);
   const me = await api('GET', '/me', null, a.body.token);
   assert.equal(me.body.email, 'pat.lee@gmail.com');
   const b = await google({ sub: 'g1', email: 'pat.lee@gmail.com', name: 'Pat Lee' });
