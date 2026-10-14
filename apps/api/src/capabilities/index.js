@@ -99,6 +99,4 @@ import './event-planning.js';
 import './partners.js';
 import './partner-pricing.js';
 import './partner-reports.js';
-import './health-privacy.js';
-import './health-breaches.js';
 export { capabilities } from '../registry.js';
