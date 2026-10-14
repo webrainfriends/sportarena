@@ -68,6 +68,7 @@ import './medical.js';
 import './encounters.js';
 import './provider-services.js';
 import './provider-offers.js';
+import './provider-tax.js';
 import './insurance.js';
 import './insurance-desk.js';
 import './insurance-quotes.js';
