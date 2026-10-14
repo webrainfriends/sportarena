@@ -14,7 +14,7 @@ import { guardianLink, hasConsent, requireConsent } from '../youth.js';
 
 const dt = z.string().datetime({ offset: true });
 /** Is there a current (not revoked, not expired) consent? `need='clearance'` accepts either scope; the default needs full record access. */
-const hasGrant = async (athleteId, providerId, need = 'full') => (await hasConsent(athleteId, 'medical')) && !!(await one(
+export const hasGrant = async (athleteId, providerId, need = 'full') => (await hasConsent(athleteId, 'medical')) && !!(await one(
   "SELECT 1 FROM medical_grants WHERE athlete_id=$1 AND provider_id=$2 AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now()) AND ($3::text = 'clearance' OR scope = 'full')", [athleteId, providerId, need]));
 const logGrant = (c, athleteId, providerId, action, scope, expiresAt) => c.query('INSERT INTO medical_grant_events(athlete_id, provider_id, action, scope, expires_at) VALUES ($1,$2,$3,$4,$5)', [athleteId, providerId, action, scope ?? null, expiresAt ?? null]);
 
