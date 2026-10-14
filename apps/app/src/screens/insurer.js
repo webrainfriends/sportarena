@@ -10,13 +10,14 @@ import { Btn, Card, Chip, Empty, ErrorBox, Field, H1, Loading, Screen, Section, 
 import { FormSheet } from '../FormSheet';
 import { c, day, money } from '../theme';
 import { moneyIn } from '../vtime';
+import { InsurerPanel } from './insurance-panel';
 import { DocumentsSheet, QuoteRequestSheet, RequestSheet, StatusTag, dayY, nice } from './insurance';
 
 const cur = (cents, currency) => (currency ? moneyIn(Number(cents), currency) : money(Number(cents)));
 const major = (cents, currency) => { let d = 2; try { d = new Intl.NumberFormat('en', { style: 'currency', currency: currency ?? 'INR' }).resolvedOptions().maximumFractionDigits; } catch { /* keep 2 */ } return String(Number(cents) / 10 ** d); };
 const list = (v) => String(v ?? '').split(',').map((x) => x.trim()).filter(Boolean);
 const COVER = { individual: 'Individual', team: 'Team', event: 'Event / tournament', venue: 'Venue' };
-const TABS = [['today', 'Today'], ['requests', 'Requests'], ['quotes', 'Quotes'], ['policies', 'Policies'], ['claims', 'Claims'], ['plans', 'Plans'], ['profile', 'Profile']];
+const TABS = [['today', 'Today'], ['requests', 'Requests'], ['quotes', 'Quotes'], ['policies', 'Policies'], ['claims', 'Claims'], ['plans', 'Plans'], ['panel', 'Panel'], ['profile', 'Profile']];
 
 const profileFields = (cur_) => [
   { key: 'name', label: 'Insurer name' },
@@ -414,6 +415,7 @@ export function InsurerDesk({ tab: startTab }) {
       {tab === 'policies' ? <Policies /> : null}
       {tab === 'claims' ? <Claims /> : null}
       {tab === 'plans' ? <Plans /> : null}
+      {tab === 'panel' ? <InsurerPanel /> : null}
       {tab === 'profile' ? <Profile me={m} onChanged={me.reload} /> : null}
       <Btn small title="See my public page" color={c.paper} ink={c.ink} onPress={() => push('InsurerPage', { id: m.id })} style={{ marginTop: 24, alignSelf: 'flex-start' }} />
       <QuoteFlow ask={ask} onClose={() => setAsk(null)} onDone={() => { setTick((x) => x + 1); setTab('quotes'); }} />
