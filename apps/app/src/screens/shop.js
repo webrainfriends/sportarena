@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Image, Pressable, View, useWindowDimensions } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Image, Modal, Platform, Pressable, ScrollView, Share, View, useWindowDimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { api, mediaUrl } from '../api';
 import { useLoad } from '../hooks';
@@ -68,22 +68,26 @@ const Round = ({ label, onPress, children, active, badge }) => (
   </Pressable>
 );
 
-/** Add to cart; once it is in the cart the same spot becomes a − / + stepper (capped by stock). */
-function AddControl({ p, big }) {
+/** Add to cart; once it is in the cart the same spot becomes a − / + stepper (capped by stock). `compact` = a round "+" that sits on the photo. */
+function AddControl({ p, big, compact }) {
   const { user, toast } = useSession();
   const { set, lineOf } = useCart();
   const [busy, setBusy] = useState(false);
   const line = lineOf(p.id);
   const run = async (body) => { setBusy(true); try { await set(body); } catch (e) { toast(e.message); } finally { setBusy(false); } };
-  if (p.seller_id === user?.id) return <Pill label="YOUR LISTING" />;
-  if (p.stock < 1) return <T size={13} weight="700" color={c.red}>Sold out</T>;
-  const h = big ? 46 : 36;
-  if (!line) return <Btn small={!big} title={big ? 'Add to cart' : 'Add'} onPress={() => run({ product_id: p.id, add: 1 })} loading={busy} style={big ? { flex: 1 } : undefined} />;
+  if (p.seller_id === user?.id) return compact ? null : <Pill label="YOUR LISTING" />;
+  if (p.stock < 1) return compact ? null : <T size={13} weight="700" color={c.red}>Sold out</T>;
+  const h = big ? 50 : compact ? 38 : 36;
+  const lift = compact ? { shadowColor: '#312E81', shadowOpacity: 0.3, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } } : null;
+  if (!line) {
+    if (compact) return <Pressable onPress={() => run({ product_id: p.id, add: 1 })} disabled={busy} accessibilityRole="button" accessibilityLabel={`Add ${p.name} to cart`} style={[{ width: h, height: h, borderRadius: h / 2, backgroundColor: c.pink, alignItems: 'center', justifyContent: 'center', opacity: busy ? 0.6 : 1 }, lift]}><T size={24} weight="700" color="#fff" style={{ marginTop: -2 }}>+</T></Pressable>;
+    return <Btn small={!big} title={big ? 'Add to cart' : 'Add'} onPress={() => run({ product_id: p.id, add: 1 })} loading={busy} style={big ? { flex: 1 } : undefined} />;
+  }
   const btn = (txt, on, off) => <Pressable disabled={off || busy} onPress={on} accessibilityLabel={txt === '+' ? 'More' : 'Fewer'} style={{ width: h, height: h, alignItems: 'center', justifyContent: 'center', opacity: off ? 0.35 : 1 }}><T size={20} weight="800" color="#fff">{txt === '−' && line.quantity === 1 ? '🗑' : txt}</T></Pressable>;
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: c.pink, borderRadius: 999, height: h, alignSelf: big ? 'stretch' : 'auto', justifyContent: 'space-between', flex: big ? 1 : undefined }}>
+    <View style={[{ flexDirection: 'row', alignItems: 'center', backgroundColor: c.pink, borderRadius: 999, height: h, alignSelf: big ? 'stretch' : 'auto', justifyContent: 'space-between', flex: big ? 1 : undefined }, lift]}>
       {btn('−', () => run({ product_id: p.id, quantity: line.quantity - 1 }))}
-      <T weight="800" size={15} color="#fff" style={{ minWidth: 26, textAlign: 'center' }}>{line.quantity}</T>
+      <T weight="800" size={15} color="#fff" style={{ minWidth: 24, textAlign: 'center' }}>{line.quantity}</T>
       {btn('+', () => run({ product_id: p.id, quantity: line.quantity + 1 }), line.quantity >= Math.min(p.stock, 50))}
     </View>
   );
@@ -103,26 +107,26 @@ function Heart({ p, onChange, style }) {
   );
 }
 
-/** One product tile: photo with offer / low-stock badges and a heart, brand, name, rating, price, quick add. */
+/** One product tile: a big photo (offer badge, heart, rating and quick-add sit on it), then brand, name and price. */
 function ProductCard({ p, w, onOpen, onHeart }) {
   const low = p.stock > 0 && p.stock < 5;
   return (
     <View style={{ width: w, flexShrink: 0, alignSelf: 'flex-start' }}>
-      <Card pad={10} onPress={() => onOpen(p)}>
+      <Card pad={0} onPress={() => onOpen(p)} style={{ overflow: 'hidden' }}>
         <View>
-          <Photo p={p} radius={14} />
-          {p.discount_pct ? <View style={{ position: 'absolute', left: 8, top: 8, backgroundColor: GOOD, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 }}><T size={11} weight="800" color="#fff">{p.discount_pct}% OFF</T></View> : null}
-          <Heart p={p} onChange={onHeart} style={{ position: 'absolute', right: 8, top: 8 }} />
-          {p.stock < 1 ? <View style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(255,255,255,0.7)', alignItems: 'center', justifyContent: 'center', borderRadius: 14 }}><T weight="800" color={c.mute}>Sold out</T></View> : null}
+          <Photo p={p} radius={0} style={{ aspectRatio: 0.95 }} />
+          {p.discount_pct ? <View style={{ position: 'absolute', left: 10, top: 10, backgroundColor: GOOD, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 }}><T size={11} weight="800" color="#fff">{p.discount_pct}% OFF</T></View> : null}
+          <Heart p={p} onChange={onHeart} style={{ position: 'absolute', right: 10, top: 10 }} />
+          {p.rating_count ? <View style={{ position: 'absolute', left: 10, bottom: 10, backgroundColor: 'rgba(255,255,255,0.95)', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3, flexDirection: 'row', gap: 3, alignItems: 'center' }}><T size={12} color="#F59E0B">★</T><T size={12} weight="800">{Number(p.rating).toFixed(1)}</T></View> : null}
+          <View style={{ position: 'absolute', right: 10, bottom: 10 }}><AddControl p={p} compact /></View>
+          {p.stock < 1 ? <View pointerEvents="none" style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(255,255,255,0.72)', alignItems: 'center', justifyContent: 'center' }}><T weight="800" color={c.mute}>Sold out</T></View> : null}
         </View>
-        <View style={{ gap: 3, marginTop: 10 }}>
+        <View style={{ gap: 3, padding: 12 }}>
           {p.brand ? <T size={11} weight="800" color={c.pink} style={{ letterSpacing: 0.8 }}>{p.brand.toUpperCase()}</T> : null}
           <T weight="700" size={14} numberOfLines={2} style={{ minHeight: 36, lineHeight: 18 }}>{p.name}</T>
-          {p.rating_count ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}><Stars value={p.rating} size={12} /><T size={11} color={c.mute} weight="600">({p.rating_count})</T></View> : <T size={11} color={c.mute}>{[p.sport, nice(p.category)].filter(Boolean).join(' · ')}</T>}
           <Price p={p} size={16} />
           {low ? <T size={11} weight="700" color={c.sun}>Only {p.stock} left</T> : null}
         </View>
-        <View style={{ marginTop: 10, alignItems: 'flex-start' }}><AddControl p={p} /></View>
       </Card>
     </View>
   );
@@ -283,6 +287,54 @@ function Reviews({ id, canReview, onWritten }) {
   );
 }
 
+/** Full-screen photo viewer: big, uncropped, swipe-free prev / next. */
+function Lightbox({ p, start, onClose }) {
+  const [at, setAt] = useState(start);
+  const imgs = p.images?.length ? p.images : [null];
+  const im = imgs[at];
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+      <View style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.96)', justifyContent: 'center' }}>
+        <Pressable onPress={onClose} accessibilityLabel="Close" style={{ position: 'absolute', top: 40, right: 20, zIndex: 3, width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center' }}><T size={20} color="#fff" weight="700">✕</T></Pressable>
+        {im ? <Image source={{ uri: mediaUrl(im.url) }} resizeMode="contain" accessibilityLabel={p.name} style={{ width: '100%', height: '78%' }} /> : <View style={{ alignItems: 'center' }}><T size={120}>{p.emoji}</T></View>}
+        {imgs.length > 1 ? (
+          <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 28, marginTop: 14 }}>
+            <Pressable onPress={() => setAt((i) => (i + imgs.length - 1) % imgs.length)} hitSlop={14}><T size={30} color="#fff">‹</T></Pressable>
+            <T color="#fff" weight="700">{at + 1} / {imgs.length}</T>
+            <Pressable onPress={() => setAt((i) => (i + 1) % imgs.length)} hitSlop={14}><T size={30} color="#fff">›</T></Pressable>
+          </View>
+        ) : null}
+      </View>
+    </Modal>
+  );
+}
+
+/** The hero: photos fill the width and swipe like a carousel (tap = zoom); dots, offer badge and overlay buttons sit on top. */
+function Gallery({ p, at, setAt, scrollRef, onZoom, radius = 0, children }) {
+  const [w, setW] = useState(0);
+  const imgs = p.images?.length ? p.images : [null];
+  useEffect(() => { if (w) scrollRef.current?.scrollTo({ x: at * w, animated: true }); }, [at, w]); // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <View onLayout={(e) => setW(e.nativeEvent.layout.width)} style={{ width: '100%', borderRadius: radius, overflow: 'hidden', backgroundColor: toneFor(p.sport_slug ?? p.category ?? p.name)[1] }}>
+      <ScrollView ref={scrollRef} horizontal pagingEnabled showsHorizontalScrollIndicator={false} scrollEnabled={imgs.length > 1} scrollEventThrottle={32}
+        onScroll={(e) => { if (w) { const n = Math.round(e.nativeEvent.contentOffset.x / w); if (n !== at) setAt(n); } }}>
+        {imgs.map((im, n) => (
+          <Pressable key={im?.id ?? n} onPress={() => onZoom(n)} accessibilityLabel={`Zoom photo ${n + 1}`} style={{ width: w || '100%' }}>
+            <Photo p={{ ...p, images: im ? [im] : [] }} radius={0} />
+          </Pressable>
+        ))}
+      </ScrollView>
+      {imgs.length > 1 ? <View pointerEvents="none" style={{ position: 'absolute', bottom: 14, left: 0, right: 0, flexDirection: 'row', justifyContent: 'center', gap: 6 }}>{imgs.map((im, n) => <View key={im?.id ?? n} style={{ width: n === at ? 20 : 7, height: 7, borderRadius: 4, backgroundColor: n === at ? c.pink : 'rgba(255,255,255,0.85)' }} />)}</View> : null}
+      {children}
+    </View>
+  );
+}
+
+const Float = ({ label, onPress, children }) => (
+  <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} hitSlop={6}
+    style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.94)', alignItems: 'center', justifyContent: 'center', shadowColor: '#0F172A', shadowOpacity: 0.16, shadowRadius: 8, shadowOffset: { width: 0, height: 3 } }}>{children}</Pressable>
+);
+
 export function ShopProduct({ id }) {
   const { push } = useNav();
   const { user, toast } = useSession();
@@ -291,58 +343,82 @@ export function ShopProduct({ id }) {
   const { set, lineOf } = useCart();
   const res = useLoad(() => api.get(`/shop/products/${id}`), [id, user?.id]);
   const [at, setAt] = useState(0);
+  const [zoom, setZoom] = useState(null);
   const [qty, setQty] = useState(1);
   const [busy, setBusy] = useState(false);
+  const rail = useRef(null);
   const p = res.data;
   if (res.error) return <Screen><ErrorBox error={res.error} onRetry={res.reload} /></Screen>;
   if (!p) return <Screen><Loading /></Screen>;
   const mine = p.seller_id === user?.id;
   const line = lineOf(p.id);
-  const imgs = p.images?.length ? p.images : [null];
+  const phone = L.phone;
   const buyNow = async () => { setBusy(true); try { await set({ product_id: p.id, quantity: Math.max(qty, line?.quantity ?? 0) }); push('ShopCart'); } catch (e) { toast(e.message); } finally { setBusy(false); } };
+  const share = async () => {
+    const url = Platform.OS === 'web' ? window.location.href : undefined;
+    try {
+      if (Platform.OS === 'web' && navigator.share) await navigator.share({ title: p.name, text: `${p.name} · ${money(p.price_cents)} on Gotmygame`, url });
+      else if (Platform.OS === 'web') { await navigator.clipboard?.writeText(url); toast('Link copied'); } else await Share.share({ message: `${p.name} · ${money(p.price_cents)} on Gotmygame` });
+    } catch { /* cancelled */ }
+  };
   const stock = p.stock < 1 ? ['Sold out', c.red] : p.stock < 5 ? [`Only ${p.stock} left — order soon`, c.sun] : ['In stock', GOOD];
+  const canBuy = !mine && p.stock > 0;
+  const hero = (
+    <Gallery p={p} at={at} setAt={setAt} scrollRef={rail} onZoom={setZoom} radius={phone ? 0 : 24}>
+      <View style={{ position: 'absolute', left: 14, top: 14, right: 14, flexDirection: 'row', justifyContent: 'space-between' }}>
+        <View />
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <Float label="Share" onPress={share}><T size={17}>↗</T></Float>
+          {!mine ? <Heart p={p} onChange={() => res.reload()} style={{ width: 40, height: 40, borderRadius: 20 }} /> : null}
+        </View>
+      </View>
+      {p.discount_pct ? <View style={{ position: 'absolute', left: 14, bottom: p.images.length > 1 ? 38 : 14, backgroundColor: GOOD, borderRadius: 10, paddingHorizontal: 11, paddingVertical: 5 }}><T size={13} weight="800" color="#fff">{p.discount_pct}% OFF</T></View> : null}
+    </Gallery>
+  );
+  const thumbs = p.images.length > 1 ? (
+    <HScroll gap={8} style={{ marginTop: 12 }}>{p.images.map((im, n) => (
+      <Pressable key={im.id} onPress={() => setAt(n)} accessibilityLabel={`Photo ${n + 1}`} style={{ borderRadius: 14, borderWidth: 2, borderColor: n === at ? c.pink : 'transparent' }}><Photo p={{ ...p, images: [im] }} size={64} radius={12} /></Pressable>
+    ))}</HScroll>
+  ) : null;
+  const info = (
+    <View style={[{ gap: 10 }, phone && { marginTop: -26, backgroundColor: c.bg, borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingTop: 22, paddingHorizontal: 16, marginHorizontal: -16 }]}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+        {p.brand ? <T size={12} weight="800" color={c.pink} style={{ letterSpacing: 1.2 }}>{p.brand.toUpperCase()}</T> : <View />}
+        {p.rating_count ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}><T size={15} color="#F59E0B">★</T><T size={14} weight="800">{Number(p.rating).toFixed(1)}</T><T size={12} color={c.mute}>({p.rating_count})</T></View> : null}
+      </View>
+      <H1 style={{ fontSize: 26 }}>{p.name}</H1>
+      <T size={13} color={c.mute} weight="600">{[p.sport, nice(p.category)].filter(Boolean).join(' · ')} · Sold by <T size={13} weight="700">{p.seller_name}</T></T>
+      <Price p={p} size={28} />
+      {p.compare_at_cents > p.price_cents ? <T size={13} weight="700" color={GOOD}>You save {money(p.compare_at_cents - p.price_cents)} on each</T> : null}
+      <T size={13} weight="800" color={stock[1]}>{stock[0]}</T>
+      {p.highlights?.length ? <View style={{ gap: 6, marginTop: 4 }}>{p.highlights.map((h) => <View key={h} style={{ flexDirection: 'row', gap: 8 }}><T color={GOOD} weight="800">✓</T><T size={14} style={{ flex: 1, lineHeight: 20 }}>{h}</T></View>)}</View> : null}
+      {canBuy && !line && !phone ? <Counter value={qty} onChange={setQty} min={1} max={Math.min(p.stock, 50)} label="Quantity" /> : null}
+      {canBuy && !phone ? (
+        <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
+          <AddControl p={p} big />
+          <Btn title="Buy now" color={c.violet} onPress={buyNow} loading={busy} style={{ flex: 1 }} />
+        </View>
+      ) : null}
+      {mine ? <Pill label="THIS IS YOUR LISTING — edit it from Orders & selling" /> : null}
+      {p.description ? <View style={{ marginTop: 8 }}><H2>About this item</H2><T size={14} color={c.mute} style={{ marginTop: 6, lineHeight: 21 }}>{p.description}</T></View> : null}
+      <Card pad={12} color={c.paper} style={{ marginTop: 6 }}><T size={12} color={c.mute} style={{ lineHeight: 18 }}>🔒 Your delivery address is encrypted. Pay securely once for everything in your cart; cancel before it ships for a full refund.</T></Card>
+    </View>
+  );
   return (
     <View style={{ flex: 1 }}>
-      <Screen wide padBottom={150}>
-        <View style={{ flexDirection: L.tablet ? 'row' : 'column', gap: 20, marginTop: 10 }}>
-          <View style={{ flex: L.tablet ? 1 : undefined, gap: 10, maxWidth: L.tablet ? 460 : undefined }}>
-            <View>
-              <Photo p={{ ...p, images: imgs[at] ? [imgs[at]] : [] }} radius={22} />
-              {p.discount_pct ? <View style={{ position: 'absolute', left: 12, top: 12, backgroundColor: GOOD, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4 }}><T size={13} weight="800" color="#fff">{p.discount_pct}% OFF</T></View> : null}
-              <Heart p={p} onChange={() => res.reload()} style={{ position: 'absolute', right: 12, top: 12 }} />
-            </View>
-            {p.images.length > 1 ? (
-              <HScroll gap={8}>{p.images.map((im, n) => (
-                <Pressable key={im.id} onPress={() => setAt(n)} accessibilityLabel={`Photo ${n + 1}`} style={{ borderRadius: 14, borderWidth: 2, borderColor: n === at ? c.pink : 'transparent' }}><Photo p={{ ...p, images: [im] }} size={64} radius={12} /></Pressable>
-              ))}</HScroll>
-            ) : null}
+      <Screen wide padBottom={phone ? 120 : 150}>
+        {phone ? (
+          <View style={{ marginHorizontal: -16, marginTop: -8 }}>{hero}</View>
+        ) : null}
+        {phone ? thumbs && <View style={{ paddingHorizontal: 0 }}>{thumbs}</View> : null}
+        {phone ? <View style={{ height: 4 }} /> : null}
+        {phone ? info : (
+          <View style={{ flexDirection: 'row', gap: 24, marginTop: 10 }}>
+            <View style={{ flex: 1, maxWidth: 520 }}>{hero}{thumbs}</View>
+            <View style={{ flex: 1 }}>{info}</View>
           </View>
-          <View style={{ flex: L.tablet ? 1 : undefined, gap: 10 }}>
-            {p.brand ? <T size={12} weight="800" color={c.pink} style={{ letterSpacing: 1.2 }}>{p.brand.toUpperCase()}</T> : null}
-            <H1 style={{ fontSize: 26 }}>{p.name}</H1>
-            <T size={13} color={c.mute} weight="600">{[p.sport, nice(p.category)].filter(Boolean).join(' · ')} · Sold by <T size={13} weight="700">{p.seller_name}</T></T>
-            {p.rating_count ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}><Stars value={p.rating} size={16} /><T size={13} weight="700">{Number(p.rating).toFixed(1)}</T><T size={12} color={c.mute}>({p.rating_count} review{p.rating_count === 1 ? '' : 's'})</T></View> : null}
-            <Price p={p} size={28} />
-            {p.compare_at_cents > p.price_cents ? <T size={13} weight="700" color={GOOD}>You save {money(p.compare_at_cents - p.price_cents)} on each</T> : null}
-            <T size={13} weight="800" color={stock[1]}>{stock[0]}</T>
-            {p.highlights?.length ? <View style={{ gap: 6, marginTop: 4 }}>{p.highlights.map((h) => <View key={h} style={{ flexDirection: 'row', gap: 8 }}><T color={GOOD} weight="800">✓</T><T size={14} style={{ flex: 1, lineHeight: 20 }}>{h}</T></View>)}</View> : null}
-            {!mine && p.stock > 0 ? (
-              <View style={{ gap: 12, marginTop: 8 }}>
-                {!line ? <Counter value={qty} onChange={setQty} min={1} max={Math.min(p.stock, 50)} label="Quantity" /> : null}
-                <View style={{ flexDirection: 'row', gap: 10 }}>
-                  <AddControl p={p} big />
-                  <Btn title="Buy now" color={c.violet} onPress={buyNow} loading={busy} style={{ flex: 1 }} />
-                </View>
-                {line ? <Pressable onPress={() => push('ShopCart')}><T color={c.pink} weight="700" size={13}>{line.quantity} in your cart · Go to cart ›</T></Pressable> : null}
-              </View>
-            ) : mine ? <Pill label="THIS IS YOUR LISTING — edit it from Orders & selling" /> : null}
-            {p.description ? <View style={{ marginTop: 8 }}><H2>About this item</H2><T size={14} color={c.mute} style={{ marginTop: 6, lineHeight: 21 }}>{p.description}</T></View> : null}
-            <Card pad={12} color={c.bg} style={{ marginTop: 6 }}><T size={12} color={c.mute} style={{ lineHeight: 18 }}>🔒 Your delivery address is encrypted. Pay securely once for everything in your cart; cancel before it ships for a full refund.</T></Card>
-          </View>
-        </View>
-
+        )}
         <Reviews id={p.id} canReview={p.can_review} onWritten={res.reload} />
-
         {p.related?.length ? (
           <View style={{ marginTop: 24 }}>
             <H2>You may also like</H2>
@@ -350,7 +426,14 @@ export function ShopProduct({ id }) {
           </View>
         ) : null}
       </Screen>
-      <CartBar />
+      {phone && canBuy ? (
+        <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: c.paper, borderTopWidth: 1, borderColor: c.line, paddingHorizontal: 16, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <View><T size={11} color={c.mute} weight="700">PRICE</T><T weight="800" size={20}>{money(p.price_cents)}</T></View>
+          <AddControl p={p} big />
+          <Btn title="Buy now" color={c.violet} onPress={buyNow} loading={busy} style={{ minWidth: 110 }} />
+        </View>
+      ) : <CartBar />}
+      {zoom != null ? <Lightbox p={p} start={zoom} onClose={() => setZoom(null)} /> : null}
     </View>
   );
 }
@@ -594,7 +677,7 @@ function ProductSheet({ product, onClose, onSaved }) {
           {photos.map((ph) => <Image key={ph.id} source={{ uri: mediaUrl(ph.url) }} style={{ width: 72, height: 72, borderRadius: 14 }} />)}
           {have + photos.length < 8 ? <Pressable onPress={add} disabled={uploading} accessibilityLabel="Add photo" style={{ width: 72, height: 72, borderRadius: 14, borderWidth: 1.5, borderStyle: 'dashed', borderColor: c.pink, backgroundColor: c.pinkSoft, alignItems: 'center', justifyContent: 'center' }}><T size={uploading ? 12 : 26} color={c.pink} weight="700">{uploading ? '…' : '+'}</T></Pressable> : null}
         </HScroll>
-        <T size={12} color={c.mute}>The first photo is the cover. Clear, bright photos sell more.</T>
+        <T size={12} color={c.mute}>The first photo is the cover. Use bright, square photos on a plain background — shoppers buy what they can see clearly.</T>
       </View>
       <FormSheet inline onClose={onClose} submitLabel={editing ? 'Save changes' : 'List item'} initial={init ?? {}}
         fields={[
