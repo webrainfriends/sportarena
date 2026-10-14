@@ -14,6 +14,14 @@ side and keeps them apart.
 
 Providers publish configurable services (`upsert_provider_service`, `archive_provider_service`, `list_my_provider_services`; patients use `list_provider_services`). A service has a title, public description (never clinical detail), category, delivery modes, duration and cancellation text. Prices are append-only versions (`provider_service_prices`) carrying currency and a tax class (`unspecified|taxable|exempt|zero_rated|out_of_scope`); no rate or tax determination is made here. `book_appointment` accepts `service_id`: it uses the service duration and the price in force, and snapshots service, price version, tax class and cancellation text on the appointment, so later price edits or archiving never change it. Bookings without a service keep using the legacy consultation fee, and the prepay guard is unchanged. Not yet built (later slices of #210): offers, packages, pay-later policy, invoices/receivables, tax reports, treatment plans.
 
+## Offers (issue #210, slice 2)
+
+Providers create time-limited percentage or fixed-amount offers (`upsert_provider_offer`, `archive_provider_offer`, `list_my_provider_offers`), automatic or behind a code, for chosen services or all of them, with total and per-patient limits. `quote_appointment` returns the server-authoritative list price, discount and total; `book_appointment` (with `service_id` and optional `offer_code`) charges exactly that and records the offer, list price and discount on the appointment plus one redemption row (unique per appointment, so retries cannot double count; counted under the provider booking lock, so limits hold under concurrency). Offers never stack: the best single one wins; a code that cannot be used is rejected. Cancelled or expired appointments stop counting toward limits; archiving an offer leaves booked discounts intact. Fixed offers only apply in their own currency. Packages, subscriptions and pay-later remain for later slices. These are separate from venue discounts because they belong to a provider and apply to appointments.
+
+## Prepaid packages (issue #210, slice 3)
+
+Providers define packages of 2+ sessions of one service (`upsert_provider_package`, `archive_provider_package`, `list_my_provider_packages`; public `list_provider_packages`) with an optional validity in days and refund terms shown before purchase. A patient buys one (`buy_provider_package`; needs medical consent and a verified provider), which snapshots the terms and waits for payment through the canonical payments flow (`purpose_type: physio_package`, amount read from the DB, no service or clinical detail sent to the processor). Payment activates it and starts the expiry clock. `book_appointment` with `patient_package_id` spends one session (fee 0): the package row is locked under the provider booking lock, and one redemption row per appointment is unique, so concurrent or retried bookings cannot overspend. Cancelled/expired appointments give their session back. A package cannot be combined with an offer code. Paid-package refunds are not automated yet: terms are stated and handled by the provider (later slice with invoices/credit notes). Subscriptions (recurring charges) are not built; none are created automatically.
+
 ## Provider profile and hours
 * `upsert_provider_profile` (physio/doctor): headline, bio, clinic, city, in-person / remote, languages, specialties, fee,
   time zone, slot length, `accepting_patients`, `listed` (false hides the provider from search). Never put patient
@@ -146,3 +154,33 @@ Existing -> gap -> change: reports/results had no ownership or review trail. Add
 
 Not in this slice: file upload/storage UI (a `document_ref` to existing private storage is recorded), automated coverage rules, linking to encounters, screens.
 Rollback: leave the tables.
+## Problems, allergies and medications (issue #212, slice 2a)
+Existing -> gap -> change: no structured patient context existed (only free-text records). Added (migration 065, additive): `clinical_context_entries`
+and `clinical_context_declarations`; capabilities `add_context_entry`, `reconcile_context_entry`, `set_context_declaration`, `list_context` (scope `clinical`).
+
+* Patients record their own entries (`patient_reported`, `unverified`). A verified **doctor** with the athlete's full consent records, confirms, disputes or
+  corrects (`clinician_recorded`/`confirmed`). Physios can read (credential + consent) but not write. Athletes may correct only their own entry that no doctor has reviewed.
+* Append-only: a correction is a new entry that supersedes the old one (kept, `include_history`); a DB trigger blocks edits and deletes; concurrent
+  corrections of one entry have a single winner (409 for the rest).
+* `list_context` reports a state per kind: `entries`, `none_reported` (explicit declaration, refused while live entries exist) or `unknown` (the default).
+  Missing data is never shown as "none". Nothing infers adherence or safety, and there is no prescribing, dose or interaction logic.
+* Encrypted at rest, audit-logged; history scope of the grant applies to entries written by others.
+
+Not in this slice: UI screens, linking entries to encounters, guardian access. Rollback: leave the tables.
+## Structured encounters (issue #212, doctor workspace slice 1)
+Existing -> gap -> change: `medical_records` holds one free-text note per entry and `appointments` only a lifecycle; there was no signed,
+versioned consultation. Added (migration 064, additive; nothing converted from legacy text): `clinical_encounters`.
+
+* `create_encounter` / `update_encounter` / `sign_encounter` / `amend_encounter` / `void_encounter` / `list_encounters` / `get_encounter`
+  (doctor only; REST + OpenAPI + MCP, token scope `clinical`). SOAP or free template; observations need value, unit and measurement time.
+* Same gates as records: current verified **doctor** credential and the athlete's active **full** consent, re-checked under `FOR SHARE` locks in the
+  signing transaction, so a revocation that commits first blocks the signature. The credential case relied on is stored.
+* States `draft -> ready -> signed`, or `voided` with a reason. Edits carry `version`; a stale version is a 409. Signed rows are immutable in
+  the API **and** by a database trigger; corrections are linked `amendment` encounters that are signed separately. One live encounter per
+  appointment. Copied-forward text must be marked reviewed before signing.
+* Working notes (`content`) are clinician-only. The athlete sees only the **visit summary** of signed encounters (Health > My records) and can
+  acknowledge it - that records "read", not agreement or recovery. Other consented doctors see signed notes only, within the grant's history scope.
+* Notifications are generic; all content is encrypted (`clinical_encounters.*`); reads and signatures are audit-logged.
+
+Not in this slice (tracked in #212): problems/allergies/medications, care plans, results review, referrals, clearance versions, practice billing and
+tax (shared with #210/#71), teleconsultation, guardian access to summaries. Rollback: leave the table; older code ignores it.
