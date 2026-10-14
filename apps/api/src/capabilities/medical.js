@@ -12,6 +12,7 @@ import { decrypt, encrypt } from '../crypto.js';
 import { clinicalCredential, lockCredential, requireVerifiedProvider } from '../clinical-access.js';
 import { guardianLink, hasConsent, requireConsent } from '../youth.js';
 import { SERVICE_SELECT } from './provider-services.js';
+import { bestOffer } from './provider-offers.js';
 
 const dt = z.string().datetime({ offset: true });
 /** Is there a current (not revoked, not expired) consent? `need='clearance'` accepts either scope; the default needs full record access. */
@@ -30,7 +31,7 @@ cap({
 cap({
   name: 'book_appointment', credential: true, method: 'POST', path: '/appointments', tag: 'Health', status: 201,
   summary: 'Request an appointment with a physio/doctor. If the provider has published weekly hours the time must be one of list_provider_slots (and not clash with time off or another appointment); otherwise any free time can be requested. The reason is encrypted. The provider is notified.',
-  input: z.object({ provider_id: id, starts_at: dt, duration_min: z.number().int().min(10).max(240).optional().describe('defaults to the service duration, else 30'), mode: z.enum(['in_person', 'remote']).default('in_person'), service_id: id.optional().describe('a service from list_provider_services; its duration and current price are used and snapshotted'), followup_id: id.optional().describe('the follow-up this appointment is for'), reason: z.string().max(1000).optional() }),
+  input: z.object({ provider_id: id, starts_at: dt, duration_min: z.number().int().min(10).max(240).optional().describe('defaults to the service duration, else 30'), mode: z.enum(['in_person', 'remote']).default('in_person'), service_id: id.optional().describe('a service from list_provider_services; its duration and current price are used and snapshotted'), offer_code: z.string().trim().max(30).optional().describe('an offer code for that service (see quote_appointment)'), followup_id: id.optional().describe('the follow-up this appointment is for'), reason: z.string().max(1000).optional() }),
   async handler({ user }, i) {
     if (i.provider_id === user.id) throw badRequest('Cannot book yourself');
     await requireConsent(user.id, 'medical', 'booking a health appointment');
@@ -50,6 +51,8 @@ cap({
         if (!svc || svc.archived_at || !svc.price_id) throw badRequest('That service is not available');
         if (!svc.delivery_modes.includes(i.mode)) throw badRequest(`That service is not offered ${i.mode === 'remote' ? 'remotely' : 'in person'}`);
       }
+      if (i.offer_code && !svc) throw badRequest('Offer codes apply to a service');
+      const best = svc ? await bestOffer(c, { providerId: i.provider_id, svc, userId: user.id, code: i.offer_code }) : null;
       i.duration_min ??= svc?.duration_min ?? 30;
       let followup = null;
       if (i.followup_id) {
@@ -58,7 +61,7 @@ cap({
         if (followup.status !== 'due') throw conflict(`That follow-up is ${followup.status}`);
       }
       // price: the provider's consultation fee, else the hourly rate on their sport profile for this length
-      let fee = svc ? Number(svc.price_cents) : prof?.consult_fee_cents == null ? null : Number(prof.consult_fee_cents);
+      let fee = svc ? Number(svc.price_cents) - (best?.amount ?? 0) : prof?.consult_fee_cents == null ? null : Number(prof.consult_fee_cents);
       if (fee === null) {
         const rate = Number((await c.query("SELECT min(hourly_rate_cents) AS r FROM sport_profiles WHERE user_id=$1 AND role IN ('physio','doctor') AND hourly_rate_cents > 0", [i.provider_id])).rows[0].r ?? 0);
         fee = Math.round((rate * i.duration_min) / 60);
@@ -68,8 +71,9 @@ cap({
       const clash = (await c.query("SELECT 1 FROM appointments WHERE provider_id=$1 AND status IN ('requested','confirmed') AND starts_at < $2::timestamptz + make_interval(mins => $3) AND starts_at + make_interval(mins => duration_min) > $2", [i.provider_id, i.starts_at, i.duration_min])).rows[0];
       if (clash) throw conflict('Provider is not free then');
       const a = (await c.query(
-        'INSERT INTO appointments(athlete_id, provider_id, starts_at, duration_min, reason_enc, fee_cents, currency, payment_status, mode, service_id, service_price_id, service_title, tax_class, cancellation_policy) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id, athlete_id, provider_id, starts_at, duration_min, status, mode, fee_cents, currency, payment_status, service_id, service_title',
-        [user.id, i.provider_id, i.starts_at, i.duration_min, encrypt(i.reason, 'appointments.reason'), fee, svc?.currency ?? prof?.currency ?? config.payments.currency, paymentsEnabled() && fee > 0 ? 'unpaid' : 'not_required', i.mode, svc?.id ?? null, svc?.price_id ?? null, svc?.title ?? null, svc?.tax_class ?? null, svc?.cancellation_policy ?? null])).rows[0];
+        'INSERT INTO appointments(athlete_id, provider_id, starts_at, duration_min, reason_enc, fee_cents, currency, payment_status, mode, service_id, service_price_id, service_title, tax_class, cancellation_policy, offer_id, offer_title, list_price_cents, discount_cents) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING id, athlete_id, provider_id, starts_at, duration_min, status, mode, fee_cents, currency, payment_status, service_id, service_title, offer_title, list_price_cents, discount_cents',
+        [user.id, i.provider_id, i.starts_at, i.duration_min, encrypt(i.reason, 'appointments.reason'), fee, svc?.currency ?? prof?.currency ?? config.payments.currency, paymentsEnabled() && fee > 0 ? 'unpaid' : 'not_required', i.mode, svc?.id ?? null, svc?.price_id ?? null, svc?.title ?? null, svc?.tax_class ?? null, svc?.cancellation_policy ?? null, best?.offer.id ?? null, best?.offer.title ?? null, svc ? Number(svc.price_cents) : null, best?.amount ?? null])).rows[0];
+      if (best) await c.query('INSERT INTO provider_offer_redemptions(offer_id, appointment_id, user_id, amount_cents) VALUES ($1,$2,$3,$4)', [best.offer.id, a.id, user.id, best.amount]);
       if (followup) await c.query("UPDATE appointment_followups SET status='booked', booked_appointment_id=$2, updated_at=now() WHERE id=$1", [followup.id, a.id]);
       await notify(c, i.provider_id, { kind: 'appointment_requested', title: 'New appointment request', body: 'Open Health to confirm or decline it.', data: { appointment_id: a.id } });
       return a;

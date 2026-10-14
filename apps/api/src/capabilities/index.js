@@ -67,6 +67,7 @@ import './supply.js';
 import './medical.js';
 import './encounters.js';
 import './provider-services.js';
+import './provider-offers.js';
 import './insurance.js';
 import './insurance-desk.js';
 import './insurance-quotes.js';
