@@ -66,6 +66,7 @@ import './sponsorship-agreements.js';
 import './supply.js';
 import './medical.js';
 import './encounters.js';
+import './provider-services.js';
 import './insurance.js';
 import './insurance-desk.js';
 import './insurance-quotes.js';

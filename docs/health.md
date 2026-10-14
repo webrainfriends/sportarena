@@ -10,6 +10,10 @@ side and keeps them apart.
 | Who sees it | anyone | the two parties; providers only with an active consent |
 | Content | type, bio, clinic, city, languages, specialties, fee, hours, rating, verification badge | reasons, notes, clearance, injury details |
 
+## Services & price catalogue (issue #210, slice 1)
+
+Providers publish configurable services (`upsert_provider_service`, `archive_provider_service`, `list_my_provider_services`; patients use `list_provider_services`). A service has a title, public description (never clinical detail), category, delivery modes, duration and cancellation text. Prices are append-only versions (`provider_service_prices`) carrying currency and a tax class (`unspecified|taxable|exempt|zero_rated|out_of_scope`); no rate or tax determination is made here. `book_appointment` accepts `service_id`: it uses the service duration and the price in force, and snapshots service, price version, tax class and cancellation text on the appointment, so later price edits or archiving never change it. Bookings without a service keep using the legacy consultation fee, and the prepay guard is unchanged. Not yet built (later slices of #210): offers, packages, pay-later policy, invoices/receivables, tax reports, treatment plans.
+
 ## Provider profile and hours
 * `upsert_provider_profile` (physio/doctor): headline, bio, clinic, city, in-person / remote, languages, specialties, fee,
   time zone, slot length, `accepting_patients`, `listed` (false hides the provider from search). Never put patient
