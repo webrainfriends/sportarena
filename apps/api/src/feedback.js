@@ -16,6 +16,8 @@ export async function manages(user, type, id) {
     case 'event': return Boolean(await one('SELECT 1 FROM events WHERE id=$2 AND organizer_id=$1', [user.id, id]));
     case 'sponsor': return Boolean(await one('SELECT 1 FROM sponsors WHERE id=$2 AND owner_id=$1', [user.id, id]));
     case 'product': return Boolean(await one('SELECT 1 FROM shop_products WHERE id=$2 AND seller_id=$1', [user.id, id]));
+    case 'institution': return Boolean(await one("SELECT 1 FROM organisation_members WHERE organisation_id=$2 AND user_id=$1 AND status='active' AND role IN ('owner','admin')", [user.id, id]));
+    case 'programme': return Boolean(await one("SELECT 1 FROM programmes p JOIN organisation_members m ON m.organisation_id=p.organisation_id AND m.user_id=$1 AND m.status='active' AND m.role IN ('owner','admin') WHERE p.id=$2", [user.id, id]));
     default: return false;
   }
 }

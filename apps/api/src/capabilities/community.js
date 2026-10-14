@@ -8,17 +8,20 @@ import { notify } from '../notify.js';
 import { canManage } from '../booking/engine.js';
 import { notifyTeamOfReview } from './venue-media.js';
 
-const SUBJECTS = { user: 'users', team: 'teams', event: 'events', venue: 'venues', sponsor: 'sponsors', product: 'shop_products' };
+const SUBJECTS = { user: 'users', team: 'teams', event: 'events', venue: 'venues', sponsor: 'sponsors', product: 'shop_products', institution: 'organisations', programme: 'programmes', study_institution: 'study_institutions', study_programme: 'study_programmes' };
+const TYPES = Object.keys(SUBJECTS);
 
 const VERIFIED_FOR = {
   product: "SELECT 1 FROM shop_orders WHERE buyer_id=$1 AND product_id=$2 AND status='delivered'",
+  institution: "SELECT 1 FROM enquiries WHERE athlete_id=$1 AND organisation_id=$2 AND status IN ('admitted','enrolled')",
+  programme: "SELECT 1 FROM enquiries WHERE athlete_id=$1 AND programme_id=$2 AND status IN ('admitted','enrolled')",
   venue: "SELECT 1 FROM bookings b JOIN resources r ON r.id=b.resource_id WHERE r.venue_id=$2 AND b.user_id=$1 AND b.status='confirmed' AND b.ends_at < now()",
 };
 
 cap({
   name: 'write_testimonial', method: 'POST', path: '/testimonials', tag: 'Community', status: 201,
   summary: 'Leave (or update) a rating + testimonial for a person, team, event, venue, sponsor or a shop product you bought. One per author per subject. Editing keeps the original date and the earlier text in the history; you cannot review something you own or manage. The result says whether the review is a verified interaction (delivered order / past booking) or unverified.',
-  input: z.object({ subject_type: z.enum(['user', 'team', 'event', 'venue', 'sponsor', 'product']), subject_id: id, rating: z.number().int().min(1).max(5), body: z.string().min(3).max(1000) }),
+  input: z.object({ subject_type: z.enum(TYPES), subject_id: id, rating: z.number().int().min(1).max(5), body: z.string().min(3).max(1000) }),
   async handler({ user }, i) {
     if (i.subject_type === 'user' && i.subject_id === user.id) throw badRequest('You cannot review yourself');
     await mustFind(SUBJECTS[i.subject_type], i.subject_id, 'id');
@@ -93,7 +96,7 @@ cap({
 
 cap({
   name: 'list_testimonials', method: 'GET', path: '/testimonials', tag: 'Community', auth: 'public', summary: 'Testimonials and rating summary for a subject.',
-  input: z.object({ subject_type: z.enum(['user', 'team', 'event', 'venue', 'sponsor', 'product']), subject_id: id, ...page }),
+  input: z.object({ subject_type: z.enum(TYPES), subject_id: id, ...page }),
   async handler(_, i) {
     const [summary, items] = await Promise.all([
       aggregate(i.subject_type, i.subject_id),
