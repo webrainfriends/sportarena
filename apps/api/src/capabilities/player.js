@@ -1,12 +1,19 @@
+import express from 'express';
+import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { cap, id, page } from '../registry.js';
 import { one, many, query, tx } from '../db.js';
-import { badRequest, conflict, forbidden, notFound } from '../errors.js';
+import { AppError, badRequest, conflict, forbidden, notFound, unauthorized } from '../errors.js';
 import { encrypt } from '../crypto.js';
 import { csvToObjects } from '../csv.js';
 import { ACTIVITIES_CTE, ACTIVITY_COLS } from '../athlete-history.js';
 import { matchTemplate, matchTypesFor } from '../match-template.js';
 import { sportBySlugOrId } from '../helpers.js';
+import { config } from '../config.js';
+import { authenticate } from '../auth.js';
+import { toErrorBody } from '../invoke.js';
+import { DOC_LIMITS, readBody } from '../doc-store.js';
+import { matchFileToCsv } from '../match-file.js';
 
 // ---------- sport profiles (the player's "cards") ----------
 
@@ -377,3 +384,32 @@ cap({
     return { dry_run: false, rows: raws.length, imported: fresh.length, skipped: skipped.length };
   },
 });
+
+/**
+ * PUT /api/v1/me/matches/extract?sport_profile_id=…   body = the raw file (CSV, TSV, XLSX, DOCX, PDF, PNG, JPEG, WebP)
+ * Reads the file in memory (nothing is stored) and answers { csv, rows, via, kind }. The caller shows the CSV to the person, runs
+ * import_matches with dry_run, and only then imports — so a misread photo never lands in the match history unchecked.
+ */
+export function matchFileRouter() {
+  const r = express.Router();
+  const limiter = rateLimit({ windowMs: 60_000, limit: config.isProd ? 20 : 1000, standardHeaders: true, legacyHeaders: false });
+  r.put('/me/matches/extract', limiter, async (req, res) => {
+    try {
+      const user = await authenticate(req.headers.authorization);
+      if (!user) throw unauthorized();
+      const q = z.object({ sport_profile_id: id }).parse(req.query);
+      if (Number(req.headers['content-length'] ?? 0) > DOC_LIMITS.bytes) throw new AppError(413, 'too_large', `Files can be up to ${DOC_LIMITS.bytes / 2 ** 20} MB`);
+      const profile = await ownProfile(user.id, q.sport_profile_id);
+      const sport = await sportBySlugOrId(profile.sport_id);
+      const buf = await readBody(req);
+      if (!buf.length) throw badRequest('Empty upload');
+      const columns = sport ? (await matchTemplate(sport)).columns.map((x) => x.key) : [];
+      res.json(await matchFileToCsv(buf, { sport, columns }));
+    } catch (e) {
+      req.resume();
+      const { status, code, message, details } = toErrorBody(e);
+      res.status(status).json({ error: { code, message, details } });
+    }
+  });
+  return r;
+}

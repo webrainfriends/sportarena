@@ -488,6 +488,8 @@ export function ImportMatches({ id }) {
   const [busy, setBusy] = useState(false);
   const [prev, setPrev] = useState(null);
   const [err, setErr] = useState(null);
+  const [reading, setReading] = useState(false);
+  const [read, setRead] = useState(null);
   const profiles = list.data ?? [];
   const target = sel ?? profiles[0]?.id;
   const sport = profiles.find((x) => x.id === target)?.sport_slug;
@@ -495,16 +497,54 @@ export function ImportMatches({ id }) {
   const statCols = (tpl.data?.columns ?? []).map((x) => x.key);
   const TEMPLATE = csvTemplate(statCols);
 
-  const pickFile = () => {
-    if (Platform.OS !== 'web') return;
-    const el = document.createElement('input');
-    el.type = 'file'; el.accept = '.csv,text/csv,text/plain';
-    el.onchange = async () => { const f = el.files?.[0]; if (f) { setCsv(await f.text()); setPrev(null); setErr(null); } };
-    el.click();
+  const FILE_TYPES = '.csv,.tsv,.txt,.xlsx,.docx,.pdf,.png,.jpg,.jpeg,.webp,.gif';
+  const MAX_FILE = 10 * 2 ** 20;
+  /** Pick a file on this device: the browser's file dialog on web, the Files / photos picker in the app. */
+  const choose = async () => {
+    if (Platform.OS === 'web') {
+      return new Promise((resolve) => {
+        const el = document.createElement('input');
+        el.type = 'file'; el.accept = FILE_TYPES;
+        el.onchange = () => resolve(el.files?.[0] ? { blob: el.files[0], name: el.files[0].name } : null);
+        el.click();
+      });
+    }
+    const DocumentPicker = await import('expo-document-picker');
+    const r = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true, multiple: false, type: ['text/csv', 'text/comma-separated-values', 'text/plain', 'text/tab-separated-values', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/pdf', 'image/*'] });
+    if (r.canceled || !r.assets?.[0]) return null;
+    const a = r.assets[0];
+    return { blob: await (await fetch(a.uri)).blob(), name: a.name };
   };
-  const download = () => {
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([TEMPLATE], { type: 'text/csv' })); a.download = 'sportarena-matches-template.csv'; a.click();
+  /** Upload the chosen file; the server reads it (CSV, Excel, Word, PDF, photo) and sends back CSV for you to check. Nothing is imported yet. */
+  const pickFile = async () => {
+    setErr(null);
+    try {
+      const f = await choose();
+      if (!f) return;
+      if (f.blob.size > MAX_FILE) { setErr('That file is over 10 MB. Split it or use a smaller file.'); return; }
+      setReading(true);
+      const r = await api.upload('/me/matches/extract', f.blob, { sport_profile_id: target });
+      setCsv(r.csv); setPrev(null);
+      setRead({ name: f.name, rows: r.rows, via: r.via, kind: r.kind });
+    } catch (e) { setErr(e.message); } finally { setReading(false); }
+  };
+  /** Save / share the header-only template as a real .csv file. */
+  const download = async () => {
+    const name = `gotmygame-${sport ?? 'matches'}-template.csv`;
+    if (Platform.OS === 'web') {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([TEMPLATE], { type: 'text/csv' })); a.download = name; a.click();
+      return;
+    }
+    try {
+      const { File, Paths } = await import('expo-file-system');
+      const Sharing = await import('expo-sharing');
+      const file = new File(Paths.cache, name);
+      file.create({ overwrite: true });
+      file.write(TEMPLATE);
+      if (!(await Sharing.isAvailableAsync())) throw new Error('sharing unavailable');
+      await Sharing.shareAsync(file.uri, { mimeType: 'text/csv', UTI: 'public.comma-separated-values-text', dialogTitle: 'Match import template' });
+    } catch { setCsv(TEMPLATE); setPrev(null); toast('Sharing is not available here — the template is in the box below'); }
   };
   const run = async (dry) => {
     setErr(null); setBusy(true);
@@ -519,7 +559,7 @@ export function ImportMatches({ id }) {
     <Screen>
       <T weight="700" size={12} color={c.pink} style={{ letterSpacing: 1.2 }}>BULK IMPORT</T>
       <H1 style={{ fontSize: 28 }}>Import match performance</H1>
-      <T size={14} color={c.mute} style={{ marginTop: 4 }}>Add a whole season in one go from a CSV. Up to 500 matches per file.</T>
+      <T size={14} color={c.mute} style={{ marginTop: 4 }}>Add a whole season in one go. Upload a CSV, Excel, Word, PDF or a photo of your scorebook — up to 500 matches per file. You check everything before it is saved.</T>
 
       <Card style={{ marginTop: 16 }}>
         <T weight="800" size={13}>1 · Pick the sport</T>
@@ -534,10 +574,12 @@ export function ImportMatches({ id }) {
           First row is the header. <T weight="700" size={12.5}>played_on</T> (YYYY-MM-DD) is required. Optional: opponent, competition, venue, result (win/draw/loss — or worked out from the score), score_for, score_against, minutes, rating (0–10), notes. Also match_type{tpl.data?.match_types?.length > 1 ? ` (${tpl.data.match_types.join(', ')})` : ''}. {statCols.length ? <>This sport's number columns: <T weight="700" size={12.5}>{statCols.join(', ')}</T>.</> : 'Any other column is saved as a number for that match.'}
         </T>
         <View style={{ flexDirection: 'row', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-          {Platform.OS === 'web' ? <Btn small title="Choose CSV file" color={c.paper} onPress={pickFile} /> : null}
-          {Platform.OS === 'web' ? <Btn small title="Download template" color={c.paper} onPress={download} /> : <Btn small title="Use template" color={c.paper} onPress={() => { setCsv(TEMPLATE); setPrev(null); }} />}
+          <Btn small title="Upload file" color={c.paper} onPress={pickFile} loading={reading} disabled={!target} />
+          <Btn small title="Download template" color={c.paper} onPress={download} disabled={!target} />
         </View>
-        <TextInput multiline value={csv} onChangeText={(x) => { setCsv(x); setPrev(null); setErr(null); }} placeholder={`…or paste CSV here\n${TEMPLATE}`} placeholderTextColor="#94A3B8" autoCapitalize="none" autoCorrect={false}
+        <T size={11.5} color={c.mute} style={{ marginTop: 8 }}>Files: CSV, Excel (.xlsx), Word (.docx), PDF, PNG, JPEG — up to 10 MB. PDFs and photos are read by AI, so look the rows over before importing.</T>
+        {read ? <T size={12.5} weight="700" color={c.ink} style={{ marginTop: 8 }}>{read.name ?? 'File'}: {read.rows} row{read.rows === 1 ? '' : 's'} found{read.via === 'ai' ? ' by AI — check them carefully' : ''}. Edit below if needed, then Check file.</T> : null}
+        <TextInput multiline value={csv} onChangeText={(x) => { setCsv(x); setPrev(null); setErr(null); setRead(null); }} placeholder={`…or paste CSV here\n${TEMPLATE}`} placeholderTextColor="#94A3B8" autoCapitalize="none" autoCorrect={false}
           style={[fam, { marginTop: 12, minHeight: 150, borderWidth: 1.5, borderColor: c.line, borderRadius: 12, padding: 12, fontSize: 13, color: c.ink, backgroundColor: c.bg, textAlignVertical: 'top' }, Platform.OS === 'web' && { outlineStyle: 'none', fontFamily: 'ui-monospace, Menlo, monospace' }]} />
         {tooBig ? <T size={12} color={c.red} weight="700" style={{ marginTop: 6 }}>That's over the 80,000 character limit — split the file into seasons.</T> : null}
       </Card>
