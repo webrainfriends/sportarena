@@ -146,6 +146,20 @@ warning in the Access list for providers whose verification lapsed. Server messa
 Limitations: sport scope is evaluated from the case's `sport_id` against the supplied `sport_id` or the athlete's sport profiles.
 Existing data is untouched; migration 049 only adds nullable/defaulted columns (rollback: leave them, older code ignores them).
 
+## Referrals (issue #212, slice 2c)
+Existing -> gap -> change: no way to refer a patient with controlled sharing. Added (migration 067, additive): `clinical_referrals` and append-only
+`clinical_referral_events`; capabilities `create_referral`, `update_referral`, `respond_referral_consent`, `list_referrals`, `get_referral_history` (scope `clinical`).
+
+* A verified **doctor** with the athlete's full consent drafts a referral to a verified platform doctor/physio **or** an external provider, choosing the urgency and
+  the exact `shared` items. The recipient can read nothing else - no records, notes or reports are reachable through a referral.
+* The athlete must consent to **each** referral (`respond_referral_consent`). Until then the recipient cannot see it and is not notified. Declining, or declining later,
+  withdraws it and access ends at once. Expired, withdrawn or closed referrals hide their content. Being on the same team/clinic grants nothing.
+* Platform lifecycle: `draft -> sent -> acknowledged -> accepted | declined -> booked (appointment between recipient and athlete) -> completed (optional return summary) -> closed`;
+  the referrer may `withdraw` or `close`. Each role can only take its own steps; no one edits the other's records.
+* External referrals are labelled `status_known: false`: the platform produces the letter (after consent) but never infers receipt, acceptance or completion.
+* Encrypted, audit-logged, generic notifications.
+
+Not in this slice: attaching existing records/reports by reference, e-delivery to external clinics, screens. Rollback: leave the tables.
 ## Investigations and results review (issue #212, slice 2b)
 Existing -> gap -> change: reports/results had no ownership or review trail. Added (migration 066, additive): `clinical_investigations`, `clinical_results`
 (versioned, append-only), `clinical_investigation_events` (append-only); capabilities `request_investigation`, `upload_investigation_result`,
