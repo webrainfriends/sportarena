@@ -5,6 +5,7 @@ import { provider, paymentsEnabled, enabledProviders } from './providers.js';
 import { markInvoicePaid } from '../booking/invoices.js';
 import { completeTopup, activateGiftCard } from '../wallet.js';
 import { activateUserPlan } from '../booking/plans.js';
+import { activatePhysioPackage } from '../capabilities/provider-packages.js';
 
 export { paymentsEnabled, enabledProviders };
 
@@ -27,6 +28,10 @@ export async function describePurpose(c, type, id) {
   if (type === 'appointment') {
     const a = await q("SELECT a.athlete_id AS payer_id, a.fee_cents AS amount, a.currency, a.status, a.payment_status, u.display_name FROM appointments a JOIN users u ON u.id=a.provider_id WHERE a.id=$1 FOR UPDATE OF a");
     return a && { payerId: a.payer_id, amount: Number(a.amount), currency: a.currency, name: `Appointment with ${a.display_name}`, payable: a.payment_status === 'unpaid' && ['requested', 'confirmed'].includes(a.status) };
+  }
+  if (type === 'physio_package') {
+    const k = await q("SELECT k.patient_id AS payer_id, k.price_cents AS amount, k.currency, k.status, k.title, u.display_name FROM patient_packages k JOIN users u ON u.id=k.provider_id WHERE k.id=$1 FOR UPDATE OF k");
+    return k && { payerId: k.payer_id, amount: Number(k.amount), currency: k.currency, name: `Session package with ${k.display_name}`, payable: k.status === 'awaiting_payment' && Number(k.amount) > 0 };
   }
   if (type === 'venue_invoice') {
     const i = await q("SELECT i.user_id AS payer_id, i.total_cents - i.credits_cents AS amount, i.currency, i.status, i.number, v.name, v.payment_mode FROM invoices i JOIN venues v ON v.id=i.venue_id WHERE i.id=$1 AND i.kind='invoice' FOR UPDATE OF i");
@@ -61,6 +66,7 @@ async function fulfil(c, type, id) {
   if (type === 'wallet_topup') return completeTopup(c, id);
   if (type === 'gift_card') return activateGiftCard(c, id);
   if (type === 'venue_plan') return activateUserPlan(c, id);
+  if (type === 'physio_package') return activatePhysioPackage(c, id);
   return (await c.query(sql, [id])).rowCount > 0;
 }
 
