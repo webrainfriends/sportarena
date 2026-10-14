@@ -5,8 +5,7 @@ import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { FormSheet } from '../FormSheet';
 import { PaySheet } from '../PaySheet';
-import { Btn, Card, Chip, Empty, ErrorBox, Field, GradCard, Loading, Section, Seg, Sheet, StatPill, T, Tag } from '../ui';
-import { PracticeCompliance } from './health-privacy';
+import { Btn, Card, Chip, Empty, ErrorBox, Field, Loading, Section, Seg, Sheet, T, Tag } from '../ui';
 import { Counter, DateField, DateRangeField } from '../pickers';
 import { ProviderPanels } from './insurance-panel';
 import { c, day } from '../theme';
@@ -336,51 +335,12 @@ function TaxRevenue({ currency }) {
 }
 
 // ------------------------------------------------------------------ Provider workspace
-/** First thing a clinician sees: what is happening today and whether the practice is set up properly. */
-function Overview({ go }) {
-  const { user } = useSession();
-  const patients = useLoad(() => api.get('/medical/patients'), []);
-  const appts = useLoad(() => api.get('/appointments', { limit: 100 }), []);
-  const plans = useLoad(() => api.get('/treatment-plans', { limit: 100 }), []);
-  const comp = useLoad(() => api.get('/me/health/practice-compliance'), []);
-  const mine = (appts.data ?? []).filter((a) => a.provider_id === user.id);
-  const upcoming = mine.filter((a) => ['requested', 'confirmed'].includes(a.status) && new Date(a.starts_at) >= new Date()).sort((a, b) => new Date(a.starts_at) - new Date(b.starts_at));
-  const requested = upcoming.filter((a) => a.status === 'requested').length;
-  const active = (plans.data ?? []).filter((p) => p.as === 'provider' && p.status === 'active').length;
-  const fix = (comp.data?.checks ?? []).filter((x) => x.status === 'fail');
-  return (
-    <View style={{ gap: 12 }}>
-      <GradCard pad={18}>
-        <T weight="900" size={20} color="#fff">Hello{user.display_name ? `, ${user.display_name.split(' ')[0]}` : ''}</T>
-        <T size={13} color="rgba(255,255,255,0.8)">{upcoming.length ? `${upcoming.length} upcoming appointment${upcoming.length === 1 ? '' : 's'}${requested ? ` · ${requested} waiting for you to confirm` : ''}` : 'No upcoming appointments yet.'}</T>
-      </GradCard>
-      <View style={{ flexDirection: 'row', gap: 8 }}>
-        <View style={{ flex: 1 }}><StatPill value={patients.data?.length ?? '–'} label="PATIENTS" /></View>
-        <View style={{ flex: 1 }}><StatPill value={upcoming.length || '0'} label="UPCOMING" /></View>
-        <View style={{ flex: 1 }}><StatPill value={plans.data ? active : '–'} label="ACTIVE PLANS" /></View>
-      </View>
-      {comp.data ? (fix.length
-        ? <Card pad={14} color={c.pinkSoft} onPress={() => go('compliance')}><T weight="900">{fix.length} thing{fix.length === 1 ? '' : 's'} to fix before you treat patients</T><T size={12} color={c.mute}>{fix.map((x) => x.title).join(' · ')}</T><T size={12} weight="800" color={c.pink} style={{ marginTop: 6 }}>Open compliance ›</T></Card>
-        : <Card pad={14} color={c.lime} onPress={() => go('compliance')}><T weight="900">✓ Practice compliance is in order</T><T size={12} color={c.mute}>{comp.data.regime?.name} rules · licence, notice and two-step verification checked.</T></Card>) : null}
-      {upcoming.slice(0, 3).map((a) => <Card key={a.id} pad={12}><T weight="800">{a.athlete_name}</T><T size={12} color={c.mute}>{day(a.starts_at)} · {new Date(a.starts_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} · {a.duration_min} min · {label(a.status)}</T></Card>)}
-      <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-        <Btn small title="Add a service" color={c.pink} onPress={() => go('services')} />
-        <Btn small title="New exercise plan" color={c.violet} onPress={() => go('plans')} />
-        <Btn small title="Exercise library" color={c.paper} ink={c.ink} onPress={() => go('library')} />
-      </View>
-    </View>
-  );
-}
-
-// ------------------------------------------------------------------ Provider workspace
 export function PracticePanel() {
-  const [tab, setTab] = useState('overview');
+  const [tab, setTab] = useState('services');
   const pm = useLoad(() => api.get('/payments/methods'), []);
   const currency = pm.data?.currency ?? 'INR';
   return (
     <View style={{ gap: 10 }}>
-      <Seg options={[{ value: 'overview', label: 'Overview', emoji: '🏠' }, { value: 'services', label: 'Services', emoji: '🩺' }, { value: 'offers', label: 'Offers', emoji: '🏷️' }, { value: 'packages', label: 'Packages', emoji: '🎟️' }, { value: 'plans', label: 'Plans', emoji: '📝' }, { value: 'library', label: 'Exercises', emoji: '🏃' }, { value: 'money', label: 'Tax & revenue', emoji: '🧾' }, { value: 'compliance', label: 'Compliance', emoji: '🛡️' }]} value={tab} onChange={setTab} color={c.violet} />
-      {tab === 'overview' && <Overview go={setTab} />}
       <Seg options={[{ value: 'services', label: 'Services', emoji: '🩺' }, { value: 'offers', label: 'Offers', emoji: '🏷️' }, { value: 'packages', label: 'Packages', emoji: '🎟️' }, { value: 'plans', label: 'Plans', emoji: '📝' }, { value: 'library', label: 'Exercises', emoji: '🏃' }, { value: 'money', label: 'Tax & revenue', emoji: '🧾' }, { value: 'panels', label: 'Insurance', emoji: '🛡️' }]} value={tab} onChange={setTab} color={c.violet} />
       {tab === 'services' && <Services currency={currency} />}
       {tab === 'offers' && <Offers currency={currency} />}
@@ -388,7 +348,6 @@ export function PracticePanel() {
       {tab === 'plans' && <Plans />}
       {tab === 'library' && <Library />}
       {tab === 'money' && <TaxRevenue currency={currency} />}
-      {tab === 'compliance' && <PracticeCompliance />}
       {tab === 'panels' && <ProviderPanels />}
     </View>
   );
