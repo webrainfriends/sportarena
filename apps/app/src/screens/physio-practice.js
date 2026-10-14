@@ -7,6 +7,7 @@ import { FormSheet } from '../FormSheet';
 import { PaySheet } from '../PaySheet';
 import { Btn, Card, Chip, Empty, ErrorBox, Field, Loading, Section, Seg, Sheet, T, Tag } from '../ui';
 import { Counter, DateField, DateRangeField } from '../pickers';
+import { ProviderPanels } from './insurance-panel';
 import { c, day } from '../theme';
 import { moneyIn } from '../vtime';
 
@@ -340,13 +341,14 @@ export function PracticePanel() {
   const currency = pm.data?.currency ?? 'INR';
   return (
     <View style={{ gap: 10 }}>
-      <Seg options={[{ value: 'services', label: 'Services', emoji: '🩺' }, { value: 'offers', label: 'Offers', emoji: '🏷️' }, { value: 'packages', label: 'Packages', emoji: '🎟️' }, { value: 'plans', label: 'Plans', emoji: '📝' }, { value: 'library', label: 'Exercises', emoji: '🏃' }, { value: 'money', label: 'Tax & revenue', emoji: '🧾' }]} value={tab} onChange={setTab} color={c.violet} />
+      <Seg options={[{ value: 'services', label: 'Services', emoji: '🩺' }, { value: 'offers', label: 'Offers', emoji: '🏷️' }, { value: 'packages', label: 'Packages', emoji: '🎟️' }, { value: 'plans', label: 'Plans', emoji: '📝' }, { value: 'library', label: 'Exercises', emoji: '🏃' }, { value: 'money', label: 'Tax & revenue', emoji: '🧾' }, { value: 'panels', label: 'Insurance', emoji: '🛡️' }]} value={tab} onChange={setTab} color={c.violet} />
       {tab === 'services' && <Services currency={currency} />}
       {tab === 'offers' && <Offers currency={currency} />}
       {tab === 'packages' && <Packages currency={currency} />}
       {tab === 'plans' && <Plans />}
       {tab === 'library' && <Library />}
       {tab === 'money' && <TaxRevenue currency={currency} />}
+      {tab === 'panels' && <ProviderPanels />}
     </View>
   );
 }
