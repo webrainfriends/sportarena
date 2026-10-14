@@ -20,13 +20,35 @@ const pii = {
   address: z.string().max(300).optional(),
 };
 const selfRoles = roles.filter((r) => r !== 'admin' && r !== 'platform_admin'); // platform roles are only granted by the platform owner
+export const HANDLE_RE = /^[a-z0-9_]{3,24}$/;
+const handleField = z.string().trim().toLowerCase().regex(HANDLE_RE, '3-24 chars: a-z, 0-9, _');
 const profileRoles = ['athlete', 'coach', 'referee', 'physio', 'doctor'];
+
+/** Runs a users write and turns a unique-handle race (two people grabbing it at once) into a clean 409. */
+async function insertUnique(fn) {
+  try { return await fn(); } catch (e) {
+    if (e.code === '23505' && /handle/.test(e.constraint ?? e.detail ?? '')) throw conflict('That handle is already taken');
+    throw e;
+  }
+}
+
+cap({
+  name: 'check_handle', method: 'GET', path: '/auth/handle-available', tag: 'Identity', auth: 'public',
+  summary: 'Is this public handle free? Case-insensitive; when signed in, your own handle counts as available.',
+  input: z.object({ handle: z.string().trim().toLowerCase().max(40) }),
+  async handler({ user }, i) {
+    if (!HANDLE_RE.test(i.handle)) return { handle: i.handle, available: false, reason: 'invalid' };
+    const row = await one('SELECT id FROM users WHERE lower(handle) = $1', [i.handle]);
+    const available = !row || row.id === user?.id;
+    return { handle: i.handle, available, reason: available ? null : 'taken' };
+  },
+});
 
 cap({
   name: 'register', method: 'POST', path: '/auth/register', tag: 'Identity', auth: 'public', status: 201,
   summary: 'Create an account. Email and all personal identification fields are encrypted at rest.',
   input: z.object({
-    handle: z.string().regex(/^[a-z0-9_]{3,24}$/, '3-24 chars: a-z, 0-9, _'),
+    handle: handleField,
     display_name: z.string().min(1).max(60),
     email: z.string().email(),
     password: z.string().min(10).max(200),
@@ -37,14 +59,15 @@ cap({
   }),
   async handler({ meta }, i) {
     const idx = blindIndex(i.email);
-    if (await one('SELECT 1 FROM users WHERE email_idx = $1 OR handle = $2', [idx, i.handle])) throw conflict('Email or handle already registered');
+    if (await one('SELECT 1 FROM users WHERE email_idx = $1', [idx])) throw conflict('Email already registered');
+    if (await one('SELECT 1 FROM users WHERE lower(handle) = $1', [i.handle])) throw conflict('That handle is already taken');
     const enc = encryptFields(i, 'users', PII);
-    const u = await one(
+    const u = await insertUnique(async () => one(
       `INSERT INTO users (handle, display_name, roles, password_hash, email_enc, email_idx, full_name_enc, phone_enc, dob_enc, national_id_enc, address_enc, avatar_emoji, avatar_color)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,coalesce($12,'😎'),coalesce($13,'#FF3D81')) RETURNING id, handle, display_name, roles, avatar_emoji, avatar_color, avatar_url, avatar_cutout`,
       [i.handle, i.display_name, i.roles, await hashPassword(i.password), encrypt(i.email, 'users.email'), idx,
         enc.full_name_enc ?? null, enc.phone_enc ?? null, enc.dob_enc ?? null, enc.national_id_enc ?? null, enc.address_enc ?? null, i.avatar_emoji, i.avatar_color],
-    );
+    ));
     if (i.dob) await refreshYouth(u.id, u.id);
     return { user: u, ...(await startSession(u, meta)) };
   },
@@ -88,19 +111,21 @@ cap({
 
 cap({
   name: 'update_me', method: 'PATCH', path: '/me', tag: 'Identity', auth: 'user',
-  summary: 'Update profile and (encrypted) personal identification fields.',
+  summary: 'Update your public handle (must be unique), profile and (encrypted) personal identification fields.',
   input: z.object({
+    handle: handleField.optional(),
     display_name: z.string().min(1).max(60).optional(), bio: z.string().max(500).optional(),
     avatar_emoji: z.string().max(8).optional(), avatar_color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(), ...pii,
   }),
   async handler({ user }, i) {
     const enc = encryptFields(i, 'users', PII);
     const sets = {};
-    for (const k of ['display_name', 'bio', 'avatar_emoji', 'avatar_color']) if (i[k] !== undefined) sets[k] = i[k];
+    for (const k of ['handle', 'display_name', 'bio', 'avatar_emoji', 'avatar_color']) if (i[k] !== undefined) sets[k] = i[k];
     Object.assign(sets, enc);
     const keys = Object.keys(sets);
     if (!keys.length) throw badRequest('Nothing to update');
-    await query(`UPDATE users SET ${keys.map((k, n) => `${k} = $${n + 2}`).join(', ')} WHERE id = $1`, [user.id, ...keys.map((k) => sets[k])]);
+    if (sets.handle && await one('SELECT 1 FROM users WHERE lower(handle) = $1 AND id <> $2', [sets.handle, user.id])) throw conflict('That handle is already taken');
+    await insertUnique(async () => query(`UPDATE users SET ${keys.map((k, n) => `${k} = $${n + 2}`).join(', ')} WHERE id = $1`, [user.id, ...keys.map((k) => sets[k])]));
     if (i.dob) await refreshYouth(user.id, user.id);
     return { ok: true, updated: keys.map((k) => k.replace(/_enc$/, '')) };
   },

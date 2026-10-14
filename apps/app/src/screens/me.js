@@ -95,9 +95,9 @@ export function Me() {
           if (next.includes('insurer') && !user.roles.includes('insurer')) { setActiveRole('insurer'); push('InsurerDesk'); return 'Insurer role added: set up your profile'; }
           return 'Roles updated';
         }} />
-      <FormSheet visible={edit} onClose={() => setEdit(false)} title="Edit details" initial={{ display_name: user.display_name, bio: user.bio, full_name: user.full_name, phone: user.phone, dob: user.dob, national_id: user.national_id, address: user.address }}
-        fields={[{ key: 'display_name', label: 'Display name', optional: true }, { key: 'bio', label: 'Bio', optional: true, type: 'multiline' }, { key: 'full_name', label: 'Full name', optional: true }, { key: 'phone', label: 'Phone', optional: true }, { key: 'dob', label: 'Date of birth (YYYY-MM-DD)', optional: true }, { key: 'national_id', label: 'National ID', optional: true }, { key: 'address', label: 'Address', optional: true, type: 'multiline' }]}
-        onSubmit={async (v) => { await api.patch('/me', v); await refresh(); return 'Saved & encrypted'; }} />
+      <FormSheet visible={edit} onClose={() => setEdit(false)} title="Edit details" initial={{ handle: user.handle, display_name: user.display_name, bio: user.bio, full_name: user.full_name, phone: user.phone, dob: user.dob, national_id: user.national_id, address: user.address }}
+        fields={[{ key: 'handle', label: 'Handle (public, unique)', hint: 'Letters, numbers and _ · 3-24 characters' }, { key: 'display_name', label: 'Display name', optional: true }, { key: 'bio', label: 'Bio', optional: true, type: 'multiline' }, { key: 'full_name', label: 'Full name', optional: true }, { key: 'phone', label: 'Phone', optional: true }, { key: 'dob', label: 'Date of birth (YYYY-MM-DD)', optional: true }, { key: 'national_id', label: 'National ID', optional: true }, { key: 'address', label: 'Address', optional: true, type: 'multiline' }]}
+        onSubmit={async (v) => { await api.patch('/me', { ...v, handle: (v.handle ?? '').trim().toLowerCase() || undefined }); await refresh(); return 'Saved & encrypted'; }} />
       <AddProfileSheet visible={sp} onClose={() => setSp(false)} first={false} onDone={async () => {}} />
     </Screen>
   );

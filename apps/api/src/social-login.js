@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomInt } from 'node:crypto';
 import { many, one, query } from './db.js';
 import { badRequest, unauthorized } from './errors.js';
 import { blindIndex, encrypt, hashPassword } from './crypto.js';
@@ -11,12 +11,13 @@ const USER_COLS = 'id, handle, display_name, roles, avatar_emoji, avatar_color, 
 /** Identity-provider columns on users (fixed list: the column name is interpolated into SQL). */
 const SUB_COL = { google: 'google_sub', apple: 'apple_sub' };
 
-/** A free public handle (3-24 chars of a-z, 0-9, _) derived from the email's local part. */
-async function freeHandle(email) {
-  const base = (email.split('@')[0].toLowerCase().replace(/[^a-z0-9_]/g, '_').replace(/^_+|_+$/g, '') || 'player').slice(0, 18).padEnd(3, '0');
-  for (let n = 0; n < 8; n++) {
-    const h = n === 0 ? base : `${base}_${randomBytes(2).toString('hex')}`;
-    if (!(await one('SELECT 1 FROM users WHERE handle = $1', [h]))) return h;
+/** A free public handle: first name + a random 5-digit number (e.g. priya_48213), 3-24 chars of a-z, 0-9, _. Falls back to the email's local part when there is no name. */
+async function freeHandle(email, name) {
+  const clean = (t) => String(t ?? '').normalize('NFKD').toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 18);
+  const first = clean(String(name ?? '').trim().split(/\s+/)[0]) || clean(email.split('@')[0]) || 'player';
+  for (let n = 0; n < 12; n++) {
+    const h = `${first}_${String(randomInt(10000, 100000))}`;
+    if (!(await one('SELECT 1 FROM users WHERE lower(handle) = $1', [h]))) return h;
   }
   return `user_${randomBytes(6).toString('hex')}`;
 }
@@ -51,7 +52,7 @@ export async function socialSignIn({ provider, sub, email, verified = true, name
       u = await one(
         `INSERT INTO users (handle, display_name, roles, password_hash, email_enc, email_idx, ${col}, email_verified_at, access_status)
          VALUES ($1,$2,$7,$3,$4,$5,$6, now(), $8) RETURNING ${USER_COLS}`,
-        [await freeHandle(email), display, await hashPassword(randomBytes(24).toString('base64url')), encrypt(email, 'users.email'), blindIndex(email), sub,
+        [await freeHandle(email, name), display, await hashPassword(randomBytes(24).toString('base64url')), encrypt(email, 'users.email'), blindIndex(email), sub,
           isSuper ? ['athlete', 'admin', 'platform_admin'] : ['athlete'], isSuper ? 'approved' : 'pending']);
       await audit(null, u.id, `${provider}_register`, 'users', u.id);
     }
