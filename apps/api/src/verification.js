@@ -19,6 +19,7 @@ export const EVIDENCE_KINDS = {
   sanction_letter: 'Sanction or permit from a federation or authority',
   venue_confirmation: 'Venue confirmation of the booking',
   public_listing: 'Official public listing of the event (link)',
+  insurer_licence: 'Insurance regulator licence / certificate of authority',
   other: 'Other supporting document',
 };
 
@@ -51,6 +52,12 @@ export const RULES = {
     summary: 'Confirms a registered medical practitioner.',
     required: ['id_document', 'medical_registration'],
     checklist: [...identity, { key: 'credential_valid', label: 'Registration checked with the medical council and in good standing' }],
+  },
+  insurer: {
+    label: 'Verified insurer', subject: 'user', needs_role: 'insurer', validity_months: 12,
+    summary: 'Confirms a licensed insurer or agency. Approval also marks your insurer profile as verified.',
+    required: ['insurer_licence'], one_of: ['business_registration', 'authorisation_letter'],
+    checklist: [{ key: 'licence_valid', label: 'Licence is current and confirmed with the insurance regulator' }, { key: 'name_matches', label: 'Licensed name matches the insurer profile' }, { key: 'requester_authorised', label: 'Requester is authorised to act for the insurer' }],
   },
   sponsor: {
     label: 'Verified sponsor', subject: 'sponsor', needs_role: null, validity_months: 12,

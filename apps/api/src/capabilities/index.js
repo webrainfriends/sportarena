@@ -4,6 +4,7 @@ import './apple-login.js';
 import './sessions.js';
 import './account-security.js';
 import './verification.js';
+import './verification-timeline.js';
 import './cases.js';
 import './jobs.js';
 import './disputes.js';

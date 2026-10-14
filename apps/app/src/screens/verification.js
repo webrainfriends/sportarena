@@ -62,11 +62,12 @@ async function buildEvidence(inputs) {
 }
 
 // ------------------------------------------------------------------ requester
-function RequestSheet({ visible, onClose, rules, onDone, preset }) {
+function RequestSheet({ visible, onClose, rules, onDone, preset, presetSubject }) {
   const { user, toast } = useSession();
   const eligible = (rules?.types ?? []).filter((t) => (t.needs_role ? user.roles.includes(t.needs_role) : user.roles.includes(t.subject === 'sponsor' ? 'sponsor' : 'organizer') || user.roles.includes('admin')));
   const [type, setType] = useState(null);
-  const [subject, setSubject] = useState(null);
+  const [pickedSubject, setSubject] = useState(null);
+  const subject = pickedSubject ?? presetSubject ?? null;
   const [inputs, setInputs] = useState({});
   const [note, setNote] = useState('');
   const [err, setErr] = useState(null);
@@ -103,32 +104,123 @@ function RequestSheet({ visible, onClose, rules, onDone, preset }) {
   );
 }
 
-function CaseSheet({ id, rules, onClose, onChange }) {
+// ------------------------------------------------------------------ onboarding timeline (light, one vertical rail)
+const DOT = { done: [c.lime, '✓'], current: [c.pink, '●'], upcoming: [c.line, '○'], blocked: [c.red, '!'] };
+
+/** Vertical timeline: a coloured dot per stage joined by a rail; the current stage is highlighted. */
+export function Timeline({ stages }) {
+  return (
+    <View>
+      {stages.map((s, i) => {
+        const [col, glyph] = DOT[s.state] ?? DOT.upcoming, last = i === stages.length - 1, on = s.state !== 'upcoming';
+        return (
+          <View key={s.key} style={{ flexDirection: 'row', gap: 12 }}>
+            <View style={{ alignItems: 'center', width: 30 }}>
+              <View style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: on ? col : c.paper, borderWidth: on ? 0 : 2, borderColor: c.line, alignItems: 'center', justifyContent: 'center', ...(s.state === 'current' ? { shadowColor: col, shadowOpacity: 0.35, shadowRadius: 8, shadowOffset: { width: 0, height: 2 } } : null) }}>
+                <T size={14} weight="800" color={on ? '#fff' : c.mute}>{glyph}</T>
+              </View>
+              {!last ? <View style={{ flex: 1, width: 3, minHeight: 24, borderRadius: 2, backgroundColor: s.state === 'done' ? c.lime : c.line, marginVertical: 2 }} /> : null}
+            </View>
+            <View style={{ flex: 1, paddingBottom: last ? 0 : 16 }}>
+              <T weight="800" size={15} color={s.state === 'upcoming' ? c.mute : c.ink}>{s.title}</T>
+              {s.at ? <T size={12} color={c.mute}>{day(s.at)}</T> : null}
+              {s.detail ? <T size={13} color={s.state === 'blocked' ? c.red : c.mute}>{s.detail}</T> : null}
+            </View>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+const NEXT_TONE = { you: [c.sunSoft, '👉 Your turn'], platform: [c.cyanSoft, '⏳ With the platform team'], none: [c.limeSoft, '🎉 All set'] };
+export const NextStep = ({ step }) => {
+  const [bg, who] = NEXT_TONE[step.actor] ?? NEXT_TONE.none;
+  return (
+    <Card color={bg} pad={14}>
+      <T size={12} weight="800" color={c.mute}>{who.toUpperCase()}</T>
+      <T weight="800" size={16}>{step.title}</T>
+      <T size={13} color={c.mute}>{step.detail}</T>
+      {step.missing?.length ? step.missing.map((m) => <T key={m} size={13} weight="700">• {m}</T>) : null}
+    </Card>
+  );
+};
+
+/** Who can read my documents: search-and-pick a person, choose how long, revoke later. */
+function SharePanel({ caseId, documents }) {
   const { toast } = useSession();
-  const d = useLoad(() => (id ? api.get(`/verification/cases/${id}`) : Promise.resolve(null)), [id]);
-  const [kind, setKind] = useState(null);
+  const shares = useLoad(() => api.get(`/verification/cases/${caseId}/shares`), [caseId]);
+  const [q, setQ] = useState('');
+  const [who, setWho] = useState(null);
+  const [days, setDays] = useState(30);
+  const [only, setOnly] = useState([]);
+  const found = useLoad(() => (q.trim().length < 2 ? Promise.resolve([]) : api.get('/people', { q: q.trim(), limit: 6 })), [q]);
+  const files = documents.flatMap((d) => d.items.map((it) => ({ id: it.id, label: `${d.label}${it.file_name ? ` · ${it.file_name}` : ''}` })));
+  const act = async (fn, msg) => { try { await fn(); toast(msg); shares.reload(); } catch (e) { toast(e.message); } };
+  const active = (shares.data ?? []).filter((x) => x.active);
+  return (
+    <Card color={c.paper} pad={14} style={{ borderWidth: 1, borderColor: c.line }}>
+      <T weight="800" size={15}>🔐 Who can see these documents</T>
+      <T size={12} color={c.mute}>Only you, plus people you pick here. Access ends on its own and you can revoke it any time.</T>
+      {active.length ? active.map((x) => <Row key={x.id} title={x.grantee} sub={`${x.evidence_id ? 'One document' : 'All documents'} · until ${day(x.expires_at)}${x.purpose ? ` · ${x.purpose}` : ''}`} right={<Btn small title="Revoke" color={c.paper} ink={c.red} onPress={() => act(() => api.post(`/verification/shares/${x.id}/revoke`), 'Access revoked')} />} />) : <T size={13} color={c.mute}>Not shared with anyone.</T>}
+      {who ? <View style={{ gap: 8, marginTop: 6 }}>
+        <T weight="700" size={13}>Share with {who.display_name}</T>
+        <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>{[7, 30, 90].map((d) => <Chip key={d} label={`${d} days`} active={days === d} onPress={() => setDays(d)} />)}</View>
+        <T size={12} color={c.mute}>Which documents? (none picked = all)</T>
+        <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>{files.map((f) => <Chip key={f.id} label={f.label} active={only.includes(f.id)} onPress={() => setOnly(only.includes(f.id) ? only.filter((x) => x !== f.id) : [...only, f.id])} />)}</View>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <Btn small title="Share" color={c.pink} onPress={() => act(async () => { await api.post(`/verification/cases/${caseId}/shares`, { user_id: who.id, days, evidence_ids: only.length ? only : undefined }); setWho(null); setOnly([]); setQ(''); }, 'Shared')} />
+          <Btn small title="Cancel" color={c.paper} ink={c.mute} onPress={() => setWho(null)} />
+        </View>
+      </View> : <>
+        <Field label="Share with someone" value={q} onChangeText={setQ} placeholder="Search by name or handle" />
+        {(found.data ?? []).map((p) => <Row key={p.id} title={p.display_name} sub={`@${p.handle}`} onPress={() => setWho(p)} />)}
+      </>}
+    </Card>
+  );
+};
+
+function CaseSheet({ id, rules, onClose, onChange, onNew }) {
+  const { toast } = useSession();
+  const d = useLoad(() => (id ? api.get(`/verification/cases/${id}/timeline`) : Promise.resolve(null)), [id]);
+  const [slot, setSlot] = useState(null);
   const [val, setVal] = useState({});
   const x = d.data;
   const run = async (fn, msg) => { try { await fn(); toast(msg); d.reload(); onChange(); } catch (e) { toast(e.message); } };
-  const kinds = x ? Object.keys(rules.evidence_kinds) : [];
+  const open = ['submitted', 'needs_info'].includes(x?.status);
+  const view = (docId) => run(async () => {
+    const f = await api.get(`/verification/cases/${id}/documents/${docId}`);
+    if (!f.data) return toast(f.reference ?? 'No file');
+    const url = `data:${f.content_type};base64,${f.data}`;
+    if (isWeb) { const w = window.open(); w.document.write(`<iframe src="${url}" style="border:0;width:100%;height:100%"></iframe>`); } else toast('Open this on the web app');
+  }, 'Opened (logged)');
   return (
-    <Sheet visible={!!id} onClose={onClose} title={x ? `Case #${x.case_no} · ${x.label}` : 'Verification case'}>
+    <Sheet visible={!!id} onClose={onClose} title={x ? `${x.label} · #${x.case_no}` : 'Verification'}>
       {d.loading && !x ? <Loading /> : d.error ? <ErrorBox error={d.error} onRetry={d.reload} /> : x ? <>
-        <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>{stateTag(x.status)}{x.expires_at ? <T size={12} color={c.mute}>{x.status === 'expired' ? 'expired' : 'valid until'} {day(x.expires_at)}</T> : null}</View>
-        {x.decision_reason ? <Card color={c.sunSoft} pad={12}><T weight="800" size={13}>Reviewer's note</T><T>{x.decision_reason}</T></Card> : null}
-        <T weight="800" size={13}>Evidence on file</T>
-        {x.evidence.map((e) => <T key={e.id} size={13}>• {rules.evidence_kinds[e.kind] ?? e.kind}{e.file_name ? ` · ${e.file_name}` : ''}{e.has_reference ? ' · reference' : ''}</T>)}
-        <T weight="800" size={13}>History</T>
-        {x.history.map((h, i) => <T key={i} size={12} color={c.mute}>{day(h.created_at)} · {h.actor} · {h.action.replace('_', ' ')}{h.reason ? ` — ${h.reason}` : ''}</T>)}
-        {['submitted', 'needs_info'].includes(x.status) ? <Card color={c.violetSoft} pad={12}>
-          <T weight="800" size={13}>Add evidence</T>
-          <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>{kinds.map((k) => <Chip key={k} label={rules.evidence_kinds[k]} active={kind === k} onPress={() => { setKind(k); setVal({}); }} />)}</View>
-          {kind ? <>
-            <EvidenceInput kind={kind} label={rules.evidence_kinds[kind]} value={val} onChange={setVal} />
-            <Btn small title="Add" color={c.violet} onPress={() => run(async () => { const ev = await buildEvidence({ [kind]: val }); if (!ev.length) throw new Error('Add a reference or a file'); await api.post(`/verification/cases/${id}/evidence`, { evidence: ev }); setKind(null); }, 'Evidence added')} />
-          </> : null}
-        </Card> : null}
+        <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>{stateTag(x.status)}<T size={12} color={c.mute}>{x.subject_name}</T></View>
+        <NextStep step={x.next_step} />
+        <Timeline stages={x.stages} />
+        <T weight="800" size={15}>Documents</T>
+        {x.documents.map((doc) => (
+          <Card key={doc.kind} color={doc.provided ? c.limeSoft : c.paper} pad={12} style={doc.provided ? null : { borderWidth: 1, borderColor: c.line, borderStyle: 'dashed' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <T style={{ flex: 1 }} weight="700" size={14}>{doc.provided ? '✅' : '⬜'} {doc.label}</T>
+              <Tag label={doc.requirement === 'required' ? 'Required' : doc.requirement === 'one_of' ? 'One of' : 'Extra'} color={doc.requirement === 'required' ? c.sunSoft : c.violetSoft} />
+            </View>
+            {doc.items.map((it) => <View key={it.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 }}><T style={{ flex: 1 }} size={12} color={c.mute}>{it.file_name ?? 'Reference'} · {day(it.created_at)}</T><Btn small title="View" color={c.violet} onPress={() => view(it.id)} /></View>)}
+            {open && slot !== doc.kind ? <Btn small title={doc.provided ? 'Add another' : 'Upload'} color={c.pink} style={{ alignSelf: 'flex-start', marginTop: 8 }} onPress={() => { setSlot(doc.kind); setVal({}); }} /> : null}
+            {open && slot === doc.kind ? <View style={{ marginTop: 8, gap: 6 }}>
+              <EvidenceInput kind={doc.kind} label={doc.label} value={val} onChange={setVal} />
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <Btn small title="Save" color={c.pink} onPress={() => run(async () => { const ev = await buildEvidence({ [doc.kind]: val }); if (!ev.length) throw new Error('Add a reference or a file'); await api.post(`/verification/cases/${id}/evidence`, { evidence: ev }); setSlot(null); }, 'Document added')} />
+                <Btn small title="Cancel" color={c.paper} ink={c.mute} onPress={() => setSlot(null)} />
+              </View>
+            </View> : null}
+          </Card>
+        ))}
+        {x.shared_with !== null ? <SharePanel caseId={id} documents={x.documents} /> : null}
         <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+          {['rejected', 'withdrawn', 'revoked', 'expired'].includes(x.status) ? <Btn title={x.status === 'expired' ? 'Renew' : 'Start a new request'} color={c.pink} onPress={onNew} /> : null}
           {x.status === 'needs_info' ? <Btn title="Send back for review" color={c.pink} onPress={() => run(() => api.post(`/verification/cases/${id}/resubmit`), 'Back in the queue')} /> : null}
           {['submitted', 'in_review', 'needs_info'].includes(x.status) ? <Btn title="Withdraw" color={c.paper} ink={c.red} onPress={() => run(() => api.post(`/verification/cases/${id}/withdraw`), 'Withdrawn')} /> : null}
         </View>
@@ -137,21 +229,39 @@ function CaseSheet({ id, rules, onClose, onChange }) {
   );
 }
 
+/** One onboarding card per thing you can get verified (role or brand): mini progress + the next step. */
+function OnboardingCard({ o, onOpen }) {
+  const started = o.status !== 'not_started', pct = o.docs_total ? o.docs_provided / o.docs_total : 0;
+  return (
+    <Card color={c.paper} pad={14} onPress={onOpen} style={{ borderWidth: 1, borderColor: c.line }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <T style={{ flex: 1 }} weight="800" size={16}>{o.label}</T>{started ? stateTag(o.status) : <Tag label="Not started" color={c.violetSoft} />}
+      </View>
+      <T size={12} color={c.mute}>{o.subject_type === 'sponsor' ? `${o.subject_name} · ` : ''}{o.next}</T>
+      <View style={{ height: 6, borderRadius: 3, backgroundColor: c.line, marginTop: 8, overflow: 'hidden' }}><View style={{ height: 6, width: `${Math.round(pct * 100)}%`, backgroundColor: c.lime }} /></View>
+      <T size={11} color={c.mute}>{o.docs_provided} of {o.docs_total} required documents on file</T>
+    </Card>
+  );
+}
+
 export function VerificationSection() {
   const rules = useLoad(() => api.get('/verification/rules'), []);
-  const mine = useLoad(() => api.get('/me/verifications'), []);
-  const [req, setReq] = useState(false);
+  const board = useLoad(() => api.get('/me/onboarding'), []);
+  const [req, setReq] = useState(null);
   const [open, setOpen] = useState(null);
   return (
-    <Section title="Verification" color={c.lime}>
-      <T size={13} color={c.mute}>Get a verified badge like on LinkedIn or Instagram. Request it, attach proof, and the platform team reviews your case. Only the badge is ever public.</T>
-      <Btn small title="Request a badge" color={c.pink} onPress={() => setReq(true)} style={{ alignSelf: 'flex-start', marginVertical: 8 }} disabled={!rules.data} />
-      {mine.loading && !mine.data ? <Loading /> : mine.data?.length ? mine.data.map((cs) => (
-        <Row key={cs.id} onPress={() => setOpen(cs.id)} title={`${rules.data?.types.find((t) => t.type === cs.type)?.label ?? cs.type} · ${cs.subject_name}`} sub={`Case #${cs.case_no} · sent ${day(cs.submitted_at)}${cs.expires_at ? ` · ${cs.status === 'expired' ? 'expired' : 'until'} ${day(cs.expires_at)}` : ''}`} right={stateTag(cs.status)} />
-      )) : <Empty emoji="🪪" title="No verification requests yet" />}
+    <Section title="Onboarding & verification" color={c.lime}>
+      <T size={13} color={c.mute}>Follow each step from documents to a public verified badge. Your documents are encrypted and only you and the people you share them with can read them.</T>
+      {board.loading && !board.data ? <Loading /> : board.error ? <ErrorBox error={board.error} onRetry={board.reload} /> : (
+        <View style={{ gap: 10, marginTop: 8 }}>
+          {(board.data ?? []).map((o) => <OnboardingCard key={`${o.type}${o.subject_id}`} o={o} onOpen={() => (o.case_id ? setOpen(o.case_id) : setReq(o))} />)}
+          {!board.data?.length ? <Empty emoji="🪪" title="Nothing to verify yet" sub="Add a role such as physio, doctor, insurer or sponsor to see your onboarding steps." /> : null}
+        </View>
+      )}
+      <Btn small title="Request a badge" color={c.pink} onPress={() => setReq({})} style={{ alignSelf: 'flex-start', marginVertical: 8 }} disabled={!rules.data} />
       {rules.data ? <>
-        <RequestSheet visible={req} onClose={() => setReq(false)} rules={rules.data} onDone={mine.reload} />
-        <CaseSheet id={open} rules={rules.data} onClose={() => setOpen(null)} onChange={mine.reload} />
+        <RequestSheet key={`${req?.type}${req?.subject_id}`} visible={!!req} onClose={() => setReq(null)} rules={rules.data} onDone={board.reload} preset={req?.type} presetSubject={req?.subject_type !== 'user' ? req?.subject_id : null} />
+        <CaseSheet id={open} rules={rules.data} onClose={() => setOpen(null)} onChange={board.reload} onNew={() => { setReq(board.data?.find((o) => o.case_id === open) ?? {}); setOpen(null); }} />
       </> : null}
     </Section>
   );
