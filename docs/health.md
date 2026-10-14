@@ -10,12 +10,6 @@ side and keeps them apart.
 | Who sees it | anyone | the two parties; providers only with an active consent |
 | Content | type, bio, clinic, city, languages, specialties, fee, hours, rating, verification badge | reasons, notes, clearance, injury details |
 
-## Country health-privacy compliance
-The module follows the health-data rules of the US, UK, Canada, UAE, India, Singapore, Malaysia, China, Japan, Australia and New Zealand: a per-person
-country choice with a versioned notice, hosting/transfer consent, cross-border sharing and telehealth rules, patient-rights requests with the country's
-response time, accounting of disclosures, a complete data export, and a platform breach register with per-country clocks. Opt-in per person; nothing is
-deleted. Full description, country table and limits: [health-compliance.md](health-compliance.md). In the app: **Health → Privacy**.
-
 ## Where the physio workspace lives in the app (issue #210)
 
 All of it is under **More → Health**. A physio or doctor gets a **My practice** tab (default for providers) with sub-tabs: **Services** (prices with versions, tax treatment), **Offers**, **Packages**, **Plans** (patient treatment plans: draft → publish → revise, pause/complete/discharge), **Exercises** (library with search and body-region filter) and **Tax & revenue** (tax profile, recorded rates with source, billed/collected report). Everyone gets **My plans**: published exercise plans (read and acknowledge) and purchased session packages (pay, cancel unpaid). Booking a provider (**Find a pro → Book**) now offers a service picker, an offer-code field with a server price quote, package purchase and "use a package session". Doctor care plans (`/medical/care-plans`) are a separate doctor-only medical plan; these treatment plans are exercise prescriptions for physios and doctors.
