@@ -79,9 +79,6 @@ export const config = {
   },
   // Clinical actions need a current doctor/physio verification case (src/clinical-access.js, docs/verification.md).
   clinical: {
-    // Countries (codes from src/health/regimes.js) this deployment physically stores health data in. Unset = guessed from KMS_REGION.
-    // A patient can pick a "keep it in-country" regime (AE, CN) only when it is listed here.
-    hostingRegions: (env.HEALTH_HOSTING_REGIONS ?? '').split(',').map((s) => s.trim().toUpperCase()).filter(Boolean),
     // Days after an EXPIRED (never revoked) credential during which a provider may still complete existing appointments. 0 = no grace.
     graceDays: Number(env.CLINICAL_GRACE_DAYS ?? 0),
     // Optional allow-list of credential jurisdictions, e.g. "IN,GB". Empty = any (including unrecorded).
