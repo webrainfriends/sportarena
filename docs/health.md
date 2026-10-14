@@ -129,3 +129,21 @@ warning in the Access list for providers whose verification lapsed. Server messa
 
 Limitations: sport scope is evaluated from the case's `sport_id` against the supplied `sport_id` or the athlete's sport profiles.
 Existing data is untouched; migration 049 only adds nullable/defaulted columns (rollback: leave them, older code ignores them).
+
+## Structured encounters (issue #212, doctor workspace slice 1)
+Existing -> gap -> change: `medical_records` holds one free-text note per entry and `appointments` only a lifecycle; there was no signed,
+versioned consultation. Added (migration 064, additive; nothing converted from legacy text): `clinical_encounters`.
+
+* `create_encounter` / `update_encounter` / `sign_encounter` / `amend_encounter` / `void_encounter` / `list_encounters` / `get_encounter`
+  (doctor only; REST + OpenAPI + MCP, token scope `clinical`). SOAP or free template; observations need value, unit and measurement time.
+* Same gates as records: current verified **doctor** credential and the athlete's active **full** consent, re-checked under `FOR SHARE` locks in the
+  signing transaction, so a revocation that commits first blocks the signature. The credential case relied on is stored.
+* States `draft -> ready -> signed`, or `voided` with a reason. Edits carry `version`; a stale version is a 409. Signed rows are immutable in
+  the API **and** by a database trigger; corrections are linked `amendment` encounters that are signed separately. One live encounter per
+  appointment. Copied-forward text must be marked reviewed before signing.
+* Working notes (`content`) are clinician-only. The athlete sees only the **visit summary** of signed encounters (Health > My records) and can
+  acknowledge it - that records "read", not agreement or recovery. Other consented doctors see signed notes only, within the grant's history scope.
+* Notifications are generic; all content is encrypted (`clinical_encounters.*`); reads and signatures are audit-logged.
+
+Not in this slice (tracked in #212): problems/allergies/medications, care plans, results review, referrals, clearance versions, practice billing and
+tax (shared with #210/#71), teleconsultation, guardian access to summaries. Rollback: leave the table; older code ignores it.

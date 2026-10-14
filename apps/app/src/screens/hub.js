@@ -299,6 +299,7 @@ export function Health() {
   const [hist, setHist] = useState(null), [cancelA, setCancelA] = useState(null);
   const appts = useLoad(() => api.get('/appointments', { limit: 30 }), []);
   const recs = useLoad(() => api.get('/medical/records', { limit: 30 }), []);
+  const visits = useLoad(() => api.get('/medical/encounters', { limit: 30 }), []);
   const isProv = has('physio', 'doctor');
   const act = async (fn, msg) => { try { await fn(); toast(msg); appts.reload(); } catch (e) { toast('' + e.message); } };
   return (
@@ -326,6 +327,17 @@ export function Health() {
                 <Btn small title="Revoke" color={c.paper} ink={c.red} onPress={() => act(() => api.del(`/medical/grants/${a.provider_id}`), 'Access revoked')} /></> : null}
             </View></Card>
         )) : <Empty emoji="📅" title="No appointments" />)}
+        {tab === 'records' && visits.data?.filter((v) => v.status === 'signed' && v.visit_summary).map((v) => (
+          <Card key={v.id}><Tag label="Visit summary" color={c.mint} />
+            {v.visit_summary.problem ? <T weight="900" style={{ marginTop: 6 }}>{v.visit_summary.problem}</T> : null}
+            {v.visit_summary.plan ? <T size={13} color={c.mute}>Plan: {v.visit_summary.plan}</T> : null}
+            {v.visit_summary.actions ? <T size={13} color={c.mute}>What to do: {v.visit_summary.actions}</T> : null}
+            {v.visit_summary.follow_up_date ? <T size={13} color={c.mute}>Follow-up: {v.visit_summary.follow_up_date}</T> : null}
+            {v.visit_summary.escalation ? <T size={13} color={c.mute}>If it gets worse: {v.visit_summary.escalation}</T> : null}
+            <T size={11} color={c.mute}>Dr {v.provider_name} · {day(v.signed_at)}</T>
+            {v.patient_ack_at ? <T size={11} color={c.mute}>You marked this as read</T> : <Btn small title="Mark as read" color={c.mint} ink={c.ink} onPress={() => act(async () => { await api.post(`/medical/encounters/${v.id}/acknowledge`, {}); visits.reload(); }, 'Marked as read')} />}
+          </Card>
+        ))}
         {tab === 'records' && (recs.data?.length ? recs.data.map((r) => <Card key={r.id}><View style={{ flexDirection: 'row', gap: 8 }}><Tag label={r.kind} color={c.cyan} />{r.clearance ? <Tag label={r.clearance.replace('_', ' ')} color={r.clearance === 'cleared' ? c.lime : c.orange} /> : null}</View><T weight="900" style={{ marginTop: 6 }}>{r.summary}</T>{r.details ? <T size={13} color={c.mute}>{r.details}</T> : null}<T size={11} color={c.mute}>{r.provider_name} · {day(r.created_at)}</T></Card>) : <Empty emoji="📋" title="No records" sub="Records written by providers you've granted access appear here." />)}
       </View>
       {hist ? <TimelineSheet kind="appointment" id={hist} meId={user.id} title="Appointment history" onClose={() => setHist(null)} /> : null}
