@@ -38,8 +38,8 @@ const Wait = ({ q, empty, children }) => (q.loading && !q.data ? <Loading /> : q
 /** Entry card for doctors on Home / Health / Me. */
 export function DoctorEntry() {
   const { push } = useNav();
-  const { has } = useSession();
-  if (!has('doctor')) return null;
+  const { user, has } = useSession();
+  if (!user?.roles?.includes('doctor') || !has('doctor')) return null;   // has() lets an admin through every role; only a real doctor gets the workspace
   return (
     <Card color={c.mintSoft} pad={14} onPress={() => push('DoctorHome')}>
       <T weight="900" size={16}>🩺 Doctor workspace</T>
