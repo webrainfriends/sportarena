@@ -129,3 +129,18 @@ warning in the Access list for providers whose verification lapsed. Server messa
 
 Limitations: sport scope is evaluated from the case's `sport_id` against the supplied `sport_id` or the athlete's sport profiles.
 Existing data is untouched; migration 049 only adds nullable/defaulted columns (rollback: leave them, older code ignores them).
+
+## Sports clearance decisions (issue #212, slice 3a)
+Existing -> gap -> change: clearance was a single enum on a free-text record, with no assessor, context, restrictions or expiry, so an old "cleared" never aged out.
+Added (migration 069, additive; `medical_records.clearance` untouched): `clinical_clearances`; capabilities `issue_clearance`, `withdraw_clearance`, `list_clearances`
+(scope `clinical`); `get_clearance` and the dashboard `fit_to_play` now use the shared projection in `src/clearance.js`.
+
+* Only a verified **doctor** with the athlete's full consent decides (credential case recorded). A decision has assessment date, optional sport and activity context,
+  graded `restrictions`, a required `valid_until` (unless `not_cleared`) and optional `review_by`. It is independent of payment, appointment completion and rehab progress.
+* Decisions are immutable (DB trigger, never deleted). A new decision supersedes the live one for the same athlete + sport; a doctor can withdraw one with a reason.
+* Projection (`get_clearance`, home): status `cleared | restricted | not_cleared | expired | unknown`, `valid_until`, `review_due`, and the restrictions the doctor chose to share -
+  never diagnosis or `internal_note`. Past `valid_until` the status is `expired`, not "cleared". With several sports the worst current status wins; `sport_id` narrows it.
+  Whichever of a structured decision and a legacy clearance record is newer is the latest word, so an older "cleared" from either source cannot mask a newer "not cleared".
+* Access to the projection is unchanged (athlete, guardians, consented clearance-scope providers, team staff, admin); the new fields add no private text.
+
+Not in this slice: automatic review tasks/reminders, event-incident linkage, screens. Rollback: leave the table; `get_clearance` falls back to the legacy record when it is empty.
