@@ -129,3 +129,20 @@ warning in the Access list for providers whose verification lapsed. Server messa
 
 Limitations: sport scope is evaluated from the case's `sport_id` against the supplied `sport_id` or the athlete's sport profiles.
 Existing data is untouched; migration 049 only adds nullable/defaulted columns (rollback: leave them, older code ignores them).
+
+## Investigations and results review (issue #212, slice 2b)
+Existing -> gap -> change: reports/results had no ownership or review trail. Added (migration 066, additive): `clinical_investigations`, `clinical_results`
+(versioned, append-only), `clinical_investigation_events` (append-only); capabilities `request_investigation`, `upload_investigation_result`,
+`review_investigation_result`, `update_investigation_outcome`, `reassign_investigation`, `list_investigations`, `get_investigation_history` (scope `clinical`).
+
+* Status: `requested` (awaiting result) -> `received` -> `reviewed` -> `patient_informed` -> `closed`. **Receiving or opening a result is never a review**: only the
+  responsible doctor's `review_investigation_result` (naming the exact result version) sets `reviewed`; `doctor_reviewed` per result reflects that alone.
+* A request is a manual/external record - it does not send a lab order. Priority and review-due date are the clinician's choice; no thresholds are applied
+  and values, units and the source's own reference intervals are stored exactly as supplied. Automatic extraction must be flagged `unverified_extraction`.
+* Duplicate uploads (same values + document) return the existing result. A different result after review is a new version: review reopens, earlier versions stay.
+* The review queue (`list_investigations` without `athlete_id`) is the doctor's own work across currently consenting patients, urgent and overdue first.
+  `reassign_investigation` (absence cover) requires the cover doctor to be verified and to hold the athlete's own consent; notes are never shown to the athlete.
+* Athletes always see their own tests and results regardless of any other state. Notifications are generic. Encrypted; audit-logged.
+
+Not in this slice: file upload/storage UI (a `document_ref` to existing private storage is recorded), automated coverage rules, linking to encounters, screens.
+Rollback: leave the tables.
