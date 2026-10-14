@@ -8,6 +8,7 @@ import { Avatar, Bubble, Btn, Card, Chip, Empty, ErrorBox, Field, GradCard, H1, 
 import { FormSheet } from '../FormSheet';
 import { AddFollowupSheet, ClinicalStatusCard, ConsentManager, FollowupsPanel, ProviderSearch, ShareRecordsSheet } from './provider';
 import { MyRehab, PracticePanel } from './physio-practice';
+import { PrivacyHub } from './health-privacy';
 import { SportSelect, SportPicker } from '../sportpicker';
 import { EntityPicker } from '../entity-picker';
 import { DateField } from '../pickers';
@@ -305,7 +306,6 @@ export function Health() {
   const visits = useLoad(() => api.get('/medical/encounters', { limit: 30 }), []);
   const isProv = has('physio', 'doctor') && !!user.roles?.some((r) => r === 'physio' || r === 'doctor');   // a platform admin is not a clinician
   const region = useLoad(() => api.get('/me/health/region'), []);
-  const isProv = has('physio', 'doctor');
   const act = async (fn, msg) => { try { await fn(); toast(msg); appts.reload(); } catch (e) { toast('' + e.message); } };
   return (
     <Screen>
@@ -320,6 +320,7 @@ export function Health() {
         {tab === 'find' && <ProviderSearch onBooked={() => { appts.reload(); setTab('appts'); }} />}
         {tab === 'practice' && isProv && <PracticePanel />}
         {tab === 'rehab' && <MyRehab />}
+        {tab === 'consent' && <PrivacyHub onChanged={region.reload} />}
         {tab === 'consent' && <ConsentManager />}
         {tab === 'file' && <MyHealthFile />}
         {tab === 'followups' && <FollowupsPanel />}
