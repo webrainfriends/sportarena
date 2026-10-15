@@ -37,8 +37,8 @@ export async function ask({ system, user, maxTokens = 800, timeoutMs = TIMEOUT_M
 }
 
 /** Ask for a JSON object and validate it; anything else is treated as "no answer". */
-export async function askJson({ system, user, schema, shape, maxTokens = 1200 }) {
-  const text = await ask({ system: `${system}\nReply with one JSON object and nothing else, exactly in this shape: ${shape}`, user, maxTokens });
+export async function askJson({ system, user, schema, shape, maxTokens = 1200, timeoutMs }) {
+  const text = await ask({ system: `${system}\nReply with one JSON object and nothing else, exactly in this shape: ${shape}`, user, maxTokens, timeoutMs });
   if (!text) return null;
   const a = text.indexOf('{'), b = text.lastIndexOf('}');
   if (a < 0 || b < a) return null;

@@ -6,15 +6,15 @@ import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { useNav } from '../nav';
-import { Btn, Card, Chip, Empty, ErrorBox, Field, GradCard, H1, Loading, Row, Screen, Seg, Section, T, Tag } from '../ui';
+import { Btn, Card, Chip, Empty, ErrorBox, Field, GradCard, H1, Loading, Row, Screen, Seg, Section, StatPill, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { SportSelect, useSports } from '../sportpicker';
 import { c, when } from '../theme';
 import { locale } from '../locale';
 import { moneyIn } from '../vtime';
 
-export const KINDS = [['course', 'Course'], ['certification', 'Certification'], ['diploma', 'Diploma'], ['degree', 'Degree'], ['postgraduate', 'Postgraduate'], ['short_course', 'Short course']];
-export const MODES = [['on_campus', 'On campus'], ['online', 'Online'], ['hybrid', 'Hybrid']];
+import { KINDS, MODES, Explore, Saved, Reviews, BucketButton, RatingTag } from './study';
+export { KINDS, MODES };
 export const STAGES = [['new', 'New'], ['in_conversation', 'In conversation'], ['referred', 'Sent to apply'], ['applied', 'Applied'], ['admitted', 'Admitted'], ['enrolled', 'Enrolled'], ['declined', 'Declined'], ['withdrawn', 'Withdrawn'], ['closed', 'Closed']];
 export const label = (list, v) => list.find(([k]) => k === v)?.[1] ?? String(v).replace(/_/g, ' ');
 export const openLink = (url) => (Platform.OS === 'web' ? window.open(url, '_blank', 'noopener') : Linking.openURL(url));
@@ -45,29 +45,35 @@ export function CredentialList({ list }) {
 // ------------------------------------------------------------------ the hub
 export function Pathways() {
   const { push } = useNav();
-  const [tab, setTab] = useState('learn');
-  const [sport, setSport] = useState(null);
+  const [tab, setTab] = useState('explore');
   const enq = useLoad(() => api.get('/me/enquiries', { limit: 100 }), []);
+  const bucket = useLoad(() => api.get('/me/bucket', { limit: 100 }), []);
   const unread = (enq.data ?? []).filter((e) => e.unread).length;
+  const saved = bucket.data?.length ?? 0;
   return (
     <Screen>
       <GradCard colors={[c.violet, c.ink]}>
         <H1 color="#fff" style={{ fontSize: 28 }}>Learn & study sport</H1>
-        <T color="#fff" weight="600" style={{ marginTop: 4 }}>Learn the rules, find a college that teaches your sport, ask them anything, and show what you earn.</T>
+        <T color="#fff" weight="600" style={{ marginTop: 4 }}>Turn your sport into a qualification: find colleges near you, compare courses, save your favourites and apply.</T>
+        <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>
+          <StatPill value={saved} label="On bucket list" /><StatPill value={(enq.data ?? []).length} label="Enquiries" /><StatPill value={unread} label="Unread replies" />
+        </View>
       </GradCard>
       <View style={{ marginTop: 12 }}>
-        <Seg value={tab} onChange={setTab} color={c.violet} options={[{ value: 'learn', label: 'Rules' }, { value: 'find', label: 'Find a course' }, { value: 'enquiries', label: unread ? `My enquiries (${unread})` : 'My enquiries' }, { value: 'credentials', label: 'My badges' }]} />
+        <Seg value={tab} onChange={setTab} color={c.violet} options={[{ value: 'explore', label: 'Explore' }, { value: 'saved', label: saved ? `Saved (${saved})` : 'Saved' }, { value: 'learn', label: 'Rules' }, { value: 'enquiries', label: unread ? `Enquiries (${unread})` : 'Enquiries' }, { value: 'credentials', label: 'Badges' }]} />
       </View>
-      {tab === 'learn' ? <Learn sport={sport} setSport={setSport} onFind={() => setTab('find')} /> : null}
-      {tab === 'find' ? <Find sport={sport} setSport={setSport} push={push} /> : null}
+      {tab === 'explore' ? <Explore push={push} onSaved={bucket.reload} /> : null}
+      {tab === 'saved' ? <Saved push={push} /> : null}
+      {tab === 'learn' ? <Learn onFind={() => setTab('explore')} /> : null}
       {tab === 'enquiries' ? <Enquiries list={enq} push={push} /> : null}
       {tab === 'credentials' ? <MyCredentials /> : null}
     </Screen>
   );
 }
 
-function Learn({ sport, setSport, onFind }) {
+function Learn({ onFind }) {
   const { user, toast } = useSession();
+  const [sport, setSport] = useState(null);
   const [form, setForm] = useState(false);
   const rules = useLoad(() => (sport ? api.get(`/sports/${sport}/rules`) : Promise.resolve(null)), [sport]);
   const admin = user.roles.includes('admin');
@@ -98,40 +104,6 @@ function Learn({ sport, setSport, onFind }) {
   );
 }
 
-function Find({ sport, setSport, push }) {
-  const [q, setQ] = useState(''), [kind, setKind] = useState(null), [mode, setMode] = useState(null), [country, setCountry] = useState('');
-  const params = { q: q.trim() || undefined, sport: sport || undefined, kind: kind || undefined, mode: mode || undefined, country: country.trim() || undefined, limit: 50 };
-  const progs = useLoad(() => api.get('/programmes', params), [q, sport, kind, mode, country]);
-  const insts = useLoad(() => api.get('/institutions', { q: params.q, sport: params.sport, country: params.country, limit: 20 }), [q, sport, country]);
-  return (
-    <>
-      <View style={{ gap: 10, marginTop: 12 }}>
-        <SportSelect label="Sport" value={sport} onChange={setSport} allLabel="Any sport" />
-        <Field value={q} onChangeText={setQ} placeholder="Search by course or college name…" />
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-          <Chip label="Any level" active={!kind} onPress={() => setKind(null)} />
-          {KINDS.map(([k, l]) => <Chip key={k} label={l} active={kind === k} onPress={() => setKind(kind === k ? null : k)} />)}
-        </View>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-          <Chip label="Any way of studying" active={!mode} onPress={() => setMode(null)} />
-          {MODES.map(([k, l]) => <Chip key={k} label={l} active={mode === k} onPress={() => setMode(mode === k ? null : k)} />)}
-        </View>
-        <Field value={country} onChangeText={setCountry} placeholder="Country (optional)" />
-      </View>
-      <Section title="Courses, certifications & degrees" color={c.cyan}>
-        {progs.error ? <ErrorBox error={progs.error} onRetry={progs.reload} /> : !progs.data ? <Loading /> : progs.data.length ? progs.data.map((p) => (
-          <Row key={p.id} title={p.title} onPress={() => push('Programme', { id: p.id })}
-            sub={`${p.institution} · ${[p.city, p.country].filter(Boolean).join(', ')}\n${label(KINDS, p.kind)} · ${label(MODES, p.mode)}${p.next_intake_on ? ` · next intake ${day(p.next_intake_on)}` : ''}`}
-            right={p.fee_minor != null ? <Tag label={moneyIn(p.fee_minor, p.currency)} /> : null} />
-        )) : <Empty emoji="🔎" title="Nothing matches" sub="Try another sport or fewer filters. Institutions appear here once they list themselves." />}
-      </Section>
-      <Section title="Colleges & academies" color={c.violet}>
-        {insts.data?.length ? insts.data.map((o) => <Row key={o.id} title={o.name} sub={`${label([['college', 'College'], ['university', 'University'], ['academy', 'Academy'], ['school', 'School'], ['club', 'Club'], ['other', 'Other']], o.kind)} · ${[o.city, o.country].filter(Boolean).join(', ')} · ${o.programmes} programme${o.programmes === 1 ? '' : 's'}`} onPress={() => push('Institution', { id: o.id })} />) : <Empty emoji="🏫" title="No institutions listed yet" />}
-      </Section>
-    </>
-  );
-}
-
 function Enquiries({ list, push }) {
   if (list.error) return <ErrorBox error={list.error} onRetry={list.reload} />;
   if (!list.data) return <Loading />;
@@ -140,7 +112,7 @@ function Enquiries({ list, push }) {
       {list.data.length ? list.data.map((e) => (
         <Row key={e.id} title={`${e.unread ? '● ' : ''}${e.institution}`} sub={`${e.programme_title ?? 'General enquiry'}${e.sport ? ` · ${e.sport_emoji} ${e.sport}` : ''}\n${when(e.last_message_at)}`}
           right={<Tag label={label(STAGES, e.status)} />} onPress={() => push('Enquiry', { id: e.id })} />
-      )) : <Empty emoji="✉️" title="No enquiries yet" sub="Open a course or a college and ask them anything. They answer here." />}
+      )) : <Empty emoji="✉️" title="No enquiries yet" sub="Open a college listed on Sportarena and ask them anything. They answer here." />}
     </Section>
   );
 }
@@ -217,62 +189,108 @@ function EnquireSheet({ visible, onClose, organisationId, programme }) {
   );
 }
 
-export function Institution({ id }) {
+const mail = (e) => openLink(`mailto:${e}`);
+const tel = (n) => openLink(`tel:${n.replace(/[^+\d]/g, '')}`);
+const Unverified = () => <Card color={c.sunSoft ?? c.paper}><T size={13}>✨ Suggested by AI and not yet verified. Check fees, dates, contacts and the application process on the official website before you rely on them.</T></Card>;
+
+/** Contact details given directly (AI-suggested institutions are not on the platform, so there is no enquiry route). */
+function ExtContact({ x }) {
+  const any = x.contact_email || x.contact_phone || x.website || x.admissions_url;
+  if (!any) return <T size={13} color={c.mute}>No contact details known. Search for the institution's admissions page.</T>;
+  return (
+    <Card>
+      {x.contact_email ? <T color={c.pink} onPress={() => mail(x.contact_email)}>✉️ {x.contact_email}</T> : null}
+      {x.contact_phone ? <T color={c.pink} onPress={() => tel(x.contact_phone)}>📞 {x.contact_phone}</T> : null}
+      {x.website ? <T color={c.pink} onPress={() => openLink(x.website)}>🌐 {x.website}</T> : null}
+      {x.admissions_url ? <T color={c.pink} onPress={() => openLink(x.admissions_url)}>🎓 Admissions page</T> : null}
+    </Card>
+  );
+}
+const Fact = ({ k, v }) => (v ? <View style={{ marginTop: 8 }}><T size={12} weight="800" color={c.mute}>{k}</T><T>{v}</T></View> : null);
+
+export function Institution({ id, ext }) {
   const { push } = useNav();
   const [ask, setAsk] = useState(false);
-  const o = useLoad(() => api.get(`/institutions/${id}`), [id]);
+  const o = useLoad(() => api.get(ext ? `/study/institutions/${id}` : `/institutions/${id}`), [id, ext]);
   if (o.error) return <Screen><ErrorBox error={o.error} onRetry={o.reload} /></Screen>;
   if (!o.data) return <Screen><Loading /></Screen>;
-  const x = o.data;
+  const x = o.data, type = ext ? 'study_institution' : 'institution';
   return (
     <Screen>
-      <GradCard colors={[c.violet, c.ink]}><H1 color="#fff" style={{ fontSize: 28 }}>{x.name}</H1><T color="#fff" weight="700">{[x.city, x.country].filter(Boolean).join(', ')}</T></GradCard>
+      <GradCard colors={[c.violet, c.ink]}>
+        <H1 color="#fff" style={{ fontSize: 28 }}>{x.name}</H1>
+        <T color="#fff" weight="700">{[x.city, x.country].filter(Boolean).join(', ')}</T>
+        <View style={{ flexDirection: 'row', gap: 6, marginTop: 8 }}><RatingTag rating={x.rating} reviews={x.reviews} /></View>
+      </GradCard>
+      {ext ? <View style={{ marginTop: 12 }}><Unverified /></View> : null}
       {x.about ? <T style={{ marginTop: 12 }}>{x.about}</T> : null}
+      {ext && x.known_for ? <Fact k="KNOWN FOR" v={x.known_for} /> : null}
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-        <Btn small title="Ask a question" onPress={() => setAsk(true)} />
+        <BucketButton type={type} id={id} />
+        {!ext ? <Btn small title="Ask a question" onPress={() => setAsk(true)} /> : null}
         {x.website ? <Btn small title="Visit website" color={c.paper} ink={c.ink} onPress={() => openLink(x.website)} /> : null}
       </View>
-      <Section title="Contact" color={c.mint}><Contact id={id} /></Section>
+      {ext && x.admissions_process ? <Section title="How admission works" color={c.sun}><Card><T>{x.admissions_process}</T></Card></Section> : null}
+      <Section title="Contact" color={c.mint}>{ext ? <ExtContact x={x} /> : <Contact id={id} />}</Section>
       <Section title="Programmes" color={c.cyan}>
-        {x.programmes.length ? x.programmes.map((p) => <Row key={p.id} title={p.title} sub={`${label(KINDS, p.kind)} · ${label(MODES, p.mode)}${p.sports.length ? ` · ${p.sports.map((s) => s.emoji).join(' ')}` : ''}`} right={p.fee_minor != null ? <Tag label={moneyIn(p.fee_minor, p.currency)} /> : null} onPress={() => push('Programme', { id: p.id })} />) : <Empty emoji="🎓" title="No programmes published yet" />}
+        {x.programmes.length ? x.programmes.map((p) => (
+          <Row key={p.id} title={p.title} onPress={() => push('Programme', { id: p.id, ext })}
+            sub={`${label(KINDS, p.kind)}${p.mode ? ` · ${label(MODES, p.mode)}` : ''}${ext && p.duration_text ? ` · ${p.duration_text}` : ''}${p.sports.length ? ` · ${p.sports.map((s) => s.emoji).join(' ')}` : ''}${p.reviews ? ` · ★ ${p.rating.toFixed(1)} (${p.reviews})` : ''}`}
+            right={ext ? (p.fee_text ? <Tag label={p.fee_text} /> : null) : p.fee_minor != null ? <Tag label={moneyIn(p.fee_minor, p.currency)} /> : null} />
+        )) : <Empty emoji="🎓" title="No programmes published yet" />}
       </Section>
-      {x.brochures.length ? <Section title="Brochures" color={c.sun}>{x.brochures.map((b) => <Row key={b.id} title={b.title} right={<Tag label="Open" />} onPress={() => openLink(b.url)} />)}</Section> : null}
-      <EnquireSheet visible={ask} onClose={() => setAsk(false)} organisationId={id} />
+      {!ext && x.brochures.length ? <Section title="Brochures" color={c.sun}>{x.brochures.map((b) => <Row key={b.id} title={b.title} right={<Tag label="Open" />} onPress={() => openLink(b.url)} />)}</Section> : null}
+      <Reviews type={type} id={id} title="Ratings & reviews of this institution" />
+      {!ext ? <EnquireSheet visible={ask} onClose={() => setAsk(false)} organisationId={id} /> : null}
     </Screen>
   );
 }
 
-export function Programme({ id }) {
+export function Programme({ id, ext }) {
   const { push } = useNav();
   const [ask, setAsk] = useState(false);
-  const p = useLoad(() => api.get(`/programmes/${id}`), [id]);
+  const p = useLoad(() => api.get(ext ? `/study/programmes/${id}` : `/programmes/${id}`), [id, ext]);
   if (p.error) return <Screen><ErrorBox error={p.error} onRetry={p.reload} /></Screen>;
   if (!p.data) return <Screen><Loading /></Screen>;
-  const x = p.data;
+  const x = p.data, type = ext ? 'study_programme' : 'programme', inst = ext ? x.institution : null;
+  const instName = ext ? inst.name : x.institution, instId = ext ? inst.id : x.organisation_id, where = ext ? inst : x;
   return (
     <Screen>
       <GradCard colors={[c.violet, c.ink]}>
         <H1 color="#fff" style={{ fontSize: 26 }}>{x.title}</H1>
-        <T color="#fff" weight="700">{x.institution} · {[x.city, x.country].filter(Boolean).join(', ')}</T>
+        <T color="#fff" weight="700">{instName} · {[where.city, where.country].filter(Boolean).join(', ')}</T>
         <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
-          <Tag label={label(KINDS, x.kind)} color={c.lime} /><Tag label={label(MODES, x.mode)} color={c.lime} />
+          <Tag label={label(KINDS, x.kind)} color={c.lime} />{x.mode ? <Tag label={label(MODES, x.mode)} color={c.lime} /> : null}
           {x.sports.map((s) => <Tag key={s.id} label={`${s.emoji} ${s.name}`} color={c.lime} />)}
+          <RatingTag rating={x.rating} reviews={x.reviews} />
         </View>
       </GradCard>
+      {ext ? <View style={{ marginTop: 12 }}><Unverified /></View> : null}
       <Card style={{ marginTop: 12 }}>
         {x.description ? <T>{x.description}</T> : null}
-        {x.duration_months ? <T size={13} color={c.mute} style={{ marginTop: 6 }}>Duration: {x.duration_months} months</T> : null}
-        {x.fee_minor != null ? <T size={13} color={c.mute}>Fee: {moneyIn(x.fee_minor, x.currency)}</T> : null}
-        {x.next_intake_on ? <T size={13} color={c.mute}>Next intake: {day(x.next_intake_on)}</T> : null}
+        {ext ? (
+          <>
+            <Fact k="DURATION" v={x.duration_text} /><Fact k="FEE" v={x.fee_text} /><Fact k="INTAKE" v={x.intake_text} />
+            <Fact k="ENTRY REQUIREMENTS" v={x.entry_requirements} /><Fact k="HOW TO APPLY" v={x.how_to_apply} />
+          </>
+        ) : (
+          <>
+            {x.duration_months ? <T size={13} color={c.mute} style={{ marginTop: 6 }}>Duration: {x.duration_months} months</T> : null}
+            {x.fee_minor != null ? <T size={13} color={c.mute}>Fee: {moneyIn(x.fee_minor, x.currency)}</T> : null}
+            {x.next_intake_on ? <T size={13} color={c.mute}>Next intake: {day(x.next_intake_on)}</T> : null}
+          </>
+        )}
       </Card>
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-        <Btn small title="Ask the admissions team" onPress={() => setAsk(true)} />
+        <BucketButton type={type} id={id} />
+        {!ext ? <Btn small title="Ask the admissions team" onPress={() => setAsk(true)} /> : null}
         {x.apply_url ? <Btn small title="Apply on their website" color={c.paper} ink={c.ink} onPress={() => openLink(x.apply_url)} /> : null}
-        <Btn small title="About the institution" color={c.paper} ink={c.ink} onPress={() => push('Institution', { id: x.organisation_id })} />
+        <Btn small title="About the institution" color={c.paper} ink={c.ink} onPress={() => push('Institution', { id: instId, ext })} />
       </View>
-      {x.brochures.length ? <Section title="Brochures" color={c.sun}>{x.brochures.map((b) => <Row key={b.id} title={b.title} right={<Tag label="Open" />} onPress={() => openLink(b.url)} />)}</Section> : null}
-      <Section title="Contact" color={c.mint}><Contact id={x.organisation_id} /></Section>
-      <EnquireSheet visible={ask} onClose={() => setAsk(false)} organisationId={x.organisation_id} programme={x} />
+      {!ext && x.brochures.length ? <Section title="Brochures" color={c.sun}>{x.brochures.map((b) => <Row key={b.id} title={b.title} right={<Tag label="Open" />} onPress={() => openLink(b.url)} />)}</Section> : null}
+      <Section title="Contact" color={c.mint}>{ext ? <ExtContact x={inst} /> : <Contact id={x.organisation_id} />}</Section>
+      <Reviews type={type} id={id} title="Ratings & reviews of this course" />
+      {!ext ? <EnquireSheet visible={ask} onClose={() => setAsk(false)} organisationId={x.organisation_id} programme={x} /> : null}
     </Screen>
   );
 }

@@ -14,6 +14,7 @@ import './teams.js';
 import './organisations.js';
 import './education-catalogue.js';
 import './education-enquiries.js';
+import './education-discovery.js';
 import './credentials.js';
 import './team-management.js';
 import './team-chat.js';
