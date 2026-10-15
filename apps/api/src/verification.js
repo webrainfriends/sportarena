@@ -20,6 +20,7 @@ export const EVIDENCE_KINDS = {
   venue_confirmation: 'Venue confirmation of the booking',
   public_listing: 'Official public listing of the event (link)',
   insurer_licence: 'Insurance regulator licence / certificate of authority',
+  bar_admission: 'Bar / law-society admission or practising certificate',
   other: 'Other supporting document',
 };
 
@@ -58,6 +59,12 @@ export const RULES = {
     summary: 'Confirms a licensed insurer or agency. Approval also marks your insurer profile as verified.',
     required: ['insurer_licence'], one_of: ['business_registration', 'authorisation_letter'],
     checklist: [{ key: 'licence_valid', label: 'Licence is current and confirmed with the insurance regulator' }, { key: 'name_matches', label: 'Licensed name matches the insurer profile' }, { key: 'requester_authorised', label: 'Requester is authorised to act for the insurer' }],
+  },
+  lawyer: {
+    label: 'Verified lawyer', subject: 'user', needs_role: 'lawyer', validity_months: 12,
+    summary: 'Confirms identity and a current right to practise in the jurisdiction you name. Admission in one jurisdiction is not admission in another.',
+    required: ['id_document', 'bar_admission'],
+    checklist: [...identity, { key: 'register_checked', label: 'Admission checked on the regulator\'s public register: name, status and any restrictions' }, { key: 'jurisdiction_matches', label: 'Register jurisdiction matches the jurisdiction claimed' }, { key: 'practising', label: 'Currently entitled to practise (not suspended, struck off or non-practising)' }],
   },
   sponsor: {
     label: 'Verified sponsor', subject: 'sponsor', needs_role: null, validity_months: 12,
