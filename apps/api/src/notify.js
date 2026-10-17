@@ -11,7 +11,7 @@ import { audit } from './helpers.js';
 export const DEFAULT_PREFS = { in_app: true, email: true, push: true, reminder_hours: 24, muted_kinds: [] };
 
 /**
- * Notify one user. Respects their channel switches and muted kinds.
+ * Notify one user. An optional `dedupe_key` (e.g. `billboard_response:<id>:owner`) makes the call idempotent per recipient. Respects their channel switches and muted kinds.
  * Inside a caller's transaction the writes run in a SAVEPOINT: if the notification cannot be stored, only the notification is
  * rolled back (the money / hold / booking change commits) and a durable `notify.retry` job is written to try again later.
  */
@@ -32,10 +32,11 @@ export async function notify(c, userId, msg) {
   }
 }
 
-async function deliver(db, c, userId, { kind, title, body, data = {} }) {
+async function deliver(db, c, userId, { kind, title, body, data = {}, dedupe_key = null }) {
   const prefs = (await db.query('SELECT * FROM notification_prefs WHERE user_id=$1', [userId])).rows[0] ?? DEFAULT_PREFS;
   if (prefs.muted_kinds.includes(kind) || (!prefs.in_app && !prefs.email && prefs.push === false)) return null;
-  const n = (await db.query('INSERT INTO notifications(user_id, kind, title, body, data) VALUES ($1,$2,$3,$4,$5) RETURNING *', [userId, kind, title, body, data])).rows[0];
+  const n = (await db.query('INSERT INTO notifications(user_id, kind, title, body, data, dedupe_key) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (user_id, dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING RETURNING *', [userId, kind, title, body, data, dedupe_key])).rows[0];
+  if (!n) return null; // same business event already notified for this recipient
   if (prefs.email) await db.query("INSERT INTO notification_deliveries(notification_id, channel) VALUES ($1,'email')", [n.id]);
   if (!prefs.in_app) await db.query('UPDATE notifications SET read_at=now() WHERE id=$1', [n.id]); // no in-app channel: keep the inbox clean
   // push goes straight to the person's phones / browsers, as soon as the data is committed

@@ -363,6 +363,9 @@ test('player marketplace: billboard, shop, coach hire', async () => {
   const resp = await api('POST', `/billboard/${post.body.id}/responses`, { ...t(joiner), body: { message: 'I play in goal' } });
   assert.equal(resp.status, 201);
   assert.equal((await api('POST', `/billboard/${post.body.id}/responses`, { ...t(joiner), body: {} })).status, 409);
+  const kindsOf = async (u) => (await api('GET', '/notifications', { ...t(u) })).body.items.map((n) => n.kind);
+  assert.equal((await kindsOf(org)).filter((k) => k === 'billboard_response').length, 1, 'owner alerted once; duplicate response creates no second alert');
+  assert.equal((await kindsOf(joiner)).filter((k) => k === 'billboard_response_sent').length, 1, 'applicant acknowledged once');
   assert.equal((await api('GET', `/billboard/${post.body.id}/responses`, { ...t(joiner) })).status, 403);
   const rs = (await api('GET', `/billboard/${post.body.id}/responses`, { ...t(org) })).body;
   assert.equal(rs[0].response_id, resp.body.id);
@@ -370,6 +373,7 @@ test('player marketplace: billboard, shop, coach hire', async () => {
   assert.equal((await api('PATCH', `/billboard/responses/${resp.body.id}`, { ...t(org), body: { status: 'accepted' } })).status, 200);
   const roster = (await api('GET', `/teams/${team.id}`)).body;
   assert.ok(JSON.stringify(roster).includes(joiner.id), 'accepted player joined the roster');
+  assert.ok((await kindsOf(joiner)).includes('billboard_response_accepted'), 'applicant told of the decision');
   assert.equal((await api('GET', '/billboard?kind=team_recruiting')).body.length, 0, 'filled posts leave the board');
   assert.equal((await api('GET', '/me/billboard-responses', { ...t(joiner) })).body[0].response_status, 'accepted');
   const sp = await api('POST', '/billboard', { ...t(org), body: { kind: 'sponsorship_wanted', title: 'Seeking kit sponsor' } });

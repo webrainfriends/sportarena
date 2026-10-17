@@ -3,6 +3,7 @@ import { cap, id, page, money } from '../registry.js';
 import { one, many, query, tx } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { hasRole, isAdmin, mustFind, PUBLIC_USER, sportBySlugOrId } from '../helpers.js';
+import { notify } from '../notify.js';
 import { canManageTeam } from './teams.js';
 
 const kinds = ['match_players', 'team_recruiting', 'coach_wanted', 'sponsorship_wanted', 'sponsor_call'];
@@ -67,7 +68,14 @@ cap({
     if (p.author_id === user.id) throw badRequest('You cannot respond to your own post');
     if (p.kind === 'sponsorship_wanted' && !hasRole(user, 'sponsor')) throw forbidden('Only sponsors can respond to a sponsorship request');
     try {
-      return await one('INSERT INTO billboard_responses(post_id, responder_id, message) VALUES ($1,$2,$3) RETURNING id, post_id, status', [i.id, user.id, i.message]);
+      return await tx(async (c) => {
+        const out = (await c.query('INSERT INTO billboard_responses(post_id, responder_id, message) VALUES ($1,$2,$3) RETURNING id, post_id, status', [i.id, user.id, i.message])).rows[0];
+        // generic wording only: the applicant's message stays in the authenticated app
+        const data = { post_id: p.id, response_id: out.id };
+        await notify(c, p.author_id, { kind: 'billboard_response', title: 'New response to your post', body: `Someone responded to "${p.title}". Open the app to review it.`, data, dedupe_key: `billboard_response:${out.id}:owner` });
+        await notify(c, user.id, { kind: 'billboard_response_sent', title: 'Response sent', body: `Your response to "${p.title}" was sent. You will be notified when the poster decides.`, data, dedupe_key: `billboard_response:${out.id}:applicant` });
+        return out;
+      });
     } catch (e) {
       if (e.code === '23505') throw conflict('You already responded to this post');
       throw e;
@@ -110,6 +118,7 @@ cap({
         const n = (await c.query("SELECT count(*)::int AS n FROM billboard_responses WHERE post_id=$1 AND status='accepted'", [p.id])).rows[0].n;
         if (n >= p.positions_needed) await c.query("UPDATE billboard_posts SET status='filled' WHERE id=$1", [p.id]);
       }
+      await notify(c, r.responder_id, { kind: `billboard_response_${i.status}`, title: i.status === 'accepted' ? 'Your response was accepted' : 'Your response was declined', body: `The poster ${i.status} your response to "${p.title}".`, data: { post_id: p.id, response_id: r.id }, dedupe_key: `billboard_response:${r.id}:${i.status}` });
       return out;
     });
   },
