@@ -70,6 +70,8 @@ function RequestSheet({ visible, onClose, rules, onDone, preset, presetSubject }
   const subject = pickedSubject ?? presetSubject ?? null;
   const [inputs, setInputs] = useState({});
   const [note, setNote] = useState('');
+  const [country, setCountry] = useState(null);
+  const legalPacks = useLoad(() => (visible ? api.get('/legal/packs') : Promise.resolve(null)), [visible]);
   const [err, setErr] = useState(null);
   const [busy, setBusy] = useState(false);
   const t = eligible.find((x) => x.type === (type ?? preset)) ?? null;
@@ -79,7 +81,7 @@ function RequestSheet({ visible, onClose, rules, onDone, preset, presetSubject }
     setBusy(true); setErr(null);
     try {
       const evidence = await buildEvidence(inputs);
-      await api.post('/verification/cases', { type: t.type, subject_id: t.subject === 'user' ? undefined : subject, claim_note: note || undefined, evidence });
+      await api.post('/verification/cases', { type: t.type, subject_id: t.subject === 'user' ? undefined : subject, claim_note: note || undefined, ...(t.type === 'lawyer' ? { jurisdiction: country } : {}), evidence });
       toast('Sent to the platform team'); onDone(); onClose();
     } catch (e) { setErr(e.message); } finally { setBusy(false); }
   };
@@ -91,13 +93,14 @@ function RequestSheet({ visible, onClose, rules, onDone, preset, presetSubject }
         {t ? <>
           <T size={13} color={c.mute}>{t.summary} The badge lasts {t.validity_months} months.</T>
           {t.subject !== 'user' ? (subjects.data?.length ? <View style={{ gap: 6 }}><T weight="800" size={13}>{t.subject === 'sponsor' ? 'Which brand?' : 'Which event?'}</T><View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>{subjects.data.map((s) => <Chip key={s.id} label={s.name} active={subject === s.id} onPress={() => setSubject(s.id)} />)}</View></View> : <T color={c.mute}>{subjects.loading ? 'Loading…' : `You don't have a ${t.subject} yet — create one first.`}</T>) : null}
+          {t.type === 'lawyer' ? <View style={{ gap: 6 }}><T weight="800" size={13}>Which country are you admitted in?</T><View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>{(legalPacks.data?.packs ?? []).map((p) => <Chip key={p.code} label={p.name} active={country === p.code} onPress={() => setCountry(p.code)} />)}</View><T size={12} color={c.mute}>Admission in one country does not cover another. Request again for each.</T></View> : null}
           <T weight="800" size={13}>Evidence — {t.required.length ? 'all required' : 'at least one'}{t.one_of?.length && t.required.length ? ', plus one of the optional proofs' : ''}</T>
           {t.required.map((k) => <EvidenceInput key={k} kind={k} label={`${rules.evidence_kinds[k]} · required`} value={inputs[k]} onChange={(v) => setInputs({ ...inputs, [k]: v })} />)}
           {(t.one_of ?? []).map((k) => <EvidenceInput key={k} kind={k} label={`${rules.evidence_kinds[k]} · give at least one of these`} value={inputs[k]} onChange={(v) => setInputs({ ...inputs, [k]: v })} />)}
           <Field label="Anything the reviewer should know (optional)" value={note} onChangeText={setNote} multiline />
           <T size={12} color={c.mute}>Documents are encrypted and only visible to the platform review team. Your public page only ever shows the badge.</T>
           {err ? <T color={c.red} weight="700">{err}</T> : null}
-          <Btn title="Submit for review" color={c.pink} loading={busy} disabled={t.subject !== 'user' && !subject} onPress={send} />
+          <Btn title="Submit for review" color={c.pink} loading={busy} disabled={(t.subject !== 'user' && !subject) || (t.type === 'lawyer' && !country)} onPress={send} />
         </> : null}
       </>}
     </Sheet>

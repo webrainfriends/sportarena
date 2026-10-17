@@ -8,6 +8,7 @@ import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { decrypt, encrypt } from '../crypto.js';
 import { audit, isAdmin } from '../helpers.js';
 import { notify } from '../notify.js';
+import { PACK_CODES } from '../legal/packs.js';
 import { EVIDENCE_KINDS, OPEN, RULES, RULES_VERSION, TYPES, badgesFor, missingEvidence } from '../verification.js';
 
 const TAG = 'Verification';
@@ -95,6 +96,7 @@ cap({
   summary: 'Raise a verification case with the platform team for yourself (gamer / coach / physio / doctor), or for a sponsor or event you own. Attach the evidence the rules require; files and references are encrypted and only the review team can read them. A badge that is about to expire (30 days) or has expired can be renewed the same way.',
   input: z.object({ type: z.enum(TYPES), subject_id: id.optional().describe('sponsor or event id; omit for yourself'), sport: id.optional().describe('sport id the claim is about; a doctor/physio credential with a sport only covers athletes of that sport'), jurisdiction: z.string().min(2).max(40).optional().describe('where the registration was issued (e.g. a country code); used when the platform restricts accepted jurisdictions'), claim_note: z.string().max(1000).optional(), evidence: z.array(evidenceIn).min(1).max(MAX_EVIDENCE) }),
   async handler({ user }, i) {
+    if (i.type === 'lawyer' && !PACK_CODES.includes(i.jurisdiction?.toUpperCase())) throw badRequest(`Name the country you are admitted in: ${PACK_CODES.join(', ')}. Admission in one jurisdiction does not cover another.`);
     const subject = await resolveSubject(user, i.type, i.subject_id);
     const missing = missingEvidence(i.type, i.evidence.map((e) => e.kind));
     if (missing.length) throw badRequest(`Evidence still needed: ${missing.join('; ')}`, { missing });
