@@ -30,6 +30,7 @@ const Row2 = ({ children }) => <View style={{ flexDirection: 'row', gap: 8, flex
 const usePacks = () => useLoad(() => api.get('/legal/packs'), []);
 const areaOpts = (packs) => Object.entries(packs?.practice_areas ?? {}).map(([value, l]) => ({ value, label: l }));
 const curOf = (packs, code) => packs?.packs?.find((p) => p.code === code)?.currency ?? 'USD';
+const enabledIn = (packs, feature) => (packs?.packs ?? []).filter((p) => p.enabled.includes(feature));
 const countryOpts = (packs) => (packs?.packs ?? []).map((p) => ({ value: p.code, label: `${p.name}` }));
 
 // ------------------------------------------------------------------ jurisdiction notice
@@ -52,6 +53,7 @@ function FindCounsel({ packs, onStarted }) {
   const mine = useLoad(() => api.get('/legal/requests/mine'), []);
   const act = useAct(mine.reload);
   const aOpts = areaOpts(packs.data);
+  const reqCountries = enabledIn(packs.data, 'requests');
   return (
     <View style={{ gap: 10 }}>
       <T weight="800" size={13} color={c.mute}>Where is the matter?</T>
@@ -81,16 +83,16 @@ function FindCounsel({ packs, onStarted }) {
       <Card pad={12} color={c.violetSoft}>
         <T weight="800">Not sure who to ask?</T>
         <T size={12} color={c.mute}>Post an anonymous request: only the area of law, country, timeframe and budget. No names or details are shared publicly.</T>
-        <Row2><Btn small title="Post a request" color={c.pink} onPress={() => setReq(true)} /></Row2>
+        {reqCountries.length ? <Row2><Btn small title="Post a request" color={c.pink} onPress={() => setReq(true)} /></Row2> : <T size={12} color={c.mute} style={{ marginTop: 6 }}>Posting requests is switched off in every country until the platform team records a local lawyer's approval (Legal → Country approvals).</T>}
       </Card>
       <Async res={mine}>{(rows) => rows.length ? <View style={{ gap: 8 }}><H2>My requests</H2>{rows.map((r) => (
         <Card key={r.id} pad={12}><T weight="800">{r.practice_area_label} · {r.jurisdiction}</T><T size={12} color={c.mute}>{label(r.timeframe)}{r.budget_cents != null ? ` · budget ${moneyIn(r.budget_cents, r.currency)}` : ''} · {r.responses} lawyer{r.responses === 1 ? '' : 's'} available · {r.status}</T>
           {r.status === 'open' ? <Row2><Btn small title="Close" color={c.paper} ink={c.ink} onPress={() => act(() => api.post(`/legal/requests/${r.id}/close`, {}), 'Request closed')} /></Row2> : null}</Card>))}</View> : null}</Async>
       <FormSheet visible={req} onClose={() => setReq(false)} title="Post an anonymous request" submitLabel="Post"
-        initial={{ jurisdiction: jur, practice_area: area ?? 'sports_contracts', timeframe: 'flexible' }}
-        fields={[{ key: 'jurisdiction', label: 'Country of the matter', type: 'chips', options: countryOpts(packs.data) }, { key: 'practice_area', label: 'Area of law', type: 'chips', options: aOpts },
+        initial={{ jurisdiction: reqCountries.some((p) => p.code === jur) ? jur : reqCountries[0]?.code, practice_area: area ?? 'sports_contracts', timeframe: 'flexible' }}
+        fields={[{ key: 'jurisdiction', label: 'Country of the matter (only countries that are switched on)', type: 'chips', options: reqCountries.map((p) => ({ value: p.code, label: p.name })) }, { key: 'practice_area', label: 'Area of law', type: 'chips', options: aOpts },
           { key: 'timeframe', label: 'How soon?', type: 'choice', options: [{ value: 'urgent', label: 'Urgent' }, { value: 'this_month', label: 'This month' }, { value: 'flexible', label: 'Flexible' }] },
-          { key: 'budget_cents', label: 'Budget (optional)', type: 'money', currency: (v) => curOf(packs.data, v.jurisdiction), optional: true }]}
+          { key: 'budget_cents', label: 'Budget', type: 'money', currency: (v) => curOf(packs.data, v.jurisdiction), optional: true }]}
         onSubmit={async (v) => { await api.post('/legal/requests', { ...v, ...(v.budget_cents != null ? { currency: curOf(packs.data, v.jurisdiction) } : {}) }); mine.reload(); return 'Request posted'; }} />
       <FormSheet visible={!!ask} onClose={() => setAsk(null)} title={ask ? `Consultation with ${ask.display_name}` : ''} submitLabel="Send privately"
         initial={{ practice_area: area ?? 'sports_contracts', payer: 'client' }}
@@ -237,7 +239,6 @@ function Practice({ packs }) {
 // ------------------------------------------------------------------ Platform team: country approvals
 function Approvals({ packs }) {
   const [form, setForm] = useState(null);
-  const act = useAct(packs.reload);
   return (
     <View style={{ gap: 8 }}>
       <T size={12} color={c.mute}>Record qualified local counsel's decision per country. Nothing regulated switches on without it. Decisions are append-only.</T>
@@ -251,8 +252,8 @@ function Approvals({ packs }) {
         initial={{ status: 'approved', features: form?.enabled ?? [] }}
         fields={[{ key: 'status', label: 'Decision', type: 'choice', options: [{ value: 'approved', label: 'Approve' }, { value: 'withdrawn', label: 'Withdraw' }] },
           { key: 'features', label: 'Switch on', type: 'multi', options: (packs.data?.regulated_features ?? []).map((v) => ({ value: v, label: label(v) })), show: (v) => v.status === 'approved' },
-          { key: 'reviewer_name', label: 'Reviewing lawyer' }, { key: 'reviewer_firm', label: 'Firm or chambers', optional: true }, { key: 'reviewed_on', label: 'Review date', type: 'date' }, { key: 'note', label: 'Note', type: 'multiline', optional: true }]}
-        onSubmit={async (v) => { await act(() => api.post(`/admin/legal/packs/${form.code}/approval`, { ...v, features: v.status === 'approved' ? v.features : [] }), 'Recorded'); return 'Recorded'; }} />
+          { key: 'reviewer_name', label: 'Reviewing lawyer' }, { key: 'reviewer_firm', label: 'Firm or chambers', show: (v) => v.status === 'approved' }, { key: 'reviewed_on', label: 'Review date', type: 'date' }, { key: 'note', label: 'Note', type: 'multiline', optional: true }]}
+        onSubmit={async (v) => { await api.post(`/admin/legal/packs/${form.code}/approval`, { ...v, features: v.status === 'approved' ? v.features : [] }); packs.reload(); return `${form.name}: ${v.status === 'approved' ? 'switched on' : 'withdrawn'}`; }} />
     </View>
   );
 }
