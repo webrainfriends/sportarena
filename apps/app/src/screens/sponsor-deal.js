@@ -5,6 +5,7 @@ import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { Btn, Card, Empty, ErrorBox, H1, Loading, Screen, Section, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
+import { SponsorPerformance } from './sponsor-performance';
 import { c } from '../theme';
 
 // Amounts are minor units of THEIR OWN currency; currencies are never added together and estimates are labelled.
@@ -71,6 +72,7 @@ export function SponsorDeal({ id }) {
             </Card>)) : <Empty emoji="🗓️" title="Nothing scheduled" />}
           <T size={12} color={c.mute}>Payments here are tracked, not collected: Gotmygame does not hold or transfer these funds. A payment counts as received only after the recipient confirms it.</T>
         </Section>) : null}
+      {d.target_type === 'athlete' && ['proposed', 'active', 'ended'].includes(d.status) && (sponsor || recipient) ? <SponsorPerformance deal={d} /> : null}
       <Section title="History" color={c.lime}>
         {d.history.map((h) => <T key={h.id} size={12} color={c.mute}>{new Date(h.created_at).toLocaleDateString()} · {h.action.replace(/_/g, ' ')}{h.version ? ` (v${h.version})` : ''} · {h.actor ?? 'system'}{h.reason ? ` — ${h.reason}` : ''}</T>)}
       </Section>

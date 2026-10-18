@@ -65,6 +65,7 @@ import './coach.js';
 import './payments.js';
 import './sponsors.js';
 import './sponsorship-agreements.js';
+import './sponsorship-performance.js';
 import './supply.js';
 import './medical.js';
 import './care-plans.js';
