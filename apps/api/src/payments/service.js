@@ -6,6 +6,7 @@ import { markInvoicePaid } from '../booking/invoices.js';
 import { completeTopup, activateGiftCard } from '../wallet.js';
 import { activateUserPlan } from '../booking/plans.js';
 import { activatePhysioPackage } from '../capabilities/provider-packages.js';
+import { raiseException, recordSale, syncRefunds } from '../settlement.js';
 
 export { paymentsEnabled, enabledProviders };
 
@@ -82,11 +83,13 @@ export async function settle(paymentId, result) {
     if (p.status !== 'pending') return { payment: p, refund: false };
     if (Number(result.amount) !== Number(p.amount_cents) || String(result.currency).toUpperCase() !== p.currency) {
       await c.query("UPDATE payments SET status='failed' WHERE id=$1", [p.id]);
+      await raiseException(c, { kind: 'amount_mismatch', dedupeKey: `amount_mismatch:${p.id}`, paymentId: p.id, currency: p.currency, amount: Number(p.amount_cents), detail: { expected_cents: Number(p.amount_cents), expected_currency: p.currency, provider_cents: Number(result.amount), provider_currency: String(result.currency).toUpperCase(), provider_ref: p.provider_ref } });
       return { payment: { ...p, status: 'failed' }, refund: false, mismatch: true };
     }
     const ok = await fulfil(c, p.purpose_type, p.purpose_id);
-    await c.query("UPDATE payments SET status='paid', paid_at=now(), provider_payment_ref=$2 WHERE id=$1", [p.id, result.paymentRef ?? null]);
-    return { payment: { ...p, status: 'paid', provider_payment_ref: result.paymentRef ?? null }, refund: !ok };
+    const paid = (await c.query("UPDATE payments SET status='paid', paid_at=now(), provider_payment_ref=$2 WHERE id=$1 RETURNING *", [p.id, result.paymentRef ?? null])).rows[0];
+    await recordSale(c, paid);   // what the seller is owed, in the same transaction as 'the customer paid'
+    return { payment: paid, refund: !ok };
   });
   if (out.mismatch) throw new AppError(409, 'payment_mismatch', 'The amount paid does not match the order — contact support');
   // paid for something that was cancelled in the meantime: give the money back straight away
@@ -99,17 +102,24 @@ export async function refund(payment, { key } = {}) {
   if (payment.status !== 'paid') return;
   if (!payment.provider_payment_ref) throw new AppError(409, 'refund_unavailable', 'No provider reference to refund');
   await provider(payment.provider).refund(payment.provider_payment_ref, payment.id, key ? { key } : undefined);
-  await one("UPDATE payments SET status='refunded', refunded_at=now(), refunded_cents=amount_cents WHERE id=$1 AND status='paid'", [payment.id]);
+  // the payment row and the sellers' ledger move together; the provider call above is idempotent, so a failure here is safe to retry
+  await tx(async (c) => {
+    await c.query("UPDATE payments SET status='refunded', refunded_at=now(), refunded_cents=amount_cents WHERE id=$1 AND status='paid'", [payment.id]);
+    await syncRefunds(c, payment.id);
+  });
 }
 
 /** Give back part of a paid payment (a credit note). `key` makes the provider call idempotent so a retry can't refund twice. Returns the amount refunded. */
-export async function refundPartial(payment, amount, key) {
+export async function refundPartial(payment, amount, key, { sellerId } = {}) {
   const left = Number(payment.amount_cents) - Number(payment.refunded_cents ?? 0);
   const give = Math.min(amount, left);
   if (give <= 0) return 0;
   if (!payment.provider_payment_ref) throw new AppError(409, 'refund_unavailable', 'No provider reference to refund');
   await provider(payment.provider).refund(payment.provider_payment_ref, payment.id, { amount: give, currency: payment.currency, key });
-  await one("UPDATE payments SET refunded_cents = refunded_cents + $2, status = CASE WHEN refunded_cents + $2 >= amount_cents THEN 'refunded' ELSE status END, refunded_at = CASE WHEN refunded_cents + $2 >= amount_cents THEN now() ELSE refunded_at END WHERE id=$1", [payment.id, give]);
+  await tx(async (c) => {
+    await c.query("UPDATE payments SET refunded_cents = refunded_cents + $2, status = CASE WHEN refunded_cents + $2 >= amount_cents THEN 'refunded' ELSE status END, refunded_at = CASE WHEN refunded_cents + $2 >= amount_cents THEN now() ELSE refunded_at END WHERE id=$1", [payment.id, give]);
+    await syncRefunds(c, payment.id, { sellerId });   // a refunded shop line comes out of that line's seller, anything else pro rata
+  });
   return give;
 }
 

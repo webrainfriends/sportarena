@@ -63,6 +63,7 @@ import './venue-sessions.js';
 import './training-plans.js';
 import './coach.js';
 import './payments.js';
+import './settlement.js';
 import './sponsors.js';
 import './sponsorship-agreements.js';
 import './supply.js';

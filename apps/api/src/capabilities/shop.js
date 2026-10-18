@@ -181,7 +181,7 @@ cap({
     if (i.status === 'cancelled' && !(await refundFor('shop_order', o.id)) && o.checkout_id) {
       // bought in a cart: the money was one payment for the whole checkout, so give back just this line (idempotent per order)
       const pay = await one("SELECT * FROM payments WHERE purpose_type='shop_checkout' AND purpose_id=$1 AND status='paid'", [o.checkout_id]);
-      if (pay) await refundPartial(pay, Number(o.total_cents), `shop-order-${o.id}`);
+      if (pay) await refundPartial(pay, Number(o.total_cents), `shop-order-${o.id}`, { sellerId: o.seller_id });
     }
     return tx(async (c) => {
       const cur = (await c.query('SELECT status FROM shop_orders WHERE id=$1 FOR UPDATE', [i.id])).rows[0];
