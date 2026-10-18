@@ -54,10 +54,23 @@ stay open: debt and delivered value are never erased. Nothing is deleted.
 * **Group target** — no durable "group" entity exists (only teams); not silently treated as a team. Needs its own design.
 * **Amendments of an accepted agreement**, pause, renewal successor, and termination with refunds/returns.
 * **Payment-purpose integration** (`payments.js` checkout/refund/settlement links, #71 payouts) and verified provider callbacks.
-* **Performance review** workspace and objectives (needs #64 Sports Passport consent/sharing), event budget feed,
+* **Performance review for teams/events/groups** and pre-agreement review (the athlete slice is below; sharing through #64 Sports Passport is not wired),
   CSV export, approaching-due reminders, per-line payer/payee/channel fields, disputes→cases linking, guardian/youth rules
   for sponsorship agreements.
 * Agreement builder in the app covers fixed-term monthly money only; goods/endorsement lines are available through the API.
+
+## Performance review (athlete agreements)
+* The athlete switches the sponsor's read access on or off per agreement (`set_sponsorship_performance_access`), only while the
+  agreement is active. Default is off. `official` shares approved competition results only; `all_evidence` also shares
+  self-reported and imported figures, always labelled. Revoking stops every future read at once; the agreement, dues and history stay.
+* `get_sponsorship_performance` reads the athlete's canonical `performances` live (nothing is copied, corrections show at once, superseded
+  results never count). Results are grouped per sport, metric and evidence kind with sample size, period, best in the metric's direction
+  and latest; there is no combined athlete score. Private match notes/ratings, health data and contact details are never read.
+* Objectives (metric, direction, baseline, target, window, evidence kind) are proposed by the sponsor and evaluated only once the athlete
+  agrees. They are a review aid: **missing a target never cancels, pauses or reduces a due.**
+* Reviews are dated notes (`shared` or `author_only`) with an optional next-review date and a single athlete reply. Notifications carry no content.
+* Youth athletes cannot be enabled (guardian authority is not wired here); team and event deals have no performance view.
+* Migration `075_sponsorship_performance.sql` is additive (new columns default to no access); rollback = deploy the previous code.
 
 ## Rollback
 Tables are new and additive: `DROP` is not part of any deploy. To switch the feature off, stop sending `lines`; legacy
