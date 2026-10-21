@@ -92,13 +92,13 @@ export function GlassWheel({ variant = 'layer', onDragState }) {
   }, [nudge, closeMenu, layer]);
 
   const { w, h } = size;
-  const R = Math.min(layer ? (w > 700 ? 175 : 132) : 108, w * (layer ? 0.36 : 0.3), h * (layer ? 0.3 : 0.28)), cx = R * 0.42, cy = h * 0.5, R2 = R + (layer ? 62 : 54);
+  const R = Math.min(layer ? (w > 700 ? 175 : 132) : 108, w * (layer ? 0.3 : 0.26), h * (layer ? 0.3 : 0.28)), cx = R * 0.42, cy = h * 0.5, R2 = R + (layer ? 56 : 50);
   const vis = layer ? VISIBLE : 72;
   const centred = ((Math.round(pos) % n) + n) % n;
   const now = new Date();
   const dateLine = now.toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' });
   const statLine = [d?.points > 0 && `${d.points} points`, d?.trophies > 0 && `${d.trophies} trophies`].filter(Boolean).join(' · ');
-  const tint = dark ? 'rgba(5,31,32,0.5)' : 'rgba(237,247,239,0.5)';
+  const scrim = dark ? 'rgba(5,31,32,0.14)' : 'rgba(237,247,239,0.16)'; // just enough to settle the profile circle; the screen stays fully visible
   const web = Platform.OS === 'web';
 
   const content = w ? (
@@ -107,8 +107,9 @@ export function GlassWheel({ variant = 'layer', onDragState }) {
       <View pointerEvents="none" style={{ position: 'absolute', left: cx - R2, top: cy - R2, width: R2 * 2, height: R2 * 2, borderRadius: R2, borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)' }} />
 
       <Pressable onPress={() => goTab('Me')} accessibilityRole="button" accessibilityLabel={`${user.display_name}. My profile, roles and settings`} style={{ position: 'absolute', left: cx - R, top: cy - R, width: R * 2, height: R * 2 }}>
-        <Glass radius={R} blur={18} tint={dark ? 'rgba(35,83,71,0.5)' : 'rgba(255,255,255,0.55)'} style={{ width: R * 2, height: R * 2, borderWidth: 2, borderColor: 'rgba(255,255,255,0.6)' }}>
-          <View style={{ position: 'absolute', left: R - cx + 14, right: 10, top: 0, bottom: 0, justifyContent: 'center' }}>
+        <Glass radius={R} preset="clear" style={{ width: R * 2, height: R * 2, borderWidth: 2, borderColor: 'rgba(255,255,255,0.6)' }}>
+          <View style={{ position: 'absolute', left: R - cx + 10, right: 8, top: 0, bottom: 0, justifyContent: 'center' }}>
+            <Glass radius={18} preset="soft" style={{ paddingVertical: 10, paddingHorizontal: 12, alignSelf: 'flex-start', maxWidth: '100%' }}>
             {layer ? (
               <>
                 <View style={{ marginBottom: 8 }}><Avatar user={user} size={40} /></View>
@@ -119,12 +120,13 @@ export function GlassWheel({ variant = 'layer', onDragState }) {
               </>
             ) : (
               <>
-                <T weight="700" size={12} color={c.mute} numberOfLines={1} style={{ letterSpacing: 1.2 }}>{now.toLocaleDateString(locale, { weekday: 'long' }).toUpperCase()}</T>
+                <T weight="700" size={11} color={c.mute} numberOfLines={1} style={{ letterSpacing: 0.4 }}>{now.toLocaleDateString(locale, { weekday: 'long' }).toUpperCase()}</T>
                 <T weight="800" size={48} color={c.ink} style={{ letterSpacing: -2, lineHeight: 52 }}>{now.getDate()}</T>
                 <T weight="600" size={12} color={c.mute} numberOfLines={1}>{now.toLocaleDateString(locale, { month: 'long' })}</T>
                 {statLine ? <T weight="700" size={12} color={c.pink} numberOfLines={2} style={{ marginTop: 4 }}>{statLine.replace(' · ', '\n')}</T> : null}
               </>
             )}
+            </Glass>
           </View>
         </Glass>
       </Pressable>
@@ -144,31 +146,31 @@ export function GlassWheel({ variant = 'layer', onDragState }) {
           <Pressable key={name} onPress={() => (isCentre ? push(name) : spinTo(Math.round(pos) + Math.round(rel)))} accessibilityRole="button"
             accessibilityLabel={`${title}${badge > 0 ? `, ${badge} need attention` : ''}${isCentre ? ', selected. Tap to open' : ''}`}
             style={{ position: 'absolute', left: x - D / 2, top: y - D / 2, flexDirection: 'row', alignItems: 'center', opacity: 1 - 0.55 * (Math.abs(a) / vis), zIndex: Math.round(100 - Math.abs(a)) }}>
-            <View style={{ width: D, height: D, borderRadius: D / 2, ...(web ? { boxShadow: `0 ${4 + near * 8}px ${14 + near * 22}px ${from}${isCentre ? 'AA' : '55'}` } : { shadowColor: from, shadowOpacity: 0.5, shadowRadius: 12 + near * 12, shadowOffset: { width: 0, height: 6 } }) }}>
-              <LinearGradient colors={[`${from}E6`, `${to}E6`]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: D, height: D, borderRadius: D / 2, borderWidth: 2 + near * 1.5, borderColor: 'rgba(255,255,255,0.6)', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+            <Glass radius={D / 2} preset="clear" style={{ width: D, height: D, borderWidth: 2 + near * 1.5, borderColor: 'rgba(255,255,255,0.6)', ...(web ? { boxShadow: `0 ${4 + near * 8}px ${14 + near * 22}px ${from}${isCentre ? '99' : '44'}, inset 0 1px 0 rgba(255,255,255,0.4)` } : { shadowColor: from, shadowOpacity: 0.45, shadowRadius: 12 + near * 12, shadowOffset: { width: 0, height: 6 } }) }}>
+              <LinearGradient colors={[`${from}A6`, `${to}A6`]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' }}>
                 <TileArt name={name} size={D * 0.78} />
                 <View pointerEvents="none" style={{ position: 'absolute', top: D * 0.06, left: D * 0.16, width: D * 0.68, height: D * 0.3, borderRadius: D, backgroundColor: 'rgba(255,255,255,0.26)' }} />
               </LinearGradient>
-            </View>
+            </Glass>
             {badge > 0 ? <View style={{ position: 'absolute', left: D - 14, top: -6, minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 5, backgroundColor: c.red, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#fff' }}><T weight="800" size={11} color="#fff">{badge}</T></View> : null}
-            <View style={{ marginLeft: 12, maxWidth: Math.max(80, w - (x + D / 2) - 24) }}>
+            <Glass radius={14} preset="soft" style={{ marginLeft: 10, paddingVertical: 5, paddingHorizontal: 10, maxWidth: Math.max(80, w - (x + D / 2) - 24) }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: GROUP_COLOR[group] }} />
-                <T weight={isCentre ? '800' : '700'} size={13 + near * 5} color={c.ink} numberOfLines={1} style={{ letterSpacing: 0.2 }}>{title}</T>
+                <T weight={isCentre ? '800' : '700'} size={13 + near * 5} color={c.ink} numberOfLines={1} style={{ letterSpacing: 0.2, flexShrink: 1 }}>{title}</T>
               </View>
               {isCentre ? <T size={12} color={c.mute} numberOfLines={2} style={{ marginTop: 2 }}>{lives[name] ?? sub}</T> : null}
-            </View>
+            </Glass>
           </Pressable>
         );
       })}
 
       {layer ? (
         <Pressable onPress={closeMenu} hitSlop={10} accessibilityRole="button" accessibilityLabel="Close" style={{ position: 'absolute', top: 14, right: 16 }}>
-          <Glass radius={20} blur={14} style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}><T color={c.ink} weight="700" size={20}>×</T></Glass>
+          <Glass radius={20} preset="soft" style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}><T color={c.ink} weight="700" size={20}>×</T></Glass>
         </Pressable>
       ) : null}
-      <View pointerEvents="none" style={{ position: 'absolute', right: 18, bottom: layer ? 16 : 12 }}>
-        <T size={11} color={c.mute} weight="600" style={{ letterSpacing: 1 }}>DRAG TO SWIVEL</T>
+      <View pointerEvents="none" style={{ position: 'absolute', right: 18, ...(layer ? { bottom: 16 } : { top: 12 }) }}>
+        <Glass radius={12} preset="soft" style={{ paddingVertical: 4, paddingHorizontal: 10 }}><T size={11} color={c.mute} weight="700" style={{ letterSpacing: 1 }}>DRAG TO SWIVEL</T></Glass>
       </View>
     </>
   ) : null;
@@ -177,14 +179,15 @@ export function GlassWheel({ variant = 'layer', onDragState }) {
   if (layer) {
     return (
       <Animated.View {...handlers} style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, zIndex: 20, opacity: fade, ...(web ? { touchAction: 'none' } : null) }}>
-        <Glass radius={0} blur={28} tint={tint} style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, borderWidth: 0 }} />
+        <Pressable onPress={closeMenu} accessible={false} style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }} />
+        <LinearGradient pointerEvents="none" colors={[scrim, 'rgba(0,0,0,0)']} start={{ x: 0, y: 0 }} end={{ x: 0.6, y: 0 }} style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }} />
         {content}
       </Animated.View>
     );
   }
   return (
-    <Animated.View {...handlers} style={{ height: 380, opacity: fade, ...(web ? { touchAction: 'none' } : null) }}>
-      <Glass radius={32} blur={26} tint={tint} style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }} />
+    <Animated.View {...handlers} style={{ height: 340, opacity: fade, ...(web ? { touchAction: 'none' } : null) }}>
+      <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, borderRadius: 32, borderWidth: 1, borderColor: 'rgba(255,255,255,0.28)' }} />
       <View pointerEvents="box-none" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, borderRadius: 32, overflow: 'hidden' }}>{content}</View>
     </Animated.View>
   );

@@ -8,17 +8,24 @@ if (Platform.OS !== 'web') { try { BlurView = require('expo-blur').BlurView; } c
 
 export const glassTint = dark ? 'rgba(11,43,38,0.42)' : 'rgba(255,255,255,0.45)';
 export const glassRim = 'rgba(255,255,255,0.3)';
+// Light presets keep whatever is behind clearly recognisable: `clear` for discs, `soft` for text-bearing pills and circles.
+export const GLASS = {
+  clear: { blur: 6, tint: dark ? 'rgba(11,43,38,0.12)' : 'rgba(255,255,255,0.14)' },
+  soft: { blur: 12, tint: dark ? 'rgba(5,31,32,0.42)' : 'rgba(255,255,255,0.5)' },
+};
 
 /**
  * Liquid-glass surface: the content behind it shows through, blurred and lightly tinted, with a thin light rim and a top
  * highlight. Web uses CSS backdrop-filter; native uses expo-blur; otherwise a translucent fill.
  */
-export function Glass({ radius = 24, blur = 24, tint = glassTint, style, children, ...rest }) {
+export function Glass({ radius = 24, preset, blur: b, tint: t, style, children, ...rest }) {
+  const blur = b ?? (preset ? GLASS[preset].blur : 24);
+  const tint = t ?? (preset ? GLASS[preset].tint : glassTint);
   const base = { borderRadius: radius, overflow: 'hidden', borderWidth: 1, borderColor: glassRim };
   if (Platform.OS === 'web') {
-    const f = `blur(${blur}px) saturate(1.5)`;
+    const f = `blur(${blur}px) saturate(1.6) brightness(1.05)`;
     return (
-      <View {...rest} style={[base, { backgroundColor: tint, backdropFilter: f, WebkitBackdropFilter: f, boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.35), 0 12px 32px rgba(0,0,0,0.18)' }, style]}>
+      <View {...rest} style={[base, { backgroundColor: tint, backdropFilter: f, WebkitBackdropFilter: f, boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.4), 0 8px 24px rgba(0,0,0,0.12)' }, style]}>
         {children}
       </View>
     );
