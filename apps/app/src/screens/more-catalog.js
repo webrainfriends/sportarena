@@ -1,0 +1,28 @@
+// Every module the More wheel offers: [route, title, sub, group]. The route is the PAGES key in App.js.
+export const MODULES = [
+  ['Leaderboard', 'Leaderboard', 'Points & glory', 'play'], ['Awards', 'Trophy room', 'Cups, medals, MVPs', 'play'],
+  ['MyPlans', 'Training plans', 'Your plans & sessions', 'play'], ['Pathways', 'Learn & study', 'Rules, courses & colleges', 'play'],
+  ['Health', 'Health', 'Physio · doctors · fit to play', 'care'], ['Insure', 'My cover', 'What covers me today', 'care'],
+  ['Insurance', 'Insurance', 'You · your team · your event', 'care'], ['Legal', 'Legal', 'Verified lawyers & matters', 'care'], ['Family', 'Family', 'Guardians & consents', 'care'],
+  ['Wallet', 'Wallet', 'Balance, gift cards, loyalty', 'money'], ['Earnings', 'Earnings', 'Sales, fees & payouts', 'money'], ['Shop', 'Shop', 'Kit, gear & orders', 'money'],
+  ['Billboard', 'Billboard', 'Wanted, for sale & ads', 'money'], ['Sponsors', 'Sponsors', 'Brands & deals', 'money'], ['Supply', 'Supply chain', 'Kit, stock & orders', 'money'],
+  ['Openings', 'Open positions', 'Jobs, stalls & contracts at events', 'community'], ['EventInbox', 'Event requests', 'Invites & quotes for you', 'community'],
+  ['Orgs', 'Organisations', 'Clubs & associations', 'community'], ['Support', 'Support', 'Cases & disputes', 'community'],
+];
+
+export const GROUP_COLOR = { play: '#10B981', care: '#14B8A6', money: '#F59E0B', community: '#38BDF8' };
+
+// Modules lifted to the front of the wheel for people who hold these roles (first match wins; everyone else: player set).
+export const PRIORITY = [
+  [['organizer', 'venue_manager'], ['EventInbox', 'Openings', 'Orgs', 'Earnings', 'Billboard', 'Support']],
+  [['sponsor', 'supplier'], ['Sponsors', 'Supply', 'Wallet', 'Earnings', 'Billboard', 'Shop']],
+  [['physio', 'doctor', 'lawyer', 'insurer'], ['Health', 'Insure', 'Legal', 'Wallet', 'Leaderboard', 'Support']],
+];
+export const PRIORITY_DEFAULT = ['Leaderboard', 'Health', 'Insure', 'Wallet', 'Shop', 'Billboard'];
+
+/** The wheel's order for someone with these roles: their priority modules first, then the rest in catalogue order. */
+export function orderedModules(roles = []) {
+  const first = (PRIORITY.find(([rs]) => rs.some((r) => roles.includes(r))) ?? [null, PRIORITY_DEFAULT])[1];
+  const byName = Object.fromEntries(MODULES.map((m) => [m[0], m]));
+  return [...first.map((n) => byName[n]), ...MODULES.filter((m) => !first.includes(m[0]))];
+}

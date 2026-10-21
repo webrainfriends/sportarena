@@ -1,7 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, Animated, Easing, Platform, Pressable, TextInput, View } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import Svg, { Circle, Path } from 'react-native-svg';
+import { View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
@@ -13,10 +11,7 @@ import { MyRehab, PracticePanel } from './physio-practice';
 import { PrivacyHub } from './health-privacy';
 import { SportSelect, SportPicker } from '../sportpicker';
 import { EntityPicker } from '../entity-picker';
-import { DateField, HScroll } from '../pickers';
-import { Icon } from '../icons';
-import { TileArt, tileColors } from './more-art';
-import { FeatureCarousel, HeroStage, Pop } from './more-stage';
+import { DateField } from '../pickers';
 import { ModuleHero, ModuleSheet } from './module-hero';
 import { PaySheet } from '../PaySheet';
 import { TimelineSheet } from '../Timeline';
@@ -24,117 +19,7 @@ import { Confirm } from './coaching';
 import { RecoveryPanel } from './wellness';
 import { DoctorEntry } from './doctor';
 import { MyHealthFile } from './health-file';
-import { c, dark, fam, grad, softOf, money, day, when, withUnit, unitName } from '../theme';
-
-// [route, icon, title, sub] grouped by what the person is doing; `roles` lifts a group to the top for those who hold them.
-const GROUPS = [
-  { key: 'play', caption: 'Scores, trophies and getting better', title: 'Play & compete', accent: 'lime', roles: ['athlete', 'coach', 'referee'], tiles: [
-    ['Leaderboard', 'Leaderboard', 'Leaderboard', 'Points & glory'], ['Awards', 'Awards', 'Trophy room', 'Cups, medals, MVPs'],
-    ['MyPlans', 'MyPlans', 'Training plans', 'Your plans & sessions'], ['Pathways', 'Pathways', 'Learn & study', 'Rules, courses & colleges'] ] },
-  { key: 'care', caption: 'Health, cover and people who look after you', title: 'Look after me', accent: 'mint', roles: ['physio', 'doctor', 'lawyer', 'insurer'], tiles: [
-    ['Health', 'Health', 'Health', 'Physio · doctors · fit to play'], ['Insure', 'Shield', 'My cover', 'What covers me today'],
-    ['Insurance', 'ShieldCheck', 'Insurance', 'You · your team · your event'], ['Legal', 'Legal', 'Legal', 'Verified lawyers & matters'], ['Family', 'Family', 'Family', 'Guardians & consents'] ] },
-  { key: 'money', caption: 'Your wallet, earnings and the marketplace', title: 'Money & market', accent: 'orange', roles: ['sponsor', 'supplier'], tiles: [
-    ['Wallet', 'Wallet', 'Wallet', 'Balance, gift cards, loyalty'], ['Earnings', 'Earnings', 'Earnings', 'Sales, fees & payouts'], ['Shop', 'Shop', 'Shop', 'Kit, gear & orders'],
-    ['Billboard', 'Billboard', 'Billboard', 'Wanted, for sale & ads'], ['Sponsors', 'Sponsors', 'Sponsors', 'Brands & deals'], ['Supply', 'Supply', 'Supply chain', 'Kit, stock & orders'] ] },
-  { key: 'community', caption: 'Jobs, clubs and help when you need it', title: 'Community & work', accent: 'cyan', roles: ['organizer', 'venue_manager'], tiles: [
-    ['Openings', 'Openings', 'Open positions', 'Jobs, stalls & contracts at events'], ['EventInbox', 'EventInbox', 'Event requests', 'Invites & quotes for you'],
-    ['Orgs', 'Orgs', 'Organisations', 'Clubs & associations'], ['Support', 'Support', 'Support', 'Cases & disputes'] ] },
-];
-const accentOf = (k) => c[k];
-
-// Full-colour gradient card with a large illustration bleeding off the corner. `wide` = featured, full-row card.
-function ArtTile({ name, title, sub, live, badge, onPress, i }) {
-  const [from, to] = tileColors(name);
-  const wide = false;
-  return (
-    <Pop i={i} style={{ width: '46.5%', flexGrow: 1 }}>
-      <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={live ? `${title}. ${live}` : title}
-        style={({ pressed }) => ({ borderRadius: 22, transform: [{ scale: pressed ? 0.975 : 1 }], ...(Platform.OS === 'web' ? { boxShadow: `0 10px 22px ${from}40` } : { shadowColor: from, shadowOpacity: 0.3, shadowRadius: 14, shadowOffset: { width: 0, height: 8 }, elevation: 4 }) })}>
-        <LinearGradient colors={[from, to]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ borderRadius: 22, overflow: 'hidden', height: wide ? 120 : 132, padding: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)' }}>
-          <View pointerEvents="none" style={{ position: 'absolute', right: wide ? 10 : -26, ...(wide ? { bottom: -50 } : { top: -30 }), width: wide ? 170 : 100, height: wide ? 170 : 100, borderRadius: 100, backgroundColor: '#fff', opacity: 0.14 }} />
-          <TileArt name={name} size={wide ? 124 : 78} style={{ position: 'absolute', right: wide ? 8 : -6, ...(wide ? { bottom: -10 } : { top: -6 }), transform: [{ rotate: '-8deg' }], opacity: dark ? 0.9 : 1 }} />
-          {badge ? <View style={{ alignSelf: 'flex-start', minWidth: 24, height: 24, paddingHorizontal: 8, borderRadius: 12, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' }}><T weight="800" size={13} color={to}>{badge}</T></View> : null}
-          <View style={{ marginTop: 'auto', maxWidth: wide ? '62%' : '100%' }}>
-            <T weight="800" size={wide ? 19 : 16} color="#fff" style={{ letterSpacing: -0.3 }}>{title}</T>
-            <T size={12} color="rgba(255,255,255,0.88)" weight="500" numberOfLines={2} style={{ marginTop: 2 }}>{live ?? sub}</T>
-          </View>
-        </LinearGradient>
-      </Pressable>
-    </Pop>
-  );
-}
-
-// The six modules orbiting the hero, by the person's roles (first match wins; everyone else gets the player set).
-const ORBITS = [
-  [['organizer', 'venue_manager'], ['EventInbox', 'Openings', 'Orgs', 'Earnings', 'Billboard', 'Support']],
-  [['sponsor', 'supplier'], ['Sponsors', 'Supply', 'Wallet', 'Earnings', 'Billboard', 'Shop']],
-  [['physio', 'doctor', 'lawyer', 'insurer'], ['Health', 'Insure', 'Legal', 'Wallet', 'Leaderboard', 'Support']],
-];
-const ORBIT_DEFAULT = ['Leaderboard', 'Health', 'Insure', 'Wallet', 'Shop', 'Billboard'];
-const LABEL = Object.fromEntries(GROUPS.flatMap((g) => g.tiles.map(([name, , title]) => [name, title])));
-
-export function Hub() {
-  const { push, goTab } = useNav();
-  const { user } = useSession();
-  const [q, setQ] = useState('');
-  const dash = useLoad(() => api.get('/dashboard'), []);
-  const note = useLoad(() => api.get('/notifications', { unread: true, limit: 1 }), []);
-  const favs = useLoad(() => api.get('/me/favourites'), []);
-  const { hasAny } = useSession();
-  const d = dash.data, unread = note.data?.unread ?? 0;
-  const next = d?.next_games?.[0];
-  const photo = Array.isArray(favs.data) ? favs.data.find((v) => v.cover_url)?.cover_url : null;
-  const badges = { Insure: d?.policies_to_renew, Insurance: d?.policies_to_renew, Leaderboard: d?.pending_results };
-  const orbitNames = (ORBITS.find(([roles]) => roles.some((r) => user.roles?.includes(r))) ?? [null, ORBIT_DEFAULT])[1];
-  const orbit = orbitNames.map((name) => ({ name, label: LABEL[name] ?? name, badge: badges[name] > 0 ? badges[name] : null, onPress: () => push(name) }));
-  const stats = [d?.points > 0 && `${d.points} points`, d?.trophies > 0 && `${d.trophies} trophies`].filter(Boolean).join(' · ');
-  const items = [
-    d?.policies_to_renew > 0 && { name: 'Insure', title: `${d.policies_to_renew} cover${d.policies_to_renew > 1 ? 's' : ''} to renew`, chip: 'My cover', action: 'Renew', onPress: () => push('Insure') },
-    d?.pending_results > 0 && { name: 'Leaderboard', title: `${d.pending_results} result${d.pending_results > 1 ? 's' : ''} waiting`, chip: 'Leaderboard', action: 'View results', onPress: () => push('Leaderboard') },
-    (d?.fit_to_play === 'restricted' || d?.fit_to_play === 'not_cleared') && { name: 'Health', title: d.fit_to_play === 'restricted' ? 'Play with restrictions' : 'Not cleared to play', chip: 'Health', action: 'See details', onPress: () => push('Health') },
-    next && { name: 'Schedule', title: `${next.home_name ?? 'TBC'} vs ${next.away_name ?? 'TBC'}`, chip: `Next game · ${day(next.scheduled_at)}`, action: 'Open schedule', onPress: () => goTab('Schedule') },
-    unread > 0 && { name: 'Notifications', title: `${unread} unread`, chip: 'Notifications', action: 'Open', onPress: () => goTab('Me') },
-  ].filter(Boolean);
-  const lives = {
-    Leaderboard: d?.pending_results > 0 ? `${d.pending_results} result${d.pending_results > 1 ? 's' : ''} waiting for approval` : null,
-    Insure: d?.policies_to_renew > 0 ? `${d.policies_to_renew} to renew soon` : null,
-    Health: d?.fit_to_play === 'restricted' ? 'Cleared with restrictions' : d?.fit_to_play === 'not_cleared' ? 'Not cleared to play' : d?.fit_to_play === 'cleared' ? 'Fit to play' : null,
-  };
-  const needle = q.trim().toLowerCase();
-  const groups = GROUPS
-    .map((g) => ({ ...g, rank: hasAny(...g.roles) ? 0 : 1, tiles: g.tiles.filter(([, , t, sub]) => !needle || `${t} ${sub}`.toLowerCase().includes(needle)) }))
-    .filter((g) => g.tiles.length).sort((a, b) => a.rank - b.rank);
-  let n = 0;
-  return (
-    <Screen>
-      <H1 style={{ marginTop: 8, marginBottom: 12 }}>More</H1>
-      <HeroStage user={user} photo={photo} line={next ? `Next: ${next.home_name ?? 'TBC'} vs ${next.away_name ?? 'TBC'}` : 'My profile & settings'} sub={stats} orbit={orbit} onProfile={() => goTab('Me')} />
-      {items.length ? <View style={{ marginTop: 22 }}><H2 style={{ marginBottom: 12 }}>Needs your attention</H2><FeatureCarousel items={items} /></View> : null}
-      <View style={{ marginTop: 22, flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: c.paper, borderWidth: 1, borderColor: c.line, borderRadius: 999, paddingHorizontal: 16, height: 48 }}>
-        <Icon name="Search" color={c.mute} size={20} />
-        <TextInput value={q} onChangeText={setQ} placeholder="Search More" placeholderTextColor={c.mute} accessibilityLabel="Search More" autoCapitalize="none"
-          style={[fam, { flex: 1, fontSize: 15, color: c.ink }, Platform.OS === 'web' && { outlineStyle: 'none' }]} />
-      </View>
-      {groups.map((g) => (
-        <View key={g.key} style={{ marginTop: 28 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: accentOf(g.accent) }} />
-            <H2 style={{ flex: 1 }}>{g.title}</H2>
-            <View style={{ backgroundColor: softOf[accentOf(g.accent)], borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3 }}><T weight="700" size={12} color={accentOf(g.accent)}>{g.tiles.length}</T></View>
-          </View>
-          <T size={13} color={c.mute} style={{ marginTop: 2 }}>{g.caption}</T>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 12 }}>
-            {g.tiles.map(([name, , title, sub]) => (
-              <ArtTile key={name} i={n++} name={name} title={title} sub={sub} live={lives[name]} badge={badges[name] > 0 ? badges[name] : null} onPress={() => push(name)} />
-            ))}
-          </View>
-        </View>
-      ))}
-      {needle && !groups.length ? <Empty emoji="🔎" title="Nothing matches" sub="Try a different word." /> : null}
-    </Screen>
-  );
-}
+import { c, grad, money, day, when, withUnit, unitName } from '../theme';
 
 const STATUS_TAG = { recorded: ['Private', null], submitted: ['Waiting for approval', 'sun'], approved: ['Approved', 'lime'], disputed: ['Disputed — not counted', 'orangeSoft'], rejected: ['Rejected', 'orangeSoft'], superseded: ['Replaced by a correction', 'cyanSoft'] };
 const STEP = { submitted: 'Submitted', approved: 'Approved', rejected: 'Rejected', disputed: 'Problem reported', corrected: 'Correction proposed', superseded: 'Replaced by a correction' };

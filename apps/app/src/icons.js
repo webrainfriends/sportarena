@@ -49,6 +49,7 @@ export const icons = {
   Pathways: wrap((p) => <><Path d="m2.5 9.5 9.5-5 9.5 5-9.5 5z" {...P(p)} fill={tint(p)} fillOpacity={0.16} /><Path d="M6.5 12v4.2c0 1.3 2.5 2.8 5.5 2.8s5.5-1.5 5.5-2.8V12M21.5 9.5V15" {...P(p)} /></>),
   Support: wrap((p) => <><Circle cx="12" cy="12" r="8.5" {...P(p)} fill={tint(p)} fillOpacity={0.16} /><Circle cx="12" cy="12" r="3.2" {...P(p)} /><Path d="m6 6 3.8 3.8M18 6l-3.8 3.8M6 18l3.8-3.8M18 18l-3.8-3.8" {...P(p)} /></>),
   Search: wrap((p) => <><Circle cx="11" cy="11" r="6.5" {...P(p)} /><Path d="m16 16 4 4" {...P(p)} /></>),
+  Close: wrap((p) => <Path d="M6 6l12 12M18 6 6 18" {...P(p)} strokeWidth={2.6} />),
   Back: wrap((p) => <Path d="M14.5 5.5 8 12l6.5 6.5" {...P(p)} strokeWidth={2.4} />),
 };
 export const Icon = ({ name, ...p }) => { const I = icons[name]; return I ? <I {...p} /> : null; };

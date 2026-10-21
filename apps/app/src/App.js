@@ -32,7 +32,7 @@ import { Manage, OwnerSummary } from './screens/manage';
 import { Wallet } from './screens/wallet';
 import { Earnings } from './screens/earnings';
 import { BasketProvider } from './basket';
-import { Hub, Leaderboard, Awards, Health, Sponsors, Supply } from './screens/hub';
+import { Leaderboard, Awards, Health, Sponsors, Supply } from './screens/hub';
 import { SponsorDeal } from './screens/sponsor-deal';
 import { Insurance, InsurerPage } from './screens/insurance';
 import { InsurerDesk } from './screens/insurer';
@@ -58,11 +58,12 @@ import { TrainingVenue, RecurringVenue } from './screens/training-venue';
 
 import { PlayerHome, SportProfile, ImportMatches } from './screens/player';
 import { MyPassport, PassportPublic } from './screens/passport';
+import { MoreWheel } from './screens/more-wheel';
 
 // A coach or scout opening a passport link (web) sees the athlete's CV without signing in.
 const PASSPORT_TOKEN = Platform.OS === 'web' && typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('passport') : null;
 
-const TABS = [['Home', Home], ['Explore', Explore], ['Schedule', Schedule], ['Player', PlayerHome], ['Hub', Hub], ['Me', Me]];
+const TABS = [['Home', Home], ['Explore', Explore], ['Schedule', Schedule], ['Player', PlayerHome], ['Me', Me]];
 const PAGES = { BrandedDocuments, Billboard, Shop, ShopProduct, ShopCart, ShopOrders, Insure, Pathways, Programme, Institution, Enquiry, Passport: MyPassport, Event, PartnerConsole, MyPartner, Team, TeamManage, TeamWorkspace, TeamChat, Person, Venue, Wallet, Earnings, BookFlow, Invoice, Basket, Reservation, Compare, Notifications, Manage, OwnerSummary, Leaderboard, Awards, Health, DoctorHome, Legal: LegalHome, Insurance, InsurerPage, InsurerDesk, Sponsors, SponsorDeal, Supply, SportProfile, ImportMatches, Support, Family, CoachHome, CoachAthletes, CoachPlan, CoachCalendar, MyPlans, Orgs, Org, Games, EventInbox, Openings, CoachProfile, CoachRequest, CoachBoard, CoachDesk, CoachSetup, CoachRates, CoachCommitments, CoachReviews, CoachAnalytics, TrainingVenue, RecurringVenue, EventCommand, MatchCentre, ScoreSheet };
 const TITLES = { BrandedDocuments: 'Document designer', Billboard: 'Billboard', Shop: 'Shop', ShopProduct: 'Product', ShopCart: 'Cart', ShopOrders: 'Orders', Insure: 'My cover', Pathways: 'Learn & study sport', Programme: 'Programme', Institution: 'Institution', Enquiry: 'Enquiry', Passport: 'Player passport', Event: 'Event', PartnerConsole: 'Partner management', MyPartner: 'Partner account', Team: 'Team', TeamManage: 'Manage team', TeamWorkspace: 'Team workspace', TeamChat: 'Team chat', Person: 'Profile', Venue: 'Venue', Wallet: 'Wallet', Earnings: 'Earnings', BookFlow: 'Book', Invoice: 'Invoice', Basket: 'Basket', Reservation: 'Booking', Compare: 'Compare', Notifications: 'Notifications', Manage: 'Manage venue', OwnerSummary: 'All my venues', Leaderboard: 'Leaderboard', Awards: 'Trophy room', Health: 'Health', DoctorHome: 'Doctor workspace', Legal: 'Legal', Insurance: 'Insurance', InsurerPage: 'Insurer', InsurerDesk: 'Insurer desk', Sponsors: 'Sponsors', SponsorDeal: 'Sponsorship agreement', Supply: 'Supply chain', SportProfile: 'Sport profile', ImportMatches: 'Import matches', Support: 'Support', Family: 'Family & guardians', CoachHome: 'Coach home', CoachAthletes: 'My athletes', CoachPlan: 'Training plan', CoachCalendar: 'Coach calendar', MyPlans: 'Training plans', Orgs: 'My organisations', Org: 'Organisation', Games: 'Games programme', EventInbox: 'Event requests', Openings: 'Open positions', CoachProfile: 'Coach', CoachRequest: 'Coaching request', CoachBoard: 'Request board', CoachDesk: 'Coach desk', CoachSetup: 'Profile & hours', CoachRates: 'Rate cards', CoachCommitments: 'Commitments', CoachReviews: 'Reviews', CoachAnalytics: 'Analytics', TrainingVenue: 'Court for coaching', RecurringVenue: 'Recurring booking', EventCommand: 'Event console', MatchCentre: 'Live match', ScoreSheet: 'Score sheet' };
 
@@ -73,17 +74,17 @@ const BAR = ['Home', 'Explore', 'Hub', 'Schedule', 'Player'];
 
 /** Bottom tab bar. Phone: edge-to-edge bar. Tablet / large screens: a floating pill, like an iPad app. */
 function TabBar() {
-  const { tab, goTab } = useNav();
+  const { tab, goTab, menu, toggleMenu } = useNav();
   const ins = useSafeAreaInsets();
   const { tablet, width } = useLayout();
   const items = BAR.map((name) => {
-    const on = tab === name || (name === 'Hub' && tab === 'Me');
+    const on = name === 'Hub' ? menu || tab === 'Me' : !menu && tab === name;
     const centre = name === 'Hub';
     return (
-      <Pressable key={name} accessibilityRole="tab" accessibilityState={{ selected: on }} accessibilityLabel={TAB_LABEL[name] ?? name} onPress={() => goTab(name)} style={({ pressed }) => ({ flex: 1, alignItems: 'center', justifyContent: 'flex-end', minHeight: 52, opacity: pressed ? 0.6 : 1 })}>
+      <Pressable key={name} accessibilityRole="tab" accessibilityLabel={name === 'Hub' && menu ? 'Close More' : TAB_LABEL[name] ?? name} accessibilityState={{ selected: on, expanded: name === 'Hub' ? menu : undefined }} onPress={() => (name === 'Hub' ? toggleMenu() : goTab(name))} style={({ pressed }) => ({ flex: 1, alignItems: 'center', justifyContent: 'flex-end', minHeight: 52, opacity: pressed ? 0.6 : 1 })}>
         {centre ? (
           <LinearGradient colors={['#4F46E5', '#7C3AED']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: 54, height: 54, borderRadius: 27, alignItems: 'center', justifyContent: 'center', marginTop: -26, borderWidth: 4, borderColor: c.paper, ...(Platform.OS === 'web' ? { boxShadow: '0 8px 20px rgba(79,70,229,0.4)' } : { shadowColor: '#4F46E5', shadowOpacity: 0.4, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 8 }) }}>
-            <Icon name={name} on color="#fff" size={26} />
+            <Icon name={menu ? 'Close' : name} on color="#fff" size={26} />
           </LinearGradient>
         ) : (
           <View style={{ alignItems: 'center', justifyContent: 'center', paddingHorizontal: tablet ? 18 : 14, paddingVertical: 5, borderRadius: 16, backgroundColor: on ? c.pinkSoft : 'transparent' }}>
@@ -193,7 +194,7 @@ function MfaNotice({ info, onGo, onClose }) {
 
 function Shell() {
   const { ready, user, toast } = useSession();
-  const { tab, stack, back, goTab, push } = useNav();
+  const { tab, stack, back, goTab, push, menu } = useNav();
   const ins = useSafeAreaInsets();
   const [mfa, setMfa] = useState(null);
   useEffect(() => { setMfaRequiredHandler(setMfa); return () => setMfaRequiredHandler(() => {}); }, []);
@@ -248,6 +249,7 @@ function Shell() {
       <View style={{ flex: 1 }}>
         <Transition id={pageKey} push={!!top}><Page key={pageKey} {...(top?.params ?? {})} /></Transition>
         {top && HERO_ROUTES.has(top.name) ? <NavOverlay backLabel={prev} onBack={back} /> : null}
+        {menu ? <MoreWheel /> : null}
       </View>
       <TabBar />
     </View>
