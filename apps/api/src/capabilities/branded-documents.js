@@ -47,7 +47,7 @@ const myKits = (user) => many(
 cap({
   name: 'list_document_families', method: 'GET', path: '/branded-documents/families', tag: TAG,
   summary: 'The document families Sportarena can brand, which roles use them, and whether their canonical source workflow is connected (only invoices today). A family that is not available cannot be generated.',
-  handler: () => ({ families: FAMILIES, starters: Object.keys(STARTERS), paper: ['A4', 'Letter'], logo: { types: ['image/png', 'image/jpeg'], max_bytes: LOGO_LIMITS.bytes, max_px: LOGO_LIMITS.maxPx, recommended_min_px: LOGO_LIMITS.recommendedPx } }),
+  handler: () => ({ families: FAMILIES, starters: Object.keys(STARTERS), starter_layouts: STARTERS, paper: ['A4', 'Letter'], logo: { types: ['image/png', 'image/jpeg'], max_bytes: LOGO_LIMITS.bytes, max_px: LOGO_LIMITS.maxPx, recommended_min_px: LOGO_LIMITS.recommendedPx } }),
 });
 
 cap({
