@@ -270,9 +270,10 @@ function PackList({ packs }) {
 
 // ------------------------------------------------------------------ Home
 export function LegalHome() {
-  const { has } = useSession();
+  const { has, user } = useSession();
   const packs = usePacks();
-  const lawyer = has('lawyer'), admin = has('admin');
+  // has() is true for every role when you are an admin; the lawyer tabs need the real lawyer role (the API refuses without it)
+  const lawyer = has('lawyer') && !!user.roles?.includes('lawyer'), admin = has('admin');
   const [tab, setTab] = useState(lawyer ? 'inbox' : 'find');
   const tabs = [{ value: 'find', label: 'Find counsel', emoji: '⚖️' }, { value: 'consult', label: 'Consultations', emoji: '💬' }, { value: 'matters', label: 'My matters', emoji: '🗂️' },
     ...(lawyer ? [{ value: 'inbox', label: 'Client requests', emoji: '📥' }, { value: 'lmatters', label: 'Matters I run', emoji: '📁' }, { value: 'practice', label: 'Practice', emoji: '🏛️' }] : []),
