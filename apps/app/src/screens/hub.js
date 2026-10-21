@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
@@ -11,42 +11,129 @@ import { MyRehab, PracticePanel } from './physio-practice';
 import { PrivacyHub } from './health-privacy';
 import { SportSelect, SportPicker } from '../sportpicker';
 import { EntityPicker } from '../entity-picker';
-import { DateField } from '../pickers';
+import { DateField, HScroll } from '../pickers';
+import { Icon } from '../icons';
+import { useLayout } from '../layout';
 import { PaySheet } from '../PaySheet';
 import { TimelineSheet } from '../Timeline';
 import { Confirm } from './coaching';
 import { RecoveryPanel } from './wellness';
 import { DoctorEntry } from './doctor';
 import { MyHealthFile } from './health-file';
-import { c, grad, money, day, when, withUnit, unitName } from '../theme';
+import { c, grad, r as radius, softOf, money, day, when, withUnit, unitName } from '../theme';
 
-const TILES = [
-  ['Billboard', '📣', 'Billboard', 'Wanted, for sale & ads', c.pink], ['Shop', '🛍️', 'Shop', 'Kit, gear & orders', c.orange], ['Insure', '🛡️', 'My cover', 'What covers me today', c.cyan],
-  ['Leaderboard', '🏅', 'Leaderboard', 'Points & glory', c.lime], ['Health', '🩺', 'Health', 'Physio · doctors · fit to play', c.mint], ['Legal', '⚖️', 'Legal', 'Verified lawyers & matters', c.violet],
-  ['Insurance', '🛡️', 'Insurance', 'You · your team · your event', c.cyan], ['Sponsors', '💎', 'Sponsors', 'Brands & deals', c.sun],
-  ['Supply', '📦', 'Supply chain', 'Kit, stock & orders', c.orange], ['Openings', '💼', 'Open positions', 'Jobs, stalls & contracts at events', c.pink], ['EventInbox', '📨', 'Event requests', 'Invites & quotes for you', c.cyan], ['Awards', '🏆', 'Trophy room', 'Cups, medals, MVPs', c.pink],
-  ['Wallet', '💳', 'Wallet', 'Balance, gift cards, loyalty', c.cyan], ['Earnings', '💰', 'Earnings', 'Sales, fees & payouts', c.lime], ['MyPlans', '📋', 'Training plans', 'Your plans & sessions', c.lime],
-  ['Family', '👨‍👩‍👧', 'Family', 'Guardians & consents', c.mint], ['Orgs', '🏢', 'Organisations', 'Clubs & associations', c.violet],
-  ['Pathways', '🎓', 'Learn & study', 'Rules, courses & colleges', c.cyan], ['Support', '🛟', 'Support', 'Cases & disputes', c.orange],
+// [route, icon, title, sub] grouped by what the person is doing; `roles` lifts a group to the top for those who hold them.
+const GROUPS = [
+  { key: 'play', title: 'Play & compete', accent: 'lime', roles: ['athlete', 'coach', 'referee'], tiles: [
+    ['Leaderboard', 'Leaderboard', 'Leaderboard', 'Points & glory'], ['Awards', 'Awards', 'Trophy room', 'Cups, medals, MVPs'],
+    ['MyPlans', 'MyPlans', 'Training plans', 'Your plans & sessions'], ['Pathways', 'Pathways', 'Learn & study', 'Rules, courses & colleges'] ] },
+  { key: 'care', title: 'Look after me', accent: 'mint', roles: ['physio', 'doctor', 'lawyer', 'insurer'], tiles: [
+    ['Health', 'Health', 'Health', 'Physio · doctors · fit to play'], ['Insure', 'Shield', 'My cover', 'What covers me today'],
+    ['Insurance', 'ShieldCheck', 'Insurance', 'You · your team · your event'], ['Legal', 'Legal', 'Legal', 'Verified lawyers & matters'], ['Family', 'Family', 'Family', 'Guardians & consents'] ] },
+  { key: 'money', title: 'Money & market', accent: 'orange', roles: ['sponsor', 'supplier'], tiles: [
+    ['Wallet', 'Wallet', 'Wallet', 'Balance, gift cards, loyalty'], ['Earnings', 'Earnings', 'Earnings', 'Sales, fees & payouts'], ['Shop', 'Shop', 'Shop', 'Kit, gear & orders'],
+    ['Billboard', 'Billboard', 'Billboard', 'Wanted, for sale & ads'], ['Sponsors', 'Sponsors', 'Sponsors', 'Brands & deals'], ['Supply', 'Supply', 'Supply chain', 'Kit, stock & orders'] ] },
+  { key: 'community', title: 'Community & work', accent: 'cyan', roles: ['organizer', 'venue_manager'], tiles: [
+    ['Openings', 'Openings', 'Open positions', 'Jobs, stalls & contracts at events'], ['EventInbox', 'EventInbox', 'Event requests', 'Invites & quotes for you'],
+    ['Orgs', 'Orgs', 'Organisations', 'Clubs & associations'], ['Support', 'Support', 'Support', 'Cases & disputes'] ] },
 ];
+const accentOf = (k) => c[k];
+
+function MoreTile({ icon, title, sub, accent, badge, onPress, width }) {
+  const color = accentOf(accent), soft = softOf[color];
+  return (
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={title}
+      style={({ pressed }) => ({ width, flexGrow: 1, backgroundColor: c.paper, borderWidth: 1, borderColor: c.line, borderRadius: radius.card, padding: 14, transform: [{ scale: pressed ? 0.985 : 1 }] })}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <View style={{ width: 46, height: 46, borderRadius: 14, backgroundColor: soft, alignItems: 'center', justifyContent: 'center' }}><Icon name={icon} color={color} size={24} on /></View>
+        {badge ? <View style={{ minWidth: 22, height: 22, paddingHorizontal: 6, borderRadius: 11, backgroundColor: c.red, alignItems: 'center', justifyContent: 'center' }}><T weight="700" size={12} color="#fff">{badge}</T></View> : null}
+      </View>
+      <T weight="700" size={16} style={{ marginTop: 12 }}>{title}</T>
+      <T size={12} color={c.mute} style={{ marginTop: 2 }}>{sub}</T>
+    </Pressable>
+  );
+}
+
+function Attention({ icon, color, title, sub, onPress }) {
+  return (
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={`${title}. ${sub}`}
+      style={{ width: 230, backgroundColor: c.paper, borderWidth: 1, borderColor: c.line, borderLeftWidth: 4, borderLeftColor: color, borderRadius: radius.card, padding: 12, flexDirection: 'row', gap: 10, alignItems: 'center' }}>
+      <Icon name={icon} color={color} size={24} on />
+      <View style={{ flexShrink: 1 }}>
+        <T weight="700" size={14}>{title}</T>
+        <T size={12} color={c.mute} numberOfLines={1}>{sub}</T>
+      </View>
+    </Pressable>
+  );
+}
 
 export function Hub() {
   const { push, goTab } = useNav();
-  const { user } = useSession();
+  const { user, hasAny } = useSession();
+  const L = useLayout();
+  const [q, setQ] = useState('');
+  const dash = useLoad(() => api.get('/dashboard'), []);
+  const note = useLoad(() => api.get('/notifications', { unread: true, limit: 1 }), []);
+  const d = dash.data, unread = note.data?.unread ?? 0;
+  const stats = d ? [['points', d.points, 'POINTS', 'Leaderboard'], ['trophies', d.trophies, 'TROPHIES', 'Awards'], ['active_policies', d.active_policies, 'COVER', 'Insure']].filter(([, v]) => v > 0) : [];
+  const next = d?.next_games?.[0];
+  const alerts = [
+    unread > 0 && ['Bell', c.pink, `${unread} unread`, 'Notifications', () => goTab('Me')],
+    d?.policies_to_renew > 0 && ['ShieldCheck', c.orange, `${d.policies_to_renew} cover to renew`, 'Check your policies', () => push('Insure')],
+    d?.pending_results > 0 && ['Leaderboard', c.sun, `${d.pending_results} result${d.pending_results > 1 ? 's' : ''} waiting`, 'Waiting for approval', () => push('Leaderboard')],
+    (d?.fit_to_play === 'restricted' || d?.fit_to_play === 'not_cleared') && ['Health', c.red, d.fit_to_play === 'restricted' ? 'Play with restrictions' : 'Not cleared to play', 'See your health file', () => push('Health')],
+    next && ['Schedule', c.cyan, 'Next game', `${next.home_name ?? 'TBC'} vs ${next.away_name ?? 'TBC'} · ${day(next.scheduled_at)}`, () => goTab('Schedule')],
+  ].filter(Boolean);
+  const badges = { Insure: d?.policies_to_renew, Insurance: d?.policies_to_renew, Leaderboard: d?.pending_results };
+  const needle = q.trim().toLowerCase();
+  const groups = GROUPS
+    .map((g) => ({ ...g, rank: hasAny(...g.roles) ? 0 : 1, tiles: g.tiles.filter(([, , t, sub]) => !needle || `${t} ${sub}`.toLowerCase().includes(needle)) }))
+    .filter((g) => g.tiles.length).sort((a, b) => a.rank - b.rank);
+  const cols = L.tablet ? 3 : 2;
+  const tileW = `${Math.floor(100 / cols) - 3}%`;
   return (
     <Screen>
       <H1 style={{ marginTop: 8 }}>More</H1>
       <T color={c.mute} weight="500" style={{ marginTop: 2 }}>Everything around the game, in one place.</T>
-      <Row onPress={() => goTab('Me')} left={<Avatar user={user} size={44} />} title={user.display_name} sub="My profile, roles & settings" right={<T color={c.pink} weight="700">›</T>} />
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 14 }}>
-        {TILES.map(([name, e, title, sub]) => (
-          <Card key={name} style={{ width: '48%', flexGrow: 1 }} onPress={() => push(name)} pad={16}>
-            <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: c.pinkSoft, alignItems: 'center', justifyContent: 'center' }}><T size={22}>{e}</T></View>
-            <T weight="700" size={16} style={{ marginTop: 14 }}>{title}</T>
-            <T size={12} color={c.mute} style={{ marginTop: 2 }}>{sub}</T>
-          </Card>
-        ))}
+      <GradCard style={{ marginTop: 14 }} pad={18} onPress={() => goTab('Me')}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <Avatar user={user} size={52} />
+          <View style={{ flex: 1 }}>
+            <T weight="800" size={20} color="#fff">{user.display_name}</T>
+            <T size={13} color="#E0E7FF">My profile, roles & settings</T>
+          </View>
+          <T color="#fff" weight="700" size={20}>›</T>
+        </View>
+        {stats.length ? (
+          <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
+            {stats.map(([k, v, label, to]) => (
+              <Pressable key={k} onPress={() => push(to)} accessibilityRole="button" accessibilityLabel={`${v} ${label.toLowerCase()}`}
+                style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.18)', borderRadius: 14, paddingVertical: 10, alignItems: 'center' }}>
+                <T weight="800" size={22} color="#fff" style={{ fontVariant: ['tabular-nums'] }}>{v}</T>
+                <T weight="700" size={10} color="#E0E7FF" style={{ letterSpacing: 1.2 }}>{label}</T>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
+      </GradCard>
+      {alerts.length ? (
+        <Section title="Needs your attention">
+          <HScroll gap={10}>{alerts.map(([icon, color, title, sub, go]) => <Attention key={title} icon={icon} color={color} title={title} sub={sub} onPress={go} />)}</HScroll>
+        </Section>
+      ) : null}
+      <View style={{ marginTop: 20 }}>
+        <Field value={q} onChangeText={setQ} placeholder="Search More" />
       </View>
+      {groups.map((g) => (
+        <Section key={g.key} title={g.title}>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+            {g.tiles.map(([name, icon, title, sub]) => (
+              <MoreTile key={name} icon={icon} title={title} sub={sub} accent={g.accent} badge={badges[name] > 0 ? badges[name] : null} width={tileW} onPress={() => push(name)} />
+            ))}
+          </View>
+        </Section>
+      ))}
+      {needle && !groups.length ? <Empty emoji="🔎" title="Nothing matches" sub="Try a different word." /> : null}
     </Screen>
   );
 }
