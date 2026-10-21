@@ -31,7 +31,7 @@ Binary: `PUT /brand-kits/:id/logo` (raw PNG/JPEG ≤ 2 MB, 32–4000 px), `GET /
 (`{template_id}` or `{layout, kit_id?}` → PDF on SAMPLE data, labelled SAMPLE), `GET /branded-documents/:id/file` (access re-checked live, audit-logged).
 
 ## Designer UI
-**Me → Document designer** (every role, incl. doctor). Pick *Me* or an organisation you own/administer. Brand kits: swatch + hex colours, logo upload, contact text.
+**Me → Document designer** (every role, incl. doctor). Pick *Me* or an organisation you own/administer. Brand kits open in a full-screen editor (`brand-kit-editor.js`) with a live letterhead preview, a logo tile that works before the first save, swatch/custom colours and grouped contact fields.
 Templates open in a full-screen **visual page editor** (`apps/app/src/screens/doc-editor.js`): a scaled A4/Letter page drawn with the kit's real logo, colours and
 name; data sections (parties, line items, totals) show grey structure bars, never invented figures. Tap a section to select it, drag its **Move** grip to reorder
 (↑/↓ buttons as fallback), edit text blocks (align, size) in the panel, switch look / paper / orientation / margin / brand kit, add blocks, undo/redo, autosaved

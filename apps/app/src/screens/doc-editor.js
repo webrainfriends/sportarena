@@ -21,22 +21,23 @@ const clone = (x) => JSON.parse(JSON.stringify(x));
 const paperMM = (l) => (l.orientation === 'landscape' ? [...PAPER[l.paper]].reverse() : PAPER[l.paper]);
 
 /** The brand kit's logo as an Image source (web: the protected file is fetched with the sign-in and shown from a blob URL). */
-function useLogo(kit) {
+export function useLogo(kit, localUri) {
   const [src, setSrc] = useState(null);
   useEffect(() => {
     let url; let dead = false;
     setSrc(null);
+    if (localUri) { setSrc({ uri: localUri }); return undefined; }
     if (!kit?.logo_asset_id) return undefined;
     if (Platform.OS === 'web') api.download(`/brand-kits/${kit.id}/logo`).then((b) => { if (!dead) { url = URL.createObjectURL(b); setSrc({ uri: url }); } }).catch(() => {});
     else setSrc({ uri: `${API}/brand-kits/${kit.id}/logo?v=${kit.logo_asset_id}`, headers: authHeader() });
     return () => { dead = true; if (url) URL.revokeObjectURL(url); };
-  }, [kit?.id, kit?.logo_asset_id]);
+  }, [kit?.id, kit?.logo_asset_id, localUri]);
   return src;
 }
 
 const Bar = ({ w = '100%', h = 5, color = GREY, style }) => <View style={[{ width: w, height: h, borderRadius: 2, backgroundColor: color }, style]} />;
 
-function BlockPreview({ b, kit, logo, pt, accent, ink, layout }) {
+export function BlockPreview({ b, kit, logo, pt, accent, ink, layout }) {
   const g = Math.max(3, pt * 4);
   if (b.type === 'header') {
     return (
