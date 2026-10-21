@@ -22,8 +22,7 @@ const wrap = (rel, n) => ((rel + n / 2) % n + n) % n - n / 2; // signed distance
  * circle on the left; every module is on a wheel you drag (or scroll / arrow-key) to swivel. The module at the centre
  * is enlarged; tapping it opens it. Counts come from real data and are shown on the modules themselves.
  */
-export function GlassWheel({ variant = 'layer', onDragState }) {
-  const layer = variant === 'layer';
+export function MoreWheel() {
   const { push, goTab, closeMenu } = useNav();
   const { user } = useSession();
   const [size, setSize] = useState({ w: 0, h: 0 });
@@ -67,33 +66,30 @@ export function GlassWheel({ variant = 'layer', onDragState }) {
     return () => { live = false; };
   }, [fade, rot, spinTo]);
 
-  const drag = useRef(onDragState);
-  drag.current = onDragState;
   const vertical = (_, g) => Math.abs(g.dy) > 6 && Math.abs(g.dy) > Math.abs(g.dx);
   const pan = useMemo(() => PanResponder.create({
     onStartShouldSetPanResponder: () => false,
     onMoveShouldSetPanResponder: vertical,
-    onMoveShouldSetPanResponderCapture: vertical,      // wins over a parent ScrollView (Home) once the drag is vertical
     onPanResponderTerminationRequest: () => false,
-    onPanResponderGrant: () => { drag.current?.(true); rot.stopAnimation((v) => { base.current = v; }); },
+    onPanResponderGrant: () => { rot.stopAnimation((v) => { base.current = v; }); },
     onPanResponderMove: (_, g) => rot.setValue(base.current - g.dy / PX_PER_STEP),
-    onPanResponderRelease: (_, g) => { drag.current?.(false); spinTo(Math.round(base.current - g.dy / PX_PER_STEP - g.vy * 0.25), -g.vy / PX_PER_STEP * 1000); },
-    onPanResponderTerminate: () => { drag.current?.(false); spinTo(Math.round(cur.current)); },
+    onPanResponderRelease: (_, g) => { spinTo(Math.round(base.current - g.dy / PX_PER_STEP - g.vy * 0.25), -g.vy / PX_PER_STEP * 1000); },
+    onPanResponderTerminate: () => { spinTo(Math.round(cur.current)); },
   }), [rot, spinTo]);
 
-  // Web: mouse wheel and arrow keys turn the wheel (the layer also closes on Escape).
+  // Web: mouse wheel and arrow keys turn the wheel (Escape closes it).
   const wheelLock = useRef(0);
   const onWheel = useCallback((e) => { const t = Date.now(); if (t - wheelLock.current < 120) return; wheelLock.current = t; nudge(e.deltaY > 0 ? 1 : -1); }, [nudge]);
   useEffect(() => {
-    if (Platform.OS !== 'web' || !layer) return undefined;
+    if (Platform.OS !== 'web') return undefined;
     const onKey = (e) => { if (e.key === 'ArrowDown') { e.preventDefault(); nudge(1); } else if (e.key === 'ArrowUp') { e.preventDefault(); nudge(-1); } else if (e.key === 'Escape') closeMenu(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [nudge, closeMenu, layer]);
+  }, [nudge, closeMenu]);
 
   const { w, h } = size;
-  const R = Math.min(layer ? (w > 700 ? 175 : 132) : 108, w * (layer ? 0.3 : 0.26), h * (layer ? 0.3 : 0.28)), cx = R * 0.42, cy = h * 0.5, R2 = R + (layer ? 56 : 50);
-  const vis = layer ? VISIBLE : 72;
+  const R = Math.min(w > 700 ? 175 : 132, w * 0.3, h * 0.3), cx = R * 0.42, cy = h * 0.5, R2 = R + 56;
+  const vis = VISIBLE;
   const centred = ((Math.round(pos) % n) + n) % n;
   const now = new Date();
   const dateLine = now.toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' });
@@ -110,22 +106,12 @@ export function GlassWheel({ variant = 'layer', onDragState }) {
         <Glass radius={R} preset="clear" gloss iris style={{ width: R * 2, height: R * 2 }}>
           <View style={{ position: 'absolute', left: R - cx + 10, right: 8, top: 0, bottom: 0, justifyContent: 'center' }}>
             <Glass radius={18} preset="soft" gloss style={{ paddingVertical: 10, paddingHorizontal: 12, alignSelf: 'flex-start', maxWidth: '100%' }}>
-            {layer ? (
-              <>
                 <View style={{ marginBottom: 8 }}><Avatar user={user} size={40} /></View>
                 <T weight="800" size={20} color={c.ink} numberOfLines={1} style={{ letterSpacing: -0.4 }}>{user.display_name}</T>
                 <T weight="500" size={12} color={c.mute} numberOfLines={1}>{dateLine}</T>
                 {statLine ? <T weight="700" size={13} color={c.pink} numberOfLines={1} style={{ marginTop: 2 }}>{statLine}</T> : null}
                 {next ? <T weight="500" size={12} color={c.mute} numberOfLines={1} style={{ marginTop: 2 }}>{`Next: ${next.home_name ?? 'TBC'} vs ${next.away_name ?? 'TBC'} · ${day(next.scheduled_at)}`}</T> : null}
-              </>
-            ) : (
-              <>
-                <T weight="700" size={11} color={c.mute} numberOfLines={1} style={{ letterSpacing: 0.4 }}>{now.toLocaleDateString(locale, { weekday: 'long' }).toUpperCase()}</T>
-                <T weight="800" size={48} color={c.ink} style={{ letterSpacing: -2, lineHeight: 52 }}>{now.getDate()}</T>
-                <T weight="600" size={12} color={c.mute} numberOfLines={1}>{now.toLocaleDateString(locale, { month: 'long' })}</T>
-                {statLine ? <T weight="700" size={12} color={c.pink} numberOfLines={2} style={{ marginTop: 4 }}>{statLine.replace(' · ', '\n')}</T> : null}
-              </>
-            )}
+              
             </Glass>
           </View>
         </Glass>
@@ -164,34 +150,21 @@ export function GlassWheel({ variant = 'layer', onDragState }) {
         );
       })}
 
-      {layer ? (
-        <Pressable onPress={closeMenu} hitSlop={10} accessibilityRole="button" accessibilityLabel="Close" style={{ position: 'absolute', top: 14, right: 16 }}>
+      <Pressable onPress={closeMenu} hitSlop={10} accessibilityRole="button" accessibilityLabel="Close" style={{ position: 'absolute', top: 14, right: 16 }}>
           <Glass radius={20} preset="soft" gloss style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}><T color={c.ink} weight="700" size={20}>×</T></Glass>
-        </Pressable>
-      ) : null}
-      <View pointerEvents="none" style={{ position: 'absolute', right: 18, ...(layer ? { bottom: 16 } : { top: 12 }) }}>
+      </Pressable>
+      <View pointerEvents="none" style={{ position: 'absolute', right: 18, bottom: 16 }}>
         <Glass radius={999} preset="soft" gloss style={{ paddingVertical: 4, paddingHorizontal: 10 }}><T size={11} color={c.mute} weight="700" style={{ letterSpacing: 1 }}>DRAG TO SWIVEL</T></Glass>
       </View>
     </>
   ) : null;
 
   const handlers = { onLayout: (e) => setSize({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height }), ...pan.panHandlers, ...(web ? { onWheel } : {}) };
-  if (layer) {
-    return (
-      <Animated.View {...handlers} style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, zIndex: 20, opacity: fade, ...(web ? { touchAction: 'none' } : null) }}>
-        <Pressable onPress={closeMenu} accessible={false} style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }} />
-        <LinearGradient pointerEvents="none" colors={[scrim, 'rgba(0,0,0,0)']} start={{ x: 0, y: 0 }} end={{ x: 0.6, y: 0 }} style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }} />
-        {content}
-      </Animated.View>
-    );
-  }
   return (
-    <Animated.View {...handlers} style={{ height: 340, opacity: fade, ...(web ? { touchAction: 'none' } : null) }}>
-      <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, borderRadius: 32, borderWidth: 1, borderColor: 'rgba(255,255,255,0.28)' }} />
-      <View pointerEvents="box-none" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, borderRadius: 32, overflow: 'hidden' }}>{content}</View>
+    <Animated.View {...handlers} style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, zIndex: 20, opacity: fade, ...(web ? { touchAction: 'none' } : null) }}>
+      <Pressable onPress={closeMenu} accessible={false} style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }} />
+      <LinearGradient pointerEvents="none" colors={[scrim, 'rgba(0,0,0,0)']} start={{ x: 0, y: 0 }} end={{ x: 0.6, y: 0 }} style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }} />
+      {content}
     </Animated.View>
   );
 }
-
-/** More button: the glass wheel laid over whatever screen you are on. */
-export const MoreWheel = () => <GlassWheel variant="layer" />;
