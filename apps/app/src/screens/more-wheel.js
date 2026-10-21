@@ -11,16 +11,16 @@ import { c, dark, day, locale } from '../theme';
 import { TileArt, tileColors } from './more-art';
 import { GROUP_COLOR, orderedModules } from './more-catalog';
 
-const STEP = 20;        // degrees between neighbouring modules on the wheel
-const VISIBLE = 78;     // modules beyond this angle from the centre are hidden
-const PX_PER_STEP = 60; // vertical drag needed to turn the wheel by one module
+const STEP_ARC = 26;    // degrees between neighbouring modules on the arc
+const ARC_VIS = 82;     // modules beyond this angle from straight up are hidden
+const PX_PER_STEP = 56; // horizontal drag needed to turn the wheel by one module
 
 const wrap = (rel, n) => ((rel + n / 2) % n + n) % n - n / 2; // signed distance on a ring of n
 
 /**
- * The More experience: tapping the raised centre tab button opens this full-screen wheel. Your profile sits in a big
- * circle on the left; every module is on a wheel you drag (or scroll / arrow-key) to swivel. The module at the centre
- * is enlarged; tapping it opens it. Counts come from real data and are shown on the modules themselves.
+ * The More experience: tapping the raised centre tab button lays a lightly frosted glass veil over the screen and fans the
+ * modules out in an arc that rises from the More button (the pivot). Drag, scroll or arrow-key to swivel; the module at the
+ * top of the arc is enlarged and named above it, and tapping it opens it. Counts come from real data and sit on the discs.
  */
 export function MoreWheel() {
   const { push, goTab, closeMenu } = useNav();
@@ -66,104 +66,109 @@ export function MoreWheel() {
     return () => { live = false; };
   }, [fade, rot, spinTo]);
 
-  const vertical = (_, g) => Math.abs(g.dy) > 6 && Math.abs(g.dy) > Math.abs(g.dx);
+  // The swivel is an arc that rises from the More button (its pivot); a horizontal drag turns it.
+  const horizontal = (_, g) => Math.abs(g.dx) > 6 && Math.abs(g.dx) > Math.abs(g.dy);
   const pan = useMemo(() => PanResponder.create({
     onStartShouldSetPanResponder: () => false,
-    onMoveShouldSetPanResponder: vertical,
+    onMoveShouldSetPanResponder: horizontal,
     onPanResponderTerminationRequest: () => false,
     onPanResponderGrant: () => { rot.stopAnimation((v) => { base.current = v; }); },
-    onPanResponderMove: (_, g) => rot.setValue(base.current - g.dy / PX_PER_STEP),
-    onPanResponderRelease: (_, g) => { spinTo(Math.round(base.current - g.dy / PX_PER_STEP - g.vy * 0.25), -g.vy / PX_PER_STEP * 1000); },
+    onPanResponderMove: (_, g) => rot.setValue(base.current - g.dx / PX_PER_STEP),
+    onPanResponderRelease: (_, g) => { spinTo(Math.round(base.current - g.dx / PX_PER_STEP - g.vx * 0.25), -g.vx / PX_PER_STEP * 1000); },
     onPanResponderTerminate: () => { spinTo(Math.round(cur.current)); },
   }), [rot, spinTo]);
 
-  // Web: mouse wheel and arrow keys turn the wheel (Escape closes it).
+  // Web: mouse wheel and arrow keys turn it (Escape closes).
   const wheelLock = useRef(0);
-  const onWheel = useCallback((e) => { const t = Date.now(); if (t - wheelLock.current < 120) return; wheelLock.current = t; nudge(e.deltaY > 0 ? 1 : -1); }, [nudge]);
+  const onWheel = useCallback((e) => { const t = Date.now(); if (t - wheelLock.current < 120) return; wheelLock.current = t; const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY; nudge(d > 0 ? 1 : -1); }, [nudge]);
   useEffect(() => {
     if (Platform.OS !== 'web') return undefined;
-    const onKey = (e) => { if (e.key === 'ArrowDown') { e.preventDefault(); nudge(1); } else if (e.key === 'ArrowUp') { e.preventDefault(); nudge(-1); } else if (e.key === 'Escape') closeMenu(); };
+    const onKey = (e) => { if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); nudge(1); } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); nudge(-1); } else if (e.key === 'Escape') closeMenu(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [nudge, closeMenu]);
 
   const { w, h } = size;
-  const R = Math.min(w > 700 ? 175 : 132, w * 0.3, h * 0.3), cx = R * 0.42, cy = h * 0.5, R2 = R + 56;
-  const vis = VISIBLE;
+  const BAR_C = 66;                                              // the More button's centre, measured up from the bottom of the area
+  const cx = w / 2, cy = h - BAR_C;
+  const R2 = Math.min(w * 0.4, h * 0.42, 210);
   const centred = ((Math.round(pos) % n) + n) % n;
   const now = new Date();
   const dateLine = now.toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' });
   const statLine = [d?.points > 0 && `${d.points} points`, d?.trophies > 0 && `${d.trophies} trophies`].filter(Boolean).join(' · ');
-  const scrim = dark ? 'rgba(5,31,32,0.14)' : 'rgba(237,247,239,0.16)'; // just enough to settle the profile circle; the screen stays fully visible
   const web = Platform.OS === 'web';
+  // Light frost: the page stays recognisable (shapes, colours) but its text is not legible; a bit stronger at the bottom, where the arc is.
+  const veil = dark ? ['rgba(5,31,32,0.22)', 'rgba(5,31,32,0.46)'] : ['rgba(237,247,239,0.28)', 'rgba(237,247,239,0.54)'];
 
   const content = w ? (
     <>
-      <View pointerEvents="none" style={{ position: 'absolute', left: cx - R - 18, top: cy - R - 18, width: R * 2 + 36, height: R * 2 + 36, borderRadius: R + 18, borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)' }} />
       <View pointerEvents="none" style={{ position: 'absolute', left: cx - R2, top: cy - R2, width: R2 * 2, height: R2 * 2, borderRadius: R2, borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)' }} />
+      <View pointerEvents="none" style={{ position: 'absolute', left: cx - R2 + 34, top: cy - R2 + 34, width: (R2 - 34) * 2, height: (R2 - 34) * 2, borderRadius: R2 - 34, borderWidth: 1, borderColor: 'rgba(255,255,255,0.16)' }} />
 
-      <Pressable onPress={() => goTab('Me')} accessibilityRole="button" accessibilityLabel={`${user.display_name}. My profile, roles and settings`} style={{ position: 'absolute', left: cx - R, top: cy - R, width: R * 2, height: R * 2 }}>
-        <Glass radius={R} preset="clear" gloss iris style={{ width: R * 2, height: R * 2 }}>
-          <View style={{ position: 'absolute', left: R - cx + 10, right: 8, top: 0, bottom: 0, justifyContent: 'center' }}>
-            <Glass radius={18} preset="soft" gloss style={{ paddingVertical: 10, paddingHorizontal: 12, alignSelf: 'flex-start', maxWidth: '100%' }}>
-                <View style={{ marginBottom: 8 }}><Avatar user={user} size={40} /></View>
-                <T weight="800" size={20} color={c.ink} numberOfLines={1} style={{ letterSpacing: -0.4 }}>{user.display_name}</T>
-                <T weight="500" size={12} color={c.mute} numberOfLines={1}>{dateLine}</T>
-                {statLine ? <T weight="700" size={13} color={c.pink} numberOfLines={1} style={{ marginTop: 2 }}>{statLine}</T> : null}
-                {next ? <T weight="500" size={12} color={c.mute} numberOfLines={1} style={{ marginTop: 2 }}>{`Next: ${next.home_name ?? 'TBC'} vs ${next.away_name ?? 'TBC'} · ${day(next.scheduled_at)}`}</T> : null}
-              
-            </Glass>
+      <Pressable onPress={() => goTab('Me')} accessibilityRole="button" accessibilityLabel={`${user.display_name}. My profile, roles and settings`} style={{ position: 'absolute', top: 14, left: 16 }}>
+        <Glass radius={999} preset="soft" gloss iris style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6, paddingLeft: 6, paddingRight: 14 }}>
+          <Avatar user={user} size={36} />
+          <View>
+            <T weight="800" size={14} color={c.ink} numberOfLines={1}>{user.display_name}</T>
+            <T weight="500" size={11} color={c.mute} numberOfLines={1}>{[dateLine, statLine].filter(Boolean).join(' · ')}</T>
           </View>
         </Glass>
       </Pressable>
 
       {mods.map(([name, title, sub, group], i) => {
-        const rel = wrap(i - pos, n), a = rel * STEP;
-        if (Math.abs(a) > vis) return null;
+        const rel = wrap(i - pos, n), a = rel * STEP_ARC;
+        if (Math.abs(a) > ARC_VIS) return null;
         const rad = (a * Math.PI) / 180;
-        const near = Math.max(0, 1 - Math.abs(rel));       // 1 at the centre, 0 one module away
-        const k = 1 - 0.38 * (Math.abs(a) / vis);          // shrink toward the arc ends
-        const D = 54 * k + 22 * near;
-        const x = cx + R2 * Math.cos(rad), y = cy + R2 * Math.sin(rad);
+        const near = Math.max(0, 1 - Math.abs(rel));
+        const k = 1 - 0.3 * (Math.abs(a) / ARC_VIS);
+        const D = 54 * k + 24 * near;
+        const x = cx + R2 * Math.sin(rad), y = cy - R2 * Math.cos(rad);
         const [from, to] = tileColors(name);
         const badge = name === 'Notifications' ? unread : badges[name];
         const isCentre = i === centred && Math.abs(rel) < 0.5;
         return (
           <Pressable key={name} onPress={() => (isCentre ? push(name) : spinTo(Math.round(pos) + Math.round(rel)))} accessibilityRole="button"
             accessibilityLabel={`${title}${badge > 0 ? `, ${badge} need attention` : ''}${isCentre ? ', selected. Tap to open' : ''}`}
-            style={{ position: 'absolute', left: x - D / 2, top: y - D / 2, flexDirection: 'row', alignItems: 'center', opacity: 1 - 0.55 * (Math.abs(a) / vis), zIndex: Math.round(100 - Math.abs(a)) }}>
+            style={{ position: 'absolute', left: x - D / 2, top: y - D / 2, width: D, height: D, opacity: 1 - 0.45 * (Math.abs(a) / ARC_VIS), zIndex: Math.round(100 - Math.abs(a)) }}>
             <Glass radius={D / 2} preset="clear" gloss iris style={{ width: D, height: D, ...(web ? { boxShadow: `0 ${4 + near * 8}px ${14 + near * 22}px ${from}${isCentre ? '99' : '44'}, inset 1.5px 1.5px 0 rgba(255,255,255,0.8), inset -1px -1px 0 rgba(255,255,255,0.3), inset 0 0 ${10 + near * 8}px rgba(255,255,255,0.2)` } : { shadowColor: from, shadowOpacity: 0.45, shadowRadius: 12 + near * 12, shadowOffset: { width: 0, height: 6 } }) }}>
               <LinearGradient colors={[`${from}A6`, `${to}A6`]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' }}>
                 <TileArt name={name} size={D * 0.78} />
                 <View pointerEvents="none" style={{ position: 'absolute', top: D * 0.06, left: D * 0.16, width: D * 0.68, height: D * 0.3, borderRadius: D, backgroundColor: 'rgba(255,255,255,0.26)' }} />
               </LinearGradient>
             </Glass>
-            {badge > 0 ? <View style={{ position: 'absolute', left: D - 14, top: -6, minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 5, backgroundColor: c.red, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#fff' }}><T weight="800" size={11} color="#fff">{badge}</T></View> : null}
-            <Glass radius={999} preset="soft" gloss style={{ marginLeft: 10, paddingVertical: 5, paddingHorizontal: 10, maxWidth: Math.max(80, w - (x + D / 2) - 24) }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: GROUP_COLOR[group] }} />
-                <T weight={isCentre ? '800' : '700'} size={13 + near * 5} color={c.ink} numberOfLines={1} style={{ letterSpacing: 0.2, flexShrink: 1 }}>{title}</T>
-              </View>
-              {isCentre ? <T size={12} color={c.mute} numberOfLines={2} style={{ marginTop: 2 }}>{lives[name] ?? sub}</T> : null}
-            </Glass>
+            {badge > 0 ? <View style={{ position: 'absolute', right: -4, top: -4, minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 5, backgroundColor: c.red, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#fff' }}><T weight="800" size={11} color="#fff">{badge}</T></View> : null}
           </Pressable>
         );
       })}
 
+      {/* the centred module's name sits above the arc, so labels never fight the page for space */}
+      {mods[centred] ? (
+        <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: Math.max(64, cy - R2 - 96), alignItems: 'center' }}>
+          <Glass radius={22} preset="soft" gloss style={{ paddingVertical: 8, paddingHorizontal: 18, alignItems: 'center', maxWidth: w - 32 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: GROUP_COLOR[mods[centred][3]] }} />
+              <T weight="800" size={20} color={c.ink} numberOfLines={1} style={{ letterSpacing: -0.2 }}>{mods[centred][1]}</T>
+            </View>
+            <T size={12} color={c.mute} numberOfLines={1} style={{ marginTop: 2 }}>{lives[mods[centred][0]] ?? mods[centred][2]}</T>
+          </Glass>
+        </View>
+      ) : null}
+
       <Pressable onPress={closeMenu} hitSlop={10} accessibilityRole="button" accessibilityLabel="Close" style={{ position: 'absolute', top: 14, right: 16 }}>
-          <Glass radius={20} preset="soft" gloss style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}><T color={c.ink} weight="700" size={20}>×</T></Glass>
+        <Glass radius={20} preset="soft" gloss style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}><T color={c.ink} weight="700" size={20}>×</T></Glass>
       </Pressable>
-      <View pointerEvents="none" style={{ position: 'absolute', right: 18, bottom: 16 }}>
-        <Glass radius={999} preset="soft" gloss style={{ paddingVertical: 4, paddingHorizontal: 10 }}><T size={11} color={c.mute} weight="700" style={{ letterSpacing: 1 }}>DRAG TO SWIVEL</T></Glass>
+      <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, bottom: BAR_C + 44, alignItems: 'center' }}>
+        <Glass radius={999} preset="soft" gloss style={{ paddingVertical: 4, paddingHorizontal: 12 }}><T size={11} color={c.mute} weight="700" style={{ letterSpacing: 1 }}>DRAG TO SWIVEL</T></Glass>
       </View>
     </>
   ) : null;
 
   const handlers = { onLayout: (e) => setSize({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height }), ...pan.panHandlers, ...(web ? { onWheel } : {}) };
   return (
-    <Animated.View {...handlers} style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, zIndex: 20, opacity: fade, ...(web ? { touchAction: 'none' } : null) }}>
+    <Animated.View {...handlers} style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, zIndex: 20, opacity: fade, ...(web ? { touchAction: 'pan-y' } : null) }}>
+      <Glass pointerEvents="none" radius={0} blur={16} tint="rgba(0,0,0,0)" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, borderWidth: 0 }} />
+      <LinearGradient pointerEvents="none" colors={veil} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }} />
       <Pressable onPress={closeMenu} accessible={false} style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }} />
-      <LinearGradient pointerEvents="none" colors={[scrim, 'rgba(0,0,0,0)']} start={{ x: 0, y: 0 }} end={{ x: 0.6, y: 0 }} style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }} />
       {content}
     </Animated.View>
   );
