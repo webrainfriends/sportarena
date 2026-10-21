@@ -5,7 +5,7 @@ import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { useNav } from '../nav';
 import { useLayout } from '../layout';
-import { Avatar, Btn, Card, Chip, Empty, ErrorBox, Loading, Row, Seg, T } from '../ui';
+import { Avatar, Btn, Card, Chip, Empty, ErrorBox, Loading, Row, T } from '../ui';
 import { HScroll } from '../pickers';
 import { OpenPositions, ResumeApply } from './openings';
 import { c } from '../theme';
@@ -44,7 +44,6 @@ export function Feed({ header, narrow }) {
   const { user } = useSession();
   const { push } = useNav();
   const L = useLayout();
-  const [kind, setKind] = useState(null);
   const [rows, setRows] = useState([]);
   const [more, setMore] = useState(false);
   const [busy, setBusy] = useState(true);
@@ -54,9 +53,9 @@ export function Feed({ header, narrow }) {
 
   const load = useCallback(async (offset) => {
     setBusy(true); setErr(null);
-    try { const list = await api.get('/market/posts', { kind: kind ?? undefined, limit: PAGE, offset }); setRows((r) => (offset ? [...r, ...list] : list)); setMore(list.length === PAGE); }
+    try { const list = await api.get('/market/posts', { limit: PAGE, offset }); setRows((r) => (offset ? [...r, ...list] : list)); setMore(list.length === PAGE); }
     catch (e) { setErr(e); } finally { setBusy(false); }
-  }, [kind]);
+  }, []);
   useEffect(() => { load(0); }, [load]);
   const onPatch = useCallback((id, patch) => setRows((r) => r.map((p) => (p.id === id ? { ...p, ...patch } : p))), []);
   const { gate, sheets } = useMarketActions({ onPatch });
@@ -74,11 +73,10 @@ export function Feed({ header, narrow }) {
           <Pressable onPress={() => setCompose({ ad: true })} style={{ paddingVertical: 8, paddingHorizontal: 14, borderRadius: 999, backgroundColor: c.sunSoft }}><T size={13} weight="700" color="#92400E">⭐ Advertise</T></Pressable>
         </HScroll>
       </Card>
-      {kind === null ? <View style={{ gap: 8 }}>
+      <View style={{ gap: 8 }}>
         <T size={19} weight="700" style={{ letterSpacing: -0.3 }}>💼 Open positions</T>
         <OpenPositions compact limit={3} onSeeAll={() => push('Openings')} onOpenMine={() => push('Openings')} />
-      </View> : null}
-      <Seg options={[{ value: null, label: '✨ All' }, ...Object.entries(KINDS).map(([k, v]) => ({ value: k, label: `${v.emoji} ${v.label}` }))]} value={kind} onChange={setKind} />
+      </View>
       {err ? <ErrorBox error={err} onRetry={() => load(0)} /> : null}
       {busy && !rows.length ? <Loading /> : !rows.length && !err ? <Empty emoji="📭" title="Nothing here yet" sub="Be the first to post — athletes wanted, a match, kit for sale or a campaign." /> : rows.map((p) => <MarketCard key={p.id} p={p} user={user} gate={gate} feed />)}
       {more ? <Pressable onPress={() => load(rows.length)} disabled={busy} style={{ alignSelf: 'center', borderRadius: 999, borderWidth: 1.5, borderColor: c.ink, paddingVertical: 11, paddingHorizontal: 26 }}><T weight="800">{busy ? 'Loading…' : 'Show more'}</T></Pressable> : null}
