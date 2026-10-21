@@ -84,6 +84,12 @@ function Learn({ onFind }) {
       {!sport ? <Empty emoji="📖" title="Pick a sport" sub="Choose the sport you want to build a career in to read its rules and see where to study it." /> : rules.error ? <ErrorBox error={rules.error} onRetry={rules.reload} /> : !rules.data ? <Loading /> : (
         <>
           <Section title={`${rules.data.sport.emoji} Rules of ${rules.data.sport.name}`} color={c.cyan}>
+            {(rules.data.scoring ?? []).map((r) => (
+              <Card key={r.title}>
+                <T weight="700" size={16}>{r.title}</T>
+                <T style={{ marginTop: 6 }}>{r.body}</T>
+              </Card>
+            ))}
             {rules.data.rules.length ? rules.data.rules.map((r) => (
               <Card key={r.id}>
                 <T weight="700" size={16}>{r.title}</T>
@@ -91,7 +97,7 @@ function Learn({ onFind }) {
                 {r.source_url ? <Btn small title="Official source" color={c.paper} ink={c.ink} style={{ alignSelf: 'flex-start', marginTop: 10 }} onPress={() => openLink(r.source_url)} /> : null}
                 {admin ? <Btn small title="Archive section" color={c.paper} ink={c.red} style={{ alignSelf: 'flex-start', marginTop: 8 }} onPress={() => archive(r)} /> : null}
               </Card>
-            )) : <Empty emoji="📚" title="No rules added yet" sub="The platform team has not written the rules of this sport yet. You can still look for courses." />}
+            )) : rules.data.scoring?.length ? null : <Empty emoji="📚" title="No rules added yet" sub="The platform team has not written the rules of this sport yet. You can still look for courses." />}
             {admin ? <Btn small title="Add a rules section" color={c.violet} onPress={() => setForm(true)} style={{ alignSelf: 'flex-start' }} /> : null}
           </Section>
           <Btn title={`Find courses in ${rules.data.sport.name}`} onPress={onFind} style={{ marginTop: 16 }} />

@@ -44,6 +44,8 @@ const college = async (kind = 'college') => {
 test('rules of a sport: the platform team writes them, everyone reads them, each cites a source', async () => {
   const empty = must(await api('GET', '/sports/tennis/rules'));
   assert.deepEqual(empty.rules, [], 'no invented content: empty until someone adds it');
+  assert.ok(empty.scoring.length > 0, 'every profile can read how the sport is scored, built from the scoring rules');
+  assert.ok(must(await api('GET', '/sports/3x3-basketball/rules')).scoring.some((s) => s.body.includes('Beyond the arc: 2 points')));
   const ath = await signup();
   assert.equal((await api('POST', '/sports/tennis/rules', { token: ath.token, body: { title: 'Scoring', body: 'Points are 15, 30, 40, game.' } })).status, 403);
   const r = must(await api('POST', '/sports/tennis/rules', { token: admin.token, body: { title: 'Scoring', body: 'Points are 15, 30, 40, game.', source_url: 'https://www.itftennis.com/rules', position: 1 } }), 201);

@@ -93,3 +93,20 @@ export function builtinRuleset(sport) {
 }
 export const builtinSlugs = () => Object.keys(BUILTIN);
 export const MANUAL_RULESET = MANUAL;
+
+/** Plain-language summary of a ruleset, for people learning the sport: [{title, body}]. Manual rulesets say nothing about scoring. */
+export function describeRuleset(rs) {
+  if (rs.kind === 'manual') return [];
+  const out = [];
+  const per = rs.periods.count > 1 ? `${rs.periods.count} ${rs.periods.label.toLowerCase()}s` : `a single ${rs.periods.label.toLowerCase()}`;
+  if (rs.kind === 'sets') {
+    const { best_of, points_to_win, win_by, cap, deciding_points } = rs.sets;
+    const unit = /games/.test(rs.label) ? 'games' : 'points';
+    out.push({ title: 'How a match is won', body: `A match is the best of ${best_of} sets; win ${Math.ceil(best_of / 2)} to take it. A set goes to the first side to ${points_to_win} ${unit}, and it must be won by ${win_by === 2 ? `a two-${unit.slice(0, -1)} margin` : `at least one ${unit.slice(0, -1)}`}${cap ? `, up to a cap of ${cap}` : ''}.${deciding_points ? ` The deciding set is played to ${deciding_points}.` : ''} There are no draws.` });
+  } else {
+    out.push({ title: 'Format', body: `Played over ${per}. ${rs.draw_allowed ? 'A draw is a valid result.' : 'There are no draws; a winner is always decided.'}` });
+    out.push({ title: 'How points are scored', body: rs.events.map((e) => `${e.label}: ${e.points} ${e.points === 1 ? 'point' : 'points'}`).join('\n') });
+  }
+  if (rs.stats.length) out.push({ title: 'Also recorded in a match', body: rs.stats.map((x) => x.label).join(', ') + '.' });
+  return out;
+}

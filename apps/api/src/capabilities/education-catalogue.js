@@ -8,6 +8,7 @@ import { badRequest, notFound } from '../errors.js';
 import { audit, sportBySlugOrId } from '../helpers.js';
 import { decrypt, encrypt } from '../crypto.js';
 import { orgFor } from '../org-access.js';
+import { builtinRuleset, describeRuleset } from '../scoring/rulesets.js';
 import { ADMISSIONS } from '../education.js';
 import { ratingsFor } from './education-discovery.js';
 
@@ -21,11 +22,11 @@ const sportOr404 = async (v) => (await sportBySlugOrId(v)) ?? Promise.reject(not
 // ------------------------------------------------------------------ rules of a sport
 cap({
   name: 'list_sport_rules', method: 'GET', path: '/sports/:sport/rules', tag: TAG, auth: 'public',
-  summary: 'The rules of a sport in short sections, each with the source it comes from. Start here when you are new to a sport. Empty until the platform team has added them.',
+  summary: 'The rules of a sport in short sections, each with the source it comes from. Start here when you are new to a sport. Includes how the sport is scored (from the built-in scoring rules, so every sport with one has something to read) plus any sections the platform team has written.',
   input: z.object({ sport: z.string().min(1) }),
   async handler(_, i) {
     const sport = await sportOr404(i.sport);
-    return { sport: { id: sport.id, slug: sport.slug, name: sport.name, emoji: sport.emoji }, rules: await many("SELECT id, title, body, source_url, position FROM sport_rules WHERE sport_id=$1 AND status='active' ORDER BY position, created_at, id", [sport.id]) };
+    return { sport: { id: sport.id, slug: sport.slug, name: sport.name, emoji: sport.emoji }, scoring: describeRuleset(builtinRuleset(sport)), rules: await many("SELECT id, title, body, source_url, position FROM sport_rules WHERE sport_id=$1 AND status='active' ORDER BY position, created_at, id", [sport.id]) };
   },
 });
 
