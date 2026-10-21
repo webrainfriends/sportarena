@@ -110,6 +110,22 @@ function TabBar() {
   );
 }
 
+// Module screens that open with a ModuleHero: the NavBar floats over the hero (back + account) instead of taking its own row.
+const HERO_ROUTES = new Set(['Awards']);
+function NavOverlay({ onBack, backLabel }) {
+  const { gutter, contentMax } = useLayout();
+  return (
+    <View pointerEvents="box-none" style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 5 }}>
+      <View pointerEvents="box-none" style={{ width: '100%', maxWidth: contentMax, alignSelf: 'center', height: 56, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: gutter + 10, paddingTop: 8 }}>
+        <Pressable onPress={onBack} hitSlop={10} accessibilityRole="button" accessibilityLabel={`Back to ${backLabel}`} style={({ pressed }) => ({ width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.24)', alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.6 : 1 })}>
+          <Icon name="Back" color="#fff" size={24} />
+        </Pressable>
+        <AccountButton />
+      </View>
+    </View>
+  );
+}
+
 /** Compact navigation bar for pushed screens: back chevron + title. */
 function NavBar({ title, onBack, backLabel }) {
   const { gutter, contentMax } = useLayout();
@@ -227,9 +243,12 @@ function Shell() {
   return (
     <View style={{ flex: 1, backgroundColor: c.bg, paddingTop: ins.top, paddingLeft: ins.left, paddingRight: ins.right }}>
       <BetaBanner />
-      {top ? <NavBar title={TITLES[top.name]} backLabel={prev} onBack={back} /> : <TopBar />}
+      {top ? (HERO_ROUTES.has(top.name) ? null : <NavBar title={TITLES[top.name]} backLabel={prev} onBack={back} />) : <TopBar />}
       {mfa ? <MfaNotice info={mfa} onGo={() => { setMfa(null); goTab('Me'); }} onClose={() => setMfa(null)} /> : null}
-      <Transition id={pageKey} push={!!top}><Page key={pageKey} {...(top?.params ?? {})} /></Transition>
+      <View style={{ flex: 1 }}>
+        <Transition id={pageKey} push={!!top}><Page key={pageKey} {...(top?.params ?? {})} /></Transition>
+        {top && HERO_ROUTES.has(top.name) ? <NavOverlay backLabel={prev} onBack={back} /> : null}
+      </View>
       <TabBar />
     </View>
   );
