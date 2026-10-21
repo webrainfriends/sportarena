@@ -16,6 +16,8 @@ import { EntityPicker } from '../entity-picker';
 import { DateField, HScroll } from '../pickers';
 import { Icon } from '../icons';
 import { TileArt, tileColors } from './more-art';
+import { FeatureCarousel, HeroStage, Pop } from './more-stage';
+import { ModuleHero } from './module-hero';
 import { PaySheet } from '../PaySheet';
 import { TimelineSheet } from '../Timeline';
 import { Confirm } from './coaching';
@@ -41,26 +43,12 @@ const GROUPS = [
 ];
 const accentOf = (k) => c[k];
 
-// Entrance: tiles fade and rise in sequence; skipped when the person asked for reduced motion.
-function Pop({ i, style, children }) {
-  const v = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    let live = true;
-    AccessibilityInfo.isReduceMotionEnabled().catch(() => false).then((reduce) => {
-      if (!live) return;
-      if (reduce) v.setValue(1);
-      else Animated.timing(v, { toValue: 1, duration: 380, delay: Math.min(i, 10) * 45, easing: Easing.out(Easing.cubic), useNativeDriver: Platform.OS !== 'web' }).start();
-    });
-    return () => { live = false; };
-  }, [v, i]);
-  return <Animated.View style={[style, { opacity: v, transform: [{ translateY: v.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }) }] }]}>{children}</Animated.View>;
-}
-
 // Full-colour gradient card with a large illustration bleeding off the corner. `wide` = featured, full-row card.
-function ArtTile({ name, title, sub, live, badge, onPress, wide, i }) {
+function ArtTile({ name, title, sub, live, badge, onPress, i }) {
   const [from, to] = tileColors(name);
+  const wide = false;
   return (
-    <Pop i={i} style={{ width: wide ? '100%' : '46.5%', flexGrow: wide ? 0 : 1 }}>
+    <Pop i={i} style={{ width: '46.5%', flexGrow: 1 }}>
       <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={live ? `${title}. ${live}` : title}
         style={({ pressed }) => ({ borderRadius: 22, transform: [{ scale: pressed ? 0.975 : 1 }], ...(Platform.OS === 'web' ? { boxShadow: `0 10px 22px ${from}40` } : { shadowColor: from, shadowOpacity: 0.3, shadowRadius: 14, shadowOffset: { width: 0, height: 8 }, elevation: 4 }) })}>
         <LinearGradient colors={[from, to]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ borderRadius: 22, overflow: 'hidden', height: wide ? 120 : 132, padding: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)' }}>
@@ -77,36 +65,37 @@ function ArtTile({ name, title, sub, live, badge, onPress, wide, i }) {
   );
 }
 
-function Attention({ icon, color, title, sub, onPress }) {
-  return (
-    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={`${title}. ${sub}`}
-      style={{ width: 232, backgroundColor: softOf[color] ?? c.redSoft ?? c.orangeSoft, borderRadius: 20, padding: 12, flexDirection: 'row', gap: 10, alignItems: 'center' }}>
-      <View style={{ width: 40, height: 40, borderRadius: 14, backgroundColor: color, alignItems: 'center', justifyContent: 'center' }}><Icon name={icon} color="#fff" size={22} on /></View>
-      <View style={{ flexShrink: 1 }}>
-        <T weight="800" size={14}>{title}</T>
-        <T size={12} color={c.mute} numberOfLines={1}>{sub}</T>
-      </View>
-    </Pressable>
-  );
-}
+// The six modules orbiting the hero, by the person's roles (first match wins; everyone else gets the player set).
+const ORBITS = [
+  [['organizer', 'venue_manager'], ['EventInbox', 'Openings', 'Orgs', 'Earnings', 'Billboard', 'Support']],
+  [['sponsor', 'supplier'], ['Sponsors', 'Supply', 'Wallet', 'Earnings', 'Billboard', 'Shop']],
+  [['physio', 'doctor', 'lawyer', 'insurer'], ['Health', 'Insure', 'Legal', 'Wallet', 'Leaderboard', 'Support']],
+];
+const ORBIT_DEFAULT = ['Leaderboard', 'Health', 'Insure', 'Wallet', 'Shop', 'Billboard'];
+const LABEL = Object.fromEntries(GROUPS.flatMap((g) => g.tiles.map(([name, , title]) => [name, title])));
 
 export function Hub() {
   const { push, goTab } = useNav();
-  const { user, hasAny } = useSession();
+  const { user } = useSession();
   const [q, setQ] = useState('');
   const dash = useLoad(() => api.get('/dashboard'), []);
   const note = useLoad(() => api.get('/notifications', { unread: true, limit: 1 }), []);
+  const favs = useLoad(() => api.get('/me/favourites'), []);
+  const { hasAny } = useSession();
   const d = dash.data, unread = note.data?.unread ?? 0;
-  const stats = d ? [['points', d.points, 'POINTS', 'Leaderboard', 'Leaderboard'], ['trophies', d.trophies, 'TROPHIES', 'Awards', 'Awards'], ['active_policies', d.active_policies, 'COVER', 'Insure', 'Shield']].filter(([, v]) => v > 0) : [];
   const next = d?.next_games?.[0];
-  const alerts = [
-    unread > 0 && ['Bell', c.pink, `${unread} unread`, 'Notifications', () => goTab('Me')],
-    d?.policies_to_renew > 0 && ['ShieldCheck', c.orange, `${d.policies_to_renew} cover to renew`, 'Check your policies', () => push('Insure')],
-    d?.pending_results > 0 && ['Leaderboard', c.sun, `${d.pending_results} result${d.pending_results > 1 ? 's' : ''} waiting`, 'Waiting for approval', () => push('Leaderboard')],
-    (d?.fit_to_play === 'restricted' || d?.fit_to_play === 'not_cleared') && ['Health', c.red, d.fit_to_play === 'restricted' ? 'Play with restrictions' : 'Not cleared to play', 'See your health file', () => push('Health')],
-    next && ['Schedule', c.cyan, 'Next game', `${next.home_name ?? 'TBC'} vs ${next.away_name ?? 'TBC'} · ${day(next.scheduled_at)}`, () => goTab('Schedule')],
-  ].filter(Boolean);
+  const photo = Array.isArray(favs.data) ? favs.data.find((v) => v.cover_url)?.cover_url : null;
   const badges = { Insure: d?.policies_to_renew, Insurance: d?.policies_to_renew, Leaderboard: d?.pending_results };
+  const orbitNames = (ORBITS.find(([roles]) => roles.some((r) => user.roles?.includes(r))) ?? [null, ORBIT_DEFAULT])[1];
+  const orbit = orbitNames.map((name) => ({ name, label: LABEL[name] ?? name, badge: badges[name] > 0 ? badges[name] : null, onPress: () => push(name) }));
+  const stats = [d?.points > 0 && `${d.points} points`, d?.trophies > 0 && `${d.trophies} trophies`].filter(Boolean).join(' · ');
+  const items = [
+    d?.policies_to_renew > 0 && { name: 'Insure', title: `${d.policies_to_renew} cover${d.policies_to_renew > 1 ? 's' : ''} to renew`, chip: 'My cover', action: 'Renew', onPress: () => push('Insure') },
+    d?.pending_results > 0 && { name: 'Leaderboard', title: `${d.pending_results} result${d.pending_results > 1 ? 's' : ''} waiting`, chip: 'Leaderboard', action: 'View results', onPress: () => push('Leaderboard') },
+    (d?.fit_to_play === 'restricted' || d?.fit_to_play === 'not_cleared') && { name: 'Health', title: d.fit_to_play === 'restricted' ? 'Play with restrictions' : 'Not cleared to play', chip: 'Health', action: 'See details', onPress: () => push('Health') },
+    next && { name: 'Schedule', title: `${next.home_name ?? 'TBC'} vs ${next.away_name ?? 'TBC'}`, chip: `Next game · ${day(next.scheduled_at)}`, action: 'Open schedule', onPress: () => goTab('Schedule') },
+    unread > 0 && { name: 'Notifications', title: `${unread} unread`, chip: 'Notifications', action: 'Open', onPress: () => goTab('Me') },
+  ].filter(Boolean);
   const lives = {
     Leaderboard: d?.pending_results > 0 ? `${d.pending_results} result${d.pending_results > 1 ? 's' : ''} waiting for approval` : null,
     Insure: d?.policies_to_renew > 0 ? `${d.policies_to_renew} to renew soon` : null,
@@ -119,43 +108,9 @@ export function Hub() {
   let n = 0;
   return (
     <Screen>
-      <H1 style={{ marginTop: 8 }}>More</H1>
-      <T color={c.mute} weight="500" style={{ marginTop: 2 }}>Everything around the game, in one place.</T>
-      <GradCard style={{ marginTop: 14 }} pad={18} onPress={() => goTab('Me')}>
-        <Svg pointerEvents="none" width={220} height={150} viewBox="0 0 220 150" style={{ position: 'absolute', right: -30, top: -10, opacity: 0.35 }}>
-          <Circle cx="130" cy="75" r="60" stroke="#fff" strokeWidth="2.5" fill="none" />
-          <Circle cx="130" cy="75" r="22" stroke="#fff" strokeWidth="2.5" fill="none" />
-          <Path d="M130 15v120M70 75h120" stroke="#fff" strokeWidth="2.5" />
-        </Svg>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-          <Avatar user={user} size={56} />
-          <View style={{ flex: 1 }}>
-            <T weight="800" size={21} color="#fff" style={{ letterSpacing: -0.4 }}>{user.display_name}</T>
-            <T size={13} color="#E0E7FF">My profile, roles & settings</T>
-          </View>
-          <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' }}><T color="#fff" weight="800" size={18}>›</T></View>
-        </View>
-        {stats.length ? (
-          <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>
-            {stats.map(([k, v, label, to, icon]) => (
-              <Pressable key={k} onPress={() => push(to)} accessibilityRole="button" accessibilityLabel={`${v} ${label.toLowerCase()}`}
-                style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.96)', borderRadius: 18, paddingVertical: 10, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <Icon name={icon} color="#4F46E5" size={20} on />
-                <View>
-                  <T weight="800" size={20} color="#0F172A" style={{ fontVariant: ['tabular-nums'] }}>{v}</T>
-                  <T weight="700" size={9.5} color="#64748B" style={{ letterSpacing: 1 }}>{label}</T>
-                </View>
-              </Pressable>
-            ))}
-          </View>
-        ) : null}
-      </GradCard>
-      {alerts.length ? (
-        <View style={{ marginTop: 22 }}>
-          <H2>Needs your attention</H2>
-          <View style={{ marginTop: 12 }}><HScroll gap={10}>{alerts.map(([icon, color, title, sub, go]) => <Attention key={title} icon={icon} color={color} title={title} sub={sub} onPress={go} />)}</HScroll></View>
-        </View>
-      ) : null}
+      <H1 style={{ marginTop: 8, marginBottom: 12 }}>More</H1>
+      <HeroStage user={user} photo={photo} line={next ? `Next: ${next.home_name ?? 'TBC'} vs ${next.away_name ?? 'TBC'}` : 'My profile & settings'} sub={stats} orbit={orbit} onProfile={() => goTab('Me')} />
+      {items.length ? <View style={{ marginTop: 22 }}><H2 style={{ marginBottom: 12 }}>Needs your attention</H2><FeatureCarousel items={items} /></View> : null}
       <View style={{ marginTop: 22, flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: c.paper, borderWidth: 1, borderColor: c.line, borderRadius: 999, paddingHorizontal: 16, height: 48 }}>
         <Icon name="Search" color={c.mute} size={20} />
         <TextInput value={q} onChangeText={setQ} placeholder="Search More" placeholderTextColor={c.mute} accessibilityLabel="Search More" autoCapitalize="none"
@@ -170,8 +125,8 @@ export function Hub() {
           </View>
           <T size={13} color={c.mute} style={{ marginTop: 2 }}>{g.caption}</T>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 12 }}>
-            {g.tiles.map(([name, , title, sub], k) => (
-              <ArtTile key={name} i={n++} name={name} title={title} sub={sub} live={lives[name]} wide={k === 0 && !needle} badge={badges[name] > 0 ? badges[name] : null} onPress={() => push(name)} />
+            {g.tiles.map(([name, , title, sub]) => (
+              <ArtTile key={name} i={n++} name={name} title={title} sub={sub} live={lives[name]} badge={badges[name] > 0 ? badges[name] : null} onPress={() => push(name)} />
             ))}
           </View>
         </View>
@@ -418,7 +373,8 @@ export function Awards() {
   const aw = useLoad(() => api.get('/awards', { limit: 100 }), []);
   const E = { cup: '🏆', trophy: '🏅', medal_gold: '🥇', medal_silver: '🥈', medal_bronze: '🥉', mvp: '🌟', badge: '🎖️' };
   return (
-    <Screen><H1>Trophy room</H1>
+    <Screen>
+      <ModuleHero name="Awards" title="Trophy room" sub="Cups, medals and MVPs" stats={[{ icon: 'Awards', value: aw.data?.length || null, label: 'Awards' }]} />
       <View style={{ gap: 10, marginTop: 10 }}>{aw.loading && !aw.data ? <Loading /> : aw.data?.length ? aw.data.map((a, i) => <Row key={a.id} color={[c.sunSoft, c.pinkSoft, c.cyanSoft][i % 3]} left={<Bubble emoji={E[a.kind]} color={c.paper} />} title={a.name} sub={`${a.team_name ?? a.display_name ?? ''}${a.event_name ? ' · ' + a.event_name : ''}`} />) : <Empty emoji="🏆" title="Nothing awarded yet" />}</View>
     </Screen>
   );

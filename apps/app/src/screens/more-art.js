@@ -7,7 +7,7 @@ const LIGHT = {
   Leaderboard: ['#F59E0B', '#EA580C'], Awards: ['#FBBF24', '#E11D48'], MyPlans: ['#22C55E', '#65A30D'], Pathways: ['#84CC16', '#059669'],
   Health: ['#10B981', '#0D9488'], Insure: ['#0EA5E9', '#4F46E5'], Insurance: ['#38BDF8', '#2563EB'], Legal: ['#64748B', '#7C3AED'], Family: ['#14B8A6', '#0891B2'],
   Wallet: ['#6366F1', '#9333EA'], Earnings: ['#10B981', '#16A34A'], Shop: ['#FB923C', '#EC4899'], Billboard: ['#F472B6', '#E11D48'], Sponsors: ['#8B5CF6', '#D946EF'], Supply: ['#F59E0B', '#C2410C'],
-  Openings: ['#3B82F6', '#06B6D4'], EventInbox: ['#06B6D4', '#0D9488'], Orgs: ['#475569', '#2563EB'], Support: ['#FB7185', '#F97316'],
+  Openings: ['#3B82F6', '#06B6D4'], Schedule: ['#06B6D4', '#2563EB'], Notifications: ['#6366F1', '#7C3AED'], EventInbox: ['#06B6D4', '#0D9488'], Orgs: ['#475569', '#2563EB'], Support: ['#FB7185', '#F97316'],
 };
 // Dark mode: deeper stops so a bright card never glares against the night background.
 const DARK = Object.fromEntries(Object.entries(LIGHT).map(([k, [a, b]]) => [k, [shade(a), shade(b)]]));
@@ -42,6 +42,8 @@ const ART = {
   Openings: <><Rect x="8" y="30" width="80" height="54" rx="12" {...W(0.95)} /><Path d="M34 30v-6a8 8 0 0 1 8-8h12a8 8 0 0 1 8 8v6" {...S(0.8, 5)} /><Path d="M8 54h80" {...S(0.4, 4)} /><Rect x="40" y="48" width="16" height="14" rx="4" fill={GOLD} /></>,
   EventInbox: <><Rect x="8" y="22" width="80" height="58" rx="12" {...W(0.95)} /><Path d="m12 30 36 28 36-28" {...S(0.55, 4.5)} /><Circle cx="80" cy="22" r="13" fill={GOLD} /><Path d="M80 15v9" {...S(0.95, 4)} stroke="#B45309" /><Circle cx="80" cy="29" r="2" fill="#B45309" /></>,
   Orgs: <><Rect x="14" y="14" width="42" height="72" rx="6" {...W(0.95)} /><Rect x="56" y="36" width="28" height="50" rx="6" {...W(0.6)} /><Path d="M24 28h8M38 28h8M24 42h8M38 42h8M24 56h8M38 56h8" {...S(0.45, 4)} /><Rect x="26" y="68" width="18" height="18" rx="4" fill={GOLD} /></>,
+  Schedule: <><Rect x="10" y="18" width="76" height="68" rx="12" {...W(0.95)} /><Rect x="10" y="18" width="76" height="22" rx="12" {...W(0.55)} /><Path d="M30 8v16M66 8v16" {...S(0.95, 6)} /><Circle cx="34" cy="58" r="5" {...W(0.5)} /><Circle cx="62" cy="58" r="5" {...W(0.5)} /><Circle cx="48" cy="72" r="6" fill={GOLD} /></>,
+  Notifications: <><Path d="M20 66V46a28 28 0 0 1 56 0v20l8 8H12z" {...W(0.95)} /><Path d="M38 80a10 10 0 0 0 20 0z" {...W(0.7)} /><Circle cx="70" cy="22" r="11" fill={GOLD} /></>,
   Support: <><Circle cx="48" cy="48" r="38" {...W(0.95)} /><Circle cx="48" cy="48" r="15" fill="none" stroke={GOLD} strokeWidth="7" /><Path d="m20 20 18 18M76 20 58 38M20 76l18-18M76 76 58 58" {...S(0.5, 7)} /></>,
 };
 
