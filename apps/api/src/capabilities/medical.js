@@ -42,6 +42,7 @@ cap({
     if (!p) throw badRequest('That person is not a registered physio or doctor');
     if (Date.parse(i.starts_at) < Date.now()) throw badRequest('Choose a time in the future');
     await requireVerifiedProvider(i.provider_id, { action: 'book_appointment', athleteId: user.id, forOther: true });
+    if (i.mode === 'remote') await crossBorderCheck(user.id, i.provider_id, i.acknowledge_cross_border);
     return tx(async (c) => {
       // one booking at a time per provider so two people cannot take the same slot
       await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`appt:${i.provider_id}`]);
