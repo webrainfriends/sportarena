@@ -105,6 +105,14 @@ async function download(path) {
   if (!res.ok) throw new ApiError(res.status, await res.json().catch(() => null));
   return res.blob();
 }
+/** POST JSON and get a file back (e.g. a PDF preview). Resolves to a Blob. */
+async function postBlob(path, data) {
+  let res;
+  try { res = await fetch(`${API}${path}`, { method: 'POST', ...creds, headers: withAuth({ 'content-type': 'application/json' }), body: JSON.stringify(data ?? {}) }); }
+  catch { throw new ApiError(0, { error: { message: `Can't reach the Gotmygame server at ${API}` } }); }
+  if (!res.ok) throw new ApiError(res.status, await res.json().catch(() => null));
+  return res.blob();
+}
 export const authHeader = () => (token ? { authorization: `Bearer ${token}` } : {}); // web: empty - the cookie is sent by the browser
 
 export const api = {
@@ -114,5 +122,6 @@ export const api = {
   del: (p, q) => request('DELETE', p, q),
   upload,
   download,
+  postBlob,
 };
 export { storage };

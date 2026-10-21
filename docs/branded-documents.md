@@ -30,6 +30,11 @@ sha256, pages, actor; bytes encrypted on disk). Triggers refuse UPDATE/DELETE on
 Binary: `PUT /brand-kits/:id/logo` (raw PNG/JPEG ≤ 2 MB, 32–4000 px), `GET /brand-kits/:id/logo`, `POST /branded-documents/preview`
 (`{template_id}` or `{layout, kit_id?}` → PDF on SAMPLE data, labelled SAMPLE), `GET /branded-documents/:id/file` (access re-checked live, audit-logged).
 
+## Designer UI
+**Me → Document designer** (every role, incl. doctor). Pick *Me* or an organisation you own/administer, then: create/edit brand kits (swatch + hex colours, logo upload),
+create templates from a classic/modern starter, set paper/orientation/margin, reorder/add/remove blocks (required blocks cannot be removed), **Preview PDF**
+(sample data), **Publish**, **Retire**. Only invoices are connected; other families are listed as coming soon (e.g. doctor care plans need their canonical workflow first).
+
 ## Rules enforced
 * Template choose placement only: an invoice layout must keep `title, parties, lines, totals`; all figures come from the invoice row.
 * Generating never changes, pays, sends or signs anything. Regeneration = new document row; issued bytes are never rewritten.
@@ -38,6 +43,6 @@ Binary: `PUT /brand-kits/:id/logo` (raw PNG/JPEG ≤ 2 MB, 32–4000 px), `GET /
 * Characters the built-in fonts cannot show (e.g. Tamil) are **refused with 422**, never garbled. Set `DOC_FONT_REGULAR` (and optionally `DOC_FONT_BOLD`) to a TTF such as Noto Sans Tamil to enable them.
 
 ## Deferred (tracked in #249, not in this PR)
-Designer UI (Expo) and contextual buttons · other families (plans, schedules, bookings, contracts, clinical) as their canonical sources land (#210/#212/#145/#231) ·
+Contextual "Download branded PDF" buttons on invoice screens · other families (plans, schedules, bookings, contracts, clinical) as their canonical sources land (#210/#212/#145/#231) ·
 durable-job/bulk/archive rendering and quotas · S3 storage (#247) · share links and email (#243) · stale-source detection for issue flows · defaults per branch/locale ·
 metadata stripping of uploaded images (needs re-encoding) · bundled Tamil font fixtures and RTL evaluation · co-brand logos, stamps and signatures.
