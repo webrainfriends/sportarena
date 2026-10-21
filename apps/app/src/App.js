@@ -59,6 +59,7 @@ import { TrainingVenue, RecurringVenue } from './screens/training-venue';
 import { PlayerHome, SportProfile, ImportMatches } from './screens/player';
 import { MyPassport, PassportPublic } from './screens/passport';
 import { MoreWheel } from './screens/more-wheel';
+import { Glass } from './glass';
 
 // A coach or scout opening a passport link (web) sees the athlete's CV without signing in.
 const PASSPORT_TOKEN = Platform.OS === 'web' && typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('passport') : null;
@@ -83,28 +84,25 @@ function TabBar() {
     return (
       <Pressable key={name} accessibilityRole="tab" accessibilityLabel={name === 'Hub' && menu ? 'Close More' : TAB_LABEL[name] ?? name} accessibilityState={{ selected: on, expanded: name === 'Hub' ? menu : undefined }} onPress={() => (name === 'Hub' ? toggleMenu() : goTab(name))} style={({ pressed }) => ({ flex: 1, alignItems: 'center', justifyContent: 'flex-end', minHeight: 52, opacity: pressed ? 0.6 : 1 })}>
         {centre ? (
-          <LinearGradient colors={['#235347', '#163832']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: 54, height: 54, borderRadius: 27, alignItems: 'center', justifyContent: 'center', marginTop: -26, borderWidth: 4, borderColor: c.paper, ...(Platform.OS === 'web' ? { boxShadow: '0 8px 20px rgba(35,83,71,0.4)' } : { shadowColor: '#235347', shadowOpacity: 0.4, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 8 }) }}>
-            <Icon name={menu ? 'Close' : name} on color="#fff" size={26} />
-          </LinearGradient>
-        ) : (
-          <View style={{ alignItems: 'center', justifyContent: 'center', paddingHorizontal: tablet ? 18 : 14, paddingVertical: 5, borderRadius: 16, backgroundColor: on ? c.pinkSoft : 'transparent' }}>
-            <Icon name={name} on={on} color={on ? c.pink : c.mute} size={tablet ? 26 : 23} />
+          <View style={{ width: 56, height: 56, marginTop: -24, borderRadius: 28, ...(Platform.OS === 'web' ? { boxShadow: '0 10px 24px rgba(35,83,71,0.45), inset 1.5px 1.5px 0 rgba(255,255,255,0.7), inset -1px -1px 0 rgba(255,255,255,0.25)' } : { shadowColor: '#235347', shadowOpacity: 0.45, shadowRadius: 14, shadowOffset: { width: 0, height: 8 }, elevation: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.6)' }) }}>
+            <LinearGradient colors={['#3E7A5F', '#163832']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+              <LinearGradient pointerEvents="none" colors={['rgba(255,255,255,0.5)', 'rgba(255,255,255,0)']} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={{ position: 'absolute', left: 0, right: 0, top: 0, height: '50%' }} />
+              <Icon name={menu ? 'Close' : name} on color="#fff" size={26} />
+            </LinearGradient>
           </View>
+        ) : (
+          <Glass radius={16} preset="clear" gloss={on} style={{ alignItems: 'center', justifyContent: 'center', paddingHorizontal: tablet ? 18 : 14, paddingVertical: 5, ...(on ? null : { backgroundColor: 'transparent', borderWidth: 0, boxShadow: 'none', backdropFilter: 'none', WebkitBackdropFilter: 'none' }) }}>
+            <Icon name={name} on={on} color={on ? c.pink : c.mute} size={tablet ? 26 : 23} />
+          </Glass>
         )}
         <Text numberOfLines={1} style={[fam, { fontSize: tablet ? 12 : 10.5, fontWeight: on ? '700' : '600', color: on ? c.pink : c.mute, marginTop: 2, marginBottom: 2 }]}>{TAB_LABEL[name] ?? name}</Text>
       </Pressable>
     );
   });
-  if (!tablet) {
-    return (
-      <View style={{ backgroundColor: c.paper, borderTopWidth: 1, borderColor: c.line, paddingBottom: ins.bottom, paddingTop: 4 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'flex-end' }}>{items}</View>
-      </View>
-    );
-  }
   return (
-    <View pointerEvents="box-none" style={{ position: 'absolute', left: 0, right: 0, bottom: Math.max(ins.bottom, 14), alignItems: 'center' }}>
-      <View style={{ flexDirection: 'row', alignItems: 'flex-end', width: Math.min(620, width - 48), paddingHorizontal: 10, paddingVertical: 6, backgroundColor: c.paper, borderRadius: 30, borderWidth: 1, borderColor: c.line, ...(Platform.OS === 'web' ? { boxShadow: '0 10px 40px rgba(15,23,42,0.16), 0 2px 6px rgba(15,23,42,0.06)' } : { shadowColor: '#0F172A', shadowOpacity: 0.16, shadowRadius: 24, shadowOffset: { width: 0, height: 10 }, elevation: 8 }) }}>
+    <View pointerEvents="box-none" style={{ position: 'absolute', left: 0, right: 0, bottom: Math.max(ins.bottom, 12), alignItems: 'center' }}>
+      <View style={{ flexDirection: 'row', alignItems: 'flex-end', width: Math.min(620, width - 24), paddingHorizontal: 8, paddingVertical: 6 }}>
+        <Glass pointerEvents="none" radius={32} blur={20} tint={dark ? 'rgba(5,31,32,0.68)' : 'rgba(255,255,255,0.72)'} gloss iris style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }} />
         {items}
       </View>
     </View>
@@ -118,8 +116,10 @@ function NavOverlay({ onBack, backLabel }) {
   return (
     <View pointerEvents="box-none" style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 5 }}>
       <View pointerEvents="box-none" style={{ width: '100%', maxWidth: contentMax, alignSelf: 'center', height: 56, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: gutter + 10, paddingTop: 8 }}>
-        <Pressable onPress={onBack} hitSlop={10} accessibilityRole="button" accessibilityLabel={`Back to ${backLabel}`} style={({ pressed }) => ({ width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.24)', alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.6 : 1 })}>
-          <Icon name="Back" color="#fff" size={24} />
+        <Pressable onPress={onBack} hitSlop={10} accessibilityRole="button" accessibilityLabel={`Back to ${backLabel}`} style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
+          <Glass radius={20} blur={10} tint="rgba(255,255,255,0.2)" gloss iris style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}>
+            <Icon name="Back" color="#fff" size={24} />
+          </Glass>
         </Pressable>
         <AccountButton />
       </View>

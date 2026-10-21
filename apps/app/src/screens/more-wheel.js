@@ -107,9 +107,9 @@ export function GlassWheel({ variant = 'layer', onDragState }) {
       <View pointerEvents="none" style={{ position: 'absolute', left: cx - R2, top: cy - R2, width: R2 * 2, height: R2 * 2, borderRadius: R2, borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)' }} />
 
       <Pressable onPress={() => goTab('Me')} accessibilityRole="button" accessibilityLabel={`${user.display_name}. My profile, roles and settings`} style={{ position: 'absolute', left: cx - R, top: cy - R, width: R * 2, height: R * 2 }}>
-        <Glass radius={R} preset="clear" style={{ width: R * 2, height: R * 2, borderWidth: 2, borderColor: 'rgba(255,255,255,0.6)' }}>
+        <Glass radius={R} preset="clear" gloss iris style={{ width: R * 2, height: R * 2 }}>
           <View style={{ position: 'absolute', left: R - cx + 10, right: 8, top: 0, bottom: 0, justifyContent: 'center' }}>
-            <Glass radius={18} preset="soft" style={{ paddingVertical: 10, paddingHorizontal: 12, alignSelf: 'flex-start', maxWidth: '100%' }}>
+            <Glass radius={18} preset="soft" gloss style={{ paddingVertical: 10, paddingHorizontal: 12, alignSelf: 'flex-start', maxWidth: '100%' }}>
             {layer ? (
               <>
                 <View style={{ marginBottom: 8 }}><Avatar user={user} size={40} /></View>
@@ -146,14 +146,14 @@ export function GlassWheel({ variant = 'layer', onDragState }) {
           <Pressable key={name} onPress={() => (isCentre ? push(name) : spinTo(Math.round(pos) + Math.round(rel)))} accessibilityRole="button"
             accessibilityLabel={`${title}${badge > 0 ? `, ${badge} need attention` : ''}${isCentre ? ', selected. Tap to open' : ''}`}
             style={{ position: 'absolute', left: x - D / 2, top: y - D / 2, flexDirection: 'row', alignItems: 'center', opacity: 1 - 0.55 * (Math.abs(a) / vis), zIndex: Math.round(100 - Math.abs(a)) }}>
-            <Glass radius={D / 2} preset="clear" style={{ width: D, height: D, borderWidth: 2 + near * 1.5, borderColor: 'rgba(255,255,255,0.6)', ...(web ? { boxShadow: `0 ${4 + near * 8}px ${14 + near * 22}px ${from}${isCentre ? '99' : '44'}, inset 0 1px 0 rgba(255,255,255,0.4)` } : { shadowColor: from, shadowOpacity: 0.45, shadowRadius: 12 + near * 12, shadowOffset: { width: 0, height: 6 } }) }}>
+            <Glass radius={D / 2} preset="clear" gloss iris style={{ width: D, height: D, ...(web ? { boxShadow: `0 ${4 + near * 8}px ${14 + near * 22}px ${from}${isCentre ? '99' : '44'}, inset 1.5px 1.5px 0 rgba(255,255,255,0.8), inset -1px -1px 0 rgba(255,255,255,0.3), inset 0 0 ${10 + near * 8}px rgba(255,255,255,0.2)` } : { shadowColor: from, shadowOpacity: 0.45, shadowRadius: 12 + near * 12, shadowOffset: { width: 0, height: 6 } }) }}>
               <LinearGradient colors={[`${from}A6`, `${to}A6`]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' }}>
                 <TileArt name={name} size={D * 0.78} />
                 <View pointerEvents="none" style={{ position: 'absolute', top: D * 0.06, left: D * 0.16, width: D * 0.68, height: D * 0.3, borderRadius: D, backgroundColor: 'rgba(255,255,255,0.26)' }} />
               </LinearGradient>
             </Glass>
             {badge > 0 ? <View style={{ position: 'absolute', left: D - 14, top: -6, minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 5, backgroundColor: c.red, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#fff' }}><T weight="800" size={11} color="#fff">{badge}</T></View> : null}
-            <Glass radius={14} preset="soft" style={{ marginLeft: 10, paddingVertical: 5, paddingHorizontal: 10, maxWidth: Math.max(80, w - (x + D / 2) - 24) }}>
+            <Glass radius={999} preset="soft" gloss style={{ marginLeft: 10, paddingVertical: 5, paddingHorizontal: 10, maxWidth: Math.max(80, w - (x + D / 2) - 24) }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: GROUP_COLOR[group] }} />
                 <T weight={isCentre ? '800' : '700'} size={13 + near * 5} color={c.ink} numberOfLines={1} style={{ letterSpacing: 0.2, flexShrink: 1 }}>{title}</T>
@@ -166,11 +166,11 @@ export function GlassWheel({ variant = 'layer', onDragState }) {
 
       {layer ? (
         <Pressable onPress={closeMenu} hitSlop={10} accessibilityRole="button" accessibilityLabel="Close" style={{ position: 'absolute', top: 14, right: 16 }}>
-          <Glass radius={20} preset="soft" style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}><T color={c.ink} weight="700" size={20}>×</T></Glass>
+          <Glass radius={20} preset="soft" gloss style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}><T color={c.ink} weight="700" size={20}>×</T></Glass>
         </Pressable>
       ) : null}
       <View pointerEvents="none" style={{ position: 'absolute', right: 18, ...(layer ? { bottom: 16 } : { top: 12 }) }}>
-        <Glass radius={12} preset="soft" style={{ paddingVertical: 4, paddingHorizontal: 10 }}><T size={11} color={c.mute} weight="700" style={{ letterSpacing: 1 }}>DRAG TO SWIVEL</T></Glass>
+        <Glass radius={999} preset="soft" gloss style={{ paddingVertical: 4, paddingHorizontal: 10 }}><T size={11} color={c.mute} weight="700" style={{ letterSpacing: 1 }}>DRAG TO SWIVEL</T></Glass>
       </View>
     </>
   ) : null;
