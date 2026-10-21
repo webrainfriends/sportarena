@@ -35,7 +35,7 @@ Stripe signatures are verified locally (HMAC, 5-minute tolerance); PayPal webhoo
 `verify-webhook-signature` API. Unverified calls get `400` and change nothing.
 
 ## Known limits
-* Money lands in **your** Stripe/PayPal account. Paying sellers/coaches out (Stripe Connect / PayPal Payouts) is not built.
+* Money lands in **your** Stripe/PayPal account. What it owes coaches, physios/doctors and shop sellers is tracked per payment in an append-only ledger, and payouts are recorded as manual bank transfers ([settlement.md](settlement.md)); automated rails (Stripe Connect / PayPal Payouts) are not built. `paid` here means the customer paid the platform, never that a seller was paid.
 * Unpaid orders hold their stock until paid or cancelled by the buyer (no automatic expiry yet).
 * Shop orders, coach hires and policies are charged in `PAYMENT_CURRENCY`. **Venue invoices are charged in the venue's own currency** (see [venue-reservations.md](venue-reservations.md)); PayPal only accepts currencies your account supports.
 * Tested against local stand-ins of both provider APIs (`apps/api/test/payments.test.js`); run a sandbox payment end to

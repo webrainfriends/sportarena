@@ -8,6 +8,7 @@ import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { Btn, Card, Chip, Empty, ErrorBox, Field, H1, Loading, Row, Screen, Section, Seg, Sheet, StatPill, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
+import { ProviderPayouts } from './provider-payouts';
 import { c } from '../theme';
 import { moneyIn } from '../vtime';
 import { locale } from '../locale';
@@ -432,14 +433,14 @@ export function AccessRequests() {
   );
 }
 
-const TABS = [['overview', 'Overview'], ['partners', 'Partners'], ['approvals', 'Venue approvals'], ['pricing', 'Pricing'], ['contracts', 'Contracts'], ['settlements', 'Settlements'], ['reports', 'Reports'], ['team', 'Platform team']];
+const TABS = [['overview', 'Overview'], ['partners', 'Partners'], ['approvals', 'Venue approvals'], ['pricing', 'Pricing'], ['contracts', 'Contracts'], ['settlements', 'Settlements'], ['payouts', 'Provider payouts'], ['reports', 'Reports'], ['team', 'Platform team']];
 
 /** The platform team's partner-management console. */
 export function PartnerConsole() {
   const { user } = useSession();
   const [tab, setTab] = useState('overview');
   if (!user.roles.includes('admin')) return <Screen><H1>Partner management</H1><Empty emoji="🔒" title="Platform team only" sub="This console is for Gotmygame platform staff." /></Screen>;
-  const body = { overview: <Overview go={setTab} />, partners: <Partners />, approvals: <Approvals />, pricing: <Pricing />, contracts: <Contracts />, settlements: <Settlements />, reports: <Reports />, team: <Team /> }[tab];
+  const body = { overview: <Overview go={setTab} />, partners: <Partners />, approvals: <Approvals />, pricing: <Pricing />, contracts: <Contracts />, settlements: <Settlements />, payouts: <ProviderPayouts />, reports: <Reports />, team: <Team /> }[tab];
   return (
     <Screen wide>
       <H1>Partner management</H1>

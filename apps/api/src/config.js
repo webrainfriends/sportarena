@@ -99,6 +99,14 @@ export const config = {
   notifyIntervalSeconds: Number(env.NOTIFY_INTERVAL_SECONDS ?? 60),
   // Payments (redirect checkout; no card data ever touches this server). A provider is enabled when its keys are set.
   appUrl: env.APP_URL,
+  // what the platform owes coaches, physios/doctors and shop sellers after the customer has paid (see docs/settlement.md)
+  settlement: {
+    commissionBp: Math.min(10000, Math.max(0, Number.parseInt(env.PROVIDER_COMMISSION_BP ?? '0', 10) || 0)),   // platform fee on provider sales, basis points
+    holdDays: Math.min(90, Math.max(0, Number.parseInt(env.SETTLEMENT_HOLD_DAYS ?? '0', 10) || 0)),            // days a sale stays unpayable (refund / dispute window)
+    payoutsEnabled: String(env.SETTLEMENT_PAYOUTS ?? 'off').toLowerCase() === 'on',                            // live payouts stay off until the operator has checked the configuration
+    currencies: (env.SETTLEMENT_CURRENCIES ?? env.PAYMENT_CURRENCY ?? 'INR').split(',').map((x) => x.trim().toUpperCase()).filter(Boolean),
+    minPayoutCents: Math.max(1, Number.parseInt(env.SETTLEMENT_MIN_PAYOUT_CENTS ?? '1', 10) || 1),
+  },
   payments: {
     currency: (env.PAYMENT_CURRENCY ?? 'INR').toUpperCase(),
     stripe: { secretKey: env.STRIPE_SECRET_KEY, webhookSecret: env.STRIPE_WEBHOOK_SECRET, base: env.STRIPE_API_BASE ?? 'https://api.stripe.com' },
