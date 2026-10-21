@@ -17,7 +17,7 @@ import { DateField, HScroll } from '../pickers';
 import { Icon } from '../icons';
 import { TileArt, tileColors } from './more-art';
 import { FeatureCarousel, HeroStage, Pop } from './more-stage';
-import { ModuleHero } from './module-hero';
+import { ModuleHero, ModuleSheet } from './module-hero';
 import { PaySheet } from '../PaySheet';
 import { TimelineSheet } from '../Timeline';
 import { Confirm } from './coaching';
@@ -375,7 +375,7 @@ export function Awards() {
   return (
     <Screen>
       <ModuleHero name="Awards" title="Trophy room" sub="Cups, medals and MVPs" stats={[{ icon: 'Awards', value: aw.data?.length || null, label: 'Awards' }]} />
-      <View style={{ gap: 10, marginTop: 10 }}>{aw.loading && !aw.data ? <Loading /> : aw.data?.length ? aw.data.map((a, i) => <Row key={a.id} color={[c.sunSoft, c.pinkSoft, c.cyanSoft][i % 3]} left={<Bubble emoji={E[a.kind]} color={c.paper} />} title={a.name} sub={`${a.team_name ?? a.display_name ?? ''}${a.event_name ? ' · ' + a.event_name : ''}`} />) : <Empty emoji="🏆" title="Nothing awarded yet" />}</View>
+      <ModuleSheet><View style={{ gap: 10 }}>{aw.loading && !aw.data ? <Loading /> : aw.data?.length ? aw.data.map((a, i) => <Row key={a.id} color={[c.sunSoft, c.pinkSoft, c.cyanSoft][i % 3]} left={<Bubble emoji={E[a.kind]} color={c.paper} />} title={a.name} sub={`${a.team_name ?? a.display_name ?? ''}${a.event_name ? ' · ' + a.event_name : ''}`} />) : <Empty emoji="🏆" title="Nothing awarded yet" />}</View></ModuleSheet>
     </Screen>
   );
 }
