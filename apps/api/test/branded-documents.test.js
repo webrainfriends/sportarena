@@ -153,3 +153,12 @@ test('preview renders SAMPLE through the same engine; non-Latin text is refused 
   const ta = await api('POST', '/branded-documents/preview', { token: u.token, body: { layout: { blocks: [{ type: 'title' }, { type: 'parties' }, { type: 'lines' }, { type: 'totals' }, { type: 'text', text: 'வணக்கம்' }] } } });
   assert.equal(ta.status, 422); assert.equal(ta.body.error.code, 'unsupported_characters');
 });
+
+test('text blocks may carry alignment and size; other blocks may not', async () => {
+  const u = await signup();
+  const base = [{ type: 'title' }, { type: 'parties' }, { type: 'lines' }, { type: 'totals' }];
+  const ok = await api('POST', '/branded-documents/preview', { token: u.token, body: { layout: { blocks: [...base, { type: 'text', text: 'Pay within 14 days', align: 'center', size: 'large' }] } } });
+  assert.equal(ok.status, 200); assert.equal(ok.body.subarray(0, 5).toString(), '%PDF-');
+  const bad = await api('POST', '/branded-documents/preview', { token: u.token, body: { layout: { blocks: [{ type: 'title', align: 'center' }, ...base.slice(1)] } } });
+  assert.equal(bad.status, 400);
+});

@@ -7,12 +7,11 @@ import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { Btn, Card, Chip, Empty, ErrorBox, Field, H1, Loading, Screen, Section, Seg, Sheet, T, Tag } from '../ui';
-import { Counter } from '../pickers';
+import { useLayout } from '../layout';
+import { PageCanvas, TemplateEditor } from './doc-editor';
 import { c } from '../theme';
 
 const SWATCHES = ['#0F6E56', '#1D4ED8', '#7C3AED', '#BE185D', '#B45309', '#B91C1C', '#0E7490', '#444441', '#111827'];
-const BLOCK_LABEL = { header: 'Header (logo and business name)', title: 'Title and number', parties: 'Seller and buyer', lines: 'Line items', totals: 'Totals', text: 'Your own text', footer: 'Footer' };
-const REQUIRED = { invoice: ['title', 'parties', 'lines', 'totals'] };
 const hex = (v) => /^#[0-9A-Fa-f]{6}$/.test(v ?? '');
 
 function openBlob(blob) {
@@ -92,80 +91,33 @@ function KitSheet({ kit, orgId, onClose, onSaved }) {
   );
 }
 
-function TemplateSheet({ tpl, orgId, kits, families, starters, onClose, onSaved }) {
+function TemplateStart({ orgId, families, starters, kits, onClose, onCreated }) {
   const { toast } = useSession();
+  const L = useLayout();
   const avail = families.filter((f) => f.source.available);
-  const [family, setFamily] = useState(tpl?.family ?? avail[0]?.family);
-  const [name, setName] = useState(tpl?.name ?? '');
-  const [kitId, setKitId] = useState(tpl?.kit_id ?? null);
-  const [layout, setLayout] = useState(tpl?.draft ?? null);
+  const [family, setFamily] = useState(avail[0]?.family);
+  const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
-  const fixed = REQUIRED[family] ?? [];
-  const blocks = layout?.blocks ?? [];
-  const usable = kits.filter((k) => (orgId ?? null) === (k.organisation_id ?? null));
-  const edit = (patch) => setLayout((l) => ({ ...l, ...patch }));
-  const move = (i, d) => { const b = [...blocks]; const [x] = b.splice(i, 1); b.splice(i + d, 0, x); edit({ blocks: b }); };
-  const setText = (i, text) => edit({ blocks: blocks.map((b, n) => (n === i ? { ...b, text } : b)) });
-  const missing = fixed.filter((t) => !blocks.some((b) => b.type === t));
-  const ok = name.trim() && layout && !missing.length && blocks.every((b) => b.type !== 'text' || b.text?.trim());
-  const save = async () => {
+  const make = async (starter) => {
+    if (!name.trim()) { toast('Give the template a name first'); return; }
     setBusy(true);
-    try {
-      const saved = tpl ? await api.patch(`/document-templates/${tpl.id}`, { row_version: tpl.row_version, name: name.trim(), kit_id: kitId, layout })
-        : await api.post('/document-templates', { family, name: name.trim(), kit_id: kitId ?? undefined, layout, ...(orgId ? { organisation_id: orgId } : {}) });
-      onSaved(saved);
-    } catch (e) { toast(e.message); } finally { setBusy(false); }
+    try { onCreated(await api.post('/document-templates', { family, name: name.trim(), starter, ...(kits[0] ? { kit_id: kits[0].id } : {}), ...(orgId ? { organisation_id: orgId } : {}) })); }
+    catch (e) { toast(e.message); } finally { setBusy(false); }
   };
-  const preview = async () => {
-    try {
-      const blob = await api.postBlob('/branded-documents/preview', { layout, ...(kitId ? { kit_id: kitId } : {}) });
-      if (!openBlob(blob)) toast('Open the web app to preview the PDF');
-    } catch (e) { toast(e.message); }
-  };
+  const tw = Math.min(150, (Math.min(L.width, 580) - 80) / 2);
   return (
-    <Sheet visible onClose={onClose} title={tpl ? 'Edit template' : 'New template'}>
+    <Sheet visible onClose={onClose} title="New template">
       <Field label="Template name" value={name} onChangeText={setName} maxLength={80} />
-      {!tpl && avail.length > 1 ? <View style={{ gap: 6 }}><T weight="800" size={13}>Document</T><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{avail.map((f) => <Chip key={f.family} label={f.label} active={f.family === family} onPress={() => setFamily(f.family)} />)}</View></View> : null}
-      {!layout ? (
-        <View style={{ gap: 6 }}>
-          <T weight="800" size={13}>Start from</T>
-          <View style={{ flexDirection: 'row', gap: 6 }}>{Object.keys(starters).map((s) => <Chip key={s} label={s === 'modern' ? 'Modern' : 'Classic'} active={false} onPress={() => setLayout(JSON.parse(JSON.stringify(starters[s])))} />)}</View>
-        </View>
-      ) : null}
-      {layout ? (
-        <>
-          <View style={{ gap: 6 }}><T weight="800" size={13}>Look</T><Seg options={[{ value: 'classic', label: 'Classic' }, { value: 'modern', label: 'Modern' }]} value={layout.style} onChange={(x) => edit({ style: x })} /></View>
-          <View style={{ gap: 6 }}><T weight="800" size={13}>Paper</T><Seg options={['A4', 'Letter']} value={layout.paper} onChange={(x) => edit({ paper: x })} /></View>
-          <View style={{ gap: 6 }}><T weight="800" size={13}>Orientation</T><Seg options={[{ value: 'portrait', label: 'Portrait' }, { value: 'landscape', label: 'Landscape' }]} value={layout.orientation} onChange={(x) => edit({ orientation: x })} /></View>
-          <Counter label="Page margin" value={layout.margin_mm} onChange={(x) => edit({ margin_mm: x })} min={10} max={30} suffix="mm" />
-          <View style={{ gap: 6 }}>
-            <T weight="800" size={13}>Brand kit</T>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-              <Chip label="None" active={!kitId} onPress={() => setKitId(null)} />
-              {usable.map((k) => <Chip key={k.id} label={k.name} active={k.id === kitId} onPress={() => setKitId(k.id)} />)}
-            </View>
-            {!usable.length ? <T size={12} color={c.mute}>Create a brand kit above to add your logo and colours.</T> : null}
-          </View>
-          <T weight="800" size={13}>Page layout, top to bottom</T>
-          <T size={12} color={c.mute}>Amounts, numbers and names always come from the invoice itself. You choose where things sit and add your own wording.</T>
-          {blocks.map((b, i) => (
-            <Card key={`${b.type}${i}`} pad={10}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <View style={{ flex: 1 }}><T weight="700" size={13}>{BLOCK_LABEL[b.type]}</T>{fixed.includes(b.type) ? <T size={11} color={c.mute}>Required</T> : null}</View>
-                <Btn small title="↑" color={c.paper} ink={c.ink} disabled={i === 0} onPress={() => move(i, -1)} />
-                <Btn small title="↓" color={c.paper} ink={c.ink} disabled={i === blocks.length - 1} onPress={() => move(i, 1)} />
-                {fixed.includes(b.type) ? null : <Btn small title="Remove" color={c.paper} ink={c.red} onPress={() => edit({ blocks: blocks.filter((_, n) => n !== i) })} />}
-              </View>
-              {b.type === 'text' ? <View style={{ marginTop: 8 }}><Field value={b.text ?? ''} onChangeText={(x) => setText(i, x)} multiline maxLength={2000} placeholder="Plain text, e.g. payment terms" /></View> : null}
-            </Card>
-          ))}
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-            {['header', 'text', 'footer'].concat(fixed).filter((t, i, a) => a.indexOf(t) === i && (t === 'text' || !blocks.some((b) => b.type === t))).map((t) => <Chip key={t} label={`+ ${BLOCK_LABEL[t].split(' (')[0]}`} active={false} onPress={() => edit({ blocks: [...blocks, t === 'text' ? { type: t, text: '' } : { type: t }] })} />)}
-          </View>
-          <Btn title="Preview PDF (sample data)" color={c.violet} onPress={preview} disabled={!ok} />
-        </>
-      ) : null}
-      <Btn title="Save draft" onPress={save} loading={busy} disabled={!ok} />
+      {avail.length > 1 ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{avail.map((f) => <Chip key={f.family} label={f.label} active={f.family === family} onPress={() => setFamily(f.family)} />)}</View> : null}
+      <T weight="800" size={13}>Pick a starting design, then change anything in the editor</T>
+      <View style={{ flexDirection: 'row', gap: 14, justifyContent: 'center' }}>
+        {Object.keys(starters).map((k) => (
+          <Pressable key={k} disabled={busy} onPress={() => make(k)} accessibilityRole="button" accessibilityLabel={`Start from ${k}`} style={{ alignItems: 'center', gap: 6 }}>
+            <PageCanvas layout={starters[k]} kit={kits[0] ?? null} width={tw} />
+            <T weight="700">{k === 'modern' ? 'Modern' : 'Classic'}</T>
+          </Pressable>
+        ))}
+      </View>
     </Sheet>
   );
 }
@@ -178,7 +130,9 @@ export function BrandedDocuments() {
   const kits = useLoad(() => api.get('/brand-kits'), []);
   const tpls = useLoad(() => api.get('/document-templates', { limit: 100 }), []);
   const [kitSheet, setKitSheet] = useState(null);
-  const [tplSheet, setTplSheet] = useState(null);
+  const [starting, setStarting] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const [pickedKit, setPickedKit] = useState(null);
   const reload = () => { kits.reload(); tpls.reload(); };
   const run = async (fn, ok) => { try { await fn(); if (ok) toast(ok); reload(); } catch (e) { toast(e.message); } };
   const err = fam.error || kits.error || tpls.error;
@@ -203,7 +157,7 @@ export function BrandedDocuments() {
               </Card>
             )) : <Empty emoji="🎨" title="No brand kit yet" sub="A kit holds your logo, colours and contact details. Create one, then use it in a template." />}
           </Section>
-          <Section title="Templates" action="New template" onAction={() => setTplSheet({})}>
+          <Section title="Templates" action="New template" onAction={() => setStarting(true)}>
             {myTpls.length ? myTpls.map((t) => (
               <Card key={t.id} pad={12}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -211,7 +165,7 @@ export function BrandedDocuments() {
                   <Tag label={t.status} color={t.status === 'published' ? c.mint : t.status === 'retired' ? c.violetSoft : c.sun} />
                 </View>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
-                  <Btn small title="Edit" color={c.violet} onPress={() => setTplSheet(t)} />
+                  <Btn small title="Edit" color={c.violet} onPress={() => setEditing(t)} />
                   <Btn small title={t.latest_version ? 'Publish new version' : 'Publish'} color={c.mint} ink={c.ink} onPress={() => run(() => api.post(`/document-templates/${t.id}/publish`, { row_version: t.row_version }), 'Published')} />
                   {t.status !== 'retired' ? <Btn small title="Retire" color={c.paper} ink={c.red} onPress={() => run(() => api.post(`/document-templates/${t.id}/retire`), 'Template retired')} /> : null}
                 </View>
@@ -223,8 +177,9 @@ export function BrandedDocuments() {
           </Section>
         </>
       )}
-      {kitSheet ? <KitSheet kit={kitSheet.id ? kitSheet : null} orgId={orgId} onClose={() => setKitSheet(null)} onSaved={(saved) => { setKitSheet(saved?.id ? saved : null); reload(); if (saved?.id) toast('Brand kit saved'); }} /> : null}
-      {tplSheet ? <TemplateSheet tpl={tplSheet.id ? tplSheet : null} orgId={tplSheet.id ? tplSheet.organisation_id : orgId} kits={kits.data ?? []} families={fam.data.families} starters={fam.data.starter_layouts} onClose={() => setTplSheet(null)} onSaved={() => { setTplSheet(null); reload(); toast('Draft saved. Publish it to use it.'); }} /> : null}
+      {kitSheet ? <KitSheet kit={kitSheet.id ? kitSheet : null} orgId={kitSheet.organisation_id ?? orgId} onClose={() => setKitSheet(null)} onSaved={(saved) => { if (saved?.id && !kitSheet.id && editing) setPickedKit(saved.id); setKitSheet(saved?.id ? saved : null); reload(); if (saved?.id) toast('Brand kit saved'); }} /> : null}
+      {starting ? <TemplateStart orgId={orgId} families={fam.data.families} starters={fam.data.starter_layouts} kits={myKits} onClose={() => setStarting(false)} onCreated={(t) => { setStarting(false); setEditing(t); reload(); }} /> : null}
+      {editing ? <TemplateEditor key={editing.id} tpl={editing} pickedKit={pickedKit} kits={(kits.data ?? []).filter((k) => (editing.organisation_id ?? null) === (k.organisation_id ?? null))} onNewKit={() => setKitSheet({ organisation_id: editing.organisation_id ?? null })} onClose={() => { setEditing(null); setPickedKit(null); reload(); }} onPublished={() => { setEditing(null); setPickedKit(null); reload(); toast('Published. Invoices can now use it.'); }} /> : null}
     </Screen>
   );
 }
