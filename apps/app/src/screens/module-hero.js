@@ -5,6 +5,7 @@ import { Icon } from '../icons';
 import { mediaUrl } from '../api';
 import { T } from '../ui';
 import { useLayout } from '../layout';
+import { Glass } from '../glass';
 import { c, dark } from '../theme';
 import { TileArt, tileColors } from './more-art';
 
@@ -31,27 +32,29 @@ export function ModuleHero({ name, title, sub, stats = [], photo, tabs, children
       {shown.length ? (
         <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>
           {shown.map((s) => (
-            <View key={s.label} accessible accessibilityLabel={`${s.value} ${s.label}`} style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.96)', borderRadius: 18, paddingVertical: 10, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              {s.icon ? <Icon name={s.icon} color={to} size={20} on /> : null}
+            <Glass key={s.label} accessible accessibilityLabel={`${s.value} ${s.label}`} radius={22} blur={10} tint="rgba(255,255,255,0.2)" gloss iris style={{ flex: 1, paddingVertical: 10, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              {s.icon ? <Icon name={s.icon} color="#fff" size={20} on /> : null}
               <View style={{ flexShrink: 1 }}>
-                <T weight="800" size={20} color="#0F172A" numberOfLines={1} style={{ fontVariant: ['tabular-nums'] }}>{s.value}</T>
-                <T weight="700" size={9.5} color="#64748B" style={{ letterSpacing: 1 }}>{String(s.label).toUpperCase()}</T>
+                <T weight="800" size={20} color="#fff" numberOfLines={1} style={{ fontVariant: ['tabular-nums'] }}>{s.value}</T>
+                <T weight="700" size={9.5} color="rgba(255,255,255,0.85)" style={{ letterSpacing: 1 }}>{String(s.label).toUpperCase()}</T>
               </View>
-            </View>
+            </Glass>
           ))}
         </View>
       ) : null}
       {tabs ? (
-        <View accessibilityRole="tablist" style={{ flexDirection: 'row', marginTop: 18, padding: 4, borderRadius: 999, backgroundColor: 'rgba(15,23,42,0.28)' }}>
+        <Glass accessibilityRole="tablist" radius={999} blur={10} tint="rgba(5,31,32,0.28)" gloss style={{ flexDirection: 'row', marginTop: 18, padding: 4 }}>
           {tabs.items.map(([k, label]) => {
             const on = k === tabs.value;
             return (
-              <Pressable key={k} onPress={() => tabs.onChange(k)} accessibilityRole="tab" accessibilityState={{ selected: on }} style={{ flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: 999, backgroundColor: on ? '#fff' : 'transparent' }}>
-                <T weight="700" size={13} color={on ? to : '#fff'} numberOfLines={1}>{label}</T>
+              <Pressable key={k} onPress={() => tabs.onChange(k)} accessibilityRole="tab" accessibilityState={{ selected: on }} style={{ flex: 1 }}>
+                <Glass radius={999} blur={8} tint={on ? 'rgba(255,255,255,0.82)' : 'rgba(255,255,255,0)'} gloss={on} style={{ alignItems: 'center', paddingVertical: 8, ...(on ? null : { borderWidth: 0, boxShadow: 'none', backdropFilter: 'none', WebkitBackdropFilter: 'none' }) }}>
+                  <T weight="700" size={13} color={on ? '#0B2B26' : '#fff'} numberOfLines={1}>{label}</T>
+                </Glass>
               </Pressable>
             );
           })}
-        </View>
+        </Glass>
       ) : null}
     </LinearGradient>
   );

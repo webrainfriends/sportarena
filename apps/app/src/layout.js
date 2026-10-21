@@ -12,8 +12,8 @@ export function useLayout() {
   return {
     width, height, tablet, phone: !tablet, landscape: width > height,
     // the tablet tab bar floats over the content, so scrolling screens reserve room for it
-    floatingBar: tablet,
-    bottomPad: tablet ? 116 : 24,
+    floatingBar: true,
+    bottomPad: tablet ? 116 : 104,
     gutter: tablet ? 24 : 16,
     contentMax: tablet ? 1180 : 760,
   };
