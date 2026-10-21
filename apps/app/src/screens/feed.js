@@ -12,6 +12,7 @@ import { c } from '../theme';
 import { MarketCard, KINDS } from '../market/MarketCard';
 import { Composer } from '../market/Composer';
 import { useMarketActions, useResumeIntent } from '../market/actions';
+import { GlassWheel } from './more-wheel';
 import { PlayerHero, COL } from '../hero';
 import { ACTIONS, HomeReminders } from './athlete-home';
 import { locale } from '../locale';
@@ -40,7 +41,7 @@ function Rail({ push }) {
 }
 
 /** The member feed: a composer on top, then the same cards as the public page, LinkedIn-style, with reactions, comments and applications. */
-export function Feed({ header, narrow }) {
+export function Feed({ header, narrow, scrollEnabled = true }) {
   const { user } = useSession();
   const { push } = useNav();
   const L = useLayout();
@@ -86,7 +87,7 @@ export function Feed({ header, narrow }) {
   );
   return (
     <View style={{ flex: 1 }}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: L.bottomPad }}>
+      <ScrollView scrollEnabled={scrollEnabled} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: L.bottomPad }}>
         {header}
         <View style={{ padding: L.gutter, width: '100%', maxWidth: narrow ? COL : L.tablet ? 1000 : 640, alignSelf: 'center' }}>
           {L.tablet && !narrow ? <View style={{ flexDirection: 'row', gap: 20, alignItems: 'flex-start' }}><View style={{ flex: 1.7 }}>{feed}</View><View style={{ flex: 1 }}><Rail push={push} /></View></View> : feed}
@@ -116,10 +117,12 @@ export default function HomeTab() {
   const main = profiles.find((p) => p.is_default) ?? profiles[0];
   const pad = L.gutter;
   const wrap = { paddingHorizontal: pad, width: '100%', maxWidth: COL, alignSelf: 'center' };
+  const [turning, setTurning] = useState(false); // the wheel is being dragged: hold the page still
 
   const header = (
     <View>
       <PlayerHero user={user} profile={main} pad={pad} onBell={() => nav.push('Notifications')} onAvatar={() => nav.goTab('Me')} />
+      {nav.menu ? null : <View style={[wrap, { marginTop: -64, zIndex: 2 }]}><GlassWheel variant="inline" onDragState={setTurning} /></View>}
       <View style={[wrap, { marginTop: 18 }]}>
         <HScroll>
           {ACTIONS.map(([emoji, label, go]) => <Chip key={label} label={`${emoji} ${label}`} onPress={() => go(nav)} />)}
@@ -132,7 +135,7 @@ export default function HomeTab() {
   );
   return (
     <View style={{ flex: 1 }}>
-      <Feed header={header} narrow />
+      <Feed header={header} narrow scrollEnabled={!turning} />
     </View>
   );
 }
