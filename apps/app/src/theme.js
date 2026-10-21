@@ -7,15 +7,17 @@ import { HAS_SPORT_THEME, sportTheme } from './sport-theme';
 // so every screen inherits the theme.
 // Light / dark: resolved once, synchronously, when the app loads (stored choice, else the OS setting), because
 // screens read these tokens at import time. Changing the choice stores it and reloads the app (see appearance.js).
+// Palette: deep forest to pale mint. Light mode puts the dark greens on a pale canvas, dark mode flips them.
+export const palette = { p0: '#051F20', p1: '#0B2B26', p2: '#163832', p3: '#235347', p4: '#8EB69B', p5: '#DAF1DE' };
 const LIGHT = {
-  bg: '#F5F7FB', paper: '#FFFFFF', ink: '#0F172A', mute: '#64748B', line: '#E6EAF2', on: '#FFFFFF', inkOn: '#FFFFFF',
-  pink: '#4F46E5', violet: '#1E293B', cyan: '#0284C7', lime: '#059669', sun: '#D97706', orange: '#EA580C', mint: '#059669', red: '#E11D48', blue: '#0284C7',
-  pinkSoft: '#EEF0FF', violetSoft: '#EEF1F7', cyanSoft: '#E0F2FE', limeSoft: '#DCFCE7', sunSoft: '#FEF3C7', mintSoft: '#DCFCE7', orangeSoft: '#FFEDD5', redSoft: '#FFE4E6',
+  bg: '#EDF7EF', paper: '#FFFFFF', ink: '#051F20', mute: '#4F6B61', line: '#CFE3D3', on: '#FFFFFF', inkOn: '#FFFFFF', onAccent: '#FFFFFF',
+  pink: '#235347', violet: '#163832', cyan: '#1F8A86', lime: '#2F8F5F', sun: '#D97706', orange: '#EA580C', mint: '#3E9A82', red: '#E11D48', blue: '#1F8A86',
+  pinkSoft: '#DAF1DE', violetSoft: '#E4F0E7', cyanSoft: '#D5EFEC', limeSoft: '#D9F0E1', sunSoft: '#FEF3C7', mintSoft: '#DDF1EA', orangeSoft: '#FFEDD5', redSoft: '#FFE4E6',
 };
 const DARK = {
-  bg: '#0B1020', paper: '#151B2E', ink: '#E6EAF5', mute: '#93A0B8', line: '#263049', on: '#FFFFFF', inkOn: '#0B1020',
-  pink: '#818CF8', violet: '#334263', cyan: '#38BDF8', lime: '#34D399', sun: '#FBBF24', orange: '#FB923C', mint: '#34D399', red: '#FB7185', blue: '#38BDF8',
-  pinkSoft: '#22275A', violetSoft: '#1D2640', cyanSoft: '#0E3247', limeSoft: '#0F3A2C', sunSoft: '#3D3012', mintSoft: '#0F3A2C', orangeSoft: '#42250F', redSoft: '#4A1A28',
+  bg: '#051F20', paper: '#0B2B26', ink: '#DAF1DE', mute: '#8FB09C', line: '#163832', on: '#FFFFFF', inkOn: '#051F20', onAccent: '#051F20',
+  pink: '#8EB69B', violet: '#235347', cyan: '#5CC8C0', lime: '#5FD39A', sun: '#FBBF24', orange: '#FB923C', mint: '#7ADBC4', red: '#FB7185', blue: '#5CC8C0',
+  pinkSoft: '#163832', violetSoft: '#12332D', cyanSoft: '#0E3A3A', limeSoft: '#0F3A2C', sunSoft: '#3D3012', mintSoft: '#0F3D35', orangeSoft: '#42250F', redSoft: '#4A1A28',
 };
 export const THEME_KEY = 'theme'; // 'system' | 'light' | 'dark'
 const storedMode = () => {
@@ -35,19 +37,19 @@ export const scheme = themeMode === 'system' ? systemScheme() : themeMode;
 export const dark = scheme === 'dark';
 export const c = dark ? DARK : LIGHT;
 export const grad = {
-  hero: ['#4F46E5', '#7C3AED'],
-  sunset: ['#6366F1', '#EC4899'],
-  fresh: ['#059669', '#0EA5E9'],
-  candy: dark ? ['#151B2E', '#0B1020', '#151B2E'] : ['#FFFFFF', '#F5F7FB', '#FFFFFF'],
-  night: ['#1E293B', '#334155'],
+  hero: ['#235347', '#0B2B26'],
+  sunset: ['#2E6B5A', '#235347'],
+  fresh: ['#27795A', '#1B6F6B'],
+  candy: dark ? ['#0B2B26', '#051F20', '#0B2B26'] : ['#FFFFFF', '#EDF7EF', '#FFFFFF'],
+  night: ['#0B2B26', '#163832'],
 };
 // translucent surfaces for the player hero (white text on a deep gradient)
 export const glass = { fill: 'rgba(255,255,255,0.14)', line: 'rgba(255,255,255,0.22)', text: '#FFFFFF', sub: 'rgba(255,255,255,0.72)' };
-export const heroGrad = (tone = '#4F46E5') => ['#0B1020', '#1E1B4B', tone];
+export const heroGrad = (tone = '#235347') => ['#051F20', '#0B2B26', tone];
 // one colour family per sport card: [solid, soft tint, deep text-on-tint]
 export const sportTones = [
-  ['#4F46E5', '#EEF0FF', '#3730A3'], ['#059669', '#DCFCE7', '#047857'], ['#EA580C', '#FFEDD5', '#C2410C'], ['#0284C7', '#E0F2FE', '#075985'],
-  ['#DB2777', '#FCE7F3', '#9D174D'], ['#D97706', '#FEF3C7', '#92400E'], ['#7C3AED', '#F3E8FF', '#5B21B6'],
+  ['#235347', '#DAF1DE', '#163832'], ['#059669', '#DCFCE7', '#047857'], ['#EA580C', '#FFEDD5', '#C2410C'], ['#0284C7', '#E0F2FE', '#075985'],
+  ['#DB2777', '#FCE7F3', '#9D174D'], ['#D97706', '#FEF3C7', '#92400E'], ['#3E7A5F', '#E4F0E7', '#235347'],
 ];
 export const toneFor = (s = '') => HAS_SPORT_THEME(s) ? sportTheme(s).tone : sportTones[[...String(s)].reduce((a, ch) => a + ch.charCodeAt(0), 0) % sportTones.length];
 export const accents = [c.pink, c.violet, c.cyan, c.lime, c.sun, c.orange, c.mint];

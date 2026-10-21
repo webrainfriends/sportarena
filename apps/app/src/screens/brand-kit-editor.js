@@ -10,7 +10,7 @@ import { Btn, Chip, Field, T } from '../ui';
 import { c } from '../theme';
 import { BlockPreview, useLogo } from './doc-editor';
 
-const SWATCHES = ['#0F6E56', '#047857', '#1D4ED8', '#0E7490', '#7C3AED', '#BE185D', '#B91C1C', '#B45309', '#444441', '#111827'];
+const SWATCHES = ['#0F6E56', '#047857', '#1D4ED8', '#0E7490', '#163832', '#BE185D', '#B91C1C', '#B45309', '#444441', '#111827'];
 const hexOk = (v) => /^#[0-9A-Fa-f]{6}$/.test(v ?? '');
 const luma = (h) => { const n = parseInt(h.slice(1), 16); return (0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255; };
 const PREVIEW_LAYOUT = { style: 'classic', paper: 'A4', orientation: 'portrait', margin_mm: 18 };

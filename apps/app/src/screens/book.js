@@ -41,7 +41,7 @@ function VenueCard({ v, onOpen, picked, onPick, width, onFav }) {
           {v.offers ? <View style={{ position: 'absolute', bottom: 10, left: 10, backgroundColor: c.ink, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 }}><T size={11} weight="700" color={c.inkOn}>🏷️ {v.offers} offer{v.offers === 1 ? '' : 's'}</T></View> : null}
           <Pressable onPress={onFav} hitSlop={8} accessibilityLabel={v.is_favourite ? 'Remove from favourites' : 'Save to favourites'} style={{ position: 'absolute', top: 8, right: 100, backgroundColor: 'rgba(255,255,255,0.92)', borderRadius: 14, width: 30, height: 28, alignItems: 'center', justifyContent: 'center' }}><T size={15} color={v.is_favourite ? c.pink : c.mute}>{v.is_favourite ? '♥' : '♡'}</T></Pressable>
           <Pressable onPress={onPick} hitSlop={8} accessibilityLabel={picked ? 'Remove from compare' : 'Add to compare'} style={{ position: 'absolute', top: 8, right: 8, backgroundColor: picked ? c.pink : 'rgba(255,255,255,0.92)', borderRadius: 14, paddingHorizontal: 10, paddingVertical: 6 }}>
-            <T size={11} weight="700" color={picked ? '#fff' : c.ink}>{picked ? '✓ Compare' : '＋ Compare'}</T>
+            <T size={11} weight="700" color={picked ? c.onAccent : c.ink}>{picked ? '✓ Compare' : '＋ Compare'}</T>
           </Pressable>
         </View>
         <View style={{ padding: 12, gap: 3 }}>
@@ -119,7 +119,7 @@ export function Book() {
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 14, alignItems: 'flex-end' }}>
         <View style={{ flex: 1 }}><Field value={q} onChangeText={setQ} placeholder="Search venues…" /></View>
         <Pressable onPress={() => setFilters(true)} style={{ height: 50, paddingHorizontal: 16, borderRadius: 12, borderWidth: 1.5, borderColor: activeFilters ? c.pink : c.line, backgroundColor: c.paper, justifyContent: 'center' }}><T weight="700" color={activeFilters ? c.pink : c.ink}>⚙ Filters{activeFilters ? ` · ${activeFilters}` : ''}</T></Pressable>
-        <Pressable onPress={() => push('Notifications')} style={{ height: 50, width: 50, borderRadius: 12, borderWidth: 1.5, borderColor: c.line, backgroundColor: c.paper, alignItems: 'center', justifyContent: 'center' }} accessibilityLabel="Notifications"><T size={18}>🔔</T>{note.data?.unread ? <View style={{ position: 'absolute', top: 6, right: 6, minWidth: 16, height: 16, borderRadius: 8, backgroundColor: c.pink, alignItems: 'center', justifyContent: 'center' }}><T size={10} weight="700" color="#fff">{note.data.unread}</T></View> : null}</Pressable>
+        <Pressable onPress={() => push('Notifications')} style={{ height: 50, width: 50, borderRadius: 12, borderWidth: 1.5, borderColor: c.line, backgroundColor: c.paper, alignItems: 'center', justifyContent: 'center' }} accessibilityLabel="Notifications"><T size={18}>🔔</T>{note.data?.unread ? <View style={{ position: 'absolute', top: 6, right: 6, minWidth: 16, height: 16, borderRadius: 8, backgroundColor: c.pink, alignItems: 'center', justifyContent: 'center' }}><T size={10} weight="700" color={c.onAccent}>{note.data.unread}</T></View> : null}</Pressable>
       </View>
       <View style={{ marginTop: 6 }}><SportSelect allLabel="All sports" value={sport || null} onChange={(x) => setSport(x ?? '')} /></View>
       <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>

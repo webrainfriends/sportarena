@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Image, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, ActivityIndicator } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { c, grad, r, accentFor, fam } from './theme';
+import { c, dark, grad, r, accentFor, fam } from './theme';
 import { useLayout } from './layout';
 import { mediaUrl } from './api';
 // The native animation driver does not exist on the web; asking for it logs a warning and falls back to JS anyway.
@@ -62,7 +62,7 @@ export function Section({ title, action, onAction, children, color = c.pink }) {
 export function Btn({ title, onPress, color: want = c.pink, ink = '#fff', style, small, disabled, loading, accessibilityLabel }) {
   const color = want === c.cyan || want === c.mint || want === c.sun || want === c.ink || want === c.lime ? c.violet : want === c.orange ? c.pink : want;
   const plain = color === c.paper;
-  const fg = plain ? (ink === '#fff' ? c.ink : ink) : '#fff';
+  const fg = plain ? (ink === '#fff' ? c.ink : ink) : color === c.pink ? c.onAccent : '#fff';
   return (
     <Pressable disabled={disabled || loading} onPress={onPress} accessibilityRole="button" accessibilityLabel={accessibilityLabel ?? title} accessibilityState={{ disabled: !!(disabled || loading), busy: !!loading }}
       hitSlop={small ? 4 : 0} style={({ pressed }) => [{ opacity: disabled ? 0.4 : pressed ? 0.85 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] }, style]}>
@@ -81,7 +81,7 @@ export function Chip({ label, active, onPress }) {
   );
 }
 
-const TAG = { [c.sun]: [c.sunSoft, '#9A6400'], [c.cyan]: [c.cyanSoft, c.cyan], [c.mint]: [c.mintSoft, c.mint], [c.orange]: [c.pinkSoft, c.pink], [c.pinkSoft]: [c.pinkSoft, c.pink], [c.violetSoft]: [c.violetSoft, c.mute], [c.ink]: [c.ink, c.inkOn], [c.red]: [c.red, '#fff'] };
+const TAG = { [c.sun]: [c.sunSoft, dark ? c.sun : '#9A6400'], [c.cyan]: [c.cyanSoft, c.cyan], [c.mint]: [c.mintSoft, c.mint], [c.orange]: [c.pinkSoft, c.pink], [c.pinkSoft]: [c.pinkSoft, c.pink], [c.violetSoft]: [c.violetSoft, c.mute], [c.ink]: [c.ink, c.inkOn], [c.red]: [c.red, '#fff'] };
 export const Tag = ({ label, color = c.violetSoft, style }) => {
   const [bg, fg] = TAG[color] ?? [c.violetSoft, c.mute];
   return <View style={[s.tag, { backgroundColor: bg }, style]}><T weight="700" size={10.5} color={fg} style={{ letterSpacing: 0.9 }}>{String(label).toUpperCase()}</T></View>;
@@ -218,8 +218,8 @@ export function StatPill({ value, label, color = c.paper }) {
   const hot = color === c.lime;
   return (
     <View style={[s.stat, hot ? { backgroundColor: c.pink, borderColor: c.pink } : null]}>
-      <T weight="800" size={26} color={hot ? '#fff' : c.ink} style={{ letterSpacing: -0.8, fontVariant: ['tabular-nums'] }}>{value}</T>
-      <T weight="700" size={10} color={hot ? '#fff' : c.mute} style={{ letterSpacing: 1.2, opacity: hot ? 0.85 : 1 }}>{label}</T>
+      <T weight="800" size={26} color={hot ? c.onAccent : c.ink} style={{ letterSpacing: -0.8, fontVariant: ['tabular-nums'] }}>{value}</T>
+      <T weight="700" size={10} color={hot ? c.onAccent : c.mute} style={{ letterSpacing: 1.2, opacity: hot ? 0.85 : 1 }}>{label}</T>
     </View>
   );
 }

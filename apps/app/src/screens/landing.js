@@ -18,7 +18,7 @@ import { PromoCard } from '../promo';
 
 const isWeb = Platform.OS === 'web';
 const h = React.createElement;
-const BRAND = ['#0B1020', '#1E1B4B', '#4F46E5'];
+const BRAND = ['#0B1020', '#0B2B26', '#235347'];
 const FLOATERS = ['⚽', '🏏', '🏀', '🎾', '🏸', '🏐', '🏑', '🥇', '🏊', '🏃', '🥊', '🏆'];
 
 const CSS = `
@@ -28,7 +28,7 @@ const CSS = `
 @keyframes sa-rise { from { opacity: 0; transform: translateY(26px); } to { opacity: 1; transform: none; } }
 @keyframes sa-pulse { 0% { box-shadow: 0 0 0 0 rgba(52,211,153,.7); } 100% { box-shadow: 0 0 0 14px rgba(52,211,153,0); } }
 @keyframes sa-shine { from { background-position: -200% 0; } to { background-position: 200% 0; } }
-.sa-hero { background: linear-gradient(120deg,#0B1020,#312E81,#4F46E5,#7C3AED,#DB2777,#312E81,#0B1020); background-size: 400% 400%; animation: sa-drift 22s ease infinite; }
+.sa-hero { background: linear-gradient(120deg,#0B1020,#163832,#235347,#163832,#2E6B5A,#163832,#0B1020); background-size: 400% 400%; animation: sa-drift 22s ease infinite; }
 .sa-float { position:absolute; animation: sa-float 7s ease-in-out infinite; filter: drop-shadow(0 12px 18px rgba(0,0,0,.35)); pointer-events:none; user-select:none; }
 .sa-marquee { display:flex; width:max-content; animation: sa-marquee 48s linear infinite; }
 .sa-marquee:hover { animation-play-state: paused; }
@@ -56,13 +56,13 @@ function useCountUp(to) {
 }
 const Stat = ({ value, label }) => {
   const n = useCountUp(value);
-  return <View style={{ minWidth: 110 }}><T color="#fff" weight="800" size={34} style={{ letterSpacing: -1 }}>{n.toLocaleString(locale)}</T><T color="#C7D2FE" weight="600" size={12} style={{ letterSpacing: 1.2 }}>{label}</T></View>;
+  return <View style={{ minWidth: 110 }}><T color="#fff" weight="800" size={34} style={{ letterSpacing: -1 }}>{n.toLocaleString(locale)}</T><T color="#DAF1DE" weight="600" size={12} style={{ letterSpacing: 1.2 }}>{label}</T></View>;
 };
 
 const Pill = ({ title, onPress, solid, color = '#fff', style }) => (
   <Pressable onPress={onPress} style={({ pressed }) => [{ opacity: pressed ? 0.85 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] }, style]}>
     <View style={{ paddingVertical: 14, paddingHorizontal: 26, borderRadius: 999, backgroundColor: solid ? '#fff' : 'rgba(255,255,255,0.12)', borderWidth: solid ? 0 : 1.5, borderColor: 'rgba(255,255,255,0.45)' }}>
-      <T weight="800" size={15} color={solid ? '#3730A3' : color}>{title}</T>
+      <T weight="800" size={15} color={solid ? '#163832' : color}>{title}</T>
     </View>
   </Pressable>
 );
@@ -73,12 +73,12 @@ function Hero({ counts, onJoin, onBrowse, onAdvertise, wide }) {
     <View style={{ flex: 1, gap: 22 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
         {isWeb ? h('span', { className: 'sa-live' }) : <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: '#34D399' }} />}
-        <T color="#C7D2FE" weight="700" size={12} style={{ letterSpacing: 2.5 }}>THE HOME OF SPORT · LIVE NOW</T>
+        <T color="#DAF1DE" weight="700" size={12} style={{ letterSpacing: 2.5 }}>THE HOME OF SPORT · LIVE NOW</T>
       </View>
       {isWeb
         ? h('div', { className: 'sa-rise', style: { fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 900, letterSpacing: '-0.04em', lineHeight: 1.02, fontSize: wide ? 72 : 44, color: '#fff', maxWidth: 900 } }, 'Where every game finds its ', h('span', { className: 'sa-shine' }, 'players, venues & sponsors.'))
         : <T color="#fff" weight="800" size={40} style={{ letterSpacing: -1.5 }}>Where every game finds its players, venues & sponsors.</T>}
-      <T color="#E0E7FF" size={wide ? 20 : 16} weight="500" style={{ lineHeight: wide ? 30 : 24, maxWidth: 680 }}>Athletes wanted. Matches to join. Fixtures to follow. Kit to buy. Campaigns that move the crowd. One arena for athletes, coaches, organizers, venues and sponsors.</T>
+      <T color="#DAF1DE" size={wide ? 20 : 16} weight="500" style={{ lineHeight: wide ? 30 : 24, maxWidth: 680 }}>Athletes wanted. Matches to join. Fixtures to follow. Kit to buy. Campaigns that move the crowd. One arena for athletes, coaches, organizers, venues and sponsors.</T>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 6 }}>
         <Pill solid title="Join the arena — it's free" onPress={onJoin} />
         <Pill title="Browse opportunities ↓" onPress={onBrowse} />
@@ -136,10 +136,10 @@ const Step = ({ n, icon, title, text }) => (
 );
 
 const WHO = [
-  ['🏃', 'Athletes', 'Get discovered, apply to calls, join matches, build a verified profile.', '#4F46E5'],
+  ['🏃', 'Athletes', 'Get discovered, apply to calls, join matches, build a verified profile.', '#235347'],
   ['🧑‍🏫', 'Coaches & clubs', 'Recruit players, post trials and schedules, grow your squad.', '#059669'],
   ['🏟️', 'Venues', 'Fill your slots, show off your facility with photos and video.', '#0284C7'],
-  ['🤝', 'Sponsors & brands', 'Run campaigns in front of an engaged sporting crowd.', '#DB2777'],
+  ['🤝', 'Sponsors & brands', 'Run campaigns in front of an engaged sporting crowd.', '#2E6B5A'],
 ];
 
 export default function Landing() {
@@ -194,9 +194,9 @@ export default function Landing() {
           <Logo size={44} />
           <T color="#fff" weight="800" size={22} style={{ letterSpacing: -0.8 }}>Gotmygame</T>
           <View style={{ flex: 1 }} />
-          {wide ? [['Opportunities', browse], ['Advertise', () => start('advertise')]].map(([l, f]) => <Pressable key={l} onPress={f}><T color="#C7D2FE" weight="700" size={14}>{l}</T></Pressable>) : null}
+          {wide ? [['Opportunities', browse], ['Advertise', () => start('advertise')]].map(([l, f]) => <Pressable key={l} onPress={f}><T color="#DAF1DE" weight="700" size={14}>{l}</T></Pressable>) : null}
           <Pressable onPress={() => start('login')}><T color="#fff" weight="700" size={14}>Log in</T></Pressable>
-          <Pressable onPress={() => start('join')} style={{ backgroundColor: '#4F46E5', borderRadius: 999, paddingVertical: 9, paddingHorizontal: 18 }}><T color="#fff" weight="800" size={13}>Join free</T></Pressable>
+          <Pressable onPress={() => start('join')} style={{ backgroundColor: '#235347', borderRadius: 999, paddingVertical: 9, paddingHorizontal: 18 }}><T color="#fff" weight="800" size={13}>Join free</T></Pressable>
         </View>
       </View>
 
@@ -246,7 +246,7 @@ export default function Landing() {
               <View style={{ alignItems: 'center', gap: 10, padding: 48, backgroundColor: c.paper, borderRadius: 24, borderWidth: 1, borderColor: c.line }}>
                 <T size={54}>🏟️</T><T weight="800" size={22}>The arena is waiting for its first post</T>
                 <T color={c.mute} style={{ textAlign: 'center', maxWidth: 440 }}>{kind || sport || q ? 'Nothing matches those filters yet. Try clearing them, or post what you are looking for.' : 'Need athletes? Hosting a match? Selling kit? Be the first to put it in front of the community.'}</T>
-                <Pressable onPress={() => start('post')} style={{ backgroundColor: c.pink, borderRadius: 999, paddingVertical: 13, paddingHorizontal: 26, marginTop: 6 }}><T color="#fff" weight="800">Create the first post</T></Pressable>
+                <Pressable onPress={() => start('post')} style={{ backgroundColor: c.pink, borderRadius: 999, paddingVertical: 13, paddingHorizontal: 26, marginTop: 6 }}><T color={c.onAccent} weight="800">Create the first post</T></Pressable>
               </View>
             ) : (
               <View style={{ flexDirection: 'row', gap: 18, alignItems: 'flex-start' }}>
@@ -279,7 +279,7 @@ export default function Landing() {
             </View>
           </View>
 
-          <LinearGradient colors={['#4F46E5', '#DB2777']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ borderRadius: 28, padding: wide ? 56 : 28, gap: 14, alignItems: 'flex-start' }}>
+          <LinearGradient colors={['#235347', '#2E6B5A']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ borderRadius: 28, padding: wide ? 56 : 28, gap: 14, alignItems: 'flex-start' }}>
             <T color="#fff" weight="800" size={wide ? 42 : 28} style={{ letterSpacing: -1.5, maxWidth: 720 }}>Put your brand, event or team in front of the arena.</T>
             <T color="#FCE7F3" size={16} style={{ maxWidth: 620, lineHeight: 24 }}>Run a campaign on the home page with photos, GIFs and video. Reviewed within your window, labelled Sponsored, seen by every visitor.</T>
             <View style={{ flexDirection: 'row', gap: 12, flexWrap: 'wrap' }}><Pill solid title="Start a campaign" onPress={() => start('advertise')} /><Pill title="Post for free" onPress={() => start('post')} /></View>
@@ -290,16 +290,16 @@ export default function Landing() {
           <View style={[wrap, { flexDirection: wide ? 'row' : 'column', gap: 14, justifyContent: 'space-between' }]}>
             <View><T color="#fff" weight="800" size={20}>🏟️ Gotmygame</T><T color="#94A3B8" size={13} style={{ marginTop: 4 }}>The home of sport. Teams · Fixtures · Venues · Performance.</T></View>
             <View style={{ flexDirection: 'row', gap: 22 }}>
-              <Pressable onPress={() => start('login')}><T color="#C7D2FE" weight="700" size={13}>Log in</T></Pressable>
-              <Pressable onPress={() => start('join')}><T color="#C7D2FE" weight="700" size={13}>Create account</T></Pressable>
-              <Pressable onPress={() => start('advertise')}><T color="#C7D2FE" weight="700" size={13}>Advertise</T></Pressable>
+              <Pressable onPress={() => start('login')}><T color="#DAF1DE" weight="700" size={13}>Log in</T></Pressable>
+              <Pressable onPress={() => start('join')}><T color="#DAF1DE" weight="700" size={13}>Create account</T></Pressable>
+              <Pressable onPress={() => start('advertise')}><T color="#DAF1DE" weight="700" size={13}>Advertise</T></Pressable>
             </View>
           </View>
         </View>
       </ScrollView>
 
-      <Pressable onPress={() => start('post')} style={{ position: 'absolute', right: 20, bottom: 24, backgroundColor: c.pink, borderRadius: 999, paddingVertical: 14, paddingHorizontal: 22, shadowColor: '#4F46E5', shadowOpacity: 0.5, shadowRadius: 18, shadowOffset: { width: 0, height: 8 } }}>
-        <T color="#fff" weight="800" size={14}>＋ Post</T>
+      <Pressable onPress={() => start('post')} style={{ position: 'absolute', right: 20, bottom: 24, backgroundColor: c.pink, borderRadius: 999, paddingVertical: 14, paddingHorizontal: 22, shadowColor: '#235347', shadowOpacity: 0.5, shadowRadius: 18, shadowOffset: { width: 0, height: 8 } }}>
+        <T color={c.onAccent} weight="800" size={14}>＋ Post</T>
       </Pressable>
     </View>
   );

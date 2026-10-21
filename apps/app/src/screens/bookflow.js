@@ -144,7 +144,7 @@ export function BookFlow({ venueId, resourceId, date: startDate, time: startTime
                         <T size={12} color={c.mute}>{[r.sport && `${r.sport_emoji ?? ''} ${r.sport}`, r.indoor != null && (r.indoor ? 'Indoor' : 'Outdoor'), r.surface, r.max_players && `up to ${r.max_players} players`, r.capacity > 1 && `${r.capacity} ${r.kind === 'equipment' ? 'units' : 'available'}`].filter(Boolean).join(' · ')}</T>
                         <T weight="700" color={c.pink}>{r.hourly_rate_cents ? `${moneyIn(r.hourly_rate_cents, x.currency)}/hr` : 'Free'}</T>
                       </View>
-                      <View style={{ width: 26, height: 26, borderRadius: 13, borderWidth: 2, borderColor: on ? c.pink : c.line, backgroundColor: on ? c.pink : 'transparent', alignItems: 'center', justifyContent: 'center' }}>{on ? <T size={14} color="#fff" weight="700">✓</T> : null}</View>
+                      <View style={{ width: 26, height: 26, borderRadius: 13, borderWidth: 2, borderColor: on ? c.pink : c.line, backgroundColor: on ? c.pink : 'transparent', alignItems: 'center', justifyContent: 'center' }}>{on ? <T size={14} color={c.onAccent} weight="700">✓</T> : null}</View>
                     </View>
                   </Card>
                 </Pressable>
@@ -194,9 +194,9 @@ export function BookFlow({ venueId, resourceId, date: startDate, time: startTime
                           return (
                             <Pressable key={s.starts_at} disabled={!free && !on && s.status !== 'booked'} onPress={() => tapSlot(res, slots, i)} accessibilityState={{ selected: on, disabled: !free }}
                               style={{ borderRadius: 12, borderWidth: 1.5, borderColor: on ? c.pink : free ? c.line : 'transparent', backgroundColor: on ? c.pink : free ? c.paper : c.violetSoft, paddingVertical: 8, paddingHorizontal: 10, minWidth: 84, alignItems: 'center', opacity: free || on ? 1 : s.status === 'booked' ? 0.8 : 0.5 }}>
-                              <T weight="700" size={13} color={on ? '#fff' : c.ink}>{timeIn(s.starts_at, tz)}</T>
-                              <T size={11} color={on ? '#fff' : c.mute}>{free ? moneyIn(s.price_cents * (qty[cid] ?? 1), x.currency) : s.status === 'blocked' ? 'closed' : s.status === 'booked' ? 'waitlist' : s.status.replace('_', ' ')}</T>
-                              {free && r.capacity > 1 && s.free_units <= 2 ? <T size={9} color={on ? '#fff' : c.orange} weight="700">{s.free_units} left</T> : null}
+                              <T weight="700" size={13} color={on ? c.onAccent : c.ink}>{timeIn(s.starts_at, tz)}</T>
+                              <T size={11} color={on ? c.onAccent : c.mute}>{free ? moneyIn(s.price_cents * (qty[cid] ?? 1), x.currency) : s.status === 'blocked' ? 'closed' : s.status === 'booked' ? 'waitlist' : s.status.replace('_', ' ')}</T>
+                              {free && r.capacity > 1 && s.free_units <= 2 ? <T size={9} color={on ? c.onAccent : c.orange} weight="700">{s.free_units} left</T> : null}
                             </Pressable>
                           );
                         })}

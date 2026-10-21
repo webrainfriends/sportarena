@@ -77,7 +77,7 @@ export function MonthGrid({ month, onMonth, items, selected, onSelect }) {
           return (
             <Pressable key={d} onPress={() => onSelect(d)} accessibilityLabel={`${d}${kinds.length ? `, ${kinds.length} kinds of commitment` : ', nothing scheduled'}`} style={{ width: `${100 / 7}%`, height: 52, padding: 2 }}>
               <View style={{ flex: 1, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: on ? c.pink : 'transparent', borderWidth: d === today && !on ? 1.5 : 0, borderColor: c.pink }}>
-                <T weight="700" size={15} color={on ? '#fff' : c.ink}>{Number(d.slice(8))}</T>
+                <T weight="700" size={15} color={on ? c.onAccent : c.ink}>{Number(d.slice(8))}</T>
                 <View style={{ flexDirection: 'row', gap: 3, height: 6, marginTop: 2 }}>
                   {kinds.slice(0, 3).map((k) => <View key={k} style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: on ? '#fff' : DOT[k] ?? c.mute }} />)}
                 </View>

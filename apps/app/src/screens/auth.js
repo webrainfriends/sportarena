@@ -103,7 +103,7 @@ export default function Auth({ intent, initialMode, onClose } = {}) {
         <Logo size={96} style={{ marginBottom: 14 }} />
         <Text style={[fam, { color: '#fff', opacity: 0.65, fontWeight: '700', fontSize: 12, letterSpacing: 2.5 }]}>THE HOME OF SPORT</Text>
         <Text style={[fam, { color: '#fff', fontWeight: '800', fontSize: 44, letterSpacing: -1.8, marginTop: 10 }]}>Gotmygame</Text>
-        <T color="#E0E7FF" weight="500" size={15} style={{ marginTop: 8, lineHeight: 22 }}>Teams. Fixtures. Venues. Performance. Everything your game runs on, in one place.</T>
+        <T color="#DAF1DE" weight="500" size={15} style={{ marginTop: 8, lineHeight: 22 }}>Teams. Fixtures. Venues. Performance. Everything your game runs on, in one place.</T>
       </LinearGradient>
 
       {['login', 'register'].includes(mode) ? <View style={{ flexDirection: 'row', backgroundColor: c.line, borderRadius: 999, padding: 4, marginTop: 20 }}>

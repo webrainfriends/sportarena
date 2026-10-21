@@ -15,7 +15,7 @@ import { CredentialList } from './pathways';
 import { c, grad, day, accentFor, money, withUnit } from '../theme';
 
 
-const TEAM_COLOURS = [['#7C4DFF', 'Violet'], ['#4F46E5', 'Indigo'], ['#0EA5E9', 'Sky'], ['#10B981', 'Green'], ['#F59E0B', 'Amber'], ['#EF4444', 'Red'], ['#EC4899', 'Pink'], ['#0F172A', 'Slate']].map(([value, label]) => ({ value, label }));
+const TEAM_COLOURS = [['#7C4DFF', 'Violet'], ['#235347', 'Indigo'], ['#0EA5E9', 'Sky'], ['#10B981', 'Green'], ['#F59E0B', 'Amber'], ['#EF4444', 'Red'], ['#3E7A5F', 'Pink'], ['#0F172A', 'Slate']].map(([value, label]) => ({ value, label }));
 
 /** Teams that invited you, with accept / decline. Hidden when there are none. */
 export function TeamInvites({ onChanged }) {
