@@ -31,9 +31,13 @@ Binary: `PUT /brand-kits/:id/logo` (raw PNG/JPEG ≤ 2 MB, 32–4000 px), `GET /
 (`{template_id}` or `{layout, kit_id?}` → PDF on SAMPLE data, labelled SAMPLE), `GET /branded-documents/:id/file` (access re-checked live, audit-logged).
 
 ## Designer UI
-**Me → Document designer** (every role, incl. doctor). Pick *Me* or an organisation you own/administer, then: create/edit brand kits (swatch + hex colours, logo upload),
-create templates from a classic/modern starter, set paper/orientation/margin, reorder/add/remove blocks (required blocks cannot be removed), **Preview PDF**
-(sample data), **Publish**, **Retire**. Only invoices are connected; other families are listed as coming soon (e.g. doctor care plans need their canonical workflow first).
+**Me → Document designer** (every role, incl. doctor). Pick *Me* or an organisation you own/administer. Brand kits: swatch + hex colours, logo upload, contact text.
+Templates open in a full-screen **visual page editor** (`apps/app/src/screens/doc-editor.js`): a scaled A4/Letter page drawn with the kit's real logo, colours and
+name; data sections (parties, line items, totals) show grey structure bars, never invented figures. Tap a section to select it, drag its **Move** grip to reorder
+(↑/↓ buttons as fallback), edit text blocks (align, size) in the panel, switch look / paper / orientation / margin / brand kit, add blocks, undo/redo, autosaved
+draft, **Preview PDF** (same renderer, SAMPLE data), **Publish**. Phone: panel at the bottom; ≥ 900 px: panel on the right. Required blocks can move but not be removed.
+Text blocks accept optional `align` (left/centre/right) and `size` (small/normal/large); older layouts without them render exactly as before.
+Only invoices are connected; other families are listed as coming soon (e.g. doctor care plans need their canonical workflow first).
 
 ## Rules enforced
 * Template choose placement only: an invoice layout must keep `title, parties, lines, totals`; all figures come from the invoice row.

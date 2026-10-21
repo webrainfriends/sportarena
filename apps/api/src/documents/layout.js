@@ -6,8 +6,8 @@ export const BLOCKS = ['header', 'title', 'parties', 'lines', 'totals', 'text', 
 /** Blocks an invoice can never be issued without: a template cannot hide the canonical number, parties, lines or totals. */
 export const REQUIRED = { invoice: ['title', 'parties', 'lines', 'totals'] };
 
-const block = z.object({ type: z.enum(BLOCKS), text: z.string().max(2000).optional() }).strict()
-  .refine((b) => b.type === 'text' ? !!b.text?.trim() : b.text === undefined, 'Only text blocks carry text, and they need some');
+const block = z.object({ type: z.enum(BLOCKS), text: z.string().max(2000).optional(), align: z.enum(['left', 'center', 'right']).optional(), size: z.enum(['small', 'normal', 'large']).optional() }).strict()
+  .refine((b) => b.type === 'text' ? !!b.text?.trim() : b.text === undefined && b.align === undefined && b.size === undefined, 'Only text blocks carry text, alignment and size, and they need some text');
 
 export const layoutSchema = z.object({
   style: z.enum(['classic', 'modern']).default('classic'),

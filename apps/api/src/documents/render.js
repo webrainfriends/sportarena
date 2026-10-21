@@ -10,6 +10,7 @@ const fonts = () => ({ regular: process.env.DOC_FONT_REGULAR || BASE_FONTS.regul
 // What the built-in PDF fonts can show (Latin-1 plus common punctuation). Anything else needs DOC_FONT_REGULAR (e.g. Noto Sans Tamil).
 const BASIC = /^[ -~ -ÿ‐-‟•…€\n]*$/;
 
+const TEXT_SIZE = { small: 8, normal: 9, large: 12 };
 const money = (cents, cur) => `${cur} ${toMajor(cents, cur)}`;
 const day = (d) => (d ? new Date(d).toISOString().slice(0, 10) : '');
 const hex = (c, d) => (/^#[0-9A-Fa-f]{6}$/.test(c ?? '') ? c : d);
@@ -113,7 +114,7 @@ export async function renderInvoice({ layout, kit, logo, invoice, sample = false
       doc.y += 10;
     } else if (b.type === 'text') {
       if (doc.y + 30 > bottom()) doc.addPage();
-      label(b.text, left, doc.y, width); doc.y += 8;
+      label(b.text, left, doc.y, width, { size: TEXT_SIZE[b.size] ?? 9, align: b.align }); doc.y += 8;
     }
     // 'footer' is drawn on every page below
   }
