@@ -103,4 +103,5 @@ import './partner-pricing.js';
 import './partner-reports.js';
 import './legal.js';
 import './legal-matters.js';
+import './branded-documents.js';
 export { capabilities } from '../registry.js';
