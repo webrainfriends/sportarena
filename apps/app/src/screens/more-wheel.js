@@ -20,9 +20,9 @@ const PX_PER_STEP = 60; // vertical drag needed to turn the wheel by one module
 function CourtScene({ w, h }) {
   return (
     <Svg width={w} height={h} style={{ position: 'absolute', left: 0, top: 0 }}>
-      <Rect width={w} height={h} fill="#1E1B4B" />
-      <Circle cx={w * 0.2} cy={h * 0.1} r={h * 0.5} fill="#4F46E5" opacity={0.35} />
-      <Circle cx={w * 0.85} cy={h * 0.95} r={h * 0.45} fill="#7C3AED" opacity={0.35} />
+      <Rect width={w} height={h} fill="#0B2B26" />
+      <Circle cx={w * 0.2} cy={h * 0.1} r={h * 0.5} fill="#235347" opacity={0.35} />
+      <Circle cx={w * 0.85} cy={h * 0.95} r={h * 0.45} fill="#163832" opacity={0.35} />
       <Path d={`M${w * 0.05} ${h * 0.72}H${w * 0.95}M${w * 0.5} ${h * 0.55}V${h * 0.96}`} stroke="#fff" strokeOpacity={0.14} strokeWidth={2} />
       <Circle cx={w * 0.5} cy={h * 0.78} r={h * 0.12} stroke="#fff" strokeOpacity={0.14} strokeWidth={2} fill="none" />
     </Svg>
@@ -109,7 +109,7 @@ export function MoreWheel() {
 
   return (
     <Animated.View onLayout={(e) => setSize({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })} {...pan.panHandlers} {...(Platform.OS === 'web' ? { onWheel } : {})}
-      style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, zIndex: 20, backgroundColor: '#1E1B4B', opacity: fade }}>
+      style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, zIndex: 20, backgroundColor: '#0B2B26', opacity: fade }}>
       {w ? (
         <>
           {photo ? <Image source={{ uri: mediaUrl(photo) }} resizeMode="cover" accessibilityIgnoresInvertColors style={{ position: 'absolute', width: w, height: h }} /> : <CourtScene w={w} h={h} />}
@@ -120,14 +120,14 @@ export function MoreWheel() {
           </Svg>
 
           <Pressable onPress={() => goTab('Me')} accessibilityRole="button" accessibilityLabel={`${user.display_name}. My profile, roles and settings`}
-            style={{ position: 'absolute', left: cx - R, top: cy - R, width: R * 2, height: R * 2, borderRadius: R, overflow: 'hidden', borderWidth: 3, borderColor: 'rgba(255,255,255,0.9)', backgroundColor: '#312E81' }}>
-            {photo ? <Image source={{ uri: mediaUrl(photo) }} resizeMode="cover" accessibilityIgnoresInvertColors style={{ position: 'absolute', width: R * 2, height: R * 2 }} /> : <LinearGradient colors={['#4F46E5', '#7C3AED']} style={{ position: 'absolute', width: R * 2, height: R * 2 }} />}
+            style={{ position: 'absolute', left: cx - R, top: cy - R, width: R * 2, height: R * 2, borderRadius: R, overflow: 'hidden', borderWidth: 3, borderColor: 'rgba(255,255,255,0.9)', backgroundColor: '#163832' }}>
+            {photo ? <Image source={{ uri: mediaUrl(photo) }} resizeMode="cover" accessibilityIgnoresInvertColors style={{ position: 'absolute', width: R * 2, height: R * 2 }} /> : <LinearGradient colors={['#235347', '#163832']} style={{ position: 'absolute', width: R * 2, height: R * 2 }} />}
             <LinearGradient colors={['rgba(15,23,42,0.05)', 'rgba(15,23,42,0.8)']} style={{ position: 'absolute', width: R * 2, height: R * 2 }} />
             <View style={{ position: 'absolute', left: R - cx + 14, right: 10, bottom: R * 0.36 }}>
               <View style={{ marginBottom: 8 }}><Avatar user={user} size={40} /></View>
               <T weight="800" size={20} color="#fff" numberOfLines={1} style={{ letterSpacing: -0.4 }}>{user.display_name}</T>
               <T weight="500" size={12} color="rgba(255,255,255,0.9)" numberOfLines={1}>{dateLine}</T>
-              {statLine ? <T weight="700" size={13} color="#FDE68A" numberOfLines={1} style={{ marginTop: 2 }}>{statLine}</T> : null}
+              {statLine ? <T weight="700" size={13} color="#DAF1DE" numberOfLines={1} style={{ marginTop: 2 }}>{statLine}</T> : null}
               {next ? <T weight="500" size={12} color="rgba(255,255,255,0.9)" numberOfLines={1} style={{ marginTop: 2 }}>{`Next: ${next.home_name ?? 'TBC'} vs ${next.away_name ?? 'TBC'} · ${day(next.scheduled_at)}`}</T> : null}
             </View>
           </Pressable>

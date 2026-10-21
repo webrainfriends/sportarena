@@ -10,7 +10,7 @@ export const MODULES = [
   ['Orgs', 'Organisations', 'Clubs & associations', 'community'], ['Support', 'Support', 'Cases & disputes', 'community'],
 ];
 
-export const GROUP_COLOR = { play: '#10B981', care: '#14B8A6', money: '#F59E0B', community: '#38BDF8' };
+export const GROUP_COLOR = { play: '#8EB69B', care: '#5CC8C0', money: '#DAF1DE', community: '#6A9480' };
 
 // Modules lifted to the front of the wheel for people who hold these roles (first match wins; everyone else: player set).
 export const PRIORITY = [

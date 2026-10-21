@@ -20,7 +20,7 @@ function VenueTile({ v, on, onPress }) {
       <View style={{ height: 118, backgroundColor: c.violetSoft }}>
         {v.cover_url ? <Image source={{ uri: mediaUrl(v.cover_url) }} resizeMode="cover" style={{ width: '100%', height: '100%' }} /> : <LinearGradient colors={['#059669', '#0EA5E9']} style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><T size={44}>{v.emoji}</T></LinearGradient>}
         <View style={{ position: 'absolute', top: 8, left: 8, backgroundColor: 'rgba(15,23,42,0.72)', borderRadius: 999, paddingHorizontal: 9, paddingVertical: 3 }}><Stars v={v} /></View>
-        {v.offers ? <View style={{ position: 'absolute', bottom: 8, left: 8, backgroundColor: c.pink, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 3 }}><T size={11} weight="700" color="#fff">🏷️ {v.offers} offer{v.offers === 1 ? '' : 's'}</T></View> : null}
+        {v.offers ? <View style={{ position: 'absolute', bottom: 8, left: 8, backgroundColor: c.pink, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 3 }}><T size={11} weight="700" color={c.onAccent}>🏷️ {v.offers} offer{v.offers === 1 ? '' : 's'}</T></View> : null}
       </View>
       <View style={{ padding: 11, gap: 2 }}>
         <T weight="800" size={14} numberOfLines={1}>{v.name}</T>
@@ -102,8 +102,8 @@ export function VenueBooking({ wide, sport, onBook }) {
                       return (
                         <Pressable key={s.starts_at} disabled={!free} onPress={() => choose({ res: r, slot: s, date: day })} accessibilityRole="button" accessibilityState={{ selected: on, disabled: !free }} accessibilityLabel={`${r.name} ${timeIn(s.starts_at, tz)} ${free ? moneyIn(s.price_cents, cur) : 'booked'}`}
                           style={{ borderRadius: 999, borderWidth: 1.5, borderColor: on ? c.pink : free ? c.line : 'transparent', backgroundColor: on ? c.pink : free ? c.paper : c.violetSoft, paddingVertical: 8, paddingHorizontal: 14, minWidth: 92, alignItems: 'center', opacity: free ? 1 : 0.55 }}>
-                          <T weight="800" size={13} color={on ? '#fff' : c.ink} style={!free ? { textDecorationLine: 'line-through' } : undefined}>{timeIn(s.starts_at, tz)}</T>
-                          <T size={11} weight={best ? '800' : '500'} color={on ? '#E0E7FF' : best ? c.lime : c.mute}>{free ? moneyIn(s.price_cents, cur) : 'Booked'}{best ? ' · best' : ''}</T>
+                          <T weight="800" size={13} color={on ? c.onAccent : c.ink} style={!free ? { textDecorationLine: 'line-through' } : undefined}>{timeIn(s.starts_at, tz)}</T>
+                          <T size={11} weight={best ? '800' : '500'} color={on ? '#DAF1DE' : best ? c.lime : c.mute}>{free ? moneyIn(s.price_cents, cur) : 'Booked'}{best ? ' · best' : ''}</T>
                         </Pressable>
                       );
                     })}
@@ -120,7 +120,7 @@ export function VenueBooking({ wide, sport, onBook }) {
               <T size={12} color="#94A3B8">{pick ? `${longDay(pick.date)} · ${moneyIn(pick.slot.price_cents, cur)} · pay after you log in` : 'You only log in once you have chosen.'}</T>
             </View>
             <Pressable onPress={cont} accessibilityRole="button" style={{ backgroundColor: pick ? c.pink : '#334155', borderRadius: 999, paddingVertical: 12, paddingHorizontal: 22 }}>
-              <T color="#fff" weight="800">{pick ? 'Book now' : 'Log in to book'}</T>
+              <T color={pick ? c.onAccent : '#fff'} weight="800">{pick ? 'Book now' : 'Log in to book'}</T>
             </Pressable>
           </View>
         </View>

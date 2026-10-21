@@ -83,7 +83,7 @@ function TabBar() {
     return (
       <Pressable key={name} accessibilityRole="tab" accessibilityLabel={name === 'Hub' && menu ? 'Close More' : TAB_LABEL[name] ?? name} accessibilityState={{ selected: on, expanded: name === 'Hub' ? menu : undefined }} onPress={() => (name === 'Hub' ? toggleMenu() : goTab(name))} style={({ pressed }) => ({ flex: 1, alignItems: 'center', justifyContent: 'flex-end', minHeight: 52, opacity: pressed ? 0.6 : 1 })}>
         {centre ? (
-          <LinearGradient colors={['#4F46E5', '#7C3AED']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: 54, height: 54, borderRadius: 27, alignItems: 'center', justifyContent: 'center', marginTop: -26, borderWidth: 4, borderColor: c.paper, ...(Platform.OS === 'web' ? { boxShadow: '0 8px 20px rgba(79,70,229,0.4)' } : { shadowColor: '#4F46E5', shadowOpacity: 0.4, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 8 }) }}>
+          <LinearGradient colors={['#235347', '#163832']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: 54, height: 54, borderRadius: 27, alignItems: 'center', justifyContent: 'center', marginTop: -26, borderWidth: 4, borderColor: c.paper, ...(Platform.OS === 'web' ? { boxShadow: '0 8px 20px rgba(35,83,71,0.4)' } : { shadowColor: '#235347', shadowOpacity: 0.4, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 8 }) }}>
             <Icon name={menu ? 'Close' : name} on color="#fff" size={26} />
           </LinearGradient>
         ) : (

@@ -16,7 +16,7 @@ const LABEL = { header: 'Header', title: 'Title and number', parties: 'Seller an
 const PAPER = { A4: [210, 297], Letter: [215.9, 279.4] };
 const hex = (v, d) => (/^#[0-9A-Fa-f]{6}$/.test(v ?? '') ? v : d);
 const GREY = '#E3E5EA';
-const SELECT = '#4F46E5';
+const SELECT = '#235347';
 const clone = (x) => JSON.parse(JSON.stringify(x));
 const paperMM = (l) => (l.orientation === 'landscape' ? [...PAPER[l.paper]].reverse() : PAPER[l.paper]);
 

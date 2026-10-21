@@ -102,7 +102,7 @@ export function IconGrid({ items, value, onChange, cols = 4, tint = c.pinkSoft }
             style={({ pressed }) => ({ width: `${100 / cols}%`, alignItems: 'center', gap: 6, paddingHorizontal: 2, opacity: pressed ? 0.8 : 1 })}>
             <View style={{ width: 62, height: 62, borderRadius: 31, backgroundColor: on ? c.pink : c.paper, borderWidth: on ? 0 : 1, borderColor: c.line, alignItems: 'center', justifyContent: 'center', shadowColor: '#0F172A', shadowOpacity: 0.08, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 2 }}>
               <T size={28}>{it.emoji}</T>
-              {it.badge ? <View style={{ position: 'absolute', top: -2, right: -2, minWidth: 20, height: 20, borderRadius: 10, backgroundColor: c.red, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 }}><T size={11} weight="800" color="#fff">{it.badge}</T></View> : null}
+              {it.badge ? <View style={{ position: 'absolute', top: -2, right: -2, minWidth: 20, height: 20, borderRadius: 10, backgroundColor: c.red, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 }}><T size={11} weight="800" color={c.onAccent}>{it.badge}</T></View> : null}
             </View>
             <T size={12} weight={on ? '800' : '600'} color={on ? c.pink : c.mute} style={{ textAlign: 'center' }} numberOfLines={2}>{it.label}</T>
           </Pressable>

@@ -47,7 +47,7 @@ export function Calendar({ month, onMonth, value, onChange, days, minDate, maxDa
             <Pressable key={d} disabled={!!blocked} onPress={() => onChange(d)} accessibilityLabel={`${d}${meta ? `, ${meta.status}` : ''}`}
               style={{ width: `${100 / 7}%`, height: days ? 58 : 46, alignItems: 'center', justifyContent: 'center', padding: 2 }}>
               <View style={{ width: '100%', flex: 1, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: on ? c.pink : mid ? c.pinkSoft : 'transparent', borderWidth: d === today && !on ? 1.5 : 0, borderColor: c.pink, opacity: blocked ? 0.35 : 1 }}>
-                <T weight="700" size={15} color={on ? '#fff' : c.ink} style={meta?.status === 'closed' ? { textDecorationLine: 'line-through' } : null}>{Number(d.slice(8))}</T>
+                <T weight="700" size={15} color={on ? c.onAccent : c.ink} style={meta?.status === 'closed' ? { textDecorationLine: 'line-through' } : null}>{Number(d.slice(8))}</T>
                 {meta && !NO_PICK.has(meta.status) ? (
                   <>
                     {meta.from_price_cents != null ? <T size={9} color={on ? '#fff' : c.mute} weight="600">{moneyIn(meta.from_price_cents, currency).replace(/\.00$/, '')}</T> : null}
@@ -176,7 +176,7 @@ export function Stepper({ steps, current, onJump }) {
           <React.Fragment key={label}>
             <Pressable disabled={!done} onPress={() => onJump?.(i)} style={{ alignItems: 'center', minWidth: 54 }}>
               <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: done ? c.mint : on ? c.pink : c.violetSoft, alignItems: 'center', justifyContent: 'center' }}>
-                <T size={13} weight="700" color={done || on ? '#fff' : c.mute}>{done ? '✓' : i + 1}</T>
+                <T size={13} weight="700" color={done || on ? c.onAccent : c.mute}>{done ? '✓' : i + 1}</T>
               </View>
               <T size={10.5} weight={on ? '700' : '500'} color={on ? c.ink : c.mute} style={{ marginTop: 3 }}>{label}</T>
             </Pressable>
@@ -238,7 +238,7 @@ export function DayStrip({ from, count = 14, value, onChange, avail }) {
         return (
           <Pressable key={d} onPress={() => onChange(d)} accessibilityRole="button" accessibilityState={{ selected: on }} accessibilityLabel={dt.toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' })}
             style={{ width: 54, paddingVertical: 10, borderRadius: 28, alignItems: 'center', gap: 6, backgroundColor: on ? c.pink : c.paper, borderWidth: 1, borderColor: on ? c.pink : c.line, opacity: off && !on ? 0.5 : 1 }}>
-            <T size={11} weight="700" color={on ? '#E0E7FF' : c.mute}>{i === 0 ? 'TODAY' : dt.toLocaleDateString(locale, { weekday: 'short', timeZone: 'UTC' }).toUpperCase()}</T>
+            <T size={11} weight="700" color={on ? '#DAF1DE' : c.mute}>{i === 0 ? 'TODAY' : dt.toLocaleDateString(locale, { weekday: 'short', timeZone: 'UTC' }).toUpperCase()}</T>
             <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: on ? '#fff' : c.violetSoft, alignItems: 'center', justifyContent: 'center' }}>
               <T size={15} weight="800" color={on ? c.pink : c.ink}>{dt.getUTCDate()}</T>
             </View>

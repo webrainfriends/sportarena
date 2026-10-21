@@ -4,10 +4,14 @@ import { dark } from '../theme';
 
 // Gradient identity per More tile: [from, to]. Saturated enough for white text in both themes.
 const LIGHT = {
-  Leaderboard: ['#F59E0B', '#EA580C'], Awards: ['#FBBF24', '#E11D48'], MyPlans: ['#22C55E', '#65A30D'], Pathways: ['#84CC16', '#059669'],
-  Health: ['#10B981', '#0D9488'], Insure: ['#0EA5E9', '#4F46E5'], Insurance: ['#38BDF8', '#2563EB'], Legal: ['#64748B', '#7C3AED'], Family: ['#14B8A6', '#0891B2'],
-  Wallet: ['#6366F1', '#9333EA'], Earnings: ['#10B981', '#16A34A'], Shop: ['#FB923C', '#EC4899'], Billboard: ['#F472B6', '#E11D48'], Sponsors: ['#8B5CF6', '#D946EF'], Supply: ['#F59E0B', '#C2410C'],
-  Openings: ['#3B82F6', '#06B6D4'], Schedule: ['#06B6D4', '#2563EB'], Notifications: ['#6366F1', '#7C3AED'], EventInbox: ['#06B6D4', '#0D9488'], Orgs: ['#475569', '#2563EB'], Support: ['#FB7185', '#F97316'],
+  // play: olive greens
+  Leaderboard: ['#4C7A3F', '#2F5D34'], Awards: ['#5E8A3A', '#355F2D'], MyPlans: ['#3F7D4F', '#255A3A'], Pathways: ['#6B8F3C', '#3E6B2E'],
+  // care: teals
+  Health: ['#1F8A7A', '#115E59'], Insure: ['#2A8C8C', '#14605F'], Insurance: ['#2F8F9A', '#175E68'], Legal: ['#3A7F8F', '#1D5563'], Family: ['#2D8F82', '#17645C'],
+  // money: forest greens
+  Wallet: ['#2F7A55', '#164A35'], Earnings: ['#2E8B57', '#14573A'], Shop: ['#3C8561', '#1C5440'], Billboard: ['#4A8A5E', '#235A3B'], Sponsors: ['#357A6B', '#184A40'], Supply: ['#3F7F58', '#1E4D36'],
+  // community: sage
+  Openings: ['#5E8F78', '#2E5E4D'], EventInbox: ['#5A9087', '#2B5E58'], Orgs: ['#628A74', '#325545'], Support: ['#6A9480', '#375F4D'], Schedule: ['#3E8B84', '#1D5A55'], Notifications: ['#4B8068', '#244F3F'],
 };
 // Dark mode: deeper stops so a bright card never glares against the night background.
 const DARK = Object.fromEntries(Object.entries(LIGHT).map(([k, [a, b]]) => [k, [shade(a), shade(b)]]));
@@ -20,7 +24,7 @@ export const tileColors = (name) => (dark ? DARK : LIGHT)[name] ?? (dark ? DARK 
 
 const W = (o = 1) => ({ fill: '#fff', fillOpacity: o });
 const S = (o = 1, w = 3.5) => ({ stroke: '#fff', strokeOpacity: o, strokeWidth: w, strokeLinecap: 'round', strokeLinejoin: 'round', fill: 'none' });
-const GOLD = '#FDE68A';
+const GOLD = '#8EB69B'; // palette p4: the one accent in each illustration
 
 // Layered white shapes plus one warm accent, drawn on a 96×96 grid.
 const ART = {

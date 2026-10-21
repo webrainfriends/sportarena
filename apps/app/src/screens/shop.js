@@ -64,7 +64,7 @@ function Price({ p, size = 17 }) {
 const Round = ({ label, onPress, children, active, badge }) => (
   <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} style={({ pressed }) => ({ width: 46, height: 46, borderRadius: 23, backgroundColor: active ? c.pinkSoft : c.paper, borderWidth: 1, borderColor: active ? c.pink : c.line, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.8 : 1 })}>
     {children}
-    {badge ? <View style={{ position: 'absolute', top: -4, right: -4, minWidth: 20, height: 20, borderRadius: 10, backgroundColor: c.pink, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5, borderWidth: 2, borderColor: c.bg }}><T size={11} weight="800" color="#fff">{badge}</T></View> : null}
+    {badge ? <View style={{ position: 'absolute', top: -4, right: -4, minWidth: 20, height: 20, borderRadius: 10, backgroundColor: c.pink, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5, borderWidth: 2, borderColor: c.bg }}><T size={11} weight="800" color={c.onAccent}>{badge}</T></View> : null}
   </Pressable>
 );
 
@@ -78,16 +78,16 @@ function AddControl({ p, big, compact, size }) {
   if (p.seller_id === user?.id) return compact ? null : <Pill label="YOUR LISTING" />;
   if (p.stock < 1) return compact ? null : <T size={13} weight="700" color={c.red}>Sold out</T>;
   const h = size ?? (big ? 50 : compact ? 38 : 36);
-  const lift = compact ? { shadowColor: '#312E81', shadowOpacity: 0.3, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } } : null;
+  const lift = compact ? { shadowColor: '#163832', shadowOpacity: 0.3, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } } : null;
   if (!line) {
-    if (compact) return <Pressable onPress={() => run({ product_id: p.id, add: 1 })} disabled={busy} accessibilityRole="button" accessibilityLabel={`Add ${p.name} to cart`} style={[{ width: h, height: h, borderRadius: h / 2, backgroundColor: c.pink, alignItems: 'center', justifyContent: 'center', opacity: busy ? 0.6 : 1 }, lift]}><T size={24} weight="700" color="#fff" style={{ marginTop: -2 }}>+</T></Pressable>;
+    if (compact) return <Pressable onPress={() => run({ product_id: p.id, add: 1 })} disabled={busy} accessibilityRole="button" accessibilityLabel={`Add ${p.name} to cart`} style={[{ width: h, height: h, borderRadius: h / 2, backgroundColor: c.pink, alignItems: 'center', justifyContent: 'center', opacity: busy ? 0.6 : 1 }, lift]}><T size={24} weight="700" color={c.onAccent} style={{ marginTop: -2 }}>+</T></Pressable>;
     return <Btn small={!big} title={big ? 'Add to cart' : 'Add'} onPress={() => run({ product_id: p.id, add: 1 })} loading={busy} style={big ? { flex: 1 } : undefined} />;
   }
-  const btn = (txt, on, off) => <Pressable disabled={off || busy} onPress={on} accessibilityLabel={txt === '+' ? 'More' : 'Fewer'} style={{ width: h, height: h, alignItems: 'center', justifyContent: 'center', opacity: off ? 0.35 : 1 }}><T size={20} weight="800" color="#fff">{txt === '−' && line.quantity === 1 ? '🗑' : txt}</T></Pressable>;
+  const btn = (txt, on, off) => <Pressable disabled={off || busy} onPress={on} accessibilityLabel={txt === '+' ? 'More' : 'Fewer'} style={{ width: h, height: h, alignItems: 'center', justifyContent: 'center', opacity: off ? 0.35 : 1 }}><T size={20} weight="800" color={c.onAccent}>{txt === '−' && line.quantity === 1 ? '🗑' : txt}</T></Pressable>;
   return (
     <View style={[{ flexDirection: 'row', alignItems: 'center', backgroundColor: c.pink, borderRadius: 999, height: h, alignSelf: big ? 'stretch' : 'auto', justifyContent: 'space-between', flex: big ? 1 : undefined }, lift]}>
       {btn('−', () => run({ product_id: p.id, quantity: line.quantity - 1 }))}
-      <T weight="800" size={15} color="#fff" style={{ minWidth: 24, textAlign: 'center' }}>{line.quantity}</T>
+      <T weight="800" size={15} color={c.onAccent} style={{ minWidth: 24, textAlign: 'center' }}>{line.quantity}</T>
       {btn('+', () => run({ product_id: p.id, quantity: line.quantity + 1 }), line.quantity >= Math.min(p.stock, 50))}
     </View>
   );
@@ -142,9 +142,9 @@ function CartBar({ above = 0 }) {
   return (
     <View pointerEvents="box-none" style={{ position: 'absolute', right: 14, bottom: above + (L.floatingBar ? 96 : 14), alignItems: 'flex-end' }}>
       <Pressable onPress={() => push('ShopCart')} accessibilityRole="button" accessibilityLabel={`View cart, ${s.units} items, ${money(s.total_cents)}`}
-        style={{ backgroundColor: c.pink, borderRadius: 999, paddingVertical: 10, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 8, shadowColor: '#312E81', shadowOpacity: 0.3, shadowRadius: 14, shadowOffset: { width: 0, height: 6 } }}>
+        style={{ backgroundColor: c.pink, borderRadius: 999, paddingVertical: 10, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 8, shadowColor: '#163832', shadowOpacity: 0.3, shadowRadius: 14, shadowOffset: { width: 0, height: 6 } }}>
         <T size={17}>🛒</T>
-        <T weight="800" size={14} color="#fff">{s.units} · {money(s.total_cents)}</T>
+        <T weight="800" size={14} color={c.onAccent}>{s.units} · {money(s.total_cents)}</T>
         {s.savings_cents > 0 ? <T weight="800" size={11} color="#C7F9E4">save {money(s.savings_cents)}</T> : null}
       </Pressable>
     </View>
@@ -190,7 +190,7 @@ export function Shop() {
         </View>
 
         {plain ? (
-          <LinearGradient colors={['#EEF0FF', '#E0F2FE']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ borderRadius: 24, padding: 20, marginTop: 14, overflow: 'hidden' }}>
+          <LinearGradient colors={['#DAF1DE', '#E0F2FE']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ borderRadius: 24, padding: 20, marginTop: 14, overflow: 'hidden' }}>
             <T weight="800" size={12} color={c.pink} style={{ letterSpacing: 1.4 }}>THE GOTMYGAME SHOP</T>
             <H1 style={{ fontSize: 28, marginTop: 4 }}>Gear up. Play better.</H1>
             <T size={14} color={c.mute} style={{ marginTop: 4, maxWidth: 520, lineHeight: 20 }}>Kit, footwear and nutrition from verified suppliers and sport brands. Add to cart, pay once, track every order.</T>
@@ -365,7 +365,7 @@ export function ShopProduct({ id }) {
       <View style={{ position: 'absolute', left: 14, top: 14, right: 14, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         {p.discount_pct ? <View style={{ backgroundColor: GOOD, borderRadius: 10, paddingHorizontal: 11, paddingVertical: 5 }}><T size={13} weight="800" color="#fff">{p.discount_pct}% OFF</T></View> : <View />}
         <View style={{ flexDirection: 'row', gap: 10 }}>
-          <Float label={`Cart, ${count} items`} onPress={() => push('ShopCart')}><T size={18}>🛒</T>{count ? <View style={{ position: 'absolute', top: -3, right: -3, minWidth: 18, height: 18, borderRadius: 9, backgroundColor: c.pink, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 }}><T size={10} weight="800" color="#fff">{count}</T></View> : null}</Float>
+          <Float label={`Cart, ${count} items`} onPress={() => push('ShopCart')}><T size={18}>🛒</T>{count ? <View style={{ position: 'absolute', top: -3, right: -3, minWidth: 18, height: 18, borderRadius: 9, backgroundColor: c.pink, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 }}><T size={10} weight="800" color={c.onAccent}>{count}</T></View> : null}</Float>
           <Float label="Share" onPress={share}><T size={17}>↗</T></Float>
           {!mine ? <Heart p={p} onChange={() => res.reload()} style={{ width: 40, height: 40, borderRadius: 20 }} /> : null}
         </View>
@@ -550,9 +550,9 @@ export function ShopCart() {
       {s.lines ? (
         <View pointerEvents="box-none" style={{ position: 'absolute', right: 14, bottom: L.floatingBar ? 96 : 14, alignItems: 'flex-end' }}>
           <Pressable onPress={place} disabled={busy} accessibilityRole="button" accessibilityLabel={`Place order, ${money(s.total_cents)}`}
-            style={{ backgroundColor: c.pink, borderRadius: 999, paddingVertical: 12, paddingLeft: 18, paddingRight: 14, flexDirection: 'row', alignItems: 'center', gap: 10, opacity: busy ? 0.7 : 1, shadowColor: '#312E81', shadowOpacity: 0.3, shadowRadius: 14, shadowOffset: { width: 0, height: 6 } }}>
-            <View><T weight="800" size={15} color="#fff">{money(s.total_cents)}</T>{s.savings_cents > 0 ? <T size={10} weight="700" color="#C7F9E4">you save {money(s.savings_cents)}</T> : null}</View>
-            <T weight="800" size={14} color="#fff">{busy ? 'Placing…' : 'Place order ›'}</T>
+            style={{ backgroundColor: c.pink, borderRadius: 999, paddingVertical: 12, paddingLeft: 18, paddingRight: 14, flexDirection: 'row', alignItems: 'center', gap: 10, opacity: busy ? 0.7 : 1, shadowColor: '#163832', shadowOpacity: 0.3, shadowRadius: 14, shadowOffset: { width: 0, height: 6 } }}>
+            <View><T weight="800" size={15} color={c.onAccent}>{money(s.total_cents)}</T>{s.savings_cents > 0 ? <T size={10} weight="700" color="#C7F9E4">you save {money(s.savings_cents)}</T> : null}</View>
+            <T weight="800" size={14} color={c.onAccent}>{busy ? 'Placing…' : 'Place order ›'}</T>
           </Pressable>
         </View>
       ) : null}

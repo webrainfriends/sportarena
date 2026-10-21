@@ -109,7 +109,7 @@ export function QuickLogSheet({ visible, onClose, onDone }) {
 export function QuickLogFab({ onPress, bottom = 96 }) {
   return (
     <Pressable accessibilityRole="button" accessibilityLabel="Quick log" onPress={onPress} style={{ position: 'absolute', right: 18, bottom, width: 56, height: 56, borderRadius: 28, backgroundColor: c.pink, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 6 }}>
-      <T size={28} weight="700" color="#fff">＋</T>
+      <T size={28} weight="700" color={c.onAccent}>＋</T>
     </Pressable>
   );
 }
