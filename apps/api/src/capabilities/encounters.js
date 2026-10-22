@@ -1,5 +1,6 @@
-// Doctor workspace (issue #212), slice 1: structured, signed clinical encounters.
-// A doctor-owned encounter (draft -> ready -> signed, or voided with a reason) linked to the athlete and, optionally, an appointment.
+// Doctor workspace (issue #212), slice 1: structured, signed clinical encounters. Physios use the same encounters as their session notes
+// (one place for clinical notes), under their own verified physio credential.
+// A clinician-owned encounter (draft -> ready -> signed, or voided with a reason) linked to the athlete and, optionally, an appointment.
 // Working notes (content) are clinician-only; the visit summary is what the athlete sees once the encounter is signed. Signed rows are
 // immutable (also enforced by a DB trigger): corrections are separate `amendment` encounters that link to the original.
 // Same gates as medical records: current verified doctor credential + the athlete's active full consent, re-checked atomically on writes.
@@ -48,7 +49,7 @@ function shape(r, viewerId) {
 /** Which encounters of `athleteId` this viewer may see (SQL fragment on alias e). */
 async function readScope(user, athleteId) {
   if (athleteId === user.id) return { where: "e.status IN ('signed','voided')", args: [] };
-  await requireVerifiedProvider(user.id, { action: 'read_encounters', athleteId, types: ['doctor'] });
+  await requireVerifiedProvider(user.id, { action: 'read_encounters', athleteId, types: ['physio', 'doctor'] });
   if (!(await hasGrant(athleteId, user.id))) throw forbidden('The athlete has not granted you access');
   const g = await one('SELECT history_scope, granted_at FROM medical_grants WHERE athlete_id=$1 AND provider_id=$2', [athleteId, user.id]);
   // own encounters in any state; others' only once signed, and only back to the grant unless the athlete shared the whole history
@@ -59,12 +60,12 @@ const FROM = 'FROM clinical_encounters e JOIN users p ON p.id=e.provider_id';
 const COLS = 'e.*, p.display_name AS provider_name';
 
 cap({
-  name: 'create_encounter', credential: true, method: 'POST', path: '/medical/encounters', tag: 'Health', auth: ['doctor'], status: 201,
-  summary: 'Doctor starts a structured encounter (draft) for an athlete who granted full access, optionally linked to your appointment with them. SOAP-style or free template; observations carry units and measurement time. Working notes are encrypted and visible only to the author until signed. One live encounter per appointment.',
+  name: 'create_encounter', credential: true, method: 'POST', path: '/medical/encounters', tag: 'Health', auth: ['physio', 'doctor'], status: 201,
+  summary: 'Doctor or physio starts a structured encounter / session note (draft) for an athlete who granted full access, optionally linked to your appointment with them. SOAP-style or free template; observations carry units and measurement time. Working notes are encrypted and visible only to the author until signed. One live encounter per appointment.',
   input: z.object({ athlete_id: id, appointment_id: id.optional(), sport_id: id.optional(), template: z.enum(['soap', 'free']).default('soap'), content: content.default({}), visit_summary: summary.optional() }),
   async handler({ user }, i) {
     if (i.athlete_id === user.id) throw badRequest('You cannot write an encounter for yourself');
-    const cred = await requireVerifiedProvider(user.id, { action: 'create_encounter', athleteId: i.athlete_id, sportId: i.sport_id ?? null, types: ['doctor'] });
+    const cred = await requireVerifiedProvider(user.id, { action: 'create_encounter', athleteId: i.athlete_id, sportId: i.sport_id ?? null, types: ['physio', 'doctor'] });
     if (!(await hasGrant(i.athlete_id, user.id))) throw forbidden('The athlete has not granted you access');
     const r = await tx(async (c) => {
       await lockCredential(c, cred);
@@ -84,13 +85,13 @@ cap({
 });
 
 cap({
-  name: 'update_encounter', credential: true, method: 'PATCH', path: '/medical/encounters/:id', tag: 'Health', auth: ['doctor'],
+  name: 'update_encounter', credential: true, method: 'PATCH', path: '/medical/encounters/:id', tag: 'Health', auth: ['physio', 'doctor'],
   summary: 'Author edits a draft/ready encounter or moves it between draft and ready for review. Send the `version` you loaded: a stale version is refused (409) so nobody overwrites newer work. Signed encounters cannot be edited; use amend_encounter.',
   input: z.object({ id, version: z.number().int().min(1), status: z.enum(['draft', 'ready']).optional(), content: content.optional(), visit_summary: summary.optional() }),
   async handler({ user }, i) {
     const e = await one('SELECT athlete_id, provider_id FROM clinical_encounters WHERE id=$1', [i.id]);
     if (!e || e.provider_id !== user.id) throw notFound('Encounter');
-    const cred = await requireVerifiedProvider(user.id, { action: 'update_encounter', athleteId: e.athlete_id, types: ['doctor'] });
+    const cred = await requireVerifiedProvider(user.id, { action: 'update_encounter', athleteId: e.athlete_id, types: ['physio', 'doctor'] });
     const r = await tx(async (c) => {
       await lockCredential(c, cred);
       await lockGrant(c, e.athlete_id, user.id);
@@ -106,13 +107,13 @@ cap({
 });
 
 cap({
-  name: 'sign_encounter', credential: true, method: 'POST', path: '/medical/encounters/:id/sign', tag: 'Health', auth: ['doctor'],
-  summary: 'The authoring doctor signs a draft/ready encounter. Credential and consent are re-validated in the same transaction as the signature (a revocation that commits first blocks it). Needs some recorded content, and any copied-forward text must be marked reviewed. After signing the entry is immutable and the athlete sees the visit summary. The credential case relied on is recorded.',
+  name: 'sign_encounter', credential: true, method: 'POST', path: '/medical/encounters/:id/sign', tag: 'Health', auth: ['physio', 'doctor'],
+  summary: 'The authoring doctor or physio signs a draft/ready encounter. Credential and consent are re-validated in the same transaction as the signature (a revocation that commits first blocks it). Needs some recorded content, and any copied-forward text must be marked reviewed. After signing the entry is immutable and the athlete sees the visit summary. The credential case relied on is recorded.',
   input: z.object({ id, version: z.number().int().min(1) }),
   async handler({ user }, i) {
     const e = await one('SELECT athlete_id, provider_id, sport_id FROM clinical_encounters WHERE id=$1', [i.id]);
     if (!e || e.provider_id !== user.id) throw notFound('Encounter');
-    const cred = await requireVerifiedProvider(user.id, { action: 'sign_encounter', athleteId: e.athlete_id, sportId: e.sport_id, types: ['doctor'] });
+    const cred = await requireVerifiedProvider(user.id, { action: 'sign_encounter', athleteId: e.athlete_id, sportId: e.sport_id, types: ['physio', 'doctor'] });
     const r = await tx(async (c) => {
       await lockCredential(c, cred);
       await lockGrant(c, e.athlete_id, user.id);
@@ -132,13 +133,13 @@ cap({
 });
 
 cap({
-  name: 'amend_encounter', credential: true, method: 'POST', path: '/medical/encounters/:id/amend', tag: 'Health', auth: ['doctor'], status: 201,
+  name: 'amend_encounter', credential: true, method: 'POST', path: '/medical/encounters/:id/amend', tag: 'Health', auth: ['physio', 'doctor'], status: 201,
   summary: 'Correct or add to a signed encounter you authored. The original is never changed: this creates a linked draft amendment (with the reason) that you edit and sign like any encounter.',
   input: z.object({ id, reason: text(500).min(1), content: content.default({}), visit_summary: summary.optional() }),
   async handler({ user }, i) {
     const o = await one('SELECT athlete_id, provider_id, sport_id, status, kind, amends_id FROM clinical_encounters WHERE id=$1', [i.id]);
     if (!o || o.provider_id !== user.id) throw notFound('Encounter');
-    const cred = await requireVerifiedProvider(user.id, { action: 'amend_encounter', athleteId: o.athlete_id, sportId: o.sport_id, types: ['doctor'] });
+    const cred = await requireVerifiedProvider(user.id, { action: 'amend_encounter', athleteId: o.athlete_id, sportId: o.sport_id, types: ['physio', 'doctor'] });
     const r = await tx(async (c) => {
       await lockCredential(c, cred);
       await lockGrant(c, o.athlete_id, user.id);
@@ -154,13 +155,13 @@ cap({
 });
 
 cap({
-  name: 'void_encounter', credential: true, method: 'POST', path: '/medical/encounters/:id/void', tag: 'Health', auth: ['doctor'],
-  summary: 'Withdraw an encounter you authored (e.g. recorded against the wrong patient) with a reason. Content is preserved for audit but is no longer shown to the athlete or other doctors. A voided entry cannot be reopened.',
+  name: 'void_encounter', credential: true, method: 'POST', path: '/medical/encounters/:id/void', tag: 'Health', auth: ['physio', 'doctor'],
+  summary: 'Withdraw an encounter you authored (e.g. recorded against the wrong patient) with a reason. Content is preserved for audit but is no longer shown to the athlete or other clinicians. A voided entry cannot be reopened.',
   input: z.object({ id, reason: text(500).min(1) }),
   async handler({ user }, i) {
     const e = await one('SELECT athlete_id, provider_id, sport_id FROM clinical_encounters WHERE id=$1', [i.id]);
     if (!e || e.provider_id !== user.id) throw notFound('Encounter');
-    const cred = await requireVerifiedProvider(user.id, { action: 'void_encounter', athleteId: e.athlete_id, sportId: e.sport_id, types: ['doctor'] });
+    const cred = await requireVerifiedProvider(user.id, { action: 'void_encounter', athleteId: e.athlete_id, sportId: e.sport_id, types: ['physio', 'doctor'] });
     const r = await tx(async (c) => {
       await lockCredential(c, cred);
       const row = (await c.query('SELECT status FROM clinical_encounters WHERE id=$1 FOR UPDATE', [i.id])).rows[0];
@@ -174,7 +175,7 @@ cap({
 
 cap({
   name: 'list_encounters', credential: true, method: 'GET', path: '/medical/encounters', tag: 'Health',
-  summary: 'Athletes (no athlete_id): your signed encounters as plain visit summaries - working notes are never shown to you here. Doctors: pass athlete_id (current verified credential and full consent required) to see your own encounters in any state plus other doctors\' signed ones within the consent\'s history scope. Newest first; reads are audit-logged.',
+  summary: 'Athletes (no athlete_id): your signed encounters as plain visit summaries - working notes are never shown to you here. Doctors and physios: pass athlete_id (current verified credential and full consent required) to see your own encounters in any state plus other clinicians\' signed ones within the consent\'s history scope. Newest first; reads are audit-logged.',
   input: z.object({ athlete_id: id.optional(), appointment_id: id.optional(), status: z.enum(['draft', 'ready', 'signed', 'voided']).optional(), ...page }),
   async handler({ user }, i) {
     const athlete = i.athlete_id ?? user.id;
@@ -190,7 +191,7 @@ cap({
 
 cap({
   name: 'get_encounter', credential: true, method: 'GET', path: '/medical/encounters/:id', tag: 'Health',
-  summary: 'One encounter with its amendments (oldest first). The author sees working notes in every state; the athlete sees the visit summary of signed encounters; other consented doctors see signed notes within their history scope. Audit-logged.',
+  summary: 'One encounter with its amendments (oldest first). The author sees working notes in every state; the athlete sees the visit summary of signed encounters; other consented clinicians see signed notes within their history scope. Audit-logged.',
   input: z.object({ id }),
   async handler({ user }, i) {
     const head = await one('SELECT athlete_id, amends_id FROM clinical_encounters WHERE id=$1', [i.id]);

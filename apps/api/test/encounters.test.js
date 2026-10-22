@@ -90,9 +90,11 @@ test('authorization: consent, doctor role, author and credential are all require
   const { ath, doc } = await setup();
   const noGrant = await signup(['athlete']);
   assert.equal((await api('POST', '/medical/encounters', { token: doc.token, body: draft(noGrant) })).status, 403, 'no consent');
-  const physio = await signup(['physio']); await verify(physio, 'physio');
+  const physio = await signup(['physio']);
   must(await api('POST', '/medical/grants', { token: ath.token, body: { provider_id: physio.id } }), 201);
-  assert.equal((await api('POST', '/medical/encounters', { token: physio.token, body: draft(ath) })).status, 403, 'doctors only');
+  assert.equal((await api('POST', '/medical/encounters', { token: physio.token, body: draft(ath) })).body.error.code, 'credential_required', 'a physio without a verified physio credential is refused');
+  const lone = await signup(['athlete']);
+  assert.equal((await api('POST', '/medical/encounters', { token: lone.token, body: draft(ath) })).status, 403, 'only clinicians write encounters');
   const unverified = await signup(['doctor']);
   must(await api('POST', '/medical/grants', { token: ath.token, body: { provider_id: unverified.id } }), 201);
   assert.equal((await api('POST', '/medical/encounters', { token: unverified.token, body: draft(ath) })).body.error.code, 'credential_required');
@@ -140,4 +142,15 @@ test('capabilities appear in OpenAPI with the clinical scope', async () => {
   for (const name of ['create_encounter', 'update_encounter', 'sign_encounter', 'amend_encounter', 'void_encounter', 'list_encounters', 'get_encounter', 'acknowledge_visit_summary']) {
     assert.equal(ops.find((o) => o.operationId === name)?.['x-required-scope'], 'clinical', name);
   }
+});
+
+test('a verified physio writes and signs session notes with the same gates as a doctor', async () => {
+  const ath = await signup(['athlete']), physio = await signup(['physio']);
+  await verify(physio, 'physio');
+  assert.equal((await api('POST', '/medical/encounters', { token: physio.token, body: draft(ath) })).status, 403, 'no consent yet');
+  must(await api('POST', '/medical/grants', { token: ath.token, body: { provider_id: physio.id } }), 201);
+  const e = must(await api('POST', '/medical/encounters', { token: physio.token, body: draft(ath) }), 201);
+  const signed = must(await api('POST', `/medical/encounters/${e.id}/sign`, { token: physio.token, body: { version: e.version } }));
+  assert.equal(signed.status, 'signed');
+  assert.equal(must(await api('GET', '/medical/encounters', { token: ath.token })).length, 1, 'the patient reads the visit summary');
 });

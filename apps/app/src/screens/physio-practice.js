@@ -9,6 +9,7 @@ import { Btn, Card, Chip, Empty, ErrorBox, Field, GradCard, Loading, Section, Se
 import { PracticeCompliance } from './health-privacy';
 import { Counter, DateField, DateRangeField } from '../pickers';
 import { ProviderPanels } from './insurance-panel';
+import { Insights, LogExercise, MyProgress, PatientsTab, Suggestions } from './physio-tracking';
 import { c, day } from '../theme';
 import { moneyIn } from '../vtime';
 
@@ -336,37 +337,42 @@ function TaxRevenue({ currency }) {
 }
 
 // ------------------------------------------------------------------ Provider workspace
-/** First thing a clinician sees: what is happening today and whether the practice is set up properly. */
+/** First thing a clinician sees: what is happening this week, what needs them, and whether the practice is set up properly. */
 function Overview({ go }) {
   const { user } = useSession();
-  const patients = useLoad(() => api.get('/medical/patients'), []);
-  const appts = useLoad(() => api.get('/appointments', { limit: 100 }), []);
-  const plans = useLoad(() => api.get('/treatment-plans', { limit: 100 }), []);
+  const home = useLoad(() => api.get('/physio/home'), []);
   const comp = useLoad(() => api.get('/me/health/practice-compliance'), []);
-  const mine = (appts.data ?? []).filter((a) => a.provider_id === user.id);
-  const upcoming = mine.filter((a) => ['requested', 'confirmed'].includes(a.status) && new Date(a.starts_at) >= new Date()).sort((a, b) => new Date(a.starts_at) - new Date(b.starts_at));
-  const requested = upcoming.filter((a) => a.status === 'requested').length;
-  const active = (plans.data ?? []).filter((p) => p.as === 'provider' && p.status === 'active').length;
   const fix = (comp.data?.checks ?? []).filter((x) => x.status === 'fail');
+  const h = home.data;
+  const waiting = h?.appointments_waiting ?? [], upcoming = h?.upcoming ?? [];
+  const open = (x) => go('patients', { patient_id: x.patient_id, section: x.tab === 'plans' ? 'home' : x.tab });
   return (
     <View style={{ gap: 12 }}>
       <GradCard pad={18}>
         <T weight="900" size={20} color="#fff">Hello{user.display_name ? `, ${user.display_name.split(' ')[0]}` : ''}</T>
-        <T size={13} color="rgba(255,255,255,0.8)">{upcoming.length ? `${upcoming.length} upcoming appointment${upcoming.length === 1 ? '' : 's'}${requested ? ` · ${requested} waiting for you to confirm` : ''}` : 'No upcoming appointments yet.'}</T>
+        <T size={13} color="rgba(255,255,255,0.8)">{h ? (upcoming.length ? `${upcoming.length} appointment${upcoming.length === 1 ? '' : 's'} in the next week${waiting.length ? ` · ${waiting.length} waiting for you to confirm` : ''}` : waiting.length ? `${waiting.length} request${waiting.length === 1 ? '' : 's'} waiting for you to confirm` : 'No appointments in the next week.') : 'Loading your practice…'}</T>
       </GradCard>
-      <View style={{ flexDirection: 'row', gap: 8 }}>
-        <View style={{ flex: 1 }}><StatPill value={patients.data?.length ?? '–'} label="PATIENTS" /></View>
-        <View style={{ flex: 1 }}><StatPill value={upcoming.length || '0'} label="UPCOMING" /></View>
-        <View style={{ flex: 1 }}><StatPill value={plans.data ? active : '–'} label="ACTIVE PLANS" /></View>
-      </View>
+      {home.error ? <ErrorBox error={home.error} onRetry={home.reload} /> : null}
+      {h?.credential && !h.credential.ok ? <Card pad={14} color={c.pinkSoft} onPress={() => go('compliance')}><T weight="900">Your {h.credential.type} verification is not current</T><T size={12} color={c.mute}>Patient files, readings and suggestions are paused until it is renewed. Open compliance to see what to do.</T></Card> : null}
+      {h?.counts ? <View style={{ flexDirection: 'row', gap: 8 }}>
+        <View style={{ flex: 1 }}><StatPill value={h.counts.patients} label="PATIENTS" /></View>
+        <View style={{ flex: 1 }}><StatPill value={h.counts.active_plans} label="ACTIVE PLANS" /></View>
+        <View style={{ flex: 1 }}><StatPill value={h.counts.open_goals} label="OPEN GOALS" /></View>
+      </View> : null}
       {comp.data ? (fix.length
         ? <Card pad={14} color={c.pinkSoft} onPress={() => go('compliance')}><T weight="900">{fix.length} thing{fix.length === 1 ? '' : 's'} to fix before you treat patients</T><T size={12} color={c.mute}>{fix.map((x) => x.title).join(' · ')}</T><T size={12} weight="800" color={c.pink} style={{ marginTop: 6 }}>Open compliance ›</T></Card>
         : <Card pad={14} color={c.lime} onPress={() => go('compliance')}><T weight="900">✓ Practice compliance is in order</T><T size={12} color={c.mute}>{comp.data.regime?.name} rules · licence, notice and two-step verification checked.</T></Card>) : null}
-      {upcoming.slice(0, 3).map((a) => <Card key={a.id} pad={12}><T weight="800">{a.athlete_name}</T><T size={12} color={c.mute}>{day(a.starts_at)} · {new Date(a.starts_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} · {a.duration_min} min · {label(a.status)}</T></Card>)}
+      {h?.counts ? <Section title={`Needs you${h.suggestions.total ? ` (${h.suggestions.total})` : ''}`} color={c.pink}>
+        <Suggestions items={h.suggestions.items} onOpen={open} reload={home.reload} />
+        {h.suggestions.total > h.suggestions.items.length ? <Btn small title="See all suggestions" color={c.paper} ink={c.ink} style={{ alignSelf: 'flex-start' }} onPress={() => go('insights')} /> : null}
+      </Section> : null}
+      {waiting.length || upcoming.length ? <Section title="Appointments" color={c.violet}>
+        {[...waiting, ...upcoming].slice(0, 8).map((a) => <Card key={a.id} pad={12}><T weight="800">{a.athlete_name}</T><T size={12} color={c.mute}>{day(a.starts_at)} · {new Date(a.starts_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} · {a.duration_min} min · {label(a.status)}{a.status === 'confirmed' && a.has_note === false ? ' · no session note yet' : ''}</T></Card>)}
+      </Section> : null}
       <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-        <Btn small title="Add a service" color={c.pink} onPress={() => go('services')} />
-        <Btn small title="New exercise plan" color={c.violet} onPress={() => go('plans')} />
-        <Btn small title="Exercise library" color={c.paper} ink={c.ink} onPress={() => go('library')} />
+        <Btn small title="Patients" color={c.violet} onPress={() => go('patients')} />
+        <Btn small title="New exercise plan" color={c.pink} onPress={() => go('plans')} />
+        <Btn small title="Insights" color={c.paper} ink={c.ink} onPress={() => go('insights')} />
       </View>
     </View>
   );
@@ -374,14 +380,16 @@ function Overview({ go }) {
 
 // ------------------------------------------------------------------ Provider workspace
 export function PracticePanel() {
-  const [tab, setTab] = useState('overview');
+  const [tab, setTab] = useState('overview'), [focus, setFocus] = useState(null);
   const pm = useLoad(() => api.get('/payments/methods'), []);
   const currency = pm.data?.currency ?? 'INR';
+  const go = (t, f = null) => { setFocus(f); setTab(t); };
   return (
     <View style={{ gap: 10 }}>
-      <Seg options={[{ value: 'overview', label: 'Overview', emoji: '🏠' }, { value: 'services', label: 'Services', emoji: '🩺' }, { value: 'offers', label: 'Offers', emoji: '🏷️' }, { value: 'packages', label: 'Packages', emoji: '🎟️' }, { value: 'plans', label: 'Plans', emoji: '📝' }, { value: 'library', label: 'Exercises', emoji: '🏃' }, { value: 'money', label: 'Tax & revenue', emoji: '🧾' }, { value: 'compliance', label: 'Compliance', emoji: '🛡️' }]} value={tab} onChange={setTab} color={c.violet} />
-      {tab === 'overview' && <Overview go={setTab} />}
-      <Seg options={[{ value: 'services', label: 'Services', emoji: '🩺' }, { value: 'offers', label: 'Offers', emoji: '🏷️' }, { value: 'packages', label: 'Packages', emoji: '🎟️' }, { value: 'plans', label: 'Plans', emoji: '📝' }, { value: 'library', label: 'Exercises', emoji: '🏃' }, { value: 'money', label: 'Tax & revenue', emoji: '🧾' }, { value: 'panels', label: 'Insurance', emoji: '🛡️' }]} value={tab} onChange={setTab} color={c.violet} />
+      <Seg options={[{ value: 'overview', label: 'Overview', emoji: '🏠' }, { value: 'patients', label: 'Patients', emoji: '🧑‍⚕️' }, { value: 'plans', label: 'Plans', emoji: '📝' }, { value: 'library', label: 'Exercises', emoji: '🏃' }, { value: 'insights', label: 'Insights', emoji: '📊' }, { value: 'services', label: 'Services', emoji: '🩺' }, { value: 'offers', label: 'Offers', emoji: '🏷️' }, { value: 'packages', label: 'Packages', emoji: '🎟️' }, { value: 'money', label: 'Tax & revenue', emoji: '🧾' }, { value: 'panels', label: 'Insurance', emoji: '🛡️' }, { value: 'compliance', label: 'Compliance', emoji: '🛡️' }]} value={tab} onChange={(t) => go(t)} color={c.violet} />
+      {tab === 'overview' && <Overview go={go} />}
+      {tab === 'patients' && <PatientsTab focus={focus} onFocusDone={() => setFocus(null)} />}
+      {tab === 'insights' && <Insights onOpen={(x) => go('patients', { patient_id: x.patient_id, section: x.tab === 'plans' ? 'home' : x.tab })} />}
       {tab === 'services' && <Services currency={currency} />}
       {tab === 'offers' && <Offers currency={currency} />}
       {tab === 'packages' && <Packages currency={currency} />}
@@ -398,6 +406,7 @@ export function PracticePanel() {
 function PlanView({ id, onClose, onChanged }) {
   const res = useLoad(() => api.get(`/treatment-plans/${id}`), [id]);
   const act = useAct(() => { res.reload(); onChanged(); });
+  const [logging, setLogging] = useState(false);
   const p = res.data, v = p?.versions.find((x) => x.status === 'published');
   return (
     <Sheet visible onClose={onClose} title={p?.title ?? 'Exercise plan'}>
@@ -418,6 +427,8 @@ function PlanView({ id, onClose, onChanged }) {
         {v.review_date ? <T size={12} color={c.mute}>Next review: {day(v.review_date)}</T> : null}
         <T size={11} color={c.mute}>This plan is not an emergency service and messages are not monitored continuously. If you feel worse or unsafe, contact your clinician or emergency services.</T>
         {v.acknowledged_at ? <Tag label="You confirmed you have read this" color={c.lime} /> : <Btn title="I have read this plan" color={c.mint} ink={c.ink} onPress={() => act(() => api.post(`/treatment-plans/${id}/acknowledge`, {}), 'Thanks — your clinician can see you read it')} />}
+        {p.status === 'active' ? <Btn title="Log today's exercises" color={c.pink} onPress={() => setLogging(true)} /> : null}
+        {logging ? <LogExercise planId={id} onClose={() => setLogging(false)} onDone={onChanged} /> : null}
       </>}
     </Sheet>
   );
@@ -446,6 +457,7 @@ export function MyRehab() {
           </Card>
         )) : <Empty emoji="🎟️" title="No packages" sub="Buy a package when you book a service that offers one." />}
       </Section>
+      <MyProgress />
       {open ? <PlanView id={open} onClose={() => setOpen(null)} onChanged={plans.reload} /> : null}
       {paying ? <PaySheet target={paying} onClose={() => setPaying(null)} onDone={pk.reload} /> : null}
     </View>
