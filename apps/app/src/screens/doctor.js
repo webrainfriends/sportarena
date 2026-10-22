@@ -244,7 +244,7 @@ const encInitial = (e) => ({ template: e.template ?? 'soap', ...e.content, obs_t
   ...Object.fromEntries(Object.entries(e.visit_summary ?? {}).map(([k, x]) => [`sum_${k}`, x])) });
 const ENC_TAG = { draft: NEUTRAL, ready: c.sun, signed: c.lime, voided: c.orangeSoft };
 
-function Encounters({ id }) {
+export function Encounters({ id, title = 'Encounters' }) {
   const { user } = useSession();
   const q = useLoad(() => api.get('/medical/encounters', { athlete_id: id, limit: 50 }), [id]);
   const appts = useLoad(async () => (await api.get('/appointments', { limit: 50 })).filter((a) => a.athlete_id === id && a.provider_id === user.id && ['confirmed', 'completed'].includes(a.status)), [id]);
@@ -254,12 +254,12 @@ function Encounters({ id }) {
   const used = new Set((q.data ?? []).filter((e) => e.status !== 'voided' && e.kind === 'encounter').map((e) => e.appointment_id));
   const free = (appts.data ?? []).filter((a) => !used.has(a.id) || form?.edit?.appointment_id === a.id);
   return (
-    <Block title="Encounters" action="＋ New encounter" onAction={() => setForm({})}>
+    <Block title={title} action="＋ New encounter" onAction={() => setForm({})}>
       <T size={12} color={c.mute}>Draft → ready → signed. Signing is final: later changes are amendments that keep the original. Your working notes are never shown to the patient; they read the visit summary.</T>
       <Wait q={q} empty={<Empty emoji="📝" title="No encounters yet" sub="Start one from a consultation. You can save a draft and finish later." />}>
         {(q.data ?? []).map((e) => (
           <Card key={e.id}>
-            <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}><Tag label={e.kind === 'amendment' ? `amendment · ${e.status}` : e.status} color={ENC_TAG[e.status]} /><T size={12} color={c.mute}>{when(e.signed_at ?? e.created_at)} · Dr {e.provider_name}</T></View>
+            <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}><Tag label={e.kind === 'amendment' ? `amendment · ${e.status}` : e.status} color={ENC_TAG[e.status]} /><T size={12} color={c.mute}>{when(e.signed_at ?? e.created_at)} · {e.provider_name}</T></View>
             {e.content ? <>
               {e.content.amendment_reason ? <T size={13} weight="800" style={{ marginTop: 6 }}>Amendment: {e.content.amendment_reason}</T> : null}
               {['history', 'examination', 'assessment', 'plan'].filter((k) => e.content[k]).map((k) => <T key={k} size={13} style={{ marginTop: 4 }}><T weight="900" size={13}>{k[0].toUpperCase() + k.slice(1)}: </T>{clip(e.content[k], 220)}</T>)}
@@ -289,7 +289,7 @@ function Encounters({ id }) {
           else await api.post('/medical/encounters', { athlete_id: id, ...b });
           q.reload(); return 'Saved as draft — sign it when you are done';
         }} />
-      <Confirm visible={!!voiding} title="Void this encounter?" yes="Void" danger askReason="Why is it being voided?" body="The record is kept for audit but is no longer shown to the patient or other doctors." onClose={() => setVoiding(null)}
+      <Confirm visible={!!voiding} title="Void this encounter?" yes="Void" danger askReason="Why is it being voided?" body="The record is kept for audit but is no longer shown to the patient or other clinicians." onClose={() => setVoiding(null)}
         onYes={async (reason) => { await act(() => api.post(`/medical/encounters/${voiding.id}/void`, { reason: reason || 'Voided' }), 'Voided'); setVoiding(null); }} />
     </Block>
   );
