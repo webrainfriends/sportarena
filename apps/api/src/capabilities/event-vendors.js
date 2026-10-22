@@ -4,7 +4,7 @@ import { cap, id, money } from '../registry.js';
 import { pool, many, tx } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { isAdmin, mustFind } from '../helpers.js';
-import { sponsorContactUser, sponsorRole, snapshotIdentity, CAN } from '../sponsor-access.js';
+import { sponsorContactUser, sponsorRole, snapshotIdentity, CAN } from '../sponsor-identity-access.js';
 import { eventForOrganizer } from './events.js';
 import { notify } from '../notify.js';
 

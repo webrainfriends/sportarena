@@ -5,7 +5,7 @@ import { badRequest, forbidden, conflict, notFound } from '../errors.js';
 import { config } from '../config.js';
 import { notify } from '../notify.js';
 import { audit, hasRole, isAdmin, mustFind } from '../helpers.js';
-import { sponsorTeamSql } from '../sponsor-access.js';
+import { sponsorTeamSql } from '../sponsor-identity-access.js';
 import { decrypt, encrypt } from '../crypto.js';
 import { randomBytes } from 'node:crypto';
 import { canManageTeam } from './teams.js';
