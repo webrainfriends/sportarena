@@ -1,0 +1,34 @@
+// The venue workspace: everything a venue owner or staff member runs from one page. Their venues (each opens its management
+// console), registering a new venue, the revenue summary across venues, and the partner account with the platform
+// (status, contracts, price requests, settlements). The platform team's Partner management console stays admin-only.
+import React, { useState } from 'react';
+import { api } from '../api';
+import { useLoad } from '../hooks';
+import { useNav } from '../nav';
+import { Bubble, Btn, Empty, ErrorBox, H1, Loading, Row, Screen, Section, T } from '../ui';
+import { RegisterVenue } from './book';
+import { c } from '../theme';
+
+export function VenueWorkspace() {
+  const { push } = useNav();
+  const [form, setForm] = useState(false);
+  const venues = useLoad(() => api.get('/me/venues'), []);
+  const list = venues.data ?? [];
+  return (
+    <Screen onRefresh={venues.reload}>
+      <H1>Venue workspace</H1>
+      <T color={c.mute} weight="700">Run your venues, see how they earn, and manage your partner account.</T>
+      <Section title="My venues" color={c.violet}>
+        <Btn title="＋ Register a venue" color={c.violet} onPress={() => setForm(true)} />
+        {venues.error ? <ErrorBox error={venues.error} onRetry={venues.reload} /> : venues.loading && !venues.data ? <Loading /> : list.length ? list.map((v) => (
+          <Row key={v.id} onPress={() => push('Manage', { id: v.id })} left={<Bubble emoji={v.emoji} color={c.violet} />} title={v.name} sub={`${v.role} · manage bookings, pricing, blocks, reports`} right={<T color={c.pink} weight="700">Manage ›</T>} />
+        )) : <Empty emoji="🏟️" title="No venues yet" sub="Tap Register a venue. A setup checklist then takes you through opening it for bookings." />}
+      </Section>
+      <Section title="Money & account" color={c.mint}>
+        <Row onPress={() => push('OwnerSummary')} left={<Bubble emoji="📊" color={c.violet} />} title="All my venues" sub="Revenue, tax and payments per venue and per currency" right={<T color={c.pink} weight="700">Open ›</T>} />
+        <Row onPress={() => push('MyPartner')} left={<Bubble emoji="🤝" color={c.mint} />} title="Partner account" sub="Status, contracts, price requests and settlements" right={<T color={c.pink} weight="700">Open ›</T>} />
+      </Section>
+      <RegisterVenue visible={form} onClose={() => setForm(false)} onCreated={venues.reload} />
+    </Screen>
+  );
+}

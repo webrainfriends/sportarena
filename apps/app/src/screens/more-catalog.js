@@ -17,7 +17,7 @@ export const GROUP_COLOR = { play: '#8EB69B', care: '#5CC8C0', money: '#DAF1DE',
 export const WORKSPACE_MODULE = ['Workspace', 'Workspace', 'Your tools for each role', 'work'];
 export const WORKSPACES = [
   ['organizer', 'Schedule', 'Your events, teams & requests', { tab: 'Schedule', section: 'manage' }],
-  ['venue_manager', 'MyPartner', 'Venues, bookings & partner account'],
+  ['venue_manager', 'VenueWorkspace', 'Your venues, revenue & partner account'],
   ['coach', 'CoachHome', 'Athletes, plans & sessions'],
   ['referee', 'Openings', 'Games to officiate & open positions'],
   ['sponsor', 'Sponsors', 'Brands, deals & agreements'],

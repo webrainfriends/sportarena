@@ -57,7 +57,7 @@ function VenueCard({ v, onOpen, picked, onPick, width, onFav }) {
   );
 }
 
-/** "Register a venue" form: creates the venue, then opens its setup checklist. Shared by Book and Play > Venues. */
+/** "Register a venue" form: creates the venue, then opens its setup checklist. Used by the venue workspace. */
 export function RegisterVenue({ visible, onClose, onCreated }) {
   const { push } = useNav();
   return (
@@ -71,10 +71,9 @@ export function RegisterVenue({ visible, onClose, onCreated }) {
 
 export function Book() {
   const { push } = useNav();
-  const { has, hasAny } = useSession();
+  const { has } = useSession();
   const L = useLayout();
   const { compare, toggleCompare, clearCompare } = useBasket();
-  const [form, setForm] = useState(false);
   const [filters, setFilters] = useState(false);
   const [q, setQ] = useState('');
   const [sport, setSport] = useState('');
@@ -160,14 +159,6 @@ export function Book() {
         }) : <Empty emoji="🗓️" title="No upcoming bookings" sub="Pick a venue above." />}
       </Section>
 
-      {hasAny('venue_manager', 'organizer') ? (
-        <Section title="Run a venue" color={c.violet}>
-          <Btn title="Register a venue" color={c.violet} onPress={() => setForm(true)} />
-          <Row onPress={() => push('OwnerSummary')} left={<Bubble emoji="📊" color={c.violet} />} title="All my venues" sub="Revenue, tax and payments per venue and per currency" right={<T color={c.pink} weight="700">Open ›</T>} />
-          <MyVenues />
-        </Section>
-      ) : null}
-
       <Sheet visible={filters} onClose={() => setFilters(false)} title="Filters & sort">
         <T weight="700">Sort by</T>
         <Seg options={[['name', 'A–Z'], ['rating', 'Top rated'], ['price', 'Lowest price'], ...(near ? [['distance', 'Nearest']] : [])].map(([value, label]) => ({ value, label }))} value={sort} onChange={setSort} color={c.violet} />
@@ -180,16 +171,8 @@ export function Book() {
         <Calendar month={month} onMonth={setMonth} value={date} minDate={todayStr} onChange={(d) => { setDate(d); setPickDate(false); }} />
         {date ? <Btn small title="Any day" color={c.paper} onPress={() => { setDate(null); setHour(null); setPickDate(false); }} /> : null}
       </Sheet>
-      <RegisterVenue visible={form} onClose={() => setForm(false)} onCreated={venues.reload} />
     </Screen>
   );
-}
-
-/** Venues the signed-in user owns or staffs: jump to their management console. */
-function MyVenues() {
-  const { push } = useNav();
-  const list = useLoad(() => api.get('/me/venues'), []);
-  return (list.data ?? []).map((v) => <Row key={v.id} onPress={() => push('Manage', { id: v.id })} left={<Bubble emoji={v.emoji} color={c.violet} />} title={v.name} sub={`${v.role} · manage bookings, pricing, blocks, reports`} right={<T color={c.pink} weight="700">Manage ›</T>} />);
 }
 
 /** Static map on the web (OpenStreetMap embed); buttons everywhere. */
