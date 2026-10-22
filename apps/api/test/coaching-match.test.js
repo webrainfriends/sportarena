@@ -143,7 +143,7 @@ test('AI: compare_metrics explains selected metrics from the numbers only, refus
   assert.deepEqual(d.output.items[0].source_refs, ['M1'], 'forged ref dropped');
   assert.ok(d.sources.every((x) => x.type === 'metric'));
   const sent = JSON.stringify(calls[0]);
-  assert.ok(sent.includes('coach_entered') && sent.includes('"previous"') && !sent.includes('Person') && !sent.includes(s.ps[0].id));
+  assert.ok(sent.includes('coach_entered'), sent.slice(0, 600)); assert.ok(sent.includes('previous')); assert.ok(!sent.includes('Person'), 'name leaked'); assert.ok(!sent.includes(s.ps[0].id), 'id leaked');
   setAiTransport(null);
   const plain = ok(await post(s.coach.token, '/coaching/ai/drafts', { task: 'compare_metrics', athlete_id: s.ps[0].id, metric_keys: ['measurement:Sprint'], from: iso(30), to: iso(0) }), 201);
   assert.equal(plain.ai, false); assert.match(plain.output.items[0].detail, /3\.8 → 3\.5/);

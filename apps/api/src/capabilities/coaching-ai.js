@@ -172,6 +172,7 @@ cap({
   summary: 'Ask the copilot for a DRAFT (next-session plan, player focus, session summary, player/team patterns, suggested actions, match debrief, or a question about your own notes). It reads only your own records for the athlete, team or session you name, after checking you may act on them; people are replaced by labels and medical data is never read. The draft lists the records it used, its limitations, and which statements are observed vs suggested. It changes nothing until you resolve it. Without an AI provider you get a plain, source-linked summary instead.',
   input: z.object({
     task: z.enum(TASKS), athlete_id: id.optional(), team_id: id.optional(), session_record_id: id.optional(), from: day.optional(), to: day.optional(),
+    metric_keys: z.array(z.string().max(120)).max(6).optional().describe('compare_metrics: the metrics to explain, for example attendance_rate, measurement:Sprint, official:event:goal'),
     include_private_summaries: z.boolean().default(false).describe('also share your private session summaries with the AI (private-copy drafts only)'),
     audience: z.enum(['coach_private', 'athlete', 'guardian', 'team_staff']).default('coach_private').describe('who the result is meant for; anything other than coach_private restricts the evidence to notes, goals and actions already shared with that audience, so the draft can go into a report for them'), question: z.string().max(400).optional(),
   }),

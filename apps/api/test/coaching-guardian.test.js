@@ -51,7 +51,7 @@ test('sharing coaching records about a young person needs the guardian\'s coachi
   assert.equal(refused.status, 409); assert.equal(refused.body.error.details?.code ?? refused.body.error.code, 'guardian_consent_required');
   assert.equal((await post(s.coach.token, '/coaching/goals', { athlete_id: s.kid.id, title: 'Goal', athlete_text: 'Show them' })).status, 409);
   assert.equal((await post(s.coach.token, '/coaching/actions', { athlete_id: s.kid.id, owner_id: s.kid.id, title: 'Act' })).status, 409);
-  assert.equal((await post(s.coach.token, '/coaching/reports', { athlete_id: s.kid.id, kind: 'athlete_progress', title: 'R', audience: 'athlete', from: '2026-01-01', to: today })).status, 409);
+  { const r = await post(s.coach.token, '/coaching/reports', { athlete_id: s.kid.id, kind: 'athlete_progress', title: 'Report', audience: 'athlete', from: '2026-01-01', to: today }); assert.equal(r.status, 409, JSON.stringify(r.body)); }
   ok(await post(s.coach.token, '/coaching/goals', { athlete_id: s.kid.id, title: 'Private goal' }), 201);
   await s.consent('coaching');
   ok(await post(s.coach.token, '/coaching/observations', { athlete_id: s.kid.id, note: 'Well played', visibility: 'player' }), 201);

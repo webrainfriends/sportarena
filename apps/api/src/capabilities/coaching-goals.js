@@ -15,6 +15,8 @@ import { sharedGoals, sharedActions } from '../coaching-shared.js';
 const TAG = 'Coaching journal';
 const COACH = ['coach'];
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+/** A date column as YYYY-MM-DD (pg hands back a Date). */
+const ymd = (d) => (d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10));
 const text = (n) => z.string().trim().max(n);
 const CATEGORIES = ['technical', 'tactical', 'physical', 'mental_performance', 'teamwork', 'match_objective', 'custom'];
 const PRIORITY = ['low', 'medium', 'high'];
@@ -529,7 +531,7 @@ cap({
     await authorise(user, cur);
     const n = { ...cur };
     for (const k of ['status', 'title', 'objective', 'position', 'ends_on', 'review_on', 'review_cadence_days', 'athlete_text', 'coach_notes']) if (i[k] !== undefined) n[k] = i[k];
-    if (String(n.ends_on).slice(0, 10) < String(cur.starts_on).slice(0, 10)) throw badRequest('ends_on is before starts_on');
+    if (ymd(n.ends_on) < ymd(cur.starts_on)) throw badRequest('ends_on is before starts_on');
     const r = await one(
       `UPDATE coaching_programmes SET status=$3, title=$4, objective=$5, position=$6, ends_on=$7, review_on=$8, review_cadence_days=$9, athlete_text=$10, coach_notes=$11, row_version=row_version+1, updated_at=now() WHERE id=$1 AND row_version=$2 RETURNING *`,
       [cur.id, i.row_version, n.status, n.title, n.objective, n.position, n.ends_on, n.review_on, n.review_cadence_days, n.athlete_text, n.coach_notes]);
@@ -555,7 +557,7 @@ cap({
   async handler({ user }, i) {
     const p = await one('SELECT * FROM coaching_programmes WHERE id=$1 AND coach_id=$2', [i.id, user.id]);
     if (!p) throw notFound('Programme');
-    const from = String(p.starts_on).slice(0, 10), to = `${String(p.ends_on).slice(0, 10)}T23:59:59Z`;
+    const from = ymd(p.starts_on), to = `${ymd(p.ends_on)}T23:59:59Z`;
     const [goals, sessions, actions] = await Promise.all([
       many("SELECT g.id, g.title, g.category, g.status, g.review_on, g.priority, g.position, (SELECT count(*)::int FROM coaching_goal_evidence e WHERE e.goal_id=g.id) AS evidence_count FROM coaching_goals g WHERE g.programme_id=$1 ORDER BY g.priority DESC, g.review_on NULLS LAST, g.id", [p.id]),
       one(`SELECT count(*)::int AS held, count(*) FILTER (WHERE reviewed_at IS NOT NULL OR team_summary IS NOT NULL OR private_summary IS NOT NULL)::int AS reviewed FROM coaching_session_records r
