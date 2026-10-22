@@ -12,6 +12,9 @@ import { HScroll } from '../pickers';
 import { c } from '../theme';
 import { dateTimeIn, localToIso } from '../vtime';
 
+const GOAL_CATEGORIES = ['technical', 'tactical', 'physical', 'mental_performance', 'teamwork', 'match_objective', 'custom'];
+const GOAL_STATUS = ['planned', 'active', 'achieved', 'paused', 'stopped'];
+
 const tz = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return 'UTC'; } })();
 const label = (s) => String(s).replace(/_/g, ' ').replace(/^./, (x) => x.toUpperCase());
 const opts = (list) => list.map((value) => ({ value, label: label(value) }));
@@ -58,6 +61,14 @@ export function PerformanceStudio() {
           <Section title="Needs your review">
             {!h.needs_review.length ? <T size={13} color={c.mute}>Every finished session has a review.</T> :
               h.needs_review.map((r) => <Row key={r.id} title={r.title} sub={`Ended ${dateTimeIn(r.ended_at, tz)} · no summary yet`} onPress={() => push('CoachSession', { id: r.id })} />)}
+          </Section>
+          <Section title="Overdue actions">
+            {!h.overdue_actions.length ? <T size={13} color={c.mute}>Nothing overdue.</T> :
+              h.overdue_actions.map((a) => <Row key={a.id} title={a.title} sub={`${a.athlete_name ?? 'Team'} · due ${dateTimeIn(a.due_at, tz)}`} onPress={() => push('CoachGoals', a.athlete_id ? { athlete_id: a.athlete_id, name: a.athlete_name } : { team_id: a.team_id })} />)}
+          </Section>
+          <Section title="Goals to review">
+            {!h.goals_due.length ? <T size={13} color={c.mute}>No goal reviews due this week.</T> :
+              h.goals_due.map((g) => <Row key={g.id} title={g.title} sub={`${g.athlete_name ?? 'Team'} · review ${g.review_on}`} onPress={() => push('CoachGoals', g.athlete_id ? { athlete_id: g.athlete_id, name: g.athlete_name } : { team_id: g.team_id })} />)}
           </Section>
           <Section title="Follow up">
             {!h.follow_ups.length ? <T size={13} color={c.mute}>No notes flagged for follow-up.</T> :
@@ -234,6 +245,7 @@ function PlanSheet({ visible, blocks, version, onClose, onSave }) {
 }
 
 export function CoachJournal({ athlete_id, team_id, name }) {
+  const { push } = useNav();
   const [tag, setTag] = useState(null);
   const path = athlete_id ? `/coaching/athletes/${athlete_id}/timeline` : `/coaching/teams/${team_id}/timeline`;
   const tl = useLoad(() => api.get(`${path}?limit=100${tag ? `&skill_tag=${encodeURIComponent(tag)}` : ''}`), [path, tag]);
@@ -243,6 +255,8 @@ export function CoachJournal({ athlete_id, team_id, name }) {
     <Screen onRefresh={tl.reload}>
       <H1>{name ? `${name} · journal` : athlete_id ? 'Player journal' : 'Team journal'}</H1>
       <T size={13} color={c.mute}>Your notes, attendance and completed sessions in time order. Records are shown from their source; official scores and stats are never changed here.</T>
+      {athlete_id ? <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, flexWrap: 'wrap' }}><Btn small title="Goals & actions" onPress={() => push('CoachGoals', { athlete_id, name })} /></View> : <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}><Btn small title="Goals & actions" onPress={() => push('CoachGoals', { team_id })} /></View>}
+      {athlete_id ? <Metrics athlete_id={athlete_id} /> : null}
       {tags.length ? <HScroll><Chip label="All" active={!tag} onPress={() => setTag(null)} />{tags.map((t) => <Chip key={t} label={t} active={tag === t} onPress={() => setTag(t)} />)}</HScroll> : null}
       {tl.loading && !tl.data ? <Loading /> : tl.error ? <ErrorBox error={tl.error} onRetry={tl.reload} /> : !tl.data.length ?
         <Empty emoji="📓" title="Nothing recorded yet" sub="Notes and attendance from your sessions build this story over time." /> :
@@ -256,6 +270,126 @@ export function CoachJournal({ athlete_id, team_id, name }) {
             <T size={11} color={c.mute}>{label(x.kind)}{x.visibility ? ` · ${VISIBILITY.find(([v]) => v === x.visibility)?.[1]}` : ''}{x.own === false ? ' · by another coach' : ''}{x.edited ? ' · edited' : ''}{x.follow_up ? ' · follow up' : ''}</T>
           </Card>
         ))}
+    </Screen>
+  );
+}
+
+// Every metric says what it is, where it comes from and how many records stand behind it; missing data is "no data", never zero.
+function Metrics({ athlete_id }) {
+  const m = useLoad(() => api.get(`/coaching/athletes/${athlete_id}/metrics`), [athlete_id]);
+  if (m.loading && !m.data) return null;
+  if (m.error || !m.data) return null;
+  return (
+    <Section title={`Trends · ${m.data.from} to ${m.data.to}`}>
+      {m.data.metrics.map((x) => (
+        <Card key={x.key} pad={12} style={{ marginBottom: 8 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
+            <T weight="700" style={{ flexShrink: 1 }}>{x.label}</T>
+            <T weight="800">{x.value == null ? 'No data' : `${x.value}${x.unit === '%' ? '%' : ` ${x.unit ?? ''}`}`}</T>
+          </View>
+          <T size={11} color={c.mute}>{x.provenance_label} · {x.sample} record{x.sample === 1 ? '' : 's'}{x.excluded?.not_recorded ? ` · ${x.excluded.not_recorded} not recorded` : ''}{x.excluded?.excused ? ` · ${x.excluded.excused} excused` : ''}</T>
+          <T size={11} color={c.mute}>{x.definition}</T>
+        </Card>
+      ))}
+    </Section>
+  );
+}
+
+export function CoachGoals({ athlete_id, team_id, name }) {
+  const { toast } = useSession();
+  const q = athlete_id ? `athlete_id=${athlete_id}` : `team_id=${team_id}`;
+  const goals = useLoad(() => api.get(`/coaching/goals?${q}`), [q]);
+  const actions = useLoad(() => api.get(`/coaching/actions?${q}`), [q]);
+  const [form, setForm] = useState(null); // 'goal' | { goal } | 'action'
+  const [reviewing, setReviewing] = useState(null);
+  const reload = () => { goals.reload(); actions.reload(); };
+  const subject = athlete_id ? { athlete_id } : { team_id };
+  return (
+    <Screen onRefresh={reload}>
+      <H1>{name ? `${name} · goals` : 'Goals & actions'}</H1>
+      <T size={13} color={c.mute}>Coaching goals only. You decide when a goal is achieved; evidence and completed actions never change it on their own.</T>
+      <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+        <Btn small title="New goal" onPress={() => setForm('goal')} /><Btn small title="New action" color={c.paper} ink={c.ink} onPress={() => setForm('action')} />
+      </View>
+      <Section title="Goals">
+        {goals.loading && !goals.data ? <Loading /> : goals.error ? <ErrorBox error={goals.error} onRetry={goals.reload} /> : !goals.data.length ? <Empty emoji="🎯" title="No goals yet" sub="Set a measurable goal and review it on a date." /> :
+          goals.data.map((g) => <Row key={g.id} title={g.title} sub={`${label(g.category)} · ${label(g.priority)} priority${g.review_on ? ` · review ${g.review_on}` : ''} · ${g.evidence_count} evidence`} right={<Status s={g.status} />} onPress={() => setReviewing(g)} />)}
+      </Section>
+      <Section title="Actions">
+        {actions.loading && !actions.data ? <Loading /> : actions.error ? <ErrorBox error={actions.error} onRetry={actions.reload} /> : !actions.data.length ? <Empty emoji="✅" title="No actions" sub="Turn an observation into a follow-up." /> :
+          actions.data.map((a) => (
+            <Card key={a.id} pad={12} style={{ marginBottom: 8 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}><T weight="700" style={{ flexShrink: 1 }}>{a.title}</T><Status s={a.overdue ? 'overdue' : a.status} /></View>
+              <T size={12} color={c.mute}>{a.due_at ? `Due ${dateTimeIn(a.due_at, tz)}` : 'No due date'}{a.shared ? ' · shared with athlete' : ''}</T>
+              {a.status === 'open' || a.status === 'in_progress' ? (
+                <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
+                  <Btn small title="Done" onPress={async () => { try { await api.patch(`/coaching/actions/${a.id}`, { row_version: a.row_version, status: 'done' }); reload(); } catch (e) { toast(e.message); reload(); } }} />
+                  <Btn small title="Cancel" color={c.paper} ink={c.red} onPress={async () => { try { await api.patch(`/coaching/actions/${a.id}`, { row_version: a.row_version, status: 'cancelled' }); reload(); } catch (e) { toast(e.message); reload(); } }} />
+                </View>
+              ) : null}
+            </Card>
+          ))}
+      </Section>
+      <FormSheet visible={form === 'goal'} onClose={() => setForm(null)} title="New goal" submitLabel="Create goal"
+        fields={[
+          { key: 'title', label: 'Goal' },
+          { key: 'category', label: 'Category', type: 'chips', options: opts(GOAL_CATEGORIES), default: 'technical' },
+          { key: 'criterion', label: 'How will we know? (measurable)', type: 'multiline', optional: true },
+          { key: 'priority', label: 'Priority', type: 'chips', options: opts(['low', 'medium', 'high']), default: 'medium' },
+          { key: 'review_on', label: 'Review on', type: 'date', optional: true },
+          { key: 'athlete_text', label: 'Wording to show the athlete (leave empty to keep private)', type: 'multiline', optional: true },
+        ]}
+        onSubmit={async (v) => { await api.post('/coaching/goals', { ...subject, title: v.title, category: v.category, criterion: v.criterion || undefined, priority: v.priority, review_on: v.review_on || undefined, athlete_text: v.athlete_text || undefined }); setForm(null); toast('Goal created'); reload(); }} />
+      <FormSheet visible={form === 'action'} onClose={() => setForm(null)} title="New action" submitLabel="Create action"
+        fields={[
+          { key: 'title', label: 'Action' },
+          { key: 'detail', label: 'Detail', type: 'multiline', optional: true },
+          { key: 'due', label: 'Due date', type: 'date', optional: true },
+          { key: 'priority', label: 'Priority', type: 'chips', options: opts(['low', 'medium', 'high']), default: 'medium' },
+          ...(athlete_id ? [{ key: 'owner', label: 'Who does it', type: 'chips', options: [{ value: 'me', label: 'Me' }, { value: 'athlete', label: 'The athlete' }], default: 'me' }] : []),
+          { key: 'follow_up_next_session', label: 'Show at the start of the next session', type: 'switch', default: true },
+        ]}
+        onSubmit={async (v) => {
+          await api.post('/coaching/actions', { ...subject, title: v.title, detail: v.detail || undefined, due_at: v.due ? localToIso(v.due, '18:00', tz) : undefined, priority: v.priority, owner_id: v.owner === 'athlete' ? athlete_id : undefined, shared: v.owner === 'athlete', follow_up_next_session: !!v.follow_up_next_session, client_key: keyOf() });
+          setForm(null); toast('Action created'); reload();
+        }} />
+      <FormSheet visible={!!reviewing} onClose={() => setReviewing(null)} title={reviewing?.title ?? 'Review goal'} submitLabel="Save review" initial={{ status: reviewing?.status }}
+        fields={[
+          { key: 'status', label: 'Status', type: 'chips', options: opts(GOAL_STATUS) },
+          { key: 'review_note', label: 'Why? (required to mark achieved)', type: 'multiline', optional: true },
+          { key: 'review_on', label: 'Next review', type: 'date', optional: true },
+        ]}
+        onSubmit={async (v) => { await api.patch(`/coaching/goals/${reviewing.id}`, { row_version: reviewing.row_version, status: v.status, review_note: v.review_note || undefined, review_on: v.review_on || undefined }); setReviewing(null); toast('Review saved'); reload(); }} />
+    </Screen>
+  );
+}
+
+// What the coach chose to show the athlete: shared notes, goal wording and shared actions. Nothing private reaches this screen.
+export function MyCoaching() {
+  const { toast } = useSession();
+  const notes = useLoad(() => api.get('/me/coaching-notes'), []);
+  const goals = useLoad(() => api.get('/me/coaching-goals'), []);
+  const actions = useLoad(() => api.get('/me/coaching-actions'), []);
+  const reload = () => { notes.reload(); goals.reload(); actions.reload(); };
+  return (
+    <Screen onRefresh={reload}>
+      <H1>From my coach</H1>
+      <Section title="Goals">
+        {!goals.data?.length ? <T size={13} color={c.mute}>No goals shared with you yet.</T> : goals.data.map((g) => <Row key={g.id} title={g.title} sub={`${g.text}${g.review_on ? ` · review ${g.review_on}` : ''}`} right={<Status s={g.status} />} />)}
+      </Section>
+      <Section title="Actions">
+        {!actions.data?.length ? <T size={13} color={c.mute}>No actions assigned to you.</T> : actions.data.map((a) => (
+          <Card key={a.id} pad={12} style={{ marginBottom: 8 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}><T weight="700" style={{ flexShrink: 1 }}>{a.title}</T><Status s={a.status} /></View>
+            {a.detail ? <T size={13}>{a.detail}</T> : null}
+            <T size={12} color={c.mute}>{a.due_at ? `Due ${dateTimeIn(a.due_at, tz)}` : 'No due date'} · from {a.coach_name}</T>
+            {a.status === 'open' || a.status === 'in_progress' ? <View style={{ marginTop: 6 }}><Btn small title="Mark done" onPress={async () => { try { await api.patch(`/coaching/actions/${a.id}`, { row_version: a.row_version, status: 'done' }); } catch (e) { toast(e.message); } reload(); }} /></View> : null}
+          </Card>
+        ))}
+      </Section>
+      <Section title="Notes shared with me">
+        {!notes.data?.length ? <T size={13} color={c.mute}>Nothing shared yet.</T> : notes.data.map((n) => <Row key={n.id} title={`${n.skill_tag ? `${n.skill_tag} · ` : ''}${label(n.obs_type)}`} sub={`${n.note} — ${n.coach_name}`} />)}
+      </Section>
     </Screen>
   );
 }
