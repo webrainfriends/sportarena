@@ -27,6 +27,8 @@ const VISIBILITY = [['coach_private', 'Only me'], ['staff', 'Team coaches'], ['p
 const BLOCK_KINDS = ['warm_up', 'skill_drill', 'tactical_drill', 'conditioned_game', 'match_play', 'conditioning', 'recovery', 'review', 'custom'];
 const keyOf = () => `n-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`; // idempotency key: a retried save never doubles
 
+/** Chips that wrap onto more lines where there is room (tablet, desktop) and scroll sideways on a phone. */
+const Chips = ({ wide, children }) => (wide ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 6 }}>{children}</View> : <HScroll>{children}</HScroll>);
 /** Two columns on a tablet or desktop, one on a phone; each child is one column. */
 const Cols = ({ wide, children }) => <View style={{ flexDirection: wide ? 'row' : 'column', gap: 16, alignItems: 'flex-start' }}>{children.map((ch, n) => <View key={n} style={{ flex: 1, width: '100%', minWidth: 0 }}>{ch}</View>)}</View>;
 const Status = ({ s }) => <Tag label={label(s)} color={s === 'completed' || s === 'present' ? c.lime : c.violetSoft} />;
@@ -185,11 +187,11 @@ export function CoachSession(props) {
               <T weight="700" style={{ flexShrink: 1 }}>{p.display_name}</T>
               <Status s={p.attendance === 'expected' ? 'not_recorded' : p.attendance} />
             </View>
-            <HScroll>
+            <Chips wide={wide}>
               {ATTENDANCE.map((a) => <Chip key={a} label={label(a)} active={p.attendance === a} onPress={() => mark(p.id, a)} />)}
               <Chip label="Note" onPress={() => setNote({ athlete_id: p.id })} />
               <Chip label="Player summary" onPress={() => setMore({ summary: p })} />
-            </HScroll>
+            </Chips>
             {w.previous_notes.filter((x) => x.athlete_id === p.id).slice(0, 2).map((x) => (
               <T key={x.id} size={12} color={c.mute} style={{ marginTop: 4 }}>{x.follow_up ? '↩ Follow up: ' : 'Last time: '}{x.note}</T>
             ))}
@@ -938,5 +940,51 @@ export function CoachRubrics() {
           setCreating(false); toast('Rubric created'); list.reload();
         }} />
     </Screen>
+  );
+}
+
+// Less-used session tools, kept off the main field screen: groups, templates, cloning, delegation and per-player summaries.
+function MoreSheet({ more, setMore, w, reload }) {
+  const { toast } = useSession();
+  const { push } = useNav();
+  const s = w.session;
+  const tpls = useLoad(() => (more === 'use' ? api.get('/coach/templates?scope=session') : Promise.resolve([])), [more === 'use']);
+  const roster = useLoad(() => (more === 'help' && s.team_id ? api.get(`/coach/teams/${s.team_id}/roster`) : Promise.resolve(null)), [more === 'help']);
+  const close = () => setMore(null);
+  const players = w.participants.map((p) => ({ value: p.id, label: p.display_name }));
+  const call = (fn, msg) => async (v) => { await fn(v); close(); toast(msg); reload(); };
+  return (
+    <>
+      <Sheet visible={more === 'menu'} onClose={close} title="Session tools">
+        {[
+          ['Split into groups (defenders, forwards …)', 'groups', s.status !== 'completed' && s.team_id],
+          ['Save plan as a template', 'template', true], ['Use a template', 'use', s.status !== 'completed'],
+          ['Start a new session from this one', 'clone', true], ['Let another coach help', 'help', s.team_id && w.you_are === 'owner'],
+        ].filter(([, , show]) => show).map(([label_, key]) => <Row key={key} title={label_} onPress={() => setMore(key)} />)}
+        {w.delegates?.length ? <T size={12} color={c.mute} style={{ marginTop: 8 }}>Helping: {w.delegates.map((d) => `${d.display_name} (${d.permissions.join(', ')})`).join('; ')}</T> : null}
+        <View style={{ marginTop: 10 }}><Btn small title="Save my own notes about the whole team" color={c.paper} ink={c.ink} onPress={() => { close(); push('CoachReports', { team_id: s.team_id }); }} disabled={!s.team_id} /></View>
+      </Sheet>
+      <FormSheet visible={more === 'groups'} onClose={close} title="Groups" submitLabel="Save groups" initial={{ n1: s.groups?.[0]?.name, m1: s.groups?.[0]?.athlete_ids, n2: s.groups?.[1]?.name, m2: s.groups?.[1]?.athlete_ids, n3: s.groups?.[2]?.name, m3: s.groups?.[2]?.athlete_ids }}
+        fields={[1, 2, 3].flatMap((k) => [{ key: `n${k}`, label: `Group ${k} name`, optional: true, placeholder: k === 1 ? 'e.g. Defenders' : undefined }, { key: `m${k}`, label: `Group ${k} players`, type: 'multi', options: players, optional: true }])}
+        onSubmit={call(async (v) => api.post(`/coaching/sessions/${s.id}/groups`, { groups: [1, 2, 3].filter((k) => v[`n${k}`] && v[`m${k}`]?.length).map((k) => ({ name: v[`n${k}`], athlete_ids: v[`m${k}`] })) }), 'Groups saved')} />
+      <FormSheet visible={more === 'template'} onClose={close} title="Save as template" submitLabel="Save"
+        fields={[{ key: 'title', label: 'Template name' }]} onSubmit={call(async (v) => api.post('/coaching/templates', { title: v.title, session_record_id: s.id }), 'Template saved (no player details are kept)')} />
+      <Sheet visible={more === 'use'} onClose={close} title="Use a template">
+        {tpls.loading ? <Loading /> : !tpls.data?.length ? <T size={13} color={c.mute}>No session templates yet. Save a plan as a template first.</T> :
+          tpls.data.map((t) => <Row key={t.id} title={t.title} sub={`${t.blocks.length} blocks${t.mine ? '' : ` · shared by ${t.shared_by}`}`} onPress={async () => { try { await api.post(`/coaching/sessions/${s.id}/apply-template`, { template_id: t.id }); close(); toast('Blocks added to the plan'); reload(); } catch (e) { toast(e.message); } }} />)}
+      </Sheet>
+      <FormSheet visible={more === 'clone'} onClose={close} title="New session from this one" submitLabel="Create"
+        fields={[{ key: 'title', label: 'Title' }, { key: 'date', label: 'Date', type: 'date' }, { key: 'time', label: 'Start time', type: 'time' }]} initial={{ title: s.title }}
+        onSubmit={async (v) => { const r = await api.post(`/coaching/sessions/${s.id}/clone`, { source_type: 'team_session', source_id: uuidFrom(Date.now()), team_id: s.team_id ?? undefined, title: v.title, scheduled_at: localToIso(v.date, v.time, tz) }); close(); toast('Created. Plan blocks were copied; notes and attendance were not.'); push('CoachSession', { id: r.id }); }} />
+      <FormSheet visible={more === 'help'} onClose={close} title="Let another coach help" submitLabel="Save"
+        fields={[
+          { key: 'user_id', label: 'Coach', type: 'chips', options: (roster.data?.members ?? []).filter((m) => m.role === 'coach').map((m) => ({ value: m.id, label: m.display_name })) },
+          { key: 'permissions', label: 'They may', type: 'multi', options: [{ value: 'attendance', label: 'Record attendance' }, { value: 'observe', label: 'Write notes about players' }], optional: true, hint: 'Leave empty to remove their access.' },
+        ]}
+        onSubmit={call(async (v) => api.post(`/coaching/sessions/${s.id}/delegates`, { user_id: v.user_id, permissions: v.permissions ?? [] }), 'Saved')} />
+      <FormSheet visible={!!more?.summary} onClose={close} title={`Summary · ${more?.summary?.display_name ?? ''}`} submitLabel="Save"
+        fields={[{ key: 'summary', label: 'How did this player get on?', type: 'multiline' }, { key: 'shared', label: 'Show it to the player', type: 'switch', default: false }]}
+        onSubmit={call(async (v) => api.post(`/coaching/sessions/${s.id}/player-summaries`, { athlete_id: more.summary.id, summary: v.summary, shared: !!v.shared }), 'Saved')} />
+    </>
   );
 }
