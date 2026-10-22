@@ -348,6 +348,9 @@ function Introductions({ brands, onOffer }) {
   );
 }
 
+// Brand owners and entity admins/portfolio managers act as managers; an entity viewer only reads.
+const asSponsorRole = (r) => (['owner', 'admin', 'portfolio_manager'].includes(r) ? 'manager' : r === 'viewer' ? 'auditor' : r);
+
 export function Sponsors() {
   const { has, user, toast } = useSession();
   const { push } = useNav();
@@ -363,7 +366,7 @@ export function Sponsors() {
   const act = async (fn, m) => { try { await fn(); toast(m); deals.reload(); } catch (e) { toast(explain(e)); if (e.status === 409) deals.reload(); } };
   const pr = profile.data;
   // my sponsor role per brand decides which deal buttons are offered (the server still enforces it)
-  const roleOf = (sponsorId) => (mine.data ?? []).find((b) => b.id === sponsorId)?.my_role;
+  const roleOf = (sponsorId) => asSponsorRole((mine.data ?? []).find((b) => b.id === sponsorId)?.my_role);
   const mayDeal = (d, action) => !roleOf(d.sponsor_id) || { withdraw: ['manager', 'approver'], end: ['manager', 'approver'] }[action].includes(roleOf(d.sponsor_id));
   return (
     <Screen>
@@ -413,9 +416,9 @@ export function Sponsors() {
       <Section title="Your brands" color={c.violet}>
         {mine.error ? <LoadError error={mine.error} onRetry={mine.reload} /> : mine.loading && !mine.data ? <Loading /> : mine.data?.length ? mine.data.map((s) => (
           <Row key={s.id} left={<Bubble emoji={s.emoji} color={c.sun} />} title={s.name}
-            sub={[s.industry, s.organisation_name ? `Run by ${s.organisation_name}` : 'Individual brand', s.my_role !== 'manager' ? { evaluator: 'You evaluate and review; you cannot pay or sign', finance: 'You report payments; you cannot change terms', legal: 'You review and change terms; you cannot pay', approver: 'You propose, revise and withdraw; you cannot pay', auditor: 'Read-only, with exports' }[s.my_role] : null].filter(Boolean).join(' · ')}
-            right={<View style={{ alignItems: 'flex-end', gap: 6 }}><Tag label={{ manager: 'Manager', evaluator: 'Evaluator', finance: 'Finance', legal: 'Legal', approver: 'Approver', auditor: 'Auditor' }[s.my_role] ?? 'Staff'} />
-              {s.organisation_id ? <Btn small title="Open workspace" color={c.paper} ink={c.ink} onPress={() => push('Org', { id: s.organisation_id })} /> : s.my_role === 'manager' ? <Btn small title="Link to an organisation" color={c.paper} ink={c.ink} onPress={() => push('Orgs')} /> : null}</View>} />
+            sub={[s.industry, s.organisation_name ? `Run by ${s.organisation_name}` : 'Individual brand', asSponsorRole(s.my_role) !== 'manager' ? { evaluator: 'You evaluate and review; you cannot pay or sign', finance: 'You report payments; you cannot change terms', legal: 'You review and change terms; you cannot pay', approver: 'You propose, revise and withdraw; you cannot pay', auditor: 'Read-only, with exports' }[asSponsorRole(s.my_role)] : null].filter(Boolean).join(' · ')}
+            right={<View style={{ alignItems: 'flex-end', gap: 6 }}><Tag label={{ manager: 'Manager', evaluator: 'Evaluator', finance: 'Finance', legal: 'Legal', approver: 'Approver', auditor: 'Auditor' }[asSponsorRole(s.my_role)] ?? 'Staff'} />
+              {s.organisation_id ? <Btn small title="Open workspace" color={c.paper} ink={c.ink} onPress={() => push('Org', { id: s.organisation_id })} /> : asSponsorRole(s.my_role) === 'manager' && !s.identity_confirmed ? <Btn small title="Link to an organisation" color={c.paper} ink={c.ink} onPress={() => push('Orgs')} /> : null}</View>} />
         )) : <Empty emoji="🏷️" title="No brands yet" sub="Create a brand, or ask an organisation manager to invite you to theirs." />}
         <T size={12} color={c.mute}>Link a brand to an organisation (open it, then Teams, events, venues & brands) to let that organisation's staff work its deals under their roles; staff and departments are managed there.</T>
       </Section>

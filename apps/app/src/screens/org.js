@@ -414,7 +414,7 @@ function Assets({ o, role, archived, toast }) {
   const manage = STAFF.includes(role) && !archived;
   const unlink = async (a) => { try { await api.del(`/organisations/${o.id}/assets/${a.id}`, { kind }); toast('Removed from the organisation'); list.reload(); } catch (e) { fail(toast)(e); } };
   const add = async (a) => { try { await api.post(`/organisations/${o.id}/assets`, { kind, asset_id: a.id }); toast(`${a.name} added`); setLink(false); list.reload(); } catch (e) { fail(toast)(e); } };
-  const items = (Array.isArray(mine.data) ? mine.data : mine.data?.items ?? []).filter((a) => !a.organisation_id && (kind !== 'sponsor' || a.my_role === 'manager'));
+  const items = (Array.isArray(mine.data) ? mine.data : mine.data?.items ?? []).filter((a) => !a.organisation_id && (kind !== 'sponsor' || (['owner', 'manager'].includes(a.my_role) && !a.identity_confirmed)));
   return (
     <>
       <View style={{ marginTop: 10 }}><Seg options={[{ value: 'team', label: 'Teams' }, { value: 'event', label: 'Events' }, { value: 'venue', label: 'Venues' }, { value: 'sponsor', label: 'Brands' }]} value={kind} onChange={setKind} color={c.cyan} /></View>

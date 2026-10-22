@@ -15,7 +15,7 @@ import { explain, LoadError } from '../access';
 const fmt = (cents, cur) => { try { const f = new Intl.NumberFormat(undefined, { style: 'currency', currency: cur }); return f.format(cents / 10 ** f.resolvedOptions().maximumFractionDigits); } catch { return `${cents} ${cur ?? ''}`; } };
 const when = (iso) => (iso ? new Date(`${String(iso).slice(0, 10)}T00:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '');
 const STATUS_TONE = { draft: c.sunSoft, published: c.lime, closed: c.pinkSoft, archived: c.paper, open: c.lime, scheduled: c.sunSoft, submitted: c.sunSoft, awarded: c.lime, declined: c.pinkSoft, withdrawn: c.paper };
-const MAY = ['manager', 'approver', 'admin'];
+const MAY = ['manager', 'approver', 'admin', 'owner', 'portfolio_manager']; // sponsor roles, and an entity representative's own role names (#282)
 const TARGET_LABEL = { athlete: 'Athletes', team: 'Teams', event: 'Events' };
 
 const programFields = (brands, create) => [
