@@ -7,7 +7,7 @@ import { sha256 } from '../crypto.js';
 import { askJson, aiConfigured, aiModel, quoteData, AI_RULES } from '../ai.js';
 import { hiddenYouth, requireRelationship } from '../coaching.js';
 import { requireTeam, ownRecord, savePlan, block } from './coaching-journal.js';
-import { authorise } from './coaching-goals.js';
+import { authorise, series } from './coaching-goals.js';
 
 // AI coaching copilot (issue #269, slice 3). The model only ever writes a DRAFT. It is shown the records the coach pointed it at (permission
 // checked before anything is read), with people replaced by labels, and it has no tools: it cannot create or change anything. The coach
@@ -15,7 +15,7 @@ import { authorise } from './coaching-goals.js';
 const TAG = 'Coaching copilot';
 const COACH = ['coach'];
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
-const TASKS = ['plan_session', 'player_focus', 'summarise_session', 'player_progress', 'team_patterns', 'suggest_actions', 'match_debrief', 'ask'];
+const TASKS = ['plan_session', 'player_focus', 'summarise_session', 'player_progress', 'team_patterns', 'suggest_actions', 'match_debrief', 'ask', 'compare_metrics'];
 const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 const MEDICAL = /\b(diagnos\w*|prescrib\w*|medicat\w*|dosage|injur\w*|rehab\w*|treatment|return[- ]to[- ]play|cleared (to|for) (play|train)|fit to play)\b/i;
 const clip = (s, n) => String(s ?? '').slice(0, n);
@@ -38,6 +38,7 @@ const TASK_BRIEF = {
   suggest_actions: 'Suggest follow-up actions the coach could assign, each tied to the notes that prompted it (action.player is a label like "Player A", or omit for the whole team).',
   match_debrief: 'Draft a post-match debrief from the coach\'s notes and the official result in the data: what went well, what to improve, lessons for training. Never change or question the official result.',
   ask: 'Answer the coach\'s question using only the records in the data. If the records do not answer it, say so.',
+  compare_metrics: 'Explain how each selected metric changed from the previous period to the current one, one item per metric, citing its ref (M1, M2 …). Do not combine metrics into a single score, do not compare metrics with different units, and say plainly when a period has too little data. Subjective coach scores, athlete-reported numbers and official counts must stay distinct.',
 };
 
 /** Read what the model may see. Permission is checked before any record is queried, and only the coach's own records are read. */
@@ -63,16 +64,23 @@ async function gather(user, i) {
   const names = people.map((p) => [p.display_name, labelOf.get(p.id)]).sort((a, b) => b[0].length - a[0].length);
   const scrub = (t) => { let s = quoteData(t, 400); for (const [n, l] of names) if (n) s = s.replace(new RegExp(n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), l); return s; };
 
-  const from = i.from ?? new Date(Date.now() - 56 * 86400000).toISOString().slice(0, 10);
+  const from = i.from ?? new Date(Date.now() - (i.task === 'ask' ? 365 : 56) * 86400000).toISOString().slice(0, 10);
   const to = i.to ?? new Date().toISOString().slice(0, 10);
   if (to < from) throw badRequest('to is before from');
   const refs = [], counters = { O: 0, G: 0, A: 0, S: 0, T: 0 };
   const ref = (letter, type, rid, at, label) => { const r = `${letter}${++counters[letter]}`; refs.push({ ref: r, type, id: rid, at, label }); return r; };
   const params = [user.id, athletes, team, from, `${to}T23:59:59Z`];
-  const obs = await many(
-    `SELECT o.id, o.athlete_id, o.obs_type, o.skill_tag, o.note, o.follow_up, o.observed_at, o.score, o.dimension_key FROM coaching_observations o
-      WHERE o.coach_id=$1 AND ((o.athlete_id = ANY($2::uuid[])) OR ($3::uuid IS NOT NULL AND o.team_id=$3 AND o.athlete_id IS NULL)) AND o.observed_at BETWEEN $4::timestamptz AND $5::timestamptz AND o.visibility = ANY($6::text[])
-      ORDER BY o.observed_at DESC, o.id LIMIT 60`, [...params, visible]);
+  const sql = (extra) => `SELECT o.id, o.athlete_id, o.obs_type, o.skill_tag, o.note, o.follow_up, o.observed_at, o.score, o.dimension_key FROM coaching_observations o
+      WHERE o.coach_id=$1 AND ((o.athlete_id = ANY($2::uuid[])) OR ($3::uuid IS NOT NULL AND o.team_id=$3 AND o.athlete_id IS NULL)) AND o.observed_at BETWEEN $4::timestamptz AND $5::timestamptz AND o.visibility = ANY($6::text[])${extra}
+      ORDER BY o.observed_at DESC, o.id LIMIT 60`;
+  let obs = [];
+  // a question is answered from the notes that mention what it asks about (keywords), falling back to the recent ones
+  if (i.task === 'ask' && i.question) {
+    const stop = new Set(['what', 'have', 'which', 'about', 'there', 'their', 'with', 'from', 'that', 'this', 'last', 'been', 'does', 'show', 'tell', 'noted', 'repeatedly', 'sessions', 'session', 'most']);
+    const words = [...new Set((i.question.toLowerCase().match(/[a-z][a-z-]{3,}/g) ?? []).filter((w) => !stop.has(w)))].slice(0, 8);
+    if (words.length) obs = await many(sql(' AND (o.note ILIKE ANY($7::text[]) OR o.skill_tag ILIKE ANY($7::text[]))'), [...params, visible, words.map((w) => `%${w.replace(/[%_\\]/g, '')}%`)]);
+  }
+  if (!obs.length) obs = await many(sql(''), [...params, visible]);
   const goals = await many("SELECT g.id, g.athlete_id, g.title, g.category, CASE WHEN $4::boolean THEN g.criterion ELSE g.athlete_text END AS criterion, g.status FROM coaching_goals g WHERE g.coach_id=$1 AND g.status IN ('planned','active') AND ($4::boolean OR g.athlete_text IS NOT NULL) AND (g.athlete_id = ANY($2::uuid[]) OR ($3::uuid IS NOT NULL AND g.team_id=$3)) ORDER BY g.review_on NULLS LAST, g.id LIMIT 20", [...params.slice(0, 3), audience === 'coach_private']);
   const actions = await many("SELECT a.id, a.athlete_id, a.title, a.due_at FROM coaching_actions a WHERE a.coach_id=$1 AND a.status IN ('open','in_progress') AND (a.shared OR $4::boolean) AND (a.athlete_id = ANY($2::uuid[]) OR ($3::uuid IS NOT NULL AND a.team_id=$3)) ORDER BY a.due_at NULLS LAST, a.id LIMIT 20", [...params.slice(0, 3), audience === 'coach_private']);
   const att = athletes.length ? await many(
@@ -104,8 +112,33 @@ async function gather(user, i) {
   return { facts, refs, limitations, labelOf, people, rec, athletes, team, from, to, opts };
 }
 
+/** compare_metrics: replace the notes with the selected metrics, this period against the one before, each as its own cited item. */
+async function metricFacts(user, i, g) {
+  const span = Math.round((Date.parse(g.to) - Date.parse(g.from)) / 86400000) + 1;
+  const pTo = new Date(Date.parse(g.from) - 86400000).toISOString().slice(0, 10), pFrom = new Date(Date.parse(pTo) - (span - 1) * 86400000).toISOString().slice(0, 10);
+  const metrics = [];
+  g.refs.length = 0;
+  for (const key of i.metric_keys) {
+    const cur = await series(user, i.athlete_id, key, g.from, g.to), prev = await series(user, i.athlete_id, key, pFrom, pTo);
+    if (cur.units?.length > 1 || prev.units?.length > 1) { g.limitations.push(`"${cur.label}" mixes units, so it was left out.`); continue; }
+    if ((cur.versions?.length ?? 0) > 1 || (prev.versions?.length && cur.versions?.length && prev.versions[0] !== cur.versions[0])) { g.limitations.push(`"${cur.label}" has scores from different rubric versions, so it was left out.`); continue; }
+    const r = `M${metrics.length + 1}`;
+    g.refs.push({ ref: r, type: 'metric', id: key, at: null, label: cur.label });
+    metrics.push({ ref: r, label: cur.label, unit: cur.unit, provenance: cur.provenance, definition: cur.definition, direction: cur.direction, current: { from: g.from, to: g.to, value: cur.value, sample: cur.sample }, previous: { from: pFrom, to: pTo, value: prev.value, sample: prev.sample } });
+  }
+  if (!metrics.length) throw badRequest('None of the chosen metrics can be compared');
+  g.facts = { task_window: g.facts.task_window, players: g.facts.players, metrics, notes: [], goals: [], open_actions: [], attendance: [] };
+  g.limitations.splice(0, g.limitations.length, ...g.limitations.filter((l) => !/notes? (of yours|in this period)|has only \d+ note/.test(l)));
+}
+
 /** What we can say without a model: grouped, source-linked, strictly observed. */
 function fallback(task, g) {
+  if (task === 'compare_metrics') {
+    return { headline: `${g.facts.metrics.length} metric${g.facts.metrics.length === 1 ? '' : 's'}, this period against the one before.`, items: g.facts.metrics.map((m) => {
+      const ok_ = m.current.value != null && m.previous.value != null;
+      return { title: m.label, detail: ok_ ? `${m.previous.value} → ${m.current.value} ${m.unit ?? ''} (${m.current.value - m.previous.value >= 0 ? '+' : ''}${Math.round((m.current.value - m.previous.value) * 100) / 100}). ${m.provenance.replace('_', ' ')}; ${m.current.sample} and ${m.previous.sample} records.` : `Not enough data in one of the periods (${m.previous.sample} before, ${m.current.sample} now); no change is calculated.`, basis: 'observed', source_refs: [m.ref] };
+    }) };
+  }
   const items = [];
   const bySkill = new Map();
   for (const n of g.facts.notes) { const k = n.skill ?? n.type; if (!bySkill.has(k)) bySkill.set(k, []); bySkill.get(k).push(n); }
@@ -144,9 +177,11 @@ cap({
   }),
   async handler({ user }, i) {
     if (i.task === 'ask' && !i.question) throw badRequest('Ask a question');
+    if (i.task === 'compare_metrics' && (!i.athlete_id || !i.metric_keys?.length)) throw badRequest('Choose an athlete and the metrics to compare');
     if (i.task === 'summarise_session' && !i.session_record_id) throw badRequest('session_record_id is required to summarise a session');
     if (i.task === 'plan_session' && !i.session_record_id) throw badRequest('Open the session record you are planning (session_record_id)');
     const g = await gather(user, i);
+    if (i.task === 'compare_metrics') await metricFacts(user, i, g);
     let out = null, aiOutputId = null, model = null;
     if (aiConfigured()) {
       const payload = { task: i.task, question: i.question ? quoteData(i.question, 400) : undefined, facts: g.facts, sources: g.refs.map((r) => r.ref) };

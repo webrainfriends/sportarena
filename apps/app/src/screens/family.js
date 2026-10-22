@@ -3,6 +3,7 @@ import { View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
+import { useNav } from '../nav';
 import { FormSheet } from '../FormSheet';
 import { Btn, Card, Empty, ErrorBox, H1, Loading, Row, Screen, Section, Sheet, T, Tag } from '../ui';
 import { c } from '../theme';
@@ -19,6 +20,7 @@ const PURPOSES = {
   medical: ['Health sharing', 'Share fit-to-play status and records with a physio or doctor, and book appointments.'],
   media: ['Photos & video', 'Photos and video of them may be used in team and event pages.'],
   contact: ['Messages', 'Let them write in team chats.'],
+  coaching: ['Coaching notes', 'Let a coach share notes, goals, actions and progress reports with them and with you.'],
 };
 const CONSENT_STATE = { active: ['Allowed', c.lime], expired: ['Expired — renew to allow again', c.orangeSoft], revoked: ['Withdrawn', c.pinkSoft], not_given: ['Not allowed', c.violetSoft], lapsed: ['Paused — guardian not verified', c.orangeSoft] };
 const stateTag = (s) => <Tag label={STATE[s]?.[0] ?? label(s)} color={STATE[s]?.[1]} />;
@@ -86,6 +88,7 @@ function Pickup({ child, onClose }) {
 
 function LinkCard({ l, reload, onConsents, onPickup }) {
   const { toast } = useSession();
+  const { push } = useNav();
   const [ev, setEv] = useState(false);
   const run = async (fn, msg) => { try { await fn(); toast(msg); reload(); } catch (e) { toast(e.message); } };
   const mine = l.my_side;
@@ -109,6 +112,7 @@ function LinkCard({ l, reload, onConsents, onPickup }) {
         {mine === 'guardian' && l.status === 'active' ? <>
           <Btn small title="Permissions" color={c.pink} onPress={() => onConsents(l.child)} />
           <Btn small title="Pickup & check-in" color={c.violet} onPress={() => onPickup(l.child)} />
+          <Btn small title="Coaching" color={c.paper} ink={c.ink} onPress={() => push('MyCoaching', { child_id: l.child.id, name: l.child.display_name })} />
         </> : null}
         {(mine === 'guardian' && ['active', 'invited', 'accepted', 'pending_review'].includes(l.status)) || (l.requested_by === (mine === 'guardian' ? l.guardian_id : l.child_id) && ['invited', 'accepted', 'pending_review'].includes(l.status))
           ? <Btn small title={l.status === 'active' ? 'End link' : 'Withdraw request'} color={c.paper} ink={c.red} onPress={() => run(() => api.post(`/youth/guardian-links/${l.id}/revoke`, { reason: 'Ended from the app' }), 'Link ended')} /> : null}

@@ -72,6 +72,8 @@ export const config = {
   waitlistHoldMinutes: Number(env.WAITLIST_HOLD_MINUTES ?? 15),
   // Notifications: queued emails are POSTed as JSON to this webhook (your SES/SendGrid/n8n bridge). Unset = they stay queued.
   notifyWebhook: { url: env.NOTIFY_WEBHOOK_URL, secret: env.NOTIFY_WEBHOOK_SECRET },
+  // Optional speech-to-text bridge for coaching voice notes: POST the audio, answer {"text": "..."}. Without it, voice notes are simply unavailable.
+  transcribe: { url: env.COACHING_TRANSCRIBE_URL, secret: env.COACHING_TRANSCRIBE_SECRET },
   // Push: phone apps go through the Expo push service; browsers through Web Push (VAPID keys, generated once by the deploy).
   push: {
     expoUrl: env.EXPO_PUSH_URL ?? 'https://exp.host/--/api/v2/push/send', expoToken: env.EXPO_ACCESS_TOKEN,
