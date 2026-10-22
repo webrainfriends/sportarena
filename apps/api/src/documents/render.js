@@ -132,3 +132,73 @@ export async function renderInvoice({ layout, kit, logo, invoice, sample = false
   await done;
   return { buffer: Buffer.concat(chunks), pages: range.count };
 }
+
+/**
+ * Coaching report PDF. The content is the frozen snapshot of a published report version, formatted only: no figure or sentence is
+ * produced here. Branding (kit, logo, layout blocks header/title/text/footer) comes from the same template system as invoices.
+ * @returns {Promise<{ buffer: Buffer, pages: number }>}
+ */
+export async function renderCoachingReport({ layout, kit, logo, snapshot, version }) {
+  const f = fonts();
+  const strings = [kit?.display_name, kit?.legal_name, kit?.address, kit?.footer_text, snapshot.title, snapshot.subject, snapshot.coach_name, snapshot.disclosure, ...layout.blocks.map((b) => b.text)];
+  for (const sec of snapshot.sections) strings.push(sec.title, sec.body, ...(sec.items ?? []).flatMap((x) => [x.title, x.meta, x.body, x.value]));
+  assertGlyphs(strings, f);
+  const accent = hex(kit?.primary_color, '#0F6E56'), ink = hex(kit?.secondary_color, '#444441');
+  const doc = new PDFDocument({
+    size: layout.paper, layout: layout.orientation, margin: layout.margin_mm * MM, bufferPages: true, compress: true,
+    info: { Title: snapshot.title, Author: kit?.display_name ?? snapshot.coach_name ?? 'Sportarena', CreationDate: new Date(snapshot.published_at), Producer: 'Sportarena' },
+  });
+  const chunks = [];
+  doc.on('data', (c) => chunks.push(c));
+  const done = new Promise((res, rej) => { doc.on('end', res); doc.on('error', rej); });
+  const left = doc.page.margins.left, width = doc.page.width - left - doc.page.margins.right;
+  const bottom = () => doc.page.height - doc.page.margins.bottom - 24;
+  const label = (t, x, y, w, o = {}) => doc.font(o.bold ? f.bold : f.regular).fontSize(o.size ?? 9).fillColor(o.color ?? ink).text(t ?? '', x, y, { width: w, align: o.align ?? 'left', lineBreak: o.lineBreak ?? true });
+  const room = (h) => { if (doc.y + h > bottom()) doc.addPage(); };
+
+  for (const b of layout.blocks) {
+    if (b.type === 'header') {
+      const top = doc.page.margins.top; let x = left;
+      if (layout.style === 'modern') doc.rect(0, 0, doc.page.width, 10).fill(accent);
+      if (logo) { try { doc.image(logo, x, top, { fit: [130, 56] }); x += 140; } catch { throw new AppError(422, 'logo_unreadable', 'The brand logo could not be read. Upload it again as PNG or JPEG.'); } }
+      label(kit?.display_name ?? snapshot.coach_name ?? '', x, top, width - (x - left), { bold: true, size: 14, color: accent });
+      const sub = [kit?.legal_name, kit?.address, [kit?.contact_email, kit?.phone].filter(Boolean).join(' · '), kit?.website].filter(Boolean).join('\n');
+      if (sub) label(sub, x, doc.y + 2, width - (x - left), { size: 8 });
+      doc.y = Math.max(doc.y, top + (logo ? 60 : 0)) + 14;
+      doc.moveTo(left, doc.y).lineTo(left + width, doc.y).lineWidth(0.6).stroke(accent); doc.y += 12;
+    } else if (b.type === 'title') {
+      label(snapshot.title, left, doc.y, width, { bold: true, size: 18, color: accent });
+      label(`${snapshot.subject} · ${snapshot.period.from} to ${snapshot.period.to} · Coach ${snapshot.coach_name}`, left, doc.y + 2, width, { size: 9 });
+      label(`Version ${version} · ${snapshot.disclosure}`, left, doc.y + 2, width, { size: 8 });
+      doc.y += 12;
+      for (const sec of snapshot.sections) {
+        room(48);
+        label(sec.title.toUpperCase(), left, doc.y, width, { bold: true, size: 9, color: accent }); doc.y += 4;
+        if (sec.kind === 'text') { label(sec.body, left, doc.y, width, { size: 10 }); doc.y += 10; continue; }
+        for (const it of sec.items) {
+          doc.font(f.bold).fontSize(10); const h = doc.heightOfString(`${it.title}${it.value ? `  ${it.value}` : ''}`, { width }) + (it.meta ? 12 : 0) + (it.body ? doc.font(f.regular).fontSize(9).heightOfString(it.body, { width }) : 0);
+          room(Math.min(h + 10, 120));
+          label(`${it.title}${it.value ? `   ${it.value}` : ''}`, left, doc.y, width, { bold: true, size: 10 });
+          if (it.meta) label(it.meta, left, doc.y, width, { size: 8 });
+          if (it.body) label(it.body, left, doc.y + 1, width, { size: 9 });
+          doc.y += 8;
+        }
+        doc.y += 6;
+      }
+    } else if (b.type === 'text') {
+      room(30); label(b.text, left, doc.y, width, { size: TEXT_SIZE[b.size] ?? 9, align: b.align }); doc.y += 8;
+    }
+  }
+  const wantsFooter = layout.blocks.some((b) => b.type === 'footer');
+  const range = doc.bufferedPageRange();
+  for (let i = 0; i < range.count; i++) {
+    doc.switchToPage(range.start + i);
+    const y = doc.page.height - doc.page.margins.bottom - 12;
+    doc.page.margins.bottom = 0;
+    if (wantsFooter && kit?.footer_text) label(kit.footer_text, left, y, width - 120, { size: 8, lineBreak: false });
+    label(`${snapshot.title} · v${version} · Page ${i + 1} of ${range.count}`, left + width - 260, y, 260, { size: 8, align: 'right', lineBreak: false });
+  }
+  doc.end();
+  await done;
+  return { buffer: Buffer.concat(chunks), pages: range.count };
+}

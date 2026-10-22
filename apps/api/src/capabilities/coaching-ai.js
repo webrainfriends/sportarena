@@ -42,7 +42,9 @@ const TASK_BRIEF = {
 
 /** Read what the model may see. Permission is checked before any record is queried, and only the coach's own records are read. */
 async function gather(user, i) {
-  const opts = { include_private_summaries: !!i.include_private_summaries };
+  const audience = i.audience ?? 'coach_private';
+  const opts = { include_private_summaries: !!i.include_private_summaries && audience === 'coach_private', audience };
+  const visible = audience === 'coach_private' ? ['coach_private', 'staff', 'player', 'team'] : audience === 'team_staff' ? ['staff', 'player', 'team'] : ['player'];
   let athletes = [], team = null, rec = null;
   if (i.session_record_id) {
     rec = await ownRecord(user, i.session_record_id);
@@ -69,10 +71,10 @@ async function gather(user, i) {
   const params = [user.id, athletes, team, from, `${to}T23:59:59Z`];
   const obs = await many(
     `SELECT o.id, o.athlete_id, o.obs_type, o.skill_tag, o.note, o.follow_up, o.observed_at, o.score, o.dimension_key FROM coaching_observations o
-      WHERE o.coach_id=$1 AND ((o.athlete_id = ANY($2::uuid[])) OR ($3::uuid IS NOT NULL AND o.team_id=$3 AND o.athlete_id IS NULL)) AND o.observed_at BETWEEN $4::timestamptz AND $5::timestamptz
-      ORDER BY o.observed_at DESC, o.id LIMIT 60`, params);
-  const goals = await many("SELECT g.id, g.athlete_id, g.title, g.category, g.criterion, g.status FROM coaching_goals g WHERE g.coach_id=$1 AND g.status IN ('planned','active') AND (g.athlete_id = ANY($2::uuid[]) OR ($3::uuid IS NOT NULL AND g.team_id=$3)) ORDER BY g.review_on NULLS LAST, g.id LIMIT 20", params.slice(0, 3));
-  const actions = await many("SELECT a.id, a.athlete_id, a.title, a.due_at FROM coaching_actions a WHERE a.coach_id=$1 AND a.status IN ('open','in_progress') AND (a.athlete_id = ANY($2::uuid[]) OR ($3::uuid IS NOT NULL AND a.team_id=$3)) ORDER BY a.due_at NULLS LAST, a.id LIMIT 20", params.slice(0, 3));
+      WHERE o.coach_id=$1 AND ((o.athlete_id = ANY($2::uuid[])) OR ($3::uuid IS NOT NULL AND o.team_id=$3 AND o.athlete_id IS NULL)) AND o.observed_at BETWEEN $4::timestamptz AND $5::timestamptz AND o.visibility = ANY($6::text[])
+      ORDER BY o.observed_at DESC, o.id LIMIT 60`, [...params, visible]);
+  const goals = await many("SELECT g.id, g.athlete_id, g.title, g.category, CASE WHEN $4::boolean THEN g.criterion ELSE g.athlete_text END AS criterion, g.status FROM coaching_goals g WHERE g.coach_id=$1 AND g.status IN ('planned','active') AND ($4::boolean OR g.athlete_text IS NOT NULL) AND (g.athlete_id = ANY($2::uuid[]) OR ($3::uuid IS NOT NULL AND g.team_id=$3)) ORDER BY g.review_on NULLS LAST, g.id LIMIT 20", [...params.slice(0, 3), audience === 'coach_private']);
+  const actions = await many("SELECT a.id, a.athlete_id, a.title, a.due_at FROM coaching_actions a WHERE a.coach_id=$1 AND a.status IN ('open','in_progress') AND (a.shared OR $4::boolean) AND (a.athlete_id = ANY($2::uuid[]) OR ($3::uuid IS NOT NULL AND a.team_id=$3)) ORDER BY a.due_at NULLS LAST, a.id LIMIT 20", [...params.slice(0, 3), audience === 'coach_private']);
   const att = athletes.length ? await many(
     `SELECT p.athlete_id, count(*) FILTER (WHERE p.attendance IN ('present','late','left_early'))::int AS attended, count(*) FILTER (WHERE p.attendance IN ('present','late','left_early','absent'))::int AS recorded, count(*) FILTER (WHERE p.attendance='expected')::int AS not_recorded
        FROM coaching_session_participants p JOIN coaching_session_records r ON r.id=p.session_record_id WHERE r.coach_id=$1 AND p.athlete_id = ANY($2::uuid[]) AND coalesce(r.started_at, r.scheduled_at, r.created_at) BETWEEN $3::timestamptz AND $4::timestamptz GROUP BY p.athlete_id ORDER BY p.athlete_id`, [user.id, athletes, from, `${to}T23:59:59Z`]) : [];
@@ -93,6 +95,7 @@ async function gather(user, i) {
     }
   }
   if (!opts.include_private_summaries) limitations.push('Your private session summaries were not shared with the AI.');
+  if (audience !== 'coach_private') limitations.push('Only notes, goals and actions already shared with this audience were used, so private observations are not reflected.');
   if (!obs.length) limitations.push('No notes of yours fall in this period, so there is little evidence to draw on.');
   for (const [pid, l] of labelOf) { const n = obs.filter((o) => o.athlete_id === pid).length; if (n < 3) limitations.push(`${l} has only ${n} note${n === 1 ? '' : 's'} in this period.`); }
   if (att.some((a) => a.not_recorded)) limitations.push('Some attendance was never recorded; it is not treated as absence.');
@@ -136,7 +139,8 @@ cap({
   summary: 'Ask the copilot for a DRAFT (next-session plan, player focus, session summary, player/team patterns, suggested actions, match debrief, or a question about your own notes). It reads only your own records for the athlete, team or session you name, after checking you may act on them; people are replaced by labels and medical data is never read. The draft lists the records it used, its limitations, and which statements are observed vs suggested. It changes nothing until you resolve it. Without an AI provider you get a plain, source-linked summary instead.',
   input: z.object({
     task: z.enum(TASKS), athlete_id: id.optional(), team_id: id.optional(), session_record_id: id.optional(), from: day.optional(), to: day.optional(),
-    include_private_summaries: z.boolean().default(false).describe('also share your private session summaries with the AI'), question: z.string().max(400).optional(),
+    include_private_summaries: z.boolean().default(false).describe('also share your private session summaries with the AI (private-copy drafts only)'),
+    audience: z.enum(['coach_private', 'athlete', 'guardian', 'team_staff']).default('coach_private').describe('who the result is meant for; anything other than coach_private restricts the evidence to notes, goals and actions already shared with that audience, so the draft can go into a report for them'), question: z.string().max(400).optional(),
   }),
   async handler({ user }, i) {
     if (i.task === 'ask' && !i.question) throw badRequest('Ask a question');

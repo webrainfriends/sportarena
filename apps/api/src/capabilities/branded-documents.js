@@ -17,9 +17,10 @@ import { orgRole } from '../org-access.js';
 import { docHeaders, loadEncrypted, readBody, saveEncrypted } from '../doc-store.js';
 import { canManage } from '../booking/engine.js';
 import { buyerOf } from '../booking/invoices.js';
-import { FAMILIES, STARTERS, checkLayout, layoutSchema } from '../documents/layout.js';
+import { FAMILIES, STARTERS, checkLayout, layoutSchema, starterFor } from '../documents/layout.js';
+import { canReadReportVersion, reportVersionFor } from '../coaching-report-access.js';
 import { LOGO_LIMITS, inspectLogo } from '../documents/image.js';
-import { renderInvoice } from '../documents/render.js';
+import { renderInvoice, renderCoachingReport } from '../documents/render.js';
 
 const TAG = 'Branded documents';
 const color = z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Use a #RRGGBB colour');
@@ -46,7 +47,7 @@ const myKits = (user) => many(
 
 cap({
   name: 'list_document_families', method: 'GET', path: '/branded-documents/families', tag: TAG,
-  summary: 'The document families Sportarena can brand, which roles use them, and whether their canonical source workflow is connected (only invoices today). A family that is not available cannot be generated.',
+  summary: 'The document families Sportarena can brand, which roles use them, and whether their canonical source workflow is connected (invoices and coaching reports today). A family that is not available cannot be generated.',
   handler: () => ({ families: FAMILIES, starters: Object.keys(STARTERS), starter_layouts: STARTERS, paper: ['A4', 'Letter'], logo: { types: ['image/png', 'image/jpeg'], max_bytes: LOGO_LIMITS.bytes, max_px: LOGO_LIMITS.maxPx, recommended_min_px: LOGO_LIMITS.recommendedPx } }),
 });
 
@@ -123,7 +124,7 @@ cap({
     if (!fam.source.available) throw new AppError(409, 'source_unavailable', fam.source.reason);
     await mustScope(user, i.organisation_id, true);
     await checkKitForTemplate(user, i.kit_id, i.organisation_id);
-    const c = checkLayout(i.family, i.layout ?? STARTERS[i.starter]);
+    const c = checkLayout(i.family, i.layout ?? starterFor(i.family, i.starter));
     if (c.error) throw badRequest(c.error);
     const { owner, org } = scopeCols(user, i.organisation_id);
     const row = await one('INSERT INTO document_templates(owner_user_id, organisation_id, family, name, kit_id, draft, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id', [owner, org, i.family, i.name, i.kit_id ?? null, JSON.stringify(c.layout), user.id]);
@@ -229,6 +230,46 @@ cap({
 });
 
 cap({
+  name: 'generate_coaching_report_document', method: 'POST', path: '/branded-documents/coaching-report', tag: TAG, auth: ['coach'],
+  summary: 'Render a published coaching report version as a branded PDF (from one of your published coaching_report templates, or the plain classic layout) and keep the bytes. The words and figures are the frozen snapshot of that version; a template only chooses presentation. Regenerating makes a new document. Download with GET /branded-documents/{id}/file.',
+  input: z.object({ report_id: id, version: z.number().int().min(1).optional().describe('defaults to the latest published version'), template_id: id.optional() }),
+  async handler({ user }, i) {
+    requireApproved(user);
+    const v = await reportVersionFor(i.report_id, i.version);
+    if (!v || v.coach_id !== user.id) throw notFound('Report version');
+    let ver = null;
+    if (i.template_id) {
+      const t = await tplOf(i.template_id);
+      await mustAccess(user, t, 'Template');
+      if (t.family !== 'coaching_report') throw badRequest('That template is for a different document');
+      if (t.status === 'retired' || t.archived_at) throw conflict('That template is retired');
+      ver = await one('SELECT * FROM document_template_versions WHERE template_id=$1 ORDER BY version DESC LIMIT 1', [t.id]);
+      if (!ver) throw conflict('Publish the template before generating documents from it');
+    }
+    const layout = ver ? ver.layout : starterFor('coaching_report', 'classic');
+    const { buffer, pages } = await renderCoachingReport({ layout, kit: ver?.kit_snapshot ?? null, logo: await loadLogo(ver?.logo_asset_id), snapshot: v.snapshot, version: v.version });
+    const { id: did, file } = await saveEncrypted('documents', 'generated_documents.file', buffer);
+    const row = await one(
+      `INSERT INTO generated_documents(id, family, source_type, source_id, source_version, template_version_id, logo_asset_id, file_name, size_bytes, sha256, pages, generated_by)
+       VALUES ($1,'coaching_report','coaching_report',$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id, family, source_type, source_id, source_version, template_version_id, size_bytes, sha256, pages, created_at`,
+      [did, v.report_id, v.version, ver?.id ?? null, ver?.logo_asset_id ?? null, file, buffer.length, createHash('sha256').update(buffer).digest('hex'), pages, user.id]);
+    await audit(null, user.id, 'generate_document', 'generated_documents', did);
+    return { ...row, url: `/api/v1/branded-documents/${did}/file` };
+  },
+});
+
+cap({
+  name: 'list_coaching_report_documents', method: 'GET', path: '/branded-documents/coaching-report', tag: TAG, auth: ['coach'],
+  summary: 'PDFs you generated for one coaching report (newest first).', input: z.object({ report_id: id, ...page }),
+  async handler({ user }, i) {
+    const v = await reportVersionFor(i.report_id, null);
+    if (!v || v.coach_id !== user.id) throw notFound('Report');
+    const rows = await many('SELECT id, family, source_id, source_version, template_version_id, size_bytes, sha256, pages, created_at FROM generated_documents WHERE source_type=\'coaching_report\' AND source_id=$1 ORDER BY created_at DESC, id LIMIT $2 OFFSET $3', [i.report_id, i.limit, i.offset]);
+    return rows.map((r) => ({ ...r, url: `/api/v1/branded-documents/${r.id}/file` }));
+  },
+});
+
+cap({
   name: 'list_generated_documents', method: 'GET', path: '/branded-documents', tag: TAG,
   summary: 'PDFs generated for one invoice (newest first). Only the buyer or the venue team of that invoice can list them.',
   input: z.object({ invoice_id: id, ...page }),
@@ -307,7 +348,11 @@ export function brandedDocumentsRouter() {
       const user = await who(req);
       const d = await one('SELECT * FROM generated_documents WHERE id=$1', [uuid(req.params.id, 'Document')]);
       if (!d) throw notFound('Document');
-      await invoiceFor(user, d.source_id); // live check on every download: revoked venue-team access ends here
+      if (d.source_type === 'coaching_report') {
+        // live check on every download: the audience the version was published for (or its author), never anyone else
+        const v = await reportVersionFor(d.source_id, d.source_version);
+        if (!v || !(await canReadReportVersion(user, v))) throw notFound('Document');
+      } else await invoiceFor(user, d.source_id); // live check on every download: revoked venue-team access ends here
       const bytes = await loadEncrypted('documents', 'generated_documents.file', d.file_name);
       await audit(null, user.id, 'read_pii', 'generated_documents', d.id);
       res.set({ ...docHeaders('application/pdf', bytes), 'Content-Disposition': `attachment; filename="${d.id}.pdf"` });

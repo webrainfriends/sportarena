@@ -4,7 +4,9 @@ import { z } from 'zod';
 
 export const BLOCKS = ['header', 'title', 'parties', 'lines', 'totals', 'text', 'footer'];
 /** Blocks an invoice can never be issued without: a template cannot hide the canonical number, parties, lines or totals. */
-export const REQUIRED = { invoice: ['title', 'parties', 'lines', 'totals'] };
+export const REQUIRED = { invoice: ['title', 'parties', 'lines', 'totals'], coaching_report: ['title'] };
+/** Blocks that mean something for a family; others are refused so a template cannot claim content the document does not have. */
+export const ALLOWED = { coaching_report: ['header', 'title', 'text', 'footer'] };
 
 const block = z.object({ type: z.enum(BLOCKS), text: z.string().max(2000).optional(), align: z.enum(['left', 'center', 'right']).optional(), size: z.enum(['small', 'normal', 'large']).optional() }).strict()
   .refine((b) => b.type === 'text' ? !!b.text?.trim() : b.text === undefined && b.align === undefined && b.size === undefined, 'Only text blocks carry text, alignment and size, and they need some text');
@@ -22,10 +24,18 @@ export const STARTERS = {
   modern: { style: 'modern', paper: 'A4', orientation: 'portrait', margin_mm: 15, blocks: ['header', 'title', 'parties', 'lines', 'totals', 'text', 'footer'].map((type) => (type === 'text' ? { type, text: 'Thank you for your business.' } : { type })) },
 };
 
+/** A starter layout adapted to a family: blocks that family cannot show are left out, so every starter is valid for every family it is offered for. */
+export const starterFor = (family, name) => {
+  const s = STARTERS[name] ?? STARTERS.classic;
+  return ALLOWED[family] ? { ...s, blocks: s.blocks.filter((b) => ALLOWED[family].includes(b.type)) } : s;
+};
+
 /** Parse a layout and make sure the family's mandatory blocks are all present. Returns the parsed layout or throws a message. */
 export function checkLayout(family, raw) {
   const r = layoutSchema.safeParse(raw);
   if (!r.success) return { error: r.error.issues.map((i) => `${i.path.join('.') || 'layout'}: ${i.message}`).join('; ') };
+  const notAllowed = ALLOWED[family] ? r.data.blocks.filter((b) => !ALLOWED[family].includes(b.type)).map((b) => b.type) : [];
+  if (notAllowed.length) return { error: `A ${family} layout cannot use these blocks: ${[...new Set(notAllowed)].join(', ')}` };
   const missing = (REQUIRED[family] ?? []).filter((t) => !r.data.blocks.some((b) => b.type === t));
   if (missing.length) return { error: `A ${family} layout must keep these blocks: ${missing.join(', ')}` };
   return { layout: r.data };
@@ -35,6 +45,7 @@ const SOURCE = (available, reason) => ({ available, ...(reason ? { reason } : {}
 /** What each role can produce and whether its canonical source workflow is wired up yet. Only invoices are; the rest are listed honestly as not available. */
 export const FAMILIES = [
   { family: 'invoice', label: 'Venue invoice / credit note', roles: ['venue_manager', 'athlete', 'organizer', 'coach'], source: SOURCE(true) },
+  { family: 'coaching_report', label: 'Coaching progress report', roles: ['coach'], source: SOURCE(true) },
   ...[
     ['coaching_plan', 'Training / coaching plan', ['coach']], ['coach_agreement', 'Coaching agreement', ['coach']],
     ['referee_letter', 'Appointment / engagement letter', ['referee']], ['event_timetable', 'Event programme / timetable', ['organizer']],

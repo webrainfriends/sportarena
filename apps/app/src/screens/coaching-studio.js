@@ -9,6 +9,7 @@ import { useNav } from '../nav';
 import { Btn, Card, Chip, Empty, ErrorBox, Field, H1, Loading, Row, Screen, Section, Sheet, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { HScroll } from '../pickers';
+import { send, useOutbox } from '../outbox';
 import { c } from '../theme';
 import { dateTimeIn, localToIso } from '../vtime';
 
@@ -114,6 +115,7 @@ export function CoachSession(props) {
   const [finishing, setFinishing] = useState(false);
   const [busy, setBusy] = useState(null);
   const w = ws.data;
+  const outbox = useOutbox();
   const run = async (name, fn, msg) => { setBusy(name); try { await fn(); await ws.reload(); if (msg) toast(msg); } catch (e) { toast(e.message ?? 'Could not save'); } setBusy(null); };
   if (ws.loading && !w) return <Screen><Loading /></Screen>;
   if (ws.error) return <Screen><ErrorBox error={ws.error} onRetry={ws.reload} /></Screen>;
@@ -128,6 +130,8 @@ export function CoachSession(props) {
         {s.scheduled_at ? <T size={13} color={c.mute}>{dateTimeIn(s.scheduled_at, tz)}</T> : null}
       </View>
       {s.objective ? <T size={14} style={{ marginTop: 6 }}>{s.objective}</T> : null}
+      {outbox.pending ? <Card pad={10} color={c.cyanSoft} style={{ marginTop: 8 }}><T size={12} weight="700">{outbox.pending} note{outbox.pending === 1 ? '' : 's'} waiting to send</T><T size={12} color={c.mute}>Kept in memory only, so keep the app open until they send. Retries by itself; nothing is saved twice.</T><View style={{ marginTop: 6 }}><Btn small title="Retry now" onPress={outbox.flush} /></View></Card> : null}
+      {outbox.rejected ? <Card pad={10} color={c.violetSoft} style={{ marginTop: 8 }}><T size={12} weight="700">A saved note was refused</T><T size={12} color={c.mute}>{outbox.rejected}</T></Card> : null}
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
         {s.status === 'planned' ? <Btn small title="Start session" loading={busy === 'start'} onPress={() => run('start', () => api.post(`/coaching/sessions/${s.id}/start`), 'Session started')} /> : null}
         {s.status === 'running' ? <Btn small title="Finish & review" onPress={() => setFinishing(true)} /> : null}
@@ -195,8 +199,8 @@ export function CoachSession(props) {
         ]}
         onSubmit={async (v) => {
           const visibility = v.visibility === 'staff' && !s.team_id ? 'coach_private' : v.visibility;
-          await api.post('/coaching/observations', { session_record_id: s.id, athlete_id: note.athlete_id, team_id: note.athlete_id && visibility !== 'staff' ? undefined : s.team_id ?? undefined, note: v.note, obs_type: v.obs_type, skill_tag: v.skill_tag || undefined, visibility, follow_up: !!v.follow_up, client_key: keyOf() });
-          setNote(null); toast('Note saved'); ws.reload();
+          const r = await send('/coaching/observations', { session_record_id: s.id, athlete_id: note.athlete_id, team_id: note.athlete_id && visibility !== 'staff' ? undefined : s.team_id ?? undefined, note: v.note, obs_type: v.obs_type, skill_tag: v.skill_tag || undefined, visibility, follow_up: !!v.follow_up, client_key: keyOf() });
+          setNote(null); toast(r.status === 'saved' ? 'Note saved' : 'No signal: note kept and will send automatically'); ws.reload();
         }} />
       <PlanSheet visible={planning} blocks={blocks} version={w.plan.version} onClose={() => setPlanning(false)} onSave={async (next) => { await api.post(`/coaching/sessions/${s.id}/plan`, { blocks: next, expected_version: w.plan.version }); setPlanning(false); toast('Plan saved'); ws.reload(); }} />
       <FormSheet visible={finishing} onClose={() => setFinishing(false)} title="Review the session" submitLabel={done ? 'Save review' : 'Finish session'} initial={{ team_summary: s.team_summary ?? '', private_summary: s.private_summary ?? '' }}
@@ -256,7 +260,7 @@ export function CoachJournal({ athlete_id, team_id, name }) {
     <Screen onRefresh={tl.reload}>
       <H1>{name ? `${name} · journal` : athlete_id ? 'Player journal' : 'Team journal'}</H1>
       <T size={13} color={c.mute}>Your notes, attendance and completed sessions in time order. Records are shown from their source; official scores and stats are never changed here.</T>
-      {athlete_id ? <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, flexWrap: 'wrap' }}><Btn small title="Goals & actions" onPress={() => push('CoachGoals', { athlete_id, name })} /><Btn small title="Progress summary (AI)" color={c.paper} ink={c.ink} onPress={() => push('CoachCopilot', { task: 'player_progress', athlete_id })} /><Btn small title="Ask about notes (AI)" color={c.paper} ink={c.ink} onPress={() => push('CoachCopilot', { task: 'ask', athlete_id })} /></View> : <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}><Btn small title="Goals & actions" onPress={() => push('CoachGoals', { team_id })} /><Btn small title="Team patterns (AI)" color={c.paper} ink={c.ink} onPress={() => push('CoachCopilot', { task: 'team_patterns', team_id })} /></View>}
+      {athlete_id ? <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, flexWrap: 'wrap' }}><Btn small title="Goals & actions" onPress={() => push('CoachGoals', { athlete_id, name })} /><Btn small title="Reports" color={c.paper} ink={c.ink} onPress={() => push('CoachReports', { athlete_id, name })} /><Btn small title="Progress summary (AI)" color={c.paper} ink={c.ink} onPress={() => push('CoachCopilot', { task: 'player_progress', athlete_id })} /><Btn small title="Ask about notes (AI)" color={c.paper} ink={c.ink} onPress={() => push('CoachCopilot', { task: 'ask', athlete_id })} /></View> : <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}><Btn small title="Goals & actions" onPress={() => push('CoachGoals', { team_id })} /><Btn small title="Reports" color={c.paper} ink={c.ink} onPress={() => push('CoachReports', { team_id })} /><Btn small title="Team patterns (AI)" color={c.paper} ink={c.ink} onPress={() => push('CoachCopilot', { task: 'team_patterns', team_id })} /></View>}
       {athlete_id ? <Metrics athlete_id={athlete_id} /> : null}
       {tags.length ? <HScroll><Chip label="All" active={!tag} onPress={() => setTag(null)} />{tags.map((t) => <Chip key={t} label={t} active={tag === t} onPress={() => setTag(t)} />)}</HScroll> : null}
       {tl.loading && !tl.data ? <Loading /> : tl.error ? <ErrorBox error={tl.error} onRetry={tl.reload} /> : !tl.data.length ?
@@ -368,13 +372,18 @@ export function CoachGoals({ athlete_id, team_id, name }) {
 // What the coach chose to show the athlete: shared notes, goal wording and shared actions. Nothing private reaches this screen.
 export function MyCoaching() {
   const { toast } = useSession();
+  const { push } = useNav();
   const notes = useLoad(() => api.get('/me/coaching-notes'), []);
   const goals = useLoad(() => api.get('/me/coaching-goals'), []);
   const actions = useLoad(() => api.get('/me/coaching-actions'), []);
-  const reload = () => { notes.reload(); goals.reload(); actions.reload(); };
+  const reports = useLoad(() => api.get('/me/coaching-reports'), []);
+  const reload = () => { notes.reload(); goals.reload(); actions.reload(); reports.reload(); };
   return (
     <Screen onRefresh={reload}>
       <H1>From my coach</H1>
+      <Section title="Reports">
+        {!reports.data?.length ? <T size={13} color={c.mute}>No reports shared with you yet.</T> : reports.data.map((r) => <Row key={r.report_id} title={r.title} sub={`From ${r.coach_name} · ${dateTimeIn(r.published_at, tz)}`} onPress={() => push('CoachReportView', { id: r.report_id, version: r.version })} />)}
+      </Section>
       <Section title="Goals">
         {!goals.data?.length ? <T size={13} color={c.mute}>No goals shared with you yet.</T> : goals.data.map((g) => <Row key={g.id} title={g.title} sub={`${g.text}${g.review_on ? ` · review ${g.review_on}` : ''}`} right={<Status s={g.status} />} />)}
       </Section>
@@ -471,6 +480,113 @@ export function CoachCopilot({ task = 'player_progress', athlete_id, team_id, se
           </View>
         </>
       )}
+    </Screen>
+  );
+}
+
+// Reports: choose an audience, see exactly what that audience will get, then publish a frozen version.
+const AUD = [['coach_private', 'Just me'], ['athlete', 'Athlete'], ['guardian', 'Guardian'], ['team_staff', 'Team coaches']];
+const KIND = ['athlete_progress', 'session', 'goal_review', 'team_training', 'match_debrief', 'period_review', 'action_summary'];
+
+export function CoachReports({ athlete_id, team_id, name }) {
+  const { push } = useNav();
+  const { toast } = useSession();
+  const q = athlete_id ? `athlete_id=${athlete_id}` : `team_id=${team_id}`;
+  const list = useLoad(() => api.get(`/coaching/reports?${q}`), [q]);
+  const [creating, setCreating] = useState(false);
+  return (
+    <Screen onRefresh={list.reload}>
+      <H1>{name ? `${name} · reports` : 'Reports'}</H1>
+      <T size={13} color={c.mute}>Build a report for the person who will read it. Private notes can never go into a shared report, and a published version never changes.</T>
+      <View style={{ marginTop: 10 }}><Btn small title="New report" onPress={() => setCreating(true)} /></View>
+      {list.loading && !list.data ? <Loading /> : list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : !list.data.length ? <Empty emoji="📄" title="No reports yet" sub="Pick an audience and a period and the report builds itself from your records." /> :
+        list.data.map((r) => <Row key={r.id} title={r.title} sub={`${AUD.find(([v]) => v === r.audience)?.[1]} · ${r.period_from.slice(0, 10)} to ${r.period_to.slice(0, 10)} · ${r.latest_version ? `v${r.latest_version} published` : 'draft'}`} onPress={() => push('CoachReport', { id: r.id })} />)}
+      <FormSheet visible={creating} onClose={() => setCreating(false)} title="New report" submitLabel="Create"
+        fields={[
+          { key: 'title', label: 'Title' },
+          { key: 'kind', label: 'Kind', type: 'chips', options: opts(KIND), default: 'athlete_progress' },
+          { key: 'audience', label: 'Who will read it', type: 'chips', options: AUD.filter(([v]) => (athlete_id ? true : v === 'coach_private' || v === 'team_staff')).map(([value, lab]) => ({ value, label: lab })), default: 'coach_private' },
+          { key: 'from', toKey: 'to', label: 'Period', type: 'daterange' },
+          { key: 'goals', label: 'Include goals', type: 'switch', default: true },
+          { key: 'metrics', label: 'Include numbers (attendance, measurements)', type: 'switch', default: true },
+          { key: 'actions', label: 'Include next steps', type: 'switch', default: true },
+          { key: 'narrative', label: 'Your summary', type: 'multiline', optional: true },
+        ]}
+        onSubmit={async (v) => {
+          const r = await api.post('/coaching/reports', { athlete_id, team_id, title: v.title, kind: v.kind, audience: v.audience, from: v.from, to: v.to, selection: { goals: !!v.goals, metrics: athlete_id ? !!v.metrics : false, actions: !!v.actions }, narrative: v.narrative || undefined });
+          setCreating(false); toast('Report created'); push('CoachReport', { id: r.id });
+        }} />
+    </Screen>
+  );
+}
+
+export function CoachReport({ id }) {
+  const { toast } = useSession();
+  const rep = useLoad(() => api.get(`/coaching/reports/${id}`), [id]);
+  const prev = useLoad(() => api.get(`/coaching/reports/${id}/preview`), [id]);
+  const [busy, setBusy] = useState(false);
+  const [sure, setSure] = useState(false);
+  const r = rep.data, snap = prev.data?.snapshot;
+  const act = async (fn, msg) => { setBusy(true); try { await fn(); toast(msg); rep.reload(); prev.reload(); } catch (e) { toast(e.message ?? 'Could not do that'); } setBusy(false); };
+  if ((rep.loading && !r) || (prev.loading && !snap)) return <Screen><Loading /></Screen>;
+  if (rep.error || prev.error) return <Screen><ErrorBox error={rep.error ?? prev.error} onRetry={() => { rep.reload(); prev.reload(); }} /></Screen>;
+  const aud = AUD.find(([v]) => v === r.audience)[1];
+  return (
+    <Screen onRefresh={() => { rep.reload(); prev.reload(); }}>
+      <H1>{r.title}</H1>
+      <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}><Tag label={`For: ${aud}`} color={c.violetSoft} /><Tag label={r.latest_version ? `v${r.latest_version} published` : 'Not published'} color={r.latest_version ? c.lime : c.violetSoft} /></View>
+      <T size={13} color={c.mute} style={{ marginTop: 6 }}>{snap.disclosure}</T>
+      {prev.data.needs_ai_review ? <Card pad={10} color={c.cyanSoft} style={{ marginTop: 8 }}><T size={12} weight="700">Your summary started as an AI draft</T><T size={12} color={c.mute}>Read it carefully before publishing; you will be asked to confirm.</T></Card> : null}
+      <Section title="Preview — exactly what this audience will receive">
+        {snap.sections.map((sec) => (
+          <Card key={sec.key} pad={12} style={{ marginBottom: 8 }}>
+            <T weight="800">{sec.title}</T>
+            {sec.kind === 'text' ? <T size={13}>{sec.body}</T> : sec.items.map((it, n) => (
+              <View key={n} style={{ marginTop: 6 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}><T weight="700" size={13} style={{ flexShrink: 1 }}>{it.title}</T>{it.value ? <T weight="800" size={13}>{it.value}</T> : null}</View>
+                {it.meta ? <T size={11} color={c.mute}>{it.meta}</T> : null}
+                {it.body ? <T size={12}>{it.body}</T> : null}
+              </View>
+            ))}
+          </Card>
+        ))}
+        {!snap.sections.length ? <T size={13} color={c.mute}>Nothing selected yet.</T> : null}
+      </Section>
+      <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+        <Btn title={`Publish v${prev.data.next_version}`} loading={busy} onPress={() => (prev.data.needs_ai_review ? setSure(true) : act(async () => { const v = await api.post(`/coaching/reports/${id}/publish`, { row_version: r.row_version }); if (v.unchanged) throw new Error('Nothing has changed since the last version'); }, 'Published'))} />
+        {r.latest_version ? <Btn title="Make branded PDF" color={c.paper} ink={c.ink} loading={busy} onPress={() => act(async () => {
+          const d = await api.post('/branded-documents/coaching-report', { report_id: id });
+          if (typeof window !== 'undefined' && window.open) { const url = URL.createObjectURL(await api.download(`/branded-documents/${d.id}/file`)); window.open(url, '_blank', 'noopener'); setTimeout(() => URL.revokeObjectURL(url), 120000); }
+        }, 'PDF ready')} /> : null}
+      </View>
+      {r.versions.length ? <Section title="Published versions">{r.versions.map((v) => <Row key={v.version} title={`Version ${v.version}`} sub={`${dateTimeIn(v.published_at, tz)} · for ${AUD.find(([x]) => x === v.audience)[1]}`} />)}</Section> : null}
+      <FormSheet visible={sure} onClose={() => setSure(false)} title="Publish an AI-assisted summary?" submitLabel="I have read it — publish" fields={[]}
+        onSubmit={async () => { await api.post(`/coaching/reports/${id}/publish`, { row_version: r.row_version, confirm_reviewed: true }); setSure(false); toast('Published'); rep.reload(); prev.reload(); }} />
+    </Screen>
+  );
+}
+
+// A published, frozen version as its audience (the athlete, a guardian or team coaches) sees it.
+export function CoachReportView({ id, version }) {
+  const v = useLoad(() => api.get(`/coaching/reports/${id}/versions/${version}`), [id, version]);
+  if (v.loading && !v.data) return <Screen><Loading /></Screen>;
+  if (v.error) return <Screen><ErrorBox error={v.error} onRetry={v.reload} /></Screen>;
+  const s = v.data.snapshot;
+  return (
+    <Screen>
+      <H1>{s.title}</H1>
+      <T size={13} color={c.mute}>{s.subject} · {s.period.from} to {s.period.to} · Coach {s.coach_name} · version {v.data.version}</T>
+      {s.sections.map((sec) => (
+        <Section key={sec.key} title={sec.title}>
+          {sec.kind === 'text' ? <T size={14}>{sec.body}</T> : sec.items.map((it, n) => (
+            <Card key={n} pad={12} style={{ marginBottom: 8 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}><T weight="700" style={{ flexShrink: 1 }}>{it.title}</T>{it.value ? <T weight="800">{it.value}</T> : null}</View>
+              {it.meta ? <T size={11} color={c.mute}>{it.meta}</T> : null}
+              {it.body ? <T size={13}>{it.body}</T> : null}
+            </Card>
+          ))}
+        </Section>
+      ))}
     </Screen>
   );
 }

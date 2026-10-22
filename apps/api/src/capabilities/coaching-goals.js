@@ -294,10 +294,10 @@ cap({
 });
 
 // ------------------------------------------------------------------------------------------------ metrics and comparisons
-const PROVENANCE = { coach_observed: 'Coach-observed', athlete_reported: 'Athlete-reported', coach_entered: 'Coach-entered measurement', derived: 'Derived from your records', official: 'Official match record' };
+export const PROVENANCE = { coach_observed: 'Coach-observed', athlete_reported: 'Athlete-reported', coach_entered: 'Coach-entered measurement', derived: 'Derived from your records', official: 'Official match record' };
 
 /** Points for one metric key in a window. Every series states its definition, unit, provenance and what is excluded as missing. */
-async function series(user, athleteId, key, from, to) {
+export async function series(user, athleteId, key, from, to) {
   const win = [user.id, athleteId, from, `${to}T23:59:59Z`];
   if (key === 'attendance_rate') {
     const r = await one(`SELECT count(*) FILTER (WHERE p.attendance IN ('present','late','left_early'))::int AS attended, count(*) FILTER (WHERE p.attendance IN ('present','late','left_early','absent'))::int AS recorded, count(*) FILTER (WHERE p.attendance='expected')::int AS not_recorded,
