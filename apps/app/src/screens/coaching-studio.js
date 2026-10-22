@@ -146,7 +146,7 @@ export function CoachSession(props) {
   const [planning, setPlanning] = useState(false);
   const [finishing, setFinishing] = useState(false);
   const rubrics = useLoad(() => api.get('/coaching/rubrics'), []);
-  const myGoals = useLoad(() => api.get('/coaching/goals?status=active&limit=100'), []);
+  const myGoals = useLoad(() => api.get('/coaching/goals?limit=100'), []);
   const [voice, setVoice] = useState(false);
   const [more, setMore] = useState(null); // null | 'menu' | 'groups' | 'template' | 'use' | 'clone' | 'help' | {summary: athlete}
   const [busy, setBusy] = useState(null);
@@ -831,7 +831,7 @@ function NoteSheet({ note, onClose, w, rubrics, goals, onSaved }) {
   const s = w.session;
   const player = note?.athlete_id ? w.participants.find((p) => p.id === note.athlete_id) : null;
   const usable = rubrics.filter((r) => !player || !r.positions?.length || r.positions.some((x) => x.toLowerCase() === (player.position ?? '').toLowerCase()));
-  const subject = goals.filter((g) => (note?.athlete_id ? g.athlete_id === note.athlete_id : g.team_id === s.team_id && !g.athlete_id));
+  const subject = goals.filter((g) => ['planned', 'active', 'paused'].includes(g.status) && (note?.athlete_id ? g.athlete_id === note.athlete_id : g.team_id === s.team_id && !g.athlete_id));
   const dims = (r) => r.dimensions;
   const fields = [
     { key: 'note', label: 'What did you see?', type: 'multiline' },
@@ -958,7 +958,7 @@ function MoreSheet({ more, setMore, w, reload }) {
       <Sheet visible={more === 'menu'} onClose={close} title="Session tools">
         {[
           ['Split into groups (defenders, forwards …)', 'groups', s.status !== 'completed' && s.team_id],
-          ['Save plan as a template', 'template', true], ['Use a template', 'use', s.status !== 'completed'],
+          ['Save plan as a template', 'template', w.plan.blocks.length > 0], ['Use a template', 'use', s.status !== 'completed'],
           ['Start a new session from this one', 'clone', true], ['Let another coach help', 'help', s.team_id && w.you_are === 'owner'],
         ].filter(([, , show]) => show).map(([label_, key]) => <Row key={key} title={label_} onPress={() => setMore(key)} />)}
         {w.delegates?.length ? <T size={12} color={c.mute} style={{ marginTop: 8 }}>Helping: {w.delegates.map((d) => `${d.display_name} (${d.permissions.join(', ')})`).join('; ')}</T> : null}
