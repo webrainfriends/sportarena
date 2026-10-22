@@ -29,6 +29,7 @@ import { Billboard, Insure } from './screens/marketplace';
 import { Shop, ShopProduct, ShopCart, ShopOrders } from './screens/shop';
 import { Basket, Reservation, Compare, Notifications, Invoice } from './screens/reserve';
 import { Manage, OwnerSummary } from './screens/manage';
+import { VenueWorkspace } from './screens/venue-workspace';
 import { Wallet } from './screens/wallet';
 import { Earnings } from './screens/earnings';
 import { BasketProvider } from './basket';
