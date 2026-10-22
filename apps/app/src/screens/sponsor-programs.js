@@ -84,6 +84,8 @@ export function SponsorProgram({ id }) {
   const apps = useLoad(() => api.get(`/sponsorship-programs/${id}/applications`, { limit: 100, ...(roundId ? { round_id: roundId } : {}) }), [id, roundId, prog.data?.row_version]);
   const p = prog.data;
   const reloadAll = () => { prog.reload(); apps.reload(); };
+  // a stale save keeps the sheet's error but refreshes what is behind it, so reopening shows the latest version
+  const fresh = (fn) => async (v) => { try { return await fn(v); } catch (e) { if (e.status === 409) reloadAll(); throw e; } };
   const act = async (fn, m) => { try { await fn(); if (m) toast(m); reloadAll(); } catch (e) { toast(explain(e)); if (e.status === 409) reloadAll(); } };
   if (prog.loading && !p) return <Screen><Loading /></Screen>;
   if (prog.error) return <Screen><LoadError error={prog.error} onRetry={prog.reload} /></Screen>;
@@ -130,7 +132,7 @@ export function SponsorProgram({ id }) {
       <Section title={roundId ? 'Applications (selected round)' : 'Applications'} color={c.cyan}>
         {apps.error ? <LoadError error={apps.error} onRetry={apps.reload} /> : apps.loading && !apps.data ? <Loading /> : apps.data?.length ? apps.data.map((a) => (
           <Card key={a.id}>
-            <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><View style={{ flex: 1 }}><T weight="900">{a.display_name} → {a.target_name ?? a.target_type}</T><T size={12} color={c.mute}>{a.round_name} · asks {fmt(a.requested_cents, a.currency)}{a.awarded_cents ? ` · awarded ${fmt(a.awarded_cents, a.currency)}` : ''} · terms v{a.round_terms_version}</T></View><Tag label={a.status} color={STATUS_TONE[a.status]} /></View>
+            <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><View style={{ flex: 1 }}><T weight="900">{a.target_type === 'athlete' && a.target_id === a.applicant_id ? a.display_name : `${a.display_name} → ${a.target_name ?? a.target_type}`}</T><T size={12} color={c.mute}>{a.round_name} · asks {fmt(a.requested_cents, a.currency)}{a.awarded_cents ? ` · awarded ${fmt(a.awarded_cents, a.currency)}` : ''} · terms v{a.round_terms_version}</T></View><Tag label={a.status} color={STATUS_TONE[a.status]} /></View>
             {a.pitch ? <T size={13} style={{ marginTop: 6 }}>{a.pitch}</T> : null}
             {a.decision_reason ? <T size={12} color={c.mute}>Note: {a.decision_reason}</T> : null}
             {a.status === 'submitted' && may ? <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}><Btn small title="Award" color={c.mint} ink={c.ink} onPress={() => setForm({ award: a })} /><Btn small title="Decline" color={c.paper} ink={c.red} onPress={() => act(() => api.patch(`/program-applications/${a.id}`, { decision: 'decline' }), 'Declined')} /></View> : null}
@@ -142,20 +144,20 @@ export function SponsorProgram({ id }) {
 
       <FormSheet visible={form === 'edit'} onClose={() => setForm(null)} title="Edit program" fields={programFields([], false)}
         initial={{ ...p, regions: p.regions, target_types: p.eligibility?.target_types, verified_only: !!p.eligibility?.verified_only, max_awards: p.max_awards ?? 0, recurring: !!p.recurrence, cadence: p.recurrence?.cadence, open_days: p.recurrence?.open_days, starts_on: p.starts_on ? String(p.starts_on).slice(0, 10) : undefined, ends_on: p.ends_on ? String(p.ends_on).slice(0, 10) : undefined }}
-        onSubmit={async (v) => { const b = toBody(v); await api.patch(`/sponsorship-programs/${p.id}`, { ...b, version: p.row_version, sports: v.sports ?? [], regions: v.regions ?? [], starts_on: v.starts_on ?? null, ends_on: v.ends_on ?? null, max_awards: v.max_awards || null, max_award_cents: b.max_award_cents ?? null, recurrence: b.recurrence ?? null, objective: b.objective ?? null }); reloadAll(); return 'Saved — applications already submitted keep their original terms'; }} />
+        onSubmit={fresh(async (v) => { const b = toBody(v); await api.patch(`/sponsorship-programs/${p.id}`, { ...b, version: p.row_version, sports: v.sports ?? [], regions: v.regions ?? [], starts_on: v.starts_on ?? null, ends_on: v.ends_on ?? null, max_awards: v.max_awards || null, max_award_cents: b.max_award_cents ?? null, recurrence: b.recurrence ?? null, objective: b.objective ?? null }); reloadAll(); return 'Saved — applications already submitted keep their original terms'; })} />
       <FormSheet visible={form === 'round'} onClose={() => setForm(null)} title="New round" submitLabel="Add round"
         fields={[{ key: 'name', label: 'Name', optional: true, hint: 'Defaults to “Round N”.' }, { key: 'opens_on', label: 'Applications open', type: 'daterange', toKey: 'closes_on' }, { key: 'budget_cents', label: 'Round budget', type: 'money', currency: p.currency, optional: true, hint: 'Leave empty to draw on the program budget.' }, { key: 'max_awards', label: 'Most awards in this round (0 = no limit)', type: 'stepper', min: 0, max: 1000, default: 0 }]}
         onSubmit={async (v) => { await api.post(`/sponsorship-programs/${p.id}/rounds`, { ...v, max_awards: v.max_awards || undefined }); reloadAll(); return 'Round added'; }} />
       <FormSheet visible={!!editing} onClose={() => setForm(null)} title="Edit round" fields={[{ key: 'name', label: 'Name' }, { key: 'opens_on', label: 'Applications open', type: 'daterange', toKey: 'closes_on' }, { key: 'budget_cents', label: 'Round budget', type: 'money', currency: p.currency, optional: true }, { key: 'max_awards', label: 'Most awards (0 = no limit)', type: 'stepper', min: 0, max: 1000, default: 0 }]}
         initial={editing ? { ...editing, opens_on: String(editing.opens_on).slice(0, 10), closes_on: String(editing.closes_on).slice(0, 10), max_awards: editing.max_awards ?? 0 } : {}}
-        onSubmit={async (v) => { await api.patch(`/program-rounds/${editing.id}`, { ...v, version: editing.row_version, budget_cents: v.budget_cents ?? null, max_awards: v.max_awards || null }); reloadAll(); return 'Saved — a new terms version applies to later applications only'; }} />
+        onSubmit={fresh(async (v) => { await api.patch(`/program-rounds/${editing.id}`, { ...v, version: editing.row_version, budget_cents: v.budget_cents ?? null, max_awards: v.max_awards || null }); reloadAll(); return 'Saved — a new terms version applies to later applications only'; })} />
       <FormSheet visible={form === 'schedule'} onClose={() => setForm(null)} title="Schedule recurring rounds" submitLabel="Create rounds"
         fields={[{ key: 'through', label: 'Create rounds up to', type: 'date', hint: 'Follows the program cadence from its first round. Repeating this creates nothing twice.' }]}
         onSubmit={async (v) => { const r = await api.post(`/sponsorship-programs/${p.id}/schedule-rounds`, v); reloadAll(); return r.created ? `${r.created} round${r.created === 1 ? '' : 's'} created` : 'Nothing new to create'; }} />
       <FormSheet visible={!!awarding} onClose={() => setForm(null)} title={`Award ${awarding?.display_name ?? ''}`} submitLabel="Award and send agreement"
         fields={[{ key: 'awarded_cents', label: `Amount (asked ${awarding ? fmt(awarding.requested_cents, awarding.currency) : ''})`, type: 'money', currency: p.currency }, { key: 'reason', label: 'Note to the applicant', type: 'multiline', optional: true }]}
         initial={awarding ? { awarded_cents: awarding.requested_cents } : {}}
-        onSubmit={async (v) => { await api.patch(`/program-applications/${awarding.id}`, { decision: 'award', program_version: p.row_version, awarded_cents: v.awarded_cents, reason: v.reason }); reloadAll(); return 'Awarded — the recipient now has an agreement to accept'; }} />
+        onSubmit={fresh(async (v) => { await api.patch(`/program-applications/${awarding.id}`, { decision: 'award', program_version: p.row_version, awarded_cents: v.awarded_cents, reason: v.reason }); reloadAll(); return 'Awarded — the recipient now has an agreement to accept'; })} />
       <OwnerSheet visible={form === 'owner'} onClose={() => setForm(null)} onPick={(u) => act(() => api.patch(`/sponsorship-programs/${p.id}`, { version: p.row_version, owner_id: u.id }), 'Owner changed')} />
     </Screen>
   );
@@ -205,7 +207,7 @@ export function FundingOpportunities() {
           <T size={12} color={c.mute}>{[p.sports.length ? p.sports.join(', ') : 'Any sport', p.regions.length ? p.regions.join(', ') : 'Anywhere', (p.eligibility?.target_types ?? []).map((t) => TARGET_LABEL[t]).join(', '), p.eligibility?.verified_only ? 'Verified applicants only' : null].filter(Boolean).join(' · ')}</T>
           {(p.rounds ?? []).map((r) => (
             <View key={r.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 }}>
-              <T size={12} style={{ flex: 1 }}>{r.name} · open until {when(r.closes_on)}</T>
+              <T size={12} style={{ flex: 1 }}>{r.name} · open until {when(r.closes_on)}{(mine.data ?? []).some((x) => x.round_id === r.id && ['submitted', 'awarded'].includes(x.status)) ? ' · ✓ You applied' : ''}</T>
               <Btn small title="Apply" color={c.pink} onPress={() => setApply({ program: p, round: r })} accessibilityLabel={`Apply to ${p.name}, ${r.name}`} />
             </View>
           ))}

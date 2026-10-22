@@ -38,7 +38,8 @@ Closing or archiving a program closes all its rounds. A round is `scheduled` bef
 * **Submitted terms never change.** An application stores `terms_snapshot` (program and round terms) and `round_terms_version`.
   Editing a round writes a new version into the append-only `sponsorship_round_terms`; only later applications use it.
 * **Awards reference their program.** `sponsorships.program_id`, `round_id` and `application_id` are set; the award is a *proposed*
-  sponsorship the recipient must still accept. No consent, payment or delivery is assumed.
+  sponsorship with one structured one-off money line (due on the program start, or the award day if it has begun), so the recipient
+  accepts an exact version and the existing obligation and payment flow applies. No consent, payment or delivery is assumed.
 * **Caps under lock.** Awarding needs the current `program_version` (409 if stale) and checks award size, `max_awards`, program and
   round budget remaining and currency equality. Concurrent awards cannot overshoot. A budget or count cannot be lowered below what is
   already awarded, and the currency is fixed once an award exists.
@@ -60,6 +61,16 @@ agreements and financial history are untouched. No `ON DELETE CASCADE`.
 and *Run programs* (brand staff: list by status, program page with budget bar, rounds, applications, award/decline, CSV export).
 Forms use pickers: currency, money, sports, regions, date range, steppers, switches and chips. Every screen has loading, empty,
 denied, stale-version and retry states; awards show on the deal screen as "Awarded from the program …".
+
+## Screens (web build against a local API; phone and desktop widths)
+| | |
+|---|---|
+| Sponsors hub, Funding programs section | `docs/ux/sponsorship-programs-1-sponsors-hub.png` |
+| Programs list and empty state | `…-2-programs-list.png`, `…-10-empty-state.png` |
+| Program page: budget, rounds, applications | `…-3-program-detail.png`, `…-12-program-desktop.png` |
+| Award sheet and result | `…-4-award-sheet.png`, `…-5-after-award.png` |
+| Funding opportunities, apply, my applications | `…-6-funding-opportunities.png`, `…-7-apply-sheet.png`, `…-8-my-applications.png`, `…-9-funding-opportunities-desktop.png` |
+| Stale-version message on save | `…-11-stale-version.png` |
 
 ## Dependency order and limits
 * Builds on #283 (workspace roles) and #145 (agreement operations). #67 (opportunities/applications) is not on main; this ships its own
