@@ -32,6 +32,7 @@ export const block = z.object({
   target_rpe: z.number().int().min(1).max(10).optional().describe('non-clinical perceived-effort target'),
   tags: z.array(text(60)).max(10).default([]),
   scope: z.array(id).max(60).optional().describe('athlete ids this block is for; omit for everyone'),
+  unit: text(40).optional().describe('name of one of the session\'s groups (e.g. defenders) this block is for'),
   coach_notes: text(1000).optional().describe('shown only to the coach, never shared'),
 });
 
@@ -84,7 +85,40 @@ export async function ownRecord(user, recordId, client) {
   return r;
 }
 
+/**
+ * Who may touch a session record. The owner coach can do everything. Another coach of the same team can act only on what the owner
+ * delegated ('attendance', 'observe'; any grant also lets them view), and only while they are still an active coach of that team.
+ * @returns {{ rec: object, owner: boolean }}
+ */
+export async function sessionAccess(user, recordId, need = 'view', client) {
+  const q = client ? (t, p) => client.query(t, p).then((r) => r.rows[0] ?? null) : one;
+  const rec = await q('SELECT * FROM coaching_session_records WHERE id=$1', [recordId]);
+  if (!rec) throw notFound('Coaching session');
+  if (rec.coach_id === user.id || isAdmin(user)) return { rec: client ? await ownRecord(user, recordId, client) : rec, owner: true };
+  const d = await q(
+    `SELECT permissions FROM coaching_session_delegates d WHERE d.session_record_id=$1 AND d.user_id=$2 AND d.revoked_at IS NULL
+        AND EXISTS (SELECT 1 FROM team_members m WHERE m.team_id=$3 AND m.user_id=$2 AND m.status='active' AND m.role='coach')`, [recordId, user.id, rec.team_id]);
+  if (!d || (need !== 'view' && !d.permissions.includes(need))) throw notFound('Coaching session');
+  return { rec, owner: false };
+}
+
 const withIds = (blocks) => blocks.map((b) => ({ ...b, id: b.id ?? randomUUID() }));
+
+/** Open (or return) the coaching record for a canonical source. Exported so cloning a session goes through the same checks. */
+export async function openSession(user, i) {
+  if (i.source_type === 'team_session' && !z.string().uuid().safeParse(i.source_id).success) throw badRequest('source_id must be a uuid for a team session');
+  const existing = await one('SELECT id FROM coaching_session_records WHERE coach_id=$1 AND source_type=$2 AND source_id=$3', [user.id, i.source_type, i.source_id]);
+  if (existing) return one('SELECT * FROM coaching_session_records WHERE id=$1', [existing.id]);
+  const src = await resolveSource(user, i);
+  return tx(async (c) => {
+    const rec = (await c.query(
+      `INSERT INTO coaching_session_records(coach_id, sport_id, team_id, source_type, source_id, title, objective, scheduled_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+       ON CONFLICT (coach_id, source_type, source_id) DO UPDATE SET updated_at=coaching_session_records.updated_at RETURNING *`,
+      [user.id, src.sport_id, src.team_id, i.source_type, i.source_id, i.title ?? src.title, i.objective, src.scheduled_at])).rows[0];
+    for (const a of src.athletes) await c.query('INSERT INTO coaching_session_participants(session_record_id, athlete_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [rec.id, a]);
+    return rec;
+  });
+}
 
 cap({
   name: 'create_coaching_session', method: 'POST', path: '/coaching/sessions', tag: TAG, auth: COACH, status: 201,
@@ -96,20 +130,7 @@ cap({
     title: text(120).min(2).optional(), objective: text(1000).optional(),
     scheduled_at: z.string().datetime({ offset: true }).optional().describe('team_session only; other sources use their own time'),
   }),
-  async handler({ user }, i) {
-    if (i.source_type === 'team_session' && !z.string().uuid().safeParse(i.source_id).success) throw badRequest('source_id must be a uuid for a team session');
-    const existing = await one('SELECT id FROM coaching_session_records WHERE coach_id=$1 AND source_type=$2 AND source_id=$3', [user.id, i.source_type, i.source_id]);
-    if (existing) return one('SELECT * FROM coaching_session_records WHERE id=$1', [existing.id]);
-    const src = await resolveSource(user, i);
-    return tx(async (c) => {
-      const rec = (await c.query(
-        `INSERT INTO coaching_session_records(coach_id, sport_id, team_id, source_type, source_id, title, objective, scheduled_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-         ON CONFLICT (coach_id, source_type, source_id) DO UPDATE SET updated_at=coaching_session_records.updated_at RETURNING *`,
-        [user.id, src.sport_id, src.team_id, i.source_type, i.source_id, i.title ?? src.title, i.objective, src.scheduled_at])).rows[0];
-      for (const a of src.athletes) await c.query('INSERT INTO coaching_session_participants(session_record_id, athlete_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [rec.id, a]);
-      return rec;
-    });
-  },
+  handler: ({ user }, i) => openSession(user, i),
 });
 
 cap({
@@ -117,31 +138,38 @@ cap({
   summary: 'Everything a coach needs to run or review one session: objective, plan (and the version it started with), participants with attendance, block progress, what you noted last time and follow-ups still open.',
   input: z.object({ id }),
   async handler({ user }, i) {
-    const rec = await ownRecord(user, i.id);
+    const { rec, owner } = await sessionAccess(user, i.id, 'view');
+    const who = owner ? rec.coach_id : user.id; // a delegate sees only their own notes and actions
     const [plan, atStart, participants, observations, previous, open_actions] = await Promise.all([
       one('SELECT version, blocks, created_at FROM coaching_session_plan_versions WHERE session_record_id=$1 AND version=$2', [rec.id, rec.plan_version]),
       rec.started_plan_version == null ? null : one('SELECT version, blocks, created_at FROM coaching_session_plan_versions WHERE session_record_id=$1 AND version=$2', [rec.id, rec.started_plan_version]),
       many(`SELECT ${PUBLIC_USER}, p.attendance, p.arrived_at, p.left_at, p.focus FROM coaching_session_participants p JOIN users u ON u.id=p.athlete_id WHERE p.session_record_id=$1 ORDER BY u.display_name, u.id`, [rec.id]),
-      many('SELECT * FROM coaching_observations WHERE session_record_id=$1 AND coach_id=$2 ORDER BY observed_at, id', [rec.id, rec.coach_id]),
+      many("SELECT * FROM coaching_observations WHERE session_record_id=$1 AND (coach_id=$2 OR ($3::boolean AND visibility='staff')) ORDER BY observed_at, id", [rec.id, who, owner]),
       many(`SELECT o.id, o.athlete_id, o.note, o.obs_type, o.skill_tag, o.follow_up, o.observed_at, o.visibility FROM (SELECT athlete_id FROM coaching_session_participants WHERE session_record_id=$1) pp
-              CROSS JOIN LATERAL (SELECT * FROM coaching_observations x WHERE x.athlete_id=pp.athlete_id AND x.coach_id=$2 AND x.session_record_id IS DISTINCT FROM $1 AND (x.follow_up OR x.observed_at > now() - interval '60 days') ORDER BY x.follow_up DESC, x.observed_at DESC, x.id LIMIT 3) o`, [rec.id, rec.coach_id]),
+              CROSS JOIN LATERAL (SELECT * FROM coaching_observations x WHERE x.athlete_id=pp.athlete_id AND x.coach_id=$2 AND x.session_record_id IS DISTINCT FROM $1 AND (x.follow_up OR x.observed_at > now() - interval '60 days') ORDER BY x.follow_up DESC, x.observed_at DESC, x.id LIMIT 3) o`, [rec.id, who]),
       many(`SELECT a.id, a.title, a.athlete_id, a.team_id, a.due_at, a.status, a.priority, a.follow_up_next_session FROM coaching_actions a
              WHERE a.coach_id=$1 AND a.status IN ('open','in_progress') AND (a.athlete_id IN (SELECT athlete_id FROM coaching_session_participants WHERE session_record_id=$2) OR a.team_id IS NOT DISTINCT FROM $3)
-             ORDER BY a.follow_up_next_session DESC, a.due_at NULLS LAST, a.id LIMIT 50`, [rec.coach_id, rec.id, rec.team_id]),
+             ORDER BY a.follow_up_next_session DESC, a.due_at NULLS LAST, a.id LIMIT 50`, [who, rec.id, rec.team_id]),
     ]);
-    return { session: rec, plan: plan ?? { version: 0, blocks: [] }, plan_at_start: atStart, block_log: rec.block_log, participants, observations, previous_notes: previous, open_actions };
+    const session = owner ? rec : { ...rec, private_summary: null };
+    const summaries = owner ? await many('SELECT athlete_id, summary, shared FROM coaching_player_summaries WHERE session_record_id=$1', [rec.id]) : [];
+    const delegates = owner ? await many('SELECT d.user_id, u.display_name, d.permissions FROM coaching_session_delegates d JOIN users u ON u.id=d.user_id WHERE d.session_record_id=$1 AND d.revoked_at IS NULL ORDER BY u.display_name', [rec.id]) : [];
+    return { session, you_are: owner ? 'owner' : 'delegate', player_summaries: summaries, delegates, plan: plan ?? { version: 0, blocks: [] }, plan_at_start: atStart, block_log: rec.block_log, participants, observations, previous_notes: previous, open_actions };
   },
 });
 
 /** Save blocks as the next plan version of a session record the coach owns. Shared by the plan editor and by accepting an AI draft. */
-export async function savePlan(user, recordId, blocksIn, { objective, expected_version } = {}) {
+export async function savePlan(user, recordId, blocksIn, { objective, expected_version, template } = {}) {
   return tx(async (c) => {
     const rec = await ownRecord(user, recordId, c);
     if (rec.status === 'completed') throw conflict('A completed session\'s plan cannot be changed');
     if (expected_version != null && expected_version !== rec.plan_version) throw conflict('The plan changed since you loaded it');
+    const unitNames = new Set((rec.groups ?? []).map((g) => g.name.toLowerCase()));
+    const badUnit = blocksIn.find((b) => b.unit && !unitNames.has(b.unit.toLowerCase()));
+    if (badUnit) throw badRequest(`Block "${badUnit.title}" is aimed at the group "${badUnit.unit}", which this session does not have. Create the group first.`);
     const version = rec.plan_version + 1;
     const blocks = withIds(blocksIn);
-    await c.query('INSERT INTO coaching_session_plan_versions(session_record_id, version, blocks, saved_by) VALUES ($1,$2,$3,$4)', [rec.id, version, JSON.stringify(blocks), user.id]);
+    await c.query('INSERT INTO coaching_session_plan_versions(session_record_id, version, blocks, saved_by, from_template_id, from_template_version) VALUES ($1,$2,$3,$4,$5,$6)', [rec.id, version, JSON.stringify(blocks), user.id, template?.id ?? null, template?.version ?? null]);
     const upd = (await c.query('UPDATE coaching_session_records SET plan_version=$2, objective=coalesce($3, objective), row_version=row_version+1, updated_at=now() WHERE id=$1 RETURNING *', [rec.id, version, objective])).rows[0];
     return { session: upd, plan: { version, blocks } };
   });
@@ -191,7 +219,7 @@ cap({
   input: z.object({ id, entries: z.array(z.object({ athlete_id: id, attendance: z.enum(ATTENDANCE), focus: text(500).optional() })).min(1).max(100) }),
   async handler({ user }, i) {
     return tx(async (c) => {
-      const rec = await ownRecord(user, i.id, c);
+      const { rec } = await sessionAccess(user, i.id, 'attendance', c);
       for (const e of i.entries) {
         const r = await c.query(
           `UPDATE coaching_session_participants SET attendance=$3, focus=coalesce($4, focus), updated_at=now(),
@@ -208,14 +236,14 @@ cap({
 cap({
   name: 'review_coaching_session', method: 'POST', path: '/coaching/sessions/:id/review', tag: TAG, auth: COACH,
   summary: 'File or edit the review (team summary and private summary) of a session, including after it was completed. The first time a review is filed it is timestamped, so the time from session end to review can be measured.',
-  input: z.object({ id, team_summary: text(4000).optional(), private_summary: text(4000).optional() }),
+  input: z.object({ id, team_summary: text(4000).optional(), private_summary: text(4000).optional(), share_team_summary: z.boolean().optional().describe('let the people who took part read the team summary') }),
   async handler({ user }, i) {
     if (i.team_summary === undefined && i.private_summary === undefined) throw badRequest('Write a team or private summary');
     return tx(async (c) => {
       const rec = await ownRecord(user, i.id, c);
       return (await c.query(
-        `UPDATE coaching_session_records SET team_summary=coalesce($2, team_summary), private_summary=coalesce($3, private_summary), reviewed_at=coalesce(reviewed_at, now()), row_version=row_version+1, updated_at=now() WHERE id=$1 RETURNING *`,
-        [rec.id, i.team_summary ?? null, i.private_summary ?? null])).rows[0];
+        `UPDATE coaching_session_records SET team_summary=coalesce($2, team_summary), private_summary=coalesce($3, private_summary), team_summary_shared=coalesce($4, team_summary_shared), reviewed_at=coalesce(reviewed_at, now()), row_version=row_version+1, updated_at=now() WHERE id=$1 RETURNING *`,
+        [rec.id, i.team_summary ?? null, i.private_summary ?? null, i.share_team_summary ?? null])).rows[0];
     });
   },
 });
@@ -262,7 +290,7 @@ cap({
     if (i.visibility === 'staff' && !i.team_id) throw badRequest('staff visibility needs the team whose coaches may read it');
     let rec = null;
     if (i.session_record_id) {
-      rec = await ownRecord(user, i.session_record_id);
+      rec = (await sessionAccess(user, i.session_record_id, 'observe')).rec;
       if (i.athlete_id && !(await one('SELECT 1 FROM coaching_session_participants WHERE session_record_id=$1 AND athlete_id=$2', [rec.id, i.athlete_id]))) throw badRequest('That athlete is not on this session');
       if (i.team_id && i.team_id !== rec.team_id) throw badRequest('That team is not this session\'s team');
     }
@@ -430,6 +458,82 @@ cap({
       ...recs.map((r) => ({ kind: 'session', source_type: 'coaching_session_record', source_id: r.id, at: r.at, title: r.title, detail: r.team_summary, status: r.status, present: r.present, roster: r.roster })),
     ].sort(byTime).slice(i.offset, i.offset + i.limit);
   },
+});
+
+cap({
+  name: 'set_coaching_session_groups', method: 'POST', path: '/coaching/sessions/:id/groups', tag: TAG, auth: COACH,
+  summary: 'Split a session\'s roster into named groups (for example defenders and forwards, or batting and bowling) so blocks can be aimed at one group. Members must already be on the roster. A completed session\'s groups are frozen.',
+  input: z.object({ id, groups: z.array(z.object({ name: text(40).min(1), athlete_ids: z.array(id).min(1).max(60) })).max(8) }),
+  async handler({ user }, i) {
+    const names = i.groups.map((g) => g.name.toLowerCase());
+    if (new Set(names).size !== names.length) throw badRequest('Group names must be different');
+    return tx(async (c) => {
+      const rec = await ownRecord(user, i.id, c);
+      if (rec.status === 'completed') throw conflict('A completed session\'s groups cannot be changed');
+      const roster = new Set((await c.query('SELECT athlete_id FROM coaching_session_participants WHERE session_record_id=$1', [rec.id])).rows.map((r) => r.athlete_id));
+      if (i.groups.some((g) => g.athlete_ids.some((a) => !roster.has(a)))) throw badRequest('Everyone in a group must be on this session\'s roster');
+      return (await c.query('UPDATE coaching_session_records SET groups=$2, row_version=row_version+1, updated_at=now() WHERE id=$1 RETURNING id, groups', [rec.id, JSON.stringify(i.groups)])).rows[0];
+    });
+  },
+});
+
+cap({
+  name: 'delegate_coaching_session', method: 'POST', path: '/coaching/sessions/:id/delegates', tag: TAG, auth: COACH, status: 201,
+  summary: 'Let another active coach of the session\'s team help with this one session: "attendance" (record who is there) and/or "observe" (write notes about the people on the roster). They can see the roster and plan but not your private summary, your notes, or anything outside this session. Sending an empty permission list removes the delegation. Access ends if they stop coaching the team.',
+  input: z.object({ id, user_id: id, permissions: z.array(z.enum(['attendance', 'observe'])).max(2) }),
+  async handler({ user }, i) {
+    const rec = await ownRecord(user, i.id);
+    if (!rec.team_id) throw badRequest('Only team sessions can be delegated');
+    if (i.user_id === user.id) throw badRequest('You already have full access');
+    if (!(await one("SELECT 1 FROM team_members WHERE team_id=$1 AND user_id=$2 AND status='active' AND role='coach'", [rec.team_id, i.user_id]))) throw badRequest('They must be an active coach of this team');
+    if (!i.permissions.length) {
+      const r = await one('UPDATE coaching_session_delegates SET revoked_at=now() WHERE session_record_id=$1 AND user_id=$2 AND revoked_at IS NULL RETURNING user_id', [rec.id, i.user_id]);
+      return { user_id: i.user_id, permissions: [], revoked: !!r };
+    }
+    return one(
+      `INSERT INTO coaching_session_delegates(session_record_id, user_id, permissions, granted_by) VALUES ($1,$2,$3,$4)
+       ON CONFLICT (session_record_id, user_id) DO UPDATE SET permissions=EXCLUDED.permissions, granted_by=EXCLUDED.granted_by, granted_at=now(), revoked_at=NULL RETURNING user_id, permissions`, [rec.id, i.user_id, [...new Set(i.permissions)], user.id]);
+  },
+});
+
+cap({
+  name: 'list_my_delegated_coaching_sessions', method: 'GET', path: '/coaching/delegated-sessions', tag: TAG, auth: COACH,
+  summary: 'Sessions another coach has let you help with, newest first, with what you may do.', input: z.object({ ...page }),
+  handler: ({ user }, i) => many(
+    `SELECT r.id, r.title, r.team_id, r.status, r.scheduled_at, d.permissions, u.display_name AS head_coach FROM coaching_session_delegates d JOIN coaching_session_records r ON r.id=d.session_record_id JOIN users u ON u.id=r.coach_id
+      WHERE d.user_id=$1 AND d.revoked_at IS NULL AND EXISTS (SELECT 1 FROM team_members m WHERE m.team_id=r.team_id AND m.user_id=$1 AND m.status='active' AND m.role='coach')
+      ORDER BY coalesce(r.scheduled_at, r.created_at) DESC, r.id LIMIT $2 OFFSET $3`, [user.id, i.limit, i.offset]),
+});
+
+cap({
+  name: 'set_player_session_summary', method: 'POST', path: '/coaching/sessions/:id/player-summaries', tag: TAG, auth: COACH,
+  summary: 'Write a short summary of one player\'s session. It stays private to you until you set shared=true, when that player (only) can read it. Also set share_team_summary on the session to let participants read the team summary.',
+  input: z.object({ id, athlete_id: id, summary: text(2000).min(1), shared: z.boolean().default(false), share_team_summary: z.boolean().optional() }),
+  async handler({ user }, i) {
+    return tx(async (c) => {
+      const rec = await ownRecord(user, i.id, c);
+      if (!(await c.query('SELECT 1 FROM coaching_session_participants WHERE session_record_id=$1 AND athlete_id=$2', [rec.id, i.athlete_id])).rows.length) throw badRequest('That player is not on this session');
+      await requireRelationship(user, i.athlete_id);
+      if (i.share_team_summary !== undefined) await c.query('UPDATE coaching_session_records SET team_summary_shared=$2, updated_at=now() WHERE id=$1', [rec.id, i.share_team_summary]);
+      return (await c.query(
+        `INSERT INTO coaching_player_summaries(session_record_id, athlete_id, summary, shared) VALUES ($1,$2,$3,$4)
+         ON CONFLICT (session_record_id, athlete_id) DO UPDATE SET summary=EXCLUDED.summary, shared=EXCLUDED.shared, row_version=coaching_player_summaries.row_version+1, updated_at=now() RETURNING session_record_id, athlete_id, summary, shared, row_version`,
+        [rec.id, i.athlete_id, i.summary, i.shared])).rows[0];
+    });
+  },
+});
+
+cap({
+  name: 'my_coaching_session_summaries', method: 'GET', path: '/me/coaching-session-summaries', tag: TAG, auth: 'user',
+  summary: 'Summaries of sessions you took part in that your coach chose to share: a summary written for you, and the team summary where the coach shared it. Nothing private is included.', input: z.object({ ...page }),
+  handler: ({ user }, i) => many(
+    `SELECT * FROM (
+       SELECT r.id AS session_record_id, r.title, coalesce(r.started_at, r.scheduled_at, r.created_at) AS at, 'player' AS kind, s.summary, u.display_name AS coach_name
+         FROM coaching_player_summaries s JOIN coaching_session_records r ON r.id=s.session_record_id JOIN users u ON u.id=r.coach_id WHERE s.athlete_id=$1 AND s.shared
+       UNION ALL
+       SELECT r.id, r.title, coalesce(r.started_at, r.scheduled_at, r.created_at), 'team', r.team_summary, u.display_name
+         FROM coaching_session_records r JOIN users u ON u.id=r.coach_id JOIN coaching_session_participants p ON p.session_record_id=r.id AND p.athlete_id=$1 WHERE r.team_summary_shared AND r.team_summary IS NOT NULL) x
+      ORDER BY at DESC, session_record_id, kind LIMIT $2 OFFSET $3`, [user.id, i.limit, i.offset]),
 });
 
 cap({

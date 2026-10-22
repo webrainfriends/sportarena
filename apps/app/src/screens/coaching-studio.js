@@ -133,6 +133,7 @@ export function CoachSession(props) {
   const [note, setNote] = useState(null);
   const [planning, setPlanning] = useState(false);
   const [finishing, setFinishing] = useState(false);
+  const [more, setMore] = useState(null); // null | 'menu' | 'groups' | 'template' | 'use' | 'clone' | 'help' | {summary: athlete}
   const [busy, setBusy] = useState(null);
   const w = ws.data;
   const outbox = useOutbox();
@@ -156,6 +157,7 @@ export function CoachSession(props) {
         {s.status === 'planned' ? <Btn small title="Start session" loading={busy === 'start'} onPress={() => run('start', () => api.post(`/coaching/sessions/${s.id}/start`), 'Session started')} /> : null}
         {s.status === 'running' ? <Btn small title="Finish & review" onPress={() => setFinishing(true)} /> : null}
         {!done ? <Btn small title={blocks.length ? 'Edit plan' : 'Plan blocks'} color={c.paper} ink={c.ink} onPress={() => setPlanning(true)} /> : null}
+        <Btn small title="More" color={c.paper} ink={c.ink} onPress={() => setMore('menu')} />
         {!done ? <Btn small title="Draft a plan (AI)" color={c.paper} ink={c.ink} onPress={() => push('CoachCopilot', { task: 'plan_session', session_record_id: s.id })} /> : <Btn small title="Draft a summary (AI)" color={c.paper} ink={c.ink} onPress={() => push('CoachCopilot', { task: 'summarise_session', session_record_id: s.id })} />}
         {!done || s.team_summary || s.private_summary ? null : <Btn small title="Add review" onPress={() => setFinishing(true)} />}
       </View>
@@ -170,6 +172,7 @@ export function CoachSession(props) {
             <HScroll>
               {ATTENDANCE.map((a) => <Chip key={a} label={label(a)} active={p.attendance === a} onPress={() => mark(p.id, a)} />)}
               <Chip label="Note" onPress={() => setNote({ athlete_id: p.id })} />
+              <Chip label="Player summary" onPress={() => setMore({ summary: p })} />
             </HScroll>
             {w.previous_notes.filter((x) => x.athlete_id === p.id).slice(0, 2).map((x) => (
               <T key={x.id} size={12} color={c.mute} style={{ marginTop: 4 }}>{x.follow_up ? '↩ Follow up: ' : 'Last time: '}{x.note}</T>
@@ -184,7 +187,7 @@ export function CoachSession(props) {
           return (
             <Card key={b.id} pad={12} style={{ marginBottom: 8 }}>
               <T weight="700">{n + 1}. {b.title}{b.duration_min ? ` · ${b.duration_min} min` : ''}</T>
-              <T size={12} color={c.mute}>{label(b.kind)}{b.objective ? ` · ${b.objective}` : ''}</T>
+              <T size={12} color={c.mute}>{label(b.kind)}{b.unit ? ` · for ${b.unit}` : ''}{b.objective ? ` · ${b.objective}` : ''}</T>
               {b.cues?.length ? <T size={12} color={c.mute}>Cues: {b.cues.join(' · ')}</T> : null}
               {s.status === 'running' ? (
                 <HScroll>
@@ -222,11 +225,12 @@ export function CoachSession(props) {
           const r = await send('/coaching/observations', { session_record_id: s.id, athlete_id: note.athlete_id, team_id: note.athlete_id && visibility !== 'staff' ? undefined : s.team_id ?? undefined, note: v.note, obs_type: v.obs_type, skill_tag: v.skill_tag || undefined, visibility, follow_up: !!v.follow_up, client_key: keyOf() });
           setNote(null); toast(r.status === 'saved' ? 'Note saved' : 'No signal: note kept and will send automatically'); ws.reload();
         }} />
-      <PlanSheet visible={planning} blocks={blocks} version={w.plan.version} onClose={() => setPlanning(false)} onSave={async (next) => { await api.post(`/coaching/sessions/${s.id}/plan`, { blocks: next, expected_version: w.plan.version }); setPlanning(false); toast('Plan saved'); ws.reload(); }} />
+      <MoreSheet more={more} setMore={setMore} w={w} reload={ws.reload} />
+      <PlanSheet visible={planning} blocks={blocks} version={w.plan.version} groups={s.groups} onClose={() => setPlanning(false)} onSave={async (next) => { await api.post(`/coaching/sessions/${s.id}/plan`, { blocks: next, expected_version: w.plan.version }); setPlanning(false); toast('Plan saved'); ws.reload(); }} />
       <FormSheet visible={finishing} onClose={() => setFinishing(false)} title="Review the session" submitLabel={done ? 'Save review' : 'Finish session'} initial={{ team_summary: s.team_summary ?? '', private_summary: s.private_summary ?? '' }}
-        fields={[{ key: 'team_summary', label: 'Team summary (can be shared)', type: 'multiline', optional: true }, { key: 'private_summary', label: 'Private summary (only you)', type: 'multiline', optional: true }]}
+        fields={[{ key: 'team_summary', label: 'Team summary (can be shared)', type: 'multiline', optional: true }, { key: 'share_team_summary', label: 'Let the players read the team summary', type: 'switch', default: !!s.team_summary_shared }, { key: 'private_summary', label: 'Private summary (only you)', type: 'multiline', optional: true }]}
         onSubmit={async (v) => {
-          if (done) { await api.post(`/coaching/sessions/${s.id}/review`, { team_summary: v.team_summary || undefined, private_summary: v.private_summary || undefined }); setFinishing(false); toast('Review saved'); ws.reload(); return; }
+          if (done) { await api.post(`/coaching/sessions/${s.id}/review`, { team_summary: v.team_summary || undefined, private_summary: v.private_summary || undefined, share_team_summary: !!v.share_team_summary }); setFinishing(false); toast('Review saved'); ws.reload(); return; }
           const r = await api.post(`/coaching/sessions/${s.id}/complete`, { team_summary: v.team_summary || undefined, private_summary: v.private_summary || undefined });
           setFinishing(false); toast(r.not_recorded ? `Finished · ${r.not_recorded} player${r.not_recorded === 1 ? '' : 's'} had no attendance recorded` : 'Session finished'); ws.reload();
         }} />
@@ -235,7 +239,7 @@ export function CoachSession(props) {
 }
 
 // Adds one block at a time and keeps the order; existing blocks keep their ids so their progress stays attached.
-function PlanSheet({ visible, blocks, version, onClose, onSave }) {
+function PlanSheet({ visible, blocks, version, groups, onClose, onSave }) {
   const [list, setList] = useState(null);
   const cur = list ?? blocks;
   const [adding, setAdding] = useState(false);
@@ -245,7 +249,7 @@ function PlanSheet({ visible, blocks, version, onClose, onSave }) {
       <Sheet visible={visible && !adding} onClose={() => { setList(null); onClose(); }} title={`Plan · version ${version + 1}`}>
         {!cur.length ? <T size={13} color={c.mute}>No blocks yet.</T> : null}
         {cur.map((b, n) => (
-          <Row key={b.id ?? n} title={`${n + 1}. ${b.title}`} sub={`${label(b.kind)}${b.duration_min ? ` · ${b.duration_min} min` : ''}`} right={(
+          <Row key={b.id ?? n} title={`${n + 1}. ${b.title}`} sub={`${label(b.kind)}${b.duration_min ? ` · ${b.duration_min} min` : ''}${b.unit ? ` · ${b.unit}` : ''}`} right={(
             <View style={{ flexDirection: 'row', gap: 6 }}>
               <Chip label="↑" onPress={() => n > 0 && move(n, -1)} /><Chip label="↓" onPress={() => n < cur.length - 1 && move(n, 1)} /><Chip label="Remove" onPress={() => setList(cur.filter((_, i) => i !== n))} />
             </View>)} />
@@ -263,8 +267,10 @@ function PlanSheet({ visible, blocks, version, onClose, onSave }) {
           { key: 'objective', label: 'Objective', optional: true },
           { key: 'instructions', label: 'Instructions', type: 'multiline', optional: true },
           { key: 'cue', label: 'Coaching cue', optional: true },
+          { key: 'target_rpe', label: 'Target effort 1–10 (optional, not medical)', type: 'stepper', min: 1, max: 10, step: 1, default: 6, optional: true },
+          ...(groups?.length ? [{ key: 'unit', label: 'For which group?', type: 'chips', optional: true, options: groups.map((g) => ({ value: g.name, label: g.name })) }] : []),
         ]}
-        onSubmit={async (v) => { setList([...cur, { kind: v.kind, title: v.title, duration_min: v.duration_min, objective: v.objective || undefined, instructions: v.instructions || undefined, cues: v.cue ? [v.cue] : [], tags: [] }]); setAdding(false); }} />
+        onSubmit={async (v) => { setList([...cur, { kind: v.kind, title: v.title, duration_min: v.duration_min, objective: v.objective || undefined, instructions: v.instructions || undefined, cues: v.cue ? [v.cue] : [], tags: [], target_rpe: v.target_rpe || undefined, unit: v.unit || undefined }]); setAdding(false); }} />
     </>
   );
 }
@@ -372,10 +378,11 @@ export function CoachGoals({ athlete_id, team_id, name }) {
           { key: 'due', label: 'Due date', type: 'date', optional: true },
           { key: 'priority', label: 'Priority', type: 'chips', options: opts(['low', 'medium', 'high']), default: 'medium' },
           ...(athlete_id ? [{ key: 'owner', label: 'Who does it', type: 'chips', options: [{ value: 'me', label: 'Me' }, { value: 'athlete', label: 'The athlete' }], default: 'me' }] : []),
+          { key: 'repeat', label: 'Repeat every … days after it is done', type: 'stepper', min: 1, max: 365, step: 1, default: 7, optional: true },
           { key: 'follow_up_next_session', label: 'Show at the start of the next session', type: 'switch', default: true },
         ]}
         onSubmit={async (v) => {
-          await api.post('/coaching/actions', { ...subject, title: v.title, detail: v.detail || undefined, due_at: v.due ? localToIso(v.due, '18:00', tz) : undefined, priority: v.priority, owner_id: v.owner === 'athlete' ? athlete_id : undefined, shared: v.owner === 'athlete', follow_up_next_session: !!v.follow_up_next_session, client_key: keyOf() });
+          await api.post('/coaching/actions', { recurrence_days: v.due && v.repeat ? v.repeat : undefined, ...subject, title: v.title, detail: v.detail || undefined, due_at: v.due ? localToIso(v.due, '18:00', tz) : undefined, priority: v.priority, owner_id: v.owner === 'athlete' ? athlete_id : undefined, shared: v.owner === 'athlete', follow_up_next_session: !!v.follow_up_next_session, client_key: keyOf() });
           setForm(null); toast('Action created'); reload();
         }} />
       <FormSheet visible={!!reviewing} onClose={() => setReviewing(null)} title={reviewing?.title ?? 'Review goal'} submitLabel="Save review" initial={{ status: reviewing?.status }}
@@ -397,12 +404,16 @@ export function MyCoaching() {
   const goals = useLoad(() => api.get('/me/coaching-goals'), []);
   const actions = useLoad(() => api.get('/me/coaching-actions'), []);
   const reports = useLoad(() => api.get('/me/coaching-reports'), []);
-  const reload = () => { notes.reload(); goals.reload(); actions.reload(); reports.reload(); };
+  const summaries = useLoad(() => api.get('/me/coaching-session-summaries'), []);
+  const reload = () => { notes.reload(); goals.reload(); actions.reload(); reports.reload(); summaries.reload(); };
   return (
     <Screen onRefresh={reload}>
       <H1>From my coach</H1>
       <Section title="Reports">
         {!reports.data?.length ? <T size={13} color={c.mute}>No reports shared with you yet.</T> : reports.data.map((r) => <Row key={r.report_id} title={r.title} sub={`From ${r.coach_name} · ${dateTimeIn(r.published_at, tz)}`} onPress={() => push('CoachReportView', { id: r.report_id, version: r.version })} />)}
+      </Section>
+      <Section title="Session summaries">
+        {!summaries.data?.length ? <T size={13} color={c.mute}>Nothing shared yet.</T> : summaries.data.map((x) => <Row key={`${x.session_record_id}${x.kind}`} title={x.title} sub={`${x.kind === 'team' ? 'Team summary' : 'Just for you'} — ${x.summary} (${x.coach_name})`} />)}
       </Section>
       <Section title="Goals">
         {!goals.data?.length ? <T size={13} color={c.mute}>No goals shared with you yet.</T> : goals.data.map((g) => <Row key={g.id} title={g.title} sub={`${g.text}${g.review_on ? ` · review ${g.review_on}` : ''}`} right={<Status s={g.status} />} />)}
@@ -641,5 +652,51 @@ export function CoachMatch({ fixture_id, team_id }) {
       <Section title="Active goals">{!m.goals.length ? <T size={13} color={c.mute}>None.</T> : m.goals.map((g) => <Row key={g.id} title={g.title} sub={label(g.category)} />)}</Section>
       <Section title="Open actions">{!m.actions.length ? <T size={13} color={c.mute}>None.</T> : m.actions.map((a) => <Row key={a.id} title={a.title} sub={a.due_at ? `Due ${dateTimeIn(a.due_at, tz)}` : 'No due date'} />)}</Section>
     </Screen>
+  );
+}
+
+// Less-used session tools, kept off the main field screen: groups, templates, cloning, delegation and per-player summaries.
+function MoreSheet({ more, setMore, w, reload }) {
+  const { toast } = useSession();
+  const { push } = useNav();
+  const s = w.session;
+  const tpls = useLoad(() => (more === 'use' ? api.get('/coach/templates?scope=session') : Promise.resolve([])), [more === 'use']);
+  const roster = useLoad(() => (more === 'help' && s.team_id ? api.get(`/coach/teams/${s.team_id}/roster`) : Promise.resolve(null)), [more === 'help']);
+  const close = () => setMore(null);
+  const players = w.participants.map((p) => ({ value: p.id, label: p.display_name }));
+  const call = (fn, msg) => async (v) => { await fn(v); close(); toast(msg); reload(); };
+  return (
+    <>
+      <Sheet visible={more === 'menu'} onClose={close} title="Session tools">
+        {[
+          ['Split into groups (defenders, forwards …)', 'groups', s.status !== 'completed' && s.team_id],
+          ['Save plan as a template', 'template', true], ['Use a template', 'use', s.status !== 'completed'],
+          ['Start a new session from this one', 'clone', true], ['Let another coach help', 'help', s.team_id && w.you_are === 'owner'],
+        ].filter(([, , show]) => show).map(([label_, key]) => <Row key={key} title={label_} onPress={() => setMore(key)} />)}
+        {w.delegates?.length ? <T size={12} color={c.mute} style={{ marginTop: 8 }}>Helping: {w.delegates.map((d) => `${d.display_name} (${d.permissions.join(', ')})`).join('; ')}</T> : null}
+        <View style={{ marginTop: 10 }}><Btn small title="Save my own notes about the whole team" color={c.paper} ink={c.ink} onPress={() => { close(); push('CoachReports', { team_id: s.team_id }); }} disabled={!s.team_id} /></View>
+      </Sheet>
+      <FormSheet visible={more === 'groups'} onClose={close} title="Groups" submitLabel="Save groups" initial={{ n1: s.groups?.[0]?.name, m1: s.groups?.[0]?.athlete_ids, n2: s.groups?.[1]?.name, m2: s.groups?.[1]?.athlete_ids, n3: s.groups?.[2]?.name, m3: s.groups?.[2]?.athlete_ids }}
+        fields={[1, 2, 3].flatMap((k) => [{ key: `n${k}`, label: `Group ${k} name`, optional: true, placeholder: k === 1 ? 'e.g. Defenders' : undefined }, { key: `m${k}`, label: `Group ${k} players`, type: 'multi', options: players, optional: true }])}
+        onSubmit={call(async (v) => api.post(`/coaching/sessions/${s.id}/groups`, { groups: [1, 2, 3].filter((k) => v[`n${k}`] && v[`m${k}`]?.length).map((k) => ({ name: v[`n${k}`], athlete_ids: v[`m${k}`] })) }), 'Groups saved')} />
+      <FormSheet visible={more === 'template'} onClose={close} title="Save as template" submitLabel="Save"
+        fields={[{ key: 'title', label: 'Template name' }]} onSubmit={call(async (v) => api.post('/coaching/templates', { title: v.title, session_record_id: s.id }), 'Template saved (no player details are kept)')} />
+      <Sheet visible={more === 'use'} onClose={close} title="Use a template">
+        {tpls.loading ? <Loading /> : !tpls.data?.length ? <T size={13} color={c.mute}>No session templates yet. Save a plan as a template first.</T> :
+          tpls.data.map((t) => <Row key={t.id} title={t.title} sub={`${t.blocks.length} blocks${t.mine ? '' : ` · shared by ${t.shared_by}`}`} onPress={async () => { try { await api.post(`/coaching/sessions/${s.id}/apply-template`, { template_id: t.id }); close(); toast('Blocks added to the plan'); reload(); } catch (e) { toast(e.message); } }} />)}
+      </Sheet>
+      <FormSheet visible={more === 'clone'} onClose={close} title="New session from this one" submitLabel="Create"
+        fields={[{ key: 'title', label: 'Title' }, { key: 'date', label: 'Date', type: 'date' }, { key: 'time', label: 'Start time', type: 'time' }]} initial={{ title: s.title }}
+        onSubmit={async (v) => { const r = await api.post(`/coaching/sessions/${s.id}/clone`, { source_type: 'team_session', source_id: uuidFrom(Date.now()), team_id: s.team_id ?? undefined, title: v.title, scheduled_at: localToIso(v.date, v.time, tz) }); close(); toast('Created. Plan blocks were copied; notes and attendance were not.'); push('CoachSession', { id: r.id }); }} />
+      <FormSheet visible={more === 'help'} onClose={close} title="Let another coach help" submitLabel="Save"
+        fields={[
+          { key: 'user_id', label: 'Coach', type: 'chips', options: (roster.data?.members ?? []).filter((m) => m.role === 'coach').map((m) => ({ value: m.id, label: m.display_name })) },
+          { key: 'permissions', label: 'They may', type: 'multi', options: [{ value: 'attendance', label: 'Record attendance' }, { value: 'observe', label: 'Write notes about players' }], optional: true, hint: 'Leave empty to remove their access.' },
+        ]}
+        onSubmit={call(async (v) => api.post(`/coaching/sessions/${s.id}/delegates`, { user_id: v.user_id, permissions: v.permissions ?? [] }), 'Saved')} />
+      <FormSheet visible={!!more?.summary} onClose={close} title={`Summary · ${more?.summary?.display_name ?? ''}`} submitLabel="Save"
+        fields={[{ key: 'summary', label: 'How did this player get on?', type: 'multiline' }, { key: 'shared', label: 'Show it to the player', type: 'switch', default: false }]}
+        onSubmit={call(async (v) => api.post(`/coaching/sessions/${s.id}/player-summaries`, { athlete_id: more.summary.id, summary: v.summary, shared: !!v.shared }), 'Saved')} />
+    </>
   );
 }

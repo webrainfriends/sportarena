@@ -144,8 +144,16 @@ cap({
 
 cap({
   name: 'list_coach_templates', method: 'GET', path: '/coach/templates', tag: TAG, auth: COACH,
-  summary: 'Your templates.', input: z.object({ ...page }),
-  handler: ({ user }, i) => many('SELECT t.*, s.slug AS sport_slug FROM coach_templates t LEFT JOIN sports s ON s.id=t.sport_id WHERE t.coach_id=$1 AND t.archived_at IS NULL ORDER BY t.created_at DESC, t.id LIMIT $2 OFFSET $3', [user.id, i.limit, i.offset]),
+  summary: 'Templates you can use: your own, those you shared, and those shared with a team you coach or an organisation where you hold a coach, admin or owner role. Filter by scope (drill, block, session).',
+  input: z.object({ scope: z.enum(['drill', 'block', 'session']).optional(), ...page }),
+  handler: ({ user }, i) => many(
+    `SELECT t.id, t.title, t.kind, t.scope, t.structure, t.blocks, t.version, t.sport_id, s.slug AS sport_slug, t.shared_team_id, t.shared_organisation_id, t.created_at, t.updated_at, (t.coach_id=$1) AS mine, u.display_name AS shared_by
+       FROM coach_templates t LEFT JOIN sports s ON s.id=t.sport_id JOIN users u ON u.id=t.coach_id
+      WHERE t.archived_at IS NULL AND ($2::text IS NULL OR t.scope=$2)
+        AND (t.coach_id=$1
+             OR t.shared_team_id IN (SELECT team_id FROM team_members WHERE user_id=$1 AND status='active' AND role='coach')
+             OR t.shared_organisation_id IN (SELECT m.organisation_id FROM organisation_members m JOIN organisations o ON o.id=m.organisation_id WHERE m.user_id=$1 AND m.status='active' AND o.status='active' AND m.role IN ('owner','admin','coach')))
+      ORDER BY t.created_at DESC, t.id LIMIT $3 OFFSET $4`, [user.id, i.scope ?? null, i.limit, i.offset]),
 });
 
 cap({

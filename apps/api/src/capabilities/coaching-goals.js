@@ -226,8 +226,10 @@ cap({
     athlete_id: id.optional(), team_id: id.optional(), owner_id: id.optional(), title: text(160).min(2), detail: text(1000).optional(), due_at: z.string().datetime({ offset: true }).optional(),
     priority: z.enum(PRIORITY).default('medium'), shared: z.boolean().default(false), follow_up_next_session: z.boolean().default(false),
     session_record_id: id.optional(), observation_id: id.optional(), goal_id: id.optional(), client_key: z.string().min(8).max(80).optional(),
+    recurrence_days: z.number().int().min(1).max(365).optional().describe('when this action is finished, schedule the next one this many days later'),
   }),
   async handler({ user }, i) {
+    if (i.recurrence_days && !i.due_at) throw badRequest('A recurring action needs a due date to count from');
     if (i.client_key) { const dup = await one('SELECT * FROM coaching_actions WHERE coach_id=$1 AND client_key=$2', [user.id, i.client_key]); if (dup) return dup; }
     let athlete_id = i.athlete_id, team_id = i.team_id;
     // a link can supply the subject, but only if it is the coach's own record
@@ -244,9 +246,9 @@ cap({
     if (owner !== user.id && owner !== athlete_id && !(team_id && (await one("SELECT 1 FROM team_members WHERE team_id=$1 AND user_id=$2 AND status='active' AND role='coach'", [team_id, owner])))) throw badRequest('The owner must be you, the athlete or a coach of the team');
     if (owner === athlete_id && owner !== user.id && !i.shared) i.shared = true; // an athlete cannot own something they cannot see
     const row = await one(
-      `INSERT INTO coaching_actions(coach_id, athlete_id, team_id, owner_id, title, detail, due_at, priority, shared, follow_up_next_session, session_record_id, observation_id, goal_id, client_key)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) ON CONFLICT (coach_id, client_key) WHERE client_key IS NOT NULL DO NOTHING RETURNING *`,
-      [user.id, athlete_id ?? null, team_id ?? null, owner, i.title, i.detail, nowOrNull(i.due_at), i.priority, i.shared, i.follow_up_next_session, i.session_record_id ?? null, i.observation_id ?? null, i.goal_id ?? null, i.client_key ?? null]);
+      `INSERT INTO coaching_actions(coach_id, athlete_id, team_id, owner_id, title, detail, due_at, priority, shared, follow_up_next_session, session_record_id, observation_id, goal_id, client_key, recurrence_days)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) ON CONFLICT (coach_id, client_key) WHERE client_key IS NOT NULL DO NOTHING RETURNING *`,
+      [user.id, athlete_id ?? null, team_id ?? null, owner, i.title, i.detail, nowOrNull(i.due_at), i.priority, i.shared, i.follow_up_next_session, i.session_record_id ?? null, i.observation_id ?? null, i.goal_id ?? null, i.client_key ?? null, i.recurrence_days ?? null]);
     if (row) await notifyActionAssigned(null, row);
     return row ?? one('SELECT * FROM coaching_actions WHERE coach_id=$1 AND client_key=$2', [user.id, i.client_key]);
   },
@@ -254,7 +256,7 @@ cap({
 
 cap({
   name: 'update_coaching_action', method: 'PATCH', path: '/coaching/actions/:id', tag: TAG, auth: 'user',
-  summary: 'Update an action. The coach who created it can change anything while the coaching relationship is current (and can always cancel or complete it); an athlete who owns a shared action can only set its status and add a completion note. Completing an action never marks a goal achieved. Needs the row_version you loaded.',
+  summary: 'A recurring action schedules its next occurrence when finished. Update an action. The coach who created it can change anything while the coaching relationship is current (and can always cancel or complete it); an athlete who owns a shared action can only set its status and add a completion note. Completing an action never marks a goal achieved. Needs the row_version you loaded.',
   input: z.object({ id, row_version: z.number().int().min(1), status: z.enum(['open', 'in_progress', 'done', 'cancelled']).optional(), completion_note: text(1000).optional(), title: text(160).min(2).optional(), detail: text(1000).optional(), due_at: z.string().datetime({ offset: true }).nullable().optional(), priority: z.enum(PRIORITY).optional(), shared: z.boolean().optional(), follow_up_next_session: z.boolean().optional() }),
   async handler({ user }, i) {
     const a = await one('SELECT * FROM coaching_actions WHERE id=$1', [i.id]);
@@ -269,10 +271,18 @@ cap({
       if (cur.row_version !== i.row_version) throw conflict('This action was changed elsewhere - reload it first');
       const n = { ...cur };
       for (const k of ['status', 'completion_note', 'title', 'detail', 'due_at', 'priority', 'shared', 'follow_up_next_session']) if (i[k] !== undefined) n[k] = k === 'due_at' ? nowOrNull(i[k]) : i[k];
-      return (await c.query(
+      const row = (await c.query(
         `UPDATE coaching_actions SET status=$2, completion_note=$3, title=$4, detail=$5, due_at=$6, priority=$7, shared=$8, follow_up_next_session=$9,
                 completed_at = CASE WHEN $2='done' THEN coalesce(completed_at, now()) ELSE NULL END, row_version=row_version+1, updated_at=now() WHERE id=$1 RETURNING *`,
         [cur.id, n.status, n.completion_note, n.title, n.detail, n.due_at, n.priority, n.shared, n.follow_up_next_session])).rows[0];
+      // a recurring action schedules its next occurrence once, when it is first finished (the finished one stays as history)
+      if (row.status === 'done' && cur.status !== 'done' && row.recurrence_days) {
+        const next = (await c.query(
+          `INSERT INTO coaching_actions(coach_id, athlete_id, team_id, owner_id, title, detail, due_at, priority, shared, follow_up_next_session, goal_id, recurrence_days, recurs_from)
+           SELECT coach_id, athlete_id, team_id, owner_id, title, detail, greatest(due_at, now()) + make_interval(days => recurrence_days), priority, shared, follow_up_next_session, goal_id, recurrence_days, id FROM coaching_actions WHERE id=$1 RETURNING id`, [row.id])).rows[0];
+        row.next_action_id = next.id;
+      }
+      return row;
     });
     if (limited && updated.status === 'done') await notifyActionDone(null, updated);
     return updated;
