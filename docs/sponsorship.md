@@ -28,3 +28,6 @@ No individual-specific subsystem: athletes are just another `target_type` of the
 More → Sponsors: athletes get an "Open to sponsors" switch and pitch editor; sponsors search opted-in athletes and
 send an offer; both sides see every deal with its terms, status and reply, and can accept, decline, withdraw or end.
 The Billboard inbox shows the same terms.
+
+## Funding programs and calls
+See [sponsorship-programs.md](sponsorship-programs.md): public sponsorship calls, invitation-only calls, deadlines in a timezone, FAQs and invitations (#285).

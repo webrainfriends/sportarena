@@ -383,7 +383,7 @@ export function Sponsors() {
       <Section title="Funding programs" color={c.lime}>
         <T size={13} color={c.mute}>Sponsors run funding programs in rounds; athletes, teams and event organisers apply to the ones that are open. Awards become agreements here.</T>
         <View style={{ flexDirection: 'row', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
-          <Btn small title="Funding opportunities" color={c.pink} onPress={() => push('FundingOpportunities')} />
+          <Btn small title="Sponsorship calls" color={c.pink} onPress={() => push('FundingOpportunities')} />
           {mine.data?.length ? <Btn small title="Run programs" color={c.violet} onPress={() => push('SponsorPrograms')} /> : null}
         </View>
       </Section>
