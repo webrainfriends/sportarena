@@ -1,5 +1,5 @@
 import { one } from './db.js';
-import { sponsorCanSql, CAN } from './sponsor-access.js';
+import { sponsorCanSql, CAN } from './sponsor-identity-access.js';
 
 /** The single inclusion rule for every public rating, count, distribution and listing: only published, public feedback counts.
  *  Hidden, withdrawn and private feedback must never reach an average, so every consumer builds its WHERE from this. */
