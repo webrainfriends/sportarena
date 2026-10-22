@@ -2,6 +2,7 @@
 // quotes, bookings), what finalizing one does, and the budget it feeds.
 import { badRequest, conflict, notFound } from './errors.js';
 import { notify, venueTeam } from './notify.js';
+import { sponsorContactUser, sponsorRole, CAN } from './sponsor-access.js';
 
 export const REQUEST_KINDS = ['team', 'coach', 'referee', 'umpire', 'judge', 'scorer', 'timekeeper', 'physio', 'doctor', 'first_aider', 'volunteer', 'supplier', 'venue', 'insurer', 'sponsor'];
 export const STAFF_KINDS = ['referee', 'umpire', 'judge', 'scorer', 'timekeeper', 'physio', 'doctor', 'first_aider', 'volunteer'];
@@ -18,6 +19,11 @@ const q = (c, text, args) => c.query(text, args).then((r) => r.rows);
 
 /** Can this user answer the request (is the recipient, or runs the team / venue it is addressed to)? */
 export async function canAnswer(c, user, r) {
+  // a sponsor request is answered by the people who may act for that brand now, not by whoever was the contact when it was sent
+  if (r.kind === 'sponsor' && r.sponsor_id) {
+    const sp = (await q(c, 'SELECT id, owner_id, entity_id FROM sponsors WHERE id=$1', [r.sponsor_id]))[0];
+    return !!sp && CAN.manage.includes(await sponsorRole(c, user, sp, { asAdmin: false }));
+  }
   if (r.recipient_id === user.id) return true;
   if (r.kind === 'venue' && r.venue_id) return (await venueTeam(c, r.venue_id)).includes(user.id);
   if (r.kind === 'team' && r.team_id) {
@@ -52,9 +58,9 @@ export async function createRequest(c, user, ev, i, { insuranceRequest } = {}) {
     if (!v) throw notFound('Venue');
     recipient = v.owner_id; name = v.name; col.venue_id = v.id;
   } else if (i.kind === 'sponsor') {
-    const s = (await q(c, 'SELECT id, name, owner_id FROM sponsors WHERE id=$1', [i.sponsor_id]))[0];
+    const s = (await q(c, 'SELECT id, name, owner_id, entity_id FROM sponsors WHERE id=$1', [i.sponsor_id]))[0];
     if (!s) throw notFound('Sponsor');
-    recipient = s.owner_id; name = s.name; col.sponsor_id = s.id;
+    recipient = await sponsorContactUser(c, s); name = s.name; col.sponsor_id = s.id;
   } else if (i.kind === 'insurer') {
     const s = (await q(c, "SELECT id, name, owner_id, status, accepting_requests FROM insurers WHERE id=$1", [i.insurer_id]))[0];
     if (!s || s.status !== 'active') throw notFound('Insurer');

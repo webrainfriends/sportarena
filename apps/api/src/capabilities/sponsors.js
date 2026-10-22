@@ -1,7 +1,7 @@
 import { badgesFor, withBadges } from '../verification.js';
 import { z } from 'zod';
 import { cap, id, page, money } from '../registry.js';
-import { one, many } from '../db.js';
+import { one, many, pool } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { audit, isAdmin, mustFind } from '../helpers.js';
 import { decryptFields, encryptFields } from '../crypto.js';
@@ -10,6 +10,7 @@ import { tx } from '../db.js';
 import { PUBLIC_USER } from '../helpers.js';
 import { NOT_YOUTH_SQL } from '../youth.js';
 import { LINE, buildSchedule } from '../sponsor-schedule.js';
+import { sponsorRole, requireSponsor, entityRole, sponsorTeamSql, sponsorContactUser, snapshotIdentity, CAN } from '../sponsor-access.js';
 import { saveLines, generateObligations, cancelFutureObligations, logHistory } from '../sponsor-agreements.js';
 import { sponsorAccess, assertSponsorCan, notifySponsor, sponsorStaffSql } from '../sponsor-access.js';
 
@@ -25,14 +26,24 @@ async function targetOwner(type, targetId) {
 }
 
 cap({
-  name: 'create_sponsor', method: 'POST', path: '/sponsors', tag: 'Sponsors', auth: ['sponsor'], status: 201,
-  summary: 'Create a sponsor brand profile. Contact name/email/phone are encrypted.',
-  input: z.object({ name: z.string().min(2).max(80), industry: z.string().max(60).optional(), website: z.string().url().optional(), emoji: z.string().max(8).optional(), contact_name: z.string().max(80).optional(), contact_email: z.string().email().optional(), contact_phone: z.string().max(30).optional() }),
+  name: 'create_sponsor', method: 'POST', path: '/sponsors', tag: 'Sponsors', status: 201,
+  summary: 'Create a sponsor brand profile (the public display name). Contact name/email/phone are encrypted. Give `entity_id` to add the brand under a sponsor entity you own or administer; without it the brand has no confirmed identity yet — confirm it with set_sponsor_identity, the one place that creates and edits the sponsor legal identity.',
+  input: z.object({ name: z.string().min(2).max(80), industry: z.string().max(60).optional(), website: z.string().url().optional(), emoji: z.string().max(8).optional(), contact_name: z.string().max(80).optional(), contact_email: z.string().email().optional(), contact_phone: z.string().max(30).optional(),
+    entity_id: id.optional() }),
   async handler({ user }, i) {
+    if (!i.entity_id && !user.roles.includes('sponsor') && !isAdmin(user)) throw forbidden('Requires one of the roles: sponsor (or be invited to an existing sponsor entity)');
     const e = encryptFields(i, 'sponsors', CONTACT);
-    const r = await one("INSERT INTO sponsors(owner_id, name, industry, website, emoji, contact_name_enc, contact_email_enc, contact_phone_enc) VALUES ($1,$2,$3,$4,coalesce($5,'💎'),$6,$7,$8) RETURNING id, name, industry, website, emoji",
-      [user.id, i.name, i.industry, i.website, i.emoji, e.contact_name_enc ?? null, e.contact_email_enc ?? null, e.contact_phone_enc ?? null]);
-    return r;
+    return tx(async (c) => {
+      let entityId = null;
+      if (i.entity_id) {
+        const role = await entityRole(c, user, i.entity_id);
+        if (!role) throw notFound('Sponsor entity');
+        if (!CAN.identity.includes(role)) throw forbidden('Only an owner or admin of this entity can add brands to it');
+        entityId = i.entity_id;
+      }
+      return (await c.query("INSERT INTO sponsors(owner_id, name, industry, website, emoji, contact_name_enc, contact_email_enc, contact_phone_enc, entity_id) VALUES ($1,$2,$3,$4,coalesce($5,'💎'),$6,$7,$8,$9) RETURNING id, name, industry, website, emoji, entity_id",
+        [user.id, i.name, i.industry, i.website, i.emoji, e.contact_name_enc ?? null, e.contact_email_enc ?? null, e.contact_phone_enc ?? null, entityId])).rows[0];
+    });
   },
 });
 
@@ -64,7 +75,7 @@ cap({
     const out = { id: s.id, name: s.name, industry: s.industry, website: s.website, emoji: s.emoji, verified: (await badgesFor('sponsor', [s.id])).get(s.id) ?? [], active_sponsorships: deals };
     if (user && (isAdmin(user) || (await sponsorAccess(user, s))?.role === 'manager')) {
       await audit(null, user.id, 'read_pii', 'sponsors', s.id);
-      Object.assign(out, decryptFields(s, 'sponsors', CONTACT));
+      Object.assign(out, decryptFields(s, 'sponsors', CONTACT), { my_role: role });
     }
     return out;
   },
@@ -159,6 +170,7 @@ cap({
         Object.assign(row, (await c.query("UPDATE sponsorships SET agreement_ref='SPA-'||upper(substr(id::text,1,8)), timezone=$2, currency=$3 WHERE id=$1 RETURNING agreement_ref, timezone, currency, terms_version", [row.id, i.timezone, cash.length === 1 ? cash[0][0] : null])).rows[0]);
         await saveLines(c, row.id, 1, lines);
       }
+      await snapshotIdentity(c, row.id, 1, s.id, user.id);
       await logHistory(c, row.id, 1, user.id, 'proposed');
       await notify(c, owner, { kind: 'sponsorship_offer', title: 'You have a sponsorship offer', body: `${s.name} sent an offer. Open it to review and answer.`, data: { sponsorship_id: row.id } });
       return row;

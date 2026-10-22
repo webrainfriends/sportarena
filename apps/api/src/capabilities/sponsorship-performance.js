@@ -9,6 +9,7 @@ import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { notify } from '../notify.js';
 import { isYouth } from '../youth.js';
 import { EVIDENCE_LABELS } from '../scoring/performance-rules.js';
+import { sponsorGate, CAN } from '../sponsor-access.js';
 import { logHistory, dealContext } from '../sponsor-agreements.js';
 import { notifySponsor } from '../sponsor-access.js';
 

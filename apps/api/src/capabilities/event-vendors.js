@@ -4,6 +4,7 @@ import { cap, id, money } from '../registry.js';
 import { pool, many, tx } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { isAdmin, mustFind } from '../helpers.js';
+import { sponsorContactUser, sponsorRole, snapshotIdentity, CAN } from '../sponsor-access.js';
 import { eventForOrganizer } from './events.js';
 import { notify } from '../notify.js';
 
@@ -20,7 +21,7 @@ cap({
       let vendor = i.vendor_user_id;
       if (i.kind === 'sponsor') {
         if (!i.sponsor_id) throw badRequest('A sponsor invitation needs sponsor_id');
-        vendor = (await mustFind('sponsors', i.sponsor_id, 'owner_id', c)).owner_id;
+        vendor = await sponsorContactUser(c, await mustFind('sponsors', i.sponsor_id, 'id, owner_id, entity_id', c));
         if (i.vendor_user_id && i.vendor_user_id !== vendor) throw badRequest('vendor_user_id is not the owner of that sponsor');
       } else {
         if (!vendor) throw badRequest('vendor_user_id is required');
@@ -37,6 +38,16 @@ cap({
   },
 });
 
+/** The invited vendor — for a sponsor invitation, whoever may act for that brand now (not who was the contact at invite time). */
+async function vendorMay(c, user, v) {
+  if (isAdmin(user)) return true;
+  if (v.kind === 'sponsor' && v.sponsor_id) {
+    const sp = (await c.query('SELECT id, owner_id, entity_id FROM sponsors WHERE id=$1', [v.sponsor_id])).rows[0];
+    return !!sp && CAN.manage.includes(await sponsorRole(c, user, sp, { asAdmin: false }));
+  }
+  return v.vendor_user_id === user.id;
+}
+
 cap({
   name: 'respond_event_vendor', method: 'POST', path: '/event-vendors/:id/respond', tag: 'Event vendors',
   summary: 'Accept or decline an event invitation (the invited vendor/sponsor owner). Accepting a sponsor invitation records an active sponsorship for the event.',
@@ -44,7 +55,7 @@ cap({
   async handler({ user }, i) {
     return tx(async (c) => {
       const v = (await c.query('SELECT * FROM event_vendors WHERE id=$1 FOR UPDATE', [i.id])).rows[0];
-      if (!v || (v.vendor_user_id !== user.id && !isAdmin(user))) throw notFound('Invitation');
+      if (!v || !(await vendorMay(c, user, v))) throw notFound('Invitation');
       if (v.status !== 'invited') throw conflict(`Invitation is already ${v.status}`);
       const ev = await mustFind('events', v.event_id, '*', c);
       if (i.accept && ['completed', 'cancelled'].includes(ev.status)) throw conflict(`Event is ${ev.status}`);
@@ -53,6 +64,7 @@ cap({
         sponsorshipId = (await c.query(
           `INSERT INTO sponsorships(sponsor_id, target_type, target_id, amount_cents, in_kind, status, proposed_by, starts_on, ends_on, decided_at, decided_by)
            VALUES ($1,'event',$2,$3,$4,'active',$5,$6,$7,now(),$8) RETURNING id`, [v.sponsor_id, ev.id, v.fee_cents, v.in_kind, v.invited_by, ev.starts_on, ev.ends_on, user.id])).rows[0].id;
+        await snapshotIdentity(c, sponsorshipId, 1, v.sponsor_id, user.id);
       }
       const out = (await c.query('UPDATE event_vendors SET status=$2, responded_at=now(), sponsorship_id=$3 WHERE id=$1 RETURNING *', [v.id, i.accept ? 'accepted' : 'declined', sponsorshipId])).rows[0];
       await notify(c, v.invited_by, { kind: 'event_vendor', title: `Invitation ${out.status}`, body: `${ev.name}: a ${v.kind} invitation was ${out.status}.`, data: { event_id: ev.id, vendor_id: v.id } });
@@ -68,7 +80,7 @@ cap({
     return tx(async (c) => {
       const v = (await c.query('SELECT * FROM event_vendors WHERE id=$1 FOR UPDATE', [i.id])).rows[0];
       if (!v) throw notFound('Vendor');
-      if (v.vendor_user_id !== user.id) await eventForOrganizer(user, v.event_id, c);
+      if (!(await vendorMay(c, user, v))) await eventForOrganizer(user, v.event_id, c);
       if (v.status !== 'accepted') throw conflict(`Only accepted vendors can be ended (this one is ${v.status})`);
       if (v.sponsorship_id) await c.query("UPDATE sponsorships SET status='ended' WHERE id=$1", [v.sponsorship_id]);
       await c.query('UPDATE event_products SET removed_at=now() WHERE event_id=$1 AND removed_at IS NULL AND product_id IN (SELECT id FROM shop_products WHERE seller_id=$2)', [v.event_id, v.vendor_user_id]);

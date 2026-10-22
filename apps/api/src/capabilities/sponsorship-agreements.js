@@ -7,6 +7,7 @@ import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { isAdmin } from '../helpers.js';
 import { notify } from '../notify.js';
 import { LINE, buildSchedule } from '../sponsor-schedule.js';
+import { sponsorGate, sponsorTeamSql, snapshotIdentity, CAN } from '../sponsor-access.js';
 import { saveLines, loadLines, generateObligations, logHistory, dealContext, obligationContext } from '../sponsor-agreements.js';
 import { notifySponsor, sponsorStaffSql, actionsFor } from '../sponsor-access.js';
 
@@ -45,6 +46,7 @@ cap({
       const plan = buildSchedule(i.lines, { starts_on: starts, ends_on: ends });
       const cash = Object.entries(plan.committed), v = ctx.d.terms_version + 1;
       await saveLines(c, ctx.d.id, v, i.lines);
+      await snapshotIdentity(c, ctx.d.id, v, ctx.sp.id, user.id);
       const row = (await c.query('UPDATE sponsorships SET terms_version=$2, starts_on=$3, ends_on=$4, timezone=coalesce($5,timezone), amount_cents=$6, currency=$7, agreement_ref=coalesce(agreement_ref, \'SPA-\'||upper(substr(id::text,1,8))) WHERE id=$1 RETURNING *',
         [ctx.d.id, v, starts ?? null, ends ?? null, i.timezone ?? null, cash.length === 1 ? cash[0][1] : 0, cash.length === 1 ? cash[0][0] : null])).rows[0];
       await logHistory(c, ctx.d.id, v, user.id, 'revised', i.reason);
