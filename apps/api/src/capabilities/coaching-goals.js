@@ -18,7 +18,7 @@ const PRIORITY = ['low', 'medium', 'high'];
 const MIN_COHORT = 5;
 
 /** Coach may act for an athlete (current relationship) or a team (coaching authority). Returns the sport to default to. */
-async function authorise(user, { athlete_id, team_id }) {
+export async function authorise(user, { athlete_id, team_id }) {
   let sport_id = null;
   if (athlete_id) sport_id = (await requireRelationship(user, athlete_id))[0].sport_id;
   if (team_id) sport_id = (await requireTeam(user, team_id)).sport_id;

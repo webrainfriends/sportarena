@@ -19,7 +19,7 @@ const VISIBILITY = ['coach_private', 'staff', 'player', 'team'];
 const BLOCK_STATUS = ['completed', 'skipped', 'modified'];
 const text = (n) => z.string().trim().max(n);
 
-const block = z.object({
+export const block = z.object({
   id: z.string().max(60).optional().describe('keep the id of an existing block when re-saving; omit for a new block'),
   kind: z.enum(BLOCK_KINDS),
   title: text(120).min(2),
@@ -133,22 +133,25 @@ cap({
   },
 });
 
+/** Save blocks as the next plan version of a session record the coach owns. Shared by the plan editor and by accepting an AI draft. */
+export async function savePlan(user, recordId, blocksIn, { objective, expected_version } = {}) {
+  return tx(async (c) => {
+    const rec = await ownRecord(user, recordId, c);
+    if (rec.status === 'completed') throw conflict('A completed session\'s plan cannot be changed');
+    if (expected_version != null && expected_version !== rec.plan_version) throw conflict('The plan changed since you loaded it');
+    const version = rec.plan_version + 1;
+    const blocks = withIds(blocksIn);
+    await c.query('INSERT INTO coaching_session_plan_versions(session_record_id, version, blocks, saved_by) VALUES ($1,$2,$3,$4)', [rec.id, version, JSON.stringify(blocks), user.id]);
+    const upd = (await c.query('UPDATE coaching_session_records SET plan_version=$2, objective=coalesce($3, objective), row_version=row_version+1, updated_at=now() WHERE id=$1 RETURNING *', [rec.id, version, objective])).rows[0];
+    return { session: upd, plan: { version, blocks } };
+  });
+}
+
 cap({
   name: 'save_coaching_session_plan', method: 'POST', path: '/coaching/sessions/:id/plan', tag: TAG, auth: COACH,
   summary: 'Save the ordered blocks for a session as a new plan version. Earlier versions are kept, so the plan a session started with stays readable; a completed session is frozen.',
   input: z.object({ id, blocks: z.array(block).max(30), objective: text(1000).optional(), expected_version: z.number().int().min(0).optional().describe('plan version you loaded; a different current version is a conflict') }),
-  async handler({ user }, i) {
-    return tx(async (c) => {
-      const rec = await ownRecord(user, i.id, c);
-      if (rec.status === 'completed') throw conflict('A completed session\'s plan cannot be changed');
-      if (i.expected_version != null && i.expected_version !== rec.plan_version) throw conflict('The plan changed since you loaded it');
-      const version = rec.plan_version + 1;
-      const blocks = withIds(i.blocks);
-      await c.query('INSERT INTO coaching_session_plan_versions(session_record_id, version, blocks, saved_by) VALUES ($1,$2,$3,$4)', [rec.id, version, JSON.stringify(blocks), user.id]);
-      const upd = (await c.query('UPDATE coaching_session_records SET plan_version=$2, objective=coalesce($3, objective), row_version=row_version+1, updated_at=now() WHERE id=$1 RETURNING *', [rec.id, version, i.objective])).rows[0];
-      return { session: upd, plan: { version, blocks } };
-    });
-  },
+  handler: ({ user }, i) => savePlan(user, i.id, i.blocks, i),
 });
 
 cap({
