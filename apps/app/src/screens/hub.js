@@ -380,9 +380,16 @@ export function Sponsors() {
           {pr?.verified_sponsors_only ? <T size={12} color={c.mute}>Only verified sponsors can send you offers.</T> : null}
         </Section>
       ) : null}
+      <Section title="Funding programs" color={c.lime}>
+        <T size={13} color={c.mute}>Sponsors run funding programs in rounds; athletes, teams and event organisers apply to the ones that are open. Awards become agreements here.</T>
+        <View style={{ flexDirection: 'row', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
+          <Btn small title="Funding opportunities" color={c.pink} onPress={() => push('FundingOpportunities')} />
+          {mine.data?.length ? <Btn small title="Run programs" color={c.violet} onPress={() => push('SponsorPrograms')} /> : null}
+        </View>
+      </Section>
       <Section title="Your deals" color={c.sun}>
         {deals.data?.length ? deals.data.map((d) => (
-          <Card key={d.id} color={c.sunSoft}><View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}><Bubble emoji={d.sponsor_emoji} color={c.paper} /><View style={{ flex: 1 }}><T weight="900">{d.sponsor_name}{d.sponsor_verified ? ' ✓' : ''} → {d.target_name ?? d.target_type}</T><T size={12} color={c.mute}>{[d.amount_cents ? money(d.amount_cents) : null, d.in_kind].filter(Boolean).join(' + ') || 'Support offered'}{d.starts_on ? ` · ${day(d.starts_on)} to ${d.ends_on ? day(d.ends_on) : 'open'}` : ''}</T></View><Tag label={d.status} color={d.status === 'active' ? c.lime : d.status === 'proposed' ? c.sunSoft : c.pinkSoft} /></View>
+          <Card key={d.id} color={c.sunSoft}><View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}><Bubble emoji={d.sponsor_emoji} color={c.paper} /><View style={{ flex: 1 }}><T weight="900">{d.sponsor_name}{d.sponsor_verified ? ' ✓' : ''} → {d.target_name ?? d.target_type}</T><T size={12} color={c.mute}>{[d.amount_cents ? money(d.amount_cents) : null, d.in_kind].filter(Boolean).join(' + ') || 'Support offered'}{d.starts_on ? ` · ${day(d.starts_on)} to ${d.ends_on ? day(d.ends_on) : 'open'}` : ''}</T></View><View style={{ alignItems: 'flex-end', gap: 4 }}><Tag label={d.status} color={d.status === 'active' ? c.lime : d.status === 'proposed' ? c.sunSoft : c.pinkSoft} />{d.program_id ? <Tag label="Funding award" color={c.mint} /> : null}</View></View>
             {d.objectives ? <T size={12} style={{ marginTop: 6 }}><T size={12} weight="800">Objectives: </T>{d.objectives}</T> : null}
             {d.deliverables ? <T size={12}><T size={12} weight="800">Deliverables: </T>{d.deliverables}</T> : null}
             {d.message ? <T size={12} color={c.mute}>“{d.message}”</T> : null}
