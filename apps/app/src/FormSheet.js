@@ -157,7 +157,7 @@ export function FormSheet({ visible, onClose, title, fields, initial = {}, submi
       case 'stepper': return (
         <View style={{ gap: 6 }}><View style={{ flexDirection: 'row', alignItems: 'center' }}><View style={{ flex: 1 }}>{lab(f)}</View><Counter value={v[f.key]} onChange={(x) => set(f.key, x)} min={f.min ?? 0} max={f.max ?? 999} step={f.step ?? 1} suffix={f.suffix} /></View>{hint(f)}</View>);
       case 'switch': return (
-        <View style={{ gap: 4 }}><View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}><View style={{ flex: 1 }}>{lab(f)}</View><Switch value={!!v[f.key]} onValueChange={(x) => set(f.key, x)} trackColor={{ true: c.pink }} /></View>{hint(f)}</View>);
+        <View style={{ gap: 4 }}><View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}><View style={{ flex: 1 }}>{lab(f)}</View><Switch accessibilityLabel={f.label} value={!!v[f.key]} onValueChange={(x) => set(f.key, x)} trackColor={{ true: c.pink }} /></View>{hint(f)}</View>);
       case 'money': return (
         <View style={{ gap: 6 }}><Field label={`${f.label}${f.optional ? ' (optional)' : ''}`} value={String(v[f.key] ?? '')} onChangeText={(x) => set(f.key, x.replace(/[^0-9.,]/g, ''))} keyboardType="decimal-pad" placeholder={`${curOf(f, v) ?? ''} ${f.placeholder ?? '0'}`.trim()} hint={f.hint} /></View>);
       case 'weekdays': return (

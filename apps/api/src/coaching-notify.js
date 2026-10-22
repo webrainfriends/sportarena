@@ -61,7 +61,7 @@ export async function queueCoachingReminders({ limit = 200 } = {}) {
     const { rows } = await c.query(
       `SELECT f.id AS fixture_id, m.user_id AS coach_id, t.id AS team_id FROM fixtures f JOIN teams t ON t.id IN (f.home_team_id, f.away_team_id)
          JOIN team_members m ON m.team_id=t.id AND m.role='coach' AND m.status='active'
-        WHERE f.status='completed' AND f.scheduled_at < now() - interval '12 hours' AND f.scheduled_at > now() - interval '7 days'
+        WHERE f.status IN ('finished','completed') AND f.scheduled_at < now() - interval '12 hours' AND f.scheduled_at > now() - interval '7 days'
           AND NOT EXISTS (SELECT 1 FROM coaching_session_records r WHERE r.coach_id=m.user_id AND r.source_type='fixture' AND r.source_id=f.id::text AND r.status='completed' AND (r.reviewed_at IS NOT NULL OR r.team_summary IS NOT NULL OR r.private_summary IS NOT NULL))
         ORDER BY f.scheduled_at LIMIT $1`, [limit]);
     for (const r of rows) await notify(c, r.coach_id, { kind: 'coaching_debrief_due', title: 'A match is waiting for your debrief', body: 'Open Performance Studio to review it.', data: { fixture_id: r.fixture_id, team_id: r.team_id, screen: 'PerformanceStudio' }, dedupe_key: `coaching_debrief_due:${r.fixture_id}:${r.coach_id}` });

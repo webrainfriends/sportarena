@@ -4,9 +4,10 @@ import { cap, id, page } from '../registry.js';
 import { one, many, tx } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { isAdmin, PUBLIC_USER, sportBySlugOrId } from '../helpers.js';
-import { hiddenYouth, relationships, requireRelationship } from '../coaching.js';
+import { hiddenYouth, relationships, requireCoachingConsent, requireRelationship } from '../coaching.js';
 import { canSeeYouth, isYouth } from '../youth.js';
 import { canCoachTeam } from './teams.js';
+import { sharedNotes, sharedSummaries } from '../coaching-shared.js';
 
 // Coaching journal (issue #269, slice 1): a session record over a canonical source, attendance, structured observations with explicit
 // visibility, and a longitudinal timeline. Nothing here is medical data and nothing here edits a booking, plan, score or match event.
@@ -143,8 +144,8 @@ cap({
     const [plan, atStart, participants, observations, previous, open_actions] = await Promise.all([
       one('SELECT version, blocks, created_at FROM coaching_session_plan_versions WHERE session_record_id=$1 AND version=$2', [rec.id, rec.plan_version]),
       rec.started_plan_version == null ? null : one('SELECT version, blocks, created_at FROM coaching_session_plan_versions WHERE session_record_id=$1 AND version=$2', [rec.id, rec.started_plan_version]),
-      many(`SELECT ${PUBLIC_USER}, p.attendance, p.arrived_at, p.left_at, p.focus FROM coaching_session_participants p JOIN users u ON u.id=p.athlete_id WHERE p.session_record_id=$1 ORDER BY u.display_name, u.id`, [rec.id]),
-      many("SELECT * FROM coaching_observations WHERE session_record_id=$1 AND (coach_id=$2 OR ($3::boolean AND visibility='staff')) ORDER BY observed_at, id", [rec.id, who, owner]),
+      many(`SELECT ${PUBLIC_USER}, p.attendance, p.arrived_at, p.left_at, p.focus, (SELECT m.position FROM team_members m WHERE m.team_id=$2 AND m.user_id=p.athlete_id AND m.status='active' LIMIT 1) AS position FROM coaching_session_participants p JOIN users u ON u.id=p.athlete_id WHERE p.session_record_id=$1 ORDER BY u.display_name, u.id`, [rec.id, rec.team_id]),
+      many("SELECT o.*, "+"(SELECT coalesce(array_agg(e.goal_id), '{}') FROM coaching_goal_evidence e WHERE e.evidence_type='observation' AND e.evidence_id=o.id::text) AS goal_ids FROM coaching_observations o WHERE o.session_record_id=$1 AND (o.coach_id=$2 OR ($3::boolean AND o.visibility='staff')) ORDER BY o.observed_at, o.id", [rec.id, who, owner]),
       many(`SELECT o.id, o.athlete_id, o.note, o.obs_type, o.skill_tag, o.follow_up, o.observed_at, o.visibility FROM (SELECT athlete_id FROM coaching_session_participants WHERE session_record_id=$1) pp
               CROSS JOIN LATERAL (SELECT * FROM coaching_observations x WHERE x.athlete_id=pp.athlete_id AND x.coach_id=$2 AND x.session_record_id IS DISTINCT FROM $1 AND (x.follow_up OR x.observed_at > now() - interval '60 days') ORDER BY x.follow_up DESC, x.observed_at DESC, x.id LIMIT 3) o`, [rec.id, who]),
       many(`SELECT a.id, a.title, a.athlete_id, a.team_id, a.due_at, a.status, a.priority, a.follow_up_next_session FROM coaching_actions a
@@ -280,7 +281,7 @@ cap({
     athlete_id: id.optional(), team_id: id.optional(), session_record_id: id.optional(), block_ref: z.string().max(60).optional(),
     sport: z.string().optional(), observed_at: z.string().datetime({ offset: true }).optional(),
     client_key: z.string().min(8).max(80).optional().describe('idempotency key generated on the device'),
-    rubric_id: id.optional(), dimension_key: z.string().max(40).optional(), score: z.number().optional().describe('score on the rubric dimension\'s own scale; the rubric version is recorded with it'),
+    goal_ids: z.array(id).max(10).optional().describe('your goals this note is evidence for'), rubric_id: id.optional(), dimension_key: z.string().max(40).optional(), score: z.number().optional().describe('score on the rubric dimension\'s own scale; the rubric version is recorded with it'),
     ...obsBody,
   }),
   async handler({ user }, i) {
@@ -288,6 +289,7 @@ cap({
     if (i.visibility === 'player' && !i.athlete_id) throw badRequest('player visibility needs an athlete');
     if (i.visibility === 'team' && (i.athlete_id || !i.team_id)) throw badRequest('team visibility is for team-level notes only');
     if (i.visibility === 'staff' && !i.team_id) throw badRequest('staff visibility needs the team whose coaches may read it');
+    if (i.visibility === 'player' && i.athlete_id) await requireCoachingConsent(i.athlete_id, 'sharing coaching notes with them');
     let rec = null;
     if (i.session_record_id) {
       rec = (await sessionAccess(user, i.session_record_id, 'observe')).rec;
@@ -301,12 +303,24 @@ cap({
     if (!!i.rubric_id !== (i.score !== undefined) || !!i.rubric_id !== !!i.dimension_key) throw badRequest('rubric_id, dimension_key and score go together');
     let rubricVersion = null;
     if (i.rubric_id) {
-      const v = await one('SELECT v.version, v.dimensions FROM coaching_rubrics r JOIN coaching_rubric_versions v ON v.rubric_id=r.id WHERE r.id=$1 AND r.coach_id=$2 AND r.archived_at IS NULL ORDER BY v.version DESC LIMIT 1', [i.rubric_id, user.id]);
+      const v = await one('SELECT r.sport_id, r.positions, v.version, v.dimensions FROM coaching_rubrics r JOIN coaching_rubric_versions v ON v.rubric_id=r.id WHERE r.id=$1 AND r.coach_id=$2 AND r.archived_at IS NULL ORDER BY v.version DESC LIMIT 1', [i.rubric_id, user.id]);
       if (!v) throw notFound('Rubric');
       const d = v.dimensions.find((x) => x.key === i.dimension_key);
       if (!d) throw badRequest('Unknown rubric dimension');
       if (i.score < d.scale_min || i.score > d.scale_max) throw badRequest(`Score must be between ${d.scale_min} and ${d.scale_max} for this dimension`);
       rubricVersion = v.version;
+      // applicability: the rubric's sport, and the athlete's position on the team when the rubric is limited to positions
+      const sportOk = !v.sport_id || !rec?.sport_id || v.sport_id === rec.sport_id;
+      if (!sportOk) throw badRequest('That rubric is for a different sport');
+      if (v.positions.length && i.athlete_id) {
+        const pos = (await one("SELECT position FROM team_members WHERE user_id=$1 AND status='active' AND position IS NOT NULL AND ($2::uuid IS NULL OR team_id=$2) LIMIT 1", [i.athlete_id, i.team_id ?? null]))?.position;
+        if (!pos || !v.positions.some((x) => x.toLowerCase() === pos.toLowerCase())) throw badRequest(`That rubric applies to ${v.positions.join(', ')} only`);
+      }
+    }
+    if (i.goal_ids?.length) {
+      const gs = await many('SELECT id, athlete_id, team_id FROM coaching_goals WHERE id = ANY($1::uuid[]) AND coach_id=$2', [i.goal_ids, user.id]);
+      if (gs.length !== new Set(i.goal_ids).size) throw badRequest('Some of those goals are not yours');
+      if (gs.some((g) => !((g.athlete_id && g.athlete_id === i.athlete_id) || (!g.athlete_id && g.team_id && g.team_id === i.team_id)))) throw badRequest('A goal you named is about someone else');
     }
     let sportId = rec?.sport_id ?? null;
     if (i.athlete_id) {
@@ -323,6 +337,7 @@ cap({
       `INSERT INTO coaching_observations(coach_id, athlete_id, team_id, sport_id, session_record_id, block_ref, obs_type, skill_tag, note, visibility, follow_up, observed_at, client_key, rubric_id, rubric_version, dimension_key, score)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,coalesce($12, now()),$13,$14,$15,$16,$17) ON CONFLICT (coach_id, client_key) WHERE client_key IS NOT NULL DO NOTHING RETURNING *`,
       [user.id, i.athlete_id ?? null, i.team_id ?? null, sportId, rec?.id ?? null, i.block_ref ?? null, i.obs_type, i.skill_tag ?? null, i.note, i.visibility, i.follow_up, i.observed_at ?? null, i.client_key ?? null, i.rubric_id ?? null, rubricVersion, i.dimension_key ?? null, i.score ?? null]);
+    if (row && i.goal_ids?.length) for (const gid of i.goal_ids) await one("INSERT INTO coaching_goal_evidence(goal_id, evidence_type, evidence_id, added_by) VALUES ($1,'observation',$2,$3) ON CONFLICT DO NOTHING RETURNING goal_id", [gid, row.id, user.id]);
     return row ?? one('SELECT * FROM coaching_observations WHERE coach_id=$1 AND client_key=$2', [user.id, i.client_key]);
   },
 });
@@ -338,6 +353,7 @@ cap({
     else await requireTeam(user, cur.team_id);
     const next = { ...cur, ...Object.fromEntries(['obs_type', 'skill_tag', 'note', 'visibility', 'follow_up'].filter((k) => i[k] !== undefined).map((k) => [k, i[k]])) };
     if (next.visibility === 'player' && !next.athlete_id) throw badRequest('player visibility needs an athlete');
+    if (next.visibility === 'player' && cur.visibility !== 'player') await requireCoachingConsent(next.athlete_id, 'sharing coaching notes with them');
     if (next.visibility === 'team' && (next.athlete_id || !next.team_id)) throw badRequest('team visibility is for team-level notes only');
     if (next.visibility === 'staff' && !next.team_id) throw badRequest('staff visibility needs a team');
     return tx(async (c) => {
@@ -363,7 +379,7 @@ const timelineFilters = z.object({
   skill_tag: text(60).optional(), obs_type: z.enum(OBS_TYPES).optional(), session_record_id: id.optional(),
   from: z.string().datetime({ offset: true }).optional(), to: z.string().datetime({ offset: true }).optional(), ...page,
 });
-const obsItem = (o) => ({ kind: 'observation', source_type: 'coaching_observation', source_id: o.id, at: o.observed_at, title: o.skill_tag ?? o.obs_type, detail: o.note, visibility: o.visibility, obs_type: o.obs_type, skill_tag: o.skill_tag, follow_up: o.follow_up, edited: o.row_version > 1, athlete_id: o.athlete_id, team_id: o.team_id, session_record_id: o.session_record_id, author_id: o.coach_id, own: o.own, rubric_id: o.rubric_id, rubric_version: o.rubric_version, dimension_key: o.dimension_key, score: o.score });
+const obsItem = (o) => ({ kind: 'observation', source_type: 'coaching_observation', source_id: o.id, at: o.observed_at, title: o.skill_tag ?? o.obs_type, detail: o.note, visibility: o.visibility, obs_type: o.obs_type, skill_tag: o.skill_tag, follow_up: o.follow_up, edited: o.row_version > 1, athlete_id: o.athlete_id, team_id: o.team_id, session_record_id: o.session_record_id, author_id: o.coach_id, own: o.own, rubric_id: o.rubric_id, rubric_version: o.rubric_version, dimension_key: o.dimension_key, score: o.score, goal_ids: o.goal_ids });
 const byTime = (a, b) => new Date(b.at) - new Date(a.at) || String(a.source_id).localeCompare(String(b.source_id));
 
 /** Filters shared by both timelines; `$n` positions are supplied by the caller. */
@@ -391,7 +407,7 @@ cap({
     const params = [i.athlete_id, user.id];
     const f = obsFilter(i, params);
     const staff = current ? "OR (o.visibility='staff' AND EXISTS (SELECT 1 FROM team_members m WHERE m.team_id=o.team_id AND m.user_id=$2 AND m.status='active' AND m.role='coach'))" : '';
-    const obs = await many(`SELECT o.*, (o.coach_id=$2) AS own FROM coaching_observations o WHERE o.athlete_id=$1 AND (o.coach_id=$2 ${staff})${f} ORDER BY o.observed_at DESC, o.id LIMIT ${take}`, params);
+    const obs = await many(`SELECT o.*, (o.coach_id=$2) AS own, (SELECT coalesce(array_agg(e.goal_id), '{}') FROM coaching_goal_evidence e WHERE e.evidence_type='observation' AND e.evidence_id=o.id::text) AS goal_ids FROM coaching_observations o WHERE o.athlete_id=$1 AND (o.coach_id=$2 ${staff})${f} ORDER BY o.observed_at DESC, o.id LIMIT ${take}`, params);
     const plain = !i.skill_tag && !i.obs_type && !i.session_record_id;
     const [att, sessions] = plain ? await Promise.all([
       many(`SELECT r.id, r.title, r.status, coalesce(r.started_at, r.scheduled_at, r.created_at) AS at, p.attendance FROM coaching_session_participants p JOIN coaching_session_records r ON r.id=p.session_record_id
@@ -435,7 +451,7 @@ cap({
     const params = [team.id, user.id];
     const f = obsFilter(i, params);
     const staff = current ? "OR (o.visibility='staff' AND EXISTS (SELECT 1 FROM team_members m WHERE m.team_id=o.team_id AND m.user_id=$2 AND m.status='active' AND m.role='coach'))" : '';
-    const obs = await many(`SELECT o.*, (o.coach_id=$2) AS own FROM coaching_observations o WHERE o.team_id=$1 AND (o.coach_id=$2 ${staff})${f} ORDER BY o.observed_at DESC, o.id LIMIT ${take}`, params);
+    const obs = await many(`SELECT o.*, (o.coach_id=$2) AS own, (SELECT coalesce(array_agg(e.goal_id), '{}') FROM coaching_goal_evidence e WHERE e.evidence_type='observation' AND e.evidence_id=o.id::text) AS goal_ids FROM coaching_observations o WHERE o.team_id=$1 AND (o.coach_id=$2 ${staff})${f} ORDER BY o.observed_at DESC, o.id LIMIT ${take}`, params);
     const recs = (i.skill_tag || i.obs_type || i.session_record_id) ? [] : await many(
       `SELECT r.id, r.title, r.status, r.team_summary, coalesce(r.started_at, r.scheduled_at, r.created_at) AS at,
               (SELECT count(*)::int FROM coaching_session_participants p WHERE p.session_record_id=r.id AND p.attendance IN ('present','late','left_early')) AS present,
@@ -514,6 +530,7 @@ cap({
       const rec = await ownRecord(user, i.id, c);
       if (!(await c.query('SELECT 1 FROM coaching_session_participants WHERE session_record_id=$1 AND athlete_id=$2', [rec.id, i.athlete_id])).rows.length) throw badRequest('That player is not on this session');
       await requireRelationship(user, i.athlete_id);
+      if (i.shared) await requireCoachingConsent(i.athlete_id, 'sharing a coaching summary with them');
       if (i.share_team_summary !== undefined) await c.query('UPDATE coaching_session_records SET team_summary_shared=$2, updated_at=now() WHERE id=$1', [rec.id, i.share_team_summary]);
       return (await c.query(
         `INSERT INTO coaching_player_summaries(session_record_id, athlete_id, summary, shared) VALUES ($1,$2,$3,$4)
@@ -526,14 +543,7 @@ cap({
 cap({
   name: 'my_coaching_session_summaries', method: 'GET', path: '/me/coaching-session-summaries', tag: TAG, auth: 'user',
   summary: 'Summaries of sessions you took part in that your coach chose to share: a summary written for you, and the team summary where the coach shared it. Nothing private is included.', input: z.object({ ...page }),
-  handler: ({ user }, i) => many(
-    `SELECT * FROM (
-       SELECT r.id AS session_record_id, r.title, coalesce(r.started_at, r.scheduled_at, r.created_at) AS at, 'player' AS kind, s.summary, u.display_name AS coach_name
-         FROM coaching_player_summaries s JOIN coaching_session_records r ON r.id=s.session_record_id JOIN users u ON u.id=r.coach_id WHERE s.athlete_id=$1 AND s.shared
-       UNION ALL
-       SELECT r.id, r.title, coalesce(r.started_at, r.scheduled_at, r.created_at), 'team', r.team_summary, u.display_name
-         FROM coaching_session_records r JOIN users u ON u.id=r.coach_id JOIN coaching_session_participants p ON p.session_record_id=r.id AND p.athlete_id=$1 WHERE r.team_summary_shared AND r.team_summary IS NOT NULL) x
-      ORDER BY at DESC, session_record_id, kind LIMIT $2 OFFSET $3`, [user.id, i.limit, i.offset]),
+  handler: ({ user }, i) => sharedSummaries(user.id, i),
 });
 
 cap({
@@ -601,7 +611,7 @@ cap({
       Q(`SELECT f.id AS fixture_id, t.id AS team_id, t.name AS team_name, f.scheduled_at, h.name AS home_name, a.name AS away_name
               FROM fixtures f JOIN teams t ON t.id IN (f.home_team_id, f.away_team_id) JOIN team_members m ON m.team_id=t.id AND m.user_id=$1 AND m.role='coach' AND m.status='active'
               LEFT JOIN teams h ON h.id=f.home_team_id LEFT JOIN teams a ON a.id=f.away_team_id JOIN events e ON e.id=f.event_id
-             WHERE f.status='completed' AND f.scheduled_at > now() - interval '14 days' AND ($2::uuid IS NULL OR e.sport_id=$2) AND ($3::uuid IS NULL OR t.id=$3) AND $4::uuid IS NULL AND ($6::text IS NULL OR $6='team')
+             WHERE f.status IN ('finished','completed') AND f.scheduled_at > now() - interval '14 days' AND ($2::uuid IS NULL OR e.sport_id=$2) AND ($3::uuid IS NULL OR t.id=$3) AND $4::uuid IS NULL AND ($6::text IS NULL OR $6='team')
                AND NOT EXISTS (SELECT 1 FROM coaching_session_records r WHERE r.coach_id=$1 AND r.source_type='fixture' AND r.source_id=f.id::text AND r.status='completed' AND (r.reviewed_at IS NOT NULL OR r.team_summary IS NOT NULL OR r.private_summary IS NOT NULL))
              ORDER BY f.scheduled_at DESC, f.id LIMIT 20`),
       Q(`SELECT r.id, r.title, r.audience, r.athlete_id, r.team_id, r.kind, r.updated_at FROM coaching_reports r
@@ -621,10 +631,5 @@ cap({
   name: 'my_shared_coaching_notes', method: 'GET', path: '/me/coaching-notes', tag: TAG, auth: 'user',
   summary: 'Coaching notes a coach deliberately shared with you (player visibility) and team-level notes shared with a team you are an active member of. Private and staff-only notes are never included.',
   input: z.object({ ...page }),
-  handler: ({ user }, i) => many(
-    `SELECT o.id, o.obs_type, o.skill_tag, o.note, o.visibility, o.observed_at, o.team_id, u.display_name AS coach_name
-       FROM coaching_observations o JOIN users u ON u.id=o.coach_id
-      WHERE (o.visibility='player' AND o.athlete_id=$1)
-         OR (o.visibility='team' AND EXISTS (SELECT 1 FROM team_members m WHERE m.team_id=o.team_id AND m.user_id=$1 AND m.status='active'))
-      ORDER BY o.observed_at DESC, o.id LIMIT $2 OFFSET $3`, [user.id, i.limit, i.offset]),
+  handler: ({ user }, i) => sharedNotes(user.id, i),
 });

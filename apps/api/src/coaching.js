@@ -1,6 +1,6 @@
 import { many } from './db.js';
 import { forbidden } from './errors.js';
-import { canSeeYouth, hiddenYouth, isYouth } from './youth.js';
+import { canSeeYouth, hiddenYouth, isYouth, requireConsent } from './youth.js';
 
 /**
  * Explicit, current coaching relationships (never public search or an unaccepted request).
@@ -35,3 +35,6 @@ export async function requireRelationship(coach, athleteId, sourceTypes) {
 
 export { hiddenYouth };
 export const sessionKinds = ['skill', 'tactical', 'conditioning', 'strength', 'recovery', 'mobility'];
+
+/** Sharing coaching records with a young person (or their guardians) needs a guardian's current 'coaching' consent. Adults need none. */
+export const requireCoachingConsent = (athleteId, what) => requireConsent(athleteId, 'coaching', what);

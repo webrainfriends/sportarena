@@ -9,7 +9,9 @@ import { useNav } from '../nav';
 import { Btn, Card, Chip, Empty, ErrorBox, Field, H1, Loading, Row, Screen, Section, Sheet, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { HScroll } from '../pickers';
+import { Platform } from 'react-native';
 import { send, useOutbox } from '../outbox';
+import { useLayout } from '../layout';
 import { c } from '../theme';
 import { dateTimeIn, localToIso } from '../vtime';
 
@@ -25,10 +27,15 @@ const VISIBILITY = [['coach_private', 'Only me'], ['staff', 'Team coaches'], ['p
 const BLOCK_KINDS = ['warm_up', 'skill_drill', 'tactical_drill', 'conditioned_game', 'match_play', 'conditioning', 'recovery', 'review', 'custom'];
 const keyOf = () => `n-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`; // idempotency key: a retried save never doubles
 
+/** Chips that wrap onto more lines where there is room (tablet, desktop) and scroll sideways on a phone. */
+const Chips = ({ wide, children }) => (wide ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 6 }}>{children}</View> : <HScroll>{children}</HScroll>);
+/** Two columns on a tablet or desktop, one on a phone; each child is one column. */
+const Cols = ({ wide, children }) => <View style={{ flexDirection: wide ? 'row' : 'column', gap: 16, alignItems: 'flex-start' }}>{children.map((ch, n) => <View key={n} style={{ flex: 1, width: '100%', minWidth: 0 }}>{ch}</View>)}</View>;
 const Status = ({ s }) => <Tag label={label(s)} color={s === 'completed' || s === 'present' ? c.lime : c.violetSoft} />;
 
 export function PerformanceStudio() {
   const { push } = useNav();
+  const { tablet: wide } = useLayout();
   const { toast } = useSession();
   const [flt, setFlt] = useState({ scope: null, open_actions: false, skill_tag: '', from: null, to: null, team_id: null });
   const [filtering, setFiltering] = useState(false);
@@ -54,7 +61,8 @@ export function PerformanceStudio() {
       </HScroll>
       {!teams.length && !coach.loading ? <T size={12} color={c.mute} style={{ marginTop: 6 }}>Team sessions need a team you coach. Sessions from your hires and plans appear below on the day.</T> : null}
       {home.loading && !h ? <Loading /> : home.error ? <ErrorBox error={home.error} onRetry={home.reload} /> : (
-        <>
+        <Cols wide={wide}>
+          <>
           <Section title="Running now">
             {!h.running.length ? <Empty emoji="🏟️" title="Nothing running" sub="Start a session from Today to take attendance and notes." /> :
               h.running.map((r) => <Row key={r.id} title={r.title} sub={`Started ${dateTimeIn(r.started_at, tz)}`} right={<Status s="running" />} onPress={() => push('CoachSession', { id: r.id })} />)}
@@ -71,6 +79,8 @@ export function PerformanceStudio() {
             {!h.needs_review.length ? <T size={13} color={c.mute}>Every finished session has a review.</T> :
               h.needs_review.map((r) => <Row key={r.id} title={r.title} sub={`Ended ${dateTimeIn(r.ended_at, tz)} · no summary yet`} onPress={() => push('CoachSession', { id: r.id })} />)}
           </Section>
+          </>
+          <>
           <Section title="Overdue actions">
             {!h.overdue_actions.length ? <T size={13} color={c.mute}>Nothing overdue.</T> :
               h.overdue_actions.map((a) => <Row key={a.id} title={a.title} sub={`${a.athlete_name ?? 'Team'} · due ${dateTimeIn(a.due_at, tz)}`} onPress={() => push('CoachGoals', a.athlete_id ? { athlete_id: a.athlete_id, name: a.athlete_name } : { team_id: a.team_id })} />)}
@@ -88,7 +98,8 @@ export function PerformanceStudio() {
             {!h.follow_ups.length ? <T size={13} color={c.mute}>No notes flagged for follow-up.</T> :
               h.follow_ups.map((o) => <Row key={o.id} title={o.athlete_name ?? 'Team'} sub={`${o.skill_tag ? `${o.skill_tag} · ` : ''}${o.note}`} onPress={() => push('CoachJournal', o.athlete_id ? { athlete_id: o.athlete_id, name: o.athlete_name } : { team_id: o.team_id })} />)}
           </Section>
-        </>
+          </>
+        </Cols>
       )}
       <FormSheet visible={filtering} onClose={() => setFiltering(false)} title="Filters" submitLabel="Apply" initial={{ ...flt, skill_tag: flt.skill_tag }}
         fields={[
@@ -122,7 +133,8 @@ const uuidFrom = (seed) => {
 };
 
 export function CoachSession(props) {
-  const { toast } = useSession();
+  const { toast, user } = useSession();
+  const { tablet: wide } = useLayout();
   const { push } = useNav();
   const [rid, setRid] = useState(props.id ?? null);
   const ws = useLoad(async () => {
@@ -133,6 +145,9 @@ export function CoachSession(props) {
   const [note, setNote] = useState(null);
   const [planning, setPlanning] = useState(false);
   const [finishing, setFinishing] = useState(false);
+  const rubrics = useLoad(() => api.get('/coaching/rubrics'), []);
+  const myGoals = useLoad(() => api.get('/coaching/goals?limit=100'), []);
+  const [voice, setVoice] = useState(false);
   const [more, setMore] = useState(null); // null | 'menu' | 'groups' | 'template' | 'use' | 'clone' | 'help' | {summary: athlete}
   const [busy, setBusy] = useState(null);
   const w = ws.data;
@@ -158,10 +173,13 @@ export function CoachSession(props) {
         {s.status === 'running' ? <Btn small title="Finish & review" onPress={() => setFinishing(true)} /> : null}
         {!done ? <Btn small title={blocks.length ? 'Edit plan' : 'Plan blocks'} color={c.paper} ink={c.ink} onPress={() => setPlanning(true)} /> : null}
         <Btn small title="More" color={c.paper} ink={c.ink} onPress={() => setMore('menu')} />
+        {!done ? <Btn small title="Voice note" color={c.paper} ink={c.ink} onPress={() => setVoice(true)} /> : null}
         {!done ? <Btn small title="Draft a plan (AI)" color={c.paper} ink={c.ink} onPress={() => push('CoachCopilot', { task: 'plan_session', session_record_id: s.id })} /> : <Btn small title="Draft a summary (AI)" color={c.paper} ink={c.ink} onPress={() => push('CoachCopilot', { task: 'summarise_session', session_record_id: s.id })} />}
         {!done || s.team_summary || s.private_summary ? null : <Btn small title="Add review" onPress={() => setFinishing(true)} />}
       </View>
 
+      <Cols wide={wide}>
+        <>
       <Section title={`Attendance${counts.length ? ` · ${counts.map(([a, n]) => `${n} ${label(a).toLowerCase()}`).join(', ')}` : ''}`}>
         {!w.participants.length ? <Empty emoji="👥" title="No roster" sub="Players on the team (or the athlete of this hire) appear here." /> : w.participants.map((p) => (
           <Card key={p.id} pad={12} style={{ marginBottom: 8 }}>
@@ -169,11 +187,11 @@ export function CoachSession(props) {
               <T weight="700" style={{ flexShrink: 1 }}>{p.display_name}</T>
               <Status s={p.attendance === 'expected' ? 'not_recorded' : p.attendance} />
             </View>
-            <HScroll>
+            <Chips wide={wide}>
               {ATTENDANCE.map((a) => <Chip key={a} label={label(a)} active={p.attendance === a} onPress={() => mark(p.id, a)} />)}
               <Chip label="Note" onPress={() => setNote({ athlete_id: p.id })} />
               <Chip label="Player summary" onPress={() => setMore({ summary: p })} />
-            </HScroll>
+            </Chips>
             {w.previous_notes.filter((x) => x.athlete_id === p.id).slice(0, 2).map((x) => (
               <T key={x.id} size={12} color={c.mute} style={{ marginTop: 4 }}>{x.follow_up ? '↩ Follow up: ' : 'Last time: '}{x.note}</T>
             ))}
@@ -181,6 +199,8 @@ export function CoachSession(props) {
         ))}
       </Section>
 
+        </>
+        <>
       <Section title="Plan">
         {!blocks.length ? <T size={13} color={c.mute}>No blocks yet. Break the session into warm-up, drills and review.</T> : blocks.map((b, n) => {
           const st = w.block_log[b.id]?.status;
@@ -201,7 +221,10 @@ export function CoachSession(props) {
 
       <Section title="Notes from this session" action={done ? undefined : 'Team note'} onAction={() => setNote({ team_id: s.team_id })}>
         {!w.observations.length ? <T size={13} color={c.mute}>Nothing noted yet. Tap Note on a player for a quick observation.</T> : w.observations.map((o) => (
-          <Row key={o.id} title={`${w.participants.find((p) => p.id === o.athlete_id)?.display_name ?? 'Team'}${o.skill_tag ? ` · ${o.skill_tag}` : ''}`} sub={`${o.note}`} right={<Tag label={VISIBILITY.find(([v]) => v === o.visibility)[1]} color={c.violetSoft} />} />
+          <View key={o.id}>
+            <Row title={`${w.participants.find((p) => p.id === o.athlete_id)?.display_name ?? 'Team'}${o.skill_tag ? ` · ${o.skill_tag}` : ''}`} sub={`${o.note}`} right={<Tag label={VISIBILITY.find(([v]) => v === o.visibility)[1]} color={c.violetSoft} />} />
+            <EvidenceRow obs={o} mine={o.coach_id === user.id} toast={toast} />
+          </View>
         ))}
       </Section>
       {done && (s.team_summary || s.private_summary) ? (
@@ -210,22 +233,14 @@ export function CoachSession(props) {
           {s.private_summary ? <Card pad={12} style={{ marginTop: 8 }}><T weight="700">Private summary (only you)</T><T size={13}>{s.private_summary}</T></Card> : null}
         </Section>
       ) : null}
+        </>
+      </Cols>
       <View style={{ marginTop: 16 }}>{w.participants.length ? <Btn small title="Open a player's journal" color={c.paper} ink={c.ink} onPress={() => push('CoachJournal', { athlete_id: w.participants[0].id, name: w.participants[0].display_name })} /> : null}</View>
 
-      <FormSheet visible={!!note} onClose={() => setNote(null)} title={note?.athlete_id ? `Note · ${w.participants.find((p) => p.id === note.athlete_id)?.display_name}` : 'Team note'} submitLabel="Save note"
-        fields={[
-          { key: 'note', label: 'What did you see?', type: 'multiline' },
-          { key: 'obs_type', label: 'Type', type: 'chips', options: opts(OBS_TYPES), default: 'general' },
-          { key: 'skill_tag', label: 'Skill', optional: true, placeholder: 'e.g. first touch' },
-          { key: 'visibility', label: 'Who can see it', type: 'chips', options: VISIBILITY.filter(([v]) => (note?.athlete_id ? v !== 'team' : v !== 'player')).map(([value, lab]) => ({ value, label: lab })), default: 'coach_private' },
-          { key: 'follow_up', label: 'Follow up next session', type: 'switch', default: false },
-        ]}
-        onSubmit={async (v) => {
-          const visibility = v.visibility === 'staff' && !s.team_id ? 'coach_private' : v.visibility;
-          const r = await send('/coaching/observations', { session_record_id: s.id, athlete_id: note.athlete_id, team_id: note.athlete_id && visibility !== 'staff' ? undefined : s.team_id ?? undefined, note: v.note, obs_type: v.obs_type, skill_tag: v.skill_tag || undefined, visibility, follow_up: !!v.follow_up, client_key: keyOf() });
-          setNote(null); toast(r.status === 'saved' ? 'Note saved' : 'No signal: note kept and will send automatically'); ws.reload();
-        }} />
+      <NoteSheet note={note} onClose={() => setNote(null)} w={w} rubrics={rubrics.data ?? []} goals={myGoals.data ?? []}
+        onSaved={(r) => { setNote(null); toast(r.status === 'saved' ? 'Note saved' : 'No signal: note kept and will send automatically'); ws.reload(); }} />
       <MoreSheet more={more} setMore={setMore} w={w} reload={ws.reload} />
+      <VoiceSheet visible={voice} onClose={() => setVoice(false)} w={w} onSaved={(r) => { setVoice(false); toast(r.status === 'saved' ? 'Note saved' : 'No signal: note kept and will send automatically'); ws.reload(); }} />
       <PlanSheet visible={planning} blocks={blocks} version={w.plan.version} groups={s.groups} onClose={() => setPlanning(false)} onSave={async (next) => { await api.post(`/coaching/sessions/${s.id}/plan`, { blocks: next, expected_version: w.plan.version }); setPlanning(false); toast('Plan saved'); ws.reload(); }} />
       <FormSheet visible={finishing} onClose={() => setFinishing(false)} title="Review the session" submitLabel={done ? 'Save review' : 'Finish session'} initial={{ team_summary: s.team_summary ?? '', private_summary: s.private_summary ?? '' }}
         fields={[{ key: 'team_summary', label: 'Team summary (can be shared)', type: 'multiline', optional: true }, { key: 'share_team_summary', label: 'Let the players read the team summary', type: 'switch', default: !!s.team_summary_shared }, { key: 'private_summary', label: 'Private summary (only you)', type: 'multiline', optional: true }]}
@@ -277,6 +292,7 @@ function PlanSheet({ visible, blocks, version, groups, onClose, onSave }) {
 
 export function CoachJournal({ athlete_id, team_id, name }) {
   const { push } = useNav();
+  const { tablet: wide } = useLayout();
   const [tag, setTag] = useState(null);
   const path = athlete_id ? `/coaching/athletes/${athlete_id}/timeline` : `/coaching/teams/${team_id}/timeline`;
   const tl = useLoad(() => api.get(`${path}?limit=100${tag ? `&skill_tag=${encodeURIComponent(tag)}` : ''}`), [path, tag]);
@@ -287,7 +303,9 @@ export function CoachJournal({ athlete_id, team_id, name }) {
       <H1>{name ? `${name} · journal` : athlete_id ? 'Player journal' : 'Team journal'}</H1>
       <T size={13} color={c.mute}>Your notes, attendance and completed sessions in time order. Records are shown from their source; official scores and stats are never changed here.</T>
       {athlete_id ? <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, flexWrap: 'wrap' }}><Btn small title="Goals & actions" onPress={() => push('CoachGoals', { athlete_id, name })} /><Btn small title="Reports" color={c.paper} ink={c.ink} onPress={() => push('CoachReports', { athlete_id, name })} /><Btn small title="Progress summary (AI)" color={c.paper} ink={c.ink} onPress={() => push('CoachCopilot', { task: 'player_progress', athlete_id })} /><Btn small title="Ask about notes (AI)" color={c.paper} ink={c.ink} onPress={() => push('CoachCopilot', { task: 'ask', athlete_id })} /></View> : <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}><Btn small title="Goals & actions" onPress={() => push('CoachGoals', { team_id })} /><Btn small title="Reports" color={c.paper} ink={c.ink} onPress={() => push('CoachReports', { team_id })} /><Btn small title="Team patterns (AI)" color={c.paper} ink={c.ink} onPress={() => push('CoachCopilot', { task: 'team_patterns', team_id })} /></View>}
-      {athlete_id ? <Metrics athlete_id={athlete_id} /> : null}
+      <Cols wide={wide && !!athlete_id}>
+        <>{athlete_id ? <Metrics athlete_id={athlete_id} team_id={team_id} /> : null}</>
+        <>
       {tags.length ? <HScroll><Chip label="All" active={!tag} onPress={() => setTag(null)} />{tags.map((t) => <Chip key={t} label={t} active={tag === t} onPress={() => setTag(t)} />)}</HScroll> : null}
       {tl.loading && !tl.data ? <Loading /> : tl.error ? <ErrorBox error={tl.error} onRetry={tl.reload} /> : !tl.data.length ?
         <Empty emoji="📓" title="Nothing recorded yet" sub="Notes and attendance from your sessions build this story over time." /> :
@@ -301,17 +319,35 @@ export function CoachJournal({ athlete_id, team_id, name }) {
             <T size={11} color={c.mute}>{label(x.kind)}{x.visibility ? ` · ${VISIBILITY.find(([v]) => v === x.visibility)?.[1]}` : ''}{x.own === false ? ' · by another coach' : ''}{x.edited ? ' · edited' : ''}{x.follow_up ? ' · follow up' : ''}</T>
           </Card>
         ))}
+        </>
+      </Cols>
     </Screen>
   );
 }
 
 // Every metric says what it is, where it comes from and how many records stand behind it; missing data is "no data", never zero.
-function Metrics({ athlete_id }) {
+function Metrics({ athlete_id, team_id: teamProp }) {
+  const { push } = useNav();
   const m = useLoad(() => api.get(`/coaching/athletes/${athlete_id}/metrics`), [athlete_id]);
+  const team_id = teamProp ?? m.data?.teams?.[0]?.id;
+  const [cmp, setCmp] = useState({});   // metric key -> result or message
   if (m.loading && !m.data) return null;
   if (m.error || !m.data) return null;
+  const run = async (x, mode) => {
+    const q = `metric=${encodeURIComponent(x.key)}&mode=${mode}&from=${m.data.from}&to=${m.data.to}${mode === 'team' || mode === 'position' ? `&team_id=${team_id}` : ''}`;
+    try { setCmp({ ...cmp, [x.key]: await api.get(`/coaching/athletes/${athlete_id}/compare?${q}`) }); } catch (e) { setCmp({ ...cmp, [x.key]: { error: e.message } }); }
+  };
+  const say = (r) => {
+    if (!r) return null;
+    if (r.error) return r.error;
+    if (r.result === 'insufficient_data' || r.result === 'no_data' || r.result === 'insufficient_sample') return r.note;
+    if (r.cohort) return `Median of ${r.cohort.size} comparable adults in the ${r.cohort.group}: ${r.cohort.median} (range ${r.cohort.min}–${r.cohort.max}). ${r.difference_from_median == null ? '' : `This athlete is ${r.difference_from_median >= 0 ? '+' : ''}${r.difference_from_median} from the median.`} No names are shown.`;
+    if (r.previous) return `Previous period: ${r.previous.value} (${r.previous.sample} records). Change ${r.difference >= 0 ? '+' : ''}${r.difference}.`;
+    return null;
+  };
   return (
     <Section title={`Trends · ${m.data.from} to ${m.data.to}`}>
+      <View style={{ marginBottom: 8 }}><Btn small title="Explain the changes (AI)" color={c.paper} ink={c.ink} onPress={() => push('CoachCopilot', { task: 'compare_metrics', athlete_id, metric_keys: m.data.metrics.filter((x) => x.value != null).slice(0, 6).map((x) => x.key) })} /></View>
       {m.data.metrics.map((x) => (
         <Card key={x.key} pad={12} style={{ marginBottom: 8 }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
@@ -320,16 +356,25 @@ function Metrics({ athlete_id }) {
           </View>
           <T size={11} color={c.mute}>{x.provenance_label} · {x.sample} record{x.sample === 1 ? '' : 's'}{x.excluded?.not_recorded ? ` · ${x.excluded.not_recorded} not recorded` : ''}{x.excluded?.excused ? ` · ${x.excluded.excused} excused` : ''}</T>
           <T size={11} color={c.mute}>{x.definition}</T>
+          <HScroll>
+            <Chip label="vs last period" onPress={() => run(x, 'prior_period')} />
+            {team_id && /^(measurement|rubric|official:event)/.test(x.key) ? <Chip label="vs team" onPress={() => run(x, 'team')} /> : null}
+            {team_id && /^(measurement|rubric|official:event)/.test(x.key) ? <Chip label="vs same position" onPress={() => run(x, 'position')} /> : null}
+          </HScroll>
+          {cmp[x.key] ? <T size={12}>{say(cmp[x.key])}</T> : null}
         </Card>
       ))}
     </Section>
   );
 }
 
-export function CoachGoals({ athlete_id, team_id, name }) {
+export function CoachGoals({ athlete_id, team_id, name, programme_id }) {
   const { toast } = useSession();
+  const { tablet: wide } = useLayout();
+  const { push } = useNav();
+  const progs = useLoad(() => api.get(`/coaching/programmes?${athlete_id ? `athlete_id=${athlete_id}` : `team_id=${team_id}`}&status=active`), [athlete_id, team_id]);
   const q = athlete_id ? `athlete_id=${athlete_id}` : `team_id=${team_id}`;
-  const goals = useLoad(() => api.get(`/coaching/goals?${q}`), [q]);
+  const goals = useLoad(() => api.get(`/coaching/goals?${q}${programme_id ? `&programme_id=${programme_id}` : ''}`), [q, programme_id]);
   const actions = useLoad(() => api.get(`/coaching/actions?${q}`), [q]);
   const [form, setForm] = useState(null); // 'goal' | { goal } | 'action'
   const [reviewing, setReviewing] = useState(null);
@@ -340,12 +385,16 @@ export function CoachGoals({ athlete_id, team_id, name }) {
       <H1>{name ? `${name} · goals` : 'Goals & actions'}</H1>
       <T size={13} color={c.mute}>Coaching goals only. You decide when a goal is achieved; evidence and completed actions never change it on their own.</T>
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-        <Btn small title="New goal" onPress={() => setForm('goal')} /><Btn small title="New action" color={c.paper} ink={c.ink} onPress={() => setForm('action')} />
+        <Btn small title="New goal" onPress={() => setForm('goal')} /><Btn small title="Programmes" color={c.paper} ink={c.ink} onPress={() => push('CoachProgrammes', athlete_id ? { athlete_id, name } : { team_id })} /><Btn small title="New action" color={c.paper} ink={c.ink} onPress={() => setForm('action')} />
       </View>
+      <Cols wide={wide}>
+        <>
       <Section title="Goals">
         {goals.loading && !goals.data ? <Loading /> : goals.error ? <ErrorBox error={goals.error} onRetry={goals.reload} /> : !goals.data.length ? <Empty emoji="🎯" title="No goals yet" sub="Set a measurable goal and review it on a date." /> :
           goals.data.map((g) => <Row key={g.id} title={g.title} sub={`${label(g.category)} · ${label(g.priority)} priority${g.review_on ? ` · review ${g.review_on}` : ''} · ${g.evidence_count} evidence`} right={<Status s={g.status} />} onPress={() => setReviewing(g)} />)}
       </Section>
+        </>
+        <>
       <Section title="Actions">
         {actions.loading && !actions.data ? <Loading /> : actions.error ? <ErrorBox error={actions.error} onRetry={actions.reload} /> : !actions.data.length ? <Empty emoji="✅" title="No actions" sub="Turn an observation into a follow-up." /> :
           actions.data.map((a) => (
@@ -361,16 +410,19 @@ export function CoachGoals({ athlete_id, team_id, name }) {
             </Card>
           ))}
       </Section>
+        </>
+      </Cols>
       <FormSheet visible={form === 'goal'} onClose={() => setForm(null)} title="New goal" submitLabel="Create goal"
         fields={[
           { key: 'title', label: 'Goal' },
           { key: 'category', label: 'Category', type: 'chips', options: opts(GOAL_CATEGORIES), default: 'technical' },
           { key: 'criterion', label: 'How will we know? (measurable)', type: 'multiline', optional: true },
           { key: 'priority', label: 'Priority', type: 'chips', options: opts(['low', 'medium', 'high']), default: 'medium' },
+          ...(progs.data?.length ? [{ key: 'programme_id', label: 'Programme', type: 'chips', optional: true, default: programme_id, options: progs.data.map((p) => ({ value: p.id, label: p.title })) }] : []),
           { key: 'review_on', label: 'Review on', type: 'date', optional: true },
           { key: 'athlete_text', label: 'Wording to show the athlete (leave empty to keep private)', type: 'multiline', optional: true },
         ]}
-        onSubmit={async (v) => { await api.post('/coaching/goals', { ...subject, title: v.title, category: v.category, criterion: v.criterion || undefined, priority: v.priority, review_on: v.review_on || undefined, athlete_text: v.athlete_text || undefined }); setForm(null); toast('Goal created'); reload(); }} />
+        onSubmit={async (v) => { await api.post('/coaching/goals', { ...subject, programme_id: v.programme_id || undefined, title: v.title, category: v.category, criterion: v.criterion || undefined, priority: v.priority, review_on: v.review_on || undefined, athlete_text: v.athlete_text || undefined }); setForm(null); toast('Goal created'); reload(); }} />
       <FormSheet visible={form === 'action'} onClose={() => setForm(null)} title="New action" submitLabel="Create action"
         fields={[
           { key: 'title', label: 'Action' },
@@ -397,49 +449,59 @@ export function CoachGoals({ athlete_id, team_id, name }) {
 }
 
 // What the coach chose to show the athlete: shared notes, goal wording and shared actions. Nothing private reaches this screen.
-export function MyCoaching() {
+export function MyCoaching({ child_id, name }) {
   const { toast } = useSession();
   const { push } = useNav();
-  const notes = useLoad(() => api.get('/me/coaching-notes'), []);
-  const goals = useLoad(() => api.get('/me/coaching-goals'), []);
-  const actions = useLoad(() => api.get('/me/coaching-actions'), []);
-  const reports = useLoad(() => api.get('/me/coaching-reports'), []);
-  const summaries = useLoad(() => api.get('/me/coaching-session-summaries'), []);
-  const reload = () => { notes.reload(); goals.reload(); actions.reload(); reports.reload(); summaries.reload(); };
+  // the athlete's own screen, or - with child_id - what a verified guardian may see of their child's: the same shared items
+  const guard = useLoad(() => (child_id ? api.get(`/guardian/children/${child_id}/coaching`) : Promise.resolve(null)), [child_id]);
+  const notes = useLoad(() => (child_id ? Promise.resolve(null) : api.get('/me/coaching-notes')), [child_id]);
+  const goals = useLoad(() => (child_id ? Promise.resolve(null) : api.get('/me/coaching-goals')), [child_id]);
+  const actions = useLoad(() => (child_id ? Promise.resolve(null) : api.get('/me/coaching-actions')), [child_id]);
+  const reports = useLoad(() => (child_id ? Promise.resolve(null) : api.get('/me/coaching-reports')), [child_id]);
+  const summaries = useLoad(() => (child_id ? Promise.resolve(null) : api.get('/me/coaching-session-summaries')), [child_id]);
+  const reload = () => { guard.reload(); notes.reload(); goals.reload(); actions.reload(); reports.reload(); summaries.reload(); };
+  const g = guard.data;
+  const D = { notes: g?.notes ?? notes.data, goals: g?.goals ?? goals.data, actions: g?.actions ?? actions.data, reports: g?.reports ?? reports.data, summaries: g?.summaries ?? summaries.data };
+  const busy = child_id ? guard.loading && !g : false;
   return (
     <Screen onRefresh={reload}>
-      <H1>From my coach</H1>
-      <Section title="Reports">
-        {!reports.data?.length ? <T size={13} color={c.mute}>No reports shared with you yet.</T> : reports.data.map((r) => <Row key={r.report_id} title={r.title} sub={`From ${r.coach_name} · ${dateTimeIn(r.published_at, tz)}`} onPress={() => push('CoachReportView', { id: r.report_id, version: r.version })} />)}
-      </Section>
-      <Section title="Session summaries">
-        {!summaries.data?.length ? <T size={13} color={c.mute}>Nothing shared yet.</T> : summaries.data.map((x) => <Row key={`${x.session_record_id}${x.kind}`} title={x.title} sub={`${x.kind === 'team' ? 'Team summary' : 'Just for you'} — ${x.summary} (${x.coach_name})`} />)}
-      </Section>
-      <Section title="Goals">
-        {!goals.data?.length ? <T size={13} color={c.mute}>No goals shared with you yet.</T> : goals.data.map((g) => <Row key={g.id} title={g.title} sub={`${g.text}${g.review_on ? ` · review ${g.review_on}` : ''}`} right={<Status s={g.status} />} />)}
-      </Section>
-      <Section title="Actions">
-        {!actions.data?.length ? <T size={13} color={c.mute}>No actions assigned to you.</T> : actions.data.map((a) => (
-          <Card key={a.id} pad={12} style={{ marginBottom: 8 }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}><T weight="700" style={{ flexShrink: 1 }}>{a.title}</T><Status s={a.status} /></View>
-            {a.detail ? <T size={13}>{a.detail}</T> : null}
-            <T size={12} color={c.mute}>{a.due_at ? `Due ${dateTimeIn(a.due_at, tz)}` : 'No due date'} · from {a.coach_name}</T>
-            {a.status === 'open' || a.status === 'in_progress' ? <View style={{ marginTop: 6 }}><Btn small title="Mark done" onPress={async () => { try { await api.patch(`/coaching/actions/${a.id}`, { row_version: a.row_version, status: 'done' }); } catch (e) { toast(e.message); } reload(); }} /></View> : null}
-          </Card>
-        ))}
-      </Section>
-      <Section title="Notes shared with me">
-        {!notes.data?.length ? <T size={13} color={c.mute}>Nothing shared yet.</T> : notes.data.map((n) => <Row key={n.id} title={`${n.skill_tag ? `${n.skill_tag} · ` : ''}${label(n.obs_type)}`} sub={`${n.note} — ${n.coach_name}`} />)}
-      </Section>
+      <H1>{child_id ? `${name ?? 'Your child'} · from their coach` : 'From my coach'}</H1>
+      {child_id ? <T size={13} color={c.mute}>Only what the coach chose to share with them. Private notes never appear here.</T> : null}
+      {busy ? <Loading /> : guard.error ? <ErrorBox error={guard.error} onRetry={guard.reload} /> : g && !g.consent ? <Empty emoji="🔒" title="Coaching sharing is off" sub={g.note} /> : (
+        <>
+          <Section title="Reports">
+            {!D.reports?.length ? <T size={13} color={c.mute}>No reports shared yet.</T> : D.reports.map((r) => <Row key={r.report_id} title={r.title} sub={`From ${r.coach_name} · ${dateTimeIn(r.published_at, tz)}`} onPress={() => push('CoachReportView', { id: r.report_id, version: r.version })} />)}
+          </Section>
+          <Section title="Session summaries">
+            {!D.summaries?.length ? <T size={13} color={c.mute}>Nothing shared yet.</T> : D.summaries.map((x) => <Row key={`${x.session_record_id}${x.kind}`} title={x.title} sub={`${x.kind === 'team' ? 'Team summary' : 'Just for them'} — ${x.summary} (${x.coach_name})`} />)}
+          </Section>
+          <Section title="Goals">
+            {!D.goals?.length ? <T size={13} color={c.mute}>No goals shared yet.</T> : D.goals.map((x) => <Row key={x.id} title={x.title} sub={`${x.text}${x.review_on ? ` · review ${String(x.review_on).slice(0, 10)}` : ''}`} right={<Status s={x.status} />} />)}
+          </Section>
+          <Section title="Actions">
+            {!D.actions?.length ? <T size={13} color={c.mute}>No actions shared.</T> : D.actions.map((a) => (
+              <Card key={a.id} pad={12} style={{ marginBottom: 8 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}><T weight="700" style={{ flexShrink: 1 }}>{a.title}</T><Status s={a.status} /></View>
+                {a.detail ? <T size={13}>{a.detail}</T> : null}
+                <T size={12} color={c.mute}>{a.due_at ? `Due ${dateTimeIn(a.due_at, tz)}` : 'No due date'} · from {a.coach_name}</T>
+                {!child_id && (a.status === 'open' || a.status === 'in_progress') ? <View style={{ marginTop: 6 }}><Btn small title="Mark done" onPress={async () => { try { await api.patch(`/coaching/actions/${a.id}`, { row_version: a.row_version, status: 'done' }); } catch (e) { toast(e.message); } reload(); }} /></View> : null}
+              </Card>
+            ))}
+          </Section>
+          <Section title="Notes shared">
+            {!D.notes?.length ? <T size={13} color={c.mute}>Nothing shared yet.</T> : D.notes.map((n) => <Row key={n.id} title={`${n.skill_tag ? `${n.skill_tag} · ` : ''}${label(n.obs_type)}`} sub={`${n.note} — ${n.coach_name}`} />)}
+          </Section>
+        </>
+      )}
     </Screen>
   );
 }
 
 // AI copilot (draft only). The coach decides what the AI may read, sees which records it used and what it could not know,
 // and nothing is saved until Accept. Without an AI provider the same screen shows a plain summary of the coach's own records.
-const TASK_TITLE = { plan_session: 'Plan this session', player_focus: 'Player focus', summarise_session: 'Summarise this session', player_progress: 'Progress summary', team_patterns: 'Team patterns', suggest_actions: 'Suggested actions', match_debrief: 'Match debrief', ask: 'Ask about my notes' };
+const TASK_TITLE = { plan_session: 'Plan this session', player_focus: 'Player focus', summarise_session: 'Summarise this session', player_progress: 'Progress summary', team_patterns: 'Team patterns', suggest_actions: 'Suggested actions', match_debrief: 'Match debrief', ask: 'Ask about my notes', compare_metrics: 'Explain the changes' };
 
-export function CoachCopilot({ task: taskProp = 'player_progress', athlete_id, team_id, session_record_id, draft_id }) {
+export function CoachCopilot({ task: taskProp = 'player_progress', athlete_id, team_id, session_record_id, draft_id, metric_keys }) {
   const { toast } = useSession();
   const { back } = useNav();
   const [priv, setPriv] = useState(false);
@@ -453,7 +515,7 @@ export function CoachCopilot({ task: taskProp = 'player_progress', athlete_id, t
   const [err, setErr] = useState(null);
   const generate = async () => {
     setBusy(true); setErr(null);
-    try { setDraft(await api.post('/coaching/ai/drafts', { task, athlete_id, team_id, session_record_id, include_private_summaries: priv, question: task === 'ask' ? question : undefined })); }
+    try { setDraft(await api.post('/coaching/ai/drafts', { task, athlete_id, team_id, session_record_id, include_private_summaries: priv, question: task === 'ask' ? question : undefined, metric_keys })); }
     catch (e) { setErr(e); }
     setBusy(false);
   };
@@ -600,6 +662,7 @@ export function CoachReport({ id }) {
   );
 }
 
+
 // A published, frozen version as its audience (the athlete, a guardian or team coaches) sees it.
 export function CoachReportView({ id, version }) {
   const v = useLoad(() => api.get(`/coaching/reports/${id}/versions/${version}`), [id, version]);
@@ -625,32 +688,257 @@ export function CoachReportView({ id, version }) {
   );
 }
 
-// Match preparation and debrief over the canonical fixture: the fixture and its official result are only read; everything the coach
-// writes lives in the coaching session record opened for it.
+// Match preparation and debrief over the canonical fixture: the fixture, its official result and its events are only read; everything
+// the coach writes (opponent notes, checklist, objectives, bookmarks, the review) lives in the coaching session record opened for it.
+const OUTCOME = { met: 'Met', not_met: 'Not met', pending: 'After the match', coach_judged: 'Your call' };
+const METRICS = [['', 'No measure — my judgement'], ['score_for', 'Goals/points for'], ['score_against', 'Goals/points against'], ['goal_difference', 'Difference'], ['clean_sheet', 'Clean sheet'], ['events', 'Count of official events']];
+
 export function CoachMatch({ fixture_id, team_id }) {
   const { push } = useNav();
+  const { toast } = useSession();
   const ctx = useLoad(() => api.get(`/coaching/fixtures/${fixture_id}?team_id=${team_id}`), [fixture_id, team_id]);
   const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState(false);
   if (ctx.loading && !ctx.data) return <Screen><Loading /></Screen>;
   if (ctx.error) return <Screen><ErrorBox error={ctx.error} onRetry={ctx.reload} /></Screen>;
-  const m = ctx.data, f = m.fixture;
-  const open = async () => {
-    setBusy(true);
-    try { const r = m.session_record ?? await api.post('/coaching/sessions', { source_type: 'fixture', source_id: fixture_id, team_id }); push('CoachSession', { id: r.id }); } catch (e) { /* shown by the screen on retry */ }
-    setBusy(false);
-  };
+  const m = ctx.data, f = m.fixture, prep = m.prep;
+  const record = async () => m.session_record ?? api.post('/coaching/sessions', { source_type: 'fixture', source_id: fixture_id, team_id });
+  const open = async () => { setBusy(true); try { push('CoachSession', { id: (await record()).id }); } catch (e) { toast(e.message); } setBusy(false); };
+  const savePrep = async (next) => { const r = await record(); await api.post(`/coaching/sessions/${r.id}/match-prep`, { opponent_notes: next.opponent_notes, checklist: next.checklist, objectives: next.objectives.map((o) => ({ id: o.id, text: o.text, indicator: o.indicator })), expected_version: prep?.row_version }); ctx.reload(); };
+  const tick = async (it) => { try { await savePrep({ opponent_notes: prep.opponent_notes, objectives: prep.objectives, checklist: prep.checklist.map((x) => (x.id === it.id ? { ...x, done: !x.done } : x)) }); } catch (e) { toast(e.message); } };
+  const mark = async (ev) => { try { const r = await record(); await api.post(`/coaching/sessions/${r.id}/event-bookmarks`, { match_event_id: ev.id, remove: ev.bookmarked }); ctx.reload(); } catch (e) { toast(e.message); } };
+  const init = { opponent_notes: prep?.opponent_notes ?? '' };
+  (prep?.checklist ?? []).slice(0, 6).forEach((x, n) => { init[`c${n + 1}`] = x.text; });
+  (prep?.objectives ?? []).slice(0, 3).forEach((o, n) => { init[`o${n + 1}`] = o.text; init[`m${n + 1}`] = o.indicator?.metric ?? ''; init[`k${n + 1}`] = o.indicator?.kind; init[`cmp${n + 1}`] = o.indicator?.comparator ?? 'gte'; init[`t${n + 1}`] = o.indicator?.target ?? 1; });
   return (
     <Screen onRefresh={ctx.reload}>
       <T size={12} weight="700" color={c.pink} style={{ letterSpacing: 1.2 }}>MATCH</T>
       <H1>{f.home} v {f.away}</H1>
       <T size={13} color={c.mute}>{f.event}{f.round ? ` · ${f.round}` : ''} · {dateTimeIn(f.scheduled_at, tz)} · you coach the {f.you_are} side</T>
-      {f.official_result ? <Card pad={12} color={c.cyanSoft} style={{ marginTop: 8 }}><T weight="800">Official result: {f.official_result.home_score} – {f.official_result.away_score}</T><T size={12} color={c.mute}>From the official match record. Your notes never change it.</T></Card> : null}
-      <View style={{ marginTop: 10 }}><Btn title={m.session_record ? 'Open my prep and review' : 'Start match prep'} loading={busy} onPress={open} /></View>
+      {f.official_result ? <Card pad={12} color={c.cyanSoft} style={{ marginTop: 8 }}><T weight="800">Official result: {f.official_result.home_score} – {f.official_result.away_score}</T><T size={12} color={c.mute}>From the official match record. Your notes never change it.</T></Card> : f.played ? <T size={12} color={c.mute} style={{ marginTop: 6 }}>The match is over; the official result appears once the score sheet is published.</T> : null}
+      <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+        <Btn title={m.session_record ? 'Open my session record' : 'Start match prep'} loading={busy} onPress={open} />
+        <Btn title={prep ? 'Edit prep' : 'Add prep'} color={c.paper} ink={c.ink} onPress={() => setEditing(true)} />
+        {m.session_record && f.played ? <Btn title="Debrief with AI" color={c.paper} ink={c.ink} onPress={() => push('CoachCopilot', { task: 'match_debrief', session_record_id: m.session_record.id, team_id })} /> : null}
+      </View>
+      {prep?.opponent_notes ? <Section title="Opponent"><Card pad={12}><T size={13}>{prep.opponent_notes}</T></Card></Section> : null}
+      {prep?.checklist?.length ? <Section title="Pre-match checklist">{prep.checklist.map((it) => <Row key={it.id} title={`${it.done ? '☑' : '☐'} ${it.text}`} onPress={() => tick(it)} />)}</Section> : null}
+      {prep?.objectives?.length ? <Section title="Objectives">{prep.objectives.map((o) => <Row key={o.id} title={o.text} sub={o.indicator ? `${METRICS.find(([k]) => k === o.indicator.metric)?.[1]}${o.indicator.kind ? ` (${o.indicator.kind})` : ''} ${({ gte: 'at least', lte: 'at most', eq: 'exactly' })[o.indicator.comparator]} ${o.indicator.target}${o.actual != null ? ` · actual ${o.actual} (official)` : ''}` : 'Judged by you after the match'} right={<Tag label={OUTCOME[o.outcome]} color={o.outcome === 'met' ? c.lime : c.violetSoft} />} />)}</Section> : null}
       <Section title="Squad availability">
-        {m.squad.map((p) => <Row key={p.id} title={p.display_name} sub={`${p.availability ?? 'no answer'}${p.availability_note ? ` · ${p.availability_note}` : ''}`} />)}
+        {m.squad.map((p) => <Row key={p.id} title={p.display_name} sub={`${p.position ? `${p.position} · ` : ''}${p.availability ?? 'no answer'}${p.availability_note ? ` · ${p.availability_note}` : ''}`} />)}
       </Section>
       <Section title="Active goals">{!m.goals.length ? <T size={13} color={c.mute}>None.</T> : m.goals.map((g) => <Row key={g.id} title={g.title} sub={label(g.category)} />)}</Section>
       <Section title="Open actions">{!m.actions.length ? <T size={13} color={c.mute}>None.</T> : m.actions.map((a) => <Row key={a.id} title={a.title} sub={a.due_at ? `Due ${dateTimeIn(a.due_at, tz)}` : 'No due date'} />)}</Section>
+      {m.official_events.length ? <Section title="Official events — bookmark the ones to discuss">{m.official_events.map((e) => <Row key={e.id} title={`${e.clock_seconds != null ? `${Math.floor(e.clock_seconds / 60)}' ` : ''}${label(e.kind)}${e.player_name ? ` · ${e.player_name}` : ''}`} sub="Official record" right={<Chip label={e.bookmarked ? 'Bookmarked' : 'Bookmark'} active={e.bookmarked} onPress={() => mark(e)} />} />)}</Section> : null}
+      <FormSheet visible={editing} onClose={() => setEditing(false)} title="Match prep" submitLabel="Save" initial={init}
+        fields={[
+          { key: 'opponent_notes', label: 'Opponent notes', type: 'multiline', optional: true },
+          ...[1, 2, 3, 4, 5, 6].map((k) => ({ key: `c${k}`, label: k === 1 ? 'Checklist (one item per line below)' : `Checklist item ${k}`, optional: true })),
+          ...[1, 2, 3].flatMap((k) => [
+            { key: `o${k}`, label: `Objective ${k}`, optional: true },
+            { key: `m${k}`, label: 'How will we measure it?', type: 'chips', options: METRICS.map(([value, lab]) => ({ value, label: lab })), default: '', show: (v) => !!v[`o${k}`] },
+            { key: `k${k}`, label: 'Which official event?', optional: true, placeholder: 'e.g. goal', show: (v) => v[`m${k}`] === 'events' },
+            { key: `cmp${k}`, label: 'Target', type: 'chips', options: [{ value: 'gte', label: 'At least' }, { value: 'lte', label: 'At most' }, { value: 'eq', label: 'Exactly' }], default: 'gte', show: (v) => !!v[`m${k}`] },
+            { key: `t${k}`, label: 'Number', type: 'stepper', min: 0, max: 50, step: 1, default: 1, show: (v) => !!v[`m${k}`] },
+          ]),
+        ]}
+        onSubmit={async (v) => {
+          const old = prep?.checklist ?? [], oldO = prep?.objectives ?? [];
+          await savePrep({
+            opponent_notes: v.opponent_notes || undefined,
+            checklist: [1, 2, 3, 4, 5, 6].filter((k) => v[`c${k}`]).map((k) => ({ id: old[k - 1]?.id, text: v[`c${k}`], done: old[k - 1]?.text === v[`c${k}`] ? old[k - 1].done : false })),
+            objectives: [1, 2, 3].filter((k) => v[`o${k}`]).map((k) => ({ id: oldO[k - 1]?.id, text: v[`o${k}`], indicator: v[`m${k}`] ? { metric: v[`m${k}`], kind: v[`m${k}`] === 'events' ? v[`k${k}`] : undefined, comparator: v[`cmp${k}`] ?? 'gte', target: v[`t${k}`] ?? 1 } : undefined })),
+          });
+          setEditing(false); toast('Prep saved');
+        }} />
+    </Screen>
+  );
+}
+
+// Capture helpers: pick a photo/video/PDF as evidence, or an audio file for speech-to-text. Files go to the private, encrypted store;
+// a transcript is only ever a draft you read and edit before it becomes a note.
+async function pickFile(accept, { media } = {}) {
+  if (Platform.OS === 'web') {
+    return new Promise((resolve) => {
+      const input = document.createElement('input');
+      input.type = 'file'; input.accept = accept;
+      input.onchange = () => resolve(input.files?.[0] ? { blob: input.files[0], name: input.files[0].name } : null);
+      input.click();
+    });
+  }
+  if (media === 'audio') {
+    const DocumentPicker = await import('expo-document-picker');
+    const r = await DocumentPicker.getDocumentAsync({ type: 'audio/*', copyToCacheDirectory: true });
+    if (r.canceled || !r.assets?.[0]) return null;
+    return { blob: await (await fetch(r.assets[0].uri)).blob(), name: r.assets[0].name };
+  }
+  const ImagePicker = await import('expo-image-picker');
+  const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images', 'videos'], quality: 0.85 });
+  if (r.canceled || !r.assets?.[0]) return null;
+  return { blob: await (await fetch(r.assets[0].uri)).blob(), name: r.assets[0].fileName };
+}
+const EVIDENCE_ACCEPT = 'image/jpeg,image/png,image/webp,image/gif,video/mp4,video/quicktime,video/webm,application/pdf';
+
+/** Files on one note: add (author only), open, hide. Rendered inside the session screen under each note. */
+function EvidenceRow({ obs, mine, toast }) {
+  const list = useLoad(() => api.get(`/coaching/observations/${obs.id}/evidence`), [obs.id]);
+  const add = async () => {
+    const f = await pickFile(EVIDENCE_ACCEPT);
+    if (!f) return;
+    try { await api.upload(`/coaching/observations/${obs.id}/evidence`, f.blob, { title: (f.name ?? '').slice(0, 120) }); toast('File attached'); list.reload(); } catch (e) { toast(e.message); }
+  };
+  const open = async (e) => { try { if (Platform.OS === 'web') { const url = URL.createObjectURL(await api.download(`/coaching/evidence/${e.id}/file`)); window.open(url, '_blank', 'noopener'); setTimeout(() => URL.revokeObjectURL(url), 120000); } else toast('Open this file on the web app'); } catch (err) { toast(err.message); } };
+  return (
+    <HScroll>
+      {(list.data ?? []).map((e) => <Chip key={e.id} label={`${e.kind === 'photo' ? 'Photo' : e.kind === 'video' ? 'Video' : 'PDF'}${e.title ? `: ${e.title.slice(0, 18)}` : ''}`} onPress={() => open(e)} />)}
+      {mine ? <Chip label="Attach file" onPress={add} /> : null}
+    </HScroll>
+  );
+}
+
+/** Speak or record on your phone, pick the audio here, read the text it becomes, fix it, then save it as a note. */
+function VoiceSheet({ visible, onClose, w, onSaved }) {
+  const { toast } = useSession();
+  const opts_ = useLoad(() => api.get('/coaching/capture-options'), []);
+  const [draft, setDraft] = useState(null);
+  const s = w.session;
+  const available = opts_.data?.voice_note?.available;
+  const choose = async () => {
+    const f = await pickFile('audio/*', { media: 'audio' });
+    if (!f) return;
+    try { setDraft((await api.postRaw('/coaching/voice-note', f.blob)).transcript); } catch (e) { toast(e.message); }
+  };
+  return (
+    <>
+      <Sheet visible={visible && draft == null} onClose={onClose} title="Voice note">
+        {!available ? <T size={13} color={c.mute}>{opts_.data?.voice_note?.reason ?? 'Checking…'}</T> : (
+          <>
+            <T size={13} color={c.mute}>{opts_.data.voice_note.note}</T>
+            <View style={{ marginTop: 10 }}><Btn title="Choose a recording" onPress={choose} /></View>
+          </>
+        )}
+      </Sheet>
+      <FormSheet visible={visible && draft != null} onClose={() => { setDraft(null); onClose(); }} title="Check the text" submitLabel="Save as a note" initial={{ note: draft ?? '' }}
+        fields={[{ key: 'note', label: 'Edit before saving', type: 'multiline' }, { key: 'visibility', label: 'Who can see it', type: 'chips', options: VISIBILITY.filter(([v]) => v !== 'player' && v !== 'team').map(([value, lab]) => ({ value, label: lab })), default: 'coach_private' }]}
+        onSubmit={async (v) => { const r = await send('/coaching/observations', { session_record_id: s.id, team_id: s.team_id ?? undefined, note: v.note, visibility: v.visibility === 'staff' && !s.team_id ? 'coach_private' : v.visibility, client_key: keyOf() }); setDraft(null); onSaved(r); }} />
+    </>
+  );
+}
+
+// The quick note: free text only for what was seen; everything else is a control. Rubric scores use the rubric's own scale and are
+// offered only for rubrics that apply to this player's sport and position.
+function NoteSheet({ note, onClose, w, rubrics, goals, onSaved }) {
+  const s = w.session;
+  const player = note?.athlete_id ? w.participants.find((p) => p.id === note.athlete_id) : null;
+  const usable = rubrics.filter((r) => !player || !r.positions?.length || r.positions.some((x) => x.toLowerCase() === (player.position ?? '').toLowerCase()));
+  const subject = goals.filter((g) => ['planned', 'active', 'paused'].includes(g.status) && (note?.athlete_id ? g.athlete_id === note.athlete_id : g.team_id === s.team_id && !g.athlete_id));
+  const dims = (r) => r.dimensions;
+  const fields = [
+    { key: 'note', label: 'What did you see?', type: 'multiline' },
+    { key: 'obs_type', label: 'Type', type: 'chips', options: opts(OBS_TYPES), default: 'general' },
+    { key: 'skill_tag', label: 'Skill', optional: true, placeholder: 'e.g. first touch' },
+    ...(usable.length && note?.athlete_id ? [{ key: 'rubric', label: 'Score on a rubric', type: 'chips', optional: true, options: usable.map((r) => ({ value: r.id, label: r.name })) }] : []),
+    ...usable.flatMap((r) => [
+      { key: `dim_${r.id}`, label: 'Which dimension', type: 'chips', options: dims(r).map((d) => ({ value: d.key, label: d.name })), default: dims(r)[0].key, show: (v) => v.rubric === r.id },
+      ...dims(r).map((d) => ({ key: `score_${r.id}_${d.key}`, label: `${d.name} (${d.scale_min}–${d.scale_max}${d.unit ? ` ${d.unit}` : ''})`, type: 'stepper', min: d.scale_min, max: d.scale_max, step: 1, default: Math.round((d.scale_min + d.scale_max) / 2), show: (v) => v.rubric === r.id && (v[`dim_${r.id}`] ?? dims(r)[0].key) === d.key })),
+    ]),
+    ...(subject.length ? [{ key: 'goals', label: 'Evidence for a goal', type: 'multi', optional: true, options: subject.map((g) => ({ value: g.id, label: g.title })) }] : []),
+    { key: 'visibility', label: 'Who can see it', type: 'chips', options: VISIBILITY.filter(([v]) => (note?.athlete_id ? v !== 'team' : v !== 'player')).map(([value, lab]) => ({ value, label: lab })), default: 'coach_private' },
+    { key: 'follow_up', label: 'Follow up next session', type: 'switch', default: false },
+    { key: 'make_action', label: 'Also create an action', type: 'switch', default: false },
+    { key: 'action_title', label: 'Action', optional: true, show: (v) => !!v.make_action },
+    { key: 'action_due', label: 'Due', type: 'date', optional: true, show: (v) => !!v.make_action },
+  ];
+  return (
+    <FormSheet visible={!!note} onClose={onClose} title={player ? `Note · ${player.display_name}` : 'Team note'} submitLabel="Save note" fields={fields}
+      onSubmit={async (v) => {
+        const visibility = v.visibility === 'staff' && !s.team_id ? 'coach_private' : v.visibility;
+        const rubric = v.rubric ? usable.find((r) => r.id === v.rubric) : null;
+        const dim = rubric ? v[`dim_${rubric.id}`] ?? dims(rubric)[0].key : null;
+        const r = await send('/coaching/observations', {
+          session_record_id: s.id, athlete_id: note.athlete_id, team_id: note.athlete_id && visibility !== 'staff' ? undefined : s.team_id ?? undefined, note: v.note, obs_type: v.obs_type, skill_tag: v.skill_tag || undefined, visibility, follow_up: !!v.follow_up, client_key: keyOf(),
+          goal_ids: v.goals?.length ? v.goals : undefined, ...(rubric ? { rubric_id: rubric.id, dimension_key: dim, score: v[`score_${rubric.id}_${dim}`] } : {}),
+        });
+        if (v.make_action && v.action_title) await send('/coaching/actions', { athlete_id: note.athlete_id, team_id: note.athlete_id ? undefined : s.team_id, session_record_id: s.id, title: v.action_title, due_at: v.action_due ? localToIso(v.action_due, '18:00', tz) : undefined, follow_up_next_session: true, client_key: keyOf() });
+        onSaved(r);
+      }} />
+  );
+}
+
+// Programmes: a season / term / block that goals hang from.
+export function CoachProgrammes({ athlete_id, team_id, name }) {
+  const { push } = useNav();
+  const { toast } = useSession();
+  const q = athlete_id ? `athlete_id=${athlete_id}` : `team_id=${team_id}`;
+  const list = useLoad(() => api.get(`/coaching/programmes?${q}`), [q]);
+  const positions = useLoad(() => api.get(`/coaching/positions${team_id ? `?team_id=${team_id}` : ''}`), [team_id]);
+  const [creating, setCreating] = useState(false);
+  const [open, setOpen] = useState(null);
+  const detail = useLoad(() => (open ? api.get(`/coaching/programmes/${open.id}`) : Promise.resolve(null)), [open?.id]);
+  return (
+    <Screen onRefresh={list.reload}>
+      <H1>{name ? `${name} · programmes` : 'Programmes'}</H1>
+      <T size={13} color={c.mute}>A season, term or block with its objective and review dates. Goals belong to it; shared training plans stay as they are.</T>
+      <View style={{ marginTop: 10 }}><Btn small title="New programme" onPress={() => setCreating(true)} /></View>
+      {list.loading && !list.data ? <Loading /> : list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : !list.data.length ? <Empty emoji="🗓️" title="No programmes yet" sub="Start with the season or term you are coaching through." /> :
+        list.data.map((p) => <Row key={p.id} title={p.title} sub={`${label(p.kind)} · ${String(p.starts_on).slice(0, 10)} to ${String(p.ends_on).slice(0, 10)} · ${p.goals_achieved}/${p.goals} goals achieved${p.position ? ` · ${p.position}` : ''}`} right={<Status s={p.status} />} onPress={() => setOpen(p)} />)}
+      <Sheet visible={!!open} onClose={() => setOpen(null)} title={open?.title ?? ''}>
+        {detail.loading || !detail.data ? <Loading /> : (
+          <>
+            <T size={13}>{detail.data.programme.objective}</T>
+            <T size={12} color={c.mute}>{detail.data.summary.sessions_held} sessions held ({detail.data.summary.sessions_reviewed} reviewed) · {detail.data.summary.open_actions} open actions{detail.data.summary.next_review ? ` · next review ${String(detail.data.summary.next_review).slice(0, 10)}` : ''}</T>
+            {detail.data.goals.map((g) => <Row key={g.id} title={g.title} sub={`${label(g.category)} · ${g.evidence_count} evidence`} right={<Status s={g.status} />} />)}
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+              <Btn small title="Goals" onPress={() => { setOpen(null); push('CoachGoals', athlete_id ? { athlete_id, name, programme_id: open.id } : { team_id, programme_id: open.id }); }} />
+              {open.status !== 'completed' ? <Btn small title="Mark completed" color={c.paper} ink={c.ink} onPress={async () => { try { await api.patch(`/coaching/programmes/${open.id}`, { row_version: open.row_version, status: 'completed' }); setOpen(null); list.reload(); } catch (e) { toast(e.message); } }} /> : null}
+            </View>
+          </>
+        )}
+      </Sheet>
+      <FormSheet visible={creating} onClose={() => setCreating(false)} title="New programme" submitLabel="Create"
+        fields={[
+          { key: 'title', label: 'Name' },
+          { key: 'kind', label: 'Kind', type: 'chips', options: opts(['season', 'term', 'block', 'programme']), default: 'season' },
+          { key: 'starts_on', toKey: 'ends_on', label: 'Dates', type: 'daterange' },
+          { key: 'objective', label: 'Objective', type: 'multiline', optional: true },
+          ...(positions.data?.length ? [{ key: 'position', label: 'Position', type: 'chips', optional: true, options: positions.data.map((p) => ({ value: p, label: p })) }] : []),
+          { key: 'review_cadence_days', label: 'Review every … days', type: 'stepper', min: 7, max: 90, step: 7, default: 14, optional: true },
+          { key: 'athlete_text', label: 'Wording to show the athlete (leave empty to keep private)', type: 'multiline', optional: true },
+        ]}
+        onSubmit={async (v) => { await api.post('/coaching/programmes', { athlete_id, team_id, title: v.title, kind: v.kind, starts_on: v.starts_on, ends_on: v.ends_on, objective: v.objective || undefined, position: v.position || undefined, review_cadence_days: v.review_cadence_days || undefined, athlete_text: v.athlete_text || undefined }); setCreating(false); toast('Programme created'); list.reload(); }} />
+    </Screen>
+  );
+}
+
+// Rubrics: the coach's own scales, limited to the sport and positions they make sense for.
+export function CoachRubrics() {
+  const { toast } = useSession();
+  const list = useLoad(() => api.get('/coaching/rubrics'), []);
+  const positions = useLoad(() => api.get('/coaching/positions'), []);
+  const [creating, setCreating] = useState(false);
+  const dimFields = (k) => [
+    { key: `n${k}`, label: `Dimension ${k}${k === 1 ? '' : ' (optional)'}`, optional: k > 1, placeholder: k === 1 ? 'e.g. First touch' : undefined },
+    { key: `max${k}`, label: 'Scale 1 to …', type: 'stepper', min: 3, max: 10, step: 1, default: 5, show: (v) => !!v[`n${k}`] },
+    { key: `dir${k}`, label: 'Better when', type: 'chips', options: [{ value: 'higher_is_better', label: 'Higher' }, { value: 'lower_is_better', label: 'Lower' }, { value: 'target_range', label: 'On target' }], default: 'higher_is_better', show: (v) => !!v[`n${k}`] },
+  ];
+  return (
+    <Screen onRefresh={list.reload}>
+      <H1>Rubrics</H1>
+      <T size={13} color={c.mute}>Your own rating scales. Each score keeps the version it was given under, and scores on different scales are never mixed or turned into official statistics.</T>
+      <View style={{ marginTop: 10 }}><Btn small title="New rubric" onPress={() => setCreating(true)} /></View>
+      {list.loading && !list.data ? <Loading /> : list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : !list.data.length ? <Empty emoji="📏" title="No rubrics yet" sub="Create one, then score players from the note sheet during a session." /> :
+        list.data.map((r) => <Row key={r.id} title={r.name} sub={`v${r.version} · ${r.dimensions.map((d) => `${d.name} 1–${d.scale_max}`).join(', ')}${r.positions.length ? ` · ${r.positions.join(', ')}` : ' · all positions'}`} />)}
+      <FormSheet visible={creating} onClose={() => setCreating(false)} title="New rubric" submitLabel="Create"
+        fields={[
+          { key: 'name', label: 'Rubric name' },
+          ...(positions.data?.length ? [{ key: 'positions', label: 'Only for these positions (leave empty for all)', type: 'multi', optional: true, options: positions.data.map((p) => ({ value: p, label: p })) }] : []),
+          ...[1, 2, 3].flatMap(dimFields),
+        ]}
+        onSubmit={async (v) => {
+          const dimensions = [1, 2, 3].filter((k) => v[`n${k}`]).map((k) => ({ key: v[`n${k}`].toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 40) || `d${k}`, name: v[`n${k}`], scale_min: 1, scale_max: v[`max${k}`] ?? 5, direction: v[`dir${k}`] ?? 'higher_is_better' }));
+          await api.post('/coaching/rubrics', { name: v.name, positions: v.positions?.length ? v.positions : undefined, dimensions });
+          setCreating(false); toast('Rubric created'); list.reload();
+        }} />
     </Screen>
   );
 }
@@ -670,7 +958,7 @@ function MoreSheet({ more, setMore, w, reload }) {
       <Sheet visible={more === 'menu'} onClose={close} title="Session tools">
         {[
           ['Split into groups (defenders, forwards …)', 'groups', s.status !== 'completed' && s.team_id],
-          ['Save plan as a template', 'template', true], ['Use a template', 'use', s.status !== 'completed'],
+          ['Save plan as a template', 'template', w.plan.blocks.length > 0], ['Use a template', 'use', s.status !== 'completed'],
           ['Start a new session from this one', 'clone', true], ['Let another coach help', 'help', s.team_id && w.you_are === 'owner'],
         ].filter(([, , show]) => show).map(([label_, key]) => <Row key={key} title={label_} onPress={() => setMore(key)} />)}
         {w.delegates?.length ? <T size={12} color={c.mute} style={{ marginTop: 8 }}>Helping: {w.delegates.map((d) => `${d.display_name} (${d.permissions.join(', ')})`).join('; ')}</T> : null}

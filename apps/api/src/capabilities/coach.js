@@ -125,7 +125,7 @@ cap({
     if (!team) throw notFound('Team');
     if (!(await canCoachTeam(user, team))) throw forbidden('You do not coach this team');
     const rows = await many(
-      `SELECT ${PUBLIC_USER}, m.role, m.jersey_no, m.availability, m.availability_note FROM team_members m JOIN users u ON u.id=m.user_id
+      `SELECT ${PUBLIC_USER}, m.role, m.jersey_no, m.position, m.availability, m.availability_note FROM team_members m JOIN users u ON u.id=m.user_id
         WHERE m.team_id=$1 AND m.status='active' ORDER BY m.role, u.display_name, u.id`, [team.id]);
     const hidden = isAdmin(user) ? new Set() : await hiddenYouth(user, rows.map((r) => r.id));
     return { team: { id: team.id, name: team.name }, members: rows.filter((r) => !hidden.has(r.id)) };
