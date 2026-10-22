@@ -29,4 +29,29 @@ The coach calendar is a read projection: every item carries `source_type` and `s
 `canCoachTeam` (in `capabilities/teams.js`) allows an active team coach, or anyone who passes `canManageTeam`, to view the roster and availability through `coach_team_roster`. It grants no ownership, rate, settlement, finance or medical access, and `canManageTeam` is unchanged.
 
 ## Not in this change (follow-ups)
-Match preparation and post-match review, performance analytics with provenance, the AI coaching assistant, template sharing with teams or organisations, team training sessions and attendance, coach availability and buffers (#56), rule packs (#68), the concierge framework (#72), and earnings/opportunity links (#67, #71) — none of these exist on main yet.
+Match preparation and post-match review, performance analytics with provenance, the AI coaching assistant, template sharing with teams or organisations, coach availability and buffers (#56), rule packs (#68), the concierge framework (#72), and earnings/opportunity links (#67, #71) — none of these exist on main yet.
+
+# Performance Studio — coaching journal (issue #269, slice 1)
+Execution and review layer over the records above. Migration `076_coaching_journal.sql` is additive (new tables only); nothing is deleted.
+
+## What it adds
+- **Session record** (`coaching_session_records`): one per coach and canonical source (`training_session`, `coach_hire`, `fixture`) or `team_session` for a team/group training that has no other record. It never creates a booking or calendar entry; the source keeps owning time, venue and money. A team session has one record with many participants, not one copy per player. Repeating the create returns the same record.
+- **Plan versions** (`coaching_session_plan_versions`, append-only): ordered blocks (objective, duration, cues, setup, target RPE, tags, coach-only notes). The version a session started with is kept (`plan_at_start`); a completed session's plan is frozen. Block progress (`block_log`) is stored apart from the plan.
+- **Attendance** (`coaching_session_participants`): expected / present / late / left early / absent / excused. Idempotent; only people on the roster. People never marked are reported as *not recorded*, never silently absent.
+- **Observations** (`coaching_observations`): typed, tagged, linked to a session/block/athlete/team, with an idempotency `client_key`, optimistic `row_version` and an append-only revision history. Observations hold coaching opinions only — no diagnoses, treatment or medication.
+- **Timelines**: `list_player_coaching_timeline` / `list_team_coaching_timeline` project observations, attendance and completed plan sessions from their sources (nothing is copied).
+- **Performance Studio** (`get_coach_performance_home` + app screens `PerformanceStudio`, `CoachSession`, `CoachJournal`): running sessions, today's sessions to open, reviews owed, notes flagged for follow-up.
+
+## Visibility (enforced in the query, so REST, OpenAPI and MCP agree)
+| visibility | who can read it |
+|---|---|
+| `coach_private` (default) | the author only |
+| `staff` | the author and active coaches of the note's team |
+| `player` | the author and that athlete (`my_shared_coaching_notes`) |
+| `team` | the author and active members of the team; team-level notes only |
+
+## Access and relationship end
+Creating or editing needs a *current* relationship (`RELATIONSHIP_SQL`) or coaching authority over the team, and youth rules apply. When it ends, a coach can no longer add or edit, and no longer sees other coaches' staff notes; they keep read access to what they wrote themselves. Notes the athlete or team were already shown stay visible to them.
+
+## Not in this slice
+Goals/programmes, rubrics, action items, trends and comparisons, match-prep/debrief workspace, AI copilot, reports (and #249 PDF), notifications, offline queue (only an idempotency key and a draft-safe retry are in place), guardian reading of shared notes, assistant-coach delegation beyond staff-visible notes, and voice/media capture.
