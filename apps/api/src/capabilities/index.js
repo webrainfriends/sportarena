@@ -65,6 +65,7 @@ import './coach.js';
 import './coaching-journal.js';
 import './coaching-goals.js';
 import './coaching-ai.js';
+import './coaching-reports.js';
 import './payments.js';
 import './settlement.js';
 import './sponsors.js';
