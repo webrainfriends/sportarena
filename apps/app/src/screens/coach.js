@@ -125,6 +125,7 @@ export function MyPlans({ as = 'athlete', athlete_id }) {
   return (
     <Screen onRefresh={list.reload}>
       <H1>{as === 'coach' ? 'Training plans I coach' : 'My training plans'}</H1>
+      {as === 'coach' ? null : <View style={{ marginTop: 6 }}><Btn small title="Notes, goals & actions from my coach" color={c.paper} ink={c.ink} onPress={() => push('MyCoaching')} /></View>}
       {list.loading && !list.data ? <Loading /> : list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : !list.data.length ?
         <Empty emoji="📋" title="No training plans yet" sub={as === 'coach' ? 'Open My athletes and start a plan for someone you coach.' : 'When a coach proposes a plan it appears here for you to accept or change.'} /> :
         list.data.map((p) => <Row key={p.id} title={p.title} sub={`${as === 'coach' ? p.athlete_name : `Coach ${p.coach_name}`} · ${p.completed}/${p.total} done${p.next_session_at ? ` · next ${dateTimeIn(p.next_session_at, tz)}` : ''}`} right={<Status s={p.status} />} onPress={() => push('CoachPlan', { id: p.id })} />)}
