@@ -12,6 +12,7 @@ import { PlansManager } from './plans';
 import { SetupChecklist, Timetable } from './timetable';
 import { SetupWizard } from './venue-setup';
 import { DayBoard } from './dayboard';
+import { Lockers, Maintenance, OpsAttention, VendorsContracts } from './venue-ops';
 import { useNav } from '../nav';
 import { WEEKDAYS, addDays, dateTimeIn, fmtMin, hoursSummary, localToIso, longDay, moneyIn, timeIn, todayIn } from '../vtime';
 import { Calendar } from '../pickers';
@@ -19,7 +20,7 @@ import { SubjectPanel } from './insurance';
 import { locale } from '../locale';
 
 const AMENITIES = ['Parking', 'Changing rooms', 'Showers', 'Lockers', 'Café', 'Floodlights', 'Equipment hire', 'Coaching', 'First aid', 'Seating', 'WiFi', 'Wheelchair access'];
-const TABS = [['schedule', 'Today'], ['timetable', 'Timetable & prices'], ['blocks', 'Block slots'], ['payments', 'Invoices'], ['plans', 'Memberships & passes'], ['discounts', 'Offers'], ['pricing', 'Courts & special rates'], ['media', 'Photos'], ['reviews', 'Reviews'], ['reports', 'Reports'], ['docs', 'Documents & insurance'], ['setup', 'Settings']];
+const TABS = [['schedule', 'Today'], ['timetable', 'Timetable & prices'], ['blocks', 'Block slots'], ['payments', 'Invoices'], ['plans', 'Passes, packages & memberships'], ['discounts', 'Offers'], ['pricing', 'Courts & special rates'], ['media', 'Photos & videos'], ['lockers', 'Lockers'], ['maintenance', 'Maintenance'], ['vendors', 'Vendors & contracts'], ['reviews', 'Reviews'], ['reports', 'Reports'], ['docs', 'Documents & insurance'], ['setup', 'Settings']];
 const num = (x) => (x === undefined || x === '' ? undefined : Number(x));
 
 export function Manage({ id, wizard: startWizard }) {
@@ -34,10 +35,10 @@ export function Manage({ id, wizard: startWizard }) {
     <Screen wide>
       <H1 style={{ marginTop: 8 }}>{x.emoji} {x.name}</H1>
       <T color={c.mute} weight="700">Venue console · {x.timezone} · {x.currency}{x.active ? '' : ' · HIDDEN'}</T>
-      {wizard ? <SetupWizard v={x} onExit={() => { setWizard(false); v.reload(); }} goTab={setTab} /> : <SetupChecklist venueId={x.id} go={setTab} onWizard={() => setWizard(true)} />}
+      {wizard ? <SetupWizard v={x} onExit={() => { setWizard(false); v.reload(); }} goTab={setTab} /> : <><SetupChecklist venueId={x.id} go={setTab} onWizard={() => setWizard(true)} /><OpsAttention venueId={x.id} go={setTab} /></>}
       {wizard ? null : <>
       <View style={{ marginTop: 10 }}><Seg options={TABS.map(([value, label]) => ({ value, label }))} value={tab} onChange={setTab} color={c.violet} /></View>
-      {tab === 'schedule' ? <DayBoard {...P} /> : tab === 'timetable' ? <Timetable {...P} /> : tab === 'blocks' ? <Blocks {...P} /> : tab === 'pricing' ? <Pricing {...P} /> : tab === 'discounts' ? <Discounts {...P} /> : tab === 'payments' ? <Payments {...P} /> : tab === 'plans' ? <PlansManager {...P} /> : tab === 'media' ? <Section title="Photos & videos" color={c.cyan}><MediaManager venue={x} /></Section> : tab === 'reviews' ? <Section title="Reviews" color={c.pink}><VenueReviews venueId={x.id} /></Section> : tab === 'reports' ? <Reports {...P} /> : tab === 'docs' ? <SubjectPanel type="venue" id={x.id} name={x.name} /> : <Setup {...P} />}
+      {tab === 'schedule' ? <DayBoard {...P} /> : tab === 'timetable' ? <Timetable {...P} /> : tab === 'blocks' ? <Blocks {...P} /> : tab === 'pricing' ? <Pricing {...P} /> : tab === 'discounts' ? <Discounts {...P} /> : tab === 'payments' ? <Payments {...P} /> : tab === 'plans' ? <PlansManager {...P} /> : tab === 'lockers' ? <Lockers {...P} /> : tab === 'maintenance' ? <Maintenance {...P} /> : tab === 'vendors' ? <VendorsContracts {...P} /> : tab === 'media' ? <Section title="Photos & videos" color={c.cyan}><MediaManager venue={x} /></Section> : tab === 'reviews' ? <Section title="Reviews" color={c.pink}><VenueReviews venueId={x.id} /></Section> : tab === 'reports' ? <Reports {...P} /> : tab === 'docs' ? <SubjectPanel type="venue" id={x.id} name={x.name} /> : <Setup {...P} />}
       </>}
     </Screen>
   );
@@ -86,8 +87,11 @@ function Pricing({ v, reload }) {
   const [rule, setRule] = useState(false);
   const [area, setArea] = useState(false);
   const [edit, setEdit] = useState(null);
+  const courts = useLoad(() => api.get(`/venues/${v.id}/courts`), [v.id]);
+  const retired = (courts.data ?? []).filter((r) => !r.active);
   const areaName = (rid) => v.resources.find((r) => r.id === rid)?.name ?? 'All areas';
-  const done = () => { card.reload(); reload(); };
+  const done = () => { card.reload(); courts.reload(); reload(); };
+  const setActive = async (r, active) => { try { await api.patch(`/resources/${r.id}`, { active }); done(); toast(active ? `${r.name} is open for booking again` : `${r.name} retired`); } catch (e) { toast(e.message); } };
   return (
     <>
       <Section title="Courts" color={c.lime}>
@@ -98,6 +102,13 @@ function Pricing({ v, reload }) {
             right={<T weight="700">{moneyIn(r.hourly_rate_cents, v.currency)}/h</T>} />
         ))}
         <Btn small title="+ Add a court" color={c.violet} onPress={() => setArea(true)} style={{ alignSelf: 'flex-start' }} />
+        {retired.length ? (
+          <View style={{ gap: 6, marginTop: 6 }}>
+            <T weight="800" size={13}>Retired courts</T>
+            <T size={12} color={c.mute}>Not shown to customers and cannot be booked; past bookings and history stay.</T>
+            {retired.map((r) => <Row key={r.id} title={`${KIND[r.kind] ?? ''} ${r.name}`} sub={r.sport ?? 'no sport'} right={<Btn small title="Bring back" color={c.paper} ink={c.violet} onPress={() => setActive(r, true)} />} />)}
+          </View>
+        ) : null}
       </Section>
       <Section title="Special rates" color={c.sun}>
         <T color={c.mute} size={13}>One-off rates for holidays, tournaments or events. They override the price categories on the days they apply. Everyday Peak / Off-peak prices live under Timetable & prices.</T>
@@ -128,7 +139,7 @@ function Pricing({ v, reload }) {
           { key: 'hourly_rate_cents', label: 'Base rate per hour', type: 'money', currency: v.currency }, { key: 'slot_minutes', label: 'Slot length', type: 'chips', options: [{ value: 15, label: '15 min' }, { value: 30, label: '30 min' }, { value: 45, label: '45 min' }, { value: 60, label: '1 hour' }, { value: 90, label: '1½ h' }, { value: 120, label: '2 hours' }] },
           { key: 'capacity', label: 'Bookings at once', type: 'stepper', min: 1, max: 100 }, { key: 'max_players', label: 'Players per court', type: 'stepper', min: 1, max: 100 },
           { key: 'min_slots', label: 'Fewest slots per booking', type: 'stepper', min: 1, max: 12 }, { key: 'max_slots', label: 'Most slots per booking', type: 'stepper', min: 1, max: 24 },
-          { key: 'active', label: 'Open for booking', type: 'switch', hint: 'Switch off to retire the court — existing bookings stay' }]}
+          { key: 'active', label: 'Open for booking', type: 'switch', hint: `Switch off to retire the court — existing bookings stay${edit && courts.data?.find((x) => x.id === edit.id)?.upcoming_bookings ? ` (${courts.data.find((x) => x.id === edit.id).upcoming_bookings} upcoming — cancel or move them first if the court is closing for good)` : ''}` }]}
         onSubmit={async (f) => { await api.patch(`/resources/${edit.id}`, f); done(); return 'Saved'; }} />
     </>
   );
@@ -227,6 +238,7 @@ function Setup({ v, reload }) {
   const [ct, setCt] = useState(false);
   const [st, setSt] = useState(false);
   const [money, setMoney] = useState(false);
+  const [am, setAm] = useState(false);
   const currencies = useLoad(() => api.get('/currencies'), []);
   const contacts = useLoad(() => api.get(`/venues/${v.id}/contacts`), [v.id]);
   const staff = useLoad(() => api.get(`/venues/${v.id}/staff`), [v.id]);
@@ -246,6 +258,14 @@ function Setup({ v, reload }) {
             <Btn small title={v.active ? 'Hide from search' : 'Show in search'} color={c.paper} onPress={async () => { try { await save({ active: !v.active }); } catch (e) { toast(e.message); } }} />
           </View>
         </Card>
+      </Section>
+      <Section title="Facilities & amenities" color={c.cyan}>
+        <T size={12} color={c.mute}>Choose the facilities under Edit above, then say what guests should know about each — where it is, whether it costs extra.</T>
+        {(v.amenities ?? []).length ? v.amenities.map((a) => {
+          const d = v.amenity_details?.[a] ?? {};
+          return <Row key={a} title={a} sub={[d.note, d.fee_cents ? `${moneyIn(d.fee_cents, v.currency)} extra` : 'included'].filter(Boolean).join(' · ')} />;
+        }) : <Empty emoji="🚿" title="No facilities listed" sub="Parking, changing rooms, showers, lockers, café… add them under Edit." />}
+        {(v.amenities ?? []).length ? <Btn small title="Edit amenity details" color={c.violet} onPress={() => setAm(true)} style={{ alignSelf: 'flex-start' }} /> : null}
       </Section>
       <Section title="Money, tax & invoices" color={c.sun}>
         <Card>
@@ -268,11 +288,12 @@ function Setup({ v, reload }) {
         {owner ? <Btn small title="+ Add team member" color={c.violet} onPress={() => setSt(true)} style={{ alignSelf: 'flex-start' }} /> : null}
       </Section>
 
-      <FormSheet visible={prof} onClose={() => setProf(false)} title="Venue profile" initial={{ name: v.name, city: v.city ?? '', address: v.address ?? '', postal_code: v.postal_code ?? '', country: v.country ?? '', description: v.description ?? '', latitude: v.latitude ?? '', longitude: v.longitude ?? '', timezone: v.timezone, currency: v.currency, phone: v.phone ?? '', email: v.email ?? '', website: v.website ?? '', amenities: v.amenities ?? [], min_notice_minutes: v.min_notice_minutes, max_advance_days: v.max_advance_days, cancel_free_hours: v.cancel_free_hours, late_cancel_refund_percent: v.late_cancel_refund_percent, notify_owner: v.notify_owner }}
+      <FormSheet visible={prof} onClose={() => setProf(false)} title="Venue profile" initial={{ name: v.name, city: v.city ?? '', address: v.address ?? '', postal_code: v.postal_code ?? '', country: v.country ?? '', description: v.description ?? '', latitude: v.latitude ?? '', longitude: v.longitude ?? '', timezone: v.timezone, currency: v.currency, phone: v.phone ?? '', email: v.email ?? '', website: v.website ?? '', place_id: v.place_id ?? '', map_url: v.map_url ?? '', amenities: v.amenities ?? [], min_notice_minutes: v.min_notice_minutes, max_advance_days: v.max_advance_days, cancel_free_hours: v.cancel_free_hours, late_cancel_refund_percent: v.late_cancel_refund_percent, notify_owner: v.notify_owner }}
         fields={[{ key: 's1', type: 'section', label: 'About' }, { key: 'name', label: 'Name' }, { key: 'description', label: 'About the venue', type: 'multiline', optional: true },
           { key: 'amenities', label: 'Facilities', type: 'multi', optional: true, options: [...new Set([...AMENITIES, ...(v.amenities ?? [])])] },
           { key: 's2', type: 'section', label: 'Where' }, { key: 'address', label: 'Address', optional: true }, { key: 'city', label: 'City', optional: true }, { key: 'postal_code', label: 'Postal code', optional: true }, { key: 'country', label: 'Country', optional: true },
           { key: 'latitude', lngKey: 'longitude', label: 'Map location', type: 'location', optional: true }, { key: 'timezone', label: 'Time zone', type: 'timezone' },
+          { key: 'map_url', label: 'Map share link', input: 'url', optional: true, hint: 'Paste the Share link from Google Maps, Apple Maps or OpenStreetMap' }, { key: 'place_id', label: 'Map place ID', optional: true, hint: 'e.g. a Google Place ID — pins the exact listing in directions' },
           { key: 's3', type: 'section', label: 'Contact' }, { key: 'phone', label: 'Public phone', input: 'phone', optional: true }, { key: 'email', label: 'Public email', input: 'email', optional: true }, { key: 'website', label: 'Website', input: 'url', optional: true },
           { key: 's4', type: 'section', label: 'Booking rules' },
           { key: 'min_notice_minutes', label: 'Earliest booking before start', type: 'chips', options: [{ value: 0, label: 'Any time' }, { value: 30, label: '30 min' }, { value: 60, label: '1 hour' }, { value: 120, label: '2 hours' }, { value: 360, label: '6 hours' }, { value: 1440, label: '1 day' }] },
@@ -292,6 +313,10 @@ function Setup({ v, reload }) {
           { key: 'loyalty_expiry_months', label: 'Points expire after', type: 'stepper', min: 1, max: 60, step: 1, suffix: ' months', show: (x) => x.loyalty_pct > 0 },
           { key: 'loyalty_redeem_pct', label: 'Points can pay up to', type: 'stepper', min: 10, max: 100, step: 10, suffix: '% of a booking', show: (x) => x.loyalty_pct > 0 }]}
         onSubmit={async ({ s1, s2, s3, s4, tax_pct, loyalty_pct, loyalty_redeem_pct, loyalty_expiry_months, ...f }) => save({ ...f, tax_rate_bp: Math.round((tax_pct ?? 0) * 100), loyalty_earn_bp: Math.round((loyalty_pct ?? 0) * 100), ...(loyalty_pct > 0 ? { loyalty_expiry_months, loyalty_max_redeem_bp: Math.round((loyalty_redeem_pct ?? 50) * 100) } : {}) })} />
+      <FormSheet visible={am} onClose={() => setAm(false)} title="Amenity details"
+        initial={Object.fromEntries((v.amenities ?? []).flatMap((a, i) => [[`note_${i}`, v.amenity_details?.[a]?.note ?? ''], [`fee_${i}_cents`, v.amenity_details?.[a]?.fee_cents ?? undefined]]))}
+        fields={(v.amenities ?? []).flatMap((a, i) => [{ key: `s_${i}`, type: 'section', label: a }, { key: `note_${i}`, label: 'What to know', optional: true, placeholder: 'e.g. 40 bays at the rear gate' }, { key: `fee_${i}_cents`, label: 'Extra charge (leave empty if included)', type: 'money', currency: v.currency, optional: true }])}
+        onSubmit={(f) => save({ amenity_details: Object.fromEntries(v.amenities.map((a, i) => [a, { ...(f[`note_${i}`] ? { note: f[`note_${i}`] } : {}), ...(f[`fee_${i}_cents`] ? { fee_cents: f[`fee_${i}_cents`] } : {}) }]).filter(([, d]) => d.note || d.fee_cents)) })} />
       <HoursEditor visible={hrs} onClose={() => setHrs(false)} v={v} onSaved={reload} />
       <FormSheet visible={ct} onClose={() => setCt(false)} title="Add a contact" submitLabel="Add"
         fields={[{ key: 'role', label: 'Role', type: 'chips', options: [{ value: 'manager', label: 'Manager' }, { value: 'reception', label: 'Reception' }, { value: 'emergency', label: 'Emergency' }, { value: 'billing', label: 'Billing' }, { value: 'general', label: 'General' }] },

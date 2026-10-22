@@ -38,19 +38,26 @@ export const KINDS = ['court', 'ground', 'pool', 'track', 'room', 'equipment', '
 /** Map deep links for a venue (works from coordinates, falls back to a name + address search). */
 export function mapLinks(v) {
   const q = encodeURIComponent([v.name, v.address, v.city].filter(Boolean).join(', '));
-  if (v.latitude == null || v.longitude == null) return v.name ? { google: `https://www.google.com/maps/search/?api=1&query=${q}`, apple: `https://maps.apple.com/?q=${q}`, directions: `https://www.google.com/maps/dir/?api=1&destination=${q}` } : null;
+  // A provider place id pins the exact listing; a pasted share link is offered as-is.
+  const pid = v.place_id ? `&query_place_id=${encodeURIComponent(v.place_id)}` : '';
+  const shared = v.map_url ? { shared: v.map_url } : {};
+  if (v.latitude == null || v.longitude == null) return v.name ? { google: `https://www.google.com/maps/search/?api=1&query=${q}${pid}`, apple: `https://maps.apple.com/?q=${q}`, directions: `https://www.google.com/maps/dir/?api=1&destination=${q}${pid ? `&destination_place_id=${encodeURIComponent(v.place_id)}` : ''}`, ...shared } : null;
   const ll = `${v.latitude},${v.longitude}`;
   return {
-    google: `https://www.google.com/maps/search/?api=1&query=${ll}`,
+    google: `https://www.google.com/maps/search/?api=1&query=${ll}${pid}`,
     apple: `https://maps.apple.com/?ll=${ll}&q=${encodeURIComponent(v.name)}`,
     osm: `https://www.openstreetmap.org/?mlat=${v.latitude}&mlon=${v.longitude}#map=17/${v.latitude}/${v.longitude}`,
-    directions: `https://www.google.com/maps/dir/?api=1&destination=${ll}`,
+    directions: `https://www.google.com/maps/dir/?api=1&destination=${ll}${v.place_id ? `&destination_place_id=${encodeURIComponent(v.place_id)}` : ''}`,
+    ...shared,
   };
 }
 
 export const venueProfile = {
   description: z.string().max(2000).optional(), country: z.string().max(60).optional(), postal_code: z.string().max(20).optional(),
   latitude: z.number().min(-90).max(90).optional(), longitude: z.number().min(-180).max(180).optional(),
+  place_id: z.string().min(3).max(200).regex(/^[\w.:-]+$/, 'letters, digits and - _ . : only').optional().describe('map-provider place id, e.g. a Google Place ID'),
+  map_url: z.string().url().max(500).refine((u) => /^https:\/\//i.test(u), 'use an https link').optional().describe('a share link copied from Google/Apple/OpenStreetMap maps'),
+  locker_auto_assign: z.boolean().optional().describe('give each new booking a free locker and PIN automatically'),
   timezone: z.string().refine(validTimezone, 'Unknown IANA time zone, e.g. Asia/Kolkata').optional(),
   currency: z.string().length(3).transform((x) => x.toUpperCase()).refine(isSupportedCurrency, `Supported currencies: ${Object.keys(CURRENCIES).join(', ')}`).optional(),
   legal_name: z.string().max(120).optional(), tax_id: z.string().max(40).optional(), billing_address: z.string().max(300).optional(),
@@ -61,6 +68,7 @@ export const venueProfile = {
   payment_mode: z.enum(['pay_at_venue', 'online_optional', 'online_required']).optional().describe('online modes need Stripe/PayPal switched on; online_required releases unpaid slots after a few minutes'),
   phone: z.string().max(30).optional(), email: z.string().email().optional(), website: z.string().url().optional(),
   amenities: z.array(z.string().min(1).max(40)).max(40).optional(),
+  amenity_details: z.record(z.string().min(1).max(40), z.object({ note: z.string().max(200).optional(), fee_cents: money.optional().describe('minor units; omit or 0 = free') })).optional().describe('extra detail per amenity, keyed by the amenity name'),
   min_notice_minutes: z.number().int().min(0).max(10080).optional(), max_advance_days: z.number().int().min(1).max(730).optional(),
   cancel_free_hours: z.number().int().min(0).max(720).optional(), late_cancel_refund_percent: z.number().int().min(0).max(100).optional(),
   notify_owner: z.boolean().optional(),
@@ -146,7 +154,7 @@ cap({
       one("SELECT round(avg(rating),2) AS rating, count(*)::int AS reviews FROM testimonials WHERE subject_type='venue' AND subject_id=$1 AND status='published' AND visibility='public'", [i.id]),
       one('SELECT count(*)::int AS favourites, coalesce(bool_or(user_id = $2::uuid), false) AS is_favourite FROM favourite_venues WHERE venue_id=$1 AND removed_at IS NULL', [i.id, user?.id ?? null]),
       user ? one('SELECT coalesce(sum(remaining),0)::int AS my_points FROM loyalty_lots WHERE user_id=$1 AND venue_id=$2 AND remaining > 0 AND expires_at > now()', [user.id, i.id]) : { my_points: 0 },
-      many('SELECT id, kind, name, description, price_cents, duration_days, discount_bp, sessions, session_value_cents, valid_days FROM venue_plans WHERE venue_id=$1 AND active ORDER BY kind DESC, price_cents', [i.id]),
+      many('SELECT id, kind, name, description, price_cents, duration_days, discount_bp, sessions, session_value_cents, valid_days, resource_ids, includes, auto_renew FROM venue_plans WHERE venue_id=$1 AND active ORDER BY kind DESC, price_cents', [i.id]),
       user ? one("SELECT coalesce(max(discount_bp) FILTER (WHERE kind='membership' AND starts_at <= now()),0)::int AS my_member_discount_bp, max(expires_at) FILTER (WHERE kind='membership') AS my_membership_until, coalesce(sum(sessions_left) FILTER (WHERE kind='pass'),0)::int AS my_pass_sessions FROM user_plans WHERE user_id=$1 AND venue_id=$2 AND status='active' AND expires_at > now()", [user.id, i.id]) : { my_member_discount_bp: 0, my_membership_until: null, my_pass_sessions: 0 },
     ]);
     return { ...v, map_links: mapLinks(v), resources, hours, open_around_the_clock: hours.length === 0, offers, media: media.map(publicMedia), ...rating, ...fav, ...pts, plans, ...member };

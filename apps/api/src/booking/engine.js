@@ -11,6 +11,7 @@ import { reconcileInvoices, encryptBilling } from './invoices.js';
 import { paymentsEnabled } from '../payments/service.js';
 import { config } from '../config.js';
 import { memberDiscountBp } from './plans.js';
+import { lockersForReservation, refitLockers } from './lockers.js';
 
 const SLOT_MS = (r) => r.slot_minutes * 60_000;
 const uniq = (a) => [...new Set(a)];
@@ -298,7 +299,7 @@ async function currenciesOf(c, resourceRows) {
 }
 
 /** Full view of a reservation with its lines. */
-export async function reservationView(c, id) {
+export async function reservationView(c, id, viewer = null) {
   const rs = (await c.query('SELECT * FROM reservations WHERE id=$1', [id])).rows[0];
   if (!rs) throw notFound('Reservation');
   const { rows: bookings } = await c.query(
@@ -317,7 +318,11 @@ export async function reservationView(c, id) {
     t.subtotal_cents += b.base_cents; t.discount_cents += b.discount_cents; t.total_cents += b.price_cents; t.tax_cents += b.tax_cents; t.payable_cents += b.payable_cents;
     totals.set(b.currency, t);
   }
-  return { ...rs, billing_enc: undefined, bookings, sessions, invoices: invoices.map((i) => ({ ...i, payment_mode: effectivePaymentMode(i) })), totals: [...totals.values()], awaiting_payment: !!rs.payment_deadline && rs.status === 'confirmed' };
+  // Locker PINs go only to the booker and the venue team looking at this booking (and a read by staff is audit-logged).
+  const staff = viewer && viewer.id !== rs.user_id && (await Promise.all([...new Set(bookings.map((b) => b.venue_id))].map((vid) => canManage(viewer, vid, c)))).some(Boolean);
+  const lockers = await lockersForReservation(c, id, { reveal: !!viewer && (viewer.id === rs.user_id || staff) });
+  if (staff && lockers.length) await c.query("INSERT INTO audit_log(actor_id, action, entity, entity_id) VALUES ($1,'read_locker_pin','reservations',$2)", [viewer.id, id]);
+  return { ...rs, billing_enc: undefined, lockers, bookings, sessions, invoices: invoices.map((i) => ({ ...i, payment_mode: effectivePaymentMode(i) })), totals: [...totals.values()], awaiting_payment: !!rs.payment_deadline && rs.status === 'confirmed' };
 }
 
 // ------------------------------------------------------------------ cancellation
@@ -357,7 +362,7 @@ export async function cancelBookings(c, bookingIds, { actor, byVenue, reason, wa
     }
     out.push({ id, refund_cents: refund, fee_cents: b.payable_cents - refund });
   }
-  for (const rid of touched) await repriceReservation(c, rid);
+  for (const rid of touched) { await repriceReservation(c, rid); await refitLockers(c, rid); }
   return out;
 }
 
