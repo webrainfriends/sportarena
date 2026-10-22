@@ -5,7 +5,7 @@ import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { useNav } from '../nav';
 import { useLayout } from '../layout';
-import { Bubble, Chip, Empty, ErrorBox, Loading, Row, Screen, Seg, Section, T } from '../ui';
+import { Btn, Bubble, Chip, Empty, ErrorBox, Loading, Row, Screen, Seg, Section, T } from '../ui';
 import { HScroll } from '../pickers';
 import { HomeSchedule } from './athlete-home';
 import { Book } from './book';
@@ -23,7 +23,7 @@ const EVENT_VIEWS = [['active', 'Active'], ['draft', 'Drafts'], ['completed', 'F
 const Agenda = () => <Screen><HomeSchedule /></Screen>;
 
 /** What I run: events I organise (the event console is where they are run) and the teams I belong to. */
-function Manage() {
+function Manage({ onCreate }) {
   const { push } = useNav();
   const { user } = useSession();
   const [view, setView] = useState('active');
@@ -33,11 +33,12 @@ function Manage() {
     <Screen onRefresh={() => { events.reload(); teams.reload(); }}>
       <TeamInvites onChanged={teams.reload} />
       <Section title="Events I run" color={c.pink}>
+        <Btn title="＋ Create event" color={c.pink} onPress={onCreate} />
         <Seg options={EVENT_VIEWS.map(([value, label]) => ({ value, label }))} value={view} onChange={setView} color={c.pink} />
         {events.error ? <ErrorBox error={events.error} onRetry={events.reload} /> : events.loading && !events.data ? <Loading /> : events.data?.items?.length ? events.data.items.map((e) => (
           <Row key={e.id} onPress={() => push('EventCommand', { id: e.id })} left={<Bubble emoji={e.banner_emoji} color={c.pinkSoft} />} title={e.name}
             sub={`${e.sport_emoji} ${e.sport} · ${e.status}${e.starts_on ? ` · ${day(e.starts_on)}` : ''} · ${e.entrants} in`} right={<T color={c.pink} weight="700">›</T>} />
-        )) : <Empty emoji="🏆" title={view === 'active' ? 'No events running' : view === 'draft' ? 'No drafts' : 'Nothing finished yet'} sub={view === 'active' ? 'Use Create event above and run it all from one console: teams, people, boards, games, venue, business and results.' : undefined} />}
+        )) : <Empty emoji="🏆" title={view === 'active' ? 'No events running' : view === 'draft' ? 'No drafts' : 'Nothing finished yet'} sub={view === 'active' ? 'Tap Create event above and run it all from one console: teams, people, boards, games, venue, business and results.' : undefined} />}
       </Section>
       <Section title="My teams" color={c.violet}>
         {teams.error ? <ErrorBox error={teams.error} onRetry={teams.reload} /> : teams.loading && !teams.data ? <Loading /> : teams.data?.length ? teams.data.map((t) => (
@@ -74,7 +75,7 @@ export function Schedule({ section }) {
         <HScroll>{actions.map(([emoji, label, go]) => <Chip key={label} label={`${emoji} ${label}`} onPress={go} />)}</HScroll>
         <Seg options={SECTIONS.map(([value, label]) => ({ value, label }))} value={sec} onChange={pick} color={c.pink} />
       </View>
-      <View style={{ flex: 1 }}><Body key={`${sec}${tick}`} /></View>
+      <View style={{ flex: 1 }}><Body key={`${sec}${tick}`} onCreate={() => setForm('event')} /></View>
       <StartTeamSheet visible={form === 'team'} onClose={() => setForm(null)} onCreated={created} />
       <CreateEvent visible={form === 'event'} onClose={() => setForm(null)} onCreated={(e) => { created(); push('EventCommand', { id: e.id }); }} />
     </View>

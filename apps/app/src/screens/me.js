@@ -52,7 +52,6 @@ export function Me() {
       </Section>
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
         <Btn small title="View my public page" color={c.violet} onPress={() => push('Person', { id: user.id })} />
-        {user.roles.includes('athlete') ? <Btn small title="Player passport & QR" color={c.pink} onPress={() => push('Passport')} /> : null}
         <Btn small title="Add a sport role" color={c.cyan} ink={c.ink} onPress={() => setSp(true)} />
         <Btn small title="Document designer" color={c.paper} ink={c.ink} onPress={() => push('BrandedDocuments')} />
       </View>

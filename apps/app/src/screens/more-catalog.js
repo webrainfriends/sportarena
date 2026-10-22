@@ -26,6 +26,7 @@ export const WORKSPACES = [
   ['doctor', 'DoctorHome', 'Patients, records & results'],
   ['lawyer', 'Legal', 'Matters & clients'],
   ['insurer', 'InsurerDesk', 'Products, quotes & claims'],
+  ['athlete', 'Passport', 'Player passport & QR'],
   ['admin', 'PartnerConsole', 'Partners & platform team'],
 ];
 
