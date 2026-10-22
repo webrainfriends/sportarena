@@ -9,7 +9,8 @@ import { Avatar, T } from '../ui';
 import { Glass } from '../glass';
 import { c, dark, day, locale } from '../theme';
 import { TileArt, tileColors } from './more-art';
-import { GROUP_COLOR, orderedModules } from './more-catalog';
+import { roleLabel } from '../roles';
+import { GROUP_COLOR, orderedModules, workspacesFor } from './more-catalog';
 
 const STEP_ARC = 26;    // degrees between neighbouring modules on the arc
 const ARC_VIS = 82;     // modules beyond this angle from straight up are hidden
@@ -24,7 +25,7 @@ const wrap = (rel, n) => ((rel + n / 2) % n + n) % n - n / 2; // signed distance
  */
 export function MoreWheel() {
   const { push, goTab, closeMenu } = useNav();
-  const { user } = useSession();
+  const { user, setActiveRole } = useSession();
   const [size, setSize] = useState({ w: 0, h: 0 });
   const dash = useLoad(() => api.get('/dashboard'), []);
   const note = useLoad(() => api.get('/notifications', { unread: true, limit: 1 }), []);
@@ -32,11 +33,19 @@ export function MoreWheel() {
   const next = d?.next_games?.[0];
   const mods = useMemo(() => orderedModules(user.roles), [user.roles]);
   const n = mods.length;
+  const spaces = useMemo(() => workspacesFor(user.roles), [user.roles]);
+  const [picker, setPicker] = useState(false); // the Workspace submenu: one row per role that has a workspace
+  const openSpace = useCallback(([role, route, , tab]) => { setActiveRole(role); if (tab) goTab(tab.tab, { section: tab.section }); else push(route); }, [push, goTab, setActiveRole]);
+  const open = useCallback((name) => {
+    if (name !== 'Workspace') { push(name); return; }
+    if (spaces.length === 1) openSpace(spaces[0]); else setPicker(true);
+  }, [push, spaces, openSpace]);
 
   const badges = { Insure: d?.policies_to_renew, Insurance: d?.policies_to_renew, Leaderboard: d?.pending_results };
   const lives = {
     Leaderboard: d?.pending_results > 0 ? `${d.pending_results} result${d.pending_results > 1 ? 's' : ''} waiting for approval` : null,
     Insure: d?.policies_to_renew > 0 ? `${d.policies_to_renew} to renew soon` : null,
+    Workspace: spaces.length > 1 ? `${spaces.length} workspaces · ${spaces.map(([r]) => roleLabel(r)).join(', ')}` : spaces[0] ? spaces[0][2] : null,
     Health: d?.fit_to_play === 'restricted' ? 'Cleared with restrictions' : d?.fit_to_play === 'not_cleared' ? 'Not cleared to play' : d?.fit_to_play === 'cleared' ? 'Fit to play' : null,
   };
 
@@ -127,7 +136,7 @@ export function MoreWheel() {
         const badge = name === 'Notifications' ? unread : badges[name];
         const isCentre = i === centred && Math.abs(rel) < 0.5;
         return (
-          <Pressable key={name} onPress={() => (isCentre ? push(name) : spinTo(Math.round(pos) + Math.round(rel)))} accessibilityRole="button"
+          <Pressable key={name} onPress={() => (isCentre ? open(name) : spinTo(Math.round(pos) + Math.round(rel)))} accessibilityRole="button"
             accessibilityLabel={`${title}${badge > 0 ? `, ${badge} need attention` : ''}${isCentre ? ', selected. Tap to open' : ''}`}
             style={{ position: 'absolute', left: x - D / 2, top: y - D / 2, width: D, height: D, opacity: 1 - 0.45 * (Math.abs(a) / ARC_VIS), zIndex: Math.round(100 - Math.abs(a)) }}>
             <Glass radius={D / 2} preset="clear" gloss iris style={{ width: D, height: D, ...(web ? { boxShadow: `0 ${4 + near * 8}px ${14 + near * 22}px ${from}${isCentre ? '99' : '44'}, inset 1.5px 1.5px 0 rgba(255,255,255,0.8), inset -1px -1px 0 rgba(255,255,255,0.3), inset 0 0 ${10 + near * 8}px rgba(255,255,255,0.2)` } : { shadowColor: from, shadowOpacity: 0.45, shadowRadius: 12 + near * 12, shadowOffset: { width: 0, height: 6 } }) }}>
@@ -152,6 +161,27 @@ export function MoreWheel() {
             <T size={12} color={c.mute} numberOfLines={1} style={{ marginTop: 2 }}>{lives[mods[centred][0]] ?? mods[centred][2]}</T>
           </Glass>
         </View>
+      ) : null}
+
+      {picker ? (
+        <>
+          <Pressable onPress={() => setPicker(false)} accessible={false} style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, zIndex: 200 }} />
+          <View accessibilityViewIsModal style={{ position: 'absolute', left: 16, right: 16, bottom: BAR_C + 28, alignItems: 'center', zIndex: 201 }}>
+            <Glass radius={26} preset="soft" gloss style={{ padding: 14, width: '100%', maxWidth: 420, gap: 8 }}>
+              <T weight="800" size={16} color={c.ink}>Open a workspace</T>
+              <T size={12} color={c.mute}>You hold more than one role. Pick the workspace you want.</T>
+              {spaces.map((sp) => (
+                <Pressable key={sp[0]} onPress={() => openSpace(sp)} accessibilityRole="button" accessibilityLabel={`${roleLabel(sp[0])} workspace. ${sp[2]}`}>
+                  <Glass radius={18} preset="clear" gloss style={{ paddingVertical: 10, paddingHorizontal: 14 }}>
+                    <T weight="800" size={15} color={c.ink}>{roleLabel(sp[0])} workspace</T>
+                    <T size={12} color={c.mute}>{sp[2]}</T>
+                  </Glass>
+                </Pressable>
+              ))}
+              <Pressable onPress={() => setPicker(false)} accessibilityRole="button" style={{ alignSelf: 'center', paddingVertical: 4 }}><T size={12} weight="700" color={c.mute}>Back to the swivel</T></Pressable>
+            </Glass>
+          </View>
+        </>
       ) : null}
 
       <Pressable onPress={closeMenu} hitSlop={10} accessibilityRole="button" accessibilityLabel="Close" style={{ position: 'absolute', top: 14, right: 16 }}>

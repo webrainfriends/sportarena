@@ -52,15 +52,8 @@ export function Me() {
       </Section>
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
         <Btn small title="View my public page" color={c.violet} onPress={() => push('Person', { id: user.id })} />
-        {user.roles.includes('athlete') ? <Btn small title="Player passport & QR" color={c.pink} onPress={() => push('Passport')} /> : null}
         <Btn small title="Add a sport role" color={c.cyan} ink={c.ink} onPress={() => setSp(true)} />
         <Btn small title="Document designer" color={c.paper} ink={c.ink} onPress={() => push('BrandedDocuments')} />
-        {user.roles.includes('lawyer') ? <Btn small title="Legal practice" color={c.violet} onPress={() => push('Legal')} /> : null}
-        {user.roles.includes('doctor') ? <Btn small title="Doctor workspace" color={c.mint} ink={c.ink} onPress={() => push('DoctorHome')} /> : null}
-        {user.roles.includes('coach') ? <Btn small title="Coach home" color={c.violet} onPress={() => push('CoachHome')} /> : null}
-        {user.roles.includes('admin') ? <Btn small title="Partner management" color={c.pink} onPress={() => push('PartnerConsole')} /> : null}
-        {user.roles.some((r) => ['venue_manager', 'organizer'].includes(r)) ? <Btn small title="Partner account" color={c.paper} ink={c.ink} onPress={() => push('MyPartner')} /> : null}
-        {user.roles.includes('insurer') ? <Btn small title="Insurer desk" color={c.violet} onPress={() => push('InsurerDesk')} /> : null}
       </View>
 
       <Section title="Private details" color={c.mint}>

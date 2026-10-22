@@ -11,7 +11,7 @@ const LIGHT = {
   // money: forest greens
   Wallet: ['#2F7A55', '#164A35'], Earnings: ['#2E8B57', '#14573A'], Shop: ['#3C8561', '#1C5440'], Billboard: ['#4A8A5E', '#235A3B'], Sponsors: ['#357A6B', '#184A40'], Supply: ['#3F7F58', '#1E4D36'],
   // community: sage
-  Openings: ['#5E8F78', '#2E5E4D'], EventInbox: ['#5A9087', '#2B5E58'], Orgs: ['#628A74', '#325545'], Support: ['#6A9480', '#375F4D'], Schedule: ['#3E8B84', '#1D5A55'], Notifications: ['#4B8068', '#244F3F'],
+  Openings: ['#5E8F78', '#2E5E4D'], EventInbox: ['#5A9087', '#2B5E58'], Orgs: ['#628A74', '#325545'], Support: ['#6A9480', '#375F4D'], Schedule: ['#3E8B84', '#1D5A55'], Workspace: ['#3A8F6E', '#1B5A44'], Notifications: ['#4B8068', '#244F3F'],
 };
 // Dark mode: deeper stops so a bright card never glares against the night background.
 const DARK = Object.fromEntries(Object.entries(LIGHT).map(([k, [a, b]]) => [k, [shade(a), shade(b)]]));
@@ -46,6 +46,7 @@ const ART = {
   Openings: <><Rect x="8" y="30" width="80" height="54" rx="12" {...W(0.95)} /><Path d="M34 30v-6a8 8 0 0 1 8-8h12a8 8 0 0 1 8 8v6" {...S(0.8, 5)} /><Path d="M8 54h80" {...S(0.4, 4)} /><Rect x="40" y="48" width="16" height="14" rx="4" fill={GOLD} /></>,
   EventInbox: <><Rect x="8" y="22" width="80" height="58" rx="12" {...W(0.95)} /><Path d="m12 30 36 28 36-28" {...S(0.55, 4.5)} /><Circle cx="80" cy="22" r="13" fill={GOLD} /><Path d="M80 15v9" {...S(0.95, 4)} stroke="#B45309" /><Circle cx="80" cy="29" r="2" fill="#B45309" /></>,
   Orgs: <><Rect x="14" y="14" width="42" height="72" rx="6" {...W(0.95)} /><Rect x="56" y="36" width="28" height="50" rx="6" {...W(0.6)} /><Path d="M24 28h8M38 28h8M24 42h8M38 42h8M24 56h8M38 56h8" {...S(0.45, 4)} /><Rect x="26" y="68" width="18" height="18" rx="4" fill={GOLD} /></>,
+  Workspace: <><Rect x="8" y="30" width="80" height="54" rx="12" {...W(0.95)} /><Path d="M34 30v-6a8 8 0 0 1 8-8h12a8 8 0 0 1 8 8v6" {...S(0.8, 5)} /><Path d="M8 56h80" {...S(0.4, 4)} /><Rect x="38" y="50" width="20" height="14" rx="4" fill={GOLD} /><Path d="M20 70h14M62 70h14" {...S(0.45, 4)} /></>,
   Schedule: <><Rect x="10" y="18" width="76" height="68" rx="12" {...W(0.95)} /><Rect x="10" y="18" width="76" height="22" rx="12" {...W(0.55)} /><Path d="M30 8v16M66 8v16" {...S(0.95, 6)} /><Circle cx="34" cy="58" r="5" {...W(0.5)} /><Circle cx="62" cy="58" r="5" {...W(0.5)} /><Circle cx="48" cy="72" r="6" fill={GOLD} /></>,
   Notifications: <><Path d="M20 66V46a28 28 0 0 1 56 0v20l8 8H12z" {...W(0.95)} /><Path d="M38 80a10 10 0 0 0 20 0z" {...W(0.7)} /><Circle cx="70" cy="22" r="11" fill={GOLD} /></>,
   Support: <><Circle cx="48" cy="48" r="38" {...W(0.95)} /><Circle cx="48" cy="48" r="15" fill="none" stroke={GOLD} strokeWidth="7" /><Path d="m20 20 18 18M76 20 58 38M20 76l18-18M76 76 58 58" {...S(0.5, 7)} /></>,
