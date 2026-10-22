@@ -1,15 +1,16 @@
 import { badgesFor, withBadges } from '../verification.js';
 import { z } from 'zod';
 import { cap, id, page, money } from '../registry.js';
-import { one, many } from '../db.js';
+import { one, many, pool } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
-import { audit, isAdmin, mustFind, mustOwn } from '../helpers.js';
+import { audit, isAdmin, mustFind } from '../helpers.js';
 import { decryptFields, encryptFields } from '../crypto.js';
 import { notify } from '../notify.js';
 import { tx } from '../db.js';
 import { PUBLIC_USER } from '../helpers.js';
 import { NOT_YOUTH_SQL } from '../youth.js';
 import { LINE, buildSchedule } from '../sponsor-schedule.js';
+import { sponsorRole, requireSponsor, entityRole, sponsorTeamSql, sponsorContactUser, snapshotIdentity, CAN } from '../sponsor-access.js';
 import { saveLines, generateObligations, cancelFutureObligations, logHistory } from '../sponsor-agreements.js';
 
 const CONTACT = ['contact_name', 'contact_email', 'contact_phone'];
@@ -24,33 +25,50 @@ async function targetOwner(type, targetId) {
 }
 
 cap({
-  name: 'create_sponsor', method: 'POST', path: '/sponsors', tag: 'Sponsors', auth: ['sponsor'], status: 201,
-  summary: 'Create a sponsor brand profile. Contact name/email/phone are encrypted.',
-  input: z.object({ name: z.string().min(2).max(80), industry: z.string().max(60).optional(), website: z.string().url().optional(), emoji: z.string().max(8).optional(), contact_name: z.string().max(80).optional(), contact_email: z.string().email().optional(), contact_phone: z.string().max(30).optional() }),
+  name: 'create_sponsor', method: 'POST', path: '/sponsors', tag: 'Sponsors', status: 201,
+  summary: 'Create a sponsor brand profile (the public display name). Contact name/email/phone are encrypted. Give `entity_id` to add the brand under a sponsor entity you own or administer; without it the brand has no confirmed identity yet — confirm it with set_sponsor_identity, the one place that creates and edits the sponsor legal identity.',
+  input: z.object({ name: z.string().min(2).max(80), industry: z.string().max(60).optional(), website: z.string().url().optional(), emoji: z.string().max(8).optional(), contact_name: z.string().max(80).optional(), contact_email: z.string().email().optional(), contact_phone: z.string().max(30).optional(),
+    entity_id: id.optional() }),
   async handler({ user }, i) {
+    if (!i.entity_id && !user.roles.includes('sponsor') && !isAdmin(user)) throw forbidden('Requires one of the roles: sponsor (or be invited to an existing sponsor entity)');
     const e = encryptFields(i, 'sponsors', CONTACT);
-    const r = await one("INSERT INTO sponsors(owner_id, name, industry, website, emoji, contact_name_enc, contact_email_enc, contact_phone_enc) VALUES ($1,$2,$3,$4,coalesce($5,'💎'),$6,$7,$8) RETURNING id, name, industry, website, emoji",
-      [user.id, i.name, i.industry, i.website, i.emoji, e.contact_name_enc ?? null, e.contact_email_enc ?? null, e.contact_phone_enc ?? null]);
-    return r;
+    return tx(async (c) => {
+      let entityId = null;
+      if (i.entity_id) {
+        const role = await entityRole(c, user, i.entity_id);
+        if (!role) throw notFound('Sponsor entity');
+        if (!CAN.identity.includes(role)) throw forbidden('Only an owner or admin of this entity can add brands to it');
+        entityId = i.entity_id;
+      }
+      return (await c.query("INSERT INTO sponsors(owner_id, name, industry, website, emoji, contact_name_enc, contact_email_enc, contact_phone_enc, entity_id) VALUES ($1,$2,$3,$4,coalesce($5,'💎'),$6,$7,$8,$9) RETURNING id, name, industry, website, emoji, entity_id",
+        [user.id, i.name, i.industry, i.website, i.emoji, e.contact_name_enc ?? null, e.contact_email_enc ?? null, e.contact_phone_enc ?? null, entityId])).rows[0];
+    });
   },
 });
 
 cap({
-  name: 'list_sponsors', method: 'GET', path: '/sponsors', tag: 'Sponsors', auth: 'public', summary: 'Sponsor directory (no contact details).',
-  input: z.object({ q: z.string().optional(), mine: z.coerce.boolean().optional().describe('only brands you own (needs sign-in)'), ...page }),
-  handler: async ({ user }, i) => withBadges('sponsor', await many("SELECT id, name, industry, website, emoji FROM sponsors WHERE ($1::text IS NULL OR name ILIKE '%'||$1||'%') AND (NOT $4 OR owner_id = $5) ORDER BY name LIMIT $2 OFFSET $3", [i.q ?? null, i.limit, i.offset, !!i.mine, user?.id ?? null])),
+  name: 'list_sponsors', method: 'GET', path: '/sponsors', tag: 'Sponsors', auth: 'public', summary: 'Sponsor directory: display name, industry, website, emoji, sponsor type and verified badge only. Legal name, registration, billing and representatives are never listed. With mine=true (signed in): the brands you may act for, with your role and whether the identity is complete.',
+  input: z.object({ q: z.string().optional(), mine: z.coerce.boolean().optional().describe('only brands you can act for (needs sign-in): owner, admin, finance, portfolio manager or viewer'), ...page }),
+  async handler({ user }, i) {
+    const cols = i.mine ? ", (sp.entity_id IS NOT NULL) AS identity_confirmed, CASE WHEN sp.entity_id IS NULL THEN 'owner' ELSE (SELECT r.role FROM sponsor_representatives r WHERE r.entity_id=sp.entity_id AND r.user_id=$5 AND r.status='active') END AS my_role" : '';
+    const rows = await many(`SELECT sp.id, sp.name, sp.industry, sp.website, sp.emoji, e.sponsor_type${cols} FROM sponsors sp LEFT JOIN sponsor_entities e ON e.id=sp.entity_id
+      WHERE ($1::text IS NULL OR sp.name ILIKE '%'||$1||'%') AND (NOT $4 OR ${sponsorTeamSql('$5')}) ORDER BY sp.name, sp.id LIMIT $2 OFFSET $3`, [i.q ?? null, i.limit, i.offset, !!i.mine, user?.id ?? null]);
+    return withBadges('sponsor', rows);
+  },
 });
 
 cap({
   name: 'get_sponsor', method: 'GET', path: '/sponsors/:id', tag: 'Sponsors', auth: 'public',
-  summary: 'Sponsor profile and active sponsorships. Contact details are returned only to the owner.', input: z.object({ id }),
+  summary: 'Sponsor profile and active sponsorships. Contact details are returned only to people who act for the sponsor (and admins); legal and billing identity is never returned here.', input: z.object({ id }),
   async handler({ user }, i) {
     const s = await mustFind('sponsors', i.id);
     const deals = await many("SELECT id, target_type, target_id, amount_cents, in_kind, starts_on, ends_on FROM sponsorships WHERE sponsor_id=$1 AND status='active' AND visibility='public'", [i.id]);
-    const out = { id: s.id, name: s.name, industry: s.industry, website: s.website, emoji: s.emoji, verified: (await badgesFor('sponsor', [s.id])).get(s.id) ?? [], active_sponsorships: deals };
-    if (user && (isAdmin(user) || user.id === s.owner_id)) {
+    const type = s.entity_id ? (await one('SELECT sponsor_type FROM sponsor_entities WHERE id=$1', [s.entity_id])).sponsor_type : null;
+    const out = { id: s.id, name: s.name, industry: s.industry, website: s.website, emoji: s.emoji, sponsor_type: type, verified: (await badgesFor('sponsor', [s.id])).get(s.id) ?? [], active_sponsorships: deals };
+    const role = user ? await sponsorRole(pool, user, s) : null;
+    if (role) {
       await audit(null, user.id, 'read_pii', 'sponsors', s.id);
-      Object.assign(out, decryptFields(s, 'sponsors', CONTACT));
+      Object.assign(out, decryptFields(s, 'sponsors', CONTACT), { my_role: role });
     }
     return out;
   },
@@ -103,8 +121,8 @@ cap({
 });
 
 cap({
-  name: 'propose_sponsorship', method: 'POST', path: '/sponsorships', tag: 'Sponsors', auth: ['sponsor'], status: 201,
-  summary: 'Offer sponsorship (money and/or in-kind support) to an event, team or athlete. The target owner must accept. An athlete can only be approached if they opted in (and, if they asked for it, only by verified sponsors); a sponsor cannot repeat an open offer, or re-offer within 30 days of a decline. Athlete offers state objectives, deliverables and a period.',
+  name: 'propose_sponsorship', method: 'POST', path: '/sponsorships', tag: 'Sponsors', status: 201,
+  summary: 'Offer sponsorship as a brand you manage (owner, admin, or a portfolio manager whose portfolio contains the brand; money and/or in-kind support) to an event, team or athlete. The target owner must accept. An athlete can only be approached if they opted in (and, if they asked for it, only by verified sponsors); a sponsor cannot repeat an open offer, or re-offer within 30 days of a decline. Athlete offers state objectives, deliverables and a period.',
   input: z.object({
     sponsor_id: id, target_type: z.enum(['event', 'team', 'athlete']), target_id: id, amount_cents: money.default(0), in_kind: z.string().max(200).optional(),
     starts_on: date.optional(), ends_on: date.optional(), objectives: z.string().max(1000).optional(), deliverables: z.string().max(1500).optional(), message: z.string().max(1000).optional(),
@@ -113,7 +131,7 @@ cap({
   }),
   async handler({ user }, i) {
     const s = await mustFind('sponsors', i.sponsor_id);
-    mustOwn(user, s.owner_id, 'sponsor');
+    await requireSponsor(pool, user, s, CAN.manage, 'make offers for this sponsor');
     if (i.starts_on && i.ends_on && i.ends_on < i.starts_on) throw badRequest('ends_on is before starts_on');
     const lines = i.lines ?? [];
     const plan = lines.length ? buildSchedule(lines, { starts_on: i.starts_on, ends_on: i.ends_on }) : null; // validates every line and the whole schedule up front
@@ -144,6 +162,7 @@ cap({
         Object.assign(row, (await c.query("UPDATE sponsorships SET agreement_ref='SPA-'||upper(substr(id::text,1,8)), timezone=$2, currency=$3 WHERE id=$1 RETURNING agreement_ref, timezone, currency, terms_version", [row.id, i.timezone, cash.length === 1 ? cash[0][0] : null])).rows[0]);
         await saveLines(c, row.id, 1, lines);
       }
+      await snapshotIdentity(c, row.id, 1, s.id, user.id);
       await logHistory(c, row.id, 1, user.id, 'proposed');
       await notify(c, owner, { kind: 'sponsorship_offer', title: 'You have a sponsorship offer', body: `${s.name} sent an offer. Open it to review and answer.`, data: { sponsorship_id: row.id } });
       return row;
@@ -156,11 +175,11 @@ cap({
   summary: 'Deals you are part of: ones you proposed, or offers aimed at things you own (events, teams, yourself), with who/what each is about, the terms, status and decision. `as` narrows to what you sent or what you received.',
   input: z.object({ status: z.enum(['proposed', 'active', 'declined', 'ended', 'withdrawn']).optional(), as: z.enum(['sponsor', 'target']).optional(), ...page }),
   handler: ({ user }, i) => many(
-    `SELECT ss.*, sp.name AS sponsor_name, sp.emoji AS sponsor_emoji, (sp.owner_id=$1) AS i_am_sponsor,
+    `SELECT ss.*, sp.name AS sponsor_name, sp.emoji AS sponsor_emoji, ${sponsorTeamSql('$1')} AS i_am_sponsor,
             CASE ss.target_type WHEN 'athlete' THEN (SELECT display_name FROM users WHERE id=ss.target_id) WHEN 'team' THEN (SELECT name FROM teams WHERE id=ss.target_id) ELSE (SELECT name FROM events WHERE id=ss.target_id) END AS target_name,
             EXISTS (SELECT 1 FROM verification_cases v WHERE v.type='sponsor' AND v.subject_id=sp.id AND v.status='approved' AND v.expires_at > now()) AS sponsor_verified
        FROM sponsorships ss JOIN sponsors sp ON sp.id=ss.sponsor_id
-      WHERE (($5::text IS DISTINCT FROM 'target' AND sp.owner_id=$1)
+      WHERE (($5::text IS DISTINCT FROM 'target' AND ${sponsorTeamSql('$1')})
          OR ($5::text IS DISTINCT FROM 'sponsor' AND ((ss.target_type='event' AND ss.target_id IN (SELECT id FROM events WHERE organizer_id=$1))
               OR (ss.target_type='team' AND ss.target_id IN (SELECT id FROM teams WHERE owner_id=$1)) OR (ss.target_type='athlete' AND ss.target_id=$1))))
         AND ($2::text IS NULL OR ss.status=$2) ORDER BY ss.created_at DESC LIMIT $3 OFFSET $4`, [user.id, i.status ?? null, i.limit, i.offset, i.as ?? null]),
@@ -175,7 +194,7 @@ cap({
       const d = (await c.query('SELECT * FROM sponsorships WHERE id=$1 FOR UPDATE', [i.id])).rows[0];
       if (!d) throw notFound('Sponsorship');
       const sp = await mustFind('sponsors', d.sponsor_id);
-      if (sp.owner_id !== user.id && !isAdmin(user)) throw forbidden();
+      await requireSponsor(c, user, sp, CAN.manage, 'withdraw this offer');
       if (d.status !== 'proposed') throw conflict('Only an offer that has not been answered can be withdrawn');
       const row = (await c.query("UPDATE sponsorships SET status='withdrawn', decided_at=now(), decided_by=$2 WHERE id=$1 RETURNING *", [d.id, user.id])).rows[0];
       await notify(c, await targetOwner(d.target_type, d.target_id), { kind: 'sponsorship_update', title: 'A sponsorship offer was withdrawn', body: `${sp.name} withdrew its offer.`, data: { sponsorship_id: d.id } });
@@ -194,7 +213,7 @@ cap({
       if (!d) throw notFound('Sponsorship');
       const sp = await mustFind('sponsors', d.sponsor_id);
       const owner = await targetOwner(d.target_type, d.target_id);
-      const isTarget = user.id === owner, isSponsor = user.id === sp.owner_id;
+      const isTarget = user.id === owner, srole = await sponsorRole(c, user, sp, { asAdmin: false }), isSponsor = !!srole && CAN.manage.includes(srole);
       if (!isAdmin(user)) {
         if (i.status === 'ended' ? !(isSponsor || isTarget) : !isTarget) throw forbidden();
       }
@@ -215,7 +234,7 @@ cap({
       if (i.status === 'ended') await cancelFutureObligations(c, d.id);
       await logHistory(c, d.id, d.terms_version, user.id, { active: 'accepted', declined: 'declined', ended: 'ended' }[i.status], i.reason);
       const word = { active: 'accepted', declined: 'declined', ended: 'ended' }[i.status];
-      await notify(c, isSponsor && !isTarget ? owner : sp.owner_id, { kind: 'sponsorship_update', title: `Sponsorship ${word}`, body: i.status === 'declined' && i.reason ? i.reason : `A sponsorship with ${sp.name} was ${word}.`, data: { sponsorship_id: d.id } });
+      await notify(c, isSponsor && !isTarget ? owner : await sponsorContactUser(c, sp), { kind: 'sponsorship_update', title: `Sponsorship ${word}`, body: i.status === 'declined' && i.reason ? i.reason : `A sponsorship with ${sp.name} was ${word}.`, data: { sponsorship_id: d.id } });
       return row;
     });
   },

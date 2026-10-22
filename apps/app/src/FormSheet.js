@@ -5,6 +5,7 @@ import { c } from './theme';
 import { Counter, DateField, DateRangeField, TimeField } from './pickers';
 import { SportPicker, SportsMulti } from './sportpicker';
 import { RegionPicker } from './region-picker';
+import { CountryPicker } from './country-picker';
 import { api } from './api';
 import { useLoad } from './hooks';
 import { useSession } from './session';
@@ -35,6 +36,7 @@ const opt = (o) => (typeof o === 'object' ? o : { value: o, label: String(o) });
  *   sport                                   search / quick-pick a sport → slug
  *   sports                                  several sports (chips + add) → [slugs]
  *   daterange {toKey}                       from–to on one calendar → key = start, toKey = end
+ *   country                                 search a country by name → two-letter ISO code
  *   section {label}                         a heading between groups
  * `initial` is read each time the sheet opens. onSubmit(values) -> Promise; throws to show an error.
  */
@@ -152,6 +154,7 @@ export function FormSheet({ visible, onClose, title, fields, initial = {}, submi
       case 'location': return <LocationPicker f={f} v={v} set={set} />;
       case 'daterange': return <DateRangeField label={f.label} from={v[f.key]} to={v[f.toKey]} onChange={({ from, to }) => { set(f.key, from); set(f.toKey, to); }} optional={f.optional} min={f.min} hint={f.hint} />;
       case 'sports': return <SportsMulti label={f.label} value={v[f.key] ?? []} onChange={(x) => set(f.key, x)} optional={f.optional} />;
+      case 'country': return <CountryPicker label={f.label} optional={f.optional} value={v[f.key]} onChange={(x) => set(f.key, x)} hint={f.hint} />;
       case 'region': return <RegionPicker label={f.label} optional={f.optional} value={v[f.key]} onChange={(x) => set(f.key, x)} hint={f.hint} />;
       case 'sport': return <SportPicker label={f.label} optional={f.optional} value={v[f.key]} onChange={(x) => set(f.key, x)} />;
       case 'stepper': return (

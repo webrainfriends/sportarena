@@ -9,6 +9,7 @@ import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { notify } from '../notify.js';
 import { isYouth } from '../youth.js';
 import { EVIDENCE_LABELS } from '../scoring/performance-rules.js';
+import { sponsorGate, CAN } from '../sponsor-access.js';
 import { logHistory, dealContext } from '../sponsor-agreements.js';
 
 const TAG = 'Sponsors';
@@ -52,6 +53,7 @@ cap({
     return tx(async (c) => {
       const ctx = await dealContext(c, i.id, user, { lock: true });
       if (ctx.role !== 'sponsor') throw forbidden('Only the sponsor proposes objectives');
+      sponsorGate(ctx, CAN.manage, 'propose objectives');
       athleteOnly(ctx);
       if (!['proposed', 'active'].includes(ctx.d.status)) throw conflict(`The agreement is ${ctx.d.status}`);
       const sport = (await c.query('SELECT id FROM sports WHERE slug=$1', [i.sport])).rows[0];
@@ -78,6 +80,7 @@ cap({
       const ctx = await dealContext(c, o0.sponsorship_id, user, { lock: true });
       const o = (await c.query('SELECT * FROM sponsorship_objectives WHERE id=$1 FOR UPDATE', [i.id])).rows[0];
       if (i.status === 'archived' ? ctx.role !== 'sponsor' : ctx.role !== 'recipient') throw forbidden(i.status === 'archived' ? 'Only the sponsor archives an objective' : 'Only the athlete agrees to an objective');
+      if (i.status === 'archived') sponsorGate(ctx, CAN.manage, 'archive objectives');
       if (i.status === 'archived' ? !['proposed', 'agreed'].includes(o.status) : o.status !== 'proposed') throw conflict(`This objective is already ${o.status}`);
       const row = (await c.query('UPDATE sponsorship_objectives SET status=$2, decided_by=$3, decided_at=now() WHERE id=$1 RETURNING *', [o.id, i.status, user.id])).rows[0];
       await logHistory(c, ctx.d.id, ctx.d.terms_version, user.id, `objective_${i.status}`);
@@ -143,6 +146,7 @@ cap({
     return tx(async (c) => {
       const ctx = await dealContext(c, i.id, user, { lock: true });
       if (ctx.role !== 'sponsor' && ctx.role !== 'recipient') throw forbidden('Only the two sides review an agreement');
+      sponsorGate(ctx, CAN.manage, 'write reviews');
       if (!running(ctx)) throw conflict('Reviews are kept once the agreement has been accepted');
       const row = (await c.query('INSERT INTO sponsorship_reviews(sponsorship_id, author_id, body, visibility, next_review_on) VALUES ($1,$2,$3,$4,$5) RETURNING *', [ctx.d.id, user.id, i.body, i.visibility, i.next_review_on ?? null])).rows[0];
       await logHistory(c, ctx.d.id, ctx.d.terms_version, user.id, 'review_added');
@@ -176,11 +180,11 @@ cap({
       const ctx = await dealContext(c, r0.sponsorship_id, user, { lock: true });
       if (ctx.role !== 'recipient') throw forbidden('Only the athlete responds to a sponsor review');
       const r = (await c.query('SELECT * FROM sponsorship_reviews WHERE id=$1 FOR UPDATE', [i.id])).rows[0];
-      if (r.visibility !== 'shared' || r.author_id !== ctx.sp.owner_id) throw forbidden('That review is not addressed to you');
+      if (r.visibility !== 'shared' || r.author_id === ctx.recipientId) throw forbidden('That review is not addressed to you');
       if (r.response) throw conflict('Already answered');
       const row = (await c.query('UPDATE sponsorship_reviews SET response=$2, responded_at=now() WHERE id=$1 RETURNING *', [r.id, i.response])).rows[0];
       await logHistory(c, ctx.d.id, ctx.d.terms_version, user.id, 'review_answered');
-      await ping(c, ctx.sp.owner_id, 'Your review was answered', ctx);
+      await ping(c, r.author_id, 'Your review was answered', ctx);
       return row;
     });
   },

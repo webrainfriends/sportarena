@@ -29,6 +29,7 @@ export function SponsorDeal({ id }) {
   return (
     <Screen>
       <H1>{d.sponsor.name}</H1>
+      {d.sponsor_identity ? <T size={12} color={c.mute}>Sponsor of record: {d.sponsor_identity.legal_name ?? d.sponsor_identity.display_name}{d.sponsor_identity.sponsor_type ? ` (${d.sponsor_identity.sponsor_type})` : ''}{d.sponsor_identity.signed_by ? ` · offered by ${d.sponsor_identity.signed_by}` : ''} — fixed when these terms were proposed.</T> : null}
       <T size={12} color={c.mute}>{d.agreement_ref ?? 'Legacy agreement'} · {d.status} · terms v{d.accepted_version ?? d.terms_version}{d.starts_on ? ` · ${when(String(d.starts_on).slice(0, 10))} – ${d.ends_on ? when(String(d.ends_on).slice(0, 10)) : 'open'}` : ''}</T>
       {!d.lines.length ? <Card><T>This agreement predates structured terms: {d.legacy_amount_cents ? `${d.legacy_amount_cents} (currency not recorded)` : 'no cash'}{d.legacy_in_kind ? ` · ${d.legacy_in_kind}` : ''}. No payment schedule exists for it.</T></Card> : null}
       <Section title="Terms" color={c.sun}>

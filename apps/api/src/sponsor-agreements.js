@@ -2,6 +2,7 @@
 import { buildSchedule } from './sponsor-schedule.js';
 import { forbidden, notFound } from './errors.js';
 import { isAdmin } from './helpers.js';
+import { sponsorRole, sponsorContactUser } from './sponsor-access.js';
 
 export const logHistory = (c, sponsorshipId, version, actor, action, reason) =>
   c.query('INSERT INTO sponsorship_history(sponsorship_id, version, actor_id, action, reason) VALUES ($1,$2,$3,$4,$5)', [sponsorshipId, version, actor, action, reason ?? null]);
@@ -64,13 +65,15 @@ export async function cancelFutureObligations(c, sponsorshipId) {
 export async function dealContext(c, sponsorshipId, user, { lock = false } = {}) {
   const d = (await c.query(`SELECT *, starts_on::text AS starts, ends_on::text AS ends FROM sponsorships WHERE id=$1${lock ? ' FOR UPDATE' : ''}`, [sponsorshipId])).rows[0];
   if (!d) throw notFound('Sponsorship');
-  const sp = (await c.query('SELECT id, name, owner_id FROM sponsors WHERE id=$1', [d.sponsor_id])).rows[0];
+  const sp = (await c.query('SELECT id, name, owner_id, entity_id FROM sponsors WHERE id=$1', [d.sponsor_id])).rows[0];
   const recipientId = d.target_type === 'event' ? (await c.query('SELECT organizer_id AS u FROM events WHERE id=$1', [d.target_id])).rows[0]?.u
     : d.target_type === 'team' ? (await c.query('SELECT owner_id AS u FROM teams WHERE id=$1', [d.target_id])).rows[0]?.u : d.target_id;
-  // sponsor wins if one person is on both sides; an admin may read everything
-  const role = user.id === sp.owner_id ? 'sponsor' : user.id === recipientId ? 'recipient' : isAdmin(user) ? 'admin' : null;
+  // sponsor wins if one person is on both sides; an admin may read everything. Sponsor side = an active representative (or legacy owner).
+  const sponsorSide = await sponsorRole(c, user, sp, { asAdmin: false });
+  const role = sponsorSide ? 'sponsor' : user.id === recipientId ? 'recipient' : isAdmin(user) ? 'admin' : null;
   if (!role) throw forbidden('You are not part of this sponsorship');
-  return { d, sp, recipientId, role };
+  // sp.owner_id is who gets notified: an active owner of the sponsor entity, never someone who has left
+  return { d, sp: { ...sp, owner_id: await sponsorContactUser(c, sp) }, recipientId, role, sponsorRole: sponsorSide };
 }
 
 /** Obligation + its deal, locking the obligation row so concurrent payments/deliveries serialise. */

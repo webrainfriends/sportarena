@@ -399,9 +399,17 @@ export function Sponsors() {
           )) : <Empty emoji="🏅" title="No athletes found" sub="Athletes only appear here after they opt in." />}
         </Section>
       ) : null}
-      <Section title="Brands" color={c.pink}>{dir.data?.map((s) => <Row key={s.id} left={<Bubble emoji={s.emoji} color={c.sun} />} title={s.name} sub={s.industry ?? s.website} />)}</Section>
-      <FormSheet visible={form === 'brand'} onClose={() => setForm(null)} title="Create your brand" fields={[{ key: 'name', label: 'Brand name' }, { key: 'industry', label: 'Industry', optional: true }, { key: 'contact_email', label: 'Contact email', optional: true, hint: 'Encrypted — never shown publicly.' }]}
-        onSubmit={async (v) => { await api.post('/sponsors', v); dir.reload(); mine.reload(); return 'Brand created'; }} />
+      {user ? (
+        <Section title="My brands" color={c.violet}>
+          {mine.loading && !mine.data ? <Loading /> : mine.error ? <ErrorBox error={mine.error} onRetry={mine.reload} /> : mine.data?.length ? mine.data.map((s) => (
+            <Row key={s.id} left={<Bubble emoji={s.emoji} color={c.sun} />} title={`${s.name}${s.verified?.length ? ' ✓' : ''}`} sub={`${s.identity_confirmed ? `${({ company: 'Company', organization: 'Organization', individual: 'Individual' })[s.sponsor_type] ?? 'Sponsor'} · ` : '⚠ Identity not confirmed · '}your role: ${String(s.my_role).replace('_', ' ')}`}
+              right={<Btn small title={s.identity_confirmed ? 'Identity' : 'Complete'} color={c.violet} onPress={() => push('SponsorIdentity', { id: s.id })} />} />
+          )) : <Empty emoji="💎" title="No brands yet" sub={has('sponsor') ? 'Create your first brand, or ask an owner to invite you to theirs.' : 'Ask a sponsor owner to invite you to their team.'} />}
+        </Section>
+      ) : null}
+      <Section title="Brands" color={c.pink}>{dir.loading && !dir.data ? <Loading /> : dir.error ? <ErrorBox error={dir.error} onRetry={dir.reload} /> : dir.data?.length ? dir.data.map((s) => <Row key={s.id} left={<Bubble emoji={s.emoji} color={c.sun} />} title={`${s.name}${s.verified?.length ? ' ✓' : ''}`} sub={[s.sponsor_type, s.industry ?? s.website].filter(Boolean).join(' · ')} />) : <Empty emoji="💎" title="No brands listed yet" />}</Section>
+      <FormSheet visible={form === 'brand'} onClose={() => setForm(null)} title="Create your brand" fields={[{ key: 'name', label: 'Brand name (public)', hint: 'Next you will confirm who is behind the brand: individual, company or organization.' }, { key: 'industry', label: 'Industry', optional: true }, { key: 'contact_email', label: 'Contact email', optional: true, hint: 'Encrypted — never shown publicly.' }]}
+        onSubmit={async (v) => { const b = await api.post('/sponsors', v); dir.reload(); mine.reload(); push('SponsorIdentity', { id: b.id }); return 'Brand created — confirm its identity'; }} />
       <FormSheet visible={form === 'pitch'} onClose={() => setForm(null)} title="Your sponsor pitch" initial={{ pitch: pr?.pitch ?? '', looking_for: pr?.looking_for ?? [], verified_sponsors_only: !!pr?.verified_sponsors_only }}
         fields={[{ key: 'pitch', label: 'What should sponsors know about you?', type: 'multiline', optional: true, hint: 'Shown to sponsors. Do not include contact details.' }, { key: 'looking_for', label: 'What are you looking for?', type: 'multi', optional: true, options: ['cash', 'equipment', 'travel', 'coaching', 'apparel', 'nutrition', 'media'] }, { key: 'verified_sponsors_only', label: 'Only verified sponsors may send offers', type: 'switch' }]}
         onSubmit={async (v) => { await api.post('/me/sponsorship-profile', { open_to_sponsors: !!pr?.open_to_sponsors, pitch: v.pitch ?? null, looking_for: v.looking_for ?? [], verified_sponsors_only: v.verified_sponsors_only }); profile.reload(); return 'Saved'; }} />

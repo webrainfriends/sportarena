@@ -3,7 +3,8 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { cap, id, page } from '../registry.js';
-import { one, many, tx } from '../db.js';
+import { one, many, tx, pool } from '../db.js';
+import { sponsorRole, CAN } from '../sponsor-access.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { decrypt, encrypt } from '../crypto.js';
 import { audit, isAdmin } from '../helpers.js';
@@ -71,10 +72,14 @@ async function resolveSubject(user, type, subjectId) {
   }
   if (!subjectId) throw badRequest(`subject_id is required to verify a ${type}`);
   const row = rule.subject === 'sponsor'
-    ? await one('SELECT id, name, owner_id AS owner FROM sponsors WHERE id=$1', [subjectId])
+    ? await one('SELECT id, name, owner_id, owner_id AS owner, entity_id FROM sponsors WHERE id=$1', [subjectId])
     : await one('SELECT id, name, organizer_id AS owner FROM events WHERE id=$1', [subjectId]);
   if (!row) throw notFound(rule.subject === 'sponsor' ? 'Sponsor' : 'Event');
-  if (row.owner !== user.id) throw forbidden(`Only the ${rule.subject === 'sponsor' ? 'sponsor owner' : 'event organiser'} can request this verification`);
+  if (rule.subject === 'sponsor') {
+    const role = await sponsorRole(pool, user, row, { asAdmin: false });
+    if (!role) throw forbidden('Only the sponsor owner or an administrator of its entity can request this verification');
+    if (!CAN.identity.includes(role)) throw forbidden('Only an owner or admin of this sponsor can request verification');
+  } else if (row.owner !== user.id) throw forbidden('Only the event organiser can request this verification');
   return row;
 }
 
@@ -189,7 +194,10 @@ cap({
       many('SELECT id, kind, label, file_name, content_type, size_bytes, created_at, (reference_enc IS NOT NULL) AS has_reference FROM verification_evidence WHERE case_id=$1 ORDER BY created_at', [i.id]),
       many('SELECT e.action, e.from_status, e.to_status, e.reason, e.created_at, u.display_name AS actor FROM verification_events e JOIN users u ON u.id=e.actor_id WHERE e.case_id=$1 ORDER BY e.created_at, e.id', [i.id]),
     ]);
-    return { ...row, label: RULES[row.type].label, checklist_template: RULES[row.type].checklist, evidence, history };
+    // the reviewer checks "registered name matches": show the declared legal identity (never the registration number itself)
+    const identity = isAdmin(user) && row.subject_type === 'sponsor'
+      ? await one('SELECT sp.name AS display_name, e.legal_name, e.sponsor_type, e.registration_country FROM sponsors sp LEFT JOIN sponsor_entities e ON e.id=sp.entity_id WHERE sp.id=$1', [row.subject_id]) : undefined;
+    return { ...row, sponsor_identity: identity, label: RULES[row.type].label, checklist_template: RULES[row.type].checklist, evidence, history };
   },
 });
 
