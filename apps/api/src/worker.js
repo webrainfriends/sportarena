@@ -6,7 +6,8 @@ import { processRefunds } from './booking/refunds.js';
 import { checkSlotAlerts } from './booking/alerts.js';
 import { processWaitlist } from './booking/waitlist.js';
 import { expireLoyalty } from './booking/loyalty.js';
-import { expireUserPlans } from './booking/plans.js';
+import { expireUserPlans, raiseSubscriptionRenewals } from './booking/plans.js';
+import { venueOpsReminders } from './booking/venue-ops.js';
 import { expireStaleRequests } from './lifecycle.js';
 import { expireQuotes, sendRenewalReminders } from './insurance-cycle.js';
 
@@ -16,6 +17,8 @@ export const STEPS = [
   ['waitlist', 'waitlist', processWaitlist, null],
   ['loyalty', 'points_expired', expireLoyalty, 0],
   ['plans', 'plans_expired', expireUserPlans, 0],
+  ['subscriptions', 'subscriptions_renewed', raiseSubscriptionRenewals, 0],
+  ['venue_ops', 'venue_ops_reminders', venueOpsReminders, 0],
   ['requests', 'requests_expired', expireStaleRequests, 0],
   ['alerts', 'alerts_fulfilled', checkSlotAlerts, 0],
   ['quotes', 'quotes_expired', expireQuotes, 0],

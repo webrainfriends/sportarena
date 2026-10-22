@@ -39,7 +39,7 @@ export async function pickDocument() {
   return { blob: await (await fetch(r.assets[0].uri)).blob(), name: r.assets[0].fileName };
 }
 
-const KIND_LABEL = { policy: 'Policy', policy_schedule: 'Policy schedule', certificate: 'Certificate', receipt: 'Receipt', quote: 'Quote', claim_evidence: 'Claim evidence', other: 'Other' };
+const KIND_LABEL = { policy: 'Policy', policy_schedule: 'Policy schedule', certificate: 'Certificate', receipt: 'Receipt', quote: 'Quote', contract: 'Contract', claim_evidence: 'Claim evidence', other: 'Other' };
 
 /**
  * The locker for one policy, quote or claim (`parent` is { policy_id } | { quote_id } | { claim_id }), or the documents folder of a
@@ -135,7 +135,7 @@ export function SubjectPanel({ type, id, name, canEdit = true }) {
         <T size={13} color={c.mute}>Approved or paid policies, certificates and receipts. Everyone involved can open them{canEdit ? '; you add and hide them' : ''}.</T>
         <Btn title="Open documents" onPress={() => setOpen(true)} style={{ alignSelf: 'flex-start' }} />
       </Section>
-      <DocumentsSheet subject={open ? { subject_type: type, subject_id: id } : null} canEdit={canEdit} title={`${name}: documents`} kinds={['policy', 'certificate', 'receipt', 'quote', 'other']} onClose={() => setOpen(false)} />
+      <DocumentsSheet subject={open ? { subject_type: type, subject_id: id } : null} canEdit={canEdit} title={`${name}: documents`} kinds={type === 'venue' ? ['policy', 'certificate', 'receipt', 'quote', 'contract', 'other'] : ['policy', 'certificate', 'receipt', 'quote', 'other']} onClose={() => setOpen(false)} />
       <QuoteRequestSheet target={quote} onClose={() => setQuote(null)} onDone={() => { setQuote(null); reqs.reload(); }} />
     </>
   );

@@ -25,3 +25,7 @@ Additive migration `013_memberships_passes.sql`: `venue_plans`, `user_plans`, `i
 * No self-service refund of a paid plan, and no auto-renewal; ask the venue (support adjustments can be done by admins).
 * The member discount is applied when the booking is priced, so a basket preview before booking shows list prices.
 * Plan money is collected by the platform like other online payments — **settlement to venues isn't built**.
+
+## Packages and subscriptions
+
+Same two plan kinds, two more options (no separate feature): a **package** is a pass limited to chosen courts (`resource_ids`) with the perks it includes listed (`includes`); a **subscription** is a membership with `auto_renew` — a week before it ends a renewal at the plan's current price is raised waiting for payment and the member is notified once (nobody is charged automatically). See [venue-reservations.md](venue-reservations.md#venue-operations-lockers-maintenance-vendors-contracts).

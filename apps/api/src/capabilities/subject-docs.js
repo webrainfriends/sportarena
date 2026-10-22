@@ -18,7 +18,7 @@ import { standing } from './insurance.js';
 import { relation } from './insurance-docs.js';
 
 const SUBJECTS = ['team', 'event', 'venue'];
-const KINDS = ['policy', 'certificate', 'receipt', 'quote', 'other'];
+const KINDS = ['policy', 'certificate', 'receipt', 'quote', 'other', 'contract'];
 const MAX_PER_SUBJECT = 200;
 const COLS = 'd.id, d.subject_type, d.subject_id, d.kind, d.title, d.policy_id, d.insurance_document_id, coalesce(d.content_type, idoc.content_type) AS content_type, coalesce(d.size_bytes, idoc.size_bytes) AS size_bytes, (d.insurance_document_id IS NOT NULL) AS from_insurance, d.uploaded_by, u.display_name AS uploaded_by_name, d.created_at';
 const FROM = 'FROM subject_documents d JOIN users u ON u.id=d.uploaded_by LEFT JOIN insurance_documents idoc ON idoc.id=d.insurance_document_id';

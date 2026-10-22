@@ -9,7 +9,7 @@ import { markInvoicePaid } from '../booking/invoices.js';
 import { lockPayableInvoice } from '../booking/credits.js';
 
 const TAG = 'Memberships & passes';
-const PUBLIC = 'id, venue_id, kind, name, description, price_cents, duration_days, discount_bp, sessions, session_value_cents, valid_days, active';
+const PUBLIC = 'id, venue_id, kind, name, description, price_cents, duration_days, discount_bp, sessions, session_value_cents, valid_days, active, resource_ids, includes, auto_renew';
 
 const planFields = {
   name: z.string().min(2).max(80), description: z.string().max(400).optional(),
@@ -19,6 +19,9 @@ const planFields = {
   sessions: z.number().int().min(1).max(1000).optional().describe('pass: number of sessions'),
   session_value_cents: z.number().int().min(1).optional().describe('pass: the most one session pays toward a booking (default: price ÷ sessions)'),
   valid_days: z.number().int().min(1).max(3650).optional().describe('pass: usable for this many days after purchase'),
+  resource_ids: z.array(id).max(100).default([]).describe('pass (a package): only usable on these areas of the venue; empty = any area'),
+  includes: z.array(z.string().min(1).max(40)).max(12).default([]).describe('perks listed on the offer, e.g. Locker, Towel, Coaching clinic'),
+  auto_renew: z.boolean().default(false).describe('membership (a subscription): a renewal is raised before it ends and the member is asked to pay it'),
 };
 const shape = (i) => {
   if (i.kind === 'membership') {
@@ -43,21 +46,26 @@ cap({
   async handler({ user }, i) {
     await mustManage(user, i.id);
     const s = shape(i);
-    return one(`INSERT INTO venue_plans(venue_id, kind, name, description, price_cents, duration_days, discount_bp, sessions, session_value_cents, valid_days) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING ${PUBLIC}`,
-      [i.id, i.kind, i.name, i.description ?? null, i.price_cents, s.duration_days, s.discount_bp, s.sessions, s.session_value_cents, s.valid_days]);
+    if (i.kind === 'membership' && i.resource_ids.length) throw badRequest('Only a pass or package can be limited to certain courts');
+    if (i.kind === 'pass' && i.auto_renew) throw badRequest('Only a membership can renew; sell a pass again instead');
+    if (i.resource_ids.length && (await one('SELECT count(*)::int AS n FROM resources WHERE venue_id=$1 AND id = ANY($2::uuid[])', [i.id, i.resource_ids])).n !== new Set(i.resource_ids).size)
+      throw badRequest('One of those areas belongs to another venue');
+    return one(`INSERT INTO venue_plans(venue_id, kind, name, description, price_cents, duration_days, discount_bp, sessions, session_value_cents, valid_days, resource_ids, includes, auto_renew) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING ${PUBLIC}`,
+      [i.id, i.kind, i.name, i.description ?? null, i.price_cents, s.duration_days, s.discount_bp, s.sessions, s.session_value_cents, s.valid_days, i.resource_ids, i.includes, i.auto_renew]);
   },
 });
 
 cap({
   name: 'update_venue_plan', method: 'PATCH', path: '/venue-plans/:id', tag: TAG,
   summary: 'Venue team: edit a plan or stop selling it (active=false). Changes apply to future purchases only; people who already bought keep the terms they paid for.',
-  input: z.object({ id, name: planFields.name.optional(), description: planFields.description, price_cents: planFields.price_cents.optional(), active: z.boolean().optional() }),
+  input: z.object({ id, name: planFields.name.optional(), description: planFields.description, price_cents: planFields.price_cents.optional(), active: z.boolean().optional(), includes: planFields.includes.optional(), auto_renew: z.boolean().optional() }),
   async handler({ user }, i) {
     const p = await mustFind('venue_plans', i.id, 'id, venue_id, sessions');
     await mustManage(user, p.venue_id);
-    return one(`UPDATE venue_plans SET name=coalesce($2,name), description=coalesce($3,description), price_cents=coalesce($4,price_cents), active=coalesce($5,active),
+    return one(`UPDATE venue_plans SET name=coalesce($2,name), description=coalesce($3,description), price_cents=coalesce($4,price_cents), active=coalesce($5,active), includes=coalesce($6,includes),
+                  auto_renew = CASE WHEN kind='membership' THEN coalesce($7,auto_renew) ELSE false END,
                   session_value_cents = CASE WHEN $4::int IS NOT NULL AND kind='pass' THEN greatest(1, floor($4::int / sessions)) ELSE session_value_cents END WHERE id=$1 RETURNING ${PUBLIC}`,
-      [i.id, i.name ?? null, i.description ?? null, i.price_cents ?? null, i.active ?? null]);
+      [i.id, i.name ?? null, i.description ?? null, i.price_cents ?? null, i.active ?? null, i.includes ?? null, i.auto_renew ?? null]);
   },
 });
 
@@ -77,9 +85,9 @@ cap({
           throw conflict('You are already a member here — you can renew in the last 30 days');
       }
       return (await c.query(
-        `INSERT INTO user_plans(plan_id, venue_id, user_id, kind, name, price_cents, currency, discount_bp, sessions_total, sessions_left, session_value_cents, duration_days)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9,$10,$11) RETURNING id, kind, name, status, price_cents, currency`,
-        [p.id, p.venue_id, user.id, p.kind, p.name, p.price_cents, p.currency, p.discount_bp, p.sessions, p.session_value_cents, p.duration_days ?? p.valid_days])).rows[0];
+        `INSERT INTO user_plans(plan_id, venue_id, user_id, kind, name, price_cents, currency, discount_bp, sessions_total, sessions_left, session_value_cents, duration_days, resource_ids, includes, auto_renew)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9,$10,$11,$12,$13,$14) RETURNING id, kind, name, status, price_cents, currency`,
+        [p.id, p.venue_id, user.id, p.kind, p.name, p.price_cents, p.currency, p.discount_bp, p.sessions, p.session_value_cents, p.duration_days ?? p.valid_days, p.resource_ids, p.includes, p.auto_renew])).rows[0];
     });
   },
 });
@@ -89,7 +97,7 @@ cap({
   summary: 'Your memberships and passes with what is left (sessions, expiry). Waiting-for-payment ones can still be paid.',
   input: z.object({ venue_id: id.optional(), ...page }),
   handler: ({ user }, i) => many(
-    `SELECT up.id, up.venue_id, v.name AS venue_name, v.emoji, up.kind, up.name, up.status, up.price_cents, up.currency, up.discount_bp, up.sessions_total, up.sessions_left, up.session_value_cents, up.starts_at, up.expires_at, up.created_at
+    `SELECT up.id, up.venue_id, v.name AS venue_name, v.emoji, up.kind, up.name, up.status, up.price_cents, up.currency, up.discount_bp, up.sessions_total, up.sessions_left, up.session_value_cents, up.starts_at, up.expires_at, up.created_at, up.resource_ids, up.includes, up.auto_renew
        FROM user_plans up JOIN venues v ON v.id=up.venue_id WHERE up.user_id=$1 AND ($2::uuid IS NULL OR up.venue_id=$2) AND up.status <> 'cancelled'
       ORDER BY (up.status = 'active') DESC, (up.status = 'awaiting_payment') DESC, up.created_at DESC LIMIT $3 OFFSET $4`, [user.id, i.venue_id ?? null, i.limit, i.offset]),
 });
@@ -113,9 +121,11 @@ cap({
     return tx(async (c) => {
       const { inv, due } = await lockPayableInvoice(c, user, i.id);
       const pass = (await c.query(
-        `SELECT * FROM user_plans WHERE user_id=$1 AND venue_id=$2 AND kind='pass' AND status='active' AND sessions_left > 0 AND expires_at > now() AND ($3::uuid IS NULL OR id=$3) ORDER BY expires_at, created_at LIMIT 1 FOR UPDATE`,
-        [user.id, inv.venue_id, i.user_plan_id ?? null])).rows[0];
-      if (!pass) throw conflict(i.user_plan_id ? "That pass can't be used here" : 'You have no pass with sessions left at this venue');
+        `SELECT * FROM user_plans WHERE user_id=$1 AND venue_id=$2 AND kind='pass' AND status='active' AND sessions_left > 0 AND expires_at > now() AND ($3::uuid IS NULL OR id=$3)
+            AND (cardinality(resource_ids) = 0 OR NOT EXISTS (SELECT 1 FROM bookings b JOIN resources r ON r.id=b.resource_id WHERE b.reservation_id=$4 AND r.venue_id=$2 AND b.status='confirmed' AND NOT (b.resource_id = ANY(user_plans.resource_ids))))
+          ORDER BY expires_at, created_at LIMIT 1 FOR UPDATE`,
+        [user.id, inv.venue_id, i.user_plan_id ?? null, inv.reservation_id])).rows[0];
+      if (!pass) throw conflict(i.user_plan_id ? "That pass can't be used here (it may be limited to other courts)" : 'You have no pass with sessions left that works on these courts');
       const n = Math.min(pass.sessions_left, Math.ceil(due / pass.session_value_cents));
       const value = Math.min(due, n * pass.session_value_cents);
       await c.query("UPDATE user_plans SET sessions_left = sessions_left - $2, status = CASE WHEN sessions_left - $2 = 0 THEN 'used_up' ELSE status END WHERE id=$1", [pass.id, n]);

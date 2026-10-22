@@ -231,6 +231,7 @@ export function Venue({ id, date }) {
         <View style={{ flexDirection: 'row', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
           {x.map_links ? <Btn small title="📍 Maps" color={c.paper} onPress={() => open(x.map_links.google)} /> : null}
           {x.map_links ? <Btn small title="Directions" color={c.paper} onPress={() => open(x.map_links.directions)} /> : null}
+          {x.map_links?.shared ? <Btn small title="Shared map link" color={c.paper} onPress={() => open(x.map_links.shared)} /> : null}
           {x.phone ? <Btn small title="📞 Call" color={c.paper} onPress={() => open(`tel:${x.phone.replace(/\s/g, '')}`)} /> : null}
           {x.website ? <Btn small title="Website" color={c.paper} onPress={() => open(x.website)} /> : null}
           <Btn small title={(fav ?? x.is_favourite) ? '♥ Saved' : '♡ Save'} color={c.paper} onPress={async () => { const on = !(fav ?? x.is_favourite); try { if (on) await api.post(`/venues/${x.id}/favourite`); else await api.del(`/venues/${x.id}/favourite`); setFav(on); } catch {} }} />
@@ -252,6 +253,7 @@ export function Venue({ id, date }) {
               <Card>
                 {x.offers?.map((o) => <T key={o.id} size={14} color={c.lime} weight="700" style={{ marginBottom: 4 }}>🏷️ {offerLabel(o, x.currency)}</T>)}
                 {x.amenities?.length ? <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>{x.amenities.map((a) => <Tag key={a} label={a} />)}</View> : null}
+                {x.amenities?.filter((a) => x.amenity_details?.[a]?.note || x.amenity_details?.[a]?.fee_cents).map((a) => <T key={a} size={12} color={c.mute} style={{ marginTop: 4 }}><T size={12} weight="700">{a}</T> — {[x.amenity_details[a].note, x.amenity_details[a].fee_cents ? `${moneyIn(x.amenity_details[a].fee_cents, x.currency)} extra` : null].filter(Boolean).join(' · ')}</T>)}
               </Card>
             ) : null}
             <Card>

@@ -112,7 +112,7 @@ const icsTime = (iso) => new Date(iso).toISOString().replace(/[-:]|\.\d{3}/g, ''
 const icsText = (t) => String(t).replace(/([,;\\])/g, '\\$1').replace(/\n/g, '\\n');
 /** An .ics calendar file with one event per active slot (opens in Apple/Google/Outlook calendars). */
 export function icsFor(r) {
-  const ev = r.bookings.filter((b) => b.status === 'confirmed').map((b) => ['BEGIN:VEVENT', `UID:${b.id}@sportarena`, `DTSTAMP:${icsTime(new Date().toISOString())}`, `DTSTART:${icsTime(b.starts_at)}`, `DTEND:${icsTime(b.ends_at)}`, `SUMMARY:${icsText(`${b.resource_name} · ${b.venue_name}`)}`, `LOCATION:${icsText(b.venue_name)}`, `DESCRIPTION:${icsText(`Gotmygame booking ${r.code}`)}`, 'END:VEVENT'].join('\r\n'));
+  const ev = r.bookings.filter((b) => b.status === 'confirmed').map((b) => ['BEGIN:VEVENT', `UID:${b.id}@sportarena`, `DTSTAMP:${icsTime(new Date().toISOString())}`, `DTSTART:${icsTime(b.starts_at)}`, `DTEND:${icsTime(b.ends_at)}`, `SUMMARY:${icsText(`${b.resource_name} · ${b.venue_name}`)}`, `LOCATION:${icsText(b.venue_name)}`, `DESCRIPTION:${icsText([`Gotmygame booking ${r.code}`, ...(r.lockers ?? []).filter((l) => l.venue_id === b.venue_id && l.pin).map((l) => `Locker ${l.label}${l.zone ? ` (${l.zone})` : ''} · PIN ${l.pin}`)].join('\n'))}`, 'END:VEVENT'].join('\r\n'));
   return ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Gotmygame//Booking//EN', ...ev, 'END:VCALENDAR'].join('\r\n');
 }
 function addToCalendar(r, toast) {
@@ -193,6 +193,15 @@ export function Reservation({ id }) {
           <View><T size={11} weight="700" color={c.mute} style={{ letterSpacing: 1.2 }}>BOOKING CODE</T><T size={30} weight="800" style={{ letterSpacing: 3 }}>{x.code}</T></View>
           <Tag label={x.awaiting_payment ? 'awaiting payment' : x.status} color={x.awaiting_payment ? c.orange : x.status === 'confirmed' ? c.mint : c.red} />
         </View>
+        {(x.lockers ?? []).map((l) => (
+          <View key={l.id} style={{ marginTop: 10, padding: 12, borderRadius: 12, backgroundColor: c.cyanSoft ?? c.violetSoft }}>
+            <T size={11} weight="700" color={c.mute} style={{ letterSpacing: 1.2 }}>YOUR LOCKER · {l.venue_name.toUpperCase()}</T>
+            <T size={22} weight="800">🔐 {l.label}{l.zone ? ` · ${l.zone}` : ''}</T>
+            {l.pin ? <T size={26} weight="800" style={{ letterSpacing: 6 }}>PIN {l.pin}</T> : null}
+            <T size={12} color={c.mute}>Valid {dateTimeIn(l.starts_at, active[0]?.timezone)} → {timeIn(l.ends_at, active[0]?.timezone)}. Don't share the PIN with anyone you don't trust.</T>
+            {l.pin ? <Btn small title="Send to a friend" color={c.paper} ink={c.violet} style={{ marginTop: 8, alignSelf: 'flex-start' }} onPress={async () => { try { const r = await api.post(`/locker-assignments/${l.id}/share`, {}); await Share.share({ message: r.message }); } catch (e) { toast(e.message); } }} /> : null}
+          </View>
+        ))}
         <T size={13} color={c.mute} style={{ marginTop: 6 }}>Show this code at the venue. {active[0] ? `Next: ${dateTimeIn(active[0].starts_at, active[0].timezone)}` : ''}</T>
         {active.length ? <View style={{ flexDirection: 'row', gap: 8, marginTop: 12, flexWrap: 'wrap' }}><Btn small title="📅 Add to calendar" color={c.violet} onPress={() => addToCalendar(x, toast)} /><Btn small title={`Open ${active[0].venue_name}`} color={c.paper} onPress={() => push('Venue', { id: active[0].venue_id })} /></View> : null}
       </Card>

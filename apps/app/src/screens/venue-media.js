@@ -99,19 +99,21 @@ export function MediaManager({ venue }) {
             <MediaView m={m} w={110} hgt={80} onPress={() => setCap(m)} />
             <View style={{ flex: 1, gap: 6 }}>
               <View style={{ flexDirection: 'row', gap: 6 }}><Tag label={m.kind.replace('_', ' ')} />{m.is_cover ? <Tag label="cover" color={c.mint} /> : null}</View>
-              <T size={13} color={c.mute}>{m.caption ?? 'No caption'}</T>
+              <T size={13} color={c.mute}>{m.caption ?? 'No caption'}{m.resource_id ? ` · ${venue.resources?.find((r) => r.id === m.resource_id)?.name ?? 'a court'}` : ''}</T>
               <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
                 <Btn small title="↑" color={c.paper} onPress={() => move(i, -1)} /><Btn small title="↓" color={c.paper} onPress={() => move(i, 1)} />
                 {m.kind === 'photo' && !m.is_cover ? <Btn small title="Make cover" color={c.paper} onPress={() => run(() => api.patch(`/media/${m.id}`, { is_cover: true }), 'Cover updated')} /> : null}
-                <Btn small title="Caption" color={c.paper} onPress={() => setCap(m)} />
+                <Btn small title="Details" color={c.paper} onPress={() => setCap(m)} />
                 <Btn small title="Remove" color={c.paper} ink={c.red} onPress={() => run(() => api.del(`/media/${m.id}`), 'Removed from the page')} />
               </View>
             </View>
           </View>
         </Card>
       )) : <Empty emoji="📸" title="No photos or videos yet" sub="Add a few — venues with photos get far more bookings." />}
-      <FormSheet visible={!!cap} onClose={() => setCap(null)} title="Caption" initial={{ caption: cap?.caption ?? '' }} fields={[{ key: 'caption', label: 'Caption' }]}
-        onSubmit={async (f) => { await api.patch(`/media/${cap.id}`, f); list.reload(); return 'Saved'; }} />
+      <FormSheet visible={!!cap} onClose={() => setCap(null)} title="Photo / video details" initial={{ caption: cap?.caption ?? '', resource_id: cap?.resource_id ?? '' }}
+        fields={[{ key: 'caption', label: 'Caption', optional: true },
+          { key: 'resource_id', label: 'Shows', type: 'chips', blank: true, options: [{ value: '', label: 'The venue in general' }, ...(venue.resources ?? []).map((r) => ({ value: r.id, label: `${r.sport_emoji ?? ''} ${r.name}`.trim() }))], hint: 'Tag a court so guests can see exactly what they are booking' }]}
+        onSubmit={async (f) => { await api.patch(`/media/${cap.id}`, { ...(f.caption ? { caption: f.caption } : {}), resource_id: f.resource_id || null }); list.reload(); return 'Saved'; }} />
       <FormSheet visible={link} onClose={() => setLink(false)} title="Add a video link" fields={[{ key: 'url', label: 'YouTube or Vimeo link' }, { key: 'caption', label: 'Caption', optional: true }]}
         onSubmit={async (f) => { await api.post(`/venues/${venue.id}/media/link`, f); list.reload(); return 'Video added'; }} />
     </View>

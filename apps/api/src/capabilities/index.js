@@ -23,6 +23,7 @@ import './venues.js';
 import './venue-admin.js';
 import './reservations.js';
 import './venue-media.js';
+import './venue-operations.js';
 import './push.js';
 import './favourites.js';
 import './favourite-sports.js';

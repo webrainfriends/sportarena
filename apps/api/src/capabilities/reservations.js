@@ -13,6 +13,7 @@ import {
 } from '../booking/engine.js';
 import { fromLocal, toLocal, addDays } from '../booking/time.js';
 import { mapLinks } from './venues.js';
+import { autoAssignLockers, refitLockers } from '../booking/lockers.js';
 import { canManageTeam } from './teams.js';
 import { config } from '../config.js';
 import { toMajor } from '../currency.js';
@@ -213,7 +214,8 @@ cap({
   async handler({ user }, i) {
     return tx(async (c) => {
       const made = await placeBasket(c, user, i, { collect: false });
-      const view = await reservationView(c, made.reservationId);
+      await autoAssignLockers(c, made.reservationId, made.venueIds);
+      const view = await reservationView(c, made.reservationId, user);
       const summary = view.bookings.map((b) => `${b.resource_name} (${b.venue_name}) ${b.starts_at.toISOString()}`).join('; ');
       const owed = view.totals.map((t) => `${t.currency} ${toMajor(t.payable_cents, t.currency)}`).join(' + ');
       await notify(c, user.id, { kind: 'reservation_confirmed', title: `Booked: ${view.code}`, body: `${view.bookings.length} slot(s): ${summary}. To pay: ${owed}.${made.payment_deadline ? ` Pay within ${config.holdMinutes} minutes or the slots are released.` : ''}`, data: { reservation_id: view.id, code: view.code } });
@@ -243,7 +245,7 @@ cap({
           AND ($3 = false OR EXISTS (SELECT 1 FROM bookings b WHERE b.reservation_id=rs.id AND b.status='confirmed' AND b.ends_at > now()))
         ORDER BY (SELECT min(starts_at) FROM bookings b WHERE b.reservation_id=rs.id AND b.status='confirmed' AND b.ends_at > now()) NULLS LAST, rs.created_at DESC LIMIT $4 OFFSET $5`,
       [user.id, i.status ?? null, i.upcoming, i.limit, i.offset]);
-    return Promise.all(ids.map((r) => reservationView(pool, r.id)));
+    return Promise.all(ids.map((r) => reservationView(pool, r.id, user)));
   },
 });
 
@@ -252,7 +254,7 @@ cap({
   async handler({ user }, i) {
     const rs = await mustFind('reservations', i.id);
     if (!(await mayView(user, rs))) throw forbidden();
-    return reservationView(pool, i.id);
+    return reservationView(pool, i.id, user);
   },
 });
 
@@ -268,7 +270,9 @@ cap({
       if (rs.status !== 'confirmed') throw conflict('That reservation is cancelled — make a new one');
       const made = await addLines(c, rs, { userId: user.id, items: i.items, team_id: i.team_id });
       await applyPaymentDeadline(c, rs.id, made.venueIds);
-      const view = await reservationView(c, i.id);
+      await refitLockers(c, rs.id);
+      await autoAssignLockers(c, rs.id, made.venueIds);
+      const view = await reservationView(c, i.id, user);
       for (const vid of made.venueIds) {
         const v = (await c.query('SELECT * FROM venues WHERE id=$1', [vid])).rows[0];
         await notifyVenueTeam(c, v, user.id, { kind: 'booking_modified', title: `Booking ${view.code} grew`, body: `${user.display_name} added slot(s).`, data: { reservation_id: view.id, venue_id: vid } });
@@ -315,7 +319,7 @@ cap({
       const base = b.source === 'admin' && b.base_cents === 0 ? 0 : priceWindow(ctx, res, start, end, qty).base_cents; // staff comps stay comps
       await c.query('UPDATE bookings SET resource_id=$2, starts_at=$3, ends_at=$4, quantity=$5, slots=$6, players=$7, base_cents=$8, price_cents=$8-discount_cents, reminded_at=NULL, updated_at=now() WHERE id=$1',
         [b.id, res.id, start, end, qty, slots, players ?? null, base]);
-      if (b.reservation_id) await repriceReservation(c, b.reservation_id);
+      if (b.reservation_id) { await repriceReservation(c, b.reservation_id); await refitLockers(c, b.reservation_id); }
       else await c.query('UPDATE bookings SET discount_cents=0, price_cents=base_cents WHERE id=$1', [b.id]);
       const what = `${res.name} at ${ctx.venue.name}, ${start.toISOString()}`;
       const data = { booking_id: b.id, reservation_id: b.reservation_id, venue_id: ctx.venue.id };
@@ -325,7 +329,7 @@ cap({
         await notifyVenueTeam(c, ctx.venue, user.id, { kind: 'booking_modified', title: 'A booking was changed', body: what, data });
       }
       const row = (await c.query('SELECT * FROM bookings WHERE id=$1', [b.id])).rows[0];
-      return { booking: row, price_change_cents: row.price_cents - b.price_cents, reservation: b.reservation_id ? await reservationView(c, b.reservation_id) : null };
+      return { booking: row, price_change_cents: row.price_cents - b.price_cents, reservation: b.reservation_id ? await reservationView(c, b.reservation_id, user) : null };
     });
   },
 });
@@ -345,7 +349,7 @@ cap({
       const ids = (await c.query("SELECT id FROM bookings WHERE reservation_id=$1 AND status='confirmed' ORDER BY starts_at", [i.id])).rows.map((r) => r.id);
       if (!ids.length) throw conflict('Nothing left to cancel');
       const done = await cancelBookings(c, ids, { actor: user, byVenue: false, reason: i.reason });
-      return { reservation: await reservationView(c, i.id), cancelled: done.length, refund_cents: done.reduce((s, d) => s + d.refund_cents, 0), fee_cents: done.reduce((s, d) => s + d.fee_cents, 0) };
+      return { reservation: await reservationView(c, i.id, user), cancelled: done.length, refund_cents: done.reduce((s, d) => s + d.refund_cents, 0), fee_cents: done.reduce((s, d) => s + d.fee_cents, 0) };
     });
   },
 });

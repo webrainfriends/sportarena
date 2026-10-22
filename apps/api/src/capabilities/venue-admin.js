@@ -306,6 +306,41 @@ const conflictRows = (c, venueId, resourceIds, starts, ends) => c.query(
     WHERE r.venue_id=$1 AND b.status='confirmed' AND (cardinality($4::uuid[]) = 0 OR b.resource_id = ANY($4::uuid[])) ORDER BY b.starts_at`,
   [venueId, starts, ends, resourceIds]).then((r) => r.rows);
 
+/** Block time for a venue (bulk, per area): also used by maintenance work that closes a court. Returns { batch_id, blocks, cancelled_bookings }. */
+export async function blockSlots(user, i) {
+  await mustManage(user, i.id);
+  const venue = await mustFind('venues', i.id);
+  const dates = dateRange(i.from_date, i.to_date);
+  if (dates.length > 366) throw badRequest('Block at most a year at a time');
+  const own = (await many('SELECT id FROM resources WHERE venue_id=$1', [i.id])).map((r) => r.id);
+  for (const r of i.resource_ids) if (!own.includes(r)) throw badRequest('One of those areas belongs to another venue');
+  const [s, e] = [hhmm(i.start_time), hhmm(i.end_time)];
+  const days = dates.filter((d) => !i.weekdays || i.weekdays.includes(toLocal(fromLocal(d, 720, venue.timezone), venue.timezone).weekday));
+  const targets = i.resource_ids.length ? i.resource_ids : [null];
+  if (days.length * targets.length > 3000) throw badRequest('That would create more than 3000 blocks — narrow the dates or areas');
+  const starts = days.map((d) => fromLocal(d, s, venue.timezone));
+  const ends = days.map((d) => fromLocal(d, e, venue.timezone));
+  return tx(async (c) => {
+    await lockResources(c, i.resource_ids.length ? i.resource_ids : own);
+    const hits = await conflictRows(c, i.id, i.resource_ids, starts, ends);
+    const summary = { blocks: days.length * targets.length, conflicts: hits.length };
+    if (i.dry_run) return { dry_run: true, would_create: summary.blocks, conflicting_bookings: hits.slice(0, 50), conflicts: hits.length };
+    if (hits.length && !i.cancel_conflicting) {
+      throw new AppError(409, 'conflict', `${hits.length} confirmed booking(s) fall inside that time. Re-send with cancel_conflicting: true to cancel and refund them, or pick other times.`, { conflicting_bookings: hits.slice(0, 50), conflicts: hits.length });
+    }
+    const cancelled = hits.length ? await cancelBookings(c, hits.map((h) => h.id), { actor: user, byVenue: true, reason: `${venue.name} is closed${i.reason ? `: ${i.reason}` : ''}` }) : [];
+    const batch = randomUUID();
+    const rows = [];
+    for (let k = 0; k < days.length; k++) for (const t of targets) rows.push([t, starts[k], ends[k]]);
+    await c.query(
+      `INSERT INTO venue_blocks(venue_id, resource_id, starts_at, ends_at, kind, reason, batch_id, created_by)
+       SELECT $1, t.r, t.s, t.e, $5, $6, $7, $8 FROM unnest($2::uuid[], $3::timestamptz[], $4::timestamptz[]) AS t(r, s, e)`,
+      [i.id, rows.map((x) => x[0]), rows.map((x) => x[1]), rows.map((x) => x[2]), i.kind, i.reason ?? null, batch, user.id]);
+    await audit(c, user.id, 'block_slots', 'venues', i.id);
+    return { batch_id: batch, blocks: rows.length, cancelled_bookings: cancelled.length };
+  });
+}
+
 cap({
   name: 'block_slots', method: 'POST', path: '/venues/:id/blocks', tag: TAG, status: 201,
   summary: 'Block time in bulk — for maintenance, holidays, private hire, league nights. Pick areas (omit = the whole venue), a date range, optional weekdays and a daily time band (default all day, venue local time). Blocked time cannot be booked by customers. If confirmed bookings fall in it you get 409 with the list unless `cancel_conflicting: true` (they are cancelled with a full refund and the customers notified). `dry_run: true` previews without changing anything.',
@@ -314,39 +349,7 @@ cap({
     start_time: clock.default('00:00'), end_time: clock.default('24:00'), kind: z.enum(['maintenance', 'holiday', 'event', 'private', 'other']).default('other'), reason: z.string().max(200).optional(),
     cancel_conflicting: z.boolean().default(false), dry_run: z.boolean().default(false),
   }).refine((i) => i.to_date >= i.from_date, 'to_date is before from_date').refine((i) => hhmm(i.end_time) > hhmm(i.start_time), 'end_time must be after start_time'),
-  async handler({ user }, i) {
-    await mustManage(user, i.id);
-    const venue = await mustFind('venues', i.id);
-    const dates = dateRange(i.from_date, i.to_date);
-    if (dates.length > 366) throw badRequest('Block at most a year at a time');
-    const own = (await many('SELECT id FROM resources WHERE venue_id=$1', [i.id])).map((r) => r.id);
-    for (const r of i.resource_ids) if (!own.includes(r)) throw badRequest('One of those areas belongs to another venue');
-    const [s, e] = [hhmm(i.start_time), hhmm(i.end_time)];
-    const days = dates.filter((d) => !i.weekdays || i.weekdays.includes(toLocal(fromLocal(d, 720, venue.timezone), venue.timezone).weekday));
-    const targets = i.resource_ids.length ? i.resource_ids : [null];
-    if (days.length * targets.length > 3000) throw badRequest('That would create more than 3000 blocks — narrow the dates or areas');
-    const starts = days.map((d) => fromLocal(d, s, venue.timezone));
-    const ends = days.map((d) => fromLocal(d, e, venue.timezone));
-    return tx(async (c) => {
-      await lockResources(c, i.resource_ids.length ? i.resource_ids : own);
-      const hits = await conflictRows(c, i.id, i.resource_ids, starts, ends);
-      const summary = { blocks: days.length * targets.length, conflicts: hits.length };
-      if (i.dry_run) return { dry_run: true, would_create: summary.blocks, conflicting_bookings: hits.slice(0, 50), conflicts: hits.length };
-      if (hits.length && !i.cancel_conflicting) {
-        throw new AppError(409, 'conflict', `${hits.length} confirmed booking(s) fall inside that time. Re-send with cancel_conflicting: true to cancel and refund them, or pick other times.`, { conflicting_bookings: hits.slice(0, 50), conflicts: hits.length });
-      }
-      const cancelled = hits.length ? await cancelBookings(c, hits.map((h) => h.id), { actor: user, byVenue: true, reason: `${venue.name} is closed${i.reason ? `: ${i.reason}` : ''}` }) : [];
-      const batch = randomUUID();
-      const rows = [];
-      for (let k = 0; k < days.length; k++) for (const t of targets) rows.push([t, starts[k], ends[k]]);
-      await c.query(
-        `INSERT INTO venue_blocks(venue_id, resource_id, starts_at, ends_at, kind, reason, batch_id, created_by)
-         SELECT $1, t.r, t.s, t.e, $5, $6, $7, $8 FROM unnest($2::uuid[], $3::timestamptz[], $4::timestamptz[]) AS t(r, s, e)`,
-        [i.id, rows.map((x) => x[0]), rows.map((x) => x[1]), rows.map((x) => x[2]), i.kind, i.reason ?? null, batch, user.id]);
-      await audit(c, user.id, 'block_slots', 'venues', i.id);
-      return { batch_id: batch, blocks: rows.length, cancelled_bookings: cancelled.length };
-    });
-  },
+  handler: ({ user }, i) => blockSlots(user, i),
 });
 
 cap({
@@ -409,7 +412,7 @@ cap({
       if (target.id !== user.id) {
         await notify(c, target.id, { kind: 'reservation_confirmed', title: 'A venue booked you in', body: `${user.display_name} reserved ${i.items.length} slot(s) for you.`, data: { reservation_id: made.reservationId, venue_id: i.id } });
       }
-      return { ...(await reservationView(c, made.reservationId)), displaced_bookings: displaced };
+      return { ...(await reservationView(c, made.reservationId, user)), displaced_bookings: displaced };
     });
   },
 });

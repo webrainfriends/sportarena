@@ -12,6 +12,7 @@ import { moneyIn } from '../vtime';
 import { locale } from '../locale';
 
 const until = (d) => new Date(d).toLocaleDateString(locale);
+const PERKS = ['Locker', 'Towel', 'Coaching clinic', 'Equipment hire', 'Free guest pass', 'Priority booking', 'Shower & changing room', 'Café discount'];
 
 /** On the venue page: what's for sale and what you already hold here. */
 export function VenuePlans({ venue, onChanged }) {
@@ -29,7 +30,7 @@ export function VenuePlans({ venue, onChanged }) {
   };
   return (
     <Card color={c.violetSoft}>
-      <T weight="700" size={16}>🎟️ Memberships & passes</T>
+      <T weight="700" size={16}>🎟️ Passes, packages & memberships</T>
       {venue.my_member_discount_bp > 0 ? <T size={13} weight="700" style={{ marginTop: 4 }}>You're a member: {venue.my_member_discount_bp / 100}% off until {until(venue.my_membership_until)}</T> : null}
       {venue.my_pass_sessions > 0 ? <T size={13} weight="700">You have {venue.my_pass_sessions} pass sessions here</T> : null}
       {venue.plans.map((p) => (
@@ -38,6 +39,9 @@ export function VenuePlans({ venue, onChanged }) {
             <T weight="700">{p.name}</T>
             <T size={12} color={c.mute}>{p.kind === 'membership' ? `${p.discount_bp / 100}% off every booking · ${p.duration_days} days` : `${p.sessions} sessions · valid ${p.valid_days} days · each pays up to ${moneyIn(p.session_value_cents, venue.currency)}`}</T>
             {p.description ? <T size={12} color={c.mute}>{p.description}</T> : null}
+            {p.resource_ids?.length ? <T size={12} color={c.mute}>Valid on: {p.resource_ids.map((rid) => venue.resources?.find((r) => r.id === rid)?.name).filter(Boolean).join(', ')}</T> : null}
+            {p.includes?.length ? <T size={12} color={c.mute}>Includes: {p.includes.join(' · ')}</T> : null}
+            {p.auto_renew ? <T size={12} color={c.mute}>Subscription — we'll remind you to renew a week before it ends</T> : null}
           </View>
           <Btn small title={moneyIn(p.price_cents, venue.currency)} loading={busy === p.id} onPress={() => buy(p)} />
         </View>
@@ -96,19 +100,24 @@ export function PlansManager({ v }) {
   const report = useLoad(() => api.get(`/venues/${v.id}/plans/report`), [v.id]);
   const reload = () => { plans.reload(); report.reload(); };
   const rows = report.data?.plans ?? [];
+  const meta = (id) => (plans.data ?? []).find((p) => p.id === id);
+  const courtNames = (ids) => ids.map((rid) => v.resources.find((r) => r.id === rid)?.name).filter(Boolean).join(', ');
   return (
-    <Section title="Memberships & passes" color={c.violet}>
-      <T color={c.mute} size={13}>Sell a membership (a % off every booking for a period) or a pass (prepaid sessions). Customers pay online in {v.currency}; the money is collected by the platform.</T>
+    <Section title="Passes, packages & memberships" color={c.violet}>
+      <T color={c.mute} size={13}>A pass is prepaid sessions; a package is a pass that only works on the courts you choose and lists what comes with it. A membership takes a % off every booking; make it a subscription and members are reminded to renew a week before it ends. Customers pay online in {v.currency}; the money is collected by the platform.</T>
       <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
         <Btn small title="＋ Membership" onPress={() => setForm('membership')} />
+        <Btn small title="＋ Subscription" onPress={() => setForm('subscription')} />
         <Btn small title="＋ Pass" color={c.violet} onPress={() => setForm('pass')} />
+        <Btn small title="＋ Package" color={c.violet} onPress={() => setForm('package')} />
       </View>
       {report.data ? <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}><StatPill label="Plan sales" value={moneyIn(report.data.revenue_cents, v.currency)} /></View> : null}
       {rows.length ? rows.map((p) => (
         <Card key={p.id}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
             <View style={{ flex: 1 }}>
-              <T weight="700">{p.kind === 'membership' ? '🏅' : '🎟️'} {p.name} {p.active ? '' : '(not on sale)'}</T>
+              <T weight="700">{p.kind === 'membership' ? (meta(p.id)?.auto_renew ? '🔁' : '🏅') : (meta(p.id)?.resource_ids?.length ? '📦' : '🎟️')} {p.name} {p.active ? '' : '(not on sale)'}</T>
+              {meta(p.id)?.resource_ids?.length || meta(p.id)?.includes?.length || meta(p.id)?.auto_renew ? <T size={12} color={c.mute}>{[meta(p.id).auto_renew && 'subscription', meta(p.id).resource_ids.length && `only ${courtNames(meta(p.id).resource_ids)}`, meta(p.id).includes.length && `includes ${meta(p.id).includes.join(', ')}`].filter(Boolean).join(' · ')}</T> : null}
               <T size={12} color={c.mute}>{p.sold} sold · {p.active_holders} active{p.kind === 'pass' ? ` · ${p.sessions_outstanding} sessions outstanding` : ''} · {moneyIn(Number(p.revenue_cents), v.currency)}</T>
             </View>
             <Btn small title={p.active ? 'Stop selling' : 'Sell again'} color={c.paper} onPress={async () => { await api.patch(`/venue-plans/${p.id}`, { active: !p.active }); reload(); }} />
@@ -130,6 +139,24 @@ export function PlansManager({ v }) {
           { key: 'valid_days', label: 'Use within', type: 'chips', default: 90, options: [{ value: 30, label: '1 month' }, { value: 90, label: '3 months' }, { value: 180, label: '6 months' }, { value: 365, label: '1 year' }] },
           { key: 'session_value_cents', label: 'Most one session pays toward a booking', type: 'money', currency: v.currency, optional: true, hint: 'Leave empty to use price ÷ sessions' }]}
         onSubmit={async (f) => { await api.post(`/venues/${v.id}/plans`, { ...f, kind: 'pass' }); reload(); return 'Pass created'; }} />
+      <FormSheet visible={form === 'subscription'} onClose={() => setForm(null)} title="New subscription" submitLabel="Create"
+        fields={[{ key: 'name', label: 'Name', type: 'chips', options: ['Monthly subscription', 'Quarterly subscription', 'Annual subscription'] },
+          { key: 'description', label: 'Description', optional: true },
+          { key: 'price_cents', label: 'Price per period', type: 'money', currency: v.currency },
+          { key: 'duration_days', label: 'Billing period', type: 'chips', default: 30, options: [{ value: 30, label: 'Monthly' }, { value: 90, label: 'Quarterly' }, { value: 365, label: 'Yearly' }] },
+          { key: 'discount_pct', label: 'Discount on every booking', type: 'stepper', min: 5, max: 90, step: 5, default: 15, suffix: '%' },
+          { key: 'includes', label: 'Perks included', type: 'multi', optional: true, options: PERKS }]}
+        onSubmit={async ({ discount_pct, ...f }) => { await api.post(`/venues/${v.id}/plans`, { ...f, kind: 'membership', auto_renew: true, discount_bp: Math.round(discount_pct * 100) }); reload(); return 'Subscription created'; }} />
+      <FormSheet visible={form === 'package'} onClose={() => setForm(null)} title="New package" submitLabel="Create"
+        fields={[{ key: 'name', label: 'Name', placeholder: 'e.g. Badminton 10-hour pack' },
+          { key: 'description', label: 'Description', optional: true },
+          { key: 'resource_ids', label: 'Valid on', type: 'multi', optional: true, options: v.resources.map((r) => ({ value: r.id, label: `${r.sport_emoji ?? ''} ${r.name}`.trim() })), hint: 'Leave empty for any court' },
+          { key: 'price_cents', label: 'Price for the whole package', type: 'money', currency: v.currency },
+          { key: 'sessions', label: 'Sessions', type: 'chips', default: 10, options: [5, 10, 20, 30, 50].map((n) => ({ value: n, label: String(n) })) },
+          { key: 'valid_days', label: 'Use within', type: 'chips', default: 90, options: [{ value: 30, label: '1 month' }, { value: 90, label: '3 months' }, { value: 180, label: '6 months' }, { value: 365, label: '1 year' }] },
+          { key: 'includes', label: 'Perks included', type: 'multi', optional: true, options: PERKS },
+          { key: 'session_value_cents', label: 'Most one session pays toward a booking', type: 'money', currency: v.currency, optional: true, hint: 'Leave empty to use price ÷ sessions' }]}
+        onSubmit={async (f) => { await api.post(`/venues/${v.id}/plans`, { ...f, kind: 'pass' }); reload(); return 'Package created'; }} />
     </Section>
   );
 }

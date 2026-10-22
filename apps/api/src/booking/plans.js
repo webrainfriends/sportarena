@@ -1,5 +1,5 @@
 // Memberships and multi-session passes: activate on payment, give sessions back when what they paid is voided or refunded, expire.
-import { query } from '../db.js';
+import { query, tx } from '../db.js';
 import { notify } from '../notify.js';
 import { toMajor } from '../currency.js';
 
@@ -41,3 +41,34 @@ export const memberDiscountBp = async (c, userId, venueId) => Number((await c.qu
   "SELECT coalesce(max(discount_bp),0) AS bp FROM user_plans WHERE user_id=$1 AND venue_id=$2 AND kind='membership' AND status='active' AND starts_at <= now() AND expires_at > now()", [userId, venueId])).rows[0].bp);
 
 export const money = (cents, cur) => `${cur} ${toMajor(cents, cur)}`;
+
+/**
+ * Subscriptions: a membership sold with auto_renew gets its next period raised a week before it ends, at the plan's current
+ * price, waiting for payment (nobody is charged automatically). The member is told once and pays it like any plan; it starts
+ * when the current one ends. Skipped when the venue stopped selling the plan. Returns how many renewals were raised.
+ */
+export async function raiseSubscriptionRenewals({ limit = 100 } = {}) {
+  return tx(async (c) => {
+    const { rows } = await c.query(
+      `SELECT up.*, p.price_cents AS new_price, p.active AS on_sale, p.duration_days AS new_days, p.discount_bp AS new_discount, v.name AS venue_name, v.currency AS venue_currency
+         FROM user_plans up JOIN venue_plans p ON p.id=up.plan_id JOIN venues v ON v.id=up.venue_id
+        WHERE up.kind='membership' AND up.auto_renew AND up.status='active' AND up.expires_at > now() AND up.expires_at <= now() + interval '7 days'
+          AND NOT EXISTS (SELECT 1 FROM user_plans nx WHERE nx.renews_id=up.id)
+          AND NOT EXISTS (SELECT 1 FROM user_plans o WHERE o.user_id=up.user_id AND o.venue_id=up.venue_id AND o.kind='membership' AND o.id<>up.id AND (o.status='awaiting_payment' OR (o.status='active' AND o.expires_at > up.expires_at)))
+        ORDER BY up.expires_at LIMIT $1 FOR UPDATE OF up SKIP LOCKED`, [limit]);
+    let n = 0;
+    for (const up of rows) {
+      if (!up.on_sale || up.venue_currency !== up.currency) continue;
+      const nx = (await c.query(
+        `INSERT INTO user_plans(plan_id, venue_id, user_id, kind, name, price_cents, currency, discount_bp, duration_days, resource_ids, includes, auto_renew, renews_id)
+         VALUES ($1,$2,$3,'membership',$4,$5,$6,$7,$8,$9,$10,true,$11) RETURNING id`,
+        [up.plan_id, up.venue_id, up.user_id, up.name, up.new_price, up.currency, up.new_discount, up.new_days, up.resource_ids, up.includes, up.id])).rows[0];
+      await notify(c, up.user_id, {
+        kind: 'plan_renewal', title: `Renew ${up.name}`, dedupe_key: `plan_renewal:${up.id}`,
+        body: `Your ${up.name} at ${up.venue_name} ends on ${up.expires_at.toISOString().slice(0, 10)}. Renewal: ${money(up.new_price, up.currency)} — pay it to keep your ${up.discount_bp / 100}% off without a gap.`,
+        data: { venue_id: up.venue_id, user_plan_id: nx.id } });
+      n++;
+    }
+    return n;
+  });
+}
