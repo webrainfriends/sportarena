@@ -172,7 +172,7 @@ test('invitation rules: athlete opt-in, verified-only, youth, own staff, target 
 
 test('FAQs: staff manage them with versions, they show on the public page and are searchable, archived ones disappear', async () => {
   const { w, p } = await live();
-  const f = must(await api('POST', `/sponsorship-programs/${p.id}/faqs`, { token: w.owner.token, body: { question: 'Who can apply?', answer: 'Verified clubs in Oregon' } }), 201);
+  const f = must(await api('POST', `/sponsorship-programs/${p.id}/faqs`, { token: w.owner.token, body: { question: 'Who can apply?', answer: 'Verified clubs in Oregon', position: 1 } }), 201);
   must(await api('POST', `/sponsorship-programs/${p.id}/faqs`, { token: w.owner.token, body: { question: 'When are results?', answer: 'Within a month', position: 0 } }), 201);
   const anyone = await signup(['athlete']);
   let page = must(await api('GET', `/funding-opportunities/${p.id}`));

@@ -241,7 +241,7 @@ cap({
               coalesce((SELECT sum(a.awarded_cents) FROM sponsorship_applications a WHERE a.round_id=r.id AND a.status='awarded'),0)::bigint AS awarded_cents
          FROM sponsorship_rounds r WHERE r.program_id=$1 ORDER BY r.seq`, [p.id]);
     const used = await committed(pool, p.id);
-    const faqs = await many('SELECT id, position, question, answer, row_version FROM sponsorship_program_faqs WHERE program_id=$1 AND archived_at IS NULL ORDER BY position, id', [p.id]);
+    const faqs = await many('SELECT id, position, question, answer, row_version FROM sponsorship_program_faqs WHERE program_id=$1 AND archived_at IS NULL ORDER BY position, created_at, id', [p.id]);
     return { ...p, sponsor_name: sp.name, my_role: sa.role, awarded_cents: used.cents, awards: used.n, remaining_cents: Number(p.budget_cents) - used.cents, rounds, faqs };
   },
 });
@@ -396,7 +396,7 @@ cap({
     const mine = user ? await many("SELECT id, status, target_type, target_id, message FROM sponsorship_invitations WHERE program_id=$1 AND invitee_user_id=$2 AND status IN ('invited','viewed','applied') ORDER BY created_at, id", [p.id, user.id]) : [];
     const visible = staff || (['published', 'closed'].includes(p.status) && (p.visibility === 'public' || mine.length));
     if (!visible) throw notFound('Sponsorship call'); // identical to an unknown id: a private call is not discoverable
-    const faqs = await many('SELECT id, position, question, answer FROM sponsorship_program_faqs WHERE program_id=$1 AND archived_at IS NULL ORDER BY position, id', [p.id]);
+    const faqs = await many('SELECT id, position, question, answer FROM sponsorship_program_faqs WHERE program_id=$1 AND archived_at IS NULL ORDER BY position, created_at, id', [p.id]);
     for (const m of mine.filter((x) => x.status === 'invited')) {
       await many("UPDATE sponsorship_invitations SET status='viewed', viewed_at=now() WHERE id=$1 AND status='invited' RETURNING id", [m.id]);
       m.status = 'viewed';
@@ -681,9 +681,9 @@ cap({
       const { p } = await programFor(user, i.id, 'program', c, true);
       if (p.status === 'archived') throw conflict('An archived program cannot be edited');
       if (!i.faq_id) {
-        const n = (await c.query('SELECT count(*)::int AS n FROM sponsorship_program_faqs WHERE program_id=$1 AND archived_at IS NULL', [p.id])).rows[0].n;
+        const { n, next } = (await c.query('SELECT count(*)::int AS n, coalesce(max(position)+1, 0)::int AS next FROM sponsorship_program_faqs WHERE program_id=$1 AND archived_at IS NULL', [p.id])).rows[0];
         if (n >= 50) throw unprocessable('A program can have at most 50 FAQs');
-        return (await c.query('INSERT INTO sponsorship_program_faqs(program_id, position, question, answer, created_by) VALUES ($1,$2,$3,$4,$5) RETURNING *', [p.id, i.position ?? n, i.question, i.answer, user.id])).rows[0];
+        return (await c.query('INSERT INTO sponsorship_program_faqs(program_id, position, question, answer, created_by) VALUES ($1,$2,$3,$4,$5) RETURNING *', [p.id, i.position ?? next, i.question, i.answer, user.id])).rows[0];
       }
       const f = (await c.query('SELECT * FROM sponsorship_program_faqs WHERE id=$1 AND program_id=$2 FOR UPDATE', [i.faq_id, p.id])).rows[0];
       if (!f || f.archived_at) throw notFound('FAQ');
