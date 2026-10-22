@@ -20,6 +20,7 @@ export const SPONSOR_ACTIONS = {
   export: ['manager', 'finance', 'auditor'],
   contacts: ['manager'],
   manage: ['manager'], // link the brand to an organisation
+  program: ['manager', 'approver'], // run sponsorship programs and rounds, decide awards (#284)
 };
 // organisation role -> sponsor role (a coach has no part in sponsorship)
 const FROM_ORG = { owner: 'manager', admin: 'manager', manager: 'manager', finance: 'finance', evaluator: 'evaluator', legal: 'legal', approver: 'approver', auditor: 'auditor' };
@@ -77,3 +78,9 @@ export const sponsorStaffSql = (n, action = 'read') => `(sp.owner_id=$${n} OR EX
   SELECT 1 FROM organisation_members sm JOIN organisations so ON so.id=sm.organisation_id
    WHERE sm.organisation_id=sp.organisation_id AND sm.user_id=$${n} AND sm.status='active' AND sm.role = ANY(ARRAY[${ORG_ROLES_FOR(action).map((r) => `'${r}'`).join(',')}])
      AND (sm.department_id IS NULL OR sm.department_id IS NOT DISTINCT FROM ss.department_id)))`;
+
+/** SQL for "brands this user runs for brand-wide work" (programs): `sp` = sponsors, $n the user id. Department-scoped members are excluded. */
+export const sponsorBrandSql = (n, action = 'read') => `(sp.owner_id=$${n} OR EXISTS (
+  SELECT 1 FROM organisation_members sm JOIN organisations so ON so.id=sm.organisation_id
+   WHERE sm.organisation_id=sp.organisation_id AND sm.user_id=$${n} AND sm.status='active' AND sm.department_id IS NULL
+     AND sm.role = ANY(ARRAY[${ORG_ROLES_FOR(action).map((r) => `'${r}'`).join(',')}])))`;

@@ -35,6 +35,7 @@ export function SponsorDeal({ id }) {
     <Screen>
       <H1>{d.sponsor.name}</H1>
       {sponsor && d.my_sponsor_role ? <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center', marginTop: 4 }}><Tag label={`You: ${ROLE_LABEL[d.my_sponsor_role]}`} />{!can('pay') || !can('revise') ? <T size={12} color={c.mute} accessibilityRole="text">{[!can('pay') ? 'cannot report payments' : null, !can('revise') ? 'cannot change or sign terms' : null].filter(Boolean).join(' · ')}</T> : null}</View> : null}
+      {d.program ? <T size={12} color={c.mute} accessibilityRole="text">Awarded from the program “{d.program.name}”, {d.program.round_name}.</T> : null}
       <T size={12} color={c.mute}>{d.agreement_ref ?? 'Legacy agreement'} · {d.status} · terms v{d.accepted_version ?? d.terms_version}{d.starts_on ? ` · ${when(String(d.starts_on).slice(0, 10))} – ${d.ends_on ? when(String(d.ends_on).slice(0, 10)) : 'open'}` : ''}</T>
       {!d.lines.length ? <Card><T>This agreement predates structured terms: {d.legacy_amount_cents ? `${d.legacy_amount_cents} (currency not recorded)` : 'no cash'}{d.legacy_in_kind ? ` · ${d.legacy_in_kind}` : ''}. No payment schedule exists for it.</T></Card> : null}
       <Section title="Terms" color={c.sun}>

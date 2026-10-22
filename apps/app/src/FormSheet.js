@@ -34,6 +34,7 @@ const opt = (o) => (typeof o === 'object' ? o : { value: o, label: String(o) });
  *   weekdays                                day chips with Weekdays / Weekend / Every day shortcuts → [0..6]
  *   sport                                   search / quick-pick a sport → slug
  *   sports                                  several sports (chips + add) → [slugs]
+ *   regions                                 several cities / areas (chips + search) → [names]
  *   daterange {toKey}                       from–to on one calendar → key = start, toKey = end
  *   section {label}                         a heading between groups
  * `initial` is read each time the sheet opens. onSubmit(values) -> Promise; throws to show an error.
@@ -91,7 +92,7 @@ export function FormSheet({ visible, onClose, title, fields, initial = {}, submi
       if (f.type === 'money') o[f.key] = x === undefined || x === null || x === '' ? '' : String(Number(x) / 10 ** digits(curOf(f, initial)));
       else if (f.type === 'stepper') o[f.key] = x ?? f.default ?? f.min ?? 0;
       else if (f.type === 'switch') o[f.key] = x ?? f.default ?? false;
-      else if (f.type === 'multi' || f.type === 'weekdays' || f.type === 'sports') o[f.key] = x ?? f.default ?? [];
+      else if (f.type === 'multi' || f.type === 'weekdays' || f.type === 'sports' || f.type === 'regions') o[f.key] = x ?? f.default ?? [];
       else if (f.type === 'choice' || f.type === 'chips') o[f.key] = x ?? f.default ?? (f.optional ? undefined : opt(f.options[0]).value);
       else if (x !== undefined) o[f.key] = x;
       if (f.type === 'location' && initial[f.lngKey] !== undefined) o[f.lngKey] = initial[f.lngKey];
@@ -118,7 +119,7 @@ export function FormSheet({ visible, onClose, title, fields, initial = {}, submi
         if (f.blank && (x === '' || x === undefined)) continue;
         if (f.type === 'switch' || f.type === 'stepper') { out[f.key] = x; continue; }
         if (f.type === 'daterange') { const a = v[f.key], b = v[f.toKey]; if (!a) { if (!f.optional) throw new Error(`${f.label}: pick the dates`); continue; } out[f.key] = a; out[f.toKey] = b ?? a; continue; }
-        if (f.type === 'multi' || f.type === 'weekdays' || f.type === 'sports') { if (!x?.length) { if (!f.optional) throw new Error(`${f.label}: choose at least one`); continue; } out[f.key] = x; continue; }
+        if (f.type === 'multi' || f.type === 'weekdays' || f.type === 'sports' || f.type === 'regions') { if (!x?.length) { if (!f.optional) throw new Error(`${f.label}: choose at least one`); continue; } out[f.key] = x; continue; }
         if (x === '' || x === undefined || x === null) { if (!f.optional) throw new Error(`${f.label} is required`); continue; }
         if (f.type === 'money') { const n = Number(String(x).replace(/,/g, '')); if (!(n >= 0)) throw new Error(`${f.label}: enter an amount`); out[f.key] = Math.round(n * 10 ** digits(curOf(f, v))); }
         else out[f.key] = f.type === 'number' ? Number(x) : x;
@@ -152,6 +153,11 @@ export function FormSheet({ visible, onClose, title, fields, initial = {}, submi
       case 'location': return <LocationPicker f={f} v={v} set={set} />;
       case 'daterange': return <DateRangeField label={f.label} from={v[f.key]} to={v[f.toKey]} onChange={({ from, to }) => { set(f.key, from); set(f.toKey, to); }} optional={f.optional} min={f.min} hint={f.hint} />;
       case 'sports': return <SportsMulti label={f.label} value={v[f.key] ?? []} onChange={(x) => set(f.key, x)} optional={f.optional} />;
+      case 'regions': return (
+        <View style={{ gap: 8 }}>
+          {v[f.key]?.length ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{v[f.key].map((x) => <Chip key={x} active label={`📍 ${x}  ✕`} onPress={() => set(f.key, v[f.key].filter((y) => y !== x))} />)}</View> : null}
+          <RegionPicker label={f.label} optional={f.optional} value="" onChange={(x) => { if (x && !(v[f.key] ?? []).includes(x)) set(f.key, [...(v[f.key] ?? []), x]); }} hint={f.hint} />
+        </View>);
       case 'region': return <RegionPicker label={f.label} optional={f.optional} value={v[f.key]} onChange={(x) => set(f.key, x)} hint={f.hint} />;
       case 'sport': return <SportPicker label={f.label} optional={f.optional} value={v[f.key]} onChange={(x) => set(f.key, x)} />;
       case 'stepper': return (
