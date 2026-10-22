@@ -8,12 +8,17 @@ import { isAdmin } from '../helpers.js';
 import { notify } from '../notify.js';
 import { LINE, buildSchedule } from '../sponsor-schedule.js';
 import { saveLines, loadLines, generateObligations, logHistory, dealContext, obligationContext } from '../sponsor-agreements.js';
+import { notifySponsor, sponsorStaffSql, actionsFor } from '../sponsor-access.js';
 
 const date = z.string().date();
 const url = z.string().url().max(500).refine((u) => /^https:\/\//i.test(u), 'evidence must be an https link');
-const other = (ctx) => (ctx.role === 'sponsor' ? ctx.recipientId : ctx.sp.owner_id);
+const other = (ctx) => (ctx.role === 'sponsor' ? ctx.recipientId : 'sponsor');
 // Notifications never carry amounts, references or terms: those stay behind the participant-scoped reads.
-const ping = (c, to, title, ctx, kind = 'sponsorship_update') => notify(c, to, { kind, title, body: `Open the ${ctx.sp.name} agreement to see the update.`, data: { sponsorship_id: ctx.d.id } });
+// `to` is a user id, or 'sponsor' for the brand's owner and the staff whose role is concerned (`action`).
+const ping = (c, to, title, ctx, kind = 'sponsorship_update', action = 'read') => {
+  const msg = { kind, title, body: `Open the ${ctx.sp.name} agreement to see the update.`, data: { sponsorship_id: ctx.d.id } };
+  return to === 'sponsor' ? notifySponsor(c, ctx.sp, action, msg, ctx.d.department_id) : notify(c, to, msg);
+};
 
 cap({
   name: 'preview_sponsorship_schedule', method: 'POST', path: '/sponsorship-schedule/preview', tag: 'Sponsors',
@@ -33,6 +38,7 @@ cap({
     return tx(async (c) => {
       const ctx = await dealContext(c, i.id, user, { lock: true });
       if (ctx.role !== 'sponsor') throw forbidden('Only the sponsor can revise its offer');
+      ctx.need('revise', 'revise the terms of an offer');
       if (ctx.d.status !== 'proposed') throw conflict('Only an unanswered offer can be revised');
       const starts = i.starts_on ?? ctx.d.starts, ends = i.ends_on ?? ctx.d.ends;
       if (starts && ends && ends < starts) throw badRequest('ends_on is before starts_on');
@@ -57,7 +63,7 @@ cap({
     const { d, sp } = ctx;
     const version = d.accepted_version ?? d.terms_version;
     const lines = await many('SELECT id, position, kind, label, currency, amount_cents, total_cents, estimate_cents, quantity, unit, cadence, first_due_on, instalments, custom_dates, promoter, terms FROM sponsorship_lines WHERE sponsorship_id=$1 AND version=$2 ORDER BY position', [d.id, version]);
-    const out = { id: d.id, agreement_ref: d.agreement_ref, status: d.status, role: ctx.role, sponsor: { id: sp.id, name: sp.name }, target_type: d.target_type, target_id: d.target_id, starts_on: d.starts_on, ends_on: d.ends_on, timezone: d.timezone, terms_version: d.terms_version, accepted_version: d.accepted_version, currency: d.currency, legacy_amount_cents: lines.length ? undefined : d.amount_cents, legacy_in_kind: lines.length ? undefined : d.in_kind, objectives: d.objectives, deliverables: d.deliverables, lines };
+    const out = { id: d.id, agreement_ref: d.agreement_ref, status: d.status, role: ctx.role, my_sponsor_role: ctx.staff, can: ctx.staff ? actionsFor(ctx.staff) : undefined, sponsor: { id: sp.id, name: sp.name }, target_type: d.target_type, target_id: d.target_id, starts_on: d.starts_on, ends_on: d.ends_on, timezone: d.timezone, terms_version: d.terms_version, accepted_version: d.accepted_version, currency: d.currency, legacy_amount_cents: lines.length ? undefined : d.amount_cents, legacy_in_kind: lines.length ? undefined : d.in_kind, objectives: d.objectives, deliverables: d.deliverables, lines };
     if (!d.accepted_version && lines.length) out.schedule = buildSchedule(await loadLines(pool, d.id, version), { starts_on: d.starts, ends_on: d.ends });
     if (d.accepted_version) {
       out.obligations = await obligationRows('o.sponsorship_id = $1', [d.id]);
@@ -89,7 +95,7 @@ async function obligationRows(where, params, tail = '') {
        FROM sponsorship_obligations o JOIN sponsorship_lines l ON l.id=o.line_id WHERE ${where} ORDER BY o.due_on, o.id ${tail}`, params);
 }
 
-const SCOPE = `(sp.owner_id=$1 OR $2::boolean
+const SCOPE = `(${sponsorStaffSql(1)} OR $2::boolean
   OR (ss.target_type='event' AND ss.target_id IN (SELECT id FROM events WHERE organizer_id=$1))
   OR (ss.target_type='team' AND ss.target_id IN (SELECT id FROM teams WHERE owner_id=$1)) OR (ss.target_type='athlete' AND ss.target_id=$1))`;
 
@@ -131,7 +137,7 @@ cap({
                   count(*) FILTER (WHERE o.kind='goods' AND o.status='scheduled')::int AS goods_outstanding,
                   (SELECT count(*) FROM sponsorship_payments p JOIN sponsorship_obligations po ON po.id=p.obligation_id JOIN sponsorships pss ON pss.id=po.sponsorship_id WHERE p.status='reported' AND ${recipient.replace(/ss\./g, 'pss.')})::int AS payments_to_confirm,
                   (SELECT count(*) FROM sponsorship_submissions s JOIN sponsorship_obligations so ON so.id=s.obligation_id JOIN sponsorship_lines sl ON sl.id=so.line_id JOIN sponsorships sss ON sss.id=so.sponsorship_id JOIN sponsors ssp ON ssp.id=sss.sponsor_id
-                    WHERE s.status='submitted' AND ((sl.promoter='recipient' AND ssp.owner_id=$1) OR (sl.promoter='sponsor' AND ${recipient.replace(/ss\./g, 'sss.')})))::int AS endorsements_to_review
+                    WHERE s.status='submitted' AND ((sl.promoter='recipient' AND ${sponsorStaffSql(1, 'evaluate').replace(/\bsp\./g, 'ssp.').replace(/\bss\./g, 'sss.')}) OR (sl.promoter='sponsor' AND ${recipient.replace(/ss\./g, 'sss.')})))::int AS endorsements_to_review
              ${base}`, a)]);
     return { agreements, ...counts };
   },
@@ -157,6 +163,7 @@ cap({
     return tx(async (c) => {
       const ctx = await obligationContext(c, i.id, user);
       if (ctx.role !== 'sponsor') throw forbidden('Only the sponsor reports its payments');
+      ctx.need('pay', 'report payments');
       open(ctx, 'money');
       if (i.currency !== ctx.o.currency) throw badRequest(`This due is in ${ctx.o.currency}`);
       const held = Number((await c.query("SELECT coalesce(sum(amount_cents),0) AS s FROM sponsorship_payments WHERE obligation_id=$1 AND status IN ('reported','confirmed')", [ctx.o.id])).rows[0].s);
@@ -188,7 +195,7 @@ cap({
       const row = (await c.query('UPDATE sponsorship_payments SET status=$2, decided_by=$3, decided_at=now(), decision_note=$4 WHERE id=$1 RETURNING *', [p.id, i.status, user.id, i.note ?? null])).rows[0];
       await settleMoney(c, ctx.o);
       await logHistory(c, ctx.d.id, ctx.o.version, user.id, `payment_${i.status}`, i.note);
-      await ping(c, ctx.sp.owner_id, `A sponsorship payment was ${i.status}`, ctx, 'sponsorship_payment');
+      await ping(c, 'sponsor', `A sponsorship payment was ${i.status}`, ctx, 'sponsorship_payment', 'pay');
       return row;
     });
   },
@@ -202,6 +209,7 @@ cap({
     return tx(async (c) => {
       const ctx = await obligationContext(c, i.id, user);
       if (ctx.role !== 'sponsor') throw forbidden('Only the sponsor dispatches goods');
+      ctx.need('pay', 'dispatch goods');
       open(ctx, 'goods');
       const held = Number((await c.query("SELECT coalesce(sum(CASE status WHEN 'received' THEN received_quantity WHEN 'dispatched' THEN quantity ELSE 0 END),0) AS s FROM sponsorship_deliveries WHERE obligation_id=$1", [ctx.o.id])).rows[0].s);
       if (held + i.quantity > ctx.o.quantity) throw conflict(`Only ${ctx.o.quantity - held} more can be dispatched against this delivery`);
@@ -232,7 +240,7 @@ cap({
       const total = Number((await c.query("SELECT coalesce(sum(received_quantity),0) AS s FROM sponsorship_deliveries WHERE obligation_id=$1 AND status='received'", [ctx.o.id])).rows[0].s);
       if (total >= ctx.o.quantity) await c.query("UPDATE sponsorship_obligations SET status='fulfilled', fulfilled_at=now() WHERE id=$1 AND status='scheduled'", [ctx.o.id]);
       await logHistory(c, ctx.d.id, ctx.o.version, user.id, `goods_${i.status}`, i.note);
-      await ping(c, ctx.sp.owner_id, `Sponsored goods were ${i.status}`, ctx, 'sponsorship_delivery');
+      await ping(c, 'sponsor', `Sponsored goods were ${i.status}`, ctx, 'sponsorship_delivery', 'pay');
       return row;
     });
   },
@@ -254,6 +262,7 @@ cap({
       const ctx = await endorsementCtx(c, i.id, user);
       open(ctx, 'endorsement');
       if (ctx.role !== ctx.promoter) throw forbidden(`Only the ${ctx.promoter} promotes under this agreement`);
+      if (ctx.role === 'sponsor') ctx.need('evaluate', 'submit endorsement evidence');
       const last = (await c.query('SELECT status FROM sponsorship_submissions WHERE obligation_id=$1 ORDER BY created_at DESC, id DESC LIMIT 1', [ctx.o.id])).rows[0];
       if (last && last.status !== 'revision_requested') throw conflict(`The last submission is ${last.status}`);
       const row = (await c.query('INSERT INTO sponsorship_submissions(obligation_id, evidence_url, note, submitted_by) VALUES ($1,$2,$3,$4) RETURNING *', [ctx.o.id, i.evidence_url, i.note ?? null, user.id])).rows[0];
@@ -274,13 +283,14 @@ cap({
       if (!s0) throw notFound('Submission');
       const ctx = await endorsementCtx(c, s0.obligation_id, user);
       if (ctx.role !== ctx.reviewer && ctx.role !== 'admin') throw forbidden(`Only the ${ctx.reviewer} reviews this endorsement`);
+      if (ctx.role === 'sponsor') ctx.need('evaluate', 'review endorsements');
       if (i.status === 'revision_requested' && !i.note) throw badRequest('Say what needs to change');
       const s = (await c.query('SELECT * FROM sponsorship_submissions WHERE id=$1 FOR UPDATE', [i.id])).rows[0];
       if (s.status !== 'submitted') throw conflict(`This submission is already ${s.status}`);
       const row = (await c.query('UPDATE sponsorship_submissions SET status=$2, reviewed_by=$3, reviewed_at=now(), review_note=$4 WHERE id=$1 RETURNING *', [s.id, i.status, user.id, i.note ?? null])).rows[0];
       if (i.status === 'accepted') await c.query("UPDATE sponsorship_obligations SET status='fulfilled', fulfilled_at=now() WHERE id=$1 AND status='scheduled'", [ctx.o.id]);
       await logHistory(c, ctx.d.id, ctx.o.version, user.id, `endorsement_${i.status}`, i.note);
-      await ping(c, ctx.promoter === 'sponsor' ? ctx.sp.owner_id : ctx.recipientId, `An endorsement was ${i.status === 'accepted' ? 'accepted' : 'sent back for revision'}`, ctx, 'sponsorship_endorsement');
+      await ping(c, ctx.promoter === 'sponsor' ? 'sponsor' : ctx.recipientId, `An endorsement was ${i.status === 'accepted' ? 'accepted' : 'sent back for revision'}`, ctx, 'sponsorship_endorsement');
       return row;
     });
   },

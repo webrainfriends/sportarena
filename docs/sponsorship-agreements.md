@@ -27,7 +27,8 @@ Agreement state (sponsorships.status) is separate from fulfilment state (obligat
    `dispatch_sponsorship_goods` (sponsor) → `decide_sponsorship_delivery` (recipient). `submit_sponsorship_endorsement`
    (promoter) → `review_sponsorship_endorsement` (the other party).
 5. `get_sponsorship`, `list_sponsorship_obligations` (filters + per-currency totals), `get_sponsorship_summary` (home).
-   Every read and write is limited to the brand owner, the recipient, or an admin.
+   Every read and write is limited to the brand owner (and, for a brand linked to an organisation, that organisation's staff
+   under their sponsor roles, see [organisations.md](organisations.md#corporate-sponsor-workspace)), the recipient, or an admin.
 
 ## Schedule rules
 * Dates are calendar dates; `timezone` says which zone they are meant in.

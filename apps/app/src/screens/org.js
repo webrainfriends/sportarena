@@ -11,13 +11,22 @@ import { FormSheet } from '../FormSheet';
 import { c, day } from '../theme';
 import { moneyIn } from '../vtime';
 import { Admissions } from './admissions';
+import { Confirm } from './coaching';
+import { EntityPicker } from '../entity-picker';
+import { explain, LoadError } from '../access';
 
-const KINDS = [['club', 'Club'], ['academy', 'Academy'], ['school', 'School'], ['college', 'College'], ['university', 'University'], ['other', 'Other']];
-const ROLE_LABEL = { owner: 'Owner', admin: 'Admin', coach: 'Coach', finance: 'Finance' };
-const ROLE_HELP = { owner: 'Full control', admin: 'People, cohorts and linked assets', coach: 'Their cohorts and attendance', finance: 'Money only' };
+const KINDS = [['club', 'Club'], ['academy', 'Academy'], ['school', 'School'], ['college', 'College'], ['university', 'University'], ['company', 'Company'], ['other', 'Other']];
+const ROLE_LABEL = { owner: 'Owner', admin: 'Admin', coach: 'Coach', finance: 'Finance', manager: 'Sponsor manager', evaluator: 'Evaluator', legal: 'Legal', approver: 'Approver', auditor: 'Auditor' };
+const ROLE_HELP = {
+  owner: 'Full control', admin: 'People, cohorts and linked assets', coach: 'Their cohorts and attendance', finance: 'Money only; reports sponsor payments',
+  manager: 'Runs the linked sponsor brands, no people management', evaluator: 'Reads deals, sets objectives and reviews; cannot pay or sign',
+  legal: 'Reads deals and changes terms; cannot pay', approver: 'Proposes, revises and withdraws offers; cannot pay', auditor: 'Read-only on deals, with exports',
+};
+const SPONSOR_ONLY = ['manager', 'evaluator', 'legal', 'approver', 'auditor']; // no cohorts, rosters or admissions
+const SPONSOR_EXPORT = ['owner', 'admin', 'manager', 'finance', 'auditor'];
 const STAFF = ['owner', 'admin'];
 const today = () => new Date().toISOString().slice(0, 10);
-const fail = (toast) => (e) => toast('' + e.message);
+const fail = (toast) => (e) => toast(explain(e));
 
 /** My workspaces + pending invitations + create. */
 export function Orgs() {
@@ -64,11 +73,13 @@ export function Org({ id }) {
   const [tab, setTab] = useState('overview');
   const org = useLoad(() => api.get(`/organisations/${id}`), [id]);
   const dash = useLoad(() => api.get(`/organisations/${id}/dashboard`), [id]);
-  if (org.error || dash.error) return <Screen><ErrorBox error={dash.error ?? org.error} onRetry={() => { org.reload(); dash.reload(); }} /></Screen>;
+  const brands = useLoad(() => api.get(`/organisations/${id}/assets`, { kind: 'sponsor' }).catch(() => []), [id]); // a coach has no sponsor access: treated as none
+  if (org.error || dash.error) return <Screen><LoadError error={dash.error ?? org.error} onRetry={() => { org.reload(); dash.reload(); }} /></Screen>;
   if (!org.data || !dash.data) return <Screen><Loading /></Screen>;
   const o = org.data, d = dash.data, role = d.role, archived = o.status === 'archived';
-  const P = { o, d, role, archived, toast, reload: () => { org.reload(); dash.reload(); } };
-  const tabs = [['overview', 'Overview'], ...(role !== 'finance' ? [['cohorts', 'Cohorts']] : []), ['people', 'People'], ...(role !== 'finance' ? [['assets', 'Teams, events & venues']] : []), ...(STAFF.includes(role) ? [['admissions', 'Admissions']] : [])];
+  const P = { o, d, role, archived, toast, brands, reload: () => { org.reload(); dash.reload(); brands.reload(); } };
+  const teaching = !SPONSOR_ONLY.includes(role) && role !== 'finance';
+  const tabs = [['overview', 'Overview'], ...(teaching ? [['cohorts', 'Cohorts']] : []), ['people', 'People'], ...(brands.data?.length && role !== 'coach' ? [['sponsor', 'Sponsor']] : []), ...(teaching ? [['assets', 'Teams, events, venues & brands']] : []), ...(STAFF.includes(role) ? [['admissions', 'Admissions']] : [])];
   return (
     <Screen wide>
       <GradCard colors={[c.violet, c.ink]}>
@@ -77,7 +88,7 @@ export function Org({ id }) {
       </GradCard>
       {archived ? <View style={{ marginTop: 10 }}><Empty emoji="🗄️" title="This organisation is archived" sub="Everything is kept and readable. Ask an owner to restore it to make changes." /></View> : null}
       <View style={{ marginTop: 10 }}><Seg options={tabs.map(([value, label]) => ({ value, label }))} value={tab} onChange={setTab} color={c.violet} /></View>
-      {tab === 'overview' ? <Overview {...P} /> : tab === 'cohorts' ? <Cohorts {...P} /> : tab === 'people' ? <People {...P} /> : tab === 'admissions' ? <Admissions {...P} /> : <Assets {...P} />}
+      {tab === 'overview' ? <Overview {...P} /> : tab === 'cohorts' ? <Cohorts {...P} /> : tab === 'people' ? <People {...P} /> : tab === 'admissions' ? <Admissions {...P} /> : tab === 'sponsor' ? <SponsorTab {...P} /> : <Assets {...P} />}
     </Screen>
   );
 }
@@ -91,7 +102,7 @@ function Overview({ o, d, role, archived, reload, toast }) {
       const r = await api.get(`/organisations/${o.id}/export`, { section });
       if (typeof document !== 'undefined') { const u = URL.createObjectURL(new Blob([r.csv], { type: 'text/csv' })); const l = document.createElement('a'); l.href = u; l.download = r.filename; l.click(); URL.revokeObjectURL(u); }
       toast(`${r.rows} rows exported`);
-    } catch (e) { fail(toast)(e); }
+    } catch (e) { toast(explain(e)); }
   };
   const archive = async () => { try { await api.post(`/organisations/${o.id}/${archived ? 'restore' : 'archive'}`); toast(archived ? 'Organisation restored' : 'Organisation archived — data is kept'); reload(); } catch (e) { fail(toast)(e); } };
   return (
@@ -128,43 +139,152 @@ function Overview({ o, d, role, archived, reload, toast }) {
 }
 
 // ------------------------------------------------------------------ people
-function People({ o, role, archived, toast }) {
+function People({ o, role, archived, toast, reload: reloadOrg }) {
   const [invite, setInvite] = useState(false);
   const [sel, setSel] = useState(null);
+  const [confirm, setConfirm] = useState(false);
   const staff = useLoad(() => api.get(`/organisations/${o.id}/members`), [o.id]);
   const pending = useLoad(() => (STAFF.includes(role) ? api.get(`/organisations/${o.id}/members`, { status: 'invited' }) : Promise.resolve([])), [o.id, role]);
+  const depts = useLoad(() => api.get(`/organisations/${o.id}/departments`).catch(() => []), [o.id]);
   const refresh = () => { staff.reload(); pending.reload(); };
-  const act = async (fn, msg) => { try { await fn(); toast(msg); setSel(null); refresh(); } catch (e) { fail(toast)(e); } };
+  // a stale change (409) reloads the list so the sheet shows what is true now
+  const act = async (fn, msg) => { try { await fn(); toast(msg); setSel(null); refresh(); } catch (e) { toast(explain(e)); if (e.status === 409 || e.status === 404) { setSel(null); refresh(); } } };
   const manage = STAFF.includes(role) && !archived;
+  const roles = Object.entries(ROLE_LABEL).filter(([k]) => role === 'owner' || k !== 'owner');
   return (
     <>
       {manage ? <View style={{ marginTop: 10 }}><Btn small title="Invite someone" onPress={() => setInvite(true)} /></View> : null}
       <Section title="Staff" color={c.violet}>
-        {staff.error ? <ErrorBox error={staff.error} onRetry={staff.reload} /> : !staff.data ? <Loading /> : staff.data.length ? staff.data.map((m) => (
-          <Row key={m.id} title={m.display_name} sub={`@${m.handle} · ${ROLE_HELP[m.org_role]}`} right={<Tag label={ROLE_LABEL[m.org_role]} />} onPress={manage ? () => setSel(m) : undefined} />
+        {staff.error ? <LoadError error={staff.error} onRetry={staff.reload} /> : !staff.data ? <Loading /> : staff.data.length ? staff.data.map((m) => (
+          <Row key={m.id} title={m.display_name} sub={`@${m.handle} · ${ROLE_HELP[m.org_role]}${m.department_name ? ` · ${m.department_name}` : ''}`} right={<Tag label={ROLE_LABEL[m.org_role]} />} onPress={manage ? () => setSel(m) : undefined} accessibilityLabel={`${m.display_name}, ${ROLE_LABEL[m.org_role]}${manage ? ', open to change role or remove' : ''}`} />
         )) : <Empty title="No staff yet" />}
       </Section>
       {pending.data?.length ? <Section title="Waiting for a reply" color={c.sun}>{pending.data.map((m) => <Row key={m.id} title={m.display_name} sub={`@${m.handle} · invited as ${ROLE_LABEL[m.org_role]}`} onPress={manage ? () => setSel(m) : undefined} />)}</Section> : null}
-      <FormSheet visible={invite} onClose={() => setInvite(false)} title="Invite to this organisation" submitLabel="Send invitation"
-        fields={[{ key: 'person', label: 'Handle or email', hint: 'They need a Gotmygame account. Nothing is shared until they accept.' }, { key: 'role', label: 'Role', type: 'chips', options: Object.entries(ROLE_LABEL).filter(([k]) => role === 'owner' || k !== 'owner').map(([value, label]) => ({ value, label })) }]}
-        onSubmit={async (v) => { await api.post(`/organisations/${o.id}/members`, v); refresh(); return 'Invitation sent'; }} />
-      <Sheet visible={!!sel} onClose={() => setSel(null)} title={sel?.display_name ?? ''}>
+      <InviteSheet visible={invite} onClose={() => setInvite(false)} o={o} roles={roles} depts={depts.data ?? []} done={refresh} />
+      <Sheet visible={!!sel && !confirm} onClose={() => setSel(null)} title={sel?.display_name ?? ''}>
         {sel ? (
           <View style={{ gap: 10 }}>
             {sel.status === 'active' ? (
               <>
                 <T color={c.mute}>Change role</T>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-                  {Object.entries(ROLE_LABEL).filter(([k]) => role === 'owner' || k !== 'owner').map(([k, l]) => <Chip key={k} label={l} active={k === sel.org_role} onPress={() => act(() => api.patch(`/organisations/${o.id}/members/${sel.id}`, { role: k }), 'Role updated')} />)}
+                  {roles.map(([k, l]) => <Chip key={k} label={l} active={k === sel.org_role} onPress={() => k !== sel.org_role && act(() => api.patch(`/organisations/${o.id}/members/${sel.id}`, { role: k, expected_role: sel.org_role }), 'Role updated')} />)}
                 </View>
+                {SPONSOR_ONLY.includes(sel.org_role) || sel.org_role === 'finance' ? (
+                  <>
+                    <T color={c.mute}>Department</T>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                      <Chip label="All departments" active={!sel.department_id} onPress={() => sel.department_id && act(() => api.patch(`/organisations/${o.id}/members/${sel.id}`, { role: sel.org_role, department_id: null, expected_role: sel.org_role }), 'Department updated')} />
+                      {(depts.data ?? []).map((d) => <Chip key={d.id} label={d.name} active={sel.department_id === d.id} onPress={() => sel.department_id !== d.id && act(() => api.patch(`/organisations/${o.id}/members/${sel.id}`, { role: sel.org_role, department_id: d.id, expected_role: sel.org_role }), 'Department updated')} />)}
+                    </View>
+                  </>
+                ) : null}
                 {role === 'owner' && sel.org_role !== 'owner' ? <Btn small title="Make owner and step down to admin" color={c.paper} ink={c.ink} onPress={() => act(() => api.post(`/organisations/${o.id}/transfer`, { to_user_id: sel.id }), 'Ownership transferred')} /> : null}
               </>
             ) : null}
-            <Btn title={sel.status === 'invited' ? 'Cancel invitation' : 'Remove from organisation'} color={c.orange} onPress={() => act(() => api.del(`/organisations/${o.id}/members/${sel.id}`), 'Access removed — history is kept')} />
-            <T size={12} color={c.mute}>Their access ends immediately. Attendance and enrolment records they created stay in place.</T>
+            <Btn title={sel.status === 'invited' ? 'Cancel invitation' : 'Revoke access'} color={c.orange} onPress={() => setConfirm(true)} />
+            <T size={12} color={c.mute}>Their access ends immediately, including sponsor deals, payments and exports. History they created stays in place.</T>
           </View>
         ) : null}
       </Sheet>
+      <Confirm visible={confirm} danger title={sel?.status === 'invited' ? 'Cancel this invitation?' : `Revoke ${sel?.display_name ?? ''}'s access?`} yes={sel?.status === 'invited' ? 'Cancel invitation' : 'Revoke access'}
+        body="This takes effect at once. Nothing is deleted: payments, reviews and other history stay, and you can invite them again later."
+        onClose={() => setConfirm(false)} onYes={async () => { await act(() => api.del(`/organisations/${o.id}/members/${sel.id}`), 'Access removed — history is kept'); setConfirm(false); reloadOrg?.(); }} />
+    </>
+  );
+}
+
+/** Invite: search-and-pick the person (never a typed handle), a role chip, and an optional department. */
+function InviteSheet({ visible, onClose, o, roles, depts, done }) {
+  const { toast } = useSession();
+  const [who, setWho] = useState([]);
+  const [role, setRole] = useState(null);
+  const [dept, setDept] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const scoped = role && (SPONSOR_ONLY.includes(role) || role === 'finance');
+  const close = () => { setWho([]); setRole(null); setDept(null); onClose(); };
+  const send = async () => {
+    setBusy(true);
+    try {
+      await api.post(`/organisations/${o.id}/members`, { person: who[0].sub.replace(/^@/, ''), role, ...(scoped && dept ? { department_id: dept } : {}) });
+      toast('Invitation sent'); done(); close();
+    } catch (e) { toast(explain(e)); } finally { setBusy(false); }
+  };
+  return (
+    <Sheet visible={visible} onClose={close} title="Invite to this organisation">
+      <View style={{ gap: 12 }}>
+        <EntityPicker label="Person" value={who} onChange={setWho} />
+        <T size={12} color={c.mute}>They need a Gotmygame account. Nothing is shared until they accept.</T>
+        <T color={c.mute}>Role</T>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{roles.map(([k, l]) => <Chip key={k} label={l} active={role === k} onPress={() => setRole(k)} />)}</View>
+        {role ? <T size={12} color={c.mute}>{ROLE_HELP[role]}</T> : null}
+        {scoped && depts.length ? (
+          <>
+            <T color={c.mute}>Department (optional)</T>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              <Chip label="All departments" active={!dept} onPress={() => setDept(null)} />
+              {depts.map((d) => <Chip key={d.id} label={d.name} active={dept === d.id} onPress={() => setDept(d.id)} />)}
+            </View>
+          </>
+        ) : null}
+        <Btn title="Send invitation" loading={busy} disabled={!who.length || !role} onPress={send} />
+      </View>
+    </Sheet>
+  );
+}
+
+// ------------------------------------------------------------------ sponsor brands: deals, departments, export
+function SponsorTab({ o, role, archived, toast, brands }) {
+  const { push } = useNav();
+  const [dept, setDept] = useState(null); // department filter
+  const [add, setAdd] = useState(false);
+  const depts = useLoad(() => api.get(`/organisations/${o.id}/departments`), [o.id]);
+  const deals = useLoad(() => api.get('/sponsorships', { limit: 100 }), [o.id]);
+  const ids = new Set((brands.data ?? []).map((b) => b.id));
+  const names = Object.fromEntries((depts.data ?? []).map((d) => [d.id, d.name]));
+  const rows = (deals.data ?? []).filter((d) => ids.has(d.sponsor_id) && (!dept || d.department_id === dept));
+  const manage = STAFF.includes(role) && !archived;
+  const exportCsv = async (section) => {
+    try {
+      const r = await api.get(`/organisations/${o.id}/export`, { section });
+      if (typeof document !== 'undefined') { const u = URL.createObjectURL(new Blob([r.csv], { type: 'text/csv' })); const l = document.createElement('a'); l.href = u; l.download = r.filename; l.click(); URL.revokeObjectURL(u); }
+      toast(`${r.rows} rows exported`);
+    } catch (e) { toast(explain(e)); }
+  };
+  return (
+    <>
+      <Section title="Brands" color={c.violet}>
+        {(brands.data ?? []).map((b) => <Row key={b.id} title={b.name} sub="Run by this organisation's staff under their sponsor roles" />)}
+      </Section>
+      <Section title="Deals" color={c.sun}>
+        {depts.data?.length ? (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 6 }}>
+            <Chip label="All departments" active={!dept} onPress={() => setDept(null)} />
+            {depts.data.map((d) => <Chip key={d.id} label={d.name} active={dept === d.id} onPress={() => setDept(d.id)} />)}
+          </View>
+        ) : null}
+        {deals.error ? <LoadError error={deals.error} onRetry={deals.reload} /> : deals.loading && !deals.data ? <Loading /> : rows.length ? rows.map((d) => (
+          <Row key={d.id} title={`${d.sponsor_name} → ${d.target_name ?? d.target_type}`} sub={`${d.status}${d.department_id ? ` · ${names[d.department_id] ?? 'Archived department'}` : ' · All departments'}`}
+            right={d.agreement_ref ? <Btn small title="Open" color={c.paper} ink={c.ink} onPress={() => push('SponsorDeal', { id: d.id })} /> : <Tag label="Legacy" />} />
+        )) : <Empty emoji="🤝" title="No deals to show" sub={dept ? 'No deals in this department yet.' : 'Deals appear here once a linked brand makes or receives an offer.'} />}
+      </Section>
+      <Section title="Departments" color={c.cyan}>
+        {depts.error ? <LoadError error={depts.error} onRetry={depts.reload} /> : !depts.data ? <Loading /> : depts.data.length ? depts.data.map((d) => (
+          <Row key={d.id} title={d.name} right={manage ? <Btn small title="Archive" color={c.paper} ink={c.ink} onPress={async () => { try { await api.del(`/organisations/${o.id}/departments/${d.id}`); toast('Department archived — deals and people are kept'); depts.reload(); } catch (e) { toast(explain(e)); } }} /> : null} />
+        )) : <Empty emoji="🏢" title="No departments" sub="Departments limit who sees which deals. Without any, everyone with a role sees every deal." />}
+        {manage ? <Btn small title="Add department" color={c.violet} style={{ alignSelf: 'flex-start', marginTop: 6 }} onPress={() => setAdd(true)} /> : null}
+      </Section>
+      {SPONSOR_EXPORT.includes(role) ? (
+        <Section title="Export" color={c.mint}>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            <Btn small title="Export deals CSV" color={c.paper} ink={c.ink} onPress={() => exportCsv('sponsor_deals')} />
+            <Btn small title="Export dues CSV" color={c.paper} ink={c.ink} onPress={() => exportCsv('sponsor_obligations')} />
+          </View>
+          <T size={12} color={c.mute}>Exports follow your role and department and are recorded in the audit log. They never include contact details.</T>
+        </Section>
+      ) : null}
+      <FormSheet visible={add} onClose={() => setAdd(false)} title="Add a department" fields={[{ key: 'name', label: 'Department name' }]}
+        onSubmit={async (v) => { await api.post(`/organisations/${o.id}/departments`, v); depts.reload(); return 'Department added'; }} />
     </>
   );
 }
@@ -290,21 +410,21 @@ function Assets({ o, role, archived, toast }) {
   const [link, setLink] = useState(false);
   const list = useLoad(() => api.get(`/organisations/${o.id}/assets`, { kind }), [o.id, kind]);
   const { user } = useSession();
-  const mine = useLoad(() => (!link ? Promise.resolve([]) : kind === 'team' ? api.get('/teams', { mine: true }) : kind === 'event' ? api.get('/events', { organizer_id: user.id }) : api.get('/me/venues')), [link, kind]);
+  const mine = useLoad(() => (!link ? Promise.resolve([]) : kind === 'team' ? api.get('/teams', { mine: true }) : kind === 'event' ? api.get('/events', { organizer_id: user.id }) : kind === 'sponsor' ? api.get('/sponsors', { mine: true, limit: 50 }) : api.get('/me/venues')), [link, kind]);
   const manage = STAFF.includes(role) && !archived;
   const unlink = async (a) => { try { await api.del(`/organisations/${o.id}/assets/${a.id}`, { kind }); toast('Removed from the organisation'); list.reload(); } catch (e) { fail(toast)(e); } };
   const add = async (a) => { try { await api.post(`/organisations/${o.id}/assets`, { kind, asset_id: a.id }); toast(`${a.name} added`); setLink(false); list.reload(); } catch (e) { fail(toast)(e); } };
-  const items = (Array.isArray(mine.data) ? mine.data : mine.data?.items ?? []).filter((a) => !a.organisation_id);
+  const items = (Array.isArray(mine.data) ? mine.data : mine.data?.items ?? []).filter((a) => !a.organisation_id && (kind !== 'sponsor' || a.my_role === 'manager'));
   return (
     <>
-      <View style={{ marginTop: 10 }}><Seg options={[{ value: 'team', label: 'Teams' }, { value: 'event', label: 'Events' }, { value: 'venue', label: 'Venues' }]} value={kind} onChange={setKind} color={c.cyan} /></View>
-      {manage ? <View style={{ marginTop: 6 }}><Btn small title={`Add one of my ${kind}s`} onPress={() => setLink(true)} /></View> : null}
-      <Section title={`Linked ${kind}s`} color={c.cyan}>
+      <View style={{ marginTop: 10 }}><Seg options={[{ value: 'team', label: 'Teams' }, { value: 'event', label: 'Events' }, { value: 'venue', label: 'Venues' }, { value: 'sponsor', label: 'Brands' }]} value={kind} onChange={setKind} color={c.cyan} /></View>
+      {manage ? <View style={{ marginTop: 6 }}><Btn small title={kind === 'sponsor' ? 'Link one of my brands' : `Add one of my ${kind}s`} onPress={() => setLink(true)} /></View> : null}
+      <Section title={kind === 'sponsor' ? 'Linked brands' : `Linked ${kind}s`} color={c.cyan}>
         {list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : !list.data ? <Loading /> : list.data.length ? list.data.map((a) => (
           <Row key={a.id} title={a.name} right={manage ? <Btn small title="Remove" color={c.paper} ink={c.ink} onPress={() => unlink(a)} /> : null} />
-        )) : <Empty emoji="🔗" title={`No ${kind}s linked`} sub="Owners and admins of this organisation can manage linked items. You keep ownership of anything you add." />}
+        )) : <Empty emoji="🔗" title={kind === 'sponsor' ? 'No brands linked' : `No ${kind}s linked`} sub="Owners and admins of this organisation can manage linked items. You keep ownership of anything you add." />}
       </Section>
-      <Sheet visible={link} onClose={() => setLink(false)} title={`Add a ${kind}`}>
+      <Sheet visible={link} onClose={() => setLink(false)} title={kind === 'sponsor' ? 'Link a brand' : `Add a ${kind}`}>
         <View style={{ gap: 8 }}>
           {!mine.data ? <Loading /> : items.length ? items.map((a) => <Row key={a.id} title={a.name} onPress={() => add(a)} />) : <Empty title={`No ${kind}s to add`} sub={`Only ${kind}s you own can be added.`} />}
         </View>

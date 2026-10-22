@@ -11,13 +11,17 @@ import { one, many, tx, pool } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { audit, isAdmin, PUBLIC_USER } from '../helpers.js';
 import { blindIndex } from '../crypto.js';
-import { csvToObjects } from '../csv.js';
+import { csvToObjects, toCsv } from '../csv.js';
 import { notify } from '../notify.js';
 import { orgFor, orgRole } from '../org-access.js';
+import { SPONSOR_ROLES } from '../sponsor-access.js';
 
-const ORG_KINDS = ['club', 'academy', 'school', 'college', 'university', 'other'];
-const ROLES = ['owner', 'admin', 'coach', 'finance'];
+const ORG_KINDS = ['club', 'academy', 'school', 'college', 'university', 'company', 'other'];
+// the sponsor roles (manager, evaluator, legal, approver, auditor; finance is shared) are what a corporate sponsor's staff hold (#283)
+const ROLES = ['owner', 'admin', 'coach', 'finance', ...SPONSOR_ROLES.filter((r) => r !== 'finance')];
+const ROLE_ORDER = ROLES;
 const STAFF = ['owner', 'admin'];
+const SPONSOR_EXPORT = ['owner', 'admin', 'manager', 'finance', 'auditor'];
 const role = z.enum(ROLES);
 const day = z.string().date();
 const MAX_ROWS = 500;
@@ -26,6 +30,7 @@ const person = (ref) => {
   const r = String(ref).trim();
   return r.includes('@') ? one('SELECT id, handle, display_name FROM users WHERE email_idx=$1', [blindIndex(r)]) : one('SELECT id, handle, display_name FROM users WHERE lower(handle)=lower($1)', [r.replace(/^@/, '')]);
 };
+const deptOf = async (orgId, deptId) => { if (!(await one('SELECT 1 FROM org_departments WHERE id=$1 AND organisation_id=$2 AND archived_at IS NULL', [deptId, orgId]))) throw notFound('Department'); };
 const lockOrg = (c, orgId) => c.query('SELECT id FROM organisations WHERE id=$1 FOR UPDATE', [orgId]);
 const activeOwners = async (c, orgId, except) => (await c.query("SELECT count(*)::int AS n FROM organisation_members WHERE organisation_id=$1 AND role='owner' AND status='active' AND user_id<>$2", [orgId, except])).rows[0].n;
 
@@ -114,13 +119,14 @@ cap({
 cap({
   name: 'invite_org_member', method: 'POST', path: '/organisations/:id/members', tag: 'Organisations', status: 201,
   summary: 'Invite a registered person (by handle or email) to a role. Only owners can invite other owners.',
-  input: z.object({ id, person: z.string().min(2).max(200).describe('handle or email of a registered person'), role: role.default('coach') }),
+  input: z.object({ id, person: z.string().min(2).max(200).describe('handle or email of a registered person'), role: role.default('coach'), department_id: id.optional().describe('limit a sponsor-side member to one department; omit for all') }),
   async handler({ user }, i) {
     const { org, role: mine } = await orgFor(user, i.id, STAFF, { write: true });
+    if (i.department_id) await deptOf(i.id, i.department_id);
     if (i.role === 'owner' && mine !== 'owner') throw forbidden('Only an owner can invite another owner');
     const u = await person(i.person);
     if (!u) throw notFound('Person (they need a Gotmygame account first)');
-    const m = await one("INSERT INTO organisation_members(organisation_id, user_id, role, invited_by) VALUES ($1,$2,$3,$4) RETURNING id, organisation_id, user_id, role, status, invited_at", [i.id, u.id, i.role, user.id]); // live-membership unique index -> 409 on repeat
+    const m = await one("INSERT INTO organisation_members(organisation_id, user_id, role, invited_by, department_id) VALUES ($1,$2,$3,$4,$5) RETURNING id, organisation_id, user_id, role, status, invited_at, department_id", [i.id, u.id, i.role, user.id, i.department_id ?? null]); // live-membership unique index -> 409 on repeat
     await notify(null, u.id, { kind: 'org_invite', title: `Invitation to ${org.name}`, body: `You have been invited to join ${org.name} as ${i.role}.`, data: { organisation_id: i.id } });
     await audit(null, user.id, 'invite_org_member', 'organisations', i.id);
     return { ...m, handle: u.handle, display_name: u.display_name };
@@ -150,10 +156,10 @@ cap({
     const { role: mine } = await orgFor(user, i.id);
     if (i.status !== 'active' && !STAFF.includes(mine)) throw forbidden('Only owners and admins can see invitations and former staff');
     return many(
-      `SELECT ${PUBLIC_USER}, m.role AS org_role, m.status, m.joined_at, m.left_at
-         FROM organisation_members m JOIN users u ON u.id=m.user_id WHERE m.organisation_id=$1 AND m.status=$2
-        ORDER BY array_position(ARRAY['owner','admin','coach','finance'], m.role), u.display_name, u.id LIMIT $3 OFFSET $4`,
-      [i.id, i.status, i.limit, i.offset],
+      `SELECT ${PUBLIC_USER}, m.role AS org_role, m.status, m.joined_at, m.left_at, m.department_id, d.name AS department_name
+         FROM organisation_members m JOIN users u ON u.id=m.user_id LEFT JOIN org_departments d ON d.id=m.department_id WHERE m.organisation_id=$1 AND m.status=$2
+        ORDER BY array_position($5::text[], m.role), u.display_name, u.id LIMIT $3 OFFSET $4`,
+      [i.id, i.status, i.limit, i.offset, ROLE_ORDER],
     );
   },
 });
@@ -161,15 +167,17 @@ cap({
 cap({
   name: 'set_org_member_role', method: 'PATCH', path: '/organisations/:id/members/:user_id', tag: 'Organisations',
   summary: 'Change a staff member\'s role. Admins cannot change owners or make owners; the last owner cannot be demoted (transfer ownership instead).',
-  input: z.object({ id, user_id: id, role }),
+  input: z.object({ id, user_id: id, role, department_id: id.nullable().optional().describe('department scope: an id, null for all departments, omit to leave unchanged'), expected_role: role.optional().describe('the role you saw; if it changed meanwhile the update is rejected (409) so you can reload') }),
   handler: ({ user }, i) => tx(async (c) => {
     await lockOrg(c, i.id);
+    if (i.department_id) await deptOf(i.id, i.department_id);
     const { role: mine } = await orgFor(user, i.id, STAFF, { write: true, c });
     const t = (await c.query("SELECT role FROM organisation_members WHERE organisation_id=$1 AND user_id=$2 AND status='active'", [i.id, i.user_id])).rows[0];
     if (!t) throw notFound('Active member');
+    if (i.expected_role && t.role !== i.expected_role) throw conflict(`This person's role changed to ${t.role} since you opened it; reload and try again`);
     if (mine !== 'owner' && (t.role === 'owner' || i.role === 'owner')) throw forbidden('Only an owner can change owners');
     if (t.role === 'owner' && i.role !== 'owner' && (await activeOwners(c, i.id, i.user_id)) < 1) throw conflict('An organisation needs at least one owner — transfer ownership first');
-    const m = (await c.query("UPDATE organisation_members SET role=$3 WHERE organisation_id=$1 AND user_id=$2 AND status='active' RETURNING id, organisation_id, user_id, role, status", [i.id, i.user_id, i.role])).rows[0];
+    const m = (await c.query("UPDATE organisation_members SET role=$3, department_id=CASE WHEN $4::boolean THEN $5::uuid ELSE department_id END WHERE organisation_id=$1 AND user_id=$2 AND status='active' RETURNING id, organisation_id, user_id, role, status, department_id", [i.id, i.user_id, i.role, i.department_id !== undefined, i.department_id ?? null])).rows[0];
     await audit(c, user.id, 'set_org_member_role', 'organisations', i.id);
     return m;
   }),
@@ -216,8 +224,9 @@ const ASSETS = {
   team: { table: 'teams', owner: 'owner_id', cols: 'a.id, a.name' },
   event: { table: 'events', owner: 'organizer_id', cols: 'a.id, a.name' },
   venue: { table: 'venues', owner: 'owner_id', cols: 'a.id, a.name' },
+  sponsor: { table: 'sponsors', owner: 'owner_id', cols: 'a.id, a.name' }, // a corporate sponsor brand: the organisation's staff then work it under their sponsor roles
 };
-const assetKind = z.enum(['team', 'event', 'venue']);
+const assetKind = z.enum(['team', 'event', 'venue', 'sponsor']);
 
 cap({
   name: 'link_org_asset', method: 'POST', path: '/organisations/:id/assets', tag: 'Organisations',
@@ -255,10 +264,46 @@ cap({
   summary: 'Teams, events or venues linked to the workspace.',
   input: z.object({ id, kind: assetKind, ...page }),
   async handler({ user }, i) {
-    await orgFor(user, i.id, ['owner', 'admin', 'coach']);
+    await orgFor(user, i.id, i.kind === 'sponsor' ? ROLES.filter((r) => r !== 'coach') : ['owner', 'admin', 'coach']);
     const a = ASSETS[i.kind];
     return many(`SELECT ${a.cols} FROM ${a.table} a WHERE a.organisation_id=$1 ORDER BY a.name, a.id LIMIT $2 OFFSET $3`, [i.id, i.limit, i.offset]);
   },
+});
+
+// ------------------------------------------------------------------ departments
+cap({
+  name: 'create_org_department', method: 'POST', path: '/organisations/:id/departments', tag: 'Organisations', status: 201,
+  summary: 'Add a department (owner/admin). Staff and sponsor deals can be limited to one department; leaving it empty means all departments.',
+  input: z.object({ id, name: z.string().min(2).max(60) }),
+  handler: ({ user }, i) => tx(async (c) => {
+    await orgFor(user, i.id, STAFF, { write: true, c });
+    const d = (await c.query('INSERT INTO org_departments(organisation_id, name, created_by) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING RETURNING id, organisation_id, name, created_at', [i.id, i.name.trim(), user.id])).rows[0];
+    if (!d) throw conflict('A department with that name already exists');
+    await audit(c, user.id, 'create_org_department', 'organisations', i.id);
+    return d;
+  }),
+});
+
+cap({
+  name: 'list_org_departments', method: 'GET', path: '/organisations/:id/departments', tag: 'Organisations', summary: 'Active departments of the workspace (any member).',
+  input: z.object({ id, ...page }),
+  async handler({ user }, i) {
+    await orgFor(user, i.id);
+    return many('SELECT id, name, created_at FROM org_departments WHERE organisation_id=$1 AND archived_at IS NULL ORDER BY lower(name), id LIMIT $2 OFFSET $3', [i.id, i.limit, i.offset]);
+  },
+});
+
+cap({
+  name: 'archive_org_department', method: 'DELETE', path: '/organisations/:id/departments/:department_id', tag: 'Organisations',
+  summary: 'Archive a department (owner/admin). Nothing is deleted: people and deals keep the link, and department-scoped people are widened to all departments only by an explicit role change.',
+  input: z.object({ id, department_id: id }),
+  handler: ({ user }, i) => tx(async (c) => {
+    await orgFor(user, i.id, STAFF, { write: true, c });
+    const r = await c.query('UPDATE org_departments SET archived_at=now() WHERE id=$1 AND organisation_id=$2 AND archived_at IS NULL', [i.department_id, i.id]);
+    if (!r.rowCount) throw notFound('Department');
+    await audit(c, user.id, 'archive_org_department', 'organisations', i.id);
+    return { ok: true };
+  }),
 });
 
 // ------------------------------------------------------------------ seasons & cohorts
@@ -491,7 +536,7 @@ cap({
                 (SELECT count(DISTINCT e.user_id)::int FROM org_enrolments e JOIN org_cohorts k ON k.id=e.cohort_id WHERE k.organisation_id=$1 AND e.status='enrolled') AS people`, [i.id]);
       out.counts = n;
     }
-    if (r !== 'finance') {
+    if (['owner', 'admin', 'coach'].includes(r)) {
       out.attendance_30d = await one(
         `SELECT count(*) FILTER (WHERE a.status='present')::int AS present, count(a.id)::int AS marked
            FROM org_attendance a JOIN org_cohorts k ON k.id=a.cohort_id
@@ -509,27 +554,30 @@ cap({
   },
 });
 
-const csvCell = (v) => {
-  let s = v === null || v === undefined ? '' : v instanceof Date ? v.toISOString() : String(v);
-  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`; // spreadsheet formula injection
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-};
-const toCsv = (cols, rows) => [cols.join(','), ...rows.map((r) => cols.map((k) => csvCell(r[k])).join(','))].join('\n') + '\n';
-
 cap({
   name: 'export_org_data', method: 'GET', path: '/organisations/:id/export', tag: 'Organisations',
-  summary: 'Export a section as CSV: staff, enrolments and attendance (owner/admin), finance (owner/finance). No contact details or clinical data are ever included.',
-  input: z.object({ id, section: z.enum(['staff', 'enrolments', 'attendance', 'finance']) }),
+  summary: 'Export a section as CSV: staff, enrolments and attendance (owner/admin), finance (owner/finance), sponsor_deals and sponsor_obligations of the linked sponsor brands (owner, admin, manager, finance, auditor; a department-scoped member only gets their department). No contact details or clinical data are ever included.',
+  input: z.object({ id, section: z.enum(['staff', 'enrolments', 'attendance', 'finance', 'sponsor_deals', 'sponsor_obligations']) }),
   async handler({ user }, i) {
-    const allowed = { staff: STAFF, enrolments: STAFF, attendance: STAFF, finance: ['owner', 'finance'] }[i.section];
+    const allowed = { staff: STAFF, enrolments: STAFF, attendance: STAFF, finance: ['owner', 'finance'], sponsor_deals: SPONSOR_EXPORT, sponsor_obligations: SPONSOR_EXPORT }[i.section];
     await orgFor(user, i.id, allowed);
+    const scope = i.section.startsWith('sponsor_') && !isAdmin(user) ? (await one("SELECT department_id FROM organisation_members WHERE organisation_id=$1 AND user_id=$2 AND status='active'", [i.id, user.id]))?.department_id ?? null : null;
     const q = {
+      sponsor_deals: [['brand', 'agreement_ref', 'department', 'target_type', 'status', 'currency', 'starts_on', 'ends_on', 'terms_version', 'accepted_version'],
+        `SELECT sp.name AS brand, ss.agreement_ref, d.name AS department, ss.target_type, ss.status, ss.currency, ss.starts_on, ss.ends_on, ss.terms_version, ss.accepted_version
+           FROM sponsorships ss JOIN sponsors sp ON sp.id=ss.sponsor_id LEFT JOIN org_departments d ON d.id=ss.department_id
+          WHERE sp.organisation_id=$1 AND ($2::uuid IS NULL OR ss.department_id=$2) ORDER BY sp.name, ss.created_at, ss.id`],
+      sponsor_obligations: [['brand', 'agreement_ref', 'department', 'kind', 'label', 'due_on', 'amount_cents', 'currency', 'quantity', 'status', 'confirmed_cents'],
+        `SELECT sp.name AS brand, ss.agreement_ref, d.name AS department, o.kind, l.label, o.due_on, o.amount_cents, o.currency, o.quantity, o.status,
+                (SELECT coalesce(sum(p.amount_cents),0) FROM sponsorship_payments p WHERE p.obligation_id=o.id AND p.status='confirmed') AS confirmed_cents
+           FROM sponsorship_obligations o JOIN sponsorships ss ON ss.id=o.sponsorship_id JOIN sponsors sp ON sp.id=ss.sponsor_id JOIN sponsorship_lines l ON l.id=o.line_id LEFT JOIN org_departments d ON d.id=ss.department_id
+          WHERE sp.organisation_id=$1 AND ($2::uuid IS NULL OR ss.department_id=$2) ORDER BY sp.name, ss.created_at, o.due_on, o.id`],
       staff: [['handle', 'display_name', 'role', 'status', 'joined_at', 'left_at'], `SELECT u.handle, u.display_name, m.role, m.status, m.joined_at, m.left_at FROM organisation_members m JOIN users u ON u.id=m.user_id WHERE m.organisation_id=$1 ORDER BY u.handle, m.invited_at`],
       enrolments: [['cohort', 'handle', 'display_name', 'status', 'enrolled_at', 'withdrawn_at'], `SELECT k.name AS cohort, u.handle, u.display_name, e.status, e.enrolled_at, e.withdrawn_at FROM org_enrolments e JOIN org_cohorts k ON k.id=e.cohort_id JOIN users u ON u.id=e.user_id WHERE k.organisation_id=$1 ORDER BY k.name, u.handle`],
       attendance: [['cohort', 'handle', 'session_date', 'status'], `SELECT k.name AS cohort, u.handle, a.session_date, a.status FROM org_attendance a JOIN org_cohorts k ON k.id=a.cohort_id JOIN users u ON u.id=a.user_id WHERE k.organisation_id=$1 ORDER BY k.name, a.session_date, u.handle`],
       finance: [['team', 'handle', 'kind', 'amount_cents', 'currency', 'status', 'due_on', 'paid_at'], `SELECT t.name AS team, u.handle, p.kind, p.amount_cents, p.currency, p.status, p.due_on, p.paid_at FROM team_payouts p JOIN teams t ON t.id=p.team_id JOIN users u ON u.id=p.user_id WHERE t.organisation_id=$1 ORDER BY t.name, p.created_at, p.id`],
     }[i.section];
-    const rows = await many(q[1], [i.id]);
+    const rows = await many(q[1], q[1].includes('$2') ? [i.id, scope] : [i.id]);
     await audit(null, user.id, `export_org_${i.section}`, 'organisations', i.id);
     return { filename: `${i.section}.csv`, rows: rows.length, csv: toCsv(q[0], rows) };
   },
