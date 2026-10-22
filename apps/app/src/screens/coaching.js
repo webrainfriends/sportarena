@@ -117,7 +117,7 @@ export function CoachToolGrid({ push, counts = {} }) {
   const tools = [
     ['🗂️', 'Desk', 'CoachDesk'], ['📬', 'Request board', 'CoachBoard', counts.board], ['🏃', 'Athletes', 'CoachAthletes'], ['🪪', 'Profile & hours', 'CoachSetup'],
     ['📅', 'Schedule', 'CoachCalendar'], ['🏷️', 'Rate cards', 'CoachRates'], ['📑', 'Commitments', 'CoachCommitments'], ['⭐', 'Reviews', 'CoachReviews', counts.reviews],
-    ['📈', 'Analytics', 'CoachAnalytics'], ['📝', 'Training plans', 'MyPlans', null, { as: 'coach' }], ['📍', 'Courts', 'TrainingVenue', counts.courts], ['🔁', 'Recurring booking', 'RecurringVenue'],
+    ['🧠', 'Performance Studio', 'PerformanceStudio'], ['📈', 'Analytics', 'CoachAnalytics'], ['📝', 'Training plans', 'MyPlans', null, { as: 'coach' }], ['📍', 'Courts', 'TrainingVenue', counts.courts], ['🔁', 'Recurring booking', 'RecurringVenue'],
   ];
   return (
     <Card pad={16} color={c.violetSoft}>

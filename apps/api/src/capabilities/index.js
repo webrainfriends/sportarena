@@ -62,6 +62,7 @@ import './coach-business.js';
 import './venue-sessions.js';
 import './training-plans.js';
 import './coach.js';
+import './coaching-journal.js';
 import './payments.js';
 import './settlement.js';
 import './sponsors.js';
