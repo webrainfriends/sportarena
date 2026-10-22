@@ -5,6 +5,7 @@ import { badRequest, forbidden, conflict, notFound } from '../errors.js';
 import { config } from '../config.js';
 import { notify } from '../notify.js';
 import { audit, hasRole, isAdmin, mustFind } from '../helpers.js';
+import { sponsorTeamSql } from '../sponsor-identity-access.js';
 import { decrypt, encrypt } from '../crypto.js';
 import { randomBytes } from 'node:crypto';
 import { canManageTeam } from './teams.js';
@@ -203,7 +204,7 @@ export async function standing(user, coverFor, subjectId) {
   if (coverFor === 'event') {
     const ev = await mustFind('events', subjectId);
     if (isAdmin(user) || ev.organizer_id === user.id || await hasOrgGrant(user, ev.organisation_id, ['owner', 'admin'])) return 'manage';
-    return (await one("SELECT 1 FROM sponsorships s JOIN sponsors sp ON sp.id=s.sponsor_id WHERE s.target_type='event' AND s.target_id=$1 AND sp.owner_id=$2 AND s.status='active'", [ev.id, user.id])) ? 'member' : null;
+    return (await one(`SELECT 1 FROM sponsorships s JOIN sponsors sp ON sp.id=s.sponsor_id WHERE s.target_type='event' AND s.target_id=$1 AND ${sponsorTeamSql('$2')} AND s.status='active'`, [ev.id, user.id])) ? 'member' : null;
   }
   const v = await mustFind('venues', subjectId);
   if (isAdmin(user) || v.owner_id === user.id || await hasOrgGrant(user, v.organisation_id, ['owner', 'admin'])) return 'manage';
@@ -309,7 +310,7 @@ const COVER_LINKS = `
   UNION ALL SELECT p.id, 'event', r.role FROM insurance_policies p JOIN event_staff_assignments a ON a.event_id=p.subject_id AND a.user_id=$1 AND a.status IN ('accepted','completed')
     JOIN event_staff_roles r ON r.id=a.role_id WHERE p.subject_type='event'
   UNION ALL SELECT p.id, p.subject_type, 'sponsor' FROM insurance_policies p JOIN sponsorships s ON s.target_type=p.subject_type AND s.target_id=p.subject_id AND s.status='active'
-    JOIN sponsors sp ON sp.id=s.sponsor_id AND sp.owner_id=$1 WHERE p.subject_type IN ('team','event')
+    JOIN sponsors sp ON sp.id=s.sponsor_id AND ${sponsorTeamSql('$1')} WHERE p.subject_type IN ('team','event')
   UNION ALL SELECT p.id, 'venue', CASE WHEN v.owner_id=$1 THEN 'owner' ELSE vs.role END FROM insurance_policies p JOIN venues v ON v.id=p.subject_id
     LEFT JOIN venue_staff vs ON vs.venue_id=v.id AND vs.user_id=$1 AND vs.removed_at IS NULL WHERE p.subject_type='venue' AND (v.owner_id=$1 OR vs.user_id IS NOT NULL)`;
 

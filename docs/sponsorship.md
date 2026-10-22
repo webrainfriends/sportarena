@@ -29,5 +29,6 @@ More → Sponsors: athletes get an "Open to sponsors" switch and pitch editor; s
 send an offer; both sides see every deal with its terms, status and reply, and can accept, decline, withdraw or end.
 The Billboard inbox shows the same terms.
 
-## Funding programs and calls
-See [sponsorship-programs.md](sponsorship-programs.md): public sponsorship calls, invitation-only calls, deadlines in a timezone, FAQs and invitations (#285).
+## Sponsor identities
+Who stands behind a brand (individual, company or organization), its representatives, portfolios and the identity frozen
+on each agreement version are described in [sponsor-identities.md](sponsor-identities.md).

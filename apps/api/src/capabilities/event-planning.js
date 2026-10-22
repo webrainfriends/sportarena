@@ -8,6 +8,7 @@ import { isAdmin, mustFind } from '../helpers.js';
 import { notify } from '../notify.js';
 import { NOT_YOUTH_SQL } from '../youth.js';
 import { eventForOrganizer } from './events.js';
+import { sponsorCanSql, CAN } from '../sponsor-identity-access.js';
 import { REQUEST_KINDS, BUDGET_CATEGORIES, canAnswer, createRequest, announce, finalizeRequest, priceOf } from '../event-planning.js';
 
 const TAG = 'Event planning';
@@ -191,7 +192,8 @@ cap({
     `SELECT ${REQ_COLS}, e.name AS event, e.starts_on AS event_starts_on, e.city AS event_city
        FROM event_requests r JOIN events e ON e.id=r.event_id
       WHERE r.status <> 'draft' AND r.kind <> 'insurer' AND ($2::text IS NULL OR r.status=$2)
-        AND (r.recipient_id=$1
+        AND ((r.recipient_id=$1 AND r.kind <> 'sponsor')
+          OR r.sponsor_id IN (SELECT sp.id FROM sponsors sp WHERE ${sponsorCanSql('$1', CAN.manage)})
           OR r.team_id IN (SELECT t.id FROM teams t WHERE t.owner_id=$1 OR EXISTS (SELECT 1 FROM team_members m WHERE m.team_id=t.id AND m.user_id=$1 AND m.status='active' AND m.role IN ('captain','manager')))
           OR r.venue_id IN (SELECT venue_id FROM venue_staff WHERE user_id=$1 AND removed_at IS NULL))
       ORDER BY (r.status IN ('sent')) DESC, r.created_at DESC LIMIT $3 OFFSET $4`, [user.id, i.status ?? null, i.limit, i.offset]),

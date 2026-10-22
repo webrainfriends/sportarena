@@ -5,6 +5,7 @@ import { c } from './theme';
 import { Counter, DateField, DateRangeField, TimeField } from './pickers';
 import { SportPicker, SportsMulti } from './sportpicker';
 import { RegionPicker } from './region-picker';
+import { CountryPicker } from './country-picker';
 import { api } from './api';
 import { useLoad } from './hooks';
 import { useSession } from './session';
@@ -36,6 +37,7 @@ const opt = (o) => (typeof o === 'object' ? o : { value: o, label: String(o) });
  *   sports                                  several sports (chips + add) → [slugs]
  *   regions                                 several cities / areas (chips + search) → [names]
  *   daterange {toKey}                       from–to on one calendar → key = start, toKey = end
+ *   country                                 search a country by name → two-letter ISO code
  *   section {label}                         a heading between groups
  * `initial` is read each time the sheet opens. onSubmit(values) -> Promise; throws to show an error.
  */
