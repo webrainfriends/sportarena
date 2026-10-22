@@ -141,6 +141,8 @@ test('a guardian report needs a young person with a verified guardian, and only 
   assert.equal((await mkReport(s, { audience: 'guardian' })).status, 403, 'a young person without guardian consent is not visible to the coach at all');
   await pool.query("INSERT INTO guardian_links(guardian_id, child_id, relationship, status, requested_by) VALUES ($1,$2,'parent','active',$1)", [guardian.id, s.arjun.id]);
   await pool.query("INSERT INTO youth_consents(child_id, purpose, granted_by, policy_version, expires_at) VALUES ($1,'participation',$2,1, now() + interval '30 days')", [s.arjun.id, guardian.id]);
+  assert.equal((await mkReport(s, { audience: 'guardian' })).status, 409, 'sharing a report about a young person needs the guardian\'s coaching consent');
+  await pool.query("INSERT INTO youth_consents(child_id, purpose, granted_by, policy_version, expires_at) VALUES ($1,'coaching',$2,1, now() + interval '30 days')", [s.arjun.id, guardian.id]);
   const r = ok(await mkReport(s, { audience: 'guardian', title: 'For parents' }), 201);
   ok(await post(s.coach.token, `/coaching/reports/${r.id}/publish`, { row_version: 1 }), 201);
   assert.equal((await get(guardian.token, `/coaching/reports/${r.id}/versions/1`)).status, 200);
