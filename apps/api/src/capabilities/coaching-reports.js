@@ -4,11 +4,13 @@ import { cap, id, page } from '../registry.js';
 import { one, many, tx } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { audit } from '../helpers.js';
-import { requireRelationship } from '../coaching.js';
-import { guardiansOf, guardianLink, isYouth } from '../youth.js';
+import { requireCoachingConsent, requireRelationship } from '../coaching.js';
+import { guardiansOf, guardianLink, hasConsent, isYouth } from '../youth.js';
 import { requireTeam } from './coaching-journal.js';
 import { series, PROVENANCE } from './coaching-goals.js';
 import { canReadReportVersion, reportVersionFor } from '../coaching-report-access.js';
+import { notifyReportPublished } from '../coaching-notify.js';
+import { sharedReports } from '../coaching-shared.js';
 
 // Coaching reports (issue #269, slice 4). The server builds every section from the coach's own records, filtered for the audience, so
 // the client can never smuggle a private note into a shared report. Publishing freezes an immutable numbered snapshot.
@@ -33,6 +35,7 @@ async function authorise(user, r) {
   if (r.athlete_id) await requireRelationship(user, r.athlete_id);
   if (r.team_id) await requireTeam(user, r.team_id);
   if (r.athlete_id && r.team_id && !(await one("SELECT 1 FROM team_members WHERE team_id=$1 AND user_id=$2 AND status='active'", [r.team_id, r.athlete_id]))) throw badRequest('That athlete is not on this team');
+  if ((r.audience === 'athlete' || r.audience === 'guardian') && r.athlete_id) await requireCoachingConsent(r.athlete_id, 'sharing coaching reports');
   if (r.audience === 'guardian') {
     if (!(await isYouth(r.athlete_id)) || !(await guardiansOf(r.athlete_id)).length) throw badRequest('A guardian report needs a young person with a verified guardian');
   }
@@ -198,6 +201,8 @@ cap({
       const v = (await c.query('INSERT INTO coaching_report_versions(report_id, version, audience, snapshot, snapshot_sha256, published_by) VALUES ($1,$2,$3,$4,$5,$6) RETURNING report_id, version, audience, published_at', [r.id, version, r.audience, JSON.stringify(snapshot), sha, user.id])).rows[0];
       await c.query('UPDATE coaching_reports SET latest_version=$2, updated_at=now() WHERE id=$1', [r.id, version]);
       await audit(c, user.id, 'publish_coaching_report', 'coaching_reports', r.id);
+      const recipients = r.audience === 'athlete' ? [r.athlete_id] : r.audience === 'guardian' ? await guardiansOf(r.athlete_id) : r.audience === 'team_staff' ? (await c.query("SELECT user_id FROM team_members WHERE team_id=$1 AND status='active' AND role='coach'", [r.team_id])).rows.map((x) => x.user_id) : [];
+      await notifyReportPublished(c, { report: r, version, recipients });
       return { ...v, unchanged: false };
     });
   },
@@ -227,6 +232,8 @@ cap({
   async handler({ user }, i) {
     const v = await reportVersionFor(i.id, i.version);
     if (!v || !(await canReadReportVersion(user, v))) throw notFound('Report');
+    // a young person's report is readable only while a guardian's coaching consent stands
+    if (v.coach_id !== user.id && ['athlete', 'guardian'].includes(v.audience) && !(await hasConsent(v.athlete_id, 'coaching'))) throw notFound('Report');
     if (v.coach_id !== user.id) await audit(null, user.id, 'read_coaching_report', 'coaching_reports', v.report_id);
     return { report_id: v.report_id, version: v.version, audience: v.audience, snapshot: v.snapshot };
   },
@@ -240,8 +247,6 @@ cap({
     if (i.child_id && !(await guardianLink(user.id, i.child_id))) throw forbidden('You are not a verified guardian of this young person');
     const audience = i.child_id ? 'guardian' : 'athlete', athlete = i.child_id ?? user.id;
     // newest version published to this audience, even if a later version went elsewhere: what was shared stays shared
-    return many(
-      `SELECT * FROM (SELECT DISTINCT ON (r.id) r.id AS report_id, v.version, r.title, r.kind, v.published_at, u.display_name AS coach_name FROM coaching_reports r JOIN coaching_report_versions v ON v.report_id=r.id JOIN users u ON u.id=r.coach_id
-        WHERE r.athlete_id=$1 AND v.audience=$2 ORDER BY r.id, v.version DESC) x ORDER BY published_at DESC, report_id LIMIT $3 OFFSET $4`, [athlete, audience, i.limit, i.offset]);
+    return sharedReports(athlete, audience, i);
   },
 });

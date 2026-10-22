@@ -18,10 +18,10 @@ const lift = Platform.OS === 'web'
   : { shadowColor: '#0F172A', shadowOpacity: 0.07, shadowRadius: 14, shadowOffset: { width: 0, height: 4 }, elevation: 2 };
 
 /** Surface: white, hairline border, soft lift. */
-export function Card({ children, color = c.paper, style, onPress, pad = 16 }) {
+export function Card({ children, color = c.paper, style, onPress, pad = 16, accessibilityLabel }) {
   const body = <View style={[s.card, { backgroundColor: surface(color), padding: pad }]}>{children}</View>;
   return onPress
-    ? <Pressable onPress={onPress} style={({ pressed }) => [style, pressed ? { opacity: 0.92, transform: [{ scale: 0.985 }] } : null]}>{body}</Pressable>
+    ? <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={accessibilityLabel} style={({ pressed }) => [style, pressed ? { opacity: 0.92, transform: [{ scale: 0.985 }] } : null]}>{body}</Pressable>
     : <View style={style}>{body}</View>;
 }
 
@@ -75,7 +75,7 @@ export function Btn({ title, onPress, color: want = c.pink, ink = '#fff', style,
 
 export function Chip({ label, active, onPress }) {
   return (
-    <Pressable onPress={onPress} style={[s.chip, active ? { backgroundColor: c.ink, borderColor: c.ink } : null]}>
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ selected: !!active }} hitSlop={6} style={[s.chip, active ? { backgroundColor: c.ink, borderColor: c.ink } : null]}>
       <T weight="600" size={13} color={active ? c.inkOn : c.mute}>{label}</T>
     </Pressable>
   );
@@ -100,7 +100,7 @@ export function Avatar({ user, size = 44, emoji, color }) {
 
 export function Row({ left, title, sub, right, onPress, color = c.paper }) {
   return (
-    <Card onPress={onPress} color={color} pad={12}>
+    <Card onPress={onPress} color={color} pad={12} accessibilityLabel={onPress ? [title, sub].filter((x) => typeof x === 'string').join('. ') : undefined}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
         {left}
         <View style={{ flex: 1 }}>
