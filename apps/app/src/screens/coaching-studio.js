@@ -495,6 +495,172 @@ export function MyCoaching({ child_id, name }) {
   );
 }
 
+// AI copilot (draft only). The coach decides what the AI may read, sees which records it used and what it could not know,
+// and nothing is saved until Accept. Without an AI provider the same screen shows a plain summary of the coach's own records.
+const TASK_TITLE = { plan_session: 'Plan this session', player_focus: 'Player focus', summarise_session: 'Summarise this session', player_progress: 'Progress summary', team_patterns: 'Team patterns', suggest_actions: 'Suggested actions', match_debrief: 'Match debrief', ask: 'Ask about my notes', compare_metrics: 'Explain the changes' };
+
+export function CoachCopilot({ task: taskProp = 'player_progress', athlete_id, team_id, session_record_id, draft_id, metric_keys }) {
+  const { toast } = useSession();
+  const { back } = useNav();
+  const [priv, setPriv] = useState(false);
+  const [question, setQuestion] = useState('');
+  const [draft, setDraft] = useState(null);
+  const loaded = useLoad(() => (draft_id ? api.get(`/coaching/ai/drafts/${draft_id}`) : Promise.resolve(null)), [draft_id]);
+  useEffect(() => { if (loaded.data) setDraft(loaded.data); }, [loaded.data]);
+  const task = draft?.task ?? taskProp;
+  const [busy, setBusy] = useState(false);
+  const [picked, setPicked] = useState({});
+  const [err, setErr] = useState(null);
+  const generate = async () => {
+    setBusy(true); setErr(null);
+    try { setDraft(await api.post('/coaching/ai/drafts', { task, athlete_id, team_id, session_record_id, include_private_summaries: priv, question: task === 'ask' ? question : undefined, metric_keys })); }
+    catch (e) { setErr(e); }
+    setBusy(false);
+  };
+  const resolve = async (decision) => {
+    setBusy(true);
+    try {
+      const body = { decision };
+      if (decision === 'accept' && task === 'suggest_actions') body.actions = draft.output.items.filter((x) => picked[x.id] && x.action).map((x) => ({ title: x.action.title, athlete_id: x.action.athlete_id }));
+      if (decision === 'accept' && task === 'summarise_session') body.summary_text = draft.output.headline;
+      await api.post(`/coaching/ai/drafts/${draft.id}/resolve`, body);
+      toast(decision === 'accept' ? 'Saved' : 'Discarded'); back();
+    } catch (e) { toast(e.message ?? 'Could not save'); }
+    setBusy(false);
+  };
+  const o = draft?.output;
+  const acceptLabel = { plan_session: 'Accept as session plan', suggest_actions: 'Create chosen actions', summarise_session: 'Save as my private summary' }[task] ?? 'Mark as read';
+  return (
+    <Screen>
+      <T size={12} weight="700" color={c.pink} style={{ letterSpacing: 1.2 }}>AI DRAFT</T>
+      <H1>{TASK_TITLE[task]}</H1>
+      <T size={13} color={c.mute}>A suggestion from your own notes, goals and actions. Players appear to the AI as labels; medical information is never read. Nothing is saved until you accept.</T>
+      {!draft ? (
+        <>
+          <Card pad={14} style={{ marginTop: 10 }}>
+            <T weight="700">What the AI may read</T>
+            <T size={13} color={c.mute}>Your notes, goals and open actions for this {session_record_id ? 'session' : athlete_id ? 'player' : 'team'}, and attendance. Last 8 weeks.</T>
+            <View style={{ marginTop: 8 }}><HScroll><Chip label={priv ? 'Private summaries: shared' : 'Private summaries: not shared'} active={priv} onPress={() => setPriv(!priv)} /></HScroll></View>
+          </Card>
+          {task === 'ask' ? <View style={{ marginTop: 10 }}><Field label="Your question" value={question} onChangeText={setQuestion} multiline maxLength={400} /></View> : null}
+          {err ? <ErrorBox error={err} onRetry={generate} /> : null}
+          <View style={{ marginTop: 12 }}><Btn title="Draft it" loading={busy} disabled={task === 'ask' && !question.trim()} onPress={generate} /></View>
+        </>
+      ) : (
+        <>
+          <Card pad={14} style={{ marginTop: 10 }}>
+            <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}><Tag label={draft.ai ? 'AI suggestion' : 'Plain summary (no AI)'} color={c.violetSoft} /></View>
+            <T weight="700" style={{ marginTop: 6 }}>{o.headline}</T>
+          </Card>
+          {o.items.map((x) => (
+            <Card key={x.id} pad={12} style={{ marginTop: 8 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
+                <T weight="700" style={{ flexShrink: 1 }}>{x.title}</T>
+                <Tag label={x.basis === 'observed' ? 'From your notes' : 'Suggestion'} color={x.basis === 'observed' ? c.lime : c.violetSoft} />
+              </View>
+              {x.detail ? <T size={13}>{x.detail}</T> : null}
+              {x.why ? <T size={12} color={c.mute}>Why: {x.why}</T> : null}
+              {x.source_refs.length ? <T size={11} color={c.mute}>Sources: {x.source_refs.map((r) => { const s = draft.sources.find((y) => y.ref === r); return s ? `${s.label ?? s.type}${s.at ? ` · ${dateTimeIn(s.at, tz)}` : ''}` : r; }).join(' · ')}</T> : <T size={11} color={c.mute}>No source — treat as an idea.</T>}
+              {task === 'suggest_actions' && x.action ? <View style={{ marginTop: 6 }}><Chip label={picked[x.id] ? 'Will create' : 'Create this action'} active={!!picked[x.id]} onPress={() => setPicked({ ...picked, [x.id]: !picked[x.id] })} /></View> : null}
+            </Card>
+          ))}
+          <Card pad={12} color={c.cyanSoft} style={{ marginTop: 10 }}>
+            <T weight="700" size={13}>Limits of this draft</T>
+            {draft.limitations.map((l) => <T key={l} size={12} color={c.mute}>• {l}</T>)}
+          </Card>
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+            <Btn title={acceptLabel} loading={busy} disabled={(task === 'suggest_actions' && !Object.values(picked).some(Boolean)) || (task === 'plan_session' && !o.items.some((x) => x.block))} onPress={() => resolve('accept')} />
+            <Btn title="Discard" color={c.paper} ink={c.red} onPress={() => resolve('discard')} />
+          </View>
+        </>
+      )}
+    </Screen>
+  );
+}
+
+// Reports: choose an audience, see exactly what that audience will get, then publish a frozen version.
+const AUD = [['coach_private', 'Just me'], ['athlete', 'Athlete'], ['guardian', 'Guardian'], ['team_staff', 'Team coaches']];
+const KIND = ['athlete_progress', 'session', 'goal_review', 'team_training', 'match_debrief', 'period_review', 'action_summary'];
+
+export function CoachReports({ athlete_id, team_id, name }) {
+  const { push } = useNav();
+  const { toast } = useSession();
+  const q = athlete_id ? `athlete_id=${athlete_id}` : `team_id=${team_id}`;
+  const list = useLoad(() => api.get(`/coaching/reports?${q}`), [q]);
+  const [creating, setCreating] = useState(false);
+  return (
+    <Screen onRefresh={list.reload}>
+      <H1>{name ? `${name} · reports` : 'Reports'}</H1>
+      <T size={13} color={c.mute}>Build a report for the person who will read it. Private notes can never go into a shared report, and a published version never changes.</T>
+      <View style={{ marginTop: 10 }}><Btn small title="New report" onPress={() => setCreating(true)} /></View>
+      {list.loading && !list.data ? <Loading /> : list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : !list.data.length ? <Empty emoji="📄" title="No reports yet" sub="Pick an audience and a period and the report builds itself from your records." /> :
+        list.data.map((r) => <Row key={r.id} title={r.title} sub={`${AUD.find(([v]) => v === r.audience)?.[1]} · ${r.period_from.slice(0, 10)} to ${r.period_to.slice(0, 10)} · ${r.latest_version ? `v${r.latest_version} published` : 'draft'}`} onPress={() => push('CoachReport', { id: r.id })} />)}
+      <FormSheet visible={creating} onClose={() => setCreating(false)} title="New report" submitLabel="Create"
+        fields={[
+          { key: 'title', label: 'Title' },
+          { key: 'kind', label: 'Kind', type: 'chips', options: opts(KIND), default: 'athlete_progress' },
+          { key: 'audience', label: 'Who will read it', type: 'chips', options: AUD.filter(([v]) => (athlete_id ? true : v === 'coach_private' || v === 'team_staff')).map(([value, lab]) => ({ value, label: lab })), default: 'coach_private' },
+          { key: 'from', toKey: 'to', label: 'Period', type: 'daterange' },
+          { key: 'goals', label: 'Include goals', type: 'switch', default: true },
+          { key: 'metrics', label: 'Include numbers (attendance, measurements)', type: 'switch', default: true },
+          { key: 'actions', label: 'Include next steps', type: 'switch', default: true },
+          { key: 'narrative', label: 'Your summary', type: 'multiline', optional: true },
+        ]}
+        onSubmit={async (v) => {
+          const r = await api.post('/coaching/reports', { athlete_id, team_id, title: v.title, kind: v.kind, audience: v.audience, from: v.from, to: v.to, selection: { goals: !!v.goals, metrics: athlete_id ? !!v.metrics : false, actions: !!v.actions }, narrative: v.narrative || undefined });
+          setCreating(false); toast('Report created'); push('CoachReport', { id: r.id });
+        }} />
+    </Screen>
+  );
+}
+
+export function CoachReport({ id }) {
+  const { toast } = useSession();
+  const rep = useLoad(() => api.get(`/coaching/reports/${id}`), [id]);
+  const prev = useLoad(() => api.get(`/coaching/reports/${id}/preview`), [id]);
+  const [busy, setBusy] = useState(false);
+  const [sure, setSure] = useState(false);
+  const r = rep.data, snap = prev.data?.snapshot;
+  const act = async (fn, msg) => { setBusy(true); try { await fn(); toast(msg); rep.reload(); prev.reload(); } catch (e) { toast(e.message ?? 'Could not do that'); } setBusy(false); };
+  if ((rep.loading && !r) || (prev.loading && !snap)) return <Screen><Loading /></Screen>;
+  if (rep.error || prev.error) return <Screen><ErrorBox error={rep.error ?? prev.error} onRetry={() => { rep.reload(); prev.reload(); }} /></Screen>;
+  const aud = AUD.find(([v]) => v === r.audience)[1];
+  return (
+    <Screen onRefresh={() => { rep.reload(); prev.reload(); }}>
+      <H1>{r.title}</H1>
+      <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}><Tag label={`For: ${aud}`} color={c.violetSoft} /><Tag label={r.latest_version ? `v${r.latest_version} published` : 'Not published'} color={r.latest_version ? c.lime : c.violetSoft} /></View>
+      <T size={13} color={c.mute} style={{ marginTop: 6 }}>{snap.disclosure}</T>
+      {prev.data.needs_ai_review ? <Card pad={10} color={c.cyanSoft} style={{ marginTop: 8 }}><T size={12} weight="700">Your summary started as an AI draft</T><T size={12} color={c.mute}>Read it carefully before publishing; you will be asked to confirm.</T></Card> : null}
+      <Section title="Preview — exactly what this audience will receive">
+        {snap.sections.map((sec) => (
+          <Card key={sec.key} pad={12} style={{ marginBottom: 8 }}>
+            <T weight="800">{sec.title}</T>
+            {sec.kind === 'text' ? <T size={13}>{sec.body}</T> : sec.items.map((it, n) => (
+              <View key={n} style={{ marginTop: 6 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}><T weight="700" size={13} style={{ flexShrink: 1 }}>{it.title}</T>{it.value ? <T weight="800" size={13}>{it.value}</T> : null}</View>
+                {it.meta ? <T size={11} color={c.mute}>{it.meta}</T> : null}
+                {it.body ? <T size={12}>{it.body}</T> : null}
+              </View>
+            ))}
+          </Card>
+        ))}
+        {!snap.sections.length ? <T size={13} color={c.mute}>Nothing selected yet.</T> : null}
+      </Section>
+      <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+        <Btn title={`Publish v${prev.data.next_version}`} loading={busy} onPress={() => (prev.data.needs_ai_review ? setSure(true) : act(async () => { const v = await api.post(`/coaching/reports/${id}/publish`, { row_version: r.row_version }); if (v.unchanged) throw new Error('Nothing has changed since the last version'); }, 'Published'))} />
+        {r.latest_version ? <Btn title="Make branded PDF" color={c.paper} ink={c.ink} loading={busy} onPress={() => act(async () => {
+          const d = await api.post('/branded-documents/coaching-report', { report_id: id });
+          if (typeof window !== 'undefined' && window.open) { const url = URL.createObjectURL(await api.download(`/branded-documents/${d.id}/file`)); window.open(url, '_blank', 'noopener'); setTimeout(() => URL.revokeObjectURL(url), 120000); }
+        }, 'PDF ready')} /> : null}
+      </View>
+      {r.versions.length ? <Section title="Published versions">{r.versions.map((v) => <Row key={v.version} title={`Version ${v.version}`} sub={`${dateTimeIn(v.published_at, tz)} · for ${AUD.find(([x]) => x === v.audience)[1]}`} />)}</Section> : null}
+      <FormSheet visible={sure} onClose={() => setSure(false)} title="Publish an AI-assisted summary?" submitLabel="I have read it — publish" fields={[]}
+        onSubmit={async () => { await api.post(`/coaching/reports/${id}/publish`, { row_version: r.row_version, confirm_reviewed: true }); setSure(false); toast('Published'); rep.reload(); prev.reload(); }} />
+    </Screen>
+  );
+}
+
+
 // A published, frozen version as its audience (the athlete, a guardian or team coaches) sees it.
 export function CoachReportView({ id, version }) {
   const v = useLoad(() => api.get(`/coaching/reports/${id}/versions/${version}`), [id, version]);
@@ -654,5 +820,123 @@ function VoiceSheet({ visible, onClose, w, onSaved }) {
         fields={[{ key: 'note', label: 'Edit before saving', type: 'multiline' }, { key: 'visibility', label: 'Who can see it', type: 'chips', options: VISIBILITY.filter(([v]) => v !== 'player' && v !== 'team').map(([value, lab]) => ({ value, label: lab })), default: 'coach_private' }]}
         onSubmit={async (v) => { const r = await send('/coaching/observations', { session_record_id: s.id, team_id: s.team_id ?? undefined, note: v.note, visibility: v.visibility === 'staff' && !s.team_id ? 'coach_private' : v.visibility, client_key: keyOf() }); setDraft(null); onSaved(r); }} />
     </>
+  );
+}
+
+// The quick note: free text only for what was seen; everything else is a control. Rubric scores use the rubric's own scale and are
+// offered only for rubrics that apply to this player's sport and position.
+function NoteSheet({ note, onClose, w, rubrics, goals, onSaved }) {
+  const s = w.session;
+  const player = note?.athlete_id ? w.participants.find((p) => p.id === note.athlete_id) : null;
+  const usable = rubrics.filter((r) => !player || !r.positions?.length || r.positions.some((x) => x.toLowerCase() === (player.position ?? '').toLowerCase()));
+  const subject = goals.filter((g) => (note?.athlete_id ? g.athlete_id === note.athlete_id : g.team_id === s.team_id && !g.athlete_id));
+  const dims = (r) => r.dimensions;
+  const fields = [
+    { key: 'note', label: 'What did you see?', type: 'multiline' },
+    { key: 'obs_type', label: 'Type', type: 'chips', options: opts(OBS_TYPES), default: 'general' },
+    { key: 'skill_tag', label: 'Skill', optional: true, placeholder: 'e.g. first touch' },
+    ...(usable.length && note?.athlete_id ? [{ key: 'rubric', label: 'Score on a rubric', type: 'chips', optional: true, options: usable.map((r) => ({ value: r.id, label: r.name })) }] : []),
+    ...usable.flatMap((r) => [
+      { key: `dim_${r.id}`, label: 'Which dimension', type: 'chips', options: dims(r).map((d) => ({ value: d.key, label: d.name })), default: dims(r)[0].key, show: (v) => v.rubric === r.id },
+      ...dims(r).map((d) => ({ key: `score_${r.id}_${d.key}`, label: `${d.name} (${d.scale_min}–${d.scale_max}${d.unit ? ` ${d.unit}` : ''})`, type: 'stepper', min: d.scale_min, max: d.scale_max, step: 1, default: Math.round((d.scale_min + d.scale_max) / 2), show: (v) => v.rubric === r.id && (v[`dim_${r.id}`] ?? dims(r)[0].key) === d.key })),
+    ]),
+    ...(subject.length ? [{ key: 'goals', label: 'Evidence for a goal', type: 'multi', optional: true, options: subject.map((g) => ({ value: g.id, label: g.title })) }] : []),
+    { key: 'visibility', label: 'Who can see it', type: 'chips', options: VISIBILITY.filter(([v]) => (note?.athlete_id ? v !== 'team' : v !== 'player')).map(([value, lab]) => ({ value, label: lab })), default: 'coach_private' },
+    { key: 'follow_up', label: 'Follow up next session', type: 'switch', default: false },
+    { key: 'make_action', label: 'Also create an action', type: 'switch', default: false },
+    { key: 'action_title', label: 'Action', optional: true, show: (v) => !!v.make_action },
+    { key: 'action_due', label: 'Due', type: 'date', optional: true, show: (v) => !!v.make_action },
+  ];
+  return (
+    <FormSheet visible={!!note} onClose={onClose} title={player ? `Note · ${player.display_name}` : 'Team note'} submitLabel="Save note" fields={fields}
+      onSubmit={async (v) => {
+        const visibility = v.visibility === 'staff' && !s.team_id ? 'coach_private' : v.visibility;
+        const rubric = v.rubric ? usable.find((r) => r.id === v.rubric) : null;
+        const dim = rubric ? v[`dim_${rubric.id}`] ?? dims(rubric)[0].key : null;
+        const r = await send('/coaching/observations', {
+          session_record_id: s.id, athlete_id: note.athlete_id, team_id: note.athlete_id && visibility !== 'staff' ? undefined : s.team_id ?? undefined, note: v.note, obs_type: v.obs_type, skill_tag: v.skill_tag || undefined, visibility, follow_up: !!v.follow_up, client_key: keyOf(),
+          goal_ids: v.goals?.length ? v.goals : undefined, ...(rubric ? { rubric_id: rubric.id, dimension_key: dim, score: v[`score_${rubric.id}_${dim}`] } : {}),
+        });
+        if (v.make_action && v.action_title) await send('/coaching/actions', { athlete_id: note.athlete_id, team_id: note.athlete_id ? undefined : s.team_id, session_record_id: s.id, title: v.action_title, due_at: v.action_due ? localToIso(v.action_due, '18:00', tz) : undefined, follow_up_next_session: true, client_key: keyOf() });
+        onSaved(r);
+      }} />
+  );
+}
+
+// Programmes: a season / term / block that goals hang from.
+export function CoachProgrammes({ athlete_id, team_id, name }) {
+  const { push } = useNav();
+  const { toast } = useSession();
+  const q = athlete_id ? `athlete_id=${athlete_id}` : `team_id=${team_id}`;
+  const list = useLoad(() => api.get(`/coaching/programmes?${q}`), [q]);
+  const positions = useLoad(() => api.get(`/coaching/positions${team_id ? `?team_id=${team_id}` : ''}`), [team_id]);
+  const [creating, setCreating] = useState(false);
+  const [open, setOpen] = useState(null);
+  const detail = useLoad(() => (open ? api.get(`/coaching/programmes/${open.id}`) : Promise.resolve(null)), [open?.id]);
+  return (
+    <Screen onRefresh={list.reload}>
+      <H1>{name ? `${name} · programmes` : 'Programmes'}</H1>
+      <T size={13} color={c.mute}>A season, term or block with its objective and review dates. Goals belong to it; shared training plans stay as they are.</T>
+      <View style={{ marginTop: 10 }}><Btn small title="New programme" onPress={() => setCreating(true)} /></View>
+      {list.loading && !list.data ? <Loading /> : list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : !list.data.length ? <Empty emoji="🗓️" title="No programmes yet" sub="Start with the season or term you are coaching through." /> :
+        list.data.map((p) => <Row key={p.id} title={p.title} sub={`${label(p.kind)} · ${String(p.starts_on).slice(0, 10)} to ${String(p.ends_on).slice(0, 10)} · ${p.goals_achieved}/${p.goals} goals achieved${p.position ? ` · ${p.position}` : ''}`} right={<Status s={p.status} />} onPress={() => setOpen(p)} />)}
+      <Sheet visible={!!open} onClose={() => setOpen(null)} title={open?.title ?? ''}>
+        {detail.loading || !detail.data ? <Loading /> : (
+          <>
+            <T size={13}>{detail.data.programme.objective}</T>
+            <T size={12} color={c.mute}>{detail.data.summary.sessions_held} sessions held ({detail.data.summary.sessions_reviewed} reviewed) · {detail.data.summary.open_actions} open actions{detail.data.summary.next_review ? ` · next review ${String(detail.data.summary.next_review).slice(0, 10)}` : ''}</T>
+            {detail.data.goals.map((g) => <Row key={g.id} title={g.title} sub={`${label(g.category)} · ${g.evidence_count} evidence`} right={<Status s={g.status} />} />)}
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+              <Btn small title="Goals" onPress={() => { setOpen(null); push('CoachGoals', athlete_id ? { athlete_id, name, programme_id: open.id } : { team_id, programme_id: open.id }); }} />
+              {open.status !== 'completed' ? <Btn small title="Mark completed" color={c.paper} ink={c.ink} onPress={async () => { try { await api.patch(`/coaching/programmes/${open.id}`, { row_version: open.row_version, status: 'completed' }); setOpen(null); list.reload(); } catch (e) { toast(e.message); } }} /> : null}
+            </View>
+          </>
+        )}
+      </Sheet>
+      <FormSheet visible={creating} onClose={() => setCreating(false)} title="New programme" submitLabel="Create"
+        fields={[
+          { key: 'title', label: 'Name' },
+          { key: 'kind', label: 'Kind', type: 'chips', options: opts(['season', 'term', 'block', 'programme']), default: 'season' },
+          { key: 'starts_on', toKey: 'ends_on', label: 'Dates', type: 'daterange' },
+          { key: 'objective', label: 'Objective', type: 'multiline', optional: true },
+          ...(positions.data?.length ? [{ key: 'position', label: 'Position', type: 'chips', optional: true, options: positions.data.map((p) => ({ value: p, label: p })) }] : []),
+          { key: 'review_cadence_days', label: 'Review every … days', type: 'stepper', min: 7, max: 90, step: 7, default: 14, optional: true },
+          { key: 'athlete_text', label: 'Wording to show the athlete (leave empty to keep private)', type: 'multiline', optional: true },
+        ]}
+        onSubmit={async (v) => { await api.post('/coaching/programmes', { athlete_id, team_id, title: v.title, kind: v.kind, starts_on: v.starts_on, ends_on: v.ends_on, objective: v.objective || undefined, position: v.position || undefined, review_cadence_days: v.review_cadence_days || undefined, athlete_text: v.athlete_text || undefined }); setCreating(false); toast('Programme created'); list.reload(); }} />
+    </Screen>
+  );
+}
+
+// Rubrics: the coach's own scales, limited to the sport and positions they make sense for.
+export function CoachRubrics() {
+  const { toast } = useSession();
+  const list = useLoad(() => api.get('/coaching/rubrics'), []);
+  const positions = useLoad(() => api.get('/coaching/positions'), []);
+  const [creating, setCreating] = useState(false);
+  const dimFields = (k) => [
+    { key: `n${k}`, label: `Dimension ${k}${k === 1 ? '' : ' (optional)'}`, optional: k > 1, placeholder: k === 1 ? 'e.g. First touch' : undefined },
+    { key: `max${k}`, label: 'Scale 1 to …', type: 'stepper', min: 3, max: 10, step: 1, default: 5, show: (v) => !!v[`n${k}`] },
+    { key: `dir${k}`, label: 'Better when', type: 'chips', options: [{ value: 'higher_is_better', label: 'Higher' }, { value: 'lower_is_better', label: 'Lower' }, { value: 'target_range', label: 'On target' }], default: 'higher_is_better', show: (v) => !!v[`n${k}`] },
+  ];
+  return (
+    <Screen onRefresh={list.reload}>
+      <H1>Rubrics</H1>
+      <T size={13} color={c.mute}>Your own rating scales. Each score keeps the version it was given under, and scores on different scales are never mixed or turned into official statistics.</T>
+      <View style={{ marginTop: 10 }}><Btn small title="New rubric" onPress={() => setCreating(true)} /></View>
+      {list.loading && !list.data ? <Loading /> : list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : !list.data.length ? <Empty emoji="📏" title="No rubrics yet" sub="Create one, then score players from the note sheet during a session." /> :
+        list.data.map((r) => <Row key={r.id} title={r.name} sub={`v${r.version} · ${r.dimensions.map((d) => `${d.name} 1–${d.scale_max}`).join(', ')}${r.positions.length ? ` · ${r.positions.join(', ')}` : ' · all positions'}`} />)}
+      <FormSheet visible={creating} onClose={() => setCreating(false)} title="New rubric" submitLabel="Create"
+        fields={[
+          { key: 'name', label: 'Rubric name' },
+          ...(positions.data?.length ? [{ key: 'positions', label: 'Only for these positions (leave empty for all)', type: 'multi', optional: true, options: positions.data.map((p) => ({ value: p, label: p })) }] : []),
+          ...[1, 2, 3].flatMap(dimFields),
+        ]}
+        onSubmit={async (v) => {
+          const dimensions = [1, 2, 3].filter((k) => v[`n${k}`]).map((k) => ({ key: v[`n${k}`].toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 40) || `d${k}`, name: v[`n${k}`], scale_min: 1, scale_max: v[`max${k}`] ?? 5, direction: v[`dir${k}`] ?? 'higher_is_better' }));
+          await api.post('/coaching/rubrics', { name: v.name, positions: v.positions?.length ? v.positions : undefined, dimensions });
+          setCreating(false); toast('Rubric created'); list.reload();
+        }} />
+    </Screen>
   );
 }
