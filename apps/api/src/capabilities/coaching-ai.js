@@ -240,7 +240,7 @@ cap({
     } else if (d.task === 'summarise_session' && i.summary_text) {
       if (!d.session_record_id) throw badRequest('This draft has no session');
       const rec = await ownRecord(user, d.session_record_id);
-      await pool.query('UPDATE coaching_session_records SET private_summary=$2, row_version=row_version+1, updated_at=now() WHERE id=$1', [rec.id, i.summary_text]);
+      await pool.query('UPDATE coaching_session_records SET private_summary=$2, reviewed_at=coalesce(reviewed_at, now()), row_version=row_version+1, updated_at=now() WHERE id=$1', [rec.id, i.summary_text]);
       edited = i.summary_text !== d.output.headline;
       resolution.session_record_id = rec.id;
     }

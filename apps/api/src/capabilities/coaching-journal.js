@@ -206,6 +206,21 @@ cap({
 });
 
 cap({
+  name: 'review_coaching_session', method: 'POST', path: '/coaching/sessions/:id/review', tag: TAG, auth: COACH,
+  summary: 'File or edit the review (team summary and private summary) of a session, including after it was completed. The first time a review is filed it is timestamped, so the time from session end to review can be measured.',
+  input: z.object({ id, team_summary: text(4000).optional(), private_summary: text(4000).optional() }),
+  async handler({ user }, i) {
+    if (i.team_summary === undefined && i.private_summary === undefined) throw badRequest('Write a team or private summary');
+    return tx(async (c) => {
+      const rec = await ownRecord(user, i.id, c);
+      return (await c.query(
+        `UPDATE coaching_session_records SET team_summary=coalesce($2, team_summary), private_summary=coalesce($3, private_summary), reviewed_at=coalesce(reviewed_at, now()), row_version=row_version+1, updated_at=now() WHERE id=$1 RETURNING *`,
+        [rec.id, i.team_summary ?? null, i.private_summary ?? null])).rows[0];
+    });
+  },
+});
+
+cap({
   name: 'complete_coaching_session', method: 'POST', path: '/coaching/sessions/:id/complete', tag: TAG, auth: COACH,
   summary: 'End the session and file the review: a team summary (shareable) and a private summary. People never marked are reported as not recorded, not as absent. Repeating it on a completed session changes nothing.',
   input: z.object({ id, team_summary: text(4000).optional(), private_summary: text(4000).optional() }),
@@ -214,7 +229,7 @@ cap({
       const rec = await ownRecord(user, i.id, c);
       if (rec.status === 'completed') return rec;
       const done = (await c.query(
-        `UPDATE coaching_session_records SET status='completed', ended_at=now(), started_at=coalesce(started_at, now()), team_summary=$2, private_summary=$3, row_version=row_version+1, updated_at=now() WHERE id=$1 RETURNING *`,
+        `UPDATE coaching_session_records SET status='completed', ended_at=now(), started_at=coalesce(started_at, now()), team_summary=$2, private_summary=$3, reviewed_at=CASE WHEN $2::text IS NOT NULL OR $3::text IS NOT NULL THEN now() END, row_version=row_version+1, updated_at=now() WHERE id=$1 RETURNING *`,
         [rec.id, i.team_summary ?? null, i.private_summary ?? null])).rows[0];
       const not_recorded = (await c.query("SELECT count(*)::int AS n FROM coaching_session_participants WHERE session_record_id=$1 AND attendance='expected'", [rec.id])).rows[0].n;
       return { ...done, not_recorded };

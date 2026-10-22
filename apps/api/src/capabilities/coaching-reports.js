@@ -9,6 +9,7 @@ import { guardiansOf, guardianLink, isYouth } from '../youth.js';
 import { requireTeam } from './coaching-journal.js';
 import { series, PROVENANCE } from './coaching-goals.js';
 import { canReadReportVersion, reportVersionFor } from '../coaching-report-access.js';
+import { notifyReportPublished } from '../coaching-notify.js';
 
 // Coaching reports (issue #269, slice 4). The server builds every section from the coach's own records, filtered for the audience, so
 // the client can never smuggle a private note into a shared report. Publishing freezes an immutable numbered snapshot.
@@ -198,6 +199,8 @@ cap({
       const v = (await c.query('INSERT INTO coaching_report_versions(report_id, version, audience, snapshot, snapshot_sha256, published_by) VALUES ($1,$2,$3,$4,$5,$6) RETURNING report_id, version, audience, published_at', [r.id, version, r.audience, JSON.stringify(snapshot), sha, user.id])).rows[0];
       await c.query('UPDATE coaching_reports SET latest_version=$2, updated_at=now() WHERE id=$1', [r.id, version]);
       await audit(c, user.id, 'publish_coaching_report', 'coaching_reports', r.id);
+      const recipients = r.audience === 'athlete' ? [r.athlete_id] : r.audience === 'guardian' ? await guardiansOf(r.athlete_id) : r.audience === 'team_staff' ? (await c.query("SELECT user_id FROM team_members WHERE team_id=$1 AND status='active' AND role='coach'", [r.team_id])).rows.map((x) => x.user_id) : [];
+      await notifyReportPublished(c, { report: r, version, recipients });
       return { ...v, unchanged: false };
     });
   },

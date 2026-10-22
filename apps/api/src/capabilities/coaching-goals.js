@@ -6,6 +6,7 @@ import { isAdmin, PUBLIC_USER, sportBySlugOrId } from '../helpers.js';
 import { hiddenYouth, relationships, requireRelationship } from '../coaching.js';
 import { isYouth } from '../youth.js';
 import { requireTeam } from './coaching-journal.js';
+import { notifyActionAssigned, notifyActionDone } from '../coaching-notify.js';
 
 // Coaching goals, evidence, rubrics, measurements, actions, metrics and match context (issue #269, slice 2).
 // Goal achievement is only ever a coach's decision; evidence is referenced, never copied; official match data is read, never written.
@@ -246,6 +247,7 @@ cap({
       `INSERT INTO coaching_actions(coach_id, athlete_id, team_id, owner_id, title, detail, due_at, priority, shared, follow_up_next_session, session_record_id, observation_id, goal_id, client_key)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) ON CONFLICT (coach_id, client_key) WHERE client_key IS NOT NULL DO NOTHING RETURNING *`,
       [user.id, athlete_id ?? null, team_id ?? null, owner, i.title, i.detail, nowOrNull(i.due_at), i.priority, i.shared, i.follow_up_next_session, i.session_record_id ?? null, i.observation_id ?? null, i.goal_id ?? null, i.client_key ?? null]);
+    if (row) await notifyActionAssigned(null, row);
     return row ?? one('SELECT * FROM coaching_actions WHERE coach_id=$1 AND client_key=$2', [user.id, i.client_key]);
   },
 });
@@ -262,7 +264,7 @@ cap({
     const limited = !author;
     if (limited && ['title', 'detail', 'due_at', 'priority', 'shared', 'follow_up_next_session'].some((k) => i[k] !== undefined)) throw forbidden('You can only update the status and completion note of an action you own');
     if (author && !['done', 'cancelled'].includes(i.status ?? '') && Object.keys(i).some((k) => !['id', 'row_version', 'status', 'completion_note'].includes(k) || (k === 'status'))) await authorise(user, a);
-    return tx(async (c) => {
+    const updated = await tx(async (c) => {
       const cur = (await c.query('SELECT * FROM coaching_actions WHERE id=$1 FOR UPDATE', [a.id])).rows[0];
       if (cur.row_version !== i.row_version) throw conflict('This action was changed elsewhere - reload it first');
       const n = { ...cur };
@@ -272,6 +274,8 @@ cap({
                 completed_at = CASE WHEN $2='done' THEN coalesce(completed_at, now()) ELSE NULL END, row_version=row_version+1, updated_at=now() WHERE id=$1 RETURNING *`,
         [cur.id, n.status, n.completion_note, n.title, n.detail, n.due_at, n.priority, n.shared, n.follow_up_next_session])).rows[0];
     });
+    if (limited && updated.status === 'done') await notifyActionDone(null, updated);
+    return updated;
   },
 });
 
