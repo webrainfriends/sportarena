@@ -137,11 +137,18 @@ const optValue = (o) => (o !== null && typeof o === 'object' && 'value' in o ? o
 /** Horizontal scroller with ◀ ▶ buttons, so every chip is reachable without a trackpad or touch. */
 export function HScroll({ children, gap = 8, style }) {
   const ref = useRef(null);
-  const [m, setM] = useState({ x: 0, w: 0, cw: 0 });
-  const left = m.x > 4, right = m.cw - m.w - m.x > 4;
-  const by = (dir) => ref.current?.scrollTo({ x: Math.max(0, m.x + dir * Math.max(160, m.w * 0.7)), animated: true });
-  const Arrow = ({ dir, show }) => (show ? (
-    <Pressable onPress={() => by(dir)} accessibilityRole="button" accessibilityLabel={dir < 0 ? 'Scroll left' : 'Scroll right'}
+  const m = useRef({ x: 0, w: 0, cw: 0 });
+  const [edge, setEdge] = useState({ left: false, right: false });
+  // Scroll events fire many times a second; only re-render when an arrow actually appears or disappears.
+  const measure = (patch) => {
+    m.current = { ...m.current, ...patch };
+    const { x, w, cw } = m.current;
+    const left = x > 4, right = cw - w - x > 4;
+    setEdge((p) => (p.left === left && p.right === right ? p : { left, right }));
+  };
+  const by = (dir) => ref.current?.scrollTo?.({ x: Math.max(0, m.current.x + dir * Math.max(160, m.current.w * 0.7)), animated: true });
+  const arrow = (dir, show) => (show ? (
+    <Pressable key={dir} onPress={() => by(dir)} accessibilityRole="button" accessibilityLabel={dir < 0 ? 'Scroll left' : 'Scroll right'}
       style={{ position: 'absolute', top: 0, bottom: 0, [dir < 0 ? 'left' : 'right']: 0, width: 34, alignItems: dir < 0 ? 'flex-start' : 'flex-end', justifyContent: 'center', zIndex: 2 }}>
       <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: c.paper, borderWidth: 1, borderColor: c.line, alignItems: 'center', justifyContent: 'center', shadowColor: '#0F172A', shadowOpacity: 0.12, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } }}>
         <T weight="800" size={15} color={c.ink}>{dir < 0 ? '‹' : '›'}</T>
@@ -151,13 +158,13 @@ export function HScroll({ children, gap = 8, style }) {
   return (
     <View style={[{ position: 'relative', minWidth: 0 }, style]}>
       <ScrollView ref={ref} horizontal showsHorizontalScrollIndicator={false} scrollEventThrottle={32}
-        onScroll={(e) => setM((p) => ({ ...p, x: e.nativeEvent.contentOffset.x }))}
-        onLayout={(e) => setM((p) => ({ ...p, w: e.nativeEvent.layout.width }))}
-        onContentSizeChange={(cw) => setM((p) => ({ ...p, cw }))}
+        onScroll={(e) => measure({ x: e.nativeEvent.contentOffset.x })}
+        onLayout={(e) => measure({ w: e.nativeEvent.layout.width })}
+        onContentSizeChange={(cw) => measure({ cw })}
         contentContainerStyle={{ gap, alignItems: 'center', paddingHorizontal: 2 }}>
         {children}
       </ScrollView>
-      <Arrow dir={-1} show={left} /><Arrow dir={1} show={right} />
+      {arrow(-1, edge.left)}{arrow(1, edge.right)}
     </View>
   );
 }
