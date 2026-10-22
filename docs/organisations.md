@@ -17,7 +17,37 @@ Clubs, academies and schools get a workspace where staff hold scoped roles and r
 | Dashboard | people, structure, money | people, structure | own cohorts | money only |
 | CSV export | staff, enrolments, attendance, finance | staff, enrolments, attendance | – | finance |
 
+The sponsor roles (manager, evaluator, legal, approver, auditor) and their permissions are in the next section.
+
 Org roles are separate from the global `users.roles`. Membership is read live on every request, so removing someone ends their access immediately. Organisation staff never get clinical data: it stays behind the athlete's own `medical_grants` consent. Exports contain handles and display names only, never email, phone or other encrypted fields, and each export is audit-logged.
+
+## Corporate sponsor workspace
+
+A sponsor brand (`sponsors`) can be linked to an organisation (`sponsors.organisation_id`) with `link_org_asset` (`kind: sponsor`; the caller must own the brand and be owner/admin of the organisation; the Teams, events, venues & brands tab and `unlink_org_asset` reverse it). Its staff then work the brand's deals through the same membership table, with these roles. The brand **owner is always a manager**, so an individual sponsor with no organisation works exactly as before.
+
+| Sponsor action | owner / admin | manager | evaluator | finance | legal | approver | auditor |
+|---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+| Read deals, dues, summary, history | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Propose an offer, withdraw an unanswered one, end a deal | ✅ | ✅ | – | – | – | ✅ | – |
+| Revise terms (a new version the recipient must accept) | ✅ | ✅ | – | – | ✅ | ✅ | – |
+| Report a payment, dispatch goods (**payment-scope** for API tokens) | ✅ | ✅ | – | ✅ | – | – | – |
+| Objectives, reviews, endorsement checks | ✅ | ✅ | ✅ | – | – | – | – |
+| Read an athlete's shared results (athlete's consent still applies) | ✅ | ✅ | ✅ | – | – | – | ✅ |
+| CSV export `sponsor_deals`, `sponsor_obligations` | ✅ | ✅ | – | ✅ | – | – | ✅ |
+| Read brand contacts (audited as `read_pii`) | ✅ | ✅ | – | – | – | – | – |
+| Invite, change, revoke staff; departments; transfer ownership | owner/admin only (existing organisation rules) |
+
+Evaluators can never report payments or put the brand's name to terms. "Sign" here means the sponsor-side commitments that exist in the product: proposing, revising and ending an agreement; there is no separate e-signature step (see #295). Sponsor roles give no access to cohorts, rosters, admissions or any non-sponsor export, and the organisation dashboard shows them nothing but the organisation's name.
+
+* **Revocation** is immediate: `remove_org_member` sets `status='left'`; the next read, write or export by that person is refused (403 on the deal, 404 on the organisation). Payments, reviews and history they created stay. Re-inviting restores access under the new role.
+* **Departments** (`create_org_department`, `list_org_departments`, `archive_org_department`) are generic to the organisation. A member invited with a `department_id` only sees, proposes and exports deals of that department (`sponsorships.department_id`); no department means all departments and brand-wide deals. Archiving a department keeps its deals and people.
+* **Stale changes**: `set_org_member_role` takes `expected_role`; if the role changed meanwhile it returns 409 and the app reloads. Role/revoke operations serialise on the organisation row.
+* **Archived organisation**: its staff keep read access to the brand but writes return 409; the brand owner is unaffected.
+* **Notifications** about a deal (payment decisions, delivery, endorsement, performance sharing, answers to offers) go to the owner and to the staff whose role concerns that action, never to evaluators for payments. Bodies carry no amounts.
+* **Ownership transfer**: the organisation is handed over with `transfer_org_ownership`. The brand's `owner_id` stays the original creator (an implicit manager); a brand with an organisation is run by the organisation's owners/admins/managers. Moving `owner_id` itself is not offered.
+* **Migration `087_sponsor_workspace.sql`** is additive: nullable `sponsors.organisation_id`, nullable `organisation_members.department_id` and `sponsorships.department_id`, the new `org_departments` table, and a widened (never narrowed) role and kind CHECK (`manager, evaluator, legal, approver, auditor`; `company`). Existing agreements, payments and history are untouched. Rollback: deploy the previous API build, which ignores the new columns; staff holding a new role would simply have no meaning to it. Nothing is dropped.
+* **Dependency order**: this slice needs organisations (022) and sponsorship agreements (042/075). #282 (brand identity), #288 (committee scoring, builds on the evaluator role), #293 (department budgets), #295 (signatures), #305 (portfolio exports) and #306 (collaboration) extend it.
+* **Limitations**: other modules that look at `sponsors.owner_id` (insurance, event planning, event vendors, education enquiries, sponsor verification) remain owner-only. An individual brand with no organisation has no CSV export (exports live on the organisation). Invitations need an existing account.
 
 ## Lifecycle
 

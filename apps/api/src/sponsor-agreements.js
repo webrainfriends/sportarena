@@ -2,6 +2,7 @@
 import { buildSchedule } from './sponsor-schedule.js';
 import { forbidden, notFound } from './errors.js';
 import { isAdmin } from './helpers.js';
+import { sponsorAccess, assertSponsorCan } from './sponsor-access.js';
 
 export const logHistory = (c, sponsorshipId, version, actor, action, reason) =>
   c.query('INSERT INTO sponsorship_history(sponsorship_id, version, actor_id, action, reason) VALUES ($1,$2,$3,$4,$5)', [sponsorshipId, version, actor, action, reason ?? null]);
@@ -60,17 +61,22 @@ export async function cancelFutureObligations(c, sponsorshipId) {
   return r.rowCount;
 }
 
-/** Deal + the people on each side. `role` is 'sponsor' (brand owner), 'recipient' (authorised target owner) or 'admin'. */
+/**
+ * Deal + the people on each side. `role` is 'sponsor' (the brand owner or its organisation staff), 'recipient' (authorised target owner)
+ * or 'admin'. For the sponsor side, `staff` is the live sponsor role and `need(action)` enforces what that role may do.
+ */
 export async function dealContext(c, sponsorshipId, user, { lock = false } = {}) {
   const d = (await c.query(`SELECT *, starts_on::text AS starts, ends_on::text AS ends FROM sponsorships WHERE id=$1${lock ? ' FOR UPDATE' : ''}`, [sponsorshipId])).rows[0];
   if (!d) throw notFound('Sponsorship');
-  const sp = (await c.query('SELECT id, name, owner_id FROM sponsors WHERE id=$1', [d.sponsor_id])).rows[0];
+  const sp = (await c.query('SELECT id, name, owner_id, organisation_id FROM sponsors WHERE id=$1', [d.sponsor_id])).rows[0];
   const recipientId = d.target_type === 'event' ? (await c.query('SELECT organizer_id AS u FROM events WHERE id=$1', [d.target_id])).rows[0]?.u
     : d.target_type === 'team' ? (await c.query('SELECT owner_id AS u FROM teams WHERE id=$1', [d.target_id])).rows[0]?.u : d.target_id;
+  let access = await sponsorAccess(user, sp, c);
+  if (access?.departmentId && access.departmentId !== d.department_id) access = null; // a department-scoped member only sees their department's deals
   // sponsor wins if one person is on both sides; an admin may read everything
-  const role = user.id === sp.owner_id ? 'sponsor' : user.id === recipientId ? 'recipient' : isAdmin(user) ? 'admin' : null;
+  const role = access ? 'sponsor' : user.id === recipientId ? 'recipient' : isAdmin(user) ? 'admin' : null;
   if (!role) throw forbidden('You are not part of this sponsorship');
-  return { d, sp, recipientId, role };
+  return { d, sp, recipientId, role, staff: access?.role, need: (action, what) => assertSponsorCan(access, action, { departmentId: d.department_id, what }) };
 }
 
 /** Obligation + its deal, locking the obligation row so concurrent payments/deliveries serialise. */
