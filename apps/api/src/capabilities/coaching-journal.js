@@ -371,7 +371,21 @@ cap({
       many(`SELECT x.id, x.title, x.completed_at AS at, x.status, x.athlete_rpe, x.target_rpe FROM training_sessions x JOIN training_plans p ON p.id=x.plan_id
              WHERE p.athlete_id=$1 AND p.coach_id=$2 AND x.status IN ('completed','skipped') AND x.completed_at BETWEEN coalesce($3::timestamptz,'-infinity') AND coalesce($4::timestamptz,'infinity') ORDER BY x.completed_at DESC, x.id LIMIT ${take}`, [i.athlete_id, user.id, i.from ?? null, i.to ?? null]),
     ]) : [[], []];
+    const extra = plain ? await many(
+      `SELECT * FROM (
+         SELECT 'goal' AS kind, 'coaching_goal' AS source_type, g.id::text AS source_id, e.created_at AS at, g.title, 'Goal ' || e.to_status AS detail, NULL::text AS status FROM coaching_goal_events e JOIN coaching_goals g ON g.id=e.goal_id WHERE g.coach_id=$2 AND g.athlete_id=$1 AND e.created_at BETWEEN coalesce($3::timestamptz,'-infinity') AND coalesce($4::timestamptz,'infinity')
+         UNION ALL
+         SELECT 'action', 'coaching_action', a.id::text, coalesce(a.completed_at, a.created_at), a.title, CASE WHEN a.status='done' THEN 'Action completed' ELSE 'Action ' || a.status END, a.status FROM coaching_actions a WHERE a.coach_id=$2 AND a.athlete_id=$1 AND coalesce(a.completed_at, a.created_at) BETWEEN coalesce($3::timestamptz,'-infinity') AND coalesce($4::timestamptz,'infinity')
+         UNION ALL
+         SELECT 'report', 'coaching_report', r.id::text, v.published_at, r.title, 'Report v' || v.version || ' published for ' || replace(v.audience, '_', ' '), NULL FROM coaching_report_versions v JOIN coaching_reports r ON r.id=v.report_id WHERE r.coach_id=$2 AND r.athlete_id=$1 AND v.published_at BETWEEN coalesce($3::timestamptz,'-infinity') AND coalesce($4::timestamptz,'infinity')
+         UNION ALL
+         SELECT 'match', 'fixture', f.id::text, f.scheduled_at, coalesce(h.name,'TBC') || ' v ' || coalesce(a.name,'TBC'), CASE WHEN f.status='completed' THEN 'Official result: ' || f.home_score || '-' || f.away_score ELSE 'Match ' || f.status END, f.status
+           FROM fixtures f LEFT JOIN teams h ON h.id=f.home_team_id LEFT JOIN teams a ON a.id=f.away_team_id
+          WHERE EXISTS (SELECT 1 FROM team_members m WHERE m.user_id=$1 AND m.status='active' AND m.team_id IN (f.home_team_id, f.away_team_id)) AND EXISTS (SELECT 1 FROM team_members c WHERE c.user_id=$2 AND c.status='active' AND c.role='coach' AND c.team_id IN (f.home_team_id, f.away_team_id))
+            AND f.status IN ('completed','live') AND f.scheduled_at BETWEEN coalesce($3::timestamptz,'-infinity') AND coalesce($4::timestamptz,'infinity')) u
+        ORDER BY at DESC, source_id LIMIT ${take}`, [i.athlete_id, user.id, i.from ?? null, i.to ?? null]) : [];
     const items = [
+      ...extra.map((x) => ({ kind: x.kind, source_type: x.source_type, source_id: x.source_id, at: x.at, title: x.title, detail: x.detail, status: x.status ?? undefined })),
       ...obs.map(obsItem),
       ...att.map((a) => ({ kind: 'session', source_type: 'coaching_session_record', source_id: a.id, at: a.at, title: a.title, detail: `Attendance: ${a.attendance.replace('_', ' ')}`, attendance: a.attendance, status: a.status })),
       ...sessions.map((s) => ({ kind: 'plan_session', source_type: 'training_session', source_id: s.id, at: s.at, title: s.title, detail: s.status === 'completed' ? 'Completed (athlete-reported)' : 'Skipped (athlete-reported)', status: s.status, athlete_rpe: s.athlete_rpe, target_rpe: s.target_rpe })),
@@ -399,7 +413,19 @@ cap({
               (SELECT count(*)::int FROM coaching_session_participants p WHERE p.session_record_id=r.id AND p.attendance IN ('present','late','left_early')) AS present,
               (SELECT count(*)::int FROM coaching_session_participants p WHERE p.session_record_id=r.id) AS roster
          FROM coaching_session_records r WHERE r.team_id=$1 AND r.coach_id=$2 AND coalesce(r.started_at, r.scheduled_at, r.created_at) BETWEEN coalesce($3::timestamptz,'-infinity') AND coalesce($4::timestamptz,'infinity') ORDER BY at DESC, r.id LIMIT ${take}`, [team.id, user.id, i.from ?? null, i.to ?? null]);
+    const extra = (i.skill_tag || i.obs_type || i.session_record_id) ? [] : await many(
+      `SELECT * FROM (
+         SELECT 'goal' AS kind, 'coaching_goal' AS source_type, g.id::text AS source_id, e.created_at AS at, g.title, 'Goal ' || e.to_status AS detail FROM coaching_goal_events e JOIN coaching_goals g ON g.id=e.goal_id WHERE g.coach_id=$2 AND g.team_id=$1 AND e.created_at BETWEEN coalesce($3::timestamptz,'-infinity') AND coalesce($4::timestamptz,'infinity')
+         UNION ALL
+         SELECT 'action', 'coaching_action', a.id::text, coalesce(a.completed_at, a.created_at), a.title, CASE WHEN a.status='done' THEN 'Action completed' ELSE 'Action ' || a.status END FROM coaching_actions a WHERE a.coach_id=$2 AND a.team_id=$1 AND coalesce(a.completed_at, a.created_at) BETWEEN coalesce($3::timestamptz,'-infinity') AND coalesce($4::timestamptz,'infinity')
+         UNION ALL
+         SELECT 'report', 'coaching_report', r.id::text, v.published_at, r.title, 'Report v' || v.version || ' published for ' || replace(v.audience, '_', ' ') FROM coaching_report_versions v JOIN coaching_reports r ON r.id=v.report_id WHERE r.coach_id=$2 AND r.team_id=$1 AND v.published_at BETWEEN coalesce($3::timestamptz,'-infinity') AND coalesce($4::timestamptz,'infinity')
+         UNION ALL
+         SELECT 'match', 'fixture', f.id::text, f.scheduled_at, coalesce(h.name,'TBC') || ' v ' || coalesce(a.name,'TBC'), CASE WHEN f.status='completed' THEN 'Official result: ' || f.home_score || '-' || f.away_score ELSE 'Match ' || f.status END
+           FROM fixtures f LEFT JOIN teams h ON h.id=f.home_team_id LEFT JOIN teams a ON a.id=f.away_team_id WHERE $1 IN (f.home_team_id, f.away_team_id) AND f.status IN ('completed','live') AND f.scheduled_at BETWEEN coalesce($3::timestamptz,'-infinity') AND coalesce($4::timestamptz,'infinity')) u
+        ORDER BY at DESC, source_id LIMIT ${take}`, [team.id, user.id, i.from ?? null, i.to ?? null]);
     return [
+      ...extra.map((x) => ({ kind: x.kind, source_type: x.source_type, source_id: x.source_id, at: x.at, title: x.title, detail: x.detail })),
       ...obs.map(obsItem),
       ...recs.map((r) => ({ kind: 'session', source_type: 'coaching_session_record', source_id: r.id, at: r.at, title: r.title, detail: r.team_summary, status: r.status, present: r.present, roster: r.roster })),
     ].sort(byTime).slice(i.offset, i.offset + i.limit);
@@ -408,36 +434,81 @@ cap({
 
 cap({
   name: 'get_coach_performance_home', method: 'GET', path: '/coaching/home', tag: TAG, auth: COACH,
-  summary: 'Performance Studio overview: sessions to run today (each links to its canonical source), sessions running or awaiting review, and your open follow-up notes. Optional filters narrow every list.',
-  input: z.object({ sport: z.string().optional(), team_id: id.optional(), athlete_id: id.optional() }),
+  summary: 'Performance Studio overview. Sections: sessions running, sessions to run in the window (default today; each links to its canonical source), sessions awaiting review, matches to prepare and to debrief, open and overdue actions, goal reviews due and goals not reviewed for a month, notes flagged for follow-up, draft reports and AI drafts waiting for you. Filters narrow every section: sport, scope (individual / group / team), athlete, team, skill tag, date window, and open actions only.',
+  input: z.object({
+    sport: z.string().optional(), scope: z.enum(['individual', 'group', 'team']).optional(), team_id: id.optional(), athlete_id: id.optional(), skill_tag: z.string().trim().max(60).optional(),
+    from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), open_actions: z.coerce.boolean().optional(),
+  }),
   async handler({ user }, i) {
     const sport = i.sport ? await sportBySlugOrId(i.sport) : null;
-    const base = [user.id, sport?.id ?? null, i.team_id ?? null, i.athlete_id ?? null];
-    const recFilter = ` AND ($2::uuid IS NULL OR r.sport_id=$2) AND ($3::uuid IS NULL OR r.team_id=$3) AND ($4::uuid IS NULL OR EXISTS (SELECT 1 FROM coaching_session_participants q WHERE q.session_record_id=r.id AND q.athlete_id=$4))`;
-    const [running, today_records, needs_review, today_unrecorded, follow_ups, counts, overdue_actions, goals_due] = await Promise.all([
-      many(`SELECT r.* FROM coaching_session_records r WHERE r.coach_id=$1 AND r.status='running'${recFilter} ORDER BY r.started_at, r.id`, base),
-      many(`SELECT r.* FROM coaching_session_records r WHERE r.coach_id=$1 AND r.status='planned' AND r.scheduled_at >= current_date AND r.scheduled_at < current_date + 1${recFilter} ORDER BY r.scheduled_at, r.id`, base),
-      many(`SELECT r.* FROM coaching_session_records r WHERE r.coach_id=$1 AND r.status='completed' AND r.team_summary IS NULL AND r.private_summary IS NULL AND r.ended_at > now() - interval '30 days'${recFilter} ORDER BY r.ended_at DESC, r.id LIMIT 20`, base),
-      many(`SELECT 'training_session' AS source_type, x.id::text AS source_id, x.title, x.starts_at AS scheduled_at, p.athlete_id, p.sport_id, NULL::uuid AS team_id
-              FROM training_sessions x JOIN training_plans p ON p.id=x.plan_id
-             WHERE p.coach_id=$1 AND x.status='scheduled' AND x.starts_at >= current_date AND x.starts_at < current_date + 1 AND ($2::uuid IS NULL OR p.sport_id=$2) AND $3::uuid IS NULL AND ($4::uuid IS NULL OR p.athlete_id=$4)
-               AND NOT EXISTS (SELECT 1 FROM coaching_session_records r WHERE r.coach_id=$1 AND r.source_type='training_session' AND r.source_id=x.id::text)
-            UNION ALL
-            SELECT 'coach_hire', h.id::text, 'Coaching session', h.starts_at, h.hirer_id, h.sport_id, h.team_id
-              FROM coach_hires h WHERE h.coach_id=$1 AND h.status='confirmed' AND h.starts_at >= current_date AND h.starts_at < current_date + 1 AND ($2::uuid IS NULL OR h.sport_id=$2) AND ($3::uuid IS NULL OR h.team_id=$3) AND ($4::uuid IS NULL OR h.hirer_id=$4)
-               AND NOT EXISTS (SELECT 1 FROM coaching_session_records r WHERE r.coach_id=$1 AND r.source_type='coach_hire' AND r.source_id=h.id::text)
-             ORDER BY 4, 2 LIMIT 20`, base),
-      many(`SELECT o.id, o.athlete_id, u.display_name AS athlete_name, o.team_id, o.note, o.skill_tag, o.obs_type, o.observed_at, o.session_record_id FROM coaching_observations o LEFT JOIN users u ON u.id=o.athlete_id
-             WHERE o.coach_id=$1 AND o.follow_up AND o.observed_at > now() - interval '90 days' AND ($2::uuid IS NULL OR o.sport_id=$2) AND ($3::uuid IS NULL OR o.team_id=$3) AND ($4::uuid IS NULL OR o.athlete_id=$4) ORDER BY o.observed_at DESC, o.id LIMIT 20`, base),
+    const from = i.from ?? new Date().toISOString().slice(0, 10), to = i.to ?? from;
+    if (to < from) throw badRequest('to is before from');
+    // $1 coach, $2 sport, $3 team, $4 athlete, $5 skill tag, $6 scope, $7 open-actions-only, $8 from, $9 to(+1 day)
+    const base = [user.id, sport?.id ?? null, i.team_id ?? null, i.athlete_id ?? null, i.skill_tag ?? null, i.scope ?? null, !!i.open_actions, from, to];
+    // every query is prefixed with a CTE naming all nine parameters, so a query that uses only some of them still type-checks
+    const P = 'WITH _p AS (SELECT $1::uuid a1, $2::uuid a2, $3::uuid a3, $4::uuid a4, $5::text a5, $6::text a6, $7::boolean a7, $8::date a8, $9::date a9) ';
+    const Q = (sql) => many(P + sql, base);
+    const rec = ` AND ($2::uuid IS NULL OR r.sport_id=$2) AND ($3::uuid IS NULL OR r.team_id=$3)
+      AND ($4::uuid IS NULL OR EXISTS (SELECT 1 FROM coaching_session_participants q WHERE q.session_record_id=r.id AND q.athlete_id=$4))
+      AND ($5::text IS NULL OR EXISTS (SELECT 1 FROM coaching_observations o WHERE o.session_record_id=r.id AND o.skill_tag=$5))
+      AND ($6::text IS NULL OR ($6='team' AND r.team_id IS NOT NULL) OR ($6='individual' AND r.team_id IS NULL AND (SELECT count(*) FROM coaching_session_participants q WHERE q.session_record_id=r.id) <= 1) OR ($6='group' AND r.team_id IS NULL AND (SELECT count(*) FROM coaching_session_participants q WHERE q.session_record_id=r.id) > 1))
+      AND (NOT $7::boolean OR EXISTS (SELECT 1 FROM coaching_actions a WHERE a.coach_id=$1 AND a.status IN ('open','in_progress') AND (a.session_record_id=r.id OR a.team_id=r.team_id OR a.athlete_id IN (SELECT athlete_id FROM coaching_session_participants q WHERE q.session_record_id=r.id))))`;
+    const subj = (athleteCol, teamCol) => ` AND ($3::uuid IS NULL OR ${teamCol}=$3) AND ($4::uuid IS NULL OR ${athleteCol}=$4)`;
+    const [running, today_records, needs_review, to_open, follow_ups, counts, overdue_actions, open_actions, goals_due, goals_stale, matches_to_prepare, matches_to_debrief, draft_reports, ai_waiting] = await Promise.all([
+      Q(`SELECT r.* FROM coaching_session_records r WHERE r.coach_id=$1 AND r.status='running'${rec} ORDER BY r.started_at, r.id`),
+      Q(`SELECT r.* FROM coaching_session_records r WHERE r.coach_id=$1 AND r.status='planned' AND r.scheduled_at >= $8::date AND r.scheduled_at < $9::date + 1${rec} ORDER BY r.scheduled_at, r.id`),
+      Q(`SELECT r.* FROM coaching_session_records r WHERE r.coach_id=$1 AND r.status='completed' AND r.reviewed_at IS NULL AND r.team_summary IS NULL AND r.private_summary IS NULL AND r.ended_at > now() - interval '30 days'${rec} ORDER BY r.ended_at DESC, r.id LIMIT 20`),
+      Q(`SELECT * FROM (
+              SELECT 'training_session' AS source_type, x.id::text AS source_id, x.title, x.starts_at AS scheduled_at, p.athlete_id, p.sport_id, NULL::uuid AS team_id
+                FROM training_sessions x JOIN training_plans p ON p.id=x.plan_id
+               WHERE p.coach_id=$1 AND x.status='scheduled' AND x.starts_at >= $8::date AND x.starts_at < $9::date + 1 AND ($2::uuid IS NULL OR p.sport_id=$2) AND $3::uuid IS NULL AND ($4::uuid IS NULL OR p.athlete_id=$4) AND ($6::text IS NULL OR $6='individual') AND $5::text IS NULL
+                 AND NOT EXISTS (SELECT 1 FROM coaching_session_records r WHERE r.coach_id=$1 AND r.source_type='training_session' AND r.source_id=x.id::text)
+              UNION ALL
+              SELECT 'coach_hire', h.id::text, 'Coaching session', h.starts_at, h.hirer_id, h.sport_id, h.team_id
+                FROM coach_hires h WHERE h.coach_id=$1 AND h.status='confirmed' AND h.starts_at >= $8::date AND h.starts_at < $9::date + 1 AND ($2::uuid IS NULL OR h.sport_id=$2) AND ($3::uuid IS NULL OR h.team_id=$3) AND ($4::uuid IS NULL OR h.hirer_id=$4) AND $5::text IS NULL
+                 AND ($6::text IS NULL OR ($6='team' AND h.team_id IS NOT NULL) OR ($6='individual' AND h.audience='individual') OR ($6='group' AND h.audience='group'))
+                 AND NOT EXISTS (SELECT 1 FROM coaching_session_records r WHERE r.coach_id=$1 AND r.source_type='coach_hire' AND r.source_id=h.id::text)) u
+             WHERE NOT $7::boolean OR EXISTS (SELECT 1 FROM coaching_actions a WHERE a.coach_id=$1 AND a.status IN ('open','in_progress') AND (a.athlete_id=u.athlete_id OR a.team_id=u.team_id))
+             ORDER BY scheduled_at, source_id LIMIT 20`),
+      Q(`SELECT o.id, o.athlete_id, u.display_name AS athlete_name, o.team_id, o.note, o.skill_tag, o.obs_type, o.observed_at, o.session_record_id FROM coaching_observations o LEFT JOIN users u ON u.id=o.athlete_id
+             WHERE o.coach_id=$1 AND o.follow_up AND o.observed_at > now() - interval '90 days' AND ($2::uuid IS NULL OR o.sport_id=$2)${subj('o.athlete_id', 'o.team_id')} AND ($5::text IS NULL OR o.skill_tag=$5)
+               AND ($6::text IS NULL OR ($6='team' AND o.athlete_id IS NULL) OR ($6='individual' AND o.athlete_id IS NOT NULL) OR $6='group') AND (NOT $7::boolean OR EXISTS (SELECT 1 FROM coaching_actions a WHERE a.coach_id=$1 AND a.status IN ('open','in_progress') AND (a.observation_id=o.id OR a.athlete_id=o.athlete_id OR a.team_id=o.team_id)))
+             ORDER BY o.observed_at DESC, o.id LIMIT 20`),
       one('SELECT (SELECT count(*)::int FROM coaching_session_records WHERE coach_id=$1 AND status=\'completed\') AS sessions_completed, (SELECT count(*)::int FROM coaching_observations WHERE coach_id=$1) AS observations', [user.id]),
-      many(`SELECT a.id, a.title, a.athlete_id, u.display_name AS athlete_name, a.team_id, a.due_at, a.priority FROM coaching_actions a LEFT JOIN users u ON u.id=a.athlete_id
-             WHERE a.coach_id=$1 AND a.status IN ('open','in_progress') AND a.due_at < now() AND ($2::uuid IS NULL OR a.team_id IN (SELECT id FROM teams WHERE sport_id=$2) OR a.athlete_id IN (SELECT athlete_id FROM coaching_session_participants q JOIN coaching_session_records r ON r.id=q.session_record_id WHERE r.sport_id=$2)) AND ($3::uuid IS NULL OR a.team_id=$3) AND ($4::uuid IS NULL OR a.athlete_id=$4) ORDER BY a.due_at, a.id LIMIT 20`, base),
-      many(`SELECT g.id, g.title, g.athlete_id, u.display_name AS athlete_name, g.team_id, g.review_on, g.status FROM coaching_goals g LEFT JOIN users u ON u.id=g.athlete_id
-             WHERE g.coach_id=$1 AND g.status IN ('planned','active') AND g.review_on <= current_date + 7 AND ($2::uuid IS NULL OR g.sport_id=$2) AND ($3::uuid IS NULL OR g.team_id=$3) AND ($4::uuid IS NULL OR g.athlete_id=$4) ORDER BY g.review_on, g.id LIMIT 20`, base),
+      Q(`SELECT a.id, a.title, a.athlete_id, u.display_name AS athlete_name, a.team_id, a.due_at, a.priority FROM coaching_actions a LEFT JOIN users u ON u.id=a.athlete_id
+             WHERE a.coach_id=$1 AND a.status IN ('open','in_progress') AND a.due_at < now() AND ($2::uuid IS NULL OR a.team_id IN (SELECT id FROM teams WHERE sport_id=$2) OR a.athlete_id IN (SELECT athlete_id FROM coaching_session_participants q JOIN coaching_session_records r ON r.id=q.session_record_id WHERE r.sport_id=$2))${subj('a.athlete_id', 'a.team_id')} ORDER BY a.due_at, a.id LIMIT 20`),
+      Q(`SELECT a.id, a.title, a.athlete_id, u.display_name AS athlete_name, a.team_id, a.due_at, a.priority, a.follow_up_next_session FROM coaching_actions a LEFT JOIN users u ON u.id=a.athlete_id
+             WHERE a.coach_id=$1 AND a.status IN ('open','in_progress') AND ($2::uuid IS NULL OR a.team_id IN (SELECT id FROM teams WHERE sport_id=$2) OR a.athlete_id IN (SELECT athlete_id FROM coaching_session_participants q JOIN coaching_session_records r ON r.id=q.session_record_id WHERE r.sport_id=$2))${subj('a.athlete_id', 'a.team_id')}
+               AND ($6::text IS NULL OR ($6='team' AND a.athlete_id IS NULL) OR ($6<>'team' AND a.athlete_id IS NOT NULL)) ORDER BY a.due_at NULLS LAST, a.id LIMIT 30`),
+      Q(`SELECT g.id, g.title, g.athlete_id, u.display_name AS athlete_name, g.team_id, g.review_on, g.status FROM coaching_goals g LEFT JOIN users u ON u.id=g.athlete_id
+             WHERE g.coach_id=$1 AND g.status IN ('planned','active') AND g.review_on <= current_date + 7 AND ($2::uuid IS NULL OR g.sport_id=$2)${subj('g.athlete_id', 'g.team_id')} AND ($6::text IS NULL OR ($6='team' AND g.athlete_id IS NULL) OR ($6<>'team' AND g.athlete_id IS NOT NULL)) ORDER BY g.review_on, g.id LIMIT 20`),
+      Q(`SELECT g.id, g.title, g.athlete_id, u.display_name AS athlete_name, g.team_id, g.status,
+                   greatest(g.created_at, coalesce((SELECT max(e.created_at) FROM coaching_goal_events e WHERE e.goal_id=g.id AND e.from_status IS NOT NULL), g.created_at), coalesce((SELECT max(v.created_at) FROM coaching_goal_evidence v WHERE v.goal_id=g.id), g.created_at)) AS last_touched
+              FROM coaching_goals g LEFT JOIN users u ON u.id=g.athlete_id
+             WHERE g.coach_id=$1 AND g.status='active' AND ($2::uuid IS NULL OR g.sport_id=$2)${subj('g.athlete_id', 'g.team_id')} AND ($6::text IS NULL OR ($6='team' AND g.athlete_id IS NULL) OR ($6<>'team' AND g.athlete_id IS NOT NULL))
+               AND NOT EXISTS (SELECT 1 FROM coaching_goal_events e WHERE e.goal_id=g.id AND e.from_status IS NOT NULL AND e.created_at > now() - interval '30 days') AND NOT EXISTS (SELECT 1 FROM coaching_goal_evidence v WHERE v.goal_id=g.id AND v.created_at > now() - interval '30 days') AND g.created_at < now() - interval '30 days'
+             ORDER BY last_touched, g.id LIMIT 20`),
+      Q(`SELECT f.id AS fixture_id, t.id AS team_id, t.name AS team_name, f.scheduled_at, h.name AS home_name, a.name AS away_name, (SELECT r.id FROM coaching_session_records r WHERE r.coach_id=$1 AND r.source_type='fixture' AND r.source_id=f.id::text) AS session_record_id
+              FROM fixtures f JOIN teams t ON t.id IN (f.home_team_id, f.away_team_id) JOIN team_members m ON m.team_id=t.id AND m.user_id=$1 AND m.role='coach' AND m.status='active'
+              LEFT JOIN teams h ON h.id=f.home_team_id LEFT JOIN teams a ON a.id=f.away_team_id JOIN events e ON e.id=f.event_id
+             WHERE f.status IN ('scheduled','live') AND f.scheduled_at >= now() AND f.scheduled_at < now() + interval '7 days' AND ($2::uuid IS NULL OR e.sport_id=$2) AND ($3::uuid IS NULL OR t.id=$3) AND $4::uuid IS NULL AND ($6::text IS NULL OR $6='team')
+               AND NOT EXISTS (SELECT 1 FROM coaching_session_records r WHERE r.coach_id=$1 AND r.source_type='fixture' AND r.source_id=f.id::text AND r.plan_version > 0)
+             ORDER BY f.scheduled_at, f.id LIMIT 20`),
+      Q(`SELECT f.id AS fixture_id, t.id AS team_id, t.name AS team_name, f.scheduled_at, h.name AS home_name, a.name AS away_name
+              FROM fixtures f JOIN teams t ON t.id IN (f.home_team_id, f.away_team_id) JOIN team_members m ON m.team_id=t.id AND m.user_id=$1 AND m.role='coach' AND m.status='active'
+              LEFT JOIN teams h ON h.id=f.home_team_id LEFT JOIN teams a ON a.id=f.away_team_id JOIN events e ON e.id=f.event_id
+             WHERE f.status='completed' AND f.scheduled_at > now() - interval '14 days' AND ($2::uuid IS NULL OR e.sport_id=$2) AND ($3::uuid IS NULL OR t.id=$3) AND $4::uuid IS NULL AND ($6::text IS NULL OR $6='team')
+               AND NOT EXISTS (SELECT 1 FROM coaching_session_records r WHERE r.coach_id=$1 AND r.source_type='fixture' AND r.source_id=f.id::text AND r.status='completed' AND (r.reviewed_at IS NOT NULL OR r.team_summary IS NOT NULL OR r.private_summary IS NOT NULL))
+             ORDER BY f.scheduled_at DESC, f.id LIMIT 20`),
+      Q(`SELECT r.id, r.title, r.audience, r.athlete_id, r.team_id, r.kind, r.updated_at FROM coaching_reports r
+             WHERE r.coach_id=$1 AND r.latest_version=0${subj('r.athlete_id', 'r.team_id')} AND ($6::text IS NULL OR ($6='team' AND r.athlete_id IS NULL) OR ($6<>'team' AND r.athlete_id IS NOT NULL)) ORDER BY r.updated_at DESC, r.id LIMIT 20`),
+      Q(`SELECT d.id, d.task, d.athlete_id, d.team_id, d.session_record_id, d.created_at, d.output->>'headline' AS headline FROM coaching_ai_drafts d
+             WHERE d.coach_id=$1 AND d.status='draft' AND d.created_at > now() - interval '14 days'${subj('d.athlete_id', 'd.team_id')} ORDER BY d.created_at DESC, d.id LIMIT 20`),
     ]);
     return {
-      running, today: today_records, needs_review, to_open: today_unrecorded.map((x) => ({ ...x, link: { screen: 'CoachSession', params: { source_type: x.source_type, source_id: x.source_id } } })),
-      follow_ups, overdue_actions, goals_due, counts,
+      window: { from, to }, filters: { sport: i.sport ?? null, scope: i.scope ?? null, team_id: i.team_id ?? null, athlete_id: i.athlete_id ?? null, skill_tag: i.skill_tag ?? null, open_actions: !!i.open_actions },
+      running, today: today_records, needs_review, to_open: to_open.map((x) => ({ ...x, link: { screen: 'CoachSession', params: { source_type: x.source_type, source_id: x.source_id } } })),
+      matches_to_prepare, matches_to_debrief, follow_ups, overdue_actions, open_actions, goals_due, goals_stale, draft_reports, ai_waiting, counts,
     };
   },
 });

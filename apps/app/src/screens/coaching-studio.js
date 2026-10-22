@@ -1,6 +1,6 @@
 // Performance Studio (issue #269, slice 1): today's coaching work, the run-a-session screen and the coaching journal.
 // Everything links to canonical records through the /coaching/* capabilities; nothing here edits a booking, plan or score.
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
@@ -30,7 +30,10 @@ const Status = ({ s }) => <Tag label={label(s)} color={s === 'completed' || s ==
 export function PerformanceStudio() {
   const { push } = useNav();
   const { toast } = useSession();
-  const home = useLoad(() => api.get('/coaching/home'), []);
+  const [flt, setFlt] = useState({ scope: null, open_actions: false, skill_tag: '', from: null, to: null, team_id: null });
+  const [filtering, setFiltering] = useState(false);
+  const qs = Object.entries({ scope: flt.scope, open_actions: flt.open_actions || null, skill_tag: flt.skill_tag || null, from: flt.from, to: flt.to ?? flt.from, team_id: flt.team_id }).filter(([, v]) => v).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
+  const home = useLoad(() => api.get(`/coaching/home${qs ? `?${qs}` : ''}`), [qs]);
   const coach = useLoad(() => api.get('/coach/home'), []);
   const [creating, setCreating] = useState(false);
   const h = home.data;
@@ -44,6 +47,11 @@ export function PerformanceStudio() {
         <Btn small title="New team session" onPress={() => setCreating(true)} disabled={!teams.length} />
         <Btn small title="My athletes" color={c.paper} ink={c.ink} onPress={() => push('CoachAthletes')} />
       </View>
+      <HScroll>
+        {[[null, 'All'], ['individual', 'Individual'], ['group', 'Group'], ['team', 'Team']].map(([v, l]) => <Chip key={l} label={l} active={flt.scope === v} onPress={() => setFlt({ ...flt, scope: v })} />)}
+        <Chip label="Open actions only" active={flt.open_actions} onPress={() => setFlt({ ...flt, open_actions: !flt.open_actions })} />
+        <Chip label={flt.from || flt.skill_tag || flt.team_id ? 'More filters ●' : 'More filters'} active={!!(flt.from || flt.skill_tag || flt.team_id)} onPress={() => setFiltering(true)} />
+      </HScroll>
       {!teams.length && !coach.loading ? <T size={12} color={c.mute} style={{ marginTop: 6 }}>Team sessions need a team you coach. Sessions from your hires and plans appear below on the day.</T> : null}
       {home.loading && !h ? <Loading /> : home.error ? <ErrorBox error={home.error} onRetry={home.reload} /> : (
         <>
@@ -71,12 +79,24 @@ export function PerformanceStudio() {
             {!h.goals_due.length ? <T size={13} color={c.mute}>No goal reviews due this week.</T> :
               h.goals_due.map((g) => <Row key={g.id} title={g.title} sub={`${g.athlete_name ?? 'Team'} · review ${g.review_on}`} onPress={() => push('CoachGoals', g.athlete_id ? { athlete_id: g.athlete_id, name: g.athlete_name } : { team_id: g.team_id })} />)}
           </Section>
+          {h.matches_to_prepare?.length ? <Section title="Matches to prepare">{h.matches_to_prepare.map((m) => <Row key={m.fixture_id} title={`${m.home_name} v ${m.away_name}`} sub={`${dateTimeIn(m.scheduled_at, tz)} · ${m.team_name} · no plan yet`} onPress={() => push('CoachMatch', { fixture_id: m.fixture_id, team_id: m.team_id })} />)}</Section> : null}
+          {h.matches_to_debrief?.length ? <Section title="Matches to debrief">{h.matches_to_debrief.map((m) => <Row key={m.fixture_id} title={`${m.home_name} v ${m.away_name}`} sub={`${dateTimeIn(m.scheduled_at, tz)} · ${m.team_name} · no review yet`} onPress={() => push('CoachMatch', { fixture_id: m.fixture_id, team_id: m.team_id })} />)}</Section> : null}
+          {h.goals_stale?.length ? <Section title="Goals not reviewed for a month">{h.goals_stale.map((g) => <Row key={g.id} title={g.title} sub={g.athlete_name ?? 'Team'} onPress={() => push('CoachGoals', g.athlete_id ? { athlete_id: g.athlete_id, name: g.athlete_name } : { team_id: g.team_id })} />)}</Section> : null}
+          {h.draft_reports?.length ? <Section title="Draft reports">{h.draft_reports.map((r) => <Row key={r.id} title={r.title} sub="Not published yet" onPress={() => push('CoachReport', { id: r.id })} />)}</Section> : null}
+          {h.ai_waiting?.length ? <Section title="AI drafts waiting for you">{h.ai_waiting.map((d) => <Row key={d.id} title={TASK_TITLE[d.task] ?? d.task} sub={d.headline ?? ''} onPress={() => push('CoachCopilot', { draft_id: d.id })} />)}</Section> : null}
           <Section title="Follow up">
             {!h.follow_ups.length ? <T size={13} color={c.mute}>No notes flagged for follow-up.</T> :
               h.follow_ups.map((o) => <Row key={o.id} title={o.athlete_name ?? 'Team'} sub={`${o.skill_tag ? `${o.skill_tag} · ` : ''}${o.note}`} onPress={() => push('CoachJournal', o.athlete_id ? { athlete_id: o.athlete_id, name: o.athlete_name } : { team_id: o.team_id })} />)}
           </Section>
         </>
       )}
+      <FormSheet visible={filtering} onClose={() => setFiltering(false)} title="Filters" submitLabel="Apply" initial={{ ...flt, skill_tag: flt.skill_tag }}
+        fields={[
+          { key: 'team_id', label: 'Team', type: 'chips', optional: true, options: teams.map((t) => ({ value: t.id, label: `${t.emoji ?? ''} ${t.name}`.trim() })) },
+          { key: 'skill_tag', label: 'Skill tag', optional: true, placeholder: 'e.g. first touch' },
+          { key: 'from', toKey: 'to', label: 'Dates', type: 'daterange', optional: true },
+        ]}
+        onSubmit={async (v) => { setFlt({ ...flt, team_id: v.team_id ?? null, skill_tag: v.skill_tag ?? '', from: v.from ?? null, to: v.to ?? null }); setFiltering(false); }} />
       <FormSheet visible={creating} onClose={() => setCreating(false)} title="New team session" submitLabel="Create"
         fields={[
           { key: 'team_id', label: 'Team', type: 'chips', options: teams.map((t) => ({ value: t.id, label: `${t.emoji ?? ''} ${t.name}`.trim() })) },
@@ -206,7 +226,7 @@ export function CoachSession(props) {
       <FormSheet visible={finishing} onClose={() => setFinishing(false)} title="Review the session" submitLabel={done ? 'Save review' : 'Finish session'} initial={{ team_summary: s.team_summary ?? '', private_summary: s.private_summary ?? '' }}
         fields={[{ key: 'team_summary', label: 'Team summary (can be shared)', type: 'multiline', optional: true }, { key: 'private_summary', label: 'Private summary (only you)', type: 'multiline', optional: true }]}
         onSubmit={async (v) => {
-          if (done) { toast('A finished session\'s review is already filed'); setFinishing(false); return; }
+          if (done) { await api.post(`/coaching/sessions/${s.id}/review`, { team_summary: v.team_summary || undefined, private_summary: v.private_summary || undefined }); setFinishing(false); toast('Review saved'); ws.reload(); return; }
           const r = await api.post(`/coaching/sessions/${s.id}/complete`, { team_summary: v.team_summary || undefined, private_summary: v.private_summary || undefined });
           setFinishing(false); toast(r.not_recorded ? `Finished · ${r.not_recorded} player${r.not_recorded === 1 ? '' : 's'} had no attendance recorded` : 'Session finished'); ws.reload();
         }} />
@@ -408,12 +428,15 @@ export function MyCoaching() {
 // and nothing is saved until Accept. Without an AI provider the same screen shows a plain summary of the coach's own records.
 const TASK_TITLE = { plan_session: 'Plan this session', player_focus: 'Player focus', summarise_session: 'Summarise this session', player_progress: 'Progress summary', team_patterns: 'Team patterns', suggest_actions: 'Suggested actions', match_debrief: 'Match debrief', ask: 'Ask about my notes' };
 
-export function CoachCopilot({ task = 'player_progress', athlete_id, team_id, session_record_id }) {
+export function CoachCopilot({ task: taskProp = 'player_progress', athlete_id, team_id, session_record_id, draft_id }) {
   const { toast } = useSession();
   const { back } = useNav();
   const [priv, setPriv] = useState(false);
   const [question, setQuestion] = useState('');
   const [draft, setDraft] = useState(null);
+  const loaded = useLoad(() => (draft_id ? api.get(`/coaching/ai/drafts/${draft_id}`) : Promise.resolve(null)), [draft_id]);
+  useEffect(() => { if (loaded.data) setDraft(loaded.data); }, [loaded.data]);
+  const task = draft?.task ?? taskProp;
   const [busy, setBusy] = useState(false);
   const [picked, setPicked] = useState({});
   const [err, setErr] = useState(null);
@@ -587,6 +610,36 @@ export function CoachReportView({ id, version }) {
           ))}
         </Section>
       ))}
+    </Screen>
+  );
+}
+
+// Match preparation and debrief over the canonical fixture: the fixture and its official result are only read; everything the coach
+// writes lives in the coaching session record opened for it.
+export function CoachMatch({ fixture_id, team_id }) {
+  const { push } = useNav();
+  const ctx = useLoad(() => api.get(`/coaching/fixtures/${fixture_id}?team_id=${team_id}`), [fixture_id, team_id]);
+  const [busy, setBusy] = useState(false);
+  if (ctx.loading && !ctx.data) return <Screen><Loading /></Screen>;
+  if (ctx.error) return <Screen><ErrorBox error={ctx.error} onRetry={ctx.reload} /></Screen>;
+  const m = ctx.data, f = m.fixture;
+  const open = async () => {
+    setBusy(true);
+    try { const r = m.session_record ?? await api.post('/coaching/sessions', { source_type: 'fixture', source_id: fixture_id, team_id }); push('CoachSession', { id: r.id }); } catch (e) { /* shown by the screen on retry */ }
+    setBusy(false);
+  };
+  return (
+    <Screen onRefresh={ctx.reload}>
+      <T size={12} weight="700" color={c.pink} style={{ letterSpacing: 1.2 }}>MATCH</T>
+      <H1>{f.home} v {f.away}</H1>
+      <T size={13} color={c.mute}>{f.event}{f.round ? ` · ${f.round}` : ''} · {dateTimeIn(f.scheduled_at, tz)} · you coach the {f.you_are} side</T>
+      {f.official_result ? <Card pad={12} color={c.cyanSoft} style={{ marginTop: 8 }}><T weight="800">Official result: {f.official_result.home_score} – {f.official_result.away_score}</T><T size={12} color={c.mute}>From the official match record. Your notes never change it.</T></Card> : null}
+      <View style={{ marginTop: 10 }}><Btn title={m.session_record ? 'Open my prep and review' : 'Start match prep'} loading={busy} onPress={open} /></View>
+      <Section title="Squad availability">
+        {m.squad.map((p) => <Row key={p.id} title={p.display_name} sub={`${p.availability ?? 'no answer'}${p.availability_note ? ` · ${p.availability_note}` : ''}`} />)}
+      </Section>
+      <Section title="Active goals">{!m.goals.length ? <T size={13} color={c.mute}>None.</T> : m.goals.map((g) => <Row key={g.id} title={g.title} sub={label(g.category)} />)}</Section>
+      <Section title="Open actions">{!m.actions.length ? <T size={13} color={c.mute}>None.</T> : m.actions.map((a) => <Row key={a.id} title={a.title} sub={a.due_at ? `Due ${dateTimeIn(a.due_at, tz)}` : 'No due date'} />)}</Section>
     </Screen>
   );
 }
