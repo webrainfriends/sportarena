@@ -29,3 +29,12 @@ export function csvToObjects(text) {
   const keys = head.map((h) => h.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, ''));
   return body.map((r) => Object.fromEntries(keys.map((k, n) => [k, (r[n] ?? '').trim()]).filter(([k, v]) => k && v !== '')));
 }
+
+/** One CSV cell, safe against spreadsheet formula injection. */
+export const csvCell = (v) => {
+  let s = v === null || v === undefined ? '' : v instanceof Date ? v.toISOString() : String(v);
+  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+};
+/** CSV text for `rows` (objects) in the order of `cols`, with a header line. */
+export const toCsv = (cols, rows) => [cols.join(','), ...rows.map((r) => cols.map((k) => csvCell(r[k])).join(','))].join('\n') + '\n';

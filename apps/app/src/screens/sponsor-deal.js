@@ -7,6 +7,9 @@ import { Btn, Card, Empty, ErrorBox, H1, Loading, Screen, Section, T, Tag } from
 import { FormSheet } from '../FormSheet';
 import { SponsorPerformance } from './sponsor-performance';
 import { c } from '../theme';
+import { explain, LoadError } from '../access';
+
+const ROLE_LABEL = { manager: 'Manager', evaluator: 'Evaluator', finance: 'Finance', legal: 'Legal', approver: 'Approver', auditor: 'Auditor' };
 
 // Amounts are minor units of THEIR OWN currency; currencies are never added together and estimates are labelled.
 const fmt = (cents, cur) => { try { return new Intl.NumberFormat(undefined, { style: 'currency', currency: cur }).format(cents / 10 ** (new Intl.NumberFormat(undefined, { style: 'currency', currency: cur }).resolvedOptions().maximumFractionDigits)); } catch { return `${cents} ${cur ?? ''}`; } };
@@ -21,15 +24,18 @@ export function SponsorDeal({ id }) {
   const deal = useLoad(() => api.get(`/sponsorships/${id}`), [id]);
   const [form, setForm] = useState(null); // { kind, o }
   const d = deal.data;
-  const act = async (fn, m) => { try { await fn(); toast(m); deal.reload(); } catch (e) { toast('' + e.message); } };
+  const act = async (fn, m) => { try { await fn(); toast(m); deal.reload(); } catch (e) { toast(explain(e)); if (e.status === 409) deal.reload(); } };
   if (deal.loading && !d) return <Screen><Loading /></Screen>;
-  if (deal.error) return <Screen><ErrorBox error={deal.error} onRetry={deal.reload} /></Screen>;
+  if (deal.error) return <Screen><LoadError error={deal.error} onRetry={deal.reload} /></Screen>;
   const sponsor = d.role === 'sponsor', recipient = d.role === 'recipient';
+  // what this person's sponsor role may do (the server enforces it; this only hides what would be refused)
+  const can = (a) => !sponsor || !d.can || d.can.includes(a);
   const o = form?.o;
   return (
     <Screen>
       <H1>{d.sponsor.name}</H1>
-      {d.sponsor_identity ? <T size={12} color={c.mute}>Sponsor of record: {d.sponsor_identity.legal_name ?? d.sponsor_identity.display_name}{d.sponsor_identity.sponsor_type ? ` (${d.sponsor_identity.sponsor_type})` : ''}{d.sponsor_identity.signed_by ? ` · offered by ${d.sponsor_identity.signed_by}` : ''} — fixed when these terms were proposed.</T> : null}
+      {sponsor && d.my_sponsor_role ? <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center', marginTop: 4 }}><Tag label={`You: ${ROLE_LABEL[d.my_sponsor_role]}`} />{!can('pay') || !can('revise') ? <T size={12} color={c.mute} accessibilityRole="text">{[!can('pay') ? 'cannot report payments' : null, !can('revise') ? 'cannot change or sign terms' : null].filter(Boolean).join(' · ')}</T> : null}</View> : null}
+      {d.program ? <T size={12} color={c.mute} accessibilityRole="text">Awarded from the program “{d.program.name}”, {d.program.round_name}.</T> : null}
       <T size={12} color={c.mute}>{d.agreement_ref ?? 'Legacy agreement'} · {d.status} · terms v{d.accepted_version ?? d.terms_version}{d.starts_on ? ` · ${when(String(d.starts_on).slice(0, 10))} – ${d.ends_on ? when(String(d.ends_on).slice(0, 10)) : 'open'}` : ''}</T>
       {!d.lines.length ? <Card><T>This agreement predates structured terms: {d.legacy_amount_cents ? `${d.legacy_amount_cents} (currency not recorded)` : 'no cash'}{d.legacy_in_kind ? ` · ${d.legacy_in_kind}` : ''}. No payment schedule exists for it.</T></Card> : null}
       <Section title="Terms" color={c.sun}>
@@ -65,11 +71,11 @@ export function SponsorDeal({ id }) {
               {x.submissions.map((s) => (
                 <View key={s.id} style={{ marginTop: 4 }}>
                   <T size={12}>Evidence {s.evidence_url} · {s.status.replace('_', ' ')}{s.review_note ? ` — ${s.review_note}` : ''}</T>
-                  {s.status === 'submitted' && d.role === (x.promoter === 'recipient' ? 'sponsor' : 'recipient') ? <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}><Btn small title="Accept" color={c.mint} ink={c.ink} onPress={() => act(() => api.patch(`/sponsorship-submissions/${s.id}`, { status: 'accepted' }), 'Accepted')} /><Btn small title="Ask for changes" color={c.paper} ink={c.ink} onPress={() => setForm({ kind: 'revise', o: s })} /></View> : null}
+                  {s.status === 'submitted' && d.role === (x.promoter === 'recipient' ? 'sponsor' : 'recipient') && can('evaluate') ? <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}><Btn small title="Accept" color={c.mint} ink={c.ink} onPress={() => act(() => api.patch(`/sponsorship-submissions/${s.id}`, { status: 'accepted' }), 'Accepted')} /><Btn small title="Ask for changes" color={c.paper} ink={c.ink} onPress={() => setForm({ kind: 'revise', o: s })} /></View> : null}
                 </View>))}
-              {x.status === 'scheduled' && x.kind === 'money' && sponsor ? <Btn small title="Report a payment" color={c.pink} style={{ alignSelf: 'flex-start', marginTop: 6 }} onPress={() => setForm({ kind: 'pay', o: x })} /> : null}
-              {x.status === 'scheduled' && x.kind === 'goods' && sponsor ? <Btn small title="Record dispatch" color={c.orange} style={{ alignSelf: 'flex-start', marginTop: 6 }} onPress={() => setForm({ kind: 'dispatch', o: x })} /> : null}
-              {x.status === 'scheduled' && x.kind === 'endorsement' && d.role === x.promoter && !x.submissions.some((s) => s.status !== 'revision_requested') ? <Btn small title="Submit evidence" color={c.violet} style={{ alignSelf: 'flex-start', marginTop: 6 }} onPress={() => setForm({ kind: 'submit', o: x })} /> : null}
+              {x.status === 'scheduled' && x.kind === 'money' && sponsor && can('pay') ? <Btn small title="Report a payment" color={c.pink} style={{ alignSelf: 'flex-start', marginTop: 6 }} onPress={() => setForm({ kind: 'pay', o: x })} /> : null}
+              {x.status === 'scheduled' && x.kind === 'goods' && sponsor && can('pay') ? <Btn small title="Record dispatch" color={c.orange} style={{ alignSelf: 'flex-start', marginTop: 6 }} onPress={() => setForm({ kind: 'dispatch', o: x })} /> : null}
+              {x.status === 'scheduled' && x.kind === 'endorsement' && d.role === x.promoter && can('evaluate') && !x.submissions.some((s) => s.status !== 'revision_requested') ? <Btn small title="Submit evidence" color={c.violet} style={{ alignSelf: 'flex-start', marginTop: 6 }} onPress={() => setForm({ kind: 'submit', o: x })} /> : null}
             </Card>)) : <Empty emoji="🗓️" title="Nothing scheduled" />}
           <T size={12} color={c.mute}>Payments here are tracked, not collected: Gotmygame does not hold or transfer these funds. A payment counts as received only after the recipient confirms it.</T>
         </Section>) : null}

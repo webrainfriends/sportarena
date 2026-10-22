@@ -5,6 +5,7 @@ import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { useNav } from '../nav';
 import { Avatar, Bubble, Btn, Card, Chip, Empty, ErrorBox, Field, GradCard, H1, H2, Loading, Row, Screen, Seg, Section, Sheet, T, Tag } from '../ui';
+import { explain, LoadError } from '../access';
 import { FormSheet } from '../FormSheet';
 import { AddFollowupSheet, ClinicalStatusCard, ConsentManager, FollowupsPanel, ProviderSearch, ShareRecordsSheet } from './provider';
 import { MyRehab, PracticePanel } from './physio-practice';
@@ -359,8 +360,11 @@ export function Sponsors() {
   const evs = useLoad(() => api.get('/events', { limit: 50 }), []);
   const profile = useLoad(() => api.get('/me/sponsorship-profile'), []);
   const athletes = useLoad(() => (has('sponsor') ? api.get('/sponsorable-athletes', { limit: 30, ...(q.trim() ? { q: q.trim() } : {}) }) : Promise.resolve([])), [q]);
-  const act = async (fn, m) => { try { await fn(); toast(m); deals.reload(); } catch (e) { toast('' + e.message); } };
+  const act = async (fn, m) => { try { await fn(); toast(m); deals.reload(); } catch (e) { toast(explain(e)); if (e.status === 409) deals.reload(); } };
   const pr = profile.data;
+  // my sponsor role per brand decides which deal buttons are offered (the server still enforces it)
+  const roleOf = (sponsorId) => (mine.data ?? []).find((b) => b.id === sponsorId)?.my_role;
+  const mayDeal = (d, action) => !roleOf(d.sponsor_id) || { withdraw: ['manager', 'approver'], end: ['manager', 'approver'] }[action].includes(roleOf(d.sponsor_id));
   return (
     <Screen>
       <H1>Sponsors</H1>
@@ -376,17 +380,24 @@ export function Sponsors() {
           {pr?.verified_sponsors_only ? <T size={12} color={c.mute}>Only verified sponsors can send you offers.</T> : null}
         </Section>
       ) : null}
+      <Section title="Funding programs" color={c.lime}>
+        <T size={13} color={c.mute}>Sponsors run funding programs in rounds; athletes, teams and event organisers apply to the ones that are open. Awards become agreements here.</T>
+        <View style={{ flexDirection: 'row', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
+          <Btn small title="Funding opportunities" color={c.pink} onPress={() => push('FundingOpportunities')} />
+          {mine.data?.length ? <Btn small title="Run programs" color={c.violet} onPress={() => push('SponsorPrograms')} /> : null}
+        </View>
+      </Section>
       <Section title="Your deals" color={c.sun}>
         {deals.data?.length ? deals.data.map((d) => (
-          <Card key={d.id} color={c.sunSoft}><View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}><Bubble emoji={d.sponsor_emoji} color={c.paper} /><View style={{ flex: 1 }}><T weight="900">{d.sponsor_name}{d.sponsor_verified ? ' ✓' : ''} → {d.target_name ?? d.target_type}</T><T size={12} color={c.mute}>{[d.amount_cents ? money(d.amount_cents) : null, d.in_kind].filter(Boolean).join(' + ') || 'Support offered'}{d.starts_on ? ` · ${day(d.starts_on)} to ${d.ends_on ? day(d.ends_on) : 'open'}` : ''}</T></View><Tag label={d.status} color={d.status === 'active' ? c.lime : d.status === 'proposed' ? c.sunSoft : c.pinkSoft} /></View>
+          <Card key={d.id} color={c.sunSoft}><View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}><Bubble emoji={d.sponsor_emoji} color={c.paper} /><View style={{ flex: 1 }}><T weight="900">{d.sponsor_name}{d.sponsor_verified ? ' ✓' : ''} → {d.target_name ?? d.target_type}</T><T size={12} color={c.mute}>{[d.amount_cents ? money(d.amount_cents) : null, d.in_kind].filter(Boolean).join(' + ') || 'Support offered'}{d.starts_on ? ` · ${day(d.starts_on)} to ${d.ends_on ? day(d.ends_on) : 'open'}` : ''}</T></View><View style={{ alignItems: 'flex-end', gap: 4 }}><Tag label={d.status} color={d.status === 'active' ? c.lime : d.status === 'proposed' ? c.sunSoft : c.pinkSoft} />{d.program_id ? <Tag label="Funding award" color={c.mint} /> : null}</View></View>
             {d.objectives ? <T size={12} style={{ marginTop: 6 }}><T size={12} weight="800">Objectives: </T>{d.objectives}</T> : null}
             {d.deliverables ? <T size={12}><T size={12} weight="800">Deliverables: </T>{d.deliverables}</T> : null}
             {d.message ? <T size={12} color={c.mute}>“{d.message}”</T> : null}
             {d.decision_reason ? <T size={12} color={c.mute}>Reply: {d.decision_reason}</T> : null}
             {d.agreement_ref ? <Btn small title={`Open agreement ${d.agreement_ref}`} color={c.violet} style={{ alignSelf: 'flex-start', marginTop: 8 }} onPress={() => push('SponsorDeal', { id: d.id })} /> : null}
             {d.status === 'proposed' && !d.i_am_sponsor ? <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}><Btn small title="Accept" color={c.mint} ink={c.ink} onPress={() => act(() => api.patch(`/sponsorships/${d.id}`, { status: 'active' }), 'Deal on!')} /><Btn small title="Decline" color={c.paper} ink={c.red} onPress={() => act(() => api.patch(`/sponsorships/${d.id}`, { status: 'declined' }), 'Declined')} />{d.target_type === 'athlete' ? <Btn small title="Accept & show on sponsor page" color={c.paper} ink={c.ink} onPress={() => act(() => api.patch(`/sponsorships/${d.id}`, { status: 'active', show_publicly: true }), 'Deal on, shown publicly')} /> : null}</View> : null}
-            {d.status === 'proposed' && d.i_am_sponsor ? <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}><Btn small title="Withdraw offer" color={c.paper} ink={c.red} onPress={() => act(() => api.post(`/sponsorships/${d.id}/withdraw`), 'Offer withdrawn')} /></View> : null}
-            {d.status === 'active' ? <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}><Btn small title="End deal" color={c.paper} ink={c.red} onPress={() => act(() => api.patch(`/sponsorships/${d.id}`, { status: 'ended' }), 'Deal ended')} /></View> : null}
+            {d.status === 'proposed' && d.i_am_sponsor && mayDeal(d, 'withdraw') ? <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}><Btn small title="Withdraw offer" color={c.paper} ink={c.red} onPress={() => act(() => api.post(`/sponsorships/${d.id}/withdraw`), 'Offer withdrawn')} /></View> : null}
+            {d.status === 'active' && mayDeal(d, 'end') ? <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}><Btn small title="End deal" color={c.paper} ink={c.red} onPress={() => act(() => api.patch(`/sponsorships/${d.id}`, { status: 'ended' }), 'Deal ended')} /></View> : null}
           </Card>
         )) : <Empty emoji="🤝" title="No deals yet" />}
       </Section>
@@ -399,17 +410,18 @@ export function Sponsors() {
           )) : <Empty emoji="🏅" title="No athletes found" sub="Athletes only appear here after they opt in." />}
         </Section>
       ) : null}
-      {user ? (
-        <Section title="My brands" color={c.violet}>
-          {mine.loading && !mine.data ? <Loading /> : mine.error ? <ErrorBox error={mine.error} onRetry={mine.reload} /> : mine.data?.length ? mine.data.map((s) => (
-            <Row key={s.id} left={<Bubble emoji={s.emoji} color={c.sun} />} title={`${s.name}${s.verified?.length ? ' ✓' : ''}`} sub={`${s.identity_confirmed ? `${({ company: 'Company', organization: 'Organization', individual: 'Individual' })[s.sponsor_type] ?? 'Sponsor'} · ` : '⚠ Identity not confirmed · '}your role: ${String(s.my_role).replace('_', ' ')}`}
-              right={<Btn small title={s.identity_confirmed ? 'Identity' : 'Complete'} color={c.violet} onPress={() => push('SponsorIdentity', { id: s.id })} />} />
-          )) : <Empty emoji="💎" title="No brands yet" sub={has('sponsor') ? 'Create your first brand, or ask an owner to invite you to theirs.' : 'Ask a sponsor owner to invite you to their team.'} />}
-        </Section>
-      ) : null}
-      <Section title="Brands" color={c.pink}>{dir.loading && !dir.data ? <Loading /> : dir.error ? <ErrorBox error={dir.error} onRetry={dir.reload} /> : dir.data?.length ? dir.data.map((s) => <Row key={s.id} left={<Bubble emoji={s.emoji} color={c.sun} />} title={`${s.name}${s.verified?.length ? ' ✓' : ''}`} sub={[s.sponsor_type, s.industry ?? s.website].filter(Boolean).join(' · ')} />) : <Empty emoji="💎" title="No brands listed yet" />}</Section>
-      <FormSheet visible={form === 'brand'} onClose={() => setForm(null)} title="Create your brand" fields={[{ key: 'name', label: 'Brand name (public)', hint: 'Next you will confirm who is behind the brand: individual, company or organization.' }, { key: 'industry', label: 'Industry', optional: true }, { key: 'contact_email', label: 'Contact email', optional: true, hint: 'Encrypted — never shown publicly.' }]}
-        onSubmit={async (v) => { const b = await api.post('/sponsors', v); dir.reload(); mine.reload(); push('SponsorIdentity', { id: b.id }); return 'Brand created — confirm its identity'; }} />
+      <Section title="Your brands" color={c.violet}>
+        {mine.error ? <LoadError error={mine.error} onRetry={mine.reload} /> : mine.loading && !mine.data ? <Loading /> : mine.data?.length ? mine.data.map((s) => (
+          <Row key={s.id} left={<Bubble emoji={s.emoji} color={c.sun} />} title={s.name}
+            sub={[s.industry, s.organisation_name ? `Run by ${s.organisation_name}` : 'Individual brand', s.my_role !== 'manager' ? { evaluator: 'You evaluate and review; you cannot pay or sign', finance: 'You report payments; you cannot change terms', legal: 'You review and change terms; you cannot pay', approver: 'You propose, revise and withdraw; you cannot pay', auditor: 'Read-only, with exports' }[s.my_role] : null].filter(Boolean).join(' · ')}
+            right={<View style={{ alignItems: 'flex-end', gap: 6 }}><Tag label={{ manager: 'Manager', evaluator: 'Evaluator', finance: 'Finance', legal: 'Legal', approver: 'Approver', auditor: 'Auditor' }[s.my_role] ?? 'Staff'} />
+              {s.organisation_id ? <Btn small title="Open workspace" color={c.paper} ink={c.ink} onPress={() => push('Org', { id: s.organisation_id })} /> : s.my_role === 'manager' ? <Btn small title="Link to an organisation" color={c.paper} ink={c.ink} onPress={() => push('Orgs')} /> : null}</View>} />
+        )) : <Empty emoji="🏷️" title="No brands yet" sub="Create a brand, or ask an organisation manager to invite you to theirs." />}
+        <T size={12} color={c.mute}>Link a brand to an organisation (open it, then Teams, events, venues & brands) to let that organisation's staff work its deals under their roles; staff and departments are managed there.</T>
+      </Section>
+      <Section title="Brands" color={c.pink}>{dir.data?.map((s) => <Row key={s.id} left={<Bubble emoji={s.emoji} color={c.sun} />} title={s.name} sub={s.industry ?? s.website} />)}</Section>
+      <FormSheet visible={form === 'brand'} onClose={() => setForm(null)} title="Create your brand" fields={[{ key: 'name', label: 'Brand name' }, { key: 'industry', label: 'Industry', optional: true }, { key: 'contact_email', label: 'Contact email', optional: true, hint: 'Encrypted — never shown publicly.' }]}
+        onSubmit={async (v) => { await api.post('/sponsors', v); dir.reload(); mine.reload(); return 'Brand created'; }} />
       <FormSheet visible={form === 'pitch'} onClose={() => setForm(null)} title="Your sponsor pitch" initial={{ pitch: pr?.pitch ?? '', looking_for: pr?.looking_for ?? [], verified_sponsors_only: !!pr?.verified_sponsors_only }}
         fields={[{ key: 'pitch', label: 'What should sponsors know about you?', type: 'multiline', optional: true, hint: 'Shown to sponsors. Do not include contact details.' }, { key: 'looking_for', label: 'What are you looking for?', type: 'multi', optional: true, options: ['cash', 'equipment', 'travel', 'coaching', 'apparel', 'nutrition', 'media'] }, { key: 'verified_sponsors_only', label: 'Only verified sponsors may send offers', type: 'switch' }]}
         onSubmit={async (v) => { await api.post('/me/sponsorship-profile', { open_to_sponsors: !!pr?.open_to_sponsors, pitch: v.pitch ?? null, looking_for: v.looking_for ?? [], verified_sponsors_only: v.verified_sponsors_only }); profile.reload(); return 'Saved'; }} />

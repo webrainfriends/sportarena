@@ -11,12 +11,16 @@ import { isYouth } from '../youth.js';
 import { EVIDENCE_LABELS } from '../scoring/performance-rules.js';
 import { sponsorGate, CAN } from '../sponsor-access.js';
 import { logHistory, dealContext } from '../sponsor-agreements.js';
+import { notifySponsor } from '../sponsor-access.js';
 
 const TAG = 'Sponsors';
 const date = z.string().date();
 // Notifications carry no results, targets or review text.
-const ping = (c, to, title, ctx, kind = 'sponsorship_performance') => notify(c, to, { kind, title, body: `Open the ${ctx.sp.name} agreement to see the update.`, data: { sponsorship_id: ctx.d.id } });
-const other = (ctx) => (ctx.role === 'sponsor' ? ctx.recipientId : ctx.sp.owner_id);
+const ping = (c, to, title, ctx, kind = 'sponsorship_performance') => {
+  const msg = { kind, title, body: `Open the ${ctx.sp.name} agreement to see the update.`, data: { sponsorship_id: ctx.d.id } };
+  return to === 'sponsor' ? notifySponsor(c, ctx.sp, 'performance', msg, ctx.d.department_id) : notify(c, to, msg);
+};
+const other = (ctx) => (ctx.role === 'sponsor' ? ctx.recipientId : 'sponsor');
 const running = (ctx) => ['active', 'ended'].includes(ctx.d.status);
 const athleteOnly = (ctx) => { if (ctx.d.target_type !== 'athlete') throw badRequest('Performance review is for agreements with an individual athlete; team and event results stay with their organisers'); };
 const VALID = `((p.provenance='approved_competition' AND p.status='approved') OR (p.provenance IN ('self_reported','imported') AND p.status='recorded'))`;
@@ -36,7 +40,7 @@ cap({
       }
       const row = (await c.query('UPDATE sponsorships SET performance_access=$2, performance_scope=$3, performance_access_at=now(), performance_access_by=$4 WHERE id=$1 RETURNING performance_access, performance_scope, performance_access_at', [ctx.d.id, i.enabled, i.scope, user.id])).rows[0];
       await logHistory(c, ctx.d.id, ctx.d.terms_version, user.id, i.enabled ? 'performance_access_granted' : 'performance_access_revoked', i.reason);
-      await ping(c, ctx.sp.owner_id, i.enabled ? 'Performance sharing was switched on' : 'Performance sharing was switched off', ctx);
+      await ping(c, 'sponsor', i.enabled ? 'Performance sharing was switched on' : 'Performance sharing was switched off', ctx);
       return row;
     });
   },
@@ -53,7 +57,7 @@ cap({
     return tx(async (c) => {
       const ctx = await dealContext(c, i.id, user, { lock: true });
       if (ctx.role !== 'sponsor') throw forbidden('Only the sponsor proposes objectives');
-      sponsorGate(ctx, CAN.manage, 'propose objectives');
+      ctx.need('evaluate', 'propose objectives');
       athleteOnly(ctx);
       if (!['proposed', 'active'].includes(ctx.d.status)) throw conflict(`The agreement is ${ctx.d.status}`);
       const sport = (await c.query('SELECT id FROM sports WHERE slug=$1', [i.sport])).rows[0];
@@ -80,7 +84,7 @@ cap({
       const ctx = await dealContext(c, o0.sponsorship_id, user, { lock: true });
       const o = (await c.query('SELECT * FROM sponsorship_objectives WHERE id=$1 FOR UPDATE', [i.id])).rows[0];
       if (i.status === 'archived' ? ctx.role !== 'sponsor' : ctx.role !== 'recipient') throw forbidden(i.status === 'archived' ? 'Only the sponsor archives an objective' : 'Only the athlete agrees to an objective');
-      if (i.status === 'archived') sponsorGate(ctx, CAN.manage, 'archive objectives');
+      if (i.status === 'archived') ctx.need('evaluate', 'archive objectives');
       if (i.status === 'archived' ? !['proposed', 'agreed'].includes(o.status) : o.status !== 'proposed') throw conflict(`This objective is already ${o.status}`);
       const row = (await c.query('UPDATE sponsorship_objectives SET status=$2, decided_by=$3, decided_at=now() WHERE id=$1 RETURNING *', [o.id, i.status, user.id])).rows[0];
       await logHistory(c, ctx.d.id, ctx.d.terms_version, user.id, `objective_${i.status}`);
@@ -99,6 +103,7 @@ cap({
     const ctx = await dealContext(pool, i.id, user);
     athleteOnly(ctx);
     if (ctx.role === 'sponsor') {
+      ctx.need('performance', 'read an athlete\'s results');
       if (!running(ctx)) throw conflict('Results are available once the athlete has accepted the agreement');
       if (!ctx.d.performance_access) throw forbidden('The athlete has not shared their results for this agreement');
     }
@@ -146,7 +151,7 @@ cap({
     return tx(async (c) => {
       const ctx = await dealContext(c, i.id, user, { lock: true });
       if (ctx.role !== 'sponsor' && ctx.role !== 'recipient') throw forbidden('Only the two sides review an agreement');
-      sponsorGate(ctx, CAN.manage, 'write reviews');
+      if (ctx.role === 'sponsor') ctx.need('evaluate', 'write reviews');
       if (!running(ctx)) throw conflict('Reviews are kept once the agreement has been accepted');
       const row = (await c.query('INSERT INTO sponsorship_reviews(sponsorship_id, author_id, body, visibility, next_review_on) VALUES ($1,$2,$3,$4,$5) RETURNING *', [ctx.d.id, user.id, i.body, i.visibility, i.next_review_on ?? null])).rows[0];
       await logHistory(c, ctx.d.id, ctx.d.terms_version, user.id, 'review_added');
@@ -163,6 +168,7 @@ cap({
   async handler({ user }, i) {
     const ctx = await dealContext(pool, i.id, user);
     if (ctx.role === 'admin') throw forbidden('Reviews are between the two sides');
+    if (ctx.role === 'sponsor') ctx.need('performance', 'read reviews');
     return many(
       `SELECT r.id, r.body, r.visibility, r.next_review_on::text, r.response, r.responded_at, r.created_at, (r.author_id=$2) AS mine, u.display_name AS author
          FROM sponsorship_reviews r JOIN users u ON u.id=r.author_id WHERE r.sponsorship_id=$1 AND (r.visibility='shared' OR r.author_id=$2) ORDER BY r.created_at, r.id`, [ctx.d.id, user.id]);
@@ -184,7 +190,7 @@ cap({
       if (r.response) throw conflict('Already answered');
       const row = (await c.query('UPDATE sponsorship_reviews SET response=$2, responded_at=now() WHERE id=$1 RETURNING *', [r.id, i.response])).rows[0];
       await logHistory(c, ctx.d.id, ctx.d.terms_version, user.id, 'review_answered');
-      await ping(c, r.author_id, 'Your review was answered', ctx);
+      await ping(c, 'sponsor', 'Your review was answered', ctx);
       return row;
     });
   },
