@@ -3,6 +3,7 @@ import { Animated, Text, View } from 'react-native';
 import { Platform } from 'react-native';
 import { api, setSessionTokens, setTokensHandler, setUnauthorizedHandler, storage } from './api';
 import { c } from './theme';
+import { clearOutbox } from './outbox';
 
 const Ctx = createContext(null);
 export const useSession = () => useContext(Ctx);
@@ -14,6 +15,7 @@ export function SessionProvider({ children }) {
   const setActiveRole = useCallback((r) => { setActive(r); storage.set('activeRole', r); }, []);
 
   const signOut = useCallback(async () => {
+    clearOutbox(); // queued coaching writes belong to this account and must not outlive the session
     try { await api.post('/auth/logout'); } catch { /* already signed out, or offline: still clear this device */ }
     setSessionTokens(null);
     await Promise.all([storage.del('token'), storage.del('refresh')]);
@@ -32,7 +34,7 @@ export function SessionProvider({ children }) {
 
   useEffect(() => {
     // Local-only reset used when the server already says we're signed out (no logout round trip).
-    setUnauthorizedHandler(async () => { setSessionTokens(null); await Promise.all([storage.del('token'), storage.del('refresh')]); setState({ ready: true, user: null }); });
+    setUnauthorizedHandler(async () => { clearOutbox(); setSessionTokens(null); await Promise.all([storage.del('token'), storage.del('refresh')]); setState({ ready: true, user: null }); });
     setTokensHandler(async (t) => { await storage.set('token', t.token); await storage.set('refresh', t.refresh_token); });
     (async () => {
       if (Platform.OS === 'web') {

@@ -3,15 +3,20 @@ import { cap, id, page } from '../registry.js';
 import { one, many, tx } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { isAdmin, PUBLIC_USER, sportBySlugOrId } from '../helpers.js';
-import { hiddenYouth, relationships, requireRelationship } from '../coaching.js';
+import { hiddenYouth, relationships, requireCoachingConsent, requireRelationship } from '../coaching.js';
 import { isYouth } from '../youth.js';
 import { requireTeam } from './coaching-journal.js';
+import { notifyActionAssigned, notifyActionDone } from '../coaching-notify.js';
+import { PLAYED, teamEvents, evaluateObjectives } from '../coaching-match-data.js';
+import { sharedGoals, sharedActions } from '../coaching-shared.js';
 
 // Coaching goals, evidence, rubrics, measurements, actions, metrics and match context (issue #269, slice 2).
 // Goal achievement is only ever a coach's decision; evidence is referenced, never copied; official match data is read, never written.
 const TAG = 'Coaching journal';
 const COACH = ['coach'];
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+/** A date column as YYYY-MM-DD (pg hands back a Date). */
+const ymd = (d) => (d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10));
 const text = (n) => z.string().trim().max(n);
 const CATEGORIES = ['technical', 'tactical', 'physical', 'mental_performance', 'teamwork', 'match_objective', 'custom'];
 const PRIORITY = ['low', 'medium', 'high'];
@@ -39,17 +44,23 @@ const goalFields = {
 cap({
   name: 'create_coaching_goal', method: 'POST', path: '/coaching/goals', tag: TAG, auth: COACH, status: 201,
   summary: 'Define a development goal for an athlete you coach or a team, with a measurable criterion and review date. Goals are coaching goals, never medical or rehabilitation goals.',
-  input: z.object({ athlete_id: id.optional(), team_id: id.optional(), plan_id: id.optional(), sport: z.string().optional(), ...goalFields }),
+  input: z.object({ athlete_id: id.optional(), team_id: id.optional(), plan_id: id.optional(), programme_id: id.optional(), position: text(60).optional(), sport: z.string().optional(), ...goalFields }),
   async handler({ user }, i) {
     scope(i);
     let sportId = await authorise(user, i);
+    if (i.athlete_text && i.athlete_id) await requireCoachingConsent(i.athlete_id, 'sharing a goal with them');
     if (i.sport) sportId = (await sportBySlugOrId(i.sport))?.id ?? sportId;
     if (i.plan_id && !(await one('SELECT 1 FROM training_plans WHERE id=$1 AND coach_id=$2 AND ($3::uuid IS NULL OR athlete_id=$3)', [i.plan_id, user.id, i.athlete_id ?? null]))) throw badRequest('That plan is not yours with this athlete');
+    if (i.programme_id) {
+      const pr = await one('SELECT athlete_id, team_id FROM coaching_programmes WHERE id=$1 AND coach_id=$2', [i.programme_id, user.id]);
+      if (!pr) throw notFound('Programme');
+      if ((pr.athlete_id && pr.athlete_id !== i.athlete_id) || (!pr.athlete_id && pr.team_id !== i.team_id)) throw badRequest('That programme is about someone else');
+    }
     return tx(async (c) => {
       const g = (await c.query(
-        `INSERT INTO coaching_goals(coach_id, athlete_id, team_id, sport_id, plan_id, title, category, criterion, baseline, priority, status, starts_on, review_on, ends_on, review_cadence_days, athlete_text, coach_notes)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'planned',$11,$12,$13,$14,$15,$16) RETURNING *`,
-        [user.id, i.athlete_id ?? null, i.team_id ?? null, sportId, i.plan_id ?? null, i.title, i.category, i.criterion, i.baseline, i.priority, i.starts_on, i.review_on, i.ends_on, i.review_cadence_days, i.athlete_text, i.coach_notes])).rows[0];
+        `INSERT INTO coaching_goals(coach_id, athlete_id, team_id, sport_id, plan_id, title, category, criterion, baseline, priority, status, starts_on, review_on, ends_on, review_cadence_days, athlete_text, coach_notes, programme_id, position)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'planned',$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *`,
+        [user.id, i.athlete_id ?? null, i.team_id ?? null, sportId, i.plan_id ?? null, i.title, i.category, i.criterion, i.baseline, i.priority, i.starts_on, i.review_on, i.ends_on, i.review_cadence_days, i.athlete_text, i.coach_notes, i.programme_id ?? null, i.position ?? null])).rows[0];
       await c.query("INSERT INTO coaching_goal_events(goal_id, to_status, by_user) VALUES ($1,'planned',$2)", [g.id, user.id]);
       return g;
     });
@@ -69,6 +80,7 @@ cap({
     if (!cur) throw notFound('Goal');
     await authorise(user, cur);
     if (i.status === 'achieved' && !i.review_note) throw badRequest('Say why this goal is achieved (review_note)');
+    if (i.athlete_text && cur.athlete_id) await requireCoachingConsent(cur.athlete_id, 'sharing a goal with them');
     return tx(async (c) => {
       const g = (await c.query('SELECT * FROM coaching_goals WHERE id=$1 FOR UPDATE', [cur.id])).rows[0];
       if (g.row_version !== i.row_version) throw conflict('This goal was changed elsewhere - reload it first');
@@ -90,11 +102,11 @@ cap({
 cap({
   name: 'list_coaching_goals', method: 'GET', path: '/coaching/goals', tag: TAG, auth: COACH,
   summary: 'Your goals, filtered by athlete, team or status, ordered by review date then id.',
-  input: z.object({ athlete_id: id.optional(), team_id: id.optional(), status: z.enum(['planned', 'active', 'achieved', 'paused', 'stopped']).optional(), ...page }),
+  input: z.object({ athlete_id: id.optional(), team_id: id.optional(), programme_id: id.optional(), status: z.enum(['planned', 'active', 'achieved', 'paused', 'stopped']).optional(), ...page }),
   handler: ({ user }, i) => many(
     `SELECT g.*, (SELECT count(*)::int FROM coaching_goal_evidence e WHERE e.goal_id=g.id) AS evidence_count FROM coaching_goals g
-      WHERE g.coach_id=$1 AND ($2::uuid IS NULL OR g.athlete_id=$2) AND ($3::uuid IS NULL OR g.team_id=$3) AND ($4::text IS NULL OR g.status=$4)
-      ORDER BY g.review_on NULLS LAST, g.created_at DESC, g.id LIMIT $5 OFFSET $6`, [user.id, i.athlete_id ?? null, i.team_id ?? null, i.status ?? null, i.limit, i.offset]),
+      WHERE g.coach_id=$1 AND ($2::uuid IS NULL OR g.athlete_id=$2) AND ($3::uuid IS NULL OR g.team_id=$3) AND ($4::text IS NULL OR g.status=$4) AND ($7::uuid IS NULL OR g.programme_id=$7)
+      ORDER BY g.review_on NULLS LAST, g.created_at DESC, g.id LIMIT $5 OFFSET $6`, [user.id, i.athlete_id ?? null, i.team_id ?? null, i.status ?? null, i.limit, i.offset, i.programme_id ?? null]),
 });
 
 cap({
@@ -147,9 +159,7 @@ cap({
 cap({
   name: 'my_coaching_goals', method: 'GET', path: '/me/coaching-goals', tag: TAG, auth: 'user',
   summary: 'Goals a coach chose to show you: only the wording written for you, never the coach\'s notes, criterion or evidence.', input: z.object({ ...page }),
-  handler: ({ user }, i) => many(
-    `SELECT g.id, g.title, g.category, g.athlete_text AS text, g.status, g.review_on, u.display_name AS coach_name FROM coaching_goals g JOIN users u ON u.id=g.coach_id
-      WHERE g.athlete_id=$1 AND g.athlete_text IS NOT NULL AND g.status IN ('planned','active','achieved') ORDER BY g.review_on NULLS LAST, g.id LIMIT $2 OFFSET $3`, [user.id, i.limit, i.offset]),
+  handler: ({ user }, i) => sharedGoals(user.id, i),
 });
 
 // ------------------------------------------------------------------------------------------------ rubrics and measurements
@@ -157,12 +167,13 @@ const dimension = z.object({
   key: z.string().regex(/^[a-z0-9_]{2,40}$/), name: text(80).min(2), description: text(300).optional(),
   scale_min: z.number().default(1), scale_max: z.number().default(5), labels: z.record(z.string(), text(80)).optional(),
   direction: z.enum(['higher_is_better', 'lower_is_better', 'target_range']).default('higher_is_better'),
+  unit: text(20).optional().describe('the unit when the scale is a measurement rather than a rating'),
 }).refine((d) => d.scale_max > d.scale_min, 'scale_max must be above scale_min');
 
 cap({
   name: 'save_coaching_rubric', method: 'POST', path: '/coaching/rubrics', tag: TAG, auth: COACH, status: 201,
   summary: 'Create a rubric, or send rubric_id to save a new version of it. Each score keeps the version it was given under, so history is never rewritten; scores on different scales are never mixed.',
-  input: z.object({ rubric_id: id.optional(), name: text(80).min(2).optional(), sport: z.string().optional(), dimensions: z.array(dimension).min(1).max(20) }),
+  input: z.object({ rubric_id: id.optional(), name: text(80).min(2).optional(), sport: z.string().optional(), positions: z.array(text(60)).max(20).optional().describe('only for athletes in these positions; leave out for every position'), dimensions: z.array(dimension).min(1).max(20) }),
   async handler({ user }, i) {
     if (new Set(i.dimensions.map((d) => d.key)).size !== i.dimensions.length) throw badRequest('Dimension keys must be unique');
     return tx(async (c) => {
@@ -173,8 +184,9 @@ cap({
       } else {
         if (!i.name) throw badRequest('name is required');
         const sport = i.sport ? await sportBySlugOrId(i.sport) : null;
-        rubric = (await c.query('INSERT INTO coaching_rubrics(coach_id, sport_id, name) VALUES ($1,$2,$3) RETURNING *', [user.id, sport?.id ?? null, i.name])).rows[0];
+        rubric = (await c.query('INSERT INTO coaching_rubrics(coach_id, sport_id, name, positions) VALUES ($1,$2,$3,$4) RETURNING *', [user.id, sport?.id ?? null, i.name, i.positions ?? []])).rows[0];
       }
+      if (i.rubric_id && i.positions) await c.query('UPDATE coaching_rubrics SET positions=$2 WHERE id=$1', [rubric.id, i.positions]);
       const version = (await c.query('SELECT coalesce(max(version),0)+1 AS v FROM coaching_rubric_versions WHERE rubric_id=$1', [rubric.id])).rows[0].v;
       await c.query('INSERT INTO coaching_rubric_versions(rubric_id, version, dimensions) VALUES ($1,$2,$3)', [rubric.id, version, JSON.stringify(i.dimensions)]);
       return { ...rubric, version, dimensions: i.dimensions };
@@ -184,10 +196,13 @@ cap({
 
 cap({
   name: 'list_coaching_rubrics', method: 'GET', path: '/coaching/rubrics', tag: TAG, auth: COACH,
-  summary: 'Your active rubrics with their latest version.', input: z.object({ ...page }),
-  handler: ({ user }, i) => many(
-    `SELECT r.id, r.name, r.sport_id, v.version, v.dimensions FROM coaching_rubrics r JOIN LATERAL (SELECT * FROM coaching_rubric_versions x WHERE x.rubric_id=r.id ORDER BY version DESC LIMIT 1) v ON true
-      WHERE r.coach_id=$1 AND r.archived_at IS NULL ORDER BY r.name, r.id LIMIT $2 OFFSET $3`, [user.id, i.limit, i.offset]),
+  summary: 'Your active rubrics with their latest version.', input: z.object({ sport: z.string().optional(), position: text(60).optional().describe('keep only rubrics that apply to this position'), ...page }),
+  async handler({ user }, i) {
+    const sport = i.sport ? await sportBySlugOrId(i.sport) : null;
+    return many(
+      `SELECT r.id, r.name, r.sport_id, r.positions, v.version, v.dimensions FROM coaching_rubrics r JOIN LATERAL (SELECT * FROM coaching_rubric_versions x WHERE x.rubric_id=r.id ORDER BY version DESC LIMIT 1) v ON true
+        WHERE r.coach_id=$1 AND r.archived_at IS NULL AND ($4::uuid IS NULL OR r.sport_id IS NULL OR r.sport_id=$4) AND ($5::text IS NULL OR cardinality(r.positions)=0 OR $5 = ANY(r.positions)) ORDER BY r.name, r.id LIMIT $2 OFFSET $3`, [user.id, i.limit, i.offset, sport?.id ?? null, i.position ?? null]);
+  },
 });
 
 cap({
@@ -225,8 +240,10 @@ cap({
     athlete_id: id.optional(), team_id: id.optional(), owner_id: id.optional(), title: text(160).min(2), detail: text(1000).optional(), due_at: z.string().datetime({ offset: true }).optional(),
     priority: z.enum(PRIORITY).default('medium'), shared: z.boolean().default(false), follow_up_next_session: z.boolean().default(false),
     session_record_id: id.optional(), observation_id: id.optional(), goal_id: id.optional(), client_key: z.string().min(8).max(80).optional(),
+    recurrence_days: z.number().int().min(1).max(365).optional().describe('when this action is finished, schedule the next one this many days later'),
   }),
   async handler({ user }, i) {
+    if (i.recurrence_days && !i.due_at) throw badRequest('A recurring action needs a due date to count from');
     if (i.client_key) { const dup = await one('SELECT * FROM coaching_actions WHERE coach_id=$1 AND client_key=$2', [user.id, i.client_key]); if (dup) return dup; }
     let athlete_id = i.athlete_id, team_id = i.team_id;
     // a link can supply the subject, but only if it is the coach's own record
@@ -242,17 +259,19 @@ cap({
     const owner = i.owner_id ?? user.id;
     if (owner !== user.id && owner !== athlete_id && !(team_id && (await one("SELECT 1 FROM team_members WHERE team_id=$1 AND user_id=$2 AND status='active' AND role='coach'", [team_id, owner])))) throw badRequest('The owner must be you, the athlete or a coach of the team');
     if (owner === athlete_id && owner !== user.id && !i.shared) i.shared = true; // an athlete cannot own something they cannot see
+    if (i.shared && athlete_id) await requireCoachingConsent(athlete_id, 'sharing an action with them');
     const row = await one(
-      `INSERT INTO coaching_actions(coach_id, athlete_id, team_id, owner_id, title, detail, due_at, priority, shared, follow_up_next_session, session_record_id, observation_id, goal_id, client_key)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) ON CONFLICT (coach_id, client_key) WHERE client_key IS NOT NULL DO NOTHING RETURNING *`,
-      [user.id, athlete_id ?? null, team_id ?? null, owner, i.title, i.detail, nowOrNull(i.due_at), i.priority, i.shared, i.follow_up_next_session, i.session_record_id ?? null, i.observation_id ?? null, i.goal_id ?? null, i.client_key ?? null]);
+      `INSERT INTO coaching_actions(coach_id, athlete_id, team_id, owner_id, title, detail, due_at, priority, shared, follow_up_next_session, session_record_id, observation_id, goal_id, client_key, recurrence_days)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) ON CONFLICT (coach_id, client_key) WHERE client_key IS NOT NULL DO NOTHING RETURNING *`,
+      [user.id, athlete_id ?? null, team_id ?? null, owner, i.title, i.detail, nowOrNull(i.due_at), i.priority, i.shared, i.follow_up_next_session, i.session_record_id ?? null, i.observation_id ?? null, i.goal_id ?? null, i.client_key ?? null, i.recurrence_days ?? null]);
+    if (row) await notifyActionAssigned(null, row);
     return row ?? one('SELECT * FROM coaching_actions WHERE coach_id=$1 AND client_key=$2', [user.id, i.client_key]);
   },
 });
 
 cap({
   name: 'update_coaching_action', method: 'PATCH', path: '/coaching/actions/:id', tag: TAG, auth: 'user',
-  summary: 'Update an action. The coach who created it can change anything while the coaching relationship is current (and can always cancel or complete it); an athlete who owns a shared action can only set its status and add a completion note. Completing an action never marks a goal achieved. Needs the row_version you loaded.',
+  summary: 'A recurring action schedules its next occurrence when finished. Update an action. The coach who created it can change anything while the coaching relationship is current (and can always cancel or complete it); an athlete who owns a shared action can only set its status and add a completion note. Completing an action never marks a goal achieved. Needs the row_version you loaded.',
   input: z.object({ id, row_version: z.number().int().min(1), status: z.enum(['open', 'in_progress', 'done', 'cancelled']).optional(), completion_note: text(1000).optional(), title: text(160).min(2).optional(), detail: text(1000).optional(), due_at: z.string().datetime({ offset: true }).nullable().optional(), priority: z.enum(PRIORITY).optional(), shared: z.boolean().optional(), follow_up_next_session: z.boolean().optional() }),
   async handler({ user }, i) {
     const a = await one('SELECT * FROM coaching_actions WHERE id=$1', [i.id]);
@@ -262,16 +281,26 @@ cap({
     const limited = !author;
     if (limited && ['title', 'detail', 'due_at', 'priority', 'shared', 'follow_up_next_session'].some((k) => i[k] !== undefined)) throw forbidden('You can only update the status and completion note of an action you own');
     if (author && !['done', 'cancelled'].includes(i.status ?? '') && Object.keys(i).some((k) => !['id', 'row_version', 'status', 'completion_note'].includes(k) || (k === 'status'))) await authorise(user, a);
-    return tx(async (c) => {
+    const updated = await tx(async (c) => {
       const cur = (await c.query('SELECT * FROM coaching_actions WHERE id=$1 FOR UPDATE', [a.id])).rows[0];
       if (cur.row_version !== i.row_version) throw conflict('This action was changed elsewhere - reload it first');
       const n = { ...cur };
       for (const k of ['status', 'completion_note', 'title', 'detail', 'due_at', 'priority', 'shared', 'follow_up_next_session']) if (i[k] !== undefined) n[k] = k === 'due_at' ? nowOrNull(i[k]) : i[k];
-      return (await c.query(
+      const row = (await c.query(
         `UPDATE coaching_actions SET status=$2, completion_note=$3, title=$4, detail=$5, due_at=$6, priority=$7, shared=$8, follow_up_next_session=$9,
                 completed_at = CASE WHEN $2='done' THEN coalesce(completed_at, now()) ELSE NULL END, row_version=row_version+1, updated_at=now() WHERE id=$1 RETURNING *`,
         [cur.id, n.status, n.completion_note, n.title, n.detail, n.due_at, n.priority, n.shared, n.follow_up_next_session])).rows[0];
+      // a recurring action schedules its next occurrence once, when it is first finished (the finished one stays as history)
+      if (row.status === 'done' && cur.status !== 'done' && row.recurrence_days) {
+        const next = (await c.query(
+          `INSERT INTO coaching_actions(coach_id, athlete_id, team_id, owner_id, title, detail, due_at, priority, shared, follow_up_next_session, goal_id, recurrence_days, recurs_from)
+           SELECT coach_id, athlete_id, team_id, owner_id, title, detail, greatest(due_at, now()) + make_interval(days => recurrence_days), priority, shared, follow_up_next_session, goal_id, recurrence_days, id FROM coaching_actions WHERE id=$1 RETURNING id`, [row.id])).rows[0];
+        row.next_action_id = next.id;
+      }
+      return row;
     });
+    if (limited && updated.status === 'done') await notifyActionDone(null, updated);
+    return updated;
   },
 });
 
@@ -288,16 +317,14 @@ cap({
 cap({
   name: 'my_coaching_actions', method: 'GET', path: '/me/coaching-actions', tag: TAG, auth: 'user',
   summary: 'Actions a coach assigned to you and shared with you.', input: z.object({ ...page }),
-  handler: ({ user }, i) => many(
-    `SELECT a.id, a.title, a.detail, a.due_at, a.priority, a.status, a.completion_note, a.row_version, u.display_name AS coach_name FROM coaching_actions a JOIN users u ON u.id=a.coach_id
-      WHERE a.owner_id=$1 AND a.athlete_id=$1 AND a.shared ORDER BY (a.status IN ('open','in_progress')) DESC, a.due_at NULLS LAST, a.id LIMIT $2 OFFSET $3`, [user.id, i.limit, i.offset]),
+  handler: ({ user }, i) => sharedActions(user.id, i),
 });
 
 // ------------------------------------------------------------------------------------------------ metrics and comparisons
-const PROVENANCE = { coach_observed: 'Coach-observed', athlete_reported: 'Athlete-reported', coach_entered: 'Coach-entered measurement', derived: 'Derived from your records', official: 'Official match record' };
+export const PROVENANCE = { coach_observed: 'Coach-observed', athlete_reported: 'Athlete-reported', coach_entered: 'Coach-entered measurement', derived: 'Derived from your records', official: 'Official match record' };
 
 /** Points for one metric key in a window. Every series states its definition, unit, provenance and what is excluded as missing. */
-async function series(user, athleteId, key, from, to) {
+export async function series(user, athleteId, key, from, to) {
   const win = [user.id, athleteId, from, `${to}T23:59:59Z`];
   if (key === 'attendance_rate') {
     const r = await one(`SELECT count(*) FILTER (WHERE p.attendance IN ('present','late','left_early'))::int AS attended, count(*) FILTER (WHERE p.attendance IN ('present','late','left_early','absent'))::int AS recorded, count(*) FILTER (WHERE p.attendance='expected')::int AS not_recorded,
@@ -318,6 +345,21 @@ async function series(user, athleteId, key, from, to) {
   if (key === 'action_completion') {
     const r = await one(`SELECT count(*) FILTER (WHERE status='done')::int AS done, count(*) FILTER (WHERE status<>'cancelled')::int AS total FROM coaching_actions WHERE coach_id=$1 AND athlete_id=$2 AND created_at BETWEEN $3::timestamptz AND $4::timestamptz`, win);
     return { key, label: 'Actions completed', unit: '%', provenance: 'derived', definition: 'Actions created in the period that are done, out of those not cancelled.', direction: 'higher_is_better', sample: r.total, excluded: {}, value: r.total ? Math.round((1000 * r.done) / r.total) / 10 : null };
+  }
+  if (key === 'official:matches') {
+    const r = await one(`SELECT count(DISTINCT f.id)::int AS n FROM fixtures f WHERE f.status='completed' AND f.scheduled_at BETWEEN $3::timestamptz AND $4::timestamptz
+        AND EXISTS (SELECT 1 FROM team_members m WHERE m.user_id=$2 AND m.team_id IN (f.home_team_id, f.away_team_id) AND m.status='active')
+        AND EXISTS (SELECT 1 FROM team_members c WHERE c.user_id=$1 AND c.status='active' AND c.role='coach' AND c.team_id IN (f.home_team_id, f.away_team_id))`, win);
+    return { key, label: 'Official matches (squad)', unit: 'matches', provenance: 'official', definition: 'Completed official matches of a team you coach that the athlete was on the squad of. Squad membership, not minutes played.', direction: 'target_range', sample: r.n, excluded: {}, value: r.n };
+  }
+  if (key.startsWith('official:event:')) {
+    const kind = key.slice(15);
+    const r = await one(`SELECT count(*)::int AS n, (SELECT count(DISTINCT f2.id)::int FROM fixtures f2 WHERE f2.status='completed' AND f2.scheduled_at BETWEEN $3::timestamptz AND $4::timestamptz
+          AND EXISTS (SELECT 1 FROM team_members m WHERE m.user_id=$2 AND m.team_id IN (f2.home_team_id, f2.away_team_id) AND m.status='active')
+          AND EXISTS (SELECT 1 FROM team_members c WHERE c.user_id=$1 AND c.status='active' AND c.role='coach' AND c.team_id IN (f2.home_team_id, f2.away_team_id))) AS matches
+        FROM match_events e JOIN fixtures f ON f.id=e.fixture_id WHERE e.player_id=$2 AND e.kind=$5 AND e.voided_at IS NULL AND f.status='completed' AND f.scheduled_at BETWEEN $3::timestamptz AND $4::timestamptz
+        AND EXISTS (SELECT 1 FROM team_members c WHERE c.user_id=$1 AND c.status='active' AND c.role='coach' AND c.team_id IN (f.home_team_id, f.away_team_id))`, [...win, kind]);
+    return { key, label: `Official ${kind} events`, unit: 'count', provenance: 'official', definition: `Non-voided official match events of kind "${kind}" attributed to the athlete in completed matches of a team you coach. A count over ${r.matches} match${r.matches === 1 ? '' : 'es'}; players with no recorded event are not assumed to have none.`, direction: 'target_range', sample: r.matches, excluded: {}, value: r.matches ? r.n : null };
   }
   if (key.startsWith('measurement:')) {
     const metric = key.slice(12);
@@ -358,12 +400,14 @@ cap({
   async handler({ user }, i) {
     await athleteAccess(user, i.athlete_id);
     const { from, to } = dates(i);
-    const keys = ['attendance_rate', 'plan_completion', 'effort_gap', 'action_completion'];
+    const keys = ['attendance_rate', 'plan_completion', 'effort_gap', 'action_completion', 'official:matches'];
     const extra = await many(`SELECT DISTINCT 'measurement:' || metric AS k FROM coaching_measurements WHERE coach_id=$1 AND athlete_id=$2 AND measured_on BETWEEN $3::date AND $5::date
+                               UNION SELECT DISTINCT 'official:event:' || e.kind FROM match_events e JOIN fixtures f ON f.id=e.fixture_id WHERE e.player_id=$2 AND e.voided_at IS NULL AND f.status='completed' AND f.scheduled_at BETWEEN $3::timestamptz AND $4::timestamptz AND EXISTS (SELECT 1 FROM team_members c WHERE c.user_id=$1 AND c.status='active' AND c.role='coach' AND c.team_id IN (f.home_team_id, f.away_team_id))
                                UNION SELECT DISTINCT 'rubric:' || rubric_id || ':' || dimension_key FROM coaching_observations WHERE coach_id=$1 AND athlete_id=$2 AND rubric_id IS NOT NULL AND observed_at BETWEEN $3::timestamptz AND $4::timestamptz ORDER BY 1`, [user.id, i.athlete_id, from, `${to}T23:59:59Z`, to]);
     const metrics = [];
     for (const k of [...keys, ...extra.map((x) => x.k)]) metrics.push({ ...(await series(user, i.athlete_id, k, from, to)), provenance_label: undefined });
-    return { athlete_id: i.athlete_id, from, to, metrics: metrics.map((m) => ({ ...m, provenance_label: PROVENANCE[m.provenance] })) };
+    const teams = await many("SELECT t.id, t.name FROM teams t JOIN team_members c ON c.team_id=t.id AND c.user_id=$1 AND c.status='active' AND c.role='coach' JOIN team_members a ON a.team_id=t.id AND a.user_id=$2 AND a.status='active' ORDER BY t.name, t.id", [user.id, i.athlete_id]);
+    return { athlete_id: i.athlete_id, from, to, teams, metrics: metrics.map((m) => ({ ...m, provenance_label: PROVENANCE[m.provenance] })) };
   },
 });
 
@@ -371,8 +415,8 @@ const median = (a) => { const s = [...a].sort((x, y) => x - y); const m = s.leng
 
 cap({
   name: 'compare_coaching_metrics', method: 'GET', path: '/coaching/athletes/:athlete_id/compare', tag: TAG, auth: COACH,
-  summary: 'Compare one metric for an athlete: against the previous period of the same length (prior_period), against a target you give (target), or against your other athletes in the same team on the same measurement/rubric dimension (team). Refuses incompatible units or rubric versions, says when a sample is too small, and never ranks or names other athletes.',
-  input: z.object({ athlete_id: id, metric: z.string().max(120), mode: z.enum(['prior_period', 'target', 'team']), target: z.coerce.number().optional(), team_id: id.optional(), from: day.optional(), to: day.optional() }),
+  summary: 'Compare one metric for an athlete: against the previous period of the same length (prior_period), against a target you give (target), against your other athletes in the same team (team) or in the same position (position) on the same measurement, official count or rubric dimension. Refuses incompatible units or rubric versions, says when a sample is too small, and never ranks or names other athletes.',
+  input: z.object({ athlete_id: id, metric: z.string().max(120), mode: z.enum(['prior_period', 'target', 'team', 'position']), target: z.coerce.number().optional(), team_id: id.optional(), from: day.optional(), to: day.optional() }),
   async handler({ user }, i) {
     await athleteAccess(user, i.athlete_id);
     const { from, to } = dates(i);
@@ -395,22 +439,30 @@ cap({
       if (cur.value == null || prev.value == null) return { ...base, result: 'insufficient_data', note: 'One of the periods has no values, so no change is calculated (missing is not zero).' };
       return { ...base, result: 'compared', difference: Math.round((cur.value - prev.value) * 100) / 100 };
     }
-    // team distribution: statistics only, youth excluded, small cohorts refused
-    if (!i.metric.startsWith('measurement:') && !i.metric.startsWith('rubric:')) throw badRequest('Team comparison is available for measurements and rubric dimensions only');
+    // distributions: statistics only, young people excluded, small cohorts refused
+    if (!['measurement:', 'rubric:', 'official:'].some((p) => i.metric.startsWith(p)) || i.metric === 'official:matches') throw badRequest('Team and position comparison is available for measurements, official event counts and rubric dimensions only');
     if (!i.team_id) throw badRequest('team_id is required');
     await requireTeam(user, i.team_id);
-    const members = (await many("SELECT user_id FROM team_members WHERE team_id=$1 AND status='active' AND role IN ('player','captain')", [i.team_id])).map((m) => m.user_id);
-    if (!members.includes(i.athlete_id)) throw badRequest('That athlete is not on this team');
-    const hidden = await hiddenYouth(user, members);
+    const members = await many("SELECT user_id, position FROM team_members WHERE team_id=$1 AND status='active' AND role IN ('player','captain')", [i.team_id]);
+    const me = members.find((m) => m.user_id === i.athlete_id);
+    if (!me) throw badRequest('That athlete is not on this team');
+    let pool_ = members;
+    if (i.mode === 'position') {
+      if (!me.position?.trim()) throw badRequest('This athlete has no position recorded on the team, so there is no position group to compare with');
+      pool_ = members.filter((m) => m.position?.trim().toLowerCase() === me.position.trim().toLowerCase());
+    }
+    const ids = pool_.map((m) => m.user_id);
+    const hidden = await hiddenYouth(user, ids);
     const values = [];
-    for (const m of members) {
+    for (const m of ids) {
       if (m === i.athlete_id || hidden.has(m) || (await isYouth(m))) continue;
       if (!(await relationships(user.id, m)).length) continue;
-      const s = await series(user, m, i.metric, from, to);
-      if (s.value != null && s.unit === cur.unit && !(s.versions?.length > 1) && (!cur.versions?.length || s.versions?.[0] === cur.versions[0])) values.push(s.value);
+      const s2 = await series(user, m, i.metric, from, to);
+      if (s2.value != null && s2.unit === cur.unit && !(s2.versions?.length > 1) && (!cur.versions?.length || s2.versions?.[0] === cur.versions[0])) values.push(s2.value);
     }
-    if (values.length < MIN_COHORT) return { ...out, result: 'insufficient_sample', cohort: { size: values.length, minimum: MIN_COHORT }, note: `Needs at least ${MIN_COHORT} comparable athletes (adults you coach on this team); only ${values.length} have values.` };
-    return { ...out, result: 'compared', cohort: { size: values.length, median: Math.round(median(values) * 100) / 100, min: Math.min(...values), max: Math.max(...values) }, difference_from_median: cur.value == null ? null : Math.round((cur.value - median(values)) * 100) / 100, note: 'Adults only; individuals are not shown or ranked.' };
+    const group = i.mode === 'position' ? `${me.position.trim()} group` : 'team';
+    if (values.length < MIN_COHORT) return { ...out, result: 'insufficient_sample', cohort: { size: values.length, minimum: MIN_COHORT, group }, note: `Needs at least ${MIN_COHORT} comparable adults you coach in the ${group}; only ${values.length} have values.` };
+    return { ...out, result: 'compared', cohort: { size: values.length, group, median: Math.round(median(values) * 100) / 100, min: Math.min(...values), max: Math.max(...values) }, difference_from_median: cur.value == null ? null : Math.round((cur.value - median(values)) * 100) / 100, note: 'Adults only; individuals are not shown or ranked.' };
   },
 });
 
@@ -426,16 +478,104 @@ cap({
     await requireTeam(user, i.team_id);
     const mine = f.home_team_id === i.team_id;
     const [squad, goals, actions, record] = await Promise.all([
-      many(`SELECT ${PUBLIC_USER}, m.role, m.jersey_no, m.availability, m.availability_note FROM team_members m JOIN users u ON u.id=m.user_id WHERE m.team_id=$1 AND m.status='active' AND m.role IN ('player','captain') ORDER BY u.display_name, u.id`, [i.team_id]),
+      many(`SELECT ${PUBLIC_USER}, m.role, m.jersey_no, m.position, m.availability, m.availability_note FROM team_members m JOIN users u ON u.id=m.user_id WHERE m.team_id=$1 AND m.status='active' AND m.role IN ('player','captain') ORDER BY u.display_name, u.id`, [i.team_id]),
       many("SELECT id, title, category, athlete_id, team_id, review_on FROM coaching_goals WHERE coach_id=$1 AND status='active' AND (team_id=$2 OR athlete_id IN (SELECT user_id FROM team_members WHERE team_id=$2 AND status='active')) ORDER BY review_on NULLS LAST, id LIMIT 50", [user.id, i.team_id]),
       many("SELECT id, title, athlete_id, team_id, due_at, priority FROM coaching_actions WHERE coach_id=$1 AND status IN ('open','in_progress') AND (team_id=$2 OR athlete_id IN (SELECT user_id FROM team_members WHERE team_id=$2 AND status='active')) ORDER BY due_at NULLS LAST, id LIMIT 50", [user.id, i.team_id]),
-      one("SELECT id, status, team_summary FROM coaching_session_records WHERE coach_id=$1 AND source_type='fixture' AND source_id=$2", [user.id, f.id]),
+      one("SELECT id, status, team_summary, reviewed_at, plan_version FROM coaching_session_records WHERE coach_id=$1 AND source_type='fixture' AND source_id=$2", [user.id, f.id]),
     ]);
+    const events = await teamEvents(f.id, i.team_id);
+    const prep = record ? await one('SELECT opponent_notes, checklist, objectives, row_version FROM coaching_match_prep WHERE session_record_id=$1', [record.id]) : null;
+    const bookmarks = record ? await many("SELECT b.id, b.match_event_id, b.athlete_id, b.note FROM coaching_event_bookmarks b WHERE b.session_record_id=$1 AND b.removed_at IS NULL ORDER BY b.created_at, b.id", [record.id]) : [];
     const hidden = await hiddenYouth(user, squad.map((s) => s.id));
     return {
-      fixture: { id: f.id, event: f.event_name, round: f.round, status: f.status, scheduled_at: f.scheduled_at, home: f.home_name, away: f.away_name, official_result: f.status === 'completed' ? { home_score: f.home_score, away_score: f.away_score, provenance: 'official' } : null, you_are: mine ? 'home' : 'away' },
+      fixture: { id: f.id, event: f.event_name, round: f.round, status: f.status, scheduled_at: f.scheduled_at, home: f.home_name, away: f.away_name, official_result: f.status === 'completed' ? { home_score: f.home_score, away_score: f.away_score, provenance: 'official' } : null, played: PLAYED.includes(f.status), you_are: mine ? 'home' : 'away' },
       squad: squad.filter((s) => !hidden.has(s.id)), goals, actions, session_record: record,
+      prep: prep ? { ...prep, objectives: evaluateObjectives(prep.objectives, f, i.team_id, events) } : null,
+      official_events: events.map((e) => ({ ...e, provenance: 'official', bookmarked: bookmarks.some((b) => b.match_event_id === e.id) })), bookmarks,
       next: record ? null : { create_with: 'create_coaching_session', source_type: 'fixture', source_id: f.id, team_id: i.team_id },
     };
+  },
+});
+
+// ------------------------------------------------------------------------------------------------ programmes
+const PROGRAMME_KINDS = ['season', 'term', 'block', 'programme'];
+const PROGRAMME_STATUS = ['planned', 'active', 'completed', 'paused', 'stopped'];
+
+cap({
+  name: 'create_coaching_programme', method: 'POST', path: '/coaching/programmes', tag: TAG, auth: COACH, status: 201,
+  summary: 'Create the longitudinal frame (season, term, block) for an athlete or team: objective, dates, review cadence, optional position and an optional accepted training plan it relates to. Goals are attached to it. It does not replace shared training plans.',
+  input: z.object({
+    athlete_id: id.optional(), team_id: id.optional(), plan_id: id.optional(), sport: z.string().optional(), kind: z.enum(PROGRAMME_KINDS).default('season'), title: text(160).min(2), objective: text(1000).optional(),
+    position: text(60).optional(), starts_on: day, ends_on: day, review_on: day.optional(), review_cadence_days: z.number().int().min(1).max(365).optional(), athlete_text: text(1000).optional(), coach_notes: text(2000).optional(),
+  }),
+  async handler({ user }, i) {
+    scope(i);
+    if (i.ends_on < i.starts_on) throw badRequest('ends_on is before starts_on');
+    let sportId = await authorise(user, i);
+    if (i.sport) sportId = (await sportBySlugOrId(i.sport))?.id ?? sportId;
+    if (i.plan_id && !(await one('SELECT 1 FROM training_plans WHERE id=$1 AND coach_id=$2 AND ($3::uuid IS NULL OR athlete_id=$3)', [i.plan_id, user.id, i.athlete_id ?? null]))) throw badRequest('That plan is not yours with this athlete');
+    return one(
+      `INSERT INTO coaching_programmes(coach_id, athlete_id, team_id, sport_id, plan_id, kind, title, objective, position, starts_on, ends_on, review_on, review_cadence_days, athlete_text, coach_notes)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
+      [user.id, i.athlete_id ?? null, i.team_id ?? null, sportId, i.plan_id ?? null, i.kind, i.title, i.objective, i.position, i.starts_on, i.ends_on, i.review_on, i.review_cadence_days, i.athlete_text, i.coach_notes]);
+  },
+});
+
+cap({
+  name: 'update_coaching_programme', method: 'PATCH', path: '/coaching/programmes/:id', tag: TAG, auth: COACH,
+  summary: 'Change a programme or move it between planned / active / completed / paused / stopped. Needs the row_version you loaded. Closing a programme never changes its goals.',
+  input: z.object({ id, row_version: z.number().int().min(1), status: z.enum(PROGRAMME_STATUS).optional(), title: text(160).min(2).optional(), objective: text(1000).optional(), position: text(60).nullable().optional(), ends_on: day.optional(), review_on: day.nullable().optional(), review_cadence_days: z.number().int().min(1).max(365).nullable().optional(), athlete_text: text(1000).nullable().optional(), coach_notes: text(2000).optional() }),
+  async handler({ user }, i) {
+    const cur = await one('SELECT * FROM coaching_programmes WHERE id=$1 AND coach_id=$2', [i.id, user.id]);
+    if (!cur) throw notFound('Programme');
+    await authorise(user, cur);
+    const n = { ...cur };
+    for (const k of ['status', 'title', 'objective', 'position', 'ends_on', 'review_on', 'review_cadence_days', 'athlete_text', 'coach_notes']) if (i[k] !== undefined) n[k] = i[k];
+    if (ymd(n.ends_on) < ymd(cur.starts_on)) throw badRequest('ends_on is before starts_on');
+    const r = await one(
+      `UPDATE coaching_programmes SET status=$3, title=$4, objective=$5, position=$6, ends_on=$7, review_on=$8, review_cadence_days=$9, athlete_text=$10, coach_notes=$11, row_version=row_version+1, updated_at=now() WHERE id=$1 AND row_version=$2 RETURNING *`,
+      [cur.id, i.row_version, n.status, n.title, n.objective, n.position, n.ends_on, n.review_on, n.review_cadence_days, n.athlete_text, n.coach_notes]);
+    if (!r) throw conflict('This programme was changed elsewhere - reload it first');
+    return r;
+  },
+});
+
+cap({
+  name: 'list_coaching_programmes', method: 'GET', path: '/coaching/programmes', tag: TAG, auth: COACH,
+  summary: 'Your programmes, most recent first, with how many goals and open actions each has.',
+  input: z.object({ athlete_id: id.optional(), team_id: id.optional(), status: z.enum(PROGRAMME_STATUS).optional(), ...page }),
+  handler: ({ user }, i) => many(
+    `SELECT p.*, (SELECT count(*)::int FROM coaching_goals g WHERE g.programme_id=p.id) AS goals, (SELECT count(*)::int FROM coaching_goals g WHERE g.programme_id=p.id AND g.status='achieved') AS goals_achieved
+       FROM coaching_programmes p WHERE p.coach_id=$1 AND ($2::uuid IS NULL OR p.athlete_id=$2) AND ($3::uuid IS NULL OR p.team_id=$3) AND ($4::text IS NULL OR p.status=$4)
+      ORDER BY p.starts_on DESC, p.id LIMIT $5 OFFSET $6`, [user.id, i.athlete_id ?? null, i.team_id ?? null, i.status ?? null, i.limit, i.offset]),
+});
+
+cap({
+  name: 'get_coaching_programme', method: 'GET', path: '/coaching/programmes/:id', tag: TAG, auth: COACH,
+  summary: 'A programme with its goals (status, evidence count), the sessions held and actions open inside its dates, and when the next review is due. Counts come from your own records; nothing is scored or ranked.',
+  input: z.object({ id }),
+  async handler({ user }, i) {
+    const p = await one('SELECT * FROM coaching_programmes WHERE id=$1 AND coach_id=$2', [i.id, user.id]);
+    if (!p) throw notFound('Programme');
+    const from = ymd(p.starts_on), to = `${ymd(p.ends_on)}T23:59:59Z`;
+    const [goals, sessions, actions] = await Promise.all([
+      many("SELECT g.id, g.title, g.category, g.status, g.review_on, g.priority, g.position, (SELECT count(*)::int FROM coaching_goal_evidence e WHERE e.goal_id=g.id) AS evidence_count FROM coaching_goals g WHERE g.programme_id=$1 ORDER BY g.priority DESC, g.review_on NULLS LAST, g.id", [p.id]),
+      one(`SELECT count(*)::int AS held, count(*) FILTER (WHERE reviewed_at IS NOT NULL OR team_summary IS NOT NULL OR private_summary IS NOT NULL)::int AS reviewed FROM coaching_session_records r
+            WHERE r.coach_id=$1 AND r.status='completed' AND coalesce(r.started_at, r.scheduled_at, r.created_at) BETWEEN $4::timestamptz AND $5::timestamptz AND (($2::uuid IS NOT NULL AND r.team_id=$2) OR ($3::uuid IS NOT NULL AND EXISTS (SELECT 1 FROM coaching_session_participants q WHERE q.session_record_id=r.id AND q.athlete_id=$3)))`, [user.id, p.team_id, p.athlete_id, from, to]),
+      one("SELECT count(*)::int AS open FROM coaching_actions a WHERE a.coach_id=$1 AND a.status IN ('open','in_progress') AND (($2::uuid IS NOT NULL AND a.team_id=$2) OR ($3::uuid IS NOT NULL AND a.athlete_id=$3))", [user.id, p.team_id, p.athlete_id]),
+    ]);
+    return { programme: p, goals, summary: { goals_total: goals.length, goals_achieved: goals.filter((g) => g.status === 'achieved').length, sessions_held: sessions.held, sessions_reviewed: sessions.reviewed, open_actions: actions.open, next_review: p.review_on }, };
+  },
+});
+
+cap({
+  name: 'list_coaching_positions', method: 'GET', path: '/coaching/positions', tag: TAG, auth: COACH,
+  summary: 'The playing positions currently recorded for people on the teams you coach (optionally one sport), for choosing a position on a programme, goal or rubric. Names only: nobody is identified.',
+  input: z.object({ sport: z.string().optional(), team_id: id.optional() }),
+  async handler({ user }, i) {
+    const sport = i.sport ? await sportBySlugOrId(i.sport) : null;
+    return (await many(
+      `SELECT DISTINCT btrim(p.position) AS position FROM team_members c JOIN teams t ON t.id=c.team_id JOIN team_members p ON p.team_id=t.id AND p.status='active' AND p.position IS NOT NULL AND btrim(p.position) <> ''
+        WHERE c.user_id=$1 AND c.status='active' AND c.role='coach' AND ($2::uuid IS NULL OR t.sport_id=$2) AND ($3::uuid IS NULL OR t.id=$3) ORDER BY 1`, [user.id, sport?.id ?? null, i.team_id ?? null])).map((r) => r.position);
   },
 });

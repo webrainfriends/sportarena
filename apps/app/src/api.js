@@ -97,6 +97,16 @@ async function upload(path, blob, query = {}) {
   return body;
 }
 
+/** POST a Blob as the raw request body and read the JSON answer (voice notes: audio in, text to review out). */
+async function postRaw(path, blob) {
+  let res;
+  try { res = await fetch(`${API}${path}`, { method: 'POST', ...creds, headers: withAuth({ 'content-type': blob.type || 'application/octet-stream' }), body: blob }); }
+  catch { throw new ApiError(0, { error: { message: `Can't reach the Gotmygame server at ${API}` } }); }
+  const body = await res.json().catch(() => null);
+  if (!res.ok) throw new ApiError(res.status, body);
+  return body;
+}
+
 /** Fetch a protected file (it needs the sign-in header, so it cannot be a plain link). Resolves to a Blob. */
 async function download(path) {
   let res;
@@ -121,6 +131,7 @@ export const api = {
   patch: (p, b) => request('PATCH', p, b ?? {}),
   del: (p, q) => request('DELETE', p, q),
   upload,
+  postRaw,
   download,
   postBlob,
 };

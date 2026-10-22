@@ -215,10 +215,11 @@ export async function isolated(category, fn, fallback = null) {
 export async function notificationCycle() {
   const { dispatchPush } = await import('./push.js');
   const reminders = await isolated('reminders', async () => (await queueReminders()) + (await queueHealthReminders()), 0);
+  const coaching = await isolated('coaching', async () => (await import('./coaching-notify.js')).queueCoachingReminders(), 0);
   const retries = await isolated('notify', () => runJobs('notify', notifyHandlers), null);
   const push = await isolated('push', () => dispatchPush(), null);
   const email = await isolated('email', () => dispatchPending(), { configured: !!config.notifyWebhook.url, pending: 0, sent: 0, failed: 0 });
-  const errors = Object.fromEntries(Object.entries({ reminders, notify: retries, push, email }).filter(([, r]) => !r.ok).map(([k, r]) => [k, r.error]));
+  const errors = Object.fromEntries(Object.entries({ reminders, coaching, notify: retries, push, email }).filter(([, r]) => !r.ok).map(([k, r]) => [k, r.error]));
   return { reminders: reminders.value, push: push.value, ...email.value, ...(Object.keys(errors).length ? { errors } : {}) };
 }
 
