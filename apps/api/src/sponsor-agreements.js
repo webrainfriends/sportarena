@@ -68,7 +68,7 @@ export async function cancelFutureObligations(c, sponsorshipId) {
 export async function dealContext(c, sponsorshipId, user, { lock = false } = {}) {
   const d = (await c.query(`SELECT *, starts_on::text AS starts, ends_on::text AS ends FROM sponsorships WHERE id=$1${lock ? ' FOR UPDATE' : ''}`, [sponsorshipId])).rows[0];
   if (!d) throw notFound('Sponsorship');
-  const sp = (await c.query('SELECT id, name, owner_id, organisation_id FROM sponsors WHERE id=$1', [d.sponsor_id])).rows[0];
+  const sp = (await c.query('SELECT id, name, owner_id, organisation_id, entity_id FROM sponsors WHERE id=$1', [d.sponsor_id])).rows[0];
   const recipientId = d.target_type === 'event' ? (await c.query('SELECT organizer_id AS u FROM events WHERE id=$1', [d.target_id])).rows[0]?.u
     : d.target_type === 'team' ? (await c.query('SELECT owner_id AS u FROM teams WHERE id=$1', [d.target_id])).rows[0]?.u : d.target_id;
   let access = await sponsorAccess(user, sp, c);

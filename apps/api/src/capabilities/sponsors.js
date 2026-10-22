@@ -52,15 +52,16 @@ cap({
   input: z.object({ q: z.string().optional(), mine: z.coerce.boolean().optional().describe('only brands you own or work for through your organisation (needs sign-in); each carries your sponsor role'), ...page }),
   async handler({ user }, i) {
     const rows = await many(
-      `SELECT sp.id, sp.name, sp.industry, sp.website, sp.emoji, sp.organisation_id,
+      `SELECT sp.id, sp.name, sp.industry, sp.website, sp.emoji, sp.organisation_id, e.sponsor_type, (sp.entity_id IS NOT NULL) AS identity_confirmed,
               (SELECT o.name FROM organisations o WHERE o.id=sp.organisation_id) AS organisation_name,
-              CASE WHEN $5::uuid IS NULL THEN NULL WHEN sp.owner_id=$5 THEN 'manager'
+              CASE WHEN $5::uuid IS NULL THEN NULL WHEN sp.entity_id IS NULL AND sp.owner_id=$5 THEN CASE WHEN sp.organisation_id IS NULL THEN 'owner' ELSE 'manager' END
+                   WHEN sp.entity_id IS NOT NULL THEN (SELECT r.role FROM sponsor_representatives r WHERE r.entity_id=sp.entity_id AND r.user_id=$5 AND r.status='active')
                    ELSE (SELECT CASE m.role WHEN 'owner' THEN 'manager' WHEN 'admin' THEN 'manager' ELSE m.role END FROM organisation_members m
                           WHERE m.organisation_id=sp.organisation_id AND m.user_id=$5 AND m.status='active' AND m.role <> 'coach') END AS my_role,
               (SELECT m.department_id FROM organisation_members m WHERE m.organisation_id=sp.organisation_id AND m.user_id=$5 AND m.status='active') AS my_department_id
-         FROM sponsors sp
+         FROM sponsors sp LEFT JOIN sponsor_entities e ON e.id=sp.entity_id
         WHERE ($1::text IS NULL OR sp.name ILIKE '%'||$1||'%')
-          AND (NOT $4 OR sp.owner_id=$5 OR EXISTS (SELECT 1 FROM organisation_members m WHERE m.organisation_id=sp.organisation_id AND m.user_id=$5 AND m.status='active' AND m.role <> 'coach'))
+          AND (NOT $4 OR ${sponsorTeamSql('$5')} OR EXISTS (SELECT 1 FROM organisation_members m WHERE m.organisation_id=sp.organisation_id AND m.user_id=$5 AND m.status='active' AND m.role <> 'coach'))
         ORDER BY sp.name, sp.id LIMIT $2 OFFSET $3`, [i.q ?? null, i.limit, i.offset, !!i.mine, user?.id ?? null]);
     return withBadges('sponsor', rows);
   },
@@ -72,8 +73,11 @@ cap({
   async handler({ user }, i) {
     const s = await mustFind('sponsors', i.id);
     const deals = await many("SELECT id, target_type, target_id, amount_cents, in_kind, starts_on, ends_on FROM sponsorships WHERE sponsor_id=$1 AND status='active' AND visibility='public'", [i.id]);
-    const out = { id: s.id, name: s.name, industry: s.industry, website: s.website, emoji: s.emoji, verified: (await badgesFor('sponsor', [s.id])).get(s.id) ?? [], active_sponsorships: deals };
-    if (user && (isAdmin(user) || (await sponsorAccess(user, s))?.role === 'manager')) {
+    const type = s.entity_id ? (await one('SELECT sponsor_type FROM sponsor_entities WHERE id=$1', [s.entity_id])).sponsor_type : null;
+    const out = { id: s.id, name: s.name, industry: s.industry, website: s.website, emoji: s.emoji, sponsor_type: type, verified: (await badgesFor('sponsor', [s.id])).get(s.id) ?? [], active_sponsorships: deals };
+    const entityStaff = user && s.entity_id ? await entityRole(pool, user, s.entity_id) : null;
+    const role = user ? (isAdmin(user) ? 'owner' : entityStaff ?? ((await sponsorAccess(user, s))?.role === 'manager' ? 'manager' : null)) : null;
+    if (role) {
       await audit(null, user.id, 'read_pii', 'sponsors', s.id);
       Object.assign(out, decryptFields(s, 'sponsors', CONTACT), { my_role: role });
     }
