@@ -35,7 +35,7 @@ export function MoreWheel() {
   const n = mods.length;
   const spaces = useMemo(() => workspacesFor(user.roles), [user.roles]);
   const [picker, setPicker] = useState(false); // the Workspace submenu: one row per role that has a workspace
-  const openSpace = useCallback(([role, route]) => { setActiveRole(role); push(route); }, [push, setActiveRole]);
+  const openSpace = useCallback(([role, route, , tab]) => { setActiveRole(role); if (tab) goTab(tab.tab, { section: tab.section }); else push(route); }, [push, goTab, setActiveRole]);
   const open = useCallback((name) => {
     if (name !== 'Workspace') { push(name); return; }
     if (spaces.length === 1) openSpace(spaces[0]); else setPicker(true);
