@@ -59,6 +59,9 @@ stay open: debt and delivered value are never erased. Nothing is deleted.
   for sponsorship agreements.
 * Agreement builder in the app covers fixed-term monthly money only; goods/endorsement lines are available through the API.
 
+## Contracts and signatures (#295)
+A branded contract can be issued for any proposed or active agreement's current terms version, then signed by the named signatories. Acceptance (`decide_sponsorship`) is unchanged and still exact-version. See [sponsorship-contracts.md](sponsorship-contracts.md).
+
 ## Performance review (athlete agreements)
 * The athlete switches the sponsor's read access on or off per agreement (`set_sponsorship_performance_access`), only while the
   agreement is active. Default is off. `official` shares approved competition results only; `all_evidence` also shares

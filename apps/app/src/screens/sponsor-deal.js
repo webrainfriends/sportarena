@@ -7,6 +7,7 @@ import { Btn, Card, Chip, Empty, ErrorBox, Field, H1, Loading, Screen, Section, 
 import { FormSheet } from '../FormSheet';
 import { SponsorPerformance } from './sponsor-performance';
 import { SponsorNegotiation } from './sponsor-negotiation';
+import { SponsorContract } from './sponsor-contract';
 import { SponsorAmendments } from './sponsor-amendments';
 import { SponsorAllocations, PayeeLine } from './sponsor-beneficiaries';
 import { c } from '../theme';
@@ -54,6 +55,7 @@ export function SponsorDeal({ id }) {
         {d.schedule ? <T size={12} color={c.mute}>Committed cash: {Object.entries(d.schedule.committed).map(([cur, v]) => fmt(v, cur)).join(' · ') || 'none'}. Currencies are never combined.</T> : null}
       </Section>
       {d.beneficiary ? <SponsorAllocations deal={d} /> : null}
+      <SponsorContract deal={d} can={can} onChanged={deal.reload} />
       {d.schedule ? (
         <Section title="Schedule to review" color={c.cyan}>
           {d.schedule.occurrences.map((x) => <T key={`${x.line}-${x.seq}`} size={13}>{when(x.due_on)} · {x.label} · {what(x)}</T>)}
