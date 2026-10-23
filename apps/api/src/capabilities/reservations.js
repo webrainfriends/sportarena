@@ -373,18 +373,19 @@ cap({
 });
 cap({
   name: 'get_notification_preferences', method: 'GET', path: '/me/notification-preferences', tag: 'Notifications', summary: 'Which channels you get notifications on (in-app, email), how far ahead booking reminders arrive, and muted kinds.',
-  handler: async ({ user }) => (await one('SELECT in_app, email, push, reminder_hours, muted_kinds FROM notification_prefs WHERE user_id=$1', [user.id])) ?? DEFAULT_PREFS,
+  handler: async ({ user }) => (await one('SELECT in_app, email, push, whatsapp, reminder_hours, muted_kinds FROM notification_prefs WHERE user_id=$1', [user.id])) ?? DEFAULT_PREFS,
 });
 cap({
   name: 'update_notification_preferences', method: 'PATCH', path: '/me/notification-preferences', tag: 'Notifications',
-  summary: 'Turn notification channels on/off (in_app, email, push), set the booking reminder lead time in hours, and mute kinds (e.g. new_booking).',
-  input: z.object({ in_app: z.boolean().optional(), email: z.boolean().optional(), push: z.boolean().optional(), reminder_hours: z.number().int().min(1).max(168).optional(), muted_kinds: z.array(z.string().max(40)).max(30).optional() }),
+  summary: 'Turn notification channels on/off (in_app, email, push, whatsapp), set the booking reminder lead time in hours, and mute kinds (e.g. new_booking).',
+  input: z.object({ in_app: z.boolean().optional(), email: z.boolean().optional(), push: z.boolean().optional(), whatsapp: z.boolean().optional(), reminder_hours: z.number().int().min(1).max(168).optional(), muted_kinds: z.array(z.string().max(40)).max(30).optional() }),
   async handler({ user }, i) {
     const cur = (await one('SELECT * FROM notification_prefs WHERE user_id=$1', [user.id])) ?? DEFAULT_PREFS;
     const n = { ...cur, ...Object.fromEntries(Object.entries(i).filter(([, v]) => v !== undefined)) };
-    return one(`INSERT INTO notification_prefs(user_id, in_app, email, push, reminder_hours, muted_kinds) VALUES ($1,$2,$3,$4,$5,$6)
-                ON CONFLICT (user_id) DO UPDATE SET in_app=$2, email=$3, push=$4, reminder_hours=$5, muted_kinds=$6 RETURNING in_app, email, push, reminder_hours, muted_kinds`,
-      [user.id, n.in_app, n.email, n.push ?? true, n.reminder_hours, n.muted_kinds]);
+    if (i.whatsapp === true && !(await one('SELECT 1 FROM whatsapp_contacts WHERE user_id=$1 AND verified_at IS NOT NULL AND opted_out_at IS NULL', [user.id]))) throw badRequest('Verify your WhatsApp number first');
+    return one(`INSERT INTO notification_prefs(user_id, in_app, email, push, whatsapp, reminder_hours, muted_kinds) VALUES ($1,$2,$3,$4,$7,$5,$6)
+                ON CONFLICT (user_id) DO UPDATE SET in_app=$2, email=$3, push=$4, whatsapp=$7, reminder_hours=$5, muted_kinds=$6 RETURNING in_app, email, push, whatsapp, reminder_hours, muted_kinds`,
+      [user.id, n.in_app, n.email, n.push ?? true, n.reminder_hours, n.muted_kinds, n.whatsapp ?? false]);
   },
 });
 cap({

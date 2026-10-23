@@ -25,6 +25,7 @@ import './reservations.js';
 import './venue-media.js';
 import './venue-operations.js';
 import './push.js';
+import './whatsapp.js';
 import './favourites.js';
 import './favourite-sports.js';
 import './waitlist.js';
