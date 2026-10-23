@@ -7,7 +7,7 @@ import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { isAdmin } from '../helpers.js';
 import { notify } from '../notify.js';
 import { LINE, buildSchedule } from '../sponsor-schedule.js';
-import { sponsorGate, sponsorTeamSql, snapshotIdentity, CAN } from '../sponsor-access.js';
+import { snapshotIdentity } from '../sponsor-identity-access.js';
 import { saveLines, loadLines, generateObligations, logHistory, dealContext, obligationContext } from '../sponsor-agreements.js';
 import { notifySponsor, sponsorStaffSql, actionsFor } from '../sponsor-access.js';
 
@@ -70,6 +70,8 @@ cap({
     const snap = (await pool.query('SELECT s.display_name, s.legal_name, s.sponsor_type, u.display_name AS signed_by FROM sponsorship_identity_snapshots s LEFT JOIN users u ON u.id=s.signed_by WHERE s.sponsorship_id=$1 AND s.version=$2', [d.id, version])).rows[0];
     out.sponsor_identity = snap ?? null;
     if (d.program_id) out.program = await one('SELECT p.id, p.name, r.seq AS round_seq, r.name AS round_name FROM sponsorship_programs p JOIN sponsorship_rounds r ON r.id=$2 WHERE p.id=$1', [d.program_id, d.round_id]);
+    // who the sponsor was at this exact version (frozen): later renames or representative changes never alter it. Never registration/tax/billing data.
+    out.sponsor_identity = (await pool.query('SELECT s.display_name, s.legal_name, s.sponsor_type, u.display_name AS signed_by FROM sponsorship_identity_snapshots s LEFT JOIN users u ON u.id=s.signed_by WHERE s.sponsorship_id=$1 AND s.version=$2', [d.id, version])).rows[0] ?? null;
     if (!d.accepted_version && lines.length) out.schedule = buildSchedule(await loadLines(pool, d.id, version), { starts_on: d.starts, ends_on: d.ends });
     if (d.accepted_version) {
       out.obligations = await obligationRows('o.sponsorship_id = $1', [d.id]);

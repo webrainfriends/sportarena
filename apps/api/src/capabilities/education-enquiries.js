@@ -7,7 +7,7 @@ import { cap, id, page } from '../registry.js';
 import { one, many, tx, query } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { audit, mustFind, PUBLIC_USER } from '../helpers.js';
-import { sponsorContactUser, sponsorRole } from '../sponsor-access.js';
+import { sponsorContactUser, sponsorRole } from '../sponsor-identity-access.js';
 import { notify } from '../notify.js';
 import { isYouth } from '../youth.js';
 import { orgFor } from '../org-access.js';

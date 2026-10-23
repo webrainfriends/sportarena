@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { cap, id, page } from '../registry.js';
 import { one, many, tx, pool } from '../db.js';
-import { sponsorRole, CAN } from '../sponsor-access.js';
+import { sponsorRole, CAN } from '../sponsor-identity-access.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { decrypt, encrypt } from '../crypto.js';
 import { audit, isAdmin } from '../helpers.js';
