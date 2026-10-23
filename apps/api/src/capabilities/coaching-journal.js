@@ -303,14 +303,14 @@ cap({
     if (!!i.rubric_id !== (i.score !== undefined) || !!i.rubric_id !== !!i.dimension_key) throw badRequest('rubric_id, dimension_key and score go together');
     let rubricVersion = null;
     if (i.rubric_id) {
-      const v = await one('SELECT r.sport_id, r.positions, v.version, v.dimensions FROM coaching_rubrics r JOIN coaching_rubric_versions v ON v.rubric_id=r.id WHERE r.id=$1 AND r.coach_id=$2 AND r.archived_at IS NULL ORDER BY v.version DESC LIMIT 1', [i.rubric_id, user.id]);
+      const v = await one('SELECT r.positions, v.version, v.dimensions, ARRAY(SELECT l.sport_id FROM coaching_rubric_sports l WHERE l.rubric_id=r.id AND l.removed_at IS NULL) AS sport_ids FROM coaching_rubrics r JOIN coaching_rubric_versions v ON v.rubric_id=r.id WHERE r.id=$1 AND r.coach_id=$2 AND r.archived_at IS NULL ORDER BY v.version DESC LIMIT 1', [i.rubric_id, user.id]);
       if (!v) throw notFound('Rubric');
       const d = v.dimensions.find((x) => x.key === i.dimension_key);
       if (!d) throw badRequest('Unknown rubric dimension');
       if (i.score < d.scale_min || i.score > d.scale_max) throw badRequest(`Score must be between ${d.scale_min} and ${d.scale_max} for this dimension`);
       rubricVersion = v.version;
       // applicability: the rubric's sport, and the athlete's position on the team when the rubric is limited to positions
-      const sportOk = !v.sport_id || !rec?.sport_id || v.sport_id === rec.sport_id;
+      const sportOk = !v.sport_ids.length || !rec?.sport_id || v.sport_ids.includes(rec.sport_id);
       if (!sportOk) throw badRequest('That rubric is for a different sport');
       if (v.positions.length && i.athlete_id) {
         const pos = (await one("SELECT position FROM team_members WHERE user_id=$1 AND status='active' AND position IS NOT NULL AND ($2::uuid IS NULL OR team_id=$2) LIMIT 1", [i.athlete_id, i.team_id ?? null]))?.position;

@@ -124,7 +124,7 @@ test('rubrics are versioned; scores keep their version and range; metrics report
   const v2 = ok(await post(s.coach.token, '/coaching/rubrics', { rubric_id: r.id, dimensions: [dim(10)] }), 201);
   assert.equal(v2.version, 2);
   assert.equal(ok(await score(8), 201).rubric_version, 2);
-  assert.equal(ok(await api('GET', '/coaching/rubrics', { token: s.coach.token })).length, 1);
+  assert.equal(ok(await api('GET', '/coaching/rubrics', { token: s.coach.token })).filter((x) => !x.standard_key).length, 1);
 
   const m = ok(await api('GET', `/coaching/athletes/${p0.id}/metrics`, { token: s.coach.token }));
   const by = Object.fromEntries(m.metrics.map((x) => [x.key, x]));
@@ -195,4 +195,39 @@ test('match context is read-only: official result labelled, squad, goals and act
   assert.deepEqual([after.home_score, after.away_score, after.status], [2, 1, 'completed'], 'official data untouched');
   assert.equal((await api('GET', `/coaching/fixtures/${f.id}?team_id=${s.team.id}`, { token: s.outsider.token })).status, 403);
   assert.equal((await api('GET', `/coaching/fixtures/${f.id}?team_id=${other.id}`, { token: s.coach.token })).status, 403);
+});
+
+test('standard rubrics arrive for the sports a coach coaches; they can be edited, extended, shared across sports and archived for good', async () => {
+  const s = await setup();
+  const list = async () => ok(await api('GET', '/coaching/rubrics', { token: s.coach.token }));
+  const std = (await list()).filter((x) => x.standard_key);
+  const keys = std.map((x) => x.standard_key).sort();
+  assert.deepEqual(keys, ['fifa_tactical', 'fifa_technical', 'olympic_mental', 'olympic_physical'], 'football: FIFA plus the general Olympic ones, no cricket');
+  assert.equal((await list()).filter((x) => x.standard_key).length, 4, 'listing again adds nothing');
+  const tech = std.find((x) => x.standard_key === 'fifa_technical');
+  assert.equal(tech.standard_source, 'FIFA');
+  assert.equal(tech.sport_ids.length, 1);
+
+  // edit: drop one dimension, add one; the sports can grow to a second sport; scores keep working
+  const kept = tech.dimensions.filter((d) => d.key !== 'aerial_ability');
+  const futsal = (await pool.query("SELECT id FROM sports WHERE slug='futsal'")).rows[0].id;
+  const edited = ok(await post(s.coach.token, '/coaching/rubrics', { rubric_id: tech.id, sports: ['football', 'futsal'], dimensions: [...kept, { key: 'weak_foot', name: 'Weak foot', scale_min: 1, scale_max: 5 }] }), 201);
+  assert.equal(edited.version, 2);
+  assert.ok(edited.sport_ids.includes(futsal) && edited.sport_ids.length === 2);
+  assert.equal((await list()).find((x) => x.id === tech.id).dimensions.some((d) => d.key === 'aerial_ability'), false);
+  assert.equal((await api('GET', '/coaching/rubrics?sport=futsal', { token: s.coach.token })).body.some((x) => x.id === tech.id), true);
+  assert.equal((await api('GET', '/coaching/rubrics?sport=cricket', { token: s.coach.token })).body.some((x) => x.id === tech.id), false);
+  ok(await post(s.coach.token, '/coaching/observations', { athlete_id: s.players[0].id, note: 'weak foot', rubric_id: tech.id, dimension_key: 'weak_foot', score: 4 }), 201);
+
+  // a coach may keep more than one rubric for a sport, and archiving a standard is final: it is not handed out again
+  ok(await post(s.coach.token, '/coaching/rubrics', { name: 'My U12 checklist', sports: ['football'], dimensions: [{ key: 'effort', name: 'Effort' }] }), 201);
+  ok(await api('DELETE', `/coaching/rubrics/${tech.id}`, { token: s.coach.token }));
+  const after = await list();
+  assert.equal(after.some((x) => x.id === tech.id), false);
+  assert.equal(after.filter((x) => x.standard_key === 'fifa_technical').length, 0);
+  assert.equal(after.filter((x) => x.sport_ids.length && !x.standard_key).length, 1);
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM coaching_rubrics WHERE id=$1', [tech.id])).rows[0].n, 1, 'archived, never deleted');
+  // a coach with no sport gets none
+  const none = await signup(['coach']);
+  assert.deepEqual(ok(await api('GET', '/coaching/rubrics', { token: none.token })), []);
 });

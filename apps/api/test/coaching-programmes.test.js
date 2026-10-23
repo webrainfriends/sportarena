@@ -84,12 +84,12 @@ test('rubrics can be limited to a sport and to positions; scoring outside that i
   ok(await score(s.gk), 201);
   const bad = await score(s.st);
   assert.equal(bad.status, 400); assert.match(bad.body.error.message, /Goalkeeper only/);
-  const listFor = async (q) => ok(await get(s.coach.token, `/coaching/rubrics?${q}`)).map((x) => x.id);
+  const listFor = async (q) => ok(await get(s.coach.token, `/coaching/rubrics?${q}`)).filter((x) => !x.standard_key).map((x) => x.id);   // the standard library is covered in coaching-goals
   assert.deepEqual(await listFor('position=Goalkeeper'), [r.id]);
   assert.deepEqual(await listFor('position=Striker'), [], 'not offered for a striker');
   assert.deepEqual(await listFor('sport=football'), [r.id]);
   assert.deepEqual(await listFor('sport=cricket'), []);
-  const sprint = ok(await get(s.coach.token, '/coaching/rubrics'))[0].dimensions.find((d) => d.key === 'sprint');
+  const sprint = ok(await get(s.coach.token, '/coaching/rubrics')).find((x) => x.id === r.id).dimensions.find((d) => d.key === 'sprint');
   assert.equal(sprint.unit, 's'); assert.equal(sprint.direction, 'lower_is_better');
   // widening the positions in a new version applies from then on, and old scores keep their version
   const v2 = ok(await post(s.coach.token, '/coaching/rubrics', { rubric_id: r.id, positions: [], dimensions: [{ key: 'claiming', name: 'Claiming crosses', scale_min: 1, scale_max: 5 }] }), 201);
