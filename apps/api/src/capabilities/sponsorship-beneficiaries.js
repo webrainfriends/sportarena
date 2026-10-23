@@ -29,7 +29,7 @@ async function view(c, ctx) {
   const target = d.target_type === 'group' ? (await c.query('SELECT id, name FROM org_cohorts WHERE id=$1', [d.target_id])).rows[0] : org;
   const rows = (await c.query(
     `SELECT id, beneficiary_type, beneficiary_id, beneficiary_name, share_bp, payee_user_id, payee_name, terms_version, status, created_at, released_at
-       FROM sponsorship_allocations WHERE sponsorship_id=$1 ORDER BY created_at, id`, [d.id])).rows;
+       FROM sponsorship_allocations WHERE sponsorship_id=$1 ORDER BY created_at, lower(beneficiary_name), id`, [d.id])).rows;
   const active = rows.filter((r) => r.status === 'active');
   const out = {
     sponsorship_id: d.id, rev: d.allocation_rev, status: d.status,
