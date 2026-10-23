@@ -10,7 +10,7 @@ import { notify } from '../notify.js';
 import { toCsv } from '../csv.js';
 import { logHistory } from '../sponsor-agreements.js';
 import { sponsorAccess, assertSponsorCan, actionsFor, notifySponsor, sponsorRecipients } from '../sponsor-access.js';
-import { budgetFor, budgetEvent, usageOf, rateFor, rollup, KINDS, convert } from '../sponsorship-budgets.js';
+import { budgetFor, budgetEvent, usageOf, rateFor, rollup, traceOf, KINDS, convert } from '../sponsorship-budgets.js';
 import { programFor, checkVersion } from './sponsorship-programs.js';
 
 const currency = z.string().regex(/^[A-Z]{3}$/, 'ISO 4217 code, e.g. USD');
@@ -189,7 +189,7 @@ cap({
     const kids = [];
     for (const k of (await many("SELECT * FROM sponsorship_budgets WHERE parent_id=$1 AND status='active' ORDER BY lower(name), id", [b.id]))) kids.push(shape(k, await usageOf(pool, k)));
     const [programs, rates, history, references] = await Promise.all([
-      many("SELECT id, name, status, currency, budget_cents::bigint AS budget_cents FROM sponsorship_programs WHERE budget_id=$1 ORDER BY created_at DESC, id", [b.id]),
+      many("SELECT id, name, status, currency, row_version, budget_cents::bigint AS budget_cents FROM sponsorship_programs WHERE budget_id=$1 ORDER BY created_at DESC, id", [b.id]),
       many('SELECT id, currency, rate::text AS rate, source, source_ref, as_of::text AS as_of, created_at, superseded_at FROM sponsorship_budget_fx_rates WHERE budget_id=$1 ORDER BY created_at DESC, id', [b.id]),
       many('SELECT e.id, e.kind, e.detail, e.created_at, u.display_name AS actor FROM sponsorship_budget_events e LEFT JOIN users u ON u.id=e.actor_id WHERE e.budget_id=$1 ORDER BY e.id DESC LIMIT 25', [b.id]),
       many('SELECT r.id, r.kind, r.title, r.url, r.ref_no, r.created_at, u.display_name AS added_by FROM sponsorship_budget_references r JOIN users u ON u.id=r.created_by WHERE r.budget_id=$1 AND r.removed_at IS NULL ORDER BY r.created_at DESC, r.id', [b.id])]);
@@ -388,6 +388,51 @@ cap({
       average_utilisation_pct: rated.length ? Math.round((rated.reduce((a, b) => a + b.utilisation_pct, 0) / rated.length) * 10) / 10 : null,
       existing: existing ? { id: existing.id, name: existing.name } : null,
       year_authorized: Object.entries(year).map(([cur, cents]) => ({ currency: cur, authorized_cents: cents })),
+    };
+  },
+});
+
+cap({
+  name: 'get_budget_trace', method: 'GET', path: '/sponsorship-budgets/:id/trace', tag: 'Sponsors',
+  summary: 'Follow a budget\'s money end to end: each program that draws on it, its awards (reserved), agreements (committed, or planned when still only an offer), every scheduled due and every payment (reported, confirmed, reversed) -- amounts in the budget currency per program and agreement, in their own currency per due and payment. `reconciles` is true when the traced reserved / committed / paid / refunded add up exactly to the budget\'s balances. Agreements that draw on the budget without a program are listed as `direct`; child budgets are listed with their own codes. Brand staff with budget access; anyone else gets 404.',
+  input: z.object({ id }),
+  async handler({ user }, i) {
+    const { b } = await budgetFor(user, i.id, 'budget_read', pool);
+    return { budget: { id: b.id, code: b.code, name: b.name, kind: b.kind, currency: b.currency, fiscal_year: b.fiscal_year }, ...(await traceOf(pool, b)) };
+  },
+});
+
+cap({
+  name: 'get_budget_coverage', method: 'GET', path: '/budget-coverage', tag: 'Sponsors',
+  summary: 'Brand-wide finance/manager/approver/auditor: spending that is not under any budget -- programs (not archived) that draw on no budget and the awards reserved, agreements committed and payments confirmed on them (per currency), plus direct agreements with neither a program nor a budget -- and how many programs are mapped. Use it to link every program to a budget (link_program_budget). Department-scoped staff cannot see it.',
+  input: z.object({ sponsor_id: id }),
+  async handler({ user }, i) {
+    const { access } = await brandView(user, i.sponsor_id, 'budget_read', pool);
+    if (access.departmentId) throw forbidden('Budget coverage is a brand-wide view');
+    const progs = await many("SELECT id, name, status, currency, budget_cents::bigint AS budget_cents, row_version FROM sponsorship_programs WHERE sponsor_id=$1 AND budget_id IS NULL AND status <> 'archived' ORDER BY lower(name), id", [i.sponsor_id]);
+    const mapped = (await pool.query('SELECT count(*)::int AS n FROM sponsorship_programs WHERE sponsor_id=$1 AND budget_id IS NOT NULL', [i.sponsor_id])).rows[0].n;
+    const held = await many("SELECT program_id, currency, sum(amount_cents)::bigint AS cents FROM sponsorship_award_reservations WHERE program_id = ANY($1) AND status='held' GROUP BY 1,2", [progs.map((p) => p.id)]);
+    const dues = await many(
+      `SELECT ss.program_id, o.currency, coalesce(sum(o.amount_cents) FILTER (WHERE o.status <> 'cancelled'),0)::bigint AS committed,
+              coalesce(sum((SELECT sum(p.amount_cents) FROM sponsorship_payments p WHERE p.obligation_id=o.id AND p.status='confirmed')),0)::bigint AS paid
+         FROM sponsorships ss JOIN sponsorship_obligations o ON o.sponsorship_id=ss.id AND o.kind='money'
+        WHERE ss.program_id = ANY($1) AND ss.budget_id IS NULL GROUP BY 1,2`, [progs.map((p) => p.id)]);
+    const spend = (pid) => {
+      const m = {};
+      const slot = (cur) => (m[cur] ??= { currency: cur, reserved_cents: 0, committed_cents: 0, paid_cents: 0 });
+      for (const h of held.filter((x) => x.program_id === pid)) slot(h.currency).reserved_cents += Number(h.cents);
+      for (const d of dues.filter((x) => x.program_id === pid)) { slot(d.currency).committed_cents += Number(d.committed); slot(d.currency).paid_cents += Number(d.paid); }
+      return Object.values(m);
+    };
+    const direct = await many(
+      `SELECT ss.id, ss.agreement_ref, ss.status, o.currency, coalesce(sum(o.amount_cents) FILTER (WHERE o.status <> 'cancelled'),0)::bigint AS committed,
+              CASE ss.target_type WHEN 'athlete' THEN (SELECT handle FROM users WHERE id=ss.target_id) WHEN 'team' THEN (SELECT name FROM teams WHERE id=ss.target_id) ELSE (SELECT name FROM events WHERE id=ss.target_id) END AS who
+         FROM sponsorships ss LEFT JOIN sponsorship_obligations o ON o.sponsorship_id=ss.id AND o.kind='money'
+        WHERE ss.sponsor_id=$1 AND ss.program_id IS NULL AND ss.budget_id IS NULL AND ss.status IN ('proposed','active','paused') GROUP BY ss.id, o.currency ORDER BY ss.created_at DESC, ss.id LIMIT 50`, [i.sponsor_id]);
+    return {
+      mapped_programs: mapped,
+      unmapped_programs: progs.map((p) => ({ ...p, budget_cents: Number(p.budget_cents), spend: spend(p.id) })),
+      unmapped_agreements: direct.map((d) => ({ id: d.id, ref: d.agreement_ref, status: d.status, who: d.who, currency: d.currency, committed_cents: Number(d.committed) })),
     };
   },
 });

@@ -196,7 +196,7 @@ cap({
         o.promoter = lines.find((l) => l.id === o.line_id)?.promoter ?? null;
       }
     }
-    if (ctx.role !== 'recipient' && d.budget_id) out.budget = await one('SELECT b.id, b.name, b.kind, b.currency, $2::text AS approval FROM sponsorship_budgets b WHERE b.id=$1', [d.budget_id, d.budget_approval]);
+    if (ctx.role !== 'recipient' && d.budget_id) out.budget = await one('SELECT b.id, b.code, b.name, b.kind, b.currency, $2::text AS approval FROM sponsorship_budgets b WHERE b.id=$1', [d.budget_id, d.budget_approval]);
     out.negotiation = await negotiationFor(ctx);
     out.amendments = await amendmentsFor(ctx);
     out.history = await many('SELECT h.id, h.version, h.action, h.reason, h.created_at, u.display_name AS actor FROM sponsorship_history h LEFT JOIN users u ON u.id=h.actor_id WHERE h.sponsorship_id=$1 ORDER BY h.id', [d.id]);
