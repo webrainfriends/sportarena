@@ -113,6 +113,7 @@ export function SponsorProgram({ id }) {
   const apps = useLoad(() => api.get(`/sponsorship-programs/${id}/applications`, { limit: 100, ...(roundId ? { round_id: roundId } : {}) }), [id, roundId, prog.data?.row_version]);
   const p = prog.data;
   const invs = useLoad(() => api.get(`/sponsorship-programs/${id}/invitations`, { limit: 100 }), [id]);
+  const pbs = useLoad(() => api.get(`/sponsorship-programs/${id}/budgets`).catch(() => []), [id, prog.data?.row_version]); // the budgets an award can draw on
   const reloadAll = () => { prog.reload(); apps.reload(); invs.reload(); };
   const act = async (fn, m) => { try { await fn(); if (m) toast(m); setStale(false); reloadAll(); } catch (e) { toast(explain(e)); if (e.status === 409) { setStale(true); reloadAll(); } } };
   if (prog.loading && !p) return <Screen><Loading /></Screen>;
@@ -212,9 +213,11 @@ export function SponsorProgram({ id }) {
         fields={[{ key: 'through', label: 'Create rounds up to', type: 'date', hint: 'Follows the program cadence from its first round. Repeating this creates nothing twice.' }]}
         onSubmit={async (v) => { const r = await api.post(`/sponsorship-programs/${p.id}/schedule-rounds`, v); reloadAll(); return r.created ? `${r.created} round${r.created === 1 ? '' : 's'} created` : 'Nothing new to create'; }} />
       <FormSheet visible={!!awarding} onClose={() => setForm(null)} title={`Award ${awarding?.display_name ?? ''}`} submitLabel="Award"
-        fields={[{ key: 'awarded_cents', label: `Amount (asked ${awarding ? fmt(awarding.requested_cents, awarding.currency) : ''})`, type: 'money', currency: p.currency }, { key: 'reason', label: 'Note to the applicant', type: 'multiline', optional: true }]}
-        initial={awarding ? { awarded_cents: awarding.requested_cents } : {}}
-        onSubmit={async (v) => { await api.patch(`/program-applications/${awarding.id}`, { decision: 'award', program_version: p.row_version, eval_version: awarding.eval_version, awarded_cents: v.awarded_cents, reason: v.reason }); reloadAll(); return 'Award created — budget reserved; see Awards for sign-offs and issuing'; }} />
+        fields={[{ key: 'awarded_cents', label: `Amount (asked ${awarding ? fmt(awarding.requested_cents, awarding.currency) : ''})`, type: 'money', currency: p.currency },
+          { key: 'budget_id', label: 'Draw on budget', type: 'chips', options: (pbs.data ?? []).map((b) => ({ value: b.id, label: `${b.code} · ${b.name} (${fmt(b.available_cents, b.currency)} free)` })), show: () => (pbs.data ?? []).length > 1, hint: 'The budget this award reserves from, and that its agreement and payments are traced to.' },
+          { key: 'reason', label: 'Note to the applicant', type: 'multiline', optional: true }]}
+        initial={awarding ? { awarded_cents: awarding.requested_cents, budget_id: (pbs.data ?? []).find((b) => b.is_default)?.id } : {}}
+        onSubmit={async (v) => { await api.patch(`/program-applications/${awarding.id}`, { decision: 'award', program_version: p.row_version, eval_version: awarding.eval_version, awarded_cents: v.awarded_cents, reason: v.reason, budget_id: v.budget_id }); reloadAll(); return 'Award created — budget reserved; see Awards for sign-offs and issuing'; }} />
       <ReviewSheet app={typeof form === 'object' && form?.view ? form.view : null} may={may} onClose={() => setForm(null)} onChanged={reloadAll} />
       <FormSheet visible={form === 'faq' || !!faqEdit} onClose={() => setForm(null)} title={faqEdit ? 'Edit FAQ' : 'New FAQ'} submitLabel={faqEdit ? 'Save' : 'Add FAQ'}
         fields={[{ key: 'question', label: 'Question' }, { key: 'answer', label: 'Answer', type: 'multiline' }, { key: 'position', label: 'Position in the list (0 = first)', type: 'stepper', min: 0, max: 100, default: 0 }]}

@@ -545,7 +545,7 @@ cap({
 cap({
   name: 'decide_program_application', method: 'PATCH', path: '/program-applications/:id', tag: 'Sponsors',
   summary: 'Brand manager/approver: award or decline an application. Awarding needs the program\'s current `program_version` (409 if the caps changed since you looked) and checks, under lock, the award size, the program and round budgets and award counts, and the currency. It creates an award (not yet an agreement) that reserves the amount against the budget; depending on the program thresholds it waits for approver / finance / legal sign-off, and an award that does not fit the budget joins the waitlist when the program has one. Once approved it is issued to the recipient, whose acceptance of the exact offer version creates the single agreement (no consent or payment is assumed). Deciding twice is rejected.',
-  input: z.object({ id, decision: z.enum(['award', 'decline']), program_version: z.coerce.number().int().positive().optional(), awarded_cents: money.min(1).optional().describe('defaults to the amount requested; cannot exceed it'), reason: z.string().max(500).optional(), eval_version: z.coerce.number().int().positive().optional().describe('the application\'s evaluation version you looked at; 409 if the committee changed it since') }),
+  input: z.object({ id, decision: z.enum(['award', 'decline']), program_version: z.coerce.number().int().positive().optional(), awarded_cents: money.min(1).optional().describe('defaults to the amount requested; cannot exceed it'), budget_id: id.optional().describe('the budget this award draws on; it must be linked to the program. Defaults to the program\'s default budget'), reason: z.string().max(500).optional(), eval_version: z.coerce.number().int().positive().optional().describe('the application\'s evaluation version you looked at; 409 if the committee changed it since') }),
   async handler({ user }, i) {
     return tx(async (c) => {
       const a0 = (await c.query('SELECT program_id, round_id FROM sponsorship_applications WHERE id=$1', [i.id])).rows[0];
@@ -571,7 +571,7 @@ cap({
       const live = (await c.query("SELECT 1 FROM sponsorship_awards WHERE application_id=$1 AND status IN ('waitlisted','pending_approval','approved','issued','accepted')", [a.id])).rowCount;
       if (live) throw conflict('This application already has a live award; manage it from the program awards');
       // the award is a governed offer (#289): budget is reserved, sign-offs are collected, and only the recipient's acceptance of an exact version creates the agreement
-      const award = await startAward(c, { p, sp, r, a, amount, user, reason: i.reason });
+      const award = await startAward(c, { p, sp, r, a, amount, user, reason: i.reason, budgetId: i.budget_id });
       await recordDecision(c, a, p, 'award', user.id);
       await audit(c, user.id, 'award', 'sponsorship_applications', a.id);
       return { ...a, award };

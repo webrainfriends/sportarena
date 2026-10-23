@@ -128,6 +128,16 @@ export async function programBudget(c, p, lock = false) {
   return { b, rate: await rateFor(c, b, p.currency) };
 }
 
+/** The program as seen by one award: its budget is the one that award draws on (null = not budget-controlled). */
+export const withBudget = (p, budgetId) => ({ ...p, budget_id: budgetId ?? null });
+
+/** The budget a NEW award draws on: the one asked for (it must be linked to the program) or the program's default. */
+export async function awardBudgetId(c, p, requested = null) {
+  if (!requested) return p.budget_id ?? null;
+  if (!(await c.query('SELECT 1 FROM sponsorship_program_budgets WHERE program_id=$1 AND budget_id=$2 AND unlinked_at IS NULL', [p.id, requested])).rowCount) throw unprocessable('That budget is not linked to this program; link it to the program first');
+  return requested;
+}
+
 /** Why an award of `amount` (in the program's currency) does not fit the program's linked budget, or null. Takes the budget lock. `excludeAwardId` is an award being resized: its own held reservation does not count against itself. */
 export async function budgetBlockerFor(c, p, amount, excludeAwardId = null) {
   if (!p.budget_id) return null;

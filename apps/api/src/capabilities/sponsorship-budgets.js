@@ -119,7 +119,7 @@ cap({
         const kids = (await c.query("SELECT 1 FROM sponsorship_budgets WHERE parent_id=$1 AND status='active'", [b.id])).rowCount;
         if (kids) throw conflict('Archive the child budgets first');
         if (u.reserved_cents || u.committed_cents || u.planned_cents) throw conflict('This budget still has reserved, committed or planned money; it can be archived once those are settled, released or withdrawn');
-        if ((await c.query('SELECT 1 FROM sponsorship_programs WHERE budget_id=$1 AND status IN (\'draft\',\'published\') LIMIT 1', [b.id])).rowCount) throw conflict('A live program is still linked to this budget; unlink it first');
+        if ((await c.query('SELECT 1 FROM sponsorship_program_budgets l JOIN sponsorship_programs p ON p.id=l.program_id WHERE l.budget_id=$1 AND l.unlinked_at IS NULL AND p.status IN (\'draft\',\'published\') LIMIT 1', [b.id])).rowCount) throw conflict('A live program is still linked to this budget; unlink it first');
       }
       const row = (await c.query(
         `UPDATE sponsorship_budgets SET name=$2, authorized_cents=$3, approval_over_cents=$4, fx_policy=$5, status=coalesce($6,status), archived_at=CASE WHEN $6='archived' THEN now() ELSE archived_at END, notes=$7,
@@ -189,7 +189,7 @@ cap({
     const kids = [];
     for (const k of (await many("SELECT * FROM sponsorship_budgets WHERE parent_id=$1 AND status='active' ORDER BY lower(name), id", [b.id]))) kids.push(shape(k, await usageOf(pool, k)));
     const [programs, rates, history, references] = await Promise.all([
-      many("SELECT id, name, status, currency, row_version, budget_cents::bigint AS budget_cents FROM sponsorship_programs WHERE budget_id=$1 ORDER BY created_at DESC, id", [b.id]),
+      many("SELECT p.id, p.name, p.status, p.currency, p.row_version, p.budget_cents::bigint AS budget_cents, (p.budget_id=$1) AS is_default FROM sponsorship_program_budgets l JOIN sponsorship_programs p ON p.id=l.program_id WHERE l.budget_id=$1 AND l.unlinked_at IS NULL ORDER BY p.created_at DESC, p.id", [b.id]),
       many('SELECT id, currency, rate::text AS rate, source, source_ref, as_of::text AS as_of, created_at, superseded_at FROM sponsorship_budget_fx_rates WHERE budget_id=$1 ORDER BY created_at DESC, id', [b.id]),
       many('SELECT e.id, e.kind, e.detail, e.created_at, u.display_name AS actor FROM sponsorship_budget_events e LEFT JOIN users u ON u.id=e.actor_id WHERE e.budget_id=$1 ORDER BY e.id DESC LIMIT 25', [b.id]),
       many('SELECT r.id, r.kind, r.title, r.url, r.ref_no, r.created_at, u.display_name AS added_by FROM sponsorship_budget_references r JOIN users u ON u.id=r.created_by WHERE r.budget_id=$1 AND r.removed_at IS NULL ORDER BY r.created_at DESC, r.id', [b.id])]);
@@ -234,35 +234,82 @@ cap({
 
 cap({
   name: 'link_program_budget', method: 'POST', path: '/sponsorship-programs/:id/budget', tag: 'Sponsors',
-  summary: 'Brand manager/approver: draw a sponsorship program\'s awards on an authorized budget (or pass `budget_id: null` to unlink). Every award reservation then locks that budget and cannot exceed what is available there; the program\'s own budget and caps still apply. The program\'s currency must be the budget\'s, or the budget needs an explicit sourced rate for it. Existing reservations and agreements of the program move onto the budget (it must have room for them). A program with money reserved or committed on a budget cannot be moved off it. Needs the program `version` (409 if stale).',
-  input: z.object({ id, budget_id: id.nullable(), version: z.coerce.number().int().positive() }),
+  summary: 'Brand manager/approver: let a sponsorship program\'s awards draw on an authorized budget. A program can be linked to several budgets and a budget to several programs (a budget funds any subset of spending); each award then names the budget it draws on (`budget_id` when deciding an application), defaulting to the program\'s default budget. The first budget linked becomes the default and takes over the program\'s existing unbudgeted reservations and agreements (they must fit it); pass `make_default` to change the default for new awards. Linking again is a no-op. The program\'s currency must be the budget\'s, or the budget needs an explicit sourced rate for it. Needs the program `version` (409 if stale).',
+  input: z.object({ id, budget_id: id, version: z.coerce.number().int().positive(), make_default: z.boolean().optional() }),
   async handler({ user }, i) {
     return tx(async (c) => {
       const { p } = await programFor(user, i.id, 'program', c, true);
       checkVersion(p, i.version, 'program');
-      if (['closed', 'archived'].includes(p.status)) throw conflict(`A ${p.status} program cannot change its budget`);
-      if ((i.budget_id ?? null) === (p.budget_id ?? null)) return p;
-      if (p.budget_id) {
-        const held = (await c.query("SELECT 1 FROM sponsorship_award_reservations WHERE program_id=$1 AND status='held' AND budget_id IS NOT NULL UNION ALL SELECT 1 FROM sponsorships WHERE program_id=$1 AND budget_id IS NOT NULL LIMIT 1", [p.id])).rowCount;
-        if (held) throw conflict('This program has money reserved or committed on its current budget, so it cannot be moved off it');
-      }
-      let rateId = null;
-      if (i.budget_id) {
-        const { b } = await budgetFor(user, i.budget_id, 'budget_read', c, true);
-        if (b.sponsor_id !== p.sponsor_id) throw badRequest('That budget belongs to another brand');
-        if (b.status !== 'active') throw conflict('That budget is archived');
-        if (b.kind === 'event') throw unprocessable('An event budget funds one event; a program draws on an annual, program or department budget');
-        rateId = (await rateFor(c, b, p.currency)).id; // linking needs a sourced rate for the program's currency; existing money is costed at today's rate
-        await c.query("UPDATE sponsorship_award_reservations SET budget_id=$2, budget_fx_rate_id=$3 WHERE program_id=$1 AND status='held'", [p.id, b.id, rateId]);
-        await c.query('UPDATE sponsorships SET budget_id=$2, budget_fx_rate_id=$3 WHERE program_id=$1 AND budget_id IS NULL', [p.id, b.id, rateId]);
-        const u = await usageOf(c, b);
-        if (u.over_committed) throw conflict(`The program's reservations and agreements do not fit the authorized budget "${b.name}" (${-u.available_cents} ${b.currency} minor units over)`, { over_by_cents: -u.available_cents });
+      if (['closed', 'archived'].includes(p.status)) throw conflict(`A ${p.status} program cannot change its budgets`);
+      const { b } = await budgetFor(user, i.budget_id, 'budget_read', c, true);
+      if (b.sponsor_id !== p.sponsor_id) throw badRequest('That budget belongs to another brand');
+      if (b.status !== 'active') throw conflict('That budget is archived');
+      if (b.kind === 'event') throw unprocessable('An event budget funds one event; a program draws on an annual, program or department budget');
+      const linked = (await c.query('SELECT budget_id FROM sponsorship_program_budgets WHERE program_id=$1 AND unlinked_at IS NULL', [p.id])).rows.map((r) => r.budget_id);
+      const already = linked.includes(b.id), first = linked.length === 0;
+      if (already && !(i.make_default && p.budget_id !== b.id)) return p;
+      if (!already) {
+        const rateId = (await rateFor(c, b, p.currency)).id; // linking needs a sourced rate for the program's currency
+        await c.query('INSERT INTO sponsorship_program_budgets(program_id, budget_id, created_by) VALUES ($1,$2,$3)', [p.id, b.id, user.id]);
+        if (first) { // money the program already holds with no budget now belongs to its first budget
+          await c.query("UPDATE sponsorship_award_reservations SET budget_id=$2, budget_fx_rate_id=$3 WHERE program_id=$1 AND status='held' AND budget_id IS NULL", [p.id, b.id, rateId]);
+          await c.query('UPDATE sponsorships SET budget_id=$2, budget_fx_rate_id=$3 WHERE program_id=$1 AND budget_id IS NULL', [p.id, b.id, rateId]);
+          await c.query("UPDATE sponsorship_awards SET budget_id=$2 WHERE program_id=$1 AND budget_id IS NULL AND status IN ('waitlisted','pending_approval','approved','issued','accepted')", [p.id, b.id]);
+          const u = await usageOf(c, b);
+          if (u.over_committed) throw conflict(`The program's reservations and agreements do not fit the authorized budget "${b.name}" (${-u.available_cents} ${b.currency} minor units over)`, { over_by_cents: -u.available_cents });
+        }
         await budgetEvent(c, b.id, 'program_linked', user.id, { program_id: p.id });
       }
-      const row = (await c.query('UPDATE sponsorship_programs SET budget_id=$2, row_version=row_version+1, updated_at=now() WHERE id=$1 RETURNING *', [p.id, i.budget_id])).rows[0];
-      await audit(c, user.id, i.budget_id ? 'link_budget' : 'unlink_budget', 'sponsorship_programs', p.id);
+      const row = (await c.query('UPDATE sponsorship_programs SET budget_id=CASE WHEN $3 OR budget_id IS NULL THEN $2 ELSE budget_id END, row_version=row_version+1, updated_at=now() WHERE id=$1 RETURNING *', [p.id, b.id, !!i.make_default])).rows[0];
+      await audit(c, user.id, 'link_budget', 'sponsorship_programs', p.id);
       return row;
     });
+  },
+});
+
+cap({
+  name: 'unlink_program_budget', method: 'DELETE', path: '/sponsorship-programs/:id/budgets/:budget_id', tag: 'Sponsors',
+  summary: 'Brand manager/approver: stop a program drawing on a budget. Refused while the program holds a reservation, an agreement or a live award on that budget (release or settle those first). The link is kept on record (`unlinked_at`). If it was the program\'s default budget, the oldest remaining link becomes the default, else the program has none. Needs the program `version`.',
+  input: z.object({ id, budget_id: id, version: z.coerce.number().int().positive() }),
+  async handler({ user }, i) {
+    return tx(async (c) => {
+      const { p } = await programFor(user, i.id, 'program', c, true);
+      checkVersion(p, i.version, 'program');
+      const { b } = await budgetFor(user, i.budget_id, 'budget_read', c, true);
+      if (!(await c.query('SELECT 1 FROM sponsorship_program_budgets WHERE program_id=$1 AND budget_id=$2 AND unlinked_at IS NULL', [p.id, b.id])).rowCount) throw notFound('Budget link');
+      const used = (await c.query(
+        `SELECT 1 FROM sponsorship_award_reservations WHERE program_id=$1 AND budget_id=$2 AND status='held'
+         UNION ALL SELECT 1 FROM sponsorships WHERE program_id=$1 AND budget_id=$2
+         UNION ALL SELECT 1 FROM sponsorship_awards WHERE program_id=$1 AND budget_id=$2 AND status IN ('waitlisted','pending_approval','approved','issued','accepted') LIMIT 1`, [p.id, b.id])).rowCount;
+      if (used) throw conflict('This program has money reserved, committed or waiting on that budget, so it cannot be unlinked');
+      await c.query('UPDATE sponsorship_program_budgets SET unlinked_at=now() WHERE program_id=$1 AND budget_id=$2 AND unlinked_at IS NULL', [p.id, b.id]);
+      const next = p.budget_id === b.id ? (await c.query('SELECT budget_id FROM sponsorship_program_budgets WHERE program_id=$1 AND unlinked_at IS NULL ORDER BY created_at, id LIMIT 1', [p.id])).rows[0]?.budget_id ?? null : p.budget_id;
+      const row = (await c.query('UPDATE sponsorship_programs SET budget_id=$2, row_version=row_version+1, updated_at=now() WHERE id=$1 RETURNING *', [p.id, next])).rows[0];
+      await budgetEvent(c, b.id, 'program_unlinked', user.id, { program_id: p.id });
+      await audit(c, user.id, 'unlink_budget', 'sponsorship_programs', p.id);
+      return row;
+    });
+  },
+});
+
+cap({
+  name: 'list_program_budgets', method: 'GET', path: '/sponsorship-programs/:id/budgets', tag: 'Sponsors',
+  summary: 'The budgets a program draws on: code, name, kind, currency, what is still available on each and what THIS program has reserved, committed and paid on it (in the budget\'s currency), and which is the default for new awards. Brand staff with budget access; others get an empty list (budgets are internal to the brand and never shown to applicants).',
+  input: z.object({ id }),
+  async handler({ user }, i) {
+    const { p, sp } = await programFor(user, i.id, 'read', pool);
+    if (!isAdmin(user)) {
+      const access = await sponsorAccess(user, sp);
+      if (!access || access.departmentId || !actionsFor(access.role).includes('budget_read')) return [];
+    }
+    const rows = await many('SELECT b.* FROM sponsorship_program_budgets l JOIN sponsorship_budgets b ON b.id=l.budget_id WHERE l.program_id=$1 AND l.unlinked_at IS NULL ORDER BY l.created_at, l.id', [p.id]);
+    const out = [];
+    for (const b of rows) {
+      const node = (await traceOf(pool, b)).programs.find((x) => x.program.id === p.id)?.totals ?? { reserved_cents: 0, committed_cents: 0, paid_cents: 0 };
+      const u = await usageOf(pool, b);
+      out.push({ id: b.id, code: b.code, name: b.name, kind: b.kind, fiscal_year: b.fiscal_year, currency: b.currency, authorized_cents: Number(b.authorized_cents), available_cents: u.available_cents, is_default: p.budget_id === b.id, reserved_cents: node.reserved_cents, committed_cents: node.committed_cents, paid_cents: node.paid_cents });
+    }
+    return out;
   },
 });
 
@@ -409,8 +456,8 @@ cap({
   async handler({ user }, i) {
     const { access } = await brandView(user, i.sponsor_id, 'budget_read', pool);
     if (access.departmentId) throw forbidden('Budget coverage is a brand-wide view');
-    const progs = await many("SELECT id, name, status, currency, budget_cents::bigint AS budget_cents, row_version FROM sponsorship_programs WHERE sponsor_id=$1 AND budget_id IS NULL AND status <> 'archived' ORDER BY lower(name), id", [i.sponsor_id]);
-    const mapped = (await pool.query('SELECT count(*)::int AS n FROM sponsorship_programs WHERE sponsor_id=$1 AND budget_id IS NOT NULL', [i.sponsor_id])).rows[0].n;
+    const progs = await many("SELECT id, name, status, currency, budget_cents::bigint AS budget_cents, row_version FROM sponsorship_programs WHERE sponsor_id=$1 AND status <> 'archived' AND NOT EXISTS (SELECT 1 FROM sponsorship_program_budgets l WHERE l.program_id=sponsorship_programs.id AND l.unlinked_at IS NULL) ORDER BY lower(name), id", [i.sponsor_id]);
+    const mapped = (await pool.query('SELECT count(*)::int AS n FROM sponsorship_programs p WHERE p.sponsor_id=$1 AND EXISTS (SELECT 1 FROM sponsorship_program_budgets l WHERE l.program_id=p.id AND l.unlinked_at IS NULL)', [i.sponsor_id])).rows[0].n;
     const held = await many("SELECT program_id, currency, sum(amount_cents)::bigint AS cents FROM sponsorship_award_reservations WHERE program_id = ANY($1) AND status='held' GROUP BY 1,2", [progs.map((p) => p.id)]);
     const dues = await many(
       `SELECT ss.program_id, o.currency, coalesce(sum(o.amount_cents) FILTER (WHERE o.status <> 'cancelled'),0)::bigint AS committed,

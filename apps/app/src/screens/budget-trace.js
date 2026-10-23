@@ -119,17 +119,15 @@ export function BudgetTrace({ budget: b, tick, mayApprove, onApprove, onReject }
   );
 }
 
-/** Map programs onto one budget (several at once). A program draws on one budget at a time; the server refuses a move that would strand money. */
-export function LinkProgramsSheet({ visible, onClose, budget: b, onDone }) {
+/** Map programs onto one budget (several at once). A program may draw on other budgets too; each award names the budget it uses. */
+export function LinkProgramsSheet({ visible, onClose, budget: b, linkedIds = [], onDone }) {
   const { toast } = useSession();
   const [q, setQ] = useState('');
   const [pick, setPick] = useState([]);
   const [busy, setBusy] = useState(false);
   const [fails, setFails] = useState([]);
   const progs = useLoad(() => (visible ? api.get('/sponsorship-programs', { sponsor_id: b.sponsor_id, limit: 100 }) : Promise.resolve([])), [visible, b.sponsor_id]);
-  const buds = useLoad(() => (visible ? api.get('/sponsorship-budgets', { sponsor_id: b.sponsor_id, status: 'active', limit: 100 }).catch(() => []) : Promise.resolve([])), [visible, b.sponsor_id]);
-  const named = Object.fromEntries((buds.data ?? []).map((x) => [x.id, x]));
-  const cands = (progs.data ?? []).filter((p) => ['draft', 'published'].includes(p.status) && p.budget_id !== b.id && (!q.trim() || p.name.toLowerCase().includes(q.trim().toLowerCase())));
+  const cands = (progs.data ?? []).filter((p) => ['draft', 'published'].includes(p.status) && !linkedIds.includes(p.id) && (!q.trim() || p.name.toLowerCase().includes(q.trim().toLowerCase())));
   const blocked = (p) => (p.currency !== b.currency && b.fx_policy !== 'explicit' ? `${p.currency} program: this ${b.currency} budget needs “Only at a sourced rate” and a rate first` : null);
   const toggle = (id) => setPick((x) => (x.includes(id) ? x.filter((y) => y !== id) : [...x, id]));
   const close = () => { setPick([]); setFails([]); setQ(''); onClose(); };
@@ -148,22 +146,22 @@ export function LinkProgramsSheet({ visible, onClose, budget: b, onDone }) {
   return (
     <Sheet visible={visible} onClose={busy ? () => {} : close} title={`Link programs to ${b.code}`}
       footer={<><View style={{ flex: 1 }} /><Btn title={pick.length ? `Link ${pick.length} program${pick.length === 1 ? '' : 's'}` : 'Choose programs'} onPress={run} disabled={!pick.length} loading={busy} /></>}>
-      <T size={12} color={c.mute}>Every award of a linked program reserves from “{b.name}” first, and its agreements and payments are traced here. A program draws on one budget at a time.</T>
+      <T size={12} color={c.mute}>A linked program’s awards can draw on “{b.name}”, and the agreements and payments that follow are traced here. A program can also stay linked to other budgets; each award names the one it uses.</T>
       <Field value={q} onChangeText={setQ} placeholder="Search programs" accessibilityLabel="Search programs" />
       {progs.error ? <LoadError error={progs.error} onRetry={progs.reload} /> : progs.loading && !progs.data ? <Loading /> : cands.length ? cands.map((p) => {
-        const why = blocked(p), on = pick.includes(p.id), elsewhere = p.budget_id ? named[p.budget_id] : null;
+        const why = blocked(p), on = pick.includes(p.id);
         return (
           <Pressable key={p.id} disabled={!!why} onPress={() => toggle(p.id)} accessibilityRole="checkbox" accessibilityState={{ checked: on, disabled: !!why }} accessibilityLabel={`${p.name}${why ? `. ${why}` : ''}`}
             style={{ flexDirection: 'row', gap: 10, alignItems: 'center', padding: 12, borderRadius: 12, borderWidth: 2, borderColor: on ? c.pink : c.line, backgroundColor: on ? c.pinkSoft : c.paper, opacity: why ? 0.55 : 1 }}>
             <T size={16} color={c.pink} weight="800" style={{ width: 18 }}>{on ? '☑' : '☐'}</T>
             <View style={{ flex: 1 }}>
               <T weight="800">{p.name}</T>
-              <T size={12} color={c.mute}>{p.status} · program budget {moneyIn(Number(p.budget_cents), p.currency)}{p.budget_id ? ` · now on ${elsewhere ? `${elsewhere.code} ${elsewhere.name}` : 'another budget'} (moves here)` : ' · not on any budget'}</T>
+              <T size={12} color={c.mute}>{p.status} · program budget {moneyIn(Number(p.budget_cents), p.currency)}</T>
               {why ? <T size={12} color={c.red}>{why}</T> : null}
             </View>
           </Pressable>
         );
-      }) : <Empty emoji="🎯" title="No program to link" sub="Draft and published programs of this brand appear here. Closed and archived programs keep the budget they had." />}
+      }) : <Empty emoji="🎯" title="No program to link" sub="Draft and published programs of this brand that are not linked yet appear here. Closed and archived programs keep the budgets they had." />}
       {fails.map((f) => <T key={f.id} size={12} color={c.red}>{f.name}: {f.why}</T>)}
     </Sheet>
   );
