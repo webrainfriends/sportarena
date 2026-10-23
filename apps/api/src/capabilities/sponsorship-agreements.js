@@ -11,7 +11,6 @@ import { snapshotIdentity } from '../sponsor-identity-access.js';
 import { saveLines, loadLines, generateObligations, logHistory, dealContext, obligationContext, settleMoney, heldCents, releaseStaleCheckouts } from '../sponsor-agreements.js';
 import { enabledProviders, startCheckout } from '../payments/service.js';
 import { config } from '../config.js';
-import { saveLines, loadLines, generateObligations, logHistory, dealContext, obligationContext } from '../sponsor-agreements.js';
 import { beneficiaryScopeSql, payeeSnapshot } from '../sponsor-beneficiaries.js';
 import { notifySponsor, sponsorStaffSql, actionsFor } from '../sponsor-access.js';
 import { costOf } from '../sponsorship-budgets.js';
