@@ -4,6 +4,7 @@ import { forbidden, notFound } from './errors.js';
 import { isAdmin } from './helpers.js';
 import { sponsorAccess, assertSponsorCan } from './sponsor-access.js';
 import { sponsorContactUser } from './sponsor-identity-access.js';
+import { ORG_TARGETS, beneficiaryAccess, primaryContact, targetOrgId } from './sponsor-beneficiaries.js';
 
 export const logHistory = (c, sponsorshipId, version, actor, action, reason) =>
   c.query('INSERT INTO sponsorship_history(sponsorship_id, version, actor_id, action, reason) VALUES ($1,$2,$3,$4,$5)', [sponsorshipId, version, actor, action, reason ?? null]);
@@ -70,15 +71,16 @@ export async function dealContext(c, sponsorshipId, user, { lock = false } = {})
   const d = (await c.query(`SELECT *, starts_on::text AS starts, ends_on::text AS ends FROM sponsorships WHERE id=$1${lock ? ' FOR UPDATE' : ''}`, [sponsorshipId])).rows[0];
   if (!d) throw notFound('Sponsorship');
   const sp = (await c.query('SELECT id, name, owner_id, organisation_id, entity_id FROM sponsors WHERE id=$1', [d.sponsor_id])).rows[0];
-  const recipientId = d.target_type === 'event' ? (await c.query('SELECT organizer_id AS u FROM events WHERE id=$1', [d.target_id])).rows[0]?.u
+  const beneficiary = ORG_TARGETS.includes(d.target_type) ? await beneficiaryAccess(c, user.id, d) : null;
+  const recipientId = ORG_TARGETS.includes(d.target_type) ? await primaryContact(c, await targetOrgId(c, d.target_type, d.target_id)) : d.target_type === 'event' ? (await c.query('SELECT organizer_id AS u FROM events WHERE id=$1', [d.target_id])).rows[0]?.u
     : d.target_type === 'team' ? (await c.query('SELECT owner_id AS u FROM teams WHERE id=$1', [d.target_id])).rows[0]?.u : d.target_id;
   let access = await sponsorAccess(user, sp, c);
   if (access?.departmentId && access.departmentId !== d.department_id) access = null; // a department-scoped member only sees their department's deals
   // sponsor wins if one person is on both sides; an admin may read everything
-  const role = access ? 'sponsor' : user.id === recipientId ? 'recipient' : isAdmin(user) ? 'admin' : null;
+  const role = access ? 'sponsor' : (beneficiary ? beneficiary.any : user.id === recipientId) ? 'recipient' : isAdmin(user) ? 'admin' : null;
   if (!role) throw forbidden('You are not part of this sponsorship');
   // sp.owner_id is who gets notified: an active owner of the sponsor entity, never someone who has left
-  return { d, sp: { ...sp, owner_id: await sponsorContactUser(c, sp) }, recipientId, role, staff: access?.role, need: (action, what) => assertSponsorCan(access, action, { departmentId: d.department_id, what }) };
+  return { d, sp: { ...sp, owner_id: await sponsorContactUser(c, sp) }, recipientId, role, beneficiary, staff: access?.role, need: (action, what) => assertSponsorCan(access, action, { departmentId: d.department_id, what }) };
 }
 
 /** Obligation + its deal, locking the obligation row so concurrent payments/deliveries serialise. */
