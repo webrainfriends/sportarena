@@ -27,8 +27,6 @@ const TRANSITIONS = { draft: ['published', 'archived'], published: ['closed'], c
 const CADENCE_MONTHS = { monthly: 1, quarterly: 3, yearly: 12 };
 const recurrence = z.object({ cadence: z.enum(['monthly', 'quarterly', 'yearly']), open_days: z.number().int().min(1).max(365) });
 
-/** The state of a round right now, derived from its dates unless it was closed explicitly. Server date. */
-export const roundState = (a = 'r') => `(CASE WHEN ${a}.status='closed' OR current_date > ${a}.closes_on THEN 'closed' WHEN current_date < ${a}.opens_on THEN 'scheduled' ELSE 'open' END)`;
 const VISIBILITY = ['public', 'invitation_only'];
 const time = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'HH:MM, 24-hour');
 const tz = z.string().min(1).max(60).describe('IANA timezone, e.g. Europe/Paris');
@@ -472,33 +470,9 @@ cap({
         if (!inv || inv.invitee_user_id !== user.id) throw notFound('Round');
       }
       if (p.status !== 'published') throw conflict('This program is not accepting applications');
-      if (r.state !== 'open') throw conflict(r.state === 'scheduled' ? 'This round has not opened yet' : 'This round is closed and no longer accepts applications');
+      if (r.state !== 'open') throw conflict(r.state === 'scheduled' ? 'This round has not opened yet' : 'This round is closed and no longer accepts applications', { code: 'call_closed', closes_at: r.closes_at, timezone: r.timezone });
       if (r.form_id) throw conflict('This round uses an application form; apply through the form (get_round_application_form, save_application_draft, submit_application)');
       const sp = await assertCanApply(c, user, p, i);
-      if (r.state !== 'open') throw conflict(r.state === 'scheduled' ? 'This round has not opened yet' : 'This round is closed and no longer accepts applications', { code: 'call_closed', closes_at: r.closes_at, timezone: r.timezone });
-      const sp = await mustFind('sponsors', p.sponsor_id, '*', c);
-      if (!isAdmin(user) && (await sponsorAccess(user, sp, c))) throw forbidden('Staff of the sponsoring brand cannot apply to its own program');
-      const owner = await targetOwnerOf(c, i.target_type, i.target_id);
-      if (owner !== user.id) throw forbidden(i.target_type === 'athlete' ? 'You can only apply for yourself' : `You can only apply for a ${i.target_type} you ${i.target_type === 'team' ? 'own' : 'organise'}`);
-      const el = p.eligibility ?? {};
-      if (el.target_types?.length && !el.target_types.includes(i.target_type)) throw unprocessable(`This program funds ${el.target_types.join(', ')} only`);
-      if (i.target_type === 'athlete') {
-        const youth = (await c.query('SELECT 1 FROM users u WHERE u.id=$1 AND (u.youth_until IS NOT NULL AND u.youth_until > current_date)', [user.id])).rowCount;
-        if (youth) throw unprocessable('Applications for athletes under the age of independence are not accepted here; a guardian-led process is required');
-      }
-      if (i.requested_cents > Number(p.max_award_cents ?? Infinity)) throw unprocessable(`The request is above the maximum award of ${p.max_award_cents}`);
-      if (el.verified_only && !(await badgesFor(i.target_type === 'athlete' ? 'user' : i.target_type, [i.target_id])).get(i.target_id)?.length) throw forbidden('This program only funds verified applicants');
-      if (p.sports.length) {
-        const sports = i.target_type === 'athlete' ? (await c.query('SELECT s.slug FROM sport_profiles x JOIN sports s ON s.id=x.sport_id WHERE x.user_id=$1', [i.target_id])).rows
-          : (await c.query(`SELECT s.slug FROM ${i.target_type === 'team' ? 'teams' : 'events'} x JOIN sports s ON s.id=x.sport_id WHERE x.id=$1`, [i.target_id])).rows;
-        if (!sports.some((s) => p.sports.includes(s.slug))) throw unprocessable(`This program funds ${p.sports.join(', ')} only`);
-      }
-      if (p.regions.length) {
-        const reg = i.target_type === 'athlete' ? (await c.query('SELECT region AS v FROM sport_profiles WHERE user_id=$1 AND region IS NOT NULL', [i.target_id])).rows
-          : i.target_type === 'team' ? (await c.query('SELECT city AS v FROM teams WHERE id=$1 AND city IS NOT NULL', [i.target_id])).rows : [];
-        const want = p.regions.map((x) => x.trim().toLowerCase());
-        if (reg.length && !reg.some((x) => want.includes(String(x.v).trim().toLowerCase()))) throw unprocessable(`This program funds applicants in ${p.regions.join(', ')} only`);
-      }
       const snap = termsOf(p, r);
       let row;
       try {
