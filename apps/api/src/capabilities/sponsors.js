@@ -308,11 +308,9 @@ cap({
        FROM sponsorships ss JOIN sponsors sp ON sp.id=ss.sponsor_id
       WHERE (($5::text IS DISTINCT FROM 'target' AND ${sponsorStaffSql(1)})
          OR ($5::text IS DISTINCT FROM 'sponsor' AND ((ss.target_type='event' AND ss.target_id IN (SELECT id FROM events WHERE organizer_id=$1))
-              OR (ss.target_type='team' AND ss.target_id IN (SELECT id FROM teams WHERE owner_id=$1)) OR (ss.target_type='athlete' AND ss.target_id=$1))))
+              OR (ss.target_type='team' AND ss.target_id IN (SELECT id FROM teams WHERE owner_id=$1)) OR (ss.target_type='athlete' AND ss.target_id=$1) OR ${beneficiaryScopeSql('$1')})))
         AND ($2::text IS NULL OR ss.status=$2) AND (coalesce(ss.budget_approval,'') NOT IN ('pending','rejected') OR ${sponsorStaffSql(1)})
       ORDER BY ss.created_at DESC LIMIT $3 OFFSET $4`, [user.id, i.status ?? null, i.limit, i.offset, i.as ?? null]).then((rows) => rows.map(forRecipient)),
-              OR (ss.target_type='team' AND ss.target_id IN (SELECT id FROM teams WHERE owner_id=$1)) OR (ss.target_type='athlete' AND ss.target_id=$1) OR ${beneficiaryScopeSql('$1')})))
-        AND ($2::text IS NULL OR ss.status=$2) ORDER BY ss.created_at DESC LIMIT $3 OFFSET $4`, [user.id, i.status ?? null, i.limit, i.offset, i.as ?? null]),
 });
 
 cap({
@@ -344,10 +342,9 @@ cap({
       const sp = await mustFind('sponsors', d.sponsor_id);
       const owner = await targetOwner(d.target_type, d.target_id);
       const access = await sponsorAccess(user, sp, c);
-      const isTarget = user.id === owner, isSponsor = !!access && (!access.departmentId || access.departmentId === d.department_id);
-      if (!isSponsor && !isAdmin(user) && ['pending', 'rejected'].includes(d.budget_approval)) throw notFound('Sponsorship'); // an offer awaiting internal budget approval is not the recipient's to see yet
       const ben = ORG_TARGETS.includes(d.target_type) ? await beneficiaryAccess(c, user.id, d) : null;
       const isTarget = ben ? ben.representative : user.id === owner, isSponsor = !!access && (!access.departmentId || access.departmentId === d.department_id);
+      if (!isSponsor && !isAdmin(user) && ['pending', 'rejected'].includes(d.budget_approval)) throw notFound('Sponsorship'); // an offer awaiting internal budget approval is not the recipient's to see yet
       if (isSponsor && !isTarget && !isAdmin(user) && i.status === 'ended') assertSponsorCan(access, 'end', { departmentId: d.department_id, what: 'end agreements' });
       if (!isAdmin(user)) {
         if (i.status === 'ended' ? !(isSponsor || isTarget) : !isTarget) throw forbidden();
