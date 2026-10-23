@@ -300,7 +300,7 @@ cap({
 cap({
   name: 'list_sponsorships', method: 'GET', path: '/sponsorships', tag: 'Sponsors',
   summary: 'Deals you are part of: ones you proposed, or offers aimed at things you own (events, teams, yourself), with who/what each is about, the terms, status and decision. `as` narrows to what you sent or what you received.',
-  input: z.object({ status: z.enum(['proposed', 'active', 'declined', 'ended', 'withdrawn']).optional(), as: z.enum(['sponsor', 'target']).optional(), ...page }),
+  input: z.object({ status: z.enum(['proposed', 'active', 'declined', 'ended', 'withdrawn']).optional(), as: z.enum(['sponsor', 'target']).optional(), organisation_id: id.optional().describe('only agreements aimed at this organisation or its groups (still limited to what you may see)'), ...page }),
   handler: ({ user }, i) => many(
     `SELECT ss.*, sp.name AS sponsor_name, sp.emoji AS sponsor_emoji, ${sponsorStaffSql(1)} AS i_am_sponsor,
             CASE ss.target_type WHEN 'athlete' THEN (SELECT display_name FROM users WHERE id=ss.target_id) WHEN 'team' THEN (SELECT name FROM teams WHERE id=ss.target_id) WHEN 'organisation' THEN (SELECT name FROM organisations WHERE id=ss.target_id) WHEN 'group' THEN (SELECT name FROM org_cohorts WHERE id=ss.target_id) ELSE (SELECT name FROM events WHERE id=ss.target_id) END AS target_name,
@@ -310,7 +310,8 @@ cap({
          OR ($5::text IS DISTINCT FROM 'sponsor' AND ((ss.target_type='event' AND ss.target_id IN (SELECT id FROM events WHERE organizer_id=$1))
               OR (ss.target_type='team' AND ss.target_id IN (SELECT id FROM teams WHERE owner_id=$1)) OR (ss.target_type='athlete' AND ss.target_id=$1) OR ${beneficiaryScopeSql('$1')})))
         AND ($2::text IS NULL OR ss.status=$2) AND (coalesce(ss.budget_approval,'') NOT IN ('pending','rejected') OR ${sponsorStaffSql(1)})
-      ORDER BY ss.created_at DESC LIMIT $3 OFFSET $4`, [user.id, i.status ?? null, i.limit, i.offset, i.as ?? null]).then((rows) => rows.map(forRecipient)),
+        AND ($6::uuid IS NULL OR (ss.target_type='organisation' AND ss.target_id=$6) OR (ss.target_type='group' AND ss.target_id IN (SELECT id FROM org_cohorts WHERE organisation_id=$6)))
+      ORDER BY ss.created_at DESC LIMIT $3 OFFSET $4`, [user.id, i.status ?? null, i.limit, i.offset, i.as ?? null, i.organisation_id ?? null]).then((rows) => rows.map(forRecipient)),
 });
 
 cap({

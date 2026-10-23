@@ -11,6 +11,7 @@ import { FormSheet } from '../FormSheet';
 import { c, day } from '../theme';
 import { moneyIn } from '../vtime';
 import { Admissions } from './admissions';
+import { IncomingSponsorship } from './sponsor-beneficiaries';
 import { Confirm } from './coaching';
 import { EntityPicker } from '../entity-picker';
 import { explain, LoadError } from '../access';
@@ -120,6 +121,7 @@ function Overview({ o, d, role, archived, reload, toast }) {
           <Btn small title="Export finance CSV" color={c.paper} ink={c.ink} onPress={() => exportCsv('finance')} style={{ marginTop: 8, alignSelf: 'flex-start' }} />
         </Section>
       ) : null}
+      {STAFF.includes(role) || role === 'finance' ? <IncomingSponsorship orgId={o.id} /> : null}
       {STAFF.includes(role) ? (
         <Section title="Manage" color={c.cyan}>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
@@ -127,6 +129,7 @@ function Overview({ o, d, role, archived, reload, toast }) {
             <Btn small title="Export staff CSV" color={c.paper} ink={c.ink} onPress={() => exportCsv('staff')} />
             <Btn small title="Export enrolments CSV" color={c.paper} ink={c.ink} onPress={() => exportCsv('enrolments')} />
             <Btn small title="Export attendance CSV" color={c.paper} ink={c.ink} onPress={() => exportCsv('attendance')} />
+            <Btn small title="Export sponsorship allocations CSV" color={c.paper} ink={c.ink} onPress={() => exportCsv('sponsorship_allocations')} />
             {role === 'owner' ? <Btn small title={archived ? 'Restore organisation' : 'Archive organisation'} color={c.orange} onPress={archive} /> : null}
           </View>
         </Section>

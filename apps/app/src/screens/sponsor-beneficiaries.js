@@ -7,6 +7,7 @@ import { Btn, Card, Chip, Empty, Field, Loading, Row, Section, Bubble, T, Tag } 
 import { FormSheet } from '../FormSheet';
 import { c } from '../theme';
 import { explain, LoadError } from '../access';
+import { useNav } from '../nav';
 
 const TYPE_LABEL = { organisation: 'Organisation', group: 'Group', team: 'Team' };
 const pct = (bp) => `${bp / 100}%`;
@@ -25,10 +26,10 @@ export function SponsorAllocations({ deal }) {
   const live = (x) => a.allocations.find((r) => r.beneficiary_type === x.type && r.beneficiary_id === x.id);
   const fields = cands.flatMap((x, i) => [
     { key: `use_${i}`, label: `${TYPE_LABEL[x.type]}: ${x.name}`, type: 'switch' },
-    { key: `pct_${i}`, label: 'Share of every payment', type: 'stepper', min: 1, max: 100, suffix: '%', show: (v) => v[`use_${i}`] },
+    { key: `pct_${i}`, label: 'Share of every payment', type: 'stepper', min: 5, max: 100, step: 5, suffix: '%', show: (v) => v[`use_${i}`] },
     { key: `payee_${i}`, label: 'Payee (receives and confirms the money)', type: 'choice', options: payees, show: (v) => v[`use_${i}`] },
   ]);
-  const initial = Object.fromEntries(cands.flatMap((x, i) => { const r = live(x); return [[`use_${i}`, !!r], [`pct_${i}`, r ? r.share_bp / 100 : 10], [`payee_${i}`, r?.payee_user_id ?? payees[0]?.value]]; }));
+  const initial = Object.fromEntries(cands.flatMap((x, i) => { const r = live(x); return [[`use_${i}`, !!r], [`pct_${i}`, r ? r.share_bp / 100 : 25], [`payee_${i}`, r?.payee_user_id ?? payees[0]?.value]]; }));
   const save = async (v) => {
     const allocations = cands.flatMap((x, i) => (v[`use_${i}`] ? [{ beneficiary_type: x.type, beneficiary_id: x.id, share_bp: Math.round(v[`pct_${i}`] * 100), payee_user_id: v[`payee_${i}`] }] : []));
     const total = allocations.reduce((s, r) => s + r.share_bp, 0);
@@ -89,6 +90,21 @@ export function BeneficiaryFinder({ brands, onSent }) {
           await api.post('/sponsorships', { sponsor_id, target_type: offerTo.type, target_id: offerTo.id, starts_on, ends_on, message, lines: [{ kind: 'money', label: 'Support', currency, amount_cents, cadence: 'once', first_due_on }] });
           onSent?.(); toast('Offer sent'); return 'Offer sent — the organisation\'s representatives will be notified';
         }} />
+    </Section>
+  );
+}
+
+/** Organisation staff: offers and agreements aimed at this organisation or its groups, with a way into each. */
+export function IncomingSponsorship({ orgId }) {
+  const { push } = useNav();
+  const deals = useLoad(() => api.get('/sponsorships', { organisation_id: orgId, as: 'target', limit: 100 }), [orgId]);
+  return (
+    <Section title="Sponsorship offers & agreements" color={c.sun}>
+      {deals.loading && !deals.data ? <Loading /> : deals.error ? <LoadError error={deals.error} onRetry={deals.reload} />
+        : deals.data?.length ? deals.data.map((d) => (
+          <Row key={d.id} left={<Bubble emoji={d.sponsor_emoji ?? '💎'} color={c.sun} />} title={`${d.sponsor_name} → ${d.target_name}`} sub={`${d.target_type === 'group' ? 'Group' : 'Organisation'} · ${d.status}${d.agreement_ref ? ` · ${d.agreement_ref}` : ''}`}
+            right={<Btn small title={d.status === 'proposed' ? 'Review' : 'Open'} color={c.violet} onPress={() => push('SponsorDeal', { id: d.id })} />} />))
+          : <Empty emoji="💎" title="No sponsorship yet" sub="Turn on “Open to sponsors” in Edit details to let sponsors find this organisation and its groups." />}
     </Section>
   );
 }

@@ -140,6 +140,8 @@ test('organisation sponsorship grants no private member data and enforces tenant
   assert.equal((await alloc(o.owner.token, w.deal.id, 1, [])).status, 403);
   assert.equal(must(await api('GET', '/sponsorships', { token: o.owner.token, query: { as: 'target' } })).some((d) => d.id === w.deal.id), false);
   assert.equal(must(await api('GET', '/sponsorship-obligations', { token: o.owner.token })).obligations.some((x) => x.sponsorship_id === w.deal.id), false);
+  assert.ok(must(await api('GET', '/sponsorships', { token: w.admin.token, query: { as: 'target', organisation_id: w.org.id } })).some((d) => d.id === w.deal.id), 'org filter finds its deals');
+  assert.equal(must(await api('GET', '/sponsorships', { token: w.admin.token, query: { as: 'target', organisation_id: o.org.id } })).length, 0, 'filter cannot reach another tenant');
   const mine = must(await api('GET', '/sponsorships', { token: w.admin.token, query: { as: 'target' } }));
   assert.equal(mine.find((d) => d.id === w.deal.id).target_name, w.org.name);
   // a non-representative cannot accept; a stranger cannot decide
@@ -153,4 +155,19 @@ test('existing event/team/athlete sponsorships and legacy payments are untouched
   assert.equal(rows[0].n, 0);
   const col = (await pool.query("SELECT column_default FROM information_schema.columns WHERE table_name='organisations' AND column_name='open_to_sponsors'")).rows[0];
   assert.match(col.column_default, /false/);
+});
+
+test('allocations export is scoped to the organisation, role-gated and carries no member data', async () => {
+  const w = await world();
+  const o = await world();
+  must(await alloc(w.owner.token, w.deal.id, 1, [a('group', w.g1.id, 5000, w.fin)]));
+  const exp = (u, org) => api('GET', `/organisations/${org.id}/export`, { token: u.token, query: { section: 'sponsorship_allocations' } });
+  const mine = must(await exp(w.fin, w.org));
+  assert.equal(mine.rows, 1); assert.match(mine.csv, /U14 Girls/); assert.match(mine.csv, new RegExp(w.fin.display_name));
+  assert.ok(!mine.csv.includes(w.owner.email ?? '@example.com'));
+  assert.equal(must(await exp(o.owner, o.org)).rows, 0, 'another tenant sees none of it');
+  assert.equal((await exp(w.owner, o.org)).status, 404, 'cannot export another organisation');
+  const coach = await member(w.org, w.owner, 'coach');
+  assert.equal((await exp(coach, w.org)).status, 403);
+  assert.equal((await exp(w.sponsor, w.org)).status, 404);
 });
