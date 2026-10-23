@@ -11,6 +11,7 @@ import { EntityPicker } from '../entity-picker';
 import { SportSelect } from '../sportpicker';
 import { c } from '../theme';
 import { explain, LoadError } from '../access';
+import { RoundEvaluation, ApplicantEvaluation } from './sponsor-evaluation';
 import { fieldsOf, filled, fmtMoney } from '../application-forms';
 
 // Amounts are minor units of THEIR OWN currency; currencies are never added together.
@@ -148,6 +149,7 @@ export function SponsorProgram({ id }) {
         )) : <Empty emoji="🗓️" title="No rounds yet" sub="A round is a window in which applications are accepted." />}
         {may && p.recurrence && ['draft', 'published'].includes(p.status) ? <Btn small title="Schedule recurring rounds" color={c.paper} ink={c.ink} style={{ alignSelf: 'flex-start' }} onPress={() => setForm('schedule')} /> : null}
       </Section>
+      {roundId && p.rounds.find((r) => r.id === roundId) ? <RoundEvaluation round={p.rounds.find((r) => r.id === roundId)} program={p} may={may} onChanged={reloadAll} /> : null}
       <Section title="Invitations" color={c.violet} action={may && ['draft', 'published'].includes(p.status) ? '+ Invite' : undefined} onAction={() => setForm('invite')}>
         <T size={12} color={c.mute}>{p.visibility === 'invitation_only' ? 'This call is invitation only: it is never listed or searchable, and only the people below can open it and apply.' : 'Public call: anyone can find it. Invitations let you also nudge specific athletes, teams or events.'}</T>
         {invs.error ? <LoadError error={invs.error} onRetry={invs.reload} /> : invs.loading && !invs.data ? <Loading /> : invs.data?.length ? invs.data.map((v) => (
@@ -199,7 +201,7 @@ export function SponsorProgram({ id }) {
       <FormSheet visible={!!awarding} onClose={() => setForm(null)} title={`Award ${awarding?.display_name ?? ''}`} submitLabel="Award and send agreement"
         fields={[{ key: 'awarded_cents', label: `Amount (asked ${awarding ? fmt(awarding.requested_cents, awarding.currency) : ''})`, type: 'money', currency: p.currency }, { key: 'reason', label: 'Note to the applicant', type: 'multiline', optional: true }]}
         initial={awarding ? { awarded_cents: awarding.requested_cents } : {}}
-        onSubmit={async (v) => { await api.patch(`/program-applications/${awarding.id}`, { decision: 'award', program_version: p.row_version, awarded_cents: v.awarded_cents, reason: v.reason }); reloadAll(); return 'Awarded — the recipient now has an agreement to accept'; }} />
+        onSubmit={async (v) => { await api.patch(`/program-applications/${awarding.id}`, { decision: 'award', program_version: p.row_version, eval_version: awarding.eval_version, awarded_cents: v.awarded_cents, reason: v.reason }); reloadAll(); return 'Awarded — the recipient now has an agreement to accept'; }} />
       <ReviewSheet app={typeof form === 'object' && form?.view ? form.view : null} may={may} onClose={() => setForm(null)} onChanged={reloadAll} />
       <FormSheet visible={form === 'faq' || !!faqEdit} onClose={() => setForm(null)} title={faqEdit ? 'Edit FAQ' : 'New FAQ'} submitLabel={faqEdit ? 'Save' : 'Add FAQ'}
         fields={[{ key: 'question', label: 'Question' }, { key: 'answer', label: 'Answer', type: 'multiline' }, { key: 'position', label: 'Position in the list (0 = first)', type: 'stepper', min: 0, max: 100, default: 0 }]}
@@ -380,6 +382,7 @@ export function FundingOpportunities() {
             <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><View style={{ flex: 1 }}><T weight="900">{a.program_name} · {a.round_name}</T><T size={12} color={c.mute}>{a.sponsor_name} · for {a.target_name ?? a.target_type} · asked {fmt(a.requested_cents, a.currency)}{a.awarded_cents ? ` · awarded ${fmt(a.awarded_cents, a.currency)}` : ''}</T></View><Tag label={a.status} color={STATUS_TONE[a.status]} /></View>
             <T size={12} color={c.mute}>Made under round terms v{a.round_terms_version}, closing {deadline(a.terms_snapshot?.round?.closes_at ?? a.terms_snapshot?.round?.closes_on, a.terms_snapshot?.round?.timezone)}.</T>
             {a.decision_reason ? <T size={12}>Note: {a.decision_reason}</T> : null}
+            <ApplicantEvaluation application={a} onChanged={reload} />
             <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
               {a.form_id && ['draft', 'returned'].includes(a.status) ? <Btn small title={a.status === 'draft' ? 'Resume draft' : 'Fix and resend'} color={c.pink} onPress={() => push('ApplicationForm', { round_id: a.round_id, target_type: a.target_type, target_id: a.target_id })} /> : null}
               {a.form_id && !['draft', 'returned'].includes(a.status) ? <Btn small title="View receipt" color={c.violet} onPress={() => push('ApplicationForm', { round_id: a.round_id, target_type: a.target_type, target_id: a.target_id })} /> : null}

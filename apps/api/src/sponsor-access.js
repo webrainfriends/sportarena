@@ -22,6 +22,7 @@ export const SPONSOR_ACTIONS = {
   contacts: ['manager'],
   manage: ['manager'], // link the brand to an organisation
   program: ['manager', 'approver'], // run sponsorship programs and rounds, decide awards (#284)
+  evaluation: ['manager', 'approver', 'evaluator', 'auditor'], // read the confidential scoring of applications (#288)
 };
 // Sponsor-entity representative role (#282) -> sponsor role. A portfolio manager acts as manager, but only on brands in an assigned portfolio.
 const FROM_REP = { owner: 'manager', admin: 'manager', portfolio_manager: 'manager', finance: 'finance', viewer: 'viewer' };
