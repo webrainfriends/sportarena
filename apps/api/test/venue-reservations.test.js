@@ -627,7 +627,7 @@ test('month calendar: per-day availability, price-from, closed days, past and ou
   const all = must(await api('GET', `/venues/${v.id}/calendar`, { query: { month } }));
   assert.equal(day(all, dayPlus(5)).status, 'available', 'other courts are still free');
   must(await api('PATCH', `/venues/${v.id}`, { token: mgr.token, body: { max_advance_days: 7 } }));
-  assert.equal(day(must(await cal()), dayPlus(9)).status, 'too_far');
+  assert.equal(day(must(await cal({ month: dayPlus(9).slice(0, 7) })), dayPlus(9)).status, 'too_far'); // +9 days can fall in the next month
   assert.equal((await api('GET', `/venues/${v.id}/calendar`, { query: { month: '2026-13' } })).status, 400);
 });
 
