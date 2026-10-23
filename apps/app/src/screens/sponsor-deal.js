@@ -14,6 +14,7 @@ import { GoodsReturns, ServiceVouchers, remainingGoods } from './sponsor-fulfilm
 import { SponsorTermination } from './sponsor-termination';
 import { SponsorPause } from './sponsor-pause';
 import { SponsorRenewal, STATUS_LABEL } from './sponsor-renewal';
+import { SponsorTasks } from './sponsor-collaboration';
 import { SponsorAllocations, PayeeLine } from './sponsor-beneficiaries';
 import { c } from '../theme';
 import { explain, LoadError } from '../access';
@@ -56,6 +57,7 @@ export function SponsorDeal({ id }) {
       <SponsorNegotiation deal={{ ...d, reload: deal.reload }} can={can} act={act} />
       <SponsorPause deal={{ ...d, reload: deal.reload }} can={can} act={act} />
       <SponsorRenewal deal={{ ...d, reload: deal.reload }} act={act} />
+      {['sponsor', 'recipient', 'admin'].includes(d.role) && d.status !== 'withdrawn' && d.status !== 'declined' ? <SponsorTasks target={{ sponsorship_id: d.id }} ends_on={d.ends_on} /> : null}
       <Section title="Terms" color={c.sun}>
         {d.lines.map((l) => (
           <Card key={l.id}><T weight="900">{l.label}</T>
