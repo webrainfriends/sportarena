@@ -23,7 +23,7 @@ export function SponsorPerformance({ deal }) {
   const reload = () => { perf.reload(); reviews.reload(); };
   const act = async (fn, m) => { try { await fn(); toast(m); reload(); } catch (e) { toast(explain(e)); if (e.status === 409) reload(); } };
   const p = perf.data?.data, list = reviews.data?.data ?? [];
-  const live = ['active', 'ended'].includes(deal.status);
+  const live = ['active', 'ended', 'term_expired'].includes(deal.status);
   const shared = p?.access.enabled;
   return (
     <Section title="Performance & reviews" color={c.cyan}>

@@ -29,6 +29,7 @@ export function SponsorPause({ deal: d, can, act }) {
   const [preview, setPreview] = useState(false);
   if (!d.accepted_version || !['sponsor', 'recipient'].includes(d.role)) return null;
   const pauses = d.pauses ?? [];
+  if (!['active', 'paused'].includes(d.status) && !pauses.length) return null; // a finished agreement has nothing to pause
   const cur = pauses.find((p) => ['requested', 'scheduled', 'active'].includes(p.status));
   const past = pauses.filter((p) => p !== cur);
   const me = d.role, canAct = me === 'recipient' || can('pause');

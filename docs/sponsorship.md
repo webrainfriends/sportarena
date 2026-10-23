@@ -20,7 +20,7 @@ No individual-specific subsystem: athletes are just another `target_type` of the
   athlete asked for that.
 * One open offer per sponsor and athlete; after a decline the same sponsor can offer again after 30 days.
 * The athlete is notified (generic text); only they, or an admin, can accept or decline, with an optional reason.
-  The sponsor can `withdraw_sponsorship` while the offer is unanswered; either side can end an active deal.
+  The sponsor can `withdraw_sponsorship` while the offer is unanswered; either side can end an active deal (notice, effective date, returns, refunds and a final settlement: see [sponsorship-termination.md](sponsorship-termination.md)).
 * `decided_at`, `decided_by` and `decision_reason` are kept; statuses: `proposed`, `active`, `declined`, `ended`,
   `withdrawn`.
 

@@ -8,13 +8,14 @@ import { isAdmin } from '../helpers.js';
 import { notify } from '../notify.js';
 import { LINE, buildSchedule } from '../sponsor-schedule.js';
 import { snapshotIdentity } from '../sponsor-identity-access.js';
-import { saveLines, loadLines, generateObligations, logHistory, dealContext, obligationContext, recordVersion, settleMoney, settleGoods, goodsPosition, heldCents, releaseStaleCheckouts } from '../sponsor-agreements.js';
+import { saveLines, loadLines, generateObligations, logHistory, dealContext, obligationContext, recordVersion, settleMoney, settleGoods, completeIfSettled, goodsPosition, heldCents, releaseStaleCheckouts } from '../sponsor-agreements.js';
 import { enabledProviders, startCheckout } from '../payments/service.js';
 import { config } from '../config.js';
 import { beneficiaryScopeSql, payeeSnapshot } from '../sponsor-beneficiaries.js';
 import { notifySponsor, sponsorStaffSql, actionsFor } from '../sponsor-access.js';
 import { costOf } from '../sponsorship-budgets.js';
 import { currentPause } from '../sponsor-pause.js';
+import { renewalView } from '../sponsor-renewals.js';
 
 const date = z.string().date();
 const url = z.string().url().max(500).refine((u) => /^https:\/\//i.test(u), 'evidence must be an https link');
@@ -205,6 +206,7 @@ cap({
     if (ctx.role !== 'recipient' && d.budget_id) out.budget = await one('SELECT b.id, b.code, b.name, b.kind, b.currency, $2::text AS approval FROM sponsorship_budgets b WHERE b.id=$1', [d.budget_id, d.budget_approval]);
     out.negotiation = await negotiationFor(ctx);
     out.amendments = await amendmentsFor(ctx);
+    out.renewal = await renewalView(pool, d);
     if (d.accepted_version) out.pauses = await currentPause(pool, d.id); // both parties see the same agreed policy
     out.history = await many('SELECT h.id, h.version, h.action, h.reason, h.created_at, u.display_name AS actor FROM sponsorship_history h LEFT JOIN users u ON u.id=h.actor_id WHERE h.sponsorship_id=$1 ORDER BY h.id', [d.id]);
     return out;
@@ -218,7 +220,7 @@ async function obligationRows(where, params, tail = '') {
             (o.status = 'scheduled' AND o.due_on < current_date AND o.held_by_pause_id IS NULL) AS overdue, (o.held_by_pause_id IS NOT NULL) AS held, o.original_due_on::text AS original_due_on, l.label,
             coalesce((SELECT sum(amount_cents - refunded_cents) FROM sponsorship_payments p WHERE p.obligation_id=o.id AND p.status='confirmed'),0)::bigint AS confirmed_cents,
             coalesce((SELECT sum(amount_cents) FROM sponsorship_payments p WHERE p.obligation_id=o.id AND p.status='awaiting_payment'),0)::bigint AS checkout_in_progress_cents,
-            coalesce((SELECT sum(refunded_cents) FROM sponsorship_payments p WHERE p.obligation_id=o.id),0)::bigint AS refunded_cents,
+            coalesce((SELECT sum(refunded_cents) FROM sponsorship_payments p WHERE p.obligation_id=o.id),0)::bigint AS refunded_cents, o.conceded_cents,
             coalesce((SELECT sum(amount_cents) FROM sponsorship_payments p WHERE p.obligation_id=o.id AND p.status='reported'),0)::bigint AS reported_unverified_cents,
             coalesce((SELECT sum(CASE x.status WHEN 'received' THEN x.received_quantity WHEN 'dispatched' THEN 0 ELSE 0 END) FROM sponsorship_deliveries x WHERE x.obligation_id=o.id),0)::int AS received_quantity,
             coalesce((SELECT sum(x.quantity) FROM sponsorship_deliveries x WHERE x.obligation_id=o.id AND x.status='dispatched'),0)::int AS in_transit_quantity,
@@ -254,7 +256,7 @@ cap({
               coalesce(sum((SELECT sum(p.amount_cents) FROM sponsorship_payments p WHERE p.obligation_id=o.id AND p.status='reported')),0)::bigint AS reported_unverified_cents,
               coalesce(sum(o.amount_cents) FILTER (WHERE o.status='scheduled' AND o.due_on < current_date AND o.held_by_pause_id IS NULL),0)::bigint AS overdue_cents
          ${base} AND o.kind='money' GROUP BY o.currency ORDER BY o.currency`, params);
-    for (const t of totals) t.outstanding_cents = t.committed_cents - t.confirmed_cents;
+    for (const t of totals) t.outstanding_cents = t.committed_cents - t.confirmed_cents - t.conceded_cents; // a due conceded by an agreed termination refund is no longer owed (#298)
     return { obligations: rows, totals };
   },
 });
@@ -283,7 +285,7 @@ cap({
 export const open = (ctx, kind) => {
   if (ctx.o.kind !== kind) throw badRequest(`This obligation is ${ctx.o.kind}, not ${kind}`);
   if (ctx.o.status !== 'scheduled') throw conflict(`This obligation is already ${ctx.o.status}`);
-  if (!['active', 'paused', 'ended'].includes(ctx.d.status)) throw conflict('The agreement is not active');
+  if (!['active', 'paused', 'ended', 'term_expired'].includes(ctx.d.status)) throw conflict('The agreement is not active');
   if (ctx.o.held_by_pause_id) throw conflict('This due is on hold while the agreement is paused. It can be paid once the agreement resumes.', { code: 'held_by_pause' });
 };
 
@@ -385,12 +387,12 @@ cap({
     const params = [user.id, !!isAdmin(user), i.sponsorship_id ?? null, i.sponsor_id ?? null];
     const scope = `${SCOPE} AND ($3::uuid IS NULL OR ss.id=$3) AND ($4::uuid IS NULL OR ss.sponsor_id=$4)`;
     const from = 'FROM sponsorship_obligations o JOIN sponsorships ss ON ss.id=o.sponsorship_id JOIN sponsors sp ON sp.id=ss.sponsor_id';
-    const due = await many(`SELECT o.currency, coalesce(sum(o.amount_cents) FILTER (WHERE o.status <> 'cancelled'),0)::bigint AS committed_cents ${from} WHERE ${scope} AND o.kind='money' GROUP BY o.currency`, params);
+    const due = await many(`SELECT o.currency, coalesce(sum(o.amount_cents) FILTER (WHERE o.status <> 'cancelled'),0)::bigint AS committed_cents, coalesce(sum(o.conceded_cents) FILTER (WHERE o.status <> 'cancelled'),0)::bigint AS conceded_cents ${from} WHERE ${scope} AND o.kind='money' GROUP BY o.currency`, params);
     const pay = await many(
       `SELECT x.currency,
          coalesce(sum(x.amount_cents) FILTER (WHERE x.method='online' AND (x.status IN ('confirmed','reversed') OR x.refunded_cents > 0)),0)::bigint AS collected_online_cents,
          coalesce(sum(x.refunded_cents) FILTER (WHERE x.method='online'),0)::bigint AS refunded_cents,
-         coalesce(sum(x.amount_cents) FILTER (WHERE x.method<>'online' AND x.status='confirmed'),0)::bigint AS confirmed_manual_cents,
+         coalesce(sum(x.amount_cents - x.refunded_cents) FILTER (WHERE x.method<>'online' AND x.status='confirmed'),0)::bigint AS confirmed_manual_cents,
          coalesce(sum(x.amount_cents) FILTER (WHERE x.status='reported'),0)::bigint AS reported_unverified_cents,
          coalesce(sum(x.amount_cents) FILTER (WHERE x.status='awaiting_payment'),0)::bigint AS checkout_in_progress_cents
        FROM sponsorship_payments x JOIN sponsorship_obligations o ON o.id=x.obligation_id JOIN sponsorships ss ON ss.id=o.sponsorship_id JOIN sponsors sp ON sp.id=ss.sponsor_id WHERE ${scope} GROUP BY x.currency`, params);
@@ -404,7 +406,7 @@ cap({
       const committed = Number(d?.committed_cents ?? 0), online = Number(p?.collected_online_cents ?? 0), refunded = Number(p?.refunded_cents ?? 0), manual = Number(p?.confirmed_manual_cents ?? 0);
       const confirmed = online - refunded + manual;
       return { currency, committed_cents: committed, collected_online_cents: online, refunded_cents: refunded, confirmed_manual_cents: manual, confirmed_cents: confirmed,
-        reported_unverified_cents: Number(p?.reported_unverified_cents ?? 0), checkout_in_progress_cents: Number(p?.checkout_in_progress_cents ?? 0), outstanding_cents: committed - confirmed,
+        reported_unverified_cents: Number(p?.reported_unverified_cents ?? 0), checkout_in_progress_cents: Number(p?.checkout_in_progress_cents ?? 0), conceded_cents: Number(d?.conceded_cents ?? 0), outstanding_cents: committed - confirmed - Number(d?.conceded_cents ?? 0),
         ledger: { sale_cents: Number(l?.sale_cents ?? 0), refund_cents: Number(l?.refund_cents ?? 0), chargeback_cents: Number(l?.chargeback_cents ?? 0) },
         reconciles: Number(l?.sale_cents ?? 0) === online && Number(l?.refund_cents ?? 0) === refunded };
     });
@@ -483,6 +485,7 @@ cap({
       if (got > dl.quantity) throw badRequest(`Only ${dl.quantity} were dispatched`);
       const row = (await c.query('UPDATE sponsorship_deliveries SET status=$2, received_quantity=$3, decided_by=$4, decided_at=now(), decision_note=$5, receipt_evidence_url=$6, rejection_reason=$7, version=version+1 WHERE id=$1 RETURNING *', [dl.id, i.status, got, user.id, i.note ?? null, i.evidence_url ?? null, i.status === 'rejected' ? i.reason ?? 'other' : null])).rows[0];
       await settleGoods(c, ctx.o);
+      await completeIfSettled(c, ctx.d.id);
       await logHistory(c, ctx.d.id, ctx.o.version, user.id, `goods_${i.status}`, i.note);
       await ping(c, 'sponsor', `Sponsored goods were ${i.status}`, ctx, 'sponsorship_delivery', 'pay');
       return row;
@@ -533,6 +536,7 @@ cap({
       if (s.status !== 'submitted') throw conflict(`This submission is already ${s.status}`);
       const row = (await c.query('UPDATE sponsorship_submissions SET status=$2, reviewed_by=$3, reviewed_at=now(), review_note=$4 WHERE id=$1 RETURNING *', [s.id, i.status, user.id, i.note ?? null])).rows[0];
       if (i.status === 'accepted') await c.query("UPDATE sponsorship_obligations SET status='fulfilled', fulfilled_at=now() WHERE id=$1 AND status='scheduled'", [ctx.o.id]);
+      if (i.status === 'accepted') await completeIfSettled(c, ctx.d.id);
       await logHistory(c, ctx.d.id, ctx.o.version, user.id, `endorsement_${i.status}`, i.note);
       await ping(c, ctx.promoter === 'sponsor' ? 'sponsor' : ctx.recipientId, `An endorsement was ${i.status === 'accepted' ? 'accepted' : 'sent back for revision'}`, ctx, 'sponsorship_endorsement');
       return row;

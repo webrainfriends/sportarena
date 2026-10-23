@@ -20,7 +20,7 @@ const ping = (c, to, title, ctx, kind = 'sponsorship_performance') => {
   return to === 'sponsor' ? notifySponsor(c, ctx.sp, 'performance', msg, ctx.d.department_id) : notify(c, to, msg);
 };
 const other = (ctx) => (ctx.role === 'sponsor' ? ctx.recipientId : 'sponsor');
-const running = (ctx) => ['active', 'ended'].includes(ctx.d.status);
+const running = (ctx) => ['active', 'ended', 'term_expired'].includes(ctx.d.status);
 const athleteOnly = (ctx) => { if (ctx.d.target_type !== 'athlete') throw badRequest('Performance review is for agreements with an individual athlete; team and event results stay with their organisers'); };
 const VALID = `((p.provenance='approved_competition' AND p.status='approved') OR (p.provenance IN ('self_reported','imported') AND p.status='recorded'))`;
 

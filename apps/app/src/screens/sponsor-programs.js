@@ -322,6 +322,7 @@ function OwnerSheet({ visible, onClose, onPick }) {
 /** The application form, shared by the opportunities list and the call page. `apply` is { program, round } or null. */
 function ApplySheet({ apply, onClose, onDone }) {
   const { user } = useSession();
+  const { push } = useNav();
   const teams = useLoad(() => (apply ? api.get('/teams', { mine: true, limit: 50 }) : Promise.resolve([])), [!!apply]);
   const evs = useLoad(() => (apply ? api.get('/events', { organizer_id: user.id, limit: 50 }) : Promise.resolve([])), [!!apply]);
   const el = apply?.program.eligibility?.target_types ?? ['athlete', 'team', 'event'];
@@ -333,14 +334,15 @@ function ApplySheet({ apply, onClose, onDone }) {
     ...(el.includes('event') ? (evs.data ?? []).filter((e) => allowed('event', e.id)).map((e) => ({ value: `event:${e.id}`, label: `Event · ${e.name}` })) : []),
   ];
   return (
-    <FormSheet visible={!!apply} onClose={onClose} title={apply ? `Apply · ${apply.program.name}` : ''} submitLabel="Submit application"
+    <FormSheet visible={!!apply} onClose={onClose} title={apply ? `Apply · ${apply.program.name}` : ''} submitLabel={apply?.round.has_form ? 'Continue to the form' : 'Submit application'}
       fields={[{ key: 'sec', type: 'section', label: apply ? `${apply.round.name} · closes ${deadline(apply.round.closes_at ?? apply.round.closes_on, apply.round.timezone)}${apply.program.max_award_cents ? ` · up to ${fmt(apply.program.max_award_cents, apply.program.currency)}` : ''}` : '' },
         { key: 'target', label: 'Applying for', type: 'choice', options: targets.length ? targets : [{ value: '', label: 'Nothing you own is eligible' }] },
-        { key: 'requested_cents', label: 'Amount you are asking for', type: 'money', currency: apply?.program.currency },
-        { key: 'pitch', label: 'Why should this be funded?', type: 'multiline', optional: true }]}
+        ...(apply?.round.has_form ? [] : [{ key: 'requested_cents', label: 'Amount you are asking for', type: 'money', currency: apply?.program.currency },
+          { key: 'pitch', label: 'Why should this be funded?', type: 'multiline', optional: true }])]}
       onSubmit={async (v) => {
         const [target_type, target_id] = String(v.target ?? '').split(':');
         if (!target_id) throw new Error('Choose what you are applying for');
+        if (apply.round.has_form) { push('ApplicationForm', { round_id: apply.round.id, target_type, target_id }); return undefined; }
         await api.post(`/program-rounds/${apply.round.id}/applications`, { target_type, target_id, requested_cents: v.requested_cents, pitch: v.pitch });
         onDone(); return 'Application submitted — the terms you applied under are kept with it';
       }} />
@@ -395,9 +397,7 @@ export function FundingOpportunities() {
         {mine.error ? <LoadError error={mine.error} onRetry={mine.reload} /> : mine.loading && !mine.data ? <Loading /> : mine.data?.length ? mine.data.map((a) => (
           <Card key={a.id}>
             <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><View style={{ flex: 1 }}><T weight="900">{a.program_name} · {a.round_name}</T><T size={12} color={c.mute}>{a.sponsor_name} · for {a.target_name ?? a.target_type} · {a.requested_cents != null ? `asked ${fmt(a.requested_cents, a.currency)}` : 'no amount yet'}{a.awarded_cents ? ` · awarded ${fmt(a.awarded_cents, a.currency)}` : ''}</T></View><Tag label={a.status} color={STATUS_TONE[a.status]} /></View>
-            <T size={12} color={c.mute}>{a.receipt_no ? `Receipt ${a.receipt_no} · ` : ''}{a.form_version ? `form v${a.form_version} · ` : ''}Made under round terms v{a.round_terms_version}, closing {when(a.terms_snapshot?.round?.closes_on)}.</T>
-            <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><View style={{ flex: 1 }}><T weight="900">{a.program_name} · {a.round_name}</T><T size={12} color={c.mute}>{a.sponsor_name} · for {a.target_name ?? a.target_type} · asked {fmt(a.requested_cents, a.currency)}{a.awarded_cents ? ` · awarded ${fmt(a.awarded_cents, a.currency)}` : ''}</T></View><Tag label={a.status} color={STATUS_TONE[a.status]} /></View>
-            <T size={12} color={c.mute}>Made under round terms v{a.round_terms_version}, closing {deadline(a.terms_snapshot?.round?.closes_at ?? a.terms_snapshot?.round?.closes_on, a.terms_snapshot?.round?.timezone)}.</T>
+            <T size={12} color={c.mute}>{a.receipt_no ? `Receipt ${a.receipt_no} · ` : ''}{a.form_version ? `form v${a.form_version} · ` : ''}Made under round terms v{a.round_terms_version}, closing {deadline(a.terms_snapshot?.round?.closes_at ?? a.terms_snapshot?.round?.closes_on, a.terms_snapshot?.round?.timezone)}.</T>
             {a.decision_reason ? <T size={12}>Note: {a.decision_reason}</T> : null}
             <ApplicantEvaluation application={a} onChanged={reload} />
             <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
@@ -409,17 +409,6 @@ export function FundingOpportunities() {
           </Card>
         )) : <Empty emoji="✉️" title="No applications yet" />}
       </Section>
-      <FormSheet visible={!!apply} onClose={() => setApply(null)} title={apply ? `Apply · ${apply.program.name}` : ''} submitLabel={apply?.round.has_form ? 'Continue to the form' : 'Submit application'}
-        fields={[{ key: 'sec', type: 'section', label: apply ? `${apply.round.name} · closes ${when(apply.round.closes_on)}${apply.program.max_award_cents ? ` · up to ${fmt(apply.program.max_award_cents, apply.program.currency)}` : ''}` : '' },
-          { key: 'target', label: 'Applying for', type: 'choice', options: targets.length ? targets : [{ value: '', label: 'Nothing you own is eligible' }] },
-          ...(apply?.round.has_form ? [] : [{ key: 'requested_cents', label: 'Amount you are asking for', type: 'money', currency: apply?.program.currency },
-            { key: 'pitch', label: 'Why should this be funded?', type: 'multiline', optional: true }])]}
-        onSubmit={async (v) => {
-          const [target_type, target_id] = String(v.target ?? '').split(':');
-          if (!target_id) throw new Error('Choose what you are applying for');
-          if (apply.round.has_form) { push('ApplicationForm', { round_id: apply.round.id, target_type, target_id }); return undefined; }
-          await api.post(`/program-rounds/${apply.round.id}/applications`, { target_type, target_id, requested_cents: v.requested_cents, pitch: v.pitch }); reload(); return 'Application submitted — the terms you applied under are kept with it';
-        }} />
       <ApplySheet apply={apply} onClose={() => setApply(null)} onDone={reload} />
     </Screen>
   );
