@@ -13,6 +13,7 @@ import { SponsorContract } from './sponsor-contract';
 import { SponsorAmendments } from './sponsor-amendments';
 import { GoodsReturns, ServiceVouchers, remainingGoods } from './sponsor-fulfilment';
 import { SponsorTermination } from './sponsor-termination';
+import { SponsorDisputes } from './sponsor-disputes';
 import { SponsorPause } from './sponsor-pause';
 import { SponsorRenewal, STATUS_LABEL } from './sponsor-renewal';
 import { SponsorAllocations, PayeeLine } from './sponsor-beneficiaries';
@@ -55,6 +56,7 @@ export function SponsorDeal({ id }) {
       {!d.lines.length ? <Card><T>This agreement predates structured terms: {d.legacy_amount_cents ? `${d.legacy_amount_cents} (currency not recorded)` : 'no cash'}{d.legacy_in_kind ? ` · ${d.legacy_in_kind}` : ''}. No payment schedule exists for it.</T></Card> : null}
       <SponsorAmendments deal={{ ...d, reload: deal.reload }} can={can} act={act} />
       <SponsorTermination deal={{ ...d, reload: deal.reload, toast }} />
+      <SponsorDisputes deal={{ ...d, reload: deal.reload }} />
       <SponsorNegotiation deal={{ ...d, reload: deal.reload }} can={can} act={act} />
       <SponsorPause deal={{ ...d, reload: deal.reload }} can={can} act={act} />
       <SponsorRenewal deal={{ ...d, reload: deal.reload }} act={act} />

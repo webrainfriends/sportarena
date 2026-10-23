@@ -81,6 +81,7 @@ import './sponsorship-fulfilment.js';
 import './sponsorship-contracts.js';
 import './sponsorship-amendments.js';
 import './sponsorship-termination.js';
+import './sponsorship-disputes.js';
 import './sponsorship-pause.js';
 import './sponsorship-renewals.js';
 import './sponsorship-reports.js';
