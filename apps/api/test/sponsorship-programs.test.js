@@ -132,7 +132,13 @@ test('awards reference their program, round and application and become an ordina
   assert.deepEqual([row.program_id, row.round_id, row.application_id, row.amount_cents, row.currency, row.status], [p.id, r.id, a.id, 15000, 'USD', 'proposed']);
   assert.equal((await api('PATCH', `/program-applications/${a.id}`, { token: w.owner.token, body: { decision: 'award', program_version: p.row_version } })).status, 409, 'cannot be decided twice');
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM sponsorships WHERE application_id=$1', [a.id])).rows[0].n, 1);
-  must(await api('PATCH', `/sponsorships/${won.sponsorship_id}`, { token: x.a.token, body: { status: 'active' } }));
+  assert.equal(deal.lines.length, 1, 'the award is a structured money line');
+  assert.equal((await api('PATCH', `/sponsorships/${won.sponsorship_id}`, { token: x.a.token, body: { status: 'active' } })).status, 400, 'an exact version must be accepted');
+  must(await api('PATCH', `/sponsorships/${won.sponsorship_id}`, { token: x.a.token, body: { status: 'active', version: deal.terms_version } }));
+  const dues = must(await api('GET', '/sponsorship-obligations', { token: w.owner.token, query: { sponsorship_id: won.sponsorship_id } })).obligations;
+  assert.equal(dues.length, 1);
+  assert.equal(dues[0].amount_cents, 15000, 'a due for the awarded amount exists, so payment tracking applies');
+  assert.equal(dues[0].currency, 'USD');
   const csv = must(await api('GET', `/sponsorship-programs/${p.id}/awards-export`, { token: w.owner.token }));
   assert.equal(csv.rows, 1);
   assert.match(csv.csv, /15000,USD/);
@@ -211,7 +217,8 @@ test('tenant isolation: other brands and applicants cannot read, write, decide o
   assert.equal((await api('POST', `/program-applications/${a.id}/withdraw`, t(y.a))).status, 403);
   const opp = must(await api('GET', '/funding-opportunities', t(y.a)));
   assert.ok(!('budget_cents' in opp[0]), 'budget stays private');
-  assert.equal((await api('GET', '/funding-opportunities')).status, 401);
+  assert.equal((await api('GET', '/funding-opportunities')).status, 200, 'public calls are searchable signed out (#285)');
+  assert.ok(!('budget_cents' in (await api('GET', '/funding-opportunities')).body[0]));
 });
 
 test('delegated roles: manager/approver run programs, finance/auditor export, evaluator and legal only read nothing brand-wide they cannot', async () => {

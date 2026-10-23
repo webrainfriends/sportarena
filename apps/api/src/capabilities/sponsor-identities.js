@@ -1,6 +1,6 @@
 // Sponsor identities (#282): the legal/billing identity behind sponsor brands, the people authorised to act for it, and portfolios.
 // One sponsor entity (individual, company or organization) can own many brands; a person can run several entities, each with its own
-// roles. Access is decided in sponsor-access.js on every call. Private identity fields (legal name, registration, tax, billing) are
+// roles. Access is decided in sponsor-identity-access.js on every call. Private identity fields (legal name, registration, tax, billing) are
 // never returned by the public directory; encrypted ones are audit-logged when decrypted. Nothing here is deleted: people leave
 // (status), portfolios archive, and each agreement keeps its own frozen identity snapshot.
 import { z } from 'zod';
@@ -12,7 +12,7 @@ import { decryptFields, encryptFields } from '../crypto.js';
 import { notify } from '../notify.js';
 import { hasOrgGrant } from '../org-access.js';
 import { NOT_YOUTH_SQL } from '../youth.js';
-import { CAN, ROLES, entityRole, sponsorRole, createEntity, sponsorTeamSql } from '../sponsor-access.js';
+import { CAN, ROLES, entityRole, sponsorRole, createEntity, sponsorTeamSql } from '../sponsor-identity-access.js';
 
 const TAG = 'Sponsors';
 const PRIVATE = ['registration_number', 'tax_id', 'billing_email', 'billing_address'];

@@ -7,7 +7,7 @@ import { one, many } from '../db.js';
 import { badRequest, conflict, notFound } from '../errors.js';
 import { decrypt } from '../crypto.js';
 import { audit, isAdmin } from '../helpers.js';
-import { sponsorCanSql, CAN } from '../sponsor-access.js';
+import { sponsorCanSql, CAN } from '../sponsor-identity-access.js';
 import { notify } from '../notify.js';
 import { EVIDENCE_KINDS, RULES, TYPES } from '../verification.js';
 

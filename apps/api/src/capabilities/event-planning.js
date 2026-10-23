@@ -8,7 +8,7 @@ import { isAdmin, mustFind } from '../helpers.js';
 import { notify } from '../notify.js';
 import { NOT_YOUTH_SQL } from '../youth.js';
 import { eventForOrganizer } from './events.js';
-import { sponsorCanSql, CAN } from '../sponsor-access.js';
+import { sponsorCanSql, CAN } from '../sponsor-identity-access.js';
 import { REQUEST_KINDS, BUDGET_CATEGORIES, canAnswer, createRequest, announce, finalizeRequest, priceOf } from '../event-planning.js';
 
 const TAG = 'Event planning';
