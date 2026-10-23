@@ -122,6 +122,31 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
+      # A stopped instance cannot take SSH or EC2 Instance Connect, so the key step below fails with
+      # "EC2 Instance Connect is not supported on a stopped instance". Start it (and wait until it is healthy) first.
+      # Needs ec2:StartInstances on the same IAM user (plus ec2:DescribeInstances / DescribeInstanceStatus). Best effort: the
+      # key step still reports a clear error if the instance cannot be started.
+      - name: Start the instance if it is stopped
+        if: steps.ssh_test.outcome == 'failure' && env.HAS_AWS_KEYS == 'true'
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          read -r INSTANCE_ID STATE < <(aws ec2 describe-instances --filters "Name=ip-address,Values=${{ env.PUBLIC_IP }}" \
+            --query 'Reservations[].Instances[].[InstanceId,State.Name]' --output text | head -1) || true
+          [ -n "${INSTANCE_ID:-}" ] || { echo "No instance with public IP ${{ env.PUBLIC_IP }} found; nothing to start."; exit 0; }
+          echo "Instance $INSTANCE_ID is ${STATE:-unknown}"
+          if [ "$STATE" = "stopping" ]; then aws ec2 wait instance-stopped --instance-ids "$INSTANCE_ID"; STATE=stopped; fi
+          if [ "$STATE" = "stopped" ]; then
+            aws ec2 start-instances --instance-ids "$INSTANCE_ID" >/dev/null \
+              || { echo "::error::Could not start the instance. The AWS keys need ec2:StartInstances on $INSTANCE_ID."; exit 1; }
+            echo "Starting $INSTANCE_ID ..."
+          fi
+          if [ "$STATE" = "stopped" ] || [ "$STATE" = "pending" ]; then
+            aws ec2 wait instance-running --instance-ids "$INSTANCE_ID"
+            aws ec2 wait instance-status-ok --instance-ids "$INSTANCE_ID"
+            echo "Instance is running and passed its status checks."
+          fi
+
       - name: Authorize deploy key on the instance
         if: steps.ssh_test.outcome == 'failure' && env.HAS_AWS_KEYS == 'true'
         env:
