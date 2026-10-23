@@ -2,7 +2,7 @@
 
 One canonical case model for platform questions/incidents (`kind=support`) and transactional conflicts (`kind=dispute`).
 A case **references** existing records through `case_links` (reservation, booking, invoice, payment, shop order, coach hire,
-event, game, appointment, insurance policy, sponsorship); it never copies their data.
+event, game, appointment, insurance policy, sponsorship); it never copies their data. Either side of a sponsorship agreement (brand staff, or the recipient's representative) may reference it, so a termination dispute can be linked to a case (#298).
 
 | Table | Purpose |
 |---|---|

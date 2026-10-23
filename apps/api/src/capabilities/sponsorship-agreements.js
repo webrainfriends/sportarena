@@ -210,7 +210,7 @@ async function obligationRows(where, params, tail = '') {
             (o.status = 'scheduled' AND o.due_on < current_date) AS overdue, l.label,
             coalesce((SELECT sum(amount_cents - refunded_cents) FROM sponsorship_payments p WHERE p.obligation_id=o.id AND p.status='confirmed'),0)::bigint AS confirmed_cents,
             coalesce((SELECT sum(amount_cents) FROM sponsorship_payments p WHERE p.obligation_id=o.id AND p.status='awaiting_payment'),0)::bigint AS checkout_in_progress_cents,
-            coalesce((SELECT sum(refunded_cents) FROM sponsorship_payments p WHERE p.obligation_id=o.id),0)::bigint AS refunded_cents,
+            coalesce((SELECT sum(refunded_cents) FROM sponsorship_payments p WHERE p.obligation_id=o.id),0)::bigint AS refunded_cents, o.conceded_cents,
             coalesce((SELECT sum(amount_cents) FROM sponsorship_payments p WHERE p.obligation_id=o.id AND p.status='reported'),0)::bigint AS reported_unverified_cents,
             coalesce((SELECT sum(CASE x.status WHEN 'received' THEN x.received_quantity WHEN 'dispatched' THEN 0 ELSE 0 END) FROM sponsorship_deliveries x WHERE x.obligation_id=o.id),0)::int AS received_quantity,
             coalesce((SELECT sum(x.quantity) FROM sponsorship_deliveries x WHERE x.obligation_id=o.id AND x.status='dispatched'),0)::int AS in_transit_quantity,
@@ -239,9 +239,10 @@ cap({
       `SELECT o.currency, sum(o.amount_cents) FILTER (WHERE o.status <> 'cancelled')::bigint AS committed_cents,
               coalesce(sum((SELECT sum(p.amount_cents - p.refunded_cents) FROM sponsorship_payments p WHERE p.obligation_id=o.id AND p.status='confirmed')),0)::bigint AS confirmed_cents,
               coalesce(sum((SELECT sum(p.amount_cents) FROM sponsorship_payments p WHERE p.obligation_id=o.id AND p.status='reported')),0)::bigint AS reported_unverified_cents,
-              coalesce(sum(o.amount_cents) FILTER (WHERE o.status='scheduled' AND o.due_on < current_date),0)::bigint AS overdue_cents
+              coalesce(sum(o.amount_cents) FILTER (WHERE o.status='scheduled' AND o.due_on < current_date),0)::bigint AS overdue_cents,
+              coalesce(sum(o.conceded_cents) FILTER (WHERE o.status <> 'cancelled'),0)::bigint AS conceded_cents
          ${base} AND o.kind='money' GROUP BY o.currency ORDER BY o.currency`, params);
-    for (const t of totals) t.outstanding_cents = t.committed_cents - t.confirmed_cents;
+    for (const t of totals) t.outstanding_cents = t.committed_cents - t.confirmed_cents - t.conceded_cents; // a due conceded by an agreed termination refund is no longer owed (#298)
     return { obligations: rows, totals };
   },
 });
@@ -370,12 +371,12 @@ cap({
     const params = [user.id, !!isAdmin(user), i.sponsorship_id ?? null, i.sponsor_id ?? null];
     const scope = `${SCOPE} AND ($3::uuid IS NULL OR ss.id=$3) AND ($4::uuid IS NULL OR ss.sponsor_id=$4)`;
     const from = 'FROM sponsorship_obligations o JOIN sponsorships ss ON ss.id=o.sponsorship_id JOIN sponsors sp ON sp.id=ss.sponsor_id';
-    const due = await many(`SELECT o.currency, coalesce(sum(o.amount_cents) FILTER (WHERE o.status <> 'cancelled'),0)::bigint AS committed_cents ${from} WHERE ${scope} AND o.kind='money' GROUP BY o.currency`, params);
+    const due = await many(`SELECT o.currency, coalesce(sum(o.amount_cents) FILTER (WHERE o.status <> 'cancelled'),0)::bigint AS committed_cents, coalesce(sum(o.conceded_cents) FILTER (WHERE o.status <> 'cancelled'),0)::bigint AS conceded_cents ${from} WHERE ${scope} AND o.kind='money' GROUP BY o.currency`, params);
     const pay = await many(
       `SELECT x.currency,
          coalesce(sum(x.amount_cents) FILTER (WHERE x.method='online' AND (x.status IN ('confirmed','reversed') OR x.refunded_cents > 0)),0)::bigint AS collected_online_cents,
          coalesce(sum(x.refunded_cents) FILTER (WHERE x.method='online'),0)::bigint AS refunded_cents,
-         coalesce(sum(x.amount_cents) FILTER (WHERE x.method<>'online' AND x.status='confirmed'),0)::bigint AS confirmed_manual_cents,
+         coalesce(sum(x.amount_cents - x.refunded_cents) FILTER (WHERE x.method<>'online' AND x.status='confirmed'),0)::bigint AS confirmed_manual_cents,
          coalesce(sum(x.amount_cents) FILTER (WHERE x.status='reported'),0)::bigint AS reported_unverified_cents,
          coalesce(sum(x.amount_cents) FILTER (WHERE x.status='awaiting_payment'),0)::bigint AS checkout_in_progress_cents
        FROM sponsorship_payments x JOIN sponsorship_obligations o ON o.id=x.obligation_id JOIN sponsorships ss ON ss.id=o.sponsorship_id JOIN sponsors sp ON sp.id=ss.sponsor_id WHERE ${scope} GROUP BY x.currency`, params);
@@ -389,7 +390,7 @@ cap({
       const committed = Number(d?.committed_cents ?? 0), online = Number(p?.collected_online_cents ?? 0), refunded = Number(p?.refunded_cents ?? 0), manual = Number(p?.confirmed_manual_cents ?? 0);
       const confirmed = online - refunded + manual;
       return { currency, committed_cents: committed, collected_online_cents: online, refunded_cents: refunded, confirmed_manual_cents: manual, confirmed_cents: confirmed,
-        reported_unverified_cents: Number(p?.reported_unverified_cents ?? 0), checkout_in_progress_cents: Number(p?.checkout_in_progress_cents ?? 0), outstanding_cents: committed - confirmed,
+        reported_unverified_cents: Number(p?.reported_unverified_cents ?? 0), checkout_in_progress_cents: Number(p?.checkout_in_progress_cents ?? 0), conceded_cents: Number(d?.conceded_cents ?? 0), outstanding_cents: committed - confirmed - Number(d?.conceded_cents ?? 0),
         ledger: { sale_cents: Number(l?.sale_cents ?? 0), refund_cents: Number(l?.refund_cents ?? 0), chargeback_cents: Number(l?.chargeback_cents ?? 0) },
         reconciles: Number(l?.sale_cents ?? 0) === online && Number(l?.refund_cents ?? 0) === refunded };
     });

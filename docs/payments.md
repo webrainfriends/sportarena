@@ -14,6 +14,7 @@ Stripe or PayPal, pays there, and comes back. Card details never reach Gotmygame
 4. Settling checks amount + currency against the record; a mismatch fails the payment and fulfils nothing.
 5. Cancelling a paid order / hire **refunds at the provider first**; if the provider refuses, nothing is cancelled.
    If something is cancelled while the payment is in flight, the late payment is refunded automatically.
+6. A sponsorship refund agreed in a termination (#298) is refunded here only for online money, with an idempotent key, after the recipient approves; bank or cash refunds are recorded when the sponsor confirms the money is back.
 
 With no keys configured nothing changes: orders/hires/policies are created as before and the app says online payment is off.
 

@@ -11,7 +11,8 @@ import { PUBLIC_USER } from '../helpers.js';
 import { NOT_YOUTH_SQL } from '../youth.js';
 import { LINE, buildSchedule } from '../sponsor-schedule.js';
 import { entityRole, snapshotIdentity, ASSIGNED, CAN } from '../sponsor-identity-access.js';
-import { saveLines, loadLines, generateObligations, cancelFutureObligations, logHistory } from '../sponsor-agreements.js';
+import { saveLines, loadLines, generateObligations, logHistory } from '../sponsor-agreements.js';
+import { endNow } from '../sponsor-termination.js';
 import { sponsorAccess, assertSponsorCan, notifySponsor, sponsorStaffSql } from '../sponsor-access.js';
 import { assertDealFitsBudget, assertFits, convert, costOf, storedRate } from '../sponsorship-budgets.js';
 import { ORG_TARGETS, beneficiaryScopeSql, beneficiaryAccess, primaryContact, targetOrgId } from '../sponsor-beneficiaries.js';
@@ -376,6 +377,8 @@ cap({
         }
       }
       const visibility = i.status === 'active' && d.target_type === 'athlete' && i.show_publicly !== undefined ? (i.show_publicly ? 'public' : 'private') : d.visibility;
+      // Ending is recorded as a termination applied now (same safe debt handling: only untouched future dues stop); the notice workflow is in sponsorship-termination.js (#298)
+      if (i.status === 'ended') await endNow(c, { d, sp }, user, isSponsor && !isTarget ? 'sponsor' : 'recipient', { reason: i.reason });
       const row = (await c.query('UPDATE sponsorships SET status=$2, decision_reason=coalesce($3, decision_reason), decided_at=now(), decided_by=$4, visibility=$5 WHERE id=$1 RETURNING *', [i.id, i.status, i.reason ?? null, user.id, visibility])).rows[0];
       if (i.status === 'active') await c.query('UPDATE sponsorship_versions SET signed_off_by=$3, signed_off_at=now() WHERE sponsorship_id=$1 AND version=$2', [d.id, d.terms_version, user.id]);
       if (i.status === 'active' && signsOff) await snapshotIdentity(c, d.id, d.terms_version, sp.id, user.id); // the brand is frozen as it was when it signed
@@ -383,8 +386,7 @@ cap({
         await c.query('UPDATE sponsorships SET accepted_version=terms_version WHERE id=$1', [d.id]);
         await generateObligations(c, d.id);
       }
-      if (i.status === 'ended') await cancelFutureObligations(c, d.id);
-      await logHistory(c, d.id, d.terms_version, user.id, { active: signsOff ? 'signed_off' : 'accepted', declined: 'declined', ended: 'ended' }[i.status], i.reason);
+      if (i.status !== 'ended') await logHistory(c, d.id, d.terms_version, user.id, { active: signsOff ? 'signed_off' : 'accepted', declined: 'declined' }[i.status], i.reason);
       const word = { active: 'accepted', declined: 'declined', ended: 'ended' }[i.status];
       const update = { kind: 'sponsorship_update', title: `Sponsorship ${word}`, body: i.status === 'declined' && i.reason ? i.reason : `A sponsorship with ${sp.name} was ${word}.`, data: { sponsorship_id: d.id } };
       if (isSponsor && !isTarget || signsOff) await notify(c, owner, update);
