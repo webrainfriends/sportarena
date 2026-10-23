@@ -910,35 +910,52 @@ export function CoachProgrammes({ athlete_id, team_id, name }) {
   );
 }
 
-// Rubrics: the coach's own scales, limited to the sport and positions they make sense for.
+// Rubrics: the coach's own scales. The standard ones for the sports they coach arrive on their own; each can be edited
+// (dimensions added or removed, sports and positions changed) or archived, and one rubric can serve several sports.
 export function CoachRubrics() {
   const { toast } = useSession();
   const list = useLoad(() => api.get('/coaching/rubrics'), []);
   const positions = useLoad(() => api.get('/coaching/positions'), []);
-  const [creating, setCreating] = useState(false);
+  const sports = useLoad(() => api.get('/sports'), []);
+  const [form, setForm] = useState(null);   // null | 'new' | a rubric being edited
+  const edit = form && form !== 'new' ? form : null;
+  const slugOf = (sid) => sports.data?.find((x) => x.id === sid)?.slug;
+  const sportNames = (r) => (r.sport_ids?.length ? r.sport_ids.map((sid) => sports.data?.find((x) => x.id === sid)?.name).filter(Boolean).join(', ') : 'all sports');
   const dimFields = (k) => [
-    { key: `n${k}`, label: `Dimension ${k}${k === 1 ? '' : ' (optional)'}`, optional: k > 1, placeholder: k === 1 ? 'e.g. First touch' : undefined },
+    { key: `n${k}`, label: `New dimension ${k}`, optional: true, placeholder: k === 1 ? 'e.g. First touch' : undefined },
     { key: `max${k}`, label: 'Scale 1 to …', type: 'stepper', min: 3, max: 10, step: 1, default: 5, show: (v) => !!v[`n${k}`] },
     { key: `dir${k}`, label: 'Better when', type: 'chips', options: [{ value: 'higher_is_better', label: 'Higher' }, { value: 'lower_is_better', label: 'Lower' }, { value: 'target_range', label: 'On target' }], default: 'higher_is_better', show: (v) => !!v[`n${k}`] },
   ];
+  const fields = [
+    { key: 'name', label: 'Rubric name' },
+    { key: 'sports', label: 'Sports this rubric is for (leave empty for every sport)', type: 'sports', optional: true },
+    ...(positions.data?.length ? [{ key: 'positions', label: 'Only for these positions (leave empty for all)', type: 'multi', optional: true, options: positions.data.map((p) => ({ value: p, label: p })) }] : []),
+    ...(edit ? [{ key: 'keep', label: 'Dimensions (tap to remove one)', type: 'multi', options: edit.dimensions.map((d) => ({ value: d.key, label: `${d.name} 1–${d.scale_max}` })) }] : []),
+    ...[1, 2, 3].flatMap(dimFields),
+    ...(edit ? [{ key: 'archive', label: 'Archive this rubric (existing scores are kept)', type: 'switch', default: false }] : []),
+  ];
+  const initial = edit
+    ? { name: edit.name, sports: (edit.sport_ids ?? []).map(slugOf).filter(Boolean), positions: edit.positions ?? [], keep: edit.dimensions.map((d) => d.key) }
+    : {};
+  const save = async (v) => {
+    if (edit && v.archive) { await api.del(`/coaching/rubrics/${edit.id}`); toast('Rubric archived; existing scores are kept'); list.reload(); return; }
+    const kept = edit ? edit.dimensions.filter((d) => v.keep?.includes(d.key)) : [];
+    const added = [1, 2, 3].filter((k) => v[`n${k}`]).map((k) => ({ key: v[`n${k}`].toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 40) || `d${k}`, name: v[`n${k}`], scale_min: 1, scale_max: v[`max${k}`] ?? 5, direction: v[`dir${k}`] ?? 'higher_is_better' }));
+    const dimensions = [...kept, ...added.filter((d) => !kept.some((x) => x.key === d.key))];
+    if (!dimensions.length) throw new Error('A rubric needs at least one dimension');
+    await api.post('/coaching/rubrics', { rubric_id: edit?.id, name: v.name, sports: v.sports ?? [], positions: v.positions ?? [], dimensions });
+    toast(edit ? 'Rubric saved' : 'Rubric created'); list.reload();
+  };
   return (
     <Screen onRefresh={list.reload}>
       <H1>Rubrics</H1>
-      <T size={13} color={c.mute}>Your own rating scales. Each score keeps the version it was given under, and scores on different scales are never mixed or turned into official statistics.</T>
-      <View style={{ marginTop: 10 }}><Btn small title="New rubric" onPress={() => setCreating(true)} /></View>
-      {list.loading && !list.data ? <Loading /> : list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : !list.data.length ? <Empty emoji="📏" title="No rubrics yet" sub="Create one, then score players from the note sheet during a session." /> :
-        list.data.map((r) => <Row key={r.id} title={r.name} sub={`v${r.version} · ${r.dimensions.map((d) => `${d.name} 1–${d.scale_max}`).join(', ')}${r.positions.length ? ` · ${r.positions.join(', ')}` : ' · all positions'}`} />)}
-      <FormSheet visible={creating} onClose={() => setCreating(false)} title="New rubric" submitLabel="Create"
-        fields={[
-          { key: 'name', label: 'Rubric name' },
-          ...(positions.data?.length ? [{ key: 'positions', label: 'Only for these positions (leave empty for all)', type: 'multi', optional: true, options: positions.data.map((p) => ({ value: p, label: p })) }] : []),
-          ...[1, 2, 3].flatMap(dimFields),
-        ]}
-        onSubmit={async (v) => {
-          const dimensions = [1, 2, 3].filter((k) => v[`n${k}`]).map((k) => ({ key: v[`n${k}`].toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 40) || `d${k}`, name: v[`n${k}`], scale_min: 1, scale_max: v[`max${k}`] ?? 5, direction: v[`dir${k}`] ?? 'higher_is_better' }));
-          await api.post('/coaching/rubrics', { name: v.name, positions: v.positions?.length ? v.positions : undefined, dimensions });
-          setCreating(false); toast('Rubric created'); list.reload();
-        }} />
+      <T size={13} color={c.mute}>Your own rating scales. The standard ones for the sports you coach (FIFA, ICC, Olympic …) are added for you — change, add to or archive them. One rubric can cover several sports, and a sport can have several rubrics. Each score keeps the version it was given under, and scores on different scales are never mixed or turned into official statistics.</T>
+      <View style={{ marginTop: 10 }}><Btn small title="New rubric" onPress={() => setForm('new')} /></View>
+      {list.loading && !list.data ? <Loading /> : list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : !list.data.length ? <Empty emoji="📏" title="No rubrics yet" sub="Standard rubrics appear once you coach a sport (join or create a team, or add a coach sport profile). Or create your own, then score players from the note sheet during a session." /> :
+        list.data.map((r) => (
+          <Row key={r.id} title={r.name} onPress={() => setForm(r)}
+            sub={`${r.standard_source ? `${r.standard_source} standard · ` : ''}v${r.version} · ${sportNames(r)} · ${r.dimensions.map((d) => `${d.name} 1–${d.scale_max}`).join(', ')}${r.positions.length ? ` · ${r.positions.join(', ')}` : ' · all positions'}`} />))}
+      <FormSheet visible={!!form} onClose={() => setForm(null)} title={edit ? 'Edit rubric' : 'New rubric'} submitLabel={edit ? 'Save' : 'Create'} fields={fields} initial={initial} onSubmit={save} />
     </Screen>
   );
 }

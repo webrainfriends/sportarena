@@ -9,6 +9,7 @@ import { requireTeam } from './coaching-journal.js';
 import { notifyActionAssigned, notifyActionDone } from '../coaching-notify.js';
 import { PLAYED, teamEvents, evaluateObjectives } from '../coaching-match-data.js';
 import { sharedGoals, sharedActions } from '../coaching-shared.js';
+import { provisionStandardRubrics } from '../standard-rubrics.js';
 
 // Coaching goals, evidence, rubrics, measurements, actions, metrics and match context (issue #269, slice 2).
 // Goal achievement is only ever a coach's decision; evidence is referenced, never copied; official match data is read, never written.
@@ -170,38 +171,63 @@ const dimension = z.object({
   unit: text(20).optional().describe('the unit when the scale is a measurement rather than a rating'),
 }).refine((d) => d.scale_max > d.scale_min, 'scale_max must be above scale_min');
 
+/** Slugs or ids -> sport ids (unknown sports are a 400, never silently dropped). */
+async function sportIds(list) {
+  const out = [];
+  for (const v of list ?? []) { const s = await sportBySlugOrId(v); if (!s) throw badRequest(`Unknown sport: ${v}`); if (!out.includes(s.id)) out.push(s.id); }
+  return out;
+}
+
 cap({
   name: 'save_coaching_rubric', method: 'POST', path: '/coaching/rubrics', tag: TAG, auth: COACH, status: 201,
-  summary: 'Create a rubric, or send rubric_id to save a new version of it. Each score keeps the version it was given under, so history is never rewritten; scores on different scales are never mixed.',
-  input: z.object({ rubric_id: id.optional(), name: text(80).min(2).optional(), sport: z.string().optional(), positions: z.array(text(60)).max(20).optional().describe('only for athletes in these positions; leave out for every position'), dimensions: z.array(dimension).min(1).max(20) }),
+  summary: 'Create a rubric, or send rubric_id to save a new version of it (add, change or remove dimensions, rename it, change its sports). One rubric can serve several sports; leave sports out for every sport. Each score keeps the version it was given under, so history is never rewritten; scores on different scales are never mixed.',
+  input: z.object({
+    rubric_id: id.optional(), name: text(80).min(2).optional(), sport: z.string().optional().describe('one sport; prefer sports'),
+    sports: z.array(z.string()).max(40).optional().describe('the sports this rubric is for (slugs or ids); on an existing rubric this replaces its sports, [] means every sport'),
+    positions: z.array(text(60)).max(20).optional().describe('only for athletes in these positions; leave out for every position'), dimensions: z.array(dimension).min(1).max(20),
+  }),
   async handler({ user }, i) {
     if (new Set(i.dimensions.map((d) => d.key)).size !== i.dimensions.length) throw badRequest('Dimension keys must be unique');
+    const wanted = i.sports ?? (i.sport ? [i.sport] : undefined);
+    const ids = wanted ? await sportIds(wanted) : undefined;
     return tx(async (c) => {
       let rubric;
       if (i.rubric_id) {
         rubric = (await c.query('SELECT * FROM coaching_rubrics WHERE id=$1 AND coach_id=$2 FOR UPDATE', [i.rubric_id, user.id])).rows[0];
         if (!rubric) throw notFound('Rubric');
+        if (i.name) await c.query('UPDATE coaching_rubrics SET name=$2 WHERE id=$1', [rubric.id, i.name]);
       } else {
         if (!i.name) throw badRequest('name is required');
-        const sport = i.sport ? await sportBySlugOrId(i.sport) : null;
-        rubric = (await c.query('INSERT INTO coaching_rubrics(coach_id, sport_id, name, positions) VALUES ($1,$2,$3,$4) RETURNING *', [user.id, sport?.id ?? null, i.name, i.positions ?? []])).rows[0];
+        rubric = (await c.query('INSERT INTO coaching_rubrics(coach_id, sport_id, name, positions) VALUES ($1,$2,$3,$4) RETURNING *', [user.id, ids?.[0] ?? null, i.name, i.positions ?? []])).rows[0];
       }
       if (i.rubric_id && i.positions) await c.query('UPDATE coaching_rubrics SET positions=$2 WHERE id=$1', [rubric.id, i.positions]);
+      if (ids) {
+        // soft: sports taken off keep their row (removed_at); sports put back are revived
+        await c.query('UPDATE coaching_rubric_sports SET removed_at=now() WHERE rubric_id=$1 AND removed_at IS NULL AND NOT (sport_id = ANY($2::uuid[]))', [rubric.id, ids]);
+        if (ids.length) await c.query('INSERT INTO coaching_rubric_sports(rubric_id, sport_id) SELECT $1, unnest($2::uuid[]) ON CONFLICT (rubric_id, sport_id) DO UPDATE SET removed_at=NULL', [rubric.id, ids]);
+        await c.query('UPDATE coaching_rubrics SET sport_id=$2 WHERE id=$1', [rubric.id, ids[0] ?? null]);
+      }
       const version = (await c.query('SELECT coalesce(max(version),0)+1 AS v FROM coaching_rubric_versions WHERE rubric_id=$1', [rubric.id])).rows[0].v;
       await c.query('INSERT INTO coaching_rubric_versions(rubric_id, version, dimensions) VALUES ($1,$2,$3)', [rubric.id, version, JSON.stringify(i.dimensions)]);
-      return { ...rubric, version, dimensions: i.dimensions };
+      return { ...rubric, version, dimensions: i.dimensions, sport_ids: ids ?? (await c.query('SELECT sport_id FROM coaching_rubric_sports WHERE rubric_id=$1 AND removed_at IS NULL', [rubric.id])).rows.map((r) => r.sport_id) };
     });
   },
 });
 
 cap({
   name: 'list_coaching_rubrics', method: 'GET', path: '/coaching/rubrics', tag: TAG, auth: COACH,
-  summary: 'Your active rubrics with their latest version.', input: z.object({ sport: z.string().optional(), position: text(60).optional().describe('keep only rubrics that apply to this position'), ...page }),
+  summary: 'Your active rubrics with their latest version and sports. The standard rubrics (FIFA, ICC, FIBA, Olympic …) for the sports you coach are added automatically the first time; edit or archive them like your own. A rubric with no sports is for every sport.',
+  input: z.object({ sport: z.string().optional(), position: text(60).optional().describe('keep only rubrics that apply to this position'), ...page }),
   async handler({ user }, i) {
+    await provisionStandardRubrics(user.id);
     const sport = i.sport ? await sportBySlugOrId(i.sport) : null;
     return many(
-      `SELECT r.id, r.name, r.sport_id, r.positions, v.version, v.dimensions FROM coaching_rubrics r JOIN LATERAL (SELECT * FROM coaching_rubric_versions x WHERE x.rubric_id=r.id ORDER BY version DESC LIMIT 1) v ON true
-        WHERE r.coach_id=$1 AND r.archived_at IS NULL AND ($4::uuid IS NULL OR r.sport_id IS NULL OR r.sport_id=$4) AND ($5::text IS NULL OR cardinality(r.positions)=0 OR $5 = ANY(r.positions)) ORDER BY r.name, r.id LIMIT $2 OFFSET $3`, [user.id, i.limit, i.offset, sport?.id ?? null, i.position ?? null]);
+      `SELECT r.id, r.name, r.sport_id, r.positions, r.standard_key, r.standard_source, v.version, v.dimensions,
+              coalesce((SELECT array_agg(l.sport_id ORDER BY l.created_at) FROM coaching_rubric_sports l WHERE l.rubric_id=r.id AND l.removed_at IS NULL), '{}') AS sport_ids
+         FROM coaching_rubrics r JOIN LATERAL (SELECT * FROM coaching_rubric_versions x WHERE x.rubric_id=r.id ORDER BY version DESC LIMIT 1) v ON true
+        WHERE r.coach_id=$1 AND r.archived_at IS NULL
+          AND ($4::uuid IS NULL OR NOT EXISTS (SELECT 1 FROM coaching_rubric_sports l WHERE l.rubric_id=r.id AND l.removed_at IS NULL) OR EXISTS (SELECT 1 FROM coaching_rubric_sports l WHERE l.rubric_id=r.id AND l.removed_at IS NULL AND l.sport_id=$4))
+          AND ($5::text IS NULL OR cardinality(r.positions)=0 OR $5 = ANY(r.positions)) ORDER BY r.standard_key IS NOT NULL, r.name, r.id LIMIT $2 OFFSET $3`, [user.id, i.limit, i.offset, sport?.id ?? null, i.position ?? null]);
   },
 });
 
