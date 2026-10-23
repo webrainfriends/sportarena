@@ -47,6 +47,6 @@ Only invoices are connected; other families are listed as coming soon (e.g. doct
 * Characters the built-in fonts cannot show (e.g. Tamil) are **refused with 422**, never garbled. Set `DOC_FONT_REGULAR` (and optionally `DOC_FONT_BOLD`) to a TTF such as Noto Sans Tamil to enable them.
 
 ## Deferred (tracked in #249, not in this PR)
-Contextual "Download branded PDF" buttons on invoice screens · other families (plans, schedules, bookings, contracts, clinical) as their canonical sources land (#210/#212/#145/#231) ·
+Contextual "Download branded PDF" buttons on invoice screens · other families (plans, schedules, bookings, clinical; sponsorship contracts are connected, see sponsorship-contracts.md) as their canonical sources land (#210/#212/#145/#231) ·
 durable-job/bulk/archive rendering and quotas · S3 storage (#247) · share links and email (#243) · stale-source detection for issue flows · defaults per branch/locale ·
 metadata stripping of uploaded images (needs re-encoding) · bundled Tamil font fixtures and RTL evaluation · co-brand logos, stamps and signatures.

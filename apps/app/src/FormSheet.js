@@ -100,6 +100,7 @@ export function FormSheet({ visible, onClose, title, fields, initial = {}, submi
       else if (f.type === 'choice' || f.type === 'chips') o[f.key] = x ?? f.default ?? (f.optional || typeof f.options === 'function' ? undefined : opt(f.options[0]).value);
       else if (x !== undefined) o[f.key] = x;
       if (f.type === 'location' && initial[f.lngKey] !== undefined) o[f.lngKey] = initial[f.lngKey];
+      if (f.type === 'daterange' && initial[f.toKey] !== undefined) o[f.toKey] = initial[f.toKey]; // the end of a range is its own value, not a field
     }
     return o;
   };

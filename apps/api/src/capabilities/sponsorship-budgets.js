@@ -154,7 +154,7 @@ async function commitments(c, b, { limit, offset }) {
               coalesce(sum((SELECT sum(x.amount_cents) FROM sponsorship_payments x WHERE x.obligation_id=o.id AND x.status='reversed')),0)::bigint,
               ss.created_at, CASE ss.target_type WHEN 'athlete' THEN (SELECT handle FROM users WHERE id=ss.target_id) WHEN 'team' THEN (SELECT name FROM teams WHERE id=ss.target_id) ELSE (SELECT name FROM events WHERE id=ss.target_id) END,
               (SELECT name FROM sponsorship_programs WHERE id=ss.program_id), NULL::text
-         FROM sponsorships ss JOIN sponsorship_obligations o ON o.sponsorship_id=ss.id AND o.version=ss.accepted_version AND o.kind='money' LEFT JOIN sponsorship_budget_fx_rates fx ON fx.id=ss.budget_fx_rate_id
+         FROM sponsorships ss JOIN sponsorship_obligations o ON o.sponsorship_id=ss.id AND o.kind='money' LEFT JOIN sponsorship_budget_fx_rates fx ON fx.id=ss.budget_fx_rate_id
         WHERE ss.budget_id=$1 GROUP BY ss.id, o.currency, fx.id
        UNION ALL
        SELECT 'planned', ss.id, ss.agreement_ref, ss.status, coalesce(ss.currency, b.currency), ss.amount_cents, fx.rate, 0, 0, ss.created_at,

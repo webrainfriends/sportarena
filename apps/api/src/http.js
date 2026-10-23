@@ -11,6 +11,7 @@ import { buildOpenApi } from './openapi.js';
 import { createMcpServer } from './mcp.js';
 import { pool } from './db.js';
 import { webhookRouter } from './payments/webhooks.js';
+import { signatureCallbackRouter } from './capabilities/sponsorship-contracts.js';
 import { mediaRouter } from './media.js';
 import { marketMediaRouter } from './market-media.js';
 import { matchFileRouter } from './capabilities/player.js';
@@ -61,6 +62,7 @@ export function createApp() {
   }));
   app.use(cookieAuth);
   app.use('/api/v1/webhooks', webhookRouter());
+  app.use('/api/v1/webhooks/signatures', signatureCallbackRouter());
   // Media: streaming upload + file serving (binary, so outside the JSON capability router); base64 uploads get a larger JSON limit on their own path.
   app.use('/api/v1/venues/:id/media', express.json({ limit: '12mb' }));
   app.use('/api/v1', mediaRouter());
