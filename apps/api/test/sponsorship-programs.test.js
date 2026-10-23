@@ -117,7 +117,7 @@ test('round changes do not rewrite submitted terms; the new terms apply to later
   assert.equal(p2.row_version, p.row_version + 1);
 });
 
-test('awards reference their program, round and application and become an ordinary proposed sponsorship', async () => {
+test('awards reference their program, round and application; accepting the exact offer creates the one agreement', async () => {
   const { w, p, r } = await live();
   const x = await applicant();
   const a = must(await apply(x.a.token, r, x.target), 201);
@@ -125,17 +125,18 @@ test('awards reference their program, round and application and become an ordina
   assert.equal((await api('PATCH', `/program-applications/${a.id}`, { token: w.owner.token, body: { decision: 'award', program_version: p.row_version + 5 } })).status, 409, 'stale program version');
   assert.equal((await api('PATCH', `/program-applications/${a.id}`, { token: x.a.token, body: { decision: 'award', program_version: p.row_version } })).status, 403, 'applicant cannot award');
   const won = must(await api('PATCH', `/program-applications/${a.id}`, { token: w.owner.token, body: { decision: 'award', program_version: p.row_version, awarded_cents: 15000 } }));
-  assert.equal(won.status, 'awarded');
-  const deal = must(await api('GET', `/sponsorships/${won.sponsorship_id}`, { token: x.a.token }));
-  assert.equal(deal.status ?? deal.sponsorship?.status, 'proposed');
-  const row = (await pool.query('SELECT program_id, round_id, application_id, amount_cents, currency, status FROM sponsorships WHERE id=$1', [won.sponsorship_id])).rows[0];
-  assert.deepEqual([row.program_id, row.round_id, row.application_id, row.amount_cents, row.currency, row.status], [p.id, r.id, a.id, 15000, 'USD', 'proposed']);
+  assert.equal(won.award.status, 'issued', 'no sign-off required, so the offer is issued at once');
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM sponsorships WHERE application_id=$1', [a.id])).rows[0].n, 0, 'no agreement before acceptance');
   assert.equal((await api('PATCH', `/program-applications/${a.id}`, { token: w.owner.token, body: { decision: 'award', program_version: p.row_version } })).status, 409, 'cannot be decided twice');
+  const acc = must(await api('POST', `/program-awards/${won.award.id}/respond`, { token: x.a.token, body: { decision: 'accept', offer_version: won.award.offer_version } }));
+  assert.equal(acc.status, 'accepted');
+  const deal = must(await api('GET', `/sponsorships/${acc.sponsorship_id}`, { token: x.a.token }));
+  const row = (await pool.query('SELECT program_id, round_id, application_id, amount_cents, currency, status FROM sponsorships WHERE id=$1', [acc.sponsorship_id])).rows[0];
+  assert.deepEqual([row.program_id, row.round_id, row.application_id, row.amount_cents, row.currency, row.status], [p.id, r.id, a.id, 15000, 'USD', 'active']);
+  assert.equal((await pool.query('SELECT status FROM sponsorship_applications WHERE id=$1', [a.id])).rows[0].status, 'awarded');
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM sponsorships WHERE application_id=$1', [a.id])).rows[0].n, 1);
   assert.equal(deal.lines.length, 1, 'the award is a structured money line');
-  assert.equal((await api('PATCH', `/sponsorships/${won.sponsorship_id}`, { token: x.a.token, body: { status: 'active' } })).status, 400, 'an exact version must be accepted');
-  must(await api('PATCH', `/sponsorships/${won.sponsorship_id}`, { token: x.a.token, body: { status: 'active', version: deal.terms_version } }));
-  const dues = must(await api('GET', '/sponsorship-obligations', { token: w.owner.token, query: { sponsorship_id: won.sponsorship_id } })).obligations;
+  const dues = must(await api('GET', '/sponsorship-obligations', { token: w.owner.token, query: { sponsorship_id: acc.sponsorship_id } })).obligations;
   assert.equal(dues.length, 1);
   assert.equal(dues[0].amount_cents, 15000, 'a due for the awarded amount exists, so payment tracking applies');
   assert.equal(dues[0].currency, 'USD');
@@ -153,7 +154,7 @@ test('caps: award size, program and round budget, award counts, currency; concur
   // two concurrent awards of 30000 against a round budget of 50000: exactly one wins
   const res = await Promise.all([decide(apps[0]), decide(apps[1])]);
   assert.deepEqual(res.map((x) => x.status).sort(), [200, 409]);
-  const sum = (await pool.query("SELECT coalesce(sum(awarded_cents),0)::int AS s FROM sponsorship_applications WHERE program_id=$1 AND status='awarded'", [p.id])).rows[0].s;
+  const sum = (await pool.query("SELECT coalesce(sum(amount_cents),0)::int AS s FROM sponsorship_award_reservations WHERE program_id=$1 AND status='held'", [p.id])).rows[0].s;
   assert.equal(sum, 30000);
   assert.equal((await decide(apps[2])).status, 409, 'round budget exhausted');
   // a cap lowered below what is already awarded is refused

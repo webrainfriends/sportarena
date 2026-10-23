@@ -196,7 +196,7 @@ test('blind review: staff see an alias until the applicant consents; award needs
   const stale = await api('PATCH', `/program-applications/${app.id}`, { token: w.owner.token, body: { decision: 'award', program_version: w.p.row_version, eval_version: cur2 - 1 } });
   assert.equal(stale.status, 409, 'the committee changed it since the manager looked');
   const awarded = must(await api('PATCH', `/program-applications/${app.id}`, { token: w.owner.token, body: { decision: 'award', program_version: w.p.row_version, eval_version: cur2, awarded_cents: 40000 } }));
-  assert.equal(awarded.status, 'awarded');
+  assert.equal(awarded.award.status, 'issued');
   // the decision keeps the rubric as scored and only the references the brand may rely on
   const hist = must(await api('GET', `/program-applications/${app.id}/history`, { token: w.owner.token }));
   assert.equal(hist.decision.decision, 'award');
@@ -331,7 +331,7 @@ test('programs without a rubric behave exactly as before; scoring deadlines and 
   assert.equal(ev.rubric_status, null);
   assert.equal((await api('GET', `/program-applications/${app.id}/scoresheet`, { token: w.owner.token })).status, 200);
   const awarded = must(await api('PATCH', `/program-applications/${app.id}`, { token: w.owner.token, body: { decision: 'award', program_version: w.p.row_version } }));
-  assert.equal(awarded.status, 'awarded');
+  assert.equal(awarded.award.status, 'issued');
   const h = must(await api('GET', `/program-applications/${app.id}/history`, { token: w.owner.token }));
   assert.equal(h.decision.rubric_snapshot, null);
   // a closed scoring window refuses scores

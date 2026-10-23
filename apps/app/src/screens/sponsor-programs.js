@@ -12,6 +12,7 @@ import { SportSelect } from '../sportpicker';
 import { c } from '../theme';
 import { explain, LoadError } from '../access';
 import { RoundEvaluation, ApplicantEvaluation } from './sponsor-evaluation';
+import { ProgramAwards, MyOffers } from './sponsor-awards';
 import { fieldsOf, filled, fmtMoney } from '../application-forms';
 
 // Amounts are minor units of THEIR OWN currency; currencies are never added together.
@@ -48,6 +49,14 @@ const programFields = (brands, create) => [
   { key: 'target_types', label: 'Who can apply', type: 'multi', options: [{ value: 'athlete', label: 'Athletes' }, { value: 'team', label: 'Teams' }, { value: 'event', label: 'Events' }], default: ['athlete', 'team', 'event'] },
   { key: 'verified_only', label: 'Verified applicants only', type: 'switch' },
   { key: 'starts_on', label: 'Funding period', type: 'daterange', toKey: 'ends_on', optional: true },
+  ...(create ? [] : [
+    { key: 'sec_awards', label: 'Award approvals', type: 'section' },
+    { key: 'award_approval_cents', label: 'Second approver needed above', type: 'money', currency: (v) => v.currency, optional: true, hint: 'Awards above this amount need another approver to sign off. Leave empty for none.' },
+    { key: 'finance_signoff_cents', label: 'Finance sign-off needed above', type: 'money', currency: (v) => v.currency, optional: true, hint: 'Leave empty for none.' },
+    { key: 'legal_signoff_required', label: 'Legal signs off every award', type: 'switch' },
+    { key: 'offer_validity_days', label: 'An issued offer can be accepted for (days)', type: 'stepper', min: 1, max: 365, default: 14 },
+    { key: 'waitlist_enabled', label: 'Waitlist awards that do not fit the budget', type: 'switch' },
+  ]),
   { key: 'recurring', label: 'Runs in recurring rounds', type: 'switch' },
   { key: 'cadence', label: 'A new round every', type: 'chips', options: [{ value: 'monthly', label: 'Month' }, { value: 'quarterly', label: 'Quarter' }, { value: 'yearly', label: 'Year' }], default: 'monthly', show: (v) => v.recurring },
   { key: 'open_days', label: 'Each round stays open for (days)', type: 'stepper', min: 1, max: 365, default: 14, show: (v) => v.recurring },
@@ -186,9 +195,10 @@ export function SponsorProgram({ id }) {
         {['manager', 'finance', 'auditor', 'admin'].includes(p.my_role) ? <Btn small title="Export awards (CSV)" color={c.paper} ink={c.ink} style={{ alignSelf: 'flex-start' }} onPress={download} /> : null}
       </Section>
 
+      <ProgramAwards program={p} onChanged={reloadAll} />
       <FormSheet visible={form === 'edit'} onClose={() => setForm(null)} title="Edit program" fields={programFields([], false)}
         initial={{ ...p, regions: p.regions, target_types: p.eligibility?.target_types, verified_only: !!p.eligibility?.verified_only, max_awards: p.max_awards ?? 0, recurring: !!p.recurrence, cadence: p.recurrence?.cadence, open_days: p.recurrence?.open_days, starts_on: p.starts_on ? String(p.starts_on).slice(0, 10) : undefined, ends_on: p.ends_on ? String(p.ends_on).slice(0, 10) : undefined }}
-        onSubmit={async (v) => { const b = toBody(v); await api.patch(`/sponsorship-programs/${p.id}`, { ...b, version: p.row_version, sports: v.sports ?? [], regions: v.regions ?? [], starts_on: v.starts_on ?? null, ends_on: v.ends_on ?? null, max_awards: v.max_awards || null, max_award_cents: b.max_award_cents ?? null, recurrence: b.recurrence ?? null, objective: b.objective ?? null }); reloadAll(); return 'Saved — applications already submitted keep their original terms'; }} />
+        onSubmit={async (v) => { const b = toBody(v); await api.patch(`/sponsorship-programs/${p.id}`, { ...b, award_approval_cents: v.award_approval_cents ?? null, finance_signoff_cents: v.finance_signoff_cents ?? null, version: p.row_version, sports: v.sports ?? [], regions: v.regions ?? [], starts_on: v.starts_on ?? null, ends_on: v.ends_on ?? null, max_awards: v.max_awards || null, max_award_cents: b.max_award_cents ?? null, recurrence: b.recurrence ?? null, objective: b.objective ?? null }); reloadAll(); return 'Saved — applications already submitted keep their original terms'; }} />
       <FormSheet visible={form === 'round'} onClose={() => setForm(null)} title="New round" submitLabel="Add round" initial={{ timezone: myZone() }}
         fields={[{ key: 'name', label: 'Name', optional: true, hint: 'Defaults to “Round N”.' }, { key: 'opens_on', label: 'Applications open', type: 'daterange', toKey: 'closes_on' }, { key: 'closes_time', label: 'Deadline time on the closing day', type: 'time', optional: true, hint: 'Leave empty for the end of the closing day.' }, { key: 'timezone', label: 'Deadline timezone', type: 'timezone' }, { key: 'budget_cents', label: 'Round budget', type: 'money', currency: p.currency, optional: true, hint: 'Leave empty to draw on the program budget.' }, { key: 'max_awards', label: 'Most awards in this round (0 = no limit)', type: 'stepper', min: 0, max: 1000, default: 0 }]}
         onSubmit={async (v) => { await api.post(`/sponsorship-programs/${p.id}/rounds`, { ...v, max_awards: v.max_awards || undefined }); reloadAll(); return 'Round added'; }} />
@@ -198,10 +208,10 @@ export function SponsorProgram({ id }) {
       <FormSheet visible={form === 'schedule'} onClose={() => setForm(null)} title="Schedule recurring rounds" submitLabel="Create rounds"
         fields={[{ key: 'through', label: 'Create rounds up to', type: 'date', hint: 'Follows the program cadence from its first round. Repeating this creates nothing twice.' }]}
         onSubmit={async (v) => { const r = await api.post(`/sponsorship-programs/${p.id}/schedule-rounds`, v); reloadAll(); return r.created ? `${r.created} round${r.created === 1 ? '' : 's'} created` : 'Nothing new to create'; }} />
-      <FormSheet visible={!!awarding} onClose={() => setForm(null)} title={`Award ${awarding?.display_name ?? ''}`} submitLabel="Award and send agreement"
+      <FormSheet visible={!!awarding} onClose={() => setForm(null)} title={`Award ${awarding?.display_name ?? ''}`} submitLabel="Award"
         fields={[{ key: 'awarded_cents', label: `Amount (asked ${awarding ? fmt(awarding.requested_cents, awarding.currency) : ''})`, type: 'money', currency: p.currency }, { key: 'reason', label: 'Note to the applicant', type: 'multiline', optional: true }]}
         initial={awarding ? { awarded_cents: awarding.requested_cents } : {}}
-        onSubmit={async (v) => { await api.patch(`/program-applications/${awarding.id}`, { decision: 'award', program_version: p.row_version, eval_version: awarding.eval_version, awarded_cents: v.awarded_cents, reason: v.reason }); reloadAll(); return 'Awarded — the recipient now has an agreement to accept'; }} />
+        onSubmit={async (v) => { await api.patch(`/program-applications/${awarding.id}`, { decision: 'award', program_version: p.row_version, eval_version: awarding.eval_version, awarded_cents: v.awarded_cents, reason: v.reason }); reloadAll(); return 'Award created — budget reserved; see Awards for sign-offs and issuing'; }} />
       <ReviewSheet app={typeof form === 'object' && form?.view ? form.view : null} may={may} onClose={() => setForm(null)} onChanged={reloadAll} />
       <FormSheet visible={form === 'faq' || !!faqEdit} onClose={() => setForm(null)} title={faqEdit ? 'Edit FAQ' : 'New FAQ'} submitLabel={faqEdit ? 'Save' : 'Add FAQ'}
         fields={[{ key: 'question', label: 'Question' }, { key: 'answer', label: 'Answer', type: 'multiline' }, { key: 'position', label: 'Position in the list (0 = first)', type: 'stepper', min: 0, max: 100, default: 0 }]}
@@ -352,6 +362,7 @@ export function FundingOpportunities() {
     <Screen onRefresh={reload} refreshing={opps.loading && !!opps.data}>
       <H1>Sponsorship calls</H1>
       <T size={13} color={c.mute}>Sponsor programs with a round open for applications. Apply for yourself, a team you own or an event you organise. Invitation-only calls show here only if you were invited.</T>
+      <MyOffers onChanged={reload} />
       <Seg options={[{ value: 'all', label: 'Open calls' }, { value: 'invited', label: 'Invited to me' }]} value={tab} onChange={setTab} color={c.pink} />
       <Field value={q} onChangeText={setQ} placeholder="Search programs, sponsors and FAQs…" />
       <SportSelect value={sport} onChange={setSport} allLabel="All sports" />
