@@ -26,6 +26,9 @@ condition (`eq`, `ne`, `in`, `filled` on an *earlier* question). Hidden answers 
 (server, authoritative) and are mirrored for live show/hide in `apps/app/src/application-forms.js`.
 
 ## Capabilities (REST + OpenAPI + MCP from one definition)
+Templates: `list_sponsorship_form_templates` (general, athlete, team or club, event, youth and community; defined in `apps/api/src/sponsorship-form-templates.js`) and
+`draft_sponsorship_form` (template, plus an optional brief that the AI uses to tailor it; falls back to the plain template when AI is off or its answer is not a valid form; nothing is saved).
+The builder opens with a template gallery, then the editor; the brand edits and publishes as before.
 Builder (brand manager/approver; read for others): `create_sponsorship_form`, `publish_sponsorship_form_version` (stale `version` → 409),
 `archive_sponsorship_form`, `list_sponsorship_forms`, `get_sponsorship_form`, `set_round_form`.
 Applicant: `get_round_application_form`, `save_application_draft`, `submit_application`, `get_program_application`, `submit_application_correction`,

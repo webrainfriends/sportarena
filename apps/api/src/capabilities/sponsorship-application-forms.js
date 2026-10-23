@@ -22,6 +22,8 @@ import { sponsorAccess, notifySponsor } from '../sponsor-access.js';
 import { formDefinition, fieldsOf, validateApplication, splitConfidential, budgetShape, referencesShape } from '../application-forms.js';
 import { assertCanApply, checkVersion, iso, programFor, termsOf } from './sponsorship-programs.js';
 import { roundState } from '../sponsorship-calls.js';
+import { askJson, aiConfigured, quoteData, AI_RULES } from '../ai.js';
+import { FORM_TEMPLATES, templateDefinition, templateList } from '../sponsorship-form-templates.js';
 
 const TAG = 'Sponsors';
 const TARGETS = ['event', 'team', 'athlete'];
@@ -152,6 +154,33 @@ cap({
       `SELECT f.id, f.name, f.row_version, f.archived_at, f.created_at, (SELECT max(version) FROM sponsorship_form_versions v WHERE v.form_id=f.id) AS latest_version,
               (SELECT coalesce(json_agg(json_build_object('round_id', r.id, 'seq', r.seq, 'form_version', r.form_version) ORDER BY r.seq), '[]') FROM sponsorship_rounds r WHERE r.form_id=f.id) AS rounds
          FROM sponsorship_forms f WHERE f.program_id=$1 AND ($2 OR f.archived_at IS NULL) ORDER BY f.created_at, f.id LIMIT $3 OFFSET $4`, [p.id, !!i.include_archived, i.limit, i.offset]);
+  },
+});
+
+cap({
+  name: 'list_sponsorship_form_templates', method: 'GET', path: '/sponsorship-form-templates', tag: TAG,
+  summary: 'Standard application-form templates (general, athlete, team or club, event, youth and community) with their full question list. Pick one to start a form, then tailor it before publishing.',
+  input: z.object({}),
+  async handler() { return templateList(); },
+});
+
+const draftAi = z.object({ name: z.string().min(2).max(120), definition: formDefinition });
+cap({
+  name: 'draft_sponsorship_form', method: 'POST', path: '/sponsorship-programs/:id/form-drafts', tag: TAG,
+  summary: 'Brand manager/approver: draft an application form for a program from a standard template. With a short `brief` of what the program funds, the AI tailors the template to that program (add, drop or reword questions); without AI, or if its answer is not a valid form, the plain template is returned. Nothing is saved: edit the draft in the builder and publish it with create_sponsorship_form.',
+  input: z.object({ id, template: z.enum(FORM_TEMPLATES.map((t) => t.key)).default('general'), brief: z.string().max(600).optional() }),
+  async handler({ user }, i) {
+    const { p } = await programFor(user, i.id, 'program', pool);
+    const base = FORM_TEMPLATES.find((t) => t.key === i.template), definition = templateDefinition(i.template);
+    const plain = { template: base.key, name: base.name, definition, ai: false };
+    if (!i.brief?.trim() || !aiConfigured()) return { ...plain, ai_available: aiConfigured() };
+    await audit(null, user.id, 'ai_sponsorship_form_draft', 'sponsorship_programs', p.id);
+    const out = await askJson({
+      system: `You design application forms for a sports sponsorship program. Tailor the starting form to the program and the sponsor's brief: keep it professional, 10 to 25 questions in at most 5 sections, plain language, only ask what is needed to judge the application. Question types: text, longtext, number, money (cents), date, choice, multi (choice and multi need options [{value,label}]), yesno, file, budget (at most one), references (at most one). Keys are lowercase letters, digits and underscores starting with a letter. Section ids likewise. A question may carry "when": {field, op: eq|ne|filled, value} naming an EARLIER question. Ask for personal data (phone, guardian, ID) only as confidential text. Never include budget or references twice. ${AI_RULES}`,
+      user: `<data>${JSON.stringify({ program: quoteData(p.name, 120), objective: quoteData(p.objective, 600), sports: p.sports, brief: quoteData(i.brief, 600), starting_form: definition })}</data>`,
+      schema: draftAi, shape: '{"name": string, "definition": {"sections": [{"id": string, "title": string, "fields": [{"key": string, "label": string, "type": string, "required": boolean, "hint"?: string, "options"?: [{"value": string, "label": string}], "confidential"?: boolean, "when"?: {"field": string, "op": string, "value"?: any}}]}]}}', maxTokens: 6000, timeoutMs: 60_000,
+    });
+    return out ? { template: base.key, name: out.name, definition: out.definition, ai: true, ai_available: true } : { ...plain, ai_available: true };
   },
 });
 
