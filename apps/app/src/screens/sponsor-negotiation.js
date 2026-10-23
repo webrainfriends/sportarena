@@ -13,7 +13,7 @@ const show = (v) => (v == null ? '—' : Array.isArray(v) ? v.join(', ') : typeo
 const cash = (v, cur) => { if (v == null) return '—'; try { const f = new Intl.NumberFormat(undefined, { style: 'currency', currency: cur }); return f.format(v / 10 ** f.resolvedOptions().maximumFractionDigits); } catch { return String(v / 100); } };
 const ago = (iso) => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 // The editable part of a counteroffer: one amount per money line, one quantity per goods line, the period and a reason. Everything else is carried over unchanged.
-const LINE_KEYS = ['kind', 'label', 'currency', 'amount_cents', 'total_cents', 'estimate_cents', 'quantity', 'unit', 'cadence', 'first_due_on', 'instalments', 'custom_dates', 'promoter', 'terms'];
+const LINE_KEYS = ['kind', 'label', 'currency', 'amount_cents', 'total_cents', 'estimate_cents', 'quantity', 'unit', 'cadence', 'first_due_on', 'instalments', 'custom_dates', 'promoter', 'terms', 'service_type'];
 const keep = (l) => Object.fromEntries(LINE_KEYS.filter((k) => l[k] != null).map((k) => [k, k === 'first_due_on' ? String(l[k]).slice(0, 10) : k === 'custom_dates' ? l[k].map((x) => String(x).slice(0, 10)) : l[k]]));
 
 /** Negotiation of an open offer: whose turn it is, counteroffer, version comparison, comments (shared and private) and the version history. */

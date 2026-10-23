@@ -14,7 +14,7 @@ const when = (iso) => (iso ? new Date(`${String(iso).slice(0, 10)}T00:00:00`).to
 const day = (iso) => String(iso).slice(0, 10);
 const CADENCE = [{ value: 'once', label: 'Once' }, { value: 'weekly', label: 'Weekly' }, { value: 'monthly', label: 'Monthly' }, { value: 'quarterly', label: 'Quarterly' }];
 // the editable part of a line; everything else is carried over unchanged
-const LINE_KEYS = ['kind', 'label', 'currency', 'amount_cents', 'total_cents', 'estimate_cents', 'quantity', 'unit', 'cadence', 'first_due_on', 'instalments', 'custom_dates', 'promoter', 'terms'];
+const LINE_KEYS = ['kind', 'label', 'currency', 'amount_cents', 'total_cents', 'estimate_cents', 'quantity', 'unit', 'cadence', 'first_due_on', 'instalments', 'custom_dates', 'promoter', 'terms', 'service_type'];
 const keep = (l) => Object.fromEntries(LINE_KEYS.filter((k) => l[k] != null).map((k) => [k, k === 'first_due_on' ? day(l[k]) : k === 'custom_dates' ? l[k].map(day) : l[k]]));
 const download = (name, text) => { if (Platform.OS === 'web' && typeof document !== 'undefined') { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: 'text/csv' })); a.download = name; a.click(); } };
 

@@ -210,6 +210,7 @@ export function describeLine(l) {
   const parts = [];
   if (l.kind === 'money') parts.push(l.total_cents != null ? `${money(l.total_cents, cur)} in total` : `${money(l.amount_cents, cur)} per instalment`);
   else if (l.kind === 'goods') parts.push([l.quantity != null ? `${l.quantity}${l.unit ? ` ${l.unit}` : ''}` : null, l.estimate_cents != null ? `estimated value ${money(l.estimate_cents, cur)} (not cash)` : null].filter(Boolean).join(', ') || 'goods');
+  else if (l.kind === 'service') parts.push([`${l.service_type ?? 'service'} service${l.quantity != null ? `, ${l.quantity} voucher${l.quantity === 1 ? '' : 's'}` : ''}`, l.estimate_cents != null ? `estimated value ${money(l.estimate_cents, cur)} (not cash)` : null].filter(Boolean).join(', '));
   else parts.push(l.estimate_cents != null ? `endorsement, estimated value ${money(l.estimate_cents, cur)} (not cash)` : 'endorsement');
   parts.push(`${CADENCE[l.cadence] ?? l.cadence}${l.cadence !== 'once' && l.instalments ? `, ${l.instalments} payment${l.instalments === 1 ? '' : 's'}` : ''}`);
   if (l.first_due_on) parts.push(`from ${l.first_due_on}`);

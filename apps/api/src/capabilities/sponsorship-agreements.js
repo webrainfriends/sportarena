@@ -8,7 +8,7 @@ import { isAdmin } from '../helpers.js';
 import { notify } from '../notify.js';
 import { LINE, buildSchedule } from '../sponsor-schedule.js';
 import { snapshotIdentity } from '../sponsor-identity-access.js';
-import { saveLines, loadLines, generateObligations, logHistory, dealContext, obligationContext, recordVersion, settleMoney, completeIfSettled, heldCents, releaseStaleCheckouts } from '../sponsor-agreements.js';
+import { saveLines, loadLines, generateObligations, logHistory, dealContext, obligationContext, recordVersion, settleMoney, settleGoods, completeIfSettled, goodsPosition, heldCents, releaseStaleCheckouts } from '../sponsor-agreements.js';
 import { enabledProviders, startCheckout } from '../payments/service.js';
 import { config } from '../config.js';
 import { beneficiaryScopeSql, payeeSnapshot } from '../sponsor-beneficiaries.js';
@@ -22,7 +22,7 @@ const url = z.string().url().max(500).refine((u) => /^https:\/\//i.test(u), 'evi
 const other = (ctx) => (ctx.role === 'sponsor' ? ctx.recipientId : 'sponsor');
 // Notifications never carry amounts, references or terms: those stay behind the participant-scoped reads.
 // `to` is a user id, or 'sponsor' for the brand's owner and the staff whose role is concerned (`action`).
-const ping = (c, to, title, ctx, kind = 'sponsorship_update', action = 'read') => {
+export const ping = (c, to, title, ctx, kind = 'sponsorship_update', action = 'read') => {
   const msg = { kind, title, body: `Open the ${ctx.sp.name} agreement to see the update.`, data: { sponsorship_id: ctx.d.id } };
   return to === 'sponsor' ? notifySponsor(c, ctx.sp, action, msg, ctx.d.department_id) : notify(c, to, msg);
 };
@@ -175,7 +175,7 @@ cap({
     const { d, sp } = ctx;
     if (ctx.role === 'recipient' && ['pending', 'rejected'].includes(d.budget_approval)) throw notFound('Sponsorship'); // still the brand's internal business
     const version = d.accepted_version ?? d.terms_version;
-    const lines = await many('SELECT id, position, kind, label, currency, amount_cents, total_cents, estimate_cents, quantity, unit, cadence, first_due_on, instalments, custom_dates, promoter, terms FROM sponsorship_lines WHERE sponsorship_id=$1 AND version=$2 ORDER BY position', [d.id, version]);
+    const lines = await many('SELECT id, position, kind, service_type, label, currency, amount_cents, total_cents, estimate_cents, quantity, unit, cadence, first_due_on, instalments, custom_dates, promoter, terms FROM sponsorship_lines WHERE sponsorship_id=$1 AND version=$2 ORDER BY position', [d.id, version]);
     const out = { id: d.id, agreement_ref: d.agreement_ref, status: d.status, role: ctx.role, my_sponsor_role: ctx.staff, can: ctx.staff ? actionsFor(ctx.staff) : undefined, sponsor: { id: sp.id, name: sp.name }, target_type: d.target_type, target_id: d.target_id, starts_on: d.starts_on, ends_on: d.ends_on, timezone: d.timezone, terms_version: d.terms_version, accepted_version: d.accepted_version, currency: d.currency, pause_rev: d.pause_rev, legacy_amount_cents: lines.length ? undefined : d.amount_cents, legacy_in_kind: lines.length ? undefined : d.in_kind, objectives: d.objectives, deliverables: d.deliverables, lines };
     if (['organisation', 'group'].includes(d.target_type)) out.beneficiary = { type: d.target_type, id: d.target_id, name: (await one(d.target_type === 'group' ? 'SELECT name FROM org_cohorts WHERE id=$1' : 'SELECT name FROM organisations WHERE id=$1', [d.target_id]))?.name ?? null, my_role: ctx.beneficiary?.representative ? 'representative' : ctx.beneficiary?.payee ? 'payee' : null };
     // who the sponsor was at this exact version (frozen): later renames or representative changes never alter it. Never registration/tax/billing data.
@@ -188,12 +188,18 @@ cap({
     if (d.accepted_version) {
       out.obligations = await obligationRows('o.sponsorship_id = $1', [d.id]);
       const kids = (t, cols) => many(`SELECT x.obligation_id, ${cols} FROM ${t} x JOIN sponsorship_obligations o ON o.id=x.obligation_id WHERE o.sponsorship_id=$1 ORDER BY x.created_at, x.id`, [d.id]);
-      const [pay, del, sub] = await Promise.all([
+      const [pay, del, sub, ret, vou] = await Promise.all([
         kids('sponsorship_payments', 'x.id, x.amount_cents, x.currency, x.method, x.reference, x.paid_on::text AS paid_on, x.evidence_url, x.status, x.decision_note, x.payee_snapshot'),
-        kids('sponsorship_deliveries', 'x.id, x.quantity, x.reference, x.note, x.status, x.received_quantity, x.decision_note'),
-        kids('sponsorship_submissions', 'x.id, x.evidence_url, x.note, x.status, x.review_note')]);
+        kids('sponsorship_deliveries', 'x.id, x.version, x.quantity, x.reference, x.note, x.status, x.received_quantity, x.decision_note, x.dispatch_evidence_url, x.receipt_evidence_url, x.rejection_reason, x.replaces_return_id'),
+        kids('sponsorship_submissions', 'x.id, x.evidence_url, x.note, x.status, x.review_note'),
+        kids('sponsorship_delivery_returns', 'x.id, x.delivery_id, x.version, x.quantity, x.reason, x.resolution, x.note, x.evidence_url, x.status, x.decision_note'),
+        // a voucher's redemption detail (reference, booking) belongs to the recipient; the sponsor sees only that it was used, and when. Medical vouchers never carry detail at all.
+        kids('sponsorship_vouchers', `x.id, x.version, x.service_type, x.valid_until::text AS valid_until, (CASE WHEN x.status='issued' AND x.valid_until < current_date THEN 'expired' ELSE x.status END) AS status, x.void_reason,
+          (SELECT r.redeemed_at FROM sponsorship_voucher_redemptions r WHERE r.voucher_id=x.id) AS redeemed_at,
+          ${ctx.role === 'sponsor' ? 'NULL::text' : '(SELECT r.reference FROM sponsorship_voucher_redemptions r WHERE r.voucher_id=x.id)'} AS reference,
+          ${ctx.role === 'sponsor' ? 'false' : '(SELECT r.booking_id IS NOT NULL FROM sponsorship_voucher_redemptions r WHERE r.voucher_id=x.id)'} AS has_booking`)]);
       for (const o of out.obligations) {
-        o.payments = pay.filter((r) => r.obligation_id === o.id); o.deliveries = del.filter((r) => r.obligation_id === o.id); o.submissions = sub.filter((r) => r.obligation_id === o.id);
+        o.payments = pay.filter((r) => r.obligation_id === o.id); o.deliveries = del.filter((r) => r.obligation_id === o.id); o.returns = ret.filter((r) => r.obligation_id === o.id); o.vouchers = vou.filter((r) => r.obligation_id === o.id); o.submissions = sub.filter((r) => r.obligation_id === o.id);
         o.promoter = lines.find((l) => l.id === o.line_id)?.promoter ?? null;
       }
     }
@@ -218,6 +224,11 @@ async function obligationRows(where, params, tail = '') {
             coalesce((SELECT sum(amount_cents) FROM sponsorship_payments p WHERE p.obligation_id=o.id AND p.status='reported'),0)::bigint AS reported_unverified_cents,
             coalesce((SELECT sum(CASE x.status WHEN 'received' THEN x.received_quantity WHEN 'dispatched' THEN 0 ELSE 0 END) FROM sponsorship_deliveries x WHERE x.obligation_id=o.id),0)::int AS received_quantity,
             coalesce((SELECT sum(x.quantity) FROM sponsorship_deliveries x WHERE x.obligation_id=o.id AND x.status='dispatched'),0)::int AS in_transit_quantity,
+            coalesce((SELECT sum(r.quantity) FROM sponsorship_delivery_returns r WHERE r.obligation_id=o.id AND r.status='accepted'),0)::int AS returned_quantity,
+            coalesce((SELECT sum(r.quantity) FROM sponsorship_delivery_returns r WHERE r.obligation_id=o.id AND r.status='accepted' AND r.resolution='credit'),0)::int AS credited_quantity,
+            coalesce((SELECT sum(r.quantity) FROM sponsorship_delivery_returns r WHERE r.obligation_id=o.id AND r.status='requested'),0)::int AS return_pending_quantity,
+            coalesce((SELECT count(*) FROM sponsorship_vouchers v WHERE v.obligation_id=o.id AND v.status='redeemed'),0)::int AS vouchers_redeemed,
+            coalesce((SELECT count(*) FROM sponsorship_vouchers v WHERE v.obligation_id=o.id AND v.status='issued' AND (v.valid_until IS NULL OR v.valid_until >= current_date)),0)::int AS vouchers_open,
             (SELECT s.status FROM sponsorship_submissions s WHERE s.obligation_id=o.id ORDER BY s.created_at DESC, s.id DESC LIMIT 1) AS submission_status
        FROM sponsorship_obligations o JOIN sponsorship_lines l ON l.id=o.line_id WHERE ${where} ORDER BY o.due_on, o.id ${tail}`, params);
 }
@@ -229,7 +240,7 @@ const SCOPE = `(${sponsorStaffSql(1)} OR $2::boolean
 cap({
   name: 'list_sponsorship_obligations', method: 'GET', path: '/sponsorship-obligations', tag: 'Sponsors',
   summary: 'Dues across your agreements (as sponsor or recipient). Filters: agreement, brand, target type, kind, state (upcoming / overdue / open / fulfilled), due-date range. `totals` is per currency over every match, not just the page: committed, confirmed received, reported-but-unverified, outstanding. Currencies are never added together.',
-  input: z.object({ sponsorship_id: id.optional(), sponsor_id: id.optional(), target_type: z.enum(['event', 'team', 'athlete', 'organisation', 'group']).optional(), kind: z.enum(['money', 'goods', 'endorsement']).optional(), state: z.enum(['upcoming', 'overdue', 'open', 'fulfilled', 'cancelled']).optional(), from: date.optional(), to: date.optional(), ...page }),
+  input: z.object({ sponsorship_id: id.optional(), sponsor_id: id.optional(), target_type: z.enum(['event', 'team', 'athlete', 'organisation', 'group']).optional(), kind: z.enum(['money', 'goods', 'endorsement', 'service']).optional(), state: z.enum(['upcoming', 'overdue', 'open', 'fulfilled', 'cancelled']).optional(), from: date.optional(), to: date.optional(), ...page }),
   async handler({ user }, i) {
     const params = [user.id, !!isAdmin(user), i.sponsorship_id ?? null, i.sponsor_id ?? null, i.target_type ?? null, i.kind ?? null, i.state ?? null, i.from ?? null, i.to ?? null];
     const where = `${SCOPE} AND ($3::uuid IS NULL OR o.sponsorship_id=$3) AND ($4::uuid IS NULL OR ss.sponsor_id=$4) AND ($5::text IS NULL OR ss.target_type=$5) AND ($6::text IS NULL OR o.kind=$6)
@@ -263,6 +274,7 @@ cap({
       one(`SELECT count(*) FILTER (WHERE o.status='scheduled' AND o.due_on < current_date AND o.held_by_pause_id IS NULL)::int AS overdue,
                   count(*) FILTER (WHERE o.status='scheduled' AND o.due_on BETWEEN current_date AND current_date + 30 AND o.held_by_pause_id IS NULL)::int AS due_30_days,
                   count(*) FILTER (WHERE o.kind='goods' AND o.status='scheduled')::int AS goods_outstanding,
+                  count(*) FILTER (WHERE o.kind='service' AND o.status='scheduled')::int AS services_outstanding,
                   (SELECT count(*) FROM sponsorship_payments p JOIN sponsorship_obligations po ON po.id=p.obligation_id JOIN sponsorships pss ON pss.id=po.sponsorship_id WHERE p.status='reported' AND ${recipient.replace(/ss\./g, 'pss.')})::int AS payments_to_confirm,
                   (SELECT count(*) FROM sponsorship_submissions s JOIN sponsorship_obligations so ON so.id=s.obligation_id JOIN sponsorship_lines sl ON sl.id=so.line_id JOIN sponsorships sss ON sss.id=so.sponsorship_id JOIN sponsors ssp ON ssp.id=sss.sponsor_id
                     WHERE s.status='submitted' AND ((sl.promoter='recipient' AND ${sponsorStaffSql(1, 'evaluate').replace(/\bsp\./g, 'ssp.').replace(/\bss\./g, 'sss.')}) OR (sl.promoter='sponsor' AND ${recipient.replace(/ss\./g, 'sss.')})))::int AS endorsements_to_review
@@ -271,7 +283,7 @@ cap({
   },
 });
 
-const open = (ctx, kind) => {
+export const open = (ctx, kind) => {
   if (ctx.o.kind !== kind) throw badRequest(`This obligation is ${ctx.o.kind}, not ${kind}`);
   if (ctx.o.status !== 'scheduled') throw conflict(`This obligation is already ${ctx.o.status}`);
   if (!['active', 'paused', 'ended', 'term_expired'].includes(ctx.d.status)) throw conflict('The agreement is not active');
@@ -429,18 +441,26 @@ cap({
 
 cap({
   name: 'dispatch_sponsorship_goods', method: 'POST', path: '/sponsorship-obligations/:id/deliveries', tag: 'Sponsors', status: 201,
-  summary: 'Sponsor owner: record a dispatch of goods against a goods due. Only the recipient can mark receipt. Dispatched plus received quantity can never exceed the committed quantity (a rejected delivery frees its quantity).',
-  input: z.object({ id, quantity: z.coerce.number().int().positive(), reference: z.string().max(120).optional(), note: z.string().max(500).optional() }),
+  summary: 'Sponsor owner: record a dispatch of goods against a goods due, optionally with proof of dispatch (https link) or as the replacement for an accepted return. Only the recipient can mark receipt. Received (net of accepted returns) + in transit + credited quantity can never exceed the committed quantity; a rejected delivery or an accepted return frees its quantity.',
+  input: z.object({ id, quantity: z.coerce.number().int().positive(), reference: z.string().max(120).optional(), note: z.string().max(500).optional(), evidence_url: url.optional().describe('proof of dispatch'),
+    replaces_return_id: id.optional().describe('the accepted return this shipment replaces; each return is replaced once, by at most its own quantity') }),
   async handler({ user }, i) {
     return tx(async (c) => {
       const ctx = await obligationContext(c, i.id, user);
       if (ctx.role !== 'sponsor') throw forbidden('Only the sponsor dispatches goods');
       ctx.need('pay', 'dispatch goods');
       open(ctx, 'goods');
-      const held = Number((await c.query("SELECT coalesce(sum(CASE status WHEN 'received' THEN received_quantity WHEN 'dispatched' THEN quantity ELSE 0 END),0) AS s FROM sponsorship_deliveries WHERE obligation_id=$1", [ctx.o.id])).rows[0].s);
-      if (held + i.quantity > ctx.o.quantity) throw conflict(`Only ${ctx.o.quantity - held} more can be dispatched against this delivery`);
-      const row = (await c.query('INSERT INTO sponsorship_deliveries(obligation_id, quantity, reference, note, dispatched_by) VALUES ($1,$2,$3,$4,$5) RETURNING *', [ctx.o.id, i.quantity, i.reference ?? null, i.note ?? null, user.id])).rows[0];
-      await logHistory(c, ctx.d.id, ctx.o.version, user.id, 'goods_dispatched');
+      if (i.replaces_return_id) {
+        const r = (await c.query('SELECT * FROM sponsorship_delivery_returns WHERE id=$1 AND obligation_id=$2 FOR UPDATE', [i.replaces_return_id, ctx.o.id])).rows[0];
+        if (!r) throw notFound('Return');
+        if (r.status !== 'accepted' || r.resolution !== 'replace') throw conflict('Only an accepted return that is to be replaced can have a replacement');
+        if (i.quantity > r.quantity) throw badRequest(`A replacement for this return is at most ${r.quantity}`);
+        if ((await c.query("SELECT 1 FROM sponsorship_deliveries WHERE replaces_return_id=$1 AND status <> 'rejected'", [r.id])).rowCount) throw conflict('This return already has a replacement');
+      }
+      const pos = await goodsPosition(c, ctx.o);
+      if (i.quantity > pos.remaining) throw conflict(`Only ${Math.max(0, pos.remaining)} more can be dispatched against this delivery`);
+      const row = (await c.query('INSERT INTO sponsorship_deliveries(obligation_id, quantity, reference, note, dispatched_by, dispatch_evidence_url, replaces_return_id) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *', [ctx.o.id, i.quantity, i.reference ?? null, i.note ?? null, user.id, i.evidence_url ?? null, i.replaces_return_id ?? null])).rows[0];
+      await logHistory(c, ctx.d.id, ctx.o.version, user.id, i.replaces_return_id ? 'goods_replacement_dispatched' : 'goods_dispatched');
       await ping(c, ctx.recipientId, 'Sponsored goods were dispatched', ctx, 'sponsorship_delivery');
       return row;
     });
@@ -449,8 +469,9 @@ cap({
 
 cap({
   name: 'decide_sponsorship_delivery', method: 'PATCH', path: '/sponsorship-deliveries/:id', tag: 'Sponsors',
-  summary: 'Recipient (or admin): confirm receipt of a dispatched delivery (optionally fewer than dispatched, for a partial delivery) or reject it (reason required). The due is fulfilled when confirmed quantities reach the committed quantity.',
-  input: z.object({ id, status: z.enum(['received', 'rejected']), received_quantity: z.coerce.number().int().positive().optional(), note: z.string().max(500).optional() }),
+  summary: 'Recipient (or admin): confirm receipt of a dispatched delivery (optionally fewer than dispatched, for a partial delivery, with proof of condition) or reject it (reason required, e.g. damaged). Pass `expected_version` to refuse a stale decision. The due is fulfilled when confirmed quantities (net of accepted returns) reach the committed quantity.',
+  input: z.object({ id, status: z.enum(['received', 'rejected']), received_quantity: z.coerce.number().int().positive().optional(), note: z.string().max(500).optional(), evidence_url: url.optional().describe('proof of receipt or of the condition of the goods'),
+    reason: z.enum(['damaged', 'wrong_item', 'not_as_described', 'other']).optional().describe('rejection reason'), expected_version: z.coerce.number().int().positive().optional() }),
   async handler({ user }, i) {
     return tx(async (c) => {
       const d0 = (await c.query('SELECT obligation_id FROM sponsorship_deliveries WHERE id=$1', [i.id])).rows[0];
@@ -458,13 +479,13 @@ cap({
       const ctx = await obligationContext(c, d0.obligation_id, user);
       if (ctx.role !== 'recipient' && ctx.role !== 'admin') throw forbidden('Only the recipient confirms receipt');
       const dl = (await c.query('SELECT * FROM sponsorship_deliveries WHERE id=$1 FOR UPDATE', [i.id])).rows[0];
+      if (i.expected_version != null && i.expected_version !== dl.version) throw conflict('This delivery changed; reload it and try again', { code: 'stale_version' });
       if (dl.status !== 'dispatched') throw conflict(`This delivery is already ${dl.status}`);
       if (i.status === 'rejected' && !i.note) throw badRequest('Give a reason');
       const got = i.status === 'received' ? (i.received_quantity ?? dl.quantity) : 0;
       if (got > dl.quantity) throw badRequest(`Only ${dl.quantity} were dispatched`);
-      const row = (await c.query('UPDATE sponsorship_deliveries SET status=$2, received_quantity=$3, decided_by=$4, decided_at=now(), decision_note=$5 WHERE id=$1 RETURNING *', [dl.id, i.status, got, user.id, i.note ?? null])).rows[0];
-      const total = Number((await c.query("SELECT coalesce(sum(received_quantity),0) AS s FROM sponsorship_deliveries WHERE obligation_id=$1 AND status='received'", [ctx.o.id])).rows[0].s);
-      if (total >= ctx.o.quantity) await c.query("UPDATE sponsorship_obligations SET status='fulfilled', fulfilled_at=now() WHERE id=$1 AND status='scheduled'", [ctx.o.id]);
+      const row = (await c.query('UPDATE sponsorship_deliveries SET status=$2, received_quantity=$3, decided_by=$4, decided_at=now(), decision_note=$5, receipt_evidence_url=$6, rejection_reason=$7, version=version+1 WHERE id=$1 RETURNING *', [dl.id, i.status, got, user.id, i.note ?? null, i.evidence_url ?? null, i.status === 'rejected' ? i.reason ?? 'other' : null])).rows[0];
+      await settleGoods(c, ctx.o);
       await completeIfSettled(c, ctx.d.id);
       await logHistory(c, ctx.d.id, ctx.o.version, user.id, `goods_${i.status}`, i.note);
       await ping(c, 'sponsor', `Sponsored goods were ${i.status}`, ctx, 'sponsorship_delivery', 'pay');

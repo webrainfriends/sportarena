@@ -10,6 +10,7 @@ import { SponsorPerformance } from './sponsor-performance';
 import { SponsorNegotiation } from './sponsor-negotiation';
 import { SponsorContract } from './sponsor-contract';
 import { SponsorAmendments } from './sponsor-amendments';
+import { GoodsReturns, ServiceVouchers, remainingGoods } from './sponsor-fulfilment';
 import { SponsorTermination } from './sponsor-termination';
 import { SponsorPause } from './sponsor-pause';
 import { SponsorRenewal, STATUS_LABEL } from './sponsor-renewal';
@@ -23,7 +24,7 @@ const ROLE_LABEL = { manager: 'Manager', evaluator: 'Evaluator', finance: 'Finan
 const fmt = (cents, cur) => { try { return new Intl.NumberFormat(undefined, { style: 'currency', currency: cur }).format(cents / 10 ** (new Intl.NumberFormat(undefined, { style: 'currency', currency: cur }).resolvedOptions().maximumFractionDigits)); } catch { return `${cents} ${cur ?? ''}`; } };
 const digits = (cur) => { try { return new Intl.NumberFormat('en', { style: 'currency', currency: cur }).resolvedOptions().maximumFractionDigits; } catch { return 2; } };
 const when = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
-const what = (o) => (o.kind === 'money' ? fmt(o.amount_cents, o.currency) : o.kind === 'goods' ? `${o.quantity} to deliver` : 'Endorsement');
+const what = (o) => (o.kind === 'money' ? fmt(o.amount_cents, o.currency) : o.kind === 'goods' ? `${o.quantity} to deliver` : o.kind === 'service' ? `${o.quantity} funded` : 'Endorsement');
 const statusOf = (o) => (o.status === 'scheduled' && o.held ? 'held' : o.status === 'scheduled' && o.overdue ? 'overdue' : o.status);
 const left = (x) => Math.max(0, x.amount_cents - x.confirmed_cents - x.reported_unverified_cents - x.checkout_in_progress_cents);
 const payState = (p) => ({ reported: 'unverified', confirmed: p.method === 'online' ? 'verified by provider ✓' : 'confirmed', awaiting_payment: 'checkout open', reversed: p.method === 'online' ? 'refunded' : 'reversed' }[p.status] ?? p.status);
@@ -58,7 +59,7 @@ export function SponsorDeal({ id }) {
       <Section title="Terms" color={c.sun}>
         {d.lines.map((l) => (
           <Card key={l.id}><T weight="900">{l.label}</T>
-            <T size={12} color={c.mute}>{l.kind}{l.kind === 'money' ? ` · ${l.total_cents ? `${fmt(l.total_cents, l.currency)} total` : `${fmt(l.amount_cents, l.currency)} each`}` : ''}{l.kind === 'goods' ? ` · ${l.quantity} ${l.unit ?? ''}` : ''}{l.kind === 'endorsement' ? ` · promoted by the ${l.promoter}` : ''} · {l.cadence}{l.instalments > 1 ? ` × ${l.instalments}` : ''}</T>
+            <T size={12} color={c.mute}>{l.kind}{l.kind === 'money' ? ` · ${l.total_cents ? `${fmt(l.total_cents, l.currency)} total` : `${fmt(l.amount_cents, l.currency)} each`}` : ''}{l.kind === 'goods' || l.kind === 'service' ? ` · ${l.quantity} ${l.unit ?? ''}` : ''}{l.kind === 'service' ? ` · ${l.service_type}` : ''}{l.kind === 'endorsement' ? ` · promoted by the ${l.promoter}` : ''} · {l.cadence}{l.instalments > 1 ? ` × ${l.instalments}` : ''}</T>
             {l.estimate_cents != null ? <T size={12} color={c.mute}>Estimated value {fmt(l.estimate_cents, l.currency)} — an estimate, not cash</T> : null}
           </Card>))}
         {d.schedule ? <T size={12} color={c.mute}>Committed cash: {Object.entries(d.schedule.committed).map(([cur, v]) => fmt(v, cur)).join(' · ') || 'none'}. Currencies are never combined.</T> : null}
@@ -75,7 +76,7 @@ export function SponsorDeal({ id }) {
           {d.obligations.length ? d.obligations.map((x) => (
             <Card key={x.id} color={tone[statusOf(x)] ?? c.paper}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}><T weight="900" style={{ flex: 1 }}>{when(x.due_on)} · {x.label}</T><Tag label={x.cancelled_by_amendment ? 'replaced by amendment' : statusOf(x)} color={tone[statusOf(x)] ?? c.paper} /></View>
-              <T size={12} color={c.mute}>{what(x)}{x.kind === 'money' ? ` · confirmed ${fmt(x.confirmed_cents, x.currency)}${x.reported_unverified_cents ? ` · reported, not yet confirmed ${fmt(x.reported_unverified_cents, x.currency)}` : ''}` : ''}{x.kind === 'goods' ? ` · received ${x.received_quantity}${x.in_transit_quantity ? ` · in transit ${x.in_transit_quantity}` : ''}` : ''}</T>
+              <T size={12} color={c.mute}>{what(x)}{x.kind === 'money' ? ` · confirmed ${fmt(x.confirmed_cents, x.currency)}${x.reported_unverified_cents ? ` · reported, not yet confirmed ${fmt(x.reported_unverified_cents, x.currency)}` : ''}` : ''}{x.kind === 'goods' ? ` · received ${x.received_quantity}${x.returned_quantity ? ` · returned ${x.returned_quantity}` : ''}${x.credited_quantity ? ` · credited ${x.credited_quantity}` : ''}${x.in_transit_quantity ? ` · in transit ${x.in_transit_quantity}` : ''} · net accepted ${x.received_quantity - x.returned_quantity} of ${x.quantity}` : ''}</T>
               {x.payments.filter((p) => p.status !== 'failed').map((p) => (
                 <View key={p.id} style={{ marginTop: 4 }}>
                   <T size={12}>{fmt(p.amount_cents, p.currency)} · {p.method === 'online' ? 'online' : p.method.replace('_', ' ')}{p.method === 'online' ? '' : ` · ref ${p.reference}`} · {payState(p)}{p.refunded_cents > 0 ? ` · refunded ${fmt(p.refunded_cents, p.currency)}` : ''}</T>
@@ -86,9 +87,14 @@ export function SponsorDeal({ id }) {
                 </View>))}
               {x.deliveries.map((dl) => (
                 <View key={dl.id} style={{ marginTop: 4 }}>
-                  <T size={12}>{dl.quantity} dispatched{dl.reference ? ` · ${dl.reference}` : ''} · {dl.status}{dl.status === 'received' ? ` (${dl.received_quantity})` : ''}</T>
-                  {recipient && dl.status === 'dispatched' ? <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}><Btn small title="Received" color={c.mint} ink={c.ink} onPress={() => setForm({ kind: 'receive', o: dl })} /><Btn small title="Reject" color={c.paper} ink={c.red} onPress={() => setForm({ kind: 'rejectGoods', o: dl })} /></View> : null}
+                  <T size={12}>{dl.replaces_return_id ? 'Replacement · ' : ''}{dl.quantity} dispatched{dl.reference ? ` · ${dl.reference}` : ''} · {dl.status === 'dispatched' ? 'dispatched — not yet received' : dl.status}{dl.status === 'received' ? ` (${dl.received_quantity})` : ''}{dl.rejection_reason ? ` · ${dl.rejection_reason.replace(/_/g, ' ')}` : ''}</T>
+                  {dl.dispatch_evidence_url ? <T size={12} color={c.mute} accessibilityRole="link">Proof of dispatch: {dl.dispatch_evidence_url}</T> : null}
+                  {dl.receipt_evidence_url ? <T size={12} color={c.mute} accessibilityRole="link">Proof of receipt: {dl.receipt_evidence_url}</T> : null}
+                  {recipient && dl.status === 'dispatched' ? <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}><Btn small title="Confirm receipt" color={c.mint} ink={c.ink} onPress={() => setForm({ kind: 'receive', o: dl })} /><Btn small title="Reject / damaged" color={c.paper} ink={c.red} onPress={() => setForm({ kind: 'rejectGoods', o: dl })} /></View> : null}
                 </View>))}
+              {x.kind === 'goods' && !x.deliveries.length ? <T size={12} color={c.mute}>{sponsor ? 'Nothing dispatched yet.' : 'No shipments yet. The sponsor records a dispatch; you confirm receipt here.'}</T> : null}
+              {x.kind === 'goods' && (x.returns.length || recipient) ? <GoodsReturns o={x} sponsor={sponsor} recipient={recipient} can={can} act={act} reload={deal.reload} onReplace={(r) => setForm({ kind: 'dispatch', o: x, replaces: r })} /> : null}
+              {x.kind === 'service' ? <ServiceVouchers o={x} service={d.lines.find((l) => l.id === x.line_id)?.service_type} sponsor={sponsor} recipient={recipient} can={can} act={act} reload={deal.reload} /> : null}
               {x.submissions.map((s) => (
                 <View key={s.id} style={{ marginTop: 4 }}>
                   <T size={12}>Evidence {s.evidence_url} · {s.status.replace('_', ' ')}{s.review_note ? ` — ${s.review_note}` : ''}</T>
@@ -103,7 +109,7 @@ export function SponsorDeal({ id }) {
                   {left(x) > 0 ? <Btn small title="Report a bank payment" color={c.paper} ink={c.ink} onPress={() => setForm({ kind: 'pay', o: x })} /> : null}
                 </View>) : null}
               {x.status === 'scheduled' && x.kind === 'money' && sponsor && !can('pay') ? <T size={12} color={c.mute}>Your role cannot make payments. Ask a Finance or Manager colleague.</T> : null}
-              {x.status === 'scheduled' && !x.held && x.kind === 'goods' && sponsor && can('pay') ? <Btn small title="Record dispatch" color={c.orange} style={{ alignSelf: 'flex-start', marginTop: 6 }} onPress={() => setForm({ kind: 'dispatch', o: x })} /> : null}
+              {x.status === 'scheduled' && !x.held && x.kind === 'goods' && sponsor && can('pay') && remainingGoods(x) > 0 ? <Btn small title="Record dispatch" color={c.orange} style={{ alignSelf: 'flex-start', marginTop: 6 }} onPress={() => setForm({ kind: 'dispatch', o: x })} /> : null}
               {x.status === 'scheduled' && !x.held && x.kind === 'endorsement' && d.role === x.promoter && can('evaluate') && !x.submissions.some((s) => s.status !== 'revision_requested') ? <Btn small title="Submit evidence" color={c.violet} style={{ alignSelf: 'flex-start', marginTop: 6 }} onPress={() => setForm({ kind: 'submit', o: x })} /> : null}
             </Card>)) : <Empty emoji="🗓️" title="Nothing scheduled" />}
           <T size={12} color={c.mute}>Online payments are collected by Gotmygame through Stripe or PayPal, counted only once the provider verifies them, and paid out to the recipient after the hold period (see Earnings). Bank or cash payments you report stay unverified until the recipient confirms them.</T>
@@ -118,14 +124,15 @@ export function SponsorDeal({ id }) {
       <FormSheet visible={form?.kind === 'pay'} onClose={() => setForm(null)} title="Report a bank payment" submitLabel="Report"
         fields={[{ key: 'amount_cents', label: 'Amount paid', type: 'money', currency: o?.currency ?? 'USD' }, { key: 'method', label: 'How', type: 'choice', options: [{ value: 'bank_transfer', label: 'Bank transfer' }, { value: 'cash', label: 'Cash' }, { value: 'other', label: 'Other' }] }, { key: 'reference', label: 'Bank / receipt reference' }, { key: 'paid_on', label: 'Paid on', type: 'date' }, { key: 'evidence_url', label: 'Link to proof (https)', optional: true, type: 'url' }]}
         onSubmit={async (v) => { await api.post(`/sponsorship-obligations/${o.id}/payments`, { ...v, currency: o.currency }); deal.reload(); return 'Reported — the recipient will confirm it'; }} />
-      <FormSheet visible={form?.kind === 'dispatch'} onClose={() => setForm(null)} title="Record dispatch" submitLabel="Record"
-        fields={[{ key: 'quantity', label: 'Quantity sent', type: 'stepper', min: 1, max: o?.quantity ?? 1, default: o?.quantity ?? 1 }, { key: 'reference', label: 'Tracking reference', optional: true }]}
-        onSubmit={async (v) => { await api.post(`/sponsorship-obligations/${o.id}/deliveries`, v); deal.reload(); return 'Dispatch recorded'; }} />
+      <FormSheet visible={form?.kind === 'dispatch'} onClose={() => setForm(null)} title={form?.replaces ? 'Dispatch replacement' : 'Record dispatch'} submitLabel="Record"
+        fields={[{ key: 'quantity', label: 'Quantity sent', type: 'stepper', min: 1, max: Math.max(1, Math.min(form?.replaces?.quantity ?? Infinity, o ? remainingGoods(o) : 1)), default: Math.max(1, Math.min(form?.replaces?.quantity ?? Infinity, o ? remainingGoods(o) : 1)) }, { key: 'reference', label: 'Tracking reference', optional: true }, { key: 'evidence_url', label: 'Proof of dispatch (https link)', type: 'url', optional: true }]}
+        onSubmit={async (v) => { await api.post(`/sponsorship-obligations/${o.id}/deliveries`, { ...v, ...(form.replaces ? { replaces_return_id: form.replaces.id } : {}) }); deal.reload(); return 'Dispatch recorded — it counts only once the recipient confirms receipt'; }} />
       <FormSheet visible={form?.kind === 'receive'} onClose={() => setForm(null)} title="Confirm receipt" submitLabel="Confirm"
-        fields={[{ key: 'received_quantity', label: 'Quantity actually received', type: 'stepper', min: 1, max: o?.quantity ?? 1, default: o?.quantity ?? 1 }]}
-        onSubmit={async (v) => { await api.patch(`/sponsorship-deliveries/${o.id}`, { status: 'received', received_quantity: v.received_quantity }); deal.reload(); return 'Receipt confirmed'; }} />
-      <FormSheet visible={form?.kind === 'rejectGoods'} onClose={() => setForm(null)} title="Reject delivery" submitLabel="Reject" fields={[{ key: 'note', label: 'Reason', type: 'multiline' }]}
-        onSubmit={async (v) => { await api.patch(`/sponsorship-deliveries/${o.id}`, { status: 'rejected', note: v.note }); deal.reload(); return 'Delivery rejected'; }} />
+        fields={[{ key: 'received_quantity', label: 'Quantity actually received', type: 'stepper', min: 1, max: o?.quantity ?? 1, default: o?.quantity ?? 1 }, { key: 'evidence_url', label: 'Photo or receipt (https link)', type: 'url', optional: true }]}
+        onSubmit={async (v) => { await api.patch(`/sponsorship-deliveries/${o.id}`, { status: 'received', ...v, expected_version: o.version }); deal.reload(); return 'Receipt confirmed'; }} />
+      <FormSheet visible={form?.kind === 'rejectGoods'} onClose={() => setForm(null)} title="Reject delivery" submitLabel="Reject"
+        fields={[{ key: 'reason', label: 'What is wrong', type: 'chips', options: [{ value: 'damaged', label: 'Damaged' }, { value: 'wrong_item', label: 'Wrong item' }, { value: 'not_as_described', label: 'Not as described' }, { value: 'other', label: 'Other' }] }, { key: 'evidence_url', label: 'Photo (https link)', type: 'url', optional: true }, { key: 'note', label: 'Details', type: 'multiline' }]}
+        onSubmit={async (v) => { await api.patch(`/sponsorship-deliveries/${o.id}`, { status: 'rejected', ...v, expected_version: o.version }); deal.reload(); return 'Delivery rejected'; }} />
       <FormSheet visible={form?.kind === 'reject' || form?.kind === 'reverse'} onClose={() => setForm(null)} title={form?.kind === 'reverse' ? 'Reverse confirmed payment' : 'Payment not received'} submitLabel="Save" fields={[{ key: 'note', label: 'Reason', type: 'multiline' }]}
         onSubmit={async (v) => { await api.patch(`/sponsorship-payments/${o.id}`, { status: form.kind === 'reverse' ? 'reversed' : 'rejected', note: v.note }); deal.reload(); return 'Saved'; }} />
       <FormSheet visible={form?.kind === 'submit'} onClose={() => setForm(null)} title="Submit evidence" submitLabel="Submit"
