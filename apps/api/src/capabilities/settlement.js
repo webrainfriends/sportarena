@@ -18,7 +18,7 @@ const REASON = z.string().trim().min(5).max(500);
 const noSelf = (user, sellerId, what) => { if (sellerId === user.id) throw forbidden(`Another platform team member must ${what} for your own account`); };
 const csvCell = (v) => { const s = String(v ?? ''); return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : /^[=+\-@]/.test(s) ? `'${s}` : s; };
 
-const PURPOSE_LABEL = { coach_hire: 'Coaching session', appointment: 'Appointment', physio_package: 'Session package', shop_order: 'Shop order', shop_checkout: 'Shop order' };
+const PURPOSE_LABEL = { coach_hire: 'Coaching session', appointment: 'Appointment', physio_package: 'Session package', shop_order: 'Shop order', shop_checkout: 'Shop order', sponsorship_payment: 'Sponsorship' };
 const KIND_LABEL = { sale: 'Sale', commission: 'Platform fee', refund: 'Refund to customer', commission_reversal: 'Platform fee returned', chargeback: 'Payment dispute lost', payout: 'Payout', payout_reversal: 'Payout returned to balance' };
 const ENTRY_COLS = `l.id, l.created_at, l.kind, l.currency, l.amount_cents, l.gross_cents, l.tax_cents, l.commission_bp, l.available_at, l.purpose_type, l.payment_id, l.payout_id, l.memo, p.status AS payment_status`;
 const label = (r) => `${KIND_LABEL[r.kind] ?? r.kind}${r.purpose_type && PURPOSE_LABEL[r.purpose_type] ? ` · ${PURPOSE_LABEL[r.purpose_type]}` : ''}`;

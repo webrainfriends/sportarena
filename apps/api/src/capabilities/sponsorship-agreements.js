@@ -8,7 +8,9 @@ import { isAdmin } from '../helpers.js';
 import { notify } from '../notify.js';
 import { LINE, buildSchedule } from '../sponsor-schedule.js';
 import { snapshotIdentity } from '../sponsor-identity-access.js';
-import { saveLines, loadLines, generateObligations, logHistory, dealContext, obligationContext } from '../sponsor-agreements.js';
+import { saveLines, loadLines, generateObligations, logHistory, dealContext, obligationContext, settleMoney, heldCents, releaseStaleCheckouts } from '../sponsor-agreements.js';
+import { enabledProviders, startCheckout } from '../payments/service.js';
+import { config } from '../config.js';
 import { notifySponsor, sponsorStaffSql, actionsFor } from '../sponsor-access.js';
 
 const date = z.string().date();
@@ -77,7 +79,7 @@ cap({
       out.obligations = await obligationRows('o.sponsorship_id = $1', [d.id]);
       const kids = (t, cols) => many(`SELECT x.obligation_id, ${cols} FROM ${t} x JOIN sponsorship_obligations o ON o.id=x.obligation_id WHERE o.sponsorship_id=$1 ORDER BY x.created_at, x.id`, [d.id]);
       const [pay, del, sub] = await Promise.all([
-        kids('sponsorship_payments', 'x.id, x.amount_cents, x.currency, x.method, x.reference, x.paid_on::text AS paid_on, x.evidence_url, x.status, x.decision_note'),
+        kids('sponsorship_payments', 'x.id, x.amount_cents, x.currency, x.method, x.reference, x.paid_on::text AS paid_on, x.evidence_url, x.status, x.decision_note, x.refunded_cents, x.created_at'),
         kids('sponsorship_deliveries', 'x.id, x.quantity, x.reference, x.note, x.status, x.received_quantity, x.decision_note'),
         kids('sponsorship_submissions', 'x.id, x.evidence_url, x.note, x.status, x.review_note')]);
       for (const o of out.obligations) {
@@ -95,7 +97,9 @@ async function obligationRows(where, params, tail = '') {
   return many(
     `SELECT o.id, o.sponsorship_id, o.line_id, o.version, o.seq, o.kind, o.due_on::text AS due_on, o.amount_cents, o.currency, o.quantity, o.status,
             (o.status = 'scheduled' AND o.due_on < current_date) AS overdue, l.label,
-            coalesce((SELECT sum(amount_cents) FROM sponsorship_payments p WHERE p.obligation_id=o.id AND p.status='confirmed'),0)::bigint AS confirmed_cents,
+            coalesce((SELECT sum(amount_cents - refunded_cents) FROM sponsorship_payments p WHERE p.obligation_id=o.id AND p.status='confirmed'),0)::bigint AS confirmed_cents,
+            coalesce((SELECT sum(amount_cents) FROM sponsorship_payments p WHERE p.obligation_id=o.id AND p.status='awaiting_payment'),0)::bigint AS checkout_in_progress_cents,
+            coalesce((SELECT sum(refunded_cents) FROM sponsorship_payments p WHERE p.obligation_id=o.id),0)::bigint AS refunded_cents,
             coalesce((SELECT sum(amount_cents) FROM sponsorship_payments p WHERE p.obligation_id=o.id AND p.status='reported'),0)::bigint AS reported_unverified_cents,
             coalesce((SELECT sum(CASE x.status WHEN 'received' THEN x.received_quantity WHEN 'dispatched' THEN 0 ELSE 0 END) FROM sponsorship_deliveries x WHERE x.obligation_id=o.id),0)::int AS received_quantity,
             coalesce((SELECT sum(x.quantity) FROM sponsorship_deliveries x WHERE x.obligation_id=o.id AND x.status='dispatched'),0)::int AS in_transit_quantity,
@@ -122,7 +126,7 @@ cap({
     const rows = ids.length ? await obligationRows('o.id = ANY($1::uuid[])', [ids]) : [];
     const totals = await many(
       `SELECT o.currency, sum(o.amount_cents) FILTER (WHERE o.status <> 'cancelled')::bigint AS committed_cents,
-              coalesce(sum((SELECT sum(p.amount_cents) FROM sponsorship_payments p WHERE p.obligation_id=o.id AND p.status='confirmed')),0)::bigint AS confirmed_cents,
+              coalesce(sum((SELECT sum(p.amount_cents - p.refunded_cents) FROM sponsorship_payments p WHERE p.obligation_id=o.id AND p.status='confirmed')),0)::bigint AS confirmed_cents,
               coalesce(sum((SELECT sum(p.amount_cents) FROM sponsorship_payments p WHERE p.obligation_id=o.id AND p.status='reported')),0)::bigint AS reported_unverified_cents,
               coalesce(sum(o.amount_cents) FILTER (WHERE o.status='scheduled' AND o.due_on < current_date),0)::bigint AS overdue_cents
          ${base} AND o.kind='money' GROUP BY o.currency ORDER BY o.currency`, params);
@@ -151,12 +155,6 @@ cap({
   },
 });
 
-/** Money state of an obligation after any change: fulfilled once confirmed payments cover it, reopened if a reversal uncovers it. */
-async function settleMoney(c, o) {
-  const paid = Number((await c.query("SELECT coalesce(sum(amount_cents),0) AS s FROM sponsorship_payments WHERE obligation_id=$1 AND status='confirmed'", [o.id])).rows[0].s);
-  if (paid >= o.amount_cents) await c.query("UPDATE sponsorship_obligations SET status='fulfilled', fulfilled_at=coalesce(fulfilled_at, now()) WHERE id=$1 AND status='scheduled'", [o.id]);
-  else await c.query("UPDATE sponsorship_obligations SET status='scheduled', fulfilled_at=NULL WHERE id=$1 AND status='fulfilled'", [o.id]);
-}
 const open = (ctx, kind) => {
   if (ctx.o.kind !== kind) throw badRequest(`This obligation is ${ctx.o.kind}, not ${kind}`);
   if (ctx.o.status !== 'scheduled') throw conflict(`This obligation is already ${ctx.o.status}`);
@@ -176,7 +174,8 @@ cap({
       const unmet = (await c.query("SELECT x.text FROM sponsorship_award_conditions x JOIN sponsorship_awards w ON w.id=x.award_id WHERE w.sponsorship_id=$1 AND x.removed_at IS NULL AND x.blocks_payment AND x.met_at IS NULL ORDER BY x.position LIMIT 1", [ctx.d.id])).rows[0];
       if (unmet) throw conflict(`A condition of the award must be met before payment: ${unmet.text}`); // conditional awards (#289)
       if (i.currency !== ctx.o.currency) throw badRequest(`This due is in ${ctx.o.currency}`);
-      const held = Number((await c.query("SELECT coalesce(sum(amount_cents),0) AS s FROM sponsorship_payments WHERE obligation_id=$1 AND status IN ('reported','confirmed')", [ctx.o.id])).rows[0].s);
+      await releaseStaleCheckouts(c, ctx.o.id);
+      const held = await heldCents(c, ctx.o.id);
       if (held + i.amount_cents > ctx.o.amount_cents) throw conflict(`Only ${ctx.o.amount_cents - held} is still due on this instalment`);
       try {
         const p = (await c.query('INSERT INTO sponsorship_payments(obligation_id, amount_cents, currency, method, reference, paid_on, evidence_url, reported_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',
@@ -190,8 +189,105 @@ cap({
 });
 
 cap({
+  name: 'start_sponsorship_checkout', method: 'POST', path: '/sponsorship-obligations/:id/checkout', tag: 'Sponsors', status: 201,
+  summary: 'Sponsor (finance/manager): pay a money due online through Stripe or PayPal, in full or in part (an instalment can be paid in several checkouts, bounded by what is still due). The amount is held against the due while the checkout is open; the due counts the money only when the verified provider result arrives (never from the redirect or a client claim), so retries and webhooks cannot double-charge or double-settle. The platform collects the money and the recipient is paid out through the earnings and payout flow, which is a separate later step. Refused until the recipient has a payout account in that currency. Send the person to checkout_url, then call confirm_payment (or wait for the webhook).',
+  input: z.object({ id, provider: z.enum(['stripe', 'paypal']), amount_cents: z.coerce.number().int().positive().optional().describe('defaults to everything still due'), return_url: z.string().url().optional() }),
+  async handler({ user }, i) {
+    if (!enabledProviders().includes(i.provider)) throw conflict(`${i.provider} is not switched on for online payments yet`);
+    // the recipient must be able to be paid in this currency, or the money would be collected and stuck
+    const pre = await obligationContext(pool, i.id, user);
+    if (pre.role !== 'sponsor') throw forbidden('Only the sponsor pays a due');
+    pre.need('pay', 'pay online');
+    if (!config.settlement.currencies.includes(pre.o.currency)) throw conflict(`Online payouts are not available in ${pre.o.currency} yet. Report a bank payment instead.`, { code: 'currency_unsupported' });
+    if (!(await one("SELECT 1 FROM payout_accounts WHERE owner_id=$1 AND currency=$2 AND status IN ('pending','verified')", [pre.recipientId, pre.o.currency]))) {
+      await tx((c) => notify(c, pre.recipientId, { kind: 'sponsorship_payment', title: 'Add a payout account to receive sponsorship money', body: `A sponsor tried to pay you online in ${pre.o.currency}. Add a payout account in that currency under Earnings.`, data: { sponsorship_id: pre.d.id } }));
+      throw conflict(`The recipient has not set up payouts in ${pre.o.currency} yet. They have been asked to; meanwhile you can report a bank payment.`, { code: 'recipient_not_onboarded' });
+    }
+    const row = await tx(async (c) => {
+      const ctx = await obligationContext(c, i.id, user);
+      ctx.need('pay', 'pay online');
+      open(ctx, 'money');
+      const unmet = (await c.query("SELECT x.text FROM sponsorship_award_conditions x JOIN sponsorship_awards w ON w.id=x.award_id WHERE w.sponsorship_id=$1 AND x.removed_at IS NULL AND x.blocks_payment AND x.met_at IS NULL ORDER BY x.position LIMIT 1", [ctx.d.id])).rows[0];
+      if (unmet) throw conflict(`A condition of the award must be met before payment: ${unmet.text}`);
+      await releaseStaleCheckouts(c, ctx.o.id);
+      const left = Number(ctx.o.amount_cents) - await heldCents(c, ctx.o.id);
+      if (left <= 0) throw conflict('Nothing is left to pay on this due (it is covered, or a payment or checkout is already open)');
+      const amount = i.amount_cents ?? left;
+      if (amount > left) throw conflict(`Only ${left} is still due on this instalment`);
+      const x = (await c.query("INSERT INTO sponsorship_payments(obligation_id, amount_cents, currency, method, reference, paid_on, status, reported_by) VALUES ($1,$2,$3,'online','pending',current_date,'awaiting_payment',$4) RETURNING id", [ctx.o.id, amount, ctx.o.currency, user.id])).rows[0];
+      await c.query("UPDATE sponsorship_payments SET reference='online-'||id::text WHERE id=$1", [x.id]);
+      await logHistory(c, ctx.d.id, ctx.o.version, user.id, 'checkout_started');
+      return { id: x.id, amount };
+    });
+    try {
+      const out = await startCheckout(user, { purpose_type: 'sponsorship_payment', purpose_id: row.id, provider: i.provider, return_url: i.return_url });
+      await one('UPDATE sponsorship_payments SET payment_id=$2 WHERE id=$1', [row.id, out.id]);
+      return { ...out, sponsorship_payment_id: row.id, obligation_id: i.id };
+    } catch (e) {
+      await one("UPDATE sponsorship_payments SET status='failed', decided_at=now(), decision_note='Checkout could not be opened' WHERE id=$1 AND status='awaiting_payment'", [row.id]);
+      throw e;
+    }
+  },
+});
+
+cap({
+  name: 'cancel_sponsorship_checkout', method: 'POST', path: '/sponsorship-payments/:id/cancel-checkout', tag: 'Sponsors',
+  summary: 'The sponsor who opened an online checkout can abandon it so the amount is free to pay again. If the provider still completes it later, the money is refunded automatically and never kept. A checkout that has already been paid cannot be cancelled.',
+  input: z.object({ id }),
+  async handler({ user }, i) {
+    return tx(async (c) => {
+      const p0 = (await c.query('SELECT obligation_id FROM sponsorship_payments WHERE id=$1', [i.id])).rows[0];
+      if (!p0) throw notFound('Payment');
+      const ctx = await obligationContext(c, p0.obligation_id, user);
+      if (ctx.role !== 'sponsor') throw forbidden('Only the sponsor can cancel its checkout');
+      ctx.need('pay', 'cancel a checkout');
+      const x = (await c.query('SELECT * FROM sponsorship_payments WHERE id=$1 FOR UPDATE', [i.id])).rows[0];
+      if (x.method !== 'online' || x.status !== 'awaiting_payment') throw conflict(`This payment is ${x.status === 'awaiting_payment' ? 'not an online checkout' : x.status}`);
+      // the provider payment is deliberately left pending: if the sponsor still completes it, the verified result is refunded automatically
+      const row = (await c.query("UPDATE sponsorship_payments SET status='failed', decided_by=$2, decided_at=now(), decision_note='Checkout cancelled by the sponsor' WHERE id=$1 RETURNING *", [x.id, user.id])).rows[0];
+      await logHistory(c, ctx.d.id, ctx.o.version, user.id, 'checkout_cancelled');
+      return row;
+    });
+  },
+});
+
+cap({
+  name: 'get_sponsorship_reconciliation', method: 'GET', path: '/sponsorship-reconciliation', tag: 'Sponsors',
+  summary: 'Sponsorship money reconciled per currency (never added across currencies) for the agreements you can see: committed, collected online, refunded, confirmed manual payments, reported-but-unverified, checkouts in progress and still due, next to what the earnings ledger recorded for the online payments (sale, refund, chargeback). `reconciles` is true only when the due-side and ledger-side figures agree. Payouts to the recipient are a later, separate step in the earnings and payout flow.',
+  input: z.object({ sponsorship_id: id.optional(), sponsor_id: id.optional() }),
+  async handler({ user }, i) {
+    const params = [user.id, !!isAdmin(user), i.sponsorship_id ?? null, i.sponsor_id ?? null];
+    const scope = `${SCOPE} AND ($3::uuid IS NULL OR ss.id=$3) AND ($4::uuid IS NULL OR ss.sponsor_id=$4)`;
+    const from = 'FROM sponsorship_obligations o JOIN sponsorships ss ON ss.id=o.sponsorship_id JOIN sponsors sp ON sp.id=ss.sponsor_id';
+    const due = await many(`SELECT o.currency, coalesce(sum(o.amount_cents) FILTER (WHERE o.status <> 'cancelled'),0)::bigint AS committed_cents ${from} WHERE ${scope} AND o.kind='money' GROUP BY o.currency`, params);
+    const pay = await many(
+      `SELECT x.currency,
+         coalesce(sum(x.amount_cents) FILTER (WHERE x.method='online' AND (x.status IN ('confirmed','reversed') OR x.refunded_cents > 0)),0)::bigint AS collected_online_cents,
+         coalesce(sum(x.refunded_cents) FILTER (WHERE x.method='online'),0)::bigint AS refunded_cents,
+         coalesce(sum(x.amount_cents) FILTER (WHERE x.method<>'online' AND x.status='confirmed'),0)::bigint AS confirmed_manual_cents,
+         coalesce(sum(x.amount_cents) FILTER (WHERE x.status='reported'),0)::bigint AS reported_unverified_cents,
+         coalesce(sum(x.amount_cents) FILTER (WHERE x.status='awaiting_payment'),0)::bigint AS checkout_in_progress_cents
+       FROM sponsorship_payments x JOIN sponsorship_obligations o ON o.id=x.obligation_id JOIN sponsorships ss ON ss.id=o.sponsorship_id JOIN sponsors sp ON sp.id=ss.sponsor_id WHERE ${scope} GROUP BY x.currency`, params);
+    const ledger = await many(
+      `SELECT l.currency, coalesce(sum(l.gross_cents) FILTER (WHERE l.kind='sale'),0)::bigint AS sale_cents, coalesce(-sum(l.gross_cents) FILTER (WHERE l.kind='refund'),0)::bigint AS refund_cents, coalesce(-sum(l.gross_cents) FILTER (WHERE l.kind='chargeback'),0)::bigint AS chargeback_cents
+         FROM provider_ledger l JOIN sponsorship_payments x ON x.id=l.purpose_id AND l.purpose_type='sponsorship_payment' JOIN sponsorship_obligations o ON o.id=x.obligation_id JOIN sponsorships ss ON ss.id=o.sponsorship_id JOIN sponsors sp ON sp.id=ss.sponsor_id
+        WHERE ${scope} AND l.kind IN ('sale','refund','chargeback') GROUP BY l.currency`, params);
+    const cur = [...new Set([...due, ...pay].map((r) => r.currency))].sort();
+    return cur.map((currency) => {
+      const d = due.find((r) => r.currency === currency), p = pay.find((r) => r.currency === currency), l = ledger.find((r) => r.currency === currency);
+      const committed = Number(d?.committed_cents ?? 0), online = Number(p?.collected_online_cents ?? 0), refunded = Number(p?.refunded_cents ?? 0), manual = Number(p?.confirmed_manual_cents ?? 0);
+      const confirmed = online - refunded + manual;
+      return { currency, committed_cents: committed, collected_online_cents: online, refunded_cents: refunded, confirmed_manual_cents: manual, confirmed_cents: confirmed,
+        reported_unverified_cents: Number(p?.reported_unverified_cents ?? 0), checkout_in_progress_cents: Number(p?.checkout_in_progress_cents ?? 0), outstanding_cents: committed - confirmed,
+        ledger: { sale_cents: Number(l?.sale_cents ?? 0), refund_cents: Number(l?.refund_cents ?? 0), chargeback_cents: Number(l?.chargeback_cents ?? 0) },
+        reconciles: Number(l?.sale_cents ?? 0) === online && Number(l?.refund_cents ?? 0) === refunded };
+    });
+  },
+});
+
+cap({
   name: 'decide_sponsorship_payment', method: 'PATCH', path: '/sponsorship-payments/:id', tag: 'Sponsors',
-  summary: 'Recipient (or admin): confirm that a reported payment arrived, reject it (reason required), or reverse a confirmed one (reason required, e.g. a refund). The sponsor can never confirm its own payment. A due is fulfilled only by confirmed payments.',
+  summary: 'Recipient (or admin): confirm that a reported (manual) payment arrived, reject it (reason required), or reverse a confirmed one (reason required, e.g. a refund). The sponsor can never confirm its own payment. A due is fulfilled only by confirmed payments.',
   input: z.object({ id, status: z.enum(['confirmed', 'rejected', 'reversed']), note: z.string().max(500).optional() }),
   async handler({ user }, i) {
     return tx(async (c) => {
@@ -201,6 +297,7 @@ cap({
       if (ctx.role !== 'recipient' && ctx.role !== 'admin') throw forbidden('Only the recipient confirms a payment');
       if (i.status !== 'confirmed' && !i.note) throw badRequest('Give a reason');
       const p = (await c.query('SELECT * FROM sponsorship_payments WHERE id=$1 FOR UPDATE', [i.id])).rows[0];
+      if (p.method === 'online') throw conflict('An online payment is verified by the payment provider; it cannot be confirmed, rejected or reversed by hand. The platform team issues refunds.');
       if (i.status === 'reversed' ? p.status !== 'confirmed' : p.status !== 'reported') throw conflict(`This payment is already ${p.status}`);
       const row = (await c.query('UPDATE sponsorship_payments SET status=$2, decided_by=$3, decided_at=now(), decision_note=$4 WHERE id=$1 RETURNING *', [p.id, i.status, user.id, i.note ?? null])).rows[0];
       await settleMoney(c, ctx.o);
