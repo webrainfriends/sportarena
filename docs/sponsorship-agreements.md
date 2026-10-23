@@ -53,7 +53,7 @@ stay open: debt and delivered value are never erased. Nothing is deleted.
 
 ## Remaining gaps (not in this slice)
 * **Group target** — no durable "group" entity exists (only teams); not silently treated as a team. Needs its own design.
-* **Amendments of an accepted agreement**, pause, renewal successor, and termination with refunds/returns.
+* **Pause, renewal successor, and termination with refunds/returns.** (Amendments of an accepted agreement: see [sponsorship-amendments.md](sponsorship-amendments.md).)
 * **Performance review for teams/events/groups** and pre-agreement review (the athlete slice is below; sharing through #64 Sports Passport is not wired),
   CSV export, approaching-due reminders, per-line payer/payee/channel fields, disputes→cases linking, guardian/youth rules
   for sponsorship agreements.

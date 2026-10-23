@@ -44,9 +44,12 @@ export async function generateObligations(c, sponsorshipId) {
   if (!d?.accepted_version) return 0;
   const lines = await loadLines(c, d.id, d.accepted_version);
   const ids = lines.map((l) => l.id);
+  // an amended version only owns the dues from its effective date; earlier dues belong to the versions that were in force then (#296)
+  const from = (await c.query('SELECT effective_from::text AS f FROM sponsorship_versions WHERE sponsorship_id=$1 AND version=$2', [d.id, d.accepted_version])).rows[0]?.f ?? null;
   const plan = buildSchedule(lines, { starts_on: d.starts_on, ends_on: d.ends_on });
   let made = 0;
   for (const o of plan.occurrences) {
+    if (from && o.due_on < from) continue;
     const r = await c.query(
       `INSERT INTO sponsorship_obligations(sponsorship_id, version, line_id, seq, kind, due_on, amount_cents, currency, quantity) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
        ON CONFLICT (sponsorship_id, version, line_id, seq) DO NOTHING`, [d.id, d.accepted_version, ids[o.line - 1], o.seq, o.kind, o.due_on, o.amount_cents, o.currency, o.quantity]);
