@@ -71,7 +71,7 @@ test('dispatch is not receipt; a return frees quantity, a replacement reconciles
   row = await due(w, d);
   assert.equal(row.returned_quantity, 0, 'nothing changes until the sponsor accepts'); assert.equal(row.return_pending_quantity, 2);
 
-  const decide = (r, body, token = w.sponsor.token) => api('PATCH', `/sponsorship-returns/${r.id}`, { token, body });
+  const decide = (r, body, token = w.sponsor.token) => api('PATCH', `/sponsorship-delivery-returns/${r.id}`, { token, body });
   assert.equal((await decide(r1, { status: 'accepted' }, w.ath.token)).status, 403, 'the recipient cannot accept its own return');
   assert.equal((await decide(r1, { status: 'disputed' })).status, 400, 'a dispute needs a reason');
   assert.equal((await decide(r1, { status: 'accepted', expected_version: 9 })).status, 409, 'stale version refused');
@@ -116,12 +116,12 @@ test('a credited return closes its quantity without counting as received; disput
   must(await recv(w, d1, {}));
   assert.equal((await due(w, d)).status, 'fulfilled');
   const r = must(await api('POST', `/sponsorship-deliveries/${d1.id}/returns`, { token: w.ath.token, body: { quantity: 1, reason: 'not_as_described' } }), 201);
-  must(await api('PATCH', `/sponsorship-returns/${r.id}`, { token: w.sponsor.token, body: { status: 'disputed', note: 'Matches the spec' } }));
+  must(await api('PATCH', `/sponsorship-delivery-returns/${r.id}`, { token: w.sponsor.token, body: { status: 'disputed', note: 'Matches the spec' } }));
   assert.equal((await due(w, d)).returned_quantity, 0);
   const r2 = must(await api('POST', `/sponsorship-deliveries/${d1.id}/returns`, { token: w.ath.token, body: { quantity: 1, reason: 'damaged' } }), 201);
-  must(await api('PATCH', `/sponsorship-returns/${r2.id}`, { token: w.ath.token, body: { status: 'cancelled' } }));
+  must(await api('PATCH', `/sponsorship-delivery-returns/${r2.id}`, { token: w.ath.token, body: { status: 'cancelled' } }));
   const r3 = must(await api('POST', `/sponsorship-deliveries/${d1.id}/returns`, { token: w.ath.token, body: { quantity: 1, reason: 'damaged' } }), 201);
-  must(await api('PATCH', `/sponsorship-returns/${r3.id}`, { token: w.sponsor.token, body: { status: 'accepted', resolution: 'credit' } }));
+  must(await api('PATCH', `/sponsorship-delivery-returns/${r3.id}`, { token: w.sponsor.token, body: { status: 'accepted', resolution: 'credit' } }));
   const row = await due(w, d);
   assert.equal(row.returned_quantity, 1); assert.equal(row.credited_quantity, 1);
   assert.equal(row.status, 'fulfilled', 'net 3 + credited 1 settles the commitment');
@@ -148,11 +148,11 @@ test('tenant isolation: unrelated users cannot read or act on returns, deliverie
   const other = await signup(['sponsor']), other2 = await signup(['athlete']);
   for (const t of [other.token, other2.token]) {
     assert.equal((await api('GET', `/sponsorships/${d.id}`, { token: t })).status, 403);
-    assert.equal((await api('PATCH', `/sponsorship-returns/${r.id}`, { token: t, body: { status: 'accepted' } })).status, 403);
+    assert.equal((await api('PATCH', `/sponsorship-delivery-returns/${r.id}`, { token: t, body: { status: 'accepted' } })).status, 403);
     assert.equal((await api('POST', `/sponsorship-deliveries/${d1.id}/returns`, { token: t, body: { quantity: 1, reason: 'damaged' } })).status, 403);
     assert.equal((await api('POST', `/sponsorship-obligations/${o.id}/deliveries`, { token: t, body: { quantity: 1 } })).status, 403);
   }
-  assert.equal((await api('PATCH', `/sponsorship-returns/${r.id}`, { token: w.sponsor.token, body: { status: 'accepted' } })).status, 200);
+  assert.equal((await api('PATCH', `/sponsorship-delivery-returns/${r.id}`, { token: w.sponsor.token, body: { status: 'accepted' } })).status, 200);
   assert.deepEqual(must(await api('GET', '/sponsorship-obligations', { token: other.token })).obligations, []);
 });
 

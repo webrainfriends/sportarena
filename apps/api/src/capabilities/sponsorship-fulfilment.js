@@ -13,7 +13,7 @@ const REASON = z.enum(['damaged', 'wrong_item', 'not_as_described', 'other']);
 const stale = () => conflict('This changed while you were looking; reload it and try again', { code: 'stale_version' });
 
 cap({
-  name: 'request_sponsorship_return', method: 'POST', path: '/sponsorship-deliveries/:id/returns', tag: 'Sponsors', status: 201,
+  name: 'request_sponsorship_delivery_return', method: 'POST', path: '/sponsorship-deliveries/:id/returns', tag: 'Sponsors', status: 201,
   summary: 'Recipient (or admin): report that part of a RECEIVED delivery is damaged, wrong or not as described, with optional evidence (https link). Returned quantity can never exceed what was received and not already returned. Nothing changes the received count until the sponsor accepts. `idempotency_key` makes a retry return the same request instead of a second one.',
   input: z.object({ id, quantity: z.coerce.number().int().positive(), reason: REASON, resolution: z.enum(['replace', 'credit']).default('replace').describe('what the recipient is asking for; the sponsor may answer differently'),
     note: z.string().max(500).optional(), evidence_url: url.optional(), idempotency_key: z.string().min(8).max(80).optional() }),
@@ -42,7 +42,7 @@ cap({
 });
 
 cap({
-  name: 'decide_sponsorship_return', method: 'PATCH', path: '/sponsorship-returns/:id', tag: 'Sponsors',
+  name: 'decide_sponsorship_delivery_return', method: 'PATCH', path: '/sponsorship-delivery-returns/:id', tag: 'Sponsors',
   summary: 'Sponsor (pay permission): accept a return (choosing replace or credit) or dispute it (reason required). The recipient may cancel its own open request. Accepting reduces the net received quantity and re-opens a fulfilled due that is now short; a replacement is then dispatched against it. `expected_version` refuses a stale decision.',
   input: z.object({ id, status: z.enum(['accepted', 'disputed', 'cancelled']), resolution: z.enum(['replace', 'credit']).optional(), note: z.string().max(500).optional(), expected_version: z.coerce.number().int().positive().optional() }),
   async handler({ user }, i) {

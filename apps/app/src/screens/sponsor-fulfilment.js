@@ -37,7 +37,7 @@ export function GoodsReturns({ o, sponsor, recipient, can, act, reload, onReplac
           {x.evidence_url ? <T size={12} color={c.mute} accessibilityRole="link">Evidence: {x.evidence_url}</T> : null}
           {sponsor && can('pay') && x.status === 'requested' ? <Row><Btn small title="Accept return" color={c.mint} ink={c.ink} onPress={() => setForm({ kind: 'accept', r: x })} /><Btn small title="Dispute" color={c.paper} ink={c.red} onPress={() => setForm({ kind: 'dispute', r: x })} /></Row> : null}
           {sponsor && can('pay') && x.status === 'accepted' && x.resolution === 'replace' && !replaced.has(x.id) && o.status === 'scheduled' ? <Btn small title="Dispatch replacement" color={c.orange} style={{ alignSelf: 'flex-start', marginTop: 4 }} onPress={() => onReplace(x)} /> : null}
-          {recipient && x.status === 'requested' ? <Btn small title="Cancel request" color={c.paper} ink={c.ink} style={{ alignSelf: 'flex-start', marginTop: 4 }} onPress={() => act(() => api.patch(`/sponsorship-returns/${x.id}`, { status: 'cancelled', expected_version: x.version }), 'Request cancelled')} /> : null}
+          {recipient && x.status === 'requested' ? <Btn small title="Cancel request" color={c.paper} ink={c.ink} style={{ alignSelf: 'flex-start', marginTop: 4 }} onPress={() => act(() => api.patch(`/sponsorship-delivery-returns/${x.id}`, { status: 'cancelled', expected_version: x.version }), 'Request cancelled')} /> : null}
         </View>))}
       {eligible.length ? <Btn small title="Report a return" color={c.paper} ink={c.ink} style={{ alignSelf: 'flex-start', marginTop: 6 }} onPress={() => { key.current = `ret-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`; setForm({ kind: 'request' }); }} /> : null}
       {sponsor && !can('pay') && o.returns.some((x) => x.status === 'requested') ? <T size={12} color={c.mute}>Your role cannot answer returns. Ask a Finance or Manager colleague.</T> : null}
@@ -52,9 +52,9 @@ export function GoodsReturns({ o, sponsor, recipient, can, act, reload, onReplac
         onSubmit={async (v) => { const { delivery_id, ...body } = v; await api.post(`/sponsorship-deliveries/${delivery_id}/returns`, { ...body, idempotency_key: key.current }); reload(); return 'Return sent — the sponsor will answer it'; }} />
       <FormSheet visible={form?.kind === 'accept'} onClose={() => setForm(null)} title="Accept this return" submitLabel="Accept"
         fields={[{ key: 'resolution', label: 'You will', type: 'choice', options: [{ value: 'replace', label: 'Replace' }, { value: 'credit', label: 'Credit (no replacement)' }], default: r?.resolution ?? 'replace' }, { key: 'note', label: 'Note', type: 'multiline', optional: true }]}
-        onSubmit={async (v) => { await api.patch(`/sponsorship-returns/${r.id}`, { status: 'accepted', resolution: v.resolution, note: v.note, expected_version: r.version }); reload(); return 'Return accepted'; }} />
+        onSubmit={async (v) => { await api.patch(`/sponsorship-delivery-returns/${r.id}`, { status: 'accepted', resolution: v.resolution, note: v.note, expected_version: r.version }); reload(); return 'Return accepted'; }} />
       <FormSheet visible={form?.kind === 'dispute'} onClose={() => setForm(null)} title="Dispute this return" submitLabel="Dispute" fields={[{ key: 'note', label: 'Why', type: 'multiline' }]}
-        onSubmit={async (v) => { await api.patch(`/sponsorship-returns/${r.id}`, { status: 'disputed', note: v.note, expected_version: r.version }); reload(); return 'Dispute sent'; }} />
+        onSubmit={async (v) => { await api.patch(`/sponsorship-delivery-returns/${r.id}`, { status: 'disputed', note: v.note, expected_version: r.version }); reload(); return 'Dispute sent'; }} />
     </View>
   );
 }
