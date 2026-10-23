@@ -72,6 +72,9 @@ export const config = {
   waitlistHoldMinutes: Number(env.WAITLIST_HOLD_MINUTES ?? 15),
   // Notifications: queued emails are POSTed as JSON to this webhook (your SES/SendGrid/n8n bridge). Unset = they stay queued.
   notifyWebhook: { url: env.NOTIFY_WEBHOOK_URL, secret: env.NOTIFY_WEBHOOK_SECRET },
+  // WhatsApp: messages go through a self-hosted OpenWA gateway (docker container next to the API, localhost only). Unset URL = the channel is off
+  // and queued deliveries simply wait. defaultSession is the OpenWA session id used when no platform sender has been linked in the app.
+  whatsapp: { url: env.OPENWA_URL, apiKey: env.OPENWA_API_KEY, defaultSession: env.OPENWA_DEFAULT_SESSION, minGapMs: Number(env.WHATSAPP_MIN_GAP_MS ?? 2000), perCycle: Number(env.WHATSAPP_PER_CYCLE ?? 20) },
   // Optional speech-to-text bridge for coaching voice notes: POST the audio, answer {"text": "..."}. Without it, voice notes are simply unavailable.
   transcribe: { url: env.COACHING_TRANSCRIBE_URL, secret: env.COACHING_TRANSCRIBE_SECRET },
   // Push: phone apps go through the Expo push service; browsers through Web Push (VAPID keys, generated once by the deploy).

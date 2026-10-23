@@ -210,6 +210,9 @@ jobs:
           SETTLEMENT_MIN_PAYOUT_CENTS: ${{ vars.SETTLEMENT_MIN_PAYOUT_CENTS }}
           # optional: raises Expo push limits / enables enhanced security for phone push (https://expo.dev/accounts/_/settings/access-tokens)
           EXPO_ACCESS_TOKEN: ${{ secrets.EXPO_ACCESS_TOKEN }}
+          OPENWA_ENABLED: ${{ vars.OPENWA_ENABLED }}
+          OPENWA_ENGINE: ${{ vars.OPENWA_ENGINE }}
+          OPENWA_VERSION: ${{ vars.OPENWA_VERSION }}
           # optional: switches on Claude-written recaps, plan ideas and sheet reviews (docs/event-command-centre.md); without it they use built-in rules
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           AI_MODEL: ${{ vars.AI_MODEL }}
@@ -237,7 +240,7 @@ jobs:
           TARGET="${EC2_USER}@${EC2_HOST}"
           scp "${SSH_OPTS[@]}" scripts/deploy-remote.sh "$TARGET:/tmp/sportarena-deploy.sh"
           REMOTE_ENV=""
-          for v in APP_DIR BRANCH REPO_URL APP_PORT NGINX_PORT DB_PORT ENABLE_TLS PUBLIC_HOST PUBLIC_IP APP_DOMAIN LETSENCRYPT_EMAIL KMS_KEY_ID KMS_REGION STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET PAYPAL_CLIENT_ID PAYPAL_CLIENT_SECRET PAYPAL_WEBHOOK_ID PAYPAL_ENV PAYMENT_CURRENCY PROVIDER_COMMISSION_BP SETTLEMENT_HOLD_DAYS SETTLEMENT_PAYOUTS SETTLEMENT_CURRENCIES SETTLEMENT_MIN_PAYOUT_CENTS EXPO_ACCESS_TOKEN ANTHROPIC_API_KEY AI_MODEL WORKER_MODE PLATFORM_ADMIN_EMAIL PLATFORM_ADMIN_HANDLE PLATFORM_ADMIN_NAME PLATFORM_ADMIN_PASSWORD GOOGLE_CLIENT_ID APPLE_CLIENT_ID SUPER_ADMIN_EMAIL; do
+          for v in OPENWA_ENABLED OPENWA_ENGINE OPENWA_VERSION APP_DIR BRANCH REPO_URL APP_PORT NGINX_PORT DB_PORT ENABLE_TLS PUBLIC_HOST PUBLIC_IP APP_DOMAIN LETSENCRYPT_EMAIL KMS_KEY_ID KMS_REGION STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET PAYPAL_CLIENT_ID PAYPAL_CLIENT_SECRET PAYPAL_WEBHOOK_ID PAYPAL_ENV PAYMENT_CURRENCY PROVIDER_COMMISSION_BP SETTLEMENT_HOLD_DAYS SETTLEMENT_PAYOUTS SETTLEMENT_CURRENCIES SETTLEMENT_MIN_PAYOUT_CENTS EXPO_ACCESS_TOKEN ANTHROPIC_API_KEY AI_MODEL WORKER_MODE PLATFORM_ADMIN_EMAIL PLATFORM_ADMIN_HANDLE PLATFORM_ADMIN_NAME PLATFORM_ADMIN_PASSWORD GOOGLE_CLIENT_ID APPLE_CLIENT_ID SUPER_ADMIN_EMAIL; do
             REMOTE_ENV+="$(printf '%s=%q ' "$v" "${!v:-}")"
           done
           timeout 20m ssh -T "${SSH_OPTS[@]}" "$TARGET" "env $REMOTE_ENV bash /tmp/sportarena-deploy.sh"
@@ -265,6 +268,7 @@ jobs:
             echo "== local health"; curl -s -m 5 http://127.0.0.1:4255/health || echo "api: no answer"; echo
             curl -s -m 5 -o /dev/null -w "nginx 9255 -> HTTP %{http_code}\n" http://127.0.0.1:9255/health || echo "nginx: no answer"
             echo "== worker health"; curl -s -m 5 -w " (HTTP %{http_code})\n" http://127.0.0.1:4255/health/worker || echo "worker probe: no answer"; pm2 logs sportarena-worker --lines 15 --nostream 2>&1 | tail -18
+            echo "== whatsapp gateway (OpenWA)"; sudo docker logs --tail 15 sportarena-openwa 2>&1 | sed -E "s/(api[-_ ]?key[^ ]*[ :=]+)[^ ]+/\1***/I" | tail -15 || echo "openwa: not running"
             echo "== api log (last 25 lines)"; pm2 logs sportarena-api --lines 25 --nostream 2>&1 | tail -30
             echo "== master key file"; ls -l /var/lib/sportarena 2>&1
             echo "== last deploy error"; cat /tmp/sportarena-deploy-error.log 2>&1 || true

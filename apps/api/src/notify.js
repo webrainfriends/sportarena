@@ -8,7 +8,7 @@ import { config } from './config.js';
 import { decrypt, encrypt } from './crypto.js';
 import { audit } from './helpers.js';
 
-export const DEFAULT_PREFS = { in_app: true, email: true, push: true, reminder_hours: 24, muted_kinds: [] };
+export const DEFAULT_PREFS = { in_app: true, email: true, push: true, whatsapp: false, reminder_hours: 24, muted_kinds: [] };
 
 /**
  * Notify one user. An optional `dedupe_key` (e.g. `billboard_response:<id>:owner`) makes the call idempotent per recipient. Respects their channel switches and muted kinds.
@@ -34,7 +34,7 @@ export async function notify(c, userId, msg) {
 
 async function deliver(db, c, userId, { kind, title, body, data = {}, dedupe_key = null }) {
   const prefs = (await db.query('SELECT * FROM notification_prefs WHERE user_id=$1', [userId])).rows[0] ?? DEFAULT_PREFS;
-  if (prefs.muted_kinds.includes(kind) || (!prefs.in_app && !prefs.email && prefs.push === false)) return null;
+  if (prefs.muted_kinds.includes(kind) || (!prefs.in_app && !prefs.email && prefs.push === false && !prefs.whatsapp)) return null;
   const n = (await db.query('INSERT INTO notifications(user_id, kind, title, body, data, dedupe_key) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (user_id, dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING RETURNING *', [userId, kind, title, body, data, dedupe_key])).rows[0];
   if (!n) return null; // same business event already notified for this recipient
   if (prefs.email) await db.query("INSERT INTO notification_deliveries(notification_id, channel) VALUES ($1,'email')", [n.id]);
@@ -45,6 +45,8 @@ async function deliver(db, c, userId, { kind, title, body, data = {}, dedupe_key
     const kick = () => import('./push.js').then((m) => m.dispatchPush()).catch((e) => console.error('[push]', e.message));
     if (c?.afterCommit) c.afterCommit(kick); else setImmediate(kick);
   }
+  // WhatsApp is opt-in (verified number + switch) and limited to an allow-list of kinds; the worker sends it paced
+  if (prefs.whatsapp && await (await import('./whatsapp.js')).whatsappEligible(db, userId, kind)) await db.query("INSERT INTO notification_deliveries(notification_id, channel) VALUES ($1,'whatsapp')", [n.id]);
   return n;
 }
 
@@ -155,7 +157,7 @@ export async function failDelivery(channel, d, error, maxAttempts = DELIVERY_MAX
 }
 
 // A dead delivery goes back to pending with a fresh attempt budget.
-for (const channel of ['email', 'push']) {
+for (const channel of ['email', 'push', 'whatsapp']) {
   requeueHooks[`${channel}.delivery`] = async ({ delivery_id }) => {
     await query("UPDATE notification_deliveries SET status='pending', attempts=0, claimed_at=NULL, next_attempt_at=NULL WHERE id=$1 AND status='failed'", [delivery_id]);
   };
@@ -218,9 +220,10 @@ export async function notificationCycle() {
   const coaching = await isolated('coaching', async () => (await import('./coaching-notify.js')).queueCoachingReminders(), 0);
   const retries = await isolated('notify', () => runJobs('notify', notifyHandlers), null);
   const push = await isolated('push', () => dispatchPush(), null);
+  const whatsapp = await isolated('whatsapp', async () => (await import('./whatsapp.js')).dispatchWhatsapp(), { configured: false, pending: 0, sent: 0, failed: 0 });
   const email = await isolated('email', () => dispatchPending(), { configured: !!config.notifyWebhook.url, pending: 0, sent: 0, failed: 0 });
-  const errors = Object.fromEntries(Object.entries({ reminders, coaching, notify: retries, push, email }).filter(([, r]) => !r.ok).map(([k, r]) => [k, r.error]));
-  return { reminders: reminders.value, push: push.value, ...email.value, ...(Object.keys(errors).length ? { errors } : {}) };
+  const errors = Object.fromEntries(Object.entries({ reminders, coaching, notify: retries, push, whatsapp, email }).filter(([, r]) => !r.ok).map(([k, r]) => [k, r.error]));
+  return { reminders: reminders.value, push: push.value, whatsapp: whatsapp.value, ...email.value, ...(Object.keys(errors).length ? { errors } : {}) };
 }
 
 export const inbox = (userId, { unread, limit, offset }) =>

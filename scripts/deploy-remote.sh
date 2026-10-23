@@ -176,6 +176,40 @@ if [ -z "$(env_val VAPID_PUBLIC_KEY)" ]; then
   set_env VAPID_SUBJECT "mailto:admin@${PUBLIC_HOST:-sportarena.app}"
 fi
 
+# WhatsApp gateway (OpenWA, https://github.com/rmyndharis/OpenWA): one container on 127.0.0.1 only, with a persistent volume that holds the
+# linked WhatsApp sessions and its API key. Never recreated by a deploy (that would unlink the numbers). Non-fatal: if it cannot start,
+# the API still deploys and WhatsApp messages simply wait in the queue. Engine: Baileys (about 30-80 MB per number); set the repository
+# variable OPENWA_ENGINE=whatsapp-web.js for the browser engine. OPENWA_ENABLED=false skips it entirely.
+OPENWA_CONTAINER=sportarena-openwa
+OPENWA_PORT="${OPENWA_PORT:-2785}"
+if [ "$(printf '%s' "${OPENWA_ENABLED:-true}" | tr -d '\r\n' | xargs)" != "false" ]; then
+  if ! sudo docker inspect "$OPENWA_CONTAINER" >/dev/null 2>&1; then
+    echo "[deploy] creating $OPENWA_CONTAINER on 127.0.0.1:${OPENWA_PORT}"
+    sudo docker run -d --name "$OPENWA_CONTAINER" --restart unless-stopped \
+      -e ENGINE_TYPE="$(printf '%s' "${OPENWA_ENGINE:-baileys}" | tr -d '\r\n' | xargs)" \
+      -p 127.0.0.1:${OPENWA_PORT}:2785 \
+      -v sportarena_openwa_data:/app/data \
+      "ghcr.io/rmyndharis/openwa:$(printf '%s' "${OPENWA_VERSION:-latest}" | tr -d '\r\n' | xargs)" >/dev/null \
+      || echo "::warning::Could not start $OPENWA_CONTAINER; WhatsApp stays off until it runs."
+  else
+    sudo docker start "$OPENWA_CONTAINER" >/dev/null 2>&1 || true
+  fi
+  # OpenWA writes its admin key to /app/data/.api-key on first boot; hand it to the API (kept across deploys).
+  OWA_KEY=""
+  for i in $(seq 1 40); do
+    OWA_KEY="$(sudo docker exec "$OPENWA_CONTAINER" cat /app/data/.api-key 2>/dev/null | tr -d '\r\n' || true)"
+    [ -n "$OWA_KEY" ] && break
+    sleep 1
+  done
+  if [ -n "$OWA_KEY" ]; then
+    set_env OPENWA_URL "http://127.0.0.1:${OPENWA_PORT}"
+    set_env OPENWA_API_KEY "$OWA_KEY"
+    echo "[deploy] OpenWA gateway ready on 127.0.0.1:${OPENWA_PORT}"
+  else
+    echo "::warning::OpenWA did not publish its API key within 40s; WhatsApp stays off (check: docker logs $OPENWA_CONTAINER)."
+  fi
+fi
+
 # ---- migrate + (re)start the API ----
 (cd apps/api && npm run migrate)
 pm2 delete sportarena-api >/dev/null 2>&1 || true

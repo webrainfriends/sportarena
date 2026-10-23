@@ -123,7 +123,7 @@ cap({
            ON CONFLICT (event_id, coalesce(team_id, user_id)) WHERE status = 'invited' DO NOTHING RETURNING *`,
           [ev.id, v.team_id ?? null, v.user_id ?? null, i.source, v.team_id ? ratingOf(ratings, v.team_id).rating : null, v.seed_hint ?? null, i.message ?? null, user.id, i.expires_at ?? null])).rows[0];
         if (!row) throw conflict('That invitee already has an open invitation');
-        await notify(c, who, { kind: 'event_invitation', title: `Invitation: ${ev.name}`, body: i.message || `You are invited to ${ev.name}. Open it to accept or decline.`, data: { event_id: ev.id, invitation_id: row.id } });
+        await notify(c, who, { kind: 'event_invitation', title: `Invitation: ${ev.name}`, body: i.message || `You are invited to ${ev.name}. Open it to accept or decline.`, data: { event_id: ev.id, invitation_id: row.id, sender_scope: { kind: 'event', id: ev.id } } });
         out.push(row);
       }
       return { created: out.length, invitations: out };
