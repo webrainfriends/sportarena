@@ -33,7 +33,7 @@ Signing needs `document_sha256` (the contract's `snapshot_sha256`, which the sig
 
 ## Authority
 * Sponsor side: a new sponsor action `sign_contract` (manager, approver) decides who can sign for the brand; `contract` (manager, legal, approver) who can issue and send.
-* Recipient side: the target owner (athlete, team owner, event organiser) or an organisation owner/admin.
+* Recipient side: the target owner (athlete, team owner, event organiser) or an organisation owner/admin. A payee (a finance member named on the allocations only to confirm money) is on the deal and can read the contract, but cannot issue it, be named as a signatory or sign.
 * Authority is read **live** when someone is named and again when they sign. A person who lost authority, a non-party, or an admin cannot sign. Admins can read, never sign.
 
 ## Immutability and idempotency
