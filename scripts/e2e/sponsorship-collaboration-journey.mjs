@@ -73,6 +73,11 @@ try {
   await p.getByText('Escalate', { exact: true }).first().click(); await wait(p, 1000); await shot(p, '06-escalate-sheet');
   await p.getByText('Escalate now', { exact: true }).last().click(); await wait(p, 2000); await toTasks(p); await shot(p, '07-escalated');
   check(await p.getByText(/^escalated$/i).first().isVisible(), 'the escalation is shown');
+  await p.getByText('Discussion & notes', { exact: true }).first().click(); await wait(p, 1200);
+  await p.getByText('Write a note', { exact: true }).first().click(); await wait(p, 1000);
+  await p.getByRole('textbox').last().fill('Agree the shoot plan before renewal'); await shot(p, '06b-agreement-note-sheet');
+  await p.getByText('Add note', { exact: true }).last().click(); await wait(p, 2000); await shot(p, '06c-agreement-notes');
+  check(await p.getByText('Agree the shoot plan before renewal').first().isVisible(), 'an agreement-level note is written and listed');
   await p.context().close();
   const { page: r } = await session(ath, { width: 390, height: 844 });
   await open(r); await toTasks(r); await shot(r, '08-recipient-view');

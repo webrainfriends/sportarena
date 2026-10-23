@@ -43,6 +43,7 @@ export function SponsorTasks({ target, ends_on, shareable = true }) {
         {FILTERS.map((f) => <Chip key={f.value} label={f.label} active={filter === f.value} onPress={() => setFilter(f.value)} />)}
         <Chip label="Assigned to me" active={mineOnly} onPress={() => setMineOnly(!mineOnly)} />
       </View>
+      <Btn small title={target.program_id ? 'Program notes' : 'Discussion & notes'} color={c.violet} style={{ alignSelf: 'flex-start' }} onPress={() => setNotes({ scope: true })} accessibilityLabel={target.program_id ? 'Open the internal notes of this program' : 'Open the discussion and notes of this agreement'} />
       {list.loading && !d ? <Loading /> : list.error ? <LoadError error={list.error} onRetry={list.reload} /> : !d.items.length ? (
         <Empty emoji="✅" title={mineOnly ? 'Nothing is assigned to you here' : filter === 'open' ? 'No open tasks' : 'No tasks yet'} sub={canWrite ? 'Add a task to track who does what by when. Assignees and managers are reminded before it is due.' : 'Your role can read tasks here; managers and colleagues with a working role add them.'} />
       ) : d.items.map((t) => {
@@ -96,7 +97,7 @@ export function SponsorTasks({ target, ends_on, shareable = true }) {
           try { await api.post(`/sponsorship-tasks/${t.id}/escalate`, { expected_version: t.row_version, reason: v.reason || undefined }); } catch (e) { list.reload(); throw e.status === 409 && e.details?.code === 'stale_version' ? new Error(STALE) : e; }
           list.reload(); return 'The managers have been told';
         }} />
-      {notes ? <NotesSheet task={notes} shareable={shareable} canWrite={canWrite} onClose={() => { setNotes(null); list.reload(); }} /> : null}
+      {notes ? <NotesSheet task={notes.scope ? null : notes} target={target} shareable={shareable} canWrite={canWrite} onClose={() => { setNotes(null); list.reload(); }} /> : null}
     </Section>
   );
 }
@@ -116,14 +117,14 @@ function taskFields({ people, shareable, ends_on, editing }) {
 }
 
 /** The notes on one task: your side's internal notes and the shared discussion, oldest first, with a composer. */
-function NotesSheet({ task, shareable, canWrite, onClose }) {
+function NotesSheet({ task, target, shareable, canWrite, onClose }) {
   const { toast } = useSession();
   const [adding, setAdding] = useState(false);
-  const list = useLoad(() => api.get('/sponsorship-notes', { task_id: task.id, limit: 100 }), [task.id]);
+  const list = useLoad(() => api.get('/sponsorship-notes', task ? { task_id: task.id, limit: 100 } : { ...target, limit: 100 }), [task?.id, JSON.stringify(target)]);
   const d = list.data;
   const may = canWrite && d?.can_write;
   return (
-    <Sheet visible onClose={onClose} title={task.title}>
+    <Sheet visible onClose={onClose} title={task ? task.title : target.program_id ? 'Program notes' : 'Discussion & notes'}>
       {list.loading && !d ? <Loading /> : list.error ? <LoadError error={list.error} onRetry={list.reload} /> : !d.items.length ? <Empty emoji="📝" title="No notes yet" sub="Notes are kept for the record and cannot be edited or removed." /> : d.items.map((n) => (
         <Card key={n.id} color={n.visibility === 'shared' ? c.paper : c.violetSoft}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}><T size={12} weight="800">{n.author}</T><Tag label={n.visibility === 'shared' ? 'Shared' : 'Internal'} color={n.visibility === 'shared' ? c.cyan : c.violetSoft} /></View>
@@ -134,9 +135,9 @@ function NotesSheet({ task, shareable, canWrite, onClose }) {
       <FormSheet visible={adding} onClose={() => setAdding(false)} title="Write a note" submitLabel="Add note"
         fields={[
           { key: 'body', label: 'Note', type: 'multiline' },
-          ...(shareable && task.visibility === 'shared' ? [{ key: 'visibility', label: 'Who can see it', type: 'chips', options: [{ value: 'internal', label: 'Only my side' }, { value: 'shared', label: 'Both sides' }], default: 'internal' }] : []),
+          ...(shareable && (!task || task.visibility === 'shared') ? [{ key: 'visibility', label: 'Who can see it', type: 'chips', options: [{ value: 'internal', label: 'Only my side' }, { value: 'shared', label: 'Both sides' }], default: 'internal' }] : []),
         ]}
-        onSubmit={async (v) => { await api.post('/sponsorship-notes', { task_id: task.id, ...v }); list.reload(); toast('Note added'); return 'Note added'; }} />
+        onSubmit={async (v) => { await api.post('/sponsorship-notes', { ...(task ? { task_id: task.id } : target), ...v }); list.reload(); toast('Note added'); return 'Note added'; }} />
     </Sheet>
   );
 }
