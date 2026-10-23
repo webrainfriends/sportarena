@@ -314,3 +314,82 @@ export async function renderSponsorshipContract({ layout, kit, logo, snapshot, s
   await done;
   return { buffer: Buffer.concat(chunks), pages: range.count };
 }
+
+const KIND_TITLE = { ageing: 'Financial ageing', funnel: 'Award funnel', outcomes: 'Beneficiary outcomes', fulfilment: 'Fulfilment', renewals: 'Renewals' };
+const SOURCE_MARK = { ok: 'OK', stale: 'STALE', missing: 'MISSING' };
+
+/**
+ * Sponsorship portfolio report PDF (#305). Every figure is printed from the report object the dashboard shows (nothing is recalculated here),
+ * under the brand kit's name, colours and logo. The reporting date, currency basis, cash/estimate separation and any missing or stale
+ * source are printed on the first page, so a printed report can never hide what it was built on.
+ * @returns {Promise<{ buffer: Buffer, pages: number }>}
+ */
+export async function renderSponsorshipReport({ kit, logo, report }) {
+  const f = fonts();
+  const cols = report.columns;
+  const text = (v, c) => (v === null || v === undefined || v === '' ? '' : c.type === 'money' ? toMajor(Number(v), c.currencyOf) : String(v));
+  const strings = [kit?.display_name, kit?.legal_name, kit?.address, kit?.footer_text, ...report.basis.notes, ...report.sources.flatMap((s) => [s.label, s.detail]), ...report.rows.flatMap((r) => Object.values(r).filter((v) => typeof v === 'string'))];
+  assertGlyphs(strings, f);
+  const accent = hex(kit?.primary_color, '#0F6E56'), ink = hex(kit?.secondary_color, '#444441');
+  const doc = new PDFDocument({ size: 'A4', layout: 'landscape', margin: 36, bufferPages: true, compress: true,
+    info: { Title: `${KIND_TITLE[report.kind]} report as of ${report.basis.as_of}`, Author: kit?.display_name ?? 'Sportarena', CreationDate: new Date(report.basis.generated_at), Producer: 'Sportarena' } });
+  const chunks = [];
+  doc.on('data', (c) => chunks.push(c));
+  const done = new Promise((res, rej) => { doc.on('end', res); doc.on('error', rej); });
+  const left = doc.page.margins.left, width = doc.page.width - left - doc.page.margins.right;
+  const bottom = () => doc.page.height - doc.page.margins.bottom - 20;
+  const label = (t, x, y, w, o = {}) => doc.font(o.bold ? f.bold : f.regular).fontSize(o.size ?? 9).fillColor(o.color ?? ink).text(t ?? '', x, y, { width: w, align: o.align ?? 'left', lineBreak: o.lineBreak ?? true });
+  const room = (h) => { if (doc.y + h > bottom()) doc.addPage(); };
+
+  let x = left;
+  if (logo) { try { doc.image(logo, x, doc.y, { fit: [110, 44] }); x += 120; } catch { throw new AppError(422, 'logo_unreadable', 'The brand logo could not be read. Upload it again as PNG or JPEG.'); } }
+  label(kit?.display_name ?? 'Sponsorship report', x, 36, width - (x - left), { bold: true, size: 14, color: accent });
+  label(`${KIND_TITLE[report.kind]} report`, x, doc.y + 2, width - (x - left), { bold: true, size: 12 });
+  label(`As of ${report.basis.as_of} · ${report.basis.currency_basis === 'reporting' ? `converted to ${report.basis.currency} at each agreement's sourced rate` : 'every currency kept apart'} · cash and estimates separate · generated ${report.basis.generated_at.slice(0, 16).replace('T', ' ')} UTC`, x, doc.y + 2, width - (x - left), { size: 8 });
+  doc.y = Math.max(doc.y, 36 + (logo ? 48 : 0)) + 8;
+  doc.moveTo(left, doc.y).lineTo(left + width, doc.y).lineWidth(0.6).stroke(accent); doc.y += 8;
+
+  label('DATA SOURCES', left, doc.y, width, { bold: true, size: 8, color: accent }); doc.y += 2;
+  for (const s of report.sources) { room(14); label(`${SOURCE_MARK[s.status]}  ${s.label} — ${s.detail}`, left, doc.y + 1, width, { size: 8, bold: s.status !== 'ok', color: s.status === 'ok' ? ink : '#B42318' }); }
+  doc.y += 6;
+  for (const n of report.basis.notes) { room(12); label(n, left, doc.y, width, { size: 7 }); }
+  doc.y += 8;
+
+  if (report.totals.length) {
+    room(30); label('TOTALS', left, doc.y, width, { bold: true, size: 8, color: accent }); doc.y += 2;
+    for (const t of report.totals) {
+      const line = Object.entries(t).filter(([, v]) => v !== null && v !== undefined && v !== false).map(([k, v]) => `${k.replace(/_cents$/, '').replace(/_/g, ' ')} ${k.endsWith('_cents') ? toMajor(Number(v), t.currency) : v}`).join('  ·  ');
+      room(14); label(line, left, doc.y + 1, width, { size: 8 });
+    }
+    doc.y += 8;
+  }
+
+  const w = cols.map((c) => (c.type === 'money' ? 62 : c.type === 'int' ? 40 : c.type === 'date' ? 52 : ['recipient', 'sponsor_name', 'label', 'program', 'athlete'].includes(c.key) ? 82 : 58));
+  const scale = width / w.reduce((a, b) => a + b, 0);
+  const cw = w.map((n) => n * scale);
+  const head = () => {
+    room(30); let cx = left; const y = doc.y;
+    doc.rect(left, y - 2, width, 14).fill(accent);
+    cols.forEach((c, i) => { label(c.label, cx + 2, y + 1, cw[i] - 4, { bold: true, size: 6.5, color: '#FFFFFF', align: c.type === 'money' || c.type === 'int' ? 'right' : 'left', lineBreak: false }); cx += cw[i]; });
+    doc.y = y + 15;
+  };
+  head();
+  if (!report.rows.length) label('No rows match these filters.', left, doc.y + 4, width, { size: 9 });
+  for (const r of report.rows) {
+    if (doc.y + 12 > bottom()) { doc.addPage(); head(); }
+    let cx = left; const y = doc.y;
+    cols.forEach((c, i) => { label(text(r[c.key], { ...c, currencyOf: r.currency }), cx + 2, y, cw[i] - 4, { size: 6.5, align: c.type === 'money' || c.type === 'int' ? 'right' : 'left', lineBreak: false }); cx += cw[i]; });
+    doc.y = y + 11;
+  }
+  const range = doc.bufferedPageRange();
+  for (let i = 0; i < range.count; i++) {
+    doc.switchToPage(range.start + i);
+    doc.page.margins.bottom = 0;
+    const y = doc.page.height - 28;
+    if (kit?.footer_text) label(kit.footer_text, left, y, width - 160, { size: 7, lineBreak: false });
+    label(`${KIND_TITLE[report.kind]} · as of ${report.basis.as_of} · Page ${i + 1} of ${range.count}`, left + width - 260, y, 260, { size: 7, align: 'right', lineBreak: false });
+  }
+  doc.end();
+  await done;
+  return { buffer: Buffer.concat(chunks), pages: range.count };
+}
