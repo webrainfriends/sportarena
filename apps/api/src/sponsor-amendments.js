@@ -12,9 +12,10 @@ import { badRequest, conflict, unprocessable } from './errors.js';
 /** SQL: something has already happened to the due `o` (money reported / confirmed / in checkout, goods dispatched, evidence submitted). */
 export const ACTIVITY = `(EXISTS (SELECT 1 FROM sponsorship_payments p WHERE p.obligation_id=o.id AND p.status IN ('reported','confirmed','awaiting_payment'))
   OR EXISTS (SELECT 1 FROM sponsorship_deliveries x WHERE x.obligation_id=o.id AND x.status <> 'rejected')
+  OR EXISTS (SELECT 1 FROM sponsorship_vouchers v WHERE v.obligation_id=o.id AND v.status <> 'void')
   OR EXISTS (SELECT 1 FROM sponsorship_submissions s WHERE s.obligation_id=o.id AND s.status <> 'revision_requested'))`;
 
-const COMPARED = ['kind', 'label', 'currency', 'amount_cents', 'total_cents', 'estimate_cents', 'quantity', 'unit', 'cadence', 'first_due_on', 'instalments', 'custom_dates', 'promoter', 'terms'];
+const COMPARED = ['kind', 'label', 'currency', 'amount_cents', 'total_cents', 'estimate_cents', 'quantity', 'unit', 'cadence', 'first_due_on', 'instalments', 'custom_dates', 'promoter', 'terms', 'service_type'];
 const norm = (l) => JSON.stringify(COMPARED.map((k) => (k === 'terms' ? l[k] ?? {} : l[k] ?? null)));
 const sameLines = (a, b) => a.length === b.length && a.every((l, n) => norm(l) === norm(b[n]));
 const row = (o) => ({ id: o.id, label: o.label, kind: o.kind, due_on: o.due_on, amount_cents: o.amount_cents == null ? null : Number(o.amount_cents), currency: o.currency, quantity: o.quantity, status: o.status, version: o.version });

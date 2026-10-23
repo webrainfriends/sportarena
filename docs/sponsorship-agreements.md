@@ -61,6 +61,7 @@ stay open: debt and delivered value are never erased. Nothing is deleted.
   CSV export, approaching-due reminders, per-line payer/payee/channel fields, disputes→cases linking, guardian/youth rules
   for sponsorship agreements.
 * Agreement builder in the app covers fixed-term monthly money only; goods/endorsement lines are available through the API.
+* Goods returns/replacements and service vouchers: see [sponsorship-returns-services.md](sponsorship-returns-services.md).
 
 ## Contracts and signatures (#295)
 A branded contract can be issued for any proposed or active agreement's current terms version, then signed by the named signatories. Acceptance (`decide_sponsorship`) is unchanged and still exact-version. See [sponsorship-contracts.md](sponsorship-contracts.md).

@@ -20,19 +20,19 @@ export async function saveLines(c, sponsorshipId, version, lines) {
   for (const l of lines) {
     pos++;
     await c.query(
-      `INSERT INTO sponsorship_lines(sponsorship_id, version, position, kind, label, currency, amount_cents, total_cents, estimate_cents, quantity, unit, cadence, first_due_on, instalments, custom_dates, promoter, terms)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+      `INSERT INTO sponsorship_lines(sponsorship_id, version, position, kind, label, currency, amount_cents, total_cents, estimate_cents, quantity, unit, cadence, first_due_on, instalments, custom_dates, promoter, terms, service_type)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
       [sponsorshipId, version, pos, l.kind, l.label, l.currency ?? null, l.amount_cents ?? null, l.total_cents ?? null, l.estimate_cents ?? null, l.quantity ?? null, l.unit ?? null, l.cadence,
-        l.first_due_on ?? null, l.cadence === 'custom' ? l.custom_dates.length : l.cadence === 'once' ? 1 : l.instalments, l.cadence === 'custom' ? l.custom_dates : null, l.promoter ?? null, l.terms ?? {}]);
+        l.first_due_on ?? null, l.cadence === 'custom' ? l.custom_dates.length : l.cadence === 'once' ? 1 : l.instalments, l.cadence === 'custom' ? l.custom_dates : null, l.promoter ?? null, l.terms ?? {}, l.service_type ?? null]);
   }
 }
 
 /** The lines of one version, in the shape the schedule builder takes. */
 export async function loadLines(c, sponsorshipId, version) {
   const { rows } = await c.query(
-    `SELECT id, kind, label, currency, amount_cents, total_cents, estimate_cents, quantity, unit, cadence, first_due_on::text, instalments, (SELECT array_agg(x::text ORDER BY x) FROM unnest(custom_dates) x) AS custom_dates, promoter, terms
+    `SELECT id, kind, label, currency, amount_cents, total_cents, estimate_cents, quantity, unit, cadence, first_due_on::text, instalments, (SELECT array_agg(x::text ORDER BY x) FROM unnest(custom_dates) x) AS custom_dates, promoter, terms, service_type
        FROM sponsorship_lines WHERE sponsorship_id=$1 AND version=$2 ORDER BY position`, [sponsorshipId, version]);
-  return rows.map((r) => ({ ...r, custom_dates: r.custom_dates ?? undefined, amount_cents: r.amount_cents ?? undefined, total_cents: r.total_cents ?? undefined, estimate_cents: r.estimate_cents ?? undefined, quantity: r.quantity ?? undefined, unit: r.unit ?? undefined, first_due_on: r.first_due_on ?? undefined, promoter: r.promoter ?? undefined, currency: r.currency ?? undefined }));
+  return rows.map((r) => ({ ...r, custom_dates: r.custom_dates ?? undefined, amount_cents: r.amount_cents ?? undefined, total_cents: r.total_cents ?? undefined, estimate_cents: r.estimate_cents ?? undefined, quantity: r.quantity ?? undefined, unit: r.unit ?? undefined, first_due_on: r.first_due_on ?? undefined, promoter: r.promoter ?? undefined, service_type: r.service_type ?? undefined, currency: r.currency ?? undefined }));
 }
 
 /**
@@ -68,6 +68,7 @@ export async function cancelFutureObligations(c, sponsorshipId) {
       WHERE o.sponsorship_id=$1 AND o.status='scheduled' AND o.due_on > current_date
         AND NOT EXISTS (SELECT 1 FROM sponsorship_payments p WHERE p.obligation_id=o.id AND p.status IN ('reported','confirmed','awaiting_payment'))
         AND NOT EXISTS (SELECT 1 FROM sponsorship_deliveries x WHERE x.obligation_id=o.id AND x.status <> 'rejected')
+        AND NOT EXISTS (SELECT 1 FROM sponsorship_vouchers v WHERE v.obligation_id=o.id AND v.status <> 'void')
         AND NOT EXISTS (SELECT 1 FROM sponsorship_submissions s WHERE s.obligation_id=o.id AND s.status <> 'revision_requested')`, [sponsorshipId]);
   return r.rowCount;
 }
@@ -103,6 +104,45 @@ export async function obligationContext(c, obligationId, user) {
   const o = (await c.query('SELECT * FROM sponsorship_obligations WHERE id=$1 FOR UPDATE', [obligationId])).rows[0];
   if (!o) throw notFound('Obligation');
   return { o, ...(await dealContext(c, o.sponsorship_id, user)) };
+}
+
+/**
+ * Where a goods due stands, in units. Dispatch is never receipt: only recipient-confirmed quantity counts as received.
+ *   net = received - accepted returns; credited = accepted returns the sponsor will not replace (closed by credit, never "received").
+ * remaining = committed - (net + in transit + credited) is what the sponsor may still dispatch; the due is fulfilled when net + credited reaches the commitment.
+ */
+export async function goodsPosition(c, o) {
+  const r = (await c.query(
+    `SELECT coalesce((SELECT sum(received_quantity) FROM sponsorship_deliveries WHERE obligation_id=$1 AND status='received'),0)::int AS received,
+            coalesce((SELECT sum(quantity) FROM sponsorship_deliveries WHERE obligation_id=$1 AND status='dispatched'),0)::int AS in_transit,
+            coalesce((SELECT sum(quantity) FROM sponsorship_delivery_returns WHERE obligation_id=$1 AND status='accepted'),0)::int AS returned,
+            coalesce((SELECT sum(quantity) FROM sponsorship_delivery_returns WHERE obligation_id=$1 AND status='accepted' AND resolution='credit'),0)::int AS credited,
+            coalesce((SELECT sum(quantity) FROM sponsorship_delivery_returns WHERE obligation_id=$1 AND status='requested'),0)::int AS return_pending`, [o.id])).rows[0];
+  const net = r.received - r.returned;
+  return { ...r, net, remaining: o.quantity - (net + r.in_transit + r.credited), settled: net + r.credited };
+}
+
+/** Goods state after any change: fulfilled once confirmed (net of returns) plus credited quantity covers the commitment; an accepted return that uncovers it reopens the due. */
+export async function settleGoods(c, o) {
+  const p = await goodsPosition(c, o);
+  if (p.settled >= o.quantity) await c.query("UPDATE sponsorship_obligations SET status='fulfilled', fulfilled_at=coalesce(fulfilled_at, now()) WHERE id=$1 AND status='scheduled'", [o.id]);
+  else await c.query("UPDATE sponsorship_obligations SET status='scheduled', fulfilled_at=NULL WHERE id=$1 AND status='fulfilled'", [o.id]);
+  return p;
+}
+
+/** Service state: fulfilled when every funded unit has been redeemed. Vouchers that are void or lapsed free their unit for re-issue. */
+export async function servicePosition(c, o) {
+  const r = (await c.query(
+    `SELECT count(*) FILTER (WHERE status='redeemed')::int AS redeemed,
+            count(*) FILTER (WHERE status='issued' AND (valid_until IS NULL OR valid_until >= current_date))::int AS open,
+            count(*) FILTER (WHERE status='issued' AND valid_until < current_date)::int AS lapsed,
+            count(*) FILTER (WHERE status='void')::int AS void FROM sponsorship_vouchers WHERE obligation_id=$1`, [o.id])).rows[0];
+  return { ...r, to_issue: Math.max(0, o.quantity - r.redeemed - r.open) };
+}
+export async function settleService(c, o) {
+  const p = await servicePosition(c, o);
+  if (p.redeemed >= o.quantity) await c.query("UPDATE sponsorship_obligations SET status='fulfilled', fulfilled_at=coalesce(fulfilled_at, now()) WHERE id=$1 AND status='scheduled'", [o.id]);
+  return p;
 }
 
 /** Money state of an obligation after any change: fulfilled once confirmed payments (net of refunds) cover it, reopened if a reversal or refund uncovers it. */

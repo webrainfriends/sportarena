@@ -13,13 +13,14 @@ import { isSupportedCurrency } from './currency.js';
 
 const date = z.string().date();
 export const LINE = z.object({
-  kind: z.enum(['money', 'goods', 'endorsement']),
+  kind: z.enum(['money', 'goods', 'endorsement', 'service']),
   label: z.string().min(1).max(160),
   currency: z.string().length(3).toUpperCase().optional(),
   amount_cents: z.coerce.number().int().positive().optional().describe('money: per instalment, minor units'),
   total_cents: z.coerce.number().int().positive().optional().describe('money: committed total, split across the instalments'),
   estimate_cents: z.coerce.number().int().min(0).optional().describe('goods valuation / endorsement estimate. An estimate, never counted as cash paid'),
-  quantity: z.coerce.number().int().positive().optional(),
+  quantity: z.coerce.number().int().positive().optional().describe('goods: units to deliver; service: vouchers (sessions / slots / trips) funded'),
+  service_type: z.enum(['coaching', 'venue', 'travel', 'medical']).optional().describe('service lines only. Funding a service pays for it; it never grants access to the recipient\'s health or other private data'),
   unit: z.string().max(30).optional(),
   cadence: z.enum(['once', 'weekly', 'monthly', 'quarterly', 'custom']).default('once'),
   first_due_on: date.optional(),
@@ -54,8 +55,10 @@ export function expandLine(line, window = {}) {
     if (line.amount_cents != null || line.total_cents != null) fail('only money lines carry a cash amount; use estimate_cents for a valuation');
     if (line.estimate_cents != null && (!cur || !isSupportedCurrency(cur))) fail('an estimate needs a supported currency');
   }
-  if (line.kind === 'goods' && !line.quantity) fail('goods need a quantity');
-  if (line.kind !== 'goods' && line.quantity != null) fail('quantity is only for goods');
+  if ((line.kind === 'goods' || line.kind === 'service') && !line.quantity) fail(`${line.kind} needs a quantity`);
+  if (line.kind !== 'goods' && line.kind !== 'service' && line.quantity != null) fail('quantity is only for goods and services');
+  if (line.kind === 'service' && !line.service_type) fail('say which service (coaching, venue, travel or medical)');
+  if (line.kind !== 'service' && line.service_type) fail('service_type is only for service lines');
   if (line.kind === 'endorsement' && !line.promoter) fail('say who promotes (sponsor or recipient)');
   if (line.kind !== 'endorsement' && (line.promoter || Object.keys(line.terms ?? {}).length)) fail('promoter and endorsement terms are only for endorsement lines');
 
@@ -85,8 +88,8 @@ export function expandLine(line, window = {}) {
     if (base < 1) fail('total_cents is too small to split into that many instalments');
     amounts = dues.map((_, i) => (line.total_cents != null && i === n - 1 ? line.total_cents - base * (n - 1) : base));
   }
-  if (line.kind === 'goods') {
-    if (line.quantity < n) fail('the quantity cannot be split into that many deliveries');
+  if (line.kind === 'goods' || line.kind === 'service') {
+    if (line.quantity < n) fail('the quantity cannot be split into that many dues');
     const base = Math.floor(line.quantity / n);
     qty = dues.map((_, i) => (i === n - 1 ? line.quantity - base * (n - 1) : base));
   }
