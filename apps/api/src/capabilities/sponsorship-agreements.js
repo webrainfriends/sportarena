@@ -8,8 +8,7 @@ import { isAdmin } from '../helpers.js';
 import { notify } from '../notify.js';
 import { LINE, buildSchedule } from '../sponsor-schedule.js';
 import { snapshotIdentity } from '../sponsor-identity-access.js';
-import { saveLines, loadLines, generateObligations, logHistory, dealContext, obligationContext, recordVersion } from '../sponsor-agreements.js';
-import { saveLines, loadLines, generateObligations, logHistory, dealContext, obligationContext, settleMoney, heldCents, releaseStaleCheckouts } from '../sponsor-agreements.js';
+import { saveLines, loadLines, generateObligations, logHistory, dealContext, obligationContext, recordVersion, settleMoney, heldCents, releaseStaleCheckouts } from '../sponsor-agreements.js';
 import { enabledProviders, startCheckout } from '../payments/service.js';
 import { config } from '../config.js';
 import { beneficiaryScopeSql, payeeSnapshot } from '../sponsor-beneficiaries.js';
@@ -56,10 +55,11 @@ cap({
       const plan = buildSchedule(i.lines, { starts_on: starts, ends_on: ends });
       const cash = Object.entries(plan.committed), v = ctx.d.terms_version + 1, tz = i.timezone ?? ctx.d.timezone;
       await saveLines(c, ctx.d.id, v, i.lines);
-      await snapshotIdentity(c, ctx.d.id, v, ctx.sp.id, user.id);
-      const row = (await c.query('UPDATE sponsorships SET terms_version=$2, starts_on=$3, ends_on=$4, timezone=coalesce($5,timezone), amount_cents=$6, currency=$7, agreement_ref=coalesce(agreement_ref, \'SPA-\'||upper(substr(id::text,1,8))) WHERE id=$1 RETURNING *',
-        [ctx.d.id, v, starts ?? null, ends ?? null, i.timezone ?? null, cash.length === 1 ? cash[0][1] : 0, cash.length === 1 ? cash[0][0] : null])).rows[0];
-      await logHistory(c, ctx.d.id, v, user.id, 'revised', i.reason);
+      if (ctx.role === 'sponsor') await snapshotIdentity(c, ctx.d.id, v, ctx.sp.id, user.id); // a counteroffer freezes the brand only once the brand signs it off
+      await recordVersion(c, ctx.d.id, v, ctx.role, user.id, { reason: i.reason, starts, ends, tz });
+      const row = (await c.query('UPDATE sponsorships SET terms_version=$2, terms_side=$8, starts_on=$3, ends_on=$4, timezone=$5, amount_cents=$6, currency=$7, agreement_ref=coalesce(agreement_ref, \'SPA-\'||upper(substr(id::text,1,8))) WHERE id=$1 RETURNING *',
+        [ctx.d.id, v, starts ?? null, ends ?? null, tz, cash.length === 1 ? cash[0][1] : 0, cash.length === 1 ? cash[0][0] : null, ctx.role])).rows[0];
+      await logHistory(c, ctx.d.id, v, user.id, ctx.role === 'recipient' ? 'counter_offered' : 'revised', i.reason);
       // a budget-controlled offer is re-checked at its new size: one currency, a sourced rate, and a fresh approval when it is above the threshold (#293)
       let held = false;
       if (ctx.d.budget_id) {
@@ -70,7 +70,46 @@ cap({
         await c.query('UPDATE sponsorships SET budget_fx_rate_id=$2, budget_approval=$3, budget_approval_by=NULL, budget_approval_at=NULL, budget_approval_note=NULL WHERE id=$1', [ctx.d.id, cost.rateId, held ? 'pending' : null]);
         if (held) await notifySponsor(c, ctx.sp, 'budget_approve', { kind: 'sponsorship_budget', title: 'A revised offer needs budget approval', body: `A revised offer is above the approval threshold of "${b.name}".`, data: { sponsorship_id: ctx.d.id, budget_id: b.id } }, ctx.d.department_id, user.id);
       }
-      if (!held) await ping(c, ctx.recipientId, 'A sponsorship offer was revised', ctx);
+      if (!held) {
+        if (ctx.role === 'recipient') await ping(c, 'sponsor', 'The recipient made a counteroffer', ctx, 'sponsorship_update', 'sign_off');
+        else await ping(c, ctx.recipientId, 'A sponsorship offer was revised', ctx);
+      }
+      return { ...row, schedule: plan };
+    });
+  },
+});
+
+cap({
+  name: 'withdraw_sponsorship_counter', method: 'POST', path: '/sponsorships/:id/withdraw-counter', tag: 'Sponsors',
+  summary: 'Take back your own latest change while the offer is still open: the earlier terms the other side wrote are re-issued as a new version (nothing is deleted); the side that wrote those terms cannot sign them off itself, so the other side decides next. To take the whole offer back, a sponsor uses withdraw_sponsorship.',
+  input: z.object({ id, expected_version: z.coerce.number().int().positive(), reason: z.string().max(500).optional() }),
+  async handler({ user }, i) {
+    return tx(async (c) => {
+      const ctx = await dealContext(c, i.id, user, { lock: true });
+      if (ctx.role !== 'sponsor' && ctx.role !== 'recipient') throw forbidden('Only the sponsor or the recipient can negotiate the terms');
+      if (ctx.role === 'sponsor') ctx.need('revise', 'withdraw a change to the terms');
+      if (ctx.d.status !== 'proposed') throw conflict('Only an unanswered offer can be negotiated');
+      if (i.expected_version !== ctx.d.terms_version) throw conflict(`These terms changed (now version ${ctx.d.terms_version}); review them again first`);
+      if (ctx.d.terms_side !== ctx.role) throw conflict('The current terms are not yours to take back');
+      const back = (await c.query("SELECT version, authored_side, authored_by FROM sponsorship_versions WHERE sponsorship_id=$1 AND version < $2 AND authored_side <> $3 ORDER BY version DESC LIMIT 1", [ctx.d.id, ctx.d.terms_version, ctx.role])).rows[0];
+      if (!back) throw conflict('There are no earlier terms from the other side to go back to');
+      const v = ctx.d.terms_version + 1;
+      await c.query(
+        `INSERT INTO sponsorship_lines(sponsorship_id, version, position, kind, label, currency, amount_cents, total_cents, estimate_cents, quantity, unit, cadence, first_due_on, instalments, custom_dates, promoter, terms)
+         SELECT sponsorship_id, $3, position, kind, label, currency, amount_cents, total_cents, estimate_cents, quantity, unit, cadence, first_due_on, instalments, custom_dates, promoter, terms
+           FROM sponsorship_lines WHERE sponsorship_id=$1 AND version=$2`, [ctx.d.id, back.version, v]);
+      await c.query(
+        `INSERT INTO sponsorship_identity_snapshots(sponsorship_id, version, sponsor_id, entity_id, display_name, legal_name, sponsor_type, signed_by)
+         SELECT sponsorship_id, $3, sponsor_id, entity_id, display_name, legal_name, sponsor_type, signed_by FROM sponsorship_identity_snapshots WHERE sponsorship_id=$1 AND version=$2 ON CONFLICT DO NOTHING`, [ctx.d.id, back.version, v]);
+      const old = (await c.query('SELECT starts_on::text AS starts, ends_on::text AS ends, timezone FROM sponsorship_versions WHERE sponsorship_id=$1 AND version=$2', [ctx.d.id, back.version])).rows[0];
+      const starts = old.starts ?? ctx.d.starts, ends = old.ends ?? ctx.d.ends, tz = old.timezone ?? ctx.d.timezone;
+      const lines = await loadLines(c, ctx.d.id, v), plan = buildSchedule(lines, { starts_on: starts, ends_on: ends }), cash = Object.entries(plan.committed);
+      await recordVersion(c, ctx.d.id, v, back.authored_side, back.authored_by, { reason: i.reason, restores: back.version, starts, ends, tz });
+      const row = (await c.query('UPDATE sponsorships SET terms_version=$2, terms_side=$8, starts_on=$3, ends_on=$4, timezone=$5, amount_cents=$6, currency=$7 WHERE id=$1 RETURNING *',
+        [ctx.d.id, v, starts ?? null, ends ?? null, tz, cash.length === 1 ? cash[0][1] : 0, cash.length === 1 ? cash[0][0] : null, back.authored_side])).rows[0];
+      await logHistory(c, ctx.d.id, v, user.id, 'change_withdrawn', i.reason ?? `Version ${back.version} terms re-issued`);
+      if (ctx.role === 'recipient') await ping(c, 'sponsor', 'The recipient withdrew their counteroffer', ctx);
+      else await ping(c, ctx.recipientId, 'The sponsor withdrew their latest change', ctx);
       return { ...row, schedule: plan };
     });
   },
@@ -157,6 +196,8 @@ cap({
       }
     }
     if (ctx.role !== 'recipient' && d.budget_id) out.budget = await one('SELECT b.id, b.name, b.kind, b.currency, $2::text AS approval FROM sponsorship_budgets b WHERE b.id=$1', [d.budget_id, d.budget_approval]);
+    out.negotiation = await negotiationFor(ctx);
+    out.amendments = await amendmentsFor(ctx);
     out.history = await many('SELECT h.id, h.version, h.action, h.reason, h.created_at, u.display_name AS actor FROM sponsorship_history h LEFT JOIN users u ON u.id=h.actor_id WHERE h.sponsorship_id=$1 ORDER BY h.id', [d.id]);
     return out;
   },
@@ -165,7 +206,7 @@ cap({
 /** Obligations with what has actually happened to them. Reported (unverified) money is shown apart from confirmed money. */
 async function obligationRows(where, params, tail = '') {
   return many(
-    `SELECT o.id, o.sponsorship_id, o.line_id, o.version, o.seq, o.kind, o.due_on::text AS due_on, o.amount_cents, o.currency, o.quantity, o.status,
+    `SELECT o.id, o.sponsorship_id, o.line_id, o.version, o.seq, o.kind, o.cancelled_by_amendment, o.created_by_amendment, o.due_on::text AS due_on, o.amount_cents, o.currency, o.quantity, o.status,
             (o.status = 'scheduled' AND o.due_on < current_date) AS overdue, l.label,
             coalesce((SELECT sum(amount_cents - refunded_cents) FROM sponsorship_payments p WHERE p.obligation_id=o.id AND p.status='confirmed'),0)::bigint AS confirmed_cents,
             coalesce((SELECT sum(amount_cents) FROM sponsorship_payments p WHERE p.obligation_id=o.id AND p.status='awaiting_payment'),0)::bigint AS checkout_in_progress_cents,
@@ -481,6 +522,17 @@ cap({
   input: z.object({ id }),
   handler: async (_, i) => tx(async (c) => ({ created: await generateObligations(c, i.id) })),
 });
+
+/** Amendments of an accepted agreement, in short: the open proposal (if any), how many there were, and what this caller may do about it. */
+async function amendmentsFor(ctx) {
+  const { d, role } = ctx;
+  const open = (await one("SELECT a.id, a.seq, a.rev, a.proposed_side, a.effective_from::text AS effective_from, a.reason FROM sponsorship_amendments a WHERE a.sponsorship_id=$1 AND a.status='proposed'", [d.id])) ?? null;
+  const total = (await one('SELECT count(*)::int AS n FROM sponsorship_amendments WHERE sponsorship_id=$1', [d.id])).n;
+  const side = role === 'sponsor' || role === 'recipient';
+  const may = (a) => (role === 'recipient' ? !['organisation', 'group'].includes(d.target_type) || !!ctx.beneficiary?.representative : role === 'sponsor' ? actionsFor(ctx.staff).includes(a) : false);
+  const live = d.status === 'active' && !!d.accepted_version;
+  return { open, total, can_propose: live && side && !open && may('revise'), can_answer: !!open && live && side && open.proposed_side !== role && may('sign_off'), can_edit: !!open && live && side && open.proposed_side === role && may('revise') };
+}
 
 /** The negotiation as one side may see it: version authorship, whose turn it is, shared comments, and only THIS side's internal notes. */
 async function negotiationFor(ctx) {

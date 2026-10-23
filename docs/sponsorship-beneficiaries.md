@@ -28,10 +28,11 @@ Membership is read live on every call: removing someone ends their access at onc
 ## Permissions and privacy
 - Tenant isolation is server-side in `dealContext`, `list_sponsorships`, `list_sponsorship_obligations`, `get_sponsorship_summary` (`beneficiaryScopeSql`). Another organisation's staff get 403 / empty lists.
 - Sponsors see beneficiary names, shares and payee display names only — no roster, enrolment, attendance or member counts. The edit candidates (groups, teams, staff payees) are returned only to the representative.
-- Existing org CSV exports are unchanged (they are brand-side); no member data is added to any export.
+- `export_org_data` gains `section=sponsorship_allocations` (owner/admin/finance of that organisation only; audit-logged like every export): brand, agreement, beneficiary, share, payee and allocation status including released rows. No contact details or member data. Existing sections are unchanged.
+- `list_sponsorships` gains `organisation_id` (still limited to what the caller may see) so organisation staff see offers aimed at their organisation and groups.
 
 ## UX
-Sponsor deal screen → **Beneficiaries & payees** section (loading, empty, denied, retry, stale-version states; edit sheet with switch + percent stepper + payee per beneficiary). Sponsors hub → **Sponsor an organisation or group** (search + offer). Organisation → Edit details → **Open to sponsors** switch.
+Sponsor deal screen → **Beneficiaries & payees** section (loading, empty, denied, retry, stale-version states; edit sheet with switch + percent stepper + payee per beneficiary). Sponsors hub → **Sponsor an organisation or group** (search + offer). Organisation → Edit details → **Open to sponsors** switch; organisation overview → **Sponsorship offers & agreements** (owner/admin/finance) with a way into each deal; export button for allocations. Shares are chosen in 5% steps in the app (the API accepts any basis-point value). Verified in Chromium at phone width for the representative, payee and sponsor, including the over-allocation error and save.
 
 ## Dependency order, migration, rollback, recovery
 Run migration 094 then deploy the API, then the app. Rollback = deploy the previous code; new tables/columns are ignored and the widened CHECK is harmless (rows with `organisation`/`group` targets remain). No data is rewritten or removed. A payee who leaves: their access ends immediately; a representative replaces them (the old row is released and kept).

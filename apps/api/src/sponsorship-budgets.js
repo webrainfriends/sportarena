@@ -70,7 +70,7 @@ export async function usageOf(c, b) {
             coalesce(sum((SELECT sum(p.amount_cents) FROM sponsorship_payments p WHERE p.obligation_id=o.id AND p.status='confirmed')),0)::bigint AS paid,
             coalesce(sum((SELECT sum(p.amount_cents) FROM sponsorship_payments p WHERE p.obligation_id=o.id AND p.status='reversed')),0)::bigint AS refunded,
             coalesce(sum((SELECT sum(p.amount_cents) FROM sponsorship_payments p WHERE p.obligation_id=o.id AND p.status='reported')),0)::bigint AS reported
-       FROM sponsorships ss JOIN sponsorship_obligations o ON o.sponsorship_id=ss.id AND o.version=ss.accepted_version AND o.kind='money'
+       FROM sponsorships ss JOIN sponsorship_obligations o ON o.sponsorship_id=ss.id AND o.kind='money'
        LEFT JOIN sponsorship_budget_fx_rates fx ON fx.id=ss.budget_fx_rate_id
       WHERE ss.budget_id=$1 GROUP BY ss.id, o.currency, fx.id`, [b.id])).rows) {
     const s = slot(d.currency, d.rate);

@@ -558,10 +558,10 @@ cap({
 
 cap({
   name: 'export_org_data', method: 'GET', path: '/organisations/:id/export', tag: 'Organisations',
-  summary: 'Export a section as CSV: staff, enrolments and attendance (owner/admin), finance (owner/finance), sponsor_deals and sponsor_obligations of the linked sponsor brands (owner, admin, manager, finance, auditor; a department-scoped member only gets their department). No contact details or clinical data are ever included.',
-  input: z.object({ id, section: z.enum(['staff', 'enrolments', 'attendance', 'finance', 'sponsor_deals', 'sponsor_obligations']) }),
+  summary: 'Export a section as CSV: staff, enrolments and attendance (owner/admin), finance (owner/finance), sponsor_deals and sponsor_obligations of the linked sponsor brands (owner, admin, manager, finance, auditor; a department-scoped member only gets their department), and sponsorship_allocations (owner/admin/finance: who the sponsorships of the organisation and its groups are allocated to and the payee on record, including released rows). No contact details or clinical data are ever included.',
+  input: z.object({ id, section: z.enum(['staff', 'enrolments', 'attendance', 'finance', 'sponsor_deals', 'sponsor_obligations', 'sponsorship_allocations']) }),
   async handler({ user }, i) {
-    const allowed = { staff: STAFF, enrolments: STAFF, attendance: STAFF, finance: ['owner', 'finance'], sponsor_deals: SPONSOR_EXPORT, sponsor_obligations: SPONSOR_EXPORT }[i.section];
+    const allowed = { sponsorship_allocations: ['owner', 'admin', 'finance'], staff: STAFF, enrolments: STAFF, attendance: STAFF, finance: ['owner', 'finance'], sponsor_deals: SPONSOR_EXPORT, sponsor_obligations: SPONSOR_EXPORT }[i.section];
     await orgFor(user, i.id, allowed);
     const scope = i.section.startsWith('sponsor_') && !isAdmin(user) ? (await one("SELECT department_id FROM organisation_members WHERE organisation_id=$1 AND user_id=$2 AND status='active'", [i.id, user.id]))?.department_id ?? null : null;
     const q = {
@@ -574,6 +574,10 @@ cap({
                 (SELECT coalesce(sum(p.amount_cents - p.refunded_cents),0) FROM sponsorship_payments p WHERE p.obligation_id=o.id AND p.status='confirmed') AS confirmed_cents
            FROM sponsorship_obligations o JOIN sponsorships ss ON ss.id=o.sponsorship_id JOIN sponsors sp ON sp.id=ss.sponsor_id JOIN sponsorship_lines l ON l.id=o.line_id LEFT JOIN org_departments d ON d.id=ss.department_id
           WHERE sp.organisation_id=$1 AND ($2::uuid IS NULL OR ss.department_id=$2) ORDER BY sp.name, ss.created_at, o.due_on, o.id`],
+      sponsorship_allocations: [['brand', 'agreement_ref', 'target_type', 'status', 'beneficiary_type', 'beneficiary', 'share_percent', 'payee', 'allocation_status', 'set_at', 'released_at'],
+        `SELECT sp.name AS brand, ss.agreement_ref, ss.target_type, ss.status, a.beneficiary_type, a.beneficiary_name AS beneficiary, a.share_bp / 100.0 AS share_percent, a.payee_name AS payee, a.status AS allocation_status, a.created_at AS set_at, a.released_at
+           FROM sponsorship_allocations a JOIN sponsorships ss ON ss.id=a.sponsorship_id JOIN sponsors sp ON sp.id=ss.sponsor_id
+          WHERE (ss.target_type='organisation' AND ss.target_id=$1) OR (ss.target_type='group' AND ss.target_id IN (SELECT id FROM org_cohorts WHERE organisation_id=$1)) ORDER BY sp.name, ss.created_at, a.created_at, a.id`],
       staff: [['handle', 'display_name', 'role', 'status', 'joined_at', 'left_at'], `SELECT u.handle, u.display_name, m.role, m.status, m.joined_at, m.left_at FROM organisation_members m JOIN users u ON u.id=m.user_id WHERE m.organisation_id=$1 ORDER BY u.handle, m.invited_at`],
       enrolments: [['cohort', 'handle', 'display_name', 'status', 'enrolled_at', 'withdrawn_at'], `SELECT k.name AS cohort, u.handle, u.display_name, e.status, e.enrolled_at, e.withdrawn_at FROM org_enrolments e JOIN org_cohorts k ON k.id=e.cohort_id JOIN users u ON u.id=e.user_id WHERE k.organisation_id=$1 ORDER BY k.name, u.handle`],
       attendance: [['cohort', 'handle', 'session_date', 'status'], `SELECT k.name AS cohort, u.handle, a.session_date, a.status FROM org_attendance a JOIN org_cohorts k ON k.id=a.cohort_id JOIN users u ON u.id=a.user_id WHERE k.organisation_id=$1 ORDER BY k.name, a.session_date, u.handle`],

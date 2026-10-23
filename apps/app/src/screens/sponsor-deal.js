@@ -8,6 +8,7 @@ import { FormSheet } from '../FormSheet';
 import { SponsorPerformance } from './sponsor-performance';
 import { SponsorNegotiation } from './sponsor-negotiation';
 import { SponsorContract } from './sponsor-contract';
+import { SponsorAmendments } from './sponsor-amendments';
 import { SponsorAllocations, PayeeLine } from './sponsor-beneficiaries';
 import { c } from '../theme';
 import { explain, LoadError } from '../access';
@@ -43,6 +44,7 @@ export function SponsorDeal({ id }) {
       {d.program ? <T size={12} color={c.mute} accessibilityRole="text">Awarded from the program “{d.program.name}”, {d.program.round_name}.</T> : null}
       <T size={12} color={c.mute}>{d.agreement_ref ?? 'Legacy agreement'} · {d.status} · terms v{d.accepted_version ?? d.terms_version}{d.starts_on ? ` · ${when(String(d.starts_on).slice(0, 10))} – ${d.ends_on ? when(String(d.ends_on).slice(0, 10)) : 'open'}` : ''}</T>
       {!d.lines.length ? <Card><T>This agreement predates structured terms: {d.legacy_amount_cents ? `${d.legacy_amount_cents} (currency not recorded)` : 'no cash'}{d.legacy_in_kind ? ` · ${d.legacy_in_kind}` : ''}. No payment schedule exists for it.</T></Card> : null}
+      <SponsorAmendments deal={{ ...d, reload: deal.reload }} can={can} act={act} />
       <SponsorNegotiation deal={{ ...d, reload: deal.reload }} can={can} act={act} />
       <Section title="Terms" color={c.sun}>
         {d.lines.map((l) => (
@@ -63,12 +65,11 @@ export function SponsorDeal({ id }) {
         <Section title="Commitments" color={c.mint}>
           {d.obligations.length ? d.obligations.map((x) => (
             <Card key={x.id} color={tone[statusOf(x)] ?? c.paper}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}><T weight="900" style={{ flex: 1 }}>{when(x.due_on)} · {x.label}</T><Tag label={statusOf(x)} color={tone[statusOf(x)] ?? c.paper} /></View>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}><T weight="900" style={{ flex: 1 }}>{when(x.due_on)} · {x.label}</T><Tag label={x.cancelled_by_amendment ? 'replaced by amendment' : statusOf(x)} color={tone[statusOf(x)] ?? c.paper} /></View>
               <T size={12} color={c.mute}>{what(x)}{x.kind === 'money' ? ` · confirmed ${fmt(x.confirmed_cents, x.currency)}${x.reported_unverified_cents ? ` · reported, not yet confirmed ${fmt(x.reported_unverified_cents, x.currency)}` : ''}` : ''}{x.kind === 'goods' ? ` · received ${x.received_quantity}${x.in_transit_quantity ? ` · in transit ${x.in_transit_quantity}` : ''}` : ''}</T>
               {x.payments.filter((p) => p.status !== 'failed').map((p) => (
                 <View key={p.id} style={{ marginTop: 4 }}>
                   <T size={12}>{fmt(p.amount_cents, p.currency)} · {p.method === 'online' ? 'online' : p.method.replace('_', ' ')}{p.method === 'online' ? '' : ` · ref ${p.reference}`} · {payState(p)}{p.refunded_cents > 0 ? ` · refunded ${fmt(p.refunded_cents, p.currency)}` : ''}</T>
-                  <T size={12}>{fmt(p.amount_cents, p.currency)} · {p.method.replace('_', ' ')} · ref {p.reference} · {p.status === 'reported' ? 'unverified' : p.status}</T>
                   {p.status === 'confirmed' ? <PayeeLine p={p} /> : null}
                   {recipient && p.status === 'reported' ? <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}><Btn small title="Confirm received" color={c.mint} ink={c.ink} onPress={() => act(() => api.patch(`/sponsorship-payments/${p.id}`, { status: 'confirmed' }), 'Payment confirmed')} /><Btn small title="Not received" color={c.paper} ink={c.red} onPress={() => setForm({ kind: 'reject', o: p })} /></View> : null}
                   {recipient && p.status === 'confirmed' && p.method !== 'online' ? <Btn small title="Reverse" color={c.paper} ink={c.red} style={{ alignSelf: 'flex-start', marginTop: 4 }} onPress={() => setForm({ kind: 'reverse', o: p })} /> : null}
