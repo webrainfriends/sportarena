@@ -32,7 +32,7 @@ const TPL_COLS = 't.id, t.owner_user_id, t.organisation_id, t.family, t.name, t.
 const ORG_USE = ['owner', 'admin', 'finance'], ORG_EDIT = ['owner', 'admin'];
 
 /** Who may use / change a kit or template: the owner of a personal one; for an organisation's, members by role (membership alone is not enough to edit). 404 for outsiders. */
-async function mustAccess(user, row, what, { write = false } = {}) {
+export async function mustAccess(user, row, what, { write = false } = {}) {
   if (!row) throw notFound(what);
   if (row.owner_user_id) { if (row.owner_user_id !== user.id) throw notFound(what); return; }
   const role = await orgRole(user, row.organisation_id);
@@ -42,7 +42,7 @@ async function mustAccess(user, row, what, { write = false } = {}) {
 const scopeCols = (user, orgId) => (orgId ? { owner: null, org: orgId } : { owner: user.id, org: null });
 const mustScope = async (user, orgId, write) => { if (orgId) await mustAccess(user, { organisation_id: orgId }, 'Organisation', { write }); };
 
-const kitOf = async (kitId) => one(`SELECT ${KIT_COLS} FROM brand_kits WHERE id=$1`, [kitId]);
+export const kitOf = async (kitId) => one(`SELECT ${KIT_COLS} FROM brand_kits WHERE id=$1`, [kitId]);
 const myKits = (user) => many(
   `SELECT ${KIT_COLS} FROM brand_kits k WHERE archived_at IS NULL AND (owner_user_id=$1 OR organisation_id IN (SELECT m.organisation_id FROM organisation_members m JOIN organisations o ON o.id=m.organisation_id WHERE m.user_id=$1 AND m.status='active' AND o.status='active' AND m.role = ANY($2))) ORDER BY created_at DESC`, [user.id, ORG_USE]);
 
@@ -199,7 +199,7 @@ async function invoiceFor(user, invoiceId) {
   return inv;
 }
 const printable = (inv) => ({ ...inv, buyer: buyerOf(inv) });
-const loadLogo = async (assetId) => { if (!assetId) return null; const a = await one('SELECT file_name FROM brand_assets WHERE id=$1', [assetId]); return a ? loadEncrypted('brand', 'brand_assets.file', a.file_name) : null; };
+export const loadLogo = async (assetId) => { if (!assetId) return null; const a = await one('SELECT file_name FROM brand_assets WHERE id=$1', [assetId]); return a ? loadEncrypted('brand', 'brand_assets.file', a.file_name) : null; };
 
 const GENERATE = z.object({ invoice_id: id, template_id: id.optional() });
 cap({

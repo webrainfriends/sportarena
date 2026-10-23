@@ -33,6 +33,8 @@ export const SPONSOR_ACTIONS = {
   budget: ['manager', 'finance'], // authorize budgets, set the FX policy and rates (#293)
   pause: ['manager', 'approver'], // request, approve, withdraw or resume a pause of an agreement (#297)
   collaborate: ['manager', 'approver', 'legal', 'evaluator', 'finance'], // tasks, assignments and working notes on agreements and programs (#306)
+  report: ['manager', 'finance', 'approver', 'auditor'], // portfolio dashboards: ageing, funnel, outcomes, fulfilment, renewals (#305)
+  report_schedule: ['manager', 'finance'], // saved filters and scheduled delivery of those reports (#305)
   budget_approve: ['manager', 'approver', 'finance'], // second approval of an offer above a budget's threshold (#293)
 };
 // Sponsor-entity representative role (#282) -> sponsor role. A portfolio manager acts as manager, but only on brands in an assigned portfolio.

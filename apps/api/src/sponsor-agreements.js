@@ -1,6 +1,8 @@
 // Shared helpers for sponsorship agreements: persisting lines, generating the schedule, history, and who-is-who on a deal.
 import { buildSchedule } from './sponsor-schedule.js';
 import { forbidden, notFound } from './errors.js';
+import { pool } from './db.js';
+import { guardianLink, guardiansOf, isYouth } from './youth.js';
 import { isAdmin } from './helpers.js';
 import { sponsorAccess, assertSponsorCan } from './sponsor-access.js';
 import { sponsorContactUser } from './sponsor-identity-access.js';
@@ -84,7 +86,7 @@ export async function targetOwner(c, type, id) {
  * `role` is 'sponsor' (the brand owner or its organisation staff), 'recipient' (authorised target owner)
  * or 'admin'. Sponsor side = the brand owner, its organisation staff or its entity representatives (see sponsor-access.js). For the sponsor side, `staff` is the live sponsor role and `need(action)` enforces what that role may do.
  */
-export async function dealContext(c, sponsorshipId, user, { lock = false } = {}) {
+export async function dealContext(c, sponsorshipId, user, { lock = false, write = lock, minorMayAct = false } = {}) {
   const d = (await c.query(`SELECT *, starts_on::text AS starts, ends_on::text AS ends FROM sponsorships WHERE id=$1${lock ? ' FOR NO KEY UPDATE' : ''}`, [sponsorshipId])).rows[0];
   if (!d) throw notFound('Sponsorship');
   const sp = (await c.query('SELECT id, name, owner_id, organisation_id, entity_id FROM sponsors WHERE id=$1', [d.sponsor_id])).rows[0];
@@ -92,18 +94,23 @@ export async function dealContext(c, sponsorshipId, user, { lock = false } = {})
   const recipientId = ORG_TARGETS.includes(d.target_type) ? await primaryContact(c, await targetOrgId(c, d.target_type, d.target_id)) : await targetOwner(c, d.target_type, d.target_id);
   let access = await sponsorAccess(user, sp, c);
   if (access?.departmentId && access.departmentId !== d.department_id) access = null; // a department-scoped member only sees their department's deals
+  // a young athlete's verified guardian is the recipient side for them (#307); the young person can read the agreement but cannot act on it
+  const youth = d.target_type === 'athlete' && await isYouth(d.target_id, c);
+  const guardian = youth && user.id !== recipientId ? await guardianLink(user.id, recipientId, c) : null;
   // sponsor wins if one person is on both sides; an admin may read everything
-  const role = access ? 'sponsor' : (beneficiary ? beneficiary.any : user.id === recipientId) ? 'recipient' : isAdmin(user) ? 'admin' : null;
+  const role = access ? 'sponsor' : (beneficiary ? beneficiary.any : user.id === recipientId || !!guardian) ? 'recipient' : isAdmin(user) ? 'admin' : null;
   if (!role) throw forbidden('You are not part of this sponsorship');
+  const minorSelf = youth && !access && user.id === recipientId;
+  if (minorSelf && write && !minorMayAct && (await guardiansOf(recipientId, c)).length) throw forbidden('Your guardian manages this sponsorship for you; you can read it but not act on it');
   // sp.owner_id is who gets notified: an active owner of the sponsor entity, never someone who has left
-  return { d, sp: { ...sp, owner_id: await sponsorContactUser(c, sp) }, recipientId, role, beneficiary, staff: access?.role, need: (action, what) => assertSponsorCan(access, action, { departmentId: d.department_id, what }) };
+  return { d, sp: { ...sp, owner_id: await sponsorContactUser(c, sp) }, recipientId, role, beneficiary, youth, guardian: !!guardian, minorSelf, staff: access?.role, need: (action, what) => assertSponsorCan(access, action, { departmentId: d.department_id, what }) };
 }
 
 /** Obligation + its deal, locking the obligation row so concurrent payments/deliveries serialise. */
 export async function obligationContext(c, obligationId, user) {
   const o = (await c.query('SELECT * FROM sponsorship_obligations WHERE id=$1 FOR UPDATE', [obligationId])).rows[0];
   if (!o) throw notFound('Obligation');
-  return { o, ...(await dealContext(c, o.sponsorship_id, user)) };
+  return { o, ...(await dealContext(c, o.sponsorship_id, user, { write: c !== pool })) };
 }
 
 /**

@@ -83,6 +83,7 @@ throughput passes a few hundred jobs per second or work needs sub-second latency
 notification retries, push, email), each in its own try/catch. A failing step is logged and returned under `errors.<category>`;
 the rest still run. Holds are additionally isolated per reservation. The loop is driven by the `STEPS` table in `apps/api/src/worker.js`
 (a category is added there, with a fallback value), and `notificationCycle()` is isolated too.
+The `sponsor_reports` step (#305) prepares due scheduled sponsorship reports once per schedule, period and recipient (see sponsorship-reporting.md).
 
 ### Policy for sweep-style categories
 Holds, waitlist, loyalty, plans, alerts, quotes and stale requests are not queued per item: each cycle re-scans its own table with

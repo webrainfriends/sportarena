@@ -35,3 +35,5 @@ Dependencies: reads tables from #145, #284-#289; no dependency on #243/#249 (not
 
 ## Limits
 Documents list award letters and payment/endorsement evidence links; they are not stored here. Application files stay under the evaluation roles.
+
+Portfolio-wide dashboards, exports, saved filters and scheduled delivery live in [sponsorship-reporting.md](sponsorship-reporting.md) (#305).

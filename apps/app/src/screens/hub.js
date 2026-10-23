@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { YouthAuthorizations } from './sponsor-youth';
 import { View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
@@ -447,6 +448,7 @@ export function Sponsors() {
         <View style={{ flexDirection: 'row', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
           <Btn small title="Sponsorship calls" color={c.pink} onPress={() => push('FundingOpportunities')} />
           <Btn small title="Beneficiary portfolio" color={c.violet} onPress={() => push('SponsorPortfolio')} />
+          <Btn small title="Reports" color={c.violet} onPress={() => push('SponsorReports')} />
           {mine.data?.length ? <Btn small title="Run programs" color={c.violet} onPress={() => push('SponsorPrograms')} /> : null}
           {mine.data?.some((b) => ['manager', 'finance', 'approver', 'auditor'].includes(b.my_role)) ? <Btn small title="Budgets" color={c.paper} ink={c.ink} onPress={() => push('SponsorBudgets')} /> : null}
         </View>
@@ -467,6 +469,7 @@ export function Sponsors() {
         )) : <Empty emoji="🤝" title="No deals yet" />}
       </Section>
       {has('sponsor') && mine.data?.length ? <Introductions brands={mine.data} onOffer={(a) => setOfferTo({ id: a.athlete_id, display_name: a.display_name })} /> : null}
+      {has('sponsor') && mine.data?.length ? <YouthAuthorizations brands={mine.data} onOffer={setOfferTo} /> : null}
       {has('sponsor') ? (
         <Section title="Athletes open to sponsors" color={c.cyan}>
           <Field value={q} onChangeText={setQ} placeholder="Search athletes by name or pitch…" />

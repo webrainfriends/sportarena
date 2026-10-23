@@ -230,3 +230,25 @@ test('existing agreements survive: no contract is invented, and issuing needs li
   const legacy = await pool.query("SELECT to_regclass('sponsorship_contracts') AS t");
   assert.ok(legacy.rows[0].t);
 });
+
+test('organisation recipient: only owners and admins bind it; a payee on the deal can read but not issue or sign', async () => {
+  const owner = await signup(['coach']), sponsor = await signup(['sponsor']);
+  const org = must(await api('POST', '/organisations', { token: owner.token, body: { name: `Riverside ${++n}` } }), 201);
+  must(await api('PATCH', `/organisations/${org.id}`, { token: owner.token, body: { open_to_sponsors: true } }));
+  const join = async (role) => { const u = await signup(['coach']); must(await api('POST', `/organisations/${org.id}/members`, { token: owner.token, body: { person: u.handle, role } }), 201); must(await api('POST', `/organisations/${org.id}/invite/respond`, { token: u.token, body: { accept: true } })); return u; };
+  const admin = await join('admin'), fin = await join('finance');
+  const brand = must(await api('POST', '/sponsors', { token: sponsor.token, body: { name: `Brand${n}` } }), 201);
+  const d = must(await api('POST', '/sponsorships', { token: sponsor.token, body: { sponsor_id: brand.id, target_type: 'organisation', target_id: org.id, starts_on: '2030-01-01', ends_on: '2030-06-30', lines: [money] } }), 201);
+  must(await api('PATCH', `/sponsorships/${d.id}`, { token: owner.token, body: { status: 'active', version: d.terms_version } }));
+  must(await api('POST', `/sponsorships/${d.id}/allocations`, { token: owner.token, body: { rev: 1, allocations: [{ beneficiary_type: 'organisation', beneficiary_id: org.id, share_bp: 10000, payee_user_id: fin.id }] } }));
+  assert.equal(must(await api('GET', `/sponsorships/${d.id}/allocations`, { token: fin.token })).my_role, 'payee');
+  assert.equal((await api('POST', `/sponsorships/${d.id}/contracts`, { token: fin.token, body: {} })).status, 403, 'a payee cannot issue a contract for the organisation');
+  const c = must(await api('POST', `/sponsorships/${d.id}/contracts`, { token: admin.token, body: {} }), 201);
+  const named = (list) => api('PATCH', `/sponsorship-contracts/${c.id}/signatories`, { token: admin.token, body: { row_version: c.row_version, signatories: list } });
+  assert.equal((await named([{ user_id: sponsor.id, side: 'sponsor' }, { user_id: fin.id, side: 'recipient' }])).status, 403, 'a payee cannot be named to sign for the organisation');
+  const ok = must(await named([{ user_id: sponsor.id, side: 'sponsor' }, { user_id: admin.id, side: 'recipient' }, { user_id: owner.id, side: 'recipient' }]));
+  const signers = must(await api('GET', `/sponsorships/${d.id}/contract-signers`, { token: admin.token }));
+  assert.deepEqual(signers.recipient.map((x) => x.user_id).sort(), [admin.id, owner.id].sort());
+  assert.equal(must(await api('GET', `/sponsorship-contracts/${c.id}`, { token: fin.token })).can.manage, false, 'the payee can read it');
+  assert.equal(ok.signatories.length, 3);
+});
