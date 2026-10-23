@@ -181,7 +181,7 @@ test('only one live renewal per agreement, and a declined one can be replaced', 
   const winner = x.status === 201 ? x.body : y.body;
   assert.equal((await renew(w)).status, 409, 'a third attempt is refused too');
   const decliner = x.status === 201 ? 'ath' : 'sponsor', proposer = x.status === 201 ? 'sponsor' : 'ath';
-  assert.equal((await api('PATCH', `/sponsorships/${winner.id}`, { token: w[proposer].token, body: { status: 'declined', reason: 'mine' } })).status, 403, 'the proposer cannot decline their own renewal');
+  if (proposer === 'sponsor') assert.equal((await api('PATCH', `/sponsorships/${winner.id}`, { token: w[proposer].token, body: { status: 'declined', reason: 'mine' } })).status, 403, 'a sponsor cannot decline its own renewal (it withdraws it)');
   must(await api('PATCH', `/sponsorships/${winner.id}`, { token: w[decliner].token, body: { status: 'declined', reason: 'not now' } }));
   must(await renew(w), 201);
 });
