@@ -214,7 +214,8 @@ test('awarded applications link to canonical sponsorships and a private award st
   const app = must(await apply(x.a.token, r, x.target), 201);
   const cur = must(await api('GET', `/sponsorship-programs/${p.id}`, { token: w.owner.token }));
   const won = must(await api('PATCH', `/program-applications/${app.id}`, { token: w.owner.token, body: { decision: 'award', program_version: cur.row_version } }));
-  const row = (await pool.query('SELECT * FROM sponsorships WHERE id=$1', [won.sponsorship_id])).rows[0];
+  const acc = must(await api('POST', `/program-awards/${won.award.id}/respond`, { token: x.a.token, body: { decision: 'accept', offer_version: won.award.offer_version } }));
+  const row = (await pool.query('SELECT * FROM sponsorships WHERE id=$1', [acc.sponsorship_id])).rows[0];
   assert.equal(row.program_id, p.id); assert.equal(row.round_id, r.id); assert.equal(row.application_id, app.id);
   assert.equal(row.visibility, 'private');
   // another brand cannot read, invite, export or decide anything of this program

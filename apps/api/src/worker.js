@@ -11,6 +11,7 @@ import { venueOpsReminders } from './booking/venue-ops.js';
 import { expireStaleRequests } from './lifecycle.js';
 import { expireQuotes, sendRenewalReminders } from './insurance-cycle.js';
 import { sendCallNotices } from './sponsorship-calls.js';
+import { expireAwards } from './sponsorship-awards.js';
 
 export const STEPS = [
   ['holds', 'holds_released', expireUnpaidHolds, 0],
@@ -25,6 +26,7 @@ export const STEPS = [
   ['quotes', 'quotes_expired', expireQuotes, 0],
   ['renewals', 'renewal_reminders', sendRenewalReminders, 0],
   ['sponsor_calls', 'sponsor_call_notices', sendCallNotices, 0],
+  ['sponsor_awards', 'sponsor_awards_expired', expireAwards, 0],
 ];
 
 export async function maintenanceCycle() {

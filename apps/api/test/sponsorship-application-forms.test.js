@@ -247,7 +247,7 @@ test('staff reading confidential answers is audited; corrections change only fla
   const row = (await pool.query("SELECT fields, before FROM sponsorship_application_events WHERE application_id=$1 AND kind='corrected'", [d.id])).rows[0];
   assert.deepEqual(row.fields.sort(), ['requested_cents', 'size']); assert.equal(row.before.size, 20); assert.equal(row.before.requested_cents, 200000);
   const award = must(await api('PATCH', `/program-applications/${d.id}`, { token: s.w.owner.token, body: { decision: 'award', program_version: (await pool.query('SELECT row_version FROM sponsorship_programs WHERE id=$1', [s.p.id])).rows[0].row_version } }));
-  assert.equal(award.status, 'awarded'); assert.equal(Number(award.awarded_cents), 180000);
+  assert.equal(award.award.status, 'issued'); assert.equal(Number(award.award.amount_cents), 180000);
 });
 
 test('export is brand-scoped and audited, omits drafts and confidential data; tenant isolation on reads; legacy applications still work', async () => {
@@ -289,7 +289,8 @@ test('migration 089 is additive and repeatable: existing applications, rounds an
   p = must(await api('POST', `/sponsorship-programs/${p.id}/status`, { token: w.owner.token, body: { status: 'published', version: p.row_version } }));
   const x = await applicant();
   const legacy = must(await api('POST', `/program-rounds/${r.id}/applications`, { token: x.a.token, body: { ...x.target, requested_cents: 7000, pitch: 'Before the migration' } }), 201);
-  const award = must(await api('PATCH', `/program-applications/${legacy.id}`, { token: w.owner.token, body: { decision: 'award', program_version: p.row_version } }));
+  const won = must(await api('PATCH', `/program-applications/${legacy.id}`, { token: w.owner.token, body: { decision: 'award', program_version: p.row_version } }));
+  const award = must(await api('POST', `/program-awards/${won.award.id}/respond`, { token: x.a.token, body: { decision: 'accept', offer_version: won.award.offer_version } }));
   const snap = async () => ({
     a: (await pool.query('SELECT status, requested_cents, awarded_cents, pitch, terms_snapshot, sponsorship_id, created_at FROM sponsorship_applications WHERE id=$1', [legacy.id])).rows[0],
     s: (await pool.query('SELECT status, amount_cents, currency, visibility, application_id FROM sponsorships WHERE id=$1', [award.sponsorship_id])).rows[0],

@@ -17,6 +17,7 @@ import { toCsv } from '../csv.js';
 import { logHistory, saveLines } from '../sponsor-agreements.js';
 import { buildSchedule } from '../sponsor-schedule.js';
 import { sponsorAccess, assertSponsorCan, notifySponsor, sponsorBrandSql } from '../sponsor-access.js';
+import { budgetUse, startAward } from '../sponsorship-awards.js';
 import { gateDecision, recordDecision, redactBlind } from '../sponsorship-evaluation.js';
 
 const date = z.string().date();
@@ -59,6 +60,15 @@ export const termsOf = (p, r) => ({
   round: { id: r.id, seq: r.seq, name: r.name, opens_on: iso(r.opens_on), closes_on: iso(r.closes_on), timezone: r.timezone, closes_at: r.closes_at, terms_version: r.terms_version },
 });
 
+/** How an award is governed (#289): thresholds for a second approver and finance sign-off, legal sign-off, offer validity and the waitlist. */
+const AWARD_RULES = {
+  award_approval_cents: money.nullable().optional().describe('awards above this amount need a second approver (null = never)'),
+  finance_signoff_cents: money.nullable().optional().describe('awards above this amount need finance sign-off (null = never)'),
+  legal_signoff_required: z.boolean().optional().describe('every award needs legal sign-off'),
+  offer_validity_days: z.number().int().min(1).max(365).optional().describe('how long an issued offer can be accepted'),
+  waitlist_enabled: z.boolean().optional().describe('an award that does not fit the budget joins a waitlist instead of being refused'),
+};
+
 const PROGRAM_ROUND_BUDGET = 'a round budget cannot exceed the program budget';
 
 export async function brandFor(user, sponsorId, action, c) {
@@ -82,14 +92,8 @@ async function validateSports(list) {
   if (missing.length) throw badRequest(`Unknown sport(s): ${missing.join(', ')}`);
 }
 /** Money that is already committed by awards, for the program and per round. */
-const committed = async (c, programId) => {
-  const r = (await c.query("SELECT coalesce(sum(awarded_cents),0)::bigint AS cents, count(*)::int AS n FROM sponsorship_applications WHERE program_id=$1 AND status='awarded'", [programId])).rows[0];
-  return { cents: Number(r.cents), n: r.n };
-};
-const committedRound = async (c, roundId) => {
-  const r = (await c.query("SELECT coalesce(sum(awarded_cents),0)::bigint AS cents, count(*)::int AS n FROM sponsorship_applications WHERE round_id=$1 AND status='awarded'", [roundId])).rows[0];
-  return { cents: Number(r.cents), n: r.n };
-};
+const committed = (c, programId) => budgetUse(c, 'program_id', programId);
+const committedRound = (c, roundId) => budgetUse(c, 'round_id', roundId);
 const saveTerms = (c, round, userId) => c.query('INSERT INTO sponsorship_round_terms(round_id, version, snapshot, created_by) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING',
   [round.id, round.terms_version, { name: round.name, opens_on: iso(round.opens_on), closes_on: iso(round.closes_on), timezone: round.timezone, closes_time: round.closes_time, closes_at: round.closes_at, budget_cents: round.budget_cents, max_awards: round.max_awards }, userId]);
 
@@ -152,6 +156,7 @@ cap({
     sports: PROGRAM_FIELDS.sports.optional(), regions: PROGRAM_FIELDS.regions.optional(), target_types: PROGRAM_FIELDS.target_types.optional(), verified_only: z.boolean().optional(),
     starts_on: date.nullable().optional(), ends_on: date.nullable().optional(), max_award_cents: PROGRAM_FIELDS.max_award_cents.nullable().optional(), max_awards: PROGRAM_FIELDS.max_awards.nullable().optional(), recurrence: recurrence.nullable().optional(),
     owner_id: id.optional(), visibility: z.enum(VISIBILITY).optional(),
+    ...AWARD_RULES,
   }),
   async handler({ user }, i) {
     await validateSports(i.sports);
@@ -160,7 +165,7 @@ cap({
       checkVersion(p, i.version, 'program');
       if (!['draft', 'published'].includes(p.status)) throw conflict(`A ${p.status} program cannot be edited`);
       const used = await committed(c, p.id);
-      const next = { ...p, ...Object.fromEntries(['name', 'objective', 'budget_cents', 'currency', 'sports', 'regions', 'starts_on', 'ends_on', 'max_award_cents', 'max_awards', 'recurrence', 'owner_id', 'visibility'].filter((k) => i[k] !== undefined).map((k) => [k, i[k]])) };
+      const next = { ...p, ...Object.fromEntries(['name', 'objective', 'budget_cents', 'currency', 'sports', 'regions', 'starts_on', 'ends_on', 'max_award_cents', 'max_awards', 'recurrence', 'owner_id', 'visibility', ...Object.keys(AWARD_RULES)].filter((k) => i[k] !== undefined).map((k) => [k, i[k]])) };
       if (i.currency && i.currency !== p.currency && used.n) throw conflict('The currency cannot change once an award has been made');
       if (next.budget_cents < used.cents) throw conflict(`The budget cannot be lower than what is already awarded (${used.cents})`);
       if (next.starts_on && next.ends_on && next.ends_on < next.starts_on) throw badRequest('ends_on is before starts_on');
@@ -172,9 +177,9 @@ cap({
       }
       const elig = { ...p.eligibility, ...(i.target_types ? { target_types: i.target_types } : {}), ...(i.verified_only !== undefined ? { verified_only: i.verified_only } : {}) };
       const row = (await c.query(
-        `UPDATE sponsorship_programs SET name=$2, objective=$3, currency=$4, budget_cents=$5, sports=$6, regions=$7, eligibility=$8, starts_on=$9, ends_on=$10, max_award_cents=$11, max_awards=$12, recurrence=$13, owner_id=$14, visibility=$15,
+        `UPDATE sponsorship_programs SET name=$2, objective=$3, currency=$4, budget_cents=$5, sports=$6, regions=$7, eligibility=$8, starts_on=$9, ends_on=$10, max_award_cents=$11, max_awards=$12, recurrence=$13, owner_id=$14, visibility=$15, award_approval_cents=$16, finance_signoff_cents=$17, legal_signoff_required=$18, offer_validity_days=$19, waitlist_enabled=$20,
                 row_version=row_version+1, updated_at=now() WHERE id=$1 RETURNING *`,
-        [p.id, next.name, next.objective, next.currency, next.budget_cents, next.sports, next.regions, elig, next.starts_on, next.ends_on, next.max_award_cents, next.max_awards, next.recurrence, next.owner_id, next.visibility])).rows[0];
+        [p.id, next.name, next.objective, next.currency, next.budget_cents, next.sports, next.regions, elig, next.starts_on, next.ends_on, next.max_award_cents, next.max_awards, next.recurrence, next.owner_id, next.visibility, next.award_approval_cents, next.finance_signoff_cents, next.legal_signoff_required, next.offer_validity_days, next.waitlist_enabled])).rows[0];
       await audit(c, user.id, 'update', 'sponsorship_programs', p.id);
       return row;
     });
@@ -539,7 +544,7 @@ cap({
 
 cap({
   name: 'decide_program_application', method: 'PATCH', path: '/program-applications/:id', tag: 'Sponsors',
-  summary: 'Brand manager/approver: award or decline an application. Awarding needs the program\'s current `program_version` (409 if the caps changed since you looked) and checks, under lock, the award size, the program and round budgets and award counts, and the currency. It creates a proposed sponsorship from the brand to the applicant that references the program, round and application; the recipient still has to accept it (no consent or payment is assumed). Deciding twice is rejected.',
+  summary: 'Brand manager/approver: award or decline an application. Awarding needs the program\'s current `program_version` (409 if the caps changed since you looked) and checks, under lock, the award size, the program and round budgets and award counts, and the currency. It creates an award (not yet an agreement) that reserves the amount against the budget; depending on the program thresholds it waits for approver / finance / legal sign-off, and an award that does not fit the budget joins the waitlist when the program has one. Once approved it is issued to the recipient, whose acceptance of the exact offer version creates the single agreement (no consent or payment is assumed). Deciding twice is rejected.',
   input: z.object({ id, decision: z.enum(['award', 'decline']), program_version: z.coerce.number().int().positive().optional(), awarded_cents: money.min(1).optional().describe('defaults to the amount requested; cannot exceed it'), reason: z.string().max(500).optional(), eval_version: z.coerce.number().int().positive().optional().describe('the application\'s evaluation version you looked at; 409 if the committee changed it since') }),
   async handler({ user }, i) {
     return tx(async (c) => {
@@ -563,45 +568,35 @@ cap({
       if (amount > Number(a.requested_cents)) throw badRequest('An award cannot exceed the amount requested');
       if (a.currency !== p.currency) throw conflict('The application currency does not match the program currency');
       if (p.max_award_cents && amount > Number(p.max_award_cents)) throw unprocessable(`An award cannot exceed the program maximum of ${p.max_award_cents}`);
-      const pu = await committed(c, p.id), ru = await committedRound(c, r.id);
-      if (p.max_awards && pu.n + 1 > p.max_awards) throw conflict(`The program has reached its limit of ${p.max_awards} awards`);
-      if (r.max_awards && ru.n + 1 > r.max_awards) throw conflict(`This round has reached its limit of ${r.max_awards} awards`);
-      if (pu.cents + amount > Number(p.budget_cents)) throw conflict(`This award would exceed the program budget (${Number(p.budget_cents) - pu.cents} remaining)`);
-      if (r.budget_cents != null && ru.cents + amount > Number(r.budget_cents)) throw conflict(`This award would exceed the round budget (${Number(r.budget_cents) - ru.cents} remaining)`);
-      const dealUp = (await c.query(
-        `INSERT INTO sponsorships(sponsor_id, target_type, target_id, amount_cents, currency, starts_on, ends_on, proposed_by, objectives, visibility, program_id, round_id, application_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
-        [sp.id, a.target_type, a.target_id, amount, p.currency, p.starts_on, p.ends_on, user.id, p.objective, a.target_type === 'athlete' ? 'private' : 'public', p.id, r.id, a.id])).rows[0];
-      // the award is a one-off money line, so the recipient accepts an exact version and the existing obligation / payment flow applies
-      const today = iso(new Date()), start = p.starts_on ? iso(p.starts_on) : null, end = p.ends_on ? iso(p.ends_on) : null;
-      let due = start && start > today ? start : today;
-      if (end && due > end) due = end;
-      const line = { kind: 'money', label: `Award: ${p.name}`.slice(0, 160), currency: p.currency, total_cents: amount, cadence: 'once', first_due_on: due, terms: {} };
-      buildSchedule([line], { starts_on: start, ends_on: end }); // fails loudly rather than store an unschedulable award
-      await saveLines(c, dealUp.id, 1, [line]);
-      await c.query("UPDATE sponsorships SET agreement_ref='SPA-'||upper(substr(id::text,1,8)) WHERE id=$1", [dealUp.id]);
-      await logHistory(c, dealUp.id, 1, user.id, 'proposed', `Awarded from program ${p.name}`);
-      const row = (await c.query("UPDATE sponsorship_applications SET status='awarded', awarded_cents=$2, decided_at=now(), decided_by=$3, decision_reason=$4, sponsorship_id=$5 WHERE id=$1 RETURNING *", [a.id, amount, user.id, i.reason ?? null, dealUp.id])).rows[0];
-      await notify(c, a.applicant_id, { kind: 'sponsorship_offer', title: 'Your funding application was awarded', body: `${sp.name} awarded your application. Open the agreement to review and accept it.`, data: { sponsorship_id: dealUp.id, application_id: a.id } });
+      const live = (await c.query("SELECT 1 FROM sponsorship_awards WHERE application_id=$1 AND status IN ('waitlisted','pending_approval','approved','issued','accepted')", [a.id])).rowCount;
+      if (live) throw conflict('This application already has a live award; manage it from the program awards');
+      // the award is a governed offer (#289): budget is reserved, sign-offs are collected, and only the recipient's acceptance of an exact version creates the agreement
+      const award = await startAward(c, { p, sp, r, a, amount, user, reason: i.reason });
       await recordDecision(c, a, p, 'award', user.id);
       await audit(c, user.id, 'award', 'sponsorship_applications', a.id);
-      return { ...row, sponsorship: dealUp };
+      return { ...a, award };
     });
   },
 });
 
 cap({
   name: 'export_program_awards', method: 'GET', path: '/sponsorship-programs/:id/awards-export', tag: 'Sponsors',
-  summary: 'Brand manager/finance/auditor: CSV of a program\'s awards (round, applicant handle, target, amount, currency, the agreement and its status). No contact or personal data. The export is audit-logged.',
+  summary: 'Brand manager/finance/auditor: CSV of a program\'s awards (round, applicant handle, target, amount, currency, award status and offer version, the agreement and its status). No contact or personal data. The export is audit-logged.',
   input: z.object({ id }),
   async handler({ user }, i) {
         const { p } = await programFor(user, i.id, 'export', pool);
     const rows = await many(
-      `SELECT r.seq AS round, ap.handle AS applicant, a.target_type, a.awarded_cents AS amount_cents, a.currency, a.decided_at, s.id AS agreement_id, s.status AS agreement_status
-         FROM sponsorship_applications a JOIN sponsorship_rounds r ON r.id=a.round_id JOIN users ap ON ap.id=a.applicant_id JOIN sponsorships s ON s.id=a.sponsorship_id
-        WHERE a.program_id=$1 AND a.status='awarded' ORDER BY r.seq, a.decided_at, a.id`, [p.id]);
+      `SELECT * FROM (
+         SELECT r.seq AS round, ap.handle AS applicant, a.target_type, a.awarded_cents AS amount_cents, a.currency, a.decided_at, 'accepted'::text AS award_status, 1 AS offer_version, s.id AS agreement_id, s.status AS agreement_status, a.id AS k
+           FROM sponsorship_applications a JOIN sponsorship_rounds r ON r.id=a.round_id JOIN users ap ON ap.id=a.applicant_id JOIN sponsorships s ON s.id=a.sponsorship_id
+          WHERE a.program_id=$1 AND a.status='awarded' AND NOT EXISTS (SELECT 1 FROM sponsorship_awards w WHERE w.application_id=a.id)
+         UNION ALL
+         SELECT r.seq, ap.handle, a.target_type, w.amount_cents, w.currency, coalesce(w.responded_at, w.issued_at, w.created_at), w.status, w.offer_version, s.id, s.status, w.id
+           FROM sponsorship_awards w JOIN sponsorship_applications a ON a.id=w.application_id JOIN sponsorship_rounds r ON r.id=w.round_id JOIN users ap ON ap.id=a.applicant_id LEFT JOIN sponsorships s ON s.id=w.sponsorship_id
+          WHERE w.program_id=$1
+       ) x ORDER BY round, decided_at, k`, [p.id]);
     await audit(null, user.id, 'export', 'sponsorship_programs', p.id);
-    return { filename: `program-${p.id}-awards.csv`, rows: rows.length, csv: toCsv(['round', 'applicant', 'target_type', 'amount_cents', 'currency', 'decided_at', 'agreement_id', 'agreement_status'], rows) };
+    return { filename: `program-${p.id}-awards.csv`, rows: rows.length, csv: toCsv(['round', 'applicant', 'target_type', 'amount_cents', 'currency', 'decided_at', 'award_status', 'offer_version', 'agreement_id', 'agreement_status'], rows) };
   },
 });
 
