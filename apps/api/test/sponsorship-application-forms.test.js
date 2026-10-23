@@ -304,3 +304,26 @@ test('migration 089 is additive and repeatable: existing applications, rounds an
   assert.equal(row.form_id, null); assert.equal(row.form_version, null); assert.deepEqual(row.answers, {}); assert.equal(row.row_version, 1); assert.equal(row.receipt_no, null);
   assert.equal(before.a.status, 'awarded'); assert.equal(before.s.visibility, 'private', 'athlete deals stay private by default');
 });
+
+test('standard form templates are valid forms; the draft tailors with AI when asked and falls back to the template', async () => {
+  const { templateList } = await import('../src/sponsorship-form-templates.js');
+  const { setAiTransport } = await import('../src/ai.js');
+  const w = await brand();
+  const list = must(await api('GET', '/sponsorship-form-templates', { token: w.owner.token }));
+  assert.ok(list.length >= 5);
+  for (const t of templateList()) assert.ok(formDefinition.safeParse(t.definition).success, `${t.key} is a valid form: ${JSON.stringify(formDefinition.safeParse(t.definition).error?.issues[0])}`);
+  const p = must(await api('POST', '/sponsorship-programs', { token: w.owner.token, body: { sponsor_id: w.b.id, name: 'Swim fund', currency: 'USD', budget_cents: 100000 } }), 201);
+  const plain = must(await api('POST', `/sponsorship-programs/${p.id}/form-drafts`, { token: w.owner.token, body: { template: 'athlete' } }), 200);
+  assert.equal(plain.ai, false); assert.equal(plain.definition.sections[0].id, 'about_you');
+  must(await api('POST', `/sponsorship-programs/${p.id}/forms`, { token: w.owner.token, body: { name: 'From template', definition: plain.definition } }), 201);
+  setAiTransport(async () => JSON.stringify({ name: 'Swim travel grant', definition: { sections: [{ id: 'swim', title: 'Swimmer', fields: [{ key: 'pb', label: 'Personal best', type: 'text', required: true }] }] } }));
+  try {
+    const tailored = must(await api('POST', `/sponsorship-programs/${p.id}/form-drafts`, { token: w.owner.token, body: { template: 'athlete', brief: 'Travel grants for under-18 swimmers' } }), 200);
+    assert.equal(tailored.ai, true); assert.equal(tailored.name, 'Swim travel grant');
+    setAiTransport(async () => JSON.stringify({ name: 'Bad', definition: { sections: [] } }));
+    const fallback = must(await api('POST', `/sponsorship-programs/${p.id}/form-drafts`, { token: w.owner.token, body: { template: 'team', brief: 'Anything at all' } }), 200);
+    assert.equal(fallback.ai, false); assert.equal(fallback.template, 'team');
+  } finally { setAiTransport(null); }
+  const outsider = await signup(['sponsor']);
+  assert.equal((await api('POST', `/sponsorship-programs/${p.id}/form-drafts`, { token: outsider.token, body: {} })).status >= 403, true);
+});
