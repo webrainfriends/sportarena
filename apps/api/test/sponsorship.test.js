@@ -140,3 +140,41 @@ test('migration makes existing athlete deals private and keeps every row', async
   const rows = (await pool.query('SELECT target_type, visibility, status, amount_cents FROM sponsorships ORDER BY target_type')).rows;
   assert.deepEqual(rows.map((r) => [r.target_type, r.visibility, r.status]), [['athlete', 'private', 'active'], ['event', 'public', 'active']]);
 });
+
+test('brand profile: create with a full profile, edit as manager, clear fields, others cannot edit, completeness and matches', async () => {
+  const sponsor = await signup(['sponsor']), other = await signup(['sponsor']), ath = await signup(['athlete']);
+  const sport = (await pool.query('SELECT id, slug FROM sports ORDER BY slug LIMIT 1')).rows[0];
+  const b = must(await api('POST', '/sponsors', { token: sponsor.token, body: { name: 'Aurora Foods', tagline: 'Fuel the game', about: 'Nutrition for athletes', industry: 'Food & beverage', brand_color: '#16a34a', country: 'in', sports: [sport.slug], offers: ['nutrition', 'cash'], backs: ['athlete', 'team'], budget_currency: 'INR', budget_min_cents: 100000, budget_max_cents: 900000, links: { instagram: 'https://instagram.com/aurora' }, contact_email: 'hello@aurora.example' } }), 201);
+  const mine = must(await api('GET', '/sponsors', { token: sponsor.token, query: { mine: 'true' } }));
+  const row = mine.find((x) => x.id === b.id);
+  assert.equal(row.tagline, 'Fuel the game');
+  assert.ok(row.profile.percent >= 80 && Array.isArray(row.profile.missing));
+  assert.equal(row.budget_min_cents, undefined, 'budget stays off the brand list');
+  assert.equal(must(await api('GET', '/sponsors')).find((x) => x.id === b.id).budget_min_cents, undefined);
+
+  // an athlete who fits what the brand offers is counted
+  await pool.query("INSERT INTO sport_profiles(user_id, sport_id, role) VALUES ($1,$2,'athlete')", [ath.id, sport.id]);
+  must(await api('POST', '/me/sponsorship-profile', { token: ath.token, body: { open_to_sponsors: true, looking_for: ['nutrition'] } }));
+  const full = must(await api('GET', `/sponsors/${b.id}`, { token: sponsor.token }));
+  assert.equal(full.matching_athletes, 1);
+  assert.equal(Number(full.budget_max_cents), 900000);
+  assert.equal(full.country, 'IN');
+  const pub = must(await api('GET', `/sponsors/${b.id}`));
+  assert.equal(pub.budget_min_cents, undefined);
+  assert.equal(pub.contact_email, undefined);
+  assert.equal(pub.about, 'Nutrition for athletes');
+
+  // only a manager edits; changes are partial and null clears
+  assert.equal((await api('PATCH', `/sponsors/${b.id}`, { token: other.token, body: { tagline: 'hijack' } })).status, 403);
+  must(await api('PATCH', `/sponsors/${b.id}`, { token: sponsor.token, body: { tagline: null, offers: [], links: {} } }));
+  const after = must(await api('GET', `/sponsors/${b.id}`, { token: sponsor.token }));
+  assert.equal(after.tagline, null);
+  assert.deepEqual(after.offers, []);
+  assert.equal(after.about, 'Nutrition for athletes', 'untouched fields stay');
+  assert.equal(after.contact_email, 'hello@aurora.example', 'contact stays encrypted and intact');
+
+  // validation
+  assert.equal((await api('PATCH', `/sponsors/${b.id}`, { token: sponsor.token, body: { budget_min_cents: 10, budget_max_cents: 5 } })).status, 400);
+  assert.equal((await api('PATCH', `/sponsors/${b.id}`, { token: sponsor.token, body: { sports: ['no-such-sport'] } })).status, 400);
+  assert.equal((await api('PATCH', `/sponsors/${b.id}`, { token: sponsor.token, body: { brand_color: 'green' } })).status, 400);
+});

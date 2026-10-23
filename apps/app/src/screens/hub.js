@@ -351,11 +351,60 @@ function Introductions({ brands, onOffer }) {
 // Brand owners and entity admins/portfolio managers act as managers; an entity viewer only reads.
 const asSponsorRole = (r) => (['owner', 'admin', 'portfolio_manager'].includes(r) ? 'manager' : r === 'viewer' ? 'auditor' : r);
 
+
+const BRAND_INDUSTRIES = ['Sports & fitness', 'Apparel & footwear', 'Food & beverage', 'Health & nutrition', 'Banking & finance', 'Insurance', 'Technology', 'Telecom', 'Automotive', 'Travel & hospitality', 'Media & entertainment', 'Retail & e-commerce', 'Education', 'Real estate', 'Energy'];
+const BRAND_COLORS = [{ value: '#16a34a', label: 'Green' }, { value: '#2563eb', label: 'Blue' }, { value: '#7c3aed', label: 'Violet' }, { value: '#db2777', label: 'Pink' }, { value: '#dc2626', label: 'Red' }, { value: '#ea580c', label: 'Orange' }, { value: '#ca8a04', label: 'Gold' }, { value: '#0f766e', label: 'Teal' }, { value: '#111827', label: 'Black' }];
+const BRAND_ICONS = ['💎', '🏆', '⚡', '🔥', '🌿', '🚀', '🎯', '🏅', '⭐', '🛡️'];
+const OFFERS = [{ value: 'cash', label: 'Cash' }, { value: 'equipment', label: 'Equipment' }, { value: 'apparel', label: 'Apparel' }, { value: 'travel', label: 'Travel' }, { value: 'nutrition', label: 'Nutrition' }, { value: 'coaching', label: 'Coaching' }, { value: 'media', label: 'Media & promotion' }];
+const BACKS = [{ value: 'athlete', label: 'Athletes' }, { value: 'team', label: 'Teams' }, { value: 'event', label: 'Events' }];
+const BRAND_FIELDS = [
+  { key: 's1', type: 'section', label: 'Identity' },
+  { key: 'name', label: 'Brand name' },
+  { key: 'tagline', label: 'Tagline', optional: true, hint: 'One line shown under your name, up to 120 characters.' },
+  { key: 'emoji', label: 'Icon', type: 'chips', options: BRAND_ICONS, default: '💎' },
+  { key: 'brand_color', label: 'Brand colour', type: 'chips', options: BRAND_COLORS, optional: true },
+  { key: 'industry', label: 'Industry', type: 'chips', options: BRAND_INDUSTRIES, optional: true },
+  { key: 'about', label: 'About the brand', type: 'multiline', optional: true, hint: 'What you do and why you sponsor sport. Shown publicly.' },
+  { key: 'founded_year', label: 'Founded in', type: 'stepper', min: 1800, max: new Date().getFullYear(), default: new Date().getFullYear(), optional: true },
+  { key: 'country', label: 'Country', type: 'country', optional: true },
+  { key: 's2', type: 'section', label: 'What you sponsor' },
+  { key: 'backs', label: 'Who you back', type: 'multi', options: BACKS, optional: true },
+  { key: 'offers', label: 'What you can offer', type: 'multi', options: OFFERS, optional: true, hint: 'Athletes who are looking for these are matched to you.' },
+  { key: 'sports', label: 'Sports you support', type: 'sports', optional: true, hint: 'Leave empty to back any sport.' },
+  { key: 'regions', label: 'Cities and areas', type: 'regions', optional: true, hint: 'Leave empty to sponsor anywhere.' },
+  { key: 'budget_currency', label: 'Budget currency', type: 'currency', default: 'INR' },
+  { key: 'budget_min_cents', label: 'Yearly budget from', type: 'money', currency: (v) => v.budget_currency ?? 'INR', optional: true },
+  { key: 'budget_max_cents', label: 'Yearly budget up to', type: 'money', currency: (v) => v.budget_currency ?? 'INR', optional: true, hint: 'Only your brand managers see the budget.' },
+  { key: 's3', type: 'section', label: 'Online' },
+  { key: 'website', label: 'Website', input: 'url', optional: true },
+  { key: 'link_instagram', label: 'Instagram', input: 'url', optional: true },
+  { key: 'link_linkedin', label: 'LinkedIn', input: 'url', optional: true },
+  { key: 'link_x', label: 'X', input: 'url', optional: true },
+  { key: 'link_youtube', label: 'YouTube', input: 'url', optional: true },
+  { key: 's4', type: 'section', label: 'Private contact' },
+  { key: 'contact_name', label: 'Contact person', optional: true },
+  { key: 'contact_email', label: 'Contact email', input: 'email', optional: true, hint: 'Encrypted — never shown publicly.' },
+  { key: 'contact_phone', label: 'Contact phone', input: 'phone', optional: true, hint: 'Encrypted — never shown publicly.' },
+];
+const LINK_KEYS = ['instagram', 'linkedin', 'x', 'youtube'];
+const brandInitial = (b) => ({ ...b, ...Object.fromEntries(LINK_KEYS.map((k) => [`link_${k}`, b.links?.[k]])), budget_currency: b.budget_currency ?? 'INR' });
+/** Form values -> API body. When editing, anything left empty is sent as null so it can be cleared. */
+const brandBody = (v, editing) => {
+  const { link_instagram, link_linkedin, link_x, link_youtube, ...rest } = v;
+  const links = Object.fromEntries(Object.entries({ instagram: link_instagram, linkedin: link_linkedin, x: link_x, youtube: link_youtube }).filter(([, x]) => x));
+  const body = { ...rest, links, ...Object.fromEntries(['sports', 'regions', 'offers', 'backs'].map((k) => [k, rest[k] ?? []])) };
+  if (editing) for (const k of ['tagline', 'brand_color', 'industry', 'about', 'founded_year', 'country', 'website', 'contact_name', 'contact_email', 'contact_phone', 'budget_min_cents', 'budget_max_cents']) body[k] ??= null;
+  if (body.budget_min_cents == null && body.budget_max_cents == null) delete body.budget_currency;
+  for (const k of Object.keys(body)) if (body[k] === undefined || (body[k] === null && !editing)) delete body[k];
+  return body;
+};
+
 export function Sponsors() {
   const { has, user, toast } = useSession();
   const { push } = useNav();
   const [form, setForm] = useState(null);
   const [offerTo, setOfferTo] = useState(null);
+  const [editBrand, setEditBrand] = useState(null);
   const [q, setQ] = useState('');
   const dir = useLoad(() => api.get('/sponsors', { limit: 50 }), []);
   const mine = useLoad(() => api.get('/sponsors', { mine: true, limit: 50 }), []);
@@ -416,15 +465,18 @@ export function Sponsors() {
       <Section title="Your brands" color={c.violet}>
         {mine.error ? <LoadError error={mine.error} onRetry={mine.reload} /> : mine.loading && !mine.data ? <Loading /> : mine.data?.length ? mine.data.map((s) => (
           <Row key={s.id} left={<Bubble emoji={s.emoji} color={c.sun} />} title={s.name}
-            sub={[s.industry, s.organisation_name ? `Run by ${s.organisation_name}` : 'Individual brand', asSponsorRole(s.my_role) !== 'manager' ? { evaluator: 'You evaluate and review; you cannot pay or sign', finance: 'You report payments; you cannot change terms', legal: 'You review and change terms; you cannot pay', approver: 'You propose, revise and withdraw; you cannot pay', auditor: 'Read-only, with exports' }[asSponsorRole(s.my_role)] : null].filter(Boolean).join(' · ')}
+            sub={[s.tagline, s.industry, s.organisation_name ? `Run by ${s.organisation_name}` : 'Individual brand', asSponsorRole(s.my_role) !== 'manager' ? { evaluator: 'You evaluate and review; you cannot pay or sign', finance: 'You report payments; you cannot change terms', legal: 'You review and change terms; you cannot pay', approver: 'You propose, revise and withdraw; you cannot pay', auditor: 'Read-only, with exports' }[asSponsorRole(s.my_role)] : null].filter(Boolean).join(' · ')}
             right={<View style={{ alignItems: 'flex-end', gap: 6 }}><Tag label={{ manager: 'Manager', evaluator: 'Evaluator', finance: 'Finance', legal: 'Legal', approver: 'Approver', auditor: 'Auditor' }[asSponsorRole(s.my_role)] ?? 'Staff'} />
+              {asSponsorRole(s.my_role) === 'manager' ? <Btn small title="Edit profile" color={c.violet} onPress={async () => { try { setEditBrand(await api.get(`/sponsors/${s.id}`)); } catch (e) { toast(explain(e)); } }} /> : null}
               {s.organisation_id ? <Btn small title="Open workspace" color={c.paper} ink={c.ink} onPress={() => push('Org', { id: s.organisation_id })} /> : asSponsorRole(s.my_role) === 'manager' && !s.identity_confirmed ? <Btn small title="Link to an organisation" color={c.paper} ink={c.ink} onPress={() => push('Orgs')} /> : null}</View>} />
         )) : <Empty emoji="🏷️" title="No brands yet" sub="Create a brand, or ask an organisation manager to invite you to theirs." />}
         <T size={12} color={c.mute}>Link a brand to an organisation (open it, then Teams, events, venues & brands) to let that organisation's staff work its deals under their roles; staff and departments are managed there.</T>
       </Section>
       <Section title="Brands" color={c.pink}>{dir.data?.map((s) => <Row key={s.id} left={<Bubble emoji={s.emoji} color={c.sun} />} title={s.name} sub={s.industry ?? s.website} />)}</Section>
-      <FormSheet visible={form === 'brand'} onClose={() => setForm(null)} title="Create your brand" fields={[{ key: 'name', label: 'Brand name' }, { key: 'industry', label: 'Industry', optional: true }, { key: 'contact_email', label: 'Contact email', optional: true, hint: 'Encrypted — never shown publicly.' }]}
-        onSubmit={async (v) => { await api.post('/sponsors', v); dir.reload(); mine.reload(); return 'Brand created'; }} />
+      <FormSheet visible={form === 'brand'} onClose={() => setForm(null)} title="Create your brand" submitLabel="Create brand" fields={BRAND_FIELDS}
+        onSubmit={async (v) => { await api.post('/sponsors', brandBody(v, false)); dir.reload(); mine.reload(); return 'Brand created — finish its profile any time from Your brands'; }} />
+      <FormSheet visible={!!editBrand} onClose={() => setEditBrand(null)} title={`Edit ${editBrand?.name ?? 'brand'}`} fields={BRAND_FIELDS} initial={editBrand ? brandInitial(editBrand) : {}}
+        onSubmit={async (v) => { await api.patch(`/sponsors/${editBrand.id}`, brandBody(v, true)); dir.reload(); mine.reload(); return 'Brand profile saved'; }} />
       <FormSheet visible={form === 'pitch'} onClose={() => setForm(null)} title="Your sponsor pitch" initial={{ pitch: pr?.pitch ?? '', looking_for: pr?.looking_for ?? [], verified_sponsors_only: !!pr?.verified_sponsors_only }}
         fields={[{ key: 'pitch', label: 'What should sponsors know about you?', type: 'multiline', optional: true, hint: 'Shown to sponsors. Do not include contact details.' }, { key: 'looking_for', label: 'What are you looking for?', type: 'multi', optional: true, options: ['cash', 'equipment', 'travel', 'coaching', 'apparel', 'nutrition', 'media'] }, { key: 'verified_sponsors_only', label: 'Only verified sponsors may send offers', type: 'switch' }]}
         onSubmit={async (v) => { await api.post('/me/sponsorship-profile', { open_to_sponsors: !!pr?.open_to_sponsors, pitch: v.pitch ?? null, looking_for: v.looking_for ?? [], verified_sponsors_only: v.verified_sponsors_only }); profile.reload(); return 'Saved'; }} />

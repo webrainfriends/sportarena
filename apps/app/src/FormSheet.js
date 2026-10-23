@@ -154,6 +154,7 @@ export function FormSheet({ visible, onClose, title, fields, initial = {}, submi
       case 'currency': return <CurrencyPicker label={f.label} value={v[f.key]} onChange={(x) => set(f.key, x)} />;
       case 'location': return <LocationPicker f={f} v={v} set={set} />;
       case 'daterange': return <DateRangeField label={f.label} from={v[f.key]} to={v[f.toKey]} onChange={({ from, to }) => { set(f.key, from); set(f.toKey, to); }} optional={f.optional} min={f.min} hint={f.hint} />;
+      case 'country': return <CountryPicker label={f.label} value={v[f.key]} onChange={(x) => set(f.key, x)} optional={f.optional} hint={f.hint} />;
       case 'sports': return <SportsMulti label={f.label} value={v[f.key] ?? []} onChange={(x) => set(f.key, x)} optional={f.optional} />;
       case 'regions': return (
         <View style={{ gap: 8 }}>
