@@ -3,6 +3,7 @@
 // debt handling): delivered value and anything already due, part-paid, dispatched or submitted stays exactly as recorded. Returns and refunds
 // are separate, agreed records that reference the canonical delivery / payment, and the final settlement exposes whatever is still unresolved.
 import { cancelFutureObligations, logHistory, settleMoney } from './sponsor-agreements.js';
+import { closePauseOnEnd } from './sponsor-pause.js';
 import { notify } from './notify.js';
 import { notifySponsor } from './sponsor-access.js';
 import { ACTIVITY } from './sponsor-amendments.js';
@@ -46,9 +47,10 @@ export async function impactOf(c, d, effectiveOn) {
 /** The agreement ends on its effective date. Runs inside the caller's transaction with the sponsorship row locked, so it can only apply once. */
 export async function applyTermination(c, t, actorId) {
   const d = (await c.query('SELECT id, status FROM sponsorships WHERE id=$1 FOR UPDATE', [t.sponsorship_id])).rows[0];
-  if (d.status === 'active') {
+  if (['active', 'paused'].includes(d.status)) {
     await c.query("UPDATE sponsorships SET status='ended', decision_reason=coalesce($2, decision_reason), decided_at=now(), decided_by=$3 WHERE id=$1", [d.id, t.reason, actorId ?? t.given_by]);
     await cancelFutureObligations(c, d.id);
+    await closePauseOnEnd(c, d.id); // an open pause is closed and its held dues released, so a debt still owed stays payable
   }
   await c.query("UPDATE sponsorship_terminations SET status='ended', ended_at=now(), rev=rev+1, updated_at=now() WHERE id=$1 AND status IN ('notice','agreed')", [t.id]);
   await logHistory(c, d.id, t.base_version, actorId ?? null, 'ended', `${t.reason_code.replace(/_/g, ' ')}${t.reason ? `: ${t.reason}` : ''} (effective ${t.effective_on})`);

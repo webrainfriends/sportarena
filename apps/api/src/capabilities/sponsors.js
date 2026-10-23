@@ -12,8 +12,7 @@ import { NOT_YOUTH_SQL } from '../youth.js';
 import { LINE, buildSchedule } from '../sponsor-schedule.js';
 import { entityRole, snapshotIdentity, ASSIGNED, CAN } from '../sponsor-identity-access.js';
 import { endNow } from '../sponsor-termination.js';
-import { saveLines, loadLines, generateObligations, cancelFutureObligations, logHistory } from '../sponsor-agreements.js';
-import { closePauseOnEnd } from '../sponsor-pause.js';
+import { saveLines, loadLines, generateObligations, logHistory } from '../sponsor-agreements.js';
 import { proposerSide } from '../sponsor-renewals.js';
 import { sponsorAccess, assertSponsorCan, notifySponsor, sponsorStaffSql } from '../sponsor-access.js';
 import { assertDealFitsBudget, assertFits, convert, costOf, storedRate } from '../sponsorship-budgets.js';
@@ -401,8 +400,7 @@ cap({
         await logHistory(c, d.renews_id, prev?.accepted_version ?? null, user.id, 'renewed', `successor ${row.agreement_ref ?? d.id} accepted at version ${d.terms_version}`);
         await c.query('UPDATE sponsorships SET renewal_rev=renewal_rev+1 WHERE id=$1', [d.renews_id]);
       }
-      if (i.status === 'ended') { await cancelFutureObligations(c, d.id); await closePauseOnEnd(c, d.id); }
-      await logHistory(c, d.id, d.terms_version, user.id, { active: signsOff ? 'signed_off' : 'accepted', declined: 'declined', ended: 'ended' }[i.status], i.reason);
+      if (i.status !== 'ended') await logHistory(c, d.id, d.terms_version, user.id, { active: signsOff ? 'signed_off' : 'accepted', declined: 'declined' }[i.status], i.reason);
       const word = { active: 'accepted', declined: 'declined', ended: 'ended' }[i.status];
       const update = { kind: 'sponsorship_update', title: `Sponsorship ${word}`, body: i.status === 'declined' && i.reason ? i.reason : `A sponsorship with ${sp.name} was ${word}.`, data: { sponsorship_id: d.id } };
       if (isSponsor && !isTarget || signsOff) await notify(c, owner, update);

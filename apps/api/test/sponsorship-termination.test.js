@@ -221,6 +221,52 @@ test('a dispute needs a note, blocks the settlement, and is resolved by the pers
   assert.equal(fin.status, 'settled');
 });
 
+/** pause the agreement through the real request/approve flow (policy hold, starting today) */
+const pauseIt = async (w) => {
+  const rev = async (t) => must(await get(w, t)).pause_rev;
+  const p = must(await api('POST', `/sponsorships/${w.id}/pause-requests`, { token: w.sponsor.token, body: { expected_pause_rev: await rev(w.sponsor.token), reason_code: 'injury', policy: 'hold', effective_from: today() } }), 201);
+  must(await api('PATCH', `/sponsorship-pauses/${p.id}`, { token: w.ath.token, body: { expected_pause_rev: await rev(w.ath.token), decision: 'approve' } }));
+  assert.equal(must(await get(w)).status, 'paused');
+  return p;
+};
+const pauseState = async (w) => (await pool.query("SELECT (SELECT status FROM sponsorship_pauses WHERE sponsorship_id=$1 ORDER BY created_at DESC LIMIT 1) AS pause, (SELECT count(*)::int FROM sponsorship_obligations WHERE sponsorship_id=$1 AND held_by_pause_id IS NOT NULL) AS held", [w.id])).rows[0];
+
+test('a paused agreement ends cleanly: the pause is closed, held dues are released and only untouched future dues stop, once', async () => {
+  const w = await world([{ ...money, custom_dates: ['2099-01-01', '2099-02-01', '2099-03-01'] }]);
+  await pauseIt(w);
+  assert.ok((await pauseState(w)).held >= 1, 'the pause holds future dues');
+  must(await api('PATCH', `/sponsorships/${w.id}`, { token: w.sponsor.token, body: { status: 'ended', reason: 'stopping' } }));
+  assert.equal(must(await get(w)).status, 'ended');
+  assert.deepEqual(await pauseState(w), { pause: 'ended', held: 0 });
+  assert.ok((await dues(w)).every((o) => o.status === 'cancelled'), 'untouched future dues are stopped');
+  const h = must(await get(w)).history.map((x) => x.action).filter((a) => a === 'ended');
+  assert.deepEqual(h, ['ended'], 'ended is recorded once');
+});
+
+test('a notice that comes due while the agreement is paused ends it and closes the pause', async () => {
+  const w = await world([{ ...money, custom_dates: ['2020-01-15', '2099-01-01'] }]);
+  const t = must(await notice(w), 201).termination;
+  await pauseIt(w);
+  await pool.query('UPDATE sponsorship_terminations SET effective_on=current_date, notice_on=current_date WHERE id=$1', [t.id]);
+  assert.equal(await endDueTerminations(), 1);
+  assert.equal(await endDueTerminations(), 0, 'applied once');
+  assert.equal(must(await get(w)).status, 'ended');
+  assert.deepEqual(await pauseState(w), { pause: 'ended', held: 0 });
+  const by = Object.fromEntries((await dues(w)).map((o) => [o.due_on, o.status]));
+  assert.equal(by['2020-01-15'], 'scheduled', 'the overdue debt is kept and payable'); assert.equal(by['2099-01-01'], 'cancelled');
+});
+
+test('the worker applies due notices (the step is registered) and a paused agreement offers "end now"', async () => {
+  const { STEPS } = await import('../src/worker.js');
+  assert.ok(STEPS.some(([name, , fn]) => name === 'sponsor_terminations' && fn === endDueTerminations), 'worker step registered');
+  const w = await world([{ ...money, custom_dates: ['2099-01-01'] }]);
+  await pauseIt(w);
+  const x = await term(w);
+  assert.equal(x.can.end_now, true); assert.equal(x.can.give, false);
+  assert.equal((await term(w, w.sponsor.token)).can.end_now, true);
+  assert.equal((await api('GET', `/sponsorships/${w.id}/termination`, { token: w.outsider.token })).status, 403);
+});
+
 test('migration is additive: existing agreements keep their data and no termination exists until one is given', async () => {
   const w = await world();
   const before = (await pool.query('SELECT count(*)::int AS n FROM sponsorship_obligations')).rows[0].n;
