@@ -7,6 +7,7 @@ import { useNav } from '../nav';
 import { Btn, Card, Chip, Empty, H1, Loading, Screen, Section, Seg, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { BudgetWizard } from './budget-wizard';
+import { BudgetCoverage, BudgetTrace, LinkProgramsSheet } from './budget-trace';
 import { DocumentsSheet } from './insurance';
 import { c } from '../theme';
 import { explain, LoadError } from '../access';
@@ -88,6 +89,7 @@ export function SponsorBudgets() {
         <>
           {mine.length > 1 ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{mine.map((b) => <Chip key={b.id} label={`${b.emoji ?? ''} ${b.name}`.trim()} active={b.id === brand.id} onPress={() => setBrandId(b.id)} />)}</View> : <T weight="800">{brand.emoji} {brand.name}</T>}
           {may ? <Btn small title="New budget" color={c.pink} style={{ alignSelf: 'flex-start' }} onPress={() => setForm(true)} accessibilityLabel="Authorize a new budget" /> : <T size={12} color={c.mute}>Your role ({brand.my_role}) can read budgets; managers and finance authorize them.</T>}
+          <BudgetCoverage sponsorId={brand.id} may={may} refreshKey={`${form}-${list.data?.length}`} onLinked={list.reload} />
           <Seg options={[{ value: 'active', label: 'Active' }, { value: 'archived', label: 'Archived' }]} value={status} onChange={setStatus} color={c.pink} />
           {list.error ? <LoadError error={list.error} onRetry={list.reload} /> : list.loading && !list.data ? <Loading /> : list.data?.length ? list.data.map((b) => (
             <Card key={b.id} onPress={() => push('SponsorBudget', { id: b.id })} accessibilityLabel={`${b.name}, ${KIND[b.kind]} budget, ${fmt(b.available_cents, b.currency)} available of ${fmt(b.authorized_cents, b.currency)}. Open budget`}>
@@ -95,7 +97,7 @@ export function SponsorBudgets() {
                 <T weight="900" style={{ flex: 1 }}>{b.name}</T>
                 <Tag label={KIND[b.kind] + (b.fiscal_year ? ` ${b.fiscal_year}` : '')} color={KIND_TONE[b.kind]} />
               </View>
-              <T size={12} color={c.mute}>{b.parent_id && byId[b.parent_id] ? `Part of ${byId[b.parent_id].name} · ` : ''}{b.fx_policy === 'explicit' ? 'Other currencies at a sourced rate' : `${b.currency} only`}{b.approval_over_cents != null ? ` · approval above ${fmt(b.approval_over_cents, b.currency)}` : ''}</T>
+              <T size={12} color={c.mute}>{b.code} · {b.parent_id && byId[b.parent_id] ? `Part of ${byId[b.parent_id].name} · ` : ''}{b.fx_policy === 'explicit' ? 'Other currencies at a sourced rate' : `${b.currency} only`}{b.approval_over_cents != null ? ` · approval above ${fmt(b.approval_over_cents, b.currency)}` : ''}</T>
               <BudgetBar b={b} />
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
                 <T size={13} weight="800">{fmt(b.available_cents, b.currency)} available</T>
@@ -113,8 +115,6 @@ export function SponsorBudgets() {
 }
 
 const REF_KIND = { approval: 'Approval', board_minutes: 'Board minutes', forecast: 'Forecast', purchase_order: 'Purchase order', contract: 'Contract', policy: 'Policy', other: 'Other' };
-const CKIND = { reservation: ['Reserved', c.sunSoft], agreement: ['Committed', c.pinkSoft], planned: ['Planned', c.violetSoft] };
-
 /** One budget: balances, commitments, children, linked programs and sourced FX rates. */
 export function SponsorBudget({ id }) {
   const { toast } = useSession();
@@ -122,11 +122,10 @@ export function SponsorBudget({ id }) {
   const [form, setForm] = useState(null); // 'edit' | 'rate' | 'ref' | { reject }
   const [docs, setDocs] = useState(false);
   const [stale, setStale] = useState(false);
-  const [page, setPage] = useState(0);
+  const [tick, setTick] = useState(0);
   const bud = useLoad(() => api.get(`/sponsorship-budgets/${id}`), [id]);
-  const rows = useLoad(() => api.get(`/sponsorship-budgets/${id}/commitments`, { limit: 25, offset: page * 25 }), [id, page, bud.data?.row_version]);
   const b = bud.data;
-  const reloadAll = () => { bud.reload(); rows.reload(); };
+  const reloadAll = () => { bud.reload(); setTick((x) => x + 1); };
   const act = async (fn, m) => { try { await fn(); if (m) toast(m); setStale(false); reloadAll(); } catch (e) { toast(explain(e)); if (e.status === 409) { setStale(true); reloadAll(); } } };
   if (bud.loading && !b) return <Screen><Loading /></Screen>;
   if (bud.error) return <Screen><LoadError error={bud.error} onRetry={bud.reload} /></Screen>;
@@ -143,7 +142,7 @@ export function SponsorBudget({ id }) {
     <Screen onRefresh={reloadAll} refreshing={bud.loading && !!b}>
       <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><H1 style={{ flex: 1 }}>{b.name}</H1><Tag label={active ? KIND[b.kind] + (b.fiscal_year ? ` ${b.fiscal_year}` : '') : 'Archived'} color={active ? KIND_TONE[b.kind] : c.paper} /></View>
       {stale ? <Banner action="Dismiss" onAction={() => setStale(false)}>Someone else changed this budget while you were working. The latest version is shown now — review it and try again.</Banner> : null}
-      <T size={12} color={c.mute}>{b.sponsor_name} · you: {b.my_role}{b.parent ? ` · part of ${b.parent.name}` : ''}{b.event ? ` · for ${b.event.name}` : ''}{b.department ? ` · ${b.department.name}` : ''}</T>
+      <T size={12} color={c.mute}><T size={12} weight="800" color={c.ink}>{b.code}</T> · {b.sponsor_name} · you: {b.my_role}{b.parent ? ` · part of ${b.parent.name}` : ''}{b.event ? ` · for ${b.event.name}` : ''}{b.department ? ` · ${b.department.name}` : ''}</T>
       <Card>
         <T weight="900">{fmt(b.available_cents, b.currency)} available</T>
         <BudgetBar b={b} />
@@ -190,28 +189,10 @@ export function SponsorBudget({ id }) {
         <Btn small title="Documents" color={c.paper} ink={c.ink} style={{ alignSelf: 'flex-start' }} onPress={() => setDocs(true)} accessibilityLabel="Open the documents folder of this budget" />
       </Section>
 
-      <Section title="What draws on this budget" color={c.pink}>
-        {rows.error ? <LoadError error={rows.error} onRetry={rows.reload} /> : rows.loading && !rows.data ? <Loading /> : rows.data?.length ? rows.data.map((r) => (
-          <Card key={`${r.kind}-${r.id}`} color={CKIND[r.kind][1]} onPress={r.kind !== 'reservation' ? () => push('SponsorDeal', { id: r.id }) : undefined}>
-            <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-              <View style={{ flex: 1 }}><T weight="900">{r.who ?? 'Award'}{r.program ? ` · ${r.program}` : ''}</T><T size={12} color={c.mute}>{r.ref ?? 'Award offer'} · {r.status}</T></View>
-              <Tag label={r.approval === 'pending' ? 'Needs approval' : CKIND[r.kind][0]} color={c.paper} />
-            </View>
-            <T size={13}>{fmt(r.amount_cents, r.currency)}{r.currency !== b.currency ? ` = ${fmt(r.budget_amount_cents, b.currency)} at ${r.fx_rate}` : ''}{r.kind === 'agreement' ? ` · paid ${fmt(r.paid_cents, r.currency)}${r.refunded_cents ? ` · refunded ${fmt(r.refunded_cents, r.currency)}` : ''}` : ''}</T>
-            {r.approval === 'pending' && mayApprove ? (
-              <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
-                <Btn small title="Approve" color={c.mint} ink={c.ink} onPress={() => act(() => api.post(`/sponsorships/${r.id}/budget-approval`, { decision: 'approve' }), 'Approved — the recipient can now see the offer')} accessibilityLabel="Approve this offer" />
-                <Btn small title="Reject" color={c.paper} ink={c.red} onPress={() => setForm({ reject: r })} accessibilityLabel="Reject this offer" />
-              </View>
-            ) : null}
-          </Card>
-        )) : <Empty emoji="🧾" title="Nothing yet" sub="Awards and agreements appear here as they reserve and commit this budget." />}
-        {rows.data && (page > 0 || rows.data.length === 25) ? (
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            {page > 0 ? <Btn small title="Newer" color={c.paper} ink={c.ink} onPress={() => setPage(page - 1)} /> : null}
-            {rows.data.length === 25 ? <Btn small title="Older" color={c.paper} ink={c.ink} onPress={() => setPage(page + 1)} /> : null}
-          </View>
-        ) : null}
+      <Section title="Follow the money" color={c.pink}>
+        <BudgetTrace budget={b} tick={tick} mayApprove={mayApprove}
+          onApprove={(r) => act(() => api.post(`/sponsorships/${r.id}/budget-approval`, { decision: 'approve' }), 'Approved — the recipient can now see the offer')}
+          onReject={(r) => setForm({ reject: r })} />
       </Section>
 
       {b.children.length ? (
@@ -226,13 +207,14 @@ export function SponsorBudget({ id }) {
         </Section>
       ) : null}
 
-      <Section title="Programs on this budget" color={c.mint}>
+      <Section title="Programs on this budget" color={c.mint} action={may && active && b.kind !== 'event' ? '+ Link programs' : undefined} onAction={() => setForm('programs')}>
         {b.programs.length ? b.programs.map((p) => (
           <Card key={p.id} onPress={() => push('SponsorProgram', { id: p.id })} accessibilityLabel={`${p.name}, ${p.status}. Open program`}>
-            <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><T weight="900" style={{ flex: 1 }}>{p.name}</T><Tag label={p.status} color={c.paper} /></View>
+            <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><T weight="900" style={{ flex: 1 }}>{p.name}</T>{p.is_default ? <Tag label="Default budget" color={c.pinkSoft} /> : null}<Tag label={p.status} color={c.paper} /></View>
             <T size={12} color={c.mute}>Program budget {fmt(Number(p.budget_cents), p.currency)}</T>
+            {may && active && ['draft', 'published'].includes(p.status) ? <Btn small title="Unlink" color={c.paper} ink={c.red} style={{ alignSelf: 'flex-start', marginTop: 6 }} onPress={() => act(() => api.del(`/sponsorship-programs/${p.id}/budgets/${b.id}`, { version: p.row_version }), 'Program unlinked — kept on record')} accessibilityLabel={`Unlink ${p.name} from this budget`} /> : null}
           </Card>
-        )) : <Empty emoji="🎯" title="No program linked" sub="Open a program and choose this budget under “Budget” so its awards draw on it." />}
+        )) : <Empty emoji="🎯" title="No program linked" sub={b.kind === 'event' ? 'An event budget funds one event, not programs.' : may && active ? `Link the programs whose awards may draw on ${b.code}; their agreements and payments are then traced here.` : 'Programs linked to this budget appear here.'} />}
       </Section>
 
       {b.fx_policy === 'explicit' ? (
@@ -252,6 +234,7 @@ export function SponsorBudget({ id }) {
       <FormSheet visible={form === 'edit'} onClose={() => setForm(null)} title="Edit budget" fields={editFields}
         initial={{ ...b }}
         onSubmit={async (v) => { await api.patch(`/sponsorship-budgets/${b.id}`, { version: b.row_version, name: v.name, notes: v.notes ?? null, authorized_cents: v.authorized_cents, approval_over_cents: v.approval_over_cents ?? null, fx_policy: v.fx_policy }); reloadAll(); return 'Budget saved'; }} />
+      <LinkProgramsSheet visible={form === 'programs'} onClose={() => setForm(null)} budget={b} linkedIds={b.programs.map((x) => x.id)} onDone={reloadAll} />
       <FormSheet visible={form === 'ref'} onClose={() => setForm(null)} title="Add a reference" submitLabel="Add reference"
         fields={[
           { key: 'kind', label: 'What is it?', type: 'chips', options: Object.entries(REF_KIND).map(([value, label]) => ({ value, label })), default: 'approval' },
@@ -278,28 +261,37 @@ export function SponsorBudget({ id }) {
   );
 }
 
-/** Program detail section: which budget this program's awards draw on. */
+/** Program detail section: the budgets this program's awards can draw on (one or several), the default for new awards, and this program's spending on each. */
 export function ProgramBudget({ program: p, may, onChanged }) {
   const { toast } = useSession();
   const { push } = useNav();
-  const budgets = useLoad(() => api.get('/sponsorship-budgets', { sponsor_id: p.sponsor_id, status: 'active', limit: 100 }).catch(() => []), [p.sponsor_id, p.budget_id]);
-  const linked = (budgets.data ?? []).find((b) => b.id === p.budget_id);
-  const choices = (budgets.data ?? []).filter((b) => b.kind !== 'event' && b.id !== p.budget_id);
-  const link = async (budgetId) => { try { await api.post(`/sponsorship-programs/${p.id}/budget`, { budget_id: budgetId, version: p.row_version }); toast(budgetId ? 'Awards now draw on this budget' : 'Program unlinked'); onChanged?.(); } catch (e) { toast(explain(e)); onChanged?.(); } };
+  const linked = useLoad(() => api.get(`/sponsorship-programs/${p.id}/budgets`).catch(() => []), [p.id, p.row_version]);
+  const budgets = useLoad(() => api.get('/sponsorship-budgets', { sponsor_id: p.sponsor_id, status: 'active', limit: 100 }).catch(() => []), [p.sponsor_id, p.row_version]);
+  const mine = linked.data ?? [];
+  const choices = (budgets.data ?? []).filter((b) => b.kind !== 'event' && !mine.some((l) => l.id === b.id));
+  const editable = may && ['draft', 'published'].includes(p.status);
+  const run = async (fn, msg) => { try { await fn(); toast(msg); } catch (e) { toast(explain(e)); } onChanged?.(); };
   return (
-    <Section title="Budget" color={c.sun}>
-      {linked ? (
-        <Card onPress={() => push('SponsorBudget', { id: linked.id })} accessibilityLabel={`${linked.name}, ${fmt(linked.available_cents, linked.currency)} available. Open budget`}>
-          <T weight="900">{linked.name}</T><BudgetBar b={linked} />
-          <T size={12} color={c.mute}>{fmt(linked.available_cents, linked.currency)} available of {fmt(linked.authorized_cents, linked.currency)} — every award reserves from here first.</T>
+    <Section title="Budgets" color={c.sun}>
+      <T size={12} color={c.mute}>A program can draw on several budgets, and a budget can fund several programs. Each award names the budget it draws on; new awards use the default.</T>
+      {mine.length ? mine.map((b) => (
+        <Card key={b.id} onPress={() => push('SponsorBudget', { id: b.id })} accessibilityLabel={`${b.name}, ${b.code}, ${fmt(b.available_cents, b.currency)} available. Open budget`}>
+          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><T weight="900" style={{ flex: 1 }}>{b.name}</T>{b.is_default ? <Tag label="Default" color={c.pinkSoft} /> : null}<Tag label={b.code} color={c.paper} /></View>
+          <T size={12} color={c.mute}>This program: {fmt(b.reserved_cents, b.currency)} reserved · {fmt(b.committed_cents, b.currency)} committed · {fmt(b.paid_cents, b.currency)} paid. Budget has {fmt(b.available_cents, b.currency)} available of {fmt(b.authorized_cents, b.currency)}.</T>
+          {editable ? (
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
+              {!b.is_default ? <Btn small title="Make default" color={c.paper} ink={c.ink} onPress={() => run(() => api.post(`/sponsorship-programs/${p.id}/budget`, { budget_id: b.id, version: p.row_version, make_default: true }), `${b.code} is now the default`)} accessibilityLabel={`Make ${b.name} the default budget`} /> : null}
+              <Btn small title="Unlink" color={c.paper} ink={c.red} onPress={() => run(() => api.del(`/sponsorship-programs/${p.id}/budgets/${b.id}`, { version: p.row_version }), `${b.code} unlinked — kept on record`)} accessibilityLabel={`Unlink ${b.name}`} />
+            </View>
+          ) : null}
         </Card>
-      ) : <T size={13} color={c.mute}>{p.budget_id ? 'Linked to a budget you cannot see.' : 'Awards are limited by this program’s own budget only. Link an authorized budget to also respect the brand’s yearly or department limits.'}</T>}
-      {may && ['draft', 'published'].includes(p.status) ? (
-        <>
-          {choices.length ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{choices.map((b) => <Chip key={b.id} label={`${p.budget_id ? 'Move to ' : 'Use '}${b.name}`} onPress={() => link(b.id)} />)}</View> : !p.budget_id ? <T size={12} color={c.mute}>No budget to link yet — authorize one under Budgets.</T> : null}
-          {p.budget_id ? <Btn small title="Unlink budget" color={c.paper} ink={c.red} style={{ alignSelf: 'flex-start' }} onPress={() => link(null)} /> : null}
-        </>
-      ) : null}
+      )) : p.budget_id && !linked.loading ? <T size={13} color={c.mute}>Linked to a budget you cannot see.</T> : <Banner tone={c.sunSoft}>This program’s spending is not on any budget. Link one so its awards, agreements and payments respect the brand’s authorized limits and are traced end to end.</Banner>}
+      {editable ? (choices.length ? (
+        <View style={{ gap: 6 }}>
+          <T size={12} color={c.mute} weight="700">ADD A BUDGET</T>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{choices.map((b) => <Chip key={b.id} label={`${b.code} · ${b.name}`} onPress={() => run(() => api.post(`/sponsorship-programs/${p.id}/budget`, { budget_id: b.id, version: p.row_version }), `Awards can now draw on ${b.code}`)} />)}</View>
+        </View>
+      ) : !mine.length ? <T size={12} color={c.mute}>No budget to link yet — authorize one under Budgets.</T> : null) : null}
     </Section>
   );
 }

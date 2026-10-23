@@ -128,6 +128,16 @@ export async function programBudget(c, p, lock = false) {
   return { b, rate: await rateFor(c, b, p.currency) };
 }
 
+/** The program as seen by one award: its budget is the one that award draws on (null = not budget-controlled). */
+export const withBudget = (p, budgetId) => ({ ...p, budget_id: budgetId ?? null });
+
+/** The budget a NEW award draws on: the one asked for (it must be linked to the program) or the program's default. */
+export async function awardBudgetId(c, p, requested = null) {
+  if (!requested) return p.budget_id ?? null;
+  if (!(await c.query('SELECT 1 FROM sponsorship_program_budgets WHERE program_id=$1 AND budget_id=$2 AND unlinked_at IS NULL', [p.id, requested])).rowCount) throw unprocessable('That budget is not linked to this program; link it to the program first');
+  return requested;
+}
+
 /** Why an award of `amount` (in the program's currency) does not fit the program's linked budget, or null. Takes the budget lock. `excludeAwardId` is an award being resized: its own held reservation does not count against itself. */
 export async function budgetBlockerFor(c, p, amount, excludeAwardId = null) {
   if (!p.budget_id) return null;
@@ -169,4 +179,69 @@ export function rollup(budgets) {
     return own;
   };
   return budgets.map((x) => ({ ...x, rollup: totals(byId.get(x.id)) }));
+}
+
+/** The company money flow of one budget, end to end: programs -> awards (reserved) / agreements (committed) -> scheduled dues -> payments.
+ *  Built from the same rows and the same per-(agreement, currency) conversion as usageOf, so its totals tie to the balances (`reconciles`). */
+export async function traceOf(c, b) {
+  const conv = (cents, cur, rate) => convert(cents, cur, b.currency, rate ?? 1);
+  const res = (await c.query(
+    `SELECT r.id, r.award_id, r.program_id, r.currency, r.amount_cents, r.created_at, fx.rate, ap.handle AS who
+       FROM sponsorship_award_reservations r JOIN sponsorship_awards w ON w.id=r.award_id JOIN sponsorship_applications a ON a.id=w.application_id JOIN users ap ON ap.id=a.applicant_id
+       LEFT JOIN sponsorship_budget_fx_rates fx ON fx.id=r.budget_fx_rate_id
+      WHERE r.budget_id=$1 AND r.status='held' ORDER BY r.created_at, r.id`, [b.id])).rows;
+  const deals = (await c.query(
+    `SELECT ss.id, ss.agreement_ref, ss.status, ss.program_id, ss.accepted_version, ss.currency, ss.amount_cents, ss.budget_approval, fx.rate,
+            CASE ss.target_type WHEN 'athlete' THEN (SELECT handle FROM users WHERE id=ss.target_id) WHEN 'team' THEN (SELECT name FROM teams WHERE id=ss.target_id) ELSE (SELECT name FROM events WHERE id=ss.target_id) END AS who
+       FROM sponsorships ss LEFT JOIN sponsorship_budget_fx_rates fx ON fx.id=ss.budget_fx_rate_id WHERE ss.budget_id=$1 ORDER BY ss.created_at, ss.id`, [b.id])).rows;
+  const ids = deals.map((d) => d.id);
+  const dues = ids.length ? (await c.query(
+    `SELECT o.id, o.sponsorship_id, o.due_on::text AS due_on, o.amount_cents, o.currency, o.status, l.label
+       FROM sponsorship_obligations o JOIN sponsorship_lines l ON l.id=o.line_id WHERE o.sponsorship_id = ANY($1) AND o.kind='money' ORDER BY o.due_on, o.seq, o.id`, [ids])).rows : [];
+  const pays = dues.length ? (await c.query(
+    `SELECT p.id, p.obligation_id, p.amount_cents, p.currency, p.status, p.method, p.reference, p.paid_on::text AS paid_on
+       FROM sponsorship_payments p WHERE p.obligation_id = ANY($1) AND p.status IN ('reported','confirmed','reversed') ORDER BY p.paid_on, p.created_at, p.id`, [dues.map((x) => x.id)])).rows : [];
+  const payOf = new Map();
+  for (const p of pays) (payOf.get(p.obligation_id) ?? payOf.set(p.obligation_id, []).get(p.obligation_id)).push({ id: p.id, amount_cents: n(p.amount_cents), currency: p.currency, status: p.status, method: p.method, reference: p.reference, paid_on: p.paid_on });
+  const agreements = deals.map((d) => {
+    const mine = dues.filter((x) => x.sponsorship_id === d.id);
+    const planned = d.status === 'proposed' && d.accepted_version == null && d.budget_approval !== 'rejected';
+    const byCur = {};
+    for (const o of mine) {
+      const t = (byCur[o.currency] ??= { committed: 0, paid: 0, refunded: 0, reported: 0 });
+      if (o.status !== 'cancelled') t.committed += n(o.amount_cents);
+      for (const p of payOf.get(o.id) ?? []) t[{ confirmed: 'paid', reversed: 'refunded', reported: 'reported' }[p.status]] += p.amount_cents;
+    }
+    const totals = { committed_cents: 0, paid_cents: 0, refunded_cents: 0, reported_cents: 0, planned_cents: 0 };
+    for (const [cur, t] of Object.entries(byCur)) {
+      totals.committed_cents += conv(t.committed, cur, d.rate); totals.paid_cents += conv(t.paid, cur, d.rate);
+      totals.refunded_cents += conv(t.refunded, cur, d.rate); totals.reported_cents += conv(t.reported, cur, d.rate);
+    }
+    if (planned) totals.planned_cents = conv(d.amount_cents ?? 0, d.currency ?? b.currency, d.rate);
+    return { id: d.id, ref: d.agreement_ref, status: d.status, who: d.who, program_id: d.program_id, planned, approval: d.budget_approval, fx_rate: d.rate == null ? null : Number(d.rate), totals,
+      obligations: mine.map((o) => ({ id: o.id, label: o.label, due_on: o.due_on, amount_cents: n(o.amount_cents), currency: o.currency, status: o.status, payments: payOf.get(o.id) ?? [] })) };
+  });
+  const awards = res.map((r) => ({ id: r.award_id, reservation_id: r.id, program_id: r.program_id, who: r.who, currency: r.currency, amount_cents: n(r.amount_cents), budget_amount_cents: conv(r.amount_cents, r.currency, r.rate), created_at: r.created_at }));
+  const programIds = [...new Set([...awards, ...agreements].map((x) => x.program_id).filter(Boolean))];
+  const progs = programIds.length ? (await c.query('SELECT id, name, status, currency FROM sponsorship_programs WHERE id = ANY($1) ORDER BY lower(name), id', [programIds])).rows : [];
+  const node = (program, aw, ag) => ({
+    program,
+    totals: {
+      reserved_cents: aw.reduce((a, x) => a + x.budget_amount_cents, 0),
+      committed_cents: ag.reduce((a, x) => a + x.totals.committed_cents, 0), paid_cents: ag.reduce((a, x) => a + x.totals.paid_cents, 0), refunded_cents: ag.reduce((a, x) => a + x.totals.refunded_cents, 0),
+      planned_cents: ag.reduce((a, x) => a + x.totals.planned_cents, 0),
+    },
+    awards: aw, agreements: ag,
+  });
+  const programs = progs.map((p) => node(p, awards.filter((x) => x.program_id === p.id), agreements.filter((x) => x.program_id === p.id)));
+  const direct = node(null, [], agreements.filter((x) => !x.program_id));
+  const usage = await usageOf(c, b);
+  const all = [...programs, direct];
+  const sum = (k) => all.reduce((a, x) => a + x.totals[k], 0);
+  const children = (await c.query("SELECT * FROM sponsorship_budgets WHERE parent_id=$1 AND status='active' ORDER BY lower(name), id", [b.id])).rows;
+  return {
+    programs, direct: direct.agreements.length ? direct : null,
+    reconciles: sum('reserved_cents') === usage.reserved_cents && sum('committed_cents') === usage.committed_cents && sum('paid_cents') === usage.paid_cents && sum('refunded_cents') === usage.refunded_cents,
+    children: await Promise.all(children.map(async (k) => { const u = await usageOf(c, k); return { id: k.id, code: k.code, name: k.name, kind: k.kind, currency: k.currency, authorized_cents: n(k.authorized_cents), committed_cents: u.committed_cents, reserved_cents: u.reserved_cents, paid_cents: u.paid_cents }; })),
+  };
 }
