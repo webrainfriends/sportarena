@@ -7,9 +7,10 @@ import { pool, many, one, tx } from './db.js';
 import { config } from './config.js';
 import { conflict } from './errors.js';
 import { inclusiveTax } from './capabilities/provider-tax.js';
+import { syncSponsorshipRefund, targetOwner } from './sponsor-agreements.js';
 
 /** Who ends up owning the money of a paid payment. */
-export const PROVIDER_PURPOSES = ['coach_hire', 'appointment', 'physio_package', 'shop_order', 'shop_checkout'];
+export const PROVIDER_PURPOSES = ['coach_hire', 'appointment', 'physio_package', 'shop_order', 'shop_checkout', 'sponsorship_payment'];
 export function fundsClass(purposeType) {
   if (PROVIDER_PURPOSES.includes(purposeType)) return 'provider';
   if (purposeType === 'venue_invoice' || purposeType === 'venue_plan') return 'partner_settlement';   // settled through the venue's partner contract
@@ -47,6 +48,11 @@ async function sharesFor(c, p) {
   if (p.purpose_type === 'appointment') { const a = await one1('SELECT provider_id, tax_class FROM appointments WHERE id=$1'); return a ? [{ sellerId: a.provider_id, amount: Number(p.amount_cents), taxClass: a.tax_class }] : []; }
   if (p.purpose_type === 'physio_package') { const k = await one1('SELECT provider_id, tax_class FROM patient_packages WHERE id=$1'); return k ? [{ sellerId: k.provider_id, amount: Number(p.amount_cents), taxClass: k.tax_class }] : []; }
   if (p.purpose_type === 'shop_order') { const o = await one1('SELECT seller_id FROM shop_orders WHERE id=$1'); return o ? [{ sellerId: o.seller_id, amount: Number(p.amount_cents) }] : []; }
+  if (p.purpose_type === 'sponsorship_payment') {   // the recipient of the sponsorship is the seller; sponsorship money is never mixed with another purpose
+    const d = (await c.query('SELECT s.target_type, s.target_id FROM sponsorship_payments x JOIN sponsorship_obligations o ON o.id=x.obligation_id JOIN sponsorships s ON s.id=o.sponsorship_id WHERE x.id=$1', [p.purpose_id])).rows[0];
+    const to = d && await targetOwner(c, d.target_type, d.target_id);
+    return to ? [{ sellerId: to, amount: Number(p.amount_cents) }] : [];
+  }
   if (p.purpose_type === 'shop_checkout') {
     const rows = (await c.query("SELECT seller_id, sum(total_cents)::bigint AS amount FROM shop_orders WHERE checkout_id=$1 AND status <> 'cancelled' GROUP BY seller_id ORDER BY seller_id", [p.purpose_id])).rows;
     return rows.map((r) => ({ sellerId: r.seller_id, amount: Number(r.amount) }));
@@ -106,6 +112,7 @@ export async function syncRefunds(c, paymentId, { sellerId = null } = {}) {
     `UPDATE settlement_exceptions SET status='resolved', resolution='The refund is now recorded in the ledger', resolved_at=now()
       WHERE kind='refund_unrecorded' AND payment_id=$1 AND status='open' AND (detail->>'provider_refunded_cents')::bigint <= $2`, [p.id, refunded]);
   if (refunded <= 0) return 0;
+  await syncSponsorshipRefund(c, p);   // an online sponsorship payment: the due is net of what was given back
   const lines = (await c.query('SELECT seller_id, kind, amount_cents, gross_cents, tax_cents FROM provider_ledger WHERE payment_id=$1 ORDER BY id', [p.id])).rows;
   const sales = lines.filter((l) => l.kind === 'sale').sort((a, b) => (a.seller_id < b.seller_id ? -1 : 1));
   if (!sales.length) return 0;

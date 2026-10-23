@@ -54,7 +54,6 @@ stay open: debt and delivered value are never erased. Nothing is deleted.
 ## Remaining gaps (not in this slice)
 * **Group target** — no durable "group" entity exists (only teams); not silently treated as a team. Needs its own design.
 * **Amendments of an accepted agreement**, pause, renewal successor, and termination with refunds/returns.
-* **Payment-purpose integration** (`payments.js` checkout/refund/settlement links, #71 payouts) and verified provider callbacks.
 * **Performance review for teams/events/groups** and pre-agreement review (the athlete slice is below; sharing through #64 Sports Passport is not wired),
   CSV export, approaching-due reminders, per-line payer/payee/channel fields, disputes→cases linking, guardian/youth rules
   for sponsorship agreements.
@@ -72,6 +71,29 @@ stay open: debt and delivered value are never erased. Nothing is deleted.
 * Reviews are dated notes (`shared` or `author_only`) with an optional next-review date and a single athlete reply. Notifications carry no content.
 * Youth athletes cannot be enabled (guardian authority is not wired here); team and event deals have no performance view.
 * Migration `075_sponsorship_performance.sql` is additive (new columns default to no access); rollback = deploy the previous code.
+
+## Online checkout, payouts and reconciliation (#294)
+Extends the canonical `payments` purposes and the #71 settlement ledger; there is no second ledger.
+* **Pay online** (`start_sponsorship_checkout`, `POST /sponsorship-obligations/:id/checkout`): a sponsor user whose role may `pay` opens a hosted Stripe/PayPal
+  checkout for a money due, in full or in part (several checkouts per instalment, never beyond what is still due). Each checkout is a
+  `sponsorship_payments` row (`method='online'`, status `awaiting_payment`) and a `payments` row with purpose `sponsorship_payment`; amount and
+  currency are read from the row, never from the client. The amount is reserved against the due while the checkout is open (row lock on the due), so concurrent
+  checkouts cannot over-reserve. Refused until the recipient has a payout account in that currency and the currency is payable (`recipient_not_onboarded`,
+  `currency_unsupported`); the recipient is notified.
+* **Success is not a payout.** The row becomes `confirmed` only when the verified provider result settles the payment (webhook, return page or `confirm_payment`);
+  `settle` is idempotent (locked, status-guarded, `provider_events` replay guard), so retries/webhooks never double-charge or double-settle. Settling posts the
+  recipient's sale and the platform fee into `provider_ledger` once (idempotency keys), subject to the hold period. Paying the recipient out is the existing, separate
+  payout flow under Earnings. A payment that arrives for a cancelled/expired checkout or an inactive due is refunded automatically.
+* **Manual reports remain unverified.** `report_sponsorship_payment` rows stay `reported` until the recipient confirms them; online rows cannot be confirmed,
+  rejected or reversed by hand (409). Refunds (`refund_payment`, platform team) are mirrored onto the due (`refunded_cents`; fully refunded -> `reversed`); confirmed money is net of
+  refunds and a refund that uncovers a due reopens it.
+* `cancel_sponsorship_checkout` abandons an open checkout (the provider payment stays pending; if it is still completed the money is refunded). Checkouts older than two hours or whose payment failed stop reserving the due.
+* `get_sponsorship_reconciliation` (`GET /sponsorship-reconciliation`) reconciles per currency (never across currencies): committed, collected online, refunded, confirmed manual, reported, in progress, outstanding, against the
+  ledger's sale/refund/chargeback lines; `reconciles` is true only when both sides agree. Reads use the same participant scope as the dues list, so another tenant sees nothing.
+* UI: agreement screen -> Commitments (Pay online sheet with full/half/other amount and provider choice, verified/unverified labels, cancel checkout) and a Reconciliation section.
+* Browser check: `scripts/e2e/sponsorship-checkout-journey.mjs` drives the real web build (phone, tablet, desktop; sponsor and recipient) against the API with a fake Stripe: blocked-until-onboarded, amount validation, provider redirect and return, partial payment, stale conflict, cancel, recipient confirm/no-reverse, reconciliation. Run instructions are in the script header (needs `playwright-core`, which is not a repo dependency).
+* Migration `094_sponsorship_checkout.sql` is additive (widened CHECK lists, `payment_id`, `refunded_cents`; existing rows untouched). Rollback = deploy the previous code; no row uses the new values until online checkout is used.
+* Limits: payouts use the existing manual/verified payout flow of #71 (no automatic provider payouts); disputes lost are shown on the ledger side only; Stripe/PayPal need live keys and the webhook configured as in [settlement.md](settlement.md).
 
 ## Programs
 Funding programs, rounds and applications that end in an agreement are described in [sponsorship-programs.md](sponsorship-programs.md).

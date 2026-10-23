@@ -3,7 +3,7 @@ import { cap, id, page } from '../registry.js';
 import { one, many, pool, tx } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { config } from '../config.js';
-import { describePurpose, enabledProviders, refundPartial, safeReturnBase, settle } from '../payments/service.js';
+import { enabledProviders, refundPartial, startCheckout, settle } from '../payments/service.js';
 import { audit } from '../helpers.js';
 import { notify } from '../notify.js';
 import { provider } from '../payments/providers.js';
@@ -20,34 +20,7 @@ cap({
   name: 'create_payment', method: 'POST', path: '/payments', tag: 'Payments', status: 201,
   summary: 'Start a hosted checkout (Stripe or PayPal) for a shop order (or a whole shop cart: purpose_type shop_checkout with the checkout_id), coach hire, insurance policy or venue invoice you own. Venue invoices are charged in the invoice currency. The amount is read from the record, never from the client. Send the person to checkout_url; then call confirm_payment (or wait for the provider webhook).',
   input: z.object({ purpose_type: z.enum(purposes), purpose_id: id, provider: z.enum(['stripe', 'paypal']), return_url: z.string().url().optional().describe('where the provider sends the person back (must be an allowed origin)') }),
-  async handler({ user }, i) {
-    if (!enabledProviders().includes(i.provider)) throw badRequest(`${i.provider} is not enabled on this server`);
-    const client = await pool.connect();
-    let paymentId, d, currency;
-    try {
-      await client.query('BEGIN');
-      d = await describePurpose(client, i.purpose_type, i.purpose_id);
-      if (!d) throw notFound('Item to pay for');
-      if (d.payerId !== user.id) throw forbidden('This is not yours to pay');
-      if (!d.payable) throw conflict('Nothing to pay: it is already paid, cancelled or free');
-      if (d.amount <= 0) throw conflict('Nothing to pay');
-      currency = d.currency ?? config.payments.currency;
-      const row = (await client.query('INSERT INTO payments(payer_id, provider, purpose_type, purpose_id, amount_cents, currency) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id', [user.id, i.provider, i.purpose_type, i.purpose_id, d.amount, currency])).rows[0];
-      paymentId = row.id;
-      await client.query('COMMIT');
-    } catch (e) { await client.query('ROLLBACK'); throw e; } finally { client.release(); }
-
-    const base = safeReturnBase(i.return_url);
-    const mk = (r) => `${base}/?payment=${paymentId}&result=${r}`;
-    try {
-      const out = await provider(i.provider).createCheckout({ paymentId, amount: d.amount, currency, name: d.name, successUrl: mk('success'), cancelUrl: mk('cancel') });
-      await one('UPDATE payments SET provider_ref=$2 WHERE id=$1', [paymentId, out.ref]);
-      return { id: paymentId, provider: i.provider, amount_cents: d.amount, currency, checkout_url: out.url };
-    } catch (e) {
-      await one("UPDATE payments SET status='failed' WHERE id=$1", [paymentId]);
-      throw e;
-    }
-  },
+  handler: ({ user }, i) => startCheckout(user, i),
 });
 
 cap({
@@ -58,6 +31,7 @@ cap({
     const p = await one('SELECT * FROM payments WHERE id=$1 AND payer_id=$2', [i.id, user.id]);
     if (!p) throw notFound('Payment');
     const about = { purpose_type: p.purpose_type, purpose_id: p.purpose_id };
+    if (p.purpose_type === 'sponsorship_payment') about.sponsorship_id = (await one('SELECT o.sponsorship_id FROM sponsorship_payments x JOIN sponsorship_obligations o ON o.id=x.obligation_id WHERE x.id=$1', [p.purpose_id]))?.sponsorship_id;
     if (p.status !== 'pending') return { id: p.id, status: p.status, ...about };
     if (!p.provider_ref) return { id: p.id, status: 'pending', ...about };
     const prov = provider(p.provider);

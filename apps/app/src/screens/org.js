@@ -132,7 +132,7 @@ function Overview({ o, d, role, archived, reload, toast }) {
         </Section>
       ) : null}
       <FormSheet visible={edit} onClose={() => setEdit(false)} title="Organisation details" initial={o}
-        fields={[{ key: 'name', label: 'Name' }, { key: 'kind', label: 'Type', type: 'chips', options: KINDS.map(([value, label]) => ({ value, label })) }, { key: 'city', label: 'City', optional: true }]}
+        fields={[{ key: 'name', label: 'Name' }, { key: 'kind', label: 'Type', type: 'chips', options: KINDS.map(([value, label]) => ({ value, label })) }, { key: 'city', label: 'City', optional: true }, { key: 'open_to_sponsors', label: 'Open to sponsors', type: 'switch', hint: 'Off by default. When on, sponsors can find this organisation and its groups by name and send offers. Rosters and members are never shown.' }]}
         onSubmit={async (v) => { await api.patch(`/organisations/${o.id}`, v); reload(); return 'Saved'; }} />
     </>
   );
