@@ -89,8 +89,8 @@ function TabBar() {
     return (
       <Pressable key={name} accessibilityRole="tab" accessibilityLabel={name === 'Hub' && menu ? 'Close More' : TAB_LABEL[name] ?? name} accessibilityState={{ selected: on, expanded: name === 'Hub' ? menu : undefined }} onPress={() => (name === 'Hub' ? toggleMenu() : goTab(name))} style={({ pressed }) => ({ flex: 1, alignItems: 'center', justifyContent: 'flex-end', minHeight: 52, opacity: pressed ? 0.6 : 1 })}>
         {centre ? (
-          <View style={{ width: 56, height: 56, marginTop: -24, borderRadius: 28, ...(Platform.OS === 'web' ? { boxShadow: '0 10px 24px rgba(35,83,71,0.45), inset 1.5px 1.5px 0 rgba(255,255,255,0.7), inset -1px -1px 0 rgba(255,255,255,0.25)' } : { shadowColor: '#235347', shadowOpacity: 0.45, shadowRadius: 14, shadowOffset: { width: 0, height: 8 }, elevation: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.6)' }) }}>
-            <LinearGradient colors={['#3E7A5F', '#163832']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+          <View style={{ width: 56, height: 56, marginTop: -24, borderRadius: 28, ...(Platform.OS === 'web' ? { boxShadow: '0 10px 24px rgba(74,95,217,0.45), inset 1.5px 1.5px 0 rgba(255,255,255,0.7), inset -1px -1px 0 rgba(255,255,255,0.25)' } : { shadowColor: '#4A5FD9', shadowOpacity: 0.45, shadowRadius: 14, shadowOffset: { width: 0, height: 8 }, elevation: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.6)' }) }}>
+            <LinearGradient colors={['#6577E0', '#2A2773']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
               <LinearGradient pointerEvents="none" colors={['rgba(255,255,255,0.5)', 'rgba(255,255,255,0)']} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={{ position: 'absolute', left: 0, right: 0, top: 0, height: '50%' }} />
               <Icon name={menu ? 'Close' : name} on color="#fff" size={26} />
             </LinearGradient>
@@ -107,7 +107,7 @@ function TabBar() {
   return (
     <View pointerEvents="box-none" style={{ position: 'absolute', left: 0, right: 0, bottom: Math.max(ins.bottom, 12), alignItems: 'center' }}>
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', width: Math.min(620, width - 24), paddingHorizontal: 8, paddingVertical: 6 }}>
-        <Glass pointerEvents="none" radius={32} blur={20} tint={dark ? 'rgba(5,31,32,0.68)' : 'rgba(255,255,255,0.72)'} gloss iris style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }} />
+        <Glass pointerEvents="none" radius={32} blur={20} tint={dark ? 'rgba(20,18,58,0.68)' : 'rgba(255,255,255,0.72)'} gloss iris style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }} />
         {items}
       </View>
     </View>

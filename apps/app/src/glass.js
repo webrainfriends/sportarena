@@ -7,18 +7,18 @@ import { dark } from './theme';
 let BlurView = null;
 if (Platform.OS !== 'web') { try { BlurView = require('expo-blur').BlurView; } catch { BlurView = null; } }
 
-export const glassTint = dark ? 'rgba(11,43,38,0.42)' : 'rgba(255,255,255,0.45)';
+export const glassTint = dark ? 'rgba(29,26,82,0.42)' : 'rgba(255,255,255,0.45)';
 export const glassRim = 'rgba(255,255,255,0.3)';
 // Light presets keep whatever is behind clearly recognisable: `clear` for discs, `soft` for text-bearing pills and circles.
 export const GLASS = {
-  clear: { blur: 6, tint: dark ? 'rgba(11,43,38,0.12)' : 'rgba(255,255,255,0.14)' },
-  soft: { blur: 12, tint: dark ? 'rgba(5,31,32,0.42)' : 'rgba(255,255,255,0.5)' },
+  clear: { blur: 6, tint: dark ? 'rgba(29,26,82,0.12)' : 'rgba(255,255,255,0.14)' },
+  soft: { blur: 12, tint: dark ? 'rgba(20,18,58,0.42)' : 'rgba(255,255,255,0.5)' },
 };
 
 // Iridescent edge, kept inside the palette: mint, teal, sage and a pale aqua.
 const IRIS = dark
-  ? ['rgba(218,241,222,0.30)', 'rgba(92,200,192,0.30)', 'rgba(142,182,155,0.34)', 'rgba(159,227,232,0.22)']
-  : ['rgba(218,241,222,0.55)', 'rgba(92,200,192,0.22)', 'rgba(142,182,155,0.28)', 'rgba(159,227,232,0.30)'];
+  ? ['rgba(211,211,255,0.30)', 'rgba(142,193,222,0.30)', 'rgba(128,168,255,0.34)', 'rgba(159,227,232,0.22)']
+  : ['rgba(211,211,255,0.55)', 'rgba(142,193,222,0.22)', 'rgba(128,168,255,0.28)', 'rgba(159,227,232,0.30)'];
 
 /**
  * Liquid-glass surface: the content behind it shows through, blurred and lightly tinted. Web uses CSS backdrop-filter;

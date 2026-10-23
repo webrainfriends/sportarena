@@ -23,7 +23,7 @@ function Photo({ v, height = 130, badge, children }) {
   return (
     <View style={{ height, borderRadius: 18, overflow: 'hidden', backgroundColor: A.panel2 }}>
       {v.cover_url ? <Image source={{ uri: mediaUrl(v.cover_url) }} resizeMode="cover" style={{ position: 'absolute', width: '100%', height: '100%' }} />
-        : <LinearGradient colors={['#163832', '#3E7A5F']} style={{ position: 'absolute', width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' }}><T size={48}>{v.emoji ?? '🏟️'}</T></LinearGradient>}
+        : <LinearGradient colors={['#2A2773', '#6577E0']} style={{ position: 'absolute', width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' }}><T size={48}>{v.emoji ?? '🏟️'}</T></LinearGradient>}
       <LinearGradient colors={['transparent', 'rgba(0,0,0,0.55)']} style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: height * 0.6 }} />
       {badge ? <View style={{ position: 'absolute', right: 10, bottom: 10, backgroundColor: A.magenta, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 5 }}><T color="#fff" weight="800" size={13}>{badge}</T></View> : null}
       {children}
