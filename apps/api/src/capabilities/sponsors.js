@@ -248,8 +248,13 @@ cap({
     starts_on: date.optional(), ends_on: date.optional(), objectives: z.string().max(1000).optional(), deliverables: z.string().max(1500).optional(), message: z.string().max(1000).optional(),
     lines: z.array(LINE).max(12).optional().describe('structured contribution lines (money / goods / endorsement, one-off or fixed-term recurring). Reviewable with preview_sponsorship_schedule; obligations are generated when the recipient accepts this exact version'),
     timezone: z.string().max(60).default('UTC'),
+    client_ref: z.string().min(8).max(80).optional().describe('a unique reference the app generates once per offer form; sending the same reference again returns the offer already made instead of a second one (safe retry after a timeout or double tap)'),
   }),
   async handler({ user }, i) {
+    if (i.client_ref) { // idempotent retry: the same person re-sending the same form gets the offer they already made
+      const prior = (await pool.query('SELECT * FROM sponsorships WHERE proposed_by=$1 AND client_ref=$2', [user.id, i.client_ref])).rows[0];
+      if (prior) return { ...prior, replayed: true };
+    }
     const s = await mustFind('sponsors', i.sponsor_id);
     if (!isAdmin(user)) assertSponsorCan(await sponsorAccess(user, s), 'propose', { departmentId: i.department_id ?? null, what: 'propose sponsorships' });
     if (i.department_id && !(s.organisation_id && (await one('SELECT 1 FROM org_departments WHERE id=$1 AND organisation_id=$2 AND archived_at IS NULL', [i.department_id, s.organisation_id])))) throw badRequest('That department does not belong to this brand\'s organisation');
@@ -287,9 +292,9 @@ cap({
         if (declined) throw conflict(`This athlete declined your last offer; you can offer again after ${DECLINE_COOLDOWN_DAYS} days`);
       }
       const row = (await c.query(
-        `INSERT INTO sponsorships(sponsor_id, target_type, target_id, amount_cents, in_kind, starts_on, ends_on, proposed_by, objectives, deliverables, message, visibility, department_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
-        [i.sponsor_id, i.target_type, i.target_id, i.amount_cents || (cash.length === 1 ? cash[0][1] : 0), i.in_kind, i.starts_on, i.ends_on, user.id, i.objectives ?? null, i.deliverables ?? null, i.message ?? null, i.target_type === 'athlete' ? 'private' : 'public', i.department_id ?? null])).rows[0];
+        `INSERT INTO sponsorships(sponsor_id, target_type, target_id, amount_cents, in_kind, starts_on, ends_on, proposed_by, objectives, deliverables, message, visibility, department_id, client_ref)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+        [i.sponsor_id, i.target_type, i.target_id, i.amount_cents || (cash.length === 1 ? cash[0][1] : 0), i.in_kind, i.starts_on, i.ends_on, user.id, i.objectives ?? null, i.deliverables ?? null, i.message ?? null, i.target_type === 'athlete' ? 'private' : 'public', i.department_id ?? null, i.client_ref ?? null])).rows[0];
       if (lines.length) {
         Object.assign(row, (await c.query("UPDATE sponsorships SET agreement_ref='SPA-'||upper(substr(id::text,1,8)), timezone=$2, currency=$3 WHERE id=$1 RETURNING agreement_ref, timezone, currency, terms_version", [row.id, i.timezone, cash.length === 1 ? cash[0][0] : null])).rows[0]);
         await saveLines(c, row.id, 1, lines);

@@ -5,7 +5,7 @@ export const MODULES = [
   ['Health', 'Health', 'Physio · doctors · fit to play', 'care'], ['Insure', 'My cover', 'What covers me today', 'care'],
   ['Insurance', 'Insurance', 'You · your team · your event', 'care'], ['Legal', 'Legal', 'Verified lawyers & matters', 'care'], ['Family', 'Family', 'Guardians & consents', 'care'],
   ['Wallet', 'Wallet', 'Balance, gift cards, loyalty', 'money'], ['Earnings', 'Earnings', 'Sales, fees & payouts', 'money'], ['Shop', 'Shop', 'Kit, gear & orders', 'money'],
-  ['Billboard', 'Billboard', 'Wanted, for sale & ads', 'money'], ['Sponsors', 'Sponsors', 'Brands & deals', 'money'], ['Supply', 'Supply chain', 'Kit, stock & orders', 'money'],
+  ['Billboard', 'Billboard', 'Wanted, for sale & ads', 'money'], ['Sponsors', 'Sponsor home', 'Offers, dues & agreements', 'money'], ['Supply', 'Supply chain', 'Kit, stock & orders', 'money'],
   ['Openings', 'Open positions', 'Jobs, stalls & contracts at events', 'community'], ['EventInbox', 'Event requests', 'Invites & quotes for you', 'community'],
   ['Orgs', 'Organisations', 'Clubs & associations', 'community'], ['Support', 'Support', 'Cases & disputes', 'community'],
 ];
@@ -20,7 +20,7 @@ export const WORKSPACES = [
   ['venue_manager', 'VenueWorkspace', 'Your venues, revenue & partner account'],
   ['coach', 'CoachHome', 'Athletes, plans & sessions'],
   ['referee', 'Openings', 'Games to officiate & open positions'],
-  ['sponsor', 'Sponsors', 'Brands, deals & agreements'],
+  ['sponsor', 'Sponsors', 'Offers, dues & agreements'],
   ['supplier', 'Supply', 'Kit, stock & orders'],
   ['physio', 'Health', 'Your practice & rehab plans'],
   ['doctor', 'DoctorHome', 'Patients, records & results'],

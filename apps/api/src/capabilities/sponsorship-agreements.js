@@ -278,7 +278,7 @@ cap({
     const a = [user.id, !!isAdmin(user)];
     const base = `FROM sponsorship_obligations o JOIN sponsorships ss ON ss.id=o.sponsorship_id JOIN sponsors sp ON sp.id=ss.sponsor_id WHERE ${SCOPE}`;
     const recipient = `(ss.target_type='event' AND ss.target_id IN (SELECT id FROM events WHERE organizer_id=$1) OR ss.target_type='team' AND ss.target_id IN (SELECT id FROM teams WHERE owner_id=$1) OR ss.target_type='athlete' AND ss.target_id=$1 OR ${guardedAthleteSql('ss')} OR ${beneficiaryScopeSql('$1')})`;
-    const [agreements, counts] = await Promise.all([
+    const [agreements, counts, totals, estimated, offers] = await Promise.all([
       many(`SELECT ss.status, count(*)::int AS n FROM sponsorships ss JOIN sponsors sp ON sp.id=ss.sponsor_id WHERE ${SCOPE} GROUP BY ss.status ORDER BY ss.status`, a),
       one(`SELECT count(*) FILTER (WHERE o.status='scheduled' AND o.due_on < current_date AND o.held_by_pause_id IS NULL)::int AS overdue,
                   count(*) FILTER (WHERE o.status='scheduled' AND o.due_on BETWEEN current_date AND current_date + 30 AND o.held_by_pause_id IS NULL)::int AS due_30_days,
@@ -287,8 +287,19 @@ cap({
                   (SELECT count(*) FROM sponsorship_payments p JOIN sponsorship_obligations po ON po.id=p.obligation_id JOIN sponsorships pss ON pss.id=po.sponsorship_id WHERE p.status='reported' AND ${recipient.replace(/ss\./g, 'pss.')})::int AS payments_to_confirm,
                   (SELECT count(*) FROM sponsorship_submissions s JOIN sponsorship_obligations so ON so.id=s.obligation_id JOIN sponsorship_lines sl ON sl.id=so.line_id JOIN sponsorships sss ON sss.id=so.sponsorship_id JOIN sponsors ssp ON ssp.id=sss.sponsor_id
                     WHERE s.status='submitted' AND ((sl.promoter='recipient' AND ${sponsorStaffSql(1, 'evaluate').replace(/\bsp\./g, 'ssp.').replace(/\bss\./g, 'sss.')}) OR (sl.promoter='sponsor' AND ${recipient.replace(/ss\./g, 'sss.')})))::int AS endorsements_to_review
-             ${base}`, a)]);
-    return { agreements, ...counts };
+             ${base}`, a),
+      // cash per currency, each in its own currency and never added together; reported money is shown apart from confirmed money (#309)
+      many(`SELECT o.currency, sum(o.amount_cents) FILTER (WHERE o.status <> 'cancelled')::bigint AS committed_cents,
+              coalesce(sum((SELECT sum(p.amount_cents - p.refunded_cents) FROM sponsorship_payments p WHERE p.obligation_id=o.id AND p.status='confirmed')),0)::bigint AS confirmed_cents,
+              coalesce(sum((SELECT sum(p.amount_cents) FROM sponsorship_payments p WHERE p.obligation_id=o.id AND p.status='reported')),0)::bigint AS reported_unverified_cents
+         ${base} AND o.kind='money' AND ss.status IN ('active','paused','ended','term_expired') GROUP BY o.currency ORDER BY o.currency`, a),
+      // goods / endorsement / service valuations of live agreements: estimates, never counted as cash
+      many(`SELECT l.currency, sum(l.estimate_cents)::bigint AS estimated_cents FROM sponsorship_lines l JOIN sponsorships ss ON ss.id=l.sponsorship_id AND l.version=ss.accepted_version JOIN sponsors sp ON sp.id=ss.sponsor_id
+         WHERE ${SCOPE} AND ss.status IN ('active','paused') AND l.estimate_cents IS NOT NULL AND l.currency IS NOT NULL GROUP BY l.currency ORDER BY l.currency`, a),
+      one(`SELECT count(*) FILTER (WHERE ss.status='proposed' AND ${recipient} AND coalesce(ss.budget_approval,'') NOT IN ('pending','rejected'))::int AS offers_to_answer,
+                  count(*) FILTER (WHERE ss.status='proposed' AND ${sponsorStaffSql(1)})::int AS offers_awaiting_reply
+             FROM sponsorships ss JOIN sponsors sp ON sp.id=ss.sponsor_id WHERE ${SCOPE}`, a)]);
+    return { agreements, ...counts, ...offers, totals, estimated_not_cash: estimated };
   },
 });
 
