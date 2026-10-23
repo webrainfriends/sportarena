@@ -26,4 +26,4 @@ Decline cooldown and open-offer rules on `propose_sponsorship` are unchanged; a 
 - Recovery: a stale-version error reloads the agreement; every state is derived from `sponsorship_versions` + `sponsorships.terms_side`.
 
 ## Limits
-No agreement export exists yet, so none carries notes. Amendments to an already accepted agreement remain out of scope.
+No agreement export exists yet, so none carries notes. Amendments to an already accepted agreement are a separate flow: [sponsorship-amendments.md](sponsorship-amendments.md).
