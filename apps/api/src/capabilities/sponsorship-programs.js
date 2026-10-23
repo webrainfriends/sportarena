@@ -22,11 +22,11 @@ const CADENCE_MONTHS = { monthly: 1, quarterly: 3, yearly: 12 };
 const recurrence = z.object({ cadence: z.enum(['monthly', 'quarterly', 'yearly']), open_days: z.number().int().min(1).max(365) });
 
 /** The state of a round right now, derived from its dates unless it was closed explicitly. Server date. */
-const roundState = (a = 'r') => `(CASE WHEN ${a}.status='closed' OR current_date > ${a}.closes_on THEN 'closed' WHEN current_date < ${a}.opens_on THEN 'scheduled' ELSE 'open' END)`;
+export const roundState = (a = 'r') => `(CASE WHEN ${a}.status='closed' OR current_date > ${a}.closes_on THEN 'closed' WHEN current_date < ${a}.opens_on THEN 'scheduled' ELSE 'open' END)`;
 const lastRoundOf = (rows) => rows.reduce((m, r) => (r.seq > m.seq ? r : m), rows[0]);
 
 /** pg returns a date as local midnight; format it back without a timezone shift. */
-const iso = (d) => (d instanceof Date ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` : d);
+export const iso = (d) => (d instanceof Date ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` : d);
 const addDays = (d, n) => { const t = new Date(`${d}T00:00:00Z`); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); };
 const addMonths = (d, n) => { // month-end clamps (31 Jan + 1 month = 28/29 Feb)
   const t = new Date(`${d}T00:00:00Z`), day = t.getUTCDate();
@@ -36,26 +36,26 @@ const addMonths = (d, n) => { // month-end clamps (31 Jan + 1 month = 28/29 Feb)
 };
 
 /** The terms an applicant applies under, copied onto the application at submit. Internal budgets are not part of it. */
-const termsOf = (p, r) => ({
+export const termsOf = (p, r) => ({
   program: { id: p.id, name: p.name, objective: p.objective, currency: p.currency, sports: p.sports, regions: p.regions, eligibility: p.eligibility, starts_on: iso(p.starts_on), ends_on: iso(p.ends_on), max_award_cents: p.max_award_cents, row_version: p.row_version },
   round: { id: r.id, seq: r.seq, name: r.name, opens_on: iso(r.opens_on), closes_on: iso(r.closes_on), terms_version: r.terms_version },
 });
 
 const PROGRAM_ROUND_BUDGET = 'a round budget cannot exceed the program budget';
 
-async function brandFor(user, sponsorId, action, c) {
+export async function brandFor(user, sponsorId, action, c) {
   const sp = await mustFind('sponsors', sponsorId, '*', c);
   if (!isAdmin(user)) assertSponsorCan(await sponsorAccess(user, sp, c), action, { departmentId: null, what: action === 'export' ? 'export program data' : 'run sponsorship programs' });
   return sp;
 }
 /** Loads a program (optionally locked) and checks the caller may do the action for its brand. */
-async function programFor(user, programId, action, c, lock = false) {
+export async function programFor(user, programId, action, c, lock = false) {
   const p = (await c.query(`SELECT * FROM sponsorship_programs WHERE id=$1${lock ? ' FOR UPDATE' : ''}`, [programId])).rows[0];
   if (!p) throw notFound('Sponsorship program');
   const sp = await brandFor(user, p.sponsor_id, action, c);
   return { p, sp };
 }
-const checkVersion = (row, v, what) => { if (row.row_version !== v) throw conflict(`This ${what} was changed by someone else (now version ${row.row_version}); the latest was loaded, review it and try again`, { current_version: row.row_version }); };
+export const checkVersion = (row, v, what) => { if (row.row_version !== v) throw conflict(`This ${what} was changed by someone else (now version ${row.row_version}); the latest was loaded, review it and try again`, { current_version: row.row_version }); };
 
 async function validateSports(list) {
   if (!list?.length) return;
@@ -75,7 +75,7 @@ const committedRound = async (c, roundId) => {
 const saveTerms = (c, round, userId) => c.query('INSERT INTO sponsorship_round_terms(round_id, version, snapshot, created_by) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING',
   [round.id, round.terms_version, { name: round.name, opens_on: iso(round.opens_on), closes_on: iso(round.closes_on), budget_cents: round.budget_cents, max_awards: round.max_awards }, userId]);
 
-async function targetOwnerOf(c, type, targetId) {
+export async function targetOwnerOf(c, type, targetId) {
   const r = type === 'event' ? await c.query('SELECT organizer_id AS o FROM events WHERE id=$1', [targetId])
     : type === 'team' ? await c.query('SELECT owner_id AS o FROM teams WHERE id=$1', [targetId])
       : await c.query('SELECT id AS o FROM users WHERE id=$1', [targetId]);
@@ -339,6 +339,38 @@ cap({
     [i.sport ?? null, i.q ? i.q.replace(/[%_\\]/g, '\\$&') : null, i.limit, i.offset]),
 });
 
+/**
+ * The rules every application must meet, whichever way it is filed (original pitch + amount, or an application form): the brand's staff cannot
+ * apply to their own program, the applicant must own the target, eligibility (target type, minors, maximum award, verified-only, sports, regions).
+ * `a` = { target_type, target_id, requested_cents? }. Returns the sponsor brand.
+ */
+export async function assertCanApply(c, user, p, a, { draft = false } = {}) {
+  const sp = await mustFind('sponsors', p.sponsor_id, '*', c);
+  if (!isAdmin(user) && (await sponsorAccess(user, sp, c))) throw forbidden('Staff of the sponsoring brand cannot apply to its own program');
+  const owner = await targetOwnerOf(c, a.target_type, a.target_id);
+  if (owner !== user.id) throw forbidden(a.target_type === 'athlete' ? 'You can only apply for yourself' : `You can only apply for a ${a.target_type} you ${a.target_type === 'team' ? 'own' : 'organise'}`);
+  const el = p.eligibility ?? {};
+  if (el.target_types?.length && !el.target_types.includes(a.target_type)) throw unprocessable(`This program funds ${el.target_types.join(', ')} only`);
+  if (a.target_type === 'athlete') {
+    const youth = (await c.query('SELECT 1 FROM users u WHERE u.id=$1 AND (u.youth_until IS NOT NULL AND u.youth_until > current_date)', [user.id])).rowCount;
+    if (youth) throw unprocessable('Applications for athletes under the age of independence are not accepted here; a guardian-led process is required');
+  }
+  if (!draft && a.requested_cents > Number(p.max_award_cents ?? Infinity)) throw unprocessable(`The request is above the maximum award of ${p.max_award_cents}`);
+  if (el.verified_only && !(await badgesFor(a.target_type === 'athlete' ? 'user' : a.target_type, [a.target_id])).get(a.target_id)?.length) throw forbidden('This program only funds verified applicants');
+  if (p.sports.length) {
+    const sports = a.target_type === 'athlete' ? (await c.query('SELECT s.slug FROM sport_profiles x JOIN sports s ON s.id=x.sport_id WHERE x.user_id=$1', [a.target_id])).rows
+      : (await c.query(`SELECT s.slug FROM ${a.target_type === 'team' ? 'teams' : 'events'} x JOIN sports s ON s.id=x.sport_id WHERE x.id=$1`, [a.target_id])).rows;
+    if (!sports.some((s) => p.sports.includes(s.slug))) throw unprocessable(`This program funds ${p.sports.join(', ')} only`);
+  }
+  if (p.regions.length) {
+    const reg = a.target_type === 'athlete' ? (await c.query('SELECT region AS v FROM sport_profiles WHERE user_id=$1 AND region IS NOT NULL', [a.target_id])).rows
+      : a.target_type === 'team' ? (await c.query('SELECT city AS v FROM teams WHERE id=$1 AND city IS NOT NULL', [a.target_id])).rows : [];
+    const want = p.regions.map((x) => x.trim().toLowerCase());
+    if (reg.length && !reg.some((x) => want.includes(String(x.v).trim().toLowerCase()))) throw unprocessable(`This program funds applicants in ${p.regions.join(', ')} only`);
+  }
+  return sp;
+}
+
 cap({
   name: 'apply_to_program_round', method: 'POST', path: '/program-rounds/:id/applications', tag: 'Sponsors', status: 201,
   summary: 'Apply to a funding round for something you own: yourself (athlete), a team you own or an event you organise. Rejected unless the round is open right now and its program is published. Checks eligibility (target type, sport, known region, verified-only), the program currency and maximum award, and that the applicant is not a minor athlete or part of the sponsoring brand. A copy of the terms is stored with the application and never changes afterwards. One live application per round and target.',
@@ -351,29 +383,8 @@ cap({
       const r = (await c.query(`SELECT *, ${roundState('r')} AS state FROM sponsorship_rounds r WHERE id=$1 FOR UPDATE`, [i.id])).rows[0];
       if (p.status !== 'published') throw conflict('This program is not accepting applications');
       if (r.state !== 'open') throw conflict(r.state === 'scheduled' ? 'This round has not opened yet' : 'This round is closed and no longer accepts applications');
-      const sp = await mustFind('sponsors', p.sponsor_id, '*', c);
-      if (!isAdmin(user) && (await sponsorAccess(user, sp, c))) throw forbidden('Staff of the sponsoring brand cannot apply to its own program');
-      const owner = await targetOwnerOf(c, i.target_type, i.target_id);
-      if (owner !== user.id) throw forbidden(i.target_type === 'athlete' ? 'You can only apply for yourself' : `You can only apply for a ${i.target_type} you ${i.target_type === 'team' ? 'own' : 'organise'}`);
-      const el = p.eligibility ?? {};
-      if (el.target_types?.length && !el.target_types.includes(i.target_type)) throw unprocessable(`This program funds ${el.target_types.join(', ')} only`);
-      if (i.target_type === 'athlete') {
-        const youth = (await c.query('SELECT 1 FROM users u WHERE u.id=$1 AND (u.youth_until IS NOT NULL AND u.youth_until > current_date)', [user.id])).rowCount;
-        if (youth) throw unprocessable('Applications for athletes under the age of independence are not accepted here; a guardian-led process is required');
-      }
-      if (i.requested_cents > Number(p.max_award_cents ?? Infinity)) throw unprocessable(`The request is above the maximum award of ${p.max_award_cents}`);
-      if (el.verified_only && !(await badgesFor(i.target_type === 'athlete' ? 'user' : i.target_type, [i.target_id])).get(i.target_id)?.length) throw forbidden('This program only funds verified applicants');
-      if (p.sports.length) {
-        const sports = i.target_type === 'athlete' ? (await c.query('SELECT s.slug FROM sport_profiles x JOIN sports s ON s.id=x.sport_id WHERE x.user_id=$1', [i.target_id])).rows
-          : (await c.query(`SELECT s.slug FROM ${i.target_type === 'team' ? 'teams' : 'events'} x JOIN sports s ON s.id=x.sport_id WHERE x.id=$1`, [i.target_id])).rows;
-        if (!sports.some((s) => p.sports.includes(s.slug))) throw unprocessable(`This program funds ${p.sports.join(', ')} only`);
-      }
-      if (p.regions.length) {
-        const reg = i.target_type === 'athlete' ? (await c.query('SELECT region AS v FROM sport_profiles WHERE user_id=$1 AND region IS NOT NULL', [i.target_id])).rows
-          : i.target_type === 'team' ? (await c.query('SELECT city AS v FROM teams WHERE id=$1 AND city IS NOT NULL', [i.target_id])).rows : [];
-        const want = p.regions.map((x) => x.trim().toLowerCase());
-        if (reg.length && !reg.some((x) => want.includes(String(x.v).trim().toLowerCase()))) throw unprocessable(`This program funds applicants in ${p.regions.join(', ')} only`);
-      }
+      if (r.form_id) throw conflict('This round uses an application form; apply through the form (get_round_application_form, save_application_draft, submit_application)');
+      const sp = await assertCanApply(c, user, p, i);
       const snap = termsOf(p, r);
       let row;
       try {
@@ -400,20 +411,22 @@ cap({
       const a = (await c.query('SELECT * FROM sponsorship_applications WHERE id=$1 FOR UPDATE', [i.id])).rows[0];
       if (!a) throw notFound('Application');
       if (a.applicant_id !== user.id && !isAdmin(user)) throw forbidden('Only the applicant can withdraw it');
-      if (a.status !== 'submitted') throw conflict(`This application is already ${a.status}`);
-      return (await c.query("UPDATE sponsorship_applications SET status='withdrawn', decided_at=now(), decided_by=$2 WHERE id=$1 RETURNING *", [a.id, user.id])).rows[0];
+      if (!['draft', 'submitted', 'returned'].includes(a.status)) throw conflict(`This application is already ${a.status}`);
+      const row = (await c.query("UPDATE sponsorship_applications SET status='withdrawn', decided_at=now(), decided_by=$2, row_version=row_version+1, updated_at=now() WHERE id=$1 RETURNING *", [a.id, user.id])).rows[0];
+      if (a.status !== 'draft') await c.query("INSERT INTO sponsorship_application_events(application_id, kind, actor_id, form_version) VALUES ($1,'withdrawn',$2,$3)", [a.id, user.id, a.form_version]);
+      return row;
     });
   },
 });
 
-const APP_COLS = `a.id, a.program_id, a.round_id, a.round_terms_version, a.terms_snapshot, a.applicant_id, a.target_type, a.target_id, a.requested_cents, a.currency, a.pitch, a.status, a.awarded_cents, a.decided_at, a.decision_reason, a.sponsorship_id, a.created_at,
+export const APP_COLS = `a.id, a.program_id, a.round_id, a.round_terms_version, a.terms_snapshot, a.applicant_id, a.target_type, a.target_id, a.requested_cents, a.currency, a.pitch, a.status, a.awarded_cents, a.decided_at, a.decision_reason, a.sponsorship_id, a.created_at, a.form_id, a.form_version, a.receipt_no, a.submitted_at, a.row_version,
   CASE a.target_type WHEN 'athlete' THEN (SELECT display_name FROM users WHERE id=a.target_id) WHEN 'team' THEN (SELECT name FROM teams WHERE id=a.target_id) ELSE (SELECT name FROM events WHERE id=a.target_id) END AS target_name,
   p.name AS program_name, r.seq AS round_seq, r.name AS round_name`;
 
 cap({
   name: 'list_my_program_applications', method: 'GET', path: '/my/program-applications', tag: 'Sponsors',
   summary: 'Your own funding applications, newest first, each with the terms it was made under, its status and (once awarded) the resulting sponsorship agreement id.',
-  input: z.object({ status: z.enum(['submitted', 'awarded', 'declined', 'withdrawn']).optional(), ...page }),
+  input: z.object({ status: z.enum(['draft', 'submitted', 'returned', 'awarded', 'declined', 'withdrawn']).optional(), ...page }),
   handler: ({ user }, i) => many(
     `SELECT ${APP_COLS}, sp.name AS sponsor_name FROM sponsorship_applications a JOIN sponsorship_programs p ON p.id=a.program_id JOIN sponsorship_rounds r ON r.id=a.round_id JOIN sponsors sp ON sp.id=p.sponsor_id
       WHERE a.applicant_id=$1 AND ($2::text IS NULL OR a.status=$2) ORDER BY a.created_at DESC, a.id LIMIT $3 OFFSET $4`, [user.id, i.status ?? null, i.limit, i.offset]),
@@ -422,13 +435,13 @@ cap({
 cap({
   name: 'list_program_applications', method: 'GET', path: '/sponsorship-programs/:id/applications', tag: 'Sponsors',
   summary: 'Brand staff: applications to a program (filter by round and status), oldest first so none is missed. Shows the applicant\'s public profile and what they applied for; no contact details.',
-  input: z.object({ id, round_id: id.optional(), status: z.enum(['submitted', 'awarded', 'declined', 'withdrawn']).optional(), ...page }),
+  input: z.object({ id, round_id: id.optional(), status: z.enum(['draft', 'submitted', 'returned', 'awarded', 'declined', 'withdrawn']).optional(), ...page }),
   async handler({ user }, i) {
         const { p } = await programFor(user, i.id, 'read', pool);
     return many(
       `SELECT ${APP_COLS}, ${PUBLIC_USER.replace(/u\./g, 'ap.').replace(/ap\.id/, 'ap.id AS applicant_user_id')}
          FROM sponsorship_applications a JOIN sponsorship_programs p ON p.id=a.program_id JOIN sponsorship_rounds r ON r.id=a.round_id JOIN users ap ON ap.id=a.applicant_id
-        WHERE a.program_id=$1 AND ($2::uuid IS NULL OR a.round_id=$2) AND ($3::text IS NULL OR a.status=$3) ORDER BY a.created_at, a.id LIMIT $4 OFFSET $5`,
+        WHERE a.program_id=$1 AND a.status <> 'draft' AND ($2::uuid IS NULL OR a.round_id=$2) AND ($3::text IS NULL OR a.status=$3) ORDER BY a.created_at, a.id LIMIT $4 OFFSET $5`,
       [p.id, i.round_id ?? null, i.status ?? null, i.limit, i.offset]);
   },
 });
