@@ -1,11 +1,12 @@
-import { one, many, tx } from '../db.js';
+import { one, many, tx, pool } from '../db.js';
 import { config } from '../config.js';
-import { AppError, badRequest, conflict, forbidden } from '../errors.js';
+import { AppError, badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { provider, paymentsEnabled, enabledProviders } from './providers.js';
 import { markInvoicePaid } from '../booking/invoices.js';
 import { completeTopup, activateGiftCard } from '../wallet.js';
 import { activateUserPlan } from '../booking/plans.js';
 import { activatePhysioPackage } from '../capabilities/provider-packages.js';
+import { fulfilSponsorshipPayment } from '../sponsor-agreements.js';
 import { raiseException, recordSale, syncRefunds } from '../settlement.js';
 
 export { paymentsEnabled, enabledProviders };
@@ -50,6 +51,10 @@ export async function describePurpose(c, type, id) {
     const u = await q("SELECT up.user_id AS payer_id, up.price_cents AS amount, up.currency, up.status, up.name, v.name AS venue FROM user_plans up JOIN venues v ON v.id=up.venue_id WHERE up.id=$1 FOR UPDATE OF up");
     return u && { payerId: u.payer_id, amount: Number(u.amount), currency: u.currency, name: `${u.name} · ${u.venue}`, payable: u.status === 'awaiting_payment' };
   }
+  if (type === 'sponsorship_payment') {
+    const x = await q("SELECT x.reported_by AS payer_id, x.amount_cents AS amount, x.currency, x.status AS pay_status, o.status AS due_status, s.status AS deal_status, sp.name FROM sponsorship_payments x JOIN sponsorship_obligations o ON o.id=x.obligation_id JOIN sponsorships s ON s.id=o.sponsorship_id JOIN sponsors sp ON sp.id=s.sponsor_id WHERE x.id=$1 FOR UPDATE OF x");
+    return x && { payerId: x.payer_id, amount: Number(x.amount), currency: x.currency, name: `Sponsorship payment · ${x.name}`, payable: x.pay_status === 'awaiting_payment' && x.due_status === 'scheduled' && ['active', 'ended'].includes(x.deal_status) };
+  }
   const p = await q('SELECT p.holder_id AS payer_id, p.amount_cents AS amount, p.status, pl.name FROM insurance_policies p JOIN insurance_plans pl ON pl.id=p.plan_id WHERE p.id=$1 FOR UPDATE OF p');
   return p && { payerId: p.payer_id, amount: Number(p.amount), name: p.name, payable: p.status === 'pending_payment' };
 }
@@ -68,6 +73,7 @@ async function fulfil(c, type, id) {
   if (type === 'gift_card') return activateGiftCard(c, id);
   if (type === 'venue_plan') return activateUserPlan(c, id);
   if (type === 'physio_package') return activatePhysioPackage(c, id);
+  if (type === 'sponsorship_payment') return fulfilSponsorshipPayment(c, id);
   return (await c.query(sql, [id])).rowCount > 0;
 }
 
@@ -141,4 +147,34 @@ export function safeReturnBase(requested) {
   const first = [...allowed][0];
   if (!first) throw badRequest('APP_URL is not configured on the server; pass return_url');
   return first;
+}
+
+/** Start a hosted checkout for something `user` owes. The amount and currency are read from the record, never from the client. */
+export async function startCheckout(user, i) {
+  if (!enabledProviders().includes(i.provider)) throw badRequest(`${i.provider} is not enabled on this server`);
+  const client = await pool.connect();
+  let paymentId, d, currency;
+  try {
+    await client.query('BEGIN');
+    d = await describePurpose(client, i.purpose_type, i.purpose_id);
+    if (!d) throw notFound('Item to pay for');
+    if (d.payerId !== user.id) throw forbidden('This is not yours to pay');
+    if (!d.payable) throw conflict('Nothing to pay: it is already paid, cancelled or free');
+    if (d.amount <= 0) throw conflict('Nothing to pay');
+    currency = d.currency ?? config.payments.currency;
+    const row = (await client.query('INSERT INTO payments(payer_id, provider, purpose_type, purpose_id, amount_cents, currency) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id', [user.id, i.provider, i.purpose_type, i.purpose_id, d.amount, currency])).rows[0];
+    paymentId = row.id;
+    await client.query('COMMIT');
+  } catch (e) { await client.query('ROLLBACK'); throw e; } finally { client.release(); }
+
+  const base = safeReturnBase(i.return_url);
+  const mk = (r) => `${base}/?payment=${paymentId}&result=${r}`;
+  try {
+    const out = await provider(i.provider).createCheckout({ paymentId, amount: d.amount, currency, name: d.name, successUrl: mk('success'), cancelUrl: mk('cancel') });
+    await one('UPDATE payments SET provider_ref=$2 WHERE id=$1', [paymentId, out.ref]);
+    return { id: paymentId, provider: i.provider, amount_cents: d.amount, currency, checkout_url: out.url };
+  } catch (e) {
+    await one("UPDATE payments SET status='failed' WHERE id=$1", [paymentId]);
+    throw e;
+  }
 }

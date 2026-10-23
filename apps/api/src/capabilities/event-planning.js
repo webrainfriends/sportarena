@@ -337,7 +337,7 @@ async function sponsorshipOf(eventId) {
   const [agreements, offers] = await Promise.all([
     many(`SELECT o.currency, count(DISTINCT ss.id)::int AS agreements,
                  coalesce(sum(o.amount_cents) FILTER (WHERE o.status <> 'cancelled'),0)::bigint AS committed_cents,
-                 coalesce(sum((SELECT sum(p.amount_cents) FROM sponsorship_payments p WHERE p.obligation_id=o.id AND p.status='confirmed')),0)::bigint AS received_cents,
+                 coalesce(sum((SELECT sum(p.amount_cents - p.refunded_cents) FROM sponsorship_payments p WHERE p.obligation_id=o.id AND p.status='confirmed')),0)::bigint AS received_cents,
                  coalesce(sum((SELECT sum(p.amount_cents) FROM sponsorship_payments p WHERE p.obligation_id=o.id AND p.status='reported')),0)::bigint AS reported_unverified_cents,
                  coalesce(sum(o.amount_cents) FILTER (WHERE o.status='scheduled' AND o.due_on < current_date),0)::bigint AS overdue_cents
             FROM sponsorship_obligations o JOIN sponsorships ss ON ss.id=o.sponsorship_id

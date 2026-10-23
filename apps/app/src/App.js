@@ -220,6 +220,7 @@ function Shell() {
     api.post(`/payments/${id}/confirm`).then(async (r) => {
       toast(r.status === 'paid' ? 'Payment received ✓' : 'Payment is still processing — check back shortly');
       if (r.purpose_type === 'shop_checkout' || r.purpose_type === 'shop_order') push('ShopOrders');
+      if (r.purpose_type === 'sponsorship_payment' && r.sponsorship_id) { goTab('Schedule'); push('SponsorDeal', { id: r.sponsorship_id }); }
       if (r.purpose_type === 'venue_invoice') { const inv = await api.get(`/invoices/${r.purpose_id}`).catch(() => null); if (inv) { goTab('Schedule'); push('Reservation', { id: inv.reservation_id }); } }
     }).catch((e) => toast(e.message));
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps

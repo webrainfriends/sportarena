@@ -4,6 +4,7 @@ import { forbidden, notFound } from './errors.js';
 import { isAdmin } from './helpers.js';
 import { sponsorAccess, assertSponsorCan } from './sponsor-access.js';
 import { sponsorContactUser } from './sponsor-identity-access.js';
+import { notify } from './notify.js';
 import { ORG_TARGETS, beneficiaryAccess, primaryContact, targetOrgId } from './sponsor-beneficiaries.js';
 
 export const logHistory = (c, sponsorshipId, version, actor, action, reason) =>
@@ -57,10 +58,16 @@ export async function cancelFutureObligations(c, sponsorshipId) {
   const r = await c.query(
     `UPDATE sponsorship_obligations o SET status='cancelled', cancelled_at=now()
       WHERE o.sponsorship_id=$1 AND o.status='scheduled' AND o.due_on > current_date
-        AND NOT EXISTS (SELECT 1 FROM sponsorship_payments p WHERE p.obligation_id=o.id AND p.status IN ('reported','confirmed'))
+        AND NOT EXISTS (SELECT 1 FROM sponsorship_payments p WHERE p.obligation_id=o.id AND p.status IN ('reported','confirmed','awaiting_payment'))
         AND NOT EXISTS (SELECT 1 FROM sponsorship_deliveries x WHERE x.obligation_id=o.id AND x.status <> 'rejected')
         AND NOT EXISTS (SELECT 1 FROM sponsorship_submissions s WHERE s.obligation_id=o.id AND s.status <> 'revision_requested')`, [sponsorshipId]);
   return r.rowCount;
+}
+
+/** The authorised recipient of a sponsorship: the event organiser, the team owner or the athlete themselves. */
+export async function targetOwner(c, type, id) {
+  return type === 'event' ? (await c.query('SELECT organizer_id AS u FROM events WHERE id=$1', [id])).rows[0]?.u
+    : type === 'team' ? (await c.query('SELECT owner_id AS u FROM teams WHERE id=$1', [id])).rows[0]?.u : id;
 }
 
 /**
@@ -71,6 +78,7 @@ export async function dealContext(c, sponsorshipId, user, { lock = false } = {})
   const d = (await c.query(`SELECT *, starts_on::text AS starts, ends_on::text AS ends FROM sponsorships WHERE id=$1${lock ? ' FOR UPDATE' : ''}`, [sponsorshipId])).rows[0];
   if (!d) throw notFound('Sponsorship');
   const sp = (await c.query('SELECT id, name, owner_id, organisation_id, entity_id FROM sponsors WHERE id=$1', [d.sponsor_id])).rows[0];
+  const recipientId = await targetOwner(c, d.target_type, d.target_id);
   const beneficiary = ORG_TARGETS.includes(d.target_type) ? await beneficiaryAccess(c, user.id, d) : null;
   const recipientId = ORG_TARGETS.includes(d.target_type) ? await primaryContact(c, await targetOrgId(c, d.target_type, d.target_id)) : d.target_type === 'event' ? (await c.query('SELECT organizer_id AS u FROM events WHERE id=$1', [d.target_id])).rows[0]?.u
     : d.target_type === 'team' ? (await c.query('SELECT owner_id AS u FROM teams WHERE id=$1', [d.target_id])).rows[0]?.u : d.target_id;
@@ -88,4 +96,61 @@ export async function obligationContext(c, obligationId, user) {
   const o = (await c.query('SELECT * FROM sponsorship_obligations WHERE id=$1 FOR UPDATE', [obligationId])).rows[0];
   if (!o) throw notFound('Obligation');
   return { o, ...(await dealContext(c, o.sponsorship_id, user)) };
+}
+
+/** Money state of an obligation after any change: fulfilled once confirmed payments (net of refunds) cover it, reopened if a reversal or refund uncovers it. */
+export async function settleMoney(c, o) {
+  const paid = Number((await c.query("SELECT coalesce(sum(amount_cents - refunded_cents),0) AS s FROM sponsorship_payments WHERE obligation_id=$1 AND status='confirmed'", [o.id])).rows[0].s);
+  if (paid >= Number(o.amount_cents)) await c.query("UPDATE sponsorship_obligations SET status='fulfilled', fulfilled_at=coalesce(fulfilled_at, now()) WHERE id=$1 AND status='scheduled'", [o.id]);
+  else await c.query("UPDATE sponsorship_obligations SET status='scheduled', fulfilled_at=NULL WHERE id=$1 AND status='fulfilled'", [o.id]);
+}
+
+/**
+ * Online checkouts that can no longer complete stop reserving the due: their provider payment failed, or they were abandoned for over two
+ * hours. A late provider confirmation of one of these is refunded automatically (the payment is "paid for something that can no longer be
+ * fulfilled"), so nothing is ever kept without being credited.
+ */
+export async function releaseStaleCheckouts(c, obligationId) {
+  return (await c.query(
+    `UPDATE sponsorship_payments sp SET status='failed', decided_at=now(), decision_note='Checkout was not completed'
+      WHERE sp.obligation_id=$1 AND sp.status='awaiting_payment'
+        AND (sp.created_at < now() - interval '2 hours' OR EXISTS (SELECT 1 FROM payments p WHERE p.id=sp.payment_id AND p.status IN ('failed','refunded')))`, [obligationId])).rowCount;
+}
+
+/**
+ * The refund of an online sponsorship payment was recorded on `payments`: mirror it onto the due so confirmed money stays net of refunds.
+ * Also covers a checkout that was cancelled or expired but still got paid: that money is refunded, so the row ends 'reversed' and balances the ledger.
+ */
+export async function syncSponsorshipRefund(c, payment) {
+  if (payment.purpose_type !== 'sponsorship_payment') return;
+  const sp = (await c.query("UPDATE sponsorship_payments SET refunded_cents=least(amount_cents, $2), status=CASE WHEN $2 >= amount_cents THEN 'reversed' ELSE status END, decided_at=CASE WHEN $2 >= amount_cents THEN now() ELSE decided_at END, decision_note=CASE WHEN $2 >= amount_cents THEN 'Refunded to the sponsor' ELSE decision_note END WHERE id=$1 AND status IN ('confirmed','reversed','awaiting_payment','failed') RETURNING obligation_id", [payment.purpose_id, Number(payment.refunded_cents)])).rows[0];
+  if (!sp) return;
+  const o = (await c.query('SELECT * FROM sponsorship_obligations WHERE id=$1 FOR UPDATE', [sp.obligation_id])).rows[0];
+  await settleMoney(c, o);
+  await logHistory(c, o.sponsorship_id, o.version, null, 'payment_refunded');
+}
+
+/**
+ * The provider has verified the money: the online payment becomes confirmed (never from a client report) and the due is re-evaluated.
+ * Returns false when the due can no longer take it (cancelled, already covered, deal not active), so the payment is refunded instead.
+ */
+export async function fulfilSponsorshipPayment(c, id) {
+  const x = (await c.query("SELECT * FROM sponsorship_payments WHERE id=$1 AND status='awaiting_payment' FOR UPDATE", [id])).rows[0];
+  if (!x) return false;
+  const o = (await c.query('SELECT * FROM sponsorship_obligations WHERE id=$1 FOR UPDATE', [x.obligation_id])).rows[0];
+  const d = (await c.query('SELECT status FROM sponsorships WHERE id=$1', [o.sponsorship_id])).rows[0];
+  const covered = Number((await c.query("SELECT coalesce(sum(amount_cents - refunded_cents),0) AS s FROM sponsorship_payments WHERE obligation_id=$1 AND status='confirmed'", [o.id])).rows[0].s);
+  if (o.status === 'cancelled' || !['active', 'ended'].includes(d.status) || covered + Number(x.amount_cents) > Number(o.amount_cents)) return false;
+  await c.query("UPDATE sponsorship_payments SET status='confirmed', paid_on=current_date, decided_at=now(), decision_note='Verified by the payment provider' WHERE id=$1", [x.id]);
+  await settleMoney(c, o);
+  await logHistory(c, o.sponsorship_id, o.version, x.reported_by, 'payment_collected_online');
+  const t = (await c.query('SELECT target_type, target_id FROM sponsorships WHERE id=$1', [o.sponsorship_id])).rows[0];
+  const to = await targetOwner(c, t.target_type, t.target_id);
+  if (to) await notify(c, to, { kind: 'sponsorship_payment', title: 'A sponsorship payment was collected', body: 'A sponsor paid online. It is added to your earnings and paid out after the hold period.', data: { sponsorship_id: o.sponsorship_id } });
+  return true;
+}
+
+/** What already counts against a due: reported and confirmed money (net of refunds) plus online checkouts still open. */
+export async function heldCents(c, obligationId) {
+  return Number((await c.query("SELECT coalesce(sum(CASE status WHEN 'confirmed' THEN amount_cents - refunded_cents ELSE amount_cents END),0) AS s FROM sponsorship_payments WHERE obligation_id=$1 AND status IN ('reported','confirmed','awaiting_payment')", [obligationId])).rows[0].s);
 }

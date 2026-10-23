@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { View } from 'react-native';
+import { Linking, Platform, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
-import { Btn, Card, Empty, ErrorBox, H1, Loading, Screen, Section, T, Tag } from '../ui';
+import { Btn, Card, Chip, Empty, ErrorBox, Field, H1, Loading, Screen, Section, Sheet, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { SponsorPerformance } from './sponsor-performance';
 import { SponsorAllocations, PayeeLine } from './sponsor-beneficiaries';
@@ -18,6 +18,8 @@ const digits = (cur) => { try { return new Intl.NumberFormat('en', { style: 'cur
 const when = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 const what = (o) => (o.kind === 'money' ? fmt(o.amount_cents, o.currency) : o.kind === 'goods' ? `${o.quantity} to deliver` : 'Endorsement');
 const statusOf = (o) => (o.status === 'scheduled' && o.overdue ? 'overdue' : o.status);
+const left = (x) => Math.max(0, x.amount_cents - x.confirmed_cents - x.reported_unverified_cents - x.checkout_in_progress_cents);
+const payState = (p) => ({ reported: 'unverified', confirmed: p.method === 'online' ? 'verified by provider ✓' : 'confirmed', awaiting_payment: 'checkout open', reversed: p.method === 'online' ? 'refunded' : 'reversed' }[p.status] ?? p.status);
 const tone = { fulfilled: c.lime, overdue: c.pinkSoft, cancelled: c.paper, scheduled: c.sunSoft };
 
 export function SponsorDeal({ id }) {
@@ -59,12 +61,14 @@ export function SponsorDeal({ id }) {
             <Card key={x.id} color={tone[statusOf(x)] ?? c.paper}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}><T weight="900" style={{ flex: 1 }}>{when(x.due_on)} · {x.label}</T><Tag label={statusOf(x)} color={tone[statusOf(x)] ?? c.paper} /></View>
               <T size={12} color={c.mute}>{what(x)}{x.kind === 'money' ? ` · confirmed ${fmt(x.confirmed_cents, x.currency)}${x.reported_unverified_cents ? ` · reported, not yet confirmed ${fmt(x.reported_unverified_cents, x.currency)}` : ''}` : ''}{x.kind === 'goods' ? ` · received ${x.received_quantity}${x.in_transit_quantity ? ` · in transit ${x.in_transit_quantity}` : ''}` : ''}</T>
-              {x.payments.map((p) => (
+              {x.payments.filter((p) => p.status !== 'failed').map((p) => (
                 <View key={p.id} style={{ marginTop: 4 }}>
+                  <T size={12}>{fmt(p.amount_cents, p.currency)} · {p.method === 'online' ? 'online' : p.method.replace('_', ' ')}{p.method === 'online' ? '' : ` · ref ${p.reference}`} · {payState(p)}{p.refunded_cents > 0 ? ` · refunded ${fmt(p.refunded_cents, p.currency)}` : ''}</T>
                   <T size={12}>{fmt(p.amount_cents, p.currency)} · {p.method.replace('_', ' ')} · ref {p.reference} · {p.status === 'reported' ? 'unverified' : p.status}</T>
                   {p.status === 'confirmed' ? <PayeeLine p={p} /> : null}
                   {recipient && p.status === 'reported' ? <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}><Btn small title="Confirm received" color={c.mint} ink={c.ink} onPress={() => act(() => api.patch(`/sponsorship-payments/${p.id}`, { status: 'confirmed' }), 'Payment confirmed')} /><Btn small title="Not received" color={c.paper} ink={c.red} onPress={() => setForm({ kind: 'reject', o: p })} /></View> : null}
-                  {recipient && p.status === 'confirmed' ? <Btn small title="Reverse" color={c.paper} ink={c.red} style={{ alignSelf: 'flex-start', marginTop: 4 }} onPress={() => setForm({ kind: 'reverse', o: p })} /> : null}
+                  {recipient && p.status === 'confirmed' && p.method !== 'online' ? <Btn small title="Reverse" color={c.paper} ink={c.red} style={{ alignSelf: 'flex-start', marginTop: 4 }} onPress={() => setForm({ kind: 'reverse', o: p })} /> : null}
+                  {sponsor && can('pay') && p.status === 'awaiting_payment' ? <Btn small title="Cancel this checkout" color={c.paper} ink={c.ink} style={{ alignSelf: 'flex-start', marginTop: 4 }} onPress={() => act(() => api.post(`/sponsorship-payments/${p.id}/cancel-checkout`), 'Checkout cancelled')} /> : null}
                 </View>))}
               {x.deliveries.map((dl) => (
                 <View key={dl.id} style={{ marginTop: 4 }}>
@@ -76,18 +80,26 @@ export function SponsorDeal({ id }) {
                   <T size={12}>Evidence {s.evidence_url} · {s.status.replace('_', ' ')}{s.review_note ? ` — ${s.review_note}` : ''}</T>
                   {s.status === 'submitted' && d.role === (x.promoter === 'recipient' ? 'sponsor' : 'recipient') && can('evaluate') ? <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}><Btn small title="Accept" color={c.mint} ink={c.ink} onPress={() => act(() => api.patch(`/sponsorship-submissions/${s.id}`, { status: 'accepted' }), 'Accepted')} /><Btn small title="Ask for changes" color={c.paper} ink={c.ink} onPress={() => setForm({ kind: 'revise', o: s })} /></View> : null}
                 </View>))}
-              {x.status === 'scheduled' && x.kind === 'money' && sponsor && can('pay') ? <Btn small title="Report a payment" color={c.pink} style={{ alignSelf: 'flex-start', marginTop: 6 }} onPress={() => setForm({ kind: 'pay', o: x })} /> : null}
+              {x.kind === 'money' && x.status === 'scheduled' ? <T size={12} weight="700">Still due {fmt(left(x), x.currency)}</T> : null}
+              {x.status === 'scheduled' && x.kind === 'money' && sponsor && can('pay') ? (
+                <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
+                  {left(x) > 0 ? <Btn small title="Pay online" color={c.pink} onPress={() => setForm({ kind: 'checkout', o: x })} /> : null}
+                  {left(x) > 0 ? <Btn small title="Report a bank payment" color={c.paper} ink={c.ink} onPress={() => setForm({ kind: 'pay', o: x })} /> : null}
+                </View>) : null}
+              {x.status === 'scheduled' && x.kind === 'money' && sponsor && !can('pay') ? <T size={12} color={c.mute}>Your role cannot make payments. Ask a Finance or Manager colleague.</T> : null}
               {x.status === 'scheduled' && x.kind === 'goods' && sponsor && can('pay') ? <Btn small title="Record dispatch" color={c.orange} style={{ alignSelf: 'flex-start', marginTop: 6 }} onPress={() => setForm({ kind: 'dispatch', o: x })} /> : null}
               {x.status === 'scheduled' && x.kind === 'endorsement' && d.role === x.promoter && can('evaluate') && !x.submissions.some((s) => s.status !== 'revision_requested') ? <Btn small title="Submit evidence" color={c.violet} style={{ alignSelf: 'flex-start', marginTop: 6 }} onPress={() => setForm({ kind: 'submit', o: x })} /> : null}
             </Card>)) : <Empty emoji="🗓️" title="Nothing scheduled" />}
-          <T size={12} color={c.mute}>Payments here are tracked, not collected: Gotmygame does not hold or transfer these funds. A payment counts as received only after the recipient confirms it.</T>
+          <T size={12} color={c.mute}>Online payments are collected by Gotmygame through Stripe or PayPal, counted only once the provider verifies them, and paid out to the recipient after the hold period (see Earnings). Bank or cash payments you report stay unverified until the recipient confirms them.</T>
         </Section>) : null}
+      {d.obligations?.some((x) => x.kind === 'money') ? <Reconciliation id={d.id} /> : null}
       {d.target_type === 'athlete' && ['proposed', 'active', 'ended'].includes(d.status) && (sponsor || recipient) ? <SponsorPerformance deal={d} /> : null}
       <Section title="History" color={c.lime}>
         {d.history.map((h) => <T key={h.id} size={12} color={c.mute}>{new Date(h.created_at).toLocaleDateString()} · {h.action.replace(/_/g, ' ')}{h.version ? ` (v${h.version})` : ''} · {h.actor ?? 'system'}{h.reason ? ` — ${h.reason}` : ''}</T>)}
       </Section>
 
-      <FormSheet visible={form?.kind === 'pay'} onClose={() => setForm(null)} title="Report a payment" submitLabel="Report"
+      {form?.kind === 'checkout' ? <CheckoutSheet o={o} onClose={() => setForm(null)} onChanged={deal.reload} /> : null}
+      <FormSheet visible={form?.kind === 'pay'} onClose={() => setForm(null)} title="Report a bank payment" submitLabel="Report"
         fields={[{ key: 'amount_cents', label: 'Amount paid', type: 'money', currency: o?.currency ?? 'USD' }, { key: 'method', label: 'How', type: 'choice', options: [{ value: 'bank_transfer', label: 'Bank transfer' }, { value: 'cash', label: 'Cash' }, { value: 'other', label: 'Other' }] }, { key: 'reference', label: 'Bank / receipt reference' }, { key: 'paid_on', label: 'Paid on', type: 'date' }, { key: 'evidence_url', label: 'Link to proof (https)', optional: true, type: 'url' }]}
         onSubmit={async (v) => { await api.post(`/sponsorship-obligations/${o.id}/payments`, { ...v, currency: o.currency }); deal.reload(); return 'Reported — the recipient will confirm it'; }} />
       <FormSheet visible={form?.kind === 'dispatch'} onClose={() => setForm(null)} title="Record dispatch" submitLabel="Record"
@@ -106,5 +118,68 @@ export function SponsorDeal({ id }) {
       <FormSheet visible={form?.kind === 'revise'} onClose={() => setForm(null)} title="Ask for changes" submitLabel="Send" fields={[{ key: 'note', label: 'What needs to change', type: 'multiline' }]}
         onSubmit={async (v) => { await api.patch(`/sponsorship-submissions/${o.id}`, { status: 'revision_requested', note: v.note }); deal.reload(); return 'Sent back'; }} />
     </Screen>
+  );
+}
+
+/** Pay a due online (Stripe / PayPal), in full or in part. The amount is checked again on the server; nothing counts until the provider verifies it. */
+function CheckoutSheet({ o, onClose, onChanged }) {
+  const { toast } = useSession();
+  const methods = useLoad(() => api.get('/payments/methods'), []);
+  const due = left(o);
+  const [pick, setPick] = useState('full');
+  const [other, setOther] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+  const half = Math.floor(due / 2);
+  const cents = pick === 'full' ? due : pick === 'half' ? half : Math.round(Number(String(other).replace(/,/g, '')) * 10 ** digits(o.currency));
+  const bad = !(cents > 0) || cents > due;
+  const go = async (provider) => {
+    setBusy(true); setErr(null);
+    try {
+      const r = await api.post(`/sponsorship-obligations/${o.id}/checkout`, { provider, amount_cents: cents, return_url: Platform.OS === 'web' ? `${window.location.origin}${window.location.pathname}` : undefined });
+      onChanged();
+      if (Platform.OS === 'web') window.location.assign(r.checkout_url); else { await Linking.openURL(r.checkout_url); onClose(); toast('Finish the checkout, then come back — the payment shows here once verified'); }
+    } catch (e) { setErr(e.status === 409 ? e.message : explain(e)); if (e.status === 409) onChanged(); } finally { setBusy(false); }
+  };
+  const m = methods.data;
+  return (
+    <Sheet visible onClose={onClose} title="Pay online">
+      <T size={14} color={c.mute}>{o.label} · still due <T weight="800" size={14}>{fmt(due, o.currency)}</T> ({o.currency})</T>
+      {methods.loading && !m ? <Loading /> : methods.error ? <LoadError error={methods.error} onRetry={methods.reload} /> : !m?.providers.length ? (
+        <T weight="700" color={c.red}>Online payment is not switched on yet. Report a bank payment instead.</T>
+      ) : (
+        <View style={{ gap: 12 }}>
+          <T size={13} weight="700">Amount (pay in full or in part)</T>
+          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+            <Chip label={`Full ${fmt(due, o.currency)}`} active={pick === 'full'} onPress={() => setPick('full')} />
+            {half > 0 ? <Chip label={`Half ${fmt(half, o.currency)}`} active={pick === 'half'} onPress={() => setPick('half')} /> : null}
+            <Chip label="Other amount" active={pick === 'other'} onPress={() => setPick('other')} />
+          </View>
+          {pick === 'other' ? <Field label={`Amount in ${o.currency}`} value={other} onChangeText={(x) => setOther(x.replace(/[^0-9.,]/g, ''))} keyboardType="decimal-pad" hint={cents > due ? `At most ${fmt(due, o.currency)}` : undefined} /> : null}
+          {m.providers.includes('stripe') ? <Btn title={`Pay ${bad ? '' : fmt(cents, o.currency)} with card (Stripe)`} onPress={() => go('stripe')} loading={busy} disabled={bad} /> : null}
+          {m.providers.includes('paypal') ? <Btn title="Pay with PayPal" color={c.paper} ink={c.ink} onPress={() => go('paypal')} loading={busy} disabled={bad} /> : null}
+          <T size={12} color={c.mute}>You are charged in {o.currency} on the provider's secure page; card details never reach Gotmygame. The payment counts only after the provider confirms it.</T>
+        </View>)}
+      {err ? <T color={c.red} weight="700" accessibilityRole="alert">{err}</T> : null}
+    </Sheet>
+  );
+}
+
+/** Per-currency reconciliation of the agreement's money: what was committed, collected, refunded and is still due, against the earnings ledger. */
+function Reconciliation({ id }) {
+  const rec = useLoad(() => api.get('/sponsorship-reconciliation', { sponsorship_id: id }), [id]);
+  if (rec.loading && !rec.data) return <Loading />;
+  if (rec.error) return <LoadError error={rec.error} onRetry={rec.reload} />;
+  if (!rec.data?.length) return null;
+  return (
+    <Section title="Reconciliation" color={c.pink}>
+      {rec.data.map((r) => (
+        <Card key={r.currency}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><T weight="900">{r.currency}</T><Tag label={r.reconciles ? 'Reconciles ✓' : 'Needs review'} color={r.reconciles ? c.limeSoft : c.sunSoft} /></View>
+          {[['Committed', r.committed_cents], ['Collected online', r.collected_online_cents], ['Refunded', r.refunded_cents ? -r.refunded_cents : 0], ['Confirmed bank / cash', r.confirmed_manual_cents], ['Reported, not yet confirmed', r.reported_unverified_cents], ['Checkout in progress', r.checkout_in_progress_cents], ['Still due', r.outstanding_cents]].map(([k, v]) => (
+            <View key={k} style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 }}><T size={13} weight={k === 'Still due' ? '800' : '500'}>{k}</T><T size={13} weight={k === 'Still due' ? '800' : '500'}>{fmt(v, r.currency)}</T></View>))}
+          <T size={12} color={c.mute}>Earnings ledger: sales {fmt(r.ledger.sale_cents, r.currency)} · refunds {fmt(r.ledger.refund_cents, r.currency)}{r.ledger.chargeback_cents ? ` · disputes lost ${fmt(r.ledger.chargeback_cents, r.currency)}` : ''}. Payouts to the recipient are a separate step under Earnings.</T>
+        </Card>))}
+    </Section>
   );
 }

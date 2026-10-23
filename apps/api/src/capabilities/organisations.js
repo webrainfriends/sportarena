@@ -571,7 +571,7 @@ cap({
           WHERE sp.organisation_id=$1 AND ($2::uuid IS NULL OR ss.department_id=$2) ORDER BY sp.name, ss.created_at, ss.id`],
       sponsor_obligations: [['brand', 'agreement_ref', 'department', 'kind', 'label', 'due_on', 'amount_cents', 'currency', 'quantity', 'status', 'confirmed_cents'],
         `SELECT sp.name AS brand, ss.agreement_ref, d.name AS department, o.kind, l.label, o.due_on, o.amount_cents, o.currency, o.quantity, o.status,
-                (SELECT coalesce(sum(p.amount_cents),0) FROM sponsorship_payments p WHERE p.obligation_id=o.id AND p.status='confirmed') AS confirmed_cents
+                (SELECT coalesce(sum(p.amount_cents - p.refunded_cents),0) FROM sponsorship_payments p WHERE p.obligation_id=o.id AND p.status='confirmed') AS confirmed_cents
            FROM sponsorship_obligations o JOIN sponsorships ss ON ss.id=o.sponsorship_id JOIN sponsors sp ON sp.id=ss.sponsor_id JOIN sponsorship_lines l ON l.id=o.line_id LEFT JOIN org_departments d ON d.id=ss.department_id
           WHERE sp.organisation_id=$1 AND ($2::uuid IS NULL OR ss.department_id=$2) ORDER BY sp.name, ss.created_at, o.due_on, o.id`],
       staff: [['handle', 'display_name', 'role', 'status', 'joined_at', 'left_at'], `SELECT u.handle, u.display_name, m.role, m.status, m.joined_at, m.left_at FROM organisation_members m JOIN users u ON u.id=m.user_id WHERE m.organisation_id=$1 ORDER BY u.handle, m.invited_at`],
