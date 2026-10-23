@@ -10,7 +10,7 @@ import { EntityPicker } from '../entity-picker';
 import { ErrorBox, Field, Loading, Sheet, T } from '../ui';
 import { Counter } from '../pickers';
 
-const COLOURS = ['#26415E', '#B576A2', '#06B6D4', '#10B981', '#F59E0B', '#EF4444', '#3B82F6', '#A3E635'];
+const COLOURS = ['#37415C', '#D1404F', '#06B6D4', '#10B981', '#F59E0B', '#EF4444', '#3B82F6', '#A3E635'];
 const ACCRED = { none: ['No badge', A.mute], requested: ['Badge requested', A.sun], issued: ['Badge issued', A.green], revoked: ['Badge revoked', A.red] };
 const KIND_ICON = { operations: '🧭', medical: '🩺', media: '🎥', hospitality: '🍽️', security: '🛡️', volunteers: '🙋', officials: '🟨', logistics: '📦', tech: '📡', ceremonies: '🎖️', custom: '✨' };
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];

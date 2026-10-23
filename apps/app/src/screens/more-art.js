@@ -4,14 +4,14 @@ import { dark } from '../theme';
 
 // Gradient identity per More tile: [from, to]. Saturated enough for white text in both themes.
 const LIGHT = {
-  // play: olive greens
-  Leaderboard: ['#4C7A3F', '#2F5D34'], Awards: ['#5E8A3A', '#355F2D'], MyPlans: ['#3F7D4F', '#255A3A'], Pathways: ['#6B8F3C', '#3E6B2E'],
-  // care: teals
-  Health: ['#1F8A7A', '#115E59'], Insure: ['#2A8C8C', '#14605F'], Insurance: ['#2F8F9A', '#175E68'], Legal: ['#3A7F8F', '#1D5563'], Family: ['#2D8F82', '#17645C'],
-  // money: forest greens
-  Wallet: ['#2F7A55', '#164A35'], Earnings: ['#2E8B57', '#14573A'], Shop: ['#3C8561', '#1C5440'], Billboard: ['#4A8A5E', '#235A3B'], Sponsors: ['#357A6B', '#184A40'], Supply: ['#3F7F58', '#1E4D36'],
-  // community: sage
-  Openings: ['#5E8F78', '#2E5E4D'], EventInbox: ['#5A9087', '#2B5E58'], Orgs: ['#628A74', '#325545'], Support: ['#8697BC', '#375F4D'], Schedule: ['#3E8B84', '#1D5A55'], Workspace: ['#3A8F6E', '#1B5A44'], Notifications: ['#4B8068', '#244F3F'],
+  // play: crimson to wine
+  Leaderboard: ['#C8283E', '#7A1530'], Awards: ['#D1404F', '#8E1A33'], MyPlans: ['#B4182D', '#54162B'], Pathways: ['#C23A4A', '#6B1730'],
+  // care: slate blues
+  Health: ['#4A5B86', '#242E49'], Insure: ['#3F5078', '#202943'], Insurance: ['#56668F', '#2C3654'], Legal: ['#37415C', '#181A2F'], Family: ['#4D5E8C', '#27304D'],
+  // money: peach to crimson
+  Wallet: ['#E4694F', '#B4182D'], Earnings: ['#EB7D5C', '#B83A2E'], Shop: ['#E0634F', '#A8203A'], Billboard: ['#F08A64', '#C0392F'], Sponsors: ['#DB5A4C', '#9C1B33'], Supply: ['#E87257', '#B02A33'],
+  // community: navy with a warm edge
+  Openings: ['#5B668F', '#2C3550'], EventInbox: ['#4E5A82', '#242E49'], Orgs: ['#586490', '#2A3350'], Support: ['#8A94B0', '#37415C'], Schedule: ['#475886', '#222B46'], Workspace: ['#C8283E', '#54162B'], Notifications: ['#E4694F', '#8E1A33'],
 };
 // Dark mode: deeper stops so a bright card never glares against the night background.
 const DARK = Object.fromEntries(Object.entries(LIGHT).map(([k, [a, b]]) => [k, [shade(a), shade(b)]]));
@@ -24,7 +24,7 @@ export const tileColors = (name) => (dark ? DARK : LIGHT)[name] ?? (dark ? DARK 
 
 const W = (o = 1) => ({ fill: '#fff', fillOpacity: o });
 const S = (o = 1, w = 3.5) => ({ stroke: '#fff', strokeOpacity: o, strokeWidth: w, strokeLinecap: 'round', strokeLinejoin: 'round', fill: 'none' });
-const GOLD = '#C48CB3'; // palette p4: the one accent in each illustration
+const GOLD = '#FDA481'; // palette p4: the one accent in each illustration
 
 // Layered white shapes plus one warm accent, drawn on a 96×96 grid.
 const ART = {

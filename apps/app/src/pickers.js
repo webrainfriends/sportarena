@@ -210,7 +210,7 @@ export function DayStrip({ from, count = 14, value, onChange, avail }) {
         return (
           <Pressable key={d} onPress={() => onChange(d)} accessibilityRole="button" accessibilityState={{ selected: on }} accessibilityLabel={dt.toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' })}
             style={{ width: 54, paddingVertical: 10, borderRadius: 28, alignItems: 'center', gap: 6, backgroundColor: on ? c.pink : c.paper, borderWidth: 1, borderColor: on ? c.pink : c.line, opacity: off && !on ? 0.5 : 1 }}>
-            <T size={11} weight="700" color={on ? '#E5C9D7' : c.mute}>{i === 0 ? 'TODAY' : dt.toLocaleDateString(locale, { weekday: 'short', timeZone: 'UTC' }).toUpperCase()}</T>
+            <T size={11} weight="700" color={on ? '#FFE4D8' : c.mute}>{i === 0 ? 'TODAY' : dt.toLocaleDateString(locale, { weekday: 'short', timeZone: 'UTC' }).toUpperCase()}</T>
             <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: on ? '#fff' : c.violetSoft, alignItems: 'center', justifyContent: 'center' }}>
               <T size={15} weight="800" color={on ? c.pink : c.ink}>{dt.getUTCDate()}</T>
             </View>
