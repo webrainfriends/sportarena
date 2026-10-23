@@ -251,6 +251,10 @@ function ReviewSheet({ app, may, onClose, onChanged }) {
           ) : null}
         </>
       )}
+    </Sheet>
+  );
+}
+
 /** Invite athletes, teams or events to a program with search-and-pick controls; people who cannot be invited are listed with the reason. */
 function InviteSheet({ visible, onClose, programId, onDone }) {
   const { toast } = useSession();

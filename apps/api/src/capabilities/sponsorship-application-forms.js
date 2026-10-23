@@ -20,7 +20,8 @@ import { toCsv } from '../csv.js';
 import { DOC_LIMITS, docHeaders, loadEncrypted, readBody, saveEncrypted, sniffDoc } from '../doc-store.js';
 import { sponsorAccess, notifySponsor } from '../sponsor-access.js';
 import { formDefinition, fieldsOf, validateApplication, splitConfidential, budgetShape, referencesShape } from '../application-forms.js';
-import { assertCanApply, checkVersion, iso, programFor, roundState, termsOf } from './sponsorship-programs.js';
+import { assertCanApply, checkVersion, iso, programFor, termsOf } from './sponsorship-programs.js';
+import { roundState } from '../sponsorship-calls.js';
 
 const TAG = 'Sponsors';
 const TARGETS = ['event', 'team', 'athlete'];
