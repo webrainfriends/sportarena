@@ -329,7 +329,7 @@ cap({
   input: z.object({ sport: z.string().max(60).optional(), q: z.string().max(80).optional(), ...page }),
   handler: async ({ user }, i) => many(
     `SELECT p.id, p.name, p.objective, p.currency, p.sports, p.regions, p.eligibility, p.starts_on, p.ends_on, p.max_award_cents, sp.id AS sponsor_id, sp.name AS sponsor_name, sp.emoji AS sponsor_emoji,
-            (SELECT json_agg(json_build_object('id', r.id, 'seq', r.seq, 'name', r.name, 'opens_on', r.opens_on, 'closes_on', r.closes_on, 'terms_version', r.terms_version) ORDER BY r.seq)
+            (SELECT json_agg(json_build_object('id', r.id, 'seq', r.seq, 'name', r.name, 'opens_on', r.opens_on, 'closes_on', r.closes_on, 'terms_version', r.terms_version, 'has_form', r.form_id IS NOT NULL) ORDER BY r.seq)
                FROM sponsorship_rounds r WHERE r.program_id=p.id AND ${roundState('r')}='open') AS rounds
        FROM sponsorship_programs p JOIN sponsors sp ON sp.id=p.sponsor_id
       WHERE p.status='published' AND EXISTS (SELECT 1 FROM sponsorship_rounds r WHERE r.program_id=p.id AND ${roundState('r')}='open')

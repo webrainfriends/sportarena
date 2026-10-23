@@ -119,12 +119,12 @@ export const Bubble = ({ emoji, color = c.sun, size = 46 }) => (
   </View>
 );
 
-export function Field({ label, value, onChangeText, secure, multiline, keyboardType, placeholder, hint, maxLength }) {
+export function Field({ label, value, onChangeText, secure, multiline, keyboardType, placeholder, hint, maxLength, accessibilityLabel }) {
   const [focus, setFocus] = useState(false);
   return (
     <View style={{ gap: 6 }}>
       {label ? <T weight="600" size={12} color={c.mute} style={{ letterSpacing: 0.4 }}>{label.toUpperCase()}</T> : null}
-      <TextInput value={value ?? ''} onChangeText={onChangeText} accessibilityLabel={label ?? placeholder} maxLength={maxLength} secureTextEntry={secure} multiline={multiline} keyboardType={keyboardType} placeholder={placeholder}
+      <TextInput value={value ?? ''} onChangeText={onChangeText} accessibilityLabel={accessibilityLabel ?? label ?? placeholder} maxLength={maxLength} secureTextEntry={secure} multiline={multiline} keyboardType={keyboardType} placeholder={placeholder}
         onFocus={() => setFocus(true)} onBlur={() => setFocus(false)}
         autoCapitalize="none" placeholderTextColor={c.mute} style={[fam, s.input, focus && { borderColor: c.ink }, multiline && { minHeight: 80, textAlignVertical: 'top' }, Platform.OS === 'web' && { outlineStyle: 'none' }]} />
       {hint ? <T size={12} color={c.mute}>{hint}</T> : null}

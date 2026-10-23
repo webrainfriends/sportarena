@@ -279,3 +279,27 @@ test('export is brand-scoped and audited, omits drafts and confidential data; te
   assert.equal((await api('POST', `/program-rounds/${r2.id}/draft`, { token: z.a.token, body: { ...z.target, answers: {} } })).status, 409, 'no form on this round');
   must(await api('POST', `/program-applications/${legacy.id}/withdraw`, { token: z.a.token }));
 });
+
+test('migration 089 is additive and repeatable: existing applications, rounds and agreements keep every value', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const sql = await readFile(new URL('../migrations/089_sponsorship_application_forms.sql', import.meta.url), 'utf8');
+  const w = await brand();
+  let p = must(await api('POST', '/sponsorship-programs', { token: w.owner.token, body: { sponsor_id: w.b.id, name: 'Legacy fund', currency: 'USD', budget_cents: 100000 } }), 201);
+  const r = must(await api('POST', `/sponsorship-programs/${p.id}/rounds`, { token: w.owner.token, body: { opens_on: day(-1), closes_on: day(10) } }), 201);
+  p = must(await api('POST', `/sponsorship-programs/${p.id}/status`, { token: w.owner.token, body: { status: 'published', version: p.row_version } }));
+  const x = await applicant();
+  const legacy = must(await api('POST', `/program-rounds/${r.id}/applications`, { token: x.a.token, body: { ...x.target, requested_cents: 7000, pitch: 'Before the migration' } }), 201);
+  const award = must(await api('PATCH', `/program-applications/${legacy.id}`, { token: w.owner.token, body: { decision: 'award', program_version: p.row_version } }));
+  const snap = async () => ({
+    a: (await pool.query('SELECT status, requested_cents, awarded_cents, pitch, terms_snapshot, sponsorship_id, created_at FROM sponsorship_applications WHERE id=$1', [legacy.id])).rows[0],
+    s: (await pool.query('SELECT status, amount_cents, currency, visibility, application_id FROM sponsorships WHERE id=$1', [award.sponsorship_id])).rows[0],
+    r: (await pool.query('SELECT name, opens_on, closes_on, terms_version FROM sponsorship_rounds WHERE id=$1', [r.id])).rows[0],
+  });
+  const before = await snap();
+  await pool.query(sql);
+  await pool.query(sql);
+  assert.deepEqual(await snap(), before);
+  const row = (await pool.query('SELECT form_id, form_version, answers, row_version, receipt_no FROM sponsorship_applications WHERE id=$1', [legacy.id])).rows[0];
+  assert.equal(row.form_id, null); assert.equal(row.form_version, null); assert.deepEqual(row.answers, {}); assert.equal(row.row_version, 1); assert.equal(row.receipt_no, null);
+  assert.equal(before.a.status, 'awarded'); assert.equal(before.s.visibility, 'private', 'athlete deals stay private by default');
+});
