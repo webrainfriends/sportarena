@@ -42,7 +42,7 @@ export function SponsorTermination({ deal: d }) {
   const x = tm.data, t = x?.termination;
   if (!x && tm.loading) return <Section title="Ending this agreement" color={c.pink}><Loading /></Section>;
   if (tm.error) return <Section title="Ending this agreement" color={c.pink}><LoadError error={tm.error} onRetry={tm.reload} /></Section>;
-  if (!t && d.status !== 'active') return null;
+  if (!t && !['active', 'paused'].includes(d.status)) return null;
   const can = x.can, me = x.role;
   const refresh = () => { tm.reload(); d.reload?.(); };
   const stale = (e) => { if (e.status === 409) { refresh(); return new Error(`${e.message} The latest version is shown now: review it and try again.`); } return e; };
@@ -61,7 +61,7 @@ export function SponsorTermination({ deal: d }) {
         <Card accessibilityLabel="No termination in progress">
           <T weight="800">No termination in progress</T>
           <View style={{ marginTop: 8 }}><EndingImpact impact={x.preview} /></View>
-          {can.give ? <Btn title="Give notice to end" color={c.pink} style={{ alignSelf: 'flex-start', marginTop: 12 }} onPress={() => { setErr(null); setForm('notice'); }} /> : (
+          {can.end_now ? <Btn title="End this paused agreement now" color={c.pink} loading={busy === 'endnow'} style={{ alignSelf: 'flex-start', marginTop: 12 }} onPress={() => run('endnow', () => api.patch(`/sponsorships/${d.id}`, { status: 'ended' }), 'Agreement ended — what is already due or paid is kept')} /> : can.give ? <Btn title="Give notice to end" color={c.pink} style={{ alignSelf: 'flex-start', marginTop: 12 }} onPress={() => { setErr(null); setForm('notice'); }} /> : (
             <T size={12} color={c.mute} style={{ marginTop: 8 }} accessibilityRole="text">{me === 'admin' ? 'Platform admins can read terminations but never end an agreement for either side.' : me === 'sponsor' ? 'Your role cannot end agreements; a manager or approver can.' : 'Only an owner or admin of the organisation can give notice.'}</T>)}
         </Card>
       ) : (

@@ -31,6 +31,7 @@ export const STEPS = [
   ['sponsor_calls', 'sponsor_call_notices', sendCallNotices, 0],
   ['sponsor_awards', 'sponsor_awards_expired', expireAwards, 0],
   ['sponsor_pauses', 'sponsor_pauses_started', activateDuePauses, 0],
+  ['sponsor_terminations', 'sponsor_terminations_ended', endDueTerminations, 0],
   ['sponsor_terms', 'sponsor_terms_processed', processSponsorshipTerms, 0],
 ];
 
