@@ -177,6 +177,7 @@ function EventCard({ e, width, onJoin }) {
 
 function SponsorInbox() {
   const { toast } = useSession();
+  const { push } = useNav();
   const deals = useLoad(() => api.get('/sponsorships', { status: 'proposed' }), []);
   const { user } = useSession();
   const mine = (deals.data ?? []).filter((d) => d.target_type === 'athlete' && d.target_id === user.id);
@@ -189,11 +190,11 @@ function SponsorInbox() {
         {mine.map((d) => (
           <Card key={d.id} pad={14} color={c.sunSoft}>
             <T weight="800" size={15}>{d.sponsor_emoji} {d.sponsor_name} wants to sponsor you</T>
-            <T size={13} color={c.mute} style={{ marginTop: 2 }}>{[d.amount_cents ? money(d.amount_cents) : null, d.in_kind].filter(Boolean).join(' + ') || 'Support offered'}{d.starts_on ? ` · ${day(d.starts_on)} to ${d.ends_on ? day(d.ends_on) : 'open'}` : ''}</T>
+            <T size={13} color={c.mute} style={{ marginTop: 2 }}>{[d.amount_cents ? (d.currency ? `${d.currency} ${(d.amount_cents / 100).toLocaleString()}` : money(d.amount_cents)) : null, d.in_kind].filter(Boolean).join(' + ') || 'Support offered'}{d.starts_on ? ` · ${day(d.starts_on)} to ${d.ends_on ? day(d.ends_on) : 'open'}` : ''}</T>
             {d.deliverables ? <T size={12} style={{ marginTop: 4 }}><T size={12} weight="800">They expect: </T>{d.deliverables}</T> : null}
             {d.message ? <T size={12} color={c.mute}>“{d.message}”</T> : null}
             <T size={11} color={c.mute} style={{ marginTop: 4 }}>Accepted deals stay private unless you choose to show them (Ecosystem → Sponsors).</T>
-            <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}><Btn small title="Accept" onPress={() => decide(d, 'active')} /><Btn small title="Decline" color={c.paper} onPress={() => decide(d, 'declined')} /></View>
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>{d.agreement_ref ? <Btn small title="Review terms & negotiate" color={c.violet} onPress={() => push('SponsorDeal', { id: d.id })} /> : null}{d.agreement_ref ? null : <Btn small title="Accept" onPress={() => decide(d, 'active')} />}<Btn small title="Decline" color={c.paper} onPress={() => decide(d, 'declined')} /></View>
           </Card>
         ))}
       </View>

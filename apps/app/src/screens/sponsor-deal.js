@@ -6,6 +6,7 @@ import { useSession } from '../session';
 import { Btn, Card, Empty, ErrorBox, H1, Loading, Screen, Section, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { SponsorPerformance } from './sponsor-performance';
+import { SponsorNegotiation } from './sponsor-negotiation';
 import { c } from '../theme';
 import { explain, LoadError } from '../access';
 
@@ -38,6 +39,7 @@ export function SponsorDeal({ id }) {
       {d.program ? <T size={12} color={c.mute} accessibilityRole="text">Awarded from the program “{d.program.name}”, {d.program.round_name}.</T> : null}
       <T size={12} color={c.mute}>{d.agreement_ref ?? 'Legacy agreement'} · {d.status} · terms v{d.accepted_version ?? d.terms_version}{d.starts_on ? ` · ${when(String(d.starts_on).slice(0, 10))} – ${d.ends_on ? when(String(d.ends_on).slice(0, 10)) : 'open'}` : ''}</T>
       {!d.lines.length ? <Card><T>This agreement predates structured terms: {d.legacy_amount_cents ? `${d.legacy_amount_cents} (currency not recorded)` : 'no cash'}{d.legacy_in_kind ? ` · ${d.legacy_in_kind}` : ''}. No payment schedule exists for it.</T></Card> : null}
+      <SponsorNegotiation deal={{ ...d, reload: deal.reload }} can={can} act={act} />
       <Section title="Terms" color={c.sun}>
         {d.lines.map((l) => (
           <Card key={l.id}><T weight="900">{l.label}</T>
@@ -49,7 +51,7 @@ export function SponsorDeal({ id }) {
       {d.schedule ? (
         <Section title="Schedule to review" color={c.cyan}>
           {d.schedule.occurrences.map((x) => <T key={`${x.line}-${x.seq}`} size={13}>{when(x.due_on)} · {x.label} · {what(x)}</T>)}
-          {recipient && d.status === 'proposed' ? <Btn title={`Accept these exact terms (v${d.terms_version})`} color={c.mint} ink={c.ink} onPress={() => act(() => api.patch(`/sponsorships/${d.id}`, { status: 'active', version: d.terms_version }), 'Agreement accepted')} /> : null}
+          {d.negotiation?.my_turn && (recipient || can('sign_off')) ? <Btn title={`${recipient ? 'Accept' : 'Sign off'} these exact terms (v${d.terms_version})`} color={c.mint} ink={c.ink} onPress={() => act(() => api.patch(`/sponsorships/${d.id}`, { status: 'active', version: d.terms_version }), 'Agreement accepted')} /> : null}
         </Section>) : null}
       {d.obligations ? (
         <Section title="Commitments" color={c.mint}>

@@ -8,6 +8,11 @@ import { sponsorContactUser } from './sponsor-identity-access.js';
 export const logHistory = (c, sponsorshipId, version, actor, action, reason) =>
   c.query('INSERT INTO sponsorship_history(sponsorship_id, version, actor_id, action, reason) VALUES ($1,$2,$3,$4,$5)', [sponsorshipId, version, actor, action, reason ?? null]);
 
+/** Record who wrote a numbered terms version (and the period it covers), so the negotiation can be compared and audited. */
+export const recordVersion = (c, sponsorshipId, version, side, authorId, { reason, restores, starts, ends, tz } = {}) =>
+  c.query('INSERT INTO sponsorship_versions(sponsorship_id, version, authored_side, authored_by, reason, restores, starts_on, ends_on, timezone) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)',
+    [sponsorshipId, version, side, authorId ?? null, reason ?? null, restores ?? null, starts ?? null, ends ?? null, tz ?? null]);
+
 export async function saveLines(c, sponsorshipId, version, lines) {
   let pos = 0;
   for (const l of lines) {
