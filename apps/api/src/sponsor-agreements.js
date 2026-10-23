@@ -3,6 +3,7 @@ import { buildSchedule } from './sponsor-schedule.js';
 import { forbidden, notFound } from './errors.js';
 import { isAdmin } from './helpers.js';
 import { sponsorAccess, assertSponsorCan } from './sponsor-access.js';
+import { sponsorContactUser } from './sponsor-identity-access.js';
 
 export const logHistory = (c, sponsorshipId, version, actor, action, reason) =>
   c.query('INSERT INTO sponsorship_history(sponsorship_id, version, actor_id, action, reason) VALUES ($1,$2,$3,$4,$5)', [sponsorshipId, version, actor, action, reason ?? null]);
@@ -63,7 +64,7 @@ export async function cancelFutureObligations(c, sponsorshipId) {
 
 /**
  * Deal + the people on each side. `role` is 'sponsor' (the brand owner or its organisation staff), 'recipient' (authorised target owner)
- * or 'admin'. For the sponsor side, `staff` is the live sponsor role and `need(action)` enforces what that role may do.
+ * or 'admin'. Sponsor side = the brand owner, its organisation staff or its entity representatives (see sponsor-access.js). For the sponsor side, `staff` is the live sponsor role and `need(action)` enforces what that role may do.
  */
 export async function dealContext(c, sponsorshipId, user, { lock = false } = {}) {
   const d = (await c.query(`SELECT *, starts_on::text AS starts, ends_on::text AS ends FROM sponsorships WHERE id=$1${lock ? ' FOR UPDATE' : ''}`, [sponsorshipId])).rows[0];
@@ -76,7 +77,8 @@ export async function dealContext(c, sponsorshipId, user, { lock = false } = {})
   // sponsor wins if one person is on both sides; an admin may read everything
   const role = access ? 'sponsor' : user.id === recipientId ? 'recipient' : isAdmin(user) ? 'admin' : null;
   if (!role) throw forbidden('You are not part of this sponsorship');
-  return { d, sp, recipientId, role, staff: access?.role, need: (action, what) => assertSponsorCan(access, action, { departmentId: d.department_id, what }) };
+  // sp.owner_id is who gets notified: an active owner of the sponsor entity, never someone who has left
+  return { d, sp: { ...sp, owner_id: await sponsorContactUser(c, sp) }, recipientId, role, staff: access?.role, need: (action, what) => assertSponsorCan(access, action, { departmentId: d.department_id, what }) };
 }
 
 /** Obligation + its deal, locking the obligation row so concurrent payments/deliveries serialise. */

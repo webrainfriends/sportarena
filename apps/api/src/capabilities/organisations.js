@@ -238,6 +238,7 @@ cap({
     const row = (await c.query(`SELECT ${a.owner} AS owner_id, organisation_id FROM ${a.table} WHERE id=$1 FOR UPDATE`, [i.asset_id])).rows[0];
     if (!row) throw notFound(i.kind);
     if (!isAdmin(user) && row.owner_id !== user.id) throw forbidden(`Only the ${i.kind} owner can bring it into a workspace`);
+    if (i.kind === 'sponsor' && (await c.query('SELECT 1 FROM sponsors WHERE id=$1 AND entity_id IS NOT NULL', [i.asset_id])).rowCount) throw conflict('This brand belongs to a sponsor entity, whose representatives act for it; it cannot also be run by an organisation\'s staff');
     if (row.organisation_id && row.organisation_id !== i.id) throw conflict(`This ${i.kind} already belongs to another organisation`);
     await c.query(`UPDATE ${a.table} SET organisation_id=$2 WHERE id=$1`, [i.asset_id, i.id]);
     await audit(c, user.id, 'link_org_asset', a.table, i.asset_id);

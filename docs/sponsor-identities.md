@@ -62,3 +62,7 @@ opportunities/applications (#67), passport/evidence (#64), shared settlement (#7
 documents (#249). Known limits: a brand's verification badge belongs to the brand (not inherited by sibling brands);
 invitations are in-app notifications only (email depends on #243); changing the legal name after verification does not
 automatically re-open the verification case.
+
+## Coexistence with organisation staff roles (#283)
+
+A brand with a sponsor entity is authorised only through its representatives. A brand without an entity is authorised by its owner and, when linked to an organisation, by that organisation's staff roles (see [organisations.md](organisations.md#corporate-sponsor-workspace)). `sponsorAccess` in `apps/api/src/sponsor-access.js` is the single resolver; entity wins when a brand has both. `list_sponsors?mine=true` returns the raw entity role (`owner`, `admin`, `finance`, `portfolio_manager`, `viewer`) for entity brands, `owner` for an owner's brand without an entity, and the organisation role (`manager`, `evaluator`, …) for staff.

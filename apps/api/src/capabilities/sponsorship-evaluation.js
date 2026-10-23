@@ -527,7 +527,7 @@ cap({
     const ctx = await appContext(user, i.id, pool, { lock: false });
     if (!ctx.seeAll) throw forbidden('Only a moderator, manager, approver or auditor can read the decision history');
     const events = await many(
-      `SELECT e.id, e.kind, e.data, e.created_at, u.display_name AS actor FROM sponsorship_application_events e LEFT JOIN users u ON u.id=e.actor_id WHERE e.application_id=$1 ORDER BY e.created_at, e.id LIMIT $2 OFFSET $3`, [i.id, i.limit, i.offset]);
+      `SELECT e.id, e.kind, e.data, e.created_at, u.display_name AS actor FROM sponsorship_evaluation_events e LEFT JOIN users u ON u.id=e.actor_id WHERE e.application_id=$1 ORDER BY e.created_at, e.id LIMIT $2 OFFSET $3`, [i.id, i.limit, i.offset]);
     const decision = (await pool.query('SELECT decision, rubric_id, rubric_snapshot, score_snapshot, source_refs, created_at FROM sponsorship_decision_records WHERE application_id=$1', [i.id])).rows[0] ?? null;
     return { alias: aliasOf(i.id), events, decision };
   },

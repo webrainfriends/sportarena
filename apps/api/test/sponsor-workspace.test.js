@@ -261,3 +261,19 @@ test('the notified staff are those whose role matters; payments are a payment-sc
   const { capabilities } = await import('../src/registry.js');
   assert.equal(classify(capabilities.find((c) => c.name === 'report_sponsorship_payment')), 'payment');
 });
+
+test('precedence (#282 x #283): a brand with a sponsor entity is run only by its representatives; organisation staff are ignored', async () => {
+  const w = await corporate();
+  must(await api('GET', `/sponsorships/${w.deal.id}`, { token: w.staff.finance.token }));
+  // confirming the brand's identity makes it an entity brand: from then on only entity representatives act for it
+  must(await api('POST', `/sponsors/${w.b.id}/identity`, { token: w.owner.token, body: { sponsor_type: 'company', legal_name: 'Acme Ltd' } }));
+  assert.equal((await api('GET', `/sponsorships/${w.deal.id}`, { token: w.staff.finance.token })).status, 403, 'organisation staff no longer act for an entity brand');
+  assert.equal((await api('GET', '/sponsors', { token: w.staff.finance.token, query: { mine: 'true' } })).body.length, 0);
+  must(await api('GET', `/sponsorships/${w.deal.id}`, { token: w.owner.token })); // the entity's owner (the creator)
+  // an entity brand cannot be linked to an organisation
+  const solo = await signup(['sponsor']);
+  const org = must(await api('POST', '/organisations', { token: solo.token, body: { name: 'Solo Co', kind: 'company' } }), 201);
+  const b = must(await api('POST', '/sponsors', { token: solo.token, body: { name: 'EntityBrand' } }), 201);
+  must(await api('POST', `/sponsors/${b.id}/identity`, { token: solo.token, body: { sponsor_type: 'company', legal_name: 'Solo Ltd' } }));
+  assert.equal((await api('POST', `/organisations/${org.id}/assets`, { token: solo.token, body: { kind: 'sponsor', asset_id: b.id } })).status, 409);
+});

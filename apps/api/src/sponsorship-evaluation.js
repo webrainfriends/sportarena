@@ -95,7 +95,7 @@ export async function redactBlind(rows, c = pool) {
 }
 
 export async function logEvent(c, applicationId, kind, actorId, data = {}) {
-  await c.query('INSERT INTO sponsorship_application_events(application_id, kind, actor_id, data) VALUES ($1,$2,$3,$4)', [applicationId, kind, actorId, data]);
+  await c.query('INSERT INTO sponsorship_evaluation_events(application_id, kind, actor_id, data) VALUES ($1,$2,$3,$4)', [applicationId, kind, actorId, data]);
   await c.query('UPDATE sponsorship_applications SET eval_version = eval_version + 1 WHERE id=$1', [applicationId]);
 }
 
