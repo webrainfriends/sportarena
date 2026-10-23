@@ -14,7 +14,8 @@ import { validTimezone } from '../booking/time.js';
 import { CLOSES_AT, OPENS_AT, roundState } from '../sponsorship-calls.js';
 import { NOT_YOUTH_SQL } from '../youth.js';
 import { toCsv } from '../csv.js';
-import { logHistory } from '../sponsor-agreements.js';
+import { logHistory, saveLines } from '../sponsor-agreements.js';
+import { buildSchedule } from '../sponsor-schedule.js';
 import { sponsorAccess, assertSponsorCan, notifySponsor, sponsorBrandSql } from '../sponsor-access.js';
 
 const date = z.string().date();
@@ -542,6 +543,13 @@ cap({
         `INSERT INTO sponsorships(sponsor_id, target_type, target_id, amount_cents, currency, starts_on, ends_on, proposed_by, objectives, visibility, program_id, round_id, application_id)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
         [sp.id, a.target_type, a.target_id, amount, p.currency, p.starts_on, p.ends_on, user.id, p.objective, a.target_type === 'athlete' ? 'private' : 'public', p.id, r.id, a.id])).rows[0];
+      // the award is a one-off money line, so the recipient accepts an exact version and the existing obligation / payment flow applies
+      const today = iso(new Date()), start = p.starts_on ? iso(p.starts_on) : null, end = p.ends_on ? iso(p.ends_on) : null;
+      let due = start && start > today ? start : today;
+      if (end && due > end) due = end;
+      const line = { kind: 'money', label: `Award: ${p.name}`.slice(0, 160), currency: p.currency, total_cents: amount, cadence: 'once', first_due_on: due, terms: {} };
+      buildSchedule([line], { starts_on: start, ends_on: end }); // fails loudly rather than store an unschedulable award
+      await saveLines(c, dealUp.id, 1, [line]);
       await c.query("UPDATE sponsorships SET agreement_ref='SPA-'||upper(substr(id::text,1,8)) WHERE id=$1", [dealUp.id]);
       await logHistory(c, dealUp.id, 1, user.id, 'proposed', `Awarded from program ${p.name}`);
       const row = (await c.query("UPDATE sponsorship_applications SET status='awarded', awarded_cents=$2, decided_at=now(), decided_by=$3, decision_reason=$4, sponsorship_id=$5 WHERE id=$1 RETURNING *", [a.id, amount, user.id, i.reason ?? null, dealUp.id])).rows[0];

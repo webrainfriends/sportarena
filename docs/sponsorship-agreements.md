@@ -73,6 +73,9 @@ stay open: debt and delivered value are never erased. Nothing is deleted.
 * Youth athletes cannot be enabled (guardian authority is not wired here); team and event deals have no performance view.
 * Migration `075_sponsorship_performance.sql` is additive (new columns default to no access); rollback = deploy the previous code.
 
+## Programs
+Funding programs, rounds and applications that end in an agreement are described in [sponsorship-programs.md](sponsorship-programs.md).
+
 ## Rollback
 Tables are new and additive: `DROP` is not part of any deploy. To switch the feature off, stop sending `lines`; legacy
 behaviour is unchanged. No existing data is rewritten.
