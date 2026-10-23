@@ -504,10 +504,8 @@ cap({
       if (!['draft', 'submitted', 'returned'].includes(a.status)) throw conflict(`This application is already ${a.status}`);
       const row = (await c.query("UPDATE sponsorship_applications SET status='withdrawn', decided_at=now(), decided_by=$2, row_version=row_version+1, updated_at=now() WHERE id=$1 RETURNING *", [a.id, user.id])).rows[0];
       if (a.status !== 'draft') await c.query("INSERT INTO sponsorship_application_events(application_id, kind, actor_id, form_version) VALUES ($1,'withdrawn',$2,$3)", [a.id, user.id, a.form_version]);
-      return row;
-      if (a.status !== 'submitted') throw conflict(`This application is already ${a.status}`);
       if (a.invitation_id) await c.query("UPDATE sponsorship_invitations SET status='viewed', responded_at=NULL WHERE id=$1 AND status='applied'", [a.invitation_id]); // the invitee may apply again while the round is open
-      return (await c.query("UPDATE sponsorship_applications SET status='withdrawn', decided_at=now(), decided_by=$2 WHERE id=$1 RETURNING *", [a.id, user.id])).rows[0];
+      return row;
     });
   },
 });
