@@ -110,7 +110,7 @@ test('funding needs separate requested from awarded and offered; currencies stay
   assert.deepEqual([d.applications[0].requested_cents, d.applications[0].awarded_cents], [30000, 20000]);
   assert.ok(d.documents.some((x) => x.kind === 'award_letter'), 'the award letter is listed');
   assert.ok(d.history.some((h) => h.kind === 'award_accepted') && d.history.some((h) => h.kind === 'application_submitted'));
-  assert.ok(d.next_actions.some((x) => x.code === 'review_funding_gap'));
+  assert.ok(d.next_actions.some((x) => x.code === 'review_funding_gap' && x.label.includes('$100.00')), 'amounts in labels are formatted, not raw minor units');
 });
 
 test("one sponsor never sees another sponsor's terms, and the recipient sees only their own agreements", async () => {

@@ -27,7 +27,7 @@ agreement screens keep their own version checks (409 on a stale version).
 
 ## UI
 `SponsorPortfolio` (list) and `PortfolioEntry` (detail) in `apps/app/src/screens/sponsor-portfolio.js`, opened from the Sponsors screen. States: loading,
-empty, filtered-empty, denied/revoked (403/404), recoverable error with retry, stale banner. Verified in a browser at phone width; tablet/desktop and native builds were not exercised.
+empty, filtered-empty, denied/revoked (403/404), recoverable error with retry, stale banner. Verified in a browser (Chromium) at phone, tablet and desktop widths for both the sponsor and recipient views; native iOS/Android builds were not exercised.
 
 ## Migration and rollback
 `094_beneficiary_portfolio.sql` only adds indexes (`IF NOT EXISTS`). No data is created, changed or removed. Rollback = deploy the previous code; the indexes can stay.

@@ -208,7 +208,7 @@ export function PortfolioEntry({ target_type, target_id, view }) {
 
       <Section title="Support history" color={c.lime}>
         {d.history.length ? d.history.slice(0, 20).map((h, i) => (
-          <T key={i} size={13} accessibilityRole="text">{when(h.at)} · {HISTORY[h.kind] ?? h.label}{h.detail ? ` · ${h.detail.replace(/(\d+)$/, (n) => (Number(n) / 100).toFixed(2))}` : ''}</T>)) : <Empty emoji="🕘" title="No history yet" />}
+          <T key={i} size={13} accessibilityRole="text">{when(h.at)} · {HISTORY[h.kind] ?? h.label}{h.detail ? ` · ${h.detail}` : ''}</T>)) : <Empty emoji="🕘" title="No history yet" />}
       </Section>
 
       <Section title="Documents" color={c.cyan}>
