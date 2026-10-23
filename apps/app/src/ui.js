@@ -224,7 +224,7 @@ export const ErrorBox = ({ error, onRetry }) => (
 );
 
 /** Phone: bottom sheet that rises from the edge. Tablet: centred form sheet, like an iPad modal. */
-export function Sheet({ visible, onClose, title, children }) {
+export function Sheet({ visible, onClose, title, children, footer }) {
   const L = useLayout();
   const ins = useSafeAreaInsets();
   const sheet = L.tablet
@@ -236,13 +236,14 @@ export function Sheet({ visible, onClose, title, children }) {
         <Pressable style={L.tablet ? StyleSheet.absoluteFill : { flex: 1 }} onPress={onClose} />
         <View style={[s.sheet, sheet]}>
           {L.phone ? <View style={{ alignSelf: 'center', width: 40, height: 5, borderRadius: 3, backgroundColor: c.line, marginTop: 8 }} /> : null}
-          <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 20 + (L.phone ? ins.bottom : 0), gap: 14 }} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
+          <ScrollView style={footer ? { flexShrink: 1 } : undefined} contentContainerStyle={{ padding: 20, paddingBottom: 20 + (L.phone && !footer ? ins.bottom : 0), gap: 14 }} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <H2>{title}</H2>
               <Pressable onPress={onClose} hitSlop={14} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: c.violetSoft, alignItems: 'center', justifyContent: 'center' }}><T size={15} color={c.mute} weight="700">✕</T></Pressable>
             </View>
             {children}
           </ScrollView>
+          {footer ? <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center', paddingHorizontal: 20, paddingTop: 12, paddingBottom: 14 + (L.phone ? ins.bottom : 0), borderTopWidth: 1, borderColor: c.line }}>{footer}</View> : null}
         </View>
       </View>
     </Modal>

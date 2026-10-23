@@ -7,9 +7,8 @@ import { SportPicker, SportsMulti } from './sportpicker';
 import { RegionPicker } from './region-picker';
 import { EntityPicker } from './entity-picker';
 import { CountryPicker } from './country-picker';
-import { api } from './api';
-import { useLoad } from './hooks';
 import { useSession } from './session';
+import { CurrencyDropdown } from './currency-dropdown';
 
 const digits = (cur) => { try { return new Intl.NumberFormat('en', { style: 'currency', currency: cur }).resolvedOptions().maximumFractionDigits; } catch { return 2; } };
 const DAYS = [[1, 'Mon'], [2, 'Tue'], [3, 'Wed'], [4, 'Thu'], [5, 'Fri'], [6, 'Sat'], [0, 'Sun']];
@@ -28,6 +27,7 @@ const opt = (o) => (typeof o === 'object' ? o : { value: o, label: String(o) });
  * fields: [{ key, label, type, hint, optional, show?(values) }] where type is one of
  *   text (default) | multiline | secret | number | date | time
  *   stepper {min,max,step,suffix,default}   whole numbers and percentages with − / +
+ *   currency {default}                      a searchable dropdown; starts on `default`, else the currency of the person's region
  *   money {currency}                        typed in whole currency units, submitted in minor units
  *   switch                                  yes / no
  *   choice {options}                        a few exclusive options (segmented), more than 4 become chips
@@ -53,16 +53,6 @@ function ZonePicker({ label, value, onChange }) {
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{list.map((z) => <Chip key={z} label={z.replace(/_/g, ' ')} active={z === value} onPress={() => onChange(z)} />)}</View>
       <Field value={q} onChangeText={setQ} placeholder="Search a city or region…" />
       {value && !list.includes(value) ? <T size={12} color={c.mute}>Selected: {value}</T> : null}
-    </View>
-  );
-}
-
-function CurrencyPicker({ label, value, onChange }) {
-  const cur = useLoad(() => api.get('/currencies'), []);
-  return (
-    <View style={{ gap: 6 }}>
-      <T weight="800" size={13}>{label}</T>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{(cur.data ?? [{ code: value ?? 'INR', symbol: '' }]).map((x) => <Chip key={x.code} label={`${x.code} ${x.symbol ?? ''}`.trim()} active={x.code === value} onPress={() => onChange(x.code)} />)}</View>
     </View>
   );
 }
@@ -98,8 +88,10 @@ export function FormSheet({ visible, onClose, title, fields, initial = {}, submi
       else if (f.type === 'switch') o[f.key] = x ?? f.default ?? false;
       else if (f.type === 'multi' || f.type === 'weekdays' || f.type === 'sports' || f.type === 'regions') o[f.key] = x ?? f.default ?? [];
       else if (f.type === 'choice' || f.type === 'chips') o[f.key] = x ?? f.default ?? (f.optional || typeof f.options === 'function' ? undefined : opt(f.options[0]).value);
+      else if (f.type === 'currency') o[f.key] = x ?? f.default;
       else if (x !== undefined) o[f.key] = x;
       if (f.type === 'location' && initial[f.lngKey] !== undefined) o[f.lngKey] = initial[f.lngKey];
+      if (f.type === 'daterange' && initial[f.toKey] !== undefined) o[f.toKey] = initial[f.toKey]; // the end of a range is its own value, not a field
     }
     return o;
   };
@@ -153,7 +145,7 @@ export function FormSheet({ visible, onClose, title, fields, initial = {}, submi
       case 'date': return <DateField label={f.label} value={v[f.key]} onChange={(x) => set(f.key, x)} optional={f.optional} min={f.min} max={f.max} hint={f.hint} />;
       case 'time': return <TimeField label={f.label} value={v[f.key]} onChange={(x) => set(f.key, x)} optional={f.optional} step={f.step} hint={f.hint} />;
       case 'timezone': return <ZonePicker label={f.label} value={v[f.key]} onChange={(x) => set(f.key, x)} />;
-      case 'currency': return <CurrencyPicker label={f.label} value={v[f.key]} onChange={(x) => set(f.key, x)} />;
+      case 'currency': return <CurrencyDropdown label={f.label} value={v[f.key]} onChange={(x) => set(f.key, x)} hint={f.hint} suggest={!f.optional} />;
       case 'location': return <LocationPicker f={f} v={v} set={set} />;
       case 'daterange': return <DateRangeField label={f.label} from={v[f.key]} to={v[f.toKey]} onChange={({ from, to }) => { set(f.key, from); set(f.toKey, to); }} optional={f.optional} min={f.min} hint={f.hint} />;
       case 'country': return <CountryPicker label={f.label} value={v[f.key]} onChange={(x) => set(f.key, x)} optional={f.optional} hint={f.hint} />;

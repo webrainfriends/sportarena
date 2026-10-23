@@ -32,10 +32,25 @@ New tables `sponsorship_budgets`, `sponsorship_budget_fx_rates`, `sponsorship_bu
 exactly as before. Nothing is dropped or rewritten; budgets are archived, never deleted.
 Rollback: deploy the previous code; the new columns/tables are unused. Dependency order: programs (#284) → awards (#289) → this.
 
+## Planning: guidance, rationale, references and files (migration `096_budget_planning.sql`, additive)
+Authorizing a budget is a five-step flow (scope → amount → controls → support → review) instead of one long form.
+* **Guidance** (`get_budget_guidance`, `GET /budget-guidance`): the brand's earlier comparable budgets (archived ones included) with what was authorized
+  against what was really used (committed + reserved, children included), the unspent or overspent difference, the average utilisation, a suggested
+  figure (the latest comparable's actual use, same currency only) and a warning when an active budget for the same scope exists. Nothing is converted
+  or added across currencies. A budget built on a suggestion keeps `basis_budget_id`.
+* **Currency** is a searchable dropdown (shared by every form) that starts on the currency of the person's locale region and can be changed; a child
+  budget is locked to its parent's currency.
+* **Rationale** (`notes`) and **references** (`add_budget_reference` / `remove_budget_reference`: approval memo, board minutes, forecast, purchase order,
+  contract, policy; an https link and/or a reference number). `create_sponsorship_budget` accepts up to 10 references at creation.
+* **Files** use the shared documents folder (`PUT /documents`, `subject_type=budget`): encrypted, PDF or photo up to 10 MB, managers and finance add
+  and hide, approvers and auditors read, every download is audit-logged. Removing a reference or file only hides it.
+New objects: `sponsorship_budgets.notes` / `basis_budget_id`, table `sponsorship_budget_references`, and the `subject_documents` subject/kind CHECKs widened
+(`budget`; `approval`, `forecast`, `invoice`, `report`). No existing row is touched.
+
 ## Capabilities (REST + OpenAPI + MCP)
 `create_sponsorship_budget`, `update_sponsorship_budget` (needs `version`; 409 if stale), `list_sponsorship_budgets` (deterministic order, roll-up per
 currency tree), `get_sponsorship_budget`, `list_budget_commitments` (paged), `set_budget_fx_rate`, `link_program_budget`, `decide_budget_approval`,
-`export_sponsorship_budget` (CSV, audit-logged); `propose_sponsorship` takes `budget_id`.
+`export_sponsorship_budget` (CSV, audit-logged), `get_budget_guidance`, `add_budget_reference`, `remove_budget_reference`; `propose_sponsorship` takes `budget_id`.
 Permissions (new sponsor actions): `budget_read` (manager, finance, approver, auditor), `budget` (manager, finance), `budget_approve`
 (manager, approver, finance), export (manager, finance, auditor). Another brand gets 404; department-scoped staff reach only their department's
 budget. The recipient never sees budget fields.
@@ -46,6 +61,6 @@ approve/reject, edit, archive, export); program page → **Budget** section; ath
 stale-version and recoverable-error states are covered.
 
 ## Tests
-`apps/api/test/sponsorship-budgets.test.js` (PostgreSQL): nesting and stale edits, concurrent awards, proposals-are-planned, payments and
+`apps/api/test/budget-planning.test.js` (guidance, references, budget documents) and `apps/api/test/sponsorship-budgets.test.js` (PostgreSQL): nesting and stale edits, concurrent awards, proposals-are-planned, payments and
 reversals, ending an agreement, FX policy and rate pinning, approval threshold and recipient hiding, isolation/roles/export audit, event and
 department rules, additive repeatable migration.

@@ -15,6 +15,8 @@ export const SPONSOR_ACTIONS = {
   withdraw: ['manager', 'approver'],
   end: ['manager', 'approver'],
   revise: ['manager', 'legal', 'approver'], // terms the brand commits to
+  contract: ['manager', 'legal', 'approver'], // issue, void and send a sponsorship contract for signature (#295)
+  sign_contract: ['manager', 'approver'], // put the brand's signature to a contract: only people who can bind the brand (#295)
   sign_off: ['manager', 'approver'], // accept the recipient's counteroffer: the brand is bound by it (#290)
   pay: ['manager', 'finance'], // report a payment, dispatch goods
   evaluate: ['manager', 'evaluator'], // objectives, reviews, endorsement checks
