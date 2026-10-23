@@ -16,6 +16,38 @@ import { sponsorAccess, assertSponsorCan, notifySponsor, sponsorStaffSql } from 
 
 const CONTACT = ['contact_name', 'contact_email', 'contact_phone'];
 const date = z.string().date();
+const LOOKING_FOR = z.enum(['cash', 'equipment', 'travel', 'coaching', 'apparel', 'nutrition', 'media']);
+const url = z.string().url().max(200);
+/** The brand's public profile. Every field is optional; null clears one on update. */
+const PROFILE = {
+  tagline: z.string().max(120), about: z.string().max(2000), brand_color: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+  founded_year: z.number().int().min(1800).max(new Date().getFullYear()), country: z.string().length(2),
+  sports: z.array(z.string().min(1).max(60)).max(30), regions: z.array(z.string().min(1).max(80)).max(30),
+  offers: z.array(LOOKING_FOR).max(7), backs: z.array(z.enum(['athlete', 'team', 'event'])).max(3),
+  budget_currency: z.string().length(3), budget_min_cents: money, budget_max_cents: money,
+  links: z.object({ instagram: url, linkedin: url, x: url, youtube: url }).partial().strict(),
+};
+const PROFILE_IN = Object.fromEntries(Object.entries(PROFILE).map(([k, v]) => [k, ['sports', 'regions', 'offers', 'backs', 'links'].includes(k) ? v.optional() : v.nullable().optional()]));
+const ARRAYS = ['sports', 'regions', 'offers', 'backs'];
+
+/** What a manager can still fill in to make the brand easier for athletes and organisers to trust and find. */
+function completeness(s) {
+  const checks = [
+    ['about', 'Tell people about the brand', !!s.about], ['tagline', 'Add a one-line tagline', !!s.tagline], ['industry', 'Pick an industry', !!s.industry],
+    ['website', 'Add the website', !!s.website], ['offers', 'Say what you can offer', s.offers?.length > 0], ['backs', 'Say who you back', s.backs?.length > 0],
+    ['sports', 'Choose the sports you support', s.sports?.length > 0], ['budget', 'Give a budget range', s.budget_min_cents != null || s.budget_max_cents != null],
+    ['country', 'Add the country', !!s.country], ['links', 'Link a social profile', Object.values(s.links ?? {}).some(Boolean)], ['contact', 'Add a contact email', !!s.contact_email_enc || !!s.has_contact],
+  ];
+  return { percent: Math.round((100 * checks.filter((x) => x[2]).length) / checks.length), missing: checks.filter((x) => !x[2]).map((x) => ({ key: x[0], label: x[1] })) };
+}
+
+async function checkProfile(c, i) {
+  if (i.budget_min_cents != null && i.budget_max_cents != null && i.budget_min_cents > i.budget_max_cents) throw badRequest('The minimum budget cannot be above the maximum');
+  if (i.sports?.length) {
+    const found = (await c.query('SELECT slug FROM sports WHERE slug = ANY($1)', [i.sports])).rows.length;
+    if (found !== new Set(i.sports).size) throw badRequest('One of those sports does not exist');
+  }
+}
 
 /** Who has to approve a sponsorship offer aimed at this target. */
 async function targetOwner(type, targetId) {
@@ -29,7 +61,7 @@ cap({
   name: 'create_sponsor', method: 'POST', path: '/sponsors', tag: 'Sponsors', status: 201,
   summary: 'Create a sponsor brand profile (the public display name). Contact name/email/phone are encrypted. Give `entity_id` to add the brand under a sponsor entity you own or administer; without it the brand has no confirmed identity yet — confirm it with set_sponsor_identity, the one place that creates and edits the sponsor legal identity.',
   input: z.object({ name: z.string().min(2).max(80), industry: z.string().max(60).optional(), website: z.string().url().optional(), emoji: z.string().max(8).optional(), contact_name: z.string().max(80).optional(), contact_email: z.string().email().optional(), contact_phone: z.string().max(30).optional(),
-    entity_id: id.optional() }),
+    entity_id: id.optional(), ...PROFILE_IN }),
   async handler({ user }, i) {
     if (!i.entity_id && !user.roles.includes('sponsor') && !isAdmin(user)) throw forbidden('Requires one of the roles: sponsor (or be invited to an existing sponsor entity)');
     const e = encryptFields(i, 'sponsors', CONTACT);
@@ -41,8 +73,39 @@ cap({
         if (!CAN.identity.includes(role)) throw forbidden('Only an owner or admin of this entity can add brands to it');
         entityId = i.entity_id;
       }
-      return (await c.query("INSERT INTO sponsors(owner_id, name, industry, website, emoji, contact_name_enc, contact_email_enc, contact_phone_enc, entity_id) VALUES ($1,$2,$3,$4,coalesce($5,'💎'),$6,$7,$8,$9) RETURNING id, name, industry, website, emoji, entity_id",
-        [user.id, i.name, i.industry, i.website, i.emoji, e.contact_name_enc ?? null, e.contact_email_enc ?? null, e.contact_phone_enc ?? null, entityId])).rows[0];
+      await checkProfile(c, i);
+      return (await c.query(`INSERT INTO sponsors(owner_id, name, industry, website, emoji, contact_name_enc, contact_email_enc, contact_phone_enc, entity_id,
+          tagline, about, brand_color, founded_year, country, sports, regions, offers, backs, budget_currency, budget_min_cents, budget_max_cents, links)
+        VALUES ($1,$2,$3,$4,coalesce($5,'💎'),$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22) RETURNING id, name, industry, website, emoji, entity_id`,
+        [user.id, i.name, i.industry, i.website, i.emoji, e.contact_name_enc ?? null, e.contact_email_enc ?? null, e.contact_phone_enc ?? null, entityId,
+          i.tagline ?? null, i.about ?? null, i.brand_color ?? null, i.founded_year ?? null, i.country?.toUpperCase() ?? null, i.sports ?? [], i.regions ?? [], i.offers ?? [], i.backs ?? [],
+          i.budget_currency ?? null, i.budget_min_cents ?? null, i.budget_max_cents ?? null, JSON.stringify(i.links ?? {})])).rows[0];
+    });
+  },
+});
+
+cap({
+  name: 'update_sponsor', method: 'PATCH', path: '/sponsors/:id', tag: 'Sponsors',
+  summary: 'Brand manager: edit the brand profile (name, tagline, about, industry, website, emoji and accent colour, country, sports, regions, what it offers and who it backs, budget range, social links, contact details). Only the fields you send change; send null to clear one. Contact details stay encrypted.',
+  input: z.object({ id, name: z.string().min(2).max(80).optional(), industry: z.string().max(60).nullable().optional(), website: url.nullable().optional(), emoji: z.string().max(8).optional(),
+    contact_name: z.string().max(80).nullable().optional(), contact_email: z.string().email().nullable().optional(), contact_phone: z.string().max(30).nullable().optional(), ...PROFILE_IN }),
+  async handler({ user }, i) {
+    const s = await mustFind('sponsors', i.id);
+    if (!isAdmin(user)) assertSponsorCan(await sponsorAccess(user, s), 'manage', { what: 'edit the brand profile' });
+    return tx(async (c) => {
+      await checkProfile(c, i);
+      const sets = [], args = [i.id];
+      const set = (col, v) => { args.push(v); sets.push(`${col}=$${args.length}`); };
+      for (const k of ['name', 'industry', 'website', 'emoji', 'tagline', 'about', 'brand_color', 'founded_year', 'budget_currency', 'budget_min_cents', 'budget_max_cents']) if (i[k] !== undefined) set(k, i[k]);
+      if (i.country !== undefined) set('country', i.country?.toUpperCase() ?? null);
+      for (const k of ARRAYS) if (i[k] !== undefined) set(k, i[k]);
+      if (i.links !== undefined) set('links', JSON.stringify(i.links));
+      const enc = encryptFields(Object.fromEntries(CONTACT.filter((k) => i[k]).map((k) => [k, i[k]])), 'sponsors', CONTACT);
+      for (const k of CONTACT) { if (i[k] === null) set(`${k}_enc`, null); else if (enc[`${k}_enc`]) set(`${k}_enc`, enc[`${k}_enc`]); }
+      if (!sets.length) throw badRequest('Nothing to change');
+      const row = (await c.query(`UPDATE sponsors SET ${sets.join(', ')}, updated_at=now() WHERE id=$1 RETURNING id, name, industry, website, emoji`, args)).rows[0];
+      await audit(c, user.id, 'update_profile', 'sponsors', i.id);
+      return row;
     });
   },
 });
@@ -52,7 +115,7 @@ cap({
   input: z.object({ q: z.string().optional(), mine: z.coerce.boolean().optional().describe('only brands you act for (needs sign-in); each carries your sponsor role'), ...page }),
   async handler({ user }, i) {
     const rows = await many(
-      `SELECT * FROM (SELECT sp.id, sp.name, sp.industry, sp.website, sp.emoji, sp.organisation_id, e.sponsor_type, (sp.entity_id IS NOT NULL) AS identity_confirmed,
+      `SELECT * FROM (SELECT sp.id, sp.name, sp.industry, sp.website, sp.emoji, sp.organisation_id, e.sponsor_type, sp.tagline, sp.brand_color, sp.sports, sp.offers, sp.backs, sp.about, sp.country, sp.links, (sp.contact_email_enc IS NOT NULL) AS has_contact, sp.budget_min_cents, sp.budget_max_cents, (sp.entity_id IS NOT NULL) AS identity_confirmed,
               (SELECT o.name FROM organisations o WHERE o.id=sp.organisation_id) AS organisation_name,
               CASE WHEN $5::uuid IS NULL THEN NULL
                    WHEN sp.entity_id IS NULL AND sp.owner_id=$5 THEN 'manager'
@@ -65,7 +128,11 @@ cap({
          FROM sponsors sp LEFT JOIN sponsor_entities e ON e.id=sp.entity_id
         WHERE ($1::text IS NULL OR sp.name ILIKE '%'||$1||'%')) x
         WHERE (NOT $4 OR x.my_role IS NOT NULL) ORDER BY x.name, x.id LIMIT $2 OFFSET $3`, [i.q ?? null, i.limit, i.offset, !!i.mine, user?.id ?? null]);
-    return withBadges('sponsor', rows.map((r) => (i.mine ? r : { id: r.id, name: r.name, industry: r.industry, website: r.website, emoji: r.emoji, sponsor_type: r.sponsor_type })));
+    return withBadges('sponsor', rows.map((r) => {
+      if (!i.mine) return { id: r.id, name: r.name, industry: r.industry, website: r.website, emoji: r.emoji, sponsor_type: r.sponsor_type, tagline: r.tagline, brand_color: r.brand_color, sports: r.sports, offers: r.offers };
+      const { about, country, links, has_contact, budget_min_cents, budget_max_cents, ...rest } = r;
+      return { ...rest, profile: r.my_role === 'manager' ? completeness(r) : null };
+    }));
   },
 });
 
@@ -76,18 +143,22 @@ cap({
     const s = await mustFind('sponsors', i.id);
     const deals = await many("SELECT id, target_type, target_id, amount_cents, in_kind, starts_on, ends_on FROM sponsorships WHERE sponsor_id=$1 AND status='active' AND visibility='public'", [i.id]);
     const type = s.entity_id ? (await one('SELECT sponsor_type FROM sponsor_entities WHERE id=$1', [s.entity_id])).sponsor_type : null;
-    const out = { id: s.id, name: s.name, industry: s.industry, website: s.website, emoji: s.emoji, sponsor_type: type, verified: (await badgesFor('sponsor', [s.id])).get(s.id) ?? [], active_sponsorships: deals };
+    const out = { id: s.id, name: s.name, industry: s.industry, website: s.website, emoji: s.emoji, sponsor_type: type, tagline: s.tagline, about: s.about, brand_color: s.brand_color, founded_year: s.founded_year, country: s.country, sports: s.sports, regions: s.regions, offers: s.offers, backs: s.backs, links: s.links, verified: (await badgesFor('sponsor', [s.id])).get(s.id) ?? [], active_sponsorships: deals };
     const access = user ? await sponsorAccess(user, s) : null;
     if (user && (isAdmin(user) || access?.role === 'manager')) {
       await audit(null, user.id, 'read_pii', 'sponsors', s.id);
-      Object.assign(out, decryptFields(s, 'sponsors', CONTACT), { my_role: access?.role ?? 'admin' });
+      Object.assign(out, decryptFields(s, 'sponsors', CONTACT), { my_role: access?.role ?? 'admin', budget_currency: s.budget_currency, budget_min_cents: s.budget_min_cents, budget_max_cents: s.budget_max_cents,
+        profile: completeness(s),
+        // athletes who opted in, fit what the brand offers and play a sport it supports
+        matching_athletes: (await one(`SELECT count(*)::int AS n FROM sponsorship_profiles p JOIN users u ON u.id=p.user_id
+           WHERE p.open_to_sponsors AND 'athlete' = ANY(u.roles) AND ${NOT_YOUTH_SQL} AND (cardinality($1::text[])=0 OR p.looking_for && $1::text[])
+             AND (cardinality($2::text[])=0 OR EXISTS (SELECT 1 FROM sport_profiles x JOIN sports sp ON sp.id=x.sport_id WHERE x.user_id=u.id AND sp.slug = ANY($2::text[])))`, [s.offers, s.sports])).n });
     }
     return out;
   },
 });
 
 const DECLINE_COOLDOWN_DAYS = 30;
-const LOOKING_FOR = z.enum(['cash', 'equipment', 'travel', 'coaching', 'apparel', 'nutrition', 'media']);
 
 cap({
   name: 'get_my_sponsorship_profile', method: 'GET', path: '/me/sponsorship-profile', tag: 'Sponsors',
