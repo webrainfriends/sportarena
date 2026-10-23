@@ -16,24 +16,37 @@ import { audit, isAdmin } from '../helpers.js';
 import { DOC_LIMITS, docHeaders, loadEncrypted, readBody, saveEncrypted, sniffDoc } from '../doc-store.js';
 import { standing } from './insurance.js';
 import { relation } from './insurance-docs.js';
+import { sponsorAccess, assertSponsorCan } from '../sponsor-access.js';
 
-const SUBJECTS = ['team', 'event', 'venue'];
-const KINDS = ['policy', 'certificate', 'receipt', 'quote', 'other', 'contract'];
+const SUBJECTS = ['team', 'event', 'venue', 'budget'];
+const KINDS = ['policy', 'certificate', 'receipt', 'quote', 'other', 'contract', 'approval', 'forecast', 'invoice', 'report'];
 const MAX_PER_SUBJECT = 200;
 const COLS = 'd.id, d.subject_type, d.subject_id, d.kind, d.title, d.policy_id, d.insurance_document_id, coalesce(d.content_type, idoc.content_type) AS content_type, coalesce(d.size_bytes, idoc.size_bytes) AS size_bytes, (d.insurance_document_id IS NOT NULL) AS from_insurance, d.uploaded_by, u.display_name AS uploaded_by_name, d.created_at';
 const FROM = 'FROM subject_documents d JOIN users u ON u.id=d.uploaded_by LEFT JOIN insurance_documents idoc ON idoc.id=d.insurance_document_id';
 
 /** 'manage' | 'member' for this team / event / venue (admins count as managers), else a 404 so existence is not leaked. */
 async function access(user, subjectType, subjectId) {
+  if (subjectType === 'budget') return budgetStanding(user, subjectId);
   const s = isAdmin(user) ? 'manage' : await standing(user, subjectType, subjectId);
   if (!s) throw notFound(subjectType);
   return s;
+}
+/** A budget's folder: brand managers and finance add and hide; approvers and auditors read. Department-scoped staff only reach their own department's budget. */
+async function budgetStanding(user, budgetId) {
+  const b = await one('SELECT b.department_id, sp.* FROM sponsorship_budgets b JOIN sponsors sp ON sp.id=b.sponsor_id WHERE b.id=$1', [budgetId]);
+  if (!b) throw notFound('budget');
+  if (isAdmin(user)) return 'manage';
+  const a = await sponsorAccess(user, b);
+  if (!a) throw notFound('budget');
+  try { assertSponsorCan(a, 'budget', { what: 'change budget documents' }); return 'manage'; } catch { /* read-only below */ }
+  assertSponsorCan(a, 'budget_read', { departmentId: b.department_id, what: 'see this budget' });
+  return 'member';
 }
 const needManage = (s) => { if (s !== 'manage') throw forbidden('Only the people who manage this can change its documents'); };
 
 cap({
   name: 'list_subject_documents', method: 'GET', path: '/documents', tag: 'Documents',
-  summary: 'The documents folder of a team, event or venue you belong to: insurance policies and certificates, receipts and other files. Download with GET /documents/{id}/file; upload with PUT /documents (raw file body; query: subject_type, subject_id, kind, title); attach an insurer\'s document with link_insurance_document.',
+  summary: 'The documents folder of a team, event, venue or sponsorship budget you belong to: insurance policies and certificates, receipts and other files. Download with GET /documents/{id}/file; upload with PUT /documents (raw file body; query: subject_type, subject_id, kind, title); attach an insurer\'s document with link_insurance_document.',
   input: z.object({ subject_type: z.enum(SUBJECTS), subject_id: id, ...page }),
   async handler({ user }, i) {
     await access(user, i.subject_type, i.subject_id);

@@ -39,14 +39,14 @@ export async function pickDocument() {
   return { blob: await (await fetch(r.assets[0].uri)).blob(), name: r.assets[0].fileName };
 }
 
-const KIND_LABEL = { policy: 'Policy', policy_schedule: 'Policy schedule', certificate: 'Certificate', receipt: 'Receipt', quote: 'Quote', contract: 'Contract', claim_evidence: 'Claim evidence', other: 'Other' };
+const KIND_LABEL = { policy: 'Policy', policy_schedule: 'Policy schedule', certificate: 'Certificate', receipt: 'Receipt', quote: 'Quote', contract: 'Contract', claim_evidence: 'Claim evidence', approval: 'Approval', forecast: 'Forecast', invoice: 'Invoice', report: 'Report', other: 'Other' };
 
 /**
  * The locker for one policy, quote or claim (`parent` is { policy_id } | { quote_id } | { claim_id }), or the documents folder of a
  * team, event or venue (`subject` is { subject_type, subject_id }; `canEdit` says whether this person may add and hide files).
  * `linkable` (policy lockers of a team / event / venue): each file can be saved to that folder.
  */
-export function DocumentsSheet({ parent, subject, canEdit, linkable, title, kinds, onClose, onChanged, readOnly }) {
+export function DocumentsSheet({ parent, subject, canEdit, linkable, title, kinds, onClose, onChanged, readOnly, blurb }) {
   const { user, toast } = useSession();
   const scope = subject ?? parent;
   const base = subject ? '/documents' : '/insurance/documents';
@@ -75,7 +75,7 @@ export function DocumentsSheet({ parent, subject, canEdit, linkable, title, kind
   const save = async (d) => { try { const r = await api.post('/documents/link', { insurance_document_id: d.id }); toast(r.already_linked ? 'Already in the documents folder' : 'Saved to the documents folder'); } catch (e) { toast(e.message); } };
   return (
     <Sheet visible={!!scope} onClose={onClose} title={title}>
-      <T size={12} color={c.mute}>{subject ? 'PDF or photo, up to 10 MB each. Files are encrypted on the server. Everyone in the team, event or venue can open them; the people who manage it add and hide them. Removing one only hides it.' : 'PDF or photo, up to 10 MB each. Files are encrypted on the server and only the policy holder, the people who manage what is covered, and the insurer can open them. Removing one only hides it.'}</T>
+      <T size={12} color={c.mute}>{blurb ?? (subject ? 'PDF or photo, up to 10 MB each. Files are encrypted on the server. Everyone in the team, event or venue can open them; the people who manage it add and hide them. Removing one only hides it.' : 'PDF or photo, up to 10 MB each. Files are encrypted on the server and only the policy holder, the people who manage what is covered, and the insurer can open them. Removing one only hides it.')}</T>
       {docs.loading ? <Loading /> : docs.error ? <ErrorBox error={docs.error} onRetry={docs.reload} /> : docs.data?.length ? docs.data.map((d) => (
         <Card key={d.id} pad={12}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
