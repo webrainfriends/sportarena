@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View } from 'react-native';
+import { Platform, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
@@ -11,11 +11,12 @@ import { EntityPicker } from '../entity-picker';
 import { SportSelect } from '../sportpicker';
 import { c } from '../theme';
 import { explain, LoadError } from '../access';
+import { fieldsOf, filled, fmtMoney } from '../application-forms';
 
 // Amounts are minor units of THEIR OWN currency; currencies are never added together.
 const fmt = (cents, cur) => { try { const f = new Intl.NumberFormat(undefined, { style: 'currency', currency: cur }); return f.format(cents / 10 ** f.resolvedOptions().maximumFractionDigits); } catch { return `${cents} ${cur ?? ''}`; } };
 const when = (iso) => (iso ? new Date(`${String(iso).slice(0, 10)}T00:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '');
-const STATUS_TONE = { draft: c.sunSoft, published: c.lime, closed: c.pinkSoft, archived: c.paper, open: c.lime, scheduled: c.sunSoft, submitted: c.sunSoft, awarded: c.lime, declined: c.pinkSoft, withdrawn: c.paper };
+const STATUS_TONE = { draft: c.sunSoft, published: c.lime, closed: c.pinkSoft, archived: c.paper, open: c.lime, scheduled: c.sunSoft, submitted: c.sunSoft, returned: c.pinkSoft, awarded: c.lime, declined: c.pinkSoft, withdrawn: c.paper };
 const MAY = ['manager', 'approver', 'admin'];
 const myZone = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch { return 'UTC'; } };
 /** A deadline instant shown in the round's own timezone, so everyone reads the same moment. */
@@ -124,6 +125,7 @@ export function SponsorProgram({ id }) {
         {may ? (
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
             {['draft', 'published'].includes(p.status) ? <Btn small title="Edit" color={c.violet} onPress={() => setForm('edit')} /> : null}
+            <Btn small title="Application forms" color={c.paper} ink={c.ink} onPress={() => push('FormBuilder', { program_id: p.id })} />
             {['draft', 'published'].includes(p.status) ? <Btn small title="Change owner" color={c.paper} ink={c.ink} onPress={() => setForm('owner')} /> : null}
             {p.status === 'draft' ? <Btn small title="Publish" color={c.mint} ink={c.ink} onPress={() => status('published', 'Published — applicants can now see open rounds')} /> : null}
             {p.status === 'published' ? <Btn small title="Close program" color={c.paper} ink={c.red} onPress={() => status('closed', 'Closed — no new applications')} /> : null}
@@ -171,8 +173,11 @@ export function SponsorProgram({ id }) {
           <Card key={a.id}>
             <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><View style={{ flex: 1 }}><T weight="900">{a.target_type === 'athlete' && a.target_id === a.applicant_id ? a.display_name : `${a.display_name} → ${a.target_name ?? a.target_type}`}</T><T size={12} color={c.mute}>{a.round_name} · asks {fmt(a.requested_cents, a.currency)}{a.awarded_cents ? ` · awarded ${fmt(a.awarded_cents, a.currency)}` : ''} · terms v{a.round_terms_version}</T></View><Tag label={a.status} color={STATUS_TONE[a.status]} /></View>
             {a.pitch ? <T size={13} style={{ marginTop: 6 }}>{a.pitch}</T> : null}
+            {a.receipt_no ? <T size={12} color={c.mute}>Receipt {a.receipt_no} · form v{a.form_version}</T> : null}
             {a.decision_reason ? <T size={12} color={c.mute}>Note: {a.decision_reason}</T> : null}
             {a.status === 'submitted' && may ? <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}><Btn small title="Award" color={c.mint} ink={c.ink} onPress={() => setForm({ award: a })} /><Btn small title="Decline" color={c.paper} ink={c.red} onPress={() => act(() => api.patch(`/program-applications/${a.id}`, { decision: 'decline' }), 'Declined')} /></View> : null}
+            {a.form_id ? <Btn small title="Review answers" color={c.violet} style={{ alignSelf: 'flex-start', marginTop: 8 }} onPress={() => setForm({ view: a })} /> : null}
+            {a.status === 'returned' ? <T size={12} color={c.mute}>Waiting for the applicant to correct it.</T> : null}
             {a.sponsorship_id ? <Btn small title="Open agreement" color={c.violet} style={{ alignSelf: 'flex-start', marginTop: 8 }} onPress={() => push('SponsorDeal', { id: a.sponsorship_id })} /> : null}
           </Card>
         )) : <Empty emoji="📬" title="No applications" sub={p.status === 'published' ? 'They appear here as applicants submit to an open round.' : 'Publish the program to receive applications.'} />}
@@ -195,6 +200,7 @@ export function SponsorProgram({ id }) {
         fields={[{ key: 'awarded_cents', label: `Amount (asked ${awarding ? fmt(awarding.requested_cents, awarding.currency) : ''})`, type: 'money', currency: p.currency }, { key: 'reason', label: 'Note to the applicant', type: 'multiline', optional: true }]}
         initial={awarding ? { awarded_cents: awarding.requested_cents } : {}}
         onSubmit={async (v) => { await api.patch(`/program-applications/${awarding.id}`, { decision: 'award', program_version: p.row_version, awarded_cents: v.awarded_cents, reason: v.reason }); reloadAll(); return 'Awarded — the recipient now has an agreement to accept'; }} />
+      <ReviewSheet app={typeof form === 'object' && form?.view ? form.view : null} may={may} onClose={() => setForm(null)} onChanged={reloadAll} />
       <FormSheet visible={form === 'faq' || !!faqEdit} onClose={() => setForm(null)} title={faqEdit ? 'Edit FAQ' : 'New FAQ'} submitLabel={faqEdit ? 'Save' : 'Add FAQ'}
         fields={[{ key: 'question', label: 'Question' }, { key: 'answer', label: 'Answer', type: 'multiline' }, { key: 'position', label: 'Position in the list (0 = first)', type: 'stepper', min: 0, max: 100, default: 0 }]}
         initial={faqEdit ? { question: faqEdit.question, answer: faqEdit.answer, position: faqEdit.position } : { position: p.faqs?.length ?? 0 }}
@@ -205,6 +211,46 @@ export function SponsorProgram({ id }) {
   );
 }
 
+/** Brand staff: one application with the exact form version it was filled under; may be sent back for correction. */
+function ReviewSheet({ app, may, onClose, onChanged }) {
+  const { toast } = useSession();
+  const detail = useLoad(() => (app ? api.get(`/program-applications/${app.id}`) : Promise.resolve(null)), [app?.id]);
+  const [pick, setPick] = useState([]);
+  const [reason, setReason] = useState('');
+  const [asking, setAsking] = useState(false);
+  const d = detail.data;
+  const open = async (x) => { try { const blob = await api.download(`/application-files/${x.id}`); if (Platform.OS === 'web') { const u = URL.createObjectURL(blob); window.open(u, '_blank', 'noopener'); setTimeout(() => URL.revokeObjectURL(u), 120000); } else toast('Open documents in the web app'); } catch (e) { toast(explain(e)); } };
+  const send = async () => { try { await api.post(`/program-applications/${app.id}/request-correction`, { reason, fields: pick }); toast('Sent back to the applicant'); setAsking(false); setPick([]); setReason(''); onChanged(); onClose(); } catch (e) { toast(explain(e)); } };
+  const fields = d?.form ? fieldsOf(d.form.definition) : [];
+  const show = (f) => { const v = d.answers[f.key]; return Array.isArray(v) ? v.map((x) => f.options?.find((o) => o.value === x)?.label ?? x).join(', ') : f.type === 'yesno' ? (v ? 'Yes' : 'No') : f.type === 'money' ? fmtMoney(v, d.currency) : f.options?.find((o) => o.value === v)?.label ?? String(v); };
+  return (
+    <Sheet visible={!!app} onClose={onClose} title={d?.receipt_no ? `Application ${d.receipt_no}` : 'Application'}>
+      {detail.error ? <LoadError error={detail.error} onRetry={detail.reload} /> : !d ? <Loading /> : (
+        <>
+          <T size={12} color={c.mute}>Form version {d.form_version} · submitted {d.submitted_at ? new Date(d.submitted_at).toLocaleString() : ''} · asks {fmtMoney(d.requested_cents, d.currency)}. Confidential answers shown here are audit-logged.</T>
+          {d.form.definition.sections.map((s) => (
+            <View key={s.id} style={{ gap: 6 }}>
+              <T weight="900">{s.title}</T>
+              {s.fields.filter((f) => !['budget', 'references', 'file'].includes(f.type) && filled(d.answers[f.key])).map((f) => <View key={f.key}><T size={12} color={c.mute}>{f.label}{f.confidential ? ' 🔒' : ''}</T><T>{show(f)}</T></View>)}
+              {s.fields.some((f) => f.type === 'budget') ? d.budget.map((l, i) => <T key={i}>{l.label} · {fmtMoney(l.amount_cents, d.currency)}</T>) : null}
+              {s.fields.some((f) => f.type === 'references') ? d.references.map((r, i) => <T key={i}>{r.name} ({r.relationship}) · {[r.email, r.phone].filter(Boolean).join(' · ')} · {r.may_contact ? 'may be contacted' : 'on file only'}</T>) : null}
+              {s.fields.filter((f) => f.type === 'file').flatMap((f) => d.files.filter((x) => x.field_key === f.key).map((x) => <Btn key={x.id} small title={`📎 ${x.original_name ?? 'File'}`} color={c.paper} ink={c.ink} onPress={() => open(x)} style={{ alignSelf: 'flex-start' }} />))}
+            </View>
+          ))}
+          {d.events.map((e, i) => <T key={i} size={12} color={c.mute}>{e.kind.replace(/_/g, ' ')} · {new Date(e.created_at).toLocaleString()}{e.note ? ` — ${e.note}` : ''}</T>)}
+          {may && d.status === 'submitted' && !asking ? <Btn small title="Return for correction" color={c.paper} ink={c.ink} style={{ alignSelf: 'flex-start' }} onPress={() => setAsking(true)} /> : null}
+          {asking ? (
+            <View style={{ gap: 8 }}>
+              <T weight="800" size={13}>Which answers need fixing?</T>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                {[{ key: 'requested_cents', label: 'Amount requested' }, ...fields].map((f) => <Chip key={f.key} label={f.label} active={pick.includes(f.key)} onPress={() => setPick(pick.includes(f.key) ? pick.filter((x) => x !== f.key) : [...pick, f.key])} />)}
+              </View>
+              <Field label="What should the applicant change?" value={reason} onChangeText={setReason} multiline maxLength={1000} />
+              <Btn title="Send back" disabled={!pick.length || !reason.trim()} onPress={send} />
+            </View>
+          ) : null}
+        </>
+      )}
 /** Invite athletes, teams or events to a program with search-and-pick controls; people who cannot be invited are listed with the reason. */
 function InviteSheet({ visible, onClose, programId, onDone }) {
   const { toast } = useSession();
@@ -325,16 +371,31 @@ export function FundingOpportunities() {
       <Section title="My applications" color={c.mint}>
         {mine.error ? <LoadError error={mine.error} onRetry={mine.reload} /> : mine.loading && !mine.data ? <Loading /> : mine.data?.length ? mine.data.map((a) => (
           <Card key={a.id}>
+            <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><View style={{ flex: 1 }}><T weight="900">{a.program_name} · {a.round_name}</T><T size={12} color={c.mute}>{a.sponsor_name} · for {a.target_name ?? a.target_type} · {a.requested_cents != null ? `asked ${fmt(a.requested_cents, a.currency)}` : 'no amount yet'}{a.awarded_cents ? ` · awarded ${fmt(a.awarded_cents, a.currency)}` : ''}</T></View><Tag label={a.status} color={STATUS_TONE[a.status]} /></View>
+            <T size={12} color={c.mute}>{a.receipt_no ? `Receipt ${a.receipt_no} · ` : ''}{a.form_version ? `form v${a.form_version} · ` : ''}Made under round terms v{a.round_terms_version}, closing {when(a.terms_snapshot?.round?.closes_on)}.</T>
             <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><View style={{ flex: 1 }}><T weight="900">{a.program_name} · {a.round_name}</T><T size={12} color={c.mute}>{a.sponsor_name} · for {a.target_name ?? a.target_type} · asked {fmt(a.requested_cents, a.currency)}{a.awarded_cents ? ` · awarded ${fmt(a.awarded_cents, a.currency)}` : ''}</T></View><Tag label={a.status} color={STATUS_TONE[a.status]} /></View>
             <T size={12} color={c.mute}>Made under round terms v{a.round_terms_version}, closing {deadline(a.terms_snapshot?.round?.closes_at ?? a.terms_snapshot?.round?.closes_on, a.terms_snapshot?.round?.timezone)}.</T>
             {a.decision_reason ? <T size={12}>Note: {a.decision_reason}</T> : null}
             <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
-              {a.status === 'submitted' ? <Btn small title="Withdraw" color={c.paper} ink={c.red} onPress={() => act(() => api.post(`/program-applications/${a.id}/withdraw`), 'Application withdrawn')} /> : null}
+              {a.form_id && ['draft', 'returned'].includes(a.status) ? <Btn small title={a.status === 'draft' ? 'Resume draft' : 'Fix and resend'} color={c.pink} onPress={() => push('ApplicationForm', { round_id: a.round_id, target_type: a.target_type, target_id: a.target_id })} /> : null}
+              {a.form_id && !['draft', 'returned'].includes(a.status) ? <Btn small title="View receipt" color={c.violet} onPress={() => push('ApplicationForm', { round_id: a.round_id, target_type: a.target_type, target_id: a.target_id })} /> : null}
+              {['draft', 'submitted', 'returned'].includes(a.status) ? <Btn small title="Withdraw" color={c.paper} ink={c.red} onPress={() => act(() => api.post(`/program-applications/${a.id}/withdraw`), 'Application withdrawn')} /> : null}
               {a.sponsorship_id ? <Btn small title="Open agreement" color={c.violet} onPress={() => push('SponsorDeal', { id: a.sponsorship_id })} /> : null}
             </View>
           </Card>
         )) : <Empty emoji="✉️" title="No applications yet" />}
       </Section>
+      <FormSheet visible={!!apply} onClose={() => setApply(null)} title={apply ? `Apply · ${apply.program.name}` : ''} submitLabel={apply?.round.has_form ? 'Continue to the form' : 'Submit application'}
+        fields={[{ key: 'sec', type: 'section', label: apply ? `${apply.round.name} · closes ${when(apply.round.closes_on)}${apply.program.max_award_cents ? ` · up to ${fmt(apply.program.max_award_cents, apply.program.currency)}` : ''}` : '' },
+          { key: 'target', label: 'Applying for', type: 'choice', options: targets.length ? targets : [{ value: '', label: 'Nothing you own is eligible' }] },
+          ...(apply?.round.has_form ? [] : [{ key: 'requested_cents', label: 'Amount you are asking for', type: 'money', currency: apply?.program.currency },
+            { key: 'pitch', label: 'Why should this be funded?', type: 'multiline', optional: true }])]}
+        onSubmit={async (v) => {
+          const [target_type, target_id] = String(v.target ?? '').split(':');
+          if (!target_id) throw new Error('Choose what you are applying for');
+          if (apply.round.has_form) { push('ApplicationForm', { round_id: apply.round.id, target_type, target_id }); return undefined; }
+          await api.post(`/program-rounds/${apply.round.id}/applications`, { target_type, target_id, requested_cents: v.requested_cents, pitch: v.pitch }); reload(); return 'Application submitted — the terms you applied under are kept with it';
+        }} />
       <ApplySheet apply={apply} onClose={() => setApply(null)} onDone={reload} />
     </Screen>
   );
