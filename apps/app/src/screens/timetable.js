@@ -12,7 +12,7 @@ import { c } from '../theme';
 import { WEEKDAYS, moneyIn } from '../vtime';
 import { PaintGrid } from './paintgrid';
 
-const COLORS = [['#A8628F', 'Indigo'], ['#059669', 'Green'], ['#EA580C', 'Orange'], ['#E11D48', 'Red'], ['#0284C7', 'Blue'], ['#D97706', 'Amber'], ['#26415E', 'Purple']];
+const COLORS = [['#B4182D', 'Indigo'], ['#059669', 'Green'], ['#EA580C', 'Orange'], ['#E11D48', 'Red'], ['#0284C7', 'Blue'], ['#D97706', 'Amber'], ['#37415C', 'Purple']];
 const ORDER = [1, 2, 3, 4, 5, 6, 0]; // weeks start on Monday for an owner
 const digits = (cur) => { try { return new Intl.NumberFormat('en', { style: 'currency', currency: cur }).resolvedOptions().maximumFractionDigits; } catch { return 2; } };
 const toMinor = (text, cur) => Math.round(Number(String(text).replace(/,/g, '')) * 10 ** digits(cur));
