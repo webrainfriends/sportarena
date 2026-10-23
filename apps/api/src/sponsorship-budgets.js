@@ -133,9 +133,9 @@ export async function budgetBlockerFor(c, p, amount, excludeAwardId = null) {
   if (!p.budget_id) return null;
   const { b, rate } = await programBudget(c, p, true);
   if (b.status !== 'active') return 'The program\'s budget is no longer active';
-  const cost = convert(amount, p.currency, b.currency, rate.rate);
   const held = excludeAwardId ? (await c.query("SELECT r.amount_cents, r.currency, fx.rate FROM sponsorship_award_reservations r LEFT JOIN sponsorship_budget_fx_rates fx ON fx.id=r.budget_fx_rate_id WHERE r.award_id=$1 AND r.status='held' AND r.budget_id=$2", [excludeAwardId, b.id])).rows[0] : null;
   const own = held ? convert(held.amount_cents, held.currency, b.currency, held.rate ?? 1) : 0;
+  const cost = convert(amount, p.currency, b.currency, held ? held.rate ?? 1 : rate.rate); // a resized award keeps the rate its reservation was made at
   const u = await usageOf(c, b);
   if (cost > u.available_cents + own) return `This award would exceed the authorized budget "${b.name}" (${u.available_cents + own} ${b.currency} minor units available)`;
   return null;

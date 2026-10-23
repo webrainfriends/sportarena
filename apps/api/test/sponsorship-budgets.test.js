@@ -210,7 +210,12 @@ test('currencies stay separate unless a sourced FX rate is explicit; older commi
   const y = await applyFor(eur.r, 10000);
   must(await award(w, eur.p, y.app));
   assert.equal((await get(w, ex.id)).reserved_cents, 11000 + 20000, 'the second award is costed at the new rate 2.00; the first keeps 1.10');
-  must(await accept(x.a, aw.award.id, aw.award.offer_version));
+  // resizing an award keeps the rate of its own reservation (1.10), not today's 2.00
+  const resized = must(await api('PATCH', `/program-awards/${aw.award.id}`, { token: w.owner.token, body: { row_version: aw.award.row_version, amount_cents: 9000 } }));
+  assert.equal((await get(w, ex.id)).reserved_cents, 9900 + 20000);
+  const back = must(await api('PATCH', `/program-awards/${aw.award.id}`, { token: w.owner.token, body: { row_version: resized.row_version, amount_cents: 10000 } }));
+  must(await api('POST', `/program-awards/${aw.award.id}/issue`, { token: w.owner.token, body: { offer_version: back.offer_version, idempotency_key: 'reissue-0001' } }));
+  must(await accept(x.a, aw.award.id, back.offer_version));
   b = await get(w, ex.id);
   assert.equal(b.reserved_cents, 20000);
   assert.equal(b.committed_cents, 11000, 'reservation became a commitment at the same rate');
