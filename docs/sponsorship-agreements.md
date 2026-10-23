@@ -51,12 +51,13 @@ Agreement state (sponsorships.status) is separate from fulfilment state (obligat
 See [sponsorship-pause.md](sponsorship-pause.md): both sides agree a pause with a reason, a start date and a hold/reschedule policy for the dues in it.
 
 ## Ending
-Ending a deal cancels only future dues that nothing has happened to. Due, overdue, part-paid, dispatched or submitted dues
-stay open: debt and delivered value are never erased. Nothing is deleted.
+Ending is a notice → effective date → settlement workflow (see [sponsorship-termination.md](sponsorship-termination.md)). It cancels only
+future dues that nothing has happened to. Due, overdue, part-paid, dispatched or submitted dues stay open: debt and delivered value are
+never erased. Returns and refunds reference the delivery / payment, and the final settlement lists whatever is unresolved. Nothing is deleted.
 
 ## Remaining gaps (not in this slice)
 * **Group target** — no durable "group" entity exists (only teams); not silently treated as a team. Needs its own design.
-* **Pause, renewal successor, and termination with refunds/returns.** (Amendments of an accepted agreement: see [sponsorship-amendments.md](sponsorship-amendments.md).)
+* **Pause and renewal successor.** (Termination with refunds/returns: [sponsorship-termination.md](sponsorship-termination.md). Amendments of an accepted agreement: see [sponsorship-amendments.md](sponsorship-amendments.md).)
 * **Performance review for teams/events/groups** and pre-agreement review (the athlete slice is below; sharing through #64 Sports Passport is not wired),
   CSV export, approaching-due reminders, per-line payer/payee/channel fields, disputes→cases linking, guardian/youth rules
   for sponsorship agreements.

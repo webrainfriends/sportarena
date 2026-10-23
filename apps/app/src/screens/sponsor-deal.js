@@ -10,6 +10,7 @@ import { SponsorPerformance } from './sponsor-performance';
 import { SponsorNegotiation } from './sponsor-negotiation';
 import { SponsorContract } from './sponsor-contract';
 import { SponsorAmendments } from './sponsor-amendments';
+import { SponsorTermination } from './sponsor-termination';
 import { SponsorPause } from './sponsor-pause';
 import { SponsorAllocations, PayeeLine } from './sponsor-beneficiaries';
 import { c } from '../theme';
@@ -49,6 +50,7 @@ export function SponsorDeal({ id }) {
       <T size={12} color={c.mute}>{d.agreement_ref ?? 'Legacy agreement'} · {d.status} · terms v{d.accepted_version ?? d.terms_version}{d.starts_on ? ` · ${when(String(d.starts_on).slice(0, 10))} – ${d.ends_on ? when(String(d.ends_on).slice(0, 10)) : 'open'}` : ''}</T>
       {!d.lines.length ? <Card><T>This agreement predates structured terms: {d.legacy_amount_cents ? `${d.legacy_amount_cents} (currency not recorded)` : 'no cash'}{d.legacy_in_kind ? ` · ${d.legacy_in_kind}` : ''}. No payment schedule exists for it.</T></Card> : null}
       <SponsorAmendments deal={{ ...d, reload: deal.reload }} can={can} act={act} />
+      <SponsorTermination deal={{ ...d, reload: deal.reload, toast }} />
       <SponsorNegotiation deal={{ ...d, reload: deal.reload }} can={can} act={act} />
       <SponsorPause deal={{ ...d, reload: deal.reload }} can={can} act={act} />
       <Section title="Terms" color={c.sun}>

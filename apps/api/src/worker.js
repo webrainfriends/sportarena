@@ -12,6 +12,7 @@ import { expireStaleRequests } from './lifecycle.js';
 import { expireQuotes, sendRenewalReminders } from './insurance-cycle.js';
 import { sendCallNotices } from './sponsorship-calls.js';
 import { expireAwards } from './sponsorship-awards.js';
+import { endDueTerminations } from './sponsor-termination.js';
 import { activateDuePauses } from './sponsor-pause.js';
 
 export const STEPS = [

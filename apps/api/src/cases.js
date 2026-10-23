@@ -1,6 +1,7 @@
 // Rules for support & dispute cases: categories, SLA targets, which linked records a person may attach, evidence handling.
 import { createHash } from 'node:crypto';
-import { one } from './db.js';
+import { one, pool } from './db.js';
+import { dealContext } from './sponsor-agreements.js';
 import { badRequest, notFound } from './errors.js';
 import { encrypt } from './crypto.js';
 import { isAdmin } from './helpers.js';
@@ -55,11 +56,14 @@ async function isPayee(user, payment) {
   return row?.payee === user.id;
 }
 
+/** Either side of a sponsorship agreement (brand staff or the recipient's representative) may reference it in a case (#298). */
+const isDealParticipant = (user, id) => dealContext(pool, id, user).then((x) => x.role === 'sponsor' || x.role === 'recipient', () => false);
+
 export async function assertCanLink(user, type, id) {
   const [table, ...cols] = PARTY[type];
   const row = await one(`SELECT * FROM ${table} WHERE id=$1`, [id]);
   const ok = row && (isAdmin(user) || !cols.length || cols.some((c) => row[c] === user.id)
-    || (type === 'sponsorship' && row.target_type === 'athlete' && row.target_id === user.id)
+    || (type === 'sponsorship' && (row.target_type === 'athlete' && row.target_id === user.id || await isDealParticipant(user, id)))
     || (type === 'payment' && await isPayee(user, row)));
   if (!ok) throw notFound(type.replace(/_/g, ' '));
 }

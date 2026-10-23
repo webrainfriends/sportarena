@@ -79,6 +79,7 @@ import './sponsors.js';
 import './sponsorship-agreements.js';
 import './sponsorship-contracts.js';
 import './sponsorship-amendments.js';
+import './sponsorship-termination.js';
 import './sponsorship-pause.js';
 import './sponsorship-performance.js';
 import './sponsor-identities.js';

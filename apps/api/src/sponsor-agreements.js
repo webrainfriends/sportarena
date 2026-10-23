@@ -108,7 +108,7 @@ export async function obligationContext(c, obligationId, user) {
 /** Money state of an obligation after any change: fulfilled once confirmed payments (net of refunds) cover it, reopened if a reversal or refund uncovers it. */
 export async function settleMoney(c, o) {
   const paid = Number((await c.query("SELECT coalesce(sum(amount_cents - refunded_cents),0) AS s FROM sponsorship_payments WHERE obligation_id=$1 AND status='confirmed'", [o.id])).rows[0].s);
-  if (paid >= Number(o.amount_cents)) await c.query("UPDATE sponsorship_obligations SET status='fulfilled', fulfilled_at=coalesce(fulfilled_at, now()) WHERE id=$1 AND status='scheduled'", [o.id]);
+  if (paid + Number(o.conceded_cents ?? 0) >= Number(o.amount_cents)) await c.query("UPDATE sponsorship_obligations SET status='fulfilled', fulfilled_at=coalesce(fulfilled_at, now()) WHERE id=$1 AND status='scheduled'", [o.id]);
   else await c.query("UPDATE sponsorship_obligations SET status='scheduled', fulfilled_at=NULL WHERE id=$1 AND status='fulfilled'", [o.id]);
 }
 
