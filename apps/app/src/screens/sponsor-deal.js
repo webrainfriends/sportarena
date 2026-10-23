@@ -6,6 +6,7 @@ import { useSession } from '../session';
 import { Btn, Card, Empty, ErrorBox, H1, Loading, Screen, Section, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { SponsorPerformance } from './sponsor-performance';
+import { SponsorAllocations, PayeeLine } from './sponsor-beneficiaries';
 import { c } from '../theme';
 import { explain, LoadError } from '../access';
 
@@ -46,6 +47,7 @@ export function SponsorDeal({ id }) {
           </Card>))}
         {d.schedule ? <T size={12} color={c.mute}>Committed cash: {Object.entries(d.schedule.committed).map(([cur, v]) => fmt(v, cur)).join(' · ') || 'none'}. Currencies are never combined.</T> : null}
       </Section>
+      {d.beneficiary ? <SponsorAllocations deal={d} /> : null}
       {d.schedule ? (
         <Section title="Schedule to review" color={c.cyan}>
           {d.schedule.occurrences.map((x) => <T key={`${x.line}-${x.seq}`} size={13}>{when(x.due_on)} · {x.label} · {what(x)}</T>)}
@@ -60,6 +62,7 @@ export function SponsorDeal({ id }) {
               {x.payments.map((p) => (
                 <View key={p.id} style={{ marginTop: 4 }}>
                   <T size={12}>{fmt(p.amount_cents, p.currency)} · {p.method.replace('_', ' ')} · ref {p.reference} · {p.status === 'reported' ? 'unverified' : p.status}</T>
+                  {p.status === 'confirmed' ? <PayeeLine p={p} /> : null}
                   {recipient && p.status === 'reported' ? <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}><Btn small title="Confirm received" color={c.mint} ink={c.ink} onPress={() => act(() => api.patch(`/sponsorship-payments/${p.id}`, { status: 'confirmed' }), 'Payment confirmed')} /><Btn small title="Not received" color={c.paper} ink={c.red} onPress={() => setForm({ kind: 'reject', o: p })} /></View> : null}
                   {recipient && p.status === 'confirmed' ? <Btn small title="Reverse" color={c.paper} ink={c.red} style={{ alignSelf: 'flex-start', marginTop: 4 }} onPress={() => setForm({ kind: 'reverse', o: p })} /> : null}
                 </View>))}

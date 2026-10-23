@@ -21,6 +21,7 @@ import { RecoveryPanel } from './wellness';
 import { DoctorEntry } from './doctor';
 import { fmt as fmtBudget } from './sponsor-budgets';
 import { MyHealthFile } from './health-file';
+import { BeneficiaryFinder } from './sponsor-beneficiaries';
 import { c, grad, money, day, when, withUnit, unitName } from '../theme';
 
 const STATUS_TAG = { recorded: ['Private', null], submitted: ['Waiting for approval', 'sun'], approved: ['Approved', 'lime'], disputed: ['Disputed — not counted', 'orangeSoft'], rejected: ['Rejected', 'orangeSoft'], superseded: ['Replaced by a correction', 'cyanSoft'] };
@@ -429,6 +430,7 @@ export function Sponsors() {
     <Screen>
       <H1>Sponsors</H1>
       {has('sponsor') ? <View style={{ flexDirection: 'row', gap: 8, marginTop: 6, flexWrap: 'wrap' }}><Btn small title="Create brand" color={c.violet} onPress={() => setForm('brand')} /><Btn small title="Propose a deal" color={c.pink} onPress={() => setForm('deal')} /></View> : null}
+      {has('sponsor') && (mine.data ?? []).length ? <BeneficiaryFinder brands={mine.data} onSent={deals.reload} /> : null}
       {has('athlete') ? (
         <Section title="Open to sponsors" color={c.mint}>
           <T size={13} color={c.mute}>Off by default. When you turn it on, sponsors can find your name, sports and pitch — never your contact details — and send you offers you can accept or decline.</T>
@@ -444,6 +446,7 @@ export function Sponsors() {
         <T size={13} color={c.mute}>Sponsors run funding programs in rounds; athletes, teams and event organisers apply to the ones that are open. Awards become agreements here.</T>
         <View style={{ flexDirection: 'row', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
           <Btn small title="Sponsorship calls" color={c.pink} onPress={() => push('FundingOpportunities')} />
+          <Btn small title="Beneficiary portfolio" color={c.violet} onPress={() => push('SponsorPortfolio')} />
           {mine.data?.length ? <Btn small title="Run programs" color={c.violet} onPress={() => push('SponsorPrograms')} /> : null}
           {mine.data?.some((b) => ['manager', 'finance', 'approver', 'auditor'].includes(b.my_role)) ? <Btn small title="Budgets" color={c.paper} ink={c.ink} onPress={() => push('SponsorBudgets')} /> : null}
         </View>

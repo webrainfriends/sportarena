@@ -84,6 +84,8 @@ import './sponsorship-evaluation.js';
 import './sponsorship-application-forms.js';
 import './sponsorship-awards.js';
 import './sponsorship-budgets.js';
+import './beneficiary-portfolio.js';
+import './sponsorship-beneficiaries.js';
 import './supply.js';
 import './medical.js';
 import './care-plans.js';

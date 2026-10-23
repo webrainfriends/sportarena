@@ -9,6 +9,7 @@ import { notify } from '../notify.js';
 import { LINE, buildSchedule } from '../sponsor-schedule.js';
 import { snapshotIdentity } from '../sponsor-identity-access.js';
 import { saveLines, loadLines, generateObligations, logHistory, dealContext, obligationContext } from '../sponsor-agreements.js';
+import { beneficiaryScopeSql, payeeSnapshot } from '../sponsor-beneficiaries.js';
 import { notifySponsor, sponsorStaffSql, actionsFor } from '../sponsor-access.js';
 import { costOf } from '../sponsorship-budgets.js';
 
@@ -78,6 +79,7 @@ cap({
     const version = d.accepted_version ?? d.terms_version;
     const lines = await many('SELECT id, position, kind, label, currency, amount_cents, total_cents, estimate_cents, quantity, unit, cadence, first_due_on, instalments, custom_dates, promoter, terms FROM sponsorship_lines WHERE sponsorship_id=$1 AND version=$2 ORDER BY position', [d.id, version]);
     const out = { id: d.id, agreement_ref: d.agreement_ref, status: d.status, role: ctx.role, my_sponsor_role: ctx.staff, can: ctx.staff ? actionsFor(ctx.staff) : undefined, sponsor: { id: sp.id, name: sp.name }, target_type: d.target_type, target_id: d.target_id, starts_on: d.starts_on, ends_on: d.ends_on, timezone: d.timezone, terms_version: d.terms_version, accepted_version: d.accepted_version, currency: d.currency, legacy_amount_cents: lines.length ? undefined : d.amount_cents, legacy_in_kind: lines.length ? undefined : d.in_kind, objectives: d.objectives, deliverables: d.deliverables, lines };
+    if (['organisation', 'group'].includes(d.target_type)) out.beneficiary = { type: d.target_type, id: d.target_id, name: (await one(d.target_type === 'group' ? 'SELECT name FROM org_cohorts WHERE id=$1' : 'SELECT name FROM organisations WHERE id=$1', [d.target_id]))?.name ?? null, my_role: ctx.beneficiary?.representative ? 'representative' : ctx.beneficiary?.payee ? 'payee' : null };
     // who the sponsor was at this exact version (frozen): later renames or representative changes never alter it. Never registration/tax/billing data.
     const snap = (await pool.query('SELECT s.display_name, s.legal_name, s.sponsor_type, u.display_name AS signed_by FROM sponsorship_identity_snapshots s LEFT JOIN users u ON u.id=s.signed_by WHERE s.sponsorship_id=$1 AND s.version=$2', [d.id, version])).rows[0];
     out.sponsor_identity = snap ?? null;
@@ -89,7 +91,7 @@ cap({
       out.obligations = await obligationRows('o.sponsorship_id = $1', [d.id]);
       const kids = (t, cols) => many(`SELECT x.obligation_id, ${cols} FROM ${t} x JOIN sponsorship_obligations o ON o.id=x.obligation_id WHERE o.sponsorship_id=$1 ORDER BY x.created_at, x.id`, [d.id]);
       const [pay, del, sub] = await Promise.all([
-        kids('sponsorship_payments', 'x.id, x.amount_cents, x.currency, x.method, x.reference, x.paid_on::text AS paid_on, x.evidence_url, x.status, x.decision_note'),
+        kids('sponsorship_payments', 'x.id, x.amount_cents, x.currency, x.method, x.reference, x.paid_on::text AS paid_on, x.evidence_url, x.status, x.decision_note, x.payee_snapshot'),
         kids('sponsorship_deliveries', 'x.id, x.quantity, x.reference, x.note, x.status, x.received_quantity, x.decision_note'),
         kids('sponsorship_submissions', 'x.id, x.evidence_url, x.note, x.status, x.review_note')]);
       for (const o of out.obligations) {
@@ -118,12 +120,12 @@ async function obligationRows(where, params, tail = '') {
 
 const SCOPE = `(${sponsorStaffSql(1)} OR $2::boolean
   OR (ss.target_type='event' AND ss.target_id IN (SELECT id FROM events WHERE organizer_id=$1))
-  OR (ss.target_type='team' AND ss.target_id IN (SELECT id FROM teams WHERE owner_id=$1)) OR (ss.target_type='athlete' AND ss.target_id=$1))`;
+  OR (ss.target_type='team' AND ss.target_id IN (SELECT id FROM teams WHERE owner_id=$1)) OR (ss.target_type='athlete' AND ss.target_id=$1) OR ${beneficiaryScopeSql('$1')})`;
 
 cap({
   name: 'list_sponsorship_obligations', method: 'GET', path: '/sponsorship-obligations', tag: 'Sponsors',
   summary: 'Dues across your agreements (as sponsor or recipient). Filters: agreement, brand, target type, kind, state (upcoming / overdue / open / fulfilled), due-date range. `totals` is per currency over every match, not just the page: committed, confirmed received, reported-but-unverified, outstanding. Currencies are never added together.',
-  input: z.object({ sponsorship_id: id.optional(), sponsor_id: id.optional(), target_type: z.enum(['event', 'team', 'athlete']).optional(), kind: z.enum(['money', 'goods', 'endorsement']).optional(), state: z.enum(['upcoming', 'overdue', 'open', 'fulfilled', 'cancelled']).optional(), from: date.optional(), to: date.optional(), ...page }),
+  input: z.object({ sponsorship_id: id.optional(), sponsor_id: id.optional(), target_type: z.enum(['event', 'team', 'athlete', 'organisation', 'group']).optional(), kind: z.enum(['money', 'goods', 'endorsement']).optional(), state: z.enum(['upcoming', 'overdue', 'open', 'fulfilled', 'cancelled']).optional(), from: date.optional(), to: date.optional(), ...page }),
   async handler({ user }, i) {
     const params = [user.id, !!isAdmin(user), i.sponsorship_id ?? null, i.sponsor_id ?? null, i.target_type ?? null, i.kind ?? null, i.state ?? null, i.from ?? null, i.to ?? null];
     const where = `${SCOPE} AND ($3::uuid IS NULL OR o.sponsorship_id=$3) AND ($4::uuid IS NULL OR ss.sponsor_id=$4) AND ($5::text IS NULL OR ss.target_type=$5) AND ($6::text IS NULL OR o.kind=$6)
@@ -150,7 +152,7 @@ cap({
   async handler({ user }) {
     const a = [user.id, !!isAdmin(user)];
     const base = `FROM sponsorship_obligations o JOIN sponsorships ss ON ss.id=o.sponsorship_id JOIN sponsors sp ON sp.id=ss.sponsor_id WHERE ${SCOPE}`;
-    const recipient = `(ss.target_type='event' AND ss.target_id IN (SELECT id FROM events WHERE organizer_id=$1) OR ss.target_type='team' AND ss.target_id IN (SELECT id FROM teams WHERE owner_id=$1) OR ss.target_type='athlete' AND ss.target_id=$1)`;
+    const recipient = `(ss.target_type='event' AND ss.target_id IN (SELECT id FROM events WHERE organizer_id=$1) OR ss.target_type='team' AND ss.target_id IN (SELECT id FROM teams WHERE owner_id=$1) OR ss.target_type='athlete' AND ss.target_id=$1 OR ${beneficiaryScopeSql('$1')})`;
     const [agreements, counts] = await Promise.all([
       many(`SELECT ss.status, count(*)::int AS n FROM sponsorships ss JOIN sponsors sp ON sp.id=ss.sponsor_id WHERE ${SCOPE} GROUP BY ss.status ORDER BY ss.status`, a),
       one(`SELECT count(*) FILTER (WHERE o.status='scheduled' AND o.due_on < current_date)::int AS overdue,
@@ -215,7 +217,9 @@ cap({
       if (i.status !== 'confirmed' && !i.note) throw badRequest('Give a reason');
       const p = (await c.query('SELECT * FROM sponsorship_payments WHERE id=$1 FOR UPDATE', [i.id])).rows[0];
       if (i.status === 'reversed' ? p.status !== 'confirmed' : p.status !== 'reported') throw conflict(`This payment is already ${p.status}`);
-      const row = (await c.query('UPDATE sponsorship_payments SET status=$2, decided_by=$3, decided_at=now(), decision_note=$4 WHERE id=$1 RETURNING *', [p.id, i.status, user.id, i.note ?? null])).rows[0];
+      // the payees in force are frozen on the payment when it is confirmed, so later allocation or membership changes never rewrite who was paid
+      const snap = i.status === 'confirmed' ? await payeeSnapshot(c, ctx.d.id, p.amount_cents) : null;
+      const row = (await c.query('UPDATE sponsorship_payments SET status=$2, decided_by=$3, decided_at=now(), decision_note=$4, payee_snapshot=coalesce($5::jsonb, payee_snapshot) WHERE id=$1 RETURNING *', [p.id, i.status, user.id, i.note ?? null, snap ? JSON.stringify(snap) : null])).rows[0];
       await settleMoney(c, ctx.o);
       await logHistory(c, ctx.d.id, ctx.o.version, user.id, `payment_${i.status}`, i.note);
       await ping(c, 'sponsor', `A sponsorship payment was ${i.status}`, ctx, 'sponsorship_payment', 'pay');
