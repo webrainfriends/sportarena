@@ -19,6 +19,7 @@ import { TimelineSheet } from '../Timeline';
 import { Confirm } from './coaching';
 import { RecoveryPanel } from './wellness';
 import { DoctorEntry } from './doctor';
+import { fmt as fmtBudget } from './sponsor-budgets';
 import { MyHealthFile } from './health-file';
 import { c, grad, money, day, when, withUnit, unitName } from '../theme';
 
@@ -410,6 +411,13 @@ export function Sponsors() {
   const mine = useLoad(() => api.get('/sponsors', { mine: true, limit: 50 }), []);
   const deals = useLoad(() => api.get('/sponsorships', { limit: 100 }), []);
   const evs = useLoad(() => api.get('/events', { limit: 50 }), []);
+  // authorized budgets an offer can draw on (#293): one list per brand the person may read budgets of
+  const budgets = useLoad(async () => {
+    const bs = (mine.data ?? []).filter((b) => ['manager', 'finance', 'approver', 'auditor'].includes(b.my_role));
+    const all = await Promise.all(bs.map((b) => api.get('/sponsorship-budgets', { sponsor_id: b.id, status: 'active', limit: 100 }).catch(() => [])));
+    return all.flat().filter((x) => x.kind !== 'program');
+  }, [mine.data]);
+  const budgetOf = (id) => (budgets.data ?? []).find((x) => x.id === id);
   const profile = useLoad(() => api.get('/me/sponsorship-profile'), []);
   const athletes = useLoad(() => (has('sponsor') ? api.get('/sponsorable-athletes', { limit: 30, ...(q.trim() ? { q: q.trim() } : {}) }) : Promise.resolve([])), [q]);
   const act = async (fn, m) => { try { await fn(); toast(m); deals.reload(); } catch (e) { toast(explain(e)); if (e.status === 409) deals.reload(); } };
@@ -437,6 +445,7 @@ export function Sponsors() {
         <View style={{ flexDirection: 'row', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
           <Btn small title="Sponsorship calls" color={c.pink} onPress={() => push('FundingOpportunities')} />
           {mine.data?.length ? <Btn small title="Run programs" color={c.violet} onPress={() => push('SponsorPrograms')} /> : null}
+          {mine.data?.some((b) => ['manager', 'finance', 'approver', 'auditor'].includes(b.my_role)) ? <Btn small title="Budgets" color={c.paper} ink={c.ink} onPress={() => push('SponsorBudgets')} /> : null}
         </View>
       </Section>
       <Section title="Your deals" color={c.sun}>
@@ -448,6 +457,7 @@ export function Sponsors() {
             {d.decision_reason ? <T size={12} color={c.mute}>Reply: {d.decision_reason}</T> : null}
             {d.agreement_ref ? <Btn small title={`Open agreement ${d.agreement_ref}`} color={c.violet} style={{ alignSelf: 'flex-start', marginTop: 8 }} onPress={() => push('SponsorDeal', { id: d.id })} /> : null}
             {d.status === 'proposed' && !d.i_am_sponsor ? <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}><Btn small title="Accept" color={c.mint} ink={c.ink} onPress={() => act(() => api.patch(`/sponsorships/${d.id}`, { status: 'active' }), 'Deal on!')} /><Btn small title="Decline" color={c.paper} ink={c.red} onPress={() => act(() => api.patch(`/sponsorships/${d.id}`, { status: 'declined' }), 'Declined')} />{d.target_type === 'athlete' ? <Btn small title="Accept & show on sponsor page" color={c.paper} ink={c.ink} onPress={() => act(() => api.patch(`/sponsorships/${d.id}`, { status: 'active', show_publicly: true }), 'Deal on, shown publicly')} /> : null}</View> : null}
+            {d.i_am_sponsor && d.budget_approval === 'pending' ? <T size={12} color={c.mute}>Waiting for budget approval — the recipient has not been told about this offer yet.</T> : null}
             {d.status === 'proposed' && d.i_am_sponsor && mayDeal(d, 'withdraw') ? <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}><Btn small title="Withdraw offer" color={c.paper} ink={c.red} onPress={() => act(() => api.post(`/sponsorships/${d.id}/withdraw`), 'Offer withdrawn')} /></View> : null}
             {d.status === 'active' && mayDeal(d, 'end') ? <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}><Btn small title="End deal" color={c.paper} ink={c.red} onPress={() => act(() => api.patch(`/sponsorships/${d.id}`, { status: 'ended' }), 'Deal ended')} /></View> : null}
           </Card>
@@ -489,12 +499,14 @@ export function Sponsors() {
           { key: 'starts_on', label: 'Starts', type: 'date' }, { key: 'ends_on', label: 'Ends', type: 'date' },
           { key: 'sec', type: 'section', label: 'Fixed-term monthly support (optional)' },
           { key: 'instalments', label: 'Monthly payments (0 = none)', type: 'stepper', min: 0, max: 36, default: 0 },
-          { key: 'currency', label: 'Currency', type: 'chips', options: ['INR', 'SGD', 'USD', 'EUR', 'GBP', 'AED'], default: 'INR', show: (v) => v.instalments > 0 }, { key: 'monthly_cents', label: 'Each month', type: 'money', currency: 'INR', show: (v) => v.instalments > 0 }, { key: 'first_due_on', label: 'First payment due', type: 'date', show: (v) => v.instalments > 0 },
+          { key: 'budget_id', label: 'Draw on a budget', type: 'chips', optional: true, hint: 'Optional. The offer is then limited by what that budget has authorized, and the payments use its currency.', options: (v) => (budgets.data ?? []).filter((x) => x.sponsor_id === v.sponsor_id).map((x) => ({ value: x.id, label: `${x.name} (${fmtBudget(x.available_cents, x.currency)} free)` })), show: (v) => v.instalments > 0 && (budgets.data ?? []).some((x) => x.sponsor_id === v.sponsor_id) },
+          { key: 'currency', label: 'Currency', type: 'chips', options: ['INR', 'SGD', 'USD', 'EUR', 'GBP', 'AED'], default: 'INR', show: (v) => v.instalments > 0 && !v.budget_id }, { key: 'monthly_cents', label: 'Each month', type: 'money', currency: (v) => budgetOf(v.budget_id)?.currency ?? v.currency ?? 'INR', show: (v) => v.instalments > 0 }, { key: 'first_due_on', label: 'First payment due', type: 'date', show: (v) => v.instalments > 0 },
           { key: 'objectives', label: 'Objectives', type: 'multiline', optional: true }, { key: 'deliverables', label: 'What you expect from the athlete', type: 'multiline' }, { key: 'message', label: 'Personal message', type: 'multiline', optional: true }]}
         onSubmit={async (v) => {
           const { instalments, currency, monthly_cents, first_due_on, sec, ...rest } = v;
-          const lines = instalments > 0 ? [{ kind: 'money', label: 'Monthly support', currency, amount_cents: monthly_cents, cadence: 'monthly', first_due_on, instalments }] : undefined;
-          await api.post('/sponsorships', { target_type: 'athlete', target_id: offerTo.id, ...rest, amount_cents: Math.round((v.amount ?? 0) * 100), amount: undefined, lines }); deals.reload(); return 'Offer sent — they will be notified';
+          const lines = instalments > 0 ? [{ kind: 'money', label: 'Monthly support', currency: budgetOf(v.budget_id)?.currency ?? currency, amount_cents: monthly_cents, cadence: 'monthly', first_due_on, instalments }] : undefined;
+          const sent = await api.post('/sponsorships', { target_type: 'athlete', target_id: offerTo.id, ...rest, budget_id: lines ? v.budget_id : undefined, amount_cents: Math.round((v.amount ?? 0) * 100), amount: undefined, lines }); deals.reload();
+          return sent.budget_approval === 'pending' ? 'Saved — it is above the budget threshold, so a second approver must approve it before the athlete is told' : 'Offer sent — they will be notified';
         }} />
     </Screen>
   );

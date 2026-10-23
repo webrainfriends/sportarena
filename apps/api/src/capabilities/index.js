@@ -83,6 +83,7 @@ import './sponsorship-programs.js';
 import './sponsorship-evaluation.js';
 import './sponsorship-application-forms.js';
 import './sponsorship-awards.js';
+import './sponsorship-budgets.js';
 import './supply.js';
 import './medical.js';
 import './care-plans.js';

@@ -3,13 +3,14 @@
 import { z } from 'zod';
 import { cap, id, page } from '../registry.js';
 import { one, many, tx, pool } from '../db.js';
-import { badRequest, conflict, forbidden, notFound } from '../errors.js';
+import { badRequest, conflict, forbidden, notFound, unprocessable } from '../errors.js';
 import { isAdmin } from '../helpers.js';
 import { notify } from '../notify.js';
 import { LINE, buildSchedule } from '../sponsor-schedule.js';
 import { snapshotIdentity } from '../sponsor-identity-access.js';
 import { saveLines, loadLines, generateObligations, logHistory, dealContext, obligationContext } from '../sponsor-agreements.js';
 import { notifySponsor, sponsorStaffSql, actionsFor } from '../sponsor-access.js';
+import { costOf } from '../sponsorship-budgets.js';
 
 const date = z.string().date();
 const url = z.string().url().max(500).refine((u) => /^https:\/\//i.test(u), 'evidence must be an https link');
@@ -50,7 +51,17 @@ cap({
       const row = (await c.query('UPDATE sponsorships SET terms_version=$2, starts_on=$3, ends_on=$4, timezone=coalesce($5,timezone), amount_cents=$6, currency=$7, agreement_ref=coalesce(agreement_ref, \'SPA-\'||upper(substr(id::text,1,8))) WHERE id=$1 RETURNING *',
         [ctx.d.id, v, starts ?? null, ends ?? null, i.timezone ?? null, cash.length === 1 ? cash[0][1] : 0, cash.length === 1 ? cash[0][0] : null])).rows[0];
       await logHistory(c, ctx.d.id, v, user.id, 'revised', i.reason);
-      await ping(c, ctx.recipientId, 'A sponsorship offer was revised', ctx);
+      // a budget-controlled offer is re-checked at its new size: one currency, a sourced rate, and a fresh approval when it is above the threshold (#293)
+      let held = false;
+      if (ctx.d.budget_id) {
+        if (cash.length !== 1) throw unprocessable('A budget-controlled offer needs money lines in exactly one currency');
+        const b = (await c.query('SELECT * FROM sponsorship_budgets WHERE id=$1', [ctx.d.budget_id])).rows[0];
+        const cost = await costOf(c, b, cash[0][0], cash[0][1]);
+        held = b.approval_over_cents != null && cost.cents > Number(b.approval_over_cents);
+        await c.query('UPDATE sponsorships SET budget_fx_rate_id=$2, budget_approval=$3, budget_approval_by=NULL, budget_approval_at=NULL, budget_approval_note=NULL WHERE id=$1', [ctx.d.id, cost.rateId, held ? 'pending' : null]);
+        if (held) await notifySponsor(c, ctx.sp, 'budget_approve', { kind: 'sponsorship_budget', title: 'A revised offer needs budget approval', body: `A revised offer is above the approval threshold of "${b.name}".`, data: { sponsorship_id: ctx.d.id, budget_id: b.id } }, ctx.d.department_id, user.id);
+      }
+      if (!held) await ping(c, ctx.recipientId, 'A sponsorship offer was revised', ctx);
       return { ...row, schedule: plan };
     });
   },
@@ -63,6 +74,7 @@ cap({
   async handler({ user }, i) {
     const ctx = await dealContext(pool, i.id, user);
     const { d, sp } = ctx;
+    if (ctx.role === 'recipient' && ['pending', 'rejected'].includes(d.budget_approval)) throw notFound('Sponsorship'); // still the brand's internal business
     const version = d.accepted_version ?? d.terms_version;
     const lines = await many('SELECT id, position, kind, label, currency, amount_cents, total_cents, estimate_cents, quantity, unit, cadence, first_due_on, instalments, custom_dates, promoter, terms FROM sponsorship_lines WHERE sponsorship_id=$1 AND version=$2 ORDER BY position', [d.id, version]);
     const out = { id: d.id, agreement_ref: d.agreement_ref, status: d.status, role: ctx.role, my_sponsor_role: ctx.staff, can: ctx.staff ? actionsFor(ctx.staff) : undefined, sponsor: { id: sp.id, name: sp.name }, target_type: d.target_type, target_id: d.target_id, starts_on: d.starts_on, ends_on: d.ends_on, timezone: d.timezone, terms_version: d.terms_version, accepted_version: d.accepted_version, currency: d.currency, legacy_amount_cents: lines.length ? undefined : d.amount_cents, legacy_in_kind: lines.length ? undefined : d.in_kind, objectives: d.objectives, deliverables: d.deliverables, lines };
@@ -85,6 +97,7 @@ cap({
         o.promoter = lines.find((l) => l.id === o.line_id)?.promoter ?? null;
       }
     }
+    if (ctx.role !== 'recipient' && d.budget_id) out.budget = await one('SELECT b.id, b.name, b.kind, b.currency, $2::text AS approval FROM sponsorship_budgets b WHERE b.id=$1', [d.budget_id, d.budget_approval]);
     out.history = await many('SELECT h.id, h.version, h.action, h.reason, h.created_at, u.display_name AS actor FROM sponsorship_history h LEFT JOIN users u ON u.id=h.actor_id WHERE h.sponsorship_id=$1 ORDER BY h.id', [d.id]);
     return out;
   },

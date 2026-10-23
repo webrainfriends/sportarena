@@ -1,0 +1,283 @@
+import React, { useState } from 'react';
+import { Platform, View } from 'react-native';
+import { api } from '../api';
+import { useLoad } from '../hooks';
+import { useSession } from '../session';
+import { useNav } from '../nav';
+import { Btn, Card, Chip, Empty, H1, Loading, Screen, Section, Seg, T, Tag } from '../ui';
+import { FormSheet } from '../FormSheet';
+import { c } from '../theme';
+import { explain, LoadError } from '../access';
+
+// Sponsorship budget controls (#293). A budget is what the brand has AUTHORIZED to reserve and commit. Planned offers are shown apart and
+// never count as money used or received; each currency stays in its own budget unless a sourced rate is set. The server decides everything.
+export const fmt = (cents, cur) => { try { const f = new Intl.NumberFormat(undefined, { style: 'currency', currency: cur }); return f.format(cents / 10 ** f.resolvedOptions().maximumFractionDigits); } catch { return `${cents} ${cur ?? ''}`.trim(); } };
+const KIND = { annual: 'Annual', program: 'Program', department: 'Department', event: 'Event' };
+const KIND_TONE = { annual: c.violetSoft, program: c.pinkSoft, department: c.mintSoft, event: c.sunSoft };
+const MAY_EDIT = ['manager', 'finance', 'admin'];
+const day = (iso) => (iso ? new Date(`${String(iso).slice(0, 10)}T00:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '');
+const stamp = (iso) => (iso ? new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
+
+const Banner = ({ tone = c.sunSoft, children, action, onAction }) => (
+  <View accessibilityRole="alert" style={{ backgroundColor: tone, borderRadius: 12, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+    <T size={13} style={{ flex: 1 }}>{children}</T>
+    {action ? <Btn small title={action} color={c.paper} ink={c.ink} onPress={onAction} accessibilityLabel={action} /> : null}
+  </View>
+);
+
+/** Authorized budget split into committed / reserved / allocated to children / still available. Nothing here is "received". */
+export function BudgetBar({ b }) {
+  const total = b.authorized_cents || 1;
+  const w = (x) => `${Math.max(0, Math.min(100, (x / total) * 100))}%`;
+  return (
+    <View accessible accessibilityRole="progressbar"
+      accessibilityLabel={`${fmt(b.committed_cents, b.currency)} committed, ${fmt(b.reserved_cents, b.currency)} reserved, ${fmt(b.allocated_cents, b.currency)} allocated to child budgets, ${fmt(b.available_cents, b.currency)} available of ${fmt(b.authorized_cents, b.currency)} authorized`}>
+      <View style={{ height: 12, borderRadius: 6, backgroundColor: c.mintSoft, overflow: 'hidden', flexDirection: 'row' }}>
+        <View style={{ width: w(b.committed_cents), backgroundColor: c.pink }} />
+        <View style={{ width: w(b.reserved_cents), backgroundColor: c.sun }} />
+        <View style={{ width: w(b.allocated_cents), backgroundColor: c.violet }} />
+      </View>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 6 }}>
+        {[[c.pink, 'Committed'], [c.sun, 'Reserved'], [c.violet, 'Allocated'], [c.mintSoft, 'Available']].map(([col, l]) => (
+          <View key={l} style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}><View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: col, borderWidth: 1, borderColor: c.line }} /><T size={11} color={c.mute}>{l}</T></View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+const Figure = ({ label, value, tone, note }) => (
+  <View style={{ minWidth: 150, flexGrow: 1, flexBasis: 150, backgroundColor: tone ?? c.paper, borderRadius: 12, borderWidth: 1, borderColor: c.line, padding: 12 }}>
+    <T size={11} color={c.mute} weight="700" style={{ letterSpacing: 0.6 }}>{label.toUpperCase()}</T>
+    <T size={17} weight="800" numberOfLines={1} adjustsFontSizeToFit style={{ fontVariant: ['tabular-nums'] }}>{value}</T>
+    {note ? <T size={11} color={c.mute}>{note}</T> : null}
+  </View>
+);
+
+const budgetFields = (brands, budgets, depts, events, create) => [
+  ...(create ? [
+    { key: 'sponsor_id', label: 'Brand', type: 'choice', options: brands.map((s) => ({ value: s.id, label: `${s.emoji ?? ''} ${s.name}`.trim() })) },
+    { key: 'kind', label: 'What is this budget for?', type: 'chips', options: [{ value: 'annual', label: 'A year' }, { value: 'program', label: 'A program' }, { value: 'department', label: 'A department' }, { value: 'event', label: 'An event' }], default: 'annual' },
+  ] : []),
+  { key: 'name', label: 'Budget name' },
+  ...(create ? [
+    { key: 'fiscal_year', label: 'Fiscal year', type: 'stepper', min: 2000, max: 2200, default: new Date().getFullYear(), show: (v) => v.kind === 'annual' },
+    { key: 'currency', label: 'Currency', type: 'currency' },
+    { key: 'parent_id', label: 'Carved out of', type: 'chips', optional: true, options: budgets.map((b) => ({ value: b.id, label: `${b.name} (${fmt(b.available_cents, b.currency)} free)` })), hint: 'Optional. A child budget is part of its parent, in the same currency, and can never exceed what the parent has left.', show: (v) => v.kind !== 'annual' && budgets.length > 0 },
+    { key: 'department_id', label: 'Department', type: 'chips', options: depts.map((d) => ({ value: d.id, label: d.name })), show: (v) => v.kind === 'department' },
+    { key: 'event_id', label: 'Event', type: 'entity', entityKind: 'event', noun: 'event', options: events.map((e) => ({ id: e.id, label: e.name, sub: e.city ?? '' })), show: (v) => v.kind === 'event' },
+  ] : []),
+  { key: 'authorized_cents', label: 'Authorized amount', type: 'money', currency: (v) => v.currency ?? 'USD' },
+  { key: 'approval_over_cents', label: 'Second approver needed above', type: 'money', currency: (v) => v.currency ?? 'USD', optional: true, hint: 'Offers and awards larger than this wait for another person to approve. Leave empty for none.' },
+  { key: 'fx_policy', label: 'Other currencies', type: 'chips', options: [{ value: 'none', label: 'Not allowed' }, { value: 'explicit', label: 'Only at a sourced rate' }], default: 'none', hint: 'Different currencies are never added together unless you record a rate with its source.' },
+];
+
+/** Brand staff: the budgets of the brands I can see. */
+export function SponsorBudgets() {
+  const { push } = useNav();
+  const { toast } = useSession();
+  const [brandId, setBrandId] = useState(null);
+  const [status, setStatus] = useState('active');
+  const [form, setForm] = useState(false);
+  const brands = useLoad(() => api.get('/sponsors', { mine: true, limit: 50 }), []);
+  const mine = (brands.data ?? []).filter((b) => ['manager', 'finance', 'approver', 'auditor', 'admin'].includes(b.my_role));
+  const brand = mine.find((b) => b.id === brandId) ?? mine[0];
+  const list = useLoad(() => (brand ? api.get('/sponsorship-budgets', { sponsor_id: brand.id, status, limit: 100 }) : Promise.resolve([])), [brand?.id, status]);
+  const all = useLoad(() => (brand ? api.get('/sponsorship-budgets', { sponsor_id: brand.id, status: 'active', limit: 100 }) : Promise.resolve([])), [brand?.id, form]);
+  const depts = useLoad(() => (brand?.organisation_id ? api.get(`/organisations/${brand.organisation_id}/departments`).catch(() => []) : Promise.resolve([])), [brand?.organisation_id]);
+  const events = useLoad(() => api.get('/events', { limit: 50 }).catch(() => []), []);
+  const may = brand && MAY_EDIT.includes(brand.my_role);
+  const byId = Object.fromEntries((list.data ?? []).map((b) => [b.id, b]));
+  return (
+    <Screen onRefresh={() => { list.reload(); brands.reload(); }} refreshing={list.loading && !!list.data}>
+      <H1>Budgets</H1>
+      <T size={13} color={c.mute}>What your brand has authorized to reserve and commit. Offers that are only proposed are shown as planned — they are never money used or received.</T>
+      {brands.error ? <LoadError error={brands.error} onRetry={brands.reload} /> : brands.loading && !brands.data ? <Loading /> : !mine.length ? (
+        <Empty emoji="🏷️" title="No brand budgets" sub="Budgets belong to a sponsor brand. Managers, finance, approvers and auditors of a brand see them here." />
+      ) : (
+        <>
+          {mine.length > 1 ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{mine.map((b) => <Chip key={b.id} label={`${b.emoji ?? ''} ${b.name}`.trim()} active={b.id === brand.id} onPress={() => setBrandId(b.id)} />)}</View> : <T weight="800">{brand.emoji} {brand.name}</T>}
+          {may ? <Btn small title="New budget" color={c.pink} style={{ alignSelf: 'flex-start' }} onPress={() => setForm(true)} accessibilityLabel="Authorize a new budget" /> : <T size={12} color={c.mute}>Your role ({brand.my_role}) can read budgets; managers and finance authorize them.</T>}
+          <Seg options={[{ value: 'active', label: 'Active' }, { value: 'archived', label: 'Archived' }]} value={status} onChange={setStatus} color={c.pink} />
+          {list.error ? <LoadError error={list.error} onRetry={list.reload} /> : list.loading && !list.data ? <Loading /> : list.data?.length ? list.data.map((b) => (
+            <Card key={b.id} onPress={() => push('SponsorBudget', { id: b.id })} accessibilityLabel={`${b.name}, ${KIND[b.kind]} budget, ${fmt(b.available_cents, b.currency)} available of ${fmt(b.authorized_cents, b.currency)}. Open budget`}>
+              <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                <T weight="900" style={{ flex: 1 }}>{b.name}</T>
+                <Tag label={KIND[b.kind] + (b.fiscal_year ? ` ${b.fiscal_year}` : '')} color={KIND_TONE[b.kind]} />
+              </View>
+              <T size={12} color={c.mute}>{b.parent_id && byId[b.parent_id] ? `Part of ${byId[b.parent_id].name} · ` : ''}{b.fx_policy === 'explicit' ? 'Other currencies at a sourced rate' : `${b.currency} only`}{b.approval_over_cents != null ? ` · approval above ${fmt(b.approval_over_cents, b.currency)}` : ''}</T>
+              <BudgetBar b={b} />
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
+                <T size={13} weight="800">{fmt(b.available_cents, b.currency)} available</T>
+                <T size={12} color={c.mute}>of {fmt(b.authorized_cents, b.currency)} · {fmt(b.committed_cents, b.currency)} committed · {fmt(b.reserved_cents, b.currency)} reserved{b.planned_cents ? ` · ${fmt(b.planned_cents, b.currency)} planned` : ''}</T>
+              </View>
+              {b.over_committed ? <Banner tone={c.redSoft}>Committed and reserved money is above the authorized amount.</Banner> : null}
+            </Card>
+          )) : <Empty emoji="🧮" title={`No ${status} budgets`} sub={may ? 'Authorize a budget for a year, a program, a department or an event.' : 'Budgets of this brand appear here.'} />}
+        </>
+      )}
+      <FormSheet visible={form} onClose={() => setForm(false)} title="New budget" submitLabel="Authorize budget"
+        fields={budgetFields(mine.filter((b) => MAY_EDIT.includes(b.my_role)), (all.data ?? []).filter((b) => b.kind !== 'event'), depts.data ?? [], events.data ?? [], true)}
+        initial={{ sponsor_id: brand?.id, kind: 'annual', currency: 'USD' }}
+        onSubmit={async (v) => { const b = await api.post('/sponsorship-budgets', Object.fromEntries(Object.entries(v).filter(([, x]) => x !== undefined && x !== ''))); list.reload(); push('SponsorBudget', { id: b.id }); toast('Budget authorized'); return 'Budget authorized'; }} />
+    </Screen>
+  );
+}
+
+const CKIND = { reservation: ['Reserved', c.sunSoft], agreement: ['Committed', c.pinkSoft], planned: ['Planned', c.violetSoft] };
+
+/** One budget: balances, commitments, children, linked programs and sourced FX rates. */
+export function SponsorBudget({ id }) {
+  const { toast } = useSession();
+  const { push } = useNav();
+  const [form, setForm] = useState(null); // 'edit' | 'rate'
+  const [stale, setStale] = useState(false);
+  const [page, setPage] = useState(0);
+  const bud = useLoad(() => api.get(`/sponsorship-budgets/${id}`), [id]);
+  const rows = useLoad(() => api.get(`/sponsorship-budgets/${id}/commitments`, { limit: 25, offset: page * 25 }), [id, page, bud.data?.row_version]);
+  const b = bud.data;
+  const reloadAll = () => { bud.reload(); rows.reload(); };
+  const act = async (fn, m) => { try { await fn(); if (m) toast(m); setStale(false); reloadAll(); } catch (e) { toast(explain(e)); if (e.status === 409) { setStale(true); reloadAll(); } } };
+  if (bud.loading && !b) return <Screen><Loading /></Screen>;
+  if (bud.error) return <Screen><LoadError error={bud.error} onRetry={bud.reload} /></Screen>;
+  const may = b.can.includes('budget'), mayApprove = b.can.includes('budget_approve');
+  const active = b.status === 'active';
+  const download = async () => {
+    try {
+      const r = await api.get(`/sponsorship-budgets/${b.id}/export`);
+      if (Platform.OS === 'web' && typeof document !== 'undefined') { const u = URL.createObjectURL(new Blob([r.csv], { type: 'text/csv' })); const l = document.createElement('a'); l.href = u; l.download = r.filename; l.click(); URL.revokeObjectURL(u); toast('Export downloaded'); } else toast(`${r.rows} rows exported`);
+    } catch (e) { toast(explain(e)); }
+  };
+  const ratesNow = b.fx_rates.filter((r) => !r.superseded_at);
+  return (
+    <Screen onRefresh={reloadAll} refreshing={bud.loading && !!b}>
+      <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><H1 style={{ flex: 1 }}>{b.name}</H1><Tag label={active ? KIND[b.kind] + (b.fiscal_year ? ` ${b.fiscal_year}` : '') : 'Archived'} color={active ? KIND_TONE[b.kind] : c.paper} /></View>
+      {stale ? <Banner action="Dismiss" onAction={() => setStale(false)}>Someone else changed this budget while you were working. The latest version is shown now — review it and try again.</Banner> : null}
+      <T size={12} color={c.mute}>{b.sponsor_name} · you: {b.my_role}{b.parent ? ` · part of ${b.parent.name}` : ''}{b.event ? ` · for ${b.event.name}` : ''}{b.department ? ` · ${b.department.name}` : ''}</T>
+      <Card>
+        <T weight="900">{fmt(b.available_cents, b.currency)} available</T>
+        <BudgetBar b={b} />
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+          <Figure label="Authorized" value={fmt(b.authorized_cents, b.currency)} />
+          <Figure label="Allocated to children" value={fmt(b.allocated_cents, b.currency)} />
+          <Figure label="Reserved" value={fmt(b.reserved_cents, b.currency)} tone={c.sunSoft} note="held for awards not yet accepted" />
+          <Figure label="Committed" value={fmt(b.committed_cents, b.currency)} tone={c.pinkSoft} note="accepted agreements" />
+          <Figure label="Paid" value={fmt(b.paid_cents, b.currency)} tone={c.limeSoft} note={b.reported_unverified_cents ? `${fmt(b.reported_unverified_cents, b.currency)} reported, not confirmed` : 'confirmed by the recipient'} />
+          <Figure label="Refunded" value={fmt(b.refunded_cents, b.currency)} note="confirmed payments later reversed" />
+          <Figure label="Still to pay" value={fmt(b.outstanding_cents, b.currency)} note="committed minus paid" />
+          <Figure label="Planned" value={fmt(b.planned_cents, b.currency)} tone={c.violetSoft} note="offers not yet accepted — not used, not income" />
+        </View>
+        {b.over_committed ? <Banner tone={c.redSoft}>Committed and reserved money is above what is authorized.</Banner> : null}
+        <T size={12} color={c.mute} style={{ marginTop: 8 }}>{b.approval_over_cents != null ? `Offers and awards above ${fmt(b.approval_over_cents, b.currency)} need a second approver. ` : 'No approval threshold. '}{b.fx_policy === 'explicit' ? 'Other currencies count only at the sourced rates below.' : `Only ${b.currency} counts against this budget.`}</T>
+        {may && active ? (
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+            <Btn small title="Edit" color={c.violet} onPress={() => setForm('edit')} accessibilityLabel="Edit this budget" />
+            {b.can.includes('export') ? <Btn small title="Export (CSV)" color={c.paper} ink={c.ink} onPress={download} /> : null}
+            <Btn small title="Archive" color={c.paper} ink={c.red} onPress={() => act(() => api.patch(`/sponsorship-budgets/${b.id}`, { version: b.row_version, status: 'archived' }), 'Archived — kept on record')} accessibilityLabel="Archive this budget" />
+          </View>
+        ) : b.can.includes('export') ? <Btn small title="Export (CSV)" color={c.paper} ink={c.ink} style={{ alignSelf: 'flex-start', marginTop: 10 }} onPress={download} /> : <T size={12} color={c.mute} style={{ marginTop: 8 }}>Your role can read this budget; managers and finance change it.</T>}
+      </Card>
+
+      <Section title="What draws on this budget" color={c.pink}>
+        {rows.error ? <LoadError error={rows.error} onRetry={rows.reload} /> : rows.loading && !rows.data ? <Loading /> : rows.data?.length ? rows.data.map((r) => (
+          <Card key={`${r.kind}-${r.id}`} color={CKIND[r.kind][1]} onPress={r.kind !== 'reservation' ? () => push('SponsorDeal', { id: r.id }) : undefined}>
+            <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+              <View style={{ flex: 1 }}><T weight="900">{r.who ?? 'Award'}{r.program ? ` · ${r.program}` : ''}</T><T size={12} color={c.mute}>{r.ref ?? 'Award offer'} · {r.status}</T></View>
+              <Tag label={r.approval === 'pending' ? 'Needs approval' : CKIND[r.kind][0]} color={c.paper} />
+            </View>
+            <T size={13}>{fmt(r.amount_cents, r.currency)}{r.currency !== b.currency ? ` = ${fmt(r.budget_amount_cents, b.currency)} at ${r.fx_rate}` : ''}{r.kind === 'agreement' ? ` · paid ${fmt(r.paid_cents, r.currency)}${r.refunded_cents ? ` · refunded ${fmt(r.refunded_cents, r.currency)}` : ''}` : ''}</T>
+            {r.approval === 'pending' && mayApprove ? (
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
+                <Btn small title="Approve" color={c.mint} ink={c.ink} onPress={() => act(() => api.post(`/sponsorships/${r.id}/budget-approval`, { decision: 'approve' }), 'Approved — the recipient can now see the offer')} accessibilityLabel="Approve this offer" />
+                <Btn small title="Reject" color={c.paper} ink={c.red} onPress={() => setForm({ reject: r })} accessibilityLabel="Reject this offer" />
+              </View>
+            ) : null}
+          </Card>
+        )) : <Empty emoji="🧾" title="Nothing yet" sub="Awards and agreements appear here as they reserve and commit this budget." />}
+        {rows.data && (page > 0 || rows.data.length === 25) ? (
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            {page > 0 ? <Btn small title="Newer" color={c.paper} ink={c.ink} onPress={() => setPage(page - 1)} /> : null}
+            {rows.data.length === 25 ? <Btn small title="Older" color={c.paper} ink={c.ink} onPress={() => setPage(page + 1)} /> : null}
+          </View>
+        ) : null}
+      </Section>
+
+      {b.children.length ? (
+        <Section title="Child budgets" color={c.violet}>
+          {b.children.map((k) => (
+            <Card key={k.id} onPress={() => push('SponsorBudget', { id: k.id })} accessibilityLabel={`${k.name}, ${fmt(k.available_cents, k.currency)} available. Open budget`}>
+              <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><T weight="900" style={{ flex: 1 }}>{k.name}</T><Tag label={KIND[k.kind]} color={KIND_TONE[k.kind]} /></View>
+              <BudgetBar b={k} />
+              <T size={12} color={c.mute}>{fmt(k.available_cents, k.currency)} available of {fmt(k.authorized_cents, k.currency)}</T>
+            </Card>
+          ))}
+        </Section>
+      ) : null}
+
+      <Section title="Programs on this budget" color={c.mint}>
+        {b.programs.length ? b.programs.map((p) => (
+          <Card key={p.id} onPress={() => push('SponsorProgram', { id: p.id })} accessibilityLabel={`${p.name}, ${p.status}. Open program`}>
+            <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><T weight="900" style={{ flex: 1 }}>{p.name}</T><Tag label={p.status} color={c.paper} /></View>
+            <T size={12} color={c.mute}>Program budget {fmt(Number(p.budget_cents), p.currency)}</T>
+          </Card>
+        )) : <Empty emoji="🎯" title="No program linked" sub="Open a program and choose this budget under “Budget” so its awards draw on it." />}
+      </Section>
+
+      {b.fx_policy === 'explicit' ? (
+        <Section title="Sourced FX rates" color={c.sun} action={may && active ? '+ Rate' : undefined} onAction={() => setForm('rate')}>
+          <T size={12} color={c.mute}>A new rate applies to future commitments only; what is already reserved or committed keeps the rate it was made at.</T>
+          {ratesNow.length ? ratesNow.map((r) => (
+            <Card key={r.id}><T weight="900">1 {r.currency} = {Number(r.rate)} {b.currency}</T><T size={12} color={c.mute}>{r.source} · as of {day(r.as_of)}{r.source_ref ? ` · ${r.source_ref}` : ''}</T></Card>
+          )) : <Empty emoji="💱" title="No rates yet" sub="Without a rate, only the budget currency can be committed." />}
+          {b.fx_rates.length > ratesNow.length ? <T size={12} color={c.mute}>{b.fx_rates.length - ratesNow.length} earlier rate{b.fx_rates.length - ratesNow.length === 1 ? '' : 's'} kept on record.</T> : null}
+        </Section>
+      ) : null}
+
+      <Section title="History" color={c.cyan}>
+        {b.history.map((h) => <T key={h.id} size={12} color={c.mute}>{stamp(h.created_at)} · {h.kind.replace(/_/g, ' ')}{h.actor ? ` · ${h.actor}` : ''}</T>)}
+      </Section>
+
+      <FormSheet visible={form === 'edit'} onClose={() => setForm(null)} title="Edit budget" fields={budgetFields([], [], [], [], false)}
+        initial={{ ...b }}
+        onSubmit={async (v) => { await api.patch(`/sponsorship-budgets/${b.id}`, { version: b.row_version, name: v.name, authorized_cents: v.authorized_cents, approval_over_cents: v.approval_over_cents ?? null, fx_policy: v.fx_policy }); reloadAll(); return 'Budget saved'; }} />
+      <FormSheet visible={form === 'rate'} onClose={() => setForm(null)} title="Record an FX rate" submitLabel="Save rate"
+        fields={[
+          { key: 'currency', label: 'Currency to convert from', type: 'currency' },
+          { key: 'rate', label: `Rate (1 unit = how many ${b.currency})`, type: 'number', input: 'decimal' },
+          { key: 'source', label: 'Source of the rate', hint: 'Who published it, e.g. “ECB reference rate” or “Treasury memo”.' },
+          { key: 'source_ref', label: 'Link to the source', optional: true, input: 'url' },
+          { key: 'as_of', label: 'Rate as of', type: 'date' },
+        ]}
+        onSubmit={async (v) => { await api.post(`/sponsorship-budgets/${b.id}/fx-rates`, { ...v, rate: Number(v.rate) }); reloadAll(); return 'Rate recorded'; }} />
+      <FormSheet visible={!!form?.reject} onClose={() => setForm(null)} title="Reject this offer" submitLabel="Reject and withdraw"
+        fields={[{ key: 'note', label: 'Reason', type: 'multiline', hint: 'Shown to your team. The recipient never sees the offer.' }]}
+        onSubmit={async (v) => { await api.post(`/sponsorships/${form.reject.id}/budget-approval`, { decision: 'reject', note: v.note }); reloadAll(); return 'Offer rejected and withdrawn'; }} />
+    </Screen>
+  );
+}
+
+/** Program detail section: which budget this program's awards draw on. */
+export function ProgramBudget({ program: p, may, onChanged }) {
+  const { toast } = useSession();
+  const { push } = useNav();
+  const budgets = useLoad(() => api.get('/sponsorship-budgets', { sponsor_id: p.sponsor_id, status: 'active', limit: 100 }).catch(() => []), [p.sponsor_id, p.budget_id]);
+  const linked = (budgets.data ?? []).find((b) => b.id === p.budget_id);
+  const choices = (budgets.data ?? []).filter((b) => b.kind !== 'event' && b.id !== p.budget_id);
+  const link = async (budgetId) => { try { await api.post(`/sponsorship-programs/${p.id}/budget`, { budget_id: budgetId, version: p.row_version }); toast(budgetId ? 'Awards now draw on this budget' : 'Program unlinked'); onChanged?.(); } catch (e) { toast(explain(e)); onChanged?.(); } };
+  return (
+    <Section title="Budget" color={c.sun}>
+      {linked ? (
+        <Card onPress={() => push('SponsorBudget', { id: linked.id })} accessibilityLabel={`${linked.name}, ${fmt(linked.available_cents, linked.currency)} available. Open budget`}>
+          <T weight="900">{linked.name}</T><BudgetBar b={linked} />
+          <T size={12} color={c.mute}>{fmt(linked.available_cents, linked.currency)} available of {fmt(linked.authorized_cents, linked.currency)} — every award reserves from here first.</T>
+        </Card>
+      ) : <T size={13} color={c.mute}>{p.budget_id ? 'Linked to a budget you cannot see.' : 'Awards are limited by this program’s own budget only. Link an authorized budget to also respect the brand’s yearly or department limits.'}</T>}
+      {may && ['draft', 'published'].includes(p.status) ? (
+        <>
+          {choices.length ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{choices.map((b) => <Chip key={b.id} label={`${p.budget_id ? 'Move to ' : 'Use '}${b.name}`} onPress={() => link(b.id)} />)}</View> : !p.budget_id ? <T size={12} color={c.mute}>No budget to link yet — authorize one under Budgets.</T> : null}
+          {p.budget_id ? <Btn small title="Unlink budget" color={c.paper} ink={c.red} style={{ alignSelf: 'flex-start' }} onPress={() => link(null)} /> : null}
+        </>
+      ) : null}
+    </Section>
+  );
+}

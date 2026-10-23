@@ -6,6 +6,7 @@ import { badRequest, conflict, unprocessable } from './errors.js';
 import { notify } from './notify.js';
 import { notifySponsor } from './sponsor-access.js';
 import { pool, tx } from './db.js';
+import { budgetBlockerFor, budgetSteps, programBudget } from './sponsorship-budgets.js';
 
 export const LIVE = ['waitlisted', 'pending_approval', 'approved', 'issued', 'accepted'];
 export const STEPS = ['approver', 'finance', 'legal'];
@@ -32,7 +33,7 @@ export async function budgetBlocker(c, p, r, amount, excludeAwardId = null) {
   if (r.max_awards && ru.n - ownN + 1 > r.max_awards) return `This round has reached its limit of ${r.max_awards} awards`;
   if (pCents + amount > Number(p.budget_cents)) return `This award would exceed the program budget (${Number(p.budget_cents) - pCents} remaining)`;
   if (r.budget_cents != null && rCents + amount > Number(r.budget_cents)) return `This award would exceed the round budget (${Number(r.budget_cents) - rCents} remaining)`;
-  return null;
+  return budgetBlockerFor(c, p, amount, excludeAwardId); // the brand's authorized budget (#293): locks it, so concurrent awards serialise
 }
 
 /** The sign-offs an award of this size needs under the program's rules. */
@@ -44,8 +45,15 @@ export function requiredSteps(p, amount) {
   return steps;
 }
 
+/** Sign-offs the program's rules need plus the approver a larger-than-threshold award needs under its linked budget (#293). */
+export async function stepsFor(c, p, amount) {
+  const steps = requiredSteps(p, amount);
+  for (const x of await budgetSteps(c, p, amount)) if (!steps.includes(x)) steps.push(x);
+  return steps;
+}
+
 async function openApprovals(c, award, p) {
-  const steps = requiredSteps(p, Number(award.amount_cents));
+  const steps = await stepsFor(c, p, Number(award.amount_cents));
   for (const step of steps) await c.query("INSERT INTO sponsorship_award_approvals(award_id, offer_version, step) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING", [award.id, award.offer_version, step]);
   return steps;
 }
@@ -55,7 +63,9 @@ export const approvalsOf = async (c, award) =>
 
 async function reserve(c, award) {
   // UNIQUE(award_id): a retry or a concurrent call cannot reserve twice
-  await c.query("INSERT INTO sponsorship_award_reservations(award_id, program_id, round_id, currency, amount_cents) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (award_id) DO NOTHING", [award.id, award.program_id, award.round_id, award.currency, award.amount_cents]);
+  const p = (await c.query('SELECT id, budget_id, currency FROM sponsorship_programs WHERE id=$1', [award.program_id])).rows[0];
+  const pb = await programBudget(c, p); // a new reservation is costed at the budget's CURRENT sourced rate and keeps it
+  await c.query("INSERT INTO sponsorship_award_reservations(award_id, program_id, round_id, currency, amount_cents, budget_id, budget_fx_rate_id) VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (award_id) DO NOTHING", [award.id, award.program_id, award.round_id, award.currency, award.amount_cents, p.budget_id, pb?.rate.id ?? null]);
 }
 
 /** Moves a newly approved/pending award forward: with no sign-offs required the offer is issued straight away. */

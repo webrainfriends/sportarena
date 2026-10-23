@@ -2,7 +2,7 @@ import { badgesFor, withBadges } from '../verification.js';
 import { z } from 'zod';
 import { cap, id, page, money } from '../registry.js';
 import { one, many, pool } from '../db.js';
-import { badRequest, conflict, forbidden, notFound } from '../errors.js';
+import { badRequest, conflict, forbidden, notFound, unprocessable } from '../errors.js';
 import { audit, isAdmin, mustFind } from '../helpers.js';
 import { decryptFields, encryptFields } from '../crypto.js';
 import { notify } from '../notify.js';
@@ -11,8 +11,9 @@ import { PUBLIC_USER } from '../helpers.js';
 import { NOT_YOUTH_SQL } from '../youth.js';
 import { LINE, buildSchedule } from '../sponsor-schedule.js';
 import { entityRole, snapshotIdentity, ASSIGNED, CAN } from '../sponsor-identity-access.js';
-import { saveLines, generateObligations, cancelFutureObligations, logHistory } from '../sponsor-agreements.js';
+import { saveLines, loadLines, generateObligations, cancelFutureObligations, logHistory } from '../sponsor-agreements.js';
 import { sponsorAccess, assertSponsorCan, notifySponsor, sponsorStaffSql } from '../sponsor-access.js';
+import { assertDealFitsBudget, assertFits, convert, costOf, storedRate } from '../sponsorship-budgets.js';
 
 const CONTACT = ['contact_name', 'contact_email', 'contact_phone'];
 const date = z.string().date();
@@ -203,11 +204,37 @@ cap({
   },
 });
 
+/**
+ * Ties a new offer to an authorized budget (#293). The offer must be money in ONE currency; another currency than the budget's counts only
+ * at an explicit sourced rate. An offer above the budget's approval threshold waits for a second person (budget_approval='pending') and the
+ * recipient is not told about it until then. Proposals are only "planned": they never reduce what is available -- acceptance does, under lock.
+ * Returns true when the offer is held for approval.
+ */
+export async function controlByBudget(c, user, sponsor, deal, budgetId, cash, input) {
+  const b = (await c.query('SELECT * FROM sponsorship_budgets WHERE id=$1 AND sponsor_id=$2', [budgetId, sponsor.id])).rows[0];
+  if (!b) throw badRequest('That budget does not belong to this brand');
+  assertDealFitsBudget(b, { departmentId: input.department_id ?? deal.department_id, targetType: deal.target_type, targetId: deal.target_id });
+  if (cash.length !== 1) throw unprocessable('A budget-controlled offer needs money lines in exactly one currency');
+  const [cur, cents] = cash[0];
+  const cost = await costOf(c, b, cur, cents);
+  const needs = b.approval_over_cents != null && cost.cents > Number(b.approval_over_cents);
+  await c.query('UPDATE sponsorships SET budget_id=$2, budget_fx_rate_id=$3, budget_approval=$4, budget_approval_by=NULL, budget_approval_at=NULL, budget_approval_note=NULL WHERE id=$1', [deal.id, b.id, cost.rateId, needs ? 'pending' : null]);
+  if (needs) await notifySponsor(c, sponsor, 'budget_approve', { kind: 'sponsorship_budget', title: 'An offer needs budget approval', body: `An offer above the approval threshold of "${b.name}" needs a second approver before it is sent.`, data: { sponsorship_id: deal.id, budget_id: b.id } }, deal.department_id ?? null, user.id);
+  return needs;
+}
+
+/** A budget is the brand's internal business: the recipient never sees which budget funds an offer, nor its approvals. */
+const forRecipient = (r) => {
+  if (r.i_am_sponsor) return r;
+  const { budget_id, budget_fx_rate_id, budget_approval, budget_approval_by, budget_approval_at, budget_approval_note, ...rest } = r;
+  return rest;
+};
+
 cap({
   name: 'propose_sponsorship', method: 'POST', path: '/sponsorships', tag: 'Sponsors', status: 201,
   summary: 'Offer sponsorship (money and/or in-kind support) to an event, team or athlete. The target owner must accept. An athlete can only be approached if they opted in (and, if they asked for it, only by verified sponsors); a sponsor cannot repeat an open offer, or re-offer within 30 days of a decline. Athlete offers state objectives, deliverables and a period.',
   input: z.object({
-    sponsor_id: id, department_id: id.optional().describe('the brand\'s department this deal belongs to (a department-scoped member can only use their own)'), target_type: z.enum(['event', 'team', 'athlete']), target_id: id, amount_cents: money.default(0), in_kind: z.string().max(200).optional(),
+    sponsor_id: id, department_id: id.optional().describe('the brand\'s department this deal belongs to (a department-scoped member can only use their own)'), budget_id: id.optional().describe('the authorized budget (annual, department or event) this offer draws on; its money must be in one currency, and an offer above the budget approval threshold waits for a second approver before the recipient sees it'), target_type: z.enum(['event', 'team', 'athlete']), target_id: id, amount_cents: money.default(0), in_kind: z.string().max(200).optional(),
     starts_on: date.optional(), ends_on: date.optional(), objectives: z.string().max(1000).optional(), deliverables: z.string().max(1500).optional(), message: z.string().max(1000).optional(),
     lines: z.array(LINE).max(12).optional().describe('structured contribution lines (money / goods / endorsement, one-off or fixed-term recurring). Reviewable with preview_sponsorship_schedule; obligations are generated when the recipient accepts this exact version'),
     timezone: z.string().max(60).default('UTC'),
@@ -248,8 +275,9 @@ cap({
       }
       await snapshotIdentity(c, row.id, 1, s.id, user.id);
       await logHistory(c, row.id, 1, user.id, 'proposed');
-      await notify(c, owner, { kind: 'sponsorship_offer', title: 'You have a sponsorship offer', body: `${s.name} sent an offer. Open it to review and answer.`, data: { sponsorship_id: row.id } });
-      return row;
+      const held = i.budget_id ? await controlByBudget(c, user, s, row, i.budget_id, cash, i) : false;
+      if (!held) await notify(c, owner, { kind: 'sponsorship_offer', title: 'You have a sponsorship offer', body: `${s.name} sent an offer. Open it to review and answer.`, data: { sponsorship_id: row.id } });
+      return i.budget_id ? { ...row, budget_id: i.budget_id, budget_approval: held ? 'pending' : null } : row;
     });
   },
 });
@@ -266,7 +294,8 @@ cap({
       WHERE (($5::text IS DISTINCT FROM 'target' AND ${sponsorStaffSql(1)})
          OR ($5::text IS DISTINCT FROM 'sponsor' AND ((ss.target_type='event' AND ss.target_id IN (SELECT id FROM events WHERE organizer_id=$1))
               OR (ss.target_type='team' AND ss.target_id IN (SELECT id FROM teams WHERE owner_id=$1)) OR (ss.target_type='athlete' AND ss.target_id=$1))))
-        AND ($2::text IS NULL OR ss.status=$2) ORDER BY ss.created_at DESC LIMIT $3 OFFSET $4`, [user.id, i.status ?? null, i.limit, i.offset, i.as ?? null]),
+        AND ($2::text IS NULL OR ss.status=$2) AND (coalesce(ss.budget_approval,'') NOT IN ('pending','rejected') OR ${sponsorStaffSql(1)})
+      ORDER BY ss.created_at DESC LIMIT $3 OFFSET $4`, [user.id, i.status ?? null, i.limit, i.offset, i.as ?? null]).then((rows) => rows.map(forRecipient)),
 });
 
 cap({
@@ -299,6 +328,7 @@ cap({
       const owner = await targetOwner(d.target_type, d.target_id);
       const access = await sponsorAccess(user, sp, c);
       const isTarget = user.id === owner, isSponsor = !!access && (!access.departmentId || access.departmentId === d.department_id);
+      if (!isSponsor && !isAdmin(user) && ['pending', 'rejected'].includes(d.budget_approval)) throw notFound('Sponsorship'); // an offer awaiting internal budget approval is not the recipient's to see yet
       if (isSponsor && !isTarget && !isAdmin(user) && i.status === 'ended') assertSponsorCan(access, 'end', { departmentId: d.department_id, what: 'end agreements' });
       if (!isAdmin(user)) {
         if (i.status === 'ended' ? !(isSponsor || isTarget) : !isTarget) throw forbidden();
@@ -310,6 +340,17 @@ cap({
       if (i.status === 'active' && hasLines) {
         if (i.version == null) throw badRequest('Accept a specific version of the terms (version)');
         if (i.version !== d.terms_version) throw conflict(`These terms changed (now version ${d.terms_version}); review them again before accepting`);
+      }
+      if (i.status === 'active' && d.budget_id) { // the authorized budget is checked, and held, under lock before the recipient's acceptance commits it (#293)
+        if (d.budget_approval === 'pending') throw conflict('This offer is waiting for internal approval and cannot be accepted yet');
+        if (d.budget_approval === 'rejected') throw conflict('This offer was not approved');
+        const lines = await loadLines(c, d.id, d.terms_version);
+        const span = (await c.query('SELECT starts_on::text AS starts_on, ends_on::text AS ends_on FROM sponsorships WHERE id=$1', [d.id])).rows[0];
+        const [cur, cents] = Object.entries(buildSchedule(lines, { starts_on: span.starts_on, ends_on: span.ends_on }).committed)[0] ?? [];
+        if (cur) {
+          const b0 = (await c.query('SELECT currency FROM sponsorship_budgets WHERE id=$1', [d.budget_id])).rows[0];
+          await assertFits(c, d.budget_id, convert(cents, cur, b0.currency, await storedRate(c, d.budget_fx_rate_id)), { what: 'Accepting this offer' });
+        }
       }
       const visibility = i.status === 'active' && d.target_type === 'athlete' && i.show_publicly !== undefined ? (i.show_publicly ? 'public' : 'private') : d.visibility;
       const row = (await c.query('UPDATE sponsorships SET status=$2, decision_reason=coalesce($3, decision_reason), decided_at=now(), decided_by=$4, visibility=$5 WHERE id=$1 RETURNING *', [i.id, i.status, i.reason ?? null, user.id, visibility])).rows[0];
