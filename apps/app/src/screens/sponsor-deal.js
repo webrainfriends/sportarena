@@ -135,7 +135,7 @@ function CheckoutSheet({ o, onClose, onChanged }) {
       const r = await api.post(`/sponsorship-obligations/${o.id}/checkout`, { provider, amount_cents: cents, return_url: Platform.OS === 'web' ? `${window.location.origin}${window.location.pathname}` : undefined });
       onChanged();
       if (Platform.OS === 'web') window.location.assign(r.checkout_url); else { await Linking.openURL(r.checkout_url); onClose(); toast('Finish the checkout, then come back — the payment shows here once verified'); }
-    } catch (e) { setErr(explain(e)); if (e.status === 409) onChanged(); } finally { setBusy(false); }
+    } catch (e) { setErr(e.status === 409 ? e.message : explain(e)); if (e.status === 409) onChanged(); } finally { setBusy(false); }
   };
   const m = methods.data;
   return (
@@ -172,7 +172,7 @@ function Reconciliation({ id }) {
       {rec.data.map((r) => (
         <Card key={r.currency}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><T weight="900">{r.currency}</T><Tag label={r.reconciles ? 'Reconciles ✓' : 'Needs review'} color={r.reconciles ? c.limeSoft : c.sunSoft} /></View>
-          {[['Committed', r.committed_cents], ['Collected online', r.collected_online_cents], ['Refunded', -r.refunded_cents], ['Confirmed bank / cash', r.confirmed_manual_cents], ['Reported, not yet confirmed', r.reported_unverified_cents], ['Checkout in progress', r.checkout_in_progress_cents], ['Still due', r.outstanding_cents]].map(([k, v]) => (
+          {[['Committed', r.committed_cents], ['Collected online', r.collected_online_cents], ['Refunded', r.refunded_cents ? -r.refunded_cents : 0], ['Confirmed bank / cash', r.confirmed_manual_cents], ['Reported, not yet confirmed', r.reported_unverified_cents], ['Checkout in progress', r.checkout_in_progress_cents], ['Still due', r.outstanding_cents]].map(([k, v]) => (
             <View key={k} style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 }}><T size={13} weight={k === 'Still due' ? '800' : '500'}>{k}</T><T size={13} weight={k === 'Still due' ? '800' : '500'}>{fmt(v, r.currency)}</T></View>))}
           <T size={12} color={c.mute}>Earnings ledger: sales {fmt(r.ledger.sale_cents, r.currency)} · refunds {fmt(r.ledger.refund_cents, r.currency)}{r.ledger.chargeback_cents ? ` · disputes lost ${fmt(r.ledger.chargeback_cents, r.currency)}` : ''}. Payouts to the recipient are a separate step under Earnings.</T>
         </Card>))}
