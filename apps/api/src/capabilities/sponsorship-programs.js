@@ -17,6 +17,7 @@ import { toCsv } from '../csv.js';
 import { logHistory, saveLines } from '../sponsor-agreements.js';
 import { buildSchedule } from '../sponsor-schedule.js';
 import { sponsorAccess, assertSponsorCan, notifySponsor, sponsorBrandSql } from '../sponsor-access.js';
+import { gateDecision, recordDecision, redactBlind } from '../sponsorship-evaluation.js';
 
 const date = z.string().date();
 const currency = z.string().regex(/^[A-Z]{3}$/, 'ISO 4217 code, e.g. USD');
@@ -492,7 +493,7 @@ cap({
   summary: 'Your own funding applications, newest first, each with the terms it was made under, its status and (once awarded) the resulting sponsorship agreement id.',
   input: z.object({ status: z.enum(['submitted', 'awarded', 'declined', 'withdrawn']).optional(), ...page }),
   handler: ({ user }, i) => many(
-    `SELECT ${APP_COLS}, sp.name AS sponsor_name FROM sponsorship_applications a JOIN sponsorship_programs p ON p.id=a.program_id JOIN sponsorship_rounds r ON r.id=a.round_id JOIN sponsors sp ON sp.id=p.sponsor_id
+    `SELECT ${APP_COLS}, sp.name AS sponsor_name, (SELECT ic.status FROM sponsorship_identity_consents ic WHERE ic.application_id=a.id AND ic.status IN ('requested','granted') LIMIT 1) AS identity_status FROM sponsorship_applications a JOIN sponsorship_programs p ON p.id=a.program_id JOIN sponsorship_rounds r ON r.id=a.round_id JOIN sponsors sp ON sp.id=p.sponsor_id
       WHERE a.applicant_id=$1 AND ($2::text IS NULL OR a.status=$2) ORDER BY a.created_at DESC, a.id LIMIT $3 OFFSET $4`, [user.id, i.status ?? null, i.limit, i.offset]),
 });
 
@@ -502,18 +503,18 @@ cap({
   input: z.object({ id, round_id: id.optional(), status: z.enum(['submitted', 'awarded', 'declined', 'withdrawn']).optional(), ...page }),
   async handler({ user }, i) {
         const { p } = await programFor(user, i.id, 'read', pool);
-    return many(
-      `SELECT ${APP_COLS}, ${PUBLIC_USER.replace(/u\./g, 'ap.').replace(/ap\.id/, 'ap.id AS applicant_user_id')}
+    return redactBlind(await many(
+      `SELECT ${APP_COLS}, a.stage, a.eval_version, ${PUBLIC_USER.replace(/u\./g, 'ap.').replace(/ap\.id/, 'ap.id AS applicant_user_id')}
          FROM sponsorship_applications a JOIN sponsorship_programs p ON p.id=a.program_id JOIN sponsorship_rounds r ON r.id=a.round_id JOIN users ap ON ap.id=a.applicant_id
         WHERE a.program_id=$1 AND ($2::uuid IS NULL OR a.round_id=$2) AND ($3::text IS NULL OR a.status=$3) ORDER BY a.created_at, a.id LIMIT $4 OFFSET $5`,
-      [p.id, i.round_id ?? null, i.status ?? null, i.limit, i.offset]);
+      [p.id, i.round_id ?? null, i.status ?? null, i.limit, i.offset]));
   },
 });
 
 cap({
   name: 'decide_program_application', method: 'PATCH', path: '/program-applications/:id', tag: 'Sponsors',
   summary: 'Brand manager/approver: award or decline an application. Awarding needs the program\'s current `program_version` (409 if the caps changed since you looked) and checks, under lock, the award size, the program and round budgets and award counts, and the currency. It creates a proposed sponsorship from the brand to the applicant that references the program, round and application; the recipient still has to accept it (no consent or payment is assumed). Deciding twice is rejected.',
-  input: z.object({ id, decision: z.enum(['award', 'decline']), program_version: z.coerce.number().int().positive().optional(), awarded_cents: money.min(1).optional().describe('defaults to the amount requested; cannot exceed it'), reason: z.string().max(500).optional() }),
+  input: z.object({ id, decision: z.enum(['award', 'decline']), program_version: z.coerce.number().int().positive().optional(), awarded_cents: money.min(1).optional().describe('defaults to the amount requested; cannot exceed it'), reason: z.string().max(500).optional(), eval_version: z.coerce.number().int().positive().optional().describe('the application\'s evaluation version you looked at; 409 if the committee changed it since') }),
   async handler({ user }, i) {
     return tx(async (c) => {
       const a0 = (await c.query('SELECT program_id, round_id FROM sponsorship_applications WHERE id=$1', [i.id])).rows[0];
@@ -523,8 +524,10 @@ cap({
       const a = (await c.query('SELECT * FROM sponsorship_applications WHERE id=$1 FOR UPDATE', [i.id])).rows[0];
       if (a.status !== 'submitted') throw conflict(`This application is already ${a.status}`);
       if (['draft', 'archived'].includes(p.status)) throw conflict(`A ${p.status} program cannot decide applications`);
+      await gateDecision(c, a, i.decision, i.eval_version); // rounds scored by a committee: shortlisted, scored and (when blind) identified first (#288)
       if (i.decision === 'decline') {
         const row = (await c.query("UPDATE sponsorship_applications SET status='declined', decided_at=now(), decided_by=$2, decision_reason=$3 WHERE id=$1 RETURNING *", [a.id, user.id, i.reason ?? null])).rows[0];
+        await recordDecision(c, a, p, 'decline', user.id);
         await notify(c, a.applicant_id, { kind: 'sponsorship_program', title: 'Funding application declined', body: `Your application to ${p.name} was declined.`, data: { application_id: a.id } });
         return row;
       }
@@ -554,6 +557,7 @@ cap({
       await logHistory(c, dealUp.id, 1, user.id, 'proposed', `Awarded from program ${p.name}`);
       const row = (await c.query("UPDATE sponsorship_applications SET status='awarded', awarded_cents=$2, decided_at=now(), decided_by=$3, decision_reason=$4, sponsorship_id=$5 WHERE id=$1 RETURNING *", [a.id, amount, user.id, i.reason ?? null, dealUp.id])).rows[0];
       await notify(c, a.applicant_id, { kind: 'sponsorship_offer', title: 'Your funding application was awarded', body: `${sp.name} awarded your application. Open the agreement to review and accept it.`, data: { sponsorship_id: dealUp.id, application_id: a.id } });
+      await recordDecision(c, a, p, 'award', user.id);
       await audit(c, user.id, 'award', 'sponsorship_applications', a.id);
       return { ...row, sponsorship: dealUp };
     });
