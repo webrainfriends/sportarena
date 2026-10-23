@@ -14,6 +14,7 @@ import { config } from '../config.js';
 import { beneficiaryScopeSql, payeeSnapshot } from '../sponsor-beneficiaries.js';
 import { notifySponsor, sponsorStaffSql, actionsFor } from '../sponsor-access.js';
 import { costOf } from '../sponsorship-budgets.js';
+import { currentPause } from '../sponsor-pause.js';
 
 const date = z.string().date();
 const url = z.string().url().max(500).refine((u) => /^https:\/\//i.test(u), 'evidence must be an https link');
@@ -174,7 +175,7 @@ cap({
     if (ctx.role === 'recipient' && ['pending', 'rejected'].includes(d.budget_approval)) throw notFound('Sponsorship'); // still the brand's internal business
     const version = d.accepted_version ?? d.terms_version;
     const lines = await many('SELECT id, position, kind, label, currency, amount_cents, total_cents, estimate_cents, quantity, unit, cadence, first_due_on, instalments, custom_dates, promoter, terms FROM sponsorship_lines WHERE sponsorship_id=$1 AND version=$2 ORDER BY position', [d.id, version]);
-    const out = { id: d.id, agreement_ref: d.agreement_ref, status: d.status, role: ctx.role, my_sponsor_role: ctx.staff, can: ctx.staff ? actionsFor(ctx.staff) : undefined, sponsor: { id: sp.id, name: sp.name }, target_type: d.target_type, target_id: d.target_id, starts_on: d.starts_on, ends_on: d.ends_on, timezone: d.timezone, terms_version: d.terms_version, accepted_version: d.accepted_version, currency: d.currency, legacy_amount_cents: lines.length ? undefined : d.amount_cents, legacy_in_kind: lines.length ? undefined : d.in_kind, objectives: d.objectives, deliverables: d.deliverables, lines };
+    const out = { id: d.id, agreement_ref: d.agreement_ref, status: d.status, role: ctx.role, my_sponsor_role: ctx.staff, can: ctx.staff ? actionsFor(ctx.staff) : undefined, sponsor: { id: sp.id, name: sp.name }, target_type: d.target_type, target_id: d.target_id, starts_on: d.starts_on, ends_on: d.ends_on, timezone: d.timezone, terms_version: d.terms_version, accepted_version: d.accepted_version, currency: d.currency, pause_rev: d.pause_rev, legacy_amount_cents: lines.length ? undefined : d.amount_cents, legacy_in_kind: lines.length ? undefined : d.in_kind, objectives: d.objectives, deliverables: d.deliverables, lines };
     if (['organisation', 'group'].includes(d.target_type)) out.beneficiary = { type: d.target_type, id: d.target_id, name: (await one(d.target_type === 'group' ? 'SELECT name FROM org_cohorts WHERE id=$1' : 'SELECT name FROM organisations WHERE id=$1', [d.target_id]))?.name ?? null, my_role: ctx.beneficiary?.representative ? 'representative' : ctx.beneficiary?.payee ? 'payee' : null };
     // who the sponsor was at this exact version (frozen): later renames or representative changes never alter it. Never registration/tax/billing data.
     const snap = (await pool.query('SELECT s.display_name, s.legal_name, s.sponsor_type, u.display_name AS signed_by FROM sponsorship_identity_snapshots s LEFT JOIN users u ON u.id=s.signed_by WHERE s.sponsorship_id=$1 AND s.version=$2', [d.id, version])).rows[0];
@@ -230,7 +231,7 @@ cap({
     const params = [user.id, !!isAdmin(user), i.sponsorship_id ?? null, i.sponsor_id ?? null, i.target_type ?? null, i.kind ?? null, i.state ?? null, i.from ?? null, i.to ?? null];
     const where = `${SCOPE} AND ($3::uuid IS NULL OR o.sponsorship_id=$3) AND ($4::uuid IS NULL OR ss.sponsor_id=$4) AND ($5::text IS NULL OR ss.target_type=$5) AND ($6::text IS NULL OR o.kind=$6)
       AND ($8::date IS NULL OR o.due_on >= $8) AND ($9::date IS NULL OR o.due_on <= $9)
-      AND ($7::text IS NULL OR ($7='overdue' AND o.status='scheduled' AND o.due_on < current_date) OR ($7='upcoming' AND o.status='scheduled' AND o.due_on >= current_date)
+      AND ($7::text IS NULL OR ($7='overdue' AND o.status='scheduled' AND o.due_on < current_date AND o.held_by_pause_id IS NULL) OR ($7='upcoming' AND o.status='scheduled' AND o.due_on >= current_date)
            OR ($7='open' AND o.status='scheduled') OR ($7='fulfilled' AND o.status='fulfilled') OR ($7='cancelled' AND o.status='cancelled'))`;
     const base = `FROM sponsorship_obligations o JOIN sponsorships ss ON ss.id=o.sponsorship_id JOIN sponsors sp ON sp.id=ss.sponsor_id WHERE ${where}`;
     const ids = (await many(`SELECT o.id ${base} ORDER BY o.due_on, o.id LIMIT $10 OFFSET $11`, [...params, i.limit, i.offset])).map((r) => r.id);
@@ -239,7 +240,7 @@ cap({
       `SELECT o.currency, sum(o.amount_cents) FILTER (WHERE o.status <> 'cancelled')::bigint AS committed_cents,
               coalesce(sum((SELECT sum(p.amount_cents - p.refunded_cents) FROM sponsorship_payments p WHERE p.obligation_id=o.id AND p.status='confirmed')),0)::bigint AS confirmed_cents,
               coalesce(sum((SELECT sum(p.amount_cents) FROM sponsorship_payments p WHERE p.obligation_id=o.id AND p.status='reported')),0)::bigint AS reported_unverified_cents,
-              coalesce(sum(o.amount_cents) FILTER (WHERE o.status='scheduled' AND o.due_on < current_date),0)::bigint AS overdue_cents
+              coalesce(sum(o.amount_cents) FILTER (WHERE o.status='scheduled' AND o.due_on < current_date AND o.held_by_pause_id IS NULL),0)::bigint AS overdue_cents
          ${base} AND o.kind='money' GROUP BY o.currency ORDER BY o.currency`, params);
     for (const t of totals) t.outstanding_cents = t.committed_cents - t.confirmed_cents;
     return { obligations: rows, totals };
@@ -255,8 +256,8 @@ cap({
     const recipient = `(ss.target_type='event' AND ss.target_id IN (SELECT id FROM events WHERE organizer_id=$1) OR ss.target_type='team' AND ss.target_id IN (SELECT id FROM teams WHERE owner_id=$1) OR ss.target_type='athlete' AND ss.target_id=$1 OR ${beneficiaryScopeSql('$1')})`;
     const [agreements, counts] = await Promise.all([
       many(`SELECT ss.status, count(*)::int AS n FROM sponsorships ss JOIN sponsors sp ON sp.id=ss.sponsor_id WHERE ${SCOPE} GROUP BY ss.status ORDER BY ss.status`, a),
-      one(`SELECT count(*) FILTER (WHERE o.status='scheduled' AND o.due_on < current_date)::int AS overdue,
-                  count(*) FILTER (WHERE o.status='scheduled' AND o.due_on BETWEEN current_date AND current_date + 30)::int AS due_30_days,
+      one(`SELECT count(*) FILTER (WHERE o.status='scheduled' AND o.due_on < current_date AND o.held_by_pause_id IS NULL)::int AS overdue,
+                  count(*) FILTER (WHERE o.status='scheduled' AND o.due_on BETWEEN current_date AND current_date + 30 AND o.held_by_pause_id IS NULL)::int AS due_30_days,
                   count(*) FILTER (WHERE o.kind='goods' AND o.status='scheduled')::int AS goods_outstanding,
                   (SELECT count(*) FROM sponsorship_payments p JOIN sponsorship_obligations po ON po.id=p.obligation_id JOIN sponsorships pss ON pss.id=po.sponsorship_id WHERE p.status='reported' AND ${recipient.replace(/ss\./g, 'pss.')})::int AS payments_to_confirm,
                   (SELECT count(*) FROM sponsorship_submissions s JOIN sponsorship_obligations so ON so.id=s.obligation_id JOIN sponsorship_lines sl ON sl.id=so.line_id JOIN sponsorships sss ON sss.id=so.sponsorship_id JOIN sponsors ssp ON ssp.id=sss.sponsor_id
@@ -269,7 +270,8 @@ cap({
 const open = (ctx, kind) => {
   if (ctx.o.kind !== kind) throw badRequest(`This obligation is ${ctx.o.kind}, not ${kind}`);
   if (ctx.o.status !== 'scheduled') throw conflict(`This obligation is already ${ctx.o.status}`);
-  if (!['active', 'ended'].includes(ctx.d.status)) throw conflict('The agreement is not active');
+  if (!['active', 'paused', 'ended'].includes(ctx.d.status)) throw conflict('The agreement is not active');
+  if (ctx.o.held_by_pause_id) throw conflict('This due is on hold while the agreement is paused. It can be paid once the agreement resumes.', { code: 'held_by_pause' });
 };
 
 cap({

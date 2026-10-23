@@ -142,9 +142,9 @@ function NavBar({ title, onBack, backLabel }) {
       <View style={{ width: '100%', maxWidth: contentMax, alignSelf: 'center', height: 48, flexDirection: 'row', alignItems: 'center', paddingHorizontal: gutter - 6 }}>
         <Pressable onPress={onBack} hitSlop={12} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', minWidth: 72, height: 44, opacity: pressed ? 0.5 : 1 })}>
           <Icon name="Back" color={c.pink} size={26} />
-          <Text style={[fam, { color: c.pink, fontSize: 16, fontWeight: '600', marginLeft: -2 }]}>{backLabel}</Text>
+          <Text numberOfLines={1} style={[fam, { color: c.pink, fontSize: 16, fontWeight: '600', marginLeft: -2, maxWidth: 64 }]}>{backLabel}</Text>
         </Pressable>
-        <Text numberOfLines={1} style={[fam, { position: 'absolute', left: 90, right: 90, textAlign: 'center', fontWeight: '700', fontSize: 16, color: c.ink }]} pointerEvents="none">{title}</Text>
+        <Text numberOfLines={1} style={[fam, { position: 'absolute', left: 112, right: 112, textAlign: 'center', fontWeight: '700', fontSize: 16, color: c.ink }]} pointerEvents="none">{title}</Text>
         <View style={{ marginLeft: 'auto' }}><AccountButton /></View>
       </View>
     </View>

@@ -47,6 +47,9 @@ Agreement state (sponsorships.status) is separate from fulfilment state (obligat
   A reversal reopens the due and keeps the history.
 * Nothing here claims funds were transferred or held in escrow. Checkout/payout integration is **not** done (see gaps).
 
+## Pause and resume
+See [sponsorship-pause.md](sponsorship-pause.md): both sides agree a pause with a reason, a start date and a hold/reschedule policy for the dues in it.
+
 ## Ending
 Ending a deal cancels only future dues that nothing has happened to. Due, overdue, part-paid, dispatched or submitted dues
 stay open: debt and delivered value are never erased. Nothing is deleted.
