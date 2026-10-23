@@ -13,6 +13,7 @@ import { LINE, buildSchedule } from '../sponsor-schedule.js';
 import { entityRole, snapshotIdentity, ASSIGNED, CAN } from '../sponsor-identity-access.js';
 import { saveLines, generateObligations, cancelFutureObligations, logHistory } from '../sponsor-agreements.js';
 import { sponsorAccess, assertSponsorCan, notifySponsor, sponsorStaffSql } from '../sponsor-access.js';
+import { ORG_TARGETS, beneficiaryScopeSql, beneficiaryAccess, primaryContact, targetOrgId } from '../sponsor-beneficiaries.js';
 
 const CONTACT = ['contact_name', 'contact_email', 'contact_phone'];
 const date = z.string().date();
@@ -53,6 +54,11 @@ async function checkProfile(c, i) {
 async function targetOwner(type, targetId) {
   if (type === 'event') return (await mustFind('events', targetId, 'organizer_id')).organizer_id;
   if (type === 'team') return (await mustFind('teams', targetId, 'owner_id')).owner_id;
+  if (ORG_TARGETS.includes(type)) { // an organisation/group: its oldest active owner is notified; any live representative may act (see beneficiaryAccess)
+    const owner = await primaryContact(pool, await targetOrgId(pool, type, targetId));
+    if (!owner) throw conflict('This organisation has no active owner to answer an offer');
+    return owner;
+  }
   await mustFind('users', targetId, 'id');
   return targetId;
 }
@@ -207,7 +213,7 @@ cap({
   name: 'propose_sponsorship', method: 'POST', path: '/sponsorships', tag: 'Sponsors', status: 201,
   summary: 'Offer sponsorship (money and/or in-kind support) to an event, team or athlete. The target owner must accept. An athlete can only be approached if they opted in (and, if they asked for it, only by verified sponsors); a sponsor cannot repeat an open offer, or re-offer within 30 days of a decline. Athlete offers state objectives, deliverables and a period.',
   input: z.object({
-    sponsor_id: id, department_id: id.optional().describe('the brand\'s department this deal belongs to (a department-scoped member can only use their own)'), target_type: z.enum(['event', 'team', 'athlete']), target_id: id, amount_cents: money.default(0), in_kind: z.string().max(200).optional(),
+    sponsor_id: id, department_id: id.optional().describe('the brand\'s department this deal belongs to (a department-scoped member can only use their own)'), target_type: z.enum(['event', 'team', 'athlete', 'organisation', 'group']), target_id: id, amount_cents: money.default(0), in_kind: z.string().max(200).optional(),
     starts_on: date.optional(), ends_on: date.optional(), objectives: z.string().max(1000).optional(), deliverables: z.string().max(1500).optional(), message: z.string().max(1000).optional(),
     lines: z.array(LINE).max(12).optional().describe('structured contribution lines (money / goods / endorsement, one-off or fixed-term recurring). Reviewable with preview_sponsorship_schedule; obligations are generated when the recipient accepts this exact version'),
     timezone: z.string().max(60).default('UTC'),
@@ -225,6 +231,14 @@ cap({
       if (!i.deliverables || !i.starts_on || !i.ends_on) throw badRequest('State the deliverables and the period (starts_on and ends_on) of the sponsorship');
     }
     const owner = await targetOwner(i.target_type, i.target_id);
+    if (ORG_TARGETS.includes(i.target_type)) {
+      const orgId = await targetOrgId(pool, i.target_type, i.target_id);
+      const org = await one('SELECT status, open_to_sponsors FROM organisations WHERE id=$1', [orgId]);
+      if (org.status !== 'active' || !org.open_to_sponsors) throw conflict('This organisation is not open to sponsorship offers');
+      if (i.target_type === 'group' && !(await one("SELECT 1 FROM org_cohorts WHERE id=$1 AND status='active'", [i.target_id]))) throw conflict('This group is archived');
+      if (s.organisation_id === orgId) throw badRequest('A brand cannot sponsor the organisation it belongs to');
+      if (!i.deliverables && !lines.length && !i.amount_cents && !i.in_kind) throw badRequest('Offer money, in-kind support, an endorsement, or a mix');
+    }
     return tx(async (c) => {
       if (i.target_type === 'athlete') {
         if (i.target_id === user.id) throw badRequest('You cannot sponsor yourself');
@@ -260,12 +274,12 @@ cap({
   input: z.object({ status: z.enum(['proposed', 'active', 'declined', 'ended', 'withdrawn']).optional(), as: z.enum(['sponsor', 'target']).optional(), ...page }),
   handler: ({ user }, i) => many(
     `SELECT ss.*, sp.name AS sponsor_name, sp.emoji AS sponsor_emoji, ${sponsorStaffSql(1)} AS i_am_sponsor,
-            CASE ss.target_type WHEN 'athlete' THEN (SELECT display_name FROM users WHERE id=ss.target_id) WHEN 'team' THEN (SELECT name FROM teams WHERE id=ss.target_id) ELSE (SELECT name FROM events WHERE id=ss.target_id) END AS target_name,
+            CASE ss.target_type WHEN 'athlete' THEN (SELECT display_name FROM users WHERE id=ss.target_id) WHEN 'team' THEN (SELECT name FROM teams WHERE id=ss.target_id) WHEN 'organisation' THEN (SELECT name FROM organisations WHERE id=ss.target_id) WHEN 'group' THEN (SELECT name FROM org_cohorts WHERE id=ss.target_id) ELSE (SELECT name FROM events WHERE id=ss.target_id) END AS target_name,
             EXISTS (SELECT 1 FROM verification_cases v WHERE v.type='sponsor' AND v.subject_id=sp.id AND v.status='approved' AND v.expires_at > now()) AS sponsor_verified
        FROM sponsorships ss JOIN sponsors sp ON sp.id=ss.sponsor_id
       WHERE (($5::text IS DISTINCT FROM 'target' AND ${sponsorStaffSql(1)})
          OR ($5::text IS DISTINCT FROM 'sponsor' AND ((ss.target_type='event' AND ss.target_id IN (SELECT id FROM events WHERE organizer_id=$1))
-              OR (ss.target_type='team' AND ss.target_id IN (SELECT id FROM teams WHERE owner_id=$1)) OR (ss.target_type='athlete' AND ss.target_id=$1))))
+              OR (ss.target_type='team' AND ss.target_id IN (SELECT id FROM teams WHERE owner_id=$1)) OR (ss.target_type='athlete' AND ss.target_id=$1) OR ${beneficiaryScopeSql('$1')})))
         AND ($2::text IS NULL OR ss.status=$2) ORDER BY ss.created_at DESC LIMIT $3 OFFSET $4`, [user.id, i.status ?? null, i.limit, i.offset, i.as ?? null]),
 });
 
@@ -298,7 +312,8 @@ cap({
       const sp = await mustFind('sponsors', d.sponsor_id);
       const owner = await targetOwner(d.target_type, d.target_id);
       const access = await sponsorAccess(user, sp, c);
-      const isTarget = user.id === owner, isSponsor = !!access && (!access.departmentId || access.departmentId === d.department_id);
+      const ben = ORG_TARGETS.includes(d.target_type) ? await beneficiaryAccess(c, user.id, d) : null;
+      const isTarget = ben ? ben.representative : user.id === owner, isSponsor = !!access && (!access.departmentId || access.departmentId === d.department_id);
       if (isSponsor && !isTarget && !isAdmin(user) && i.status === 'ended') assertSponsorCan(access, 'end', { departmentId: d.department_id, what: 'end agreements' });
       if (!isAdmin(user)) {
         if (i.status === 'ended' ? !(isSponsor || isTarget) : !isTarget) throw forbidden();
