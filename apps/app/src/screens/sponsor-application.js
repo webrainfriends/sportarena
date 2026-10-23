@@ -264,6 +264,15 @@ export function ApplicationForm({ round_id, target_type, target_id }) {
   const form = { values: answers, setValue, currency, texts, setText: (k, t) => setTexts((p) => ({ ...p, [k]: t })), files: app?.files ?? [], applicationId: app?.id, ensureDraft, reloadFiles, budget, setBudget: (b) => { setBudget(b); touch(); }, refs, setRefs: (r) => { setRefs(r); touch(); }, requested, fromProfile };
   const badOf = (f) => issues.find((i) => i.path === `answers.${f.key}` || i.path === `files.${f.key}` || (f.type === 'budget' && i.path === 'budget') || (f.type === 'references' && i.path === 'references'))?.message;
   const openFile = async (x) => { try { const blob = await api.download(`/application-files/${x.id}`); if (Platform.OS === 'web') { const u = URL.createObjectURL(blob); window.open(u, '_blank', 'noopener'); setTimeout(() => URL.revokeObjectURL(u), 120000); } else toast('Open documents in the web app'); } catch (e) { toast(explain(e)); } };
+  const remember = async () => {
+    try {
+      const cur = await api.get('/me/applicant-profile');
+      const data = { ...cur.data };
+      for (const f of fieldsOf(def)) if (f.profile_key && filled(answers[f.key]) && ['text', 'longtext', 'number', 'money', 'date', 'choice', 'yesno'].includes(f.type)) data[f.profile_key] = answers[f.key];
+      await api.post('/me/applicant-profile', { version: cur.row_version, data });
+      toast('Saved to your applicant details — they prefill future applications');
+    } catch (e) { toast(explain(e)); }
+  };
   const withdraw = async () => { try { await api.post(`/program-applications/${app.id}/withdraw`); toast('Application withdrawn'); back(); } catch (e) { toast(explain(e)); } };
 
   if (app && !['draft', 'returned'].includes(app.status)) return <Screen><H1>Your application</H1><Receipt app={app} onWithdraw={withdraw} openFile={openFile} /></Screen>;
@@ -336,6 +345,7 @@ export function ApplicationForm({ round_id, target_type, target_id }) {
               })}
             </Card>
           ))}
+          {fieldsOf(def).some((f) => f.profile_key && filled(answers[f.key])) && !returned ? <Btn small title="Remember these details for next time" color={c.paper} ink={c.ink} style={{ alignSelf: 'flex-start' }} onPress={remember} /> : null}
           <T size={12} color={c.mute}>When you submit, the form version and the program terms you applied under are kept with your application and you get a receipt number. Submitting twice (a retry or a double tap) never files it twice.</T>
           <Btn title={returned ? 'Send correction' : 'Submit application'} loading={busy} disabled={!!banner} onPress={submit} />
         </Section>
