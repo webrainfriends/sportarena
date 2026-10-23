@@ -12,6 +12,7 @@ import { NOT_YOUTH_SQL } from '../youth.js';
 import { LINE, buildSchedule } from '../sponsor-schedule.js';
 import { entityRole, snapshotIdentity, ASSIGNED, CAN } from '../sponsor-identity-access.js';
 import { saveLines, loadLines, generateObligations, cancelFutureObligations, logHistory } from '../sponsor-agreements.js';
+import { closePauseOnEnd } from '../sponsor-pause.js';
 import { sponsorAccess, assertSponsorCan, notifySponsor, sponsorStaffSql } from '../sponsor-access.js';
 import { assertDealFitsBudget, assertFits, convert, costOf, storedRate } from '../sponsorship-budgets.js';
 import { ORG_TARGETS, beneficiaryScopeSql, beneficiaryAccess, primaryContact, targetOrgId } from '../sponsor-beneficiaries.js';
@@ -357,7 +358,7 @@ cap({
         if (i.status === 'ended' ? !(isSponsor || isTarget) : !isTarget) throw forbidden();
       }
       if (['declined', 'ended', 'withdrawn'].includes(d.status)) throw conflict(`Sponsorship already ${d.status}`);
-      if (i.status === 'ended' && d.status !== 'active') throw badRequest('Only active deals can be ended');
+      if (i.status === 'ended' && !['active', 'paused'].includes(d.status)) throw badRequest('Only active or paused deals can be ended');
       if (i.status !== 'ended' && d.status !== 'proposed') throw conflict(`Sponsorship is already ${d.status}`);
       const hasLines = (await c.query('SELECT 1 FROM sponsorship_lines WHERE sponsorship_id=$1 AND version=$2 LIMIT 1', [d.id, d.terms_version])).rowCount > 0;
       if (i.status === 'active' && hasLines) {
@@ -383,7 +384,7 @@ cap({
         await c.query('UPDATE sponsorships SET accepted_version=terms_version WHERE id=$1', [d.id]);
         await generateObligations(c, d.id);
       }
-      if (i.status === 'ended') await cancelFutureObligations(c, d.id);
+      if (i.status === 'ended') { await cancelFutureObligations(c, d.id); await closePauseOnEnd(c, d.id); }
       await logHistory(c, d.id, d.terms_version, user.id, { active: signsOff ? 'signed_off' : 'accepted', declined: 'declined', ended: 'ended' }[i.status], i.reason);
       const word = { active: 'accepted', declined: 'declined', ended: 'ended' }[i.status];
       const update = { kind: 'sponsorship_update', title: `Sponsorship ${word}`, body: i.status === 'declined' && i.reason ? i.reason : `A sponsorship with ${sp.name} was ${word}.`, data: { sponsorship_id: d.id } };

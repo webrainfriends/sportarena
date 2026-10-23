@@ -47,13 +47,16 @@ Agreement state (sponsorships.status) is separate from fulfilment state (obligat
   A reversal reopens the due and keeps the history.
 * Nothing here claims funds were transferred or held in escrow. Checkout/payout integration is **not** done (see gaps).
 
+## Pause and resume
+See [sponsorship-pause.md](sponsorship-pause.md): both sides agree a pause with a reason, a start date and a hold/reschedule policy for the dues in it.
+
 ## Ending
 Ending a deal cancels only future dues that nothing has happened to. Due, overdue, part-paid, dispatched or submitted dues
 stay open: debt and delivered value are never erased. Nothing is deleted.
 
 ## Remaining gaps (not in this slice)
 * **Group target** — no durable "group" entity exists (only teams); not silently treated as a team. Needs its own design.
-* **Amendments of an accepted agreement**, pause, renewal successor, and termination with refunds/returns.
+* **Amendments of an accepted agreement**, renewal successor, and termination with refunds/returns.
 * **Performance review for teams/events/groups** and pre-agreement review (the athlete slice is below; sharing through #64 Sports Passport is not wired),
   CSV export, approaching-due reminders, per-line payer/payee/channel fields, disputes→cases linking, guardian/youth rules
   for sponsorship agreements.
