@@ -7,7 +7,7 @@ import { HAS_SPORT_THEME, sportTheme } from './sport-theme';
 // so every screen inherits the theme.
 // Light / dark: resolved once, synchronously, when the app loads (stored choice, else the OS setting), because
 // screens read these tokens at import time. Changing the choice stores it and reloads the app (see appearance.js).
-// Palette: Moon dust (#E5C9D7, #CEB5FF, #83A6CE, #C48CB3) with deep indigo shades for ink and buttons. Light mode puts the dark shades on a pale canvas, dark mode flips them.
+// Palette: Dusk (#0D1E4C, #C48CB3, #E5C9D7, #83A6CE, #26415E, #0B1B32): deep navy ink and surfaces, mauve accent, pale-pink canvas. Light mode puts the dark shades on a pale canvas, dark mode flips them.
 export const palette = { p0: '#0B1B32', p1: '#0D1E4C', p2: '#26415E', p3: '#A8628F', p4: '#C48CB3', p5: '#E5C9D7' };
 const LIGHT = {
   bg: '#F6ECF1', paper: '#FFFFFF', ink: '#0B1B32', mute: '#5E6A86', line: '#E3CCDA', on: '#FFFFFF', inkOn: '#FFFFFF', onAccent: '#FFFFFF',
