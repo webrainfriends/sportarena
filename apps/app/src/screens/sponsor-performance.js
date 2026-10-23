@@ -15,7 +15,7 @@ const day = (iso) => (iso ? new Date(`${String(iso).slice(0, 10)}T00:00:00`).toL
 
 export function SponsorPerformance({ deal }) {
   const { toast } = useSession();
-  const sponsor = deal.role === 'sponsor', recipient = deal.role === 'recipient';
+  const sponsor = deal.role === 'sponsor', recipient = deal.role === 'recipient' && !deal.youth?.minor_self;
   const mayEvaluate = !sponsor || !deal.can || deal.can.includes('evaluate'); // finance, legal and approvers can read but not set objectives or write reviews
   const perf = useLoad(() => loadOr(() => api.get(`/sponsorships/${deal.id}/performance`)), [deal.id]);
   const reviews = useLoad(() => loadOr(() => api.get(`/sponsorships/${deal.id}/reviews`)), [deal.id]);
@@ -30,7 +30,7 @@ export function SponsorPerformance({ deal }) {
       {recipient ? (
         <Card>
           <T weight="900">{shared ? `Sharing ${p.access.scope === 'official' ? 'official results' : 'all your results'} with ${deal.sponsor.name}` : `Your results are not shared with ${deal.sponsor.name}`}</T>
-          <T size={12} color={c.mute}>Private match notes, ratings, health and contact details are never shared. You can switch this off at any time; payments and the agreement are not affected.</T>
+          <T size={12} color={c.mute}>{deal.youth ? 'You decide this for a young athlete: nothing is shared unless you switch it on, and it stops if your guardian status ends. ' : ''}Private match notes, ratings, health and contact details are never shared. You can switch this off at any time; payments and the agreement are not affected.</T>
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
             {deal.status === 'active' ? <Btn small title={shared ? 'Share official results only' : 'Share official results'} color={c.mint} ink={c.ink} onPress={() => act(() => api.post(`/sponsorships/${deal.id}/performance-access`, { enabled: true, scope: 'official' }), 'Sharing on')} /> : null}
             {deal.status === 'active' ? <Btn small title="Also share practice & imported" color={c.paper} ink={c.ink} onPress={() => act(() => api.post(`/sponsorships/${deal.id}/performance-access`, { enabled: true, scope: 'all_evidence' }), 'Sharing on')} /> : null}

@@ -73,3 +73,7 @@ automated because the project never deletes data: operators handle retention req
 * Guardians cannot yet read a child's clinical records (only status/consents); the child controls provider access once medical consent exists.
 * Evidence verification is a manual platform-team decision. Nothing here verifies identity automatically.
 * Existing youth already on rosters stay there; only new actions are blocked.
+
+
+## Sponsorship
+Sponsors reach a young person only through a sponsor their guardian authorizes by name; see [sponsorship-youth.md](sponsorship-youth.md).

@@ -1,6 +1,8 @@
 // Sponsorship agreement operation (#145): schedule preview, exact-version revision, dues, payments, goods and endorsement fulfilment.
 // All of it hangs off the canonical `sponsorships` row (see sponsors.js); nothing here is a second sponsorship system.
 import { z } from 'zod';
+import { notifyRecipient, assertYouthAuthority, assertYouthContact, liveAuthority, guardedAthleteSql } from '../youth-sponsorship.js';
+import { requireConsent, hasConsent, guardianLink } from '../youth.js';
 import { cap, id, page } from '../registry.js';
 import { one, many, tx, pool } from '../db.js';
 import { badRequest, conflict, forbidden, notFound, unprocessable } from '../errors.js';
@@ -24,7 +26,7 @@ const other = (ctx) => (ctx.role === 'sponsor' ? ctx.recipientId : 'sponsor');
 // `to` is a user id, or 'sponsor' for the brand's owner and the staff whose role is concerned (`action`).
 export const ping = (c, to, title, ctx, kind = 'sponsorship_update', action = 'read') => {
   const msg = { kind, title, body: `Open the ${ctx.sp.name} agreement to see the update.`, data: { sponsorship_id: ctx.d.id } };
-  return to === 'sponsor' ? notifySponsor(c, ctx.sp, action, msg, ctx.d.department_id) : notify(c, to, msg);
+  return to === 'sponsor' ? notifySponsor(c, ctx.sp, action, msg, ctx.d.department_id) : notifyRecipient(c, to, msg);
 };
 
 cap({
@@ -47,6 +49,7 @@ cap({
       const ctx = await dealContext(c, i.id, user, { lock: true });
       if (ctx.role !== 'sponsor' && ctx.role !== 'recipient') throw forbidden('Only the sponsor or the recipient can negotiate the terms');
       if (ctx.role === 'sponsor') ctx.need('revise', 'revise the terms of an offer');
+      await assertYouthAuthority(c, ctx);
       if (ctx.d.status !== 'proposed') throw conflict('Only an unanswered offer can be negotiated');
       if ((ctx.role === 'recipient' || i.expected_version != null) && i.expected_version !== ctx.d.terms_version) {
         if (i.expected_version == null) throw badRequest('Say which version your counteroffer is based on (expected_version)');
@@ -125,7 +128,7 @@ cap({
     return tx(async (c) => {
       const ctx = await dealContext(c, i.id, user, { lock: true });
       if (ctx.role !== 'sponsor' && ctx.role !== 'recipient') throw forbidden('Only the sponsor or the recipient can comment on the terms');
-      if (ctx.role === 'sponsor' && i.visibility === 'shared') ctx.need('revise', 'speak for the brand in a negotiation');
+      if (ctx.role === 'sponsor' && i.visibility === 'shared') { ctx.need('revise', 'speak for the brand in a negotiation'); await assertYouthContact(c, ctx); }
       if (i.visibility === 'shared' && ctx.d.status !== 'proposed') throw conflict('Terms can only be discussed with the other side while the offer is open');
       const version = i.version ?? ctx.d.terms_version;
       if (version > ctx.d.terms_version) throw badRequest('That version does not exist');
@@ -177,6 +180,11 @@ cap({
     const version = d.accepted_version ?? d.terms_version;
     const lines = await many('SELECT id, position, kind, service_type, label, currency, amount_cents, total_cents, estimate_cents, quantity, unit, cadence, first_due_on, instalments, custom_dates, promoter, terms FROM sponsorship_lines WHERE sponsorship_id=$1 AND version=$2 ORDER BY position', [d.id, version]);
     const out = { id: d.id, agreement_ref: d.agreement_ref, status: d.status, role: ctx.role, my_sponsor_role: ctx.staff, can: ctx.staff ? actionsFor(ctx.staff) : undefined, sponsor: { id: sp.id, name: sp.name }, target_type: d.target_type, target_id: d.target_id, starts_on: d.starts_on, ends_on: d.ends_on, timezone: d.timezone, terms_version: d.terms_version, accepted_version: d.accepted_version, currency: d.currency, pause_rev: d.pause_rev, legacy_amount_cents: lines.length ? undefined : d.amount_cents, legacy_in_kind: lines.length ? undefined : d.in_kind, objectives: d.objectives, deliverables: d.deliverables, lines };
+    if (ctx.youth) { // a young athlete's agreement: who acts for them and what the guardian currently allows (separate from the agreement itself)
+      out.youth = { guardian_acting: ctx.guardian, minor_self: ctx.minorSelf, guardian_decided_at: d.guardian_decided_at ?? null,
+        authority_live: !!(await liveAuthority(pool, d.sponsor_id, d.target_id)), results_shared: !!d.performance_access,
+        media_allowed: await hasConsent(d.target_id, 'media'), contact_allowed: await hasConsent(d.target_id, 'contact') };
+    }
     if (['organisation', 'group'].includes(d.target_type)) out.beneficiary = { type: d.target_type, id: d.target_id, name: (await one(d.target_type === 'group' ? 'SELECT name FROM org_cohorts WHERE id=$1' : 'SELECT name FROM organisations WHERE id=$1', [d.target_id]))?.name ?? null, my_role: ctx.beneficiary?.representative ? 'representative' : ctx.beneficiary?.payee ? 'payee' : null };
     // who the sponsor was at this exact version (frozen): later renames or representative changes never alter it. Never registration/tax/billing data.
     const snap = (await pool.query('SELECT s.display_name, s.legal_name, s.sponsor_type, u.display_name AS signed_by FROM sponsorship_identity_snapshots s LEFT JOIN users u ON u.id=s.signed_by WHERE s.sponsorship_id=$1 AND s.version=$2', [d.id, version])).rows[0];
@@ -235,7 +243,7 @@ async function obligationRows(where, params, tail = '') {
 
 const SCOPE = `(${sponsorStaffSql(1)} OR $2::boolean
   OR (ss.target_type='event' AND ss.target_id IN (SELECT id FROM events WHERE organizer_id=$1))
-  OR (ss.target_type='team' AND ss.target_id IN (SELECT id FROM teams WHERE owner_id=$1)) OR (ss.target_type='athlete' AND ss.target_id=$1) OR ${beneficiaryScopeSql('$1')})`;
+  OR (ss.target_type='team' AND ss.target_id IN (SELECT id FROM teams WHERE owner_id=$1)) OR (ss.target_type='athlete' AND ss.target_id=$1) OR ${guardedAthleteSql('ss')} OR ${beneficiaryScopeSql('$1')})`;
 
 cap({
   name: 'list_sponsorship_obligations', method: 'GET', path: '/sponsorship-obligations', tag: 'Sponsors',
@@ -268,7 +276,7 @@ cap({
   async handler({ user }) {
     const a = [user.id, !!isAdmin(user)];
     const base = `FROM sponsorship_obligations o JOIN sponsorships ss ON ss.id=o.sponsorship_id JOIN sponsors sp ON sp.id=ss.sponsor_id WHERE ${SCOPE}`;
-    const recipient = `(ss.target_type='event' AND ss.target_id IN (SELECT id FROM events WHERE organizer_id=$1) OR ss.target_type='team' AND ss.target_id IN (SELECT id FROM teams WHERE owner_id=$1) OR ss.target_type='athlete' AND ss.target_id=$1 OR ${beneficiaryScopeSql('$1')})`;
+    const recipient = `(ss.target_type='event' AND ss.target_id IN (SELECT id FROM events WHERE organizer_id=$1) OR ss.target_type='team' AND ss.target_id IN (SELECT id FROM teams WHERE owner_id=$1) OR ss.target_type='athlete' AND ss.target_id=$1 OR ${guardedAthleteSql('ss')} OR ${beneficiaryScopeSql('$1')})`;
     const [agreements, counts] = await Promise.all([
       many(`SELECT ss.status, count(*)::int AS n FROM sponsorships ss JOIN sponsors sp ON sp.id=ss.sponsor_id WHERE ${SCOPE} GROUP BY ss.status ORDER BY ss.status`, a),
       one(`SELECT count(*) FILTER (WHERE o.status='scheduled' AND o.due_on < current_date AND o.held_by_pause_id IS NULL)::int AS overdue,
@@ -511,6 +519,7 @@ cap({
       open(ctx, 'endorsement');
       if (ctx.role !== ctx.promoter) throw forbidden(`Only the ${ctx.promoter} promotes under this agreement`);
       if (ctx.role === 'sponsor') ctx.need('evaluate', 'submit endorsement evidence');
+      if (ctx.youth) { await assertYouthAuthority(c, ctx); await requireConsent(ctx.d.target_id, 'media', 'photos or videos of a young person', c); } // the agreement never implies image consent
       const last = (await c.query('SELECT status FROM sponsorship_submissions WHERE obligation_id=$1 ORDER BY created_at DESC, id DESC LIMIT 1', [ctx.o.id])).rows[0];
       if (last && last.status !== 'revision_requested') throw conflict(`The last submission is ${last.status}`);
       const row = (await c.query('INSERT INTO sponsorship_submissions(obligation_id, evidence_url, note, submitted_by) VALUES ($1,$2,$3,$4) RETURNING *', [ctx.o.id, i.evidence_url, i.note ?? null, user.id])).rows[0];

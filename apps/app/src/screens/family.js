@@ -6,6 +6,7 @@ import { useSession } from '../session';
 import { useNav } from '../nav';
 import { FormSheet } from '../FormSheet';
 import { Btn, Card, Empty, ErrorBox, H1, Loading, Row, Screen, Section, Sheet, T, Tag } from '../ui';
+import { GuardianSponsors } from './sponsor-youth';
 import { c } from '../theme';
 import { locale } from '../locale';
 
@@ -86,7 +87,7 @@ function Pickup({ child, onClose }) {
   );
 }
 
-function LinkCard({ l, reload, onConsents, onPickup }) {
+function LinkCard({ l, reload, onConsents, onPickup, onSponsors }) {
   const { toast } = useSession();
   const { push } = useNav();
   const [ev, setEv] = useState(false);
@@ -112,6 +113,7 @@ function LinkCard({ l, reload, onConsents, onPickup }) {
         {mine === 'guardian' && l.status === 'active' ? <>
           <Btn small title="Permissions" color={c.pink} onPress={() => onConsents(l.child)} />
           <Btn small title="Pickup & check-in" color={c.violet} onPress={() => onPickup(l.child)} />
+          <Btn small title="Sponsors" color={c.paper} ink={c.ink} onPress={() => onSponsors(l.child)} />
           <Btn small title="Coaching" color={c.paper} ink={c.ink} onPress={() => push('MyCoaching', { child_id: l.child.id, name: l.child.display_name })} />
         </> : null}
         {(mine === 'guardian' && ['active', 'invited', 'accepted', 'pending_review'].includes(l.status)) || (l.requested_by === (mine === 'guardian' ? l.guardian_id : l.child_id) && ['invited', 'accepted', 'pending_review'].includes(l.status))
@@ -192,6 +194,7 @@ export function Family() {
   const [ask, setAsk] = useState(null);
   const [consents, setConsents] = useState(null);
   const [pickup, setPickup] = useState(null);
+  const [sponsors, setSponsors] = useState(null);
   const reload = () => { st.reload(); links.reload(); };
   const status = st.data;
   return (
@@ -212,7 +215,7 @@ export function Family() {
       </View>
       <Section title="Family links" color={c.pink}>
         {links.loading && !links.data ? <Loading /> : links.error ? <ErrorBox error={links.error} onRetry={links.reload} /> : links.data?.length
-          ? links.data.map((l) => <LinkCard key={l.id} l={l} reload={reload} onConsents={setConsents} onPickup={setPickup} />)
+          ? links.data.map((l) => <LinkCard key={l.id} l={l} reload={reload} onConsents={setConsents} onPickup={setPickup} onSponsors={setSponsors} />)
           : <Empty emoji="👨‍👩‍👧" title="No family links yet" sub={status?.is_youth ? 'Ask a parent or guardian to link with your account.' : 'Add a child you look after to manage their permissions.'} />}
       </Section>
       <ApprovalRequests />
@@ -225,6 +228,7 @@ export function Family() {
         onSubmit={async (v) => { await api.post('/youth/guardian-links', { handle: v.handle.trim(), as: ask === 'child' ? 'child' : 'guardian', relationship: v.relationship }); reload(); return 'Request sent. They will be asked to accept.'; }} />
       <Consents child={consents} onClose={() => setConsents(null)} />
       <Pickup child={pickup} onClose={() => setPickup(null)} />
+      <GuardianSponsors child={sponsors} onClose={() => setSponsors(null)} />
     </Screen>
   );
 }
