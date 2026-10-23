@@ -7,7 +7,7 @@ import { conflict, forbidden } from './errors.js';
 import { notify } from './notify.js';
 import { ASSIGNED } from './sponsor-identity-access.js';
 
-export const SPONSOR_ROLES = ['manager', 'evaluator', 'finance', 'legal', 'approver', 'auditor'];
+export const SPONSOR_ROLES = ['manager', 'evaluator', 'finance', 'legal', 'approver', 'auditor', 'viewer'];
 /** Sponsor-side permission per action. Evaluators can never pay or put the brand's name to terms. */
 export const SPONSOR_ACTIONS = {
   read: [...SPONSOR_ROLES, 'viewer'],

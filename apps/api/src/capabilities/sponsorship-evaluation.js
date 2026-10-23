@@ -199,7 +199,7 @@ cap({
       `SELECT a.id, a.stage, a.eval_version, a.status, a.requested_cents, a.currency, a.pitch, a.round_terms_version, a.target_type, a.created_at,
               (SELECT status FROM sponsorship_identity_consents ic WHERE ic.application_id=a.id AND ic.status IN ('requested','granted') LIMIT 1) AS identity_status,
               (SELECT count(*)::int FROM sponsorship_interviews iv WHERE iv.application_id=a.id) AS interviews
-         FROM sponsorship_applications a WHERE a.round_id=$1 AND ($2::text IS NULL OR a.stage=$2) ORDER BY a.created_at, a.id LIMIT $3 OFFSET $4`, [i.id, i.stage ?? null, i.limit, i.offset]);
+         FROM sponsorship_applications a WHERE a.round_id=$1 AND a.status <> 'draft' AND ($2::text IS NULL OR a.stage=$2) ORDER BY a.created_at, a.id LIMIT $3 OFFSET $4`, [i.id, i.stage ?? null, i.limit, i.offset]);
     const out = [];
     for (const a of apps) {
       const full = { ...a, round_id: i.id };
@@ -541,7 +541,7 @@ cap({
     const ctx = await evalContext(user, i.id);
     if (!(ctx.manage || ctx.role === 'auditor')) throw forbidden(`Your role (${ctx.role}) cannot export evaluations`);
     const rb = await liveRubric(pool, i.id);
-    const apps = await many('SELECT * FROM sponsorship_applications WHERE round_id=$1 ORDER BY created_at, id', [i.id]);
+    const apps = await many("SELECT * FROM sponsorship_applications WHERE round_id=$1 AND status <> 'draft' ORDER BY created_at, id", [i.id]);
     const rows = [];
     for (const a of apps) {
       const s = await summarize(pool, a, rb);
