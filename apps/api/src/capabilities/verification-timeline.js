@@ -7,6 +7,7 @@ import { one, many } from '../db.js';
 import { badRequest, conflict, notFound } from '../errors.js';
 import { decrypt } from '../crypto.js';
 import { audit, isAdmin } from '../helpers.js';
+import { sponsorCanSql, CAN } from '../sponsor-identity-access.js';
 import { notify } from '../notify.js';
 import { EVIDENCE_KINDS, RULES, TYPES } from '../verification.js';
 
@@ -81,7 +82,7 @@ cap({
       many(`SELECT DISTINCT ON (c.type, c.subject_id) c.id, c.type, c.subject_id, ${STATE_SQL} AS status, c.decision_reason, c.expires_at, c.submitted_at,
           (SELECT array_agg(DISTINCT v.kind) FROM verification_evidence v WHERE v.case_id=c.id) AS kinds
         FROM verification_cases c WHERE c.requested_by=$1 ORDER BY c.type, c.subject_id, c.submitted_at DESC`, [user.id]),
-      many('SELECT id, name FROM sponsors WHERE owner_id=$1 ORDER BY name', [user.id]),
+      many(`SELECT id, name FROM sponsors sp WHERE ${sponsorCanSql('$1', CAN.identity)} ORDER BY name, id`, [user.id]),
     ]);
     const latest = (type, subjectId) => cases.find((c) => c.type === type && c.subject_id === subjectId);
     const targets = [];

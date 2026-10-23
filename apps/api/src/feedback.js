@@ -1,4 +1,5 @@
 import { one } from './db.js';
+import { sponsorCanSql, CAN } from './sponsor-identity-access.js';
 
 /** The single inclusion rule for every public rating, count, distribution and listing: only published, public feedback counts.
  *  Hidden, withdrawn and private feedback must never reach an average, so every consumer builds its WHERE from this. */
@@ -14,7 +15,7 @@ export async function manages(user, type, id) {
     case 'user': return id === user.id;
     case 'team': return Boolean(await one("SELECT 1 FROM teams t WHERE t.id=$2 AND (t.owner_id=$1 OR EXISTS (SELECT 1 FROM team_members m WHERE m.team_id=t.id AND m.user_id=$1 AND m.status='active' AND m.role IN ('captain','manager')))", [user.id, id]));
     case 'event': return Boolean(await one('SELECT 1 FROM events WHERE id=$2 AND organizer_id=$1', [user.id, id]));
-    case 'sponsor': return Boolean(await one('SELECT 1 FROM sponsors WHERE id=$2 AND owner_id=$1', [user.id, id]));
+    case 'sponsor': return Boolean(await one(`SELECT 1 FROM sponsors sp WHERE sp.id=$2 AND ${sponsorCanSql('$1', CAN.identity)}`, [user.id, id]));
     case 'product': return Boolean(await one('SELECT 1 FROM shop_products WHERE id=$2 AND seller_id=$1', [user.id, id]));
     case 'institution': return Boolean(await one("SELECT 1 FROM organisation_members WHERE organisation_id=$2 AND user_id=$1 AND status='active' AND role IN ('owner','admin')", [user.id, id]));
     case 'programme': return Boolean(await one("SELECT 1 FROM programmes p JOIN organisation_members m ON m.organisation_id=p.organisation_id AND m.user_id=$1 AND m.status='active' AND m.role IN ('owner','admin') WHERE p.id=$2", [user.id, id]));

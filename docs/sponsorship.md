@@ -28,3 +28,7 @@ No individual-specific subsystem: athletes are just another `target_type` of the
 More → Sponsors: athletes get an "Open to sponsors" switch and pitch editor; sponsors search opted-in athletes and
 send an offer; both sides see every deal with its terms, status and reply, and can accept, decline, withdraw or end.
 The Billboard inbox shows the same terms.
+
+## Sponsor identities
+Who stands behind a brand (individual, company or organization), its representatives, portfolios and the identity frozen
+on each agreement version are described in [sponsor-identities.md](sponsor-identities.md).
