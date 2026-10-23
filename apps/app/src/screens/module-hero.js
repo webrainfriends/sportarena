@@ -43,13 +43,13 @@ export function ModuleHero({ name, title, sub, stats = [], photo, tabs, children
         </View>
       ) : null}
       {tabs ? (
-        <Glass accessibilityRole="tablist" radius={999} blur={10} tint="rgba(5,31,32,0.28)" gloss style={{ flexDirection: 'row', marginTop: 18, padding: 4 }}>
+        <Glass accessibilityRole="tablist" radius={999} blur={10} tint="rgba(20,18,58,0.28)" gloss style={{ flexDirection: 'row', marginTop: 18, padding: 4 }}>
           {tabs.items.map(([k, label]) => {
             const on = k === tabs.value;
             return (
               <Pressable key={k} onPress={() => tabs.onChange(k)} accessibilityRole="tab" accessibilityState={{ selected: on }} style={{ flex: 1 }}>
                 <Glass radius={999} blur={8} tint={on ? 'rgba(255,255,255,0.82)' : 'rgba(255,255,255,0)'} gloss={on} style={{ alignItems: 'center', paddingVertical: 8, ...(on ? null : { borderWidth: 0, boxShadow: 'none', backdropFilter: 'none', WebkitBackdropFilter: 'none' }) }}>
-                  <T weight="700" size={13} color={on ? '#0B2B26' : '#fff'} numberOfLines={1}>{label}</T>
+                  <T weight="700" size={13} color={on ? '#1D1A52' : '#fff'} numberOfLines={1}>{label}</T>
                 </Glass>
               </Pressable>
             );

@@ -13,10 +13,10 @@ const NATIVE = Platform.OS !== 'web';
 
 export const A = {
   bg: '#0A0716', panel: '#151030', panel2: '#1E1745', line: 'rgba(255,255,255,0.10)', ink: '#F8F5FF', mute: '#A79FCB',
-  violet: '#8B5CF6', magenta: '#3E7A5F', cyan: '#22D3EE', lime: '#A3E635', sun: '#FBBF24', orange: '#FB923C', red: '#F43F5E', green: '#34D399',
+  violet: '#8B5CF6', magenta: '#6577E0', cyan: '#22D3EE', lime: '#A3E635', sun: '#FBBF24', orange: '#FB923C', red: '#F43F5E', green: '#34D399',
 };
 export const AG = {
-  hero: ['#163832', '#3E7A5F'], neon: ['#06B6D4', '#8B5CF6'], lime: ['#A3E635', '#22D3EE'], live: ['#F43F5E', '#FB923C'], sun: ['#FBBF24', '#FB923C'], night: ['#1E1745', '#0A0716'],
+  hero: ['#2A2773', '#6577E0'], neon: ['#06B6D4', '#8B5CF6'], lime: ['#A3E635', '#22D3EE'], live: ['#F43F5E', '#FB923C'], sun: ['#FBBF24', '#FB923C'], night: ['#1E1745', '#0A0716'],
 };
 const INK_ON = { lime: '#0A0716', sun: '#0A0716' };
 

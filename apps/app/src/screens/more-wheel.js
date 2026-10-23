@@ -107,7 +107,7 @@ export function MoreWheel() {
   const statLine = [d?.points > 0 && `${d.points} points`, d?.trophies > 0 && `${d.trophies} trophies`].filter(Boolean).join(' · ');
   const web = Platform.OS === 'web';
   // Light frost: the page stays recognisable (shapes, colours) but its text is not legible; a bit stronger at the bottom, where the arc is.
-  const veil = dark ? ['rgba(5,31,32,0.22)', 'rgba(5,31,32,0.46)'] : ['rgba(237,247,239,0.28)', 'rgba(237,247,239,0.54)'];
+  const veil = dark ? ['rgba(20,18,58,0.22)', 'rgba(20,18,58,0.46)'] : ['rgba(238,238,255,0.28)', 'rgba(238,238,255,0.54)'];
 
   const content = w ? (
     <>
