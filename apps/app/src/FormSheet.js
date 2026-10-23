@@ -5,6 +5,7 @@ import { c } from './theme';
 import { Counter, DateField, DateRangeField, TimeField } from './pickers';
 import { SportPicker, SportsMulti } from './sportpicker';
 import { RegionPicker } from './region-picker';
+import { EntityPicker } from './entity-picker';
 import { CountryPicker } from './country-picker';
 import { api } from './api';
 import { useLoad } from './hooks';
@@ -30,7 +31,7 @@ const opt = (o) => (typeof o === 'object' ? o : { value: o, label: String(o) });
  *   money {currency}                        typed in whole currency units, submitted in minor units
  *   switch                                  yes / no
  *   choice {options}                        a few exclusive options (segmented), more than 4 become chips
- *   chips {options}                         exclusive options as wrapping chips
+ *   chips {options}                         exclusive options as wrapping chips (options may be a function of the values)
  *   multi {options}                         several of many
  *   weekdays                                day chips with Weekdays / Weekend / Every day shortcuts → [0..6]
  *   sport                                   search / quick-pick a sport → slug
@@ -38,6 +39,7 @@ const opt = (o) => (typeof o === 'object' ? o : { value: o, label: String(o) });
  *   regions                                 several cities / areas (chips + search) → [names]
  *   daterange {toKey}                       from–to on one calendar → key = start, toKey = end
  *   country                                 search a country by name → two-letter ISO code
+ *   entity {entityKind,options,noun,role}   search-and-pick one person / team / event → its id
  *   section {label}                         a heading between groups
  * `initial` is read each time the sheet opens. onSubmit(values) -> Promise; throws to show an error.
  */
@@ -95,7 +97,7 @@ export function FormSheet({ visible, onClose, title, fields, initial = {}, submi
       else if (f.type === 'stepper') o[f.key] = x ?? f.default ?? f.min ?? 0;
       else if (f.type === 'switch') o[f.key] = x ?? f.default ?? false;
       else if (f.type === 'multi' || f.type === 'weekdays' || f.type === 'sports' || f.type === 'regions') o[f.key] = x ?? f.default ?? [];
-      else if (f.type === 'choice' || f.type === 'chips') o[f.key] = x ?? f.default ?? (f.optional ? undefined : opt(f.options[0]).value);
+      else if (f.type === 'choice' || f.type === 'chips') o[f.key] = x ?? f.default ?? (f.optional || typeof f.options === 'function' ? undefined : opt(f.options[0]).value);
       else if (x !== undefined) o[f.key] = x;
       if (f.type === 'location' && initial[f.lngKey] !== undefined) o[f.lngKey] = initial[f.lngKey];
     }
@@ -162,6 +164,7 @@ export function FormSheet({ visible, onClose, title, fields, initial = {}, submi
           <RegionPicker label={f.label} optional={f.optional} value="" onChange={(x) => { if (x && !(v[f.key] ?? []).includes(x)) set(f.key, [...(v[f.key] ?? []), x]); }} hint={f.hint} />
         </View>);
       case 'region': return <RegionPicker label={f.label} optional={f.optional} value={v[f.key]} onChange={(x) => set(f.key, x)} hint={f.hint} />;
+      case 'entity': return <EntityPicker kind={f.entityKind ?? 'person'} label={f.label} optional={f.optional} noun={f.noun} role={f.role} options={f.options} value={v[`${f.key}__pick`] ? [v[`${f.key}__pick`]] : []} onChange={(l) => { set(f.key, l[0]?.id); set(`${f.key}__pick`, l[0]); }} />;
       case 'sport': return <SportPicker label={f.label} optional={f.optional} value={v[f.key]} onChange={(x) => set(f.key, x)} />;
       case 'stepper': return (
         <View style={{ gap: 6 }}><View style={{ flexDirection: 'row', alignItems: 'center' }}><View style={{ flex: 1 }}>{lab(f)}</View><Counter value={v[f.key]} onChange={(x) => set(f.key, x)} min={f.min ?? 0} max={f.max ?? 999} step={f.step ?? 1} suffix={f.suffix} /></View>{hint(f)}</View>);
@@ -176,7 +179,7 @@ export function FormSheet({ visible, onClose, title, fields, initial = {}, submi
       case 'multi': return (
         <View style={{ gap: 6 }}>{lab(f)}<View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>{f.options.map(opt).map((o) => <Chip key={String(o.value)} label={o.label} active={v[f.key]?.includes(o.value)} onPress={() => set(f.key, v[f.key]?.includes(o.value) ? v[f.key].filter((x) => x !== o.value) : [...(v[f.key] ?? []), o.value])} />)}</View>{hint(f)}</View>);
       case 'chips': return (
-        <View style={{ gap: 6 }}>{lab(f)}<View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>{f.options.map(opt).map((o) => <Chip key={String(o.value)} label={o.label} active={v[f.key] === o.value} onPress={() => set(f.key, o.value)} />)}</View>{hint(f)}</View>);
+        <View style={{ gap: 6 }}>{lab(f)}<View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>{(typeof f.options === 'function' ? f.options(v) : f.options).map(opt).map((o) => <Chip key={String(o.value)} label={o.label} active={v[f.key] === o.value} onPress={() => set(f.key, f.optional && v[f.key] === o.value ? undefined : o.value)} />)}</View>{hint(f)}</View>);
       case 'choice': {
         const os = f.options.map(opt);
         if (os.length > 4) return control({ ...f, type: 'chips' });

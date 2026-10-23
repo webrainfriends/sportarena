@@ -13,6 +13,7 @@ import { c } from '../theme';
 import { explain, LoadError } from '../access';
 import { RoundEvaluation, ApplicantEvaluation } from './sponsor-evaluation';
 import { ProgramAwards, MyOffers } from './sponsor-awards';
+import { ProgramBudget } from './sponsor-budgets';
 import { fieldsOf, filled, fmtMoney } from '../application-forms';
 
 // Amounts are minor units of THEIR OWN currency; currencies are never added together.
@@ -85,6 +86,7 @@ export function SponsorPrograms() {
       <H1>Programs</H1>
       <T size={13} color={c.mute}>Funding programs of your brands: set the budget and rules, open rounds, and award applications. Awards become sponsorship agreements.</T>
       {may.length ? <Btn small title="New program" color={c.pink} style={{ alignSelf: 'flex-start', marginTop: 6 }} onPress={() => setForm(true)} accessibilityLabel="Create a new sponsorship program" /> : null}
+      {may.length ? <Btn small title="Budgets" color={c.paper} ink={c.ink} style={{ alignSelf: 'flex-start' }} onPress={() => push('SponsorBudgets')} accessibilityLabel="Open sponsorship budgets" /> : null}
       <Seg options={[{ value: 'draft', label: 'Draft' }, { value: 'published', label: 'Published' }, { value: 'closed', label: 'Closed' }, { value: 'archived', label: 'Archived' }]} value={status} onChange={setStatus} color={c.pink} />
       {list.error ? <LoadError error={list.error} onRetry={list.reload} /> : list.loading && !list.data ? <Loading /> : list.data?.length ? list.data.map((p) => (
         <Card key={p.id} onPress={() => push('SponsorProgram', { id: p.id })} accessibilityLabel={`${p.name}, ${p.status}. Open program`}>
@@ -195,6 +197,7 @@ export function SponsorProgram({ id }) {
         {['manager', 'finance', 'auditor', 'admin'].includes(p.my_role) ? <Btn small title="Export awards (CSV)" color={c.paper} ink={c.ink} style={{ alignSelf: 'flex-start' }} onPress={download} /> : null}
       </Section>
 
+      <ProgramBudget program={p} may={may} onChanged={reloadAll} />
       <ProgramAwards program={p} onChanged={reloadAll} />
       <FormSheet visible={form === 'edit'} onClose={() => setForm(null)} title="Edit program" fields={programFields([], false)}
         initial={{ ...p, regions: p.regions, target_types: p.eligibility?.target_types, verified_only: !!p.eligibility?.verified_only, max_awards: p.max_awards ?? 0, recurring: !!p.recurrence, cadence: p.recurrence?.cadence, open_days: p.recurrence?.open_days, starts_on: p.starts_on ? String(p.starts_on).slice(0, 10) : undefined, ends_on: p.ends_on ? String(p.ends_on).slice(0, 10) : undefined }}

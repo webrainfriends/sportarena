@@ -10,7 +10,7 @@ import { notify } from '../notify.js';
 import { logHistory, saveLines, generateObligations } from '../sponsor-agreements.js';
 import { buildSchedule } from '../sponsor-schedule.js';
 import { sponsorAccess, notifySponsor, actionsFor } from '../sponsor-access.js';
-import { budgetBlocker, budgetUse, closeAward, expireOne, issue, logAward, approvalsOf, requiredSteps, assertVersion, needVersion, LIVE } from '../sponsorship-awards.js';
+import { budgetBlocker, budgetUse, stepsFor, closeAward, expireOne, issue, logAward, approvalsOf, requiredSteps, assertVersion, needVersion, LIVE } from '../sponsorship-awards.js';
 import { programFor, targetOwnerOf, iso } from './sponsorship-programs.js';
 
 const date = z.string().date();
@@ -146,7 +146,7 @@ cap({
         for (const x of i.conditions) await c.query('INSERT INTO sponsorship_award_conditions(award_id, position, text, due_on, blocks_payment, offer_version) VALUES ($1,$2,$3,$4,$5,$6)', [award.id, pos++, x.text, x.due_on ?? null, x.blocks_payment, next.offer_version]);
       }
       await logAward(c, award.id, 'revised', user.id, next.offer_version, i.reason);
-      const steps = requiredSteps(p, amount);
+      const steps = await stepsFor(c, p, amount);
       for (const step of steps) await c.query('INSERT INTO sponsorship_award_approvals(award_id, offer_version, step) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING', [award.id, next.offer_version, step]);
       if (!steps.length) await c.query("UPDATE sponsorship_awards SET status='approved' WHERE id=$1", [award.id]);
       else for (const step of steps) await notifySponsor(c, sp, STEP_ACTION[step], { kind: 'sponsorship_award', title: 'An award needs your sign-off', body: `A revised award needs ${step} sign-off.`, data: { award_id: award.id, step } }, null, user.id);
@@ -246,10 +246,11 @@ cap({
       }
       // acceptance: the ONE canonical agreement, from the exact offer the recipient saw
       const visibility = a.target_type === 'athlete' && !i.show_publicly ? 'private' : 'public';
+      const held = (await c.query('SELECT budget_id, budget_fx_rate_id FROM sponsorship_award_reservations WHERE award_id=$1', [award.id])).rows[0]; // the budget this award reserved stays the agreement's budget (#293)
       const deal = (await c.query(
-        `INSERT INTO sponsorships(sponsor_id, target_type, target_id, amount_cents, currency, starts_on, ends_on, proposed_by, objectives, visibility, program_id, round_id, application_id, status, decided_at, decided_by, accepted_version)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'active',now(),$14,1) RETURNING *`,
-        [sp.id, a.target_type, a.target_id, award.amount_cents, p.currency, p.starts_on, p.ends_on, award.proposed_by, p.objective, visibility, p.id, award.round_id, a.id, user.id])).rows[0];
+        `INSERT INTO sponsorships(sponsor_id, target_type, target_id, amount_cents, currency, starts_on, ends_on, proposed_by, objectives, visibility, program_id, round_id, application_id, status, decided_at, decided_by, accepted_version, budget_id, budget_fx_rate_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'active',now(),$14,1,$15,$16) RETURNING *`,
+        [sp.id, a.target_type, a.target_id, award.amount_cents, p.currency, p.starts_on, p.ends_on, award.proposed_by, p.objective, visibility, p.id, award.round_id, a.id, user.id, held?.budget_id ?? null, held?.budget_fx_rate_id ?? null])).rows[0];
       const today = iso(new Date()), start = p.starts_on ? iso(p.starts_on) : null, end = p.ends_on ? iso(p.ends_on) : null;
       let due = start && start > today ? start : today;
       if (end && due > end) due = end;
