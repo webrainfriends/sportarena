@@ -32,13 +32,17 @@ async function partyOf(c, sponsorshipId, userId) {
   let ctx;
   try { ctx = await dealContext(c, sponsorshipId, { id: userId, roles: [] }); } catch { return null; } // a fake non-admin user: admins are never signatories
   if (ctx.role === 'sponsor') { try { ctx.need('sign_contract', 'sign contracts for this brand'); } catch { return null; } return 'sponsor'; }
-  return ctx.role === 'recipient' ? 'recipient' : null;
+  return ctx.role === 'recipient' && bindsRecipient(ctx) ? 'recipient' : null;
 }
+
+/** Who may bind the recipient: the target owner, or for an organisation / group the owners and admins. A payee (a finance member who only confirms money) is on the deal but cannot sign or issue for the organisation. */
+const bindsRecipient = (ctx) => !ctx.beneficiary || ctx.beneficiary.representative;
 
 /** Who may issue, void and send a contract: the sponsor's contract-capable staff or the recipient side. Admins can read, not bind. */
 function mustManage(ctx) {
   if (ctx.role === 'sponsor') ctx.need('contract', 'issue contracts for this brand');
   else if (ctx.role !== 'recipient') throw forbidden('Only the parties to this sponsorship can issue contracts');
+  else if (!bindsRecipient(ctx)) throw forbidden('Only an owner or admin of the receiving organisation can issue contracts for it');
 }
 /** An agreement still waiting on the brand's internal budget approval is invisible to the recipient. */
 const hiddenFromRecipient = (ctx) => ctx.role === 'recipient' && ['pending', 'rejected'].includes(ctx.d.budget_approval);
