@@ -16,7 +16,7 @@ const LABEL = { header: 'Header', title: 'Title and number', parties: 'Seller an
 const PAPER = { A4: [210, 297], Letter: [215.9, 279.4] };
 const hex = (v, d) => (/^#[0-9A-Fa-f]{6}$/.test(v ?? '') ? v : d);
 const GREY = '#E3E5EA';
-const SELECT = '#4A5FD9';
+const SELECT = '#A8628F';
 const clone = (x) => JSON.parse(JSON.stringify(x));
 const paperMM = (l) => (l.orientation === 'landscape' ? [...PAPER[l.paper]].reverse() : PAPER[l.paper]);
 
@@ -82,7 +82,7 @@ export function PageCanvas({ layout, kit, logo, width, selected, onSelect, onReo
   const px = width / wmm;
   const pt = px * (25.4 / 72);
   const pad = px * layout.margin_mm;
-  const accent = hex(kit?.primary_color, '#4A5FD9'), ink = hex(kit?.secondary_color, '#444441');
+  const accent = hex(kit?.primary_color, '#A8628F'), ink = hex(kit?.secondary_color, '#444441');
   const flow = layout.blocks.map((b, i) => ({ b, i })).filter((x) => x.b.type !== 'footer');
   const footer = layout.blocks.map((b, i) => ({ b, i })).find((x) => x.b.type === 'footer');
   const heights = useRef({});

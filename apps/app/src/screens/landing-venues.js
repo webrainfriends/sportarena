@@ -103,7 +103,7 @@ export function VenueBooking({ wide, sport, onBook }) {
                         <Pressable key={s.starts_at} disabled={!free} onPress={() => choose({ res: r, slot: s, date: day })} accessibilityRole="button" accessibilityState={{ selected: on, disabled: !free }} accessibilityLabel={`${r.name} ${timeIn(s.starts_at, tz)} ${free ? moneyIn(s.price_cents, cur) : 'booked'}`}
                           style={{ borderRadius: 999, borderWidth: 1.5, borderColor: on ? c.pink : free ? c.line : 'transparent', backgroundColor: on ? c.pink : free ? c.paper : c.violetSoft, paddingVertical: 8, paddingHorizontal: 14, minWidth: 92, alignItems: 'center', opacity: free ? 1 : 0.55 }}>
                           <T weight="800" size={13} color={on ? c.onAccent : c.ink} style={!free ? { textDecorationLine: 'line-through' } : undefined}>{timeIn(s.starts_at, tz)}</T>
-                          <T size={11} weight={best ? '800' : '500'} color={on ? '#D3D3FF' : best ? c.lime : c.mute}>{free ? moneyIn(s.price_cents, cur) : 'Booked'}{best ? ' · best' : ''}</T>
+                          <T size={11} weight={best ? '800' : '500'} color={on ? '#E5C9D7' : best ? c.lime : c.mute}>{free ? moneyIn(s.price_cents, cur) : 'Booked'}{best ? ' · best' : ''}</T>
                         </Pressable>
                       );
                     })}

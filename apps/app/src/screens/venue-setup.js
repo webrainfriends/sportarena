@@ -15,7 +15,7 @@ const digits = (cur) => { try { return new Intl.NumberFormat('en', { style: 'cur
 const toMinor = (text, cur) => Math.round(Number(String(text).replace(/,/g, '')) * 10 ** digits(cur));
 const KINDS = [['court', '🏟️ Court'], ['table', '🏓 Table'], ['lane', '🎳 Lane'], ['pool', '🏊 Pool'], ['ground', '🌿 Ground'], ['room', '🚪 Room'], ['other', 'Other']];
 const SLOTS = [[30, '30 min'], [45, '45 min'], [60, '1 hour'], [90, '1½ h'], [120, '2 hours']];
-const PRESETS = [['Off-peak', '#059669'], ['Peak', '#EA580C'], ['Weekend', '#4A5FD9'], ['Coaching', '#2A2773']];
+const PRESETS = [['Off-peak', '#059669'], ['Peak', '#EA580C'], ['Weekend', '#A8628F'], ['Coaching', '#26415E']];
 
 function CourtsStep({ v, data, reload, next }) {
   const { toast } = useSession();
