@@ -202,3 +202,115 @@ export async function renderCoachingReport({ layout, kit, logo, snapshot, versio
   await done;
   return { buffer: Buffer.concat(chunks), pages: range.count };
 }
+
+const CADENCE = { once: 'one-off', weekly: 'weekly', monthly: 'monthly', quarterly: 'quarterly', custom: 'on set dates' };
+/** One sentence per contribution line, formatted from the frozen snapshot only. */
+export function describeLine(l) {
+  const cur = l.currency ?? '';
+  const parts = [];
+  if (l.kind === 'money') parts.push(l.total_cents != null ? `${money(l.total_cents, cur)} in total` : `${money(l.amount_cents, cur)} per instalment`);
+  else if (l.kind === 'goods') parts.push([l.quantity != null ? `${l.quantity}${l.unit ? ` ${l.unit}` : ''}` : null, l.estimate_cents != null ? `estimated value ${money(l.estimate_cents, cur)} (not cash)` : null].filter(Boolean).join(', ') || 'goods');
+  else parts.push(l.estimate_cents != null ? `endorsement, estimated value ${money(l.estimate_cents, cur)} (not cash)` : 'endorsement');
+  parts.push(`${CADENCE[l.cadence] ?? l.cadence}${l.cadence !== 'once' && l.instalments ? `, ${l.instalments} payment${l.instalments === 1 ? '' : 's'}` : ''}`);
+  if (l.first_due_on) parts.push(`from ${l.first_due_on}`);
+  return parts.join(' · ');
+}
+
+/**
+ * Sponsorship contract PDF. Everything printed comes from the frozen contract snapshot (and, once signed, the signature evidence rows);
+ * the template only chooses presentation and may add its own text clauses. Unsigned drafts are stamped DRAFT on every page, so a draft
+ * can never be mistaken for the signed contract. @returns {Promise<{ buffer: Buffer, pages: number }>}
+ */
+export async function renderSponsorshipContract({ layout, kit, logo, snapshot, signatures = null, fingerprint }) {
+  const f = fonts();
+  const signed = !!signatures;
+  const strings = [kit?.display_name, kit?.legal_name, kit?.address, kit?.footer_text, snapshot.sponsor.name, snapshot.sponsor.legal_name, snapshot.recipient.name, snapshot.objectives, snapshot.deliverables, ...snapshot.lines.flatMap((l) => [l.label, l.unit, l.promoter]), ...layout.blocks.map((b) => b.text), ...(signatures ?? []).flatMap((s) => [s.name, s.capacity])];
+  assertGlyphs(strings, f);
+  const accent = hex(kit?.primary_color, '#0F6E56'), ink = hex(kit?.secondary_color, '#444441');
+  const doc = new PDFDocument({
+    size: layout.paper, layout: layout.orientation, margin: layout.margin_mm * MM, bufferPages: true, compress: true,
+    info: { Title: `Sponsorship agreement ${snapshot.ref ?? ''} v${snapshot.terms_version}${signed ? '' : ' (DRAFT)'}`.trim(), Author: kit?.display_name ?? snapshot.sponsor.name ?? 'Sportarena', CreationDate: new Date(snapshot.generated_at), Producer: 'Sportarena' },
+  });
+  const chunks = [];
+  doc.on('data', (c) => chunks.push(c));
+  const done = new Promise((res, rej) => { doc.on('end', res); doc.on('error', rej); });
+  const left = doc.page.margins.left, width = doc.page.width - left - doc.page.margins.right;
+  const bottom = () => doc.page.height - doc.page.margins.bottom - 24;
+  const label = (t, x, y, w, o = {}) => doc.font(o.bold ? f.bold : f.regular).fontSize(o.size ?? 9).fillColor(o.color ?? ink).text(t ?? '', x, y, { width: w, align: o.align ?? 'left', lineBreak: o.lineBreak ?? true });
+  const room = (h) => { if (doc.y + h > bottom()) doc.addPage(); };
+  const rule = () => { doc.moveTo(left, doc.y).lineTo(left + width, doc.y).lineWidth(0.6).stroke(accent); doc.y += 12; };
+
+  for (const b of layout.blocks) {
+    if (b.type === 'header') {
+      const top = doc.page.margins.top; let x = left;
+      if (layout.style === 'modern') doc.rect(0, 0, doc.page.width, 10).fill(accent);
+      if (logo) { try { doc.image(logo, x, top, { fit: [130, 56] }); x += 140; } catch { throw new AppError(422, 'logo_unreadable', 'The brand logo could not be read. Upload it again as PNG or JPEG.'); } }
+      label(kit?.display_name ?? snapshot.sponsor.name ?? '', x, top, width - (x - left), { bold: true, size: 14, color: accent });
+      const sub = [kit?.legal_name, kit?.address, [kit?.contact_email, kit?.phone].filter(Boolean).join(' · '), kit?.website].filter(Boolean).join('\n');
+      if (sub) label(sub, x, doc.y + 2, width - (x - left), { size: 8 });
+      doc.y = Math.max(doc.y, top + (logo ? 60 : 0)) + 14; rule();
+    } else if (b.type === 'title') {
+      room(60);
+      label('SPONSORSHIP AGREEMENT', left, doc.y, width, { bold: true, size: 18, color: accent });
+      label(`${snapshot.ref ? `Ref ${snapshot.ref} · ` : ''}Terms version ${snapshot.terms_version}${signed ? ' · SIGNED' : ' · DRAFT — NOT SIGNED'}`, left, doc.y + 2, width, { size: 9, bold: true, color: signed ? accent : '#B42318' });
+      const period = [snapshot.period.starts_on && `from ${snapshot.period.starts_on}`, snapshot.period.ends_on && `to ${snapshot.period.ends_on}`].filter(Boolean).join(' ');
+      if (period) label(`Period ${period}${snapshot.period.timezone ? ` (${snapshot.period.timezone})` : ''}`, left, doc.y + 2, width, { size: 9 });
+      doc.y += 10;
+    } else if (b.type === 'parties') {
+      room(70);
+      const y = doc.y, half = width / 2 - 8;
+      label('SPONSOR', left, y, half, { bold: true, size: 8, color: accent });
+      label([snapshot.sponsor.name, snapshot.sponsor.legal_name && snapshot.sponsor.legal_name !== snapshot.sponsor.name ? snapshot.sponsor.legal_name : null].filter(Boolean).join('\n'), left, y + 12, half, { size: 10 });
+      const endL = doc.y;
+      label('RECIPIENT', left + half + 16, y, half, { bold: true, size: 8, color: accent });
+      label([snapshot.recipient.name, snapshot.recipient.type].filter(Boolean).join('\n'), left + half + 16, y + 12, half, { size: 10 });
+      doc.y = Math.max(endL, doc.y) + 14;
+    } else if (b.type === 'lines') {
+      room(40);
+      label('WHAT THE SPONSOR CONTRIBUTES', left, doc.y, width, { bold: true, size: 9, color: accent }); doc.y += 4;
+      if (!snapshot.lines.length) label('No structured contribution lines were set for this version.', left, doc.y, width, { size: 9 });
+      for (const l of snapshot.lines) {
+        doc.font(f.bold).fontSize(10); const h = doc.heightOfString(l.label, { width }) + doc.font(f.regular).fontSize(9).heightOfString(describeLine(l), { width }) + 8;
+        room(Math.min(h, 90));
+        label(l.label, left, doc.y, width, { bold: true, size: 10 });
+        label(describeLine(l), left, doc.y + 1, width, { size: 9 });
+        doc.y += 6;
+      }
+      for (const [t, v] of [['OBJECTIVES', snapshot.objectives], ['DELIVERABLES', snapshot.deliverables]]) {
+        if (!v) continue;
+        room(40); doc.y += 4;
+        label(t, left, doc.y, width, { bold: true, size: 9, color: accent }); doc.y += 4;
+        label(v, left, doc.y, width, { size: 9 }); doc.y += 6;
+      }
+      doc.y += 8;
+    } else if (b.type === 'text') {
+      room(30); label(b.text, left, doc.y, width, { size: TEXT_SIZE[b.size] ?? 9, align: b.align }); doc.y += 8;
+    }
+  }
+  // the signature block is part of every contract (it cannot be templated away): blank lines on a draft, the evidence once signed
+  room(signed ? 60 + (signatures.length * 42) : 90);
+  doc.y += 6; rule();
+  label(signed ? 'SIGNATURES' : 'SIGNATURES (none yet — this draft is not binding)', left, doc.y, width, { bold: true, size: 9, color: signed ? accent : '#B42318' }); doc.y += 6;
+  for (const s of signatures ?? []) {
+    room(44);
+    label(`${s.name} — ${s.side === 'sponsor' ? 'for the sponsor' : 'for the recipient'}${s.capacity ? `, ${s.capacity}` : ''}`, left, doc.y, width, { bold: true, size: 10 });
+    label(`Signed ${new Date(s.signed_at).toISOString().replace('T', ' ').slice(0, 19)} UTC · via ${s.provider}${s.provider_ref ? ` (${s.provider_ref})` : ''}`, left, doc.y + 1, width, { size: 8 });
+    doc.y += 8;
+  }
+  doc.y += 4;
+  label(`Content fingerprint (SHA-256) ${fingerprint}`, left, doc.y, width, { size: 7 });
+
+  const wantsFooter = layout.blocks.some((b) => b.type === 'footer');
+  const range = doc.bufferedPageRange();
+  for (let i = 0; i < range.count; i++) {
+    doc.switchToPage(range.start + i);
+    const y = doc.page.height - doc.page.margins.bottom - 12;
+    doc.page.margins.bottom = 0;
+    if (!signed) { doc.save().rotate(-30, { origin: [doc.page.width / 2, doc.page.height / 2] }); label('DRAFT — NOT SIGNED', left, doc.page.height / 2 - 20, width, { bold: true, size: 34, align: 'center', color: '#F3D4D0', lineBreak: false }); doc.restore(); }
+    if (wantsFooter && kit?.footer_text) label(kit.footer_text, left, y, width - 160, { size: 8, lineBreak: false });
+    label(`Agreement ${snapshot.ref ?? ''} · v${snapshot.terms_version} · Page ${i + 1} of ${range.count}`, left + width - 260, y, 260, { size: 8, align: 'right', lineBreak: false });
+  }
+  doc.end();
+  await done;
+  return { buffer: Buffer.concat(chunks), pages: range.count };
+}

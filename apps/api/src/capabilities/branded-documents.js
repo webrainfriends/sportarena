@@ -21,6 +21,7 @@ import { FAMILIES, STARTERS, checkLayout, layoutSchema, starterFor } from '../do
 import { canReadReportVersion, reportVersionFor } from '../coaching-report-access.js';
 import { LOGO_LIMITS, inspectLogo } from '../documents/image.js';
 import { renderInvoice, renderCoachingReport } from '../documents/render.js';
+import { canReadContractDocument } from './sponsorship-contracts.js';
 
 const TAG = 'Branded documents';
 const color = z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Use a #RRGGBB colour');
@@ -352,7 +353,8 @@ export function brandedDocumentsRouter() {
         // live check on every download: the audience the version was published for (or its author), never anyone else
         const v = await reportVersionFor(d.source_id, d.source_version);
         if (!v || !(await canReadReportVersion(user, v))) throw notFound('Document');
-      } else await invoiceFor(user, d.source_id); // live check on every download: revoked venue-team access ends here
+      } else if (d.source_type === 'sponsorship_contract') await canReadContractDocument(user, d.source_id); // parties to the agreement only, checked live
+      else await invoiceFor(user, d.source_id); // live check on every download: revoked venue-team access ends here
       const bytes = await loadEncrypted('documents', 'generated_documents.file', d.file_name);
       await audit(null, user.id, 'read_pii', 'generated_documents', d.id);
       res.set({ ...docHeaders('application/pdf', bytes), 'Content-Disposition': `attachment; filename="${d.id}.pdf"` });
