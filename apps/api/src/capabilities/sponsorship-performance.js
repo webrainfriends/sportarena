@@ -3,11 +3,12 @@
 // Reading is consent-gated by the athlete, revocable, and never reaches private notes/ratings, medical data or contact details.
 // Missing a target never touches a due: objectives are a review aid, not a payment condition.
 import { z } from 'zod';
+import { notifyRecipient, assertYouthAuthority, assertYouthContact, liveAuthority } from '../youth-sponsorship.js';
 import { cap, id } from '../registry.js';
 import { many, tx, pool } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { notify } from '../notify.js';
-import { isYouth } from '../youth.js';
+import { guardianLink } from '../youth.js';
 import { EVIDENCE_LABELS } from '../scoring/performance-rules.js';
 import { logHistory, dealContext } from '../sponsor-agreements.js';
 import { notifySponsor } from '../sponsor-access.js';
@@ -17,7 +18,7 @@ const date = z.string().date();
 // Notifications carry no results, targets or review text.
 const ping = (c, to, title, ctx, kind = 'sponsorship_performance') => {
   const msg = { kind, title, body: `Open the ${ctx.sp.name} agreement to see the update.`, data: { sponsorship_id: ctx.d.id } };
-  return to === 'sponsor' ? notifySponsor(c, ctx.sp, 'performance', msg, ctx.d.department_id) : notify(c, to, msg);
+  return to === 'sponsor' ? notifySponsor(c, ctx.sp, 'performance', msg, ctx.d.department_id) : notifyRecipient(c, to, msg);
 };
 const other = (ctx) => (ctx.role === 'sponsor' ? ctx.recipientId : 'sponsor');
 const running = (ctx) => ['active', 'ended', 'term_expired'].includes(ctx.d.status);
@@ -26,16 +27,17 @@ const VALID = `((p.provenance='approved_competition' AND p.status='approved') OR
 
 cap({
   name: 'set_sponsorship_performance_access', method: 'POST', path: '/sponsorships/:id/performance-access', tag: TAG,
-  summary: 'The sponsored athlete switches the sponsor\'s read access to their results on or off for this agreement. `official` shares approved competition results only; `all_evidence` also shares self-reported and imported figures (always labelled). Turning it off stops every future read at once; history and payments are untouched. Youth athletes cannot be enabled here.',
+  summary: 'The sponsored athlete switches the sponsor\'s read access to their results on or off for this agreement. `official` shares approved competition results only; `all_evidence` also shares self-reported and imported figures (always labelled). Turning it off stops every future read at once; history and payments are untouched. For a young athlete only a verified guardian can switch it on (the young person or the agreement alone never does), and it stops as soon as that guardian is no longer verified.',
   input: z.object({ id, enabled: z.boolean(), scope: z.enum(['official', 'all_evidence']).default('official'), reason: z.string().max(500).optional() }),
   async handler({ user }, i) {
     return tx(async (c) => {
-      const ctx = await dealContext(c, i.id, user, { lock: true });
+      const ctx = await dealContext(c, i.id, user, { lock: true, minorMayAct: true }); // a young person may switch sharing OFF, never ON
       if (ctx.role !== 'recipient') throw forbidden('Only the sponsored athlete decides who sees their results');
       athleteOnly(ctx);
       if (i.enabled) {
         if (ctx.d.status !== 'active') throw conflict('Results can only be shared under an active agreement');
-        if (await isYouth(user.id, c)) throw forbidden('Sharing results under a youth agreement needs guardian authority, which is not enabled here');
+        if (ctx.youth && !ctx.guardian) throw forbidden('Only a verified guardian can share a young person\'s results');
+        if (ctx.youth && !(await liveAuthority(c, ctx.d.sponsor_id, ctx.d.target_id))) throw forbidden('The guardian\'s authority for this sponsor is not in force');
       }
       const row = (await c.query('UPDATE sponsorships SET performance_access=$2, performance_scope=$3, performance_access_at=now(), performance_access_by=$4 WHERE id=$1 RETURNING performance_access, performance_scope, performance_access_at', [ctx.d.id, i.enabled, i.scope, user.id])).rows[0];
       await logHistory(c, ctx.d.id, ctx.d.terms_version, user.id, i.enabled ? 'performance_access_granted' : 'performance_access_revoked', i.reason);
@@ -59,6 +61,7 @@ cap({
       ctx.need('evaluate', 'propose objectives');
       athleteOnly(ctx);
       if (!['proposed', 'active'].includes(ctx.d.status)) throw conflict(`The agreement is ${ctx.d.status}`);
+      await assertYouthContact(c, ctx);
       const sport = (await c.query('SELECT id FROM sports WHERE slug=$1', [i.sport])).rows[0];
       if (!sport) throw notFound('Sport');
       const row = (await c.query(
@@ -105,6 +108,7 @@ cap({
       ctx.need('performance', 'read an athlete\'s results');
       if (!running(ctx)) throw conflict('Results are available once the athlete has accepted the agreement');
       if (!ctx.d.performance_access) throw forbidden('The athlete has not shared their results for this agreement');
+      if (ctx.youth && !(await liveAuthority(pool, ctx.d.sponsor_id, ctx.d.target_id) && ctx.d.performance_access_by && await guardianLink(ctx.d.performance_access_by, ctx.d.target_id))) throw forbidden('The guardian\'s permission to share these results is no longer in force');
     }
     const evidence = ctx.role === 'sponsor' && ctx.d.performance_scope === 'official' ? ['approved_competition'] : ['approved_competition', 'self_reported', 'imported'];
     const day = 'coalesce(p.achieved_on, p.recorded_at::date)';
@@ -151,6 +155,7 @@ cap({
       const ctx = await dealContext(c, i.id, user, { lock: true });
       if (ctx.role !== 'sponsor' && ctx.role !== 'recipient') throw forbidden('Only the two sides review an agreement');
       if (ctx.role === 'sponsor') ctx.need('evaluate', 'write reviews');
+      if (i.visibility === 'shared') await assertYouthContact(c, ctx);
       if (!running(ctx)) throw conflict('Reviews are kept once the agreement has been accepted');
       const row = (await c.query('INSERT INTO sponsorship_reviews(sponsorship_id, author_id, body, visibility, next_review_on) VALUES ($1,$2,$3,$4,$5) RETURNING *', [ctx.d.id, user.id, i.body, i.visibility, i.next_review_on ?? null])).rows[0];
       await logHistory(c, ctx.d.id, ctx.d.terms_version, user.id, 'review_added');

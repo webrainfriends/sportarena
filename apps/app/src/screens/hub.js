@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { YouthAuthorizations } from './sponsor-youth';
 import { View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
@@ -468,6 +469,7 @@ export function Sponsors() {
         )) : <Empty emoji="🤝" title="No deals yet" />}
       </Section>
       {has('sponsor') && mine.data?.length ? <Introductions brands={mine.data} onOffer={(a) => setOfferTo({ id: a.athlete_id, display_name: a.display_name })} /> : null}
+      {has('sponsor') && mine.data?.length ? <YouthAuthorizations brands={mine.data} onOffer={setOfferTo} /> : null}
       {has('sponsor') ? (
         <Section title="Athletes open to sponsors" color={c.cyan}>
           <Field value={q} onChangeText={setQ} placeholder="Search athletes by name or pitch…" />

@@ -2,6 +2,7 @@
 // linked agreement (`renews_id`) that the other side must accept at its exact current terms version, through the same offer and sign-off flow
 // as any agreement. The predecessor, its dues and its payment history are never modified by a renewal. Versioned by `renewal_rev`.
 import { z } from 'zod';
+import { guardedAthleteSql } from '../youth-sponsorship.js';
 import { cap, id, page } from '../registry.js';
 import { tx, pool, many } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
@@ -120,6 +121,6 @@ cap({
         AND NOT EXISTS (SELECT 1 FROM sponsorships n WHERE n.renews_id=ss.id AND n.status NOT IN ('declined','withdrawn'))
         AND (($4::text IS DISTINCT FROM 'target' AND ${sponsorStaffSql(1)})
           OR ($4::text IS DISTINCT FROM 'sponsor' AND ((ss.target_type='event' AND ss.target_id IN (SELECT id FROM events WHERE organizer_id=$1))
-              OR (ss.target_type='team' AND ss.target_id IN (SELECT id FROM teams WHERE owner_id=$1)) OR (ss.target_type='athlete' AND ss.target_id=$1) OR ${beneficiaryScopeSql('$1')})))
+              OR (ss.target_type='team' AND ss.target_id IN (SELECT id FROM teams WHERE owner_id=$1)) OR (ss.target_type='athlete' AND ss.target_id=$1) OR ${guardedAthleteSql('ss')} OR ${beneficiaryScopeSql('$1')})))
       ORDER BY ss.ends_on, ss.id LIMIT $2 OFFSET $3`, [user.id, i.limit, i.offset, i.as ?? null]),
 });

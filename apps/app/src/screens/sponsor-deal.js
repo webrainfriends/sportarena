@@ -7,6 +7,7 @@ import { useNav } from '../nav';
 import { Btn, Card, Chip, Empty, ErrorBox, Field, H1, Loading, Screen, Section, Sheet, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { SponsorPerformance } from './sponsor-performance';
+import { YouthPanel } from './sponsor-youth';
 import { SponsorNegotiation } from './sponsor-negotiation';
 import { SponsorContract } from './sponsor-contract';
 import { SponsorAmendments } from './sponsor-amendments';
@@ -39,13 +40,14 @@ export function SponsorDeal({ id }) {
   const act = async (fn, m) => { try { await fn(); toast(m); deal.reload(); } catch (e) { toast(explain(e)); if (e.status === 409) deal.reload(); } };
   if (deal.loading && !d) return <Screen><Loading /></Screen>;
   if (deal.error) return <Screen><LoadError error={deal.error} onRetry={deal.reload} /></Screen>;
-  const sponsor = d.role === 'sponsor', recipient = d.role === 'recipient';
+  const sponsor = d.role === 'sponsor', recipient = d.role === 'recipient' && !d.youth?.minor_self; // a young person reads their agreement; their guardian acts (#307)
   // what this person's sponsor role may do (the server enforces it; this only hides what would be refused)
   const can = (a) => !sponsor || !d.can || d.can.includes(a);
   const o = form?.o;
   return (
     <Screen>
       <H1>{d.sponsor.name}</H1>
+      <YouthPanel deal={d} reload={deal.reload} />
       {sponsor && d.my_sponsor_role ? <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center', marginTop: 4 }}><Tag label={`You: ${ROLE_LABEL[d.my_sponsor_role]}`} />{!can('pay') || !can('revise') ? <T size={12} color={c.mute} accessibilityRole="text">{[!can('pay') ? 'cannot report payments' : null, !can('revise') ? 'cannot change or sign terms' : null].filter(Boolean).join(' · ')}</T> : null}</View> : null}
       {sponsor && d.budget ? <Btn small title={`Funded from ${d.budget.code} · ${d.budget.name}`} color={c.paper} ink={c.ink} style={{ alignSelf: 'flex-start' }} onPress={() => push('SponsorBudget', { id: d.budget.id })} accessibilityLabel={`Funded from budget ${d.budget.code}, ${d.budget.name}. Open the budget and its trace`} /> : sponsor && d.status !== 'withdrawn' && d.status !== 'declined' ? <T size={12} color={c.mute}>Not on any budget.</T> : null}
       {d.program ? <T size={12} color={c.mute} accessibilityRole="text">Awarded from the program “{d.program.name}”, {d.program.round_name}.</T> : null}

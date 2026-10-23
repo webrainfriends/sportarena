@@ -8,7 +8,8 @@ import { decryptFields, encryptFields } from '../crypto.js';
 import { notify } from '../notify.js';
 import { tx } from '../db.js';
 import { PUBLIC_USER } from '../helpers.js';
-import { NOT_YOUTH_SQL } from '../youth.js';
+import { NOT_YOUTH_SQL, guardianLink, guardiansOf, isYouth } from '../youth.js';
+import { guardedAthleteSql, isYouthDeal, liveAuthority, notifyRecipient, youthConflict } from '../youth-sponsorship.js';
 import { LINE, buildSchedule } from '../sponsor-schedule.js';
 import { entityRole, snapshotIdentity, ASSIGNED, CAN } from '../sponsor-identity-access.js';
 import { endNow } from '../sponsor-termination.js';
@@ -272,11 +273,14 @@ cap({
     return tx(async (c) => {
       if (i.target_type === 'athlete') {
         if (i.target_id === user.id) throw badRequest('You cannot sponsor yourself');
-        const prof = (await c.query("SELECT sp.open_to_sponsors, sp.verified_sponsors_only FROM sponsorship_profiles sp JOIN users u ON u.id=sp.user_id WHERE sp.user_id=$1 AND 'athlete' = ANY(u.roles)", [i.target_id])).rows[0];
-        // an institution's introduction (which the athlete consented to) lets that one sponsor make an offer even when discovery is off
-        const introduced = !prof?.open_to_sponsors && (await c.query("SELECT 1 FROM enquiry_sponsor_links l JOIN enquiries e ON e.id=l.enquiry_id WHERE l.sponsor_id=$1 AND e.athlete_id=$2 AND l.status='introduced' AND e.sponsor_consent", [s.id, i.target_id])).rowCount > 0;
-        if (!prof?.open_to_sponsors && !introduced) throw conflict('This athlete is not open to sponsorship offers');
-        if (prof?.verified_sponsors_only && !(await badgesFor('sponsor', [s.id])).get(s.id)?.length) throw forbidden('This athlete only accepts offers from verified sponsors');
+        // a young person is only reachable by a sponsor a verified guardian authorized by name; opting in to discovery never opens that door (#307)
+        if (await isYouth(i.target_id, c)) { if (!(await liveAuthority(c, s.id, i.target_id))) throw youthConflict(); } else {
+          const prof = (await c.query("SELECT sp.open_to_sponsors, sp.verified_sponsors_only FROM sponsorship_profiles sp JOIN users u ON u.id=sp.user_id WHERE sp.user_id=$1 AND 'athlete' = ANY(u.roles)", [i.target_id])).rows[0];
+          // an institution's introduction (which the athlete consented to) lets that one sponsor make an offer even when discovery is off
+          const introduced = !prof?.open_to_sponsors && (await c.query("SELECT 1 FROM enquiry_sponsor_links l JOIN enquiries e ON e.id=l.enquiry_id WHERE l.sponsor_id=$1 AND e.athlete_id=$2 AND l.status='introduced' AND e.sponsor_consent", [s.id, i.target_id])).rowCount > 0;
+          if (!prof?.open_to_sponsors && !introduced) throw conflict('This athlete is not open to sponsorship offers');
+          if (prof?.verified_sponsors_only && !(await badgesFor('sponsor', [s.id])).get(s.id)?.length) throw forbidden('This athlete only accepts offers from verified sponsors');
+        }
         const open = (await c.query("SELECT 1 FROM sponsorships WHERE sponsor_id=$1 AND target_type='athlete' AND target_id=$2 AND status='proposed'", [s.id, i.target_id])).rows[0];
         if (open) throw conflict('You already have an open offer to this athlete');
         const declined = (await c.query("SELECT 1 FROM sponsorships WHERE sponsor_id=$1 AND target_type='athlete' AND target_id=$2 AND status='declined' AND decided_at > now() - make_interval(days => $3)", [s.id, i.target_id, DECLINE_COOLDOWN_DAYS])).rows[0];
@@ -293,7 +297,7 @@ cap({
       await snapshotIdentity(c, row.id, 1, s.id, user.id);
       await logHistory(c, row.id, 1, user.id, 'proposed');
       const held = i.budget_id ? await controlByBudget(c, user, s, row, i.budget_id, cash, i) : false;
-      if (!held) await notify(c, owner, { kind: 'sponsorship_offer', title: 'You have a sponsorship offer', body: `${s.name} sent an offer. Open it to review and answer.`, data: { sponsorship_id: row.id } });
+      if (!held) await notifyRecipient(c, owner, { kind: 'sponsorship_offer', title: 'You have a sponsorship offer', body: `${s.name} sent an offer. Open it to review and answer.`, data: { sponsorship_id: row.id } });
       return i.budget_id ? { ...row, budget_id: i.budget_id, budget_approval: held ? 'pending' : null } : row;
     });
   },
@@ -310,7 +314,7 @@ cap({
        FROM sponsorships ss JOIN sponsors sp ON sp.id=ss.sponsor_id
       WHERE (($5::text IS DISTINCT FROM 'target' AND ${sponsorStaffSql(1)})
          OR ($5::text IS DISTINCT FROM 'sponsor' AND ((ss.target_type='event' AND ss.target_id IN (SELECT id FROM events WHERE organizer_id=$1))
-              OR (ss.target_type='team' AND ss.target_id IN (SELECT id FROM teams WHERE owner_id=$1)) OR (ss.target_type='athlete' AND ss.target_id=$1) OR ${beneficiaryScopeSql('$1')})))
+              OR (ss.target_type='team' AND ss.target_id IN (SELECT id FROM teams WHERE owner_id=$1)) OR (ss.target_type='athlete' AND ss.target_id=$1) OR ${guardedAthleteSql('ss')} OR ${beneficiaryScopeSql('$1')})))
         AND ($2::text IS NULL OR ss.status=$2) AND (coalesce(ss.budget_approval,'') NOT IN ('pending','rejected') OR ${sponsorStaffSql(1)})
         AND ($6::uuid IS NULL OR (ss.target_type='organisation' AND ss.target_id=$6) OR (ss.target_type='group' AND ss.target_id IN (SELECT id FROM org_cohorts WHERE organisation_id=$6)))
       ORDER BY ss.created_at DESC LIMIT $3 OFFSET $4`, [user.id, i.status ?? null, i.limit, i.offset, i.as ?? null, i.organisation_id ?? null]).then((rows) => rows.map(forRecipient)),
@@ -352,7 +356,8 @@ cap({
       const owner = await targetOwner(d.target_type, d.target_id);
       const access = await sponsorAccess(user, sp, c);
       const ben = ORG_TARGETS.includes(d.target_type) ? await beneficiaryAccess(c, user.id, d) : null;
-      const isTarget = ben ? ben.representative : user.id === owner, isSponsor = !!access && (!access.departmentId || access.departmentId === d.department_id);
+      const youthD = await isYouthDeal(c, d), guardian = youthD ? await guardianLink(user.id, d.target_id, c) : null; // a young athlete's verified guardian is the one who answers (#307)
+      const isTarget = ben ? ben.representative : user.id === owner || !!guardian, isSponsor = !!access && (!access.departmentId || access.departmentId === d.department_id);
       if (!isSponsor && !isAdmin(user) && ['pending', 'rejected'].includes(d.budget_approval)) throw notFound('Sponsorship'); // an offer awaiting internal budget approval is not the recipient's to see yet
       if (isSponsor && !isTarget && !isAdmin(user) && i.status === 'ended') assertSponsorCan(access, 'end', { departmentId: d.department_id, what: 'end agreements' });
       // Whoever did not write the current terms signs them off (the recipient signs the sponsor's offer, the sponsor signs a counteroffer);
@@ -366,6 +371,11 @@ cap({
       } else if (!isAdmin(user)) {
         if (i.status === 'ended' ? !(isSponsor || isTarget) : !isTarget) throw forbidden();
       }
+      if (youthD && !guardian && !isSponsor) { // neither the young person nor a platform admin can consent for them
+        if (!signsOff && ['active', 'declined'].includes(i.status)) throw forbidden('Only a verified guardian can accept or decline a sponsorship for a young person');
+        if (i.status === 'ended' && user.id === owner && (await guardiansOf(d.target_id, c)).length) throw forbidden('Your guardian manages this sponsorship for you');
+      }
+      if (youthD && i.status === 'active' && !signsOff && !(await liveAuthority(c, d.sponsor_id, d.target_id))) throw conflict('The guardian\'s authority for this sponsor is not in force, so this offer cannot be accepted');
       if (['declined', 'ended', 'withdrawn'].includes(d.status)) throw conflict(`Sponsorship already ${d.status}`);
       if (i.status === 'ended' && !['active', 'paused'].includes(d.status)) throw badRequest('Only active or paused deals can be ended');
       if (i.status !== 'ended' && d.status !== 'proposed') throw conflict(`Sponsorship is already ${d.status}`);
@@ -385,10 +395,11 @@ cap({
           await assertFits(c, d.budget_id, convert(cents, cur, b0.currency, await storedRate(c, d.budget_fx_rate_id)), { what: 'Accepting this offer' });
         }
       }
-      const visibility = i.status === 'active' && d.target_type === 'athlete' && i.show_publicly !== undefined ? (i.show_publicly ? 'public' : 'private') : d.visibility;
+      const visibility = youthD ? 'private' : i.status === 'active' && d.target_type === 'athlete' && i.show_publicly !== undefined ? (i.show_publicly ? 'public' : 'private') : d.visibility;
       // Ending is recorded as a termination applied now (same safe debt handling: only untouched future dues stop); the notice workflow is in sponsorship-termination.js (#298)
       if (i.status === 'ended') await endNow(c, { d, sp }, user, isSponsor && !isTarget ? 'sponsor' : 'recipient', { reason: i.reason });
       const row = (await c.query('UPDATE sponsorships SET status=$2, decision_reason=coalesce($3, decision_reason), decided_at=now(), decided_by=$4, visibility=$5 WHERE id=$1 RETURNING *', [i.id, i.status, i.reason ?? null, user.id, visibility])).rows[0];
+      if (guardian && ['active', 'declined'].includes(i.status)) await c.query('UPDATE sponsorships SET guardian_id=$2, guardian_decided_at=now() WHERE id=$1', [d.id, user.id]);
       if (i.status === 'active') await c.query('UPDATE sponsorship_versions SET signed_off_by=$3, signed_off_at=now() WHERE sponsorship_id=$1 AND version=$2', [d.id, d.terms_version, user.id]);
       if (i.status === 'active' && signsOff) await snapshotIdentity(c, d.id, d.terms_version, sp.id, user.id); // the brand is frozen as it was when it signed
       if (i.status === 'active' && hasLines) {
@@ -403,7 +414,7 @@ cap({
       if (i.status !== 'ended') await logHistory(c, d.id, d.terms_version, user.id, { active: signsOff ? 'signed_off' : 'accepted', declined: 'declined' }[i.status], i.reason);
       const word = { active: 'accepted', declined: 'declined', ended: 'ended' }[i.status];
       const update = { kind: 'sponsorship_update', title: `Sponsorship ${word}`, body: i.status === 'declined' && i.reason ? i.reason : `A sponsorship with ${sp.name} was ${word}.`, data: { sponsorship_id: d.id } };
-      if (isSponsor && !isTarget || signsOff) await notify(c, owner, update);
+      if (isSponsor && !isTarget || signsOff) await notifyRecipient(c, owner, update);
       else await notifySponsor(c, sp, 'read', update, d.department_id, user.id);
       return row;
     });
