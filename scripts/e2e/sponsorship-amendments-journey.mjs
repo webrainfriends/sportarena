@@ -124,6 +124,47 @@ try {
     check(await w.getByText('Amendment history').first().isVisible(), `${n}: amendment history is visible`);
     await w.context().close();
   }
+  // ---- brand with a read-only role (denied state), and an organisation recipient changing the payee
+  const org = await call('POST', '/organisations', { token: sponsor.token, body: { name: 'Acme Corp', kind: 'company' } });
+  const corp = await call('POST', '/sponsors', { token: sponsor.token, body: { name: 'Acme Brand' } });
+  await call('POST', `/organisations/${org.id}/assets`, { token: sponsor.token, body: { kind: 'sponsor', asset_id: corp.id } });
+  const aud = await reg('amauditor', ['athlete']);
+  await call('POST', `/organisations/${org.id}/members`, { token: sponsor.token, body: { person: aud.handle, role: 'auditor' } });
+  await call('POST', `/organisations/${org.id}/invite/respond`, { token: aud.token, body: { accept: true } });
+  const rorg = await reg('amorgowner', ['coach']);
+  const beneficiary = await call('POST', '/organisations', { token: rorg.token, body: { name: 'Riverside Club' } });
+  await call('PATCH', `/organisations/${beneficiary.id}`, { token: rorg.token, body: { open_to_sponsors: true } });
+  const fin = await reg('amfinance', ['coach']);
+  await call('POST', `/organisations/${beneficiary.id}/members`, { token: rorg.token, body: { person: fin.handle, role: 'finance' } });
+  await call('POST', `/organisations/${beneficiary.id}/invite/respond`, { token: fin.token, body: { accept: true } });
+  const odeal = await call('POST', '/sponsorships', { token: sponsor.token, body: { sponsor_id: corp.id, target_type: 'organisation', target_id: beneficiary.id, starts_on: iso(plus(1)), ends_on: iso(plus(260)), lines: [money] } });
+  await call('PATCH', `/sponsorships/${odeal.id}`, { token: rorg.token, body: { status: 'active', version: 1 } });
+  await call('POST', `/sponsorships/${odeal.id}/allocations`, { token: rorg.token, body: { rev: 1, allocations: [{ beneficiary_type: 'organisation', beneficiary_id: beneficiary.id, share_bp: 10000, payee_user_id: rorg.id }] } });
+  const open = async (who, id) => { const s2 = await session(who, { width: 390, height: 844 }); await s2.page.goto(`http://localhost:4100/?open=sponsorship:${id}`); await s2.page.waitForTimeout(3500); return s2; };
+  const { page: d1 } = await open(aud, odeal.id);
+  await shot(d1, '09-denied-auditor');
+  check(await d1.getByText(/Your role cannot propose changes/).first().isVisible(), 'a read-only brand role is told why it cannot propose');
+  check((await d1.getByText('Propose an amendment', { exact: true }).count()) === 0, 'no propose button for a read-only role');
+  await d1.context().close();
+  const { page: o1 } = await open(rorg, odeal.id);
+  await o1.getByText('Propose an amendment', { exact: true }).first().click(); await o1.waitForTimeout(1500); await shot(o1, '10-payee-form');
+  check(await o1.getByText(/Who is paid for Riverside Club/).first().isVisible(), 'the organisation sees the payee choice');
+  await o1.getByText(/amfinance|Amend/i).first().click().catch(() => {});
+  await o1.getByText(/\(finance\)/).first().click(); await o1.waitForTimeout(400);
+  await pickDate(o1, iso(plus(30)));
+  await o1.getByText('Preview the impact').first().click(); await o1.waitForTimeout(2000); await shot(o1, '11-payee-review');
+  check(await o1.getByText(/Also changes who is paid/).first().isVisible(), 'review says the payee changes');
+  await o1.getByText('Send proposal', { exact: true }).first().click(); await o1.waitForTimeout(2500); await shot(o1, '12-payee-sent');
+  const alloc = await call('GET', `/sponsorships/${odeal.id}/allocations`, { token: rorg.token });
+  check(alloc.allocations[0].payee_user_id === rorg.id, 'the payee is unchanged until the sponsor accepts');
+  await o1.context().close();
+  const { page: s1 } = await open(sponsor, odeal.id);
+  await shot(s1, '13-sponsor-sees-payee-change');
+  check(await s1.getByText(/Also changes who is paid/).first().isVisible(), 'the sponsor is told the payee changes, without payee identities');
+  check((await s1.getByText(/amfinance/).count()) === 0, 'the sponsor never sees the payee identity');
+  await s1.getByText(/Accept these exact terms/).first().click(); await s1.waitForTimeout(2500);
+  check((await call('GET', `/sponsorships/${odeal.id}/allocations`, { token: rorg.token })).allocations[0].payee_user_id === fin.id, 'accepting applies the payee change');
+  await s1.context().close();
   await browser.close();
 } catch (e) { log('ERROR', e.stack); failures++; }
 finally { await db.end().catch(() => {}); api.kill(); web.close(); stripe.close(); log(failures ? `FAILURES: ${failures}` : 'ALL PASSED'); process.exit(failures ? 1 : 0); }

@@ -3,12 +3,15 @@ import { Linking, Platform, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
+import { useNav } from '../nav';
 import { Btn, Card, Chip, Empty, ErrorBox, Field, H1, Loading, Screen, Section, Sheet, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { SponsorPerformance } from './sponsor-performance';
 import { SponsorNegotiation } from './sponsor-negotiation';
+import { SponsorContract } from './sponsor-contract';
 import { SponsorAmendments } from './sponsor-amendments';
 import { SponsorTermination } from './sponsor-termination';
+import { SponsorPause } from './sponsor-pause';
 import { SponsorAllocations, PayeeLine } from './sponsor-beneficiaries';
 import { c } from '../theme';
 import { explain, LoadError } from '../access';
@@ -20,13 +23,14 @@ const fmt = (cents, cur) => { try { return new Intl.NumberFormat(undefined, { st
 const digits = (cur) => { try { return new Intl.NumberFormat('en', { style: 'currency', currency: cur }).resolvedOptions().maximumFractionDigits; } catch { return 2; } };
 const when = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 const what = (o) => (o.kind === 'money' ? fmt(o.amount_cents, o.currency) : o.kind === 'goods' ? `${o.quantity} to deliver` : 'Endorsement');
-const statusOf = (o) => (o.status === 'scheduled' && o.overdue ? 'overdue' : o.status);
+const statusOf = (o) => (o.status === 'scheduled' && o.held ? 'held' : o.status === 'scheduled' && o.overdue ? 'overdue' : o.status);
 const left = (x) => Math.max(0, x.amount_cents - x.confirmed_cents - x.reported_unverified_cents - x.checkout_in_progress_cents);
 const payState = (p) => ({ reported: 'unverified', confirmed: p.method === 'online' ? 'verified by provider ✓' : 'confirmed', awaiting_payment: 'checkout open', reversed: p.method === 'online' ? 'refunded' : 'reversed' }[p.status] ?? p.status);
-const tone = { fulfilled: c.lime, overdue: c.pinkSoft, cancelled: c.paper, scheduled: c.sunSoft };
+const tone = { held: c.violetSoft, fulfilled: c.lime, overdue: c.pinkSoft, cancelled: c.paper, scheduled: c.sunSoft };
 
 export function SponsorDeal({ id }) {
   const { toast } = useSession();
+  const { push } = useNav();
   const deal = useLoad(() => api.get(`/sponsorships/${id}`), [id]);
   const [form, setForm] = useState(null); // { kind, o }
   const d = deal.data;
@@ -41,12 +45,14 @@ export function SponsorDeal({ id }) {
     <Screen>
       <H1>{d.sponsor.name}</H1>
       {sponsor && d.my_sponsor_role ? <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center', marginTop: 4 }}><Tag label={`You: ${ROLE_LABEL[d.my_sponsor_role]}`} />{!can('pay') || !can('revise') ? <T size={12} color={c.mute} accessibilityRole="text">{[!can('pay') ? 'cannot report payments' : null, !can('revise') ? 'cannot change or sign terms' : null].filter(Boolean).join(' · ')}</T> : null}</View> : null}
+      {sponsor && d.budget ? <Btn small title={`Funded from ${d.budget.code} · ${d.budget.name}`} color={c.paper} ink={c.ink} style={{ alignSelf: 'flex-start' }} onPress={() => push('SponsorBudget', { id: d.budget.id })} accessibilityLabel={`Funded from budget ${d.budget.code}, ${d.budget.name}. Open the budget and its trace`} /> : sponsor && d.status !== 'withdrawn' && d.status !== 'declined' ? <T size={12} color={c.mute}>Not on any budget.</T> : null}
       {d.program ? <T size={12} color={c.mute} accessibilityRole="text">Awarded from the program “{d.program.name}”, {d.program.round_name}.</T> : null}
       <T size={12} color={c.mute}>{d.agreement_ref ?? 'Legacy agreement'} · {d.status} · terms v{d.accepted_version ?? d.terms_version}{d.starts_on ? ` · ${when(String(d.starts_on).slice(0, 10))} – ${d.ends_on ? when(String(d.ends_on).slice(0, 10)) : 'open'}` : ''}</T>
       {!d.lines.length ? <Card><T>This agreement predates structured terms: {d.legacy_amount_cents ? `${d.legacy_amount_cents} (currency not recorded)` : 'no cash'}{d.legacy_in_kind ? ` · ${d.legacy_in_kind}` : ''}. No payment schedule exists for it.</T></Card> : null}
       <SponsorAmendments deal={{ ...d, reload: deal.reload }} can={can} act={act} />
       <SponsorTermination deal={{ ...d, reload: deal.reload, toast }} />
       <SponsorNegotiation deal={{ ...d, reload: deal.reload }} can={can} act={act} />
+      <SponsorPause deal={{ ...d, reload: deal.reload }} can={can} act={act} />
       <Section title="Terms" color={c.sun}>
         {d.lines.map((l) => (
           <Card key={l.id}><T weight="900">{l.label}</T>
@@ -56,6 +62,7 @@ export function SponsorDeal({ id }) {
         {d.schedule ? <T size={12} color={c.mute}>Committed cash: {Object.entries(d.schedule.committed).map(([cur, v]) => fmt(v, cur)).join(' · ') || 'none'}. Currencies are never combined.</T> : null}
       </Section>
       {d.beneficiary ? <SponsorAllocations deal={d} /> : null}
+      <SponsorContract deal={d} can={can} onChanged={deal.reload} />
       {d.schedule ? (
         <Section title="Schedule to review" color={c.cyan}>
           {d.schedule.occurrences.map((x) => <T key={`${x.line}-${x.seq}`} size={13}>{when(x.due_on)} · {x.label} · {what(x)}</T>)}
@@ -85,20 +92,22 @@ export function SponsorDeal({ id }) {
                   <T size={12}>Evidence {s.evidence_url} · {s.status.replace('_', ' ')}{s.review_note ? ` — ${s.review_note}` : ''}</T>
                   {s.status === 'submitted' && d.role === (x.promoter === 'recipient' ? 'sponsor' : 'recipient') && can('evaluate') ? <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}><Btn small title="Accept" color={c.mint} ink={c.ink} onPress={() => act(() => api.patch(`/sponsorship-submissions/${s.id}`, { status: 'accepted' }), 'Accepted')} /><Btn small title="Ask for changes" color={c.paper} ink={c.ink} onPress={() => setForm({ kind: 'revise', o: s })} /></View> : null}
                 </View>))}
+              {x.held ? <T size={12} weight="700" accessibilityRole="text">On hold while the agreement is paused. It can be paid once the agreement resumes.</T> : null}
+              {x.original_due_on ? <T size={12} color={c.mute}>Moved from {when(x.original_due_on)} by a pause</T> : null}
               {x.kind === 'money' && x.status === 'scheduled' ? <T size={12} weight="700">Still due {fmt(left(x), x.currency)}</T> : null}
-              {x.status === 'scheduled' && x.kind === 'money' && sponsor && can('pay') ? (
+              {x.status === 'scheduled' && !x.held && x.kind === 'money' && sponsor && can('pay') ? (
                 <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
                   {left(x) > 0 ? <Btn small title="Pay online" color={c.pink} onPress={() => setForm({ kind: 'checkout', o: x })} /> : null}
                   {left(x) > 0 ? <Btn small title="Report a bank payment" color={c.paper} ink={c.ink} onPress={() => setForm({ kind: 'pay', o: x })} /> : null}
                 </View>) : null}
               {x.status === 'scheduled' && x.kind === 'money' && sponsor && !can('pay') ? <T size={12} color={c.mute}>Your role cannot make payments. Ask a Finance or Manager colleague.</T> : null}
-              {x.status === 'scheduled' && x.kind === 'goods' && sponsor && can('pay') ? <Btn small title="Record dispatch" color={c.orange} style={{ alignSelf: 'flex-start', marginTop: 6 }} onPress={() => setForm({ kind: 'dispatch', o: x })} /> : null}
-              {x.status === 'scheduled' && x.kind === 'endorsement' && d.role === x.promoter && can('evaluate') && !x.submissions.some((s) => s.status !== 'revision_requested') ? <Btn small title="Submit evidence" color={c.violet} style={{ alignSelf: 'flex-start', marginTop: 6 }} onPress={() => setForm({ kind: 'submit', o: x })} /> : null}
+              {x.status === 'scheduled' && !x.held && x.kind === 'goods' && sponsor && can('pay') ? <Btn small title="Record dispatch" color={c.orange} style={{ alignSelf: 'flex-start', marginTop: 6 }} onPress={() => setForm({ kind: 'dispatch', o: x })} /> : null}
+              {x.status === 'scheduled' && !x.held && x.kind === 'endorsement' && d.role === x.promoter && can('evaluate') && !x.submissions.some((s) => s.status !== 'revision_requested') ? <Btn small title="Submit evidence" color={c.violet} style={{ alignSelf: 'flex-start', marginTop: 6 }} onPress={() => setForm({ kind: 'submit', o: x })} /> : null}
             </Card>)) : <Empty emoji="🗓️" title="Nothing scheduled" />}
           <T size={12} color={c.mute}>Online payments are collected by Gotmygame through Stripe or PayPal, counted only once the provider verifies them, and paid out to the recipient after the hold period (see Earnings). Bank or cash payments you report stay unverified until the recipient confirms them.</T>
         </Section>) : null}
       {d.obligations?.some((x) => x.kind === 'money') ? <Reconciliation id={d.id} /> : null}
-      {d.target_type === 'athlete' && ['proposed', 'active', 'ended'].includes(d.status) && (sponsor || recipient) ? <SponsorPerformance deal={d} /> : null}
+      {d.target_type === 'athlete' && ['proposed', 'active', 'paused', 'ended'].includes(d.status) && (sponsor || recipient) ? <SponsorPerformance deal={d} /> : null}
       <Section title="History" color={c.lime}>
         {d.history.map((h) => <T key={h.id} size={12} color={c.mute}>{new Date(h.created_at).toLocaleDateString()} · {h.action.replace(/_/g, ' ')}{h.version ? ` (v${h.version})` : ''} · {h.actor ?? 'system'}{h.reason ? ` — ${h.reason}` : ''}</T>)}
       </Section>

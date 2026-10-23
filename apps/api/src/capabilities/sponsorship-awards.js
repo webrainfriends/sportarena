@@ -12,6 +12,7 @@ import { buildSchedule } from '../sponsor-schedule.js';
 import { sponsorAccess, notifySponsor, actionsFor } from '../sponsor-access.js';
 import { budgetBlocker, budgetUse, stepsFor, closeAward, expireOne, issue, logAward, approvalsOf, requiredSteps, assertVersion, needVersion, LIVE } from '../sponsorship-awards.js';
 import { programFor, targetOwnerOf, iso } from './sponsorship-programs.js';
+import { withBudget } from '../sponsorship-budgets.js';
 
 const date = z.string().date();
 const STATUSES = ['waitlisted', 'pending_approval', 'approved', 'issued', 'accepted', 'declined', 'expired', 'withdrawn', 'rejected'];
@@ -132,7 +133,7 @@ cap({
       if (amount > Number(a.requested_cents)) throw badRequest('An award cannot exceed the amount requested');
       if (p.max_award_cents && amount > Number(p.max_award_cents)) throw unprocessable(`An award cannot exceed the program maximum of ${p.max_award_cents}`);
       if (amount !== Number(award.amount_cents)) {
-        const why = await budgetBlocker(c, p, r, amount, award.id);
+        const why = await budgetBlocker(c, withBudget(p, award.budget_id), r, amount, award.id);
         if (why) throw conflict(why);
         await c.query("UPDATE sponsorship_award_reservations SET amount_cents=$2 WHERE award_id=$1 AND status='held'", [award.id, amount]);
       }
@@ -146,7 +147,7 @@ cap({
         for (const x of i.conditions) await c.query('INSERT INTO sponsorship_award_conditions(award_id, position, text, due_on, blocks_payment, offer_version) VALUES ($1,$2,$3,$4,$5,$6)', [award.id, pos++, x.text, x.due_on ?? null, x.blocks_payment, next.offer_version]);
       }
       await logAward(c, award.id, 'revised', user.id, next.offer_version, i.reason);
-      const steps = await stepsFor(c, p, amount);
+      const steps = await stepsFor(c, withBudget(p, award.budget_id), amount);
       for (const step of steps) await c.query('INSERT INTO sponsorship_award_approvals(award_id, offer_version, step) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING', [award.id, next.offer_version, step]);
       if (!steps.length) await c.query("UPDATE sponsorship_awards SET status='approved' WHERE id=$1", [award.id]);
       else for (const step of steps) await notifySponsor(c, sp, STEP_ACTION[step], { kind: 'sponsorship_award', title: 'An award needs your sign-off', body: `A revised award needs ${step} sign-off.`, data: { award_id: award.id, step } }, null, user.id);

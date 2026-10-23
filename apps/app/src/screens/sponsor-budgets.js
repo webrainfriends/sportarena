@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
-import { Platform, View } from 'react-native';
+import { Linking, Platform, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { useNav } from '../nav';
 import { Btn, Card, Chip, Empty, H1, Loading, Screen, Section, Seg, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
+import { BudgetWizard } from './budget-wizard';
+import { BudgetCoverage, BudgetTrace, LinkProgramsSheet } from './budget-trace';
+import { DocumentsSheet } from './insurance';
 import { c } from '../theme';
 import { explain, LoadError } from '../access';
 
@@ -54,19 +57,9 @@ const Figure = ({ label, value, tone, note }) => (
   </View>
 );
 
-const budgetFields = (brands, budgets, depts, events, create) => [
-  ...(create ? [
-    { key: 'sponsor_id', label: 'Brand', type: 'choice', options: brands.map((s) => ({ value: s.id, label: `${s.emoji ?? ''} ${s.name}`.trim() })) },
-    { key: 'kind', label: 'What is this budget for?', type: 'chips', options: [{ value: 'annual', label: 'A year' }, { value: 'program', label: 'A program' }, { value: 'department', label: 'A department' }, { value: 'event', label: 'An event' }], default: 'annual' },
-  ] : []),
+const editFields = [
   { key: 'name', label: 'Budget name' },
-  ...(create ? [
-    { key: 'fiscal_year', label: 'Fiscal year', type: 'stepper', min: 2000, max: 2200, default: new Date().getFullYear(), show: (v) => v.kind === 'annual' },
-    { key: 'currency', label: 'Currency', type: 'currency' },
-    { key: 'parent_id', label: 'Carved out of', type: 'chips', optional: true, options: budgets.map((b) => ({ value: b.id, label: `${b.name} (${fmt(b.available_cents, b.currency)} free)` })), hint: 'Optional. A child budget is part of its parent, in the same currency, and can never exceed what the parent has left.', show: (v) => v.kind !== 'annual' && budgets.length > 0 },
-    { key: 'department_id', label: 'Department', type: 'chips', options: depts.map((d) => ({ value: d.id, label: d.name })), show: (v) => v.kind === 'department' },
-    { key: 'event_id', label: 'Event', type: 'entity', entityKind: 'event', noun: 'event', options: events.map((e) => ({ id: e.id, label: e.name, sub: e.city ?? '' })), show: (v) => v.kind === 'event' },
-  ] : []),
+  { key: 'notes', label: 'Why this amount?', type: 'multiline', optional: true, hint: 'The rationale reviewers and auditors read: what it funds and how the figure was reached.' },
   { key: 'authorized_cents', label: 'Authorized amount', type: 'money', currency: (v) => v.currency ?? 'USD' },
   { key: 'approval_over_cents', label: 'Second approver needed above', type: 'money', currency: (v) => v.currency ?? 'USD', optional: true, hint: 'Offers and awards larger than this wait for another person to approve. Leave empty for none.' },
   { key: 'fx_policy', label: 'Other currencies', type: 'chips', options: [{ value: 'none', label: 'Not allowed' }, { value: 'explicit', label: 'Only at a sourced rate' }], default: 'none', hint: 'Different currencies are never added together unless you record a rate with its source.' },
@@ -83,8 +76,6 @@ export function SponsorBudgets() {
   const mine = (brands.data ?? []).filter((b) => ['manager', 'finance', 'approver', 'auditor', 'admin'].includes(b.my_role));
   const brand = mine.find((b) => b.id === brandId) ?? mine[0];
   const list = useLoad(() => (brand ? api.get('/sponsorship-budgets', { sponsor_id: brand.id, status, limit: 100 }) : Promise.resolve([])), [brand?.id, status]);
-  const all = useLoad(() => (brand ? api.get('/sponsorship-budgets', { sponsor_id: brand.id, status: 'active', limit: 100 }) : Promise.resolve([])), [brand?.id, form]);
-  const depts = useLoad(() => (brand?.organisation_id ? api.get(`/organisations/${brand.organisation_id}/departments`).catch(() => []) : Promise.resolve([])), [brand?.organisation_id]);
   const events = useLoad(() => api.get('/events', { limit: 50 }).catch(() => []), []);
   const may = brand && MAY_EDIT.includes(brand.my_role);
   const byId = Object.fromEntries((list.data ?? []).map((b) => [b.id, b]));
@@ -98,6 +89,7 @@ export function SponsorBudgets() {
         <>
           {mine.length > 1 ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{mine.map((b) => <Chip key={b.id} label={`${b.emoji ?? ''} ${b.name}`.trim()} active={b.id === brand.id} onPress={() => setBrandId(b.id)} />)}</View> : <T weight="800">{brand.emoji} {brand.name}</T>}
           {may ? <Btn small title="New budget" color={c.pink} style={{ alignSelf: 'flex-start' }} onPress={() => setForm(true)} accessibilityLabel="Authorize a new budget" /> : <T size={12} color={c.mute}>Your role ({brand.my_role}) can read budgets; managers and finance authorize them.</T>}
+          <BudgetCoverage sponsorId={brand.id} may={may} refreshKey={`${form}-${list.data?.length}`} onLinked={list.reload} />
           <Seg options={[{ value: 'active', label: 'Active' }, { value: 'archived', label: 'Archived' }]} value={status} onChange={setStatus} color={c.pink} />
           {list.error ? <LoadError error={list.error} onRetry={list.reload} /> : list.loading && !list.data ? <Loading /> : list.data?.length ? list.data.map((b) => (
             <Card key={b.id} onPress={() => push('SponsorBudget', { id: b.id })} accessibilityLabel={`${b.name}, ${KIND[b.kind]} budget, ${fmt(b.available_cents, b.currency)} available of ${fmt(b.authorized_cents, b.currency)}. Open budget`}>
@@ -105,7 +97,7 @@ export function SponsorBudgets() {
                 <T weight="900" style={{ flex: 1 }}>{b.name}</T>
                 <Tag label={KIND[b.kind] + (b.fiscal_year ? ` ${b.fiscal_year}` : '')} color={KIND_TONE[b.kind]} />
               </View>
-              <T size={12} color={c.mute}>{b.parent_id && byId[b.parent_id] ? `Part of ${byId[b.parent_id].name} · ` : ''}{b.fx_policy === 'explicit' ? 'Other currencies at a sourced rate' : `${b.currency} only`}{b.approval_over_cents != null ? ` · approval above ${fmt(b.approval_over_cents, b.currency)}` : ''}</T>
+              <T size={12} color={c.mute}>{b.code} · {b.parent_id && byId[b.parent_id] ? `Part of ${byId[b.parent_id].name} · ` : ''}{b.fx_policy === 'explicit' ? 'Other currencies at a sourced rate' : `${b.currency} only`}{b.approval_over_cents != null ? ` · approval above ${fmt(b.approval_over_cents, b.currency)}` : ''}</T>
               <BudgetBar b={b} />
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
                 <T size={13} weight="800">{fmt(b.available_cents, b.currency)} available</T>
@@ -116,27 +108,24 @@ export function SponsorBudgets() {
           )) : <Empty emoji="🧮" title={`No ${status} budgets`} sub={may ? 'Authorize a budget for a year, a program, a department or an event.' : 'Budgets of this brand appear here.'} />}
         </>
       )}
-      <FormSheet visible={form} onClose={() => setForm(false)} title="New budget" submitLabel="Authorize budget"
-        fields={budgetFields(mine.filter((b) => MAY_EDIT.includes(b.my_role)), (all.data ?? []).filter((b) => b.kind !== 'event'), depts.data ?? [], events.data ?? [], true)}
-        initial={{ sponsor_id: brand?.id, kind: 'annual', currency: 'USD' }}
-        onSubmit={async (v) => { const b = await api.post('/sponsorship-budgets', Object.fromEntries(Object.entries(v).filter(([, x]) => x !== undefined && x !== ''))); list.reload(); push('SponsorBudget', { id: b.id }); toast('Budget authorized'); return 'Budget authorized'; }} />
+      <BudgetWizard visible={form} onClose={() => setForm(false)} brands={mine.filter((b) => MAY_EDIT.includes(b.my_role))} brand={brand} events={events.data ?? []}
+        onCreated={(b, { failed }) => { list.reload(); push('SponsorBudget', { id: b.id }); toast(failed.length ? `Budget authorized — ${failed.length} file${failed.length === 1 ? '' : 's'} could not be uploaded; add ${failed.length === 1 ? 'it' : 'them'} from the budget` : 'Budget authorized'); }} />
     </Screen>
   );
 }
 
-const CKIND = { reservation: ['Reserved', c.sunSoft], agreement: ['Committed', c.pinkSoft], planned: ['Planned', c.violetSoft] };
-
+const REF_KIND = { approval: 'Approval', board_minutes: 'Board minutes', forecast: 'Forecast', purchase_order: 'Purchase order', contract: 'Contract', policy: 'Policy', other: 'Other' };
 /** One budget: balances, commitments, children, linked programs and sourced FX rates. */
 export function SponsorBudget({ id }) {
   const { toast } = useSession();
   const { push } = useNav();
-  const [form, setForm] = useState(null); // 'edit' | 'rate'
+  const [form, setForm] = useState(null); // 'edit' | 'rate' | 'ref' | { reject }
+  const [docs, setDocs] = useState(false);
   const [stale, setStale] = useState(false);
-  const [page, setPage] = useState(0);
+  const [tick, setTick] = useState(0);
   const bud = useLoad(() => api.get(`/sponsorship-budgets/${id}`), [id]);
-  const rows = useLoad(() => api.get(`/sponsorship-budgets/${id}/commitments`, { limit: 25, offset: page * 25 }), [id, page, bud.data?.row_version]);
   const b = bud.data;
-  const reloadAll = () => { bud.reload(); rows.reload(); };
+  const reloadAll = () => { bud.reload(); setTick((x) => x + 1); };
   const act = async (fn, m) => { try { await fn(); if (m) toast(m); setStale(false); reloadAll(); } catch (e) { toast(explain(e)); if (e.status === 409) { setStale(true); reloadAll(); } } };
   if (bud.loading && !b) return <Screen><Loading /></Screen>;
   if (bud.error) return <Screen><LoadError error={bud.error} onRetry={bud.reload} /></Screen>;
@@ -153,7 +142,7 @@ export function SponsorBudget({ id }) {
     <Screen onRefresh={reloadAll} refreshing={bud.loading && !!b}>
       <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><H1 style={{ flex: 1 }}>{b.name}</H1><Tag label={active ? KIND[b.kind] + (b.fiscal_year ? ` ${b.fiscal_year}` : '') : 'Archived'} color={active ? KIND_TONE[b.kind] : c.paper} /></View>
       {stale ? <Banner action="Dismiss" onAction={() => setStale(false)}>Someone else changed this budget while you were working. The latest version is shown now — review it and try again.</Banner> : null}
-      <T size={12} color={c.mute}>{b.sponsor_name} · you: {b.my_role}{b.parent ? ` · part of ${b.parent.name}` : ''}{b.event ? ` · for ${b.event.name}` : ''}{b.department ? ` · ${b.department.name}` : ''}</T>
+      <T size={12} color={c.mute}><T size={12} weight="800" color={c.ink}>{b.code}</T> · {b.sponsor_name} · you: {b.my_role}{b.parent ? ` · part of ${b.parent.name}` : ''}{b.event ? ` · for ${b.event.name}` : ''}{b.department ? ` · ${b.department.name}` : ''}</T>
       <Card>
         <T weight="900">{fmt(b.available_cents, b.currency)} available</T>
         <BudgetBar b={b} />
@@ -178,28 +167,32 @@ export function SponsorBudget({ id }) {
         ) : b.can.includes('export') ? <Btn small title="Export (CSV)" color={c.paper} ink={c.ink} style={{ alignSelf: 'flex-start', marginTop: 10 }} onPress={download} /> : <T size={12} color={c.mute} style={{ marginTop: 8 }}>Your role can read this budget; managers and finance change it.</T>}
       </Card>
 
-      <Section title="What draws on this budget" color={c.pink}>
-        {rows.error ? <LoadError error={rows.error} onRetry={rows.reload} /> : rows.loading && !rows.data ? <Loading /> : rows.data?.length ? rows.data.map((r) => (
-          <Card key={`${r.kind}-${r.id}`} color={CKIND[r.kind][1]} onPress={r.kind !== 'reservation' ? () => push('SponsorDeal', { id: r.id }) : undefined}>
-            <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-              <View style={{ flex: 1 }}><T weight="900">{r.who ?? 'Award'}{r.program ? ` · ${r.program}` : ''}</T><T size={12} color={c.mute}>{r.ref ?? 'Award offer'} · {r.status}</T></View>
-              <Tag label={r.approval === 'pending' ? 'Needs approval' : CKIND[r.kind][0]} color={c.paper} />
+      {b.notes || b.basis ? (
+        <Section title="Why this amount" color={c.violet}>
+          {b.notes ? <T size={13}>{b.notes}</T> : null}
+          {b.basis ? <Card onPress={() => push('SponsorBudget', { id: b.basis.id })} accessibilityLabel={`Built on ${b.basis.name}. Open budget`}><T size={12} color={c.mute}>Built on an earlier budget</T><T weight="900">{b.basis.name}{b.basis.fiscal_year ? ` · ${b.basis.fiscal_year}` : ''}</T></Card> : null}
+        </Section>
+      ) : null}
+
+      <Section title="References and documents" color={c.cyan} action={may && active ? '+ Reference' : undefined} onAction={() => setForm('ref')}>
+        <T size={12} color={c.mute}>Where the authority for this budget is recorded. Files are encrypted and open only to the people who can see this budget; removing a reference or file only hides it.</T>
+        {b.references.length ? b.references.map((r) => (
+          <Card key={r.id} pad={12}>
+            <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><T weight="900" style={{ flex: 1 }}>{r.title}</T><Tag label={REF_KIND[r.kind] ?? r.kind} color={c.paper} /></View>
+            <T size={12} color={c.mute}>{r.ref_no ? `${r.ref_no} · ` : ''}added by {r.added_by} · {day(r.created_at)}</T>
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
+              {r.url ? <Btn small title="Open link" color={c.violet} onPress={() => Linking.openURL(r.url)} accessibilityLabel={`Open ${r.title}`} /> : null}
+              {may && active ? <Btn small title="Remove" color={c.paper} ink={c.red} onPress={() => act(() => api.del(`/sponsorship-budgets/${b.id}/references/${r.id}`), 'Reference removed — kept on record')} accessibilityLabel={`Remove ${r.title}`} /> : null}
             </View>
-            <T size={13}>{fmt(r.amount_cents, r.currency)}{r.currency !== b.currency ? ` = ${fmt(r.budget_amount_cents, b.currency)} at ${r.fx_rate}` : ''}{r.kind === 'agreement' ? ` · paid ${fmt(r.paid_cents, r.currency)}${r.refunded_cents ? ` · refunded ${fmt(r.refunded_cents, r.currency)}` : ''}` : ''}</T>
-            {r.approval === 'pending' && mayApprove ? (
-              <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
-                <Btn small title="Approve" color={c.mint} ink={c.ink} onPress={() => act(() => api.post(`/sponsorships/${r.id}/budget-approval`, { decision: 'approve' }), 'Approved — the recipient can now see the offer')} accessibilityLabel="Approve this offer" />
-                <Btn small title="Reject" color={c.paper} ink={c.red} onPress={() => setForm({ reject: r })} accessibilityLabel="Reject this offer" />
-              </View>
-            ) : null}
           </Card>
-        )) : <Empty emoji="🧾" title="Nothing yet" sub="Awards and agreements appear here as they reserve and commit this budget." />}
-        {rows.data && (page > 0 || rows.data.length === 25) ? (
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            {page > 0 ? <Btn small title="Newer" color={c.paper} ink={c.ink} onPress={() => setPage(page - 1)} /> : null}
-            {rows.data.length === 25 ? <Btn small title="Older" color={c.paper} ink={c.ink} onPress={() => setPage(page + 1)} /> : null}
-          </View>
-        ) : null}
+        )) : <Empty emoji="📎" title="No references yet" sub={may && active ? 'Add the approval memo, board minutes, forecast or purchase order behind this budget.' : 'References appear here once a manager adds them.'} />}
+        <Btn small title="Documents" color={c.paper} ink={c.ink} style={{ alignSelf: 'flex-start' }} onPress={() => setDocs(true)} accessibilityLabel="Open the documents folder of this budget" />
+      </Section>
+
+      <Section title="Follow the money" color={c.pink}>
+        <BudgetTrace budget={b} tick={tick} mayApprove={mayApprove}
+          onApprove={(r) => act(() => api.post(`/sponsorships/${r.id}/budget-approval`, { decision: 'approve' }), 'Approved — the recipient can now see the offer')}
+          onReject={(r) => setForm({ reject: r })} />
       </Section>
 
       {b.children.length ? (
@@ -214,13 +207,14 @@ export function SponsorBudget({ id }) {
         </Section>
       ) : null}
 
-      <Section title="Programs on this budget" color={c.mint}>
+      <Section title="Programs on this budget" color={c.mint} action={may && active && b.kind !== 'event' ? '+ Link programs' : undefined} onAction={() => setForm('programs')}>
         {b.programs.length ? b.programs.map((p) => (
           <Card key={p.id} onPress={() => push('SponsorProgram', { id: p.id })} accessibilityLabel={`${p.name}, ${p.status}. Open program`}>
-            <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><T weight="900" style={{ flex: 1 }}>{p.name}</T><Tag label={p.status} color={c.paper} /></View>
+            <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><T weight="900" style={{ flex: 1 }}>{p.name}</T>{p.is_default ? <Tag label="Default budget" color={c.pinkSoft} /> : null}<Tag label={p.status} color={c.paper} /></View>
             <T size={12} color={c.mute}>Program budget {fmt(Number(p.budget_cents), p.currency)}</T>
+            {may && active && ['draft', 'published'].includes(p.status) ? <Btn small title="Unlink" color={c.paper} ink={c.red} style={{ alignSelf: 'flex-start', marginTop: 6 }} onPress={() => act(() => api.del(`/sponsorship-programs/${p.id}/budgets/${b.id}`, { version: p.row_version }), 'Program unlinked — kept on record')} accessibilityLabel={`Unlink ${p.name} from this budget`} /> : null}
           </Card>
-        )) : <Empty emoji="🎯" title="No program linked" sub="Open a program and choose this budget under “Budget” so its awards draw on it." />}
+        )) : <Empty emoji="🎯" title="No program linked" sub={b.kind === 'event' ? 'An event budget funds one event, not programs.' : may && active ? `Link the programs whose awards may draw on ${b.code}; their agreements and payments are then traced here.` : 'Programs linked to this budget appear here.'} />}
       </Section>
 
       {b.fx_policy === 'explicit' ? (
@@ -237,9 +231,20 @@ export function SponsorBudget({ id }) {
         {b.history.map((h) => <T key={h.id} size={12} color={c.mute}>{stamp(h.created_at)} · {h.kind.replace(/_/g, ' ')}{h.actor ? ` · ${h.actor}` : ''}</T>)}
       </Section>
 
-      <FormSheet visible={form === 'edit'} onClose={() => setForm(null)} title="Edit budget" fields={budgetFields([], [], [], [], false)}
+      <FormSheet visible={form === 'edit'} onClose={() => setForm(null)} title="Edit budget" fields={editFields}
         initial={{ ...b }}
-        onSubmit={async (v) => { await api.patch(`/sponsorship-budgets/${b.id}`, { version: b.row_version, name: v.name, authorized_cents: v.authorized_cents, approval_over_cents: v.approval_over_cents ?? null, fx_policy: v.fx_policy }); reloadAll(); return 'Budget saved'; }} />
+        onSubmit={async (v) => { await api.patch(`/sponsorship-budgets/${b.id}`, { version: b.row_version, name: v.name, notes: v.notes ?? null, authorized_cents: v.authorized_cents, approval_over_cents: v.approval_over_cents ?? null, fx_policy: v.fx_policy }); reloadAll(); return 'Budget saved'; }} />
+      <LinkProgramsSheet visible={form === 'programs'} onClose={() => setForm(null)} budget={b} linkedIds={b.programs.map((x) => x.id)} onDone={reloadAll} />
+      <FormSheet visible={form === 'ref'} onClose={() => setForm(null)} title="Add a reference" submitLabel="Add reference"
+        fields={[
+          { key: 'kind', label: 'What is it?', type: 'chips', options: Object.entries(REF_KIND).map(([value, label]) => ({ value, label })), default: 'approval' },
+          { key: 'title', label: 'Title' },
+          { key: 'url', label: 'Link', optional: true, input: 'url', hint: 'An https link to the document. Give a link, a reference number, or both.' },
+          { key: 'ref_no', label: 'Reference number', optional: true },
+        ]}
+        onSubmit={async (v) => { await api.post(`/sponsorship-budgets/${b.id}/references`, v); reloadAll(); return 'Reference added'; }} />
+      {docs ? <DocumentsSheet subject={{ subject_type: 'budget', subject_id: b.id }} canEdit={may} title="Budget documents" kinds={['approval', 'forecast', 'contract', 'invoice', 'report', 'other']} onClose={() => setDocs(false)}
+        blurb="PDF or photo, up to 10 MB each. Files are encrypted on the server and open only to the people who can see this budget; managers and finance add and hide them. Removing one only hides it." /> : null}
       <FormSheet visible={form === 'rate'} onClose={() => setForm(null)} title="Record an FX rate" submitLabel="Save rate"
         fields={[
           { key: 'currency', label: 'Currency to convert from', type: 'currency' },
@@ -256,28 +261,37 @@ export function SponsorBudget({ id }) {
   );
 }
 
-/** Program detail section: which budget this program's awards draw on. */
+/** Program detail section: the budgets this program's awards can draw on (one or several), the default for new awards, and this program's spending on each. */
 export function ProgramBudget({ program: p, may, onChanged }) {
   const { toast } = useSession();
   const { push } = useNav();
-  const budgets = useLoad(() => api.get('/sponsorship-budgets', { sponsor_id: p.sponsor_id, status: 'active', limit: 100 }).catch(() => []), [p.sponsor_id, p.budget_id]);
-  const linked = (budgets.data ?? []).find((b) => b.id === p.budget_id);
-  const choices = (budgets.data ?? []).filter((b) => b.kind !== 'event' && b.id !== p.budget_id);
-  const link = async (budgetId) => { try { await api.post(`/sponsorship-programs/${p.id}/budget`, { budget_id: budgetId, version: p.row_version }); toast(budgetId ? 'Awards now draw on this budget' : 'Program unlinked'); onChanged?.(); } catch (e) { toast(explain(e)); onChanged?.(); } };
+  const linked = useLoad(() => api.get(`/sponsorship-programs/${p.id}/budgets`).catch(() => []), [p.id, p.row_version]);
+  const budgets = useLoad(() => api.get('/sponsorship-budgets', { sponsor_id: p.sponsor_id, status: 'active', limit: 100 }).catch(() => []), [p.sponsor_id, p.row_version]);
+  const mine = linked.data ?? [];
+  const choices = (budgets.data ?? []).filter((b) => b.kind !== 'event' && !mine.some((l) => l.id === b.id));
+  const editable = may && ['draft', 'published'].includes(p.status);
+  const run = async (fn, msg) => { try { await fn(); toast(msg); } catch (e) { toast(explain(e)); } onChanged?.(); };
   return (
-    <Section title="Budget" color={c.sun}>
-      {linked ? (
-        <Card onPress={() => push('SponsorBudget', { id: linked.id })} accessibilityLabel={`${linked.name}, ${fmt(linked.available_cents, linked.currency)} available. Open budget`}>
-          <T weight="900">{linked.name}</T><BudgetBar b={linked} />
-          <T size={12} color={c.mute}>{fmt(linked.available_cents, linked.currency)} available of {fmt(linked.authorized_cents, linked.currency)} — every award reserves from here first.</T>
+    <Section title="Budgets" color={c.sun}>
+      <T size={12} color={c.mute}>A program can draw on several budgets, and a budget can fund several programs. Each award names the budget it draws on; new awards use the default.</T>
+      {mine.length ? mine.map((b) => (
+        <Card key={b.id} onPress={() => push('SponsorBudget', { id: b.id })} accessibilityLabel={`${b.name}, ${b.code}, ${fmt(b.available_cents, b.currency)} available. Open budget`}>
+          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><T weight="900" style={{ flex: 1 }}>{b.name}</T>{b.is_default ? <Tag label="Default" color={c.pinkSoft} /> : null}<Tag label={b.code} color={c.paper} /></View>
+          <T size={12} color={c.mute}>This program: {fmt(b.reserved_cents, b.currency)} reserved · {fmt(b.committed_cents, b.currency)} committed · {fmt(b.paid_cents, b.currency)} paid. Budget has {fmt(b.available_cents, b.currency)} available of {fmt(b.authorized_cents, b.currency)}.</T>
+          {editable ? (
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
+              {!b.is_default ? <Btn small title="Make default" color={c.paper} ink={c.ink} onPress={() => run(() => api.post(`/sponsorship-programs/${p.id}/budget`, { budget_id: b.id, version: p.row_version, make_default: true }), `${b.code} is now the default`)} accessibilityLabel={`Make ${b.name} the default budget`} /> : null}
+              <Btn small title="Unlink" color={c.paper} ink={c.red} onPress={() => run(() => api.del(`/sponsorship-programs/${p.id}/budgets/${b.id}`, { version: p.row_version }), `${b.code} unlinked — kept on record`)} accessibilityLabel={`Unlink ${b.name}`} />
+            </View>
+          ) : null}
         </Card>
-      ) : <T size={13} color={c.mute}>{p.budget_id ? 'Linked to a budget you cannot see.' : 'Awards are limited by this program’s own budget only. Link an authorized budget to also respect the brand’s yearly or department limits.'}</T>}
-      {may && ['draft', 'published'].includes(p.status) ? (
-        <>
-          {choices.length ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{choices.map((b) => <Chip key={b.id} label={`${p.budget_id ? 'Move to ' : 'Use '}${b.name}`} onPress={() => link(b.id)} />)}</View> : !p.budget_id ? <T size={12} color={c.mute}>No budget to link yet — authorize one under Budgets.</T> : null}
-          {p.budget_id ? <Btn small title="Unlink budget" color={c.paper} ink={c.red} style={{ alignSelf: 'flex-start' }} onPress={() => link(null)} /> : null}
-        </>
-      ) : null}
+      )) : p.budget_id && !linked.loading ? <T size={13} color={c.mute}>Linked to a budget you cannot see.</T> : <Banner tone={c.sunSoft}>This program’s spending is not on any budget. Link one so its awards, agreements and payments respect the brand’s authorized limits and are traced end to end.</Banner>}
+      {editable ? (choices.length ? (
+        <View style={{ gap: 6 }}>
+          <T size={12} color={c.mute} weight="700">ADD A BUDGET</T>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{choices.map((b) => <Chip key={b.id} label={`${b.code} · ${b.name}`} onPress={() => run(() => api.post(`/sponsorship-programs/${p.id}/budget`, { budget_id: b.id, version: p.row_version }), `Awards can now draw on ${b.code}`)} />)}</View>
+        </View>
+      ) : !mine.length ? <T size={12} color={c.mute}>No budget to link yet — authorize one under Budgets.</T> : null) : null}
     </Section>
   );
 }

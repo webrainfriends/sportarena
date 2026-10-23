@@ -32,10 +32,44 @@ New tables `sponsorship_budgets`, `sponsorship_budget_fx_rates`, `sponsorship_bu
 exactly as before. Nothing is dropped or rewritten; budgets are archived, never deleted.
 Rollback: deploy the previous code; the new columns/tables are unused. Dependency order: programs (#284) → awards (#289) → this.
 
+## Planning: guidance, rationale, references and files (migration `096_budget_planning.sql`, additive)
+Authorizing a budget is a five-step flow (scope → amount → controls → support → review) instead of one long form.
+* **Guidance** (`get_budget_guidance`, `GET /budget-guidance`): the brand's earlier comparable budgets (archived ones included) with what was authorized
+  against what was really used (committed + reserved, children included), the unspent or overspent difference, the average utilisation, a suggested
+  figure (the latest comparable's actual use, same currency only) and a warning when an active budget for the same scope exists. Nothing is converted
+  or added across currencies. A budget built on a suggestion keeps `basis_budget_id`.
+* **Currency** is a searchable dropdown (shared by every form) that starts on the currency of the person's locale region and can be changed; a child
+  budget is locked to its parent's currency.
+* **Rationale** (`notes`) and **references** (`add_budget_reference` / `remove_budget_reference`: approval memo, board minutes, forecast, purchase order,
+  contract, policy; an https link and/or a reference number). `create_sponsorship_budget` accepts up to 10 references at creation.
+* **Files** use the shared documents folder (`PUT /documents`, `subject_type=budget`): encrypted, PDF or photo up to 10 MB, managers and finance add
+  and hide, approvers and auditors read, every download is audit-logged. Removing a reference or file only hides it.
+New objects: `sponsorship_budgets.notes` / `basis_budget_id`, table `sponsorship_budget_references`, and the `subject_documents` subject/kind CHECKs widened
+(`budget`; `approval`, `forecast`, `invoice`, `report`). No existing row is touched.
+
+## Traceability: budget codes, linking programs, end-to-end trace, coverage (migration `097_budget_codes.sql`, additive)
+* **Unique code** on every budget (`BUD-00042`, from a sequence; existing budgets are backfilled in creation order, only where empty). It is shown on the
+  budget list and page, the program's Budget section, and the agreement ("Funded from BUD-…").
+* **Many-to-many (migration `098_program_budget_links.sql`, additive)**: a program can draw on several budgets and a budget can fund several programs,
+  because a budget covers any subset of spending. Links live in `sponsorship_program_budgets` (unlinking sets `unlinked_at`, nothing is deleted);
+  `sponsorship_programs.budget_id` now means the program's *default* budget for new awards and existing single links are backfilled from it. Each award
+  carries its own `budget_id` (`decide_program_application` takes `budget_id`, which must be linked, else the default); its reservation, agreement and
+  payments stay on that budget, so each budget's balances and trace show only its own slice of the program. Unlinking is refused while the program holds
+  a reservation, agreement or live award on that budget. No money or balance moves in the migration.
+* **Link programs from the budget page** (several at once) or the program page (`link_program_budget`, `unlink_program_budget`, `list_program_budgets`).
+  The first budget linked takes over the program's existing unbudgeted money; a program in another currency needs the budget's explicit FX policy.
+* **Budgets are internal**: applicants, recipients and the public never see budget ids, codes, links or approvals (tested).
+* **Trace** (`get_budget_trace`): budget → programs → awards (reserved) / agreements (committed, or planned while only an offer) → scheduled dues →
+  payments (reported / confirmed / reversed), plus agreements with no program (`direct`) and child budgets. `reconciles` says the traced reserved,
+  committed, paid and refunded add up exactly to the budget's balances. This replaces the flat "what draws on this budget" list in the app (the
+  `list_budget_commitments` capability stays for the CSV export); offers above the approval threshold are approved or rejected from the trace.
+* **Coverage** (`get_budget_coverage`): programs with no budget and the awards, agreements and payments on them, plus direct agreements with neither a
+  program nor a budget, so no spending sits outside an authorized budget unnoticed. Programs are linked from there in one tap.
+
 ## Capabilities (REST + OpenAPI + MCP)
 `create_sponsorship_budget`, `update_sponsorship_budget` (needs `version`; 409 if stale), `list_sponsorship_budgets` (deterministic order, roll-up per
-currency tree), `get_sponsorship_budget`, `list_budget_commitments` (paged), `set_budget_fx_rate`, `link_program_budget`, `decide_budget_approval`,
-`export_sponsorship_budget` (CSV, audit-logged); `propose_sponsorship` takes `budget_id`.
+currency tree), `get_sponsorship_budget`, `list_budget_commitments` (paged), `set_budget_fx_rate`, `link_program_budget`, `unlink_program_budget`, `list_program_budgets`, `decide_budget_approval`,
+`export_sponsorship_budget` (CSV, audit-logged), `get_budget_trace`, `get_budget_coverage`, `get_budget_guidance`, `add_budget_reference`, `remove_budget_reference`; `propose_sponsorship` takes `budget_id`.
 Permissions (new sponsor actions): `budget_read` (manager, finance, approver, auditor), `budget` (manager, finance), `budget_approve`
 (manager, approver, finance), export (manager, finance, auditor). Another brand gets 404; department-scoped staff reach only their department's
 budget. The recipient never sees budget fields.
@@ -46,6 +80,6 @@ approve/reject, edit, archive, export); program page → **Budget** section; ath
 stale-version and recoverable-error states are covered.
 
 ## Tests
-`apps/api/test/sponsorship-budgets.test.js` (PostgreSQL): nesting and stale edits, concurrent awards, proposals-are-planned, payments and
+`apps/api/test/budget-links.test.js` (many-to-many links, per-award budget, unlink rules, no public exposure, backfill), `apps/api/test/budget-trace.test.js` (codes, trace reconciliation, coverage), `apps/api/test/budget-planning.test.js` (guidance, references, budget documents) and `apps/api/test/sponsorship-budgets.test.js` (PostgreSQL): nesting and stale edits, concurrent awards, proposals-are-planned, payments and
 reversals, ending an agreement, FX policy and rate pinning, approval threshold and recipient hiding, isolation/roles/export audit, event and
 department rules, additive repeatable migration.

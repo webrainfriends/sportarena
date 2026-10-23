@@ -79,11 +79,12 @@ export async function targetOwner(c, type, id) {
 }
 
 /**
- * Deal + the people on each side. `role` is 'sponsor' (the brand owner or its organisation staff), 'recipient' (authorised target owner)
+ * Deal + the people on each side. `lock` takes FOR NO KEY UPDATE: it still serialises writers of the deal but lets a concurrent payment insert (its foreign key only needs a key-share lock), so a pause and a payment cannot deadlock.
+ * `role` is 'sponsor' (the brand owner or its organisation staff), 'recipient' (authorised target owner)
  * or 'admin'. Sponsor side = the brand owner, its organisation staff or its entity representatives (see sponsor-access.js). For the sponsor side, `staff` is the live sponsor role and `need(action)` enforces what that role may do.
  */
 export async function dealContext(c, sponsorshipId, user, { lock = false } = {}) {
-  const d = (await c.query(`SELECT *, starts_on::text AS starts, ends_on::text AS ends FROM sponsorships WHERE id=$1${lock ? ' FOR UPDATE' : ''}`, [sponsorshipId])).rows[0];
+  const d = (await c.query(`SELECT *, starts_on::text AS starts, ends_on::text AS ends FROM sponsorships WHERE id=$1${lock ? ' FOR NO KEY UPDATE' : ''}`, [sponsorshipId])).rows[0];
   if (!d) throw notFound('Sponsorship');
   const sp = (await c.query('SELECT id, name, owner_id, organisation_id, entity_id FROM sponsors WHERE id=$1', [d.sponsor_id])).rows[0];
   const beneficiary = ORG_TARGETS.includes(d.target_type) ? await beneficiaryAccess(c, user.id, d) : null;
@@ -146,7 +147,7 @@ export async function fulfilSponsorshipPayment(c, id) {
   const o = (await c.query('SELECT * FROM sponsorship_obligations WHERE id=$1 FOR UPDATE', [x.obligation_id])).rows[0];
   const d = (await c.query('SELECT status FROM sponsorships WHERE id=$1', [o.sponsorship_id])).rows[0];
   const covered = Number((await c.query("SELECT coalesce(sum(amount_cents - refunded_cents),0) AS s FROM sponsorship_payments WHERE obligation_id=$1 AND status='confirmed'", [o.id])).rows[0].s);
-  if (o.status === 'cancelled' || !['active', 'ended'].includes(d.status) || covered + Number(x.amount_cents) > Number(o.amount_cents)) return false;
+  if (o.status === 'cancelled' || o.held_by_pause_id || !['active', 'paused', 'ended'].includes(d.status) || covered + Number(x.amount_cents) > Number(o.amount_cents)) return false;
   await c.query("UPDATE sponsorship_payments SET status='confirmed', paid_on=current_date, decided_at=now(), decision_note='Verified by the payment provider' WHERE id=$1", [x.id]);
   await settleMoney(c, o);
   await logHistory(c, o.sponsorship_id, o.version, x.reported_by, 'payment_collected_online');

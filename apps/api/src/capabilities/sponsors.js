@@ -13,6 +13,8 @@ import { LINE, buildSchedule } from '../sponsor-schedule.js';
 import { entityRole, snapshotIdentity, ASSIGNED, CAN } from '../sponsor-identity-access.js';
 import { saveLines, loadLines, generateObligations, logHistory } from '../sponsor-agreements.js';
 import { endNow } from '../sponsor-termination.js';
+import { saveLines, loadLines, generateObligations, cancelFutureObligations, logHistory } from '../sponsor-agreements.js';
+import { closePauseOnEnd } from '../sponsor-pause.js';
 import { sponsorAccess, assertSponsorCan, notifySponsor, sponsorStaffSql } from '../sponsor-access.js';
 import { assertDealFitsBudget, assertFits, convert, costOf, storedRate } from '../sponsorship-budgets.js';
 import { ORG_TARGETS, beneficiaryScopeSql, beneficiaryAccess, primaryContact, targetOrgId } from '../sponsor-beneficiaries.js';
@@ -241,7 +243,7 @@ cap({
   name: 'propose_sponsorship', method: 'POST', path: '/sponsorships', tag: 'Sponsors', status: 201,
   summary: 'Offer sponsorship (money and/or in-kind support) to an event, team or athlete. The target owner must accept. An athlete can only be approached if they opted in (and, if they asked for it, only by verified sponsors); a sponsor cannot repeat an open offer, or re-offer within 30 days of a decline. Athlete offers state objectives, deliverables and a period.',
   input: z.object({
-    sponsor_id: id, department_id: id.optional().describe('the brand\'s department this deal belongs to (a department-scoped member can only use their own)'), budget_id: id.optional().describe('the authorized budget (annual, department or event) this offer draws on; its money must be in one currency, and an offer above the budget approval threshold waits for a second approver before the recipient sees it'), target_type: z.enum(['event', 'team', 'athlete']), target_id: id, amount_cents: money.default(0), in_kind: z.string().max(200).optional(),
+    budget_id: id.optional().describe('the authorized budget (annual, department or event) this offer draws on; its money must be in one currency, and an offer above the budget approval threshold waits for a second approver before the recipient sees it'),
     sponsor_id: id, department_id: id.optional().describe('the brand\'s department this deal belongs to (a department-scoped member can only use their own)'), target_type: z.enum(['event', 'team', 'athlete', 'organisation', 'group']), target_id: id, amount_cents: money.default(0), in_kind: z.string().max(200).optional(),
     starts_on: date.optional(), ends_on: date.optional(), objectives: z.string().max(1000).optional(), deliverables: z.string().max(1500).optional(), message: z.string().max(1000).optional(),
     lines: z.array(LINE).max(12).optional().describe('structured contribution lines (money / goods / endorsement, one-off or fixed-term recurring). Reviewable with preview_sponsorship_schedule; obligations are generated when the recipient accepts this exact version'),
@@ -301,7 +303,7 @@ cap({
 cap({
   name: 'list_sponsorships', method: 'GET', path: '/sponsorships', tag: 'Sponsors',
   summary: 'Deals you are part of: ones you proposed, or offers aimed at things you own (events, teams, yourself), with who/what each is about, the terms, status and decision. `as` narrows to what you sent or what you received.',
-  input: z.object({ status: z.enum(['proposed', 'active', 'declined', 'ended', 'withdrawn']).optional(), as: z.enum(['sponsor', 'target']).optional(), organisation_id: id.optional().describe('only agreements aimed at this organisation or its groups (still limited to what you may see)'), ...page }),
+  input: z.object({ status: z.enum(['proposed', 'active', 'declined', 'ended', 'withdrawn', 'paused']).optional(), as: z.enum(['sponsor', 'target']).optional(), organisation_id: id.optional().describe('only agreements aimed at this organisation or its groups (still limited to what you may see)'), ...page }),
   handler: ({ user }, i) => many(
     `SELECT ss.*, sp.name AS sponsor_name, sp.emoji AS sponsor_emoji, ${sponsorStaffSql(1)} AS i_am_sponsor,
             CASE ss.target_type WHEN 'athlete' THEN (SELECT display_name FROM users WHERE id=ss.target_id) WHEN 'team' THEN (SELECT name FROM teams WHERE id=ss.target_id) WHEN 'organisation' THEN (SELECT name FROM organisations WHERE id=ss.target_id) WHEN 'group' THEN (SELECT name FROM org_cohorts WHERE id=ss.target_id) ELSE (SELECT name FROM events WHERE id=ss.target_id) END AS target_name,
@@ -358,7 +360,7 @@ cap({
         if (i.status === 'ended' ? !(isSponsor || isTarget) : !isTarget) throw forbidden();
       }
       if (['declined', 'ended', 'withdrawn'].includes(d.status)) throw conflict(`Sponsorship already ${d.status}`);
-      if (i.status === 'ended' && d.status !== 'active') throw badRequest('Only active deals can be ended');
+      if (i.status === 'ended' && !['active', 'paused'].includes(d.status)) throw badRequest('Only active or paused deals can be ended');
       if (i.status !== 'ended' && d.status !== 'proposed') throw conflict(`Sponsorship is already ${d.status}`);
       const hasLines = (await c.query('SELECT 1 FROM sponsorship_lines WHERE sponsorship_id=$1 AND version=$2 LIMIT 1', [d.id, d.terms_version])).rowCount > 0;
       if (i.status === 'active' && hasLines) {
@@ -386,7 +388,8 @@ cap({
         await c.query('UPDATE sponsorships SET accepted_version=terms_version WHERE id=$1', [d.id]);
         await generateObligations(c, d.id);
       }
-      if (i.status !== 'ended') await logHistory(c, d.id, d.terms_version, user.id, { active: signsOff ? 'signed_off' : 'accepted', declined: 'declined' }[i.status], i.reason);
+      if (i.status === 'ended') { await cancelFutureObligations(c, d.id); await closePauseOnEnd(c, d.id); }
+      await logHistory(c, d.id, d.terms_version, user.id, { active: signsOff ? 'signed_off' : 'accepted', declined: 'declined', ended: 'ended' }[i.status], i.reason);
       const word = { active: 'accepted', declined: 'declined', ended: 'ended' }[i.status];
       const update = { kind: 'sponsorship_update', title: `Sponsorship ${word}`, body: i.status === 'declined' && i.reason ? i.reason : `A sponsorship with ${sp.name} was ${word}.`, data: { sponsorship_id: d.id } };
       if (isSponsor && !isTarget || signsOff) await notify(c, owner, update);

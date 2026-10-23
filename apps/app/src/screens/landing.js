@@ -14,6 +14,7 @@ import Auth from './auth';
 import { Logo } from '../logo';
 import { HScroll, VenueBooking } from './landing-venues';
 import { OpenPositions } from './openings';
+import { Discover } from './landing-discover';
 import { PromoCard } from '../promo';
 
 const isWeb = Platform.OS === 'web';
@@ -67,7 +68,7 @@ const Pill = ({ title, onPress, solid, color = '#fff', style }) => (
   </Pressable>
 );
 
-function Hero({ counts, onJoin, onBrowse, onAdvertise, wide }) {
+function Hero({ counts, onJoin, onBrowse, onAdvertise, onFind, wide }) {
   const nums = counts ? [[counts.people, 'ATHLETES & MEMBERS'], [counts.teams, 'TEAMS'], [counts.venues, 'VENUES'], [counts.live_events, 'LIVE EVENTS'], [counts.open_calls, 'OPEN CALLS']].filter(([v]) => v > 0) : [];
   const text = (
     <View style={{ flex: 1, gap: 22 }}>
@@ -82,6 +83,7 @@ function Hero({ counts, onJoin, onBrowse, onAdvertise, wide }) {
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 6 }}>
         <Pill solid title="Join the arena — it's free" onPress={onJoin} />
         <Pill title="Browse opportunities ↓" onPress={onBrowse} />
+        <Pill title="🤝 Find a sponsor, coach or physio" onPress={onFind} />
         <Pill title="📣 Advertise" onPress={onAdvertise} />
       </View>
       {nums.length ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 30, marginTop: 24 }}>{nums.map(([v, l]) => <Stat key={l} value={v} label={l} />)}</View> : null}
@@ -156,6 +158,8 @@ export default function Landing() {
   const [err, setErr] = useState(null);
   const scroller = useRef(null);
   const feedRef = useRef(null);
+  const discoverRef = useRef(null);
+  const [tab, setTab] = useState('sponsors');
   const sports = useSports();
   const hl = useLoad(() => api.get('/market/highlights'), []);
 
@@ -179,6 +183,13 @@ export default function Landing() {
     else node?.measureLayout?.(scroller.current.getInnerViewNode?.() ?? scroller.current, (_x, y) => scroller.current.scrollTo({ y: y - 70, animated: true }));
   };
 
+  const find = (key) => {
+    if (key) setTab(key);
+    const node = discoverRef.current;
+    if (isWeb) node?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+    else node?.measureLayout?.(scroller.current.getInnerViewNode?.() ?? scroller.current, (_x, y) => scroller.current.scrollTo({ y: y - 70, animated: true }));
+  };
+
   const cols = width >= 1180 ? 3 : width >= 720 ? 2 : 1;
   const columns = useMemo(() => { const out = Array.from({ length: cols }, () => []); rows.forEach((p, i) => out[i % cols].push(p)); return out; }, [rows, cols]);
 
@@ -194,14 +205,14 @@ export default function Landing() {
           <Logo size={44} />
           <T color="#fff" weight="800" size={22} style={{ letterSpacing: -0.8 }}>Gotmygame</T>
           <View style={{ flex: 1 }} />
-          {wide ? [['Opportunities', browse], ['Advertise', () => start('advertise')]].map(([l, f]) => <Pressable key={l} onPress={f}><T color="#FFE4D8" weight="700" size={14}>{l}</T></Pressable>) : null}
+          {wide ? [['Opportunities', browse], ['Sponsors', () => find('sponsors')], ['Physio & doctors', () => find('health')], ['Coaches', () => find('coaches')], ['Study', () => find('study')], ['Advertise', () => start('advertise')]].map(([l, f]) => <Pressable key={l} onPress={f}><T color="#FFE4D8" weight="700" size={14}>{l}</T></Pressable>) : null}
           <Pressable onPress={() => start('login')}><T color="#fff" weight="700" size={14}>Log in</T></Pressable>
           <Pressable onPress={() => start('join')} style={{ backgroundColor: '#B4182D', borderRadius: 999, paddingVertical: 9, paddingHorizontal: 18 }}><T color="#fff" weight="800" size={13}>Join free</T></Pressable>
         </View>
       </View>
 
       <ScrollView ref={scroller} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 0 }}>
-        <Hero counts={d?.counts} wide={wide} onJoin={() => start('join')} onBrowse={browse} onAdvertise={() => start('advertise')} />
+        <Hero counts={d?.counts} wide={wide} onJoin={() => start('join')} onBrowse={browse} onFind={() => find('sponsors')} onAdvertise={() => start('advertise')} />
         <Ticker games={d?.games ?? []} events={d?.events ?? []} />
 
         <View style={[wrap, { paddingTop: 44, gap: 44 }]}>
@@ -213,6 +224,10 @@ export default function Landing() {
               <T color={c.mute} size={15} style={{ marginTop: 4 }}>See open slots and prices for courts and grounds near you. Pick a time, then log in or create an account to confirm.</T>
             </View>
             <VenueBooking wide={wide} sport={sport} onBook={(b) => { const i = { action: 'book', title: b.venueName, ...b }; setIntent(i); openAuth(i, 'register'); }} />
+          </View>
+
+          <View ref={discoverRef} style={{ scrollMarginTop: 80 }}>
+            <Discover tab={tab} onTab={setTab} sport={sport} onAsk={(i) => openAuth(i)} />
           </View>
 
           <View style={{ gap: 16 }}>

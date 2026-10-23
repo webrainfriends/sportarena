@@ -47,6 +47,9 @@ Agreement state (sponsorships.status) is separate from fulfilment state (obligat
   A reversal reopens the due and keeps the history.
 * Nothing here claims funds were transferred or held in escrow. Checkout/payout integration is **not** done (see gaps).
 
+## Pause and resume
+See [sponsorship-pause.md](sponsorship-pause.md): both sides agree a pause with a reason, a start date and a hold/reschedule policy for the dues in it.
+
 ## Ending
 Ending is a notice → effective date → settlement workflow (see [sponsorship-termination.md](sponsorship-termination.md)). It cancels only
 future dues that nothing has happened to. Due, overdue, part-paid, dispatched or submitted dues stay open: debt and delivered value are
@@ -59,6 +62,9 @@ never erased. Returns and refunds reference the delivery / payment, and the fina
   CSV export, approaching-due reminders, per-line payer/payee/channel fields, disputes→cases linking, guardian/youth rules
   for sponsorship agreements.
 * Agreement builder in the app covers fixed-term monthly money only; goods/endorsement lines are available through the API.
+
+## Contracts and signatures (#295)
+A branded contract can be issued for any proposed or active agreement's current terms version, then signed by the named signatories. Acceptance (`decide_sponsorship`) is unchanged and still exact-version. See [sponsorship-contracts.md](sponsorship-contracts.md).
 
 ## Performance review (athlete agreements)
 * The athlete switches the sponsor's read access on or off per agreement (`set_sponsorship_performance_access`), only while the

@@ -337,7 +337,7 @@ test('event budgets fund one event only; existing programs and agreements keep w
   const y = await applyFor(lp.r, 5000);
   must(await award(w, lp.p, y.app));
   const cur = (await api('GET', `/sponsorship-programs/${lp.p.id}`, { token: w.owner.token })).body;
-  assert.equal((await api('POST', `/sponsorship-programs/${lp.p.id}/budget`, { token: w.owner.token, body: { budget_id: null, version: cur.row_version } })).status, 409);
+  assert.equal((await api('DELETE', `/sponsorship-programs/${lp.p.id}/budgets/${a.id}`, { token: w.owner.token, body: { version: cur.row_version }, query: { version: cur.row_version } })).status, 409);
   // re-running every migration changes nothing
   const before = (await pool.query('SELECT count(*)::int AS n FROM sponsorship_budgets')).rows[0].n;
   await migrate();

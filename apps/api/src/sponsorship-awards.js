@@ -6,7 +6,7 @@ import { badRequest, conflict, unprocessable } from './errors.js';
 import { notify } from './notify.js';
 import { notifySponsor } from './sponsor-access.js';
 import { pool, tx } from './db.js';
-import { budgetBlockerFor, budgetSteps, programBudget } from './sponsorship-budgets.js';
+import { awardBudgetId, budgetBlockerFor, budgetSteps, programBudget, withBudget } from './sponsorship-budgets.js';
 
 export const LIVE = ['waitlisted', 'pending_approval', 'approved', 'issued', 'accepted'];
 export const STEPS = ['approver', 'finance', 'legal'];
@@ -53,7 +53,7 @@ export async function stepsFor(c, p, amount) {
 }
 
 async function openApprovals(c, award, p) {
-  const steps = await stepsFor(c, p, Number(award.amount_cents));
+  const steps = await stepsFor(c, withBudget(p, award.budget_id), Number(award.amount_cents));
   for (const step of steps) await c.query("INSERT INTO sponsorship_award_approvals(award_id, offer_version, step) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING", [award.id, award.offer_version, step]);
   return steps;
 }
@@ -64,8 +64,8 @@ export const approvalsOf = async (c, award) =>
 async function reserve(c, award) {
   // UNIQUE(award_id): a retry or a concurrent call cannot reserve twice
   const p = (await c.query('SELECT id, budget_id, currency FROM sponsorship_programs WHERE id=$1', [award.program_id])).rows[0];
-  const pb = await programBudget(c, p); // a new reservation is costed at the budget's CURRENT sourced rate and keeps it
-  await c.query("INSERT INTO sponsorship_award_reservations(award_id, program_id, round_id, currency, amount_cents, budget_id, budget_fx_rate_id) VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (award_id) DO NOTHING", [award.id, award.program_id, award.round_id, award.currency, award.amount_cents, p.budget_id, pb?.rate.id ?? null]);
+  const pb = await programBudget(c, withBudget(p, award.budget_id)); // a new reservation is costed at the budget's CURRENT sourced rate and keeps it
+  await c.query("INSERT INTO sponsorship_award_reservations(award_id, program_id, round_id, currency, amount_cents, budget_id, budget_fx_rate_id) VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (award_id) DO NOTHING", [award.id, award.program_id, award.round_id, award.currency, award.amount_cents, award.budget_id ?? null, pb?.rate.id ?? null]);
 }
 
 /** Moves a newly approved/pending award forward: with no sign-offs required the offer is issued straight away. */
@@ -90,14 +90,15 @@ async function notifySignoffs(c, sp, award, steps) {
 }
 
 /** Creates the award for an application under the program lock: reserve (or waitlist when the program has one) and start the sign-offs. */
-export async function startAward(c, { p, sp, r, a, amount, user, reason }) {
-  const why = await budgetBlocker(c, p, r, amount);
+export async function startAward(c, { p, sp, r, a, amount, user, reason, budgetId }) {
+  const bid = await awardBudgetId(c, p, budgetId); // the budget this award draws on: the one chosen, else the program's default
+  const why = await budgetBlocker(c, withBudget(p, bid), r, amount);
   if (why && !p.waitlist_enabled) throw conflict(why);
   const status = why ? 'waitlisted' : 'pending_approval';
   const rank = why ? Number((await c.query("SELECT coalesce(max(waitlist_rank),0)+1 AS n FROM sponsorship_awards WHERE program_id=$1", [p.id])).rows[0].n) : null;
   const award = (await c.query(
-    `INSERT INTO sponsorship_awards(program_id, round_id, application_id, status, amount_cents, currency, waitlist_rank, proposed_by, decision_reason)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`, [p.id, r.id, a.id, status, amount, p.currency, rank, user.id, reason ?? null])).rows[0];
+    `INSERT INTO sponsorship_awards(program_id, round_id, application_id, status, amount_cents, currency, waitlist_rank, proposed_by, decision_reason, budget_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`, [p.id, r.id, a.id, status, amount, p.currency, rank, user.id, reason ?? null, bid])).rows[0];
   await logAward(c, award.id, status === 'waitlisted' ? 'waitlisted' : 'created', user.id, 1, why ?? reason);
   if (status === 'waitlisted') {
     await notify(c, a.applicant_id, { kind: 'sponsorship_program', title: 'You are on the waitlist', body: `Your application to ${p.name} is on the waitlist (#${rank}); you will hear from us if funds become available.`, data: { award_id: award.id }, dedupe_key: `award-waitlist:${award.id}` });
@@ -168,7 +169,7 @@ export async function promoteWaitlist(c, programId) {
     const r = (await c.query('SELECT * FROM sponsorship_rounds WHERE id=$1 FOR UPDATE', [w.round_id])).rows[0];
     const a = (await c.query('SELECT * FROM sponsorship_applications WHERE id=$1 FOR UPDATE', [w.application_id])).rows[0];
     if (a.status !== 'submitted') { await c.query("UPDATE sponsorship_awards SET status='withdrawn', closed_reason='application no longer open', updated_at=now() WHERE id=$1", [w.id]); await logAward(c, w.id, 'withdrawn', null, w.offer_version, 'application no longer open'); continue; }
-    if (await budgetBlocker(c, p, r, Number(w.amount_cents))) continue;
+    if (await budgetBlocker(c, withBudget(p, w.budget_id), r, Number(w.amount_cents))) continue;
     const row = (await c.query("UPDATE sponsorship_awards SET status='pending_approval', waitlist_rank=NULL, row_version=row_version+1, updated_at=now() WHERE id=$1 AND status='waitlisted' RETURNING *", [w.id])).rows[0];
     await reserve(c, row);
     await logAward(c, w.id, 'promoted', null, row.offer_version, 'Budget became available');
