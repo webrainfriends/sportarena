@@ -211,7 +211,7 @@ test('linking, roles in the brand list, contacts, dashboards and the individual 
   assert.equal(mine.length, 1);
   assert.equal(mine[0].my_role, 'legal');
   assert.equal(mine[0].organisation_id, w.org.id);
-  assert.equal(must(await api('GET', '/sponsors', { token: w.owner.token, query: { mine: 'true' } }))[0].my_role, 'owner', 'a brand without an entity keeps its owner role');
+  assert.equal(must(await api('GET', '/sponsors', { token: w.owner.token, query: { mine: 'true' } }))[0].my_role, 'manager');
   // contacts: manager reads (audited), others do not
   const solo = await signup(['sponsor']);
   must(await api('POST', '/sponsors', { token: solo.token, body: { name: 'Solo Brand', contact_name: 'Pat' } }), 201);

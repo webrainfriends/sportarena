@@ -60,8 +60,8 @@ cap({
                      (SELECT CASE r.role WHEN 'owner' THEN 'manager' WHEN 'admin' THEN 'manager' WHEN 'portfolio_manager' THEN 'manager' ELSE r.role END FROM sponsor_representatives r
                        WHERE r.entity_id=sp.entity_id AND r.user_id=$5 AND r.status='active' AND (r.role<>'portfolio_manager' OR ${ASSIGNED}sp.id))),
                      (SELECT CASE m.role WHEN 'owner' THEN 'manager' WHEN 'admin' THEN 'manager' ELSE m.role END FROM organisation_members m
-                       WHERE m.organisation_id=sp.organisation_id AND m.user_id=$5 AND m.status='active' AND m.role <> 'coach')) END AS my_role,
-              (SELECT m.department_id FROM organisation_members m WHERE m.organisation_id=sp.organisation_id AND m.user_id=$5 AND m.status='active') AS my_department_id
+                       WHERE sp.entity_id IS NULL AND m.organisation_id=sp.organisation_id AND m.user_id=$5 AND m.status='active' AND m.role <> 'coach')) END AS my_role,
+              (SELECT m.department_id FROM organisation_members m WHERE sp.entity_id IS NULL AND m.organisation_id=sp.organisation_id AND m.user_id=$5 AND m.status='active') AS my_department_id
          FROM sponsors sp LEFT JOIN sponsor_entities e ON e.id=sp.entity_id
         WHERE ($1::text IS NULL OR sp.name ILIKE '%'||$1||'%')) x
         WHERE (NOT $4 OR x.my_role IS NOT NULL) ORDER BY x.name, x.id LIMIT $2 OFFSET $3`, [i.q ?? null, i.limit, i.offset, !!i.mine, user?.id ?? null]);
