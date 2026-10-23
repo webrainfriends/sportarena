@@ -173,6 +173,8 @@ cap({
       if (ctx.role !== 'sponsor') throw forbidden('Only the sponsor reports its payments');
       ctx.need('pay', 'report payments');
       open(ctx, 'money');
+      const unmet = (await c.query("SELECT x.text FROM sponsorship_award_conditions x JOIN sponsorship_awards w ON w.id=x.award_id WHERE w.sponsorship_id=$1 AND x.removed_at IS NULL AND x.blocks_payment AND x.met_at IS NULL ORDER BY x.position LIMIT 1", [ctx.d.id])).rows[0];
+      if (unmet) throw conflict(`A condition of the award must be met before payment: ${unmet.text}`); // conditional awards (#289)
       if (i.currency !== ctx.o.currency) throw badRequest(`This due is in ${ctx.o.currency}`);
       const held = Number((await c.query("SELECT coalesce(sum(amount_cents),0) AS s FROM sponsorship_payments WHERE obligation_id=$1 AND status IN ('reported','confirmed')", [ctx.o.id])).rows[0].s);
       if (held + i.amount_cents > ctx.o.amount_cents) throw conflict(`Only ${ctx.o.amount_cents - held} is still due on this instalment`);

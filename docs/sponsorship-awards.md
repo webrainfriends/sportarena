@@ -42,7 +42,7 @@ created an agreement; its application is still `submitted` and can be decided ag
 | `issue_program_award` (`POST .../issue`) | manager/approver | `idempotency_key` required; 422 while a sign-off is missing or the budget is not held; same key = same result, no double reserve or notification. |
 | `withdraw_program_award` | manager/approver | before acceptance only; the application returns to the undecided pile. |
 | `respond_to_program_award` (`POST .../respond`) | the applicant or owner of the funded target | `accept` names the exact `offer_version` (409 if revised) and is refused after expiry; creates the one agreement, converts the reservation. `decline` releases the budget and withdraws the application. |
-| `meet_award_condition` | manager/approver | only the brand marks a condition met, after acceptance. |
+| `meet_award_condition` | manager/approver | only the brand marks a condition met, after acceptance. A condition flagged "before payment" makes `report_sponsorship_payment` return 409 until it is met. |
 | `list_my_program_awards` (`GET /my/program-awards`) | recipient | issued, accepted, waitlisted, declined, expired only; internal stages are hidden. |
 | `export_program_awards` | manager/finance/auditor | now includes award status and offer version for every award, audit-logged. |
 

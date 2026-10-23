@@ -166,8 +166,12 @@ test('acceptance names the exact version, creates exactly one canonical agreemen
   // the condition is tracked by the brand, never by the recipient's say-so
   const cid = seen.conditions[0].id;
   assert.equal((await api('POST', `/program-awards/${id}/conditions/${cid}/met`, { token: a.token, body: {} })).status, 403);
+  const due = must(await api('GET', '/sponsorship-obligations', { token: w.owner.token, query: { sponsorship_id: done[0].body.sponsorship_id } })).obligations[0];
+  const pay = () => api('POST', `/sponsorship-obligations/${due.id}/payments`, { token: w.owner.token, body: { amount_cents: 17000, currency: 'USD', method: 'bank_transfer', reference: 'REF-AWARD-1', paid_on: day(0) } });
+  assert.equal((await pay()).status, 409, 'a payment-blocking condition is unmet');
   const met = must(await api('POST', `/program-awards/${id}/conditions/${cid}/met`, { token: w.owner.token, body: { note: 'received' } }));
   assert.ok(met.conditions[0].met_at);
+  assert.equal((await pay()).status, 201, 'payment can be reported once the condition is met');
 });
 
 test('expired offers cannot be accepted, release their reservation once, and the waitlist is promoted in rank order', async () => {
