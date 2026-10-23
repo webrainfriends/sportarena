@@ -2,7 +2,7 @@
 // quotes, bookings), what finalizing one does, and the budget it feeds.
 import { badRequest, conflict, notFound } from './errors.js';
 import { notify, venueTeam } from './notify.js';
-import { sponsorContactUser, sponsorRole, CAN } from './sponsor-access.js';
+import { sponsorContactUser, sponsorRole, CAN } from './sponsor-identity-access.js';
 
 export const REQUEST_KINDS = ['team', 'coach', 'referee', 'umpire', 'judge', 'scorer', 'timekeeper', 'physio', 'doctor', 'first_aider', 'volunteer', 'supplier', 'venue', 'insurer', 'sponsor'];
 export const STAFF_KINDS = ['referee', 'umpire', 'judge', 'scorer', 'timekeeper', 'physio', 'doctor', 'first_aider', 'volunteer'];

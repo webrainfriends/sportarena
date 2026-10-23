@@ -1,6 +1,8 @@
 // Sponsorship programs and funding rounds (#284). A program is a brand's funding container (budget, eligibility, caps) run in
 // one-off or recurring rounds; an award becomes an ordinary `sponsorships` row (see sponsors.js), so agreements, obligations
 // and payments stay where they are. Submitted applications keep a copy of the terms they were made under.
+// #285 makes a program a public sponsorship call (searchable page, FAQs, deadline instant in a timezone) or an invitation-only
+// one (never listed; reachable only by the people the brand invited) without a second model: same programs, rounds and awards.
 import { z } from 'zod';
 import { cap, id, page, money } from '../registry.js';
 import { many, tx, pool } from '../db.js';
@@ -8,9 +10,14 @@ import { badRequest, conflict, forbidden, notFound, unprocessable } from '../err
 import { audit, isAdmin, mustFind, PUBLIC_USER } from '../helpers.js';
 import { notify } from '../notify.js';
 import { badgesFor } from '../verification.js';
+import { validTimezone } from '../booking/time.js';
+import { CLOSES_AT, OPENS_AT, roundState } from '../sponsorship-calls.js';
+import { NOT_YOUTH_SQL } from '../youth.js';
 import { toCsv } from '../csv.js';
-import { logHistory } from '../sponsor-agreements.js';
+import { logHistory, saveLines } from '../sponsor-agreements.js';
+import { buildSchedule } from '../sponsor-schedule.js';
 import { sponsorAccess, assertSponsorCan, notifySponsor, sponsorBrandSql } from '../sponsor-access.js';
+import { gateDecision, recordDecision, redactBlind } from '../sponsorship-evaluation.js';
 
 const date = z.string().date();
 const currency = z.string().regex(/^[A-Z]{3}$/, 'ISO 4217 code, e.g. USD');
@@ -21,12 +28,23 @@ const TRANSITIONS = { draft: ['published', 'archived'], published: ['closed'], c
 const CADENCE_MONTHS = { monthly: 1, quarterly: 3, yearly: 12 };
 const recurrence = z.object({ cadence: z.enum(['monthly', 'quarterly', 'yearly']), open_days: z.number().int().min(1).max(365) });
 
-/** The state of a round right now, derived from its dates unless it was closed explicitly. Server date. */
-const roundState = (a = 'r') => `(CASE WHEN ${a}.status='closed' OR current_date > ${a}.closes_on THEN 'closed' WHEN current_date < ${a}.opens_on THEN 'scheduled' ELSE 'open' END)`;
+const VISIBILITY = ['public', 'invitation_only'];
+const time = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'HH:MM, 24-hour');
+const tz = z.string().min(1).max(60).describe('IANA timezone, e.g. Europe/Paris');
+/** opens_on 00:00 .. closes_on at `closes_time` (default: end of that day), both in `timezone`, as instants. */
+async function instantsOf(c, { opens_on, closes_on, closes_time, timezone }) {
+  if (!validTimezone(timezone)) throw badRequest('Unknown timezone; use an IANA name such as Europe/Paris');
+  const r = (await c.query(
+    `SELECT ($1::date::timestamp AT TIME ZONE $3) AS opens_at,
+            CASE WHEN $4::time IS NULL THEN (($2::date + 1)::timestamp AT TIME ZONE $3) ELSE (($2::date + $4::time) AT TIME ZONE $3) END AS closes_at`,
+    [iso(opens_on), iso(closes_on), timezone, closes_time ?? null])).rows[0];
+  if (r.closes_at <= r.opens_at) throw badRequest('The deadline must be after the round opens');
+  return r;
+}
 const lastRoundOf = (rows) => rows.reduce((m, r) => (r.seq > m.seq ? r : m), rows[0]);
 
 /** pg returns a date as local midnight; format it back without a timezone shift. */
-const iso = (d) => (d instanceof Date ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` : d);
+export const iso = (d) => (d instanceof Date ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` : d);
 const addDays = (d, n) => { const t = new Date(`${d}T00:00:00Z`); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); };
 const addMonths = (d, n) => { // month-end clamps (31 Jan + 1 month = 28/29 Feb)
   const t = new Date(`${d}T00:00:00Z`), day = t.getUTCDate();
@@ -36,26 +54,26 @@ const addMonths = (d, n) => { // month-end clamps (31 Jan + 1 month = 28/29 Feb)
 };
 
 /** The terms an applicant applies under, copied onto the application at submit. Internal budgets are not part of it. */
-const termsOf = (p, r) => ({
+export const termsOf = (p, r) => ({
   program: { id: p.id, name: p.name, objective: p.objective, currency: p.currency, sports: p.sports, regions: p.regions, eligibility: p.eligibility, starts_on: iso(p.starts_on), ends_on: iso(p.ends_on), max_award_cents: p.max_award_cents, row_version: p.row_version },
-  round: { id: r.id, seq: r.seq, name: r.name, opens_on: iso(r.opens_on), closes_on: iso(r.closes_on), terms_version: r.terms_version },
+  round: { id: r.id, seq: r.seq, name: r.name, opens_on: iso(r.opens_on), closes_on: iso(r.closes_on), timezone: r.timezone, closes_at: r.closes_at, terms_version: r.terms_version },
 });
 
 const PROGRAM_ROUND_BUDGET = 'a round budget cannot exceed the program budget';
 
-async function brandFor(user, sponsorId, action, c) {
+export async function brandFor(user, sponsorId, action, c) {
   const sp = await mustFind('sponsors', sponsorId, '*', c);
   if (!isAdmin(user)) assertSponsorCan(await sponsorAccess(user, sp, c), action, { departmentId: null, what: action === 'export' ? 'export program data' : 'run sponsorship programs' });
   return sp;
 }
 /** Loads a program (optionally locked) and checks the caller may do the action for its brand. */
-async function programFor(user, programId, action, c, lock = false) {
+export async function programFor(user, programId, action, c, lock = false) {
   const p = (await c.query(`SELECT * FROM sponsorship_programs WHERE id=$1${lock ? ' FOR UPDATE' : ''}`, [programId])).rows[0];
   if (!p) throw notFound('Sponsorship program');
   const sp = await brandFor(user, p.sponsor_id, action, c);
   return { p, sp };
 }
-const checkVersion = (row, v, what) => { if (row.row_version !== v) throw conflict(`This ${what} was changed by someone else (now version ${row.row_version}); the latest was loaded, review it and try again`, { current_version: row.row_version }); };
+export const checkVersion = (row, v, what) => { if (row.row_version !== v) throw conflict(`This ${what} was changed by someone else (now version ${row.row_version}); the latest was loaded, review it and try again`, { current_version: row.row_version }); };
 
 async function validateSports(list) {
   if (!list?.length) return;
@@ -73,9 +91,9 @@ const committedRound = async (c, roundId) => {
   return { cents: Number(r.cents), n: r.n };
 };
 const saveTerms = (c, round, userId) => c.query('INSERT INTO sponsorship_round_terms(round_id, version, snapshot, created_by) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING',
-  [round.id, round.terms_version, { name: round.name, opens_on: iso(round.opens_on), closes_on: iso(round.closes_on), budget_cents: round.budget_cents, max_awards: round.max_awards }, userId]);
+  [round.id, round.terms_version, { name: round.name, opens_on: iso(round.opens_on), closes_on: iso(round.closes_on), timezone: round.timezone, closes_time: round.closes_time, closes_at: round.closes_at, budget_cents: round.budget_cents, max_awards: round.max_awards }, userId]);
 
-async function targetOwnerOf(c, type, targetId) {
+export async function targetOwnerOf(c, type, targetId) {
   const r = type === 'event' ? await c.query('SELECT organizer_id AS o FROM events WHERE id=$1', [targetId])
     : type === 'team' ? await c.query('SELECT owner_id AS o FROM teams WHERE id=$1', [targetId])
       : await c.query('SELECT id AS o FROM users WHERE id=$1', [targetId]);
@@ -97,6 +115,7 @@ cap({
     name: PROGRAM_FIELDS.name, objective: PROGRAM_FIELDS.objective.optional(), currency, budget_cents: money,
     sports: PROGRAM_FIELDS.sports.default([]), regions: PROGRAM_FIELDS.regions.default([]),
     target_types: PROGRAM_FIELDS.target_types.default(['athlete', 'team', 'event']), verified_only: z.boolean().default(false),
+    visibility: z.enum(VISIBILITY).default('public').describe('public = a searchable sponsorship call; invitation_only = never listed, only invited applicants can see and apply'),
     starts_on: date.optional(), ends_on: date.optional(), max_award_cents: PROGRAM_FIELDS.max_award_cents.optional(), max_awards: PROGRAM_FIELDS.max_awards.optional(), recurrence: recurrence.optional(),
   }),
   async handler({ user }, i) {
@@ -116,9 +135,9 @@ async function create(user, sp, i) {
   }
   return tx(async (c) => {
     const row = (await c.query(
-      `INSERT INTO sponsorship_programs(sponsor_id, owner_id, created_by, name, objective, currency, budget_cents, sports, regions, eligibility, starts_on, ends_on, max_award_cents, max_awards, recurrence)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
-      [sp.id, ownerId, user.id, i.name, i.objective ?? null, i.currency, i.budget_cents, i.sports, i.regions, { target_types: i.target_types, verified_only: i.verified_only }, i.starts_on ?? null, i.ends_on ?? null, i.max_award_cents ?? null, i.max_awards ?? null, i.recurrence ?? null])).rows[0];
+      `INSERT INTO sponsorship_programs(sponsor_id, owner_id, created_by, name, objective, currency, budget_cents, sports, regions, eligibility, starts_on, ends_on, max_award_cents, max_awards, recurrence, visibility)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
+      [sp.id, ownerId, user.id, i.name, i.objective ?? null, i.currency, i.budget_cents, i.sports, i.regions, { target_types: i.target_types, verified_only: i.verified_only }, i.starts_on ?? null, i.ends_on ?? null, i.max_award_cents ?? null, i.max_awards ?? null, i.recurrence ?? null, i.visibility])).rows[0];
     await audit(c, user.id, 'create', 'sponsorship_programs', row.id);
     return row;
   });
@@ -126,13 +145,13 @@ async function create(user, sp, i) {
 
 cap({
   name: 'update_sponsorship_program', method: 'PATCH', path: '/sponsorship-programs/:id', tag: 'Sponsors',
-  summary: 'Brand manager/approver: change a draft or published program. Needs the current `version`; a stale version is rejected (409). Changes apply to future applications only: every submitted application keeps the terms it was made under. The budget cannot go below what is already awarded, and the currency can only change while nothing is awarded.',
+  summary: 'Brand manager/approver: change a draft or published program. Needs the current `version`; a stale version is rejected (409). Visibility (public call or invitation-only) can be changed too; making a call invitation-only removes it from search at once. Changes apply to future applications only: every submitted application keeps the terms it was made under. The budget cannot go below what is already awarded, and the currency can only change while nothing is awarded.',
   input: z.object({
     id, version: z.coerce.number().int().positive(),
     name: PROGRAM_FIELDS.name.optional(), objective: PROGRAM_FIELDS.objective.nullable().optional(), budget_cents: money.optional(), currency: currency.optional(),
     sports: PROGRAM_FIELDS.sports.optional(), regions: PROGRAM_FIELDS.regions.optional(), target_types: PROGRAM_FIELDS.target_types.optional(), verified_only: z.boolean().optional(),
     starts_on: date.nullable().optional(), ends_on: date.nullable().optional(), max_award_cents: PROGRAM_FIELDS.max_award_cents.nullable().optional(), max_awards: PROGRAM_FIELDS.max_awards.nullable().optional(), recurrence: recurrence.nullable().optional(),
-    owner_id: id.optional(),
+    owner_id: id.optional(), visibility: z.enum(VISIBILITY).optional(),
   }),
   async handler({ user }, i) {
     await validateSports(i.sports);
@@ -141,7 +160,7 @@ cap({
       checkVersion(p, i.version, 'program');
       if (!['draft', 'published'].includes(p.status)) throw conflict(`A ${p.status} program cannot be edited`);
       const used = await committed(c, p.id);
-      const next = { ...p, ...Object.fromEntries(['name', 'objective', 'budget_cents', 'currency', 'sports', 'regions', 'starts_on', 'ends_on', 'max_award_cents', 'max_awards', 'recurrence', 'owner_id'].filter((k) => i[k] !== undefined).map((k) => [k, i[k]])) };
+      const next = { ...p, ...Object.fromEntries(['name', 'objective', 'budget_cents', 'currency', 'sports', 'regions', 'starts_on', 'ends_on', 'max_award_cents', 'max_awards', 'recurrence', 'owner_id', 'visibility'].filter((k) => i[k] !== undefined).map((k) => [k, i[k]])) };
       if (i.currency && i.currency !== p.currency && used.n) throw conflict('The currency cannot change once an award has been made');
       if (next.budget_cents < used.cents) throw conflict(`The budget cannot be lower than what is already awarded (${used.cents})`);
       if (next.starts_on && next.ends_on && next.ends_on < next.starts_on) throw badRequest('ends_on is before starts_on');
@@ -153,9 +172,9 @@ cap({
       }
       const elig = { ...p.eligibility, ...(i.target_types ? { target_types: i.target_types } : {}), ...(i.verified_only !== undefined ? { verified_only: i.verified_only } : {}) };
       const row = (await c.query(
-        `UPDATE sponsorship_programs SET name=$2, objective=$3, currency=$4, budget_cents=$5, sports=$6, regions=$7, eligibility=$8, starts_on=$9, ends_on=$10, max_award_cents=$11, max_awards=$12, recurrence=$13, owner_id=$14,
+        `UPDATE sponsorship_programs SET name=$2, objective=$3, currency=$4, budget_cents=$5, sports=$6, regions=$7, eligibility=$8, starts_on=$9, ends_on=$10, max_award_cents=$11, max_awards=$12, recurrence=$13, owner_id=$14, visibility=$15,
                 row_version=row_version+1, updated_at=now() WHERE id=$1 RETURNING *`,
-        [p.id, next.name, next.objective, next.currency, next.budget_cents, next.sports, next.regions, elig, next.starts_on, next.ends_on, next.max_award_cents, next.max_awards, next.recurrence, next.owner_id])).rows[0];
+        [p.id, next.name, next.objective, next.currency, next.budget_cents, next.sports, next.regions, elig, next.starts_on, next.ends_on, next.max_award_cents, next.max_awards, next.recurrence, next.owner_id, next.visibility])).rows[0];
       await audit(c, user.id, 'update', 'sponsorship_programs', p.id);
       return row;
     });
@@ -180,6 +199,11 @@ cap({
         `UPDATE sponsorship_programs SET status=$2, row_version=row_version+1, updated_at=now(),
                 published_at=CASE WHEN $2='published' THEN coalesce(published_at, now()) ELSE published_at END,
                 closed_at=CASE WHEN $2='closed' THEN now() ELSE closed_at END, archived_at=CASE WHEN $2='archived' THEN now() ELSE archived_at END WHERE id=$1 RETURNING *`, [p.id, i.status])).rows[0];
+      if (i.status === 'published') { // invitations made while it was a draft are announced now (idempotent through the dedupe key)
+        const sp = await mustFind('sponsors', p.sponsor_id, '*', c);
+        for (const v of (await c.query("SELECT id, invitee_user_id FROM sponsorship_invitations WHERE program_id=$1 AND status IN ('invited','viewed')", [p.id])).rows)
+          await notify(c, v.invitee_user_id, { kind: 'sponsorship_invitation', title: `${sp.name} invited you to apply`, body: `You are invited to apply to ${p.name}. Open the call to read the terms and apply.`, data: { program_id: p.id, invitation_id: v.id }, dedupe_key: `invite:${v.id}` });
+      }
       await audit(c, user.id, `program_${i.status}`, 'sponsorship_programs', p.id);
       return row;
     });
@@ -191,7 +215,9 @@ const STAFF_LIST = `SELECT p.*, sp.name AS sponsor_name, sp.emoji AS sponsor_emo
   (SELECT count(*)::int FROM sponsorship_applications a WHERE a.program_id=p.id AND a.status='awarded') AS awards,
   (SELECT count(*)::int FROM sponsorship_applications a WHERE a.program_id=p.id AND a.status='submitted') AS pending_applications,
   (SELECT r.id FROM sponsorship_rounds r WHERE r.program_id=p.id AND ${roundState('r')}='open' ORDER BY r.seq LIMIT 1) AS open_round_id,
-  (SELECT r.closes_on FROM sponsorship_rounds r WHERE r.program_id=p.id AND ${roundState('r')}='open' ORDER BY r.seq LIMIT 1) AS open_round_closes_on
+  (SELECT r.closes_on FROM sponsorship_rounds r WHERE r.program_id=p.id AND ${roundState('r')}='open' ORDER BY r.seq LIMIT 1) AS open_round_closes_on,
+  (SELECT ${CLOSES_AT('r')} FROM sponsorship_rounds r WHERE r.program_id=p.id AND ${roundState('r')}='open' ORDER BY r.seq LIMIT 1) AS open_round_closes_at,
+  (SELECT count(*)::int FROM sponsorship_invitations i WHERE i.program_id=p.id AND i.status IN ('invited','viewed','applied')) AS invitations
  FROM sponsorship_programs p JOIN sponsors sp ON sp.id=p.sponsor_id`;
 
 cap({
@@ -205,7 +231,7 @@ cap({
 
 cap({
   name: 'get_sponsorship_program', method: 'GET', path: '/sponsorship-programs/:id', tag: 'Sponsors',
-  summary: 'One program with its rounds (derived state, applications and awards per round), the budget committed and what remains. Brand staff only.',
+  summary: 'One program with its rounds (derived state, deadline instant and timezone, applications and awards per round), its FAQs, the budget committed and what remains. Brand staff only.',
   input: z.object({ id }),
   async handler({ user }, i) {
         const { p, sp } = await programFor(user, i.id, 'read', pool);
@@ -217,14 +243,15 @@ cap({
               coalesce((SELECT sum(a.awarded_cents) FROM sponsorship_applications a WHERE a.round_id=r.id AND a.status='awarded'),0)::bigint AS awarded_cents
          FROM sponsorship_rounds r WHERE r.program_id=$1 ORDER BY r.seq`, [p.id]);
     const used = await committed(pool, p.id);
-    return { ...p, sponsor_name: sp.name, my_role: sa.role, awarded_cents: used.cents, awards: used.n, remaining_cents: Number(p.budget_cents) - used.cents, rounds };
+    const faqs = await many('SELECT id, position, question, answer, row_version FROM sponsorship_program_faqs WHERE program_id=$1 AND archived_at IS NULL ORDER BY position, created_at, id', [p.id]);
+    return { ...p, sponsor_name: sp.name, my_role: sa.role, awarded_cents: used.cents, awards: used.n, remaining_cents: Number(p.budget_cents) - used.cents, rounds, faqs };
   },
 });
 
 cap({
   name: 'create_program_round', method: 'POST', path: '/sponsorship-programs/:id/rounds', tag: 'Sponsors', status: 201,
-  summary: 'Brand manager/approver: add a funding round (opening and closing dates, optional round budget and award count) to a draft or published program. Rounds are numbered in order. A round accepts applications from its opening date until its closing date or until it is closed.',
-  input: z.object({ id, name: z.string().min(1).max(120).optional(), opens_on: date, closes_on: date, budget_cents: money.optional(), max_awards: z.number().int().min(1).max(10000).optional() }),
+  summary: 'Brand manager/approver: add a funding round (opening and closing dates, optional round budget and award count) to a draft or published program. Rounds are numbered in order. A round accepts applications from the start of its opening date until its deadline (closing date and time, in the round IANA timezone) or until it is closed; after the deadline the server rejects applications.',
+  input: z.object({ id, name: z.string().min(1).max(120).optional(), opens_on: date, closes_on: date, closes_time: time.optional().describe('deadline time on closes_on in the round timezone; default end of that day'), timezone: tz.default('UTC'), budget_cents: money.optional(), max_awards: z.number().int().min(1).max(10000).optional() }),
   async handler({ user }, i) {
     return tx(async (c) => {
       const { p } = await programFor(user, i.id, 'program', c, true);
@@ -234,9 +261,10 @@ cap({
       if (p.ends_on && i.closes_on > iso(p.ends_on)) throw badRequest('The round closes after the program ends');
       if (i.budget_cents != null && i.budget_cents > Number(p.budget_cents)) throw badRequest(PROGRAM_ROUND_BUDGET);
       const seq = (await c.query('SELECT coalesce(max(seq),0)+1 AS s FROM sponsorship_rounds WHERE program_id=$1', [p.id])).rows[0].s;
+      const at = await instantsOf(c, i);
       const row = (await c.query(
-        'INSERT INTO sponsorship_rounds(program_id, seq, name, opens_on, closes_on, budget_cents, max_awards) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *',
-        [p.id, seq, i.name ?? `Round ${seq}`, i.opens_on, i.closes_on, i.budget_cents ?? null, i.max_awards ?? null])).rows[0];
+        'INSERT INTO sponsorship_rounds(program_id, seq, name, opens_on, closes_on, closes_time, timezone, opens_at, closes_at, budget_cents, max_awards) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *',
+        [p.id, seq, i.name ?? `Round ${seq}`, i.opens_on, i.closes_on, i.closes_time ?? null, i.timezone, at.opens_at, at.closes_at, i.budget_cents ?? null, i.max_awards ?? null])).rows[0];
       await saveTerms(c, row, user.id);
       await audit(c, user.id, 'create', 'sponsorship_rounds', row.id);
       return row;
@@ -254,14 +282,14 @@ const roundFor = async (c, user, roundId, action) => {
 
 cap({
   name: 'update_program_round', method: 'PATCH', path: '/program-rounds/:id', tag: 'Sponsors',
-  summary: 'Brand manager/approver: change an open or scheduled round (name, dates, budget, award count). Needs the current `version` (409 if stale). A change creates a new numbered terms version; applications already submitted keep the terms they were made under. A closed round cannot be edited.',
-  input: z.object({ id, version: z.coerce.number().int().positive(), name: z.string().min(1).max(120).optional(), opens_on: date.optional(), closes_on: date.optional(), budget_cents: money.nullable().optional(), max_awards: z.number().int().min(1).max(10000).nullable().optional() }),
+  summary: 'Brand manager/approver: change an open or scheduled round (name, dates, deadline time and timezone, budget, award count). Needs the current `version` (409 if stale). A change creates a new numbered terms version; applications already submitted keep the terms they were made under. A closed round cannot be edited.',
+  input: z.object({ id, version: z.coerce.number().int().positive(), name: z.string().min(1).max(120).optional(), opens_on: date.optional(), closes_on: date.optional(), closes_time: time.nullable().optional(), timezone: tz.optional(), budget_cents: money.nullable().optional(), max_awards: z.number().int().min(1).max(10000).nullable().optional() }),
   async handler({ user }, i) {
     return tx(async (c) => {
       const { p, r } = await roundFor(c, user, i.id, 'program');
       checkVersion(r, i.version, 'round');
       if (r.status === 'closed') throw conflict('A closed round cannot be edited');
-      const next = { ...r, ...Object.fromEntries(['name', 'opens_on', 'closes_on', 'budget_cents', 'max_awards'].filter((k) => i[k] !== undefined).map((k) => [k, i[k]])) };
+      const next = { ...r, ...Object.fromEntries(['name', 'opens_on', 'closes_on', 'closes_time', 'timezone', 'budget_cents', 'max_awards'].filter((k) => i[k] !== undefined).map((k) => [k, i[k]])) };
       if (iso(next.closes_on) < iso(next.opens_on)) throw badRequest('closes_on is before opens_on');
       if (p.starts_on && iso(next.opens_on) < iso(p.starts_on)) throw badRequest('The round opens before the program starts');
       if (p.ends_on && iso(next.closes_on) > iso(p.ends_on)) throw badRequest('The round closes after the program ends');
@@ -269,9 +297,10 @@ cap({
       const used = await committedRound(c, r.id);
       if (next.budget_cents != null && Number(next.budget_cents) < used.cents) throw conflict(`The round budget cannot be lower than what is already awarded (${used.cents})`);
       if (next.max_awards != null && next.max_awards < used.n) throw conflict(`The round already has ${used.n} awards`);
+      const at = await instantsOf(c, next);
       const row = (await c.query(
-        'UPDATE sponsorship_rounds SET name=$2, opens_on=$3, closes_on=$4, budget_cents=$5, max_awards=$6, terms_version=terms_version+1, row_version=row_version+1, updated_at=now() WHERE id=$1 RETURNING *',
-        [r.id, next.name, next.opens_on, next.closes_on, next.budget_cents, next.max_awards])).rows[0];
+        'UPDATE sponsorship_rounds SET name=$2, opens_on=$3, closes_on=$4, closes_time=$7, timezone=$8, opens_at=$9, closes_at=$10, budget_cents=$5, max_awards=$6, terms_version=terms_version+1, row_version=row_version+1, updated_at=now() WHERE id=$1 RETURNING *',
+        [r.id, next.name, next.opens_on, next.closes_on, next.budget_cents, next.max_awards, next.closes_time ?? null, next.timezone, at.opens_at, at.closes_at])).rows[0];
       await saveTerms(c, row, user.id);
       await audit(c, user.id, 'update', 'sponsorship_rounds', r.id);
       return row;
@@ -311,9 +340,10 @@ cap({
       for (let seq = last.seq + 1; seq < last.seq + 200; seq++) {
         const opens = addMonths(first, (seq - 1) * step), closes = addDays(opens, days - 1);
         if (opens > i.through || (end && closes > end)) break;
+        const at = await instantsOf(c, { opens_on: opens, closes_on: closes, closes_time: last.closes_time, timezone: last.timezone });
         created.push((await c.query(
-          'INSERT INTO sponsorship_rounds(program_id, seq, name, opens_on, closes_on, budget_cents, max_awards) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *',
-          [p.id, seq, `Round ${seq}`, opens, closes, last.budget_cents, last.max_awards])).rows[0]);
+          'INSERT INTO sponsorship_rounds(program_id, seq, name, opens_on, closes_on, closes_time, timezone, opens_at, closes_at, budget_cents, max_awards) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *',
+          [p.id, seq, `Round ${seq}`, opens, closes, last.closes_time, last.timezone, at.opens_at, at.closes_at, last.budget_cents, last.max_awards])).rows[0]);
       }
       for (const r of created) await saveTerms(c, r, user.id);
       return { created: created.length, rounds: created };
@@ -323,13 +353,46 @@ cap({
 
 // ---------------------------------------------------------------- applicants
 
+const CALL_COLS = `p.id, p.name, p.objective, p.currency, p.sports, p.regions, p.eligibility, p.starts_on, p.ends_on, p.max_award_cents, p.visibility, p.status, sp.id AS sponsor_id, sp.name AS sponsor_name, sp.emoji AS sponsor_emoji, sp.website AS sponsor_website`;
+const ROUNDS_JSON = `(SELECT json_agg(json_build_object('id', r.id, 'seq', r.seq, 'name', r.name, 'state', ${roundState('r')}, 'opens_on', r.opens_on, 'closes_on', r.closes_on, 'opens_at', ${OPENS_AT('r')}, 'closes_at', ${CLOSES_AT('r')}, 'timezone', r.timezone, 'terms_version', r.terms_version) ORDER BY r.seq)
+               FROM sponsorship_rounds r WHERE r.program_id=p.id AND (${roundState('r')} <> 'closed' OR $ALL))`;
+const withSponsorBadges = async (rows) => {
+  const badges = await badgesFor('sponsor', [...new Set(rows.map((r) => r.sponsor_id))]);
+  return rows.map((r) => ({ ...r, sponsor_verified: badges.get(r.sponsor_id) ?? [] }));
+};
+
+cap({
+  name: 'list_funding_opportunities', method: 'GET', path: '/funding-opportunities', tag: 'Sponsors', auth: 'public',
+  summary: 'Search sponsorship calls: published public programs that have a round open for applications right now, with the sponsor (and its verified badges), objective, sports, regions, eligibility, maximum award and each open round\'s deadline instant with its timezone. Invitation-only calls are never listed, except to the people the brand invited when signed in (set `invited` to see just those; each row then carries your invitations). The program budget and its remaining balance are never shown. Filter by sport slug, region or text; sort by newest or by closing soon. Deterministic order and pagination.',
+  input: z.object({ sport: z.string().max(60).optional(), region: z.string().max(80).optional(), q: z.string().max(80).optional(), invited: z.coerce.boolean().optional(), sort: z.enum(['newest', 'closing_soon']).default('newest'), ...page }),
+  handler: async ({ user }, i) => {
+    const rows = await many(
+      `SELECT ${CALL_COLS}, ${ROUNDS_JSON.replace('$ALL', 'false')} AS rounds,
+              (SELECT min(${CLOSES_AT('r')}) FROM sponsorship_rounds r WHERE r.program_id=p.id AND ${roundState('r')}='open') AS next_deadline,
+              (SELECT coalesce(json_agg(json_build_object('id', iv.id, 'status', iv.status, 'target_type', iv.target_type, 'target_id', iv.target_id) ORDER BY iv.created_at), '[]') FROM sponsorship_invitations iv WHERE iv.program_id=p.id AND iv.invitee_user_id=$5 AND iv.status IN ('invited','viewed','applied')) AS invitations
+         FROM sponsorship_programs p JOIN sponsors sp ON sp.id=p.sponsor_id
+        WHERE p.status='published' AND EXISTS (SELECT 1 FROM sponsorship_rounds r WHERE r.program_id=p.id AND ${roundState('r')}='open')
+          AND (CASE WHEN $6::boolean IS TRUE THEN false ELSE p.visibility='public' END
+               OR EXISTS (SELECT 1 FROM sponsorship_invitations iv WHERE iv.program_id=p.id AND iv.invitee_user_id=$5 AND iv.status IN ('invited','viewed','applied')))
+          AND ($1::text IS NULL OR cardinality(p.sports)=0 OR $1 = ANY(p.sports))
+          AND ($2::text IS NULL OR cardinality(p.regions)=0 OR EXISTS (SELECT 1 FROM unnest(p.regions) x WHERE lower(x)=lower($2)))
+          AND ($3::text IS NULL OR p.name ILIKE '%'||$3||'%' OR p.objective ILIKE '%'||$3||'%' OR sp.name ILIKE '%'||$3||'%'
+               OR EXISTS (SELECT 1 FROM sponsorship_program_faqs f WHERE f.program_id=p.id AND f.archived_at IS NULL AND (f.question ILIKE '%'||$3||'%' OR f.answer ILIKE '%'||$3||'%')))
+        ORDER BY CASE WHEN $4='closing_soon' THEN (SELECT min(${CLOSES_AT('r')}) FROM sponsorship_rounds r WHERE r.program_id=p.id AND ${roundState('r')}='open') END ASC NULLS LAST,
+                 p.published_at DESC NULLS LAST, p.id LIMIT $7 OFFSET $8`,
+      [i.sport ?? null, i.region ? i.region.replace(/[%_\\]/g, '\\$&') : null, i.q ? i.q.replace(/[%_\\]/g, '\\$&') : null, i.sort, user?.id ?? null, i.invited ?? false, i.limit, i.offset]);
+    if (i.invited && !user) return [];
+    return withSponsorBadges(rows);
+  },
+});
+
 cap({
   name: 'list_funding_opportunities', method: 'GET', path: '/funding-opportunities', tag: 'Sponsors',
   summary: 'Published sponsorship programs that have a round open for applications today, with the sponsor, objective, sports, regions, eligibility, maximum award and open round dates. The program budget and its remaining balance are not shown. Filter by sport slug or text.',
   input: z.object({ sport: z.string().max(60).optional(), q: z.string().max(80).optional(), ...page }),
   handler: async ({ user }, i) => many(
     `SELECT p.id, p.name, p.objective, p.currency, p.sports, p.regions, p.eligibility, p.starts_on, p.ends_on, p.max_award_cents, sp.id AS sponsor_id, sp.name AS sponsor_name, sp.emoji AS sponsor_emoji,
-            (SELECT json_agg(json_build_object('id', r.id, 'seq', r.seq, 'name', r.name, 'opens_on', r.opens_on, 'closes_on', r.closes_on, 'terms_version', r.terms_version) ORDER BY r.seq)
+            (SELECT json_agg(json_build_object('id', r.id, 'seq', r.seq, 'name', r.name, 'opens_on', r.opens_on, 'closes_on', r.closes_on, 'terms_version', r.terms_version, 'has_form', r.form_id IS NOT NULL) ORDER BY r.seq)
                FROM sponsorship_rounds r WHERE r.program_id=p.id AND ${roundState('r')}='open') AS rounds
        FROM sponsorship_programs p JOIN sponsors sp ON sp.id=p.sponsor_id
       WHERE p.status='published' AND EXISTS (SELECT 1 FROM sponsorship_rounds r WHERE r.program_id=p.id AND ${roundState('r')}='open')
@@ -337,11 +400,64 @@ cap({
         AND ($2::text IS NULL OR p.name ILIKE '%'||$2||'%' OR p.objective ILIKE '%'||$2||'%' OR sp.name ILIKE '%'||$2||'%')
       ORDER BY p.published_at DESC NULLS LAST, p.id LIMIT $3 OFFSET $4`,
     [i.sport ?? null, i.q ? i.q.replace(/[%_\\]/g, '\\$&') : null, i.limit, i.offset]),
+  name: 'get_funding_opportunity', method: 'GET', path: '/funding-opportunities/:id', tag: 'Sponsors', auth: 'public',
+  summary: 'One sponsorship call\'s program page: sponsor and badges, objective, eligibility, maximum award, every round with its state, deadline instant and timezone (so a closed call shows as closed), the FAQs, and (signed in) your invitations and whether you may apply. A public call is readable by anyone; an invitation-only call is readable only by the people invited to it and by the brand\'s staff - for anyone else it does not exist (404), so private calls cannot be discovered by id. The budget and its balance are never shown. An invited person opening it marks the invitation viewed.',
+  input: z.object({ id }),
+  async handler({ user }, i) {
+    const p = (await many(`SELECT ${CALL_COLS}, p.sponsor_id AS _sid, ${ROUNDS_JSON.replace('$ALL', 'true')} AS rounds FROM sponsorship_programs p JOIN sponsors sp ON sp.id=p.sponsor_id WHERE p.id=$1`, [i.id]))[0];
+    if (!p) throw notFound('Sponsorship call');
+    const sponsor = await mustFind('sponsors', p._sid);
+    const staff = user ? isAdmin(user) || !!(await sponsorAccess(user, sponsor)) : false;
+    const mine = user ? await many("SELECT id, status, target_type, target_id, message FROM sponsorship_invitations WHERE program_id=$1 AND invitee_user_id=$2 AND status IN ('invited','viewed','applied') ORDER BY created_at, id", [p.id, user.id]) : [];
+    const visible = staff || (['published', 'closed'].includes(p.status) && (p.visibility === 'public' || mine.length));
+    if (!visible) throw notFound('Sponsorship call'); // identical to an unknown id: a private call is not discoverable
+    const faqs = await many('SELECT id, position, question, answer FROM sponsorship_program_faqs WHERE program_id=$1 AND archived_at IS NULL ORDER BY position, created_at, id', [p.id]);
+    for (const m of mine.filter((x) => x.status === 'invited')) {
+      await many("UPDATE sponsorship_invitations SET status='viewed', viewed_at=now() WHERE id=$1 AND status='invited' RETURNING id", [m.id]);
+      m.status = 'viewed';
+    }
+    const { _sid, ...out } = p;
+    const [withBadge] = await withSponsorBadges([out]);
+    const open = (p.rounds ?? []).some((r) => r.state === 'open');
+    return { ...withBadge, faqs, invitations: mine, i_am_staff: staff, can_apply: !!user && !staff && p.status === 'published' && open && (p.visibility === 'public' || mine.some((x) => x.status !== 'applied')) };
+  },
 });
+
+/**
+ * The rules every application must meet, whichever way it is filed (original pitch + amount, or an application form): the brand's staff cannot
+ * apply to their own program, the applicant must own the target, eligibility (target type, minors, maximum award, verified-only, sports, regions).
+ * `a` = { target_type, target_id, requested_cents? }. Returns the sponsor brand.
+ */
+export async function assertCanApply(c, user, p, a, { draft = false } = {}) {
+  const sp = await mustFind('sponsors', p.sponsor_id, '*', c);
+  if (!isAdmin(user) && (await sponsorAccess(user, sp, c))) throw forbidden('Staff of the sponsoring brand cannot apply to its own program');
+  const owner = await targetOwnerOf(c, a.target_type, a.target_id);
+  if (owner !== user.id) throw forbidden(a.target_type === 'athlete' ? 'You can only apply for yourself' : `You can only apply for a ${a.target_type} you ${a.target_type === 'team' ? 'own' : 'organise'}`);
+  const el = p.eligibility ?? {};
+  if (el.target_types?.length && !el.target_types.includes(a.target_type)) throw unprocessable(`This program funds ${el.target_types.join(', ')} only`);
+  if (a.target_type === 'athlete') {
+    const youth = (await c.query('SELECT 1 FROM users u WHERE u.id=$1 AND (u.youth_until IS NOT NULL AND u.youth_until > current_date)', [user.id])).rowCount;
+    if (youth) throw unprocessable('Applications for athletes under the age of independence are not accepted here; a guardian-led process is required');
+  }
+  if (!draft && a.requested_cents > Number(p.max_award_cents ?? Infinity)) throw unprocessable(`The request is above the maximum award of ${p.max_award_cents}`);
+  if (el.verified_only && !(await badgesFor(a.target_type === 'athlete' ? 'user' : a.target_type, [a.target_id])).get(a.target_id)?.length) throw forbidden('This program only funds verified applicants');
+  if (p.sports.length) {
+    const sports = a.target_type === 'athlete' ? (await c.query('SELECT s.slug FROM sport_profiles x JOIN sports s ON s.id=x.sport_id WHERE x.user_id=$1', [a.target_id])).rows
+      : (await c.query(`SELECT s.slug FROM ${a.target_type === 'team' ? 'teams' : 'events'} x JOIN sports s ON s.id=x.sport_id WHERE x.id=$1`, [a.target_id])).rows;
+    if (!sports.some((s) => p.sports.includes(s.slug))) throw unprocessable(`This program funds ${p.sports.join(', ')} only`);
+  }
+  if (p.regions.length) {
+    const reg = a.target_type === 'athlete' ? (await c.query('SELECT region AS v FROM sport_profiles WHERE user_id=$1 AND region IS NOT NULL', [a.target_id])).rows
+      : a.target_type === 'team' ? (await c.query('SELECT city AS v FROM teams WHERE id=$1 AND city IS NOT NULL', [a.target_id])).rows : [];
+    const want = p.regions.map((x) => x.trim().toLowerCase());
+    if (reg.length && !reg.some((x) => want.includes(String(x.v).trim().toLowerCase()))) throw unprocessable(`This program funds applicants in ${p.regions.join(', ')} only`);
+  }
+  return sp;
+}
 
 cap({
   name: 'apply_to_program_round', method: 'POST', path: '/program-rounds/:id/applications', tag: 'Sponsors', status: 201,
-  summary: 'Apply to a funding round for something you own: yourself (athlete), a team you own or an event you organise. Rejected unless the round is open right now and its program is published. Checks eligibility (target type, sport, known region, verified-only), the program currency and maximum award, and that the applicant is not a minor athlete or part of the sponsoring brand. A copy of the terms is stored with the application and never changes afterwards. One live application per round and target.',
+  summary: 'Apply to a funding round for something you own: yourself (athlete), a team you own or an event you organise. Rejected unless the round is open right now (the deadline is an instant in the round timezone, checked on the server under lock) and its program is published; an invitation-only call also needs a live invitation for that exact target (otherwise it answers 404, as if the call did not exist). Checks eligibility (target type, sport, known region, verified-only), the program currency and maximum award, and that the applicant is not a minor athlete or part of the sponsoring brand. A copy of the terms is stored with the application and never changes afterwards. One live application per round and target.',
   input: z.object({ id, target_type: z.enum(TARGETS), target_id: id, requested_cents: money.min(1), pitch: z.string().max(2000).optional() }),
   async handler({ user }, i) {
     return tx(async (c) => {
@@ -349,42 +465,27 @@ cap({
       if (!r0) throw notFound('Round');
       const p = (await c.query('SELECT * FROM sponsorship_programs WHERE id=$1 FOR UPDATE', [r0.program_id])).rows[0];
       const r = (await c.query(`SELECT *, ${roundState('r')} AS state FROM sponsorship_rounds r WHERE id=$1 FOR UPDATE`, [i.id])).rows[0];
+      let inv = null;
+      if (p.visibility === 'invitation_only') { // a private call: only the person invited for exactly this target; everyone else gets "not found"
+        inv = (await c.query("SELECT * FROM sponsorship_invitations WHERE program_id=$1 AND target_type=$2 AND target_id=$3 AND status IN ('invited','viewed') FOR UPDATE", [p.id, i.target_type, i.target_id])).rows[0];
+        if (!inv || inv.invitee_user_id !== user.id) throw notFound('Round');
+      }
       if (p.status !== 'published') throw conflict('This program is not accepting applications');
-      if (r.state !== 'open') throw conflict(r.state === 'scheduled' ? 'This round has not opened yet' : 'This round is closed and no longer accepts applications');
-      const sp = await mustFind('sponsors', p.sponsor_id, '*', c);
-      if (!isAdmin(user) && (await sponsorAccess(user, sp, c))) throw forbidden('Staff of the sponsoring brand cannot apply to its own program');
-      const owner = await targetOwnerOf(c, i.target_type, i.target_id);
-      if (owner !== user.id) throw forbidden(i.target_type === 'athlete' ? 'You can only apply for yourself' : `You can only apply for a ${i.target_type} you ${i.target_type === 'team' ? 'own' : 'organise'}`);
-      const el = p.eligibility ?? {};
-      if (el.target_types?.length && !el.target_types.includes(i.target_type)) throw unprocessable(`This program funds ${el.target_types.join(', ')} only`);
-      if (i.target_type === 'athlete') {
-        const youth = (await c.query('SELECT 1 FROM users u WHERE u.id=$1 AND (u.youth_until IS NOT NULL AND u.youth_until > current_date)', [user.id])).rowCount;
-        if (youth) throw unprocessable('Applications for athletes under the age of independence are not accepted here; a guardian-led process is required');
-      }
-      if (i.requested_cents > Number(p.max_award_cents ?? Infinity)) throw unprocessable(`The request is above the maximum award of ${p.max_award_cents}`);
-      if (el.verified_only && !(await badgesFor(i.target_type === 'athlete' ? 'user' : i.target_type, [i.target_id])).get(i.target_id)?.length) throw forbidden('This program only funds verified applicants');
-      if (p.sports.length) {
-        const sports = i.target_type === 'athlete' ? (await c.query('SELECT s.slug FROM sport_profiles x JOIN sports s ON s.id=x.sport_id WHERE x.user_id=$1', [i.target_id])).rows
-          : (await c.query(`SELECT s.slug FROM ${i.target_type === 'team' ? 'teams' : 'events'} x JOIN sports s ON s.id=x.sport_id WHERE x.id=$1`, [i.target_id])).rows;
-        if (!sports.some((s) => p.sports.includes(s.slug))) throw unprocessable(`This program funds ${p.sports.join(', ')} only`);
-      }
-      if (p.regions.length) {
-        const reg = i.target_type === 'athlete' ? (await c.query('SELECT region AS v FROM sport_profiles WHERE user_id=$1 AND region IS NOT NULL', [i.target_id])).rows
-          : i.target_type === 'team' ? (await c.query('SELECT city AS v FROM teams WHERE id=$1 AND city IS NOT NULL', [i.target_id])).rows : [];
-        const want = p.regions.map((x) => x.trim().toLowerCase());
-        if (reg.length && !reg.some((x) => want.includes(String(x.v).trim().toLowerCase()))) throw unprocessable(`This program funds applicants in ${p.regions.join(', ')} only`);
-      }
+      if (r.state !== 'open') throw conflict(r.state === 'scheduled' ? 'This round has not opened yet' : 'This round is closed and no longer accepts applications', { code: 'call_closed', closes_at: r.closes_at, timezone: r.timezone });
+      if (r.form_id) throw conflict('This round uses an application form; apply through the form (get_round_application_form, save_application_draft, submit_application)');
+      const sp = await assertCanApply(c, user, p, i);
       const snap = termsOf(p, r);
       let row;
       try {
         row = (await c.query(
-          `INSERT INTO sponsorship_applications(program_id, round_id, round_terms_version, terms_snapshot, applicant_id, target_type, target_id, requested_cents, currency, pitch)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
-          [p.id, r.id, r.terms_version, snap, user.id, i.target_type, i.target_id, i.requested_cents, p.currency, i.pitch ?? null])).rows[0];
+          `INSERT INTO sponsorship_applications(program_id, round_id, round_terms_version, terms_snapshot, applicant_id, target_type, target_id, requested_cents, currency, pitch, invitation_id)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+          [p.id, r.id, r.terms_version, snap, user.id, i.target_type, i.target_id, i.requested_cents, p.currency, i.pitch ?? null, inv?.id ?? null])).rows[0];
       } catch (e) {
         if (e.code === '23505') throw conflict('There is already an application for this in this round');
         throw e;
       }
+      if (inv) await c.query("UPDATE sponsorship_invitations SET status='applied', responded_at=now() WHERE id=$1", [inv.id]);
       await notifySponsor(c, sp, 'program', { kind: 'sponsorship_program', title: 'New funding application', body: `A new application arrived for ${p.name}. Open the program to review it.`, data: { program_id: p.id, application_id: row.id } });
       return row;
     });
@@ -400,43 +501,48 @@ cap({
       const a = (await c.query('SELECT * FROM sponsorship_applications WHERE id=$1 FOR UPDATE', [i.id])).rows[0];
       if (!a) throw notFound('Application');
       if (a.applicant_id !== user.id && !isAdmin(user)) throw forbidden('Only the applicant can withdraw it');
+      if (!['draft', 'submitted', 'returned'].includes(a.status)) throw conflict(`This application is already ${a.status}`);
+      const row = (await c.query("UPDATE sponsorship_applications SET status='withdrawn', decided_at=now(), decided_by=$2, row_version=row_version+1, updated_at=now() WHERE id=$1 RETURNING *", [a.id, user.id])).rows[0];
+      if (a.status !== 'draft') await c.query("INSERT INTO sponsorship_application_events(application_id, kind, actor_id, form_version) VALUES ($1,'withdrawn',$2,$3)", [a.id, user.id, a.form_version]);
+      return row;
       if (a.status !== 'submitted') throw conflict(`This application is already ${a.status}`);
+      if (a.invitation_id) await c.query("UPDATE sponsorship_invitations SET status='viewed', responded_at=NULL WHERE id=$1 AND status='applied'", [a.invitation_id]); // the invitee may apply again while the round is open
       return (await c.query("UPDATE sponsorship_applications SET status='withdrawn', decided_at=now(), decided_by=$2 WHERE id=$1 RETURNING *", [a.id, user.id])).rows[0];
     });
   },
 });
 
-const APP_COLS = `a.id, a.program_id, a.round_id, a.round_terms_version, a.terms_snapshot, a.applicant_id, a.target_type, a.target_id, a.requested_cents, a.currency, a.pitch, a.status, a.awarded_cents, a.decided_at, a.decision_reason, a.sponsorship_id, a.created_at,
+export const APP_COLS = `a.id, a.program_id, a.round_id, a.round_terms_version, a.terms_snapshot, a.applicant_id, a.target_type, a.target_id, a.requested_cents, a.currency, a.pitch, a.status, a.awarded_cents, a.decided_at, a.decision_reason, a.sponsorship_id, a.created_at, a.form_id, a.form_version, a.receipt_no, a.submitted_at, a.row_version,
   CASE a.target_type WHEN 'athlete' THEN (SELECT display_name FROM users WHERE id=a.target_id) WHEN 'team' THEN (SELECT name FROM teams WHERE id=a.target_id) ELSE (SELECT name FROM events WHERE id=a.target_id) END AS target_name,
   p.name AS program_name, r.seq AS round_seq, r.name AS round_name`;
 
 cap({
   name: 'list_my_program_applications', method: 'GET', path: '/my/program-applications', tag: 'Sponsors',
   summary: 'Your own funding applications, newest first, each with the terms it was made under, its status and (once awarded) the resulting sponsorship agreement id.',
-  input: z.object({ status: z.enum(['submitted', 'awarded', 'declined', 'withdrawn']).optional(), ...page }),
+  input: z.object({ status: z.enum(['draft', 'submitted', 'returned', 'awarded', 'declined', 'withdrawn']).optional(), ...page }),
   handler: ({ user }, i) => many(
-    `SELECT ${APP_COLS}, sp.name AS sponsor_name FROM sponsorship_applications a JOIN sponsorship_programs p ON p.id=a.program_id JOIN sponsorship_rounds r ON r.id=a.round_id JOIN sponsors sp ON sp.id=p.sponsor_id
+    `SELECT ${APP_COLS}, sp.name AS sponsor_name, (SELECT ic.status FROM sponsorship_identity_consents ic WHERE ic.application_id=a.id AND ic.status IN ('requested','granted') LIMIT 1) AS identity_status FROM sponsorship_applications a JOIN sponsorship_programs p ON p.id=a.program_id JOIN sponsorship_rounds r ON r.id=a.round_id JOIN sponsors sp ON sp.id=p.sponsor_id
       WHERE a.applicant_id=$1 AND ($2::text IS NULL OR a.status=$2) ORDER BY a.created_at DESC, a.id LIMIT $3 OFFSET $4`, [user.id, i.status ?? null, i.limit, i.offset]),
 });
 
 cap({
   name: 'list_program_applications', method: 'GET', path: '/sponsorship-programs/:id/applications', tag: 'Sponsors',
   summary: 'Brand staff: applications to a program (filter by round and status), oldest first so none is missed. Shows the applicant\'s public profile and what they applied for; no contact details.',
-  input: z.object({ id, round_id: id.optional(), status: z.enum(['submitted', 'awarded', 'declined', 'withdrawn']).optional(), ...page }),
+  input: z.object({ id, round_id: id.optional(), status: z.enum(['draft', 'submitted', 'returned', 'awarded', 'declined', 'withdrawn']).optional(), ...page }),
   async handler({ user }, i) {
         const { p } = await programFor(user, i.id, 'read', pool);
-    return many(
-      `SELECT ${APP_COLS}, ${PUBLIC_USER.replace(/u\./g, 'ap.').replace(/ap\.id/, 'ap.id AS applicant_user_id')}
+    return redactBlind(await many(
+      `SELECT ${APP_COLS}, a.stage, a.eval_version, ${PUBLIC_USER.replace(/u\./g, 'ap.').replace(/ap\.id/, 'ap.id AS applicant_user_id')}
          FROM sponsorship_applications a JOIN sponsorship_programs p ON p.id=a.program_id JOIN sponsorship_rounds r ON r.id=a.round_id JOIN users ap ON ap.id=a.applicant_id
-        WHERE a.program_id=$1 AND ($2::uuid IS NULL OR a.round_id=$2) AND ($3::text IS NULL OR a.status=$3) ORDER BY a.created_at, a.id LIMIT $4 OFFSET $5`,
-      [p.id, i.round_id ?? null, i.status ?? null, i.limit, i.offset]);
+        WHERE a.program_id=$1 AND a.status <> 'draft' AND ($2::uuid IS NULL OR a.round_id=$2) AND ($3::text IS NULL OR a.status=$3) ORDER BY a.created_at, a.id LIMIT $4 OFFSET $5`,
+      [p.id, i.round_id ?? null, i.status ?? null, i.limit, i.offset]));
   },
 });
 
 cap({
   name: 'decide_program_application', method: 'PATCH', path: '/program-applications/:id', tag: 'Sponsors',
   summary: 'Brand manager/approver: award or decline an application. Awarding needs the program\'s current `program_version` (409 if the caps changed since you looked) and checks, under lock, the award size, the program and round budgets and award counts, and the currency. It creates a proposed sponsorship from the brand to the applicant that references the program, round and application; the recipient still has to accept it (no consent or payment is assumed). Deciding twice is rejected.',
-  input: z.object({ id, decision: z.enum(['award', 'decline']), program_version: z.coerce.number().int().positive().optional(), awarded_cents: money.min(1).optional().describe('defaults to the amount requested; cannot exceed it'), reason: z.string().max(500).optional() }),
+  input: z.object({ id, decision: z.enum(['award', 'decline']), program_version: z.coerce.number().int().positive().optional(), awarded_cents: money.min(1).optional().describe('defaults to the amount requested; cannot exceed it'), reason: z.string().max(500).optional(), eval_version: z.coerce.number().int().positive().optional().describe('the application\'s evaluation version you looked at; 409 if the committee changed it since') }),
   async handler({ user }, i) {
     return tx(async (c) => {
       const a0 = (await c.query('SELECT program_id, round_id FROM sponsorship_applications WHERE id=$1', [i.id])).rows[0];
@@ -446,8 +552,10 @@ cap({
       const a = (await c.query('SELECT * FROM sponsorship_applications WHERE id=$1 FOR UPDATE', [i.id])).rows[0];
       if (a.status !== 'submitted') throw conflict(`This application is already ${a.status}`);
       if (['draft', 'archived'].includes(p.status)) throw conflict(`A ${p.status} program cannot decide applications`);
+      await gateDecision(c, a, i.decision, i.eval_version); // rounds scored by a committee: shortlisted, scored and (when blind) identified first (#288)
       if (i.decision === 'decline') {
         const row = (await c.query("UPDATE sponsorship_applications SET status='declined', decided_at=now(), decided_by=$2, decision_reason=$3 WHERE id=$1 RETURNING *", [a.id, user.id, i.reason ?? null])).rows[0];
+        await recordDecision(c, a, p, 'decline', user.id);
         await notify(c, a.applicant_id, { kind: 'sponsorship_program', title: 'Funding application declined', body: `Your application to ${p.name} was declined.`, data: { application_id: a.id } });
         return row;
       }
@@ -466,10 +574,18 @@ cap({
         `INSERT INTO sponsorships(sponsor_id, target_type, target_id, amount_cents, currency, starts_on, ends_on, proposed_by, objectives, visibility, program_id, round_id, application_id)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
         [sp.id, a.target_type, a.target_id, amount, p.currency, p.starts_on, p.ends_on, user.id, p.objective, a.target_type === 'athlete' ? 'private' : 'public', p.id, r.id, a.id])).rows[0];
+      // the award is a one-off money line, so the recipient accepts an exact version and the existing obligation / payment flow applies
+      const today = iso(new Date()), start = p.starts_on ? iso(p.starts_on) : null, end = p.ends_on ? iso(p.ends_on) : null;
+      let due = start && start > today ? start : today;
+      if (end && due > end) due = end;
+      const line = { kind: 'money', label: `Award: ${p.name}`.slice(0, 160), currency: p.currency, total_cents: amount, cadence: 'once', first_due_on: due, terms: {} };
+      buildSchedule([line], { starts_on: start, ends_on: end }); // fails loudly rather than store an unschedulable award
+      await saveLines(c, dealUp.id, 1, [line]);
       await c.query("UPDATE sponsorships SET agreement_ref='SPA-'||upper(substr(id::text,1,8)) WHERE id=$1", [dealUp.id]);
       await logHistory(c, dealUp.id, 1, user.id, 'proposed', `Awarded from program ${p.name}`);
       const row = (await c.query("UPDATE sponsorship_applications SET status='awarded', awarded_cents=$2, decided_at=now(), decided_by=$3, decision_reason=$4, sponsorship_id=$5 WHERE id=$1 RETURNING *", [a.id, amount, user.id, i.reason ?? null, dealUp.id])).rows[0];
       await notify(c, a.applicant_id, { kind: 'sponsorship_offer', title: 'Your funding application was awarded', body: `${sp.name} awarded your application. Open the agreement to review and accept it.`, data: { sponsorship_id: dealUp.id, application_id: a.id } });
+      await recordDecision(c, a, p, 'award', user.id);
       await audit(c, user.id, 'award', 'sponsorship_applications', a.id);
       return { ...row, sponsorship: dealUp };
     });
@@ -488,5 +604,149 @@ cap({
         WHERE a.program_id=$1 AND a.status='awarded' ORDER BY r.seq, a.decided_at, a.id`, [p.id]);
     await audit(null, user.id, 'export', 'sponsorship_programs', p.id);
     return { filename: `program-${p.id}-awards.csv`, rows: rows.length, csv: toCsv(['round', 'applicant', 'target_type', 'amount_cents', 'currency', 'decided_at', 'agreement_id', 'agreement_status'], rows) };
+  },
+});
+
+// ---------------------------------------------------------------- invitations (#285)
+
+const TARGET_NAME = (a) => `CASE ${a}.target_type WHEN 'athlete' THEN (SELECT display_name FROM users WHERE id=${a}.target_id) WHEN 'team' THEN (SELECT name FROM teams WHERE id=${a}.target_id) ELSE (SELECT name FROM events WHERE id=${a}.target_id) END`;
+
+/** Why this target cannot be invited, or null. Athlete opt-in, verified-only and youth rules are the ones propose_sponsorship uses. */
+async function inviteBlocker(c, sp, p, user, t, ownerId) {
+  const el = p.eligibility ?? {};
+  if (el.target_types?.length && !el.target_types.includes(t.target_type)) return `This program funds ${el.target_types.join(', ')} only`;
+  if (ownerId === user.id) return 'You cannot invite yourself';
+  const owner = (await c.query(`SELECT 1 FROM users u WHERE u.id=$1 AND ${NOT_YOUTH_SQL}`, [ownerId])).rowCount;
+  if (!owner) return 'Invitations to people under the age of independence are not allowed; a guardian-led process is required';
+  const ownerStaff = await sponsorAccess({ id: ownerId }, sp, c);
+  if (ownerStaff) return 'The invitee runs the sponsoring brand';
+  if (t.target_type === 'athlete') {
+    const prof = (await c.query("SELECT sp.open_to_sponsors, sp.verified_sponsors_only FROM sponsorship_profiles sp JOIN users u ON u.id=sp.user_id WHERE sp.user_id=$1 AND 'athlete' = ANY(u.roles)", [t.target_id])).rows[0];
+    const introduced = !prof?.open_to_sponsors && (await c.query("SELECT 1 FROM enquiry_sponsor_links l JOIN enquiries e ON e.id=l.enquiry_id WHERE l.sponsor_id=$1 AND e.athlete_id=$2 AND l.status='introduced' AND e.sponsor_consent", [sp.id, t.target_id])).rowCount > 0;
+    if (!prof?.open_to_sponsors && !introduced) return 'This athlete is not open to sponsorship offers';
+    if (prof?.verified_sponsors_only && !(await badgesFor('sponsor', [sp.id])).get(sp.id)?.length) return 'This athlete only accepts invitations from verified sponsors';
+  }
+  return null;
+}
+
+cap({
+  name: 'invite_to_program', method: 'POST', path: '/sponsorship-programs/:id/invitations', tag: 'Sponsors', status: 201,
+  summary: 'Brand manager/approver: invite specific athletes, teams or events to a program (up to 25 at once). Works for public and invitation-only calls; for an invitation-only call an invitation is the only way in. Each invitee is the person who owns/organises the target and is notified. Athletes must have opted in to sponsorship offers (or have been introduced by an institution with their consent) and, if they asked, only verified sponsors may invite them; people under the age of independence and the brand\'s own staff cannot be invited. Targets that cannot be invited, or already have a live invitation, are reported in `skipped` with the reason and nothing else is affected.',
+  input: z.object({ id, invitees: z.array(z.object({ target_type: z.enum(TARGETS), target_id: id })).min(1).max(25), message: z.string().max(1000).optional() }),
+  async handler({ user }, i) {
+    return tx(async (c) => {
+      const { p, sp } = await programFor(user, i.id, 'program', c, true);
+      if (!['draft', 'published'].includes(p.status)) throw conflict(`A ${p.status} program cannot invite anyone`);
+      const invited = [], skipped = [], seen = new Set();
+      for (const t of i.invitees) {
+        const key = `${t.target_type}:${t.target_id}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const owner = (await c.query(t.target_type === 'event' ? 'SELECT organizer_id AS o FROM events WHERE id=$1' : t.target_type === 'team' ? 'SELECT owner_id AS o FROM teams WHERE id=$1' : "SELECT id AS o FROM users WHERE id=$1 AND 'athlete' = ANY(roles)", [t.target_id])).rows[0]?.o;
+        if (!owner) { skipped.push({ ...t, reason: `${t.target_type} not found` }); continue; }
+        const why = await inviteBlocker(c, sp, p, user, t, owner);
+        if (why) { skipped.push({ ...t, reason: why }); continue; }
+        const live = (await c.query("SELECT 1 FROM sponsorship_invitations WHERE program_id=$1 AND target_type=$2 AND target_id=$3 AND status IN ('invited','viewed','applied')", [p.id, t.target_type, t.target_id])).rowCount;
+        if (live) { skipped.push({ ...t, reason: 'Already invited' }); continue; }
+        const inv = (await c.query('INSERT INTO sponsorship_invitations(program_id, target_type, target_id, invitee_user_id, invited_by, message) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *', [p.id, t.target_type, t.target_id, owner, user.id, i.message ?? null])).rows[0];
+        invited.push(inv);
+        if (p.status === 'published') await notify(c, owner, { kind: 'sponsorship_invitation', title: `${sp.name} invited you to apply`, body: `You are invited to apply to ${p.name}. Open the call to read the terms and apply.`, data: { program_id: p.id, invitation_id: inv.id }, dedupe_key: `invite:${inv.id}` });
+      }
+      if (invited.length) await audit(c, user.id, 'invite', 'sponsorship_programs', p.id);
+      return { invited, skipped };
+    });
+  },
+});
+
+cap({
+  name: 'list_program_invitations', method: 'GET', path: '/sponsorship-programs/:id/invitations', tag: 'Sponsors',
+  summary: 'Brand staff: the invitations of one program (newest first) with the invited target, its owner\'s public handle and the status (invited, viewed, applied, declined, revoked). Other brands\' invitations are never returned.',
+  input: z.object({ id, status: z.enum(['invited', 'viewed', 'applied', 'declined', 'revoked']).optional(), ...page }),
+  async handler({ user }, i) {
+    const { p } = await programFor(user, i.id, 'read', pool);
+    return many(
+      `SELECT v.id, v.program_id, v.target_type, v.target_id, ${TARGET_NAME('v')} AS target_name, v.status, v.message, v.created_at, v.viewed_at, v.responded_at, u.handle AS invitee_handle, u.display_name AS invitee_name
+         FROM sponsorship_invitations v JOIN users u ON u.id=v.invitee_user_id
+        WHERE v.program_id=$1 AND ($2::text IS NULL OR v.status=$2) ORDER BY v.created_at DESC, v.id LIMIT $3 OFFSET $4`, [p.id, i.status ?? null, i.limit, i.offset]);
+  },
+});
+
+cap({
+  name: 'revoke_program_invitation', method: 'POST', path: '/program-invitations/:id/revoke', tag: 'Sponsors',
+  summary: 'Brand manager/approver: withdraw an invitation that has not led to an application. The invitee can no longer see an invitation-only call or apply to it and is told. An invitation that already became an application cannot be revoked (decline the application instead). The record stays.',
+  input: z.object({ id }),
+  async handler({ user }, i) {
+    return tx(async (c) => {
+      const v0 = (await c.query('SELECT program_id FROM sponsorship_invitations WHERE id=$1', [i.id])).rows[0];
+      if (!v0) throw notFound('Invitation');
+      const { p, sp } = await programFor(user, v0.program_id, 'program', c, true);
+      const v = (await c.query('SELECT * FROM sponsorship_invitations WHERE id=$1 FOR UPDATE', [i.id])).rows[0];
+      if (!['invited', 'viewed'].includes(v.status)) throw conflict(`This invitation is already ${v.status}`);
+      const row = (await c.query("UPDATE sponsorship_invitations SET status='revoked', responded_at=now() WHERE id=$1 RETURNING *", [v.id])).rows[0];
+      await notify(c, v.invitee_user_id, { kind: 'sponsorship_invitation', title: 'An invitation was withdrawn', body: `${sp.name} withdrew the invitation to ${p.name}.`, data: { program_id: p.id, invitation_id: v.id }, dedupe_key: `invite-revoked:${v.id}` });
+      await audit(c, user.id, 'revoke_invitation', 'sponsorship_programs', p.id);
+      return row;
+    });
+  },
+});
+
+cap({
+  name: 'decline_program_invitation', method: 'POST', path: '/program-invitations/:id/decline', tag: 'Sponsors',
+  summary: 'The invited person turns an invitation down (accepting is simply applying). The brand is told; the invitation stays on record as declined.',
+  input: z.object({ id }),
+  async handler({ user }, i) {
+    return tx(async (c) => {
+      const v0 = (await c.query('SELECT program_id FROM sponsorship_invitations WHERE id=$1', [i.id])).rows[0];
+      if (!v0) throw notFound('Invitation');
+      const p = (await c.query('SELECT * FROM sponsorship_programs WHERE id=$1 FOR UPDATE', [v0.program_id])).rows[0];
+      const v = (await c.query('SELECT * FROM sponsorship_invitations WHERE id=$1 FOR UPDATE', [i.id])).rows[0];
+      if (v.invitee_user_id !== user.id) throw notFound('Invitation');
+      if (!['invited', 'viewed'].includes(v.status)) throw conflict(`This invitation is already ${v.status}`);
+      const row = (await c.query("UPDATE sponsorship_invitations SET status='declined', responded_at=now() WHERE id=$1 RETURNING *", [v.id])).rows[0];
+      const sp = await mustFind('sponsors', p.sponsor_id, '*', c);
+      await notifySponsor(c, sp, 'program', { kind: 'sponsorship_invitation', title: 'An invitation was declined', body: `An invitee declined the invitation to ${p.name}.`, data: { program_id: p.id, invitation_id: v.id } });
+      return row;
+    });
+  },
+});
+
+// ---------------------------------------------------------------- FAQs (#285)
+
+cap({
+  name: 'upsert_program_faq', method: 'POST', path: '/sponsorship-programs/:id/faqs', tag: 'Sponsors', status: 201,
+  summary: 'Brand manager/approver: add a FAQ to a program\'s public page, or change one by passing its `faq_id` and current `version` (409 if someone else changed it). `position` orders the list (lowest first). Visible on the call page; never deleted (use archive_program_faq).',
+  input: z.object({ id, faq_id: id.optional(), version: z.coerce.number().int().positive().optional(), question: z.string().min(1).max(300), answer: z.string().min(1).max(2000), position: z.number().int().min(0).max(1000).optional() }),
+  async handler({ user }, i) {
+    return tx(async (c) => {
+      const { p } = await programFor(user, i.id, 'program', c, true);
+      if (p.status === 'archived') throw conflict('An archived program cannot be edited');
+      if (!i.faq_id) {
+        const { n, next } = (await c.query('SELECT count(*)::int AS n, coalesce(max(position)+1, 0)::int AS next FROM sponsorship_program_faqs WHERE program_id=$1 AND archived_at IS NULL', [p.id])).rows[0];
+        if (n >= 50) throw unprocessable('A program can have at most 50 FAQs');
+        return (await c.query('INSERT INTO sponsorship_program_faqs(program_id, position, question, answer, created_by) VALUES ($1,$2,$3,$4,$5) RETURNING *', [p.id, i.position ?? next, i.question, i.answer, user.id])).rows[0];
+      }
+      const f = (await c.query('SELECT * FROM sponsorship_program_faqs WHERE id=$1 AND program_id=$2 FOR UPDATE', [i.faq_id, p.id])).rows[0];
+      if (!f || f.archived_at) throw notFound('FAQ');
+      if (i.version == null) throw badRequest('Pass the FAQ\'s current version to change it');
+      checkVersion(f, i.version, 'FAQ');
+      return (await c.query('UPDATE sponsorship_program_faqs SET question=$2, answer=$3, position=$4, row_version=row_version+1, updated_at=now() WHERE id=$1 RETURNING *', [f.id, i.question, i.answer, i.position ?? f.position])).rows[0];
+    });
+  },
+});
+
+cap({
+  name: 'archive_program_faq', method: 'POST', path: '/sponsorship-program-faqs/:id/archive', tag: 'Sponsors',
+  summary: 'Brand manager/approver: remove a FAQ from the public page. It stays on record (archived). Needs its current `version` (409 if stale).',
+  input: z.object({ id, version: z.coerce.number().int().positive() }),
+  async handler({ user }, i) {
+    return tx(async (c) => {
+      const f0 = (await c.query('SELECT program_id FROM sponsorship_program_faqs WHERE id=$1', [i.id])).rows[0];
+      if (!f0) throw notFound('FAQ');
+      await programFor(user, f0.program_id, 'program', c, true);
+      const f = (await c.query('SELECT * FROM sponsorship_program_faqs WHERE id=$1 FOR UPDATE', [i.id])).rows[0];
+      checkVersion(f, i.version, 'FAQ');
+      if (f.archived_at) throw conflict('This FAQ is already archived');
+      return (await c.query('UPDATE sponsorship_program_faqs SET archived_at=now(), row_version=row_version+1, updated_at=now() WHERE id=$1 RETURNING *', [f.id])).rows[0];
+    });
   },
 });

@@ -2,7 +2,8 @@
 import { buildSchedule } from './sponsor-schedule.js';
 import { forbidden, notFound } from './errors.js';
 import { isAdmin } from './helpers.js';
-import { sponsorAccess, assertSponsorCan, sponsorContactUser } from './sponsor-access.js';
+import { sponsorAccess, assertSponsorCan } from './sponsor-access.js';
+import { sponsorContactUser } from './sponsor-identity-access.js';
 
 export const logHistory = (c, sponsorshipId, version, actor, action, reason) =>
   c.query('INSERT INTO sponsorship_history(sponsorship_id, version, actor_id, action, reason) VALUES ($1,$2,$3,$4,$5)', [sponsorshipId, version, actor, action, reason ?? null]);

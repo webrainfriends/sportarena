@@ -46,7 +46,7 @@ test('legacy brands migrate without fabricated identity; identity is confirmed e
   const legacy = must(await api('POST', '/sponsors', { token: u.token, body: { name: 'LegacyCo', contact_email: 'a@legacy.example' } }), 201);
   assert.equal(legacy.entity_id, null);
   const mine = must(await api('GET', '/sponsors', { token: u.token, query: { mine: 'true' } }));
-  assert.equal(mine[0].identity_confirmed, false); assert.equal(mine[0].my_role, 'owner');
+  assert.equal(mine[0].identity_confirmed, false); assert.equal(mine[0].my_role, 'manager');
   const before = must(await api('GET', `/sponsors/${legacy.id}/identity`, { token: u.token }));
   assert.equal(before.identity_confirmed, false);
   for (const k of ['sponsor_type', 'legal_name', 'registration_number', 'tax_id', 'billing_email']) assert.equal(before[k] ?? null, null, `${k} not invented`);
