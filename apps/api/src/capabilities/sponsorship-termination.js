@@ -45,6 +45,7 @@ async function detail(c, ctx, user) {
   out.can = {
     give: d.status === 'active' && !!d.accepted_version && !t && side && may(ctx, 'end'),
     accept: t?.status === 'notice' && side && t.given_side !== role && may(ctx, 'end'),
+    end_now: d.status === 'paused' && !t && side && may(ctx, 'end'),
     withdraw: t?.status === 'notice' && side && t.given_side === role && may(ctx, 'end'),
     dispute: live && side && !openDispute && may(ctx, 'end'),
     resolve_dispute: openDispute && (role === 'admin' || (side && t.disputed_by_me)),
