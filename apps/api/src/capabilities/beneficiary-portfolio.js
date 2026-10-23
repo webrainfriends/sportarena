@@ -91,6 +91,8 @@ cap({
 });
 
 const ymd = (v) => (v ? (v instanceof Date ? v.toISOString() : String(v)).slice(0, 10) : null);
+/** Minor units in their own currency, e.g. 600000 USD -> "$6,000.00". */
+const fmt = (cents, cur) => { try { const f = new Intl.NumberFormat('en', { style: 'currency', currency: cur }); return f.format(Number(cents) / 10 ** f.resolvedOptions().maximumFractionDigits); } catch { return `${cents} ${cur}`; } };
 const label = (s) => String(s).replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
 
 cap({
@@ -159,7 +161,7 @@ cap({
     }
     for (const p of pending) {
       if (sponsor && p.stale_report && may(sponsorOf(p.sponsorship_id), 'pay')) act('chase_confirmation', 'A reported payment is still unconfirmed by the recipient', { sponsorship_id: p.sponsorship_id });
-      if (!sponsor) act('confirm_payment', `Confirm or reject the reported payment of ${p.currency} ${p.amount_cents}`, { sponsorship_id: p.sponsorship_id });
+      if (!sponsor) act('confirm_payment', `Confirm or reject the reported payment of ${fmt(p.amount_cents, p.currency)}`, { sponsorship_id: p.sponsorship_id });
     }
     for (const s of subs.filter((x) => x.status === 'submitted')) {
       if (sponsor ? s.promoter === 'recipient' && may(sponsorOf(s.sponsorship_id), 'evaluate') : s.promoter === 'sponsor') act('review_endorsement', `Review the endorsement evidence for “${s.label}”`, { sponsorship_id: s.sponsorship_id });
@@ -175,7 +177,7 @@ cap({
     }
     for (const a of apps.filter((x) => x.status === 'submitted' || x.status === 'awarded')) {
       const gap = Number(a.requested_cents) - (a.status === 'awarded' ? Number(a.awarded_cents) : Number(a.offered_cents ?? 0));
-      if (sponsor && gap > 0 && may(a.sponsor_id, 'program')) act('review_funding_gap', `${a.program_name}: ${a.currency} ${gap} of the request is not yet awarded or offered`, { program_id: a.program_id });
+      if (sponsor && gap > 0 && may(a.sponsor_id, 'program')) act('review_funding_gap', `${a.program_name}: ${fmt(gap, a.currency)} of the request is not yet awarded or offered`, { program_id: a.program_id });
     }
     for (const w of letters.filter((x) => x.status === 'issued')) if (!sponsor) act('respond_to_award', 'An award offer is waiting for your answer', { sponsorship_id: w.sponsorship_id, award_id: w.id });
 
@@ -188,7 +190,7 @@ cap({
 
     const documents = [
       ...letters.filter((w) => w.status !== 'withdrawn').map((w) => ({ kind: 'award_letter', label: `Award letter v${w.letter_version ?? 1}`, at: w.issued_at, sponsorship_id: w.sponsorship_id, award_id: w.id })),
-      ...evidence.map((p) => ({ kind: 'payment_evidence', label: `Payment evidence (${p.currency} ${p.amount_cents})`, at: p.created_at, sponsorship_id: p.sponsorship_id, url: p.evidence_url })),
+      ...evidence.map((p) => ({ kind: 'payment_evidence', label: `Payment evidence (${fmt(p.amount_cents, p.currency)})`, at: p.created_at, sponsorship_id: p.sponsorship_id, url: p.evidence_url })),
       ...subs.map((s) => ({ kind: 'endorsement_evidence', label: `Endorsement evidence: ${s.label} (${s.status.replace('_', ' ')})`, at: s.created_at, sponsorship_id: s.sponsorship_id, url: s.evidence_url })),
     ].sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
 
@@ -205,7 +207,7 @@ cap({
       })),
       applications: apps.map((a) => ({ id: a.id, status: a.status, program: { id: a.program_id, name: a.program_name, round: a.round_name }, sponsor: { id: a.sponsor_id, name: a.sponsor_name }, currency: a.currency,
         requested_cents: Number(a.requested_cents), awarded_cents: a.status === 'awarded' ? Number(a.awarded_cents) : null, offered_cents: a.offered_cents == null ? null : Number(a.offered_cents), submitted_at: a.created_at, decided_at: a.decided_at })),
-      history: hist.map((h) => ({ at: h.at, kind: h.kind, label: label(h.kind.replace(/^agreement_/, '')), sponsorship_id: h.sponsorship_id, detail: h.detail })),
+      history: hist.map((h) => ({ at: h.at, kind: h.kind, label: label(h.kind.replace(/^agreement_/, '')), sponsorship_id: h.sponsorship_id, detail: h.kind === 'payment_confirmed' && h.detail ? fmt(h.detail.split(' ')[1], h.detail.split(' ')[0]) : h.detail })),
       milestones, documents, reviews, risks, next_actions: actions,
       other_public_sponsors: others,
     };
