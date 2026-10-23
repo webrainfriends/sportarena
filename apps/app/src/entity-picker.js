@@ -54,7 +54,7 @@ export function EntityPicker({ kind = 'person', label, value = [], onChange, mul
         {!busy && !list.length ? <T size={13} color="#94A3B8">{known ? 'Nobody matches.' : q.trim() ? 'No results.' : 'Type to search.'}</T> : null}
         <View style={{ gap: 8 }}>
           {list.map((it) => (
-            <Pressable key={it.id} onPress={() => toggle(it)} style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1, flexDirection: 'row', alignItems: 'center', gap: 12, padding: 10, borderRadius: 16, borderWidth: 1.5, borderColor: has(it.id) ? A.violet : '#E6EAF2', backgroundColor: has(it.id) ? '#D3D3FF' : '#fff' })}>
+            <Pressable key={it.id} onPress={() => toggle(it)} style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1, flexDirection: 'row', alignItems: 'center', gap: 12, padding: 10, borderRadius: 16, borderWidth: 1.5, borderColor: has(it.id) ? A.violet : '#E6EAF2', backgroundColor: has(it.id) ? '#E5C9D7' : '#fff' })}>
               <AAvatar user={{ avatar_emoji: it.emoji, avatar_color: it.color }} size={38} ring="#fff" />
               <View style={{ flex: 1 }}><T weight="700">{it.label}</T>{it.sub ? <T size={12} color="#64748B">{it.sub}</T> : null}</View>
               <T weight="800" color={has(it.id) ? A.violet : '#94A3B8'}>{has(it.id) ? '✓' : '+'}</T>

@@ -10,7 +10,7 @@ export const MODULES = [
   ['Orgs', 'Organisations', 'Clubs & associations', 'community'], ['Support', 'Support', 'Cases & disputes', 'community'],
 ];
 
-export const GROUP_COLOR = { play: '#80A8FF', care: '#8EC1DE', money: '#D3D3FF', community: '#7C86C8', work: '#4C9A7A' };
+export const GROUP_COLOR = { play: '#C48CB3', care: '#83A6CE', money: '#E5C9D7', community: '#8697BC', work: '#4C9A7A' };
 
 // The Workspace module: one entry per role that has its own working area, [role, route, sub, tab?] (a `tab` target goes to that tab instead of pushing the route). A person holding several of
 // these gets a submenu in the wheel to pick which workspace to open; with one, the tile opens it directly.

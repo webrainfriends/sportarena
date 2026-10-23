@@ -11,7 +11,7 @@ const LIGHT = {
   // money: forest greens
   Wallet: ['#2F7A55', '#164A35'], Earnings: ['#2E8B57', '#14573A'], Shop: ['#3C8561', '#1C5440'], Billboard: ['#4A8A5E', '#235A3B'], Sponsors: ['#357A6B', '#184A40'], Supply: ['#3F7F58', '#1E4D36'],
   // community: sage
-  Openings: ['#5E8F78', '#2E5E4D'], EventInbox: ['#5A9087', '#2B5E58'], Orgs: ['#628A74', '#325545'], Support: ['#7C86C8', '#375F4D'], Schedule: ['#3E8B84', '#1D5A55'], Workspace: ['#3A8F6E', '#1B5A44'], Notifications: ['#4B8068', '#244F3F'],
+  Openings: ['#5E8F78', '#2E5E4D'], EventInbox: ['#5A9087', '#2B5E58'], Orgs: ['#628A74', '#325545'], Support: ['#8697BC', '#375F4D'], Schedule: ['#3E8B84', '#1D5A55'], Workspace: ['#3A8F6E', '#1B5A44'], Notifications: ['#4B8068', '#244F3F'],
 };
 // Dark mode: deeper stops so a bright card never glares against the night background.
 const DARK = Object.fromEntries(Object.entries(LIGHT).map(([k, [a, b]]) => [k, [shade(a), shade(b)]]));
@@ -24,7 +24,7 @@ export const tileColors = (name) => (dark ? DARK : LIGHT)[name] ?? (dark ? DARK 
 
 const W = (o = 1) => ({ fill: '#fff', fillOpacity: o });
 const S = (o = 1, w = 3.5) => ({ stroke: '#fff', strokeOpacity: o, strokeWidth: w, strokeLinecap: 'round', strokeLinejoin: 'round', fill: 'none' });
-const GOLD = '#80A8FF'; // palette p4: the one accent in each illustration
+const GOLD = '#C48CB3'; // palette p4: the one accent in each illustration
 
 // Layered white shapes plus one warm accent, drawn on a 96×96 grid.
 const ART = {
