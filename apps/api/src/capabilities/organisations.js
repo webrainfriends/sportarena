@@ -76,17 +76,18 @@ cap({
   async handler({ user }, i) {
     const o = await one('SELECT id, name, kind, city, status FROM organisations WHERE id=$1', [i.id]);
     if (!o) throw notFound('Organisation');
-    return { ...o, my_role: user ? await orgRole(user, i.id) : null };
+    const my_role = user ? await orgRole(user, i.id) : null;
+    return { ...o, my_role, ...(STAFF.includes(my_role) ? { open_to_sponsors: (await one('SELECT open_to_sponsors FROM organisations WHERE id=$1', [i.id])).open_to_sponsors } : {}) };
   },
 });
 
 cap({
-  name: 'update_organisation', method: 'PATCH', path: '/organisations/:id', tag: 'Organisations', summary: 'Rename or edit the organisation (owner/admin).',
-  input: z.object({ id, name: z.string().min(2).max(80).optional(), kind: z.enum(ORG_KINDS).optional(), city: z.string().max(80).optional() }),
+  name: 'update_organisation', method: 'PATCH', path: '/organisations/:id', tag: 'Organisations', summary: 'Rename or edit the organisation (owner/admin), including whether sponsors may find it and send offers.',
+  input: z.object({ id, name: z.string().min(2).max(80).optional(), kind: z.enum(ORG_KINDS).optional(), city: z.string().max(80).optional(), open_to_sponsors: z.boolean().optional().describe('let sponsors find this organisation and its groups by name and send offers (default off); no roster or member data is ever shown') }),
   async handler({ user }, i) {
     await orgFor(user, i.id, STAFF, { write: true });
-    if (i.name === undefined && i.kind === undefined && i.city === undefined) throw badRequest('Nothing to update');
-    return one('UPDATE organisations SET name=coalesce($2,name), kind=coalesce($3,kind), city=coalesce($4,city) WHERE id=$1 RETURNING *', [i.id, i.name, i.kind, i.city]);
+    if (i.name === undefined && i.kind === undefined && i.city === undefined && i.open_to_sponsors === undefined) throw badRequest('Nothing to update');
+    return one('UPDATE organisations SET name=coalesce($2,name), kind=coalesce($3,kind), city=coalesce($4,city), open_to_sponsors=coalesce($5,open_to_sponsors) WHERE id=$1 RETURNING *', [i.id, i.name, i.kind, i.city, i.open_to_sponsors]);
   },
 });
 

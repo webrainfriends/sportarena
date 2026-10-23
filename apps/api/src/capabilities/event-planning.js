@@ -342,7 +342,7 @@ async function sponsorshipOf(eventId) {
                  coalesce(sum(o.amount_cents) FILTER (WHERE o.status='scheduled' AND o.due_on < current_date),0)::bigint AS overdue_cents
             FROM sponsorship_obligations o JOIN sponsorships ss ON ss.id=o.sponsorship_id
            WHERE ss.target_type='event' AND ss.target_id=$1 AND ss.accepted_version IS NOT NULL AND o.kind='money' GROUP BY o.currency ORDER BY o.currency`, [eventId]),
-    one("SELECT count(*)::int AS n FROM sponsorships WHERE target_type='event' AND target_id=$1 AND status='proposed' AND accepted_version IS NULL", [eventId])]);
+    one("SELECT count(*)::int AS n FROM sponsorships WHERE target_type='event' AND target_id=$1 AND status='proposed' AND accepted_version IS NULL AND coalesce(budget_approval,'') NOT IN ('pending','rejected')", [eventId])]);
   for (const a of agreements) { a.committed_cents = Number(a.committed_cents); a.received_cents = Number(a.received_cents); a.reported_unverified_cents = Number(a.reported_unverified_cents); a.overdue_cents = Number(a.overdue_cents); a.outstanding_cents = a.committed_cents - a.received_cents; }
   return { by_currency: agreements, offers_awaiting_answer: offers.n };
 }
