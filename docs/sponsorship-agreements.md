@@ -101,3 +101,5 @@ Funding programs, rounds and applications that end in an agreement are described
 ## Rollback
 Tables are new and additive: `DROP` is not part of any deploy. To switch the feature off, stop sending `lines`; legacy
 behaviour is unchanged. No existing data is rewritten.
+
+Negotiation, counteroffers and sign-off: see [sponsorship-negotiation.md](sponsorship-negotiation.md).

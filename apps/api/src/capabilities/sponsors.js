@@ -346,7 +346,13 @@ cap({
       const isTarget = ben ? ben.representative : user.id === owner, isSponsor = !!access && (!access.departmentId || access.departmentId === d.department_id);
       if (!isSponsor && !isAdmin(user) && ['pending', 'rejected'].includes(d.budget_approval)) throw notFound('Sponsorship'); // an offer awaiting internal budget approval is not the recipient's to see yet
       if (isSponsor && !isTarget && !isAdmin(user) && i.status === 'ended') assertSponsorCan(access, 'end', { departmentId: d.department_id, what: 'end agreements' });
-      if (!isAdmin(user)) {
+      // Whoever did not write the current terms signs them off (the recipient signs the sponsor's offer, the sponsor signs a counteroffer);
+      // you can never accept your own terms, and a platform admin cannot bind a brand to a counteroffer.
+      const signsOff = i.status === 'active' && d.terms_side === 'recipient';
+      if (signsOff) {
+        if (!isSponsor) throw forbidden('Only the sponsor can sign off the recipient\'s counteroffer');
+        assertSponsorCan(access, 'sign_off', { departmentId: d.department_id, what: 'sign off a counteroffer' });
+      } else if (!isAdmin(user)) {
         if (i.status === 'ended' ? !(isSponsor || isTarget) : !isTarget) throw forbidden();
       }
       if (['declined', 'ended', 'withdrawn'].includes(d.status)) throw conflict(`Sponsorship already ${d.status}`);
@@ -370,15 +376,17 @@ cap({
       }
       const visibility = i.status === 'active' && d.target_type === 'athlete' && i.show_publicly !== undefined ? (i.show_publicly ? 'public' : 'private') : d.visibility;
       const row = (await c.query('UPDATE sponsorships SET status=$2, decision_reason=coalesce($3, decision_reason), decided_at=now(), decided_by=$4, visibility=$5 WHERE id=$1 RETURNING *', [i.id, i.status, i.reason ?? null, user.id, visibility])).rows[0];
+      if (i.status === 'active') await c.query('UPDATE sponsorship_versions SET signed_off_by=$3, signed_off_at=now() WHERE sponsorship_id=$1 AND version=$2', [d.id, d.terms_version, user.id]);
+      if (i.status === 'active' && signsOff) await snapshotIdentity(c, d.id, d.terms_version, sp.id, user.id); // the brand is frozen as it was when it signed
       if (i.status === 'active' && hasLines) {
         await c.query('UPDATE sponsorships SET accepted_version=terms_version WHERE id=$1', [d.id]);
         await generateObligations(c, d.id);
       }
       if (i.status === 'ended') await cancelFutureObligations(c, d.id);
-      await logHistory(c, d.id, d.terms_version, user.id, { active: 'accepted', declined: 'declined', ended: 'ended' }[i.status], i.reason);
+      await logHistory(c, d.id, d.terms_version, user.id, { active: signsOff ? 'signed_off' : 'accepted', declined: 'declined', ended: 'ended' }[i.status], i.reason);
       const word = { active: 'accepted', declined: 'declined', ended: 'ended' }[i.status];
       const update = { kind: 'sponsorship_update', title: `Sponsorship ${word}`, body: i.status === 'declined' && i.reason ? i.reason : `A sponsorship with ${sp.name} was ${word}.`, data: { sponsorship_id: d.id } };
-      if (isSponsor && !isTarget) await notify(c, owner, update);
+      if (isSponsor && !isTarget || signsOff) await notify(c, owner, update);
       else await notifySponsor(c, sp, 'read', update, d.department_id, user.id);
       return row;
     });

@@ -74,7 +74,7 @@ test('mixed agreement: exact-version acceptance, one generation of the schedule,
   const rev = must(await api('POST', `/sponsorships/${deal.id}/revise`, { token: w.sponsor.token, body: { lines: [money, goods], ...period } }));
   assert.equal(rev.terms_version, 2);
   assert.equal((await accept(w, deal.id, 1)).status, 409, 'accepting the old version is rejected');
-  assert.equal((await api('POST', `/sponsorships/${deal.id}/revise`, { token: w.ath.token, body: { lines: [money], ...period } })).status, 403, 'only the sponsor revises');
+  assert.equal((await api('POST', `/sponsorships/${deal.id}/revise`, { token: w.ath.token, body: { lines: [money], ...period } })).status, 400, 'a recipient must say which version a counteroffer is based on (#290)');
   assert.equal((await api('PATCH', `/sponsorships/${deal.id}`, { token: w.sponsor.token, body: { status: 'active', version: 2 } })).status, 403, 'the sponsor cannot accept for the recipient');
   assert.equal(must(await accept(w, deal.id, 2)).status, 'active');
   assert.equal((await dues(w, deal.id)).obligations.length, 8, 'six instalments + two deliveries, exactly once');

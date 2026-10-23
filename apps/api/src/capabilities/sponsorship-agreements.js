@@ -8,6 +8,7 @@ import { isAdmin } from '../helpers.js';
 import { notify } from '../notify.js';
 import { LINE, buildSchedule } from '../sponsor-schedule.js';
 import { snapshotIdentity } from '../sponsor-identity-access.js';
+import { saveLines, loadLines, generateObligations, logHistory, dealContext, obligationContext, recordVersion } from '../sponsor-agreements.js';
 import { saveLines, loadLines, generateObligations, logHistory, dealContext, obligationContext, settleMoney, heldCents, releaseStaleCheckouts } from '../sponsor-agreements.js';
 import { enabledProviders, startCheckout } from '../payments/service.js';
 import { config } from '../config.js';
@@ -37,18 +38,23 @@ cap({
 
 cap({
   name: 'revise_sponsorship', method: 'POST', path: '/sponsorships/:id/revise', tag: 'Sponsors',
-  summary: 'Sponsor owner: change the terms of an offer that has not been answered. This creates a new numbered version; the recipient can only accept the current exact version, so an acceptance of an older version is rejected. (Changing an accepted agreement needs a mutually accepted amendment, which is not available yet.)',
-  input: z.object({ id, lines: z.array(LINE).min(1).max(12), starts_on: date.optional(), ends_on: date.optional(), timezone: z.string().max(60).optional(), reason: z.string().max(500).optional() }),
+  summary: 'Negotiate the terms of an offer that has not been answered, from either side. The sponsor revises its own offer; the recipient makes a counteroffer (`expected_version` is required for them, and a stale one is rejected). Either way this creates a new numbered version, the OTHER side must sign off that exact version, and nothing becomes active until it does. (Changing an accepted agreement needs a mutually accepted amendment, which is not available yet.)',
+  input: z.object({ id, lines: z.array(LINE).min(1).max(12), starts_on: date.optional(), ends_on: date.optional(), timezone: z.string().max(60).optional(), reason: z.string().max(500).optional(),
+    expected_version: z.coerce.number().int().positive().optional().describe('the version these changes are based on; required for a recipient counteroffer') }),
   async handler({ user }, i) {
     return tx(async (c) => {
       const ctx = await dealContext(c, i.id, user, { lock: true });
-      if (ctx.role !== 'sponsor') throw forbidden('Only the sponsor can revise its offer');
-      ctx.need('revise', 'revise the terms of an offer');
-      if (ctx.d.status !== 'proposed') throw conflict('Only an unanswered offer can be revised');
+      if (ctx.role !== 'sponsor' && ctx.role !== 'recipient') throw forbidden('Only the sponsor or the recipient can negotiate the terms');
+      if (ctx.role === 'sponsor') ctx.need('revise', 'revise the terms of an offer');
+      if (ctx.d.status !== 'proposed') throw conflict('Only an unanswered offer can be negotiated');
+      if ((ctx.role === 'recipient' || i.expected_version != null) && i.expected_version !== ctx.d.terms_version) {
+        if (i.expected_version == null) throw badRequest('Say which version your counteroffer is based on (expected_version)');
+        throw conflict(`These terms changed (now version ${ctx.d.terms_version}); review them again before making changes`);
+      }
       const starts = i.starts_on ?? ctx.d.starts, ends = i.ends_on ?? ctx.d.ends;
       if (starts && ends && ends < starts) throw badRequest('ends_on is before starts_on');
       const plan = buildSchedule(i.lines, { starts_on: starts, ends_on: ends });
-      const cash = Object.entries(plan.committed), v = ctx.d.terms_version + 1;
+      const cash = Object.entries(plan.committed), v = ctx.d.terms_version + 1, tz = i.timezone ?? ctx.d.timezone;
       await saveLines(c, ctx.d.id, v, i.lines);
       await snapshotIdentity(c, ctx.d.id, v, ctx.sp.id, user.id);
       const row = (await c.query('UPDATE sponsorships SET terms_version=$2, starts_on=$3, ends_on=$4, timezone=coalesce($5,timezone), amount_cents=$6, currency=$7, agreement_ref=coalesce(agreement_ref, \'SPA-\'||upper(substr(id::text,1,8))) WHERE id=$1 RETURNING *',
@@ -67,6 +73,55 @@ cap({
       if (!held) await ping(c, ctx.recipientId, 'A sponsorship offer was revised', ctx);
       return { ...row, schedule: plan };
     });
+  },
+});
+
+cap({
+  name: 'comment_on_sponsorship', method: 'POST', path: '/sponsorships/:id/comments', tag: 'Sponsors', status: 201,
+  summary: 'Comment on the terms of an offer (a version, optionally one contribution line). A `shared` comment is visible to both sides and, for the brand, needs the right to speak for it (not an evaluator or finance role); an `internal` note is a private working note visible only to your own side: the other side and platform admins never see it.',
+  input: z.object({ id, body: z.string().min(1).max(2000), version: z.coerce.number().int().positive().optional(), line_position: z.coerce.number().int().positive().optional(), visibility: z.enum(['shared', 'internal']).default('shared') }),
+  async handler({ user }, i) {
+    return tx(async (c) => {
+      const ctx = await dealContext(c, i.id, user, { lock: true });
+      if (ctx.role !== 'sponsor' && ctx.role !== 'recipient') throw forbidden('Only the sponsor or the recipient can comment on the terms');
+      if (ctx.role === 'sponsor' && i.visibility === 'shared') ctx.need('revise', 'speak for the brand in a negotiation');
+      if (i.visibility === 'shared' && ctx.d.status !== 'proposed') throw conflict('Terms can only be discussed with the other side while the offer is open');
+      const version = i.version ?? ctx.d.terms_version;
+      if (version > ctx.d.terms_version) throw badRequest('That version does not exist');
+      if (i.line_position != null && !(await c.query('SELECT 1 FROM sponsorship_lines WHERE sponsorship_id=$1 AND version=$2 AND position=$3', [ctx.d.id, version, i.line_position])).rowCount) throw badRequest('That line is not part of this version');
+      const row = (await c.query('INSERT INTO sponsorship_comments(sponsorship_id, version, line_position, side, visibility, author_id, body) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id, version, line_position, side, visibility, body, created_at',
+        [ctx.d.id, version, i.line_position ?? null, ctx.role, i.visibility, user.id, i.body])).rows[0];
+      if (i.visibility === 'shared') await ping(c, ctx.role === 'sponsor' ? ctx.recipientId : 'sponsor', 'New comment on a sponsorship offer', ctx);
+      return row;
+    });
+  },
+});
+
+const COMPARED = ['kind', 'currency', 'amount_cents', 'total_cents', 'estimate_cents', 'quantity', 'unit', 'cadence', 'first_due_on', 'instalments', 'custom_dates', 'promoter', 'terms'];
+const norm = (l) => Object.fromEntries(COMPARED.map((k) => [k, l[k] ?? null]));
+cap({
+  name: 'compare_sponsorship_versions', method: 'GET', path: '/sponsorships/:id/compare', tag: 'Sponsors',
+  summary: 'What changed between two versions of the terms: lines added, removed or changed (matched by label) with each changed field before and after, and the period. Amounts are shown per currency and never combined. Defaults to the previous version against the current one.',
+  input: z.object({ id, from: z.coerce.number().int().positive().optional(), to: z.coerce.number().int().positive().optional() }),
+  async handler({ user }, i) {
+    const ctx = await dealContext(pool, i.id, user);
+    const to = i.to ?? ctx.d.terms_version, from = i.from ?? to - 1;
+    if (from < 1 || to > ctx.d.terms_version || from === to) throw badRequest(`Choose two different versions between 1 and ${ctx.d.terms_version}`);
+    const meta = (v) => one("SELECT v.version, v.authored_side, v.reason, v.restores, v.starts_on::text AS starts_on, v.ends_on::text AS ends_on, v.timezone, v.created_at, v.signed_off_at, u.display_name AS author FROM sponsorship_versions v LEFT JOIN users u ON u.id=v.authored_by WHERE v.sponsorship_id=$1 AND v.version=$2", [ctx.d.id, v]);
+    const [a, b, la, lb] = await Promise.all([meta(from), meta(to), loadLines(pool, ctx.d.id, from), loadLines(pool, ctx.d.id, to)]);
+    if (!a || !b) throw notFound('Version');
+    const key = (l) => `${l.kind}:${l.label.trim().toLowerCase()}`;
+    const left = new Map(la.map((l) => [key(l), l])), changes = [];
+    for (const l of lb) {
+      const o = left.get(key(l));
+      if (!o) { changes.push({ type: 'added', label: l.label, kind: l.kind, to: norm(l) }); continue; }
+      left.delete(key(l));
+      const x = norm(o), y = norm(l), fields = COMPARED.filter((k) => JSON.stringify(x[k]) !== JSON.stringify(y[k])).map((k) => ({ field: k, from: x[k], to: y[k] }));
+      if (fields.length) changes.push({ type: 'changed', label: l.label, kind: l.kind, currency: l.currency ?? o.currency ?? null, fields });
+    }
+    for (const o of left.values()) changes.push({ type: 'removed', label: o.label, kind: o.kind, from: norm(o) });
+    const period = ['starts_on', 'ends_on', 'timezone'].filter((k) => a[k] && b[k] && a[k] !== b[k]).map((k) => ({ field: k, from: a[k], to: b[k] }));
+    return { from: a, to: b, period, period_comparable: !!(a.starts_on || a.ends_on) && !!(b.starts_on || b.ends_on) || a.timezone != null, changes, unchanged: !changes.length && !period.length };
   },
 });
 
@@ -426,3 +481,14 @@ cap({
   input: z.object({ id }),
   handler: async (_, i) => tx(async (c) => ({ created: await generateObligations(c, i.id) })),
 });
+
+/** The negotiation as one side may see it: version authorship, whose turn it is, shared comments, and only THIS side's internal notes. */
+async function negotiationFor(ctx) {
+  const { d, role } = ctx;
+  const versions = await many("SELECT v.version, v.authored_side, v.reason, v.restores, v.created_at, v.signed_off_at, u.display_name AS author FROM sponsorship_versions v LEFT JOIN users u ON u.id=v.authored_by WHERE v.sponsorship_id=$1 ORDER BY v.version", [d.id]);
+  const comments = await many(
+    "SELECT m.id, m.version, m.line_position, m.side, m.visibility, m.body, m.created_at, u.display_name AS author FROM sponsorship_comments m JOIN users u ON u.id=m.author_id WHERE m.sponsorship_id=$1 AND (m.visibility='shared' OR m.side=$2) ORDER BY m.id", [d.id, role]);
+  const open = d.status === 'proposed', mySide = role === 'sponsor' || role === 'recipient' ? role : null;
+  return { open, terms_side: d.terms_side, awaiting: open ? (d.terms_side === 'sponsor' ? 'recipient' : 'sponsor') : null,
+    my_turn: !!(open && mySide && mySide !== d.terms_side), can_counter: !!(open && mySide), can_withdraw_change: !!(open && mySide === d.terms_side && versions.some((v) => v.authored_side !== mySide && v.version < d.terms_version)), versions, comments };
+}
