@@ -53,7 +53,7 @@ export async function describePurpose(c, type, id) {
   }
   if (type === 'sponsorship_payment') {
     const x = await q("SELECT x.reported_by AS payer_id, x.amount_cents AS amount, x.currency, x.status AS pay_status, o.status AS due_status, s.status AS deal_status, sp.name FROM sponsorship_payments x JOIN sponsorship_obligations o ON o.id=x.obligation_id JOIN sponsorships s ON s.id=o.sponsorship_id JOIN sponsors sp ON sp.id=s.sponsor_id WHERE x.id=$1 FOR UPDATE OF x");
-    return x && { payerId: x.payer_id, amount: Number(x.amount), currency: x.currency, name: `Sponsorship payment · ${x.name}`, payable: x.pay_status === 'awaiting_payment' && x.due_status === 'scheduled' && ['active', 'ended'].includes(x.deal_status) };
+    return x && { payerId: x.payer_id, amount: Number(x.amount), currency: x.currency, name: `Sponsorship payment · ${x.name}`, payable: x.pay_status === 'awaiting_payment' && x.due_status === 'scheduled' && ['active', 'ended', 'term_expired'].includes(x.deal_status) };
   }
   const p = await q('SELECT p.holder_id AS payer_id, p.amount_cents AS amount, p.status, pl.name FROM insurance_policies p JOIN insurance_plans pl ON pl.id=p.plan_id WHERE p.id=$1 FOR UPDATE OF p');
   return p && { payerId: p.payer_id, amount: Number(p.amount), name: p.name, payable: p.status === 'pending_payment' };

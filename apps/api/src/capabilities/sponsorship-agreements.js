@@ -8,13 +8,14 @@ import { isAdmin } from '../helpers.js';
 import { notify } from '../notify.js';
 import { LINE, buildSchedule } from '../sponsor-schedule.js';
 import { snapshotIdentity } from '../sponsor-identity-access.js';
-import { saveLines, loadLines, generateObligations, logHistory, dealContext, obligationContext, recordVersion, settleMoney, heldCents, releaseStaleCheckouts } from '../sponsor-agreements.js';
+import { saveLines, loadLines, generateObligations, logHistory, dealContext, obligationContext, recordVersion, settleMoney, completeIfSettled, heldCents, releaseStaleCheckouts } from '../sponsor-agreements.js';
 import { enabledProviders, startCheckout } from '../payments/service.js';
 import { config } from '../config.js';
 import { beneficiaryScopeSql, payeeSnapshot } from '../sponsor-beneficiaries.js';
 import { notifySponsor, sponsorStaffSql, actionsFor } from '../sponsor-access.js';
 import { costOf } from '../sponsorship-budgets.js';
 import { currentPause } from '../sponsor-pause.js';
+import { renewalView } from '../sponsor-renewals.js';
 
 const date = z.string().date();
 const url = z.string().url().max(500).refine((u) => /^https:\/\//i.test(u), 'evidence must be an https link');
@@ -199,6 +200,7 @@ cap({
     if (ctx.role !== 'recipient' && d.budget_id) out.budget = await one('SELECT b.id, b.code, b.name, b.kind, b.currency, $2::text AS approval FROM sponsorship_budgets b WHERE b.id=$1', [d.budget_id, d.budget_approval]);
     out.negotiation = await negotiationFor(ctx);
     out.amendments = await amendmentsFor(ctx);
+    out.renewal = await renewalView(pool, d);
     if (d.accepted_version) out.pauses = await currentPause(pool, d.id); // both parties see the same agreed policy
     out.history = await many('SELECT h.id, h.version, h.action, h.reason, h.created_at, u.display_name AS actor FROM sponsorship_history h LEFT JOIN users u ON u.id=h.actor_id WHERE h.sponsorship_id=$1 ORDER BY h.id', [d.id]);
     return out;
@@ -271,7 +273,7 @@ cap({
 const open = (ctx, kind) => {
   if (ctx.o.kind !== kind) throw badRequest(`This obligation is ${ctx.o.kind}, not ${kind}`);
   if (ctx.o.status !== 'scheduled') throw conflict(`This obligation is already ${ctx.o.status}`);
-  if (!['active', 'paused', 'ended'].includes(ctx.d.status)) throw conflict('The agreement is not active');
+  if (!['active', 'paused', 'ended', 'term_expired'].includes(ctx.d.status)) throw conflict('The agreement is not active');
   if (ctx.o.held_by_pause_id) throw conflict('This due is on hold while the agreement is paused. It can be paid once the agreement resumes.', { code: 'held_by_pause' });
 };
 
@@ -462,6 +464,7 @@ cap({
       const row = (await c.query('UPDATE sponsorship_deliveries SET status=$2, received_quantity=$3, decided_by=$4, decided_at=now(), decision_note=$5 WHERE id=$1 RETURNING *', [dl.id, i.status, got, user.id, i.note ?? null])).rows[0];
       const total = Number((await c.query("SELECT coalesce(sum(received_quantity),0) AS s FROM sponsorship_deliveries WHERE obligation_id=$1 AND status='received'", [ctx.o.id])).rows[0].s);
       if (total >= ctx.o.quantity) await c.query("UPDATE sponsorship_obligations SET status='fulfilled', fulfilled_at=now() WHERE id=$1 AND status='scheduled'", [ctx.o.id]);
+      await completeIfSettled(c, ctx.d.id);
       await logHistory(c, ctx.d.id, ctx.o.version, user.id, `goods_${i.status}`, i.note);
       await ping(c, 'sponsor', `Sponsored goods were ${i.status}`, ctx, 'sponsorship_delivery', 'pay');
       return row;
@@ -512,6 +515,7 @@ cap({
       if (s.status !== 'submitted') throw conflict(`This submission is already ${s.status}`);
       const row = (await c.query('UPDATE sponsorship_submissions SET status=$2, reviewed_by=$3, reviewed_at=now(), review_note=$4 WHERE id=$1 RETURNING *', [s.id, i.status, user.id, i.note ?? null])).rows[0];
       if (i.status === 'accepted') await c.query("UPDATE sponsorship_obligations SET status='fulfilled', fulfilled_at=now() WHERE id=$1 AND status='scheduled'", [ctx.o.id]);
+      if (i.status === 'accepted') await completeIfSettled(c, ctx.d.id);
       await logHistory(c, ctx.d.id, ctx.o.version, user.id, `endorsement_${i.status}`, i.note);
       await ping(c, ctx.promoter === 'sponsor' ? 'sponsor' : ctx.recipientId, `An endorsement was ${i.status === 'accepted' ? 'accepted' : 'sent back for revision'}`, ctx, 'sponsorship_endorsement');
       return row;
