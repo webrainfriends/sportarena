@@ -41,7 +41,8 @@ export function SponsorNegotiation({ deal: d, can, act }) {
       if (l.kind === 'goods') x.quantity = v[`g${l.position}`];
       return x;
     });
-    await api.post(`/sponsorships/${d.id}/revise`, { lines, expected_version: d.terms_version, reason: v.reason, ...(v.period ? { starts_on: v.period, ends_on: v.period_to ?? v.period } : {}) });
+    try { await api.post(`/sponsorships/${d.id}/revise`, { lines, expected_version: d.terms_version, reason: v.reason, ...(v.period ? { starts_on: v.period, ends_on: v.period_to ?? v.period } : {}) }); }
+    catch (e) { if (e.status === 409) { d.reload?.(); throw new Error('The terms changed while you were editing. The latest version is now shown — review it and try again.'); } throw e; }
     d.reload?.();
     return me === 'recipient' ? 'Counteroffer sent — nothing changes until the sponsor signs it off' : 'Revised version sent';
   };
