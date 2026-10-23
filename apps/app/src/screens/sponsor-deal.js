@@ -11,6 +11,7 @@ import { SponsorNegotiation } from './sponsor-negotiation';
 import { SponsorContract } from './sponsor-contract';
 import { SponsorAmendments } from './sponsor-amendments';
 import { SponsorPause } from './sponsor-pause';
+import { SponsorRenewal, STATUS_LABEL } from './sponsor-renewal';
 import { SponsorAllocations, PayeeLine } from './sponsor-beneficiaries';
 import { c } from '../theme';
 import { explain, LoadError } from '../access';
@@ -46,11 +47,12 @@ export function SponsorDeal({ id }) {
       {sponsor && d.my_sponsor_role ? <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center', marginTop: 4 }}><Tag label={`You: ${ROLE_LABEL[d.my_sponsor_role]}`} />{!can('pay') || !can('revise') ? <T size={12} color={c.mute} accessibilityRole="text">{[!can('pay') ? 'cannot report payments' : null, !can('revise') ? 'cannot change or sign terms' : null].filter(Boolean).join(' · ')}</T> : null}</View> : null}
       {sponsor && d.budget ? <Btn small title={`Funded from ${d.budget.code} · ${d.budget.name}`} color={c.paper} ink={c.ink} style={{ alignSelf: 'flex-start' }} onPress={() => push('SponsorBudget', { id: d.budget.id })} accessibilityLabel={`Funded from budget ${d.budget.code}, ${d.budget.name}. Open the budget and its trace`} /> : sponsor && d.status !== 'withdrawn' && d.status !== 'declined' ? <T size={12} color={c.mute}>Not on any budget.</T> : null}
       {d.program ? <T size={12} color={c.mute} accessibilityRole="text">Awarded from the program “{d.program.name}”, {d.program.round_name}.</T> : null}
-      <T size={12} color={c.mute}>{d.agreement_ref ?? 'Legacy agreement'} · {d.status} · terms v{d.accepted_version ?? d.terms_version}{d.starts_on ? ` · ${when(String(d.starts_on).slice(0, 10))} – ${d.ends_on ? when(String(d.ends_on).slice(0, 10)) : 'open'}` : ''}</T>
+      <T size={12} color={c.mute}>{d.agreement_ref ?? 'Legacy agreement'} · {STATUS_LABEL[d.status] ?? d.status} · terms v{d.accepted_version ?? d.terms_version}{d.starts_on ? ` · ${when(String(d.starts_on).slice(0, 10))} – ${d.ends_on ? when(String(d.ends_on).slice(0, 10)) : 'open'}` : ''}</T>
       {!d.lines.length ? <Card><T>This agreement predates structured terms: {d.legacy_amount_cents ? `${d.legacy_amount_cents} (currency not recorded)` : 'no cash'}{d.legacy_in_kind ? ` · ${d.legacy_in_kind}` : ''}. No payment schedule exists for it.</T></Card> : null}
       <SponsorAmendments deal={{ ...d, reload: deal.reload }} can={can} act={act} />
       <SponsorNegotiation deal={{ ...d, reload: deal.reload }} can={can} act={act} />
       <SponsorPause deal={{ ...d, reload: deal.reload }} can={can} act={act} />
+      <SponsorRenewal deal={{ ...d, reload: deal.reload }} act={act} />
       <Section title="Terms" color={c.sun}>
         {d.lines.map((l) => (
           <Card key={l.id}><T weight="900">{l.label}</T>
@@ -105,7 +107,7 @@ export function SponsorDeal({ id }) {
           <T size={12} color={c.mute}>Online payments are collected by Gotmygame through Stripe or PayPal, counted only once the provider verifies them, and paid out to the recipient after the hold period (see Earnings). Bank or cash payments you report stay unverified until the recipient confirms them.</T>
         </Section>) : null}
       {d.obligations?.some((x) => x.kind === 'money') ? <Reconciliation id={d.id} /> : null}
-      {d.target_type === 'athlete' && ['proposed', 'active', 'paused', 'ended'].includes(d.status) && (sponsor || recipient) ? <SponsorPerformance deal={d} /> : null}
+      {d.target_type === 'athlete' && ['proposed', 'active', 'paused', 'ended', 'term_expired', 'completed'].includes(d.status) && (sponsor || recipient) ? <SponsorPerformance deal={d} /> : null}
       <Section title="History" color={c.lime}>
         {d.history.map((h) => <T key={h.id} size={12} color={c.mute}>{new Date(h.created_at).toLocaleDateString()} · {h.action.replace(/_/g, ' ')}{h.version ? ` (v${h.version})` : ''} · {h.actor ?? 'system'}{h.reason ? ` — ${h.reason}` : ''}</T>)}
       </Section>

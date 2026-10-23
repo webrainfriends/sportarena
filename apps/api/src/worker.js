@@ -13,6 +13,7 @@ import { expireQuotes, sendRenewalReminders } from './insurance-cycle.js';
 import { sendCallNotices } from './sponsorship-calls.js';
 import { expireAwards } from './sponsorship-awards.js';
 import { activateDuePauses } from './sponsor-pause.js';
+import { processSponsorshipTerms } from './sponsor-renewals.js';
 
 export const STEPS = [
   ['holds', 'holds_released', expireUnpaidHolds, 0],
@@ -29,6 +30,7 @@ export const STEPS = [
   ['sponsor_calls', 'sponsor_call_notices', sendCallNotices, 0],
   ['sponsor_awards', 'sponsor_awards_expired', expireAwards, 0],
   ['sponsor_pauses', 'sponsor_pauses_started', activateDuePauses, 0],
+  ['sponsor_terms', 'sponsor_terms_processed', processSponsorshipTerms, 0],
 ];
 
 export async function maintenanceCycle() {

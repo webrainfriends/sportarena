@@ -110,6 +110,20 @@ export async function settleMoney(c, o) {
   const paid = Number((await c.query("SELECT coalesce(sum(amount_cents - refunded_cents),0) AS s FROM sponsorship_payments WHERE obligation_id=$1 AND status='confirmed'", [o.id])).rows[0].s);
   if (paid >= Number(o.amount_cents)) await c.query("UPDATE sponsorship_obligations SET status='fulfilled', fulfilled_at=coalesce(fulfilled_at, now()) WHERE id=$1 AND status='scheduled'", [o.id]);
   else await c.query("UPDATE sponsorship_obligations SET status='scheduled', fulfilled_at=NULL WHERE id=$1 AND status='fulfilled'", [o.id]);
+  await completeIfSettled(c, o.sponsorship_id);
+}
+
+/**
+ * An agreement whose term has ended becomes `completed` only once EVERY due is fulfilled or cancelled (#299). The date passing never settles
+ * anything; this runs after each change that can close a due, and the worker repeats it so a missed hook still converges. Idempotent.
+ */
+export async function completeIfSettled(c, sponsorshipId) {
+  const r = await c.query(
+    `UPDATE sponsorships s SET status='completed', settled_at=now()
+      WHERE s.id=$1 AND s.status='term_expired' AND NOT EXISTS (SELECT 1 FROM sponsorship_obligations o WHERE o.sponsorship_id=s.id AND o.status='scheduled')
+      RETURNING s.accepted_version`, [sponsorshipId]);
+  if (r.rowCount) await logHistory(c, sponsorshipId, r.rows[0].accepted_version, null, 'completed', 'every due settled');
+  return r.rowCount > 0;
 }
 
 /**
@@ -147,7 +161,7 @@ export async function fulfilSponsorshipPayment(c, id) {
   const o = (await c.query('SELECT * FROM sponsorship_obligations WHERE id=$1 FOR UPDATE', [x.obligation_id])).rows[0];
   const d = (await c.query('SELECT status FROM sponsorships WHERE id=$1', [o.sponsorship_id])).rows[0];
   const covered = Number((await c.query("SELECT coalesce(sum(amount_cents - refunded_cents),0) AS s FROM sponsorship_payments WHERE obligation_id=$1 AND status='confirmed'", [o.id])).rows[0].s);
-  if (o.status === 'cancelled' || o.held_by_pause_id || !['active', 'paused', 'ended'].includes(d.status) || covered + Number(x.amount_cents) > Number(o.amount_cents)) return false;
+  if (o.status === 'cancelled' || o.held_by_pause_id || !['active', 'paused', 'ended', 'term_expired'].includes(d.status) || covered + Number(x.amount_cents) > Number(o.amount_cents)) return false;
   await c.query("UPDATE sponsorship_payments SET status='confirmed', paid_on=current_date, decided_at=now(), decision_note='Verified by the payment provider' WHERE id=$1", [x.id]);
   await settleMoney(c, o);
   await logHistory(c, o.sponsorship_id, o.version, x.reported_by, 'payment_collected_online');

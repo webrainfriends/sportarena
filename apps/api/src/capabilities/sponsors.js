@@ -13,6 +13,7 @@ import { LINE, buildSchedule } from '../sponsor-schedule.js';
 import { entityRole, snapshotIdentity, ASSIGNED, CAN } from '../sponsor-identity-access.js';
 import { saveLines, loadLines, generateObligations, cancelFutureObligations, logHistory } from '../sponsor-agreements.js';
 import { closePauseOnEnd } from '../sponsor-pause.js';
+import { proposerSide } from '../sponsor-renewals.js';
 import { sponsorAccess, assertSponsorCan, notifySponsor, sponsorStaffSql } from '../sponsor-access.js';
 import { assertDealFitsBudget, assertFits, convert, costOf, storedRate } from '../sponsorship-budgets.js';
 import { ORG_TARGETS, beneficiaryScopeSql, beneficiaryAccess, primaryContact, targetOrgId } from '../sponsor-beneficiaries.js';
@@ -301,7 +302,7 @@ cap({
 cap({
   name: 'list_sponsorships', method: 'GET', path: '/sponsorships', tag: 'Sponsors',
   summary: 'Deals you are part of: ones you proposed, or offers aimed at things you own (events, teams, yourself), with who/what each is about, the terms, status and decision. `as` narrows to what you sent or what you received.',
-  input: z.object({ status: z.enum(['proposed', 'active', 'declined', 'ended', 'withdrawn', 'paused']).optional(), as: z.enum(['sponsor', 'target']).optional(), organisation_id: id.optional().describe('only agreements aimed at this organisation or its groups (still limited to what you may see)'), ...page }),
+  input: z.object({ status: z.enum(['proposed', 'active', 'declined', 'ended', 'withdrawn', 'paused', 'term_expired', 'completed']).optional(), as: z.enum(['sponsor', 'target']).optional(), organisation_id: id.optional().describe('only agreements aimed at this organisation or its groups (still limited to what you may see)'), ...page }),
   handler: ({ user }, i) => many(
     `SELECT ss.*, sp.name AS sponsor_name, sp.emoji AS sponsor_emoji, ${sponsorStaffSql(1)} AS i_am_sponsor,
             CASE ss.target_type WHEN 'athlete' THEN (SELECT display_name FROM users WHERE id=ss.target_id) WHEN 'team' THEN (SELECT name FROM teams WHERE id=ss.target_id) WHEN 'organisation' THEN (SELECT name FROM organisations WHERE id=ss.target_id) WHEN 'group' THEN (SELECT name FROM org_cohorts WHERE id=ss.target_id) ELSE (SELECT name FROM events WHERE id=ss.target_id) END AS target_name,
@@ -324,10 +325,16 @@ cap({
       const d = (await c.query('SELECT * FROM sponsorships WHERE id=$1 FOR UPDATE', [i.id])).rows[0];
       if (!d) throw notFound('Sponsorship');
       const sp = await mustFind('sponsors', d.sponsor_id);
-      if (!isAdmin(user)) assertSponsorCan(await sponsorAccess(user, sp), 'withdraw', { departmentId: d.department_id, what: 'withdraw offers' });
+      const byRecipient = !!d.renews_id && await proposerSide(c, d) === 'recipient'; // a renewal the recipient proposed is theirs to take back (#299)
+      if (byRecipient) {
+        const ben = ORG_TARGETS.includes(d.target_type) ? await beneficiaryAccess(c, user.id, d) : null;
+        if (!isAdmin(user) && !(ben ? ben.representative : user.id === await targetOwner(d.target_type, d.target_id))) throw forbidden('Only the side that proposed the renewal can withdraw it');
+      } else if (!isAdmin(user)) assertSponsorCan(await sponsorAccess(user, sp), 'withdraw', { departmentId: d.department_id, what: 'withdraw offers' });
       if (d.status !== 'proposed') throw conflict('Only an offer that has not been answered can be withdrawn');
       const row = (await c.query("UPDATE sponsorships SET status='withdrawn', decided_at=now(), decided_by=$2 WHERE id=$1 RETURNING *", [d.id, user.id])).rows[0];
-      await notify(c, await targetOwner(d.target_type, d.target_id), { kind: 'sponsorship_update', title: 'A sponsorship offer was withdrawn', body: `${sp.name} withdrew its offer.`, data: { sponsorship_id: d.id } });
+      const gone = { kind: 'sponsorship_update', title: 'A sponsorship offer was withdrawn', body: `${byRecipient ? 'The recipient' : sp.name} withdrew the offer.`, data: { sponsorship_id: d.id } };
+      if (byRecipient) await notifySponsor(c, sp, 'read', gone, d.department_id, user.id);
+      else await notify(c, await targetOwner(d.target_type, d.target_id), gone);
       return row;
     });
   },
@@ -354,6 +361,8 @@ cap({
       if (signsOff) {
         if (!isSponsor) throw forbidden('Only the sponsor can sign off the recipient\'s counteroffer');
         assertSponsorCan(access, 'sign_off', { departmentId: d.department_id, what: 'sign off a counteroffer' });
+      } else if (i.status === 'declined' && d.renews_id && isSponsor && !isTarget && await proposerSide(c, d) === 'recipient') {
+        assertSponsorCan(access, 'sign_off', { departmentId: d.department_id, what: 'decline a renewal' }); // a renewal the recipient proposed is the sponsor's to decline (#299)
       } else if (!isAdmin(user)) {
         if (i.status === 'ended' ? !(isSponsor || isTarget) : !isTarget) throw forbidden();
       }
@@ -383,6 +392,11 @@ cap({
       if (i.status === 'active' && hasLines) {
         await c.query('UPDATE sponsorships SET accepted_version=terms_version WHERE id=$1', [d.id]);
         await generateObligations(c, d.id);
+      }
+      if (i.status === 'active' && d.renews_id) { // the renewal was accepted at an exact version: that is the only way a successor starts
+        const prev = (await c.query('SELECT accepted_version FROM sponsorships WHERE id=$1', [d.renews_id])).rows[0];
+        await logHistory(c, d.renews_id, prev?.accepted_version ?? null, user.id, 'renewed', `successor ${row.agreement_ref ?? d.id} accepted at version ${d.terms_version}`);
+        await c.query('UPDATE sponsorships SET renewal_rev=renewal_rev+1 WHERE id=$1', [d.renews_id]);
       }
       if (i.status === 'ended') { await cancelFutureObligations(c, d.id); await closePauseOnEnd(c, d.id); }
       await logHistory(c, d.id, d.terms_version, user.id, { active: signsOff ? 'signed_off' : 'accepted', declined: 'declined', ended: 'ended' }[i.status], i.reason);
