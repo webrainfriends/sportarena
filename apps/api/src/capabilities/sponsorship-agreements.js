@@ -199,6 +199,7 @@ cap({
     if (ctx.role !== 'recipient' && d.budget_id) out.budget = await one('SELECT b.id, b.name, b.kind, b.currency, $2::text AS approval FROM sponsorship_budgets b WHERE b.id=$1', [d.budget_id, d.budget_approval]);
     out.negotiation = await negotiationFor(ctx);
     out.amendments = await amendmentsFor(ctx);
+    if (d.accepted_version) out.pauses = await currentPause(pool, d.id); // both parties see the same agreed policy
     out.history = await many('SELECT h.id, h.version, h.action, h.reason, h.created_at, u.display_name AS actor FROM sponsorship_history h LEFT JOIN users u ON u.id=h.actor_id WHERE h.sponsorship_id=$1 ORDER BY h.id', [d.id]);
     return out;
   },
@@ -208,7 +209,7 @@ cap({
 async function obligationRows(where, params, tail = '') {
   return many(
     `SELECT o.id, o.sponsorship_id, o.line_id, o.version, o.seq, o.kind, o.cancelled_by_amendment, o.created_by_amendment, o.due_on::text AS due_on, o.amount_cents, o.currency, o.quantity, o.status,
-            (o.status = 'scheduled' AND o.due_on < current_date) AS overdue, l.label,
+            (o.status = 'scheduled' AND o.due_on < current_date AND o.held_by_pause_id IS NULL) AS overdue, (o.held_by_pause_id IS NOT NULL) AS held, o.original_due_on::text AS original_due_on, l.label,
             coalesce((SELECT sum(amount_cents - refunded_cents) FROM sponsorship_payments p WHERE p.obligation_id=o.id AND p.status='confirmed'),0)::bigint AS confirmed_cents,
             coalesce((SELECT sum(amount_cents) FROM sponsorship_payments p WHERE p.obligation_id=o.id AND p.status='awaiting_payment'),0)::bigint AS checkout_in_progress_cents,
             coalesce((SELECT sum(refunded_cents) FROM sponsorship_payments p WHERE p.obligation_id=o.id),0)::bigint AS refunded_cents,

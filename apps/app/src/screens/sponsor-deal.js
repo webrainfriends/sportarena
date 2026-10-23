@@ -9,6 +9,7 @@ import { SponsorPerformance } from './sponsor-performance';
 import { SponsorNegotiation } from './sponsor-negotiation';
 import { SponsorContract } from './sponsor-contract';
 import { SponsorAmendments } from './sponsor-amendments';
+import { SponsorPause } from './sponsor-pause';
 import { SponsorAllocations, PayeeLine } from './sponsor-beneficiaries';
 import { c } from '../theme';
 import { explain, LoadError } from '../access';

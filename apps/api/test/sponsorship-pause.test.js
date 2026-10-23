@@ -69,6 +69,8 @@ test('a pause needs the other side: you cannot approve your own request, outside
   assert.equal(d.pauses[0].status, 'active');
   const s = await get(w, 'sponsor');
   assert.deepEqual(s.pauses[0], d.pauses[0], 'both parties see the same agreed policy');
+  const listed = must(await api('GET', '/sponsorships', { token: w.sponsor.token, query: { status: 'paused' } }));
+  assert.ok(listed.some((x) => x.id === w.id), 'paused agreements can be listed by status');
 });
 
 test('validation: past start, bad resume date, missing reason for "other", declining needs a reason, withdraw only by the requester', async () => {

@@ -301,7 +301,7 @@ cap({
 cap({
   name: 'list_sponsorships', method: 'GET', path: '/sponsorships', tag: 'Sponsors',
   summary: 'Deals you are part of: ones you proposed, or offers aimed at things you own (events, teams, yourself), with who/what each is about, the terms, status and decision. `as` narrows to what you sent or what you received.',
-  input: z.object({ status: z.enum(['proposed', 'active', 'declined', 'ended', 'withdrawn']).optional(), as: z.enum(['sponsor', 'target']).optional(), organisation_id: id.optional().describe('only agreements aimed at this organisation or its groups (still limited to what you may see)'), ...page }),
+  input: z.object({ status: z.enum(['proposed', 'active', 'declined', 'ended', 'withdrawn', 'paused']).optional(), as: z.enum(['sponsor', 'target']).optional(), organisation_id: id.optional().describe('only agreements aimed at this organisation or its groups (still limited to what you may see)'), ...page }),
   handler: ({ user }, i) => many(
     `SELECT ss.*, sp.name AS sponsor_name, sp.emoji AS sponsor_emoji, ${sponsorStaffSql(1)} AS i_am_sponsor,
             CASE ss.target_type WHEN 'athlete' THEN (SELECT display_name FROM users WHERE id=ss.target_id) WHEN 'team' THEN (SELECT name FROM teams WHERE id=ss.target_id) WHEN 'organisation' THEN (SELECT name FROM organisations WHERE id=ss.target_id) WHEN 'group' THEN (SELECT name FROM org_cohorts WHERE id=ss.target_id) ELSE (SELECT name FROM events WHERE id=ss.target_id) END AS target_name,
