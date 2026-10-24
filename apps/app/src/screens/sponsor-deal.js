@@ -7,13 +7,16 @@ import { useNav } from '../nav';
 import { Btn, Card, Chip, Empty, ErrorBox, Field, H1, Loading, Screen, Section, Sheet, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { SponsorPerformance } from './sponsor-performance';
+import { YouthPanel } from './sponsor-youth';
 import { SponsorNegotiation } from './sponsor-negotiation';
 import { SponsorContract } from './sponsor-contract';
 import { SponsorAmendments } from './sponsor-amendments';
 import { GoodsReturns, ServiceVouchers, remainingGoods } from './sponsor-fulfilment';
 import { SponsorTermination } from './sponsor-termination';
+import { SponsorDisputes } from './sponsor-disputes';
 import { SponsorPause } from './sponsor-pause';
 import { SponsorRenewal, STATUS_LABEL } from './sponsor-renewal';
+import { SponsorTasks } from './sponsor-collaboration';
 import { SponsorAllocations, PayeeLine } from './sponsor-beneficiaries';
 import { c } from '../theme';
 import { explain, LoadError } from '../access';
@@ -30,6 +33,20 @@ const left = (x) => Math.max(0, x.amount_cents - x.confirmed_cents - x.reported_
 const payState = (p) => ({ reported: 'unverified', confirmed: p.method === 'online' ? 'verified by provider ✓' : 'confirmed', awaiting_payment: 'checkout open', reversed: p.method === 'online' ? 'refunded' : 'reversed' }[p.status] ?? p.status);
 const tone = { held: c.violetSoft, fulfilled: c.lime, overdue: c.pinkSoft, cancelled: c.paper, scheduled: c.sunSoft };
 
+/** Endorsement rights in words: where, placement, approval, asset use and exclusivity. */
+function Rights({ terms: t }) {
+  if (!t || !Object.keys(t).length) return null;
+  return (
+    <View style={{ marginTop: 4, gap: 2 }}>
+      {t.channels?.length ? <T size={12} color={c.mute}>Where: {t.channels.join(', ')}</T> : null}
+      {t.placement ? <T size={12} color={c.mute}>Placement: {t.placement}</T> : null}
+      {t.approval_criteria ? <T size={12} color={c.mute}>Counts as approved when: {t.approval_criteria}</T> : null}
+      {t.asset_usage ? <T size={12} color={c.mute}>Logo and content use: {t.asset_usage}</T> : null}
+      {t.exclusivity ? <T size={12} color={c.mute}>Exclusivity: {t.exclusivity}</T> : null}
+    </View>
+  );
+}
+
 export function SponsorDeal({ id }) {
   const { toast } = useSession();
   const { push } = useNav();
@@ -39,13 +56,14 @@ export function SponsorDeal({ id }) {
   const act = async (fn, m) => { try { await fn(); toast(m); deal.reload(); } catch (e) { toast(explain(e)); if (e.status === 409) deal.reload(); } };
   if (deal.loading && !d) return <Screen><Loading /></Screen>;
   if (deal.error) return <Screen><LoadError error={deal.error} onRetry={deal.reload} /></Screen>;
-  const sponsor = d.role === 'sponsor', recipient = d.role === 'recipient';
+  const sponsor = d.role === 'sponsor', recipient = d.role === 'recipient' && !d.youth?.minor_self; // a young person reads their agreement; their guardian acts (#307)
   // what this person's sponsor role may do (the server enforces it; this only hides what would be refused)
   const can = (a) => !sponsor || !d.can || d.can.includes(a);
   const o = form?.o;
   return (
     <Screen>
       <H1>{d.sponsor.name}</H1>
+      <YouthPanel deal={d} reload={deal.reload} />
       {sponsor && d.my_sponsor_role ? <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center', marginTop: 4 }}><Tag label={`You: ${ROLE_LABEL[d.my_sponsor_role]}`} />{!can('pay') || !can('revise') ? <T size={12} color={c.mute} accessibilityRole="text">{[!can('pay') ? 'cannot report payments' : null, !can('revise') ? 'cannot change or sign terms' : null].filter(Boolean).join(' · ')}</T> : null}</View> : null}
       {sponsor && d.budget ? <Btn small title={`Funded from ${d.budget.code} · ${d.budget.name}`} color={c.paper} ink={c.ink} style={{ alignSelf: 'flex-start' }} onPress={() => push('SponsorBudget', { id: d.budget.id })} accessibilityLabel={`Funded from budget ${d.budget.code}, ${d.budget.name}. Open the budget and its trace`} /> : sponsor && d.status !== 'withdrawn' && d.status !== 'declined' ? <T size={12} color={c.mute}>Not on any budget.</T> : null}
       {d.program ? <T size={12} color={c.mute} accessibilityRole="text">Awarded from the program “{d.program.name}”, {d.program.round_name}.</T> : null}
@@ -53,13 +71,18 @@ export function SponsorDeal({ id }) {
       {!d.lines.length ? <Card><T>This agreement predates structured terms: {d.legacy_amount_cents ? `${d.legacy_amount_cents} (currency not recorded)` : 'no cash'}{d.legacy_in_kind ? ` · ${d.legacy_in_kind}` : ''}. No payment schedule exists for it.</T></Card> : null}
       <SponsorAmendments deal={{ ...d, reload: deal.reload }} can={can} act={act} />
       <SponsorTermination deal={{ ...d, reload: deal.reload, toast }} />
+      <SponsorDisputes deal={{ ...d, reload: deal.reload }} />
       <SponsorNegotiation deal={{ ...d, reload: deal.reload }} can={can} act={act} />
       <SponsorPause deal={{ ...d, reload: deal.reload }} can={can} act={act} />
       <SponsorRenewal deal={{ ...d, reload: deal.reload }} act={act} />
+      {['sponsor', 'recipient', 'admin'].includes(d.role) && d.status !== 'withdrawn' && d.status !== 'declined' ? <SponsorTasks target={{ sponsorship_id: d.id }} ends_on={d.ends_on} /> : null}
       <Section title="Terms" color={c.sun}>
+        {d.objectives ? <T size={13}><T size={13} weight="800">Objectives: </T>{d.objectives}</T> : null}
+        {d.deliverables ? <T size={13}><T size={13} weight="800">{sponsor ? 'Expected in return' : 'What the sponsor expects'}: </T>{d.deliverables}</T> : null}
         {d.lines.map((l) => (
           <Card key={l.id}><T weight="900">{l.label}</T>
             <T size={12} color={c.mute}>{l.kind}{l.kind === 'money' ? ` · ${l.total_cents ? `${fmt(l.total_cents, l.currency)} total` : `${fmt(l.amount_cents, l.currency)} each`}` : ''}{l.kind === 'goods' || l.kind === 'service' ? ` · ${l.quantity} ${l.unit ?? ''}` : ''}{l.kind === 'service' ? ` · ${l.service_type}` : ''}{l.kind === 'endorsement' ? ` · promoted by the ${l.promoter}` : ''} · {l.cadence}{l.instalments > 1 ? ` × ${l.instalments}` : ''}</T>
+            {l.kind === 'endorsement' ? <Rights terms={l.terms} /> : null}
             {l.estimate_cents != null ? <T size={12} color={c.mute}>Estimated value {fmt(l.estimate_cents, l.currency)} — an estimate, not cash</T> : null}
           </Card>))}
         {d.schedule ? <T size={12} color={c.mute}>Committed cash: {Object.entries(d.schedule.committed).map(([cur, v]) => fmt(v, cur)).join(' · ') || 'none'}. Currencies are never combined.</T> : null}
@@ -69,7 +92,13 @@ export function SponsorDeal({ id }) {
       {d.schedule ? (
         <Section title="Schedule to review" color={c.cyan}>
           {d.schedule.occurrences.map((x) => <T key={`${x.line}-${x.seq}`} size={13}>{when(x.due_on)} · {x.label} · {what(x)}</T>)}
-          {d.negotiation?.my_turn && (recipient || can('sign_off')) ? <Btn title={`${recipient ? 'Accept' : 'Sign off'} these exact terms (v${d.terms_version})`} color={c.mint} ink={c.ink} onPress={() => act(() => api.patch(`/sponsorships/${d.id}`, { status: 'active', version: d.terms_version }), 'Agreement accepted')} /> : null}
+          {recipient && d.status === 'proposed' ? <Card color={c.sunSoft}><T size={13} accessibilityRole="text">Accepting makes these dues, but no money is assumed paid: a payment only counts as received after <T size={13} weight="800">you</T> confirm it.</T></Card> : null}
+          {d.negotiation?.my_turn && (recipient || can('sign_off')) ? (
+            <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+              <Btn title={`${recipient ? 'Accept' : 'Sign off'} these exact terms (v${d.terms_version})`} color={c.mint} ink={c.ink}
+                onPress={() => (recipient && d.target_type === 'athlete' ? setForm({ kind: 'accept' }) : act(() => api.patch(`/sponsorships/${d.id}`, { status: 'active', version: d.terms_version }), 'Agreement accepted'))} />
+              {recipient && d.status === 'proposed' ? <Btn title="Decline" color={c.paper} ink={c.red} onPress={() => setForm({ kind: 'decline' })} /> : null}
+            </View>) : null}
         </Section>) : null}
       {d.obligations ? (
         <Section title="Commitments" color={c.mint}>
@@ -121,6 +150,12 @@ export function SponsorDeal({ id }) {
       </Section>
 
       {form?.kind === 'checkout' ? <CheckoutSheet o={o} onClose={() => setForm(null)} onChanged={deal.reload} /> : null}
+      <FormSheet visible={form?.kind === 'accept'} onClose={() => setForm(null)} title="Accept this offer" submitLabel="Accept"
+        fields={[{ key: 'show_publicly', label: 'Show this sponsor on my public profile', type: 'switch', default: false, hint: 'Off by default. Objectives, deliverables and messages are never public.' }]}
+        onSubmit={async (v) => { try { await api.patch(`/sponsorships/${d.id}`, { status: 'active', version: d.terms_version, show_publicly: v.show_publicly }); } catch (e) { if (e.status === 409) deal.reload(); throw e; } deal.reload(); return 'Agreement accepted'; }} />
+      <FormSheet visible={form?.kind === 'decline'} onClose={() => setForm(null)} title="Decline this offer" submitLabel="Decline"
+        fields={[{ key: 'reason', label: 'Reason (the sponsor will see it)', type: 'multiline', optional: true }]}
+        onSubmit={async (v) => { try { await api.patch(`/sponsorships/${d.id}`, { status: 'declined', reason: v.reason }); } catch (e) { if (e.status === 409) deal.reload(); throw e; } deal.reload(); return 'Offer declined'; }} />
       <FormSheet visible={form?.kind === 'pay'} onClose={() => setForm(null)} title="Report a bank payment" submitLabel="Report"
         fields={[{ key: 'amount_cents', label: 'Amount paid', type: 'money', currency: o?.currency ?? 'USD' }, { key: 'method', label: 'How', type: 'choice', options: [{ value: 'bank_transfer', label: 'Bank transfer' }, { value: 'cash', label: 'Cash' }, { value: 'other', label: 'Other' }] }, { key: 'reference', label: 'Bank / receipt reference' }, { key: 'paid_on', label: 'Paid on', type: 'date' }, { key: 'evidence_url', label: 'Link to proof (https)', optional: true, type: 'url' }]}
         onSubmit={async (v) => { await api.post(`/sponsorship-obligations/${o.id}/payments`, { ...v, currency: o.currency }); deal.reload(); return 'Reported — the recipient will confirm it'; }} />

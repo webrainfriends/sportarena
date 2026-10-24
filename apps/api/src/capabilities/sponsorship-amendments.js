@@ -1,6 +1,7 @@
 // Mutually accepted amendments of an accepted sponsorship agreement (#296). Hangs off the canonical `sponsorships` row and its dues
 // (see sponsorship-agreements.js); there is no second agreement or ledger. The rules live in ../sponsor-amendments.js.
 import { z } from 'zod';
+import { notifyRecipient, assertYouthAuthority, assertYouthContact } from '../youth-sponsorship.js';
 import { cap, id, page } from '../registry.js';
 import { one, many, tx, pool } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
@@ -27,7 +28,7 @@ const PROPOSAL = {
 /** Notifications never carry terms or amounts; the participant-scoped reads do. */
 const ping = (c, to, title, ctx) => {
   const msg = { kind: 'sponsorship_update', title, body: `Open the ${ctx.sp.name} agreement to see the amendment.`, data: { sponsorship_id: ctx.d.id } };
-  return to === 'sponsor' ? notifySponsor(c, ctx.sp, 'sign_off', msg, ctx.d.department_id) : notify(c, to, msg);
+  return to === 'sponsor' ? notifySponsor(c, ctx.sp, 'sign_off', msg, ctx.d.department_id) : notifyRecipient(c, to, msg);
 };
 
 /** Which side of the agreement the caller speaks for on an amendment. Platform admins read, but never bind either side. */

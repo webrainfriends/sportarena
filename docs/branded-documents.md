@@ -46,6 +46,8 @@ Only invoices are connected; other families are listed as coming soon (e.g. doct
 * Logos: type/dimensions read from the actual bytes, SVG/WebP refused (WebP: renderer cannot embed it), private to the kit scope.
 * Characters the built-in fonts cannot show (e.g. Tamil) are **refused with 422**, never garbled. Set `DOC_FONT_REGULAR` (and optionally `DOC_FONT_BOLD`) to a TTF such as Noto Sans Tamil to enable them.
 
+Sponsorship portfolio reports (#305) reuse the brand kit (name, colours, logo) and the pdfkit renderer (`renderSponsorshipReport`); they are generated on demand from live data and are not stored in `generated_documents`. See sponsorship-reporting.md.
+
 ## Deferred (tracked in #249, not in this PR)
 Contextual "Download branded PDF" buttons on invoice screens · other families (plans, schedules, bookings, clinical; sponsorship contracts are connected, see sponsorship-contracts.md) as their canonical sources land (#210/#212/#145/#231) ·
 durable-job/bulk/archive rendering and quotas · S3 storage (#247) · share links and email (#243) · stale-source detection for issue flows · defaults per branch/locale ·

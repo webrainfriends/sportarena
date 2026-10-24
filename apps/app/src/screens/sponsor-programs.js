@@ -15,6 +15,7 @@ import { RoundEvaluation, ApplicantEvaluation } from './sponsor-evaluation';
 import { ProgramAwards, MyOffers } from './sponsor-awards';
 import { ProgramBudget } from './sponsor-budgets';
 import { fieldsOf, filled, fmtMoney } from '../application-forms';
+import { SponsorTasks } from './sponsor-collaboration';
 
 // Amounts are minor units of THEIR OWN currency; currencies are never added together.
 const fmt = (cents, cur) => { try { const f = new Intl.NumberFormat(undefined, { style: 'currency', currency: cur }); return f.format(cents / 10 ** f.resolvedOptions().maximumFractionDigits); } catch { return `${cents} ${cur ?? ''}`; } };
@@ -147,6 +148,7 @@ export function SponsorProgram({ id }) {
           </View>
         ) : <T size={12} color={c.mute} style={{ marginTop: 8 }}>Your role can read this program; managers and approvers run it.</T>}
       </Card>
+      <SponsorTasks target={{ program_id: p.id }} shareable={false} />
       <Section title="Rounds" color={c.sun} action={may && ['draft', 'published'].includes(p.status) ? '+ Round' : undefined} onAction={() => setForm('round')}>
         {p.rounds.length ? p.rounds.map((r) => (
           <Card key={r.id} color={c.sunSoft}>
