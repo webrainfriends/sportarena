@@ -58,6 +58,7 @@ function useConsoleData(id, org) {
 
 export function EventCommand({ id, tab: first = 'overview' }) {
   const { user, toast } = useSession();
+  const nav = useNav();
   const ev = useLoad(() => api.get(`/events/${id}`), [id]);
   const [tab, setTab] = useState(first);
   const [sub, setSub] = useState({ people: 'departments', business: 'partners' });
@@ -103,6 +104,7 @@ export function EventCommand({ id, tab: first = 'overview' }) {
         {st === 'paused' && e.pause_reason ? <AT size={13} weight="700" color="#fff" style={{ marginTop: 10 }}>⏸ {e.pause_reason}</AT> : null}
       </AHero>
       <StageRail steps={steps} />
+      <ABtn small tone="ghost" title="🧮 Scoring & tracking" onPress={() => nav.push('ScoringTool', { eventId: id, tab: isOrg ? 'rules' : 'home' })} style={{ alignSelf: 'flex-start' }} />
 
       {isOrg && !['completed', 'cancelled'].includes(st) ? (
         <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>

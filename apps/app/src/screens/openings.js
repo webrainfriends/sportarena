@@ -5,6 +5,7 @@ import { Platform, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
+import { useNav } from '../nav';
 import { Btn, Card, Chip, Empty, ErrorBox, Field, H1, Loading, Row, Screen, Seg, Sheet, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { pickDocument } from './insurance';
@@ -229,11 +230,13 @@ function MyApplications() {
 
 export function Openings() {
   const { user } = useSession();
+  const nav = useNav();
   const [tab, setTab] = useState('browse');
   const [key, setKey] = useState(0);
   return (
     <Screen wide>
       <H1>Open positions</H1>
+      {user?.roles?.some((r) => ['referee', 'organizer', 'admin'].includes(r)) ? <Btn small title="🧮 Official scoring: proposals awaiting my review" color={c.violet} onPress={() => nav.push('ScoringTool', { tab: 'awaiting' })} style={{ alignSelf: 'flex-start', marginTop: 6 }} /> : null}
       <T color={c.mute} style={{ marginTop: 4 }}>Referees, scorers, doctors, volunteers, security, stalls and caterers wanted by tournaments, and athletes, groups, teams and events looking for a coach. Apply or answer, share documents and sign the contract here.</T>
       <View style={{ marginVertical: 10 }}><Seg options={[{ value: 'browse', label: 'Browse' }, { value: 'coaching', label: 'Coaching requests' }, { value: 'mine', label: 'My applications' }]} value={tab} onChange={setTab} color={c.pink} /></View>
       {tab === 'coaching' ? (user ? <CoachRequestList defaultAll /> : <T color={c.mute}>Sign in to see athletes, groups, teams and events looking for a coach.</T>) : null}

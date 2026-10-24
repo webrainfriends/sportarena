@@ -43,6 +43,7 @@ export function MatchCentre({ id }) {
   return (
     <AScreen>
       <ScoreTicker g={g} />
+      <ABtn small tone="ghost" title="🧮 Open scoring tool for this fixture" onPress={() => go('ScoringTool', { fixtureId: id })} style={{ alignSelf: 'flex-start' }} />
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
         <AT size={12} weight="700" color={mode === 'stream' ? A.green : A.mute}>{mode === 'stream' ? '⚡ Live updates' : mode === 'polling' ? '↻ Refreshing every few seconds' : 'Connecting…'}</AT>
         <Pressable onPress={refresh} hitSlop={10}><AT size={12} weight="800" color={A.cyan}>Refresh</AT></Pressable>

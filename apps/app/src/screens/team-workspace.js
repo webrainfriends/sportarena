@@ -57,6 +57,7 @@ export function TeamWorkspace({ id }) {
           <Faces users={t.members} size={32} />
           {w.can_manage ? <Btn small title="＋ Invite" color={c.paper} ink={c.ink} onPress={() => setTab('roster')} /> : null}
           <Btn small title="💬 Chat" color={c.violet} onPress={() => push('TeamChat', { id })} />
+          <Btn small title="🧮 Track a match or friendly" color={c.paper} ink={c.ink} onPress={() => push('ScoringTool', { tab: 'start', contextType: 'team', contextId: id })} />
         </View>
       </GradCard>
 
