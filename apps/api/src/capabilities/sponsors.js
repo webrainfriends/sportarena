@@ -162,7 +162,7 @@ cap({
         // athletes who opted in, fit what the brand offers and play a sport it supports
         matching_athletes: (await one(`SELECT count(*)::int AS n FROM sponsorship_profiles p JOIN users u ON u.id=p.user_id
            WHERE p.open_to_sponsors AND 'athlete' = ANY(u.roles) AND ${NOT_YOUTH_SQL} AND (cardinality($1::text[])=0 OR p.looking_for && $1::text[])
-             AND (cardinality($2::text[])=0 OR EXISTS (SELECT 1 FROM sport_profiles x JOIN sports sp ON sp.id=x.sport_id WHERE x.user_id=u.id AND sp.slug = ANY($2::text[])))`, [s.offers, s.sports])).n });
+             AND (cardinality($2::text[])=0 OR EXISTS (SELECT 1 FROM active_sport_profiles x JOIN sports sp ON sp.id=x.sport_id WHERE x.user_id=u.id AND sp.slug = ANY($2::text[])))`, [s.offers, s.sports])).n });
     }
     return out;
   },
@@ -200,11 +200,11 @@ cap({
   async handler(_, i) {
     const rows = await many(
       `SELECT ${PUBLIC_USER}, sp.pitch, sp.looking_for, sp.verified_sponsors_only,
-              coalesce((SELECT array_agg(DISTINCT s.slug) FROM sport_profiles x JOIN sports s ON s.id=x.sport_id WHERE x.user_id=u.id), '{}') AS sports
+              coalesce((SELECT array_agg(DISTINCT s.slug) FROM active_sport_profiles x JOIN sports s ON s.id=x.sport_id WHERE x.user_id=u.id), '{}') AS sports
          FROM sponsorship_profiles sp JOIN users u ON u.id=sp.user_id
         WHERE sp.open_to_sponsors AND 'athlete' = ANY(u.roles) AND ${NOT_YOUTH_SQL}
           AND ($1::text IS NULL OR u.display_name ILIKE '%'||$1||'%' OR u.handle ILIKE '%'||$1||'%' OR sp.pitch ILIKE '%'||$1||'%')
-          AND ($2::text IS NULL OR EXISTS (SELECT 1 FROM sport_profiles x JOIN sports s ON s.id=x.sport_id WHERE x.user_id=u.id AND s.slug=$2))
+          AND ($2::text IS NULL OR EXISTS (SELECT 1 FROM active_sport_profiles x JOIN sports s ON s.id=x.sport_id WHERE x.user_id=u.id AND s.slug=$2))
           AND ($3::text IS NULL OR $3 = ANY(sp.looking_for))
         ORDER BY u.display_name, u.id LIMIT $4 OFFSET $5`,
       [i.q ? i.q.replace(/[%_\\]/g, '\\$&') : null, i.sport ?? null, i.looking_for ?? null, i.limit, i.offset]);
@@ -404,7 +404,7 @@ cap({
       // Ending is recorded as a termination applied now (same safe debt handling: only untouched future dues stop); the notice workflow is in sponsorship-termination.js (#298)
       if (i.status === 'ended') await endNow(c, { d, sp }, user, isSponsor && !isTarget ? 'sponsor' : 'recipient', { reason: i.reason });
       const row = (await c.query('UPDATE sponsorships SET status=$2, decision_reason=coalesce($3, decision_reason), decided_at=now(), decided_by=$4, visibility=$5 WHERE id=$1 RETURNING *', [i.id, i.status, i.reason ?? null, user.id, visibility])).rows[0];
-      if (guardian && ['active', 'declined'].includes(i.status)) await c.query('UPDATE sponsorships SET guardian_id=$2, guardian_decided_at=now() WHERE id=$1', [d.id, user.id]);
+      if (guardian && ['active', 'declined'].includes(i.status)) await c.query('UPDATE sponsorships SET guardian_id=$2, guardian_decided_at=now(), payee_guardian_id=CASE WHEN $3 THEN coalesce(payee_guardian_id, $2) ELSE payee_guardian_id END WHERE id=$1', [d.id, user.id, i.status === 'active']);
       if (i.status === 'active') await c.query('UPDATE sponsorship_versions SET signed_off_by=$3, signed_off_at=now() WHERE sponsorship_id=$1 AND version=$2', [d.id, d.terms_version, user.id]);
       if (i.status === 'active' && signsOff) await snapshotIdentity(c, d.id, d.terms_version, sp.id, user.id); // the brand is frozen as it was when it signed
       if (i.status === 'active' && hasLines) {

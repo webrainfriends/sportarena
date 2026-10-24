@@ -118,7 +118,7 @@ cap({
     return many(
       `SELECT name FROM (
          SELECT btrim(city) AS name, count(*) AS n FROM venues WHERE city IS NOT NULL AND btrim(city) <> '' GROUP BY btrim(city)
-         UNION ALL SELECT btrim(region), count(*) FROM sport_profiles WHERE region IS NOT NULL AND btrim(region) <> '' GROUP BY btrim(region)
+         UNION ALL SELECT btrim(region), count(*) FROM active_sport_profiles WHERE region IS NOT NULL AND btrim(region) <> '' GROUP BY btrim(region)
        ) r WHERE name ILIKE $1 GROUP BY name ORDER BY sum(n) DESC, name LIMIT 15`, [q]).then((rows) => rows.map((r) => r.name));
   },
 });
@@ -130,7 +130,7 @@ cap({
   async handler({ user }, i) {
     const profile = await one(
       `SELECT p.id, p.sport_id, p.level, nullif(btrim(p.region), '') AS region, s.slug AS sport_slug, s.name AS sport, s.emoji AS sport_emoji
-         FROM sport_profiles p JOIN sports s ON s.id = p.sport_id
+         FROM active_sport_profiles p JOIN sports s ON s.id = p.sport_id
         WHERE p.user_id = $1 AND p.role = 'athlete' AND ($2::uuid IS NULL OR p.id = $2)
         ORDER BY p.is_default DESC, p.created_at LIMIT 1`, [user.id, i.sport_profile_id ?? null]);
     if (!profile) throw notFound('Sport profile');

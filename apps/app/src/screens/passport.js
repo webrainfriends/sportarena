@@ -9,6 +9,7 @@ import { Avatar, Btn, Card, Empty, ErrorBox, H1, H2, Loading, Screen, T, Tag } f
 import { FormSheet } from '../FormSheet';
 import { c, day, toneFor } from '../theme';
 import { CredentialList } from './pathways';
+import { CoachPassportDesk, GuardianPassports, RecruitmentProfile, RecruitmentSections } from './passport-recruitment';
 
 const nice = (s) => String(s).replace(/_/g, ' ');
 const num = (v) => (v === null || v === undefined ? '–' : Number.isInteger(+v) ? String(+v) : String(Math.round(+v * 100) / 100));
@@ -31,6 +32,10 @@ export function QrCode({ value, size = 200, label = "QR code for the passport li
     </View>
   );
 }
+
+const SECTIONS = [['show_matches', 'Match history by season', 'matches'], ['show_results', 'Approved results', 'results'], ['show_awards', 'Awards', 'awards'], ['show_credentials', 'Certificates & badges', 'certificates'],
+  ['show_video', 'Approved video', 'video'], ['show_references', 'Approved coach references', 'references'], ['show_preferences', 'What I\'m looking for', 'preferences'], ['show_availability', 'Availability', 'availability'], ['show_academic', 'Academic evidence', 'academic evidence']];
+const EXPIRY = [{ value: 7, label: '7 days' }, { value: 30, label: '30 days' }, { value: 90, label: '90 days' }];
 
 const copyOrShare = async (text, toast) => {
   try {
@@ -89,6 +94,19 @@ export function PassportCard({ data }) {
         </Card>
       ) : null}
 
+      {data.memberships?.length ? (
+        <Card pad={16}>
+          <H2>Clubs & teams</H2>
+          {data.memberships.map((m) => (
+            <View key={m.id} style={{ marginTop: 12 }}>
+              <T weight="800">{m.club}</T>
+              <T size={13} color={c.mute}>{[`${m.sport_emoji} ${m.sport}`, `${m.starts_on.slice(0, 4)}–${m.current ? 'now' : (m.ends_on ?? '').slice(0, 4)}`, m.position, nice(m.competition_level)].filter(Boolean).join(' · ')}</T>
+              <Tag label={m.verification_status === 'verified' ? 'Verified by club' : 'Self-reported'} color={m.verification_status === 'verified' ? c.mint : c.violetSoft} style={{ marginTop: 4, alignSelf: 'flex-start' }} />
+            </View>
+          ))}
+        </Card>
+      ) : null}
+
       {data.seasons?.length ? (
         <Card pad={16}>
           <H2>Season by season</H2>
@@ -131,6 +149,8 @@ export function PassportCard({ data }) {
           {data.awards.map((w, i) => <T key={i} style={{ marginTop: 8 }}>{AWARD[w.kind] ?? '🎖️'} <T weight="700">{w.name}</T>{w.event_name ? ` · ${w.event_name}` : ''}{w.year ? ` · ${w.year}` : ''}</T>)}
         </Card>
       ) : null}
+
+      <RecruitmentSections data={data} />
     </View>
   );
 }
@@ -142,6 +162,7 @@ export function MyPassport() {
   const links = useLoad(() => api.get('/me/passport-links'), []);
   const [form, setForm] = useState(false);
   const [fresh, setFresh] = useState(null); // the just-created link, with its secret
+  const [edit, setEdit] = useState(null);
   const revoke = async (l) => { try { await api.post(`/me/passport-links/${l.id}/revoke`); toast('Link turned off'); await links.reload(); } catch (e) { toast(e.message); } };
   return (
     <Screen>
@@ -174,14 +195,22 @@ export function MyPassport() {
               <View style={{ flex: 1 }}>
                 <T weight="700">{l.label || 'Passport link'}</T>
                 <T size={12} color={c.mute}>{l.status === 'active' ? `Expires ${day(l.expires_at)}` : l.status === 'expired' ? `Expired ${day(l.expires_at)}` : `Turned off ${day(l.revoked_at)}`} · opened {l.view_count} time{l.view_count === 1 ? '' : 's'}</T>
-                <T size={12} color={c.mute}>Shows: {['show_matches', 'show_results', 'show_awards', 'show_credentials'].filter((k) => l[k]).map((k) => ({ show_matches: 'matches', show_results: 'results', show_awards: 'awards', show_credentials: 'certificates' }[k])).join(', ') || 'profile only'}</T>
+                <T size={12} color={c.mute}>Shows: {['show_matches', 'show_results', 'show_awards', 'show_credentials', 'show_career'].filter((k) => l[k]).map((k) => ({ show_matches: 'matches', show_results: 'results', show_awards: 'awards', show_credentials: 'certificates', show_career: 'clubs' }[k])).join(', ') || 'profile only'}</T>
               </View>
               <Tag label={l.status} color={l.status === 'active' ? c.mint : c.violetSoft} />
             </View>
-            {l.status === 'active' ? <Btn small title="Turn off" color={c.paper} ink={c.red} onPress={() => revoke(l)} style={{ alignSelf: 'flex-start', marginTop: 10 }} /> : null}
+            {l.status === 'active' ? (
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+                <Btn small title="Change" color={c.paper} ink={c.ink} onPress={() => setEdit(l)} />
+                <Btn small title="Turn off" color={c.paper} ink={c.red} onPress={() => revoke(l)} />
+              </View>
+            ) : null}
           </Card>
         ))}
       </View>
+
+      <GuardianPassports onCreated={setFresh} />
+      <RecruitmentProfile />
 
       <H2 style={{ marginTop: 26 }}>What people will see</H2>
       <View style={{ marginTop: 10 }}>{prev.error ? <ErrorBox error={prev.error} onRetry={prev.reload} /> : !prev.data ? <Loading /> : <PassportCard data={prev.data} />}</View>
@@ -189,7 +218,7 @@ export function MyPassport() {
 
       {form ? (
         <FormSheet visible onClose={() => setForm(false)} title="New passport link" submitLabel="Create link"
-          initial={{ expires_in_days: 30, show_matches: true, show_results: true, show_awards: true, show_credentials: true }}
+          initial={{ expires_in_days: 30, show_matches: true, show_results: true, show_awards: true, show_credentials: true, show_career: false }}
           fields={[
             { key: 'label', label: 'Who is it for', optional: true, placeholder: 'Academy scout, club trial…' },
             { key: 'expires_in_days', label: 'Stops working after', type: 'chips', options: [{ value: 7, label: '7 days' }, { value: 30, label: '30 days' }, { value: 90, label: '90 days' }] },
@@ -197,8 +226,9 @@ export function MyPassport() {
             { key: 'show_results', label: 'Show approved results', type: 'switch' },
             { key: 'show_awards', label: 'Show awards', type: 'switch' },
             { key: 'show_credentials', label: 'Show certificates & badges', type: 'switch' },
+            { key: 'show_career', label: 'Show clubs & teams timeline', type: 'switch', hint: 'Verified clubs are labelled; the rest show as self-reported. Evidence is never shared.' },
           ]}
-          onSubmit={async (v) => { const l = await api.post('/me/passport-links', { label: v.label || undefined, expires_in_days: Number(v.expires_in_days), show_matches: !!v.show_matches, show_results: !!v.show_results, show_awards: !!v.show_awards, show_credentials: !!v.show_credentials }); setFresh(l); await links.reload(); return 'Link created'; }} />
+          onSubmit={async (v) => { const l = await api.post('/me/passport-links', { label: v.label || undefined, expires_in_days: Number(v.expires_in_days), show_matches: !!v.show_matches, show_results: !!v.show_results, show_awards: !!v.show_awards, show_credentials: !!v.show_credentials, show_career: !!v.show_career }); setFresh(l); await links.reload(); return 'Link created'; }} />
       ) : null}
     </Screen>
   );
@@ -211,9 +241,19 @@ export function PassportPublic({ token }) {
     <Screen>
       <T weight="800" size={16} color={c.pink} style={{ letterSpacing: -0.3 }}>Gotmygame · Player passport</T>
       <View style={{ marginTop: 12 }}>
-        {p.error ? <Empty emoji="🔒" title="This link is not available" sub="It may have expired or been turned off by the athlete." /> : !p.data ? <Loading /> : <PassportCard data={p.data} />}
+        {p.error ? <Empty emoji="🔒" title="This link is not available" sub="It may have expired or been turned off. If it was sent to you personally, sign in with that account and open it again." /> : !p.data ? <Loading /> : <PassportCard data={p.data} />}
       </View>
       {p.data ? <T size={12} color={c.mute} style={{ marginTop: 14 }}>Shared by the athlete. This link stops working {day(p.data.expires_at)}. {p.data.evidence}</T> : null}
+    </Screen>
+  );
+}
+
+/** Coaches: review recruitment videos and write references for the athletes they coach. */
+export function PassportDesk() {
+  return (
+    <Screen>
+      <H1>Recruitment</H1>
+      <CoachPassportDesk />
     </Screen>
   );
 }

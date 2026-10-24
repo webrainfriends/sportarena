@@ -63,8 +63,8 @@ cap({
                     WHERE n.status='active' AND n.accepting_requests AND ($2::text IS NULL OR n.name ILIKE $2) AND ($3::text IS NULL OR true) AND cardinality($4::uuid[]) >= 0 ORDER BY n.name LIMIT $5 OFFSET $6`, [...args, 'insurer']);
     }
     const role = { coach: 'coach', referee: 'referee', umpire: 'referee', judge: 'referee', scorer: null, timekeeper: 'referee', physio: 'physio', doctor: 'doctor', first_aider: null, volunteer: null, supplier: 'supplier' }[i.kind];
-    const join = role === 'referee' ? "JOIN sport_profiles sp ON sp.user_id=u.id AND sp.role='referee' AND sp.sport_id = ANY($4::uuid[])"
-      : role === 'coach' ? "JOIN sport_profiles sp ON sp.user_id=u.id AND sp.role='coach' AND sp.sport_id = ANY($4::uuid[])" : '';
+    const join = role === 'referee' ? "JOIN active_sport_profiles sp ON sp.user_id=u.id AND sp.role='referee' AND sp.sport_id = ANY($4::uuid[])"
+      : role === 'coach' ? "JOIN active_sport_profiles sp ON sp.user_id=u.id AND sp.role='coach' AND sp.sport_id = ANY($4::uuid[])" : '';
     const rate = role === 'referee' || role === 'coach' ? 'max(sp.hourly_rate_cents)' : role === 'physio' || role === 'doctor' ? 'max(pp.consult_fee_cents)' : 'NULL';
     const prov = role === 'physio' || role === 'doctor' ? `JOIN provider_profiles pp ON pp.user_id=u.id AND pp.provider_type='${role}' AND pp.listed AND ($3::text IS NULL OR lower(pp.city)=lower($3))` : '';
     const roleWhere = !join && !prov && role ? `AND '${role}' = ANY(u.roles)` : '';

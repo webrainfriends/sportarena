@@ -6,7 +6,7 @@ import { Pressable, ScrollView, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
-import { Btn, Chip, Empty, ErrorBox, H1, Loading, Row, Screen, Seg, Sheet, T, Tag } from '../ui';
+import { Btn, Chip, Empty, ErrorBox, Field, H1, Loading, Row, Screen, Seg, Sheet, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { Stepper } from '../pickers';
 import { PaySheet } from '../PaySheet';
@@ -15,7 +15,7 @@ import { moneyIn } from '../vtime';
 import { explain } from '../access';
 import { useLayout } from '../layout';
 import { MySessions } from './academy-session';
-import { Block, TrialSlots, FORMATS, FOCUS, Initials, Meter, StageBadge, StageTrack, Timeline, STAGE, hoursLeft, lab, priceLine, when } from './academy-ui';
+import { Block, TrialSlots, FORMATS, FOCUS, Initials, Meter, StageBadge, StageTrack, Timeline, STAGE, hoursLeft, lab, openEnrolmentLetter, openInvoicePdf, priceLine, when } from './academy-ui';
 
 const Panel = ({ children, tone }) => <View style={{ backgroundColor: tone ?? c.paper, borderRadius: 20, padding: 16, gap: 10, borderWidth: 1, borderColor: c.line }}>{children}</View>;
 const OPEN = ['enquiry', 'trial_requested', 'trial_booked', 'trial_completed', 'application_draft', 'submitted', 'under_review', 'offered', 'offer_accepted', 'waitlisted'];
@@ -78,12 +78,25 @@ export function AcademyFamily() {
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><T weight="800" size={15} style={{ flex: 1 }}>{e.programme}</T><Tag label={e.status === 'enrolled' ? '🏅 Enrolled' : e.status} color={e.status === 'enrolled' ? c.lime : undefined} /></View>
                       <T size={12} color={c.mute}>{e.organisation} · {e.cohort}{e.starts_on ? ` · ${when(e.starts_on)}${e.ends_on ? ` – ${when(e.ends_on)}` : ''}` : ''}</T>
                       {e.sessions_left != null ? <T size={12} weight="700">{e.sessions_left} sessions left in your pack</T> : null}
-                      {e.status === 'enrolled' ? <Btn small title="Withdraw…" color={c.paper} ink={c.ink} onPress={() => setForm({ withdraw: e })} style={{ alignSelf: 'flex-start', marginTop: 4 }} /> : null}
+                      <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
+                        {['enrolled', 'paused', 'completed', 'graduated'].includes(e.status) ? <Btn small title="Enrolment letter" onPress={() => openEnrolmentLetter(e.id, toast)} /> : null}
+                        {e.status === 'enrolled' ? <Btn small title="Withdraw…" color={c.paper} ink={c.ink} onPress={() => setForm({ withdraw: e })} /> : null}
+                      </View>
                     </View>
                   )) : <Empty emoji="🏅" title="Not in a programme yet" sub={p.athlete.is_me ? 'Find a programme to get started.' : `Find a programme for ${p.athlete.display_name}.`} />}
                   <Btn small title="Find a programme" color={c.paper} ink={c.ink} onPress={() => setTab('browse')} style={{ alignSelf: 'flex-start' }} />
                 </Block>
               </Panel>
+              {p.certificates?.length ? (
+                <Panel>
+                  <Block title="Certificates">
+                    {p.certificates.map((x) => (
+                      <Row key={x.id} title={x.title} sub={`${x.institution} · ${x.kind} · code ${x.code} · ${x.show_on_profile ? 'shown on the profile' : 'kept private'}`} right={<Btn small title={x.show_on_profile ? 'Hide' : 'Show'} color={c.paper} ink={c.ink} onPress={() => act(() => api.patch(`/me/credentials/${x.id}`, { show_on_profile: !x.show_on_profile }), x.show_on_profile ? 'Hidden from the profile' : 'Shown on the profile')} />} />
+                    ))}
+                    <T size={11} color={c.mute}>Anyone can check a certificate with its code.{!p.athlete.is_me ? ' You decide for your child.' : ''}</T>
+                  </Block>
+                </Panel>
+              ) : null}
             </View>
             <View style={{ flex: tablet ? 1 : undefined, width: tablet ? undefined : '100%', gap: 14 }}>
               <Panel>
@@ -118,12 +131,13 @@ export function AcademyFamily() {
         <View style={{ gap: 14, marginTop: 12 }}>
           <Panel>
             <Block title="To pay">
-              {due.length ? due.map((x) => <Row key={x.id} title={`${moneyIn(x.amount_minor, x.currency)} · ${x.kind}`} sub={`due ${when(x.due_on)}${x.funded_minor > 0 ? ` · ${moneyIn(x.funded_minor, x.currency)} covered by ${x.funding_source}` : ''}${x.discount_minor > 0 ? ` · ${moneyIn(x.discount_minor, x.currency)} discount applied` : ''}`} color={x.overdue ? c.orangeSoft : c.paper} right={<Btn small title="Pay" onPress={() => setPay({ id: x.id, type: 'academy_charge', label: `Academy ${x.kind}`, amount: x.amount_minor, currency: x.currency })} />} />) : <Empty emoji="✅" title="Nothing to pay" sub="You are all up to date." />}
+              {due.length ? due.map((x) => <Row key={x.id} title={`${moneyIn(x.amount_minor, x.currency)} · ${x.kind}`} sub={`due ${when(x.due_on)}${x.invoice_number ? ` · ${x.invoice_number}` : ''}${x.funded_minor > 0 ? ` · ${moneyIn(x.funded_minor, x.currency)} covered by ${x.funding_source}` : ''}${x.discount_minor > 0 ? ` · ${moneyIn(x.discount_minor, x.currency)} discount applied` : ''}`} color={x.overdue ? c.orangeSoft : c.paper}
+                right={<View style={{ gap: 6, alignItems: 'flex-end' }}><Btn small title="Pay" onPress={() => setPay({ id: x.id, type: 'academy_charge', label: `Academy ${x.kind}`, amount: x.amount_minor, currency: x.currency })} />{x.invoice_id ? <Btn small title="Invoice" color={c.paper} ink={c.ink} onPress={() => openInvoicePdf(x.invoice_id, toast)} /> : null}</View>} />) : <Empty emoji="✅" title="Nothing to pay" sub="You are all up to date." />}
               <T size={11} color={c.mute}>Nothing is charged automatically. Each payment is made on the payment provider’s secure page.</T>
             </Block>
           </Panel>
           <Panel>
-            <Block title="Paid">{p.charges.filter((x) => x.status === 'paid').length ? p.charges.filter((x) => x.status === 'paid').map((x) => <Row key={x.id} title={`${moneyIn(x.amount_minor, x.currency)} · ${x.kind}`} sub={`paid ${when(x.paid_at)}`} right={<Tag label="Paid" color={c.lime} />} />) : <T size={13} color={c.mute}>No payments yet.</T>}</Block>
+            <Block title="Paid">{p.charges.filter((x) => x.status === 'paid').length ? p.charges.filter((x) => x.status === 'paid').map((x) => <Row key={x.id} title={`${moneyIn(x.amount_minor, x.currency)} · ${x.kind}`} sub={`paid ${when(x.paid_at)}${x.invoice_number ? ` · ${x.invoice_number}` : ''}`} right={x.invoice_id ? <Btn small title="Receipt" color={c.paper} ink={c.ink} onPress={() => openInvoicePdf(x.invoice_id, toast)} /> : <Tag label="Paid" color={c.lime} />} />) : <T size={13} color={c.mute}>No payments yet.</T>}</Block>
           </Panel>
         </View>
       ) : null}
@@ -177,19 +191,20 @@ function Apply({ people, initial, onClose }) {
   const [athlete, setAthlete] = useState(initial.athlete ?? people[0].athlete.id);
   const [prog, setProg] = useState(initial.prog ?? null);
   const [app, setApp] = useState(null), [step, setStep] = useState(0), [err, setErr] = useState(null), [answers, setAnswers] = useState({}), [busy, setBusy] = useState(false);
+  const [promoIn, setPromoIn] = useState(''), [promo, setPromo] = useState(null), [promoErr, setPromoErr] = useState(null);
   const cur = useLoad(() => (initial.continue ? api.get(`/academy/applications/${initial.continue}`) : Promise.resolve(null)), [initial.continue]);
   const a = app ?? cur.data;
   const progId = prog?.id ?? cur.data?.programme_id;
   const forId = a?.athlete_id ?? athlete;
   const detail = useLoad(() => (progId ? api.get(`/academy/programmes/${progId}`) : Promise.resolve(null)), [progId]);
-  const agreements = useLoad(() => (progId && step === 2 ? api.get(`/academy/programmes/${progId}/agreements`, { athlete_id: forId }).catch(() => []) : Promise.resolve(null)), [progId, step, forId]);
-  const quote = useLoad(() => (progId && step >= 3 ? api.get(`/academy/programmes/${progId}/quote`, { athlete_id: forId }).catch(() => null) : Promise.resolve(null)), [progId, step, forId]);
   const d = detail.data, v = d?.version, qs = v?.questions ?? [];
+  const steps = qs.length ? WIZ : WIZ.filter((s) => s !== 'Questions');
+  const name = steps[step];
+  const agreements = useLoad(() => (progId && name === 'Agreements' ? api.get(`/academy/programmes/${progId}/agreements`, { athlete_id: forId }).catch(() => []) : Promise.resolve(null)), [progId, name, forId]);
+  const quote = useLoad(() => (progId && (name === 'Price' || name === 'Confirm') ? api.get(`/academy/programmes/${progId}/quote`, { athlete_id: forId, promo_code: promo || undefined }).catch((e) => { if (promo) { setPromoErr(explain(e)); setPromo(null); } return null; }) : Promise.resolve(null)), [progId, name, forId, promo]);
   const mine = people.find((x) => x.athlete.id === forId);
   const existing = (mine?.applications ?? []).find((x) => x.programme_id === progId && OPEN.includes(x.stage));
   const full = d?.capacity && d.seats_taken >= d.capacity;
-  const steps = qs.length ? WIZ : WIZ.filter((s) => s !== 'Questions');
-  const name = steps[step];
   const go = (n) => { setErr(null); setStep(n); };
   const begin = async () => {
     setErr(null); setBusy(true);
@@ -203,7 +218,7 @@ function Apply({ people, initial, onClose }) {
     setBusy(true); setErr(null);
     try {
       const row = a ?? existing;
-      const r = await api.post(`/academy/applications/${row.id}/submit`, { row_version: row.row_version, answers });
+      const r = await api.post(`/academy/applications/${row.id}/submit`, { row_version: row.row_version, answers, promo_code: promo || undefined });
       toast(r.stage === 'enrolled' ? 'You are enrolled 🎉' : r.stage === 'waitlisted' ? 'You are on the waitlist' : 'Application sent — the academy will be in touch');
       onClose();
     } catch (e) {
@@ -260,6 +275,17 @@ function Apply({ people, initial, onClose }) {
                     <View key={i} style={{ flexDirection: 'row', gap: 8 }}><T size={14} style={{ flex: 1 }}>{l.kind === 'instalment' ? 'Instalment' : l.kind === 'registration' ? 'Joining fee' : l.kind[0].toUpperCase() + l.kind.slice(1)} · due {when(l.due_on)}{l.discount_minor > 0 ? ` · ${l.discount_reason === 'sibling' ? 'sibling' : 'second programme'} discount ${moneyIn(l.discount_minor, l.currency)}` : ''}</T><T weight="800">{moneyIn(l.amount_minor, l.currency)}</T></View>
                   )) : <T>This programme is free.</T>}
                   <View style={{ flexDirection: 'row', borderTopWidth: 1, borderColor: c.line, paddingTop: 8 }}><T weight="800" style={{ flex: 1 }}>Total</T><T weight="800">{moneyIn(quote.data.total_minor, quote.data.currency)}</T></View>
+                  {quote.data.billing_model !== 'free' ? (
+                    <View style={{ gap: 6 }}>
+                      <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                        <View style={{ flex: 1 }}><Field value={promoIn} onChangeText={setPromoIn} placeholder="Promo code (optional)" accessibilityLabel="Promo code" /></View>
+                        <Btn small title="Apply" color={c.paper} ink={c.ink} onPress={() => { setPromoErr(null); setPromo(promoIn.trim() || null); }} />
+                      </View>
+                      {quote.data.promo_applied ? <T size={13} weight="700" color={c.lime}>✓ Code {quote.data.promo_code} applied</T> : null}
+                      {promoErr ? <T size={13} weight="700" color={c.red} accessibilityRole="alert">{promoErr}</T> : null}
+                      {quote.data.discount_applied && !quote.data.promo_applied ? <T size={12} color={c.mute}>A family discount is already applied. A code only helps if it saves more.</T> : null}
+                    </View>
+                  ) : null}
                   <T size={12} color={c.mute}>{quote.data.note}</T>
                   {quote.data.renewal_terms ? <T size={12} color={c.mute}>Renewal: {quote.data.renewal_terms}</T> : null}
                 </Block>

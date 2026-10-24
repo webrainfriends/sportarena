@@ -15,7 +15,7 @@ import { RoundEvaluation, ApplicantEvaluation } from './sponsor-evaluation';
 import { ProgramAwards, MyOffers } from './sponsor-awards';
 import { ProgramBudget } from './sponsor-budgets';
 import { fieldsOf, filled, fmtMoney } from '../application-forms';
-import { SponsorTasks } from './sponsor-collaboration';
+import { SponsorTasks, ApplicationThread } from './sponsor-collaboration';
 
 // Amounts are minor units of THEIR OWN currency; currencies are never added together.
 const fmt = (cents, cur) => { try { const f = new Intl.NumberFormat(undefined, { style: 'currency', currency: cur }); return f.format(cents / 10 ** f.resolvedOptions().maximumFractionDigits); } catch { return `${cents} ${cur ?? ''}`; } };
@@ -109,6 +109,7 @@ export function SponsorProgram({ id }) {
   const { push } = useNav();
   const [form, setForm] = useState(null); // 'edit' | 'round' | { round } | 'schedule' | { award } | 'owner'
   const [roundId, setRoundId] = useState(null);
+  const [thread, setThread] = useState(null); // application whose conversation is open
   const [stale, setStale] = useState(false);
   const prog = useLoad(() => api.get(`/sponsorship-programs/${id}`), [id]);
   const apps = useLoad(() => api.get(`/sponsorship-programs/${id}/applications`, { limit: 100, ...(roundId ? { round_id: roundId } : {}) }), [id, roundId, prog.data?.row_version]);
@@ -195,11 +196,13 @@ export function SponsorProgram({ id }) {
             {a.form_id ? <Btn small title="Review answers" color={c.violet} style={{ alignSelf: 'flex-start', marginTop: 8 }} onPress={() => setForm({ view: a })} /> : null}
             {a.status === 'returned' ? <T size={12} color={c.mute}>Waiting for the applicant to correct it.</T> : null}
             {a.sponsorship_id ? <Btn small title="Open agreement" color={c.violet} style={{ alignSelf: 'flex-start', marginTop: 8 }} onPress={() => push('SponsorDeal', { id: a.sponsorship_id })} /> : null}
+            {a.status !== 'draft' ? <Btn small title="Messages" color={c.paper} ink={c.ink} style={{ alignSelf: 'flex-start', marginTop: 8 }} onPress={() => setThread(a)} accessibilityLabel="Open the conversation with this applicant" /> : null}
           </Card>
         )) : <Empty emoji="📬" title="No applications" sub={p.status === 'published' ? 'They appear here as applicants submit to an open round.' : 'Publish the program to receive applications.'} />}
         {['manager', 'finance', 'auditor', 'admin'].includes(p.my_role) ? <Btn small title="Export awards (CSV)" color={c.paper} ink={c.ink} style={{ alignSelf: 'flex-start' }} onPress={download} /> : null}
       </Section>
 
+      {thread ? <ApplicationThread applicationId={thread.id} onClose={() => setThread(null)} /> : null}
       <ProgramBudget program={p} may={may} onChanged={reloadAll} />
       <ProgramAwards program={p} onChanged={reloadAll} />
       <FormSheet visible={form === 'edit'} onClose={() => setForm(null)} title="Edit program" fields={programFields([], false)}
@@ -359,6 +362,7 @@ export function FundingOpportunities() {
   const { push } = useNav();
   const [q, setQ] = useState('');
   const [sport, setSport] = useState(null);
+  const [thread, setThread] = useState(null);
   const [region, setRegion] = useState('');
   const [sort, setSort] = useState('newest');
   const [tab, setTab] = useState('all'); // all | invited
@@ -407,10 +411,12 @@ export function FundingOpportunities() {
               {a.form_id && !['draft', 'returned'].includes(a.status) ? <Btn small title="View receipt" color={c.violet} onPress={() => push('ApplicationForm', { round_id: a.round_id, target_type: a.target_type, target_id: a.target_id })} /> : null}
               {['draft', 'submitted', 'returned'].includes(a.status) ? <Btn small title="Withdraw" color={c.paper} ink={c.red} onPress={() => act(() => api.post(`/program-applications/${a.id}/withdraw`), 'Application withdrawn')} /> : null}
               {a.sponsorship_id ? <Btn small title="Open agreement" color={c.violet} onPress={() => push('SponsorDeal', { id: a.sponsorship_id })} /> : null}
+              {a.status !== 'draft' ? <Btn small title="Messages" color={c.paper} ink={c.ink} onPress={() => setThread(a)} accessibilityLabel={`Message the sponsor about ${a.program_name}`} /> : null}
             </View>
           </Card>
         )) : <Empty emoji="✉️" title="No applications yet" />}
       </Section>
+      {thread ? <ApplicationThread applicationId={thread.id} applicant onClose={() => setThread(null)} /> : null}
       <ApplySheet apply={apply} onClose={() => setApply(null)} onDone={reload} />
     </Screen>
   );

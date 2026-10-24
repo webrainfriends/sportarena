@@ -1,9 +1,10 @@
 // Shared building blocks of the Academy module: status badges that never rely on colour alone, capacity meters, KPI tiles,
 // funnel bars, a timeline and a master-detail panel (side column on tablet/desktop, bottom sheet on a phone).
 import React from 'react';
-import { Pressable, View } from 'react-native';
+import { Platform, Pressable, View } from 'react-native';
 import { api } from '../api';
 import { Avatar, Btn, Card, Empty, Loading, Row, Sheet, T, Tag } from '../ui';
+import { FormSheet } from '../FormSheet';
 import { useLoad } from '../hooks';
 import { explain } from '../access';
 import { useLayout } from '../layout';
@@ -183,6 +184,42 @@ export const Block = ({ title, right, children }) => (
     {children}
   </View>
 );
+
+/** Render an academy invoice (a paid one is the receipt) as a branded PDF and open it. Web opens it in a tab; the phone apps point to the web version. */
+export async function openInvoicePdf(invoiceId, toast) {
+  try {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return toast?.('Invoices and receipts open in the web app');
+    const d = await api.post('/branded-documents/invoice', { invoice_id: invoiceId });
+    const url = URL.createObjectURL(await api.download(`/branded-documents/${d.id}/file`));
+    window.open(url, '_blank', 'noopener');
+    setTimeout(() => URL.revokeObjectURL(url), 120000);
+  } catch (e) { toast?.(e.message); }
+}
+
+/** The branded enrolment letter as a PDF: family members get the standard letter, staff may add a welcome note and pick a published template. */
+export async function openEnrolmentLetter(enrolmentId, toast, body = {}) {
+  try {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return toast?.('Letters open in the web app');
+    const d = await api.post(`/academy/enrolments/${enrolmentId}/letter`, body);
+    const url = URL.createObjectURL(await api.download(`/branded-documents/${d.id}/file`));
+    window.open(url, '_blank', 'noopener');
+    setTimeout(() => URL.revokeObjectURL(url), 120000);
+  } catch (e) { toast?.(e.message); }
+}
+
+/** Staff: issue the enrolment letter with an optional welcome note and one of the academy's published letter templates. */
+export function LetterSheet({ enrolment, orgId, onClose, toast }) {
+  const tpl = useLoad(() => (enrolment ? api.get('/document-templates', { family: 'enrolment_letter' }).catch(() => []) : Promise.resolve([])), [enrolment?.enrolment_id, orgId]);
+  const mine = (tpl.data ?? []).filter((t) => t.organisation_id === orgId && t.latest_version);
+  return (
+    <FormSheet visible={!!enrolment} onClose={onClose} title={`Enrolment letter · ${enrolment?.display_name ?? ''}`} submitLabel="Issue letter (PDF)"
+      fields={[
+        { key: 'note', label: 'Welcome note', type: 'multiline', optional: true },
+        ...(mine.length ? [{ key: 'template_id', label: 'Letter template', type: 'chips', optional: true, options: mine.map((t) => ({ value: t.id, label: t.name })) }] : []),
+      ]}
+      onSubmit={async (v) => { await openEnrolmentLetter(enrolment.enrolment_id, toast, { note: v.note || undefined, template_id: v.template_id || undefined }); return 'Letter issued'; }} />
+  );
+}
 
 /** Pick a trial time from the academy's published trial sessions. Families and staff use the same list; the server decides who may book. */
 export function TrialSlots({ app, forStaff, onClose, onBooked, toast }) {

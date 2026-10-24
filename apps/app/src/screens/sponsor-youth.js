@@ -35,7 +35,7 @@ export function GuardianSponsors({ child, onClose }) {
               <Btn small title="Withdraw" color={c.paper} ink={c.red} style={{ alignSelf: 'flex-start', marginTop: 6 }} disabled={busy}
                 onPress={() => run(() => api.del(`/youth/children/${child.id}/sponsors/${x.sponsor_id}`), 'Authority withdrawn — future sponsor actions are blocked')} />
             </Card>))
-            : <Empty emoji="🛡️" title="No sponsor is authorized yet" sub={`${child?.display_name ?? 'They'} stay hidden from all sponsors.`} />}
+            : <Empty emoji="🛡️" title="No sponsor is authorized yet" sub={child ? `${child.display_name} stays hidden from all sponsors.` : 'They stay hidden from all sponsors.'} />}
           {past.map((x) => <T key={x.id} size={12} color={c.mute}>{x.sponsor_name} · withdrawn {day(x.withdrawn_at)} · {x.agreements} agreement{x.agreements === 1 ? '' : 's'} kept</T>)}
         </>)}
     </Sheet>
@@ -65,6 +65,10 @@ export function YouthPanel({ deal, reload }) {
     setBusy(true);
     try { await (on ? api.post(`/youth/children/${deal.target_id}/consents`, { purpose }) : api.del(`/youth/children/${deal.target_id}/consents/${purpose}`)); toast(on ? 'Permission saved' : 'Permission withdrawn'); reload(); } catch (e) { toast(explain(e)); reload(); } finally { setBusy(false); }
   };
+  const setPayee = async (guardianId) => {
+    setBusy(true);
+    try { await api.post(`/sponsorships/${deal.id}/youth-payee`, { guardian_id: guardianId }); toast('Payee saved'); reload(); } catch (e) { toast(explain(e)); reload(); } finally { setBusy(false); }
+  };
   const Row2 = ({ title, sub, value, onChange, disabled }) => (
     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
       <View style={{ flex: 1 }}><T weight="800">{title}</T><T size={12} color={c.mute}>{sub}</T></View>
@@ -84,6 +88,16 @@ export function YouthPanel({ deal, reload }) {
           <Card>
             <Row2 title="Photos & videos" sub="Needed before any endorsement content can be submitted." value={y.media_allowed} onChange={(on) => toggle('media', on)} />
             <Row2 title="Sponsor messages" sub="Lets the sponsor write notes, reviews and objectives. They come to you, not to your child." value={y.contact_allowed} onChange={(on) => toggle('contact', on)} />
+            <View accessibilityRole="summary" style={{ gap: 6 }}>
+              <T weight="800">Who is paid</T>
+              <T size={12} color={c.mute}>Sponsorship money is paid to a verified guardian and never to the young person. It applies to payments from now on; payments already open keep their payee.</T>
+              {!y.payee_set ? <Tag label="No guardian is set to receive the money yet — the sponsor cannot pay" color={c.sunSoft} /> : null}
+              <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+                {(y.guardians ?? []).map((g) => (
+                  <Btn key={g.id} small title={g.payee ? `✓ ${g.name}` : g.name} color={g.payee ? c.mint : c.paper} ink={g.payee ? c.ink : c.ink} disabled={busy || g.payee}
+                    accessibilityLabel={g.payee ? `${g.name} is paid` : `Pay ${g.name}`} onPress={() => setPayee(g.id)} />))}
+              </View>
+            </View>
             <T size={12} color={c.mute}>Sharing results is set under Performance & reviews. Each permission can be withdrawn at any time; payments and history are unaffected.</T>
           </Card>
         </Section>) : null}

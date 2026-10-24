@@ -26,7 +26,7 @@ function sideOf(ctx, need, what) {
   }
   throw forbidden('Only the sponsor or the recipient can do this');
 }
-const may = (ctx, a) => (ctx.role === 'recipient' ? !ORG_TARGETS.includes(ctx.d.target_type) || !!ctx.beneficiary?.representative : ctx.role === 'sponsor' ? actionsFor(ctx.staff).includes(a) : false);
+const may = (ctx, a) => (ctx.role === 'recipient' ? !ctx.minorBlocked && (!ORG_TARGETS.includes(ctx.d.target_type) || !!ctx.beneficiary?.representative) : ctx.role === 'sponsor' ? actionsFor(ctx.staff).includes(a) : false);
 
 const SUMMARY = `t.id, t.sponsorship_id, t.given_side, t.reason_code, t.reason, t.notice_on::text AS notice_on, t.effective_on::text AS effective_on, t.base_version, t.rev, t.status,
   t.agreed_at, t.dispute_note, t.disputed_at, t.dispute_resolved_at, t.dispute_case_id, t.ended_at, t.settled_at, t.settlement, t.created_at, t.updated_at,

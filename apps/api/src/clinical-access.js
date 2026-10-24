@@ -37,7 +37,7 @@ export async function clinicalCredential(userId, { types = CLINICAL_TYPES, sport
     if (!c.sport_id) return true;
     if (sportId) return c.sport_id === sportId;
     if (!athleteId) return true;
-    athleteSports ??= new Set((await many('SELECT sport_id FROM sport_profiles WHERE user_id=$1', [athleteId])).map((r) => r.sport_id));
+    athleteSports ??= new Set((await many('SELECT sport_id FROM active_sport_profiles WHERE user_id=$1', [athleteId])).map((r) => r.sport_id));
     return athleteSports.has(c.sport_id);
   };
   const jurOk = (c) => !config.clinical.jurisdictions.length || (c.jurisdiction && config.clinical.jurisdictions.includes(c.jurisdiction.toUpperCase()));

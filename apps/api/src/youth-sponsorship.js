@@ -3,7 +3,7 @@
 import { query } from './db.js';
 import { conflict, forbidden } from './errors.js';
 import { notify } from './notify.js';
-import { YOUTH_SQL, guardiansOf, isYouth, requireConsent } from './youth.js';
+import { YOUTH_SQL, guardianLink, guardiansOf, isYouth, requireConsent } from './youth.js';
 
 const LIVE_LINK = `l.status='active' AND l.revoked_at IS NULL AND (l.expires_at IS NULL OR l.expires_at > now())`;
 
@@ -44,3 +44,9 @@ export const youthConflict = () => conflict('This athlete is not open to sponsor
 
 /** SQL: agreements aimed at a young athlete whose verified guardian is `$1`. `a` carries target_type/target_id. Adds the guardian to the recipient side of every list. */
 export const guardedAthleteSql = (a, p = '$1') => `(${a}.target_type='athlete' AND ${a}.target_id IN (SELECT l.child_id FROM guardian_links l WHERE l.guardian_id=${p} AND l.status='active' AND l.revoked_at IS NULL AND (l.expires_at IS NULL OR l.expires_at > now())))`;
+
+/** Who receives a young athlete's money: the frozen/selected guardian payee if still a verified guardian, else null (nobody may be paid until a guardian is set). */
+export async function livePayee(c, d) {
+  if (!d.payee_guardian_id) return null;
+  return (await guardianLink(d.payee_guardian_id, d.target_id, c)) ? d.payee_guardian_id : null;
+}

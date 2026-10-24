@@ -7,16 +7,22 @@ import { toMajor } from '../currency.js';
 export async function activateUserPlan(c, id) {
   const p = (await c.query("SELECT * FROM user_plans WHERE id=$1 AND status='awaiting_payment' FOR UPDATE", [id])).rows[0];
   if (!p) return false;
+  // a renewal starts when the current membership ends (same venue, or same enrolment for an academy plan)
   const queued = p.kind === 'membership'
-    ? (await c.query("SELECT max(expires_at) AS e FROM user_plans WHERE user_id=$1 AND venue_id=$2 AND kind='membership' AND status='active' AND expires_at > now()", [p.user_id, p.venue_id])).rows[0].e
+    ? (await c.query(
+      `SELECT max(expires_at) AS e FROM user_plans WHERE user_id=$1 AND kind='membership' AND status='active' AND expires_at > now()
+          AND (($2::uuid IS NOT NULL AND venue_id=$2) OR ($3::uuid IS NOT NULL AND enrolment_id=$3))`, [p.user_id, p.venue_id, p.enrolment_id])).rows[0].e
     : null;
   const u = (await c.query(
-    `UPDATE user_plans SET status='active', starts_at = coalesce($2::timestamptz, now()), expires_at = coalesce($2::timestamptz, now()) + make_interval(days => duration_days) WHERE id=$1 RETURNING starts_at, expires_at`, [id, queued])).rows[0];
-  const v = (await c.query('SELECT id, name FROM venues WHERE id=$1', [p.venue_id])).rows[0];
+    `UPDATE user_plans SET status='active', starts_at = coalesce($2::timestamptz, now()),
+            expires_at = coalesce($2::timestamptz, now()) + CASE WHEN duration_months IS NOT NULL THEN make_interval(months => duration_months) ELSE make_interval(days => duration_days) END
+      WHERE id=$1 RETURNING starts_at, expires_at`, [id, queued])).rows[0];
+  const place = p.venue_id ? (await c.query('SELECT id, name FROM venues WHERE id=$1', [p.venue_id])).rows[0] : (await c.query('SELECT id, name FROM organisations WHERE id=$1', [p.organisation_id])).rows[0];
+  const until = u.expires_at.toISOString().slice(0, 10);
   await notify(c, p.user_id, {
     kind: 'plan_active', title: `${p.name} is active ✓`,
-    body: p.kind === 'membership' ? `${p.discount_bp / 100}% off every booking at ${v.name} until ${u.expires_at.toISOString().slice(0, 10)}.` : `${p.sessions_total} sessions at ${v.name}, use them by ${u.expires_at.toISOString().slice(0, 10)}. Pay for a booking with "Use pass".`,
-    data: { venue_id: v.id } });
+    body: p.kind === 'membership' ? (p.discount_bp ? `${p.discount_bp / 100}% off every booking at ${place.name} until ${until}.` : `Active at ${place.name} until ${until}.`) : `${p.sessions_total} sessions at ${place.name}, use them by ${until}.`,
+    data: p.venue_id ? { venue_id: place.id } : { organisation_id: place.id } });
   return true;
 }
 
@@ -50,23 +56,29 @@ export const money = (cents, cur) => `${cur} ${toMajor(cents, cur)}`;
 export async function raiseSubscriptionRenewals({ limit = 100 } = {}) {
   return tx(async (c) => {
     const { rows } = await c.query(
-      `SELECT up.*, p.price_cents AS new_price, p.active AS on_sale, p.duration_days AS new_days, p.discount_bp AS new_discount, v.name AS venue_name, v.currency AS venue_currency
-         FROM user_plans up JOIN venue_plans p ON p.id=up.plan_id JOIN venues v ON v.id=up.venue_id
+      `SELECT up.*, p.price_cents AS new_price, p.active AS on_sale, p.duration_days AS new_days, p.duration_months AS new_months, p.discount_bp AS new_discount,
+              coalesce(v.name, o.name) AS place_name, coalesce(v.currency, p.currency) AS place_currency, e.status AS enrolment_status, pr.ends_on AS programme_ends
+         FROM user_plans up JOIN venue_plans p ON p.id=up.plan_id LEFT JOIN venues v ON v.id=up.venue_id LEFT JOIN organisations o ON o.id=up.organisation_id
+         LEFT JOIN org_enrolments e ON e.id=up.enrolment_id LEFT JOIN academy_programmes pr ON pr.id=e.programme_id
         WHERE up.kind='membership' AND up.auto_renew AND up.status='active' AND up.expires_at > now() AND up.expires_at <= now() + interval '7 days'
           AND NOT EXISTS (SELECT 1 FROM user_plans nx WHERE nx.renews_id=up.id)
-          AND NOT EXISTS (SELECT 1 FROM user_plans o WHERE o.user_id=up.user_id AND o.venue_id=up.venue_id AND o.kind='membership' AND o.id<>up.id AND (o.status='awaiting_payment' OR (o.status='active' AND o.expires_at > up.expires_at)))
+          AND NOT EXISTS (SELECT 1 FROM user_plans o2 WHERE o2.user_id=up.user_id AND o2.kind='membership' AND o2.id<>up.id
+                            AND ((up.venue_id IS NOT NULL AND o2.venue_id=up.venue_id) OR (up.enrolment_id IS NOT NULL AND o2.enrolment_id=up.enrolment_id))
+                            AND (o2.status='awaiting_payment' OR (o2.status='active' AND o2.expires_at > up.expires_at)))
         ORDER BY up.expires_at LIMIT $1 FOR UPDATE OF up SKIP LOCKED`, [limit]);
     let n = 0;
     for (const up of rows) {
-      if (!up.on_sale || up.venue_currency !== up.currency) continue;
+      if (!up.on_sale || up.place_currency !== up.currency) continue;
+      if (up.organisation_id && (up.enrolment_status !== 'enrolled' || (up.programme_ends && new Date(up.programme_ends) <= new Date(up.expires_at)))) continue; // an academy fee stops when the person leaves or the programme ends
       const nx = (await c.query(
-        `INSERT INTO user_plans(plan_id, venue_id, user_id, kind, name, price_cents, currency, discount_bp, duration_days, resource_ids, includes, auto_renew, renews_id)
-         VALUES ($1,$2,$3,'membership',$4,$5,$6,$7,$8,$9,$10,true,$11) RETURNING id`,
-        [up.plan_id, up.venue_id, up.user_id, up.name, up.new_price, up.currency, up.new_discount, up.new_days, up.resource_ids, up.includes, up.id])).rows[0];
+        `INSERT INTO user_plans(plan_id, venue_id, organisation_id, enrolment_id, user_id, kind, name, price_cents, currency, discount_bp, duration_days, duration_months, resource_ids, includes, auto_renew, renews_id)
+         VALUES ($1,$2,$3,$4,$5,'membership',$6,$7,$8,$9,$10,$11,$12,$13,true,$14) RETURNING id`,
+        [up.plan_id, up.venue_id, up.organisation_id, up.enrolment_id, up.user_id, up.name, up.new_price, up.currency, up.new_discount, up.new_days, up.new_months, up.resource_ids, up.includes, up.id])).rows[0];
+      if (up.organisation_id) await (await import('../academy.js')).raiseRenewalCharge(c, up, nx.id);   // the money side of an academy period is an academy charge
       await notify(c, up.user_id, {
         kind: 'plan_renewal', title: `Renew ${up.name}`, dedupe_key: `plan_renewal:${up.id}`,
-        body: `Your ${up.name} at ${up.venue_name} ends on ${up.expires_at.toISOString().slice(0, 10)}. Renewal: ${money(up.new_price, up.currency)} — pay it to keep your ${up.discount_bp / 100}% off without a gap.`,
-        data: { venue_id: up.venue_id, user_plan_id: nx.id } });
+        body: `Your ${up.name} at ${up.place_name} ends on ${up.expires_at.toISOString().slice(0, 10)}. Renewal: ${money(up.new_price, up.currency)} — pay it to keep your place without a gap.`,
+        data: up.venue_id ? { venue_id: up.venue_id, user_plan_id: nx.id } : { organisation_id: up.organisation_id, user_plan_id: nx.id } });
       n++;
     }
     return n;

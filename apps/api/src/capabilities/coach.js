@@ -22,7 +22,7 @@ cap({
   name: 'coach_home', method: 'GET', path: '/coach/home', tag: TAG, auth: COACH,
   summary: 'Coach Home: credential status, sports, next session, counts and an action inbox where every card names the screen that resolves it.',
   async handler({ user }) {
-    const sports = await many("SELECT s.slug, s.name, s.emoji, p.hourly_rate_cents, p.id AS profile_id FROM sport_profiles p JOIN sports s ON s.id=p.sport_id WHERE p.user_id=$1 AND p.role='coach' ORDER BY s.name", [user.id]);
+    const sports = await many("SELECT s.slug, s.name, s.emoji, p.hourly_rate_cents, p.id AS profile_id FROM active_sport_profiles p JOIN sports s ON s.id=p.sport_id WHERE p.user_id=$1 AND p.role='coach' ORDER BY s.name", [user.id]);
     const badge = ((await badgesFor('user', [user.id])).get(user.id) ?? []).find((b) => b.type === 'coach') ?? null;
     const teams = await myTeams(user.id);
     const [nextHire, nextSession, counts, requests, toConfirm, planReplies, feedbackWaiting, invites, awaitingAthlete] = await Promise.all([
