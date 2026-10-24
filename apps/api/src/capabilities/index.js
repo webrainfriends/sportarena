@@ -56,6 +56,7 @@ import './games.js';
 import './associations.js';
 import './guardians.js';
 import './billboard.js';
+import './recruitment.js';
 import './shop.js';
 import './shop-cart.js';
 import './hire.js';
