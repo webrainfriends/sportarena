@@ -219,6 +219,7 @@ cap({
     if (t.status !== 'published' || new Date(t.starts_at) < new Date()) throw conflict('The target must be an upcoming published session');
     if (s.programme_id && t.programme_id !== s.programme_id) throw badRequest('A transfer must stay within the same programme');
     if (!(await eligible(c, s, i.user_id))) throw badRequest('That person is not on the original session\'s roster');
+    if ((await c.query('SELECT 1 FROM academy_attendance WHERE session_id=$1 AND user_id=$2 AND application_id IS NOT NULL', [s.id, i.user_id])).rowCount) throw conflict('This is a trial seat. Change a trial time from the application (trial booking), not with a make-up transfer.');
     if (!(await c.query('SELECT 1 FROM academy_attendance WHERE session_id=$1 AND user_id=$2', [t.id, i.user_id])).rowCount) {
       if (t.capacity && (await expectedCount(c, t)) >= t.capacity) throw conflict('The target session is full');
       if (!(await c.query("SELECT 1 FROM org_enrolments WHERE cohort_id=$1 AND user_id=$2 AND status='enrolled'", [t.cohort_id, i.user_id])).rowCount) {

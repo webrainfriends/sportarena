@@ -718,3 +718,27 @@ test('trial seats: cancelling a session you moved away from leaves your new book
   assert.equal((await pool.query("SELECT status FROM academy_attendance WHERE session_id=$1 AND user_id=$2", [second.id, u.id])).rows[0].status, 'excused');
   must(await api('POST', `/academy/applications/${w.id}/trial/book`, { token: v.token, body: { row_version: w.row_version, session_id: second.id } }));
 });
+
+test('trial outcomes can be corrected through attendance; a seat the family already left is ignored; trial seats cannot be moved by a make-up transfer', async () => {
+  const a = await academy({ capacity: 10 });
+  const s1 = await trialSlot(a, { capacity: 3, days: 3 }), s2 = await trialSlot(a, { capacity: 3, days: 4 });
+  const u = await adult();
+  const t = await requestTrial(u, a);
+  const b1 = must(await api('POST', `/academy/applications/${t.id}/trial/book`, { token: u.token, body: { row_version: t.row_version, session_id: s1.id } }));
+  // a trial seat is not a make-up: the transfer refuses it and points at the booking flow
+  assert.equal((await api('POST', `/academy/sessions/${s1.id}/transfer`, { token: a.owner.token, body: { user_id: u.id, to_session_id: s2.id } })).status, 409);
+  // the family moves to the second time; a staff correction on the seat they left must not touch the application
+  must(await api('POST', `/academy/applications/${t.id}/trial/book`, { token: u.token, body: { row_version: b1.row_version, session_id: s2.id } }));
+  await startedAlready(s1.id);
+  must(await api('POST', `/academy/sessions/${s1.id}/attendance`, { token: a.owner.token, body: { reason: 'Correction after the move', entries: [{ user_id: u.id, status: 'absent', reason_code: 'other' }] } }));
+  assert.equal((await appRow(t.id)).stage, 'trial_booked');
+  // first mark absent, then corrected to present (and back): the application follows each correction
+  await startedAlready(s2.id);
+  const mark = (status, extra = {}) => api('POST', `/academy/sessions/${s2.id}/attendance`, { token: a.owner.token, body: { reason: 'Recorded at the session', entries: [{ user_id: u.id, status, ...extra }] } });
+  must(await mark('absent', { reason_code: 'other' }));
+  assert.equal((await appRow(t.id)).stage, 'trial_requested');
+  must(await mark('present'));
+  assert.equal((await appRow(t.id)).stage, 'trial_completed');
+  must(await mark('absent', { reason_code: 'other' }));
+  assert.equal((await appRow(t.id)).stage, 'trial_requested');
+});

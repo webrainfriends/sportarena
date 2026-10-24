@@ -21,13 +21,19 @@ export async function tellTrial(c, app, session, kind, title, stamp = '') {
   }
 }
 
-/** Attendance was marked on a trial seat: the application follows. Called from the single attendance write path. */
+/**
+ * Attendance was marked on a trial seat: the application follows, including a correction of the first mark (absent <-> present). Only the
+ * application's current seat counts: a mark on a seat it already left (moved to another time) never changes the application.
+ */
 export async function syncTrialFromAttendance(c, row, status, actor) {
   if (!row?.application_id || !['present', 'late', 'left_early', 'absent'].includes(status)) return;
   const a = (await c.query('SELECT * FROM academy_applications WHERE id=$1 FOR UPDATE', [row.application_id])).rows[0];
-  if (!a || a.stage !== 'trial_booked') return;
-  const s = (await c.query('SELECT * FROM academy_sessions WHERE id=$1', [row.session_id])).rows[0];
+  if (!a) return;
+  if ((await c.query("SELECT 1 FROM academy_attendance WHERE application_id=$1 AND id <> $2 AND status='expected'", [a.id, row.id])).rowCount) return; // booked elsewhere now
   const done = status !== 'absent';
+  const from = done ? ['trial_booked', 'trial_requested'] : ['trial_booked', 'trial_completed'];
+  if (!from.includes(a.stage)) return;
+  const s = (await c.query('SELECT * FROM academy_sessions WHERE id=$1', [row.session_id])).rows[0];
   const next = await moveStage(c, a, done ? 'trial_completed' : 'trial_requested', { actor, reason: done ? 'Attended the trial' : 'Did not attend the trial' });
   await tellTrial(c, next, s, done ? 'completed' : 'missed', done ? 'Trial completed' : 'We missed you at your trial', row.row_version);
 }
