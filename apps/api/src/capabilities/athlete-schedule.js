@@ -31,7 +31,7 @@ cap({
     const win = [user.id, from, to];
     const D = `${DEFAULT_MATCH_MIN} minutes`;
 
-    const [squads, games, entries, organised, bookings, hires, appts, follows, gameSessions, planSessions, teamFixtures, teamEntries, officiating, crew, patients, commitments, blocks, attendance] = await Promise.all([
+    const [squads, games, entries, organised, bookings, hires, appts, follows, gameSessions, planSessions, teamFixtures, teamEntries, officiating, crew, patients, commitments, blocks, attendance, academy] = await Promise.all([
       many(`SELECT q.id, q.status, q.team_id, f.id AS fixture_id, f.event_id AS fx_event_id, f.scheduled_at AS starts_at, f.scheduled_at + interval '${D}' AS ends_at, e.name AS event_name, s.slug AS sport,
                    t.name AS team_name, h.name AS home_name, a.name AS away_name, rs.timezone AS tz
             FROM team_squads q JOIN fixtures f ON f.id=q.fixture_id JOIN events e ON e.id=f.event_id JOIN sports s ON s.id=e.sport_id
@@ -101,6 +101,15 @@ cap({
       many(`SELECT id, kind, title, starts_at, ends_at, timezone FROM athlete_blocks WHERE user_id=$1 AND status='active' AND starts_at >= $2::date AND starts_at < $3::date + 1`, win),
       // your own answers to "are you coming?" (team_attendance), so each team item can show In / Maybe / Out
       many(`SELECT team_id, event_id, fixture_id, rsvp FROM team_attendance WHERE user_id=$1`, [user.id]),
+      // Academy OS 2/3: sessions of cohorts you are enrolled in (or added to as a make-up guest), and sessions you staff. Read from the academy session; never copied.
+      many(`SELECT s.id, s.title, s.status, s.starts_at, s.ends_at, s.timezone, s.sport, k.name AS cohort, o.name AS organisation, coalesce(a.status, 'expected') AS attendance, false AS as_staff, ${venueText('academy_session', 's.id')}
+              FROM academy_sessions s JOIN org_cohorts k ON k.id=s.cohort_id JOIN organisations o ON o.id=s.organisation_id LEFT JOIN academy_attendance a ON a.session_id=s.id AND a.user_id=$1
+             WHERE s.status IN ('published','cancelled') AND s.starts_at >= $2::date AND s.starts_at < $3::date + 1
+               AND (EXISTS (SELECT 1 FROM org_enrolments e WHERE e.cohort_id=s.cohort_id AND e.user_id=$1 AND e.status='enrolled') OR coalesce(a.guest, false))
+             UNION ALL
+            SELECT s.id, s.title, s.status, s.starts_at, s.ends_at, s.timezone, s.sport, k.name, o.name, 'expected', true, ${venueText('academy_session', 's.id')}
+              FROM academy_session_staff st JOIN academy_sessions s ON s.id=st.session_id JOIN org_cohorts k ON k.id=s.cohort_id JOIN organisations o ON o.id=s.organisation_id
+             WHERE st.user_id=$1 AND st.status IN ('assigned','confirmed') AND s.status='published' AND s.starts_at >= $2::date AND s.starts_at < $3::date + 1`, win),
     ]);
 
     const items = [];
@@ -134,6 +143,7 @@ cap({
     for (const r of crew) add({ kind: 'duty', source_type: 'event_staff', source_id: r.id, sport: r.sport, title: `${r.title ?? r.role} · ${r.event_name}`, context: 'Event crew', starts_at: `${day10(r.starts_on)}T00:00:00Z`, ends_at: r.ends_on ? `${day10(r.ends_on)}T23:59:59Z` : null, all_day: true, status: r.status === 'accepted' ? 'confirmed' : 'awaiting_response', action_required: r.status === 'invited', link: { screen: 'Event', params: { id: r.event_id } }, actions: [] });
     for (const r of patients) add({ kind: 'health', source_type: 'provider_appointment', source_id: r.id, title: `${r.patient} · ${r.provider_type === 'doctor' ? 'consultation' : 'session'}`, starts_at: r.starts_at, ends_at: r.ends_at, timezone: r.tz ?? 'UTC', status: r.status === 'confirmed' ? 'confirmed' : 'awaiting_response', action_required: r.status === 'requested', link: { screen: 'Health', params: {} }, actions: [] });
     for (const r of blocks) add({ kind: 'recovery', source_type: 'athlete_block', source_id: r.id, title: r.title || BLOCK_LABEL[r.kind], context: r.title ? BLOCK_LABEL[r.kind] : null, starts_at: r.starts_at, ends_at: r.ends_at, timezone: r.timezone, status: 'confirmed', actions: ['archive_athlete_block'] });
+    for (const r of academy) add({ kind: r.as_staff ? 'duty' : 'training', source_type: 'academy_session', source_id: r.id, sport: r.sport, title: r.title, context: [r.organisation, r.cohort, r.venue].filter(Boolean).join(' · '), starts_at: r.starts_at, ends_at: r.ends_at, timezone: r.timezone, status: r.status === 'cancelled' ? 'cancelled' : ['absent', 'excused'].includes(r.attendance) ? 'declined' : 'confirmed', link: { screen: r.as_staff ? 'AcademySession' : 'AcademyFamily', params: r.as_staff ? { id: r.id } : {} }, actions: [] });
     const clog = await loggedMap(commitments.map((c) => c.id));
     for (const raw of commitments) for (const o of occurrences(plain(raw), from, to, clog)) add({ kind: 'training', source_type: 'coach_commitment', source_id: `${raw.id}:${o.on_date}`, sport: raw.sport_slug, title: raw.title, context: [raw.client, 'Commitment'].filter(Boolean).join(' · '), starts_at: o.starts_at, ends_at: o.ends_at, timezone: raw.timezone, status: o.logged?.status === 'delivered' ? 'completed' : 'confirmed', link: { screen: 'CoachCommitments', params: {} }, actions: [] });
 

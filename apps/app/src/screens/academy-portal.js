@@ -56,7 +56,8 @@ export function AcademyFamily() {
           ))}
         </ScrollView>
       ) : null}
-      <View style={{ marginTop: 6 }}><Seg value={tab} onChange={setTab} color={c.violet} options={[{ value: 'overview', label: 'Overview' }, { value: 'browse', label: 'Find a programme' }, { value: 'payments', label: `Payments${due.length ? ` (${due.length})` : ''}` }]} /></View>
+      <View style={{ marginTop: 6 }}><Seg value={tab} onChange={setTab} color={c.violet} options={[{ value: 'overview', label: 'Overview' }, { value: 'sessions', label: 'Sessions' }, { value: 'browse', label: 'Find a programme' }, { value: 'payments', label: `Payments${due.length ? ` (${due.length})` : ''}` }]} /></View>
+      {tab === 'sessions' ? <View style={{ marginTop: 10 }}><MySessions key={p.athlete.id} athleteId={p.athlete.is_me ? undefined : p.athlete.id} toast={toast} /></View> : null}
       {tab === 'overview' ? (
         <View style={{ gap: 14, marginTop: 12 }}>
           {attention.length ? (

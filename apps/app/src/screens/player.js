@@ -383,6 +383,7 @@ export function SportProfile({ id, embedded, onChanged, onRemoved }) {
         <Btn title={`+ Log ${th.one}`} color={tone[0]} onPress={() => setLog(true)} />
         <View style={{ flexDirection: 'row', gap: 8 }}>
           <Btn small title="Import CSV" color={c.paper} onPress={() => push('ImportMatches', { id: p.id })} style={{ flex: 1 }} />
+          <Btn small title="Career" color={c.paper} onPress={() => push('CareerTimeline', { sport: p.sport_slug })} style={{ flex: 1 }} />
           <Btn small title="Edit" color={c.paper} onPress={() => setEdit(true)} style={{ flex: 1 }} />
           {!p.is_default ? <Btn small title="☆ Default" color={c.paper} onPress={act(() => api.post(`/me/sport-profiles/${p.id}/default`), 'Default updated')} style={{ flex: 1 }} /> : null}
         </View>

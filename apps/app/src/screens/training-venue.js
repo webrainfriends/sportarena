@@ -95,7 +95,7 @@ export function RepeatPicker({ value: p, onChange, min, checked }) {
 
 // ================================================================================== COURT PICKER
 /** Venue search (optionally only venues free at a time) and the courts of the chosen venue. */
-function CourtPicker({ sport, window, venueId, resourceId, onVenue, onResource }) {
+export function CourtPicker({ sport, window, venueId, resourceId, onVenue, onResource }) {
   const [q, setQ] = useState(''), [free, setFree] = useState(!!window);
   const dq = useDebounced(q);
   const list = useLoad(() => api.get('/venues', { q: dq || undefined, sport: sport || undefined, limit: 20, ...(free && window ? { available_from: window.from, available_to: window.to } : {}) }), [dq, sport, free, window?.from]);

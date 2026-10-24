@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { openRosterStint } from '../career.js';
 import { cap, id, page } from '../registry.js';
 import { one, many, query } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
@@ -34,6 +35,7 @@ cap({
         `INSERT INTO team_members(team_id, user_id, role, jersey_no, status) VALUES ($1,$2,$3,$4,'active')
          ON CONFLICT (team_id, user_id) DO UPDATE SET role=EXCLUDED.role, jersey_no=coalesce(EXCLUDED.jersey_no, team_members.jersey_no), status='active' RETURNING *`,
         [target.id, subjectId, i.role, i.uniform_no ?? null]);
+      await openRosterStint(null, target, subjectId, i.role, i.uniform_no, m.position, user.id);
       return { association_id: null, user_id: m.user_id, role: m.role, target_type: 'team', target_id: m.team_id, status: m.status, uniform_no: m.jersey_no };
     }
 
