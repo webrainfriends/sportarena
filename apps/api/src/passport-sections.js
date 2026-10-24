@@ -58,10 +58,31 @@ export async function recruitmentSections(userId, scope, { viewerId = null, toke
   const academicOut = academic?.map(({ summary_enc, ...a }) => ({ ...a, summary: summary_enc ? decrypt(summary_enc, 'academic_evidence.summary') : null, file_url: a.has_file ? (token ? `${base}/academic/${a.id}` : `/api/v1/academic-evidence/${a.id}/file`) : null }));
   if (academicOut?.length && viewerId !== userId) for (const a of academicOut) await audit(null, viewerId, 'read_passport_academic', 'academic_evidence', a.id);
   return {
-    videos: videos?.map((v) => ({ ...v, file_url: v.has_file ? (token ? `${base}/video/${v.id}` : `/api/v1/passport-videos/${v.id}/file`) : null })) ?? null,
+    videos: videos?.map((v) => withEmbed({ ...v, file_url: v.has_file ? (token ? `${base}/video/${v.id}` : `/api/v1/passport-videos/${v.id}/file`) : null })) ?? null,
     references,
     preferences: scope.show_preferences ? preferences ?? { sport_slugs: [], levels: [], regions: [], open_to: [], open_to_contact: false, notes: null } : null,
     availability,
     academic: academicOut ?? null,
   };
 }
+
+/** Linked videos are limited to YouTube and Vimeo, so they can be played inside the app. Returns null for any other address. */
+export function videoEmbed(link) {
+  let u;
+  try { u = new URL(link); } catch { return null; }
+  if (u.protocol !== 'https:') return null;
+  const host = u.hostname.replace(/^(www|m)\./, '');
+  const seg = u.pathname.split('/').filter(Boolean);
+  const yt = /^[\w-]{11}$/;
+  let m;
+  if (host === 'youtu.be' && yt.test(seg[0] ?? '')) m = seg[0];
+  else if (host === 'youtube.com' || host === 'youtube-nocookie.com') {
+    if (u.pathname === '/watch' && yt.test(u.searchParams.get('v') ?? '')) m = u.searchParams.get('v');
+    else if (['shorts', 'embed', 'live'].includes(seg[0]) && yt.test(seg[1] ?? '')) m = seg[1];
+  }
+  if (m) return { provider: 'youtube', embed_url: `https://www.youtube-nocookie.com/embed/${m}` };
+  const vid = host === 'player.vimeo.com' ? (seg[0] === 'video' ? seg[1] : null) : host === 'vimeo.com' ? seg.find((x) => /^\d+$/.test(x)) : null;
+  if (vid && /^\d{5,12}$/.test(vid)) return { provider: 'vimeo', embed_url: `https://player.vimeo.com/video/${vid}` };
+  return null;
+}
+export const withEmbed = (v) => ({ ...v, embed_url: v.link_url ? videoEmbed(v.link_url)?.embed_url ?? null : null });
