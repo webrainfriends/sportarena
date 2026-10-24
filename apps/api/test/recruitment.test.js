@@ -94,7 +94,7 @@ test('full journey: applied -> shortlisted -> trial -> evaluated -> offered (v1,
 
   // applicant sees offer history + stage, not staff-only data
   const mine = must(await api('GET', '/me/billboard-responses', { token: p.token }));
-  assert.equal(mine[0].stage, 'offered'); assert.equal(mine[0].latest_offer.version, 2); assert.equal(mine[0].latest_offer.rate_cents, 6000);
+  assert.equal(mine[0].response_id, r.id, 'the application id is not shadowed by the post id'); assert.equal(mine[0].id, b.id); assert.equal(mine[0].stage, 'offered'); assert.equal(mine[0].latest_offer.version, 2); assert.equal(mine[0].latest_offer.rate_cents, 6000);
   const app = must(await api('GET', `/billboard/responses/${r.id}/application`, { token: p.token }));
   assert.equal(app.viewer, 'applicant'); assert.equal(app.offers.length, 2); assert.equal(app.evaluations, undefined); assert.equal(app.source, undefined); assert.equal(app.events[0].note, undefined);
   assert.equal((await api('GET', `/billboard/responses/${r.id}/application`, { token: other.token })).status, 403);

@@ -41,7 +41,7 @@ export const PRIORITY = [
   [['sponsor', 'supplier'], ['Sponsors', 'Supply', 'Wallet', 'Earnings', 'Billboard', 'Shop']],
   [['physio', 'doctor', 'lawyer', 'insurer'], ['Health', 'Insure', 'Legal', 'Wallet', 'Leaderboard', 'Support']],
 ];
-export const PRIORITY_DEFAULT = ['Leaderboard', 'Health', 'Insure', 'Wallet', 'Shop', 'Billboard'];
+export const PRIORITY_DEFAULT = ['Leaderboard', 'MyApplications', 'Health', 'Insure', 'Wallet', 'Shop', 'Billboard'];
 
 /** The wheel's order for someone with these roles: their priority modules first, then the rest in catalogue order. */
 export function orderedModules(roles = []) {

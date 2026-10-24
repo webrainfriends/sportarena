@@ -125,13 +125,13 @@ export function RecruitmentApplication({ id }) {
   const act = useAct(q.reload);
   const { toast } = useSession();
   const [form, setForm] = useState(null);
+  const key = useRef(newKey());
   if (q.error) return <Screen><ErrorBox error={q.error} onRetry={q.reload} /></Screen>;
   if (q.loading && !q.data) return <Screen><Loading /></Screen>;
   const { application: a, post, applicant, viewer, events, offers } = q.data;
   const staff = viewer === 'staff';
   const open = ['applied', 'shortlisted', 'trial', 'evaluated', 'offered'].includes(a.stage);
   const cur = offers.find((o) => o.status === 'open');
-  const key = useRef(newKey());
   const post_ = (path, body, done) => act((k) => api.post(`/billboard/responses/${id}/${path}`, { ...body, row_version: a.row_version, idempotency_key: k }), done);
   const kinds = { applied: 'Applied', stage: 'Moved', trial: 'Trial scheduled', evaluation: 'Evaluated', offer: 'Offer', offer_response: 'Offer answered', offer_expired: 'Offer expired', withdrawn: 'Withdrawn', legacy_decision: 'Decided' };
   return (
@@ -165,7 +165,7 @@ export function RecruitmentApplication({ id }) {
 
       <H2>History</H2>
       <Card pad={14}><View style={{ gap: 8 }}>
-        {events.map((e, i) => <T key={i} size={13}><T weight="700" size={13}>{kinds[e.kind] ?? e.kind}</T>{e.to_stage ? ` → ${STAGE[e.to_stage]?.[0] ?? e.to_stage}` : ''} · <T size={13} color={c.mute}>{when(e.created_at)}{staff && e.note ? ` · ${e.note}` : ''}</T></T>)}
+        {events.map((e, i) => <T key={i} size={13}><T weight="700" size={13}>{kinds[e.kind] ?? e.kind}</T>{e.to_stage && e.kind !== 'applied' && e.to_stage !== e.from_stage ? ` → ${STAGE[e.to_stage]?.[0] ?? e.to_stage}` : ''} · <T size={13} color={c.mute}>{when(e.created_at)}{staff && e.note ? ` · ${e.note}` : ''}</T></T>)}
       </View></Card>
 
       {open ? (
@@ -223,7 +223,7 @@ export function MyApplications({ child_id, name }) {
       {rows.length === 0 ? <Empty emoji="📨" title="No applications yet" sub="Apply to a team or match from the Billboard and follow every step here." /> : rows.map((r) => {
         const o = r.latest_offer;
         return (
-          <Card key={r.id} pad={14}>
+          <Card key={r.response_id} pad={14}>
             <View style={{ gap: 8 }}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
                 <View style={{ flex: 1 }}><T weight="800">{r.title}</T><T size={12} color={c.mute}>{[r.team_name, r.author_name, `applied ${when(r.responded_at)}`].filter(Boolean).join(' · ')}</T></View>
@@ -233,11 +233,11 @@ export function MyApplications({ child_id, name }) {
               {o ? <T size={13}>Offer v{o.version} · {offerLine(o)}{o.status === 'open' ? ` · ${left(o.deadline_at)}` : ` · ${o.status}`}</T> : null}
               <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
                 {r.stage === 'offered' && o?.status === 'open' ? <>
-                  <Btn small title="Accept" onPress={() => act((k) => api.post(`/billboard/responses/${r.id}/offer-response`, { accept: true, row_version: r.row_version, idempotency_key: k }), 'Offer accepted')} />
-                  <Btn small title="Decline" color={c.paper} ink={c.red} onPress={() => act((k) => api.post(`/billboard/responses/${r.id}/offer-response`, { accept: false, row_version: r.row_version, idempotency_key: k }), 'Offer declined')} />
+                  <Btn small title="Accept" onPress={() => act((k) => api.post(`/billboard/responses/${r.response_id}/offer-response`, { accept: true, row_version: r.row_version, idempotency_key: k }), 'Offer accepted')} />
+                  <Btn small title="Decline" color={c.paper} ink={c.red} onPress={() => act((k) => api.post(`/billboard/responses/${r.response_id}/offer-response`, { accept: false, row_version: r.row_version, idempotency_key: k }), 'Offer declined')} />
                 </> : null}
-                {['applied', 'shortlisted', 'trial', 'evaluated', 'offered'].includes(r.stage) ? <Btn small title="Withdraw" color={c.paper} ink={c.red} onPress={() => act((k) => api.post(`/billboard/responses/${r.id}/withdraw`, { row_version: r.row_version, idempotency_key: k }), 'Application withdrawn')} /> : null}
-                <Btn small title="Details" color={c.paper} onPress={() => push('RecruitmentApplication', { id: r.id })} />
+                {['applied', 'shortlisted', 'trial', 'evaluated', 'offered'].includes(r.stage) ? <Btn small title="Withdraw" color={c.paper} ink={c.red} onPress={() => act((k) => api.post(`/billboard/responses/${r.response_id}/withdraw`, { row_version: r.row_version, idempotency_key: k }), 'Application withdrawn')} /> : null}
+                <Btn small title="Details" color={c.paper} onPress={() => push('RecruitmentApplication', { id: r.response_id })} />
               </View>
             </View>
           </Card>
