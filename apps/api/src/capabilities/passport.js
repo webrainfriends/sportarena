@@ -111,6 +111,6 @@ cap({
     const link = await one('UPDATE passport_links SET view_count=view_count+1, last_viewed_at=now() WHERE token_hash=$1 AND revoked_at IS NULL AND expires_at > now() RETURNING user_id, show_matches, show_results, show_awards, show_credentials, show_career, expires_at', [sha256(i.token)]);
     // a wrong, expired or revoked link all look the same
     if (!link) throw notFound('Passport link');
-    return { ...(await buildPassport(link.user_id, { ...scopeOf(link), show_career: link.show_career })), expires_at: link.expires_at };
+    return { ...(await buildPassport(link.user_id, scopeOf(link))), expires_at: link.expires_at };
   },
 });
