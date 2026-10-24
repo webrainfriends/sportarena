@@ -185,6 +185,37 @@ export const Block = ({ title, right, children }) => (
   </View>
 );
 
+/** Horizontal bars with the number printed on every row, so no meaning rests on length or colour. `rows`: [{ label, value, text, tone? }]. */
+export function Bars({ rows, label }) {
+  const max = Math.max(1, ...rows.map((r) => Math.abs(r.value ?? 0)));
+  return (
+    <View accessible accessibilityLabel={`${label}: ${rows.map((r) => `${r.label} ${r.text ?? r.value}`).join(', ')}`} style={{ gap: 7 }}>
+      {rows.map((r) => (
+        <View key={r.label} style={{ gap: 3 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}><T size={13} weight="700" style={{ flex: 1 }}>{r.label}</T><T size={13} weight="800">{r.text ?? r.value}</T></View>
+          <View style={{ height: 8, borderRadius: 5, backgroundColor: c.violetSoft }}>{r.value == null ? null : <View style={{ height: 8, borderRadius: 5, width: `${Math.max(r.value ? 3 : 0, Math.round((Math.abs(r.value) / max) * 100))}%`, backgroundColor: r.tone ?? (r.value < 0 ? c.orange : c.cyan) }} />}</View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+/** Where a figure comes from, written in words next to it. */
+export const Origin = ({ origin }) => <Tag label={{ official: '🏆 Official result', coach_observed: '📝 Coach observed', academy_recorded: '📋 Academy recorded', athlete_reported: '🙋 Athlete reported' }[origin] ?? origin} />;
+
+/** Save a CSV: a download on the web, the share sheet on a phone. */
+export async function saveCsv(filename, text) {
+  const { Platform, Share } = require('react-native');
+  if (Platform.OS === 'web' && typeof document !== 'undefined') {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([text], { type: 'text/csv' }));
+    a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+    return;
+  }
+  await Share.share({ message: text, title: filename });
+}
+export const pct = (v) => (v == null ? 'missing' : `${v}%`);
+
 /** Render an academy invoice (a paid one is the receipt) as a branded PDF and open it. Web opens it in a tab; the phone apps point to the web version. */
 export async function openInvoicePdf(invoiceId, toast) {
   try {
@@ -197,14 +228,14 @@ export async function openInvoicePdf(invoiceId, toast) {
 }
 
 /** The branded enrolment letter as a PDF: family members get the standard letter, staff may add a welcome note and pick a published template. */
-export async function openEnrolmentLetter(enrolmentId, toast, body = {}) {
+export async function openEnrolmentLetter(enrolmentId, toast, body = {}, { rethrow = false } = {}) {
   try {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return toast?.('Letters open in the web app');
     const d = await api.post(`/academy/enrolments/${enrolmentId}/letter`, body);
     const url = URL.createObjectURL(await api.download(`/branded-documents/${d.id}/file`));
     window.open(url, '_blank', 'noopener');
     setTimeout(() => URL.revokeObjectURL(url), 120000);
-  } catch (e) { toast?.(e.message); }
+  } catch (e) { if (rethrow) throw e; toast?.(e.message); }
 }
 
 /** Staff: issue the enrolment letter with an optional welcome note and one of the academy's published letter templates. */
@@ -217,7 +248,7 @@ export function LetterSheet({ enrolment, orgId, onClose, toast }) {
         { key: 'note', label: 'Welcome note', type: 'multiline', optional: true },
         ...(mine.length ? [{ key: 'template_id', label: 'Letter template', type: 'chips', optional: true, options: mine.map((t) => ({ value: t.id, label: t.name })) }] : []),
       ]}
-      onSubmit={async (v) => { await openEnrolmentLetter(enrolment.enrolment_id, toast, { note: v.note || undefined, template_id: v.template_id || undefined }); return 'Letter issued'; }} />
+      onSubmit={async (v) => { await openEnrolmentLetter(enrolment.enrolment_id, toast, { note: v.note || undefined, template_id: v.template_id || undefined }, { rethrow: true }); return 'Letter issued'; }} />
   );
 }
 

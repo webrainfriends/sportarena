@@ -53,6 +53,7 @@ export function Billing({ o, archived }) {
   const promos = useLoad(() => api.get(`/organisations/${o.id}/academy/promos`, { include_inactive: true }).catch(() => []), [o.id]);
   const progs = useLoad(() => api.get(`/organisations/${o.id}/academy/programmes`, { limit: 100 }).catch(() => []), [o.id]);
   const [sel, setSel] = useState(null), [fund, setFund] = useState(null), [refund, setRefund] = useState(null), [desk, setDesk] = useState(null), [promo, setPromo] = useState(false);
+  const deals = useLoad(() => api.get(`/organisations/${o.id}/academy/partners`).then((p) => p.sponsorship.filter((x) => x.status === 'active')).catch(() => []), [o.id]);
   const money = dash.data?.money?.by_currency ?? [];
   const reload = () => { list.reload(); dash.reload(); };
   return (
@@ -103,6 +104,7 @@ export function Billing({ o, archived }) {
         onSubmit={async (v) => { await api.post(`/academy-charges/${desk.id}/paid`, v); reload(); return 'Marked as paid — receipt ready'; }} />
       <FormSheet visible={!!fund} onClose={() => setFund(null)} title="Scholarship or funding" submitLabel="Apply funding" initial={{ funding_source: 'scholarship' }}
         fields={[{ key: 'funding_source', label: 'Funded by', type: 'chips', options: [{ value: 'scholarship', label: 'Scholarship' }, { value: 'bursary', label: 'Bursary' }, { value: 'sponsor', label: 'Sponsor' }] },
+          { key: 'sponsorship_id', label: 'Sponsorship agreement', type: 'entity', entityKind: 'sponsorship', noun: 'agreement', options: (deals.data ?? []).map((x) => ({ id: x.sponsorship_id, label: x.sponsor, sub: x.target_type === 'group' ? 'supports a group' : 'supports the academy' })), show: (v) => v.funding_source === 'sponsor' },
           { key: 'funded_minor', label: 'Funded amount', type: 'money', currency: () => fund?.currency ?? 'GBP' }, { key: 'funding_ref', label: 'Reference', optional: true, hint: 'The price is not edited: the funded part is recorded as its own source and shown on the invoice.' }]}
         onSubmit={async (v) => { await api.post(`/academy-charges/${fund.id}/funding`, v); reload(); return 'Funding recorded'; }} />
       <FormSheet visible={!!refund} onClose={() => setRefund(null)} title="Refund this payment" submitLabel="Refund"

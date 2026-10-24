@@ -55,9 +55,12 @@ async function snapshotOf(e, { note }) {
   const charges = await many(
     `SELECT ch.kind, ch.due_on, ch.currency, ch.amount_minor, ch.status, ${INVOICE_NO_SQL} AS invoice_number FROM academy_charges ch
       WHERE ch.enrolment_id=$1 OR (ch.application_id IS NOT NULL AND ch.application_id=$2) ORDER BY ch.due_on, ch.id`, [e.id, e.application_id]);
+  // by policy, not by exact version: an agreement stays valid under a later version unless that version asked for re-consent (same rule as outstandingPolicies)
   const agreed = v?.policy_version_ids?.length ? await many(
-    `SELECT pol.title, pv.version, a.created_at FROM org_acknowledgements a JOIN org_policy_versions pv ON pv.id=a.policy_version_id JOIN org_policies pol ON pol.id=pv.policy_id
-      WHERE a.subject_id=$1 AND a.policy_version_id = ANY($2) ORDER BY pol.title`, [e.user_id, v.policy_version_ids]) : [];
+    `SELECT pol.title, x.version, x.created_at FROM org_policy_versions rv JOIN org_policies pol ON pol.id=rv.policy_id
+       JOIN LATERAL (SELECT av.version, a.created_at FROM org_acknowledgements a JOIN org_policy_versions av ON av.id=a.policy_version_id
+                      WHERE a.subject_id=$1 AND av.policy_id=pol.id ORDER BY av.version DESC LIMIT 1) x ON true
+      WHERE rv.id = ANY($2) ORDER BY pol.title`, [e.user_id, v.policy_version_ids]) : [];
   const youth = await isYouth(e.user_id);
   const place = [
     { title: 'Programme', value: p.title }, { title: 'Athlete', value: e.athlete_name }, { title: 'Group', value: e.group_name },
