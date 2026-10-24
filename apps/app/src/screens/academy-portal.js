@@ -9,6 +9,7 @@ import { useSession } from '../session';
 import { Btn, Chip, Empty, ErrorBox, Field, H1, Loading, Row, Screen, Seg, Sheet, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { Stepper } from '../pickers';
+import { MySessions } from './academy-session';
 import { PaySheet } from '../PaySheet';
 import { c } from '../theme';
 import { moneyIn } from '../vtime';
