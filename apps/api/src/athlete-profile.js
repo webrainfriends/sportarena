@@ -1,6 +1,6 @@
 import { many } from './db.js';
 
-/** Who may see a field: the athlete always; everyone else only at or above the field's scope. `recruiter` waits for the verified recruiter workspace (#313). */
+/** Who may see a field: the athlete always; everyone else only at or above the field's scope. `recruiter` is held only by a verified recruiter with a live, athlete-approved grant (#313). */
 export const SCOPES = ['private', 'coach', 'recruiter', 'public'];
 export const SCOPED_FIELDS = ['dominant_side', 'positions', 'play_prefs', 'affiliations'];
 
@@ -51,16 +51,21 @@ export const optionsFor = (slug) => ({
 });
 
 /** The tiers a viewer holds toward one athlete. Self sees everything; a coach of a team the athlete is on sees `coach` fields. */
-export async function viewerTiers(viewer, ownerId) {
-  if (viewer?.id === ownerId) return { self: true, tiers: SCOPES };
+export async function viewerTiers(viewer, ownerId, sportId) {
+  if (viewer?.id === ownerId) return { self: true, tiers: SCOPES, recruiter_scopes: [] };
   const tiers = ['public'];
+  let recruiter_scopes = [];
   if (viewer) {
     const [shared] = await many(
       `SELECT 1 FROM team_members v JOIN team_members a ON a.team_id = v.team_id
         WHERE v.user_id=$1 AND a.user_id=$2 AND v.status='active' AND a.status='active' AND v.role IN ('coach','manager')`, [viewer.id, ownerId]);
     if (shared) tiers.push('coach');
+    if (sportId) {
+      recruiter_scopes = await (await import('./recruiter.js')).recruiterScopes(viewer.id, ownerId, sportId);
+      if (recruiter_scopes.includes('profile')) tiers.push('recruiter');
+    }
   }
-  return { self: false, tiers };
+  return { self: false, tiers, recruiter_scopes };
 }
 
 /** Keep only the scoped fields of a card the viewer's tiers allow. */

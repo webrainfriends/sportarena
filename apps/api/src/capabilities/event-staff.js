@@ -8,7 +8,7 @@ import { isAdmin, mustFind } from '../helpers.js';
 import { eventForOrganizer } from './events.js';
 import { notify } from '../notify.js';
 
-export const ROLES = ['referee', 'umpire', 'linesman', 'scorer', 'doctor', 'physio', 'medic', 'volunteer', 'security', 'other', 'retail', 'catering', 'vendor'];
+export const ROLES = ['referee', 'umpire', 'linesman', 'scorer', 'doctor', 'physio', 'medic', 'volunteer', 'security', 'other', 'retail', 'catering', 'vendor', 'assessor'];
 /** Vendor positions: the applicant pays the organiser a stall fee and, once confirmed, becomes a vendor of the event. */
 export const VENDOR_ROLES = { retail: 'retail', catering: 'catering', vendor: 'other' };
 const OFFICIAL = ['referee', 'umpire', 'linesman'];

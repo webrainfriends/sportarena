@@ -9,6 +9,7 @@ import { notify } from '../notify.js';
 import { requireGuardian, hasConsent } from '../youth.js';
 import { isAdmin } from '../helpers.js';
 import { sessionFor, expectedCount } from '../academy-ops.js';
+import { syncTrialFromAttendance } from '../academy-trials.js';
 
 const TAG = 'Academy operations';
 const day = z.string().date();
@@ -63,6 +64,7 @@ export async function markAttendance(c, s, userId, status, { source = 'staff', a
       `UPDATE coaching_session_participants p SET attendance=$3, updated_at=now(), arrived_at=CASE WHEN $3 IN ('present','late','left_early') THEN coalesce(p.arrived_at, now()) ELSE NULL END, left_at=CASE WHEN $3='left_early' THEN coalesce(p.left_at, now()) ELSE NULL END
          FROM coaching_session_records r WHERE r.id=p.session_record_id AND r.source_type='academy_session' AND r.source_id=$1 AND p.athlete_id=$2`, [s.id, userId, status]);
   }
+  await syncTrialFromAttendance(c, row, status, actor);   // a trial seat: the application follows what attendance says
   return { changed: true, row };
 }
 
@@ -217,6 +219,7 @@ cap({
     if (t.status !== 'published' || new Date(t.starts_at) < new Date()) throw conflict('The target must be an upcoming published session');
     if (s.programme_id && t.programme_id !== s.programme_id) throw badRequest('A transfer must stay within the same programme');
     if (!(await eligible(c, s, i.user_id))) throw badRequest('That person is not on the original session\'s roster');
+    if ((await c.query('SELECT 1 FROM academy_attendance WHERE session_id=$1 AND user_id=$2 AND application_id IS NOT NULL', [s.id, i.user_id])).rowCount) throw conflict('This is a trial seat. Change a trial time from the application (trial booking), not with a make-up transfer.');
     if (!(await c.query('SELECT 1 FROM academy_attendance WHERE session_id=$1 AND user_id=$2', [t.id, i.user_id])).rowCount) {
       if (t.capacity && (await expectedCount(c, t)) >= t.capacity) throw conflict('The target session is full');
       if (!(await c.query("SELECT 1 FROM org_enrolments WHERE cohort_id=$1 AND user_id=$2 AND status='enrolled'", [t.cohort_id, i.user_id])).rowCount) {
