@@ -10,10 +10,12 @@ import { encrypt, decrypt, blindIndex } from '../crypto.js';
 import { requireConsent, guardianLink } from '../youth.js';
 import { enqueue } from '../jobs.js';
 import { orgFor } from '../org-access.js';
+import { localView, releaseApplicationSeat } from '../academy-trials.js';
 import {
   STAGES, STAFF, actFor, tell, lockProgramme, seatsFree, moveStage, checkEligibility, validateAnswers, sealAnswers, openAnswers,
-  enrol, promoteWaitlist, waitlistPosition, nextWaitlistSeq, insertCharges,
+  enrol, promoteWaitlist, waitlistPosition, nextWaitlistSeq, insertCharges, findPromo,
 } from '../academy.js';
+import { cancelUnpaidCharges } from '../academy-invoices.js';
 
 const key = z.string().min(8).max(80).optional().describe('client-chosen key so a retry cannot create a duplicate');
 const stale = () => conflict('This application was changed by someone else. Reload and try again.');
@@ -70,7 +72,7 @@ cap({
 
 cap({
   name: 'request_academy_trial', method: 'POST', path: '/academy/applications/:id/trial', tag: 'Academy',
-  summary: 'Ask for a trial (programmes that offer one). If the programme has a trial fee a payable charge is raised; staff book the trial once it is settled. The trial is scheduled in the academy timetable, not a separate calendar.',
+  summary: 'Ask for a trial (programmes that offer one). If the programme has a trial fee a payable charge is raised; the family (or staff) then book a time on a trial session of the academy timetable; there is no separate trial calendar.',
   input: z.object({ id, row_version: z.number().int().min(1) }),
   handler: ({ user }, i) => tx(async (c) => {
     const { a } = await appFor(user, i.id, { c, lock: true });
@@ -81,20 +83,6 @@ cap({
     const row = await moveStage(c, a, 'trial_requested', { actor: user.id });
     if (v && Number(v.trial_fee_minor) > 0) await insertCharges(c, { applicationId: row.id, orgId: row.organisation_id, payerId: row.applicant_id, rows: [{ kind: 'trial', due_on: new Date().toISOString().slice(0, 10), currency: v.currency, gross_minor: Number(v.trial_fee_minor), discount_minor: 0, funded_minor: 0, tax_minor: 0, amount_minor: Number(v.trial_fee_minor), terms: { version: v.version } }] });
     await tell(c, row, 'trial_requested', 'Trial request received');
-    return clean(row);
-  }),
-});
-
-cap({
-  name: 'advance_academy_trial', method: 'POST', path: '/academy/applications/:id/trial/advance', tag: 'Academy',
-  summary: 'Staff: book the trial, then mark it completed (owner/admin). Booking waits for a trial fee to be paid or waived. Records who and why.',
-  input: z.object({ id, row_version: z.number().int().min(1), step: z.enum(['book', 'complete']), note: z.string().max(300).optional() }),
-  handler: ({ user }, i) => tx(async (c) => {
-    const { a } = await appFor(user, i.id, { c, staff: true, lock: true });
-    if (a.row_version !== i.row_version) throw stale();
-    if (i.step === 'book' && (await c.query("SELECT 1 FROM academy_charges WHERE application_id=$1 AND kind='trial' AND status='awaiting_payment'", [a.id])).rows.length) throw conflict('The trial fee has not been paid yet');
-    const row = await moveStage(c, a, i.step === 'book' ? 'trial_booked' : 'trial_completed', { actor: user.id, reason: i.note ?? null });
-    await tell(c, row, i.step === 'book' ? 'trial_booked' : 'trial_completed', i.step === 'book' ? 'Your trial is booked' : 'Trial completed');
     return clean(row);
   }),
 });
@@ -126,7 +114,7 @@ async function place(c, app, p, actor) {
 cap({
   name: 'submit_academy_application', method: 'POST', path: '/academy/applications/:id/submit', tag: 'Academy',
   summary: 'Save a draft or submit the application (athlete or verified guardian). Answers follow the programme\'s question schema; clinical data is never collected here. Direct-enrolment programmes enrol immediately (when agreements are acknowledged and consent is current), others go to review or the waitlist.',
-  input: z.object({ id, row_version: z.number().int().min(1), answers: z.record(z.string(), z.any()).default({}), draft: z.boolean().default(false) }),
+  input: z.object({ id, row_version: z.number().int().min(1), answers: z.record(z.string(), z.any()).default({}), draft: z.boolean().default(false), promo_code: z.string().trim().min(3).max(24).optional().describe('a promo code of this academy; checked now, and the price shown with it is honoured at enrolment') }),
   handler: ({ user }, i) => tx(async (c) => {
     const { a: cur } = await appFor(user, i.id, { c });
     const p = await programmeFor(c, cur.programme_id, { forUpdate: true });
@@ -135,7 +123,8 @@ cap({
     if (a.stage === 'application_draft' || ['enquiry', 'trial_completed'].includes(a.stage)) { /* ok */ } else throw conflict(`This application is already "${a.stage.replaceAll('_', ' ')}"`);
     const v = (await c.query('SELECT * FROM academy_programme_versions WHERE id=$1', [a.version_id])).rows[0] ?? await versionOf(c, p);
     const answers = validateAnswers(v?.questions ?? [], i.answers);
-    const set = { answers_enc: sealAnswers(answers), version_id: v?.id ?? null };
+    const promo = await findPromo(c, { orgId: a.organisation_id, programmeId: a.programme_id, code: i.promo_code, userId: a.applicant_id, version: v, excludeApplicationId: a.id });
+    const set = { answers_enc: sealAnswers(answers), version_id: v?.id ?? null, ...(promo ? { promo_discount_id: promo.id } : {}) };
     if (i.draft) {
       if (a.stage === 'application_draft') { const r = (await c.query('UPDATE academy_applications SET answers_enc=$3, row_version=row_version+1, updated_at=now() WHERE id=$1 AND row_version=$2 RETURNING *', [a.id, a.row_version, set.answers_enc])).rows[0]; if (!r) throw stale(); return clean(r); }
       return clean(await moveStage(c, a, 'application_draft', { actor: user.id, set }));
@@ -247,7 +236,8 @@ cap({
     const { a } = await appFor(user, i.id, { c, lock: true });
     if (a.row_version !== i.row_version) throw stale();
     const row = await moveStage(c, a, 'withdrawn', { actor: user.id, reason: i.reason ?? null, set: { waitlist_seq: null } });
-    await c.query("UPDATE academy_charges SET status='cancelled' WHERE application_id=$1 AND status='awaiting_payment'", [a.id]);
+    await releaseApplicationSeat(c, a.id, user.id, 'Application withdrawn');
+    await cancelUnpaidCharges(c, 'application_id=$1', [a.id]);
     await promoteWaitlist(c, p, { actor: user.id });
     return clean(row);
   }),
@@ -262,7 +252,8 @@ cap({
     const staffRole = await (async () => { const a0 = await one('SELECT organisation_id FROM academy_applications WHERE id=$1', [i.id]); if (!a0) throw notFound('Application'); try { await orgFor(user, a0.organisation_id, STAFF); return true; } catch (e) { if (e.status === 404) return false; throw e; } })();
     const { a } = staffRole ? { a: await one('SELECT * FROM academy_applications WHERE id=$1', [i.id]) } : await appFor(user, i.id);
     const events = await many('SELECT from_stage, to_stage, actor_id, reason, created_at FROM academy_application_events WHERE application_id=$1 ORDER BY created_at, id', [a.id]);
-    const base = { ...clean(a), answers: openAnswers(a.answers_enc), history: events, waitlist_position: await waitlistPosition({ query: async (s, p) => ({ rows: [await one(s, p)] }) }, a) };
+    const seat = ['trial_requested', 'trial_booked'].includes(a.stage) ? await one(`SELECT s.id, s.title, s.starts_at, s.ends_at, s.timezone, t.status AS attendance FROM academy_attendance t JOIN academy_sessions s ON s.id=t.session_id WHERE t.application_id=$1 AND t.status IN ('expected','present','late','left_early') ORDER BY (t.status='expected') DESC, t.marked_at DESC NULLS LAST, t.id LIMIT 1`, [a.id]) : null;
+    const base = { ...clean(a), trial: seat ? { session: { ...seat, ...localView(seat) } } : null, answers: openAnswers(a.answers_enc), history: events, waitlist_position: await waitlistPosition({ query: async (s, p) => ({ rows: [await one(s, p)] }) }, a) };
     if (!staffRole) return base;
     await audit(null, user.id, 'read_pii', 'academy_applications', a.id);
     const notes = await many('SELECT n.id, n.author_id, n.body_enc, n.created_at FROM academy_notes n WHERE n.application_id=$1 ORDER BY n.created_at, n.id', [a.id]);
@@ -354,7 +345,10 @@ async function enrolmentFor(user, enrId, { c, staff = true } = {}) {
 }
 async function endEnrolment(c, e, status, reason) {
   const r = (await c.query(`UPDATE org_enrolments SET status=$2, ended_reason=$3, withdrawn_at = CASE WHEN $2='withdrawn' THEN now() ELSE withdrawn_at END WHERE id=$1 RETURNING *`, [e.id, status, reason ?? null])).rows[0];
-  await c.query("UPDATE academy_charges SET status='cancelled' WHERE enrolment_id=$1 AND status='awaiting_payment'", [e.id]);
+  // leaving cancels what is not yet due or paid; finishing or graduating forgives nothing: what is owed stays owed
+  if (status === 'withdrawn') await cancelUnpaidCharges(c, 'enrolment_id=$1', [e.id]);
+  // the pack or subscription that belonged to the enrolment ends with it (a finished or graduated one simply stops renewing)
+  await c.query(status === 'withdrawn' ? "UPDATE user_plans SET status='cancelled', auto_renew=false WHERE enrolment_id=$1 AND status IN ('awaiting_payment','active')" : 'UPDATE user_plans SET auto_renew=false WHERE enrolment_id=$1', [e.id]);
   if (e.programme_id) await promoteWaitlist(c, await lockProgramme(c, e.programme_id));
   return r;
 }
@@ -404,6 +398,7 @@ cap({
        ON CONFLICT (cohort_id, user_id) DO UPDATE SET status='enrolled', ended_reason=NULL, withdrawn_at=NULL, renewed_from=$9, enrolled_by=$4 RETURNING *`,
       [to.id, e.user_id, e.consent_at, user.id, e.programme_id, e.version_id, e.application_id, e.sessions_left, e.id])).rows[0];
     await c.query('UPDATE academy_charges SET enrolment_id=$2 WHERE enrolment_id=$1 AND status=$3', [e.id, n.id, 'awaiting_payment']);
+    await c.query('UPDATE user_plans SET enrolment_id=$2 WHERE enrolment_id=$1', [e.id, n.id]);
     await audit(c, user.id, 'transfer_academy_enrolment', 'org_enrolments', e.id);
     return n;
   }),

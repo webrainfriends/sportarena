@@ -17,6 +17,7 @@ import { BoardTab } from './event-board';
 import { FixturesTab } from './match-centre';
 import { ResultsTab } from './event-results';
 import { TeamsTab } from './event-teams';
+import { TrialsTab } from './event-trials';
 import { HiringTab } from './event-hiring';
 import { BusinessTab, MoneyTiles } from './event-business';
 import { EventVenues } from './event-venues';
@@ -58,6 +59,7 @@ function useConsoleData(id, org) {
 
 export function EventCommand({ id, tab: first = 'overview' }) {
   const { user, toast } = useSession();
+  const nav = useNav();
   const ev = useLoad(() => api.get(`/events/${id}`), [id]);
   const [tab, setTab] = useState(first);
   const [sub, setSub] = useState({ people: 'departments', business: 'partners' });
@@ -86,6 +88,7 @@ export function EventCommand({ id, tab: first = 'overview' }) {
   const waiting = D.plan.data?.requests?.waiting_for_you?.length || undefined;
   const tabs = [
     { key: 'overview', label: 'Overview', icon: '🏁' },
+    ...(e.kind === 'trial' ? [{ key: 'trial', label: 'Trial', icon: '🎽' }] : []),
     ...(isOrg ? [{ key: 'teams', label: 'Teams', icon: '👥', badge: (D.inv.data ?? []).filter((n) => n.status === 'invited').length || undefined }] : []),
     { key: 'people', label: 'People', icon: '🧩' },
     { key: 'boards', label: 'Boards', icon: '🗂️' },
@@ -103,6 +106,7 @@ export function EventCommand({ id, tab: first = 'overview' }) {
         {st === 'paused' && e.pause_reason ? <AT size={13} weight="700" color="#fff" style={{ marginTop: 10 }}>⏸ {e.pause_reason}</AT> : null}
       </AHero>
       <StageRail steps={steps} />
+      <ABtn small tone="ghost" title="🧮 Scoring & tracking" onPress={() => nav.push('ScoringTool', { eventId: id, tab: isOrg ? 'rules' : 'home' })} style={{ alignSelf: 'flex-start' }} />
 
       {isOrg && !['completed', 'cancelled'].includes(st) ? (
         <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
@@ -116,6 +120,7 @@ export function EventCommand({ id, tab: first = 'overview' }) {
 
       <ATabs tabs={tabs} value={tab} onChange={setTab} />
       {tab === 'overview' && <Overview {...P} D={D} games={games} accepted={accepted} money={money} />}
+      {tab === 'trial' && e.kind === 'trial' && <TrialsTab id={id} isOrg={isOrg} />}
       {tab === 'teams' && isOrg && <TeamsTab {...P} accepted={accepted} inv={D.inv.data ?? []} seeds={D.seeds.data ?? []} />}
       {tab === 'people' && (
         <>

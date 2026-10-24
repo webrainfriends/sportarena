@@ -273,15 +273,18 @@ export function RecruitTab({ t, toast }) {
 }
 
 function Responses({ post, toast, onClose, onChanged }) {
+  const { push } = useNav();
   const res = useLoad(() => (post ? api.get(`/billboard/${post.id}/responses`) : []), [post?.id]);
-  const decide = async (r, status) => { try { await api.patch(`/billboard/responses/${r.response_id}`, { status }); toast(status === 'accepted' ? `${r.display_name} joined the team` : 'Declined'); res.reload(); onChanged(); } catch (e) { toast('' + e.message); } };
   const close = async () => { try { await api.post(`/billboard/${post.id}/close`); toast('Post closed'); onChanged(); onClose(); } catch (e) { toast('' + e.message); } };
   return (
     <Sheet visible={!!post} onClose={onClose} title={post?.title ?? ''}>
-      {res.loading && !res.data ? <Loading /> : (res.data ?? []).length ? res.data.map((r) => (
-        <Row key={r.response_id} left={<Avatar user={r} />} title={r.display_name} sub={r.message || `@${r.handle}`}
-          right={r.status === 'pending' ? <View style={{ flexDirection: 'row', gap: 6 }}><Btn small title="Accept" onPress={() => decide(r, 'accepted')} /><Btn small title="No" color={c.paper} ink={c.ink} onPress={() => decide(r, 'declined')} /></View> : <Tag label={r.status} />} />
-      )) : <Empty emoji="⏳" title="No applications yet" />}
+      {res.loading && !res.data ? <Loading /> : (res.data ?? []).length ? <>
+        {res.data.map((r) => (
+          <Row key={r.response_id} left={r.hidden ? null : <Avatar user={r} />} title={r.hidden ? 'Young applicant (hidden)' : r.display_name} sub={r.hidden ? 'Waiting for a guardian\'s consent' : r.message || `@${r.handle}`} right={<Tag label={r.stage} />} />
+        ))}
+        {/* shortlist, trials, evaluation and versioned offers live in one place: the recruitment pipeline */}
+        <Btn title="Open recruitment pipeline" onPress={() => { onClose(); push('RecruitmentPipeline', { id: post.id }); }} />
+      </> : <Empty emoji="⏳" title="No applications yet" />}
       {post?.status === 'open' ? <Btn title="Close this post" color={c.orange} onPress={close} /> : null}
     </Sheet>
   );

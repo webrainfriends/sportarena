@@ -249,7 +249,7 @@ export async function checkCover(user, plan, subjectId) {
       await audit(null, user.id, 'read_pii', 'users', user.id);
       if ((plan.min_age != null && age < plan.min_age) || (plan.max_age != null && age > plan.max_age)) throw badRequest(`This plan is for ages ${plan.min_age ?? 0} to ${plan.max_age ?? 'any'}`);
     }
-    if (plan.sports.length && !(await one('SELECT 1 FROM sport_profiles sp JOIN sports s ON s.id=sp.sport_id WHERE sp.user_id=$1 AND s.slug = ANY($2)', [user.id, plan.sports]))) throw badRequest(`This plan covers ${plan.sports.join(', ')}: add that sport to your profile first`);
+    if (plan.sports.length && !(await one('SELECT 1 FROM active_sport_profiles sp JOIN sports s ON s.id=sp.sport_id WHERE sp.user_id=$1 AND s.slug = ANY($2)', [user.id, plan.sports]))) throw badRequest(`This plan covers ${plan.sports.join(', ')}: add that sport to your profile first`);
   }
   return subject;
 }

@@ -39,7 +39,7 @@ export async function renderInvoice({ layout, kit, logo, invoice, sample = false
 
   const left = doc.page.margins.left, width = doc.page.width - left - doc.page.margins.right;
   const bottom = () => doc.page.height - doc.page.margins.bottom - 24; // room kept for the footer
-  const title = invoice.kind === 'credit_note' ? 'CREDIT NOTE' : 'INVOICE';
+  const title = invoice.kind === 'credit_note' ? 'CREDIT NOTE' : invoice.status === 'paid' ? 'INVOICE · PAID' : 'INVOICE';
   const label = (t, x, y, w, o = {}) => doc.font(o.bold ? f.bold : f.regular).fontSize(o.size ?? 9).fillColor(o.color ?? ink).text(t ?? '', x, y, { width: w, align: o.align ?? 'left', lineBreak: o.lineBreak ?? true });
 
   const header = (compact) => {
@@ -197,6 +197,75 @@ export async function renderCoachingReport({ layout, kit, logo, snapshot, versio
     doc.page.margins.bottom = 0;
     if (wantsFooter && kit?.footer_text) label(kit.footer_text, left, y, width - 120, { size: 8, lineBreak: false });
     label(`${snapshot.title} · v${version} · Page ${i + 1} of ${range.count}`, left + width - 260, y, 260, { size: 8, align: 'right', lineBreak: false });
+  }
+  doc.end();
+  await done;
+  return { buffer: Buffer.concat(chunks), pages: range.count };
+}
+
+/**
+ * Enrolment letter: a welcome and confirmation of a place, from a frozen snapshot built at the moment of issue (programme terms, group, fees as
+ * charged, agreements accepted). Only the words in the snapshot are printed; a template chooses presentation (header, text, footer) only.
+ */
+export async function renderEnrolmentLetter({ layout, kit, logo, snapshot }) {
+  const f = fonts();
+  const strings = [kit?.display_name, kit?.legal_name, kit?.address, kit?.footer_text, snapshot.title, snapshot.organisation, snapshot.address, snapshot.addressee, snapshot.reference, ...layout.blocks.map((b) => b.text)];
+  for (const sec of snapshot.sections) strings.push(sec.title, sec.body, ...(sec.items ?? []).flatMap((x) => [x.title, x.value, x.meta]));
+  assertGlyphs(strings, f);
+  const accent = hex(kit?.primary_color, '#0F6E56'), ink = hex(kit?.secondary_color, '#444441');
+  const doc = new PDFDocument({
+    size: layout.paper, layout: layout.orientation, margin: layout.margin_mm * MM, bufferPages: true, compress: true,
+    info: { Title: snapshot.title, Author: kit?.display_name ?? snapshot.organisation, CreationDate: new Date(snapshot.issued_at), Producer: 'Sportarena' },
+  });
+  const chunks = [];
+  doc.on('data', (c) => chunks.push(c));
+  const done = new Promise((res, rej) => { doc.on('end', res); doc.on('error', rej); });
+  const left = doc.page.margins.left, width = doc.page.width - left - doc.page.margins.right;
+  const bottom = () => doc.page.height - doc.page.margins.bottom - 24;
+  const label = (t, x, y, w, o = {}) => doc.font(o.bold ? f.bold : f.regular).fontSize(o.size ?? 9).fillColor(o.color ?? ink).text(t ?? '', x, y, { width: w, align: o.align ?? 'left', lineBreak: o.lineBreak ?? true });
+  const room = (h) => { if (doc.y + h > bottom()) doc.addPage(); };
+
+  for (const b of layout.blocks) {
+    if (b.type === 'header') {
+      const top = doc.page.margins.top; let x = left;
+      if (layout.style === 'modern') doc.rect(0, 0, doc.page.width, 10).fill(accent);
+      if (logo) { try { doc.image(logo, x, top, { fit: [130, 56] }); x += 140; } catch { throw new AppError(422, 'logo_unreadable', 'The brand logo could not be read. Upload it again as PNG or JPEG.'); } }
+      label(kit?.display_name ?? snapshot.organisation, x, top, width - (x - left), { bold: true, size: 14, color: accent });
+      const sub = [kit?.legal_name ?? snapshot.legal_name, kit?.address ?? snapshot.address, [kit?.contact_email, kit?.phone].filter(Boolean).join(' · '), kit?.website].filter(Boolean).join('\n');
+      if (sub) label(sub, x, doc.y + 2, width - (x - left), { size: 8 });
+      doc.y = Math.max(doc.y, top + (logo ? 60 : 0)) + 14;
+      doc.moveTo(left, doc.y).lineTo(left + width, doc.y).lineWidth(0.6).stroke(accent); doc.y += 12;
+    } else if (b.type === 'title') {
+      label(snapshot.title, left, doc.y, width, { bold: true, size: 18, color: accent });
+      label(`${snapshot.addressee} · ${day(snapshot.issued_at)} · Ref ${snapshot.reference}`, left, doc.y + 2, width, { size: 9 });
+      doc.y += 12;
+      for (const sec of snapshot.sections) {
+        room(48);
+        label(sec.title.toUpperCase(), left, doc.y, width, { bold: true, size: 9, color: accent }); doc.y += 4;
+        if (sec.body) { label(sec.body, left, doc.y, width, { size: 10 }); doc.y += 10; }
+        for (const it of sec.items ?? []) {
+          room(26);
+          const y = doc.y;
+          label(it.title, left, y, width * 0.34, { bold: true, size: 9 });
+          const h1 = doc.y - y;
+          label(it.value ?? '', left + width * 0.36, y, width * 0.64, { size: 9, align: 'left' });
+          if (it.meta) label(it.meta, left + width * 0.36, doc.y, width * 0.64, { size: 8 });
+          doc.y = Math.max(doc.y, y + h1) + 4;
+        }
+        doc.y += 8;
+      }
+    } else if (b.type === 'text') {
+      room(30); label(b.text, left, doc.y, width, { size: TEXT_SIZE[b.size] ?? 9, align: b.align }); doc.y += 8;
+    }
+  }
+  const wantsFooter = layout.blocks.some((b) => b.type === 'footer');
+  const range = doc.bufferedPageRange();
+  for (let i = 0; i < range.count; i++) {
+    doc.switchToPage(range.start + i);
+    const y = doc.page.height - doc.page.margins.bottom - 12;
+    doc.page.margins.bottom = 0;
+    if (wantsFooter && kit?.footer_text) label(kit.footer_text, left, y, width - 120, { size: 8, lineBreak: false });
+    label(`${snapshot.title} · ${snapshot.reference} · Page ${i + 1} of ${range.count}`, left + width - 260, y, 260, { size: 8, align: 'right', lineBreak: false });
   }
   doc.end();
   await done;
@@ -389,6 +458,108 @@ export async function renderSponsorshipReport({ kit, logo, report }) {
     const y = doc.page.height - 28;
     if (kit?.footer_text) label(kit.footer_text, left, y, width - 160, { size: 7, lineBreak: false });
     label(`${KIND_TITLE[report.kind]} · as of ${report.basis.as_of} · Page ${i + 1} of ${range.count}`, left + width - 260, y, 260, { size: 7, align: 'right', lineBreak: false });
+  }
+  doc.end();
+  await done;
+  return { buffer: Buffer.concat(chunks), pages: range.count };
+}
+
+/**
+ * Printable scoring/tracking sheet (#416). The layout comes from the sheet's pinned template version; names and ids come from the sheet
+ * (canonical team names when linked). It carries a human-readable reference and a QR with the same signed, non-secret code: the code
+ * only locates the template/sheet when the paper is uploaded; it never authorises a result.
+ * @returns {Promise<{ buffer: Buffer, pages: number }>}
+ */
+export async function renderTrackingSheet({ sheet, layout, kit, logo, code, qr, context }) {
+  const f = fonts();
+  const strings = [kit?.display_name, kit?.footer_text, layout.title, sheet.title, sheet.labels?.home, sheet.labels?.away, context?.event_name, ...layout.scoring.map((s) => s.label), ...layout.stats.map((s) => s.label), ...layout.notes_fields.map((n) => n.label)];
+  assertGlyphs(strings, f);
+  const accent = hex(kit?.primary_color, '#0F6E56'), ink = hex(kit?.secondary_color, '#222222');
+  const doc = new PDFDocument({ size: layout.paper === 'Letter' ? 'LETTER' : 'A4', layout: layout.orientation, margin: 36, bufferPages: true, compress: true,
+    info: { Title: `${layout.title} - ${sheet.ref}`, Author: kit?.display_name ?? 'Sportarena', CreationDate: new Date(sheet.created_at), Producer: 'Sportarena' } });
+  const chunks = [];
+  doc.on('data', (c) => chunks.push(c));
+  const done = new Promise((res, rej) => { doc.on('end', res); doc.on('error', rej); });
+  const left = doc.page.margins.left, width = doc.page.width - left - doc.page.margins.right;
+  const bottom = () => doc.page.height - doc.page.margins.bottom - 24;
+  const label = (t, x, y, w, o = {}) => doc.font(o.bold ? f.bold : f.regular).fontSize(o.size ?? 9).fillColor(o.color ?? ink).text(t ?? '', x, y, { width: w, align: o.align ?? 'left', lineBreak: o.lineBreak ?? false });
+  const room = (h) => { if (doc.y + h > bottom()) doc.addPage(); };
+  const box = (x, y, w, h) => doc.lineWidth(0.5).strokeColor('#888888').rect(x, y, w, h).stroke();
+
+  // header: logo + title on the left, QR + reference on the right
+  let x = left;
+  if (logo) { try { doc.image(logo, x, 36, { fit: [90, 40] }); x += 100; } catch { throw new AppError(422, 'logo_unreadable', 'The brand logo could not be read. Upload it again as PNG or JPEG.'); } }
+  label(kit?.display_name ?? 'Sportarena', x, 36, width - 110, { bold: true, size: 10, color: accent });
+  label(layout.title, x, 50, width - 110, { bold: true, size: 16 });
+  label(sheet.mode === 'linked' ? 'RESULT PROPOSAL - not official until reviewed and approved' : 'UNOFFICIAL - personal tracking sheet', x, 72, width - 110, { size: 8, bold: true, color: '#B42318' });
+  if (qr) { // qr = boolean matrix; drawn as vector squares so it prints sharp
+    const m = qr.length, cell = 62 / m, ox = left + width - 66, oy = 36;
+    doc.rect(ox - 2, oy - 2, 66, 66).fill('#FFFFFF');
+    for (let r = 0; r < m; r++) for (let k = 0; k < m; k++) if (qr[r][k]) doc.rect(ox + k * cell, oy + r * cell, cell + 0.2, cell + 0.2).fill('#000000');
+  }
+  label(sheet.ref, left + width - 190, 38, 118, { size: 9, bold: true, align: 'right' });
+  label(code, left + width - 190, 50, 118, { size: 6.5, align: 'right' });
+  doc.y = 104;
+  doc.moveTo(left, doc.y).lineTo(left + width, doc.y).lineWidth(0.8).stroke(accent); doc.y += 8;
+
+  // who / when
+  const meta = [['Date', sheet.occurred_at ? new Date(sheet.occurred_at).toISOString().slice(0, 10) : '____ / ____ / ________'], ['Start time', '___ : ___'], ['End time', '___ : ___'], ['Venue / court', '____________________']];
+  if (context?.event_name) meta.unshift(['Event', context.event_name]);
+  let cx = left; const mw = width / meta.length;
+  for (const [k, v] of meta) { label(k.toUpperCase(), cx, doc.y, mw - 6, { size: 6.5, color: '#666666' }); label(v, cx, doc.y + 9, mw - 6, { size: 9 }); cx += mw; }
+  doc.y += 28;
+  const home = sheet.labels?.home && sheet.labels.home !== 'Home' ? sheet.labels.home : '', away = sheet.labels?.away && sheet.labels.away !== 'Away' ? sheet.labels.away : '';
+  label('HOME / SIDE A', left, doc.y, width / 2 - 8, { size: 6.5, color: '#666666' }); label('AWAY / SIDE B', left + width / 2, doc.y, width / 2 - 8, { size: 6.5, color: '#666666' });
+  label(home || '_______________________________', left, doc.y + 9, width / 2 - 8, { size: 11, bold: true }); label(away || '_______________________________', left + width / 2, doc.y + 9, width / 2 - 8, { size: 11, bold: true });
+  doc.y += 32;
+
+  const grid = (title, cols, rows, o = {}) => {
+    room(30 + Math.min(rows, 6) * (o.h ?? 16));
+    label(title.toUpperCase(), left, doc.y, width, { bold: true, size: 8, color: accent }); doc.y += 12;
+    const tw = o.width ?? width, cw = cols.map((c) => c.w * tw);
+    let y = doc.y; cx = left;
+    doc.rect(left, y, tw, 14).fill(accent);
+    cols.forEach((c, i) => { label(c.t, cx + 3, y + 3, cw[i] - 6, { bold: true, size: 7, color: '#FFFFFF' }); cx += cw[i]; });
+    y += 14;
+    for (let r = 0; r < rows; r++) {
+      if (y + (o.h ?? 16) > bottom()) { doc.addPage(); y = doc.y; }
+      cx = left;
+      cols.forEach((c, i) => { box(cx, y, cw[i], o.h ?? 16); if (c.fixed?.[r] != null) label(String(c.fixed[r]), cx + 3, y + 4, cw[i] - 6, { size: 8 }); cx += cw[i]; });
+      y += o.h ?? 16;
+    }
+    doc.y = y + 10;
+  };
+
+  if (layout.mode === 'sets') {
+    const n = layout.sets.best_of;
+    grid(`Sets - best of ${n}, first to ${layout.sets.points_to_win}${layout.sets.win_by > 1 ? ' (win by 2' + (layout.sets.cap ? `, cap ${layout.sets.cap}` : '') + ')' : ''}`,
+      [{ t: 'Set', w: 0.12, fixed: Array.from({ length: n }, (_, i) => i + 1) }, { t: 'Home points', w: 0.22 }, { t: 'Away points', w: 0.22 }, { t: 'Set winner (H / A)', w: 0.2 }, { t: 'Server / side notes', w: 0.24 }], n, { h: 22 });
+    grid('Sets won', [{ t: '', w: 0.34, fixed: ['Final sets (home - away)'] }, { t: 'Home', w: 0.33 }, { t: 'Away', w: 0.33 }], 1, { h: 22, width: width * 0.7 });
+  } else if (layout.mode === 'points_events') {
+    const p = layout.periods;
+    grid(`${p.label} scores`, [{ t: p.label, w: 0.2, fixed: Array.from({ length: p.count }, (_, i) => i + 1) }, { t: 'Home', w: 0.4 }, { t: 'Away', w: 0.4 }], p.count + 1, { h: 18, width: width * 0.6 });
+    if (layout.scoring.length) grid(`Scoring (${layout.scoring.map((s) => `${s.label} = ${s.points}`).join(', ')})`, [{ t: '#', w: 0.06 }, { t: 'Time', w: 0.1 }, { t: p.label, w: 0.1 }, { t: 'Side (H/A)', w: 0.12 }, { t: 'Scoring event', w: 0.22 }, { t: 'Player', w: 0.3 }, { t: 'Running H-A', w: 0.1 }], 22, { h: 15 });
+  } else if (layout.mode === 'results') {
+    grid(`Results (${layout.results.unit})`, [{ t: 'Order', w: 0.08 }, { t: 'Lane', w: 0.08 }, { t: 'Participant', w: 0.38 }, { t: layout.results.unit === 'time' ? 'Time' : 'Distance / height', w: 0.2 }, { t: 'DNS / DNF / DQ', w: 0.14 }, { t: 'Rank', w: 0.12 }], layout.results.rows, { h: 18 });
+  } else {
+    grid('Final totals', [{ t: '', w: 0.4, fixed: ['Result as recorded by the official'] }, { t: 'Home', w: 0.3 }, { t: 'Away', w: 0.3 }], 1, { h: 24, width: width * 0.7 });
+  }
+  if (layout.stats.length) grid('Tally', [{ t: 'Stat', w: 0.28, fixed: layout.stats.map((s) => s.label) }, { t: 'Home', w: 0.36 }, { t: 'Away', w: 0.36 }], layout.stats.length, { h: 15, width: width * 0.7 });
+  for (const n of layout.notes_fields) { room(48); label(`${n.label.toUpperCase()}  (custom - not an official field)`, left, doc.y, width, { size: 7, color: '#666666' }); box(left, doc.y + 10, width, 28); doc.y += 46; }
+  room(60); label('NOTES', left, doc.y, width, { size: 7, color: '#666666' }); box(left, doc.y + 10, width, 36); doc.y += 56;
+  if (layout.signatures) {
+    room(44); const roles = sheet.mode === 'linked' ? ['Referee / scorer', 'Home manager', 'Away manager'] : ['Scorer', 'Home captain', 'Away captain']; const sw = width / roles.length;
+    roles.forEach((r, i) => { doc.moveTo(left + i * sw + 4, doc.y + 24).lineTo(left + (i + 1) * sw - 12, doc.y + 24).lineWidth(0.5).stroke('#888888'); label(r, left + i * sw + 4, doc.y + 28, sw - 16, { size: 7, color: '#666666' }); });
+    doc.y += 40;
+  }
+
+  const range = doc.bufferedPageRange();
+  for (let i = 0; i < range.count; i++) {
+    doc.switchToPage(range.start + i);
+    doc.page.margins.bottom = 0;
+    const y = doc.page.height - 26;
+    label(kit?.footer_text || 'Scores on this sheet are unofficial until a linked result is reviewed and approved in SportArena.', left, y, width - 230, { size: 7 });
+    label(`${sheet.ref} · template v${context?.template_version ?? 1} · Page ${i + 1} of ${range.count}`, left + width - 230, y, 230, { size: 7, align: 'right' });
   }
   doc.end();
   await done;

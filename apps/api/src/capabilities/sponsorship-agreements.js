@@ -1,8 +1,8 @@
 // Sponsorship agreement operation (#145): schedule preview, exact-version revision, dues, payments, goods and endorsement fulfilment.
 // All of it hangs off the canonical `sponsorships` row (see sponsors.js); nothing here is a second sponsorship system.
 import { z } from 'zod';
-import { notifyRecipient, assertYouthAuthority, assertYouthContact, liveAuthority, guardedAthleteSql } from '../youth-sponsorship.js';
-import { requireConsent, hasConsent, guardianLink } from '../youth.js';
+import { notifyRecipient, assertYouthAuthority, assertYouthContact, liveAuthority, guardedAthleteSql, livePayee } from '../youth-sponsorship.js';
+import { requireConsent, hasConsent, guardianLink, guardiansOf } from '../youth.js';
 import { cap, id, page } from '../registry.js';
 import { one, many, tx, pool } from '../db.js';
 import { badRequest, conflict, forbidden, notFound, unprocessable } from '../errors.js';
@@ -21,6 +21,14 @@ import { renewalView } from '../sponsor-renewals.js';
 
 const date = z.string().date();
 const url = z.string().url().max(500).refine((u) => /^https:\/\//i.test(u), 'evidence must be an https link');
+/** Who is to be paid for a young athlete's agreement (frozen on each payment); null for everyone else. A young athlete's money is never paid to the minor. */
+async function payeeFor(c, ctx) {
+  if (!ctx.youth) return null;
+  const to = await livePayee(c, ctx.d);
+  if (!to && !(await guardiansOf(ctx.d.target_id, c)).length) return null; // an agreement made before any guardian existed keeps paying the recipient as before
+  if (!to) throw conflict('No verified guardian is set to receive this money yet. Ask the guardian to confirm who is paid.', { code: 'payee_required' });
+  return to;
+}
 const other = (ctx) => (ctx.role === 'sponsor' ? ctx.recipientId : 'sponsor');
 // Notifications never carry amounts, references or terms: those stay behind the participant-scoped reads.
 // `to` is a user id, or 'sponsor' for the brand's owner and the staff whose role is concerned (`action`).
@@ -183,7 +191,12 @@ cap({
     if (ctx.youth) { // a young athlete's agreement: who acts for them and what the guardian currently allows (separate from the agreement itself)
       out.youth = { guardian_acting: ctx.guardian, minor_self: ctx.minorSelf, guardian_decided_at: d.guardian_decided_at ?? null,
         authority_live: !!(await liveAuthority(pool, d.sponsor_id, d.target_id)), results_shared: !!d.performance_access && !!(await liveAuthority(pool, d.sponsor_id, d.target_id)) && !!(d.performance_access_by && await guardianLink(d.performance_access_by, d.target_id)),
-        media_allowed: await hasConsent(d.target_id, 'media'), contact_allowed: await hasConsent(d.target_id, 'contact') };
+        media_allowed: await hasConsent(d.target_id, 'media'), contact_allowed: await hasConsent(d.target_id, 'contact'),
+        payee_set: !!(await livePayee(pool, d)) };
+      if (ctx.guardian || isAdmin(user)) { // names of the verified guardians, so one of them can be chosen as payee
+        const ids = await guardiansOf(d.target_id, pool);
+        out.youth.guardians = (await many('SELECT id, display_name FROM users WHERE id = ANY($1::uuid[]) ORDER BY display_name, id', [ids])).map((g) => ({ id: g.id, name: g.display_name, payee: g.id === d.payee_guardian_id }));
+      }
     }
     if (['organisation', 'group'].includes(d.target_type)) out.beneficiary = { type: d.target_type, id: d.target_id, name: (await one(d.target_type === 'group' ? 'SELECT name FROM org_cohorts WHERE id=$1' : 'SELECT name FROM organisations WHERE id=$1', [d.target_id]))?.name ?? null, my_role: ctx.beneficiary?.representative ? 'representative' : ctx.beneficiary?.payee ? 'payee' : null };
     // who the sponsor was at this exact version (frozen): later renames or representative changes never alter it. Never registration/tax/billing data.
@@ -323,12 +336,13 @@ cap({
       const unmet = (await c.query("SELECT x.text FROM sponsorship_award_conditions x JOIN sponsorship_awards w ON w.id=x.award_id WHERE w.sponsorship_id=$1 AND x.removed_at IS NULL AND x.blocks_payment AND x.met_at IS NULL ORDER BY x.position LIMIT 1", [ctx.d.id])).rows[0];
       if (unmet) throw conflict(`A condition of the award must be met before payment: ${unmet.text}`); // conditional awards (#289)
       if (i.currency !== ctx.o.currency) throw badRequest(`This due is in ${ctx.o.currency}`);
+      const payee = await payeeFor(c, ctx);
       await releaseStaleCheckouts(c, ctx.o.id);
       const held = await heldCents(c, ctx.o.id);
       if (held + i.amount_cents > ctx.o.amount_cents) throw conflict(`Only ${ctx.o.amount_cents - held} is still due on this instalment`);
       try {
-        const p = (await c.query('INSERT INTO sponsorship_payments(obligation_id, amount_cents, currency, method, reference, paid_on, evidence_url, reported_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',
-          [ctx.o.id, i.amount_cents, i.currency, i.method, i.reference, i.paid_on, i.evidence_url ?? null, user.id])).rows[0];
+        const p = (await c.query('INSERT INTO sponsorship_payments(obligation_id, amount_cents, currency, method, reference, paid_on, evidence_url, reported_by, payee_guardian_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *',
+          [ctx.o.id, i.amount_cents, i.currency, i.method, i.reference, i.paid_on, i.evidence_url ?? null, user.id, payee])).rows[0];
         await logHistory(c, ctx.d.id, ctx.o.version, user.id, 'payment_reported');
         await ping(c, ctx.recipientId, 'A sponsorship payment needs your confirmation', ctx, 'sponsorship_payment');
         return p;
@@ -348,8 +362,9 @@ cap({
     if (pre.role !== 'sponsor') throw forbidden('Only the sponsor pays a due');
     pre.need('pay', 'pay online');
     if (!config.settlement.currencies.includes(pre.o.currency)) throw conflict(`Online payouts are not available in ${pre.o.currency} yet. Report a bank payment instead.`, { code: 'currency_unsupported' });
-    if (!(await one("SELECT 1 FROM payout_accounts WHERE owner_id=$1 AND currency=$2 AND status IN ('pending','verified')", [pre.recipientId, pre.o.currency]))) {
-      await tx((c) => notify(c, pre.recipientId, { kind: 'sponsorship_payment', title: 'Add a payout account to receive sponsorship money', body: `A sponsor tried to pay you online in ${pre.o.currency}. Add a payout account in that currency under Earnings.`, data: { sponsorship_id: pre.d.id } }));
+    const payeeId = (await payeeFor(pool, pre)) ?? pre.recipientId;
+    if (!(await one("SELECT 1 FROM payout_accounts WHERE owner_id=$1 AND currency=$2 AND status IN ('pending','verified')", [payeeId, pre.o.currency]))) {
+      await tx((c) => notify(c, payeeId, { kind: 'sponsorship_payment', title: 'Add a payout account to receive sponsorship money', body: `A sponsor tried to pay you online in ${pre.o.currency}. Add a payout account in that currency under Earnings.`, data: { sponsorship_id: pre.d.id } }));
       throw conflict(`The recipient has not set up payouts in ${pre.o.currency} yet. They have been asked to; meanwhile you can report a bank payment.`, { code: 'recipient_not_onboarded' });
     }
     const row = await tx(async (c) => {
@@ -363,7 +378,7 @@ cap({
       if (left <= 0) throw conflict('Nothing is left to pay on this due (it is covered, or a payment or checkout is already open)');
       const amount = i.amount_cents ?? left;
       if (amount > left) throw conflict(`Only ${left} is still due on this instalment`);
-      const x = (await c.query("INSERT INTO sponsorship_payments(obligation_id, amount_cents, currency, method, reference, paid_on, status, reported_by) VALUES ($1,$2,$3,'online','pending',current_date,'awaiting_payment',$4) RETURNING id", [ctx.o.id, amount, ctx.o.currency, user.id])).rows[0];
+      const x = (await c.query("INSERT INTO sponsorship_payments(obligation_id, amount_cents, currency, method, reference, paid_on, status, reported_by, payee_guardian_id) VALUES ($1,$2,$3,'online','pending',current_date,'awaiting_payment',$4,$5) RETURNING id", [ctx.o.id, amount, ctx.o.currency, user.id, await payeeFor(c, ctx)])).rows[0];
       await c.query("UPDATE sponsorship_payments SET reference='online-'||id::text WHERE id=$1", [x.id]);
       await logHistory(c, ctx.d.id, ctx.o.version, user.id, 'checkout_started');
       return { id: x.id, amount };
@@ -446,6 +461,7 @@ cap({
       if (ctx.role !== 'recipient' && ctx.role !== 'admin') throw forbidden('Only the recipient confirms a payment');
       if (i.status !== 'confirmed' && !i.note) throw badRequest('Give a reason');
       const p = (await c.query('SELECT * FROM sponsorship_payments WHERE id=$1 FOR UPDATE', [i.id])).rows[0];
+      if (ctx.youth && ctx.role !== 'admin' && p.payee_guardian_id && p.payee_guardian_id !== user.id && await guardianLink(p.payee_guardian_id, ctx.d.target_id, c)) throw forbidden('Only the guardian who receives this money confirms it');
       if (p.method === 'online') throw conflict('An online payment is verified by the payment provider; it cannot be confirmed, rejected or reversed by hand. The platform team issues refunds.');
       if (i.status === 'reversed' ? p.status !== 'confirmed' : p.status !== 'reported') throw conflict(`This payment is already ${p.status}`);
       // the payees in force are frozen on the payment when it is confirmed, so later allocation or membership changes never rewrite who was paid

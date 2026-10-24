@@ -17,14 +17,15 @@ import { orgFor, orgRole } from '../org-access.js';
 import { SPONSOR_ROLES } from '../sponsor-access.js';
 import { hasConsent } from '../youth.js';
 import { promoteWaitlist, lockProgramme } from '../academy.js';
+import { cancelUnpaidCharges } from '../academy-invoices.js';
 
 const ORG_KINDS = ['club', 'academy', 'school', 'college', 'university', 'company', 'other'];
 // the sponsor roles (manager, evaluator, legal, approver, auditor; finance is shared) are what a corporate sponsor's staff hold (#283)
 const ROLES = ['owner', 'admin', 'coach', 'finance', ...SPONSOR_ROLES.filter((r) => r !== 'finance')];
-const ROLE_ORDER = ROLES;
+const ROLE_ORDER = [...ROLES, 'staff'];   // 'staff' (Academy OS 2/3) gets access only from its scoped engagement permissions
 const STAFF = ['owner', 'admin'];
 const SPONSOR_EXPORT = ['owner', 'admin', 'manager', 'finance', 'auditor'];
-const role = z.enum(ROLES);
+const role = z.enum([...ROLES, 'staff']);
 const day = z.string().date();
 const MAX_ROWS = 500;
 
@@ -465,7 +466,8 @@ cap({
       const r = (await c.query("UPDATE org_enrolments SET status='withdrawn', withdrawn_at=now() WHERE cohort_id=$1 AND user_id=$2 AND status='enrolled' RETURNING id, programme_id", [i.id, i.user_id])).rows[0];
       if (!r) throw notFound('Enrolment');
       // an academy enrolment also stops its unpaid fees and frees the place for the waitlist (one withdrawal path for the whole organisation)
-      await c.query("UPDATE academy_charges SET status='cancelled' WHERE enrolment_id=$1 AND status='awaiting_payment'", [r.id]);
+      await cancelUnpaidCharges(c, 'enrolment_id=$1', [r.id]);
+      await c.query("UPDATE user_plans SET status='cancelled', auto_renew=false WHERE enrolment_id=$1 AND status IN ('awaiting_payment','active')", [r.id]);
       if (r.programme_id) await promoteWaitlist(c, await lockProgramme(c, r.programme_id));
       return { ok: true };
     });

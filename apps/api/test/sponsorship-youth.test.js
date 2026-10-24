@@ -145,3 +145,37 @@ test('young people cannot act on an agreement with a guardian, and unrelated peo
   assert.equal((await api('PATCH', `/sponsorship-payments/${pay.id}`, { token: w.kid.token, body: { status: 'confirmed' } })).status, 403, 'the young person cannot confirm money');
   assert.equal((await api('PATCH', `/sponsorship-payments/${pay.id}`, { token: w.parent.token, body: { status: 'confirmed' } })).status, 200, 'the guardian is the payee side');
 });
+
+test('a young athlete\'s money goes to a guardian payee, never to the minor', async () => {
+  const { sharesFor } = await import('../src/settlement.js');
+  const w = await active(await world());
+  const second = await signup(['athlete']);
+  await pool.query("INSERT INTO guardian_links(guardian_id, child_id, relationship, status, requested_by) VALUES ($1,$2,'parent','active',$1)", [second.id, w.kid.id]);
+  const row = (await pool.query('SELECT payee_guardian_id FROM sponsorships WHERE id=$1', [w.deal.id])).rows[0];
+  assert.equal(row.payee_guardian_id, w.parent.id, 'the accepting guardian is the default payee');
+  const o = (await pool.query('SELECT id FROM sponsorship_obligations WHERE sponsorship_id=$1 LIMIT 1', [w.deal.id])).rows[0];
+  const report = (amount, reference) => api('POST', `/sponsorship-obligations/${o.id}/payments`, { token: w.sponsor.token, body: { amount_cents: amount, currency: 'SGD', reference, paid_on: '2030-02-01', method: 'bank_transfer' } });
+  const p1 = must(await report(4000, 'TT-A'), 201);
+  assert.equal(p1.payee_guardian_id, w.parent.id, 'the payee is frozen on the payment');
+  assert.equal((await api('PATCH', `/sponsorship-payments/${p1.id}`, { token: second.token, body: { status: 'confirmed' } })).status, 403, 'only the paying guardian confirms');
+  assert.equal((await api('PATCH', `/sponsorship-payments/${p1.id}`, { token: w.kid.token, body: { status: 'confirmed' } })).status, 403, 'never the young person');
+  // choosing a payee: guardians only, and only a verified guardian of the child
+  assert.equal((await api('POST', `/sponsorships/${w.deal.id}/youth-payee`, { token: w.sponsor.token, body: { guardian_id: second.id } })).status, 403);
+  assert.equal((await api('POST', `/sponsorships/${w.deal.id}/youth-payee`, { token: w.kid.token, body: { guardian_id: second.id } })).status, 403);
+  const stranger = await signup(['athlete']);
+  assert.equal((await api('POST', `/sponsorships/${w.deal.id}/youth-payee`, { token: w.parent.token, body: { guardian_id: stranger.id } })).status, 409, 'the payee must be a verified guardian');
+  must(await api('POST', `/sponsorships/${w.deal.id}/youth-payee`, { token: second.token, body: { guardian_id: second.id } }));
+  const p2 = must(await report(3000, 'TT-B'), 201);
+  assert.equal(p2.payee_guardian_id, second.id, 'new payments use the new payee');
+  assert.equal((await api('GET', `/sponsorships/${w.deal.id}`, { token: w.parent.token })).body.youth.guardians.length, 2);
+  assert.equal(must(await api('PATCH', `/sponsorship-payments/${p1.id}`, { token: w.parent.token, body: { status: 'confirmed' } })).status, 'confirmed', 'an open payment keeps the payee it was opened with');
+  // online settlement: the seller is the frozen guardian, not the child
+  const online = (await pool.query("INSERT INTO sponsorship_payments(obligation_id, amount_cents, currency, method, reference, paid_on, status, reported_by, payee_guardian_id) VALUES ($1,1000,'SGD','online','online-x',current_date,'awaiting_payment',$2,$3) RETURNING id", [o.id, w.sponsor.id, second.id])).rows[0];
+  assert.deepEqual(await sharesFor(pool, { purpose_type: 'sponsorship_payment', purpose_id: online.id, amount_cents: 1000 }), [{ sellerId: second.id, amount: 1000 }]);
+  // the guardian relationship ends: nobody is paid until a verified guardian is set
+  await pool.query("UPDATE guardian_links SET status='revoked', revoked_at=now() WHERE guardian_id=$1 AND child_id=$2", [second.id, w.kid.id]);
+  assert.equal((await report(500, 'TT-C')).status, 409, 'no live payee, no new payments');
+  must(await api('POST', `/sponsorships/${w.deal.id}/youth-payee`, { token: w.parent.token, body: { guardian_id: w.parent.id } }));
+  must(await report(500, 'TT-D'), 201);
+  assert.equal(must(await api('PATCH', `/sponsorship-payments/${p2.id}`, { token: w.parent.token, body: { status: 'confirmed' } })).status, 'confirmed', 'a verified guardian can confirm when the frozen payee left');
+});

@@ -15,6 +15,7 @@ import { FavouriteSports } from '../sportpicker';
 import { RecordsSection } from './performance';
 import { useCols } from './marketplace';
 import { Insights } from './player-insights';
+import { AthleteProfilePanel, ArchivedSports } from './athlete-profile';
 
 const LEVELS = ['beginner', 'amateur', 'semi_pro', 'pro'];
 const ROLES = ['athlete', 'coach', 'referee', 'physio', 'doctor'];
@@ -250,6 +251,7 @@ function MySports() {
         <Btn small title="+ Add sport" onPress={() => setAdd(true)} style={{ flex: 1 }} />
         <Btn small title="Import matches" color={c.paper} onPress={() => push('ImportMatches', { id: selId ?? profiles[0]?.id })} disabled={!profiles.length} style={{ flex: 1 }} />
       </View>
+      <Btn small title="🔎 Recruiter access" color={c.paper} onPress={() => push('RecruiterAccess')} disabled={!profiles.length} style={{ alignSelf: 'flex-start' }} />
     </View>
   );
   const found = (detected.data ?? []).map((d) => (
@@ -280,6 +282,7 @@ function MySports() {
               {found}
               {profiles.map((p) => <SportRow key={p.id} p={p} selected={p.id === selId} onPress={() => setSel(p.id)} />)}
             </View>
+            <ArchivedSports refreshKey={profiles.length} onRestored={list.reload} />
           </Screen>
         </View>
         <View style={{ flex: 1 }}><SportProfile key={selId} id={selId} embedded onChanged={list.reload} onRemoved={() => { setSel(null); list.reload(); }} /></View>
@@ -300,6 +303,7 @@ function MySports() {
         )}
         {found.length > 0 && !split ? <View style={{ gap: 10, marginTop: 14 }}>{found}</View> : null}
       </View>
+      <ArchivedSports refreshKey={profiles.length} onRestored={list.reload} />
       <Card style={{ marginTop: 18 }}><H2>★ Favourite sports & games</H2><View style={{ marginTop: 8 }}><FavouriteSports /></View></Card>
       {sheets}
     </Screen>
@@ -380,10 +384,13 @@ export function SportProfile({ id, embedded, onChanged, onRemoved }) {
         <Btn title={`+ Log ${th.one}`} color={tone[0]} onPress={() => setLog(true)} />
         <View style={{ flexDirection: 'row', gap: 8 }}>
           <Btn small title="Import CSV" color={c.paper} onPress={() => push('ImportMatches', { id: p.id })} style={{ flex: 1 }} />
+          <Btn small title="Career" color={c.paper} onPress={() => push('CareerTimeline', { sport: p.sport_slug })} style={{ flex: 1 }} />
           <Btn small title="Edit" color={c.paper} onPress={() => setEdit(true)} style={{ flex: 1 }} />
           {!p.is_default ? <Btn small title="☆ Default" color={c.paper} onPress={act(() => api.post(`/me/sport-profiles/${p.id}/default`), 'Default updated')} style={{ flex: 1 }} /> : null}
         </View>
       </View>
+
+      <AthleteProfilePanel p={p} onChanged={onChanged} />
 
       {p.metrics.length ? (
         <>
@@ -453,8 +460,8 @@ export function SportProfile({ id, embedded, onChanged, onRemoved }) {
       </View>
 
       <View style={{ marginTop: 32, paddingTop: 18, borderTopWidth: 1, borderColor: c.line, gap: 8 }}>
-        <Btn small title="Remove this sport" color={c.paper} ink={c.red} onPress={async () => { try { await api.del(`/me/sport-profiles/${p.id}`); toast('Sport removed'); if (embedded) onRemoved?.(); else back(); } catch (e) { toast(e.message); } }} style={{ alignSelf: phone ? 'stretch' : 'flex-start' }} />
-        <T size={12} color={c.mute}>Removing a sport deletes the matches you logged under it. Official matches stay on your history and reappear if you add the sport again.</T>
+        <Btn small title="Archive this sport" color={c.paper} ink={c.red} onPress={async () => { try { await api.del(`/me/sport-profiles/${p.id}`); toast('Sport archived — your matches are kept'); if (embedded) onRemoved?.(); else back(); } catch (e) { toast(e.message); } }} style={{ alignSelf: phone ? 'stretch' : 'flex-start' }} />
+        <T size={12} color={c.mute}>Archiving hides this card but keeps every match you logged, your official history and your measurements. Restore it any time from Archived sports.</T>
       </View>
 
       {edit ? <EditProfileSheet p={p} onClose={() => setEdit(false)} onDone={reload} /> : null}

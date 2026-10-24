@@ -22,7 +22,7 @@ const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const weekday = z.number().int().min(0).max(6);
 
 const coachesSport = async (coachId, sportId) => {
-  if (!(await one("SELECT 1 FROM sport_profiles WHERE user_id=$1 AND sport_id=$2 AND role='coach'", [coachId, sportId]))) throw badRequest('Add this sport to your sport profiles with the Coach role first');
+  if (!(await one("SELECT 1 FROM active_sport_profiles WHERE user_id=$1 AND sport_id=$2 AND role='coach'", [coachId, sportId]))) throw badRequest('Add this sport to your sport profiles with the Coach role first');
 };
 const ownSpec = async (coachId, specId) => {
   const z2 = await one('SELECT * FROM coach_specialisations WHERE id=$1 AND coach_id=$2 AND archived_at IS NULL', [specId, coachId]);

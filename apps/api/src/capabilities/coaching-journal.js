@@ -59,6 +59,17 @@ async function resolveSource(user, i) {
     if (!s) throw notFound('Training session');
     return { title: s.title, scheduled_at: s.starts_at, sport_id: s.sport_id, team_id: null, athletes: [s.athlete_id] };
   }
+  if (i.source_type === 'academy_session') {
+    // an academy session is run by its assigned coaches; the roster is the cohort's enrolled athletes (read live, never copied)
+    const x = await one(
+      `SELECT s.id, s.title, s.starts_at, s.sport, s.cohort_id FROM academy_sessions s
+        WHERE s.id=$1 AND s.status IN ('published','completed') AND EXISTS (SELECT 1 FROM academy_session_staff st WHERE st.session_id=s.id AND st.user_id=$2 AND st.role IN ('lead','assistant') AND st.status IN ('assigned','confirmed'))`, [i.source_id, user.id]);
+    if (!x) throw notFound('Academy session');
+    const athletes = (await many("SELECT user_id FROM org_enrolments WHERE cohort_id=$1 AND status='enrolled' UNION SELECT user_id FROM academy_attendance WHERE session_id=$2 AND guest ORDER BY 1", [x.cohort_id, x.id])).map((r) => r.user_id);
+    const hidden = isAdmin(user) ? new Set() : await hiddenYouth(user, athletes);
+    const sp = x.sport ? await one('SELECT id FROM sports WHERE slug=$1 OR lower(name)=lower($1)', [x.sport]) : null;
+    return { title: i.title ?? x.title, scheduled_at: x.starts_at, sport_id: sp?.id ?? null, team_id: null, athletes: athletes.filter((a) => !hidden.has(a)) };
+  }
   if (i.source_type === 'coach_hire') {
     const h = await one("SELECT * FROM coach_hires WHERE id=$1 AND coach_id=$2 AND status IN ('confirmed','completed')", [i.source_id, user.id]);
     if (!h) throw notFound('Coaching hire');
@@ -125,7 +136,7 @@ cap({
   name: 'create_coaching_session', method: 'POST', path: '/coaching/sessions', tag: TAG, auth: COACH, status: 201,
   summary: 'Open the coaching record for a session or match you run. It links to the canonical source (plan session, hire, fixture) and never creates a booking; one team session has one record with many participants. Repeating the call returns the same record.',
   input: z.object({
-    source_type: z.enum(['training_session', 'coach_hire', 'fixture', 'team_session']),
+    source_type: z.enum(['training_session', 'coach_hire', 'fixture', 'team_session', 'academy_session']),
     source_id: z.string().max(80).describe('id of the plan session / hire / fixture; for team_session a client-generated uuid makes retries idempotent'),
     team_id: id.optional().describe('required for fixture and team_session'),
     title: text(120).min(2).optional(), objective: text(1000).optional(),
@@ -221,6 +232,8 @@ cap({
   async handler({ user }, i) {
     return tx(async (c) => {
       const { rec } = await sessionAccess(user, i.id, 'attendance', c);
+      // one attendance fact per academy session: it is taken in the academy session and only mirrored here
+      if (rec.source_type === 'academy_session') throw conflict('Attendance for an academy session is taken in the academy session itself; it appears here automatically.');
       for (const e of i.entries) {
         const r = await c.query(
           `UPDATE coaching_session_participants SET attendance=$3, focus=coalesce($4, focus), updated_at=now(),
