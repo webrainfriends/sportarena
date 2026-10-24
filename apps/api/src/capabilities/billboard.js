@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { openRosterStint } from '../career.js';
 import { cap, id, page, money } from '../registry.js';
 import { one, many, query, tx } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
@@ -111,6 +112,7 @@ cap({
           await c.query(`INSERT INTO team_members(team_id, user_id, role, status, rate_cents, rate_unit) VALUES ($1,$2,$3,'active',$4,coalesce($5,'match'))
                          ON CONFLICT (team_id, user_id) DO UPDATE SET status='active', role=CASE WHEN team_members.status='active' AND team_members.role IN ('manager','captain') THEN team_members.role ELSE EXCLUDED.role END, rate_cents=coalesce(EXCLUDED.rate_cents, team_members.rate_cents), rate_unit=EXCLUDED.rate_unit`,
             [p.team_id, r.responder_id, role, p.budget_cents, p.rate_unit]);
+          await openRosterStint(c, (await c.query('SELECT * FROM teams WHERE id=$1', [p.team_id])).rows[0], r.responder_id, role, null, null, r.responder_id);
         }
       }
       const { rows: [out] } = await c.query('UPDATE billboard_responses SET status=$2 WHERE id=$1 RETURNING id, post_id, status', [i.id, i.status]);

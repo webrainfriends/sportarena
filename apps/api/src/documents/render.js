@@ -39,7 +39,7 @@ export async function renderInvoice({ layout, kit, logo, invoice, sample = false
 
   const left = doc.page.margins.left, width = doc.page.width - left - doc.page.margins.right;
   const bottom = () => doc.page.height - doc.page.margins.bottom - 24; // room kept for the footer
-  const title = invoice.kind === 'credit_note' ? 'CREDIT NOTE' : 'INVOICE';
+  const title = invoice.kind === 'credit_note' ? 'CREDIT NOTE' : invoice.status === 'paid' ? 'INVOICE · PAID' : 'INVOICE';
   const label = (t, x, y, w, o = {}) => doc.font(o.bold ? f.bold : f.regular).fontSize(o.size ?? 9).fillColor(o.color ?? ink).text(t ?? '', x, y, { width: w, align: o.align ?? 'left', lineBreak: o.lineBreak ?? true });
 
   const header = (compact) => {
@@ -197,6 +197,75 @@ export async function renderCoachingReport({ layout, kit, logo, snapshot, versio
     doc.page.margins.bottom = 0;
     if (wantsFooter && kit?.footer_text) label(kit.footer_text, left, y, width - 120, { size: 8, lineBreak: false });
     label(`${snapshot.title} · v${version} · Page ${i + 1} of ${range.count}`, left + width - 260, y, 260, { size: 8, align: 'right', lineBreak: false });
+  }
+  doc.end();
+  await done;
+  return { buffer: Buffer.concat(chunks), pages: range.count };
+}
+
+/**
+ * Enrolment letter: a welcome and confirmation of a place, from a frozen snapshot built at the moment of issue (programme terms, group, fees as
+ * charged, agreements accepted). Only the words in the snapshot are printed; a template chooses presentation (header, text, footer) only.
+ */
+export async function renderEnrolmentLetter({ layout, kit, logo, snapshot }) {
+  const f = fonts();
+  const strings = [kit?.display_name, kit?.legal_name, kit?.address, kit?.footer_text, snapshot.title, snapshot.organisation, snapshot.address, snapshot.addressee, snapshot.reference, ...layout.blocks.map((b) => b.text)];
+  for (const sec of snapshot.sections) strings.push(sec.title, sec.body, ...(sec.items ?? []).flatMap((x) => [x.title, x.value, x.meta]));
+  assertGlyphs(strings, f);
+  const accent = hex(kit?.primary_color, '#0F6E56'), ink = hex(kit?.secondary_color, '#444441');
+  const doc = new PDFDocument({
+    size: layout.paper, layout: layout.orientation, margin: layout.margin_mm * MM, bufferPages: true, compress: true,
+    info: { Title: snapshot.title, Author: kit?.display_name ?? snapshot.organisation, CreationDate: new Date(snapshot.issued_at), Producer: 'Sportarena' },
+  });
+  const chunks = [];
+  doc.on('data', (c) => chunks.push(c));
+  const done = new Promise((res, rej) => { doc.on('end', res); doc.on('error', rej); });
+  const left = doc.page.margins.left, width = doc.page.width - left - doc.page.margins.right;
+  const bottom = () => doc.page.height - doc.page.margins.bottom - 24;
+  const label = (t, x, y, w, o = {}) => doc.font(o.bold ? f.bold : f.regular).fontSize(o.size ?? 9).fillColor(o.color ?? ink).text(t ?? '', x, y, { width: w, align: o.align ?? 'left', lineBreak: o.lineBreak ?? true });
+  const room = (h) => { if (doc.y + h > bottom()) doc.addPage(); };
+
+  for (const b of layout.blocks) {
+    if (b.type === 'header') {
+      const top = doc.page.margins.top; let x = left;
+      if (layout.style === 'modern') doc.rect(0, 0, doc.page.width, 10).fill(accent);
+      if (logo) { try { doc.image(logo, x, top, { fit: [130, 56] }); x += 140; } catch { throw new AppError(422, 'logo_unreadable', 'The brand logo could not be read. Upload it again as PNG or JPEG.'); } }
+      label(kit?.display_name ?? snapshot.organisation, x, top, width - (x - left), { bold: true, size: 14, color: accent });
+      const sub = [kit?.legal_name ?? snapshot.legal_name, kit?.address ?? snapshot.address, [kit?.contact_email, kit?.phone].filter(Boolean).join(' · '), kit?.website].filter(Boolean).join('\n');
+      if (sub) label(sub, x, doc.y + 2, width - (x - left), { size: 8 });
+      doc.y = Math.max(doc.y, top + (logo ? 60 : 0)) + 14;
+      doc.moveTo(left, doc.y).lineTo(left + width, doc.y).lineWidth(0.6).stroke(accent); doc.y += 12;
+    } else if (b.type === 'title') {
+      label(snapshot.title, left, doc.y, width, { bold: true, size: 18, color: accent });
+      label(`${snapshot.addressee} · ${day(snapshot.issued_at)} · Ref ${snapshot.reference}`, left, doc.y + 2, width, { size: 9 });
+      doc.y += 12;
+      for (const sec of snapshot.sections) {
+        room(48);
+        label(sec.title.toUpperCase(), left, doc.y, width, { bold: true, size: 9, color: accent }); doc.y += 4;
+        if (sec.body) { label(sec.body, left, doc.y, width, { size: 10 }); doc.y += 10; }
+        for (const it of sec.items ?? []) {
+          room(26);
+          const y = doc.y;
+          label(it.title, left, y, width * 0.34, { bold: true, size: 9 });
+          const h1 = doc.y - y;
+          label(it.value ?? '', left + width * 0.36, y, width * 0.64, { size: 9, align: 'left' });
+          if (it.meta) label(it.meta, left + width * 0.36, doc.y, width * 0.64, { size: 8 });
+          doc.y = Math.max(doc.y, y + h1) + 4;
+        }
+        doc.y += 8;
+      }
+    } else if (b.type === 'text') {
+      room(30); label(b.text, left, doc.y, width, { size: TEXT_SIZE[b.size] ?? 9, align: b.align }); doc.y += 8;
+    }
+  }
+  const wantsFooter = layout.blocks.some((b) => b.type === 'footer');
+  const range = doc.bufferedPageRange();
+  for (let i = 0; i < range.count; i++) {
+    doc.switchToPage(range.start + i);
+    const y = doc.page.height - doc.page.margins.bottom - 12;
+    doc.page.margins.bottom = 0;
+    if (wantsFooter && kit?.footer_text) label(kit.footer_text, left, y, width - 120, { size: 8, lineBreak: false });
+    label(`${snapshot.title} · ${snapshot.reference} · Page ${i + 1} of ${range.count}`, left + width - 260, y, 260, { size: 8, align: 'right', lineBreak: false });
   }
   doc.end();
   await done;

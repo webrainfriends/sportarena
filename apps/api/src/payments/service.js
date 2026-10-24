@@ -7,6 +7,7 @@ import { completeTopup, activateGiftCard } from '../wallet.js';
 import { activateUserPlan } from '../booking/plans.js';
 import { activatePhysioPackage } from '../capabilities/provider-packages.js';
 import { fulfilSponsorshipPayment } from '../sponsor-agreements.js';
+import { fulfilChargePaid } from '../academy-invoices.js';
 import { raiseException, recordSale, syncRefunds } from '../settlement.js';
 
 export { paymentsEnabled, enabledProviders };
@@ -70,7 +71,6 @@ async function fulfil(c, type, id) {
     shop_checkout: "UPDATE shop_orders SET status='placed' WHERE checkout_id=$1 AND status='awaiting_payment'",
     coach_hire: "UPDATE coach_hires SET payment_status='paid', status=CASE WHEN request_response_id IS NOT NULL AND status='requested' THEN 'confirmed' ELSE status END WHERE id=$1 AND payment_status='unpaid' AND status IN ('requested','confirmed')",
     insurance_policy: "UPDATE insurance_policies SET status='active' WHERE id=$1 AND status='pending_payment'",
-    academy_charge: "UPDATE academy_charges SET status='paid', paid_at=now() WHERE id=$1 AND status='awaiting_payment'",
     appointment: "UPDATE appointments SET payment_status='paid', updated_at=now() WHERE id=$1 AND payment_status='unpaid' AND status IN ('requested','confirmed')",
   }[type];
   if (type === 'venue_invoice') return markInvoicePaid(c, id, { method: 'online' });
@@ -79,6 +79,7 @@ async function fulfil(c, type, id) {
   if (type === 'venue_plan') return activateUserPlan(c, id);
   if (type === 'physio_package') return activatePhysioPackage(c, id);
   if (type === 'sponsorship_payment') return fulfilSponsorshipPayment(c, id);
+  if (type === 'academy_charge') return fulfilChargePaid(c, id, { method: 'online' });
   return (await c.query(sql, [id])).rowCount > 0;
 }
 

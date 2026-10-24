@@ -8,6 +8,7 @@ import { conflict, forbidden, notFound } from '../errors.js';
 import { audit, isAdmin } from '../helpers.js';
 import { guardianLink, isYouth } from '../youth.js';
 import { sponsorAccess, assertSponsorCan, notifySponsor } from '../sponsor-access.js';
+import { dealContext, logHistory } from '../sponsor-agreements.js';
 
 const TAG = 'Sponsors';
 const forChild = async (user, childId, c) => {
@@ -79,5 +80,24 @@ cap({
          JOIN guardian_links l ON l.guardian_id=a.authorized_by AND l.child_id=a.child_id AND l.status='active' AND l.revoked_at IS NULL AND (l.expires_at IS NULL OR l.expires_at > now())
         WHERE a.sponsor_id=$1 AND a.status='active' AND u.youth_until IS NOT NULL AND u.youth_until > current_date
         ORDER BY a.created_at DESC, a.id LIMIT $2 OFFSET $3`, [i.id, i.limit, i.offset]);
+  },
+});
+
+cap({
+  name: 'set_youth_payee', method: 'POST', path: '/sponsorships/:id/youth-payee', tag: TAG,
+  summary: 'Verified guardian: choose which verified guardian receives and confirms the money of a young athlete\'s agreement. Money is never paid to the young person. It applies to payments reported or checked out from now on; payments already open keep the payee they were opened with (if that guardian is no longer verified, any verified guardian can confirm them). Recorded in the agreement history.',
+  input: z.object({ id, guardian_id: id }),
+  async handler({ user }, i) {
+    return tx(async (c) => {
+      const ctx = await dealContext(c, i.id, user, { lock: true });
+      if (!ctx.youth) throw conflict('Only an agreement with a young athlete has a guardian payee');
+      if (!ctx.guardian) throw forbidden('Only a verified guardian of this young person chooses who is paid');
+      if (!(await guardianLink(i.guardian_id, ctx.d.target_id, c))) throw conflict('The payee must be a verified guardian of this young person');
+      const row = (await c.query('UPDATE sponsorships SET payee_guardian_id=$2 WHERE id=$1 RETURNING payee_guardian_id', [ctx.d.id, i.guardian_id])).rows[0];
+      await logHistory(c, ctx.d.id, ctx.d.terms_version, user.id, 'payee_set');
+      await audit(c, user.id, 'set_youth_payee', 'sponsorships', ctx.d.id);
+      await notifySponsor(c, ctx.sp, 'pay', { kind: 'sponsorship_update', title: 'The payee for an agreement was updated', body: `Open the ${ctx.sp.name} agreement to see the update.`, data: { sponsorship_id: ctx.d.id } }, ctx.d.department_id);
+      return row;
+    });
   },
 });

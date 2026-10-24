@@ -18,6 +18,7 @@ import { matchFileRouter } from './capabilities/player.js';
 import { insuranceDocsRouter } from './capabilities/insurance-docs.js';
 import { brandedDocumentsRouter } from './capabilities/branded-documents.js';
 import { coachingEvidenceRouter } from './capabilities/coaching-evidence.js';
+import { passportFilesRouter } from './capabilities/passport-recruitment.js';
 import { applicationFilesRouter } from './capabilities/sponsorship-application-forms.js';
 import { subjectDocsRouter } from './capabilities/subject-docs.js';
 import { staffDocsRouter } from './capabilities/event-openings.js';
@@ -70,6 +71,7 @@ export function createApp() {
   app.use('/api/v1', insuranceDocsRouter());
   app.use('/api/v1', brandedDocumentsRouter());
   app.use('/api/v1', coachingEvidenceRouter());
+  app.use('/api/v1', passportFilesRouter());
   app.use('/api/v1', applicationFilesRouter());
   app.use('/api/v1', matchFileRouter());
   app.use('/api/v1', subjectDocsRouter());

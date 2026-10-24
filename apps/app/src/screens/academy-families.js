@@ -4,10 +4,11 @@ import React, { useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
-import { Chip, Empty, ErrorBox, Field, Loading, Row, T, Tag } from '../ui';
+import { useSession } from '../session';
+import { Btn, Chip, Empty, ErrorBox, Field, Loading, Row, T, Tag } from '../ui';
 import { c } from '../theme';
 import { moneyIn } from '../vtime';
-import { Block, Fact, Initials, Origin, Split, StageBadge, when } from './academy-ui';
+import { Block, Fact, Initials, LetterSheet, Origin, Split, StageBadge, when } from './academy-ui';
 
 export function Families({ o, onOpenApplication }) {
   const [q, setQ] = useState(''), [status, setStatus] = useState(null), [open, setOpen] = useState(null);
@@ -29,12 +30,15 @@ export function Families({ o, onOpenApplication }) {
 
 function Athlete({ o, id, onOpenApplication }) {
   const a = useLoad(() => api.get(`/organisations/${o.id}/academy/athletes/${id}`), [o.id, id]);
+  const { toast } = useSession();
+  const [letter, setLetter] = useState(null);
   if (a.error) return <ErrorBox error={a.error} onRetry={a.reload} />;
   if (!a.data) return <Loading />;
   const d = a.data;
   const due = d.charges.filter((x) => x.status === 'awaiting_payment');
   return (
     <View style={{ gap: 10 }}>
+      <LetterSheet enrolment={letter} orgId={o.id} onClose={() => setLetter(null)} toast={toast} />
       <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}><Initials user={d.athlete} size={48} /><View style={{ flex: 1 }}><T weight="800" size={18}>{d.athlete.display_name}</T><T size={12} color={c.mute}>@{d.athlete.handle}{d.is_youth ? ' · young person' : ''}</T></View></View>
       {d.is_youth ? (
         <Block title="Responsible adults">
@@ -43,7 +47,7 @@ function Athlete({ o, id, onOpenApplication }) {
         </Block>
       ) : null}
       <Block title="Enrolments">
-        {d.enrolments.length ? d.enrolments.map((e) => <Row key={e.id} title={e.programme} sub={`${e.group_name} · since ${when(e.enrolled_at)}${e.version ? ` · terms v${e.version}` : ''}${e.ended_reason ? ` · ${e.ended_reason}` : ''}`} right={<Tag label={e.status} color={e.status === 'enrolled' ? c.lime : undefined} />} />) : <T size={13} color={c.mute}>Not enrolled.</T>}
+        {d.enrolments.length ? d.enrolments.map((e) => <Row key={e.id} title={e.programme} sub={`${e.group_name} · since ${when(e.enrolled_at)}${e.version ? ` · terms v${e.version}` : ''}${e.ended_reason ? ` · ${e.ended_reason}` : ''}`} right={<View style={{ alignItems: 'flex-end', gap: 4 }}><Tag label={e.status} color={e.status === 'enrolled' ? c.lime : undefined} />{['enrolled', 'paused', 'completed', 'graduated'].includes(e.status) ? <Btn small title="Letter" color={c.paper} ink={c.ink} onPress={() => setLetter({ enrolment_id: e.id, display_name: d.athlete?.display_name ?? '' })} /> : null}</View>} />) : <T size={13} color={c.mute}>Not enrolled.</T>}
       </Block>
       <Block title="Applications">
         {d.applications.length ? d.applications.map((x) => <Row key={x.id} title={x.programme} sub={`started ${when(x.created_at)}${x.applicant_name !== d.athlete.display_name ? ` · by ${x.applicant_name}` : ''}`} right={<StageBadge stage={x.stage} />} onPress={() => onOpenApplication?.(x.id)} />) : <T size={13} color={c.mute}>None.</T>}

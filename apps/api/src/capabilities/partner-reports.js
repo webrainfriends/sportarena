@@ -32,7 +32,7 @@ cap({
       many("SELECT k.id, k.contract_no, p.name AS partner_name, k.effective_to FROM partner_contracts k JOIN partners p ON p.id=k.partner_id WHERE k.status='active' AND k.effective_to BETWEEN current_date AND current_date + 30 ORDER BY k.effective_to"),
       many(`SELECT i.currency, coalesce(sum(CASE WHEN i.kind='credit_note' THEN -(i.total_cents - i.tax_cents) ELSE i.total_cents - i.tax_cents END),0)::bigint AS sales_cents,
                    count(*) FILTER (WHERE i.kind='invoice')::int AS invoices
-              FROM invoices i WHERE i.status='paid' AND coalesce(i.paid_at, i.issued_at) > now() - interval '30 days' GROUP BY i.currency`),
+              FROM invoices i WHERE i.venue_id IS NOT NULL AND i.status='paid' AND coalesce(i.paid_at, i.issued_at) > now() - interval '30 days' GROUP BY i.currency`),
       many(`SELECT v.id, v.name, v.city, i.currency, sum(CASE WHEN i.kind='credit_note' THEN -(i.total_cents - i.tax_cents) ELSE i.total_cents - i.tax_cents END)::bigint AS sales_cents
               FROM invoices i JOIN venues v ON v.id=i.venue_id WHERE i.status='paid' AND coalesce(i.paid_at, i.issued_at) > now() - interval '30 days' GROUP BY v.id, i.currency ORDER BY sales_cents DESC LIMIT 5`),
     ]);

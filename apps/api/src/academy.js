@@ -10,10 +10,17 @@ import { notify } from './notify.js';
 import { addMonths } from './sponsor-schedule.js';
 import { allocate } from './settlement.js';
 
+/** A boolean that also arrives as the text "true"/"false" in a query string (z.coerce.boolean would read "false" as true). */
+export const flag = z.preprocess((v) => (v === 'true' ? true : v === 'false' ? false : v), z.boolean());
 export const STAGES = ['enquiry', 'trial_requested', 'trial_booked', 'trial_completed', 'application_draft', 'submitted', 'under_review', 'offered', 'waitlisted', 'declined', 'offer_accepted', 'enrolled', 'withdrawn', 'expired', 'cancelled'];
 export const TERMINAL = ['enrolled', 'declined', 'withdrawn', 'expired', 'cancelled'];
 const HOLD_SEAT = ['offered', 'offer_accepted'];
 export const STAFF = ['owner', 'admin'];
+/** Sessions left for an enrolment `e`: held by the shared plan engine (a pack is a pass), the old enrolment column only for rows from before. */
+export const SESSIONS_SQL = "coalesce((SELECT up.sessions_left FROM user_plans up WHERE up.enrolment_id=e.id AND up.kind='pass' AND up.status IN ('active','awaiting_payment','used_up') ORDER BY up.created_at DESC LIMIT 1), e.sessions_left)";
+/** The live invoice (open or paid) of a charge `ch`. */
+export const INVOICE_NO_SQL = "(SELECT i.number FROM invoices i WHERE i.academy_charge_id=ch.id AND i.kind='invoice' AND i.status IN ('open','paid') LIMIT 1)";
+export const INVOICE_SQL = "(SELECT i.id FROM invoices i WHERE i.academy_charge_id=ch.id AND i.kind='invoice' AND i.status IN ('open','paid') LIMIT 1)";
 export const STAFF_MONEY = ['owner', 'admin', 'finance'];
 
 /** Allowed moves. The server decides; clients only ask. */
@@ -151,48 +158,91 @@ export async function outstandingPolicies(c, athleteId, policyVersionIds) {
 }
 
 const tax = (amount, bp) => Math.round((amount * bp) / (10000 + bp)); // the price already contains its tax
+
+/**
+ * The promo code an applicant entered, if it is usable today. Promo codes are rows of the shared discounts framework owned by the organisation
+ * (optionally one programme): percent or fixed, validity window, total and per-person limits. Limits count redemptions plus other open
+ * applications that already hold the code, so two people cannot both take the last use. Errors never say whether a code exists.
+ */
+export async function findPromo(c, { orgId, programmeId, code, userId, version, excludeApplicationId = null }) {
+  const bad = () => unprocessable('That promo code is not valid for this programme');
+  if (!code) return null;
+  if (!version || version.billing_model === 'free') throw bad();
+  const d = (await c.query('SELECT * FROM discounts WHERE organisation_id=$1 AND active AND upper(code)=upper($2) FOR UPDATE', [orgId, code.trim()])).rows[0];
+  if (!d) throw bad();
+  if (d.programme_id && d.programme_id !== programmeId) throw bad();
+  const today = new Date().toISOString().slice(0, 10);
+  if ((d.valid_from && String(d.valid_from).slice(0, 10) > today) || (d.valid_to && String(d.valid_to).slice(0, 10) < today)) throw bad();
+  if (d.kind === 'fixed' && d.currency !== version.currency) throw bad();
+  const held = `SELECT count(*)::int FROM academy_applications a WHERE a.promo_discount_id=d.id AND a.stage NOT IN ('declined','withdrawn','expired','cancelled','enrolled') AND ($2::uuid IS NULL OR a.id <> $2)`;
+  const used = (await c.query(`SELECT (SELECT count(*)::int FROM discount_redemptions x WHERE x.discount_id=d.id) + (${held}) AS n,
+                                      (SELECT count(*)::int FROM discount_redemptions x WHERE x.discount_id=d.id AND x.user_id=$3) + (${held} AND a.applicant_id=$3) AS mine
+                                 FROM discounts d WHERE d.id=$1`, [d.id, excludeApplicationId, userId])).rows[0];
+  if ((d.max_redemptions && used.n >= d.max_redemptions) || (d.per_user_limit && used.mine >= d.per_user_limit)) throw bad();
+  return d;
+}
+
 /**
  * Build the charges for an enrolment from the version the applicant accepted (price, discount, tax and terms are snapshotted into
- * each row, so later programme edits never touch them). The better of the sibling and multi-programme discounts applies, never both.
+ * each row, so later programme edits never touch them). One discount applies: the best of sibling, second-programme and a promo code.
  */
-export function planCharges(v, { today, sibling, multi, programme }) {
+export function planCharges(v, { today, sibling, multi, promo = null }) {
   const rows = [];
-  const terms = { programme_id: v.programme_id, version: v.version, billing_model: v.billing_model, renewal_terms: v.renewal_terms ?? null };
-  const push = (kind, gross, due, extra = {}) => {
-    if (gross <= 0) return;
-    const bp = extra.discountBp ?? 0;
-    const discount = Math.round((gross * bp) / 10000);
-    const amount = gross - discount;
-    rows.push({ kind, due_on: due, currency: v.currency, gross_minor: gross, discount_minor: discount, funded_minor: 0, tax_minor: tax(amount, v.tax_rate_bp), amount_minor: amount, terms: { ...terms, ...(bp ? { discount_bp: bp, discount_reason: extra.reason } : {}) } });
-  };
-  push('registration', Number(v.registration_fee_minor), today);
-  const best = Math.max(sibling ? v.sibling_discount_bp : 0, multi ? v.multi_programme_discount_bp : 0);
-  const reason = sibling && best === v.sibling_discount_bp ? 'sibling' : 'multi_programme';
   const fee = Number(v.fee_minor);
-  if (v.billing_model === 'pack') push('pack', fee, today, { discountBp: best, reason });
-  else if (v.billing_model === 'monthly') push('instalment', fee, today, { discountBp: best, reason });           // later months are raised by the worker, one at a time
-  else if (v.billing_model === 'one_time' || (v.billing_model === 'term' && v.instalments === 1)) push('tuition', fee, today, { discountBp: best, reason });
-  else if (v.billing_model === 'term') {
+  const autoBp = Math.max(sibling ? v.sibling_discount_bp : 0, multi ? v.multi_programme_discount_bp : 0);
+  const autoD = Math.round((fee * autoBp) / 10000);
+  const promoD = promo ? (promo.kind === 'percent' ? Math.round((fee * promo.value) / 100) : Math.min(promo.value, fee)) : 0;
+  const usePromo = promoD > autoD;
+  const D = Math.min(fee, usePromo ? promoD : autoD);
+  const reason = usePromo ? 'promo' : sibling && autoBp === v.sibling_discount_bp ? 'sibling' : 'multi_programme';
+  const base = { programme_id: v.programme_id, version: v.version, billing_model: v.billing_model, renewal_terms: v.renewal_terms ?? null, tax_rate_bp: v.tax_rate_bp };
+  const why = D > 0 ? { discount_reason: reason, ...(usePromo ? { promo: { id: promo.id, code: promo.code } } : { discount_bp: autoBp }) } : {};
+  const row = (kind, gross, discount, due, extra = {}) => {
+    const amount = gross - discount;
+    return { kind, due_on: due, currency: v.currency, gross_minor: gross, discount_minor: discount, funded_minor: 0, tax_minor: tax(amount, v.tax_rate_bp), amount_minor: amount, terms: { ...base, ...extra } };
+  };
+  if (Number(v.registration_fee_minor) > 0) rows.push(row('registration', Number(v.registration_fee_minor), 0, today));
+  if (fee > 0 && (v.billing_model === 'pack' || v.billing_model === 'one_time' || (v.billing_model === 'term' && v.instalments === 1))) rows.push(row(v.billing_model === 'pack' ? 'pack' : 'tuition', fee, D, today, why));
+  else if (fee > 0 && v.billing_model === 'monthly') rows.push(row('instalment', fee, D, today, { ...why, discount_bp_recurring: usePromo ? 0 : autoBp })); // a sibling discount lasts for every month, a promo code only the first
+  else if (fee > 0 && v.billing_model === 'term') {
     const dep = Math.min(Number(v.deposit_minor), fee);
     const rest = fee - dep;
-    const disc = Math.min(rest, Math.round((fee * best) / 10000));       // the discount comes off the instalments, never the deposit
+    const disc = Math.min(rest, D);                                   // the discount comes off the instalments, never the deposit
     const gross = allocate(rest, Array.from({ length: v.instalments }, () => 1));
     const off = allocate(disc, gross);
-    if (dep > 0) rows.push({ kind: 'deposit', due_on: today, currency: v.currency, gross_minor: dep, discount_minor: 0, funded_minor: 0, tax_minor: tax(dep, v.tax_rate_bp), amount_minor: dep, terms });
-    gross.forEach((g, n) => { const amount = g - off[n]; if (g > 0) rows.push({ kind: 'instalment', due_on: addMonths(today, n + (dep > 0 ? 1 : 0)), currency: v.currency, gross_minor: g, discount_minor: off[n], funded_minor: 0, tax_minor: tax(amount, v.tax_rate_bp), amount_minor: amount, terms: { ...terms, instalment_of: v.instalments, ...(off[n] ? { discount_bp: best, discount_reason: reason } : {}) } }); });
+    if (dep > 0) rows.push(row('deposit', dep, 0, today));
+    gross.forEach((g, n) => { if (g > 0) rows.push(row('instalment', g, off[n], addMonths(today, n + (dep > 0 ? 1 : 0)), { instalment_of: v.instalments, ...(off[n] ? why : {}) })); });
   }
   return rows;
 }
 
 export async function insertCharges(c, { enrolmentId = null, applicationId = null, orgId, payerId, rows, seqStart = 0 }) {
+  const { syncChargeInvoice } = await import('./academy-invoices.js');
   const out = [];
   for (const [n, r] of rows.entries()) {
-    out.push((await c.query(
-      `INSERT INTO academy_charges(enrolment_id, application_id, organisation_id, payer_id, seq, kind, due_on, currency, gross_minor, discount_minor, funded_minor, tax_minor, amount_minor, terms, status)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
-      [enrolmentId, applicationId, orgId, payerId, seqStart + n, r.kind, r.due_on, r.currency, r.gross_minor, r.discount_minor, r.funded_minor, r.tax_minor, r.amount_minor, JSON.stringify(r.terms), r.amount_minor === 0 ? 'waived' : 'awaiting_payment'])).rows[0]);
+    const ch = (await c.query(
+      `INSERT INTO academy_charges(enrolment_id, application_id, organisation_id, payer_id, seq, kind, due_on, currency, gross_minor, discount_minor, funded_minor, tax_minor, amount_minor, terms, status, user_plan_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
+      [enrolmentId, applicationId, orgId, payerId, seqStart + n, r.kind, r.due_on, r.currency, r.gross_minor, r.discount_minor, r.funded_minor, r.tax_minor, r.amount_minor, JSON.stringify(r.terms), r.amount_minor === 0 ? 'waived' : 'awaiting_payment', r.user_plan_id ?? null])).rows[0];
+    await syncChargeInvoice(c, ch.id);                 // every fee that needs paying gets its numbered invoice
+    out.push(ch);
   }
   return out;
+}
+
+/** The next period of an academy subscription (raised by the shared plan renewal a week early): its charge, at the plan's current price. */
+export async function raiseRenewalCharge(c, up, planId) {
+  const prev = (await c.query('SELECT * FROM academy_charges WHERE user_plan_id=$1 ORDER BY seq DESC LIMIT 1', [up.id])).rows[0];
+  if (!prev) return null;
+  const bp = Number(prev.terms?.discount_bp_recurring ?? 0);
+  const gross = Number(up.new_price), discount = Math.round((gross * bp) / 10000);
+  const seq = (await c.query('SELECT coalesce(max(seq), -1) + 1 AS n FROM academy_charges WHERE enrolment_id=$1', [up.enrolment_id])).rows[0].n;
+  const rate = Number(prev.terms?.tax_rate_bp ?? 0);
+  const { discount_bp_recurring, discount_reason, discount_bp, promo, ...keep } = prev.terms ?? {};
+  void discount_bp_recurring; void promo; void discount_bp; void discount_reason;
+  return insertCharges(c, { enrolmentId: up.enrolment_id, orgId: up.organisation_id, payerId: up.user_id, seqStart: seq, rows: [{
+    kind: 'instalment', due_on: new Date(up.expires_at).toISOString().slice(0, 10), currency: up.currency, gross_minor: gross, discount_minor: discount, funded_minor: 0, tax_minor: tax(gross - discount, rate), amount_minor: gross - discount,
+    terms: { ...keep, ...(bp ? { discount_bp: bp, discount_reason: prev.terms.discount_reason, discount_bp_recurring: bp } : { discount_bp_recurring: 0 }) }, user_plan_id: planId }] });
 }
 
 /** Turn an accepted offer into an enrolment (seat is already reserved by the offer). Idempotent per application. */
@@ -209,20 +259,33 @@ export async function enrol(c, app, { actor }) {
     if (n >= cohort.capacity) throw conflict('This group is full');
   }
   const e = (await c.query(
-    `INSERT INTO org_enrolments(cohort_id, user_id, consent_at, enrolled_by, programme_id, version_id, application_id, sessions_left)
-     VALUES ($1,$2,now(),$3,$4,$5,$6,$7)
-     ON CONFLICT (cohort_id, user_id) DO UPDATE SET status='enrolled', consent_at=now(), enrolled_by=$3, withdrawn_at=NULL, ended_reason=NULL, programme_id=$4, version_id=$5, application_id=$6, sessions_left=$7
+    `INSERT INTO org_enrolments(cohort_id, user_id, consent_at, enrolled_by, programme_id, version_id, application_id)
+     VALUES ($1,$2,now(),$3,$4,$5,$6)
+     ON CONFLICT (cohort_id, user_id) DO UPDATE SET status='enrolled', consent_at=now(), enrolled_by=$3, withdrawn_at=NULL, ended_reason=NULL, programme_id=$4, version_id=$5, application_id=$6
        WHERE org_enrolments.status IN ('withdrawn','transferred','completed','graduated') RETURNING *`,
-    [cohortId, app.athlete_id, actor, app.programme_id, app.version_id, app.id, v.billing_model === 'pack' ? v.sessions_in_pack : null])).rows[0];
+    [cohortId, app.athlete_id, actor, app.programme_id, app.version_id, app.id])).rows[0];
   if (!e) throw conflict('This athlete is already in that group');
   const today = new Date().toISOString().slice(0, 10);
   const orgId = programme.organisation_id;
   const sibling = (await c.query(
     "SELECT 1 FROM org_enrolments e JOIN academy_charges ch ON ch.enrolment_id=e.id WHERE ch.payer_id=$1 AND ch.organisation_id=$2 AND e.user_id<>$3 AND e.status IN ('enrolled','paused') LIMIT 1", [app.applicant_id, orgId, app.athlete_id])).rows.length > 0;
   const multi = (await c.query("SELECT 1 FROM org_enrolments WHERE user_id=$1 AND programme_id<>$2 AND status IN ('enrolled','paused') AND programme_id IN (SELECT id FROM academy_programmes WHERE organisation_id=$3) LIMIT 1", [app.athlete_id, app.programme_id, orgId])).rows.length > 0;
+  const promo = app.promo_discount_id ? (await c.query('SELECT * FROM discounts WHERE id=$1', [app.promo_discount_id])).rows[0] ?? null : null;   // the price shown at application is the price honoured
   // charges raised before enrolment (trial fee) stay as they are; the enrolment's own start here
-  const rows = Number(v.fee_minor) + Number(v.registration_fee_minor) > 0 ? planCharges(v, { today, sibling, multi, programme }) : [];
-  await insertCharges(c, { enrolmentId: e.id, orgId, payerId: app.applicant_id, rows });
+  const rows = Number(v.fee_minor) + Number(v.registration_fee_minor) > 0 ? planCharges(v, { today, sibling, multi, promo }) : [];
+  // a pack or a monthly fee is an entitlement with a period, sessions and renewals: the shared plan engine holds it, the charge below pays for it
+  if (v.plan_id && ['pack', 'monthly'].includes(v.billing_model)) {
+    const plan = (await c.query('SELECT * FROM venue_plans WHERE id=$1', [v.plan_id])).rows[0];
+    const up = (await c.query(
+      `INSERT INTO user_plans(plan_id, organisation_id, enrolment_id, user_id, kind, name, price_cents, currency, discount_bp, sessions_total, sessions_left, session_value_cents, duration_days, duration_months, resource_ids, includes, auto_renew)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NULL,$9,$9,$10,$11,$12,$13,$14,$15) RETURNING id`,
+      [plan.id, orgId, e.id, app.applicant_id, plan.kind, `${programme.title}`, Number(v.fee_minor), plan.currency, plan.sessions, plan.session_value_cents, plan.duration_days ?? plan.valid_days, plan.duration_months, plan.resource_ids, plan.includes, plan.auto_renew])).rows[0];
+    const first = rows.find((r) => r.kind === 'pack' || r.kind === 'instalment');
+    if (first) first.user_plan_id = up.id;
+  }
+  const made = await insertCharges(c, { enrolmentId: e.id, orgId, payerId: app.applicant_id, rows });
+  const given = made.filter((m) => m.terms?.promo?.id === promo?.id && Number(m.discount_minor) > 0).reduce((t, m) => t + Number(m.discount_minor), 0);
+  if (promo && given > 0) await c.query('INSERT INTO discount_redemptions(discount_id, enrolment_id, user_id, amount_cents) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING', [promo.id, e.id, app.applicant_id, given]);
   return e;
 }
 async function defaultCohort(c, programme) {

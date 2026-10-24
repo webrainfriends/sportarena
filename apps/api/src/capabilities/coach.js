@@ -87,7 +87,7 @@ cap({
     if (to < from) throw badRequest('to is before from');
     if ((Date.parse(to) - Date.parse(from)) / 86400000 > 92) throw badRequest('Range is limited to 92 days');
     const win = [user.id, from, to];
-    const [hires, sessions, fixtures, commitments] = await Promise.all([
+    const [hires, sessions, fixtures, commitments, academy] = await Promise.all([
       many(`SELECT h.id, h.status, h.starts_at, h.starts_at + h.duration_min * interval '1 minute' AS ends_at, h.hirer_id AS athlete_id, coalesce(tm.name, ev.name, u.display_name) AS athlete_name, h.audience, s.slug AS sport, ${venueText('coach_hire', 'h.id')}
               FROM coach_hires h JOIN users u ON u.id=h.hirer_id LEFT JOIN teams tm ON tm.id=h.team_id LEFT JOIN events ev ON ev.id=h.event_id LEFT JOIN sports s ON s.id=h.sport_id
              WHERE h.coach_id=$1 AND h.status IN ('requested','confirmed') AND h.starts_at >= $2::date AND h.starts_at < $3::date + 1`, win),
@@ -100,12 +100,17 @@ cap({
              WHERE f.status IN ('scheduled','live') AND f.scheduled_at >= $2::date AND f.scheduled_at < $3::date + 1`, win),
       many(`SELECT c.*, s.slug AS sport_slug, coalesce(t.name, e.name, u.display_name, c.client_name) AS client FROM coach_commitments c LEFT JOIN sports s ON s.id=c.sport_id LEFT JOIN teams t ON t.id=c.team_id LEFT JOIN events e ON e.id=c.event_id LEFT JOIN users u ON u.id=c.client_user_id
              WHERE c.coach_id=$1 AND c.status='active' AND c.starts_on <= $3::date AND (c.ends_on IS NULL OR c.ends_on >= $2::date)`, win),
+      // Academy OS 2/3: sessions the coach is assigned to. A projection of the academy session; nothing is copied into the coach's own records.
+      many(`SELECT s.id, s.title, s.starts_at, s.ends_at, s.timezone, s.sport, s.cohort_id, st.role, st.status AS my_status, k.name AS cohort, o.name AS organisation, ${venueText('academy_session', 's.id')}
+              FROM academy_session_staff st JOIN academy_sessions s ON s.id=st.session_id JOIN org_cohorts k ON k.id=s.cohort_id JOIN organisations o ON o.id=s.organisation_id
+             WHERE st.user_id=$1 AND st.status IN ('assigned','confirmed') AND s.status='published' AND s.starts_at >= $2::date AND s.starts_at < $3::date + 1`, win),
     ]);
     const log = await loggedMap(commitments.map((c) => c.id));
     let items = [
       ...hires.map((r) => ({ kind: 'hire', source_type: 'coach_hire', source_id: r.id, title: r.audience === 'individual' ? `Session with ${r.athlete_name}` : `${r.audience[0].toUpperCase()}${r.audience.slice(1)} coaching · ${r.athlete_name}`, athlete_id: r.audience === 'individual' ? r.athlete_id : undefined, sport: r.sport, starts_at: r.starts_at, ends_at: r.ends_at, venue: r.venue, status: r.status === 'confirmed' ? 'confirmed' : 'awaiting_response', link: { screen: 'CoachDesk', params: {} } })),
       ...sessions.map((r) => ({ kind: 'plan_session', source_type: 'training_session', source_id: r.id, title: r.title, context: r.athlete_name, athlete_id: r.athlete_id, sport: r.sport, starts_at: r.starts_at, ends_at: r.ends_at, status: r.status, booking_id: r.booking_id, venue: r.venue, link: { screen: 'CoachPlan', params: { id: r.plan_id } } })),
       ...commitments.flatMap((c) => occurrences(plain(c), from, to, log).map((o) => ({ kind: 'commitment', source_type: 'coach_commitment', source_id: `${c.id}:${o.on_date}`, title: c.title, context: [c.client, c.kind].filter(Boolean).join(' · '), sport: c.sport_slug, starts_at: o.starts_at, ends_at: o.ends_at, status: o.logged?.status === 'delivered' ? 'completed' : 'confirmed', link: { screen: 'CoachCommitments', params: {} } }))),
+      ...academy.map((r) => ({ kind: 'academy_session', source_type: 'academy_session', source_id: r.id, title: r.title, context: [r.organisation, r.cohort, r.role === 'lead' ? 'Lead coach' : r.role === 'duty' ? 'Duty' : 'Assistant'].join(' · '), sport: r.sport, starts_at: r.starts_at, ends_at: r.ends_at, timezone: r.timezone, venue: r.venue, status: r.my_status === 'confirmed' ? 'confirmed' : 'awaiting_response', link: { screen: 'AcademySession', params: { id: r.id } } })),
       ...fixtures.map((r) => ({ kind: 'match', source_type: 'fixture', source_id: `${r.id}`, title: `${r.home_name} v ${r.away_name}`, context: r.team_name, team_id: r.team_id, sport: r.sport, starts_at: r.starts_at, ends_at: r.ends_at, status: 'confirmed', link: { screen: 'Team', params: { id: r.team_id } } })),
     ].map((x) => ({ timezone: 'UTC', conflict: false, ...x }));
     const dedup = new Map(items.map((x) => [`${x.source_type}:${x.source_id}:${x.team_id ?? ''}`, x]));
