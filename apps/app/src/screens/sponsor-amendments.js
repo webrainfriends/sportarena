@@ -129,12 +129,12 @@ export function SponsorAmendments({ deal: d, can, act }) {
               {a.can_edit ? <Btn small title="Edit my proposal" color={c.violet} onPress={() => { setDraft(null); setForm('edit'); }} /> : null}
               {a.can_edit ? <Btn small title="Withdraw" color={c.paper} ink={c.red} onPress={() => answer('withdraw')} /> : null}
             </View>
-            {!a.mine && !a.can_answer && me !== 'admin' ? <T size={12} color={c.mute} style={{ marginTop: 8 }} accessibilityRole="text">{me === 'sponsor' ? 'Your role cannot agree for the brand; a manager or approver can.' : 'Only an owner or admin of the organisation can answer.'}</T> : null}
+            {!a.mine && !a.can_answer && me !== 'admin' ? <T size={12} color={c.mute} style={{ marginTop: 8 }} accessibilityRole="text">{me === 'sponsor' ? 'Your role cannot agree for the brand; a manager or approver can.' : d.youth?.minor_self ? 'Your guardian decides this for you.' : 'Only an owner or admin of the organisation can answer.'}</T> : null}
             {me === 'admin' ? <T size={12} color={c.mute} style={{ marginTop: 8 }}>Platform admins can read amendments but never agree for either side.</T> : null}
           </Card>) : null
       ) : am.can_propose ? (
         <Btn title="Propose an amendment" color={c.cyan} ink={c.ink} onPress={() => { setDraft(null); setForm('propose'); }} style={{ alignSelf: 'flex-start' }} />
-      ) : me !== 'admin' ? <T size={12} color={c.mute} accessibilityRole="text">{me === 'sponsor' ? 'Your role cannot propose changes to the terms; a manager, legal or approver colleague can.' : 'Only an owner or admin of the organisation can propose changes.'}</T> : null}
+      ) : me !== 'admin' ? <T size={12} color={c.mute} accessibilityRole="text">{me === 'sponsor' ? 'Your role cannot propose changes to the terms; a manager, legal or approver colleague can.' : d.youth?.minor_self ? 'Your guardian decides this for you.' : 'Only an owner or admin of the organisation can propose changes.'}</T> : null}
 
       {err ? <T color={c.red} weight="700" accessibilityRole="alert">{err}</T> : null}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>

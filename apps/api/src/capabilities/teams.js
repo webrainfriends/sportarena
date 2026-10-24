@@ -6,6 +6,7 @@ import { isSupportedCurrency } from '../currency.js';
 import { isAdmin, mustFind, mustOwn, PUBLIC_USER, sportBySlugOrId } from '../helpers.js';
 import { hiddenYouth, requireConsent } from '../youth.js';
 import { hasOrgGrant } from '../org-access.js';
+import { closeRosterStint, openRosterStint } from '../career.js';
 
 const color = z.string().regex(/^#[0-9a-fA-F]{6}$/);
 
@@ -102,11 +103,13 @@ cap({
     if (!(await canManageTeam(user, t))) throw forbidden('Only team managers can edit the roster');
     await mustFind('users', i.user_id, 'id');
     if (!(await one("SELECT 1 FROM team_members WHERE team_id=$1 AND user_id=$2 AND status='active'", [i.id, i.user_id]))) await requireConsent(i.user_id, 'participation', 'joining a team');
-    return one(
+    const member = await one(
       `INSERT INTO team_members(team_id, user_id, role, jersey_no, status) VALUES ($1,$2,$3,$4,'active')
        ON CONFLICT (team_id, user_id) DO UPDATE SET role=EXCLUDED.role, jersey_no=EXCLUDED.jersey_no, status='active' RETURNING *`,
       [i.id, i.user_id, i.role, i.jersey_no ?? null],
     );
+    await openRosterStint(null, t, i.user_id, i.role, i.jersey_no, member.position, user.id); // career timeline keeps every stint (re-joins included)
+    return member;
   },
 });
 
@@ -119,6 +122,7 @@ cap({
     if (i.user_id === t.owner_id) throw conflict('The owner cannot leave their own team');
     const r = await query("UPDATE team_members SET status='left' WHERE team_id=$1 AND user_id=$2 AND status<>'left'", [i.id, i.user_id]);
     if (!r.rowCount) throw notFound('Membership');
+    await closeRosterStint(null, i.id, i.user_id, user.id);
     return { ok: true };
   },
 });

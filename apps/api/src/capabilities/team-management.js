@@ -1,6 +1,7 @@
 // Team management for owners / managers: roster availability and rates, invitations, who is selected for which
 // event or match (squads), the team schedule, and a settlement ledger for fees owed to players and coaches.
 // Recruiting (players or a coach from the wider community) goes through the billboard, with team_id set.
+import { openRosterStint } from '../career.js';
 import { z } from 'zod';
 import { cap, id, page, money } from '../registry.js';
 import { one, many, query, tx } from '../db.js';
@@ -137,6 +138,7 @@ cap({
     if (i.accept) await requireConsent(user.id, 'participation', 'joining a team');
     const r = await one("UPDATE team_members SET status=$3, joined_at=CASE WHEN $3='active' THEN now() ELSE joined_at END WHERE team_id=$1 AND user_id=$2 AND status='invited' RETURNING team_id, user_id, role, status", [i.id, user.id, i.accept ? 'active' : 'left']);
     if (!r) throw notFound('Invitation');
+    if (i.accept) await openRosterStint(null, t, user.id, r.role, null, null, user.id);
     await notify(null, t.owner_id, { kind: 'team_invite_reply', title: `${user.display_name} ${i.accept ? 'accepted' : 'declined'} your invitation to ${t.name}`, body: '', data: { team_id: t.id } });
     return r;
   },
