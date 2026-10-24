@@ -5,6 +5,7 @@ import { one, many, tx } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { audit, mustFind, isAdmin } from '../helpers.js';
 import { canManage, mustManage } from '../booking/engine.js';
+import { orgFor, orgRole } from '../org-access.js';
 import { markInvoicePaid, buyerOf } from '../booking/invoices.js';
 import { notify } from '../notify.js';
 import { CURRENCIES, toMajor } from '../currency.js';
@@ -20,19 +21,20 @@ cap({
   handler: () => Object.entries(CURRENCIES).map(([code, c]) => ({ code, name: c.name, symbol: c.symbol, exponent: c.exp })),
 });
 
-const summaryCols = 'i.id, i.number, i.kind, i.status, i.venue_id, v.name AS venue_name, i.reservation_id, rs.code AS reservation_code, i.currency, i.total_cents, i.credits_cents, i.tax_cents, i.issued_at, i.paid_at, i.payment_method, i.refund_status, i.parent_id';
+const summaryCols = 'i.id, i.number, i.kind, i.status, i.venue_id, v.name AS venue_name, i.reservation_id, rs.code AS reservation_code, i.currency, i.total_cents, i.credits_cents, i.tax_cents, i.issued_at, i.paid_at, i.payment_method, i.refund_status, i.parent_id, i.organisation_id, o.name AS organisation_name, i.academy_charge_id';
 cap({
   name: 'list_invoices', method: 'GET', path: '/invoices', tag: TAG,
   summary: 'Your invoices and credit notes (newest first). The venue team passes venue_id to list that venue\'s, filtered by status, kind or date.',
-  input: z.object({ venue_id: id.optional(), reservation_id: id.optional(), kind: z.enum(['invoice', 'credit_note']).optional(), status: z.enum(['open', 'paid', 'void']).optional(), from: day.optional(), to: day.optional(), ...page }),
+  input: z.object({ venue_id: id.optional(), organisation_id: id.optional().describe('an academy\'s finance team: list that academy\'s invoices'), reservation_id: id.optional(), kind: z.enum(['invoice', 'credit_note']).optional(), status: z.enum(['open', 'paid', 'void']).optional(), from: day.optional(), to: day.optional(), ...page }),
   async handler({ user }, i) {
     if (i.venue_id) await mustManage(user, i.venue_id);
+    if (i.organisation_id) await orgFor(user, i.organisation_id, ['owner', 'admin', 'finance']);
     return many(
-      `SELECT ${summaryCols} FROM invoices i JOIN venues v ON v.id=i.venue_id JOIN reservations rs ON rs.id=i.reservation_id
-        WHERE ($1::uuid IS NULL AND i.user_id=$2 OR i.venue_id=$1) AND ($3::uuid IS NULL OR i.reservation_id=$3) AND ($4::text IS NULL OR i.kind=$4) AND ($5::text IS NULL OR i.status=$5)
+      `SELECT ${summaryCols} FROM invoices i LEFT JOIN venues v ON v.id=i.venue_id LEFT JOIN reservations rs ON rs.id=i.reservation_id LEFT JOIN organisations o ON o.id=i.organisation_id
+        WHERE (($1::uuid IS NULL AND $10::uuid IS NULL AND i.user_id=$2) OR i.venue_id=$1 OR i.organisation_id=$10) AND ($3::uuid IS NULL OR i.reservation_id=$3) AND ($4::text IS NULL OR i.kind=$4) AND ($5::text IS NULL OR i.status=$5)
           AND ($6::date IS NULL OR i.issued_at >= $6) AND ($7::date IS NULL OR i.issued_at < $7::date + 1)
         ORDER BY i.issued_at DESC, i.number DESC LIMIT $8 OFFSET $9`,
-      [i.venue_id ?? null, user.id, i.reservation_id ?? null, i.kind ?? null, i.status ?? null, i.from ?? null, i.to ?? null, i.limit, i.offset]);
+      [i.venue_id ?? null, user.id, i.reservation_id ?? null, i.kind ?? null, i.status ?? null, i.from ?? null, i.to ?? null, i.limit, i.offset, i.organisation_id ?? null]);
   },
 });
 
@@ -41,18 +43,22 @@ cap({
   summary: 'One invoice or credit note, complete and printable: seller (legal name, tax id, address), bill-to (decrypted; audit-logged), lines, tax breakdown, payments and any credit notes against it. The buyer or the venue team only.',
   input: z.object({ id }),
   async handler({ user }, i) {
-    const inv = await one(`SELECT i.*, v.name AS venue_name, rs.code AS reservation_code FROM invoices i JOIN venues v ON v.id=i.venue_id JOIN reservations rs ON rs.id=i.reservation_id WHERE i.id=$1`, [i.id]);
+    const inv = await one(`SELECT i.*, v.name AS venue_name, rs.code AS reservation_code, o.name AS organisation_name FROM invoices i LEFT JOIN venues v ON v.id=i.venue_id LEFT JOIN reservations rs ON rs.id=i.reservation_id LEFT JOIN organisations o ON o.id=i.organisation_id WHERE i.id=$1`, [i.id]);
     if (!inv) throw notFound('Invoice');
-    const team = await canManage(user, inv.venue_id);
+    const academy = !!inv.organisation_id;
+    const team = academy ? ['owner', 'admin', 'finance'].includes(await orgRole(user, inv.organisation_id)) : await canManage(user, inv.venue_id);
     if (inv.user_id !== user.id && !team && !isAdmin(user)) throw forbidden();
     await audit(null, user.id, 'read_pii', 'invoices', inv.id);
     const [payments, credits] = await Promise.all([
-      many("SELECT id, provider, amount_cents, currency, status, paid_at, refunded_cents FROM payments WHERE purpose_type='venue_invoice' AND purpose_id=$1 ORDER BY created_at", [inv.id]),
-      inv.kind === 'invoice' ? many("SELECT id, number, total_cents, status, refund_status, issued_at FROM invoices WHERE kind='credit_note' AND reservation_id=$1 AND venue_id=$2 ORDER BY issued_at", [inv.reservation_id, inv.venue_id]) : [],
+      academy ? many("SELECT id, provider, amount_cents, currency, status, paid_at, refunded_cents FROM payments WHERE purpose_type='academy_charge' AND purpose_id=$1 ORDER BY created_at", [inv.academy_charge_id])
+        : many("SELECT id, provider, amount_cents, currency, status, paid_at, refunded_cents FROM payments WHERE purpose_type='venue_invoice' AND purpose_id=$1 ORDER BY created_at", [inv.id]),
+      inv.kind !== 'invoice' ? [] : academy ? many("SELECT id, number, total_cents, status, refund_status, issued_at FROM invoices WHERE kind='credit_note' AND academy_charge_id=$1 ORDER BY issued_at", [inv.academy_charge_id])
+        : many("SELECT id, number, total_cents, status, refund_status, issued_at FROM invoices WHERE kind='credit_note' AND reservation_id=$1 AND venue_id=$2 ORDER BY issued_at", [inv.reservation_id, inv.venue_id]),
     ]);
     const { buyer_enc, ...rest } = inv;
-    const online = (await one('SELECT payment_mode FROM venues WHERE id=$1', [inv.venue_id])).payment_mode !== 'pay_at_venue' && enabledProviders().length > 0;
-    return { ...rest, amount_due_cents: inv.status === 'open' ? inv.total_cents - inv.credits_cents : 0, buyer: buyerOf(inv), payments, credit_notes: credits, can_pay_online: online && inv.kind === 'invoice' && inv.status === 'open' && inv.user_id === user.id, providers: enabledProviders(), amount: toMajor(inv.total_cents, inv.currency) };
+    const online = academy ? enabledProviders().length > 0 : (await one('SELECT payment_mode FROM venues WHERE id=$1', [inv.venue_id])).payment_mode !== 'pay_at_venue' && enabledProviders().length > 0;
+    return { ...rest, amount_due_cents: inv.status === 'open' ? inv.total_cents - inv.credits_cents : 0, buyer: buyerOf(inv), payments, credit_notes: credits, can_pay_online: online && inv.kind === 'invoice' && inv.status === 'open' && inv.user_id === user.id, providers: enabledProviders(), amount: toMajor(inv.total_cents, inv.currency),
+      ...(academy ? { pay: { purpose_type: 'academy_charge', purpose_id: inv.academy_charge_id } } : {}) };
   },
 });
 
@@ -63,6 +69,7 @@ cap({
   async handler({ user }, i) {
     const inv = await mustFind('invoices', i.id);
     if (inv.kind !== 'invoice') throw badRequest('Only invoices are paid; a credit note is refunded');
+    if (inv.organisation_id) throw badRequest('An academy fee is paid online or recorded with record_academy_payment');
     await mustManage(user, inv.venue_id);
     return tx(async (c) => {
       if (!(await markInvoicePaid(c, i.id, { method: i.method, by: user.id }))) throw conflict('That invoice is not open (already paid or void)');
@@ -79,6 +86,7 @@ cap({
   async handler({ user }, i) {
     const cn = await mustFind('invoices', i.id);
     if (cn.kind !== 'credit_note') throw badRequest('That is not a credit note');
+    if (cn.organisation_id) throw badRequest('Academy refunds go back through the payment provider and are recorded automatically');
     await mustManage(user, cn.venue_id);
     return tx(async (c) => {
       const r = await c.query("UPDATE invoices SET refund_status='done', refunded_at=now(), refund_error=NULL WHERE id=$1 AND refund_status IN ('manual','failed') RETURNING id, number, refund_status, refunded_at", [i.id]);

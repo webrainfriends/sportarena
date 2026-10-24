@@ -37,7 +37,6 @@ export const STEPS = [
   ['sponsor_terminations', 'sponsor_terminations_ended', endDueTerminations, 0],
   ['sponsor_terms', 'sponsor_terms_processed', processSponsorshipTerms, 0],
   ['academy_offers', 'academy_offers_expired', expireAcademyOffers, 0],
-  ['academy_charges', 'academy_charges_raised', raiseAcademyMonthlyCharges, 0],
   ['academy_jobs', 'academy_jobs', runAcademyJobs, null],
   ['sponsor_tasks', 'sponsor_task_reminders', processSponsorTasks, 0],
   ['sponsor_reports', 'sponsor_reports_delivered', deliverDueReports, 0],

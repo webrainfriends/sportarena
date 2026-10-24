@@ -94,11 +94,11 @@ cap({
 
 cap({
   name: 'my_plans', method: 'GET', path: '/me/plans', tag: TAG,
-  summary: 'Your memberships and passes with what is left (sessions, expiry). Waiting-for-payment ones can still be paid.',
+  summary: 'Your memberships and passes with what is left (sessions, expiry), at venues and academies. Waiting-for-payment ones can still be paid.',
   input: z.object({ venue_id: id.optional(), ...page }),
   handler: ({ user }, i) => many(
-    `SELECT up.id, up.venue_id, v.name AS venue_name, v.emoji, up.kind, up.name, up.status, up.price_cents, up.currency, up.discount_bp, up.sessions_total, up.sessions_left, up.session_value_cents, up.starts_at, up.expires_at, up.created_at, up.resource_ids, up.includes, up.auto_renew
-       FROM user_plans up JOIN venues v ON v.id=up.venue_id WHERE up.user_id=$1 AND ($2::uuid IS NULL OR up.venue_id=$2) AND up.status <> 'cancelled'
+    `SELECT up.id, up.venue_id, coalesce(v.name, o.name) AS venue_name, up.organisation_id, up.enrolment_id, v.emoji, up.kind, up.name, up.status, up.price_cents, up.currency, up.discount_bp, up.sessions_total, up.sessions_left, up.session_value_cents, up.starts_at, up.expires_at, up.created_at, up.resource_ids, up.includes, up.auto_renew
+       FROM user_plans up LEFT JOIN venues v ON v.id=up.venue_id LEFT JOIN organisations o ON o.id=up.organisation_id WHERE up.user_id=$1 AND ($2::uuid IS NULL OR up.venue_id=$2) AND up.status <> 'cancelled'
       ORDER BY (up.status = 'active') DESC, (up.status = 'awaiting_payment') DESC, up.created_at DESC LIMIT $3 OFFSET $4`, [user.id, i.venue_id ?? null, i.limit, i.offset]),
 });
 
@@ -107,8 +107,8 @@ cap({
   summary: 'Drop a membership or pass you started buying but have not paid for. Paid plans are not cancellable here (ask the venue).',
   input: z.object({ id }),
   async handler({ user }, i) {
-    const r = await one("UPDATE user_plans SET status='cancelled' WHERE id=$1 AND user_id=$2 AND status='awaiting_payment' RETURNING id", [i.id, user.id]);
-    if (!r) throw conflict('Only a plan that is still waiting for payment can be dropped');
+    const r = await one("UPDATE user_plans SET status='cancelled' WHERE id=$1 AND user_id=$2 AND status='awaiting_payment' AND organisation_id IS NULL RETURNING id", [i.id, user.id]);
+    if (!r) throw conflict('Only a plan that is still waiting for payment can be dropped. An academy pack or membership ends when you withdraw from its programme.');
     return { ok: true };
   },
 });

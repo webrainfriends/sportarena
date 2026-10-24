@@ -193,9 +193,11 @@ cap({
 
 // ---------------------------------------------------------------- invoice PDFs
 async function invoiceFor(user, invoiceId) {
-  const inv = await one('SELECT i.*, rs.code AS reservation_code FROM invoices i JOIN reservations rs ON rs.id=i.reservation_id WHERE i.id=$1', [invoiceId]);
+  const inv = await one('SELECT i.*, rs.code AS reservation_code FROM invoices i LEFT JOIN reservations rs ON rs.id=i.reservation_id WHERE i.id=$1', [invoiceId]);
   if (!inv) throw notFound('Invoice');
-  if (inv.user_id !== user.id && !isAdmin(user) && !(await canManage(user, inv.venue_id))) throw notFound('Invoice');
+  // an academy fee: the payer, or the academy's owners, admins and finance staff, checked live
+  const team = inv.organisation_id ? ['owner', 'admin', 'finance'].includes(await orgRole(user, inv.organisation_id)) : await canManage(user, inv.venue_id);
+  if (inv.user_id !== user.id && !isAdmin(user) && !team) throw notFound('Invoice');
   return inv;
 }
 const printable = (inv) => ({ ...inv, buyer: buyerOf(inv) });

@@ -1,7 +1,8 @@
 // Shared building blocks of the Academy module: status badges that never rely on colour alone, capacity meters, KPI tiles,
 // funnel bars, a timeline and a master-detail panel (side column on tablet/desktop, bottom sheet on a phone).
 import React from 'react';
-import { Pressable, View } from 'react-native';
+import { Platform, Pressable, View } from 'react-native';
+import { api } from '../api';
 import { Avatar, Btn, Card, Sheet, T, Tag } from '../ui';
 import { useLayout } from '../layout';
 import { c } from '../theme';
@@ -180,3 +181,14 @@ export const Block = ({ title, right, children }) => (
     {children}
   </View>
 );
+
+/** Render an academy invoice (a paid one is the receipt) as a branded PDF and open it. Web opens it in a tab; the phone apps point to the web version. */
+export async function openInvoicePdf(invoiceId, toast) {
+  try {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return toast?.('Invoices and receipts open in the web app');
+    const d = await api.post('/branded-documents/invoice', { invoice_id: invoiceId });
+    const url = URL.createObjectURL(await api.download(`/branded-documents/${d.id}/file`));
+    window.open(url, '_blank', 'noopener');
+    setTimeout(() => URL.revokeObjectURL(url), 120000);
+  } catch (e) { toast?.(e.message); }
+}
