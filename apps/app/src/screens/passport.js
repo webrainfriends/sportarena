@@ -89,6 +89,19 @@ export function PassportCard({ data }) {
         </Card>
       ) : null}
 
+      {data.memberships?.length ? (
+        <Card pad={16}>
+          <H2>Clubs & teams</H2>
+          {data.memberships.map((m) => (
+            <View key={m.id} style={{ marginTop: 12 }}>
+              <T weight="800">{m.club}</T>
+              <T size={13} color={c.mute}>{[`${m.sport_emoji} ${m.sport}`, `${m.starts_on.slice(0, 4)}–${m.current ? 'now' : (m.ends_on ?? '').slice(0, 4)}`, m.position, nice(m.competition_level)].filter(Boolean).join(' · ')}</T>
+              <Tag label={m.verification_status === 'verified' ? 'Verified by club' : 'Self-reported'} color={m.verification_status === 'verified' ? c.mint : c.violetSoft} style={{ marginTop: 4, alignSelf: 'flex-start' }} />
+            </View>
+          ))}
+        </Card>
+      ) : null}
+
       {data.seasons?.length ? (
         <Card pad={16}>
           <H2>Season by season</H2>
@@ -174,7 +187,7 @@ export function MyPassport() {
               <View style={{ flex: 1 }}>
                 <T weight="700">{l.label || 'Passport link'}</T>
                 <T size={12} color={c.mute}>{l.status === 'active' ? `Expires ${day(l.expires_at)}` : l.status === 'expired' ? `Expired ${day(l.expires_at)}` : `Turned off ${day(l.revoked_at)}`} · opened {l.view_count} time{l.view_count === 1 ? '' : 's'}</T>
-                <T size={12} color={c.mute}>Shows: {['show_matches', 'show_results', 'show_awards', 'show_credentials'].filter((k) => l[k]).map((k) => ({ show_matches: 'matches', show_results: 'results', show_awards: 'awards', show_credentials: 'certificates' }[k])).join(', ') || 'profile only'}</T>
+                <T size={12} color={c.mute}>Shows: {['show_matches', 'show_results', 'show_awards', 'show_credentials', 'show_career'].filter((k) => l[k]).map((k) => ({ show_matches: 'matches', show_results: 'results', show_awards: 'awards', show_credentials: 'certificates', show_career: 'clubs' }[k])).join(', ') || 'profile only'}</T>
               </View>
               <Tag label={l.status} color={l.status === 'active' ? c.mint : c.violetSoft} />
             </View>
@@ -189,7 +202,7 @@ export function MyPassport() {
 
       {form ? (
         <FormSheet visible onClose={() => setForm(false)} title="New passport link" submitLabel="Create link"
-          initial={{ expires_in_days: 30, show_matches: true, show_results: true, show_awards: true, show_credentials: true }}
+          initial={{ expires_in_days: 30, show_matches: true, show_results: true, show_awards: true, show_credentials: true, show_career: false }}
           fields={[
             { key: 'label', label: 'Who is it for', optional: true, placeholder: 'Academy scout, club trial…' },
             { key: 'expires_in_days', label: 'Stops working after', type: 'chips', options: [{ value: 7, label: '7 days' }, { value: 30, label: '30 days' }, { value: 90, label: '90 days' }] },
@@ -197,8 +210,9 @@ export function MyPassport() {
             { key: 'show_results', label: 'Show approved results', type: 'switch' },
             { key: 'show_awards', label: 'Show awards', type: 'switch' },
             { key: 'show_credentials', label: 'Show certificates & badges', type: 'switch' },
+            { key: 'show_career', label: 'Show clubs & teams timeline', type: 'switch', hint: 'Verified clubs are labelled; the rest show as self-reported. Evidence is never shared.' },
           ]}
-          onSubmit={async (v) => { const l = await api.post('/me/passport-links', { label: v.label || undefined, expires_in_days: Number(v.expires_in_days), show_matches: !!v.show_matches, show_results: !!v.show_results, show_awards: !!v.show_awards, show_credentials: !!v.show_credentials }); setFresh(l); await links.reload(); return 'Link created'; }} />
+          onSubmit={async (v) => { const l = await api.post('/me/passport-links', { label: v.label || undefined, expires_in_days: Number(v.expires_in_days), show_matches: !!v.show_matches, show_results: !!v.show_results, show_awards: !!v.show_awards, show_credentials: !!v.show_credentials, show_career: !!v.show_career }); setFresh(l); await links.reload(); return 'Link created'; }} />
       ) : null}
     </Screen>
   );
