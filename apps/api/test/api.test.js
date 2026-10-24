@@ -331,7 +331,7 @@ test('player module: default sport profile lists first; matches log + bulk impor
   assert.equal(foot.metrics.find((x) => x.metric === 'goals').best, 4);
   assert.equal(foot.form[0], null, 'newest match (no result) first');
 
-  // deleting the default promotes the next profile; matches go with the profile
+  // archiving the default promotes the next profile; its matches are kept (see athlete-profile.test.js)
   const list = (await api('GET', '/me/matches', { token: p.token, })).body;
   assert.equal((await api('DELETE', `/me/matches/${list[0].id}`, { token: p.token })).status, 200);
   assert.equal((await api('DELETE', `/me/sport-profiles/${b.body.id}`, { token: p.token })).status, 200);

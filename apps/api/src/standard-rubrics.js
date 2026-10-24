@@ -49,7 +49,7 @@ export const standardsForSport = (slug) => STANDARD_RUBRICS.filter((s) => s.spor
 /** The sports a coach coaches: their coach sport profiles and the teams they coach. */
 export const coachSports = (coachId) => many(
   `SELECT DISTINCT s.id, s.slug FROM sports s WHERE s.id IN (
-     SELECT sport_id FROM sport_profiles WHERE user_id=$1 AND role='coach'
+     SELECT sport_id FROM active_sport_profiles WHERE user_id=$1 AND role='coach'
      UNION SELECT t.sport_id FROM teams t JOIN team_members m ON m.team_id=t.id WHERE m.user_id=$1 AND m.role='coach' AND m.status='active')`, [coachId]);
 
 /**

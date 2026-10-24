@@ -103,17 +103,17 @@ cap({
     const sql = `
       SELECT * FROM (
         SELECT ${PUBLIC_USER}, t.provider_type, ${PROFILE_COLS}, coalesce(pp.currency, $1) AS currency,
-               coalesce(pp.consult_fee_cents, (SELECT min(x.hourly_rate_cents) FROM sport_profiles x WHERE x.user_id=u.id AND x.role IN ('physio','doctor') AND x.hourly_rate_cents > 0)) AS fee_cents,
-               coalesce((SELECT array_agg(DISTINCT s.slug ORDER BY s.slug) FROM sport_profiles x JOIN sports s ON s.id=x.sport_id WHERE x.user_id=u.id AND x.role IN ('physio','doctor')), '{}') AS sports,
+               coalesce(pp.consult_fee_cents, (SELECT min(x.hourly_rate_cents) FROM active_sport_profiles x WHERE x.user_id=u.id AND x.role IN ('physio','doctor') AND x.hourly_rate_cents > 0)) AS fee_cents,
+               coalesce((SELECT array_agg(DISTINCT s.slug ORDER BY s.slug) FROM active_sport_profiles x JOIN sports s ON s.id=x.sport_id WHERE x.user_id=u.id AND x.role IN ('physio','doctor')), '{}') AS sports,
                (SELECT round(avg(r.rating)::numeric, 2) FROM testimonials r WHERE r.subject_type='user' AND r.subject_id=u.id AND r.status='published' AND r.visibility='public') AS rating,
                (SELECT count(*)::int FROM testimonials r WHERE r.subject_type='user' AND r.subject_id=u.id AND r.status='published' AND r.visibility='public') AS rating_count,
                EXISTS (SELECT 1 FROM verification_cases v WHERE v.subject_type='user' AND v.subject_id=u.id AND v.type=t.provider_type AND v.status='approved' AND v.expires_at > now()) AS credential_verified,
                (SELECT count(*) FROM provider_availability a WHERE a.provider_id=u.id AND a.removed_at IS NULL) > 0 AS has_hours
           FROM users u LEFT JOIN provider_profiles pp ON pp.user_id=u.id
-          CROSS JOIN LATERAL (SELECT coalesce(pp.provider_type, (SELECT x.role FROM sport_profiles x WHERE x.user_id=u.id AND x.role IN ('physio','doctor') ORDER BY x.role LIMIT 1)) AS provider_type) t
+          CROSS JOIN LATERAL (SELECT coalesce(pp.provider_type, (SELECT x.role FROM active_sport_profiles x WHERE x.user_id=u.id AND x.role IN ('physio','doctor') ORDER BY x.role LIMIT 1)) AS provider_type) t
          WHERE t.provider_type IS NOT NULL AND coalesce(pp.listed, true) AND ($2::text IS NULL OR t.provider_type=$2)
            AND ($3::text IS NULL OR u.display_name ILIKE '%'||$3||'%' OR u.handle ILIKE '%'||$3||'%' OR pp.headline ILIKE '%'||$3||'%' OR pp.clinic ILIKE '%'||$3||'%' OR pp.bio ILIKE '%'||$3||'%')
-           AND ($4::text IS NULL OR EXISTS (SELECT 1 FROM sport_profiles x JOIN sports s ON s.id=x.sport_id WHERE x.user_id=u.id AND x.role IN ('physio','doctor') AND s.slug=$4))
+           AND ($4::text IS NULL OR EXISTS (SELECT 1 FROM active_sport_profiles x JOIN sports s ON s.id=x.sport_id WHERE x.user_id=u.id AND x.role IN ('physio','doctor') AND s.slug=$4))
            AND ($5::text IS NULL OR EXISTS (SELECT 1 FROM unnest(pp.specialties) z WHERE z ILIKE $5))
            AND ($6::text IS NULL OR EXISTS (SELECT 1 FROM unnest(pp.languages) z WHERE z ILIKE $6))
            AND ($7::text IS NULL OR pp.city ILIKE $7)
@@ -148,9 +148,9 @@ cap({
   async handler(_, i) {
     const row = await one(
       `SELECT ${PUBLIC_USER}, pp.provider_type, ${PROFILE_COLS}, pp.currency, pp.consult_fee_cents, pp.listed,
-              coalesce((SELECT array_agg(DISTINCT s.slug) FROM sport_profiles x JOIN sports s ON s.id=x.sport_id WHERE x.user_id=u.id AND x.role IN ('physio','doctor')), '{}') AS sports,
+              coalesce((SELECT array_agg(DISTINCT s.slug) FROM active_sport_profiles x JOIN sports s ON s.id=x.sport_id WHERE x.user_id=u.id AND x.role IN ('physio','doctor')), '{}') AS sports,
               (SELECT round(avg(rating)::numeric, 2) FROM testimonials t WHERE t.subject_type='user' AND t.subject_id=u.id AND t.status='published' AND t.visibility='public') AS rating, (SELECT count(*)::int FROM testimonials t WHERE t.subject_type='user' AND t.subject_id=u.id AND t.status='published' AND t.visibility='public') AS rating_count
-         FROM users u LEFT JOIN provider_profiles pp ON pp.user_id=u.id WHERE u.id=$1 AND (pp.user_id IS NOT NULL OR EXISTS (SELECT 1 FROM sport_profiles x WHERE x.user_id=u.id AND x.role IN ('physio','doctor')))`, [i.id]);
+         FROM users u LEFT JOIN provider_profiles pp ON pp.user_id=u.id WHERE u.id=$1 AND (pp.user_id IS NOT NULL OR EXISTS (SELECT 1 FROM active_sport_profiles x WHERE x.user_id=u.id AND x.role IN ('physio','doctor')))`, [i.id]);
     if (!row || row.listed === false) throw notFound('Provider');
     const sched = await loadSchedule(i.id);
     const [withB] = await withBadges('user', [row]);

@@ -21,7 +21,7 @@ export const history = (c, assignmentId, actor, from, to, reason) => c.query('IN
 export async function assertEligible(c, ev, role, userId, { credentials = true } = {}) {
   if (!credentials) { /* applicants choose themselves: the organiser judges credentials, we only guard the calendar */ }
   else if (OFFICIAL.includes(role)) {
-    if (!(await c.query("SELECT 1 FROM sport_profiles WHERE user_id=$1 AND role='referee' AND sport_id=$2", [userId, ev.sport_id])).rowCount) throw badRequest('That person is not a referee for this sport');
+    if (!(await c.query("SELECT 1 FROM active_sport_profiles WHERE user_id=$1 AND role='referee' AND sport_id=$2", [userId, ev.sport_id])).rowCount) throw badRequest('That person is not a referee for this sport');
   } else if (['doctor', 'physio', 'medic'].includes(role)) {
     const p = (await c.query('SELECT provider_type FROM provider_profiles WHERE user_id=$1', [userId])).rows[0];
     if (!p || (role !== 'medic' && p.provider_type !== role)) throw badRequest(role === 'medic' ? 'That person has no doctor/physio profile' : `That person is not a registered ${role}`);
@@ -95,7 +95,7 @@ cap({
     const q = i.q ? `%${i.q}%` : null;
     if (OFFICIAL.includes(i.role)) {
       return many(
-        `SELECT u.id AS user_id, u.handle, u.display_name, sp.level, sp.hourly_rate_cents FROM sport_profiles sp JOIN users u ON u.id=sp.user_id
+        `SELECT u.id AS user_id, u.handle, u.display_name, sp.level, sp.hourly_rate_cents FROM active_sport_profiles sp JOIN users u ON u.id=sp.user_id
           WHERE sp.sport_id=$2 AND sp.role='referee' AND ($3::text IS NULL OR u.display_name ILIKE $3 OR u.handle ILIKE $3) ${free}
             AND NOT EXISTS (SELECT 1 FROM event_staff_assignments a WHERE a.event_id=$1 AND a.user_id=u.id AND a.status IN ('invited','accepted') AND a.role_id IN (SELECT id FROM event_staff_roles WHERE role=$8))
           ORDER BY u.display_name LIMIT $6 OFFSET $7`, [i.id, ev.sport_id, q, from, to, i.limit, i.offset, i.role]);
