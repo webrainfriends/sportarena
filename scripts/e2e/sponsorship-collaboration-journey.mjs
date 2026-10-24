@@ -52,6 +52,7 @@ try {
   const shot = (page, n) => page.screenshot({ path: `${OUT}${n}.png`, fullPage: false });
   const wait = (p, ms = 1500) => p.waitForTimeout(ms);
   const open = async (p) => { await p.getByText('More', { exact: true }).first().click(); await wait(p); const vp = p.viewportSize(); await p.mouse.click(vp.width / 2, Math.round(vp.height * 0.735)); await wait(p, 2000); const ws = p.getByText('Sponsor workspace'); if (await ws.count()) { await ws.first().click(); await wait(p); } await p.getByText(`Open agreement ${ref}`).first().click(); await wait(p); };
+  const workspace = async (p) => { await p.getByText('More', { exact: true }).first().click(); await wait(p); const vp = p.viewportSize(); await p.mouse.click(vp.width / 2, Math.round(vp.height * 0.735)); await wait(p, 2000); const ws = p.getByText('Sponsor workspace'); if (await ws.count()) { await ws.first().click(); await wait(p); } };
   const toTasks = async (p) => { await p.getByText('Tasks & notes').first().scrollIntoViewIfNeeded(); await wait(p, 400); };
   const fillSheet = async (p, fields) => { for (const [label, value] of fields) { const f = p.getByLabel(label, { exact: false }).first(); await f.fill(value); } };
 
@@ -87,7 +88,43 @@ try {
   await r.getByText('Notes (1)', { exact: true }).first().click(); await wait(r, 1500); await shot(r, '09-notes-thread');
   check(await r.getByText('Sizes by Friday please').first().isVisible(), 'the shared discussion is readable');
   await r.context().close();
-  // ---- 3. tablet and desktop
+  // ---- 3. program discussion: the brand and one applicant, a private thread; an automatic expiry task; delivery status banner
+  const prog = await call('POST', '/sponsorship-programs', { token: sponsor.token, body: { sponsor_id: brand.id, name: 'Youth fund', currency: 'USD', budget_cents: 100000, max_award_cents: 50000 } });
+  const rnd = await call('POST', `/sponsorship-programs/${prog.id}/rounds`, { token: sponsor.token, body: { opens_on: iso(plus(-1)), closes_on: iso(plus(30)) } });
+  await call('POST', `/sponsorship-programs/${prog.id}/status`, { token: sponsor.token, body: { status: 'published', version: prog.row_version } });
+  const applicant = await reg(`coapp${suffix}`, ['athlete']);
+  const application = await call('POST', `/program-rounds/${rnd.id}/applications`, { token: applicant.token, body: { requested_cents: 20000, pitch: 'Please back my season', target_type: 'athlete', target_id: applicant.id } });
+  await sql(`UPDATE users SET roles='{athlete,sponsor}' WHERE id='${applicant.id}'`);
+  const { page: b } = await session(sponsor, { width: 390, height: 844 });
+  await workspace(b); await b.getByText('Run programs', { exact: true }).first().click(); await wait(b, 1500);
+  await b.getByText('Youth fund').first().click(); await wait(b, 2000);
+  await b.getByText('Messages', { exact: true }).first().scrollIntoViewIfNeeded(); await wait(b, 400); await shot(b, '11-program-application-card');
+  await b.getByText('Messages', { exact: true }).first().click(); await wait(b, 1500);
+  await b.getByText('Write a message', { exact: true }).first().click(); await wait(b, 1000);
+  await b.getByRole('textbox').last().fill('Can you share your season calendar?');
+  await b.getByText('Applicant too', { exact: true }).first().click(); await wait(b, 300); await shot(b, '12-brand-message-sheet');
+  await b.getByText('Send', { exact: true }).last().click(); await wait(b, 2000); await shot(b, '13-brand-thread');
+  check(await b.getByText('Can you share your season calendar?').first().isVisible(), 'the brand\'s message is in the thread');
+  await b.context().close();
+  const { page: ap } = await session(applicant, { width: 390, height: 844 });
+  await workspace(ap); await ap.getByText('Sponsorship calls', { exact: true }).first().click(); await wait(ap, 2000);
+  await ap.getByText('Messages', { exact: true }).first().scrollIntoViewIfNeeded(); await ap.getByText('Messages', { exact: true }).first().click(); await wait(ap, 1500); await shot(ap, '14-applicant-thread');
+  check(await ap.getByText('Can you share your season calendar?').first().isVisible(), 'the applicant sees the brand\'s message');
+  check(await ap.getByText(/Other applicants cannot/).first().isVisible(), 'the applicant is told who can see it');
+  await ap.context().close();
+  // an automatic expiry task appears once the term is close, dated and assigned
+  await sql(`UPDATE sponsorships SET ends_on = current_date + 45 WHERE id='${deal.id}'`);
+  process.env.DATABASE_URL = E.DATABASE_URL; process.env.SPORTARENA_MASTER_KEY = E.SPORTARENA_MASTER_KEY; process.env.SPORTARENA_JWT_SECRET = E.SPORTARENA_JWT_SECRET;
+  const { ensureExpiryTasks } = await import('../../apps/api/src/sponsor-collaboration.js');
+  check(await ensureExpiryTasks() === 2, 'one automatic expiry task per side');
+  const { page: e } = await session(sponsor, { width: 390, height: 844 });
+  await open(e); await toTasks(e); await shot(e, '15-automatic-expiry-task');
+  check(await e.getByText('Decide whether to renew this agreement').first().isVisible(), 'the automatic expiry task is listed');
+  check(await e.getByText(/^added automatically$/i).first().isVisible(), 'it is labelled as automatic');
+  check(await e.getByText(/Reminders are delayed/).count() === 0, 'no warning while the background service is beating (the API runs it in-process here)');
+  check(await e.getByText(/Email reminders are not set up/).first().isVisible(), 'unconfigured email is stated plainly');
+  await e.context().close();
+  // ---- 4. tablet and desktop
   for (const [n, vp] of [['tablet', { width: 820, height: 1100 }], ['desktop', { width: 1280, height: 900 }]]) {
     const { page: w } = await session(sponsor, vp); await open(w); await toTasks(w); await shot(w, `10-${n}`);
     check(await w.getByText('Tasks & notes').first().isVisible(), `${n}: tasks & notes is visible`);
