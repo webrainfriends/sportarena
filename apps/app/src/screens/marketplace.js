@@ -10,6 +10,7 @@ import { NewCaseSheet } from './cases';
 import { c, toneFor, money, when, day } from '../theme';
 import { InsuranceMarket } from './insurer';
 import { QuoteRequestSheet } from './insurance';
+import { whoForFields, whoForInitial, whoForBody } from '../who-for';
 
 export const nice = (s) => String(s ?? '').replace(/_/g, ' ');
 const parseWhen = (s) => { const d = new Date(String(s).trim().replace(' ', 'T')); if (isNaN(d)) throw new Error('Use the format 2026-11-02 17:30'); return d.toISOString(); };
@@ -251,8 +252,10 @@ export function Billboard() {
             { key: 'when', label: 'When (2026-11-02 17:30)', optional: true },
             { key: 'positions_needed', label: 'How many people?', type: 'number', optional: true },
             { key: 'budget', label: 'Budget (₹)', type: 'number', optional: true, hint: 'Sponsorship only.' },
+            ...whoForFields({ positions: true, region: true }).map((f) => ({ ...f, show: (v) => f.show ? f.show(v) && ['match_players', 'team_recruiting'].includes(v.kind) : ['match_players', 'team_recruiting'].includes(v.kind) })),
           ]}
-          onSubmit={async ({ when: w2, budget, ...v }) => { await api.post('/billboard', { ...v, starts_at: w2 ? parseWhen(w2) : undefined, budget_cents: budget !== undefined ? Math.round(budget * 100) : undefined }); await posts.reload(); return 'Posted'; }} />
+          initial={{ kind: 'match_players', ...whoForInitial() }}
+          onSubmit={async ({ when: w2, budget, positions_text, levels, region, age_limited, min_age, max_age, ...v }) => { await api.post('/billboard', { ...v, ...(['match_players', 'team_recruiting'].includes(v.kind) ? whoForBody({ positions_text, levels, region, age_limited, min_age, max_age }) : {}), starts_at: w2 ? parseWhen(w2) : undefined, budget_cents: budget !== undefined ? Math.round(budget * 100) : undefined }); await posts.reload(); return 'Posted'; }} />
       ) : null}
       {resp ? (
         <FormSheet visible onClose={() => setResp(null)} title={KIND[resp.kind][3]} submitLabel="Send"
