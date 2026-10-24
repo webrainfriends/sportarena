@@ -23,6 +23,7 @@ export const ACTIONS = [
   ['📍', 'Book venue', (n) => n.goTab('Schedule', { section: 'book' })],
   ['👥', 'Create team', (n) => n.goTab('Schedule', { section: 'manage' })],
   ['🏆', 'Create event', (n) => n.goTab('Schedule', { section: 'manage' })],
+  ['🎽', 'Trials', (n) => n.push('Trials')],
   ['🩺', 'Physio / doctor', (n) => n.push('Health')],
   ['💼', 'Open positions', (n) => n.push('Openings')],
 ];

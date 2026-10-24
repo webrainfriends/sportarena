@@ -13,8 +13,8 @@ import { moneyIn } from '../vtime';
 import { ContractSheet, PositionDocs } from './openings';
 import { useDo } from './console-utils';
 
-export const ROLES = [['retail', 'Retail stall'], ['catering', 'Catering'], ['vendor', 'Other vendor'], ['referee', 'Referee'], ['umpire', 'Umpire'], ['linesman', 'Linesman'], ['scorer', 'Scorer'], ['doctor', 'Doctor'], ['physio', 'Physio'], ['medic', 'Medic'], ['volunteer', 'Volunteer'], ['security', 'Security'], ['other', 'Other']];
-export const ROLE_ICON = { retail: '🛍️', catering: '🍽️', vendor: '🏪', referee: '🟨', umpire: '🧑‍⚖️', linesman: '🚩', scorer: '📝', doctor: '🩺', physio: '💆', medic: '⛑️', volunteer: '🙋', security: '🛡️', other: '🔧' };
+export const ROLES = [['retail', 'Retail stall'], ['catering', 'Catering'], ['vendor', 'Other vendor'], ['referee', 'Referee'], ['umpire', 'Umpire'], ['linesman', 'Linesman'], ['scorer', 'Scorer'], ['doctor', 'Doctor'], ['physio', 'Physio'], ['medic', 'Medic'], ['volunteer', 'Volunteer'], ['security', 'Security'], ['assessor', 'Trial assessor'], ['other', 'Other']];
+export const ROLE_ICON = { assessor: '📋', retail: '🛍️', catering: '🍽️', vendor: '🏪', referee: '🟨', umpire: '🧑‍⚖️', linesman: '🚩', scorer: '📝', doctor: '🩺', physio: '💆', medic: '⛑️', volunteer: '🙋', security: '🛡️', other: '🔧' };
 const STATUS_LABEL = { applied: 'applied', contract_sent: 'contract sent', accepted: 'confirmed' };
 const STALL = ['retail', 'catering', 'vendor'];
 const roleName = (r) => r.title || ROLES.find(([k]) => k === r.role)?.[1];

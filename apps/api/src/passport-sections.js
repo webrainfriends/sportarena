@@ -6,7 +6,7 @@ import { audit } from './helpers.js';
 import { notFound } from './errors.js';
 import { YOUTH_SQL } from './youth.js';
 
-export const SECTION_FLAGS = ['show_matches', 'show_results', 'show_awards', 'show_credentials', 'show_video', 'show_references', 'show_preferences', 'show_availability', 'show_academic'];
+export const SECTION_FLAGS = ['show_matches', 'show_results', 'show_awards', 'show_credentials', 'show_career', 'show_video', 'show_references', 'show_preferences', 'show_availability', 'show_academic'];
 export const scopeOf = (l) => Object.fromEntries(SECTION_FLAGS.map((k) => [k, !!l[k]]));
 export const FULL_SCOPE = Object.fromEntries(SECTION_FLAGS.map((k) => [k, true]));
 

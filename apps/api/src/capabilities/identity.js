@@ -246,11 +246,12 @@ cap({
       many("SELECT t.id, t.name, t.emoji, t.color, m.role FROM team_members m JOIN teams t ON t.id = m.team_id WHERE m.user_id=$1 AND m.status='active'", [i.id]),
       profileCredentials(i.id),
     ]);
-    const { tiers } = await viewerTiers(user, i.id);
     const shared = await Promise.all(profiles.map(async ({ id: pid, sport_id, dominant_side, positions, play_prefs, field_scopes, ...card }) => {
+      const { self, tiers, recruiter_scopes } = await viewerTiers(user, i.id, sport_id);
+      const mTiers = tiers.filter((t) => self || t !== 'recruiter' || recruiter_scopes.includes('measurements')); // the recruiter tier on measurements needs the measurements grant
       const f = visibleFields({ dominant_side, positions, play_prefs, field_scopes, affiliations: field_scopes?.affiliations ? await affiliationsFor(i.id, sport_id) : [] }, tiers);
       const measurements = (await many(`SELECT metric, unit, value_enc, to_char(measured_on,'YYYY-MM-DD') AS measured_on, source FROM athlete_measurements
-        WHERE sport_profile_id=$1 AND revoked_at IS NULL AND scope = ANY($2) ORDER BY measured_on DESC, created_at DESC, id`, [pid, tiers])).map(({ value_enc, ...m }) => ({ ...m, value: Number(decrypt(value_enc, 'athlete_measurements.value')) }));
+        WHERE sport_profile_id=$1 AND revoked_at IS NULL AND scope = ANY($2) ORDER BY measured_on DESC, created_at DESC, id`, [pid, mTiers])).map(({ value_enc, ...m }) => ({ ...m, value: Number(decrypt(value_enc, 'athlete_measurements.value')) }));
       if (measurements.length) await audit(null, user?.id ?? null, 'read_shared_athlete_measurements', 'sport_profiles', pid);
       return { ...card, ...f, measurements };
     }));
