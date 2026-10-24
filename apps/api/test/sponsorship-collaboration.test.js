@@ -6,7 +6,8 @@ Object.assign(process.env, { DATABASE_URL: process.env.TEST_DATABASE_URL ?? 'pos
 const { pool } = await import('../src/db.js');
 const { migrate } = await import('../src/migrate.js');
 const { createApp } = await import('../src/http.js');
-const { sendTaskReminders } = await import('../src/sponsor-collaboration.js');
+const { sendTaskReminders, ensureExpiryTasks, processSponsorTasks } = await import('../src/sponsor-collaboration.js');
+const { config } = await import('../src/config.js');
 const { STEPS } = await import('../src/worker.js');
 const { signToken } = await import('../src/auth.js');
 
@@ -275,4 +276,119 @@ test('recipient organisations: only a representative writes; the migration is ad
   assert.equal((await api('GET', `/sponsorship-tasks/${t.id}`, { token: owner.token })).status, 404, 'the brand never sees the recipient\'s internal tasks');
   const cols = (await sql("SELECT column_name FROM information_schema.columns WHERE table_name='sponsorships'")).map((c) => c.column_name);
   assert.ok(['status', 'renews_id', 'accepted_version', 'amount_cents'].every((c) => cols.includes(c)), 'existing agreement columns are untouched');
+});
+
+/** A published program of the world's brand with one open round, and an applicant with a submitted application. */
+const applied = async (w, who) => {
+  const p = must(await api('POST', '/sponsorship-programs', { token: w.owner.token, body: { sponsor_id: w.b.id, name: 'Youth fund', currency: 'USD', budget_cents: 100000, max_award_cents: 50000 } }), 201);
+  const r = must(await api('POST', `/sponsorship-programs/${p.id}/rounds`, { token: w.owner.token, body: { opens_on: await inDays(-1), closes_on: await inDays(30) } }), 201);
+  must(await api('POST', `/sponsorship-programs/${p.id}/status`, { token: w.owner.token, body: { status: 'published', version: p.row_version } }));
+  const a = who ?? await signup(['athlete']);
+  const app = must(await api('POST', `/program-rounds/${r.id}/applications`, { token: a.token, body: { requested_cents: 20000, pitch: 'Please', target_type: 'athlete', target_id: a.id } }), 201);
+  return { p, r, a, app };
+};
+const thread = (u, app, extra = {}) => api('POST', '/sponsorship-notes', { token: u.token, body: { application_id: app.id, ...extra } });
+
+test('program discussion: a private thread between the brand and one applicant, never visible to other applicants, brands or admins', async () => {
+  const w = await world();
+  const { p, a, app } = await applied(w);
+  const other = await applied(w); // a second applicant on another program of the same brand
+  const second = await signup(['athlete']);
+  const app2 = must(await api('POST', `/program-rounds/${other.r.id}/applications`, { token: second.token, body: { requested_cents: 10000, pitch: 'Me too', target_type: 'athlete', target_id: second.id } }), 201);
+  // the brand speaks (manager has the program right), the applicant answers
+  must(await thread(w.staff.manager, app, { visibility: 'shared', body: 'Can you share your season calendar?' }), 201);
+  must(await thread(a, app, { body: 'Sure, sending it today', visibility: 'internal' }), 201);
+  const mineSeen = must(await api('GET', '/sponsorship-notes', { token: a.token, query: { application_id: app.id } }));
+  assert.deepEqual(mineSeen.items.map((x) => [x.side, x.visibility]), [['sponsor', 'shared'], ['recipient', 'shared']], 'an applicant\'s note is always shared');
+  assert.equal(mineSeen.can_write, true);
+  // roles: evaluators note internally for the brand but do not speak to applicants; auditors only read
+  must(await thread(w.staff.evaluator, app, { visibility: 'internal', body: 'Pitch looks thin; check references' }), 201);
+  assert.equal((await thread(w.staff.evaluator, app, { visibility: 'shared', body: 'x' })).status, 403);
+  assert.equal((await thread(w.staff.auditor, app, { body: 'x' })).status, 403);
+  assert.equal(must(await api('GET', '/sponsorship-notes', { token: w.staff.auditor.token, query: { application_id: app.id } })).items.length, 3, 'brand staff see internal notes too');
+  assert.equal(must(await api('GET', '/sponsorship-notes', { token: a.token, query: { application_id: app.id } })).items.length, 2, 'the applicant never sees the brand\'s internal note');
+  // isolation: another applicant, an outsider brand, an admin and the other program's team learn nothing
+  for (const u of [second, w.outsider, await mkAdmin()]) {
+    assert.equal((await api('GET', '/sponsorship-notes', { token: u.token, query: { application_id: app.id } })).status, u === second ? 404 : 404);
+    assert.equal((await thread(u, app, { visibility: 'shared', body: 'let me in' })).status, 404);
+  }
+  assert.deepEqual(must(await api('GET', '/sponsorship-notes', { token: second.token, query: { application_id: app2.id } })).items, []);
+  assert.equal(must(await api('GET', '/sponsorship-notes', { token: w.owner.token, query: { program_id: p.id } })).items.length, 0, 'threads are not mixed into the program\'s internal notes');
+  // notifications: generic, to the right people, deduped
+  const told = await inbox(a, 'sponsorship_update');
+  assert.ok(told.length >= 1 && !JSON.stringify(told).match(/calendar|season/), 'no preview of the message');
+  assert.equal(told.at(-1).data.application_id, app.id);
+  assert.equal(told.at(-1).data.program_id, undefined, 'the applicant is not handed the program');
+  const brandTold = await inbox(w.staff.manager, 'sponsorship_update');
+  assert.equal(brandTold.at(-1).data.program_id, p.id);
+  assert.ok(!JSON.stringify(brandTold).includes('Sure, sending'));
+  // read-only once the program is archived; no direct thread with a minor; a draft application cannot write
+  await sql("UPDATE users SET youth_until=current_date+400 WHERE id=$1", [second.id]);
+  assert.equal((await thread(second, app2, { body: 'hello' })).status, 403, 'a minor is not put in a direct thread');
+  assert.equal(must(await api('GET', '/sponsorship-notes', { token: second.token, query: { application_id: app2.id } })).youth_blocked, true);
+  await sql("UPDATE sponsorship_programs SET status='archived' WHERE id=$1", [p.id]);
+  assert.equal((await thread(a, app, { body: 'late' })).status, 409);
+  assert.equal(must(await api('GET', '/sponsorship-notes', { token: a.token, query: { application_id: app.id } })).items.length, 2, 'the record stays readable');
+  assert.equal((await sql('SELECT count(*)::int AS n FROM sponsorship_notes WHERE application_id=$1', [app.id]))[0].n, 3, 'nothing is deleted');
+});
+
+test('expiry tasks are created automatically once per side and end date, complete with the renewal plan, and follow a moved end date', async () => {
+  const w = await world();
+  const brandSide = async () => sql("SELECT * FROM sponsorship_tasks WHERE sponsorship_id=$1 AND system_key IS NOT NULL ORDER BY side, created_at", [w.id]);
+  assert.equal(await ensureExpiryTasks(), 0, 'far from the end date nothing is created');
+  await sql('UPDATE sponsorships SET ends_on=current_date+45 WHERE id=$1', [w.id]);
+  assert.equal(await ensureExpiryTasks(), 2, 'one for each side');
+  assert.equal(await ensureExpiryTasks(), 0, 'rerun adds nothing');
+  await Promise.all([1, 2].map(() => ensureExpiryTasks()));
+  const tasks = await brandSide();
+  assert.deepEqual(tasks.map((t) => [t.side, t.kind, t.status, t.visibility]), [['recipient', 'expiry', 'open', 'internal'], ['sponsor', 'expiry', 'open', 'internal']]);
+  assert.equal(tasks.length, 2, 'two parallel sweeps still make one per side');
+  const sp = tasks.find((t) => t.side === 'sponsor'), re = tasks.find((t) => t.side === 'recipient');
+  assert.equal(re.assignee_id, w.ath.id);
+  assert.equal(sp.assignee_id, w.owner.id);
+  const due = (await sql("SELECT (current_date+15)::text AS d"))[0].d;
+  assert.equal(String((await sql('SELECT due_on::text AS d FROM sponsorship_tasks WHERE id=$1', [sp.id]))[0].d), due, 'dated 30 days before the term ends');
+  // visible only to its own side, flagged as automatic
+  const seen = must(await api('GET', '/sponsorship-tasks', { token: w.ath.token, query: { sponsorship_id: w.id } })).items;
+  assert.deepEqual(seen.map((t) => [t.title, t.system]), [['Decide whether to renew this agreement', true]]);
+  // recording the plan completes it for that side only
+  const rev = must(await api('GET', `/sponsorships/${w.id}`, { token: w.ath.token })).renewal.renewal_rev;
+  must(await api('POST', `/sponsorships/${w.id}/renewal-assessment`, { token: w.ath.token, body: { expected_renewal_rev: rev, intent: 'renew' } }));
+  await ensureExpiryTasks();
+  assert.deepEqual((await brandSide()).map((t) => [t.side, t.status]), [['recipient', 'done'], ['sponsor', 'open']]);
+  // the end date moves: the stale reminder is cancelled (never deleted) and a new one made for the new date
+  await sql('UPDATE sponsorships SET ends_on=current_date+60 WHERE id=$1', [w.id]);
+  await ensureExpiryTasks();
+  const after = await brandSide();
+  assert.equal(after.filter((t) => t.side === 'sponsor' && t.status === 'cancelled').length, 1);
+  assert.equal(after.filter((t) => t.side === 'sponsor' && t.status === 'open').length, 1);
+  // it feeds the normal reminders: due soon -> the assignee hears once, generically
+  await sql("UPDATE sponsorship_tasks SET due_on=current_date+2 WHERE sponsorship_id=$1 AND side='sponsor' AND status='open'", [w.id]);
+  const before = (await inbox(w.owner)).length;
+  assert.ok(await processSponsorTasks() >= 1);
+  const got = (await inbox(w.owner)).slice(before);
+  assert.equal(got.length, 1);
+  assert.ok(!JSON.stringify(got).match(/renew/i), 'no text of the task in the notification');
+  // a renewal in progress, or an ended agreement, makes no new tasks
+  const w2 = await world();
+  await sql('UPDATE sponsorships SET ends_on=current_date+20 WHERE id=$1', [w2.id]);
+  const rev2 = must(await api('GET', `/sponsorships/${w2.id}`, { token: w2.owner.token })).renewal.renewal_rev;
+  must(await api('POST', `/sponsorships/${w2.id}/renewal`, { token: w2.owner.token, body: { expected_renewal_rev: rev2, starts_on: await inDays(25), ends_on: await inDays(200) } }), 201);
+  await ensureExpiryTasks();
+  assert.equal((await sql('SELECT count(*)::int AS n FROM sponsorship_tasks WHERE sponsorship_id=$1', [w2.id]))[0].n, 0, 'a live renewal needs no reminder');
+});
+
+test('delivery status is honest: the app is told whether the worker is beating and whether email is configured', async () => {
+  const w = await world();
+  const off = must(await api('GET', '/sponsorship-tasks', { token: w.owner.token, query: { sponsorship_id: w.id } })).reminders;
+  assert.equal(off.in_app, true);
+  assert.equal(off.email, !!config.notifyWebhook.url);
+  assert.equal(off.worker, false, 'no worker has beaten in a fresh database');
+  await sql("INSERT INTO worker_heartbeats(worker_id, mode, host, status, interval_seconds, last_beat_at) VALUES ('w-collab-test','external','test','running',60,now())");
+  assert.equal(must(await api('GET', '/sponsorship-tasks', { token: w.owner.token, query: { sponsorship_id: w.id } })).reminders.worker, true);
+  const saved = config.notifyWebhook.url;
+  config.notifyWebhook.url = 'http://127.0.0.1:9/hook';
+  assert.equal(must(await api('GET', '/sponsorship-tasks', { token: w.owner.token, query: { sponsorship_id: w.id } })).reminders.email, true);
+  config.notifyWebhook.url = saved;
+  await sql("DELETE FROM worker_heartbeats WHERE worker_id='w-collab-test'");
 });
