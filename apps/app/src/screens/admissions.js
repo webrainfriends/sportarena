@@ -12,6 +12,7 @@ import { useSports } from '../sportpicker';
 import { c, when } from '../theme';
 import { moneyIn } from '../vtime';
 import { KINDS, MODES, STAGES, label } from './pathways';
+import { whoForFields, whoForInitial, whoForBody } from '../who-for';
 
 const fail = (toast) => (e) => toast('' + e.message);
 const OPEN_STAGES = ['new', 'in_conversation', 'referred', 'applied', 'admitted'];
@@ -82,6 +83,7 @@ function Programmes({ o, archived, toast, reload }) {
     { key: 'fee_minor', label: 'Fee', type: 'money', currency: (v) => v.currency ?? 'INR', optional: true },
     { key: 'next_intake_on', label: 'Next intake', type: 'date', optional: true },
     { key: 'apply_url', label: 'Where to apply (https link on your website)', type: 'url', optional: true },
+    ...whoForFields(),
   ];
   return (
     <>
@@ -103,9 +105,9 @@ function Programmes({ o, archived, toast, reload }) {
         {!archived ? <Btn small title="Add a brochure" color={c.violet} onPress={() => setBro(true)} style={{ alignSelf: 'flex-start' }} /> : null}
       </Section>
       <FormSheet visible={!!form} onClose={() => setForm(null)} title={edit ? 'Edit programme' : 'New programme'} submitLabel={edit ? 'Save' : 'Publish'} fields={fields}
-        initial={edit ? { ...edit, sports: slugsOf(edit) } : { currency: 'INR' }}
+        initial={edit ? { ...edit, sports: slugsOf(edit), ...whoForInitial(edit) } : { currency: 'INR', ...whoForInitial() }}
         onSubmit={async (v) => {
-          const body = { title: v.title, kind: v.kind, mode: v.mode, description: v.description, sport_ids: idsOf(v.sports), duration_months: v.duration_months, currency: v.fee_minor != null ? v.currency : undefined, fee_minor: v.fee_minor, next_intake_on: v.next_intake_on, apply_url: v.apply_url };
+          const body = { title: v.title, kind: v.kind, mode: v.mode, description: v.description, sport_ids: idsOf(v.sports), duration_months: v.duration_months, currency: v.fee_minor != null ? v.currency : undefined, fee_minor: v.fee_minor, next_intake_on: v.next_intake_on, apply_url: v.apply_url, ...whoForBody(v, { clear: !!edit }) };
           if (edit) await api.patch(`/programmes/${edit.id}`, { ...body, sport_ids: idsOf(v.sports) }); else await api.post(`/organisations/${o.id}/programmes`, body);
           refresh(); return edit ? 'Saved' : 'Programme published';
         }} />

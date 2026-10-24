@@ -214,15 +214,17 @@ export function RecruitmentProfile() {
         { key: 'title', label: 'Title' }, { key: 'link_url', label: 'YouTube or Vimeo link', type: 'url', hint: 'It plays inside the app. For other hosts, upload the clip instead.' }, { key: 'sport_slug', label: 'Sport', type: 'sport', optional: true }]}
         onSubmit={async (v) => { await api.post('/me/passport-videos', { title: v.title, link_url: v.link_url, sport_slug: v.sport_slug || undefined }); await videos.reload(); return 'Added. A coach needs to approve it.'; }} /> : null}
       {form === 'prefs' ? <FormSheet visible onClose={() => setForm(null)} title="What I'm looking for" submitLabel="Save"
-        initial={{ sport_slugs: pf?.sport_slugs ?? [], levels: pf?.levels ?? [], regions: pf?.regions ?? [], open_to: pf?.open_to ?? [], open_to_contact: !!pf?.open_to_contact, notes: pf?.notes ?? '' }}
+        initial={{ sport_slugs: pf?.sport_slugs ?? [], levels: pf?.levels ?? [], regions: pf?.regions ?? [], open_to: pf?.open_to ?? [], open_to_contact: !!pf?.open_to_contact, notes: pf?.notes ?? '', budget_cents: pf?.budget_cents ?? undefined, budget_currency: pf?.budget_currency ?? 'INR' }}
         fields={[
           { key: 'open_to', label: 'Open to', type: 'multi', options: OPEN_TO, optional: true },
           { key: 'sport_slugs', label: 'Sports', type: 'sports', optional: true },
           { key: 'levels', label: 'Levels', type: 'multi', options: LEVELS, optional: true },
           { key: 'regions', label: 'Regions', type: 'regions', optional: true },
+          { key: 'budget_currency', label: 'Budget currency', type: 'currency', optional: true },
+          { key: 'budget_cents', label: 'Most I can pay for one opportunity (used to match fees)', type: 'money', currency: (v) => v.budget_currency ?? 'INR', optional: true },
           { key: 'open_to_contact', label: 'Recruiters may contact me', type: 'switch' },
           { key: 'notes', label: 'Anything else', type: 'multiline', optional: true }]}
-        onSubmit={async (v) => { await api.post('/me/recruitment-preferences', { version: pf?.version ?? 0, sport_slugs: v.sport_slugs ?? [], levels: v.levels ?? [], regions: v.regions ?? [], open_to: v.open_to ?? [], open_to_contact: !!v.open_to_contact, notes: v.notes || undefined }); await prefs.reload(); return 'Saved'; }} /> : null}
+        onSubmit={async (v) => { await api.post('/me/recruitment-preferences', { version: pf?.version ?? 0, sport_slugs: v.sport_slugs ?? [], levels: v.levels ?? [], regions: v.regions ?? [], open_to: v.open_to ?? [], open_to_contact: !!v.open_to_contact, notes: v.notes || undefined, ...(v.budget_cents != null ? { budget_cents: v.budget_cents, budget_currency: v.budget_currency ?? 'INR' } : pf?.budget_cents != null ? { budget_cents: null, budget_currency: null } : {}) }); await prefs.reload(); return 'Saved'; }} /> : null}
       {form === 'avail' ? <FormSheet visible onClose={() => setForm(null)} title="Add availability" submitLabel="Add" initial={{ kind: 'trial' }}
         fields={[
           { key: 'kind', label: 'For', type: 'chips', options: [{ value: 'trial', label: 'Trial' }, { value: 'visit', label: 'Visit' }, { value: 'start', label: 'Start date' }] },

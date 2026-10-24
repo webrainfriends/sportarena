@@ -8,6 +8,7 @@ import { canManageTeam } from './teams.js';
 import { hasOrgGrant } from '../org-access.js';
 import { reserve } from './venues.js';
 import { notify } from '../notify.js';
+import { WHO_FOR, ageBand, AGE_BAND_MSG } from '../opportunity-fields.js';
 import { advanceKnockout, isKnockout } from '../tournament/advance.js';
 import { createRequest } from '../event-planning.js';
 import { eventWindow, windowFit, consentNeeded } from '../event-fit.js';
@@ -36,7 +37,8 @@ cap({
     entry_fee_cents: money.default(0), banner_emoji: z.string().max(8).optional(),
     city: z.string().max(80).optional(), capacity: z.number().int().min(1).max(100000).optional(), registration_deadline: dt.optional(),
     currency: z.string().length(3).default('INR'), seeking_sponsors: z.boolean().default(false),
-  }),
+    ...WHO_FOR,
+  }).refine(ageBand, AGE_BAND_MSG),
   async handler({ user }, i) {
     const want = [...new Set(i.sports?.length ? i.sports : i.sport ? [i.sport] : [])];
     if (!want.length) throw badRequest('Choose at least one sport');
@@ -47,9 +49,9 @@ cap({
     const anchor = multi ? await sportBySlugOrId('multi-sport') : picked[0];
     return tx(async (c) => {
       const ev = (await c.query(
-        `INSERT INTO events(name, sport_id, organizer_id, kind, description, venue_id, starts_on, ends_on, points_win, points_draw, points_loss, entry_fee_cents, banner_emoji, status, city, capacity, registration_deadline, currency, seeking_sponsors)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,coalesce($13,$19),'open',$14,$15,$16,upper($17),$18) RETURNING *`,
-        [i.name, anchor.id, user.id, i.kind, i.description, i.venue_id, i.starts_on, i.ends_on, i.points_win, i.points_draw, i.points_loss, i.entry_fee_cents, i.banner_emoji, i.city, i.capacity, i.registration_deadline, i.currency, i.seeking_sponsors, multi ? '🏅' : '🏆'])).rows[0];
+        `INSERT INTO events(name, sport_id, organizer_id, kind, description, venue_id, starts_on, ends_on, points_win, points_draw, points_loss, entry_fee_cents, banner_emoji, status, city, capacity, registration_deadline, currency, seeking_sponsors, levels, region, min_age, max_age)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,coalesce($13,$19),'open',$14,$15,$16,upper($17),$18,$20,$21,$22,$23) RETURNING *`,
+        [i.name, anchor.id, user.id, i.kind, i.description, i.venue_id, i.starts_on, i.ends_on, i.points_win, i.points_draw, i.points_loss, i.entry_fee_cents, i.banner_emoji, i.city, i.capacity, i.registration_deadline, i.currency, i.seeking_sponsors, multi ? '🏅' : '🏆', i.levels, i.region ?? null, i.min_age ?? null, i.max_age ?? null])).rows[0];
       let disciplines = [];
       if (multi) {
         await c.query('INSERT INTO event_programmes(event_id) VALUES ($1)', [ev.id]);
@@ -171,6 +173,7 @@ cap({
     id, name: z.string().min(2).max(100).optional(), description: z.string().max(2000).optional(), status: z.enum(['open', 'ongoing', 'cancelled']).optional(),
     starts_on: date.optional(), ends_on: date.optional(), venue_id: id.optional(), city: z.string().max(80).optional(),
     capacity: z.number().int().min(1).max(100000).optional(), registration_deadline: dt.optional(), seeking_sponsors: z.boolean().optional(),
+    levels: WHO_FOR.levels.optional(), region: WHO_FOR.region, min_age: WHO_FOR.min_age, max_age: WHO_FOR.max_age,
   }),
   async handler({ user }, i) {
     return tx(async (c) => {
@@ -185,9 +188,10 @@ cap({
       }
       const out = (await c.query(
         `UPDATE events SET name=coalesce($2,name), description=coalesce($3,description), status=coalesce($4,status), starts_on=coalesce($5,starts_on), ends_on=coalesce($6,ends_on),
-           venue_id=coalesce($7,venue_id), city=coalesce($8,city), capacity=coalesce($9,capacity), registration_deadline=coalesce($10,registration_deadline), seeking_sponsors=coalesce($11,seeking_sponsors)
+           venue_id=coalesce($7,venue_id), city=coalesce($8,city), capacity=coalesce($9,capacity), registration_deadline=coalesce($10,registration_deadline), seeking_sponsors=coalesce($11,seeking_sponsors),
+           levels=coalesce($12,levels), region=coalesce($13,region), min_age=coalesce($14,min_age), max_age=coalesce($15,max_age)
          WHERE id=$1 RETURNING *`,
-        [i.id, i.name, i.description, i.status, i.starts_on, i.ends_on, i.venue_id, i.city, i.capacity, i.registration_deadline, i.seeking_sponsors])).rows[0];
+        [i.id, i.name, i.description, i.status, i.starts_on, i.ends_on, i.venue_id, i.city, i.capacity, i.registration_deadline, i.seeking_sponsors, i.levels ?? null, i.region ?? null, i.min_age ?? null, i.max_age ?? null])).rows[0];
       if (i.status === 'cancelled' && ev.status !== 'cancelled') {
         const who = (await c.query("SELECT DISTINCT coalesce(t.owner_id, e.user_id) AS uid FROM event_entries e LEFT JOIN teams t ON t.id=e.team_id WHERE e.event_id=$1 AND e.status IN ('pending','accepted','waitlisted')", [i.id])).rows;
         for (const r of who) if (r.uid) await notify(c, r.uid, { kind: 'event_cancelled', title: 'Event cancelled', body: `${ev.name} was cancelled by the organiser.`, data: { event_id: ev.id } });

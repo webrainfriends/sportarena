@@ -11,6 +11,8 @@ import { Counter, DateField, DateRangeField, todayLocal } from '../pickers';
 import { SportsMulti, useSports } from '../sportpicker';
 import { c } from '../theme';
 import { moneyIn } from '../vtime';
+import { RegionPicker } from '../region-picker';
+import { LEVEL_OPTIONS } from '../who-for';
 
 const KINDS = ['tournament', 'league', 'friendly', 'camp', 'trial'];
 const STEPS = ['Basics', 'Sports', 'When & where', 'Details'];
@@ -20,7 +22,7 @@ export function CreateEvent({ visible, onClose, onCreated }) {
   const sports = useSports();
   const [step, setStep] = useState(0);
   const [busy, setBusy] = useState(false);
-  const [f, setF] = useState({ name: '', kind: 'tournament', description: '', sports: [], from: undefined, to: undefined, city: '', picks: {}, capacity: 0, fee: '', deadline: undefined, sponsors: false });
+  const [f, setF] = useState({ name: '', kind: 'tournament', description: '', sports: [], from: undefined, to: undefined, city: '', picks: {}, capacity: 0, fee: '', deadline: undefined, sponsors: false, levels: [], region: '', ageLimited: false, minAge: 12, maxAge: 18 });
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
   const multi = f.sports.length > 1;
   const slugs = f.sports.join(',');
@@ -44,6 +46,7 @@ export function CreateEvent({ visible, onClose, onCreated }) {
         name: f.name.trim(), kind: f.kind, sports: f.sports, starts_on: f.from, ends_on: f.to ?? f.from, ...(f.description.trim() ? { description: f.description.trim() } : {}), ...(f.city.trim() ? { city: f.city.trim() } : {}),
         ...(f.capacity ? { capacity: f.capacity } : {}), ...(fee > 0 ? { entry_fee_cents: Math.round(fee * 100) } : {}), ...(f.deadline ? { registration_deadline: new Date(`${f.deadline}T23:59:00`).toISOString() } : {}),
         seeking_sponsors: f.sponsors, venue_requests: venueRequests(),
+        ...(f.levels.length ? { levels: f.levels } : {}), ...(f.region ? { region: f.region } : {}), ...(f.ageLimited ? { min_age: f.minAge, max_age: Math.max(f.minAge, f.maxAge) } : {}),
       };
       const ev = await api.post('/events', body);
       const asked = ev.venue_requests?.length ?? 0;
@@ -104,6 +107,18 @@ export function CreateEvent({ visible, onClose, onCreated }) {
           <View style={{ flexDirection: 'row', alignItems: 'center' }}><View style={{ flex: 1 }}><T weight="800" size={13}>Capacity (0 = no limit)</T></View><Counter value={f.capacity} onChange={(x) => set('capacity', x)} min={0} max={100000} step={10} /></View>
           <Field label="Entry fee per entrant (optional)" value={String(f.fee)} onChangeText={(x) => set('fee', x.replace(/[^0-9.,]/g, ''))} keyboardType="decimal-pad" placeholder="0 = free" />
           <DateField label="Registration closes" value={f.deadline} onChange={(x) => set('deadline', x)} optional min={todayLocal()} max={f.from} />
+          <View style={{ gap: 6 }}>
+            <T weight="800" size={13}>Who it is for (optional) — players see how well they fit</T>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{LEVEL_OPTIONS.map((o) => <Chip key={o.value} label={o.label} active={f.levels.includes(o.value)} onPress={() => set('levels', f.levels.includes(o.value) ? f.levels.filter((x) => x !== o.value) : [...f.levels, o.value])} />)}</View>
+            <RegionPicker label="Region" optional value={f.region} onChange={(x) => set('region', x)} />
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}><View style={{ flex: 1 }}><T weight="800" size={13}>Limit by age</T></View><Switch value={f.ageLimited} onValueChange={(x) => set('ageLimited', x)} trackColor={{ true: c.pink }} /></View>
+            {f.ageLimited ? (
+              <View style={{ gap: 6 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}><View style={{ flex: 1 }}><T size={13}>Youngest age</T></View><Counter value={f.minAge} onChange={(x) => set('minAge', x)} min={3} max={99} step={1} /></View>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}><View style={{ flex: 1 }}><T size={13}>Oldest age</T></View><Counter value={f.maxAge} onChange={(x) => set('maxAge', x)} min={3} max={99} step={1} /></View>
+              </View>
+            ) : null}
+          </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}><View style={{ flex: 1 }}><T weight="800" size={13}>Looking for sponsors</T><T size={12} color={c.mute}>Shown on the event so sponsors can offer support.</T></View><Switch value={f.sponsors} onValueChange={(x) => set('sponsors', x)} trackColor={{ true: c.pink }} /></View>
           <View style={{ gap: 4, borderWidth: 1, borderColor: c.line, borderRadius: 14, padding: 12, backgroundColor: c.paper }}>
             <T weight="800">{f.name}</T>

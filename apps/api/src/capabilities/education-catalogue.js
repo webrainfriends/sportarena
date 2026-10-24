@@ -11,6 +11,7 @@ import { orgFor } from '../org-access.js';
 import { builtinRuleset, describeRuleset } from '../scoring/rulesets.js';
 import { ADMISSIONS } from '../education.js';
 import { ratingsFor } from './education-discovery.js';
+import { AGE, levels } from '../opportunity-fields.js';
 
 const TAG = 'Education';
 const https = z.string().url().max(500).refine((u) => u.startsWith('https://'), 'Links must use https');
@@ -180,14 +181,15 @@ const setSports = async (c, programmeId, ids) => {
 cap({
   name: 'create_programme', method: 'POST', path: '/organisations/:id/programmes', tag: TAG, status: 201,
   summary: 'Admissions staff: publish a course, certification, diploma or degree. Pick the sports it covers, the fee in a currency, the next intake date and where to apply on your website.',
-  input: z.object({ id, title: programmeIn.title, kind: programmeIn.kind, mode: programmeIn.mode.default('on_campus'), description: programmeIn.description.optional(), sport_ids: programmeIn.sport_ids.default([]), duration_months: programmeIn.duration_months.optional(), fee_minor: programmeIn.fee_minor.optional(), currency: programmeIn.currency.optional(), next_intake_on: programmeIn.next_intake_on.optional(), apply_url: programmeIn.apply_url.optional() }),
+  input: z.object({ id, title: programmeIn.title, kind: programmeIn.kind, mode: programmeIn.mode.default('on_campus'), description: programmeIn.description.optional(), sport_ids: programmeIn.sport_ids.default([]), duration_months: programmeIn.duration_months.optional(), fee_minor: programmeIn.fee_minor.optional(), currency: programmeIn.currency.optional(), next_intake_on: programmeIn.next_intake_on.optional(), apply_url: programmeIn.apply_url.optional(), levels: levels.default([]), ...AGE }),
   handler: ({ user }, i) => tx(async (c) => {
     await orgFor(user, i.id, ADMISSIONS, { write: true, c });
+    if (i.min_age != null && i.max_age != null && i.max_age < i.min_age) throw badRequest('max_age is below min_age');
     if (i.fee_minor !== undefined && !i.currency) throw badRequest('Choose the currency of the fee');
     await checkSports(c, i.sport_ids);
     const p = (await c.query(
-      `INSERT INTO programmes(organisation_id, title, kind, mode, description, duration_months, fee_minor, currency, next_intake_on, apply_url, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
-      [i.id, i.title, i.kind, i.mode, i.description ?? null, i.duration_months ?? null, i.fee_minor ?? null, i.fee_minor === undefined ? null : i.currency, i.next_intake_on ?? null, i.apply_url ?? null, user.id])).rows[0];
+      `INSERT INTO programmes(organisation_id, title, kind, mode, description, duration_months, fee_minor, currency, next_intake_on, apply_url, created_by, levels, min_age, max_age) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+      [i.id, i.title, i.kind, i.mode, i.description ?? null, i.duration_months ?? null, i.fee_minor ?? null, i.fee_minor === undefined ? null : i.currency, i.next_intake_on ?? null, i.apply_url ?? null, user.id, i.levels, i.min_age ?? null, i.max_age ?? null])).rows[0];
     await setSports(c, p.id, i.sport_ids);
     return { ...p, sport_ids: [...new Set(i.sport_ids)] };
   }),
@@ -196,7 +198,7 @@ cap({
 cap({
   name: 'update_programme', method: 'PATCH', path: '/programmes/:id', tag: TAG,
   summary: 'Admissions staff: edit a programme, change its sports, or archive it (status archived) when it stops running. Archived programmes disappear from search but their enquiries and credentials are kept.',
-  input: z.object({ id, title: programmeIn.title.optional(), kind: programmeIn.kind.optional(), mode: programmeIn.mode.optional(), description: programmeIn.description.nullable().optional(), sport_ids: programmeIn.sport_ids.optional(), duration_months: programmeIn.duration_months.nullable().optional(), fee_minor: programmeIn.fee_minor.nullable().optional(), currency: programmeIn.currency.nullable().optional(), next_intake_on: programmeIn.next_intake_on.nullable().optional(), apply_url: programmeIn.apply_url.nullable().optional(), status: z.enum(['active', 'archived']).optional() }),
+  input: z.object({ id, title: programmeIn.title.optional(), kind: programmeIn.kind.optional(), mode: programmeIn.mode.optional(), description: programmeIn.description.nullable().optional(), sport_ids: programmeIn.sport_ids.optional(), duration_months: programmeIn.duration_months.nullable().optional(), fee_minor: programmeIn.fee_minor.nullable().optional(), currency: programmeIn.currency.nullable().optional(), next_intake_on: programmeIn.next_intake_on.nullable().optional(), apply_url: programmeIn.apply_url.nullable().optional(), levels: levels.optional(), min_age: AGE.min_age.nullable(), max_age: AGE.max_age.nullable(), status: z.enum(['active', 'archived']).optional() }),
   handler: ({ user }, i) => tx(async (c) => {
     const cur = (await c.query('SELECT * FROM programmes WHERE id=$1 FOR UPDATE', [i.id])).rows[0];
     if (!cur) throw notFound('Programme');
@@ -206,12 +208,13 @@ cap({
     if (!keys.length && sport_ids === undefined && status === undefined) throw badRequest('Nothing to update');
     const merged = { ...cur, ...Object.fromEntries(keys.map((k) => [k, rest[k]])) };
     if (merged.fee_minor !== null && !merged.currency) throw badRequest('Choose the currency of the fee');
+    if (merged.min_age != null && merged.max_age != null && merged.max_age < merged.min_age) throw badRequest('max_age is below min_age');
     if (sport_ids) { await checkSports(c, sport_ids); await setSports(c, cur.id, sport_ids); }
     const next = status ?? cur.status;
     const row = (await c.query(
-      `UPDATE programmes SET title=$2, kind=$3, mode=$4, description=$5, duration_months=$6, fee_minor=$7, currency=$8, next_intake_on=$9, apply_url=$10, status=$11,
+      `UPDATE programmes SET title=$2, kind=$3, mode=$4, description=$5, duration_months=$6, fee_minor=$7, currency=$8, next_intake_on=$9, apply_url=$10, status=$11, levels=$12, min_age=$13, max_age=$14,
               archived_at = CASE WHEN $11 = 'archived' THEN coalesce(archived_at, now()) ELSE NULL END WHERE id=$1 RETURNING *`,
-      [cur.id, merged.title, merged.kind, merged.mode, merged.description, merged.duration_months, merged.fee_minor, merged.currency, merged.next_intake_on, merged.apply_url, next])).rows[0];
+      [cur.id, merged.title, merged.kind, merged.mode, merged.description, merged.duration_months, merged.fee_minor, merged.currency, merged.next_intake_on, merged.apply_url, next, merged.levels, merged.min_age, merged.max_age])).rows[0];
     return row;
   }),
 });

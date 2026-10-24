@@ -2,7 +2,7 @@ import express from 'express';
 import rateLimit from 'express-rate-limit';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
-import { cap, id, page } from '../registry.js';
+import { cap, id, page, money } from '../registry.js';
 import { config } from '../config.js';
 import { authenticate } from '../auth.js';
 import { one, many } from '../db.js';
@@ -138,8 +138,8 @@ cap({
   name: 'get_my_recruitment_preferences', method: 'GET', path: '/me/recruitment-preferences', tag: TAG,
   summary: 'What you are looking for: sports, levels, regions, kinds of opportunity and whether recruiters may contact you. Empty until you set it.',
   async handler({ user }) {
-    return (await one('SELECT sport_slugs, levels, regions, open_to, open_to_contact, notes, version FROM recruitment_preferences WHERE user_id=$1', [user.id]))
-      ?? { sport_slugs: [], levels: [], regions: [], open_to: [], open_to_contact: false, notes: null, version: 0 };
+    return (await one('SELECT sport_slugs, levels, regions, open_to, open_to_contact, notes, budget_cents::float8 AS budget_cents, budget_currency, version FROM recruitment_preferences WHERE user_id=$1', [user.id]))
+      ?? { sport_slugs: [], levels: [], regions: [], open_to: [], open_to_contact: false, notes: null, budget_cents: null, budget_currency: null, version: 0 };
   },
 });
 
@@ -147,14 +147,18 @@ cap({
   name: 'set_my_recruitment_preferences', method: 'POST', path: '/me/recruitment-preferences', tag: TAG,
   summary: 'Save your recruitment preferences. Send the version you last saw (0 the first time); a stale version is refused (409).',
   input: z.object({ version: z.number().int().min(0), sport_slugs: z.array(z.string().max(60)).max(10), levels: z.array(z.string().max(30)).max(8), regions: z.array(z.string().max(80)).max(20),
-    open_to: z.array(z.enum(OPEN_TO)).max(6), open_to_contact: z.boolean(), notes: z.string().trim().max(500).optional() }),
+    open_to: z.array(z.enum(OPEN_TO)).max(6), open_to_contact: z.boolean(), notes: z.string().trim().max(500).optional(),
+    budget_cents: money.nullable().optional().describe('the most you can pay for one opportunity, in minor units; leave out to keep what you saved, null to clear'), budget_currency: z.string().regex(/^[A-Z]{3}$/).nullable().optional() })
+    .refine((v) => (v.budget_cents === undefined) === (v.budget_currency === undefined) && (v.budget_cents == null) === (v.budget_currency == null), { message: 'Give the budget amount together with its currency (or both null to clear it)', path: ['budget_currency'] }),
   async handler({ user }, i) {
-    const vals = [user.id, i.sport_slugs, i.levels, i.regions, i.open_to, i.open_to_contact, i.notes || null];
+    const setBudget = i.budget_cents !== undefined; // left out = keep what is saved
+    const vals = [user.id, i.sport_slugs, i.levels, i.regions, i.open_to, i.open_to_contact, i.notes || null, setBudget, i.budget_cents ?? null, i.budget_currency ?? null];
+    const COLS = 'sport_slugs, levels, regions, open_to, open_to_contact, notes, budget_cents::float8 AS budget_cents, budget_currency, version';
     const row = i.version === 0
-      ? await one(`INSERT INTO recruitment_preferences(user_id, sport_slugs, levels, regions, open_to, open_to_contact, notes) VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (user_id) DO NOTHING
-                   RETURNING sport_slugs, levels, regions, open_to, open_to_contact, notes, version`, vals)
-      : await one(`UPDATE recruitment_preferences SET sport_slugs=$2, levels=$3, regions=$4, open_to=$5, open_to_contact=$6, notes=$7, version=version+1, updated_at=now()
-                    WHERE user_id=$1 AND version=$8 RETURNING sport_slugs, levels, regions, open_to, open_to_contact, notes, version`, [...vals, i.version]);
+      ? await one(`INSERT INTO recruitment_preferences(user_id, sport_slugs, levels, regions, open_to, open_to_contact, notes, budget_cents, budget_currency) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT (user_id) DO NOTHING
+                   RETURNING ${COLS}`, [user.id, i.sport_slugs, i.levels, i.regions, i.open_to, i.open_to_contact, i.notes || null, i.budget_cents ?? null, i.budget_currency ?? null])
+      : await one(`UPDATE recruitment_preferences SET sport_slugs=$2, levels=$3, regions=$4, open_to=$5, open_to_contact=$6, notes=$7, budget_cents=CASE WHEN $8::boolean THEN $9::bigint ELSE budget_cents END, budget_currency=CASE WHEN $8::boolean THEN $10::text ELSE budget_currency END, version=version+1, updated_at=now()
+                    WHERE user_id=$1 AND version=$11 RETURNING ${COLS}`, [...vals, i.version]);
     if (!row) throw stale();
     return row;
   },

@@ -4,7 +4,7 @@ export const MODULES = [
   ['CareerTimeline', 'Career & clubs', 'Your clubs, verified by them', 'play'],
   ['MyApplications', 'My applications', 'Trials, offers & answers', 'play'],
   ['RecruiterAccess', 'Recruiter access', 'Who may see your profile', 'play'],
-  ['MyPlans', 'Training plans', 'Your plans & sessions', 'play'], ['ToolsHome', 'Tools', 'Scoring sheets & documents', 'play'], ['Pathways', 'Learn & study', 'Rules, courses & colleges', 'play'],
+  ['MyPlans', 'Training plans', 'Your plans & sessions', 'play'], ['ToolsHome', 'Tools', 'Scoring sheets & documents', 'play'], ['Pathways', 'Learn & study', 'Rules, courses & colleges', 'play'], ['OpportunityMatches', 'Opportunities for me', 'Teams, trials, study & sponsors that fit you', 'play'],
   ['Health', 'Health', 'Physio · doctors · fit to play', 'care'], ['Insure', 'My cover', 'What covers me today', 'care'],
   ['Insurance', 'Insurance', 'You · your team · your event', 'care'], ['Legal', 'Legal', 'Verified lawyers & matters', 'care'], ['Family', 'Family', 'Guardians & consents', 'care'],
   ['Wallet', 'Wallet', 'Balance, gift cards, loyalty', 'money'], ['Earnings', 'Earnings', 'Sales, fees & payouts', 'money'], ['Shop', 'Shop', 'Kit, gear & orders', 'money'],

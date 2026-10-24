@@ -8,12 +8,13 @@ import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { hasRole, isAdmin, mustFind, PUBLIC_USER, sportBySlugOrId } from '../helpers.js';
 import { notify } from '../notify.js';
 import { canManageTeam } from './teams.js';
+import { WHO_FOR, ageBand, AGE_BAND_MSG } from '../opportunity-fields.js';
 
 const httpsUrl = z.string().url().max(500).refine((u) => u.startsWith('https://'), 'Use an https link');
 
 const kinds = ['match_players', 'team_recruiting', 'coach_wanted', 'sponsorship_wanted', 'sponsor_call'];
 const rateUnit = z.enum(['match', 'hour', 'month', 'season']);
-const POST_COLS = `b.id, b.kind, b.title, b.body, b.city, b.starts_at, b.positions_needed, b.budget_cents, b.rate_unit, b.status, b.created_at, b.team_id,
+const POST_COLS = `b.id, b.kind, b.title, b.body, b.city, b.starts_at, b.positions_needed, b.budget_cents, b.rate_unit, b.positions, b.levels, b.region, b.min_age, b.max_age, b.status, b.created_at, b.team_id,
   s.slug AS sport_slug, s.name AS sport, s.emoji AS sport_emoji, t.name AS team_name, t.emoji AS team_emoji,
   u.id AS author_id, u.handle AS author_handle, u.display_name AS author_name, u.avatar_emoji AS author_emoji, u.avatar_color AS author_color, u.avatar_url AS author_avatar_url,
   (SELECT count(*)::int FROM billboard_responses r WHERE r.post_id=b.id AND r.status='accepted') AS accepted`;
@@ -25,15 +26,16 @@ cap({
   input: z.object({
     kind: z.enum(kinds), title: z.string().min(3).max(100), body: z.string().max(1000).optional(), sport: z.string().optional(), team_id: id.optional(),
     city: z.string().max(80).optional(), starts_at: z.string().datetime({ offset: true }).optional(), positions_needed: z.number().int().min(1).max(200).default(1), budget_cents: money.optional(), rate_unit: rateUnit.optional().describe('what the budget pays per, e.g. per match — for team_recruiting / coach_wanted'),
-  }),
+    ...WHO_FOR,
+  }).refine(ageBand, AGE_BAND_MSG),
   async handler({ user }, i) {
     if (i.kind === 'sponsor_call' && !hasRole(user, 'sponsor')) throw forbidden('Only sponsors can post sponsor calls');
     if (i.kind === 'coach_wanted' && !i.team_id) throw badRequest('Pick the team you need a coach for');
     if (i.team_id && !(await canManageTeam(user, await mustFind('teams', i.team_id)))) throw forbidden('You do not manage that team');
     const sport = i.sport ? await sportBySlugOrId(i.sport) : null;
     if (i.sport && !sport) throw notFound('Sport');
-    return one('INSERT INTO billboard_posts(author_id, kind, sport_id, team_id, title, body, city, starts_at, positions_needed, budget_cents, rate_unit) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id, kind, title, status',
-      [user.id, i.kind, sport?.id ?? null, i.team_id ?? null, i.title, i.body, i.city, i.starts_at, i.positions_needed, i.budget_cents, i.rate_unit]);
+    return one('INSERT INTO billboard_posts(author_id, kind, sport_id, team_id, title, body, city, starts_at, positions_needed, budget_cents, rate_unit, positions, levels, region, min_age, max_age) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING id, kind, title, status',
+      [user.id, i.kind, sport?.id ?? null, i.team_id ?? null, i.title, i.body, i.city, i.starts_at, i.positions_needed, i.budget_cents, i.rate_unit, i.positions, i.levels, i.region ?? null, i.min_age ?? null, i.max_age ?? null]);
   },
 });
 
