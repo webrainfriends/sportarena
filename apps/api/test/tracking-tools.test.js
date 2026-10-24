@@ -369,10 +369,12 @@ test('two reviewers acting at the same moment give one deterministic state', asy
     post(t.m1, `/tracking/proposals/${pid}/review`, { decision: 'approve' }),
     post(t.m2, `/tracking/proposals/${pid}/review`, { decision: 'changes_requested', comment: 'Wrong score' }),
   ]);
-  assert.deepEqual([a.status, b.status, c.status], [200, 200, 200]);
+  // an approval that arrives after the change request is refused (409); either order ends in the same state
+  assert.equal(c.status, 200);
+  assert.ok([a.status, b.status].every((x) => [200, 409].includes(x)), `${a.status} ${b.status}`);
   const view = (await api('GET', `/tracking/proposals/${pid}`, { token: t.ref.token })).body;
   assert.equal(view.state, 'changes_requested', 'a negative decision blocks regardless of arrival order');
-  assert.equal(view.reviews.length, 3);
+  assert.equal(view.reviews.length, 1 + [a.status, b.status].filter((x) => x === 200).length, 'every accepted decision is recorded exactly once');
   assert.equal((await post(t.org, `/tracking/proposals/${pid}/apply`)).status, 409);
 });
 
