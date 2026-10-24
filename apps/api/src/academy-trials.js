@@ -32,10 +32,10 @@ export async function syncTrialFromAttendance(c, row, status, actor) {
   await tellTrial(c, next, s, done ? 'completed' : 'missed', done ? 'Trial completed' : 'We missed you at your trial', row.row_version);
 }
 
-/** A trial session was cancelled: every application holding a seat goes back to "trial requested" and the family is told. */
+/** A trial session was cancelled: every application holding a live seat on it goes back to "trial requested" and the family is told. Call before the session's attendance is set to not-held. */
 export async function releaseTrialBookings(c, sessionId, actor, reason) {
   const s = (await c.query('SELECT * FROM academy_sessions WHERE id=$1', [sessionId])).rows[0];
-  const held = (await c.query('SELECT DISTINCT application_id FROM academy_attendance WHERE session_id=$1 AND application_id IS NOT NULL', [sessionId])).rows;
+  const held = (await c.query('SELECT DISTINCT application_id FROM academy_attendance WHERE session_id=$1 AND application_id IS NOT NULL AND status = ANY($2)', [sessionId, LIVE])).rows;
   for (const { application_id } of held) {
     const a = (await c.query('SELECT * FROM academy_applications WHERE id=$1 FOR UPDATE', [application_id])).rows[0];
     if (a?.stage !== 'trial_booked') continue;
@@ -59,4 +59,12 @@ export async function remindAcademyTrials(c) {
     n++;
   }
   return n;
+}
+
+/** The application ended (withdrawn): free its live trial seat in the same transaction so it stops using capacity and leaves the roster. */
+export async function releaseApplicationSeat(c, applicationId, actor, reason) {
+  const seat = (await c.query("SELECT t.* FROM academy_attendance t WHERE t.application_id=$1 AND t.status='expected' FOR UPDATE", [applicationId])).rows[0];
+  if (!seat) return;
+  await c.query("UPDATE academy_attendance SET status='excused', reason_code='other', marked_by=$2, marked_at=now(), row_version=row_version+1 WHERE id=$1", [seat.id, actor]);
+  await c.query("INSERT INTO academy_attendance_log(session_id, user_id, from_status, to_status, source, actor_id, reason) VALUES ($1,$2,'expected','excused','system',$3,$4)", [seat.session_id, seat.user_id, actor, reason]);
 }

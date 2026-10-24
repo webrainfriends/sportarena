@@ -693,3 +693,28 @@ test('trial for a young person goes through the verified guardian; the fee gates
   assert.equal((await appRow(t.id)).stage, 'trial_completed');
   assert.ok(again.row_version > 0);
 });
+
+test('trial seats: cancelling a session you moved away from leaves your new booking alone; a released seat can be taken again; withdrawing frees the seat', async () => {
+  const a = await academy({ capacity: 10 });
+  const first = await trialSlot(a, { capacity: 1, days: 3 }), second = await trialSlot(a, { capacity: 1, days: 4 });
+  const u = await adult(), v = await adult();
+  const t = await requestTrial(u, a);
+  const b1 = must(await api('POST', `/academy/applications/${t.id}/trial/book`, { token: u.token, body: { row_version: t.row_version, session_id: first.id } }));
+  const b2 = must(await api('POST', `/academy/applications/${t.id}/trial/book`, { token: u.token, body: { row_version: b1.row_version, session_id: second.id } }));
+  // staff cancel the session the family already left: the application keeps its seat on the second session
+  must(await api('POST', `/academy/sessions/${first.id}/cancel`, { token: a.owner.token, body: { reason: 'Pitch unavailable' } }));
+  assert.equal((await appRow(t.id)).stage, 'trial_booked');
+  assert.equal((await pool.query("SELECT status FROM academy_attendance WHERE session_id=$1 AND user_id=$2", [second.id, u.id])).rows[0].status, 'expected');
+  assert.equal((await pool.query("SELECT count(*)::int AS n FROM notifications WHERE kind='academy_trial_cancelled' AND user_id=$1", [u.id])).rows[0].n, 0);
+  // give up the second seat, then take the very same session again
+  const gone = must(await api('POST', `/academy/applications/${t.id}/trial/cancel`, { token: u.token, body: { row_version: b2.row_version } }));
+  const again = must(await api('POST', `/academy/applications/${t.id}/trial/book`, { token: u.token, body: { row_version: gone.row_version, session_id: second.id } }));
+  assert.equal(again.stage, 'trial_booked');
+  assert.equal((await pool.query("SELECT status, reminded_at FROM academy_attendance WHERE session_id=$1 AND user_id=$2", [second.id, u.id])).rows[0].status, 'expected');
+  // the only seat is taken, so another family cannot book it; withdrawing frees it
+  const w = await requestTrial(v, a);
+  assert.equal((await api('POST', `/academy/applications/${w.id}/trial/book`, { token: v.token, body: { row_version: w.row_version, session_id: second.id } })).status, 409);
+  must(await api('POST', `/academy/applications/${t.id}/withdraw`, { token: u.token, body: { row_version: again.row_version } }));
+  assert.equal((await pool.query("SELECT status FROM academy_attendance WHERE session_id=$1 AND user_id=$2", [second.id, u.id])).rows[0].status, 'excused');
+  must(await api('POST', `/academy/applications/${w.id}/trial/book`, { token: v.token, body: { row_version: w.row_version, session_id: second.id } }));
+});

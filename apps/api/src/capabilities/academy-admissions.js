@@ -10,7 +10,7 @@ import { encrypt, decrypt, blindIndex } from '../crypto.js';
 import { requireConsent, guardianLink } from '../youth.js';
 import { enqueue } from '../jobs.js';
 import { orgFor } from '../org-access.js';
-import { localView } from '../academy-trials.js';
+import { localView, releaseApplicationSeat } from '../academy-trials.js';
 import {
   STAGES, STAFF, actFor, tell, lockProgramme, seatsFree, moveStage, checkEligibility, validateAnswers, sealAnswers, openAnswers,
   enrol, promoteWaitlist, waitlistPosition, nextWaitlistSeq, insertCharges, findPromo,
@@ -236,6 +236,7 @@ cap({
     const { a } = await appFor(user, i.id, { c, lock: true });
     if (a.row_version !== i.row_version) throw stale();
     const row = await moveStage(c, a, 'withdrawn', { actor: user.id, reason: i.reason ?? null, set: { waitlist_seq: null } });
+    await releaseApplicationSeat(c, a.id, user.id, 'Application withdrawn');
     await cancelUnpaidCharges(c, 'application_id=$1', [a.id]);
     await promoteWaitlist(c, p, { actor: user.id });
     return clean(row);

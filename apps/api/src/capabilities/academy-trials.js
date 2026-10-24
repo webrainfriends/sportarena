@@ -64,14 +64,16 @@ cap({
     if (new Date(s.starts_at).getTime() <= Date.now()) throw conflict('This trial session has already started');
     const prev = await seatOf(c, a.id);
     if (prev?.session_id === s.id) throw conflict('You already have a seat on this session');
-    if ((await c.query('SELECT 1 FROM academy_attendance WHERE session_id=$1 AND user_id=$2', [s.id, a.athlete_id])).rowCount) throw conflict('This athlete is already on that session');
+    const had = (await c.query('SELECT id, status FROM academy_attendance WHERE session_id=$1 AND user_id=$2', [s.id, a.athlete_id])).rows[0];
+    if (had && had.status !== 'excused') throw conflict('This athlete is already on that session');
     if ((await c.query("SELECT 1 FROM org_enrolments WHERE cohort_id=$1 AND user_id=$2 AND status='enrolled'", [s.cohort_id, a.athlete_id])).rowCount) throw conflict('This athlete is already in that group');
     if (s.capacity && (await expectedCount(c, s)) >= s.capacity) throw conflict('This trial session is full. Pick another time.');
     if (prev) {
       const ps = (await c.query('SELECT * FROM academy_sessions WHERE id=$1', [prev.session_id])).rows[0];
       await markAttendance(c, ps, a.athlete_id, 'excused', { source: 'system', actor: user.id, reason: 'Changed to another trial time', reason_code: 'other' });
     }
-    await c.query("INSERT INTO academy_attendance(session_id, user_id, status, source, guest, application_id, marked_by, marked_at) VALUES ($1,$2,'expected',$3,true,$4,$5,now())", [s.id, a.athlete_id, source, a.id, user.id]);
+    if (had) await c.query("UPDATE academy_attendance SET status='expected', reason_code=NULL, source=$2, application_id=$3, guest=true, marked_by=$4, marked_at=now(), reminded_at=NULL, row_version=row_version+1 WHERE id=$1", [had.id, source, a.id, user.id]); // a seat released earlier on this session is taken again
+    else await c.query("INSERT INTO academy_attendance(session_id, user_id, status, source, guest, application_id, marked_by, marked_at) VALUES ($1,$2,'expected',$3,true,$4,$5,now())", [s.id, a.athlete_id, source, a.id, user.id]);
     await c.query("INSERT INTO academy_attendance_log(session_id, user_id, to_status, source, actor_id, reason) VALUES ($1,$2,'expected',$3,$4,'trial booked')", [s.id, a.athlete_id, source, user.id]);
     const row = a.stage === 'trial_requested'
       ? await moveStage(c, a, 'trial_booked', { actor: user.id, reason: `Booked ${labelOf(s)}` })

@@ -303,10 +303,10 @@ cap({
     if (s.status === 'completed') throw conflict('A completed session cannot be cancelled');
     const next = (await c.query("UPDATE academy_sessions SET status='cancelled', cancel_reason=$2, row_version=row_version+1, updated_at=now() WHERE id=$1 RETURNING *", [s.id, i.reason])).rows[0];
     await change(c, s.id, 'cancelled', user.id, i.reason, { status: s.status }, { status: 'cancelled' });
+    await releaseTrialBookings(c, s.id, user.id, i.reason);   // trial seats: the families choose another time
     await c.query(
       `INSERT INTO academy_attendance_log(session_id, user_id, from_status, to_status, source, actor_id, reason) SELECT session_id, user_id, status, 'not_held', 'system', $2, 'session cancelled' FROM academy_attendance WHERE session_id=$1 AND status <> 'not_held'`, [s.id, user.id]);
     await c.query("UPDATE academy_attendance SET status='not_held', row_version=row_version+1 WHERE session_id=$1", [s.id]);
-    await releaseTrialBookings(c, s.id, user.id, i.reason);   // trial seats: the families choose another time
     if (s.status === 'published') await tellSession(c, next, 'cancelled', 'A session was cancelled', 'Open Gotmygame to see what changed.');
     await c.query("UPDATE academy_session_staff SET status='removed', updated_at=now() WHERE session_id=$1 AND status IN ('assigned','confirmed')", [s.id]);
     return { ...(await view(c, next)), venue_booking_to_review: await heldVenue(c, s.id) };
