@@ -8,7 +8,7 @@ import { isAdmin } from './helpers.js';
 
 export const CATEGORIES = {
   support: ['account', 'bookings', 'payments', 'events', 'health', 'insurance', 'sponsorship', 'technical', 'other'],
-  dispute: ['booking_charge', 'refund', 'payment_transfer', 'provider_payment', 'game_data', 'other'],
+  dispute: ['booking_charge', 'refund', 'payment_transfer', 'provider_payment', 'game_data', 'sponsorship', 'other'],
 };
 export const PRIORITIES = ['low', 'normal', 'high', 'urgent'];
 export const ACTIVE = ['open', 'in_progress', 'awaiting_user', 'escalated'];
@@ -43,6 +43,8 @@ const PARTY = {
   fixture: ['fixtures'],
 };
 export const LINK_TYPES = Object.keys(PARTY);
+// Links to the exact sponsorship record in dispute. Never offered by the generic case form: only sponsorship-disputes.js sets them, after checking the caller's side.
+export const SPONSORSHIP_LINK_TYPES = ['sponsorship_obligation', 'sponsorship_payment', 'sponsorship_delivery', 'sponsorship_submission'];
 
 // Who gets paid for a payment's purpose (so the payee can raise a "I was not paid" dispute against the payment).
 const PAYEE = { coach_hire: ['coach_hires', 'coach_id'], shop_order: ['shop_orders', 'seller_id'], appointment: ['appointments', 'provider_id'] };
@@ -76,6 +78,7 @@ const DISPUTE_RULES = {
   payment_transfer: { need: ['payment'], amount: true },
   provider_payment: { need: ['payment'], any: ['coach_hire', 'appointment'], amount: true },
   game_data: { any: ['game', 'fixture'], field: true },
+  sponsorship: { sponsorshipOnly: true }, // opened from the agreement (sponsorship-disputes.js), never through the generic form
   other: {},
 };
 export const GAME_FIELDS = { game: ['score', 'outcome', 'outcome_type', 'rank'], fixture: ['home_score', 'away_score'] };
@@ -117,6 +120,7 @@ export async function inferPaymentLink(i) {
  */
 export async function validateDispute(user, i) {
   const rule = DISPUTE_RULES[i.category];
+  if (rule.sponsorshipOnly) throw badRequest('Raise a sponsorship dispute from the agreement: it needs the payment, delivery or evidence it is about');
   const of = (...t) => i.links.filter((l) => t.includes(l.type));
   for (const t of rule.need ?? []) if (!of(t).length) throw badRequest(`A ${i.category.replace(/_/g, ' ')} dispute must link a ${t.replace(/_/g, ' ')}`);
   if (rule.any && !of(...rule.any).length) throw badRequest(`A ${i.category.replace(/_/g, ' ')} dispute must link one of: ${rule.any.join(', ')}`);

@@ -1,6 +1,8 @@
 // Sponsorship agreement operation (#145): schedule preview, exact-version revision, dues, payments, goods and endorsement fulfilment.
 // All of it hangs off the canonical `sponsorships` row (see sponsors.js); nothing here is a second sponsorship system.
 import { z } from 'zod';
+import { notifyRecipient, assertYouthAuthority, assertYouthContact, liveAuthority, guardedAthleteSql } from '../youth-sponsorship.js';
+import { requireConsent, hasConsent, guardianLink } from '../youth.js';
 import { cap, id, page } from '../registry.js';
 import { one, many, tx, pool } from '../db.js';
 import { badRequest, conflict, forbidden, notFound, unprocessable } from '../errors.js';
@@ -24,7 +26,7 @@ const other = (ctx) => (ctx.role === 'sponsor' ? ctx.recipientId : 'sponsor');
 // `to` is a user id, or 'sponsor' for the brand's owner and the staff whose role is concerned (`action`).
 export const ping = (c, to, title, ctx, kind = 'sponsorship_update', action = 'read') => {
   const msg = { kind, title, body: `Open the ${ctx.sp.name} agreement to see the update.`, data: { sponsorship_id: ctx.d.id } };
-  return to === 'sponsor' ? notifySponsor(c, ctx.sp, action, msg, ctx.d.department_id) : notify(c, to, msg);
+  return to === 'sponsor' ? notifySponsor(c, ctx.sp, action, msg, ctx.d.department_id) : notifyRecipient(c, to, msg);
 };
 
 cap({
@@ -47,6 +49,7 @@ cap({
       const ctx = await dealContext(c, i.id, user, { lock: true });
       if (ctx.role !== 'sponsor' && ctx.role !== 'recipient') throw forbidden('Only the sponsor or the recipient can negotiate the terms');
       if (ctx.role === 'sponsor') ctx.need('revise', 'revise the terms of an offer');
+      await assertYouthAuthority(c, ctx);
       if (ctx.d.status !== 'proposed') throw conflict('Only an unanswered offer can be negotiated');
       if ((ctx.role === 'recipient' || i.expected_version != null) && i.expected_version !== ctx.d.terms_version) {
         if (i.expected_version == null) throw badRequest('Say which version your counteroffer is based on (expected_version)');
@@ -125,7 +128,7 @@ cap({
     return tx(async (c) => {
       const ctx = await dealContext(c, i.id, user, { lock: true });
       if (ctx.role !== 'sponsor' && ctx.role !== 'recipient') throw forbidden('Only the sponsor or the recipient can comment on the terms');
-      if (ctx.role === 'sponsor' && i.visibility === 'shared') ctx.need('revise', 'speak for the brand in a negotiation');
+      if (ctx.role === 'sponsor' && i.visibility === 'shared') { ctx.need('revise', 'speak for the brand in a negotiation'); await assertYouthContact(c, ctx); }
       if (i.visibility === 'shared' && ctx.d.status !== 'proposed') throw conflict('Terms can only be discussed with the other side while the offer is open');
       const version = i.version ?? ctx.d.terms_version;
       if (version > ctx.d.terms_version) throw badRequest('That version does not exist');
@@ -177,6 +180,11 @@ cap({
     const version = d.accepted_version ?? d.terms_version;
     const lines = await many('SELECT id, position, kind, service_type, label, currency, amount_cents, total_cents, estimate_cents, quantity, unit, cadence, first_due_on, instalments, custom_dates, promoter, terms FROM sponsorship_lines WHERE sponsorship_id=$1 AND version=$2 ORDER BY position', [d.id, version]);
     const out = { id: d.id, agreement_ref: d.agreement_ref, status: d.status, role: ctx.role, my_sponsor_role: ctx.staff, can: ctx.staff ? actionsFor(ctx.staff) : undefined, sponsor: { id: sp.id, name: sp.name }, target_type: d.target_type, target_id: d.target_id, starts_on: d.starts_on, ends_on: d.ends_on, timezone: d.timezone, terms_version: d.terms_version, accepted_version: d.accepted_version, currency: d.currency, pause_rev: d.pause_rev, legacy_amount_cents: lines.length ? undefined : d.amount_cents, legacy_in_kind: lines.length ? undefined : d.in_kind, objectives: d.objectives, deliverables: d.deliverables, lines };
+    if (ctx.youth) { // a young athlete's agreement: who acts for them and what the guardian currently allows (separate from the agreement itself)
+      out.youth = { guardian_acting: ctx.guardian, minor_self: ctx.minorSelf, guardian_decided_at: d.guardian_decided_at ?? null,
+        authority_live: !!(await liveAuthority(pool, d.sponsor_id, d.target_id)), results_shared: !!d.performance_access && !!(await liveAuthority(pool, d.sponsor_id, d.target_id)) && !!(d.performance_access_by && await guardianLink(d.performance_access_by, d.target_id)),
+        media_allowed: await hasConsent(d.target_id, 'media'), contact_allowed: await hasConsent(d.target_id, 'contact') };
+    }
     if (['organisation', 'group'].includes(d.target_type)) out.beneficiary = { type: d.target_type, id: d.target_id, name: (await one(d.target_type === 'group' ? 'SELECT name FROM org_cohorts WHERE id=$1' : 'SELECT name FROM organisations WHERE id=$1', [d.target_id]))?.name ?? null, my_role: ctx.beneficiary?.representative ? 'representative' : ctx.beneficiary?.payee ? 'payee' : null };
     // who the sponsor was at this exact version (frozen): later renames or representative changes never alter it. Never registration/tax/billing data.
     const snap = (await pool.query('SELECT s.display_name, s.legal_name, s.sponsor_type, u.display_name AS signed_by FROM sponsorship_identity_snapshots s LEFT JOIN users u ON u.id=s.signed_by WHERE s.sponsorship_id=$1 AND s.version=$2', [d.id, version])).rows[0];
@@ -235,7 +243,7 @@ async function obligationRows(where, params, tail = '') {
 
 const SCOPE = `(${sponsorStaffSql(1)} OR $2::boolean
   OR (ss.target_type='event' AND ss.target_id IN (SELECT id FROM events WHERE organizer_id=$1))
-  OR (ss.target_type='team' AND ss.target_id IN (SELECT id FROM teams WHERE owner_id=$1)) OR (ss.target_type='athlete' AND ss.target_id=$1) OR ${beneficiaryScopeSql('$1')})`;
+  OR (ss.target_type='team' AND ss.target_id IN (SELECT id FROM teams WHERE owner_id=$1)) OR (ss.target_type='athlete' AND ss.target_id=$1) OR ${guardedAthleteSql('ss')} OR ${beneficiaryScopeSql('$1')})`;
 
 cap({
   name: 'list_sponsorship_obligations', method: 'GET', path: '/sponsorship-obligations', tag: 'Sponsors',
@@ -252,6 +260,7 @@ cap({
     const rows = ids.length ? await obligationRows('o.id = ANY($1::uuid[])', [ids]) : [];
     const totals = await many(
       `SELECT o.currency, sum(o.amount_cents) FILTER (WHERE o.status <> 'cancelled')::bigint AS committed_cents,
+              coalesce(sum(o.conceded_cents) FILTER (WHERE o.status <> 'cancelled'),0)::bigint AS conceded_cents,
               coalesce(sum((SELECT sum(p.amount_cents - p.refunded_cents) FROM sponsorship_payments p WHERE p.obligation_id=o.id AND p.status='confirmed')),0)::bigint AS confirmed_cents,
               coalesce(sum((SELECT sum(p.amount_cents) FROM sponsorship_payments p WHERE p.obligation_id=o.id AND p.status='reported')),0)::bigint AS reported_unverified_cents,
               coalesce(sum(o.amount_cents) FILTER (WHERE o.status='scheduled' AND o.due_on < current_date AND o.held_by_pause_id IS NULL),0)::bigint AS overdue_cents,
@@ -268,8 +277,8 @@ cap({
   async handler({ user }) {
     const a = [user.id, !!isAdmin(user)];
     const base = `FROM sponsorship_obligations o JOIN sponsorships ss ON ss.id=o.sponsorship_id JOIN sponsors sp ON sp.id=ss.sponsor_id WHERE ${SCOPE}`;
-    const recipient = `(ss.target_type='event' AND ss.target_id IN (SELECT id FROM events WHERE organizer_id=$1) OR ss.target_type='team' AND ss.target_id IN (SELECT id FROM teams WHERE owner_id=$1) OR ss.target_type='athlete' AND ss.target_id=$1 OR ${beneficiaryScopeSql('$1')})`;
-    const [agreements, counts] = await Promise.all([
+    const recipient = `(ss.target_type='event' AND ss.target_id IN (SELECT id FROM events WHERE organizer_id=$1) OR ss.target_type='team' AND ss.target_id IN (SELECT id FROM teams WHERE owner_id=$1) OR ss.target_type='athlete' AND ss.target_id=$1 OR ${guardedAthleteSql('ss')} OR ${beneficiaryScopeSql('$1')})`;
+    const [agreements, counts, totals, estimated, offers] = await Promise.all([
       many(`SELECT ss.status, count(*)::int AS n FROM sponsorships ss JOIN sponsors sp ON sp.id=ss.sponsor_id WHERE ${SCOPE} GROUP BY ss.status ORDER BY ss.status`, a),
       one(`SELECT count(*) FILTER (WHERE o.status='scheduled' AND o.due_on < current_date AND o.held_by_pause_id IS NULL)::int AS overdue,
                   count(*) FILTER (WHERE o.status='scheduled' AND o.due_on BETWEEN current_date AND current_date + 30 AND o.held_by_pause_id IS NULL)::int AS due_30_days,
@@ -278,8 +287,19 @@ cap({
                   (SELECT count(*) FROM sponsorship_payments p JOIN sponsorship_obligations po ON po.id=p.obligation_id JOIN sponsorships pss ON pss.id=po.sponsorship_id WHERE p.status='reported' AND ${recipient.replace(/ss\./g, 'pss.')})::int AS payments_to_confirm,
                   (SELECT count(*) FROM sponsorship_submissions s JOIN sponsorship_obligations so ON so.id=s.obligation_id JOIN sponsorship_lines sl ON sl.id=so.line_id JOIN sponsorships sss ON sss.id=so.sponsorship_id JOIN sponsors ssp ON ssp.id=sss.sponsor_id
                     WHERE s.status='submitted' AND ((sl.promoter='recipient' AND ${sponsorStaffSql(1, 'evaluate').replace(/\bsp\./g, 'ssp.').replace(/\bss\./g, 'sss.')}) OR (sl.promoter='sponsor' AND ${recipient.replace(/ss\./g, 'sss.')})))::int AS endorsements_to_review
-             ${base}`, a)]);
-    return { agreements, ...counts };
+             ${base}`, a),
+      // cash per currency, each in its own currency and never added together; reported money is shown apart from confirmed money (#309)
+      many(`SELECT o.currency, sum(o.amount_cents) FILTER (WHERE o.status <> 'cancelled')::bigint AS committed_cents,
+              coalesce(sum((SELECT sum(p.amount_cents - p.refunded_cents) FROM sponsorship_payments p WHERE p.obligation_id=o.id AND p.status='confirmed')),0)::bigint AS confirmed_cents,
+              coalesce(sum((SELECT sum(p.amount_cents) FROM sponsorship_payments p WHERE p.obligation_id=o.id AND p.status='reported')),0)::bigint AS reported_unverified_cents
+         ${base} AND o.kind='money' AND ss.status IN ('active','paused','ended','term_expired') GROUP BY o.currency ORDER BY o.currency`, a),
+      // goods / endorsement / service valuations of live agreements: estimates, never counted as cash
+      many(`SELECT l.currency, sum(l.estimate_cents)::bigint AS estimated_cents FROM sponsorship_lines l JOIN sponsorships ss ON ss.id=l.sponsorship_id AND l.version=ss.accepted_version JOIN sponsors sp ON sp.id=ss.sponsor_id
+         WHERE ${SCOPE} AND ss.status IN ('active','paused') AND l.estimate_cents IS NOT NULL AND l.currency IS NOT NULL GROUP BY l.currency ORDER BY l.currency`, a),
+      one(`SELECT count(*) FILTER (WHERE ss.status='proposed' AND ${recipient} AND coalesce(ss.budget_approval,'') NOT IN ('pending','rejected'))::int AS offers_to_answer,
+                  count(*) FILTER (WHERE ss.status='proposed' AND ${sponsorStaffSql(1)})::int AS offers_awaiting_reply
+             FROM sponsorships ss JOIN sponsors sp ON sp.id=ss.sponsor_id WHERE ${SCOPE}`, a)]);
+    return { agreements, ...counts, ...offers, totals, estimated_not_cash: estimated };
   },
 });
 
@@ -511,6 +531,7 @@ cap({
       open(ctx, 'endorsement');
       if (ctx.role !== ctx.promoter) throw forbidden(`Only the ${ctx.promoter} promotes under this agreement`);
       if (ctx.role === 'sponsor') ctx.need('evaluate', 'submit endorsement evidence');
+      if (ctx.youth) { await assertYouthAuthority(c, ctx); await requireConsent(ctx.d.target_id, 'media', 'photos or videos of a young person', c); } // the agreement never implies image consent
       const last = (await c.query('SELECT status FROM sponsorship_submissions WHERE obligation_id=$1 ORDER BY created_at DESC, id DESC LIMIT 1', [ctx.o.id])).rows[0];
       if (last && last.status !== 'revision_requested') throw conflict(`The last submission is ${last.status}`);
       const row = (await c.query('INSERT INTO sponsorship_submissions(obligation_id, evidence_url, note, submitted_by) VALUES ($1,$2,$3,$4) RETURNING *', [ctx.o.id, i.evidence_url, i.note ?? null, user.id])).rows[0];
@@ -558,7 +579,7 @@ async function amendmentsFor(ctx) {
   const open = (await one("SELECT a.id, a.seq, a.rev, a.proposed_side, a.effective_from::text AS effective_from, a.reason FROM sponsorship_amendments a WHERE a.sponsorship_id=$1 AND a.status='proposed'", [d.id])) ?? null;
   const total = (await one('SELECT count(*)::int AS n FROM sponsorship_amendments WHERE sponsorship_id=$1', [d.id])).n;
   const side = role === 'sponsor' || role === 'recipient';
-  const may = (a) => (role === 'recipient' ? !['organisation', 'group'].includes(d.target_type) || !!ctx.beneficiary?.representative : role === 'sponsor' ? actionsFor(ctx.staff).includes(a) : false);
+  const may = (a) => (role === 'recipient' ? !ctx.minorBlocked && (!['organisation', 'group'].includes(d.target_type) || !!ctx.beneficiary?.representative) : role === 'sponsor' ? actionsFor(ctx.staff).includes(a) : false);
   const live = d.status === 'active' && !!d.accepted_version;
   return { open, total, can_propose: live && side && !open && may('revise'), can_answer: !!open && live && side && open.proposed_side !== role && may('sign_off'), can_edit: !!open && live && side && open.proposed_side === role && may('revise') };
 }
@@ -569,7 +590,7 @@ async function negotiationFor(ctx) {
   const versions = await many("SELECT v.version, v.authored_side, v.reason, v.restores, v.created_at, v.signed_off_at, u.display_name AS author FROM sponsorship_versions v LEFT JOIN users u ON u.id=v.authored_by WHERE v.sponsorship_id=$1 ORDER BY v.version", [d.id]);
   const comments = await many(
     "SELECT m.id, m.version, m.line_position, m.side, m.visibility, m.body, m.created_at, u.display_name AS author FROM sponsorship_comments m JOIN users u ON u.id=m.author_id WHERE m.sponsorship_id=$1 AND (m.visibility='shared' OR m.side=$2) ORDER BY m.id", [d.id, role]);
-  const open = d.status === 'proposed', mySide = role === 'sponsor' || role === 'recipient' ? role : null;
+  const open = d.status === 'proposed', mySide = (role === 'sponsor' || role === 'recipient') && !ctx.minorBlocked ? role : null;
   return { open, terms_side: d.terms_side, awaiting: open ? (d.terms_side === 'sponsor' ? 'recipient' : 'sponsor') : null,
     my_turn: !!(open && mySide && mySide !== d.terms_side), can_counter: !!(open && mySide), can_withdraw_change: !!(open && mySide === d.terms_side && versions.some((v) => v.authored_side !== mySide && v.version < d.terms_version)), versions, comments };
 }

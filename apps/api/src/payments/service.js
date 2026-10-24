@@ -55,6 +55,10 @@ export async function describePurpose(c, type, id) {
     const x = await q("SELECT x.reported_by AS payer_id, x.amount_cents AS amount, x.currency, x.status AS pay_status, o.status AS due_status, s.status AS deal_status, sp.name FROM sponsorship_payments x JOIN sponsorship_obligations o ON o.id=x.obligation_id JOIN sponsorships s ON s.id=o.sponsorship_id JOIN sponsors sp ON sp.id=s.sponsor_id WHERE x.id=$1 FOR UPDATE OF x");
     return x && { payerId: x.payer_id, amount: Number(x.amount), currency: x.currency, name: `Sponsorship payment · ${x.name}`, payable: x.pay_status === 'awaiting_payment' && x.due_status === 'scheduled' && ['active', 'ended', 'term_expired'].includes(x.deal_status) };
   }
+  if (type === 'academy_charge') {
+    const x = await q("SELECT ch.payer_id, ch.amount_minor AS amount, ch.currency, ch.status, ch.kind, o.name, o.status AS org_status FROM academy_charges ch JOIN organisations o ON o.id=ch.organisation_id WHERE ch.id=$1 FOR UPDATE OF ch");
+    return x && { payerId: x.payer_id, amount: Number(x.amount), currency: x.currency, name: `Academy ${x.kind} · ${x.name}`, payable: x.status === 'awaiting_payment' && Number(x.amount) > 0 };
+  }
   const p = await q('SELECT p.holder_id AS payer_id, p.amount_cents AS amount, p.status, pl.name FROM insurance_policies p JOIN insurance_plans pl ON pl.id=p.plan_id WHERE p.id=$1 FOR UPDATE OF p');
   return p && { payerId: p.payer_id, amount: Number(p.amount), name: p.name, payable: p.status === 'pending_payment' };
 }
@@ -66,6 +70,7 @@ async function fulfil(c, type, id) {
     shop_checkout: "UPDATE shop_orders SET status='placed' WHERE checkout_id=$1 AND status='awaiting_payment'",
     coach_hire: "UPDATE coach_hires SET payment_status='paid', status=CASE WHEN request_response_id IS NOT NULL AND status='requested' THEN 'confirmed' ELSE status END WHERE id=$1 AND payment_status='unpaid' AND status IN ('requested','confirmed')",
     insurance_policy: "UPDATE insurance_policies SET status='active' WHERE id=$1 AND status='pending_payment'",
+    academy_charge: "UPDATE academy_charges SET status='paid', paid_at=now() WHERE id=$1 AND status='awaiting_payment'",
     appointment: "UPDATE appointments SET payment_status='paid', updated_at=now() WHERE id=$1 AND payment_status='unpaid' AND status IN ('requested','confirmed')",
   }[type];
   if (type === 'venue_invoice') return markInvoicePaid(c, id, { method: 'online' });

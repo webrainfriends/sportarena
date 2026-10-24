@@ -29,6 +29,9 @@ More → Sponsors: athletes get an "Open to sponsors" switch and pitch editor; s
 send an offer; both sides see every deal with its terms, status and reply, and can accept, decline, withdraw or end.
 The Billboard inbox shows the same terms.
 
+## Sponsor home and the offer builder
+Offers are made in one builder (cash, goods, services, endorsements with rights, custom schedules, live schedule preview) from Sponsor home: see [sponsorship-offer-builder.md](sponsorship-offer-builder.md).
+
 ## Sponsor identities
 Who stands behind a brand (individual, company or organization), its representatives, portfolios and the identity frozen
 on each agreement version are described in [sponsor-identities.md](sponsor-identities.md).

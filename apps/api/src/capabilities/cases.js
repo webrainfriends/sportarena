@@ -4,12 +4,13 @@
 // the owning capability, never from here.
 import { z } from 'zod';
 import { cap, id, page } from '../registry.js';
-import { one, many, tx } from '../db.js';
+import { one, many, tx, pool } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { decrypt, encrypt } from '../crypto.js';
 import { audit, isAdmin } from '../helpers.js';
 import { notify } from '../notify.js';
 import { officialCanHandle } from './disputes.js';
+import { isDisputeCase, staffMayOpenCase } from '../sponsor-disputes.js';
 import { ACTIVE, CATEGORIES, LINK_TYPES, PRIORITIES, REOPEN_WINDOW_DAYS, SLA_SQL, assertCanLink, prepEvidence, inferPaymentLink, slaDue, validateDispute } from '../cases.js';
 
 const TAG = 'Support & Disputes';
@@ -40,14 +41,19 @@ const lockCase = async (c, caseId) => {
   return row;
 };
 const adminIds = async (c) => (await c.query("SELECT id FROM users WHERE 'admin' = ANY(roles)")).rows.map((r) => r.id);
+/** A sponsorship dispute (#308) is worked from the agreement, where the sponsor and recipient sides, reviewers and appeal rules apply. */
+const notFromHere = async (c, caseId) => { if (await isDisputeCase(c, caseId)) throw conflict('This is a sponsorship dispute; open it from the agreement'); };
 const ownCase = async (c, user, caseId) => {
   const row = await lockCase(c, caseId);
+  await notFromHere(c, caseId);
   if (row.requester_id !== user.id) throw notFound('Case');
   return row;
 };
 /** Platform-team actions: a team member cannot work a case they raised themselves. */
 const staffCase = async (c, user, caseId) => {
   const row = await lockCase(c, caseId);
+  if (!(await staffMayOpenCase(c, user.id, caseId))) throw notFound('Case');
+  await notFromHere(c, caseId);
   if (row.requester_id === user.id) throw forbidden('Another platform team member must handle your own case');
   return row;
 };
@@ -120,6 +126,7 @@ cap({
     const staff = isAdmin(user) && row && row.requester_id !== user.id;
     // game officials a dispute is routed to see the public thread, like the requester does
     if (!row || (row.requester_id !== user.id && !isAdmin(user) && !(await officialCanHandle(user, row)))) throw notFound('Case');
+    if (row.requester_id !== user.id && !(await staffMayOpenCase(pool, user.id, i.id))) throw notFound('Case'); // a sponsorship dispute is for its assigned reviewers only
     const vis = staff ? ['public', 'internal'] : ['public'];
     const [links, messages, evidence, history, people] = await Promise.all([
       many('SELECT entity_type, entity_id FROM case_links WHERE case_id=$1 ORDER BY created_at', [i.id]),
@@ -209,6 +216,7 @@ cap({
           FROM cases c JOIN users r ON r.id=c.requester_id LEFT JOIN users a ON a.id=c.assignee_id
          WHERE (c.status=$1 OR ($1='active' AND c.status = ANY($2))) AND ($3::text IS NULL OR c.kind=$3) AND ($4::text IS NULL OR c.category=$4) AND ($5::text IS NULL OR c.priority=$5)
            AND (CASE WHEN $6::text IS NULL THEN true WHEN $6='me' THEN c.assignee_id=$7 WHEN $6='unassigned' THEN c.assignee_id IS NULL ELSE c.assignee_id::text=$6 END)
+           AND NOT EXISTS (SELECT 1 FROM sponsorship_disputes sd WHERE sd.case_id=c.id AND NOT EXISTS (SELECT 1 FROM sponsorship_dispute_reviewers sr WHERE sr.dispute_id=sd.id AND sr.user_id=$7 AND sr.removed_at IS NULL))
            AND ($8::text IS NULL OR c.subject ILIKE '%' || $8 || '%' OR c.case_no::text = $8)) q
         WHERE ($9::text IS NULL OR q.sla_state=$9)
         ORDER BY CASE q.sla_state WHEN 'breached' THEN 0 WHEN 'at_risk' THEN 1 ELSE 2 END, CASE q.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END, q.created_at LIMIT $10 OFFSET $11`,
@@ -319,6 +327,7 @@ cap({
     const cs = await one('SELECT id, requester_id FROM cases WHERE id=$1', [i.id]);
     if (!cs) throw notFound('Case');
     if (cs.requester_id === user.id) throw forbidden('Another platform team member must handle your own case');
+    if (!(await staffMayOpenCase(pool, user.id, i.id))) throw notFound('Case');
     const rows = await many('SELECT id, label, reference_enc, file_name, content_type, size_bytes, sha256, created_at, file_enc FROM case_evidence WHERE case_id=$1 ORDER BY created_at', [i.id]);
     await audit(null, user.id, 'read_case_evidence', 'cases', i.id);
     return rows.map((r) => ({

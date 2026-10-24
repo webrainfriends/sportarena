@@ -130,6 +130,9 @@ export async function settlementOf(c, d, t) {
       (r) => ({ kind: 'refund', ref: r.id, label: r.status === 'requested' ? 'A refund is waiting for an answer' : 'An approved refund has not been paid back yet', amount_cents: num(r.amount_cents), currency: r.currency })],
   ];
   for (const [sql, shape] of lines) for (const r of (await c.query(sql, [sql.includes('termination_id') ? t.id : d.id])).rows) items.push({ ...shape(r), blocking: true });
+  for (const r of (await c.query("SELECT x.id, x.subject_type FROM sponsorship_disputes x WHERE x.sponsorship_id=$1 AND x.status IN ('open','under_review','appealed') ORDER BY x.created_at, x.id", [d.id])).rows) {
+    items.push({ kind: 'dispute', blocking: true, ref: r.id, label: `A ${r.subject_type} dispute is open and its decision is pending` });
+  }
   if (t.disputed_at && !t.dispute_resolved_at) items.push({ kind: 'dispute', blocking: true, ref: t.id, label: 'The termination is disputed and the dispute is not resolved' });
   const currencies = [...new Set([...money.map((r) => r.currency), ...pay.map((r) => r.currency)])].sort();
   const per = currencies.map((currency) => {

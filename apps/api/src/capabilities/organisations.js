@@ -15,6 +15,8 @@ import { csvToObjects, toCsv } from '../csv.js';
 import { notify } from '../notify.js';
 import { orgFor, orgRole } from '../org-access.js';
 import { SPONSOR_ROLES } from '../sponsor-access.js';
+import { hasConsent } from '../youth.js';
+import { promoteWaitlist, lockProgramme } from '../academy.js';
 
 const ORG_KINDS = ['club', 'academy', 'school', 'college', 'university', 'company', 'other'];
 // the sponsor roles (manager, evaluator, legal, approver, auditor; finance is shared) are what a corporate sponsor's staff hold (#283)
@@ -337,13 +339,14 @@ cap({
 cap({
   name: 'create_cohort', method: 'POST', path: '/organisations/:id/cohorts', tag: 'Organisations', status: 201,
   summary: 'Create a cohort (a class, age group or squad) optionally tied to a season, a team and a coach.',
-  input: z.object({ id, name: z.string().min(2).max(80), season_id: id.optional(), team_id: id.optional(), coach_id: id.optional() }),
+  input: z.object({ id, name: z.string().min(2).max(80), season_id: id.optional(), team_id: id.optional(), coach_id: id.optional(), programme_id: id.optional().describe('the academy programme this group delivers'), capacity: z.number().int().min(1).max(5000).optional().describe('most people this group can hold') }),
   async handler({ user }, i) {
     await orgFor(user, i.id, STAFF, { write: true });
     if (i.season_id && !(await one("SELECT 1 FROM org_seasons WHERE id=$1 AND organisation_id=$2 AND status='active'", [i.season_id, i.id]))) throw badRequest('That season is not part of this organisation');
     if (i.team_id && !(await one('SELECT 1 FROM teams WHERE id=$1 AND organisation_id=$2', [i.team_id, i.id]))) throw badRequest('Link the team to this organisation first');
     if (i.coach_id && !(await one("SELECT 1 FROM organisation_members WHERE organisation_id=$1 AND user_id=$2 AND status='active' AND role IN ('coach','admin','owner')", [i.id, i.coach_id]))) throw badRequest('The coach must be active staff of this organisation');
-    return one('INSERT INTO org_cohorts(organisation_id, name, season_id, team_id, coach_id) VALUES ($1,$2,$3,$4,$5) RETURNING *', [i.id, i.name, i.season_id ?? null, i.team_id ?? null, i.coach_id ?? null]);
+    if (i.programme_id && !(await one('SELECT 1 FROM academy_programmes WHERE id=$1 AND organisation_id=$2', [i.programme_id, i.id]))) throw badRequest('That programme is not part of this organisation');
+    return one('INSERT INTO org_cohorts(organisation_id, name, season_id, team_id, coach_id, programme_id, capacity) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *', [i.id, i.name, i.season_id ?? null, i.team_id ?? null, i.coach_id ?? null, i.programme_id ?? null, i.capacity ?? null]);
   },
 });
 
@@ -391,6 +394,7 @@ async function checkRows(csv, cohortId, c) {
     if (!u) { bad('No registered person matches'); continue; }
     if (seen.has(u.id)) { out.push({ line, ref: u.handle, status: 'duplicate', reason: 'Appears more than once in this file', user_id: u.id }); continue; }
     seen.add(u.id);
+    if (!(await hasConsent(u.id, 'participation', c))) { bad('A guardian has not given current participation consent for this young person'); continue; }
     const e = (await db.query('SELECT status FROM org_enrolments WHERE cohort_id=$1 AND user_id=$2', [cohortId, u.id])).rows[0];
     if (e?.status === 'enrolled') { out.push({ line, ref: u.handle, status: 'duplicate', reason: 'Already enrolled in this cohort', user_id: u.id }); continue; }
     out.push({ line, ref: u.handle, status: 'ok', reason: e ? 'Re-enrolling after withdrawal' : null, user_id: u.id });
@@ -421,6 +425,11 @@ cap({
     const r = await checkRows(i.csv, i.id, c);
     const problems = r.summary.invalid + r.summary.duplicate;
     if (problems && !i.allow_partial) throw conflict('Some rows need attention, so nobody was enrolled', { rows: r.rows.map(publicRow), summary: r.summary });
+    const cap_ = (await c.query('SELECT capacity FROM org_cohorts WHERE id=$1', [i.id])).rows[0].capacity;
+    if (cap_ != null) {
+      const have = (await c.query("SELECT count(*)::int AS n FROM org_enrolments WHERE cohort_id=$1 AND status IN ('enrolled','paused')", [i.id])).rows[0].n;
+      if (have + r.summary.ok > cap_) throw conflict(`This group has room for ${Math.max(0, cap_ - have)} more but the file adds ${r.summary.ok}`, { rows: r.rows.map(publicRow), summary: r.summary });
+    }
     for (const row of r.rows.filter((x) => x.status === 'ok')) {
       await c.query(
         `INSERT INTO org_enrolments(cohort_id, user_id, consent_at, enrolled_by) VALUES ($1,$2,now(),$3)
@@ -435,11 +444,11 @@ cap({
 
 cap({
   name: 'list_cohort_enrolments', method: 'GET', path: '/cohorts/:id/enrolments', tag: 'Organisations', summary: 'Who is enrolled in a cohort (cohort staff only).',
-  input: z.object({ id, status: z.enum(['enrolled', 'withdrawn']).default('enrolled'), ...page }),
+  input: z.object({ id, status: z.enum(['enrolled', 'withdrawn', 'paused', 'completed', 'graduated', 'transferred']).default('enrolled'), ...page }),
   async handler({ user }, i) {
     await cohortFor(user, i.id);
     return many(
-      `SELECT ${PUBLIC_USER}, e.status, e.enrolled_at, e.consent_at, e.withdrawn_at FROM org_enrolments e JOIN users u ON u.id=e.user_id
+      `SELECT ${PUBLIC_USER}, e.id AS enrolment_id, e.status, e.enrolled_at, e.consent_at, e.withdrawn_at FROM org_enrolments e JOIN users u ON u.id=e.user_id
         WHERE e.cohort_id=$1 AND e.status=$2 ORDER BY u.display_name, u.id LIMIT $3 OFFSET $4`,
       [i.id, i.status, i.limit, i.offset],
     );
@@ -452,9 +461,14 @@ cap({
   input: z.object({ id, user_id: id }),
   async handler({ user }, i) {
     if (i.user_id !== user.id) await cohortFor(user, i.id, { write: true });
-    const r = await one("UPDATE org_enrolments SET status='withdrawn', withdrawn_at=now() WHERE cohort_id=$1 AND user_id=$2 AND status='enrolled' RETURNING id", [i.id, i.user_id]);
-    if (!r) throw notFound('Enrolment');
-    return { ok: true };
+    return tx(async (c) => {
+      const r = (await c.query("UPDATE org_enrolments SET status='withdrawn', withdrawn_at=now() WHERE cohort_id=$1 AND user_id=$2 AND status='enrolled' RETURNING id, programme_id", [i.id, i.user_id])).rows[0];
+      if (!r) throw notFound('Enrolment');
+      // an academy enrolment also stops its unpaid fees and frees the place for the waitlist (one withdrawal path for the whole organisation)
+      await c.query("UPDATE academy_charges SET status='cancelled' WHERE enrolment_id=$1 AND status='awaiting_payment'", [r.id]);
+      if (r.programme_id) await promoteWaitlist(c, await lockProgramme(c, r.programme_id));
+      return { ok: true };
+    });
   },
 });
 

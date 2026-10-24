@@ -2,6 +2,7 @@
 // Nothing here is a second ledger: every amount is read from applications, awards, agreement obligations and payments at request time, so the
 // portfolio always reconciles with the source agreements. Currencies are never added together, a reported payment is never counted as settled,
 // and each caller sees only what their own authority covers (a sponsor's brands, or the recipient's own targets): other sponsors' terms are never read.
+import { guardedAthleteSql } from './youth-sponsorship.js';
 import { sponsorStaffSql, sponsorBrandSql } from './sponsor-access.js';
 
 export const RISKS = {
@@ -18,7 +19,7 @@ export const SORTS = { name: '', risk: 'cardinality(risks) DESC,', milestone: 'n
 
 /** Events, teams and athletes the caller owns — the recipient side of a sponsorship. `a` is the alias carrying target_type/target_id. */
 export const recipientSql = (a) => `((${a}.target_type='event' AND ${a}.target_id IN (SELECT id FROM events WHERE organizer_id=$1))
-  OR (${a}.target_type='team' AND ${a}.target_id IN (SELECT id FROM teams WHERE owner_id=$1)) OR (${a}.target_type='athlete' AND ${a}.target_id=$1))`;
+  OR (${a}.target_type='team' AND ${a}.target_id IN (SELECT id FROM teams WHERE owner_id=$1)) OR (${a}.target_type='athlete' AND ${a}.target_id=$1) OR ${guardedAthleteSql(a)})`;
 
 /**
  * The shared CTE chain. $1 user, $2 sponsor, $3 program, $4 target type, $5 search, $6 stage, $7 has_gap, $8 risk, $9 currency, $10 target id.
