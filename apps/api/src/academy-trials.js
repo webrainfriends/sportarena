@@ -26,10 +26,14 @@ export async function tellTrial(c, app, session, kind, title, stamp = '') {
  * application's current seat counts: a mark on a seat it already left (moved to another time) never changes the application.
  */
 export async function syncTrialFromAttendance(c, row, status, actor) {
-  if (!row?.application_id || !['present', 'late', 'left_early', 'absent'].includes(status)) return;
+  if (!row?.application_id || !['present', 'late', 'left_early', 'absent', 'excused'].includes(status)) return;
   const a = (await c.query('SELECT * FROM academy_applications WHERE id=$1 FOR UPDATE', [row.application_id])).rows[0];
   if (!a) return;
   if ((await c.query("SELECT 1 FROM academy_attendance WHERE application_id=$1 AND id <> $2 AND status='expected'", [a.id, row.id])).rowCount) return; // booked elsewhere now
+  if (status === 'excused') {   // an absence reported (or marked excused) before the trial: the seat is released, the family can pick another time
+    if (a.stage === 'trial_booked') await moveStage(c, a, 'trial_requested', { actor, reason: 'Absence reported for the trial' });
+    return;
+  }
   const done = status !== 'absent';
   const from = done ? ['trial_booked', 'trial_requested'] : ['trial_booked', 'trial_completed'];
   if (!from.includes(a.stage)) return;

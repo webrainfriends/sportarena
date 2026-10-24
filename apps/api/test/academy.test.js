@@ -742,3 +742,21 @@ test('trial outcomes can be corrected through attendance; a seat the family alre
   must(await mark('absent', { reason_code: 'other' }));
   assert.equal((await appRow(t.id)).stage, 'trial_requested');
 });
+
+test('trial seats: an excused absence returns the application; cancelling a booking while staff mark attendance never deadlocks', async () => {
+  const a = await academy({ capacity: 10 });
+  const slot = await trialSlot(a, { capacity: 8, days: 1 });
+  const people = await Promise.all([adult(), adult(), adult(), adult()]);
+  const reqs = await Promise.all(people.map((u) => requestTrial(u, a)));
+  const booked = await Promise.all(people.map((u, k) => api('POST', `/academy/applications/${reqs[k].id}/trial/book`, { token: u.token, body: { row_version: reqs[k].row_version, session_id: slot.id } }).then((r) => must(r))));
+  // staff mark the first athlete excused (what a reported absence does): the application is free to choose another time
+  must(await api('POST', `/academy/sessions/${slot.id}/attendance`, { token: a.owner.token, body: { reason: 'Told us in advance', entries: [{ user_id: people[0].id, status: 'excused', reason_code: 'family' }] } }));
+  assert.equal((await appRow(reqs[0].id)).stage, 'trial_requested');
+  // the other three cancel while staff mark the roster at the same time: every request settles (no aborted transaction)
+  await startedAlready(slot.id);
+  const results = await Promise.all([
+    ...[1, 2, 3].map((k) => api('POST', `/academy/applications/${reqs[k].id}/trial/cancel`, { token: people[k].token, body: { row_version: booked[k].row_version } })),
+    api('POST', `/academy/sessions/${slot.id}/attendance`, { token: a.owner.token, body: { reason: 'Roll call', entries: [1, 2, 3].map((k) => ({ user_id: people[k].id, status: 'present' })) } }),
+  ]);
+  assert.ok(results.every((r) => [200, 409].includes(r.status)), JSON.stringify(results.map((r) => r.status)));
+});

@@ -11,15 +11,22 @@ import { guardianLink } from '../youth.js';
 import { STAFF, actFor, moveStage } from '../academy.js';
 import { expectedCount, heldVenue } from '../academy-ops.js';
 import { markAttendance } from './academy-attendance.js';
-import { LIVE, labelOf, localView, tellTrial } from '../academy-trials.js';
+import { LIVE, labelOf, localView, tellTrial, releaseApplicationSeat } from '../academy-trials.js';
 
 const TAG = 'Academy';
 const stale = () => conflict('This application was changed by someone else. Reload and try again.');
 
-/** Staff of the academy, or the applicant / athlete / verified guardian: 404 for everyone else. */
-async function trialAppFor(user, appId, c) {
+/**
+ * Staff of the academy, or the applicant / athlete / verified guardian: 404 for everyone else. Lock order is always session(s) -> application, the
+ * same as attendance marking and session cancellation, so concurrent requests cannot deadlock: the sessions involved are locked first (in id order).
+ */
+async function trialAppFor(user, appId, c, { sessionId = null } = {}) {
+  const peek = (await c.query('SELECT id FROM academy_applications WHERE id=$1', [appId])).rows[0];
+  if (!peek) throw notFound('Application');
+  const ids = new Set(sessionId ? [sessionId] : []);
+  for (const r of (await c.query('SELECT session_id FROM academy_attendance WHERE application_id=$1 AND status = ANY($2)', [appId, LIVE])).rows) ids.add(r.session_id);
+  for (const sid of [...ids].sort()) await c.query('SELECT id FROM academy_sessions WHERE id=$1 FOR UPDATE', [sid]);
   const a = (await c.query('SELECT * FROM academy_applications WHERE id=$1 FOR UPDATE', [appId])).rows[0];
-  if (!a) throw notFound('Application');
   if (await orgFor(user, a.organisation_id, STAFF, { write: true, c }).then(() => true, () => false)) return { a, source: 'staff', staff: true };
   if (a.applicant_id === user.id || a.athlete_id === user.id) { await actFor(user, a.athlete_id, c); return { a, source: a.athlete_id === user.id ? 'self' : 'guardian', staff: false }; }
   if (await guardianLink(user.id, a.athlete_id, c)) return { a, source: 'guardian', staff: false };
@@ -54,11 +61,11 @@ cap({
   summary: 'Book (or change) the trial on a published trial session. The applicant, the verified guardian or academy staff can do it. The seat is taken under the session lock, so concurrent bookings never exceed capacity. Booking waits for a trial fee to be paid or waived.',
   input: z.object({ id, row_version: z.number().int().min(1), session_id: id }),
   handler: ({ user }, i) => tx(async (c) => {
-    const { a, source } = await trialAppFor(user, i.id, c);
+    const { a, source } = await trialAppFor(user, i.id, c, { sessionId: i.session_id });
     if (a.row_version !== i.row_version) throw stale();
     if (!['trial_requested', 'trial_booked'].includes(a.stage)) throw conflict('Ask for a trial first');
     if ((await c.query("SELECT 1 FROM academy_charges WHERE application_id=$1 AND kind='trial' AND status='awaiting_payment'", [a.id])).rows.length) throw conflict('The trial fee has not been paid yet');
-    const s = (await c.query('SELECT * FROM academy_sessions WHERE id=$1 FOR UPDATE', [i.session_id])).rows[0];
+    const s = (await c.query('SELECT * FROM academy_sessions WHERE id=$1', [i.session_id])).rows[0];
     if (!s || s.programme_id !== a.programme_id || s.delivery_type !== 'trial') throw notFound('Trial session');
     if (s.status !== 'published') throw conflict('This trial session is not available');
     if (new Date(s.starts_at).getTime() <= Date.now()) throw conflict('This trial session has already started');
@@ -68,10 +75,7 @@ cap({
     if (had && had.status !== 'excused') throw conflict('This athlete is already on that session');
     if ((await c.query("SELECT 1 FROM org_enrolments WHERE cohort_id=$1 AND user_id=$2 AND status='enrolled'", [s.cohort_id, a.athlete_id])).rowCount) throw conflict('This athlete is already in that group');
     if (s.capacity && (await expectedCount(c, s)) >= s.capacity) throw conflict('This trial session is full. Pick another time.');
-    if (prev) {
-      const ps = (await c.query('SELECT * FROM academy_sessions WHERE id=$1', [prev.session_id])).rows[0];
-      await markAttendance(c, ps, a.athlete_id, 'excused', { source: 'system', actor: user.id, reason: 'Changed to another trial time', reason_code: 'other' });
-    }
+    if (prev) await releaseApplicationSeat(c, a.id, user.id, 'Changed to another trial time');
     if (had) await c.query("UPDATE academy_attendance SET status='expected', reason_code=NULL, source=$2, application_id=$3, guest=true, marked_by=$4, marked_at=now(), reminded_at=NULL, row_version=row_version+1 WHERE id=$1", [had.id, source, a.id, user.id]); // a seat released earlier on this session is taken again
     else await c.query("INSERT INTO academy_attendance(session_id, user_id, status, source, guest, application_id, marked_by, marked_at) VALUES ($1,$2,'expected',$3,true,$4,$5,now())", [s.id, a.athlete_id, source, a.id, user.id]);
     await c.query("INSERT INTO academy_attendance_log(session_id, user_id, to_status, source, actor_id, reason) VALUES ($1,$2,'expected',$3,$4,'trial booked')", [s.id, a.athlete_id, source, user.id]);
@@ -94,9 +98,8 @@ cap({
     if (a.stage !== 'trial_booked') throw conflict('There is no booked trial to cancel');
     const seat = await seatOf(c, a.id);
     if (!seat) throw conflict('There is no booked trial to cancel');
-    const s = (await c.query('SELECT * FROM academy_sessions WHERE id=$1 FOR UPDATE', [seat.session_id])).rows[0];
     if (seat.status !== 'expected') throw conflict('This trial has already been recorded');
-    await markAttendance(c, s, a.athlete_id, 'excused', { source: 'system', actor: user.id, reason: i.reason ?? 'Trial seat released', reason_code: 'other' });
+    await releaseApplicationSeat(c, a.id, user.id, i.reason ?? 'Trial seat released');
     const row = await moveStage(c, a, 'trial_requested', { actor: user.id, reason: i.reason ?? 'Trial seat released' });
     return { application_id: row.id, row_version: row.row_version, stage: row.stage };
   }),
