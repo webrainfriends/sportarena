@@ -1,4 +1,5 @@
-// Academy Home: what needs doing now (action inbox), how each programme is filling, how the funnel converts and what is owed.
+// Academy Executive Home: what needs doing now (action inbox), how each programme is filling, how the funnel converts and what is owed,
+// then the executive view (outcomes, retention indicators, partners, finance health, copilot) from academy-executive.js.
 import React from 'react';
 import { Pressable, View } from 'react-native';
 import { api } from '../api';
@@ -8,6 +9,7 @@ import { c } from '../theme';
 import { moneyIn } from '../vtime';
 import { useLayout } from '../layout';
 import { Block, FunnelBars, Kpi, Meter, Spark, when } from './academy-ui';
+import { ExecutiveCards } from './academy-executive';
 
 const KIND = { review: ['📨', 'Review'], offer_expiring: ['⏰', 'Offer ending'], follow_up: ['↪️', 'Follow up'], overdue: ['💷', 'Overdue'] };
 
@@ -98,6 +100,7 @@ export function Home({ o, go, openApplication, canMoney }) {
         </View>
       </View>
       <T size={12} color={c.mute}>{d.families.payers} paying families · {d.families.multi_child} with more than one child</T>
+      <ExecutiveCards o={o} go={go} canMoney={canMoney} />
     </View>
   );
 }
