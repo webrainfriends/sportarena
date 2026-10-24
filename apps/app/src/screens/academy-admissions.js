@@ -9,7 +9,7 @@ import { c } from '../theme';
 import { moneyIn } from '../vtime';
 import { explain } from '../access';
 import { useLayout } from '../layout';
-import { Block, Fact, Initials, Split, StageBadge, StageTrack, Timeline, STAGE, ago, hoursLeft, when } from './academy-ui';
+import { Block, Fact, Initials, Split, StageBadge, StageTrack, Timeline, TrialSlots, STAGE, ago, hoursLeft, when } from './academy-ui';
 
 const COLUMNS = [
   ['New', ['enquiry'], 'Fresh enquiries to answer'],
@@ -122,6 +122,7 @@ export function Review({ id, archived, toast, onChanged, onClose }) {
   const desk = useLoad(() => (app.data ? api.get(`/academy/programmes/${app.data.programme_id}`) : Promise.resolve(null)), [app.data?.programme_id]);
   const bill = useLoad(() => (app.data ? api.get(`/academy/programmes/${app.data.programme_id}/agreements`, { athlete_id: app.data.athlete_id }).catch(() => []) : Promise.resolve([])), [app.data?.athlete_id, app.data?.programme_id]);
   const [form, setForm] = useState(null);
+  const [slots, setSlots] = useState(null);
   const [busy, setBusy] = useState(false);
   if (app.error) return <ErrorBox error={app.error} onRetry={app.reload} />;
   const a = app.data;
@@ -129,13 +130,14 @@ export function Review({ id, archived, toast, onChanged, onClose }) {
   const after = () => { app.reload(); onChanged?.(); };
   const act = async (fn, msg) => { setBusy(true); try { await fn(); toast(msg); } catch (e) { toast(explain(e)); } finally { setBusy(false); after(); } };
   const decide = (decision, reason) => act(() => api.post(`/academy/applications/${id}/decision`, { row_version: a.row_version, decision, reason }), decision === 'offer' ? 'Offer sent' : decision === 'waitlist' ? 'Added to the waitlist' : decision === 'review' ? 'Review started' : 'Declined');
-  const trial = (step) => act(() => api.post(`/academy/applications/${id}/trial/advance`, { row_version: a.row_version, step }), step === 'book' ? 'Trial booked' : 'Trial completed');
+  const outcome = (o) => act(() => api.post(`/academy/applications/${id}/trial/outcome`, { row_version: a.row_version, outcome: o }), o === 'attended' ? 'Trial completed' : 'Marked as a no-show');
   const live = !['declined', 'withdrawn', 'expired', 'cancelled', 'enrolled'].includes(a.stage);
   const can = (...s) => s.includes(a.stage) && !archived;
   const seats = desk.data;
   const full = seats?.capacity && seats.seats_taken >= seats.capacity;
   return (
     <View style={{ gap: 10 }}>
+      <TrialSlots app={slots ? { ...slots, athlete_id: a.athlete_id } : null} forStaff onClose={() => setSlots(null)} onBooked={after} toast={toast} />
       <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
         <Initials user={a.athlete} size={44} />
         <View style={{ flex: 1 }}><T weight="800" size={17}>{a.athlete?.display_name}</T><T size={12} color={c.mute}>@{a.athlete?.handle}{a.applicant_id !== a.athlete_id ? ` · applied by ${a.applicant?.display_name} (guardian)` : ''}</T></View>
@@ -148,14 +150,17 @@ export function Review({ id, archived, toast, onChanged, onClose }) {
         <Fact k="Price" v={seats?.version ? (seats.version.billing_model === 'free' ? 'Free' : moneyIn(seats.version.fee_minor, seats.version.currency)) : null} />
         <Fact k="Started" v={when(a.created_at)} />
         {a.stage === 'offered' && a.offer_expires_at ? <Fact k="Offer ends" v={`${when(a.offer_expires_at)} · ${hoursLeft(a.offer_expires_at)}`} /> : null}
+        {a.trial?.session ? <Fact k="Trial" v={`${when(a.trial.session.local_date)} · ${a.trial.session.local_start}–${a.trial.session.local_end}`} /> : null}
         {a.waitlist_position ? <Fact k="Waitlist place" v={`#${a.waitlist_position}`} /> : null}
         {a.decision_reason ? <Fact k="Decision note" v={a.decision_reason} /> : null}
       </Block>
       {can('submitted', 'under_review', 'waitlisted', 'trial_requested', 'trial_booked') ? (
         <Block title="Decide">
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-            {a.stage === 'trial_requested' ? <Btn small title="Book the trial" onPress={() => trial('book')} loading={busy} /> : null}
-            {a.stage === 'trial_booked' ? <Btn small title="Mark trial completed" onPress={() => trial('complete')} loading={busy} /> : null}
+            {a.stage === 'trial_requested' ? <Btn small title="Book a time…" onPress={() => setSlots(a)} loading={busy} /> : null}
+            {a.stage === 'trial_booked' ? <Btn small title="Change time…" color={c.paper} ink={c.ink} onPress={() => setSlots(a)} /> : null}
+            {a.stage === 'trial_booked' ? <Btn small title="Attended" onPress={() => outcome('attended')} loading={busy} /> : null}
+            {a.stage === 'trial_booked' ? <Btn small title="No-show" color={c.paper} ink={c.ink} onPress={() => outcome('no_show')} loading={busy} /> : null}
             {a.stage === 'submitted' ? <Btn small title="Start review" color={c.paper} ink={c.ink} onPress={() => decide('review')} loading={busy} /> : null}
             {['submitted', 'under_review', 'waitlisted'].includes(a.stage) ? <Btn small title="Offer a place" onPress={() => decide('offer')} loading={busy} disabled={full && a.stage !== 'waitlisted'} /> : null}
             {['submitted', 'under_review'].includes(a.stage) ? <Btn small title="Waitlist" color={c.paper} ink={c.ink} onPress={() => decide('waitlist')} loading={busy} /> : null}
