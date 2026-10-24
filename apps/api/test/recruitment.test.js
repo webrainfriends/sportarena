@@ -258,3 +258,55 @@ test('youth: consent required to apply, guardian applies/decides, hidden from st
   assert.equal(acc.stage, 'accepted');
   assert.equal((await pool.query("SELECT status FROM team_members WHERE team_id=$1 AND user_id=$2", [t.id, kid.id])).rows[0].status, 'active');
 });
+
+test('review findings: open-rate offers stay open, stage pages, trial venue shown, family can withdraw after consent is revoked, expiry sweeps never deadlock', async () => {
+  const mgr = await signup(['coach']), a = await signup(), b2 = await signup(), c3 = await signup();
+  const t = await team(mgr), pst = await post(mgr, t, { positions_needed: 3, budget_cents: 5000 });
+  const ra = must(await apply(a, pst, { message: 'Left-footed winger' }), 201), rb = must(await apply(b2, pst), 201), rc = must(await apply(c3, pst), 201);
+
+  // an offer that leaves the rate open is not silently turned into the post's advertised rate
+  const sl = must(await move(mgr, ra.id, 'shortlisted', 1));
+  const o = must(await api('POST', `/billboard/responses/${ra.id}/offers`, { token: mgr.token, body: { deadline_at: inDays(3), row_version: sl.row_version, idempotency_key: key() } }), 201);
+  must(await api('POST', `/billboard/responses/${ra.id}/offer-response`, { token: a.token, body: { accept: true, row_version: o.row_version, idempotency_key: key() } }));
+  const tm = (await pool.query('SELECT rate_cents, rate_unit FROM team_members WHERE team_id=$1 AND user_id=$2', [t.id, a.id])).rows[0];
+  assert.equal(tm.rate_cents, null, 'the open rate stays open'); assert.equal(tm.rate_unit, 'match', 'unit falls back to the column default only');
+
+  // stages are fetched by stage with pages, 'closed' covers accepted + declined + withdrawn
+  const closed = must(await api('GET', `/billboard/${pst.id}/pipeline`, { token: mgr.token, query: { stage: 'closed' } }));
+  assert.deepEqual(closed.candidates.map((x) => x.stage), ['accepted']);
+  const applied = must(await api('GET', `/billboard/${pst.id}/pipeline`, { token: mgr.token, query: { stage: 'applied', limit: 1 } }));
+  assert.equal(applied.candidates.length, 1); assert.equal(applied.counts.applied, 2);
+  const page2 = must(await api('GET', `/billboard/${pst.id}/pipeline`, { token: mgr.token, query: { stage: 'applied', limit: 1, offset: 1 } }));
+  assert.notEqual(page2.candidates[0].response_id, applied.candidates[0].response_id);
+  assert.equal(applied.candidates[0].message === undefined || typeof applied.candidates[0].message === 'string', true);
+  assert.equal(must(await api('GET', `/billboard/${pst.id}/pipeline`, { token: mgr.token })).candidates.find((x) => x.response_id === ra.id).message, 'Left-footed winger', 'messages reach staff even without an evidence link');
+
+  // the applicant is told where the trial is
+  const venue = (await pool.query("INSERT INTO venues(name, city, owner_id) VALUES ('Riverside Ground','Pune',$1) RETURNING id", [mgr.id])).rows[0];
+  const s2 = must(await move(mgr, rb.id, 'shortlisted', 1));
+  const tr = must(await api('POST', `/billboard/responses/${rb.id}/trial`, { token: mgr.token, body: { trial_at: inDays(2), venue_id: venue.id, row_version: s2.row_version, idempotency_key: key() } }));
+  assert.equal(tr.trial_venue_name, 'Riverside Ground');
+  const view = must(await api('GET', `/billboard/responses/${rb.id}/application`, { token: b2.token }));
+  assert.equal(view.application.trial_venue_name, 'Riverside Ground'); assert.equal(view.application.trial_venue_city, 'Pune');
+  assert.equal(must(await api('GET', '/me/billboard-responses', { token: b2.token }))[0].trial_venue_name, 'Riverside Ground');
+
+  // expiry sweeps racing with a withdrawal and a revised offer: no request fails with a deadlock
+  const s3 = must(await move(mgr, rc.id, 'shortlisted', 1));
+  const o3 = must(await api('POST', `/billboard/responses/${rc.id}/offers`, { token: mgr.token, body: { deadline_at: inDays(1), row_version: s3.row_version, idempotency_key: key() } }), 201);
+  await pool.query("UPDATE recruitment_offers SET deadline_at = now() - interval '1 minute' WHERE response_id=$1", [rc.id]);
+  const burst = await Promise.all([
+    ...Array.from({ length: 6 }, () => api('GET', `/billboard/${pst.id}/pipeline`, { token: mgr.token })),
+    api('POST', `/billboard/responses/${rc.id}/withdraw`, { token: c3.token, body: { row_version: o3.row_version, idempotency_key: key() } }),
+  ]);
+  assert.ok(burst.every((x) => x.status !== 500), JSON.stringify(burst.map((x) => x.status)));
+  assert.ok((await pool.query("SELECT count(*)::int n FROM recruitment_offers WHERE response_id=$1 AND status='open'", [rc.id])).rows[0].n === 0, 'no offer is left open');
+
+  // a young applicant can still read and withdraw once consent is revoked
+  const mum = await signup(), kid = await signup(['athlete'], { dob: yearsAgo(12) });
+  await linkGuardian(mum, kid);
+  must(await api('POST', `/youth/children/${kid.id}/consents`, { token: mum.token, body: { purpose: 'recruitment_sharing' } }), 201);
+  const p2 = await post(mgr, t), rk = must(await apply(kid, p2), 201);
+  await pool.query("UPDATE youth_consents SET revoked_at=now() WHERE child_id=$1 AND purpose='recruitment_sharing'", [kid.id]);
+  must(await api('GET', `/billboard/responses/${rk.id}/application`, { token: kid.token }));
+  assert.equal(must(await api('POST', `/billboard/responses/${rk.id}/withdraw`, { token: kid.token, body: { row_version: rk.row_version, idempotency_key: key() } })).stage, 'withdrawn');
+});

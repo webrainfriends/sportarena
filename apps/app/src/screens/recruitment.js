@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Linking, Platform, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
@@ -52,19 +52,30 @@ export function RecruitmentPipeline({ id }) {
   const { toast } = useSession();
   const [tab, setTab] = useState('applied');
   const [csv, setCsv] = useState(null);
-  const q = useLoad(() => api.get(`/billboard/${id}/pipeline`, { limit: 100 }), [id]);
+  const [more, setMore] = useState([]); // later pages of the selected stage, appended under the first
+  const [paging, setPaging] = useState(false);
+  const PAGE = 25;
+  // the selected stage is fetched from the API (not filtered from one page), so every application stays reachable
+  const q = useLoad(() => api.get(`/billboard/${id}/pipeline`, { stage: tab, limit: PAGE }), [id, tab]);
+  useEffect(() => { setMore([]); }, [id, tab, q.data]);
   const act = useAct(q.reload);
   if (q.error) return <Screen><ErrorBox error={q.error} onRetry={q.reload} /></Screen>;
-  if (q.loading && !q.data) return <Screen><Loading /></Screen>;
+  if (!q.data) return <Screen><Loading /></Screen>;
   const { post, counts, candidates } = q.data;
   const closedN = CLOSED.reduce((n, s) => n + (counts[s] ?? 0), 0);
-  const shown = candidates.filter((x) => (tab === 'closed' ? CLOSED.includes(x.stage) : x.stage === tab));
+  const shown = [...candidates, ...more];
+  const total = tab === 'closed' ? closedN : counts[tab] ?? 0;
+  const loadMore = async () => {
+    setPaging(true);
+    try { const r = await api.get(`/billboard/${id}/pipeline`, { stage: tab, limit: PAGE, offset: shown.length }); setMore((m) => [...m, ...r.candidates]); } catch (e) { toast(say(e)); } finally { setPaging(false); }
+  };
   return (
     <Screen refreshing={q.loading} onRefresh={q.reload}>
       <H1>{post.title}</H1>
       <T size={13} color={c.mute}>{post.positions_needed} position{post.positions_needed > 1 ? 's' : ''} · {counts.accepted} filled · {counts.offered} offer{counts.offered === 1 ? '' : 's'} out</T>
       <Seg value={tab} onChange={setTab} options={TABS.map((s) => ({ value: s, label: `${s === 'closed' ? 'Closed' : STAGE[s][0]} ${s === 'closed' ? closedN : counts[s] ?? 0}` }))} />
-      {shown.length === 0 ? <Empty emoji="🧢" title="No one at this stage yet" sub="Candidates appear here as they move through the pipeline." /> : shown.map((x) => (
+      {q.loading && !shown.length ? <Loading /> : null}
+      {!q.loading && shown.length === 0 ? <Empty emoji="🧢" title="No one at this stage yet" sub="Candidates appear here as they move through the pipeline." /> : shown.map((x) => (
         <Card key={x.response_id} pad={14}>
           {x.hidden ? (
             <View style={{ gap: 6 }}>
@@ -81,6 +92,7 @@ export function RecruitmentPipeline({ id }) {
                 </View>
                 <StagePill s={x.stage} />
               </View>
+              {x.message ? <T size={13} color={c.mute}>“{x.message}”</T> : null}
               <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
                 {x.is_youth ? <Pill label="YOUTH · CONSENT OK" fg={c.ink} bg={c.limeSoft} /> : null}
                 {x.trial_at ? <Pill label={`TRIAL ${when(x.trial_at).toUpperCase()}`} fg={c.ink} bg={c.sunSoft} /> : null}
@@ -97,6 +109,7 @@ export function RecruitmentPipeline({ id }) {
           )}
         </Card>
       ))}
+      {shown.length < total ? <Btn small title={paging ? 'Loading…' : `Show more (${total - shown.length} left)`} color={c.paper} disabled={paging} onPress={loadMore} /> : null}
       <Btn small title="Export CSV" color={c.paper} onPress={async () => { try { const e = await api.get(`/billboard/${id}/pipeline/export`); saveCsv(e.filename, e.csv, setCsv); toast(`Exported ${e.rows} row${e.rows === 1 ? '' : 's'}${e.withheld ? `, ${e.withheld} withheld without guardian consent` : ''}. This download is logged.`); } catch (e) { toast(say(e)); } }} />
       {csv ? <T size={12} color={c.mute} selectable>{csv}</T> : null}
     </Screen>
@@ -142,10 +155,11 @@ export function RecruitmentApplication({ id }) {
         <StagePill s={a.stage} />
       </View>
 
-      {a.trial_at ? <Card pad={14}><T weight="800">Trial</T><T>{when(a.trial_at)}</T>{a.trial_note ? <T size={13} color={c.mute}>{a.trial_note}</T> : null}</Card> : null}
+      {a.trial_at ? <Card pad={14}><T weight="800">Trial</T><T>{when(a.trial_at)}</T>{a.trial_venue_name ? <T size={13}>📍 {[a.trial_venue_name, a.trial_venue_city].filter(Boolean).join(', ')}</T> : null}{a.trial_note ? <T size={13} color={c.mute}>{a.trial_note}</T> : null}</Card> : null}
 
+      {staff && q.data.message ? <Card pad={14}><T weight="800">Message from the applicant</T><T size={14}>{q.data.message}</T></Card> : null}
       {staff && q.data.source ? (
-        <Card pad={14}><T weight="800">Evidence link</T><Btn small title="Open link" color={c.paper} onPress={() => Linking.openURL(q.data.source.url)} accessibilityLabel="Open the applicant's evidence link" /><T size={12} color={c.mute}>Opening is logged. {q.data.message ? `"${q.data.message}"` : ''}</T></Card>
+        <Card pad={14}><T weight="800">Evidence link</T><Btn small title="Open link" color={c.paper} onPress={() => Linking.openURL(q.data.source.url)} accessibilityLabel="Open the applicant's evidence link" /><T size={12} color={c.mute}>Opening is logged.</T></Card>
       ) : null}
 
       <H2>{offers.length ? 'Offers' : 'No offer yet'}</H2>
@@ -229,7 +243,7 @@ export function MyApplications({ child_id, name }) {
                 <View style={{ flex: 1 }}><T weight="800">{r.title}</T><T size={12} color={c.mute}>{[r.team_name, r.author_name, `applied ${when(r.responded_at)}`].filter(Boolean).join(' · ')}</T></View>
                 <StagePill s={r.stage} />
               </View>
-              {r.trial_at && r.stage === 'trial' ? <T size={13}>Trial: {when(r.trial_at)}</T> : null}
+              {r.trial_at && r.stage === 'trial' ? <T size={13}>Trial: {when(r.trial_at)}{r.trial_venue_name ? ` · 📍 ${[r.trial_venue_name, r.trial_venue_city].filter(Boolean).join(', ')}` : ''}</T> : null}
               {o ? <T size={13}>Offer v{o.version} · {offerLine(o)}{o.status === 'open' ? ` · ${left(o.deadline_at)}` : ` · ${o.status}`}</T> : null}
               <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
                 {r.stage === 'offered' && o?.status === 'open' ? <>

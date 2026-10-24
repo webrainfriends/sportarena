@@ -139,7 +139,7 @@ cap({
     if (target !== user.id) await requireGuardian(user, target);
     await tx((c) => sweepExpired(c));
     return many(
-      `SELECT r.id AS response_id, r.status AS response_status, r.stage, r.row_version, r.trial_at, r.message, r.created_at AS responded_at, ${POST_COLS}, (b.author_id = $1) AS is_mine,
+      `SELECT r.id AS response_id, r.status AS response_status, r.stage, r.row_version, r.trial_at, (SELECT v.name FROM venues v WHERE v.id=r.trial_venue_id) AS trial_venue_name, (SELECT v.city FROM venues v WHERE v.id=r.trial_venue_id) AS trial_venue_city, r.message, r.created_at AS responded_at, ${POST_COLS}, (b.author_id = $1) AS is_mine,
               CASE WHEN o.version IS NULL THEN NULL ELSE row_to_json(o) END AS latest_offer
          FROM billboard_responses r JOIN billboard_posts b ON b.id=r.post_id JOIN users u ON u.id=b.author_id LEFT JOIN sports s ON s.id=b.sport_id LEFT JOIN teams t ON t.id=b.team_id
          LEFT JOIN LATERAL (SELECT version, role, rate_cents, rate_unit, starts_on, deadline_at, status, note FROM recruitment_offers x WHERE x.response_id=r.id ORDER BY x.version DESC LIMIT 1) o ON true
