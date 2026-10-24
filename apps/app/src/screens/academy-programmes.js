@@ -13,7 +13,7 @@ import { c } from '../theme';
 import { moneyIn } from '../vtime';
 import { explain } from '../access';
 import { useLayout } from '../layout';
-import { BILLING, Block, FOCUS, FORMATS, Fact, Initials, MODES, MODE_HELP, Meter, StageBadge, Timeline, lab, opts, priceLine, when } from './academy-ui';
+import { BILLING, Block, FOCUS, FORMATS, Fact, Initials, MODES, MODE_HELP, Meter, StageBadge, Timeline, lab, opts, priceLine, when, LetterSheet } from './academy-ui';
 
 export function Programmes({ o, archived, toast, onOpenApplication }) {
   const list = useLoad(() => api.get(`/organisations/${o.id}/academy/programmes`, { limit: 100 }), [o.id]);
@@ -185,7 +185,7 @@ const TABS = [['overview', 'Overview'], ['groups', 'Groups'], ['roster', 'Roster
 function Desk({ o, id, archived, toast, onBack, onOpenApplication }) {
   const d = useLoad(() => api.get(`/academy/programmes/${id}/desk`), [id]);
   const [tab, setTab] = useState('overview');
-  const [terms, setTerms] = useState(false), [group, setGroup] = useState(false), [invite, setInvite] = useState(false), [who, setWho] = useState([]), [edit, setEdit] = useState(null), [cert, setCert] = useState(null);
+  const [terms, setTerms] = useState(false), [group, setGroup] = useState(false), [invite, setInvite] = useState(false), [who, setWho] = useState([]), [edit, setEdit] = useState(null), [cert, setCert] = useState(null), [letter, setLetter] = useState(null);
   const members = useLoad(() => api.get(`/organisations/${o.id}/members`).catch(() => []), [o.id]);
   if (d.error) return <View style={{ gap: 8 }}><Btn small title="← Programmes" color={c.paper} ink={c.ink} onPress={onBack} style={{ alignSelf: 'flex-start' }} /><ErrorBox error={d.error} onRetry={d.reload} /></View>;
   if (!d.data) return <Loading />;
@@ -273,6 +273,7 @@ function Desk({ o, id, archived, toast, onBack, onOpenApplication }) {
           <Btn title="Send invitation" disabled={!who.length} onPress={async () => { try { await api.post(`/academy/programmes/${id}/invitations`, { person: who[0].sub.replace(/^@/, '') }); toast('Invitation sent'); setInvite(false); setWho([]); } catch (e) { toast(explain(e)); } finally { d.reload(); } }} />
         </View>
       </Sheet>
+      <LetterSheet enrolment={letter} orgId={o.id} onClose={() => setLetter(null)} toast={toast} />
       <FormSheet visible={!!cert} onClose={() => setCert(null)} title={`Certificate · ${cert?.display_name ?? ''}`} submitLabel="Issue certificate" initial={{ kind: 'certificate', title: `${p.title} — ${cert?.status === 'graduated' ? 'graduated' : 'completed'}` }}
         fields={[{ key: 'kind', label: 'Type', type: 'chips', options: [['certificate', 'Certificate'], ['badge', 'Badge'], ['diploma', 'Diploma']].map(([value, label]) => ({ value, label })) }, { key: 'title', label: 'Title on the certificate' }, { key: 'description', label: 'Note', type: 'multiline', optional: true }]}
         onSubmit={async (v) => { const r = await api.post(`/organisations/${o.id}/credentials`, { ...v, enrolment_id: cert.enrolment_id }); d.reload(); return `Issued · code ${r.code}`; }} />
@@ -282,6 +283,7 @@ function Desk({ o, id, archived, toast, onBack, onOpenApplication }) {
             <T color={c.mute}>{edit.group_name} · {edit.status}</T>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
               {edit.status === 'enrolled' ? <Btn small title="Pause" color={c.paper} ink={c.ink} onPress={() => act(() => api.post(`/academy-enrolments/${edit.enrolment_id}/status`, { status: 'paused' }), 'Paused').then(() => setEdit(null))} /> : <Btn small title="Resume" onPress={() => act(() => api.post(`/academy-enrolments/${edit.enrolment_id}/status`, { status: 'enrolled' }), 'Resumed').then(() => setEdit(null))} />}
+              <Btn small title="Enrolment letter" color={c.paper} ink={c.ink} onPress={() => { setLetter(edit); setEdit(null); }} />
               <Btn small title="Mark completed" color={c.paper} ink={c.ink} onPress={() => act(() => api.post(`/academy-enrolments/${edit.enrolment_id}/status`, { status: 'completed' }), 'Completed').then(() => setEdit(null))} />
               <Btn small title="Graduate" color={c.paper} ink={c.ink} onPress={() => act(() => api.post(`/academy-enrolments/${edit.enrolment_id}/status`, { status: 'graduated' }), 'Graduated').then(() => setEdit(null))} />
               <Btn small title="Withdraw" color={c.orange} onPress={() => act(() => api.post(`/academy-enrolments/${edit.enrolment_id}/status`, { status: 'withdrawn', reason: 'Withdrawn by academy' }), 'Withdrawn — history kept').then(() => setEdit(null))} />

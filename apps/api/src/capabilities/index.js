@@ -143,4 +143,5 @@ import './academy-programmes.js';
 import './academy-admissions.js';
 import './academy-billing.js';
 import './academy-desk.js';
+import './academy-letters.js';
 import './athlete-profile.js';

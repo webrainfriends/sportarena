@@ -545,3 +545,48 @@ test('graduation certificates reuse credentials: issued from a graduated enrolme
   const desk = must(await api('GET', `/academy/programmes/${a.programme.id}/desk`, { token: a.owner.token }));
   assert.equal(desk.alumni.length, 2); assert.ok(desk.alumni.every((x) => x.credential?.code));
 });
+
+test('enrolment letters reuse the branded-document stack: issued from the enrolment, immutable, templates, family and staff access, youth via guardian', async () => {
+  const a = await academy({ capacity: 10, fee: 9000, billing: 'term', terms: { instalments: 3, deposit_minor: 900, equipment: 'Shin pads' } });
+  const ath = await adult();
+  await apply(ath, a);
+  const enr = (await pool.query('SELECT id FROM org_enrolments WHERE user_id=$1', [ath.id])).rows[0];
+  const get = (u, url) => fetch(`${base}${url}`, { headers: { authorization: `Bearer ${u.token}` } });
+  // the enrolled adult gets the standard letter; asking again returns the same document instead of piling up copies
+  const l1 = must(await api('POST', `/academy/enrolments/${enr.id}/letter`, { token: ath.token, body: {} }), 201);
+  const l1b = must(await api('POST', `/academy/enrolments/${enr.id}/letter`, { token: ath.token, body: {} }), 201);
+  assert.equal(l1b.id, l1.id); assert.equal(l1.family, 'enrolment_letter'); assert.equal(l1.source_type, 'academy_enrolment');
+  const pdf = await get(ath, l1.url);
+  assert.equal(pdf.status, 200); assert.equal((await pdf.arrayBuffer()).byteLength, l1.size_bytes);
+  assert.equal((await api('POST', `/academy/enrolments/${enr.id}/letter`, { token: ath.token, body: { note: 'Hi' } })).status, 403); // only staff customise
+  // a stranger can neither issue, list nor download
+  const stranger = await adult();
+  assert.equal((await api('POST', `/academy/enrolments/${enr.id}/letter`, { token: stranger.token, body: {} })).status, 404);
+  assert.equal((await api('GET', `/academy/enrolments/${enr.id}/letters`, { token: stranger.token })).status, 404);
+  assert.equal((await get(stranger, l1.url)).status, 404);
+  assert.equal((await get(a.owner, l1.url)).status, 200);                       // academy staff can
+  // staff: a welcome note and a published template; each issue is a new immutable document
+  const tpl = must(await api('POST', '/document-templates', { token: a.owner.token, body: { family: 'enrolment_letter', name: 'Welcome', organisation_id: a.org.id, starter: 'modern' } }));
+  assert.equal((await api('POST', '/document-templates', { token: a.owner.token, body: { family: 'enrolment_letter', name: 'Bad', organisation_id: a.org.id, layout: { style: 'classic', paper: 'A4', orientation: 'portrait', margin_mm: 18, blocks: [{ type: 'lines' }] } } })).status, 400); // a letter has no invoice lines
+  assert.equal((await api('POST', `/academy/enrolments/${enr.id}/letter`, { token: a.owner.token, body: { template_id: tpl.id } })).status, 409); // unpublished
+  must(await api('POST', `/document-templates/${tpl.id}/publish`, { token: a.owner.token, body: { row_version: tpl.row_version } }));
+  const l2 = must(await api('POST', `/academy/enrolments/${enr.id}/letter`, { token: a.owner.token, body: { note: 'We cannot wait to see you on the pitch.', template_id: tpl.id } }), 201);
+  assert.notEqual(l2.id, l1.id); assert.ok(l2.template_version_id);
+  assert.equal((await api('POST', `/academy/enrolments/${enr.id}/letter`, { token: (await academy()).owner.token, body: { note: 'x' } })).status, 404); // other academies
+  assert.equal(must(await api('GET', `/academy/enrolments/${enr.id}/letters`, { token: ath.token })).length, 2);
+  await assert.rejects(() => pool.query('UPDATE generated_documents SET pages=9 WHERE id=$1', [l1.id]), /append-only/);
+  // a young person's letter is addressed to the guardian and only the verified guardian can fetch it
+  const child = await signup({ dob: yearsAgo(11) });
+  const parent = await guardianOf(child);
+  await allow(parent, child, 'participation');
+  await apply(parent, a, child.id);
+  const kEnr = (await pool.query('SELECT id FROM org_enrolments WHERE user_id=$1', [child.id])).rows[0];
+  assert.equal((await api('POST', `/academy/enrolments/${kEnr.id}/letter`, { token: child.token, body: {} })).status, 404); // the child cannot
+  const kl = must(await api('POST', `/academy/enrolments/${kEnr.id}/letter`, { token: parent.token, body: {} }), 201);
+  assert.equal((await get(parent, kl.url)).status, 200);
+  assert.equal((await get(child, kl.url)).status, 404);
+  assert.equal((await get(ath, kl.url)).status, 404);
+  // an ended enrolment gets no confirmation letter
+  await pool.query("UPDATE org_enrolments SET status='withdrawn' WHERE id=$1", [kEnr.id]);
+  assert.equal((await api('POST', `/academy/enrolments/${kEnr.id}/letter`, { token: a.owner.token, body: {} })).status, 409);
+});

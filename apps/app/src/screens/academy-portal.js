@@ -14,7 +14,7 @@ import { c } from '../theme';
 import { moneyIn } from '../vtime';
 import { explain } from '../access';
 import { useLayout } from '../layout';
-import { Block, FORMATS, FOCUS, Initials, Meter, StageBadge, StageTrack, Timeline, STAGE, hoursLeft, lab, openInvoicePdf, priceLine, when } from './academy-ui';
+import { Block, FORMATS, FOCUS, Initials, Meter, StageBadge, StageTrack, Timeline, STAGE, hoursLeft, lab, openEnrolmentLetter, openInvoicePdf, priceLine, when } from './academy-ui';
 
 const Panel = ({ children, tone }) => <View style={{ backgroundColor: tone ?? c.paper, borderRadius: 20, padding: 16, gap: 10, borderWidth: 1, borderColor: c.line }}>{children}</View>;
 const OPEN = ['enquiry', 'trial_requested', 'trial_booked', 'trial_completed', 'application_draft', 'submitted', 'under_review', 'offered', 'offer_accepted', 'waitlisted'];
@@ -76,7 +76,10 @@ export function AcademyFamily() {
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><T weight="800" size={15} style={{ flex: 1 }}>{e.programme}</T><Tag label={e.status === 'enrolled' ? '🏅 Enrolled' : e.status} color={e.status === 'enrolled' ? c.lime : undefined} /></View>
                       <T size={12} color={c.mute}>{e.organisation} · {e.cohort}{e.starts_on ? ` · ${when(e.starts_on)}${e.ends_on ? ` – ${when(e.ends_on)}` : ''}` : ''}</T>
                       {e.sessions_left != null ? <T size={12} weight="700">{e.sessions_left} sessions left in your pack</T> : null}
-                      {e.status === 'enrolled' ? <Btn small title="Withdraw…" color={c.paper} ink={c.ink} onPress={() => setForm({ withdraw: e })} style={{ alignSelf: 'flex-start', marginTop: 4 }} /> : null}
+                      <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
+                        {['enrolled', 'paused', 'completed', 'graduated'].includes(e.status) ? <Btn small title="Enrolment letter" onPress={() => openEnrolmentLetter(e.id, toast)} /> : null}
+                        {e.status === 'enrolled' ? <Btn small title="Withdraw…" color={c.paper} ink={c.ink} onPress={() => setForm({ withdraw: e })} /> : null}
+                      </View>
                     </View>
                   )) : <Empty emoji="🏅" title="Not in a programme yet" sub={p.athlete.is_me ? 'Find a programme to get started.' : `Find a programme for ${p.athlete.display_name}.`} />}
                   <Btn small title="Find a programme" color={c.paper} ink={c.ink} onPress={() => setTab('browse')} style={{ alignSelf: 'flex-start' }} />
