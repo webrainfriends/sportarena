@@ -23,10 +23,16 @@ A young person (under the independence age of their policy, see `docs/guardians.
 - `sponsorships.guardian_id`, `sponsorships.guardian_decided_at` (nullable).
 - Rollback: deploy the previous code; the table and columns are simply unused. Nothing is dropped or rewritten.
 
+## Payee arrangement
+- Money for a young athlete is paid to a **verified guardian**, never the young person. The accepting guardian is the default payee (`sponsorships.payee_guardian_id`); any verified guardian can choose another with `set_youth_payee` (recorded in history, audit-logged, sponsor notified without identity).
+- The payee is **frozen on each payment** when it is reported or its checkout opens (`sponsorship_payments.payee_guardian_id`). Online settlement credits that guardian's provider ledger/payout account (no new ledger); manual payments are confirmed by that guardian, or by any verified guardian if the frozen payee is no longer verified.
+- With a guardian relationship but no live payee, the sponsor cannot report/check out a payment (`payee_required`) until a guardian is set. Agreements made before any guardian existed keep paying the recipient as before.
+- Migration `101_youth_payee.sql` (two nullable columns, additive).
+
 ## Compatibility and limits
 - An existing agreement with a young athlete who has **no** verified guardian keeps working as before for them (nothing is stranded), but they cannot accept new offers or share results.
-- Payee arrangement is the guardian acting as the recipient side; settlement is only recorded when confirmed. No separate payee ledger was added.
+- Payee: see below.
 - Dependencies: #145, #67, #64, #71, #243, #249 are untouched integration boundaries.
 
 ## Validation
-`apps/api/test/sponsorship-youth.test.js` (PostgreSQL integration): authority gate, discovery, acceptance, stale version, results, revocation, withdrawal, media/contact, isolation.
+`apps/api/test/sponsorship-youth.test.js` (PostgreSQL integration): authority gate, discovery, acceptance, stale version, results, revocation, withdrawal, media/contact, isolation, payee freezing/reassignment/settlement.

@@ -5,7 +5,7 @@
 ALTER TABLE verification_cases DROP CONSTRAINT IF EXISTS verification_cases_type_check;
 ALTER TABLE verification_cases ADD CONSTRAINT verification_cases_type_check CHECK (type IN ('gamer','coach','physio','doctor','sponsor','event','insurer','lawyer','recruiter'));
 ALTER TABLE youth_consents DROP CONSTRAINT IF EXISTS youth_consents_purpose_check;
-ALTER TABLE youth_consents ADD CONSTRAINT youth_consents_purpose_check CHECK (purpose IN ('participation','medical','media','contact','coaching','recruitment'));
+ALTER TABLE youth_consents ADD CONSTRAINT youth_consents_purpose_check CHECK (purpose IN ('participation','medical','media','contact','coaching','recruitment','recruitment_sharing'));
 
 -- A recruiter's working profile. The verified badge itself lives on verification_cases; this is who they recruit for and where.
 CREATE TABLE IF NOT EXISTS recruiter_profiles (

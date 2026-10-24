@@ -404,7 +404,7 @@ cap({
       // Ending is recorded as a termination applied now (same safe debt handling: only untouched future dues stop); the notice workflow is in sponsorship-termination.js (#298)
       if (i.status === 'ended') await endNow(c, { d, sp }, user, isSponsor && !isTarget ? 'sponsor' : 'recipient', { reason: i.reason });
       const row = (await c.query('UPDATE sponsorships SET status=$2, decision_reason=coalesce($3, decision_reason), decided_at=now(), decided_by=$4, visibility=$5 WHERE id=$1 RETURNING *', [i.id, i.status, i.reason ?? null, user.id, visibility])).rows[0];
-      if (guardian && ['active', 'declined'].includes(i.status)) await c.query('UPDATE sponsorships SET guardian_id=$2, guardian_decided_at=now() WHERE id=$1', [d.id, user.id]);
+      if (guardian && ['active', 'declined'].includes(i.status)) await c.query('UPDATE sponsorships SET guardian_id=$2, guardian_decided_at=now(), payee_guardian_id=CASE WHEN $3 THEN coalesce(payee_guardian_id, $2) ELSE payee_guardian_id END WHERE id=$1', [d.id, user.id, i.status === 'active']);
       if (i.status === 'active') await c.query('UPDATE sponsorship_versions SET signed_off_by=$3, signed_off_at=now() WHERE sponsorship_id=$1 AND version=$2', [d.id, d.terms_version, user.id]);
       if (i.status === 'active' && signsOff) await snapshotIdentity(c, d.id, d.terms_version, sp.id, user.id); // the brand is frozen as it was when it signed
       if (i.status === 'active' && hasLines) {

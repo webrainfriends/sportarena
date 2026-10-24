@@ -14,7 +14,9 @@ import { c } from '../theme';
 import { moneyIn } from '../vtime';
 import { explain } from '../access';
 import { useLayout } from '../layout';
-import { Block, FORMATS, FOCUS, Initials, Meter, StageBadge, StageTrack, Timeline, STAGE, hoursLeft, lab, openInvoicePdf, priceLine, when } from './academy-ui';
+import { FamilyProgress } from './academy-progress';
+import { MySessions } from './academy-session';
+import { Block, TrialSlots, FORMATS, FOCUS, Initials, Meter, StageBadge, StageTrack, Timeline, STAGE, hoursLeft, lab, openEnrolmentLetter, openInvoicePdf, priceLine, when } from './academy-ui';
 
 const Panel = ({ children, tone }) => <View style={{ backgroundColor: tone ?? c.paper, borderRadius: 20, padding: 16, gap: 10, borderWidth: 1, borderColor: c.line }}>{children}</View>;
 const OPEN = ['enquiry', 'trial_requested', 'trial_booked', 'trial_completed', 'application_draft', 'submitted', 'under_review', 'offered', 'offer_accepted', 'waitlisted'];
@@ -22,7 +24,7 @@ const OPEN = ['enquiry', 'trial_requested', 'trial_booked', 'trial_completed', '
 export function AcademyFamily() {
   const { toast } = useSession();
   const fam = useLoad(() => api.get('/me/academy'), []);
-  const [pick, setWho] = useState(null), [tab, setTab] = useState('overview'), [pay, setPay] = useState(null), [apply, setApply] = useState(null), [form, setForm] = useState(null);
+  const [pick, setWho] = useState(null), [tab, setTab] = useState('overview'), [pay, setPay] = useState(null), [apply, setApply] = useState(null), [form, setForm] = useState(null), [slots, setSlots] = useState(null);
   const { tablet } = useLayout();
   if (fam.error) return <Screen><ErrorBox error={fam.error} onRetry={fam.reload} /></Screen>;
   if (!fam.data) return <Screen><Loading /></Screen>;
@@ -56,7 +58,7 @@ export function AcademyFamily() {
           ))}
         </ScrollView>
       ) : null}
-      <View style={{ marginTop: 6 }}><Seg value={tab} onChange={setTab} color={c.violet} options={[{ value: 'overview', label: 'Overview' }, { value: 'sessions', label: 'Sessions' }, { value: 'browse', label: 'Find a programme' }, { value: 'payments', label: `Payments${due.length ? ` (${due.length})` : ''}` }]} /></View>
+      <View style={{ marginTop: 6 }}><Seg value={tab} onChange={setTab} color={c.violet} options={[{ value: 'overview', label: 'Overview' }, { value: 'sessions', label: 'Sessions' }, { value: 'browse', label: 'Find a programme' }, { value: 'progress', label: 'Progress' }, { value: 'payments', label: `Payments${due.length ? ` (${due.length})` : ''}` }]} /></View>
       {tab === 'sessions' ? <View style={{ marginTop: 10 }}><MySessions key={p.athlete.id} athleteId={p.athlete.is_me ? undefined : p.athlete.id} toast={toast} /></View> : null}
       {tab === 'overview' ? (
         <View style={{ gap: 14, marginTop: 12 }}>
@@ -77,7 +79,10 @@ export function AcademyFamily() {
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><T weight="800" size={15} style={{ flex: 1 }}>{e.programme}</T><Tag label={e.status === 'enrolled' ? '🏅 Enrolled' : e.status} color={e.status === 'enrolled' ? c.lime : undefined} /></View>
                       <T size={12} color={c.mute}>{e.organisation} · {e.cohort}{e.starts_on ? ` · ${when(e.starts_on)}${e.ends_on ? ` – ${when(e.ends_on)}` : ''}` : ''}</T>
                       {e.sessions_left != null ? <T size={12} weight="700">{e.sessions_left} sessions left in your pack</T> : null}
-                      {e.status === 'enrolled' ? <Btn small title="Withdraw…" color={c.paper} ink={c.ink} onPress={() => setForm({ withdraw: e })} style={{ alignSelf: 'flex-start', marginTop: 4 }} /> : null}
+                      <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
+                        {['enrolled', 'paused', 'completed', 'graduated'].includes(e.status) ? <Btn small title="Enrolment letter" onPress={() => openEnrolmentLetter(e.id, toast)} /> : null}
+                        {e.status === 'enrolled' ? <Btn small title="Withdraw…" color={c.paper} ink={c.ink} onPress={() => setForm({ withdraw: e })} /> : null}
+                      </View>
                     </View>
                   )) : <Empty emoji="🏅" title="Not in a programme yet" sub={p.athlete.is_me ? 'Find a programme to get started.' : `Find a programme for ${p.athlete.display_name}.`} />}
                   <Btn small title="Find a programme" color={c.paper} ink={c.ink} onPress={() => setTab('browse')} style={{ alignSelf: 'flex-start' }} />
@@ -101,9 +106,13 @@ export function AcademyFamily() {
                     <View key={a.id} style={{ padding: 12, borderRadius: 16, backgroundColor: c.bg, gap: 8 }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><View style={{ flex: 1 }}><T weight="800" size={14}>{a.programme}</T><T size={12} color={c.mute}>{a.organisation}</T></View><StageBadge stage={a.stage} /></View>
                       <StageTrack stage={a.stage} />
+                      {a.trial?.session ? <T size={13} weight="700">🎽 Trial: {when(a.trial.session.local_date)} · {a.trial.session.local_start}–{a.trial.session.local_end}</T> : a.stage === 'trial_requested' ? <T size={13} color={c.mute}>Trial requested. Pick a time that suits you.</T> : null}
                       {a.waitlist_position ? <T size={13} weight="700">You are number {a.waitlist_position} on the waitlist. We will offer a place when one opens; we cannot promise a date.</T> : null}
                       {a.stage === 'offered' && a.offer_expires_at ? <T size={13} weight="700">Offer ends {when(a.offer_expires_at)} ({hoursLeft(a.offer_expires_at)})</T> : null}
                       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                        {a.stage === 'trial_requested' ? <Btn small title="Choose a trial time" onPress={() => setSlots({ ...a, athlete_id: p.athlete.id })} /> : null}
+                        {a.stage === 'trial_booked' ? <Btn small title="Change time" color={c.paper} ink={c.ink} onPress={() => setSlots({ ...a, athlete_id: p.athlete.id })} /> : null}
+                        {a.stage === 'trial_booked' ? <Btn small title="Cancel trial" color={c.paper} ink={c.ink} onPress={() => act(() => api.post(`/academy/applications/${a.id}/trial/cancel`, { row_version: a.row_version }), 'Trial cancelled')} /> : null}
                         {a.stage === 'enquiry' && a.programme_info?.trial_enabled ? <Btn small title="Ask for a trial" color={c.paper} ink={c.ink} onPress={() => act(() => api.post(`/academy/applications/${a.id}/trial`, { row_version: a.row_version }), 'Trial requested')} /> : null}
                         {['enquiry', 'trial_completed', 'application_draft'].includes(a.stage) ? <Btn small title="Continue application" onPress={() => setApply({ continue: a.id })} /> : null}
                         {a.stage !== 'offer_accepted' ? <Btn small title="Withdraw" color={c.paper} ink={c.ink} onPress={() => setForm({ cancel: a })} /> : null}
@@ -117,6 +126,8 @@ export function AcademyFamily() {
           </View>
         </View>
       ) : null}
+      <TrialSlots app={slots} onClose={() => setSlots(null)} onBooked={fam.reload} toast={toast} />
+      {tab === 'progress' ? <FamilyProgress key={p.athlete.id} athlete={p.athlete} toast={toast} /> : null}
       {tab === 'browse' ? <Browse people={people} who={who} onApply={(prog, athlete) => setApply({ prog, athlete })} /> : null}
       {tab === 'payments' ? (
         <View style={{ gap: 14, marginTop: 12 }}>

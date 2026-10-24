@@ -23,6 +23,7 @@ const PURPOSES = {
   contact: ['Messages', 'Let them write in team chats.'],
   coaching: ['Coaching notes', 'Let a coach share notes, goals, actions and progress reports with them and with you.'],
   recruitment: ['Recruiters & scouts', 'Let verified recruiters you approve see the parts of their sport profile you choose. You approve each request and can end access at any time.'],
+  recruitment_sharing: ['Recruitment sharing', 'Let a verified guardian arrange passport links for recruiters, and let their coaches write references. Withdrawing it stops every link at once.'],
 };
 const CONSENT_STATE = { active: ['Allowed', c.lime], expired: ['Expired — renew to allow again', c.orangeSoft], revoked: ['Withdrawn', c.pinkSoft], not_given: ['Not allowed', c.violetSoft], lapsed: ['Paused — guardian not verified', c.orangeSoft] };
 const stateTag = (s) => <Tag label={STATE[s]?.[0] ?? label(s)} color={STATE[s]?.[1]} />;

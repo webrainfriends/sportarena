@@ -6,7 +6,7 @@ import { conflict, forbidden } from './errors.js';
 import { decrypt } from './crypto.js';
 import { audit, isAdmin } from './helpers.js';
 
-export const PURPOSES = ['participation', 'medical', 'media', 'contact', 'coaching', 'recruitment'];
+export const PURPOSES = ['participation', 'medical', 'media', 'contact', 'coaching', 'recruitment', 'recruitment_sharing'];
 export const RELATIONSHIPS = ['parent', 'legal_guardian', 'foster_carer', 'other'];
 
 /** Built-in policy used when no row exists for a jurisdiction. Operators override it with set_age_policy (a new version each time). */
