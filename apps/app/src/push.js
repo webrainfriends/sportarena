@@ -61,6 +61,7 @@ export async function disablePush(deviceId) {
 
 /** Where a tapped notification should land: [screen, params] or null. */
 export function targetFor(data = {}) {
+  if (data.proposal_id) return ['ScoringTool', { proposalId: data.proposal_id }]; // a proposed result to review, or the outcome of yours
   if (data.request_id && data.event_id) return ['EventInbox', {}];
   if (data.sponsorship_id) return ['SponsorDeal', { id: data.sponsorship_id }];
   if (data.program_id && (data.task_id || data.application_id)) return ['SponsorProgram', { id: data.program_id }];
@@ -79,5 +80,8 @@ export function parseTarget(t) {
   if (kind === 'sponsorship' && id) return ['SponsorDeal', { id }];
   if (kind === 'organisation' && id) return ['Org', { id }];
   if (kind === 'organisations') return ['Orgs', {}];
+  if (kind === 'proposal' && id) return ['ScoringTool', { proposalId: id }];
+  if (kind === 'tool' && id === 'scoring') return ['ScoringTool', {}];
+  if (kind === 'tools') return ['ToolsHome', {}];
   return ['Notifications', {}];
 }

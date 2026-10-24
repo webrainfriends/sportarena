@@ -53,6 +53,7 @@ export function PerformanceStudio() {
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
         <Btn small title="New team session" onPress={() => setCreating(true)} disabled={!teams.length} />
         <Btn small title="My athletes" color={c.paper} ink={c.ink} onPress={() => push('CoachAthletes')} />
+        <Btn small title="Track a practice game" color={c.paper} ink={c.ink} onPress={() => push('ScoringTool', { tab: 'start' })} />
       </View>
       <HScroll>
         {[[null, 'All'], ['individual', 'Individual'], ['group', 'Group'], ['team', 'Team']].map(([v, l]) => <Chip key={l} label={l} active={flt.scope === v} onPress={() => setFlt({ ...flt, scope: v })} />)}
