@@ -41,15 +41,13 @@ export const consentOk = (userId, client) => hasConsent(userId, CONSENT_PURPOSE,
 
 /**
  * How is `user` related to this application? 'self' (the applicant), 'guardian' (verified guardian of a young applicant) or 'admin'.
- * A young person acting for themselves needs a guardian's current consent; accepting an offer is a guardian decision.
+ * A young person may always read and withdraw their own application; accepting an offer is a guardian decision.
  */
 export async function applicantRole(user, resp, { decide = false } = {}, client) {
   if (isAdmin(user)) return 'admin';
   if (user.id === resp.responder_id) {
-    if (await isYouth(user.id, client)) {
-      if (decide) throw forbidden('A parent or guardian needs to decide on an offer for you');
-      if (!(await consentOk(user.id, client))) throw conflict('A verified guardian has not given current consent for recruitment. Ask a guardian to allow it under Family & guardians.', { code: 'guardian_consent_required', purpose: CONSENT_PURPOSE });
-    }
+    // reading and withdrawing never depend on consent (ending recruitment sharing must always be possible); only accepting an offer is a guardian's decision
+    if (decide && (await isYouth(user.id, client))) throw forbidden('A parent or guardian needs to decide on an offer for you');
     return 'self';
   }
   if (await guardianLink(user.id, resp.responder_id, client)) return 'guardian';
@@ -90,28 +88,34 @@ export async function notifyApplicant(c, resp, post, kind, title, body, dedupe) 
 
 /** Offers past their deadline lapse. The application returns to the stage before the offer so staff can re-offer; history is kept. */
 export async function sweepExpired(c, responseId = null) {
-  const { rows } = await c.query(
-    `SELECT o.id, o.response_id, o.version FROM recruitment_offers o WHERE o.status='open' AND o.deadline_at < now() AND ($1::uuid IS NULL OR o.response_id=$1) ORDER BY o.deadline_at, o.id FOR UPDATE SKIP LOCKED`, [responseId]);
-  for (const o of rows) {
-    const r = (await c.query('SELECT * FROM billboard_responses WHERE id=$1 FOR UPDATE', [o.response_id])).rows[0];
+  // same lock order as every mutation: the application row first, then its offer (ordered by id so two sweeps never wait on each other)
+  const { rows: due } = await c.query(
+    `SELECT DISTINCT response_id FROM recruitment_offers WHERE status='open' AND deadline_at < now() AND ($1::uuid IS NULL OR response_id=$1) ORDER BY response_id`, [responseId]);
+  let n = 0;
+  for (const { response_id } of due) {
+    const r = (await c.query('SELECT * FROM billboard_responses WHERE id=$1 FOR UPDATE', [response_id])).rows[0];
+    const o = (await c.query("SELECT id, version FROM recruitment_offers WHERE response_id=$1 AND status='open' AND deadline_at < now() FOR UPDATE", [response_id])).rows[0];
+    if (!o) continue; // answered or replaced while we waited for the lock
     await c.query("UPDATE recruitment_offers SET status='expired', decided_at=now() WHERE id=$1", [o.id]);
     if (r.stage === 'offered') {
       const evaluated = (await c.query('SELECT 1 FROM recruitment_evaluations WHERE response_id=$1 LIMIT 1', [r.id])).rows.length;
       await setStage(c, r, evaluated ? 'evaluated' : 'shortlisted', { kind: 'offer_expired', note: `Offer v${o.version} expired` });
     }
+    n++;
   }
-  return rows.length;
+  return n;
 }
 
 /** Take the person on: team roster + career stint (same path the Billboard has always used), then fill the post when all positions are taken. */
-export async function acceptIntoTeam(c, post, resp, { role, rate_cents, rate_unit } = {}) {
+export async function acceptIntoTeam(c, post, resp, { role, rate_cents, rate_unit, fromOffer = false } = {}) {
   if (post.status !== 'open') throw conflict('This post is no longer open');
   if ((post.kind === 'team_recruiting' || post.kind === 'coach_wanted') && post.team_id) {
     const r = role ?? (post.kind === 'coach_wanted' ? 'coach' : 'player');
     await c.query(
       `INSERT INTO team_members(team_id, user_id, role, status, rate_cents, rate_unit) VALUES ($1,$2,$3,'active',$4,coalesce($5,'match'))
        ON CONFLICT (team_id, user_id) DO UPDATE SET status='active', role=CASE WHEN team_members.status='active' AND team_members.role IN ('manager','captain') THEN team_members.role ELSE EXCLUDED.role END, rate_cents=coalesce(EXCLUDED.rate_cents, team_members.rate_cents), rate_unit=EXCLUDED.rate_unit`,
-      [post.team_id, resp.responder_id, r, rate_cents ?? post.budget_cents, rate_unit ?? post.rate_unit]);
+      // a versioned offer's terms are final (an offer that leaves the rate open stays open); only the legacy direct accept falls back to the post's advertised rate
+      [post.team_id, resp.responder_id, r, fromOffer ? rate_cents : (rate_cents ?? post.budget_cents), fromOffer ? rate_unit : (rate_unit ?? post.rate_unit)]);
     await openRosterStint(c, (await c.query('SELECT * FROM teams WHERE id=$1', [post.team_id])).rows[0], resp.responder_id, r, null, null, resp.responder_id);
   }
 }

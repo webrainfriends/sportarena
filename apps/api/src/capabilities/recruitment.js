@@ -21,7 +21,8 @@ const key = z.string().min(8).max(80).describe('unique per attempt; a retry with
 const version = z.coerce.number().int().min(1).describe('row_version you last saw; a stale value is rejected with code stale_version');
 const rateUnit = z.enum(['match', 'hour', 'month', 'season']);
 const OFFER_KINDS = ['match_players', 'team_recruiting', 'coach_wanted'];
-const VIEW = 'id, post_id, responder_id, status, stage, row_version, stage_changed_at, trial_at, trial_venue_id, trial_note, created_at';
+const VIEW = `id, post_id, responder_id, status, stage, row_version, stage_changed_at, trial_at, trial_venue_id, trial_note, created_at,
+  (SELECT v.name FROM venues v WHERE v.id=trial_venue_id) AS trial_venue_name, (SELECT v.city FROM venues v WHERE v.id=trial_venue_id) AS trial_venue_city`;
 
 const view = async (c, rid) => (await c.query(`SELECT ${VIEW} FROM billboard_responses WHERE id=$1`, [rid])).rows[0];
 
@@ -82,13 +83,13 @@ async function staffPost(user, postId) {
 cap({
   name: 'get_recruitment_pipeline', method: 'GET', path: '/billboard/:id/pipeline', tag: TAG,
   summary: 'The recruitment pipeline of a post you run (author, team managers, admins): counts per stage and the candidates, oldest application first. Optionally filter by stage. A young applicant without a guardian\'s current consent is listed as hidden.',
-  input: z.object({ id, stage: z.enum(STAGES).optional(), ...page }),
+  input: z.object({ id, stage: z.enum([...STAGES, 'closed']).optional().describe('one stage, or closed for accepted + declined + withdrawn'), ...page }),
   async handler({ user }, i) {
     const post = await staffPost(user, i.id);
     await tx((c) => sweepExpired(c));
     const counts = Object.fromEntries(STAGES.map((s) => [s, 0]));
     for (const r of await many('SELECT stage, count(*)::int AS n FROM billboard_responses WHERE post_id=$1 GROUP BY stage', [i.id])) counts[r.stage] = r.n;
-    const rows = await many(`${CANDIDATE} WHERE r.post_id=$1 AND ($2::text IS NULL OR r.stage=$2) ORDER BY r.created_at, r.id LIMIT $3 OFFSET $4`, [i.id, i.stage ?? null, i.limit, i.offset]);
+    const rows = await many(`${CANDIDATE} WHERE r.post_id=$1 AND ($2::text[] IS NULL OR r.stage = ANY($2)) ORDER BY r.created_at, r.id LIMIT $3 OFFSET $4`, [i.id, i.stage ? (i.stage === 'closed' ? ['accepted', 'declined', 'withdrawn'] : [i.stage]) : null, i.limit, i.offset]);
     return { post: { id: post.id, title: post.title, kind: post.kind, status: post.status, positions_needed: post.positions_needed }, counts, candidates: await maskRows(rows) };
   },
 });
@@ -216,7 +217,7 @@ cap({
     if (i.accept) {
       const taken = (await c.query("SELECT count(*)::int AS n FROM billboard_responses WHERE post_id=$1 AND stage='accepted'", [post.id])).rows[0].n;
       if (taken >= post.positions_needed) throw conflict('All positions have been filled', { code: 'positions_filled' });
-      await acceptIntoTeam(c, post, resp, { role: offer.role, rate_cents: offer.rate_cents, rate_unit: offer.rate_unit });
+      await acceptIntoTeam(c, post, resp, { role: offer.role, rate_cents: offer.rate_cents, rate_unit: offer.rate_unit, fromOffer: true });
     }
     await c.query('UPDATE recruitment_offers SET status=$2, decided_by=$3, decided_at=now() WHERE id=$1', [offer.id, status, user.id]);
     const row = await setStage(c, resp, status, { kind: 'offer_response', actor: user.id, note: `Offer v${offer.version}`, key: i.idempotency_key });
