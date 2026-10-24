@@ -251,6 +251,7 @@ function MySports() {
         <Btn small title="+ Add sport" onPress={() => setAdd(true)} style={{ flex: 1 }} />
         <Btn small title="Import matches" color={c.paper} onPress={() => push('ImportMatches', { id: selId ?? profiles[0]?.id })} disabled={!profiles.length} style={{ flex: 1 }} />
       </View>
+      <Btn small title="🔎 Recruiter access" color={c.paper} onPress={() => push('RecruiterAccess')} disabled={!profiles.length} style={{ alignSelf: 'flex-start' }} />
     </View>
   );
   const found = (detected.data ?? []).map((d) => (

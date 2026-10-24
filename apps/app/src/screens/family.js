@@ -22,6 +22,8 @@ const PURPOSES = {
   media: ['Photos & video', 'Photos and video of them may be used in team and event pages.'],
   contact: ['Messages', 'Let them write in team chats.'],
   coaching: ['Coaching notes', 'Let a coach share notes, goals, actions and progress reports with them and with you.'],
+  recruitment: ['Recruiters & scouts', 'Let verified recruiters you approve see the parts of their sport profile you choose. You approve each request and can end access at any time.'],
+  recruitment_sharing: ['Recruitment sharing', 'Let a verified guardian arrange passport links for recruiters, and let their coaches write references. Withdrawing it stops every link at once.'],
 };
 const CONSENT_STATE = { active: ['Allowed', c.lime], expired: ['Expired — renew to allow again', c.orangeSoft], revoked: ['Withdrawn', c.pinkSoft], not_given: ['Not allowed', c.violetSoft], lapsed: ['Paused — guardian not verified', c.orangeSoft] };
 const stateTag = (s) => <Tag label={STATE[s]?.[0] ?? label(s)} color={STATE[s]?.[1]} />;
@@ -116,6 +118,7 @@ function LinkCard({ l, reload, onConsents, onPickup, onSponsors }) {
           <Btn small title="Sponsors" color={c.paper} ink={c.ink} onPress={() => onSponsors(l.child)} />
           <Btn small title="Coaching" color={c.paper} ink={c.ink} onPress={() => push('MyCoaching', { child_id: l.child.id, name: l.child.display_name })} />
           <Btn small title="Career" color={c.paper} ink={c.ink} onPress={() => push('CareerTimeline', { user_id: l.child.id })} />
+          <Btn small title="Recruiters" color={c.paper} ink={c.ink} onPress={() => push('RecruiterAccess', { athlete_id: l.child.id })} />
         </> : null}
         {(mine === 'guardian' && ['active', 'invited', 'accepted', 'pending_review'].includes(l.status)) || (l.requested_by === (mine === 'guardian' ? l.guardian_id : l.child_id) && ['invited', 'accepted', 'pending_review'].includes(l.status))
           ? <Btn small title={l.status === 'active' ? 'End link' : 'Withdraw request'} color={c.paper} ink={c.red} onPress={() => run(() => api.post(`/youth/guardian-links/${l.id}/revoke`, { reason: 'Ended from the app' }), 'Link ended')} /> : null}

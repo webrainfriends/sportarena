@@ -66,6 +66,12 @@ export const RULES = {
     required: ['id_document', 'bar_admission'],
     checklist: [...identity, { key: 'register_checked', label: 'Admission checked on the regulator\'s public register: name, status and any restrictions' }, { key: 'jurisdiction_matches', label: 'Register jurisdiction matches the jurisdiction claimed' }, { key: 'practising', label: 'Currently entitled to practise (not suspended, struck off or non-practising)' }],
   },
+  recruiter: {
+    label: 'Verified recruiter', subject: 'user', needs_role: 'recruiter', validity_months: 12,
+    summary: 'Confirms a recruiter or scout who really works for a club, academy, school, college or federation. Verification lets you ask athletes for access; it never gives access on its own.',
+    required: ['id_document'], one_of: ['club_letter', 'federation_licence', 'authorisation_letter', 'profile_link'],
+    checklist: [...identity, { key: 'affiliation_confirmed', label: 'The organisation named is real and confirms this person recruits for it (letter, licence or official staff listing)' }, { key: 'sport_matches', label: 'The sports and regions claimed fit the organisation' }],
+  },
   sponsor: {
     label: 'Verified sponsor', subject: 'sponsor', needs_role: null, validity_months: 12,
     summary: 'Confirms the brand is a real business and the requester may act for it.',

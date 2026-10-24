@@ -30,4 +30,4 @@ export const page = {
   offset: z.coerce.number().int().min(0).default(0),
 };
 export const money = z.coerce.number().int().min(0).describe('amount in minor units (cents/paise)');
-export const roles = ['athlete', 'coach', 'referee', 'organizer', 'sponsor', 'physio', 'doctor', 'venue_manager', 'supplier', 'insurer', 'lawyer', 'admin', 'platform_admin'];
+export const roles = ['athlete', 'coach', 'referee', 'organizer', 'sponsor', 'physio', 'doctor', 'venue_manager', 'supplier', 'insurer', 'lawyer', 'recruiter', 'admin', 'platform_admin'];
