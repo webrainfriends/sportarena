@@ -147,9 +147,11 @@ cap({
 cap({
   name: 'get_event', method: 'GET', path: '/events/:id', tag: 'Events', auth: 'public',
   summary: 'Event page: details, entrants, standings, sponsors, rating.', input: z.object({ id }),
-  async handler(_, i) {
+  async handler({ user }, i) {
     const ev = await one('SELECT e.*, s.name AS sport, s.emoji AS sport_emoji FROM events e JOIN sports s ON s.id=e.sport_id WHERE e.id=$1', [i.id]);
     if (!ev) throw notFound('Event');
+    // an accepted trial assessor gets the trial desk (the rest of the console stays organiser-only)
+    ev.is_assessor = !!user && ev.kind === 'trial' && !!(await one("SELECT 1 FROM event_staff_assignments a JOIN event_staff_roles r ON r.id=a.role_id WHERE a.event_id=$1 AND a.user_id=$2 AND a.status='accepted' AND r.role='assessor'", [ev.id, user.id]));
     const [entrants, table, sponsors, rating, venue] = await Promise.all([
       many(`SELECT e.id AS entry_id, t.id AS team_id, t.name, t.emoji, t.color, u.id AS user_id, u.handle, u.display_name FROM event_entries e LEFT JOIN teams t ON t.id=e.team_id LEFT JOIN users u ON u.id=e.user_id WHERE e.event_id=$1 AND e.status='accepted'`, [i.id]),
       standings(i.id),
