@@ -126,6 +126,7 @@ import './player-insights.js';
 import './wellness.js';
 import './passport.js';
 import './athlete-blocks.js';
+import './career-timeline.js';
 import './market.js';
 import './multisport.js';
 import './multisport-play.js';
