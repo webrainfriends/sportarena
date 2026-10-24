@@ -227,14 +227,14 @@ export async function openInvoicePdf(invoiceId, toast) {
 }
 
 /** The branded enrolment letter as a PDF: family members get the standard letter, staff may add a welcome note and pick a published template. */
-export async function openEnrolmentLetter(enrolmentId, toast, body = {}) {
+export async function openEnrolmentLetter(enrolmentId, toast, body = {}, { rethrow = false } = {}) {
   try {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return toast?.('Letters open in the web app');
     const d = await api.post(`/academy/enrolments/${enrolmentId}/letter`, body);
     const url = URL.createObjectURL(await api.download(`/branded-documents/${d.id}/file`));
     window.open(url, '_blank', 'noopener');
     setTimeout(() => URL.revokeObjectURL(url), 120000);
-  } catch (e) { toast?.(e.message); }
+  } catch (e) { if (rethrow) throw e; toast?.(e.message); }
 }
 
 /** Staff: issue the enrolment letter with an optional welcome note and one of the academy's published letter templates. */
@@ -247,6 +247,6 @@ export function LetterSheet({ enrolment, orgId, onClose, toast }) {
         { key: 'note', label: 'Welcome note', type: 'multiline', optional: true },
         ...(mine.length ? [{ key: 'template_id', label: 'Letter template', type: 'chips', optional: true, options: mine.map((t) => ({ value: t.id, label: t.name })) }] : []),
       ]}
-      onSubmit={async (v) => { await openEnrolmentLetter(enrolment.enrolment_id, toast, { note: v.note || undefined, template_id: v.template_id || undefined }); return 'Letter issued'; }} />
+      onSubmit={async (v) => { await openEnrolmentLetter(enrolment.enrolment_id, toast, { note: v.note || undefined, template_id: v.template_id || undefined }, { rethrow: true }); return 'Letter issued'; }} />
   );
 }
