@@ -66,7 +66,7 @@ cap({
   summary: 'Your sport profiles as dashboard cards — the default profile is always first. Each card carries the match summary over your whole history (what you logged plus official Gotmygame games/fixtures you played — counted once), `official_summary` (official only), `self_summary` (logged/imported only), totals per metric and recent form.',
   async handler({ user }) {
     const [profiles, sums, metrics, form] = await Promise.all([
-      many(`SELECT ${PROFILE_COLS} FROM sport_profiles p JOIN sports s ON s.id=p.sport_id WHERE p.user_id=$1 ${PROFILE_ORDER}`, [user.id]),
+      many(`SELECT ${PROFILE_COLS} FROM sport_profiles p JOIN sports s ON s.id=p.sport_id WHERE p.user_id=$1 AND p.archived_at IS NULL ${PROFILE_ORDER}`, [user.id]),
       many(`${ACTIVITIES_CTE}
             SELECT sport_profile_id, is_official, count(*)::int AS matches,
                    count(*) FILTER (WHERE result='win')::int AS wins, count(*) FILTER (WHERE result='draw')::int AS draws, count(*) FILTER (WHERE result='loss')::int AS losses,
@@ -131,7 +131,7 @@ cap({
   input: z.object({ id }),
   async handler({ user }, i) {
     await tx(async (c) => {
-      await ownProfile(user.id, i.id, c);
+      if ((await ownProfile(user.id, i.id, c)).archived_at) throw badRequest('Restore this sport profile before making it your default');
       await c.query('UPDATE sport_profiles SET is_default=false WHERE user_id=$1 AND is_default', [user.id]);
       await c.query('UPDATE sport_profiles SET is_default=true WHERE id=$1', [i.id]);
     });
@@ -141,14 +141,14 @@ cap({
 
 cap({
   name: 'delete_sport_profile', method: 'DELETE', path: '/me/sport-profiles/:id', tag: 'Player',
-  summary: 'Remove a sport profile and the matches you logged under it. Official games/fixtures are never removed — they stay on your history and reappear if you add the sport again. If it was the default, your oldest remaining profile takes over.',
+  summary: 'Archive a sport profile. The card disappears from your sports, but every match you logged or imported, your official history and your measurements are kept; restore it any time (or add the sport again). If it was the default, your oldest remaining profile takes over.',
   input: z.object({ id }),
   async handler({ user }, i) {
     await tx(async (c) => {
       const p = await ownProfile(user.id, i.id, c);
-      await c.query('UPDATE player_match_links SET removed_at=now() WHERE removed_at IS NULL AND player_match_id IN (SELECT id FROM player_matches WHERE sport_profile_id=$1)', [i.id]);
-      await c.query('DELETE FROM sport_profiles WHERE id=$1', [i.id]);
-      if (p.is_default) await c.query('UPDATE sport_profiles SET is_default=true WHERE id = (SELECT id FROM sport_profiles WHERE user_id=$1 ORDER BY created_at, id LIMIT 1)', [user.id]);
+      if (p.archived_at) return;
+      await c.query('UPDATE sport_profiles SET archived_at=now(), is_default=false WHERE id=$1', [i.id]);
+      if (p.is_default) await c.query('UPDATE sport_profiles SET is_default=true WHERE id = (SELECT id FROM sport_profiles WHERE user_id=$1 AND archived_at IS NULL ORDER BY created_at, id LIMIT 1)', [user.id]);
     });
     return { ok: true };
   },

@@ -41,7 +41,7 @@ cap({
     const joins = [], where = [NOT_YOUTH_SQL];
     let rate = 'NULL', city = 'NULL';
     if (need === 'referee') {
-      joins.push(`JOIN sport_profiles sp ON sp.user_id=u.id AND sp.role='referee'${sport ? ` AND sp.sport_id=${p(sport.id)}` : ''}`);
+      joins.push(`JOIN active_sport_profiles sp ON sp.user_id=u.id AND sp.role='referee'${sport ? ` AND sp.sport_id=${p(sport.id)}` : ''}`);
       rate = 'max(sp.hourly_rate_cents)';
     } else if (need) {
       joins.push(`JOIN provider_profiles pp ON pp.user_id=u.id AND pp.provider_type='${need}' AND pp.listed${i.city ? ` AND lower(pp.city)=lower(${p(i.city)})` : ''}`);
@@ -72,7 +72,7 @@ cap({
         const sp = (await c.query('SELECT id FROM sports WHERE slug=$1 OR id::text=$1', [i.sport])).rows[0];
         if (!sp) throw notFound('Sport');
         sportId = sp.id;
-        if (['referee', 'umpire', 'judge', 'starter', 'timekeeper'].includes(i.role) && !(await c.query("SELECT 1 FROM sport_profiles WHERE user_id=$1 AND role='referee' AND sport_id=$2", [i.user_id, sp.id])).rowCount) throw badRequest('That person is not a referee for this sport');
+        if (['referee', 'umpire', 'judge', 'starter', 'timekeeper'].includes(i.role) && !(await c.query("SELECT 1 FROM active_sport_profiles WHERE user_id=$1 AND role='referee' AND sport_id=$2", [i.user_id, sp.id])).rowCount) throw badRequest('That person is not a referee for this sport');
       }
       let row;
       try {

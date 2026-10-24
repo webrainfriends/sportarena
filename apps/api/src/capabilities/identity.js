@@ -3,12 +3,14 @@ import { cap, id, page, roles } from '../registry.js';
 import { one, many, query, tx } from '../db.js';
 import { badRequest, conflict, forbidden, notFound, unauthorized } from '../errors.js';
 import { RESOURCE_TYPES, SCOPES, scopeAllows } from '../scopes.js';
-import { blindIndex, decryptFields, encrypt, encryptFields, hashPassword, newOpaqueToken, sha256, verifyPassword } from '../crypto.js';
+import { blindIndex, decrypt, decryptFields, encrypt, encryptFields, hashPassword, newOpaqueToken, sha256, verifyPassword } from '../crypto.js';
 import { audit, PUBLIC_USER, sportBySlugOrId } from '../helpers.js';
 import { startSession } from '../sessions.js';
 import { issueToken } from '../account-security.js';
 import { badgesFor, withBadges } from '../verification.js';
 import { profileCredentials } from '../education.js';
+import { viewerTiers, visibleFields } from '../athlete-profile.js';
+import { affiliationsFor } from './athlete-profile.js';
 import { canSeeYouth, NOT_YOUTH_SQL, refreshYouth, YOUTH_SQL } from '../youth.js';
 
 const PII = ['full_name', 'phone', 'dob', 'national_id', 'address'];
@@ -215,7 +217,7 @@ cap({
   async handler(_, i) {
     const sport = i.sport ? await sportBySlugOrId(i.sport) : null;
     return withBadges('user', await many(
-      `SELECT DISTINCT ${PUBLIC_USER} FROM users u LEFT JOIN sport_profiles p ON p.user_id = u.id
+      `SELECT DISTINCT ${PUBLIC_USER} FROM users u LEFT JOIN active_sport_profiles p ON p.user_id = u.id
         WHERE ${NOT_YOUTH_SQL} AND ($1::text IS NULL OR u.handle ILIKE $1 || '%' OR u.display_name ILIKE '%' || $1 || '%')
           AND ($2::text IS NULL OR p.role = $2) AND ($3::uuid IS NULL OR p.sport_id = $3)
         ORDER BY u.display_name LIMIT $4 OFFSET $5`,
@@ -238,13 +240,21 @@ cap({
     }
     delete u.is_youth;
     const [profiles, awards, rating, teams, credentials] = await Promise.all([
-      many('SELECT p.role, p.level, p.position, p.is_default, s.slug, s.name AS sport, s.emoji FROM sport_profiles p JOIN sports s ON s.id = p.sport_id WHERE p.user_id = $1 ORDER BY p.is_default DESC, p.created_at, p.id', [i.id]),
+      many('SELECT p.id, p.sport_id, p.role, p.level, p.position, p.is_default, p.dominant_side, p.positions, p.play_prefs, p.field_scopes, s.slug, s.name AS sport, s.emoji FROM active_sport_profiles p JOIN sports s ON s.id = p.sport_id WHERE p.user_id = $1 ORDER BY p.is_default DESC, p.created_at, p.id', [i.id]),
       many('SELECT kind, count(*)::int AS n FROM awards WHERE user_id = $1 GROUP BY kind', [i.id]),
       one("SELECT round(avg(rating),2) AS avg, count(*)::int AS n FROM testimonials WHERE subject_type='user' AND subject_id=$1 AND status='published' AND visibility='public'", [i.id]),
       many("SELECT t.id, t.name, t.emoji, t.color, m.role FROM team_members m JOIN teams t ON t.id = m.team_id WHERE m.user_id=$1 AND m.status='active'", [i.id]),
       profileCredentials(i.id),
     ]);
-    return { ...u, verified: (await badgesFor('user', [i.id])).get(i.id) ?? [], sport_profiles: profiles, awards, rating, teams, credentials };
+    const { tiers } = await viewerTiers(user, i.id);
+    const shared = await Promise.all(profiles.map(async ({ id: pid, sport_id, dominant_side, positions, play_prefs, field_scopes, ...card }) => {
+      const f = visibleFields({ dominant_side, positions, play_prefs, field_scopes, affiliations: field_scopes?.affiliations ? await affiliationsFor(i.id, sport_id) : [] }, tiers);
+      const measurements = (await many(`SELECT metric, unit, value_enc, to_char(measured_on,'YYYY-MM-DD') AS measured_on, source FROM athlete_measurements
+        WHERE sport_profile_id=$1 AND revoked_at IS NULL AND scope = ANY($2) ORDER BY measured_on DESC, created_at DESC, id`, [pid, tiers])).map(({ value_enc, ...m }) => ({ ...m, value: Number(decrypt(value_enc, 'athlete_measurements.value')) }));
+      if (measurements.length) await audit(null, user?.id ?? null, 'read_shared_athlete_measurements', 'sport_profiles', pid);
+      return { ...card, ...f, measurements };
+    }));
+    return { ...u, verified: (await badgesFor('user', [i.id])).get(i.id) ?? [], sport_profiles: shared, awards, rating, teams, credentials };
   },
 });
 
@@ -264,14 +274,14 @@ cap({
     return tx(async (c) => {
       // serialise concurrent adds per user so "first profile is the default" and the one-default index can't race
       await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`sport_profiles:${user.id}`]);
-      const first = !(await c.query('SELECT 1 FROM sport_profiles WHERE user_id=$1', [user.id])).rowCount;
+      const first = !(await c.query('SELECT 1 FROM sport_profiles WHERE user_id=$1 AND archived_at IS NULL', [user.id])).rowCount;
       const makeDefault = first || i.is_default;
       if (makeDefault) await c.query('UPDATE sport_profiles SET is_default=false WHERE user_id=$1 AND is_default', [user.id]);
       const { rows: [row] } = await c.query(
         `INSERT INTO sport_profiles (user_id, sport_id, role, level, position, license_no_enc, jersey_no, club, experience_years, hourly_rate_cents, is_default, region) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
          ON CONFLICT (user_id, sport_id, role) DO UPDATE SET level = EXCLUDED.level, position = EXCLUDED.position, license_no_enc = coalesce(EXCLUDED.license_no_enc, sport_profiles.license_no_enc),
            jersey_no = coalesce(EXCLUDED.jersey_no, sport_profiles.jersey_no), club = coalesce(EXCLUDED.club, sport_profiles.club), region = coalesce(EXCLUDED.region, sport_profiles.region), experience_years = coalesce(EXCLUDED.experience_years, sport_profiles.experience_years), hourly_rate_cents = coalesce(EXCLUDED.hourly_rate_cents, sport_profiles.hourly_rate_cents),
-           is_default = sport_profiles.is_default OR EXCLUDED.is_default
+           is_default = (sport_profiles.is_default AND sport_profiles.archived_at IS NULL) OR EXCLUDED.is_default, archived_at = NULL
          RETURNING id, sport_id, role, level, position, jersey_no, club, region, experience_years, is_default`,
         [user.id, sport.id, i.role, i.level, i.position ?? null, encrypt(i.license_no, 'sport_profiles.license_no'), i.jersey_no ?? null, i.club ?? null, i.experience_years ?? null, i.hourly_rate_cents ?? null, makeDefault, i.region || null]);
       // coaching in a sport makes you a coach: the coach desk, request board and answers all need the role

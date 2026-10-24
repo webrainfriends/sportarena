@@ -18,7 +18,7 @@ export async function buildPassport(userId, scope = { show_matches: true, show_r
   const u = await one(`SELECT ${PUBLIC_USER.replace('u.roles, ', '')} FROM users u WHERE u.id=$1`, [userId]);
   const [profiles, activity, results, awards, credentials] = await Promise.all([
     many(`SELECT s.slug AS sport_slug, s.name AS sport, s.emoji AS sport_emoji, p.role, p.level, p.position, p.jersey_no, p.club, p.experience_years, p.is_default
-            FROM sport_profiles p JOIN sports s ON s.id=p.sport_id WHERE p.user_id=$1 ORDER BY p.is_default DESC, p.created_at, p.id`, [userId]),
+            FROM active_sport_profiles p JOIN sports s ON s.id=p.sport_id WHERE p.user_id=$1 ORDER BY p.is_default DESC, p.created_at, p.id`, [userId]),
     scope.show_matches ? many(
       `${ACTIVITIES_CTE}
        SELECT extract(year FROM a.played_on)::int AS season, s.slug AS sport_slug, count(*)::int AS matches,

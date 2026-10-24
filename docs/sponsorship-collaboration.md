@@ -5,7 +5,7 @@ It reuses the canonical access rules (`sponsor-access.js` live roles, `sponsor-b
 comments for agreement discussion, and `notify()` (#243: per-user mute and channel preferences, per-recipient dedupe). No second agreement,
 identity or notification system.
 
-## Data (migration `100_sponsorship_collaboration.sql`, additive)
+## Data (migrations `100_sponsorship_collaboration.sql` and `102_sponsorship_collaboration_threads.sql`, additive)
 * `sponsorship_tasks`: belongs to exactly one agreement **or** one program, and to one `side` (`sponsor` / `recipient`); `visibility` `internal`
   (owning side only) or `shared` (both sides read, only the owner edits); `kind` task / review / expiry; assignee, `due_on`, `remind_days`,
   `status` open / done / cancelled, `row_version`, `reminder_cycle`, escalation fields. A program task is always sponsor-side and internal (CHECK).
