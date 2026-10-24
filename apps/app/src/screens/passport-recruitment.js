@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Linking, Platform, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
@@ -23,6 +23,26 @@ export async function openFile(url) {
   a.href = URL.createObjectURL(blob); a.target = '_blank'; a.rel = 'noopener'; a.click();
 }
 
+/** Plays a video inside the app: a YouTube/Vimeo link in an embedded player, an uploaded clip from a blob fetched with the viewer's own sign-in. */
+export function VideoPlayer({ video }) {
+  const { toast } = useSession();
+  const [src, setSrc] = useState(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => () => { if (src) URL.revokeObjectURL(src); }, [src]);
+  const web = Platform.OS === 'web';
+  const frame = { width: '100%', aspectRatio: '16 / 9', border: 0, borderRadius: 14, background: '#0F172A', display: 'block' };
+  if (video.embed_url && web) return React.createElement('iframe', { src: video.embed_url, title: video.title, style: frame, allow: 'accelerometer; encrypted-media; picture-in-picture; fullscreen', allowFullScreen: true, loading: 'lazy', referrerPolicy: 'strict-origin-when-cross-origin' });
+  if (video.file_url && web) {
+    if (src) return React.createElement('video', { src, controls: true, autoPlay: true, playsInline: true, 'aria-label': video.title, style: { ...frame, objectFit: 'contain' } });
+    const load = async () => {
+      setBusy(true);
+      try { setSrc(URL.createObjectURL(await api.download(String(video.file_url).replace(/^\/api\/v1/, '')))); } catch (e) { toast(e.message); } finally { setBusy(false); }
+    };
+    return <Btn small title={busy ? 'Loading…' : '▶ Play clip'} onPress={load} disabled={busy} style={{ alignSelf: 'flex-start' }} />;
+  }
+  return video.link_url ? <Btn small title="Open video" color={c.paper} ink={c.ink} onPress={() => Linking.openURL(video.link_url)} style={{ alignSelf: 'flex-start' }} /> : <T size={12} color={c.mute}>Open this clip on the web version to play it.</T>;
+}
+
 /** Recruitment sections of a shared passport: only what the athlete's link shows, with who vouched for it. */
 export function RecruitmentSections({ data }) {
   const toast = useSession()?.toast ?? (() => {});
@@ -38,7 +58,7 @@ export function RecruitmentSections({ data }) {
             <View key={v.id} style={{ marginTop: 10, gap: 4 }}>
               <T weight="700">{v.title}</T>
               <T size={12} color={c.mute}>{[v.sport_slug && nice(v.sport_slug), v.approved_by && `approved by ${v.approved_by}`].filter(Boolean).join(' · ')}</T>
-              <Btn small title={v.file_url ? 'Watch clip' : 'Open video'} color={c.paper} ink={c.ink} onPress={() => (v.file_url ? open(v.file_url) : Linking.openURL(v.link_url))} style={{ alignSelf: 'flex-start' }} />
+              <VideoPlayer video={v} />
             </View>
           ))}
         </Card>
@@ -96,12 +116,13 @@ export function RecruitmentSections({ data }) {
   );
 }
 
-const Row = ({ title, sub, tag, children }) => (
+const Row = ({ title, sub, tag, above, children }) => (
   <Card pad={12} color={c.paper} style={{ marginTop: 8 }}>
     <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
       <View style={{ flex: 1 }}><T weight="700">{title}</T>{sub ? <T size={12} color={c.mute}>{sub}</T> : null}</View>
       {tag ? <Tag label={tag[0]} color={tag[1]} /> : null}
     </View>
+    {above ? <View style={{ marginTop: 8 }}>{above}</View> : null}
     {children ? <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>{children}</View> : null}
   </Card>
 );
@@ -145,10 +166,10 @@ export function RecruitmentProfile() {
       <H2 style={{ marginTop: 26 }}>Recruitment profile</H2>
       <T size={12} color={c.mute} style={{ marginTop: 2 }}>Add what recruiters ask for. Nothing is shared until you switch it on for a link, and videos and references only count once approved.</T>
 
-      <Block title="Video" sub="A coach who coaches you must approve each clip." state={videos} empty={['🎬', 'No videos yet', 'Upload a short clip (MP4, MOV or WebM, up to 10 MB) or add a link.']}
+      <Block title="Video" sub="A coach who coaches you must approve each clip." state={videos} empty={['🎬', 'No videos yet', 'Upload a clip (MP4, MOV or WebM, up to 50 MB) or add a YouTube or Vimeo link.']}
         action={<View style={{ flexDirection: 'row', gap: 6 }}><Btn small title={busy ? 'Uploading…' : 'Upload'} onPress={uploadClip} disabled={busy} /><Btn small title="Link" color={c.paper} ink={c.ink} onPress={() => setForm('video')} /></View>}>
         {videos.data?.map((v) => (
-          <Row key={v.id} title={v.title} sub={[v.has_file ? 'uploaded clip' : 'link', v.review_note].filter(Boolean).join(' · ')} tag={STATUS[v.status]}>
+          <Row key={v.id} title={v.title} sub={[v.has_file ? 'uploaded clip' : 'link', v.review_note].filter(Boolean).join(' · ')} tag={STATUS[v.status]} above={<VideoPlayer video={v.has_file ? { ...v, file_url: `/passport-videos/${v.id}/file` } : v} />}>
             <Btn small title="Remove" color={c.paper} ink={c.red} onPress={() => act(() => api.del(`/me/passport-videos/${v.id}`), 'Video removed', videos)} />
           </Row>
         ))}
@@ -190,7 +211,7 @@ export function RecruitmentProfile() {
       </Block>
 
       {form === 'video' ? <FormSheet visible onClose={() => setForm(null)} title="Add a video link" submitLabel="Add" fields={[
-        { key: 'title', label: 'Title' }, { key: 'link_url', label: 'Link (https)', type: 'url' }, { key: 'sport_slug', label: 'Sport', type: 'sport', optional: true }]}
+        { key: 'title', label: 'Title' }, { key: 'link_url', label: 'YouTube or Vimeo link', type: 'url', hint: 'It plays inside the app. For other hosts, upload the clip instead.' }, { key: 'sport_slug', label: 'Sport', type: 'sport', optional: true }]}
         onSubmit={async (v) => { await api.post('/me/passport-videos', { title: v.title, link_url: v.link_url, sport_slug: v.sport_slug || undefined }); await videos.reload(); return 'Added. A coach needs to approve it.'; }} /> : null}
       {form === 'prefs' ? <FormSheet visible onClose={() => setForm(null)} title="What I'm looking for" submitLabel="Save"
         initial={{ sport_slugs: pf?.sport_slugs ?? [], levels: pf?.levels ?? [], regions: pf?.regions ?? [], open_to: pf?.open_to ?? [], open_to_contact: !!pf?.open_to_contact, notes: pf?.notes ?? '' }}
@@ -229,13 +250,11 @@ export function CoachPassportDesk() {
   const [form, setForm] = useState(false);
   if (!user?.roles?.includes('coach')) return null;
   const decide = async (v, decision) => { try { await api.post(`/passport-videos/${v.id}/review`, { version: v.version, decision }); toast(decision === 'approved' ? 'Video approved' : 'Video not approved'); await q.reload(); } catch (e) { toast(e.message); } };
-  const see = (v) => (v.link_url ? Linking.openURL(v.link_url) : openFile(`/passport-videos/${v.id}/file`).catch((e) => toast(e.message)));
   return (
     <Block title="Athletes you coach" sub="Approve clips that show the athlete, and write references they can share." state={q} empty={['🎬', 'Nothing to review', 'Clips from athletes you coach will appear here.']}
       action={<Btn small title="Write a reference" onPress={() => setForm(true)} />}>
       {q.data?.map((v) => (
-        <Row key={v.id} title={v.title} sub={`${v.athlete_name} (@${v.athlete_handle}) · ${v.has_file ? 'uploaded clip' : 'link'}`}>
-          <Btn small title="Watch" color={c.paper} ink={c.ink} onPress={() => see(v)} />
+        <Row key={v.id} title={v.title} sub={`${v.athlete_name} (@${v.athlete_handle}) · ${v.has_file ? 'uploaded clip' : 'link'}`} above={<VideoPlayer video={v.has_file ? { ...v, file_url: `/passport-videos/${v.id}/file` } : v} />}>
           <Btn small title="Approve" onPress={() => decide(v, 'approved')} />
           <Btn small title="Reject" color={c.paper} ink={c.red} onPress={() => decide(v, 'rejected')} />
         </Row>

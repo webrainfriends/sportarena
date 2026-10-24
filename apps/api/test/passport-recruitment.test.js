@@ -47,11 +47,16 @@ test('video and coach references reach a recipient only after the right person a
   const { coach, a } = await coachedAthlete();
   const stranger = await signup(['coach']);
 
-  const link = ok(await post(a.token, '/me/passport-videos', { title: 'Match highlights', link_url: 'https://video.example.com/h1', sport_slug: 'football' }), 201);
-  assert.equal((await post(a.token, '/me/passport-videos', { title: 'x', link_url: 'http://insecure.example.com/v' })).status, 400, 'https only');
-  assert.equal((await post(a.token, '/me/passport-videos', { title: 'Match highlights', link_url: 'https://video.example.com/h1' })).status, 409, 'the same link twice is one video');
+  const link = ok(await post(a.token, '/me/passport-videos', { title: 'Match highlights', link_url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', sport_slug: 'football' }), 201);
+  assert.equal(link.embed_url, 'https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ', 'a YouTube link plays in an embedded player');
+  assert.equal((await post(a.token, '/me/passport-videos', { title: 'x', link_url: 'https://evil.example.com/watch?v=dQw4w9WgXcQ' })).status, 400, 'only YouTube and Vimeo links');
+  assert.equal(ok(await post(a.token, '/me/passport-videos', { title: 'Vimeo', link_url: 'https://vimeo.com/123456789' }), 201).embed_url, 'https://player.vimeo.com/video/123456789');
+  assert.equal((await post(a.token, '/me/passport-videos', { title: 'x', link_url: 'http://www.youtube.com/watch?v=dQw4w9WgXcQ' })).status, 400, 'https only');
+  assert.equal((await post(a.token, '/me/passport-videos', { title: 'Match highlights', link_url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' })).status, 409, 'the same link twice is one video');
   const up = ok(await call('PUT', '/me/passport-videos/upload?title=Clip&sport_slug=football', { token: a.token, raw: MP4 }), 201);
   assert.equal((await call('PUT', '/me/passport-videos/upload?title=Bad', { token: a.token, raw: PDF })).status, 400, 'bytes decide the type, a PDF is not a video');
+  ok(await call('PUT', '/me/passport-videos/upload?title=Big', { token: a.token, raw: Buffer.concat([MP4, Buffer.alloc(20 * 2 ** 20, 2)]) }), 201); // above the 10 MB document limit
+  assert.equal((await call('PUT', '/me/passport-videos/upload?title=Huge', { token: a.token, raw: Buffer.concat([MP4, Buffer.alloc(51 * 2 ** 20, 2)]) })).status, 413, 'clips are capped at 50 MB');
 
   const ref = ok(await post(coach.token, `/athletes/${a.id}/passport-references`, { body: 'Hard working striker with great attitude and leadership qualities.', sport_slug: 'football' }), 201);
   assert.equal((await post(stranger.token, `/athletes/${a.id}/passport-references`, { body: 'Never coached this athlete at all, honestly.' })).status, 403);
@@ -65,7 +70,7 @@ test('video and coach references reach a recipient only after the right person a
   // only a coach of the athlete may approve; versions guard double decisions
   assert.equal((await post(stranger.token, `/passport-videos/${link.id}/review`, { version: 1, decision: 'approved' })).status, 404);
   const queue = ok(await get(coach.token, '/coach/passport-videos'));
-  assert.equal(queue.length, 2);
+  assert.equal(queue.length, 4);
   ok(await post(coach.token, `/passport-videos/${link.id}/review`, { version: 1, decision: 'approved' }));
   assert.equal((await post(coach.token, `/passport-videos/${link.id}/review`, { version: 1, decision: 'rejected' })).status, 409, 'stale decision refused');
   ok(await post(coach.token, `/passport-videos/${up.id}/review`, { version: 1, decision: 'approved' }));
@@ -105,7 +110,7 @@ test('video and coach references reach a recipient only after the right person a
   assert.equal((await call('GET', `/passport/${encodeURIComponent(l2.token)}`)).status, 404);
   assert.equal((await call('PATCH', `/me/passport-links/${l2.id}`, { token: a.token, body: { version: 1, label: 'x' } })).status, 409, 'an expired link cannot be edited back to life');
   // nothing was deleted
-  assert.equal((await pool.query('SELECT count(*)::int AS n FROM passport_videos WHERE user_id=$1', [a.id])).rows[0].n, 3 - 1);
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM passport_videos WHERE user_id=$1', [a.id])).rows[0].n, 4);
 });
 
 test('a link addressed to one person opens only for that signed-in person', async () => {

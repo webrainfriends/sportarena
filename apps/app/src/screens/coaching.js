@@ -115,7 +115,7 @@ export function IconGrid({ items, value, onChange, cols = 4, tint = c.pinkSoft }
 /** The coach's tools as one tidy grid (desk, board, athletes, profile, schedule, rates, commitments, reviews, analytics, courts…). */
 export function CoachToolGrid({ push, counts = {} }) {
   const tools = [
-    ['🗂️', 'Desk', 'CoachDesk'], ['📬', 'Request board', 'CoachBoard', counts.board], ['🏃', 'Athletes', 'CoachAthletes'], ['🪪', 'Profile & hours', 'CoachSetup'],
+    ['🗂️', 'Desk', 'CoachDesk'], ['📬', 'Request board', 'CoachBoard', counts.board], ['🏃', 'Athletes', 'CoachAthletes'], ['🎬', 'Recruitment', 'PassportDesk'], ['🪪', 'Profile & hours', 'CoachSetup'],
     ['📅', 'Schedule', 'CoachCalendar'], ['🏫', 'Academy week', 'AcademyAgenda'], ['🏷️', 'Rate cards', 'CoachRates'], ['📑', 'Commitments', 'CoachCommitments'], ['⭐', 'Reviews', 'CoachReviews', counts.reviews],
     ['🧠', 'Performance Studio', 'PerformanceStudio'], ['📏', 'Rubrics', 'CoachRubrics'], ['📈', 'Analytics', 'CoachAnalytics'], ['📝', 'Training plans', 'MyPlans', null, { as: 'coach' }], ['📍', 'Courts', 'TrainingVenue', counts.courts], ['🔁', 'Recurring booking', 'RecurringVenue'],
   ];
