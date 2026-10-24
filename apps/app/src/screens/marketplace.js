@@ -102,12 +102,17 @@ const KIND = {
   sponsor_call: ['Sponsor call', c.lime, c.limeSoft, "I'm interested"],
 };
 
+const PIPELINE_KINDS = ['match_players', 'team_recruiting', 'coach_wanted'];
+
 function PostResponses({ post, onChanged }) {
+  const { push } = useNav();
   const { toast } = useSession();
   const r = useLoad(() => api.get(`/billboard/${post.id}/responses`), [post.id]);
   const decide = async (x, status) => { try { await api.patch(`/billboard/responses/${x.response_id}`, { status }); await r.reload(); onChanged(); toast(status === 'accepted' ? 'Accepted' : 'Declined'); } catch (e) { toast(e.message); } };
   if (r.loading && !r.data) return <Loading />;
   if (!r.data?.length) return <T size={13} color={c.mute}>No responses yet.</T>;
+  // player and coach posts run as a recruitment pipeline: shortlist, trial, evaluation, versioned offer
+  if (PIPELINE_KINDS.includes(post.kind)) return <Btn small title={`Open recruitment pipeline (${r.data.length})`} onPress={() => push('RecruitmentPipeline', { id: post.id })} />;
   return (
     <View style={{ gap: 10 }}>
       {r.data.map((x) => (
@@ -251,8 +256,14 @@ export function Billboard() {
       ) : null}
       {resp ? (
         <FormSheet visible onClose={() => setResp(null)} title={KIND[resp.kind][3]} submitLabel="Send"
-          fields={[{ key: 'message', label: 'Message', optional: true, type: 'multiline', placeholder: 'Position, experience, availability…' }]}
-          onSubmit={async (v) => { await api.post(`/billboard/${resp.id}/responses`, v); await posts.reload(); return 'Sent'; }} />
+          fields={[
+            { key: 'message', label: 'Message', optional: true, type: 'multiline', placeholder: 'Position, experience, availability…' },
+            ...(PIPELINE_KINDS.includes(resp.kind) ? [
+              { key: 'source_kind', label: 'Evidence', type: 'chips', optional: true, options: [{ value: 'passport', label: 'Player passport' }, { value: 'video', label: 'Highlights video' }, { value: 'profile', label: 'Profile' }, { value: 'other', label: 'Other' }] },
+              { key: 'source_url', label: 'Link', optional: true, placeholder: 'https://…', input: 'url', hint: 'Only staff running this post can open it, and every open is logged.', show: (x) => !!x.source_kind },
+            ] : []),
+          ]}
+          onSubmit={async (v) => { await api.post(`/billboard/${resp.id}/responses`, { ...v, source_kind: v.source_url ? v.source_kind : undefined, idempotency_key: `web-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}` }); await posts.reload(); return 'Sent'; }} />
       ) : null}
     </Screen>
   );

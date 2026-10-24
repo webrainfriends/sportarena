@@ -16,12 +16,14 @@ import { RELATIONSHIP_SQL } from '../coaching.js';
 import { DOC_LIMITS, docHeaders, loadEncrypted, readBody, saveEncrypted, sniffDoc } from '../doc-store.js';
 import { sniff } from '../media.js';
 import { sha256 } from '../crypto.js';
-import { coachesAthlete, openLink } from '../passport-sections.js';
+import { coachesAthlete, openLink, videoEmbed, withEmbed } from '../passport-sections.js';
 
 // Recruitment evidence behind the player passport (issue #312). The athlete owns every row; coaches approve videos and write references;
 // nothing reaches a recipient until the right person approved it. Files are encrypted on disk and never deleted - removing only hides.
 const TAG = 'Passport';
 const STALE = { code: 'stale_version' };
+const VIDEO_BYTES = 50 * 2 ** 20; // uploaded clips: separate from the 10 MB document limit
+
 const sportId = async (slug) => {
   if (!slug) return null;
   const s = await one('SELECT id FROM sports WHERE slug=$1', [slug]);
@@ -35,17 +37,17 @@ const VIDEO_COLS = 'v.id, v.title, s.slug AS sport_slug, v.link_url, (v.file_nam
 
 cap({
   name: 'list_my_passport_videos', method: 'GET', path: '/me/passport-videos', tag: TAG,
-  summary: 'Your recruitment videos and where each is in approval (pending, approved or rejected). Only approved videos can appear on a shared passport. Upload a clip with PUT /me/passport-videos/upload?title= (raw MP4, MOV or WebM, up to 10 MB) or add a link below.',
+  summary: 'Your recruitment videos and where each is in approval (pending, approved or rejected). Only approved videos can appear on a shared passport. Upload a clip with PUT /me/passport-videos/upload?title= (raw MP4, MOV or WebM, up to 50 MB) or add a YouTube or Vimeo link.',
   input: z.object({ ...page }),
-  handler: ({ user }, i) => many(`SELECT ${VIDEO_COLS} FROM passport_videos v LEFT JOIN sports s ON s.id=v.sport_id WHERE v.user_id=$1 AND v.removed_at IS NULL ORDER BY v.created_at DESC, v.id LIMIT $2 OFFSET $3`, [user.id, i.limit, i.offset]),
+  handler: async ({ user }, i) => (await many(`SELECT ${VIDEO_COLS} FROM passport_videos v LEFT JOIN sports s ON s.id=v.sport_id WHERE v.user_id=$1 AND v.removed_at IS NULL ORDER BY v.created_at DESC, v.id LIMIT $2 OFFSET $3`, [user.id, i.limit, i.offset])).map(withEmbed),
 });
 
 cap({
   name: 'add_passport_video_link', method: 'POST', path: '/me/passport-videos', tag: TAG, status: 201,
-  summary: 'Add a recruitment video by https link. It stays pending until a coach who coaches you approves it.',
-  input: z.object({ title: z.string().trim().min(1).max(120), link_url: z.string().trim().url().max(500).refine((u) => u.startsWith('https://'), 'Use an https link'), sport_slug: z.string().max(60).optional() }),
+  summary: 'Add a recruitment video by YouTube or Vimeo link (it plays inside the app). It stays pending until a coach who coaches you approves it.',
+  input: z.object({ title: z.string().trim().min(1).max(120), link_url: z.string().trim().url().max(500).refine((u) => u.startsWith('https://'), 'Use an https link').refine((u) => !!videoEmbed(u), 'Use a YouTube or Vimeo video link'), sport_slug: z.string().max(60).optional() }),
   async handler({ user }, i) {
-    return one(`INSERT INTO passport_videos(user_id, sport_id, title, link_url) VALUES ($1,$2,$3,$4) RETURNING id, title, link_url, status, version, created_at`, [user.id, await sportId(i.sport_slug), i.title, i.link_url]);
+    return one(`INSERT INTO passport_videos(user_id, sport_id, title, link_url) VALUES ($1,$2,$3,$4) RETURNING id, title, link_url, status, version, created_at`, [user.id, await sportId(i.sport_slug), i.title, i.link_url]).then(withEmbed);
   },
 });
 
@@ -63,13 +65,13 @@ cap({
   name: 'list_passport_video_reviews', method: 'GET', path: '/coach/passport-videos', tag: TAG, auth: ['coach'],
   summary: 'Pending recruitment videos from athletes you coach (teammates you coach or people you have a hire, cohort or plan with), oldest first, for you to approve or reject.',
   input: z.object({ ...page }),
-  handler: ({ user }, i) => many(
+  handler: async ({ user }, i) => (await many(
     `SELECT v.id, v.title, s.slug AS sport_slug, v.link_url, (v.file_name IS NOT NULL) AS has_file, v.version, v.created_at, u.id AS athlete_id, u.display_name AS athlete_name, u.handle AS athlete_handle
        FROM passport_videos v JOIN users u ON u.id=v.user_id LEFT JOIN sports s ON s.id=v.sport_id
       WHERE v.status='pending' AND v.removed_at IS NULL AND (
             EXISTS (SELECT 1 FROM team_members a JOIN team_members c ON c.team_id=a.team_id WHERE a.user_id=v.user_id AND c.user_id=$1 AND a.status='active' AND c.status='active' AND c.role IN ('coach','manager'))
          OR EXISTS (SELECT 1 FROM (${RELATIONSHIP_SQL}) r WHERE r.coach_id=$1 AND r.athlete_id=v.user_id))
-      ORDER BY v.created_at, v.id LIMIT $2 OFFSET $3`, [user.id, i.limit, i.offset]),
+      ORDER BY v.created_at, v.id LIMIT $2 OFFSET $3`, [user.id, i.limit, i.offset])).map(withEmbed),
 });
 
 cap({
@@ -236,13 +238,18 @@ export function passportFilesRouter() {
     return buf;
   };
 
-  // PUT /api/v1/me/passport-videos/upload?title=&sport_slug=   body = the raw clip
+  // PUT /api/v1/me/passport-videos/upload?title=&sport_slug=   body = the raw clip (up to 50 MB)
   r.put('/me/passport-videos/upload', limiter, async (req, res) => {
     try {
       const user = await who(req); requireApproved(user);
       const title = String(req.query.title ?? '').trim().slice(0, 120);
       if (!title) throw badRequest('Give the video a title');
-      const buf = await body(req);
+      const tooBig = () => new AppError(413, 'too_large', `Clips can be up to ${VIDEO_BYTES / 2 ** 20} MB; add a YouTube or Vimeo link for longer ones`);
+      if (Number(req.headers['content-length'] ?? 0) > VIDEO_BYTES) throw tooBig();
+      const chunks = []; let size = 0;
+      for await (const chunk of req) { size += chunk.length; if (size > VIDEO_BYTES) throw tooBig(); chunks.push(chunk); }
+      const buf = Buffer.concat(chunks);
+      if (!buf.length) throw badRequest('Empty upload');
       const t = sniff(buf);
       if (!t || t.kind !== 'video') throw badRequest('Unsupported file. Use an MP4, MOV or WebM video.');
       if ((await one('SELECT count(*)::int AS n FROM passport_videos WHERE user_id=$1 AND removed_at IS NULL', [user.id])).n >= 10) throw badRequest('You can keep up to 10 videos; remove one first');

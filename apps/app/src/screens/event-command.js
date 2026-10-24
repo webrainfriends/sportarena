@@ -17,6 +17,7 @@ import { BoardTab } from './event-board';
 import { FixturesTab } from './match-centre';
 import { ResultsTab } from './event-results';
 import { TeamsTab } from './event-teams';
+import { TrialsTab } from './event-trials';
 import { HiringTab } from './event-hiring';
 import { BusinessTab, MoneyTiles } from './event-business';
 import { EventVenues } from './event-venues';
@@ -87,6 +88,7 @@ export function EventCommand({ id, tab: first = 'overview' }) {
   const waiting = D.plan.data?.requests?.waiting_for_you?.length || undefined;
   const tabs = [
     { key: 'overview', label: 'Overview', icon: '🏁' },
+    ...(e.kind === 'trial' ? [{ key: 'trial', label: 'Trial', icon: '🎽' }] : []),
     ...(isOrg ? [{ key: 'teams', label: 'Teams', icon: '👥', badge: (D.inv.data ?? []).filter((n) => n.status === 'invited').length || undefined }] : []),
     { key: 'people', label: 'People', icon: '🧩' },
     { key: 'boards', label: 'Boards', icon: '🗂️' },
@@ -118,6 +120,7 @@ export function EventCommand({ id, tab: first = 'overview' }) {
 
       <ATabs tabs={tabs} value={tab} onChange={setTab} />
       {tab === 'overview' && <Overview {...P} D={D} games={games} accepted={accepted} money={money} />}
+      {tab === 'trial' && e.kind === 'trial' && <TrialsTab id={id} isOrg={isOrg} />}
       {tab === 'teams' && isOrg && <TeamsTab {...P} accepted={accepted} inv={D.inv.data ?? []} seeds={D.seeds.data ?? []} />}
       {tab === 'people' && (
         <>

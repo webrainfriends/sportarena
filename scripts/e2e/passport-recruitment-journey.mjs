@@ -59,7 +59,7 @@ try {
   await p.context().close();
 
   // 2. athlete adds evidence through the API (the same calls the forms make), coach approves, athlete approves the reference
-  await call('POST', '/me/passport-videos', { token: ath.token, body: { title: 'Match highlights', link_url: 'https://video.example.com/h1', sport_slug: 'football' } });
+  await call('POST', '/me/passport-videos', { token: ath.token, body: { title: 'Match highlights', link_url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', sport_slug: 'football' } });
   const v = (await call('GET', '/me/passport-videos', { token: ath.token }))[0];
   await call('POST', '/me/recruitment-preferences', { token: ath.token, body: { version: 0, sport_slugs: ['football'], levels: ['semi_pro'], regions: ['Mumbai'], open_to: ['scholarship', 'trial'], open_to_contact: true, notes: 'Open to relocate' } });
   await call('POST', '/me/recruitment-availability', { token: ath.token, body: { kind: 'trial', from_date: day(5), to_date: day(12), weekdays: [6, 0], from_time: '09:00', to_time: '12:00' } });
@@ -70,6 +70,7 @@ try {
   const { page: c } = await session(coach, { width: 390, height: 844 });
   await openPassport(c); await c.getByText('Recruitment', { exact: true }).first().click(); await c.waitForTimeout(2000); await shot(c, '02-coach-desk');
   check(await c.getByText('Match highlights').first().isVisible(), 'coach sees the pending clip of an athlete they coach');
+  check(await c.locator('iframe[src*="youtube-nocookie.com/embed/dQw4w9WgXcQ"]').count() === 1, 'the coach reviews the linked video in an in-app player');
   await c.getByText('Approve', { exact: true }).first().click(); await c.waitForTimeout(1500);
   check((await pg.query("SELECT status FROM passport_videos WHERE id=$1", [v.id])).rows[0].status === 'approved', 'approving in the UI approves the clip');
   await c.context().close();
@@ -94,6 +95,7 @@ try {
     await s.goto(`http://localhost:4100/?passport=${encodeURIComponent(link.token)}`); await s.waitForTimeout(3000); await shot(s, `06-recipient-${n}`);
     check(await s.getByText('Coach references').first().isVisible() && await s.getByText('Looking for').first().isVisible() && await s.getByText('Academic evidence').first().isVisible(), `${n}: the scout sees video, reference, preferences, availability and academic evidence`);
     check(await s.getByText(/self-reported, not verified/).first().isVisible(), `${n}: academic items are labelled self-reported`);
+    check(await s.locator('iframe[src*="youtube-nocookie.com"]').count() === 1, `${n}: the recipient plays the linked video inside the passport`);
     await s.context().close();
   }
   // 4. revoke from the athlete's screen: the same URL now fails for the scout
