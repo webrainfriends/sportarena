@@ -58,7 +58,6 @@ export async function buildPassport(userId, scope = { show_matches: true, show_r
   };
 }
 
-const scopeOf = (l) => ({ show_matches: l.show_matches, show_results: l.show_results, show_awards: l.show_awards, show_credentials: l.show_credentials, show_career: l.show_career });
 
 cap({
   name: 'create_passport_link', method: 'POST', path: '/me/passport-links', tag: TAG, status: 201,
