@@ -788,3 +788,15 @@ test('trial slots: full sessions never hide later ones with free seats', async (
   assert.equal(out.slots.length, 1);   // only the last session still has a seat, even though 41 full ones come first
   assert.equal(out.slots[0].id, slots[41].id);
 });
+
+test('a trial booked before timetable seats existed can still be completed or cancelled', async () => {
+  const a = await academy({ capacity: 10 });
+  const u = await adult(), v = await adult();
+  const t = await requestTrial(u, a), w = await requestTrial(v, a);
+  // what the old manual "book the trial" step left behind: the stage, no seat
+  await pool.query("UPDATE academy_applications SET stage='trial_booked', row_version=row_version+1 WHERE id = ANY($1)", [[t.id, w.id]]);
+  const done = must(await api('POST', `/academy/applications/${t.id}/trial/outcome`, { token: a.owner.token, body: { row_version: (await appRow(t.id)).row_version, outcome: 'attended' } }));
+  assert.equal(done.stage, 'trial_completed');
+  const gone = must(await api('POST', `/academy/applications/${w.id}/trial/cancel`, { token: v.token, body: { row_version: (await appRow(w.id)).row_version } }));
+  assert.equal(gone.stage, 'trial_requested');
+});

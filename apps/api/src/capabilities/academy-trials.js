@@ -98,9 +98,9 @@ cap({
     if (a.row_version !== i.row_version) throw stale();
     if (a.stage !== 'trial_booked') throw conflict('There is no booked trial to cancel');
     const seat = await seatOf(c, a.id);
-    if (!seat) throw conflict('There is no booked trial to cancel');
-    if (seat.status !== 'expected') throw conflict('This trial has already been recorded');
-    await releaseApplicationSeat(c, a.id, user.id, i.reason ?? 'Trial seat released');
+    if (seat && seat.status !== 'expected') throw conflict('This trial has already been recorded');
+    // a trial booked before trials had timetable seats has no seat to release: the application simply goes back to "trial requested"
+    if (seat) await releaseApplicationSeat(c, a.id, user.id, i.reason ?? 'Trial seat released');
     const row = await moveStage(c, a, 'trial_requested', { actor: user.id, reason: i.reason ?? 'Trial seat released' });
     return { application_id: row.id, row_version: row.row_version, stage: row.stage };
   }),
@@ -116,7 +116,10 @@ cap({
     if (a.row_version !== i.row_version) throw stale();
     if (a.stage !== 'trial_booked') throw conflict('This trial is not booked');
     const seat = await seatOf(c, a.id);
-    if (!seat) throw conflict('This trial has no booked session');
+    if (!seat) {   // a trial booked before trials had timetable seats: record the outcome on the application itself, with who and why
+      const row = await moveStage(c, a, i.outcome === 'attended' ? 'trial_completed' : 'trial_requested', { actor: user.id, reason: i.note ?? (i.outcome === 'attended' ? 'Attended the trial (booked before timetable seats)' : 'Did not attend the trial') });
+      return { application_id: row.id, row_version: row.row_version, stage: row.stage };
+    }
     const s = (await c.query('SELECT * FROM academy_sessions WHERE id=$1', [seat.session_id])).rows[0];
     if (new Date(s.starts_at).getTime() - 3600e3 > Date.now()) throw conflict('The trial has not started yet');
     await markAttendance(c, s, a.athlete_id, i.outcome === 'attended' ? 'present' : 'absent', { source: 'staff', actor: user.id, reason: i.note ?? 'Recorded from the application', reason_code: i.outcome === 'no_show' ? 'other' : undefined });
