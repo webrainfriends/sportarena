@@ -101,9 +101,10 @@ export async function dealContext(c, sponsorshipId, user, { lock = false, write 
   const role = access ? 'sponsor' : (beneficiary ? beneficiary.any : user.id === recipientId || !!guardian) ? 'recipient' : isAdmin(user) ? 'admin' : null;
   if (!role) throw forbidden('You are not part of this sponsorship');
   const minorSelf = youth && !access && user.id === recipientId;
-  if (minorSelf && write && !minorMayAct && (await guardiansOf(recipientId, c)).length) throw forbidden('Your guardian manages this sponsorship for you; you can read it but not act on it');
+  const minorBlocked = minorSelf && (await guardiansOf(recipientId, c)).length > 0; // read-only while a verified guardian exists
+  if (minorBlocked && write && !minorMayAct) throw forbidden('Your guardian manages this sponsorship for you; you can read it but not act on it');
   // sp.owner_id is who gets notified: an active owner of the sponsor entity, never someone who has left
-  return { d, sp: { ...sp, owner_id: await sponsorContactUser(c, sp) }, recipientId, role, beneficiary, youth, guardian: !!guardian, minorSelf, staff: access?.role, need: (action, what) => assertSponsorCan(access, action, { departmentId: d.department_id, what }) };
+  return { d, sp: { ...sp, owner_id: await sponsorContactUser(c, sp) }, recipientId, role, beneficiary, youth, guardian: !!guardian, minorSelf, minorBlocked, staff: access?.role, need: (action, what) => assertSponsorCan(access, action, { departmentId: d.department_id, what }) };
 }
 
 /** Obligation + its deal, locking the obligation row so concurrent payments/deliveries serialise. */

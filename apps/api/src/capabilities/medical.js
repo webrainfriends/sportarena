@@ -27,7 +27,7 @@ cap({
   name: 'list_providers', method: 'GET', path: '/providers', tag: 'Health', auth: 'public', summary: 'Find physios and doctors, optionally by sport.',
   input: z.object({ role: z.enum(['physio', 'doctor']).optional(), sport: z.string().optional(), ...page }),
   handler: (_, i) => many(
-    `SELECT ${PUBLIC_USER}, p.role AS provider_role, p.hourly_rate_cents, s.name AS sport, s.emoji AS sport_emoji, p.level FROM sport_profiles p JOIN users u ON u.id=p.user_id JOIN sports s ON s.id=p.sport_id
+    `SELECT ${PUBLIC_USER}, p.role AS provider_role, p.hourly_rate_cents, s.name AS sport, s.emoji AS sport_emoji, p.level FROM active_sport_profiles p JOIN users u ON u.id=p.user_id JOIN sports s ON s.id=p.sport_id
       WHERE p.role IN ('physio','doctor') AND ($1::text IS NULL OR p.role=$1) AND ($2::text IS NULL OR s.slug=$2) ORDER BY u.display_name LIMIT $3 OFFSET $4`, [i.role ?? null, i.sport ?? null, i.limit, i.offset]),
 });
 
@@ -38,7 +38,7 @@ cap({
   async handler({ user }, i) {
     if (i.provider_id === user.id) throw badRequest('Cannot book yourself');
     await requireConsent(user.id, 'medical', 'booking a health appointment');
-    const p = await one("SELECT 1 FROM sport_profiles WHERE user_id=$1 AND role IN ('physio','doctor') UNION SELECT 1 FROM provider_profiles WHERE user_id=$1", [i.provider_id]);
+    const p = await one("SELECT 1 FROM active_sport_profiles WHERE user_id=$1 AND role IN ('physio','doctor') UNION SELECT 1 FROM provider_profiles WHERE user_id=$1", [i.provider_id]);
     if (!p) throw badRequest('That person is not a registered physio or doctor');
     if (Date.parse(i.starts_at) < Date.now()) throw badRequest('Choose a time in the future');
     await requireVerifiedProvider(i.provider_id, { action: 'book_appointment', athleteId: user.id, forOther: true });
@@ -69,7 +69,7 @@ cap({
       // price: the provider's consultation fee, else the hourly rate on their sport profile for this length
       let fee = pkg ? 0 : svc ? Number(svc.price_cents) - (best?.amount ?? 0) : prof?.consult_fee_cents == null ? null : Number(prof.consult_fee_cents);
       if (fee === null) {
-        const rate = Number((await c.query("SELECT min(hourly_rate_cents) AS r FROM sport_profiles WHERE user_id=$1 AND role IN ('physio','doctor') AND hourly_rate_cents > 0", [i.provider_id])).rows[0].r ?? 0);
+        const rate = Number((await c.query("SELECT min(hourly_rate_cents) AS r FROM active_sport_profiles WHERE user_id=$1 AND role IN ('physio','doctor') AND hourly_rate_cents > 0", [i.provider_id])).rows[0].r ?? 0);
         fee = Math.round((rate * i.duration_min) / 60);
       }
       const slot = await isBookable(i.provider_id, i.starts_at, i.duration_min, c);
@@ -150,7 +150,7 @@ cap({
   summary: 'Consent: let a physio/doctor see your records (scope `full`, can also write) or only your fit-to-play status (scope `clearance`). Optionally for a limited number of days. By default the provider sees records they write plus anything written from now on; choose history `all` to share earlier records too. You can revoke at any time; the history of grants and revocations is kept.',
   input: z.object({ provider_id: id, scope: z.enum(['full', 'clearance']).default('full'), expires_in_days: z.number().int().min(1).max(730).optional(), history: z.enum(['since_grant', 'all']).default('since_grant').describe('how far back the provider may read records written by others: since_grant (default) or all (your whole history)') }),
   async handler({ user }, i) {
-    const p = await one("SELECT 1 FROM sport_profiles WHERE user_id=$1 AND role IN ('physio','doctor') UNION SELECT 1 FROM provider_profiles WHERE user_id=$1", [i.provider_id]);
+    const p = await one("SELECT 1 FROM active_sport_profiles WHERE user_id=$1 AND role IN ('physio','doctor') UNION SELECT 1 FROM provider_profiles WHERE user_id=$1", [i.provider_id]);
     if (!p) throw badRequest('That person is not a registered physio or doctor');
     if (i.provider_id === user.id) throw badRequest('You cannot grant access to yourself');
     await requireConsent(user.id, 'medical', 'sharing health records');

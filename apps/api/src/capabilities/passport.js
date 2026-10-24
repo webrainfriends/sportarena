@@ -8,17 +8,19 @@ import { isYouth } from '../youth.js';
 import { ACTIVITIES_CTE } from '../athlete-history.js';
 import { config } from '../config.js';
 import { profileCredentials } from '../education.js';
+import { publicCareer } from '../career.js';
 
 const TAG = 'Passport';
 
 // The passport is a read-only athlete CV built from existing records at read time: sport cards, match counts per season (with how much is
 // official vs self-reported), approved competition results and awards. It carries no personal identification data (no email, phone, date
 // of birth, address, notes or health data), and what is shown is chosen by the athlete when they create each link.
-export async function buildPassport(userId, scope = { show_matches: true, show_results: true, show_awards: true, show_credentials: true }) {
+export async function buildPassport(userId, scope = { show_matches: true, show_results: true, show_awards: true, show_credentials: true, show_career: true }) {
   const u = await one(`SELECT ${PUBLIC_USER.replace('u.roles, ', '')} FROM users u WHERE u.id=$1`, [userId]);
-  const [profiles, activity, results, awards, credentials] = await Promise.all([
+  // the timeline is checked at read time: a young person's is never shown on a share link, so consent changes and link revocation take effect at once
+  const [profiles, activity, results, awards, credentials, memberships] = await Promise.all([
     many(`SELECT s.slug AS sport_slug, s.name AS sport, s.emoji AS sport_emoji, p.role, p.level, p.position, p.jersey_no, p.club, p.experience_years, p.is_default
-            FROM sport_profiles p JOIN sports s ON s.id=p.sport_id WHERE p.user_id=$1 ORDER BY p.is_default DESC, p.created_at, p.id`, [userId]),
+            FROM active_sport_profiles p JOIN sports s ON s.id=p.sport_id WHERE p.user_id=$1 ORDER BY p.is_default DESC, p.created_at, p.id`, [userId]),
     scope.show_matches ? many(
       `${ACTIVITIES_CTE}
        SELECT extract(year FROM a.played_on)::int AS season, s.slug AS sport_slug, count(*)::int AS matches,
@@ -35,6 +37,7 @@ export async function buildPassport(userId, scope = { show_matches: true, show_r
       `SELECT a.kind, a.name, e.name AS event_name, extract(year FROM a.awarded_at)::int AS year
          FROM awards a LEFT JOIN events e ON e.id=a.event_id WHERE a.user_id=$1 ORDER BY a.awarded_at DESC LIMIT 100`, [userId]) : [],
     scope.show_credentials ? profileCredentials(userId) : [],
+    scope.show_career && !(await isYouth(userId)) ? publicCareer(userId) : [],
   ]);
   // career totals per sport, derived from the same season rows
   const career = new Map();
@@ -47,24 +50,25 @@ export async function buildPassport(userId, scope = { show_matches: true, show_r
     athlete: u, sport_profiles: profiles,
     career: scope.show_matches ? [...career.values()] : null, seasons: scope.show_matches ? activity : null,
     verified_results: scope.show_results ? results : null, awards: scope.show_awards ? awards : null, credentials: scope.show_credentials ? credentials : null,
-    evidence: 'Match counts mix official games with matches the athlete logged themselves (see official_matches). Results listed are approved competition results only.',
+    memberships: scope.show_career ? memberships : null,
+    evidence: 'Match counts mix official games with matches the athlete logged themselves (see official_matches). Results listed are approved competition results only. Memberships marked verified were confirmed by the club; others are self-reported.',
     generated_at: new Date().toISOString(),
   };
 }
 
-const scopeOf = (l) => ({ show_matches: l.show_matches, show_results: l.show_results, show_awards: l.show_awards, show_credentials: l.show_credentials });
+const scopeOf = (l) => ({ show_matches: l.show_matches, show_results: l.show_results, show_awards: l.show_awards, show_credentials: l.show_credentials, show_career: l.show_career });
 
 cap({
   name: 'create_passport_link', method: 'POST', path: '/me/passport-links', tag: TAG, status: 201,
-  summary: 'Create a share link to your player passport for a coach or scout. You choose what it shows (match history by season, approved results, awards, certificates and badges) and when it expires (up to 90 days). The secret is shown once; put it in a QR code. Not available to young people.',
-  input: z.object({ label: z.string().trim().max(60).optional(), expires_in_days: z.number().int().min(1).max(90).default(30), show_matches: z.boolean().default(true), show_results: z.boolean().default(true), show_awards: z.boolean().default(true), show_credentials: z.boolean().default(true) }),
+  summary: 'Create a share link to your player passport for a coach or scout. You choose what it shows (match history by season, approved results, awards, certificates and badges, and optionally your club career timeline) and when it expires (up to 90 days). The secret is shown once; put it in a QR code. Not available to young people.',
+  input: z.object({ label: z.string().trim().max(60).optional(), expires_in_days: z.number().int().min(1).max(90).default(30), show_matches: z.boolean().default(true), show_results: z.boolean().default(true), show_awards: z.boolean().default(true), show_credentials: z.boolean().default(true), show_career: z.boolean().default(false) }),
   async handler({ user }, i) {
     if (await isYouth(user.id)) throw forbidden('A parent or guardian needs to arrange sharing for you');
     const token = newOpaqueToken();
     const row = await one(
-      `INSERT INTO passport_links(user_id, token_hash, label, show_matches, show_results, show_awards, show_credentials, expires_at) VALUES ($1,$2,$3,$4,$5,$6,$7, now() + $8 * interval '1 day')
-       RETURNING id, label, show_matches, show_results, show_awards, show_credentials, expires_at, created_at`,
-      [user.id, sha256(token), i.label || null, i.show_matches, i.show_results, i.show_awards, i.show_credentials, i.expires_in_days]);
+      `INSERT INTO passport_links(user_id, token_hash, label, show_matches, show_results, show_awards, show_credentials, show_career, expires_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8, now() + $9 * interval '1 day')
+       RETURNING id, label, show_matches, show_results, show_awards, show_credentials, show_career, expires_at, created_at`,
+      [user.id, sha256(token), i.label || null, i.show_matches, i.show_results, i.show_awards, i.show_credentials, i.show_career, i.expires_in_days]);
     const path = `/?passport=${encodeURIComponent(token)}`;
     return { ...row, token, path, url: config.appUrl ? `${String(config.appUrl).replace(/\/$/, '')}${path}` : null };
   },
@@ -74,7 +78,7 @@ cap({
   name: 'list_passport_links', method: 'GET', path: '/me/passport-links', tag: TAG,
   summary: 'Your passport share links, newest first, with what each shows, how often it was opened and whether it is active, expired or revoked. The secret is never shown again.',
   handler: ({ user }) => many(
-    `SELECT id, label, show_matches, show_results, show_awards, show_credentials, expires_at, revoked_at, view_count, last_viewed_at, created_at,
+    `SELECT id, label, show_matches, show_results, show_awards, show_credentials, show_career, expires_at, revoked_at, view_count, last_viewed_at, created_at,
             CASE WHEN revoked_at IS NOT NULL THEN 'revoked' WHEN expires_at <= now() THEN 'expired' ELSE 'active' END AS status
        FROM passport_links WHERE user_id=$1 ORDER BY created_at DESC LIMIT 200`, [user.id]),
 });
@@ -101,7 +105,7 @@ cap({
   summary: 'Open a player passport from a share link. Anyone holding a valid, unexpired, unrevoked link can read it; it contains no personal identification data. Each open is counted, nothing about the viewer is stored.',
   input: z.object({ token: z.string().min(10).max(200) }),
   async handler(_, i) {
-    const link = await one('UPDATE passport_links SET view_count=view_count+1, last_viewed_at=now() WHERE token_hash=$1 AND revoked_at IS NULL AND expires_at > now() RETURNING user_id, show_matches, show_results, show_awards, show_credentials, expires_at', [sha256(i.token)]);
+    const link = await one('UPDATE passport_links SET view_count=view_count+1, last_viewed_at=now() WHERE token_hash=$1 AND revoked_at IS NULL AND expires_at > now() RETURNING user_id, show_matches, show_results, show_awards, show_credentials, show_career, expires_at', [sha256(i.token)]);
     // a wrong, expired or revoked link all look the same
     if (!link) throw notFound('Passport link');
     return { ...(await buildPassport(link.user_id, scopeOf(link))), expires_at: link.expires_at };

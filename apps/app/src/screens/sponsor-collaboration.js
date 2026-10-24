@@ -44,6 +44,11 @@ export function SponsorTasks({ target, ends_on, shareable = true }) {
         <Chip label="Assigned to me" active={mineOnly} onPress={() => setMineOnly(!mineOnly)} />
       </View>
       <Btn small title={target.program_id ? 'Program notes' : 'Discussion & notes'} color={c.violet} style={{ alignSelf: 'flex-start' }} onPress={() => setNotes({ scope: true })} accessibilityLabel={target.program_id ? 'Open the internal notes of this program' : 'Open the discussion and notes of this agreement'} />
+      {d && d.reminders && (!d.reminders.worker || !d.reminders.email) ? (
+        <Card color={c.sunSoft} accessibilityLabel="Reminder delivery status">
+          {!d.reminders.worker ? <T size={13} weight="700" accessibilityRole="alert">Reminders are delayed: the background service that sends them is not running right now. They go out as soon as it is back.</T> : null}
+          {!d.reminders.email ? <T size={12} color={c.mute} accessibilityRole="text">Email reminders are not set up on this server. You get them as in-app and phone notifications.</T> : null}
+        </Card>) : null}
       {list.loading && !d ? <Loading /> : list.error ? <LoadError error={list.error} onRetry={list.reload} /> : !d.items.length ? (
         <Empty emoji="✅" title={mineOnly ? 'Nothing is assigned to you here' : filter === 'open' ? 'No open tasks' : 'No tasks yet'} sub={canWrite ? 'Add a task to track who does what by when. Assignees and managers are reminded before it is due.' : 'Your role can read tasks here; managers and colleagues with a working role add them.'} />
       ) : d.items.map((t) => {
@@ -58,6 +63,7 @@ export function SponsorTasks({ target, ends_on, shareable = true }) {
               <Tag label={t.visibility === 'shared' ? 'Shared with the other side' : 'Internal'} color={t.visibility === 'shared' ? c.cyan : c.violetSoft} />
               <Tag label={KIND[t.kind]} color={c.paper} />
               {t.escalation_level ? <Tag label="Escalated" color={c.pinkSoft} /> : null}
+              {t.system ? <Tag label="Added automatically" color={c.paper} /> : null}
               {!isMine ? <Tag label="Added by the other side" color={c.paper} /> : null}
             </View>
             {t.detail ? <T size={13} style={{ marginTop: 6 }}>{t.detail}</T> : null}
@@ -117,27 +123,36 @@ function taskFields({ people, shareable, ends_on, editing }) {
 }
 
 /** The notes on one task: your side's internal notes and the shared discussion, oldest first, with a composer. */
-function NotesSheet({ task, target, shareable, canWrite, onClose }) {
+function NotesSheet({ task, target, shareable, canWrite, onClose, thread, applicant }) {
   const { toast } = useSession();
   const [adding, setAdding] = useState(false);
   const list = useLoad(() => api.get('/sponsorship-notes', task ? { task_id: task.id, limit: 100 } : { ...target, limit: 100 }), [task?.id, JSON.stringify(target)]);
   const d = list.data;
-  const may = canWrite && d?.can_write;
+  const may = (thread ? true : canWrite) && d?.can_write;
   return (
-    <Sheet visible onClose={onClose} title={task ? task.title : target.program_id ? 'Program notes' : 'Discussion & notes'}>
-      {list.loading && !d ? <Loading /> : list.error ? <LoadError error={list.error} onRetry={list.reload} /> : !d.items.length ? <Empty emoji="📝" title="No notes yet" sub="Notes are kept for the record and cannot be edited or removed." /> : d.items.map((n) => (
+    <Sheet visible onClose={onClose} title={thread ? (applicant ? 'Messages with the sponsor' : 'Messages with the applicant') : task ? task.title : target.program_id ? 'Program notes' : 'Discussion & notes'}>
+      {thread && applicant ? <T size={12} color={c.mute}>Only you and the sponsor's program team can see this conversation. Other applicants cannot.</T> : null}
+      {thread && !applicant ? <T size={12} color={c.mute}>Messages marked "Applicant too" are seen by this applicant only. "Only my team" notes stay inside the brand.</T> : null}
+      {d?.youth_blocked ? <T weight="700" accessibilityRole="alert">A guardian-led process applies here, so direct messages are switched off.</T> : null}
+      {list.loading && !d ? <Loading /> : list.error ? <LoadError error={list.error} onRetry={list.reload} /> : !d.items.length ? <Empty emoji="📝" title={thread ? 'No messages yet' : 'No notes yet'} sub="Messages are kept for the record and cannot be edited or removed." /> : d.items.map((n) => (
         <Card key={n.id} color={n.visibility === 'shared' ? c.paper : c.violetSoft}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}><T size={12} weight="800">{n.author}</T><Tag label={n.visibility === 'shared' ? 'Shared' : 'Internal'} color={n.visibility === 'shared' ? c.cyan : c.violetSoft} /></View>
           <T style={{ marginTop: 4 }}>{n.body}</T>
           <T size={11} color={c.mute} style={{ marginTop: 4 }}>{new Date(n.created_at).toLocaleString()}</T>
         </Card>))}
-      {may ? <Btn title="Write a note" color={c.pink} onPress={() => setAdding(true)} /> : <T size={12} color={c.mute}>You can read these notes; your role cannot add to them.</T>}
-      <FormSheet visible={adding} onClose={() => setAdding(false)} title="Write a note" submitLabel="Add note"
+      {may ? <Btn title={thread ? 'Write a message' : 'Write a note'} color={c.pink} onPress={() => setAdding(true)} /> : <T size={12} color={c.mute}>You can read these notes; your role cannot add to them.</T>}
+      <FormSheet visible={adding} onClose={() => setAdding(false)} title={thread ? 'Write a message' : 'Write a note'} submitLabel={thread ? 'Send' : 'Add note'}
         fields={[
-          { key: 'body', label: 'Note', type: 'multiline' },
-          ...(shareable && (!task || task.visibility === 'shared') ? [{ key: 'visibility', label: 'Who can see it', type: 'chips', options: [{ value: 'internal', label: 'Only my side' }, { value: 'shared', label: 'Both sides' }], default: 'internal' }] : []),
+          { key: 'body', label: thread ? 'Message' : 'Note', type: 'multiline' },
+          ...(thread && !applicant ? [{ key: 'visibility', label: 'Who can see it', type: 'chips', options: [{ value: 'internal', label: 'Only my team' }, { value: 'shared', label: 'Applicant too' }], default: 'internal' }] : []),
+          ...(!thread && shareable && (!task || task.visibility === 'shared') ? [{ key: 'visibility', label: 'Who can see it', type: 'chips', options: [{ value: 'internal', label: 'Only my side' }, { value: 'shared', label: 'Both sides' }], default: 'internal' }] : []),
         ]}
-        onSubmit={async (v) => { await api.post('/sponsorship-notes', { ...(task ? { task_id: task.id } : target), ...v }); list.reload(); toast('Note added'); return 'Note added'; }} />
+        onSubmit={async (v) => { await api.post('/sponsorship-notes', { ...(task ? { task_id: task.id } : target), ...v }); list.reload(); toast(thread ? 'Sent' : 'Note added'); return thread ? 'Sent' : 'Note added'; }} />
     </Sheet>
   );
+}
+
+/** The conversation between a brand and one applicant on one application (the brand sees an internal-note option; the applicant's messages are always shared). */
+export function ApplicationThread({ applicationId, applicant, onClose }) {
+  return <NotesSheet thread applicant={applicant} target={{ application_id: applicationId }} task={null} canWrite onClose={onClose} />;
 }

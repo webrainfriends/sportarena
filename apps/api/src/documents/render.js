@@ -39,7 +39,7 @@ export async function renderInvoice({ layout, kit, logo, invoice, sample = false
 
   const left = doc.page.margins.left, width = doc.page.width - left - doc.page.margins.right;
   const bottom = () => doc.page.height - doc.page.margins.bottom - 24; // room kept for the footer
-  const title = invoice.kind === 'credit_note' ? 'CREDIT NOTE' : 'INVOICE';
+  const title = invoice.kind === 'credit_note' ? 'CREDIT NOTE' : invoice.status === 'paid' ? 'INVOICE · PAID' : 'INVOICE';
   const label = (t, x, y, w, o = {}) => doc.font(o.bold ? f.bold : f.regular).fontSize(o.size ?? 9).fillColor(o.color ?? ink).text(t ?? '', x, y, { width: w, align: o.align ?? 'left', lineBreak: o.lineBreak ?? true });
 
   const header = (compact) => {

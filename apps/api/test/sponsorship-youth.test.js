@@ -79,6 +79,7 @@ test('an authorized sponsor can offer; only the verified guardian answers, and t
   assert.equal(d.role, 'recipient'); assert.equal(d.youth.guardian_acting, true); assert.equal(d.youth.media_allowed, false, 'the agreement implies no image consent');
   const mine = must(await api('GET', `/sponsorships/${w.deal.id}`, { token: w.kid.token }));
   assert.equal(mine.youth.minor_self, true, 'the young person can read it');
+  assert.equal(mine.negotiation.can_counter, false, 'and is not offered actions that would be refused');
   const list = must(await api('GET', '/sponsorships', { token: w.parent.token, query: { as: 'target' } }));
   assert.ok(list.some((x) => x.id === w.deal.id), 'the guardian sees their child\'s deals');
 });

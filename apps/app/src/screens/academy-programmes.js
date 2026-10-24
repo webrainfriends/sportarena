@@ -185,11 +185,11 @@ const TABS = [['overview', 'Overview'], ['groups', 'Groups'], ['roster', 'Roster
 function Desk({ o, id, archived, toast, onBack, onOpenApplication }) {
   const d = useLoad(() => api.get(`/academy/programmes/${id}/desk`), [id]);
   const [tab, setTab] = useState('overview');
-  const [terms, setTerms] = useState(false), [group, setGroup] = useState(false), [invite, setInvite] = useState(false), [who, setWho] = useState([]), [edit, setEdit] = useState(null);
+  const [terms, setTerms] = useState(false), [group, setGroup] = useState(false), [invite, setInvite] = useState(false), [who, setWho] = useState([]), [edit, setEdit] = useState(null), [cert, setCert] = useState(null);
   const members = useLoad(() => api.get(`/organisations/${o.id}/members`).catch(() => []), [o.id]);
   if (d.error) return <View style={{ gap: 8 }}><Btn small title="← Programmes" color={c.paper} ink={c.ink} onPress={onBack} style={{ alignSelf: 'flex-start' }} /><ErrorBox error={d.error} onRetry={d.reload} /></View>;
   if (!d.data) return <Loading />;
-  const { programme: p, versions, groups, roster, waitlist, offers, seats, policies, stages, money: mny, my_role } = d.data;
+  const { programme: p, versions, groups, roster, alumni = [], waitlist, offers, seats, policies, stages, money: mny, my_role } = d.data;
   const staff = my_role === 'owner' || my_role === 'admin';
   const act = async (fn, msg) => { try { await fn(); toast(msg); } catch (e) { toast(explain(e)); } finally { d.reload(); } };
   const cur = versions[0];
@@ -232,6 +232,15 @@ function Desk({ o, id, archived, toast, onBack, onOpenApplication }) {
             <Row key={r.enrolment_id} left={<Initials user={r} size={36} />} title={r.display_name} sub={`${r.group_name}${r.sessions_left != null ? ` · ${r.sessions_left} sessions left` : ''} · since ${when(r.enrolled_at)}`}
               right={<View style={{ alignItems: 'flex-end', gap: 4 }}>{r.status === 'paused' ? <Tag label="Paused" /> : null}{r.overdue ? <Tag label="Payment overdue" color={c.orangeSoft} /> : null}</View>} onPress={staff && !archived ? () => setEdit(r) : undefined} />
           )) : <Empty emoji="🏅" title="No one enrolled yet" />}
+          {alumni.length ? (
+            <Block title={`Finished (${alumni.length})`}>
+              <T size={12} color={c.mute}>People who completed or graduated. A certificate gets a code anyone can verify; for a young person it stays off their profile until a guardian decides.</T>
+              {alumni.map((r) => (
+                <Row key={r.enrolment_id} left={<Initials user={r} size={36} />} title={r.display_name} sub={`${r.status === 'graduated' ? 'Graduated' : 'Completed'} · ${r.group_name}${r.credential ? ` · ${r.credential.kind} ${r.credential.code}` : ''}`}
+                  right={r.credential ? <Tag label="Certificate issued" color={c.lime} /> : staff && !archived ? <Btn small title="Issue certificate" onPress={() => setCert(r)} /> : undefined} />
+              ))}
+            </Block>
+          ) : null}
         </Block>
       ) : null}
       {tab === 'waitlist' ? (
@@ -264,6 +273,9 @@ function Desk({ o, id, archived, toast, onBack, onOpenApplication }) {
           <Btn title="Send invitation" disabled={!who.length} onPress={async () => { try { await api.post(`/academy/programmes/${id}/invitations`, { person: who[0].sub.replace(/^@/, '') }); toast('Invitation sent'); setInvite(false); setWho([]); } catch (e) { toast(explain(e)); } finally { d.reload(); } }} />
         </View>
       </Sheet>
+      <FormSheet visible={!!cert} onClose={() => setCert(null)} title={`Certificate · ${cert?.display_name ?? ''}`} submitLabel="Issue certificate" initial={{ kind: 'certificate', title: `${p.title} — ${cert?.status === 'graduated' ? 'graduated' : 'completed'}` }}
+        fields={[{ key: 'kind', label: 'Type', type: 'chips', options: [['certificate', 'Certificate'], ['badge', 'Badge'], ['diploma', 'Diploma']].map(([value, label]) => ({ value, label })) }, { key: 'title', label: 'Title on the certificate' }, { key: 'description', label: 'Note', type: 'multiline', optional: true }]}
+        onSubmit={async (v) => { const r = await api.post(`/organisations/${o.id}/credentials`, { ...v, enrolment_id: cert.enrolment_id }); d.reload(); return `Issued · code ${r.code}`; }} />
       <Sheet visible={!!edit} onClose={() => setEdit(null)} title={edit?.display_name ?? ''}>
         {edit ? (
           <View style={{ gap: 10 }}>
@@ -274,6 +286,15 @@ function Desk({ o, id, archived, toast, onBack, onOpenApplication }) {
               <Btn small title="Graduate" color={c.paper} ink={c.ink} onPress={() => act(() => api.post(`/academy-enrolments/${edit.enrolment_id}/status`, { status: 'graduated' }), 'Graduated').then(() => setEdit(null))} />
               <Btn small title="Withdraw" color={c.orange} onPress={() => act(() => api.post(`/academy-enrolments/${edit.enrolment_id}/status`, { status: 'withdrawn', reason: 'Withdrawn by academy' }), 'Withdrawn — history kept').then(() => setEdit(null))} />
             </View>
+            {edit.sessions_left != null ? (
+              <>
+                <T weight="800" size={13}>Session pack: {edit.sessions_left} left</T>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <Btn small title="Use 1 session" color={c.paper} ink={c.ink} disabled={edit.sessions_left < 1} onPress={() => act(() => api.post(`/academy-enrolments/${edit.enrolment_id}/sessions`, { delta: -1, reason: 'Attended a session' }), 'Session used').then(() => setEdit(null))} />
+                  <Btn small title="Give 1 back" color={c.paper} ink={c.ink} onPress={() => act(() => api.post(`/academy-enrolments/${edit.enrolment_id}/sessions`, { delta: 1, reason: 'Session returned' }), 'Session given back').then(() => setEdit(null))} />
+                </View>
+              </>
+            ) : null}
             {groups.filter((g) => g.id !== edit.cohort_id && g.status === 'active').length ? <><T weight="800" size={13}>Move to another group</T><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{groups.filter((g) => g.id !== edit.cohort_id && g.status === 'active').map((g) => <Chip key={g.id} label={`${g.name} (${g.enrolled}${g.capacity ? `/${g.capacity}` : ''})`} onPress={() => act(() => api.post(`/academy-enrolments/${edit.enrolment_id}/transfer`, { to_cohort_id: g.id }), 'Moved').then(() => setEdit(null))} />)}</View></> : null}
             <T size={12} color={c.mute}>Pausing is an enrolment status only: no health reason is recorded here. Nothing is deleted.</T>
           </View>

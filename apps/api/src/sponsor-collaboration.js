@@ -7,11 +7,13 @@
 import { pool, tx } from './db.js';
 import { badRequest, conflict, forbidden, notFound } from './errors.js';
 import { notify } from './notify.js';
-import { sponsorAccess, assertSponsorCan, sponsorRecipients } from './sponsor-access.js';
+import { config } from './config.js';
+import { NOT_YOUTH_SQL } from './youth.js';
+import { sponsorAccess, assertSponsorCan, sponsorRecipients, notifySponsor } from './sponsor-access.js';
 import { sponsorContactUser } from './sponsor-identity-access.js';
-import { ORG_TARGETS, targetOrgId } from './sponsor-beneficiaries.js';
+import { ORG_TARGETS, targetOrgId, primaryContact } from './sponsor-beneficiaries.js';
 import { dealContext, targetOwner } from './sponsor-agreements.js';
-import { localToday } from './sponsor-renewals.js';
+import { localToday, RENEWAL_WINDOW_DAYS } from './sponsor-renewals.js';
 
 export const TASK_KINDS = ['task', 'review', 'expiry'];
 export const TASK_STATUS = ['open', 'done', 'cancelled'];
@@ -20,7 +22,7 @@ export const ESCALATE_AFTER_DAYS = 2;
 export const CLOSED_DEAL = ['declined', 'withdrawn'];
 
 export const TASK_COLS = `t.id, t.sponsorship_id, t.program_id, t.side, t.visibility, t.kind, t.title, t.detail, t.assignee_id, t.due_on::text AS due_on, t.remind_days, t.status, t.row_version,
-  t.created_by, t.completed_at, t.escalated_at, t.escalation_level, t.created_at, t.updated_at`;
+  t.created_by, t.completed_at, t.escalated_at, t.escalation_level, t.system_key, t.created_at, t.updated_at`;
 
 /** A task or note is addressed to exactly one agreement or one program. */
 export function scopeOf(i) {
@@ -41,7 +43,7 @@ export async function scopeAccess(c, user, scope, { lock = false } = {}) {
     const access = sp && await sponsorAccess(user, sp, c);
     if (!access || access.departmentId) throw notFound('Sponsorship program'); // a program is the brand's own workspace; admins and other departments are not part of it
     const can = (a) => { try { assertSponsorCan(access, a, { departmentId: null }); return true; } catch { return false; } };
-    return { scope, side: 'sponsor', write: can('collaborate'), canManage: can('manage'), program: p, deal: null, ctx: null, sp: { ...sp, owner_id: await sponsorContactUser(c, sp) }, staff: access.role, archived: p.status === 'archived' };
+    return { scope, side: 'sponsor', write: can('collaborate'), canManage: can('manage'), canProgram: can('program'), program: p, deal: null, ctx: null, sp: { ...sp, owner_id: await sponsorContactUser(c, sp) }, staff: access.role, archived: p.status === 'archived' };
   }
   let ctx;
   try { ctx = await dealContext(c, scope.id, user); } catch (e) { if (e.status === 403 || e.status === 404) throw notFound('Sponsorship'); throw e; }
@@ -95,7 +97,7 @@ export async function presentTasks(c, rows, access) {
     id: r.id, scope: r.program_id ? 'program' : 'agreement', sponsorship_id: r.sponsorship_id, program_id: r.program_id, side: r.side, visibility: r.visibility, kind: r.kind, title: r.title, detail: r.detail,
     assignee: r.assignee_id ? { id: r.assignee_id, name: users.get(r.assignee_id) ?? 'Former member', active: r.side === access.side ? roster.has(r.assignee_id) : null } : null,
     due_on: r.due_on, remind_days: r.remind_days, status: r.status, overdue: r.status === 'open' && !!r.due_on && r.due_on < todayIso,
-    escalated_at: r.escalated_at, escalation_level: r.escalation_level, row_version: r.row_version, created_by: users.get(r.created_by) ?? null, created_at: r.created_at, completed_at: r.completed_at,
+    escalated_at: r.escalated_at, escalation_level: r.escalation_level, system: !!r.system_key, row_version: r.row_version, created_by: users.get(r.created_by) ?? null, created_at: r.created_at, completed_at: r.completed_at,
     notes: notes.get(r.id) ?? 0, mine: r.side === access.side,
     can_edit: access.write && r.side === access.side && !access.archived && !(r.sponsorship_id && CLOSED_DEAL.includes(access.deal.status)),
   }));
@@ -120,6 +122,31 @@ export function assertCanWrite(access, side) {
   if (access.side !== side) throw forbidden('Only the side that owns this can change it');
   if (!access.write) throw forbidden(access.side === 'sponsor' ? `Your role (${access.staff}) cannot manage tasks for this brand` : 'Only a representative of the recipient can manage tasks');
   if (access.archived || (access.deal && CLOSED_DEAL.includes(access.deal.status))) throw conflict('This is closed; tasks and notes can no longer be changed');
+}
+
+/**
+ * The caller on ONE application's thread (a program conversation between the brand and that applicant): `{ side, write, share, program, sp, application }`.
+ * The applicant is the person who submitted it; everyone else must run the brand. Other applicants, other brands, platform admins: 404.
+ * The applicant can write once the application is submitted (not as a draft) and the program is not archived; a person under the age of independence
+ * is never put in a direct thread with a brand (a guardian-led process applies). The brand speaks to the applicant only with the `program` right.
+ */
+export async function threadAccess(c, user, applicationId) {
+  const a = (await c.query('SELECT * FROM sponsorship_applications WHERE id=$1', [applicationId])).rows[0];
+  if (!a) throw notFound('Application');
+  const program = (await c.query('SELECT * FROM sponsorship_programs WHERE id=$1', [a.program_id])).rows[0];
+  const closed = program.status === 'archived';
+  if (a.applicant_id === user.id) {
+    const adult = (await c.query(`SELECT 1 FROM users u WHERE u.id=$1 AND ${NOT_YOUTH_SQL}`, [user.id])).rowCount > 0;
+    const sp = (await c.query('SELECT id, name, owner_id, organisation_id, entity_id FROM sponsors WHERE id=$1', [program.sponsor_id])).rows[0];
+    return { scope: { type: 'program', id: program.id }, side: 'recipient', write: adult && a.status !== 'draft' && !closed, share: true, program, sp: { ...sp, owner_id: await sponsorContactUser(c, sp) }, application: a, applicant: true, archived: closed, youth: !adult };
+  }
+  const access = await scopeAccess(c, user, { type: 'program', id: program.id });
+  return { ...access, scope: { type: 'program', id: program.id }, share: access.canProgram, application: a, applicant: false, archived: closed };
+}
+
+export async function reminderChannels(c = pool) {
+  const age = (await c.query("SELECT extract(epoch FROM now() - max(last_beat_at))::int AS age FROM worker_heartbeats WHERE status = 'running'")).rows[0].age;
+  return { worker: age !== null && age <= config.workerStaleSeconds, email: !!config.notifyWebhook.url, in_app: true };
 }
 
 export const staleTask = (t, expected) => { if (t.row_version !== expected) throw conflict(`This task changed (now version ${t.row_version}); review it and try again`, { code: 'stale_version', row_version: t.row_version }); };
@@ -192,3 +219,58 @@ export async function sendTaskReminders({ limit = 200 } = {}) {
   }
   return n;
 }
+
+/** The person who answers for a side of an agreement when nothing else says who: the brand's contact, or the recipient (organisation: its oldest owner). */
+async function sideContact(c, d, side) {
+  if (side === 'sponsor') {
+    const sp = (await c.query('SELECT id, owner_id, entity_id FROM sponsors WHERE id=$1', [d.sponsor_id])).rows[0];
+    return sponsorContactUser(c, sp);
+  }
+  if (ORG_TARGETS.includes(d.target_type)) return primaryContact(c, await targetOrgId(c, d.target_type, d.target_id).catch(() => null));
+  return targetOwner(c, d.target_type, d.target_id);
+}
+
+/**
+ * Worker: for an accepted, running agreement inside its renewal window, give each side a task "Decide whether to renew" dated 30 days before the term
+ * ends (or today if that has passed), assigned to the side's contact. One per agreement, side and end date (a unique key), so reruns and two workers add
+ * nothing; if the end date moves the old open one is cancelled and a new one made. It completes by itself once that side records its renewal plan, and
+ * none is made once a renewal exists. Nothing renews by itself: the task only makes the decision visible.
+ */
+export async function ensureExpiryTasks({ limit = 200 } = {}) {
+  const rows = (await pool.query(
+    `SELECT s.id FROM sponsorships s WHERE s.status='active' AND s.accepted_version IS NOT NULL AND s.ends_on IS NOT NULL
+        AND s.ends_on >= ${localToday('s')} AND s.ends_on - ${localToday('s')} <= $2
+        AND NOT EXISTS (SELECT 1 FROM sponsorships n WHERE n.renews_id = s.id AND n.status NOT IN ('declined','withdrawn'))
+      ORDER BY s.ends_on, s.id LIMIT $1`, [limit, RENEWAL_WINDOW_DAYS])).rows;
+  let made = 0;
+  for (const x of rows) {
+    made += await tx(async (c) => {
+      const d = (await c.query(`SELECT s.*, s.ends_on::text AS ends, GREATEST(s.ends_on - 30, ${localToday('s')}) ::text AS due FROM sponsorships s WHERE s.id=$1 AND s.status='active' FOR UPDATE`, [x.id])).rows[0];
+      if (!d) return 0;
+      const key = `expiry:${d.ends}`;
+      let n = 0;
+      for (const side of ['sponsor', 'recipient']) {
+        const done = (await c.query('SELECT 1 FROM sponsorship_renewal_assessments WHERE sponsorship_id=$1 AND side=$2', [d.id, side])).rowCount > 0;
+        // the end date moved: the old reminder no longer says the right date
+        await c.query("UPDATE sponsorship_tasks SET status='cancelled', row_version=row_version+1, updated_at=now() WHERE sponsorship_id=$1 AND side=$2 AND system_key LIKE 'expiry:%' AND system_key<>$3 AND status='open'", [d.id, side, key]);
+        if (done) continue;
+        const who = await sideContact(c, d, side);
+        if (!who) continue;
+        const r = await c.query(
+          `INSERT INTO sponsorship_tasks(sponsorship_id, side, visibility, kind, title, detail, assignee_id, due_on, remind_days, created_by, system_key)
+           VALUES ($1,$2,'internal','expiry','Decide whether to renew this agreement',$3,$4,$5,7,$4,$6) ON CONFLICT (sponsorship_id, side, system_key) WHERE system_key IS NOT NULL DO NOTHING`,
+          [d.id, side, `The term ends on ${d.ends}. Nothing renews by itself: record your plan, and if you want to continue, propose a renewal. This task closes when you record your plan.`, who, d.due, key]);
+        n += r.rowCount;
+      }
+      return n;
+    });
+  }
+  // a side that has recorded its plan has done what the task asked
+  await pool.query(
+    `UPDATE sponsorship_tasks t SET status='done', completed_at=now(), completed_by=a.decided_by, row_version=t.row_version+1, updated_at=now()
+       FROM sponsorship_renewal_assessments a WHERE a.sponsorship_id=t.sponsorship_id AND a.side=t.side AND t.system_key LIKE 'expiry:%' AND t.status='open'`);
+  return made;
+}
+
+/** The scheduled step: make the automatic expiry tasks, then remind and escalate. */
+export const processSponsorTasks = async () => (await ensureExpiryTasks()) + (await sendTaskReminders());

@@ -27,14 +27,14 @@ const futureOnly = (iso) => { if (new Date(iso) <= new Date()) throw badRequest(
 const total = (rate, mins) => Math.round((Number(rate) * mins) / 60);
 
 const mustCoach = async (coachId, sportId) => {
-  const p = await one("SELECT hourly_rate_cents FROM sport_profiles WHERE user_id=$1 AND sport_id=$2 AND role='coach'", [coachId, sportId]);
+  const p = await one("SELECT hourly_rate_cents FROM active_sport_profiles WHERE user_id=$1 AND sport_id=$2 AND role='coach'", [coachId, sportId]);
   if (!p) throw badRequest('You do not coach this sport — add it to your sport profiles first');
   return p;
 };
 const CLASH_SQL = "SELECT 1 FROM coach_hires WHERE coach_id=$1 AND status IN ('requested','confirmed') AND starts_at < $2::timestamptz + make_interval(mins => $3) AND starts_at + make_interval(mins => duration_min) > $2";
 const clashes = async (c, coachId, startsAt, mins) => (c ? (await c.query(CLASH_SQL, [coachId, startsAt, mins])).rows : await many(CLASH_SQL, [coachId, startsAt, mins])).length > 0;
 const mustCoachTx = async (c, coachId, sportId) => {
-  if (!(await c.query("SELECT 1 FROM sport_profiles WHERE user_id=$1 AND sport_id=$2 AND role='coach'", [coachId, sportId])).rows.length) throw conflict('That person no longer coaches this sport');
+  if (!(await c.query("SELECT 1 FROM active_sport_profiles WHERE user_id=$1 AND sport_id=$2 AND role='coach'", [coachId, sportId])).rows.length) throw conflict('That person no longer coaches this sport');
 };
 // the athlete who posted a request, as public fields prefixed athlete_
 const ATHLETE = PUBLIC_USER.split(', ').map((x) => `${x.replace('u.', 'a.')} AS athlete_${x.slice(2)}`).join(', ');
@@ -89,11 +89,11 @@ cap({
   summary: 'Public coach profile: about, sports and hourly rates, rating with breakdown, latest reviews, sessions coached, verification badge, weekly hours. Public-safe fields only.',
   input: z.object({ id }),
   async handler(_, i) {
-    const u = await one(`SELECT ${PUBLIC_USER} FROM users u WHERE u.id=$1 AND ${NOT_YOUTH_SQL} AND EXISTS (SELECT 1 FROM sport_profiles p WHERE p.user_id=u.id AND p.role='coach')`, [i.id]);
+    const u = await one(`SELECT ${PUBLIC_USER} FROM users u WHERE u.id=$1 AND ${NOT_YOUTH_SQL} AND EXISTS (SELECT 1 FROM active_sport_profiles p WHERE p.user_id=u.id AND p.role='coach')`, [i.id]);
     if (!u) throw notFound('Coach');
     const [profile, sports, summary, spread, reviews, stats, sched, badges, rateCards, specs] = await Promise.all([
       one('SELECT headline, tagline, intro_video_url, serves, travel_km, bio AS about, city, delivery, specialties, languages, accepting, listed, timezone, slot_min FROM coach_profiles WHERE user_id=$1', [i.id]),
-      many("SELECT s.slug, s.name, s.emoji, p.level, p.hourly_rate_cents, p.experience_years, p.club FROM sport_profiles p JOIN sports s ON s.id=p.sport_id WHERE p.user_id=$1 AND p.role='coach' ORDER BY s.name", [i.id]),
+      many("SELECT s.slug, s.name, s.emoji, p.level, p.hourly_rate_cents, p.experience_years, p.club FROM active_sport_profiles p JOIN sports s ON s.id=p.sport_id WHERE p.user_id=$1 AND p.role='coach' ORDER BY s.name", [i.id]),
       one('SELECT round(avg(rating)::numeric, 2)::float8 AS avg, count(*)::int AS n FROM coach_reviews WHERE coach_id=$1', [i.id]),
       many('SELECT rating, count(*)::int AS n FROM coach_reviews WHERE coach_id=$1 GROUP BY rating', [i.id]),
       many('SELECT r.id, r.rating, r.body, r.reply, r.replied_at, r.created_at, r.pinned, a.display_name AS author_name, a.avatar_emoji, a.avatar_color, a.avatar_url FROM coach_reviews r JOIN users a ON a.id=r.reviewer_id WHERE r.coach_id=$1 ORDER BY r.pinned DESC, r.created_at DESC LIMIT 10', [i.id]),
@@ -152,7 +152,7 @@ cap({
     const facts = [i.audience !== 'individual' ? `${i.audience[0].toUpperCase()}${i.audience.slice(1)}${i.audience !== 'team' && i.participants > 1 ? ` of ${i.participants}` : ''}` : null, i.sessions_per_week ? `${i.sessions_per_week}×/week` : null, i.budget_max_cents != null ? `up to ${(i.budget_max_cents / 100).toLocaleString('en')}/hr` : null].filter(Boolean).join(' · ');
     await one("INSERT INTO market_posts(author_id, kind, title, body, sport_id, city, positions, cta_label, visibility, coach_request_id) VALUES ($1,'wanted',$2,$3,$4,$5,1,'Answer as coach','public',$6) RETURNING id", [user.id, `Coach wanted: ${i.title}`.slice(0, 120), [i.goal, facts].filter(Boolean).join('\n') || null, sport.id, i.city ?? null, r.id]);
     // tell coaches of this sport who are accepting athletes (in-app, respects their mute settings)
-    const coaches = await many("SELECT DISTINCT p.user_id FROM sport_profiles p LEFT JOIN coach_profiles cp ON cp.user_id=p.user_id JOIN users u ON u.id=p.user_id WHERE p.role='coach' AND p.sport_id=$1 AND p.user_id <> $2 AND coalesce(cp.accepting, true) AND coalesce(cp.listed, true) LIMIT 200", [sport.id, user.id]);
+    const coaches = await many("SELECT DISTINCT p.user_id FROM active_sport_profiles p LEFT JOIN coach_profiles cp ON cp.user_id=p.user_id JOIN users u ON u.id=p.user_id WHERE p.role='coach' AND p.sport_id=$1 AND p.user_id <> $2 AND coalesce(cp.accepting, true) AND coalesce(cp.listed, true) LIMIT 200", [sport.id, user.id]);
     for (const c of coaches) await notify(null, c.user_id, { kind: 'coach_request_new', title: `New ${sport.name} coaching request`, body: i.title, data: { request_id: r.id } });
     return r;
   },
@@ -182,7 +182,7 @@ cap({
               (SELECT jsonb_build_object('id', x.id, 'status', x.status, 'rate_cents_hour', x.rate_cents_hour) FROM coach_request_responses x WHERE x.request_id=r.id AND x.coach_id=$1) AS my_response
          FROM coach_requests r JOIN sports s ON s.id=r.sport_id JOIN users a ON a.id=r.athlete_id
         WHERE r.status='open' AND r.athlete_id <> $1 AND ($2::uuid IS NULL OR r.sport_id=$2)
-          AND ($3 OR $2::uuid IS NOT NULL OR r.sport_id IN (SELECT sport_id FROM sport_profiles WHERE user_id=$1 AND role='coach'))
+          AND ($3 OR $2::uuid IS NOT NULL OR r.sport_id IN (SELECT sport_id FROM active_sport_profiles WHERE user_id=$1 AND role='coach'))
           AND ($4::text IS NULL OR r.title ILIKE '%'||$4||'%' OR r.goal ILIKE '%'||$4||'%' OR r.city ILIKE '%'||$4||'%')
         ORDER BY r.created_at DESC, r.id LIMIT $5 OFFSET $6`, [user.id, sport?.id ?? null, !!i.all_sports, i.q ? i.q.replace(/[%_\\]/g, '\\$&') : null, i.limit, i.offset]);
     return rows.map((r) => ({ ...r, currency: config.payments.currency }));
@@ -205,7 +205,7 @@ cap({
     if (!r) throw notFound('Request');
     const mine = r.athlete_id === user.id;
     const responses = mine ? await responseRows(r.id, "AND x.status <> 'withdrawn'", []) : await responseRows(r.id, 'AND x.coach_id=$2', [user.id]);
-    const coachSports = mine ? [] : (await many("SELECT s.slug FROM sport_profiles p JOIN sports s ON s.id=p.sport_id WHERE p.user_id=$1 AND p.role='coach'", [user.id])).map((x) => x.slug);
+    const coachSports = mine ? [] : (await many("SELECT s.slug FROM active_sport_profiles p JOIN sports s ON s.id=p.sport_id WHERE p.user_id=$1 AND p.role='coach'", [user.id])).map((x) => x.slug);
     return { ...r, currency: config.payments.currency, can_respond: mine ? null : { is_coach: user.roles.includes('coach'), coaches_this_sport: coachSports.includes(r.sport_slug), open: r.status === 'open' }, i_am_owner: mine, responses: mine ? responses : [], my_response: mine ? null : responses[0] ?? null };
   },
 });
@@ -368,7 +368,7 @@ cap({
                     coalesce(sum(total_cents) FILTER (WHERE payment_status='refunded'), 0)::bigint AS refunded_cents, count(*) FILTER (WHERE status='completed')::int AS sessions_completed FROM coach_hires WHERE coach_id=$1`, [user.id]),
         one('SELECT round(avg(rating)::numeric, 2)::float8 AS avg, count(*)::int AS n FROM coach_reviews WHERE coach_id=$1', [user.id]),
         many('SELECT r.id, r.rating, r.body, r.created_at, a.display_name AS author_name FROM coach_reviews r JOIN users a ON a.id=r.reviewer_id WHERE r.coach_id=$1 AND r.reply IS NULL ORDER BY r.created_at DESC LIMIT 10', [user.id]),
-        one("SELECT count(*)::int AS open FROM coach_requests r WHERE r.status='open' AND r.athlete_id <> $1 AND r.sport_id IN (SELECT sport_id FROM sport_profiles WHERE user_id=$1 AND role='coach') AND NOT EXISTS (SELECT 1 FROM coach_request_responses x WHERE x.request_id=r.id AND x.coach_id=$1)", [user.id]),
+        one("SELECT count(*)::int AS open FROM coach_requests r WHERE r.status='open' AND r.athlete_id <> $1 AND r.sport_id IN (SELECT sport_id FROM active_sport_profiles WHERE user_id=$1 AND role='coach') AND NOT EXISTS (SELECT 1 FROM coach_request_responses x WHERE x.request_id=r.id AND x.coach_id=$1)", [user.id]),
       ]);
       coach = { upcoming: cu, to_confirm: toConfirm, earnings: money2, rating, unanswered_reviews: unanswered, board_open: board.open };
     }

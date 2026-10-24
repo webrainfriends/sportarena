@@ -36,23 +36,25 @@ cap({
     id, row_version: z.number().int().min(0), legal_name: z.string().max(120).optional(), sports: z.array(z.string().min(2).max(40)).max(20).optional(),
     focus: z.enum(['recreational', 'development', 'elite', 'mixed']).optional(), age_min: z.number().int().min(0).max(99).optional(), age_max: z.number().int().min(0).max(99).optional(),
     timezone: z.string().max(60).optional(), currency: currency.optional(), listed: z.boolean().optional(), policy_url: z.string().url().optional(), contact_channel: z.enum(['platform', 'email', 'phone']).optional(),
+    invoice_prefix: z.string().trim().toUpperCase().regex(/^[A-Z0-9]{3,8}$/, '3–8 letters or digits').optional().describe('printed at the start of your invoice numbers'), tax_id: z.string().trim().max(40).optional().describe('printed on invoices'), billing_address: z.string().trim().max(300).optional().describe('printed on invoices'),
   }),
   handler: ({ user }, i) => tx(async (c) => {
     await orgFor(user, i.id, STAFF, { write: true, c });
     const { id: oid, row_version, ...v } = i;
     if (row_version === 0) {
       const r = (await c.query(
-        `INSERT INTO academy_profiles(organisation_id, legal_name, sports, focus, age_min, age_max, timezone, currency, listed, policy_url, contact_channel)
-         VALUES ($1,$2,$3,coalesce($4,'mixed'),$5,$6,$7,coalesce($8,'GBP'),coalesce($9,false),$10,$11) ON CONFLICT (organisation_id) DO NOTHING RETURNING *`,
-        [oid, v.legal_name ?? null, v.sports ?? [], v.focus, v.age_min ?? null, v.age_max ?? null, v.timezone ?? null, v.currency, v.listed, v.policy_url ?? null, v.contact_channel ?? null])).rows[0];
+        `INSERT INTO academy_profiles(organisation_id, legal_name, sports, focus, age_min, age_max, timezone, currency, listed, policy_url, contact_channel, invoice_prefix, tax_id, billing_address)
+         VALUES ($1,$2,$3,coalesce($4,'mixed'),$5,$6,$7,coalesce($8,'GBP'),coalesce($9,false),$10,$11,$12,$13,$14) ON CONFLICT (organisation_id) DO NOTHING RETURNING *`,
+        [oid, v.legal_name ?? null, v.sports ?? [], v.focus, v.age_min ?? null, v.age_max ?? null, v.timezone ?? null, v.currency, v.listed, v.policy_url ?? null, v.contact_channel ?? null, v.invoice_prefix ?? null, v.tax_id ?? null, v.billing_address ?? null])).rows[0];
       if (!r) throw stale();
       return r;
     }
     const r = (await c.query(
       `UPDATE academy_profiles SET legal_name=coalesce($3,legal_name), sports=coalesce($4,sports), focus=coalesce($5,focus), age_min=coalesce($6,age_min), age_max=coalesce($7,age_max),
               timezone=coalesce($8,timezone), currency=coalesce($9,currency), listed=coalesce($10,listed), policy_url=coalesce($11,policy_url), contact_channel=coalesce($12,contact_channel),
+              invoice_prefix = CASE WHEN academy_profiles.invoice_prefix IS NULL THEN $13 ELSE academy_profiles.invoice_prefix END, tax_id=coalesce($14,tax_id), billing_address=coalesce($15,billing_address),
               row_version=row_version+1, updated_at=now() WHERE organisation_id=$1 AND row_version=$2 RETURNING *`,
-      [oid, row_version, v.legal_name, v.sports, v.focus, v.age_min, v.age_max, v.timezone, v.currency, v.listed, v.policy_url, v.contact_channel])).rows[0];
+      [oid, row_version, v.legal_name, v.sports, v.focus, v.age_min, v.age_max, v.timezone, v.currency, v.listed, v.policy_url, v.contact_channel, v.invoice_prefix, v.tax_id, v.billing_address])).rows[0];
     if (!r) throw stale();
     await audit(c, user.id, 'update_academy_profile', 'organisations', oid);
     return r;
@@ -152,12 +154,24 @@ cap({
       if (n !== new Set(i.policy_version_ids).size) throw badRequest('An agreement does not belong to this academy');
     }
     const n = p.current_version + 1;
+    // a pack or a monthly fee is sold through the shared memberships/passes engine: this version gets its own organisation-owned plan
+    let planId = null;
+    if (i.billing_model === 'pack' || i.billing_model === 'monthly') {
+      if (i.fee_minor <= 0) throw badRequest('A pack or a monthly fee needs a price');
+      const days = p.ends_on ? Math.max(30, Math.min(3650, Math.ceil((new Date(`${String(p.ends_on).slice(0, 10)}T00:00:00Z`) - Date.now()) / 864e5))) : 365;
+      const pack = i.billing_model === 'pack';
+      planId = (await c.query(
+        `INSERT INTO venue_plans(organisation_id, currency, kind, name, description, price_cents, duration_days, duration_months, sessions, session_value_cents, valid_days, auto_renew)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
+        [p.organisation_id, i.currency, pack ? 'pass' : 'membership', `${p.title} · v${n}`, pack ? 'Session pack' : 'Monthly membership', i.fee_minor, pack ? null : 30, pack ? null : 1, pack ? i.sessions_in_pack : null,
+          pack ? Math.max(1, Math.floor(i.fee_minor / i.sessions_in_pack)) : null, pack ? days : null, !pack])).rows[0].id;
+    }
     const v = (await c.query(
       `INSERT INTO academy_programme_versions(programme_id, version, billing_model, currency, fee_minor, registration_fee_minor, trial_fee_minor, deposit_minor, instalments, sessions_in_pack, sibling_discount_bp,
-         multi_programme_discount_bp, tax_rate_bp, renewal_terms, offer_valid_hours, description, eligibility, questions, policy_version_ids, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) RETURNING *`,
+         multi_programme_discount_bp, tax_rate_bp, renewal_terms, offer_valid_hours, description, eligibility, questions, policy_version_ids, created_by, plan_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21) RETURNING *`,
       [p.id, n, i.billing_model, i.currency, i.fee_minor, i.registration_fee_minor, i.trial_fee_minor, i.deposit_minor, i.instalments, i.sessions_in_pack ?? null, i.sibling_discount_bp, i.multi_programme_discount_bp, i.tax_rate_bp,
-        i.renewal_terms ?? null, i.offer_valid_hours, i.description ?? null, JSON.stringify(i.eligibility), JSON.stringify(i.questions), i.policy_version_ids, user.id])).rows[0];
+        i.renewal_terms ?? null, i.offer_valid_hours, i.description ?? null, JSON.stringify(i.eligibility), JSON.stringify(i.questions), i.policy_version_ids, user.id, planId])).rows[0];
     const up = (await c.query("UPDATE academy_programmes SET current_version=$2, status='published', row_version=row_version+1, updated_at=now() WHERE id=$1 RETURNING *", [p.id, n])).rows[0];
     await audit(c, user.id, 'publish_academy_programme', 'academy_programmes', p.id);
     return { programme: up, version: v };

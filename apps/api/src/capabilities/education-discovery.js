@@ -35,8 +35,8 @@ cap({
   input: z.object({}),
   async handler({ user }) {
     const [sports, regions] = await Promise.all([
-      many('SELECT DISTINCT s.id, s.slug, s.name, s.emoji FROM sport_profiles sp JOIN sports s ON s.id=sp.sport_id WHERE sp.user_id=$1 ORDER BY s.name', [user.id]),
-      many("SELECT btrim(region) AS region, count(*)::int AS n FROM sport_profiles WHERE user_id=$1 AND btrim(coalesce(region,''))<>'' GROUP BY btrim(region) ORDER BY n DESC, region", [user.id]),
+      many('SELECT DISTINCT s.id, s.slug, s.name, s.emoji FROM active_sport_profiles sp JOIN sports s ON s.id=sp.sport_id WHERE sp.user_id=$1 ORDER BY s.name', [user.id]),
+      many("SELECT btrim(region) AS region, count(*)::int AS n FROM active_sport_profiles WHERE user_id=$1 AND btrim(coalesce(region,''))<>'' GROUP BY btrim(region) ORDER BY n DESC, region", [user.id]),
     ]);
     return { sports, regions: regions.map((r) => r.region) };
   },
@@ -68,8 +68,8 @@ const SYSTEM = [
 const SHAPE = '{"institutions":[{"name":"","kind":"university|college|academy|school|institute|other","country":"","city":null,"about":"2 sentences","website":"https://…","admissions_url":null,"contact_email":null,"contact_phone":null,"admissions_process":"Step 1 … Step 2 …","known_for":"what it is respected for","programmes":[{"title":"","kind":"course|certification|diploma|degree|postgraduate|short_course","mode":"on_campus|online|hybrid","sports":["sport slugs from the list, [] if general"],"description":"","duration_text":"3 years","fee_text":"","intake_text":"September","entry_requirements":"","how_to_apply":"","apply_url":null}]}]}';
 
 async function profileDefaults(user) {
-  const c = await many('SELECT DISTINCT s.slug FROM sport_profiles sp JOIN sports s ON s.id=sp.sport_id WHERE sp.user_id=$1 ORDER BY s.slug', [user.id]);
-  const r = await one("SELECT btrim(region) AS region FROM sport_profiles WHERE user_id=$1 AND btrim(coalesce(region,''))<>'' GROUP BY btrim(region) ORDER BY count(*) DESC, region LIMIT 1", [user.id]);
+  const c = await many('SELECT DISTINCT s.slug FROM active_sport_profiles sp JOIN sports s ON s.id=sp.sport_id WHERE sp.user_id=$1 ORDER BY s.slug', [user.id]);
+  const r = await one("SELECT btrim(region) AS region FROM active_sport_profiles WHERE user_id=$1 AND btrim(coalesce(region,''))<>'' GROUP BY btrim(region) ORDER BY count(*) DESC, region LIMIT 1", [user.id]);
   return { sports: c.map((x) => x.slug), region: r?.region ?? null };
 }
 
