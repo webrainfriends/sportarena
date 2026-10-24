@@ -180,3 +180,34 @@ export const Block = ({ title, right, children }) => (
     {children}
   </View>
 );
+
+/** Horizontal bars with the number printed on every row, so no meaning rests on length or colour. `rows`: [{ label, value, text, tone? }]. */
+export function Bars({ rows, label }) {
+  const max = Math.max(1, ...rows.map((r) => Math.abs(r.value ?? 0)));
+  return (
+    <View accessible accessibilityLabel={`${label}: ${rows.map((r) => `${r.label} ${r.text ?? r.value}`).join(', ')}`} style={{ gap: 7 }}>
+      {rows.map((r) => (
+        <View key={r.label} style={{ gap: 3 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}><T size={13} weight="700" style={{ flex: 1 }}>{r.label}</T><T size={13} weight="800">{r.text ?? r.value}</T></View>
+          <View style={{ height: 8, borderRadius: 5, backgroundColor: c.violetSoft }}>{r.value == null ? null : <View style={{ height: 8, borderRadius: 5, width: `${Math.max(r.value ? 3 : 0, Math.round((Math.abs(r.value) / max) * 100))}%`, backgroundColor: r.tone ?? (r.value < 0 ? c.orange : c.cyan) }} />}</View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+/** Where a figure comes from, written in words next to it. */
+export const Origin = ({ origin }) => <Tag label={{ official: '🏆 Official result', coach_observed: '📝 Coach observed', academy_recorded: '📋 Academy recorded', athlete_reported: '🙋 Athlete reported' }[origin] ?? origin} />;
+
+/** Save a CSV: a download on the web, the share sheet on a phone. */
+export async function saveCsv(filename, text) {
+  const { Platform, Share } = require('react-native');
+  if (Platform.OS === 'web' && typeof document !== 'undefined') {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([text], { type: 'text/csv' }));
+    a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+    return;
+  }
+  await Share.share({ message: text, title: filename });
+}
+export const pct = (v) => (v == null ? 'missing' : `${v}%`);

@@ -31,17 +31,28 @@ cap({
 cap({
   name: 'set_academy_charge_funding', method: 'POST', path: '/academy-charges/:id/funding', tag: 'Academy',
   summary: 'Record a scholarship, bursary or sponsor-funded amount against an unpaid charge (owner/admin/finance). It is an explicit funded source on the charge, not an edited price; a fully funded charge is marked waived.',
-  input: z.object({ id, funding_source: z.enum(['scholarship', 'bursary', 'sponsor']), funded_minor: z.number().int().min(1), funding_ref: z.string().max(120).optional() }),
+  input: z.object({ id, funding_source: z.enum(['scholarship', 'bursary', 'sponsor']), funded_minor: z.number().int().min(1), funding_ref: z.string().max(120).optional(), sponsorship_id: id.optional() }),
   handler: ({ user }, i) => tx(async (c) => {
     const ch = (await c.query('SELECT * FROM academy_charges WHERE id=$1 FOR UPDATE', [i.id])).rows[0];
     if (!ch) throw notFound('Charge');
     await orgFor(user, ch.organisation_id, STAFF_MONEY, { write: true, c });
     if (ch.status !== 'awaiting_payment') throw conflict('Only an unpaid charge can be funded');
     if (i.funded_minor + Number(ch.discount_minor) > Number(ch.gross_minor)) throw badRequest('Funding and discounts cannot exceed the charge');
+    // sponsor money is traceable: it must point at an active canonical sponsorship that targets this academy (or one of its groups, or the athlete)
+    let sponsorshipId = null;
+    if (i.funding_source === 'sponsor' && !i.sponsorship_id) throw badRequest('Choose the sponsorship agreement that funds this charge');
+    if (i.sponsorship_id) {
+      const sp = (await c.query(
+        `SELECT s.id FROM sponsorships s WHERE s.id=$1 AND s.status='active' AND (
+           (s.target_type='organisation' AND s.target_id=$2) OR (s.target_type='group' AND s.target_id IN (SELECT id FROM org_cohorts WHERE organisation_id=$2))
+           OR (s.target_type='athlete' AND s.target_id IN (SELECT e.user_id FROM org_enrolments e WHERE e.id=$3)))`, [i.sponsorship_id, ch.organisation_id, ch.enrolment_id])).rows[0];
+      if (!sp) throw badRequest('That sponsorship is not an active agreement for this academy or athlete');
+      sponsorshipId = sp.id;
+    }
     const amount = Number(ch.gross_minor) - Number(ch.discount_minor) - i.funded_minor;
     const tax = ch.amount_minor > 0 ? Math.round(Number(ch.tax_minor) * amount / Number(ch.amount_minor)) : 0;
-    const r = (await c.query("UPDATE academy_charges SET funded_minor=$2, funding_source=$3, funding_ref=$4, amount_minor=$5::bigint, tax_minor=$6, status=CASE WHEN $5::bigint=0 THEN 'waived' ELSE status END WHERE id=$1 RETURNING *",
-      [ch.id, i.funded_minor, i.funding_source, i.funding_ref ?? null, amount, tax])).rows[0];
+    const r = (await c.query("UPDATE academy_charges SET funded_minor=$2, funding_source=$3, funding_ref=$4, amount_minor=$5::bigint, tax_minor=$6, funding_sponsorship_id=$7, status=CASE WHEN $5::bigint=0 THEN 'waived' ELSE status END WHERE id=$1 RETURNING *",
+      [ch.id, i.funded_minor, i.funding_source, i.funding_ref ?? null, amount, tax, sponsorshipId])).rows[0];
     await audit(c, user.id, 'set_academy_charge_funding', 'academy_charges', ch.id);
     return r;
   }),

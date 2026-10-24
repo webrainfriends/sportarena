@@ -83,7 +83,7 @@ export function Org({ id }) {
   const o = org.data, d = dash.data, role = d.role, archived = o.status === 'archived';
   const P = { o, d, role, archived, toast, brands, reload: () => { org.reload(); dash.reload(); brands.reload(); } };
   const teaching = !SPONSOR_ONLY.includes(role) && role !== 'finance';
-  const tabs = [['overview', 'Overview'], ...(teaching ? [['cohorts', 'Cohorts']] : []), ['people', 'People'], ...(brands.data?.length && role !== 'coach' ? [['sponsor', 'Sponsor']] : []), ...(teaching ? [['assets', 'Teams, events, venues & brands']] : []), ...(STAFF.includes(role) || (o.kind === 'academy' && role === 'finance') ? [[o.kind === 'academy' ? 'academy' : 'admissions', o.kind === 'academy' ? 'Academy' : 'Admissions']] : [])];
+  const tabs = [['overview', 'Overview'], ...(teaching ? [['cohorts', 'Cohorts']] : []), ['people', 'People'], ...(brands.data?.length && role !== 'coach' ? [['sponsor', 'Sponsor']] : []), ...(teaching ? [['assets', 'Teams, events, venues & brands']] : []), ...(STAFF.includes(role) || (o.kind === 'academy' && (role === 'finance' || role === 'coach')) ? [[o.kind === 'academy' ? 'academy' : 'admissions', o.kind === 'academy' ? 'Academy' : 'Admissions']] : [])];
   return (
     <Screen wide>
       <GradCard colors={[c.violet, c.ink]}>

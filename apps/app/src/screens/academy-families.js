@@ -7,7 +7,7 @@ import { useLoad } from '../hooks';
 import { Chip, Empty, ErrorBox, Field, Loading, Row, T, Tag } from '../ui';
 import { c } from '../theme';
 import { moneyIn } from '../vtime';
-import { Block, Fact, Initials, Split, StageBadge, when } from './academy-ui';
+import { Block, Fact, Initials, Origin, Split, StageBadge, when } from './academy-ui';
 
 export function Families({ o, onOpenApplication }) {
   const [q, setQ] = useState(''), [status, setStatus] = useState(null), [open, setOpen] = useState(null);
@@ -55,7 +55,46 @@ function Athlete({ o, id, onOpenApplication }) {
       <Block title="Agreements">
         {d.agreements.length ? d.agreements.map((g, i) => <Fact key={i} k={`${g.title} v${g.version}`} v={`${when(g.created_at)} · ${g.acknowledged_by}${g.as_guardian ? ' (guardian)' : ''}`} />) : <T size={13} color={c.mute}>Nothing acknowledged yet.</T>}
       </Block>
+      <Sections o={o} id={id} />
       <T size={11} color={c.mute}>Health information is not part of the academy record. Viewing this page is logged.</T>
+    </View>
+  );
+}
+
+const CLEAR = { cleared: '✅ Cleared', restricted: '◐ Restricted', not_cleared: '⛔ Not cleared', expired: '⌛ Expired', unknown: '❔ Unknown' };
+
+/** The sections of the Athlete 360, each decided by the server for the caller's role and shown with where its data comes from. */
+function Sections({ o, id }) {
+  const s = useLoad(() => api.get(`/organisations/${o.id}/academy/athletes/${id}/360`), [o.id, id]);
+  if (s.error) return <ErrorBox error={s.error} onRetry={s.reload} />;
+  if (!s.data) return <Loading />;
+  const x = s.data.sections;
+  const no = (sec) => (sec.access !== 'ok' ? <T size={13} color={c.mute}>{sec.reason}</T> : null);
+  return (
+    <View style={{ gap: 10 }}>
+      <Block title="Attendance (last 90 days)" right={x.attendance.access === 'ok' ? <Origin origin="academy_recorded" /> : null}>
+        {no(x.attendance) ?? <T size={13}>{x.attendance.data.pct == null ? 'No sessions recorded yet.' : `${x.attendance.data.pct}% — ${x.attendance.data.present} present, ${x.attendance.data.absent} absent, ${x.attendance.data.excused} excused`}</T>}
+      </Block>
+      <Block title="Pathway">
+        {no(x.pathway) ?? (x.pathway.data.length ? x.pathway.data.map((p) => <Fact key={p.pathway_id} k={p.pathway} v={`${p.decision === 'graduate' ? 'Graduated' : p.level}${p.latest_approved_assessment ? ` · last assessment: ${p.latest_approved_assessment.replace(/_/g, ' ')}` : ''}`} />) : <T size={13} color={c.mute}>Not placed on a pathway.</T>)}
+      </Block>
+      <Block title="Coaching shared with the athlete" right={x.coaching.access === 'ok' ? <Origin origin="coach_observed" /> : null}>
+        {no(x.coaching) ?? (<>
+          {x.coaching.data.rubric_dimensions.length ? x.coaching.data.rubric_dimensions.map((d) => <T key={d.rubric_id + d.dimension_key} size={13}>{d.rubric} · {d.dimension_key}: average {d.avg_score} from {d.n}</T>) : <T size={13} color={c.mute}>No scored observations shared.</T>}
+          {x.coaching.data.shared_goals.map((g) => <T key={g.id} size={13}>🎯 {g.title}: {g.athlete_text}</T>)}
+          <T size={11} color={c.mute}>Private coach notes never appear here.</T>
+        </>)}
+      </Block>
+      <Block title="Competition results (last year)" right={x.official.access === 'ok' ? <Origin origin="official" /> : null}>
+        {no(x.official) ?? (x.official.data.results.length ? x.official.data.results.map((r) => <T key={r.sport + r.metric} size={13}>{r.sport} · {r.metric}: average {r.avg_value} over {r.n}</T>) : <T size={13} color={c.mute}>No approved competition results.</T>)}
+      </Block>
+      <Block title="Fit to take part">
+        {no(x.clearance) ?? (x.clearance.data.state === 'shared' ? <T size={13}>{CLEAR[x.clearance.data.status] ?? x.clearance.data.status}{x.clearance.data.valid_until ? ` · valid until ${when(x.clearance.data.valid_until)}` : ''}<T size={12} color={c.mute}> · shared by the athlete</T></T> : <T size={13} color={c.mute}>Not shared with the academy.{x.clearance.data.reason ? ' A guardian’s medical consent has lapsed.' : ''}</T>)}
+        <T size={11} color={c.mute}>Only the status the athlete or guardian chose to share. No diagnosis, treatment or reason is ever shown.</T>
+      </Block>
+      {x.funding.access === 'ok' && x.funding.data.length ? (
+        <Block title="Funding">{x.funding.data.map((f) => <Fact key={f.funding_source + f.currency} k={f.funding_source} v={`${moneyIn(f.funded_minor, f.currency)} across ${f.charges} charge${f.charges === 1 ? '' : 's'}${f.sponsorship_linked ? ' · linked to a sponsorship agreement' : ''}`} />)}</Block>
+      ) : null}
     </View>
   );
 }

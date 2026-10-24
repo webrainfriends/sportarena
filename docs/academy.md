@@ -86,7 +86,7 @@ revert `apps/app/src/screens/academy.js` and its two imports. Do not drop academ
 
 ## Residual limitations (explicit)
 Trial sessions and the academy timetable belong to Academy OS 2/3; a trial is booked as a status here and will link to a canonical session there. Progress and
-outcome links belong to 3/3. No e-signature provider is integrated (acknowledgements are internal records). No automatic card debit. Document generation
+outcome links are built in Academy OS 3/3 (see `docs/academy-outcomes.md`). No e-signature provider is integrated (acknowledgements are internal records). No automatic card debit. Document generation
 for enrolment letters/receipts reuses the branded-documents service only after a template family is enabled; none is added here.
 
 ## Screens
