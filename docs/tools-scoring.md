@@ -45,4 +45,4 @@ Each PDF carries a reference (`TS-XXXXXXXX`) and a signed code (HMAC of the refe
 - Linking is for games with two sides. Individual events (athletics, swimming heats) can be tracked and printed as a results table but are not linked to a canonical heat record.
 - Offline: failed taps are kept in memory and retried with the same key; they do not survive closing the app.
 - PDFs open in the web app; the native app shows a hint (the same convention as the other documents).
-- Template sharing is personal and organisation; team and event-specific sharing are not offered yet.
+- Template sharing is personal and organisation; team and event-specific templates are not offered yet.

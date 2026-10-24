@@ -8,7 +8,6 @@ import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { audit, isAdmin, sportBySlugOrId } from '../helpers.js';
 import { aiConfigured, AI_RULES, askJson, quoteData } from '../ai.js';
 import { orgRole } from '../org-access.js';
-import { isOrganiser } from './event-departments.js';
 import { fixtureContext } from './match-tracking.js';
 import { builtinRuleset } from '../scoring/rulesets.js';
 import { rulesetForEvent } from '../scoring/state.js';
@@ -47,6 +46,18 @@ export const proposable = (x) => {
   if (!x.f.home_team_id || !x.f.away_team_id) return 'The teams for this game are not decided yet';
   return null;
 };
+
+/** A sheet may be filed under an academy session, team or event only if the caller really belongs to it. */
+async function checkContext(user, type, ctxId, c) {
+  if (!ctxId) throw badRequest('context_id is required with context_type');
+  const ok = {
+    academy_session: async () => (await c.query("SELECT 1 FROM academy_sessions s WHERE s.id=$1 AND (EXISTS (SELECT 1 FROM academy_session_staff t WHERE t.session_id=s.id AND t.user_id=$2 AND t.status NOT IN ('declined','removed')) OR EXISTS (SELECT 1 FROM organisation_members m WHERE m.organisation_id=s.organisation_id AND m.user_id=$2 AND m.status='active' AND m.role IN ('owner','admin')))", [ctxId, user.id])).rowCount > 0,
+    team: async () => (await c.query("SELECT 1 FROM teams t WHERE t.id=$1 AND (t.owner_id=$2 OR EXISTS (SELECT 1 FROM team_members m WHERE m.team_id=t.id AND m.user_id=$2 AND m.status='active'))", [ctxId, user.id])).rowCount > 0,
+    event: async () => (await c.query("SELECT 1 FROM events e WHERE e.id=$1 AND (e.status <> 'draft' OR e.organizer_id=$2)", [ctxId, user.id])).rowCount > 0,
+  }[type];
+  if (isAdmin(user)) return;
+  if (!(await ok())) throw notFound('That academy session, team or event');
+}
 
 async function ownSheet(user, sheetId, c, { lock = false } = {}) {
   const s = (await q(c).query(`SELECT * FROM tracking_sheets WHERE id=$1${lock ? ' FOR UPDATE' : ''}`, [sheetId])).rows[0];
@@ -132,7 +143,7 @@ cap({
 
 const templateInput = {
   name: z.string().trim().min(2).max(80), sport: z.string().min(1), variant: z.string().max(30).optional(), best_of: z.number().int().optional(),
-  scope: z.enum(['personal', 'organisation', 'event']).default('personal'), organisation_id: id.optional(), event_id: id.optional(),
+  scope: z.enum(['personal', 'organisation']).default('personal'), organisation_id: id.optional(), from_ai: z.boolean().optional(),
   customise: customiseSchema,
 };
 
@@ -145,11 +156,10 @@ cap({
     const rs = builtinRuleset(sport);
     if (i.best_of && (rs.kind !== 'sets' || !BEST_OF.includes(i.best_of))) throw badRequest('Best-of applies to set-based sports only (1, 3 or 5)');
     if (i.scope === 'organisation') { const r = await orgRole(user, i.organisation_id); if (!i.organisation_id || !['owner', 'admin', 'coach'].includes(r)) throw forbidden('Only an owner, admin or coach of the organisation can save its templates'); }
-    if (i.scope === 'event') { const ev = i.event_id && await one('SELECT * FROM events WHERE id=$1', [i.event_id]); if (!ev) throw notFound('Event'); if (!(await isOrganiser(user, ev))) throw forbidden('Only the event organiser can save an event template'); }
     return tx(async (c) => {
       const t = (await c.query(
-        `INSERT INTO tracking_sheet_templates(sport_id, variant, scope, owner_user_id, organisation_id, event_id, name, draft, best_of) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-        [sport.id, variantOf(sport, rs, i.variant), i.scope, user.id, i.scope === 'organisation' ? i.organisation_id : null, i.scope === 'event' ? i.event_id : null, i.name, JSON.stringify(i.customise), i.best_of ?? null])).rows[0];
+        `INSERT INTO tracking_sheet_templates(sport_id, variant, scope, owner_user_id, organisation_id, name, draft, best_of, origin) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+        [sport.id, variantOf(sport, rs, i.variant), i.scope, user.id, i.scope === 'organisation' ? i.organisation_id : null, i.name, JSON.stringify(i.customise), i.best_of ?? null, i.from_ai ? 'ai' : 'user'])).rows[0];
       await audit(c, user.id, 'create_tracking_template', 'tracking_sheet_templates', t.id);
       return t;
     });
@@ -236,7 +246,7 @@ cap({
   input: z.object({
     sport: z.string().min(1).optional(), variant: z.string().max(30).optional(), best_of: z.number().int().optional(), template_id: id.optional(),
     fixture_id: id.optional(), title: z.string().trim().max(120).optional(), labels: z.object({ home: z.string().trim().max(60).optional(), away: z.string().trim().max(60).optional() }).optional(),
-    context_type: z.enum(['academy_session', 'coach_session', 'team', 'event']).optional(), context_id: id.optional(),
+    context_type: z.enum(['academy_session', 'team', 'event']).optional(), context_id: id.optional(),
     occurred_at: z.string().datetime().optional(), client_key: z.string().min(1).max(64).optional(),
   }),
   async handler({ user }, i) {
@@ -268,6 +278,7 @@ cap({
         ruleset = withFormat(tpl?.best_of ? withFormat(builtinRuleset(sport), { best_of: tpl.best_of }) : builtinRuleset(sport), { best_of: i.best_of });
         if (i.best_of && ruleset.kind !== 'sets') throw badRequest('Best-of applies to set-based sports only');
       }
+      if (i.context_type) await checkContext(user, i.context_type, i.context_id, c);
       variant = variantOf(sport, ruleset, variant || i.variant);
       const layout = buildLayout(sport, ruleset, variant, custom);
       const v = (published && !fixture && !i.best_of) ? published : await pinVersion(c, { sport, variant, ruleset, layout, origin: tpl ? 'user' : 'platform', name: tpl?.name ?? layout.title, userId: user.id, templateId: tpl?.id ?? null, version: tpl?.current_version ?? 1 });

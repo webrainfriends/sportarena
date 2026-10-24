@@ -359,3 +359,35 @@ test('linked tracker uses the event\'s pinned rules and canonical team names', a
   assert.equal((await api('PATCH', `/tracking/sheets/${s.body.id}`, { token: t.rando.token, body: { labels: { home: 'Mine' } } })).status, 400);
   assert.equal((await post(t.rando, '/tracking/sheets', { fixture_id: t.fx, sport: 'football' })).status, 400);
 });
+
+test('two reviewers acting at the same moment give one deterministic state', async () => {
+  const t = await setup('football', 'league');
+  const s = await sheetWith(t.rando, { home: 1 }); await complete(t.rando, s.id);
+  const pid = (await post(t.rando, `/tracking/sheets/${s.id}/proposals`, { fixture_id: t.fx })).body.id;
+  const [a, b, c] = await Promise.all([
+    post(t.ref, `/tracking/proposals/${pid}/review`, { decision: 'approve' }),
+    post(t.m1, `/tracking/proposals/${pid}/review`, { decision: 'approve' }),
+    post(t.m2, `/tracking/proposals/${pid}/review`, { decision: 'changes_requested', comment: 'Wrong score' }),
+  ]);
+  assert.deepEqual([a.status, b.status, c.status], [200, 200, 200]);
+  const view = (await api('GET', `/tracking/proposals/${pid}`, { token: t.ref.token })).body;
+  assert.equal(view.state, 'changes_requested', 'a negative decision blocks regardless of arrival order');
+  assert.equal(view.reviews.length, 3);
+  assert.equal((await post(t.org, `/tracking/proposals/${pid}/apply`)).status, 409);
+});
+
+test('context links and AI-arranged layouts are checked and labelled', async () => {
+  const u = await signup(['coach']), other = await signup(['athlete']);
+  const ev = (await api('POST', '/events', { token: u.token, body: { name: `Ctx Cup ${++n}`, sport: 'football' } })).body;
+  await pool.query("UPDATE events SET status='draft' WHERE id=$1", [ev.id]);
+  const ok = await post(u, '/tracking/sheets', { sport: 'football', context_type: 'event', context_id: ev.id });
+  assert.equal(ok.status, 201); assert.equal(ok.body.context_type, 'event');
+  assert.equal((await post(other, '/tracking/sheets', { sport: 'football', context_type: 'event', context_id: ev.id })).status, 404); // a draft event is not visible to others
+  assert.equal((await post(other, '/tracking/sheets', { sport: 'football', context_type: 'academy_session', context_id: ev.id })).status, 404);
+  assert.equal((await post(u, '/tracking/sheets', { sport: 'football', context_type: 'team' })).status, 400);
+  const t = (await post(u, '/tracking/templates', { name: 'AI layout', sport: 'football', from_ai: true, customise: { hidden_stats: ['corner'] } })).body;
+  assert.equal(t.origin, 'ai');
+  await post(u, `/tracking/templates/${t.id}/publish`);
+  const s = (await post(u, '/tracking/sheets', { template_id: t.id })).body;
+  assert.equal(s.template.origin, 'ai');
+});
