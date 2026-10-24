@@ -5,6 +5,7 @@ import { createHash, createHmac, randomBytes } from 'node:crypto';
 import { z } from 'zod';
 import { computeScore, rejectReason } from '../scoring/engine.js';
 import { config } from '../config.js';
+import { formFor, variantsOf } from './forms.js';
 
 // keys sorted, so a value hashes the same whether it came from JS or back out of a jsonb column
 const canon = (v) => (Array.isArray(v) ? v.map(canon) : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, canon(v[k])])) : v);
@@ -17,7 +18,7 @@ const SIDES = ['home', 'away'];
 export const trackingMode = (sport, ruleset) => (['time', 'distance'].includes(sport.scoring) ? 'results' : ruleset.kind === 'manual' ? 'manual' : ruleset.kind);
 
 /** Variants offered per sport: racket sports have singles/doubles, the rest a single standard format. Labels only - never scoring rules. */
-export const variantsFor = (sport, ruleset) => (ruleset.kind === 'sets' && !['volleyball', 'beach-volleyball'].includes(sport.slug) ? ['Singles', 'Doubles'] : ['Standard']);
+export const variantsFor = (sport, ruleset) => variantsOf(sport.slug) ?? (ruleset.kind === 'sets' && !['volleyball', 'beach-volleyball'].includes(sport.slug) ? ['Singles', 'Doubles'] : ['Standard']);
 
 export const BEST_OF = [1, 3, 5];
 
@@ -45,13 +46,15 @@ export function buildLayout(sport, ruleset, variant = '', custom = {}) {
   const scoring = ruleset.events.map((e) => ({ kind: e.kind, label: c.labels[e.kind] ?? e.label, points: e.points, icon: e.icon ?? null, governed: true }));
   let stats = ruleset.stats.filter((s) => !c.hidden_stats.includes(s.kind)).map((s) => ({ kind: s.kind, label: c.labels[s.kind] ?? s.label, icon: s.icon ?? null, governed: true }));
   if (c.stat_order.length) stats = [...stats].sort((a, b) => (c.stat_order.indexOf(a.kind) + 1 || 99) - (c.stat_order.indexOf(b.kind) + 1 || 99));
+  const form = formFor(sport, ruleset, variant);
+  const title = ruleset.kind === 'manual' ? `${sport.name ?? ruleset.label} · ${form.title}` : `${ruleset.label}${variant && variant !== 'Standard' ? ` · ${variant}` : ''}`;
   return {
-    v: 1, mode, sport: sport.slug, variant, title: `${ruleset.label}${variant && variant !== 'Standard' ? ` · ${variant}` : ''}`,
+    v: 2, mode, sport: sport.slug, variant, title, form,
     periods: mode === 'points_events' ? ruleset.periods : null, sets: mode === 'sets' ? ruleset.sets : null,
     scoring, stats, results: mode === 'results' ? { unit: sport.scoring === 'time' ? 'time' : 'distance', rows: 12 } : null,
     custom: c,
     notes_fields: c.notes_fields.map((label) => ({ label, custom: true, official: false })),
-    orientation: c.orientation, paper: c.paper, signatures: c.signatures,
+    orientation: custom && 'orientation' in custom ? c.orientation : (form.orientation ?? c.orientation), paper: c.paper, signatures: c.signatures,
   };
 }
 
