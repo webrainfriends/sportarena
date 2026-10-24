@@ -25,22 +25,27 @@ CREATE TABLE IF NOT EXISTS sponsorship_tasks (
   completed_at    timestamptz,
   escalated_at    timestamptz,
   escalation_level int NOT NULL DEFAULT 0,
+  system_key      text,                         -- set on tasks the platform created itself (e.g. 'expiry:2030-06-30'); one per agreement, side and key
   reminder_cycle  int NOT NULL DEFAULT 0,       -- bumped when the assignee or due date changes, so reminders fire again for the new plan
   created_at      timestamptz NOT NULL DEFAULT now(),
   updated_at      timestamptz NOT NULL DEFAULT now(),
   CHECK ((sponsorship_id IS NOT NULL) <> (program_id IS NOT NULL)),
   CHECK (program_id IS NULL OR (side = 'sponsor' AND visibility = 'internal'))   -- a program is the brand's own workspace
 );
+CREATE UNIQUE INDEX IF NOT EXISTS sponsorship_tasks_system ON sponsorship_tasks (sponsorship_id, side, system_key) WHERE system_key IS NOT NULL;
 CREATE INDEX IF NOT EXISTS sponsorship_tasks_deal ON sponsorship_tasks (sponsorship_id, due_on NULLS LAST, id) WHERE sponsorship_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS sponsorship_tasks_program ON sponsorship_tasks (program_id, due_on NULLS LAST, id) WHERE program_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS sponsorship_tasks_assignee ON sponsorship_tasks (assignee_id, status, due_on) WHERE assignee_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS sponsorship_tasks_due ON sponsorship_tasks (due_on) WHERE status = 'open' AND due_on IS NOT NULL;
 
--- Working notes and discussion on an agreement or program (optionally about one task). Immutable once written.
+-- Working notes and discussion on an agreement, a program or one of their tasks. Immutable once written.
+-- A program note is the brand's internal note, OR part of one application's thread (application_id): a conversation between the brand and that
+-- applicant, which is always 'shared' when the applicant writes it. Other applicants never see it.
 CREATE TABLE IF NOT EXISTS sponsorship_notes (
   id              bigserial PRIMARY KEY,
   sponsorship_id  uuid REFERENCES sponsorships,
   program_id      uuid REFERENCES sponsorship_programs,
+  application_id  uuid REFERENCES sponsorship_applications,
   task_id         uuid REFERENCES sponsorship_tasks,
   side            text NOT NULL CHECK (side IN ('sponsor','recipient')),
   visibility      text NOT NULL CHECK (visibility IN ('internal','shared')),
@@ -48,8 +53,10 @@ CREATE TABLE IF NOT EXISTS sponsorship_notes (
   body            text NOT NULL CHECK (char_length(body) BETWEEN 1 AND 2000),
   created_at      timestamptz NOT NULL DEFAULT now(),
   CHECK ((sponsorship_id IS NOT NULL) <> (program_id IS NOT NULL)),
-  CHECK (program_id IS NULL OR (side = 'sponsor' AND visibility = 'internal'))
+  CHECK (program_id IS NULL OR application_id IS NOT NULL OR (side = 'sponsor' AND visibility = 'internal')),
+  CHECK (application_id IS NULL OR (program_id IS NOT NULL AND task_id IS NULL AND (side = 'sponsor' OR visibility = 'shared')))
 );
+CREATE INDEX IF NOT EXISTS sponsorship_notes_application ON sponsorship_notes (application_id, id) WHERE application_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS sponsorship_notes_deal ON sponsorship_notes (sponsorship_id, id) WHERE sponsorship_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS sponsorship_notes_program ON sponsorship_notes (program_id, id) WHERE program_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS sponsorship_notes_task ON sponsorship_notes (task_id, id) WHERE task_id IS NOT NULL;
