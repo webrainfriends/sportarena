@@ -150,3 +150,4 @@ import './academy-attendance.js';
 import './academy-payroll.js';
 import './academy-ops-board.js';
 import './athlete-profile.js';
+import './recruiter.js';

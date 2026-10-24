@@ -2,6 +2,7 @@
 export const MODULES = [
   ['Leaderboard', 'Leaderboard', 'Points & glory', 'play'], ['Awards', 'Trophy room', 'Cups, medals, MVPs', 'play'],
   ['CareerTimeline', 'Career & clubs', 'Your clubs, verified by them', 'play'],
+  ['RecruiterAccess', 'Recruiter access', 'Who may see your profile', 'play'],
   ['MyPlans', 'Training plans', 'Your plans & sessions', 'play'], ['Pathways', 'Learn & study', 'Rules, courses & colleges', 'play'],
   ['Health', 'Health', 'Physio · doctors · fit to play', 'care'], ['Insure', 'My cover', 'What covers me today', 'care'],
   ['Insurance', 'Insurance', 'You · your team · your event', 'care'], ['Legal', 'Legal', 'Verified lawyers & matters', 'care'], ['Family', 'Family', 'Guardians & consents', 'care'],
@@ -26,6 +27,7 @@ export const WORKSPACES = [
   ['physio', 'Health', 'Your practice & rehab plans'],
   ['doctor', 'DoctorHome', 'Patients, records & results'],
   ['lawyer', 'Legal', 'Matters & clients'],
+  ['recruiter', 'RecruiterHome', 'Pipeline, requests & messages'],
   ['insurer', 'InsurerDesk', 'Products, quotes & claims'],
   ['athlete', 'Passport', 'Player passport & QR'],
   ['admin', 'PartnerConsole', 'Partners & platform team'],
