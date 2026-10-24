@@ -11,6 +11,8 @@ import { FormSheet } from '../FormSheet';
 import { c, day } from '../theme';
 import { moneyIn } from '../vtime';
 import { Admissions } from './admissions';
+import { AcademyDesk } from './academy';
+import { MyAcademyCard } from './academy-portal';
 import { IncomingSponsorship } from './sponsor-beneficiaries';
 import { Confirm } from './coaching';
 import { EntityPicker } from '../entity-picker';
@@ -54,6 +56,7 @@ export function Orgs() {
               ))}
             </Section>
           ) : null}
+          <MyAcademyCard onOpen={() => push('AcademyFamily')} />
           <Section title="Workspaces" color={c.cyan}>
             {mine.length ? mine.map((o) => (
               <Row key={o.id} title={o.name} sub={`${KINDS.find(([k]) => k === o.kind)?.[1] ?? o.kind}${o.city ? ` · ${o.city}` : ''}`}
@@ -80,7 +83,7 @@ export function Org({ id }) {
   const o = org.data, d = dash.data, role = d.role, archived = o.status === 'archived';
   const P = { o, d, role, archived, toast, brands, reload: () => { org.reload(); dash.reload(); brands.reload(); } };
   const teaching = !SPONSOR_ONLY.includes(role) && role !== 'finance';
-  const tabs = [['overview', 'Overview'], ...(teaching ? [['cohorts', 'Cohorts']] : []), ['people', 'People'], ...(brands.data?.length && role !== 'coach' ? [['sponsor', 'Sponsor']] : []), ...(teaching ? [['assets', 'Teams, events, venues & brands']] : []), ...(STAFF.includes(role) ? [['admissions', 'Admissions']] : [])];
+  const tabs = [['overview', 'Overview'], ...(teaching ? [['cohorts', 'Cohorts']] : []), ['people', 'People'], ...(brands.data?.length && role !== 'coach' ? [['sponsor', 'Sponsor']] : []), ...(teaching ? [['assets', 'Teams, events, venues & brands']] : []), ...(STAFF.includes(role) || (o.kind === 'academy' && role === 'finance') ? [[o.kind === 'academy' ? 'academy' : 'admissions', o.kind === 'academy' ? 'Academy' : 'Admissions']] : [])];
   return (
     <Screen wide>
       <GradCard colors={[c.violet, c.ink]}>
@@ -89,7 +92,7 @@ export function Org({ id }) {
       </GradCard>
       {archived ? <View style={{ marginTop: 10 }}><Empty emoji="🗄️" title="This organisation is archived" sub="Everything is kept and readable. Ask an owner to restore it to make changes." /></View> : null}
       <View style={{ marginTop: 10 }}><Seg options={tabs.map(([value, label]) => ({ value, label }))} value={tab} onChange={setTab} color={c.violet} /></View>
-      {tab === 'overview' ? <Overview {...P} /> : tab === 'cohorts' ? <Cohorts {...P} /> : tab === 'people' ? <People {...P} /> : tab === 'admissions' ? <Admissions {...P} /> : tab === 'sponsor' ? <SponsorTab {...P} /> : <Assets {...P} />}
+      {tab === 'overview' ? <Overview {...P} /> : tab === 'cohorts' ? <Cohorts {...P} /> : tab === 'people' ? <People {...P} /> : tab === 'admissions' ? <Admissions {...P} /> : tab === 'academy' ? <AcademyDesk {...P} /> : tab === 'sponsor' ? <SponsorTab {...P} /> : <Assets {...P} />}
     </Screen>
   );
 }

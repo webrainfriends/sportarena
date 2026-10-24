@@ -135,3 +135,7 @@ import './legal-matters.js';
 import './branded-documents.js';
 import './health-privacy.js';
 export { capabilities } from '../registry.js';
+import './academy-programmes.js';
+import './academy-admissions.js';
+import './academy-billing.js';
+import './academy-desk.js';

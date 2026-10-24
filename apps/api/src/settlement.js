@@ -15,6 +15,7 @@ export function fundsClass(purposeType) {
   if (PROVIDER_PURPOSES.includes(purposeType)) return 'provider';
   if (purposeType === 'venue_invoice' || purposeType === 'venue_plan') return 'partner_settlement';   // settled through the venue's partner contract
   if (purposeType === 'wallet_topup' || purposeType === 'gift_card') return 'platform_wallet';          // stored value owed to the customer, not provider money
+  if (purposeType === 'academy_charge') return 'organisation_receivable';                               // owed to the academy; not a provider payout until a settlement confirms it
   return 'insurer_premium';
 }
 
