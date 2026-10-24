@@ -62,7 +62,7 @@ export function SponsorTermination({ deal: d }) {
           <T weight="800">No termination in progress</T>
           <View style={{ marginTop: 8 }}><EndingImpact impact={x.preview} /></View>
           {can.end_now ? <Btn title="End this paused agreement now" color={c.pink} loading={busy === 'endnow'} style={{ alignSelf: 'flex-start', marginTop: 12 }} onPress={() => run('endnow', () => api.patch(`/sponsorships/${d.id}`, { status: 'ended' }), 'Agreement ended — what is already due or paid is kept')} /> : can.give ? <Btn title="Give notice to end" color={c.pink} style={{ alignSelf: 'flex-start', marginTop: 12 }} onPress={() => { setErr(null); setForm('notice'); }} /> : (
-            <T size={12} color={c.mute} style={{ marginTop: 8 }} accessibilityRole="text">{me === 'admin' ? 'Platform admins can read terminations but never end an agreement for either side.' : me === 'sponsor' ? 'Your role cannot end agreements; a manager or approver can.' : 'Only an owner or admin of the organisation can give notice.'}</T>)}
+            <T size={12} color={c.mute} style={{ marginTop: 8 }} accessibilityRole="text">{me === 'admin' ? 'Platform admins can read terminations but never end an agreement for either side.' : me === 'sponsor' ? 'Your role cannot end agreements; a manager or approver can.' : d.youth?.minor_self ? 'Your guardian decides this for you.' : 'Only an owner or admin of the organisation can give notice.'}</T>)}
         </Card>
       ) : (
         <Card color={t.status === 'notice' && can.accept ? c.sunSoft : c.paper} accessibilityLabel="Termination notice">
