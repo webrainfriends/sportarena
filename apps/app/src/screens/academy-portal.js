@@ -14,6 +14,7 @@ import { c } from '../theme';
 import { moneyIn } from '../vtime';
 import { explain } from '../access';
 import { useLayout } from '../layout';
+import { MySessions } from './academy-session';
 import { Block, FORMATS, FOCUS, Initials, Meter, StageBadge, StageTrack, Timeline, STAGE, hoursLeft, lab, openEnrolmentLetter, openInvoicePdf, priceLine, when } from './academy-ui';
 
 const Panel = ({ children, tone }) => <View style={{ backgroundColor: tone ?? c.paper, borderRadius: 20, padding: 16, gap: 10, borderWidth: 1, borderColor: c.line }}>{children}</View>;
