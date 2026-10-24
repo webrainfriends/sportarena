@@ -1,13 +1,14 @@
 import { z } from 'zod';
 import { cap, id } from '../registry.js';
 import { one, many } from '../db.js';
-import { forbidden, notFound } from '../errors.js';
+import { conflict, forbidden, notFound } from '../errors.js';
 import { newOpaqueToken, sha256 } from '../crypto.js';
 import { PUBLIC_USER } from '../helpers.js';
-import { isYouth } from '../youth.js';
+import { guardianLink, isYouth, requireConsent } from '../youth.js';
 import { ACTIVITIES_CTE } from '../athlete-history.js';
 import { config } from '../config.js';
 import { profileCredentials } from '../education.js';
+import { FULL_SCOPE, SECTION_FLAGS, openLink, recruitmentSections, scopeOf } from '../passport-sections.js';
 import { publicCareer } from '../career.js';
 
 const TAG = 'Passport';
@@ -39,6 +40,7 @@ export async function buildPassport(userId, scope = { show_matches: true, show_r
     scope.show_credentials ? profileCredentials(userId) : [],
     scope.show_career && !(await isYouth(userId)) ? publicCareer(userId) : [],
   ]);
+  const rec = await recruitmentSections(userId, scope, ctx);
   // career totals per sport, derived from the same season rows
   const career = new Map();
   for (const r of activity) {
@@ -63,7 +65,9 @@ cap({
   summary: 'Create a share link to your player passport for a coach or scout. You choose what it shows (match history by season, approved results, awards, certificates and badges, and optionally your club career timeline) and when it expires (up to 90 days). The secret is shown once; put it in a QR code. Not available to young people.',
   input: z.object({ label: z.string().trim().max(60).optional(), expires_in_days: z.number().int().min(1).max(90).default(30), show_matches: z.boolean().default(true), show_results: z.boolean().default(true), show_awards: z.boolean().default(true), show_credentials: z.boolean().default(true), show_career: z.boolean().default(false) }),
   async handler({ user }, i) {
-    if (await isYouth(user.id)) throw forbidden('A parent or guardian needs to arrange sharing for you');
+    const owner = await subjectOf(user, i.athlete_id);
+    if (owner !== user.id) await requireConsent(owner, 'recruitment_sharing', 'sharing this passport');
+    await checkRecipient(i.recipient_id, owner);
     const token = newOpaqueToken();
     const row = await one(
       `INSERT INTO passport_links(user_id, token_hash, label, show_matches, show_results, show_awards, show_credentials, show_career, expires_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8, now() + $9 * interval '1 day')
@@ -85,10 +89,11 @@ cap({
 
 cap({
   name: 'revoke_passport_link', method: 'POST', path: '/me/passport-links/:id/revoke', tag: TAG,
-  summary: 'Turn a passport link off immediately. The record stays so you can see it was shared.',
+  summary: 'Turn a passport link off immediately (you, or a young person\'s verified guardian). The record stays so you can see it was shared.',
   input: z.object({ id }),
   async handler({ user }, i) {
-    const row = await one('UPDATE passport_links SET revoked_at=now() WHERE id=$1 AND user_id=$2 AND revoked_at IS NULL RETURNING id, revoked_at', [i.id, user.id]);
+    await manageable(user, i.id);
+    const row = await one('UPDATE passport_links SET revoked_at=now() WHERE id=$1 AND revoked_at IS NULL RETURNING id, revoked_at', [i.id]);
     if (!row) throw notFound('Passport link');
     return row;
   },
@@ -96,13 +101,13 @@ cap({
 
 cap({
   name: 'get_my_passport', method: 'GET', path: '/me/passport', tag: TAG,
-  summary: 'Preview your own player passport exactly as a link would show it (everything on).',
-  handler: ({ user }) => buildPassport(user.id),
+  summary: 'Preview your own player passport exactly as a link would show it (everything on; only approved videos and references).',
+  handler: ({ user }) => buildPassport(user.id, FULL_SCOPE, { viewerId: user.id }),
 });
 
 cap({
   name: 'get_passport', method: 'GET', path: '/passport/:token', tag: TAG, auth: 'public',
-  summary: 'Open a player passport from a share link. Anyone holding a valid, unexpired, unrevoked link can read it; it contains no personal identification data. Each open is counted, nothing about the viewer is stored.',
+  summary: 'Open a player passport from a share link. Anyone holding a valid, unexpired, unrevoked link can read it, unless it is addressed to one person: then you must be signed in as that person. It contains no personal identification data. Each open is counted; for a person-addressed link the signed-in viewer is recorded.',
   input: z.object({ token: z.string().min(10).max(200) }),
   async handler(_, i) {
     const link = await one('UPDATE passport_links SET view_count=view_count+1, last_viewed_at=now() WHERE token_hash=$1 AND revoked_at IS NULL AND expires_at > now() RETURNING user_id, show_matches, show_results, show_awards, show_credentials, show_career, expires_at', [sha256(i.token)]);

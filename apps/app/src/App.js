@@ -68,6 +68,7 @@ import { CoachRates, CoachCommitments, CoachReviews, CoachAnalytics } from './sc
 import { TrainingVenue, RecurringVenue } from './screens/training-venue';
 
 import { PlayerHome, SportProfile, ImportMatches } from './screens/player';
+import { MyPassport, PassportDesk, PassportPublic } from './screens/passport';
 import { MyPassport, PassportPublic } from './screens/passport';
 import { CareerTimeline } from './screens/career';
 import { MoreWheel } from './screens/more-wheel';
