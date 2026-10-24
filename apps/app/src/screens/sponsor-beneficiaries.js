@@ -3,7 +3,7 @@ import { View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
-import { Btn, Card, Chip, Empty, Field, Loading, Row, Section, Bubble, T, Tag } from '../ui';
+import { Btn, Card, Empty, Loading, Row, Section, Bubble, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { c } from '../theme';
 import { explain, LoadError } from '../access';
@@ -61,37 +61,6 @@ export function PayeeLine({ p }) {
   const s = p.payee_snapshot;
   if (!s?.allocations?.length) return null;
   return <T size={12} color={c.mute}>Paid to: {s.allocations.map((x) => `${x.payee_name} for ${x.beneficiary_name} (${pct(x.share_bp)}${p.currency ? `, ${money(x.amount_cents, p.currency)}` : ''})`).join(' · ')}{s.unallocated_cents ? ` · ${money(s.unallocated_cents, p.currency)} unallocated` : ''}</T>;
-}
-
-/** Sponsor: find organisations / groups that opted in, then offer to them. Names only; never rosters. */
-export function BeneficiaryFinder({ brands, onSent }) {
-  const [q, setQ] = useState('');
-  const [type, setType] = useState('organisation');
-  const [offerTo, setOfferTo] = useState(null);
-  const list = useLoad(() => api.get('/sponsorship-beneficiaries', { type, limit: 20, ...(q.trim() ? { q: q.trim() } : {}) }), [q, type]);
-  const { toast } = useSession();
-  return (
-    <Section title="Sponsor an organisation or group" color={c.cyan}>
-      <T size={13} color={c.mute}>Only organisations that turned on “open to sponsors” appear. You see names only — never members.</T>
-      <View style={{ flexDirection: 'row', gap: 8 }}><Chip label="Organisations" active={type === 'organisation'} onPress={() => setType('organisation')} /><Chip label="Groups" active={type === 'group'} onPress={() => setType('group')} /></View>
-      <Field label="Search by name" value={q} onChangeText={setQ} placeholder="e.g. Riverside" />
-      {list.loading && !list.data ? <Loading /> : list.error ? <LoadError error={list.error} onRetry={list.reload} />
-        : list.data?.length ? list.data.map((o) => <Row key={o.id} left={<Bubble emoji={o.type === 'group' ? '👥' : '🏟️'} color={c.sun} />} title={o.name} sub={[o.organisation_name, o.kind, o.city].filter(Boolean).join(' · ')} right={<Btn small title="Offer" color={c.pink} onPress={() => setOfferTo(o)} />} />)
-          : <Empty emoji="🔎" title="Nothing open to sponsors yet" sub="Organisations appear here once an owner or admin opens them to sponsors." />}
-      <FormSheet visible={!!offerTo} onClose={() => setOfferTo(null)} title={`Offer to ${offerTo?.name ?? ''}`} submitLabel="Send offer"
-        fields={[{ key: 'sponsor_id', label: 'Brand', type: 'choice', options: (brands ?? []).map((s) => ({ value: s.id, label: `${s.emoji} ${s.name}` })) },
-          { key: 'currency', label: 'Currency', type: 'chips', options: ['INR', 'SGD', 'USD', 'EUR', 'GBP', 'AED'], default: 'INR' },
-          { key: 'amount_cents', label: 'Amount', type: 'money', currency: (v) => v.currency ?? 'INR' },
-          { key: 'first_due_on', label: 'Payment due', type: 'date' },
-          { key: 'starts_on', label: 'Sponsorship period', type: 'daterange', toKey: 'ends_on' },
-          { key: 'message', label: 'Message', type: 'multiline', optional: true }]}
-        onSubmit={async (v) => {
-          const { currency, amount_cents, first_due_on, starts_on, ends_on, message, sponsor_id } = v;
-          await api.post('/sponsorships', { sponsor_id, target_type: offerTo.type, target_id: offerTo.id, starts_on, ends_on, message, lines: [{ kind: 'money', label: 'Support', currency, amount_cents, cadence: 'once', first_due_on }] });
-          onSent?.(); toast('Offer sent'); return 'Offer sent — the organisation\'s representatives will be notified';
-        }} />
-    </Section>
-  );
 }
 
 /** Organisation staff: offers and agreements aimed at this organisation or its groups, with a way into each. */
