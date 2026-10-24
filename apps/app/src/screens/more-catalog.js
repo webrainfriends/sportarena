@@ -2,6 +2,7 @@
 export const MODULES = [
   ['Leaderboard', 'Leaderboard', 'Points & glory', 'play'], ['Awards', 'Trophy room', 'Cups, medals, MVPs', 'play'],
   ['CareerTimeline', 'Career & clubs', 'Your clubs, verified by them', 'play'],
+  ['MyApplications', 'My applications', 'Trials, offers & answers', 'play'],
   ['RecruiterAccess', 'Recruiter access', 'Who may see your profile', 'play'],
   ['MyPlans', 'Training plans', 'Your plans & sessions', 'play'], ['Pathways', 'Learn & study', 'Rules, courses & colleges', 'play'],
   ['Health', 'Health', 'Physio · doctors · fit to play', 'care'], ['Insure', 'My cover', 'What covers me today', 'care'],
@@ -42,7 +43,7 @@ export const PRIORITY = [
   [['sponsor', 'supplier'], ['Sponsors', 'Supply', 'Wallet', 'Earnings', 'Billboard', 'Shop']],
   [['physio', 'doctor', 'lawyer', 'insurer'], ['Health', 'Insure', 'Legal', 'Wallet', 'Leaderboard', 'Support']],
 ];
-export const PRIORITY_DEFAULT = ['Leaderboard', 'Health', 'Insure', 'Wallet', 'Shop', 'Billboard'];
+export const PRIORITY_DEFAULT = ['Leaderboard', 'MyApplications', 'Health', 'Insure', 'Wallet', 'Shop', 'Billboard'];
 
 /** The wheel's order for someone with these roles: their priority modules first, then the rest in catalogue order. */
 export function orderedModules(roles = []) {
