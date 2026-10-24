@@ -5,6 +5,10 @@ import { runJobs } from './jobs.js';
 import { notify } from './notify.js';
 import { moveStage, lockProgramme, promoteWaitlist, tell, recipients, planCharges, insertCharges } from './academy.js';
 import { addMonths } from './sponsor-schedule.js';
+import { remindAcademyTrials } from './academy-trials.js';
+
+/** The day-before reminder for booked trial seats (one per seat). */
+export const remindTrials = () => tx((c) => remindAcademyTrials(c));
 
 /** Offers past their expiry window lapse and the next person on the waitlist is offered the place. */
 export async function expireAcademyOffers() {

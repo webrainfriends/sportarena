@@ -39,6 +39,17 @@ async function academy({ capacity = 2, mode = 'direct', fee = 12000, billing = '
   const pub = must(await api('POST', `/academy/programmes/${prog.id}/versions`, { token: owner.token, body: { row_version: prog.row_version, billing_model: billing, currency: 'GBP', fee_minor: fee, ...terms } }), 201);
   return { owner, org, programme: pub.programme, version: pub.version };
 }
+const dayAhead = (d, hour = 10) => { const x = new Date(Date.now() + d * 86400e3); x.setUTCHours(hour, 0, 0, 0); return x.toISOString(); };
+/** A published trial session on the Academy OS 2/3 timetable: a group of the programme plus a session of type "trial". */
+const trialSlot = async (a, { capacity = 2, days = 3, hour = 10 } = {}) => {
+  const cohort = must(await api('POST', `/organisations/${a.org.id}/cohorts`, { token: a.owner.token, body: { name: `Trials ${++n}`, programme_id: a.programme.id } }), 201);
+  const s = must(await api('POST', `/cohorts/${cohort.id}/academy/sessions`, { token: a.owner.token, body: { starts_at: dayAhead(days, hour), duration_min: 60, delivery_type: 'trial', capacity } }), 201);
+  must(await api('POST', `/organisations/${a.org.id}/academy/sessions/publish`, { token: a.owner.token, body: { session_ids: [s.id], acknowledge_warnings: true } }));
+  return s;
+};
+/** Move a session into the past (what time does) so what happened at it can be recorded. */
+const startedAlready = (sessionId) => pool.query("UPDATE academy_sessions SET starts_at = now() - interval '2 hours', ends_at = now() - interval '1 hour' WHERE id=$1", [sessionId]);
+
 const guardianOf = async (child) => {
   const parent = await adult();
   const l = must(await api('POST', '/youth/guardian-links', { token: parent.token, body: { guardian_id: parent.id, child_id: child.id, relationship: 'parent' } }), 201);
@@ -226,8 +237,13 @@ test('staff funnel: application mode with trial, review, decision, CRM and priva
   assert.equal((await api('POST', `/academy/programmes/${a.programme.id}/applications`, { token: ath.token, body: {} })).status, 409);
   const t = must(await api('POST', `/academy/applications/${enq.id}/trial`, { token: ath.token, body: { row_version: enq.row_version } }));
   assert.equal(t.stage, 'trial_requested');
-  const booked = must(await api('POST', `/academy/applications/${enq.id}/trial/advance`, { token: a.owner.token, body: { row_version: t.row_version, step: 'book' } }));
-  const comp = must(await api('POST', `/academy/applications/${enq.id}/trial/advance`, { token: a.owner.token, body: { row_version: booked.row_version, step: 'complete' } }));
+  const slot = await trialSlot(a, { capacity: 2 });
+  const booked = must(await api('POST', `/academy/applications/${enq.id}/trial/book`, { token: ath.token, body: { row_version: t.row_version, session_id: slot.id } }));
+  assert.equal(booked.stage, 'trial_booked');
+  assert.equal((await api('POST', `/academy/applications/${enq.id}/trial/outcome`, { token: a.owner.token, body: { row_version: booked.row_version, outcome: 'attended' } })).status, 409); // not started yet
+  await startedAlready(slot.id);
+  assert.equal((await api('POST', `/academy/applications/${enq.id}/trial/outcome`, { token: ath.token, body: { row_version: booked.row_version, outcome: 'attended' } })).status, 404); // staff only
+  const comp = must(await api('POST', `/academy/applications/${enq.id}/trial/outcome`, { token: a.owner.token, body: { row_version: booked.row_version, outcome: 'attended' } }));
   assert.equal(comp.stage, 'trial_completed');
   assert.equal((await api('POST', `/academy/applications/${enq.id}/submit`, { token: ath.token, body: { row_version: comp.row_version, answers: {} } })).status, 422); // required answer missing
   const sub = must(await api('POST', `/academy/applications/${enq.id}/submit`, { token: ath.token, body: { row_version: comp.row_version, answers: { goal: 'Make the county squad' } } }));
@@ -341,4 +357,91 @@ test('programme desk, athlete directory/360, quote and announcement history are 
   assert.equal(fam.people.length, 3);
   const mine = fam.people.find((p) => p.athlete.id === kid1.id);
   assert.ok(mine.applications[0].history.length >= 4); assert.ok(mine.applications[0].programme_info);
+});
+
+// ------------------------------------------------------------------ trials on the academy timetable
+const { remindTrials } = await import('../src/academy-sweeps.js');
+const requestTrial = async (u, a, athleteId) => {
+  const enq = must(await api('POST', `/academy/programmes/${a.programme.id}/applications`, { token: u.token, body: athleteId ? { athlete_id: athleteId } : {} }), 201);
+  return must(await api('POST', `/academy/applications/${enq.id}/trial`, { token: u.token, body: { row_version: enq.row_version } }));
+};
+const appRow = async (id) => (await pool.query('SELECT stage, row_version FROM academy_applications WHERE id=$1', [id])).rows[0];
+
+test('trial booking: the seat is a guest attendance row on a published trial session; concurrent bookings never exceed capacity; change, cancel and a cancelled session free seats', async () => {
+  const a = await academy({ capacity: 10 });
+  const slot = await trialSlot(a, { capacity: 2 });
+  const people = await Promise.all([adult(), adult(), adult(), adult()]);
+  const reqs = await Promise.all(people.map((u) => requestTrial(u, a)));
+  const slots = must(await api('GET', `/academy/programmes/${a.programme.id}/trial-slots`, { token: people[0].token }));
+  assert.equal(slots.slots.length, 1); assert.equal(slots.slots[0].seats_free, 2); assert.ok(slots.slots[0].local_date && slots.slots[0].local_start);
+  assert.equal(slots.slots[0].booked, undefined);                                    // no counts or names of other people
+  assert.equal((await api('GET', `/academy/programmes/${a.programme.id}/trial-slots`, { token: (await adult()).token, query: { athlete_id: people[0].id } })).status, 403);
+  const res = await Promise.all(people.map((u, k) => api('POST', `/academy/applications/${reqs[k].id}/trial/book`, { token: u.token, body: { row_version: reqs[k].row_version, session_id: slot.id } })));
+  assert.equal(res.filter((r) => r.status === 200).length, 2); assert.equal(res.filter((r) => r.status === 409).length, 2);
+  const seats = (await pool.query("SELECT user_id, guest, status, application_id FROM academy_attendance WHERE session_id=$1", [slot.id])).rows;
+  assert.equal(seats.length, 2); assert.ok(seats.every((x) => x.guest && x.status === 'expected' && x.application_id));
+  assert.equal(must(await api('GET', `/academy/programmes/${a.programme.id}/trial-slots`, { token: people[0].token })).slots.length, 0); // full: not offered
+  // one of the booked changes to another time: the first seat is freed (excused), the second taken
+  const k = res.findIndex((r) => r.status === 200), waiting = res.findIndex((r) => r.status === 409);
+  const second = await trialSlot(a, { capacity: 3, days: 4 });
+  const moved = must(await api('POST', `/academy/applications/${reqs[k].id}/trial/book`, { token: people[k].token, body: { row_version: res[k].body.row_version, session_id: second.id } }));
+  assert.equal(moved.stage, 'trial_booked');
+  assert.equal((await pool.query("SELECT status FROM academy_attendance WHERE session_id=$1 AND user_id=$2", [slot.id, people[k].id])).rows[0].status, 'excused');
+  assert.equal((await api('POST', `/academy/applications/${reqs[k].id}/trial/book`, { token: people[k].token, body: { row_version: moved.row_version, session_id: second.id } })).status, 409); // already there
+  // a stranger can neither book nor cancel; staff can book on someone's behalf
+  const stranger = await adult();
+  assert.equal((await api('POST', `/academy/applications/${reqs[k].id}/trial/book`, { token: stranger.token, body: { row_version: moved.row_version, session_id: slot.id } })).status, 404);
+  const w = await appRow(reqs[waiting].id);
+  const staffBooked = must(await api('POST', `/academy/applications/${reqs[waiting].id}/trial/book`, { token: a.owner.token, body: { row_version: w.row_version, session_id: slot.id } }));
+  assert.equal((await pool.query("SELECT source FROM academy_attendance WHERE session_id=$1 AND user_id=$2", [slot.id, people[waiting].id])).rows[0].source, 'staff');
+  // cancelling frees the seat and returns the application to "trial requested"
+  const gone = must(await api('POST', `/academy/applications/${reqs[waiting].id}/trial/cancel`, { token: people[waiting].token, body: { row_version: staffBooked.row_version } }));
+  assert.equal(gone.stage, 'trial_requested');
+  // cancelling the session itself releases everyone on it and tells them; history is kept
+  const held = (await pool.query("SELECT application_id FROM academy_attendance WHERE session_id=$1 AND status='expected'", [slot.id])).rows;
+  assert.equal(held.length, 1);
+  must(await api('POST', `/academy/sessions/${slot.id}/cancel`, { token: a.owner.token, body: { reason: 'Pitch unavailable' } }));
+  assert.equal((await appRow(held[0].application_id)).stage, 'trial_requested');
+  assert.equal((await pool.query("SELECT count(*)::int AS n FROM academy_attendance WHERE session_id=$1 AND status IN ('not_held','excused')", [slot.id])).rows[0].n, 3);
+  assert.ok((await pool.query("SELECT count(*)::int AS n FROM notifications WHERE kind='academy_trial_cancelled'")).rows[0].n >= 1);
+  const again = await appRow(held[0].application_id);
+  assert.equal((await api('POST', `/academy/applications/${held[0].application_id}/trial/book`, { token: a.owner.token, body: { row_version: again.row_version, session_id: slot.id } })).status, 409);
+});
+
+test('trial for a young person goes through the verified guardian; the fee gates booking; reminders go once; attendance on the roster drives the application; a no-show can rebook', async () => {
+  const a = await academy({ capacity: 10, terms: { trial_fee_minor: 500 } });
+  const slot = await trialSlot(a, { capacity: 3, days: 1 });
+  const child = await signup({ dob: yearsAgo(11) });
+  assert.equal((await api('POST', `/academy/programmes/${a.programme.id}/applications`, { token: child.token, body: {} })).status, 403); // a child cannot enrol themselves
+  const parent = await guardianOf(child);
+  await allow(parent, child, 'participation');
+  const t = await requestTrial(parent, a, child.id);
+  const fee = (await pool.query("SELECT * FROM academy_charges WHERE application_id=$1 AND kind='trial'", [t.id])).rows[0];
+  assert.equal(Number(fee.amount_minor), 500);
+  assert.equal((await api('POST', `/academy/applications/${t.id}/trial/book`, { token: parent.token, body: { row_version: t.row_version, session_id: slot.id } })).status, 409); // fee unpaid
+  await pool.query("UPDATE academy_charges SET status='waived' WHERE id=$1", [fee.id]);
+  assert.equal((await api('POST', `/academy/applications/${t.id}/trial/book`, { token: child.token, body: { row_version: t.row_version, session_id: slot.id } })).status, 403); // the child cannot book either
+  const booked = must(await api('POST', `/academy/applications/${t.id}/trial/book`, { token: parent.token, body: { row_version: t.row_version, session_id: slot.id } }));
+  assert.equal((await pool.query("SELECT source FROM academy_attendance WHERE session_id=$1 AND user_id=$2", [slot.id, child.id])).rows[0].source, 'guardian');
+  // the family view shows the booked time; only the guardian is told, never the child
+  const fam = must(await api('GET', '/me/academy', { token: parent.token }));
+  const mine = fam.people.find((p) => p.athlete.id === child.id).applications.find((x) => x.id === t.id);
+  assert.equal(mine.trial.session.id, slot.id); assert.ok(mine.trial.session.local_date);
+  assert.equal((await pool.query("SELECT count(*)::int AS n FROM notifications WHERE kind='academy_trial_booked' AND user_id=$1", [child.id])).rows[0].n, 0);
+  assert.equal((await pool.query("SELECT count(*)::int AS n FROM notifications WHERE kind='academy_trial_booked' AND user_id=$1", [parent.id])).rows[0].n, 1);
+  // reminder: once, only inside the 24 hours before
+  await pool.query("UPDATE academy_sessions SET starts_at = now() + interval '20 hours', ends_at = now() + interval '21 hours' WHERE id=$1", [slot.id]);
+  assert.equal(await remindTrials(), 1);
+  assert.equal(await remindTrials(), 0);
+  assert.equal((await pool.query("SELECT count(*)::int AS n FROM notifications WHERE kind='academy_trial_reminder' AND user_id=$1", [parent.id])).rows[0].n, 1);
+  // staff mark the roster (the single attendance write path): the application follows. Absent -> back to requested, the family can pick another time.
+  await startedAlready(slot.id);
+  must(await api('POST', `/academy/sessions/${slot.id}/attendance`, { token: a.owner.token, body: { entries: [{ user_id: child.id, status: 'absent', reason_code: 'other' }] } }));
+  assert.equal((await appRow(t.id)).stage, 'trial_requested');
+  const second = await trialSlot(a, { capacity: 3, days: 2 });
+  const again = must(await api('POST', `/academy/applications/${t.id}/trial/book`, { token: parent.token, body: { row_version: (await appRow(t.id)).row_version, session_id: second.id } }));
+  await startedAlready(second.id);
+  must(await api('POST', `/academy/sessions/${second.id}/attendance`, { token: a.owner.token, body: { entries: [{ user_id: child.id, status: 'present' }] } }));
+  assert.equal((await appRow(t.id)).stage, 'trial_completed');
+  assert.ok(again.row_version > 0);
 });

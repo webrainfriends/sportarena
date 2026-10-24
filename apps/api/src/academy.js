@@ -20,7 +20,7 @@ export const STAFF_MONEY = ['owner', 'admin', 'finance'];
 export const NEXT = {
   enquiry: ['trial_requested', 'application_draft', 'submitted', 'withdrawn', 'cancelled'],
   trial_requested: ['trial_booked', 'withdrawn', 'cancelled'],
-  trial_booked: ['trial_completed', 'withdrawn', 'cancelled'],
+  trial_booked: ['trial_completed', 'trial_requested', 'withdrawn', 'cancelled'],
   trial_completed: ['application_draft', 'submitted', 'withdrawn'],
   application_draft: ['submitted', 'withdrawn', 'cancelled'],
   submitted: ['under_review', 'offered', 'waitlisted', 'declined', 'withdrawn'],

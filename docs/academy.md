@@ -41,6 +41,9 @@ with `academy_charge`. Nothing is dropped, rewritten or cascaded.
 Capabilities (REST + OpenAPI + MCP from one definition): `src/capabilities/academy-programmes.js`, `academy-admissions.js`, `academy-billing.js` and the read models in `academy-desk.js` (programme desk, athlete directory and 360, announcement history). `quote_academy_enrolment` returns the exact price and due dates before anyone applies; nothing is created by a quote. Rules in
 `src/academy.js`; background work in `src/academy-sweeps.js` (offer expiry + waitlist promotion, next monthly charge, announcements).
 
+## Trials
+A trial is a seat on a published `trial` session of the Academy OS 2/3 timetable (`academy_sessions.delivery_type = 'trial'`); there is no separate trial calendar and no new seat table. The seat is the existing guest `academy_attendance` row, linked to the application (`academy_attendance.application_id`, one live seat per application), so rosters, capacity (`expectedCount`, taken under the same session row lock as make-up transfers) and attendance stay one fact. Booking (`book_academy_trial`) is done by the applicant, the verified guardian or staff, waits for an unpaid trial fee, and changing the time excuses the old seat and takes the new one atomically. What happened is recorded where attendance is recorded: marking the guest present, late or left early completes the trial, absent returns the application to "trial requested", and cancelling the session releases every seat and tells the families. `record_academy_trial_outcome` is only a shortcut that writes the same attendance mark. A reminder goes out the day before (worker step `academy_trial_reminders`); only the guardian is told for a young person.
+
 ## Lifecycle
 `enquiry → trial_requested → trial_booked → trial_completed → application_draft → submitted → under_review → offered | waitlisted | declined → offer_accepted → enrolled`,
 with `withdrawn`, `expired`, `cancelled`. The server owns every move (`moveStage`): optimistic `row_version`, an append-only event with actor and reason, and
@@ -85,7 +88,7 @@ Migration 100 is additive. To roll back application code, leave the tables in pl
 revert `apps/app/src/screens/academy.js` and its two imports. Do not drop academy tables: they hold admissions, consent acknowledgements and billing history.
 
 ## Residual limitations (explicit)
-Trial sessions and the academy timetable belong to Academy OS 2/3; a trial is booked as a status here and will link to a canonical session there. Progress and
+Trials are booked on the Academy OS 2/3 timetable (see Trials above); attendance there does not consume pack sessions automatically. Progress and
 outcome links belong to 3/3. No e-signature provider is integrated (acknowledgements are internal records). No automatic card debit. Document generation
 for enrolment letters/receipts reuses the branded-documents service only after a template family is enabled; none is added here.
 

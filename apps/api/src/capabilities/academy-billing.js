@@ -9,6 +9,7 @@ import { audit } from '../helpers.js';
 import { orgFor } from '../org-access.js';
 import { refundPartial } from '../payments/service.js';
 import { STAFF_MONEY, outstandingPolicies, waitlistPosition, planCharges, actFor } from '../academy.js';
+import { localView } from '../academy-trials.js';
 
 const money = (rows, key = 'currency') => Object.fromEntries(rows.map((r) => [r[key], r]));
 
@@ -107,6 +108,10 @@ cap({
         a.history = await many('SELECT to_stage, reason, created_at FROM academy_application_events WHERE application_id=$1 ORDER BY created_at, id', [a.id]);
         const pr = await one('SELECT p.sport, p.format, p.starts_on, p.ends_on, p.trial_enabled, p.admission_mode, v.billing_model, v.currency, v.fee_minor FROM academy_programmes p LEFT JOIN academy_programme_versions v ON v.programme_id=p.id AND v.version=p.current_version WHERE p.id=$1', [a.programme_id]);
         Object.assign(a, { programme_info: pr });
+        if (['trial_requested', 'trial_booked'].includes(a.stage)) {
+          const seat = await one(`SELECT s.id, s.title, s.starts_at, s.ends_at, s.timezone FROM academy_attendance t JOIN academy_sessions s ON s.id=t.session_id WHERE t.application_id=$1 AND t.status IN ('expected','present','late','left_early') ORDER BY t.id DESC LIMIT 1`, [a.id]);
+          a.trial = seat ? { session: { ...seat, ...localView(seat) } } : null;
+        }
       }
       const enrolments = await many(
         `SELECT e.id, e.status, e.cohort_id, k.name AS cohort, e.programme_id, pr.title AS programme, pr.sport, pr.starts_on, pr.ends_on, o.name AS organisation, k.organisation_id, e.sessions_left, e.enrolled_at

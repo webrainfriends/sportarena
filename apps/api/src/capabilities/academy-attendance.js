@@ -9,6 +9,7 @@ import { notify } from '../notify.js';
 import { requireGuardian, hasConsent } from '../youth.js';
 import { isAdmin } from '../helpers.js';
 import { sessionFor, expectedCount } from '../academy-ops.js';
+import { syncTrialFromAttendance } from '../academy-trials.js';
 
 const TAG = 'Academy operations';
 const day = z.string().date();
@@ -63,6 +64,7 @@ export async function markAttendance(c, s, userId, status, { source = 'staff', a
       `UPDATE coaching_session_participants p SET attendance=$3, updated_at=now(), arrived_at=CASE WHEN $3 IN ('present','late','left_early') THEN coalesce(p.arrived_at, now()) ELSE NULL END, left_at=CASE WHEN $3='left_early' THEN coalesce(p.left_at, now()) ELSE NULL END
          FROM coaching_session_records r WHERE r.id=p.session_record_id AND r.source_type='academy_session' AND r.source_id=$1 AND p.athlete_id=$2`, [s.id, userId, status]);
   }
+  await syncTrialFromAttendance(c, row, status, actor);   // a trial seat: the application follows what attendance says
   return { changed: true, row };
 }
 
