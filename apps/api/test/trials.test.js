@@ -66,6 +66,8 @@ test('attendance, rubric assessment, outcome and release: attendance is not sele
   const role = (await pool.query("INSERT INTO event_staff_roles(event_id, role, created_by) VALUES ($1,'assessor',$2) RETURNING id", [ev.id, org.id])).rows[0];
   await pool.query("INSERT INTO event_staff_assignments(role_id, event_id, user_id, status, invited_by) VALUES ($1,$2,$3,'accepted',$4)", [role.id, ev.id, assessor.id, org.id]);
 
+  assert.equal(ok(await get(assessor.token, `/events/${ev.id}`)).is_assessor, true);
+  assert.equal(ok(await get(p.token, `/events/${ev.id}`)).is_assessor, false);
   assert.equal((await post(assessor.token, `/trial-bookings/${bk.id}/assessment`, { rubric_ref: 'standard:fifa_technical', scores: { passing: 4 } })).status, 409, 'attendance first');
   const att = ok(await post(assessor.token, `/trial-bookings/${bk.id}/attendance`, { status: 'present' }), 201 === 0 ? 201 : 200);
   assert.equal(ok(await post(assessor.token, `/trial-bookings/${bk.id}/attendance`, { status: 'present' })).row_version, att.row_version, 'repeat changes nothing');
