@@ -182,7 +182,7 @@ cap({
     const out = { id: d.id, agreement_ref: d.agreement_ref, status: d.status, role: ctx.role, my_sponsor_role: ctx.staff, can: ctx.staff ? actionsFor(ctx.staff) : undefined, sponsor: { id: sp.id, name: sp.name }, target_type: d.target_type, target_id: d.target_id, starts_on: d.starts_on, ends_on: d.ends_on, timezone: d.timezone, terms_version: d.terms_version, accepted_version: d.accepted_version, currency: d.currency, pause_rev: d.pause_rev, legacy_amount_cents: lines.length ? undefined : d.amount_cents, legacy_in_kind: lines.length ? undefined : d.in_kind, objectives: d.objectives, deliverables: d.deliverables, lines };
     if (ctx.youth) { // a young athlete's agreement: who acts for them and what the guardian currently allows (separate from the agreement itself)
       out.youth = { guardian_acting: ctx.guardian, minor_self: ctx.minorSelf, guardian_decided_at: d.guardian_decided_at ?? null,
-        authority_live: !!(await liveAuthority(pool, d.sponsor_id, d.target_id)), results_shared: !!d.performance_access,
+        authority_live: !!(await liveAuthority(pool, d.sponsor_id, d.target_id)), results_shared: !!d.performance_access && !!(await liveAuthority(pool, d.sponsor_id, d.target_id)) && !!(d.performance_access_by && await guardianLink(d.performance_access_by, d.target_id)),
         media_allowed: await hasConsent(d.target_id, 'media'), contact_allowed: await hasConsent(d.target_id, 'contact') };
     }
     if (['organisation', 'group'].includes(d.target_type)) out.beneficiary = { type: d.target_type, id: d.target_id, name: (await one(d.target_type === 'group' ? 'SELECT name FROM org_cohorts WHERE id=$1' : 'SELECT name FROM organisations WHERE id=$1', [d.target_id]))?.name ?? null, my_role: ctx.beneficiary?.representative ? 'representative' : ctx.beneficiary?.payee ? 'payee' : null };
@@ -567,7 +567,7 @@ async function amendmentsFor(ctx) {
   const open = (await one("SELECT a.id, a.seq, a.rev, a.proposed_side, a.effective_from::text AS effective_from, a.reason FROM sponsorship_amendments a WHERE a.sponsorship_id=$1 AND a.status='proposed'", [d.id])) ?? null;
   const total = (await one('SELECT count(*)::int AS n FROM sponsorship_amendments WHERE sponsorship_id=$1', [d.id])).n;
   const side = role === 'sponsor' || role === 'recipient';
-  const may = (a) => (role === 'recipient' ? !['organisation', 'group'].includes(d.target_type) || !!ctx.beneficiary?.representative : role === 'sponsor' ? actionsFor(ctx.staff).includes(a) : false);
+  const may = (a) => (role === 'recipient' ? !ctx.minorBlocked && (!['organisation', 'group'].includes(d.target_type) || !!ctx.beneficiary?.representative) : role === 'sponsor' ? actionsFor(ctx.staff).includes(a) : false);
   const live = d.status === 'active' && !!d.accepted_version;
   return { open, total, can_propose: live && side && !open && may('revise'), can_answer: !!open && live && side && open.proposed_side !== role && may('sign_off'), can_edit: !!open && live && side && open.proposed_side === role && may('revise') };
 }
@@ -578,7 +578,7 @@ async function negotiationFor(ctx) {
   const versions = await many("SELECT v.version, v.authored_side, v.reason, v.restores, v.created_at, v.signed_off_at, u.display_name AS author FROM sponsorship_versions v LEFT JOIN users u ON u.id=v.authored_by WHERE v.sponsorship_id=$1 ORDER BY v.version", [d.id]);
   const comments = await many(
     "SELECT m.id, m.version, m.line_position, m.side, m.visibility, m.body, m.created_at, u.display_name AS author FROM sponsorship_comments m JOIN users u ON u.id=m.author_id WHERE m.sponsorship_id=$1 AND (m.visibility='shared' OR m.side=$2) ORDER BY m.id", [d.id, role]);
-  const open = d.status === 'proposed', mySide = role === 'sponsor' || role === 'recipient' ? role : null;
+  const open = d.status === 'proposed', mySide = (role === 'sponsor' || role === 'recipient') && !ctx.minorBlocked ? role : null;
   return { open, terms_side: d.terms_side, awaiting: open ? (d.terms_side === 'sponsor' ? 'recipient' : 'sponsor') : null,
     my_turn: !!(open && mySide && mySide !== d.terms_side), can_counter: !!(open && mySide), can_withdraw_change: !!(open && mySide === d.terms_side && versions.some((v) => v.authored_side !== mySide && v.version < d.terms_version)), versions, comments };
 }

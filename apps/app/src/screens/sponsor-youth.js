@@ -35,7 +35,7 @@ export function GuardianSponsors({ child, onClose }) {
               <Btn small title="Withdraw" color={c.paper} ink={c.red} style={{ alignSelf: 'flex-start', marginTop: 6 }} disabled={busy}
                 onPress={() => run(() => api.del(`/youth/children/${child.id}/sponsors/${x.sponsor_id}`), 'Authority withdrawn — future sponsor actions are blocked')} />
             </Card>))
-            : <Empty emoji="🛡️" title="No sponsor is authorized yet" sub={`${child?.display_name ?? 'They'} stay hidden from all sponsors.`} />}
+            : <Empty emoji="🛡️" title="No sponsor is authorized yet" sub={child ? `${child.display_name} stays hidden from all sponsors.` : 'They stay hidden from all sponsors.'} />}
           {past.map((x) => <T key={x.id} size={12} color={c.mute}>{x.sponsor_name} · withdrawn {day(x.withdrawn_at)} · {x.agreements} agreement{x.agreements === 1 ? '' : 's'} kept</T>)}
         </>)}
     </Sheet>
