@@ -3,9 +3,10 @@
 import React from 'react';
 import { Platform, Pressable, View } from 'react-native';
 import { api } from '../api';
-import { Avatar, Btn, Card, Sheet, T, Tag } from '../ui';
+import { Avatar, Btn, Card, Empty, Loading, Row, Sheet, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { useLoad } from '../hooks';
+import { explain } from '../access';
 import { useLayout } from '../layout';
 import { c } from '../theme';
 import { moneyIn } from '../vtime';
@@ -248,5 +249,30 @@ export function LetterSheet({ enrolment, orgId, onClose, toast }) {
         ...(mine.length ? [{ key: 'template_id', label: 'Letter template', type: 'chips', optional: true, options: mine.map((t) => ({ value: t.id, label: t.name })) }] : []),
       ]}
       onSubmit={async (v) => { await openEnrolmentLetter(enrolment.enrolment_id, toast, { note: v.note || undefined, template_id: v.template_id || undefined }, { rethrow: true }); return 'Letter issued'; }} />
+  );
+}
+
+/** Pick a trial time from the academy's published trial sessions. Families and staff use the same list; the server decides who may book. */
+export function TrialSlots({ app, forStaff, onClose, onBooked, toast }) {
+  const slots = useLoad(() => (app ? api.get(`/academy/programmes/${app.programme_id}/trial-slots`, { athlete_id: app.athlete_id }) : Promise.resolve(null)), [app?.id, app?.row_version]);
+  const [busy, setBusy] = React.useState(null);
+  const book = async (s) => {
+    setBusy(s.id);
+    try { await api.post(`/academy/applications/${app.id}/trial/book`, { row_version: app.row_version, session_id: s.id }); toast?.('Trial booked'); onBooked?.(); onClose(); }
+    catch (e) { toast?.(explain(e)); slots.reload(); } finally { setBusy(null); }
+  };
+  const list = slots.data?.slots ?? [];
+  return (
+    <Sheet visible={!!app} onClose={onClose} title="Choose a trial time">
+      {!slots.data && !slots.error ? <Loading /> : list.length ? (
+        <View style={{ gap: 8 }}>
+          {list.map((s) => (
+            <Row key={s.id} title={`${when(s.local_date)} · ${s.local_start}–${s.local_end}`} sub={`${s.venue ?? 'Venue to be confirmed'}${s.seats_free != null ? ` · ${s.seats_free} ${s.seats_free === 1 ? 'place' : 'places'} left` : ''}`}
+              right={<Btn small title="Book" loading={busy === s.id} onPress={() => book(s)} />} />
+          ))}
+          <T size={11} color={c.mute}>Times are in the academy&apos;s local time. You can change or cancel the booking until the trial starts.</T>
+        </View>
+      ) : <Empty emoji="📅" title="No trial times yet" sub={forStaff ? 'Add a session of type "Trial" for this programme in the academy timetable (Operations).' : 'The academy has not published trial times yet. We will tell you when there are some.'} />}
+    </Sheet>
   );
 }

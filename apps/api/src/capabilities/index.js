@@ -150,6 +150,7 @@ import './academy-athlete360.js';
 import './academy-finance.js';
 import './academy-executive.js';
 import './academy-letters.js';
+import './academy-trials.js';
 import './academy-sessions.js';
 import './academy-staff.js';
 import './academy-attendance.js';

@@ -10,6 +10,7 @@ import { encrypt, decrypt, blindIndex } from '../crypto.js';
 import { requireConsent, guardianLink } from '../youth.js';
 import { enqueue } from '../jobs.js';
 import { orgFor } from '../org-access.js';
+import { localView, releaseApplicationSeat } from '../academy-trials.js';
 import {
   STAGES, STAFF, actFor, tell, lockProgramme, seatsFree, moveStage, checkEligibility, validateAnswers, sealAnswers, openAnswers,
   enrol, promoteWaitlist, waitlistPosition, nextWaitlistSeq, insertCharges, findPromo,
@@ -71,7 +72,7 @@ cap({
 
 cap({
   name: 'request_academy_trial', method: 'POST', path: '/academy/applications/:id/trial', tag: 'Academy',
-  summary: 'Ask for a trial (programmes that offer one). If the programme has a trial fee a payable charge is raised; staff book the trial once it is settled. The trial is scheduled in the academy timetable, not a separate calendar.',
+  summary: 'Ask for a trial (programmes that offer one). If the programme has a trial fee a payable charge is raised; the family (or staff) then book a time on a trial session of the academy timetable; there is no separate trial calendar.',
   input: z.object({ id, row_version: z.number().int().min(1) }),
   handler: ({ user }, i) => tx(async (c) => {
     const { a } = await appFor(user, i.id, { c, lock: true });
@@ -82,20 +83,6 @@ cap({
     const row = await moveStage(c, a, 'trial_requested', { actor: user.id });
     if (v && Number(v.trial_fee_minor) > 0) await insertCharges(c, { applicationId: row.id, orgId: row.organisation_id, payerId: row.applicant_id, rows: [{ kind: 'trial', due_on: new Date().toISOString().slice(0, 10), currency: v.currency, gross_minor: Number(v.trial_fee_minor), discount_minor: 0, funded_minor: 0, tax_minor: 0, amount_minor: Number(v.trial_fee_minor), terms: { version: v.version } }] });
     await tell(c, row, 'trial_requested', 'Trial request received');
-    return clean(row);
-  }),
-});
-
-cap({
-  name: 'advance_academy_trial', method: 'POST', path: '/academy/applications/:id/trial/advance', tag: 'Academy',
-  summary: 'Staff: book the trial, then mark it completed (owner/admin). Booking waits for a trial fee to be paid or waived. Records who and why.',
-  input: z.object({ id, row_version: z.number().int().min(1), step: z.enum(['book', 'complete']), note: z.string().max(300).optional() }),
-  handler: ({ user }, i) => tx(async (c) => {
-    const { a } = await appFor(user, i.id, { c, staff: true, lock: true });
-    if (a.row_version !== i.row_version) throw stale();
-    if (i.step === 'book' && (await c.query("SELECT 1 FROM academy_charges WHERE application_id=$1 AND kind='trial' AND status='awaiting_payment'", [a.id])).rows.length) throw conflict('The trial fee has not been paid yet');
-    const row = await moveStage(c, a, i.step === 'book' ? 'trial_booked' : 'trial_completed', { actor: user.id, reason: i.note ?? null });
-    await tell(c, row, i.step === 'book' ? 'trial_booked' : 'trial_completed', i.step === 'book' ? 'Your trial is booked' : 'Trial completed');
     return clean(row);
   }),
 });
@@ -249,6 +236,7 @@ cap({
     const { a } = await appFor(user, i.id, { c, lock: true });
     if (a.row_version !== i.row_version) throw stale();
     const row = await moveStage(c, a, 'withdrawn', { actor: user.id, reason: i.reason ?? null, set: { waitlist_seq: null } });
+    await releaseApplicationSeat(c, a.id, user.id, 'Application withdrawn');
     await cancelUnpaidCharges(c, 'application_id=$1', [a.id]);
     await promoteWaitlist(c, p, { actor: user.id });
     return clean(row);
@@ -264,7 +252,8 @@ cap({
     const staffRole = await (async () => { const a0 = await one('SELECT organisation_id FROM academy_applications WHERE id=$1', [i.id]); if (!a0) throw notFound('Application'); try { await orgFor(user, a0.organisation_id, STAFF); return true; } catch (e) { if (e.status === 404) return false; throw e; } })();
     const { a } = staffRole ? { a: await one('SELECT * FROM academy_applications WHERE id=$1', [i.id]) } : await appFor(user, i.id);
     const events = await many('SELECT from_stage, to_stage, actor_id, reason, created_at FROM academy_application_events WHERE application_id=$1 ORDER BY created_at, id', [a.id]);
-    const base = { ...clean(a), answers: openAnswers(a.answers_enc), history: events, waitlist_position: await waitlistPosition({ query: async (s, p) => ({ rows: [await one(s, p)] }) }, a) };
+    const seat = ['trial_requested', 'trial_booked'].includes(a.stage) ? await one(`SELECT s.id, s.title, s.starts_at, s.ends_at, s.timezone, t.status AS attendance FROM academy_attendance t JOIN academy_sessions s ON s.id=t.session_id WHERE t.application_id=$1 AND t.status IN ('expected','present','late','left_early') ORDER BY (t.status='expected') DESC, t.marked_at DESC NULLS LAST, t.id LIMIT 1`, [a.id]) : null;
+    const base = { ...clean(a), trial: seat ? { session: { ...seat, ...localView(seat) } } : null, answers: openAnswers(a.answers_enc), history: events, waitlist_position: await waitlistPosition({ query: async (s, p) => ({ rows: [await one(s, p)] }) }, a) };
     if (!staffRole) return base;
     await audit(null, user.id, 'read_pii', 'academy_applications', a.id);
     const notes = await many('SELECT n.id, n.author_id, n.body_enc, n.created_at FROM academy_notes n WHERE n.application_id=$1 ORDER BY n.created_at, n.id', [a.id]);
