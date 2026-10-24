@@ -10,6 +10,8 @@ Migration `104_trial_assessments.sql` is additive: new tables, plus the `event_s
 - Academy admissions keep their own `trial_*` stages; they are untouched.
 
 ## Tables
+Migration `105_trial_follow_up_event.sql` adds `trial_follow_ups.next_event_id`: a book_session follow-up can point at the next trial, which the player (or guardian) books from the card with `book_trial`.
+
 `trial_attendance` (+ `trial_attendance_log`), `trial_assessments` (+ `trial_assessment_revisions`), `trial_outcomes` (+ `trial_outcome_log`), `trial_follow_ups`. Nothing is deleted; corrections are new rows or versions. `row_version` gives optimistic concurrency, `client_key` makes retries idempotent.
 
 ## Capabilities (REST + OpenAPI + MCP)

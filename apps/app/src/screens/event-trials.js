@@ -65,7 +65,7 @@ function AssessSheet({ eventId, player, mine, onClose, done }) {
   );
 }
 
-function Player({ eventId, p, isOrg, me, reload }) {
+function Player({ eventId, others, p, isOrg, me, reload }) {
   const { toast } = useSession();
   const [assess, setAssess] = useState(false), [fix, setFix] = useState(null), [follow, setFollow] = useState(false), [note, setNote] = useState(p.outcome_note ?? ''), [busy, setBusy] = useState(false);
   const mine = p.assessments.find((a) => a.assessor_id === me);
@@ -108,7 +108,7 @@ function Player({ eventId, p, isOrg, me, reload }) {
       {attended && !p.restricted ? (
         <View style={{ gap: 6 }}>
           {p.follow_ups.map((f) => (
-            <ARow key={f.id} title={`${f.status === 'done' ? '✅ ' : ''}${f.title}`} sub={[FOLLOW.find(([k]) => k === f.kind)?.[1], f.due_on ? `by ${String(f.due_on).slice(0, 10)}` : null, f.status].filter(Boolean).join(' · ')}
+            <ARow key={f.id} title={`${f.status === 'done' ? '✅ ' : ''}${f.title}`} sub={[FOLLOW.find(([k]) => k === f.kind)?.[1], f.next_event_id ? 'next trial linked' : null, f.due_on ? `by ${String(f.due_on).slice(0, 10)}` : null, f.status].filter(Boolean).join(' · ')}
               right={f.status === 'open' ? <ABtn small tone="ghost" title="Done" onPress={() => act(() => api.patch(`/trial-follow-ups/${f.id}`, { status: 'done', row_version: f.row_version }), 'Follow-up done')} /> : null} />
           ))}
           <ABtn small tone="ghost" title="Add follow-up" onPress={() => setFollow(true)} />
@@ -117,9 +117,9 @@ function Player({ eventId, p, isOrg, me, reload }) {
       {assess ? <AssessSheet eventId={eventId} player={p} mine={mine} onClose={() => setAssess(false)} done={() => { setAssess(false); reload(); }} /> : null}
       <ReasonSheet visible={!!fix} onClose={() => setFix(null)} title="Correct attendance" sub="Say why this mark is changing. The earlier mark stays in the log." confirmLabel="Save correction" tone="neon" presets={['Marked by mistake', 'Arrived later', 'Left early']} onConfirm={(r) => mark(fix, r)} />
       <FormSheet visible={follow} onClose={() => setFollow(false)} title={`Follow-up for ${p.display_name}`} submitLabel="Add follow-up"
-        fields={[{ key: 'kind', label: 'Kind', type: 'chips', options: FOLLOW.map(([value, label]) => ({ value, label })) }, { key: 'title', label: 'What needs to happen' }, { key: 'due_on', label: 'Due', type: 'date', optional: true }, { key: 'detail', label: 'Details', type: 'multiline', optional: true }]}
+        fields={[{ key: 'kind', label: 'Kind', type: 'chips', options: FOLLOW.map(([value, label]) => ({ value, label })) }, { key: 'title', label: 'What needs to happen' }, { key: 'next_event_id', label: 'Next trial the player can book', type: 'chips', optional: true, show: (x) => x.kind === 'book_session', options: (others.data?.items ?? []).filter((t) => t.id !== eventId).map((t) => ({ value: t.id, label: `${t.name}${t.starts_on ? ` · ${String(t.starts_on).slice(0, 10)}` : ''}` })) }, { key: 'due_on', label: 'Due', type: 'date', optional: true }, { key: 'detail', label: 'Details', type: 'multiline', optional: true }]}
         initial={{ kind: 'book_session' }}
-        onSubmit={async (v) => { await api.post(`/trial-bookings/${p.entry_id}/follow-ups`, { kind: v.kind, title: v.title, due_on: v.due_on || undefined, detail: v.detail || undefined, client_key: `f-${Date.now()}-${Math.random().toString(36).slice(2, 8)}` }); toast('Follow-up added'); setFollow(false); reload(); }} />
+        onSubmit={async (v) => { await api.post(`/trial-bookings/${p.entry_id}/follow-ups`, { kind: v.kind, title: v.title, due_on: v.due_on || undefined, next_event_id: v.kind === 'book_session' ? v.next_event_id || undefined : undefined, detail: v.detail || undefined, client_key: `f-${Date.now()}-${Math.random().toString(36).slice(2, 8)}` }); toast('Follow-up added'); setFollow(false); reload(); }} />
     </ACard>
   );
 }
@@ -128,6 +128,7 @@ export function TrialsTab({ id, isOrg }) {
   const { user, toast } = useSession();
   const s = useLoad(() => api.get(`/trials/${id}/session`), [id]);
   const [csv, setCsv] = useState(null);
+  const others = useLoad(() => api.get('/events/search', { kind: 'trial', limit: 30 }), []);
   if (s.error) return s.error.status === 403 ? <AEmpty emoji="🔒" title="Organisers and assessors only" sub="Ask the organiser to add you as a trial assessor in People → Hiring." /> : <LoadError error={s.error} onRetry={s.reload} />;
   if (!s.data) return <Loading />;
   const d = s.data;
@@ -137,7 +138,7 @@ export function TrialsTab({ id, isOrg }) {
       <ASection title="Trial roster" sub={`${d.booked}${d.event.capacity ? ` of ${d.event.capacity}` : ''} booked · ${d.waitlisted} on the waitlist · you are the ${d.your_role}`} />
       {isOrg ? <ABtn small tone="ghost" title="Export results (CSV)" onPress={exportCsv} /> : null}
       {csv ? <Field label="CSV (copy)" value={csv} multiline /> : null}
-      {d.roster.length ? d.roster.map((p) => <Player key={p.entry_id} eventId={id} p={p} isOrg={isOrg} me={user?.id} reload={s.reload} />)
+      {d.roster.length ? d.roster.map((p) => <Player key={p.entry_id} eventId={id} others={others} p={p} isOrg={isOrg} me={user?.id} reload={s.reload} />)
         : <AEmpty emoji="🎽" title="No bookings yet" sub="Players book from Trials in the app. Their places, waitlist and attendance appear here." />}
     </>
   );

@@ -148,7 +148,11 @@ cap({
           `SELECT a.id, a.rubric_name, a.dimensions, a.scores, a.feedback, a.assessed_at, u.display_name AS assessor_name
              FROM trial_assessments a JOIN users u ON u.id=a.assessor_id LEFT JOIN trial_outcomes o ON o.entry_id=a.entry_id
             WHERE a.entry_id=$1 AND ${SHARED_SQL} ORDER BY a.assessed_at, a.id`, [r.entry_id]);
-        if (released) item.follow_ups = await many("SELECT id, kind, title, detail, due_on, status FROM trial_follow_ups WHERE entry_id=$1 AND status<>'cancelled' ORDER BY due_on NULLS LAST, created_at, id", [r.entry_id]);
+        if (released) item.follow_ups = await many(
+          `SELECT f.id, f.kind, f.title, f.detail, f.due_on, f.status, f.next_event_id, n.name AS next_event_name, n.starts_on AS next_event_starts_on, (n.status='open' AND (n.registration_deadline IS NULL OR n.registration_deadline > now())) AS next_event_open,
+                  b.status AS next_booking_status
+             FROM trial_follow_ups f LEFT JOIN events n ON n.id=f.next_event_id LEFT JOIN event_entries b ON b.event_id=f.next_event_id AND b.user_id=$2 AND b.team_id IS NULL
+            WHERE f.entry_id=$1 AND f.status<>'cancelled' ORDER BY f.due_on NULLS LAST, f.created_at, f.id`, [r.entry_id, athleteId]);
       }
       out.push(item);
     }
@@ -329,18 +333,24 @@ cap({
 cap({
   name: 'add_trial_follow_up', method: 'POST', path: '/trial-bookings/:id/follow-ups', tag: TAG, status: 201,
   summary: 'Organiser / assessor: add a follow-up for a booked player (book a session, send a resource, review later). The due date is a calendar date; the owner defaults to you. The player sees it once the outcome is released.',
-  input: z.object({ id, kind: z.enum(FOLLOW_KINDS), title: text(160).min(2), detail: text(1000).optional(), due_on: day.optional(), owner_id: id.optional(), client_key: z.string().min(8).max(80).optional() }),
+  input: z.object({ id, kind: z.enum(FOLLOW_KINDS), title: text(160).min(2), detail: text(1000).optional(), due_on: day.optional(), owner_id: id.optional(), next_event_id: id.optional().describe('another trial (e.g. the second round) the player can book from their card; for kind book_session'), client_key: z.string().min(8).max(80).optional() }),
   async handler({ user }, i) {
     return tx(async (c) => {
       const { e, ev } = await bookingFor(c, i.id);
       await needStaff(user, ev, c);
       needRunning(ev, e);
       await needYouthConsent(c, e.user_id, 'coaching', 'a trial follow-up');
+      if (i.next_event_id) {
+        if (i.kind !== 'book_session') throw badRequest('Only a book_session follow-up can point at a trial');
+        const nx = await trialEvent(c, i.next_event_id);
+        if (nx.id === ev.id) throw badRequest('Pick a different trial');
+        if (nx.sport_id !== ev.sport_id) throw badRequest('The next trial is for a different sport');
+      }
       if (i.client_key) { const dup = (await c.query('SELECT * FROM trial_follow_ups WHERE created_by=$1 AND client_key=$2', [user.id, i.client_key])).rows[0]; if (dup) return dup; }
       if (i.owner_id && i.owner_id !== user.id && !(await c.query('SELECT 1 FROM users WHERE id=$1', [i.owner_id])).rowCount) throw badRequest('Unknown owner');
       return (await c.query(
-        'INSERT INTO trial_follow_ups(event_id, entry_id, athlete_id, kind, title, detail, due_on, owner_id, created_by, client_key) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *',
-        [ev.id, e.id, e.user_id, i.kind, i.title, i.detail ?? null, i.due_on ?? null, i.owner_id ?? user.id, user.id, i.client_key ?? null])).rows[0];
+        'INSERT INTO trial_follow_ups(event_id, entry_id, athlete_id, kind, title, detail, due_on, owner_id, created_by, client_key, next_event_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *',
+        [ev.id, e.id, e.user_id, i.kind, i.title, i.detail ?? null, i.due_on ?? null, i.owner_id ?? user.id, user.id, i.client_key ?? null, i.next_event_id ?? null])).rows[0];
     });
   },
 });

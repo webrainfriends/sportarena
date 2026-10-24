@@ -69,6 +69,7 @@ function Find({ athleteId, reloadMine }) {
 function Mine({ athleteId, mine, who }) {
   const { toast } = useSession();
   const [busy, setBusy] = useState(null);
+  const bookNext = async (f) => { setBusy(f.id); try { const r = await api.post(`/trials/${f.next_event_id}/book`, athleteId ? { athlete_id: athleteId } : {}); toast(r.status === 'waitlisted' ? 'You are on the waitlist' : 'Place booked'); mine.reload(); } catch (e) { toast(explain(e)); } finally { setBusy(null); } };
   const cancel = async (b) => { setBusy(b.entry_id); try { await api.post(`/trial-bookings/${b.entry_id}/cancel`, {}); toast('Booking cancelled'); mine.reload(); } catch (e) { toast(explain(e)); } finally { setBusy(null); } };
   if (mine.error) return <LoadError error={mine.error} onRetry={mine.reload} />;
   if (!mine.data) return <Loading />;
@@ -96,7 +97,16 @@ function Mine({ athleteId, mine, who }) {
                 {f.feedback ? <T size={14}>“{f.feedback}”</T> : null}
               </View>
             ))}
-            {b.follow_ups.length ? <View style={{ gap: 6, borderTopWidth: 1, borderTopColor: c.line, paddingTop: 10 }}><T weight="800" size={13}>Next steps</T>{b.follow_ups.map((f) => <T key={f.id} size={13}>{f.status === 'done' ? '✅' : '•'} {f.title}{f.due_on ? ` · by ${when(f.due_on)}` : ''}</T>)}</View> : null}
+            {b.follow_ups.length ? <View style={{ gap: 6, borderTopWidth: 1, borderTopColor: c.line, paddingTop: 10 }}><T weight="800" size={13}>Next steps</T>{b.follow_ups.map((f) => (
+              <View key={f.id} style={{ gap: 6 }}>
+                <T size={13}>{f.status === 'done' ? '✅' : '•'} {f.title}{f.due_on ? ` · by ${when(f.due_on)}` : ''}</T>
+                {f.next_event_id && f.status === 'open' ? (
+                  ['accepted', 'pending', 'waitlisted'].includes(f.next_booking_status)
+                    ? <Tag label={f.next_booking_status === 'waitlisted' ? `Waitlisted for ${f.next_event_name}` : `Booked: ${f.next_event_name}`} color={c.mint} />
+                    : f.next_event_open ? <Btn small title={`Book ${f.next_event_name}${f.next_event_starts_on ? ` · ${when(f.next_event_starts_on)}` : ''}`} loading={busy === f.id} onPress={() => bookNext(f)} /> : <T size={12} color={c.mute}>Booking for {f.next_event_name} is closed.</T>
+                ) : null}
+              </View>
+            ))}</View> : null}
             {live ? <Btn small title="Cancel booking" color={c.paper} ink={c.red} loading={busy === b.entry_id} onPress={() => cancel(b)} /> : null}
           </Panel>
         );
