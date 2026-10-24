@@ -8,18 +8,19 @@ import { badRequest, conflict, notFound } from '../errors.js';
 import { audit } from '../helpers.js';
 import { orgFor } from '../org-access.js';
 import { refundPartial } from '../payments/service.js';
-import { STAFF_MONEY, outstandingPolicies, waitlistPosition, planCharges, actFor } from '../academy.js';
+import { flag, STAFF, STAFF_MONEY, outstandingPolicies, waitlistPosition, planCharges, actFor, findPromo, SESSIONS_SQL, INVOICE_SQL, INVOICE_NO_SQL } from '../academy.js';
+import { syncChargeInvoice, creditChargeInvoice, fulfilChargePaid } from '../academy-invoices.js';
 
 const money = (rows, key = 'currency') => Object.fromEntries(rows.map((r) => [r[key], r]));
 
 cap({
   name: 'list_academy_charges', method: 'GET', path: '/organisations/:id/charges', tag: 'Academy',
   summary: 'Tuition, deposit and instalment charges of the academy by status (owner/admin/finance). Amounts are the snapshot taken at enrolment.',
-  input: z.object({ id, status: z.enum(['awaiting_payment', 'paid', 'cancelled', 'waived', 'refunded']).optional(), overdue: z.boolean().optional(), ...page }),
+  input: z.object({ id, status: z.enum(['awaiting_payment', 'paid', 'cancelled', 'waived', 'refunded']).optional(), overdue: flag.optional(), ...page }),
   async handler({ user }, i) {
     await orgFor(user, i.id, STAFF_MONEY);
     return many(
-      `SELECT ch.id, ch.enrolment_id, ch.application_id, ch.kind, ch.seq, ch.due_on, ch.currency, ch.gross_minor, ch.discount_minor, ch.funded_minor, ch.funding_source, ch.tax_minor, ch.amount_minor, ch.status, ch.paid_at,
+      `SELECT ch.id, ch.enrolment_id, ch.application_id, ch.kind, ch.seq, ch.due_on, ch.currency, ch.gross_minor, ch.discount_minor, ch.funded_minor, ch.funding_source, ch.tax_minor, ch.amount_minor, ch.status, ch.paid_at, ${INVOICE_SQL} AS invoice_id, ${INVOICE_NO_SQL} AS invoice_number,
               u.id AS athlete_id, u.display_name, (ch.status='awaiting_payment' AND ch.due_on < current_date) AS overdue
          FROM academy_charges ch LEFT JOIN org_enrolments e ON e.id=ch.enrolment_id LEFT JOIN academy_applications a ON a.id=ch.application_id
          JOIN users u ON u.id = coalesce(e.user_id, a.athlete_id)
@@ -42,6 +43,7 @@ cap({
     const tax = ch.amount_minor > 0 ? Math.round(Number(ch.tax_minor) * amount / Number(ch.amount_minor)) : 0;
     const r = (await c.query("UPDATE academy_charges SET funded_minor=$2, funding_source=$3, funding_ref=$4, amount_minor=$5::bigint, tax_minor=$6, status=CASE WHEN $5::bigint=0 THEN 'waived' ELSE status END WHERE id=$1 RETURNING *",
       [ch.id, i.funded_minor, i.funding_source, i.funding_ref ?? null, amount, tax])).rows[0];
+    await syncChargeInvoice(c, ch.id);                  // the open invoice shows the funded part (or is voided when nothing is left to pay)
     await audit(c, user.id, 'set_academy_charge_funding', 'academy_charges', ch.id);
     return r;
   }),
@@ -57,9 +59,13 @@ cap({
     await orgFor(user, ch.organisation_id, STAFF_MONEY, { write: true });
     const pay = await one("SELECT * FROM payments WHERE purpose_type='academy_charge' AND purpose_id=$1 AND status IN ('paid','refunded') ORDER BY paid_at DESC NULLS LAST LIMIT 1", [ch.id]);
     if (!pay) throw conflict('This charge has no completed payment to refund');
-    const give = await refundPartial(pay, i.amount_minor ?? Number(pay.amount_cents), `academy-refund:${ch.id}:${i.idempotency_key}`);
+    const key = `academy-refund:${ch.id}:${i.idempotency_key}`;
+    const give = await refundPartial(pay, i.amount_minor ?? Number(pay.amount_cents), key);
     const after = await one('SELECT * FROM payments WHERE id=$1', [pay.id]);
-    if (Number(after.refunded_cents) >= Number(after.amount_cents)) await one("UPDATE academy_charges SET status='refunded' WHERE id=$1 RETURNING id", [ch.id]);
+    await tx(async (c) => {
+      if (give > 0) await creditChargeInvoice(c, ch.id, give, key);       // a numbered credit note against the invoice; a retry with the same key adds nothing
+      if (Number(after.refunded_cents) >= Number(after.amount_cents)) await c.query("UPDATE academy_charges SET status='refunded' WHERE id=$1", [ch.id]);
+    });
     await audit(null, user.id, 'refund_academy_charge', 'academy_charges', ch.id);
     return { refunded_minor: give, currency: pay.currency, charge_status: Number(after.refunded_cents) >= Number(after.amount_cents) ? 'refunded' : 'paid' };
   },
@@ -68,7 +74,7 @@ cap({
 cap({
   name: 'quote_academy_enrolment', method: 'GET', path: '/academy/programmes/:id/quote', tag: 'Academy',
   summary: 'The exact price and due dates an athlete would be charged if enrolled today, with any sibling / second-programme discount already applied. Nothing is created. The athlete themselves or their verified guardian can ask.',
-  input: z.object({ id, athlete_id: id.optional() }),
+  input: z.object({ id, athlete_id: id.optional(), promo_code: z.string().trim().min(3).max(24).optional().describe('a promo code of this academy') }),
   async handler({ user }, i) {
     const athlete = i.athlete_id ?? user.id;
     await actFor(user, athlete, pool);
@@ -79,10 +85,100 @@ cap({
     const sibling = !!(await one("SELECT 1 FROM org_enrolments e JOIN academy_charges ch ON ch.enrolment_id=e.id WHERE ch.payer_id=$1 AND ch.organisation_id=$2 AND e.user_id<>$3 AND e.status IN ('enrolled','paused') LIMIT 1", [user.id, p.organisation_id, athlete]));
     const multi = !!(await one("SELECT 1 FROM org_enrolments e WHERE e.user_id=$1 AND e.programme_id<>$2 AND e.status IN ('enrolled','paused') AND e.programme_id IN (SELECT id FROM academy_programmes WHERE organisation_id=$3) LIMIT 1", [athlete, p.id, p.organisation_id]));
     const today = new Date().toISOString().slice(0, 10);
-    const lines = planCharges(v, { today, sibling, multi, programme: p }).map((r) => ({ kind: r.kind, due_on: r.due_on, currency: r.currency, gross_minor: r.gross_minor, discount_minor: r.discount_minor, amount_minor: r.amount_minor, discount_reason: r.terms.discount_reason ?? null }));
+    const promo = await findPromo(pool, { orgId: p.organisation_id, programmeId: p.id, code: i.promo_code, userId: user.id, version: v });
+    const lines = planCharges(v, { today, sibling, multi, promo }).map((r) => ({ kind: r.kind, due_on: r.due_on, currency: r.currency, gross_minor: r.gross_minor, discount_minor: r.discount_minor, amount_minor: r.amount_minor, discount_reason: r.terms.discount_reason ?? null, promo_code: r.terms.promo?.code ?? null }));
     const total = lines.reduce((t, r) => t + r.amount_minor, 0);
-    return { programme_id: p.id, version: v.version, billing_model: v.billing_model, currency: v.currency, lines, total_minor: total, today_minor: lines.filter((r) => r.due_on <= today).reduce((t, r) => t + r.amount_minor, 0), renewal_terms: v.renewal_terms, discount_applied: lines.some((r) => r.discount_minor > 0), note: v.billing_model === 'monthly' ? 'Later months are raised a week before each is due. Nothing is charged automatically.' : 'Nothing is charged until you are enrolled, and nothing is charged automatically.' };
+    return { programme_id: p.id, version: v.version, billing_model: v.billing_model, currency: v.currency, lines, total_minor: total, today_minor: lines.filter((r) => r.due_on <= today).reduce((t, r) => t + r.amount_minor, 0), renewal_terms: v.renewal_terms, discount_applied: lines.some((r) => r.discount_minor > 0), promo_applied: lines.some((r) => r.promo_code), promo_code: promo?.code ?? null, note: v.billing_model === 'monthly' ? 'Later months are raised a week before each is due. Nothing is charged automatically.' : 'Nothing is charged until you are enrolled, and nothing is charged automatically.' };
   },
+});
+
+const METHODS = ['cash', 'card', 'upi', 'bank', 'other'];
+cap({
+  name: 'record_academy_payment', method: 'POST', path: '/academy-charges/:id/paid', tag: 'Academy',
+  summary: 'Staff record that a charge was paid at the academy desk (cash, card, UPI, bank transfer) (owner/admin/finance). The invoice becomes a paid receipt and a pack or subscription period it buys starts. Online payments do this automatically.',
+  input: z.object({ id, method: z.enum(METHODS).default('cash') }),
+  handler: ({ user }, i) => tx(async (c) => {
+    const ch = (await c.query('SELECT * FROM academy_charges WHERE id=$1', [i.id])).rows[0];
+    if (!ch) throw notFound('Charge');
+    await orgFor(user, ch.organisation_id, STAFF_MONEY, { write: true, c });
+    if (await fulfilChargePaid(c, i.id, { method: i.method }) === false) throw conflict('That charge is not waiting for payment');
+    await audit(c, user.id, 'record_academy_payment', 'academy_charges', i.id);
+    return (await c.query('SELECT id, status, paid_at FROM academy_charges WHERE id=$1', [i.id])).rows[0];
+  }),
+});
+
+cap({
+  name: 'adjust_academy_sessions', method: 'POST', path: '/academy-enrolments/:id/sessions', tag: 'Academy',
+  summary: 'Use or give back sessions of a pack (owner/admin; delta -1 uses one, +1 gives one back) with a reason. Attendance in the academy schedule will do this automatically later; until then staff keep the count honest. The pack runs out at zero.',
+  input: z.object({ id, delta: z.number().int().min(-50).max(50).refine((d) => d !== 0, 'delta cannot be 0'), reason: z.string().trim().min(2).max(200) }),
+  handler: ({ user }, i) => tx(async (c) => {
+    const e = (await c.query('SELECT e.*, k.organisation_id FROM org_enrolments e JOIN org_cohorts k ON k.id=e.cohort_id WHERE e.id=$1', [i.id])).rows[0];
+    if (!e) throw notFound('Enrolment');
+    await orgFor(user, e.organisation_id, STAFF, { write: true, c });
+    const up = (await c.query("SELECT * FROM user_plans WHERE enrolment_id=$1 AND kind='pass' AND status IN ('active','used_up') ORDER BY created_at DESC LIMIT 1 FOR UPDATE", [i.id])).rows[0];
+    if (!up) throw conflict('This enrolment has no active session pack');
+    const left = up.sessions_left + i.delta;
+    if (left < 0) throw conflict(`Only ${up.sessions_left} session${up.sessions_left === 1 ? '' : 's'} left`);
+    if (left > up.sessions_total) throw conflict(`A pack holds ${up.sessions_total} sessions`);
+    const r = (await c.query("UPDATE user_plans SET sessions_left=$2, status = CASE WHEN $2 = 0 THEN 'used_up' ELSE 'active' END WHERE id=$1 RETURNING id, sessions_total, sessions_left, status, expires_at", [up.id, left])).rows[0];
+    await audit(c, user.id, 'adjust_academy_sessions', 'user_plans', up.id);
+    return r;
+  }),
+});
+
+// promo codes are rows of the shared discounts framework, owned by the organisation
+const promoFields = {
+  name: z.string().trim().min(2).max(60), code: z.string().regex(/^[A-Za-z0-9_-]{3,24}$/, '3–24 letters, digits, - or _'),
+  kind: z.enum(['percent', 'fixed']), value: z.number().int().min(1), currency: z.string().length(3).transform((s) => s.toUpperCase()).optional().describe('required for a fixed amount'),
+  programme_id: id.optional().describe('limit to one programme'), valid_from: z.string().date().optional(), valid_to: z.string().date().optional(),
+  max_redemptions: z.number().int().min(1).optional(), per_user_limit: z.number().int().min(1).optional(),
+};
+cap({
+  name: 'create_academy_promo', method: 'POST', path: '/organisations/:id/academy/promos', tag: 'Academy', status: 201,
+  summary: 'Create a promo code (owner/admin): percent or a fixed amount off, optionally for one programme, with dates and total or per-family limits. The better of the code and the sibling / second-programme discount applies, never both.',
+  input: z.object({ id, ...promoFields }).refine((i) => i.kind !== 'percent' || i.value <= 100, 'percent is at most 100').refine((i) => i.kind !== 'fixed' || !!i.currency, 'a fixed amount needs a currency'),
+  handler: ({ user }, i) => tx(async (c) => {
+    await orgFor(user, i.id, STAFF, { write: true, c });
+    if (i.valid_from && i.valid_to && i.valid_to < i.valid_from) throw badRequest('The code cannot end before it starts');
+    if (i.programme_id && !(await c.query('SELECT 1 FROM academy_programmes WHERE id=$1 AND organisation_id=$2', [i.programme_id, i.id])).rows.length) throw badRequest('That programme is not part of this academy');
+    try {
+      const d = (await c.query(
+        `INSERT INTO discounts(organisation_id, programme_id, name, code, kind, value, currency, valid_from, valid_to, max_redemptions, per_user_limit, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+        [i.id, i.programme_id ?? null, i.name, i.code, i.kind, i.value, i.kind === 'fixed' ? i.currency : null, i.valid_from ?? null, i.valid_to ?? null, i.max_redemptions ?? null, i.per_user_limit ?? null, user.id])).rows[0];
+      await audit(c, user.id, 'create_academy_promo', 'discounts', d.id);
+      return d;
+    } catch (e) { if (e.code === '23505') throw conflict('This academy already has a promo code with that name'); throw e; }
+  }),
+});
+
+cap({
+  name: 'list_academy_promos', method: 'GET', path: '/organisations/:id/academy/promos', tag: 'Academy',
+  summary: 'The academy\'s promo codes with how often each was used and how much it gave (owner/admin/finance). Codes are not public.',
+  input: z.object({ id, include_inactive: flag.default(false), ...page }),
+  async handler({ user }, i) {
+    await orgFor(user, i.id, STAFF_MONEY);
+    return many(
+      `SELECT d.id, d.name, d.code, d.kind, d.value, d.currency, d.programme_id, p.title AS programme, d.valid_from, d.valid_to, d.max_redemptions, d.per_user_limit, d.active, d.created_at,
+              (SELECT count(*)::int FROM discount_redemptions x WHERE x.discount_id=d.id) AS redemptions, (SELECT coalesce(sum(amount_cents),0)::bigint FROM discount_redemptions x WHERE x.discount_id=d.id) AS given_minor
+         FROM discounts d LEFT JOIN academy_programmes p ON p.id=d.programme_id WHERE d.organisation_id=$1 AND ($2 OR d.active) ORDER BY d.active DESC, d.created_at DESC, d.id LIMIT $3 OFFSET $4`, [i.id, i.include_inactive, i.limit, i.offset]);
+  },
+});
+
+cap({
+  name: 'update_academy_promo', method: 'PATCH', path: '/academy/promos/:id', tag: 'Academy',
+  summary: 'Stop or restart a promo code, change its end date or limits (owner/admin). People who already hold it keep the price they were shown; its history is kept.',
+  input: z.object({ id, active: z.boolean().optional(), valid_to: z.string().date().nullable().optional(), max_redemptions: z.number().int().min(1).nullable().optional(), per_user_limit: z.number().int().min(1).nullable().optional() }),
+  handler: ({ user }, i) => tx(async (c) => {
+    const d = (await c.query('SELECT * FROM discounts WHERE id=$1 AND organisation_id IS NOT NULL FOR UPDATE', [i.id])).rows[0];
+    if (!d) throw notFound('Promo code');
+    await orgFor(user, d.organisation_id, STAFF, { write: true, c });
+    const r = (await c.query(
+      `UPDATE discounts SET active = coalesce($2, active), valid_to = CASE WHEN $3::boolean THEN $4::date ELSE valid_to END, max_redemptions = CASE WHEN $5::boolean THEN $6::int ELSE max_redemptions END,
+              per_user_limit = CASE WHEN $7::boolean THEN $8::int ELSE per_user_limit END WHERE id=$1 RETURNING *`,
+      [i.id, i.active ?? null, i.valid_to !== undefined, i.valid_to ?? null, i.max_redemptions !== undefined, i.max_redemptions ?? null, i.per_user_limit !== undefined, i.per_user_limit ?? null])).rows[0];
+    await audit(c, user.id, 'update_academy_promo', 'discounts', d.id);
+    return r;
+  }),
 });
 
 // ------------------------------------------------------------------ family / athlete self-service
@@ -109,11 +205,11 @@ cap({
         Object.assign(a, { programme_info: pr });
       }
       const enrolments = await many(
-        `SELECT e.id, e.status, e.cohort_id, k.name AS cohort, e.programme_id, pr.title AS programme, pr.sport, pr.starts_on, pr.ends_on, o.name AS organisation, k.organisation_id, e.sessions_left, e.enrolled_at
+        `SELECT e.id, e.status, e.cohort_id, k.name AS cohort, e.programme_id, pr.title AS programme, pr.sport, pr.starts_on, pr.ends_on, o.name AS organisation, k.organisation_id, ${SESSIONS_SQL} AS sessions_left, e.enrolled_at
            FROM org_enrolments e JOIN org_cohorts k ON k.id=e.cohort_id JOIN academy_programmes pr ON pr.id=e.programme_id JOIN organisations o ON o.id=k.organisation_id
           WHERE e.user_id=$1 ORDER BY e.enrolled_at DESC, e.id LIMIT 50`, [p.id]);
       const charges = await many(
-        `SELECT ch.id, ch.kind, ch.due_on, ch.currency, ch.amount_minor, ch.gross_minor, ch.discount_minor, ch.funded_minor, ch.funding_source, ch.status, ch.paid_at, ch.enrolment_id, ch.application_id, (ch.status='awaiting_payment' AND ch.due_on < current_date) AS overdue
+        `SELECT ch.id, ch.kind, ch.due_on, ch.currency, ch.amount_minor, ch.gross_minor, ch.discount_minor, ch.funded_minor, ch.funding_source, ch.status, ch.paid_at, ch.enrolment_id, ch.application_id, (ch.status='awaiting_payment' AND ch.due_on < current_date) AS overdue, ${INVOICE_SQL} AS invoice_id, ${INVOICE_NO_SQL} AS invoice_number
            FROM academy_charges ch LEFT JOIN org_enrolments e ON e.id=ch.enrolment_id LEFT JOIN academy_applications a ON a.id=ch.application_id
           WHERE ch.payer_id=$1 AND coalesce(e.user_id, a.athlete_id)=$2 ORDER BY ch.due_on, ch.id LIMIT 100`, [user.id, p.id]);
       const todo = [];
@@ -122,7 +218,10 @@ cap({
         const missing = v ? await outstandingPolicies(pool, p.id, v.policy_version_ids) : [];
         if (missing.length) todo.push({ application_id: a.id, programme: a.programme, agreements: missing.map((m) => ({ version_id: m.version_id, title: m.title })) });
       }
-      out.push({ athlete: p, applications: apps, enrolments, charges, to_do: todo });
+      const certificates = await many(
+        `SELECT c.id, c.kind, c.title, c.code, c.issued_on, c.show_on_profile, o.name AS institution FROM credentials c JOIN organisations o ON o.id=c.organisation_id
+          WHERE c.user_id=$1 AND c.status='issued' AND c.enrolment_id IS NOT NULL ORDER BY c.issued_on DESC, c.id LIMIT 20`, [p.id]);
+      out.push({ athlete: p, applications: apps, enrolments, charges, certificates, to_do: todo });
     }
     return { people: out, due: money(await many("SELECT currency, sum(amount_minor)::bigint AS due_minor, count(*)::int AS charges FROM academy_charges WHERE payer_id=$1 AND status='awaiting_payment' GROUP BY currency ORDER BY currency", [user.id])) };
   },

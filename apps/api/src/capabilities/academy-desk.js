@@ -8,7 +8,7 @@ import { notFound } from '../errors.js';
 import { audit } from '../helpers.js';
 import { orgFor } from '../org-access.js';
 import { guardiansOf, isYouth } from '../youth.js';
-import { STAFF } from '../academy.js';
+import { STAFF, SESSIONS_SQL, INVOICE_SQL, INVOICE_NO_SQL } from '../academy.js';
 
 cap({
   name: 'get_academy_programme_desk', method: 'GET', path: '/academy/programmes/:id/desk', tag: 'Academy',
@@ -32,10 +32,15 @@ cap({
               (SELECT count(*)::int FROM org_enrolments e WHERE e.cohort_id=k.id AND e.status IN ('enrolled','paused')) AS enrolled
          FROM org_cohorts k LEFT JOIN users co ON co.id=k.coach_id WHERE k.programme_id=$1 AND ($2 OR k.coach_id=$3) ORDER BY k.name, k.id`, [p.id, staff, user.id]);
     const roster = role === 'finance' ? [] : await many(
-      `SELECT e.id AS enrolment_id, e.status, e.enrolled_at, e.cohort_id, k.name AS group_name, e.sessions_left, e.version_id, u.id AS athlete_id, u.handle, u.display_name, u.avatar_emoji, u.avatar_color,
+      `SELECT e.id AS enrolment_id, e.status, e.enrolled_at, e.cohort_id, k.name AS group_name, ${SESSIONS_SQL} AS sessions_left, e.version_id, u.id AS athlete_id, u.handle, u.display_name, u.avatar_emoji, u.avatar_color,
               (SELECT count(*)::int FROM academy_charges ch WHERE ch.enrolment_id=e.id AND ch.status='awaiting_payment' AND ch.due_on < current_date) AS overdue
          FROM org_enrolments e JOIN org_cohorts k ON k.id=e.cohort_id JOIN users u ON u.id=e.user_id
         WHERE e.programme_id=$1 AND e.status IN ('enrolled','paused') AND ($2 OR k.coach_id=$3) ORDER BY u.display_name, u.id LIMIT 300`, [p.id, staff, user.id]);
+    const alumni = !staff ? [] : await many(
+      `SELECT e.id AS enrolment_id, e.status, e.enrolled_at, e.ended_reason, k.name AS group_name, u.id AS athlete_id, u.display_name, u.avatar_emoji, u.avatar_color,
+              (SELECT json_build_object('id', cr.id, 'kind', cr.kind, 'code', cr.code, 'title', cr.title) FROM credentials cr WHERE cr.enrolment_id=e.id AND cr.status='issued' ORDER BY cr.created_at DESC LIMIT 1) AS credential
+         FROM org_enrolments e JOIN org_cohorts k ON k.id=e.cohort_id JOIN users u ON u.id=e.user_id
+        WHERE e.programme_id=$1 AND e.status IN ('completed','graduated') ORDER BY u.display_name, u.id LIMIT 300`, [p.id]);
     const waitlist = !staff ? [] : await many(
       `SELECT a.id AS application_id, a.waitlist_seq, a.row_version, a.created_at, u.id AS athlete_id, u.display_name, u.avatar_emoji, u.avatar_color, ap.display_name AS applicant_name, (a.applicant_id <> a.athlete_id) AS via_guardian
          FROM academy_applications a JOIN users u ON u.id=a.athlete_id JOIN users ap ON ap.id=a.applicant_id
@@ -50,7 +55,7 @@ cap({
          FROM academy_charges ch JOIN org_enrolments e ON e.id=ch.enrolment_id WHERE e.programme_id=$1 GROUP BY ch.currency ORDER BY ch.currency`, [p.id]);
     const held = offers.length;
     const enrolled = roster.length || (await one("SELECT count(*)::int AS n FROM org_enrolments WHERE programme_id=$1 AND status IN ('enrolled','paused')", [p.id])).n;
-    return { programme: p, versions, policies, groups, roster, waitlist, offers, stages, money, seats: { capacity: p.capacity, enrolled, offers_held: held, free: p.capacity == null ? null : Math.max(0, p.capacity - enrolled - held), waitlisted: waitlist.length }, my_role: role };
+    return { programme: p, versions, policies, groups, roster, alumni, waitlist, offers, stages, money, seats: { capacity: p.capacity, enrolled, offers_held: held, free: p.capacity == null ? null : Math.max(0, p.capacity - enrolled - held), waitlisted: waitlist.length }, my_role: role };
   },
 });
 
@@ -92,11 +97,11 @@ cap({
       `SELECT a.id, a.stage, a.row_version, pr.id AS programme_id, pr.title AS programme, a.offer_expires_at, a.created_at, a.updated_at, ap.display_name AS applicant_name
          FROM academy_applications a JOIN academy_programmes pr ON pr.id=a.programme_id JOIN users ap ON ap.id=a.applicant_id WHERE a.organisation_id=$1 AND a.athlete_id=$2 ORDER BY a.updated_at DESC, a.id`, [i.id, i.athlete_id]);
     const enrolments = await many(
-      `SELECT e.id, e.status, e.enrolled_at, e.ended_reason, e.sessions_left, k.name AS group_name, pr.id AS programme_id, pr.title AS programme, v.version
+      `SELECT e.id, e.status, e.enrolled_at, e.ended_reason, ${SESSIONS_SQL} AS sessions_left, k.name AS group_name, pr.id AS programme_id, pr.title AS programme, v.version
          FROM org_enrolments e JOIN org_cohorts k ON k.id=e.cohort_id JOIN academy_programmes pr ON pr.id=e.programme_id LEFT JOIN academy_programme_versions v ON v.id=e.version_id
         WHERE k.organisation_id=$1 AND e.user_id=$2 ORDER BY e.enrolled_at DESC, e.id`, [i.id, i.athlete_id]);
     const charges = await many(
-      `SELECT ch.id, ch.kind, ch.due_on, ch.currency, ch.gross_minor, ch.discount_minor, ch.funded_minor, ch.funding_source, ch.amount_minor, ch.status, ch.paid_at, (ch.status='awaiting_payment' AND ch.due_on < current_date) AS overdue
+      `SELECT ch.id, ch.kind, ch.due_on, ch.currency, ch.gross_minor, ch.discount_minor, ch.funded_minor, ch.funding_source, ch.amount_minor, ch.status, ch.paid_at, (ch.status='awaiting_payment' AND ch.due_on < current_date) AS overdue, ${INVOICE_SQL} AS invoice_id, ${INVOICE_NO_SQL} AS invoice_number
          FROM academy_charges ch LEFT JOIN org_enrolments e ON e.id=ch.enrolment_id LEFT JOIN academy_applications a ON a.id=ch.application_id
         WHERE ch.organisation_id=$1 AND coalesce(e.user_id,a.athlete_id)=$2 ORDER BY ch.due_on, ch.id`, [i.id, i.athlete_id]);
     const agreements = await many(
