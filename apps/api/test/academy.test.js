@@ -777,3 +777,14 @@ test('trial history: correcting an older seat after a rebooking is allowed and l
   assert.equal((await pool.query("SELECT status FROM academy_attendance WHERE session_id=$1 AND user_id=$2", [s2.id, u.id])).rows[0].status, 'expected');
   must(await api('POST', `/academy/applications/${t.id}/trial/cancel`, { token: u.token, body: { row_version: (await appRow(t.id)).row_version } }));
 });
+
+test('trial slots: full sessions never hide later ones with free seats', async () => {
+  const a = await academy({ capacity: 10 });
+  const slots = [];
+  for (let k = 0; k < 42; k++) slots.push(await trialSlot(a, { capacity: 1, days: 2 + k, hour: 9 }));
+  await pool.query("INSERT INTO academy_attendance(session_id, user_id, status, source, guest, marked_by) SELECT s.id, u.id, 'expected', 'staff', true, u.id FROM academy_sessions s CROSS JOIN LATERAL (SELECT id FROM users WHERE handle='ac_root') u WHERE s.id = ANY($1) AND s.starts_at < (SELECT starts_at FROM academy_sessions WHERE id=$2)", [slots.map((x) => x.id), slots[41].id]);
+  const u = await adult();
+  const out = must(await api('GET', `/academy/programmes/${a.programme.id}/trial-slots`, { token: u.token }));
+  assert.equal(out.slots.length, 1);   // only the last session still has a seat, even though 41 full ones come first
+  assert.equal(out.slots[0].id, slots[41].id);
+});

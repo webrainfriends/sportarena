@@ -43,12 +43,13 @@ cap({
     if (!p) throw notFound('Programme');
     if (!(await orgFor(user, p.organisation_id, STAFF).then(() => true, () => false))) await actFor(user, i.athlete_id ?? user.id);
     const pool = { query: async (s, a) => ({ rows: await many(s, a) }) };
-    const rows = await many("SELECT * FROM academy_sessions WHERE programme_id=$1 AND delivery_type='trial' AND status='published' AND starts_at > now() ORDER BY starts_at, id LIMIT 40", [p.id]);
+    const rows = await many("SELECT * FROM academy_sessions WHERE programme_id=$1 AND delivery_type='trial' AND status='published' AND starts_at > now() ORDER BY starts_at, id LIMIT 400", [p.id]);
     const slots = [];
     for (const s of rows) {
       const taken = await expectedCount(pool, s);
       const free = s.capacity ? s.capacity - taken : null;
       if (free !== null && free <= 0) continue;
+      if (slots.length >= 40) break;   // the limit applies to times that can still be booked, never to full ones
       const v = await heldVenue(pool, s.id);
       slots.push({ id: s.id, title: s.title, starts_at: s.starts_at, ends_at: s.ends_at, timezone: s.timezone, ...localView(s), seats_free: free, venue: v?.venue_name ?? v?.name ?? null });
     }

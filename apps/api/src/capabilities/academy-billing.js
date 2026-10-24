@@ -205,7 +205,7 @@ cap({
         const pr = await one('SELECT p.sport, p.format, p.starts_on, p.ends_on, p.trial_enabled, p.admission_mode, v.billing_model, v.currency, v.fee_minor FROM academy_programmes p LEFT JOIN academy_programme_versions v ON v.programme_id=p.id AND v.version=p.current_version WHERE p.id=$1', [a.programme_id]);
         Object.assign(a, { programme_info: pr });
         if (['trial_requested', 'trial_booked'].includes(a.stage)) {
-          const seat = await one(`SELECT s.id, s.title, s.starts_at, s.ends_at, s.timezone FROM academy_attendance t JOIN academy_sessions s ON s.id=t.session_id WHERE t.application_id=$1 AND t.status IN ('expected','present','late','left_early') ORDER BY t.id DESC LIMIT 1`, [a.id]);
+          const seat = await one(`SELECT s.id, s.title, s.starts_at, s.ends_at, s.timezone FROM academy_attendance t JOIN academy_sessions s ON s.id=t.session_id WHERE t.application_id=$1 AND t.status IN ('expected','present','late','left_early') ORDER BY (t.status='expected') DESC, t.marked_at DESC NULLS LAST, t.id LIMIT 1`, [a.id]);
           a.trial = seat ? { session: { ...seat, ...localView(seat) } } : null;
         }
       }
