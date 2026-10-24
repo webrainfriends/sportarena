@@ -21,10 +21,10 @@ import { promoteWaitlist, lockProgramme } from '../academy.js';
 const ORG_KINDS = ['club', 'academy', 'school', 'college', 'university', 'company', 'other'];
 // the sponsor roles (manager, evaluator, legal, approver, auditor; finance is shared) are what a corporate sponsor's staff hold (#283)
 const ROLES = ['owner', 'admin', 'coach', 'finance', ...SPONSOR_ROLES.filter((r) => r !== 'finance')];
-const ROLE_ORDER = ROLES;
+const ROLE_ORDER = [...ROLES, 'staff'];   // 'staff' (Academy OS 2/3) gets access only from its scoped engagement permissions
 const STAFF = ['owner', 'admin'];
 const SPONSOR_EXPORT = ['owner', 'admin', 'manager', 'finance', 'auditor'];
-const role = z.enum(ROLES);
+const role = z.enum([...ROLES, 'staff']);
 const day = z.string().date();
 const MAX_ROWS = 500;
 

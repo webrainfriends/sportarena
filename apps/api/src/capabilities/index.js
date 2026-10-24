@@ -143,3 +143,8 @@ import './academy-programmes.js';
 import './academy-admissions.js';
 import './academy-billing.js';
 import './academy-desk.js';
+import './academy-sessions.js';
+import './academy-staff.js';
+import './academy-attendance.js';
+import './academy-payroll.js';
+import './academy-ops-board.js';
