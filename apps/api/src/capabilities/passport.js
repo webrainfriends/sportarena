@@ -58,7 +58,6 @@ export async function buildPassport(userId, scope = { show_matches: true, show_r
   };
 }
 
-
 cap({
   name: 'create_passport_link', method: 'POST', path: '/me/passport-links', tag: TAG, status: 201,
   summary: 'Create a share link to your player passport for a coach or scout. You choose what it shows (match history by season, approved results, awards, certificates and badges, and optionally your club career timeline) and when it expires (up to 90 days). The secret is shown once; put it in a QR code. Not available to young people.',
