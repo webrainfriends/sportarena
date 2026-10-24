@@ -51,6 +51,7 @@ import { Support } from './screens/cases';
 import { Family } from './screens/family';
 import { Orgs, Org } from './screens/org';
 import { AcademyFamily } from './screens/academy-portal';
+import { AcademySession, AcademyAgenda } from './screens/academy-session';
 import { Pathways, Programme, Institution, Enquiry } from './screens/pathways';
 import { Games } from './screens/games';
 import { EventInbox } from './screens/event-plan';
