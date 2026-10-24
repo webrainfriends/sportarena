@@ -43,15 +43,15 @@ async function providerTax(c, sellerId, taxClass, gross, at) {
 }
 
 /** [{ sellerId, amount, taxClass }] for a paid payment, read from the record that was paid for. */
-async function sharesFor(c, p) {
+export async function sharesFor(c, p) {
   const one1 = async (sql) => (await c.query(sql, [p.purpose_id])).rows[0];
   if (p.purpose_type === 'coach_hire') { const h = await one1('SELECT coach_id FROM coach_hires WHERE id=$1'); return h ? [{ sellerId: h.coach_id, amount: Number(p.amount_cents) }] : []; }
   if (p.purpose_type === 'appointment') { const a = await one1('SELECT provider_id, tax_class FROM appointments WHERE id=$1'); return a ? [{ sellerId: a.provider_id, amount: Number(p.amount_cents), taxClass: a.tax_class }] : []; }
   if (p.purpose_type === 'physio_package') { const k = await one1('SELECT provider_id, tax_class FROM patient_packages WHERE id=$1'); return k ? [{ sellerId: k.provider_id, amount: Number(p.amount_cents), taxClass: k.tax_class }] : []; }
   if (p.purpose_type === 'shop_order') { const o = await one1('SELECT seller_id FROM shop_orders WHERE id=$1'); return o ? [{ sellerId: o.seller_id, amount: Number(p.amount_cents) }] : []; }
   if (p.purpose_type === 'sponsorship_payment') {   // the recipient of the sponsorship is the seller; sponsorship money is never mixed with another purpose
-    const d = (await c.query('SELECT s.target_type, s.target_id FROM sponsorship_payments x JOIN sponsorship_obligations o ON o.id=x.obligation_id JOIN sponsorships s ON s.id=o.sponsorship_id WHERE x.id=$1', [p.purpose_id])).rows[0];
-    const to = d && await targetOwner(c, d.target_type, d.target_id);
+    const d = (await c.query('SELECT s.target_type, s.target_id, x.payee_guardian_id FROM sponsorship_payments x JOIN sponsorship_obligations o ON o.id=x.obligation_id JOIN sponsorships s ON s.id=o.sponsorship_id WHERE x.id=$1', [p.purpose_id])).rows[0];
+    const to = d && (d.payee_guardian_id ?? await targetOwner(c, d.target_type, d.target_id)); // a young athlete's money goes to their guardian payee, never to the minor (#307)
     return to ? [{ sellerId: to, amount: Number(p.amount_cents) }] : [];
   }
   if (p.purpose_type === 'shop_checkout') {
