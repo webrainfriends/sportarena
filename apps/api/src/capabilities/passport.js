@@ -18,7 +18,7 @@ const TAG = 'Passport';
 // of birth, address, notes or health data), and what is shown is chosen by the athlete when they create each link.
 export async function buildPassport(userId, scope = FULL_SCOPE, ctx = {}) {
   const u = await one(`SELECT ${PUBLIC_USER.replace('u.roles, ', '')} FROM users u WHERE u.id=$1`, [userId]);
-  // the timeline is checked at read time: a young person's is never shown on a share link, so consent changes and link revocation take effect at once
+  // the club career timeline is checked at read time: a young person's is never shown on a share link, so consent changes and revocation apply at once
   const [profiles, activity, results, awards, credentials, memberships] = await Promise.all([
     many(`SELECT s.slug AS sport_slug, s.name AS sport, s.emoji AS sport_emoji, p.role, p.level, p.position, p.jersey_no, p.club, p.experience_years, p.is_default
             FROM active_sport_profiles p JOIN sports s ON s.id=p.sport_id WHERE p.user_id=$1 ORDER BY p.is_default DESC, p.created_at, p.id`, [userId]),
@@ -85,7 +85,7 @@ async function manageable(user, linkId) {
 
 cap({
   name: 'create_passport_link', method: 'POST', path: '/me/passport-links', tag: TAG, status: 201,
-  summary: 'Create a share link to your player passport for a coach or scout. You choose what it shows (match history, approved results, awards, certificates, and for recruitment: approved video, approved coach references, preferences, availability, academic evidence), who may open it (anyone with the link, or one signed-in person) and when it expires (up to 90 days). The secret is shown once; put it in a QR code. A young person\'s link is arranged by their verified guardian (pass athlete_id) and works only while the guardian\'s recruitment_sharing consent is in force.',
+  summary: 'Create a share link to your player passport for a coach or scout. You choose what it shows (match history, approved results, awards, certificates, your club career timeline, and for recruitment: approved video, approved coach references, preferences, availability, academic evidence), who may open it (anyone with the link, or one signed-in person) and when it expires (up to 90 days). The secret is shown once; put it in a QR code. A young person\'s link is arranged by their verified guardian (pass athlete_id) and works only while the guardian\'s recruitment_sharing consent is in force.',
   input: z.object({ athlete_id: id.optional(), label: z.string().trim().max(60).optional(), expires_in_days: z.number().int().min(1).max(90).default(30), recipient_id: id.optional(), ...SHOW }),
   async handler({ user }, i) {
     const owner = await subjectOf(user, i.athlete_id);

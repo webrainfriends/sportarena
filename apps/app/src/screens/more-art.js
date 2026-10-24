@@ -5,7 +5,7 @@ import { dark } from '../theme';
 // Gradient identity per More tile: [from, to]. Saturated enough for white text in both themes.
 const LIGHT = {
   // play: crimson to wine
-  Leaderboard: ['#C8283E', '#7A1530'], Awards: ['#D1404F', '#8E1A33'], MyPlans: ['#B4182D', '#54162B'], Pathways: ['#C23A4A', '#6B1730'],
+  Leaderboard: ['#C8283E', '#7A1530'], Awards: ['#D1404F', '#8E1A33'], MyPlans: ['#B4182D', '#54162B'], ToolsHome: ['#C23A4A', '#54162B'], Pathways: ['#C23A4A', '#6B1730'],
   // care: slate blues
   Health: ['#4A5B86', '#242E49'], Insure: ['#3F5078', '#202943'], Insurance: ['#56668F', '#2C3654'], Legal: ['#37415C', '#181A2F'], Family: ['#4D5E8C', '#27304D'],
   // money: peach to crimson
@@ -49,6 +49,7 @@ const ART = {
   Workspace: <><Rect x="8" y="30" width="80" height="54" rx="12" {...W(0.95)} /><Path d="M34 30v-6a8 8 0 0 1 8-8h12a8 8 0 0 1 8 8v6" {...S(0.8, 5)} /><Path d="M8 56h80" {...S(0.4, 4)} /><Rect x="38" y="50" width="20" height="14" rx="4" fill={GOLD} /><Path d="M20 70h14M62 70h14" {...S(0.45, 4)} /></>,
   Schedule: <><Rect x="10" y="18" width="76" height="68" rx="12" {...W(0.95)} /><Rect x="10" y="18" width="76" height="22" rx="12" {...W(0.55)} /><Path d="M30 8v16M66 8v16" {...S(0.95, 6)} /><Circle cx="34" cy="58" r="5" {...W(0.5)} /><Circle cx="62" cy="58" r="5" {...W(0.5)} /><Circle cx="48" cy="72" r="6" fill={GOLD} /></>,
   Notifications: <><Path d="M20 66V46a28 28 0 0 1 56 0v20l8 8H12z" {...W(0.95)} /><Path d="M38 80a10 10 0 0 0 20 0z" {...W(0.7)} /><Circle cx="70" cy="22" r="11" fill={GOLD} /></>,
+  ToolsHome: <><Rect x="14" y="22" width="68" height="54" rx="10" {...W(0.95)} /><Path d="M30 22v-6a6 6 0 0 1 6-6h24a6 6 0 0 1 6 6v6" {...S(0.7, 6)} /><Path d="M14 46h68" {...S(0.35, 4)} /><Rect x="40" y="40" width="16" height="14" rx="4" fill={GOLD} /></>,
   Support: <><Circle cx="48" cy="48" r="38" {...W(0.95)} /><Circle cx="48" cy="48" r="15" fill="none" stroke={GOLD} strokeWidth="7" /><Path d="m20 20 18 18M76 20 58 38M20 76l18-18M76 76 58 58" {...S(0.5, 7)} /></>,
 };
 

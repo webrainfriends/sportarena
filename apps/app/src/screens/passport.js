@@ -33,7 +33,7 @@ export function QrCode({ value, size = 200, label = "QR code for the passport li
   );
 }
 
-const SECTIONS = [['show_matches', 'Match history by season', 'matches'], ['show_results', 'Approved results', 'results'], ['show_awards', 'Awards', 'awards'], ['show_credentials', 'Certificates & badges', 'certificates'], ['show_career', 'Clubs & teams timeline', 'career'],
+const SECTIONS = [['show_matches', 'Match history by season', 'matches'], ['show_results', 'Approved results', 'results'], ['show_awards', 'Awards', 'awards'], ['show_credentials', 'Certificates & badges', 'certificates'], ['show_career', 'Clubs & teams timeline', 'clubs & teams'],
   ['show_video', 'Approved video', 'video'], ['show_references', 'Approved coach references', 'references'], ['show_preferences', 'What I\'m looking for', 'preferences'], ['show_availability', 'Availability', 'availability'], ['show_academic', 'Academic evidence', 'academic evidence']];
 const EXPIRY = [{ value: 7, label: '7 days' }, { value: 30, label: '30 days' }, { value: 90, label: '90 days' }];
 
@@ -94,19 +94,6 @@ export function PassportCard({ data }) {
         </Card>
       ) : null}
 
-      {data.memberships?.length ? (
-        <Card pad={16}>
-          <H2>Clubs & teams</H2>
-          {data.memberships.map((m) => (
-            <View key={m.id} style={{ marginTop: 12 }}>
-              <T weight="800">{m.club}</T>
-              <T size={13} color={c.mute}>{[`${m.sport_emoji} ${m.sport}`, `${m.starts_on.slice(0, 4)}–${m.current ? 'now' : (m.ends_on ?? '').slice(0, 4)}`, m.position, nice(m.competition_level)].filter(Boolean).join(' · ')}</T>
-              <Tag label={m.verification_status === 'verified' ? 'Verified by club' : 'Self-reported'} color={m.verification_status === 'verified' ? c.mint : c.violetSoft} style={{ marginTop: 4, alignSelf: 'flex-start' }} />
-            </View>
-          ))}
-        </Card>
-      ) : null}
-
       {data.seasons?.length ? (
         <Card pad={16}>
           <H2>Season by season</H2>
@@ -140,6 +127,19 @@ export function PassportCard({ data }) {
           <H2>Certificates & badges</H2>
           <T size={12} color={c.mute} style={{ marginTop: 2, marginBottom: 10 }}>Issued by the institutions named; each can be checked with its code.</T>
           <CredentialList list={data.credentials} />
+        </Card>
+      ) : null}
+
+      {data.memberships?.length ? (
+        <Card pad={16}>
+          <H2>Clubs & teams</H2>
+          {data.memberships.map((m) => (
+            <View key={m.id} style={{ marginTop: 12 }}>
+              <T weight="800">{m.club}</T>
+              <T size={13} color={c.mute}>{[`${m.sport_emoji} ${m.sport}`, `${m.starts_on.slice(0, 4)}–${m.current ? 'now' : (m.ends_on ?? '').slice(0, 4)}`, m.position, nice(m.competition_level)].filter(Boolean).join(' · ')}</T>
+              <Tag label={m.verification_status === 'verified' ? 'Verified by club' : 'Self-reported'} color={m.verification_status === 'verified' ? c.mint : c.violetSoft} style={{ marginTop: 4, alignSelf: 'flex-start' }} />
+            </View>
+          ))}
         </Card>
       ) : null}
 
