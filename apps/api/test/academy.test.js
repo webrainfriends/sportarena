@@ -760,3 +760,20 @@ test('trial seats: an excused absence returns the application; cancelling a book
   ]);
   assert.ok(results.every((r) => [200, 409].includes(r.status)), JSON.stringify(results.map((r) => r.status)));
 });
+
+test('trial history: correcting an older seat after a rebooking is allowed and leaves the current booking alone', async () => {
+  const a = await academy({ capacity: 10 });
+  const s1 = await trialSlot(a, { capacity: 3, days: 3 }), s2 = await trialSlot(a, { capacity: 3, days: 4 });
+  const u = await adult();
+  const t = await requestTrial(u, a);
+  const b1 = must(await api('POST', `/academy/applications/${t.id}/trial/book`, { token: u.token, body: { row_version: t.row_version, session_id: s1.id } }));
+  await startedAlready(s1.id);
+  must(await api('POST', `/academy/sessions/${s1.id}/attendance`, { token: a.owner.token, body: { entries: [{ user_id: u.id, status: 'absent', reason_code: 'other' }] } }));
+  const again = must(await api('POST', `/academy/applications/${t.id}/trial/book`, { token: u.token, body: { row_version: (await appRow(t.id)).row_version, session_id: s2.id } }));
+  assert.equal(again.stage, 'trial_booked'); assert.ok(b1.row_version > 0);
+  // the older mark is corrected to present: no error, and the application still holds its new seat
+  must(await api('POST', `/academy/sessions/${s1.id}/attendance`, { token: a.owner.token, body: { reason: 'Correction', entries: [{ user_id: u.id, status: 'present' }] } }));
+  assert.equal((await appRow(t.id)).stage, 'trial_booked');
+  assert.equal((await pool.query("SELECT status FROM academy_attendance WHERE session_id=$1 AND user_id=$2", [s2.id, u.id])).rows[0].status, 'expected');
+  must(await api('POST', `/academy/applications/${t.id}/trial/cancel`, { token: u.token, body: { row_version: (await appRow(t.id)).row_version } }));
+});

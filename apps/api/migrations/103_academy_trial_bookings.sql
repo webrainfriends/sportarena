@@ -2,7 +2,7 @@
 -- attendance row (so rosters, capacity and attendance stay one fact); it is linked to the application that asked for the trial. Additive only.
 ALTER TABLE academy_attendance ADD COLUMN IF NOT EXISTS application_id uuid REFERENCES academy_applications;
 ALTER TABLE academy_attendance ADD COLUMN IF NOT EXISTS reminded_at timestamptz;
--- one live trial seat per application (a cancelled, missed or cancelled-session seat no longer counts)
+-- one pending (expected) trial seat per application; earlier seats keep their own outcome (attended, absent, excused) as history
 CREATE UNIQUE INDEX IF NOT EXISTS academy_attendance_trial_live ON academy_attendance (application_id)
-  WHERE application_id IS NOT NULL AND status IN ('expected','present','late','left_early');
+  WHERE application_id IS NOT NULL AND status = 'expected';
 CREATE INDEX IF NOT EXISTS academy_attendance_application ON academy_attendance (application_id) WHERE application_id IS NOT NULL;

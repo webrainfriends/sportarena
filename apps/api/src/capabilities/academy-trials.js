@@ -32,7 +32,7 @@ async function trialAppFor(user, appId, c, { sessionId = null } = {}) {
   if (await guardianLink(user.id, a.athlete_id, c)) return { a, source: 'guardian', staff: false };
   throw notFound('Application');
 }
-const seatOf = async (c, appId) => (await c.query(`SELECT t.*, s.starts_at, s.ends_at, s.timezone, s.status AS session_status FROM academy_attendance t JOIN academy_sessions s ON s.id=t.session_id WHERE t.application_id=$1 AND t.status = ANY($2) ORDER BY t.id DESC LIMIT 1`, [appId, LIVE])).rows[0];
+const seatOf = async (c, appId) => (await c.query(`SELECT t.*, s.starts_at, s.ends_at, s.timezone, s.status AS session_status FROM academy_attendance t JOIN academy_sessions s ON s.id=t.session_id WHERE t.application_id=$1 AND t.status = ANY($2) ORDER BY (t.status='expected') DESC, t.marked_at DESC NULLS LAST, t.id LIMIT 1`, [appId, LIVE])).rows[0];
 
 cap({
   name: 'list_academy_trial_slots', method: 'GET', path: '/academy/programmes/:id/trial-slots', tag: TAG,
