@@ -15,6 +15,7 @@ import { expireAwards } from './sponsorship-awards.js';
 import { endDueTerminations } from './sponsor-termination.js';
 import { activateDuePauses } from './sponsor-pause.js';
 import { processSponsorshipTerms } from './sponsor-renewals.js';
+import { expireAcademyOffers, raiseAcademyMonthlyCharges, runAcademyJobs } from './academy-sweeps.js';
 import { sendTaskReminders } from './sponsor-collaboration.js';
 import { deliverDueReports } from './sponsor-report-schedules.js';
 
@@ -35,6 +36,9 @@ export const STEPS = [
   ['sponsor_pauses', 'sponsor_pauses_started', activateDuePauses, 0],
   ['sponsor_terminations', 'sponsor_terminations_ended', endDueTerminations, 0],
   ['sponsor_terms', 'sponsor_terms_processed', processSponsorshipTerms, 0],
+  ['academy_offers', 'academy_offers_expired', expireAcademyOffers, 0],
+  ['academy_charges', 'academy_charges_raised', raiseAcademyMonthlyCharges, 0],
+  ['academy_jobs', 'academy_jobs', runAcademyJobs, null],
   ['sponsor_tasks', 'sponsor_task_reminders', sendTaskReminders, 0],
   ['sponsor_reports', 'sponsor_reports_delivered', deliverDueReports, 0],
 ];

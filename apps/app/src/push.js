@@ -67,6 +67,7 @@ export function targetFor(data = {}) {
   if (data.reservation_id) return ['Reservation', { id: data.reservation_id }];
   if (data.venue_id && data.date) return ['BookFlow', { venueId: data.venue_id, resourceId: data.resource_id, date: data.date }];
   if (data.venue_id) return ['Venue', { id: data.venue_id }];
+  if (data.organisation_id) return ['Org', { id: data.organisation_id }];   // academy and workspace messages open the organisation (academy tab / My academy)
   return ['Notifications', {}];
 }
 
@@ -75,5 +76,7 @@ export function parseTarget(t) {
   if (kind === 'reservation' && id) return ['Reservation', { id }];
   if (kind === 'venue' && id) return ['Venue', { id }];
   if (kind === 'sponsorship' && id) return ['SponsorDeal', { id }];
+  if (kind === 'organisation' && id) return ['Org', { id }];
+  if (kind === 'organisations') return ['Orgs', {}];
   return ['Notifications', {}];
 }
