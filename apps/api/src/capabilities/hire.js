@@ -42,7 +42,7 @@ cap({
                 EXISTS (SELECT 1 FROM coach_availability a WHERE a.coach_id=u.id AND a.removed_at IS NULL) AS has_hours,
                 EXISTS (SELECT 1 FROM coach_rate_cards k WHERE k.coach_id=u.id AND k.archived_at IS NULL AND k.active AND k.is_intro AND (k.sport_id IS NULL OR k.sport_id=p.sport_id)) AS has_intro,
                 coalesce((SELECT array_agg(DISTINCT k.audience) FROM coach_rate_cards k WHERE k.coach_id=u.id AND k.archived_at IS NULL AND k.active AND (k.sport_id IS NULL OR k.sport_id=p.sport_id)), '{}') AS audiences
-           FROM sport_profiles p JOIN users u ON u.id=p.user_id JOIN sports s ON s.id=p.sport_id LEFT JOIN coach_profiles cp ON cp.user_id=u.id
+           FROM active_sport_profiles p JOIN users u ON u.id=p.user_id JOIN sports s ON s.id=p.sport_id LEFT JOIN coach_profiles cp ON cp.user_id=u.id
           WHERE p.role='coach' AND ${NOT_YOUTH_SQL} AND coalesce(cp.listed, true) AND ($1::uuid IS NULL OR p.sport_id=$1)
             AND ($2::text IS NULL OR u.display_name ILIKE '%'||$2||'%' OR u.handle ILIKE $2||'%' OR cp.headline ILIKE '%'||$2||'%' OR EXISTS (SELECT 1 FROM unnest(cp.specialties) z WHERE z ILIKE '%'||$2||'%') OR cp.tagline ILIKE '%'||$2||'%' OR EXISTS (SELECT 1 FROM coach_specialisations z WHERE z.coach_id=u.id AND z.archived_at IS NULL AND z.name ILIKE '%'||$2||'%'))
             AND ($3::text IS NULL OR cp.city ILIKE $3)
@@ -63,7 +63,7 @@ export async function placeHire(user, i, opts = {}) {
     const sport = await sportBySlugOrId(i.sport ?? card?.sport_id ?? '');
     if (!sport) throw badRequest('Choose a sport');
     if (card?.sport_id && card.sport_id !== sport.id) throw badRequest('That rate card is for a different sport');
-    const prof = await one("SELECT hourly_rate_cents FROM sport_profiles WHERE user_id=$1 AND sport_id=$2 AND role='coach'", [i.coach_id, sport.id]);
+    const prof = await one("SELECT hourly_rate_cents FROM active_sport_profiles WHERE user_id=$1 AND sport_id=$2 AND role='coach'", [i.coach_id, sport.id]);
     if (!prof) throw badRequest('That person does not coach this sport');
     const audience = card?.audience ?? 'individual';
     const mins = card && card.unit !== 'hour' ? card.duration_min ?? i.duration_min ?? 60 : i.duration_min ?? card?.duration_min ?? 60;
@@ -100,7 +100,7 @@ cap({
     const sport = await sportBySlugOrId(i.sport ?? card?.sport_id ?? '');
     if (!sport) throw badRequest('Choose a sport');
     if (card?.sport_id && card.sport_id !== sport.id) throw badRequest('That rate card is for a different sport');
-    const prof = await one("SELECT hourly_rate_cents FROM sport_profiles WHERE user_id=$1 AND sport_id=$2 AND role='coach'", [i.coach_id, sport.id]);
+    const prof = await one("SELECT hourly_rate_cents FROM active_sport_profiles WHERE user_id=$1 AND sport_id=$2 AND role='coach'", [i.coach_id, sport.id]);
     if (!prof) throw badRequest('That person does not coach this sport');
     const audience = card?.audience ?? 'individual';
     const mins = card && card.unit !== 'hour' ? card.duration_min ?? i.duration_min ?? 60 : i.duration_min ?? card?.duration_min ?? 60;

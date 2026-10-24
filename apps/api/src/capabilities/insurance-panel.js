@@ -32,7 +32,7 @@ cap({
   input: z.object({ provider_id: id, ...terms }),
   async handler({ user }, i) {
     const ins = await myInsurer(user); checkWindow(i);
-    if (!(await one("SELECT 1 FROM provider_profiles WHERE user_id=$1 UNION SELECT 1 FROM sport_profiles WHERE user_id=$1 AND role IN ('physio','doctor')", [i.provider_id]))) throw badRequest('That person is not a registered physio or doctor');
+    if (!(await one("SELECT 1 FROM provider_profiles WHERE user_id=$1 UNION SELECT 1 FROM active_sport_profiles WHERE user_id=$1 AND role IN ('physio','doctor')", [i.provider_id]))) throw badRequest('That person is not a registered physio or doctor');
     return tx(async (c) => {
       await checkPlans(c, ins.id, i.plan_ids);
       let r;

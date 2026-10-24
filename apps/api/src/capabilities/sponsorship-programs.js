@@ -447,12 +447,12 @@ export async function assertCanApply(c, user, p, a, { draft = false } = {}) {
   if (!draft && a.requested_cents > Number(p.max_award_cents ?? Infinity)) throw unprocessable(`The request is above the maximum award of ${p.max_award_cents}`);
   if (el.verified_only && !(await badgesFor(a.target_type === 'athlete' ? 'user' : a.target_type, [a.target_id])).get(a.target_id)?.length) throw forbidden('This program only funds verified applicants');
   if (p.sports.length) {
-    const sports = a.target_type === 'athlete' ? (await c.query('SELECT s.slug FROM sport_profiles x JOIN sports s ON s.id=x.sport_id WHERE x.user_id=$1', [a.target_id])).rows
+    const sports = a.target_type === 'athlete' ? (await c.query('SELECT s.slug FROM active_sport_profiles x JOIN sports s ON s.id=x.sport_id WHERE x.user_id=$1', [a.target_id])).rows
       : (await c.query(`SELECT s.slug FROM ${a.target_type === 'team' ? 'teams' : 'events'} x JOIN sports s ON s.id=x.sport_id WHERE x.id=$1`, [a.target_id])).rows;
     if (!sports.some((s) => p.sports.includes(s.slug))) throw unprocessable(`This program funds ${p.sports.join(', ')} only`);
   }
   if (p.regions.length) {
-    const reg = a.target_type === 'athlete' ? (await c.query('SELECT region AS v FROM sport_profiles WHERE user_id=$1 AND region IS NOT NULL', [a.target_id])).rows
+    const reg = a.target_type === 'athlete' ? (await c.query('SELECT region AS v FROM active_sport_profiles WHERE user_id=$1 AND region IS NOT NULL', [a.target_id])).rows
       : a.target_type === 'team' ? (await c.query('SELECT city AS v FROM teams WHERE id=$1 AND city IS NOT NULL', [a.target_id])).rows : [];
     const want = p.regions.map((x) => x.trim().toLowerCase());
     if (reg.length && !reg.some((x) => want.includes(String(x.v).trim().toLowerCase()))) throw unprocessable(`This program funds applicants in ${p.regions.join(', ')} only`);

@@ -14,7 +14,7 @@ export async function recordHistory(c, foId, actor, from, to, reason) {
 /** Sport credential + (when `checkClash`) no overlap with the official's other confirmed work. Call after lockOfficial. */
 export async function assertOfficialEligible(c, { sportId, fixtureId, userId, role, start, durationMin, checkClash = true }) {
   if (role !== 'scorer') {
-    const ok = await c.query("SELECT 1 FROM sport_profiles WHERE user_id=$1 AND role='referee' AND sport_id=$2", [userId, sportId]);
+    const ok = await c.query("SELECT 1 FROM active_sport_profiles WHERE user_id=$1 AND role='referee' AND sport_id=$2", [userId, sportId]);
     if (!ok.rowCount) throw badRequest('That person is not a referee for this sport');
   }
   if (!checkClash) return;
