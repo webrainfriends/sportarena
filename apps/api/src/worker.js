@@ -15,6 +15,7 @@ import { expireAwards } from './sponsorship-awards.js';
 import { endDueTerminations } from './sponsor-termination.js';
 import { activateDuePauses } from './sponsor-pause.js';
 import { processSponsorshipTerms } from './sponsor-renewals.js';
+import { processSponsorTasks } from './sponsor-collaboration.js';
 import { expireAcademyOffers, raiseAcademyMonthlyCharges, runAcademyJobs } from './academy-sweeps.js';
 import { sendTaskReminders } from './sponsor-collaboration.js';
 import { deliverDueReports } from './sponsor-report-schedules.js';

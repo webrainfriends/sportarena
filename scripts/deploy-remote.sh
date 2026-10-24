@@ -145,10 +145,11 @@ MEDIA_DIR="$KEY_DIR/media"
 sudo mkdir -p "$MEDIA_DIR"; sudo chown "$(id -un):$(id -gn)" "$MEDIA_DIR"
 set_env MEDIA_DIR "$MEDIA_DIR"
 # Payments: only written when provided, so a deploy without keys never wipes keys set earlier.
-for v in STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET PAYPAL_CLIENT_ID PAYPAL_CLIENT_SECRET PAYPAL_WEBHOOK_ID PAYPAL_ENV PAYMENT_CURRENCY PROVIDER_COMMISSION_BP SETTLEMENT_HOLD_DAYS SETTLEMENT_PAYOUTS SETTLEMENT_CURRENCIES SETTLEMENT_MIN_PAYOUT_CENTS EXPO_ACCESS_TOKEN ANTHROPIC_API_KEY AI_MODEL WORKER_MODE PLATFORM_ADMIN_EMAIL PLATFORM_ADMIN_HANDLE PLATFORM_ADMIN_NAME PLATFORM_ADMIN_PASSWORD MFA_ENFORCE GOOGLE_CLIENT_ID APPLE_CLIENT_ID SUPER_ADMIN_EMAIL; do
+for v in STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET PAYPAL_CLIENT_ID PAYPAL_CLIENT_SECRET PAYPAL_WEBHOOK_ID PAYPAL_ENV PAYMENT_CURRENCY PROVIDER_COMMISSION_BP SETTLEMENT_HOLD_DAYS SETTLEMENT_PAYOUTS SETTLEMENT_CURRENCIES SETTLEMENT_MIN_PAYOUT_CENTS EXPO_ACCESS_TOKEN ANTHROPIC_API_KEY AI_MODEL NOTIFY_WEBHOOK_URL NOTIFY_WEBHOOK_SECRET WORKER_MODE PLATFORM_ADMIN_EMAIL PLATFORM_ADMIN_HANDLE PLATFORM_ADMIN_NAME PLATFORM_ADMIN_PASSWORD MFA_ENFORCE GOOGLE_CLIENT_ID APPLE_CLIENT_ID SUPER_ADMIN_EMAIL; do
   val="$(printf '%s' "${!v:-}" | tr -d '\r\n' | xargs)"
   [ -n "$val" ] && set_env "$v" "$val"
 done
+[ -n "$(printf '%s' "${NOTIFY_WEBHOOK_URL:-}" | tr -d '\r\n' | xargs)" ] && echo "[deploy] NOTIFY_WEBHOOK_URL received (email delivery on)" || echo "::warning::NOTIFY_WEBHOOK_URL is empty in this run: email (including sponsorship task reminders) stays queued. Set it as a repository variable or secret named NOTIFY_WEBHOOK_URL (and NOTIFY_WEBHOOK_SECRET); in-app and push notifications work without it."
 [ -n "$(printf '%s' "${GOOGLE_CLIENT_ID:-}" | tr -d '\r\n' | xargs)" ] && echo "[deploy] GOOGLE_CLIENT_ID received (Google sign-in on)" || echo "::warning::GOOGLE_CLIENT_ID is empty in this run: set it as a repository variable (or secret) named GOOGLE_CLIENT_ID; until then the Google button stays disabled."
 [ -n "$(printf '%s' "${APPLE_CLIENT_ID:-}" | tr -d '\r\n' | xargs)" ] && echo "[deploy] APPLE_CLIENT_ID received (Apple sign-in on)" || echo "::warning::APPLE_CLIENT_ID is empty in this run: set the Apple Services ID as a repository variable (or secret) named APPLE_CLIENT_ID; until then the Apple button stays disabled."
 # Background processing: production runs the separate pm2 worker by default (maintenance leaves the API process, so slow

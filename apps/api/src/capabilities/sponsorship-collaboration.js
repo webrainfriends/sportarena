@@ -7,10 +7,11 @@ import { tx, pool, many } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { audit } from '../helpers.js';
 import { toCsv } from '../csv.js';
-import { SPONSOR_ACTIONS } from '../sponsor-access.js';
+import { SPONSOR_ACTIONS, notifySponsor } from '../sponsor-access.js';
+import { notify } from '../notify.js';
 import { ping } from './sponsorship-agreements.js';
 import {
-  TASK_KINDS, TASK_STATUS, TASK_COLS, scopeOf, scopeAccess, taskFor, assertCanWrite, assignable, presentTasks, sideRoster, staleTask, notifyTask, escalationRecipients, visibleSql,
+  TASK_KINDS, TASK_STATUS, TASK_COLS, scopeOf, scopeAccess, taskFor, assertCanWrite, assignable, presentTasks, sideRoster, staleTask, notifyTask, escalationRecipients, visibleSql, threadAccess, reminderChannels,
 } from '../sponsor-collaboration.js';
 
 const date = z.string().date();
@@ -68,14 +69,14 @@ cap({
       const slice = keep.slice(i.offset, i.offset + i.limit);
       const items = [];
       for (const [r, a] of slice) items.push(...await presentTasks(pool, [r], a));
-      return { items, total: keep.length, limit: i.limit, offset: i.offset };
+      return { items, total: keep.length, limit: i.limit, offset: i.offset, reminders: await reminderChannels(pool) };
     }
     const scope = scopeOf(i);
     const access = await scopeAccess(pool, user, scope);
     const [col, val] = where(scope);
     const rows = await many(`SELECT ${TASK_COLS}, t.reminder_cycle FROM sponsorship_tasks t WHERE t.${col}=$1 AND ${visibleSql('t', access.side, 3)} AND ($2::text IS NULL OR t.status=$2) ORDER BY t.due_on NULLS LAST, t.id LIMIT $4 OFFSET $5`, [val, st, access.side ?? '', i.limit, i.offset]);
     const total = (await pool.query(`SELECT count(*)::int AS n FROM sponsorship_tasks t WHERE t.${col}=$1 AND ${visibleSql('t', access.side, 3)} AND ($2::text IS NULL OR t.status=$2)`, [val, st, access.side ?? ''])).rows[0].n;
-    return { items: await presentTasks(pool, rows, access), total, limit: i.limit, offset: i.offset, side: access.side, can_write: access.write && !access.archived && !(access.deal && ['declined', 'withdrawn'].includes(access.deal.status)), assignable: await assignable(pool, access) };
+    return { items: await presentTasks(pool, rows, access), total, limit: i.limit, offset: i.offset, side: access.side, can_write: access.write && !access.archived && !(access.deal && ['declined', 'withdrawn'].includes(access.deal.status)), assignable: await assignable(pool, access), reminders: await reminderChannels(pool) };
   },
 });
 
@@ -142,12 +143,35 @@ cap({
   },
 });
 
+const noteTarget = { ...target, application_id: id.optional().describe('one application of a program: the conversation between the brand and that applicant') };
+
+/** Tell the other side of an application thread that something is waiting, never what it says. */
+async function pingThread(c, acc, noteId) {
+  const msg = (data) => ({ kind: 'sponsorship_update', title: 'New message about a sponsorship application', body: 'Open Gotmygame to see it.', data });
+  if (acc.applicant) await notifySponsor(c, acc.sp, 'program', { ...msg({ program_id: acc.program.id, application_id: acc.application.id }), dedupe_key: `spapp:${noteId}` }, null);
+  else await notify(c, acc.application.applicant_id, { ...msg({ application_id: acc.application.id }), dedupe_key: `spapp:${noteId}:a` });
+}
+
 cap({
   name: 'add_sponsorship_note', method: 'POST', path: '/sponsorship-notes', tag: 'Sponsors', status: 201,
-  summary: 'Write a note on an agreement, a program or one of their tasks. An `internal` note is a working note visible only to your own side: the other side and platform admins never see it. A `shared` note (agreements only) is a discussion message both sides see; the other side is told that something new is waiting, never what it says. Notes cannot be edited or removed.',
-  input: z.object({ ...target, task_id: id.optional(), visibility: z.enum(['internal', 'shared']).default('internal'), body: z.string().trim().min(1).max(2000) }),
+  summary: 'Write a note on an agreement, a program, one of their tasks, or one application of a program. An `internal` note is a working note visible only to your own side: the other side and platform admins never see it. A `shared` note is a discussion message both sides see: on an agreement, between the sponsor and the recipient; on an application (application_id), between the brand (needs the program right) and that applicant only. The other side is told that something new is waiting, never what it says. An applicant can write once the application is submitted; a person under the age of independence cannot be put in a direct thread. Notes cannot be edited or removed.',
+  input: z.object({ ...noteTarget, task_id: id.optional(), visibility: z.enum(['internal', 'shared']).default('internal'), body: z.string().trim().min(1).max(2000) }),
   async handler({ user }, i) {
     return tx(async (c) => {
+      if (i.application_id) {
+        if (i.task_id || i.sponsorship_id) throw badRequest('An application thread has no task or agreement of its own');
+        const acc = await threadAccess(c, user, i.application_id);
+        if (i.program_id && i.program_id !== acc.program.id) throw badRequest('That application belongs to another program');
+        if (acc.youth) throw forbidden('A guardian-led process applies; the brand cannot message a person under the age of independence directly');
+        if (acc.archived) throw conflict('This program is archived; its conversations are read-only');
+        if (!acc.write) throw forbidden(acc.applicant ? 'You can write once your application is submitted' : `Your role (${acc.staff}) cannot write notes for this brand`);
+        const visibility = acc.applicant ? 'shared' : i.visibility;
+        if (visibility === 'shared' && !acc.applicant && !acc.share) throw forbidden(`Your role (${acc.staff}) cannot speak to applicants for the brand`);
+        const row = (await c.query('INSERT INTO sponsorship_notes(program_id, application_id, side, visibility, author_id, body) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, application_id, side, visibility, body, created_at', [acc.program.id, acc.application.id, acc.side, visibility, user.id, i.body])).rows[0];
+        await audit(c, user.id, 'note', 'sponsorship_applications', acc.application.id);
+        if (visibility === 'shared') await pingThread(c, acc, row.id);
+        return { ...row, author: (await c.query('SELECT display_name FROM users WHERE id=$1', [user.id])).rows[0].display_name };
+      }
       let task = null, scope;
       if (i.task_id) {
         const f = await taskFor(c, user, i.task_id);
@@ -159,7 +183,7 @@ cap({
       if (!access.write) throw forbidden(access.side === 'sponsor' ? `Your role (${access.staff}) cannot write notes for this brand` : 'Only a representative of the recipient can write notes');
       if (access.archived || (access.deal && ['declined', 'withdrawn'].includes(access.deal.status))) throw conflict('This is closed; notes can no longer be added');
       if (i.visibility === 'shared') {
-        if (scope.type === 'program') throw badRequest('A program note is internal to the brand');
+        if (scope.type === 'program') throw badRequest('A program note is internal to the brand; to talk to an applicant, write on their application');
         if (task && task.visibility === 'internal') throw badRequest('A note on an internal task is internal');
         if (access.side === 'sponsor') access.ctx.need('revise', 'speak for the brand to the other side');
       }
@@ -174,9 +198,16 @@ cap({
 
 cap({
   name: 'list_sponsorship_notes', method: 'GET', path: '/sponsorship-notes', tag: 'Sponsors',
-  summary: 'Notes of an agreement or program (or of one task): your side\'s internal notes plus the shared discussion, oldest first. The other side\'s internal notes are never returned.',
-  input: z.object({ ...target, task_id: id.optional(), ...page }),
+  summary: 'Notes of an agreement or program (or of one task, or one application thread): your side\'s internal notes plus the shared discussion, oldest first. The other side\'s internal notes are never returned; an applicant sees only their own application thread, and other applicants never do. The program list holds the brand\'s internal notes (application threads are read per application).',
+  input: z.object({ ...noteTarget, task_id: id.optional(), ...page }),
   async handler({ user }, i) {
+    if (i.application_id) {
+      const acc = await threadAccess(pool, user, i.application_id);
+      const items = await many(
+        `SELECT n.id, n.application_id, n.side, n.visibility, n.body, n.created_at, u.display_name AS author FROM sponsorship_notes n JOIN users u ON u.id=n.author_id
+          WHERE n.application_id=$1 AND ${visibleSql('n', acc.side, 2)} ORDER BY n.id LIMIT $3 OFFSET $4`, [acc.application.id, acc.side, i.limit, i.offset]);
+      return { items, limit: i.limit, offset: i.offset, can_write: acc.write && !acc.youth, youth_blocked: !!acc.youth };
+    }
     let scope, taskId = null;
     if (i.task_id) { const { t } = await taskFor(pool, user, i.task_id); taskId = t.id; scope = t.program_id ? { type: 'program', id: t.program_id } : { type: 'agreement', id: t.sponsorship_id }; }
     else scope = scopeOf(i);
@@ -184,7 +215,7 @@ cap({
     const [col, val] = where(scope);
     const items = await many(
       `SELECT n.id, n.task_id, n.side, n.visibility, n.body, n.created_at, u.display_name AS author FROM sponsorship_notes n JOIN users u ON u.id=n.author_id
-        WHERE n.${col}=$1 AND ($2::uuid IS NULL OR n.task_id=$2) AND ${visibleSql('n', access.side, 3)} ORDER BY n.id LIMIT $4 OFFSET $5`, [val, taskId, access.side ?? '', i.limit, i.offset]);
+        WHERE n.${col}=$1 AND n.application_id IS NULL AND ($2::uuid IS NULL OR n.task_id=$2) AND ${visibleSql('n', access.side, 3)} ORDER BY n.id LIMIT $4 OFFSET $5`, [val, taskId, access.side ?? '', i.limit, i.offset]);
     return { items, limit: i.limit, offset: i.offset, can_write: access.write && !access.archived };
   },
 });
