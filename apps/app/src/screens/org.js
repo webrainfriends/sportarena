@@ -14,6 +14,7 @@ import { Admissions } from './admissions';
 import { AcademyDesk } from './academy';
 import { MyAcademyCard } from './academy-portal';
 import { IncomingSponsorship } from './sponsor-beneficiaries';
+import { HandOverBrand } from './sponsor-ownership';
 import { Confirm } from './coaching';
 import { EntityPicker } from '../entity-picker';
 import { explain, LoadError } from '../access';
@@ -246,6 +247,7 @@ function SponsorTab({ o, role, archived, toast, brands }) {
   const { push } = useNav();
   const [dept, setDept] = useState(null); // department filter
   const [add, setAdd] = useState(false);
+  const [handOver, setHandOver] = useState(null);
   const depts = useLoad(() => api.get(`/organisations/${o.id}/departments`), [o.id]);
   const deals = useLoad(() => api.get('/sponsorships', { limit: 100 }), [o.id]);
   const ids = new Set((brands.data ?? []).map((b) => b.id));
@@ -262,7 +264,7 @@ function SponsorTab({ o, role, archived, toast, brands }) {
   return (
     <>
       <Section title="Brands" color={c.violet}>
-        {(brands.data ?? []).map((b) => <Row key={b.id} title={b.name} sub="Run by this organisation's staff under their sponsor roles" />)}
+        {(brands.data ?? []).map((b) => <Row key={b.id} title={b.name} sub="Run by this organisation's staff under their sponsor roles" right={manage ? <Btn small title="Hand over" color={c.paper} ink={c.ink} onPress={() => setHandOver({ ...b, organisation_id: o.id })} accessibilityLabel={`Hand over ${b.name} to a new owner`} /> : null} />)}
       </Section>
       <Section title="Deals" color={c.sun}>
         {depts.data?.length ? (
@@ -291,6 +293,7 @@ function SponsorTab({ o, role, archived, toast, brands }) {
           <T size={12} color={c.mute}>Exports follow your role and department and are recorded in the audit log. They never include contact details.</T>
         </Section>
       ) : null}
+      <HandOverBrand brand={handOver} visible={!!handOver} onClose={() => setHandOver(null)} onDone={() => brands.reload?.()} toast={toast} />
       <FormSheet visible={add} onClose={() => setAdd(false)} title="Add a department" fields={[{ key: 'name', label: 'Department name' }]}
         onSubmit={async (v) => { await api.post(`/organisations/${o.id}/departments`, v); depts.reload(); return 'Department added'; }} />
     </>

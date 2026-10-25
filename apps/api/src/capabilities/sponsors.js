@@ -15,7 +15,8 @@ import { entityRole, snapshotIdentity, ASSIGNED, CAN } from '../sponsor-identity
 import { endNow } from '../sponsor-termination.js';
 import { saveLines, loadLines, generateObligations, logHistory } from '../sponsor-agreements.js';
 import { proposerSide } from '../sponsor-renewals.js';
-import { sponsorAccess, assertSponsorCan, notifySponsor, sponsorStaffSql } from '../sponsor-access.js';
+import { sponsorAccess, assertSponsorCan, notifySponsor, sponsorStaffSql, sponsorRecipients, SPONSOR_ORG_ROLES } from '../sponsor-access.js';
+import { lockOrg, orgRole } from '../org-access.js';
 import { assertDealFitsBudget, assertFits, convert, costOf, storedRate } from '../sponsorship-budgets.js';
 import { ORG_TARGETS, beneficiaryScopeSql, beneficiaryAccess, primaryContact, targetOrgId } from '../sponsor-beneficiaries.js';
 
@@ -118,6 +119,85 @@ cap({
       return row;
     });
   },
+});
+
+// ------------------------------------------------------------------ brand ownership (#340)
+const OWNER_STAFF = ['owner', 'admin'];           // organisation roles that may hand a linked brand over
+const MANAGER_EQUIVALENT = ['owner', 'admin', 'manager']; // organisation roles that already act as the brand's manager
+
+/** The brand's organisation staff (and the owner) may see who owns it and the hand-over history; contacts are not part of it. */
+async function ownershipView(c, s, user) {
+  const owner = (await c.query('SELECT id, handle, display_name, avatar_emoji, avatar_color FROM users WHERE id=$1', [s.owner_id])).rows[0];
+  const orgRoleNow = s.organisation_id ? await orgRole(user, s.organisation_id, c) : null;
+  const can = !s.entity_id && (isAdmin(user) || user.id === s.owner_id || OWNER_STAFF.includes(orgRoleNow));
+  const history = (await c.query(
+    `SELECT t.id, t.created_at, t.rev, t.note, t.previous_owner_role, f.display_name AS from_name, f.handle AS from_handle, o.display_name AS to_name, o.handle AS to_handle, b.display_name AS by_name
+       FROM sponsor_owner_transfers t JOIN users f ON f.id=t.from_user_id JOIN users o ON o.id=t.to_user_id JOIN users b ON b.id=t.by_user_id
+      WHERE t.sponsor_id=$1 ORDER BY t.created_at DESC, t.id LIMIT 50`, [s.id])).rows;
+  return { sponsor_id: s.id, name: s.name, owner, owner_rev: s.owner_rev, organisation_id: s.organisation_id, entity_id: s.entity_id, can_transfer: can,
+    blocked: s.entity_id ? 'This brand belongs to a sponsor entity, whose representatives act for it; manage them on the entity.' : null, history };
+}
+
+cap({
+  name: 'get_sponsor_ownership', method: 'GET', path: '/sponsors/:id/ownership', tag: 'Sponsors',
+  summary: 'Brand managers: who owns the brand (the implicit manager and original creator), the revision to quote when handing it over, whether you may hand it over, and the hand-over history. Contact details are not part of this.',
+  input: z.object({ id }),
+  async handler({ user }, i) {
+    const s = await mustFind('sponsors', i.id);
+    if (!isAdmin(user)) assertSponsorCan(await sponsorAccess(user, s), 'manage', { what: 'see the brand\'s ownership' });
+    return ownershipView(pool, s, user);
+  },
+});
+
+cap({
+  name: 'transfer_sponsor_ownership', method: 'POST', path: '/sponsors/:id/transfer', tag: 'Sponsors',
+  summary: 'Hand a brand\'s ownership (sponsors.owner_id: its implicit manager, contact-data owner and creator) to someone else, in one transaction under a row lock. Allowed for the current owner, an owner/admin of the brand\'s organisation, or a platform admin. For a brand run by an organisation the new owner must be an active member with a sponsor-carrying role and no department scope; the previous owner then keeps at least a manager role in the organisation. For an individual brand the new owner is another adult with the sponsor role and the previous owner no longer has access. Quote `expected_rev` from get_sponsor_ownership: a stale hand-over is rejected (409). Agreements, payments, history and encrypted contacts are untouched. A brand under a sponsor entity cannot be handed over here.',
+  input: z.object({ id, to_user_id: id, expected_rev: z.coerce.number().int().positive().describe('the owner_rev you saw; if the brand changed hands meanwhile the hand-over is rejected (409) so you can reload'), note: z.string().max(300).optional() }),
+  handler: ({ user }, i) => tx(async (c) => {
+    const s = (await c.query('SELECT * FROM sponsors WHERE id=$1 FOR UPDATE', [i.id])).rows[0];
+    if (!s) throw notFound('Sponsor');
+    if (s.organisation_id) await lockOrg(c, s.organisation_id); // brand first, organisation second: nothing else takes them the other way round
+    const mine = isAdmin(user) ? 'admin' : s.owner_id === user.id ? 'owner' : s.organisation_id ? await orgRole(user, s.organisation_id, c) : null;
+    if (!isAdmin(user) && mine !== 'owner' && !OWNER_STAFF.includes(mine)) {
+      if (!(await sponsorAccess(user, s, c))) throw notFound('Sponsor');
+      throw forbidden('Only the brand owner or an owner/admin of its organisation can hand the brand over');
+    }
+    if (s.entity_id) throw conflict('This brand belongs to a sponsor entity, whose representatives act for it; manage them on the entity instead');
+    if (s.organisation_id && !isAdmin(user) && mine !== 'owner' && (await c.query("SELECT 1 FROM organisations WHERE id=$1 AND status='active'", [s.organisation_id])).rowCount === 0) throw conflict('This brand\'s organisation is archived and read-only');
+    if (i.expected_rev !== s.owner_rev) throw conflict('This brand changed hands since you opened it; reload and try again');
+    if (i.to_user_id === s.owner_id) throw badRequest('That person already owns this brand');
+    const to = (await c.query('SELECT id, display_name, roles FROM users WHERE id=$1', [i.to_user_id])).rows[0];
+    if (!to) throw notFound('Person');
+    if (await isYouth(to.id, c)) throw unprocessable('A brand cannot be handed to a young person');
+    if (s.organisation_id) {
+      const m = (await c.query("SELECT role, department_id FROM organisation_members WHERE organisation_id=$1 AND user_id=$2 AND status='active'", [s.organisation_id, to.id])).rows[0];
+      if (!m || !SPONSOR_ORG_ROLES.includes(m.role)) throw unprocessable('The new owner must be an active member of the brand\'s organisation with a sponsor role (not a coach)');
+      if (m.department_id) throw unprocessable('The new owner is limited to a department; remove that scope first, because an owner manages the whole brand');
+    } else if (!to.roles.includes('sponsor') && !to.roles.includes('admin')) throw unprocessable('The new owner needs the sponsor role');
+    // the previous owner keeps a manager-equivalent role in the organisation; a weaker one is raised, a stronger one is left alone
+    let prevRole = null;
+    if (s.organisation_id) {
+      const pm = (await c.query("SELECT role FROM organisation_members WHERE organisation_id=$1 AND user_id=$2 AND status='active'", [s.organisation_id, s.owner_id])).rows[0];
+      if (pm) {
+        prevRole = pm.role;
+        if (!MANAGER_EQUIVALENT.includes(pm.role)) {
+          await c.query("UPDATE organisation_members SET role='manager', department_id=NULL WHERE organisation_id=$1 AND user_id=$2 AND status='active'", [s.organisation_id, s.owner_id]);
+          prevRole = 'manager';
+        }
+      }
+    }
+    const next = (await c.query('UPDATE sponsors SET owner_id=$2, owner_rev=owner_rev+1, updated_at=now() WHERE id=$1 RETURNING *', [s.id, to.id])).rows[0];
+    // last-manager guard: the brand must still have a live manager after the change (the new owner always is one)
+    if ((await sponsorAccess({ id: to.id }, next, c))?.role !== 'manager') throw conflict('The brand would be left without a manager');
+    await c.query('INSERT INTO sponsor_owner_transfers(sponsor_id, from_user_id, to_user_id, by_user_id, organisation_id, previous_owner_role, rev, note) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
+      [s.id, s.owner_id, to.id, user.id, s.organisation_id, prevRole, next.owner_rev, i.note ?? null]);
+    await audit(c, user.id, 'transfer_sponsor_ownership', 'sponsors', s.id);
+    const data = { sponsor_id: s.id };
+    await notify(c, to.id, { kind: 'sponsor_ownership', title: `You now own ${s.name}`, body: `${s.name} was handed over to you. You manage the brand, its deals and its contact details.`, data });
+    if (s.owner_id !== user.id) await notify(c, s.owner_id, { kind: 'sponsor_ownership', title: `${s.name} was handed over`, body: prevRole ? `You no longer own ${s.name}; you keep managing it as ${prevRole}.` : `You no longer own ${s.name} and no longer have access to it.`, data });
+    for (const uid of await sponsorRecipients(c, next, 'manage')) if (![user.id, to.id, s.owner_id].includes(uid)) await notify(c, uid, { kind: 'sponsor_ownership', title: `${s.name} has a new owner`, body: `${to.display_name} now owns ${s.name}.`, data });
+    return { ok: true, sponsor_id: s.id, owner_id: to.id, previous_owner_id: s.owner_id, previous_owner_role: prevRole, owner_rev: next.owner_rev };
+  }),
 });
 
 cap({

@@ -4,6 +4,9 @@ import { pool } from './db.js';
 import { isAdmin } from './helpers.js';
 import { conflict, forbidden, notFound } from './errors.js';
 
+/** Row-lock an organisation for the rest of the transaction, so membership changes and hand-overs on it run one at a time. */
+export const lockOrg = (c, orgId) => c.query('SELECT id FROM organisations WHERE id=$1 FOR UPDATE', [orgId]);
+
 /** Active membership role of the user in the organisation, or null. Platform admins act as owner. */
 export async function orgRole(user, orgId, c = pool) {
   if (!user || !orgId) return null;
