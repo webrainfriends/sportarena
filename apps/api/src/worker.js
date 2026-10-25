@@ -18,6 +18,7 @@ import { processSponsorshipTerms } from './sponsor-renewals.js';
 import { processSponsorTasks } from './sponsor-collaboration.js';
 import { expireAcademyOffers, remindTrials, runAcademyJobs } from './academy-sweeps.js';
 import { deliverDueReports } from './sponsor-report-schedules.js';
+import { accrueActiveContracts } from './player-contracts.js';
 
 export const STEPS = [
   ['holds', 'holds_released', expireUnpaidHolds, 0],
@@ -41,6 +42,7 @@ export const STEPS = [
   ['academy_jobs', 'academy_jobs', runAcademyJobs, null],
   ['sponsor_tasks', 'sponsor_task_reminders', processSponsorTasks, 0],
   ['sponsor_reports', 'sponsor_reports_delivered', deliverDueReports, 0],
+  ['player_contracts', 'contract_earnings_posted', accrueActiveContracts, 0],
 ];
 
 export async function maintenanceCycle() {
