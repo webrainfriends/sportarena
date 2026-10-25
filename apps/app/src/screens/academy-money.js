@@ -9,21 +9,24 @@ import { c } from '../theme';
 import { moneyIn } from '../vtime';
 import { Block, Kpi, opts, openInvoicePdf, when } from './academy-ui';
 import { useSession } from '../session';
+import { AgreementList, AgreementWizard } from './agreement-wizard';
 
 const KINDS = [['participation', 'Participation terms'], ['code_of_conduct', 'Code of conduct'], ['refund_policy', 'Refund policy'], ['media_consent', 'Media consent'], ['equipment', 'Equipment'], ['pickup', 'Pick-up'], ['programme_declaration', 'Programme declaration'], ['other', 'Other']];
 const Panel = ({ children }) => <View style={{ backgroundColor: c.paper, borderRadius: 20, padding: 16, gap: 10, borderWidth: 1, borderColor: c.line }}>{children}</View>;
 
-export function Agreements({ o, archived }) {
+export function Agreements({ o, archived, role }) {
   const list = useLoad(() => api.get(`/organisations/${o.id}/policies`), [o.id]);
-  const [make, setMake] = useState(false), [rev, setRev] = useState(null), [read, setRead] = useState(null);
+  const [revise, setRevise] = useState(null), [read, setRead] = useState(null);
+  const staff = ['owner', 'admin'].includes(role ?? o.my_role);
   return (
     <View style={{ gap: 12 }}>
+      {staff ? <Panel><AgreementList o={o} archived={archived} role={role ?? o.my_role} /></Panel> : null}
       <Panel>
-        <Block title="Agreements & policies" right={!archived ? <Btn small title="＋ New agreement" onPress={() => setMake(true)} /> : null}>
-          <T size={12} color={c.mute}>Families acknowledge the exact version they read; it records who agreed, for whom, when and which version. It is an acknowledgement, not a legal e-signature. Published text is never edited: a new version replaces it.</T>
+        <Block title="Published for families">
+          <T size={12} color={c.mute}>Families acknowledge the exact version they read; it records who agreed, for whom, when and which version. It is an acknowledgement, not a legal e-signature. Published text is never edited: an approved revision replaces it as a new version.</T>
           {list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : !list.data ? <Loading /> : list.data.length ? list.data.map((p) => (
             <Row key={p.id} title={p.title} sub={`${KINDS.find(([k]) => k === p.kind)?.[1] ?? p.kind} · version ${p.current_version} · published ${when(p.published_at)}${p.requires_reconsent ? ' · everyone re-agrees' : ''}`} right={<Tag label={`v${p.current_version}`} />} onPress={() => setRead(p)} />
-          )) : <Empty emoji="📜" title="No agreements yet" sub="Add the terms families accept before joining, then require them on a programme." />}
+          )) : <Empty emoji="📜" title="Nothing published yet" sub="Approved participation terms, codes of conduct and consents appear here, ready to require on a programme." />}
         </Block>
       </Panel>
       {read ? (
@@ -31,16 +34,11 @@ export function Agreements({ o, archived }) {
           <Block title={`${read.title} · v${read.current_version}`} right={<Btn small title="Close" color={c.paper} ink={c.ink} onPress={() => setRead(null)} />}>
             <T size={14}>{read.body}</T>
             <T size={11} color={c.mute}>Fingerprint {read.body_sha256.slice(0, 16)}…</T>
-            {!archived ? <Btn small title="Publish a new version" color={c.paper} ink={c.ink} onPress={() => setRev(read)} style={{ alignSelf: 'flex-start' }} /> : null}
+            {!archived && staff ? <Btn small title="Revise (goes through approval)" color={c.paper} ink={c.ink} onPress={() => setRevise(read)} style={{ alignSelf: 'flex-start' }} /> : null}
           </Block>
         </Panel>
       ) : null}
-      <FormSheet visible={make} onClose={() => setMake(false)} title="New agreement" submitLabel="Publish"
-        fields={[{ key: 'kind', label: 'Type', type: 'chips', options: opts(KINDS) }, { key: 'title', label: 'Title' }, { key: 'body', label: 'Text people will read', type: 'multiline' }]}
-        onSubmit={async (v) => { await api.post(`/organisations/${o.id}/policies`, v); list.reload(); return 'Published'; }} />
-      <FormSheet visible={!!rev} onClose={() => setRev(null)} title={`New version · ${rev?.title ?? ''}`} submitLabel="Publish version" initial={{ body: rev?.body ?? '' }}
-        fields={[{ key: 'body', label: 'Updated text', type: 'multiline' }, { key: 'requires_reconsent', label: 'Everyone must agree again', type: 'switch', hint: 'Off: people who agreed to an earlier version stay agreed.' }]}
-        onSubmit={async (v) => { await api.post(`/policies/${rev.id}/versions`, v); setRead(null); list.reload(); return 'New version published'; }} />
+      {revise ? <AgreementWizard o={o} revise={revise} onClose={() => setRevise(null)} onDone={() => { setRead(null); list.reload(); }} /> : null}
     </View>
   );
 }

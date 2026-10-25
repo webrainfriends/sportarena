@@ -38,7 +38,7 @@ export function StartTeamSheet({ visible, onClose, onCreated }) {
   return (
     <FormSheet visible={visible} onClose={onClose} title="Start a team" submitLabel="Create team"
       fields={[{ key: 'name', label: 'Team name' }, { key: 'sport', label: 'Sport', type: 'sport' }, { key: 'description', label: 'About the team', type: 'multiline', optional: true },
-          { key: 'emoji', label: 'Mascot emoji', optional: true }, { key: 'color', label: 'Team colour', type: 'chips', optional: true, options: TEAM_COLOURS }, { key: 'city', label: 'City', optional: true }]}
+          { key: 'emoji', label: 'Mascot emoji', optional: true }, { key: 'color', label: 'Team colour', type: 'chips', optional: true, options: TEAM_COLOURS }, { key: 'city', label: 'City or area', type: 'region', optional: true }]}
         onSubmit={async (v) => { const t = await api.post('/teams', v); onCreated?.(); push('TeamWorkspace', { id: t.id }); return 'Team created — invite your players from the Roster tab'; }} />
   );
 }

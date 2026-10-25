@@ -17,6 +17,7 @@ import { marketMediaRouter } from './market-media.js';
 import { matchFileRouter } from './capabilities/player.js';
 import { insuranceDocsRouter } from './capabilities/insurance-docs.js';
 import { brandedDocumentsRouter } from './capabilities/branded-documents.js';
+import { orgAgreementsRouter } from './capabilities/org-agreements.js';
 import { trackingFilesRouter } from './capabilities/tracking-files.js';
 import { rulebookRouter } from './capabilities/rulebook.js';
 import { coachingEvidenceRouter } from './capabilities/coaching-evidence.js';
@@ -74,6 +75,7 @@ export function createApp() {
   app.use('/api/v1', marketMediaRouter());
   app.use('/api/v1', insuranceDocsRouter());
   app.use('/api/v1', brandedDocumentsRouter());
+  app.use('/api/v1', orgAgreementsRouter());
   app.use('/api/v1', trackingFilesRouter());
   app.use('/api/v1', rulebookRouter());
   app.use('/api/v1', coachingEvidenceRouter());

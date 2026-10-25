@@ -69,7 +69,7 @@ async function open(rows, c, actor) {
 async function checkContext(user, i) {
   if (!i.context_kind) return;
   if (!i.context_id) throw badRequest('context_id is required with context_kind');
-  if (i.context_kind === 'organisation') await orgFor(user, i.context_id);
+  if (i.context_kind === 'organisation' || i.context_kind === 'academy') await orgFor(user, i.context_id);
   if (i.context_kind === 'team' && !(await one('SELECT 1 FROM teams WHERE id=$1', [i.context_id]))) throw notFound('Team');
   if (i.context_kind === 'event' && !(await one('SELECT 1 FROM events WHERE id=$1', [i.context_id]))) throw notFound('Event');
 }

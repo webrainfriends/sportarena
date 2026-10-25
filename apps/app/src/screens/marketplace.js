@@ -253,7 +253,7 @@ function PostSheet({ onClose, onDone }) {
         { key: 'title', label: 'Headline', placeholder: 'Need 2 scorers for Sunday’s final' },
         { key: 'body', label: 'Details', optional: true, type: 'multiline' },
         { key: 'sport', label: 'Sport', type: 'sport', optional: true },
-        { key: 'city', label: 'City', optional: true },
+        { key: 'city', label: 'City or area', type: 'region', optional: true },
         { key: 'start_date', label: 'Starts on', type: 'date', optional: true, min: today },
         { key: 'start_time', label: 'Start time', type: 'time', optional: true, show: (v) => !!v.start_date },
         { key: 'end_date', label: 'Ends on', type: 'date', optional: true, min: today, show: (v) => !!v.start_date },
