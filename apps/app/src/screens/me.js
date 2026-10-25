@@ -15,6 +15,7 @@ import { CaseQueue } from './cases';
 import { AccessRequests } from './partners';
 import { ProviderProfileSection } from './provider';
 import { SecuritySection, TokensSection } from './security';
+import { AddressBook } from '../address-book';
 import { HealthComplianceDesk } from './health-privacy';
 
 const mask = (v) => (v ? '••••••••' : '—');
@@ -77,6 +78,8 @@ export function Me() {
       {user.roles.includes('admin') ? <VerificationQueue /> : null}
       {user.roles.includes('admin') ? <CaseQueue /> : null}
       {user.roles.includes('admin') ? <HealthComplianceDesk /> : null}
+
+      <AddressBook toast={toast} />
 
       <SecuritySection />
       <TokensSection mcpUrl={MCP_URL} />
