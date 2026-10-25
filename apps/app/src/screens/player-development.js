@@ -12,6 +12,7 @@ import { HScroll } from '../pickers';
 import { useLayout } from '../layout';
 import { c } from '../theme';
 import { dateTimeIn } from '../vtime';
+import { AthleteBenchmarks } from './player-insights';
 
 const tz = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return 'UTC'; } })();
 const label = (s) => String(s ?? '').replace(/_/g, ' ').replace(/^./, (x) => x.toUpperCase());
@@ -132,6 +133,7 @@ export function MyDevelopment({ child_id, name }) {
               <View style={{ flex: 1, minWidth: 0 }}>{render(SECTIONS.filter((s) => ['feedback', 'assessments', 'reports'].includes(s.key)))}</View>
             </View>
           ) : render(shown)}
+          {child_id && !pick ? <View style={{ marginTop: 14, gap: 6 }}><T weight="700" size={15}>Benchmarks</T><AthleteBenchmarks athlete_id={child_id} /></View> : null}
         </>
       )}
     </Screen>

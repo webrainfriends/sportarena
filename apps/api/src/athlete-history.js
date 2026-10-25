@@ -8,6 +8,8 @@
  *  - game, team competitor: a confirmed playing squad slot (player/captain/vice_captain) for that game's fixture and team, OR an
  *    active player/captain game association marked starter (or unset) while on that team's active roster.
  *  - fixture with no finished game: a confirmed playing squad slot for that fixture on its home/away team.
+ *  Verified appearances (match_appearances, #322) refine this: a named starter / substitute who came on counts even without a
+ *  confirmed squad slot; a named unused substitute or did-not-play never counts; verified minutes replace the stat value.
  *  Only finished games ('post-event') and completed fixtures count. Substitutes/bench/selected-only/declined/dropped and
  *  coach/manager/physio/referee/scorer never count. A game always wins over its fixture (games.fixture_id) — shown once.
  */
@@ -23,10 +25,12 @@ WITH credited AS (
    WHERE g.status = 'post-event' AND (
          p.user_id = $1
       OR (p.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1 UNION SELECT team_id FROM team_squads WHERE user_id = $1) AND (
+            EXISTS (SELECT 1 FROM match_appearances ma WHERE ma.fixture_id = g.fixture_id AND ma.user_id = $1 AND ma.archived_at IS NULL AND ma.status IN ('started','substitute_on'))
+         OR NOT EXISTS (SELECT 1 FROM match_appearances ma WHERE ma.fixture_id = g.fixture_id AND ma.user_id = $1 AND ma.archived_at IS NULL AND ma.status IN ('unused_sub','dnp')) AND (
             EXISTS (SELECT 1 FROM team_squads q WHERE q.fixture_id = g.fixture_id AND q.team_id = p.team_id AND q.user_id = $1 AND q.status = 'confirmed' AND q.role IN ${PLAY_ROLES})
          OR EXISTS (SELECT 1 FROM associations a JOIN team_members tm ON tm.team_id = p.team_id AND tm.user_id = a.user_id AND tm.status = 'active'
                      WHERE a.user_id = $1 AND a.target_type = 'game' AND a.target_id = g.id AND a.status = 'active'
-                       AND a.role IN ('player','captain') AND coalesce(a.player_status, 'starter') = 'starter'))))
+                       AND a.role IN ('player','captain') AND coalesce(a.player_status, 'starter') = 'starter')))))
    ORDER BY g.id, (p.user_id IS NOT NULL) DESC, p.team_id
 ), off_game AS (
   SELECT 'game:' || c.game_id AS activity_id, 'game' AS source_type, c.game_id AS source_id, c.game_id, c.fixture_id, c.competition_id AS event_id,
@@ -35,11 +39,12 @@ WITH credited AS (
          c.title, CASE WHEN opp.n = 1 THEN opp.name END AS opponent, ev.name AS competition, coalesce(vn.name, c.location) AS venue,
          CASE c.outcome WHEN 'win' THEN 'win' WHEN 'loss' THEN 'loss' WHEN 'tie' THEN 'draw' END AS result,
          c.rank, c.score AS score_for, CASE WHEN opp.n = 1 THEN opp.score END AS score_against,
-         CASE WHEN jsonb_typeof(st.s -> 'minutes') = 'number' THEN (st.s ->> 'minutes')::numeric::int END AS minutes,
+         coalesce(round(apm.minutes_played)::int, CASE WHEN jsonb_typeof(st.s -> 'minutes') = 'number' THEN (st.s ->> 'minutes')::numeric::int END) AS minutes,
          st.s AS stats, c.created_by AS recorded_by, c.outcome_type
     FROM credited c
     LEFT JOIN events ev ON ev.id = c.competition_id
     LEFT JOIN venues vn ON vn.id = c.venue_id
+    LEFT JOIN match_appearances apm ON apm.fixture_id = c.fixture_id AND apm.user_id = $1 AND apm.archived_at IS NULL
     LEFT JOIN LATERAL (SELECT count(*)::int AS n, max(coalesce(t.name, u.display_name)) AS name, max(q.score) AS score
                          FROM game_participants q LEFT JOIN teams t ON t.id = q.team_id LEFT JOIN users u ON u.id = q.user_id
                         WHERE q.game_id = c.game_id AND q.id <> c.pid) opp ON true
@@ -58,12 +63,19 @@ WITH credited AS (
          NULL::int AS rank,
          CASE WHEN sq.team_id = f.home_team_id THEN f.home_score ELSE f.away_score END AS score_for,
          CASE WHEN sq.team_id = f.home_team_id THEN f.away_score ELSE f.home_score END AS score_against,
-         NULL::int AS minutes, '{}'::jsonb AS stats, ev.organizer_id AS recorded_by, NULL::text AS outcome_type
+         round(apf.minutes_played)::int AS minutes, '{}'::jsonb AS stats, ev.organizer_id AS recorded_by, NULL::text AS outcome_type
     FROM fixtures f
     JOIN events ev ON ev.id = f.event_id
-    JOIN LATERAL (SELECT q.team_id FROM team_squads q
-                   WHERE q.fixture_id = f.id AND q.user_id = $1 AND q.status = 'confirmed' AND q.role IN ${PLAY_ROLES}
-                     AND q.team_id IN (f.home_team_id, f.away_team_id) ORDER BY q.team_id LIMIT 1) sq ON true
+    JOIN LATERAL (SELECT x.team_id FROM (
+                   SELECT q.team_id FROM team_squads q
+                    WHERE q.fixture_id = f.id AND q.user_id = $1 AND q.status = 'confirmed' AND q.role IN ${PLAY_ROLES}
+                      AND q.team_id IN (f.home_team_id, f.away_team_id)
+                      AND NOT EXISTS (SELECT 1 FROM match_appearances ma WHERE ma.fixture_id = f.id AND ma.user_id = $1 AND ma.archived_at IS NULL AND ma.status IN ('unused_sub','dnp'))
+                   UNION
+                   SELECT ma.team_id FROM match_appearances ma
+                    WHERE ma.fixture_id = f.id AND ma.user_id = $1 AND ma.archived_at IS NULL AND ma.status IN ('started','substitute_on')
+                      AND ma.team_id IN (f.home_team_id, f.away_team_id)) x ORDER BY x.team_id LIMIT 1) sq ON true
+    LEFT JOIN match_appearances apf ON apf.fixture_id = f.id AND apf.user_id = $1 AND apf.archived_at IS NULL
     LEFT JOIN teams ot ON ot.id = CASE WHEN sq.team_id = f.home_team_id THEN f.away_team_id ELSE f.home_team_id END
     LEFT JOIN resources rs ON rs.id = f.resource_id
     LEFT JOIN venues vn ON vn.id = rs.venue_id

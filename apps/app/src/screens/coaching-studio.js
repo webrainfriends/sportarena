@@ -14,6 +14,7 @@ import { send, useOutbox } from '../outbox';
 import { useLayout } from '../layout';
 import { c } from '../theme';
 import { dateTimeIn, localToIso } from '../vtime';
+import { AthleteBenchmarks } from './player-insights';
 
 const GOAL_CATEGORIES = ['technical', 'tactical', 'physical', 'mental_performance', 'teamwork', 'match_objective', 'custom'];
 const GOAL_STATUS = ['planned', 'active', 'achieved', 'paused', 'stopped'];
@@ -305,7 +306,7 @@ export function CoachJournal({ athlete_id, team_id, name }) {
       <T size={13} color={c.mute}>Your notes, attendance and completed sessions in time order. Records are shown from their source; official scores and stats are never changed here.</T>
       {athlete_id ? <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, flexWrap: 'wrap' }}><Btn small title="Goals & actions" onPress={() => push('CoachGoals', { athlete_id, name })} /><Btn small title="Reports" color={c.paper} ink={c.ink} onPress={() => push('CoachReports', { athlete_id, name })} /><Btn small title="Progress summary (AI)" color={c.paper} ink={c.ink} onPress={() => push('CoachCopilot', { task: 'player_progress', athlete_id })} /><Btn small title="Ask about notes (AI)" color={c.paper} ink={c.ink} onPress={() => push('CoachCopilot', { task: 'ask', athlete_id })} /></View> : <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}><Btn small title="Goals & actions" onPress={() => push('CoachGoals', { team_id })} /><Btn small title="Reports" color={c.paper} ink={c.ink} onPress={() => push('CoachReports', { team_id })} /><Btn small title="Team patterns (AI)" color={c.paper} ink={c.ink} onPress={() => push('CoachCopilot', { task: 'team_patterns', team_id })} /></View>}
       <Cols wide={wide && !!athlete_id}>
-        <>{athlete_id ? <Metrics athlete_id={athlete_id} team_id={team_id} /> : null}</>
+        <>{athlete_id ? <><Metrics athlete_id={athlete_id} team_id={team_id} /><Section title="Benchmarks" color={c.cyan}><AthleteBenchmarks athlete_id={athlete_id} /></Section></> : null}</>
         <>
       {tags.length ? <HScroll><Chip label="All" active={!tag} onPress={() => setTag(null)} />{tags.map((t) => <Chip key={t} label={t} active={tag === t} onPress={() => setTag(t)} />)}</HScroll> : null}
       {tl.loading && !tl.data ? <Loading /> : tl.error ? <ErrorBox error={tl.error} onRetry={tl.reload} /> : !tl.data.length ?

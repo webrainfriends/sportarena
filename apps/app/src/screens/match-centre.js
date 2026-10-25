@@ -11,6 +11,7 @@ import { useNav } from '../nav';
 import { A, ABracket, ABtn, ACard, AChip, AEmpty, AScreen, ASection, AT, ReasonSheet, ScoreTicker } from '../arena';
 import { Loading, Sheet, T } from '../ui';
 import { GamesByDay, SchedulePlanner } from './event-schedule';
+import { AppearancesPanel } from './appearances';
 
 const key = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 const clockOf = (s) => (s == null ? '' : `${Math.floor(s / 60)}'`);
@@ -114,6 +115,7 @@ export function MatchCentre({ id }) {
           ))}
         </View>
       )}
+      {scorer || v.manages ? <AppearancesPanel id={id} f={f} names={names} viewer={v} /> : null}
       <RecapCard id={id} f={f} />
 
       <ReasonSheet visible={ask === 'undo'} onClose={() => setAsk(null)} title="Undo the last moment" sub={lastLogged ? `${label(lastLogged.kind)}${lastLogged.side ? ` · ${names[lastLogged.side]}` : ''} will be voided and the score recomputed. It stays in the log.` : ''}

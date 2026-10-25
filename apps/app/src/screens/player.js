@@ -380,6 +380,7 @@ export function SportProfile({ id, embedded, onChanged, onRemoved }) {
           ))}
         </View>
       </LinearGradient>
+      <VerifiedAppearances />
 
       <View style={{ gap: 8, marginTop: 14 }}>
         <Btn title={`+ Log ${th.one}`} color={tone[0]} onPress={() => setLog(true)} />
@@ -609,5 +610,28 @@ export function ImportMatches({ id }) {
         <Btn title={prev?.importable ? `Import ${prev.importable}` : 'Import'} onPress={() => run(false)} loading={busy} disabled={!prev || prev.failed || prev.errors?.length || !prev.importable} style={{ flex: 1 }} />
       </View>
     </Screen>
+  );
+}
+
+/** Verified playing time (#322): appearances, minutes and per-90 rates computed only from games whose minutes were verified. */
+function VerifiedAppearances() {
+  const r = useLoad(() => api.get('/me/appearances', { limit: 5 }), []);
+  if (r.loading && !r.data) return <Loading />;
+  if (r.error) return <Card><T size={13} color="#64748b">{r.error.details?.code === 'guardian_consent_required' ? 'A guardian\'s current consent is needed to show verified appearances.' : `Verified appearances could not load: ${r.error.message}`}</T><Pressable onPress={r.reload}><T size={13} weight="700">Try again</T></Pressable></Card>;
+  const d = r.data;
+  const rate = d.rates;
+  return (
+    <Card>
+      <T weight="800" size={15}>Verified playing time</T>
+      {!d.appearances.length ? <T size={13} color="#64748b">No verified appearances yet. They appear once a team's lineup is recorded for a finished game.</T> : (
+        <>
+          <T size={13} color="#475569">{d.played} game{d.played === 1 ? '' : 's'} played · {rate.minutes} verified minutes</T>
+          {Object.keys(rate.rates).length ? <T size={12.5} color="#475569">{Object.entries(rate.rates).map(([k, v]) => `${v} ${k.replace(/_/g, ' ')}`).join(' · ')} {rate.unit}{rate.matches_excluded ? ` (${rate.matches_excluded} game${rate.matches_excluded === 1 ? '' : 's'} without verified minutes left out)` : ''}</T> : null}
+          {d.appearances.map((a) => (
+            <T key={a.id} size={12.5} color="#64748b">{String(a.scheduled_at).slice(0, 10)} · {a.team}{a.competition ? ` · ${a.competition}` : ''} · {a.status === 'unused_sub' ? 'Unused substitute' : a.status === 'dnp' ? 'Did not play' : a.minutes_played == null ? 'Minutes not verified' : `${a.minutes_played} min`}{a.verified ? ' · ✔ verified' : ''}</T>
+          ))}
+        </>
+      )}
+    </Card>
   );
 }
