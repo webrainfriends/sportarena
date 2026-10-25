@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Linking, Platform, Share, View } from 'react-native';
-import { api } from '../api';
+import { api, API } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { useNav } from '../nav';
@@ -18,6 +18,13 @@ const TABS = [{ value: 'subscribe', label: 'Subscribe' }, { value: 'import', lab
 const WEEK = [1, 2, 3, 4, 5, 6, 0];
 const fmt12 = (t) => { const [h, m] = t.split(':').map(Number); return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`; };
 const ago = (iso) => { if (!iso) return 'never'; const m = Math.round((Date.now() - Date.parse(iso)) / 60000); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`; };
+
+/** The server only knows its public address when APP_URL is set; otherwise build it from the address this app talks to. */
+const absolute = (m) => {
+  if (m.url) return { url: m.url, webcal: m.webcal_url };
+  const origin = API.startsWith('/') ? (typeof location !== 'undefined' ? location.origin : '') : API.replace(/\/api\/v1$/, '');
+  return origin ? { url: `${origin}${m.path}`, webcal: `${origin.replace(/^https?:/, 'webcal:')}${m.path}` } : { url: null, webcal: null };
+};
 
 /** Copy on the web, the share sheet on iOS / iPadOS / Android (which includes Copy). */
 export async function copyOrShare(text, toast) {
@@ -70,9 +77,9 @@ function Subscribe({ data, athleteId, reload, onChanged }) {
     if (r) { setMade(r); setLabel(''); }
   };
   const addToApp = async (m) => {
-    const target = m.webcal_url ?? m.url;
-    if (!target) return toast('Ask the platform team to set the public address first');
-    try { await Linking.openURL(target); } catch { await copyOrShare(m.url ?? target, toast); }
+    const a = absolute(m);
+    if (!a.url) return toast('Copy the link instead');
+    try { await Linking.openURL(a.webcal ?? a.url); } catch { await copyOrShare(a.url, toast); }
   };
   const feeds = data.feeds;
   return (
@@ -94,11 +101,11 @@ function Subscribe({ data, athleteId, reload, onChanged }) {
         <Card color={c.mintSoft} accessibilityLabel="New calendar link">
           <T weight="800">✓ Link created</T>
           <T size={12} color={c.mute}>This is the only time the link is shown. Anyone who has it can see what it carries.</T>
-          <T size={12} selectable numberOfLines={3}>{made.url ?? made.path}</T>
+          <T size={12} selectable numberOfLines={3}>{absolute(made).url ?? made.path}</T>
           <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
             <Btn small title="Add to my calendar app" onPress={() => addToApp(made)} />
-            <Btn small title={Platform.OS === 'web' ? 'Copy link' : 'Share / copy link'} color={c.paper} ink={c.ink} onPress={() => copyOrShare(made.url ?? made.path, toast)} />
-            {Platform.OS === 'web' && made.webcal_url ? <Btn small title="Google Calendar" color={c.paper} ink={c.ink} onPress={() => Linking.openURL(`https://calendar.google.com/calendar/r?cid=${encodeURIComponent(made.webcal_url)}`)} /> : null}
+            <Btn small title={Platform.OS === 'web' ? 'Copy link' : 'Share / copy link'} color={c.paper} ink={c.ink} onPress={() => copyOrShare(absolute(made).url ?? made.path, toast)} />
+            {Platform.OS === 'web' && absolute(made).webcal ? <Btn small title="Google Calendar" color={c.paper} ink={c.ink} onPress={() => Linking.openURL(`https://calendar.google.com/calendar/r?cid=${encodeURIComponent(absolute(made).webcal)}`)} /> : null}
           </View>
         </Card>
       ) : null}
