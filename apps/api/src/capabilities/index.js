@@ -138,6 +138,7 @@ import './player-insights.js';
 import './player-assistant.js';
 import './wellness.js';
 import './wellness-sharing.js';
+import './player-funding.js';
 import './passport.js';
 import './passport-recruitment.js';
 import './athlete-blocks.js';
