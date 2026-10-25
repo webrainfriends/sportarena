@@ -3,6 +3,8 @@
 import PDFDocument from 'pdfkit';
 import { AppError } from '../errors.js';
 import { toMajor } from '../currency.js';
+import { drawForm } from './sheet-forms.js';
+import { formStrings } from '../tracking/forms.js';
 
 const MM = 72 / 25.4;
 const BASE_FONTS = { regular: 'Helvetica', bold: 'Helvetica-Bold' };
@@ -472,7 +474,7 @@ export async function renderSponsorshipReport({ kit, logo, report }) {
  */
 export async function renderTrackingSheet({ sheet, layout, kit, logo, code, qr, context }) {
   const f = fonts();
-  const strings = [kit?.display_name, kit?.footer_text, layout.title, sheet.title, sheet.labels?.home, sheet.labels?.away, context?.event_name, ...layout.scoring.map((s) => s.label), ...layout.stats.map((s) => s.label), ...layout.notes_fields.map((n) => n.label)];
+  const strings = [...(layout.form ? formStrings(layout.form) : []), kit?.display_name, kit?.footer_text, layout.title, sheet.title, sheet.labels?.home, sheet.labels?.away, context?.event_name, ...layout.scoring.map((s) => s.label), ...layout.stats.map((s) => s.label), ...layout.notes_fields.map((n) => n.label)];
   assertGlyphs(strings, f);
   const accent = hex(kit?.primary_color, '#0F6E56'), ink = hex(kit?.secondary_color, '#222222');
   const doc = new PDFDocument({ size: layout.paper === 'Letter' ? 'LETTER' : 'A4', layout: layout.orientation, margin: 36, bufferPages: true, compress: true,
@@ -505,17 +507,18 @@ export async function renderTrackingSheet({ sheet, layout, kit, logo, code, qr, 
   // who / when
   const meta = [['Date', sheet.occurred_at ? new Date(sheet.occurred_at).toISOString().slice(0, 10) : '____ / ____ / ________'], ['Start time', '___ : ___'], ['End time', '___ : ___'], ['Venue / court', '____________________']];
   if (context?.event_name) meta.unshift(['Event', context.event_name]);
-  let cx = left; const mw = width / meta.length;
-  for (const [k, v] of meta) { label(k.toUpperCase(), cx, doc.y, mw - 6, { size: 6.5, color: '#666666' }); label(v, cx, doc.y + 9, mw - 6, { size: 9 }); cx += mw; }
-  doc.y += 28;
+  let cx = left; const mw = width / meta.length, my = doc.y;
+  for (const [k, v] of meta) { label(k.toUpperCase(), cx, my, mw - 6, { size: 6.5, color: '#666666' }); label(v, cx, my + 9, mw - 6, { size: 9 }); cx += mw; }
+  doc.y = my + 28;
   const home = sheet.labels?.home && sheet.labels.home !== 'Home' ? sheet.labels.home : '', away = sheet.labels?.away && sheet.labels.away !== 'Away' ? sheet.labels.away : '';
-  label('HOME / SIDE A', left, doc.y, width / 2 - 8, { size: 6.5, color: '#666666' }); label('AWAY / SIDE B', left + width / 2, doc.y, width / 2 - 8, { size: 6.5, color: '#666666' });
-  label(home || '_______________________________', left, doc.y + 9, width / 2 - 8, { size: 11, bold: true }); label(away || '_______________________________', left + width / 2, doc.y + 9, width / 2 - 8, { size: 11, bold: true });
-  doc.y += 32;
+  const ny = doc.y;
+  label('HOME / SIDE A', left, ny, width / 2 - 8, { size: 6.5, color: '#666666' }); label('AWAY / SIDE B', left + width / 2, ny, width / 2 - 8, { size: 6.5, color: '#666666' });
+  label(home || '_______________________________', left, ny + 9, width / 2 - 8, { size: 11, bold: true }); label(away || '_______________________________', left + width / 2, ny + 9, width / 2 - 8, { size: 11, bold: true });
+  doc.y = ny + 32;
 
   const grid = (title, cols, rows, o = {}) => {
     room(30 + Math.min(rows, 6) * (o.h ?? 16));
-    label(title.toUpperCase(), left, doc.y, width, { bold: true, size: 8, color: accent }); doc.y += 12;
+    const gy = doc.y; label(title.toUpperCase(), left, gy, width, { bold: true, size: 8, color: accent }); doc.y = gy + 12;
     const tw = o.width ?? width, cw = cols.map((c) => c.w * tw);
     let y = doc.y; cx = left;
     doc.rect(left, y, tw, 14).fill(accent);
@@ -530,7 +533,9 @@ export async function renderTrackingSheet({ sheet, layout, kit, logo, code, qr, 
     doc.y = y + 10;
   };
 
-  if (layout.mode === 'sets') {
+  if (layout.form) {
+    drawForm(layout.form, { doc, left, width, accent, label, box, room, bottom, home, away });
+  } else if (layout.mode === 'sets') {
     const n = layout.sets.best_of;
     grid(`Sets - best of ${n}, first to ${layout.sets.points_to_win}${layout.sets.win_by > 1 ? ' (win by 2' + (layout.sets.cap ? `, cap ${layout.sets.cap}` : '') + ')' : ''}`,
       [{ t: 'Set', w: 0.12, fixed: Array.from({ length: n }, (_, i) => i + 1) }, { t: 'Home points', w: 0.22 }, { t: 'Away points', w: 0.22 }, { t: 'Set winner (H / A)', w: 0.2 }, { t: 'Server / side notes', w: 0.24 }], n, { h: 22 });
@@ -544,13 +549,13 @@ export async function renderTrackingSheet({ sheet, layout, kit, logo, code, qr, 
   } else {
     grid('Final totals', [{ t: '', w: 0.4, fixed: ['Result as recorded by the official'] }, { t: 'Home', w: 0.3 }, { t: 'Away', w: 0.3 }], 1, { h: 24, width: width * 0.7 });
   }
-  if (layout.stats.length) grid('Tally', [{ t: 'Stat', w: 0.28, fixed: layout.stats.map((s) => s.label) }, { t: 'Home', w: 0.36 }, { t: 'Away', w: 0.36 }], layout.stats.length, { h: 15, width: width * 0.7 });
-  for (const n of layout.notes_fields) { room(48); label(`${n.label.toUpperCase()}  (custom - not an official field)`, left, doc.y, width, { size: 7, color: '#666666' }); box(left, doc.y + 10, width, 28); doc.y += 46; }
-  room(60); label('NOTES', left, doc.y, width, { size: 7, color: '#666666' }); box(left, doc.y + 10, width, 36); doc.y += 56;
+  if (layout.stats.length && !(layout.form && layout.mode === 'manual')) grid('Tally', [{ t: 'Stat', w: 0.28, fixed: layout.stats.map((s) => s.label) }, { t: 'Home', w: 0.36 }, { t: 'Away', w: 0.36 }], layout.stats.length, { h: 15, width: width * 0.7 });
+  for (const n of layout.notes_fields) { room(48); const ny2 = doc.y; label(`${n.label.toUpperCase()}  (custom - not an official field)`, left, ny2, width, { size: 7, color: '#666666' }); box(left, ny2 + 10, width, 28); doc.y = ny2 + 46; }
+  room(60); const nty = doc.y; label('NOTES', left, nty, width, { size: 7, color: '#666666' }); box(left, nty + 10, width, 36); doc.y = nty + 56;
   if (layout.signatures) {
-    room(44); const roles = sheet.mode === 'linked' ? ['Referee / scorer', 'Home manager', 'Away manager'] : ['Scorer', 'Home captain', 'Away captain']; const sw = width / roles.length;
-    roles.forEach((r, i) => { doc.moveTo(left + i * sw + 4, doc.y + 24).lineTo(left + (i + 1) * sw - 12, doc.y + 24).lineWidth(0.5).stroke('#888888'); label(r, left + i * sw + 4, doc.y + 28, sw - 16, { size: 7, color: '#666666' }); });
-    doc.y += 40;
+    room(44); const roles = sheet.mode === 'linked' ? ['Referee / scorer', 'Home manager', 'Away manager'] : (layout.form?.signatures ?? ['Scorer', 'Home captain', 'Away captain']); const sw = width / roles.length, sy = doc.y;
+    roles.forEach((r, i) => { doc.moveTo(left + i * sw + 4, sy + 24).lineTo(left + (i + 1) * sw - 12, sy + 24).lineWidth(0.5).stroke('#888888'); label(r, left + i * sw + 4, sy + 28, sw - 16, { size: 7, color: '#666666' }); });
+    doc.y = sy + 40;
   }
 
   const range = doc.bufferedPageRange();

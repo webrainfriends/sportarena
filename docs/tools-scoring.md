@@ -34,6 +34,27 @@ Rollback: the migration only adds objects. Reverting the code leaves the tables 
 4. **Review**: the event's policy (own, or the default for its kind) lists the required steps and roles; sequential or parallel, optional quorum, optional organiser override with a reason, no self-approval. Decisions are append-only; a negative decision blocks until the submitter resubmits (new round).
 5. **Apply**: organiser or match official only. Re-checks the official record (stale proposals are refused), refuses while a score sheet is open, and needs the organiser plus a reason to supersede a published result or disagree with the live match log. Idempotent. The draft score sheet then needs the normal sign-offs, approval and publication.
 
+## Sport-specific printed sheets (forms)
+
+The PDF is the sheet a scorer fills in **while the game is played**, not a summary. `apps/api/src/tracking/forms.js` (`formFor`) picks a *form* for every sport in the catalogue, by the sport's own slug first, then its ruleset kind, scoring family and play type. A form is plain data (sections such as running-score boxes, line-ups, timed event logs, round cards, judging panels, attempt grids, ladders, heat tables, hole/frame/end grids, move logs) drawn by `apps/api/src/documents/sheet-forms.js`.
+
+| Family | Printed sheet |
+|---|---|
+| Cricket (T10 / T20 / ODI) | Landscape scorebook: toss and umpires, ball-by-ball over grid, batting and bowling cards, extras, fall of wickets, both innings |
+| Football-style and other period team sports | Line-ups, period scores, timeouts / fouls / substitutions boxes, timed scoring log with running score |
+| Basketball family | Running-score boxes (1-160), player fouls 1-5, team fouls per period, timeouts |
+| Baseball / softball / rounders | Line score (R/H/E), batting order, pitchers |
+| Rally sports (volleyball, badminton, table tennis, tennis ...) | Per-set running points to strike through, players (singles / doubles), timeouts and substitutions |
+| Combat | Boxing / kickboxing / MMA round cards (10-point must), judo / karate / taekwondo / wrestling scoring actions and penalties, fencing touches, method of victory |
+| Judged | Judges panel J1-J7 with D / E / deductions, element log |
+| Weightlifting / powerlifting | Attempt card with good / no-lift marks and weight changes |
+| Athletics and racing | Heat / race sheet (lane, splits, wind), six-attempt field sheet, height ladder |
+| Archery, golf, bowling, darts, snooker, curling and similar | Ends, holes, frames, leg tracker, frame breaks |
+| Board and card games, esports | Game / move log with clocks, map and round grid with K/D/A |
+| Everything else | Multi-event score sheet |
+
+Rules: a form only controls what is printed. Scoring, validation, the live tracker, uploads and result proposals still use the ruleset and `scoring/engine.js`; `trackingMode` is unchanged. Every form ends with a boxed final result so a completed sheet can still be read back. Layout v2 carries the form; sheets pinned earlier (v1, no form) are immutable and still print the original layout. Customisation (hidden / renamed stats, notes fields, paper, orientation, signatures) keeps working. Sheets print blank: no names or numbers are pre-filled.
+
 ## Printed sheet code
 
 Each PDF carries a reference (`TS-XXXXXXXX`) and a signed code (HMAC of the reference and template version) in text and QR. It locates the user's own sheet on upload; it is never accepted as authority, and a code copied by someone else binds nothing.

@@ -244,6 +244,7 @@ function Start({ presetFixture, ctx, onStarted, onClose }) {
           <>
             <T weight="700" size={13}>2 · Format</T>
             <Seg options={t.variants} value={variant ?? t.starter.variant} onChange={setVariant} />
+            {t.starter.layout.form ? <T color={c.mute} size={12}>Prints as: {t.starter.layout.form.title}. A sport-specific sheet to fill in while the game is played; it never changes how the result is scored.</T> : null}
             {t.starter.formats && mode === 'standalone' ? <Seg options={t.starter.formats.map((n) => ({ label: `Best of ${n}`, value: n }))} value={bestOf ?? t.starter.ruleset.sets.best_of} onChange={setBestOf} /> : null}
           </>
         ) : null}
