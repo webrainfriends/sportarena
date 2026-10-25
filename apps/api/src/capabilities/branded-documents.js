@@ -23,6 +23,7 @@ import { LOGO_LIMITS, inspectLogo } from '../documents/image.js';
 import { renderInvoice, renderCoachingReport } from '../documents/render.js';
 import { canReadContractDocument } from './sponsorship-contracts.js';
 import { canReadEnrolmentLetter } from './academy-letters.js';
+import { canReadPackDocument } from './export-packs.js';
 
 const TAG = 'Branded documents';
 const color = z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Use a #RRGGBB colour');
@@ -357,6 +358,7 @@ export function brandedDocumentsRouter() {
         const v = await reportVersionFor(d.source_id, d.source_version);
         if (!v || !(await canReadReportVersion(user, v))) throw notFound('Document');
       } else if (d.source_type === 'sponsorship_contract') await canReadContractDocument(user, d.source_id); // parties to the agreement only, checked live
+      else if (d.source_type === 'export_pack') await canReadPackDocument(user, d.source_id); // the athlete, their verified guardian, or the coach who built it from a still-live share
       else if (d.source_type === 'academy_enrolment') await canReadEnrolmentLetter(user, d.source_id); // academy staff, the enrolled adult or their verified guardian, checked live
       else await invoiceFor(user, d.source_id); // live check on every download: revoked venue-team access ends here
       const bytes = await loadEncrypted('documents', 'generated_documents.file', d.file_name);

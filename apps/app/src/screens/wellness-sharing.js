@@ -24,7 +24,7 @@ const until = (iso) => day(`${lastDay(iso)}T00:00:00Z`);
 const plain = (e) => (e?.details?.code === 'stale_version' ? 'This share changed on another device. It has been reloaded; please check and try again.' : e?.message ?? 'Something went wrong');
 
 /** Web: a download. Phone / tablet: the share sheet. */
-async function saveCsv(out) {
+export async function saveCsv(out) {
   if (Platform.OS === 'web' && typeof document !== 'undefined') {
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([out.csv], { type: 'text/csv' })); a.download = out.filename; document.body.appendChild(a); a.click(); a.remove();
     return;
