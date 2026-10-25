@@ -223,7 +223,14 @@ async function sharedView(c, user, shareId, { from, to } = {}, action) {
     const loads = (await c.query('SELECT session_date::text AS session_date, load FROM session_loads WHERE user_id=$1 AND archived_at IS NULL AND session_date BETWEEN $2 AND $3', [s.athlete_id, plusDays(date, -90), date])).rows;
     const eff = await effective(c, s.athlete_id);
     const wl = workload(loads, date, eff.config);
-    if (f.has('workload')) out.workload = { ratio: wl.ratio, status: wl.status, weeks: wl.weeks };
+    if (f.has('workload')) {
+      // the unified load history inside the shared window: where each load came from and whether the athlete corrected it, never reasons, titles or teams
+      const entries = (await c.query(
+        `SELECT l.id, l.session_date::text AS session_date, l.kind, l.minutes, l.rpe, l.load, l.source, l.minutes_basis,
+                EXISTS (SELECT 1 FROM session_load_revisions r WHERE r.load_id=l.id AND r.action='corrected') AS corrected
+           FROM session_loads l WHERE l.user_id=$1 AND l.archived_at IS NULL AND l.session_date BETWEEN $2 AND $3 ORDER BY l.session_date DESC, l.created_at DESC, l.id LIMIT 500`, [s.athlete_id, lo, hi])).rows;
+      out.workload = { ratio: wl.ratio, status: wl.status, weeks: wl.weeks, entries };
+    }
     if (f.has('readiness')) {
       const wellness = (await c.query('SELECT sleep_hours, sleep_quality, soreness, mood FROM wellness_logs WHERE user_id=$1 AND log_date=$2', [s.athlete_id, date])).rows[0] ?? null;
       const pain = (await c.query('SELECT DISTINCT ON (region, side, kind) severity FROM body_pain_logs WHERE user_id=$1 AND resolved_at IS NULL ORDER BY region, side, kind, created_at DESC', [s.athlete_id])).rows;
@@ -253,6 +260,7 @@ cap({
   handler: ({ user }, i) => tx(async (c) => {
     const v = await sharedView(c, user, i.id, i, 'exported');
     const cols = ['date', ...['sleep_hours', 'sleep_quality', 'soreness', 'mood', 'water_ml'].filter((k) => v.days.some((d) => k in d))];
-    return { filename: `wellness-${v.athlete.handle}-${v.window.from}-${v.window.to}.csv`, content_type: 'text/csv', csv: toCsv(cols, v.days), rows: v.days.length, basis: v.basis, not_shared: v.not_shared };
+    const loadCols = ['session_date', 'kind', 'source', 'minutes', 'minutes_basis', 'rpe', 'load', 'corrected'];
+    return { filename: `wellness-${v.athlete.handle}-${v.window.from}-${v.window.to}.csv`, content_type: 'text/csv', csv: toCsv(cols, v.days), rows: v.days.length, ...(v.workload ? { loads_filename: `load-history-${v.athlete.handle}-${v.window.from}-${v.window.to}.csv`, loads_csv: toCsv(loadCols, v.workload.entries), load_rows: v.workload.entries.length } : {}), basis: v.basis, not_shared: v.not_shared };
   }),
 });

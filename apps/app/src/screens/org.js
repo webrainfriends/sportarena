@@ -101,6 +101,7 @@ export function Org({ id }) {
 
 // ------------------------------------------------------------------ overview
 function Overview({ o, d, role, archived, reload, toast }) {
+  const { push } = useNav();
   const [edit, setEdit] = useState(false);
   const a = d.attendance_30d;
   const exportCsv = async (section) => {
@@ -132,6 +133,7 @@ function Overview({ o, d, role, archived, reload, toast }) {
         <Section title="Manage" color={c.cyan}>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
             {!archived ? <Btn small title="Edit details" color={c.paper} ink={c.ink} onPress={() => setEdit(true)} /> : null}
+            {!archived && ['owner', 'admin'].includes(role) ? <Btn small title="Services & suppliers" color={c.paper} ink={c.ink} onPress={() => push('ServicesBuyer', { organisation_id: o.id })} /> : null}
             <Btn small title="Export staff CSV" color={c.paper} ink={c.ink} onPress={() => exportCsv('staff')} />
             <Btn small title="Export enrolments CSV" color={c.paper} ink={c.ink} onPress={() => exportCsv('enrolments')} />
             <Btn small title="Export attendance CSV" color={c.paper} ink={c.ink} onPress={() => exportCsv('attendance')} />

@@ -24,6 +24,7 @@ const TABS = [['schedule', 'Today'], ['timetable', 'Timetable & prices'], ['bloc
 const num = (x) => (x === undefined || x === '' ? undefined : Number(x));
 
 export function Manage({ id, wizard: startWizard }) {
+  const { push } = useNav();
   const v = useLoad(() => api.get(`/venues/${id}`), [id]);
   const [tab, setTab] = useState('schedule');
   const [wizard, setWizard] = useState(!!startWizard);
@@ -35,6 +36,7 @@ export function Manage({ id, wizard: startWizard }) {
     <Screen wide>
       <H1 style={{ marginTop: 8 }}>{x.emoji} {x.name}</H1>
       <T color={c.mute} weight="700">Venue console · {x.timezone} · {x.currency}{x.active ? '' : ' · HIDDEN'}</T>
+      <Btn small title="Services & suppliers" color={c.paper} ink={c.ink} onPress={() => push('ServicesBuyer', { venue_id: x.id })} style={{ alignSelf: 'flex-start', marginTop: 6 }} />
       {wizard ? <SetupWizard v={x} onExit={() => { setWizard(false); v.reload(); }} goTab={setTab} /> : <><SetupChecklist venueId={x.id} go={setTab} onWizard={() => setWizard(true)} /><OpsAttention venueId={x.id} go={setTab} /></>}
       {wizard ? null : <>
       <View style={{ marginTop: 10 }}><Seg options={TABS.map(([value, label]) => ({ value, label }))} value={tab} onChange={setTab} color={c.violet} /></View>
