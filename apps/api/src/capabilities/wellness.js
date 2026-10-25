@@ -1,10 +1,11 @@
 import { z } from 'zod';
 import { cap, id } from '../registry.js';
-import { one, many } from '../db.js';
+import { one, many, tx } from '../db.js';
 import { badRequest, notFound } from '../errors.js';
 import { encrypt, decrypt } from '../crypto.js';
 import { audit } from '../helpers.js';
 import { readiness, workload } from '../readiness.js';
+import { snapshot, revise, loadKindFor, sourcesFor, sourceAccess } from '../load-history.js';
 
 const TAG = 'Athlete health';
 const day = z.string().date();
@@ -109,11 +110,21 @@ cap({
 
 cap({
   name: 'log_session_load', method: 'POST', path: '/me/loads', tag: TAG, status: 201,
-  summary: 'Log a session for your workload: minutes and how hard it felt (RPE 1-10). Load = minutes x RPE. Include matches; this is what the acute:chronic ratio is built from.',
+  summary: 'Log a session by hand for your workload: minutes and how hard it felt (RPE 1-10). Load = minutes x RPE. Include matches; this is what the acute:chronic ratio is built from. If a confirmed training session or match from the same day has no load record yet it is returned as `possible_sources`: link this log to it (or record that session) so it is not counted twice. Completed sessions and matches have their own entry in `record_load_from_source`.',
   input: z.object({ date: day.optional(), kind: z.enum(['training', 'match', 'gym', 'other']).default('training'), minutes: z.number().int().min(1).max(600), rpe: z.number().int().min(1).max(10) }),
-  handler: ({ user }, i) => one(
-    `INSERT INTO session_loads(user_id, session_date, kind, minutes, rpe) VALUES ($1,$2,$3,$4,$5) RETURNING id, session_date::text AS session_date, kind, minutes, rpe, load`,
-    [user.id, notFuture(i.date ?? today()), i.kind, i.minutes, i.rpe]),
+  handler: ({ user }, i) => tx(async (c) => {
+    const date = notFuture(i.date ?? today());
+    const row = (await c.query(
+      `INSERT INTO session_loads(user_id, session_date, kind, minutes, rpe) VALUES ($1,$2,$3,$4,$5) RETURNING id, user_id, session_date::text AS session_date, kind, minutes, rpe, load, source, minutes_basis, row_version`,
+      [user.id, date, i.kind, i.minutes, i.rpe])).rows[0];
+    await revise(c, row, user.id, 'created', null, null);
+    const access = await sourceAccess(user.id, c);
+    const possible_sources = (await sourcesFor(c, user.id, { from: plusDays(date, -1), to: plusDays(date, 1), includeTraining: access.training_session, includeMatches: access.match }))
+      .filter((s) => (loadKindFor(s.source, s.session_kind) === 'match') === (i.kind === 'match'))
+      .map((s) => ({ source: s.source, source_id: s.id, title: s.title, date: s.date }));
+    const { user_id: _u, ...out } = row;
+    return { ...out, possible_sources };
+  }),
 });
 
 cap({
@@ -122,19 +133,21 @@ cap({
   input: z.object({ from: day.optional(), to: day.optional() }),
   handler: ({ user }, i) => {
     const to = i.to ?? today();
-    return many(`SELECT id, session_date::text AS session_date, kind, minutes, rpe, load FROM session_loads WHERE user_id=$1 AND archived_at IS NULL AND session_date BETWEEN $2 AND $3 ORDER BY session_date DESC, created_at DESC LIMIT 500`, [user.id, i.from ?? plusDays(to, -27), to]);
+    return many(`SELECT id, session_date::text AS session_date, kind, minutes, rpe, load, source, minutes_basis, row_version FROM session_loads WHERE user_id=$1 AND archived_at IS NULL AND session_date BETWEEN $2 AND $3 ORDER BY session_date DESC, created_at DESC, id LIMIT 500`, [user.id, i.from ?? plusDays(to, -27), to]);
   },
 });
 
 cap({
   name: 'archive_session_load', method: 'POST', path: '/me/loads/:id/archive', tag: TAG,
-  summary: 'Remove a logged session from your workload (archived, not deleted).',
-  input: z.object({ id }),
-  async handler({ user }, i) {
-    const row = await one('UPDATE session_loads SET archived_at=now() WHERE id=$1 AND user_id=$2 AND archived_at IS NULL RETURNING id, archived_at', [i.id, user.id]);
-    if (!row) throw notFound('Session');
-    return row;
-  },
+  summary: 'Remove a logged session from your workload (archived, not deleted; the history keeps it). A session or match it was linked to becomes available to record again.',
+  input: z.object({ id, reason: z.string().trim().min(3).max(300).optional() }),
+  handler: ({ user }, i) => tx(async (c) => {
+    const old = (await c.query('SELECT *, session_date::text AS session_date FROM session_loads WHERE id=$1 AND user_id=$2 AND archived_at IS NULL FOR UPDATE', [i.id, user.id])).rows[0];
+    if (!old) throw notFound('Session');
+    const row = (await c.query('UPDATE session_loads SET archived_at=now(), row_version=row_version+1, updated_at=now() WHERE id=$1 RETURNING id, archived_at, *, session_date::text AS session_date', [i.id])).rows[0];
+    await revise(c, row, user.id, 'archived', snapshot(old), i.reason);
+    return { id: row.id, archived_at: row.archived_at };
+  }),
 });
 
 const loadsFor = (userId, date) => many('SELECT session_date::text AS session_date, load FROM session_loads WHERE user_id=$1 AND archived_at IS NULL AND session_date BETWEEN $2 AND $3', [userId, plusDays(date, -90), date]);
