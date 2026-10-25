@@ -139,6 +139,7 @@ import './player-assistant.js';
 import './wellness.js';
 import './passport.js';
 import './passport-recruitment.js';
+import './calendar-sync.js';
 import './athlete-blocks.js';
 import './career-timeline.js';
 import './market.js';

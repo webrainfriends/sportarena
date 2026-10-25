@@ -10,7 +10,7 @@ import { localDate, localToIso, todayIn, WEEKDAYS } from '../vtime';
 import { locale } from '../locale';
 
 const deviceTz = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return 'UTC'; } })();
-const DOT = { match: c.red, team: c.red, training: c.cyan, health: c.mint, recovery: c.mint, event: c.sun, venue: c.mute, duty: c.mute };
+const DOT = { match: c.red, team: c.red, training: c.cyan, health: c.mint, recovery: c.mint, event: c.sun, venue: c.mute, duty: c.mute, external: c.violet };
 
 /** In / Maybe / Out for a team commitment. Uses the team attendance answer behind the scenes (going / maybe / no); managers are told on "Out". */
 const ANSWERS = [['going', 'In'], ['maybe', 'Maybe'], ['no', 'Out']];
@@ -93,7 +93,7 @@ export function MonthGrid({ month, onMonth, items, selected, onSelect }) {
   );
 }
 
-const KIND_OPTIONS = [{ value: 'recovery', label: '🧘 Recovery' }, { value: 'gym', label: '🏋️ Gym' }, { value: 'rest', label: '😴 Rest' }, { value: 'other', label: 'Other' }];
+const KIND_OPTIONS = [{ value: 'recovery', label: '🧘 Recovery' }, { value: 'gym', label: '🏋️ Gym' }, { value: 'rest', label: '😴 Rest' }, { value: 'travel', label: '🚗 Travel' }, { value: 'other', label: 'Other' }];
 
 /** Block out personal time (recovery, gym, rest) on your own calendar. Pickers for date and times; the title is optional. */
 export function BlockSheet({ visible, onClose, onDone, date }) {
