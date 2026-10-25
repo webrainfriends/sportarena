@@ -43,7 +43,7 @@ A logged match and an official one are **never merged silently**. `GET /me/match
 
 ## Limits / deferred
 
-Substitute appearance is unconfirmed (excluded). Approved-competition provenance (#58), versioned metrics (#68), and an official bulk import by handle are not built; the model keys everything on `user_id`, so they plug in as new source rows in the projection. Youth rules: the endpoints only ever return the signed-in athlete's own rows.
+Substitute appearance is unconfirmed (excluded) unless a verified appearance record (`match_appearances`, #322) shows the player came on. Approved-competition provenance (#58), versioned metrics (#68), and an official bulk import by handle are not built; the model keys everything on `user_id`, so they plug in as new source rows in the projection. Youth rules: the endpoints only ever return the signed-in athlete's own rows.
 
 ## Importing from a file
 
