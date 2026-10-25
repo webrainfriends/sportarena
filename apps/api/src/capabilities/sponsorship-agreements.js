@@ -213,12 +213,15 @@ cap({
         kids('sponsorship_payments', 'x.id, x.amount_cents, x.currency, x.method, x.reference, x.paid_on::text AS paid_on, x.evidence_url, x.status, x.decision_note, x.payee_snapshot'),
         kids('sponsorship_deliveries', 'x.id, x.version, x.quantity, x.reference, x.note, x.status, x.received_quantity, x.decision_note, x.dispatch_evidence_url, x.receipt_evidence_url, x.rejection_reason, x.replaces_return_id'),
         kids('sponsorship_submissions', 'x.id, x.evidence_url, x.note, x.status, x.review_note'),
-        kids('sponsorship_delivery_returns', 'x.id, x.delivery_id, x.version, x.quantity, x.reason, x.resolution, x.note, x.evidence_url, x.status, x.decision_note'),
+        kids('sponsorship_delivery_returns', `x.id, x.delivery_id, x.version, x.quantity, x.reason, x.resolution, x.note, x.evidence_url, x.status, x.decision_note,
+          (SELECT json_build_object('id', d.id, 'case_no', c.case_no, 'status', d.status) FROM sponsorship_disputes d JOIN cases c ON c.id=d.case_id WHERE d.return_id=x.id) AS dispute,
+          (SELECT coalesce(json_agg(json_build_object('id', f.id, 'file_name', f.file_name, 'content_type', f.content_type, 'size_bytes', f.size_bytes, 'created_at', f.created_at) ORDER BY f.created_at, f.id), '[]'::json) FROM sponsorship_return_files f WHERE f.return_id=x.id) AS files`),
         // a voucher's redemption detail (reference, booking) belongs to the recipient; the sponsor sees only that it was used, and when. Medical vouchers never carry detail at all.
         kids('sponsorship_vouchers', `x.id, x.version, x.service_type, x.valid_until::text AS valid_until, (CASE WHEN x.status='issued' AND x.valid_until < current_date THEN 'expired' ELSE x.status END) AS status, x.void_reason,
           (SELECT r.redeemed_at FROM sponsorship_voucher_redemptions r WHERE r.voucher_id=x.id) AS redeemed_at,
           ${ctx.role === 'sponsor' ? 'NULL::text' : '(SELECT r.reference FROM sponsorship_voucher_redemptions r WHERE r.voucher_id=x.id)'} AS reference,
-          ${ctx.role === 'sponsor' ? 'false' : '(SELECT r.booking_id IS NOT NULL FROM sponsorship_voucher_redemptions r WHERE r.voucher_id=x.id)'} AS has_booking`)]);
+          ${ctx.role === 'sponsor' ? 'false' : '(SELECT r.booking_id IS NOT NULL FROM sponsorship_voucher_redemptions r WHERE r.voucher_id=x.id)'} AS has_booking,
+          ${ctx.role === 'sponsor' ? 'false' : '(SELECT r.hire_id IS NOT NULL FROM sponsorship_voucher_redemptions r WHERE r.voucher_id=x.id)'} AS has_session`)]);
       for (const o of out.obligations) {
         o.payments = pay.filter((r) => r.obligation_id === o.id); o.deliveries = del.filter((r) => r.obligation_id === o.id); o.returns = ret.filter((r) => r.obligation_id === o.id); o.vouchers = vou.filter((r) => r.obligation_id === o.id); o.submissions = sub.filter((r) => r.obligation_id === o.id);
         o.promoter = lines.find((l) => l.id === o.line_id)?.promoter ?? null;

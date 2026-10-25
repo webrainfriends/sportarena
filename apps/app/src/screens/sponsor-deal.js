@@ -12,6 +12,7 @@ import { SponsorNegotiation } from './sponsor-negotiation';
 import { SponsorContract } from './sponsor-contract';
 import { SponsorAmendments } from './sponsor-amendments';
 import { GoodsReturns, ServiceVouchers, remainingGoods } from './sponsor-fulfilment';
+import { saveText } from '../evidence';
 import { SponsorTermination } from './sponsor-termination';
 import { SponsorDisputes } from './sponsor-disputes';
 import { SponsorPause } from './sponsor-pause';
@@ -53,6 +54,7 @@ export function SponsorDeal({ id }) {
   const deal = useLoad(() => api.get(`/sponsorships/${id}`), [id]);
   const [form, setForm] = useState(null); // { kind, o }
   const d = deal.data;
+  const exportFulfilment = async () => { try { const r = await api.get(`/sponsorships/${id}/fulfilment/export`); await saveText(r.filename, r.csv); toast(`${r.rows} row${r.rows === 1 ? '' : 's'} exported`); } catch (e) { toast(explain(e)); } };
   const act = async (fn, m) => { try { await fn(); toast(m); deal.reload(); } catch (e) { toast(explain(e)); if (e.status === 409) deal.reload(); } };
   if (deal.loading && !d) return <Screen><Loading /></Screen>;
   if (deal.error) return <Screen><LoadError error={deal.error} onRetry={deal.reload} /></Screen>;
@@ -141,6 +143,7 @@ export function SponsorDeal({ id }) {
               {x.status === 'scheduled' && !x.held && x.kind === 'goods' && sponsor && can('pay') && remainingGoods(x) > 0 ? <Btn small title="Record dispatch" color={c.orange} style={{ alignSelf: 'flex-start', marginTop: 6 }} onPress={() => setForm({ kind: 'dispatch', o: x })} /> : null}
               {x.status === 'scheduled' && !x.held && x.kind === 'endorsement' && d.role === x.promoter && can('evaluate') && !x.submissions.some((s) => s.status !== 'revision_requested') ? <Btn small title="Submit evidence" color={c.violet} style={{ alignSelf: 'flex-start', marginTop: 6 }} onPress={() => setForm({ kind: 'submit', o: x })} /> : null}
             </Card>)) : <Empty emoji="🗓️" title="Nothing scheduled" />}
+          {d.obligations.some((x) => x.deliveries.length || x.returns.length || x.vouchers.length) && (recipient || can('export')) ? <Btn small title="Export deliveries, returns and vouchers (CSV)" color={c.paper} ink={c.ink} style={{ alignSelf: 'flex-start' }} onPress={exportFulfilment} accessibilityLabel="Export deliveries, returns and vouchers as a CSV file" /> : null}
           <T size={12} color={c.mute}>Online payments are collected by Gotmygame through Stripe or PayPal, counted only once the provider verifies them, and paid out to the recipient after the hold period (see Earnings). Bank or cash payments you report stay unverified until the recipient confirms them.</T>
         </Section>) : null}
       {d.obligations?.some((x) => x.kind === 'money') ? <Reconciliation id={d.id} /> : null}
