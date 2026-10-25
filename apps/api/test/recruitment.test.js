@@ -117,7 +117,7 @@ test('full journey: applied -> shortlisted -> trial -> evaluated -> offered (v1,
   assert.equal((await pool.query('SELECT status FROM billboard_posts WHERE id=$1', [b.id])).rows[0].status, 'filled');
   assert.equal((await pool.query('SELECT status FROM recruitment_offers WHERE response_id=$1 AND version=2', [r.id])).rows[0].status, 'accepted');
   const kinds = (await pool.query('SELECT kind FROM recruitment_events WHERE response_id=$1 ORDER BY created_at, id', [r.id])).rows.map((e) => e.kind);
-  assert.deepEqual(kinds, ['applied', 'stage', 'trial', 'evaluation', 'offer', 'offer', 'offer_response']);
+  assert.deepEqual(kinds, ['applied', 'stage', 'trial', 'evaluation', 'offer', 'offer', 'engagement', 'offer_response']);
   assert.equal(code(await move(mgr, r.id, 'declined', 7)), 'closed_application');
   // history is immutable
   await assert.rejects(pool.query('DELETE FROM recruitment_events WHERE response_id=$1', [r.id]), /append-only/);

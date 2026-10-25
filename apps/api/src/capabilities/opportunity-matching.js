@@ -56,13 +56,14 @@ const base = (kind, row, extra) => ({ kind, id: row.id, title: row.title, sport_
 const READERS = {
   async team_opening(s, { sports, ids }) {
     const rows = await many(
-      `SELECT b.id, b.title, b.kind AS post_kind, b.city, b.region, b.positions, b.levels, b.min_age, b.max_age, b.starts_at, t.name AS team_name, ${SPORT_COLS}
+      `SELECT b.id, b.title, b.kind AS post_kind, b.compensation, b.budget_cents, b.currency, b.rate_unit, b.closes_at, b.verified_applicants_only, b.city, b.region, b.positions, b.levels, b.min_age, b.max_age, b.starts_at, t.name AS team_name, ${SPORT_COLS}
          FROM billboard_posts b LEFT JOIN sports s ON s.id=b.sport_id LEFT JOIN teams t ON t.id=b.team_id
-        WHERE b.status='open' AND b.kind IN ('team_recruiting','match_players') AND b.author_id <> $1
+        WHERE b.status='open' AND b.kind IN ('team_recruiting','match_players','assignment') AND (b.closes_at IS NULL OR b.closes_at > now() OR $2::uuid IS NOT NULL) AND b.author_id <> $1
           AND ($2::uuid IS NOT NULL AND b.id=$2 OR $2::uuid IS NULL AND (b.sport_id IS NULL OR s.slug = ANY($3::text[])))
           AND (b.starts_at IS NULL OR b.starts_at > now() OR $2::uuid IS NOT NULL)
         ORDER BY b.created_at DESC, b.id LIMIT $4`, [s.id, ids ?? null, sports, POOL]);
-    return rows.map((r) => base('team_opening', r, { positions: r.positions, levels: r.levels, region: r.region ?? r.city, min_age: r.min_age, max_age: r.max_age, starts_on: r.starts_at, date: r.starts_at, window_kinds: ['trial', 'start'], team_name: r.team_name, post_kind: r.post_kind }));
+    return rows.map((r) => base('team_opening', r, { positions: r.positions, levels: r.levels, region: r.region ?? r.city, min_age: r.min_age, max_age: r.max_age, starts_on: r.starts_at, date: r.starts_at, window_kinds: ['trial', 'start'], team_name: r.team_name, post_kind: r.post_kind, deadline_at: r.closes_at, verified_only: r.verified_applicants_only,
+      compensation: r.compensation, pay: r.compensation === 'paid' && r.budget_cents != null ? { cents: Number(r.budget_cents), currency: r.currency, rate_unit: r.rate_unit } : null }));
   },
   async competition(s, { sports, ids, wide }) {
     const rows = await many(
@@ -104,7 +105,7 @@ const READERS = {
   },
 };
 
-const view = (o) => ({ kind: o.kind, id: o.id, title: o.title, sport: o.sport_name, sport_slug: o.sport_slug, date: o.date ? new Date(o.date).toISOString() : null, deadline_at: o.deadline_at ? new Date(o.deadline_at).toISOString() : null, region: o.region ?? (o.regions?.length ? o.regions.join(', ') : null), cost: o.cost, organiser: o.team_name ?? o.institution ?? o.sponsor_name ?? null, max_award_cents: o.max_award_cents ?? null, currency: o.currency ?? o.cost?.currency ?? null });
+const view = (o) => ({ kind: o.kind, id: o.id, title: o.title, sport: o.sport_name, sport_slug: o.sport_slug, date: o.date ? new Date(o.date).toISOString() : null, deadline_at: o.deadline_at ? new Date(o.deadline_at).toISOString() : null, region: o.region ?? (o.regions?.length ? o.regions.join(', ') : null), cost: o.cost, organiser: o.team_name ?? o.institution ?? o.sponsor_name ?? null, compensation: o.compensation ?? null, pay: o.pay ?? null, max_award_cents: o.max_award_cents ?? null, currency: o.currency ?? o.cost?.currency ?? null });
 
 async function runMatch(user, i) {
   const s = await subjectOf(user, i.on_behalf_of ?? user.id);

@@ -24,7 +24,7 @@ export function checkSport(s, o) {
 }
 
 export function checkPosition(s, o) {
-  if (o.kind !== 'team_opening') return rule('position', 'position', 'na', 'Positions do not apply');
+  if (o.kind !== 'team_opening' || o.post_kind === 'assignment') return rule('position', 'position', 'na', 'Positions do not apply');
   if (!o.positions.length) return rule('position', 'position', 'unknown', 'The post does not say which positions it needs', fixOrganiser);
   const mine = [...new Set([...(s.profile?.positions ?? []), s.profile?.position].map(norm).filter(Boolean))];
   if (!mine.length) return rule('position', 'position', 'unknown', `Needs ${o.positions.join(' / ')}; your card has no position`, fixPlayer('SportProfile'));
@@ -97,8 +97,8 @@ export function checkEligibility(s, o, now) {
   if (o.kind === 'sponsor') {
     if (o.target_types?.length && !o.target_types.includes('athlete')) out.push(rule('eligibility', 'target', 'mismatch', `Funds ${o.target_types.join(', ')} only, not individual athletes`));
     if (s.youth) out.push(rule('eligibility', 'youth', 'mismatch', 'Applications for athletes under the age of independence are not accepted here; a guardian-led process is required'));
-    if (o.verified_only) out.push(s.verified ? rule('eligibility', 'verification', 'match', 'You hold a verified badge') : rule('eligibility', 'verification', 'mismatch', 'Only verified applicants are funded; you have no verified badge'));
   }
+  if (o.verified_only) out.push(s.verified ? rule('eligibility', 'verification', 'match', 'You hold a verified badge') : rule('eligibility', 'verification', 'mismatch', o.kind === 'sponsor' ? 'Only verified applicants are funded; you have no verified badge' : 'Only verified applicants can apply; you have no verified badge'));
   return out;
 }
 
