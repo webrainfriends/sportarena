@@ -7,6 +7,7 @@ import { Btn, Card, Empty, ErrorBox, Loading, Section, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { c } from '../theme';
 import { explain, LoadError } from '../access';
+import { countryName } from '../country-picker';
 
 const STATE = {
   draft: ['Draft — not signed', 'sun'], awaiting_signatures: ['Awaiting signatures — not yet binding', 'cyan'],
@@ -49,6 +50,7 @@ export function SponsorContract({ deal, can, onChanged }) {
     try { await fn(); toast(msg); list.reload(); onChanged?.(); } catch (e) { setFail({ error: { ...e, message: explain(e) }, retry: () => done(fn, msg, key) }); list.reload(); } finally { setBusy(null); }
   };
   const templates = useLoad(() => (manage && open ? api.get('/document-templates', { family: 'sponsorship_agreement' }) : Promise.resolve([])), [deal.id, manage, open]);
+  const policy = useLoad(() => (sheet === 'send' ? api.get('/signature-policy') : Promise.resolve(null)), [sheet]);
   const signers = useLoad(() => (sheet === 'signers' ? api.get(`/sponsorships/${deal.id}/contract-signers`) : Promise.resolve(null)), [sheet, deal.id]);
   if (!deal.lines.length && !data?.contracts.length) return null;
 
@@ -83,10 +85,11 @@ export function SponsorContract({ deal, can, onChanged }) {
                 {live.signed_url ? <Btn small title="View signed PDF" loading={busy === 'signed'} color={c.mint} ink={c.ink} onPress={() => done(() => openPdf(live.signed_url, `contract-${live.terms_version}-signed`), 'Opened', 'signed')} accessibilityLabel="View the signed PDF" /> : null}
                 {live.can.sign ? <Btn small title="Review & sign" color={c.pink} onPress={() => setSheet('sign')} accessibilityLabel="Review and sign this contract" /> : null}
                 {live.can.manage && live.status === 'draft' && !live.stale ? <Btn small title="Name signatories" color={c.violet} onPress={() => setSheet('signers')} /> : null}
-                {live.can.manage && live.status === 'draft' && !live.stale ? <Btn small title="Send for signature" loading={busy === 'send'} color={c.mint} ink={c.ink} disabled={live.signatories.length < 2} onPress={() => done(() => api.post(`/sponsorship-contracts/${live.id}/request-signatures`, { row_version: live.row_version }), 'Sent for signature', 'send')} /> : null}
+                {live.can.manage && live.status === 'draft' && !live.stale ? <Btn small title="Send for signature" color={c.mint} ink={c.ink} disabled={live.signatories.length < 2} onPress={() => setSheet('send')} /> : null}
                 {live.can.manage ? <Btn small title={live.status === 'draft' ? 'Replace draft' : 'Withdraw'} color={c.paper} ink={c.red} onPress={() => setSheet(live.status === 'draft' ? 'issue' : 'void')} /> : null}
               </View>
               {live.status === 'draft' && live.signatories.length < 2 && !live.stale ? <T size={12} color={c.mute}>Name at least one signatory on each side before sending.</T> : null}
+              {live.signature_request ? <T size={12} color={c.mute}>Sent with {live.signature_request.provider_label} ({live.signature_request.level} e-signature{live.signature_request.jurisdiction ? `, ${countryName(live.signature_request.jurisdiction)} rules` : ''}){live.status === 'awaiting_signatures' && live.signature_request.status === 'sent' ? '. Each signatory is emailed by the service; this card updates when they sign.' : live.signature_request.status === 'declined' ? '. A signatory declined — withdraw this contract and issue a new one.' : ''}</T> : null}
               {live.status === 'awaiting_signatures' && !live.can.sign && !live.stale ? <T size={12} color={c.mute}>Waiting for the people above to sign. Until everyone has, this is not a signed contract.</T> : null}
             </Card>)}
           {fail ? <View accessibilityRole="alert"><ErrorBox error={fail.error} onRetry={fail.retry} /></View> : null}
@@ -99,6 +102,12 @@ export function SponsorContract({ deal, can, onChanged }) {
       <FormSheet visible={sheet === 'issue'} onClose={() => setSheet(null)} title={`Issue a draft of terms v${deal.terms_version}`} submitLabel="Issue draft"
         fields={[{ key: 'template_id', label: 'Template', type: 'chips', optional: true, hint: 'Your published sponsorship agreement templates. Without one the plain layout is used.', options: (templates.data ?? []).filter((t) => t.latest_version).map((t) => ({ value: t.id, label: `${t.name} v${t.latest_version}` })) }]}
         onSubmit={async (v) => { await api.post(`/sponsorships/${deal.id}/contracts`, { version: deal.terms_version, ...(v.template_id ? { template_id: v.template_id } : {}) }); list.reload(); onChanged?.(); return 'Draft issued — it is not signed'; }} />
+      <FormSheet visible={sheet === 'send'} onClose={() => setSheet(null)} title="Send for signature" submitLabel="Send"
+        initial={{ provider: 'internal' }}
+        fields={[
+          { key: 'provider', label: 'How should they sign?', type: 'chips', hint: 'Only ways that are set up are offered. Signing in Sportarena is a simple e-signature; an external service gives an advanced one and emails each signatory.', options: (policy.data?.providers ?? [{ id: 'internal', label: 'Sportarena', level: 'simple', enabled: true }]).filter((p) => p.enabled && p.id !== 'webhook').map((p) => ({ value: p.id, label: `${p.label} (${p.level})` })) },
+          { key: 'jurisdiction', label: 'Whose rules apply', type: 'country', optional: true, hint: (v) => { if (!v.jurisdiction) return 'Pick the country whose law governs this agreement to check the signature is strong enough.'; const r = policy.data?.rules?.[v.jurisdiction] ?? policy.data?.default_rule; return r ? `${r.law ? `${r.law}: ` : ''}${r.note}` : null; } }]}
+        onSubmit={async (v) => { await api.post(`/sponsorship-contracts/${live.id}/request-signatures`, { row_version: live.row_version, provider: v.provider || 'internal', ...(v.jurisdiction ? { jurisdiction: v.jurisdiction } : {}) }); list.reload(); onChanged?.(); return v.provider === 'docusign' ? 'Sent — signatories are emailed by the service' : 'Sent for signature'; }} />
       <FormSheet visible={sheet === 'signers'} onClose={() => setSheet(null)} title="Who signs" submitLabel="Save signatories"
         initial={{ sponsor: live?.signatories.filter((s) => s.side === 'sponsor').map((s) => s.user_id) ?? [], recipient: live?.signatories.filter((s) => s.side === 'recipient').map((s) => s.user_id) ?? [] }}
         fields={[

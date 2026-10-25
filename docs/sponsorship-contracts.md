@@ -26,7 +26,9 @@ newer terms version before the contract was signed; a stale contract cannot be s
 | `request_contract_signatures` | `POST /sponsorship-contracts/{id}/request-signatures` | managers |
 | `sign_sponsorship_contract` | `POST /sponsorship-contracts/{id}/sign` | a named signatory with live authority |
 | `void_sponsorship_contract` | `POST /sponsorship-contracts/{id}/void` | managers; unsigned only |
-| (callback) | `POST /webhooks/signatures/webhook` | external e-signature service (HMAC) |
+| `get_signature_policy` | `GET /signature-policy` | signed-in users; the expected signature level per country and which providers meet it |
+| (callback) | `POST /webhooks/signatures/webhook` | generic external e-signature service (HMAC) |
+| (callback) | `POST /webhooks/signatures/docusign` | DocuSign Connect (HMAC, `X-DocuSign-Signature-1`) |
 | (download) | `GET /branded-documents/{id}/file` | parties, access re-checked on every download and audit-logged |
 
 Signing needs `document_sha256` (the contract's `snapshot_sha256`, which the signer reviewed) and `agree: true`.
@@ -45,7 +47,11 @@ Signing needs `document_sha256` (the contract's `snapshot_sha256`, which the sig
 ## Signature providers (`src/signatures/providers.js`)
 * `internal`: the logged-in signatory signs in the app.
 * `webhook`: an external service posts `{event_id, contract_id, user_id, document_sha256, provider_ref, status:"signed"}` with `X-Signature: t=<unix>,v1=<hmac-sha256 of "t.rawbody">`, enabled by setting `SIGNATURE_WEBHOOK_SECRET`. Authority and the text fingerprint are still re-checked server side.
-* **Limitation:** no third-party e-signature vendor (DocuSign, Adobe Sign, ...) is integrated or configured; the outbound "create request" call to a vendor is not built. Signatures made in Sportarena are simple electronic signatures (identity, time, fingerprint, intent), not qualified/advanced signatures.
+* `docusign`: outbound vendor adapter. `request_contract_signatures` with `provider:"docusign"` creates an envelope (the draft PDF, one signer per named signatory, parallel routing; the vendor emails each signer). DocuSign Connect then calls `POST /webhooks/signatures/docusign` on `recipient-completed`; the recipient id maps back to the person we named (`sponsorship_signature_requests.recipients`) and goes through the same `applySignature` (live authority + pinned text fingerprint). Replays are recorded once in `provider_events`; a callback for a withdrawn / declined envelope signs nothing. Withdrawing the contract voids the envelope. While an envelope is out, in-app signing is closed (409 `signing_elsewhere`).
+  * Enabled only when all of `DOCUSIGN_INTEGRATION_KEY`, `DOCUSIGN_USER_ID`, `DOCUSIGN_ACCOUNT_ID`, `DOCUSIGN_PRIVATE_KEY` (RSA PEM, `\n` allowed), `DOCUSIGN_CONNECT_KEY` (Connect HMAC key) and `DOCUSIGN_CALLBACK_URL` (public URL of the route above) are set. Optional: `DOCUSIGN_BASE_URI` (default demo `https://demo.docusign.net`; production uses the account's base URI) and `DOCUSIGN_AUTH_URL` (default `https://account-d.docusign.com/oauth/token`; production `https://account.docusign.com/oauth/token`). Auth is the JWT grant (the service user must have granted consent once).
+  * Verified against a mocked vendor in `test/sponsorship-esign-vendor.test.js`; not yet run against a real DocuSign account.
+* **Signature levels** (`src/signatures/policy.js`): signing in Sportarena is a *simple* electronic signature; DocuSign is treated as *advanced*; *qualified* is not offered. The sender picks the governing country in the send sheet; each country has a `minimum` (sending is refused below it, 409 `level_too_low`) and a `recommended` level with the governing law and a note. All recorded regions (EU, UK, US, India, Singapore, UAE, Australia) accept a simple signature for a commercial sponsorship contract, so none forces more today; the table is the place to record counsel's decision per region. The entries are working defaults and need legal review before being relied on.
+* **Limitation:** Adobe Sign and other vendors are not integrated (add a provider next to `docusign`). The phone PDF path (share sheet) has only been exercised on the web; it still needs a check on a real iOS and Android device.
 
 ## Schema (migration `095_sponsorship_contracts.sql`, additive)
 `sponsorship_contracts`, `sponsorship_signatories`, `sponsorship_signatures`, `sponsorship_signed_documents`. No existing table is altered and no contract is invented for existing agreements. Rollback: the feature is unused until a contract is issued, so reverting the code is safe; the new tables can stay (data is never dropped).
