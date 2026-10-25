@@ -13,8 +13,9 @@ import { audit, isAdmin, PUBLIC_USER } from '../helpers.js';
 import { blindIndex } from '../crypto.js';
 import { csvToObjects, toCsv } from '../csv.js';
 import { notify } from '../notify.js';
-import { orgFor, orgRole } from '../org-access.js';
+import { orgFor, orgRole, lockOrg } from '../org-access.js';
 import { SPONSOR_ROLES } from '../sponsor-access.js';
+import { syncOrgSponsorTeams } from '../sponsor-team-sync.js';
 import { hasConsent } from '../youth.js';
 import { promoteWaitlist, lockProgramme } from '../academy.js';
 import { cancelUnpaidCharges } from '../academy-invoices.js';
@@ -34,7 +35,6 @@ const person = (ref) => {
   return r.includes('@') ? one('SELECT id, handle, display_name FROM users WHERE email_idx=$1', [blindIndex(r)]) : one('SELECT id, handle, display_name FROM users WHERE lower(handle)=lower($1)', [r.replace(/^@/, '')]);
 };
 const deptOf = async (orgId, deptId) => { if (!(await one('SELECT 1 FROM org_departments WHERE id=$1 AND organisation_id=$2 AND archived_at IS NULL', [deptId, orgId]))) throw notFound('Department'); };
-const lockOrg = (c, orgId) => c.query('SELECT id FROM organisations WHERE id=$1 FOR UPDATE', [orgId]);
 const activeOwners = async (c, orgId, except) => (await c.query("SELECT count(*)::int AS n FROM organisation_members WHERE organisation_id=$1 AND role='owner' AND status='active' AND user_id<>$2", [orgId, except])).rows[0].n;
 
 /** Cohort + the caller's right to run it: owner/admin always, a coach only for cohorts assigned to them. */
@@ -140,16 +140,18 @@ cap({
 cap({
   name: 'respond_org_invite', method: 'POST', path: '/organisations/:id/invite/respond', tag: 'Organisations', summary: 'Accept or decline your invitation to a workspace.',
   input: z.object({ id, accept: z.boolean() }),
-  async handler({ user }, i) {
-    const org = await one('SELECT status FROM organisations WHERE id=$1', [i.id]);
+  handler: ({ user }, i) => tx(async (c) => {
+    await lockOrg(c, i.id);
+    const org = (await c.query('SELECT status FROM organisations WHERE id=$1', [i.id])).rows[0];
     if (org?.status === 'archived') throw conflict('This organisation is archived');
-    const m = await one(
+    const m = (await c.query(
       "UPDATE organisation_members SET status=$3, joined_at=CASE WHEN $3='active' THEN now() END, left_at=CASE WHEN $3='declined' THEN now() END WHERE organisation_id=$1 AND user_id=$2 AND status='invited' RETURNING id, organisation_id, role, status",
       [i.id, user.id, i.accept ? 'active' : 'declined'],
-    );
+    )).rows[0];
     if (!m) throw notFound('Invitation');
+    await syncOrgSponsorTeams(c, i.id); // sponsor staff join the linked sponsor team the moment they accept
     return m;
-  },
+  }),
 });
 
 cap({
@@ -182,6 +184,7 @@ cap({
     if (mine !== 'owner' && (t.role === 'owner' || i.role === 'owner')) throw forbidden('Only an owner can change owners');
     if (t.role === 'owner' && i.role !== 'owner' && (await activeOwners(c, i.id, i.user_id)) < 1) throw conflict('An organisation needs at least one owner — transfer ownership first');
     const m = (await c.query("UPDATE organisation_members SET role=$3, department_id=CASE WHEN $4::boolean THEN $5::uuid ELSE department_id END WHERE organisation_id=$1 AND user_id=$2 AND status='active' RETURNING id, organisation_id, user_id, role, status, department_id", [i.id, i.user_id, i.role, i.department_id !== undefined, i.department_id ?? null])).rows[0];
+    await syncOrgSponsorTeams(c, i.id); // the linked sponsor team follows the new role/department at once
     await audit(c, user.id, 'set_org_member_role', 'organisations', i.id);
     return m;
   }),
@@ -201,6 +204,7 @@ cap({
     if (!self && mine !== 'owner' && t.role === 'owner') throw forbidden('Only an owner can remove an owner');
     if (t.role === 'owner' && t.status === 'active' && (await activeOwners(c, i.id, i.user_id)) < 1) throw conflict('The last owner cannot leave — transfer ownership first');
     await c.query("UPDATE organisation_members SET status='left', left_at=now() WHERE organisation_id=$1 AND user_id=$2 AND status IN ('active','invited')", [i.id, i.user_id]);
+    await syncOrgSponsorTeams(c, i.id); // sponsor access ends in the same commit
     await audit(c, user.id, 'remove_org_member', 'organisations', i.id);
     if (!self) await notify(c, i.user_id, { kind: 'org_removed', title: `Access to ${org.name} ended`, body: `You no longer have access to ${org.name}.`, data: { organisation_id: i.id } });
     return { ok: true };
@@ -218,6 +222,7 @@ cap({
     const t = await c.query("UPDATE organisation_members SET role='owner' WHERE organisation_id=$1 AND user_id=$2 AND status='active' RETURNING id", [i.id, i.to_user_id]);
     if (!t.rowCount) throw notFound('Active member');
     if (!isAdmin(user)) await c.query("UPDATE organisation_members SET role='admin' WHERE organisation_id=$1 AND user_id=$2 AND status='active'", [i.id, user.id]);
+    await syncOrgSponsorTeams(c, i.id);
     await audit(c, user.id, 'transfer_org_ownership', 'organisations', i.id);
     return { ok: true, owner_id: i.to_user_id };
   }),
@@ -228,9 +233,10 @@ const ASSETS = {
   team: { table: 'teams', owner: 'owner_id', cols: 'a.id, a.name' },
   event: { table: 'events', owner: 'organizer_id', cols: 'a.id, a.name' },
   venue: { table: 'venues', owner: 'owner_id', cols: 'a.id, a.name' },
-  sponsor: { table: 'sponsors', owner: 'owner_id', cols: 'a.id, a.name' }, // a corporate sponsor brand: the organisation's staff then work it under their sponsor roles
 };
-const assetKind = z.enum(['team', 'event', 'venue', 'sponsor']);
+const assetKind = z.enum(['team', 'event', 'venue']);
+// brands are not linked here any more (#347): a brand joins an organisation through its sponsor identity, and is listed read-only below
+const SPONSOR_BRANDS = { table: 'sponsors', cols: 'a.id, a.name' };
 
 cap({
   name: 'link_org_asset', method: 'POST', path: '/organisations/:id/assets', tag: 'Organisations',
@@ -242,7 +248,6 @@ cap({
     const row = (await c.query(`SELECT ${a.owner} AS owner_id, organisation_id FROM ${a.table} WHERE id=$1 FOR UPDATE`, [i.asset_id])).rows[0];
     if (!row) throw notFound(i.kind);
     if (!isAdmin(user) && row.owner_id !== user.id) throw forbidden(`Only the ${i.kind} owner can bring it into a workspace`);
-    if (i.kind === 'sponsor' && (await c.query('SELECT 1 FROM sponsors WHERE id=$1 AND entity_id IS NOT NULL', [i.asset_id])).rowCount) throw conflict('This brand belongs to a sponsor entity, whose representatives act for it; it cannot also be run by an organisation\'s staff');
     if (row.organisation_id && row.organisation_id !== i.id) throw conflict(`This ${i.kind} already belongs to another organisation`);
     await c.query(`UPDATE ${a.table} SET organisation_id=$2 WHERE id=$1`, [i.asset_id, i.id]);
     await audit(c, user.id, 'link_org_asset', a.table, i.asset_id);
@@ -266,11 +271,11 @@ cap({
 
 cap({
   name: 'list_org_assets', method: 'GET', path: '/organisations/:id/assets', tag: 'Organisations',
-  summary: 'Teams, events or venues linked to the workspace.',
-  input: z.object({ id, kind: assetKind, ...page }),
+  summary: 'Teams, events or venues linked to the workspace, or (kind=sponsor) the sponsor brands whose team includes this organisation\'s staff. Brands are linked from the sponsor\'s identity, not here.',
+  input: z.object({ id, kind: z.enum([...assetKind.options, 'sponsor']), ...page }),
   async handler({ user }, i) {
     await orgFor(user, i.id, i.kind === 'sponsor' ? ROLES.filter((r) => r !== 'coach') : ['owner', 'admin', 'coach']);
-    const a = ASSETS[i.kind];
+    const a = i.kind === 'sponsor' ? SPONSOR_BRANDS : ASSETS[i.kind];
     return many(`SELECT ${a.cols} FROM ${a.table} a WHERE a.organisation_id=$1 ORDER BY a.name, a.id LIMIT $2 OFFSET $3`, [i.id, i.limit, i.offset]);
   },
 });

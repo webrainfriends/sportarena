@@ -13,7 +13,8 @@ import { c, when } from '../theme';
 import { locale } from '../locale';
 import { moneyIn } from '../vtime';
 
-import { KINDS, MODES, Explore, Saved, Reviews, BucketButton, RatingTag } from './study';
+import { KINDS, MODES, Explore, Reviews, BucketButton, RatingTag } from './study';
+import { Plan, SharedPathways } from './pathway-plan';
 export { KINDS, MODES };
 export const STAGES = [['new', 'New'], ['in_conversation', 'In conversation'], ['referred', 'Sent to apply'], ['applied', 'Applied'], ['admitted', 'Admitted'], ['enrolled', 'Enrolled'], ['declined', 'Declined'], ['withdrawn', 'Withdrawn'], ['closed', 'Closed']];
 export const label = (list, v) => list.find(([k]) => k === v)?.[1] ?? String(v).replace(/_/g, ' ');
@@ -45,6 +46,7 @@ export function CredentialList({ list }) {
 // ------------------------------------------------------------------ the hub
 export function Pathways() {
   const { push } = useNav();
+  const { user } = useSession();
   const [tab, setTab] = useState('explore');
   const enq = useLoad(() => api.get('/me/enquiries', { limit: 100 }), []);
   const bucket = useLoad(() => api.get('/me/bucket', { limit: 100 }), []);
@@ -56,14 +58,15 @@ export function Pathways() {
         <H1 color="#fff" style={{ fontSize: 28 }}>Learn & study sport</H1>
         <T color="#fff" weight="600" style={{ marginTop: 4 }}>Turn your sport into a qualification: find colleges near you, compare courses, save your favourites and apply.</T>
         <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>
-          <StatPill value={saved} label="On bucket list" /><StatPill value={(enq.data ?? []).length} label="Enquiries" /><StatPill value={unread} label="Unread replies" />
+          <StatPill value={saved} label="Targets" /><StatPill value={(enq.data ?? []).length} label="Enquiries" /><StatPill value={unread} label="Unread replies" />
         </View>
       </GradCard>
       <View style={{ marginTop: 12 }}>
-        <Seg value={tab} onChange={setTab} color={c.violet} options={[{ value: 'explore', label: 'Explore' }, { value: 'saved', label: saved ? `Saved (${saved})` : 'Saved' }, { value: 'learn', label: 'Rules' }, { value: 'enquiries', label: unread ? `Enquiries (${unread})` : 'Enquiries' }, { value: 'credentials', label: 'Badges' }]} />
+        <Seg value={tab} onChange={setTab} color={c.violet} options={[{ value: 'explore', label: 'Explore' }, { value: 'plan', label: saved ? `My plan (${saved})` : 'My plan' }, { value: 'learn', label: 'Rules' }, { value: 'enquiries', label: unread ? `Enquiries (${unread})` : 'Enquiries' }, { value: 'credentials', label: 'Badges' }, ...(user.roles.includes('coach') ? [{ value: 'shared', label: 'Shared with me' }] : [])]} />
       </View>
       {tab === 'explore' ? <Explore push={push} onSaved={bucket.reload} /> : null}
-      {tab === 'saved' ? <Saved push={push} /> : null}
+      {tab === 'plan' ? <Plan onExplore={() => setTab('explore')} /> : null}
+      {tab === 'shared' ? <SharedPathways push={push} /> : null}
       {tab === 'learn' ? <Learn onFind={() => setTab('explore')} /> : null}
       {tab === 'enquiries' ? <Enquiries list={enq} push={push} /> : null}
       {tab === 'credentials' ? <MyCredentials /> : null}

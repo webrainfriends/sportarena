@@ -29,7 +29,7 @@ const world = async () => {
   const owner = await signup(['sponsor']), ath = await signup(['athlete']), outsider = await signup(['sponsor']);
   const org = must(await api('POST', '/organisations', { token: owner.token, body: { name: `Acme ${n}`, kind: 'company' } }), 201);
   const b = must(await api('POST', '/sponsors', { token: owner.token, body: { name: `Brand ${n}` } }), 201);
-  must(await api('POST', `/organisations/${org.id}/assets`, { token: owner.token, body: { kind: 'sponsor', asset_id: b.id } }));
+  must(await api('POST', `/sponsors/${b.id}/identity`, { token: owner.token, body: { sponsor_type: 'organization', organisation_id: org.id } }));
   const staff = {};
   for (const role of ['manager', 'evaluator', 'finance', 'auditor']) {
     const u = await signup(['athlete']);

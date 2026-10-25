@@ -128,7 +128,7 @@ test('corporate roles: only revise-capable roles speak for the brand, only manag
   const owner = await signup(['sponsor']), ath = await signup(['athlete']);
   const org = must(await api('POST', '/organisations', { token: owner.token, body: { name: `Neg ${n}`, kind: 'company' } }), 201);
   const b = must(await api('POST', '/sponsors', { token: owner.token, body: { name: `NegBrand ${n}` } }), 201);
-  must(await api('POST', `/organisations/${org.id}/assets`, { token: owner.token, body: { kind: 'sponsor', asset_id: b.id } }));
+  must(await api('POST', `/sponsors/${b.id}/identity`, { token: owner.token, body: { sponsor_type: 'organization', organisation_id: org.id } }));
   const staff = {};
   for (const role of ['manager', 'evaluator', 'finance', 'legal', 'approver']) {
     const u = await signup(['athlete']);

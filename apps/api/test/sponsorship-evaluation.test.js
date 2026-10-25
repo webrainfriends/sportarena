@@ -23,7 +23,7 @@ async function setup() {
   const owner = await signup(['sponsor']);
   const org = must(await api('POST', '/organisations', { token: owner.token, body: { name: `Acme ${n}`, kind: 'company' } }), 201);
   const b = must(await api('POST', '/sponsors', { token: owner.token, body: { name: `Eval brand ${n}` } }), 201);
-  must(await api('POST', `/organisations/${org.id}/assets`, { token: owner.token, body: { kind: 'sponsor', asset_id: b.id } }));
+  must(await api('POST', `/sponsors/${b.id}/identity`, { token: owner.token, body: { sponsor_type: 'organization', organisation_id: org.id } }));
   const staff = {};
   for (const [key, role] of [['ev1', 'evaluator'], ['ev2', 'evaluator'], ['ev3', 'evaluator'], ['approver', 'approver'], ['auditor', 'auditor'], ['finance', 'finance']]) {
     const u = await signup(['sponsor']);

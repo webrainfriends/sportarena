@@ -14,6 +14,7 @@ import { Admissions } from './admissions';
 import { AcademyDesk } from './academy';
 import { MyAcademyCard } from './academy-portal';
 import { IncomingSponsorship } from './sponsor-beneficiaries';
+import { HandOverBrand } from './sponsor-ownership';
 import { Confirm } from './coaching';
 import { EntityPicker } from '../entity-picker';
 import { explain, LoadError } from '../access';
@@ -84,7 +85,7 @@ export function Org({ id }) {
   const o = org.data, d = dash.data, role = d.role, archived = o.status === 'archived';
   const P = { o, d, role, archived, toast, brands, reload: () => { org.reload(); dash.reload(); brands.reload(); } };
   const teaching = !SPONSOR_ONLY.includes(role) && role !== 'finance' && role !== 'staff';
-  const tabs = [['overview', 'Overview'], ...(teaching ? [['cohorts', 'Cohorts']] : []), ['people', 'People'], ...(brands.data?.length && role !== 'coach' ? [['sponsor', 'Sponsor']] : []), ...(teaching ? [['assets', 'Teams, events, venues & brands']] : []), ...(STAFF.includes(role) || (o.kind === 'academy' && ['finance', 'coach', 'staff', 'auditor'].includes(role)) ? [[o.kind === 'academy' ? 'academy' : 'admissions', o.kind === 'academy' ? 'Academy' : 'Admissions']] : [])];
+  const tabs = [['overview', 'Overview'], ...(teaching ? [['cohorts', 'Cohorts']] : []), ['people', 'People'], ...(brands.data?.length && role !== 'coach' ? [['sponsor', 'Sponsor']] : []), ...(teaching ? [['assets', 'Teams, events & venues']] : []), ...(STAFF.includes(role) || (o.kind === 'academy' && ['finance', 'coach', 'staff', 'auditor'].includes(role)) ? [[o.kind === 'academy' ? 'academy' : 'admissions', o.kind === 'academy' ? 'Academy' : 'Admissions']] : [])];
   return (
     <Screen wide>
       <GradCard colors={[c.violet, c.ink]}>
@@ -246,6 +247,7 @@ function SponsorTab({ o, role, archived, toast, brands }) {
   const { push } = useNav();
   const [dept, setDept] = useState(null); // department filter
   const [add, setAdd] = useState(false);
+  const [handOver, setHandOver] = useState(null);
   const depts = useLoad(() => api.get(`/organisations/${o.id}/departments`), [o.id]);
   const deals = useLoad(() => api.get('/sponsorships', { limit: 100 }), [o.id]);
   const ids = new Set((brands.data ?? []).map((b) => b.id));
@@ -262,7 +264,7 @@ function SponsorTab({ o, role, archived, toast, brands }) {
   return (
     <>
       <Section title="Brands" color={c.violet}>
-        {(brands.data ?? []).map((b) => <Row key={b.id} title={b.name} sub="Run by this organisation's staff under their sponsor roles" />)}
+        {(brands.data ?? []).map((b) => <Row key={b.id} title={b.name} sub="Run by this organisation's staff under their sponsor roles; manage the team on the brand" right={<View style={{ flexDirection: 'row', gap: 6 }}><Btn small title="Open team" color={c.paper} ink={c.ink} onPress={() => push('SponsorIdentity', { id: b.id })} accessibilityLabel={`Open the team of ${b.name}`} />{manage ? <Btn small title="Hand over" color={c.paper} ink={c.ink} onPress={() => setHandOver({ ...b, organisation_id: o.id })} accessibilityLabel={`Hand over ${b.name} to a new owner`} /> : null}</View>} />)}
       </Section>
       <Section title="Deals" color={c.sun}>
         {depts.data?.length ? (
@@ -291,6 +293,7 @@ function SponsorTab({ o, role, archived, toast, brands }) {
           <T size={12} color={c.mute}>Exports follow your role and department and are recorded in the audit log. They never include contact details.</T>
         </Section>
       ) : null}
+      <HandOverBrand brand={handOver} visible={!!handOver} onClose={() => setHandOver(null)} onDone={() => brands.reload?.()} toast={toast} />
       <FormSheet visible={add} onClose={() => setAdd(false)} title="Add a department" fields={[{ key: 'name', label: 'Department name' }]}
         onSubmit={async (v) => { await api.post(`/organisations/${o.id}/departments`, v); depts.reload(); return 'Department added'; }} />
     </>
@@ -418,21 +421,21 @@ function Assets({ o, role, archived, toast }) {
   const [link, setLink] = useState(false);
   const list = useLoad(() => api.get(`/organisations/${o.id}/assets`, { kind }), [o.id, kind]);
   const { user } = useSession();
-  const mine = useLoad(() => (!link ? Promise.resolve([]) : kind === 'team' ? api.get('/teams', { mine: true }) : kind === 'event' ? api.get('/events', { organizer_id: user.id }) : kind === 'sponsor' ? api.get('/sponsors', { mine: true, limit: 50 }) : api.get('/me/venues')), [link, kind]);
+  const mine = useLoad(() => (!link ? Promise.resolve([]) : kind === 'team' ? api.get('/teams', { mine: true }) : kind === 'event' ? api.get('/events', { organizer_id: user.id }) : api.get('/me/venues')), [link, kind]);
   const manage = STAFF.includes(role) && !archived;
   const unlink = async (a) => { try { await api.del(`/organisations/${o.id}/assets/${a.id}`, { kind }); toast('Removed from the organisation'); list.reload(); } catch (e) { fail(toast)(e); } };
   const add = async (a) => { try { await api.post(`/organisations/${o.id}/assets`, { kind, asset_id: a.id }); toast(`${a.name} added`); setLink(false); list.reload(); } catch (e) { fail(toast)(e); } };
-  const items = (Array.isArray(mine.data) ? mine.data : mine.data?.items ?? []).filter((a) => !a.organisation_id && (kind !== 'sponsor' || (['owner', 'manager'].includes(a.my_role) && !a.identity_confirmed)));
+  const items = (Array.isArray(mine.data) ? mine.data : mine.data?.items ?? []).filter((a) => !a.organisation_id);
   return (
     <>
-      <View style={{ marginTop: 10 }}><Seg options={[{ value: 'team', label: 'Teams' }, { value: 'event', label: 'Events' }, { value: 'venue', label: 'Venues' }, { value: 'sponsor', label: 'Brands' }]} value={kind} onChange={setKind} color={c.cyan} /></View>
-      {manage ? <View style={{ marginTop: 6 }}><Btn small title={kind === 'sponsor' ? 'Link one of my brands' : `Add one of my ${kind}s`} onPress={() => setLink(true)} /></View> : null}
-      <Section title={kind === 'sponsor' ? 'Linked brands' : `Linked ${kind}s`} color={c.cyan}>
+      <View style={{ marginTop: 10 }}><Seg options={[{ value: 'team', label: 'Teams' }, { value: 'event', label: 'Events' }, { value: 'venue', label: 'Venues' }]} value={kind} onChange={setKind} color={c.cyan} /></View>
+      {manage ? <View style={{ marginTop: 6 }}><Btn small title={`Add one of my ${kind}s`} onPress={() => setLink(true)} /></View> : null}
+      <Section title={`Linked ${kind}s`} color={c.cyan}>
         {list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : !list.data ? <Loading /> : list.data.length ? list.data.map((a) => (
           <Row key={a.id} title={a.name} right={manage ? <Btn small title="Remove" color={c.paper} ink={c.ink} onPress={() => unlink(a)} /> : null} />
-        )) : <Empty emoji="🔗" title={kind === 'sponsor' ? 'No brands linked' : `No ${kind}s linked`} sub="Owners and admins of this organisation can manage linked items. You keep ownership of anything you add." />}
+        )) : <Empty emoji="🔗" title={`No ${kind}s linked`} sub="Owners and admins of this organisation can manage linked items. You keep ownership of anything you add." />}
       </Section>
-      <Sheet visible={link} onClose={() => setLink(false)} title={kind === 'sponsor' ? 'Link a brand' : `Add a ${kind}`}>
+      <Sheet visible={link} onClose={() => setLink(false)} title={`Add a ${kind}`}>
         <View style={{ gap: 8 }}>
           {!mine.data ? <Loading /> : items.length ? items.map((a) => <Row key={a.id} title={a.name} onPress={() => add(a)} />) : <Empty title={`No ${kind}s to add`} sub={`Only ${kind}s you own can be added.`} />}
         </View>

@@ -138,7 +138,7 @@ export function FormSheet({ visible, onClose, title, fields, initial = {}, submi
   };
 
   const lab = (f) => <T weight="800" size={13}>{f.label}{f.optional ? ' (optional)' : ''}</T>;
-  const hint = (f) => (f.hint ? <T size={12} color={c.mute}>{f.hint}</T> : null);
+  const hint = (f) => { const h = typeof f.hint === 'function' ? f.hint(v) : f.hint; return h ? <T size={12} color={c.mute}>{h}</T> : null; };
   const control = (f) => {
     switch (f.type) {
       case 'section': return <T weight="800" size={15} style={{ marginTop: 8 }}>{f.label}</T>;
@@ -148,7 +148,7 @@ export function FormSheet({ visible, onClose, title, fields, initial = {}, submi
       case 'currency': return <CurrencyDropdown label={f.label} value={v[f.key]} onChange={(x) => set(f.key, x)} hint={f.hint} suggest={!f.optional} />;
       case 'location': return <LocationPicker f={f} v={v} set={set} />;
       case 'daterange': return <DateRangeField label={f.label} from={v[f.key]} to={v[f.toKey]} onChange={({ from, to }) => { set(f.key, from); set(f.toKey, to); }} optional={f.optional} min={f.min} hint={f.hint} />;
-      case 'country': return <CountryPicker label={f.label} value={v[f.key]} onChange={(x) => set(f.key, x)} optional={f.optional} hint={f.hint} />;
+      case 'country': return <CountryPicker label={f.label} value={v[f.key]} onChange={(x) => set(f.key, x)} optional={f.optional} hint={typeof f.hint === 'function' ? f.hint(v) : f.hint} />;
       case 'sports': return <SportsMulti label={f.label} value={v[f.key] ?? []} onChange={(x) => set(f.key, x)} optional={f.optional} />;
       case 'regions': return (
         <View style={{ gap: 8 }}>

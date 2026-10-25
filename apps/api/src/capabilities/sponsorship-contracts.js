@@ -17,7 +17,9 @@ import { sponsorRecipients } from '../sponsor-access.js';
 import { ORG_TARGETS, targetOrgId } from '../sponsor-beneficiaries.js';
 import { starterFor } from '../documents/layout.js';
 import { renderSponsorshipContract } from '../documents/render.js';
-import { PROVIDERS, providerList, verifyCallback } from '../signatures/providers.js';
+import { decrypt } from '../crypto.js';
+import { PROVIDERS, providerList, verifyCallback, verifyDocusign, createDocusignRequest, voidDocusignRequest } from '../signatures/providers.js';
+import { checkLevel, ruleFor, POLICY, DEFAULT_RULE } from '../signatures/policy.js';
 
 const TAG = 'Sponsorship contracts';
 const sha = (b) => createHash('sha256').update(b).digest('hex');
@@ -93,11 +95,14 @@ async function view(c, row, ctx, userId) {
   const stale = !current && ['draft', 'awaiting_signatures'].includes(row.status);
   let canManage = false;
   try { mustManage(ctx); canManage = ['draft', 'awaiting_signatures'].includes(row.status); } catch { /* read-only for this caller */ }
+  const req = (await c.query('SELECT provider, level, jurisdiction, status, recipients, created_at FROM sponsorship_signature_requests WHERE contract_id=$1 ORDER BY created_at DESC LIMIT 1', [row.id])).rows[0] ?? null;
+  const viaVendor = req?.status === 'sent' && row.status === 'awaiting_signatures';
   return {
     ...row, signed_state: row.status === 'signed' ? 'signed' : 'unsigned', current, stale, accepted_terms_version: d.accepted_version ?? null,
     draft_url: fileUrl(row.document_id), signed_url: signedDoc ? fileUrl(signedDoc.document_id) : null, signed_sha256: signedDoc?.sha256 ?? null,
     signatories: sigs, my_signatory_id: mine?.id ?? null,
-    can: { manage: canManage, sign: !!mine && mine.status === 'pending' && row.status === 'awaiting_signatures' && !stale },
+    signature_request: req ? { provider: req.provider, provider_label: PROVIDERS[req.provider]?.label ?? req.provider, level: req.level, jurisdiction: req.jurisdiction, status: req.status, sent_at: req.created_at } : null,
+    can: { manage: canManage, sign: !!mine && mine.status === 'pending' && row.status === 'awaiting_signatures' && !stale && !viaVendor },
     snapshot: undefined,
   };
 }
@@ -277,9 +282,16 @@ cap({
 });
 
 cap({
+  name: 'get_signature_policy', method: 'GET', path: '/signature-policy', tag: TAG,
+  summary: 'Which signature level a country expects for a sponsorship contract and whether each signing provider meets it (simple = signed in Sportarena; advanced = external vendor such as DocuSign). Use it to choose the provider before send. Providers that are not configured show enabled:false. rules is the per-country table (for a client-side hint).',
+  input: z.object({ country: z.string().length(2).toUpperCase().optional() }),
+  async handler(_ctx, i) { return { rule: ruleFor(i.country), rules: POLICY, default_rule: DEFAULT_RULE, providers: providerList().map((p) => ({ ...p, check: checkLevel(i.country, p.level) })) }; },
+});
+
+cap({
   name: 'request_contract_signatures', method: 'POST', path: '/sponsorship-contracts/:id/request-signatures', tag: TAG,
-  summary: 'Send a draft for signature: locks the text and asks every named signatory to sign. Needs at least one signatory on each side and the agreement still at the contract\'s terms version.',
-  input: z.object({ id, row_version: z.number().int().min(1) }),
+  summary: 'Send a draft for signature: locks the text and asks every named signatory to sign. Needs at least one signatory on each side and the agreement still at the contract\'s terms version. provider "internal" (default) has people sign in Sportarena (simple electronic signature); "docusign" creates a signing request with the vendor (advanced signature, each signatory is emailed by the vendor) and the vendor\'s callback records the signatures. jurisdiction (ISO country) checks the provider meets that country\'s expected level.',
+  input: z.object({ id, row_version: z.number().int().min(1), provider: z.enum(['internal', 'docusign']).default('internal'), jurisdiction: z.string().length(2).toUpperCase().optional() }),
   async handler({ user }, i) {
     requireApproved(user);
     await tx(async (c) => {
@@ -291,11 +303,28 @@ cap({
       if (!OPEN_DEAL.includes(ctx.d.status)) throw conflict(`This sponsorship is ${ctx.d.status}`);
       const sides = new Set((await c.query("SELECT side FROM sponsorship_signatories WHERE contract_id=$1 AND status='pending'", [row.id])).rows.map((r) => r.side));
       if (!sides.has('sponsor') || !sides.has('recipient')) throw badRequest('Name at least one signatory on each side first');
-      await c.query("UPDATE sponsorship_contracts SET status='awaiting_signatures', requested_at=now(), row_version=row_version+1 WHERE id=$1", [row.id]);
-      await logHistory(c, row.sponsorship_id, row.terms_version, user.id, 'contract_sent');
-      await audit(c, user.id, 'request_contract_signatures', 'sponsorship_contracts', row.id);
-      for (const s of (await c.query("SELECT user_id FROM sponsorship_signatories WHERE contract_id=$1 AND status='pending'", [row.id])).rows)
-        await notify(c, s.user_id, { kind: 'sponsorship_contract', title: 'A sponsorship contract needs your signature', body: 'Review the contract and sign it on the agreement.', data: { sponsorship_id: row.sponsorship_id, contract_id: row.id }, dedupe_key: `contract-request:${row.id}:${s.user_id}` });
+      const p = PROVIDERS[i.provider];
+      if (!p.enabled()) throw conflict(`${p.label} is not set up. Choose another way to sign.`, { code: 'provider_disabled' });
+      const lvl = checkLevel(i.jurisdiction, p.level);
+      if (!lvl.ok) throw conflict(`${lvl.law} expects at least a ${lvl.minimum} signature; ${p.label} gives a ${p.level} one.`, { code: 'level_too_low' });
+      let sent = null;
+      if (p.vendor) {
+        const people = (await c.query("SELECT g.user_id, u.display_name AS name, u.email_enc FROM sponsorship_signatories g JOIN users u ON u.id=g.user_id WHERE g.contract_id=$1 AND g.status='pending' ORDER BY g.side DESC, g.created_at, g.id", [row.id])).rows;
+        const doc = (await c.query('SELECT file_name, pages FROM generated_documents WHERE id=$1', [row.document_id])).rows[0];
+        const pdf = await loadEncrypted('documents', 'generated_documents.file', doc.file_name);
+        sent = await createDocusignRequest({ pdf, name: `Sponsorship contract v${row.terms_version}`, pages: doc.pages ?? 1, signers: people.map((x) => ({ user_id: x.user_id, name: x.name, email: decrypt(x.email_enc, 'users.email') })) });
+      }
+      try {
+        await c.query("UPDATE sponsorship_contracts SET status='awaiting_signatures', requested_at=now(), row_version=row_version+1 WHERE id=$1", [row.id]);
+        if (sent) await c.query('INSERT INTO sponsorship_signature_requests(contract_id, provider, external_ref, jurisdiction, level, recipients, document_sha256, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)', [row.id, p.id, sent.external_ref, i.jurisdiction ?? null, p.level, JSON.stringify(sent.recipients), row.snapshot_sha256, user.id]);
+        await logHistory(c, row.sponsorship_id, row.terms_version, user.id, 'contract_sent');
+        await audit(c, user.id, 'request_contract_signatures', 'sponsorship_contracts', row.id);
+        for (const s of (await c.query("SELECT user_id FROM sponsorship_signatories WHERE contract_id=$1 AND status='pending'", [row.id])).rows)
+          await notify(c, s.user_id, { kind: 'sponsorship_contract', title: 'A sponsorship contract needs your signature', body: sent ? `${p.label} has emailed you the contract to sign.` : 'Review the contract and sign it on the agreement.', data: { sponsorship_id: row.sponsorship_id, contract_id: row.id }, dedupe_key: `contract-request:${row.id}:${s.user_id}` });
+      } catch (e) {
+        if (sent) await voidDocusignRequest(sent.external_ref, 'Could not be recorded').catch(() => {}); // do not leave a live envelope Sportarena does not know about
+        throw e;
+      }
     });
     const { row, ctx } = await contractFor(pool, i.id, user);
     return view(pool, row, ctx, user.id);
@@ -310,6 +339,7 @@ cap({
     requireApproved(user);
     const r = await tx(async (c) => {
       await contractFor(c, i.id, user); // non-parties get 404 before anything else is said
+      if ((await c.query("SELECT 1 FROM sponsorship_signature_requests WHERE contract_id=$1 AND status='sent'", [i.id])).rowCount) throw conflict('This contract was sent for signature through an external service. Sign it there.', { code: 'signing_elsewhere' });
       return applySignature(c, { contractId: i.id, userId: user.id, documentSha256: i.document_sha256, provider: 'internal' });
     });
     const { row, ctx } = await contractFor(pool, i.id, user);
@@ -329,6 +359,8 @@ cap({
       if (!['draft', 'awaiting_signatures'].includes(row.status)) throw conflict(`A ${row.status} contract cannot be voided`);
       await c.query("UPDATE sponsorship_contracts SET status='voided', voided_at=now(), void_reason=$2, row_version=row_version+1 WHERE id=$1", [row.id, i.reason]);
       await c.query("UPDATE sponsorship_signatories SET status='removed' WHERE contract_id=$1 AND status='pending'", [row.id]);
+      for (const r of (await c.query("UPDATE sponsorship_signature_requests SET status='voided' WHERE contract_id=$1 AND status='sent' RETURNING provider, external_ref", [row.id])).rows)
+        if (r.provider === 'docusign') await voidDocusignRequest(r.external_ref, i.reason).catch((e) => console.error('[signature-void]', e.message)); // the callback guard below still refuses a late signature
       await logHistory(c, row.sponsorship_id, row.terms_version, user.id, 'contract_voided', i.reason);
       await audit(c, user.id, 'void_sponsorship_contract', 'sponsorship_contracts', row.id);
     });
@@ -365,6 +397,39 @@ export function signatureCallbackRouter() {
       if (e.status && e.status < 500) return res.status(e.status).json({ error: e.code ?? 'rejected', message: e.message }); // permanently refused: a retry cannot help
       console.error('[signature-callback]', e.message);
       res.status(500).json({ error: 'processing_failed' }); // the provider retries
+    }
+  });
+  // DocuSign Connect: the envelope was created by us, so a recipient id maps back to the person we named. The signed text is the one we sent (pinned in the request row).
+  r.post('/docusign', express.raw({ type: '*/*', limit: '2mb' }), async (req, res) => {
+    try {
+      const raw = req.body.toString('utf8');
+      if (!PROVIDERS.docusign.enabled()) return res.status(404).json({ error: 'provider_disabled' });
+      if (!verifyDocusign(raw, req.headers['x-docusign-signature-1'])) return res.status(400).json({ error: 'bad_signature' });
+      const b = JSON.parse(raw);
+      const envelopeId = b?.data?.envelopeId, recipientId = b?.data?.recipientId != null ? String(b.data.recipientId) : null, event = String(b?.event ?? '');
+      if (!envelopeId || !event) return res.status(422).json({ error: 'bad_payload' });
+      const out = await tx(async (c) => {
+        const fresh = await c.query("INSERT INTO provider_events(provider, event_id, kind) VALUES ('docusign',$1,$2) ON CONFLICT DO NOTHING RETURNING event_id", [`${envelopeId}:${recipientId ?? '-'}:${event}`, event]);
+        if (!fresh.rowCount) return { duplicate: true };
+        const rq = (await c.query("SELECT * FROM sponsorship_signature_requests WHERE provider='docusign' AND external_ref=$1 FOR UPDATE", [envelopeId])).rows[0];
+        if (!rq) throw notFound('Signature request');
+        if (event === 'recipient-completed') {
+          const who = rq.recipients.find((x) => x.recipient_id === recipientId);
+          if (!who) throw badRequest('Unknown recipient');
+          if (rq.status !== 'sent') return { ignored: rq.status }; // a withdrawn or declined envelope: a late signature never counts
+          const done = await applySignature(c, { contractId: rq.contract_id, userId: who.user_id, documentSha256: rq.document_sha256, provider: 'docusign', providerRef: `${envelopeId}/${recipientId}` });
+          if (done.contract_status === 'signed') await c.query("UPDATE sponsorship_signature_requests SET status='completed' WHERE id=$1", [rq.id]);
+          return done;
+        }
+        if (event === 'recipient-declined') await c.query("UPDATE sponsorship_signature_requests SET status='declined' WHERE id=$1 AND status='sent'", [rq.id]);
+        if (event === 'envelope-voided') await c.query("UPDATE sponsorship_signature_requests SET status='voided' WHERE id=$1 AND status='sent'", [rq.id]);
+        return { recorded: event };
+      });
+      res.json({ received: true, ...out });
+    } catch (e) {
+      if (e.status && e.status < 500) return res.status(e.status).json({ error: e.code ?? 'rejected', message: e.message });
+      console.error('[docusign-callback]', e.message);
+      res.status(500).json({ error: 'processing_failed' });
     }
   });
   return r;

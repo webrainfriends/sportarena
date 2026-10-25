@@ -195,7 +195,7 @@ test('corporate roles: only revise-capable roles propose, only manager/approver 
   const sponsor = await signup(['sponsor']), ath = await signup(['athlete']);
   const org = must(await api('POST', '/organisations', { token: sponsor.token, body: { name: `Acme ${n}`, kind: 'company' } }), 201);
   const b = must(await api('POST', '/sponsors', { token: sponsor.token, body: { name: `Corp ${n}` } }), 201);
-  must(await api('POST', `/organisations/${org.id}/assets`, { token: sponsor.token, body: { kind: 'sponsor', asset_id: b.id } }));
+  must(await api('POST', `/sponsors/${b.id}/identity`, { token: sponsor.token, body: { sponsor_type: 'organization', organisation_id: org.id } }));
   const staff = {};
   for (const role of ['approver', 'finance', 'auditor', 'legal']) {
     const u = await signup(['athlete']);

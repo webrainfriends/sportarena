@@ -10,6 +10,7 @@ import { FormSheet } from '../FormSheet';
 import { EntityPicker } from '../entity-picker';
 import { SportSelect } from '../sportpicker';
 import { c } from '../theme';
+import { asSponsorRole } from '../sponsor-roles';
 import { explain, LoadError } from '../access';
 import { RoundEvaluation, ApplicantEvaluation } from './sponsor-evaluation';
 import { ProgramAwards, MyOffers } from './sponsor-awards';
@@ -21,7 +22,7 @@ import { SponsorTasks, ApplicationThread } from './sponsor-collaboration';
 const fmt = (cents, cur) => { try { const f = new Intl.NumberFormat(undefined, { style: 'currency', currency: cur }); return f.format(cents / 10 ** f.resolvedOptions().maximumFractionDigits); } catch { return `${cents} ${cur ?? ''}`; } };
 const when = (iso) => (iso ? new Date(`${String(iso).slice(0, 10)}T00:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '');
 const STATUS_TONE = { draft: c.sunSoft, published: c.lime, closed: c.pinkSoft, archived: c.paper, open: c.lime, scheduled: c.sunSoft, submitted: c.sunSoft, returned: c.pinkSoft, awarded: c.lime, declined: c.pinkSoft, withdrawn: c.paper };
-const MAY = ['manager', 'approver', 'admin'];
+const MAY = ['manager', 'approver'];
 const myZone = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch { return 'UTC'; } };
 /** A deadline instant shown in the round's own timezone, so everyone reads the same moment. */
 const deadline = (instant, zone) => { if (!instant) return ''; try { return `${new Date(instant).toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: zone || 'UTC' })} (${zone || 'UTC'})`; } catch { return String(instant); } };
@@ -81,7 +82,7 @@ export function SponsorPrograms() {
   const [form, setForm] = useState(false);
   const list = useLoad(() => api.get('/sponsorship-programs', { status, limit: 50 }), [status]);
   const brands = useLoad(() => api.get('/sponsors', { mine: true, limit: 50 }), []);
-  const may = (brands.data ?? []).filter((b) => MAY.includes(b.my_role));
+  const may = (brands.data ?? []).filter((b) => MAY.includes(asSponsorRole(b.my_role)));
   return (
     <Screen onRefresh={list.reload} refreshing={list.loading && !!list.data}>
       <H1>Programs</H1>
@@ -120,7 +121,7 @@ export function SponsorProgram({ id }) {
   const act = async (fn, m) => { try { await fn(); if (m) toast(m); setStale(false); reloadAll(); } catch (e) { toast(explain(e)); if (e.status === 409) { setStale(true); reloadAll(); } } };
   if (prog.loading && !p) return <Screen><Loading /></Screen>;
   if (prog.error) return <Screen><LoadError error={prog.error} onRetry={prog.reload} /></Screen>;
-  const may = MAY.includes(p.my_role);
+  const may = MAY.includes(asSponsorRole(p.my_role));
   const status = (s, m) => act(() => api.post(`/sponsorship-programs/${p.id}/status`, { status: s, version: p.row_version }), m);
   const download = async () => { try { const r = await api.get(`/sponsorship-programs/${p.id}/awards-export`); if (typeof document !== 'undefined') { const u = URL.createObjectURL(new Blob([r.csv], { type: 'text/csv' })); const l = document.createElement('a'); l.href = u; l.download = r.filename; l.click(); URL.revokeObjectURL(u); } toast(`${r.rows} award${r.rows === 1 ? '' : 's'} exported`); } catch (e) { toast(explain(e)); } };
   const editing = typeof form === 'object' && form?.round;
@@ -199,7 +200,7 @@ export function SponsorProgram({ id }) {
             {a.status !== 'draft' ? <Btn small title="Messages" color={c.paper} ink={c.ink} style={{ alignSelf: 'flex-start', marginTop: 8 }} onPress={() => setThread(a)} accessibilityLabel="Open the conversation with this applicant" /> : null}
           </Card>
         )) : <Empty emoji="📬" title="No applications" sub={p.status === 'published' ? 'They appear here as applicants submit to an open round.' : 'Publish the program to receive applications.'} />}
-        {['manager', 'finance', 'auditor', 'admin'].includes(p.my_role) ? <Btn small title="Export awards (CSV)" color={c.paper} ink={c.ink} style={{ alignSelf: 'flex-start' }} onPress={download} /> : null}
+        {['manager', 'finance', 'auditor'].includes(asSponsorRole(p.my_role)) ? <Btn small title="Export awards (CSV)" color={c.paper} ink={c.ink} style={{ alignSelf: 'flex-start' }} onPress={download} /> : null}
       </Section>
 
       {thread ? <ApplicationThread applicationId={thread.id} onClose={() => setThread(null)} /> : null}

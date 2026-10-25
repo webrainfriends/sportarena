@@ -8,7 +8,7 @@ import { formStrings } from '../tracking/forms.js';
 
 const MM = 72 / 25.4;
 const BASE_FONTS = { regular: 'Helvetica', bold: 'Helvetica-Bold' };
-const fonts = () => ({ regular: process.env.DOC_FONT_REGULAR || BASE_FONTS.regular, bold: process.env.DOC_FONT_BOLD || process.env.DOC_FONT_REGULAR || BASE_FONTS.bold, unicode: !!process.env.DOC_FONT_REGULAR });
+export const fonts = () => ({ regular: process.env.DOC_FONT_REGULAR || BASE_FONTS.regular, bold: process.env.DOC_FONT_BOLD || process.env.DOC_FONT_REGULAR || BASE_FONTS.bold, unicode: !!process.env.DOC_FONT_REGULAR });
 // What the built-in PDF fonts can show (Latin-1 plus common punctuation). Anything else needs DOC_FONT_REGULAR (e.g. Noto Sans Tamil).
 const BASIC = /^[ -~ -ÿ‐-‟•…€\n]*$/;
 
@@ -17,7 +17,7 @@ const money = (cents, cur) => `${cur} ${toMajor(cents, cur)}`;
 const day = (d) => (d ? new Date(d).toISOString().slice(0, 10) : '');
 const hex = (c, d) => (/^#[0-9A-Fa-f]{6}$/.test(c ?? '') ? c : d);
 
-function assertGlyphs(strings, f) {
+export function assertGlyphs(strings, f) {
   if (f.unicode) return;
   const bad = strings.find((s) => s && !BASIC.test(s));
   if (bad !== undefined) throw new AppError(422, 'unsupported_characters', 'This document contains characters (for example Tamil) that need a Unicode font, which is not installed on this server. Set DOC_FONT_REGULAR to a TTF such as Noto Sans.');

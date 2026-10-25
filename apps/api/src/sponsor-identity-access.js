@@ -4,15 +4,18 @@
 import { forbidden } from './errors.js';
 import { isAdmin } from './helpers.js';
 
+// ONE role vocabulary for everyone who acts for a brand (#347): the same words in the API, MCP and every app (`my_role`).
+export const ROLES = ['owner', 'admin', 'manager', 'approver', 'finance', 'legal', 'evaluator', 'auditor', 'portfolio_manager', 'viewer'];
+const ROLES_ALL = ROLES;
+
 /** What each role may do. portfolio_manager only ever reaches brands in a portfolio assigned to them. */
 export const CAN = {
-  read: ['owner', 'admin', 'finance', 'portfolio_manager', 'viewer'],
-  manage: ['owner', 'admin', 'portfolio_manager'], // propose, revise, withdraw, end, objectives, reviews
-  money: ['owner', 'admin', 'finance', 'portfolio_manager'], // report payments, dispatch goods, endorsements
+  read: ROLES_ALL,
+  manage: ['owner', 'admin', 'manager', 'approver', 'portfolio_manager'], // propose, revise, withdraw, end, objectives, reviews
+  money: ['owner', 'admin', 'manager', 'finance', 'portfolio_manager'], // report payments, dispatch goods, endorsements
   identity: ['owner', 'admin'], // legal/billing identity, representatives, portfolios, verification requests
   owners: ['owner'], // appoint or change owners
 };
-export const ROLES = ['owner', 'admin', 'finance', 'portfolio_manager', 'viewer'];
 
 export const ASSIGNED = `EXISTS (SELECT 1 FROM sponsor_portfolio_assignments a JOIN sponsor_portfolio_brands b ON b.portfolio_id=a.portfolio_id AND b.removed_at IS NULL
                            JOIN sponsor_portfolios p ON p.id=a.portfolio_id AND p.archived_at IS NULL

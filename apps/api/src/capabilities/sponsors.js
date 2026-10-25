@@ -15,7 +15,9 @@ import { entityRole, snapshotIdentity, ASSIGNED, CAN } from '../sponsor-identity
 import { endNow } from '../sponsor-termination.js';
 import { saveLines, loadLines, generateObligations, logHistory } from '../sponsor-agreements.js';
 import { proposerSide } from '../sponsor-renewals.js';
-import { sponsorAccess, assertSponsorCan, notifySponsor, sponsorStaffSql } from '../sponsor-access.js';
+import { sponsorAccess, assertSponsorCan, notifySponsor, sponsorStaffSql, sponsorRecipients, FROM_REP } from '../sponsor-access.js';
+import { SPONSOR_ORG_ROLES, syncOrgSponsorTeams } from '../sponsor-team-sync.js';
+import { lockOrg, orgRole } from '../org-access.js';
 import { assertDealFitsBudget, assertFits, convert, costOf, storedRate } from '../sponsorship-budgets.js';
 import { ORG_TARGETS, beneficiaryScopeSql, beneficiaryAccess, primaryContact, targetOrgId } from '../sponsor-beneficiaries.js';
 
@@ -85,8 +87,8 @@ cap({
       }
       await checkProfile(c, i);
       return (await c.query(`INSERT INTO sponsors(owner_id, name, industry, website, emoji, contact_name_enc, contact_email_enc, contact_phone_enc, entity_id,
-          tagline, about, brand_color, founded_year, country, sports, regions, offers, backs, budget_currency, budget_min_cents, budget_max_cents, links)
-        VALUES ($1,$2,$3,$4,coalesce($5,'💎'),$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22) RETURNING id, name, industry, website, emoji, entity_id`,
+          tagline, about, brand_color, founded_year, country, sports, regions, offers, backs, budget_currency, budget_min_cents, budget_max_cents, links, organisation_id)
+        VALUES ($1,$2,$3,$4,coalesce($5,'💎'),$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,(SELECT CASE WHEN staff_sync THEN organisation_id END FROM sponsor_entities WHERE id=$9)) RETURNING id, name, industry, website, emoji, entity_id`,
         [user.id, i.name, i.industry, i.website, i.emoji, e.contact_name_enc ?? null, e.contact_email_enc ?? null, e.contact_phone_enc ?? null, entityId,
           i.tagline ?? null, i.about ?? null, i.brand_color ?? null, i.founded_year ?? null, i.country?.toUpperCase() ?? null, i.sports ?? [], i.regions ?? [], i.offers ?? [], i.backs ?? [],
           i.budget_currency ?? null, i.budget_min_cents ?? null, i.budget_max_cents ?? null, JSON.stringify(i.links ?? {})])).rows[0];
@@ -120,35 +122,116 @@ cap({
   },
 });
 
+// ------------------------------------------------------------------ brand ownership (#340)
+const OWNER_STAFF = ['owner', 'admin'];           // organisation roles that may hand a linked brand over
+const MANAGER_EQUIVALENT = ['owner', 'admin', 'manager']; // organisation roles that already act as the brand's manager
+
+/** The brand's organisation staff (and the owner) may see who owns it and the hand-over history; contacts are not part of it. */
+async function ownershipView(c, s, user) {
+  const owner = (await c.query('SELECT id, handle, display_name, avatar_emoji, avatar_color FROM users WHERE id=$1', [s.owner_id])).rows[0];
+  const orgRoleNow = s.organisation_id ? await orgRole(user, s.organisation_id, c) : null;
+  const can = (!s.entity_id || !!s.organisation_id) && (isAdmin(user) || user.id === s.owner_id || OWNER_STAFF.includes(orgRoleNow));
+  const history = (await c.query(
+    `SELECT t.id, t.created_at, t.rev, t.note, t.previous_owner_role, f.display_name AS from_name, f.handle AS from_handle, o.display_name AS to_name, o.handle AS to_handle, b.display_name AS by_name
+       FROM sponsor_owner_transfers t JOIN users f ON f.id=t.from_user_id JOIN users o ON o.id=t.to_user_id JOIN users b ON b.id=t.by_user_id
+      WHERE t.sponsor_id=$1 ORDER BY t.created_at DESC, t.id LIMIT 50`, [s.id])).rows;
+  return { sponsor_id: s.id, name: s.name, owner, owner_rev: s.owner_rev, organisation_id: s.organisation_id, entity_id: s.entity_id, can_transfer: can,
+    blocked: s.entity_id && !s.organisation_id ? 'This brand belongs to a sponsor entity, whose representatives act for it; manage them on the sponsor team.' : null, history };
+}
+
 cap({
-  name: 'list_sponsors', method: 'GET', path: '/sponsors', tag: 'Sponsors', auth: 'public', summary: 'Sponsor directory: display name, industry, website, emoji, sponsor type and verified badge only; legal name, registration, billing and representatives are never listed. With mine=true (signed in): the brands you can act for as owner/creator, sponsor-entity representative or organisation staff, each with your sponsor role and whether its identity is confirmed.',
+  name: 'get_sponsor_ownership', method: 'GET', path: '/sponsors/:id/ownership', tag: 'Sponsors',
+  summary: 'Brand managers: who owns the brand (the implicit manager and original creator), the revision to quote when handing it over, whether you may hand it over, and the hand-over history. Contact details are not part of this.',
+  input: z.object({ id }),
+  async handler({ user }, i) {
+    const s = await mustFind('sponsors', i.id);
+    if (!isAdmin(user)) assertSponsorCan(await sponsorAccess(user, s), 'manage', { what: 'see the brand\'s ownership' });
+    return ownershipView(pool, s, user);
+  },
+});
+
+cap({
+  name: 'transfer_sponsor_ownership', method: 'POST', path: '/sponsors/:id/transfer', tag: 'Sponsors',
+  summary: 'Hand a brand\'s ownership (sponsors.owner_id: its implicit manager, contact-data owner and creator) to someone else, in one transaction under a row lock. Allowed for the current owner, an owner/admin of the brand\'s organisation, or a platform admin. For a brand run by an organisation the new owner must be an active member with a sponsor-carrying role and no department scope; the previous owner then keeps at least a manager role in the organisation. For an individual brand the new owner is another adult with the sponsor role and the previous owner no longer has access. Quote `expected_rev` from get_sponsor_ownership: a stale hand-over is rejected (409). Agreements, payments, history and encrypted contacts are untouched. A brand under a sponsor entity cannot be handed over here.',
+  input: z.object({ id, to_user_id: id, expected_rev: z.coerce.number().int().positive().describe('the owner_rev you saw; if the brand changed hands meanwhile the hand-over is rejected (409) so you can reload'), note: z.string().max(300).optional() }),
+  handler: ({ user }, i) => tx(async (c) => {
+    const s = (await c.query('SELECT * FROM sponsors WHERE id=$1 FOR UPDATE', [i.id])).rows[0];
+    if (!s) throw notFound('Sponsor');
+    if (s.organisation_id) await lockOrg(c, s.organisation_id); // brand first, organisation second: nothing else takes them the other way round
+    const mine = isAdmin(user) ? 'admin' : s.owner_id === user.id ? 'owner' : s.organisation_id ? await orgRole(user, s.organisation_id, c) : null;
+    if (!isAdmin(user) && mine !== 'owner' && !OWNER_STAFF.includes(mine)) {
+      if (!(await sponsorAccess(user, s, c))) throw notFound('Sponsor');
+      throw forbidden('Only the brand owner or an owner/admin of its organisation can hand the brand over');
+    }
+    if (s.entity_id && !s.organisation_id) throw conflict('This brand belongs to a sponsor entity, whose representatives act for it; manage them on the sponsor team instead');
+    if (s.organisation_id && !isAdmin(user) && mine !== 'owner' && (await c.query("SELECT 1 FROM organisations WHERE id=$1 AND status='active'", [s.organisation_id])).rowCount === 0) throw conflict('This brand\'s organisation is archived and read-only');
+    if (i.expected_rev !== s.owner_rev) throw conflict('This brand changed hands since you opened it; reload and try again');
+    if (i.to_user_id === s.owner_id) throw badRequest('That person already owns this brand');
+    const to = (await c.query('SELECT id, display_name, roles FROM users WHERE id=$1', [i.to_user_id])).rows[0];
+    if (!to) throw notFound('Person');
+    if (await isYouth(to.id, c)) throw unprocessable('A brand cannot be handed to a young person');
+    if (s.organisation_id) {
+      const m = (await c.query("SELECT role, department_id FROM organisation_members WHERE organisation_id=$1 AND user_id=$2 AND status='active'", [s.organisation_id, to.id])).rows[0];
+      if (!m || !SPONSOR_ORG_ROLES.includes(m.role)) throw unprocessable('The new owner must be an active member of the brand\'s organisation with a sponsor role (not a coach)');
+      if (m.department_id) throw unprocessable('The new owner is limited to a department; remove that scope first, because an owner manages the whole brand');
+      // an owner manages the whole brand, so a weaker organisation role (finance, legal...) is raised to manager, as it is for the previous owner
+      if (!MANAGER_EQUIVALENT.includes(m.role)) await c.query("UPDATE organisation_members SET role='manager' WHERE organisation_id=$1 AND user_id=$2 AND status='active'", [s.organisation_id, to.id]);
+    } else if (!to.roles.includes('sponsor') && !to.roles.includes('admin')) throw unprocessable('The new owner needs the sponsor role');
+    // the previous owner keeps a manager-equivalent role in the organisation; a weaker one is raised, a stronger one is left alone
+    let prevRole = null;
+    if (s.organisation_id) {
+      const pm = (await c.query("SELECT role FROM organisation_members WHERE organisation_id=$1 AND user_id=$2 AND status='active'", [s.organisation_id, s.owner_id])).rows[0];
+      if (pm) {
+        prevRole = pm.role;
+        if (!MANAGER_EQUIVALENT.includes(pm.role)) {
+          await c.query("UPDATE organisation_members SET role='manager', department_id=NULL WHERE organisation_id=$1 AND user_id=$2 AND status='active'", [s.organisation_id, s.owner_id]);
+          prevRole = 'manager';
+        }
+      }
+      // a person on the team by hand (not through the organisation) who was the owner steps down to manager, like a weaker staff member
+      const stepped = await c.query("UPDATE sponsor_representatives SET role='manager', department_id=NULL WHERE entity_id=$1 AND user_id=$2 AND source='manual' AND status='active' AND role='owner'", [s.entity_id, s.owner_id]);
+      if (stepped.rowCount && !pm) prevRole = 'manager';
+    }
+    if (s.organisation_id) await syncOrgSponsorTeams(c, s.organisation_id);
+    const next = (await c.query('UPDATE sponsors SET owner_id=$2, owner_rev=owner_rev+1, updated_at=now() WHERE id=$1 RETURNING *', [s.id, to.id])).rows[0];
+    // last-manager guard: the brand must still have a live manager after the change (the new owner always is one)
+    if ((await sponsorAccess({ id: to.id }, next, c))?.role !== 'manager') throw conflict('The brand would be left without a manager');
+    await c.query('INSERT INTO sponsor_owner_transfers(sponsor_id, from_user_id, to_user_id, by_user_id, organisation_id, previous_owner_role, rev, note) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
+      [s.id, s.owner_id, to.id, user.id, s.organisation_id, prevRole, next.owner_rev, i.note ?? null]);
+    await audit(c, user.id, 'transfer_sponsor_ownership', 'sponsors', s.id);
+    const data = { sponsor_id: s.id };
+    await notify(c, to.id, { kind: 'sponsor_ownership', title: `You now own ${s.name}`, body: `${s.name} was handed over to you. You manage the brand, its deals and its contact details.`, data });
+    if (s.owner_id !== user.id) await notify(c, s.owner_id, { kind: 'sponsor_ownership', title: `${s.name} was handed over`, body: prevRole ? `You no longer own ${s.name}; you keep managing it as ${prevRole}.` : `You no longer own ${s.name} and no longer have access to it.`, data });
+    for (const uid of await sponsorRecipients(c, next, 'manage')) if (![user.id, to.id, s.owner_id].includes(uid)) await notify(c, uid, { kind: 'sponsor_ownership', title: `${s.name} has a new owner`, body: `${to.display_name} now owns ${s.name}.`, data });
+    return { ok: true, sponsor_id: s.id, owner_id: to.id, previous_owner_id: s.owner_id, previous_owner_role: prevRole, owner_rev: next.owner_rev };
+  }),
+});
+
+cap({
+  name: 'list_sponsors', method: 'GET', path: '/sponsors', tag: 'Sponsors', auth: 'public', summary: 'Sponsor directory: display name, industry, website, emoji, sponsor type and verified badge only; legal name, registration, billing and representatives are never listed. With mine=true (signed in): the brands you can act for as creator or sponsor-team member (an organization sponsor\'s staff are on its team), each with your role (owner, admin, manager, approver, finance, legal, evaluator, auditor, portfolio_manager or viewer) and whether its identity is confirmed.',
   input: z.object({ q: z.string().optional(), mine: z.coerce.boolean().optional().describe('only brands you act for (needs sign-in); each carries your sponsor role'), ...page }),
   async handler({ user }, i) {
     const rows = await many(
       `SELECT * FROM (SELECT sp.id, sp.name, sp.industry, sp.website, sp.emoji, sp.organisation_id, e.sponsor_type, sp.tagline, sp.brand_color, sp.sports, sp.offers, sp.backs, sp.about, sp.country, sp.links, (sp.contact_email_enc IS NOT NULL) AS has_contact, sp.budget_min_cents, sp.budget_max_cents, (sp.entity_id IS NOT NULL) AS identity_confirmed,
               (SELECT o.name FROM organisations o WHERE o.id=sp.organisation_id) AS organisation_name,
               CASE WHEN $5::uuid IS NULL THEN NULL
-                   WHEN sp.entity_id IS NULL AND sp.owner_id=$5 THEN 'manager'
-                   ELSE coalesce(
-                     (SELECT CASE r.role WHEN 'owner' THEN 'manager' WHEN 'admin' THEN 'manager' WHEN 'portfolio_manager' THEN 'manager' ELSE r.role END FROM sponsor_representatives r
-                       WHERE r.entity_id=sp.entity_id AND r.user_id=$5 AND r.status='active' AND (r.role<>'portfolio_manager' OR ${ASSIGNED}sp.id))),
-                     (SELECT CASE m.role WHEN 'owner' THEN 'manager' WHEN 'admin' THEN 'manager' ELSE m.role END FROM organisation_members m
-                       WHERE sp.entity_id IS NULL AND m.organisation_id=sp.organisation_id AND m.user_id=$5 AND m.status='active' AND m.role <> 'coach')) END AS my_role,
-              (SELECT m.department_id FROM organisation_members m WHERE sp.entity_id IS NULL AND m.organisation_id=sp.organisation_id AND m.user_id=$5 AND m.status='active') AS my_department_id
+                   WHEN sp.entity_id IS NULL AND sp.owner_id=$5 THEN 'owner'
+                   ELSE (SELECT r.role FROM sponsor_representatives r WHERE r.entity_id=sp.entity_id AND r.user_id=$5 AND r.status='active' AND (r.role<>'portfolio_manager' OR ${ASSIGNED}sp.id))) END AS my_role,
+              (SELECT r.department_id FROM sponsor_representatives r WHERE r.entity_id=sp.entity_id AND r.user_id=$5 AND r.status='active' LIMIT 1) AS my_department_id
          FROM sponsors sp LEFT JOIN sponsor_entities e ON e.id=sp.entity_id
         WHERE ($1::text IS NULL OR sp.name ILIKE '%'||$1||'%')) x
         WHERE (NOT $4 OR x.my_role IS NOT NULL) ORDER BY x.name, x.id LIMIT $2 OFFSET $3`, [i.q ?? null, i.limit, i.offset, !!i.mine, user?.id ?? null]);
     return withBadges('sponsor', rows.map((r) => {
       if (!i.mine) return { id: r.id, name: r.name, industry: r.industry, website: r.website, emoji: r.emoji, sponsor_type: r.sponsor_type, tagline: r.tagline, brand_color: r.brand_color, sports: r.sports, offers: r.offers };
       const { about, country, links, has_contact, budget_min_cents, budget_max_cents, ...rest } = r;
-      return { ...rest, profile: r.my_role === 'manager' ? completeness(r) : null };
+      return { ...rest, profile: FROM_REP[r.my_role] === 'manager' ? completeness(r) : null };
     }));
   },
 });
 
 cap({
   name: 'get_sponsor', method: 'GET', path: '/sponsors/:id', tag: 'Sponsors', auth: 'public',
-  summary: 'Sponsor profile and active sponsorships. Contact details are returned only to the brand\'s managers (owners and admins of its sponsor entity, or its organisation managers); legal and billing identity is never returned here.', input: z.object({ id }),
+  summary: 'Sponsor profile and active sponsorships. Contact details are returned only to the brand\'s managers (the owners, admins and managers on its sponsor team); legal and billing identity is never returned here.', input: z.object({ id }),
   async handler({ user }, i) {
     const s = await mustFind('sponsors', i.id);
     const deals = await many("SELECT id, target_type, target_id, amount_cents, in_kind, starts_on, ends_on FROM sponsorships WHERE sponsor_id=$1 AND status='active' AND visibility='public'", [i.id]);
@@ -157,7 +240,7 @@ cap({
     const access = user ? await sponsorAccess(user, s) : null;
     if (user && (isAdmin(user) || access?.role === 'manager')) {
       await audit(null, user.id, 'read_pii', 'sponsors', s.id);
-      Object.assign(out, decryptFields(s, 'sponsors', CONTACT), { my_role: access?.role ?? 'admin', budget_currency: s.budget_currency, budget_min_cents: s.budget_min_cents, budget_max_cents: s.budget_max_cents,
+      Object.assign(out, decryptFields(s, 'sponsors', CONTACT), { my_role: access?.repRole ?? 'admin', budget_currency: s.budget_currency, budget_min_cents: s.budget_min_cents, budget_max_cents: s.budget_max_cents,
         profile: completeness(s),
         // athletes who opted in, fit what the brand offers and play a sport it supports
         matching_athletes: (await one(`SELECT count(*)::int AS n FROM sponsorship_profiles p JOIN users u ON u.id=p.user_id

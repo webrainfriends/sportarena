@@ -15,13 +15,15 @@ import {
   logEvent, notifyApplicant, replayed, setStage, stale, sweepExpired,
 } from '../recruitment.js';
 import { notify } from '../notify.js';
+import { SECTIONS, scopeOf } from '../opportunity.js';
+import { recruitmentSections } from '../passport-sections.js';
 
 const TAG = 'Recruitment';
 const key = z.string().min(8).max(80).describe('unique per attempt; a retry with the same key returns the first result');
 const version = z.coerce.number().int().min(1).describe('row_version you last saw; a stale value is rejected with code stale_version');
 const rateUnit = z.enum(['match', 'hour', 'month', 'season']);
 const OFFER_KINDS = ['match_players', 'team_recruiting', 'coach_wanted'];
-const VIEW = `id, post_id, responder_id, status, stage, row_version, stage_changed_at, trial_at, trial_venue_id, trial_note, created_at,
+const VIEW = `id, post_id, responder_id, status, stage, row_version, stage_changed_at, trial_at, trial_venue_id, trial_note, created_at, shared_sections, engagement_type, engagement_id, payout_id,
   (SELECT v.name FROM venues v WHERE v.id=trial_venue_id) AS trial_venue_name, (SELECT v.city FROM venues v WHERE v.id=trial_venue_id) AS trial_venue_city`;
 
 const view = async (c, rid) => (await c.query(`SELECT ${VIEW} FROM billboard_responses WHERE id=$1`, [rid])).rows[0];
@@ -112,18 +114,27 @@ cap({
     const applicant = await one('SELECT id, handle, display_name, avatar_emoji, avatar_color FROM users WHERE id=$1', [r.responder_id]);
     const events = await many(`SELECT kind, from_stage, to_stage, actor_id, ${staff ? 'note,' : ''} created_at FROM recruitment_events WHERE response_id=$1 ORDER BY created_at, id`, [i.id]);
     const offers = await many('SELECT version, role, rate_cents, rate_unit, starts_on, note, deadline_at, status, created_at, decided_at FROM recruitment_offers WHERE response_id=$1 ORDER BY version', [i.id]);
-    const out = { application: await view(pool, i.id), post: { id: post.id, title: post.title, kind: post.kind, status: post.status, team_id: post.team_id }, applicant, viewer: staff ? 'staff' : 'applicant', events, offers };
+    const out = { application: await view(pool, i.id), post: { id: post.id, title: post.title, kind: post.kind, status: post.status, team_id: post.team_id, opportunity_type: post.opportunity_type, compensation: post.compensation, budget_cents: post.budget_cents, currency: post.currency, rate_unit: post.rate_unit, required_sections: post.required_sections, target_type: post.target_type, target_role: post.target_role }, applicant, viewer: staff ? 'staff' : 'applicant', events, offers };
     if (staff) {
       const evals = await many('SELECT id, rating, notes_enc, trial_at, author_id, created_at FROM recruitment_evaluations WHERE response_id=$1 ORDER BY created_at, id', [i.id]);
       if (evals.some((e) => e.notes_enc)) await audit(null, user.id, 'read_recruitment_evaluation', 'billboard_responses', i.id);
       out.evaluations = evals.map(({ notes_enc, ...e }) => ({ ...e, notes: notes_enc ? decrypt(notes_enc, 'recruitment_evaluations.notes') : null }));
       out.message = r.message;
+      // only the sections the applicant allowed for this application, read through the same passport gate as every shared view
+      if (r.shared_sections.length) {
+        await audit(null, user.id, 'read_recruitment_evidence', 'billboard_responses', i.id);
+        out.evidence = await recruitmentSections(r.responder_id, scopeOf(r.shared_sections), { viewerId: user.id });
+      }
       if (r.source_ref_enc) {
         await audit(null, user.id, 'read_recruitment_source', 'billboard_responses', i.id);
         out.source = { kind: r.source_kind, url: decrypt(r.source_ref_enc, 'billboard_responses.source_ref') };
       }
     } else {
       out.has_source = !!r.source_ref_enc;
+    }
+    // where an acceptance landed: roster member, event/game role and the payment record (what the person was promised is on the offer / post)
+    if (r.engagement_type || r.payout_id) {
+      out.engagement = { type: r.engagement_type, id: r.engagement_id, payout: r.payout_id ? await one('SELECT id, amount_cents, currency, status, due_on FROM team_payouts WHERE id=$1', [r.payout_id]) : null };
     }
     return out;
   },
@@ -236,6 +247,20 @@ cap({
     await closeOpenOffer(c, resp.id, 'withdrawn', user.id);
     const row = await setStage(c, resp, 'withdrawn', { kind: 'withdrawn', actor: user.id, note: i.note, key: i.idempotency_key });
     await notify(c, post.author_id, { kind: 'recruitment_withdrawn', title: 'An application was withdrawn', body: `An application to "${post.title}" was withdrawn.`, data: { post_id: post.id, response_id: resp.id }, dedupe_key: `recruit:${resp.id}:withdrawn` });
+    return view(c, row.id);
+  }),
+});
+
+cap({
+  name: 'set_application_sharing', method: 'POST', path: '/billboard/responses/:id/sharing', tag: TAG,
+  summary: 'Change which passport sections the selectors of a post may see for your application (you, or a verified guardian for a young person). Sharing can be narrowed or widened while the application is open, but not below what the post requires. Needs the row_version you saw and an idempotency_key; the change is recorded in the history.',
+  input: z.object({ id, shared_sections: z.array(z.enum(SECTIONS)).max(5), row_version: version, idempotency_key: key }),
+  handler: ({ user }, i) => applicantMutation(user, i, {}, async (c, resp, post) => {
+    if (!OPEN_STAGES.includes(resp.stage)) throw conflict(`This application is already ${resp.stage}`, { code: 'closed_application', stage: resp.stage });
+    const next = [...new Set(i.shared_sections)];
+    const missing = (post.required_sections ?? []).filter((x) => !next.includes(x));
+    if (missing.length) throw badRequest(`This post requires you to share: ${missing.join(', ')}. Withdraw your application to stop sharing it.`, { code: 'evidence_required', missing });
+    const row = await setStage(c, resp, resp.stage, { kind: 'evidence', actor: user.id, note: `Sharing: ${next.join(', ') || 'nothing'}`, key: i.idempotency_key, set: ', shared_sections=$4', params: [next] });
     return view(c, row.id);
   }),
 });

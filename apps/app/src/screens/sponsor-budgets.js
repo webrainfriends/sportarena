@@ -10,6 +10,7 @@ import { BudgetWizard } from './budget-wizard';
 import { BudgetCoverage, BudgetTrace, LinkProgramsSheet } from './budget-trace';
 import { DocumentsSheet } from './insurance';
 import { c } from '../theme';
+import { asSponsorRole } from '../sponsor-roles';
 import { explain, LoadError } from '../access';
 
 // Sponsorship budget controls (#293). A budget is what the brand has AUTHORIZED to reserve and commit. Planned offers are shown apart and
@@ -17,7 +18,7 @@ import { explain, LoadError } from '../access';
 export const fmt = (cents, cur) => { try { const f = new Intl.NumberFormat(undefined, { style: 'currency', currency: cur }); return f.format(cents / 10 ** f.resolvedOptions().maximumFractionDigits); } catch { return `${cents} ${cur ?? ''}`.trim(); } };
 const KIND = { annual: 'Annual', program: 'Program', department: 'Department', event: 'Event' };
 const KIND_TONE = { annual: c.violetSoft, program: c.pinkSoft, department: c.mintSoft, event: c.sunSoft };
-const MAY_EDIT = ['manager', 'finance', 'admin'];
+const MAY_EDIT = ['manager', 'finance'];
 const day = (iso) => (iso ? new Date(`${String(iso).slice(0, 10)}T00:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '');
 const stamp = (iso) => (iso ? new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
 
@@ -73,11 +74,11 @@ export function SponsorBudgets() {
   const [status, setStatus] = useState('active');
   const [form, setForm] = useState(false);
   const brands = useLoad(() => api.get('/sponsors', { mine: true, limit: 50 }), []);
-  const mine = (brands.data ?? []).filter((b) => ['manager', 'finance', 'approver', 'auditor', 'admin'].includes(b.my_role));
+  const mine = (brands.data ?? []).filter((b) => ['manager', 'finance', 'approver', 'auditor'].includes(asSponsorRole(b.my_role)));
   const brand = mine.find((b) => b.id === brandId) ?? mine[0];
   const list = useLoad(() => (brand ? api.get('/sponsorship-budgets', { sponsor_id: brand.id, status, limit: 100 }) : Promise.resolve([])), [brand?.id, status]);
   const events = useLoad(() => api.get('/events', { limit: 50 }).catch(() => []), []);
-  const may = brand && MAY_EDIT.includes(brand.my_role);
+  const may = brand && MAY_EDIT.includes(asSponsorRole(brand.my_role));
   const byId = Object.fromEntries((list.data ?? []).map((b) => [b.id, b]));
   return (
     <Screen onRefresh={() => { list.reload(); brands.reload(); }} refreshing={list.loading && !!list.data}>
@@ -108,7 +109,7 @@ export function SponsorBudgets() {
           )) : <Empty emoji="🧮" title={`No ${status} budgets`} sub={may ? 'Authorize a budget for a year, a program, a department or an event.' : 'Budgets of this brand appear here.'} />}
         </>
       )}
-      <BudgetWizard visible={form} onClose={() => setForm(false)} brands={mine.filter((b) => MAY_EDIT.includes(b.my_role))} brand={brand} events={events.data ?? []}
+      <BudgetWizard visible={form} onClose={() => setForm(false)} brands={mine.filter((b) => MAY_EDIT.includes(asSponsorRole(b.my_role)))} brand={brand} events={events.data ?? []}
         onCreated={(b, { failed }) => { list.reload(); push('SponsorBudget', { id: b.id }); toast(failed.length ? `Budget authorized — ${failed.length} file${failed.length === 1 ? '' : 's'} could not be uploaded; add ${failed.length === 1 ? 'it' : 'them'} from the budget` : 'Budget authorized'); }} />
     </Screen>
   );

@@ -5,11 +5,17 @@ import { Pressable, ScrollView, View } from 'react-native';
 import { api } from './api';
 import { useLoad } from './hooks';
 import { useSession } from './session';
-import { Chip, Field, T } from './ui';
+import { Chip, ErrorBox, Field, T } from './ui';
 import { c } from './theme';
 
+// cache only a successful, non-empty answer: a failed or empty first load must be retried, not remembered
 let cache = null;
-export const useSports = () => useLoad(() => (cache ??= api.get('/sports')), []);
+export const useSports = () => useLoad(async () => {
+  if (cache) return cache;
+  const list = await api.get('/sports');
+  if (list?.length) cache = list;
+  return list ?? [];
+}, []);
 
 // favourites are shared by every picker on screen: one module-level store, pickers subscribe
 let favs = null; const subs = new Set();
@@ -38,7 +44,7 @@ export const TYPES = [
   { value: 'esports', label: '🎮 Online games' },
 ];
 
-function Panel({ all, value, onPick, allLabel }) {
+function Panel({ all, value, onPick, allLabel, error, onRetry }) {
   const { slugs, toggle, signedIn } = useFavSports();
   const [type, setType] = useState(null); // null = all, 'fav' = favourites
   const [q, setQ] = useState('');
@@ -49,6 +55,7 @@ function Panel({ all, value, onPick, allLabel }) {
   const ordered = type === 'fav' || term ? rows : [...rows.filter((s) => favSet.has(s.slug)), ...rows.filter((s) => !favSet.has(s.slug))];
   return (
     <View style={{ gap: 8, borderWidth: 1, borderColor: c.line, borderRadius: 16, padding: 10, backgroundColor: c.paper }}>
+      {error ? <ErrorBox error={error} onRetry={onRetry} /> : null}
       <Field value={q} onChangeText={setQ} placeholder={`Search ${all.length} sports & games…`} />
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
         {signedIn ? <Chip label={`★ Favourites${slugs.length ? ` (${slugs.length})` : ''}`} active={type === 'fav'} onPress={() => setType('fav')} /> : null}
@@ -80,11 +87,11 @@ export function SportSelect({ label, value, onChange, optional, allLabel }) {
   return (
     <View style={{ gap: 6 }}>
       {label ? <T weight="800" size={13}>{label}{optional ? ' (optional)' : ''}</T> : null}
-      <Pressable onPress={() => setOpen(!open)} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, borderColor: open ? c.ink : c.line, borderRadius: 14, backgroundColor: c.paper, paddingHorizontal: 14, paddingVertical: 12 }}>
+      <Pressable onPress={() => { if (!open && !all.length && !sports.loading) sports.reload(); setOpen(!open); }} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, borderColor: open ? c.ink : c.line, borderRadius: 14, backgroundColor: c.paper, paddingHorizontal: 14, paddingVertical: 12 }}>
         <T weight="700">{picked ? `${picked.emoji} ${picked.name}` : allLabel ? `✨ ${allLabel}` : 'Choose a sport…'}</T>
         <T color={c.mute}>{open ? '▴' : '▾'}</T>
       </Pressable>
-      {open ? <Panel all={all} value={value} allLabel={allLabel ?? (optional ? 'Any / none' : null)} onPick={(slug) => { onChange(slug ?? (allLabel ? null : '')); setOpen(false); }} /> : null}
+      {open ? <Panel all={all} value={value} error={sports.error} onRetry={sports.reload} allLabel={allLabel ?? (optional ? 'Any / none' : null)} onPick={(slug) => { onChange(slug ?? (allLabel ? null : '')); setOpen(false); }} /> : null}
     </View>
   );
 }

@@ -13,11 +13,14 @@ import { notify } from '../notify.js';
 import { hasOrgGrant } from '../org-access.js';
 import { NOT_YOUTH_SQL } from '../youth.js';
 import { CAN, ROLES, entityRole, sponsorRole, createEntity, sponsorTeamSql } from '../sponsor-identity-access.js';
+import { syncEntityTeam } from '../sponsor-team-sync.js';
 
 const TAG = 'Sponsors';
 const PRIVATE = ['registration_number', 'tax_id', 'billing_email', 'billing_address'];
 const TYPE = z.enum(['individual', 'company', 'organization']);
 const ROLE = z.enum(ROLES);
+const SCOPELESS = ['owner', 'admin']; // owners and admins manage the whole sponsor, so they are never limited to one department
+const MIRRORED = 'This person is on the team through the sponsor\'s organisation; change or end it in the organisation\'s People tab and it follows here at once';
 
 const lockEntity = async (c, entityId) => {
   const e = (await c.query('SELECT * FROM sponsor_entities WHERE id=$1 FOR UPDATE', [entityId])).rows[0];
@@ -39,7 +42,7 @@ async function identityView(c, user, sp, role) {
   const canSeePrivate = !!e && CAN.identity.includes(role);
   const out = {
     sponsor_id: sp.id, display_name: sp.name, entity_id: e?.id ?? null, identity_confirmed: !!e,
-    sponsor_type: e?.sponsor_type ?? null, legal_name: e?.legal_name ?? null, registration_country: e?.registration_country ?? null, organisation_id: e?.organisation_id ?? null,
+    sponsor_type: e?.sponsor_type ?? null, legal_name: e?.legal_name ?? null, registration_country: e?.registration_country ?? null, organisation_id: e?.organisation_id ?? null, staff_sync: !!e?.staff_sync,
     row_version: e?.row_version ?? null, my_role: role, can_edit: CAN.identity.includes(role),
   };
   if (canSeePrivate) {
@@ -71,7 +74,7 @@ cap({
 
 cap({
   name: 'set_sponsor_identity', method: 'POST', path: '/sponsors/:id/identity', tag: TAG,
-  summary: 'Owner/admin: confirm or update the legal and billing identity of a brand. The first save creates the sponsor entity (you become its owner); later saves must send the current `row_version` and a stale one is rejected with 409 so nobody overwrites a colleague. Individuals have no registration number. An organization may link an organisation you own or administer. Registration, tax and billing details are encrypted. Agreements already proposed keep the identity they were proposed with.',
+  summary: 'Owner/admin: confirm or update the legal and billing identity of a brand. The first save creates the sponsor entity (you become its owner); later saves must send the current `row_version` and a stale one is rejected with 409 so nobody overwrites a colleague. Individuals have no registration number. An organization may link an organisation you own or administer: its owners, admins and sponsor staff (manager, approver, finance, legal, evaluator, auditor) are then mirrored onto this sponsor team with their roles and departments, follow every change to their organisation membership at once, and lose access the moment the link is removed (organisation_id: null). Registration, tax and billing details are encrypted. Agreements already proposed keep the identity they were proposed with.',
   input: z.object({
     id, sponsor_type: TYPE.optional(), legal_name: z.string().min(2).max(160).nullable().optional(),
     registration_country: z.string().regex(/^[A-Za-z]{2}$/, 'two-letter country code').toUpperCase().nullable().optional().describe('ISO 3166-1 alpha-2 country of registration or residence'),
@@ -102,8 +105,16 @@ cap({
       for (const [k, v] of Object.entries(enc)) set[k] = v;
       if (type === 'individual' && e.registration_number_enc && i.registration_number !== null) throw conflict('This identity has a registration number; clear it explicitly (registration_number: null) before changing to an individual');
       if (type !== 'organization' && e.organisation_id && i.organisation_id !== null) throw conflict('This identity is linked to an organisation; unlink it explicitly (organisation_id: null) before changing the type');
+      // linking an organisation is the explicit act that puts its sponsor staff on this team (and unlinking ends it, at once)
+      const relink = i.organisation_id !== undefined && (i.organisation_id ?? null) !== (e.organisation_id ?? null);
+      if (relink) set.staff_sync = !!i.organisation_id;
       const keys = Object.keys(set);
       await c.query(`UPDATE sponsor_entities SET ${keys.map((k, n) => `${k}=$${n + 2}`).join(', ')}, row_version=row_version+1, updated_at=now() WHERE id=$1`, [e.id, ...keys.map((k) => set[k])]);
+      if (relink) {
+        await c.query('UPDATE sponsors SET organisation_id=$2 WHERE entity_id=$1', [e.id, i.organisation_id ?? null]); // the brands' organisation follows the entity's
+        await syncEntityTeam(c, e.id);
+        await audit(c, user.id, i.organisation_id ? 'link_sponsor_organisation' : 'unlink_sponsor_organisation', 'sponsor_entities', e.id);
+      }
       const fresh = (await c.query('SELECT * FROM sponsors WHERE id=$1', [sp.id])).rows[0];
       return identityView(c, user, fresh, role);
     });
@@ -121,7 +132,7 @@ cap({
       await entityFor(c, user, i.entity_id, CAN.identity);
       const mine = await c.query("SELECT 1 FROM sponsor_representatives WHERE entity_id=$1 AND user_id=$2 AND status='active'", [i.entity_id, sp.owner_id]);
       if (!mine.rowCount) throw forbidden('The brand owner must be an active representative of the entity first');
-      await c.query('UPDATE sponsors SET entity_id=$2 WHERE id=$1', [sp.id, i.entity_id]);
+      await c.query('UPDATE sponsors SET entity_id=$2, organisation_id=(SELECT CASE WHEN staff_sync THEN organisation_id END FROM sponsor_entities WHERE id=$2) WHERE id=$1', [sp.id, i.entity_id]);
       return identityView(c, user, { ...sp, entity_id: i.entity_id }, await sponsorRole(c, user, { ...sp, entity_id: i.entity_id }));
     });
   },
@@ -159,32 +170,40 @@ cap({
   async handler({ user }, i) {
     await entityFor(pool, user, i.id, CAN.identity);
     return many(
-      `SELECT r.id, r.user_id, u.handle, u.display_name, r.role, r.title, r.status, r.joined_at, r.left_at, r.created_at,
+      `SELECT r.id, r.user_id, u.handle, u.display_name, r.role, r.title, r.status, r.joined_at, r.left_at, r.created_at, r.department_id, d.name AS department_name, r.source,
               coalesce((SELECT json_agg(json_build_object('id', p.id, 'name', p.name) ORDER BY p.name) FROM sponsor_portfolio_assignments a JOIN sponsor_portfolios p ON p.id=a.portfolio_id
                          WHERE a.representative_id=r.id AND a.ended_at IS NULL AND p.archived_at IS NULL), '[]') AS portfolios
-         FROM sponsor_representatives r JOIN users u ON u.id=r.user_id
+         FROM sponsor_representatives r JOIN users u ON u.id=r.user_id LEFT JOIN org_departments d ON d.id=r.department_id
         WHERE r.entity_id=$1 AND ($2::text IS NULL OR r.status=$2) ORDER BY (r.status='active') DESC, r.created_at, r.id LIMIT $3 OFFSET $4`, [i.id, i.status ?? null, i.limit, i.offset]);
   },
 });
+
+/** A department scope needs a linked organisation, an active department of it, and a role that is not owner/admin. */
+async function checkScope(c, entity, role, departmentId) {
+  if (!departmentId) return;
+  if (SCOPELESS.includes(role)) throw badRequest('Owners and admins manage the whole sponsor, so they cannot be limited to one department');
+  if (!entity.organisation_id || !(await c.query('SELECT 1 FROM org_departments WHERE id=$1 AND organisation_id=$2 AND archived_at IS NULL', [departmentId, entity.organisation_id])).rowCount) throw badRequest('That department does not belong to this sponsor\'s linked organisation');
+}
 
 /** Admins may not hand out or touch the owner/admin roles; only owners do. */
 const mayGrant = (actorRole, role) => actorRole === 'owner' || !['owner', 'admin'].includes(role);
 
 cap({
   name: 'invite_sponsor_representative', method: 'POST', path: '/sponsor-entities/:id/representatives', tag: TAG, status: 201,
-  summary: 'Invite a person (an adult account) to act for a sponsor entity as owner, admin, finance, portfolio manager or viewer. Owners can invite any role; admins can invite finance, portfolio managers and viewers. The person must accept before they get any access. Inviting someone who is already invited with the same role returns that invitation; one person can hold different roles in different entities.',
-  input: z.object({ id, user_id: id, role: ROLE, title: z.string().max(80).optional() }),
+  summary: 'Invite a person (an adult account) to act for a sponsor entity as owner, admin, manager, approver, finance, legal, evaluator, auditor, portfolio manager or viewer (the one role vocabulary for everyone who acts for a brand). Owners can invite any role; admins can invite every role except owner and admin. For a sponsor linked to an organisation, `department_id` limits the person to one department. The person must accept before they get any access. Inviting someone who is already invited with the same role returns that invitation; one person can hold different roles in different entities.',
+  input: z.object({ id, user_id: id, role: ROLE, title: z.string().max(80).optional(), department_id: id.optional().describe('limit the person to one department of the sponsor\'s linked organisation; omit for all departments') }),
   async handler({ user }, i) {
     return tx(async (c) => {
       const { role: mine } = await entityFor(c, user, i.id, CAN.identity);
-      await lockEntity(c, i.id);
+      const e = await lockEntity(c, i.id);
       if (!mayGrant(mine, i.role)) throw forbidden('Only an owner can appoint owners and admins');
+      await checkScope(c, e, i.role, i.department_id);
       const u = (await c.query(`SELECT u.id, u.display_name FROM users u WHERE u.id=$1 AND ${NOT_YOUTH_SQL}`, [i.user_id])).rows[0];
       if (!u) throw badRequest('That person cannot be invited (not found, or a youth account: representatives must be adults)');
       const live = (await c.query("SELECT * FROM sponsor_representatives WHERE entity_id=$1 AND user_id=$2 AND status IN ('invited','active')", [i.id, i.user_id])).rows[0];
       if (live?.status === 'active') throw conflict('This person already acts for the entity; change their role instead');
-      if (live) { if (live.role === i.role) return live; throw conflict('This person already has a pending invitation with a different role; cancel it first'); }
-      const row = (await c.query("INSERT INTO sponsor_representatives(entity_id, user_id, role, title, invited_by) VALUES ($1,$2,$3,$4,$5) RETURNING *", [i.id, i.user_id, i.role, i.title ?? null, user.id])).rows[0];
+      if (live) { if (live.role === i.role && (live.department_id ?? null) === (i.department_id ?? null)) return live; throw conflict('This person already has a pending invitation with a different role; cancel it first'); }
+      const row = (await c.query("INSERT INTO sponsor_representatives(entity_id, user_id, role, title, invited_by, department_id) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *", [i.id, i.user_id, i.role, i.title ?? null, user.id, i.department_id ?? null])).rows[0];
       await notify(c, i.user_id, { kind: 'sponsor_invite', title: 'You were invited to act for a sponsor', body: 'Open Sponsors to accept or decline.', data: { representative_id: row.id } });
       return row;
     });
@@ -212,19 +231,22 @@ const otherOwners = async (c, entityId, repId) => Number((await c.query("SELECT 
 
 cap({
   name: 'update_sponsor_representative', method: 'PATCH', path: '/sponsor-representatives/:id', tag: TAG,
-  summary: 'Change a representative\'s role or title. Only owners change owners and admins; the last owner cannot be demoted. A portfolio manager who becomes another role loses their portfolio assignments (the history stays).',
-  input: z.object({ id, role: ROLE.optional(), title: z.string().max(80).nullable().optional() }),
+  summary: 'Change a representative\'s role, department scope or title (people mirrored from the linked organisation\'s staff are changed in the organisation instead). Only owners change owners and admins; the last owner cannot be demoted. A portfolio manager who becomes another role loses their portfolio assignments (the history stays).',
+  input: z.object({ id, role: ROLE.optional(), title: z.string().max(80).nullable().optional(), department_id: id.nullable().optional().describe('department scope: an id, null for all departments, omit to leave unchanged') }),
   async handler({ user }, i) {
     return tx(async (c) => {
       const r0 = await repRow(c, i.id);
       if (!r0) throw notFound('Representative');
       const { role: mine } = await entityFor(c, user, r0.entity_id, CAN.identity);
-      await lockEntity(c, r0.entity_id);
+      const ent = await lockEntity(c, r0.entity_id);
       const r = (await c.query('SELECT * FROM sponsor_representatives WHERE id=$1 FOR UPDATE', [i.id])).rows[0];
       if (!['invited', 'active'].includes(r.status)) throw conflict(`This person has ${r.status}`);
+      if (r.source === 'organisation') throw conflict(MIRRORED);
       if (!mayGrant(mine, r.role) || (i.role && !mayGrant(mine, i.role))) throw forbidden('Only an owner can change owners and admins');
       if (i.role && i.role !== r.role && r.role === 'owner' && r.status === 'active' && await otherOwners(c, r.entity_id, r.id) === 0) throw conflict('An entity must keep at least one owner');
-      const row = (await c.query('UPDATE sponsor_representatives SET role=coalesce($2, role), title=CASE WHEN $4 THEN $3 ELSE title END WHERE id=$1 RETURNING *', [r.id, i.role ?? null, i.title ?? null, i.title !== undefined])).rows[0];
+      const nextRole = i.role ?? r.role, nextDept = i.department_id !== undefined ? i.department_id : r.department_id;
+      await checkScope(c, ent, nextRole, nextDept);
+      const row = (await c.query('UPDATE sponsor_representatives SET role=$2, title=CASE WHEN $4 THEN $3 ELSE title END, department_id=$5 WHERE id=$1 RETURNING *', [r.id, nextRole, i.title ?? null, i.title !== undefined, nextDept ?? null])).rows[0];
       if (i.role && i.role !== 'portfolio_manager') await c.query('UPDATE sponsor_portfolio_assignments SET ended_at=now() WHERE representative_id=$1 AND ended_at IS NULL', [r.id]);
       return row;
     });
@@ -246,6 +268,7 @@ cap({
       await lockEntity(c, r0.entity_id);
       const r = (await c.query('SELECT * FROM sponsor_representatives WHERE id=$1 FOR UPDATE', [i.id])).rows[0];
       if (!['invited', 'active'].includes(r.status)) throw conflict(`This person has already ${r.status === 'left' ? 'left' : r.status}`);
+      if (r.source === 'organisation') throw conflict(MIRRORED);
       if (!own && !mayGrant(mine, r.role)) throw forbidden('Only an owner can remove owners and admins');
       if (r.role === 'owner' && r.status === 'active' && await otherOwners(c, r.entity_id, r.id) === 0) throw conflict('An entity must keep at least one owner');
       const row = (await c.query("UPDATE sponsor_representatives SET status='left', left_at=now() WHERE id=$1 RETURNING *", [r.id])).rows[0];

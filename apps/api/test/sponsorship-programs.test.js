@@ -226,7 +226,7 @@ test('delegated roles: manager/approver run programs, finance/auditor export, ev
   const owner = await signup(['sponsor']);
   const org = must(await api('POST', '/organisations', { token: owner.token, body: { name: `Acme ${n}`, kind: 'company' } }), 201);
   const b = must(await api('POST', '/sponsors', { token: owner.token, body: { name: `Corp ${n}` } }), 201);
-  must(await api('POST', `/organisations/${org.id}/assets`, { token: owner.token, body: { kind: 'sponsor', asset_id: b.id } }));
+  must(await api('POST', `/sponsors/${b.id}/identity`, { token: owner.token, body: { sponsor_type: 'organization', organisation_id: org.id } }));
   const staff = {};
   for (const role of ['approver', 'finance', 'auditor', 'evaluator']) {
     const u = await signup(['athlete']);
@@ -244,8 +244,7 @@ test('delegated roles: manager/approver run programs, finance/auditor export, ev
   must(await api('GET', `/sponsorship-programs/${p.id}/awards-export`, { token: staff.finance.token }));
   assert.equal((await api('GET', `/sponsorship-programs/${p.id}/awards-export`, { token: staff.evaluator.token })).status, 403);
   // revoking a member removes access at once
-  const mem = (await pool.query("SELECT id FROM organisation_members WHERE organisation_id=$1 AND user_id=$2", [org.id, staff.approver.id])).rows[0];
-  await pool.query("UPDATE organisation_members SET status='left' WHERE id=$1", [mem.id]);
+  must(await api('DELETE', `/organisations/${org.id}/members/${staff.approver.id}`, { token: owner.token }));
   assert.equal((await api('GET', `/sponsorship-programs/${p.id}`, { token: staff.approver.token })).status, 403);
 });
 
