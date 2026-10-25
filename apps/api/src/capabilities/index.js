@@ -18,6 +18,7 @@ import './education-discovery.js';
 import './opportunity-matching.js';
 import './credentials.js';
 import './team-management.js';
+import './appearances.js';
 import './team-chat.js';
 import './team-workspace.js';
 import './venues.js';

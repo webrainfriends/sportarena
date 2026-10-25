@@ -8,6 +8,7 @@ import { notify } from '../notify.js';
 import { publish } from '../live.js';
 import { advanceKnockout, isKnockout } from '../tournament/advance.js';
 import { fixtureContext } from './match-tracking.js';
+import { verifyAppearances } from './appearances.js';
 import { liveState, loggedEvents, rulesetForEvent } from '../scoring/state.js';
 import { computeScore, matchPhase } from '../scoring/engine.js';
 import { sheetAnomalies, hasErrors } from '../scoring/checks.js';
@@ -237,6 +238,7 @@ cap({
       const done = (await c.query("UPDATE score_sheets SET status='published', published_by=$2, published_at=now() WHERE id=$1 RETURNING *", [i.id, user.id])).rows[0];
       const fx = (await c.query("UPDATE fixtures SET home_score=$2, away_score=$3, winner_team_id=$4, status='completed', finished_at=coalesce(finished_at, now()), paused_by_event=false WHERE id=$1 RETURNING *", [s.fixture_id, s.home_score, s.away_score, winner ?? null])).rows[0];
       if (isKnockout(fx) && winner) await advanceKnockout(c, fx, winner);
+      await verifyAppearances(c, s.fixture_id, user.id);
       await log(c, s.id, user.id, 'published', 'approved', 'published', s.version > 1 ? `Version ${s.version}: ${s.revision_reason ?? 'correction'}` : null, snap(done));
       await notifyParties(c, x.f, x.ev, user, { title: 'Result published', body: `${x.ev.name}: ${s.home_score}–${s.away_score}` });
       return done;
