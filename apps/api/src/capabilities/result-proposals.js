@@ -11,8 +11,11 @@ import { eventForOrganizer } from './events.js';
 import { fixtureContext } from './match-tracking.js';
 import { loggedEvents, rulesetForEvent } from '../scoring/state.js';
 import { computeScore } from '../scoring/engine.js';
-import { hashOf, evaluateProposal, hasErrors, nextRequirement, policyFor, policySchema, sheetResult, validateTotals } from '../tracking/logic.js';
+import { boardFor, hashOf, evaluateProposal, hasErrors, nextRequirement, parseMark, policyFor, policySchema, sheetResult, validateTotals } from '../tracking/logic.js';
 import { linkContext, ownSheet, proposable, sheetView } from './tracking-sheets.js';
+import { eventAccess } from './multisport.js';
+import { isAssignedOfficial, recordSessionResults, sessionDetail } from './multisport-play.js';
+import { isAdmin } from '../helpers.js';
 
 const TAG = 'Result proposals';
 const q = (c) => c ?? pool;
@@ -20,6 +23,35 @@ const OPEN = ['proposed', 'under_review', 'changes_requested', 'approved', 'disp
 const REVIEWABLE = ['proposed', 'under_review'];
 
 const rolesOf = (x) => [x.organiser && 'organiser', x.official && 'official', (x.side === 'home' || x.side === 'both') && 'home_manager', (x.side === 'away' || x.side === 'both') && 'away_manager'].filter(Boolean);
+
+// ------------------------------------------------------------------ sessions (heats, finals and races of a multi-sport programme)
+/** What the caller is on this session: organiser, an assigned official, nothing else (there are no team managers in a heat). */
+async function sessionContext(user, sessionId, c) {
+  const s = (await q(c).query('SELECT s.*, d.sport_id, d.mode, d.result_type, d.name AS discipline FROM event_sessions s JOIN event_disciplines d ON d.id=s.discipline_id WHERE s.id=$1', [sessionId])).rows[0];
+  if (!s) throw notFound('Session');
+  const { ev, scope } = await eventAccess(q(c), user, s.event_id);
+  const official = isAdmin(user) || (await isAssignedOfficial(q(c), user.id, s.id));
+  return { kind: 'session', s, ev, organiser: !!scope.organizer, official, side: null, canScore: !!scope.organizer || official };
+}
+const contextOf = (user, p, c) => (p.session_id ? sessionContext(user, p.session_id, c) : fixtureContext(user, p.fixture_id, c));
+/** The event's policy limited to the roles a session has (organiser, assigned official); a policy that asks for nothing a session has falls back on official-then-organiser. */
+function sessionPolicy(ev) {
+  const p = policyFor(ev);
+  const requirements = p.requirements.map((r) => ({ ...r, roles: r.roles.filter((z) => z === 'organiser' || z === 'official') })).filter((r) => r.roles.length);
+  if (!requirements.length) return policySchema.parse({ mode: 'sequential', requirements: [{ key: 'official', label: 'Chief official', roles: ['official'] }, { key: 'organiser', label: 'Organiser', roles: ['organiser'] }] });
+  return policySchema.parse({ ...p, requirements, quorum: p.quorum && p.quorum <= requirements.length ? p.quorum : null });
+}
+async function snapshotOfSession(sessionId, c) {
+  const s = (await q(c).query('SELECT status FROM event_sessions WHERE id=$1', [sessionId])).rows[0];
+  const e = (await q(c).query("SELECT id, result_status, result_value::text AS v, position FROM event_session_entries WHERE session_id=$1 AND result_status <> 'scratched' ORDER BY id", [sessionId])).rows;
+  return { session_status: s.status, entries: e.map((r) => [r.id, r.result_status, r.v, r.position]) };
+}
+async function sessionReviewers(c, x) {
+  const ids = new Set([x.ev.organizer_id]);
+  for (const r of (await c.query("SELECT st.user_id FROM event_shifts sh JOIN event_staff st ON st.id=sh.staff_id WHERE sh.session_id=$1 AND sh.status='assigned' AND st.status='accepted'", [x.s.id])).rows) ids.add(r.user_id);
+  ids.delete(null); ids.delete(undefined);
+  return ids;
+}
 
 /** What the canonical record looks like right now. A proposal whose snapshot no longer matches is stale and must be re-reviewed. */
 async function snapshotOf(fixtureId, c) {
@@ -50,13 +82,14 @@ function compatible(sheetRs, eventRs) {
 }
 
 async function reviewers(c, x) {
+  if (x.kind === 'session') return sessionReviewers(c, x);
   const ids = new Set([x.ev.organizer_id, x.f.referee_id]);
   for (const r of (await c.query("SELECT user_id FROM fixture_officials WHERE fixture_id=$1 AND status='accepted'", [x.f.id])).rows) ids.add(r.user_id);
   for (const r of (await c.query('SELECT owner_id FROM teams WHERE id = ANY($1::uuid[])', [[x.f.home_team_id, x.f.away_team_id].filter(Boolean)])).rows) ids.add(r.owner_id);
   ids.delete(null); ids.delete(undefined);
   return ids;
 }
-const tell = (c, uid, p, title, body) => notify(c, uid, { kind: 'result_proposal', title, body, data: { proposal_id: p.id, fixture_id: p.fixture_id, event_id: p.event_id }, dedupe_key: `rp:${p.id}:${p.round}:${title}:${uid}` });
+const tell = (c, uid, p, title, body) => notify(c, uid, { kind: 'result_proposal', title, body, data: { proposal_id: p.id, fixture_id: p.fixture_id ?? undefined, session_id: p.session_id ?? undefined, event_id: p.event_id }, dedupe_key: `rp:${p.id}:${p.round}:${title}:${uid}` });
 
 // ------------------------------------------------------------------ policy
 cap({
@@ -131,17 +164,120 @@ cap({
 });
 const isAdminLike = (x) => x.organiser;
 
+const UNIT_FOR = { time: 'time', distance: 'distance', score: 'score' };
+/** The rows of a results sheet as the session's results: a mark per finished entry, DNS/DNF/DQ as such. Marks are parsed here, never taken from the client. */
+function resultsFromRows(sheet, layout, mapping, session, entries) {
+  const unit = layout.results.unit, want = session.result_type;
+  const ok = (unit === 'time' && want === 'time') || (unit === 'distance' && want === 'distance') || ((unit === 'score' || unit === 'lift') && want === 'score');
+  if (!ok) throw conflict(`This sheet records ${unit === 'lift' ? 'lifting totals' : unit === 'time' ? 'times' : unit === 'distance' ? 'distances' : 'scores'}, but the session ranks by ${want}`);
+  const rows = layout.results.unit === 'lift' ? boardFor(layout, { rows: sheet.rows }).rows : sheet.rows;
+  const ids = new Set(entries.map((e) => e.id));
+  const seenRow = new Set(), seenEntry = new Set();
+  const results = mapping.map((m) => {
+    const r = rows[m.row];
+    if (!r) throw badRequest(`Row ${m.row + 1} is not on the sheet`);
+    if (!ids.has(m.entry_id)) throw badRequest('An entry does not belong to this session');
+    if (seenRow.has(m.row) || seenEntry.has(m.entry_id)) throw badRequest('Each row and each entry can be matched only once');
+    seenRow.add(m.row); seenEntry.add(m.entry_id);
+    const status = r.status ? r.status.toLowerCase() : 'finished';
+    if (status !== 'finished') return { entry_id: m.entry_id, status, row: m.row };
+    const value = unit === 'lift' ? r.total : parseMark(r.result);
+    if (value == null) throw new AppError(422, 'unprocessable', `Row ${m.row + 1}${r.name ? ` (${r.name})` : ''} has no readable ${unit === 'time' ? 'time' : 'mark'}. Fix it on the sheet, or mark DNS / DNF / DQ.`);
+    return { entry_id: m.entry_id, status: 'finished', value, row: m.row };
+  });
+  const missing = entries.filter((e) => !seenEntry.has(e.id));
+  if (missing.length) throw new AppError(422, 'unprocessable', `${missing.length} ${missing.length === 1 ? 'entry in' : 'entries in'} the session ${missing.length === 1 ? 'is' : 'are'} not matched to a row. Match everyone, using DNS for anyone who did not start.`);
+  return { results, summary: results.map((r) => ({ row: r.row, entry_id: r.entry_id, name: rows[r.row].name ?? null, lane: rows[r.row].lane ?? null, status: r.status, mark: rows[r.row].result ?? null, value: r.value ?? null })) };
+}
+
+cap({
+  name: 'submit_session_result_proposal', method: 'POST', path: '/tracking/sheets/:id/session-proposals', tag: TAG, status: 201,
+  summary: 'Propose a completed heat, field or race sheet as the result of a real session of a multi-sport programme. Each row is matched to a session entry; the marks are read from the sheet on the server. Reviewed under the event\'s policy by the organiser and the session\'s assigned officials; approval alone changes nothing: applying records the results through the normal session results path.',
+  input: z.object({ id, session_id: id, mapping: z.array(z.object({ row: z.number().int().min(0).max(59), entry_id: id })).min(1).max(64) }),
+  async handler({ user }, i) {
+    return tx(async (c) => {
+      const x = await sessionContext(user, i.session_id, c);
+      if ((x.ev.status === 'draft' || x.ev.status === 'cancelled') && !x.canScore) throw notFound('Session');
+      if (x.ev.status === 'cancelled') throw conflict('This event is cancelled');
+      if (x.s.status === 'cancelled') throw conflict('This session is cancelled');
+      const sheet = await ownSheet(user, i.id, c, { lock: true });
+      if (sheet.status !== 'completed') throw conflict('Complete the sheet before proposing it');
+      if (sheet.sport_id !== x.s.sport_id) throw badRequest('This sheet is for a different sport than the session');
+      if (sheet.fixture_id) throw conflict('This sheet is already linked to a game');
+      if (sheet.session_id && sheet.session_id !== x.s.id) throw conflict('This sheet is already linked to a different session');
+      const v = (await c.query('SELECT * FROM tracking_sheet_template_versions WHERE id=$1', [sheet.template_version_id])).rows[0];
+      if (v.layout.mode !== 'results') throw conflict('Only heat, field and race sheets can be proposed for a session');
+      const policy = sessionPolicy(x.ev);
+      const entries = (await c.query("SELECT id FROM event_session_entries WHERE session_id=$1 AND result_status <> 'scratched'", [x.s.id])).rows;
+      const built = resultsFromRows(sheet, v.layout, i.mapping, x.s, entries);
+      const payload = { kind: 'session', session_id: x.s.id, session_label: x.s.label, stage: x.s.stage, discipline: x.s.discipline, unit: v.layout.results.unit, results: built.results.map(({ row, ...r }) => r), rows: built.summary, sheet_ref: sheet.ref, ruleset: v.layout.title };
+      const base = await snapshotOfSession(x.s.id, c);
+      const imp = (await c.query("SELECT id FROM tracking_sheet_imports WHERE sheet_id=$1 AND state='confirmed' ORDER BY created_at DESC LIMIT 1", [sheet.id])).rows[0];
+      const existing = (await c.query('SELECT * FROM result_proposals WHERE session_id=$1 AND sheet_id=$2 AND state = ANY($3) FOR UPDATE', [x.s.id, sheet.id, OPEN])).rows[0];
+      let p, duplicate = false;
+      if (existing) {
+        const stale = hashOf(await snapshotOfSession(x.s.id, c)) !== hashOf(existing.base_snapshot);
+        if (existing.submitted_by !== user.id && !x.organiser) throw conflict('Someone else already proposed this sheet for this session');
+        if (!stale && [...REVIEWABLE, 'approved'].includes(existing.state) && hashOf(existing.payload) === hashOf(payload)) { duplicate = true; p = existing; }
+        else {
+          p = (await c.query("UPDATE result_proposals SET state='proposed', round=round+1, payload=$2, policy=$3, ruleset_hash=$4, template_version_id=$5, base_snapshot=$6, import_id=$7, updated_at=now() WHERE id=$1 RETURNING *",
+            [existing.id, JSON.stringify(payload), JSON.stringify(policy), hashOf(v.layout.results), v.id, JSON.stringify(base), imp?.id ?? existing.import_id])).rows[0];
+        }
+      } else {
+        p = (await c.query(
+          `INSERT INTO result_proposals(session_id, event_id, sheet_id, import_id, submitted_by, home_is, payload, policy, ruleset_hash, template_version_id, base_snapshot)
+           VALUES ($1,$2,$3,$4,$5,'home',$6,$7,$8,$9,$10) RETURNING *`,
+          [x.s.id, x.s.event_id, sheet.id, imp?.id ?? null, user.id, JSON.stringify(payload), JSON.stringify(policy), hashOf(v.layout.results), v.id, JSON.stringify(base)])).rows[0];
+        if (sheet.mode !== 'linked') await c.query("UPDATE tracking_sheets SET mode='linked', session_id=$2, updated_at=now() WHERE id=$1", [sheet.id, x.s.id]);
+      }
+      if (!duplicate) for (const uid of await sessionReviewers(c, x)) if (uid !== user.id) await tell(c, uid, p, 'Result proposed', 'A heat result was proposed for a session you help run. Review it in Tools.');
+      return { ...p, duplicate };
+    });
+  },
+});
+
 // ------------------------------------------------------------------ read
 async function proposalFor(user, proposalId, c, { lock = false } = {}) {
   const p = (await q(c).query(`SELECT * FROM result_proposals WHERE id=$1${lock ? ' FOR UPDATE' : ''}`, [proposalId])).rows[0];
   if (!p) throw notFound('Result proposal');
-  const x = await fixtureContext(user, p.fixture_id, c);
+  const x = await contextOf(user, p, c);
   const submitter = p.submitted_by === user.id;
   if (!submitter && !x.canScore && !x.side) throw notFound('Result proposal'); // outsiders cannot tell it exists
   return { p, x, submitter };
 }
 
+async function sessionViewOf(user, p, x, c) {
+  const [reviews, snap, detail, sheet, imp, submitter] = await Promise.all([
+    q(c).query('SELECT r.round, r.resolved_role, r.requirement_key, r.decision, r.comment, r.override, r.at, u.display_name AS reviewer_name FROM result_proposal_reviews r JOIN users u ON u.id=r.reviewer_id WHERE r.proposal_id=$1 ORDER BY r.at, r.id', [p.id]).then((r) => r.rows),
+    snapshotOfSession(p.session_id, c), sessionDetail(user, p.session_id), sheetView(p.sheet_id, c),
+    p.import_id ? one('SELECT id, file_name, content_type, size_bytes, provider, confidence, warnings, created_at FROM tracking_sheet_imports WHERE id=$1', [p.import_id]) : null,
+    one('SELECT display_name FROM users WHERE id=$1', [p.submitted_by]),
+  ]);
+  const current = reviews.filter((r) => r.round === p.round);
+  const ev = evaluateProposal(p.policy, current);
+  const roles = rolesOf(x);
+  const open = OPEN.includes(p.state);
+  const stale = open && hashOf(snap) !== hashOf(p.base_snapshot);
+  const recorded = detail.entries.filter((e) => e.result_status !== 'registered' && e.result_status !== 'scratched');
+  const differences = [];
+  if (recorded.length) differences.push({ code: 'results_already_recorded', severity: 'warn', message: `${recorded.length} result${recorded.length === 1 ? ' is' : 's are'} already recorded for this session. Applying corrects them; the earlier values stay in the audit trail.` });
+  if (stale) differences.push({ code: 'stale', severity: 'error', message: 'The session\'s results changed after this was proposed. It must be re-submitted and reviewed again.' });
+  const myReq = REVIEWABLE.includes(p.state) && p.submitted_by !== user.id ? nextRequirement(p.policy, current, roles) : null;
+  return {
+    ...p, kind: 'session', submitter_name: submitter?.display_name, stale, evidence: imp && { ...imp, url: `/api/v1/tracking/imports/${imp.id}/file` },
+    approval: { requirements: p.policy.requirements.map((r) => ({ ...r, approved: ev.approved.includes(r.key) })), approved: ev.approved, pending: ev.pending, mode: p.policy.mode, quorum: p.policy.quorum },
+    reviews, my_roles: roles, can_review: !!myReq,
+    can_override: REVIEWABLE.includes(p.state) && p.policy.allow_organiser_override && roles.includes('organiser') && p.submitted_by !== user.id,
+    can_apply: p.state === 'approved' && x.canScore && !stale, needs_reconcile: false, can_withdraw: open && p.submitted_by === user.id,
+    current: { session_status: snap.session_status, entries: detail.entries.map((e) => ({ id: e.id, name: e.full_name ?? e.team_name, lane: e.lane, status: e.result_status, value: e.result_value, position: e.position })) },
+    differences, warnings: differences, ruleset: { label: p.payload.ruleset, kind: 'session' }, sheet: { ref: sheet.ref, labels: sheet.labels, entries: [], provenance: sheet.provenance },
+    session: { id: detail.id, label: detail.label, stage: detail.stage, discipline: detail.discipline, status: detail.status, scheduled_at: detail.scheduled_at, event_id: detail.event_id },
+    fixture: null,
+  };
+}
+
 async function viewOf(user, p, x, c) {
+  if (p.session_id) return sessionViewOf(user, p, x, c);
   const [reviews, snap, eventRs, logEvents, sheet, imp, submitter] = await Promise.all([
     q(c).query('SELECT r.round, r.resolved_role, r.requirement_key, r.decision, r.comment, r.override, r.at, u.display_name AS reviewer_name FROM result_proposal_reviews r JOIN users u ON u.id=r.reviewer_id WHERE r.proposal_id=$1 ORDER BY r.at, r.id', [p.id]).then((r) => r.rows),
     snapshotOf(p.fixture_id, c), rulesetForEvent(p.event_id, c, p.fixture_id).then((r) => r.ruleset), loggedEvents(p.fixture_id, c),
@@ -208,6 +344,18 @@ cap({
       const current = (await pool.query('SELECT decision, requirement_key FROM result_proposal_reviews WHERE proposal_id=$1 AND round=$2', [r.id, r.round])).rows;
       const action = r.state === 'approved' ? (x.canScore ? 'apply' : null) : nextRequirement(r.policy, current, roles) ? 'review' : null;
       if (action) { const { policy, ...rest } = r; out.push({ ...rest, action, my_roles: roles }); }
+    }
+    const sess = await many(
+      `SELECT p.id, p.session_id, p.event_id, p.state, p.round, p.policy, p.payload, p.submitted_by, p.created_at, e.name AS event_name, s.label AS session_label
+         FROM result_proposals p JOIN events e ON e.id=p.event_id JOIN event_sessions s ON s.id=p.session_id
+        WHERE p.session_id IS NOT NULL AND p.state IN ('proposed','under_review','approved') AND p.submitted_by <> $1 ORDER BY p.created_at, p.id LIMIT 200`, [user.id]);
+    for (const r of sess) {
+      const x = await sessionContext(user, r.session_id, null);
+      if (!x.canScore) continue;
+      const roles = rolesOf(x);
+      const current = (await pool.query('SELECT decision, requirement_key FROM result_proposal_reviews WHERE proposal_id=$1 AND round=$2', [r.id, r.round])).rows;
+      const action = r.state === 'approved' ? 'apply' : nextRequirement(r.policy, current, roles) ? 'review' : null;
+      if (action) { const { policy, ...rest } = r; out.push({ ...rest, kind: 'session', home_name: r.session_label, away_name: null, action, my_roles: roles }); }
     }
     return out;
   },
@@ -283,6 +431,16 @@ cap({
     return tx(async (c) => {
       const { p, x } = await proposalFor(user, i.id, c, { lock: true });
       if (!x.canScore) throw forbidden('Only the organiser or the match officials can apply a proposal');
+      if (p.session_id) {
+        if (p.state === 'applied') return { already_applied: true, session_id: p.session_id };
+        if (p.state !== 'approved') throw conflict(`Only an approved proposal can be applied; this one is ${p.state.replace('_', ' ')}`);
+        if (hashOf(await snapshotOfSession(p.session_id, c)) !== hashOf(p.base_snapshot)) throw conflict('The session\'s results changed after this was approved. Ask the submitter to re-submit it for review.', { stale: true });
+        const done = await recordSessionResults(c, user, { id: p.session_id, complete: true, results: p.payload.results.map((r) => ({ entry_id: r.entry_id, status: r.status, ...(r.value != null ? { value: r.value } : {}) })) });
+        await c.query("UPDATE result_proposals SET state='applied', applied_by=$2, applied_at=now(), updated_at=now() WHERE id=$1", [p.id, user.id]);
+        await c.query("UPDATE result_proposals SET state='superseded', updated_at=now() WHERE session_id=$1 AND id <> $2 AND state IN ('proposed','under_review','changes_requested','approved','disputed')", [p.session_id, p.id]);
+        await tell(c, p.submitted_by, p, 'Result proposal applied', 'Your proposed heat result is now recorded for the session.');
+        return { already_applied: false, session_id: p.session_id, entries: done.entries };
+      }
       if (p.state === 'applied') return { already_applied: true, score_sheet: (await c.query('SELECT * FROM score_sheets WHERE id=$1', [p.applied_score_sheet_id])).rows[0] };
       if (p.state !== 'approved') throw conflict(`Only an approved proposal can be applied; this one is ${p.state.replace('_', ' ')}`);
       const fx = (await fixtureContext(user, p.fixture_id, c, { lock: true })).f;

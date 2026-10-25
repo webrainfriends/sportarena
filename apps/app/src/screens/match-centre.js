@@ -64,12 +64,19 @@ export function MatchCentre({ id }) {
               {between ? <AT size={12.5} weight="700" color={A.sun}>Between {rs.periods.label.toLowerCase()}s: start the next one to score.</AT> : null}
               {rs.kind === 'sets' && !ph.can_score ? <AT size={13} weight="800" color={A.green}>Match decided. Tap Full time.</AT> : null}
 
+              {rs.kind === 'cricket' ? (
+                <ACard pad={14} style={{ gap: 8 }}>
+                  <AT weight="800">Cricket is scored ball by ball</AT>
+                  <AT size={13} color={A.mute}>Use the scorebook in Tools. It keeps the batting card, bowling figures and fall of wickets, and enforces the over limits.</AT>
+                  <ABtn small tone="neon" title="🏏 Open the cricket scorebook" onPress={() => go('ScoringTool', { fixtureId: id })} />
+                </ACard>
+              ) : null}
               <ASection title="Score" sub={rs.kind === 'sets' ? 'Every rally point' : 'Tap the moment it happens'} />
               <View style={{ flexDirection: 'row', gap: 10 }}>
                 {sides.map((s) => (
                   <View key={s} style={{ flex: 1, gap: 8 }}>
                     <AT size={12} weight="800" color={A.mute} numberOfLines={1} style={{ textAlign: 'center' }}>{names[s].toUpperCase()}</AT>
-                    {(rs.kind === 'sets' ? [{ kind: 'point', label: 'Point', points: 1, icon: '🏸' }] : rs.events).map((e) => (
+                    {(rs.kind === 'sets' ? [{ kind: 'point', label: 'Point', points: 1, icon: '🏸' }] : rs.events ?? []).map((e) => (
                       <ABtn key={e.kind} tone={s === 'home' ? 'hero' : 'neon'} title={`${e.icon ? `${e.icon} ` : ''}${e.label}${rs.kind === 'sets' ? '' : ` +${e.points}`}`} disabled={!canPoint || busy} onPress={() => log(e.kind, s)} />
                     ))}
                   </View>

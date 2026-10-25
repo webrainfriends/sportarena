@@ -185,9 +185,14 @@ export function chessSheet(ctx) {
 }
 
 // ------------------------------------------------------------------------------------------------------------------ combat
+/** Rounds, round length and judges for a boxing format, with local rule values applied. */
+export function boxingSetup(variant, values = {}) {
+  const fmt = variant === 'Youth' ? 'youth' : variant === 'Professional' ? 'pro' : 'elite';
+  return { rounds: values[`rounds_${fmt}`] ?? { elite: 3, youth: 3, pro: 10 }[fmt], minutes: values[`len_${fmt}`] ?? { elite: 3, youth: 2, pro: 3 }[fmt], judges: values.judges ?? 5, rest: values.rest ?? 1 };
+}
+
 export function boxingCard(ctx) {
-  const fmt = ctx.variant === 'Youth' ? 'youth' : ctx.variant === 'Professional' ? 'pro' : 'elite';
-  const rounds = rv(ctx, `rounds_${fmt}`, { elite: 3, youth: 3, pro: 10 }[fmt]), len = rv(ctx, `len_${fmt}`, { elite: 3, youth: 2, pro: 3 }[fmt]), judges = rv(ctx, 'judges', 5);
+  const { rounds, minutes: len, judges } = boxingSetup(ctx.variant, ctx.rules?.values);
   return {
     title: 'Bout scorecard (10-point must)', orientation: 'landscape', signatures: ['Referee', 'Supervisor', 'Corner / coach'],
     sections: [
@@ -214,7 +219,7 @@ export function judoSheet(ctx) {
       table(`Scores and penalties (waza-ari half point, ippon wins; hold-down ${ow} s waza-ari, ${oi} s ippon; write the technique name)`, [['#', 0.5], ['Clock', 0.9], ['Judoka W/B', 0.9], ['Score / penalty', 1.4], ['Technique / reason', 3], ['Hold-down s', 1], ['Golden score', 1]], 14, { h: 15 }),
       ticks(`Shidos (${shido} lose the contest)`, ['Shido', shido], ['Hansoku-make', 1]),
       table('Totals', [['', 2, ['Ippon', 'Waza-ari', 'Shido']], ['White', 1], ['Blue', 1]], 3, { h: 17, width: 0.6 }),
-      choices('Result', 'White wins', 'Blue wins'), choices('Method', 'Ippon', 'Two waza-ari', 'Waza-ari at time', 'Shido (penalty)', 'Golden score', 'Hansoku-make', 'Fusen-gachi (walkover)', 'Kiken-gachi (injury)'),
+      choices('Result', 'White wins', 'Blue wins'), choices('Method', 'Ippon', 'Waza-ari at time', 'Shido (penalty)', 'Golden score', 'Hansoku-make', 'Fusen-gachi (walkover)', 'Kiken-gachi (injury)'),
       officials('Referee', 'Judge 1', 'Judge 2', 'Scorekeeper'),
     ],
   };

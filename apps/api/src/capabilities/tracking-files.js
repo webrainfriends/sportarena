@@ -16,6 +16,7 @@ import { toErrorBody } from '../invoke.js';
 import { audit, isAdmin } from '../helpers.js';
 import { DOC_LIMITS, docHeaders, loadEncrypted, readBody, saveEncrypted, sniffDoc } from '../doc-store.js';
 import { aiConfigured, ask, quoteData } from '../ai.js';
+import { scanBuffer, scanPolicy } from '../malware-scan.js';
 import { renderTrackingSheet } from '../documents/render.js';
 import { fixtureContext } from './match-tracking.js';
 import { kitOf, loadLogo, mustAccess } from './branded-documents.js';
@@ -27,7 +28,7 @@ const TAG = 'Tools';
 const LOW = 0.7;
 const ACCEPTED = ['application/pdf', 'image/jpeg', 'image/png'];
 
-/** No malware scanner exists on this platform, so refuse what can carry active content: only PDF/JPEG/PNG by magic bytes, and PDFs with scripts or launch actions are rejected. */
+/** Refuse what can carry active content: only PDF/JPEG/PNG by magic bytes, and PDFs with scripts or launch actions are rejected. A malware scan (malware-scan.js) follows when a scanner is configured. */
 function inspectUpload(buf) {
   if (!buf.length) throw badRequest('Empty upload');
   const t = sniffDoc(buf);
@@ -211,6 +212,9 @@ export function trackingFilesRouter() {
       if (Number(req.headers['content-length'] ?? 0) > DOC_LIMITS.bytes) throw new AppError(413, 'too_large', `Sheets can be up to ${DOC_LIMITS.bytes / 2 ** 20} MB`);
       const buf = await readBody(req);
       const type = inspectUpload(buf);
+      const scan = await scanBuffer(buf);
+      if (scan.status === 'infected') { await audit(null, user.id, 'upload_blocked_malware', 'tracking_sheet_imports', null); throw new AppError(422, 'malware_detected', 'That file was blocked because the virus scan found something in it. Nothing was saved.'); }
+      if (scanPolicy().mode === 'required' && scan.status !== 'clean') throw new AppError(503, 'scanner_unavailable', 'Uploads are paused because the virus scanner could not be reached. Try again shortly.');
       const sha = createHash('sha256').update(buf).digest('hex');
       const dup = await one('SELECT * FROM tracking_sheet_imports WHERE owner_id=$1 AND sha256=$2', [user.id, sha]);
       if (dup) return res.status(200).json({ ...importView(...(await withContext(dup))), duplicate: true });
@@ -238,9 +242,9 @@ export function trackingFilesRouter() {
       const stored = await saveEncrypted('tracking', 'tracking_sheet_imports.file', buf);
       const state = read.extracted ? 'extracted' : 'needs_manual';
       const row = (await pool.query(
-        `INSERT INTO tracking_sheet_imports(owner_id, sheet_id, sheet_ref, sport_id, file_name, content_type, size_bytes, sha256, state, extracted, confidence, warnings, provider)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT (owner_id, sha256) DO NOTHING RETURNING *`,
-        [user.id, boundSheet?.id ?? null, boundSheet?.ref ?? null, sport.id, stored.file, type.type, buf.length, sha, state, read.extracted ? JSON.stringify(read.extracted) : null, JSON.stringify(read.extracted?.confidence ?? {}), JSON.stringify(warnings), read.provider])).rows[0]
+        `INSERT INTO tracking_sheet_imports(owner_id, sheet_id, sheet_ref, sport_id, file_name, content_type, size_bytes, sha256, state, extracted, confidence, warnings, provider, scan_status)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) ON CONFLICT (owner_id, sha256) DO NOTHING RETURNING *`,
+        [user.id, boundSheet?.id ?? null, boundSheet?.ref ?? null, sport.id, stored.file, type.type, buf.length, sha, state, read.extracted ? JSON.stringify(read.extracted) : null, JSON.stringify(read.extracted?.confidence ?? {}), JSON.stringify(warnings), read.provider, scan.status === 'clean' ? 'clean' : scan.status === 'skipped' ? 'not_scanned' : 'unavailable'])).rows[0]
         ?? await one('SELECT * FROM tracking_sheet_imports WHERE owner_id=$1 AND sha256=$2', [user.id, sha]);
       await audit(null, user.id, 'upload_tracking_sheet', 'tracking_sheet_imports', row.id);
       res.status(201).json({ ...importView(row, { sport: { id: sport.id, slug: sport.slug, name: sport.name }, template: { layout, ruleset: rs } }) });

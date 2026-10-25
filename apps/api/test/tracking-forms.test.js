@@ -76,7 +76,7 @@ test('creating a sheet for a non-ruleset sport pins a form and serves the PDF; t
   const r = await api('POST', '/auth/register', { body: { handle: 'forms_1', display_name: 'Forms', email: 'forms1@example.com', password: 'correct-horse-battery', roles: ['athlete'] } });
   assert.equal(r.status, 201);
   const token = r.body.token;
-  for (const [sport, variant, mode] of [['cricket', 'T20', 'cricket'], ['cricket', 'Test', 'cricket'], ['boxing', undefined, 'manual'], ['weightlifting', undefined, 'manual'], ['high-jump', undefined, 'results'], ['football', undefined, 'points_events'], ['badminton', 'Doubles', 'sets']]) {
+  for (const [sport, variant, mode] of [['cricket', 'T20', 'cricket'], ['cricket', 'Test', 'cricket'], ['boxing', undefined, 'scorecard'], ['weightlifting', undefined, 'results'], ['high-jump', undefined, 'results'], ['football', undefined, 'points_events'], ['badminton', 'Doubles', 'sets']]) {
     const s = await api('POST', '/tracking/sheets', { token, body: { sport, variant } });
     assert.equal(s.status, 201, `${sport}: ${JSON.stringify(s.body)}`);
     assert.equal(s.body.template.layout.mode, mode, sport);

@@ -65,6 +65,61 @@ export function LinkSheet({ sheet, onClose, onDone }) {
   );
 }
 
+// ----------------------------------------------------------------------------------------------------------- link a heat sheet to a session
+/** Heat, field and race sheets: pick the session, match each row to an entry (lanes are matched for you), and send it as a proposal. */
+export function SessionLinkSheet({ sheet, onClose, onDone }) {
+  const { toast } = useSession();
+  const [q, setQ] = useState('');
+  const [pick, setPick] = useState(null);
+  const [map, setMap] = useState({});
+  const [busy, setBusy] = useState(false);
+  const cands = useLoad(() => api.get('/tracking/session-candidates', { sheet_id: sheet.id, q: q.trim() || undefined }), [q]);
+  const rows = (sheet.rows ?? []).map((r, i) => ({ ...r, i })).filter((r) => r.name || r.result || r.status || r.lane);
+  const choose = (g) => {
+    setPick(g);
+    // lanes printed on the sheet usually match the session's lanes, so start from that
+    const auto = {};
+    for (const r of rows) { const e = g.entries.find((x) => r.lane && String(x.lane) === String(r.lane)); if (e) auto[r.i] = e.id; }
+    setMap(auto);
+  };
+  const used = new Set(Object.values(map));
+  const complete = pick && rows.length && rows.every((r) => map[r.i]) && pick.entries.every((e) => used.has(e.id));
+  const submit = async () => {
+    setBusy(true);
+    try { onDone(await api.post(`/tracking/sheets/${sheet.id}/session-proposals`, { session_id: pick.id, mapping: rows.map((r) => ({ row: r.i, entry_id: map[r.i] })) })); }
+    catch (e) { toast(e.message); } finally { setBusy(false); }
+  };
+  return (
+    <Sheet visible onClose={onClose} title="Link to a heat or session">
+      <View style={{ gap: 12 }}>
+        <Card color={c.orangeSoft} pad={12}><T weight="700" size={13}>This sends your results as a proposal. The programme's results do not change until the organiser (and any official the event requires) approves it.</T></Card>
+        <Field label="Search by event, discipline or heat" value={q} onChangeText={setQ} />
+        {cands.loading ? <Loading /> : (cands.data ?? []).length ? cands.data.map((g) => (
+          <Card key={g.id} onPress={() => choose(g)} color={pick?.id === g.id ? c.violetSoft : c.paper} pad={12} accessibilityLabel={`${g.label} ${g.discipline}`}>
+            <T weight="800">{g.discipline} · {g.label}</T>
+            <T size={12} color={c.mute}>{g.event_name}{g.scheduled_at ? ` · ${new Date(g.scheduled_at).toLocaleString()}` : ''} · {nice(g.status)}{g.open_proposal ? ` · a proposal is already open (${nice(g.open_proposal)})` : ''}</T>
+          </Card>
+        )) : <Empty emoji="🔎" title="No sessions found" sub="Only heats, finals and races of the same sport, in events you can see, are listed." />}
+        {pick ? (
+          <View style={{ gap: 10 }}>
+            <T weight="700" size={13}>Match each row of your sheet to the person in the session</T>
+            {rows.map((r) => (
+              <Card key={r.i} pad={10}>
+                <T weight="800" size={13}>{r.lane ? `Lane ${r.lane} · ` : ''}{r.name || `Row ${r.i + 1}`}{r.result ? ` · ${r.result}` : r.status ? ` · ${r.status}` : ''}</T>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                  {pick.entries.map((e) => <Chip key={e.id} label={`${e.lane ? `Lane ${e.lane}` : 'Entry'}${e.name ? ` · ${e.name}` : ''}`} active={map[r.i] === e.id} onPress={() => setMap((m) => ({ ...m, [r.i]: m[r.i] === e.id ? undefined : e.id }))} />)}
+                </View>
+              </Card>
+            ))}
+            <T size={12} color={c.mute}>{complete ? 'Everyone is matched.' : 'Match every row and every person. Use DNS on the sheet for anyone who did not start.'}</T>
+            <Btn title="Send as proposal" disabled={!complete} loading={busy} onPress={submit} />
+          </View>
+        ) : null}
+      </View>
+    </Sheet>
+  );
+}
+
 // ----------------------------------------------------------------------------------------------------------- review a proposal
 const Cell = ({ children, bold }) => <View style={{ flex: 1 }}><T weight={bold ? '800' : '500'} size={14}>{children}</T></View>;
 
@@ -86,16 +141,31 @@ export function ProposalReview({ id, onChanged, onOpenScoreSheet }) {
   const official = cur.published ? `${cur.published.score[0]}–${cur.published.score[1]} (published)` : cur.fixture_score ? `${cur.fixture_score[0]}–${cur.fixture_score[1]}` : 'No official result yet';
   return (
     <View style={{ gap: 14 }}>
-      <View><H2>{p.fixture.home_name} vs {p.fixture.away_name}</H2><T color={c.mute} size={12}>{p.fixture.event_name} · {p.ruleset.label} rules pinned by the event · round {p.round}</T></View>
+      {p.kind === 'session' ? <View><H2>{p.session.label} · {p.session.discipline}</H2><T color={c.mute} size={12}>{p.payload.ruleset} · session {nice(p.session.status)} · round {p.round}</T></View> : <View><H2>{p.fixture.home_name} vs {p.fixture.away_name}</H2><T color={c.mute} size={12}>{p.fixture.event_name} · {p.ruleset.label} rules pinned by the event · round {p.round}</T></View>}
       <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}><StateTag s={p.state} />{p.stale ? <Tag label="stale: re-submit needed" color={c.orange} /> : null}<Tag label={`submitted by ${p.submitter_name}`} color={c.violetSoft} /></View>
 
-      <Card pad={14}>
+      {p.kind === 'session' ? (
+        <Card pad={14}>
+          <View style={{ flexDirection: 'row' }}><Cell bold>Lane / athlete</Cell><Cell bold>Proposed</Cell><Cell bold>Recorded now</Cell></View>
+          {p.payload.rows.map((r) => {
+            const entry = p.current.entries.find((e) => e.id === r.entry_id) ?? null;
+            return (
+              <View key={r.row} style={{ flexDirection: 'row' }}>
+                <Cell>{r.lane ? `Lane ${r.lane} · ` : ''}{r.name || `Row ${r.row + 1}`}</Cell>
+                <Cell bold>{r.status === 'finished' ? `${r.mark ?? r.value}` : r.status.toUpperCase()}</Cell>
+                <Cell>{entry && entry.status !== 'registered' ? `${entry.status === 'finished' ? entry.value : entry.status.toUpperCase()}` : 'not recorded'}</Cell>
+              </View>
+            );
+          })}
+        </Card>
+      ) : null}
+      {p.kind === 'session' ? null : <Card pad={14}>
         <View style={{ flexDirection: 'row' }}><Cell bold> </Cell><Cell bold>Proposed</Cell><Cell bold>Official now</Cell></View>
         <View style={{ flexDirection: 'row' }}><Cell>Score</Cell><Cell bold>{pay.home_score}–{pay.away_score}</Cell><Cell>{official}</Cell></View>
         {cur.live_log ? <View style={{ flexDirection: 'row' }}><Cell>Live match log</Cell><Cell> </Cell><Cell>{cur.live_log.home}–{cur.live_log.away} ({cur.live_log.events} events)</Cell></View> : null}
         {pay.sets?.length ? <View style={{ flexDirection: 'row' }}><Cell>Sets</Cell><Cell>{pay.sets.map((s) => `${s.home}-${s.away}`).join(', ')}</Cell><Cell> </Cell></View> : null}
         {pay.periods?.length ? <View style={{ flexDirection: 'row' }}><Cell>By period</Cell><Cell>{pay.periods.map((s) => `${s.home}-${s.away}`).join(', ')}</Cell><Cell> </Cell></View> : null}
-      </Card>
+      </Card>}
 
       <Notes list={p.warnings} />
 
@@ -135,9 +205,9 @@ export function ProposalReview({ id, onChanged, onOpenScoreSheet }) {
       {p.state === 'approved' ? (
         p.can_apply ? (
           <Section title="Apply">
-            <T size={13} color={c.mute}>Applying opens a draft score sheet for this game. It still needs the usual sign-offs, approval and publication before it becomes official.</T>
+            <T size={13} color={c.mute}>{p.kind === 'session' ? 'Applying records these results for the session through the normal results path. Places are worked out from the marks, and earlier values stay in the audit trail.' : 'Applying opens a draft score sheet for this game. It still needs the usual sign-offs, approval and publication before it becomes official.'}</T>
             {p.needs_reconcile ? <Field label="Why does this replace the live log or published result? (organiser)" value={reason} onChangeText={setReason} maxLength={500} /> : null}
-            <Btn title="Apply to the score sheet" loading={busy} onPress={async () => { const r = await run(() => api.post(`/tracking/proposals/${id}/apply`, { reconcile_reason: reason.trim() || undefined }), 'Draft score sheet opened'); if (r) onOpenScoreSheet?.(p.fixture_id ?? p.fixture.id); }} />
+            <Btn title={p.kind === 'session' ? 'Record these results' : 'Apply to the score sheet'} loading={busy} onPress={async () => { const r = await run(() => api.post(`/tracking/proposals/${id}/apply`, { reconcile_reason: reason.trim() || undefined }), p.kind === 'session' ? 'Results recorded' : 'Draft score sheet opened'); if (r && p.kind !== 'session') onOpenScoreSheet?.(p.fixture_id ?? p.fixture.id); }} />
           </Section>
         ) : <T size={13} color={c.mute}>{p.stale ? 'The official record changed. The submitter has to re-submit it for review.' : 'Approved. An organiser or match official applies it.'}</T>
       ) : null}
@@ -277,6 +347,37 @@ const PRESETS = {
   league: { label: 'Referee + both managers', policy: { mode: 'parallel', requirements: [{ key: 'official', label: 'Referee', roles: ['official'] }, { key: 'home_manager', label: 'Home manager', roles: ['home_manager'] }, { key: 'away_manager', label: 'Away manager', roles: ['away_manager'] }] } },
   chain: { label: 'Referee, then organiser', policy: { mode: 'sequential', requirements: [{ key: 'official', label: 'Referee or scorer', roles: ['official'] }, { key: 'organiser', label: 'Organiser', roles: ['organiser'] }] } },
 };
+
+/** Build your own approval steps: who must approve, in what order, and how many approvals are enough (quorum). Roles are resolved from the game's own assignments. */
+function PolicyEditor({ policy, onChange }) {
+  const reqs = policy.requirements;
+  const setReq = (i, patch) => onChange({ ...policy, requirements: reqs.map((r, k) => (k === i ? { ...r, ...patch } : r)) });
+  const toggle = (i, role) => { const roles = reqs[i].roles.includes(role) ? reqs[i].roles.filter((x) => x !== role) : [...reqs[i].roles, role]; if (roles.length) setReq(i, { roles }); };
+  const quorum = policy.quorum && policy.quorum <= reqs.length ? policy.quorum : null;
+  return (
+    <View style={{ gap: 10 }}>
+      <T weight="700" size={13}>Approval steps</T>
+      {reqs.map((r, i) => (
+        <Card key={r.key} pad={12}>
+          <Field label={`Step ${i + 1} name`} value={r.label ?? ''} onChangeText={(v) => setReq(i, { label: v })} maxLength={40} />
+          <T size={12} color={c.mute}>Who can approve this step (any of them)</T>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{Object.entries(ROLE).map(([k, l]) => <Chip key={k} label={l} active={r.roles.includes(k)} onPress={() => toggle(i, k)} />)}</View>
+          {reqs.length > 1 ? <Btn small title="Remove step" color={c.violet} onPress={() => onChange({ ...policy, requirements: reqs.filter((_, k) => k !== i), quorum: null })} style={{ alignSelf: 'flex-start' }} /> : null}
+        </Card>
+      ))}
+      {reqs.length < 6 ? <Btn small title="+ Add a step" color={c.violet} onPress={() => onChange({ ...policy, requirements: [...reqs, { key: `step_${reqs.length + 1}_${Math.random().toString(36).slice(2, 5)}`, label: '', roles: ['official'] }] })} style={{ alignSelf: 'flex-start' }} /> : null}
+      <T weight="700" size={13}>Order</T>
+      <Seg options={[{ label: 'In any order', value: 'parallel' }, { label: 'One after another', value: 'sequential' }]} value={policy.mode} onChange={(mode) => onChange({ ...policy, mode })} />
+      {reqs.length > 1 ? (
+        <>
+          <T weight="700" size={13}>How many approvals are enough</T>
+          <Seg options={[{ label: 'Every step', value: 0 }, ...Array.from({ length: reqs.length - 1 }, (_, k) => ({ label: `${k + 1} of ${reqs.length}`, value: k + 1 }))]} value={quorum ?? 0} onChange={(v) => onChange({ ...policy, quorum: v || null })} />
+        </>
+      ) : null}
+    </View>
+  );
+}
+
 const sameReqs = (a, b) => JSON.stringify(a.map((r) => [r.key, r.roles])) === JSON.stringify(b.map((r) => [r.key, r.roles]));
 
 export function EventScoringConfig({ eventId: preset }) {
@@ -296,6 +397,9 @@ export function EventScoringConfig({ eventId: preset }) {
 
 const canon = (v) => JSON.stringify(v, (_, x) => (x && typeof x === 'object' && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).sort(([a], [b]) => (a < b ? -1 : 1))) : x));
 
+const CRICKET_INNINGS = { T10: 2, T20: 2, ODI: 2, Test: 4 };
+const CRICKET_OVERS = { T10: 10, T20: 20, ODI: 50, Test: null };
+
 /** The editable fields of a ruleset, shared by the event rules editor and the governed match-format editor. */
 export function RulesetFields({ rs, onChange }) {
   return (
@@ -314,6 +418,16 @@ export function RulesetFields({ rs, onChange }) {
             <Counter label="Points to win a set" min={1} max={100} value={rs.sets.points_to_win} onChange={(v) => onChange({ ...rs, sets: { ...rs.sets, points_to_win: v } })} />
             <T weight="700" size={13}>Win by</T>
             <Seg options={[{ label: '1 point', value: 1 }, { label: '2 points', value: 2 }]} value={rs.sets.win_by} onChange={(v) => onChange({ ...rs, sets: { ...rs.sets, win_by: v } })} />
+          </>
+        ) : rs.kind === 'cricket' ? (
+          <>
+            <T weight="700" size={13}>Format</T>
+            <Seg options={['T10', 'T20', 'ODI', 'Test'].map((f) => ({ label: f, value: f }))} value={rs.cricket.format} onChange={(f) => onChange({ ...rs, label: `Cricket ${f}`, periods: { count: CRICKET_INNINGS[f], label: 'Innings' }, cricket: { ...rs.cricket, format: f, innings: CRICKET_INNINGS[f], overs: CRICKET_OVERS[f], bowler_max: CRICKET_OVERS[f] ? Math.floor(CRICKET_OVERS[f] / 5) : null, free_hit: f !== 'Test', follow_on: f === 'Test' ? 200 : null, min_overs_day: f === 'Test' ? 90 : null, days: f === 'Test' ? 5 : null } })} />
+            {rs.cricket.overs ? <Counter label="Overs per innings" min={1} max={50} value={rs.cricket.overs} onChange={(v) => onChange({ ...rs, cricket: { ...rs.cricket, overs: v, bowler_max: Math.max(1, Math.floor(v / 5)) } })} /> : <Counter label="Follow-on margin (runs)" min={50} max={400} step={10} value={rs.cricket.follow_on ?? 200} onChange={(v) => onChange({ ...rs, cricket: { ...rs.cricket, follow_on: v } })} />}
+            {rs.cricket.bowler_max ? <Counter label="Most overs per bowler" min={1} max={rs.cricket.overs ?? 50} value={rs.cricket.bowler_max} onChange={(v) => onChange({ ...rs, cricket: { ...rs.cricket, bowler_max: v } })} /> : null}
+            <T weight="700" size={13}>Penalty runs for a wide or no-ball</T>
+            <Seg options={[{ label: '1 run', value: 1 }, { label: '2 runs', value: 2 }]} value={rs.cricket.wide_runs} onChange={(v) => onChange({ ...rs, cricket: { ...rs.cricket, wide_runs: v, noball_runs: v } })} />
+            <T size={12} color={c.mute}>Cricket is scored ball by ball in Tools. The score, wickets, extras and result are worked out from the balls.</T>
           </>
         ) : <T color={c.mute} size={13}>This sport is scored by entering totals on the score sheet.</T>}
     </>
@@ -337,6 +451,7 @@ function RulesEditor({ eventId, toast }) {
   const pol = useLoad(() => api.get(`/events/${eventId}/result-approval-policy`), [eventId]);
   const [edit, setEdit] = useState(null);
   const [polEdit, setPolEdit] = useState(null);
+  const [customPolicy, setCustomPolicy] = useState(false);
   if (rules.error) return <ErrorBox error={rules.error} onRetry={rules.reload} />;
   if (rules.loading || pol.loading || !rules.data || !pol.data) return <Loading />;
   const rs = edit ?? (({ source, version, format_key, sport, standard, ...r }) => r)(rules.data);
@@ -357,7 +472,8 @@ function RulesEditor({ eventId, toast }) {
         {edit ? <View style={{ flexDirection: 'row', gap: 8 }}><Btn title="Save event rules" onPress={saveRules} /><Btn title="Cancel" color={c.violet} onPress={() => setEdit(null)} /></View> : null}
       </Section>
       <Section title="Who approves a proposed result">
-        <Seg options={[...Object.entries(PRESETS).map(([k, v]) => ({ label: v.label, value: k })), ...(preset === 'custom' ? [{ label: 'Custom', value: 'custom' }] : [])]} value={preset} onChange={(k) => k !== 'custom' && setPolEdit({ ...policy, ...PRESETS[k].policy, quorum: null })} />
+        <Seg options={[...Object.entries(PRESETS).map(([k, v]) => ({ label: v.label, value: k })), { label: 'Custom', value: 'custom' }]} value={customPolicy ? 'custom' : preset} onChange={(k) => { if (k === 'custom') { setCustomPolicy(true); setPolEdit(policy); } else { setCustomPolicy(false); setPolEdit({ ...policy, ...PRESETS[k].policy, quorum: null }); } }} />
+        {customPolicy || preset === 'custom' ? <PolicyEditor policy={policy} onChange={setPolEdit} /> : null}
         <T weight="700" size={13}>Organiser may approve all remaining steps with a reason</T>
         <Seg options={[{ label: 'No', value: false }, { label: 'Yes', value: true }]} value={policy.allow_organiser_override} onChange={(v) => setPolEdit({ ...policy, allow_organiser_override: v })} />
         <T weight="700" size={13}>Anyone signed in may propose a result</T>

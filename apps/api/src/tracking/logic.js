@@ -8,6 +8,8 @@ import { config } from '../config.js';
 import { formFor, variantsOf } from './forms.js';
 import { builtinRuleset, cricketRuleset } from '../scoring/rulesets.js';
 import { applyToRuleset } from '../rulebook/apply.js';
+import { boxingDecision, rankLifts } from '../scoring/scorecards.js';
+import { boxingSetup } from './pro-forms.js';
 
 // keys sorted, so a value hashes the same whether it came from JS or back out of a jsonb column
 const canon = (v) => (Array.isArray(v) ? v.map(canon) : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, canon(v[k])])) : v);
@@ -16,8 +18,21 @@ export const hashOf = sha;
 const SIDES = ['home', 'away'];
 
 // ------------------------------------------------------------------ layouts
+/** What a results table records, per sport: times (lower wins), distances and scores (higher wins), or weightlifting attempts. */
+function resultsSpec(sport, variant, values = {}) {
+  if (sport.slug === 'weightlifting') return { unit: 'lift', rows: 14, attempts: values.attempts ?? 3 };
+  if (sport.slug === 'karate') return { unit: 'score', rows: 10 };
+  return { unit: sport.scoring === 'time' && !/jump|throw/i.test(variant) ? 'time' : 'distance', rows: /track/i.test(variant) ? 9 : /jump|throw/i.test(variant) ? 16 : 12 };
+}
+
 /** What the sport records: points/sets rulesets are tracked live; time/distance sports use a results table. */
-export const trackingMode = (sport, ruleset) => (['time', 'distance'].includes(sport.scoring) || ruleset.kind === 'results' ? 'results' : ruleset.kind === 'manual' ? 'manual' : ruleset.kind);
+export function trackingMode(sport, ruleset, variant = '') {
+  if (ruleset.kind === 'cricket') return 'cricket';
+  if (sport.slug === 'boxing') return 'scorecard';
+  if (sport.slug === 'weightlifting' || (sport.slug === 'karate' && variant === 'Kata')) return 'results';
+  if (['time', 'distance'].includes(sport.scoring) || ruleset.kind === 'results') return 'results';
+  return ruleset.kind === 'manual' ? 'manual' : ruleset.kind;
+}
 
 /** Variants offered per sport: racket sports have singles/doubles, the rest a single standard format. Labels only - never scoring rules. */
 export const variantsFor = (sport, ruleset) => variantsOf(sport.slug) ?? (ruleset.kind === 'sets' && !['volleyball', 'beach-volleyball'].includes(sport.slug) ? ['Singles', 'Doubles'] : ['Standard']);
@@ -54,7 +69,7 @@ export const customiseSchema = customiseBase.default({ hidden_stats: [], stat_or
 /** The printable/on-screen layout for a ruleset. Scoring events can never be hidden or renamed away; only non-scoring stats, labels and notes can. */
 export function buildLayout(sport, ruleset, variant = '', custom = {}, rules = null) {
   const c = customiseBase.parse(custom ?? {});
-  const mode = trackingMode(sport, ruleset);
+  const mode = trackingMode(sport, ruleset, variant);
   const scoring = ruleset.events.map((e) => ({ kind: e.kind, label: c.labels[e.kind] ?? e.label, points: e.points, icon: e.icon ?? null, governed: true }));
   let stats = ruleset.stats.filter((s) => !c.hidden_stats.includes(s.kind)).map((s) => ({ kind: s.kind, label: c.labels[s.kind] ?? s.label, icon: s.icon ?? null, governed: true }));
   if (c.stat_order.length) stats = [...stats].sort((a, b) => (c.stat_order.indexOf(a.kind) + 1 || 99) - (c.stat_order.indexOf(b.kind) + 1 || 99));
@@ -64,7 +79,9 @@ export function buildLayout(sport, ruleset, variant = '', custom = {}, rules = n
     v: 2, mode, sport: sport.slug, variant, title, form,
     periods: mode === 'points_events' ? ruleset.periods : null, sets: mode === 'sets' ? ruleset.sets : null,
     cricket: mode === 'cricket' ? ruleset.cricket : null, rules: rules ? { local: rules.local ?? null, format: rules.format ?? '', lines: rules.lines ?? [], values: rules.values ?? {} } : null,
-    scoring, stats, results: mode === 'results' ? { unit: sport.scoring === 'time' && !/jump|throw/i.test(variant) ? 'time' : 'distance', rows: /track/i.test(variant) ? 9 : /jump|throw/i.test(variant) ? 16 : 12 } : null,
+    scoring, stats,
+    results: mode === 'results' ? resultsSpec(sport, variant, rules?.values) : null,
+    scorecard: mode === 'scorecard' ? { scale: '10_point_must', ...boxingSetup(variant, rules?.values), sides: ['red', 'blue'] } : null,
     custom: c,
     notes_fields: c.notes_fields.map((label) => ({ label, custom: true, official: false })),
     orientation: custom && 'orientation' in custom ? c.orientation : (form.orientation ?? c.orientation), paper: c.paper, signatures: c.signatures,
@@ -227,4 +244,24 @@ export function rankRows(rows, unit, { qp = 0, qt = 0, reactionMin = 0 } = {}) {
     return { ...r, rank: pl, q: unit === 'time' && pl ? (pl <= qp ? 'Q' : byTime.includes(i) ? 'q' : '') : '' };
   });
   return { rows: out, warnings };
+}
+
+/**
+ * Everything a sheet's result needs beyond the running log: results tables are ranked, a boxing card is turned into the judges' decision,
+ * weightlifting attempts into bests and totals. `details` and `rows` are what the official wrote on the sheet.
+ */
+export function boardFor(layout, { rows = [], details = {} } = {}) {
+  const rv = layout.rules?.values ?? {};
+  if (layout.mode === 'results') {
+    if (layout.results.unit === 'lift') return { type: 'lifts', ...rankLifts(rows, layout.results.attempts) };
+    return { type: 'ranking', ...rankRows(rows, layout.results.unit, { qp: rv.qp ?? 3, qt: rv.qt ?? 2, reactionMin: (rv.rt ?? 100) / 1000 }) };
+  }
+  if (layout.mode === 'scorecard') return { type: 'scorecard', ...boxingDecision(details.cards ?? [], layout.scorecard.rounds) };
+  return null;
+}
+
+/** The home/away result a scorecard stands for: judges' votes for each corner (red is home, blue is away). */
+export function scorecardResult(board) {
+  const w = board.winner;
+  return { source: 'scorecard', home: board.votes.red, away: board.votes.blue, winner: w === 'red' ? 'home' : w === 'blue' ? 'away' : null, sets: null, periods: null, stats: { home: {}, away: {} }, over: !!board.complete, scorecard: board };
 }

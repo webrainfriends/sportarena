@@ -81,6 +81,11 @@ const BUILTIN = {
     events: [{ kind: 'try', label: 'Try', points: 5, icon: '🏉' }, { kind: 'conversion', label: 'Conversion', points: 2 }, { kind: 'penalty_goal', label: 'Penalty goal', points: 3 }, { kind: 'drop_goal', label: 'Drop goal', points: 3 }],
     stats: [{ kind: 'yellow_card', label: 'Yellow card', icon: '🟨' }, { kind: 'red_card', label: 'Red card', icon: '🟥' }, { kind: 'substitution', label: 'Replacement' }],
   }),
+  karate: R({
+    kind: 'points_events', label: 'Karate (kumite)', periods: { count: 1, label: 'Bout' }, draw_allowed: true,
+    events: [{ kind: 'yuko', label: 'Yuko', points: 1 }, { kind: 'waza_ari', label: 'Waza-ari', points: 2 }, { kind: 'ippon', label: 'Ippon', points: 3 }],
+    stats: [{ kind: 'senshu', label: 'Senshu (first unopposed point)' }, { kind: 'chukoku', label: 'Chukoku (warning)' }, { kind: 'keikoku', label: 'Keikoku' }, { kind: 'hansoku_chui', label: 'Hansoku-chui' }, { kind: 'hansoku', label: 'Hansoku (disqualified)' }],
+  }),
   baseball: R({ kind: 'points_events', label: 'Baseball', periods: { count: 9, label: 'Inning' }, draw_allowed: false, events: [{ kind: 'run', label: 'Run', points: 1, icon: '⚾' }], stats: [{ kind: 'hit', label: 'Hit' }, { kind: 'error', label: 'Error' }, { kind: 'strikeout', label: 'Strikeout' }] }),
   softball: R({ kind: 'points_events', label: 'Softball', periods: { count: 7, label: 'Inning' }, draw_allowed: false, events: [{ kind: 'run', label: 'Run', points: 1, icon: '🥎' }], stats: [{ kind: 'hit', label: 'Hit' }, { kind: 'error', label: 'Error' }, { kind: 'strikeout', label: 'Strikeout' }] }),
   volleyball: rally('Volleyball', 5, 25, 2, null, 15, [{ kind: 'ace', label: 'Ace' }, { kind: 'block', label: 'Block' }, { kind: 'substitution', label: 'Substitution' }]),

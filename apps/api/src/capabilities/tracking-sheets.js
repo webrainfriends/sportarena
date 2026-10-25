@@ -9,11 +9,12 @@ import { audit, isAdmin, sportBySlugOrId } from '../helpers.js';
 import { aiConfigured, AI_RULES, askJson, quoteData } from '../ai.js';
 import { orgRole } from '../org-access.js';
 import { fixtureContext } from './match-tracking.js';
+import { sessionDetail } from './multisport-play.js';
 import { bookFor } from '../rulebook/catalog.js';
 import { conflictsWith, rulesLines } from '../rulebook/apply.js';
 import { currentSettings, readableLocalRules, setView } from './rulebook.js';
 import { rulesetForEvent } from '../scoring/state.js';
-import { BEST_OF, baseRuleset, buildLayout, customiseBase, customiseSchema, entryRejection, hashOf, newRef, rankRows, rulesetFor, sheetResult, trackingMode, validateTotals, variantsFor, withFormat } from '../tracking/logic.js';
+import { BEST_OF, baseRuleset, boardFor, buildLayout, customiseBase, customiseSchema, entryRejection, hashOf, newRef, rulesetFor, scorecardResult, sheetResult, trackingMode, validateTotals, variantsFor, withFormat } from '../tracking/logic.js';
 
 const TAG = 'Tools';
 const q = (c) => c ?? pool;
@@ -97,17 +98,17 @@ export async function sheetView(sheetId, c) {
   if (!s) throw notFound('Tracking sheet');
   const v = await versionOf(s.template_version_id, c);
   const entries = await entriesOf(s.id, c);
-  const result = sheetResult(v.ruleset, entries, s.manual_totals);
-  const rv = v.layout.rules?.values ?? {};
-  const ranking = v.layout.mode === 'results' ? rankRows(s.rows ?? [], v.layout.results.unit, { qp: rv.qp ?? 3, qt: rv.qt ?? 2, reactionMin: (rv.rt ?? 100) / 1000 }) : null;
+  const board = boardFor(v.layout, { rows: s.rows, details: s.details });
+  const result = board?.type === 'scorecard' ? scorecardResult(board) : sheetResult(v.ruleset, entries, s.manual_totals);
   const checks = result.home == null ? [] : validateTotals(v.ruleset, result);
   const fixture = s.fixture_id ? (await q(c).query(
     `SELECT f.id, f.status, f.scheduled_at, e.name AS event_name, h.name AS home_name, a.name AS away_name FROM fixtures f JOIN events e ON e.id=f.event_id LEFT JOIN teams h ON h.id=f.home_team_id LEFT JOIN teams a ON a.id=f.away_team_id WHERE f.id=$1`, [s.fixture_id])).rows[0] : null;
-  const proposal = s.fixture_id ? (await q(c).query('SELECT id, state, round FROM result_proposals WHERE sheet_id=$1 ORDER BY created_at DESC LIMIT 1', [s.id])).rows[0] ?? null : null;
+  const proposal = s.fixture_id || s.session_id ? (await q(c).query('SELECT id, state, round FROM result_proposals WHERE sheet_id=$1 ORDER BY created_at DESC LIMIT 1', [s.id])).rows[0] ?? null : null;
+  const session = s.session_id ? (await q(c).query('SELECT s.id, s.label, s.stage, s.status, e.name AS event_name FROM event_sessions s JOIN events e ON e.id=s.event_id WHERE s.id=$1', [s.session_id])).rows[0] ?? null : null;
   return {
     ...s, official: false, label: s.mode === 'linked' ? 'Result proposal - not official until approved' : 'Unofficial / standalone',
     template: { id: v.id, version: v.version, name: v.name, origin: v.origin, layout: v.layout, ruleset: v.ruleset, ruleset_hash: v.ruleset_hash },
-    entries, result, checks, fixture, proposal, ranking, rules: v.layout.rules ?? null,
+    entries, result, checks, fixture, session, proposal, ranking: board && board.type !== 'scorecard' ? board : null, scorecard: board?.type === 'scorecard' ? board : null, rules: v.layout.rules ?? null,
   };
 }
 
@@ -132,7 +133,7 @@ const templateRow = (t) => ({ ...t, key: t.id });
 cap({
   name: 'list_tracking_templates', method: 'GET', path: '/tracking/templates', tag: TAG,
   summary: 'Sheet templates for a sport: the governed platform starter (always available, derived from the sport\'s scoring rules, no AI needed) plus your personal and your organisations\' published templates.',
-  input: z.object({ sport: z.string().min(1), variant: z.string().max(30).optional(), best_of: z.coerce.number().int().optional(), local_id: id.optional() }),
+  input: z.object({ sport: z.string().min(1), variant: z.string().max(30).optional(), best_of: z.coerce.number().int().optional(), local_id: id.optional(), event_id: id.optional().describe('also list templates the organiser published for this event') }),
   async handler({ user }, i) {
     const sport = await sportOf(i.sport);
     const base = baseRuleset(sport);
@@ -143,15 +144,21 @@ cap({
     const starter = { key: 'starter', scope: 'platform', name: `${rs.label} starter`, variant, layout: buildLayout(sport, rs, variant, {}, rules), ruleset: rs, formats: base.kind === 'sets' ? BEST_OF : null, origin: 'platform', rules: rules ? { local: rules.local, lines: rules.lines } : null };
     const mine = await many(
       `SELECT t.id, t.name, t.scope, t.variant, t.status, t.current_version, t.updated_at FROM tracking_sheet_templates t
-        WHERE t.sport_id=$1 AND t.status='published' AND (t.owner_user_id=$2 OR t.organisation_id IN (SELECT organisation_id FROM organisation_members WHERE user_id=$2 AND status='active'))
-        ORDER BY t.name, t.id`, [sport.id, user.id]);
+        WHERE t.sport_id=$1 AND t.status='published' AND (t.owner_user_id=$2
+           OR t.organisation_id IN (SELECT organisation_id FROM organisation_members WHERE user_id=$2 AND status='active')
+           OR t.team_id IN (SELECT team_id FROM team_members WHERE user_id=$2 AND status='active')
+           OR t.team_id IN (SELECT id FROM teams WHERE owner_id=$2)
+           OR (t.scope='event' AND t.event_id=$3::uuid AND EXISTS (SELECT 1 FROM events e WHERE e.id=t.event_id AND (e.status <> 'draft' OR e.organizer_id=$2))))
+        ORDER BY t.name, t.id`, [sport.id, user.id, i.event_id ?? null]);
     return { sport: { id: sport.id, slug: sport.slug, name: sport.name, scoring: sport.scoring, emoji: sport.emoji }, mode: trackingMode(sport, rs), variants, starter, templates: mine.map(templateRow) };
   },
 });
 
 async function readableTemplate(user, templateId, c) {
   const t = (await q(c).query('SELECT * FROM tracking_sheet_templates WHERE id=$1', [templateId])).rows[0];
-  const ok = t && (t.owner_user_id === user.id || isAdmin(user) || (t.organisation_id && await orgRole(user, t.organisation_id, c)));
+  const ok = t && (t.owner_user_id === user.id || isAdmin(user) || (t.organisation_id && await orgRole(user, t.organisation_id, c))
+    || (t.team_id && (await q(c).query("SELECT 1 FROM teams x WHERE x.id=$1 AND (x.owner_id=$2 OR EXISTS (SELECT 1 FROM team_members m WHERE m.team_id=x.id AND m.user_id=$2 AND m.status='active'))", [t.team_id, user.id])).rowCount > 0)
+    || (t.scope === 'event' && t.event_id && (await q(c).query("SELECT 1 FROM events e WHERE e.id=$1 AND (e.status <> 'draft' OR e.organizer_id=$2)", [t.event_id, user.id])).rowCount > 0));
   if (!ok) throw notFound('Template');
   return t;
 }
@@ -169,7 +176,7 @@ cap({
 
 const templateInput = {
   name: z.string().trim().min(2).max(80), sport: z.string().min(1), variant: z.string().max(30).optional(), best_of: z.number().int().optional(),
-  scope: z.enum(['personal', 'organisation']).default('personal'), organisation_id: id.optional(), from_ai: z.boolean().optional(),
+  scope: z.enum(['personal', 'organisation', 'team', 'event']).default('personal'), organisation_id: id.optional(), team_id: id.optional(), event_id: id.optional(), from_ai: z.boolean().optional(),
   customise: customiseSchema,
 };
 
@@ -182,10 +189,22 @@ cap({
     const rs = baseRuleset(sport, i.variant);
     if (i.best_of && (rs.kind !== 'sets' || !BEST_OF.includes(i.best_of))) throw badRequest('Best-of applies to set-based sports only (1, 3 or 5)');
     if (i.scope === 'organisation') { const r = await orgRole(user, i.organisation_id); if (!i.organisation_id || !['owner', 'admin', 'coach'].includes(r)) throw forbidden('Only an owner, admin or coach of the organisation can save its templates'); }
+    if (i.scope === 'team') {
+      if (!i.team_id) throw badRequest('Give the team this template is for');
+      const ok = isAdmin(user) || (await pool.query("SELECT 1 FROM teams t WHERE t.id=$1 AND (t.owner_id=$2 OR EXISTS (SELECT 1 FROM team_members m WHERE m.team_id=t.id AND m.user_id=$2 AND m.status='active' AND m.role IN ('captain','coach','manager')))", [i.team_id, user.id])).rowCount > 0;
+      if (!ok) throw forbidden('Only the team\'s owner, captain, coach or manager can save its templates');
+    }
+    if (i.scope === 'event') {
+      if (!i.event_id) throw badRequest('Give the event this template is for');
+      const ev = (await pool.query('SELECT sport_id, organizer_id FROM events WHERE id=$1', [i.event_id])).rows[0];
+      if (!ev) throw notFound('Event');
+      if (ev.organizer_id !== user.id && !isAdmin(user)) throw forbidden('Only the event organiser can save a template for the event');
+      if (ev.sport_id !== sport.id) throw badRequest('That event is for a different sport');
+    }
     return tx(async (c) => {
       const t = (await c.query(
-        `INSERT INTO tracking_sheet_templates(sport_id, variant, scope, owner_user_id, organisation_id, name, draft, best_of, origin) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-        [sport.id, variantOf(sport, rs, i.variant), i.scope, user.id, i.scope === 'organisation' ? i.organisation_id : null, i.name, JSON.stringify(i.customise), i.best_of ?? null, i.from_ai ? 'ai' : 'user'])).rows[0];
+        `INSERT INTO tracking_sheet_templates(sport_id, variant, scope, owner_user_id, organisation_id, team_id, event_id, name, draft, best_of, origin) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+        [sport.id, variantOf(sport, rs, i.variant), i.scope, user.id, i.scope === 'organisation' ? i.organisation_id : null, i.scope === 'team' ? i.team_id : null, i.scope === 'event' ? i.event_id : null, i.name, JSON.stringify(i.customise), i.best_of ?? null, i.from_ai ? 'ai' : 'user'])).rows[0];
       await audit(c, user.id, 'create_tracking_template', 'tracking_sheet_templates', t.id);
       return t;
     });
@@ -261,6 +280,7 @@ const rowSchema = z.object({
   order: z.number().int().min(0).max(100).optional(), lane: z.string().max(10).optional(), bib: z.string().trim().max(10).optional(), name: z.string().trim().max(80).optional(), country: z.string().trim().max(40).optional(),
   reaction: z.string().trim().max(8).optional(), split1: z.string().trim().max(12).optional(), split2: z.string().trim().max(12).optional(), result: z.string().trim().max(20).optional(),
   wind: z.string().trim().max(6).optional(), status: z.enum(['', 'DNS', 'DNF', 'DQ']).optional(), rank: z.number().int().min(1).max(200).optional(), notes: z.string().trim().max(120).optional(),
+  body_kg: z.number().min(20).max(250).optional(), attempts: z.array(z.object({ kg: z.number().int().min(0).max(600), ok: z.boolean().nullable() })).max(6).optional(),
 });
 const playerSchema = z.object({ no: z.string().trim().max(4).default(''), name: z.string().trim().max(60).default(''), role: z.enum(['starter', 'sub']).default('starter'), captain: z.boolean().default(false), gk: z.boolean().default(false), pos: z.string().trim().max(6).default('') });
 /** What a scorer fills in around the game: header fields, team lists and officials. Never a score. */
@@ -268,6 +288,10 @@ const detailsSchema = z.object({
   info: z.record(z.string().regex(/^[a-z][a-z0-9_]{0,23}$/), z.string().trim().max(200)).optional(),
   players: z.object({ home: z.array(playerSchema).max(30).optional(), away: z.array(playerSchema).max(30).optional() }).optional(),
   officials: z.record(z.string().regex(/^[a-z][a-z0-9_]{0,23}$/), z.string().trim().max(80)).optional(),
+  cards: z.array(z.object({ judge: z.string().trim().max(60).default(''), rounds: z.array(z.object({ red: z.number().int().min(0).max(10), blue: z.number().int().min(0).max(10) })).max(12) })).max(5).optional(),
+  moves: z.array(z.tuple([z.string().trim().max(12), z.string().trim().max(12)])).max(200).optional(),
+  tally: z.record(z.string().regex(/^[a-z][a-z0-9_]{0,23}$/), z.number().int().min(0).max(99)).optional(),
+  contest: z.object({ winner: z.enum(['home', 'away', 'draw']).nullable().optional(), method: z.string().trim().max(60).optional() }).optional(),
 });
 const totalsSchema = z.object({
   home: z.number().int().min(0).max(999), away: z.number().int().min(0).max(999),
@@ -303,6 +327,7 @@ cap({
       if (i.fixture_id) {
         const x = await linkContext(user, i.fixture_id, c);
         const why = proposable(x); if (why) throw conflict(why);
+        if (tpl?.scope === 'event' && tpl.event_id !== x.f.event_id) throw conflict('That template was made for a different event');
         const evSport = await one('SELECT * FROM sports WHERE id=$1', [x.ev.sport_id]);
         if (sport && sport.id !== evSport.id) throw badRequest('This template is for a different sport than the game');
         if (i.sport && (await sportOf(i.sport)).id !== evSport.id) throw badRequest('The sport does not match the game');
@@ -319,6 +344,7 @@ cap({
         ruleset = rulesetFor(sport, variant, rules, i.best_of ?? tpl?.best_of);
         if (i.best_of && ruleset.kind !== 'sets') throw badRequest('Best-of applies to set-based sports only');
       }
+      if (tpl?.scope === 'event' && !i.fixture_id) throw conflict('An event template is for sheets linked to that event\'s games');
       if (i.context_type) await checkContext(user, i.context_type, i.context_id, c);
       variant = variantOf(sport, ruleset, variant || i.variant);
       if (fixture) {
@@ -376,7 +402,7 @@ cap({
       if (i.rows) set('rows', JSON.stringify(i.rows));
       if (i.details) {
         const d = s.details ?? {}, n = i.details;
-        set('details', JSON.stringify({ ...d, ...(n.info ? { info: { ...d.info, ...n.info } } : {}), ...(n.officials ? { officials: { ...d.officials, ...n.officials } } : {}), ...(n.players ? { players: { ...d.players, ...n.players } } : {}) }));
+        set('details', JSON.stringify({ ...d, ...(n.info ? { info: { ...d.info, ...n.info } } : {}), ...(n.officials ? { officials: { ...d.officials, ...n.officials } } : {}), ...(n.players ? { players: { ...d.players, ...n.players } } : {}), ...(n.cards ? { cards: n.cards } : {}), ...(n.moves ? { moves: n.moves } : {}), ...(n.tally ? { tally: n.tally } : {}), ...(n.contest ? { contest: n.contest } : {}) }));
       }
       if (i.add_entry) {
         const e = i.add_entry;
@@ -450,13 +476,13 @@ cap({
     vals.push(i.limit, i.offset);
     const rows = await many(
       `SELECT s.id, s.ref, s.title, s.mode, s.status, s.provenance, s.labels, s.occurred_at, s.completed_at, s.created_at, s.fixture_id, s.context_type, s.context_id, s.manual_totals,
-              sp.name AS sport_name, sp.emoji AS sport_emoji, v.name AS template_name, v.version AS template_version, v.ruleset,
+              sp.name AS sport_name, sp.emoji AS sport_emoji, v.name AS template_name, v.version AS template_version, v.ruleset, v.layout, s.details,
               (SELECT p.state FROM result_proposals p WHERE p.sheet_id=s.id ORDER BY p.created_at DESC LIMIT 1) AS proposal_state
          FROM tracking_sheets s JOIN sports sp ON sp.id=s.sport_id JOIN tracking_sheet_template_versions v ON v.id=s.template_version_id
         WHERE ${where.join(' AND ')} ORDER BY s.created_at DESC, s.id LIMIT $${vals.length - 1} OFFSET $${vals.length}`, vals);
     const entries = rows.length ? await many('SELECT sheet_id, seq, kind, side, period, payload, voided_at FROM tracking_sheet_entries WHERE sheet_id = ANY($1) ORDER BY seq', [rows.map((r) => r.id)]) : [];
-    return rows.map(({ ruleset, manual_totals, ...r }) => {
-      const res = sheetResult(ruleset, entries.filter((e) => e.sheet_id === r.id), manual_totals);
+    return rows.map(({ ruleset, layout, details, manual_totals, ...r }) => {
+      const res = layout.mode === 'scorecard' ? scorecardResult(boardFor(layout, { details })) : sheetResult(ruleset, entries.filter((e) => e.sheet_id === r.id), manual_totals);
       return { ...r, official: false, label: r.mode === 'linked' ? 'Proposal' : 'Unofficial / standalone', score: res.home == null ? null : { home: res.home, away: res.away } };
     });
   },
@@ -487,6 +513,29 @@ cap({
       const x = await fixtureContext(user, r.id, null);
       const taken = await one("SELECT state FROM result_proposals WHERE fixture_id=$1 AND state IN ('proposed','under_review','changes_requested','approved','disputed') LIMIT 1", [r.id]);
       out.push({ ...r, can_review: x.canScore || !!x.side, open_proposal: taken?.state ?? null });
+    }
+    return out;
+  },
+});
+
+// Session candidates: the heats, finals and races of a multi-sport programme a results sheet could be proposed for.
+cap({
+  name: 'find_session_link_candidates', method: 'GET', path: '/tracking/session-candidates', tag: TAG,
+  summary: 'Sessions a heat, field or race sheet could be proposed for: same sport, individual disciplines, in events you can see. Entries are listed (names follow the programme\'s privacy setting) so each sheet row can be matched to one. The server re-checks everything when you propose.',
+  input: z.object({ sheet_id: id, q: z.string().trim().max(80).optional(), limit: z.coerce.number().int().min(1).max(30).default(15) }),
+  async handler({ user }, i) {
+    const s = await ownSheet(user, i.sheet_id);
+    const rows = await many(
+      `SELECT s.id, s.label, s.stage, s.status, s.scheduled_at, e.id AS event_id, e.name AS event_name, d.name AS discipline, d.result_type
+         FROM event_sessions s JOIN event_disciplines d ON d.id=s.discipline_id JOIN events e ON e.id=s.event_id
+        WHERE d.sport_id=$1 AND d.mode='individual' AND s.status <> 'cancelled' AND (e.status NOT IN ('draft','cancelled') OR e.organizer_id=$2)
+          AND ($3::text IS NULL OR s.label ILIKE '%'||$3||'%' OR e.name ILIKE '%'||$3||'%' OR d.name ILIKE '%'||$3||'%')
+        ORDER BY s.scheduled_at DESC NULLS LAST, s.id LIMIT $4`, [s.sport_id, user.id, i.q ?? null, i.limit]);
+    const open = new Map((await many("SELECT session_id, state FROM result_proposals WHERE session_id = ANY($1) AND state IN ('proposed','under_review','changes_requested','approved','disputed')", [rows.map((r) => r.id)])).map((r) => [r.session_id, r.state]));
+    const out = [];
+    for (const r of rows) {
+      const d = await sessionDetail(user, r.id);
+      out.push({ ...r, open_proposal: open.get(r.id) ?? null, entries: d.entries.map((e) => ({ id: e.id, name: e.full_name, lane: e.lane, status: e.result_status })) });
     }
     return out;
   },

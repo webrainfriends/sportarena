@@ -2,7 +2,7 @@
 // to localise the few rules a competition may change. The standard text is never edited: a local rule set is a named, versioned
 // list of settings (scoped to you, an organisation, a team or an event) and a card that differs from the standard says so.
 import React, { useMemo, useState } from 'react';
-import { Platform, Switch, View } from 'react-native';
+import { Switch, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
@@ -11,18 +11,14 @@ import { useLayout } from '../layout';
 import { Btn, Card, Chip, Empty, ErrorBox, Field, H2, Loading, Seg, T, Tag } from '../ui';
 import { Counter } from '../pickers';
 import { openLink } from './pathways';
+import { openPdf } from '../open-file';
 import { c } from '../theme';
 
 const SCOPES = [['personal', 'Just me'], ['organisation', 'An organisation'], ['team', 'A team'], ['event', 'An event']];
 const show = (v, unit) => (typeof v === 'boolean' ? (v ? 'on' : 'off') : `${v}${unit ? ` ${unit}` : ''}`);
 
-export async function openBlobPdf(path, toast) {
-  try {
-    if (Platform.OS !== 'web' || typeof window === 'undefined') return toast?.('Printable rulebooks open in the web app');
-    const url = URL.createObjectURL(await api.download(path));
-    window.open(url, '_blank', 'noopener');
-    setTimeout(() => URL.revokeObjectURL(url), 120000);
-  } catch (e) { toast?.(e.message); }
+export async function openBlobPdf(path, toast, name) {
+  try { await openPdf(path, name ?? 'rulebook'); } catch (e) { toast?.(e.message); }
 }
 
 /** One setting of a rule: a stepper for numbers, chips for fixed choices, a switch for on/off. */
@@ -123,7 +119,7 @@ export function Rulebook({ sport }) {
         <T size={13} color={c.mute}>Source: {b.body}. {b.note}</T>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 6 }}>
           <Btn small title="Official book ↗" color={c.cyan} onPress={() => openLink(b.official_url)} />
-          <Btn small title="Rulebook PDF" color={c.pink} onPress={() => openBlobPdf(`/rulebook/${sport}/pdf?${new URLSearchParams({ ...(b.format ? { format: b.format } : {}), ...(localId ? { local_id: localId } : {}) })}`, toast)} />
+          <Btn small title="Rulebook PDF" color={c.pink} onPress={() => openBlobPdf(`/rulebook/${sport}/pdf?${new URLSearchParams({ ...(b.format ? { format: b.format } : {}), ...(localId ? { local_id: localId } : {}) })}`, toast, `${sport}-rulebook`)} />
           <Btn small title="Start a scoring sheet" color={c.violet} onPress={() => push('ScoringTool', { tab: 'start', sport, localRulesId: localId, variant: b.format || undefined })} />
         </View>
       </Card>
@@ -147,7 +143,7 @@ export function Rulebook({ sport }) {
       <Field label="Search the rules" value={q} onChangeText={setQ} placeholder="e.g. offside, overs, timeout" />
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
         {cards.length ? cards.map((x) => (
-          <View key={x.key} style={{ width: L.tablet ? '48.5%' : '100%', flexGrow: 1 }}><RuleCard card={x} draft={draft} setValue={setValue} reset={reset} /></View>
+          <View key={x.key} style={{ width: L.tablet ? '48.5%' : '100%' }}><RuleCard card={x} draft={draft} setValue={setValue} reset={reset} /></View>
         )) : <Empty emoji="🔎" title="No rule matches" sub="Try another word." />}
       </View>
 
