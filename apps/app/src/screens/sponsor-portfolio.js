@@ -158,6 +158,7 @@ export function PortfolioEntry({ target_type, target_id, view }) {
   return (
     <Screen refreshing={e.loading} onRefresh={e.reload}>
       <H1>{b.name}</H1>
+      {recipient && b.target_type === 'athlete' && !b.youth_limited ? <Btn small title="Open my funding workspace" color={c.violet} style={{ alignSelf: 'flex-start' }} onPress={() => push('PlayerFunding', { athlete_id: b.target_id, name: b.name })} accessibilityLabel="Open the funding workspace for this athlete" /> : null}
       <T size={12} color={c.mute}>{KIND[b.target_type]} · {STAGE[b.stage][0]}{recipient ? ' · your sponsors' : ''}</T>
       {fresh ? <Banner tone={c.sunSoft} action="Refresh" onAction={e.reload}>This changed since you opened it — refresh to see the latest.</Banner> : null}
       {e.error ? <Banner tone={c.pinkSoft} action="Try again" onAction={e.reload}>{explain(e.error)}</Banner> : null}

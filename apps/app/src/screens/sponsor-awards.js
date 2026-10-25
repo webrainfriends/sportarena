@@ -185,7 +185,7 @@ export function MyOffers({ onChanged }) {
   );
 }
 
-function OfferSheet({ id, onClose, onChanged }) {
+export function OfferSheet({ id, onClose, onChanged }) {
   const { toast } = useSession();
   const [busy, setBusy] = useState(false);
   const [declining, setDeclining] = useState(false);

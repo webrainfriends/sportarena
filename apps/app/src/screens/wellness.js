@@ -10,6 +10,7 @@ import { FormSheet } from '../FormSheet';
 import { c } from '../theme';
 import { todayIn } from '../vtime';
 import { saveDraft, saveMessage } from '../offline';
+import { LoadHistory } from './load-history';
 
 const deviceTz = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return 'UTC'; } })();
 const nice = (s) => String(s).replace(/_/g, ' ');
@@ -296,12 +297,14 @@ export function RecoveryPanel() {
   const pain = useLoad(() => api.get('/me/body-pain'), []);
   const wl = useLoad(() => api.get('/me/workload', { date: todayIn(deviceTz) }), []);
   const hist = useLoad(() => api.get('/me/wellness'), []);
-  const all = () => Promise.all([rd.reload(), pain.reload(), wl.reload(), hist.reload()]);
+  const [ver, setVer] = useState(0);
+  const all = async () => { setVer((x) => x + 1); await Promise.all([rd.reload(), pain.reload(), wl.reload(), hist.reload()]); };
   return (
     <View style={{ gap: 16 }}>
       <ReadinessCard rd={rd} onLog={() => setQuick(true)} />
       <Card pad={16}><T weight="800" size={16} style={{ marginBottom: 10 }}>Body map</T>{pain.error ? <ErrorBox error={pain.error} onRetry={pain.reload} /> : <BodyMap pain={pain} onChanged={all} />}</Card>
       <WorkloadCard wl={wl} onChanged={all} />
+      <LoadHistory version={ver} onChanged={all} />
       <Card pad={16}><T weight="800" size={16} style={{ marginBottom: 10 }}>Sleep & hydration</T><SleepHydration hist={hist} /></Card>
       <T size={12} color={c.mute}>Only you can see this. Notes are encrypted and every read is logged. Readiness is guidance, not medical advice; see a physio or doctor for pain that does not settle.</T>
       <QuickLogSheet visible={quick} onClose={() => setQuick(false)} onDone={all} />

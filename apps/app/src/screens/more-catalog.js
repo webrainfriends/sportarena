@@ -7,13 +7,13 @@ export const MODULES = [
   ['MyDevelopment', 'My development', 'Goals, plans, feedback & reports', 'play'], ['MyPlans', 'Training plans', 'Your plans & sessions', 'play'], ['ToolsHome', 'Tools', 'Scoring sheets & documents', 'play'], ['Pathways', 'Learn & study', 'Rules, courses & colleges', 'play'], ['OpportunityMatches', 'Opportunities for me', 'Teams, trials, study & sponsors that fit you', 'play'],
   ['Health', 'Health', 'Physio · doctors · fit to play', 'care'], ['Insure', 'My cover', 'What covers me today', 'care'],
   ['Insurance', 'Insurance', 'You · your team · your event', 'care'], ['Legal', 'Legal', 'Verified lawyers & matters', 'care'], ['Family', 'Family', 'Guardians & consents', 'care'],
-  ['Wallet', 'Wallet', 'Balance, gift cards, loyalty', 'money'], ['Earnings', 'Earnings', 'Sales, fees & payouts', 'money'], ['PlayerContracts', 'Contracts', 'Fees, bonuses, expenses & pay', 'money'], ['Shop', 'Shop', 'Kit, gear & orders', 'money'],
+  ['Wallet', 'Wallet', 'Balance, gift cards, loyalty', 'money'], ['Earnings', 'Earnings', 'Sales, fees & payouts', 'money'], ['PlayerContracts', 'Contracts', 'Fees, bonuses, expenses & pay', 'money'], ['PlayerFunding', 'Funding', 'Needs, applications & sponsor support', 'money'], ['Shop', 'Shop', 'Kit, gear & orders', 'money'],
   ['Billboard', 'Billboard', 'Wanted, for sale & ads', 'money'], ['Sponsors', 'Sponsor home', 'Offers, dues & agreements', 'money'], ['Supply', 'Supply chain', 'Kit, stock & orders', 'money'], ['ServicesBuyer', 'Services & suppliers', 'Buy grounds, crew, Wi-Fi, travel…', 'work'],
   ['Openings', 'Open positions', 'Jobs, stalls & contracts at events', 'community'], ['EventInbox', 'Event requests', 'Invites & quotes for you', 'community'],
   ['Orgs', 'Organisations', 'Clubs & associations', 'community'], ['Support', 'Support', 'Cases & disputes', 'community'],
 ];
 
-export const GROUP_COLOR = { play: '#FDA481', care: '#8A9BC4', money: '#FFE4D8', community: '#8697BC', work: '#4C9A7A' };
+export const GROUP_COLOR = { play: '#D0BDF4', care: '#A0D2EB', money: '#E5EAF5', community: '#A0D2EB', work: '#4C9A7A' };
 
 // The Workspace module: one entry per role that has its own working area, [role, route, sub, tab?] (a `tab` target goes to that tab instead of pushing the route). A person holding several of
 // these gets a submenu in the wheel to pick which workspace to open; with one, the tile opens it directly.

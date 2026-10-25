@@ -1,11 +1,11 @@
 import { z } from 'zod';
 import { cap, id } from '../registry.js';
 import { one, many } from '../db.js';
-import { badRequest, notFound } from '../errors.js';
+import { badRequest, conflict, notFound } from '../errors.js';
 
 const TAG = 'Athlete';
-const KIND = z.enum(['recovery', 'gym', 'rest', 'other']);
-const COLS = 'id, kind, title, starts_at, ends_at, timezone, created_at';
+const KIND = z.enum(['recovery', 'gym', 'rest', 'other', 'travel']);
+const COLS = 'id, kind, title, starts_at, ends_at, timezone, version, created_at';
 const zone = z.string().max(64).refine((z) => { try { new Intl.DateTimeFormat('en', { timeZone: z }); return true; } catch { return false; } }, 'Unknown time zone');
 
 // Personal time the athlete sets aside (recovery, gym, rest). It lands on the same calendar as matches and training
@@ -38,6 +38,24 @@ cap({
   async handler({ user }, i) {
     const row = await one(`UPDATE athlete_blocks SET status='archived', archived_at=now() WHERE id=$1 AND user_id=$2 AND status='active' RETURNING id, status, archived_at`, [i.id, user.id]);
     if (!row) throw notFound('Block');
+    return row;
+  },
+});
+
+cap({
+  name: 'update_athlete_block', method: 'PATCH', path: '/me/blocks/:id', tag: TAG,
+  summary: 'Move or change a personal block (kind, title, start, end, time zone), for example to resolve a conflict. Send the version you last saw; a stale version is refused (409) so two devices cannot overwrite each other.',
+  input: z.object({ id, version: z.number().int().min(1), kind: KIND.optional(), title: z.string().trim().max(80).nullable().optional(), starts_at: z.string().datetime({ offset: true }).optional(), ends_at: z.string().datetime({ offset: true }).optional(), timezone: zone.optional() }),
+  async handler({ user }, i) {
+    const cur = await one(`SELECT ${COLS} FROM athlete_blocks WHERE id=$1 AND user_id=$2 AND status='active'`, [i.id, user.id]);
+    if (!cur) throw notFound('Block');
+    const next = { kind: i.kind ?? cur.kind, title: i.title === undefined ? cur.title : i.title || null, starts_at: i.starts_at ?? cur.starts_at, ends_at: i.ends_at ?? cur.ends_at, timezone: i.timezone ?? cur.timezone };
+    if (Date.parse(next.ends_at) <= Date.parse(next.starts_at)) throw badRequest('ends_at must be after starts_at');
+    if (Date.parse(next.ends_at) - Date.parse(next.starts_at) > 14 * 86400000) throw badRequest('A block can be at most 14 days long');
+    const row = await one(`UPDATE athlete_blocks SET kind=$4, title=$5, starts_at=$6, ends_at=$7, timezone=$8, version=version+1, updated_at=now()
+                            WHERE id=$1 AND user_id=$2 AND version=$3 AND status='active' RETURNING ${COLS}`,
+      [i.id, user.id, i.version, next.kind, next.title, next.starts_at, next.ends_at, next.timezone]);
+    if (!row) throw conflict('This block was changed elsewhere; reload and try again', { code: 'stale_version' });
     return row;
   },
 });

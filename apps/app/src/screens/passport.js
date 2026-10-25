@@ -8,6 +8,7 @@ import { useSession } from '../session';
 import { Avatar, Btn, Card, Empty, ErrorBox, H1, H2, Loading, Screen, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { c, day, toneFor } from '../theme';
+import { useNav } from '../nav';
 import { CredentialList } from './pathways';
 import { CoachPassportDesk, GuardianPassports, RecruitmentProfile, RecruitmentSections } from './passport-recruitment';
 
@@ -163,11 +164,13 @@ export function MyPassport() {
   const [form, setForm] = useState(false);
   const [fresh, setFresh] = useState(null); // the just-created link, with its secret
   const [edit, setEdit] = useState(null);
+  const { push } = useNav();
   const revoke = async (l) => { try { await api.post(`/me/passport-links/${l.id}/revoke`); toast('Link turned off'); await links.reload(); } catch (e) { toast(e.message); } };
   return (
     <Screen>
       <H1>Player passport</H1>
       <T color={c.mute} style={{ marginTop: 2 }}>Share your sporting CV with a coach or scout. You choose what they see and when the link stops working.</T>
+      <Btn small title="Season & career reports (CSV / PDF)" color={c.paper} ink={c.ink} onPress={() => push('SeasonReports')} style={{ alignSelf: 'flex-start', marginTop: 10 }} accessibilityLabel="Open season and career reports" />
 
       {fresh ? (
         <Card pad={16} style={{ marginTop: 14 }}>
