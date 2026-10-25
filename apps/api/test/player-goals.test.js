@@ -276,3 +276,27 @@ test('development workspace and export carry the player\'s own items, labelled a
   assert.ok(!ok(await get(s.stranger.token, '/me/goals-export')).csv.includes('Endurance'));
   void p;
 });
+
+test('concurrency: simultaneous shares, adoptions and keyed retries leave exactly one record each', async () => {
+  const s = await setup();
+  const t = s.player.token;
+  const g = ok(await post(t, '/me/goals', { title: 'Race goal', measure: 'Be consistent' }), 201);
+  const shares = await Promise.all([1, 2, 3].map(() => post(t, '/me/shares', { goal_id: g.id, coach_id: s.coach.id })));
+  assert.deepEqual(shares.map((r) => r.status), [201, 201, 201]);
+  assert.equal(new Set(shares.map((r) => r.body.id)).size, 1, 'one live share');
+  assert.equal(Number((await pool.query('SELECT count(*) FROM player_shares WHERE goal_id=$1 AND revoked_at IS NULL', [g.id])).rows[0].count), 1);
+
+  const adopts = await Promise.all([1, 2, 3].map(() => post(s.coach.token, `/coaching/player-shared/goal/${g.id}/adopt`)));
+  assert.ok(adopts.every((r) => r.status === 201), JSON.stringify(adopts.map((r) => r.body)));
+  assert.equal(adopts.filter((r) => r.body.already_adopted === false).length, 1, 'exactly one adoption wins');
+  assert.equal(Number((await pool.query('SELECT count(*) FROM coaching_goals WHERE athlete_id=$1', [s.player.id])).rows[0].count), 1);
+
+  const assess = await Promise.all([1, 2, 3].map(() => post(s.coach.token, `/coaching/player-shared/goal/${g.id}/assessments`, { rating: 'on_track', note: 'Steady', client_key: 'race-key-0001' })));
+  assert.equal(new Set(assess.map((r) => r.body.id)).size, 1);
+  const progress = await Promise.all([1, 2, 3].map(() => post(t, `/me/goals/${g.id}/progress`, { note: 'Same entry', client_key: 'race-prog-0001' })));
+  assert.equal(new Set(progress.map((r) => r.body.id)).size, 1);
+
+  // two stale writers: exactly one edit wins
+  const edits = await Promise.all([1, 2].map((k) => patch(t, `/me/goals/${g.id}`, { row_version: 1, title: `Edit ${k}` })));
+  assert.deepEqual(edits.map((r) => r.status).sort(), [200, 409]);
+});
