@@ -105,17 +105,19 @@ function SubSheet({ side, rows, f, id, onClose, onDone, toast }) {
   const onField = rows.filter((r) => ['started', 'substitute_on'].includes(r.status) && r.off_clock_seconds == null);
   const bench = rows.filter((r) => r.status === 'unused_sub');
   const [off, setOff] = useState(null), [on, setOn] = useState(null), [busy, setBusy] = useState(false);
+  // starts at the wall-clock minutes since kick-off; the referee adjusts it to the game clock (pauses and half-time do not count)
+  const [minute, setMinute] = useState(() => (f.started_at ? Math.max(0, Math.floor((Date.now() - new Date(f.started_at)) / 60000)) : 0));
   const go = async () => {
     setBusy(true);
-    const elapsed = f.started_at ? Math.max(0, Math.floor((Date.now() - new Date(f.started_at)) / 1000)) : 0;
-    try { await api.post(`/fixtures/${id}/substitutions`, { side, player_off_id: off, player_on_id: on, clock_seconds: elapsed, client_key: key() }); onDone(); onClose(); } catch (x) { toast('' + x.message); } finally { setBusy(false); }
+    try { await api.post(`/fixtures/${id}/substitutions`, { side, player_off_id: off, player_on_id: on, clock_seconds: minute * 60, client_key: key() }); onDone(); onClose(); } catch (x) { toast('' + x.message); } finally { setBusy(false); }
   };
   return (
     <Sheet visible onClose={onClose} title="Substitution">
-      <AT size={13} weight="800">Coming off</AT>
+      <AT size={13} weight="800" color="#334155">Coming off</AT>
       {!onField.length ? <AT size={12.5} color={A.mute}>Nobody is on the field.</AT> : <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{onField.map((r) => <AChip key={r.user_id} label={r.display_name} active={off === r.user_id} color={A.magenta} onPress={() => setOff(r.user_id)} />)}</View>}
-      <AT size={13} weight="800">Going on</AT>
+      <AT size={13} weight="800" color="#334155">Going on</AT>
       {!bench.length ? <AT size={12.5} color={A.mute}>No unused substitutes left.</AT> : <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{bench.map((r) => <AChip key={r.user_id} label={r.display_name} active={on === r.user_id} color={A.green} onPress={() => setOn(r.user_id)} />)}</View>}
+      <AStepper label="Game minute" value={minute} min={0} max={600} onChange={setMinute} />
       <ABtn title="Confirm substitution" tone="sun" disabled={!off || !on} loading={busy} onPress={go} />
     </Sheet>
   );

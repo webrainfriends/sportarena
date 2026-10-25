@@ -199,7 +199,7 @@ cap({
   input: z.object({ as: z.enum(['coach', 'athlete']).default('athlete'), status: z.enum(['draft', 'proposed', 'active', 'declined', 'change_requested', 'closed']).optional(), athlete_id: id.optional(), ...page }),
   handler: ({ user }, i) => many(
     `${PLAN_SQL} WHERE ${i.as === 'coach' ? 'p.coach_id' : 'p.athlete_id'}=$1 AND ($2::text IS NULL OR p.status=$2) AND ($3::uuid IS NULL OR p.athlete_id=$3)
-      AND (p.athlete_id=$1 OR p.status <> 'draft' OR p.coach_id=$1)
+      AND (p.coach_id=$1 OR p.status <> 'draft')
       ORDER BY p.updated_at DESC, p.id LIMIT $4 OFFSET $5`, [user.id, i.status ?? null, i.athlete_id ?? null, i.limit, i.offset]),
 });
 

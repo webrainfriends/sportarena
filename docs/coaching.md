@@ -112,3 +112,5 @@ Extends the shared training plan; nothing is duplicated and completed sessions a
 * **Access**: the coach sees the athlete's recorded results only while a coaching relationship is live and, for young people, guardian *coaching* consent stands; guardians can read (not write) with consent. A structured plan for a young person needs that consent to be proposed. Nothing is deleted when access ends.
 * **Export**: `GET /training-plans/:id/export` returns a PDF (base64 JSON, like other exports) built from the same view the screen shows, audit-logged. Also exposed over OpenAPI and MCP.
 * **Not covered**: acute:chronic workload ratios and wearable imports (no data source yet), and coach-authored pace entry as min:sec (steppers in seconds are used).
+## Player view
+The athlete's and guardian's view of everything above is the player development workspace (`docs/player-development.md`, `GET /me/development`); it replaces the old "From my coach" screen.

@@ -4,7 +4,7 @@ import { one, many, tx } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { isAdmin, PUBLIC_USER, sportBySlugOrId } from '../helpers.js';
 import { hiddenYouth, relationships, requireCoachingConsent, requireRelationship } from '../coaching.js';
-import { isYouth } from '../youth.js';
+import { hasConsent, isYouth } from '../youth.js';
 import { requireTeam } from './coaching-journal.js';
 import { notifyActionAssigned, notifyActionDone } from '../coaching-notify.js';
 import { PLAYED, teamEvents, evaluateObjectives } from '../coaching-match-data.js';
@@ -305,6 +305,8 @@ cap({
     const athlete = a && a.owner_id === user.id && a.athlete_id === user.id && a.shared;
     if (!a || !(author || athlete || (a.owner_id === user.id && a.shared))) throw notFound('Action');
     const limited = !author;
+    // a young person's shared action is hidden while a guardian's coaching consent is withdrawn, so it cannot be changed either
+    if (limited && !(await hasConsent(a.athlete_id ?? user.id, 'coaching'))) throw notFound('Action');
     if (limited && ['title', 'detail', 'due_at', 'priority', 'shared', 'follow_up_next_session'].some((k) => i[k] !== undefined)) throw forbidden('You can only update the status and completion note of an action you own');
     if (author && !['done', 'cancelled'].includes(i.status ?? '') && Object.keys(i).some((k) => !['id', 'row_version', 'status', 'completion_note'].includes(k) || (k === 'status'))) await authorise(user, a);
     const updated = await tx(async (c) => {

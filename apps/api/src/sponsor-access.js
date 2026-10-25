@@ -46,6 +46,8 @@ const repSql = (n, action, { brandWide = false } = {}) => `(sp.entity_id IS NOT 
      AND r.role = ANY(ARRAY[${REP_ROLES_FOR(action, { brandWide }).map((r) => `'${r}'`).join(',')}]) AND (r.role<>'portfolio_manager' OR ${ASSIGNED}sp.id))))`;
 // organisation role -> sponsor role (a coach has no part in sponsorship)
 const FROM_ORG = { owner: 'manager', admin: 'manager', manager: 'manager', finance: 'finance', evaluator: 'evaluator', legal: 'legal', approver: 'approver', auditor: 'auditor' };
+/** Organisation roles that carry a sponsor role (a coach has no part in sponsorship). */
+export const SPONSOR_ORG_ROLES = Object.keys(FROM_ORG);
 const ORG_ROLES_FOR = (action) => Object.entries(FROM_ORG).filter(([, s]) => SPONSOR_ACTIONS[action].includes(s)).map(([o]) => o);
 
 /** The actions a sponsor role may take, for clients that hide what a role cannot use (the server still enforces). */

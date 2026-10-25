@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { YouthAuthorizations } from './sponsor-youth';
+import { HandOverBrand } from './sponsor-ownership';
 import { View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
@@ -441,6 +442,7 @@ export function Sponsors() {
   const { push } = useNav();
   const [form, setForm] = useState(null);
   const [editBrand, setEditBrand] = useState(null);
+  const [handOver, setHandOver] = useState(null);
   const dir = useLoad(() => api.get('/sponsors', { limit: 50 }), []);
   const mine = useLoad(() => api.get('/sponsors', { mine: true, limit: 50 }), []);
   const deals = useLoad(() => api.get('/sponsorships', { limit: 100 }), []);
@@ -501,6 +503,7 @@ export function Sponsors() {
             sub={[s.tagline, s.industry, s.organisation_name ? `Run by ${s.organisation_name}` : 'Individual brand', asSponsorRole(s.my_role) !== 'manager' ? { evaluator: 'You evaluate and review; you cannot pay or sign', finance: 'You report payments; you cannot change terms', legal: 'You review and change terms; you cannot pay', approver: 'You propose, revise and withdraw; you cannot pay', auditor: 'Read-only, with exports' }[asSponsorRole(s.my_role)] : null].filter(Boolean).join(' · ')}
             right={<View style={{ alignItems: 'flex-end', gap: 6 }}><Tag label={{ manager: 'Manager', evaluator: 'Evaluator', finance: 'Finance', legal: 'Legal', approver: 'Approver', auditor: 'Auditor' }[asSponsorRole(s.my_role)] ?? 'Staff'} />
               {asSponsorRole(s.my_role) === 'manager' ? <Btn small title="Edit profile" color={c.violet} onPress={async () => { try { setEditBrand(await api.get(`/sponsors/${s.id}`)); } catch (e) { toast(explain(e)); } }} /> : null}
+              {asSponsorRole(s.my_role) === 'manager' && !s.identity_confirmed ? <Btn small title="Hand over" color={c.paper} ink={c.ink} onPress={() => setHandOver(s)} accessibilityLabel={`Hand over ${s.name} to a new owner`} /> : null}
               {s.organisation_id ? <Btn small title="Open workspace" color={c.paper} ink={c.ink} onPress={() => push('Org', { id: s.organisation_id })} /> : asSponsorRole(s.my_role) === 'manager' && !s.identity_confirmed ? <Btn small title="Link to an organisation" color={c.paper} ink={c.ink} onPress={() => push('Orgs')} /> : null}</View>} />
         )) : <Empty emoji="🏷️" title="No brands yet" sub="Create a brand, or ask an organisation manager to invite you to theirs." />}
         <T size={12} color={c.mute}>Link a brand to an organisation (open it, then Teams, events, venues & brands) to let that organisation's staff work its deals under their roles; staff and departments are managed there.</T>
@@ -510,6 +513,7 @@ export function Sponsors() {
         onSubmit={async (v) => { await api.post('/sponsors', brandBody(v, false)); dir.reload(); mine.reload(); return 'Brand created — finish its profile any time from Your brands'; }} />
       <FormSheet visible={!!editBrand} onClose={() => setEditBrand(null)} title={`Edit ${editBrand?.name ?? 'brand'}`} fields={BRAND_FIELDS} initial={editBrand ? brandInitial(editBrand) : {}}
         onSubmit={async (v) => { await api.patch(`/sponsors/${editBrand.id}`, brandBody(v, true)); dir.reload(); mine.reload(); return 'Brand profile saved'; }} />
+      <HandOverBrand brand={handOver} visible={!!handOver} onClose={() => setHandOver(null)} onDone={() => { mine.reload(); dir.reload(); }} toast={toast} />
       <FormSheet visible={form === 'pitch'} onClose={() => setForm(null)} title="Your sponsor pitch" initial={{ pitch: pr?.pitch ?? '', looking_for: pr?.looking_for ?? [], verified_sponsors_only: !!pr?.verified_sponsors_only }}
         fields={[{ key: 'pitch', label: 'What should sponsors know about you?', type: 'multiline', optional: true, hint: 'Shown to sponsors. Do not include contact details.' }, { key: 'looking_for', label: 'What are you looking for?', type: 'multi', optional: true, options: ['cash', 'equipment', 'travel', 'coaching', 'apparel', 'nutrition', 'media'] }, { key: 'verified_sponsors_only', label: 'Only verified sponsors may send offers', type: 'switch' }]}
         onSubmit={async (v) => { await api.post('/me/sponsorship-profile', { open_to_sponsors: !!pr?.open_to_sponsors, pitch: v.pitch ?? null, looking_for: v.looking_for ?? [], verified_sponsors_only: v.verified_sponsors_only }); profile.reload(); return 'Saved'; }} />

@@ -13,7 +13,7 @@ import { audit, isAdmin, PUBLIC_USER } from '../helpers.js';
 import { blindIndex } from '../crypto.js';
 import { csvToObjects, toCsv } from '../csv.js';
 import { notify } from '../notify.js';
-import { orgFor, orgRole } from '../org-access.js';
+import { orgFor, orgRole, lockOrg } from '../org-access.js';
 import { SPONSOR_ROLES } from '../sponsor-access.js';
 import { hasConsent } from '../youth.js';
 import { promoteWaitlist, lockProgramme } from '../academy.js';
@@ -34,7 +34,6 @@ const person = (ref) => {
   return r.includes('@') ? one('SELECT id, handle, display_name FROM users WHERE email_idx=$1', [blindIndex(r)]) : one('SELECT id, handle, display_name FROM users WHERE lower(handle)=lower($1)', [r.replace(/^@/, '')]);
 };
 const deptOf = async (orgId, deptId) => { if (!(await one('SELECT 1 FROM org_departments WHERE id=$1 AND organisation_id=$2 AND archived_at IS NULL', [deptId, orgId]))) throw notFound('Department'); };
-const lockOrg = (c, orgId) => c.query('SELECT id FROM organisations WHERE id=$1 FOR UPDATE', [orgId]);
 const activeOwners = async (c, orgId, except) => (await c.query("SELECT count(*)::int AS n FROM organisation_members WHERE organisation_id=$1 AND role='owner' AND status='active' AND user_id<>$2", [orgId, except])).rows[0].n;
 
 /** Cohort + the caller's right to run it: owner/admin always, a coach only for cohorts assigned to them. */
