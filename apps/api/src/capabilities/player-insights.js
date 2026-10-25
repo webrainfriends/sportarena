@@ -89,13 +89,13 @@ const filterShape = {
   match_type: z.string().regex(/^[a-z][a-z0-9_]{0,29}$/).optional().describe('only compare matches of this format (singles, doubles, t20 …); self-logged evidence only'),
 };
 
-const PROFILE_SQL = `SELECT p.id, p.sport_id, p.level, nullif(btrim(p.region), '') AS region, p.positions, p.position, s.slug AS sport_slug, s.name AS sport, s.emoji AS sport_emoji, s.category
+export const PROFILE_SQL = `SELECT p.id, p.sport_id, p.level, nullif(btrim(p.region), '') AS region, p.positions, p.position, s.slug AS sport_slug, s.name AS sport, s.emoji AS sport_emoji, s.category
                        FROM active_sport_profiles p JOIN sports s ON s.id = p.sport_id
                       WHERE p.user_id = $1 AND p.role = 'athlete' AND ($2::uuid IS NULL OR p.id = $2)
                       ORDER BY p.is_default DESC, p.created_at LIMIT 1`;
 
 /** One player's benchmarks for one evidence track, in a single read-only snapshot so every number comes from the same moment. */
-async function build(userId, profile, f) {
+export async function build(userId, profile, f) {
   if (f.match_type && f.evidence === 'official') throw badRequest('Match format applies to self-logged matches only; approved competition results are not split by format');
   if (f.match_type && !matchTypesFor({ slug: profile.sport_slug, category: profile.category }).includes(f.match_type)) throw badRequest(`Unknown match format for ${profile.sport}`);
   const mine_positions = [...new Set([...(profile.positions ?? []), profile.position].map((x) => x?.trim()).filter(Boolean))];

@@ -10,12 +10,13 @@ import { audit } from '../helpers.js';
 import { sha256 } from '../crypto.js';
 import { askJson, aiConfigured, aiModel, quoteData } from '../ai.js';
 import { published } from '../feedback.js';
+import { logEvent, stale } from '../pathway.js';
 
 const TAG = 'Education';
 const KINDS = ['course', 'certification', 'diploma', 'degree', 'postgraduate', 'short_course'];
 const MODES = ['on_campus', 'online', 'hybrid'];
 const INST_KINDS = ['university', 'college', 'academy', 'school', 'institute', 'other'];
-const TARGETS = ['institution', 'programme', 'study_institution', 'study_programme'];
+const TARGETS = ['institution', 'programme', 'study_institution', 'study_programme', 'team'];
 const CACHE_DAYS = 30, HOURLY_LIMIT = 8;
 
 /** Average rating and review count for many subjects of one type, as a Map(subject_id -> {rating, reviews}). */
@@ -196,12 +197,13 @@ cap({
 });
 
 // ------------------------------------------------------------------ the bucket list
-const STATUSES = ['saved', 'shortlisted', 'applying', 'applied', 'accepted', 'not_for_me'];
+const STATUSES = ['saved', 'shortlisted', 'applying', 'applied', 'offered', 'accepted', 'enrolled', 'declined', 'not_for_me'];
 const EXISTS = {
   institution: "SELECT 1 FROM organisations o JOIN institution_profiles ip ON ip.organisation_id=o.id WHERE o.id=$1 AND o.status='active' AND ip.listed",
   programme: "SELECT 1 FROM programmes p JOIN organisations o ON o.id=p.organisation_id JOIN institution_profiles ip ON ip.organisation_id=o.id WHERE p.id=$1 AND p.status='active' AND o.status='active' AND ip.listed",
   study_institution: 'SELECT 1 FROM study_institutions WHERE id=$1',
   study_programme: 'SELECT 1 FROM study_programmes WHERE id=$1',
+  team: 'SELECT 1 FROM teams WHERE id=$1',
 };
 
 cap({
@@ -209,52 +211,73 @@ cap({
   summary: 'Add an institution or programme (a listed one, or an AI-suggested one) to your study bucket list, with an optional note and a target date such as the application deadline. Saving again restores a removed item.',
   input: z.object({ target_type: z.enum(TARGETS), target_id: id, status: z.enum(STATUSES).default('saved'), note: z.string().trim().max(1000).optional(), target_date: z.string().date().optional() }),
   async handler({ user }, i) {
-    if (!(await one(EXISTS[i.target_type], [i.target_id]))) throw notFound('That institution or programme');
-    return one(
-      `INSERT INTO study_bucket(user_id, target_type, target_id, status, note, target_date) VALUES ($1,$2,$3,$4,$5,$6)
-       ON CONFLICT (user_id, target_type, target_id) DO UPDATE SET removed_at=NULL, updated_at=now(), status=CASE WHEN study_bucket.removed_at IS NULL THEN study_bucket.status ELSE $4 END,
-         note=coalesce($5, study_bucket.note), target_date=coalesce($6, study_bucket.target_date) RETURNING *`,
-      [user.id, i.target_type, i.target_id, i.status, i.note ?? null, i.target_date ?? null]);
+    if (!(await one(EXISTS[i.target_type], [i.target_id]))) throw notFound('That institution, programme or team');
+    return tx(async (c) => {
+      const prior = (await c.query('SELECT * FROM study_bucket WHERE user_id=$1 AND target_type=$2 AND target_id=$3 FOR UPDATE', [user.id, i.target_type, i.target_id])).rows[0];
+      const row = (await c.query(
+        `INSERT INTO study_bucket(user_id, target_type, target_id, status, note, target_date) VALUES ($1,$2,$3,$4,$5,$6)
+         ON CONFLICT (user_id, target_type, target_id) DO UPDATE SET removed_at=NULL, updated_at=now(), status=CASE WHEN study_bucket.removed_at IS NULL THEN study_bucket.status ELSE $4 END,
+           note=coalesce($5, study_bucket.note), target_date=coalesce($6, study_bucket.target_date), row_version=study_bucket.row_version + 1 RETURNING *`,
+        [user.id, i.target_type, i.target_id, i.status, i.note ?? null, i.target_date ?? null])).rows[0];
+      if (!prior || prior.removed_at || prior.status !== row.status) await logEvent(c, { userId: user.id, bucketId: row.id, kind: 'stage', from: prior && !prior.removed_at ? prior.status : null, to: row.status, actorId: user.id });
+      return row;
+    });
   },
 });
 
 cap({
   name: 'update_bucket_item', method: 'PATCH', path: '/me/bucket/:id', tag: TAG,
-  summary: 'Change the stage (saved, shortlisted, applying, applied, accepted, not_for_me), note or target date of a bucket item, or remove it (`remove: true`; it is kept and can be saved again).',
-  input: z.object({ id, status: z.enum(STATUSES).optional(), note: z.string().trim().max(1000).nullable().optional(), target_date: z.string().date().nullable().optional(), remove: z.boolean().optional() }),
+  summary: 'Change the stage (saved, shortlisted, applying, applied, offered, accepted, enrolled, declined, not_for_me), note or target date of a bucket item, or remove it (`remove: true`; it is kept and can be saved again). Send `row_version` to refuse a stale edit (409). Every stage change is kept in your pathway history.',
+  input: z.object({ id, status: z.enum(STATUSES).optional(), note: z.string().trim().max(1000).nullable().optional(), target_date: z.string().date().nullable().optional(), remove: z.boolean().optional(), row_version: z.number().int().min(1).optional() }),
   async handler({ user }, i) {
     if (i.status === undefined && i.note === undefined && i.target_date === undefined && i.remove === undefined) throw badRequest('Nothing to update');
-    const row = await one(
-      `UPDATE study_bucket SET status=coalesce($3,status), note=CASE WHEN $4::boolean THEN $5 ELSE note END, target_date=CASE WHEN $6::boolean THEN $7::date ELSE target_date END,
-              removed_at=CASE WHEN $8::boolean THEN now() ELSE removed_at END, updated_at=now() WHERE id=$1 AND user_id=$2 AND removed_at IS NULL RETURNING *`,
-      [i.id, user.id, i.status ?? null, i.note !== undefined, i.note ?? null, i.target_date !== undefined, i.target_date ?? null, i.remove === true]);
-    if (!row) throw notFound('Bucket item');
-    return row;
+    return tx(async (c) => {
+      const cur = (await c.query('SELECT * FROM study_bucket WHERE id=$1 AND user_id=$2 AND removed_at IS NULL FOR UPDATE', [i.id, user.id])).rows[0];
+      if (!cur) throw notFound('Bucket item');
+      if (i.row_version !== undefined && i.row_version !== cur.row_version) throw stale();
+      const row = (await c.query(
+        `UPDATE study_bucket SET status=coalesce($3,status), note=CASE WHEN $4::boolean THEN $5 ELSE note END, target_date=CASE WHEN $6::boolean THEN $7::date ELSE target_date END,
+                removed_at=CASE WHEN $8::boolean THEN now() ELSE removed_at END, updated_at=now(), row_version=row_version+1 WHERE id=$1 AND user_id=$2 RETURNING *`,
+        [i.id, user.id, i.status ?? null, i.note !== undefined, i.note ?? null, i.target_date !== undefined, i.target_date ?? null, i.remove === true])).rows[0];
+      if (row.status !== cur.status) await logEvent(c, { userId: user.id, bucketId: row.id, kind: 'stage', from: cur.status, to: row.status, actorId: user.id });
+      return row;
+    });
   },
 });
 
+/**
+ * An athlete's live bucket items with what each is, where, its platform rating, whether it is listed here, and (for listed institutions) the status of the
+ * athlete's enquiry there. Shared by the bucket list, the pathway plan and what a coach is allowed to see.
+ */
+export async function bucketFor(userId, { status = null, limit = 25, offset = 0, ids = null } = {}) {
+  const rows = await many('SELECT * FROM study_bucket WHERE user_id=$1 AND removed_at IS NULL AND ($2::text IS NULL OR status=$2) AND ($5::uuid[] IS NULL OR id = ANY($5)) ORDER BY created_at DESC, id LIMIT $3 OFFSET $4', [userId, status, limit, offset, ids]);
+  const of = (t) => rows.filter((r) => r.target_type === t).map((r) => r.target_id);
+  const [orgs, progs, sInst, sProg, teams] = await Promise.all([
+    of('institution').length ? many('SELECT o.id, o.name, o.city, ip.country FROM organisations o JOIN institution_profiles ip ON ip.organisation_id=o.id WHERE o.id = ANY($1)', [of('institution')]) : [],
+    of('programme').length ? many('SELECT p.id, p.title, p.organisation_id, o.name AS institution, o.city, ip.country FROM programmes p JOIN organisations o ON o.id=p.organisation_id JOIN institution_profiles ip ON ip.organisation_id=o.id WHERE p.id = ANY($1)', [of('programme')]) : [],
+    of('study_institution').length ? many('SELECT id, name, city, country FROM study_institutions WHERE id = ANY($1)', [of('study_institution')]) : [],
+    of('study_programme').length ? many('SELECT p.id, p.title, p.institution_id, i.name AS institution, i.city, i.country FROM study_programmes p JOIN study_institutions i ON i.id=p.institution_id WHERE p.id = ANY($1)', [of('study_programme')]) : [],
+    of('team').length ? many('SELECT t.id, t.name, t.city, s.name AS sport FROM teams t JOIN sports s ON s.id=t.sport_id WHERE t.id = ANY($1)', [of('team')]) : [],
+  ]);
+  const orgIds = [...new Set([...orgs.map((o) => o.id), ...progs.map((p) => p.organisation_id)])];
+  const enq = orgIds.length ? await many("SELECT DISTINCT ON (organisation_id) organisation_id, status FROM enquiries WHERE athlete_id=$1 AND organisation_id = ANY($2) ORDER BY organisation_id, created_at DESC, id", [userId, orgIds]) : [];
+  const enqBy = new Map(enq.map((e) => [e.organisation_id, e.status]));
+  const rate = Object.fromEntries(await Promise.all(TARGETS.map(async (t) => [t, await ratingsFor(t, of(t))])));
+  const by = { institution: new Map(orgs.map((x) => [x.id, x])), programme: new Map(progs.map((x) => [x.id, x])), study_institution: new Map(sInst.map((x) => [x.id, x])), study_programme: new Map(sProg.map((x) => [x.id, x])), team: new Map(teams.map((x) => [x.id, x])) };
+  return rows.map((r) => {
+    const t = by[r.target_type].get(r.target_id), isProg = r.target_type.endsWith('programme'), isTeam = r.target_type === 'team';
+    const orgId = r.target_type === 'institution' ? r.target_id : r.target_type === 'programme' ? t?.organisation_id : null;
+    return {
+      id: r.id, target_type: r.target_type, target_id: r.target_id, status: r.status, note: r.note, target_date: r.target_date, saved_at: r.created_at, row_version: r.row_version,
+      title: t ? (isProg ? t.title : t.name) : 'No longer available', institution: t ? (isProg ? t.institution : isTeam ? t.sport : t.name) : null, city: t?.city ?? null, country: t?.country ?? null,
+      listed_on_platform: !r.target_type.startsWith('study_'), enquiry_status: (orgId && enqBy.get(orgId)) || null, ...(rate[r.target_type].get(r.target_id) ?? { rating: null, reviews: 0 }),
+    };
+  });
+}
+
 cap({
   name: 'list_bucket', method: 'GET', path: '/me/bucket', tag: TAG,
-  summary: 'Your study bucket list, newest first, each item with what it is (institution or programme), where, its platform rating and whether it is listed on the platform (so you can enquire) or an AI suggestion.',
+  summary: 'Your study and team targets, newest first, each with what it is (institution, programme or team), where, its platform rating, whether it is listed on the platform (so you can enquire) or an AI suggestion, and the status of your enquiry if you made one.',
   input: z.object({ status: z.enum(STATUSES).optional(), ...page }),
-  async handler({ user }, i) {
-    const rows = await many('SELECT * FROM study_bucket WHERE user_id=$1 AND removed_at IS NULL AND ($2::text IS NULL OR status=$2) ORDER BY created_at DESC, id LIMIT $3 OFFSET $4', [user.id, i.status ?? null, i.limit, i.offset]);
-    const of = (t) => rows.filter((r) => r.target_type === t).map((r) => r.target_id);
-    const [orgs, progs, sInst, sProg] = await Promise.all([
-      of('institution').length ? many('SELECT o.id, o.name, o.city, ip.country FROM organisations o JOIN institution_profiles ip ON ip.organisation_id=o.id WHERE o.id = ANY($1)', [of('institution')]) : [],
-      of('programme').length ? many('SELECT p.id, p.title, p.organisation_id, o.name AS institution, o.city, ip.country FROM programmes p JOIN organisations o ON o.id=p.organisation_id JOIN institution_profiles ip ON ip.organisation_id=o.id WHERE p.id = ANY($1)', [of('programme')]) : [],
-      of('study_institution').length ? many('SELECT id, name, city, country FROM study_institutions WHERE id = ANY($1)', [of('study_institution')]) : [],
-      of('study_programme').length ? many('SELECT p.id, p.title, p.institution_id, i.name AS institution, i.city, i.country FROM study_programmes p JOIN study_institutions i ON i.id=p.institution_id WHERE p.id = ANY($1)', [of('study_programme')]) : [],
-    ]);
-    const rate = Object.fromEntries(await Promise.all(TARGETS.map(async (t) => [t, await ratingsFor(t, of(t))])));
-    const by = { institution: new Map(orgs.map((x) => [x.id, x])), programme: new Map(progs.map((x) => [x.id, x])), study_institution: new Map(sInst.map((x) => [x.id, x])), study_programme: new Map(sProg.map((x) => [x.id, x])) };
-    return rows.map((r) => {
-      const t = by[r.target_type].get(r.target_id), isProg = r.target_type.endsWith('programme');
-      return {
-        id: r.id, target_type: r.target_type, target_id: r.target_id, status: r.status, note: r.note, target_date: r.target_date, saved_at: r.created_at,
-        title: t ? (isProg ? t.title : t.name) : 'No longer available', institution: t ? (isProg ? t.institution : t.name) : null, city: t?.city ?? null, country: t?.country ?? null,
-        listed_on_platform: !r.target_type.startsWith('study_'), ...(rate[r.target_type].get(r.target_id) ?? { rating: null, reviews: 0 }),
-      };
-    });
-  },
+  handler: ({ user }, i) => bucketFor(user.id, { status: i.status ?? null, limit: i.limit, offset: i.offset }),
 });

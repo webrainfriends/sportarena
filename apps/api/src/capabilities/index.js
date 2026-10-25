@@ -15,6 +15,7 @@ import './organisations.js';
 import './education-catalogue.js';
 import './education-enquiries.js';
 import './education-discovery.js';
+import './pathway-planning.js';
 import './opportunity-matching.js';
 import './credentials.js';
 import './team-management.js';
