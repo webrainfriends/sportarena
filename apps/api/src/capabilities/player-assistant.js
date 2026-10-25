@@ -96,7 +96,7 @@ async function readDevelopment(L, user, subject, viewer, items) {
   }
   const active = (sec.my_goals?.items ?? []).filter((g) => g.status === 'active');
   if (viewer === 'self' && d.consent !== undefined && !active.length && !(sec.goals?.items ?? []).length) {
-    items.push(item({ basis: 'suggestion', tone: 'info', title: 'Set a goal for the next few weeks', detail: 'You have no active personal or coach goal yet.', why: 'A goal makes progress measurable and gives the next review a date.', source_refs: [], action: { kind: 'goal', title: 'Set a goal to work on', goal: { category: 'technical' } } }));
+    items.push(item({ basis: 'suggestion', tone: 'info', title: 'Set a goal for the next few weeks', detail: 'You have no active personal or coach goal yet.', why: 'A goal makes progress measurable and gives the next review a date.', source_refs: [], action: { kind: 'goal', title: 'Set a goal to work on', goal: { category: 'technical', needs_title: true } } }));
   }
   if (!Object.values(sec).some((v) => v.items?.length) && d.consent) L.limit('No goals, plans, feedback or assessments have been shared with you yet.');
 }
@@ -282,6 +282,7 @@ cap({
       if (!it?.action) throw badRequest(`Item ${c.item_id} has no action to add`);
       if (it.action.kind === 'open') { opened.push(c.item_id); continue; }
       const g = it.action.goal ?? {};
+      if (g.needs_title && !c.title) throw badRequest('Write your goal in your own words before adding it');
       const title = c.title ?? it.action.title;
       edited = edited || title !== it.action.title || c.target_value !== undefined || c.unit !== undefined;
       const sportRow = a.sport_id ? await one('SELECT slug FROM sports WHERE id=$1', [a.sport_id]) : null;
