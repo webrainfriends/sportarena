@@ -2,13 +2,15 @@
 // institution profiles, programmes (courses, certifications, diplomas, degrees) and brochures. An institution is an ordinary
 // organisation (kind college / university / academy ...), so its staff are the organisation's owners and admins.
 import { z } from 'zod';
+import { isDeepStrictEqual } from 'node:util';
 import { cap, id, page } from '../registry.js';
 import { one, many, tx } from '../db.js';
 import { badRequest, notFound } from '../errors.js';
 import { audit, sportBySlugOrId } from '../helpers.js';
 import { decrypt, encrypt } from '../crypto.js';
 import { orgFor } from '../org-access.js';
-import { builtinRuleset, describeRuleset } from '../scoring/rulesets.js';
+import { builtinRuleset, describeRuleset, rulesetSchema } from '../scoring/rulesets.js';
+import { standardMetricKinds } from '../scoring/metric-defs.js';
 import { ADMISSIONS } from '../education.js';
 import { ratingsFor } from './education-discovery.js';
 import { AGE, levels } from '../opportunity-fields.js';
@@ -27,7 +29,11 @@ cap({
   input: z.object({ sport: z.string().min(1) }),
   async handler(_, i) {
     const sport = await sportOr404(i.sport);
-    return { sport: { id: sport.id, slug: sport.slug, name: sport.name, emoji: sport.emoji }, scoring: describeRuleset(builtinRuleset(sport)), rules: await many("SELECT id, title, body, source_url, position FROM sport_rules WHERE sport_id=$1 AND status='active' ORDER BY position, created_at, id", [sport.id]) };
+    // the platform's standard rules are always returned; a governed default (if one was published) is reported next to them, never instead of them
+    const gov = await one("SELECT id, version, format_key, label, ruleset, created_at FROM ruleset_versions WHERE sport_id=$1 AND format_key='default' ORDER BY version DESC LIMIT 1", [sport.id]);
+    const standard = builtinRuleset(sport);
+    return { sport: { id: sport.id, slug: sport.slug, name: sport.name, emoji: sport.emoji }, scoring: describeRuleset(standard), standard_ruleset: standard, standard_metrics: standardMetricKinds(sport), default_metric_kind: sport.scoring,
+      in_force: gov ? { version: gov.version, format_key: gov.format_key, label: gov.label, published_at: gov.created_at, scoring: describeRuleset(gov.ruleset), differs_from_standard: !isDeepStrictEqual(rulesetSchema.parse(gov.ruleset), standard) } : null, rules: await many("SELECT id, title, body, source_url, position FROM sport_rules WHERE sport_id=$1 AND status='active' ORDER BY position, created_at, id", [sport.id]) };
   },
 });
 

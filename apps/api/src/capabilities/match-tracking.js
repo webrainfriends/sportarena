@@ -1,15 +1,15 @@
 import { z } from 'zod';
 import { cap, id } from '../registry.js';
 import { many, tx, pool } from '../db.js';
-import { badRequest, conflict, forbidden, notFound } from '../errors.js';
+import { badRequest, conflict, forbidden, notFound, unprocessable } from '../errors.js';
 import { isAdmin, mustFind } from '../helpers.js';
 import { canManageTeam } from './teams.js';
 import { isOrganiser } from './event-departments.js';
 import { eventForOrganizer } from './events.js';
 import { publish } from '../live.js';
-import { liveState, loggedEvents, rulesetForEvent } from '../scoring/state.js';
+import { liveState, loggedEvents, rulesetForEvent, pinFixtureRuleset } from '../scoring/state.js';
 import { rejectReason, matchPhase, CONTROL_KINDS } from '../scoring/engine.js';
-import { rulesetSchema, builtinSlugs } from '../scoring/rulesets.js';
+import { rulesetSchema, builtinSlugs, builtinRuleset } from '../scoring/rulesets.js';
 
 const TAG = 'Match tracking';
 const kindKey = z.string().regex(/^[a-z][a-z0-9_]{0,23}$/);
@@ -35,7 +35,12 @@ cap({
   name: 'get_scoring_ruleset', method: 'GET', path: '/events/:id/scoring-ruleset', tag: TAG, auth: 'public',
   summary: 'How games of this event are scored: periods, what each scoring event is worth, which parameters referees track, set rules. Comes from the organiser\'s template or the sport\'s built-in rules.',
   input: z.object({ id }),
-  async handler(_, i) { await mustFind('events', i.id, 'id'); const r = await rulesetForEvent(i.id); return { source: r.source, ...r.ruleset }; },
+  async handler(_, i) {
+    const ev = await mustFind('events', i.id, 'sport_id');
+    const r = await rulesetForEvent(i.id);
+    const sport = (await pool.query('SELECT * FROM sports WHERE id=$1', [ev.sport_id])).rows[0];
+    return { source: r.source, version: r.version ?? null, format_key: r.format_key ?? null, sport: sport?.slug ?? null, standard: sport ? builtinRuleset(sport) : null, ...r.ruleset };
+  },
 });
 
 cap({
@@ -46,14 +51,22 @@ cap({
 
 cap({
   name: 'set_event_scoring_template', method: 'POST', path: '/events/:id/scoring-template', tag: TAG, status: 201,
-  summary: 'Replace the built-in scoring rules for your event with your own ruleset (e.g. house rules, shorter sets, custom point values). The previous template is archived. Not allowed once any game of the event has logged events.',
-  input: z.object({ id, ruleset: rulesetSchema }),
+  summary: 'Replace the built-in scoring rules for your event with your own ruleset (e.g. house rules, shorter sets, custom point values) or with a governed match format (send ruleset_version_id from list_ruleset_versions — it is copied and remembered). The previous template is archived. Not allowed once any game of the event has logged events.',
+  input: z.object({ id, ruleset: rulesetSchema.optional(), ruleset_version_id: id.optional() }).refine((v) => !!v.ruleset !== !!v.ruleset_version_id, 'Send either ruleset or ruleset_version_id'),
   async handler({ user }, i) {
     return tx(async (c) => {
       await eventForOrganizer(user, i.id, c);
       if ((await c.query('SELECT 1 FROM match_events WHERE event_id=$1 LIMIT 1', [i.id])).rowCount) throw conflict('Games have already been scored under the current rules; they cannot change mid-event');
+      let ruleset = i.ruleset;
+      if (i.ruleset_version_id) {
+        const gv = (await c.query('SELECT rv.ruleset, rv.sport_id FROM ruleset_versions rv WHERE rv.id=$1', [i.ruleset_version_id])).rows[0];
+        if (!gv) throw notFound('Ruleset version');
+        const ev = (await c.query('SELECT sport_id FROM events WHERE id=$1', [i.id])).rows[0];
+        if (gv.sport_id !== ev.sport_id && !(await c.query('SELECT 1 FROM event_disciplines WHERE event_id=$1 AND sport_id=$2', [i.id, gv.sport_id])).rowCount) throw unprocessable('That format belongs to a different sport');
+        ruleset = rulesetSchema.parse(gv.ruleset);
+      }
       await c.query("UPDATE scoring_templates SET status='archived', archived_at=now() WHERE event_id=$1 AND status='active'", [i.id]);
-      return (await c.query('INSERT INTO scoring_templates(event_id, ruleset, created_by) VALUES ($1,$2,$3) RETURNING id, event_id, ruleset, created_at', [i.id, JSON.stringify(i.ruleset), user.id])).rows[0];
+      return (await c.query('INSERT INTO scoring_templates(event_id, ruleset, ruleset_version_id, created_by) VALUES ($1,$2,$3,$4) RETURNING id, event_id, ruleset, ruleset_version_id, created_at', [i.id, JSON.stringify(ruleset), i.ruleset_version_id ?? null, user.id])).rows[0];
     });
   },
 });
@@ -70,6 +83,7 @@ cap({
       if (x.f.status !== 'scheduled') throw conflict(`A game that is ${x.f.status} cannot be started`);
       if (!x.f.home_team_id || !x.f.away_team_id) throw conflict('The teams for this game are not decided yet');
       if (['draft', 'paused', 'completed', 'cancelled'].includes(x.ev.status)) throw conflict(`Event is ${x.ev.status}`);
+      await pinFixtureRuleset(i.id, x.f.event_id, c);
       await c.query("UPDATE fixtures SET status='live', started_at=now() WHERE id=$1", [i.id]);
     });
     return broadcast(i.id);
@@ -121,7 +135,7 @@ cap({
       }
       if (x.f.status === 'paused') throw conflict('The game is paused');
       if (x.f.status !== 'live') throw conflict(x.f.status === 'scheduled' ? 'Start the match first' : `The game is ${x.f.status}`);
-      const { ruleset } = await rulesetForEvent(x.f.event_id, c);
+      const { ruleset } = await rulesetForEvent(x.f.event_id, c, i.id);
       const logged = await loggedEvents(i.id, c);
       const phase = matchPhase(ruleset, logged);
       const control = CONTROL_KINDS.includes(i.kind);

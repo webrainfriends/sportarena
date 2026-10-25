@@ -97,7 +97,7 @@ cap({
       const policy = policyFor(x.ev);
       if (!policy.allow_public_submission && !x.canScore && !x.side) throw forbidden('This event only accepts results from its organiser, officials and team managers');
       const v = (await c.query('SELECT * FROM tracking_sheet_template_versions WHERE id=$1', [s.template_version_id])).rows[0];
-      const eventRs = (await rulesetForEvent(x.f.event_id, c)).ruleset;
+      const eventRs = (await rulesetForEvent(x.f.event_id, c, x.f.id)).ruleset;
       const incompatible = compatible(v.ruleset, eventRs); if (incompatible) throw conflict(incompatible);
       const entries = (await c.query('SELECT seq, kind, side, period, voided_at FROM tracking_sheet_entries WHERE sheet_id=$1 ORDER BY seq', [s.id])).rows;
       const result = sheetResult(eventRs, entries, s.manual_totals);
@@ -144,7 +144,7 @@ async function proposalFor(user, proposalId, c, { lock = false } = {}) {
 async function viewOf(user, p, x, c) {
   const [reviews, snap, eventRs, logEvents, sheet, imp, submitter] = await Promise.all([
     q(c).query('SELECT r.round, r.resolved_role, r.requirement_key, r.decision, r.comment, r.override, r.at, u.display_name AS reviewer_name FROM result_proposal_reviews r JOIN users u ON u.id=r.reviewer_id WHERE r.proposal_id=$1 ORDER BY r.at, r.id', [p.id]).then((r) => r.rows),
-    snapshotOf(p.fixture_id, c), rulesetForEvent(p.event_id, c).then((r) => r.ruleset), loggedEvents(p.fixture_id, c),
+    snapshotOf(p.fixture_id, c), rulesetForEvent(p.event_id, c, p.fixture_id).then((r) => r.ruleset), loggedEvents(p.fixture_id, c),
     sheetView(p.sheet_id, c), p.import_id ? one('SELECT id, file_name, content_type, size_bytes, provider, confidence, warnings, created_at FROM tracking_sheet_imports WHERE id=$1', [p.import_id]) : null,
     one('SELECT display_name FROM users WHERE id=$1', [p.submitted_by]),
   ]);
@@ -290,7 +290,7 @@ cap({
       if (hashOf(snap) !== hashOf(p.base_snapshot)) throw conflict('The official record changed after this was approved. Ask the submitter to re-submit it for review.', { stale: true });
       if (['live', 'paused'].includes(fx.status)) throw conflict('The game is still on: end it first');
       if (snap.open_sheet) throw conflict(`A score sheet is already ${snap.open_sheet.status}; finish or reject it before applying this`);
-      const eventRs = (await rulesetForEvent(p.event_id, c)).ruleset;
+      const eventRs = (await rulesetForEvent(p.event_id, c, p.fixture_id)).ruleset;
       const log = await loggedEvents(p.fixture_id, c);
       const logged = log.filter((e) => !e.voided_at).length && eventRs.kind !== 'manual' ? computeScore(eventRs, log) : null;
       const pay = p.payload;
