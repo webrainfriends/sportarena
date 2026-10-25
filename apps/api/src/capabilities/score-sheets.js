@@ -59,7 +59,7 @@ cap({
       needScorer(x);
       if (!['live', 'paused'].includes(x.f.status)) throw conflict(`Only a live or paused game can be ended; this one is ${x.f.status}`);
       if ((await c.query('SELECT 1 FROM score_sheets WHERE fixture_id=$1 AND status = ANY($2)', [i.id, OPEN])).rowCount) throw conflict('This game already has a score sheet in progress');
-      const { ruleset } = await rulesetForEvent(x.f.event_id, c);
+      const { ruleset } = await rulesetForEvent(x.f.event_id, c, x.f.id);
       let events = await loggedEvents(i.id, c);
       if (ruleset.kind !== 'manual' && matchPhase(ruleset, events).period_open) {
         const seq = (await c.query('SELECT coalesce(max(seq),0)+1 AS n FROM match_events WHERE fixture_id=$1', [i.id])).rows[0].n;
@@ -92,7 +92,7 @@ cap({
       if (!x.f.home_team_id || !x.f.away_team_id) throw conflict('The teams for this game are not decided yet');
       if ((await c.query('SELECT 1 FROM score_sheets WHERE fixture_id=$1 AND status = ANY($2)', [i.id, OPEN])).rowCount) throw conflict('This game already has a score sheet in progress');
       if ((await c.query("SELECT 1 FROM score_sheets WHERE fixture_id=$1 AND status='published'", [i.id])).rowCount) throw conflict('This game has a published result; revise it instead');
-      const { ruleset } = await rulesetForEvent(x.f.event_id, c);
+      const { ruleset } = await rulesetForEvent(x.f.event_id, c, x.f.id);
       const version = (await c.query('SELECT coalesce(max(version),0)+1 AS v FROM score_sheets WHERE fixture_id=$1', [i.id])).rows[0].v;
       const prefill = x.f.status === 'completed';
       const s = (await c.query(
@@ -120,7 +120,7 @@ cap({
       if (home != null && away != null && home !== away && i.winner_team_id === undefined) winner = winnerTeam(x.f, home, away);
       let reason = i.adjusted_reason ?? s.adjusted_reason;
       if (s.source === 'match_log' && home != null && away != null) {
-        const { ruleset } = await rulesetForEvent(s.event_id, c);
+        const { ruleset } = await rulesetForEvent(s.event_id, c, s.fixture_id);
         const comp = computeScore(ruleset, await loggedEvents(s.fixture_id, c));
         if ((comp.home !== home || comp.away !== away) && !reason) throw badRequest(`The match log adds up to ${comp.home}–${comp.away}; say why the sheet differs (adjusted_reason)`);
         if (comp.home === home && comp.away === away) reason = null;
@@ -145,7 +145,7 @@ cap({
       const x = await fixtureContext(user, s.fixture_id, c);
       needScorer(x);
       if (!['draft', 'rejected'].includes(s.status)) throw conflict(`A ${s.status} sheet cannot be submitted`);
-      const { ruleset } = await rulesetForEvent(s.event_id, c);
+      const { ruleset } = await rulesetForEvent(s.event_id, c, s.fixture_id);
       const found = sheetAnomalies(ruleset, await loggedEvents(s.fixture_id, c), s, x.f);
       if (hasErrors(found)) throw conflict('The sheet has problems to fix before it can be submitted', { anomalies: found });
       const round = s.submitted_at ? s.round + 1 : s.round; // a sheet that was submitted before starts a fresh round of sign-offs

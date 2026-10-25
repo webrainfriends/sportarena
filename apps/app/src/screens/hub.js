@@ -129,7 +129,7 @@ function SubmitResultSheet({ visible, onClose, events, onDone }) {
           </View>
           {other ? <Field label="Metric name" value={metric ?? ''} onChangeText={setMetric} placeholder="goals, assists, 100m_time_s …" hint="Names ending in _s are timed in seconds, names ending in _m are distances in metres; anything else is a whole-number count." /> : null}
         </View> : null}
-        <Field label={`Result${unit ? ` (${unitName(unit)})` : ''}`} value={value} onChangeText={(x) => setValue(x.replace(/[^0-9.,]/g, ''))} keyboardType="decimal-pad" hint={rule.data?.rule ? `${rule.data.rule.direction === 'lower' ? 'Lower is better.' : 'Higher is better.'} Allowed ${rule.data.rule.min} to ${rule.data.rule.max}.` : undefined} />
+        <Field label={`Result${unit ? ` (${unitName(unit)})` : ''}`} value={value} onChangeText={(x) => setValue(x.replace(/[^0-9.,]/g, ''))} keyboardType="decimal-pad" hint={rule.data?.rule ? `${rule.data.rule.direction === 'lower' ? 'Lower is better.' : 'Higher is better.'} Allowed ${rule.data.rule.min} to ${rule.data.rule.max}. Rule v${rule.data.rule.version}${rule.data.rule.governed ? ' (governed)' : ''}.${rule.data.standard && (rule.data.standard.min_value !== rule.data.rule.min || rule.data.standard.max_value !== rule.data.rule.max) ? ` Standard range is ${rule.data.standard.min_value} to ${rule.data.standard.max_value}.` : ''}` : undefined} />
         <DateField label="Date achieved" value={date} onChange={setDate} max={todayIso()} />
         <Field label="Evidence reference (optional)" value={evidence} onChangeText={setEvidence} placeholder="Link or timing-sheet number" />
         {err ? <T color={c.red} weight="800" accessibilityRole="alert">{err}</T> : null}

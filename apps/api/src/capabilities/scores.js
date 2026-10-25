@@ -2,7 +2,8 @@ import { z } from 'zod';
 import { cap, id, page } from '../registry.js';
 import { one, many, query, tx } from '../db.js';
 import { badRequest, conflict, forbidden, notFound, unprocessable } from '../errors.js';
-import { ruleFor, validateValue, officialPoints, EVIDENCE_LABELS, RANKING_RULES } from '../scoring/performance-rules.js';
+import { validateValue, officialPoints, EVIDENCE_LABELS, RANKING_RULES } from '../scoring/performance-rules.js';
+import { resolveRule, ruleOfVersion, builtinRule, aggregationFor, standardOf } from '../scoring/metric-defs.js';
 import { isAdmin, mustFind, PUBLIC_USER, sportBySlugOrId } from '../helpers.js';
 import { NOT_YOUTH_SQL } from '../youth.js';
 import { notify } from '../notify.js';
@@ -56,7 +57,7 @@ cap({
     const target = i.user_id ?? user.id;
     const sport = await sportBySlugOrId(i.sport);
     if (!sport) throw notFound('Sport');
-    const rule = ruleFor(sport, i.metric);
+    const rule = await resolveRule(sport, i.metric);
     const bad = validateValue(rule, i.value);
     if (bad) throw unprocessable(bad);
     if (i.achieved_on && i.achieved_on > new Date().toISOString().slice(0, 10)) throw unprocessable('The date a result was achieved cannot be in the future');
@@ -69,11 +70,12 @@ cap({
       const competition = !!(i.event_id || i.fixture_id);
       if (!competition) {
         if (target !== user.id && !isAdmin(user)) throw forbidden('You can only log practice for yourself');
-        if (i.imported && !i.evidence_ref) throw unprocessable('Imported results need a link or reference to the evidence');
+        const prov = i.imported ? 'imported' : 'self_reported';
+        if (!i.evidence_ref && (i.imported || rule.evidence_required_for.includes(prov))) throw unprocessable(i.imported ? 'Imported results need a link or reference to the evidence' : 'This metric needs a link or reference to the evidence, even for a self-reported claim');
         const row = (await c.query(
-          `INSERT INTO performances(user_id, sport_id, metric, value, points, recorded_by, provenance, status, unit, direction, rule_version, achieved_on, evidence_ref, client_key)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,'recorded',$8,$9,$10,coalesce($11::date, current_date),$12,$13) RETURNING *`,
-          [target, sport.id, i.metric, i.value, i.points ?? 0, user.id, i.imported ? 'imported' : 'self_reported', rule.unit, rule.direction, rule.version, i.achieved_on ?? null, i.evidence_ref ?? null, i.client_key ?? null])).rows[0];
+          `INSERT INTO performances(user_id, sport_id, metric, value, points, recorded_by, provenance, status, unit, direction, rule_version, achieved_on, evidence_ref, client_key, metric_version_id)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,'recorded',$8,$9,$10,coalesce($11::date, current_date),$12,$13,$14) RETURNING *`,
+          [target, sport.id, i.metric, i.value, i.points ?? 0, user.id, prov, rule.unit, rule.direction, rule.version, i.achieved_on ?? null, i.evidence_ref ?? null, i.client_key ?? null, rule.version_id])).rows[0];
         return withLabel(row);
       }
       // ---- competition result
@@ -97,9 +99,9 @@ cap({
         if (same) throw conflict('The same result for this athlete, event, metric, value and date already exists. If this is a different attempt, change the value or the date.', { performance_id: same.id });
       }
       const row = (await c.query(
-        `INSERT INTO performances(user_id, sport_id, event_id, fixture_id, metric, value, points, recorded_by, provenance, status, unit, direction, rule_version, official_points, achieved_on, evidence_ref, client_key)
-         VALUES ($1,$2,$3,$4,$5,$6,0,$7,'approved_competition','submitted',$8,$9,$10,$11,coalesce($12::date, current_date),$13,$14) RETURNING *`,
-        [target, sport.id, ev.id, fx?.id ?? null, i.metric, i.value, user.id, rule.unit, rule.direction, rule.version, officialPoints(rule, i.value), i.achieved_on ?? null, i.evidence_ref ?? null, i.client_key ?? null])).rows[0];
+        `INSERT INTO performances(user_id, sport_id, event_id, fixture_id, metric, value, points, recorded_by, provenance, status, unit, direction, rule_version, official_points, achieved_on, evidence_ref, client_key, metric_version_id)
+         VALUES ($1,$2,$3,$4,$5,$6,0,$7,'approved_competition','submitted',$8,$9,$10,$11,coalesce($12::date, current_date),$13,$14,$15) RETURNING *`,
+        [target, sport.id, ev.id, fx?.id ?? null, i.metric, i.value, user.id, rule.unit, rule.direction, rule.version, officialPoints(rule, i.value), i.achieved_on ?? null, i.evidence_ref ?? null, i.client_key ?? null, rule.version_id])).rows[0];
       await logStep(c, row.id, user.id, 'submitted', null, 'submitted', null, { value: row.value, official_points: row.official_points });
       return withLabel(row);
     });
@@ -189,15 +191,16 @@ cap({
     from: ['approved', 'disputed'], to: 'corrected', action: 'corrected', note: i.reason, needNote: true,
     async mutate(c, perf) {
       const sport = (await c.query('SELECT * FROM sports WHERE id=$1', [perf.sport_id])).rows[0];
-      const rule = ruleFor(sport, perf.metric);
+      // a correction is judged under the rule the original was scored with, not whatever is in force today
+      const rule = perf.metric_version_id ? await ruleOfVersion(perf.metric_version_id, c) : builtinRule(sport, perf.metric);
       const bad = validateValue(rule, i.value);
       if (bad) throw unprocessable(bad);
       const pending = (await c.query("SELECT id FROM performances WHERE supersedes_id=$1 AND status='submitted'", [perf.id])).rows[0];
       if (pending) throw conflict('A correction for this result is already waiting for approval', { performance_id: pending.id });
       const row = (await c.query(
-        `INSERT INTO performances(user_id, sport_id, event_id, fixture_id, metric, value, points, recorded_by, provenance, status, unit, direction, rule_version, official_points, achieved_on, supersedes_id, decision_note, evidence_ref)
-         VALUES ($1,$2,$3,$4,$5,$6,0,$7,'approved_competition','submitted',$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
-        [perf.user_id, perf.sport_id, perf.event_id, perf.fixture_id, perf.metric, i.value, user.id, rule.unit, rule.direction, rule.version, officialPoints(rule, i.value), perf.achieved_on, perf.id, i.reason, perf.evidence_ref])).rows[0];
+        `INSERT INTO performances(user_id, sport_id, event_id, fixture_id, metric, value, points, recorded_by, provenance, status, unit, direction, rule_version, official_points, achieved_on, supersedes_id, decision_note, evidence_ref, metric_version_id)
+         VALUES ($1,$2,$3,$4,$5,$6,0,$7,'approved_competition','submitted',$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
+        [perf.user_id, perf.sport_id, perf.event_id, perf.fixture_id, perf.metric, i.value, user.id, rule.unit, rule.direction, rule.version, officialPoints(rule, i.value), perf.achieved_on, perf.id, i.reason, perf.evidence_ref, perf.metric_version_id])).rows[0];
       await logStep(c, row.id, user.id, 'submitted', null, 'submitted', i.reason, { value: row.value, official_points: row.official_points, supersedes: perf.id });
       return row;
     },
@@ -246,9 +249,9 @@ cap({
     const sport = await sportBySlugOrId(i.sport);
     if (!sport) throw notFound('Sport');
     const base = { sport: sport.slug, ranking: RANKING_RULES, evidence_labels: EVIDENCE_LABELS };
-    if (i.metric) return { ...base, metric: i.metric, rule: ruleFor(sport, i.metric) };
-    const metrics = await many("SELECT DISTINCT metric FROM performances WHERE sport_id=$1 AND provenance='approved_competition' AND status='approved' ORDER BY metric", [sport.id]);
-    return { ...base, metrics: metrics.map((m) => ({ metric: m.metric, rule: ruleFor(sport, m.metric) })) };
+    if (i.metric) return { ...base, metric: i.metric, rule: await resolveRule(sport, i.metric), standard: standardOf(sport, i.metric) };
+    const metrics = await many("SELECT metric FROM performances WHERE sport_id=$1 AND provenance='approved_competition' AND status='approved' UNION SELECT key FROM metric_definitions WHERE sport_id=$1 AND status='published' ORDER BY metric", [sport.id]);
+    return { ...base, metrics: await Promise.all(metrics.map(async (m) => ({ metric: m.metric, rule: await resolveRule(sport, m.metric) }))) };
   },
 });
 
@@ -260,14 +263,21 @@ cap({
     const sport = i.sport ? await sportBySlugOrId(i.sport) : null;
     const own = !!user && (user.id === i.id || isAdmin(user));
     const rows = await many(
-      `SELECT s.slug AS sport, s.emoji, p.metric, p.provenance, p.unit, count(*)::int AS entries, sum(p.value) AS total, max(p.value) AS best, min(p.value) AS lowest,
+      `SELECT s.id AS sport_id, s.slug AS sport, s.emoji, p.metric, p.provenance, p.unit, count(*)::int AS entries, sum(p.value) AS total, max(p.value) AS best, min(p.value) AS lowest,
+              avg(p.value) AS mean, (array_agg(p.value ORDER BY p.achieved_on DESC, p.recorded_at DESC))[1] AS last, min(p.direction) AS direction,
               coalesce(sum(p.official_points), 0) AS points
          FROM performances p JOIN sports s ON s.id=p.sport_id
         WHERE p.user_id=$1 AND ($2::uuid IS NULL OR p.sport_id=$2)
           AND ((p.provenance='approved_competition' AND p.status='approved') OR ($3 AND p.provenance <> 'approved_competition'))
-        GROUP BY s.slug, s.emoji, p.metric, p.provenance, p.unit ORDER BY s.slug, p.metric, p.provenance`, [i.id, sport?.id ?? null, own]);
+        GROUP BY s.id, s.slug, s.emoji, p.metric, p.provenance, p.unit ORDER BY s.slug, p.metric, p.provenance`, [i.id, sport?.id ?? null, own]);
     const total = rows.filter((r) => r.provenance === 'approved_competition').reduce((a, r) => a + Number(r.points), 0);
-    return { total_points: total, evidence: label('approved_competition'), by_metric: rows.map(withLabel), pending_results: own ? (await one("SELECT count(*)::int AS n FROM performances WHERE user_id=$1 AND provenance='approved_competition' AND status IN ('submitted','disputed')", [i.id])).n : undefined };
+    return { total_points: total, evidence: label('approved_competition'), by_metric: await Promise.all(rows.map(async (r) => {
+      // the governed aggregation says which figure is "the" result for this metric (best, sum, mean or last)
+      const aggregation = await aggregationFor(r.sport_id, r.metric);
+      const aggregate = { best: r.direction === 'lower' ? r.lowest : r.best, sum: r.total, mean: r.mean, last: r.last }[aggregation];
+      const { sport_id, ...rest } = r;
+      return withLabel({ ...rest, aggregation, aggregate });
+    })), pending_results: own ? (await one("SELECT count(*)::int AS n FROM performances WHERE user_id=$1 AND provenance='approved_competition' AND status IN ('submitted','disputed')", [i.id])).n : undefined };
   },
 });
 
@@ -288,7 +298,15 @@ cap({
       if (dirs.length > 1) throw badRequest('That metric is ranked differently in different sports — pick a sport');
       direction = dirs[0] ?? 'higher';
     }
-    const best = direction === 'lower' ? 'min(p.value)' : 'max(p.value)';
+    // governed aggregation: best (default), sum, mean or last — one definition per sport, so a mixed set cannot be ranked together
+    let aggregation = 'best';
+    if (i.metric) {
+      const sportIds = (await many(`SELECT DISTINCT p.sport_id FROM performances p JOIN users u ON u.id=p.user_id JOIN sports s ON s.id=p.sport_id WHERE ${filter}`, args)).map((r) => r.sport_id);
+      const aggs = [...new Set(await Promise.all(sportIds.map((sid) => aggregationFor(sid, i.metric))))];
+      if (aggs.length > 1) throw badRequest('That metric is aggregated differently in different sports — pick a sport');
+      aggregation = aggs[0] ?? 'best';
+    }
+    const best = { best: direction === 'lower' ? 'min(p.value)' : 'max(p.value)', sum: 'sum(p.value)', mean: 'avg(p.value)', last: '(array_agg(p.value ORDER BY p.achieved_on DESC, p.recorded_at DESC))[1]' }[aggregation];
     const bestOrder = direction === 'lower' ? 'best ASC' : 'best DESC';
     const keys = i.metric ? `${bestOrder}, first_on ASC, points DESC` : 'points DESC, entries DESC, first_approved ASC';
     const rankKeys = i.metric ? `${bestOrder}, first_on ASC, points DESC` : 'points DESC, entries DESC, first_approved ASC';
@@ -297,14 +315,14 @@ cap({
          SELECT u.id AS uid, ${best} AS best, count(*)::int AS entries, sum(p.official_points) AS total_points, min(p.decided_at) AS first_approved
            FROM performances p JOIN users u ON u.id=p.user_id JOIN sports s ON s.id=p.sport_id WHERE ${filter} GROUP BY u.id),
        at_best AS (
-         SELECT u.id AS uid, min(p.achieved_on) AS first_on, max(p.official_points) AS best_points
-           FROM performances p JOIN users u ON u.id=p.user_id JOIN sports s ON s.id=p.sport_id JOIN base b ON b.uid=u.id AND p.value=b.best WHERE ${filter} GROUP BY u.id),
+         SELECT u.id AS uid, coalesce(min(p.achieved_on) FILTER (WHERE p.value=b.best), min(p.achieved_on)) AS first_on, coalesce(max(p.official_points) FILTER (WHERE p.value=b.best), max(p.official_points)) AS best_points
+           FROM performances p JOIN users u ON u.id=p.user_id JOIN sports s ON s.id=p.sport_id JOIN base b ON b.uid=u.id WHERE ${filter} GROUP BY u.id),
        agg AS (
          SELECT b.uid, ${i.metric ? 'a.best_points' : 'b.total_points'} AS points, b.best, b.entries, a.first_on, b.first_approved FROM base b JOIN at_best a ON a.uid=b.uid),
        ranked AS (SELECT agg.*, rank() OVER (ORDER BY ${rankKeys}) AS rank FROM agg)
        SELECT ${PUBLIC_USER}, r.rank::int AS rank, r.points, r.best, r.entries, r.first_on AS best_on, 'Approved competition result' AS evidence_label
          FROM ranked r JOIN users u ON u.id=r.uid ORDER BY r.rank, ${keys}, u.id LIMIT $6 OFFSET $7`, [...args, i.limit, i.offset]);
-    return rows.map((r) => ({ ...r, ranking: i.metric ? (direction === 'lower' ? 'lower_is_better' : 'higher_is_better') : 'official_points' }));
+    return rows.map((r) => ({ ...r, ranking: i.metric ? (direction === 'lower' ? 'lower_is_better' : 'higher_is_better') : 'official_points', ...(i.metric ? { aggregation } : {}) }));
   },
 });
 

@@ -9,7 +9,7 @@ import { Card, ErrorBox, H1, Loading, Screen, T, Tag } from '../ui';
 import { useLayout } from '../layout';
 import { c } from '../theme';
 
-const ICON = { document_designer: '📄', scoring_tracking: '🧮' };
+const ICON = { document_designer: '📄', scoring_tracking: '🧮', sport_rules: '📏' };
 
 export function ToolsHome() {
   const { push } = useNav();

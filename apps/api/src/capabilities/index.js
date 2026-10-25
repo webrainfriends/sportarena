@@ -54,6 +54,7 @@ import './event-openings.js';
 import './event-planning.js';
 import './event-venues.js';
 import './scores.js';
+import './metric-governance.js';
 import './player.js';
 import './ontology.js';
 import './games.js';

@@ -96,6 +96,7 @@ cap({
     return [
       { key: 'document_designer', title: 'Document Designer', route: 'BrandedDocuments', summary: 'Brand kits, logos and PDF templates for invoices, reports and letters.' },
       { key: 'scoring_tracking', title: 'Scoring & Game Tracking', route: 'ScoringTool', summary: 'Sport templates, a live tracker, printable sheets, upload and linked result proposals.', in_progress: mine.in_progress, sheets: mine.total },
+      { key: 'sport_rules', title: 'Sport rules', route: 'SportRules', summary: 'Units, direction, ranges, aggregation and match formats for each sport — every version kept.' },
     ];
   },
 });
@@ -270,7 +271,7 @@ cap({
         if (sport && sport.id !== evSport.id) throw badRequest('This template is for a different sport than the game');
         if (i.sport && (await sportOf(i.sport)).id !== evSport.id) throw badRequest('The sport does not match the game');
         sport = evSport;
-        ruleset = (await rulesetForEvent(x.f.event_id, c)).ruleset;
+        ruleset = (await rulesetForEvent(x.f.event_id, c, x.f.id)).ruleset;
         const names = (await c.query('SELECT h.name AS home, a.name AS away FROM fixtures f LEFT JOIN teams h ON h.id=f.home_team_id LEFT JOIN teams a ON a.id=f.away_team_id WHERE f.id=$1', [x.f.id])).rows[0];
         fixture = { id: x.f.id, labels: { home: names.home, away: names.away }, at: x.f.scheduled_at };
       } else {
