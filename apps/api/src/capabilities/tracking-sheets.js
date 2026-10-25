@@ -9,9 +9,11 @@ import { audit, isAdmin, sportBySlugOrId } from '../helpers.js';
 import { aiConfigured, AI_RULES, askJson, quoteData } from '../ai.js';
 import { orgRole } from '../org-access.js';
 import { fixtureContext } from './match-tracking.js';
-import { builtinRuleset } from '../scoring/rulesets.js';
+import { bookFor } from '../rulebook/catalog.js';
+import { conflictsWith, rulesLines } from '../rulebook/apply.js';
+import { currentSettings, readableLocalRules, setView } from './rulebook.js';
 import { rulesetForEvent } from '../scoring/state.js';
-import { BEST_OF, buildLayout, customiseBase, customiseSchema, entryRejection, hashOf, newRef, sheetResult, trackingMode, validateTotals, variantsFor, withFormat } from '../tracking/logic.js';
+import { BEST_OF, baseRuleset, buildLayout, customiseBase, customiseSchema, entryRejection, hashOf, newRef, rankRows, rulesetFor, sheetResult, trackingMode, validateTotals, variantsFor, withFormat } from '../tracking/logic.js';
 
 const TAG = 'Tools';
 const q = (c) => c ?? pool;
@@ -66,6 +68,26 @@ async function ownSheet(user, sheetId, c, { lock = false } = {}) {
 }
 export { ownSheet };
 
+/**
+ * The rules a sheet is made under: the standard rulebook, or a local rule set the caller can read (its current version is pinned).
+ * @returns {{local:object|null, format:string, values:object, lines:string[], version_id:string|null}|null} null when the sport has no rulebook
+ */
+export async function rulesContext(user, sport, variant, localId, c) {
+  const b = bookFor(sport.slug, variant);
+  if (!b) { if (localId) throw badRequest('This sport has no rulebook to localise yet'); return null; }
+  let values = {}, local = null, versionId = null, format = b.format;
+  if (localId) {
+    const set = await readableLocalRules(user, localId, c);
+    if (set.sport_id !== sport.id) throw badRequest('Those local rules are for a different sport');
+    if (set.status === 'retired') throw conflict('Those local rules are retired');
+    const view = await setView(set.id, c);
+    if (!view.current) throw conflict('Publish the local rules first');
+    values = currentSettings(view); versionId = view.current.id; format = set.format || b.format;
+    local = { id: set.id, name: set.name, scope: set.scope, version: view.current.version };
+  }
+  return { local, format, values, lines: rulesLines(sport.slug, format, values), version_id: versionId };
+}
+
 const versionOf = async (vid, c) => (await q(c).query('SELECT * FROM tracking_sheet_template_versions WHERE id=$1', [vid])).rows[0];
 const entriesOf = async (sheetId, c, all = true) => (await q(c).query(`SELECT id, seq, kind, side, period, label, payload, recorded_at, voided_at, void_reason FROM tracking_sheet_entries WHERE sheet_id=$1${all ? '' : ' AND voided_at IS NULL'} ORDER BY seq`, [sheetId])).rows;
 
@@ -76,6 +98,8 @@ export async function sheetView(sheetId, c) {
   const v = await versionOf(s.template_version_id, c);
   const entries = await entriesOf(s.id, c);
   const result = sheetResult(v.ruleset, entries, s.manual_totals);
+  const rv = v.layout.rules?.values ?? {};
+  const ranking = v.layout.mode === 'results' ? rankRows(s.rows ?? [], v.layout.results.unit, { qp: rv.qp ?? 3, qt: rv.qt ?? 2, reactionMin: (rv.rt ?? 100) / 1000 }) : null;
   const checks = result.home == null ? [] : validateTotals(v.ruleset, result);
   const fixture = s.fixture_id ? (await q(c).query(
     `SELECT f.id, f.status, f.scheduled_at, e.name AS event_name, h.name AS home_name, a.name AS away_name FROM fixtures f JOIN events e ON e.id=f.event_id LEFT JOIN teams h ON h.id=f.home_team_id LEFT JOIN teams a ON a.id=f.away_team_id WHERE f.id=$1`, [s.fixture_id])).rows[0] : null;
@@ -83,7 +107,7 @@ export async function sheetView(sheetId, c) {
   return {
     ...s, official: false, label: s.mode === 'linked' ? 'Result proposal - not official until approved' : 'Unofficial / standalone',
     template: { id: v.id, version: v.version, name: v.name, origin: v.origin, layout: v.layout, ruleset: v.ruleset, ruleset_hash: v.ruleset_hash },
-    entries, result, checks, fixture, proposal,
+    entries, result, checks, fixture, proposal, ranking, rules: v.layout.rules ?? null,
   };
 }
 
@@ -96,7 +120,7 @@ cap({
     return [
       { key: 'document_designer', title: 'Document Designer', route: 'BrandedDocuments', summary: 'Brand kits, logos and PDF templates for invoices, reports and letters.' },
       { key: 'scoring_tracking', title: 'Scoring & Game Tracking', route: 'ScoringTool', summary: 'Sport templates, a live tracker, printable sheets, upload and linked result proposals.', in_progress: mine.in_progress, sheets: mine.total },
-      { key: 'sport_rules', title: 'Sport rules', route: 'SportRules', summary: 'Units, direction, ranges, aggregation and match formats for each sport — every version kept.' },
+      { key: 'sport_rules', title: 'Rules & rulebook', route: 'SportRules', summary: 'Read each sport\'s rules as cards, open the official book, localise them for your competition and see the scoring metrics.' },
     ];
   },
 });
@@ -108,14 +132,15 @@ const templateRow = (t) => ({ ...t, key: t.id });
 cap({
   name: 'list_tracking_templates', method: 'GET', path: '/tracking/templates', tag: TAG,
   summary: 'Sheet templates for a sport: the governed platform starter (always available, derived from the sport\'s scoring rules, no AI needed) plus your personal and your organisations\' published templates.',
-  input: z.object({ sport: z.string().min(1), variant: z.string().max(30).optional(), best_of: z.coerce.number().int().optional() }),
+  input: z.object({ sport: z.string().min(1), variant: z.string().max(30).optional(), best_of: z.coerce.number().int().optional(), local_id: id.optional() }),
   async handler({ user }, i) {
     const sport = await sportOf(i.sport);
-    const base = builtinRuleset(sport);
+    const base = baseRuleset(sport);
     const variants = variantsFor(sport, base);
     const variant = variantOf(sport, base, i.variant);
-    const rs = withFormat(base, { best_of: i.best_of });
-    const starter = { key: 'starter', scope: 'platform', name: `${rs.label} starter`, variant, layout: buildLayout(sport, rs, variant), ruleset: rs, formats: base.kind === 'sets' ? BEST_OF : null, origin: 'platform' };
+    const rules = await rulesContext(user, sport, variant, i.local_id);
+    const rs = rulesetFor(sport, variant, rules, i.best_of);
+    const starter = { key: 'starter', scope: 'platform', name: `${rs.label} starter`, variant, layout: buildLayout(sport, rs, variant, {}, rules), ruleset: rs, formats: base.kind === 'sets' ? BEST_OF : null, origin: 'platform', rules: rules ? { local: rules.local, lines: rules.lines } : null };
     const mine = await many(
       `SELECT t.id, t.name, t.scope, t.variant, t.status, t.current_version, t.updated_at FROM tracking_sheet_templates t
         WHERE t.sport_id=$1 AND t.status='published' AND (t.owner_user_id=$2 OR t.organisation_id IN (SELECT organisation_id FROM organisation_members WHERE user_id=$2 AND status='active'))
@@ -154,7 +179,7 @@ cap({
   input: z.object(templateInput),
   async handler({ user }, i) {
     const sport = await sportOf(i.sport);
-    const rs = builtinRuleset(sport);
+    const rs = baseRuleset(sport, i.variant);
     if (i.best_of && (rs.kind !== 'sets' || !BEST_OF.includes(i.best_of))) throw badRequest('Best-of applies to set-based sports only (1, 3 or 5)');
     if (i.scope === 'organisation') { const r = await orgRole(user, i.organisation_id); if (!i.organisation_id || !['owner', 'admin', 'coach'].includes(r)) throw forbidden('Only an owner, admin or coach of the organisation can save its templates'); }
     return tx(async (c) => {
@@ -178,7 +203,7 @@ cap({
       if (t.status === 'retired') throw conflict('A retired template cannot be published again');
       const sport = await one('SELECT * FROM sports WHERE id=$1', [t.sport_id]);
       const draft = i.customise ?? t.draft;
-      const rs = withFormat(builtinRuleset(sport), { best_of: t.best_of });
+      const rs = withFormat(baseRuleset(sport, t.variant), { best_of: t.best_of });
       const layout = buildLayout(sport, rs, t.variant, draft);
       const version = t.current_version + 1;
       const v = (await c.query(
@@ -210,7 +235,7 @@ cap({
   input: z.object({ sport: z.string().min(1), variant: z.string().max(30).optional(), brief: z.string().trim().max(300).optional() }),
   async handler(_ctx, i) {
     const sport = await sportOf(i.sport);
-    const rs = builtinRuleset(sport);
+    const rs = baseRuleset(sport, i.variant);
     const governed = rs.stats.map((s) => s.kind);
     let custom = { hidden_stats: [], stat_order: governed, labels: {}, notes_fields: [], orientation: 'portrait', paper: 'A4', signatures: true };
     let source = 'deterministic', explanation = 'The standard sheet for this sport, built from its scoring rules.';
@@ -232,28 +257,39 @@ cap({
 });
 
 // ------------------------------------------------------------------ sheets
-const rowSchema = z.object({ order: z.number().int().min(0).max(100).optional(), lane: z.string().max(10).optional(), name: z.string().trim().max(80).optional(), result: z.string().trim().max(20).optional(), status: z.enum(['', 'DNS', 'DNF', 'DQ']).optional(), rank: z.number().int().min(1).max(200).optional() });
+const rowSchema = z.object({
+  order: z.number().int().min(0).max(100).optional(), lane: z.string().max(10).optional(), bib: z.string().trim().max(10).optional(), name: z.string().trim().max(80).optional(), country: z.string().trim().max(40).optional(),
+  reaction: z.string().trim().max(8).optional(), split1: z.string().trim().max(12).optional(), split2: z.string().trim().max(12).optional(), result: z.string().trim().max(20).optional(),
+  wind: z.string().trim().max(6).optional(), status: z.enum(['', 'DNS', 'DNF', 'DQ']).optional(), rank: z.number().int().min(1).max(200).optional(), notes: z.string().trim().max(120).optional(),
+});
+const playerSchema = z.object({ no: z.string().trim().max(4).default(''), name: z.string().trim().max(60).default(''), role: z.enum(['starter', 'sub']).default('starter'), captain: z.boolean().default(false), gk: z.boolean().default(false), pos: z.string().trim().max(6).default('') });
+/** What a scorer fills in around the game: header fields, team lists and officials. Never a score. */
+const detailsSchema = z.object({
+  info: z.record(z.string().regex(/^[a-z][a-z0-9_]{0,23}$/), z.string().trim().max(200)).optional(),
+  players: z.object({ home: z.array(playerSchema).max(30).optional(), away: z.array(playerSchema).max(30).optional() }).optional(),
+  officials: z.record(z.string().regex(/^[a-z][a-z0-9_]{0,23}$/), z.string().trim().max(80)).optional(),
+});
 const totalsSchema = z.object({
   home: z.number().int().min(0).max(999), away: z.number().int().min(0).max(999),
   sets: z.array(z.object({ home: z.number().int().min(0).max(300), away: z.number().int().min(0).max(300) })).max(9).optional(),
   periods: z.array(z.object({ period: z.number().int().min(1).max(20).optional(), home: z.number().int().min(0).max(999), away: z.number().int().min(0).max(999) })).max(20).optional(),
   stats: z.object({ home: z.record(kindKey, z.number().int().min(0).max(999)), away: z.record(kindKey, z.number().int().min(0).max(999)) }).optional(),
 });
-export { totalsSchema, rowSchema };
+export { totalsSchema, rowSchema, detailsSchema };
 
 cap({
   name: 'create_tracking_sheet', method: 'POST', path: '/tracking/sheets', tag: TAG, status: 201,
   summary: 'Start a tracking sheet. Anyone signed in can start a standalone (unofficial) one. Giving fixture_id starts a linked sheet for that game: it uses the event\'s pinned rules and canonical team names, and stays a proposal until reviewed. A repeated client_key returns the same sheet.',
   input: z.object({
     sport: z.string().min(1).optional(), variant: z.string().max(30).optional(), best_of: z.number().int().optional(), template_id: id.optional(),
-    fixture_id: id.optional(), title: z.string().trim().max(120).optional(), labels: z.object({ home: z.string().trim().max(60).optional(), away: z.string().trim().max(60).optional() }).optional(),
+    fixture_id: id.optional(), local_rules_id: id.optional(), title: z.string().trim().max(120).optional(), labels: z.object({ home: z.string().trim().max(60).optional(), away: z.string().trim().max(60).optional() }).optional(),
     context_type: z.enum(['academy_session', 'team', 'event']).optional(), context_id: id.optional(),
     occurred_at: z.string().datetime().optional(), client_key: z.string().min(1).max(64).optional(),
   }),
   async handler({ user }, i) {
     if (i.client_key) { const dup = await one('SELECT id FROM tracking_sheets WHERE owner_id=$1 AND client_key=$2', [user.id, i.client_key]); if (dup) return sheetView(dup.id); }
     return tx(async (c) => {
-      let sport, ruleset, fixture = null, tpl = null, published = null, custom = {}, variant = '';
+      let sport, ruleset, fixture = null, tpl = null, published = null, custom = {}, variant = '', rules = null;
       if (i.template_id) {
         tpl = await readableTemplate(user, i.template_id, c);
         if (tpl.status !== 'published') throw conflict('Publish the template before using it');
@@ -271,23 +307,33 @@ cap({
         if (sport && sport.id !== evSport.id) throw badRequest('This template is for a different sport than the game');
         if (i.sport && (await sportOf(i.sport)).id !== evSport.id) throw badRequest('The sport does not match the game');
         sport = evSport;
-        ruleset = (await rulesetForEvent(x.f.event_id, c, x.f.id)).ruleset;
+        const pinned = await rulesetForEvent(x.f.event_id, c, x.f.id);
+        ruleset = pinned.ruleset;
+        if (sport.slug === 'cricket' && pinned.source === 'builtin') ruleset = baseRuleset(sport, i.variant || variant); // no pinned rules: the format picked on the sheet decides the overs
         const names = (await c.query('SELECT h.name AS home, a.name AS away FROM fixtures f LEFT JOIN teams h ON h.id=f.home_team_id LEFT JOIN teams a ON a.id=f.away_team_id WHERE f.id=$1', [x.f.id])).rows[0];
-        fixture = { id: x.f.id, labels: { home: names.home, away: names.away }, at: x.f.scheduled_at };
+        fixture = { id: x.f.id, eventId: x.f.event_id, labels: { home: names.home, away: names.away }, at: x.f.scheduled_at };
       } else {
         sport = sport ?? await sportOf(i.sport);
-        ruleset = withFormat(tpl?.best_of ? withFormat(builtinRuleset(sport), { best_of: tpl.best_of }) : builtinRuleset(sport), { best_of: i.best_of });
+        variant = variantOf(sport, baseRuleset(sport), variant || i.variant);
+        rules = await rulesContext(user, sport, variant, i.local_rules_id, c);
+        ruleset = rulesetFor(sport, variant, rules, i.best_of ?? tpl?.best_of);
         if (i.best_of && ruleset.kind !== 'sets') throw badRequest('Best-of applies to set-based sports only');
       }
       if (i.context_type) await checkContext(user, i.context_type, i.context_id, c);
       variant = variantOf(sport, ruleset, variant || i.variant);
-      const layout = buildLayout(sport, ruleset, variant, custom);
-      const v = (published && !fixture && !i.best_of) ? published : await pinVersion(c, { sport, variant, ruleset, layout, origin: tpl ? 'user' : 'platform', name: tpl?.name ?? layout.title, userId: user.id, templateId: tpl?.id ?? null, version: tpl?.current_version ?? 1 });
+      if (fixture) {
+        // a linked sheet keeps the event's pinned rules; the event's own local rules (if its organiser published any) are shown beside them
+        const evRules = i.local_rules_id ? null : (await c.query("SELECT s.id FROM local_rule_sets s WHERE s.scope='event' AND s.event_id=$1 AND s.sport_id=$2 AND s.status='active' AND s.current_version > 0 ORDER BY s.updated_at DESC LIMIT 1", [fixture.eventId, sport.id])).rows[0];
+        rules = await rulesContext(user, sport, variant, i.local_rules_id ?? evRules?.id, c);
+        if (rules) { const clash = conflictsWith(sport.slug, ruleset, rules.values, rules.format); rules = { ...rules, conflicts: clash }; if (clash.length) rules.lines = [...rules.lines, 'The event\'s pinned scoring rules decide how this game is scored; the local setting above does not change that.']; }
+      }
+      const layout = buildLayout(sport, ruleset, variant, custom, rules);
+      const v = (published && !fixture && !i.best_of && !rules?.local) ? published : await pinVersion(c, { sport, variant, ruleset, layout, origin: tpl ? 'user' : 'platform', name: tpl?.name ?? layout.title, userId: user.id, templateId: tpl?.id ?? null, version: tpl?.current_version ?? 1 });
       const labels = fixture ? fixture.labels : { home: i.labels?.home || 'Home', away: i.labels?.away || 'Away' };
       const s = (await c.query(
-        `INSERT INTO tracking_sheets(ref, template_version_id, owner_id, sport_id, mode, fixture_id, context_type, context_id, title, labels, occurred_at, client_key)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
-        [newRef(), v.id, user.id, sport.id, fixture ? 'linked' : 'standalone', fixture?.id ?? null, i.context_type ?? null, i.context_id ?? null, i.title ?? null, JSON.stringify(labels), i.occurred_at ?? fixture?.at ?? new Date().toISOString(), i.client_key ?? null])).rows[0];
+        `INSERT INTO tracking_sheets(ref, template_version_id, owner_id, sport_id, mode, fixture_id, context_type, context_id, title, labels, occurred_at, client_key, local_rule_version_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id`,
+        [newRef(), v.id, user.id, sport.id, fixture ? 'linked' : 'standalone', fixture?.id ?? null, i.context_type ?? null, i.context_id ?? null, i.title ?? null, JSON.stringify(labels), i.occurred_at ?? fixture?.at ?? new Date().toISOString(), i.client_key ?? null, rules?.version_id ?? null])).rows[0];
       await audit(c, user.id, 'create_tracking_sheet', 'tracking_sheets', s.id);
       return sheetView(s.id, c);
     });
@@ -307,7 +353,7 @@ cap({
   input: z.object({
     id, title: z.string().trim().max(120).nullish(), notes: z.string().trim().max(2000).nullish(), occurred_at: z.string().datetime().optional(),
     labels: z.object({ home: z.string().trim().min(1).max(60).optional(), away: z.string().trim().min(1).max(60).optional() }).optional(),
-    manual_totals: totalsSchema.nullish(), rows: z.array(rowSchema).max(60).optional(),
+    manual_totals: totalsSchema.nullish(), rows: z.array(rowSchema).max(60).optional(), details: detailsSchema.optional(),
     add_entry: z.object({ kind: kindKey, side: z.enum(['home', 'away']).optional(), period: z.number().int().min(1).max(20).optional(), label: z.string().trim().max(60).optional(), payload: z.record(z.string(), z.unknown()).optional(), client_key: z.string().min(1).max(64).optional() }).optional(),
     void_entry: z.object({ entry_id: id.optional(), reason: z.string().trim().max(200).optional() }).optional(),
   }),
@@ -328,6 +374,10 @@ cap({
         set('manual_totals', i.manual_totals ? JSON.stringify(i.manual_totals) : null);
       }
       if (i.rows) set('rows', JSON.stringify(i.rows));
+      if (i.details) {
+        const d = s.details ?? {}, n = i.details;
+        set('details', JSON.stringify({ ...d, ...(n.info ? { info: { ...d.info, ...n.info } } : {}), ...(n.officials ? { officials: { ...d.officials, ...n.officials } } : {}), ...(n.players ? { players: { ...d.players, ...n.players } } : {}) }));
+      }
       if (i.add_entry) {
         const e = i.add_entry;
         if (e.client_key) { const dup = (await c.query('SELECT 1 FROM tracking_sheet_entries WHERE sheet_id=$1 AND client_key=$2', [s.id, e.client_key])).rowCount; if (dup) { if (sets.length) await c.query(`UPDATE tracking_sheets SET ${sets.join(', ')}, updated_at=now() WHERE id=$1`, vals); return sheetView(s.id, c); } }
@@ -404,7 +454,7 @@ cap({
               (SELECT p.state FROM result_proposals p WHERE p.sheet_id=s.id ORDER BY p.created_at DESC LIMIT 1) AS proposal_state
          FROM tracking_sheets s JOIN sports sp ON sp.id=s.sport_id JOIN tracking_sheet_template_versions v ON v.id=s.template_version_id
         WHERE ${where.join(' AND ')} ORDER BY s.created_at DESC, s.id LIMIT $${vals.length - 1} OFFSET $${vals.length}`, vals);
-    const entries = rows.length ? await many('SELECT sheet_id, seq, kind, side, period, voided_at FROM tracking_sheet_entries WHERE sheet_id = ANY($1) ORDER BY seq', [rows.map((r) => r.id)]) : [];
+    const entries = rows.length ? await many('SELECT sheet_id, seq, kind, side, period, payload, voided_at FROM tracking_sheet_entries WHERE sheet_id = ANY($1) ORDER BY seq', [rows.map((r) => r.id)]) : [];
     return rows.map(({ ruleset, manual_totals, ...r }) => {
       const res = sheetResult(ruleset, entries.filter((e) => e.sheet_id === r.id), manual_totals);
       return { ...r, official: false, label: r.mode === 'linked' ? 'Proposal' : 'Unofficial / standalone', score: res.home == null ? null : { home: res.home, away: res.away } };

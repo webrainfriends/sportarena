@@ -5,7 +5,7 @@ import { z } from 'zod';
 const key = z.string().regex(/^[a-z][a-z0-9_]{0,23}$/);
 
 export const rulesetSchema = z.object({
-  kind: z.enum(['points_events', 'sets', 'manual']).describe('points_events: score adds up from scoring events; sets: rally points make sets make a match; manual: the referee enters the totals'),
+  kind: z.enum(['points_events', 'sets', 'manual', 'cricket']).describe('points_events: score adds up from scoring events; sets: rally points make sets make a match; manual: the referee enters the totals; cricket: ball-by-ball innings (see scoring/cricket.js)'),
   label: z.string().min(2).max(60),
   periods: z.object({ count: z.number().int().min(1).max(12), label: z.string().min(1).max(20) }).default({ count: 1, label: 'Period' }),
   events: z.array(z.object({ kind: key, label: z.string().min(1).max(30), points: z.number().int().min(0).max(20), icon: z.string().max(8).optional() })).max(20).default([])
@@ -17,8 +17,19 @@ export const rulesetSchema = z.object({
     points_to_win: z.number().int().min(1).max(100), win_by: z.number().int().min(1).max(2),
     cap: z.number().int().min(1).max(200).nullable().default(null), deciding_points: z.number().int().min(1).max(100).nullable().default(null),
   }).optional(),
+  cricket: z.object({
+    format: z.enum(['T10', 'T20', 'ODI', 'Test']),
+    overs: z.number().int().min(1).max(100).nullable().describe('overs per innings, null when an innings has no limit (Test)'),
+    innings: z.number().int().min(2).max(4).describe('innings in the whole match: 2 limited overs, 4 Test'),
+    bowler_max: z.number().int().min(1).max(100).nullable(),
+    wide_runs: z.number().int().min(1).max(2).default(1), noball_runs: z.number().int().min(1).max(2).default(1),
+    free_hit: z.boolean().default(true), follow_on: z.number().int().min(50).max(400).nullable().default(null),
+    min_overs_day: z.number().int().min(1).max(120).nullable().default(null), days: z.number().int().min(1).max(5).nullable().default(null),
+    reviews: z.number().int().min(0).max(5).default(0),
+  }).optional(),
   draw_allowed: z.boolean().default(true),
 }).superRefine((r, ctx) => {
+  if (r.kind === 'cricket' && !r.cricket) ctx.addIssue({ code: 'custom', message: 'a cricket ruleset needs cricket{}', path: ['cricket'] });
   if (r.kind === 'sets' && !r.sets) ctx.addIssue({ code: 'custom', message: 'a sets ruleset needs sets{}', path: ['sets'] });
   if (r.kind === 'points_events' && !r.events.length) ctx.addIssue({ code: 'custom', message: 'a points_events ruleset needs at least one scoring event', path: ['events'] });
   const kinds = [...r.events, ...r.stats].map((x) => x.kind);
@@ -84,19 +95,46 @@ const BUILTIN = {
   'soft-tennis': rally('Soft tennis (games)', 3, 4, 2, null, null),
 };
 
+const CRICKET_FORMATS = {
+  T10: { overs: 10, innings: 2 }, T20: { overs: 20, innings: 2 }, ODI: { overs: 50, innings: 2 }, Test: { overs: null, innings: 4 },
+};
+/** The cricket ruleset for a format; `values` are rulebook settings (local rules), which can shorten overs, set bowler limits and so on. */
+export function cricketRuleset(format = 'T20', values = {}) {
+  const f = CRICKET_FORMATS[format] ?? CRICKET_FORMATS.T20, fmt = CRICKET_FORMATS[format] ? format : 'T20';
+  const key = fmt === 'ODI' ? 'odi' : 't20', limited = f.overs != null;
+  const overs = limited && fmt !== 'T10' ? (values[`ov_${key}`] ?? f.overs) : f.overs;
+  const bowler = limited ? (fmt !== 'T10' && values[`bq_${key}`]) || Math.max(1, Math.floor(overs / 5)) : null;
+  return R({
+    kind: 'cricket', label: `Cricket ${fmt}`, periods: { count: f.innings, label: 'Innings' }, draw_allowed: true, events: [], stats: [],
+    cricket: {
+      format: fmt, overs, innings: f.innings, bowler_max: bowler, wide_runs: values.pen ?? 1, noball_runs: values.pen ?? 1,
+      free_hit: limited ? values.freehit ?? true : false, follow_on: limited ? null : values.fo ?? 200, min_overs_day: limited ? null : values.mo ?? 90,
+      days: limited ? null : values.days ?? 5, reviews: values[`drs_${fmt === 'Test' ? 'test' : key}`] ?? (fmt === 'ODI' || fmt === 'Test' ? 2 : 1),
+    },
+  });
+}
+
 /** Built-in ruleset for a sport row ({slug, scoring}); sports with no specific rules fall back on their scoring family, then manual. */
 export function builtinRuleset(sport) {
+  if (sport?.slug === 'cricket') return cricketRuleset('T20');
   if (sport?.slug && BUILTIN[sport.slug]) return BUILTIN[sport.slug];
   if (sport?.scoring === 'goals') return goals(sport.name ?? 'Goals', 2, 'Half');
   if (sport?.scoring === 'sets') return rally(sport.name ?? 'Sets', 3, 21, 2, 30, null);
   return MANUAL;
 }
-export const builtinSlugs = () => Object.keys(BUILTIN);
+export const builtinSlugs = () => [...Object.keys(BUILTIN), 'cricket'];
 export const MANUAL_RULESET = MANUAL;
 
 /** Plain-language summary of a ruleset, for people learning the sport: [{title, body}]. Manual rulesets say nothing about scoring. */
 export function describeRuleset(rs) {
   if (rs.kind === 'manual') return [];
+  if (rs.kind === 'cricket') {
+    const c = rs.cricket, limited = c.overs != null;
+    return [
+      { title: 'Format', body: limited ? `Each side bats once for up to ${c.overs} overs. ${c.bowler_max ? `No bowler may bowl more than ${c.bowler_max} overs.` : ''}` : `Each side bats twice over up to ${c.days ?? 5} days; an innings has no over limit.` },
+      { title: 'How runs and results work', body: `A wide or no-ball costs ${c.wide_runs} run${c.wide_runs === 1 ? '' : 's'} and is bowled again. ${c.free_hit ? 'A no-ball is followed by a free hit. ' : ''}The side with more runs wins; an equal total is a tie${limited ? '' : ', and a Test that is not finished in time is a draw'}.` },
+    ];
+  }
   const out = [];
   const per = rs.periods.count > 1 ? `${rs.periods.count} ${rs.periods.label.toLowerCase()}s` : `a single ${rs.periods.label.toLowerCase()}`;
   if (rs.kind === 'sets') {

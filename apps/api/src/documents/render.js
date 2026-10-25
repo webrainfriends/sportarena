@@ -511,10 +511,12 @@ export async function renderTrackingSheet({ sheet, layout, kit, logo, code, qr, 
   for (const [k, v] of meta) { label(k.toUpperCase(), cx, my, mw - 6, { size: 6.5, color: '#666666' }); label(v, cx, my + 9, mw - 6, { size: 9 }); cx += mw; }
   doc.y = my + 28;
   const home = sheet.labels?.home && sheet.labels.home !== 'Home' ? sheet.labels.home : '', away = sheet.labels?.away && sheet.labels.away !== 'Away' ? sheet.labels.away : '';
-  const ny = doc.y;
-  label('HOME / SIDE A', left, ny, width / 2 - 8, { size: 6.5, color: '#666666' }); label('AWAY / SIDE B', left + width / 2, ny, width / 2 - 8, { size: 6.5, color: '#666666' });
-  label(home || '_______________________________', left, ny + 9, width / 2 - 8, { size: 11, bold: true }); label(away || '_______________________________', left + width / 2, ny + 9, width / 2 - 8, { size: 11, bold: true });
-  doc.y = ny + 32;
+  if (!layout.form?.noTeams) {
+    const ny = doc.y;
+    label('HOME / SIDE A', left, ny, width / 2 - 8, { size: 6.5, color: '#666666' }); label('AWAY / SIDE B', left + width / 2, ny, width / 2 - 8, { size: 6.5, color: '#666666' });
+    label(home || '_______________________________', left, ny + 9, width / 2 - 8, { size: 11, bold: true }); label(away || '_______________________________', left + width / 2, ny + 9, width / 2 - 8, { size: 11, bold: true });
+    doc.y = ny + 32;
+  }
 
   const grid = (title, cols, rows, o = {}) => {
     room(30 + Math.min(rows, 6) * (o.h ?? 16));
@@ -549,7 +551,7 @@ export async function renderTrackingSheet({ sheet, layout, kit, logo, code, qr, 
   } else {
     grid('Final totals', [{ t: '', w: 0.4, fixed: ['Result as recorded by the official'] }, { t: 'Home', w: 0.3 }, { t: 'Away', w: 0.3 }], 1, { h: 24, width: width * 0.7 });
   }
-  if (layout.stats.length && !(layout.form && layout.mode === 'manual')) grid('Tally', [{ t: 'Stat', w: 0.28, fixed: layout.stats.map((s) => s.label) }, { t: 'Home', w: 0.36 }, { t: 'Away', w: 0.36 }], layout.stats.length, { h: 15, width: width * 0.7 });
+  if (layout.stats.length && !(layout.form && (layout.mode === 'manual' || layout.form.noTally))) grid('Tally', [{ t: 'Stat', w: 0.28, fixed: layout.stats.map((s) => s.label) }, { t: 'Home', w: 0.36 }, { t: 'Away', w: 0.36 }], layout.stats.length, { h: 15, width: width * 0.7 });
   for (const n of layout.notes_fields) { room(48); const ny2 = doc.y; label(`${n.label.toUpperCase()}  (custom - not an official field)`, left, ny2, width, { size: 7, color: '#666666' }); box(left, ny2 + 10, width, 28); doc.y = ny2 + 46; }
   room(60); const nty = doc.y; label('NOTES', left, nty, width, { size: 7, color: '#666666' }); box(left, nty + 10, width, 36); doc.y = nty + 56;
   if (layout.signatures) {

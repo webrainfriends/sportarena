@@ -11,24 +11,8 @@
 //   choices  { title, items:[label] }               tick-one options (winner, method of victory)
 //   cricket  { innings, overs }                     ball-by-ball grid + batting card + bowling card + fall of wickets
 
-const col = (t, w = 1, fixed) => ({ t, w, ...(fixed ? { fixed } : {}) });
-const cols = (...list) => list.map((c) => (Array.isArray(c) ? col(...c) : col(c)));
-const nums = (n, from = 1) => Array.from({ length: n }, (_, i) => String(from + i));
-
-const fields = (items, per = 3) => ({ t: 'fields', items, per });
-const table = (title, c, rows, o = {}) => ({ t: 'table', title, cols: cols(...c), rows, h: o.h ?? 16, width: o.width ?? 1 });
-const pair = (title, c, rows, o = {}) => ({ t: 'pair', title, cols: cols(...c), rows, h: o.h ?? 15 });
-const running = (title, max, per, o = {}) => ({ t: 'running', title, max, per, ...o });
-const ticks = (title, ...items) => ({ t: 'ticks', title, items: items.map(([label, n]) => ({ label, n })) });
-const choices = (title, ...items) => ({ t: 'choices', title, items });
-
-const SIGN_INDIVIDUAL = ['Chief judge / referee', 'Scorer', 'Competitor / team rep'];
-const WINNER = choices('Winner', 'Home', 'Away', 'Draw / no result');
-const finalResult = (extra = []) => [
-  table('Final result', [['', 2, ['Result as recorded by the official']], ['Home', 1.5], ['Away', 1.5]], 1, { h: 26, width: 0.7 }),
-  WINNER, ...extra,
-];
-const officials = (...names) => fields(names.length ? names : ['Referee / umpire', 'Scorer', 'Timekeeper'], 3);
+import { SIGN_INDIVIDUAL, WINNER, choices, col, cols, fields, finalResult, nums, officials, pair, running, table, ticks } from './form-kit.js';
+import { ATHLETICS_VARIANTS, CRICKET_FORMATS, americanFootballSheet, athleticsSheet, baseballBook, boxingCard, chessSheet, cricketBook, fieldHockeyReport, footballReport, futsalReport, iceHockeySheet, judoSheet, karateSheet, racketExtras, rugbyReport, weightliftingCard } from './pro-forms.js';
 
 /** How many periods (and what they are called) for sports whose ruleset is not built in. */
 const PERIODS = {
@@ -69,7 +53,7 @@ function teamGame({ ruleset, count = 2, label = 'Half', slug = '' }) {
 }
 
 // ------------------------------------------------------------------------------------------------------------------ rally sets
-function rallyGame({ ruleset, slug, variant }) {
+function rallyGame({ ruleset, slug, variant, rules }) {
   const s = ruleset.sets, n = s.best_of;
   const racket = ruleset.kind === 'sets' && !['volleyball', 'beach-volleyball', 'sitting-volleyball', 'sepak-takraw'].includes(slug);
   const doubles = variant === 'Doubles';
@@ -83,26 +67,8 @@ function rallyGame({ ruleset, slug, variant }) {
   }
   sections.push(table(`Sets (best of ${n})`, [['Set', 0.8, nums(n)], ['Home pts', 1.2], ['Away pts', 1.2], ['Winner H/A', 1], ['Start / end time', 1.6]], n, { h: 17 }));
   sections.push(slug.includes('volleyball') ? ticks('Timeouts and cautions', ['Timeouts', 2], ['Substitutions', 6], ['Cautions / faults', 6]) : ticks('Timeouts and cautions', ['Timeouts', 2], ['Cautions / faults', 6]));
-  sections.push(...finalResult(), officials('Umpire / referee', 'Scorer', 'Line judge'));
-  return { title: 'Rally scoresheet', sections };
-}
-
-// ------------------------------------------------------------------------------------------------------------------ cricket
-const CRICKET_OVERS = { T10: 10, T20: 20, ODI: 50 };
-export const CRICKET_VARIANTS = Object.keys(CRICKET_OVERS);
-function cricket({ variant }) {
-  const overs = CRICKET_OVERS[variant] ?? 20;
-  return {
-    title: `Scorebook (${CRICKET_OVERS[variant] ? variant : 'T20'})`, orientation: 'landscape',
-    sections: [
-      fields(['Toss won by', 'Elected to', 'Overs per innings', 'Umpire 1', 'Umpire 2', 'Scorers'], 6),
-      table('Match summary (fill in at the end of each innings)', [['', 2, ['Innings 1', 'Innings 2']], ['Batting team', 2], ['Runs', 1], ['Wickets', 1], ['Overs', 1], ['Extras', 1], ['Run rate', 1]], 2, { h: 22 }),
-      table('Final result', [['', 2, ['Result as recorded by the official']], ['Home', 1.5], ['Away', 1.5]], 1, { h: 26, width: 0.7 }),
-      choices('Result', 'Home won', 'Away won', 'Tie', 'No result', 'Abandoned'),
-      fields(['Player of the match', 'Won by (runs / wickets)', 'DLS / revised target notes'], 3),
-      { t: 'cricket', innings: 1, overs }, { t: 'cricket', innings: 2, overs },
-    ],
-  };
+  sections.push(...racketExtras(slug, { rules }), ...finalResult(), officials('Umpire / referee', 'Scorer', 'Line judge'));
+  return { title: 'Rally scoresheet', sections: [...(rules?.lines?.length ? [{ t: 'note', title: 'Local rules in force (they change the standard rules)', lines: rules.lines }] : []), ...sections] };
 }
 
 // ------------------------------------------------------------------------------------------------------------------ baseball family
@@ -281,8 +247,10 @@ function multiEvent() {
 }
 
 // ------------------------------------------------------------------------------------------------------------------ selection
-/** Cricket formats (overs) are labels for the printed sheet only. */
-export const variantsOf = (slug) => (slug === 'cricket' ? CRICKET_VARIANTS : null);
+/** Format choices per sport. They label the printed sheet and the rulebook format; they never change how a result is scored. */
+const VARIANTS = { cricket: ['T20', 'ODI', 'Test', 'T10'], athletics: ATHLETICS_VARIANTS, chess: ['Classical', 'Rapid', 'Blitz'], boxing: ['Elite', 'Youth', 'Professional'], karate: ['Kumite', 'Kata'], rugby: ['Union', 'Sevens'], 'rugby-sevens': ['Sevens'] };
+export const variantsOf = (slug) => VARIANTS[slug] ?? null;
+export { CRICKET_FORMATS };
 
 const BASEBALL = new Set(['baseball', 'softball', 'rounders']);
 
@@ -291,11 +259,13 @@ const BASEBALL = new Set(['baseball', 'softball', 'rounders']);
  * form that can be used during play; the plain "Manual totals" page is only the last resort for a sport the catalogue does not know.
  * @param {{slug?:string, scoring?:string, play_type?:string, name?:string}} sport
  */
-export function formFor(sport, ruleset, variant = '') {
+export function formFor(sport, ruleset, variant = '', rules = null) {
   const slug = sport?.slug ?? '', kind = ruleset?.kind;
-  if (slug === 'cricket') return cricket({ variant });
+  const ctx = { slug, variant, rules, ruleset };
+  const PRO = { football: footballReport, futsal: futsalReport, cricket: cricketBook, hockey: fieldHockeyReport, 'ice-hockey': iceHockeySheet, 'american-football': americanFootballSheet, rugby: rugbyReport, 'rugby-sevens': rugbyReport, chess: chessSheet, boxing: boxingCard, judo: judoSheet, karate: karateSheet, weightlifting: weightliftingCard, athletics: athleticsSheet, baseball: baseballBook };
+  if (PRO[slug]) return { ...PRO[slug](slug === 'rugby-sevens' ? { ...ctx, variant: 'Sevens' } : ctx), noTally: true, ...(['athletics', 'weightlifting', 'boxing', 'judo', 'karate', 'chess'].includes(slug) ? { noTeams: true } : {}) };
   if (BASEBALL.has(slug)) return baseball({ ruleset, slug });
-  if (kind === 'sets') return rallyGame({ ruleset, slug, variant });
+  if (kind === 'sets') return rallyGame({ ruleset, slug, variant, rules });
   if (kind === 'points_events') return teamGame({ ruleset, slug });
   // the sport's own slug wins: the catalogue's scoring family is coarse and some sports were first seeded as plain "points"
   if (STRIKING.has(slug) || TECHNICAL.has(slug) || slug === 'fencing' || sport?.scoring === 'combat') return combat({ slug });

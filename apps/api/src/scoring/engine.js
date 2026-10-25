@@ -1,6 +1,8 @@
 // Pure scoring engine: turns an ordered list of match events into a score. No database, no clock.
 // side is 'home' | 'away'. Voided events must be filtered out by the caller.
 
+import { cricketReject, cricketState } from './cricket.js';
+
 const other = (s) => (s === 'home' ? 'away' : 'home');
 const SIDES = ['home', 'away'];
 export const CONTROL_KINDS = ['period_start', 'period_end', 'note'];
@@ -54,6 +56,14 @@ function runSets(rs, events) {
 export function computeScore(rs, events) {
   const live = events.filter((e) => !e.voided_at);
   if (rs.kind === 'manual') return { home: 0, away: 0, winner: null, level: true, over: false, stats: { home: {}, away: {} } };
+  if (rs.kind === 'cricket') {
+    const cs = cricketState(rs, live);
+    return {
+      home: cs.home, away: cs.away, winner: cs.winner, level: cs.home === cs.away, over: cs.over,
+      periods: cs.innings.map((i) => ({ period: i.n, home: i.side === 'home' ? i.runs : 0, away: i.side === 'away' ? i.runs : 0 })),
+      stats: { home: { wickets: cs.wickets.home }, away: { wickets: cs.wickets.away } }, cricket: cs,
+    };
+  }
   const r = rs.kind === 'sets' ? runSets(rs, live) : runPoints(rs, live);
   const winner = r.home === r.away ? null : r.home > r.away ? 'home' : 'away';
   return { ...r, winner: rs.kind === 'sets' && !r.over ? null : winner, level: r.home === r.away, over: rs.kind === 'sets' ? r.over : false };
@@ -68,11 +78,12 @@ export function matchPhase(rs, events) {
     else if (e.kind === 'period_end') open = false;
   }
   const score = computeScore(rs, live);
-  return { period, period_open: open, periods_total: rs.periods.count, can_score: !(rs.kind === 'sets' && score.over), score };
+  return { period, period_open: open, periods_total: rs.periods.count, can_score: !((rs.kind === 'sets' || rs.kind === 'cricket') && score.over), score };
 }
 
 /** Why an event cannot be logged right now, or null. */
 export function rejectReason(rs, events, next) {
+  if (rs.kind === 'cricket') return cricketReject(rs, events.filter((e) => !e.voided_at), next);
   if (CONTROL_KINDS.includes(next.kind)) return null;
   const known = new Set([...rs.events.map((e) => e.kind), ...rs.stats.map((s) => s.kind), ...(rs.kind === 'sets' ? ['point'] : [])]);
   if (!known.has(next.kind)) return `"${next.kind}" is not part of the ${rs.label} rules`;

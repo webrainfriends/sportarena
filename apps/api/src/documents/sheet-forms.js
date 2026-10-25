@@ -107,32 +107,42 @@ export function drawForm(form, ctx) {
     }
   }
 
+  /** A bordered text box: local rules in force, or any printed instructions. */
+  function note(spec) {
+    const lines = spec.lines ?? [], h = 18 + lines.length * 10;
+    room(h + 8);
+    const y = doc.y;
+    doc.lineWidth(1).strokeColor('#B54708').rect(left, y, width, h).stroke();
+    label(String(spec.title).toUpperCase(), left + 5, y + 4, width - 10, { bold: true, size: 7, color: '#B54708' });
+    lines.forEach((t, i) => label(t, left + 5, y + 15 + i * 10, width - 10, { size: 7.5 }));
+    doc.y = y + h + 8;
+  }
+
   function cricket(spec) {
     doc.addPage();
     const iy = doc.y; label(`INNINGS ${spec.innings}`, left, iy, 120, { bold: true, size: 13, color: accent }); doc.y = iy + 20;
-    fields({ items: ['Batting team', 'Bowling team', 'Innings start', 'Innings end'], per: 4 });
-    const blocks = spec.overs > 25 && width > 600 ? 2 : 1, perBlock = Math.ceil(spec.overs / blocks), gap = 14, bw = (width - gap * (blocks - 1)) / blocks;
+    fields({ items: spec.test ? ['Batting team', 'Bowling team', 'Innings start (day / time)', 'Innings end', 'Declared at', 'Follow-on?'] : ['Batting team', 'Bowling team', 'Innings start', 'Innings end'], per: spec.test ? 6 : 4 });
+    const blocks = width <= 600 ? 1 : spec.overs > 30 ? 3 : spec.overs > 12 ? 2 : 1, perBlock = Math.ceil(spec.overs / blocks), gap = 14, bw = (width - gap * (blocks - 1)) / blocks;
     const y0 = doc.y; let yEnd = y0;
     for (let b = 0; b < blocks; b++) {
       doc.y = y0;
       const rows = Math.min(perBlock, spec.overs - b * perBlock);
-      table({ title: b === 0 ? 'Ball by ball (write runs; W wicket, wd wide, nb no-ball, b bye, lb leg-bye)' : '', rows, h: 12.5,
+      table({ title: b === 0 ? 'Ball by ball (runs; W wicket, wd wide, nb no-ball, b bye, lb leg-bye)' : ' ', rows, h: 11.5,
         cols: [{ t: 'Over', w: 0.7, fixed: numbered(rows, b * perBlock + 1) }, { t: 'Bowler', w: 2.4 }, ...numbered(6).map((n) => ({ t: n, w: 0.75 })), { t: 'Runs', w: 0.8 }, { t: 'Total', w: 0.9 }] },
       { x: left + b * (bw + gap), w: bw, nobreak: true });
       yEnd = Math.max(yEnd, doc.y);
     }
     doc.y = yEnd;
     const gapB = 14, wBat = (width - gapB) * 0.58, wBowl = (width - gapB) * 0.42;
-    room(11 + 14 + 11 * 15 + 12);
+    room(11 + 14 + 11 * 13.5 + 12);
     const yc = doc.y;
-    table({ title: 'Batting', rows: 11, h: 15, cols: [{ t: '#', w: 0.4, fixed: numbered(11) }, { t: 'Batter', w: 2.4 }, { t: 'How out', w: 1.6 }, { t: 'Bowler', w: 1.6 }, { t: 'Runs', w: 0.8 }, { t: 'Balls', w: 0.8 }, { t: '4s', w: 0.6 }, { t: '6s', w: 0.6 }] }, { x: left, w: wBat, nobreak: true });
+    table({ title: 'Batting', rows: 11, h: 13.5, cols: [{ t: '#', w: 0.4, fixed: numbered(11) }, { t: 'Batter', w: 2.4 }, { t: 'How out', w: 1.6 }, { t: 'Bowler', w: 1.6 }, { t: 'Runs', w: 0.8 }, { t: 'Balls', w: 0.8 }, { t: '4s', w: 0.6 }, { t: '6s', w: 0.6 }] }, { x: left, w: wBat, nobreak: true });
     const yb = doc.y; doc.y = yc;
-    table({ title: 'Bowling', rows: 11, h: 15, cols: [{ t: 'Bowler', w: 2.4 }, { t: 'O', w: 0.6 }, { t: 'M', w: 0.6 }, { t: 'R', w: 0.7 }, { t: 'W', w: 0.6 }, { t: 'Wd', w: 0.6 }, { t: 'Nb', w: 0.6 }] }, { x: left + wBat + gapB, w: wBowl, nobreak: true });
+    table({ title: 'Bowling', rows: 11, h: 13.5, cols: [{ t: 'Bowler', w: 2.4 }, { t: 'O', w: 0.6 }, { t: 'M', w: 0.6 }, { t: 'R', w: 0.7 }, { t: 'W', w: 0.6 }, { t: 'Wd', w: 0.6 }, { t: 'Nb', w: 0.6 }] }, { x: left + wBat + gapB, w: wBowl, nobreak: true });
     doc.y = Math.max(yb, doc.y);
-    room(24 + 2 * 22 + 40);
-    fields({ items: ['Byes', 'Leg byes', 'Wides', 'No-balls', 'Penalty runs', 'Total extras'], per: 6 });
-    table({ title: 'Fall of wickets (score - batter - over)', rows: 2, h: 22, cols: numbered(10).map((n) => ({ t: n, w: 1 })) });
-    fields({ items: ['Total runs', 'Wickets', 'Overs', 'Run rate'], per: 4 });
+    room(26 + 11 + 14 + 2 * 18 + 8);
+    fields({ items: ['Byes', 'Leg byes', 'Wides', 'No-balls', 'Penalty runs', 'Total extras', 'Total runs', 'Wickets', 'Overs', 'Run rate'], per: 10 });
+    table({ title: 'Fall of wickets (score - batter - over)', rows: 2, h: 18, cols: numbered(10).map((n) => ({ t: n, w: 1 })) });
   }
 
   for (const s of form.sections) {
@@ -144,6 +154,7 @@ export function drawForm(form, ctx) {
       case 'ticks': ticks(s); break;
       case 'choices': choices(s); break;
       case 'cricket': cricket(s); break;
+      case 'note': note(s); break;
       default: break;
     }
   }
