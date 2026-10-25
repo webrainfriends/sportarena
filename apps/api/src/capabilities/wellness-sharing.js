@@ -8,6 +8,7 @@ import { guardianLink, requireConsent } from '../youth.js';
 import { RELATIONSHIP_SQL } from '../coaching.js';
 import { toCsv } from '../csv.js';
 import { readiness, workload } from '../readiness.js';
+import { effective } from '../readiness-config.js';
 import { FIELDS, PURPOSES, KINDS, accessBlock, shareBlock, shareState, reasonText } from '../wellness-sharing.js';
 
 const TAG = 'Athlete health';
@@ -220,13 +221,14 @@ async function sharedView(c, user, shareId, { from, to } = {}, action) {
   if (f.has('readiness') || f.has('workload')) {
     const date = hi;
     const loads = (await c.query('SELECT session_date::text AS session_date, load FROM session_loads WHERE user_id=$1 AND archived_at IS NULL AND session_date BETWEEN $2 AND $3', [s.athlete_id, plusDays(date, -90), date])).rows;
-    const wl = workload(loads, date);
+    const eff = await effective(c, s.athlete_id);
+    const wl = workload(loads, date, eff.config);
     if (f.has('workload')) out.workload = { ratio: wl.ratio, status: wl.status, weeks: wl.weeks };
     if (f.has('readiness')) {
       const wellness = (await c.query('SELECT sleep_hours, sleep_quality, soreness, mood FROM wellness_logs WHERE user_id=$1 AND log_date=$2', [s.athlete_id, date])).rows[0] ?? null;
       const pain = (await c.query('SELECT DISTINCT ON (region, side, kind) severity FROM body_pain_logs WHERE user_id=$1 AND resolved_at IS NULL ORDER BY region, side, kind, created_at DESC', [s.athlete_id])).rows;
-      const r = readiness({ wellness, pain, acwr: wl });
-      out.readiness = { date, score: r.score, band: r.band };
+      const r = readiness({ wellness, pain, acwr: wl, config: eff.config });
+      out.readiness = { date, score: r.score, band: r.band, settings_version: eff.version, settings_source: eff.source };
     }
   }
   if (f.has('body_map')) {

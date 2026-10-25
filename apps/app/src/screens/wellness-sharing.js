@@ -9,6 +9,7 @@ import { useLayout } from '../layout';
 import { c } from '../theme';
 import { addDays, dateTimeIn, todayIn } from '../vtime';
 import { ReadinessRing } from './wellness';
+import { ReadinessExplainer } from './readiness-explainer';
 
 const tz = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return 'UTC'; } })();
 const nice = (s) => String(s).replace(/_/g, ' ');
@@ -200,6 +201,7 @@ function Detail({ share }) {
           ))}
         </View>
       ) : v.readiness || v.workload || v.body_map ? null : <Empty emoji="🗓️" title="Nothing logged in this window" sub="The athlete has not logged these fields in the days they shared." />}
+      {v.readiness ? <View style={{ marginTop: 14 }}><ReadinessExplainer mode="staff" shareId={share.id} athleteName={v.athlete.display_name} onChanged={d.reload} /></View> : null}
       <T size={12} color={c.mute} style={{ marginTop: 12 }}>Not shared: {v.not_shared.map(nice).join(', ')}.</T>
       <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', marginTop: 10, flexWrap: 'wrap' }}>
         <Btn small title="Download CSV" color={c.paper} ink={c.ink} onPress={exportCsv} loading={busy} accessibilityLabel="Download shared wellness as CSV" />
