@@ -7,8 +7,11 @@ const card = (...rounds) => ({ rounds: rounds.map(([red, blue]) => ({ red, blue 
 test('boxing 10-point must: rounds are checked, judges decide, the bout goes to most judges', () => {
   assert.equal(roundProblem({ red: 10, blue: 9 }), null);
   assert.equal(roundProblem({ red: 10, blue: 10 }), null, 'an even round');
-  assert.match(roundProblem({ red: 9, blue: 9 }), /gets 10/);
+  assert.equal(roundProblem({ red: 9, blue: 8 }), null, 'a foul takes a point off the winner');
+  assert.equal(roundProblem({ red: 9, blue: 9 }), null);
   assert.match(roundProblem({ red: 11, blue: 9 }), /0 to 10/);
+  assert.match(roundProblem({ red: 9.5, blue: 9 }), /whole numbers/);
+  assert.match(roundProblem({ red: -1, blue: 10 }), /0 to 10/);
   const unanimous = boxingDecision([card([10, 9], [10, 9], [9, 10]), card([10, 9], [10, 9], [10, 9]), card([10, 9], [9, 10], [10, 9])], 3);
   assert.equal(unanimous.winner, 'red'); assert.equal(unanimous.kind, 'unanimous'); assert.deepEqual(unanimous.votes, { red: 3, blue: 0, draw: 0 });
   assert.equal(unanimous.judges[0].red, 29); assert.equal(unanimous.judges[0].blue, 28);
@@ -16,9 +19,14 @@ test('boxing 10-point must: rounds are checked, judges decide, the bout goes to 
   assert.equal(split.winner, 'red'); assert.equal(split.kind, 'split');
   const majority = boxingDecision([card([10, 9], [10, 9], [10, 9]), card([10, 10], [10, 10], [10, 10]), card([10, 9], [9, 10], [10, 9])], 3);
   assert.equal(majority.kind, 'majority'); assert.equal(majority.winner, 'red'); assert.equal(majority.votes.draw, 1);
+  const deducted = boxingDecision([card([10, 9], [9, 8], [9, 9])], 3);
+  assert.deepEqual([deducted.judges[0].red, deducted.judges[0].blue], [28, 26]);
+  const majorityDraw = boxingDecision([card([10, 9], [10, 9]), card([10, 10], [10, 10]), card([10, 10], [10, 10])], 2);
+  assert.equal(majorityDraw.winner, 'draw'); assert.equal(majorityDraw.kind, 'majority draw');
+  assert.equal(boxingDecision([card([10, 9]), card([9, 10]), card([10, 10])], 1).kind, 'split draw');
   const draw = boxingDecision([card([10, 9], [9, 10]), card([9, 10], [10, 9])], 2);
   assert.equal(draw.winner, 'draw'); assert.equal(draw.kind, 'draw');
-  const bad = boxingDecision([card([10, 9], [9, 9], [10, 9])], 3);
+  const bad = boxingDecision([card([10, 9], [11, 9], [10, 9])], 3);
   assert.equal(bad.problems.length, 1); assert.match(bad.problems[0].message, /Judge 1, round 2/);
   assert.equal(bad.judges[0].rounds, 2, 'a bad round is not counted'); assert.equal(bad.complete, false);
   assert.equal(boxingDecision([], 3).winner, null);
@@ -42,5 +50,7 @@ test('weightlifting: best good lifts, the total, bomb-outs, ties by body weight 
   assert.equal(r.warnings.length, 1); assert.match(r.warnings[0].message, /E: a snatch attempt went down/);
   const alone = rankLifts([{ attempts: at([100, true], [100, true], [100, true], [120, true]) }], 3);
   assert.equal(alone.rows[0].rank, 1);
+  const dq = rankLifts([{ name: 'D', status: 'DQ', attempts: at([100, true], [0, null], [0, null], [120, true]) }, { name: 'E', attempts: at([90, true], [0, null], [0, null], [110, true]) }], 3);
+  assert.deepEqual(dq.rows.map((x) => x.rank), [null, 1], 'a disqualified lifter has no place');
   assert.equal(rankLifts([{ body_kg: 60, attempts: at([50, true], [0, null], [0, null], [60, true]) }, { body_kg: 60, attempts: at([50, true], [0, null], [0, null], [60, true]) }]).rows.map((x) => x.rank).join(), '1,1', 'same total and weight share a place');
 });

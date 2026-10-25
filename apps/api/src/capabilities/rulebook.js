@@ -25,7 +25,7 @@ const sportRow = async (slug, c) => (await q(c).query('SELECT id, slug, name, em
 
 /** May this user read a local rule set? Personal: its owner. Organisation/team: members. Event: anyone who can see the event. */
 export async function canReadSet(user, s, c) {
-  if (isAdmin(user) || s.owner_user_id === user.id) return true;
+  if (isAdmin(user) || (s.scope === 'personal' && s.owner_user_id === user.id)) return true;
   if (s.scope === 'organisation') return !!(await orgRole(user, s.organisation_id, c));
   if (s.scope === 'team') return (await q(c).query("SELECT 1 FROM teams t WHERE t.id=$1 AND (t.owner_id=$2 OR EXISTS (SELECT 1 FROM team_members m WHERE m.team_id=t.id AND m.user_id=$2 AND m.status='active'))", [s.team_id, user.id])).rowCount > 0;
   if (s.scope === 'event') return (await q(c).query("SELECT 1 FROM events e WHERE e.id=$1 AND (e.status <> 'draft' OR e.organizer_id=$2)", [s.event_id, user.id])).rowCount > 0;

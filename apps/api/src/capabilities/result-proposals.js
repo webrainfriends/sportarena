@@ -130,6 +130,7 @@ cap({
       const policy = policyFor(x.ev);
       if (!policy.allow_public_submission && !x.canScore && !x.side) throw forbidden('This event only accepts results from its organiser, officials and team managers');
       const v = (await c.query('SELECT * FROM tracking_sheet_template_versions WHERE id=$1', [s.template_version_id])).rows[0];
+      if (['results', 'scorecard'].includes(v.layout.mode)) throw conflict(v.layout.mode === 'results' ? 'This sheet is a results table: propose it to a session of a multi-sport programme instead of a game' : 'A judged bout card cannot be proposed as the score of a two-sided game');
       const eventRs = (await rulesetForEvent(x.f.event_id, c, x.f.id)).ruleset;
       const incompatible = compatible(v.ruleset, eventRs); if (incompatible) throw conflict(incompatible);
       const entries = (await c.query('SELECT seq, kind, side, period, voided_at FROM tracking_sheet_entries WHERE sheet_id=$1 ORDER BY seq', [s.id])).rows;
@@ -204,10 +205,12 @@ cap({
       if (sheet.status !== 'completed') throw conflict('Complete the sheet before proposing it');
       if (sheet.sport_id !== x.s.sport_id) throw badRequest('This sheet is for a different sport than the session');
       if (sheet.fixture_id) throw conflict('This sheet is already linked to a game');
-      if (sheet.session_id && sheet.session_id !== x.s.id) throw conflict('This sheet is already linked to a different session');
+      if ((await c.query('SELECT 1 FROM result_proposals WHERE sheet_id=$1 AND session_id IS DISTINCT FROM $2 AND state = ANY($3)', [sheet.id, x.s.id, OPEN])).rowCount) throw conflict('This sheet has an open proposal for a different session or game');
       const v = (await c.query('SELECT * FROM tracking_sheet_template_versions WHERE id=$1', [sheet.template_version_id])).rows[0];
       if (v.layout.mode !== 'results') throw conflict('Only heat, field and race sheets can be proposed for a session');
+      if (x.s.mode !== 'individual') throw conflict('Only individual events take a heat sheet; team sessions are scored as games');
       const policy = sessionPolicy(x.ev);
+      if (!policy.allow_public_submission && !x.canScore) throw forbidden('This event only accepts results from its organiser and officials');
       const entries = (await c.query("SELECT id FROM event_session_entries WHERE session_id=$1 AND result_status <> 'scratched'", [x.s.id])).rows;
       const built = resultsFromRows(sheet, v.layout, i.mapping, x.s, entries);
       const payload = { kind: 'session', session_id: x.s.id, session_label: x.s.label, stage: x.s.stage, discipline: x.s.discipline, unit: v.layout.results.unit, results: built.results.map(({ row, ...r }) => r), rows: built.summary, sheet_ref: sheet.ref, ruleset: v.layout.title };
@@ -228,7 +231,7 @@ cap({
           `INSERT INTO result_proposals(session_id, event_id, sheet_id, import_id, submitted_by, home_is, payload, policy, ruleset_hash, template_version_id, base_snapshot)
            VALUES ($1,$2,$3,$4,$5,'home',$6,$7,$8,$9,$10) RETURNING *`,
           [x.s.id, x.s.event_id, sheet.id, imp?.id ?? null, user.id, JSON.stringify(payload), JSON.stringify(policy), hashOf(v.layout.results), v.id, JSON.stringify(base)])).rows[0];
-        if (sheet.mode !== 'linked') await c.query("UPDATE tracking_sheets SET mode='linked', session_id=$2, updated_at=now() WHERE id=$1", [sheet.id, x.s.id]);
+        await c.query("UPDATE tracking_sheets SET mode='linked', session_id=$2, updated_at=now() WHERE id=$1", [sheet.id, x.s.id]);
       }
       if (!duplicate) for (const uid of await sessionReviewers(c, x)) if (uid !== user.id) await tell(c, uid, p, 'Result proposed', 'A heat result was proposed for a session you help run. Review it in Tools.');
       return { ...p, duplicate };
@@ -348,7 +351,11 @@ cap({
     const sess = await many(
       `SELECT p.id, p.session_id, p.event_id, p.state, p.round, p.policy, p.payload, p.submitted_by, p.created_at, e.name AS event_name, s.label AS session_label
          FROM result_proposals p JOIN events e ON e.id=p.event_id JOIN event_sessions s ON s.id=p.session_id
-        WHERE p.session_id IS NOT NULL AND p.state IN ('proposed','under_review','approved') AND p.submitted_by <> $1 ORDER BY p.created_at, p.id LIMIT 200`, [user.id]);
+        WHERE p.session_id IS NOT NULL AND p.state IN ('proposed','under_review','approved') AND p.submitted_by <> $1
+          AND ($2::boolean OR e.organizer_id=$1
+               OR EXISTS (SELECT 1 FROM organisation_members m WHERE m.organisation_id=e.organisation_id AND m.user_id=$1 AND m.status='active' AND m.role IN ('owner','admin'))
+               OR EXISTS (SELECT 1 FROM event_shifts sh JOIN event_staff st ON st.id=sh.staff_id WHERE sh.session_id=s.id AND sh.status='assigned' AND st.user_id=$1 AND st.status='accepted'))
+        ORDER BY p.created_at, p.id LIMIT 200`, [user.id, isAdmin(user)]);
     for (const r of sess) {
       const x = await sessionContext(user, r.session_id, null);
       if (!x.canScore) continue;
@@ -439,7 +446,7 @@ cap({
         await c.query("UPDATE result_proposals SET state='applied', applied_by=$2, applied_at=now(), updated_at=now() WHERE id=$1", [p.id, user.id]);
         await c.query("UPDATE result_proposals SET state='superseded', updated_at=now() WHERE session_id=$1 AND id <> $2 AND state IN ('proposed','under_review','changes_requested','approved','disputed')", [p.session_id, p.id]);
         await tell(c, p.submitted_by, p, 'Result proposal applied', 'Your proposed heat result is now recorded for the session.');
-        return { already_applied: false, session_id: p.session_id, entries: done.entries };
+        return { already_applied: false, session_id: p.session_id, entries: done.entries, refinalize_required: done.refinalize_required };
       }
       if (p.state === 'applied') return { already_applied: true, score_sheet: (await c.query('SELECT * FROM score_sheets WHERE id=$1', [p.applied_score_sheet_id])).rows[0] };
       if (p.state !== 'approved') throw conflict(`Only an approved proposal can be applied; this one is ${p.state.replace('_', ' ')}`);

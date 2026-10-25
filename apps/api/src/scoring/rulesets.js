@@ -108,7 +108,7 @@ export function cricketRuleset(format = 'T20', values = {}) {
   const f = CRICKET_FORMATS[format] ?? CRICKET_FORMATS.T20, fmt = CRICKET_FORMATS[format] ? format : 'T20';
   const key = fmt === 'ODI' ? 'odi' : 't20', limited = f.overs != null;
   const overs = limited && fmt !== 'T10' ? (values[`ov_${key}`] ?? f.overs) : f.overs;
-  const bowler = limited ? (fmt !== 'T10' && values[`bq_${key}`]) || Math.max(1, Math.floor(overs / 5)) : null;
+  const bowler = limited ? (fmt !== 'T10' && values[`bq_${key}`]) || Math.max(1, Math.ceil(overs / 5)) : null; // one fifth of the overs, rounded up to a whole over
   return R({
     kind: 'cricket', label: `Cricket ${fmt}`, periods: { count: f.innings, label: 'Innings' }, draw_allowed: true, events: [], stats: [],
     cricket: {

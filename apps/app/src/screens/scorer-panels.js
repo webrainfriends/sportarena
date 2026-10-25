@@ -181,7 +181,7 @@ const sideName = (s, side, named) => { const l = s.labels?.[side]; return l && l
 
 /** One round on one card: who won it and, for the loser, how many points (9, or less after a deduction). */
 function RoundRow({ n, r, onChange, disabled }) {
-  const winner = r.red === 10 && r.blue === 10 ? 'even' : r.red > r.blue ? 'red' : 'blue';
+  const winner = r.red === r.blue ? 'even' : r.red > r.blue ? 'red' : 'blue';
   const loser = winner === 'red' ? r.blue : winner === 'blue' ? r.red : 10;
   const set = (w, low) => onChange(w === 'even' ? { red: 10, blue: 10 } : w === 'red' ? { red: 10, blue: low } : { red: low, blue: 10 });
   return (
@@ -191,6 +191,11 @@ function RoundRow({ n, r, onChange, disabled }) {
         <Seg options={[{ label: 'Red', value: 'red' }, { label: 'Even', value: 'even' }, { label: 'Blue', value: 'blue' }]} value={winner} onChange={(w) => !disabled && set(w, loser === 10 ? 9 : loser)} />
         <T weight="800" size={18} style={{ minWidth: 60 }}>{r.red}–{r.blue}</T>
         {winner !== 'even' ? <View style={{ flexDirection: 'row', gap: 6 }}>{[9, 8, 7].map((p) => <Chip key={p} label={`${p}`} active={loser === p} onPress={() => !disabled && set(winner, p)} />)}</View> : null}
+        <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+          <T size={12} color={c.mute}>Foul or knockdown:</T>
+          <Chip label="− Red" onPress={() => !disabled && onChange({ red: Math.max(0, r.red - 1), blue: r.blue })} />
+          <Chip label="− Blue" onPress={() => !disabled && onChange({ red: r.red, blue: Math.max(0, r.blue - 1) })} />
+        </View>
       </View>
     </View>
   );

@@ -63,7 +63,7 @@ export function cricketBook(ctx) {
   const f = CRICKET[ctx.variant] ?? CRICKET.T20, test = f.overs == null;
   const keyed = f.label === 'ODI' || f.label === 'T20';
   const overs = test ? 90 : keyed ? rv(ctx, f.label === 'ODI' ? 'ov_odi' : 'ov_t20', f.overs) : f.overs;
-  const bowlerMax = test ? null : keyed ? rv(ctx, f.label === 'ODI' ? 'bq_odi' : 'bq_t20', Math.floor(overs / 5)) : Math.floor(overs / 5);
+  const bowlerMax = test ? null : keyed ? rv(ctx, f.label === 'ODI' ? 'bq_odi' : 'bq_t20', Math.ceil(overs / 5)) : Math.ceil(overs / 5);
   const sections = [
     ...rulesNote(ctx),
     fields(['Competition / series', 'Match no.', 'Date(s)', 'Venue', 'Toss won by', 'Elected to', test ? 'Scheduled days' : 'Overs per innings', 'Umpires', 'Third umpire / match referee', 'Scorers'], 5),

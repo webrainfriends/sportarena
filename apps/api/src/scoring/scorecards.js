@@ -4,12 +4,11 @@
 
 const other = (s) => (s === 'red' ? 'blue' : 'red');
 
-/** Why one round on one card is not a legal 10-point must score, or null. */
+/** Why one round on one card cannot be scored, or null. A round is out of 10 for each boxer; fouls and knockdowns lower a boxer's points, so 9-8 and 9-9 are legal. */
 export function roundProblem(r) {
   if (!r) return 'empty round';
   const { red, blue } = r;
   if (![red, blue].every((n) => Number.isInteger(n) && n >= 0 && n <= 10)) return 'points must be whole numbers from 0 to 10';
-  if (Math.max(red, blue) !== 10) return 'the winner of a round gets 10 (a deduction takes points from the other boxer)';
   return null;
 }
 
@@ -34,7 +33,8 @@ export function boxingDecision(cards, rounds, expectedJudges = (cards ?? []).len
   const complete = scored.length > 0 && scored.length >= expectedJudges && scored.every((j) => j.rounds === rounds);
   let winner = null, kind = null;
   if (scored.length) {
-    if (votes.red === votes.blue) { winner = 'draw'; kind = 'draw'; }
+    if (votes.draw > Math.max(votes.red, votes.blue) && votes.red + votes.blue > 0) { winner = 'draw'; kind = 'majority draw'; }
+    else if (votes.red === votes.blue) { winner = 'draw'; kind = votes.red === 0 ? 'draw' : 'split draw'; }
     else {
       winner = votes.red > votes.blue ? 'red' : 'blue';
       const lose = other(winner);
@@ -57,9 +57,10 @@ const good = (a) => (a && a.ok === true && Number.isFinite(a.kg) ? a.kg : null);
 export function rankLifts(rows, n = 3) {
   const out = rows.map((r, i) => {
     const at = r.attempts ?? [];
+    const gone = ['DNS', 'DNF', 'DQ'].includes(r.status);
     const sn = at.slice(0, n).map(good).filter((x) => x != null), cj = at.slice(n, n * 2).map(good).filter((x) => x != null);
     const bestSn = sn.length ? Math.max(...sn) : null, bestCj = cj.length ? Math.max(...cj) : null;
-    return { i, best_snatch: bestSn, best_cj: bestCj, total: bestSn != null && bestCj != null ? bestSn + bestCj : null, bust: at.slice(0, n).some((a) => a?.ok != null) && sn.length === 0 };
+    return { i, best_snatch: bestSn, best_cj: bestCj, total: !gone && bestSn != null && bestCj != null ? bestSn + bestCj : null, bust: at.slice(0, n).some((a) => a?.ok != null) && sn.length === 0 };
   });
   const ranked = out.filter((x) => x.total != null).sort((a, b) => b.total - a.total || (rows[a.i].body_kg ?? 1e9) - (rows[b.i].body_kg ?? 1e9) || a.i - b.i);
   const place = new Map();

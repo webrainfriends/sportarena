@@ -152,3 +152,15 @@ test('a changed session makes an approved proposal stale; reviews can ask for ch
   assert.equal(done.entries.find((e) => e.lane === l2[1].lane).result_status, 'dns');
   assert.equal(done.entries.find((e) => e.lane === l2[2].lane).position, 1);
 });
+
+test('an event that does not accept public submissions refuses a stranger\'s heat sheet', async () => {
+  const { org, ev, session } = await heat();
+  await api('POST', `/events/${ev.id}/result-approval-policy`, { token: org.token, body: { policy: { mode: 'parallel', requirements: [{ key: 'organiser', label: 'Organiser', roles: ['organiser'] }], allow_public_submission: false } } });
+  const stranger = await signup(['athlete']);
+  const lanes = [...session.entries].sort((a, b) => a.lane - b.lane);
+  const s = await sheetFor(stranger, lanes.map((_, i) => ({ lane: String(i + 1), name: `L${i + 1}`, result: `${12 + i}.0` })));
+  const r = await api('POST', `/tracking/sheets/${s.id}/session-proposals`, { token: stranger.token, body: { session_id: session.id, mapping: lanes.map((e, i) => ({ row: i, entry_id: e.id })) } });
+  assert.equal(r.status, 403);
+  const mine = await sheetFor(org, lanes.map((_, i) => ({ lane: String(i + 1), name: `L${i + 1}`, result: `${12 + i}.0` })));
+  assert.equal((await api('POST', `/tracking/sheets/${mine.id}/session-proposals`, { token: org.token, body: { session_id: session.id, mapping: lanes.map((e, i) => ({ row: i, entry_id: e.id })) } })).status, 201, 'the organiser can always propose');
+});

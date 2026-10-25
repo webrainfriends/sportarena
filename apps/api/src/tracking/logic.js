@@ -229,7 +229,8 @@ export function parseMark(text) {
  * false start (never decided here: the starter decides).
  */
 export function rankRows(rows, unit, { qp = 0, qt = 0, reactionMin = 0 } = {}) {
-  const parsed = rows.map((r, i) => ({ i, mark: r.status ? null : parseMark(r.result) }));
+  const usable = (m) => (m == null ? null : (unit === 'time' || unit === 'distance') && m <= 0 ? null : m); // a time or distance of zero is not a result
+  const parsed = rows.map((r, i) => ({ i, mark: r.status ? null : usable(parseMark(r.result)) }));
   const ranked = parsed.filter((x) => x.mark != null).sort((a, b) => (unit === 'time' ? a.mark - b.mark : b.mark - a.mark) || a.i - b.i);
   const place = new Map();
   ranked.forEach((x, k) => place.set(x.i, k > 0 && ranked[k - 1].mark === x.mark ? place.get(ranked[k - 1].i) : k + 1));

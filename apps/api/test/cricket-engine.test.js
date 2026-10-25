@@ -169,3 +169,31 @@ test('voided entries are ignored and the engine never trusts the payload for a t
   assert.equal(computeScore(rs, b.log).home, 6);
   assert.equal(cricketState(rs, b.log).innings[0].batters[0].fours, 0);
 });
+
+test('an over under way belongs to its bowler even when it started with a wide; a Test stopped by time is a draw; one fifth of the overs rounds up', () => {
+  const b = book(cricketRuleset('T20'));
+  b.ball(0, 0, { extra: { extra: 'wd', extra_runs: 0 } });         // the over opens with a wide: bowler 0 is on
+  assert.throws(() => b.ball(1, 1), /finish the over/);
+  b.ball(0, 1, { extra: { bowler_change: true } });                 // unless he is hurt
+  assert.equal(cricketRuleset('T20', { ov_t20: 12 }).cricket.bowler_max, 3, '12 overs: a bowler may bowl 3, not 2');
+  assert.equal(cricketRuleset('T20', { ov_t20: 18 }).cricket.bowler_max, 4);
+  assert.equal(cricketRuleset('T10').cricket.bowler_max, 2);
+
+  const rs = cricketRuleset('Test');
+  const t = book(rs);
+  const bw = (n, a = 1) => Math.floor(n / 6) % 2 + a;
+  for (let i = 0; i < 60; i++) t.ball(bw(i), 6, { side: 'home' }); t.add('declare', 'home');                          // home 360
+  for (let w = 0; w < 10; w++) t.ball(bw(w, 3), 0, { side: 'away', extra: { wicket: { how: 'bowled' } } });          // away 0 all out
+  t.add('follow_on', 'home', {}); 
+  const x = book(rs);
+  for (let i = 0; i < 12; i++) x.ball(bw(i), 6, { side: 'home' }); x.add('declare', 'home');                          // home 72
+  for (let i = 0; i < 12; i++) x.ball(bw(i, 3), 6, { side: 'away' }); x.add('declare', 'away');                       // away 72 and declares level
+  for (let i = 0; i < 6; i++) x.ball(bw(i, 5), 1, { side: 'home' });                                                  // home bats again on 78
+  x.add('innings_end', 'home');                                                                                       // ... and the light fails
+  for (let i = 0; i < 2; i++) x.ball(bw(i, 7), 1, { side: 'away' });                                                  // away 2 more
+  x.add('innings_end', 'away');                                                                                       // time: away are still batting and behind
+  const st = x.state();
+  assert.equal(st.innings.length, 4);
+  assert.equal(st.result.kind, 'draw', 'not a win for the side that was bowling when time ran out');
+  assert.equal(st.winner, null);
+});

@@ -35,6 +35,7 @@ const ball = (u, id, side, payload) => patch(u, id, { add_entry: { kind: 'ball',
 const rules = (u, sport, settings, extra = {}) => api('POST', '/local-rules', { token: u.token, body: { sport, name: `Local ${sport}`, settings, ...extra } });
 
 test('parseMark and rankRows: times, distances, ties, DNS/DQ, Q and q, false start', () => {
+  assert.deepEqual(rankRows([{ result: '0' }, { result: '9.9' }], 'time').rows.map((r) => r.rank), [null, 1], 'a time of zero is not a result');
   assert.equal(parseMark('9.83'), 9.83); assert.equal(parseMark('1:45.20'), 105.2); assert.equal(parseMark('2:03:15.4'), 7395.4); assert.equal(parseMark('fast'), null);
   const heat = rankRows([
     { name: 'A', result: '10.05', reaction: '0.150' }, { name: 'B', result: '9.98', reaction: '0.090' }, { name: 'C', result: '10.05' },
@@ -208,11 +209,12 @@ test('boxing: the judges\' cards make the decision, a bad round is flagged, loca
   assert.deepEqual(r.body.scorecard.votes, { red: 2, blue: 1, draw: 0 });
   assert.equal(r.body.result.home, 2); assert.equal(r.body.result.away, 1); assert.equal(r.body.result.winner, 'home');
   assert.equal(r.body.scorecard.judges[0].red, 49); assert.equal(r.body.scorecard.judges[0].blue, 46);
-  const bad = await patch(u, s.body.id, { details: { cards: [{ judge: 'J1', rounds: [round(9, 9)] }] } });
-  assert.equal(bad.body.scorecard.problems.length, 1);
+  const deducted = await patch(u, s.body.id, { details: { cards: [{ judge: 'J1', rounds: [round(9, 9)] }] } });
+  assert.equal(deducted.body.scorecard.problems.length, 0, 'fouls can take points from both boxers');
+  assert.equal(deducted.body.scorecard.judges[0].winner, 'draw');
   assert.equal((await patch(u, s.body.id, { details: { cards: [{ judge: 'J1', rounds: [round(11, 9)] }] } })).status, 400, 'points above 10 are refused outright');
   const list = await api('GET', '/tracking/sheets?sport=boxing', { token: u.token });
-  assert.deepEqual(list.body[0].score, { home: 0, away: 0 }, 'no round on the card was legal, so no judge has voted');
+  assert.deepEqual(list.body[0].score, { home: 0, away: 0 }, 'the card was replaced by one with an illegal round, which is refused, so the earlier card stands');
   await patch(u, s.body.id, { details: { cards: [{ judge: 'J1', rounds: [round(10, 9)] }] } });
   assert.equal((await api('GET', '/tracking/sheets?sport=boxing', { token: u.token })).body[0].score.home, 1);
 });
@@ -349,4 +351,30 @@ test('the canonical match log scores a cricket game with the same engine, and a 
   assert.equal(sheet.status, 201, JSON.stringify(sheet.body));
   assert.equal(sheet.body.template.layout.mode, 'cricket'); assert.equal(sheet.body.mode, 'linked');
   await ball(u, sheet.body.id, 'home', { bowler: 0, runs: 6 });
+});
+
+test('results and judged-bout sheets cannot be proposed as the score of a two-sided game', async () => {
+  const org = await signup(['organizer']), m1 = await signup(['coach']), m2 = await signup(['coach']), u = await signup();
+  const ev = (await api('POST', '/events', { token: org.token, body: { name: `Karate Cup ${++n}`, sport: 'karate' } })).body;
+  await pool.query("UPDATE events SET status='open', kind='friendly' WHERE id=$1", [ev.id]);
+  const mk = async (x) => (await api('POST', '/teams', { token: x.token, body: { name: `Dojo ${++n}`, sport: 'karate' } })).body;
+  const a = await mk(m1), b = await mk(m2);
+  const fx = (await pool.query('INSERT INTO fixtures(event_id, home_team_id, away_team_id, scheduled_at) VALUES ($1,$2,$3, now()) RETURNING id', [ev.id, a.id, b.id])).rows[0].id;
+  await pool.query("INSERT INTO event_entries(event_id, team_id, status) VALUES ($1,$2,'accepted'),($1,$3,'accepted')", [ev.id, a.id, b.id]);
+  const kata = await start(u, { sport: 'karate', variant: 'Kata' });
+  await patch(u, kata.body.id, { rows: [{ name: 'A', result: '24.3' }] });
+  await api('POST', `/tracking/sheets/${kata.body.id}/complete`, { token: u.token });
+  const r = await api('POST', `/tracking/sheets/${kata.body.id}/proposals`, { token: u.token, body: { fixture_id: fx } });
+  assert.equal(r.status, 409); assert.match(r.body.error.message, /results table/);
+});
+
+test('local rules of an organisation stop being readable by a former member who published them', async () => {
+  const owner = await signup(['organizer']), coach = await signup(['coach']);
+  const org = (await api('POST', '/organisations', { token: owner.token, body: { name: `Leaver Club ${++n}`, kind: 'club' } })).body;
+  await pool.query("INSERT INTO organisation_members(organisation_id, user_id, role, status) VALUES ($1,$2,'coach','active')", [org.id, coach.id]);
+  const set = await api('POST', '/local-rules', { token: coach.token, body: { sport: 'futsal', name: 'Club futsal', scope: 'organisation', organisation_id: org.id, settings: { half: 15 } } });
+  assert.equal(set.status, 201, JSON.stringify(set.body));
+  assert.equal((await api('GET', `/local-rules/${set.body.id}`, { token: coach.token })).status, 200);
+  await pool.query("UPDATE organisation_members SET status='removed' WHERE organisation_id=$1 AND user_id=$2", [org.id, coach.id]).catch(() => pool.query('DELETE FROM organisation_members WHERE organisation_id=$1 AND user_id=$2', [org.id, coach.id]));
+  assert.equal((await api('GET', `/local-rules/${set.body.id}`, { token: coach.token })).status, 404, 'leaving the organisation ends access to its rules');
 });

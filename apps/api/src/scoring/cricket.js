@@ -96,6 +96,8 @@ function decide(rs, st) {
   if (st.innings.length === c.innings && last.closed) {
     const ta = totalFor(st, a), tb = totalFor(st, b);
     if (ta === tb) return { kind: 'tie', winner: null, margin: null, text: 'Match tied' };
+    // a Test that stops for time or light with the last side still batting and behind is a draw, not a win for the other side
+    if (c.format === 'Test' && last.closed_reason !== 'all_out' && last.closed_reason !== 'target') return { kind: 'draw', winner: null, margin: null, text: 'Match drawn' };
     const winner = ta > tb ? a : b;
     if (last.side === winner) return { kind: 'wickets', winner, margin: 10 - last.wickets, text: `${name(winner)} won by ${10 - last.wickets} wicket${10 - last.wickets === 1 ? '' : 's'}` };
     return { kind: 'runs', winner, margin: Math.abs(ta - tb), text: `${name(winner)} won by ${Math.abs(ta - tb)} run${Math.abs(ta - tb) === 1 ? '' : 's'}` };
@@ -148,7 +150,7 @@ export function cricketState(rs, events) {
 /** Why an entry cannot be added now, or null. */
 export function cricketReject(rs, live, next) {
   const c = rs.cricket;
-  if (next.kind === 'note') return null;
+  if (next.kind === 'note' || next.kind === 'period_start' || next.kind === 'period_end') return null; // the match log's period markers carry no cricket meaning
   if (!CRICKET_KINDS.includes(next.kind)) return `"${next.kind}" is not part of cricket scoring`;
   const st = cricketState(rs, live);
   const p = next.payload ?? {};
@@ -183,10 +185,11 @@ export function cricketReject(rs, live, next) {
   if ((p.extra === 'wd' || p.extra === 'b' || p.extra === 'lb' || p.extra === 'pen') && (p.runs ?? 0) !== 0) return 'Only a no-ball or a ball in play scores runs off the bat';
   if ((p.extra === 'b' || p.extra === 'lb' || p.extra === 'pen') && !(p.extra_runs >= 1)) return 'Give the number of runs';
   if (p.extra === 'pen' && p.wicket) return 'A penalty entry cannot take a wicket';
-  const legalIn = inn ? inn.legal % 6 : 0;
-  if (inn && legalIn > 0 && inn.over_bowler != null && inn.over_bowler !== bowler && !p.bowler_change) return 'The bowler must finish the over (tick injury change if they could not)';
-  if (p.extra !== 'pen' && (!inn || legalIn === 0)) {
-    if (inn && inn.prev_over_bowler === bowler && !(inn.over_bowler === bowler)) return 'A bowler cannot bowl two overs in a row';
+  if (inn && inn.over_bowler != null) {
+    // an over is under way (a legal ball, a wide or a no-ball has been bowled in it): only its bowler carries on, unless injured
+    if (inn.over_bowler !== bowler && !p.bowler_change) return 'The bowler must finish the over (tick injury change if they could not)';
+  } else if (p.extra !== 'pen') {
+    if (inn && inn.prev_over_bowler === bowler) return 'A bowler cannot bowl two overs in a row';
     const bw = inn?.bowlers[bowler];
     if (c.bowler_max && bw && bw.legal >= c.bowler_max * 6) return `This bowler has bowled the maximum of ${c.bowler_max} overs`;
   }

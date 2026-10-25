@@ -100,8 +100,8 @@ export function CricketScorer({ s, record, undo, patch, busy }) {
   const canBat = live && !cs.over && nextN <= cfg.innings;
   const bq = cfg.bowler_max;
   const bw = open ? cur.bowlers[bowler] : null;
-  const midOver = open && cur.legal % 6 !== 0;
-  const mustBowler = midOver && cur.over_bowler != null && cur.over_bowler !== bowler && !injury;
+  const midOver = open && cur.over_bowler != null; // an over is under way (a ball, a wide or a no-ball has been bowled in it)
+  const mustBowler = midOver && cur.over_bowler !== bowler && !injury;
   const quota = bq && bw && bw.legal >= bq * 6;
   const sameAsLast = open && !midOver && cur.prev_over_bowler === bowler;
   const blocked = !canBat || (open && cur.closed);
