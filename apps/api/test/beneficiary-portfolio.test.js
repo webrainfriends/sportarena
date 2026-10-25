@@ -195,7 +195,7 @@ test('risk flags, milestones and next actions come from real state and respect t
 
   // an evaluator of the brand's organisation reads, but cannot report payments or export
   const org = must(await api('POST', '/organisations', { token: w.owner.token, body: { name: `RiskOrg ${n}`, kind: 'company' } }), 201);
-  must(await api('POST', `/organisations/${org.id}/assets`, { token: w.owner.token, body: { kind: 'sponsor', asset_id: w.b.id } }));
+  must(await api('POST', `/sponsors/${w.b.id}/identity`, { token: w.owner.token, body: { sponsor_type: 'organization', organisation_id: org.id } }));
   const ev = await signup(['athlete']);
   must(await api('POST', `/organisations/${org.id}/members`, { token: w.owner.token, body: { person: ev.handle, role: 'evaluator' } }), 201);
   must(await api('POST', `/organisations/${org.id}/invite/respond`, { token: ev.token, body: { accept: true } }));

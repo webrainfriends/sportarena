@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { YouthAuthorizations } from './sponsor-youth';
 import { HandOverBrand } from './sponsor-ownership';
+import { asSponsorRole, SPONSOR_ROLE_LABEL } from '../sponsor-roles';
 import { View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
@@ -351,8 +352,6 @@ function Introductions({ brands, onOffer }) {
   );
 }
 
-// Brand owners and entity admins/portfolio managers act as managers; an entity viewer only reads.
-const asSponsorRole = (r) => (['owner', 'admin', 'portfolio_manager'].includes(r) ? 'manager' : r === 'viewer' ? 'auditor' : r);
 
 
 const BRAND_INDUSTRIES = ['Sports & fitness', 'Apparel & footwear', 'Food & beverage', 'Health & nutrition', 'Banking & finance', 'Insurance', 'Technology', 'Telecom', 'Automotive', 'Travel & hospitality', 'Media & entertainment', 'Retail & e-commerce', 'Education', 'Real estate', 'Energy'];
@@ -445,6 +444,7 @@ export function Sponsors() {
   const [handOver, setHandOver] = useState(null);
   const dir = useLoad(() => api.get('/sponsors', { limit: 50 }), []);
   const mine = useLoad(() => api.get('/sponsors', { mine: true, limit: 50 }), []);
+  const invites = useLoad(() => api.get('/me/sponsor-identities', { limit: 1 }).then((r) => r.invitations ?? []).catch(() => []), []); // invitations to a sponsor team, answered here
   const deals = useLoad(() => api.get('/sponsorships', { limit: 100 }), []);
   const home = useLoad(() => api.get('/sponsorship-summary'), []);
   const profile = useLoad(() => api.get('/me/sponsorship-profile'), []);
@@ -456,6 +456,17 @@ export function Sponsors() {
   return (
     <Screen>
       <H1>Sponsor home</H1>
+      {invites.data?.length ? (
+        <Section title="Invitations to a sponsor team" color={c.sun}>
+          {invites.data.map((i) => (
+            <Row key={i.representative_id} title={i.legal_name ?? 'A sponsor'} sub={`${SPONSOR_ROLE_LABEL[i.role] ?? i.role}${i.invited_by ? ` · invited by ${i.invited_by}` : ''}. You get access only after accepting.`}
+              right={<View style={{ flexDirection: 'row', gap: 6 }}>
+                <Btn small title="Accept" color={c.violet} onPress={() => act(() => api.post(`/sponsor-representatives/${i.representative_id}/response`, { accept: true }).then(() => { invites.reload(); mine.reload(); }), 'You joined the team')} accessibilityLabel={`Accept the invitation from ${i.legal_name ?? 'a sponsor'}`} />
+                <Btn small title="Decline" color={c.paper} ink={c.ink} onPress={() => act(() => api.post(`/sponsor-representatives/${i.representative_id}/response`, { accept: false }).then(() => invites.reload()), 'Invitation declined')} accessibilityLabel={`Decline the invitation from ${i.legal_name ?? 'a sponsor'}`} />
+              </View>} />
+          ))}
+        </Section>
+      ) : null}
       {has('sponsor') ? <View style={{ flexDirection: 'row', gap: 8, marginTop: 6, flexWrap: 'wrap' }}><Btn small title="＋ New offer" color={c.pink} onPress={() => push('SponsorOffer')} accessibilityLabel="Make a new sponsorship offer" /><Btn small title="Create brand" color={c.violet} onPress={() => setForm('brand')} /></View> : null}
       <HomeSummary home={home} />
       {has('athlete') ? (
@@ -500,13 +511,14 @@ export function Sponsors() {
       <Section title="Your brands" color={c.violet}>
         {mine.error ? <LoadError error={mine.error} onRetry={mine.reload} /> : mine.loading && !mine.data ? <Loading /> : mine.data?.length ? mine.data.map((s) => (
           <Row key={s.id} left={<Bubble emoji={s.emoji} color={c.sun} />} title={s.name}
-            sub={[s.tagline, s.industry, s.organisation_name ? `Run by ${s.organisation_name}` : 'Individual brand', asSponsorRole(s.my_role) !== 'manager' ? { evaluator: 'You evaluate and review; you cannot pay or sign', finance: 'You report payments; you cannot change terms', legal: 'You review and change terms; you cannot pay', approver: 'You propose, revise and withdraw; you cannot pay', auditor: 'Read-only, with exports' }[asSponsorRole(s.my_role)] : null].filter(Boolean).join(' · ')}
-            right={<View style={{ alignItems: 'flex-end', gap: 6 }}><Tag label={{ manager: 'Manager', evaluator: 'Evaluator', finance: 'Finance', legal: 'Legal', approver: 'Approver', auditor: 'Auditor' }[asSponsorRole(s.my_role)] ?? 'Staff'} />
+            sub={[s.tagline, s.industry, s.organisation_name ? `Run by ${s.organisation_name}` : 'Individual brand', asSponsorRole(s.my_role) !== 'manager' ? { evaluator: 'You evaluate and review; you cannot pay or sign', finance: 'You report payments; you cannot change terms', legal: 'You review and change terms; you cannot pay', approver: 'You propose, revise and withdraw; you cannot pay', auditor: 'Read-only, with exports', viewer: 'Read only' }[asSponsorRole(s.my_role)] : null].filter(Boolean).join(' · ')}
+            right={<View style={{ alignItems: 'flex-end', gap: 6 }}><Tag label={SPONSOR_ROLE_LABEL[s.my_role] ?? 'Team'} />
+              <Btn small title="Team & identity" color={c.paper} ink={c.ink} onPress={() => push('SponsorIdentity', { id: s.id })} accessibilityLabel={`Team and identity of ${s.name}`} />
               {asSponsorRole(s.my_role) === 'manager' ? <Btn small title="Edit profile" color={c.violet} onPress={async () => { try { setEditBrand(await api.get(`/sponsors/${s.id}`)); } catch (e) { toast(explain(e)); } }} /> : null}
-              {asSponsorRole(s.my_role) === 'manager' && !s.identity_confirmed ? <Btn small title="Hand over" color={c.paper} ink={c.ink} onPress={() => setHandOver(s)} accessibilityLabel={`Hand over ${s.name} to a new owner`} /> : null}
-              {s.organisation_id ? <Btn small title="Open workspace" color={c.paper} ink={c.ink} onPress={() => push('Org', { id: s.organisation_id })} /> : asSponsorRole(s.my_role) === 'manager' && !s.identity_confirmed ? <Btn small title="Link to an organisation" color={c.paper} ink={c.ink} onPress={() => push('Orgs')} /> : null}</View>} />
+              {asSponsorRole(s.my_role) === 'manager' && (!s.identity_confirmed || s.organisation_id) ? <Btn small title="Hand over" color={c.paper} ink={c.ink} onPress={() => setHandOver(s)} accessibilityLabel={`Hand over ${s.name} to a new owner`} /> : null}
+              {s.organisation_id && asSponsorRole(s.my_role) !== 'viewer' ? <Btn small title="Open workspace" color={c.paper} ink={c.ink} onPress={() => push('Org', { id: s.organisation_id })} /> : null}</View>} />
         )) : <Empty emoji="🏷️" title="No brands yet" sub="Create a brand, or ask an organisation manager to invite you to theirs." />}
-        <T size={12} color={c.mute}>Link a brand to an organisation (open it, then Teams, events, venues & brands) to let that organisation's staff work its deals under their roles; staff and departments are managed there.</T>
+        <T size={12} color={c.mute}>Everyone who acts for a brand — owners, managers, finance, legal and more — is managed in one place: open a brand's Team & identity. Link an organisation there to put its sponsor staff on the team.</T>
       </Section>
       <Section title="Brands" color={c.pink}>{dir.data?.map((s) => <Row key={s.id} left={<Bubble emoji={s.emoji} color={c.sun} />} title={s.name} sub={s.industry ?? s.website} />)}</Section>
       <FormSheet visible={form === 'brand'} onClose={() => setForm(null)} title="Create your brand" submitLabel="Create brand" fields={BRAND_FIELDS}

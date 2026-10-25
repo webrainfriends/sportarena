@@ -27,7 +27,7 @@ const corporate = async () => {
   const boss = await signup(['sponsor']);
   const org = must(await api('POST', '/organisations', { token: boss.token, body: { name: `Acme ${n}`, kind: 'company' } }), 201);
   const b = must(await api('POST', '/sponsors', { token: boss.token, body: { name: `Brand ${n}`, contact_name: 'Pat Contact', contact_email: 'pat@example.com' } }), 201);
-  must(await api('POST', `/organisations/${org.id}/assets`, { token: boss.token, body: { kind: 'sponsor', asset_id: b.id } }));
+  must(await api('POST', `/sponsors/${b.id}/identity`, { token: boss.token, body: { sponsor_type: 'organization', organisation_id: org.id } }));
   const staff = { manager: await join(org, boss, 'manager'), finance: await join(org, boss, 'finance'), evaluator: await join(org, boss, 'evaluator'), coach: await join(org, boss, 'coach') };
   return { boss, org, b, staff };
 };
@@ -86,7 +86,7 @@ test('a weaker previous owner is raised to manager and keeps working; a departme
   // the creator is a plain evaluator in the organisation now (an organisation owner demoted them)
   const creator = w.staff.manager;
   await pool.query('UPDATE sponsors SET owner_id=$2 WHERE id=$1', [w.b.id, creator.id]);
-  await pool.query("UPDATE organisation_members SET role='evaluator' WHERE organisation_id=$1 AND user_id=$2", [w.org.id, creator.id]);
+  must(await api('PATCH', `/organisations/${w.org.id}/members/${creator.id}`, { token: w.boss.token, body: { role: 'evaluator' } })); // through the API, so the sponsor team follows
   const dept = must(await api('POST', `/organisations/${w.org.id}/departments`, { token: w.boss.token, body: { name: 'Marketing' } }), 201);
   const scoped = await join(w.org, w.boss, 'finance', { department_id: dept.id });
   assert.equal((await hand(w, w.boss, scoped)).status, 422, 'an owner manages the whole brand');
@@ -113,15 +113,16 @@ test('an individual brand moves between sponsors; the previous owner loses acces
   assert.equal((await pool.query('SELECT count(*)::int AS c FROM sponsor_owner_transfers WHERE sponsor_id=$1', [brand.id])).rows[0].c, 1);
 });
 
-test('a brand under a sponsor entity cannot be handed over here, and an archived organisation is read-only for its admins', async () => {
+test('a brand under a sponsor entity that no organisation runs cannot be handed over here, and an archived organisation is read-only for its admins', async () => {
   const w = await corporate();
   const admin = await join(w.org, w.boss, 'admin');
   await pool.query("UPDATE organisations SET status='archived' WHERE id=$1", [w.org.id]);
   assert.equal((await hand(w, admin, w.staff.finance, { rev: 1 })).status, 409);
   await pool.query("UPDATE organisations SET status='active' WHERE id=$1", [w.org.id]);
   must(await hand(w, admin, w.staff.finance)); // an organisation admin may hand over a brand they do not own
+  // an entity that no organisation runs: its representatives, not a hand-over, decide who acts
   const e = (await pool.query("INSERT INTO sponsor_entities(sponsor_type, legal_name, created_by) VALUES ('company','Acme Ltd',$1) RETURNING id", [w.boss.id])).rows[0];
-  await pool.query('UPDATE sponsors SET entity_id=$2 WHERE id=$1', [w.b.id, e.id]);
+  await pool.query('UPDATE sponsors SET entity_id=$2, organisation_id=NULL WHERE id=$1', [w.b.id, e.id]);
   assert.equal((await hand(w, w.staff.finance, w.staff.manager, { rev: 2 })).status, 409);
 });
 

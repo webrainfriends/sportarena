@@ -249,7 +249,7 @@ cap({
          FROM sponsorship_rounds r WHERE r.program_id=$1 ORDER BY r.seq`, [p.id]);
     const used = await committed(pool, p.id);
     const faqs = await many('SELECT id, position, question, answer, row_version FROM sponsorship_program_faqs WHERE program_id=$1 AND archived_at IS NULL ORDER BY position, created_at, id', [p.id]);
-    return { ...p, sponsor_name: sp.name, my_role: sa.role, awarded_cents: used.cents, awards: used.n, remaining_cents: Number(p.budget_cents) - used.cents, rounds, faqs };
+    return { ...p, sponsor_name: sp.name, my_role: sa.repRole ?? sa.role, awarded_cents: used.cents, awards: used.n, remaining_cents: Number(p.budget_cents) - used.cents, rounds, faqs };
   },
 });
 
