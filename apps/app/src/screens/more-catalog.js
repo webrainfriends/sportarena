@@ -7,7 +7,7 @@ export const MODULES = [
   ['MyDevelopment', 'My development', 'Goals, plans, feedback & reports', 'play'], ['MyPlans', 'Training plans', 'Your plans & sessions', 'play'], ['ToolsHome', 'Tools', 'Scoring sheets & documents', 'play'], ['Pathways', 'Learn & study', 'Rules, courses & colleges', 'play'], ['OpportunityMatches', 'Opportunities for me', 'Teams, trials, study & sponsors that fit you', 'play'],
   ['Health', 'Health', 'Physio · doctors · fit to play', 'care'], ['Insure', 'My cover', 'What covers me today', 'care'],
   ['Insurance', 'Insurance', 'You · your team · your event', 'care'], ['Legal', 'Legal', 'Verified lawyers & matters', 'care'], ['Family', 'Family', 'Guardians & consents', 'care'],
-  ['Wallet', 'Wallet', 'Balance, gift cards, loyalty', 'money'], ['Earnings', 'Earnings', 'Sales, fees & payouts', 'money'], ['Shop', 'Shop', 'Kit, gear & orders', 'money'],
+  ['Wallet', 'Wallet', 'Balance, gift cards, loyalty', 'money'], ['Earnings', 'Earnings', 'Sales, fees & payouts', 'money'], ['PlayerContracts', 'Contracts', 'Fees, bonuses, expenses & pay', 'money'], ['Shop', 'Shop', 'Kit, gear & orders', 'money'],
   ['Billboard', 'Billboard', 'Wanted, for sale & ads', 'money'], ['Sponsors', 'Sponsor home', 'Offers, dues & agreements', 'money'], ['Supply', 'Supply chain', 'Kit, stock & orders', 'money'],
   ['Openings', 'Open positions', 'Jobs, stalls & contracts at events', 'community'], ['EventInbox', 'Event requests', 'Invites & quotes for you', 'community'],
   ['Orgs', 'Organisations', 'Clubs & associations', 'community'], ['Support', 'Support', 'Cases & disputes', 'community'],
@@ -39,11 +39,11 @@ export const workspacesFor = (roles = []) => WORKSPACES.filter(([r]) => roles.in
 
 // Modules lifted to the front of the wheel for people who hold these roles (first match wins; everyone else: player set).
 export const PRIORITY = [
-  [['organizer', 'venue_manager'], ['EventInbox', 'Openings', 'Orgs', 'Earnings', 'Billboard', 'Support', 'ToolsHome']],
+  [['organizer', 'venue_manager'], ['EventInbox', 'Openings', 'Orgs', 'Earnings', 'PlayerContracts', 'Billboard', 'Support', 'ToolsHome']],
   [['sponsor', 'supplier'], ['Sponsors', 'Supply', 'Wallet', 'Earnings', 'Billboard', 'Shop', 'ToolsHome']],
   [['physio', 'doctor', 'lawyer', 'insurer'], ['Health', 'Insure', 'Legal', 'Wallet', 'Leaderboard', 'Support', 'ToolsHome']],
 ];
-export const PRIORITY_DEFAULT = ['Leaderboard', 'MyApplications', 'Health', 'Insure', 'Wallet', 'Shop', 'Billboard', 'ToolsHome'];
+export const PRIORITY_DEFAULT = ['Leaderboard', 'MyApplications', 'PlayerContracts', 'Health', 'Insure', 'Wallet', 'Shop', 'Billboard', 'ToolsHome'];
 
 /** The wheel's order for someone with these roles: their priority modules first, then the rest in catalogue order. */
 export function orderedModules(roles = []) {
