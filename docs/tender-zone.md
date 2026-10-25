@@ -21,7 +21,7 @@ Open it from **Billboard → Tender zone**. Buyers also reach it from the organi
 | `documents/render.js`, brand kits | No tender document families | pdfkit, fonts, `brand_kits` | `tender/pdf.js` + immutable `proc_documents` snapshots |
 | `jobs.js`, worker cycle | No tender background work | Durable jobs, worker plumbing | `tender.export` job, deadline-reminder sweep |
 
-#458 (supplier catalogue, RFQs, service orders, supplier finance) is open and not implemented in the repository. This work builds the **shared procurement core** it extends (`proc_projects`, `proc_lots`, `proc_orders`, `proc_commitments`, `proc_calloffs`, `supplier_entities`) and the handoff: an accepted award line becomes exactly one `proc_orders` row and one `proc_commitments` row (and, for an event, one `event_budget_lines` row). Scheduling, acceptance of delivered work, invoices, taxes and payments continue from the order in #458.
+**Relationship to #458 (merged into `main` while this work was in review).** `svc_*` ("Services & suppliers": supplier profiles, catalogue, direct RFQs and quotes, service orders, visits, acceptance, invoices, payments) is the delivery-side pipeline for ordinary buying. The Tender zone is the formal competitive process on top of the Billboard: published notices, entity proposals sealed in two envelopes, an opening register, a scored committee evaluation, award scenarios, appeals and framework call-offs. The two are linked from the UI (organisation and venue screens show both entries) and use disjoint tables (`proc_*`/`supplier_entities` vs `svc_*`) and capability names (the two colliding credential capabilities here are `tender_add_supplier_credential` and `tender_verify_supplier_credential`). They are **not yet integrated at the data level**: an accepted tender award creates a `proc_orders` row, a `proc_commitments` row and (for an event) an `event_budget_lines` row, but not an `svc_orders` row, and tender suppliers are `supplier_entities`, not `svc_profiles`. Running delivery, acceptance and invoicing for a tender order in #458 needs a decision on identity mapping (entity ↔ profile) and is left as an explicit follow-up rather than guessed at here.
 
 ## Benchmark evidence matrix (SAP Ariba, Ivalua; vendor pages reviewed 25 Oct 2026)
 
@@ -151,7 +151,7 @@ npx expo export --platform web | ios | android   # from apps/app
 
 Stated plainly so nothing is overclaimed:
 
-* **#458** (supplier catalogue, service scheduling and acceptance of delivered work, supplier invoices, tax invoices, payments) is not implemented here; this work provides the order, commitment and call-off records it continues from.
+* **#458 integration**: delivery scheduling, acceptance of delivered work, supplier invoices and payments live in the merged `svc_*` pipeline. Tender orders do not flow into it yet (see "Relationship to #458"); this work provides the order, commitment and call-off records a follow-up would map across.
 * **#249 / #243**: tender PDFs use brand kits, not the document-designer templates; notifications use the existing in-app and push channels. Email delivery follows whatever #243 provides.
 * Pricing sheets export as CSV and XLSX; **import accepts CSV only** (no macro-capable formats).
 * Pricing text in uploaded technical **PDFs** is not scanned; the technical envelope blocks spreadsheets, rejects price wording in answers, and the supplier attests to it.

@@ -81,7 +81,7 @@ cap({
 });
 
 cap({
-  name: 'add_supplier_credential', method: 'POST', path: '/supplier-entities/:id/credentials', tag: TAG, status: 201,
+  name: 'tender_add_supplier_credential', method: 'POST', path: '/supplier-entities/:id/credentials', tag: TAG, status: 201,
   summary: 'Declare a certificate, insurance, licence or registration with its validity dates. It counts as declared until a platform administrator verifies what was checked; a tender qualification gate states which it needs. Expiry is checked at the gates and again before award.',
   input: z.object({ id, kind: z.enum(['insurance', 'safeguarding', 'safety_certificate', 'trade_licence', 'tax_registration', 'qualification', 'other']), title: z.string().min(2).max(120), number: z.string().max(60).optional(), issuer: z.string().max(120).optional(), valid_from: z.string().date().optional(), valid_to: z.string().date().optional() }),
   async handler({ user }, i) {
@@ -101,7 +101,7 @@ cap({
 });
 
 cap({
-  name: 'verify_supplier_credential', method: 'POST', path: '/admin/supplier-credentials/:id/verify', tag: TAG, auth: ['admin'],
+  name: 'tender_verify_supplier_credential', method: 'POST', path: '/admin/supplier-credentials/:id/verify', tag: TAG, auth: ['admin'],
   summary: 'Platform administrator: record that a declared credential was checked, and say exactly what was checked (document seen, registry looked up). A verified badge is never universal supplier approval.',
   input: z.object({ id, result: z.enum(['verified', 'rejected']), what_was_checked: z.string().min(5).max(300) }),
   async handler({ user }, i) {
