@@ -15,6 +15,7 @@ import { FavouriteSports } from '../sportpicker';
 import { RecordsSection } from './performance';
 import { useCols } from './marketplace';
 import { Insights } from './player-insights';
+import { MyDevelopment } from './player-development';
 import { AthleteProfilePanel, ArchivedSports } from './athlete-profile';
 
 const LEVELS = ['beginner', 'amateur', 'semi_pro', 'pro'];
@@ -312,8 +313,8 @@ function MySports() {
 
 // ---------- player hub: sections ----------
 
-// Player: everything about how you play. Matches and scores per sport as before, plus AI insights that compare you with other players.
-const sections = () => [['sports', 'My sports', MySports], ['insights', 'Insights', Insights]];
+// Player: everything about how you play. Matches and scores per sport as before, your development workspace (goals, plans, coach feedback, assessments and reports), plus AI insights that compare you with other players.
+const sections = () => [['sports', 'My sports', MySports], ['development', 'Development', MyDevelopment], ['insights', 'Insights', Insights]];
 let lastSection = 'sports'; // survive pushing into a sport page and coming back
 
 export function PlayerHome() {

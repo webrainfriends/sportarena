@@ -5,7 +5,7 @@ import { dark } from '../theme';
 // Gradient identity per More tile: [from, to]. Saturated enough for white text in both themes.
 const LIGHT = {
   // play: crimson to wine
-  Leaderboard: ['#C8283E', '#7A1530'], Awards: ['#D1404F', '#8E1A33'], MyPlans: ['#B4182D', '#54162B'], ToolsHome: ['#C23A4A', '#54162B'], Pathways: ['#C23A4A', '#6B1730'],
+  Leaderboard: ['#C8283E', '#7A1530'], Awards: ['#D1404F', '#8E1A33'], MyPlans: ['#B4182D', '#54162B'], MyDevelopment: ['#B4182D', '#54162B'], ToolsHome: ['#C23A4A', '#54162B'], Pathways: ['#C23A4A', '#6B1730'],
   // care: slate blues
   Health: ['#4A5B86', '#242E49'], Insure: ['#3F5078', '#202943'], Insurance: ['#56668F', '#2C3654'], Legal: ['#37415C', '#181A2F'], Family: ['#4D5E8C', '#27304D'],
   // money: peach to crimson
@@ -31,6 +31,8 @@ const ART = {
   Leaderboard: <><Rect x="10" y="52" width="22" height="34" rx="5" {...W(0.45)} /><Rect x="37" y="30" width="22" height="56" rx="5" {...W(0.95)} /><Rect x="64" y="42" width="22" height="44" rx="5" {...W(0.65)} /><Path d="m48 8 3.4 7 7.6 1-5.5 5.3 1.3 7.6-6.8-3.6-6.8 3.6 1.3-7.6L37 16l7.6-1z" fill={GOLD} /></>,
   Awards: <><Path d="M28 14h40v26a20 20 0 0 1-40 0z" {...W(0.95)} /><Path d="M28 22H14v6a14 14 0 0 0 15 14M68 22h14v6a14 14 0 0 1-15 14" {...S(0.6, 5)} /><Rect x="43" y="58" width="10" height="14" {...W(0.7)} /><Rect x="30" y="72" width="36" height="10" rx="4" {...W(0.85)} /><Path d="M48 24l3 6 6.5 1-4.7 4.5 1.1 6.5-5.9-3.1-5.9 3.1 1.1-6.5-4.7-4.5 6.5-1z" fill={GOLD} /></>,
   MyPlans: <><Rect x="18" y="12" width="60" height="74" rx="10" {...W(0.95)} /><Rect x="34" y="6" width="28" height="14" rx="6" {...W(0.55)} /><Path d="M30 40l6 6 11-12M30 62l6 6 11-12" stroke={GOLD} strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" fill="none" /><Rect x="54" y="38" width="16" height="6" rx="3" {...W(0.5)} /><Rect x="54" y="60" width="16" height="6" rx="3" {...W(0.5)} /></>,
+
+  MyDevelopment: <><Rect x="18" y="12" width="60" height="74" rx="10" {...W(0.95)} /><Rect x="34" y="6" width="28" height="14" rx="6" {...W(0.55)} /><Path d="M30 40l6 6 11-12M30 62l6 6 11-12" stroke={GOLD} strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" fill="none" /><Rect x="54" y="38" width="16" height="6" rx="3" {...W(0.5)} /><Rect x="54" y="60" width="16" height="6" rx="3" {...W(0.5)} /></>,
   Pathways: <><Path d="M4 38 48 16l44 22-44 22z" {...W(0.95)} /><Path d="M22 52v18c0 6 12 12 26 12s26-6 26-12V52L48 64z" {...W(0.6)} /><Path d="M86 42v22" stroke={GOLD} strokeWidth="5" strokeLinecap="round" /><Circle cx="86" cy="68" r="5" fill={GOLD} /></>,
   Health: <><Path d="M48 86S10 64 10 36a19 19 0 0 1 38-6 19 19 0 0 1 38 6c0 28-38 50-38 50z" {...W(0.95)} /><Path d="M16 48h16l8-16 12 28 8-12h20" stroke={GOLD} strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" fill="none" /></>,
   Insure: <><Path d="M48 8 82 20v26c0 20-14 34-34 42C28 80 14 66 14 46V20z" {...W(0.95)} /><Path d="M48 8 82 20v26c0 20-14 34-34 42z" {...W(0.35)} /><Path d="m33 48 11 11 20-22" stroke={GOLD} strokeWidth="7" strokeLinecap="round" strokeLinejoin="round" fill="none" /></>,

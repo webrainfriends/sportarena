@@ -44,6 +44,8 @@ export const icons = {
   Wallet: wrap((p) => <><Rect x="3.5" y="6" width="17" height="13" rx="3" {...P(p)} fill={tint(p)} fillOpacity={0.16} /><Path d="M3.5 10h17M16 14.5h1.5" {...P(p)} /></>),
   Earnings: wrap((p) => <><Circle cx="12" cy="12" r="8.5" {...P(p)} fill={tint(p)} fillOpacity={0.16} /><Path d="M14.5 9.2c-.5-.8-1.4-1.2-2.5-1.2-1.4 0-2.4.7-2.4 1.8 0 2.4 5 1.2 5 3.8 0 1.1-1.1 1.9-2.6 1.9-1.1 0-2.1-.5-2.6-1.4M12 6.5V8M12 16v1.5" {...P(p)} /></>),
   MyPlans: wrap((p) => <><Rect x="5" y="4.5" width="14" height="16" rx="2.5" {...P(p)} fill={tint(p)} fillOpacity={0.16} /><Path d="M9 4.5h6v2H9zM8.5 11l1.5 1.5L13 9.5M8.5 16.5h7" {...P(p)} /></>),
+
+  MyDevelopment: wrap((p) => <><Rect x="5" y="4.5" width="14" height="16" rx="2.5" {...P(p)} fill={tint(p)} fillOpacity={0.16} /><Path d="M9 4.5h6v2H9zM8.5 11l1.5 1.5L13 9.5M8.5 16.5h7" {...P(p)} /></>),
   Family: wrap((p) => <><Circle cx="8.5" cy="8" r="3" {...P(p)} fill={tint(p)} fillOpacity={0.16} /><Circle cx="16.5" cy="9" r="2.4" {...P(p)} /><Path d="M3 19.5c.4-3 2.5-4.8 5.5-4.8s5.1 1.8 5.5 4.8M15 14.8c2.6-.2 4.5 1.3 5 4" {...P(p)} /></>),
   Orgs: wrap((p) => <><Path d="M5 20.5V5.5a1.5 1.5 0 0 1 1.5-1.5h6A1.5 1.5 0 0 1 14 5.5v15" {...P(p)} fill={tint(p)} fillOpacity={0.16} /><Path d="M14 10h3.5A1.5 1.5 0 0 1 19 11.5v9M3.5 20.5h17M8.5 8h2M8.5 12h2M8.5 16h2" {...P(p)} /></>),
   Pathways: wrap((p) => <><Path d="m2.5 9.5 9.5-5 9.5 5-9.5 5z" {...P(p)} fill={tint(p)} fillOpacity={0.16} /><Path d="M6.5 12v4.2c0 1.3 2.5 2.8 5.5 2.8s5.5-1.5 5.5-2.8V12M21.5 9.5V15" {...P(p)} /></>),

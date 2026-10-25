@@ -101,3 +101,6 @@ Migrations 080–085, all additive.
 - Reordering plan blocks uses up/down buttons; drag-and-drop and a multi-player observation matrix are not built.
 - Native apps open evidence files on the web app; there is no in-app video player.
 - With no AI provider configured the copilot returns the plain source-linked summary; the model path is covered by tests with a stubbed provider.
+
+## Player view
+The athlete's and guardian's view of everything above is the player development workspace (`docs/player-development.md`, `GET /me/development`); it replaces the old "From my coach" screen.
