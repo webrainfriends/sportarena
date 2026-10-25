@@ -28,7 +28,7 @@ export function closing(p, now = Date.now()) {
   return d >= 1 ? `Closes in ${d} day${d > 1 ? 's' : ''}` : `Closes in ${Math.max(1, Math.round(ms / 3600000))} h`;
 }
 
-export const ENGAGEMENT_LABEL = { team_member: 'Joined the team roster', association: 'Linked to the event or game' };
+export const ENGAGEMENT_LABEL = { team_member: 'Joined the team roster', association: 'Linked to the event or game', sponsorship: 'Sponsorship offer made' };
 export const say = (e) => {
   const code = e?.details?.code;
   if (code === 'opportunity_closed') return 'Applications for this opportunity have closed.';

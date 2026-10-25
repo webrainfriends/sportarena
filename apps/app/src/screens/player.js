@@ -15,6 +15,8 @@ import { FavouriteSports } from '../sportpicker';
 import { RecordsSection } from './performance';
 import { useCols } from './marketplace';
 import { Insights } from './player-insights';
+import { SyncChip } from './offline-sync';
+import { saveDraft, saveMessage, useOffline } from '../offline';
 import { MyDevelopment } from './player-development';
 import { AthleteProfilePanel, ArchivedSports } from './athlete-profile';
 
@@ -185,6 +187,7 @@ const typeLabel = (t) => TYPE_LABELS[t] ?? nice(t).replace(/^./, (x) => x.toUppe
 
 function LogMatchSheet({ p, onClose, onDone }) {
   const today = new Date().toISOString().slice(0, 10);
+  const off = useOffline();
   const tpl = useLoad(() => loadTemplates(p.sport_slug), [p.sport_slug]);
   const templates = tpl.data ?? [];
   const labels = templates[0]?.score_labels ?? { score_for: 'Your score', score_against: 'Their score' };
@@ -195,7 +198,8 @@ function LogMatchSheet({ p, onClose, onDone }) {
     show: (v) => !typed || v.match_type === t.match_type,
   })));
   return (
-    <FormSheet visible onClose={onClose} title={`Log a ${p.sport} match`} submitLabel="Save match"
+    <FormSheet visible onClose={onClose} title={`Log a ${p.sport} match`} submitLabel={off.online ? 'Save match' : 'Save draft on this device'}
+      notice={off.online ? undefined : 'No connection. This saves as an encrypted draft on this device and uploads when you are back online.'}
       initial={{ played_on: today, match_type: types[0] }}
       fields={[
         { key: 'played_on', label: 'Date', type: 'date', max: today },
@@ -215,9 +219,10 @@ function LogMatchSheet({ p, onClose, onDone }) {
         for (const [k, x] of Object.entries(v)) {
           if (k.startsWith('stat:')) { const n = Number(x); if (n > 0) stats[k.split(':')[2]] = n; } else body[k] = x;
         }
-        await api.post('/me/matches', { ...body, sport_profile_id: p.id, stats });
+        // saved as a draft first, then uploaded with an idempotency key, so a dropped connection never loses or duplicates the match
+        const r = await saveDraft({ kind: 'match_create', payload: { data: { ...body, sport_profile_id: p.id, stats } }, label: `${p.sport} match${body.opponent ? ` vs ${body.opponent}` : ''}`, sub: body.played_on });
         await onDone();
-        return 'Match saved';
+        return saveMessage(r, 'Match saved');
       }} />
   );
 }
@@ -327,6 +332,7 @@ export function PlayerHome() {
     <View style={{ flex: 1 }}>
       <View style={{ width: '100%', maxWidth: contentMax, alignSelf: 'center', paddingHorizontal: gutter - 0, paddingTop: 8 }}>
         <Seg options={SECTIONS.map(([value, label]) => ({ value, label }))} value={sec} onChange={pick} />
+        <SyncChip />
       </View>
       <View style={{ flex: 1 }}><Body key={sec} /></View>
     </View>

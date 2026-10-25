@@ -7,6 +7,7 @@ import { FormSheet } from '../FormSheet';
 import { c } from '../theme';
 import { explain, LoadError } from '../access';
 import { pickDocument } from './insurance';
+import { saveText } from '../evidence';
 
 const SUBJECT = { agreement: 'Agreement', payment: 'Payment', goods: 'Goods', evidence: 'Evidence' };
 const STATUS = { open: ['Contested', c.pinkSoft], under_review: ['Under review', c.sunSoft], appealed: ['Appealed', c.sunSoft], resolved: ['Resolved', c.limeSoft], withdrawn: ['Withdrawn', c.paper] };
@@ -14,7 +15,7 @@ const FLAG = { amount_mismatch: 'Amount mismatch', suspected_fraud: 'Suspected f
 const OUTCOME = [{ value: 'concession', label: 'Waive part of a due' }, { value: 'no_financial_change', label: 'No financial change' }, { value: 'dismissed', label: 'Dismiss' }];
 const fmt = (cents, cur) => { try { const f = new Intl.NumberFormat(undefined, { style: 'currency', currency: cur }); return f.format(cents / 10 ** f.resolvedOptions().maximumFractionDigits); } catch { return `${cents} ${cur ?? ''}`.trim(); } };
 const when = (iso) => (iso ? new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '—');
-const download = (name, text) => { if (Platform.OS === 'web' && typeof document !== 'undefined') { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: 'text/csv' })); a.download = name; a.click(); } };
+const download = saveText; // web download, or the share sheet on a phone or tablet
 const Row = ({ children }) => <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>{children}</View>;
 const toBase64 = (blob) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1]); r.onerror = rej; r.readAsDataURL(blob); });
 
@@ -34,7 +35,7 @@ export function SponsorDisputes({ deal: d }) {
   if (d.role === 'admin' && !x.disputes.length) return null;
   const refresh = async () => { await list.reload(); d.reload?.(); };
   const stale = (e) => { if (e.status === 409) { refresh(); return new Error(`${e.message} The latest version is shown: review it and try again.`); } return e; };
-  const csv = async () => { try { const r = await api.get(`/sponsorships/${d.id}/disputes/export`); download(r.filename, r.csv); } catch (e) { setErr(explain(e)); } };
+  const csv = async () => { try { const r = await api.get(`/sponsorships/${d.id}/disputes/export`); await download(r.filename, r.csv); } catch (e) { setErr(explain(e)); } };
 
   return (
     <Section title="Disputes & complaints" color={c.pink}>
@@ -77,7 +78,7 @@ export function SponsorDisputes({ deal: d }) {
   );
 }
 
-function DisputeSheet({ id, onClose, onChanged }) {
+export function DisputeSheet({ id, onClose, onChanged }) {
   const q = useLoad(() => api.get(`/sponsorship-disputes/${id}`), [id]);
   const [form, setForm] = useState(null);
   const [err, setErr] = useState(null);

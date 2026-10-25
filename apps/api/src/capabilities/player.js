@@ -33,7 +33,7 @@ const profileFields = {
   license_no: z.string().max(60).describe('encrypted at rest'),
 };
 
-async function ownProfile(userId, profileId, client) {
+export async function ownProfile(userId, profileId, client) {
   const row = (await (client ?? { query }).query('SELECT * FROM sport_profiles WHERE id=$1 AND user_id=$2', [profileId, userId])).rows[0];
   if (!row) throw notFound('Sport profile');
   return row;
@@ -170,10 +170,10 @@ const matchCore = z.object({
   notes: text(500),
   match_type: text(30),
 });
-const CORE_KEYS = Object.keys(matchCore.shape);
+export const CORE_KEYS = Object.keys(matchCore.shape);
 
 /** Validate one raw match (API body or CSV row). Unknown numeric keys become sport stats. Returns {value} or {errors}. */
-function normaliseMatch(raw) {
+export function normaliseMatch(raw) {
   const core = Object.fromEntries(CORE_KEYS.filter((k) => raw[k] !== undefined).map((k) => [k, raw[k]]));
   const parsed = matchCore.safeParse(core);
   const errors = parsed.success ? [] : parsed.error.issues.map((x) => `${x.path.join('.') || 'row'}: ${x.message}`);
@@ -194,8 +194,8 @@ function normaliseMatch(raw) {
   return { value: { ...m, stats } };
 }
 
-const COLS = ['user_id', 'sport_profile_id', 'played_on', 'opponent', 'venue', 'competition', 'result', 'score_for', 'score_against', 'minutes', 'rating', 'notes', 'stats', 'source', 'match_type'];
-const rowParams = (userId, profileId, m, source) => [userId, profileId, m.played_on, m.opponent ?? null, m.venue ?? null, m.competition ?? null, m.result ?? null, m.score_for ?? null, m.score_against ?? null, m.minutes ?? null, m.rating ?? null, m.notes ?? null, JSON.stringify(m.stats), source, m.match_type ?? null];
+export const COLS = ['user_id', 'sport_profile_id', 'played_on', 'opponent', 'venue', 'competition', 'result', 'score_for', 'score_against', 'minutes', 'rating', 'notes', 'stats', 'source', 'match_type', 'client_key'];
+export const rowParams = (userId, profileId, m, source) => [userId, profileId, m.played_on, m.opponent ?? null, m.venue ?? null, m.competition ?? null, m.result ?? null, m.score_for ?? null, m.score_against ?? null, m.minutes ?? null, m.rating ?? null, m.notes ?? null, JSON.stringify(m.stats), source, m.match_type ?? null, m.client_key ?? null];
 
 cap({
   name: 'record_match', method: 'POST', path: '/me/matches', tag: 'Player', status: 201,
@@ -206,6 +206,7 @@ cap({
     minutes: z.number().int().min(0).max(1000).optional(), rating: z.number().min(0).max(10).optional(), notes: z.string().max(500).optional(),
     stats: z.record(z.string(), z.number()).default({}),
     match_type: z.string().regex(/^[a-z][a-z0-9_]{0,29}$/).optional().describe('singles, doubles, t20 … — see get_match_template'),
+    client_key: z.string().trim().min(8).max(80).optional().describe('idempotency key: a retried request with the same key returns the original match instead of logging a second'),
   }),
   async handler({ user }, i) {
     await ownProfile(user.id, i.sport_profile_id);
@@ -213,7 +214,8 @@ cap({
     const r = normaliseMatch(raw);
     if (r.errors) throw badRequest('Invalid match', r.errors);
     const ph = COLS.map((_, n) => `$${n + 1}`).join(',');
-    return one(`INSERT INTO player_matches(${COLS.join(',')}) VALUES (${ph}) RETURNING id`, rowParams(user.id, sport_profile_id, r.value, 'manual'));
+    const made = await one(`INSERT INTO player_matches(${COLS.join(',')}) VALUES (${ph}) ON CONFLICT (user_id, client_key) WHERE client_key IS NOT NULL DO NOTHING RETURNING id, row_version`, rowParams(user.id, sport_profile_id, { ...r.value, client_key: i.client_key }, 'manual'));
+    return made ?? one('SELECT id, row_version FROM player_matches WHERE user_id=$1 AND client_key=$2', [user.id, i.client_key]);
   },
 });
 

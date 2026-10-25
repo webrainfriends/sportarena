@@ -112,6 +112,39 @@ cap({
   },
 });
 
+/** The shared core of opening a dispute: validates the subject, opens the canonical case, links it and tells the other side. `returnId` ties it to a disputed goods return (#389); the caller has already authorised `side`. */
+export async function createDispute(c, ctx, side, user, i, prepared, returnId = null) {
+      if (!['active', 'paused', 'ended', 'term_expired', 'completed'].includes(ctx.d.status)) throw conflict(`An agreement that is ${ctx.d.status} has nothing to dispute yet`);
+      const s = await resolveSubject(c, ctx.d, i);
+      let currency = null;
+      if (i.subject_type === 'payment') {
+        if (i.disputed_cents === undefined) throw badRequest('Say how much of the payment is disputed (disputed_cents)');
+        if (i.disputed_cents > s.ceiling.cents) throw badRequest('The disputed amount is more than the payment');
+        currency = s.ceiling.currency;
+      }
+      const dup = (await c.query(`SELECT c.case_no FROM sponsorship_disputes x JOIN cases c ON c.id=x.case_id WHERE x.status = ANY($1) AND x.sponsorship_id=$2 AND (
+        (x.payment_id IS NOT NULL AND x.payment_id=$3) OR (x.delivery_id IS NOT NULL AND x.delivery_id=$4 AND x.return_id IS NULL AND $8::uuid IS NULL) OR (x.submission_id IS NOT NULL AND x.submission_id=$5) OR (x.subject_type='agreement' AND $6::text='agreement' AND x.opened_side=$7) OR ($8::uuid IS NOT NULL AND x.return_id=$8))`,
+        [LIVE, ctx.d.id, s.payment_id ?? null, s.delivery_id ?? null, s.submission_id ?? null, i.subject_type, side, returnId])).rows[0];
+      if (dup) throw conflict(`There is already an open dispute (#${dup.case_no}) about this`);
+      const due = slaDue('normal');
+      const cs = (await c.query(
+        `INSERT INTO cases(kind, category, priority, subject, requester_id, details, first_response_due, resolution_due) VALUES ('dispute','sponsorship','normal',$1,$2,$3,$4,$5) RETURNING id, case_no`,
+        [i.title, user.id, JSON.stringify(currency ? { disputed_amount_cents: i.disputed_cents, currency } : {}), due.first, due.resolution])).rows[0];
+      for (const l of [{ type: 'sponsorship', id: ctx.d.id }, s.link]) await c.query('INSERT INTO case_links(case_id, entity_type, entity_id) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING', [cs.id, l.type, l.id]);
+      const x = (await c.query(
+        `INSERT INTO sponsorship_disputes(case_id, sponsorship_id, subject_type, obligation_id, payment_id, delivery_id, submission_id, opened_side, opened_by, disputed_cents, currency, idempotency_key, return_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
+        [cs.id, ctx.d.id, i.subject_type, s.obligation_id ?? null, s.payment_id ?? null, s.delivery_id ?? null, s.submission_id ?? null, side, user.id, i.disputed_cents ?? null, currency, i.idempotency_key ?? null, returnId])).rows[0];
+      await message(c, cs.id, user.id, i.description);
+      await evidence(c, cs.id, user.id, prepared);
+      await event(c, cs.id, user.id, 'open', null, 'open', null, { data: { subject: i.subject_type, evidence: prepared.length } });
+      await logHistory(c, ctx.d.id, ctx.d.accepted_version ?? ctx.d.terms_version, user.id, 'dispute_opened', `${SUBJECT_LABEL[i.subject_type]}: ${i.title}`);
+      await audit(c, user.id, 'sponsorship.dispute_open', 'sponsorship', ctx.d.id);
+      await ping(c, ctx, side, 'A sponsorship dispute was raised', x);
+      for (const a of (await c.query("SELECT id FROM users WHERE 'admin' = ANY(roles) AND id <> $1", [user.id])).rows) await notify(c, a.id, { kind: 'case_update', title: `New sponsorship dispute #${cs.case_no}`, body: 'Open the case queue to claim a review.', data: { case_id: cs.id, case_no: cs.case_no } });
+      return (await c.query(`SELECT ${COLS} ${FROM} WHERE x.id=$1`, [x.id])).rows[0];
+}
+
 cap({
   name: 'open_sponsorship_dispute', method: 'POST', path: '/sponsorships/:id/disputes', tag: TAG, status: 201,
   summary: 'Either side of an agreement disputes a payment, a goods delivery, endorsement evidence or the agreement itself. This opens a canonical support case linked to that exact record, marks it contested and notifies the other side; it NEVER changes a due, a payment, a delivery or any evidence. The disputed amount of a payment can not exceed that payment and takes its currency. One live dispute per record. Retry-safe with idempotency_key.',
@@ -136,35 +169,7 @@ cap({
         const again = (await c.query(`SELECT ${COLS} ${FROM} WHERE x.opened_by=$1 AND x.idempotency_key=$2`, [user.id, i.idempotency_key])).rows[0];
         if (again) return again;
       }
-      if (!['active', 'paused', 'ended', 'term_expired', 'completed'].includes(ctx.d.status)) throw conflict(`An agreement that is ${ctx.d.status} has nothing to dispute yet`);
-      const s = await resolveSubject(c, ctx.d, i);
-      let currency = null;
-      if (i.subject_type === 'payment') {
-        if (i.disputed_cents === undefined) throw badRequest('Say how much of the payment is disputed (disputed_cents)');
-        if (i.disputed_cents > s.ceiling.cents) throw badRequest('The disputed amount is more than the payment');
-        currency = s.ceiling.currency;
-      }
-      const dup = (await c.query(`SELECT c.case_no FROM sponsorship_disputes x JOIN cases c ON c.id=x.case_id WHERE x.status = ANY($1) AND x.sponsorship_id=$2 AND (
-        (x.payment_id IS NOT NULL AND x.payment_id=$3) OR (x.delivery_id IS NOT NULL AND x.delivery_id=$4) OR (x.submission_id IS NOT NULL AND x.submission_id=$5) OR (x.subject_type='agreement' AND $6::text='agreement' AND x.opened_side=$7))`,
-        [LIVE, ctx.d.id, s.payment_id ?? null, s.delivery_id ?? null, s.submission_id ?? null, i.subject_type, side])).rows[0];
-      if (dup) throw conflict(`There is already an open dispute (#${dup.case_no}) about this`);
-      const due = slaDue('normal');
-      const cs = (await c.query(
-        `INSERT INTO cases(kind, category, priority, subject, requester_id, details, first_response_due, resolution_due) VALUES ('dispute','sponsorship','normal',$1,$2,$3,$4,$5) RETURNING id, case_no`,
-        [i.title, user.id, JSON.stringify(currency ? { disputed_amount_cents: i.disputed_cents, currency } : {}), due.first, due.resolution])).rows[0];
-      for (const l of [{ type: 'sponsorship', id: ctx.d.id }, s.link]) await c.query('INSERT INTO case_links(case_id, entity_type, entity_id) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING', [cs.id, l.type, l.id]);
-      const x = (await c.query(
-        `INSERT INTO sponsorship_disputes(case_id, sponsorship_id, subject_type, obligation_id, payment_id, delivery_id, submission_id, opened_side, opened_by, disputed_cents, currency, idempotency_key)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
-        [cs.id, ctx.d.id, i.subject_type, s.obligation_id ?? null, s.payment_id ?? null, s.delivery_id ?? null, s.submission_id ?? null, side, user.id, i.disputed_cents ?? null, currency, i.idempotency_key ?? null])).rows[0];
-      await message(c, cs.id, user.id, i.description);
-      await evidence(c, cs.id, user.id, prepared);
-      await event(c, cs.id, user.id, 'open', null, 'open', null, { data: { subject: i.subject_type, evidence: prepared.length } });
-      await logHistory(c, ctx.d.id, ctx.d.accepted_version ?? ctx.d.terms_version, user.id, 'dispute_opened', `${SUBJECT_LABEL[i.subject_type]}: ${i.title}`);
-      await audit(c, user.id, 'sponsorship.dispute_open', 'sponsorship', ctx.d.id);
-      await ping(c, ctx, side, 'A sponsorship dispute was raised', x);
-      for (const a of (await c.query("SELECT id FROM users WHERE 'admin' = ANY(roles) AND id <> $1", [user.id])).rows) await notify(c, a.id, { kind: 'case_update', title: `New sponsorship dispute #${cs.case_no}`, body: 'Open the case queue to claim a review.', data: { case_id: cs.id, case_no: cs.case_no } });
-      return (await c.query(`SELECT ${COLS} ${FROM} WHERE x.id=$1`, [x.id])).rows[0];
+      return createDispute(c, ctx, side, user, i, prepared);
     });
   },
 });

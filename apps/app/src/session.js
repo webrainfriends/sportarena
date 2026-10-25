@@ -4,6 +4,7 @@ import { Platform } from 'react-native';
 import { api, setSessionTokens, setTokensHandler, setUnauthorizedHandler, storage } from './api';
 import { c } from './theme';
 import { clearOutbox } from './outbox';
+import { beforeSignOut, initOffline } from './offline';
 
 const Ctx = createContext(null);
 export const useSession = () => useContext(Ctx);
@@ -15,6 +16,7 @@ export function SessionProvider({ children }) {
   const setActiveRole = useCallback((r) => { setActive(r); storage.set('activeRole', r); }, []);
 
   const signOut = useCallback(async () => {
+    await beforeSignOut().catch(() => {}); // upload the player's saved drafts, then keep or remove the rest as they chose (offline.js)
     clearOutbox(); // queued coaching writes belong to this account and must not outlive the session
     try { await api.post('/auth/logout'); } catch { /* already signed out, or offline: still clear this device */ }
     setSessionTokens(null);
@@ -50,6 +52,9 @@ export function SessionProvider({ children }) {
       try { setState({ ready: true, user: await api.get('/me') }); } catch { setState({ ready: true, user: null }); }
     })();
   }, []);
+
+  const userId = state.user?.id ?? null;
+  useEffect(() => { initOffline(userId).catch(() => {}); }, [userId]); // loads this person's saved drafts and removes anyone else's
 
   const toast = useCallback((msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 2600); }, []);
   useEffect(() => {
