@@ -142,6 +142,7 @@ test('assistant: accepting creates the player\'s own goal exactly once, even whe
   const a = ok(await post(s.player.token, '/me/assistant/answers', { task: 'overview' }), 201);
   const it = a.output.items.find((x) => x.action?.kind === 'goal');
   assert.ok(it, 'with no goals yet the assistant suggests setting one'); assert.equal(it.basis, 'suggestion');
+  assert.equal((await post(s.player.token, `/me/assistant/answers/${a.id}/resolve`, { decision: 'accept', actions: [{ item_id: it.id }] })).status, 400, 'a goal must be worded by the player');
   const body = { decision: 'accept', row_version: a.row_version, actions: [{ item_id: it.id, title: 'Serve to a target', target_value: 60, unit: 'percent' }] };
   const [r1, r2] = await Promise.all([post(s.player.token, `/me/assistant/answers/${a.id}/resolve`, body), post(s.player.token, `/me/assistant/answers/${a.id}/resolve`, body)]);
   assert.deepEqual([r1.status, r2.status].sort(), [200, 409], JSON.stringify([r1.body, r2.body]));
