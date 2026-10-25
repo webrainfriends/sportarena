@@ -9,6 +9,7 @@ import { FormSheet } from '../FormSheet';
 import { NewCaseSheet } from './cases';
 import { c, toneFor, money, when, day } from '../theme';
 import { InsuranceMarket } from './insurer';
+import { TenderZone } from './tender-zone';
 import { QuoteRequestSheet } from './insurance';
 import { whoForFields, whoForInitial, whoForBody } from '../who-for';
 import { SECTION_OPTIONS, SECTION_LABEL, TYPE_LABEL, UNIT, closing, payLine, say } from '../opportunity';
@@ -226,7 +227,7 @@ function SponsorInbox() {
   );
 }
 
-const FILTERS = [['all', 'All'], ['match_players', 'Matches'], ['team_recruiting', 'Teams'], ['assignment', 'Work & volunteering'], ['trial', 'Trials'], ['sponsor', 'Sponsorship'], ['events', 'Events'], ['insurance', 'Insurance'], ['mine', 'My posts']];
+const FILTERS = [['all', 'All'], ['match_players', 'Matches'], ['team_recruiting', 'Teams'], ['assignment', 'Work & volunteering'], ['trial', 'Trials'], ['sponsor', 'Sponsorship'], ['events', 'Events'], ['insurance', 'Insurance'], ['tender', 'Tender zone'], ['mine', 'My posts']];
 const ROLE_OPTIONS = [['volunteer', 'Volunteer'], ['referee', 'Referee'], ['umpire', 'Umpire'], ['linesman', 'Assistant referee'], ['physio', 'Physio']].map(([value, label]) => ({ value, label }));
 const PAY_OPTIONS = [['paid', 'Paid'], ['unpaid', 'Unpaid'], ['expenses', 'Expenses only'], ['in_kind', 'In-kind reward']].map(([value, label]) => ({ value, label }));
 const isSponsorKind = (k) => k === 'sponsorship_wanted' || k === 'sponsor_call';
@@ -331,13 +332,13 @@ export function Billboard() {
   const [report, setReport] = useState(null);
   const [quote, setQuote] = useState(null);
   const q = { ...(f === 'mine' ? { mine: true, include_closed: true } : f === 'match_players' || f === 'team_recruiting' || f === 'assignment' ? { kind: f } : f === 'trial' ? { opportunity_type: 'trial' } : {}), ...(paidOnly ? { paid: true } : {}), ...(verifiedOnly ? { verified_publisher: true } : {}) };
-  const posts = useLoad(() => (f === 'events' || f === 'insurance' ? Promise.resolve([]) : api.get('/billboard', { ...q, limit: 50 })), [f, paidOnly, verifiedOnly]);
+  const posts = useLoad(() => (f === 'events' || f === 'insurance' || f === 'tender' ? Promise.resolve([]) : api.get('/billboard', { ...q, limit: 50 })), [f, paidOnly, verifiedOnly]);
   const events = useLoad(() => (f === 'all' || f === 'events' ? api.get('/events', { status: 'open', limit: 20 }) : Promise.resolve([])), [f]);
   const list = (posts.data ?? []).filter((p) => (f === 'sponsor' ? p.kind.startsWith('sponsor') : true));
   const join = async (e) => { try { await api.post(`/events/${e.id}/entries`, {}); toast(`Registered for ${e.name} — awaiting approval`); } catch (x) { toast(x.message); } };
   const loading = (posts.loading && !posts.data) || (events.loading && !events.data);
-  const empty = !loading && !list.length && !(events.data ?? []).length && f !== 'insurance';
-  const filtering = f !== 'events' && f !== 'insurance';
+  const empty = !loading && !list.length && !(events.data ?? []).length && f !== 'insurance' && f !== 'tender';
+  const filtering = f !== 'events' && f !== 'insurance' && f !== 'tender';
 
   return (
     <Screen wide>
@@ -351,7 +352,7 @@ export function Billboard() {
         </View>
       ) : null}
       {f === 'all' || f === 'sponsor' ? <SponsorInbox /> : null}
-      {f === 'insurance' ? <View style={{ marginTop: 14, gap: 10 }}><InsuranceMarket onAsk={() => setQuote({})} /></View> : posts.error ? <ErrorBox error={posts.error} onRetry={posts.reload} /> : loading ? <Loading /> : empty ? (
+      {f === 'tender' ? <TenderZone embedded /> : f === 'insurance' ? <View style={{ marginTop: 14, gap: 10 }}><InsuranceMarket onAsk={() => setQuote({})} /></View> : posts.error ? <ErrorBox error={posts.error} onRetry={posts.reload} /> : loading ? <Loading /> : empty ? (
         <View style={{ marginTop: 14 }}><Empty emoji="📣" title={paidOnly || verifiedOnly ? 'Nothing matches those filters' : 'Nothing here yet'} sub={paidOnly || verifiedOnly ? 'Try clearing a filter.' : 'Be the first — post that you need players, helpers or a sponsor.'} /></View>
       ) : (
         <Grid>

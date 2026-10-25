@@ -70,6 +70,7 @@ export function targetFor(data = {}) {
   if (data.venue_id && data.date) return ['BookFlow', { venueId: data.venue_id, resourceId: data.resource_id, date: data.date }];
   if (data.venue_id) return ['Venue', { id: data.venue_id }];
   if (data.representative_id) return ['Sponsors', {}]; // an invitation to (or removal from) a sponsor team
+  if (data.project_id) return ['TenderNotice', { id: data.project_id }];   // tender notices, receipts, approvals and awards open the tender (the buying team gets a link to its console)
   if (data.organisation_id) return ['Org', { id: data.organisation_id }];   // academy and workspace messages open the organisation (academy tab / My academy)
   return ['Notifications', {}];
 }
@@ -81,6 +82,17 @@ export function parseTarget(t) {
   if (kind === 'sponsorship' && id) return ['SponsorDeal', { id }];
   if (kind === 'organisation' && id) return ['Org', { id }];
   if (kind === 'organisations') return ['Orgs', {}];
+  if (kind === 'tender' && id) return ['TenderNotice', { id }];
+  if (kind === 'tender-console' && id) return ['TenderConsole', { id }];
+  if (kind === 'tender-proposal' && id) return ['TenderProposal', { id }];
+  if (kind === 'tender-builder') return ['TenderBuilder', id ? { id } : {}];
+  if (kind === 'tenders') return ['TenderHome', {}];
+  if (kind === 'tender-zone') return ['TenderZone', {}];
+  if (kind === 'billboard') return ['Billboard', {}];
+  if (kind === 'tender-orders') return ['TenderOrders', {}];
+  if (kind === 'tender-reports') return ['TenderReports', {}];
+  if (kind === 'tender-order' && id) return ['TenderOrder', { id }];
+  if (kind === 'supplier-entities') return ['SupplierEntities', {}];
   if (kind === 'sponsors') return ['Sponsors', {}];
   if (kind === 'sponsor-team' && id) return ['SponsorIdentity', { id }];
   if (kind === 'proposal' && id) return ['ScoringTool', { proposalId: id }];
