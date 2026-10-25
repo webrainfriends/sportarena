@@ -246,3 +246,17 @@ test('anonymous callers cannot reach sharing', async () => {
   const a = ok(await share(s), 201);
   assert.equal((await api('GET', `/wellness-shared/${a.id}`)).status, 401);
 });
+
+test('a revoke in flight wins: a read that started meanwhile waits for it and is then refused', async () => {
+  const s = await setup();
+  const a = ok(await share(s), 201);
+  const c = await pool.connect();
+  try {
+    await c.query('BEGIN');
+    await c.query('UPDATE wellness_shares SET revoked_at=now() WHERE id=$1', [a.id]); // revoke not yet committed
+    const read = get(s.coach.token, `/wellness-shared/${a.id}`);
+    await new Promise((r) => setTimeout(r, 300));
+    await c.query('COMMIT');
+    assert.equal((await read).status, 403);
+  } finally { c.release(); }
+});
