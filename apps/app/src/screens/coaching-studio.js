@@ -15,6 +15,7 @@ import { useLayout } from '../layout';
 import { c } from '../theme';
 import { dateTimeIn, localToIso } from '../vtime';
 import { AthleteBenchmarks } from './player-insights';
+import { SharedByPlayers } from './player-goals';
 
 const GOAL_CATEGORIES = ['technical', 'tactical', 'physical', 'mental_performance', 'teamwork', 'match_objective', 'custom'];
 const GOAL_STATUS = ['planned', 'active', 'achieved', 'paused', 'stopped'];
@@ -414,6 +415,7 @@ export function CoachGoals({ athlete_id, team_id, name, programme_id }) {
       </Section>
         </>
       </Cols>
+      {athlete_id ? <SharedByPlayers athlete_id={athlete_id} /> : null}
       <FormSheet visible={form === 'goal'} onClose={() => setForm(null)} title="New goal" submitLabel="Create goal"
         fields={[
           { key: 'title', label: 'Goal' },
