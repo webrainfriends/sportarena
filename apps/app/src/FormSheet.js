@@ -78,7 +78,7 @@ function LocationPicker({ f, v, set }) {
   );
 }
 
-export function FormSheet({ visible, onClose, title, fields, initial = {}, submitLabel = 'Save', onSubmit, color = c.pink, inline, onBack }) {
+export function FormSheet({ visible, onClose, title, fields, initial = {}, submitLabel = 'Save', onSubmit, color = c.pink, inline, onBack, notice }) {
   const start = () => {
     const o = {};
     for (const f of fields) {
@@ -183,6 +183,7 @@ export function FormSheet({ visible, onClose, title, fields, initial = {}, submi
 
   const body = (
     <>
+      {notice ? <View accessibilityRole="alert" style={{ backgroundColor: c.sunSoft, borderRadius: 12, padding: 10 }}><T size={12} weight="600">{notice}</T></View> : null}
       {fields.filter((f) => !f.show || f.show(v)).map((f) => <View key={f.key}>{control(f)}</View>)}
       {err ? <T color={c.red} weight="800">{err}</T> : null}
       {onBack ? (

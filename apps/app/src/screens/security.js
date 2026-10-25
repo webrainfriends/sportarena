@@ -6,6 +6,8 @@ import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { Btn, Card, Chip, Empty, ErrorBox, Field, Section, Sheet, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
+import { useNav } from '../nav';
+import { SyncDevices } from './offline-sync';
 import { DateField } from '../pickers';
 import { EntityPicker } from '../entity-picker';
 import { QrCode } from './passport';
@@ -203,6 +205,7 @@ function MfaSetupSheet({ visible, onClose, onDone }) {
 
 export function SecuritySection() {
   const { toast, signOut } = useSession();
+  const { push } = useNav();
   const st = useLoad(() => api.get('/me/security'), []);
   const sess = useLoad(() => api.get('/me/sessions'), []);
   const [mfaSheet, setMfaSheet] = useState(false);
@@ -252,6 +255,9 @@ export function SecuritySection() {
         <Btn small title="Sign out everywhere" color={c.paper} ink={c.red} style={{ marginTop: 12, alignSelf: 'flex-start' }}
           onPress={async () => { try { await api.post('/auth/logout-all'); } catch { /* fall through to local sign-out */ } await signOut(); }} />
       </Card>
+
+      <SyncDevices />
+      <Btn small title="Open Offline & sync" color={c.paper} ink={c.ink} style={{ marginTop: 12, alignSelf: 'flex-start' }} onPress={() => push('OfflineSync')} />
 
       <MfaSetupSheet visible={mfaSheet} onClose={() => setMfaSheet(false)} onDone={() => { st.reload(); sess.reload(); }} />
       <FormSheet visible={offForm} onClose={() => setOffForm(false)} title="Turn off two-step verification" submitLabel="Turn off"
