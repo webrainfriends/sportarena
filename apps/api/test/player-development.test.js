@@ -136,7 +136,7 @@ test('a young person: guardian reads the same items read-only, consent gates rea
   // withdraw coaching consent: reads hide at once, and the child can no longer change the shared action
   await pool.query("UPDATE youth_consents SET revoked_at=now() WHERE child_id=$1 AND purpose='coaching'", [s.kid.id]);
   for (const r of [await get(s.kid.token, '/me/development'), await get(s.parent.token, `/me/development?athlete_id=${s.kid.id}`)]) {
-    const b = ok(r); assert.equal(b.consent, false); assert.deepEqual(b.sections, {}); assert.deepEqual(b.next_actions, []); assert.ok(b.note);
+    const b = ok(r); assert.equal(b.consent, false); assert.deepEqual(Object.keys(b.sections).filter((k) => !['my_goals', 'my_training'].includes(k)), [], 'no coach-sourced section while consent is off (only the young person\'s own goals and plans remain)'); assert.deepEqual(b.next_actions, []); assert.ok(b.note);
   }
   assert.equal((await patch(s.kid.token, `/coaching/actions/${act.id}`, { row_version: 1, status: 'done' })).status, 404);
   assert.equal((await pool.query('SELECT status FROM coaching_actions WHERE id=$1', [act.id])).rows[0].status, 'open', 'nothing changed while hidden');
