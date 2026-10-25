@@ -13,15 +13,18 @@ import { useLayout } from '../layout';
 import { c } from '../theme';
 import { dateTimeIn } from '../vtime';
 import { AthleteBenchmarks } from './player-insights';
+import { MyGoalsBlock, MyTrainingBlock } from './player-goals';
 
 const tz = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return 'UTC'; } })();
 const label = (s) => String(s ?? '').replace(/_/g, ' ').replace(/^./, (x) => x.toUpperCase());
-const BASIS = { coach_set: 'set by the coach', coach_observed: 'coach-observed', assessor_rated: 'rated by an assessor', staff_set: 'set by staff', derived: 'worked out from your records' };
+const BASIS = { athlete_set: 'set by you', coach_set: 'set by the coach', coach_observed: 'coach-observed', assessor_rated: 'rated by an assessor', staff_set: 'set by staff', derived: 'worked out from your records' };
 const URGENCY = { overdue: ['Overdue', c.redSoft], needs_response: ['Needs your answer', c.sunSoft], due_soon: ['Due soon', c.sunSoft], upcoming: ['Coming up', c.violetSoft], none: [null, c.violetSoft] };
 const SECTIONS = [
   { key: 'next_actions', title: 'Next actions', empty: ['✅', 'Nothing waiting on you', 'Actions your coach sets, plans to answer and reviews coming up appear here.'] },
-  { key: 'goals', title: 'Goals', empty: ['🎯', 'No goals shared yet', 'When your coach shares a goal with you, it shows here with the wording written for you.'] },
-  { key: 'plans', title: 'Training plans', empty: ['📋', 'No training plans yet', 'A plan your coach proposes appears here for you to accept or change.'] },
+  { key: 'my_goals', title: 'My goals', own: true, empty: ['🎯', 'No personal goals yet', 'Set a goal of your own - a skill to build, a number to hit - and log your progress. Share it with a coach only if you want to.'] },
+  { key: 'my_training', title: 'My training', own: true, empty: ['🏃', 'No plans of your own yet', 'Plan your own sessions, record how they went, and share the plan with a coach if you like.'] },
+  { key: 'goals', title: 'Coach goals', empty: ['🎯', 'No goals shared yet', 'When your coach shares a goal with you, it shows here with the wording written for you.'] },
+  { key: 'plans', title: 'Coach plans', empty: ['📋', 'No training plans yet', 'A plan your coach proposes appears here for you to accept or change.'] },
   { key: 'feedback', title: 'Coach feedback', empty: ['💬', 'No feedback shared yet', 'Session feedback, notes and summaries your coach chooses to share appear here.'] },
   { key: 'assessments', title: 'Assessments', empty: ['📊', 'No assessments shared yet', 'Trial and academy assessments released to you appear here.'] },
   { key: 'reports', title: 'Reports', empty: ['📄', 'No reports shared yet', 'Coaching reports published for you can be opened and downloaded from here.'] },
@@ -109,7 +112,12 @@ export function MyDevelopment({ child_id, name }) {
   };
   const open = (link) => push(link.screen, link.params ?? {});
   const shown = SECTIONS.filter((s) => !pick || pick === s.key);
-  const render = (defs) => defs.map((def) => <Block key={`${def.key}:${data.generated_at}`} def={def} data={data.sections[def.key]} self={self} athleteId={child_id} onOpen={open} onDone={done} busy={busy} />);
+  const render = (defs) => defs.map((def) => {
+    const k = `${def.key}:${data.generated_at}`;
+    if (!def.own) return <Block key={k} def={def} data={data.sections[def.key]} self={self} athleteId={child_id} onOpen={open} onDone={done} busy={busy} />;
+    const Own = def.key === 'my_goals' ? MyGoalsBlock : MyTrainingBlock;
+    return <Own key={k} def={def} data={data.sections[def.key]} self={self} athleteId={child_id ?? data.athlete_id} reload={d.reload} />;
+  });
   const split = tablet && !pick;
   return (
     <Screen onRefresh={d.reload} wide>
@@ -118,7 +126,10 @@ export function MyDevelopment({ child_id, name }) {
         {child_id ? 'Read-only. Only what their coach chose to share with them. Private notes never appear here.' : 'Everything your coach has set or shared with you, in one place. Each item shows who it is from and what kind of record it is. Private coach notes never appear.'}
       </T>
       {d.loading && !data ? <Loading /> : d.error ? <ErrorBox error={d.error} onRetry={d.reload} /> : !data.consent ? (
-        <Empty emoji="🔒" title="Coaching sharing is off" sub={data.note} />
+        <>
+          <Empty emoji="🔒" title="Coaching sharing is off" sub={data.note} />
+          {self ? render(SECTIONS.filter((s) => s.own && data.sections[s.key])) : null}
+        </>
       ) : (
         <>
           <View style={{ marginTop: 10 }}>
@@ -129,7 +140,7 @@ export function MyDevelopment({ child_id, name }) {
           </View>
           {split ? (
             <View style={{ flexDirection: 'row', gap: 20, alignItems: 'flex-start' }}>
-              <View style={{ flex: 1, minWidth: 0 }}>{render(SECTIONS.filter((s) => ['next_actions', 'plans', 'goals'].includes(s.key)))}</View>
+              <View style={{ flex: 1, minWidth: 0 }}>{render(SECTIONS.filter((s) => ['next_actions', 'my_goals', 'my_training', 'plans', 'goals'].includes(s.key)))}</View>
               <View style={{ flex: 1, minWidth: 0 }}>{render(SECTIONS.filter((s) => ['feedback', 'assessments', 'reports'].includes(s.key)))}</View>
             </View>
           ) : render(shown)}
