@@ -450,56 +450,6 @@ export function CoachGoals({ athlete_id, team_id, name, programme_id }) {
   );
 }
 
-// What the coach chose to show the athlete: shared notes, goal wording and shared actions. Nothing private reaches this screen.
-export function MyCoaching({ child_id, name }) {
-  const { toast } = useSession();
-  const { push } = useNav();
-  // the athlete's own screen, or - with child_id - what a verified guardian may see of their child's: the same shared items
-  const guard = useLoad(() => (child_id ? api.get(`/guardian/children/${child_id}/coaching`) : Promise.resolve(null)), [child_id]);
-  const notes = useLoad(() => (child_id ? Promise.resolve(null) : api.get('/me/coaching-notes')), [child_id]);
-  const goals = useLoad(() => (child_id ? Promise.resolve(null) : api.get('/me/coaching-goals')), [child_id]);
-  const actions = useLoad(() => (child_id ? Promise.resolve(null) : api.get('/me/coaching-actions')), [child_id]);
-  const reports = useLoad(() => (child_id ? Promise.resolve(null) : api.get('/me/coaching-reports')), [child_id]);
-  const summaries = useLoad(() => (child_id ? Promise.resolve(null) : api.get('/me/coaching-session-summaries')), [child_id]);
-  const reload = () => { guard.reload(); notes.reload(); goals.reload(); actions.reload(); reports.reload(); summaries.reload(); };
-  const g = guard.data;
-  const D = { notes: g?.notes ?? notes.data, goals: g?.goals ?? goals.data, actions: g?.actions ?? actions.data, reports: g?.reports ?? reports.data, summaries: g?.summaries ?? summaries.data };
-  const busy = child_id ? guard.loading && !g : false;
-  return (
-    <Screen onRefresh={reload}>
-      <H1>{child_id ? `${name ?? 'Your child'} · from their coach` : 'From my coach'}</H1>
-      {child_id ? <T size={13} color={c.mute}>Only what the coach chose to share with them. Private notes never appear here.</T> : null}
-      {busy ? <Loading /> : guard.error ? <ErrorBox error={guard.error} onRetry={guard.reload} /> : g && !g.consent ? <Empty emoji="🔒" title="Coaching sharing is off" sub={g.note} /> : (
-        <>
-          <Section title="Reports">
-            {!D.reports?.length ? <T size={13} color={c.mute}>No reports shared yet.</T> : D.reports.map((r) => <Row key={r.report_id} title={r.title} sub={`From ${r.coach_name} · ${dateTimeIn(r.published_at, tz)}`} onPress={() => push('CoachReportView', { id: r.report_id, version: r.version })} />)}
-          </Section>
-          <Section title="Session summaries">
-            {!D.summaries?.length ? <T size={13} color={c.mute}>Nothing shared yet.</T> : D.summaries.map((x) => <Row key={`${x.session_record_id}${x.kind}`} title={x.title} sub={`${x.kind === 'team' ? 'Team summary' : 'Just for them'} — ${x.summary} (${x.coach_name})`} />)}
-          </Section>
-          <Section title="Goals">
-            {!D.goals?.length ? <T size={13} color={c.mute}>No goals shared yet.</T> : D.goals.map((x) => <Row key={x.id} title={x.title} sub={`${x.text}${x.review_on ? ` · review ${String(x.review_on).slice(0, 10)}` : ''}`} right={<Status s={x.status} />} />)}
-          </Section>
-          <Section title="Actions">
-            {!D.actions?.length ? <T size={13} color={c.mute}>No actions shared.</T> : D.actions.map((a) => (
-              <Card key={a.id} pad={12} style={{ marginBottom: 8 }}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}><T weight="700" style={{ flexShrink: 1 }}>{a.title}</T><Status s={a.status} /></View>
-                {a.detail ? <T size={13}>{a.detail}</T> : null}
-                <T size={12} color={c.mute}>{a.due_at ? `Due ${dateTimeIn(a.due_at, tz)}` : 'No due date'} · from {a.coach_name}</T>
-                {!child_id && (a.status === 'open' || a.status === 'in_progress') ? <View style={{ marginTop: 6 }}><Btn small title="Mark done" onPress={async () => { try { await api.patch(`/coaching/actions/${a.id}`, { row_version: a.row_version, status: 'done' }); } catch (e) { toast(e.message); } reload(); }} /></View> : null}
-              </Card>
-            ))}
-          </Section>
-          {child_id ? <Section title="Benchmarks" color={c.cyan}><AthleteBenchmarks athlete_id={child_id} /></Section> : null}
-          <Section title="Notes shared">
-            {!D.notes?.length ? <T size={13} color={c.mute}>Nothing shared yet.</T> : D.notes.map((n) => <Row key={n.id} title={`${n.skill_tag ? `${n.skill_tag} · ` : ''}${label(n.obs_type)}`} sub={`${n.note} — ${n.coach_name}`} />)}
-          </Section>
-        </>
-      )}
-    </Screen>
-  );
-}
-
 // AI copilot (draft only). The coach decides what the AI may read, sees which records it used and what it could not know,
 // and nothing is saved until Accept. Without an AI provider the same screen shows a plain summary of the coach's own records.
 const TASK_TITLE = { plan_session: 'Plan this session', player_focus: 'Player focus', summarise_session: 'Summarise this session', player_progress: 'Progress summary', team_patterns: 'Team patterns', suggest_actions: 'Suggested actions', match_debrief: 'Match debrief', ask: 'Ask about my notes', compare_metrics: 'Explain the changes' };
