@@ -119,6 +119,7 @@ cap({
       `SELECT name FROM (
          SELECT btrim(city) AS name, count(*) AS n FROM venues WHERE city IS NOT NULL AND btrim(city) <> '' GROUP BY btrim(city)
          UNION ALL SELECT btrim(region), count(*) FROM active_sport_profiles WHERE region IS NOT NULL AND btrim(region) <> '' GROUP BY btrim(region)
+         UNION ALL SELECT btrim(locality), count(*) FROM addresses WHERE archived_at IS NULL AND locality IS NOT NULL AND btrim(locality) <> '' GROUP BY btrim(locality)
        ) r WHERE name ILIKE $1 GROUP BY name ORDER BY sum(n) DESC, name LIMIT 15`, [q]).then((rows) => rows.map((r) => r.name));
   },
 });
