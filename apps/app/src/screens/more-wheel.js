@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, Animated, PanResponder, Platform, Pressable, View } from 'react-native';
+import { AccessibilityInfo, Animated, PanResponder, Platform, Pressable, ScrollView, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { api } from '../api';
 import { useLoad } from '../hooks';
@@ -170,14 +170,17 @@ export function MoreWheel() {
             <Glass radius={26} preset="soft" gloss style={{ padding: 14, width: '100%', maxWidth: 420, gap: 8 }}>
               <T weight="800" size={16} color={c.ink}>Open a workspace</T>
               <T size={12} color={c.mute}>You hold more than one role. Pick the workspace you want.</T>
-              {spaces.map((sp) => (
-                <Pressable key={sp[0]} onPress={() => openSpace(sp)} accessibilityRole="button" accessibilityLabel={`${roleLabel(sp[0])} workspace. ${sp[2]}`}>
-                  <Glass radius={18} preset="clear" gloss style={{ paddingVertical: 10, paddingHorizontal: 14 }}>
-                    <T weight="800" size={15} color={c.ink}>{roleLabel(sp[0])} workspace</T>
-                    <T size={12} color={c.mute}>{sp[2]}</T>
-                  </Glass>
-                </Pressable>
-              ))}
+              {/* long role lists scroll inside the card instead of running off the screen */}
+              <ScrollView style={{ maxHeight: Math.max(160, h - BAR_C - 200) }} contentContainerStyle={{ gap: 8 }} nestedScrollEnabled showsVerticalScrollIndicator accessibilityLabel="Workspaces">
+                {spaces.map((sp) => (
+                  <Pressable key={sp[0]} onPress={() => openSpace(sp)} accessibilityRole="button" accessibilityLabel={`${roleLabel(sp[0])} workspace. ${sp[2]}`}>
+                    <Glass radius={18} preset="clear" gloss style={{ paddingVertical: 10, paddingHorizontal: 14, minHeight: 44 }}>
+                      <T weight="800" size={15} color={c.ink}>{roleLabel(sp[0])} workspace</T>
+                      <T size={12} color={c.mute}>{sp[2]}</T>
+                    </Glass>
+                  </Pressable>
+                ))}
+              </ScrollView>
               <Pressable onPress={() => setPicker(false)} accessibilityRole="button" style={{ alignSelf: 'center', paddingVertical: 4 }}><T size={12} weight="700" color={c.mute}>Back to the swivel</T></Pressable>
             </Glass>
           </View>
