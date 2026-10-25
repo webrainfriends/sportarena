@@ -11,6 +11,7 @@ import { useLayout } from '../layout';
 import { c, grad } from '../theme';
 import { localToIso, dateTimeIn } from '../vtime';
 import { locale } from '../locale';
+import { WorkoutPlan, Compliance, Phases, WeeklyLoad, FOCUS, phaseFields, saveFile, blockFields, toBlock, resultFields, toActuals } from './workout';
 
 const tz = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return 'UTC'; } })();
 const KINDS = ['skill', 'tactical', 'conditioning', 'strength', 'recovery', 'mobility'].map((value) => ({ value, label: value[0].toUpperCase() + value.slice(1) }));
@@ -28,6 +29,8 @@ const sessionFields = [
   { key: 'time', label: 'Start time', type: 'time' },
   { key: 'duration_min', label: 'Duration (minutes)', type: 'stepper', min: 15, max: 480, step: 15, default: 60 },
   { key: 'target_rpe', label: 'Target effort 1–10 (optional, not medical)', type: 'stepper', min: 1, max: 10, step: 1, default: 6, optional: true },
+  { key: 'focus', label: 'Training focus', type: 'chips', options: FOCUS, optional: true },
+  { key: 'objective', label: 'Objective (what this session is for)', optional: true },
   { key: 'instructions', label: 'Instructions', type: 'multiline', optional: true },
 ];
 
@@ -144,12 +147,16 @@ export function CoachPlan({ id }) {
   const rev = p.revisions[p.revisions.length - 1];
   const act = async (fn, msg) => { try { await fn(); toast(msg); plan.reload(); } catch (e) { toast('' + e.message); } };
   const draftSessions = (rev?.content?.sessions ?? []);
-  const saveDraft = (sessions) => api.patch(`/training-plans/${p.id}/draft`, { content: { targets: rev.content.targets ?? [], sessions } });
+  // the draft's sessions with one session's blocks changed (an emptied list means no structure)
+  const editBlocks = (at, fn) => draftSessions.map((x, j) => (j === at ? { ...x, blocks: fn(x.blocks ?? []).length ? fn(x.blocks ?? []) : undefined } : x));
+  const saveDraft = (sessions, phases = rev.content.phases ?? []) => api.patch(`/training-plans/${p.id}/draft`, { content: { targets: rev.content.targets ?? [], phases, sessions } });
+  const exportPdf = () => act(async () => saveFile(await api.get(`/training-plans/${p.id}/export`)), 'PDF ready');
   return (
     <Screen onRefresh={plan.reload}>
       <H1>{p.title}</H1>
       <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><Status s={p.status} /><T size={13} color={c.mute}>{coach ? p.athlete_name : `Coach ${p.coach_name}`} · {p.sport}</T></View>
       {p.goal ? <T>{p.goal}</T> : null}
+      <Btn small title="Download PDF" color={c.paper} ink={c.ink} onPress={exportPdf} style={{ alignSelf: 'flex-start' }} />
 
       {rev?.response === 'pending' && !coach ? (
         <Card><T weight="700">Revision {rev.rev} is waiting for your answer</T>
@@ -163,6 +170,7 @@ export function CoachPlan({ id }) {
         <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
           {rev?.response === 'draft' ? <>
             <Btn small title="Add session" onPress={() => setForm({ mode: 'add' })} />
+            <Btn small title="Add phase" color={c.paper} ink={c.ink} onPress={() => setForm({ mode: 'phase' })} />
             <Btn small title="Propose to athlete" color={c.violet} onPress={() => act(() => api.post(`/training-plans/${p.id}/propose`), 'Sent to the athlete')} />
           </> : rev?.response !== 'pending' ? <Btn small title="Revise plan" onPress={() => act(() => api.post(`/training-plans/${p.id}/revisions`), 'Revision started')} /> : <T size={13} color={c.mute}>Revision {rev.rev} is with the athlete.</T>}
           <Btn small title="Close plan" color={c.paper} ink={c.ink} onPress={() => act(() => api.post(`/training-plans/${p.id}/close`), 'Plan closed')} />
@@ -170,23 +178,45 @@ export function CoachPlan({ id }) {
       ) : null}
       {!coach && p.status !== 'closed' ? <Btn small title="Stop this plan" color={c.paper} ink={c.ink} onPress={() => act(() => api.post(`/training-plans/${p.id}/close`), 'Plan closed')} style={{ alignSelf: 'flex-start' }} /> : null}
 
+      {p.targets?.length ? <Section title="Targets"><Card>{p.targets.map((x, i) => <T key={i} size={13}>• {x.label}{x.value ? `: ${x.value}` : ''}</T>)}</Card></Section> : null}
+      {p.phases?.length || (coach && rev?.response === 'draft' && (rev.content.phases ?? []).length) ? (
+        <Section title="Periodisation">
+          <Card><Phases phases={coach && rev?.response === 'draft' ? rev.content.phases : p.phases} onRemove={coach && rev?.response === 'draft' ? (pid) => act(() => saveDraft(draftSessions, (rev.content.phases ?? []).filter((x) => x.id !== pid)), 'Phase removed') : undefined} /></Card>
+        </Section>) : null}
+      {p.weeks?.length ? <Section title="Weekly load"><Card><WeeklyLoad weeks={p.weeks} /></Card></Section> : null}
+
       <Section title="Sessions">
         {!p.sessions.length && !(rev?.response === 'draft' && draftSessions.length) ? <Empty emoji="🗓️" title="No sessions yet" sub={coach ? 'Add sessions, then propose the plan.' : 'Sessions appear once you accept the plan.'} /> : null}
         {p.sessions.map((s) => (
           <Card key={s.id}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}><T weight="700" style={{ flex: 1 }}>{s.title}</T><Status s={s.status} /></View>
-            <T size={12} color={c.mute}>{dateTimeIn(s.starts_at, tz)} · {s.duration_min} min · {s.kind}{s.target_rpe ? ` · target effort ${s.target_rpe}/10` : ''}</T>
+            <T size={12} color={c.mute}>{dateTimeIn(s.starts_at, tz)} · {s.duration_min} min · {s.kind}{s.focus ? ` · ${s.focus}` : ''}{s.target_rpe ? ` · target effort ${s.target_rpe}/10` : ''}{s.planned_load ? ` · planned load ${s.planned_load}` : ''}{s.actual_load ? ` · actual load ${s.actual_load}` : ''}</T>
+            {s.objective ? <T size={13} weight="700">Objective: {s.objective}</T> : null}
             {s.instructions ? <T size={13}>{s.instructions}</T> : null}
+            <WorkoutPlan blocks={s.structure} rules={p.sport_rules} />
             {s.status !== 'scheduled' && s.status !== 'cancelled' ? <T size={12} color={c.mute}>Athlete report: {s.status}{s.athlete_rpe ? ` · effort ${s.athlete_rpe}/10` : ''}{s.athlete_feedback ? ` · “${s.athlete_feedback}”` : ''}</T> : null}
+            {s.athlete_data_hidden ? <T size={12} color={c.mute}>{s.athlete_data_hidden === 'guardian_consent' ? 'Results are hidden until a guardian allows coaching records to be shared.' : 'Results are hidden because you no longer coach this athlete.'}</T> : null}
+            <Compliance data={s.compliance} rules={p.sport_rules} />
             {s.coach_feedback ? <T size={12}>Coach feedback: {s.coach_feedback}</T> : null}
-            <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
-              {!coach && s.status === 'scheduled' ? <><Btn small title="Mark done" onPress={() => setForm({ mode: 'rate', s })} /><Btn small title="Skipped" color={c.paper} ink={c.ink} onPress={() => act(() => api.patch(`/training-sessions/${s.id}`, { status: 'skipped' }), 'Marked skipped')} /></> : null}
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+              {!coach && s.status === 'scheduled' && s.structure ? <Btn small title={s.actuals ? 'Update my results' : 'Log my results'} color={c.violet} onPress={() => setForm({ mode: 'log', s })} /> : null}
+              {!coach && s.status === 'scheduled' ? <><Btn small title={s.structure ? 'Finish workout' : 'Mark done'} onPress={() => setForm({ mode: s.structure ? 'finish' : 'rate', s })} /><Btn small title="Skipped" color={c.paper} ink={c.ink} onPress={() => act(() => api.patch(`/training-sessions/${s.id}`, { status: 'skipped' }), 'Marked skipped')} /></> : null}
               {coach && ['completed', 'skipped'].includes(s.status) ? <Btn small title={s.coach_feedback ? 'Edit feedback' : 'Add feedback'} color={c.paper} ink={c.ink} onPress={() => setForm({ mode: 'note', s })} /> : null}
+              {coach && s.status === 'scheduled' && rev?.response === 'draft' && draftSessions.some((x) => x.session_id === s.id) ? <Btn small title="Add workout block" color={c.violet} onPress={() => setForm({ mode: 'block', at: draftSessions.findIndex((x) => x.session_id === s.id) })} /> : null}
               {coach && s.status === 'scheduled' && rev?.response === 'draft' ? <Btn small title="Drop from revision" color={c.paper} ink={c.ink} onPress={() => act(() => saveDraft(draftSessions.filter((x) => x.session_id !== s.id)), 'Dropped from the draft')} /> : null}
             </View>
           </Card>
         ))}
-        {coach && rev?.response === 'draft' && draftSessions.filter((x) => !x.session_id).map((s, i) => <Row key={i} title={s.title} sub={`${dateTimeIn(s.starts_at, tz)} · ${s.duration_min} min · ${s.kind}`} right={<Tag label="Draft" />} />)}
+        {coach && rev?.response === 'draft' && draftSessions.map((s, i) => !s.session_id ? (
+          <Card key={i}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}><T weight="700" style={{ flex: 1 }}>{s.title}</T><Tag label="Draft" /></View>
+            <T size={12} color={c.mute}>{dateTimeIn(s.starts_at, tz)} · {s.duration_min} min · {s.kind}</T>
+            <WorkoutPlan blocks={s.blocks} rules={p.sport_rules} onRemove={(b) => act(() => saveDraft(editBlocks(i, (list) => list.filter((_, k) => k !== b))), 'Block removed')} />
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+              <Btn small title="Add workout block" color={c.violet} onPress={() => setForm({ mode: 'block', at: i })} />
+              <Btn small title="Remove session" color={c.paper} ink={c.ink} onPress={() => act(() => saveDraft(draftSessions.filter((_, j) => j !== i)), 'Session removed from the draft')} />
+            </View>
+          </Card>) : null)}
       </Section>
 
       <Section title="Revisions">
@@ -194,7 +224,26 @@ export function CoachPlan({ id }) {
       </Section>
 
       <FormSheet visible={form?.mode === 'add'} onClose={() => setForm(null)} title="Add session" submitLabel="Add to draft" initial={{}} fields={sessionFields}
-        onSubmit={async (v) => { await saveDraft([...rev.content.sessions, { starts_at: toIso(v), duration_min: Number(v.duration_min ?? 60), kind: v.kind ?? 'skill', title: v.title, instructions: v.instructions || undefined, target_rpe: v.target_rpe ? Number(v.target_rpe) : undefined }]); setForm(null); plan.reload(); }} />
+        onSubmit={async (v) => { await saveDraft([...rev.content.sessions, { starts_at: toIso(v), duration_min: Number(v.duration_min ?? 60), kind: v.kind ?? 'skill', title: v.title, instructions: v.instructions || undefined, objective: v.objective || undefined, focus: v.focus || undefined, target_rpe: v.target_rpe ? Number(v.target_rpe) : undefined }]); setForm(null); plan.reload(); }} />
+      <FormSheet visible={form?.mode === 'phase'} onClose={() => setForm(null)} title="Add phase" submitLabel="Add to draft" initial={{}} fields={phaseFields}
+        onSubmit={async (v) => { await saveDraft(draftSessions, [...(rev.content.phases ?? []), { id: `ph${Date.now().toString(36)}`, kind: v.kind, label: v.label, from: v.from, to: v.to, ...(v.focus ? { focus: v.focus } : {}) }]); setForm(null); plan.reload(); return 'Phase added to the draft'; }} />
+      <FormSheet visible={form?.mode === 'block'} onClose={() => setForm(null)} title="Add workout block" submitLabel="Add block" initial={{}} fields={blockFields(p.sport_rules)}
+        onSubmit={async (v) => { await saveDraft(editBlocks(form.at, (list) => [...list, toBlock(v)])); setForm(null); plan.reload(); return 'Block added to the draft'; }} />
+      {form?.s?.structure ? (() => {
+        const rf = resultFields(form.s.structure, p.sport_rules, form.s.actuals);
+        const save = (finish) => async (v) => {
+          try { await api.patch(`/training-sessions/${form.s.id}`, { actuals: toActuals(v, form.s.structure), expected_version: form.s.version, ...(finish ? { status: 'completed', athlete_rpe: Number(v.athlete_rpe), athlete_feedback: v.athlete_feedback || undefined } : {}) }); }
+          catch (e) { if (e.status === 409 || /another device/.test(e.message)) plan.reload(); throw e; }
+          setForm(null); plan.reload(); return finish ? 'Workout finished — well done' : 'Progress saved';
+        };
+        return form.mode === 'log'
+          ? <FormSheet visible onClose={() => setForm(null)} title="Log my results" submitLabel="Save progress" initial={rf.initial} fields={rf.fields} onSubmit={save(false)} />
+          : form.mode === 'finish'
+            ? <FormSheet visible onClose={() => setForm(null)} title="Finish workout" submitLabel="Finish workout" initial={{ ...rf.initial, athlete_rpe: 6 }}
+              fields={[...rf.fields, { key: 'athlete_rpe', label: 'Effort 1–10', type: 'stepper', min: 1, max: 10, step: 1, default: 6 }, { key: 'athlete_feedback', label: 'Notes for your coach (no medical details)', type: 'multiline', optional: true }]}
+              onSubmit={save(true)} />
+            : null;
+      })() : null}
       <FormSheet visible={form?.mode === 'rate'} onClose={() => setForm(null)} title="How did it go?" submitLabel="Save" initial={{ athlete_rpe: 6 }}
         fields={[{ key: 'athlete_rpe', label: 'Effort 1–10', type: 'stepper', min: 1, max: 10, step: 1, default: 6 }, { key: 'athlete_feedback', label: 'Notes for your coach (no medical details)', type: 'multiline', optional: true }]}
         onSubmit={async (v) => { await api.patch(`/training-sessions/${form.s.id}`, { status: 'completed', athlete_rpe: Number(v.athlete_rpe), athlete_feedback: v.athlete_feedback || undefined }); setForm(null); plan.reload(); }} />

@@ -101,3 +101,14 @@ Migrations 080–085, all additive.
 - Reordering plan blocks uses up/down buttons; drag-and-drop and a multi-player observation matrix are not built.
 - Native apps open evidence files on the web app; there is no in-app video player.
 - With no AI provider configured the copilot returns the plain source-linked summary; the model path is covered by tests with a stubbed provider.
+
+## Structured workouts, periodisation and PDF export (issue #326)
+Extends the shared training plan; nothing is duplicated and completed sessions are never rewritten.
+
+* **Schema** (`108_structured_workouts.sql`, additive): `training_sessions` gains `structure` (planned blocks), `actuals` (athlete results per block), `actuals_at`, `version` (optimistic concurrency), `objective`, `focus`. Existing rows keep NULLs and behave as before. Plan phases live in the revision `content` JSON (`phases`), so they are versioned and immutable once proposed with the rest of the revision.
+* **Blocks** (`src/workout-structure.js`): warm-up, main work, intervals, strength, rest, cool-down with sets, reps, load (kg), distance (m) or time (s), rest (s), pace/power zone (1-5, optional range), demonstration link (https only, no credentials) and notes. Units are canonical on the wire; the sport decides what is allowed (pace per km / 100 m / 500 m, power only for cycling, rowing, triathlon). Invalid combinations are 400 with the block named.
+* **Periodisation and load** (`src/training-load.js`): phases (preparation, pre-competition, competition, transition, return to play; non-overlapping dates), weekly microcycles with planned vs completed minutes, session-RPE load (effort x minutes), compliance and week-on-week change (a planned rise over 30% is flagged as a prompt to review, not as medical advice). All derived on read.
+* **Recording**: `PATCH /training-sessions/:id` with `actuals` + `expected_version` saves progress (stale copy -> 409); `status` finishes it. A finished session is final; an identical retry returns the same row.
+* **Access**: the coach sees the athlete's recorded results only while a coaching relationship is live and, for young people, guardian *coaching* consent stands; guardians can read (not write) with consent. A structured plan for a young person needs that consent to be proposed. Nothing is deleted when access ends.
+* **Export**: `GET /training-plans/:id/export` returns a PDF (base64 JSON, like other exports) built from the same view the screen shows, audit-logged. Also exposed over OpenAPI and MCP.
+* **Not covered**: acute:chronic workload ratios and wearable imports (no data source yet), and coach-authored pace entry as min:sec (steppers in seconds are used).
