@@ -216,7 +216,7 @@ export async function isolated(category, fn, fallback = null) {
 /** One tick of the background worker. Reminders, retries, push and email are independent: one failing never blocks the rest. */
 export async function notificationCycle() {
   const { dispatchPush } = await import('./push.js');
-  const reminders = await isolated('reminders', async () => (await queueReminders()) + (await queueHealthReminders()), 0);
+  const reminders = await isolated('reminders', async () => (await queueReminders()) + (await queueHealthReminders()) + (await (await import('./pathway-reminders.js')).queuePathwayReminders()), 0);
   const coaching = await isolated('coaching', async () => (await import('./coaching-notify.js')).queueCoachingReminders(), 0);
   const retries = await isolated('notify', () => runJobs('notify', notifyHandlers), null);
   const push = await isolated('push', () => dispatchPush(), null);

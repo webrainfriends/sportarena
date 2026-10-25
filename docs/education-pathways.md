@@ -76,3 +76,32 @@ Migrations `061_education_pathways.sql` and `073_study_discovery.sql` are additi
 column). Programmes, brochures, rules and sports on a programme are archived or marked removed, never deleted; enquiries are
 closed or withdrawn; credentials are revoked with the reason kept. There is no seed data: rules, institutions and programmes
 start empty and are entered by the platform team and the institutions.
+
+## Pathway plan (issue #335)
+
+The **My plan** tab of *Learn & study sport* turns the saved list into a planning workspace. It replaces the old *Saved* tab (one feature, one place): the bucket list is now its **Targets** section, so every existing saved item, stage and note is kept. Migration `108_pathway_planning.sql` is additive only (new tables, one new column, widened CHECK lists; no `DROP`, no cascade).
+
+| Part | Where it lives | What it adds |
+|---|---|---|
+| Targets | `study_bucket` (existing) | `team` targets; stages `offered`, `enrolled`, `declined`; `row_version` (stale edits → 409); every stage change is logged; listed institutions show the status of the athlete's own enquiry |
+| Goals | `pathway_goals` | built by picking, not typing (`get_pathway_goal_options`): a sport metric from the governed catalogue or the athlete's per-match figures (unit, direction, range and step from the catalogue; the start is the athlete's own current value, approved results never blended with self-logged), an academic measure with its real scale (GPA 4/10, %, SAT, ACT, IELTS, TOEFL, credits) or a yes/no milestone. Suggested targets go in the good direction (beat your best; a cohort median only when ≥5 comparable players exist). A goal on a result metric follows the athlete's best figure by itself (`current_source: live`); notes encrypted |
+| Deadlines | `pathway_deadlines` + live reads | own dates, plus (read, never copied) target application dates, trial bookings, offer replies, scholarship dates; one reminder per deadline (`notificationCycle`), re-armed when the date moves |
+| Scholarships | `pathway_scholarships`, `pathway_scholarship_items` | requirement checklist; evidence is *linked* from academic evidence, issued credentials, approved coach references/videos or results and labelled self-reported / issued / approved; removed or revoked evidence stops counting |
+| Offers | `pathway_offers` | tuition + other − scholarship = net, one currency per offer; comparison groups by currency and period and **never converts**; offers are labelled *entered by you, not verified*; one accepted offer per target; decisions are idempotent and move the target |
+| Outcomes | `pathway_events` (append-only trigger) | full history of stage changes, offers, scholarships, goals |
+| Sharing | `pathway_shares` | share chosen sections with a coach; checked live on every read |
+
+**Endpoints** (all capabilities, so REST + OpenAPI + MCP): `get_my_pathway`, `get_pathway_goal_options`, `list/add/update_pathway_goal(s)`, `list/add/update_pathway_deadline(s)`, `list/add/update_pathway_scholarship(s)`, `add/remove_scholarship_requirement`, `attach/detach_scholarship_evidence`, `list/add/update_pathway_offer(s)`, `compare_pathway_offers`, `decide_pathway_offer`, `get_pathway_outcomes`, `share_pathway`, `list_pathway_shares`, `revoke_pathway_share`, `list_shared_pathways`, `get_shared_pathway`, `export_pathway`, `export_shared_pathway`. `save_to_bucket`/`update_bucket_item`/`list_bucket` keep their paths and gain the extra targets, stages and `row_version`.
+
+**Permissions and consent**
+- Everything under `/me/pathway` is the athlete's own. A verified guardian passes `athlete_id` to act for a young person (`403` otherwise). A young person acting alone needs the guardian's current `recruitment` consent to *accept* an offer and `recruitment_sharing` consent to share; the guardian is told when they decide for the child.
+- A coach reads a plan only through a live share: not revoked, not expired, the coach still coaches the athlete, and for a young person `recruitment_sharing` consent still holds and the coach may still see them. Otherwise the answer is `404`, so existence is not leaked. Revoking (athlete, guardian or coach), ending the coaching relationship or withdrawing consent cuts access on the next request, including exports. Each coach read and export is audit-logged.
+- Free text the athlete types (notes, conditions, decision notes) is encrypted (`*_enc`) and never appears in what a coach sees or exports; evidence content and enquiry messages are never shared, only titles and provenance. Sharing is to a named coach (not a bearer link), so there is no link to leak or to outlive a revocation; the recruitment passport links are unchanged.
+
+**Failure behaviour**: invalid input → `400`; not yours / not found → `404`; stale `row_version` → `409 stale_version`; missing guardian consent → `409 guardian_consent_required`; duplicates (same goal, deadline, scholarship, offer, share) return the existing row; deciding the same way twice is a no-op.
+
+**Recovery / rollback**: nothing is deleted anywhere; removal sets `removed_at`/`revoked_at`. To roll back, stop using the new tables and columns; the old bucket list keeps working because its columns, ids and statuses are unchanged.
+
+**Operations**: no new configuration. Deadline reminders run inside the existing notification cycle.
+
+**Platforms**: one Expo / React Native codebase serves iOS, iPadOS, Android and web; the plan uses only shared components (sheets, calendar picker, steppers, chips) and `Share` (native) / download (web) for CSV. It was exercised in a browser at phone (390 px) and tablet (1180 px) widths by `scripts/e2e/pathway-plan-journey.mjs`; it has not been run on a physical iOS or Android device from this environment.
