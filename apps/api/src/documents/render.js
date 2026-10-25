@@ -511,10 +511,12 @@ export async function renderTrackingSheet({ sheet, layout, kit, logo, code, qr, 
   for (const [k, v] of meta) { label(k.toUpperCase(), cx, my, mw - 6, { size: 6.5, color: '#666666' }); label(v, cx, my + 9, mw - 6, { size: 9 }); cx += mw; }
   doc.y = my + 28;
   const home = sheet.labels?.home && sheet.labels.home !== 'Home' ? sheet.labels.home : '', away = sheet.labels?.away && sheet.labels.away !== 'Away' ? sheet.labels.away : '';
-  const ny = doc.y;
-  label('HOME / SIDE A', left, ny, width / 2 - 8, { size: 6.5, color: '#666666' }); label('AWAY / SIDE B', left + width / 2, ny, width / 2 - 8, { size: 6.5, color: '#666666' });
-  label(home || '_______________________________', left, ny + 9, width / 2 - 8, { size: 11, bold: true }); label(away || '_______________________________', left + width / 2, ny + 9, width / 2 - 8, { size: 11, bold: true });
-  doc.y = ny + 32;
+  if (!layout.form?.noTeams) {
+    const ny = doc.y;
+    label('HOME / SIDE A', left, ny, width / 2 - 8, { size: 6.5, color: '#666666' }); label('AWAY / SIDE B', left + width / 2, ny, width / 2 - 8, { size: 6.5, color: '#666666' });
+    label(home || '_______________________________', left, ny + 9, width / 2 - 8, { size: 11, bold: true }); label(away || '_______________________________', left + width / 2, ny + 9, width / 2 - 8, { size: 11, bold: true });
+    doc.y = ny + 32;
+  }
 
   const grid = (title, cols, rows, o = {}) => {
     room(30 + Math.min(rows, 6) * (o.h ?? 16));
@@ -549,7 +551,7 @@ export async function renderTrackingSheet({ sheet, layout, kit, logo, code, qr, 
   } else {
     grid('Final totals', [{ t: '', w: 0.4, fixed: ['Result as recorded by the official'] }, { t: 'Home', w: 0.3 }, { t: 'Away', w: 0.3 }], 1, { h: 24, width: width * 0.7 });
   }
-  if (layout.stats.length && !(layout.form && layout.mode === 'manual')) grid('Tally', [{ t: 'Stat', w: 0.28, fixed: layout.stats.map((s) => s.label) }, { t: 'Home', w: 0.36 }, { t: 'Away', w: 0.36 }], layout.stats.length, { h: 15, width: width * 0.7 });
+  if (layout.stats.length && !(layout.form && (layout.mode === 'manual' || layout.form.noTally))) grid('Tally', [{ t: 'Stat', w: 0.28, fixed: layout.stats.map((s) => s.label) }, { t: 'Home', w: 0.36 }, { t: 'Away', w: 0.36 }], layout.stats.length, { h: 15, width: width * 0.7 });
   for (const n of layout.notes_fields) { room(48); const ny2 = doc.y; label(`${n.label.toUpperCase()}  (custom - not an official field)`, left, ny2, width, { size: 7, color: '#666666' }); box(left, ny2 + 10, width, 28); doc.y = ny2 + 46; }
   room(60); const nty = doc.y; label('NOTES', left, nty, width, { size: 7, color: '#666666' }); box(left, nty + 10, width, 36); doc.y = nty + 56;
   if (layout.signatures) {
@@ -565,6 +567,57 @@ export async function renderTrackingSheet({ sheet, layout, kit, logo, code, qr, 
     const y = doc.page.height - 26;
     label(kit?.footer_text || 'Scores on this sheet are unofficial until a linked result is reviewed and approved in SportArena.', left, y, width - 230, { size: 7 });
     label(`${sheet.ref} · template v${context?.template_version ?? 1} · Page ${i + 1} of ${range.count}`, left + width - 230, y, 230, { size: 7, align: 'right' });
+  }
+  doc.end();
+  await done;
+  return { buffer: Buffer.concat(chunks), pages: range.count };
+}
+
+/**
+ * The rulebook as a printable booklet: one card per rule, local changes marked against the standard. Text comes from the catalogue
+ * (rulebook/catalog.js) and the local values it is given; nothing is computed here.
+ */
+export async function renderRulebook({ book, local }) {
+  const f = fonts();
+  assertGlyphs([book.name, book.body, book.note, local?.name, ...book.cards.flatMap((c) => [c.no, c.title, c.body, ...c.params.flatMap((p) => [p.label, String(p.value), String(p.std)])])], f);
+  const accent = '#0F6E56', ink = '#222222';
+  const doc = new PDFDocument({ size: 'A4', margin: 40, bufferPages: true, compress: true, info: { Title: `${book.name} rulebook`, Author: 'Sportarena', Producer: 'Sportarena' } });
+  const chunks = [];
+  doc.on('data', (c) => chunks.push(c));
+  const done = new Promise((res, rej) => { doc.on('end', res); doc.on('error', rej); });
+  const left = doc.page.margins.left, width = doc.page.width - left - doc.page.margins.right;
+  const text = (t, o = {}) => doc.font(o.bold ? f.bold : f.regular).fontSize(o.size ?? 9.5).fillColor(o.color ?? ink).text(t, left + (o.indent ?? 0), doc.y, { width: width - (o.indent ?? 0), lineGap: o.gap ?? 1.5 });
+  const room = (h) => { if (doc.y + h > doc.page.height - doc.page.margins.bottom - 20) doc.addPage(); };
+  const nice = (v, unit) => (typeof v === 'boolean' ? (v ? 'on' : 'off') : `${v}${unit ? ` ${unit}` : ''}`);
+
+  text(book.name, { bold: true, size: 22, color: accent });
+  text(`${book.format ? `${book.format} · ` : ''}Source: ${book.body}`, { size: 9, color: '#555555' });
+  text(`Official book: ${book.official_url}`, { size: 8, color: '#555555' });
+  doc.moveDown(0.4);
+  if (local) text(`Local rules in force: ${local.name} (${local.scope}, version ${local.version}). Changed settings are marked against the standard.`, { bold: true, size: 9, color: '#B54708' });
+  else text('Standard rules.', { size: 9, color: '#555555' });
+  doc.moveDown(0.6);
+
+  for (const c of book.cards) {
+    const changed = c.params.some((p) => p.changed);
+    room(60 + c.body.length / 5);
+    const y0 = doc.y;
+    doc.font(f.bold).fontSize(7.5).fillColor('#666666').text(c.no.toUpperCase(), left, y0, { width: 90 });
+    doc.font(f.bold).fontSize(12).fillColor(accent).text(c.title, left + 92, y0, { width: width - 92 });
+    doc.y = Math.max(doc.y, y0 + 14);
+    text(c.body, { indent: 92 });
+    for (const p of c.params) text(`${p.changed ? 'LOCAL' : 'Setting'}: ${p.label} ${nice(p.value, p.unit)}${p.changed ? `   (standard ${nice(p.std, p.unit)})` : ''}`, { indent: 92, bold: p.changed, size: 8.5, color: p.changed ? '#B54708' : '#555555' });
+    doc.moveDown(0.3);
+    doc.moveTo(left, doc.y).lineTo(left + width, doc.y).lineWidth(changed ? 1 : 0.4).stroke(changed ? '#B54708' : '#CCCCCC');
+    doc.moveDown(0.5);
+  }
+  text(book.note, { size: 8, color: '#666666' });
+
+  const range = doc.bufferedPageRange();
+  for (let i = 0; i < range.count; i++) {
+    doc.switchToPage(range.start + i);
+    doc.page.margins.bottom = 0;
+    doc.font(f.regular).fontSize(7).fillColor('#666666').text(`${book.name} rulebook · Page ${i + 1} of ${range.count}`, left, doc.page.height - 28, { width, align: 'right', lineBreak: false });
   }
   doc.end();
   await done;

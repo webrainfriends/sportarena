@@ -7,7 +7,7 @@ const { pool } = await import('../src/db.js');
 const { migrate } = await import('../src/migrate.js');
 const { createApp } = await import('../src/http.js');
 const { buildLayout, variantsFor } = await import('../src/tracking/logic.js');
-const { builtinRuleset } = await import('../src/scoring/rulesets.js');
+const { builtinRuleset, cricketRuleset } = await import('../src/scoring/rulesets.js');
 const { formFor } = await import('../src/tracking/forms.js');
 const { renderTrackingSheet } = await import('../src/documents/render.js');
 
@@ -55,12 +55,14 @@ test('every sport in the catalogue gets a real in-match scoresheet, not the bare
 
 test('cricket formats set the overs; custom options and old layouts keep working', async () => {
   const { rows: [cricket] } = await pool.query("SELECT * FROM sports WHERE slug='cricket'");
-  assert.deepEqual(variantsFor(cricket, builtinRuleset(cricket)), ['T10', 'T20', 'ODI']);
-  const t20 = buildLayout(cricket, builtinRuleset(cricket), 'T20'), odi = buildLayout(cricket, builtinRuleset(cricket), 'ODI');
+  assert.deepEqual(variantsFor(cricket, builtinRuleset(cricket)), ['T20', 'ODI', 'Test', 'T10']);
+  const t20 = buildLayout(cricket, cricketRuleset('T20'), 'T20'), odi = buildLayout(cricket, cricketRuleset('ODI'), 'ODI'), test = buildLayout(cricket, cricketRuleset('Test'), 'Test');
+  assert.equal(test.form.sections.filter((s) => s.t === 'cricket').length, 4, 'a Test has four innings');
+  assert.equal(test.form.sections.find((s) => s.t === 'cricket').test, true);
   assert.equal(t20.form.sections.find((s) => s.t === 'cricket').overs, 20);
   assert.equal(odi.form.sections.find((s) => s.t === 'cricket').overs, 50);
   assert.equal(t20.orientation, 'landscape');
-  assert.equal(buildLayout(cricket, builtinRuleset(cricket), 'T20', { orientation: 'portrait' }).orientation, 'portrait');
+  assert.equal(buildLayout(cricket, cricketRuleset('T20'), 'T20', { orientation: 'portrait' }).orientation, 'portrait');
   const { rows: [football] } = await pool.query("SELECT * FROM sports WHERE slug='football'");
   const plain = await pdfOf(football, 'Standard', { signatures: false, notes_fields: ['Weather'], hidden_stats: ['corner'] });
   assert.equal(plain.buffer.subarray(0, 4).toString(), '%PDF');
@@ -74,7 +76,7 @@ test('creating a sheet for a non-ruleset sport pins a form and serves the PDF; t
   const r = await api('POST', '/auth/register', { body: { handle: 'forms_1', display_name: 'Forms', email: 'forms1@example.com', password: 'correct-horse-battery', roles: ['athlete'] } });
   assert.equal(r.status, 201);
   const token = r.body.token;
-  for (const [sport, variant, mode] of [['cricket', 'T20', 'manual'], ['boxing', undefined, 'manual'], ['weightlifting', undefined, 'manual'], ['high-jump', undefined, 'results'], ['football', undefined, 'points_events'], ['badminton', 'Doubles', 'sets']]) {
+  for (const [sport, variant, mode] of [['cricket', 'T20', 'cricket'], ['cricket', 'Test', 'cricket'], ['boxing', undefined, 'scorecard'], ['weightlifting', undefined, 'results'], ['high-jump', undefined, 'results'], ['football', undefined, 'points_events'], ['badminton', 'Doubles', 'sets']]) {
     const s = await api('POST', '/tracking/sheets', { token, body: { sport, variant } });
     assert.equal(s.status, 201, `${sport}: ${JSON.stringify(s.body)}`);
     assert.equal(s.body.template.layout.mode, mode, sport);
