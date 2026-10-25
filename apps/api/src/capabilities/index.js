@@ -45,6 +45,7 @@ import './score-sheets.js';
 import './tracking-sheets.js';
 import './result-proposals.js';
 import './tracking-files.js';
+import './rulebook.js';
 import './event-ai.js';
 import './officials.js';
 import './event-invites.js';

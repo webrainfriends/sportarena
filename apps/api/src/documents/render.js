@@ -570,3 +570,54 @@ export async function renderTrackingSheet({ sheet, layout, kit, logo, code, qr, 
   await done;
   return { buffer: Buffer.concat(chunks), pages: range.count };
 }
+
+/**
+ * The rulebook as a printable booklet: one card per rule, local changes marked against the standard. Text comes from the catalogue
+ * (rulebook/catalog.js) and the local values it is given; nothing is computed here.
+ */
+export async function renderRulebook({ book, local }) {
+  const f = fonts();
+  assertGlyphs([book.name, book.body, book.note, local?.name, ...book.cards.flatMap((c) => [c.no, c.title, c.body, ...c.params.flatMap((p) => [p.label, String(p.value), String(p.std)])])], f);
+  const accent = '#0F6E56', ink = '#222222';
+  const doc = new PDFDocument({ size: 'A4', margin: 40, bufferPages: true, compress: true, info: { Title: `${book.name} rulebook`, Author: 'Sportarena', Producer: 'Sportarena' } });
+  const chunks = [];
+  doc.on('data', (c) => chunks.push(c));
+  const done = new Promise((res, rej) => { doc.on('end', res); doc.on('error', rej); });
+  const left = doc.page.margins.left, width = doc.page.width - left - doc.page.margins.right;
+  const text = (t, o = {}) => doc.font(o.bold ? f.bold : f.regular).fontSize(o.size ?? 9.5).fillColor(o.color ?? ink).text(t, left + (o.indent ?? 0), doc.y, { width: width - (o.indent ?? 0), lineGap: o.gap ?? 1.5 });
+  const room = (h) => { if (doc.y + h > doc.page.height - doc.page.margins.bottom - 20) doc.addPage(); };
+  const nice = (v, unit) => (typeof v === 'boolean' ? (v ? 'on' : 'off') : `${v}${unit ? ` ${unit}` : ''}`);
+
+  text(book.name, { bold: true, size: 22, color: accent });
+  text(`${book.format ? `${book.format} · ` : ''}Source: ${book.body}`, { size: 9, color: '#555555' });
+  text(`Official book: ${book.official_url}`, { size: 8, color: '#555555' });
+  doc.moveDown(0.4);
+  if (local) text(`Local rules in force: ${local.name} (${local.scope}, version ${local.version}). Changed settings are marked against the standard.`, { bold: true, size: 9, color: '#B54708' });
+  else text('Standard rules.', { size: 9, color: '#555555' });
+  doc.moveDown(0.6);
+
+  for (const c of book.cards) {
+    const changed = c.params.some((p) => p.changed);
+    room(60 + c.body.length / 5);
+    const y0 = doc.y;
+    doc.font(f.bold).fontSize(7.5).fillColor('#666666').text(c.no.toUpperCase(), left, y0, { width: 90 });
+    doc.font(f.bold).fontSize(12).fillColor(accent).text(c.title, left + 92, y0, { width: width - 92 });
+    doc.y = Math.max(doc.y, y0 + 14);
+    text(c.body, { indent: 92 });
+    for (const p of c.params) text(`${p.changed ? 'LOCAL' : 'Setting'}: ${p.label} ${nice(p.value, p.unit)}${p.changed ? `   (standard ${nice(p.std, p.unit)})` : ''}`, { indent: 92, bold: p.changed, size: 8.5, color: p.changed ? '#B54708' : '#555555' });
+    doc.moveDown(0.3);
+    doc.moveTo(left, doc.y).lineTo(left + width, doc.y).lineWidth(changed ? 1 : 0.4).stroke(changed ? '#B54708' : '#CCCCCC');
+    doc.moveDown(0.5);
+  }
+  text(book.note, { size: 8, color: '#666666' });
+
+  const range = doc.bufferedPageRange();
+  for (let i = 0; i < range.count; i++) {
+    doc.switchToPage(range.start + i);
+    doc.page.margins.bottom = 0;
+    doc.font(f.regular).fontSize(7).fillColor('#666666').text(`${book.name} rulebook · Page ${i + 1} of ${range.count}`, left, doc.page.height - 28, { width, align: 'right', lineBreak: false });
+  }
+  doc.end();
+  await done;
+  return { buffer: Buffer.concat(chunks), pages: range.count };
+}
