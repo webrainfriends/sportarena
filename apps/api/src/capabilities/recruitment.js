@@ -92,7 +92,7 @@ cap({
     const counts = Object.fromEntries(STAGES.map((s) => [s, 0]));
     for (const r of await many('SELECT stage, count(*)::int AS n FROM billboard_responses WHERE post_id=$1 GROUP BY stage', [i.id])) counts[r.stage] = r.n;
     const rows = await many(`${CANDIDATE} WHERE r.post_id=$1 AND ($2::text[] IS NULL OR r.stage = ANY($2)) ORDER BY r.created_at, r.id LIMIT $3 OFFSET $4`, [i.id, i.stage ? (i.stage === 'closed' ? ['accepted', 'declined', 'withdrawn'] : [i.stage]) : null, i.limit, i.offset]);
-    return { post: { id: post.id, title: post.title, kind: post.kind, status: post.status, positions_needed: post.positions_needed }, counts, candidates: await maskRows(rows) };
+    return { post: { id: post.id, title: post.title, kind: post.kind, author_id: post.author_id, author_name: (await one('SELECT display_name FROM users WHERE id=$1', [post.author_id]))?.display_name ?? null, status: post.status, positions_needed: post.positions_needed }, counts, candidates: await maskRows(rows) };
   },
 });
 

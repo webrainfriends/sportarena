@@ -31,6 +31,6 @@ Rules (server side, `src/opportunity.js`): paid work needs an amount and, for a 
 
 ## Operations and limits
 * Expiry is evaluated on read/apply (no job): an expired post keeps `status='open'` with `is_expired=true`.
-* Sponsor-call acceptance links an event/game role only; funding itself stays in the sponsorship models.
+* Sponsor calls and sponsorship requests: after acceptance the sponsor makes the offer through the existing `propose_sponsorship` (new optional `billboard_response_id`), which keeps all its budget, approval and youth checks. The offer is linked both ways (`sponsorships.billboard_response_id`, engagement type `sponsorship`), one offer per accepted application. Migration `109_opportunity_sponsorship_link.sql`.
 * A paid assignment records the payment as *due* in the team ledger; paying it is done by the existing settlement flow.
 * Native iOS/iPadOS/Android builds are verified by `expo export`; on-device testing is manual.
