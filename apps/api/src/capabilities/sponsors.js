@@ -322,6 +322,27 @@ const forRecipient = (r) => {
   return rest;
 };
 
+/** The accepted application a sponsorship offer follows from: it must be accepted, on a sponsorship post, and match the sponsor and recipient of the offer. */
+async function responseForOffer(c, user, sponsor, i) {
+  const r = (await c.query('SELECT * FROM billboard_responses WHERE id=$1 FOR UPDATE', [i.billboard_response_id])).rows[0];
+  const p = r && (await c.query('SELECT * FROM billboard_posts WHERE id=$1', [r.post_id])).rows[0];
+  const party = r && (user.id === r.responder_id || user.id === p.author_id || isAdmin(user));
+  if (!r || !party) throw notFound('Application');
+  if (r && !isAdmin(user) && user.id !== (p.kind === 'sponsor_call' ? p.author_id : r.responder_id)) throw forbidden('Only the sponsor in this application can make the offer');
+  if (r.stage !== 'accepted') throw conflict('Only an accepted application can lead to a sponsorship offer', { code: 'application_not_accepted' });
+  if (!['sponsor_call', 'sponsorship_wanted'].includes(p.kind)) throw badRequest('Only sponsor calls and sponsorship requests lead to a sponsorship offer');
+  // a sponsor call: the sponsor who posted it offers to the athlete who answered; a request: the sponsor who answered offers to who asked
+  const target = p.kind === 'sponsor_call' ? ['athlete', r.responder_id] : [p.team_id ? 'team' : 'athlete', p.team_id ?? p.author_id];
+  if (i.target_type !== target[0] || i.target_id !== target[1]) throw badRequest('This offer must be for the person or team in the application');
+  if (r.engagement_id) throw conflict('A sponsorship offer was already made from this application', { code: 'already_linked' });
+  return r;
+}
+async function linkResponse(c, r, sponsorshipId, actor) {
+  await c.query('UPDATE sponsorships SET billboard_response_id=$2 WHERE id=$1', [sponsorshipId, r.id]);
+  await c.query("UPDATE billboard_responses SET engagement_type='sponsorship', engagement_id=$2 WHERE id=$1", [r.id, sponsorshipId]);
+  await c.query("INSERT INTO recruitment_events(response_id, kind, actor_id, note, created_at) VALUES ($1,'engagement',$2,'Sponsorship offer made',clock_timestamp())", [r.id, actor]);
+}
+
 cap({
   name: 'propose_sponsorship', method: 'POST', path: '/sponsorships', tag: 'Sponsors', status: 201,
   summary: 'Offer sponsorship (money and/or in-kind support) to an event, team or athlete. The target owner must accept. An athlete can only be approached if they opted in (and, if they asked for it, only by verified sponsors); a sponsor cannot repeat an open offer, or re-offer within 30 days of a decline. Athlete offers state objectives, deliverables and a period.',
@@ -331,6 +352,7 @@ cap({
     starts_on: date.optional(), ends_on: date.optional(), objectives: z.string().max(1000).optional(), deliverables: z.string().max(1500).optional(), message: z.string().max(1000).optional(),
     lines: z.array(LINE).max(12).optional().describe('structured contribution lines (money / goods / endorsement, one-off or fixed-term recurring). Reviewable with preview_sponsorship_schedule; obligations are generated when the recipient accepts this exact version'),
     timezone: z.string().max(60).default('UTC'),
+    billboard_response_id: id.optional().describe('the accepted Billboard application this offer follows from (a sponsor call you posted, or a sponsorship request a sponsor answered); the offer is then linked to it'),
     client_ref: z.string().min(8).max(80).optional().describe('a unique reference the app generates once per offer form; sending the same reference again returns the offer already made instead of a second one (safe retry after a timeout or double tap)'),
   }),
   async handler({ user }, i) {
@@ -359,6 +381,7 @@ cap({
       if (!i.deliverables && !lines.length && !i.amount_cents && !i.in_kind) throw badRequest('Offer money, in-kind support, an endorsement, or a mix');
     }
     return tx(async (c) => {
+      const from = i.billboard_response_id ? await responseForOffer(c, user, s, i) : null;
       if (i.target_type === 'athlete') {
         if (i.target_id === user.id) throw badRequest('You cannot sponsor yourself');
         // a young person is only reachable by a sponsor a verified guardian authorized by name; opting in to discovery never opens that door (#307)
@@ -382,6 +405,7 @@ cap({
         Object.assign(row, (await c.query("UPDATE sponsorships SET agreement_ref='SPA-'||upper(substr(id::text,1,8)), timezone=$2, currency=$3 WHERE id=$1 RETURNING agreement_ref, timezone, currency, terms_version", [row.id, i.timezone, cash.length === 1 ? cash[0][0] : null])).rows[0]);
         await saveLines(c, row.id, 1, lines);
       }
+      if (from) await linkResponse(c, from, row.id, user.id);
       await snapshotIdentity(c, row.id, 1, s.id, user.id);
       await logHistory(c, row.id, 1, user.id, 'proposed');
       const held = i.budget_id ? await controlByBudget(c, user, s, row, i.budget_id, cash, i) : false;
