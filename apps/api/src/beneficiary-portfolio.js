@@ -23,12 +23,14 @@ export const recipientSql = (a) => `((${a}.target_type='event' AND ${a}.target_i
 
 /**
  * The shared CTE chain. $1 user, $2 sponsor, $3 program, $4 target type, $5 search, $6 stage, $7 has_gap, $8 risk, $9 currency, $10 target id.
- * `view` decides whose authority scopes the rows; `action` is the sponsor permission needed (read for the screen, export for the CSV).
+ * `view` decides whose authority scopes the rows (sponsor | recipient | athlete); `action` is the sponsor permission needed (read for the screen, export for the CSV).
  */
 export function chain(view, action = 'read') {
   const sponsor = view === 'sponsor';
-  const dealScope = sponsor ? sponsorStaffSql(1, action) : recipientSql('ss');
-  const appScope = sponsor ? sponsorBrandSql(1, action) : `(a.applicant_id=$1 OR ${recipientSql('a')})`;
+  // 'athlete' = one athlete's own workspace ($10): the caller's right to see it (self, guardian, consented coach) is decided before the query runs
+  const athlete = view === 'athlete';
+  const dealScope = athlete ? "($1::uuid IS NOT NULL AND ss.target_type='athlete' AND ss.target_id=$10)" : sponsor ? sponsorStaffSql(1, action) : recipientSql('ss');
+  const appScope = athlete ? "($1::uuid IS NOT NULL AND a.target_type='athlete' AND a.target_id=$10)" : sponsor ? sponsorBrandSql(1, action) : `(a.applicant_id=$1 OR ${recipientSql('a')})`;
   return `
 deals AS (
   SELECT ss.id, ss.sponsor_id, ss.target_type, ss.target_id, ss.status, ss.visibility, ss.ends_on, ss.program_id,

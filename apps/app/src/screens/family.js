@@ -4,6 +4,7 @@ import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { useNav } from '../nav';
+import { GuardianCalendarSheet } from './calendar-sync';
 import { FormSheet } from '../FormSheet';
 import { Btn, Card, Empty, ErrorBox, H1, Loading, Row, Screen, Section, Sheet, T, Tag } from '../ui';
 import { GuardianSponsors } from './sponsor-youth';
@@ -24,6 +25,7 @@ const PURPOSES = {
   coaching: ['Coaching notes', 'Let a coach share notes, goals, actions and progress reports with them and with you.'],
   recruitment: ['Recruiters & scouts', 'Let verified recruiters you approve see the parts of their sport profile you choose. You approve each request and can end access at any time.'],
   recruitment_sharing: ['Recruitment sharing', 'Let a verified guardian arrange passport links for recruiters, and let their coaches write references. Withdrawing it stops every link at once.'],
+  calendar_sharing: ['Calendar sharing', 'Let a verified guardian arrange calendar subscriptions and imports for this young person. Withdrawing it switches every feed and imported calendar off at once.'],
 };
 const CONSENT_STATE = { active: ['Allowed', c.lime], expired: ['Expired — renew to allow again', c.orangeSoft], revoked: ['Withdrawn', c.pinkSoft], not_given: ['Not allowed', c.violetSoft], lapsed: ['Paused — guardian not verified', c.orangeSoft] };
 const stateTag = (s) => <Tag label={STATE[s]?.[0] ?? label(s)} color={STATE[s]?.[1]} />;
@@ -89,7 +91,7 @@ function Pickup({ child, onClose }) {
   );
 }
 
-function LinkCard({ l, reload, onConsents, onPickup, onSponsors }) {
+function LinkCard({ l, reload, onConsents, onPickup, onSponsors, onCalendar }) {
   const { toast } = useSession();
   const { push } = useNav();
   const [ev, setEv] = useState(false);
@@ -115,11 +117,13 @@ function LinkCard({ l, reload, onConsents, onPickup, onSponsors }) {
         {mine === 'guardian' && l.status === 'active' ? <>
           <Btn small title="Permissions" color={c.pink} onPress={() => onConsents(l.child)} />
           <Btn small title="Pickup & check-in" color={c.violet} onPress={() => onPickup(l.child)} />
+          <Btn small title="Calendar" color={c.paper} ink={c.ink} onPress={() => onCalendar(l.child)} />
           <Btn small title="Sponsors" color={c.paper} ink={c.ink} onPress={() => onSponsors(l.child)} />
           <Btn small title="Wellness sharing" color={c.paper} ink={c.ink} onPress={() => push('ChildWellnessSharing', { child_id: l.child.id, name: l.child.display_name })} />
           <Btn small title="Season reports" color={c.paper} ink={c.ink} onPress={() => push('ChildSeasonReports', { child_id: l.child.id, name: l.child.display_name })} />
           <Btn small title="Development" color={c.paper} ink={c.ink} onPress={() => push('MyDevelopment', { child_id: l.child.id, name: l.child.display_name })} />
           <Btn small title="Career" color={c.paper} ink={c.ink} onPress={() => push('CareerTimeline', { user_id: l.child.id })} />
+          <Btn small title="Funding" color={c.paper} ink={c.ink} onPress={() => push('PlayerFunding', { athlete_id: l.child.id, name: l.child.display_name })} />
           <Btn small title="Applications" color={c.paper} ink={c.ink} onPress={() => push('MyApplications', { child_id: l.child.id, name: l.child.display_name })} />
           <Btn small title="Opportunities" color={c.paper} ink={c.ink} onPress={() => push('OpportunityMatches', { child_id: l.child.id, name: l.child.display_name })} />
           <Btn small title="Recruiters" color={c.paper} ink={c.ink} onPress={() => push('RecruiterAccess', { athlete_id: l.child.id })} />
@@ -204,6 +208,7 @@ export function Family() {
   const [consents, setConsents] = useState(null);
   const [pickup, setPickup] = useState(null);
   const [sponsors, setSponsors] = useState(null);
+  const [calendar, setCalendar] = useState(null);
   const reload = () => { st.reload(); links.reload(); };
   const status = st.data;
   return (
@@ -238,6 +243,7 @@ export function Family() {
       <Consents child={consents} onClose={() => setConsents(null)} />
       <Pickup child={pickup} onClose={() => setPickup(null)} />
       <GuardianSponsors child={sponsors} onClose={() => setSponsors(null)} />
+      <GuardianCalendarSheet child={calendar} onClose={() => setCalendar(null)} />
     </Screen>
   );
 }

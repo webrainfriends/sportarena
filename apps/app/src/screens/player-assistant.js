@@ -65,7 +65,7 @@ function ReviewSheet({ answer, visible, onClose, onDone }) {
     setBusy(true); setErr(null);
     try {
       const chosen = acts.filter((x) => on.has(x.id));
-      const r = await api.post(`/me/assistant/answers/${answer.id}/resolve`, { decision: 'accept', row_version: answer.row_version, actions: chosen.map((x) => ({ item_id: x.id, ...(titles[x.id] && titles[x.id] !== x.action.title ? { title: titles[x.id] } : {}) })) });
+      const r = await api.post(`/me/assistant/answers/${answer.id}/resolve`, { decision: 'accept', row_version: answer.row_version, actions: chosen.map((x) => ({ item_id: x.id, ...(titles[x.id]?.trim() && titles[x.id] !== x.action.title ? { title: titles[x.id].trim() } : {}) })) });
       const goals = r.resolution?.goals?.length ?? 0;
       toast(goals ? `${goals} goal${goals === 1 ? '' : 's'} added to your development` : 'Done');
       onDone(r);
@@ -75,7 +75,7 @@ function ReviewSheet({ answer, visible, onClose, onDone }) {
     setBusy(false);
   };
   return (
-    <Sheet visible={visible} onClose={onClose} title="Review before adding" footer={<><Btn small title="Not now" color={c.paper} ink={c.ink} onPress={onClose} /><View style={{ flex: 1 }} /><Btn title={`Add ${on.size}`} disabled={!on.size} loading={busy} onPress={confirm} /></>}>
+    <Sheet visible={visible} onClose={onClose} title="Review before adding" footer={<><Btn small title="Not now" color={c.paper} ink={c.ink} onPress={onClose} /><View style={{ flex: 1 }} /><Btn title={`Add ${on.size}`} disabled={!on.size || acts.some((x) => on.has(x.id) && x.action.goal?.needs_title && (titles[x.id] ?? '').trim().length < 2)} loading={busy} onPress={confirm} /></>}>
       <T size={13} color={c.mute}>Only what you tick is saved, as your own record. The assistant never accepts an offer, applies, signs or pays for you.</T>
       {acts.map((x) => (
         <View key={x.id} style={{ borderTopWidth: 1, borderColor: c.line, paddingTop: 10, gap: 6 }}>
@@ -83,7 +83,7 @@ function ReviewSheet({ answer, visible, onClose, onDone }) {
             <View style={{ width: 26, height: 26, borderRadius: 8, borderWidth: 2, borderColor: c.ink, backgroundColor: on.has(x.id) ? c.ink : 'transparent', alignItems: 'center', justifyContent: 'center' }}>{on.has(x.id) ? <T color={c.inkOn} size={14} weight="800">✓</T> : null}</View>
             <View style={{ flex: 1 }}><T weight="700">{x.action.title}</T><T size={12} color={c.mute}>{x.action.kind === 'goal' ? 'Saved as your own goal' : 'Opens the existing screen'}</T></View>
           </Pressable>
-          {x.action.kind === 'goal' && on.has(x.id) ? <Field label="Goal wording" value={titles[x.id] ?? x.action.title} onChangeText={(v) => setTitles({ ...titles, [x.id]: v })} maxLength={160} /> : null}
+          {x.action.kind === 'goal' && on.has(x.id) ? <Field label="Goal wording" placeholder="Write your goal in your own words" value={titles[x.id] ?? (x.action.goal?.needs_title ? '' : x.action.title)} onChangeText={(v) => setTitles({ ...titles, [x.id]: v })} maxLength={160} /> : null}
         </View>
       ))}
       {err ? <ErrorBox error={{ message: say(err) }} /> : null}
@@ -100,22 +100,23 @@ const saveCsv = (filename, csv, setText) => {
 };
 
 /** Assistant for me, or (child_id) a verified guardian's read-only view for a young person. */
-export function PlayerAssistant({ child_id, name }) {
+export function PlayerAssistant({ child_id, name, staff }) {
   const { toast } = useSession();
   const { push } = useNav();
   const { tablet } = useLayout();
   const self = !child_id;
   const profiles = useLoad(() => (self ? api.get('/me/sport-profiles') : Promise.resolve([])), [self]);
-  const [task, setTask] = useState('week');
+  const [task, setTask] = useState(staff ? 'focus' : 'week');
   const [question, setQuestion] = useState('');
-  const [sources, setSources] = useState(['schedule', 'development', 'progress', 'opportunities']);
+  const [sources, setSources] = useState(staff ? ['progress'] : ['schedule', 'development', 'progress', 'opportunities']);
   const [sport, setSport] = useState(null);
   const [range, setRange] = useState({ from: iso(new Date()), to: iso(new Date(Date.now() + 14 * 864e5)) });
   const [state, setState] = useState({ busy: false, error: null, answer: null });
   const [review, setReview] = useState(false);
   const [csv, setCsv] = useState(null);
   const attempt = useRef(null);
-  const allowed = SOURCES.filter(([k]) => self || k !== 'schedule');
+  // a guardian never sees the child's calendar, and a coach sees progress only: the server enforces this, the screen just does not offer the rest
+  const allowed = SOURCES.filter(([k]) => (staff ? k === 'progress' : self || k !== 'schedule'));
   const athleteSports = useMemo(() => (profiles.data ?? []).filter((p) => p.role === 'athlete'), [profiles.data]);
 
   const toggle = (k) => setSources((s) => (s.includes(k) ? (s.length > 1 ? s.filter((x) => x !== k) : s) : [...s, k]));
@@ -141,7 +142,7 @@ export function PlayerAssistant({ child_id, name }) {
   const form = (
     <Card>
       <T size={12} weight="800" color={c.mute} style={{ letterSpacing: 1 }}>ASK</T>
-      <View style={{ marginTop: 8 }}><HScroll>{PRESETS.filter(([k]) => self || k !== 'ask').map(([k, l]) => <Chip key={k} label={l} active={task === k} onPress={() => setTask(k)} />)}</HScroll></View>
+      <View style={{ marginTop: 8 }}><HScroll>{PRESETS.filter(([k]) => (staff ? ['focus', 'overview'].includes(k) : self || k !== 'ask')).map(([k, l]) => <Chip key={k} label={l} active={task === k} onPress={() => setTask(k)} />)}</HScroll></View>
       {task === 'ask' ? <View style={{ marginTop: 10 }}><Field label="Your question" value={question} onChangeText={setQuestion} multiline maxLength={400} placeholder="What do you want to know about your own records?" /></View> : null}
       <T size={12} weight="800" color={c.mute} style={{ letterSpacing: 1, marginTop: 14 }}>USE THESE SOURCES</T>
       <View style={{ marginTop: 8 }}><HScroll>{allowed.map(([k, l]) => <Chip key={k} label={`${sources.includes(k) ? '✓ ' : ''}${l}`} active={sources.includes(k)} onPress={() => toggle(k)} />)}</HScroll></View>
@@ -195,7 +196,7 @@ export function PlayerAssistant({ child_id, name }) {
   return (
     <Screen wide>
       <H1>{child_id ? `${name ?? 'Your child'} · assistant` : 'Assistant'}</H1>
-      <T size={13} color={c.mute}>{child_id ? 'Read-only. Built only from what you may already see for them.' : 'Part of My development. Answers only from records you may see; nothing changes until you review it. It never gives medical, contract or payment advice.'}</T>
+      <T size={13} color={c.mute}>{child_id ? staff ? 'Read-only. Progress benchmarks for an athlete you currently coach, with their guardian\'s consent for a young person. Each view is logged.' : 'Read-only. Built only from what you may already see for them.' : 'Part of My development. Answers only from records you may see; nothing changes until you review it. It never gives medical, contract or payment advice.'}</T>
       <View style={{ marginTop: 12, flexDirection: tablet ? 'row' : 'column', gap: 16, alignItems: 'flex-start' }}>
         <View style={{ width: tablet ? 340 : '100%' }}>{form}</View>
         <View style={{ flex: 1, minWidth: 0, width: tablet ? undefined : '100%' }}>{result}</View>
