@@ -15,7 +15,7 @@ import { moneyIn } from '../vtime';
 
 export const KINDS = [['course', 'Course'], ['certification', 'Certification'], ['diploma', 'Diploma'], ['degree', 'Degree'], ['postgraduate', 'Postgraduate'], ['short_course', 'Short course']];
 export const MODES = [['on_campus', 'On campus'], ['online', 'Online'], ['hybrid', 'Hybrid']];
-export const STAGES = [['saved', 'Saved'], ['shortlisted', 'Shortlisted'], ['applying', 'Applying'], ['applied', 'Applied'], ['accepted', 'Accepted'], ['not_for_me', 'Not for me']];
+export const STAGES = [['saved', 'Saved'], ['shortlisted', 'Shortlisted'], ['applying', 'Applying'], ['applied', 'Applied'], ['offered', 'Offered'], ['accepted', 'Accepted'], ['enrolled', 'Enrolled'], ['declined', 'Declined'], ['not_for_me', 'Not for me']];
 const label = (list, v) => list.find(([k]) => k === v)?.[1] ?? String(v).replace(/_/g, ' ');
 const opts = (list) => list.map(([value, l]) => ({ value, label: l }));
 const place = (x) => [x.city, x.country].filter(Boolean).join(', ');
@@ -206,33 +206,5 @@ export function Explore({ push, onSaved }) {
         {insts.data?.length ? insts.data.map((o) => <Row key={o.id} title={o.name} sub={`${place(o)} · ${o.programmes} programme${o.programmes === 1 ? '' : 's'}${o.reviews ? ` · ★ ${o.rating.toFixed(1)} (${o.reviews})` : ''}`} onPress={() => push('Institution', { id: o.id })} />) : null}
       </Section>
     </>
-  );
-}
-
-// ------------------------------------------------------------------ the bucket list
-export function Saved({ push }) {
-  const [stage, setStage] = useState(null);
-  const list = useLoad(() => api.get('/me/bucket', { limit: 100 }), []);
-  if (list.error) return <ErrorBox error={list.error} onRetry={list.reload} />;
-  if (!list.data) return <Loading />;
-  const shown = list.data.filter((x) => !stage || x.status === stage);
-  const open = (x) => (x.target_type.endsWith('programme') ? push('Programme', { id: x.target_id, ext: isExt(x.target_type) }) : push('Institution', { id: x.target_id, ext: isExt(x.target_type) }));
-  return (
-    <Section title={`Your bucket list${list.data.length ? ` (${list.data.length})` : ''}`} color={c.mint}>
-      {list.data.length ? (
-        <>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-            <Chip label="All" active={!stage} onPress={() => setStage(null)} />
-            {STAGES.map(([k, l]) => <Chip key={k} label={`${l} ${list.data.filter((x) => x.status === k).length || ''}`.trim()} active={stage === k} onPress={() => setStage(stage === k ? null : k)} />)}
-          </View>
-          {shown.map((x) => (
-            <Row key={x.id} title={`${x.target_type.endsWith('programme') ? '📜' : '🏛️'} ${x.title}`} onPress={() => open(x)}
-              sub={`${x.target_type.endsWith('programme') ? `${x.institution} · ` : ''}${[x.city, x.country].filter(Boolean).join(', ')}${x.reviews ? ` · ★ ${x.rating.toFixed(1)} (${x.reviews})` : ''}${x.target_date ? `\nDeadline ${new Date(x.target_date).toLocaleDateString()}` : ''}${x.note ? `\n${x.note}` : ''}`}
-              right={<Tag label={label(STAGES, x.status)} />} />
-          ))}
-          {!shown.length ? <Empty emoji="🔖" title="Nothing at this stage" /> : null}
-        </>
-      ) : <Empty emoji="🔖" title="Your bucket list is empty" sub="Save colleges and courses from Explore. Track where you are with each, add deadlines and notes, and come back when you are ready to apply." />}
-    </Section>
   );
 }

@@ -3,10 +3,11 @@ import { cap, capabilities, id, page } from '../registry.js';
 import { many } from '../db.js';
 import { audit } from '../helpers.js';
 import { hasConsent, isYouth, requireGuardian } from '../youth.js';
+import { listGoals, listPlans } from '../player-goals.js';
 import { CONSENT_OK, sharedActions, sharedGoals, sharedNotes, sharedReports, sharedSummaries } from '../coaching-shared.js';
 
 const TAG = 'Player development';
-export const SECTIONS = ['next_actions', 'goals', 'plans', 'feedback', 'assessments', 'reports'];
+export const SECTIONS = ['next_actions', 'goals', 'plans', 'feedback', 'assessments', 'reports', 'my_goals', 'my_training'];
 
 // How an item came to be, stated honestly on every row. 'basis' is the kind of evidence, 'source' the module that owns the record.
 const SRC = {
@@ -14,7 +15,7 @@ const SRC = {
   plan_session: ['Plan session', 'coach_set'], plan_feedback: ['Session feedback', 'coach_observed'], coaching_note: ['Coach note', 'coach_observed'],
   coaching_summary: ['Session summary', 'coach_observed'], coaching_report: ['Coaching report', 'coach_observed'],
   trial_assessment: ['Trial assessment', 'assessor_rated'], academy_assessment: ['Academy assessment', 'assessor_rated'], trial_follow_up: ['Trial follow-up', 'staff_set'],
-  academy_review: ['Academy review', 'derived'],
+  academy_review: ['Academy review', 'derived'], player_goal: ['Personal goal', 'athlete_set'], player_plan: ['Personal plan', 'athlete_set'],
 };
 const prov = (type, by, at, record) => ({ source: type, source_label: SRC[type][0], basis: SRC[type][1], by: by ?? null, at: at ?? null, record });
 
@@ -46,6 +47,10 @@ const planFeedback = (athleteId, { limit, offset }) => many(
     WHERE p.athlete_id=$1 AND p.status <> 'draft' AND x.coach_feedback IS NOT NULL AND ${CONSENT_OK('p.athlete_id')}
     ORDER BY x.completed_at DESC NULLS LAST, x.id LIMIT $2 OFFSET $3`, [athleteId, limit, offset]);
 
+const ownUpcoming = (athleteId) => many(
+  `SELECT x.id, x.title, x.starts_at, x.kind, x.duration_min, p.title AS plan_title FROM player_plan_sessions x JOIN player_plans p ON p.id=x.plan_id
+    WHERE p.owner_id=$1 AND p.status='active' AND x.status='scheduled' AND x.starts_at > now() AND x.starts_at < now() + interval '14 days' ORDER BY x.starts_at, x.id LIMIT 5`, [athleteId]);
+
 const upcomingSessions = (athleteId) => many(
   `SELECT x.id, x.title, x.starts_at, x.kind, x.duration_min, p.id AS plan_id, p.title AS plan_title, u.display_name AS coach_name
      FROM training_sessions x JOIN training_plans p ON p.id=x.plan_id JOIN users u ON u.id=p.coach_id
@@ -53,7 +58,7 @@ const upcomingSessions = (athleteId) => many(
     ORDER BY x.starts_at, x.id LIMIT 5`, [athleteId]);
 
 /** Everything the athlete (or a verified guardian) is asked to do next, from the sources that own each item. */
-function nextActions({ actions, goals, planRows, sessions, trials, academy, self }) {
+function nextActions({ actions, goals, planRows, sessions, trials, academy, self, own = { goals: [], sessions: [] } }) {
   const now = Date.now();
   const out = [];
   for (const a of actions.filter((x) => x.status === 'open' || x.status === 'in_progress')) {
@@ -72,6 +77,15 @@ function nextActions({ actions, goals, planRows, sessions, trials, academy, self
     const due = `${String(g.review_on).slice(0, 10)}T23:59:59Z`;
     out.push({ kind: 'goal_review', id: g.id, title: `Review goal: ${g.title}`, detail: g.text, due_at: due, urgency: urgency(due, now), link: null,
       provenance: prov('coaching_goal', g.coach_name, due, { type: 'coaching_goals', id: g.id }) });
+  }
+  for (const g of own.goals.filter((x) => x.status === 'active' && x.review_on && new Date(`${x.review_on}T23:59:59Z`).getTime() - now <= 14 * DAY)) {
+    const due = `${g.review_on}T23:59:59Z`;
+    out.push({ kind: 'player_goal_review', id: g.id, title: `Review your goal: ${g.title}`, detail: 'Your own goal - log progress or update how it is going.', due_at: due, urgency: urgency(due, now), link: null,
+      provenance: prov('player_goal', null, due, { type: 'player_goals', id: g.id }) });
+  }
+  for (const x of own.sessions) {
+    out.push({ kind: 'player_plan_session', id: x.id, title: x.title, detail: `${x.plan_title} · ${x.duration_min} min ${x.kind}`, due_at: x.starts_at, urgency: urgency(x.starts_at, now), link: null,
+      provenance: prov('player_plan', null, x.starts_at, { type: 'player_plan_sessions', id: x.id }) });
   }
   for (const t of trials) for (const f of t.follow_ups ?? []) {
     if (f.status !== 'open') continue;
@@ -97,11 +111,21 @@ cap({
     if (!self) { await requireGuardian(user, athleteId); await audit(null, user.id, 'read_child_development', 'users', athleteId); }
     const youth = await isYouth(athleteId);
     const base = { athlete_id: athleteId, viewer: self ? 'self' : 'guardian', is_youth: youth, generated_at: new Date().toISOString() };
-    if (youth && !(await hasConsent(athleteId, 'coaching'))) {
-      return { ...base, consent: false, note: self ? 'Coaching sharing is switched off by your guardian, so nothing from your coach is shown. Your guardian can allow it under Family & guardians.' : 'Coaching sharing is not allowed for this child. Allow it under Family & guardians to see their development workspace.', sections: {}, counts: {}, next_actions: [] };
-    }
     const only = i.section;
     const want = (s) => !only || only === s;
+    const lim = { limit: i.limit + 1, offset: only ? i.offset : 0 };
+    const trim = (rows) => ({ items: rows.slice(0, i.limit), has_more: rows.length > i.limit });
+    // the player's own goals and plans: theirs to keep whether or not a coach is allowed to see anything
+    const ownSections = async () => {
+      const out = {};
+      if (want('my_goals')) out.my_goals = trim((await listGoals(athleteId, lim)).map((g) => ({ ...g, provenance: prov('player_goal', null, g.updated_at, { type: 'player_goals', id: g.id }) })));
+      if (want('my_training')) out.my_training = trim((await listPlans(athleteId, lim)).map((p) => ({ ...p, provenance: prov('player_plan', null, p.updated_at, { type: 'player_plans', id: p.id }) })));
+      return out;
+    };
+    if (youth && !(await hasConsent(athleteId, 'coaching'))) {
+      const own = self ? await ownSections() : {};
+      return { ...base, consent: false, sections: own, counts: Object.fromEntries(Object.entries(own).map(([k, v]) => [k, v.items.length])), note: self ? 'Coaching sharing is switched off by your guardian, so nothing from your coach is shown. Your guardian can allow it under Family & guardians.' : 'Coaching sharing is not allowed for this child. Allow it under Family & guardians to see their development workspace.', next_actions: [] };
+    }
     const win = only ? { limit: i.limit + 1, offset: i.offset } : { limit: i.limit + 1, offset: 0 };
     const big = { limit: 100, offset: 0 };
     const cut = (rows) => ({ items: rows.slice(0, i.limit), has_more: rows.length > i.limit });
@@ -115,15 +139,17 @@ cap({
       want('next_actions') || want('assessments') ? through('my_trials', user, { athlete_id: athleteId }) : { items: [] },
       want('next_actions') || want('assessments') ? through('get_my_academy_progress', user, { athlete_id: athleteId }) : { academies: [] },
     ]);
+    const own = { goals: needNext ? await listGoals(athleteId, { status: 'active', limit: 50, offset: 0 }) : [], sessions: needNext ? await ownUpcoming(athleteId) : [] };
     const trials = trialsRes.items ?? [];
     const academy = (academyRes.academies ?? []).flatMap((a) => a.pathways.map((p) => ({ ...p, organisation: a.organisation })));
     const sections = {};
 
     if (want('next_actions')) {
-      const merged = nextActions({ actions, goals: goalsAll, planRows: planAll, sessions, trials, academy, self });
+      const merged = nextActions({ actions, goals: goalsAll, planRows: planAll, sessions, trials, academy, self, own });
       const slice = merged.slice(only ? i.offset : 0, (only ? i.offset : 0) + i.limit);
       sections.next_actions = { items: slice, has_more: merged.length > (only ? i.offset : 0) + i.limit, total: merged.length };
     }
+    Object.assign(sections, await ownSections());
     if (want('goals')) sections.goals = cut((await sharedGoals(athleteId, win)).map((g) => ({ ...g, provenance: prov('coaching_goal', g.coach_name, g.review_on, { type: 'coaching_goals', id: g.id }) })));
     if (want('plans')) sections.plans = cut((await plans(athleteId, win)).map((p) => ({ ...p, can_respond: self && !!p.awaiting_answer, provenance: prov('training_plan', p.coach_name, p.updated_at, { type: 'training_plans', id: p.id }) })));
     if (want('feedback')) {

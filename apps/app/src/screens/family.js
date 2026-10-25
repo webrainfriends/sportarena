@@ -121,6 +121,7 @@ function LinkCard({ l, reload, onConsents, onPickup, onSponsors }) {
           <Btn small title="Applications" color={c.paper} ink={c.ink} onPress={() => push('MyApplications', { child_id: l.child.id, name: l.child.display_name })} />
           <Btn small title="Opportunities" color={c.paper} ink={c.ink} onPress={() => push('OpportunityMatches', { child_id: l.child.id, name: l.child.display_name })} />
           <Btn small title="Recruiters" color={c.paper} ink={c.ink} onPress={() => push('RecruiterAccess', { athlete_id: l.child.id })} />
+          <Btn small title="Pathway plan" color={c.paper} ink={c.ink} onPress={() => push('PathwayPlan', { athlete_id: l.child.id })} />
         </> : null}
         {(mine === 'guardian' && ['active', 'invited', 'accepted', 'pending_review'].includes(l.status)) || (l.requested_by === (mine === 'guardian' ? l.guardian_id : l.child_id) && ['invited', 'accepted', 'pending_review'].includes(l.status))
           ? <Btn small title={l.status === 'active' ? 'End link' : 'Withdraw request'} color={c.paper} ink={c.red} onPress={() => run(() => api.post(`/youth/guardian-links/${l.id}/revoke`, { reason: 'Ended from the app' }), 'Link ended')} /> : null}

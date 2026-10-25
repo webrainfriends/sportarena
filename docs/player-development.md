@@ -31,3 +31,6 @@ Loading, per-section empty state with no invented content, error with retry, con
 ## Not in scope / limits
 - Plan answers, goal edits and report downloads happen on their existing screens. The workspace opens them.
 - A guardian cannot open a plan page (plans are the athlete's to answer), so plan rows are not links for guardians.
+
+## Player-owned goals and training (issue #325)
+The workspace also carries the player's own goals and self-directed plans (sections `my_goals`, `my_training`) and the next actions they create; see `docs/player-goals.md`. A young person keeps these even while coaching sharing is off; a guardian can read them only while coaching consent is in force.
