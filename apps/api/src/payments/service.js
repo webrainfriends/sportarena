@@ -8,6 +8,7 @@ import { activateUserPlan } from '../booking/plans.js';
 import { activatePhysioPackage } from '../capabilities/provider-packages.js';
 import { fulfilSponsorshipPayment } from '../sponsor-agreements.js';
 import { fulfilChargePaid } from '../academy-invoices.js';
+import { fulfilServiceInvoicePaid } from '../svc/finance.js';
 import { raiseException, recordSale, syncRefunds } from '../settlement.js';
 
 export { paymentsEnabled, enabledProviders };
@@ -60,12 +61,16 @@ export async function describePurpose(c, type, id) {
     const x = await q("SELECT ch.payer_id, ch.amount_minor AS amount, ch.currency, ch.status, ch.kind, o.name, o.status AS org_status FROM academy_charges ch JOIN organisations o ON o.id=ch.organisation_id WHERE ch.id=$1 FOR UPDATE OF ch");
     return x && { payerId: x.payer_id, amount: Number(x.amount), currency: x.currency, name: `Academy ${x.kind} · ${x.name}`, payable: x.status === 'awaiting_payment' && Number(x.amount) > 0 };
   }
+  if (type === 'service_invoice') {
+    const x = await q("SELECT s.payer_id, s.payable_minor - s.credited_minor - s.paid_minor AS amount, s.currency, s.status, s.doc_type, s.match_status, s.supplier_number, coalesce(p.trading_name, p.legal_name) AS name FROM svc_invoices s JOIN svc_profiles p ON p.id=s.profile_id WHERE s.id=$1 FOR UPDATE OF s");
+    return x && { payerId: x.payer_id, amount: Number(x.amount), currency: x.currency, name: `Invoice ${x.supplier_number} · ${x.name}`, payable: x.status === 'issued' && x.doc_type === 'invoice' && ['matched', 'exception_approved'].includes(x.match_status) && Number(x.amount) > 0 };
+  }
   const p = await q('SELECT p.holder_id AS payer_id, p.amount_cents AS amount, p.status, pl.name FROM insurance_policies p JOIN insurance_plans pl ON pl.id=p.plan_id WHERE p.id=$1 FOR UPDATE OF p');
   return p && { payerId: p.payer_id, amount: Number(p.amount), name: p.name, payable: p.status === 'pending_payment' };
 }
 
 /** Flip the paid thing to its fulfilled state. Returns false if it can no longer be fulfilled (e.g. cancelled meanwhile). */
-async function fulfil(c, type, id) {
+async function fulfil(c, type, id, payment) {
   const sql = {
     shop_order: "UPDATE shop_orders SET status='placed' WHERE id=$1 AND status='awaiting_payment'",
     shop_checkout: "UPDATE shop_orders SET status='placed' WHERE checkout_id=$1 AND status='awaiting_payment'",
@@ -80,6 +85,7 @@ async function fulfil(c, type, id) {
   if (type === 'physio_package') return activatePhysioPackage(c, id);
   if (type === 'sponsorship_payment') return fulfilSponsorshipPayment(c, id);
   if (type === 'academy_charge') return fulfilChargePaid(c, id, { method: 'online' });
+  if (type === 'service_invoice') return fulfilServiceInvoicePaid(c, id, payment);
   return (await c.query(sql, [id])).rowCount > 0;
 }
 
@@ -98,7 +104,7 @@ export async function settle(paymentId, result) {
       await raiseException(c, { kind: 'amount_mismatch', dedupeKey: `amount_mismatch:${p.id}`, paymentId: p.id, currency: p.currency, amount: Number(p.amount_cents), detail: { expected_cents: Number(p.amount_cents), expected_currency: p.currency, provider_cents: Number(result.amount), provider_currency: String(result.currency).toUpperCase(), provider_ref: p.provider_ref } });
       return { payment: { ...p, status: 'failed' }, refund: false, mismatch: true };
     }
-    const ok = await fulfil(c, p.purpose_type, p.purpose_id);
+    const ok = await fulfil(c, p.purpose_type, p.purpose_id, p);
     const paid = (await c.query("UPDATE payments SET status='paid', paid_at=now(), provider_payment_ref=$2 WHERE id=$1 RETURNING *", [p.id, result.paymentRef ?? null])).rows[0];
     await recordSale(c, paid);   // what the seller is owed, in the same transaction as 'the customer paid'
     return { payment: paid, refund: !ok };
