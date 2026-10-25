@@ -7,7 +7,7 @@ import { encrypt } from './crypto.js';
 import { isAdmin } from './helpers.js';
 
 export const CATEGORIES = {
-  support: ['account', 'bookings', 'payments', 'events', 'health', 'insurance', 'sponsorship', 'technical', 'other'],
+  support: ['account', 'bookings', 'payments', 'events', 'health', 'insurance', 'sponsorship', 'marketplace_report', 'technical', 'other'],
   dispute: ['booking_charge', 'refund', 'payment_transfer', 'provider_payment', 'game_data', 'sponsorship', 'other'],
 };
 export const PRIORITIES = ['low', 'normal', 'high', 'urgent'];
@@ -41,6 +41,7 @@ const PARTY = {
   event: ['events'],
   game: ['games'],
   fixture: ['fixtures'],
+  billboard_post: ['billboard_posts'], // public listings: reporting one needs only that it exists
 };
 export const LINK_TYPES = Object.keys(PARTY);
 // Links to the exact sponsorship record in dispute. Never offered by the generic case form: only sponsorship-disputes.js sets them, after checking the caller's side.

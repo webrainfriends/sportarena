@@ -9,12 +9,16 @@ import { hasRole, isAdmin, mustFind, PUBLIC_USER, sportBySlugOrId } from '../hel
 import { notify } from '../notify.js';
 import { canManageTeam } from './teams.js';
 import { WHO_FOR, ageBand, AGE_BAND_MSG } from '../opportunity-fields.js';
+import { COMPENSATION, SECTIONS, TYPES, assertEligible, assertOpen, publisherBadges, termsOf } from '../opportunity.js';
+import { CURRENCIES } from '../currency.js';
 
 const httpsUrl = z.string().url().max(500).refine((u) => u.startsWith('https://'), 'Use an https link');
 
-const kinds = ['match_players', 'team_recruiting', 'coach_wanted', 'sponsorship_wanted', 'sponsor_call'];
+const kinds = ['match_players', 'team_recruiting', 'coach_wanted', 'assignment', 'sponsorship_wanted', 'sponsor_call'];
 const rateUnit = z.enum(['match', 'hour', 'month', 'season']);
 const POST_COLS = `b.id, b.kind, b.title, b.body, b.city, b.starts_at, b.positions_needed, b.budget_cents, b.rate_unit, b.positions, b.levels, b.region, b.min_age, b.max_age, b.status, b.created_at, b.team_id,
+  b.opportunity_type, b.compensation, b.currency, b.closes_at, b.ends_at, b.target_type, b.target_role, b.required_sections, b.verified_applicants_only,
+  (b.status = 'open' AND b.closes_at IS NOT NULL AND b.closes_at <= now()) AS is_expired,
   s.slug AS sport_slug, s.name AS sport, s.emoji AS sport_emoji, t.name AS team_name, t.emoji AS team_emoji,
   u.id AS author_id, u.handle AS author_handle, u.display_name AS author_name, u.avatar_emoji AS author_emoji, u.avatar_color AS author_color, u.avatar_url AS author_avatar_url,
   (SELECT count(*)::int FROM billboard_responses r WHERE r.post_id=b.id AND r.status='accepted') AS accepted`;
@@ -22,10 +26,15 @@ const FROM = 'FROM billboard_posts b JOIN users u ON u.id=b.author_id LEFT JOIN 
 
 cap({
   name: 'create_billboard_post', method: 'POST', path: '/billboard', tag: 'Billboard', status: 201,
-  summary: 'Post a demand on the billboard: players wanted for a match, a team recruiting, an athlete/team seeking a sponsor, or a sponsor calling for athletes (sponsors only).',
+  summary: 'Post an opportunity on the billboard: players wanted for a match or trial, a team recruiting, a paid assignment or volunteering role (scorer, official, volunteer ...), an athlete/team seeking a sponsor, or a sponsor calling for athletes (sponsors only). State the type, pay (paid/unpaid/expenses/in kind with amount and currency), when applications close, what evidence applicants must share and whether only verified applicants may apply. Paid work needs an amount; unpaid work carries none.',
   input: z.object({
     kind: z.enum(kinds), title: z.string().min(3).max(100), body: z.string().max(1000).optional(), sport: z.string().optional(), team_id: id.optional(),
     city: z.string().max(80).optional(), starts_at: z.string().datetime({ offset: true }).optional(), positions_needed: z.number().int().min(1).max(200).default(1), budget_cents: money.optional(), rate_unit: rateUnit.optional().describe('what the budget pays per, e.g. per match — for team_recruiting / coach_wanted'),
+    opportunity_type: z.enum(TYPES).optional().describe('defaults from the kind'), compensation: z.enum(COMPENSATION).optional().describe('leave out when pay is not stated'),
+    currency: z.string().length(3).refine((x) => Object.hasOwn(CURRENCIES, x), 'Unsupported currency').optional().describe('currency of the amount; defaults to INR'),
+    closes_at: z.string().datetime({ offset: true }).optional().describe('applications stop at this time'), ends_at: z.string().datetime({ offset: true }).optional(),
+    target_type: z.enum(['event', 'game']).optional(), target_id: id.optional().describe('the event or game an assignment is for; an accepted person is associated with it'), target_role: z.string().max(30).optional().describe('role on that event or game, default volunteer'),
+    required_sections: z.array(z.enum(SECTIONS)).max(5).default([]).describe('passport sections every applicant must share'), verified_applicants_only: z.boolean().default(false),
     ...WHO_FOR,
   }).refine(ageBand, AGE_BAND_MSG),
   async handler({ user }, i) {
@@ -34,24 +43,30 @@ cap({
     if (i.team_id && !(await canManageTeam(user, await mustFind('teams', i.team_id)))) throw forbidden('You do not manage that team');
     const sport = i.sport ? await sportBySlugOrId(i.sport) : null;
     if (i.sport && !sport) throw notFound('Sport');
-    return one('INSERT INTO billboard_posts(author_id, kind, sport_id, team_id, title, body, city, starts_at, positions_needed, budget_cents, rate_unit, positions, levels, region, min_age, max_age) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING id, kind, title, status',
-      [user.id, i.kind, sport?.id ?? null, i.team_id ?? null, i.title, i.body, i.city, i.starts_at, i.positions_needed, i.budget_cents, i.rate_unit, i.positions, i.levels, i.region ?? null, i.min_age ?? null, i.max_age ?? null]);
+    const t = await termsOf(user, i);
+    return one('INSERT INTO billboard_posts(author_id, kind, sport_id, team_id, title, body, city, starts_at, positions_needed, budget_cents, rate_unit, positions, levels, region, min_age, max_age, opportunity_type, compensation, currency, closes_at, ends_at, target_type, target_id, target_role, required_sections, verified_applicants_only) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING id, kind, title, status, opportunity_type, compensation, currency, closes_at',
+      [user.id, i.kind, sport?.id ?? null, i.team_id ?? null, i.title, i.body, i.city, i.starts_at, i.positions_needed, i.budget_cents, i.rate_unit, i.positions, i.levels, i.region ?? null, i.min_age ?? null, i.max_age ?? null,
+        t.opportunity_type, t.compensation, t.currency, i.closes_at ?? null, i.ends_at ?? null, t.target_type, t.target_id, t.target_role, t.required_sections, t.verified_applicants_only]);
   },
 });
 
 cap({
   name: 'list_billboard', method: 'GET', path: '/billboard', tag: 'Billboard', auth: 'public',
-  summary: 'Browse the billboard (open posts by default). When signed in, each post says whether you already responded and whether it is yours.',
-  input: z.object({ kind: z.enum(kinds).optional(), sport: z.string().optional(), q: z.string().optional(), mine: z.coerce.boolean().optional(), include_closed: z.coerce.boolean().optional(), ...page }),
+  summary: 'Browse the billboard (open posts that still take applications, by default). Each post states its type, pay (or that pay is not stated), closing time and whether its publisher is verified. When signed in, each post says whether you already responded and whether it is yours. Newest first.',
+  input: z.object({ kind: z.enum(kinds).optional(), opportunity_type: z.enum(TYPES).optional(), paid: z.coerce.boolean().optional().describe('true = paid only, false = unpaid / expenses / in kind'), verified_publisher: z.coerce.boolean().optional(), sport: z.string().optional(), q: z.string().optional(), mine: z.coerce.boolean().optional(), include_closed: z.coerce.boolean().optional(), ...page }),
   async handler({ user }, i) {
     const sport = i.sport ? await sportBySlugOrId(i.sport) : null;
-    return many(
+    const rows = await many(
       `SELECT ${POST_COLS}, (b.author_id = $1) AS is_mine, (SELECT r.status FROM billboard_responses r WHERE r.post_id=b.id AND r.responder_id=$1) AS my_response
          ${FROM}
         WHERE ($2::text IS NULL OR b.kind=$2) AND ($3::uuid IS NULL OR b.sport_id=$3) AND ($4::text IS NULL OR b.title ILIKE '%'||$4||'%' OR b.body ILIKE '%'||$4||'%')
-          AND (coalesce($5,false) = false OR b.author_id=$1) AND (coalesce($6,false) OR b.status='open')
-        ORDER BY b.created_at DESC LIMIT $7 OFFSET $8`,
-      [user?.id ?? null, i.kind ?? null, sport?.id ?? null, i.q ?? null, i.mine ?? null, i.include_closed ?? null, i.limit, i.offset]);
+          AND (coalesce($5,false) = false OR b.author_id=$1) AND (coalesce($6,false) OR (b.status='open' AND (b.closes_at IS NULL OR b.closes_at > now())))
+          AND ($9::text IS NULL OR b.opportunity_type=$9) AND ($10::boolean IS NULL OR (b.compensation='paid') = $10)
+        ORDER BY b.created_at DESC, b.id LIMIT $7 OFFSET $8`,
+      [user?.id ?? null, i.kind ?? null, sport?.id ?? null, i.q ?? null, i.mine ?? null, i.include_closed ?? null, i.limit, i.offset, i.opportunity_type ?? null, i.paid ?? null]);
+    const badges = await publisherBadges(rows);
+    const out = rows.map((r) => ({ ...r, publisher_verified: badges(r.author_id).length > 0, publisher_badges: badges(r.author_id) }));
+    return i.verified_publisher ? out.filter((r) => r.publisher_verified) : out;
   },
 });
 
@@ -67,21 +82,23 @@ cap({
 
 cap({
   name: 'respond_to_post', method: 'POST', path: '/billboard/:id/responses', tag: 'Billboard', status: 201,
-  summary: 'Answer a post: offer to play, apply to join a team, or (as a sponsor) offer sponsorship. One response per person per post. It starts at the "applied" stage of the recruitment pipeline. Add a source_url (https) as evidence; a guardian can apply for a young person with on_behalf_of. Send an idempotency_key so a retry never creates a second application.',
-  input: z.object({ id, message: z.string().max(500).optional(), source_url: httpsUrl.optional(), source_kind: z.enum(['passport', 'video', 'profile', 'other']).default('other'), on_behalf_of: id.optional(), idempotency_key: z.string().min(8).max(80).optional() }),
+  summary: 'Answer a post: offer to play, apply to join a team, or (as a sponsor) offer sponsorship. One response per person per post. It starts at the "applied" stage of the recruitment pipeline. Add a source_url (https) as evidence; a guardian can apply for a young person with on_behalf_of. Send an idempotency_key so a retry never creates a second application. Closed, filled and expired posts reject applications, and a post can require shared evidence or a verified applicant.',
+  input: z.object({ id, message: z.string().max(500).optional(), shared_sections: z.array(z.enum(SECTIONS)).max(5).default([]).describe('passport sections you allow the selectors of this post to see; you can change this while the application is open'), source_url: httpsUrl.optional(), source_kind: z.enum(['passport', 'video', 'profile', 'other']).default('other'), on_behalf_of: id.optional(), idempotency_key: z.string().min(8).max(80).optional() }),
   async handler({ user }, i) {
     const p = await mustFind('billboard_posts', i.id);
     const subject = i.on_behalf_of ?? user.id;
     if (subject !== user.id) await requireGuardian(user, subject);
-    if (p.status !== 'open') throw conflict('This post is no longer open');
+    assertOpen(p);
     if (p.author_id === subject) throw badRequest('You cannot respond to your own post');
     if (p.kind === 'sponsorship_wanted' && !hasRole(user, 'sponsor')) throw forbidden('Only sponsors can respond to a sponsorship request');
+    const sections = [...new Set(i.shared_sections)];
+    await assertEligible(p, subject, subject === user.id ? user.roles : (await mustFind('users', subject, 'id, roles')).roles, sections);
     try {
       return await tx(async (c) => {
         await requireConsent(subject, CONSENT_PURPOSE, 'applying through the Billboard', c);
         const out = (await c.query(
-          `INSERT INTO billboard_responses(post_id, responder_id, message, source_kind, source_ref_enc, applied_by, idempotency_key) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id, post_id, status, stage, row_version`,
-          [i.id, subject, i.message, i.source_url ? i.source_kind : null, i.source_url ? encrypt(i.source_url, 'billboard_responses.source_ref') : null, subject === user.id ? null : user.id, i.idempotency_key ?? null])).rows[0];
+          `INSERT INTO billboard_responses(post_id, responder_id, message, source_kind, source_ref_enc, applied_by, idempotency_key, shared_sections) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id, post_id, status, stage, row_version, shared_sections`,
+          [i.id, subject, i.message, i.source_url ? i.source_kind : null, i.source_url ? encrypt(i.source_url, 'billboard_responses.source_ref') : null, subject === user.id ? null : user.id, i.idempotency_key ?? null, sections])).rows[0];
         await logEvent(c, out, 'applied', { to: 'applied', actor: user.id, key: null });
         // generic wording only: the applicant's message stays in the authenticated app
         const data = { post_id: p.id, response_id: out.id };
@@ -91,7 +108,7 @@ cap({
       });
     } catch (e) {
       if (e.code === '23505') {
-        const prior = i.idempotency_key && (await one('SELECT id, post_id, status, stage, row_version FROM billboard_responses WHERE post_id=$1 AND responder_id=$2 AND idempotency_key=$3', [i.id, subject, i.idempotency_key]));
+        const prior = i.idempotency_key && (await one('SELECT id, post_id, status, stage, row_version, shared_sections FROM billboard_responses WHERE post_id=$1 AND responder_id=$2 AND idempotency_key=$3', [i.id, subject, i.idempotency_key]));
         if (prior) return { ...prior, replayed: true };
         throw conflict('You already responded to this post');
       }
@@ -141,7 +158,7 @@ cap({
     if (target !== user.id) await requireGuardian(user, target);
     await tx((c) => sweepExpired(c));
     return many(
-      `SELECT r.id AS response_id, r.status AS response_status, r.stage, r.row_version, r.trial_at, (SELECT v.name FROM venues v WHERE v.id=r.trial_venue_id) AS trial_venue_name, (SELECT v.city FROM venues v WHERE v.id=r.trial_venue_id) AS trial_venue_city, r.message, r.created_at AS responded_at, ${POST_COLS}, (b.author_id = $1) AS is_mine,
+      `SELECT r.id AS response_id, r.status AS response_status, r.stage, r.row_version, r.trial_at, (SELECT v.name FROM venues v WHERE v.id=r.trial_venue_id) AS trial_venue_name, (SELECT v.city FROM venues v WHERE v.id=r.trial_venue_id) AS trial_venue_city, r.message, r.shared_sections, r.engagement_type, r.engagement_id, r.payout_id, r.created_at AS responded_at, ${POST_COLS}, (b.author_id = $1) AS is_mine,
               CASE WHEN o.version IS NULL THEN NULL ELSE row_to_json(o) END AS latest_offer
          FROM billboard_responses r JOIN billboard_posts b ON b.id=r.post_id JOIN users u ON u.id=b.author_id LEFT JOIN sports s ON s.id=b.sport_id LEFT JOIN teams t ON t.id=b.team_id
          LEFT JOIN LATERAL (SELECT version, role, rate_cents, rate_unit, starts_on, deadline_at, status, note FROM recruitment_offers x WHERE x.response_id=r.id ORDER BY x.version DESC LIMIT 1) o ON true

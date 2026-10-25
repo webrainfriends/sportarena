@@ -8,6 +8,8 @@ import { Avatar, Btn, Card, Empty, ErrorBox, H1, H2, Loading, Screen, Seg, T } f
 import { FormSheet } from '../FormSheet';
 import { Pill } from './marketplace';
 import { c, money, when } from '../theme';
+import { UNIT, ENGAGEMENT_LABEL, SECTION_LABEL, SECTION_OPTIONS, TYPE_LABEL, payLine } from '../opportunity';
+import { fmtMoney } from '../application-forms';
 
 // Player recruitment pipeline (issue #314): staff run a post's candidates through stages; applicants and guardians follow them.
 const STAGE = {
@@ -17,7 +19,6 @@ const STAGE = {
 const TABS = ['applied', 'shortlisted', 'trial', 'evaluated', 'offered', 'closed'];
 const CLOSED = ['accepted', 'declined', 'withdrawn'];
 const newKey = () => `web-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-const UNIT = { match: 'per match', hour: 'per hour', month: 'per month', season: 'per season' };
 const UNITS = Object.entries(UNIT).map(([value, label]) => ({ value, label }));
 const StagePill = ({ s }) => <Pill label={(STAGE[s]?.[0] ?? s).toUpperCase()} fg={c.ink} bg={STAGE[s]?.[1] ?? c.violetSoft} />;
 /** Plain-language server answers: stale versions, lapsed offers, missing guardian consent. */
@@ -101,7 +102,7 @@ export function RecruitmentPipeline({ id }) {
               </View>
               <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
                 {x.stage === 'applied' ? <Btn small title="Shortlist" onPress={() => act((k) => api.post(`/billboard/responses/${x.response_id}/stage`, { to: 'shortlisted', row_version: x.row_version, idempotency_key: k }), 'Shortlisted')} /> : null}
-                {['shortlisted', 'evaluated'].includes(x.stage) ? <Btn small title="Schedule trial" onPress={() => push('RecruitmentApplication', { id: x.response_id })} /> : null}
+                {['shortlisted', 'evaluated'].includes(x.stage) && post.kind !== 'assignment' ? <Btn small title="Schedule trial" onPress={() => push('RecruitmentApplication', { id: x.response_id })} /> : null}
                 {['applied', 'shortlisted', 'trial', 'evaluated', 'offered'].includes(x.stage) ? <Btn small title="Decline" color={c.paper} ink={c.red} onPress={() => act((k) => api.post(`/billboard/responses/${x.response_id}/stage`, { to: 'declined', row_version: x.row_version, idempotency_key: k }), 'Declined')} /> : null}
                 <Btn small title="Open" color={c.paper} onPress={() => push('RecruitmentApplication', { id: x.response_id })} />
               </View>
@@ -132,6 +133,41 @@ function TrialForm({ onClose, submit }) {
   );
 }
 
+/** Only the sections the applicant chose to share are present; everything else stays out of the response. */
+function EvidenceCard({ evidence }) {
+  const rows = [];
+  for (const v of evidence.videos ?? []) rows.push(['Video', v.title ?? v.link_url ?? 'Highlight video', v.link_url]);
+  for (const r of evidence.references ?? []) rows.push(['Reference', `${r.coach_name}: ${r.body}`]);
+  if (evidence.preferences) rows.push(['Preferences', [evidence.preferences.open_to?.join(', '), evidence.preferences.regions?.join(', '), evidence.preferences.notes].filter(Boolean).join(' · ') || 'Shared, nothing entered yet']);
+  for (const a of evidence.availability ?? []) rows.push(['Available', `${a.from_date} to ${a.to_date}`]);
+  for (const a of evidence.academic ?? []) rows.push(['Academic', [a.institution, a.summary].filter(Boolean).join(' · ')]);
+  return (
+    <Card pad={14}>
+      <T weight="800">Shared by the applicant</T>
+      <View style={{ gap: 6, marginTop: 6 }}>
+        {rows.length ? rows.map(([k, text, link], i) => (
+          <View key={i} style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+            <T size={12} weight="800" color={c.mute} style={{ width: 120 }}>{k.toUpperCase()}</T>
+            <T size={13} style={{ flex: 1 }}>{text}</T>
+            {link ? <Btn small title="Open" color={c.paper} onPress={() => Linking.openURL(link)} accessibilityLabel={`Open ${text}`} /> : null}
+          </View>
+        )) : <T size={13} color={c.mute}>They shared these sections but have nothing in them yet.</T>}
+      </View>
+      <T size={12} color={c.mute} style={{ marginTop: 6 }}>Only what they allowed is shown, and every view is logged.</T>
+    </Card>
+  );
+}
+
+/** The terms the applicant saw: what the work is and what it pays (or that it does not). */
+function TermsCard({ post }) {
+  return (
+    <Card pad={14}>
+      <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>{post.opportunity_type ? <Pill label={(TYPE_LABEL[post.opportunity_type] ?? post.opportunity_type).toUpperCase()} fg={c.ink} bg={c.violetSoft} /> : null}</View>
+      <T weight="800">{payLine(post)}</T>
+    </Card>
+  );
+}
+
 // ================================================================== one application: staff and applicant see their own view
 export function RecruitmentApplication({ id }) {
   const q = useLoad(() => api.get(`/billboard/responses/${id}/application`), [id]);
@@ -141,12 +177,13 @@ export function RecruitmentApplication({ id }) {
   const key = useRef(newKey());
   if (q.error) return <Screen><ErrorBox error={q.error} onRetry={q.reload} /></Screen>;
   if (q.loading && !q.data) return <Screen><Loading /></Screen>;
-  const { application: a, post, applicant, viewer, events, offers } = q.data;
+  const { application: a, post, applicant, viewer, events, offers, engagement } = q.data;
+  const assignment = post.kind === 'assignment';
   const staff = viewer === 'staff';
   const open = ['applied', 'shortlisted', 'trial', 'evaluated', 'offered'].includes(a.stage);
   const cur = offers.find((o) => o.status === 'open');
   const post_ = (path, body, done) => act((k) => api.post(`/billboard/responses/${id}/${path}`, { ...body, row_version: a.row_version, idempotency_key: k }), done);
-  const kinds = { applied: 'Applied', stage: 'Moved', trial: 'Trial scheduled', evaluation: 'Evaluated', offer: 'Offer', offer_response: 'Offer answered', offer_expired: 'Offer expired', withdrawn: 'Withdrawn', legacy_decision: 'Decided' };
+  const kinds = { applied: 'Applied', stage: 'Moved', trial: 'Trial scheduled', evaluation: 'Evaluated', offer: 'Offer', offer_response: 'Offer answered', offer_expired: 'Offer expired', withdrawn: 'Withdrawn', legacy_decision: 'Decided', evidence: 'Sharing changed', engagement: 'Engagement' };
   return (
     <Screen refreshing={q.loading} onRefresh={q.reload}>
       <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
@@ -155,6 +192,14 @@ export function RecruitmentApplication({ id }) {
         <StagePill s={a.stage} />
       </View>
 
+      <TermsCard post={post} />
+      {engagement ? (
+        <Card pad={14} color={c.limeSoft}>
+          <T weight="800">{staff ? 'Selected' : 'You are in'}</T>
+          <T size={13}>{ENGAGEMENT_LABEL[engagement.type] ?? 'Selected for this assignment'}{post.target_role ? ` as ${post.target_role}` : ''}</T>
+          {engagement.payout ? <T size={13}>Payment: {fmtMoney(Number(engagement.payout.amount_cents), engagement.payout.currency)} · {engagement.payout.status}{engagement.payout.due_on ? ` · due ${String(engagement.payout.due_on).slice(0, 10)}` : ''}</T> : null}
+        </Card>
+      ) : null}
       {a.trial_at ? <Card pad={14}><T weight="800">Trial</T><T>{when(a.trial_at)}</T>{a.trial_venue_name ? <T size={13}>📍 {[a.trial_venue_name, a.trial_venue_city].filter(Boolean).join(', ')}</T> : null}{a.trial_note ? <T size={13} color={c.mute}>{a.trial_note}</T> : null}</Card> : null}
 
       {staff && q.data.message ? <Card pad={14}><T weight="800">Message from the applicant</T><T size={14}>{q.data.message}</T></Card> : null}
@@ -162,7 +207,17 @@ export function RecruitmentApplication({ id }) {
         <Card pad={14}><T weight="800">Evidence link</T><Btn small title="Open link" color={c.paper} onPress={() => Linking.openURL(q.data.source.url)} accessibilityLabel="Open the applicant's evidence link" /><T size={12} color={c.mute}>Opening is logged.</T></Card>
       ) : null}
 
-      <H2>{offers.length ? 'Offers' : 'No offer yet'}</H2>
+      {staff && q.data.evidence ? <EvidenceCard evidence={q.data.evidence} /> : null}
+      {staff && !q.data.evidence ? <Card pad={14}><T weight="800">Shared by the applicant</T><T size={13} color={c.mute}>Nothing from their passport was shared with this application.</T></Card> : null}
+      {!staff ? (
+        <Card pad={14}>
+          <T weight="800">What you share</T>
+          <T size={13} color={c.mute}>{a.shared_sections?.length ? a.shared_sections.map((x) => SECTION_LABEL[x]).join(', ') : 'Nothing from your passport'}</T>
+          {open ? <Btn small title="Change what I share" color={c.paper} onPress={() => setForm('share')} style={{ alignSelf: 'flex-start', marginTop: 8 }} /> : null}
+        </Card>
+      ) : null}
+
+      {assignment ? null : <H2>{offers.length ? 'Offers' : 'No offer yet'}</H2>}
       {offers.slice().reverse().map((o) => (
         <Card key={o.version} pad={14}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><T weight="800">Offer v{o.version}</T><Pill label={o.status.toUpperCase()} fg={c.ink} bg={o.status === 'open' ? c.limeSoft : c.violetSoft} /></View>
@@ -184,7 +239,11 @@ export function RecruitmentApplication({ id }) {
 
       {open ? (
         <View style={{ gap: 8 }}>
-          {staff ? <>
+          {staff && assignment ? <>
+            {a.stage === 'applied' ? <Btn title="Shortlist" color={c.paper} onPress={() => post_('stage', { to: 'shortlisted' }, 'Shortlisted')} /> : null}
+            <Btn title="Select for this role" onPress={() => act(() => api.patch(`/billboard/responses/${id}`, { status: 'accepted' }), 'Selected. They have been told and linked to the work.')} />
+            <Btn title="Decline" color={c.paper} ink={c.red} onPress={() => post_('stage', { to: 'declined' }, 'Declined')} />
+          </> : staff ? <>
             {['shortlisted', 'trial', 'evaluated'].includes(a.stage) ? <Btn title={a.stage === 'trial' ? 'Reschedule trial' : 'Schedule trial'} onPress={() => setForm('trial')} /> : null}
             {a.stage === 'trial' ? <Btn title="Record evaluation" onPress={() => setForm('eval')} /> : null}
             {['shortlisted', 'evaluated', 'offered'].includes(a.stage) ? <Btn title={cur ? `Send revised offer (v${(offers.at(-1)?.version ?? 0) + 1})` : 'Send offer'} onPress={() => setForm('offer')} /> : null}
@@ -200,6 +259,12 @@ export function RecruitmentApplication({ id }) {
         </View>
       ) : null}
 
+      {form === 'share' ? (
+        <FormSheet visible onClose={() => setForm(null)} title="What you share" submitLabel="Save"
+          initial={{ shared_sections: a.shared_sections ?? [] }}
+          fields={[{ key: 'shared_sections', label: 'Share from my player passport', type: 'multi', optional: !(post.required_sections ?? []).length, options: SECTION_OPTIONS, hint: (post.required_sections ?? []).length ? `Required by this post: ${post.required_sections.map((x) => SECTION_LABEL[x]).join(', ')}.` : 'Only the people running this post can see these, and every view is logged.' }]}
+          onSubmit={async (v) => { try { await api.post(`/billboard/responses/${id}/sharing`, { shared_sections: v.shared_sections ?? [], row_version: a.row_version, idempotency_key: key.current }); key.current = newKey(); await q.reload(); return 'Sharing updated'; } catch (e) { throw new Error(say(e)); } }} />
+      ) : null}
       {form === 'trial' ? <TrialForm onClose={() => setForm(null)} submit={async (v) => { try { await api.post(`/billboard/responses/${id}/trial`, { trial_at: iso(v.date, v.time), venue_id: v.venue_id, note: v.note, row_version: a.row_version, idempotency_key: key.current }); key.current = newKey(); await q.reload(); return 'Trial scheduled'; } catch (e) { throw new Error(say(e)); } }} /> : null}
       {form === 'eval' ? (
         <FormSheet visible onClose={() => setForm(null)} title="Evaluation" submitLabel="Save evaluation"
@@ -243,6 +308,8 @@ export function MyApplications({ child_id, name }) {
                 <View style={{ flex: 1 }}><T weight="800">{r.title}</T><T size={12} color={c.mute}>{[r.team_name, r.author_name, `applied ${when(r.responded_at)}`].filter(Boolean).join(' · ')}</T></View>
                 <StagePill s={r.stage} />
               </View>
+              <T size={13} weight="700">{payLine(r)}</T>
+              {r.engagement_type || r.payout_id ? <T size={13} color={c.mute}>{ENGAGEMENT_LABEL[r.engagement_type] ?? 'Selected for this assignment'}{r.payout_id ? ' · payment recorded' : ''}</T> : null}
               {r.trial_at && r.stage === 'trial' ? <T size={13}>Trial: {when(r.trial_at)}{r.trial_venue_name ? ` · 📍 ${[r.trial_venue_name, r.trial_venue_city].filter(Boolean).join(', ')}` : ''}</T> : null}
               {o ? <T size={13}>Offer v{o.version} · {offerLine(o)}{o.status === 'open' ? ` · ${left(o.deadline_at)}` : ` · ${o.status}`}</T> : null}
               <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>

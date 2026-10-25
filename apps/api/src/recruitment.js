@@ -7,6 +7,7 @@ import { notify } from './notify.js';
 import { openRosterStint } from './career.js';
 import { guardianLink, guardiansOf, hasConsent, isYouth } from './youth.js';
 import { canManageTeam } from './capabilities/teams.js';
+import { linkEngagement } from './opportunity.js';
 
 export const STAGES = ['applied', 'shortlisted', 'trial', 'evaluated', 'offered', 'accepted', 'declined', 'withdrawn'];
 export const OPEN_STAGES = ['applied', 'shortlisted', 'trial', 'evaluated', 'offered'];
@@ -58,7 +59,7 @@ export async function applicantRole(user, resp, { decide = false } = {}, client)
 export const replayed = (c, responseId, key) => (key ? c.query('SELECT * FROM recruitment_events WHERE response_id=$1 AND idempotency_key=$2', [responseId, key]).then((r) => r.rows[0] ?? null) : null);
 
 export async function logEvent(c, resp, kind, { from = null, to = null, actor = null, note = null, key = null } = {}) {
-  await c.query('INSERT INTO recruitment_events(response_id, kind, from_stage, to_stage, actor_id, note, idempotency_key) VALUES ($1,$2,$3,$4,$5,$6,$7)', [resp.id, kind, from, to, actor, note, key]);
+  await c.query('INSERT INTO recruitment_events(response_id, kind, from_stage, to_stage, actor_id, note, idempotency_key, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,clock_timestamp())', [resp.id, kind, from, to, actor, note, key]);
 }
 
 /** Lock the application row; a stale row_version is rejected so two staff members never overwrite each other. */
@@ -109,15 +110,18 @@ export async function sweepExpired(c, responseId = null) {
 /** Take the person on: team roster + career stint (same path the Billboard has always used), then fill the post when all positions are taken. */
 export async function acceptIntoTeam(c, post, resp, { role, rate_cents, rate_unit, fromOffer = false } = {}) {
   if (post.status !== 'open') throw conflict('This post is no longer open');
+  let member = null;
   if ((post.kind === 'team_recruiting' || post.kind === 'coach_wanted') && post.team_id) {
     const r = role ?? (post.kind === 'coach_wanted' ? 'coach' : 'player');
-    await c.query(
+    member = (await c.query(
       `INSERT INTO team_members(team_id, user_id, role, status, rate_cents, rate_unit) VALUES ($1,$2,$3,'active',$4,coalesce($5,'match'))
-       ON CONFLICT (team_id, user_id) DO UPDATE SET status='active', role=CASE WHEN team_members.status='active' AND team_members.role IN ('manager','captain') THEN team_members.role ELSE EXCLUDED.role END, rate_cents=coalesce(EXCLUDED.rate_cents, team_members.rate_cents), rate_unit=EXCLUDED.rate_unit`,
+       ON CONFLICT (team_id, user_id) DO UPDATE SET status='active', role=CASE WHEN team_members.status='active' AND team_members.role IN ('manager','captain') THEN team_members.role ELSE EXCLUDED.role END, rate_cents=coalesce(EXCLUDED.rate_cents, team_members.rate_cents), rate_unit=EXCLUDED.rate_unit RETURNING team_id AS id`,
       // a versioned offer's terms are final (an offer that leaves the rate open stays open); only the legacy direct accept falls back to the post's advertised rate
-      [post.team_id, resp.responder_id, r, fromOffer ? rate_cents : (rate_cents ?? post.budget_cents), fromOffer ? rate_unit : (rate_unit ?? post.rate_unit)]);
+      [post.team_id, resp.responder_id, r, fromOffer ? rate_cents : (rate_cents ?? post.budget_cents), fromOffer ? rate_unit : (rate_unit ?? post.rate_unit)])).rows[0];
     await openRosterStint(c, (await c.query('SELECT * FROM teams WHERE id=$1', [post.team_id])).rows[0], resp.responder_id, r, null, null, resp.responder_id);
   }
+  // the acceptance becomes a canonical engagement: roster member, event/game role, and a settlement record for fixed-fee paid work
+  return linkEngagement(c, post, resp, member);
 }
 
 /** After an acceptance is stored: mark the post filled once every position is taken. */
