@@ -9,9 +9,11 @@ import { useLayout } from '../layout';
 import { c } from '../theme';
 import { addDays, dateTimeIn, todayIn } from '../vtime';
 import { ReadinessRing } from './wellness';
+import { LoadHistory } from './load-history';
 
 const tz = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return 'UTC'; } })();
 const nice = (s) => String(s).replace(/_/g, ' ');
+const LOAD_SOURCE = { manual: 'Logged by hand', training_session: 'Training session', match: 'Match' };
 const PURPOSES = [['training_load', 'Training load'], ['injury_prevention', 'Injury prevention'], ['return_to_play', 'Return to play'], ['performance_review', 'Performance review']];
 const FIELDS = [['sleep', 'Sleep'], ['soreness', 'Soreness'], ['mood', 'Mood'], ['hydration', 'Hydration'], ['readiness', 'Readiness score'], ['workload', 'Workload'], ['body_map', 'Body map']];
 const HISTORY = [[7, '7 days'], [30, '30 days'], [90, '90 days']];
@@ -24,7 +26,7 @@ const until = (iso) => day(`${lastDay(iso)}T00:00:00Z`);
 const plain = (e) => (e?.details?.code === 'stale_version' ? 'This share changed on another device. It has been reloaded; please check and try again.' : e?.message ?? 'Something went wrong');
 
 /** Web: a download. Phone / tablet: the share sheet. */
-async function saveCsv(out) {
+export async function saveCsv(out) {
   if (Platform.OS === 'web' && typeof document !== 'undefined') {
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([out.csv], { type: 'text/csv' })); a.download = out.filename; document.body.appendChild(a); a.click(); a.remove();
     return;
@@ -139,6 +141,7 @@ export function ChildWellnessSharing({ child_id, name }) {
     <Screen>
       <H1>{name ? `${name}: wellness sharing` : 'Wellness sharing'}</H1>
       <WellnessSharing athleteId={child_id} />
+      <LoadHistory userId={child_id} />
     </Screen>
   );
 }
@@ -157,7 +160,7 @@ function Detail({ share }) {
   const [busy, setBusy] = useState(false);
   const exportCsv = async () => {
     setBusy(true);
-    try { const out = await api.get(`/wellness-shared/${share.id}/export`); await saveCsv(out); toast(`Exported ${out.rows} day${out.rows === 1 ? '' : 's'}. This download is logged and visible to the athlete.`); }
+    try { const out = await api.get(`/wellness-shared/${share.id}/export`); await saveCsv(out); if (out.loads_csv) await saveCsv({ filename: out.loads_filename, csv: out.loads_csv }); toast(`Exported ${out.rows} day${out.rows === 1 ? '' : 's'}${out.loads_csv ? ` and ${out.load_rows} load record${out.load_rows === 1 ? '' : 's'}` : ''}. This download is logged and visible to the athlete.`); }
     catch (e) { toast(e?.message ?? 'Could not export'); } finally { setBusy(false); }
   };
   if (d.loading && !d.data) return <Card><Loading /></Card>;
@@ -180,6 +183,20 @@ function Detail({ share }) {
         {'avg_water_ml' in s ? <Kv label="Water (avg)" value={s.avg_water_ml == null ? null : `${Math.round(s.avg_water_ml)} ml`} /> : null}
         {v.workload ? <Kv label="Workload ratio" value={v.workload.ratio == null ? nice(v.workload.status) : `${v.workload.ratio} · ${v.workload.status}`} /> : null}
       </View>
+      {v.workload ? (
+        <View style={{ marginTop: 12, gap: 6 }}>
+          <T weight="800" size={13}>Training and match load ({v.workload.entries.length})</T>
+          {v.workload.entries.length ? v.workload.entries.map((e) => (
+            <View key={e.id} accessible accessibilityLabel={`${e.session_date}, ${nice(e.kind)}, ${e.minutes} minutes, effort ${e.rpe}, load ${e.load}, ${LOAD_SOURCE[e.source]}${e.corrected ? ', corrected by the athlete' : ''}`} style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+              <T size={12} color={c.mute} style={{ width: 84 }}>{e.session_date}</T>
+              <T size={13} style={{ flex: 1, minWidth: 190 }}>{nice(e.kind)} · {e.minutes} min{e.minutes_basis === 'match_verified' ? ' (verified)' : ''} · effort {e.rpe}/10 · load {e.load}</T>
+              <Tag label={LOAD_SOURCE[e.source]} color={e.source === 'manual' ? c.violetSoft : e.source === 'match' ? c.mint : c.cyan} />
+              {e.corrected ? <Tag label="Corrected" color={c.sun} /> : null}
+            </View>
+          )) : <T size={13} color={c.mute}>No sessions or matches logged in this window.</T>}
+          <T size={11} color={c.mute}>Minutes and effort come from the athlete. A load only exists once they rated it.</T>
+        </View>
+      ) : null}
       {v.body_map ? (
         <View style={{ marginTop: 12, gap: 4 }}>
           <T weight="800" size={13}>Body map (open entries)</T>

@@ -25,7 +25,7 @@ const FAMILIES = {
   earth:    { ...t('#B45309', '#FEF3C7', '#78350F', '#65A30D'), motif: '🧗', radius: 14, noun: 'CLIMBS', one: 'climb', draws: false, vibe: 'Rock, chalk and grit' },
   bat:      { ...t('#CA8A04', '#FEF9C3', '#713F12', '#16A34A'), motif: '🏏', radius: 18, noun: 'MATCHES', one: 'match', draws: true, vibe: 'Whites on green, a long afternoon' },
   clay:     { ...t('#C2410C', '#FFEDD5', '#7C2D12', '#FACC15'), motif: '🎾', radius: 20, noun: 'MATCHES', one: 'match', draws: false, vibe: 'Clay dust and baseline battles' },
-  club:     { ...t('#B4182D', '#FFE4D8', '#37415C', '#FDA481'), motif: '🏅', radius: 20, noun: 'MATCHES', one: 'match', draws: true, vibe: 'Your game, your colours' },
+  club:     { ...t('#8458B3', '#E5EAF5', '#494D5F', '#D0BDF4'), motif: '🏅', radius: 20, noun: 'MATCHES', one: 'match', draws: true, vibe: 'Your game, your colours' },
 };
 
 const MEMBERS = {

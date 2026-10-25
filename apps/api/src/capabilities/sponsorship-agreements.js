@@ -238,7 +238,7 @@ cap({
 });
 
 /** Obligations with what has actually happened to them. Reported (unverified) money is shown apart from confirmed money. */
-async function obligationRows(where, params, tail = '') {
+export async function obligationRows(where, params, tail = '') {
   return many(
     `SELECT o.id, o.sponsorship_id, o.line_id, o.version, o.seq, o.kind, o.cancelled_by_amendment, o.created_by_amendment, o.due_on::text AS due_on, o.amount_cents, o.currency, o.quantity, o.status,
             (o.status = 'scheduled' AND o.due_on < current_date AND o.held_by_pause_id IS NULL) AS overdue, (o.held_by_pause_id IS NOT NULL) AS held, o.original_due_on::text AS original_due_on, l.label,

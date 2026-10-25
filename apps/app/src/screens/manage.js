@@ -24,6 +24,7 @@ const TABS = [['schedule', 'Today'], ['timetable', 'Timetable & prices'], ['bloc
 const num = (x) => (x === undefined || x === '' ? undefined : Number(x));
 
 export function Manage({ id, wizard: startWizard }) {
+  const { push } = useNav();
   const v = useLoad(() => api.get(`/venues/${id}`), [id]);
   const [tab, setTab] = useState('schedule');
   const [wizard, setWizard] = useState(!!startWizard);
@@ -39,6 +40,7 @@ export function Manage({ id, wizard: startWizard }) {
       <T color={c.mute} weight="700">Venue console · {x.timezone} · {x.currency}{x.active ? '' : ' · HIDDEN'}</T>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
         <Btn small title="Hire suppliers (tender)" color={c.violet} onPress={() => push('TenderBuilder', { venue_id: x.id })} accessibilityLabel="Hire suppliers for this venue with a tender" />
+        <Btn small title="Services & suppliers" color={c.paper} ink={c.ink} onPress={() => push('ServicesBuyer', { venue_id: x.id })} accessibilityLabel="Browse supplier services for this venue" />
         {(tenders.data ?? []).filter((t) => t.venue_id === x.id).slice(0, 3).map((t) => <Btn key={t.id} small title={`${t.ref} · ${t.stage}`} color={c.paper} ink={c.ink} onPress={() => push('TenderConsole', { id: t.id })} />)}
       </View>
       {wizard ? <SetupWizard v={x} onExit={() => { setWizard(false); v.reload(); }} goTab={setTab} /> : <><SetupChecklist venueId={x.id} go={setTab} onWizard={() => setWizard(true)} /><OpsAttention venueId={x.id} go={setTab} /></>}

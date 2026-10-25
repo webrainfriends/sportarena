@@ -12,13 +12,13 @@ import { Field, Sheet } from './ui';
 const NATIVE = Platform.OS !== 'web';
 
 export const A = {
-  bg: '#0A0716', panel: '#151030', panel2: '#1E1745', line: 'rgba(255,255,255,0.10)', ink: '#F8F5FF', mute: '#A79FCB',
-  violet: '#8B5CF6', magenta: '#D1404F', cyan: '#22D3EE', lime: '#A3E635', sun: '#FBBF24', orange: '#FB923C', red: '#F43F5E', green: '#34D399',
+  bg: '#23252F', panel: '#151030', panel2: '#1E1745', line: 'rgba(255,255,255,0.10)', ink: '#F8F5FF', mute: '#A79FCB',
+  violet: '#8B5CF6', magenta: '#9B72C6', cyan: '#22D3EE', lime: '#A3E635', sun: '#FBBF24', orange: '#FB923C', red: '#F43F5E', green: '#34D399',
 };
 export const AG = {
-  hero: ['#37415C', '#D1404F'], neon: ['#06B6D4', '#8B5CF6'], lime: ['#A3E635', '#22D3EE'], live: ['#F43F5E', '#FB923C'], sun: ['#FBBF24', '#FB923C'], night: ['#1E1745', '#0A0716'],
+  hero: ['#494D5F', '#9B72C6'], neon: ['#06B6D4', '#8B5CF6'], lime: ['#A3E635', '#22D3EE'], live: ['#F43F5E', '#FB923C'], sun: ['#FBBF24', '#FB923C'], night: ['#1E1745', '#23252F'],
 };
-const INK_ON = { lime: '#0A0716', sun: '#0A0716' };
+const INK_ON = { lime: '#23252F', sun: '#23252F' };
 
 const glow = (color, k = 0.45, r = 18) => (Platform.OS === 'web'
   ? { boxShadow: `0 6px ${r + 6}px ${color}${Math.round(k * 255).toString(16).padStart(2, '0')}` }
@@ -251,7 +251,7 @@ export function PodiumCard({ places }) {
         <View key={i} style={{ flex: 1, borderRadius: 20, overflow: 'hidden' }}>
           <LinearGradient colors={tone[i]} style={{ padding: 12, alignItems: 'center', paddingTop: i === 0 ? 26 : 16, gap: 4 }}>
             <Text style={{ fontSize: 30 }}>{medal[i]}</Text>
-            <AT size={13} weight="900" color="#0A0716" numberOfLines={2} style={{ textAlign: 'center' }}>{places[i].name}</AT>
+            <AT size={13} weight="900" color="#23252F" numberOfLines={2} style={{ textAlign: 'center' }}>{places[i].name}</AT>
             {places[i].note ? <AT size={11} weight="800" color="rgba(10,7,22,0.65)">{places[i].note}</AT> : null}
           </LinearGradient>
         </View>
@@ -421,7 +421,7 @@ export function ABracket({ data, onGame }) {
         <View style={[{ borderRadius: 22, overflow: 'hidden' }, glow(A.sun, 0.35, 18)]}>
           <LinearGradient colors={AG.sun} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ padding: 16, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
             <AT size={40}>🏆</AT>
-            <View style={{ flex: 1 }}><AT size={12} weight="900" color="#0A0716" style={{ letterSpacing: 1.2 }}>CHAMPIONS</AT><AT size={22} weight="900" color="#0A0716">{data.champion.name}</AT></View>
+            <View style={{ flex: 1 }}><AT size={12} weight="900" color="#23252F" style={{ letterSpacing: 1.2 }}>CHAMPIONS</AT><AT size={22} weight="900" color="#23252F">{data.champion.name}</AT></View>
           </LinearGradient>
         </View>
       ) : null}

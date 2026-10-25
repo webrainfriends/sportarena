@@ -20,6 +20,7 @@ import { expireAcademyOffers, remindTrials, runAcademyJobs } from './academy-swe
 import { runTenderJobs, sendTenderReminders } from './capabilities/tender-reports.js';
 import { deliverDueReports } from './sponsor-report-schedules.js';
 import { accrueActiveContracts } from './player-contracts.js';
+import { runServiceSweeps } from './svc/sweeps.js';
 
 export const STEPS = [
   ['holds', 'holds_released', expireUnpaidHolds, 0],
@@ -46,6 +47,7 @@ export const STEPS = [
   ['sponsor_tasks', 'sponsor_task_reminders', processSponsorTasks, 0],
   ['sponsor_reports', 'sponsor_reports_delivered', deliverDueReports, 0],
   ['player_contracts', 'contract_earnings_posted', accrueActiveContracts, 0],
+  ['supplier_services', 'supplier_services', runServiceSweeps, null],
 ];
 
 export async function maintenanceCycle() {
