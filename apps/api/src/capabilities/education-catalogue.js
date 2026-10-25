@@ -10,6 +10,7 @@ import { audit, sportBySlugOrId } from '../helpers.js';
 import { decrypt, encrypt } from '../crypto.js';
 import { orgFor } from '../org-access.js';
 import { builtinRuleset, describeRuleset, rulesetSchema } from '../scoring/rulesets.js';
+import { BOOKS, bookFor, cardsFor } from '../rulebook/catalog.js';
 import { standardMetricKinds } from '../scoring/metric-defs.js';
 import { ADMISSIONS } from '../education.js';
 import { ratingsFor } from './education-discovery.js';
@@ -25,7 +26,7 @@ const sportOr404 = async (v) => (await sportBySlugOrId(v)) ?? Promise.reject(not
 // ------------------------------------------------------------------ rules of a sport
 cap({
   name: 'list_sport_rules', method: 'GET', path: '/sports/:sport/rules', tag: TAG, auth: 'public',
-  summary: 'The rules of a sport in short sections, each with the source it comes from. Start here when you are new to a sport. Includes how the sport is scored (from the built-in scoring rules, so every sport with one has something to read) plus any sections the platform team has written.',
+  summary: 'The rules of a sport in short sections, each with the source it comes from. Start here when you are new to a sport. Includes how the sport is scored (from the built-in scoring rules, so every sport with one has something to read), any sections the platform team has written, and the written rulebook (`rulebook`) where one exists. Localise it in Tools > Rules & rulebook.',
   input: z.object({ sport: z.string().min(1) }),
   async handler(_, i) {
     const sport = await sportOr404(i.sport);
@@ -33,7 +34,9 @@ cap({
     const gov = await one("SELECT id, version, format_key, label, ruleset, created_at FROM ruleset_versions WHERE sport_id=$1 AND format_key='default' ORDER BY version DESC LIMIT 1", [sport.id]);
     const standard = builtinRuleset(sport);
     return { sport: { id: sport.id, slug: sport.slug, name: sport.name, emoji: sport.emoji }, scoring: describeRuleset(standard), standard_ruleset: standard, standard_metrics: standardMetricKinds(sport), default_metric_kind: sport.scoring,
-      in_force: gov ? { version: gov.version, format_key: gov.format_key, label: gov.label, published_at: gov.created_at, scoring: describeRuleset(gov.ruleset), differs_from_standard: !isDeepStrictEqual(rulesetSchema.parse(gov.ruleset), standard) } : null, rules: await many("SELECT id, title, body, source_url, position FROM sport_rules WHERE sport_id=$1 AND status='active' ORDER BY position, created_at, id", [sport.id]) };
+      in_force: gov ? { version: gov.version, format_key: gov.format_key, label: gov.label, published_at: gov.created_at, scoring: describeRuleset(gov.ruleset), differs_from_standard: !isDeepStrictEqual(rulesetSchema.parse(gov.ruleset), standard) } : null, rules: await many("SELECT id, title, body, source_url, position FROM sport_rules WHERE sport_id=$1 AND status='active' ORDER BY position, created_at, id", [sport.id]),
+      // the written rulebook (Tools > Rules & rulebook): the same cards, so learners and scorers read one set of rules
+      rulebook: (() => { const b = bookFor(sport.slug); return b ? { slug: b.slug, body: b.book.body, official_url: b.book.official_url, formats: b.book.formats ?? null, cards: cardsFor(b.book, b.format).map((c) => ({ no: c.no, title: c.title, body: c.body })) } : null; })() };
   },
 });
 

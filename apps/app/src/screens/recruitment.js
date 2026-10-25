@@ -170,6 +170,7 @@ function TermsCard({ post }) {
 
 // ================================================================== one application: staff and applicant see their own view
 export function RecruitmentApplication({ id }) {
+  const { push } = useNav();
   const q = useLoad(() => api.get(`/billboard/responses/${id}/application`), [id]);
   const act = useAct(q.reload);
   const { toast } = useSession();
@@ -198,6 +199,13 @@ export function RecruitmentApplication({ id }) {
           <T weight="800">{staff ? 'Selected' : 'You are in'}</T>
           <T size={13}>{ENGAGEMENT_LABEL[engagement.type] ?? 'Selected for this assignment'}{post.target_role ? ` as ${post.target_role}` : ''}</T>
           {engagement.payout ? <T size={13}>Payment: {fmtMoney(Number(engagement.payout.amount_cents), engagement.payout.currency)} · {engagement.payout.status}{engagement.payout.due_on ? ` · due ${String(engagement.payout.due_on).slice(0, 10)}` : ''}</T> : null}
+        </Card>
+      ) : null}
+      {a.stage === 'accepted' && !engagement && ['sponsor_call', 'sponsorship_wanted'].includes(post.kind) && (staff === (post.kind === 'sponsor_call')) ? (
+        <Card pad={14} color={c.limeSoft}>
+          <T weight="800">Next: make the sponsorship offer</T>
+          <T size={13}>The offer is linked to this application, so both sides can follow it from here.</T>
+          <Btn small title="Make the offer" onPress={() => push('SponsorOffer', { billboard_response_id: id, target: post.kind === 'sponsor_call' ? { type: 'athlete', id: applicant.id, name: applicant.display_name } : post.team_id ? { type: 'team', id: post.team_id, name: post.title } : { type: 'athlete', id: post.author_id, name: post.author_name ?? post.title } })} style={{ alignSelf: 'flex-start', marginTop: 8 }} />
         </Card>
       ) : null}
       {a.trial_at ? <Card pad={14}><T weight="800">Trial</T><T>{when(a.trial_at)}</T>{a.trial_venue_name ? <T size={13}>📍 {[a.trial_venue_name, a.trial_venue_city].filter(Boolean).join(', ')}</T> : null}{a.trial_note ? <T size={13} color={c.mute}>{a.trial_note}</T> : null}</Card> : null}

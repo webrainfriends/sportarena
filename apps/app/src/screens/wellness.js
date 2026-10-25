@@ -9,6 +9,7 @@ import { Counter, HScroll } from '../pickers';
 import { FormSheet } from '../FormSheet';
 import { c } from '../theme';
 import { todayIn } from '../vtime';
+import { saveDraft, saveMessage } from '../offline';
 
 const deviceTz = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return 'UTC'; } })();
 const nice = (s) => String(s).replace(/_/g, ' ');
@@ -249,7 +250,7 @@ export function WorkloadCard({ wl, onChanged }) {
             { key: 'minutes', label: 'How long', type: 'stepper', min: 5, max: 300, step: 5, suffix: ' min' },
             { key: 'rpe', label: 'How hard it felt (1 easy – 10 maximal)', type: 'stepper', min: 1, max: 10 },
           ]}
-          onSubmit={async (v) => { await api.post('/me/loads', { date: v.date, kind: v.kind, minutes: Number(v.minutes), rpe: Number(v.rpe) }); await onChanged(); return 'Session logged'; }} />
+          onSubmit={async (v) => { const r = await saveDraft({ kind: 'load_log', payload: { data: { date: v.date, kind: v.kind, minutes: Number(v.minutes), rpe: Number(v.rpe) } }, label: `${v.kind[0].toUpperCase()}${v.kind.slice(1)} · ${v.minutes} min`, sub: v.date }); await onChanged(); return saveMessage(r, 'Session logged'); }} />
       ) : null}
     </Card>
   );

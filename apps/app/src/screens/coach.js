@@ -9,6 +9,7 @@ import { FormSheet } from '../FormSheet';
 import { CoachToolGrid } from './coaching';
 import { useLayout } from '../layout';
 import { c, grad } from '../theme';
+import { saveDraft as queueDraft, saveMessage } from '../offline';
 import { localToIso, dateTimeIn } from '../vtime';
 import { locale } from '../locale';
 import { WorkoutPlan, Compliance, Phases, WeeklyLoad, FOCUS, phaseFields, saveFile, blockFields, toBlock, resultFields, toActuals } from './workout';
@@ -147,6 +148,11 @@ export function CoachPlan({ id }) {
   const coach = user.id === p.coach_id;
   const rev = p.revisions[p.revisions.length - 1];
   const act = async (fn, msg) => { try { await fn(); toast(msg); plan.reload(); } catch (e) { toast('' + e.message); } };
+  // an athlete's workout result is saved on the device first and uploaded with a version check, so it survives a dropped connection
+  const logWorkout = async (s, fields, done) => {
+    try { const r = await queueDraft({ kind: 'workout_log', payload: { session_id: s.id, expected_version: s.version, ...fields }, label: s.title ?? 'Workout', sub: dateTimeIn(s.starts_at, tz) }); toast(saveMessage(r, done)); plan.reload(); }
+    catch (e) { toast('' + e.message); }
+  };
   const draftSessions = (rev?.content?.sessions ?? []);
   // the draft's sessions with one session's blocks changed (an emptied list means no structure)
   const editBlocks = (at, fn) => draftSessions.map((x, j) => (j === at ? { ...x, blocks: fn(x.blocks ?? []).length ? fn(x.blocks ?? []) : undefined } : x));
@@ -201,7 +207,7 @@ export function CoachPlan({ id }) {
             {s.coach_feedback ? <T size={12}>Coach feedback: {s.coach_feedback}</T> : null}
             <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
               {!coach && s.status === 'scheduled' && s.structure ? <Btn small title={s.actuals ? 'Update my results' : 'Log my results'} color={c.violet} onPress={() => setForm({ mode: 'log', s })} /> : null}
-              {!coach && s.status === 'scheduled' ? <><Btn small title={s.structure ? 'Finish workout' : 'Mark done'} onPress={() => setForm({ mode: s.structure ? 'finish' : 'rate', s })} /><Btn small title="Skipped" color={c.paper} ink={c.ink} onPress={() => act(() => api.patch(`/training-sessions/${s.id}`, { status: 'skipped' }), 'Marked skipped')} /></> : null}
+              {!coach && s.status === 'scheduled' ? <><Btn small title={s.structure ? 'Finish workout' : 'Mark done'} onPress={() => setForm({ mode: s.structure ? 'finish' : 'rate', s })} /><Btn small title="Skipped" color={c.paper} ink={c.ink} onPress={() => logWorkout(s, { status: 'skipped' }, 'Marked skipped')} /></> : null}
               {coach && ['completed', 'skipped'].includes(s.status) ? <Btn small title={s.coach_feedback ? 'Edit feedback' : 'Add feedback'} color={c.paper} ink={c.ink} onPress={() => setForm({ mode: 'note', s })} /> : null}
               {coach && s.status === 'scheduled' && rev?.response === 'draft' && draftSessions.some((x) => x.session_id === s.id) ? <Btn small title="Add workout block" color={c.violet} onPress={() => setForm({ mode: 'block', at: draftSessions.findIndex((x) => x.session_id === s.id) })} /> : null}
               {coach && s.status === 'scheduled' && rev?.response === 'draft' ? <Btn small title="Drop from revision" color={c.paper} ink={c.ink} onPress={() => act(() => saveDraft(draftSessions.filter((x) => x.session_id !== s.id)), 'Dropped from the draft')} /> : null}
@@ -233,9 +239,9 @@ export function CoachPlan({ id }) {
       {form?.s?.structure ? (() => {
         const rf = resultFields(form.s.structure, p.sport_rules, form.s.actuals);
         const save = (finish) => async (v) => {
-          try { await api.patch(`/training-sessions/${form.s.id}`, { actuals: toActuals(v, form.s.structure), expected_version: form.s.version, ...(finish ? { status: 'completed', athlete_rpe: Number(v.athlete_rpe), athlete_feedback: v.athlete_feedback || undefined } : {}) }); }
-          catch (e) { if (e.status === 409 || /another device/.test(e.message)) plan.reload(); throw e; }
-          setForm(null); plan.reload(); return finish ? 'Workout finished — well done' : 'Progress saved';
+          const r = await queueDraft({ kind: 'workout_log', label: form.s.title ?? 'Workout', sub: dateTimeIn(form.s.starts_at, tz),
+            payload: { session_id: form.s.id, expected_version: form.s.version, actuals: toActuals(v, form.s.structure), ...(finish ? { status: 'completed', athlete_rpe: Number(v.athlete_rpe), athlete_feedback: v.athlete_feedback || undefined } : {}) } });
+          setForm(null); plan.reload(); return saveMessage(r, finish ? 'Workout finished — well done' : 'Progress saved');
         };
         return form.mode === 'log'
           ? <FormSheet visible onClose={() => setForm(null)} title="Log my results" submitLabel="Save progress" initial={rf.initial} fields={rf.fields} onSubmit={save(false)} />
@@ -247,7 +253,7 @@ export function CoachPlan({ id }) {
       })() : null}
       <FormSheet visible={form?.mode === 'rate'} onClose={() => setForm(null)} title="How did it go?" submitLabel="Save" initial={{ athlete_rpe: 6 }}
         fields={[{ key: 'athlete_rpe', label: 'Effort 1–10', type: 'stepper', min: 1, max: 10, step: 1, default: 6 }, { key: 'athlete_feedback', label: 'Notes for your coach (no medical details)', type: 'multiline', optional: true }]}
-        onSubmit={async (v) => { await api.patch(`/training-sessions/${form.s.id}`, { status: 'completed', athlete_rpe: Number(v.athlete_rpe), athlete_feedback: v.athlete_feedback || undefined }); setForm(null); plan.reload(); }} />
+        onSubmit={async (v) => { const r = await queueDraft({ kind: 'workout_log', label: form.s.title ?? 'Workout', sub: dateTimeIn(form.s.starts_at, tz), payload: { session_id: form.s.id, expected_version: form.s.version, status: 'completed', athlete_rpe: Number(v.athlete_rpe), athlete_feedback: v.athlete_feedback || undefined } }); setForm(null); plan.reload(); return saveMessage(r, 'Workout saved'); }} />
       <FormSheet visible={form?.mode === 'note'} onClose={() => setForm(null)} title="Coach feedback" submitLabel="Save" initial={{ coach_feedback: form?.s?.coach_feedback ?? '' }}
         fields={[{ key: 'coach_feedback', label: 'Feedback', type: 'multiline' }]}
         onSubmit={async (v) => { await api.patch(`/training-sessions/${form.s.id}`, { coach_feedback: v.coach_feedback }); setForm(null); plan.reload(); }} />

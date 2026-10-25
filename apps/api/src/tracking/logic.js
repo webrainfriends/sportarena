@@ -6,6 +6,10 @@ import { z } from 'zod';
 import { computeScore, rejectReason } from '../scoring/engine.js';
 import { config } from '../config.js';
 import { formFor, variantsOf } from './forms.js';
+import { builtinRuleset, cricketRuleset } from '../scoring/rulesets.js';
+import { applyToRuleset } from '../rulebook/apply.js';
+import { boxingDecision, rankLifts } from '../scoring/scorecards.js';
+import { boxingSetup } from './pro-forms.js';
 
 // keys sorted, so a value hashes the same whether it came from JS or back out of a jsonb column
 const canon = (v) => (Array.isArray(v) ? v.map(canon) : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, canon(v[k])])) : v);
@@ -14,13 +18,36 @@ export const hashOf = sha;
 const SIDES = ['home', 'away'];
 
 // ------------------------------------------------------------------ layouts
+/** What a results table records, per sport: times (lower wins), distances and scores (higher wins), or weightlifting attempts. */
+function resultsSpec(sport, variant, values = {}) {
+  if (sport.slug === 'weightlifting') return { unit: 'lift', rows: 14, attempts: values.attempts ?? 3 };
+  if (sport.slug === 'karate') return { unit: 'score', rows: 10 };
+  return { unit: sport.scoring === 'time' && !/jump|throw/i.test(variant) ? 'time' : 'distance', rows: /track/i.test(variant) ? 9 : /jump|throw/i.test(variant) ? 16 : 12 };
+}
+
 /** What the sport records: points/sets rulesets are tracked live; time/distance sports use a results table. */
-export const trackingMode = (sport, ruleset) => (['time', 'distance'].includes(sport.scoring) ? 'results' : ruleset.kind === 'manual' ? 'manual' : ruleset.kind);
+export function trackingMode(sport, ruleset, variant = '') {
+  if (ruleset.kind === 'cricket') return 'cricket';
+  if (sport.slug === 'boxing') return 'scorecard';
+  if (sport.slug === 'weightlifting' || (sport.slug === 'karate' && variant === 'Kata')) return 'results';
+  if (['time', 'distance'].includes(sport.scoring) || ruleset.kind === 'results') return 'results';
+  return ruleset.kind === 'manual' ? 'manual' : ruleset.kind;
+}
 
 /** Variants offered per sport: racket sports have singles/doubles, the rest a single standard format. Labels only - never scoring rules. */
 export const variantsFor = (sport, ruleset) => variantsOf(sport.slug) ?? (ruleset.kind === 'sets' && !['volleyball', 'beach-volleyball'].includes(sport.slug) ? ['Singles', 'Doubles'] : ['Standard']);
 
 export const BEST_OF = [1, 3, 5];
+
+/** The ruleset a sport starts from for a format: cricket's depends on the format (T20, ODI, Test), the rest are the built-in rules. */
+export const baseRuleset = (sport, variant = '', values = {}) => (sport.slug === 'cricket' ? cricketRuleset(variant || 'T20', values) : builtinRuleset(sport));
+
+/** The ruleset a standalone sheet is scored under: the sport's base rules with any local rule values that affect scoring applied. */
+export function rulesetFor(sport, variant, rules, bestOf) {
+  const values = rules?.values ?? {};
+  const base = baseRuleset(sport, variant, values);
+  return withFormat(sport.slug === 'cricket' ? base : applyToRuleset(sport.slug, base, values, rules?.format), { best_of: bestOf });
+}
 
 /** Apply a standalone format choice (best of N) to a sets ruleset. Linked sheets never do: they use the event's pinned ruleset. */
 export function withFormat(ruleset, { best_of } = {}) {
@@ -40,18 +67,21 @@ export const customiseBase = z.object({
 export const customiseSchema = customiseBase.default({ hidden_stats: [], stat_order: [], labels: {}, notes_fields: [], orientation: 'portrait', paper: 'A4', signatures: true });
 
 /** The printable/on-screen layout for a ruleset. Scoring events can never be hidden or renamed away; only non-scoring stats, labels and notes can. */
-export function buildLayout(sport, ruleset, variant = '', custom = {}) {
+export function buildLayout(sport, ruleset, variant = '', custom = {}, rules = null) {
   const c = customiseBase.parse(custom ?? {});
-  const mode = trackingMode(sport, ruleset);
+  const mode = trackingMode(sport, ruleset, variant);
   const scoring = ruleset.events.map((e) => ({ kind: e.kind, label: c.labels[e.kind] ?? e.label, points: e.points, icon: e.icon ?? null, governed: true }));
   let stats = ruleset.stats.filter((s) => !c.hidden_stats.includes(s.kind)).map((s) => ({ kind: s.kind, label: c.labels[s.kind] ?? s.label, icon: s.icon ?? null, governed: true }));
   if (c.stat_order.length) stats = [...stats].sort((a, b) => (c.stat_order.indexOf(a.kind) + 1 || 99) - (c.stat_order.indexOf(b.kind) + 1 || 99));
-  const form = formFor(sport, ruleset, variant);
-  const title = ruleset.kind === 'manual' ? `${sport.name ?? ruleset.label} · ${form.title}` : `${ruleset.label}${variant && variant !== 'Standard' ? ` · ${variant}` : ''}`;
+  const form = formFor(sport, ruleset, variant, rules);
+  const title = ruleset.kind === 'manual' ? `${sport.name ?? ruleset.label} · ${form.title}` : ruleset.kind === 'cricket' ? ruleset.label : `${ruleset.label}${variant && variant !== 'Standard' ? ` · ${variant}` : ''}`;
   return {
     v: 2, mode, sport: sport.slug, variant, title, form,
     periods: mode === 'points_events' ? ruleset.periods : null, sets: mode === 'sets' ? ruleset.sets : null,
-    scoring, stats, results: mode === 'results' ? { unit: sport.scoring === 'time' ? 'time' : 'distance', rows: 12 } : null,
+    cricket: mode === 'cricket' ? ruleset.cricket : null, rules: rules ? { local: rules.local ?? null, format: rules.format ?? '', lines: rules.lines ?? [], values: rules.values ?? {} } : null,
+    scoring, stats,
+    results: mode === 'results' ? resultsSpec(sport, variant, rules?.values) : null,
+    scorecard: mode === 'scorecard' ? { scale: '10_point_must', ...boxingSetup(variant, rules?.values), sides: ['red', 'blue'] } : null,
     custom: c,
     notes_fields: c.notes_fields.map((label) => ({ label, custom: true, official: false })),
     orientation: custom && 'orientation' in custom ? c.orientation : (form.orientation ?? c.orientation), paper: c.paper, signatures: c.signatures,
@@ -73,7 +103,7 @@ export function sheetResult(ruleset, entries, manual) {
   if (live.length || !manual) {
     if (ruleset.kind === 'manual') return { source: 'manual', home: manual?.home ?? null, away: manual?.away ?? null, winner: winnerOf(manual?.home, manual?.away), sets: null, periods: null, stats: manual?.stats ?? { home: {}, away: {} } };
     const s = computeScore(ruleset, bySeq(live));
-    return { source: 'entries', home: s.home, away: s.away, winner: s.winner, sets: s.sets ?? null, current_set: s.current_set ?? null, periods: s.periods ?? null, stats: s.stats, over: s.over ?? false };
+    return { source: 'entries', home: s.home, away: s.away, winner: s.winner, sets: s.sets ?? null, current_set: s.current_set ?? null, periods: s.periods ?? null, stats: s.stats, over: s.over ?? false, ...(s.cricket ? { cricket: s.cricket } : {}) };
   }
   return { source: 'manual', home: manual.home ?? null, away: manual.away ?? null, winner: winnerOf(manual.home, manual.away), sets: manual.sets ?? null, periods: manual.periods ?? null, stats: manual.stats ?? { home: {}, away: {} } };
 }
@@ -182,3 +212,57 @@ export function evaluateProposal(policy, reviews) {
 }
 
 export { SIDES };
+
+// ------------------------------------------------------------------ results (athletics, swimming and other timed or measured sports)
+/** A time ("9.83", "1:45.20", "2:03:15.4") in seconds, or a distance/height ("7.85") as a number; null when it is not one. */
+export function parseMark(text) {
+  const t = String(text ?? '').trim().replace(',', '.');
+  const m = /^(?:(\d{1,2}):)?(?:(\d{1,2}):)?(\d{1,3}(?:\.\d{1,3})?)$/.exec(t);
+  if (!m) return null;
+  const parts = [m[1], m[2]].filter((x) => x !== undefined).map(Number), secs = Number(m[3]);
+  return parts.length === 2 ? parts[0] * 3600 + parts[1] * 60 + secs : parts.length === 1 ? parts[0] * 60 + secs : secs;
+}
+
+/**
+ * Places for a result sheet. Times: lower wins; distances: higher wins. DNS/DNF/DQ take no place. Equal marks share a place. For a heat,
+ * the first `qp` places are Q and the next `qt` fastest of those left are q. A reaction under the legal minimum is flagged as a possible
+ * false start (never decided here: the starter decides).
+ */
+export function rankRows(rows, unit, { qp = 0, qt = 0, reactionMin = 0 } = {}) {
+  const usable = (m) => (m == null ? null : (unit === 'time' || unit === 'distance') && m <= 0 ? null : m); // a time or distance of zero is not a result
+  const parsed = rows.map((r, i) => ({ i, mark: r.status ? null : usable(parseMark(r.result)) }));
+  const ranked = parsed.filter((x) => x.mark != null).sort((a, b) => (unit === 'time' ? a.mark - b.mark : b.mark - a.mark) || a.i - b.i);
+  const place = new Map();
+  ranked.forEach((x, k) => place.set(x.i, k > 0 && ranked[k - 1].mark === x.mark ? place.get(ranked[k - 1].i) : k + 1));
+  const byTime = unit === 'time' ? ranked.filter((x) => place.get(x.i) > qp).slice(0, qt).map((x) => x.i) : [];
+  const warnings = [];
+  const out = rows.map((r, i) => {
+    const react = parseMark(r.reaction);
+    if (react != null && reactionMin && react < reactionMin) warnings.push({ row: i, code: 'false_start', message: `${r.name || `Lane ${r.lane ?? i + 1}`}: reaction ${r.reaction} s is under the legal ${reactionMin.toFixed(3)} s (possible false start)` });
+    if (r.status === 'DQ' || r.status === 'DNF' || r.status === 'DNS') return { ...r, rank: null, q: '' };
+    if (r.result && parsed[i].mark == null) warnings.push({ row: i, code: 'unreadable_mark', message: `${r.name || `Row ${i + 1}`}: "${r.result}" is not a ${unit === 'time' ? 'time (for example 9.83 or 1:45.20)' : 'distance in metres'}` });
+    const pl = place.get(i) ?? null;
+    return { ...r, rank: pl, q: unit === 'time' && pl ? (pl <= qp ? 'Q' : byTime.includes(i) ? 'q' : '') : '' };
+  });
+  return { rows: out, warnings };
+}
+
+/**
+ * Everything a sheet's result needs beyond the running log: results tables are ranked, a boxing card is turned into the judges' decision,
+ * weightlifting attempts into bests and totals. `details` and `rows` are what the official wrote on the sheet.
+ */
+export function boardFor(layout, { rows = [], details = {} } = {}) {
+  const rv = layout.rules?.values ?? {};
+  if (layout.mode === 'results') {
+    if (layout.results.unit === 'lift') return { type: 'lifts', ...rankLifts(rows, layout.results.attempts) };
+    return { type: 'ranking', ...rankRows(rows, layout.results.unit, { qp: rv.qp ?? 3, qt: rv.qt ?? 2, reactionMin: (rv.rt ?? 100) / 1000 }) };
+  }
+  if (layout.mode === 'scorecard') return { type: 'scorecard', ...boxingDecision(details.cards ?? [], layout.scorecard.rounds, layout.scorecard.judges) };
+  return null;
+}
+
+/** The home/away result a scorecard stands for: judges' votes for each corner (red is home, blue is away). */
+export function scorecardResult(board) {
+  const w = board.winner;
+  return { source: 'scorecard', home: board.votes.red, away: board.votes.blue, winner: w === 'red' ? 'home' : w === 'blue' ? 'away' : null, sets: null, periods: null, stats: { home: {}, away: {} }, over: !!board.complete, scorecard: board };
+}

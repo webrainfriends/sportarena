@@ -523,20 +523,67 @@ async function entryRows(c, sessionId, scope, prog) {
   return rows.map((r) => ({ ...r, full_name: r.participant_id && !sees(scope, prog, r.house_id, r.participant_id) ? null : r.full_name }));
 }
 
+/** One session with its entries and officials, participant names following the programme's privacy for this caller. */
+export async function sessionDetail(user, sessionId) {
+  const s = await one('SELECT s.*, d.name AS discipline, d.mode, d.result_type, d.sport_id FROM event_sessions s JOIN event_disciplines d ON d.id=s.discipline_id WHERE s.id=$1', [sessionId]);
+  if (!s) throw notFound('Session');
+  const { prog, scope } = await viewer(user, s.event_id);
+  const officials = await many("SELECT st.id AS staff_id, st.role, u.display_name FROM event_shifts sh JOIN event_staff st ON st.id=sh.staff_id JOIN users u ON u.id=st.user_id WHERE sh.session_id=$1 AND sh.status='assigned' ORDER BY st.role, u.display_name", [sessionId]);
+  return { ...s, entries: await entryRows(pool, sessionId, scope, prog), officials };
+}
+/** Is this user an accepted official assigned to the session? */
+export const isAssignedOfficial = async (c, userId, sessionId) => (await c.query("SELECT 1 FROM event_shifts sh JOIN event_staff st ON st.id=sh.staff_id WHERE sh.session_id=$1 AND sh.status='assigned' AND st.user_id=$2 AND st.status='accepted'", [sessionId, userId])).rowCount > 0;
+
 cap({
   name: 'get_session', method: 'GET', path: '/sessions/:id', tag: TAG, auth: 'public',
   summary: 'One session with its entries, lanes and results. Participant names follow the programme\'s privacy setting.',
   input: z.object({ id }),
-  async handler({ user }, i) {
-    const s = await one('SELECT s.*, d.name AS discipline, d.mode, d.result_type FROM event_sessions s JOIN event_disciplines d ON d.id=s.discipline_id WHERE s.id=$1', [i.id]);
-    if (!s) throw notFound('Session');
-    const { prog, scope } = await viewer(user, s.event_id);
-    const officials = await many("SELECT st.id AS staff_id, st.role, u.display_name FROM event_shifts sh JOIN event_staff st ON st.id=sh.staff_id JOIN users u ON u.id=st.user_id WHERE sh.session_id=$1 AND sh.status='assigned' ORDER BY st.role, u.display_name", [i.id]);
-    return { ...s, entries: await entryRows(pool, i.id, scope, prog), officials };
-  },
+  async handler({ user }, i) { return sessionDetail(user, i.id); },
 });
 
 // ---------------------------------------------------------------- results
+
+/**
+ * Record a heat/match result inside the caller's transaction. Used by the endpoint below and by an approved result proposal, so both
+ * go through the same checks: organiser or assigned official only, positions computed, knockout ties decided, discipline status kept.
+ */
+export async function recordSessionResults(c, user, i) {
+  const s = await mustSession(c, i.id, true);
+  const d = await discipline(c, s.discipline_id);
+  const { ev, scope } = await eventAccess(c, user, s.event_id);
+  const assigned = (await c.query("SELECT 1 FROM event_shifts sh JOIN event_staff st ON st.id=sh.staff_id WHERE sh.session_id=$1 AND sh.status='assigned' AND st.user_id=$2 AND st.status='accepted'", [s.id, user.id])).rowCount > 0;
+  if (!scope.organizer && !assigned) throw forbidden('Only the organiser or an official assigned to this session can record results');
+  if (s.status === 'cancelled') throw conflict('Session is cancelled');
+  if (ev.status === 'cancelled') throw conflict('Event is cancelled');
+  const entries = (await c.query("SELECT * FROM event_session_entries WHERE session_id=$1 AND result_status <> 'scratched' FOR UPDATE", [s.id])).rows;
+  const byId = new Map(entries.map((e) => [e.id, e]));
+  for (const r of i.results) {
+    const e = byId.get(r.entry_id);
+    if (!e) throw badRequest('entry_id does not belong to this session (or was scratched)');
+    const status = r.status ?? 'finished';
+    if (status === 'finished' && d.mode === 'individual' && r.value == null && r.position == null) throw badRequest('Give a value (or a position) for a finished entry');
+    if (status === 'finished' && d.mode === 'team' && r.score == null && r.position == null && entries.length > 1) throw badRequest('Give a score (or a position) for a finished team');
+    Object.assign(e, { result_value: r.value ?? null, score: r.score ?? null, result_status: status, position: status === 'finished' ? (r.position ?? null) : null, note: r.note ?? e.note, _explicit: r.position != null });
+  }
+  const byScore = d.mode === 'team';
+  const auto = rankSession(entries.filter((e) => !e._explicit), d.result_type, byScore);
+  for (const e of entries) {
+    if (e.result_status === 'finished' && !e._explicit) e.position = entries.length === 1 ? 1 : (auto.get(e.id) ?? null);
+    await c.query('UPDATE event_session_entries SET result_value=$2, score=$3, result_status=$4, position=$5, note=$6 WHERE id=$1', [e.id, e.result_value, e.score, e.result_status, e.position, e.note ?? null]);
+  }
+  if (i.complete) {
+    const open = entries.filter((e) => e.result_status === 'registered');
+    if (open.length) throw badRequest(`${open.length} entr${open.length > 1 ? 'ies have' : 'y has'} no result yet`);
+    if (d.mode === 'team' && ['knockout', 'quarter_final', 'semi_final', 'final', 'third_place'].includes(s.stage)) {
+      const fin = entries.filter((e) => e.result_status === 'finished');
+      if (fin.length > 1 && fin.filter((e) => e.position === 1).length !== 1) throw conflict('A knockout game needs a winner: set `position` on the entries to settle the tie');
+    }
+    await c.query("UPDATE event_sessions SET status='completed', completed_at=now() WHERE id=$1", [s.id]);
+    await c.query("UPDATE event_disciplines SET status='ongoing' WHERE id=$1 AND status IN ('nominations','scheduled')", [d.id]);
+  } else if (s.status !== 'live') await c.query("UPDATE event_sessions SET status='live' WHERE id=$1 AND status IN ('draft','scheduled')", [s.id]);
+  const out = await entryRows(c, s.id, { ...scope, organizer: true }, { public_names: true });
+  return { session_id: s.id, completed: i.complete, entries: out, refinalize_required: !!d.finalized_at };
+}
 
 cap({
   name: 'record_session_results', method: 'POST', path: '/sessions/:id/results', tag: TAG,
@@ -546,43 +593,7 @@ cap({
     results: z.array(z.object({ entry_id: id, value: z.number().optional(), score: z.number().int().min(0).optional(), status: z.enum(['finished', 'dns', 'dnf', 'dq']).optional(), position: z.number().int().min(1).optional(), note: z.string().max(300).optional() })).min(1).max(64),
   }),
   async handler({ user }, i) {
-    return tx(async (c) => {
-      const s = await mustSession(c, i.id, true);
-      const d = await discipline(c, s.discipline_id);
-      const { ev, scope } = await eventAccess(c, user, s.event_id);
-      const assigned = (await c.query("SELECT 1 FROM event_shifts sh JOIN event_staff st ON st.id=sh.staff_id WHERE sh.session_id=$1 AND sh.status='assigned' AND st.user_id=$2 AND st.status='accepted'", [s.id, user.id])).rowCount > 0;
-      if (!scope.organizer && !assigned) throw forbidden('Only the organiser or an official assigned to this session can record results');
-      if (s.status === 'cancelled') throw conflict('Session is cancelled');
-      if (ev.status === 'cancelled') throw conflict('Event is cancelled');
-      const entries = (await c.query("SELECT * FROM event_session_entries WHERE session_id=$1 AND result_status <> 'scratched' FOR UPDATE", [s.id])).rows;
-      const byId = new Map(entries.map((e) => [e.id, e]));
-      for (const r of i.results) {
-        const e = byId.get(r.entry_id);
-        if (!e) throw badRequest('entry_id does not belong to this session (or was scratched)');
-        const status = r.status ?? 'finished';
-        if (status === 'finished' && d.mode === 'individual' && r.value == null && r.position == null) throw badRequest('Give a value (or a position) for a finished entry');
-        if (status === 'finished' && d.mode === 'team' && r.score == null && r.position == null && entries.length > 1) throw badRequest('Give a score (or a position) for a finished team');
-        Object.assign(e, { result_value: r.value ?? null, score: r.score ?? null, result_status: status, position: status === 'finished' ? (r.position ?? null) : null, note: r.note ?? e.note, _explicit: r.position != null });
-      }
-      const byScore = d.mode === 'team';
-      const auto = rankSession(entries.filter((e) => !e._explicit), d.result_type, byScore);
-      for (const e of entries) {
-        if (e.result_status === 'finished' && !e._explicit) e.position = entries.length === 1 ? 1 : (auto.get(e.id) ?? null);
-        await c.query('UPDATE event_session_entries SET result_value=$2, score=$3, result_status=$4, position=$5, note=$6 WHERE id=$1', [e.id, e.result_value, e.score, e.result_status, e.position, e.note ?? null]);
-      }
-      if (i.complete) {
-        const open = entries.filter((e) => e.result_status === 'registered');
-        if (open.length) throw badRequest(`${open.length} entr${open.length > 1 ? 'ies have' : 'y has'} no result yet`);
-        if (d.mode === 'team' && ['knockout', 'quarter_final', 'semi_final', 'final', 'third_place'].includes(s.stage)) {
-          const fin = entries.filter((e) => e.result_status === 'finished');
-          if (fin.length > 1 && fin.filter((e) => e.position === 1).length !== 1) throw conflict('A knockout game needs a winner: set `position` on the entries to settle the tie');
-        }
-        await c.query("UPDATE event_sessions SET status='completed', completed_at=now() WHERE id=$1", [s.id]);
-        await c.query("UPDATE event_disciplines SET status='ongoing' WHERE id=$1 AND status IN ('nominations','scheduled')", [d.id]);
-      } else if (s.status !== 'live') await c.query("UPDATE event_sessions SET status='live' WHERE id=$1 AND status IN ('draft','scheduled')", [s.id]);
-      const out = await entryRows(c, s.id, { ...scope, organizer: true }, { public_names: true });
-      return { session_id: s.id, completed: i.complete, entries: out, refinalize_required: !!d.finalized_at };
-    });
+    return tx((c) => recordSessionResults(c, user, i));
   },
 });
 

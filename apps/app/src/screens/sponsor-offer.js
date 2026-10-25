@@ -111,7 +111,7 @@ function LineCard({ line: l, set, remove, min, max, fixedCurrency, issues }) {
   );
 }
 
-export function SponsorOffer({ target: initialTarget, sponsor_id }) {
+export function SponsorOffer({ target: initialTarget, sponsor_id, billboard_response_id }) {
   const { toast } = useSession();
   const { back, replace } = useNav();
   const brands = useLoad(() => api.get('/sponsors', { mine: true, limit: 50 }), []);
@@ -147,7 +147,7 @@ export function SponsorOffer({ target: initialTarget, sponsor_id }) {
   const hasRecurring = lines.some((l) => l.cadence !== 'once' && l.cadence !== 'custom');
 
   const body = () => ({
-    sponsor_id: brand.id, target_type: target.type, target_id: target.id, starts_on: period.from, ends_on: period.to, timezone: zone.current, lines: built.lines, client_ref: ref.current,
+    sponsor_id: brand.id, target_type: target.type, target_id: target.id, starts_on: period.from, ends_on: period.to, timezone: zone.current, lines: built.lines, client_ref: ref.current, billboard_response_id,
     objectives: terms.objectives.trim() || undefined, deliverables: terms.deliverables.trim() || undefined, message: terms.message.trim() || undefined, budget_id: terms.budget_id,
   });
 

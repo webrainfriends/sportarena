@@ -1,7 +1,7 @@
 // Tools > Scoring & Game Tracking (#416). Anyone can start a sheet, track live, print it and keep it as an unofficial record.
 // Linking a sheet to a real game turns it into a result PROPOSAL: it is reviewed by the game's own officials and only then reaches
 // the existing score-sheet lifecycle. Scoring rules always come from the server (the canonical engine); nothing is computed here.
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Platform, Pressable, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
@@ -12,7 +12,11 @@ import { Counter, DateField } from '../pickers';
 import { SportSelect } from '../sportpicker';
 import { useLayout } from '../layout';
 import { c } from '../theme';
-import { LinkSheet, ProposalReview, StateTag, UploadFlow, EventScoringConfig } from './scoring-review';
+import { LinkSheet, SessionLinkSheet, ProposalReview, StateTag, UploadFlow, EventScoringConfig } from './scoring-review';
+import { openPdf } from '../open-file';
+import { storage } from '../storage';
+import { CricketScorer } from './cricket-scorer';
+import { ContestResult, DetailsPanel, HeatSheet, LiftSheet, PlayerPick, RulesBanner, ScoreCards } from './scorer-panels';
 
 const nice = (s = '') => String(s).replace(/_/g, ' ');
 export const OfficialBanner = ({ sheet }) => (
@@ -22,13 +26,8 @@ export const OfficialBanner = ({ sheet }) => (
   </View>
 );
 
-export async function openPdf(sheetId, toast, kitId) {
-  try {
-    if (Platform.OS !== 'web' || typeof window === 'undefined') return toast?.('Printable sheets open in the web app');
-    const url = URL.createObjectURL(await api.download(`/tracking/sheets/${sheetId}/pdf${kitId ? `?kit_id=${kitId}` : ''}`));
-    window.open(url, '_blank', 'noopener');
-    setTimeout(() => URL.revokeObjectURL(url), 120000);
-  } catch (e) { toast?.(e.message); }
+export async function openSheetPdf(sheetId, toast, kitId) {
+  try { await openPdf(`/tracking/sheets/${sheetId}/pdf${kitId ? `?kit_id=${kitId}` : ''}`, `sheet-${sheetId.slice(0, 8)}`); } catch (e) { toast?.(e.message); }
 }
 
 // ----------------------------------------------------------------------------------------------------------- big touch buttons
@@ -65,23 +64,29 @@ function Scoreboard({ s, tracker }) {
   );
 }
 
-function ResultsRows({ s, save }) {
-  const [rows, setRows] = useState(() => { const n = s.template.layout.results.rows; return Array.from({ length: n }, (_, i) => s.rows[i] ?? { order: i + 1 }); });
-  const set = (i, patch) => setRows((rs) => rs.map((r, k) => (k === i ? { ...r, ...patch } : r)));
+/** A substitution: who goes off and who comes on, picked from the team list when there is one. */
+function SubSheet({ s, side, onClose, onDone }) {
+  const [off, setOff] = useState(null);
+  const [on, setOn] = useState(null);
+  const list = (s.details?.players?.[side] ?? []).filter((p) => p.no);
   return (
-    <View style={{ gap: 8 }}>
-      {rows.map((r, i) => (
-        <Card key={i} pad={10}>
-          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-end' }}>
-            <View style={{ width: 60 }}><Field label="Lane" value={r.lane ?? ''} onChangeText={(v) => set(i, { lane: v })} maxLength={10} /></View>
-            <View style={{ flex: 1 }}><Field label="Participant" value={r.name ?? ''} onChangeText={(v) => set(i, { name: v })} maxLength={80} /></View>
-            <View style={{ width: 96 }}><Field label={s.template.layout.results.unit === 'time' ? 'Time' : 'Result'} value={r.result ?? ''} onChangeText={(v) => set(i, { result: v })} maxLength={20} /></View>
-          </View>
-          <Seg options={[{ label: 'Finished', value: '' }, 'DNS', 'DNF', 'DQ']} value={r.status ?? ''} onChange={(v) => set(i, { status: v })} />
-        </Card>
-      ))}
-      <Btn title="Save results" onPress={() => save(rows.filter((r) => r.name || r.result || r.lane).map((r, i) => ({ ...r, order: i + 1 })))} />
-    </View>
+    <Sheet visible onClose={onClose} title={`Substitution · ${s.labels[side]}`}>
+      <View style={{ gap: 12 }}>
+        {list.length ? (
+          <>
+            <PlayerPick s={s} side={side} value={off} onChange={setOff} label="Off" />
+            <PlayerPick s={s} side={side} value={on} onChange={setOn} label="On" />
+          </>
+        ) : (
+          <>
+            <T color={c.mute} size={13}>Add the team list under Match details to pick players. Shirt numbers work too.</T>
+            <Field label="Number off" value={off ?? ''} onChangeText={setOff} keyboardType="number-pad" maxLength={3} />
+            <Field label="Number on" value={on ?? ''} onChangeText={setOn} keyboardType="number-pad" maxLength={3} />
+          </>
+        )}
+        <Btn title="Record substitution" disabled={!off || !on || off === on} onPress={() => onDone({ off, on })} />
+      </View>
+    </Sheet>
   );
 }
 
@@ -95,10 +100,29 @@ export function Tracker({ id, onClose, openLink }) {
   const [link, setLink] = useState(!!openLink);
   const [review, setReview] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [who, setWho] = useState({ home: null, away: null });
+  const [minute, setMinute] = useState(1);
+  const [useMinute, setUseMinute] = useState(false);
+  const [goalType, setGoalType] = useState('open_play');
+  const [sub, setSub] = useState(null);
   const flushing = useRef(false);
+  const pendingRef = useRef([]);
+  pendingRef.current = pending;
   const kits = useLoad(() => api.get('/brand-kits').catch(() => []), []);
   const [kit, setKit] = useState(null);
   const s = fresh ?? load.data;
+  const queueKey = `sa_queue_${id}`;
+  // taps that could not reach the server are kept on the device (and retried) so they survive a restart or a dead zone; the same client_key makes a retry safe
+  useEffect(() => { (async () => { try { const raw = await storage.get(queueKey); const q = raw ? JSON.parse(raw) : []; if (Array.isArray(q) && q.length) setPending((p) => [...q.filter((e) => !p.some((x) => x.client_key === e.client_key)), ...p]); } catch { /* an unreadable queue is ignored */ } })(); }, [queueKey]);
+  useEffect(() => { if (pending.length) storage.set(queueKey, JSON.stringify(pending)); else storage.del(queueKey); }, [pending, queueKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!pending.length) return undefined;
+    const t = setInterval(() => flush(), 8000);
+    const on = () => flush();
+    if (typeof window !== 'undefined' && window.addEventListener) window.addEventListener('online', on);
+    flush();
+    return () => { clearInterval(t); if (typeof window !== 'undefined' && window.removeEventListener) window.removeEventListener('online', on); };
+  }, [pending.length > 0]); // eslint-disable-line react-hooks/exhaustive-deps
   if (load.error) return <ErrorBox error={load.error} onRetry={load.reload} />;
   if (!s) return <Loading />;
   const layout = s.template.layout, live = s.status === 'in_progress';
@@ -113,13 +137,16 @@ export function Tracker({ id, onClose, openLink }) {
   };
   const flush = async () => {
     if (flushing.current) return; flushing.current = true;
-    try { for (const e of [...pending]) if (!(await send(e))) break; } finally { flushing.current = false; }
+    try { for (const e of [...pendingRef.current]) if (!(await send(e))) break; } finally { flushing.current = false; }
   };
-  const record = async (kind, side) => {
-    const e = { kind, side, period: layout.mode === 'points_events' ? period : undefined, client_key: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}` };
+  const record = async (kind, side, extra = {}) => {
+    const e = { kind, ...(side ? { side } : {}), period: extra.period ?? (layout.mode === 'points_events' ? period : undefined), ...(extra.payload ? { payload: extra.payload } : {}), client_key: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}` };
     setPending((p) => [...p, e]);
-    if (!(await send(e))) toast('Not saved yet. It will be retried; tap Retry when you are back online.');
+    const ok = await send(e);
+    if (!ok) toast('Not saved yet. It will be retried; tap Retry when you are back online.');
+    return ok;
   };
+  const undo = () => patch({ void_entry: { reason: 'Undone' } });
   const patch = async (body, ok) => { try { setFresh(await api.patch(`/tracking/sheets/${id}`, body)); if (ok) toast(ok); } catch (e) { toast(e.message); } };
   const complete = async () => { setBusy(true); try { setFresh(await api.post(`/tracking/sheets/${id}/complete`)); toast('Saved as a completed sheet'); } catch (e) { toast(e.message); } finally { setBusy(false); } };
   const hasLive = s.entries.some((e) => !e.voided_at);
@@ -135,7 +162,8 @@ export function Tracker({ id, onClose, openLink }) {
         <Btn small title="Close" color={c.violet} onPress={onClose} />
       </View>
       <OfficialBanner sheet={s} />
-      <Scoreboard s={s} />
+      <RulesBanner s={s} />
+      {['cricket', 'results', 'scorecard'].includes(layout.mode) || (layout.mode === 'manual' && ['judo', 'chess'].includes(layout.sport)) ? null : <Scoreboard s={s} />}
       <T size={12} color={c.mute} accessibilityLiveRegion="polite">{pending.length ? `⚠ ${pending.length} not sent yet` : '✓ Saved'}</T>
       {pending.length ? <Btn small title="Retry sending" onPress={flush} color={c.sun} /> : null}
 
@@ -144,39 +172,57 @@ export function Tracker({ id, onClose, openLink }) {
       {live && layout.mode === 'points_events' ? (
         <View style={{ gap: 12 }}>
           <Seg options={Array.from({ length: layout.periods.count }, (_, i) => ({ label: `${layout.periods.label} ${i + 1}`, value: i + 1 }))} value={period} onChange={setPeriod} />
+          <PlayerPick s={s} side="home" value={who.home} onChange={(v) => setWho((w) => ({ ...w, home: v }))} label="Scorer or player" />
+          <PlayerPick s={s} side="away" value={who.away} onChange={(v) => setWho((w) => ({ ...w, away: v }))} label="Scorer or player" />
+          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <Chip label={useMinute ? `Minute ${minute}'` : 'Add the minute'} active={useMinute} onPress={() => setUseMinute(!useMinute)} />
+            {useMinute ? <Counter value={minute} min={0} max={150} onChange={setMinute} suffix="'" /> : null}
+            {layout.scoring.some((e) => e.kind === 'goal') ? ['open_play', 'penalty', 'free_kick', 'own_goal'].map((t) => <Chip key={t} label={nice(t)} active={goalType === t} onPress={() => setGoalType(t)} />) : null}
+          </View>
           {layout.scoring.map((e) => (
             <View key={e.kind} style={{ flexDirection: 'row', gap: 12 }}>
-              <Big label={`${e.icon ?? '+'} ${e.label}`} sub={`${labelOf('home')} · ${tally('home', e.kind)}`} onPress={() => record(e.kind, 'home')} />
-              <Big label={`${e.icon ?? '+'} ${e.label}`} sub={`${labelOf('away')} · ${tally('away', e.kind)}`} onPress={() => record(e.kind, 'away')} color={c.violet} />
+              {['home', 'away'].map((side) => (
+                <Big key={side} label={`${e.icon ?? '+'} ${e.label}`} sub={`${labelOf(side)} · ${tally(side, e.kind)}`} color={side === 'home' ? c.pink : c.violet}
+                  onPress={() => {
+                    const own = e.kind === 'goal' && goalType === 'own_goal';
+                    const payload = { ...(who[side] ? { player_no: who[side] } : {}), ...(useMinute ? { minute } : {}), ...(e.kind === 'goal' && goalType !== 'open_play' ? { type: goalType } : {}) };
+                    record(e.kind, own ? (side === 'home' ? 'away' : 'home') : side, { payload: Object.keys(payload).length ? payload : undefined }); setWho((w) => ({ ...w, [side]: null }));
+                  }} />
+              ))}
             </View>
           ))}
         </View>
       ) : null}
 
-      {live && layout.stats.length && layout.mode !== 'results' && layout.mode !== 'manual' ? (
+      {live && layout.stats.length && !['results', 'manual', 'scorecard', 'cricket'].includes(layout.mode) ? (
         <Section title="Other events">
           {['home', 'away'].map((side) => (
             <View key={side} style={{ gap: 6 }}>
               <T weight="700" size={12} color={c.mute}>{labelOf(side)}</T>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                {layout.stats.map((st) => <Chip key={st.kind} label={`${st.icon ?? ''} ${st.label} · ${tally(side, st.kind)}`.trim()} onPress={() => record(st.kind, side)} />)}
+                {layout.stats.map((st) => <Chip key={st.kind} label={`${st.icon ?? ''} ${st.label} · ${tally(side, st.kind)}`.trim()} onPress={() => (st.kind === 'substitution' ? setSub(side) : record(st.kind, side, { payload: { ...(who[side] ? { player_no: who[side] } : {}), ...(useMinute ? { minute } : {}) } }))} />)}
               </View>
             </View>
           ))}
         </Section>
       ) : null}
 
-      {live && layout.mode === 'manual' ? (
+      {live && layout.mode === 'manual' && !['judo', 'chess'].includes(layout.sport) ? (
         <Card><T weight="800">Final totals</T>
           <Counter label={labelOf('home')} min={0} max={999} value={s.manual_totals?.home ?? 0} onChange={(v) => patch({ manual_totals: { home: v, away: s.manual_totals?.away ?? 0 } })} />
           <Counter label={labelOf('away')} min={0} max={999} value={s.manual_totals?.away ?? 0} onChange={(v) => patch({ manual_totals: { home: s.manual_totals?.home ?? 0, away: v } })} />
         </Card>
       ) : null}
-      {live && layout.mode === 'results' ? <ResultsRows s={s} save={(rows) => patch({ rows }, 'Results saved')} /> : null}
+      {layout.mode === 'results' ? (layout.results.unit === 'lift' ? <LiftSheet key={s.id} s={s} patch={(b) => patch(b)} /> : <HeatSheet key={s.id} s={s} patch={(b) => patch(b)} />) : null}
+      {layout.mode === 'scorecard' ? <ScoreCards key={s.id} s={s} patch={(b) => patch(b)} /> : null}
+      {layout.mode === 'manual' && ['judo', 'chess'].includes(layout.sport) ? <ContestResult key={s.id} s={s} patch={(b) => patch(b)} /> : null}
+      {layout.mode === 'cricket' ? <CricketScorer s={s} record={record} undo={undo} patch={patch} busy={busy} /> : null}
+
+      <DetailsPanel s={s} patch={(b) => patch(b)} roster={layout.mode !== 'results' && layout.mode !== 'sets'} />
 
       {s.checks.length ? <View style={{ gap: 6 }}>{s.checks.map((k, i) => <T key={i} size={13} color={k.severity === 'error' ? c.orange : c.mute}>{k.severity === 'error' ? '⛔' : '⚠️'} {k.message}</T>)}</View> : null}
 
-      {hasLive || recent.length ? (
+      {(hasLive || recent.length) && !['cricket', 'results', 'scorecard'].includes(layout.mode) ? (
         <Section title="Recent entries">
           {recent.map((e) => (
             <T key={e.id} size={13} color={e.voided_at ? c.mute : c.ink} style={e.voided_at ? { textDecorationLine: 'line-through' } : null}>
@@ -187,24 +233,27 @@ export function Tracker({ id, onClose, openLink }) {
       ) : null}
 
       <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-        {live ? <Btn title="↩︎ Undo last" color={c.violet} disabled={!hasLive} onPress={() => patch({ void_entry: { reason: 'Undone' } })} /> : null}
+        {live && !['cricket', 'results', 'scorecard', 'manual'].includes(layout.mode) ? <Btn title="↩︎ Undo last" color={c.violet} disabled={!hasLive} onPress={undo} /> : null}
         {live ? <Btn title="Complete sheet" color={c.mint} loading={busy} onPress={complete} /> : null}
-        <Btn title="Download PDF" color={c.cyan} onPress={() => openPdf(id, toast, kit)} />
-        {s.status === 'completed' && !s.proposal ? <Btn title="Link to a match" color={c.pink} onPress={() => setLink(true)} /> : null}
+        <Btn title="Download PDF" color={c.cyan} onPress={() => openSheetPdf(id, toast, kit)} />
+        {s.status === 'completed' && !s.proposal ? <Btn title={layout.mode === 'results' ? 'Link to a heat or session' : 'Link to a match'} color={c.pink} onPress={() => setLink(true)} /> : null}
       </View>
       {(kits.data ?? []).length ? <View style={{ gap: 4 }}><T size={12} color={c.mute}>PDF branding (from Document Designer). It never changes what the sheet means.</T><Seg options={[{ label: 'Plain', value: null }, ...kits.data.map((k) => ({ label: k.name, value: k.id }))]} value={kit} onChange={setKit} /></View> : null}
       {s.proposal ? <Card onPress={() => setReview(s.proposal.id)}><View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><T weight="800" style={{ flex: 1 }}>Result proposal · round {s.proposal.round}</T><StateTag s={s.proposal.state} /></View><T color={c.mute} size={12}>Tap to see the review</T></Card> : null}
-      {link ? <LinkSheet sheet={s} onClose={() => setLink(false)} onDone={(p) => { setLink(false); setReview(p.id); load.reload(); setFresh(null); }} /> : null}
+      {sub ? <SubSheet s={s} side={sub} onClose={() => setSub(null)} onDone={(p) => { record('substitution', sub, { payload: { ...p, ...(useMinute ? { minute } : {}) } }); setSub(null); }} /> : null}
+      {link ? (layout.mode === 'results' ? <SessionLinkSheet sheet={s} onClose={() => setLink(false)} onDone={(p) => { setLink(false); setReview(p.id); load.reload(); setFresh(null); }} /> : <LinkSheet sheet={s} onClose={() => setLink(false)} onDone={(p) => { setLink(false); setReview(p.id); load.reload(); setFresh(null); }} />) : null}
       {review ? <Sheet visible onClose={() => { setReview(null); setFresh(null); load.reload(); }} title="Result proposal"><ProposalReview id={review} /></Sheet> : null}
     </View>
   );
 }
 
 // ----------------------------------------------------------------------------------------------------------- start flow
-function Start({ presetFixture, ctx, onStarted, onClose }) {
+function Start({ presetFixture, presetSport, presetVariant, presetLocal, ctx, onStarted, onClose }) {
   const { toast } = useSession();
-  const [sport, setSport] = useState(null);
-  const [variant, setVariant] = useState(null);
+  const { push } = useNav();
+  const [sport, setSport] = useState(presetSport ?? null);
+  const [variant, setVariant] = useState(presetVariant ?? null);
+  const [localId, setLocalId] = useState(presetLocal ?? null);
   const [bestOf, setBestOf] = useState(null);
   const [mode, setMode] = useState(presetFixture ? 'link' : 'standalone');
   const [fixture, setFixture] = useState(presetFixture ? { id: presetFixture } : null);
@@ -214,16 +263,17 @@ function Start({ presetFixture, ctx, onStarted, onClose }) {
   const [date, setDate] = useState(null);
   const [brief, setBrief] = useState('');
   const [busy, setBusy] = useState(false);
-  const templates = useLoad(() => (sport ? api.get('/tracking/templates', { sport, variant: variant ?? undefined, best_of: bestOf ?? undefined }) : Promise.resolve(null)), [sport, variant, bestOf]);
+  const templates = useLoad(() => (sport ? api.get('/tracking/templates', { sport, variant: variant ?? undefined, best_of: bestOf ?? undefined, local_id: localId ?? undefined, event_id: fixture?.event_id ?? undefined }).catch((e) => { if (localId) setLocalId(null); throw e; }) : Promise.resolve(null)), [sport, variant, bestOf, localId, fixture?.event_id]);
+  const locals = useLoad(() => (sport ? api.get('/local-rules', { sport }).catch(() => []) : Promise.resolve([])), [sport]);
   const cands = useLoad(() => (mode === 'link' && sport && !presetFixture ? api.get('/tracking/link-candidates', { sport, q: q.trim() || undefined, around: date ? new Date(`${date}T12:00:00`).toISOString() : undefined, days: date ? 1 : 7 }) : Promise.resolve([])), [mode, sport, q, date]);
   const t = templates.data;
-  const body = () => ({ ...(sport ? { sport } : {}), variant: variant ?? undefined, best_of: bestOf ?? undefined, ...(tpl !== 'starter' ? { template_id: tpl } : {}), ...(mode === 'link' ? { fixture_id: fixture?.id } : { labels: { home: labels.home || undefined, away: labels.away || undefined } }), ...(date ? { occurred_at: new Date(`${date}T12:00:00`).toISOString() } : {}), ...(ctx ?? {}) });
+  const body = () => ({ ...(sport ? { sport } : {}), variant: variant ?? undefined, local_rules_id: mode === 'link' ? undefined : localId ?? undefined, best_of: bestOf ?? undefined, ...(tpl !== 'starter' ? { template_id: tpl } : {}), ...(mode === 'link' ? { fixture_id: fixture?.id } : { labels: { home: labels.home || undefined, away: labels.away || undefined } }), ...(date ? { occurred_at: new Date(`${date}T12:00:00`).toISOString() } : {}), ...(ctx ?? {}) });
   const go = async (print) => {
     if (mode === 'link' && !fixture) { toast('Pick the game first'); return; }
     setBusy(true);
     try {
       const s = await api.post('/tracking/sheets', body());
-      if (print) await openPdf(s.id, toast);
+      if (print) await openSheetPdf(s.id, toast);
       onStarted(s, print);
     } catch (e) { toast(e.message); } finally { setBusy(false); }
   };
@@ -244,7 +294,18 @@ function Start({ presetFixture, ctx, onStarted, onClose }) {
           <>
             <T weight="700" size={13}>2 · Format</T>
             <Seg options={t.variants} value={variant ?? t.starter.variant} onChange={setVariant} />
-            {t.starter.layout.form ? <T color={c.mute} size={12}>Prints as: {t.starter.layout.form.title}. A sport-specific sheet to fill in while the game is played; it never changes how the result is scored.</T> : null}
+            {t.starter.layout.form ? <T color={c.mute} size={12}>Prints as: {t.starter.layout.form.title}. A sport-specific sheet to fill in while the game is played.</T> : null}
+            {mode === 'standalone' ? (
+              <View style={{ gap: 6 }}>
+                <T weight="700" size={13}>Rules</T>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                  <Chip label="Standard rules" active={!localId} onPress={() => setLocalId(null)} />
+                  {(locals.data ?? []).filter((x) => !x.format || x.format === (t.starter.layout.rules?.format ?? x.format)).map((x) => <Chip key={x.id} label={`${x.name} · v${x.current_version}`} active={localId === x.id} onPress={() => setLocalId(x.id)} />)}
+                  <Btn small title="Read or localise the rules" color={c.violet} onPress={() => push('SportRules', { sport, tab: 'rulebook' })} />
+                </View>
+                {t.starter.rules?.lines?.length ? t.starter.rules.lines.map((l) => <T key={l} size={12} color={c.orange}>{l}</T>) : null}
+              </View>
+            ) : null}
             {t.starter.formats && mode === 'standalone' ? <Seg options={t.starter.formats.map((n) => ({ label: `Best of ${n}`, value: n }))} value={bestOf ?? t.starter.ruleset.sets.best_of} onChange={setBestOf} /> : null}
           </>
         ) : null}
@@ -320,7 +381,9 @@ function MySheets({ onOpen, initialState }) {
 }
 
 function Templates() {
-  const { toast } = useSession();
+  const { toast, user } = useSession();
+  const [scope, setScope] = useState('personal');
+  const [target, setTarget] = useState(null);
   const [sport, setSport] = useState(null);
   const list = useLoad(() => (sport ? api.get('/tracking/templates', { sport }) : Promise.resolve(null)), [sport]);
   const [name, setName] = useState('');
@@ -328,9 +391,13 @@ function Templates() {
   const [notes, setNotes] = useState('');
   const [orientation, setOrientation] = useState('portrait');
   const [paper, setPaper] = useState('A4');
+  const orgs = useLoad(() => (scope === 'organisation' ? api.get('/organisations') : Promise.resolve([])), [scope]);
+  const teams = useLoad(() => (scope === 'team' ? api.get('/teams', { mine: true, limit: 50 }) : Promise.resolve([])), [scope]);
+  const events = useLoad(() => (scope === 'event' ? api.get('/events', { organizer_id: user.id, limit: 50 }) : Promise.resolve([])), [scope]);
+  const targets = scope === 'organisation' ? (orgs.data ?? []).filter((o) => o.my_status === 'active' && ['owner', 'admin', 'coach'].includes(o.my_role)) : scope === 'team' ? (teams.data ?? []) : scope === 'event' ? (events.data ?? []).filter((e) => !sport || !e.sport_slug || e.sport_slug === sport) : [];
   const run = async (fn, ok) => { try { await fn(); toast(ok); list.reload(); } catch (e) { toast(e.message); } };
   const t = list.data;
-  const create = () => run(async () => { const d = await api.post('/tracking/templates', { name: name.trim(), sport, variant: t.starter.variant, customise: { hidden_stats: hidden, notes_fields: notes.trim() ? [notes.trim()] : [], orientation, paper } }); await api.post(`/tracking/templates/${d.id}/publish`); setName(''); setHidden([]); setNotes(''); }, 'Template published');
+  const create = () => run(async () => { const d = await api.post('/tracking/templates', { name: name.trim(), sport, variant: t.starter.variant, scope, ...(scope === 'organisation' ? { organisation_id: target } : scope === 'team' ? { team_id: target } : scope === 'event' ? { event_id: target } : {}), customise: { hidden_stats: hidden, notes_fields: notes.trim() ? [notes.trim()] : [], orientation, paper } }); await api.post(`/tracking/templates/${d.id}/publish`); setName(''); setHidden([]); setNotes(''); }, 'Template published');
   return (
     <View style={{ gap: 12 }}>
       <T color={c.mute} size={13}>A template changes what is shown and how it prints. It never changes the scoring rules, and published versions never change.</T>
@@ -339,11 +406,15 @@ function Templates() {
         <>
           <Section title="Your templates">
             {t.templates.length ? t.templates.map((x) => (
-              <Card key={x.id} pad={12}><View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><T weight="800" style={{ flex: 1 }}>{x.name} · v{x.current_version}</T><Btn small title="Retire" color={c.violet} onPress={() => run(() => api.post(`/tracking/templates/${x.id}/retire`), 'Template retired')} /></View></Card>
+              <Card key={x.id} pad={12}><View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><T weight="800" style={{ flex: 1 }}>{x.name} · v{x.current_version}</T><Tag label={x.scope === 'personal' ? 'mine' : x.scope} color={c.violetSoft} /><Btn small title="Retire" color={c.violet} onPress={() => run(() => api.post(`/tracking/templates/${x.id}/retire`), 'Template retired')} /></View></Card>
             )) : <Empty emoji="📐" title="No saved templates" sub="The standard governed sheet is always available." />}
           </Section>
           <Section title="New template">
             <Field label="Name" value={name} onChangeText={setName} maxLength={80} />
+            <T weight="700" size={13}>Who can use it</T>
+            <Seg options={[{ label: 'Just me', value: 'personal' }, { label: 'My organisation', value: 'organisation' }, { label: 'My team', value: 'team' }, { label: 'An event', value: 'event' }]} value={scope} onChange={(v) => { setScope(v); setTarget(null); }} />
+            {scope !== 'personal' ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{targets.length ? targets.map((o) => <Chip key={o.id} label={o.name} active={target === o.id} onPress={() => setTarget(o.id)} />) : <T size={12} color={c.mute}>{scope === 'organisation' ? 'You are not an owner, admin or coach of an organisation.' : scope === 'team' ? 'You have no teams yet.' : 'You are not running an event for this sport.'}</T>}</View> : null}
+            <T size={12} color={c.mute}>A shared template shares the layout only, never any match data.{scope === 'event' ? ' Event templates are used for sheets linked to that event\'s games.' : ''}</T>
             <T weight="700" size={13}>Show these stats (scoring events are always shown)</T>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
               {t.starter.layout.stats.map((st) => <Chip key={st.kind} label={st.label} active={!hidden.includes(st.kind)} onPress={() => setHidden((h) => (h.includes(st.kind) ? h.filter((k) => k !== st.kind) : [...h, st.kind]))} />)}
@@ -351,7 +422,7 @@ function Templates() {
             <Field label="Extra notes box (custom, not an official field)" value={notes} onChangeText={setNotes} maxLength={40} />
             <Seg options={[{ label: 'Portrait', value: 'portrait' }, { label: 'Landscape', value: 'landscape' }]} value={orientation} onChange={setOrientation} />
             <Seg options={['A4', 'Letter']} value={paper} onChange={setPaper} />
-            <Btn title="Save and publish" disabled={name.trim().length < 2} onPress={create} />
+            <Btn title="Save and publish" disabled={name.trim().length < 2 || (scope !== 'personal' && !target)} onPress={create} />
           </Section>
         </>
       ) : null}
@@ -367,8 +438,8 @@ function Awaiting({ onOpen }) {
   if (!list.data.length) return <Empty emoji="✅" title="Nothing waiting for you" sub="Proposals for games you officiate, run or manage appear here." />;
   return list.data.map((p) => (
     <Card key={p.id} onPress={() => onOpen(p.id)} pad={14}>
-      <T weight="800">{p.home_name} vs {p.away_name}</T>
-      <T size={12} color={c.mute}>{p.event_name} · proposes {p.payload.home_score}–{p.payload.away_score}</T>
+      <T weight="800">{p.kind === 'session' ? `${p.session_label} · ${p.payload.discipline}` : `${p.home_name} vs ${p.away_name}`}</T>
+      <T size={12} color={c.mute}>{p.event_name} · {p.kind === 'session' ? `proposes ${p.payload.results.length} results` : `proposes ${p.payload.home_score}–${p.payload.away_score}`}</T>
       <View style={{ flexDirection: 'row', gap: 6, marginTop: 6 }}><Tag label={p.action === 'apply' ? 'ready to apply' : 'needs your review'} color={p.action === 'apply' ? c.mint : c.sun} /><StateTag s={p.state} /></View>
     </Card>
   ));
@@ -385,11 +456,11 @@ const TILES = [
   ['rules', '⚙️', 'Event scoring rules', 'Rules and approval policy for your event'],
 ];
 
-export function ScoringTool({ fixtureId, eventId, contextType, contextId, tab: tab0, sheetId, proposalId, importId }) {
+export function ScoringTool({ fixtureId, eventId, contextType, contextId, tab: tab0, sheetId, proposalId, importId, sport, variant, localRulesId }) {
   const { push } = useNav();
   const L = useLayout();
   const counts = useLoad(() => Promise.all([api.get('/tracking/sheets', { status: 'in_progress', limit: 50 }), api.get('/tracking/awaiting-review').catch(() => [])]), []);
-  const [tab, setTab] = useState(tab0 ?? (importId ? 'upload' : fixtureId ? 'start' : 'home'));
+  const [tab, setTab] = useState(tab0 ?? (importId ? 'upload' : fixtureId || sport ? 'start' : 'home'));
   const [open, setOpen] = useState(sheetId ?? null);
   const [review, setReview] = useState(proposalId ?? null);
   const [linkAfter, setLinkAfter] = useState(false);
@@ -417,7 +488,7 @@ export function ScoringTool({ fixtureId, eventId, contextType, contextId, tab: t
       ) : (
         <>
           <Btn small title="← Scoring & Game Tracking" color={c.violet} onPress={back} style={{ alignSelf: 'flex-start' }} />
-          {tab === 'start' ? <Start presetFixture={fixtureId} ctx={ctx} onStarted={started} onClose={back} /> : null}
+          {tab === 'start' ? <Start presetFixture={fixtureId} presetSport={sport} presetVariant={variant} presetLocal={localRulesId} ctx={ctx} onStarted={started} onClose={back} /> : null}
           {tab === 'mine' ? <MySheets onOpen={(id) => setOpen(id)} initialState={tab0 === 'mine' ? 'in_progress' : undefined} /> : null}
           {tab === 'templates' ? <Templates /> : null}
           {tab === 'upload' ? <UploadFlow resumeId={importId} onDone={(s, o) => { setTab('home'); setOpen(s.id); setLinkAfter(!!o?.link); counts.reload(); }} /> : null}

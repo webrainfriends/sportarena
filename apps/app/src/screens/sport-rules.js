@@ -11,6 +11,7 @@ import { Counter } from '../pickers';
 import { SportSelect } from '../sportpicker';
 import { RulesetFields } from './scoring-review';
 import { openLink } from './pathways';
+import { Rulebook } from './rulebook';
 import { c, day } from '../theme';
 
 const nice = (s = '') => String(s).replace(/_/g, ' ');
@@ -291,20 +292,29 @@ function Formats({ sport }) {
   );
 }
 
-export function SportRules() {
-  const [sport, setSport] = useState(null);
-  const [tab, setTab] = useState('standard');
+export function SportRules({ sport: sport0, tab: tab0 }) {
+  const [sport, setSport] = useState(sport0 ?? null);
+  const [tab, setTab] = useState(tab0 ?? 'rulebook');
   return (
     <Screen>
-      <H1>Sport rules</H1>
-      <T color={c.mute}>The standard rules of each sport, and how its results are measured and scored. Anything governed on top is compared with the standard, and every version is kept so past results are never silently re-scored.</T>
+      <H1>Rules & rulebook</H1>
+      <T color={c.mute}>Read the rules of each sport as cards, open the official book, and localise the rules your competition changes. Scoring metrics and match formats sit beside them, and every version is kept so past results are never silently re-scored.</T>
       <SportSelect label="Sport" value={sport} onChange={setSport} />
       {sport ? (
         <>
-          <Seg options={[{ label: 'Standard rules', value: 'standard' }, { label: 'Metrics', value: 'metrics' }, { label: 'Match formats', value: 'formats' }]} value={tab} onChange={setTab} />
-          {tab === 'standard' ? <Standard key={sport} sport={sport} /> : tab === 'metrics' ? <Metrics key={sport} sport={sport} /> : <Formats key={sport} sport={sport} />}
+          <Seg options={[{ label: 'Rulebook', value: 'rulebook' }, { label: 'How it is scored', value: 'standard' }, { label: 'Metrics', value: 'metrics' }, { label: 'Match formats', value: 'formats' }]} value={tab} onChange={setTab} />
+          {tab === 'rulebook' ? <RulebookOrFallback key={sport} sport={sport} /> : tab === 'standard' ? <Standard key={sport} sport={sport} /> : tab === 'metrics' ? <Metrics key={sport} sport={sport} /> : <Formats key={sport} sport={sport} />}
         </>
-      ) : <Empty emoji="📏" title="Pick a sport" sub="See the units, ranges and scoring rules its results are judged by." />}
+      ) : <Empty emoji="📏" title="Pick a sport" sub="See its rules, how its games are scored and how its results are measured." />}
     </Screen>
   );
+}
+
+/** Sports with a written rulebook get the cards; the rest still show the scoring baseline and any rules the platform team wrote. */
+function RulebookOrFallback({ sport }) {
+  const list = useLoad(() => api.get('/rulebook'), []);
+  if (list.error) return <ErrorBox error={list.error} onRetry={list.reload} />;
+  if (!list.data) return <Loading />;
+  const has = list.data.some((b) => b.slug === sport || (sport === 'rugby-sevens' && b.slug === 'rugby'));
+  return has ? <Rulebook sport={sport === 'rugby-sevens' ? 'rugby' : sport} /> : <><Card color={c.violetSoft} pad={12}><T size={13}>A written rulebook for this sport is not ready yet. Here are its scoring rules and anything the platform team has written.</T></Card><Standard sport={sport} /></>;
 }

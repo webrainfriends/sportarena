@@ -236,3 +236,35 @@ test('matching knows pay, deadlines and verified-only; REST, OpenAPI and MCP agr
   const viaRest = must(await api('GET', '/billboard', { query: { opportunity_type: 'paid_assignment', include_closed: 'true' } }));
   assert.deepEqual(JSON.parse(viaMcp.content[0].text).map((x) => x.id), viaRest.map((x) => x.id));
 });
+
+test('sponsor calls and sponsorship requests link the accepted application to the canonical sponsorship offer', async () => {
+  const sp = await signup(['sponsor']), ath = await signup(['athlete']), other = await signup(['athlete']), rival = await signup(['sponsor']);
+  must(await api('POST', '/me/sponsorship-profile', { token: ath.token, body: { open_to_sponsors: true } }));
+  const brand = must(await api('POST', '/sponsors', { token: sp.token, body: { name: `Volt ${n}` } }), 201);
+  const call = must(await create(sp, { kind: 'sponsor_call', title: 'Athletes wanted for kit sponsorship' }), 201);
+  assert.equal(call.opportunity_type, 'sponsorship');
+  const r = must(await apply(ath, call), 201);
+  const offer = (u, extra = {}) => api('POST', '/sponsorships', { token: u.token, body: { sponsor_id: brand.id, target_type: 'athlete', target_id: ath.id, amount_cents: 500000, deliverables: 'Wear the kit', starts_on: '2027-01-01', ends_on: '2027-12-31', billboard_response_id: r.id, ...extra } });
+  assert.equal(code(await offer(sp)), 'application_not_accepted', 'only an accepted application can lead to an offer');
+  must(await api('PATCH', `/billboard/responses/${r.id}`, { token: sp.token, body: { status: 'accepted' } }));
+  assert.equal((await offer(ath)).status, 403, 'the athlete cannot make the sponsor\'s offer');
+  assert.equal((await offer(sp, { target_id: other.id })).status, 400, 'the offer must be for the person who applied');
+  const made = must(await offer(sp), 201);
+  const linked = (await pool.query('SELECT s.billboard_response_id, r.engagement_type, r.engagement_id FROM sponsorships s JOIN billboard_responses r ON r.id=s.billboard_response_id WHERE s.id=$1', [made.id])).rows[0];
+  assert.deepEqual([linked.billboard_response_id, linked.engagement_type, linked.engagement_id], [r.id, 'sponsorship', made.id]);
+  const view = must(await api('GET', `/billboard/responses/${r.id}/application`, { token: ath.token }));
+  assert.equal(view.engagement.type, 'sponsorship');
+  assert.equal(code(await offer(sp, { client_ref: key() })), 'already_linked', 'one offer per accepted application');
+  // a sponsorship request answered by a sponsor: the sponsor who answered makes the offer to who asked
+  const ath2 = await signup(['athlete']);
+  must(await api('POST', '/me/sponsorship-profile', { token: ath2.token, body: { open_to_sponsors: true } }));
+  const ask = must(await create(ath2, { kind: 'sponsorship_wanted', title: 'Seeking a kit sponsor' }), 201);
+  const ra = must(await apply(sp, ask), 201);
+  must(await api('PATCH', `/billboard/responses/${ra.id}`, { token: ath2.token, body: { status: 'accepted' } }));
+  const mine = (u) => api('POST', '/sponsorships', { token: u.token, body: { sponsor_id: brand.id, target_type: 'athlete', target_id: ath2.id, amount_cents: 100000, deliverables: 'Logo on kit', starts_on: '2027-01-01', ends_on: '2027-06-30', billboard_response_id: ra.id } });
+  const rivalBrand = must(await api('POST', '/sponsors', { token: rival.token, body: { name: `Rival ${n}` } }), 201);
+  assert.equal((await mine(rival)).status, 403, 'a brand you do not belong to is refused');
+  assert.equal((await api('POST', '/sponsorships', { token: rival.token, body: { sponsor_id: rivalBrand.id, target_type: 'athlete', target_id: ath2.id, amount_cents: 1000, deliverables: 'x', starts_on: '2027-01-01', ends_on: '2027-02-01', billboard_response_id: ra.id } })).status, 404, 'an outsider cannot use someone else\'s application');
+  must(await mine(sp), 201);
+  assert.equal((await pool.query("SELECT engagement_type FROM billboard_responses WHERE id=$1", [ra.id])).rows[0].engagement_type, 'sponsorship');
+});
