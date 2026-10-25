@@ -295,6 +295,8 @@ cap({
           WHERE q.team_id=$1 AND q.status IN ('selected','confirmed') AND ${i.fixture_id ? 'q.fixture_id=$2' : 'q.event_id=$2 AND q.fixture_id IS NULL'}`, [i.id, i.fixture_id ?? i.event_id]);
       const created = [], skipped = [];
       for (const q of rows) {
+        const covered = (await c.query("SELECT contract_no FROM player_contracts WHERE team_id=$1 AND payee_id=$2 AND status IN ('offered','active') LIMIT 1", [i.id, q.user_id])).rows[0];
+        if (covered) { skipped.push({ user_id: q.user_id, reason: `paid through contract ${covered.contract_no}` }); continue; }   // one source of pay: the contract (#333)
         if (!q.rate_cents || q.rate_unit !== 'match') { skipped.push({ user_id: q.user_id, reason: q.rate_cents ? `rate is per ${q.rate_unit}, record it manually` : 'no rate set' }); continue; }
         const r = await c.query(
           `INSERT INTO team_payouts(team_id, user_id, squad_id, event_id, fixture_id, kind, amount_cents, currency, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)

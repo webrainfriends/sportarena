@@ -174,3 +174,5 @@ import './athlete-profile.js';
 import './trials.js';
 import './recruiter.js';
 import './addresses.js';
+import './player-contracts.js';
+import './player-contract-money.js';

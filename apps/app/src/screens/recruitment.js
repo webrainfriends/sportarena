@@ -198,6 +198,7 @@ export function RecruitmentApplication({ id }) {
         <Card pad={14} color={c.limeSoft}>
           <T weight="800">{staff ? 'Selected' : 'You are in'}</T>
           <T size={13}>{ENGAGEMENT_LABEL[engagement.type] ?? 'Selected for this assignment'}{post.target_role ? ` as ${post.target_role}` : ''}</T>
+          {!staff ? <Btn small title="My contracts" color={c.violet} onPress={() => push('PlayerContracts')} style={{ alignSelf: 'flex-start', marginTop: 6 }} /> : null}
           {engagement.payout ? <T size={13}>Payment: {fmtMoney(Number(engagement.payout.amount_cents), engagement.payout.currency)} · {engagement.payout.status}{engagement.payout.due_on ? ` · due ${String(engagement.payout.due_on).slice(0, 10)}` : ''}</T> : null}
         </Card>
       ) : null}
@@ -318,6 +319,7 @@ export function MyApplications({ child_id, name }) {
               </View>
               <T size={13} weight="700">{payLine(r)}</T>
               {r.engagement_type || r.payout_id ? <T size={13} color={c.mute}>{ENGAGEMENT_LABEL[r.engagement_type] ?? 'Selected for this assignment'}{r.payout_id ? ' · payment recorded' : ''}</T> : null}
+              {r.engagement_type || r.payout_id ? <Btn small title="My contracts" color={c.paper} ink={c.ink} onPress={() => push('PlayerContracts')} style={{ alignSelf: 'flex-start' }} /> : null}
               {r.trial_at && r.stage === 'trial' ? <T size={13}>Trial: {when(r.trial_at)}{r.trial_venue_name ? ` · 📍 ${[r.trial_venue_name, r.trial_venue_city].filter(Boolean).join(', ')}` : ''}</T> : null}
               {o ? <T size={13}>Offer v{o.version} · {offerLine(o)}{o.status === 'open' ? ` · ${left(o.deadline_at)}` : ` · ${o.status}`}</T> : null}
               <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
