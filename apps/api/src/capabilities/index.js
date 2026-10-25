@@ -135,6 +135,7 @@ import './home.js';
 import './athlete-schedule.js';
 import './athlete-performance.js';
 import './player-insights.js';
+import './player-assistant.js';
 import './wellness.js';
 import './passport.js';
 import './passport-recruitment.js';

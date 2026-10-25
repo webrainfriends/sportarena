@@ -125,6 +125,7 @@ export function MyDevelopment({ child_id, name }) {
       <T size={13} color={c.mute}>
         {child_id ? 'Read-only. Only what their coach chose to share with them. Private notes never appear here.' : 'Everything your coach has set or shared with you, in one place. Each item shows who it is from and what kind of record it is. Private coach notes never appear.'}
       </T>
+      <Btn small title={child_id ? 'Open assistant' : 'Ask the assistant'} accessibilityLabel={child_id ? 'Open assistant for this young person' : 'Ask the assistant'} onPress={() => push('PlayerAssistant', child_id ? { child_id, name } : {})} style={{ alignSelf: 'flex-start', marginTop: 10 }} />
       {d.loading && !data ? <Loading /> : d.error ? <ErrorBox error={d.error} onRetry={d.reload} /> : !data.consent ? (
         <>
           <Empty emoji="🔒" title="Coaching sharing is off" sub={data.note} />
