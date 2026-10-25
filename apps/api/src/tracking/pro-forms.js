@@ -188,7 +188,7 @@ export function chessSheet(ctx) {
 /** Rounds, round length and judges for a boxing format, with local rule values applied. */
 export function boxingSetup(variant, values = {}) {
   const fmt = variant === 'Youth' ? 'youth' : variant === 'Professional' ? 'pro' : 'elite';
-  return { rounds: values[`rounds_${fmt}`] ?? { elite: 3, youth: 3, pro: 10 }[fmt], minutes: values[`len_${fmt}`] ?? { elite: 3, youth: 2, pro: 3 }[fmt], judges: values.judges ?? 5, rest: values.rest ?? 1 };
+  return { rounds: values[`rounds_${fmt}`] ?? { elite: 3, youth: 3, pro: 10 }[fmt], minutes: values[`len_${fmt}`] ?? { elite: 3, youth: 2, pro: 3 }[fmt], judges: values.judges ?? (fmt === 'pro' ? 3 : 5), rest: values.rest ?? 1 };
 }
 
 export function boxingCard(ctx) {

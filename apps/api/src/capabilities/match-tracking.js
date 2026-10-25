@@ -139,7 +139,7 @@ cap({
       const logged = await loggedEvents(i.id, c);
       const phase = matchPhase(ruleset, logged);
       const control = CONTROL_KINDS.includes(i.kind);
-      const bad = rejectReason(ruleset, logged, { kind: i.kind, side: i.side });
+      const bad = rejectReason(ruleset, logged, { kind: i.kind, side: i.side, period: i.period, payload: i.payload });
       if (bad) throw badRequest(bad);
       let period = i.period ?? (phase.period || 1);
       if (i.kind === 'period_start') {

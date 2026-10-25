@@ -18,7 +18,7 @@ export function roundProblem(r) {
  * the rounds; the bout goes to the boxer most judges picked: unanimous (all), majority (a clear lead with a draw card) or split.
  * @returns {{judges:{red:number, blue:number, winner:'red'|'blue'|'draw'|null, rounds:number}[], votes:{red:number, blue:number, draw:number}, kind:string|null, winner:'red'|'blue'|'draw'|null, problems:{judge:number, round:number, message:string}[]}}
  */
-export function boxingDecision(cards, rounds) {
+export function boxingDecision(cards, rounds, expectedJudges = (cards ?? []).length) {
   const problems = [];
   const judges = (cards ?? []).map((card, j) => {
     let red = 0, blue = 0, n = 0;
@@ -31,7 +31,7 @@ export function boxingDecision(cards, rounds) {
   });
   const scored = judges.filter((j) => j.winner);
   const votes = { red: scored.filter((j) => j.winner === 'red').length, blue: scored.filter((j) => j.winner === 'blue').length, draw: scored.filter((j) => j.winner === 'draw').length };
-  const complete = scored.length > 0 && scored.every((j) => j.rounds === rounds);
+  const complete = scored.length > 0 && scored.length >= expectedJudges && scored.every((j) => j.rounds === rounds);
   let winner = null, kind = null;
   if (scored.length) {
     if (votes.red === votes.blue) { winner = 'draw'; kind = 'draw'; }
@@ -41,7 +41,7 @@ export function boxingDecision(cards, rounds) {
       kind = votes[lose] === 0 && votes.draw === 0 ? 'unanimous' : votes[lose] === 0 ? 'majority' : 'split';
     }
   }
-  if (!complete) { kind = kind && scored.length ? `${kind} (so far)` : kind; }
+  if (!complete && kind) kind = `${kind} (so far)`;
   return { judges, votes, kind, winner, complete, problems };
 }
 

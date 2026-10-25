@@ -22,6 +22,9 @@ test('boxing 10-point must: rounds are checked, judges decide, the bout goes to 
   assert.equal(bad.problems.length, 1); assert.match(bad.problems[0].message, /Judge 1, round 2/);
   assert.equal(bad.judges[0].rounds, 2, 'a bad round is not counted'); assert.equal(bad.complete, false);
   assert.equal(boxingDecision([], 3).winner, null);
+  const early = boxingDecision([card([10, 9], [10, 9], [10, 9])], 3, 3);
+  assert.equal(early.complete, false); assert.equal(early.kind, 'unanimous (so far)', 'one judge of three has scored so far');
+  assert.equal(boxingDecision([card([10, 9], [10, 9], [10, 9]), card([10, 9], [10, 9], [10, 9]), card([10, 9], [10, 9], [10, 9])], 3, 3).kind, 'unanimous');
 });
 
 test('weightlifting: best good lifts, the total, bomb-outs, ties by body weight and falling weights', () => {

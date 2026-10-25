@@ -204,7 +204,7 @@ test('boxing: the judges\' cards make the decision, a bad round is flagged, loca
     { judge: 'J3', rounds: [round(9, 10), round(9, 10), round(10, 9), round(9, 10), round(10, 9)] },
   ] } });
   assert.equal(r.status, 200, JSON.stringify(r.body));
-  assert.equal(r.body.scorecard.kind, 'split'); assert.equal(r.body.scorecard.winner, 'red');
+  assert.equal(r.body.scorecard.kind, 'split'); assert.equal(r.body.scorecard.winner, 'red'); assert.equal(r.body.scorecard.complete, true, 'all three judges have scored all five rounds');
   assert.deepEqual(r.body.scorecard.votes, { red: 2, blue: 1, draw: 0 });
   assert.equal(r.body.result.home, 2); assert.equal(r.body.result.away, 1); assert.equal(r.body.result.winner, 'home');
   assert.equal(r.body.scorecard.judges[0].red, 49); assert.equal(r.body.scorecard.judges[0].blue, 46);
@@ -325,4 +325,28 @@ test('templates can be shared with a team or an event: structure only, authority
   assert.equal((await api('GET', `/tracking/templates?sport=football&event_id=${ev.id}`, { token: outsider.token })).body.templates.some((x) => x.scope === 'event'), true, 'visible for a public event');
   assert.equal((await api('GET', '/tracking/templates?sport=football', { token: outsider.token })).body.templates.some((x) => x.scope === 'event'), false, 'not offered outside the event');
   assert.equal((await start(owner, { sport: 'football', template_id: et.body.id })).status, 409, 'an event template is for that event\'s games');
+});
+
+test('the canonical match log scores a cricket game with the same engine, and a linked cricket sheet keeps the game\'s rules', async () => {
+  const org = await signup(['organizer']), ref = await signup(['referee']), m1 = await signup(['coach']), m2 = await signup(['coach']);
+  const ev = (await api('POST', '/events', { token: org.token, body: { name: `Cricket Cup ${++n}`, sport: 'cricket' } })).body;
+  await pool.query("UPDATE events SET status='open', kind='friendly' WHERE id=$1", [ev.id]);
+  const mk = async (u) => (await api('POST', '/teams', { token: u.token, body: { name: `XI ${++n}`, sport: 'cricket' } })).body;
+  const home = await mk(m1), away = await mk(m2);
+  const fx = (await pool.query('INSERT INTO fixtures(event_id, home_team_id, away_team_id, scheduled_at) VALUES ($1,$2,$3, now()) RETURNING id', [ev.id, home.id, away.id])).rows[0].id;
+  await pool.query("INSERT INTO fixture_officials(fixture_id, user_id, role, status) VALUES ($1,$2,'referee','accepted')", [fx, ref.id]);
+  await pool.query("INSERT INTO event_entries(event_id, team_id, status) VALUES ($1,$2,'accepted'),($1,$3,'accepted')", [ev.id, home.id, away.id]);
+  assert.equal((await api('POST', `/fixtures/${fx}/start`, { token: ref.token })).status, 200);
+  const log = (payload, side = 'home') => api('POST', `/fixtures/${fx}/events`, { token: ref.token, body: { kind: 'ball', side, payload } });
+  assert.equal((await log({ bowler: 0, runs: 4 })).status, 201);
+  const r = await log({ bowler: 0, runs: 6 });
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  assert.equal(r.body.state.score.home, 10); assert.equal(r.body.state.score.cricket.innings[0].legal, 2);
+  assert.equal((await log({ bowler: 1, runs: 1 })).status, 400, 'the engine refuses a bowler change mid-over, over the canonical path too');
+  // a linked sheet uses the game's cricket rules and goes through the same proposal review as any game
+  const u = await signup();
+  const sheet = await start(u, { sport: 'cricket', variant: 'T20', fixture_id: fx });
+  assert.equal(sheet.status, 201, JSON.stringify(sheet.body));
+  assert.equal(sheet.body.template.layout.mode, 'cricket'); assert.equal(sheet.body.mode, 'linked');
+  await ball(u, sheet.body.id, 'home', { bowler: 0, runs: 6 });
 });

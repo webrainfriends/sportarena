@@ -256,7 +256,7 @@ export function boardFor(layout, { rows = [], details = {} } = {}) {
     if (layout.results.unit === 'lift') return { type: 'lifts', ...rankLifts(rows, layout.results.attempts) };
     return { type: 'ranking', ...rankRows(rows, layout.results.unit, { qp: rv.qp ?? 3, qt: rv.qt ?? 2, reactionMin: (rv.rt ?? 100) / 1000 }) };
   }
-  if (layout.mode === 'scorecard') return { type: 'scorecard', ...boxingDecision(details.cards ?? [], layout.scorecard.rounds) };
+  if (layout.mode === 'scorecard') return { type: 'scorecard', ...boxingDecision(details.cards ?? [], layout.scorecard.rounds, layout.scorecard.judges) };
   return null;
 }
 

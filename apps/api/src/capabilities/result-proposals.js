@@ -260,7 +260,7 @@ async function sessionViewOf(user, p, x, c) {
   const stale = open && hashOf(snap) !== hashOf(p.base_snapshot);
   const recorded = detail.entries.filter((e) => e.result_status !== 'registered' && e.result_status !== 'scratched');
   const differences = [];
-  if (recorded.length) differences.push({ code: 'results_already_recorded', severity: 'warn', message: `${recorded.length} result${recorded.length === 1 ? ' is' : 's are'} already recorded for this session. Applying corrects them; the earlier values stay in the audit trail.` });
+  if (open && recorded.length) differences.push({ code: 'results_already_recorded', severity: 'warn', message: `${recorded.length} result${recorded.length === 1 ? ' is' : 's are'} already recorded for this session. Applying corrects them; the values recorded before are kept with this proposal.` });
   if (stale) differences.push({ code: 'stale', severity: 'error', message: 'The session\'s results changed after this was proposed. It must be re-submitted and reviewed again.' });
   const myReq = REVIEWABLE.includes(p.state) && p.submitted_by !== user.id ? nextRequirement(p.policy, current, roles) : null;
   return {

@@ -158,7 +158,7 @@ export function HeatSheet({ s, patch }) {
             <View style={{ width: 54, alignItems: 'center' }}>
               <T size={11} color={c.mute}>Place</T>
               <T weight="800" size={20}>{r.status || rank[i]?.rank || '–'}</T>
-              {rank[i]?.q ? <Tag label={rank[i].q} color={c.mint} /> : null}
+              {rank[i]?.q ? <Tag label={rank[i].q === 'Q' ? 'Q · place' : 'q · time'} color={c.mint} /> : null}
             </View>
           </View>
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
@@ -201,7 +201,7 @@ export function ScoreCards({ s, patch }) {
   const sc = s.template.layout.scorecard;
   const live = s.status === 'in_progress';
   const blank = () => Array.from({ length: sc.rounds }, () => ({ red: 10, blue: 9 }));
-  const [cards, setCards] = useState(() => Array.from({ length: Math.max(3, Math.min(sc.judges, 5)) }, (_, j) => ({ judge: s.details?.cards?.[j]?.judge ?? '', rounds: Array.from({ length: sc.rounds }, (_, i) => s.details?.cards?.[j]?.rounds?.[i] ?? null) })));
+  const [cards, setCards] = useState(() => Array.from({ length: Math.max(1, Math.min(sc.judges, 5)) }, (_, j) => ({ judge: s.details?.cards?.[j]?.judge ?? '', rounds: Array.from({ length: sc.rounds }, (_, i) => s.details?.cards?.[j]?.rounds?.[i] ?? null) })));
   const [judge, setJudge] = useState(0);
   const timer = useRef(null);
   const first = useRef(true);

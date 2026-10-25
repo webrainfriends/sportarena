@@ -169,7 +169,7 @@ export function ProposalReview({ id, onChanged, onOpenScoreSheet }) {
 
       <Notes list={p.warnings} />
 
-      {p.evidence ? <Btn small title="Open the uploaded sheet (evidence)" color={c.cyan} onPress={() => openBlob(p.evidence.url.replace('/api/v1', ''), toast)} /> : <T size={12} color={c.mute}>Tracked live on screen ({p.sheet.ref}); {p.sheet.entries.length} recent entries recorded.</T>}
+      {p.evidence ? <Btn small title="Open the uploaded sheet (evidence)" color={c.cyan} onPress={() => openBlob(p.evidence.url.replace('/api/v1', ''), toast)} /> : <T size={12} color={c.mute}>{p.kind === 'session' ? `Results written on sheet ${p.sheet.ref}.` : `Tracked live on screen (${p.sheet.ref}); ${p.sheet.entries.length} recent entries recorded.`}</T>}
 
       <Section title="Who must approve">
         {p.approval.requirements.map((r) => (
@@ -205,7 +205,7 @@ export function ProposalReview({ id, onChanged, onOpenScoreSheet }) {
       {p.state === 'approved' ? (
         p.can_apply ? (
           <Section title="Apply">
-            <T size={13} color={c.mute}>{p.kind === 'session' ? 'Applying records these results for the session through the normal results path. Places are worked out from the marks, and earlier values stay in the audit trail.' : 'Applying opens a draft score sheet for this game. It still needs the usual sign-offs, approval and publication before it becomes official.'}</T>
+            <T size={13} color={c.mute}>{p.kind === 'session' ? 'Applying records these results for the session through the normal results path. Places are worked out from the marks, and the values recorded before are kept with this proposal.' : 'Applying opens a draft score sheet for this game. It still needs the usual sign-offs, approval and publication before it becomes official.'}</T>
             {p.needs_reconcile ? <Field label="Why does this replace the live log or published result? (organiser)" value={reason} onChangeText={setReason} maxLength={500} /> : null}
             <Btn title={p.kind === 'session' ? 'Record these results' : 'Apply to the score sheet'} loading={busy} onPress={async () => { const r = await run(() => api.post(`/tracking/proposals/${id}/apply`, { reconcile_reason: reason.trim() || undefined }), p.kind === 'session' ? 'Results recorded' : 'Draft score sheet opened'); if (r && p.kind !== 'session') onOpenScoreSheet?.(p.fixture_id ?? p.fixture.id); }} />
           </Section>
