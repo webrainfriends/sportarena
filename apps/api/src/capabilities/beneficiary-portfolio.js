@@ -26,7 +26,7 @@ const FILTERS = {
 
 /** Which sides the caller may open, so a client offers only views that can return something. */
 async function availableViews(user) {
-  const brands = (await pool.query(`SELECT EXISTS (SELECT 1 FROM sponsors sp WHERE ${sponsorStaffSql(1).replace('ss.department_id', 'sm.department_id')}) AS ok`, [user.id])).rows[0].ok;
+  const brands = (await pool.query(`SELECT EXISTS (SELECT 1 FROM sponsors sp WHERE ${sponsorStaffSql(1).replace(/ss\.department_id/g, 'r.department_id')}) AS ok`, [user.id])).rows[0].ok;
   const own = (await pool.query(`SELECT EXISTS (SELECT 1 FROM events WHERE organizer_id=$1) OR EXISTS (SELECT 1 FROM teams WHERE owner_id=$1) OR EXISTS (SELECT 1 FROM users WHERE id=$1 AND 'athlete' = ANY(roles)) AS ok`, [user.id])).rows[0].ok;
   return { sponsor: brands, recipient: own };
 }

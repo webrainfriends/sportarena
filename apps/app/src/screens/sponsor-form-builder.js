@@ -6,6 +6,7 @@ import { useSession } from '../session';
 import { Btn, Card, Chip, Empty, Field, H1, Loading, Screen, Section, Seg, Sheet, T, Tag } from '../ui';
 import { Counter } from '../pickers';
 import { c } from '../theme';
+import { asSponsorRole } from '../sponsor-roles';
 import { explain, LoadError } from '../access';
 import { fieldsOf } from '../application-forms';
 
@@ -148,7 +149,7 @@ export function FormBuilder({ program_id }) {
   if (prog.error) return <Screen><LoadError error={prog.error} onRetry={prog.reload} /></Screen>;
   if (prog.loading && !prog.data) return <Screen><Loading /></Screen>;
   const p = prog.data;
-  const may = ['manager', 'approver', 'admin'].includes(p.my_role);
+  const may = ['manager', 'approver'].includes(asSponsorRole(p.my_role));
 
   const open = async (f) => {
     try { const full = await api.get(`/sponsorship-forms/${f.id}`); setEdit({ id: f.id, name: full.name, row_version: full.row_version, version: full.version, def: structuredClone(full.definition) }); } catch (e) { toast(explain(e)); }

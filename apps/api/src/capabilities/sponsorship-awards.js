@@ -50,7 +50,7 @@ async function view(c, user, awardId) {
   const conditions = (await c.query('SELECT id, position, text, due_on::text, blocks_payment, met_at, met_note, offer_version FROM sponsorship_award_conditions WHERE award_id=$1 AND removed_at IS NULL ORDER BY position', [w.id])).rows;
   const out = { ...pub, conditions, my_side: staff ? 'sponsor' : 'recipient' };
   if (staff) {
-    out.my_role = access.role;
+    out.my_role = access.repRole ?? access.role;
     out.can = isAdmin(user) ? Object.keys(STEP_ACTION).concat(['manage']) : actionsFor(access.role).filter((x) => x.startsWith('award_')).concat(actionsFor(access.role).includes('program') ? ['manage'] : []);
     out.approvals = await approvalsOf(c, { id: w.id, offer_version: w.offer_version });
     out.events = (await c.query('SELECT kind, actor_id, offer_version, note, created_at FROM sponsorship_award_events WHERE award_id=$1 ORDER BY id', [w.id])).rows;

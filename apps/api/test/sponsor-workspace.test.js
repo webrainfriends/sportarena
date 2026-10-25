@@ -22,7 +22,7 @@ const corporate = async () => {
   const owner = await signup(['sponsor']), ath = await signup(['athlete']);
   const org = must(await api('POST', '/organisations', { token: owner.token, body: { name: `Acme ${n}`, kind: 'company' } }), 201);
   const b = must(await api('POST', '/sponsors', { token: owner.token, body: { name: `Brand ${n}` } }), 201);
-  must(await api('POST', `/organisations/${org.id}/assets`, { token: owner.token, body: { kind: 'sponsor', asset_id: b.id } }));
+  must(await api('POST', `/sponsors/${b.id}/identity`, { token: owner.token, body: { sponsor_type: 'organization', organisation_id: org.id } }));
   const staff = {};
   for (const role of ['manager', 'evaluator', 'finance', 'legal', 'approver', 'auditor']) {
     const u = await signup(['athlete']);
@@ -204,14 +204,15 @@ test('linking, roles in the brand list, contacts, dashboards and the individual 
   // a different person cannot link someone else's brand, and a brand belongs to one organisation
   const other = await signup(['sponsor']);
   const org2 = must(await api('POST', '/organisations', { token: other.token, body: { name: 'Other Co', kind: 'company' } }), 201);
-  assert.equal((await api('POST', `/organisations/${org2.id}/assets`, { token: other.token, body: { kind: 'sponsor', asset_id: w.b.id } })).status, 403);
-  assert.equal((await api('POST', `/organisations/${org2.id}/assets`, { token: w.owner.token, body: { kind: 'sponsor', asset_id: w.b.id } })).status, 404, 'caller must belong to the organisation');
+  assert.equal((await api('POST', `/sponsors/${w.b.id}/identity`, { token: other.token, body: { sponsor_type: 'organization', organisation_id: org2.id } })).status, 404, 'not part of the brand: its existence is not leaked');
+  const rv = must(await api('GET', `/sponsors/${w.b.id}/identity`, { token: w.owner.token })).row_version;
+  assert.equal((await api('POST', `/sponsors/${w.b.id}/identity`, { token: w.owner.token, body: { row_version: rv, organisation_id: org2.id } })).status, 403, 'caller must own or administer the organisation');
   // my_role in the brand list
   const mine = must(await api('GET', '/sponsors', { token: w.staff.legal.token, query: { mine: 'true' } }));
   assert.equal(mine.length, 1);
   assert.equal(mine[0].my_role, 'legal');
   assert.equal(mine[0].organisation_id, w.org.id);
-  assert.equal(must(await api('GET', '/sponsors', { token: w.owner.token, query: { mine: 'true' } }))[0].my_role, 'manager');
+  assert.equal(must(await api('GET', '/sponsors', { token: w.owner.token, query: { mine: 'true' } }))[0].my_role, 'owner');
   // contacts: manager reads (audited), others do not
   const solo = await signup(['sponsor']);
   must(await api('POST', '/sponsors', { token: solo.token, body: { name: 'Solo Brand', contact_name: 'Pat' } }), 201);
@@ -262,18 +263,73 @@ test('the notified staff are those whose role matters; payments are a payment-sc
   assert.equal(classify(capabilities.find((c) => c.name === 'report_sponsorship_payment')), 'payment');
 });
 
-test('precedence (#282 x #283): a brand with a sponsor entity is run only by its representatives; organisation staff are ignored', async () => {
+test('one model (#347): the linked organisation puts its sponsor staff on the sponsor team; mirrored rows follow the organisation; unlinking ends their access at once', async () => {
   const w = await corporate();
+  const idn = () => api('GET', `/sponsors/${w.b.id}/identity`, { token: w.owner.token });
+  const eid = must(await idn()).entity_id;
+  must(await api('GET', `/sponsorships/${w.deal.id}`, { token: w.staff.finance.token })); // staff act through the one team table
+  const team = async () => must(await api('GET', `/sponsor-entities/${eid}/representatives`, { token: w.owner.token, query: { status: 'active', limit: 100 } }));
+  const fin = (await team()).find((r) => r.user_id === w.staff.finance.id);
+  assert.equal(fin.source, 'organisation'); assert.equal(fin.role, 'finance');
+  // one place to link a brand: the organisation's asset screen no longer takes brands, but still lists the ones on its team
+  assert.equal((await api('POST', `/organisations/${w.org.id}/assets`, { token: w.owner.token, body: { kind: 'sponsor', asset_id: w.b.id } })).status, 400);
+  assert.deepEqual(must(await api('GET', `/organisations/${w.org.id}/assets`, { token: w.owner.token, query: { kind: 'sponsor' } })).map((b) => b.id), [w.b.id]);
+  // a mirrored row is changed in the organisation, not on the team (it would be re-created from the staff list)
+  assert.equal((await api('PATCH', `/sponsor-representatives/${fin.id}`, { token: w.owner.token, body: { role: 'viewer' } })).status, 409);
+  assert.equal((await api('POST', `/sponsor-representatives/${fin.id}/remove`, { token: w.owner.token })).status, 409);
+  must(await api('PATCH', `/organisations/${w.org.id}/members/${w.staff.finance.id}`, { token: w.owner.token, body: { role: 'auditor' } }));
+  assert.equal((await team()).find((r) => r.user_id === w.staff.finance.id).role, 'auditor');
+  // a coach carries no sponsor role, so is never mirrored
+  const coach = await signup(['athlete']);
+  must(await api('POST', `/organisations/${w.org.id}/members`, { token: w.owner.token, body: { person: coach.handle, role: 'coach' } }), 201);
+  must(await api('POST', `/organisations/${w.org.id}/invite/respond`, { token: coach.token, body: { accept: true } }));
+  assert.ok(!(await team()).some((r) => r.user_id === coach.id));
+  // someone invited by hand keeps their entry when organisation staff change; a department scope needs the linked organisation
+  const dept = must(await api('POST', `/organisations/${w.org.id}/departments`, { token: w.owner.token, body: { name: 'Marketing' } }), 201);
+  const guest = await signup(['athlete']);
+  const inv = must(await api('POST', `/sponsor-entities/${eid}/representatives`, { token: w.owner.token, body: { user_id: guest.id, role: 'evaluator', department_id: dept.id } }), 201);
+  must(await api('POST', `/sponsor-representatives/${inv.id}/response`, { token: guest.token, body: { accept: true } }));
+  assert.equal((await api('POST', `/sponsor-entities/${eid}/representatives`, { token: w.owner.token, body: { user_id: (await signup(['athlete'])).id, role: 'admin', department_id: dept.id } })).status, 400, 'owners and admins are never department-scoped');
+  // unlinking the organisation ends every mirrored person at once; the owner and the hand-invited guest stay; nothing is deleted
+  const rv = must(await idn()).row_version;
+  must(await api('POST', `/sponsors/${w.b.id}/identity`, { token: w.owner.token, body: { row_version: rv, organisation_id: null } }));
+  assert.equal((await api('GET', `/sponsorships/${w.deal.id}`, { token: w.staff.finance.token })).status, 403);
+  assert.equal((await api('GET', '/sponsors', { token: w.staff.manager.token, query: { mine: 'true' } })).body.length, 0);
+  must(await api('GET', `/sponsorships/${w.deal.id}`, { token: w.owner.token }));
+  assert.equal((await pool.query("SELECT count(*)::int AS c FROM sponsor_representatives WHERE entity_id=$1 AND source='organisation' AND status='left'", [eid])).rows[0].c, 6);
+  assert.equal((await pool.query('SELECT count(*)::int AS c FROM organisation_members WHERE organisation_id=$1', [w.org.id])).rows[0].c, 8, 'organisation membership is untouched');
+  // linking again brings the staff back
+  must(await api('POST', `/sponsors/${w.b.id}/identity`, { token: w.owner.token, body: { row_version: must(await idn()).row_version, organisation_id: w.org.id } }));
   must(await api('GET', `/sponsorships/${w.deal.id}`, { token: w.staff.finance.token }));
-  // confirming the brand's identity makes it an entity brand: from then on only entity representatives act for it
-  must(await api('POST', `/sponsors/${w.b.id}/identity`, { token: w.owner.token, body: { sponsor_type: 'company', legal_name: 'Acme Ltd' } }));
-  assert.equal((await api('GET', `/sponsorships/${w.deal.id}`, { token: w.staff.finance.token })).status, 403, 'organisation staff no longer act for an entity brand');
-  assert.equal((await api('GET', '/sponsors', { token: w.staff.finance.token, query: { mine: 'true' } })).body.length, 0);
-  must(await api('GET', `/sponsorships/${w.deal.id}`, { token: w.owner.token })); // the entity's owner (the creator)
-  // an entity brand cannot be linked to an organisation
-  const solo = await signup(['sponsor']);
-  const org = must(await api('POST', '/organisations', { token: solo.token, body: { name: 'Solo Co', kind: 'company' } }), 201);
-  const b = must(await api('POST', '/sponsors', { token: solo.token, body: { name: 'EntityBrand' } }), 201);
-  must(await api('POST', `/sponsors/${b.id}/identity`, { token: solo.token, body: { sponsor_type: 'company', legal_name: 'Solo Ltd' } }));
-  assert.equal((await api('POST', `/organisations/${org.id}/assets`, { token: solo.token, body: { kind: 'sponsor', asset_id: b.id } })).status, 409);
+});
+
+test('migration (#347): a brand an organisation already ran gets an organization sponsor with its staff mirrored; old identity-only links grant nobody access', async () => {
+  const owner = await signup(['sponsor']), staff = await signup(['athlete']), outsider = await signup(['sponsor']);
+  const org = must(await api('POST', '/organisations', { token: owner.token, body: { name: `Legacy ${n}`, kind: 'company' } }), 201);
+  must(await api('POST', `/organisations/${org.id}/members`, { token: owner.token, body: { person: staff.handle, role: 'approver' } }), 201);
+  must(await api('POST', `/organisations/${org.id}/invite/respond`, { token: staff.token, body: { accept: true } }));
+  const old = must(await api('POST', '/sponsors', { token: owner.token, body: { name: `OldBrand ${n}` } }), 201);
+  // the pre-merge state: the organisation ran the brand through sponsors.organisation_id alone
+  await pool.query('UPDATE sponsors SET organisation_id=$2 WHERE id=$1', [old.id, org.id]);
+  // an entity linked to another organisation only by its identity form (it never gave that organisation's staff access)
+  const org2 = must(await api('POST', '/organisations', { token: outsider.token, body: { name: `Linked ${n}`, kind: 'company' } }), 201);
+  const mate = await signup(['athlete']);
+  must(await api('POST', `/organisations/${org2.id}/members`, { token: outsider.token, body: { person: mate.handle, role: 'manager' } }), 201);
+  must(await api('POST', `/organisations/${org2.id}/invite/respond`, { token: mate.token, body: { accept: true } }));
+  const lb = must(await api('POST', '/sponsors', { token: outsider.token, body: { name: `LinkedBrand ${n}` } }), 201);
+  must(await api('POST', `/sponsors/${lb.id}/identity`, { token: outsider.token, body: { sponsor_type: 'organization' } }));
+  const le = (await pool.query('SELECT entity_id FROM sponsors WHERE id=$1', [lb.id])).rows[0].entity_id;
+  await pool.query('UPDATE sponsor_entities SET organisation_id=$2 WHERE id=$1', [le, org2.id]); // old identity-only link
+  // run the migration's data steps again on this state (it is written to be re-runnable)
+  const sql = (await import('node:fs')).readFileSync(new URL('../migrations/109_sponsor_team_merge.sql', import.meta.url), 'utf8');
+  await pool.query(sql.slice(sql.indexOf('-- 1. a dedicated entity')));
+  const b = (await pool.query('SELECT entity_id FROM sponsors WHERE id=$1', [old.id])).rows[0];
+  assert.ok(b.entity_id, 'the brand now has an organization sponsor');
+  const got = (await pool.query("SELECT u.handle, r.role, r.source FROM sponsor_representatives r JOIN users u ON u.id=r.user_id WHERE r.entity_id=$1 AND r.status='active' ORDER BY r.role", [b.entity_id])).rows;
+  assert.deepEqual(got.map((x) => [x.handle, x.role]).sort(), [[owner.handle, 'owner'], [staff.handle, 'approver']].sort());
+  assert.equal((await api('GET', `/sponsors/${old.id}`, { token: staff.token })).status, 200);
+  assert.equal((await api('GET', '/sponsors', { token: staff.token, query: { mine: 'true' } })).body[0].my_role, 'approver');
+  // the identity-only link grants the organisation's manager nothing
+  assert.equal((await api('GET', '/sponsors', { token: mate.token, query: { mine: 'true' } })).body.length, 0);
+  assert.equal((await pool.query("SELECT count(*)::int AS c FROM sponsor_representatives WHERE entity_id=$1 AND source='organisation'", [le])).rows[0].c, 0);
 });

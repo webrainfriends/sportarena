@@ -8,6 +8,7 @@ import { Avatar, Bubble, Btn, Card, Chip, Empty, Field, H1, Loading, Row, Screen
 import { Counter, DateField, DateRangeField, Stepper } from '../pickers';
 import { CurrencyDropdown } from '../currency-dropdown';
 import { c } from '../theme';
+import { asSponsorRole } from '../sponsor-roles';
 import { explain, LoadError } from '../access';
 import { buildLines, CADENCES, CHANNELS, KINDS, lineProblems, MAX_LINES, money, newLine, SERVICES } from '../offer-lines';
 
@@ -131,7 +132,7 @@ export function SponsorOffer({ target: initialTarget, sponsor_id }) {
   const mine = brands.data ?? [];
   const brand = mine.find((b) => b.id === brandId) ?? (mine.length === 1 ? mine[0] : null);
   useEffect(() => { if (!brandId && mine.length === 1) setBrandId(mine[0].id); }, [mine.length]); // eslint-disable-line react-hooks/exhaustive-deps
-  const canBudget = brand && ROLE_CAN_BUDGET.includes(brand.my_role);
+  const canBudget = brand && ROLE_CAN_BUDGET.includes(asSponsorRole(brand.my_role));
   const budgets = useLoad(() => (canBudget ? api.get('/sponsorship-budgets', { sponsor_id: brand.id, status: 'active', limit: 100 }).then((r) => r.filter((x) => x.kind !== 'program')).catch(() => []) : Promise.resolve([])), [brand?.id, canBudget]);
   const budget = (budgets.data ?? []).find((b) => b.id === terms.budget_id);
   const fixedCurrency = budget?.currency;

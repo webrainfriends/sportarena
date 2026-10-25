@@ -23,7 +23,7 @@ Org roles are separate from the global `users.roles`. Membership is read live on
 
 ## Corporate sponsor workspace
 
-A sponsor brand (`sponsors`) can be linked to an organisation (`sponsors.organisation_id`) with `link_org_asset` (`kind: sponsor`; the caller must own the brand and be owner/admin of the organisation; the Teams, events, venues & brands tab and `unlink_org_asset` reverse it). Its staff then work the brand's deals through the same membership table, with these roles. The brand **owner is always a manager**, so an individual sponsor with no organisation works exactly as before.
+A sponsor brand is linked to an organisation through its **sponsor identity** (`set_sponsor_identity` with `organisation_id`, caller owner/admin of both; see [sponsor-identities.md](sponsor-identities.md#one-authority-model-347-merging-282-and-283)). The organisation's sponsor staff are then mirrored onto the brand's one sponsor team, with these roles, and follow every change to their organisation membership at once. The brand **owner is always a manager or better**, so an individual sponsor with no organisation works exactly as before.
 
 | Sponsor action | owner / admin | manager | evaluator | finance | legal | approver | auditor |
 |---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
@@ -39,7 +39,7 @@ A sponsor brand (`sponsors`) can be linked to an organisation (`sponsors.organis
 
 Evaluators can never report payments or put the brand's name to terms. "Sign" here means the sponsor-side commitments that exist in the product: proposing, revising and ending an agreement; there is no separate e-signature step (see #295). Sponsor roles give no access to cohorts, rosters, admissions or any non-sponsor export, and the organisation dashboard shows them nothing but the organisation's name.
 
-* **Precedence with sponsor entities (#282)**: a brand that belongs to a sponsor entity (`sponsors.entity_id`, see [sponsor-identities.md](sponsor-identities.md)) is run only by that entity's representatives (owner, admin, finance, portfolio manager, viewer; mapped to manager, manager, finance, manager and read-only). Organisation staff and `owner_id` are ignored for it, and `link_org_asset` refuses to link it. Brands without an entity use the organisation roles below. Both models resolve through `sponsorAccess` in `apps/api/src/sponsor-access.js`; merging them into one is tracked as a follow-up.
+* **One model (#347)**: sponsor representatives (#282) and organisation staff (#283) were two authorities for the same brand; they are now one table (`sponsor_representatives`) and one resolver (`sponsorAccess`). Organisation membership changes re-sync the linked sponsor team in the same transaction. Details, migration and the role/test mapping: [sponsor-identities.md](sponsor-identities.md#one-authority-model-347-merging-282-and-283).
 * **Revocation** is immediate: `remove_org_member` sets `status='left'`; the next read, write or export by that person is refused (403 on the deal, 404 on the organisation). Payments, reviews and history they created stay. Re-inviting restores access under the new role.
 * **Departments** (`create_org_department`, `list_org_departments`, `archive_org_department`) are generic to the organisation. A member invited with a `department_id` only sees, proposes and exports deals of that department (`sponsorships.department_id`); no department means all departments and brand-wide deals. Archiving a department keeps its deals and people.
 * **Stale changes**: `set_org_member_role` takes `expected_role`; if the role changed meanwhile it returns 409 and the app reloads. Role/revoke operations serialise on the organisation row.
@@ -55,7 +55,7 @@ Evaluators can never report payments or put the brand's name to terms. "Sign" he
 
 * **Invite**: `invite_org_member` (handle or email of a registered person), then the person accepts or declines with `respond_org_invite`. One live membership per person per organisation.
 * **Departure**: `remove_org_member` sets `status='left'`; the row, and everything the person recorded, stays. The last owner cannot leave or be demoted: use `transfer_org_ownership` (the previous owner becomes admin).
-* **Linking**: `link_org_asset` needs both an owner/admin role in the organisation and ownership of the team/event/venue. An asset belongs to at most one organisation. The asset's owner keeps working as before; organisation roles are an additional grant. `unlink_org_asset` ends the delegation.
+* **Linking**: `link_org_asset` (teams, events, venues; a sponsor brand joins through its sponsor identity) needs both an owner/admin role in the organisation and ownership of the asset. An asset belongs to at most one organisation. The asset's owner keeps working as before; organisation roles are an additional grant. `unlink_org_asset` ends the delegation.
 * **Archive**: `archive_organisation` makes the workspace read-only (writes return 409) and pauses delegated access to linked assets. History stays readable; `restore_organisation` reverses it. Nothing is deleted.
 * **People and consent**: enrolments need an explicit consent attestation per person (`consent=yes` in the CSV). People can withdraw themselves (`withdraw_org_enrolment`), keep read access to their own attendance after leaving (`get_cohort_attendance`, `list_my_enrolments`), and one identity can belong to many organisations.
 

@@ -8,12 +8,11 @@ import { FormSheet } from '../FormSheet';
 import { EntityPicker } from '../entity-picker';
 import { countryName } from '../country-picker';
 import { c } from '../theme';
+import { useLayout } from '../layout';
+import { SPONSOR_TEAM_ROLES as ROLES, SPONSOR_ROLE_LABEL as ROLE_LABEL, SPONSOR_ROLE_HELP as ROLE_HELP, WHOLE_SPONSOR_ROLES } from '../sponsor-roles';
 
 const TYPES = [{ value: 'company', label: 'Company' }, { value: 'organization', label: 'Organization' }, { value: 'individual', label: 'Individual' }];
 const TYPE_LABEL = { company: 'Company', organization: 'Organization', individual: 'Individual' };
-const ROLES = [{ value: 'owner', label: 'Owner' }, { value: 'admin', label: 'Admin' }, { value: 'finance', label: 'Finance' }, { value: 'portfolio_manager', label: 'Portfolio manager' }, { value: 'viewer', label: 'Viewer' }];
-const ROLE_LABEL = Object.fromEntries(ROLES.map((r) => [r.value, r.label]));
-const ROLE_HELP = { owner: 'Everything, including owners', admin: 'Identity, team, portfolios, offers', finance: 'Payments only', portfolio_manager: 'Offers for assigned portfolios only', viewer: 'Read only' };
 const PRIVATE = ['registration_number', 'tax_id', 'billing_email', 'billing_address'];
 
 /** Why a read failed, in words the person can act on. */
@@ -22,6 +21,7 @@ const why = (e) => (e?.status === 404 ? 'This sponsor is not available to you. A
 /** One sponsor brand's legal identity, authorised team, portfolios and sibling brands. */
 export function SponsorIdentity({ id }) {
   const { toast } = useSession();
+  const { tablet } = useLayout();
   const idn = useLoad(() => api.get(`/sponsors/${id}/identity`), [id]);
   const d = idn.data;
   const eid = d?.entity_id;
@@ -29,8 +29,10 @@ export function SponsorIdentity({ id }) {
   const folios = useLoad(() => (eid ? api.get(`/sponsor-entities/${eid}/portfolios`) : Promise.resolve([])), [eid]);
   const mine = useLoad(() => api.get('/me/sponsor-identities', { limit: 100 }), [id]);
   const orgs = useLoad(() => api.get('/organisations'), []);
+  // departments exist only for a sponsor linked to an organisation whose staff you can read; anyone else simply has none to pick
+  const depts = useLoad(() => (d?.organisation_id && d?.staff_sync && d?.can_edit ? api.get(`/organisations/${d.organisation_id}/departments`).catch(() => []) : Promise.resolve([])), [d?.organisation_id, d?.staff_sync, d?.can_edit]);
   const [form, setForm] = useState(null); // 'identity' | 'brand' | { portfolio } | 'attach'
-  const [invite, setInvite] = useState(null); // { who, role, also }
+  const [invite, setInvite] = useState(null); // { who, role, also, department }
   const [stale, setStale] = useState(false);
   const version = useRef(null);
   version.current = d?.row_version;
@@ -65,14 +67,15 @@ export function SponsorIdentity({ id }) {
   };
   const sendInvites = async () => {
     const targets = [eid, ...invite.also];
+    const scope = invite.department && !WHOLE_SPONSOR_ROLES.includes(invite.role) ? { department_id: invite.department } : {};
     const failed = [];
-    for (const t of targets) { try { await api.post(`/sponsor-entities/${t}/representatives`, { user_id: invite.who.id, role: invite.role }); } catch (e) { failed.push(e.message); } }
+    for (const t of targets) { try { await api.post(`/sponsor-entities/${t}/representatives`, { user_id: invite.who.id, role: invite.role, ...(t === eid ? scope : {}) }); } catch (e) { failed.push(e.message); } }
     if (failed.length) toast(`Some invitations failed: ${failed[0]}`); else toast('Invitation sent');
     setInvite(null); reloadAll();
   };
 
   return (
-    <Screen>
+    <Screen wide>
       <H1>{d.display_name}</H1>
       <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
         {d.sponsor_type ? <Tag label={TYPE_LABEL[d.sponsor_type]} color={c.violetSoft} /> : <Tag label="Identity not confirmed" color={c.sunSoft} />}
@@ -80,6 +83,38 @@ export function SponsorIdentity({ id }) {
       </View>
       <T size={12} color={c.mute}>Private. Legal and billing details are never shown in the sponsor directory or on your public profile.</T>
 
+      <View style={tablet ? { flexDirection: 'row', gap: 16, alignItems: 'flex-start' } : null}>
+        <View style={{ flex: 1, minWidth: 0 }}>
+      {d.identity_confirmed ? (
+        <Section title="Team" color={c.cyan}>
+          {!edit ? <T size={13} color={c.mute}>Only owners and admins see the full team.</T> : reps.loading && !reps.data ? <Loading /> : reps.error ? <ErrorBox error={reps.error} onRetry={reps.reload} /> : (
+            <>
+              {reps.data.filter((r) => ['active', 'invited'].includes(r.status)).map((r) => (
+                <Row key={r.id} title={`${r.display_name}${r.status === 'invited' ? ' · invited' : ''}`} sub={`${ROLE_LABEL[r.role]}${r.department_name ? ` · ${r.department_name}` : ''}${r.portfolios.length ? ` · ${r.portfolios.map((p) => p.name).join(', ')}` : ''}`}
+                  right={r.source === 'organisation' ? <Tag label="Through the organisation" color={c.violetSoft} /> : (owner || !['owner', 'admin'].includes(r.role)) ? <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
+                    <Btn small title="Change role" color={c.paper} ink={c.ink} onPress={() => setForm({ role: r })} />
+                    <Btn small title={r.status === 'invited' ? 'Cancel' : 'Remove'} color={c.paper} ink={c.red} onPress={() => act(() => api.post(`/sponsor-representatives/${r.id}/remove`), r.status === 'invited' ? 'Invitation cancelled' : 'Access ended — past agreements keep their history')} />
+                  </View> : null} />))}
+              {!reps.data.some((r) => ['active', 'invited'].includes(r.status)) ? <Empty emoji="👥" title="Only you so far" sub="Invite colleagues with the role they need." /> : null}
+              {reps.data.some((r) => r.source === 'organisation' && ['active', 'invited'].includes(r.status)) ? <T size={12} color={c.mute}>People marked "Through the organisation" follow that organisation's staff list: change a role or end access in its People tab and it applies here at once.</T> : null}
+              {reps.data.some((r) => r.status === 'left') ? <T size={12} color={c.mute}>{reps.data.filter((r) => r.status === 'left').length} former representative(s) are kept on record.</T> : null}
+              <Btn small title="+ Invite person" color={c.violet} style={{ alignSelf: 'flex-start' }} onPress={() => setInvite({ who: null, role: 'viewer', also: [], department: null })} />
+            </>)}
+          <Btn small title="Leave this sponsor" color={c.paper} ink={c.red} style={{ alignSelf: 'flex-start' }} onPress={() => act(async () => { const me = (mine.data?.entities ?? []).find((e) => e.id === eid); if (!me) throw new Error('Reload and try again'); await api.post(`/sponsor-representatives/${me.representative_id}/remove`); }, 'You left this sponsor')} />
+        </Section>) : null}
+
+      {d.identity_confirmed ? (
+        <Section title="Portfolios" color={c.mint}>
+          {folios.loading && !folios.data ? <Loading /> : folios.error ? <ErrorBox error={folios.error} onRetry={folios.reload} /> : folios.data.length ? folios.data.map((p) => (
+            <Card key={p.id}><T weight="900">{p.name}</T>
+              <T size={12} color={c.mute}>{p.brands.map((b) => b.name).join(', ') || 'No brands yet'}</T>
+              <T size={12} color={c.mute}>Managers: {p.managers.map((m) => m.display_name).join(', ') || 'none assigned'}</T>
+              {edit ? <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}><Btn small title="Edit" color={c.paper} ink={c.ink} onPress={() => setForm({ portfolio: p })} /><Btn small title="Archive" color={c.paper} ink={c.red} onPress={() => act(() => api.patch(`/sponsor-portfolios/${p.id}`, { archived: true }), 'Portfolio archived')} /></View> : null}
+            </Card>)) : <Empty emoji="🗂️" title="No portfolios" sub={edit ? 'Group brands and give a portfolio manager just those.' : 'You can see portfolios assigned to you here.'} />}
+          {edit ? <Btn small title="+ New portfolio" color={c.violet} style={{ alignSelf: 'flex-start' }} onPress={() => setForm({ portfolio: {} })} /> : null}
+        </Section>) : null}
+        </View>
+        <View style={{ flex: 1, minWidth: 0 }}>
       <Section title="Legal & billing identity" color={c.violet}>
         {stale ? <Card color={c.sunSoft}><T weight="800">This identity changed while you were editing.</T><T size={12}>The latest version is shown below. Re-open the form to review and save again.</T></Card> : null}
         {!d.identity_confirmed ? <Card color={c.sunSoft}><T weight="800">No legal identity confirmed yet</T><T size={12}>Nothing has been filled in for you. Confirm who is behind this brand to unlock verification and team access.</T></Card> : (
@@ -99,39 +134,13 @@ export function SponsorIdentity({ id }) {
       </Section>
 
       {d.identity_confirmed ? (
-        <Section title="Authorised representatives" color={c.cyan}>
-          {!edit ? <T size={13} color={c.mute}>Only owners and admins see the full team.</T> : reps.loading && !reps.data ? <Loading /> : reps.error ? <ErrorBox error={reps.error} onRetry={reps.reload} /> : (
-            <>
-              {reps.data.filter((r) => ['active', 'invited'].includes(r.status)).map((r) => (
-                <Row key={r.id} title={`${r.display_name}${r.status === 'invited' ? ' · invited' : ''}`} sub={`${ROLE_LABEL[r.role]}${r.portfolios.length ? ` · ${r.portfolios.map((p) => p.name).join(', ')}` : ''}`}
-                  right={(owner || !['owner', 'admin'].includes(r.role)) ? <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
-                    <Btn small title="Change role" color={c.paper} ink={c.ink} onPress={() => setForm({ role: r })} />
-                    <Btn small title={r.status === 'invited' ? 'Cancel' : 'Remove'} color={c.paper} ink={c.red} onPress={() => act(() => api.post(`/sponsor-representatives/${r.id}/remove`), r.status === 'invited' ? 'Invitation cancelled' : 'Access ended — past agreements keep their history')} />
-                  </View> : null} />))}
-              {!reps.data.some((r) => ['active', 'invited'].includes(r.status)) ? <Empty emoji="👥" title="Only you so far" sub="Invite colleagues with the role they need." /> : null}
-              {reps.data.some((r) => r.status === 'left') ? <T size={12} color={c.mute}>{reps.data.filter((r) => r.status === 'left').length} former representative(s) are kept on record.</T> : null}
-              <Btn small title="+ Invite person" color={c.violet} style={{ alignSelf: 'flex-start' }} onPress={() => setInvite({ who: null, role: 'viewer', also: [] })} />
-            </>)}
-          <Btn small title="Leave this sponsor" color={c.paper} ink={c.red} style={{ alignSelf: 'flex-start' }} onPress={() => act(async () => { const me = (mine.data?.entities ?? []).find((e) => e.id === eid); if (!me) throw new Error('Reload and try again'); await api.post(`/sponsor-representatives/${me.representative_id}/remove`); }, 'You left this sponsor')} />
-        </Section>) : null}
-
-      {d.identity_confirmed ? (
-        <Section title="Portfolios" color={c.mint}>
-          {folios.loading && !folios.data ? <Loading /> : folios.error ? <ErrorBox error={folios.error} onRetry={folios.reload} /> : folios.data.length ? folios.data.map((p) => (
-            <Card key={p.id}><T weight="900">{p.name}</T>
-              <T size={12} color={c.mute}>{p.brands.map((b) => b.name).join(', ') || 'No brands yet'}</T>
-              <T size={12} color={c.mute}>Managers: {p.managers.map((m) => m.display_name).join(', ') || 'none assigned'}</T>
-              {edit ? <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}><Btn small title="Edit" color={c.paper} ink={c.ink} onPress={() => setForm({ portfolio: p })} /><Btn small title="Archive" color={c.paper} ink={c.red} onPress={() => act(() => api.patch(`/sponsor-portfolios/${p.id}`, { archived: true }), 'Portfolio archived')} /></View> : null}
-            </Card>)) : <Empty emoji="🗂️" title="No portfolios" sub={edit ? 'Group brands and give a portfolio manager just those.' : 'You can see portfolios assigned to you here.'} />}
-          {edit ? <Btn small title="+ New portfolio" color={c.violet} style={{ alignSelf: 'flex-start' }} onPress={() => setForm({ portfolio: {} })} /> : null}
-        </Section>) : null}
-
-      {d.identity_confirmed ? (
         <Section title="Brands under this sponsor" color={c.pink}>
           {d.brands.map((b) => <Row key={b.id} title={`${b.emoji ?? ''} ${b.name}`.trim()} sub={b.id === id ? 'This brand' : undefined} />)}
           {edit ? <Btn small title="+ Add brand" color={c.violet} style={{ alignSelf: 'flex-start' }} onPress={() => setForm('brand')} /> : null}
           {edit ? <Btn small title="Export identity data" color={c.paper} ink={c.ink} style={{ alignSelf: 'flex-start' }} onPress={doExport} /> : null}
         </Section>) : null}
+        </View>
+      </View>
 
       <FormSheet visible={form === 'identity'} onClose={() => setForm(null)} title={d.identity_confirmed ? 'Edit identity' : 'Confirm identity'} initial={currentValues}
         fields={[
@@ -142,15 +151,17 @@ export function SponsorIdentity({ id }) {
           { key: 'tax_id', label: 'Tax / VAT id', optional: true, hint: 'Encrypted.' },
           { key: 'billing_email', label: 'Billing email', optional: true, input: 'email', hint: 'Encrypted.' },
           { key: 'billing_address', label: 'Billing address', type: 'multiline', optional: true, hint: 'Encrypted.' },
-          { key: 'organisation_id', label: 'Linked organisation', type: 'chips', optional: true, options: (orgs.data ?? []).map((o) => ({ value: o.id, label: o.name })), show: (v) => v.sponsor_type === 'organization' && (orgs.data ?? []).length > 0, hint: 'Only organisations you own or administer.' }]}
+          { key: 'organisation_id', label: 'Linked organisation', type: 'chips', optional: true, options: (orgs.data ?? []).map((o) => ({ value: o.id, label: o.name })), show: (v) => v.sponsor_type === 'organization' && (orgs.data ?? []).length > 0, hint: 'Only organisations you own or administer. Its owners, admins and sponsor staff join this team with their organisation roles; unlinking ends their access at once.' }]}
         onSubmit={saveIdentity} />
       <FormSheet visible={form === 'brand'} onClose={() => setForm(null)} title="Add a brand" fields={[{ key: 'name', label: 'Brand name' }, { key: 'industry', label: 'Industry', optional: true }]}
         onSubmit={async (v) => { await api.post('/sponsors', { ...v, entity_id: eid }); reloadAll(); return 'Brand added'; }} />
       <FormSheet visible={form === 'attach'} onClose={() => setForm(null)} title="Move under a sponsor" submitLabel="Move" fields={[{ key: 'entity_id', label: 'Sponsor', type: 'chips', options: otherEntities.map((e) => ({ value: e.id, label: e.legal_name ?? 'Unnamed sponsor' })) }]}
         onSubmit={async (v) => { await api.post(`/sponsors/${id}/entity`, v); reloadAll(); return 'Brand moved — agreements and history are untouched'; }} />
-      <FormSheet visible={!!form?.role} onClose={() => setForm(null)} title={`Role for ${form?.role?.display_name ?? ''}`} initial={{ role: form?.role?.role, title: form?.role?.title ?? '' }}
-        fields={[{ key: 'role', label: 'Role', type: 'chips', options: ROLES.filter((r) => owner || !['owner', 'admin'].includes(r.value)).map((r) => ({ value: r.value, label: `${r.label} — ${ROLE_HELP[r.value]}` })) }, { key: 'title', label: 'Job title', optional: true }]}
-        onSubmit={async (v) => { await api.patch(`/sponsor-representatives/${form.role.id}`, { role: v.role, title: v.title ?? null }); reloadAll(); return 'Updated'; }} />
+      <FormSheet visible={!!form?.role} onClose={() => setForm(null)} title={`Role for ${form?.role?.display_name ?? ''}`} initial={{ role: form?.role?.role, title: form?.role?.title ?? '', department_id: form?.role?.department_id ?? undefined }}
+        fields={[{ key: 'role', label: 'Role', type: 'chips', options: ROLES.filter((r) => owner || !['owner', 'admin'].includes(r.value)).map((r) => ({ value: r.value, label: `${r.label} — ${ROLE_HELP[r.value]}` })) },
+          { key: 'department_id', label: 'Department', type: 'chips', optional: true, options: (depts.data ?? []).map((x) => ({ value: x.id, label: x.name })), show: (v) => (depts.data ?? []).length > 0 && !WHOLE_SPONSOR_ROLES.includes(v.role), hint: 'Limit this person to one department of the linked organisation; leave empty for all.' },
+          { key: 'title', label: 'Job title', optional: true }]}
+        onSubmit={async (v) => { await api.patch(`/sponsor-representatives/${form.role.id}`, { role: v.role, title: v.title ?? null, department_id: WHOLE_SPONSOR_ROLES.includes(v.role) ? null : v.department_id ?? null }); reloadAll(); return 'Updated'; }} />
       <FormSheet visible={!!form?.portfolio} onClose={() => setForm(null)} title={form?.portfolio?.id ? 'Edit portfolio' : 'New portfolio'} initial={{ name: form?.portfolio?.name ?? '', sponsor_ids: (form?.portfolio?.brands ?? []).map((b) => b.id), manager_ids: (form?.portfolio?.managers ?? []).map((m) => m.representative_id) }}
         fields={[{ key: 'name', label: 'Portfolio name' }, { key: 'sponsor_ids', label: 'Brands in this portfolio', type: 'multi', optional: true, options: d.brands.map((b) => ({ value: b.id, label: b.name })) },
           { key: 'manager_ids', label: 'Portfolio managers', type: 'multi', optional: true, options: managers.map((m) => ({ value: m.id, label: m.display_name })), hint: managers.length ? 'They can act only for the brands above.' : 'Invite someone as a portfolio manager first.' }]}
@@ -164,6 +175,13 @@ export function SponsorIdentity({ id }) {
           {otherEntities.length ? <>
             <T weight="800" size={13}>Also invite to my other sponsors (optional)</T>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{otherEntities.map((e) => <Chip key={e.id} label={e.legal_name ?? 'Unnamed sponsor'} active={invite.also.includes(e.id)} onPress={() => setInvite({ ...invite, also: invite.also.includes(e.id) ? invite.also.filter((x) => x !== e.id) : [...invite.also, e.id] })} />)}</View>
+          </> : null}
+          {(depts.data ?? []).length && !WHOLE_SPONSOR_ROLES.includes(invite.role) ? <>
+            <T weight="800" size={13}>Department (optional)</T>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              <Chip label="All departments" active={!invite.department} onPress={() => setInvite({ ...invite, department: null })} />
+              {depts.data.map((x) => <Chip key={x.id} label={x.name} active={invite.department === x.id} onPress={() => setInvite({ ...invite, department: x.id })} />)}
+            </View>
           </> : null}
           <Btn title="Send invitation" color={c.pink} disabled={!invite.who} onPress={sendInvites} />
         </View> : null}
