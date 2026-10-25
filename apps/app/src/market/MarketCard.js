@@ -6,11 +6,11 @@ import { MediaGrid } from './media';
 import { c, money, when, accentFor } from '../theme';
 
 export const KINDS = {
-  wanted: { label: 'Wanted', emoji: '🙋', color: '#B4182D', cta: 'Apply now' },
+  wanted: { label: 'Wanted', emoji: '🙋', color: '#8458B3', cta: 'Apply now' },
   match: { label: 'Match', emoji: '⚔️', color: '#059669', cta: 'Join match' },
   schedule: { label: 'Schedule', emoji: '🗓️', color: '#0284C7', cta: "I'm interested" },
   sale: { label: 'For sale', emoji: '🛍️', color: '#EA580C', cta: 'Contact seller' },
-  campaign: { label: 'Campaign', emoji: '📣', color: '#D1404F', cta: 'Learn more' },
+  campaign: { label: 'Campaign', emoji: '📣', color: '#9B72C6', cta: 'Learn more' },
   announcement: { label: 'News', emoji: '📰', color: '#475569', cta: 'Reply' },
 };
 

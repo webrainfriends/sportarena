@@ -14,14 +14,14 @@ const SCENE_MS = 3400;
  * image, just the gradient. Nothing here is sample data: the copy only names what the app does.
  */
 export const SCENES = [
-  { id: 'athletes', emoji: '🏃‍♀️', kicker: 'ATHLETES', title: 'Get discovered', text: 'A verified profile, your sport, your stats — in front of coaches and clubs.', colors: ['#B4182D', '#37415C'] },
+  { id: 'athletes', emoji: '🏃‍♀️', kicker: 'ATHLETES', title: 'Get discovered', text: 'A verified profile, your sport, your stats — in front of coaches and clubs.', colors: ['#8458B3', '#494D5F'] },
   { id: 'teams', emoji: '🏆', kicker: 'TEAMS & MATCHES', title: 'Find your game', text: 'Join matches, build squads, follow fixtures and live scores.', colors: ['#059669', '#0EA5A4'] },
-  { id: 'venues', emoji: '🏟️', kicker: 'VENUES', title: 'Fill every slot', text: 'Courts and grounds with open times, prices and instant booking.', colors: ['#0284C7', '#B4182D'] },
-  { id: 'events', emoji: '📅', kicker: 'EVENT MANAGEMENT', title: 'Run the whole event', text: 'Teams, boards, schedules, games, venues and results in one console.', colors: ['#D1404F', '#37415C'] },
-  { id: 'sponsors', emoji: '🤝', kicker: 'SPONSORS & BRANDS', title: 'Back the game', text: 'Campaigns in front of an engaged sporting crowd.', colors: ['#D97706', '#D1404F'] },
+  { id: 'venues', emoji: '🏟️', kicker: 'VENUES', title: 'Fill every slot', text: 'Courts and grounds with open times, prices and instant booking.', colors: ['#0284C7', '#8458B3'] },
+  { id: 'events', emoji: '📅', kicker: 'EVENT MANAGEMENT', title: 'Run the whole event', text: 'Teams, boards, schedules, games, venues and results in one console.', colors: ['#9B72C6', '#494D5F'] },
+  { id: 'sponsors', emoji: '🤝', kicker: 'SPONSORS & BRANDS', title: 'Back the game', text: 'Campaigns in front of an engaged sporting crowd.', colors: ['#D97706', '#9B72C6'] },
   { id: 'medical', emoji: '🩺', kicker: 'PHYSIOS & DOCTORS', title: 'Stay in the game', text: 'Sports medics and physios on hand — for athletes and for events.', colors: ['#0891B2', '#059669'] },
-  { id: 'stats', emoji: '📊', kicker: 'STATS', title: 'Know your numbers', text: 'Performance, results and standings that follow you everywhere.', colors: ['#37415C', '#2563EB'] },
-  { id: 'hiring', emoji: '🧢', kicker: 'HIRING', title: 'Work at the big day', text: 'Referees, scorers, medics and crew — apply and sign your contract.', colors: ['#EA580C', '#D1404F'] },
+  { id: 'stats', emoji: '📊', kicker: 'STATS', title: 'Know your numbers', text: 'Performance, results and standings that follow you everywhere.', colors: ['#494D5F', '#2563EB'] },
+  { id: 'hiring', emoji: '🧢', kicker: 'HIRING', title: 'Work at the big day', text: 'Referees, scorers, medics and crew — apply and sign your contract.', colors: ['#EA580C', '#9B72C6'] },
 ];
 
 const CSS = `
@@ -65,13 +65,13 @@ function PromoCardNative({ onJoin, width }) {
   const height = Math.round(width * 16 / 9);
   const rise = enter.interpolate({ inputRange: [0, 1], outputRange: [22, 0] });
   return (
-    <View accessibilityRole="summary" accessibilityLabel="Gotmygame in 30 seconds" style={{ width, height, maxWidth: '100%', borderRadius: 34, overflow: 'hidden', backgroundColor: '#0B1020', borderWidth: 6, borderColor: '#0B1020', shadowColor: '#37415C', shadowOpacity: 0.45, shadowRadius: 30, shadowOffset: { width: 0, height: 18 }, elevation: 12 }}>
-      <LinearGradient key={sc.id} colors={[sc.colors[0], sc.colors[1], '#0B1020']} locations={[0, 0.6, 1]} start={{ x: 0.2, y: 0 }} end={{ x: 0.8, y: 1 }} style={StyleSheet.absoluteFill}>
+    <View accessibilityRole="summary" accessibilityLabel="Gotmygame in 30 seconds" style={{ width, height, maxWidth: '100%', borderRadius: 34, overflow: 'hidden', backgroundColor: '#23252F', borderWidth: 6, borderColor: '#23252F', shadowColor: '#494D5F', shadowOpacity: 0.45, shadowRadius: 30, shadowOffset: { width: 0, height: 18 }, elevation: 12 }}>
+      <LinearGradient key={sc.id} colors={[sc.colors[0], sc.colors[1], '#23252F']} locations={[0, 0.6, 1]} start={{ x: 0.2, y: 0 }} end={{ x: 0.8, y: 1 }} style={StyleSheet.absoluteFill}>
         <Animated.Text style={{ position: 'absolute', top: '17%', left: 0, right: 0, textAlign: 'center', fontSize: Math.round(width * 0.36), transform: [{ translateY: bob.interpolate({ inputRange: [0, 1], outputRange: [0, -14] }) }, { rotate: bob.interpolate({ inputRange: [0, 1], outputRange: ['-5deg', '6deg'] }) }] }}>{sc.emoji}</Animated.Text>
         <Animated.View style={{ position: 'absolute', left: 22, right: 22, bottom: 86, opacity: enter, transform: [{ translateY: rise }] }}>
-          <Text style={{ fontSize: 12, fontWeight: '800', letterSpacing: 2.4, color: '#FFE4D8' }}>{sc.kicker}</Text>
+          <Text style={{ fontSize: 12, fontWeight: '800', letterSpacing: 2.4, color: '#E5EAF5' }}>{sc.kicker}</Text>
           <Text style={{ fontSize: Math.round(width * 0.115), fontWeight: '900', letterSpacing: -1.2, lineHeight: Math.round(width * 0.12), marginTop: 6, marginBottom: 8, color: '#fff' }}>{sc.title}</Text>
-          <Text style={{ fontSize: 15, lineHeight: 21, color: '#FFE4D8', fontWeight: '500' }}>{sc.text}</Text>
+          <Text style={{ fontSize: 15, lineHeight: 21, color: '#E5EAF5', fontWeight: '500' }}>{sc.text}</Text>
         </Animated.View>
       </LinearGradient>
       <View style={{ position: 'absolute', top: 14, left: 16, right: 16, flexDirection: 'row', gap: 4 }}>
@@ -83,7 +83,7 @@ function PromoCardNative({ onJoin, width }) {
         ))}
       </View>
       <Pressable onPress={onJoin} accessibilityRole="button" style={{ position: 'absolute', left: 18, right: 18, bottom: 18, borderRadius: 999, paddingVertical: 14, paddingHorizontal: 18, backgroundColor: '#fff', alignItems: 'center' }}>
-        <Text style={{ color: '#37415C', fontWeight: '800', fontSize: 15 }}>Join the arena — it’s free</Text>
+        <Text style={{ color: '#494D5F', fontWeight: '800', fontSize: 15 }}>Join the arena — it’s free</Text>
       </Pressable>
     </View>
   );
@@ -118,10 +118,10 @@ function PromoCardWeb({ onJoin, width }) {
   const sc = SCENES[i];
   const height = Math.round(width * 16 / 9);
   const frame = {
-    position: 'relative', width, height, maxWidth: '100%', borderRadius: 34, overflow: 'hidden', background: '#0B1020', color: '#fff',
-    fontFamily: 'Inter, system-ui, sans-serif', boxShadow: '0 0 0 8px #0B1020, 0 0 0 9.5px rgba(255,255,255,.18), 0 40px 80px rgba(0,0,0,.55), 0 0 90px rgba(55,65,92,.35)',
+    position: 'relative', width, height, maxWidth: '100%', borderRadius: 34, overflow: 'hidden', background: '#23252F', color: '#fff',
+    fontFamily: 'Inter, system-ui, sans-serif', boxShadow: '0 0 0 8px #23252F, 0 0 0 9.5px rgba(255,255,255,.18), 0 40px 80px rgba(0,0,0,.55), 0 0 90px rgba(55,65,92,.35)',
   };
-  const joinBtn = h('button', { onClick: onJoin, style: { position: 'absolute', left: 18, right: 18, bottom: 18, border: 0, cursor: 'pointer', borderRadius: 999, padding: '14px 18px', background: '#fff', color: '#37415C', fontWeight: 800, fontSize: 15, fontFamily: 'inherit', boxShadow: '0 10px 30px rgba(0,0,0,.4)' } }, 'Join the arena — it’s free');
+  const joinBtn = h('button', { onClick: onJoin, style: { position: 'absolute', left: 18, right: 18, bottom: 18, border: 0, cursor: 'pointer', borderRadius: 999, padding: '14px 18px', background: '#fff', color: '#494D5F', fontWeight: 800, fontSize: 15, fontFamily: 'inherit', boxShadow: '0 10px 30px rgba(0,0,0,.4)' } }, 'Join the arena — it’s free');
 
   return h('div', { ref: shell, style: frame, role: 'region', 'aria-label': 'Gotmygame in 30 seconds' },
     // real footage, when it exists
@@ -131,14 +131,14 @@ function PromoCardWeb({ onJoin, width }) {
       style: { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', display: video ? 'block' : 'none', zIndex: 2 },
     }),
     // built-in scenes
-    h('div', { key: sc.id, style: { position: 'absolute', inset: 0, background: `linear-gradient(160deg, ${sc.colors[0]}, ${sc.colors[1]} 60%, #0B1020)` } },
+    h('div', { key: sc.id, style: { position: 'absolute', inset: 0, background: `linear-gradient(160deg, ${sc.colors[0]}, ${sc.colors[1]} 60%, #23252F)` } },
       h('img', { src: `/promo/${sc.id}.jpg`, alt: '', className: 'sa-promo-zoom', onError: (e) => { e.currentTarget.style.display = 'none'; }, style: { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' } }),
       h('div', { style: { position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(11,16,32,.35) 0%, rgba(11,16,32,0) 35%, rgba(11,16,32,.88) 100%)' } }),
       h('div', { className: 'sa-promo-emoji', style: { position: 'absolute', top: '17%', left: 0, right: 0, textAlign: 'center', fontSize: Math.round(width * 0.36), filter: 'drop-shadow(0 18px 24px rgba(0,0,0,.45))' } }, sc.emoji),
       h('div', { className: 'sa-promo-in', style: { position: 'absolute', left: 22, right: 22, bottom: 86 } },
-        h('div', { style: { fontSize: 12, fontWeight: 800, letterSpacing: 2.4, color: '#FFE4D8' } }, sc.kicker),
+        h('div', { style: { fontSize: 12, fontWeight: 800, letterSpacing: 2.4, color: '#E5EAF5' } }, sc.kicker),
         h('div', { style: { fontSize: Math.round(width * 0.115), fontWeight: 900, letterSpacing: '-0.04em', lineHeight: 1.04, margin: '6px 0 8px' } }, sc.title),
-        h('div', { style: { fontSize: 15, lineHeight: 1.4, color: '#FFE4D8', fontWeight: 500 } }, sc.text))),
+        h('div', { style: { fontSize: 15, lineHeight: 1.4, color: '#E5EAF5', fontWeight: 500 } }, sc.text))),
     // story-style progress bars
     video ? null : h('div', { style: { position: 'absolute', top: 14, left: 16, right: 16, display: 'flex', gap: 4, zIndex: 3 } },
       SCENES.map((s, k) => h('div', { key: s.id, style: { flex: 1, height: 3, borderRadius: 2, background: 'rgba(255,255,255,.28)', overflow: 'hidden' } },
