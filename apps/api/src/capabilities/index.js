@@ -164,3 +164,4 @@ import './academy-ops-board.js';
 import './athlete-profile.js';
 import './trials.js';
 import './recruiter.js';
+import './addresses.js';

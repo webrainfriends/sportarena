@@ -17,6 +17,7 @@ import { IncomingSponsorship } from './sponsor-beneficiaries';
 import { Confirm } from './coaching';
 import { EntityPicker } from '../entity-picker';
 import { explain, LoadError } from '../access';
+import { AddressBook } from '../address-book';
 
 const KINDS = [['club', 'Club'], ['academy', 'Academy'], ['school', 'School'], ['college', 'College'], ['university', 'University'], ['company', 'Company'], ['other', 'Other']];
 const ROLE_LABEL = { owner: 'Owner', admin: 'Admin', coach: 'Coach', staff: 'Staff', finance: 'Finance', manager: 'Sponsor manager', evaluator: 'Evaluator', legal: 'Legal', approver: 'Approver', auditor: 'Auditor' };
@@ -116,6 +117,7 @@ function Overview({ o, d, role, archived, reload, toast }) {
           {[['Staff', d.counts.staff], ['People', d.counts.people], ['Cohorts', d.counts.cohorts], ['Teams', d.counts.teams], ['Events', d.counts.events], ['Venues', d.counts.venues]].map(([l, n]) => <Tag key={l} label={`${n} ${l.toLowerCase()}`} />)}
         </View>
       ) : null}
+      <AddressBook ownerKind="organisation" ownerId={o.id} title="Addresses" canEdit={!archived && ['owner', 'admin'].includes(role)} toast={toast} />
       {a ? <Section title="Attendance, last 30 days" color={c.mint}>{a.marked ? <T>{Math.round((a.present / a.marked) * 100)}% present across {a.marked} marks</T> : <Empty emoji="📋" title="No attendance yet" sub="Mark attendance from a cohort to see the rate here." />}</Section> : null}
       {d.seasons?.length ? <Section title="Seasons" color={c.sun}>{d.seasons.map((s) => <Row key={s.id} title={s.name} sub={`${day(s.starts_on)} – ${day(s.ends_on)} · ${s.cohorts} cohorts`} />)}</Section> : null}
       {d.finance ? (
