@@ -53,11 +53,11 @@ const sheetWith = async (u, { sport = 'football', home = 0, away = 0, body = {} 
 };
 const complete = (u, id) => post(u, `/tracking/sheets/${id}/complete`);
 
-test('Tools catalogue lists Document Designer and Scoring & Game Tracking for any signed-in user', async () => {
+test('Tools catalogue lists Document Designer, Scoring & Game Tracking and Sport rules for any signed-in user', async () => {
   const u = await signup(['athlete']);
   const r = await api('GET', '/tools', { token: u.token });
   assert.equal(r.status, 200);
-  assert.deepEqual(r.body.map((t) => t.route), ['BrandedDocuments', 'ScoringTool']);
+  assert.deepEqual(r.body.map((t) => t.route), ['BrandedDocuments', 'ScoringTool', 'SportRules']);
   assert.equal((await api('GET', '/tools')).status, 401);
 });
 

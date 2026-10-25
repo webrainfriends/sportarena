@@ -294,6 +294,44 @@ export function EventScoringConfig({ eventId: preset }) {
   );
 }
 
+const canon = (v) => JSON.stringify(v, (_, x) => (x && typeof x === 'object' && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).sort(([a], [b]) => (a < b ? -1 : 1))) : x));
+
+/** The editable fields of a ruleset, shared by the event rules editor and the governed match-format editor. */
+export function RulesetFields({ rs, onChange }) {
+  return (
+    <>
+        {rs.kind === 'points_events' ? (
+          <>
+            {rs.events.map((e, i) => <Counter key={e.kind} label={`${e.icon ?? ''} ${e.label} is worth`} suffix=" pts" min={0} max={20} value={e.points} onChange={(v) => onChange({ ...rs, events: rs.events.map((x, k) => (k === i ? { ...x, points: v } : x)) })} />)}
+            <Counter label={`Number of periods (${rs.periods.label.toLowerCase()}s)`} min={1} max={12} value={rs.periods.count} onChange={(v) => onChange({ ...rs, periods: { ...rs.periods, count: v } })} />
+            <T weight="700" size={13}>Can a game end level?</T>
+            <Seg options={[{ label: 'Yes', value: true }, { label: 'No', value: false }]} value={rs.draw_allowed} onChange={(v) => onChange({ ...rs, draw_allowed: v })} />
+          </>
+        ) : rs.kind === 'sets' ? (
+          <>
+            <T weight="700" size={13}>Best of</T>
+            <Seg options={[1, 3, 5, 7].map((n) => ({ label: String(n), value: n }))} value={rs.sets.best_of} onChange={(v) => onChange({ ...rs, sets: { ...rs.sets, best_of: v } })} />
+            <Counter label="Points to win a set" min={1} max={100} value={rs.sets.points_to_win} onChange={(v) => onChange({ ...rs, sets: { ...rs.sets, points_to_win: v } })} />
+            <T weight="700" size={13}>Win by</T>
+            <Seg options={[{ label: '1 point', value: 1 }, { label: '2 points', value: 2 }]} value={rs.sets.win_by} onChange={(v) => onChange({ ...rs, sets: { ...rs.sets, win_by: v } })} />
+          </>
+        ) : <T color={c.mute} size={13}>This sport is scored by entering totals on the score sheet.</T>}
+    </>
+  );
+}
+
+/** Governed match formats of a sport (newest version of each) that an organiser can adopt instead of typing their own rules. */
+function Formats({ sport, onPick, onStandard }) {
+  const f = useLoad(() => (sport ? api.get('/ruleset-versions', { sport }) : Promise.resolve({ versions: [] })), [sport]);
+  const latest = Object.values((f.data?.versions ?? []).reduce((m, v) => ({ ...m, [v.format_key]: m[v.format_key]?.version > v.version ? m[v.format_key] : v }), {}));
+  return (
+    <View style={{ gap: 6 }}>
+      <T weight="700" size={13}>Start from the standard or a governed match format</T>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}><Chip label="Standard rules" onPress={onStandard} />{latest.map((v) => <Chip key={v.id} label={`${v.label} · v${v.version}`} onPress={() => onPick(v)} />)}</View>
+    </View>
+  );
+}
+
 function RulesEditor({ eventId, toast }) {
   const rules = useLoad(() => api.get(`/events/${eventId}/scoring-ruleset`), [eventId]);
   const pol = useLoad(() => api.get(`/events/${eventId}/result-approval-policy`), [eventId]);
@@ -301,32 +339,21 @@ function RulesEditor({ eventId, toast }) {
   const [polEdit, setPolEdit] = useState(null);
   if (rules.error) return <ErrorBox error={rules.error} onRetry={rules.reload} />;
   if (rules.loading || pol.loading || !rules.data || !pol.data) return <Loading />;
-  const rs = edit ?? (({ source, ...r }) => r)(rules.data);
+  const rs = edit ?? (({ source, version, format_key, sport, standard, ...r }) => r)(rules.data);
   const policy = polEdit ?? pol.data.policy;
   const preset = Object.entries(PRESETS).find(([, v]) => sameReqs(v.policy.requirements, policy.requirements) && v.policy.mode === policy.mode)?.[0] ?? 'custom';
+  const useFormat = async (f) => { try { await api.post(`/events/${eventId}/scoring-template`, { ruleset_version_id: f.id }); toast(`${f.label} v${f.version} applied`); setEdit(null); rules.reload(); } catch (e) { toast(e.message); } };
+  const useStandard = async () => { try { await api.post(`/events/${eventId}/scoring-template`, { ruleset: rules.data.standard }); toast('Standard rules applied'); setEdit(null); rules.reload(); } catch (e) { toast(e.message); } };
   const saveRules = async () => { try { await api.post(`/events/${eventId}/scoring-template`, { ruleset: rs }); toast('Scoring rules saved'); setEdit(null); rules.reload(); } catch (e) { toast(e.message); } };
   const savePolicy = async () => { try { await api.post(`/events/${eventId}/result-approval-policy`, { policy }); toast('Approval policy saved'); setPolEdit(null); pol.reload(); } catch (e) { toast(e.message); } };
   return (
     <View style={{ gap: 14 }}>
       <Section title="Scoring rules">
-        <View style={{ flexDirection: 'row', gap: 6 }}><Tag label={rules.data.source === 'template' ? 'event rules' : "sport's built-in rules"} color={rules.data.source === 'template' ? c.sun : c.violetSoft} /><Tag label={rs.kind.replace('_', ' ')} color={c.cyan} /></View>
+        <View style={{ flexDirection: 'row', gap: 6 }}><Tag label={rules.data.source === 'template' ? 'event rules' : rules.data.source === 'governed' ? 'governed rules' : "sport's built-in rules"} color={rules.data.source === 'template' ? c.sun : c.violetSoft} />{rules.data.version ? <Tag label={`${rules.data.format_key?.replace(/_/g, ' ') ?? 'format'} v${rules.data.version}`} color={c.mint} /> : null}<Tag label={rs.kind.replace('_', ' ')} color={c.cyan} /></View>
         <T weight="800">{rs.label}</T>
-        {rs.kind === 'points_events' ? (
-          <>
-            {rs.events.map((e, i) => <Counter key={e.kind} label={`${e.icon ?? ''} ${e.label} is worth`} suffix=" pts" min={0} max={20} value={e.points} onChange={(v) => setEdit({ ...rs, events: rs.events.map((x, k) => (k === i ? { ...x, points: v } : x)) })} />)}
-            <Counter label={`Number of periods (${rs.periods.label.toLowerCase()}s)`} min={1} max={12} value={rs.periods.count} onChange={(v) => setEdit({ ...rs, periods: { ...rs.periods, count: v } })} />
-            <T weight="700" size={13}>Can a game end level?</T>
-            <Seg options={[{ label: 'Yes', value: true }, { label: 'No', value: false }]} value={rs.draw_allowed} onChange={(v) => setEdit({ ...rs, draw_allowed: v })} />
-          </>
-        ) : rs.kind === 'sets' ? (
-          <>
-            <T weight="700" size={13}>Best of</T>
-            <Seg options={[1, 3, 5, 7].map((n) => ({ label: String(n), value: n }))} value={rs.sets.best_of} onChange={(v) => setEdit({ ...rs, sets: { ...rs.sets, best_of: v } })} />
-            <Counter label="Points to win a set" min={1} max={100} value={rs.sets.points_to_win} onChange={(v) => setEdit({ ...rs, sets: { ...rs.sets, points_to_win: v } })} />
-            <T weight="700" size={13}>Win by</T>
-            <Seg options={[{ label: '1 point', value: 1 }, { label: '2 points', value: 2 }]} value={rs.sets.win_by} onChange={(v) => setEdit({ ...rs, sets: { ...rs.sets, win_by: v } })} />
-          </>
-        ) : <T color={c.mute} size={13}>This sport is scored by entering totals on the score sheet.</T>}
+        {(() => { const { source, version, format_key, sport, standard, ...cur } = rules.data; return standard && canon(cur) !== canon(standard) ? <Tag label="differs from standard" color={c.orange} /> : null; })()}
+        <Formats sport={rules.data.sport} onPick={useFormat} onStandard={useStandard} />
+        <RulesetFields rs={rs} onChange={setEdit} />
         {edit ? <View style={{ flexDirection: 'row', gap: 8 }}><Btn title="Save event rules" onPress={saveRules} /><Btn title="Cancel" color={c.violet} onPress={() => setEdit(null)} /></View> : null}
       </Section>
       <Section title="Who approves a proposed result">

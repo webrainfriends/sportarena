@@ -10,9 +10,11 @@ const PARTICIPATION_POINTS = 5;
 
 /** The rule for a metric in a sport (sport.scoring is 'points'|'time'|'distance'|'goals'|'sets'). */
 export function ruleFor(sport, metric) {
-  const m = String(metric).toLowerCase();
-  if (sport.scoring === 'time' || TIME.test(m)) return { version: RULES_VERSION, unit: 's', direction: 'lower', min: 0.01, max: 86400, integer: false, per_unit: 0, per_result: PARTICIPATION_POINTS };
-  if (sport.scoring === 'distance' || DISTANCE.test(m)) return { version: RULES_VERSION, unit: 'm', direction: 'higher', min: 0.01, max: 100000, integer: false, per_unit: 0, per_result: PARTICIPATION_POINTS };
+  const m = String(metric).trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  // a metric named like a time or a distance is measured that way in any sport; only otherwise does the sport's scoring family decide
+  const byName = TIME.test(m) ? 'time' : DISTANCE.test(m) ? 'distance' : null;
+  if (byName === 'time' || (!byName && sport.scoring === 'time')) return { version: RULES_VERSION, unit: 's', direction: 'lower', min: 0.01, max: 86400, integer: false, per_unit: 0, per_result: PARTICIPATION_POINTS };
+  if (byName === 'distance' || (!byName && sport.scoring === 'distance')) return { version: RULES_VERSION, unit: 'm', direction: 'higher', min: 0.01, max: 100000, integer: false, per_unit: 0, per_result: PARTICIPATION_POINTS };
   return { version: RULES_VERSION, unit: 'count', direction: 'higher', min: 0, max: 1000, integer: true, per_unit: POINTS_PER_UNIT[m] ?? 1, per_result: 0 };
 }
 
