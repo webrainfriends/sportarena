@@ -40,7 +40,7 @@ const R = (r) => rulesetSchema.parse(r);
 const goals = (label, count, periodLabel, extra = []) => R({
   kind: 'points_events', label, periods: { count, label: periodLabel },
   events: [{ kind: 'goal', label: 'Goal', points: 1, icon: '⚽' }],
-  stats: [{ kind: 'foul', label: 'Foul' }, { kind: 'yellow_card', label: 'Yellow card', icon: '🟨' }, { kind: 'red_card', label: 'Red card', icon: '🟥' }, { kind: 'timeout', label: 'Timeout' }, ...extra],
+  stats: [{ kind: 'foul', label: 'Foul' }, { kind: 'yellow_card', label: 'Yellow card', icon: '🟨' }, { kind: 'red_card', label: 'Red card', icon: '🟥' }, { kind: 'timeout', label: 'Timeout' }, { kind: 'substitution', label: 'Substitution' }, ...extra],
 });
 const rally = (label, best_of, points_to_win, win_by, cap, deciding_points, stats = []) => R({
   kind: 'sets', label, sets: { best_of, points_to_win, win_by, cap, deciding_points }, draw_allowed: false,
@@ -74,12 +74,12 @@ const BUILTIN = {
   rugby: R({
     kind: 'points_events', label: 'Rugby', periods: { count: 2, label: 'Half' },
     events: [{ kind: 'try', label: 'Try', points: 5, icon: '🏉' }, { kind: 'conversion', label: 'Conversion', points: 2 }, { kind: 'penalty_goal', label: 'Penalty goal', points: 3 }, { kind: 'drop_goal', label: 'Drop goal', points: 3 }],
-    stats: [{ kind: 'yellow_card', label: 'Yellow card', icon: '🟨' }, { kind: 'red_card', label: 'Red card', icon: '🟥' }, { kind: 'scrum', label: 'Scrum' }],
+    stats: [{ kind: 'yellow_card', label: 'Yellow card', icon: '🟨' }, { kind: 'red_card', label: 'Red card', icon: '🟥' }, { kind: 'scrum', label: 'Scrum' }, { kind: 'substitution', label: 'Replacement' }],
   }),
   'rugby-sevens': R({
     kind: 'points_events', label: 'Rugby sevens', periods: { count: 2, label: 'Half' },
     events: [{ kind: 'try', label: 'Try', points: 5, icon: '🏉' }, { kind: 'conversion', label: 'Conversion', points: 2 }, { kind: 'penalty_goal', label: 'Penalty goal', points: 3 }, { kind: 'drop_goal', label: 'Drop goal', points: 3 }],
-    stats: [{ kind: 'yellow_card', label: 'Yellow card', icon: '🟨' }, { kind: 'red_card', label: 'Red card', icon: '🟥' }],
+    stats: [{ kind: 'yellow_card', label: 'Yellow card', icon: '🟨' }, { kind: 'red_card', label: 'Red card', icon: '🟥' }, { kind: 'substitution', label: 'Replacement' }],
   }),
   baseball: R({ kind: 'points_events', label: 'Baseball', periods: { count: 9, label: 'Inning' }, draw_allowed: false, events: [{ kind: 'run', label: 'Run', points: 1, icon: '⚾' }], stats: [{ kind: 'hit', label: 'Hit' }, { kind: 'error', label: 'Error' }, { kind: 'strikeout', label: 'Strikeout' }] }),
   softball: R({ kind: 'points_events', label: 'Softball', periods: { count: 7, label: 'Inning' }, draw_allowed: false, events: [{ kind: 'run', label: 'Run', points: 1, icon: '🥎' }], stats: [{ kind: 'hit', label: 'Hit' }, { kind: 'error', label: 'Error' }, { kind: 'strikeout', label: 'Strikeout' }] }),

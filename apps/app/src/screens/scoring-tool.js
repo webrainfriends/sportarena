@@ -13,6 +13,8 @@ import { SportSelect } from '../sportpicker';
 import { useLayout } from '../layout';
 import { c } from '../theme';
 import { LinkSheet, ProposalReview, StateTag, UploadFlow, EventScoringConfig } from './scoring-review';
+import { CricketScorer } from './cricket-scorer';
+import { DetailsPanel, HeatSheet, PlayerPick, RulesBanner } from './scorer-panels';
 
 const nice = (s = '') => String(s).replace(/_/g, ' ');
 export const OfficialBanner = ({ sheet }) => (
@@ -65,23 +67,29 @@ function Scoreboard({ s, tracker }) {
   );
 }
 
-function ResultsRows({ s, save }) {
-  const [rows, setRows] = useState(() => { const n = s.template.layout.results.rows; return Array.from({ length: n }, (_, i) => s.rows[i] ?? { order: i + 1 }); });
-  const set = (i, patch) => setRows((rs) => rs.map((r, k) => (k === i ? { ...r, ...patch } : r)));
+/** A substitution: who goes off and who comes on, picked from the team list when there is one. */
+function SubSheet({ s, side, onClose, onDone }) {
+  const [off, setOff] = useState(null);
+  const [on, setOn] = useState(null);
+  const list = (s.details?.players?.[side] ?? []).filter((p) => p.no);
   return (
-    <View style={{ gap: 8 }}>
-      {rows.map((r, i) => (
-        <Card key={i} pad={10}>
-          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-end' }}>
-            <View style={{ width: 60 }}><Field label="Lane" value={r.lane ?? ''} onChangeText={(v) => set(i, { lane: v })} maxLength={10} /></View>
-            <View style={{ flex: 1 }}><Field label="Participant" value={r.name ?? ''} onChangeText={(v) => set(i, { name: v })} maxLength={80} /></View>
-            <View style={{ width: 96 }}><Field label={s.template.layout.results.unit === 'time' ? 'Time' : 'Result'} value={r.result ?? ''} onChangeText={(v) => set(i, { result: v })} maxLength={20} /></View>
-          </View>
-          <Seg options={[{ label: 'Finished', value: '' }, 'DNS', 'DNF', 'DQ']} value={r.status ?? ''} onChange={(v) => set(i, { status: v })} />
-        </Card>
-      ))}
-      <Btn title="Save results" onPress={() => save(rows.filter((r) => r.name || r.result || r.lane).map((r, i) => ({ ...r, order: i + 1 })))} />
-    </View>
+    <Sheet visible onClose={onClose} title={`Substitution · ${s.labels[side]}`}>
+      <View style={{ gap: 12 }}>
+        {list.length ? (
+          <>
+            <PlayerPick s={s} side={side} value={off} onChange={setOff} label="Off" />
+            <PlayerPick s={s} side={side} value={on} onChange={setOn} label="On" />
+          </>
+        ) : (
+          <>
+            <T color={c.mute} size={13}>Add the team list under Match details to pick players. Shirt numbers work too.</T>
+            <Field label="Number off" value={off ?? ''} onChangeText={setOff} keyboardType="number-pad" maxLength={3} />
+            <Field label="Number on" value={on ?? ''} onChangeText={setOn} keyboardType="number-pad" maxLength={3} />
+          </>
+        )}
+        <Btn title="Record substitution" disabled={!off || !on || off === on} onPress={() => onDone({ off, on })} />
+      </View>
+    </Sheet>
   );
 }
 
@@ -95,6 +103,11 @@ export function Tracker({ id, onClose, openLink }) {
   const [link, setLink] = useState(!!openLink);
   const [review, setReview] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [who, setWho] = useState({ home: null, away: null });
+  const [minute, setMinute] = useState(1);
+  const [useMinute, setUseMinute] = useState(false);
+  const [goalType, setGoalType] = useState('open_play');
+  const [sub, setSub] = useState(null);
   const flushing = useRef(false);
   const kits = useLoad(() => api.get('/brand-kits').catch(() => []), []);
   const [kit, setKit] = useState(null);
@@ -115,11 +128,14 @@ export function Tracker({ id, onClose, openLink }) {
     if (flushing.current) return; flushing.current = true;
     try { for (const e of [...pending]) if (!(await send(e))) break; } finally { flushing.current = false; }
   };
-  const record = async (kind, side) => {
-    const e = { kind, side, period: layout.mode === 'points_events' ? period : undefined, client_key: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}` };
+  const record = async (kind, side, extra = {}) => {
+    const e = { kind, ...(side ? { side } : {}), period: extra.period ?? (layout.mode === 'points_events' ? period : undefined), ...(extra.payload ? { payload: extra.payload } : {}), client_key: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}` };
     setPending((p) => [...p, e]);
-    if (!(await send(e))) toast('Not saved yet. It will be retried; tap Retry when you are back online.');
+    const ok = await send(e);
+    if (!ok) toast('Not saved yet. It will be retried; tap Retry when you are back online.');
+    return ok;
   };
+  const undo = () => patch({ void_entry: { reason: 'Undone' } });
   const patch = async (body, ok) => { try { setFresh(await api.patch(`/tracking/sheets/${id}`, body)); if (ok) toast(ok); } catch (e) { toast(e.message); } };
   const complete = async () => { setBusy(true); try { setFresh(await api.post(`/tracking/sheets/${id}/complete`)); toast('Saved as a completed sheet'); } catch (e) { toast(e.message); } finally { setBusy(false); } };
   const hasLive = s.entries.some((e) => !e.voided_at);
@@ -135,7 +151,8 @@ export function Tracker({ id, onClose, openLink }) {
         <Btn small title="Close" color={c.violet} onPress={onClose} />
       </View>
       <OfficialBanner sheet={s} />
-      <Scoreboard s={s} />
+      <RulesBanner s={s} />
+      {layout.mode === 'cricket' ? null : layout.mode === 'results' ? null : <Scoreboard s={s} />}
       <T size={12} color={c.mute} accessibilityLiveRegion="polite">{pending.length ? `⚠ ${pending.length} not sent yet` : '✓ Saved'}</T>
       {pending.length ? <Btn small title="Retry sending" onPress={flush} color={c.sun} /> : null}
 
@@ -144,10 +161,23 @@ export function Tracker({ id, onClose, openLink }) {
       {live && layout.mode === 'points_events' ? (
         <View style={{ gap: 12 }}>
           <Seg options={Array.from({ length: layout.periods.count }, (_, i) => ({ label: `${layout.periods.label} ${i + 1}`, value: i + 1 }))} value={period} onChange={setPeriod} />
+          <PlayerPick s={s} side="home" value={who.home} onChange={(v) => setWho((w) => ({ ...w, home: v }))} label="Scorer or player" />
+          <PlayerPick s={s} side="away" value={who.away} onChange={(v) => setWho((w) => ({ ...w, away: v }))} label="Scorer or player" />
+          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <Chip label={useMinute ? `Minute ${minute}'` : 'Add the minute'} active={useMinute} onPress={() => setUseMinute(!useMinute)} />
+            {useMinute ? <Counter value={minute} min={0} max={150} onChange={setMinute} suffix="'" /> : null}
+            {layout.scoring.some((e) => e.kind === 'goal') ? ['open_play', 'penalty', 'free_kick', 'own_goal'].map((t) => <Chip key={t} label={nice(t)} active={goalType === t} onPress={() => setGoalType(t)} />) : null}
+          </View>
           {layout.scoring.map((e) => (
             <View key={e.kind} style={{ flexDirection: 'row', gap: 12 }}>
-              <Big label={`${e.icon ?? '+'} ${e.label}`} sub={`${labelOf('home')} · ${tally('home', e.kind)}`} onPress={() => record(e.kind, 'home')} />
-              <Big label={`${e.icon ?? '+'} ${e.label}`} sub={`${labelOf('away')} · ${tally('away', e.kind)}`} onPress={() => record(e.kind, 'away')} color={c.violet} />
+              {['home', 'away'].map((side) => (
+                <Big key={side} label={`${e.icon ?? '+'} ${e.label}`} sub={`${labelOf(side)} · ${tally(side, e.kind)}`} color={side === 'home' ? c.pink : c.violet}
+                  onPress={() => {
+                    const own = e.kind === 'goal' && goalType === 'own_goal';
+                    const payload = { ...(who[side] ? { player_no: who[side] } : {}), ...(useMinute ? { minute } : {}), ...(e.kind === 'goal' && goalType !== 'open_play' ? { type: goalType } : {}) };
+                    record(e.kind, own ? (side === 'home' ? 'away' : 'home') : side, { payload: Object.keys(payload).length ? payload : undefined }); setWho((w) => ({ ...w, [side]: null }));
+                  }} />
+              ))}
             </View>
           ))}
         </View>
@@ -159,7 +189,7 @@ export function Tracker({ id, onClose, openLink }) {
             <View key={side} style={{ gap: 6 }}>
               <T weight="700" size={12} color={c.mute}>{labelOf(side)}</T>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                {layout.stats.map((st) => <Chip key={st.kind} label={`${st.icon ?? ''} ${st.label} · ${tally(side, st.kind)}`.trim()} onPress={() => record(st.kind, side)} />)}
+                {layout.stats.map((st) => <Chip key={st.kind} label={`${st.icon ?? ''} ${st.label} · ${tally(side, st.kind)}`.trim()} onPress={() => (st.kind === 'substitution' ? setSub(side) : record(st.kind, side, { payload: { ...(who[side] ? { player_no: who[side] } : {}), ...(useMinute ? { minute } : {}) } }))} />)}
               </View>
             </View>
           ))}
@@ -172,11 +202,14 @@ export function Tracker({ id, onClose, openLink }) {
           <Counter label={labelOf('away')} min={0} max={999} value={s.manual_totals?.away ?? 0} onChange={(v) => patch({ manual_totals: { home: s.manual_totals?.home ?? 0, away: v } })} />
         </Card>
       ) : null}
-      {live && layout.mode === 'results' ? <ResultsRows s={s} save={(rows) => patch({ rows }, 'Results saved')} /> : null}
+      {layout.mode === 'results' ? <HeatSheet key={s.id} s={s} patch={(b) => patch(b)} /> : null}
+      {layout.mode === 'cricket' ? <CricketScorer s={s} record={record} undo={undo} patch={patch} busy={busy} /> : null}
+
+      <DetailsPanel s={s} patch={(b) => patch(b)} roster={layout.mode !== 'results' && layout.mode !== 'sets'} />
 
       {s.checks.length ? <View style={{ gap: 6 }}>{s.checks.map((k, i) => <T key={i} size={13} color={k.severity === 'error' ? c.orange : c.mute}>{k.severity === 'error' ? '⛔' : '⚠️'} {k.message}</T>)}</View> : null}
 
-      {hasLive || recent.length ? (
+      {(hasLive || recent.length) && layout.mode !== 'cricket' && layout.mode !== 'results' ? (
         <Section title="Recent entries">
           {recent.map((e) => (
             <T key={e.id} size={13} color={e.voided_at ? c.mute : c.ink} style={e.voided_at ? { textDecorationLine: 'line-through' } : null}>
@@ -187,13 +220,14 @@ export function Tracker({ id, onClose, openLink }) {
       ) : null}
 
       <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-        {live ? <Btn title="↩︎ Undo last" color={c.violet} disabled={!hasLive} onPress={() => patch({ void_entry: { reason: 'Undone' } })} /> : null}
+        {live && layout.mode !== 'cricket' && layout.mode !== 'results' ? <Btn title="↩︎ Undo last" color={c.violet} disabled={!hasLive} onPress={undo} /> : null}
         {live ? <Btn title="Complete sheet" color={c.mint} loading={busy} onPress={complete} /> : null}
         <Btn title="Download PDF" color={c.cyan} onPress={() => openPdf(id, toast, kit)} />
         {s.status === 'completed' && !s.proposal ? <Btn title="Link to a match" color={c.pink} onPress={() => setLink(true)} /> : null}
       </View>
       {(kits.data ?? []).length ? <View style={{ gap: 4 }}><T size={12} color={c.mute}>PDF branding (from Document Designer). It never changes what the sheet means.</T><Seg options={[{ label: 'Plain', value: null }, ...kits.data.map((k) => ({ label: k.name, value: k.id }))]} value={kit} onChange={setKit} /></View> : null}
       {s.proposal ? <Card onPress={() => setReview(s.proposal.id)}><View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><T weight="800" style={{ flex: 1 }}>Result proposal · round {s.proposal.round}</T><StateTag s={s.proposal.state} /></View><T color={c.mute} size={12}>Tap to see the review</T></Card> : null}
+      {sub ? <SubSheet s={s} side={sub} onClose={() => setSub(null)} onDone={(p) => { record('substitution', sub, { payload: { ...p, ...(useMinute ? { minute } : {}) } }); setSub(null); }} /> : null}
       {link ? <LinkSheet sheet={s} onClose={() => setLink(false)} onDone={(p) => { setLink(false); setReview(p.id); load.reload(); setFresh(null); }} /> : null}
       {review ? <Sheet visible onClose={() => { setReview(null); setFresh(null); load.reload(); }} title="Result proposal"><ProposalReview id={review} /></Sheet> : null}
     </View>
@@ -201,10 +235,12 @@ export function Tracker({ id, onClose, openLink }) {
 }
 
 // ----------------------------------------------------------------------------------------------------------- start flow
-function Start({ presetFixture, ctx, onStarted, onClose }) {
+function Start({ presetFixture, presetSport, presetVariant, presetLocal, ctx, onStarted, onClose }) {
   const { toast } = useSession();
-  const [sport, setSport] = useState(null);
-  const [variant, setVariant] = useState(null);
+  const { push } = useNav();
+  const [sport, setSport] = useState(presetSport ?? null);
+  const [variant, setVariant] = useState(presetVariant ?? null);
+  const [localId, setLocalId] = useState(presetLocal ?? null);
   const [bestOf, setBestOf] = useState(null);
   const [mode, setMode] = useState(presetFixture ? 'link' : 'standalone');
   const [fixture, setFixture] = useState(presetFixture ? { id: presetFixture } : null);
@@ -214,10 +250,11 @@ function Start({ presetFixture, ctx, onStarted, onClose }) {
   const [date, setDate] = useState(null);
   const [brief, setBrief] = useState('');
   const [busy, setBusy] = useState(false);
-  const templates = useLoad(() => (sport ? api.get('/tracking/templates', { sport, variant: variant ?? undefined, best_of: bestOf ?? undefined }) : Promise.resolve(null)), [sport, variant, bestOf]);
+  const templates = useLoad(() => (sport ? api.get('/tracking/templates', { sport, variant: variant ?? undefined, best_of: bestOf ?? undefined, local_id: localId ?? undefined }).catch((e) => { if (localId) setLocalId(null); throw e; }) : Promise.resolve(null)), [sport, variant, bestOf, localId]);
+  const locals = useLoad(() => (sport ? api.get('/local-rules', { sport }).catch(() => []) : Promise.resolve([])), [sport]);
   const cands = useLoad(() => (mode === 'link' && sport && !presetFixture ? api.get('/tracking/link-candidates', { sport, q: q.trim() || undefined, around: date ? new Date(`${date}T12:00:00`).toISOString() : undefined, days: date ? 1 : 7 }) : Promise.resolve([])), [mode, sport, q, date]);
   const t = templates.data;
-  const body = () => ({ ...(sport ? { sport } : {}), variant: variant ?? undefined, best_of: bestOf ?? undefined, ...(tpl !== 'starter' ? { template_id: tpl } : {}), ...(mode === 'link' ? { fixture_id: fixture?.id } : { labels: { home: labels.home || undefined, away: labels.away || undefined } }), ...(date ? { occurred_at: new Date(`${date}T12:00:00`).toISOString() } : {}), ...(ctx ?? {}) });
+  const body = () => ({ ...(sport ? { sport } : {}), variant: variant ?? undefined, local_rules_id: mode === 'link' ? undefined : localId ?? undefined, best_of: bestOf ?? undefined, ...(tpl !== 'starter' ? { template_id: tpl } : {}), ...(mode === 'link' ? { fixture_id: fixture?.id } : { labels: { home: labels.home || undefined, away: labels.away || undefined } }), ...(date ? { occurred_at: new Date(`${date}T12:00:00`).toISOString() } : {}), ...(ctx ?? {}) });
   const go = async (print) => {
     if (mode === 'link' && !fixture) { toast('Pick the game first'); return; }
     setBusy(true);
@@ -244,7 +281,18 @@ function Start({ presetFixture, ctx, onStarted, onClose }) {
           <>
             <T weight="700" size={13}>2 · Format</T>
             <Seg options={t.variants} value={variant ?? t.starter.variant} onChange={setVariant} />
-            {t.starter.layout.form ? <T color={c.mute} size={12}>Prints as: {t.starter.layout.form.title}. A sport-specific sheet to fill in while the game is played; it never changes how the result is scored.</T> : null}
+            {t.starter.layout.form ? <T color={c.mute} size={12}>Prints as: {t.starter.layout.form.title}. A sport-specific sheet to fill in while the game is played.</T> : null}
+            {mode === 'standalone' ? (
+              <View style={{ gap: 6 }}>
+                <T weight="700" size={13}>Rules</T>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                  <Chip label="Standard rules" active={!localId} onPress={() => setLocalId(null)} />
+                  {(locals.data ?? []).filter((x) => !x.format || x.format === (t.starter.layout.rules?.format ?? x.format)).map((x) => <Chip key={x.id} label={`${x.name} · v${x.current_version}`} active={localId === x.id} onPress={() => setLocalId(x.id)} />)}
+                  <Btn small title="Read or localise the rules" color={c.violet} onPress={() => push('SportRules', { sport, tab: 'rulebook' })} />
+                </View>
+                {t.starter.rules?.lines?.length ? t.starter.rules.lines.map((l) => <T key={l} size={12} color={c.orange}>{l}</T>) : null}
+              </View>
+            ) : null}
             {t.starter.formats && mode === 'standalone' ? <Seg options={t.starter.formats.map((n) => ({ label: `Best of ${n}`, value: n }))} value={bestOf ?? t.starter.ruleset.sets.best_of} onChange={setBestOf} /> : null}
           </>
         ) : null}
@@ -385,11 +433,11 @@ const TILES = [
   ['rules', '⚙️', 'Event scoring rules', 'Rules and approval policy for your event'],
 ];
 
-export function ScoringTool({ fixtureId, eventId, contextType, contextId, tab: tab0, sheetId, proposalId, importId }) {
+export function ScoringTool({ fixtureId, eventId, contextType, contextId, tab: tab0, sheetId, proposalId, importId, sport, variant, localRulesId }) {
   const { push } = useNav();
   const L = useLayout();
   const counts = useLoad(() => Promise.all([api.get('/tracking/sheets', { status: 'in_progress', limit: 50 }), api.get('/tracking/awaiting-review').catch(() => [])]), []);
-  const [tab, setTab] = useState(tab0 ?? (importId ? 'upload' : fixtureId ? 'start' : 'home'));
+  const [tab, setTab] = useState(tab0 ?? (importId ? 'upload' : fixtureId || sport ? 'start' : 'home'));
   const [open, setOpen] = useState(sheetId ?? null);
   const [review, setReview] = useState(proposalId ?? null);
   const [linkAfter, setLinkAfter] = useState(false);
@@ -417,7 +465,7 @@ export function ScoringTool({ fixtureId, eventId, contextType, contextId, tab: t
       ) : (
         <>
           <Btn small title="← Scoring & Game Tracking" color={c.violet} onPress={back} style={{ alignSelf: 'flex-start' }} />
-          {tab === 'start' ? <Start presetFixture={fixtureId} ctx={ctx} onStarted={started} onClose={back} /> : null}
+          {tab === 'start' ? <Start presetFixture={fixtureId} presetSport={sport} presetVariant={variant} presetLocal={localRulesId} ctx={ctx} onStarted={started} onClose={back} /> : null}
           {tab === 'mine' ? <MySheets onOpen={(id) => setOpen(id)} initialState={tab0 === 'mine' ? 'in_progress' : undefined} /> : null}
           {tab === 'templates' ? <Templates /> : null}
           {tab === 'upload' ? <UploadFlow resumeId={importId} onDone={(s, o) => { setTab('home'); setOpen(s.id); setLinkAfter(!!o?.link); counts.reload(); }} /> : null}

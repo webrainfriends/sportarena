@@ -73,6 +73,7 @@ export function Pathways() {
 
 function Learn({ onFind }) {
   const { user, toast } = useSession();
+  const { push } = useNav();
   const [sport, setSport] = useState(null);
   const [form, setForm] = useState(false);
   const rules = useLoad(() => (sport ? api.get(`/sports/${sport}/rules`) : Promise.resolve(null)), [sport]);
@@ -90,6 +91,19 @@ function Learn({ onFind }) {
                 <T style={{ marginTop: 6 }}>{r.body}</T>
               </Card>
             ))}
+            {(rules.data.rulebook?.cards ?? []).map((r) => (
+              <Card key={r.title + r.no}>
+                <T size={11} weight="800" color={c.mute}>{r.no.toUpperCase()}</T>
+                <T weight="700" size={16}>{r.title}</T>
+                <T style={{ marginTop: 6 }}>{r.body}</T>
+              </Card>
+            ))}
+            {rules.data.rulebook ? (
+              <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+                <Btn small title="Official book ↗" color={c.cyan} onPress={() => openLink(rules.data.rulebook.official_url)} />
+                <Btn small title="Localise these rules" color={c.violet} onPress={() => push('SportRules', { sport: rules.data.sport.slug })} />
+              </View>
+            ) : null}
             {rules.data.rules.length ? rules.data.rules.map((r) => (
               <Card key={r.id}>
                 <T weight="700" size={16}>{r.title}</T>
@@ -97,7 +111,7 @@ function Learn({ onFind }) {
                 {r.source_url ? <Btn small title="Official source" color={c.paper} ink={c.ink} style={{ alignSelf: 'flex-start', marginTop: 10 }} onPress={() => openLink(r.source_url)} /> : null}
                 {admin ? <Btn small title="Archive section" color={c.paper} ink={c.red} style={{ alignSelf: 'flex-start', marginTop: 8 }} onPress={() => archive(r)} /> : null}
               </Card>
-            )) : rules.data.scoring?.length ? null : <Empty emoji="📚" title="No rules added yet" sub="The platform team has not written the rules of this sport yet. You can still look for courses." />}
+            )) : rules.data.scoring?.length || rules.data.rulebook ? null : <Empty emoji="📚" title="No rules added yet" sub="The platform team has not written the rules of this sport yet. You can still look for courses." />}
             {admin ? <Btn small title="Add a rules section" color={c.violet} onPress={() => setForm(true)} style={{ alignSelf: 'flex-start' }} /> : null}
           </Section>
           <Btn title={`Find courses in ${rules.data.sport.name}`} onPress={onFind} style={{ marginTop: 16 }} />
