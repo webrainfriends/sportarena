@@ -6,7 +6,7 @@
     "scheme": ["sportarena", "com.googleusercontent.apps.909476957194-bmrrif4q7qdffemon7mrrm3puoovbg5r"],
     "orientation": "portrait",
     "userInterfaceStyle": "light",
-    "backgroundColor": "#FFF4EE",
+    "backgroundColor": "#E5EAF5",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "dev.gotmygame.app",
@@ -24,7 +24,7 @@
       "package": "dev.sportarena.app",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#FFE4D8"
+        "backgroundColor": "#E5EAF5"
       }
     },
     "web": {
@@ -32,8 +32,8 @@
       "output": "single",
       "name": "Gotmygame",
       "shortName": "Gotmygame",
-      "backgroundColor": "#FFE4D8",
-      "themeColor": "#181A2F",
+      "backgroundColor": "#E5EAF5",
+      "themeColor": "#2A2D3A",
       "favicon": "./public/favicon.png"
     },
     "extra": {
@@ -55,7 +55,7 @@
       [
         "expo-notifications",
         {
-          "color": "#B4182D"
+          "color": "#8458B3"
         }
       ]
     ],
@@ -63,7 +63,7 @@
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#FFE4D8"
+      "backgroundColor": "#E5EAF5"
     },
     "description": "One platform for everyone who dreams of sport"
   }

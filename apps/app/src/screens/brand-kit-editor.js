@@ -10,7 +10,7 @@ import { Btn, Chip, Field, T } from '../ui';
 import { c } from '../theme';
 import { BlockPreview, useLogo } from './doc-editor';
 
-const SWATCHES = ['#B4182D', '#047857', '#1D4ED8', '#0E7490', '#37415C', '#BE185D', '#B91C1C', '#B45309', '#444441', '#111827'];
+const SWATCHES = ['#8458B3', '#047857', '#1D4ED8', '#0E7490', '#494D5F', '#BE185D', '#B91C1C', '#B45309', '#444441', '#111827'];
 const hexOk = (v) => /^#[0-9A-Fa-f]{6}$/.test(v ?? '');
 const luma = (h) => { const n = parseInt(h.slice(1), 16); return (0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255; };
 const PREVIEW_LAYOUT = { style: 'classic', paper: 'A4', orientation: 'portrait', margin_mm: 18 };
@@ -53,13 +53,13 @@ function Swatches({ label, value, onChange }) {
         })}
         <Chip label="Custom" active={custom || !preset} onPress={() => setCustom(true)} />
       </View>
-      {custom || !preset ? <Field value={value} onChangeText={(x) => onChange(x.startsWith('#') ? x : `#${x}`)} placeholder="#RRGGBB" maxLength={7} hint={hexOk(value) ? undefined : 'Six characters, like #B4182D'} /> : null}
+      {custom || !preset ? <Field value={value} onChangeText={(x) => onChange(x.startsWith('#') ? x : `#${x}`)} placeholder="#RRGGBB" maxLength={7} hint={hexOk(value) ? undefined : 'Six characters, like #8458B3'} /> : null}
     </View>
   );
 }
 
 function Letterhead({ v, logo, width }) {
-  const accent = hexOk(v.primary_color) ? v.primary_color : '#B4182D', ink = hexOk(v.secondary_color) ? v.secondary_color : '#444441';
+  const accent = hexOk(v.primary_color) ? v.primary_color : '#8458B3', ink = hexOk(v.secondary_color) ? v.secondary_color : '#444441';
   const pt = (width / 210) * (25.4 / 72);
   const kit = { display_name: v.display_name?.trim() || null, address: v.address?.trim(), contact_email: v.contact_email?.trim(), footer_text: v.footer_text?.trim() };
   const shown = kit.display_name ? kit : null;
@@ -81,7 +81,7 @@ export function KitEditor({ kit, orgId, onClose, onSaved }) {
   const L = useLayout();
   const ins = useSafeAreaInsets();
   const wide = L.width >= 900;
-  const [v, setV] = useState(() => ({ name: '', display_name: '', legal_name: '', address: '', contact_email: '', phone: '', website: '', tax_id: '', footer_text: '', primary_color: '#B4182D', secondary_color: '#444441', ...Object.fromEntries(Object.entries(kit ?? {}).map(([k, x]) => [k, x ?? ''])) }));
+  const [v, setV] = useState(() => ({ name: '', display_name: '', legal_name: '', address: '', contact_email: '', phone: '', website: '', tax_id: '', footer_text: '', primary_color: '#8458B3', secondary_color: '#444441', ...Object.fromEntries(Object.entries(kit ?? {}).map(([k, x]) => [k, x ?? ''])) }));
   const [nameTouched, setNameTouched] = useState(!!kit);
   const [pending, setPending] = useState(null); // { blob, uri }
   const [busy, setBusy] = useState(false);
