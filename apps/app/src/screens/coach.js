@@ -109,6 +109,7 @@ export function CoachAthletes() {
             <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
               <Btn small title="New plan" onPress={() => setPick(a)} />
               <Btn small title="Plans" color={c.paper} ink={c.ink} onPress={() => push('MyPlans', { as: 'coach', athlete_id: a.id })} />
+              <Btn small title="Shared wellness" color={c.paper} ink={c.ink} onPress={() => push('SharedWellness')} />
               <Btn small title="Journal" color={c.paper} ink={c.ink} onPress={() => push('CoachJournal', { athlete_id: a.id, name: a.display_name })} />
               <Btn small title="Profile" color={c.paper} ink={c.ink} onPress={() => push('Person', { id: a.id })} />
             </View>

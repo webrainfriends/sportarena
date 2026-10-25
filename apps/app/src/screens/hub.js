@@ -21,6 +21,7 @@ import { PaySheet } from '../PaySheet';
 import { TimelineSheet } from '../Timeline';
 import { Confirm } from './coaching';
 import { RecoveryPanel } from './wellness';
+import { WellnessSharing } from './wellness-sharing';
 import { DoctorEntry } from './doctor';
 import { money as curMoney } from '../offer-lines';
 import { MyHealthFile } from './health-file';
@@ -292,7 +293,7 @@ export function Health() {
       {isProv ? <View style={{ marginTop: 10 }}><ClinicalStatusCard /></View> : null}
       <View style={{ marginTop: 10 }}><Seg options={[...(has('athlete') ? [{ value: 'recovery', label: 'Recovery', emoji: '💚' }] : []), { value: 'find', label: 'Find a pro', emoji: '🔎' }, ...(isProv ? [{ value: 'practice', label: 'My practice', emoji: '🩺' }] : []), { value: 'rehab', label: 'My plans', emoji: '📝' }, { value: 'appts', label: 'Appointments', emoji: '📅' }, { value: 'records', label: 'My records', emoji: '📋' }, { value: 'file', label: 'My file', emoji: '🗂️' }, { value: 'followups', label: 'Follow-ups', emoji: '🗓️' }, { value: 'consent', label: 'Privacy', emoji: '🔒' }]} value={tab} onChange={setTab} color={c.mint} /></View>
       <View style={{ gap: 10, marginTop: 8 }}>
-        {tab === 'recovery' && <RecoveryPanel />}
+        {tab === 'recovery' && <><RecoveryPanel /><WellnessSharing /></>}
         {tab === 'find' && <ProviderSearch onBooked={() => { appts.reload(); setTab('appts'); }} />}
         {tab === 'practice' && isProv && <PracticePanel />}
         {tab === 'rehab' && <MyRehab />}
