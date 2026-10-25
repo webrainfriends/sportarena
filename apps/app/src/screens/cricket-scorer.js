@@ -136,7 +136,7 @@ export function CricketScorer({ s, record, undo, patch, busy }) {
         <Card pad={14}>
           <T weight="800">Toss: who bats first?</T>
           <Seg options={[{ label: label('home'), value: 'home' }, { label: label('away'), value: 'away' }]} value={first} onChange={setFirst} />
-          <T size={12} color={c.mute}>Add the two XIs under “Teams” below to see names on the card, or just score with batter and bowler numbers.</T>
+          <T size={12} color={c.mute}>Add both XIs under “Match details” below to see names on the card, or just score with batter and bowler numbers.</T>
         </Card>
       ) : null}
 
