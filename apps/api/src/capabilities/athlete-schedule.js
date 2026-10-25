@@ -3,12 +3,13 @@ import { venueText } from '../session-links.js';
 import { cap } from '../registry.js';
 import { many } from '../db.js';
 import { badRequest } from '../errors.js';
+import { hasConsent, isYouth } from '../youth.js';
 import { loggedMap, occurrences, plain } from '../coach-commitments.js';
 
 const TAG = 'Athlete';
 const DEFAULT_MATCH_MIN = 90;
-const KINDS = ['match', 'team', 'event', 'venue', 'training', 'health', 'duty', 'recovery'];
-const BLOCK_LABEL = { recovery: 'Recovery', gym: 'Gym', rest: 'Rest', other: 'Personal time' };
+const KINDS = ['match', 'team', 'event', 'venue', 'training', 'health', 'duty', 'recovery', 'external'];
+const BLOCK_LABEL = { recovery: 'Recovery', gym: 'Gym', rest: 'Rest', other: 'Personal time', travel: 'Travel' };
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
 // A derived read projection over canonical records. Nothing is copied or stored; health items stay generic
@@ -18,10 +19,14 @@ cap({
   summary: 'Everything on your calendar in one list, whatever your roles: team fixtures and selections, games, events and tournaments you play, organise or work at, officiating and crew duty, venue bookings, coaching sessions (booked, plan sessions and your coaching commitments), your own physio/doctor appointments and the patient appointments you hold as a provider, and follow-ups, with overlap warnings.',
   input: z.object({
     from: day.optional(), to: day.optional(),
-    kinds: z.string().optional().describe('Comma separated: match, team, event, venue, training, health, duty, recovery'),
+    kinds: z.string().optional().describe('Comma separated: match, team, event, venue, training, health, duty, recovery, external'),
     sport: z.string().optional().describe('Sport slug'),
   }),
-  async handler({ user }, i) {
+  handler: ({ user }, i) => buildSchedule(user, i),
+});
+
+/** The schedule projection for one person. Shared by the calendar read, the ICS feed and the conflict check. */
+export async function buildSchedule(user, i) {
     const from = i.from ?? new Date().toISOString().slice(0, 10);
     const to = i.to ?? new Date(Date.parse(from) + 14 * 86400000).toISOString().slice(0, 10);
     if (to < from) throw badRequest('to is before from');
@@ -32,14 +37,14 @@ cap({
     const D = `${DEFAULT_MATCH_MIN} minutes`;
 
     const [squads, games, entries, organised, bookings, hires, appts, follows, gameSessions, planSessions, teamFixtures, teamEntries, officiating, crew, patients, commitments, blocks, attendance, academy] = await Promise.all([
-      many(`SELECT q.id, q.status, q.team_id, f.id AS fixture_id, f.event_id AS fx_event_id, f.scheduled_at AS starts_at, f.scheduled_at + interval '${D}' AS ends_at, e.name AS event_name, s.slug AS sport,
+      many(`SELECT q.id, q.status, q.team_id, f.id AS fixture_id, f.event_id AS fx_event_id, f.scheduled_at AS starts_at, f.scheduled_at + f.duration_min * interval '1 minute' AS ends_at, e.name AS event_name, s.slug AS sport,
                    t.name AS team_name, h.name AS home_name, a.name AS away_name, rs.timezone AS tz
             FROM team_squads q JOIN fixtures f ON f.id=q.fixture_id JOIN events e ON e.id=f.event_id JOIN sports s ON s.id=e.sport_id
             JOIN teams t ON t.id=q.team_id JOIN teams h ON h.id=f.home_team_id JOIN teams a ON a.id=f.away_team_id
             LEFT JOIN resources r ON r.id=f.resource_id LEFT JOIN venues rs ON rs.id=r.venue_id
             WHERE q.user_id=$1 AND q.status IN ('selected','confirmed') AND f.status IN ('scheduled','live')
               AND f.scheduled_at >= $2::date AND f.scheduled_at < $3::date + 1`, win),
-      many(`SELECT g.id, g.title, g.status, g.starts_at, coalesce(g.ends_at, g.starts_at + interval '${D}') AS ends_at, s.slug AS sport, v.timezone AS tz
+      many(`SELECT g.id, g.title, g.status, g.starts_at, coalesce(g.ends_at, g.starts_at + interval '${D}') AS ends_at, (g.ends_at IS NULL) AS assumed, s.slug AS sport, v.timezone AS tz
             FROM game_participants gp JOIN games g ON g.id=gp.game_id JOIN sports s ON s.id=g.sport_id LEFT JOIN venues v ON v.id=g.venue_id
             WHERE gp.user_id=$1 AND g.status NOT IN ('canceled','discarded','post-event') AND g.starts_at >= $2::date AND g.starts_at < $3::date + 1`, win),
       many(`SELECT e.id, e.name, e.status, e.starts_on, e.ends_on, s.slug AS sport, x.status AS entry_status
@@ -98,7 +103,7 @@ cap({
              WHERE a.provider_id=$1 AND a.status IN ('requested','confirmed') AND a.starts_at >= $2::date AND a.starts_at < $3::date + 1`, win),
       many(`SELECT c.*, s.slug AS sport_slug, coalesce(t.name, e.name, u.display_name, c.client_name) AS client FROM coach_commitments c LEFT JOIN sports s ON s.id=c.sport_id LEFT JOIN teams t ON t.id=c.team_id LEFT JOIN events e ON e.id=c.event_id LEFT JOIN users u ON u.id=c.client_user_id
              WHERE c.coach_id=$1 AND c.status='active' AND c.kind NOT IN ('block') AND c.starts_on <= $3::date AND (c.ends_on IS NULL OR c.ends_on >= $2::date)`, win),
-      many(`SELECT id, kind, title, starts_at, ends_at, timezone FROM athlete_blocks WHERE user_id=$1 AND status='active' AND starts_at >= $2::date AND starts_at < $3::date + 1`, win),
+      many(`SELECT id, kind, title, starts_at, ends_at, timezone, version FROM athlete_blocks WHERE user_id=$1 AND status='active' AND starts_at >= $2::date AND starts_at < $3::date + 1`, win),
       // your own answers to "are you coming?" (team_attendance), so each team item can show In / Maybe / Out
       many(`SELECT team_id, event_id, fixture_id, rsvp FROM team_attendance WHERE user_id=$1`, [user.id]),
       // Academy OS 2/3: sessions of cohorts you are enrolled in (or added to as a make-up guest), and sessions you staff. Read from the academy session; never copied.
@@ -112,14 +117,19 @@ cap({
              WHERE st.user_id=$1 AND st.status IN ('assigned','confirmed') AND s.status='published' AND s.starts_at >= $2::date AND s.starts_at < $3::date + 1`, win),
     ]);
 
+    // Busy time imported from another calendar (no titles kept). A young person's imports are hidden the moment guardian consent is withdrawn.
+    const external = kinds.includes('external') && (!(await isYouth(user.id)) || (await hasConsent(user.id, 'calendar_sharing')))
+      ? await many(`SELECT e.id, e.starts_at, e.ends_at, e.all_day, i.id AS import_id, coalesce(i.label, i.source_host) AS source
+                      FROM calendar_import_events e JOIN calendar_imports i ON i.id=e.import_id
+                     WHERE i.user_id=$1 AND i.removed_at IS NULL AND e.removed_at IS NULL AND e.ends_at > $2::date AND e.starts_at < $3::date + 1`, win) : [];
     const items = [];
-    const add = (o) => items.push({ sport: null, ends_at: null, timezone: 'UTC', action_required: false, all_day: false, conflict: false, rsvp: null, ...o });
+    const add = (o) => items.push({ sport: null, ends_at: null, timezone: 'UTC', action_required: false, all_day: false, conflict: false, duration_assumed: false, rsvp: null, ...o });
     const answered = new Map(attendance.map((r) => [`${r.team_id}|${r.event_id ?? ''}|${r.fixture_id ?? ''}`, r.rsvp]));
     // RSVP is the existing team attendance (set_event_rsvp). The scope says which team and fixture/event the answer is for.
     // A fixture answer is stored with its event id too, but the caller sends only one of fixture_id / event_id.
     const rsvpFor = (team_id, { fixture_id = null, event_id = null, stored_event = event_id }) => ({ team_id, fixture_id, event_id, value: answered.get(`${team_id}|${stored_event ?? ''}|${fixture_id ?? ''}`) ?? 'pending' });
     for (const r of squads) add({ kind: 'team', source_type: 'team_squad', source_id: r.id, sport: r.sport, title: `${r.home_name} v ${r.away_name}`, context: `${r.team_name} · ${r.event_name}`, starts_at: r.starts_at, ends_at: r.ends_at, timezone: r.tz ?? 'UTC', status: r.status === 'confirmed' ? 'confirmed' : 'awaiting_response', action_required: r.status === 'selected', link: { screen: 'Team', params: {} }, rsvp: rsvpFor(r.team_id, { fixture_id: r.fixture_id, stored_event: r.fx_event_id }), actions: r.status === 'selected' ? ['respond_to_selection'] : [] });
-    for (const r of games) add({ kind: 'match', source_type: 'game', source_id: r.id, sport: r.sport, title: r.title, starts_at: r.starts_at, ends_at: r.ends_at, timezone: r.tz ?? 'UTC', status: r.status === 'pre-event' ? 'confirmed' : r.status, actions: [] });
+    for (const r of games) add({ kind: 'match', source_type: 'game', source_id: r.id, sport: r.sport, title: r.title, starts_at: r.starts_at, ends_at: r.ends_at, timezone: r.tz ?? 'UTC', duration_assumed: r.assumed, status: r.status === 'pre-event' ? 'confirmed' : r.status, actions: [] });
     const seen = new Set();
     for (const [rows, mine] of [[organised, true], [entries, false]]) {
       for (const r of rows) {
@@ -142,8 +152,9 @@ cap({
     for (const r of officiating) add({ kind: 'duty', source_type: 'fixture_official', source_id: r.id, sport: r.sport, title: `${r.role[0].toUpperCase()}${r.role.slice(1)} · ${r.home_name} v ${r.away_name}`, context: r.event_name, starts_at: r.starts_at, ends_at: r.ends_at, timezone: r.tz ?? 'UTC', status: r.status === 'accepted' ? 'confirmed' : 'awaiting_response', action_required: r.status === 'invited', link: { screen: 'Hub', params: {} }, actions: [] });
     for (const r of crew) add({ kind: 'duty', source_type: 'event_staff', source_id: r.id, sport: r.sport, title: `${r.title ?? r.role} · ${r.event_name}`, context: 'Event crew', starts_at: `${day10(r.starts_on)}T00:00:00Z`, ends_at: r.ends_on ? `${day10(r.ends_on)}T23:59:59Z` : null, all_day: true, status: r.status === 'accepted' ? 'confirmed' : 'awaiting_response', action_required: r.status === 'invited', link: { screen: 'Event', params: { id: r.event_id } }, actions: [] });
     for (const r of patients) add({ kind: 'health', source_type: 'provider_appointment', source_id: r.id, title: `${r.patient} · ${r.provider_type === 'doctor' ? 'consultation' : 'session'}`, starts_at: r.starts_at, ends_at: r.ends_at, timezone: r.tz ?? 'UTC', status: r.status === 'confirmed' ? 'confirmed' : 'awaiting_response', action_required: r.status === 'requested', link: { screen: 'Health', params: {} }, actions: [] });
-    for (const r of blocks) add({ kind: 'recovery', source_type: 'athlete_block', source_id: r.id, title: r.title || BLOCK_LABEL[r.kind], context: r.title ? BLOCK_LABEL[r.kind] : null, starts_at: r.starts_at, ends_at: r.ends_at, timezone: r.timezone, status: 'confirmed', actions: ['archive_athlete_block'] });
+    for (const r of blocks) add({ kind: 'recovery', source_type: 'athlete_block', source_id: r.id, title: r.title || BLOCK_LABEL[r.kind], context: r.title ? BLOCK_LABEL[r.kind] : null, starts_at: r.starts_at, ends_at: r.ends_at, timezone: r.timezone, status: 'confirmed', version: r.version, actions: ['update_athlete_block', 'archive_athlete_block'] });
     for (const r of academy) add({ kind: r.as_staff ? 'duty' : 'training', source_type: 'academy_session', source_id: r.id, sport: r.sport, title: r.title, context: [r.organisation, r.cohort, r.venue].filter(Boolean).join(' · '), starts_at: r.starts_at, ends_at: r.ends_at, timezone: r.timezone, status: r.status === 'cancelled' ? 'cancelled' : ['absent', 'excused'].includes(r.attendance) ? 'declined' : 'confirmed', link: { screen: r.as_staff ? 'AcademySession' : 'AcademyFamily', params: r.as_staff ? { id: r.id } : {} }, actions: [] });
+    for (const r of external) add({ kind: 'external', source_type: 'external_busy', source_id: r.id, title: 'Busy', context: r.source, starts_at: r.starts_at, ends_at: r.ends_at, all_day: r.all_day, status: 'confirmed', actions: [] });
     const clog = await loggedMap(commitments.map((c) => c.id));
     for (const raw of commitments) for (const o of occurrences(plain(raw), from, to, clog)) add({ kind: 'training', source_type: 'coach_commitment', source_id: `${raw.id}:${o.on_date}`, sport: raw.sport_slug, title: raw.title, context: [raw.client, 'Commitment'].filter(Boolean).join(' · '), starts_at: o.starts_at, ends_at: o.ends_at, timezone: raw.timezone, status: o.logged?.status === 'delivered' ? 'completed' : 'confirmed', link: { screen: 'CoachCommitments', params: {} }, actions: [] });
 
@@ -153,5 +164,4 @@ cap({
     const timed = out.filter((x) => !x.all_day && x.ends_at);
     for (const a of timed) for (const b of timed) if (a !== b && new Date(a.starts_at) < new Date(b.ends_at) && new Date(b.starts_at) < new Date(a.ends_at)) a.conflict = true;
     return { from, to, items: out, conflicts: out.filter((x) => x.conflict).length, action_required: out.filter((x) => x.action_required).length };
-  },
-});
+}

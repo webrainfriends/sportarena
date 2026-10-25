@@ -10,9 +10,11 @@ import { c } from '../theme';
 import { dateTimeIn, localDate } from '../vtime';
 import { locale } from '../locale';
 import { AddBlockButton, BlockSheet, MonthGrid, RsvpBar } from './schedule-calendar';
+import { CalendarSyncPanel, ConflictsPanel, PanelHost } from './calendar-sync';
+import { useLayout } from '../layout';
 
-export const KINDS = [['match', 'Matches'], ['team', 'Team'], ['event', 'Events'], ['training', 'Coaching'], ['health', 'Health'], ['venue', 'Venues'], ['duty', 'Duty'], ['recovery', 'Recovery']];
-const ICON = { match: '🏟️', team: '👥', event: '🏆', training: '🏋️', venue: '📍', health: '🩺', duty: '📋', recovery: '🧘' };
+export const KINDS = [['match', 'Matches'], ['team', 'Team'], ['event', 'Events'], ['training', 'Coaching'], ['health', 'Health'], ['venue', 'Venues'], ['duty', 'Duty'], ['recovery', 'Recovery'], ['external', 'Other calendars']];
+const ICON = { external: '📥', match: '🏟️', team: '👥', event: '🏆', training: '🏋️', venue: '📍', health: '🩺', duty: '📋', recovery: '🧘' };
 // Colour-coded pills: match = red, training/coaching = blue, recovery/health = green, everything else neutral.
 const TONE = { match: [c.red, c.redSoft], training: [c.cyan, c.cyanSoft], health: [c.mint, c.mintSoft], recovery: [c.mint, c.mintSoft] };
 const STATUS = { proposed: 'Proposed', awaiting_response: 'Awaiting your response', confirmed: 'Confirmed', completed: 'Completed', cancelled: 'Cancelled', open: 'Open', ongoing: 'Ongoing' };
@@ -43,7 +45,7 @@ export function Item({ x, reload }) {
   };
   const open = () => {
     const { screen, params = {} } = x.link ?? {};
-    if (x.kind === 'recovery') return;
+    if (x.kind === 'recovery' || x.kind === 'external') return;
     if (screen === 'Health') nav.push('Health');
     else if (screen === 'Event' && params.id) nav.push('Event', params);
     else if (['CoachCommitments', 'CoachPlan', 'MyPlans', 'Games'].includes(screen) && (screen !== 'CoachPlan' || params.id)) nav.push(screen, params);
@@ -87,6 +89,9 @@ const addDaysIso = (d, n) => { const x = new Date(`${d}T00:00:00Z`); x.setUTCDat
 export function HomeSchedule() {
   const [range, setRange] = useState('today'), [kind, setKind] = useState(null);
   const [month, setMonth] = useState(null), [picked, setPicked] = useState(null), [block, setBlock] = useState(false);
+  const [panel, setPanel] = useState(null);
+  const L = useLayout();
+  const wide = L.width >= 1000;
   const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const today = localDate(new Date().toISOString(), zone);
   const days = (RANGES.find((r) => r[0] === range) ?? [0, 0, 1])[2];
@@ -102,11 +107,17 @@ export function HomeSchedule() {
   const byDay = new Map();
   for (const x of rest) { const d = localDate(x.starts_at, x.all_day ? 'UTC' : zone); byDay.set(d, [...(byDay.get(d) ?? []), x]); }
   const label = (d) => (d === today ? 'Today' : d === addDaysIso(today, 1) ? 'Tomorrow' : new Date(`${d}T12:00:00`).toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'short' }));
+  const panelTitle = panel === 'conflicts' ? 'Fix conflicts' : 'Calendar & availability';
+  const panelBody = panel === 'conflicts' ? <ConflictsPanel onChanged={sched.reload} /> : <CalendarSyncPanel onChanged={sched.reload} />;
   return (
-    <View style={{ gap: 12 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+    <View style={{ flexDirection: wide && panel ? 'row' : 'column', gap: 16, alignItems: 'flex-start' }}>
+    <View style={{ gap: 12, flex: 1, alignSelf: 'stretch' }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
         <T size={19} weight="700" style={{ letterSpacing: -0.3 }}>My schedule</T>
-        <AddBlockButton onPress={() => setBlock(true)} />
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <Btn small title="⚙ Sync" color={c.paper} ink={c.ink} accessibilityLabel="Calendar sync and availability" onPress={() => setPanel(panel === 'sync' ? null : 'sync')} />
+          <AddBlockButton onPress={() => setBlock(true)} />
+        </View>
       </View>
       <Seg options={VIEWS} value={range} onChange={(v) => { setRange(v); if (v === 'month-view') setPicked(today); }} color={c.pink} />
       {inMonth ? <MonthGrid month={mon} onMonth={(m) => { setMonth(m); setPicked(null); }} items={all} selected={picked} onSelect={(d) => setPicked(picked === d ? null : d)} /> : null}
@@ -116,7 +127,7 @@ export function HomeSchedule() {
       </HScroll>
       {sched.error ? <ErrorBox error={sched.error} onRetry={sched.reload} /> : sched.loading && !sched.data ? <Loading /> : (
         <>
-          {sched.data.conflicts ? <T size={13} weight="700" color={c.red}>⚠ {sched.data.conflicts} overlapping commitment{sched.data.conflicts === 1 ? '' : 's'}</T> : null}
+          {sched.data.conflicts ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}><T size={13} weight="700" color={c.red}>⚠ {sched.data.conflicts} overlapping commitment{sched.data.conflicts === 1 ? '' : 's'}</T><Btn small title="Fix →" color={c.paper} ink={c.ink} accessibilityLabel="Review and fix conflicts" onPress={() => setPanel('conflicts')} /></View> : null}
           {need.length ? <View style={{ gap: 10 }}><T size={13} weight="800" color={c.sun}>NEEDS YOUR RESPONSE · {need.length}</T>{need.map((x) => <Item key={`n${x.source_type}${x.source_id}`} x={x} reload={sched.reload} />)}</View> : null}
           {[...byDay.entries()].map(([d, xs]) => (
             <View key={d} style={{ gap: 10 }}>
@@ -128,6 +139,9 @@ export function HomeSchedule() {
         </>
       )}
       <BlockSheet visible={block} date={inMonth ? picked ?? undefined : undefined} onClose={() => setBlock(false)} onDone={sched.reload} />
+      {!wide ? <PanelHost visible={!!panel} title={panelTitle} onClose={() => setPanel(null)}>{panelBody}</PanelHost> : null}
+    </View>
+    {wide && panel ? <View style={{ width: 420 }}><PanelHost visible wide title={panelTitle} onClose={() => setPanel(null)}>{panelBody}</PanelHost></View> : null}
     </View>
   );
 }
