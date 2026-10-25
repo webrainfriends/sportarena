@@ -50,6 +50,7 @@ export function DoctorEntry() {
 }
 
 export function DoctorHome() {
+  const { push } = useNav();
   const { user } = useSession();
   const [tab, setTab] = useState('overview');
   const [open, setOpen] = useState(null);   // { athlete_id, name, section }
@@ -61,6 +62,7 @@ export function DoctorHome() {
     <Screen>
       <H1>Doctor workspace</H1>
       <T size={13} color={c.mute}>Hello Dr {user.display_name}. You only see patients who have shared access with you; every read is logged.</T>
+      <View style={{ marginTop: 10, alignSelf: 'flex-start' }}><Btn small title="Shared wellness" color={c.paper} ink={c.ink} onPress={() => push('SharedWellness')} accessibilityLabel="Open wellness athletes shared with me" /></View>
       <View style={{ marginTop: 10 }}><Seg options={[{ value: 'overview', label: 'Overview', emoji: '🏠' }, { value: 'patients', label: 'Patients', emoji: '🧑‍⚕️' }, { value: 'results', label: 'Results', emoji: '🧪' }, { value: 'referrals', label: 'Referrals', emoji: '↗️' }]} value={tab} onChange={setTab} color={c.mint} /></View>
       <View style={{ gap: 12, marginTop: 10 }}>
         {tab === 'overview' && <Overview patients={patients} go={go} setTab={setTab} />}
