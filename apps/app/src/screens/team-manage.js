@@ -292,6 +292,7 @@ function Responses({ post, toast, onClose, onChanged }) {
 
 // ------------------------------------------------------------------ rates & settlement
 export function MoneyTab({ t, r, toast }) {
+  const { push } = useNav();
   const s = useLoad(() => api.get(`/teams/${t.id}/settlement`), [t.id]);
   const [who, setWho] = useState(null);
   const [add, setAdd] = useState(null);
@@ -304,6 +305,11 @@ export function MoneyTab({ t, r, toast }) {
         <Card pad={14} style={{ flex: 1 }}><T size={12} color={c.mute} weight="700">STILL DUE</T><T size={22} weight="800">{moneyIn(d.total_due_cents, d.currency)}</T></Card>
         <Card pad={14} style={{ flex: 1 }}><T size={12} color={c.mute} weight="700">PAID</T><T size={22} weight="800">{moneyIn(d.total_paid_cents, d.currency)}</T></Card>
       </View>
+      <Card pad={14} color={c.violetSoft} style={{ marginTop: 8 }}>
+        <T weight="800">Contracts, bonuses, expenses and payout runs</T>
+        <T size={13}>For people on a signed contract: versioned terms and amendments, fees earned from verified games, expenses, bank files and statements. People paid through a contract are skipped by the squad fees below, so nobody is paid twice.</T>
+        <Btn small title="Open player contracts" onPress={() => push('PlayerContracts', { team_id: t.id })} style={{ alignSelf: 'flex-start', marginTop: 6 }} />
+      </Card>
       <Btn small title="Record an amount" style={{ marginTop: 8 }} onPress={() => setAdd({})} />
       <T size={13} color={c.mute} style={{ marginTop: 6 }}>Set each person's agreed fee on the Roster tab. Match fees are added from a squad on the Matches tab. This is a ledger: mark items paid once you've paid them.</T>
       <Section title="By person" color={c.mint}>

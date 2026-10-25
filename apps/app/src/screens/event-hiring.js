@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
+import { useNav } from '../nav';
 import { useSession } from '../session';
 import { A, ABar, ABtn, ACard, AEmpty, ARow, ASection, AStat, AT, ATag } from '../arena';
 import { FormSheet } from '../FormSheet';
@@ -54,6 +55,7 @@ function ReviewSheet({ a, e, onClose, reload }) {
 }
 
 export function HiringTab({ id, e, roles, staff, reload }) {
+  const { push } = useNav();
   const [open, setOpen] = useState(false), [find, setFind] = useState(null), [q, setQ] = useState(''), [review, setReview] = useState(null), [applicantsOf, setApplicantsOf] = useState(null);
   const act = useDo(reload);
   const cands = useLoad(() => (find ? api.get(`/events/${id}/staff-candidates`, { role: find.role, q: q || undefined, limit: 30 }) : Promise.resolve([])), [find?.id, q]);
@@ -64,6 +66,7 @@ export function HiringTab({ id, e, roles, staff, reload }) {
         <AStat icon="✅" label="Confirmed" value={filled} tone={A.green} /><AStat icon="📌" label="Places open" value={Math.max(needed - filled, 0)} /><AStat icon="⏳" label="Waiting reply" value={roles.reduce((n, r) => n + r.pending, 0)} tone={A.sun} />
       </View>
       <ABtn title="Open a position" onPress={() => setOpen(true)} />
+      <ABtn tone="ghost" title="Paid Billboard work: contracts & payout runs" onPress={() => push('PlayerContracts', { event_id: id })} />
       {roles.length ? roles.map((r) => (
         <ACard key={r.id} pad={14}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
