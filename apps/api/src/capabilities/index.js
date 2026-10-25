@@ -179,3 +179,5 @@ import './addresses.js';
 import './player-contracts.js';
 import './player-contract-money.js';
 import './export-packs.js';
+import './org-agreements.js';
+import './jersey-numbers.js';

@@ -274,6 +274,83 @@ export async function renderEnrolmentLetter({ layout, kit, logo, snapshot }) {
   return { buffer: Buffer.concat(chunks), pages: range.count };
 }
 
+/**
+ * Agreement overview + full text, from a snapshot taken when the PDF is made. Letterhead (logo, legal name, address, contact) comes from the
+ * brand kit or the organisation profile; parties get signature lines. It is template wording and says so in the footer.
+ */
+export async function renderAgreement({ kit, logo, snapshot }) {
+  const f = fonts();
+  const strings = [kit?.display_name, kit?.legal_name, kit?.address, kit?.footer_text, snapshot.title, snapshot.organisation, snapshot.address, snapshot.reference, snapshot.body, snapshot.status, ...snapshot.facts.flatMap((x) => [x.title, x.value]), ...snapshot.parties.flatMap((x) => [x.role, x.name])];
+  assertGlyphs(strings, f);
+  const accent = hex(kit?.primary_color, '#0F6E56'), ink = hex(kit?.secondary_color, '#444441');
+  const doc = new PDFDocument({ size: 'A4', margin: 20 * MM, bufferPages: true, compress: true, info: { Title: snapshot.title, Author: kit?.display_name ?? snapshot.organisation, CreationDate: new Date(snapshot.issued_at), Producer: 'Sportarena' } });
+  const chunks = [];
+  doc.on('data', (c) => chunks.push(c));
+  const done = new Promise((res, rej) => { doc.on('end', res); doc.on('error', rej); });
+  const left = doc.page.margins.left, width = doc.page.width - left - doc.page.margins.right;
+  const bottom = () => doc.page.height - doc.page.margins.bottom - 24;
+  const label = (t, x, y, w, o = {}) => doc.font(o.bold ? f.bold : f.regular).fontSize(o.size ?? 9).fillColor(o.color ?? ink).text(t ?? '', x, y, { width: w, align: o.align ?? 'left', lineBreak: o.lineBreak ?? true });
+  const room = (h) => { if (doc.y + h > bottom()) doc.addPage(); };
+
+  const top = doc.page.margins.top; let x = left;
+  doc.rect(0, 0, doc.page.width, 10).fill(accent);
+  if (logo) { try { doc.image(logo, x, top, { fit: [130, 56] }); x += 140; } catch { throw new AppError(422, 'logo_unreadable', 'The brand logo could not be read. Upload it again as PNG or JPEG.'); } }
+  label(kit?.display_name ?? snapshot.organisation, x, top, width - (x - left), { bold: true, size: 14, color: accent });
+  const sub = [kit?.legal_name ?? snapshot.legal_name, kit?.address ?? snapshot.address, [kit?.contact_email ?? snapshot.contact_email, kit?.phone ?? snapshot.contact_phone].filter(Boolean).join(' · '), kit?.website ?? snapshot.website].filter(Boolean).join('\n');
+  if (sub) label(sub, x, doc.y + 2, width - (x - left), { size: 8 });
+  doc.y = Math.max(doc.y, top + (logo ? 60 : 0)) + 14;
+  doc.moveTo(left, doc.y).lineTo(left + width, doc.y).lineWidth(0.6).stroke(accent); doc.y += 14;
+
+  label(snapshot.title, left, doc.y, width, { bold: true, size: 20, color: accent });
+  label(`Ref ${snapshot.reference} · ${snapshot.status} · ${day(snapshot.issued_at)}`, left, doc.y + 2, width, { size: 9 });
+  doc.y += 14;
+  label('OVERVIEW', left, doc.y, width, { bold: true, size: 9, color: accent }); doc.y += 4;
+  for (const it of snapshot.facts) {
+    room(20); const y = doc.y;
+    label(it.title, left, y, width * 0.28, { bold: true, size: 9 });
+    const h1 = doc.y - y;
+    label(it.value ?? '', left + width * 0.3, y, width * 0.7, { size: 9 });
+    doc.y = Math.max(doc.y, y + h1) + 4;
+  }
+  doc.y += 6;
+  if (snapshot.parties.length) {
+    room(40); label('PARTIES', left, doc.y, width, { bold: true, size: 9, color: accent }); doc.y += 4;
+    for (const p of snapshot.parties) { room(16); label(`${p.role}: ${p.name}`, left, doc.y, width, { size: 9 }); doc.y += 2; }
+    doc.y += 8;
+  }
+  doc.moveTo(left, doc.y).lineTo(left + width, doc.y).lineWidth(0.4).stroke('#BBBBBB'); doc.y += 12;
+  const blocks = String(snapshot.body ?? '').split(/\n{2,}/);
+  for (const b of blocks) {
+    const t = b.trim(); if (!t) continue;
+    const head = /^(\d+)\.\s+(.{1,80})$/.exec(t);
+    if (head) { room(40); label(t, left, doc.y, width, { bold: true, size: 10, color: accent }); doc.y += 3; continue; }
+    const m = /^(\d+\.\s+[^\n]{1,80})\n([\s\S]+)$/.exec(t);
+    if (m) { room(50); label(m[1], left, doc.y, width, { bold: true, size: 10, color: accent }); doc.y += 3; label(m[2], left, doc.y, width, { size: 10 }); doc.y += 8; continue; }
+    room(24); label(t, left, doc.y, width, { size: 10, bold: t === t.toUpperCase() && t.length < 90 }); doc.y += 8;
+  }
+  const signers = [{ role: 'For the organisation', name: snapshot.legal_name ?? snapshot.organisation }, ...snapshot.parties];
+  room(60 + Math.ceil(signers.length / 2) * 70);
+  doc.y += 6; label('SIGNATURES', left, doc.y, width, { bold: true, size: 9, color: accent }); doc.y += 14;
+  const colW = (width - 24) / 2; let sy = doc.y;
+  signers.forEach((p, k) => {
+    const cx = left + (k % 2) * (colW + 24); if (k % 2 === 0 && k > 0) { sy += 70; if (sy + 70 > bottom()) { doc.addPage(); sy = doc.page.margins.top; } }
+    doc.moveTo(cx, sy + 30).lineTo(cx + colW, sy + 30).lineWidth(0.5).stroke(ink);
+    label(`${p.name}`, cx, sy + 34, colW, { size: 9, bold: true, lineBreak: false });
+    label(`${p.role} · Date: ____________`, cx, sy + 46, colW, { size: 8, lineBreak: false });
+  });
+  const range = doc.bufferedPageRange();
+  for (let i = 0; i < range.count; i++) {
+    doc.switchToPage(range.start + i);
+    const y = doc.page.height - doc.page.margins.bottom - 12;
+    doc.page.margins.bottom = 0;
+    label(kit?.footer_text || 'Template wording, not legal advice. Have it reviewed for your situation.', left, y, width - 130, { size: 7, lineBreak: false });
+    label(`${snapshot.reference} · Page ${i + 1} of ${range.count}`, left + width - 130, y, 130, { size: 8, align: 'right', lineBreak: false });
+  }
+  doc.end();
+  await done;
+  return { buffer: Buffer.concat(chunks), pages: range.count };
+}
+
 const CADENCE = { once: 'one-off', weekly: 'weekly', monthly: 'monthly', quarterly: 'quarterly', custom: 'on set dates' };
 /** One sentence per contribution line, formatted from the frozen snapshot only. */
 export function describeLine(l) {

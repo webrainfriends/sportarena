@@ -162,7 +162,7 @@ export function QuoteRequestSheet({ target, onClose, onDone }) {
         { key: 'months', label: 'How long (months)', type: 'stepper', min: plan?.term_months.min ?? 1, max: plan?.term_months.max ?? 36, suffix: ' mo' },
         { key: 'participants', label: 'How many people are covered?', type: 'number', optional: true, show: (v) => v.cover_for !== 'individual', hint: 'Squad size or expected entrants: insurers price on this.' },
         { key: 'sport', label: 'Sport', type: 'sport', optional: true },
-        { key: 'city', label: 'City', type: 'text', optional: true, hint: 'So insurers near you find the request. Defaults to your team\'s or venue\'s city.' },
+        { key: 'city', label: 'City or area', type: 'region', optional: true, hint: 'So insurers near you find the request. Defaults to your team\'s or venue\'s city.' },
         { key: 'message', label: 'Anything the insurer should know', type: 'multiline', optional: true, hint: 'Encrypted. Only the insurers this goes to can read it.' },
       ]}
       onSubmit={async (v) => {

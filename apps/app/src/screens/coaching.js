@@ -246,7 +246,7 @@ export function PostRequestSheet({ visible, onClose, onDone, currency = 'INR' })
         { key: 'goal', label: 'Goals and background', type: 'multiline', optional: true },
         { key: 'level', label: 'Level', type: 'chips', options: LEVELS, optional: true },
         { key: 'delivery', label: 'Where', type: 'choice', options: [{ value: 'either', label: 'Either' }, { value: 'in_person', label: 'In person' }, { value: 'online', label: 'Online' }] },
-        { key: 'city', label: 'City', optional: true, show: (v) => v.delivery !== 'online' },
+        { key: 'city', label: 'City or area', type: 'region', optional: true, show: (v) => v.delivery !== 'online' },
         { key: 'budget_max_cents', label: 'Most you would pay per hour', type: 'money', currency, optional: true },
         { key: 'sessions_per_week', label: 'Sessions per week', type: 'stepper', min: 1, max: 14, default: 2 },
         { key: 'preferred_days', label: 'Preferred days', type: 'weekdays', optional: true },
@@ -334,7 +334,7 @@ function FindCoaches({ onPost, onBook }) {
         </Grid>
       )}
       <FormSheet visible={more} onClose={() => setMore(false)} title="More filters" submitLabel="Apply" initial={{ max: f.max, city: f.city }}
-        fields={[{ key: 'max', label: 'Most per hour', type: 'money', currency: cur, optional: true }, { key: 'city', label: 'City', optional: true }]}
+        fields={[{ key: 'max', label: 'Most per hour', type: 'money', currency: cur, optional: true }, { key: 'city', label: 'City or area', type: 'region', optional: true }]}
         onSubmit={async (v) => { setF((p) => ({ ...p, max: v.max, city: v.city ?? '' })); }} />
     </View>
   );
@@ -972,7 +972,7 @@ export function CoachSetup() {
           { key: 'serves', label: 'Who you coach', type: 'multi', options: AUDIENCES.map(([value, label]) => ({ value, label: `${label}s` })) },
           { key: 'travel_km', label: 'Willing to travel (km)', type: 'stepper', min: 0, max: 500, step: 5, default: 0, suffix: ' km' },
           { key: 'intro_video_url', label: 'Introduction video link (https)', optional: true }, { key: 'bio', label: 'About you', type: 'multiline', optional: true },
-          { key: 'city', label: 'City', optional: true },
+          { key: 'city', label: 'City or area', type: 'region', optional: true },
           { key: 'delivery', label: 'How you coach', type: 'choice', options: [{ value: 'in_person', label: 'In person' }, { value: 'online', label: 'Online' }, { value: 'both', label: 'Both' }] },
           { key: 'specialties', label: 'Specialities', optional: true, hint: 'Separate with commas.' }, { key: 'languages', label: 'Languages', optional: true, hint: 'Separate with commas.' },
           { key: 'timezone', label: 'Your time zone', type: 'timezone' },

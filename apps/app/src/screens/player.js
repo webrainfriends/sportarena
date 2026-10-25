@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { JerseyNumbers } from './jersey-numbers';
 import { Platform, Pressable, TextInput, View, useWindowDimensions } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
@@ -148,7 +149,7 @@ export function AddProfileSheet({ visible, onClose, onDone, first, sport }) {
         { key: 'role', label: 'Role', type: 'choice', options: ROLES },
         { key: 'level', label: 'Level', type: 'choice', options: LEVELS },
         { key: 'position', label: 'Position', optional: true, placeholder: 'Striker, Opening bat…' },
-        { key: 'jersey_no', label: 'Jersey number', optional: true, type: 'number' },
+        { key: 'jersey_no', label: 'Default jersey number', optional: true, type: 'number', hint: 'Used unless you set a different number for a team, event or game.' },
         { key: 'club', label: 'Club / team', optional: true },
         { key: 'region', label: 'Where you play', type: 'region', optional: true, hint: 'Used to compare you with players nearby. Only totals are ever compared.' },
         { key: 'experience_years', label: 'Years playing', optional: true, type: 'number' },
@@ -166,7 +167,7 @@ export function EditProfileSheet({ p, onClose, onDone }) {
       fields={[
         { key: 'level', label: 'Level', type: 'choice', options: LEVELS },
         { key: 'position', label: 'Position', optional: true },
-        { key: 'jersey_no', label: 'Jersey number', optional: true, type: 'number' },
+        { key: 'jersey_no', label: 'Default jersey number', optional: true, type: 'number', hint: 'Used unless you set a different number for a team, event or game.' },
         { key: 'club', label: 'Club / team', optional: true },
         { key: 'region', label: 'Where you play', type: 'region', optional: true, hint: 'Used to compare you with players nearby. Only totals are ever compared.' },
         { key: 'experience_years', label: 'Years playing', optional: true, type: 'number' },
@@ -399,6 +400,8 @@ export function SportProfile({ id, embedded, onChanged, onRemoved }) {
       </View>
 
       <AthleteProfilePanel p={p} onChanged={onChanged} />
+
+      <View style={{ marginTop: 24 }}><JerseyNumbers /></View>
 
       {p.metrics.length ? (
         <>

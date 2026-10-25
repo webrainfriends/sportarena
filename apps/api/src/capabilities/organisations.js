@@ -48,13 +48,47 @@ async function cohortFor(user, cohortId, { write = false, c } = {}) {
 }
 
 // ------------------------------------------------------------------ organisations
+const text = (n) => z.string().trim().max(n);
+const PROFILE = {
+  legal_name: text(160).optional().describe('registered legal name, if different from the display name'),
+  registration_no: text(60).optional().describe('company / charity / society registration number'),
+  tax_id: text(60).optional().describe('tax / GST / VAT number'),
+  website: text(200).optional(), contact_email: z.union([z.literal(''), z.string().trim().email().max(200)]).optional(), contact_phone: text(40).optional(),
+  description: text(1000).optional(), founded_on: day.optional(),
+};
+const ADDRESS = z.object({
+  line1: text(120).optional(), line2: text(120).optional(), locality: text(80).optional().describe('city or town'), area: text(80).optional(), region: text(80).optional(), postal_code: text(20).optional(),
+  country: z.union([z.string().regex(/^[A-Z]{2}$/, 'two-letter country code'), z.literal('')]).optional(),
+}).describe('registered / main address; city or area is enough, the rest is optional');
+const PROFILE_KEYS = Object.keys(PROFILE);
+const blank = (v) => (v === '' || v === undefined ? null : v);
+const PUBLIC_ORG = 'id, name, kind, city, status';
+const PRIVATE_ORG = `${PUBLIC_ORG}, legal_name, registration_no, tax_id, website, contact_email, contact_phone, description, founded_on, open_to_sponsors`;
+
 cap({
   name: 'create_organisation', method: 'POST', path: '/organisations', tag: 'Organisations', status: 201,
-  summary: 'Create a workspace for a club, academy or school. You become its owner.',
-  input: z.object({ name: z.string().min(2).max(80), kind: z.enum(ORG_KINDS).default('club'), city: z.string().max(80).optional() }),
+  summary: 'Create a workspace for a club, academy, school or company with its legal identity, contact details and main address. Existing teams you own can be linked straight away (create a new one with create_team and organisation_id). You become its owner.',
+  input: z.object({
+    name: z.string().min(2).max(80), kind: z.enum(ORG_KINDS).default('club'), city: z.string().max(80).optional(), ...PROFILE,
+    address: ADDRESS.optional(), team_ids: z.array(id).max(50).optional().describe('teams you own to bring into the organisation'),
+  }),
   handler: ({ user }, i) => tx(async (c) => {
-    const org = (await c.query('INSERT INTO organisations(name, kind, city, created_by) VALUES ($1,$2,$3,$4) RETURNING *', [i.name, i.kind, i.city ?? null, user.id])).rows[0];
+    const a = i.address && Object.values(i.address).some(Boolean) ? i.address : null;
+    const city = i.city ?? a?.locality ?? null;
+    const org = (await c.query(
+      `INSERT INTO organisations(name, kind, city, created_by, ${PROFILE_KEYS.join(', ')}) VALUES ($1,$2,$3,$4,${PROFILE_KEYS.map((_, n) => `$${n + 5}`).join(',')}) RETURNING *`,
+      [i.name, i.kind, city, user.id, ...PROFILE_KEYS.map((k) => blank(i[k]))])).rows[0];
     await c.query("INSERT INTO organisation_members(organisation_id, user_id, role, status, joined_at, invited_by) VALUES ($1,$2,'owner','active',now(),$2)", [org.id, user.id]);
+    if (a) await c.query("INSERT INTO addresses(owner_kind, owner_id, kind, label, line1, line2, locality, area, region, postal_code, country, is_default, context_kind, context_id, created_by) VALUES ('organisation',$1,'billing','Registered address',$2,$3,$4,$5,$6,$7,$8,true,'organisation',$1,$9)",
+      [org.id, blank(a.line1), blank(a.line2), blank(a.locality), blank(a.area), blank(a.region), blank(a.postal_code), blank(a.country), user.id]);
+    for (const tid of new Set(i.team_ids ?? [])) {
+      const t = (await c.query('SELECT owner_id, organisation_id FROM teams WHERE id=$1 FOR UPDATE', [tid])).rows[0];
+      if (!t) throw notFound('Team');
+      if (!isAdmin(user) && t.owner_id !== user.id) throw forbidden('Only the team owner can bring it into an organisation');
+      if (t.organisation_id) throw conflict('This team already belongs to an organisation');
+      await c.query('UPDATE teams SET organisation_id=$2 WHERE id=$1', [tid, org.id]);
+      await audit(c, user.id, 'link_org_asset', 'teams', tid);
+    }
     await audit(c, user.id, 'create_organisation', 'organisations', org.id);
     return { ...org, my_role: 'owner' };
   }),
@@ -74,23 +108,26 @@ cap({
 
 cap({
   name: 'get_organisation', method: 'GET', path: '/organisations/:id', tag: 'Organisations', auth: 'public',
-  summary: 'Organisation profile. Everyone sees name, kind and city; members also see their own role.',
+  summary: 'Organisation profile. Everyone sees name, kind and city; members also see their own role; owners and admins also see the legal identity and contact details.',
   input: z.object({ id }),
   async handler({ user }, i) {
-    const o = await one('SELECT id, name, kind, city, status FROM organisations WHERE id=$1', [i.id]);
+    const o = await one(`SELECT ${PRIVATE_ORG} FROM organisations WHERE id=$1`, [i.id]);
     if (!o) throw notFound('Organisation');
     const my_role = user ? await orgRole(user, i.id) : null;
-    return { ...o, my_role, ...(STAFF.includes(my_role) ? { open_to_sponsors: (await one('SELECT open_to_sponsors FROM organisations WHERE id=$1', [i.id])).open_to_sponsors } : {}) };
+    if (STAFF.includes(my_role)) return { ...o, my_role };
+    const { legal_name, registration_no, tax_id, website, contact_email, contact_phone, description, founded_on, open_to_sponsors, ...pub } = o;
+    return { ...pub, my_role, ...(my_role ? { description, website } : {}) };
   },
 });
 
 cap({
-  name: 'update_organisation', method: 'PATCH', path: '/organisations/:id', tag: 'Organisations', summary: 'Rename or edit the organisation (owner/admin), including whether sponsors may find it and send offers.',
-  input: z.object({ id, name: z.string().min(2).max(80).optional(), kind: z.enum(ORG_KINDS).optional(), city: z.string().max(80).optional(), open_to_sponsors: z.boolean().optional().describe('let sponsors find this organisation and its groups by name and send offers (default off); no roster or member data is ever shown') }),
+  name: 'update_organisation', method: 'PATCH', path: '/organisations/:id', tag: 'Organisations', summary: 'Edit the organisation (owner/admin): name, type, city, legal identity, contact details, and whether sponsors may find it. Send an empty string to clear a detail.',
+  input: z.object({ id, name: z.string().min(2).max(80).optional(), kind: z.enum(ORG_KINDS).optional(), city: z.string().max(80).optional(), ...PROFILE, open_to_sponsors: z.boolean().optional().describe('let sponsors find this organisation and its groups by name and send offers (default off); no roster or member data is ever shown') }),
   async handler({ user }, i) {
     await orgFor(user, i.id, STAFF, { write: true });
-    if (i.name === undefined && i.kind === undefined && i.city === undefined && i.open_to_sponsors === undefined) throw badRequest('Nothing to update');
-    return one('UPDATE organisations SET name=coalesce($2,name), kind=coalesce($3,kind), city=coalesce($4,city), open_to_sponsors=coalesce($5,open_to_sponsors) WHERE id=$1 RETURNING *', [i.id, i.name, i.kind, i.city, i.open_to_sponsors]);
+    const keys = ['name', 'kind', 'city', ...PROFILE_KEYS, 'open_to_sponsors'].filter((k) => i[k] !== undefined);
+    if (!keys.length) throw badRequest('Nothing to update');
+    return one(`UPDATE organisations SET ${keys.map((k, n) => `${k}=$${n + 2}`).join(', ')} WHERE id=$1 RETURNING *`, [i.id, ...keys.map((k) => (PROFILE_KEYS.includes(k) || k === 'city' ? blank(i[k]) : i[k]))]);
   },
 });
 

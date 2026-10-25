@@ -41,7 +41,7 @@ const opt = (o) => (typeof o === 'object' ? o : { value: o, label: String(o) });
  *   regions                                 several cities / areas (chips + search) → [names]
  *   daterange {toKey}                       from–to on one calendar → key = start, toKey = end
  *   country                                 search a country by name → two-letter ISO code
- *   entity {entityKind,options,noun,role}   search-and-pick one person / team / event → its id
+ *   entity {entityKind,options,noun,role,onPick}   search-and-pick one person / team / event → its id (onPick gets the picked { id, name, sub })
  *   section {label}                         a heading between groups
  * `initial` is read each time the sheet opens. onSubmit(values) -> Promise; throws to show an error.
  */
@@ -159,7 +159,7 @@ export function FormSheet({ visible, onClose, title, fields, initial = {}, submi
           <RegionPicker label={f.label} optional={f.optional} value="" onChange={(x) => { if (x && !(v[f.key] ?? []).includes(x)) set(f.key, [...(v[f.key] ?? []), x]); }} hint={f.hint} />
         </View>);
       case 'region': return <RegionPicker label={f.label} optional={f.optional} value={v[f.key]} onChange={(x) => set(f.key, x)} hint={f.hint} />;
-      case 'entity': return <EntityPicker kind={f.entityKind ?? 'person'} label={f.label} optional={f.optional} noun={f.noun} role={f.role} options={f.options} value={v[`${f.key}__pick`] ? [v[`${f.key}__pick`]] : []} onChange={(l) => { set(f.key, l[0]?.id); set(`${f.key}__pick`, l[0]); }} />;
+      case 'entity': return <EntityPicker kind={f.entityKind ?? 'person'} label={f.label} optional={f.optional} noun={f.noun} role={f.role} options={f.options} value={v[`${f.key}__pick`] ? [v[`${f.key}__pick`]] : []} onChange={(l) => { set(f.key, l[0]?.id); set(`${f.key}__pick`, l[0]); f.onPick?.(l[0]); }} />;
       case 'sport': return <SportPicker label={f.label} optional={f.optional} value={v[f.key]} onChange={(x) => set(f.key, x)} />;
       case 'stepper': return (
         <View style={{ gap: 6 }}><View style={{ flexDirection: 'row', alignItems: 'center' }}><View style={{ flex: 1 }}>{lab(f)}</View><Counter value={v[f.key]} onChange={(x) => set(f.key, x)} min={f.min ?? 0} max={f.max ?? 999} step={f.step ?? 1} suffix={f.suffix} /></View>{hint(f)}</View>);

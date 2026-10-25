@@ -62,7 +62,7 @@ export function RegisterVenue({ visible, onClose, onCreated }) {
   const { push } = useNav();
   return (
     <FormSheet visible={visible} onClose={onClose} title="Register a venue" submitLabel="Create venue" initial={{ currency: 'INR', timezone: (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return 'UTC'; } })() }}
-      fields={[{ key: 'name', label: 'Venue name' }, { key: 'address', label: 'Address', optional: true }, { key: 'city', label: 'City', optional: true },
+      fields={[{ key: 'name', label: 'Venue name' }, { key: 'address', label: 'Address', optional: true }, { key: 'city', label: 'City or area', type: 'region', optional: true },
         { key: 'latitude', lngKey: 'longitude', label: 'Map location', type: 'location', optional: true },
         { key: 'currency', label: 'Currency', type: 'currency' }, { key: 'timezone', label: 'Time zone', type: 'timezone' }]}
       onSubmit={async (v) => { const x = await api.post('/venues', v); onCreated?.(); push('Manage', { id: x.id, wizard: true }); return 'Venue created — follow the checklist to open for bookings'; }} />

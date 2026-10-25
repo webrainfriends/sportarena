@@ -19,8 +19,10 @@ import { Confirm } from './coaching';
 import { EntityPicker } from '../entity-picker';
 import { explain, LoadError } from '../access';
 import { AddressBook } from '../address-book';
+import { OrgWizard, ORG_KINDS, profileFields } from './org-wizard';
+import { Agreements } from './academy-money';
 
-const KINDS = [['club', 'Club'], ['academy', 'Academy'], ['school', 'School'], ['college', 'College'], ['university', 'University'], ['company', 'Company'], ['other', 'Other']];
+const KINDS = ORG_KINDS;
 const ROLE_LABEL = { owner: 'Owner', admin: 'Admin', coach: 'Coach', staff: 'Staff', finance: 'Finance', manager: 'Sponsor manager', evaluator: 'Evaluator', legal: 'Legal', approver: 'Approver', auditor: 'Auditor' };
 const ROLE_HELP = {
   owner: 'Full control', admin: 'People, cohorts and linked assets', coach: 'Their cohorts and attendance', finance: 'Money only; reports sponsor payments',
@@ -67,9 +69,7 @@ export function Orgs() {
           </Section>
         </>
       )}
-      <FormSheet visible={make} onClose={() => setMake(false)} title="New organisation" submitLabel="Create"
-        fields={[{ key: 'name', label: 'Name' }, { key: 'kind', label: 'Type', type: 'chips', options: KINDS.map(([value, label]) => ({ value, label })) }, { key: 'city', label: 'City', optional: true }]}
-        onSubmit={async (v) => { const o = await api.post('/organisations', v); list.reload(); push('Org', { id: o.id }); return 'Organisation created'; }} />
+      <OrgWizard visible={make} onClose={() => setMake(false)} onCreated={(o) => { list.reload(); push('Org', { id: o.id }); }} />
     </Screen>
   );
 }
@@ -85,7 +85,7 @@ export function Org({ id }) {
   const o = org.data, d = dash.data, role = d.role, archived = o.status === 'archived';
   const P = { o, d, role, archived, toast, brands, reload: () => { org.reload(); dash.reload(); brands.reload(); } };
   const teaching = !SPONSOR_ONLY.includes(role) && role !== 'finance' && role !== 'staff';
-  const tabs = [['overview', 'Overview'], ...(teaching ? [['cohorts', 'Cohorts']] : []), ['people', 'People'], ...(brands.data?.length && role !== 'coach' ? [['sponsor', 'Sponsor']] : []), ...(teaching ? [['assets', 'Teams, events & venues']] : []), ...(STAFF.includes(role) || (o.kind === 'academy' && ['finance', 'coach', 'staff', 'auditor'].includes(role)) ? [[o.kind === 'academy' ? 'academy' : 'admissions', o.kind === 'academy' ? 'Academy' : 'Admissions']] : [])];
+  const tabs = [['overview', 'Overview'], ...(teaching ? [['cohorts', 'Cohorts']] : []), ['people', 'People'], ...(brands.data?.length && role !== 'coach' ? [['sponsor', 'Sponsor']] : []), ...(teaching ? [['assets', 'Teams, events & venues']] : []), ...(STAFF.includes(role) && o.kind !== 'academy' ? [['agreements', 'Agreements']] : []), ...(STAFF.includes(role) || (o.kind === 'academy' && ['finance', 'coach', 'staff', 'auditor'].includes(role)) ? [[o.kind === 'academy' ? 'academy' : 'admissions', o.kind === 'academy' ? 'Academy' : 'Admissions']] : [])];
   return (
     <Screen wide>
       <GradCard colors={[c.violet, c.ink]}>
@@ -94,7 +94,7 @@ export function Org({ id }) {
       </GradCard>
       {archived ? <View style={{ marginTop: 10 }}><Empty emoji="🗄️" title="This organisation is archived" sub="Everything is kept and readable. Ask an owner to restore it to make changes." /></View> : null}
       <View style={{ marginTop: 10 }}><Seg options={tabs.map(([value, label]) => ({ value, label }))} value={tab} onChange={setTab} color={c.violet} /></View>
-      {tab === 'overview' ? <Overview {...P} /> : tab === 'cohorts' ? <Cohorts {...P} /> : tab === 'people' ? <People {...P} /> : tab === 'admissions' ? <Admissions {...P} /> : tab === 'academy' ? <AcademyDesk {...P} /> : tab === 'sponsor' ? <SponsorTab {...P} /> : <Assets {...P} />}
+      {tab === 'overview' ? <Overview {...P} /> : tab === 'cohorts' ? <Cohorts {...P} /> : tab === 'people' ? <People {...P} /> : tab === 'admissions' ? <Admissions {...P} /> : tab === 'academy' ? <AcademyDesk {...P} /> : tab === 'sponsor' ? <SponsorTab {...P} /> : tab === 'agreements' ? <Agreements {...P} /> : <Assets {...P} />}
     </Screen>
   );
 }
@@ -118,6 +118,11 @@ function Overview({ o, d, role, archived, reload, toast }) {
           {[['Staff', d.counts.staff], ['People', d.counts.people], ['Cohorts', d.counts.cohorts], ['Teams', d.counts.teams], ['Events', d.counts.events], ['Venues', d.counts.venues]].map(([l, n]) => <Tag key={l} label={`${n} ${l.toLowerCase()}`} />)}
         </View>
       ) : null}
+      {STAFF.includes(role) && (o.legal_name || o.registration_no || o.tax_id || o.contact_email || o.contact_phone || o.website || o.description || o.founded_on) ? (
+        <Section title="Profile" color={c.violet}>
+          {[['Legal name', o.legal_name], ['Registration', o.registration_no], ['Tax number', o.tax_id], ['Founded', o.founded_on && day(o.founded_on)], ['Email', o.contact_email], ['Phone', o.contact_phone], ['Website', o.website], ['About', o.description]].filter(([, x]) => x).map(([k, x]) => <Row key={k} title={k} sub={String(x)} />)}
+        </Section>
+      ) : null}
       <AddressBook ownerKind="organisation" ownerId={o.id} title="Addresses" canEdit={!archived && ['owner', 'admin'].includes(role)} toast={toast} />
       {a ? <Section title="Attendance, last 30 days" color={c.mint}>{a.marked ? <T>{Math.round((a.present / a.marked) * 100)}% present across {a.marked} marks</T> : <Empty emoji="📋" title="No attendance yet" sub="Mark attendance from a cohort to see the rate here." />}</Section> : null}
       {d.seasons?.length ? <Section title="Seasons" color={c.sun}>{d.seasons.map((s) => <Row key={s.id} title={s.name} sub={`${day(s.starts_on)} – ${day(s.ends_on)} · ${s.cohorts} cohorts`} />)}</Section> : null}
@@ -140,8 +145,8 @@ function Overview({ o, d, role, archived, reload, toast }) {
           </View>
         </Section>
       ) : null}
-      <FormSheet visible={edit} onClose={() => setEdit(false)} title="Organisation details" initial={o}
-        fields={[{ key: 'name', label: 'Name' }, { key: 'kind', label: 'Type', type: 'chips', options: KINDS.map(([value, label]) => ({ value, label })) }, { key: 'city', label: 'City', optional: true }, { key: 'open_to_sponsors', label: 'Open to sponsors', type: 'switch', hint: 'Off by default. When on, sponsors can find this organisation and its groups by name and send offers. Rosters and members are never shown.' }]}
+      <FormSheet visible={edit} onClose={() => setEdit(false)} title="Organisation details" initial={{ ...o, founded_on: o.founded_on ? String(o.founded_on).slice(0, 10) : undefined }}
+        fields={[...profileFields.basics, { key: 'city', label: 'City or area', type: 'region', optional: true }, ...profileFields.legal, ...profileFields.contact, { key: 'open_to_sponsors', label: 'Open to sponsors', type: 'switch', hint: 'Off by default. When on, sponsors can find this organisation and its groups by name and send offers. Rosters and members are never shown.' }]}
         onSubmit={async (v) => { await api.patch(`/organisations/${o.id}`, v); reload(); return 'Saved'; }} />
     </>
   );
@@ -425,16 +430,25 @@ function Assets({ o, role, archived, toast }) {
   const manage = STAFF.includes(role) && !archived;
   const unlink = async (a) => { try { await api.del(`/organisations/${o.id}/assets/${a.id}`, { kind }); toast('Removed from the organisation'); list.reload(); } catch (e) { fail(toast)(e); } };
   const add = async (a) => { try { await api.post(`/organisations/${o.id}/assets`, { kind, asset_id: a.id }); toast(`${a.name} added`); setLink(false); list.reload(); } catch (e) { fail(toast)(e); } };
+  const [make, setMake] = useState(false);
   const items = (Array.isArray(mine.data) ? mine.data : mine.data?.items ?? []).filter((a) => !a.organisation_id);
   return (
     <>
       <View style={{ marginTop: 10 }}><Seg options={[{ value: 'team', label: 'Teams' }, { value: 'event', label: 'Events' }, { value: 'venue', label: 'Venues' }]} value={kind} onChange={setKind} color={c.cyan} /></View>
-      {manage ? <View style={{ marginTop: 6 }}><Btn small title={`Add one of my ${kind}s`} onPress={() => setLink(true)} /></View> : null}
+      {manage ? (
+        <View style={{ marginTop: 6, flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+          {kind === 'team' ? <Btn small title="Create a new team" onPress={() => setMake(true)} /> : null}
+          <Btn small title={`Add one of my ${kind}s`} color={kind === 'team' ? c.paper : c.pink} ink={kind === 'team' ? c.ink : '#fff'} onPress={() => setLink(true)} />
+        </View>
+      ) : null}
       <Section title={`Linked ${kind}s`} color={c.cyan}>
         {list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : !list.data ? <Loading /> : list.data.length ? list.data.map((a) => (
           <Row key={a.id} title={a.name} right={manage ? <Btn small title="Remove" color={c.paper} ink={c.ink} onPress={() => unlink(a)} /> : null} />
         )) : <Empty emoji="🔗" title={`No ${kind}s linked`} sub="Owners and admins of this organisation can manage linked items. You keep ownership of anything you add." />}
       </Section>
+      <FormSheet visible={make} onClose={() => setMake(false)} title={`New team in ${o.name}`} submitLabel="Create team"
+        fields={[{ key: 'name', label: 'Team name' }, { key: 'sport', label: 'Sport', type: 'sport' }, { key: 'city', label: 'City or area', type: 'region', optional: true, hint: `Defaults to ${o.city ?? 'the organisation city'} if left empty.` }]}
+        onSubmit={async (v) => { await api.post('/teams', { ...v, city: v.city ?? o.city ?? undefined, organisation_id: o.id }); list.reload(); return 'Team created and linked'; }} />
       <Sheet visible={link} onClose={() => setLink(false)} title={`Add a ${kind}`}>
         <View style={{ gap: 8 }}>
           {!mine.data ? <Loading /> : items.length ? items.map((a) => <Row key={a.id} title={a.name} onPress={() => add(a)} />) : <Empty title={`No ${kind}s to add`} sub={`Only ${kind}s you own can be added.`} />}
