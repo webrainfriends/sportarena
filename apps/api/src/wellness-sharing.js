@@ -39,3 +39,7 @@ export async function shareBlock(c, s) {
 }
 
 export const shareState = (s) => (s.revoked_at ? 'revoked' : new Date(s.expires_at) <= new Date() ? 'expired' : 'active');
+
+/** Append to the athlete-visible activity log of a share (the caller supplies the transaction). */
+export const shareEvent = (c, s, actor, action, detail = {}) =>
+  c.query('INSERT INTO wellness_share_events(share_id, athlete_id, recipient_id, actor_id, action, detail) VALUES ($1,$2,$3,$4,$5,$6)', [s.id, s.athlete_id, s.recipient_id, actor, action, detail]);

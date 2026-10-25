@@ -34,6 +34,24 @@ Access is re-derived on **every** read inside one transaction, with the share ro
 
 App: athlete **Health -> Recovery -> Share with my support team** (guardians: Family -> Wellness sharing); coaches **Coach home -> Shared wellness** and **My athletes**; clinicians **Doctor workspace -> Shared wellness**. Phone shows list then detail; tablet and desktop show both.
 
+## Transparent readiness and workload (#329)
+Readiness and the workload ratio are **heuristics**, not validated injury prediction or medical clearance. This layer explains them and lets a qualified person adjust them, without changing the maths for anyone who has not been adjusted. Capabilities in `apps/api/src/capabilities/readiness-insight.js` (tag *Athlete health*, clinical token scope); maths in `readiness.js` (formula `readiness` v1.0, `explain()`, `history()`); settings resolution in `readiness-config.js`.
+
+| Capability | REST | What it does |
+|---|---|---|
+| `explain_readiness` | `GET /me/readiness/explanation` | Per input: weight, source (daily log / body map / not logged), raw value, points added. Coverage (inputs logged, share of the formula, days logged), a confidence label, what is missing and how to add it, the workload basis (ratio, sessions, days of history vs. needed, whether it counted), the formula version, the settings in force and who set them, what stays fixed, and the limits. |
+| `get_readiness_history` | `GET /me/readiness/history` | Day-by-day score for up to 90 days from the same logs and current settings. Days with no log have a null score; body-map entries count only on the days they were open. |
+| `get_readiness_config` | `GET /me/readiness/config` | Standard values, allowed ranges, settings in force (standard / custom / paused) and the version history with who and why (reasons decrypted, audit-logged). A verified guardian can read it for a young athlete (`athlete_id`). |
+| `reset_readiness_config` | `POST /me/readiness/config/reset` | Back to standard as a new version. Needs the `version` last seen (stale = 409); repeating is harmless. Guardians may do it for a young athlete. |
+| `get_shared_readiness` | `GET /wellness-shared/:id/readiness` | Coach / clinician: the explanation through a live share that includes `readiness`. Raw values only for shared fields (sleep, soreness, mood, workload); a trend of scores; the settings and allowed ranges. Logged to the athlete's activity. |
+| `set_shared_readiness_config` | `POST /wellness-shared/:id/readiness-config` | Coach / clinician: weights (each 10-70%, sum 100%), score bands, workload thresholds and penalties, within fixed ranges, with a written reason (10-500 chars, encrypted). Needs the current `version` (409 `stale_version`); an identical retry returns the same version; concurrent writers cannot fork versions. The athlete is notified. |
+
+Schema (migration `113_readiness_config.sql`, additive): `readiness_configs` (append-only, numbered per athlete, `source` staff/reset, `config` jsonb, `rationale_enc`, `set_by`, `share_id`). Nothing is deleted. A staff version applies **only while its share is live** (relationship, medical grant + credential and guardian consent re-checked on every read); otherwise the standard applies and the athlete sees why ("paused"). `get_readiness`, `get_workload` and the shared view all use the settings in force, so every screen shows the same score.
+
+Not adjustable by design: the sleep sub-score (70% hours against 8 h, 30% quality), the 7-day acute / 28-day chronic windows, and the soreness / mood scales.
+
+App: **Health -> Recovery -> How this score is built** (athlete) and **Shared wellness -> athlete -> How this score is built -> Adjust settings** (coach / clinician). Phone, tablet and desktop share one component.
+
 ## App
 * **Health -> Recovery** (first tab for athletes): readiness ring, tap-to-rate front/back body map, training-load gauge with a log-session form, and seven-day sleep and water bars.
 * **Home**: today's readiness card and a floating quick-log button (water, mood, soreness, sleep, note).

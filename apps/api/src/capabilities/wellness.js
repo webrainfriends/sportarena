@@ -1,10 +1,11 @@
 import { z } from 'zod';
 import { cap, id } from '../registry.js';
-import { one, many, tx } from '../db.js';
+import { one, many, query, tx } from '../db.js';
 import { badRequest, notFound } from '../errors.js';
 import { encrypt, decrypt } from '../crypto.js';
 import { audit } from '../helpers.js';
-import { readiness, workload } from '../readiness.js';
+import { readiness, workload, FORMULA } from '../readiness.js';
+import { effective } from '../readiness-config.js';
 import { snapshot, revise, loadKindFor, sourcesFor, sourceAccess } from '../load-history.js';
 
 const TAG = 'Athlete health';
@@ -156,7 +157,7 @@ cap({
   name: 'get_workload', method: 'GET', path: '/me/workload', tag: TAG,
   summary: 'Acute:chronic workload ratio (7-day load vs your 28-day weekly average) with a band (low, optimal, caution, high) and eight weekly totals for a chart. "building" until you have three weeks of logs.',
   input: z.object({ date: day.optional() }),
-  async handler({ user }, i) { const date = i.date ?? today(); return workload(await loadsFor(user.id, date), date); },
+  async handler({ user }, i) { const date = i.date ?? today(); const eff = await effective({ query }, user.id); return { ...workload(await loadsFor(user.id, date), date, eff.config), settings_version: eff.version, settings_source: eff.source }; },
 });
 
 cap({
@@ -165,12 +166,13 @@ cap({
   input: z.object({ date: day.optional() }),
   async handler({ user }, i) {
     const date = i.date ?? today();
-    const [wellness, pain, loads] = await Promise.all([
+    const [wellness, pain, loads, eff] = await Promise.all([
       one('SELECT sleep_hours, sleep_quality, soreness, mood, water_ml FROM wellness_logs WHERE user_id=$1 AND log_date=$2', [user.id, date]),
       many(`SELECT DISTINCT ON (region, side, kind) severity FROM body_pain_logs WHERE user_id=$1 AND resolved_at IS NULL ORDER BY region, side, kind, created_at DESC`, [user.id]),
       loadsFor(user.id, date),
+      effective({ query }, user.id),
     ]);
-    const wl = workload(loads, date);
-    return { date, ...readiness({ wellness, pain, acwr: wl }), logged: !!wellness, open_pain: pain.length, workload: { ratio: wl.ratio, status: wl.status }, water_ml: wellness?.water_ml ?? 0 };
+    const wl = workload(loads, date, eff.config);
+    return { date, ...readiness({ wellness, pain, acwr: wl, config: eff.config }), formula_version: FORMULA.version, settings_version: eff.version, settings_source: eff.source, logged: !!wellness, open_pain: pain.length, workload: { ratio: wl.ratio, status: wl.status }, water_ml: wellness?.water_ml ?? 0 };
   },
 });

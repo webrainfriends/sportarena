@@ -10,6 +10,7 @@ import { FormSheet } from '../FormSheet';
 import { c } from '../theme';
 import { todayIn } from '../vtime';
 import { saveDraft, saveMessage } from '../offline';
+import { ReadinessExplainer } from './readiness-explainer';
 import { LoadHistory } from './load-history';
 
 const deviceTz = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return 'UTC'; } })();
@@ -302,6 +303,7 @@ export function RecoveryPanel() {
   return (
     <View style={{ gap: 16 }}>
       <ReadinessCard rd={rd} onLog={() => setQuick(true)} />
+      <ReadinessExplainer mode="self" onLog={() => setQuick(true)} onChanged={all} key={`${rd.data?.score}-${rd.data?.settings_version}`} />
       <Card pad={16}><T weight="800" size={16} style={{ marginBottom: 10 }}>Body map</T>{pain.error ? <ErrorBox error={pain.error} onRetry={pain.reload} /> : <BodyMap pain={pain} onChanged={all} />}</Card>
       <WorkloadCard wl={wl} onChanged={all} />
       <LoadHistory version={ver} onChanged={all} />
