@@ -21,4 +21,5 @@ for (const [d, opp, result, sf, sa, rating, goals, assists, minutes] of games)
 for (const [d, sh, sq, so, mood, ml] of [[-6, 7.5, 4, 3, 4, 2200], [-5, 8, 5, 2, 5, 2600], [-4, 6.5, 3, 5, 3, 2000], [-3, 7.5, 4, 3, 4, 2400], [-2, 8.5, 5, 2, 5, 2800], [-1, 7.5, 4, 2, 4, 2500], [0, 8, 5, 1, 5, 1800]])
   await tryIt('wellness ' + d, () => call('log_wellness', aarav, { date: day(d), sleep_hours: sh, sleep_quality: sq, soreness: so, mood, water_ml: ml }));
 await tryIt('coach profile', () => call('upsert_coach_profile', coach, { headline: 'Forwards & finishing · ex-state league striker', bio: 'I help attackers read the game, finish under pressure and train smarter.', sports: ['football'] }));
+await tryIt('passport link', () => call('create_passport_link', aarav, { label: 'For the Pune FC scouts', expires_in_days: 30 }));
 await pool.end();

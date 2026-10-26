@@ -26,5 +26,12 @@ await run('coaches',async()=>{await click(p,'Coaches',3000)});
 await run('player',async()=>{await tab(p,'Player')});
 await run('insights',async()=>{await click(p,'Insights',3000)});
 await run('development',async()=>{await click(p,'Development',2500)});
+await run('health',async()=>{await tab(p,'Home');await p.getByText('Physio / doctor').first().click();await p.waitForTimeout(3000)});
+await run('health_pros',async()=>{await click(p,'Find a pro',2800)});
 await run('more',async()=>{await tab(p,'More');await p.waitForTimeout(1500)});
+await run('more2',async()=>{await tab(p,'Home');await tab(p,'More');await p.waitForTimeout(1200)});
+await run('workspace',async()=>{await p.mouse.click(195,645);await p.waitForTimeout(3000)});
+// the logged-out landing page, as a visitor sees it
+const v=await (await b.newContext({viewport:{width:390,height:844},deviceScaleFactor:3})).newPage();
+await v.goto(URL);await v.waitForTimeout(3000);await hideBeta(v);await v.waitForTimeout(300);await v.screenshot({path:`${out}/landing.png`});console.log('ok landing');
 await b.close()})();

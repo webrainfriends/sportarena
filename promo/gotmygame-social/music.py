@@ -1,6 +1,6 @@
 # Synthesises the ad's upbeat 124 BPM soundtrack (no samples, no licensing). Usage: python3 music.py out.wav
 import numpy as np, sys, wave
-SR=48000; DUR=30.0; BPM=124; beat=60/BPM
+SR=48000; DUR=37.0; BPM=124; beat=60/BPM
 n=int(SR*DUR); out=np.zeros(n)
 def put(t,sig,g=1.0):
     i=int(t*SR); j=min(n,i+len(sig))
