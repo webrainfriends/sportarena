@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
+import { useNav } from '../nav';
 import { A, ABtn, AEmpty, ARow, ASection, AStat, AT, ATag } from '../arena';
 import { FormSheet } from '../FormSheet';
 import { Chip, Empty, Field, Loading, Row, Sheet, T } from '../ui';
@@ -26,13 +27,17 @@ export function MoneyTiles({ money, short }) {
 }
 
 export function BusinessTab({ id, e, vend, money, reload }) {
+  const { push } = useNav();
   const [invite, setInvite] = useState(false);
+  const tenders = useLoad(() => api.get('/rfps', { event_id: id, limit: 20 }).catch(() => []), [id]);
   const prods = useLoad(() => api.get(`/events/${id}/products`), [id]);
   const act = useDo(() => { reload(); prods.reload(); });
   return (
     <>
       <MoneyTiles money={money} />
       <ABtn title="Invite a sponsor or vendor" onPress={() => setInvite(true)} />
+      <ABtn title="Source services with a tender" tone="ghost" onPress={() => push('TenderBuilder', { event_id: id })} />
+      {(tenders.data ?? []).map((tn) => <ARow key={tn.id} left={<AT size={22}>📋</AT>} title={`${tn.ref} · ${tn.title}`} sub={`${tn.stage} · ${tn.submitted} proposal(s)`} right={<ATag label={tn.stage} />} onPress={() => push('TenderConsole', { id: tn.id })} />)}
       {vend.length ? vend.map((v) => (
         <ARow key={v.id} left={<AT size={26}>{KINDS.find(([k]) => k === v.kind)?.[1]}</AT>} title={v.sponsor_name ?? v.vendor_name} sub={`${v.kind}${v.fee_cents ? ` · ${moneyIn(v.fee_cents, v.currency)}` : ''}${v.in_kind ? ` · ${v.in_kind}` : ''}`}
           right={<><ATag label={v.status} />{v.status === 'accepted' ? <ABtn small tone="ghost" title="End" onPress={() => act(() => api.post(`/event-vendors/${v.id}/end`), 'Ended')} /> : null}</>} />

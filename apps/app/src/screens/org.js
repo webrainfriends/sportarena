@@ -138,6 +138,8 @@ function Overview({ o, d, role, archived, reload, toast }) {
         <Section title="Manage" color={c.cyan}>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
             {!archived ? <Btn small title="Edit details" color={c.paper} ink={c.ink} onPress={() => setEdit(true)} /> : null}
+            <Btn small title="Tenders and procurement" color={c.paper} ink={c.ink} onPress={() => push('TenderHome')} />
+            <Btn small title="Create an RFP" color={c.paper} ink={c.ink} onPress={() => push('TenderBuilder', { organisation_id: o.id })} />
             {!archived && ['owner', 'admin'].includes(role) ? <Btn small title="Services & suppliers" color={c.paper} ink={c.ink} onPress={() => push('ServicesBuyer', { organisation_id: o.id })} /> : null}
             <Btn small title="Export staff CSV" color={c.paper} ink={c.ink} onPress={() => exportCsv('staff')} />
             <Btn small title="Export enrolments CSV" color={c.paper} ink={c.ink} onPress={() => exportCsv('enrolments')} />
