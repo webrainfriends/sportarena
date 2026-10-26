@@ -17,6 +17,7 @@ import { ProgramAwards, MyOffers } from './sponsor-awards';
 import { ProgramBudget } from './sponsor-budgets';
 import { fieldsOf, filled, fmtMoney } from '../application-forms';
 import { SponsorTasks, ApplicationThread } from './sponsor-collaboration';
+import { ApplicationEvidence } from './sponsor-impact';
 
 // Amounts are minor units of THEIR OWN currency; currencies are never added together.
 const fmt = (cents, cur) => { try { const f = new Intl.NumberFormat(undefined, { style: 'currency', currency: cur }); return f.format(cents / 10 ** f.resolvedOptions().maximumFractionDigits); } catch { return `${cents} ${cur ?? ''}`; } };
@@ -198,6 +199,7 @@ export function SponsorProgram({ id }) {
             {a.status === 'returned' ? <T size={12} color={c.mute}>Waiting for the applicant to correct it.</T> : null}
             {a.sponsorship_id ? <Btn small title="Open agreement" color={c.violet} style={{ alignSelf: 'flex-start', marginTop: 8 }} onPress={() => push('SponsorDeal', { id: a.sponsorship_id })} /> : null}
             {a.status !== 'draft' ? <Btn small title="Messages" color={c.paper} ink={c.ink} style={{ alignSelf: 'flex-start', marginTop: 8 }} onPress={() => setThread(a)} accessibilityLabel="Open the conversation with this applicant" /> : null}
+            {['submitted', 'awarded'].includes(a.status) ? <ApplicationEvidence application={a} side="reviewer" /> : null}
           </Card>
         )) : <Empty emoji="📬" title="No applications" sub={p.status === 'published' ? 'They appear here as applicants submit to an open round.' : 'Publish the program to receive applications.'} />}
         {['manager', 'finance', 'auditor'].includes(asSponsorRole(p.my_role)) ? <Btn small title="Export awards (CSV)" color={c.paper} ink={c.ink} style={{ alignSelf: 'flex-start' }} onPress={download} /> : null}
@@ -407,6 +409,7 @@ export function FundingOpportunities() {
             <T size={12} color={c.mute}>{a.receipt_no ? `Receipt ${a.receipt_no} · ` : ''}{a.form_version ? `form v${a.form_version} · ` : ''}Made under round terms v{a.round_terms_version}, closing {deadline(a.terms_snapshot?.round?.closes_at ?? a.terms_snapshot?.round?.closes_on, a.terms_snapshot?.round?.timezone)}.</T>
             {a.decision_reason ? <T size={12}>Note: {a.decision_reason}</T> : null}
             <ApplicantEvaluation application={a} onChanged={reload} />
+            <ApplicationEvidence application={a} side="applicant" onChanged={reload} />
             <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
               {a.form_id && ['draft', 'returned'].includes(a.status) ? <Btn small title={a.status === 'draft' ? 'Resume draft' : 'Fix and resend'} color={c.pink} onPress={() => push('ApplicationForm', { round_id: a.round_id, target_type: a.target_type, target_id: a.target_id })} /> : null}
               {a.form_id && !['draft', 'returned'].includes(a.status) ? <Btn small title="View receipt" color={c.violet} onPress={() => push('ApplicationForm', { round_id: a.round_id, target_type: a.target_type, target_id: a.target_id })} /> : null}

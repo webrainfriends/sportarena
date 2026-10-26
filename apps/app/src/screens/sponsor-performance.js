@@ -7,15 +7,17 @@ import { Btn, Card, Empty, Section, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { c } from '../theme';
 import { explain } from '../access';
+import { TeamEventResults, ImpactEvidence } from './sponsor-impact';
 
-// Performance review for an agreement with an individual athlete. Results are read live from the athlete's own records and only while
-// they have shared them; objectives are a review aid and never change a due.
+// Performance & impact review of an agreement. An athlete's results (or a team's/event's live game results) are read from the platform's own records and
+// only while the beneficiary has shared them; objectives are a review aid and never change a due. Recorded impact lives in ./sponsor-impact.
 const loadOr = async (fn) => { try { return { data: await fn() }; } catch (e) { return { error: e }; } };
 const day = (iso) => (iso ? new Date(`${String(iso).slice(0, 10)}T00:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '');
 
 export function SponsorPerformance({ deal }) {
   const { toast } = useSession();
   const sponsor = deal.role === 'sponsor', recipient = deal.role === 'recipient' && !deal.youth?.minor_self;
+  const athlete = deal.target_type === 'athlete';
   const mayEvaluate = !sponsor || !deal.can || deal.can.includes('evaluate'); // finance, legal and approvers can read but not set objectives or write reviews
   const perf = useLoad(() => loadOr(() => api.get(`/sponsorships/${deal.id}/performance`)), [deal.id]);
   const reviews = useLoad(() => loadOr(() => api.get(`/sponsorships/${deal.id}/reviews`)), [deal.id]);
@@ -26,19 +28,20 @@ export function SponsorPerformance({ deal }) {
   const live = ['active', 'ended', 'term_expired'].includes(deal.status);
   const shared = p?.access.enabled;
   return (
-    <Section title="Performance & reviews" color={c.cyan}>
+    <Section title="Performance, impact & reviews" color={c.cyan}>
       {recipient ? (
         <Card>
-          <T weight="900">{shared ? `Sharing ${p.access.scope === 'official' ? 'official results' : 'all your results'} with ${deal.sponsor.name}` : `Your results are not shared with ${deal.sponsor.name}`}</T>
+          <T weight="900">{shared ? `Sharing ${p.access.scope === 'official' ? 'official results' : 'all evidence'} with ${deal.sponsor.name}` : `Your results and impact are not shared with ${deal.sponsor.name}`}</T>
           <T size={12} color={c.mute}>{deal.youth ? 'You decide this for a young athlete: nothing is shared unless you switch it on, and it stops if your guardian status ends. ' : ''}Private match notes, ratings, health and contact details are never shared. You can switch this off at any time; payments and the agreement are not affected.</T>
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
-            {deal.status === 'active' ? <Btn small title={shared ? 'Share official results only' : 'Share official results'} color={c.mint} ink={c.ink} onPress={() => act(() => api.post(`/sponsorships/${deal.id}/performance-access`, { enabled: true, scope: 'official' }), 'Sharing on')} /> : null}
-            {deal.status === 'active' ? <Btn small title="Also share practice & imported" color={c.paper} ink={c.ink} onPress={() => act(() => api.post(`/sponsorships/${deal.id}/performance-access`, { enabled: true, scope: 'all_evidence' }), 'Sharing on')} /> : null}
+            {deal.status === 'active' ? <Btn small title={shared ? 'Share official evidence only' : 'Share official evidence'} color={c.mint} ink={c.ink} onPress={() => act(() => api.post(`/sponsorships/${deal.id}/performance-access`, { enabled: true, scope: 'official' }), 'Sharing on')} /> : null}
+            {deal.status === 'active' ? <Btn small title={athlete ? 'Also share practice & imported' : 'Also share third-party & self-reported'} color={c.paper} ink={c.ink} onPress={() => act(() => api.post(`/sponsorships/${deal.id}/performance-access`, { enabled: true, scope: 'all_evidence' }), 'Sharing on')} /> : null}
             {shared ? <Btn small title="Stop sharing" color={c.paper} ink={c.red} onPress={() => act(() => api.post(`/sponsorships/${deal.id}/performance-access`, { enabled: false }), 'Sharing off')} /> : null}
           </View>
         </Card>) : null}
       {perf.data?.error && sponsor ? <Empty emoji="🔒" title="Not shared" sub={live ? `${perf.data.error.message}` : 'Results become available once the athlete accepts and shares them.'} /> : null}
-      {p ? (
+      {p?.team_event ? <TeamEventResults data={p.team_event} /> : null}
+      {p && athlete ? (
         <>
           {p.metrics.length ? p.metrics.map((m) => (
             <Card key={`${m.sport}-${m.metric}-${m.evidence}`}>
@@ -54,7 +57,8 @@ export function SponsorPerformance({ deal }) {
               {sponsor && mayEvaluate ? <Btn small title="Archive" color={c.paper} ink={c.ink} style={{ alignSelf: 'flex-start', marginTop: 4 }} onPress={() => act(() => api.patch(`/sponsorship-objectives/${o.id}`, { status: 'archived' }), 'Archived')} /> : null}
             </Card>))}
         </>) : null}
-      {sponsor && mayEvaluate && ['proposed', 'active'].includes(deal.status) ? <Btn small title="Propose a review objective" color={c.violet} style={{ alignSelf: 'flex-start' }} onPress={() => setForm('objective')} /> : null}
+      {!(perf.data?.error && sponsor) ? <ImpactEvidence deal={deal} shared={shared} /> : null}
+      {athlete && sponsor && mayEvaluate && ['proposed', 'active'].includes(deal.status) ? <Btn small title="Propose a review objective" color={c.violet} style={{ alignSelf: 'flex-start' }} onPress={() => setForm('objective')} /> : null}
       {list.map((r) => (
         <Card key={r.id}>
           <T size={12} color={c.mute}>{day(r.created_at)} · {r.author}{r.visibility === 'author_only' ? ' · only you' : ''}{r.next_review_on ? ` · next review ${day(r.next_review_on)}` : ''}</T>

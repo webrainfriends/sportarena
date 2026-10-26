@@ -12,6 +12,7 @@ import { guardianLink } from '../youth.js';
 import { EVIDENCE_LABELS } from '../scoring/performance-rules.js';
 import { logHistory, dealContext } from '../sponsor-agreements.js';
 import { notifySponsor } from '../sponsor-access.js';
+import { assertSponsorMayRead, teamEventResults } from '../sponsorship-impact.js';
 
 const TAG = 'Sponsors';
 const date = z.string().date();
@@ -22,7 +23,7 @@ const ping = (c, to, title, ctx, kind = 'sponsorship_performance') => {
 };
 const other = (ctx) => (ctx.role === 'sponsor' ? ctx.recipientId : 'sponsor');
 const running = (ctx) => ['active', 'ended', 'term_expired'].includes(ctx.d.status);
-const athleteOnly = (ctx) => { if (ctx.d.target_type !== 'athlete') throw badRequest('Performance review is for agreements with an individual athlete; team and event results stay with their organisers'); };
+const athleteOnly = (ctx) => { if (ctx.d.target_type !== 'athlete') throw badRequest('Objectives and metric review are for agreements with an individual athlete; a team or event agreement shows its live results and recorded impact instead'); };
 const VALID = `((p.provenance='approved_competition' AND p.status='approved') OR (p.provenance IN ('self_reported','imported') AND p.status='recorded'))`;
 
 cap({
@@ -32,8 +33,7 @@ cap({
   async handler({ user }, i) {
     return tx(async (c) => {
       const ctx = await dealContext(c, i.id, user, { lock: true, minorMayAct: true }); // a young person may switch sharing OFF, never ON
-      if (ctx.role !== 'recipient') throw forbidden('Only the sponsored athlete decides who sees their results');
-      athleteOnly(ctx);
+      if (ctx.role !== 'recipient') throw forbidden('Only the beneficiary decides who sees their results');
       if (i.enabled) {
         if (ctx.d.status !== 'active') throw conflict('Results can only be shared under an active agreement');
         if (ctx.youth && !ctx.guardian) throw forbidden('Only a verified guardian can share a young person\'s results');
@@ -98,21 +98,16 @@ cap({
 
 cap({
   name: 'get_sponsorship_performance', method: 'GET', path: '/sponsorships/:id/performance', tag: TAG,
-  summary: 'The athlete\'s results for one agreement, read live from their canonical records: per sport, metric and kind of evidence — sample size, first and latest result, best (in the metric\'s direction), latest and the period covered — plus the agreed objectives with progress. Only metrics of the same sport and evidence are compared; there is no combined athlete score. Official and self-reported/imported figures are kept apart and labelled. The sponsor sees this only while the athlete has switched sharing on (and only the shared evidence kinds); never private notes, ratings, medical or contact data.',
+  summary: 'The beneficiary\'s results for one agreement (an athlete\'s results; for a team or event, its live participation and game results, sample size stated; recorded milestones and community outcomes are in `list_sponsorship_impact`), read live from their canonical records: per sport, metric and kind of evidence — sample size, first and latest result, best (in the metric\'s direction), latest and the period covered — plus the agreed objectives with progress. Only metrics of the same sport and evidence are compared; there is no combined athlete score. Official and self-reported/imported figures are kept apart and labelled. The sponsor sees this only while the athlete has switched sharing on (and only the shared evidence kinds); never private notes, ratings, medical or contact data.',
   input: z.object({ id, from: date.optional(), to: date.optional() }),
   async handler({ user }, i) {
     if (i.from && i.to && i.to < i.from) throw badRequest('to is before from');
     const ctx = await dealContext(pool, i.id, user);
-    athleteOnly(ctx);
-    if (ctx.role === 'sponsor') {
-      ctx.need('performance', 'read an athlete\'s results');
-      if (!running(ctx)) throw conflict('Results are available once the athlete has accepted the agreement');
-      if (!ctx.d.performance_access) throw forbidden('The athlete has not shared their results for this agreement');
-      if (ctx.youth && !(await liveAuthority(pool, ctx.d.sponsor_id, ctx.d.target_id) && ctx.d.performance_access_by && await guardianLink(ctx.d.performance_access_by, ctx.d.target_id))) throw forbidden('The guardian\'s permission to share these results is no longer in force');
-    }
+    await assertSponsorMayRead(pool, ctx);
     const evidence = ctx.role === 'sponsor' && ctx.d.performance_scope === 'official' ? ['approved_competition'] : ['approved_competition', 'self_reported', 'imported'];
     const day = 'coalesce(p.achieved_on, p.recorded_at::date)';
-    const metrics = await many(
+    const isAthlete = ctx.d.target_type === 'athlete'; // a team/event/organisation owner's own athlete results are never part of that agreement
+    const metrics = !isAthlete ? [] : await many(
       `SELECT s.slug AS sport, s.name AS sport_name, p.metric, p.provenance AS evidence, p.unit, coalesce(p.direction,'higher') AS direction, count(*)::int AS results,
               to_char(min(${day}),'YYYY-MM-DD') AS first_on, to_char(max(${day}),'YYYY-MM-DD') AS latest_on,
               CASE WHEN coalesce(p.direction,'higher')='lower' THEN min(p.value) ELSE max(p.value) END::float8 AS best,
@@ -121,7 +116,7 @@ cap({
         WHERE p.user_id=$1 AND ${VALID} AND p.provenance = ANY($2::text[]) AND ($3::date IS NULL OR ${day} >= $3) AND ($4::date IS NULL OR ${day} <= $4)
         GROUP BY s.slug, s.name, p.metric, p.provenance, p.unit, coalesce(p.direction,'higher') ORDER BY s.slug, p.metric, p.provenance`,
       [ctx.recipientId, evidence, i.from ?? null, i.to ?? null]);
-    const objectives = await many(
+    const objectives = !isAthlete ? [] : await many(
       `SELECT o.id, o.status, s.slug AS sport, o.metric, o.direction, o.evidence, o.baseline_value::float8, o.baseline_on::text, o.target_value::float8, o.window_start::text, o.window_end::text
          FROM sponsorship_objectives o JOIN sports s ON s.id=o.sport_id WHERE o.sponsorship_id=$1 AND o.status IN ('proposed','agreed') ORDER BY o.created_at, o.id`, [ctx.d.id]);
     for (const o of objectives) {
@@ -141,7 +136,8 @@ cap({
       period: { from: i.from ?? null, to: i.to ?? null },
       metrics: metrics.map((m) => ({ ...m, evidence_label: EVIDENCE_LABELS[m.evidence] })),
       objectives,
-      note: 'Read live from the athlete\'s own records; a corrected result changes this view. Sports and evidence kinds are never combined into one score. Objectives do not affect any payment due.',
+      ...(isAthlete ? {} : { team_event: await teamEventResults(pool, ctx.d.target_type, ctx.d.target_id, { from: i.from, to: i.to }) }),
+      note: 'Read live from the beneficiary\'s own records (an athlete\'s results, or a team\'s or event\'s games); a corrected result changes this view. Sports and evidence kinds are never combined into one score. Objectives do not affect any payment due.',
     };
   },
 });
