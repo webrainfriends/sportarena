@@ -28,7 +28,6 @@ export function Manage({ id, wizard: startWizard }) {
   const v = useLoad(() => api.get(`/venues/${id}`), [id]);
   const [tab, setTab] = useState('schedule');
   const [wizard, setWizard] = useState(!!startWizard);
-  const { push } = useNav();
   const tenders = useLoad(() => api.get('/rfps', { limit: 50 }).catch(() => []), [id]);
   if (v.loading && !v.data) return <Screen><Loading /></Screen>;
   if (v.error) return <Screen><ErrorBox error={v.error} onRetry={v.reload} /></Screen>;
