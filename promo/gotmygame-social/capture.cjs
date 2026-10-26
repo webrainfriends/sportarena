@@ -1,0 +1,30 @@
+// Captures real screens from the running web build (serve.cjs + API) at 390x844 @3x, plus tall scroll captures.
+// Usage: node capture.cjs <outDir>
+const {chromium}=require('playwright');const fs=require('fs');const out=process.argv[2]||'shots';fs.mkdirSync(out,{recursive:true});
+const URL='http://localhost:4100';
+const login=async(p,h='aarav')=>{await p.goto(URL);await p.waitForTimeout(2500);
+  await p.getByText('Log in',{exact:true}).first().click();await p.waitForTimeout(900);
+  const i=p.locator('input');await i.nth(0).fill(h+'@demo.sportarena.dev');await i.nth(1).fill('sportarena-demo');
+  await p.getByText('Log in',{exact:true}).last().click();await p.waitForTimeout(3500)};
+const hideBeta=p=>p.evaluate(()=>{for(const e of document.querySelectorAll('div'))if(e.children.length<=1&&/^BETA ·/.test(e.textContent||'')&&e.textContent.length<200){let n=e;n.style.display='none';break}});
+const tab=async(p,t)=>{await p.getByText(t,{exact:true}).last().click();await p.waitForTimeout(2200)};
+const click=async(p,t,ms=2200)=>{await p.getByText(t,{exact:true}).first().click();await p.waitForTimeout(ms)};
+(async()=>{const b=await chromium.launch();
+const ctx=await b.newContext({viewport:{width:390,height:844},deviceScaleFactor:3});const p=await ctx.newPage();
+await login(p);await hideBeta(p);
+const shot=async n=>{await hideBeta(p);await p.waitForTimeout(250);await p.screenshot({path:`${out}/${n}.png`});console.log('ok',n)};
+const run=async(n,f)=>{try{await f();await shot(n)}catch(e){console.log('FAIL',n,e.message.slice(0,90))}};
+await run('home',async()=>{await tab(p,'Home')});
+await run('explore_events',async()=>{await tab(p,'Explore')});
+await run('event_table',async()=>{await p.getByText('Neon League Season 1').first().click();await p.waitForTimeout(3000)});
+await run('event_games',async()=>{await click(p,'Games',2500)});
+await run('explore_teams',async()=>{await tab(p,'Explore');await click(p,'Teams',2500)});
+await run('explore_people',async()=>{await click(p,'People',2500)});
+await run('schedule',async()=>{await tab(p,'Schedule');await click(p,'7 days',2500)});
+await run('venues',async()=>{await click(p,'Venues',3000)});
+await run('coaches',async()=>{await click(p,'Coaches',3000)});
+await run('player',async()=>{await tab(p,'Player')});
+await run('insights',async()=>{await click(p,'Insights',3000)});
+await run('development',async()=>{await click(p,'Development',2500)});
+await run('more',async()=>{await tab(p,'More');await p.waitForTimeout(1500)});
+await b.close()})();
