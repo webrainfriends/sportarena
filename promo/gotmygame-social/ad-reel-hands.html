@@ -1,0 +1,99 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Got My Game — Instagram Reel (screens in hand)</title>
+<style>
+:root{--ink:#2F3242;--slate:#2A2D3A;--slate2:#494D5F;--amethyst:#8458B3;--lav:#D0BDF4;--sky:#A0D2EB;--mist:#E5EAF5;--line:#CDD5E8;--green:#2F8F5F}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:1080px;height:1920px;overflow:hidden;background:#000;font-family:'Inter','Noto Color Emoji',sans-serif}
+#stage{position:relative;width:1080px;height:1920px;overflow:hidden;background:#2A2D3A}
+.el{position:absolute;will-change:transform,opacity;opacity:0}
+.full{left:0;top:0;width:1080px;height:1920px}
+.photo{background-size:cover;background-position:center}
+.emo{font-family:'Noto Color Emoji';line-height:1}
+.h1{font-weight:900;letter-spacing:-.03em;line-height:.98;color:#fff;text-shadow:0 4px 30px rgba(42,45,58,.55)}
+.cap{font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:var(--sky);font-size:30px;text-shadow:0 2px 14px rgba(42,45,58,.6)}
+.pill{padding:.42em .95em;border-radius:99em;font-weight:800;white-space:nowrap;font-size:36px;background:rgba(255,255,255,.94);color:var(--ink);box-shadow:0 10px 34px rgba(42,45,58,.35)}
+.pill.g{color:var(--green)}
+.phone{background:#1c1e29;border-radius:62px;box-shadow:0 50px 120px rgba(20,22,30,.6),0 0 0 3px #494D5F}
+.phone .scr{position:absolute;overflow:hidden;background:#E5EAF5;border-radius:48px}
+.phone img{width:100%;height:100%;object-fit:cover;object-position:top;display:block}
+.tile{border-radius:40px;background-size:cover;background-position:center;box-shadow:0 20px 60px rgba(20,22,30,.45)}
+.btn{background:#fff;color:var(--ink);font-weight:900;border-radius:99em;text-align:center;box-shadow:0 18px 60px rgba(20,22,30,.4)}
+</style></head><body><div id="stage"></div>
+<script>
+const W=1080,H=1920,TOTAL=44;
+const C={lav:'#D0BDF4',sky:'#A0D2EB',mist:'#E5EAF5',am:'#8458B3'};
+const QUADS=window.QUADS||{};const E=[];const stage=document.getElementById('stage');
+const clamp=(v,a=0,b=1)=>Math.min(b,Math.max(a,v));const easeOut=t=>1-Math.pow(1-t,3);const back=t=>{const c=1.6;return 1+(c+1)*Math.pow(t-1,3)+c*Math.pow(t-1,2)};
+function add(o){const el=document.createElement('div');el.className='el '+(o.cls||'');if(o.html!=null)el.innerHTML=o.html;
+  Object.assign(el.style,{left:(o.x??0)+'px',top:(o.y??0)+'px'},o.css||{});stage.appendChild(el);
+  E.push(Object.assign({inT:'fade',dx:0,dy:0,rot:0,sc:1,zoom:0,fi:.4,fo:.3,bob:0},o,{el}));return el}
+const text=(s,e,x,y,html,size,o={})=>add(Object.assign({s,e,x,y,cls:'h1',html},o,{css:{fontSize:size+'px',...(o.css||{})}}));
+const GR={dark:'radial-gradient(circle at 70% 20%,#494D5F,#2A2D3A 70%)',hero:'linear-gradient(135deg,#8458B3,#494D5F)'};
+
+/* ---- a person holding the phone that shows the real screen ---- */
+// people-hi/<portrait>__<screen>.jpg are made by composite-screens.py; QUADS (injected by render-reel.cjs) says where the phone is.
+const CW=1080,CH=1935,OFF=7; // the 2160x3870 portrait is shown "cover" on 1080x1920
+function scene(s,e,o){
+  const q=QUADS[o.photo],ox=q.cx*CW,oy=q.cy*CH-OFF;
+  const Z=Math.min(1.85,0.62/q.w), shift=[CW/2-ox, 1920*0.60-oy];          // push in until the phone is the hero, centred
+  o.shots.forEach(([cap,t],k)=>add({s:k?t:s,e,cls:'full photo',css:{backgroundImage:`url(people-hi/${o.photo}__${cap}.jpg)`,backgroundSize:'1080px auto',transformOrigin:`${ox}px ${oy}px`},
+    inT:'hand',fi:k?.35:.45,fo:.3,Z,shift,t0:s}));
+  add({s,e,cls:'full',css:{background:'linear-gradient(180deg,rgba(42,45,58,.9) 0%,rgba(42,45,58,.5) 19%,rgba(42,45,58,0) 36%,rgba(42,45,58,0) 70%,rgba(42,45,58,.85) 100%)'},fi:.45,fo:.3});
+  add({s:s+.2,e,x:70,y:118,cls:'cap',html:o.cap,css:{width:'940px'}});
+  text(s+.25,e,70,170,o.title,108,{inT:'up',css:{width:'940px'}});
+  let cx=70,cy=1690;(o.pills||[]).forEach(([t,v],k)=>{
+    const el=add({s:s+.9+k*.28,e,x:cx,y:cy,cls:'pill '+(v||''),html:t,inT:'pop',rot:k%2?2:-2});const w=el.offsetWidth;
+    if(cx+w>1010&&cx>70){cx=70;cy+=88;el.style.left=cx+'px';el.style.top=cy+'px'}cx+=w+16});
+}
+/* hook 0–2.5 */
+add({s:0,e:2.6,cls:'full photo',css:{backgroundImage:'url(people-hi/team__explore_teams.jpg)'},zoom:.08,fi:.01,fo:.3,inT:'photo'});
+add({s:0,e:2.6,cls:'full',css:{background:'linear-gradient(180deg,rgba(42,45,58,.55) 0%,rgba(42,45,58,0) 30%,rgba(42,45,58,.25) 55%,rgba(42,45,58,.92) 100%)'},fi:.01,fo:.3});
+text(.15,2.6,70,1200,'Your game<br>is out there.',132,{inT:'up',css:{width:'940px'}});
+text(1.3,2.6,70,1500,'<span style="color:'+C.lav+'">Go get it.</span>',120,{inT:'up'});
+/* logo 2.5–4.7 */
+add({s:2.5,e:4.8,cls:'full',css:{background:GR.hero},fi:.3,fo:.3});
+add({s:2.6,e:4.8,x:240,y:560,html:'<img src="assets/logo.png" style="width:600px;border-radius:24%;box-shadow:0 40px 100px rgba(20,22,30,.5)">',inT:'pop',rot:-5,dy:-14});
+text(3.15,4.8,0,1260,'Got My Game.',150,{inT:'up',css:{width:'1080px',textAlign:'center'}});
+text(3.6,4.8,0,1450,'Teams · Tournaments · Venues · Coaches<br>Health · Learning · Sponsors',42,{inT:'fade',css:{width:'1080px',textAlign:'center',color:C.lav,fontWeight:700,lineHeight:1.3,letterSpacing:'0'}});
+
+const D=3.15; let t0=4.6; const S=(o)=>{scene(t0,t0+D+.15,o);t0+=D};
+S({photo:'home',right:1,cap:'Your season',title:'Your next game.<br><span style="color:'+C.lav+'">One glance.</span>',shots:[['home',t0+.3]],pills:[['✅ Are you coming?','g'],['📅 Always in sync']]});
+S({photo:'team',cap:'Explore',title:'Find your<br><span style="color:'+C.lav+'">people.</span>',shots:[['explore_teams',t0+.3],['explore_people',t0+1.8]],pills:[['👥 Teams'],['🧑 People'],['🔎 Events']],right:1});
+S({photo:'tournament',cap:'Tournaments',title:'Run the whole<br><span style="color:'+C.lav+'">tournament.</span>',shots:[['event_console',t0+.3],['event_table',t0+1.8]],pills:[['📅 Auto schedule'],['🥇 Live standings'],['🏅 Awards']]});
+S({photo:'venue',cap:'Venues',title:'Book the court.<br><span style="color:'+C.lav+'">Sorted.</span>',shots:[['venues',t0+.3],['schedule',t0+1.8]],pills:[['📍 Live availability'],['🔁 Recurring']],right:1});
+S({photo:'coach',cap:'Coaching',title:'Hire a coach<br><span style="color:'+C.lav+'">who gets you.</span>',shots:[['coaches',t0+.3]],pills:[['🎓 Post a request'],['⭐ Reviews & rates']]});
+S({photo:'athlete',cap:'Performance',title:'Your story,<br><span style="color:'+C.lav+'">in numbers.</span>',shots:[['player',t0+.3],['insights',t0+1.8]],pills:[['⚽ Matches & stats'],['📈 Compare']],right:1});
+S({photo:'physio',cap:'Physio',title:'Recover.<br><span style="color:'+C.lav+'">Ready to go.</span>',shots:[['health',t0+.3],['health_pros',t0+1.8]],pills:[['💚 Readiness score','g'],['💆 Book a physio']]});
+S({photo:'doctor',cap:'Doctors',title:'Doctors you<br><span style="color:'+C.lav+'">can trust.</span>',shots:[['doctor',t0+.3]],pills:[['🩺 Consent-first records'],['🔐 Every read logged']],right:1});
+S({photo:'learning',cap:'Learning',title:'Turn your sport<br><span style="color:'+C.lav+'">into a degree.</span>',shots:[['learn',t0+.3]],pills:[['🎓 Colleges & courses'],['📚 Rules & plans']]});
+S({photo:'sponsor',cap:'Sponsors',title:'Back the game.<br><span style="color:'+C.lav+'">Fund the dream.</span>',shots:[['sponsor',t0+.3]],pills:[['💎 Offers & deals'],['📊 Reports']],right:1});
+S({photo:'athlete',cap:'Get noticed',title:'Share your<br><span style="color:'+C.lav+'">sporting CV.</span>',shots:[['workspace',t0+.3]],pills:[['🪪 Player passport'],['🔗 A link you control']]});
+const END=t0; // CTA starts here
+/* CTA: faces marquee + call to action */
+add({s:END-.15,e:END+4.7,cls:'full',css:{background:GR.hero},fi:.4,fo:.01});
+const FIRST={home:'home',tournament:'event_console',venue:'venues',coach:'coaches',athlete:'player',physio:'health',doctor:'doctor',learning:'learn',sponsor:'sponsor',team:'explore_teams'};
+const faces=['home','tournament','physio','doctor','learning','sponsor','coach','venue','athlete','team'];
+[[70,1],[480,-1]].forEach(([y,dir],r)=>{
+  const row=faces.slice(r*5).concat(faces.slice(0,r*5));
+  row.concat(row).forEach((f,i)=>add({s:END,e:END+4.6,x:i*330-40,y,cls:'tile',css:{width:300+'px',height:390+'px',backgroundImage:`url(people-hi/${f}__${FIRST[f]}.jpg)`},inT:'marquee',dx:dir*-260,fi:.5,fo:.01}))});
+add({s:END+.3,e:END+4.6,x:340,y:900,html:'<img src="assets/logo.png" style="width:400px;border-radius:24%;box-shadow:0 30px 80px rgba(20,22,30,.5)">',inT:'pop',fo:.01});
+text(END+.6,END+4.6,0,1340,'Find your game.',128,{inT:'up',fo:.01,css:{width:'1080px',textAlign:'center',whiteSpace:'nowrap'}});
+add({s:END+1.2,e:END+4.6,x:130,y:1520,cls:'btn',html:'Join the arena — it\'s free',css:{width:'820px',fontSize:'52px',padding:'30px 0'},inT:'pop',fo:.01});
+text(END+1.6,END+4.6,0,1690,'iOS · iPadOS · Android · Web',40,{inT:'fade',fo:.01,css:{width:'1080px',textAlign:'center',color:C.lav,fontWeight:700,letterSpacing:'0'}});
+text(END+1.9,END+4.6,0,1760,'People shown are AI-generated',26,{inT:'fade',fo:.01,css:{width:'1080px',textAlign:'center',color:'rgba(229,234,245,.75)',fontWeight:600,letterSpacing:'0',textShadow:'none'}});
+
+function render(t){
+  for(const o of E){const {el}=o;if(t<o.s||t>o.e){el.style.opacity=0;continue}
+    const life=o.e-o.s,u=clamp((t-o.s)/o.fi),d=clamp((o.e-t)/o.fo),prog=(t-o.s)/life;
+    let op=Math.min(u,d),tx=o.dx*prog,ty=o.dy*prog,sc=o.sc,r=o.rot,fl=o.flip?-1:1;
+    if(o.inT==='pop'){sc*=Math.max(.001,back(u));r=o.rot*(1-easeOut(u))+o.rot*Math.sin(t*3+o.y)*.25}
+    if(o.inT==='up')ty+=(1-easeOut(u))*90;
+    if(o.inT==='phone'){ty+=(1-easeOut(u))*700;r=o.rot*(1+(1-easeOut(u))*2)}
+    if(o.inT==='marquee'){op=Math.min(u,d)}
+    if(o.inT==='hand'){const p=easeOut(clamp((t-o.t0-.5)/1.5));sc*=1+(o.Z-1)*p;tx+=o.shift[0]*p;ty+=o.shift[1]*p}
+    if(o.zoom)sc*=1+o.zoom*prog;
+    if(o.bob)ty+=Math.sin(t*4+o.x)*o.bob;
+    el.style.opacity=op;el.style.transform=`translate(${tx}px,${ty}px) rotate(${r}deg) scale(${sc*fl},${sc})`}
+}
+window.render=render;window.TOTAL=TOTAL;render(0);
+</script></body></html>
