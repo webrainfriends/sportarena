@@ -284,9 +284,9 @@ function Badges({ rows, act }) {
 /** Nominate through the authority you hold: pick a category, then people from a team you manage, a department you lead, or (organiser) anyone. Eligibility is shown before you submit. */
 function NominateSheet({ visible, onClose, id, cats, isOrg, onDone }) {
   const { toast } = useSession();
-  const [cat, setCat] = useState(null), [pick, setPick] = useState({}), [anyone, setAnyone] = useState([]), [busy, setBusy] = useState(false), [draft, setDraft] = useState(false);
+  const [cat, setCat] = useState(null), [pick, setPick] = useState({}), [anyone, setAnyone] = useState([]), [crewAdd, setCrewAdd] = useState({}), [busy, setBusy] = useState(false), [draft, setDraft] = useState(false);
   const cands = useLoad(() => (visible && cat ? api.get(`/events/${id}/accreditation/candidates`, { category_id: cat }) : Promise.resolve(null)), [visible, cat]);
-  useEffect(() => { if (visible) { setCat(null); setPick({}); setAnyone([]); setDraft(false); } }, [visible]);
+  useEffect(() => { if (visible) { setCat(null); setPick({}); setAnyone([]); setCrewAdd({}); setDraft(false); } }, [visible]);
   useEffect(() => { setPick({}); }, [cat]);
   const groups = cands.data?.groups ?? [];
   const send = async () => {
@@ -294,16 +294,22 @@ function NominateSheet({ visible, onClose, id, cats, isOrg, onDone }) {
     let added = 0; const skipped = [];
     try {
       for (const g of groups) {
-        const ids = g.people.filter((p) => pick[`${g.team_id ?? g.department_id}:${p.user_id}`]).map((p) => p.user_id);
+        const ids = g.people.filter((p) => pick[`${g.team_id ?? g.department_id ?? g.vendor_id}:${p.user_id}`]).map((p) => p.user_id);
         if (!ids.length) continue;
-        const r = await api.post(`/events/${id}/accreditation/nominations`, { category_id: cat, user_ids: ids, team_id: g.team_id, department_id: g.department_id, draft });
+        const r = await api.post(`/events/${id}/accreditation/nominations`, { category_id: cat, user_ids: ids, team_id: g.team_id, department_id: g.department_id, vendor_id: g.vendor_id, draft });
+        added += r.added.length; skipped.push(...r.skipped);
+      }
+      for (const g of groups.filter((x) => x.kind === 'vendor')) {
+        const ids = (crewAdd[g.vendor_id] ?? []).map((p) => p.id);
+        if (!ids.length) continue;
+        const r = await api.post(`/events/${id}/accreditation/nominations`, { category_id: cat, user_ids: ids, vendor_id: g.vendor_id, draft });
         added += r.added.length; skipped.push(...r.skipped);
       }
       if (anyone.length) { const r = await api.post(`/events/${id}/accreditation/nominations`, { category_id: cat, user_ids: anyone.map((p) => p.id), draft }); added += r.added.length; skipped.push(...r.skipped); }
       toast(`${added} ${draft ? 'saved as draft' : 'nominated'}${skipped.length ? ` · ${skipped.length} skipped: ${skipped[0].reason}` : ''}`); onDone(); onClose();
     } catch (x) { toast('' + x.message); } finally { setBusy(false); }
   };
-  const count = Object.values(pick).filter(Boolean).length + anyone.length;
+  const count = Object.values(pick).filter(Boolean).length + anyone.length + Object.values(crewAdd).reduce((n, v) => n + v.length, 0);
   return (
     <Sheet visible={visible} onClose={onClose} title="Nominate people">
       <T size={13} weight="800">Category</T>
@@ -311,15 +317,21 @@ function NominateSheet({ visible, onClose, id, cats, isOrg, onDone }) {
       {cat ? (cands.loading ? <Loading /> : (
         <>
           {groups.map((g) => (
-            <View key={`${g.kind}${g.team_id ?? g.department_id}`} style={{ gap: 6 }}>
-              <T size={13} weight="800">{g.kind === 'team' ? `${g.emoji ?? '👥'} ${g.name}` : `🧩 ${g.name}`} · {g.people.filter((p) => p.eligible).length}/{g.people.length} eligible</T>
+            <View key={`${g.kind}${g.team_id ?? g.department_id ?? g.vendor_id}`} style={{ gap: 6 }}>
+              <T size={13} weight="800">{g.kind === 'team' ? `${g.emoji ?? '👥'} ${g.name}` : g.kind === 'vendor' ? `🏪 ${g.name} · your crew` : `🧩 ${g.name}`} · {g.people.filter((p) => p.eligible).length}/{g.people.length} eligible</T>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                 {g.people.map((p) => {
-                  const key = `${g.team_id ?? g.department_id}:${p.user_id}`;
+                  const key = `${g.team_id ?? g.department_id ?? g.vendor_id}:${p.user_id}`;
                   return <Chip key={key} label={`${pick[key] ? '✓ ' : ''}${p.display_name}${p.has_application ? ' · already' : p.eligible ? '' : ' · not eligible'}`} active={!!pick[key]} onPress={() => (p.eligible ? setPick({ ...pick, [key]: !pick[key] }) : toast(p.has_application ? 'Already has an application' : p.reason))} />;
                 })}
               </View>
-              {g.people.some((p) => p.eligible) ? <Chip label="Select everyone eligible" onPress={() => setPick({ ...pick, ...Object.fromEntries(g.people.filter((p) => p.eligible).map((p) => [`${g.team_id ?? g.department_id}:${p.user_id}`, true])) })} /> : null}
+              {g.people.some((p) => p.eligible) ? <Chip label="Select everyone eligible" onPress={() => setPick({ ...pick, ...Object.fromEntries(g.people.filter((p) => p.eligible).map((p) => [`${g.team_id ?? g.department_id ?? g.vendor_id}:${p.user_id}`, true])) })} /> : null}
+              {g.kind === 'vendor' && g.people.length ? (
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                  {g.people.map((p) => <Chip key={p.crew_id} label={`✕ Remove ${p.display_name}`} onPress={async () => { try { await api.post(`/vendor-crew/${p.crew_id}/remove`); toast(`${p.display_name} is off your crew`); cands.reload(); onDone(); } catch (x) { toast('' + x.message); } }} />)}
+                </View>
+              ) : null}
+              {g.can_add_people ? <EntityPicker kind="person" multi label="Add people to your crew" value={crewAdd[g.vendor_id] ?? []} onChange={(v) => setCrewAdd({ ...crewAdd, [g.vendor_id]: v })} optional /> : null}
             </View>
           ))}
           {!groups.length && !isOrg ? <Empty emoji="🧑‍🤝‍🧑" title="Nobody to nominate" sub="You can nominate players and staff of an accepted team you manage, or members of a department you lead." /> : null}

@@ -14,7 +14,7 @@ import { YOUTH_SQL } from '../youth.js';
 import { canManageTeam } from './teams.js';
 import { departmentScope } from './event-departments.js';
 import {
-  ENGAGEMENTS, ZONE_KINDS, OPEN_STATUSES, WINDOW_SQL, blocker, categoryOf, eligibleFor, engagementsOf, effectiveStatus, gateView, isGateOperator, judge, newSerial, record, syncRosterFlag, tokenFor,
+  ENGAGEMENTS, ZONE_KINDS, OPEN_STATUSES, VENDOR_TO_ENGAGEMENT, WINDOW_SQL, blocker, categoryOf, eligibleFor, engagementsOf, effectiveStatus, gateView, isGateOperator, judge, newSerial, record, syncRosterFlag, tokenFor,
 } from '../accreditation.js';
 
 const TAG = 'Accreditation';
@@ -39,10 +39,12 @@ async function authority(user, ev, c = pool) {
   const scope = await departmentScope(user, ev, c);
   const teams = new Set();
   for (const t of (await c.query("SELECT DISTINCT t.* FROM event_entries en JOIN teams t ON t.id=en.team_id WHERE en.event_id=$1 AND en.status='accepted'", [ev.id])).rows) if (await canManageTeam(user, t)) teams.add(t.id);
-  return { ...scope, teams };
+  // accepted vendors and sponsors the caller runs: they nominate their own crew
+  const vendors = new Map((await c.query("SELECT id, kind FROM event_vendors WHERE event_id=$1 AND vendor_user_id=$2 AND status='accepted'", [ev.id, user.id])).rows.map((v) => [v.id, v]));
+  return { ...scope, teams, vendors };
 }
 const mayApprove = (auth, user, acc, cat) => auth.organiser || (cat.approval === 'department_lead' && acc.department_id && auth.led.has(acc.department_id) && acc.holder_id !== user.id);
-const maySee = (auth, user, acc) => auth.organiser || acc.holder_id === user.id || acc.nominated_by === user.id || (acc.department_id && auth.led.has(acc.department_id)) || (acc.team_id && auth.teams.has(acc.team_id));
+const maySee = (auth, user, acc) => auth.organiser || acc.holder_id === user.id || acc.nominated_by === user.id || (acc.department_id && auth.led.has(acc.department_id)) || (acc.team_id && auth.teams.has(acc.team_id)) || (acc.vendor_id && auth.vendors.has(acc.vendor_id));
 
 const ROW = `a.id, a.event_id, a.category_id, a.holder_id, a.origin, a.team_id, a.department_id, a.nominated_by, a.status, a.access, a.serial, a.credential_version, a.issued_at, a.reason, a.submitted_at, a.decided_at,
   ${WINDOW_SQL}, k.name AS category, k.colour, k.approval, k.escort_required, k.vehicle_access, k.equipment_access, k.requires_photo, e.name AS event, e.starts_on, e.ends_on,
@@ -77,13 +79,13 @@ async function approveRow(c, ev, cat, acc, actor, why) {
   return r;
 }
 
-async function create(c, ev, cat, holderId, { origin, nominatedBy = null, teamId = null, departmentId = null, actor, draft = false }) {
+async function create(c, ev, cat, holderId, { origin, nominatedBy = null, teamId = null, departmentId = null, vendorId = null, actor, draft = false }) {
   const existing = (await c.query(`SELECT * FROM accreditations WHERE category_id=$1 AND holder_id=$2 AND status IN ('draft','submitted','under_review','approved')`, [cat.id, holderId])).rows[0];
   if (existing) return { row: existing, created: false };
   if (!departmentId) departmentId = (await c.query("SELECT department_id FROM event_department_members WHERE event_id=$1 AND user_id=$2 AND status='active' ORDER BY joined_at LIMIT 1", [ev.id, holderId])).rows[0]?.department_id ?? null;
   let row = (await c.query(
-    `INSERT INTO accreditations(event_id, category_id, holder_id, origin, nominated_by, team_id, department_id, status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
-    [ev.id, cat.id, holderId, origin, nominatedBy, teamId, departmentId, draft ? 'draft' : 'submitted'])).rows[0];
+    `INSERT INTO accreditations(event_id, category_id, holder_id, origin, nominated_by, team_id, department_id, vendor_id, status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+    [ev.id, cat.id, holderId, origin, nominatedBy, teamId, departmentId, vendorId, draft ? 'draft' : 'submitted'])).rows[0];
   await record(c, row.id, actor, draft ? 'drafted' : 'submitted', null, row.status, null, origin);
   await syncRosterFlag(c, row);
   if (!draft && (origin === 'invitation' || cat.approval === 'auto')) row = await approveRow(c, ev, cat, row, origin === 'invitation' ? actor : null, origin === 'invitation' ? 'invited by the organiser' : 'auto-approved');
@@ -245,7 +247,7 @@ cap({
         ...(auth.organiser ? {} : { issued: undefined, waiting: undefined }),
         my_accreditation: my, can_apply: can, apply_blocked: can || my || k.status !== 'active' ? null : !k.self_apply ? 'By nomination or invitation only' : 'You do not hold a matching role at this event',
       };
-    }).filter((k) => auth.organiser || auth.led.size || auth.teams.size || k.can_apply || k.my_accreditation || k.self_apply);
+    }).filter((k) => auth.organiser || auth.led.size || auth.teams.size || auth.vendors.size || k.can_apply || k.my_accreditation || k.self_apply);
   },
 });
 
@@ -269,8 +271,8 @@ cap({
 
 cap({
   name: 'nominate_for_accreditation', method: 'POST', path: '/events/:id/accreditation/nominations', tag: TAG, status: 201,
-  summary: 'Nominate people for a category, in bulk (up to 200). The organiser may nominate anyone eligible and the invitation is approved at once; a team manager nominates players and staff of their accepted team (team_id); a department lead nominates members of their department (department_id). Each person is checked separately; the result lists who was added and who was skipped and why. As a draft nothing is submitted yet.',
-  input: z.object({ id, category_id: id, user_ids: z.array(id).min(1).max(200), team_id: id.optional(), department_id: id.optional(), draft: z.boolean().default(false) }),
+  summary: 'Nominate people for a category, in bulk (up to 200). The organiser may nominate anyone eligible and the invitation is approved at once; a team manager nominates players and staff of their accepted team (team_id); a department lead nominates members of their department (department_id); an accepted vendor or sponsor nominates its own crew (vendor_id): anyone on the platform, who then joins that vendor\'s crew. Each person is checked separately; the result lists who was added and who was skipped and why. As a draft nothing is submitted yet.',
+  input: z.object({ id, category_id: id, user_ids: z.array(id).min(1).max(200), team_id: id.optional(), department_id: id.optional(), vendor_id: id.optional(), draft: z.boolean().default(false) }),
   handler: ({ user }, i) => tx(async (c) => {
     const ev = await eventOf(i.id, c);
     const cat = await categoryOf(c, i.category_id);
@@ -279,23 +281,27 @@ cap({
     if (!auth.organiser) {
       if (i.team_id && !auth.teams.has(i.team_id)) throw forbidden('You do not manage that team at this event');
       if (i.department_id && !auth.led.has(i.department_id)) throw forbidden('You do not lead that department');
-      if (!i.team_id && !i.department_id) throw forbidden('Name the team or department you nominate from');
+      if (i.vendor_id && !auth.vendors.has(i.vendor_id)) throw forbidden('You are not an accepted vendor or sponsor of this event');
+      if (!i.team_id && !i.department_id && !i.vendor_id) throw forbidden('Name the team, department or vendor you nominate from');
     }
+    const vendor = i.vendor_id && !auth.organiser ? auth.vendors.get(i.vendor_id) : null;
     const added = [], skipped = [], existing = [];
     for (const uid of [...new Set(i.user_ids)]) {
       const skip = (reason) => skipped.push({ user_id: uid, reason });
       if (!(await c.query('SELECT 1 FROM users WHERE id=$1', [uid])).rowCount) { skip('Unknown person'); continue; }
       if (uid === user.id && !auth.organiser) { skip('Apply for yourself instead'); continue; }
       let origin = 'invitation';
-      if (!auth.organiser || i.team_id || i.department_id) {
-        if (i.team_id) {
+      if (!auth.organiser || i.team_id || i.department_id || vendor) {
+        if (vendor) { /* any person may join a vendor's crew; the category decides whether the vendor engagement is enough */ }
+        else if (i.team_id) {
           if (!(await c.query("SELECT 1 FROM team_members m WHERE m.team_id=$1 AND m.user_id=$2 AND m.status='active'", [i.team_id, uid])).rowCount) { skip('Not on that team'); continue; }
         } else if (!(await c.query("SELECT 1 FROM event_department_members WHERE department_id=$1 AND user_id=$2 AND status='active'", [i.department_id, uid])).rowCount) { skip('Not in that department'); continue; }
         origin = auth.organiser ? 'invitation' : 'nomination';
       }
-      const b = await blocker(c, ev, cat, uid, { invited: origin === 'invitation' });
+      const b = await blocker(c, ev, cat, uid, { invited: origin === 'invitation', also: vendor ? [VENDOR_TO_ENGAGEMENT[vendor.kind]] : [] });
       if (b) { skip(b); continue; }
-      const r = await create(c, ev, cat, uid, { origin, nominatedBy: user.id, teamId: i.team_id ?? null, departmentId: i.department_id ?? null, actor: user.id, draft: i.draft });
+      if (vendor) await c.query('INSERT INTO event_vendor_crew(vendor_id, event_id, user_id, added_by) VALUES ($1,$2,$3,$4) ON CONFLICT (vendor_id, user_id) WHERE removed_at IS NULL DO NOTHING', [vendor.id, ev.id, uid, user.id]);
+      const r = await create(c, ev, cat, uid, { origin, nominatedBy: user.id, teamId: i.team_id ?? null, departmentId: i.department_id ?? null, vendorId: vendor?.id ?? null, actor: user.id, draft: i.draft });
       (r.created ? added : existing).push({ user_id: uid, accreditation_id: r.row.id, status: r.row.status });
     }
     return { added, existing, skipped };
@@ -440,19 +446,19 @@ cap({
 
 cap({
   name: 'list_event_accreditations', method: 'GET', path: '/events/:id/accreditations', tag: TAG,
-  summary: 'Accreditations of an event. The organiser sees all of them; a department lead sees their department; a team manager sees their team\'s nominations; a nominator sees theirs. Filter by status, category or name.',
+  summary: 'Accreditations of an event. The organiser sees all of them; a department lead sees their department; a team manager sees their team\'s nominations; a vendor sees its crew\'s; a nominator sees theirs. Filter by status, category or name.',
   input: z.object({ id, status: z.enum(['draft', 'submitted', 'under_review', 'approved', 'rejected', 'withdrawn', 'revoked', 'suspended', 'expired']).optional(), category_id: id.optional(), q: z.string().trim().max(80).optional(), ...page }),
   async handler({ user }, i) {
     const ev = await eventOf(i.id);
     const auth = await authority(user, ev);
-    if (!auth.organiser && !auth.led.size && !auth.teams.size && !(await pool.query('SELECT 1 FROM accreditations WHERE event_id=$1 AND nominated_by=$2 LIMIT 1', [ev.id, user.id])).rowCount) throw forbidden('You have no accreditation role at this event');
+    if (!auth.organiser && !auth.led.size && !auth.teams.size && !auth.vendors.size && !(await pool.query('SELECT 1 FROM accreditations WHERE event_id=$1 AND nominated_by=$2 LIMIT 1', [ev.id, user.id])).rowCount) throw forbidden('You have no accreditation role at this event');
     const rows = await many(
       `SELECT * FROM (SELECT ${ROW} ${FROM} WHERE a.event_id=$1 AND ($2::uuid IS NULL OR a.category_id=$2) AND ($3::text IS NULL OR u.display_name ILIKE $3 OR u.handle ILIKE $3)
-          AND ($4::boolean OR a.nominated_by=$5 OR a.department_id = ANY($6::uuid[]) OR a.team_id = ANY($7::uuid[]))) x
+          AND ($4::boolean OR a.nominated_by=$5 OR a.department_id = ANY($6::uuid[]) OR a.team_id = ANY($7::uuid[]) OR a.vendor_id = ANY($11::uuid[]))) x
         WHERE ($8::text IS NULL OR (CASE WHEN $8 IN ('suspended','expired') THEN
               (CASE WHEN x.status='approved' AND x.access='suspended' THEN 'suspended' WHEN x.status='approved' AND x.valid_to < now() THEN 'expired' ELSE x.status END) = $8 ELSE x.status = $8 END))
         ORDER BY CASE x.status WHEN 'submitted' THEN 0 WHEN 'under_review' THEN 1 WHEN 'draft' THEN 2 ELSE 3 END, x.submitted_at DESC LIMIT $9 OFFSET $10`,
-      [ev.id, i.category_id ?? null, i.q ? `%${i.q}%` : null, auth.organiser, user.id, [...auth.led], [...auth.teams], i.status ?? null, i.limit, i.offset]);
+      [ev.id, i.category_id ?? null, i.q ? `%${i.q}%` : null, auth.organiser, user.id, [...auth.led], [...auth.teams], i.status ?? null, i.limit, i.offset, [...auth.vendors.keys()]]);
     return rows.map((r) => ({ ...decorate(r), can_decide: !!mayApprove(auth, user, r, r) }));
   },
 });
@@ -488,8 +494,35 @@ cap({
       const people = await many("SELECT u.id AS user_id, u.display_name, u.handle, m.role FROM event_department_members m JOIN users u ON u.id=m.user_id WHERE m.department_id=$1 AND m.status='active' ORDER BY u.display_name LIMIT 200", [d.id]);
       groups.push({ kind: 'department', department_id: d.id, name: d.name, colour: d.colour, people: await judgeAll(people) });
     }
+    for (const v of auth.vendors.values()) {
+      const meta = (await pool.query('SELECT v.id, v.kind, u.display_name FROM event_vendors v JOIN users u ON u.id=v.vendor_user_id WHERE v.id=$1', [v.id])).rows[0];
+      const people = await many("SELECT u.id AS user_id, u.display_name, u.handle, 'crew' AS role, cr.id AS crew_id FROM event_vendor_crew cr JOIN users u ON u.id=cr.user_id WHERE cr.vendor_id=$1 AND cr.removed_at IS NULL ORDER BY u.display_name LIMIT 200", [v.id]);
+      groups.push({ kind: 'vendor', vendor_id: v.id, name: `${meta.display_name} (${meta.kind})`, can_add_people: true, people: await judgeAll(people) });
+    }
     return { category_id: cat.id, organiser: auth.organiser, groups };
   },
+});
+
+cap({
+  name: 'remove_vendor_crew', method: 'POST', path: '/vendor-crew/:id/remove', tag: TAG,
+  summary: 'Take a person off a vendor\'s crew (the vendor or the organiser). Their open accreditations nominated through that vendor are withdrawn; the crew record is kept. Repeating it is harmless.',
+  input: z.object({ id }),
+  handler: ({ user }, i) => tx(async (c) => {
+    const m = (await c.query('SELECT cr.*, v.vendor_user_id FROM event_vendor_crew cr JOIN event_vendors v ON v.id=cr.vendor_id WHERE cr.id=$1 FOR UPDATE OF cr', [i.id])).rows[0];
+    if (!m) throw notFound('Crew member');
+    const ev = await eventOf(m.event_id, c);
+    if (m.vendor_user_id !== user.id && !(await departmentScope(user, ev, c)).organiser) throw notFound('Crew member');
+    if (m.removed_at) return { id: m.id, removed: true, withdrawn: 0 };
+    await c.query('UPDATE event_vendor_crew SET removed_at=now() WHERE id=$1', [m.id]);
+    const open = (await c.query("SELECT * FROM accreditations WHERE vendor_id=$1 AND holder_id=$2 AND status IN ('draft','submitted','under_review','approved') FOR UPDATE", [m.vendor_id, m.user_id])).rows;
+    for (const a of open) {
+      await c.query("UPDATE accreditations SET status='withdrawn', decided_at=now(), decided_by=$2 WHERE id=$1", [a.id, user.id]);
+      await record(c, a.id, user.id, 'withdrawn', a.status, 'withdrawn', a.credential_version || null, 'left the vendor crew');
+      await syncRosterFlag(c, { ...a, status: 'withdrawn' });
+    }
+    await audit(c, user.id, 'accreditation_vendor_crew_remove', 'event_vendor_crew', m.id);
+    return { id: m.id, removed: true, withdrawn: open.length };
+  }),
 });
 
 cap({
