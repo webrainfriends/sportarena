@@ -55,6 +55,7 @@ import './event-staff.js';
 import './event-vendors.js';
 import './event-openings.js';
 import './event-planning.js';
+import './accreditation.js';
 import './svc-supplier.js';
 import './svc-buyer.js';
 import './svc-rfq.js';

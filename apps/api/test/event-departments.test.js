@@ -84,7 +84,7 @@ test('invite, accept with personal details, roster hides them unless asked; read
   assert.equal(own.body[0].phone, undefined, 'a plain member never gets others\' details');
 });
 
-test('a lead runs their department only; accreditation needs an ID on file', async () => {
+test('a lead runs their department only; badges follow the accreditation module', async () => {
   const org = await signup(['organizer']), lead = await signup(['coach']), m1 = await signup(['athlete']), m2 = await signup(['athlete']);
   const ev = await newEvent(org);
   const a = await newDept(org, ev, { lead_user_id: lead.id }), b = await newDept(org, ev);
@@ -97,10 +97,16 @@ test('a lead runs their department only; accreditation needs an ID on file', asy
   assert.equal((await api('POST', `/departments/${a.id}/members`, { token: lead.token, body: { user_id: m2.id, role: 'lead' } })).status, 403, 'only the organiser appoints leads');
   assert.equal((await api('PATCH', `/departments/${a.id}`, { token: lead.token, body: { archived: true } })).status, 403);
   await api('POST', `/department-members/${inv.body.id}/respond`, { token: m1.token, body: { accept: true } });
-  assert.equal((await api('POST', `/department-members/${inv.body.id}/accreditation`, { token: lead.token, body: { status: 'issued' } })).status, 409);
+  // badges now come from the accreditation module; the roster flag follows it
+  const cat = await api('POST', `/events/${ev.id}/accreditation/categories`, { token: org.token, body: { name: 'Crew', eligible: ['medical', 'operations', 'volunteer'], approval: 'department_lead' } });
+  assert.equal(cat.status, 201, JSON.stringify(cat.body));
+  const nom = await api('POST', `/events/${ev.id}/accreditation/nominations`, { token: lead.token, body: { category_id: cat.body.id, user_ids: [m1.id], department_id: a.id } });
+  assert.equal(nom.status, 201, JSON.stringify(nom.body));
+  assert.equal((await api('GET', `/events/${ev.id}/roster?department_id=${a.id}`, { token: lead.token })).body.find((r) => r.id === m1.id).accreditation, 'requested');
+  const acc = await api('POST', `/accreditations/${nom.body.added[0].accreditation_id}/decision`, { token: lead.token, body: { decision: 'approve' } });
+  assert.equal(acc.status, 200, JSON.stringify(acc.body));
+  assert.equal((await api('GET', `/events/${ev.id}/roster?department_id=${a.id}`, { token: lead.token })).body.find((r) => r.id === m1.id).accreditation, 'issued');
   await api('PATCH', `/department-members/${inv.body.id}/details`, { token: m1.token, body: { id_number: 'ZX99' } });
-  const acc = await api('POST', `/department-members/${inv.body.id}/accreditation`, { token: lead.token, body: { status: 'issued' } });
-  assert.equal(acc.body.accreditation, 'issued');
   const full = await api('GET', `/events/${ev.id}/roster?department_id=${a.id}&include_pii=true`, { token: lead.token });
   assert.equal(full.status, 200);
   assert.ok(full.body.some((r) => r.id_number === 'ZX99'));

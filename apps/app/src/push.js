@@ -63,6 +63,7 @@ export async function disablePush(deviceId) {
 export function targetFor(data = {}) {
   if (data.screen === 'PlayerFunding') return ['PlayerFunding', data.athlete_id ? { athlete_id: data.athlete_id } : {}]; // an athlete shared their funding with a coach
   if (data.proposal_id) return ['ScoringTool', { proposalId: data.proposal_id }]; // a proposed result to review, or the outcome of yours
+  if (data.accreditation_id && data.event_id) return ['MyAccreditations', {}]; // a nomination, approval, reissue or revocation of your badge
   if (data.request_id && data.event_id) return ['EventInbox', {}];
   if (data.sponsorship_id) return ['SponsorDeal', { id: data.sponsorship_id }];
   if (data.program_id && (data.task_id || data.application_id)) return ['SponsorProgram', { id: data.program_id }];
@@ -90,6 +91,9 @@ export function parseTarget(t) {
   if (kind === 'tenders') return ['TenderHome', {}];
   if (kind === 'tender-zone') return ['TenderZone', {}];
   if (kind === 'billboard') return ['Billboard', {}];
+  if (kind === 'accreditation') return ['MyAccreditations', {}];
+  if (kind === 'event-accreditation' && id) return ['EventCommand', { id, tab: 'accreditation' }];
+  if (kind === 'gate' && id) return ['GateScan', { id }];
   if (kind === 'tender-orders') return ['TenderOrders', {}];
   if (kind === 'tender-reports') return ['TenderReports', {}];
   if (kind === 'tender-order' && id) return ['TenderOrder', { id }];
