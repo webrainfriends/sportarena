@@ -219,6 +219,7 @@ export function Person({ id }) {
   const p = useLoad(() => api.get(`/people/${id}`), [id]);
   const stats = useLoad(() => api.get(`/people/${id}/stats`), [id]);
   const awards = useLoad(() => api.get('/awards', { user_id: id }), [id]);
+  const ranks = useLoad(() => api.get(`/rankings/subjects/${id}`), [id]);
   if (p.loading && !p.data) return <Screen><Loading /></Screen>;
   if (p.error) return <Screen><ErrorBox error={p.error} onRetry={p.reload} /></Screen>;
   const x = p.data;
@@ -240,6 +241,7 @@ export function Person({ id }) {
       {stats.data?.by_metric?.length ? <Section title="Stats" color={c.mint}>
         <Card color={c.mintSoft}>{stats.data.by_metric.map((m, i) => <View key={i} style={{ paddingVertical: 4 }}><View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><T weight="800">{m.emoji} {m.metric.replace(/_/g, ' ')}</T><T weight="900">{withUnit(m.unit === 's' ? m.lowest : m.best, m.unit)} <T size={12} color={c.mute}>best · {m.entries} {m.entries === 1 ? 'entry' : 'entries'}</T></T></View><T size={11} color={c.mute}>{m.evidence_label}</T></View>)}</Card>
       </Section> : null}
+      {ranks.data?.rankings?.length ? <Section title="Rankings" color={c.violet}>{ranks.data.rankings.map((r) => <Row key={r.ranking_id} title={`#${r.rank} · ${r.name}`} sub={`Based on ${r.sample_n} verified result${r.sample_n === 1 ? '' : 's'} across ${r.events_n} event${r.events_n === 1 ? '' : 's'} · version ${r.version} · ${r.evidence_strength} evidence`} />)}</Section> : null}
       {x.credentials?.length ? <Section title="Certificates & badges" color={c.mint}><CredentialList list={x.credentials} /></Section> : null}
       <Section title="Trophy cabinet" color={c.sun}><TrophyShelf awards={awards.data} /></Section>
       <Section title="Props from the community" color={c.pink}><Reviews type="user" id={id} canWrite={user.id !== id} /></Section>

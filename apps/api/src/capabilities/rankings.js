@@ -11,7 +11,7 @@ import { canGovern } from './metric-governance.js';
 import { canManageTeam } from './teams.js';
 import { FAMILIES, familyOf, kindsFor } from '../rankings/families.js';
 import { describeFormula } from '../rankings/engine.js';
-import { loadDefinition, loadVersion, isClubMember, runRanking, subjectsOf, strengthOf, takeSnapshot, explain } from '../rankings/data.js';
+import { publicRankingsOf, loadDefinition, loadVersion, isClubMember, runRanking, subjectsOf, strengthOf, takeSnapshot, explain } from '../rankings/data.js';
 
 const TAG = 'Rankings';
 const scopeShape = z.object({
@@ -266,5 +266,17 @@ cap({
       await audit(c, user.id, 'review_ranking_flag', 'ranking_flags', f.id);
       return (await c.query('UPDATE ranking_flags SET status=$2, review_note=$3, reviewed_by=$4, reviewed_at=now() WHERE id=$1 RETURNING *', [f.id, i.status, i.note, user.id])).rows[0];
     });
+  },
+});
+
+cap({
+  name: 'get_subject_rankings', method: 'GET', path: '/rankings/subjects/:subject_id', tag: TAG, auth: 'public',
+  summary: 'Where a player or team stands in the public rankings (latest published snapshot of each), always with the version, how many verified results the rank rests on and an evidence-strength label, so a rank is never shown without its provenance. Optional sport filter. Youth accounts return nothing. Club rankings never appear here. Used by discovery and recruiter views.',
+  input: z.object({ subject_id: id, sport: z.string().optional() }),
+  async handler(_, i) {
+    const sport = i.sport ? await sportBySlugOrId(i.sport) : null;
+    if (i.sport && !sport) throw notFound('Sport');
+    const youth = await one('SELECT 1 AS y FROM users u WHERE u.id=$1 AND u.youth_until IS NOT NULL AND u.youth_until > current_date', [i.subject_id]);
+    return { subject_id: i.subject_id, rankings: youth ? [] : await publicRankingsOf(i.subject_id, sport?.id) };
   },
 });

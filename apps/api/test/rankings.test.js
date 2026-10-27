@@ -338,3 +338,57 @@ test('the definition form is fed from real data: metrics, positions and cities f
   assert.ok(m.metrics.includes('goals'));
   assert.equal(m.family, 'goal_game');
 });
+
+test('discovery: a subject’s public ranks carry provenance; youth and club rankings never appear', async () => {
+  const gov = await makeAdmin(), org = await signup(['organizer']);
+  const evs = [await mkEvent(org, 'futsal'), await mkEvent(org, 'futsal'), await mkEvent(org, 'futsal')];
+  const a = await signup(), kid = await signup();
+  await pool.query('UPDATE users SET youth_until = current_date + 400 WHERE id=$1', [kid.id]);
+  for (const [k, e] of evs.entries()) { await perf(a, 'futsal', 'goals', 2, e, `2026-0${k + 1}-03`, { by: org }); await perf(kid, 'futsal', 'goals', 5, e, `2026-0${k + 1}-03`, { by: org }); }
+  const d = await define(gov.token, { sport: 'futsal', name: 'Futsal goals', formula_kind: 'metric', metric: 'goals', aggregation: 'sum' });
+  assert.equal(d.status, 201, 'futsal is a native goal-games ranking: ' + JSON.stringify(d.body));
+  assert.equal(d.body.definition.family, 'goal_game');
+  assert.equal((await api('GET', `/rankings/${d.body.definition.id}`)).body.entries[0].score, 6);
+  await api('POST', `/rankings/${d.body.definition.id}/snapshot`, { token: gov.token });
+  const mine = (await api('GET', `/rankings/subjects/${a.id}`)).body.rankings;
+  assert.equal(mine.length, 1);
+  assert.equal(mine[0].rank, 1);
+  assert.equal(mine[0].sample_n, 3, 'the rank always comes with how many verified results it rests on');
+  assert.ok(mine[0].version && mine[0].evidence_strength && mine[0].formula_hash && mine[0].as_of);
+  assert.deepEqual((await api('GET', `/rankings/subjects/${kid.id}`)).body.rankings, []);
+});
+
+test('a result corrected through the real approval flow changes the ranking and snapshots it, keeping the old snapshot', async () => {
+  const gov = await makeAdmin();
+  const org = await signup(['organizer']), other = await signup(['referee']);
+  const evs = [];
+  for (let k = 0; k < 3; k++) evs.push((await api('POST', '/events', { token: org.token, body: { name: `Flow ${++n}`, sport: 'athletics' } })).body.id);
+  for (const e of evs) await pool.query("INSERT INTO event_staff(event_id, user_id, role, status) VALUES ($1,$2,'timekeeper','accepted')", [e, other.id]);
+  const [a, b] = [await signup(), await signup()];
+  const first = {};
+  for (const e of evs) for (const [u, t] of [[a, 10.0], [b, 10.5]]) {
+    await pool.query("INSERT INTO event_entries(event_id, user_id, status) VALUES ($1,$2,'accepted')", [e, u.id]);
+    const r = await api('POST', '/performances', { token: org.token, body: { user_id: u.id, sport: 'athletics', metric: '400m_time_s', value: t, event_id: e } });
+    assert.equal(r.status, 201, JSON.stringify(r.body));
+    assert.equal((await api('POST', `/performances/${r.body.id}/approve`, { token: other.token })).status, 200);
+    first[`${u.id}${e}`] = r.body;
+  }
+  const d = (await define(gov.token, { sport: 'athletics', name: 'Flow 400m', formula_kind: 'metric', metric: '400m_time_s', aggregation: 'mean' })).body;
+  assert.equal((await api('GET', `/rankings/${d.definition.id}`)).body.entries[0].subject.id, a.id);
+  const s1 = (await api('POST', `/rankings/${d.definition.id}/snapshot`, { token: gov.token })).body.snapshot;
+  // b's times were mis-keyed: correct each to 9.0 via the official correction flow (submit, then a different official approves)
+  for (const e of evs) {
+    const corr = await api('POST', `/performances/${first[`${b.id}${e}`].id}/correct`, { token: org.token, body: { value: 9.0, reason: 'Timing sheet re-read' } });
+    assert.equal(corr.status, 201, JSON.stringify(corr.body));
+    assert.equal((await api('POST', `/performances/${corr.body.id}/approve`, { token: other.token })).status, 200);
+  }
+  await new Promise((r) => setTimeout(r, 1500)); // the re-run after approval is fire-and-forget
+  const live = (await api('GET', `/rankings/${d.definition.id}`)).body;
+  assert.equal(live.entries[0].subject.id, b.id, 'the corrected results moved b to first');
+  assert.equal(live.entries[0].score, 9);
+  assert.equal(live.entries[0].sample_n, 3, 'superseded originals no longer count');
+  const hist = (await api('GET', `/rankings/${d.definition.id}/subjects/${b.id}/history`)).body.history;
+  assert.ok(hist.length >= 2, 'approving the correction took a new snapshot');
+  assert.equal(hist.at(-1).rank, 2, 'the issued snapshot still shows b second');
+  assert.equal((await api('GET', `/rankings/${d.definition.id}?snapshot_id=${s1.id}`)).body.entries[0].subject.id, a.id);
+});

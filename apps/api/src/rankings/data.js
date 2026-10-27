@@ -165,3 +165,19 @@ const limitsOf = (def, v, res) => [
   'Youth accounts are never ranked. Results still awaiting approval or under dispute do not count.',
   `Ranked from ${res.rows.length} eligible ${def.subject === 'team' ? 'team-games' : 'results'} as at the time shown; a corrected result re-runs this ranking and the earlier snapshot is kept.`,
 ];
+
+/**
+ * Where a player or team stands in the public rankings, from the latest published snapshot of each (so it is the rank that was issued, with its version).
+ * Always carries the sample size and evidence strength: a rank number is never shown without what it rests on. Used by discovery and recruiter views.
+ */
+export async function publicRankingsOf(subjectId, sportId, c) {
+  const rows = (await q(c).query(
+    `SELECT DISTINCT ON (d.id) d.id AS ranking_id, d.name, d.subject, d.family, v.version, v.min_samples, v.formula_hash, s.id AS snapshot_id, s.as_of, s.entries_n AS ranked_total, e.rank, e.score, e.sample_n, e.events_n
+       FROM ranking_definitions d
+       JOIN ranking_snapshots s ON s.definition_id = d.id
+       JOIN ranking_definition_versions v ON v.id = s.version_id
+       JOIN ranking_snapshot_entries e ON e.snapshot_id = s.id AND e.subject_id = $1
+      WHERE d.visibility = 'public' AND d.status = 'published' AND ($2::uuid IS NULL OR d.sport_id = $2)
+      ORDER BY d.id, s.as_of DESC, s.created_at DESC`, [subjectId, sportId ?? null])).rows;
+  return rows.map(({ min_samples, ...r }) => ({ ...r, score: Number(r.score), evidence_strength: strengthOf(r.sample_n, min_samples) }));
+}
