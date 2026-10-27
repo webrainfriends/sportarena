@@ -1,9 +1,21 @@
 // Server decimal arithmetic for quotes, orders and invoices. Everything is integer minor units + ISO currency; quantities carry up to 3 decimals
 // and are handled as integer thousandths, so no floating-point error reaches a stored total. Tax rates are basis points. Never aggregate currencies.
-import { exponent, isSupportedCurrency } from '../currency.js';
+import { CURRENCIES, exponent, isSupportedCurrency } from '../currency.js';
 import { badRequest } from '../errors.js';
 
-export const assertCurrency = (c) => { if (!isSupportedCurrency(c)) throw badRequest(`Unsupported currency: ${c}`); return c; };
+/**
+ * Three-decimal currencies (1 dinar = 1000 fils). The platform currency table leaves them out because card providers need special rounding
+ * for them, so they are accepted for service procurement only: quotes, orders, tax, invoices, manual payments and reports all work in their
+ * own minor unit; online card payment is refused (record a bank/cash payment instead).
+ */
+export const THREE_DECIMAL = {
+  KWD: { name: 'Kuwaiti dinar', symbol: 'KD', exp: 3 }, BHD: { name: 'Bahraini dinar', symbol: 'BD', exp: 3 }, OMR: { name: 'Omani rial', symbol: 'OMR', exp: 3 },
+  JOD: { name: 'Jordanian dinar', symbol: 'JD', exp: 3 }, TND: { name: 'Tunisian dinar', symbol: 'DT', exp: 3 },
+};
+export const isServiceCurrency = (c) => isSupportedCurrency(c) || Object.hasOwn(THREE_DECIMAL, c);
+export const serviceExponent = (c) => (Object.hasOwn(THREE_DECIMAL, c) ? THREE_DECIMAL[c].exp : exponent(c));
+export const serviceCurrencies = () => [...Object.entries(CURRENCIES), ...Object.entries(THREE_DECIMAL)].map(([code, c]) => ({ code, name: c.name, symbol: c.symbol, exponent: c.exp, online_payments: c.exp !== 3 }));
+export const assertCurrency = (c) => { if (!isServiceCurrency(c)) throw badRequest(`Unsupported currency: ${c}`); return c; };
 export const qtyMilli = (q) => Math.round(Number(q) * 1000);
 /** (quantity × rate − discount) in minor units, rounded half away from zero. rate is per ONE unit in minor units. */
 export const lineNet = (qty, rate, discount = 0) => {
@@ -65,6 +77,6 @@ export function priced(lines, { inclusive = false, rounding = 'per_line' } = {})
   return t;
 }
 export const withholding = (net, rateBp) => bp(net, rateBp);
-export const fmt = (minor, currency) => (minor / 10 ** exponent(currency)).toFixed(exponent(currency));
+export const fmt = (minor, currency) => (minor / 10 ** serviceExponent(currency)).toFixed(serviceExponent(currency));
 /** Wasted-pass guard: a quantity may have at most 3 decimals. */
 export const checkQty = (q) => { if (!(Number(q) > 0) || Math.abs(Number(q) * 1000 - Math.round(Number(q) * 1000)) > 1e-6) throw badRequest('Quantity must be positive with at most 3 decimals'); return q; };

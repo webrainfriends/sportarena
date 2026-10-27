@@ -16,10 +16,10 @@ const TAG = 'Supplier documents';
 
 cap({
   name: 'generate_service_document', method: 'POST', path: '/service-documents', tag: TAG, status: 201,
-  summary: `Render a supplier-services document as a branded PDF (${DOC_TYPES.join(', ')}). Content is read from the canonical records for the type and checked against your access; figures are never typed in. Drafts, pro formas and unconfirmed orders carry a visible watermark. Regenerating makes a new immutable document; historical PDFs are unaffected by later brand changes. Download with GET /branded-documents/{id}/file.`,
-  input: z.object({ type: z.enum(DOC_TYPES), source_id: id, kit_id: id.optional().describe('your brand kit (personal, or an organisation you may use); the plain layout when omitted') }),
+  summary: `Render a supplier-services document as a branded PDF (${DOC_TYPES.join(', ')}; supplier_report and buyer_report print the dashboards for a period). Content is read from the canonical records for the type and checked against your access; figures are never typed in. Drafts, pro formas and unconfirmed orders carry a visible watermark. Regenerating makes a new immutable document; historical PDFs are unaffected by later brand changes. Download with GET /branded-documents/{id}/file.`,
+  input: z.object({ type: z.enum(DOC_TYPES), source_id: id, kit_id: id.optional().describe('your brand kit (personal, or an organisation you may use); the plain layout when omitted'), from: z.string().date().optional().describe('supplier_report / buyer_report: period start'), to: z.string().date().optional(), currency: z.string().length(3).transform((v) => v.toUpperCase()).optional() }),
   async handler({ user }, i) {
-    const loaded = await LOADERS[i.type](user, i.source_id);
+    const loaded = await LOADERS[i.type](user, i.source_id, { from: i.from, to: i.to, currency: i.currency });
     let kit = null;
     if (i.kit_id) { kit = await kitOf(i.kit_id); await mustAccess(user, kit, 'Brand kit'); if (kit.archived_at) throw badRequest('That brand kit is archived'); }
     const { buffer, pages } = await renderServiceDocument({ doc: loaded.doc, kit, logo: kit ? await loadLogo(kit.logo_asset_id) : null });

@@ -3,6 +3,7 @@
 import { many, one, pool } from '../db.js';
 import { notFound } from '../errors.js';
 import { fmt } from './money.js';
+import { supplierDashboard, buyerDashboard, exportRows } from './reports.js';
 import { supplierAccess, buyerAccess } from './access.js';
 import { isYouth } from '../youth.js';
 
@@ -147,4 +148,41 @@ export const LOADERS = {
       sections: cur.map((c) => { let bal = 0; return { heading: c, kind: 'table', columns: [{ t: 'Date', w: 4 }, { t: 'Document', w: 7 }, { t: 'Type', w: 4 }, { t: 'Amount', w: 6, a: 'right' }, { t: 'Paid', w: 6, a: 'right' }, { t: 'Balance', w: 6, a: 'right' }], rows: rows.filter((r) => r.currency === c).map((r) => { const sg = r.doc_type === 'credit_note' ? -1 : 1; bal += sg * Number(r.gross_minor) - (sg === 1 ? Number(r.paid_minor) : 0); return [day(r.issued_at), r.supplier_number, r.doc_type.replace('_', ' '), fm(sg * Number(r.gross_minor), c), sg === 1 ? fm(r.paid_minor, c) : '', fm(bal, c)]; }) }; }) } };
   },
 };
+
+const pct = (x) => (x == null ? '—' : `${Math.round(x * 100)}%`);
+const periodLine = (i) => `${i.from ?? 'all time'} to ${i.to ?? 'today'} · UTC · currencies are never combined`;
+/** A supplier dashboard as a document: the same figures the dashboard shows, laid out for print. */
+export async function supplierReportDoc(profileId, i = {}) {
+  const [p, x] = await Promise.all([one('SELECT * FROM svc_profiles WHERE id=$1', [profileId]), supplierDashboard(profileId, i)]);
+  return { title: 'Supplier performance & finance report', number: p.legal_name, status: periodLine(i), parties: [{ label: 'Supplier', lines: supplierLines(p) }], sections: [
+    { heading: 'Enquiries and quotes', kind: 'kv', rows: [['RFQs invited', x.enquiries.rfqs_invited], ['Responded', `${x.enquiries.responded} (${pct(x.enquiries.response_rate)})`], ['Average response (hours)', x.enquiries.avg_response_hours ?? '—'], ['Quotes submitted / awarded', `${x.quotes.submitted} / ${x.quotes.awarded}`], ['Quote conversion', pct(x.quotes.conversion)]] },
+    { heading: 'Open pipeline', kind: 'table', columns: [{ t: 'Currency', w: 2 }, { t: 'Quotes', w: 2, a: 'right' }, { t: 'Gross', w: 4, a: 'right' }], rows: x.quotes.pipeline.map((r) => [r.currency, String(r.quotes), fm(r.gross_minor, r.currency)]) },
+    { heading: 'Orders by state', kind: 'table', columns: [{ t: 'State', w: 4 }, { t: 'Currency', w: 2 }, { t: 'Orders', w: 2, a: 'right' }, { t: 'Gross', w: 4, a: 'right' }], rows: x.orders.by_state.map((r) => [r.status, r.currency, String(r.orders), fm(r.gross_minor, r.currency)]) },
+    { heading: 'Delivery', kind: 'kv', rows: [['Visits', x.delivery.visits], ['On time', pct(x.delivery.on_time_rate)], ['Rework', pct(x.delivery.rework_rate)], ['No-show', pct(x.delivery.no_show_rate)], ['Cancelled', pct(x.delivery.cancellation_rate)], ['Utilisation', pct(x.delivery.utilisation)]] },
+    { heading: 'Billed, collected, outstanding', kind: 'table', columns: [{ t: 'Currency', w: 2 }, { t: 'Billed', w: 4, a: 'right' }, { t: 'Collected', w: 4, a: 'right' }, { t: 'Outstanding', w: 4, a: 'right' }], rows: x.finance.by_currency.map((r) => [r.currency, fm(r.billed_minor, r.currency), fm(r.collected_minor, r.currency), fm(r.outstanding_minor, r.currency)]) },
+    { heading: 'Ageing of unpaid balances', kind: 'table', columns: [{ t: 'Currency', w: 2 }, { t: 'Not due', w: 3, a: 'right' }, { t: '1–30', w: 3, a: 'right' }, { t: '31–60', w: 3, a: 'right' }, { t: '61–90', w: 3, a: 'right' }, { t: '90+', w: 3, a: 'right' }], rows: x.finance.ageing.map((r) => [r.currency, ...['not_due', 'd1_30', 'd31_60', 'd61_90', 'd90_plus'].map((k) => fm(r[k], r.currency))]) },
+    { heading: 'Tax summary', kind: 'table', columns: [{ t: 'Currency', w: 2 }, { t: 'Tax code', w: 3 }, { t: 'Net', w: 4, a: 'right' }, { t: 'Tax', w: 4, a: 'right' }], rows: x.finance.tax.map((r) => [r.currency, r.tax_code, fm(r.net_minor, r.currency), fm(r.tax_minor, r.currency)]) },
+  ], footnote: `${x.definitions.quote_conversion}. ${x.definitions.billed}. Tax figures are the supplier’s own configuration, not an assertion of any jurisdiction’s rules.` };
+}
+export async function buyerReportDoc(buyerId, i = {}) {
+  const [b, x] = await Promise.all([one('SELECT * FROM svc_buyers WHERE id=$1', [buyerId]), buyerDashboard(buyerId, i)]);
+  return { title: 'Procurement report', number: b.name, status: periodLine(i), parties: [{ label: 'Buyer', lines: [b.name] }], sections: [
+    { heading: 'Coverage and sourcing', kind: 'kv', rows: [['Requirements', x.coverage.requirements], ['Covered', `${x.coverage.covered} (${pct(x.coverage.rate)})`], ['RFQs', x.sourcing.rfqs], ['Suppliers invited / responded', `${x.sourcing.suppliers_invited} / ${x.sourcing.suppliers_responded}`], ['Invoice exceptions (open / approved)', `${x.invoices.open_exceptions} / ${x.invoices.approved_exceptions}`]] },
+    { heading: 'Planned, committed, invoiced, paid', kind: 'table', columns: [{ t: 'Currency', w: 2 }, { t: 'Planned', w: 4, a: 'right' }, { t: 'Committed', w: 4, a: 'right' }, { t: 'Invoiced', w: 4, a: 'right' }, { t: 'Paid', w: 4, a: 'right' }, { t: 'Outstanding', w: 4, a: 'right' }], rows: x.spend.by_currency.map((r) => [r.currency, ...['planned_minor', 'committed_minor', 'invoiced_minor', 'paid_minor', 'outstanding_minor'].map((k) => fm(r[k], r.currency))]) },
+    { heading: 'Savings against other comparable quotes', kind: 'table', columns: [{ t: 'Currency', w: 2 }, { t: 'RFQs', w: 2, a: 'right' }, { t: 'Saved', w: 4, a: 'right' }], rows: x.spend.savings.map((r) => [r.currency, String(r.rfqs), fm(r.saved_minor, r.currency)]) },
+    { heading: 'Award rationale', kind: 'table', columns: [{ t: 'Order', w: 4 }, { t: 'Amount', w: 3, a: 'right' }, { t: 'Why', w: 8 }], rows: x.sourcing.award_rationale.map((r) => [r.number, fm(r.gross_minor, r.currency), r.justification ?? '']) },
+    { heading: 'Supplier delivery performance', kind: 'table', columns: [{ t: 'Supplier', w: 6 }, { t: 'Orders', w: 2, a: 'right' }, { t: 'Visits', w: 2, a: 'right' }, { t: 'Accepted', w: 2, a: 'right' }, { t: 'Rework', w: 2, a: 'right' }, { t: 'No-show', w: 2, a: 'right' }, { t: 'Incidents', w: 2, a: 'right' }], rows: x.supplier_performance.map((r) => [r.supplier, String(r.orders), String(r.visits), String(r.accepted), String(r.rework), String(r.no_show), String(r.incidents)]) },
+    { heading: 'Recurring maintenance cost', kind: 'table', columns: [{ t: 'Category', w: 5 }, { t: 'Currency', w: 2 }, { t: 'Orders', w: 2, a: 'right' }, { t: 'Gross', w: 4, a: 'right' }], rows: x.recurring_maintenance.map((r) => [label2(r.category), r.currency, String(r.orders), fm(r.gross_minor, r.currency)]) },
+  ], footnote: `${x.definitions.savings}.` };
+}
+const label2 = (s) => String(s ?? '').replace(/_/g, ' ');
+LOADERS.supplier_report = async (user, id, params = {}) => { await supplierAccess(user, id, ['owner', 'finance'], pool); return { type: 'supplier_report', version: 1, doc: await supplierReportDoc(id, params) }; };
+LOADERS.buyer_report = async (user, id, params = {}) => { await buyerAccess(user, id, ['finance', 'purchaser'], pool); return { type: 'buyer_report', version: 1, doc: await buyerReportDoc(id, params) }; };
+/** A table report (orders, invoices, payments, tax) as a document, for the PDF export format. */
+export async function tableReportDoc(report, scope, rows) {
+  const cols = rows[0] ? Object.keys(rows[0]) : [];
+  const name = scope.side === 'supplier' ? (await one('SELECT legal_name AS n FROM svc_profiles WHERE id=$1', [scope.id]))?.n : (await one('SELECT name AS n FROM svc_buyers WHERE id=$1', [scope.id]))?.n;
+  const shown = (v, c) => (v == null ? '' : /_minor$/.test(c) ? String(v) : v instanceof Date ? v.toISOString().slice(0, 10) : String(v));
+  return { title: `${report[0].toUpperCase()}${report.slice(1)} report`, number: name, status: `${rows.length} rows · amounts in minor units of each row's currency`, sections: [{ kind: 'table', columns: cols.map((c) => ({ t: label2(c), w: 1 })), rows: rows.slice(0, 2000).map((r) => cols.map((c) => shown(r[c], c))) }], footnote: rows.length > 2000 ? 'Showing the first 2,000 rows; use CSV or XLSX for the complete list.' : undefined };
+}
 export const DOC_TYPES = Object.keys(LOADERS);

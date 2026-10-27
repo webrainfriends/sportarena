@@ -10,6 +10,7 @@ import { assertUnit, CATEGORY } from '../svc/catalogue.js';
 import { supplierAccess, buyerAccess, myProfileIds, nextNumber, log } from '../svc/access.js';
 import { approvalNeeded, decide } from '../svc/approvals.js';
 import { credentialState } from './svc-supplier.js';
+import { holdForOrder } from '../svc/orders.js';
 
 const TAG = 'Service procurement';
 const cur = z.string().length(3).transform((s) => s.toUpperCase());
@@ -509,6 +510,8 @@ export async function createOrders(c, rfq, awards, actor, { approvalId = null, j
     let n = 0;
     for (const l of t.lines) await c.query('INSERT INTO svc_order_lines(order_id, line_no, line_type, charge_kind, description, unit, rate_minor, discount_minor, tax_code, tax_bp, tax_treatment, qty_ordered, milestone) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)',
       [o.id, ++n, l.line_type, l.charge_kind, l.description, l.unit, l.rate_minor, l.discount_minor, l.tax_code, l.tax_bp, l.tax_treatment, l.quantity, l.milestone]);
+    const held = await holdForOrder(c, o);       // days set aside while the supplier decides; lapses if it does not confirm in time
+    if (held) await c.query('UPDATE svc_orders SET terms = terms || $2::jsonb WHERE id=$1', [o.id, { hold_expires_at: held[0].hold_expires_at }]);
     await c.query("UPDATE svc_quotes SET status=$2 WHERE id=$1", [q.id, covers < qCovers ? 'partially_awarded' : 'awarded']);
     await c.query("UPDATE svc_invites SET status='closed' WHERE id=$1", [q.invite_id]);
     await tell(c, await supplierAudience(c, q.profile_id), { kind: 'svc_order_placed', title: 'You have a new service order', body: `Order ${number} awaits your confirmation.`, data: { order_id: o.id }, dedupe_key: `svc:order:${o.id}` }, actor.id);
