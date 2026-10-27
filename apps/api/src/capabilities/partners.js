@@ -10,6 +10,7 @@ import { audit } from '../helpers.js';
 import { blindIndex, decrypt, encrypt, hashPassword } from '../crypto.js';
 import { notify } from '../notify.js';
 import { isPlatform, isPlatformOwner, reviewApplication } from '../platform.js';
+import { isPlatformAdminEmail } from '../access.js';
 import { createContract } from './partner-contracts.js';
 
 const TAG = 'Partner management';
@@ -282,6 +283,7 @@ cap({
   input: z.object({ handle: z.string().regex(/^[a-z0-9_]{3,24}$/, '3-24 chars: a-z, 0-9, _'), display_name: z.string().min(1).max(60), email: z.string().email(), password: z.string().min(10).max(200) }),
   async handler({ user }, i) {
     if (!isPlatformOwner(user)) throw forbidden('Only the platform owner can create platform users');
+    if (!isPlatformAdminEmail(i.email)) throw forbidden('Only the accounts on the platform-admin list can hold platform roles');
     if (await one('SELECT 1 AS x FROM users WHERE email_idx=$1 OR handle=$2', [blindIndex(i.email), i.handle])) throw conflict('Email or handle already registered');
     const row = await tx(async (c) => {
       const u = (await c.query(

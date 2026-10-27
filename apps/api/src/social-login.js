@@ -5,7 +5,8 @@ import { blindIndex, encrypt, hashPassword } from './crypto.js';
 import { revokeUserSessions, startSession } from './sessions.js';
 import { issueToken } from './account-security.js';
 import { audit } from './helpers.js';
-import { superAdminEmail } from './access.js';
+import { isPlatformAdminEmail } from './access.js';
+import { reconcilePlatformRoles } from './platform.js';
 
 const USER_COLS = 'id, handle, display_name, roles, avatar_emoji, avatar_color, avatar_url, avatar_cutout, access_status';
 /** Identity-provider columns on users (fixed list: the column name is interpolated into SQL). */
@@ -31,7 +32,8 @@ export async function socialSignIn({ provider, sub, email, verified = true, name
   const col = SUB_COL[provider];
   if (!col) throw badRequest('Unknown sign-in provider');
   if (!sub) throw unauthorized('Sign-in could not be verified.');
-  const isSuper = Boolean(email) && verified && email === superAdminEmail();
+  if (email) await reconcilePlatformRoles(console, { email });
+  const isSuper = Boolean(email) && verified && isPlatformAdminEmail(email);
   let u = await one(`SELECT ${USER_COLS} FROM users WHERE ${col} = $1`, [sub]);
   if (!u) {
     if (!email || !verified) throw unauthorized(`Your ${provider === 'apple' ? 'Apple' : 'Google'} account has no verified email address.`);

@@ -37,7 +37,7 @@ const mustCoachTx = async (c, coachId, sportId) => {
   if (!(await c.query("SELECT 1 FROM active_sport_profiles WHERE user_id=$1 AND sport_id=$2 AND role='coach'", [coachId, sportId])).rows.length) throw conflict('That person no longer coaches this sport');
 };
 // the athlete who posted a request, as public fields prefixed athlete_
-const ATHLETE = PUBLIC_USER.split(', ').map((x) => `${x.replace('u.', 'a.')} AS athlete_${x.slice(2)}`).join(', ');
+const ATHLETE = PUBLIC_USER.split(', ').map((x) => (/ AS (\w+)$/.test(x) ? x.replace(/u\./g, 'a.').replace(/ AS (\w+)$/, ' AS athlete_$1') : `${x.replace('u.', 'a.')} AS athlete_${x.slice(2)}`)).join(', ');
 
 // ----------------------------------------------------------------------------------------------- profile + hours
 cap({

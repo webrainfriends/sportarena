@@ -49,7 +49,7 @@ cap({
     }
     if (i.q) where.push(`(u.handle ILIKE ${p(i.q)} || '%' OR u.display_name ILIKE '%' || $${args.length} || '%')`);
     return many(
-      `SELECT u.id, u.handle, u.display_name, u.avatar_emoji, u.avatar_url, u.roles, ${rate} AS rate_hint_cents, ${city} AS city,
+      `SELECT u.id, u.handle, u.display_name, u.avatar_emoji, u.avatar_url, array_remove(array_remove(u.roles,'admin'),'platform_admin') AS roles, ${rate} AS rate_hint_cents, ${city} AS city,
               EXISTS (SELECT 1 FROM event_staff s WHERE s.event_id=$1 AND s.user_id=u.id AND s.status IN ('invited','accepted')) AS on_crew
          FROM users u ${joins.join(' ')} WHERE ${where.join(' AND ')} GROUP BY u.id ORDER BY u.display_name LIMIT ${p(i.limit)} OFFSET ${p(i.offset)}`, args);
   },
