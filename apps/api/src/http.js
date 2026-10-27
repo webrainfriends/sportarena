@@ -73,6 +73,8 @@ export function createApp() {
   app.use('/api/v1/webhooks/signatures', signatureCallbackRouter());
   // Media: streaming upload + file serving (binary, so outside the JSON capability router); base64 uploads get a larger JSON limit on their own path.
   app.use('/api/v1/venues/:id/media', express.json({ limit: '12mb' }));
+  // Race day bulk files (entrant lists, chip lists, timing batches): bounded bigger JSON body on those three paths only.
+  app.use(/^\/api\/v1\/races\/[0-9a-f-]{36}\/(entrants|chips|reads)\/import$/, express.json({ limit: '6mb' }));
   app.use('/api/v1', mediaRouter());
   app.use('/api/v1', marketMediaRouter());
   app.use('/api/v1', insuranceDocsRouter());

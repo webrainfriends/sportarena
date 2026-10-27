@@ -46,6 +46,14 @@
       "expo-apple-authentication",
       "expo-web-browser",
       [
+        "expo-camera",
+        {
+          "cameraPermission": "Scan event accreditation badges at the gate.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
+      ],
+      [
         "expo-image-picker",
         {
           "photosPermission": "Choose photos and videos of your venue to show on its page.",

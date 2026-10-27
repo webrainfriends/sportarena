@@ -5,6 +5,7 @@ import { Switch, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
+import { useNav } from '../nav';
 import { A, AAvatar, ABtn, ACard, AChip, AEmpty, ASection, AT, DeptChip } from '../arena';
 import { EntityPicker } from '../entity-picker';
 import { ErrorBox, Field, Loading, Sheet, T } from '../ui';
@@ -75,6 +76,7 @@ export function DepartmentsTab({ id, isOrg }) {
 }
 
 function DepartmentPanel({ dept, isOrg, user, reload, toast }) {
+  const { push } = useNav();
   const isLead = dept.lead_user_id === user?.id;
   const manage = isOrg || isLead;
   const [pii, setPii] = useState(false);
@@ -119,7 +121,7 @@ function DepartmentPanel({ dept, isOrg, user, reload, toast }) {
           {pii && (r.phone || r.dob || r.id_number) ? <AT size={12} color={A.mute}>{[r.phone, r.dob, r.id_number ? `ID ${r.id_number}` : null].filter(Boolean).join(' · ')}</AT> : null}
           {manage && r.status === 'active' ? (
             <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-              {r.accreditation !== 'issued' ? <AChip label={r.accreditation === 'requested' ? 'Issue badge' : 'Request badge'} color={A.green} onPress={() => act(() => api.post(`/department-members/${r.member_id}/accreditation`, { status: r.accreditation === 'requested' ? 'issued' : 'requested' }), 'Updated')} /> : <AChip label="Revoke badge" color={A.red} onPress={() => act(() => api.post(`/department-members/${r.member_id}/accreditation`, { status: 'revoked' }), 'Badge revoked')} />}
+              <AChip label={r.accreditation === 'none' ? 'Accredit' : 'Accreditation'} color={A.green} onPress={() => push('EventCommand', { id: dept.event_id, tab: 'accreditation' })} />
               <AChip label="Remove" color={A.red} onPress={() => act(() => api.post(`/department-members/${r.member_id}/leave`), 'Removed')} />
             </View>
           ) : null}

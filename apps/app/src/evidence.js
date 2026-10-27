@@ -48,6 +48,32 @@ export async function pickEvidence(source = 'files', { documents = false } = {})
   return { file_name: a.fileName ?? `photo-${Date.now()}.jpg`, data: a.base64, type: a.mimeType ?? 'image/jpeg' };
 }
 
+/** Pick a CSV / text / JSON file and return its text (timing exports, entry lists). Same on the web, iOS, iPadOS and Android. Resolves { name, text } or null when cancelled. */
+export async function pickText() {
+  const LIMIT = 4 * 2 ** 20;
+  if (WEB) {
+    return new Promise((resolve, reject) => {
+      const input = document.createElement('input');
+      input.type = 'file'; input.accept = '.csv,.txt,.tsv,.json,text/csv,text/plain,application/json';
+      input.onchange = async () => {
+        const f = input.files?.[0];
+        if (!f) return resolve(null);
+        if (f.size > LIMIT) return reject(new Error('That file is over 4 MB. Split it into smaller files.'));
+        try { resolve({ name: f.name, text: await f.text() }); } catch (e) { reject(e); }
+      };
+      input.oncancel = () => resolve(null);
+      input.click();
+    });
+  }
+  const DocumentPicker = await import('expo-document-picker');
+  const r = await DocumentPicker.getDocumentAsync({ type: ['text/csv', 'text/comma-separated-values', 'text/plain', 'application/json'], copyToCacheDirectory: true });
+  if (r.canceled || !r.assets?.[0]) return null;
+  const a = r.assets[0];
+  if ((a.size ?? 0) > LIMIT) throw new Error('That file is over 4 MB. Split it into smaller files.');
+  const { File } = await import('expo-file-system');
+  return { name: a.name, text: await new File(a.uri).text() };
+}
+
 /** Save or share text (a CSV): the web downloads it; a phone or tablet writes it to the cache and opens the share sheet. */
 export async function saveText(name, text, type = 'text/csv') {
   if (WEB) { const u = URL.createObjectURL(new Blob([text], { type })); const a = document.createElement('a'); a.href = u; a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(u), 60000); return; }

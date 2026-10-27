@@ -237,6 +237,7 @@ export function Openings() {
     <Screen wide>
       <H1>Open positions</H1>
       {user?.roles?.some((r) => ['referee', 'organizer', 'admin'].includes(r)) ? <Btn small title="🧮 Official scoring: proposals awaiting my review" color={c.violet} onPress={() => nav.push('ScoringTool', { tab: 'awaiting' })} style={{ alignSelf: 'flex-start', marginTop: 6 }} /> : null}
+      {user?.roles?.includes('referee') ? <Btn small title="🏅 My officiating development: grade, assessments & CPD" color={c.paper} ink={c.ink} onPress={() => nav.push('OfficialsDevelopment')} style={{ alignSelf: 'flex-start', marginTop: 6 }} /> : null}
       <T color={c.mute} style={{ marginTop: 4 }}>Referees, scorers, doctors, volunteers, security, stalls and caterers wanted by tournaments, and athletes, groups, teams and events looking for a coach. Apply or answer, share documents and sign the contract here.</T>
       <View style={{ marginVertical: 10 }}><Seg options={[{ value: 'browse', label: 'Browse' }, { value: 'coaching', label: 'Coaching requests' }, { value: 'mine', label: 'My applications' }]} value={tab} onChange={setTab} color={c.pink} /></View>
       {tab === 'coaching' ? (user ? <CoachRequestList defaultAll /> : <T color={c.mute}>Sign in to see athletes, groups, teams and events looking for a coach.</T>) : null}
