@@ -29,6 +29,7 @@ import { Requests, Budget } from './event-plan';
 import { GameRow } from './event-schedule';
 import { AccreditationTab } from './event-accreditation';
 import { RaceDay } from './race-desk';
+import { PublicPageTab } from './event-public';
 
 const STEPS = [['draft', 'Setup'], ['open', 'Open'], ['ongoing', 'Running'], ['completed', 'Ended']];
 const rank = { draft: 0, open: 1, ongoing: 2, paused: 2, completed: 3, cancelled: 3 };
@@ -105,7 +106,7 @@ export function EventCommand({ id, tab: first = 'overview' }) {
     { key: 'boards', label: 'Boards', icon: '🗂️' },
     { key: 'games', label: 'Games', icon: '⚡' },
     ...(isOrg || (D.races.data ?? []).length ? [{ key: 'race', label: 'Race day', icon: '🏃' }] : []),
-    ...(isOrg ? [{ key: 'venue', label: 'Venue', icon: '🏟️' }, { key: 'business', label: 'Business', icon: '💼', badge: waiting }, { key: 'broadcast', label: 'Broadcast', icon: '📡' }] : []),
+    ...(isOrg ? [{ key: 'venue', label: 'Venue', icon: '🏟️' }, { key: 'business', label: 'Business', icon: '💼', badge: waiting }, { key: 'broadcast', label: 'Broadcast', icon: '📡' }, { key: 'public', label: 'Public page', icon: '📣' }] : []),
     { key: 'results', label: 'Results', icon: '🏆' },
   ];
   const P = { id, e, isOrg, go, reload: reloadAll };
@@ -160,6 +161,7 @@ export function EventCommand({ id, tab: first = 'overview' }) {
         </>
       )}
       {tab === 'broadcast' && isOrg && <BroadcastTab id={id} e={e} isOrg={isOrg} games={games} />}
+      {tab === 'public' && isOrg && <PublicPageTab id={id} e={e} games={games} />}
       {tab === 'results' && <ResultsTab id={id} e={e} />}
 
       <ReasonSheet visible={ask === 'pause'} onClose={() => setAsk(null)} title="Pause the event" sub="Live games freeze, and everyone entered or on the crew is told why." presets={['Rain delay', 'Safety issue', 'Power cut', 'Running behind', 'Medical emergency']} confirmLabel="Pause event" tone="sun"

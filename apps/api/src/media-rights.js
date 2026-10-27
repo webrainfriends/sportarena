@@ -64,7 +64,7 @@ export async function partnerFor(user, partnerId, { write = false, c: client } =
   return { ...p, role };
 }
 export const partnerAdmins = async (c, partnerId) => (await c.query(
-  "SELECT om.user_id FROM media_partners m JOIN organisation_members om ON om.organisation_id=m.organisation_id AND om.status='active' AND om.role = ANY($2) WHERE m.id=$1", [partnerId, WRITE_ROLES])).rows.map((r) => r.user_id);
+  "SELECT om.user_id FROM media_partners m JOIN organisation_members om ON om.organisation_id=m.organisation_id AND om.status='active' AND om.role = ANY($2) WHERE m.id=$1 ORDER BY (om.role='owner') DESC, (om.role='admin') DESC, om.user_id", [partnerId, WRITE_ROLES])).rows.map((r) => r.user_id);
 export const eventOrganisers = async (c, ev) => [...new Set([ev.organizer_id, ...(ev.organisation_id ? (await c.query("SELECT user_id FROM organisation_members WHERE organisation_id=$1 AND status='active' AND role IN ('owner','admin')", [ev.organisation_id])).rows.map((r) => r.user_id) : [])])];
 
 // ------------------------------------------------------------------ scope arithmetic (packages, licences and assets all use the same shapes)

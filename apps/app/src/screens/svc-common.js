@@ -1,7 +1,7 @@
 // Shared pieces for the supplier workspace and the buyer procurement screens (#458): catalogue-driven forms, status tags, KPI tiles and PDF buttons.
 // Everything here calls the API (capabilities); no business rule lives in the app.
 import React from 'react';
-import { View } from 'react-native';
+import { Platform, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { c } from '../theme';
@@ -90,3 +90,46 @@ export const Pick = ({ items, value, onPick, all }) => (
 );
 export const Tabs = ({ tabs, value, onChange }) => <Wrap gap={6}>{tabs.map(([k, l]) => <Chip key={k} label={l} active={value === k} onPress={() => onChange(k)} />)}</Wrap>;
 export const Note = ({ children }) => <T size={12} color={c.mute}>{children}</T>;
+
+/** Save or share a file that came back from the API as text / base64 (a background export). */
+export async function shareFile(name, mime, data, encoding) {
+  const bytes = encoding === 'base64' ? Uint8Array.from(atob(data), (ch) => ch.charCodeAt(0)) : new TextEncoder().encode(data);
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    const url = URL.createObjectURL(new Blob([bytes], { type: mime }));
+    const a = document.createElement('a'); a.href = url; a.download = name; a.rel = 'noopener'; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    return;
+  }
+  const { File, Paths } = await import('expo-file-system');
+  const Sharing = await import('expo-sharing');
+  const file = new File(Paths.cache, String(name).replace(/[^A-Za-z0-9._-]/g, '_'));
+  file.create({ overwrite: true }); file.write(bytes);
+  if (!(await Sharing.isAvailableAsync())) throw new Error('This device cannot share files from here. Use the web app.');
+  await Sharing.shareAsync(file.uri, { mimeType: mime.split(';')[0], dialogTitle: name });
+}
+
+/** Background exports of the reports: ask for CSV / XLSX / PDF, watch them finish, download or share. */
+export function ExportsPanel({ side, scopeId }) {
+  const { toast } = useSession();
+  const list = useLoad(() => api.get('/service-reports/exports', { limit: 10 }), [scopeId]);
+  const [fmt, setFmt] = React.useState('csv');
+  const mine = (list.data ?? []).filter((x) => x.scope_id === scopeId);
+  const ask = async (report) => { try { await api.post('/service-reports/exports', { side, scope_id: scopeId, report, format: fmt }); toast('Export started — it appears below when ready'); list.reload(); } catch (e) { toast('' + e.message); } };
+  const get = async (x) => { try { const f = await api.get(`/service-reports/exports/${x.id}`); await shareFile(f.filename, f.content_type, f.data, f.encoding); } catch (e) { toast('' + e.message); } };
+  return (
+    <View style={{ gap: 8 }}>
+      <T weight="800">Background exports</T>
+      <Note>Large reports are built in the background (up to 100,000 rows) and kept private to you.</Note>
+      <Wrap>{['csv', 'xlsx', 'pdf'].map((f) => <Chip key={f} label={f.toUpperCase()} active={fmt === f} onPress={() => setFmt(f)} />)}</Wrap>
+      <Wrap>{['dashboard', 'orders', 'invoices', 'payments', 'tax'].map((r) => <Btn key={r} small color={c.paper} ink={c.ink} title={`Export ${r}`} onPress={() => ask(r)} />)}</Wrap>
+      {mine.map((x) => (
+        <Card key={x.id} pad={10}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, justifyContent: 'space-between' }}>
+            <View style={{ flex: 1 }}><T size={13} weight="700">{label(x.report)} · {x.format.toUpperCase()}</T><T size={12} color={c.mute}>{x.status === 'ready' ? `${x.row_count} rows${x.truncated ? ' (truncated)' : ''}` : x.status === 'failed' ? x.error : 'building…'}</T></View>
+            {x.status === 'ready' ? <Btn small title="Download" onPress={() => get(x)} /> : <Btn small color={c.paper} ink={c.ink} title="Refresh" onPress={list.reload} />}
+          </View>
+        </Card>
+      ))}
+    </View>
+  );
+}

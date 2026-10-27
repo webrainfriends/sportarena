@@ -246,6 +246,41 @@ test('nominations respect real authority: team managers, department leads and th
   assert.ok((await pool.query("SELECT 1 FROM audit_log WHERE action='read_accreditation_note' AND entity_id=$1", [rej.id])).rowCount, 'reading it is audit-logged');
 });
 
+test('an accepted vendor nominates its own crew, and only its own', async () => {
+  const org = await signup(['organizer']), shop = await signup(['supplier']), shop2 = await signup(['supplier']), cook = await signup(['athlete']), stranger = await signup(['athlete']);
+  const ev = await newEvent(org);
+  const vend = async (u) => { const v = must(await api('POST', `/events/${ev.id}/vendors`, { token: org.token, body: { kind: 'catering', vendor_user_id: u.id } }), 201); must(await api('POST', `/event-vendors/${v.id}/respond`, { token: u.token, body: { accept: true } })); return v; };
+  const v1 = await vend(shop), v2 = await vend(shop2);
+  const stall = await category(org, ev, { name: 'Stall crew', eligible: ['vendor'], approval: 'organiser' });
+  const nom = (u, body) => api('POST', `/events/${ev.id}/accreditation/nominations`, { token: u.token, body: { category_id: stall.id, ...body } });
+  assert.equal((await nom(shop, { user_ids: [cook.id] })).status, 403, 'say which vendor');
+  assert.equal((await nom(shop, { user_ids: [cook.id], vendor_id: v2.id })).status, 403, 'not their vendor record');
+  assert.equal((await nom(stranger, { user_ids: [cook.id], vendor_id: v1.id })).status, 403, 'not a vendor');
+  const r = must(await nom(shop, { user_ids: [cook.id, shop.id], vendor_id: v1.id }), 201);
+  assert.equal(r.added.length, 1);
+  assert.match(r.skipped[0].reason, /yourself/);
+  const accId = r.added[0].accreditation_id;
+  assert.equal(r.added[0].status, 'submitted', 'the organiser still approves');
+  assert.equal(must(await api('GET', `/events/${ev.id}/accreditations`, { token: shop.token })).length, 1, 'the vendor sees its crew');
+  assert.equal((await api('GET', `/events/${ev.id}/accreditations`, { token: shop2.token })).body.length, 0, 'another vendor does not');
+  assert.equal((await api('POST', `/accreditations/${accId}/decision`, { token: shop.token, body: { decision: 'approve' } })).status, 403, 'a vendor nominates, never approves');
+  must(await api('POST', `/accreditations/${accId}/decision`, { token: org.token, body: { decision: 'approve' } }));
+  const t = (await myBadge(cook, accId)).credential.token;
+  assert.equal(must(await scan(org, ev, t)).result, 'valid');
+  const cand = must(await api('GET', `/events/${ev.id}/accreditation/candidates`, { token: shop.token, query: { category_id: stall.id } }));
+  assert.deepEqual(cand.groups.map((g) => g.kind), ['vendor']);
+  assert.equal(cand.groups[0].people[0].user_id, cook.id);
+  // a person who is not on any crew is not eligible on their own
+  assert.equal((await api('POST', `/accreditation/categories/${stall.id}/apply`, { token: stranger.token })).status, 403, 'not open to apply');
+  // taking them off the crew ends the badge at once and keeps the record
+  const crew = (await pool.query('SELECT id FROM event_vendor_crew WHERE user_id=$1', [cook.id])).rows[0];
+  assert.equal((await api('POST', `/vendor-crew/${crew.id}/remove`, { token: shop2.token })).status, 404);
+  assert.equal(must(await api('POST', `/vendor-crew/${crew.id}/remove`, { token: shop.token })).withdrawn, 1);
+  assert.equal(must(await api('POST', `/vendor-crew/${crew.id}/remove`, { token: shop.token })).withdrawn, 0, 'repeat is harmless');
+  assert.equal(must(await scan(org, ev, t)).result, 'invalid', 'withdrawn');
+  assert.equal((await pool.query('SELECT 1 FROM event_vendor_crew WHERE id=$1 AND removed_at IS NOT NULL', [crew.id])).rowCount, 1, 'kept, not deleted');
+});
+
 test('prerequisites and capacity are enforced for everyone', async () => {
   const org = await signup(['organizer']), a = await signup(['athlete']), b = await signup(['athlete']);
   const ev = await newEvent(org);

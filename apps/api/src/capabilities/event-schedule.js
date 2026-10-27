@@ -9,6 +9,7 @@ import { reserve } from './venues.js';
 import { loadVenueCtx, loadBusy, daySlots, lockResources } from '../booking/engine.js';
 import { toLocal, fromLocal, addDays, weekdayOf } from '../booking/time.js';
 import { buildBracket, ROUND_LABEL, MAX_KNOCKOUT_TEAMS } from '../tournament/bracket.js';
+import { assertEventReadable, bracketOf } from '../spectator.js';
 import { planSchedule, roundRobinPairs } from '../tournament/scheduler.js';
 import { seededTeams, acceptedTeams } from '../tournament/data.js';
 import { standings, audit } from '../helpers.js';
@@ -259,22 +260,13 @@ cap({
 });
 
 // ---------------------------------------------------------------- bracket view
-const ROUND_ORDER = ['round_of_32', 'round_of_16', 'quarter', 'semi', 'final', 'third_place'];
-
 cap({
   name: 'get_event_bracket', method: 'GET', path: '/events/:id/bracket', tag: 'Tournament', auth: 'public',
   summary: 'The knockout bracket as rounds of games (teams or placeholders, times, courts, scores, winners), plus the champion once the final is played.',
   input: z.object({ id }),
-  async handler(_, i) {
+  async handler({ user }, i) {
     await mustFind('events', i.id, 'id');
-    const rows = await many(
-      `SELECT f.id, f.round, f.round_kind, f.bracket_slot AS slot, f.status, f.scheduled_at, f.duration_min, f.home_team_id, f.away_team_id, f.home_score, f.away_score, f.winner_team_id,
-              f.home_placeholder, f.away_placeholder, f.win_feeds_fixture_id, f.lose_feeds_fixture_id, h.name AS home_name, h.emoji AS home_emoji, a.name AS away_name, a.emoji AS away_emoji, r.name AS resource_name, ve.timezone AS venue_timezone
-         FROM fixtures f LEFT JOIN teams h ON h.id=f.home_team_id LEFT JOIN teams a ON a.id=f.away_team_id LEFT JOIN resources r ON r.id=f.resource_id LEFT JOIN venues ve ON ve.id=r.venue_id
-        WHERE f.event_id=$1 AND f.round_kind IS NOT NULL AND f.round_kind <> 'group' AND f.status <> 'cancelled' ORDER BY f.scheduled_at, f.bracket_slot`, [i.id]);
-    const rounds = ROUND_ORDER.map((kind) => ({ kind, label: ROUND_LABEL[kind], games: rows.filter((r) => r.round_kind === kind).sort((x, y) => x.slot - y.slot) })).filter((r) => r.games.length);
-    const final = rows.find((r) => r.round_kind === 'final' && r.status === 'completed');
-    const champion = final ? { team_id: final.winner_team_id, name: final.winner_team_id === final.home_team_id ? final.home_name : final.away_name } : null;
-    return { rounds, champion };
+    await assertEventReadable(user, i.id);
+    return bracketOf(i.id);
   },
 });

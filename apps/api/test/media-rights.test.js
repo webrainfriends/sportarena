@@ -9,6 +9,7 @@ const { pool } = await import('../src/db.js');
 const { migrate } = await import('../src/migrate.js');
 const { createApp } = await import('../src/http.js');
 const { runMediaRightsSweeps } = await import('../src/media-rights-sweeps.js');
+const { describePurpose, settle } = await import('../src/payments/service.js');
 
 let server, base, n = 0;
 const api = async (method, path, { token, body, query, raw } = {}) => {
@@ -500,7 +501,8 @@ test('reports reconcile to the rights records, keep currencies apart and say wha
   assert.equal((await api('GET', `/events/${ev.id}/media/reports/revenue`, { token: outsider.token })).status, 403);
   const rev = (await report('revenue')).data;
   assert.deepEqual(rev.currencies.map((c) => [c.currency, c.contracted_minor]).sort(), [['EUR', 250000], ['USD', 1000000]], 'one line per currency, never added together');
-  assert.equal(rev.invoiced.available, false); assert.equal(rev.collected.available, false); assert.match(rev.note, /not reported rather than guessed/);
+  assert.equal(rev.currencies.find((c) => c.currency === 'USD').invoiced_minor, 0);
+  assert.equal(rev.currencies.find((c) => c.currency === 'USD').not_yet_invoiced_minor, 1000000, 'contracted but not yet invoiced');
   const inv = (await report('rights_inventory')).data;
   assert.ok(inv.rights.find((r) => r.right === 'live_video').licensed >= 1);
   const cov = (await report('partner_coverage')).data;
@@ -513,6 +515,57 @@ test('reports reconcile to the rights records, keep currencies apart and say wha
   await report('published_assets'); await report('embargo_takedown');
 });
 
+test('rights-fee billing: invoiced never exceeds contracted, paid online or recorded offline, one currency at a time, refund and cancellation are honest', async () => {
+  const org = await signup(), pu = await signup(), pu2 = await signup(), spy = await signup();
+  const ev = await mkEvent(org), partner = await partnerOrg(pu);
+  await q("INSERT INTO organisation_members(organisation_id, user_id, role, status) VALUES ($1,$2,'admin','active')", [partner.org.id, pu2.id]);
+  const { l } = await activeLicence(org, pu, ev, partner, {}, { fee_minor: 900000, currency: 'EUR' });
+  const fee = (u, body = {}) => api('POST', `/media/licences/${l.id}/fees`, { token: u.token, body });
+  assert.equal((await fee(pu, { amount_minor: 1000 })).status, 403, 'only the organiser invoices');
+  assert.equal((await fee(spy)).status, 404);
+  assert.equal(code(await fee(org, { amount_minor: 900001 })), 'exceeds_contracted_fee');
+  const first = must(await fee(org, { amount_minor: 300000, description: 'Deposit', due_on: iso(-2).slice(0, 10) }), 201);
+  assert.match(first.number, /^MRF-/); assert.equal(first.currency, 'EUR'); assert.equal(first.overdue, true);
+  assert.equal(first.payer_id, pu.id, 'defaults to the first owner/admin of the partner');
+  assert.equal((await fee(org, { amount_minor: 100, payer_id: spy.id })).status, 400, 'the payer must be a partner member who can act');
+  let list = must(await api('GET', `/media/licences/${l.id}/fees`, { token: pu.token }));
+  assert.deepEqual([list.totals.contracted_minor, list.totals.invoiced_minor, list.totals.collected_minor, list.totals.outstanding_minor, list.totals.not_yet_invoiced_minor], [900000, 300000, 0, 300000, 600000]);
+  assert.equal((await api('GET', `/media/licences/${l.id}/fees`, { token: spy.token })).status, 404);
+  // only the payer can pay; another partner admin can take it over
+  assert.equal((await describePurpose(pool, 'media_rights_fee', first.id)).payerId, pu.id);
+  assert.equal((await api('POST', `/media/fees/${first.id}/payer`, { token: org.token })).status, 403);
+  must(await api('POST', `/media/fees/${first.id}/payer`, { token: pu2.token }));
+  const d = await describePurpose(pool, 'media_rights_fee', first.id);
+  assert.equal(d.payerId, pu2.id); assert.equal(d.currency, 'EUR'); assert.equal(d.amount, 300000); assert.equal(d.payable, true);
+  // online payment settles through the payments module
+  const pay = (await q("INSERT INTO payments(payer_id, provider, purpose_type, purpose_id, amount_cents, currency) VALUES ($1,'stripe','media_rights_fee',$2,300000,'EUR') RETURNING id", [pu2.id, first.id]))[0];
+  assert.equal((await settle(pay.id, { paid: true, amount: 300000, currency: 'EUR', paymentRef: 'pi_test' })).status, 'paid');
+  assert.equal((await q('SELECT status, paid_method FROM mr_fees WHERE id=$1', [first.id]))[0].paid_method, 'online');
+  assert.equal((await describePurpose(pool, 'media_rights_fee', first.id)).payable, false, 'already paid');
+  // offline receipt, cancellation and re-issue
+  const second = must(await fee(org, { amount_minor: 400000 }), 201);
+  assert.equal((await api('POST', `/media/fees/${second.id}/received`, { token: pu.token, body: { reference: 'x1' } })).status, 403);
+  must(await api('POST', `/media/fees/${second.id}/received`, { token: org.token, body: { reference: 'Bank transfer 2291' } }));
+  assert.equal((await api('POST', `/media/fees/${second.id}/cancel`, { token: org.token, body: { reason: 'Mistake' } })).status, 409, 'a paid fee cannot be cancelled');
+  const third = must(await fee(org, { amount_minor: 200000 }), 201);
+  must(await api('POST', `/media/fees/${third.id}/cancel`, { token: org.token, body: { reason: 'Re-issuing with a due date' } }));
+  assert.equal((await describePurpose(pool, 'media_rights_fee', third.id)).payable, false);
+  list = must(await api('GET', `/media/licences/${l.id}/fees`, { token: org.token }));
+  assert.deepEqual([list.totals.invoiced_minor, list.totals.collected_minor, list.totals.outstanding_minor, list.totals.not_yet_invoiced_minor], [700000, 700000, 0, 200000], 'cancelled fees do not count as invoiced');
+  const rev = (await api('GET', `/events/${ev.id}/media/reports/revenue`, { token: org.token })).body.data.currencies;
+  const eur = rev.find((c) => c.currency === 'EUR');
+  assert.deepEqual([eur.contracted_minor, eur.invoiced_minor, eur.collected_minor, eur.collected_online_minor, eur.collected_offline_minor, eur.not_yet_invoiced_minor], [900000, 700000, 700000, 300000, 400000, 200000]);
+  assert.equal(rev.length, 1, 'no other currency leaks in');
+  // refund of the whole online payment marks the fee refunded and takes it out of collected
+  await q("UPDATE payments SET refunded_cents = amount_cents, status='refunded' WHERE id=$1", [pay.id]);
+  const { syncRefunds } = await import('../src/settlement.js');
+  await syncRefunds(pool, pay.id);
+  assert.equal((await q('SELECT status FROM mr_fees WHERE id=$1', [first.id]))[0].status, 'refunded');
+  const after = (await api('GET', `/events/${ev.id}/media/reports/revenue`, { token: org.token })).body.data.currencies.find((c) => c.currency === 'EUR');
+  assert.deepEqual([after.collected_minor, after.refunded_minor], [400000, 300000]);
+  assert.ok((await q("SELECT count(*)::int AS n FROM mr_log WHERE subject_type='fee' AND subject_id=$1", [first.id]))[0].n >= 3);
+});
+
 test('REST / OpenAPI / MCP parity: every media-rights capability is exposed on all three with its scope', async () => {
   const spec = (await api('GET', '/openapi.json')).body;
   const tools = (await rpc('tools/list', {}, (await signup()).token)).tools.map((t) => t.name);
@@ -520,7 +573,7 @@ test('REST / OpenAPI / MCP parity: every media-rights capability is exposed on a
     'decide_media_licence', 'link_media_licence_records', 'renew_media_licence', 'get_media_licence', 'list_media_licences', 'get_media_workspace', 'save_crew_assignment', 'respond_crew_assignment', 'release_crew_assignment',
     'list_media_crew', 'save_run_item', 'log_media_incident', 'resolve_media_incident', 'get_call_sheet', 'list_stream_providers', 'save_stream', 'set_stream_state', 'list_event_streams', 'get_fixture_streams',
     'save_media_collection', 'list_media_collections', 'set_collection_assets', 'register_media_asset', 'update_media_asset_rights', 'set_media_asset_status', 'list_media_assets', 'get_media_asset',
-    'list_my_media_assignments', 'list_open_rights_packages', 'save_media_deliverable', 'set_media_deliverable_status', 'list_media_deliverables', 'record_media_measurement', 'grant_data_feed', 'issue_feed_credential', 'revoke_data_feed', 'list_data_feeds', 'get_feed_usage', 'get_media_feed', 'get_media_report'];
+    'list_my_media_assignments', 'list_open_rights_packages', 'issue_media_fee', 'list_media_fees', 'take_over_media_fee', 'cancel_media_fee', 'record_media_fee_payment', 'save_media_deliverable', 'set_media_deliverable_status', 'list_media_deliverables', 'record_media_measurement', 'grant_data_feed', 'issue_feed_credential', 'revoke_data_feed', 'list_data_feeds', 'get_feed_usage', 'get_media_feed', 'get_media_report'];
   for (const name of names) assert.ok(tools.includes(name), `MCP tool ${name}`);
   const ops = Object.values(spec.paths).flatMap((p) => Object.values(p));
   for (const name of names) assert.ok(ops.some((o) => o.operationId === name), `OpenAPI operation ${name}`);

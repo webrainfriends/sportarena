@@ -10,10 +10,10 @@ import { useNav } from '../nav';
 import { Btn, Card, Chip, Empty, ErrorBox, H1, Loading, Row, Screen, Section, Sheet, T } from '../ui';
 import { localToIso } from '../vtime';
 import { useDo } from './console-utils';
-import { DocButton, Kpi, Kv, Note, Status, Tabs, Wrap, catLabel, collectScope, day, label, money, scopeFields, useCatalogue, when } from './svc-common';
+import { DocButton, ExportsPanel, Kpi, Kv, Note, Status, Tabs, Wrap, catLabel, collectScope, day, label, money, scopeFields, useCatalogue, when } from './svc-common';
 
 const TABS = [['overview', 'Overview'], ['offerings', 'Offerings'], ['quotes', 'Opportunities & quotes'], ['orders', 'Orders & jobs'], ['calendar', 'Calendar'], ['customers', 'Customers'], ['finance', 'Finance'], ['reports', 'Reports & documents'], ['team', 'Team & credentials']];
-const CURRENCIES = ['INR', 'USD', 'EUR', 'GBP', 'AED', 'SGD', 'AUD'];
+const CURRENCIES = ['INR', 'USD', 'EUR', 'GBP', 'AED', 'SGD', 'AUD', 'KWD', 'BHD', 'OMR'];
 
 export function SupplierWorkspace() {
   const profiles = useLoad(() => api.get('/me/supplier-profiles'), []);
@@ -103,7 +103,7 @@ function Offerings({ p, cat }) {
     { key: 'mode', label: 'What you supply', type: 'choice', options: [{ value: 'service', label: 'Service' }, { value: 'goods', label: 'Goods' }, { value: 'mixed', label: 'Mixed' }] },
     { key: 'pricing_model', label: 'Pricing', type: 'choice', options: [{ value: 'quote_only', label: 'Quote only' }, { value: 'fixed', label: 'Fixed price' }] },
     { key: 'unit', label: 'Priced per', type: 'chips', options: (v) => (cat.categories.find((k) => k.slug === v.category)?.units ?? []).map((u) => ({ value: u, label: label(u) })) },
-    { key: 'currency', label: 'Currency', type: 'currency', default: p.currencies?.[0] ?? 'INR' },
+    { key: 'currency', label: 'Currency', type: 'currency', endpoint: '/service-currencies', default: p.currencies?.[0] ?? 'INR' },
     { key: 'rate', label: 'Rate per unit', type: 'money', currency: (v) => v.currency ?? 'INR', show: (v) => v.pricing_model === 'fixed' },
     { key: 'min_quantity', label: 'Minimum order', type: 'stepper', min: 1, max: 100000, default: 1 },
     { key: 'inclusions', label: 'Included (one per line)', type: 'multiline', optional: true }, { key: 'exclusions', label: 'Not included (one per line)', type: 'multiline', optional: true },
@@ -357,8 +357,9 @@ function Reports({ p }) {
       <Section title="Tax summary">{x.finance.tax.length ? x.finance.tax.map((t) => <Row key={t.currency + t.tax_code} title={`${t.currency} · ${t.tax_code}`} sub={`net ${money(t.net_minor, t.currency)}`} right={<T weight="800">{money(t.tax_minor, t.currency)}</T>} />) : <Note>No invoices in this period.</Note>}</Section>
       <Wrap>
         {['orders', 'invoices', 'payments', 'tax'].map((k) => <Btn key={k} small color={c.paper} ink={c.ink} title={`CSV: ${k}`} onPress={async () => setCsv(await api.get('/service-reports/export', { side: 'supplier', scope_id: p.id, report: k }))} />)}
-        <DocButton type="statement" id={p.id} title="Statement PDF" />
+        <DocButton type="statement" id={p.id} title="Statement PDF" /><DocButton type="supplier_report" id={p.id} title="Dashboard PDF" small={false} />
       </Wrap>
+      <ExportsPanel side="supplier" scopeId={p.id} />
       <Sheet visible={!!csv} onClose={() => setCsv(null)} title={csv?.filename ?? ''}><Note>{csv?.rows} rows{csv?.truncated ? ' (truncated — narrow the dates)' : ''}. Copy the text into a spreadsheet.</Note><T size={11} selectable>{csv?.csv}</T></Sheet>
       <Note>{Object.values(x.definitions).slice(0, 3).join(' · ')}</Note>
     </>
