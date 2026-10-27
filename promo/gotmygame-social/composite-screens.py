@@ -18,8 +18,8 @@ SCENES = {
     'venue':      ['venues', 'schedule'],
     'coach':      ['coaches'],
     'athlete':    ['player', 'insights', 'workspace'],
-    'physio':     ['health', 'health_pros'],
-    'doctor':     ['doctor'],
+    'physio':     ['health_l', 'health_pros_l'],   # phone held sideways: landscape captures
+    'doctor':     ['doctor_t'],                    # a tablet: tablet-size capture
     'learning':   ['learn'],
     'sponsor':    ['sponsor'],
     'team':       ['explore_teams', 'explore_people'],

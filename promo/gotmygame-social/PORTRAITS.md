@@ -33,3 +33,11 @@ REEL_HTML=ad-reel-hands.html ./renderall-reel.sh work music.wav gotmygame-instag
 ```
 
 `ad-reel.html` is the earlier cut (people with a phone mock-up beside them); `ad-reel-hands.html` is the screens-in-hand cut.
+
+## Notes from the run that produced the delivered Reel
+
+* The physio's phone is held sideways and the doctor holds a tablet, so those two use landscape / tablet captures
+  (`capture-landscape.cjs` -> `shots/health_l.jpg`, `health_pros_l.jpg`, `doctor_t.jpg`); the portrait captures would be tiny there.
+* The generator put a Nike logo on the athlete's jacket in the doctor portrait; it was painted out (`people/doctor.jpg`). Check every new
+  portrait for brand marks before use.
+* Figma AI credits are capped per day: the second batch of portraits stopped at the limit (resets 00:00 UTC).

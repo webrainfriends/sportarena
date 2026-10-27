@@ -63,15 +63,15 @@ S({photo:'tournament',cap:'Tournaments',title:'Run the whole<br><span style="col
 S({photo:'venue',cap:'Venues',title:'Book the court.<br><span style="color:'+C.lav+'">Sorted.</span>',shots:[['venues',t0+.3],['schedule',t0+1.8]],pills:[['📍 Live availability'],['🔁 Recurring']],right:1});
 S({photo:'coach',cap:'Coaching',title:'Hire a coach<br><span style="color:'+C.lav+'">who gets you.</span>',shots:[['coaches',t0+.3]],pills:[['🎓 Post a request'],['⭐ Reviews & rates']]});
 S({photo:'athlete',cap:'Performance',title:'Your story,<br><span style="color:'+C.lav+'">in numbers.</span>',shots:[['player',t0+.3],['insights',t0+1.8]],pills:[['⚽ Matches & stats'],['📈 Compare']],right:1});
-S({photo:'physio',cap:'Physio',title:'Recover.<br><span style="color:'+C.lav+'">Ready to go.</span>',shots:[['health',t0+.3],['health_pros',t0+1.8]],pills:[['💚 Readiness score','g'],['💆 Book a physio']]});
-S({photo:'doctor',cap:'Doctors',title:'Doctors you<br><span style="color:'+C.lav+'">can trust.</span>',shots:[['doctor',t0+.3]],pills:[['🩺 Consent-first records'],['🔐 Every read logged']],right:1});
+S({photo:'physio',cap:'Physio',title:'Recover.<br><span style="color:'+C.lav+'">Ready to go.</span>',shots:[['health_l',t0+.3],['health_pros_l',t0+1.8]],pills:[['💚 Readiness score','g'],['💆 Book a physio']]});
+S({photo:'doctor',cap:'Doctors',title:'Doctors you<br><span style="color:'+C.lav+'">can trust.</span>',shots:[['doctor_t',t0+.3]],pills:[['🩺 Consent-first records'],['🔐 Every read logged']],right:1});
 S({photo:'learning',cap:'Learning',title:'Turn your sport<br><span style="color:'+C.lav+'">into a degree.</span>',shots:[['learn',t0+.3]],pills:[['🎓 Colleges & courses'],['📚 Rules & plans']]});
 S({photo:'sponsor',cap:'Sponsors',title:'Back the game.<br><span style="color:'+C.lav+'">Fund the dream.</span>',shots:[['sponsor',t0+.3]],pills:[['💎 Offers & deals'],['📊 Reports']],right:1});
 S({photo:'athlete',cap:'Get noticed',title:'Share your<br><span style="color:'+C.lav+'">sporting CV.</span>',shots:[['workspace',t0+.3]],pills:[['🪪 Player passport'],['🔗 A link you control']]});
 const END=t0; // CTA starts here
 /* CTA: faces marquee + call to action */
 add({s:END-.15,e:END+4.7,cls:'full',css:{background:GR.hero},fi:.4,fo:.01});
-const FIRST={home:'home',tournament:'event_console',venue:'venues',coach:'coaches',athlete:'player',physio:'health',doctor:'doctor',learning:'learn',sponsor:'sponsor',team:'explore_teams'};
+const FIRST={home:'home',tournament:'event_console',venue:'venues',coach:'coaches',athlete:'player',physio:'health_l',doctor:'doctor_t',learning:'learn',sponsor:'sponsor',team:'explore_teams'};
 const faces=['home','tournament','physio','doctor','learning','sponsor','coach','venue','athlete','team'];
 [[70,1],[480,-1]].forEach(([y,dir],r)=>{
   const row=faces.slice(r*5).concat(faces.slice(0,r*5));
