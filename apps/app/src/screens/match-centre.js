@@ -15,7 +15,7 @@ import { GamesByDay, SchedulePlanner } from './event-schedule';
 import { AppearancesPanel } from './appearances';
 import { CricketScorer } from './cricket-scorer';
 import { useScoreQueue } from '../scorer/queue';
-import { BattingOrderSheet, ConflictSheet, CorrectSheet, FootballExtras, ProjectionCard, RacketPad, ServerPick, SyncLine } from '../scorer/panels';
+import { AddedTimeBar, BattingOrderSheet, CardsPad, ConflictSheet, CorrectSheet, FootballExtras, OutcomePad, ProjectionCard, RacketPad, ServerPick, SyncLine } from '../scorer/panels';
 
 const EXTRA = { wd: 'Wide', nb: 'No-ball', b: 'Bye', lb: 'Leg bye', pen: 'Penalty' };
 /** What a cricket ball was, in the scorer's words: so the timeline can be read, and a ball found to correct. */
@@ -25,6 +25,8 @@ const ballText = (p = {}) => {
   if (p.extra) return `${EXTRA[p.extra] ?? p.extra}${runs ? ` +${runs}` : ''}`;
   return p.runs === 4 ? 'FOUR' : p.runs === 6 ? 'SIX' : p.runs ? `${p.runs} run${p.runs === 1 ? '' : 's'}` : 'Dot ball';
 };
+/** Events whose substance is in their payload: they are undone and entered again, never corrected by changing a side or an action. */
+const NO_CORRECT = new Set(['ball', 'innings_end', 'declare', 'follow_on', 'lineup', 'server', 'round_card', 'result', 'added_time', 'period_start', 'period_end', 'note']);
 const clockOf = (s) => (s == null ? '' : `${Math.floor(s / 60)}'`);
 const LIVE_STATE = { scheduled: 'scheduled', live: 'live', provisional: 'finished', final: 'completed', corrected: 'completed' };
 const LIVE_LABEL = { provisional: 'PROVISIONAL', final: 'FINAL', corrected: 'CORRECTED', live: 'LIVE', scheduled: 'UPCOMING' };
@@ -81,7 +83,7 @@ export function MatchCentre({ id }) {
   const events = g.events;
   const lastLogged = [...events].reverse().find((e) => !e.voided_at && !['period_start', 'period_end', 'note'].includes(e.kind));
   const label = (kind) => [...(rs.events ?? []), ...(rs.stats ?? [])].find((x) => x.kind === kind)?.label
-    ?? ({ point: 'Point', ball: 'Ball', server: 'Server set', retire: 'Retirement', walkover: 'Walkover', shootout_goal: 'Shoot-out: scored', shootout_miss: 'Shoot-out: missed', lineup: 'Batting order', innings_end: 'Innings ended', declare: 'Declared', period_start: 'Period started', period_end: 'Period ended' }[kind] ?? kind.replace(/_/g, ' '));
+    ?? ({ point: 'Point', ball: 'Ball', server: 'Server set', retire: 'Retirement', walkover: 'Walkover', shootout_goal: 'Shoot-out: scored', shootout_miss: 'Shoot-out: missed', lineup: 'Batting order', innings_end: 'Innings ended', declare: 'Declared', period_start: 'Period started', period_end: 'Period ended', added_time: 'Added time', round_card: 'Round card', result: 'Result' }[kind] ?? kind.replace(/_/g, ' '));
   const live = f.status === 'live';
   const between = rs.kind === 'points_events' && ph.period > 0 && !ph.period_open && !ph.extra_time_available && !ph.shootout_available;
   const canPoint = live && ph.can_score && !between && !(g.score.shootout?.started);
@@ -89,7 +91,10 @@ export function MatchCentre({ id }) {
   const sides = ['home', 'away'];
   const lineRows = (lineup.data?.appearances ?? []).filter((a) => !a.hidden && ['started', 'substitute_on'].includes(a.status) && a.off_clock_seconds == null)
     .map((a) => ({ ...a, side: a.team_id === f.home?.id ? 'home' : a.team_id === f.away?.id ? 'away' : null })).filter((a) => a.side);
-  const what = (e) => (e.kind === 'ball' ? ballText(e.payload) : label(e.kind));
+  const what = (e) => (e.kind === 'ball' ? ballText(e.payload)
+    : e.kind === 'round_card' ? `Judge ${e.payload?.judge} · round ${e.payload?.round}: ${e.payload?.home}–${e.payload?.away}`
+    : e.kind === 'result' ? (e.payload?.outcome === 'draw' ? 'Drawn' : `${names[e.payload?.outcome] ?? ''} won`) + (e.payload?.method ? ` · ${e.payload.method}` : '')
+    : e.kind === 'added_time' ? `Added time: ${e.payload?.minutes}′` : label(e.kind));
   const describe = (e) => `${what(e)}${e.side ? ` · ${names[e.side]}` : ''}`;
 
   // the cricket scorebook is the existing component; it is handed the fixture's live state in the shape it already reads
@@ -111,6 +116,7 @@ export function MatchCentre({ id }) {
           ) : null}
           {between ? <AT size={12.5} weight="700" color={A.sun}>Between {rs.periods.label.toLowerCase()}s: start the next one to score.</AT> : null}
           {rs.kind === 'sets' && !ph.can_score ? <AT size={13} weight="800" color={A.green}>Match decided. Tap Full time.</AT> : null}
+          {rs.kind === 'points_events' ? <AddedTimeBar g={g} disabled={busy} onLog={log} /> : null}
           {rs.kind === 'points_events' ? <FootballExtras g={g} names={names} disabled={busy} onLog={log} /> : null}
 
           {rs.kind === 'cricket' ? (
@@ -125,11 +131,10 @@ export function MatchCentre({ id }) {
               <RacketPad g={g} names={names} disabled={busy} onLog={log} />
               {sides.map((s) => <PlayerQuick key={s} rows={lineRows} side={s} name={names[s]} value={who[s]} onChange={(x) => setWho((w) => ({ ...w, [s]: x }))} />)}
             </>
+          ) : rs.cards ? (
+            <CardsPad g={g} names={names} disabled={busy} onLog={log} />
           ) : rs.kind === 'manual' ? (
-            <ACard pad={14} style={{ gap: 6 }}>
-              <AT size={15} weight="900">Scored by totals or by judges</AT>
-              <AT size={13} color={A.mute}>{`This sport has no running score to tap. Run the clock${rs.stats?.length ? ` and note ${rs.stats.map((x) => x.label.toLowerCase()).join(', ')}` : ''} here, then enter the result on the score sheet at full time.`}</AT>
-            </ACard>
+            <OutcomePad g={g} names={names} disabled={busy} onLog={log} />
           ) : (
             <>
               <ASection title="Score" sub={rs.kind === 'sets' ? 'Every rally point' : 'Tap the moment it happens'} />
@@ -148,7 +153,7 @@ export function MatchCentre({ id }) {
             </>
           )}
 
-          {rs.stats?.length && rs.kind !== 'cricket' ? (
+          {rs.stats?.length && rs.kind !== 'cricket' && (rs.kind !== 'manual' || rs.cards) ? (
             <>
               <ASection title="Track" sub="Fouls, cards, timeouts" />
               <ACard pad={12} style={{ gap: 8 }}>
@@ -165,7 +170,7 @@ export function MatchCentre({ id }) {
 
           <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
             <ABtn small tone="ghost" title="↩ Undo last" disabled={!lastLogged || busy} onPress={() => setAsk('undo')} />
-            <ABtn small tone="ghost" title="✎ Correct last" disabled={!lastLogged || busy} onPress={() => setFix(lastLogged)} />
+            {lastLogged && !NO_CORRECT.has(lastLogged.kind) ? <ABtn small tone="ghost" title="✎ Correct last" disabled={busy} onPress={() => setFix(lastLogged)} /> : null}
             <ABtn small tone="sun" title="⏸ Pause" onPress={() => control('pause')} loading={busy} />
             <ABtn small tone="live" title="🏁 Full time" onPress={() => setAsk('end')} />
           </View>
@@ -187,7 +192,7 @@ export function MatchCentre({ id }) {
                 {e.voided_at ? <AT size={11.5} color={A.mute}>{/^Corrected/.test(e.void_reason ?? '') ? `${e.void_reason} (replaced by a later entry)` : `Voided: ${e.void_reason}`}</AT>
                   : <AT size={11.5} color={A.mute}>{[e.period ? `${rs.periods?.label ?? 'Period'} ${e.period}` : null, e.supersedes_id || e.corrects_seq ? '✎ corrected entry' : null].filter(Boolean).join(' · ')}</AT>}
               </View>
-              {scorer && live && !e.voided_at && !['period_start', 'period_end', 'note'].includes(e.kind) ? (
+              {scorer && live && !e.voided_at && !NO_CORRECT.has(e.kind) ? (
                 <Pressable onPress={() => setFix(e)} accessibilityRole="button" accessibilityLabel={`Correct ${describe(e)}`} hitSlop={8} style={{ minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }}><AT size={18}>✎</AT></Pressable>
               ) : null}
             </ACard>

@@ -59,7 +59,7 @@ CREATE TABLE IF NOT EXISTS session_events (
   event_id      uuid NOT NULL REFERENCES events,
   seq           int  NOT NULL,
   client_key    text,
-  kind          text NOT NULL CHECK (kind IN ('status','start','lane','split','finish','attempt','entry_status')),
+  kind          text NOT NULL CHECK (kind IN ('status','start','lane','split','finish','attempt','judge_score','entry_status')),
   entry_id      uuid REFERENCES event_session_entries,
   payload       jsonb NOT NULL DEFAULT '{}',
   source_authority text CHECK (source_authority IS NULL OR source_authority IN ('organiser','official','admin')),
@@ -84,9 +84,10 @@ END $$;
 DROP TRIGGER IF EXISTS session_event_guard ON session_events;
 CREATE TRIGGER session_event_guard BEFORE UPDATE OR DELETE ON session_events FOR EACH ROW EXECUTE FUNCTION session_event_guard();
 
--- Progression the organiser has pinned for a discipline (heats: qualifiers_per_session + wildcards; field: cut_after_round + cut_to).
--- The live session projection shows Q/q and the cut only from this; with nothing pinned it shows none. NULL = nothing pinned.
-ALTER TABLE event_disciplines ADD COLUMN IF NOT EXISTS progression jsonb;
+-- How live marks add up and who goes through, pinned by the organiser for a discipline: aggregate (best | sum | panel), lower_is_better,
+-- drop_extremes, qualifiers_per_session + wildcards (heats), cut_after_round + cut_to (field). The live session view uses this and the sport's
+-- family default; Q/q and the field cut show only from here. NULL = nothing pinned (the family default applies, no progression is shown).
+ALTER TABLE event_disciplines ADD COLUMN IF NOT EXISTS live_rules jsonb;
 
 -- A session whose official result was recorded again after it was completed is shown publicly as corrected. NULL = never corrected.
 ALTER TABLE event_sessions ADD COLUMN IF NOT EXISTS corrected_at timestamptz;

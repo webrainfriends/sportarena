@@ -92,8 +92,8 @@ export function ABtn({ title, onPress, tone = 'hero', small, disabled, loading, 
   );
 }
 
-export const AChip = ({ label, active, onPress, color = A.violet, badge, style }) => (
-  <Pressable onPress={onPress} accessibilityRole="button" accessibilityState={{ selected: !!active }} style={({ pressed }) => [{ opacity: pressed ? 0.8 : 1, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 999, paddingVertical: 9, paddingHorizontal: 15, minHeight: 44, borderWidth: 1.5, borderColor: active ? color : A.line, backgroundColor: active ? `${color}33` : A.panel }, style]}>
+export const AChip = ({ label, active, onPress, color = A.violet, badge, style, disabled }) => (
+  <Pressable onPress={onPress} disabled={disabled} accessibilityRole="button" accessibilityState={{ selected: !!active, disabled: !!disabled }} style={({ pressed }) => [{ opacity: disabled ? 0.4 : pressed ? 0.8 : 1, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 999, paddingVertical: 9, paddingHorizontal: 15, minHeight: 44, borderWidth: 1.5, borderColor: active ? color : A.line, backgroundColor: active ? `${color}33` : A.panel }, style]}>
     <AT size={13} weight="800" color={active ? '#fff' : A.mute}>{label}</AT>
     {badge ? <View style={{ minWidth: 18, height: 18, borderRadius: 9, backgroundColor: A.magenta, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 }}><AT size={10} weight="900" color="#fff">{badge}</AT></View> : null}
   </Pressable>
