@@ -34,7 +34,7 @@ const opt = (o) => (typeof o === 'object' ? o : { value: o, label: String(o) });
  *   switch                                  yes / no
  *   choice {options}                        a few exclusive options (segmented), more than 4 become chips
  *   chips {options}                         exclusive options as wrapping chips (options may be a function of the values)
- *   multi {options}                         several of many
+ *   multi {options}                         several of many (options may be a function of the values)
  *   weekdays                                day chips with Weekdays / Weekend / Every day shortcuts → [0..6]
  *   sport                                   search / quick-pick a sport → slug
  *   sports                                  several sports (chips + add) → [slugs]
@@ -176,7 +176,7 @@ export function FormSheet({ visible, onClose, title, fields, initial = {}, submi
           <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}><Chip label="Weekdays" onPress={() => set(f.key, [1, 2, 3, 4, 5])} /><Chip label="Weekend" onPress={() => set(f.key, [6, 0])} /><Chip label="Every day" onPress={() => set(f.key, [0, 1, 2, 3, 4, 5, 6])} /></View>
           <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>{DAYS.map(([d, n]) => <Chip key={d} label={n} active={v[f.key]?.includes(d)} onPress={() => set(f.key, v[f.key]?.includes(d) ? v[f.key].filter((x) => x !== d) : [...(v[f.key] ?? []), d])} />)}</View>{hint(f)}</View>);
       case 'multi': return (
-        <View style={{ gap: 6 }}>{lab(f)}<View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>{f.options.map(opt).map((o) => <Chip key={String(o.value)} label={o.label} active={v[f.key]?.includes(o.value)} onPress={() => set(f.key, v[f.key]?.includes(o.value) ? v[f.key].filter((x) => x !== o.value) : [...(v[f.key] ?? []), o.value])} />)}</View>{hint(f)}</View>);
+        <View style={{ gap: 6 }}>{lab(f)}<View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>{(typeof f.options === 'function' ? f.options(v) : f.options).map(opt).map((o) => <Chip key={String(o.value)} label={o.label} active={v[f.key]?.includes(o.value)} onPress={() => set(f.key, v[f.key]?.includes(o.value) ? v[f.key].filter((x) => x !== o.value) : [...(v[f.key] ?? []), o.value])} />)}</View>{hint(f)}</View>);
       case 'chips': return (
         <View style={{ gap: 6 }}>{lab(f)}<View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>{(typeof f.options === 'function' ? f.options(v) : f.options).map(opt).map((o) => <Chip key={String(o.value)} label={o.label} active={v[f.key] === o.value} onPress={() => set(f.key, f.optional && v[f.key] === o.value ? undefined : o.value)} />)}</View>{hint(f)}</View>);
       case 'choice': {
