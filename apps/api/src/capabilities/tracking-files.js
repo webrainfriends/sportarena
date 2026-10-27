@@ -94,7 +94,7 @@ async function contextOf(user, imp, c) {
 /** The import with the template/rules it is read against and live validation of the values (reviewed ones once confirmed). */
 async function withContext(imp) {
   const v = await contextOf(null, imp);
-  const sport = imp.sport_id ? await one('SELECT id, slug, name, scoring FROM sports WHERE id=$1', [imp.sport_id]) : null;
+  const sport = imp.sport_id ? await one('SELECT id, slug, name, scoring, category FROM sports WHERE id=$1', [imp.sport_id]) : null;
   const rs = v?.ruleset ?? (sport && builtinRuleset(sport));
   const check = imp.reviewed ?? imp.extracted;
   const checks = rs && check?.home != null ? validateTotals(rs, { home: check.home, away: check.away, sets: check.sets ?? null, periods: check.periods ?? null }) : [];

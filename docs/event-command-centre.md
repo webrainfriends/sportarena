@@ -26,7 +26,7 @@ labels, a checklist, comments and a move history. Moving into `blocked` needs a 
   Organisers can replace the rules for their event with `set_event_scoring_template` (until the first game is scored).
 * The score is **computed from the event log, never typed in**: weighted scoring events, periods, rally-point sets with win-by-two, caps and deciding sets, tracked parameters (fouls, cards, timeouts, aces …).
 * `start_match`, `pause_match`, `resume_match`, `log_match_event` (idempotent with `client_key`), `void_match_event` (kept, marked void), `get_live_fixture` (public; poll with `since_seq`), `get_event_live`, `check_schedule_clashes` (court, team, official, minimum rest).
-* **Live stream**: `GET /api/v1/live/fixtures/:id` is Server-Sent Events; the app falls back to polling. The bus is in-process, which fits the single-process deployment; for several processes swap `publish/subscribe` in `src/live.js` for Postgres LISTEN/NOTIFY.
+* **Live stream**: `GET /api/v1/live/fixtures/:id` is Server-Sent Events with resumable frame ids; the app falls back to polling. Officials use an authenticated scorer stream that closes when their authority ends. Several processes: set `LIVE_BRIDGE=pg` (Postgres LISTEN/NOTIFY). Sport-specific scoring (cricket, tennis, extra time and shoot-outs, heats), corrections and the offline queue are described in [live-scoring.md](live-scoring.md).
 
 ## Score sheets (035) — `score-sheets.js`
 `end_match` (full time) → draft sheet pre-filled from the log → `update_score_sheet` (a change from the log needs a reason) → `submit_score_sheet` (checks run: impossible sets, level knockout with no winner, log mismatch …; errors stop it)

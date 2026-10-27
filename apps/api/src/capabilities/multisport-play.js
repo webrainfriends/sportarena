@@ -14,19 +14,19 @@ const TAG = 'Multi-sport events';
 const dt = z.string().datetime({ offset: true });
 const NO_SCOPE = { organizer: false, houseIds: [], participantIds: [], staff: [] };
 
-const discipline = async (c, disciplineId) => {
+export const discipline = async (c, disciplineId) => {
   const d = (await c.query('SELECT * FROM event_disciplines WHERE id=$1', [disciplineId])).rows[0];
   if (!d) throw notFound('Discipline');
   return d;
 };
-const mustSession = async (c, sessionId, lock = false) => {
+export const mustSession = async (c, sessionId, lock = false) => {
   const s = (await c.query(`SELECT * FROM event_sessions WHERE id=$1 ${lock ? 'FOR UPDATE' : ''}`, [sessionId])).rows[0];
   if (!s) throw notFound('Session');
   return s;
 };
 
 /** Caller's scope in an event (anonymous callers have none). */
-async function viewer(user, eventId) {
+export async function viewer(user, eventId) {
   if (!user) return { prog: await programmeFor(pool, eventId), scope: NO_SCOPE };
   const { scope } = await eventAccess(pool, user, eventId);
   return { prog: await programmeFor(pool, eventId), scope };
@@ -133,13 +133,14 @@ cap({
   name: 'advance_discipline', method: 'POST', path: '/disciplines/:id/advance', tag: TAG, status: 201,
   summary: 'Run the next round once the current one is complete. Individual: pick the top finishers of each heat (+ fastest/best of the rest as wildcards) and create the next heats or the final. Team: round robin → knockout of the top N, or winners → next knockout round (optionally a third-place game).',
   input: z.object({
-    id, qualifiers_per_session: z.number().int().min(1).max(24).default(2), wildcards: z.number().int().min(0).max(48).default(0),
+    id, qualifiers_per_session: z.number().int().min(1).max(24).optional().describe('defaults to what set_discipline_progression pinned, else 2'), wildcards: z.number().int().min(0).max(48).optional().describe('defaults to what set_discipline_progression pinned, else 0'),
     lanes: z.number().int().min(2).max(24).default(8), qualifiers: z.number().int().min(2).max(64).optional().describe('team round robin: how many teams go through'),
     third_place: z.boolean().default(false), duration_min: z.number().int().min(5).max(600).optional(),
   }),
   async handler({ user }, i) {
     return tx(async (c) => {
       const d = await discipline(c, i.id);
+      i = { ...i, qualifiers_per_session: i.qualifiers_per_session ?? d.progression?.qualifiers_per_session ?? 2, wildcards: i.wildcards ?? d.progression?.wildcards ?? 0 };
       const { ev } = await organizerOnly(c, user, d.event_id);
       await lockEvent(c, ev.id);
       if (['completed', 'cancelled'].includes(d.status)) throw conflict(`Discipline is ${d.status}`);
@@ -514,7 +515,7 @@ cap({
   },
 });
 
-async function entryRows(c, sessionId, scope, prog) {
+export async function entryRows(c, sessionId, scope, prog) {
   const rows = (await c.query(
     `SELECT e.id, e.participant_id, e.team_id, e.house_id, h.name AS house, e.lane, e.result_value, e.score, e.position, e.result_status, e.qualified, e.note,
             p.full_name, t.name AS team_name
@@ -578,7 +579,8 @@ export async function recordSessionResults(c, user, i) {
       const fin = entries.filter((e) => e.result_status === 'finished');
       if (fin.length > 1 && fin.filter((e) => e.position === 1).length !== 1) throw conflict('A knockout game needs a winner: set `position` on the entries to settle the tie');
     }
-    await c.query("UPDATE event_sessions SET status='completed', completed_at=now() WHERE id=$1", [s.id]);
+    // recording the result of a session that was already completed is a correction: the public view says so
+    await c.query("UPDATE event_sessions SET status='completed', completed_at=now(), corrected_at=CASE WHEN status='completed' THEN now() ELSE corrected_at END WHERE id=$1", [s.id]);
     await c.query("UPDATE event_disciplines SET status='ongoing' WHERE id=$1 AND status IN ('nominations','scheduled')", [d.id]);
   } else if (s.status !== 'live') await c.query("UPDATE event_sessions SET status='live' WHERE id=$1 AND status IN ('draft','scheduled')", [s.id]);
   const out = await entryRows(c, s.id, { ...scope, organizer: true }, { public_names: true });

@@ -1,136 +1,237 @@
 // The Match Centre, and the Games tab of the event console: the referee's live console (kick off, score with the sport's own buttons, track
 // fouls and cards, undo, pause, full time) that doubles as a live scoreboard for everyone else.
 import { locale } from '../locale';
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
+import { useLayout } from '../layout';
 import { useLiveFixture, usePoll } from '../live';
 import { useSession } from '../session';
 import { useNav } from '../nav';
-import { A, ABracket, ABtn, ACard, AChip, AEmpty, AScreen, ASection, AT, ReasonSheet, ScoreTicker } from '../arena';
+import { A, ABracket, ABtn, ACard, AChip, AEmpty, AScreen, ASection, AT, LiveBadge, ReasonSheet, ScoreTicker } from '../arena';
 import { Loading, Sheet, T } from '../ui';
 import { GamesByDay, SchedulePlanner } from './event-schedule';
 import { AppearancesPanel } from './appearances';
+import { CricketScorer } from './cricket-scorer';
+import { useScoreQueue } from '../scorer/queue';
+import { BattingOrderSheet, ConflictSheet, CorrectSheet, FootballExtras, ProjectionCard, RacketPad, ServerPick, SyncLine } from '../scorer/panels';
 
-const key = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+const EXTRA = { wd: 'Wide', nb: 'No-ball', b: 'Bye', lb: 'Leg bye', pen: 'Penalty' };
+/** What a cricket ball was, in the scorer's words: so the timeline can be read, and a ball found to correct. */
+const ballText = (p = {}) => {
+  const runs = (p.runs || 0) + (p.extra_runs || 0);
+  if (p.wicket) return `Wicket · ${String(p.wicket.how).replace(/_/g, ' ')}${runs ? ` (+${runs})` : ''}`;
+  if (p.extra) return `${EXTRA[p.extra] ?? p.extra}${runs ? ` +${runs}` : ''}`;
+  return p.runs === 4 ? 'FOUR' : p.runs === 6 ? 'SIX' : p.runs ? `${p.runs} run${p.runs === 1 ? '' : 's'}` : 'Dot ball';
+};
 const clockOf = (s) => (s == null ? '' : `${Math.floor(s / 60)}'`);
+const LIVE_STATE = { scheduled: 'scheduled', live: 'live', provisional: 'finished', final: 'completed', corrected: 'completed' };
+const LIVE_LABEL = { provisional: 'PROVISIONAL', final: 'FINAL', corrected: 'CORRECTED', live: 'LIVE', scheduled: 'UPCOMING' };
+
+/** Players on the pitch for one side, from the declared lineup: a tap picks who the next event is for. No lineup, no row. */
+function PlayerQuick({ rows, side, name, value, onChange }) {
+  const list = rows.filter((r) => r.side === side);
+  if (!list.length) return null;
+  return (
+    <View style={{ gap: 6 }}>
+      <AT size={11.5} weight="800" color={A.mute}>{`${String(name).toUpperCase()} · WHO WAS IT? (OPTIONAL)`}</AT>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+        {list.map((r) => <AChip key={r.user_id} label={r.display_name} active={value === r.user_id} onPress={() => onChange(value === r.user_id ? null : r.user_id)} />)}
+      </View>
+    </View>
+  );
+}
 
 // ---------------------------------------------------------------- Match Centre
 export function MatchCentre({ id }) {
   const { toast } = useSession();
   const { push: go } = useNav();
-  const { state: g, mode, push, refresh } = useLiveFixture(id);
+  const L = useLayout();
+  const { state: g, mode, push, refresh, revoked } = useLiveFixture(id);
+  const proj = useLoad(() => api.get(`/fixtures/${id}/projection`), [id, g?.version]);
+  const lineup = useLoad(() => (g?.viewer?.can_score ? api.get(`/fixtures/${id}/appearances`).catch(() => null) : Promise.resolve(null)), [id, !!g?.viewer?.can_score, g?.fixture?.status]);
   const [busy, setBusy] = useState(false);
   const [ask, setAsk] = useState(null); // 'undo' | 'end' | null
+  const [fix, setFix] = useState(null); // event being corrected
+  const [who, setWho] = useState({ home: null, away: null });
+  const [order, setOrder] = useState(null); // side whose batting order is being picked
+  const seen = useRef(0);
+  if (g && g.last_seq > seen.current) seen.current = g.last_seq; // what this device has seen, plus its own sent taps
+
+  // every tap goes through the queue: kept on the device, retried, and never counted twice (client_key)
+  const queue = useScoreQueue(`sa_queue_fx_${id}`,
+    async (e) => { const r = await api.post(`/fixtures/${id}/events`, e); seen.current = Math.max(seen.current, r.state.last_seq); push(r.state); return r; },
+    { onDrop: (err) => toast('' + err.message) });
+
   if (!g) return <AScreen><Loading /></AScreen>;
   const f = g.fixture, rs = g.ruleset, ph = g.phase, v = g.viewer ?? {};
   const names = { home: f.home?.name ?? 'Home', away: f.away?.name ?? 'Away' };
-  const scorer = !!v.can_score;
+  const scorer = !!v.can_score && !revoked;
   const run = async (fn) => { setBusy(true); try { return await fn(); } catch (x) { toast('' + x.message); return null; } finally { setBusy(false); } };
   const control = (path) => run(async () => push(await api.post(`/fixtures/${id}/${path}`)));
-  const log = (kind, side) => run(async () => {
+  const log = async (kind, side, extra = {}) => {
     const elapsed = f.started_at ? Math.max(0, Math.floor((Date.now() - new Date(f.started_at)) / 1000)) : undefined;
-    const r = await api.post(`/fixtures/${id}/events`, { kind, side, clock_seconds: elapsed, client_key: key() });
-    push(r.state);
-  });
-  const lastLogged = [...g.events].reverse().find((e) => !['period_start', 'period_end', 'note'].includes(e.kind));
-  const label = (kind) => [...(rs.events ?? []), ...(rs.stats ?? [])].find((x) => x.kind === kind)?.label ?? (kind === 'point' ? 'Point' : kind.replace(/_/g, ' '));
+    const pid = side ? who[side] : null;
+    const r = await queue.enqueue({ kind, ...(side ? { side } : {}), ...(extra.period ? { period: extra.period } : {}), ...(extra.payload ? { payload: extra.payload } : {}), ...(pid ? { player_id: pid } : {}), clock_seconds: elapsed, expected_seq: seen.current });
+    if (pid && side) setWho((w) => ({ ...w, [side]: null }));
+    if (r.queued && !r.full) toast('Not sent yet. It is kept on this device and will be retried.');
+    return !r.queued;
+  };
+  const events = g.events;
+  const lastLogged = [...events].reverse().find((e) => !e.voided_at && !['period_start', 'period_end', 'note'].includes(e.kind));
+  const label = (kind) => [...(rs.events ?? []), ...(rs.stats ?? [])].find((x) => x.kind === kind)?.label
+    ?? ({ point: 'Point', ball: 'Ball', server: 'Server set', retire: 'Retirement', walkover: 'Walkover', shootout_goal: 'Shoot-out: scored', shootout_miss: 'Shoot-out: missed', lineup: 'Batting order', innings_end: 'Innings ended', declare: 'Declared', period_start: 'Period started', period_end: 'Period ended' }[kind] ?? kind.replace(/_/g, ' '));
   const live = f.status === 'live';
-  const between = rs.kind === 'points_events' && ph.period > 0 && !ph.period_open;
-  const canPoint = live && ph.can_score && !between;
+  const between = rs.kind === 'points_events' && ph.period > 0 && !ph.period_open && !ph.extra_time_available && !ph.shootout_available;
+  const canPoint = live && ph.can_score && !between && !(g.score.shootout?.started);
+  const games = rs.kind === 'sets' && rs.racket?.scoring === 'games';
   const sides = ['home', 'away'];
+  const lineRows = (lineup.data?.appearances ?? []).filter((a) => !a.hidden && ['started', 'substitute_on'].includes(a.status) && a.off_clock_seconds == null)
+    .map((a) => ({ ...a, side: a.team_id === f.home?.id ? 'home' : a.team_id === f.away?.id ? 'away' : null })).filter((a) => a.side);
+  const what = (e) => (e.kind === 'ball' ? ballText(e.payload) : label(e.kind));
+  const describe = (e) => `${what(e)}${e.side ? ` · ${names[e.side]}` : ''}`;
 
-  return (
-    <AScreen>
-      <ScoreTicker g={g} />
-      <ABtn small tone="ghost" title="🧮 Open scoring tool for this fixture" onPress={() => go('ScoringTool', { fixtureId: id })} style={{ alignSelf: 'flex-start' }} />
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-        <AT size={12} weight="700" color={mode === 'stream' ? A.green : A.mute}>{mode === 'stream' ? '⚡ Live updates' : mode === 'polling' ? '↻ Refreshing every few seconds' : 'Connecting…'}</AT>
-        <Pressable onPress={refresh} hitSlop={10}><AT size={12} weight="800" color={A.cyan}>Refresh</AT></Pressable>
-      </View>
+  // the cricket scorebook is the existing component; it is handed the fixture's live state in the shape it already reads
+  const declared = g.score.cricket?.lineup ?? {};
+  const nameOfPlayer = (uid) => lineup.data?.appearances?.find((a) => a.user_id === uid)?.display_name;
+  const book = rs.kind === 'cricket' ? { template: { ruleset: rs }, result: g.score, status: live ? 'in_progress' : f.status, labels: names, entries: events,
+    details: { players: Object.fromEntries(sides.map((sd) => [sd, (declared[sd] ?? []).map((uid) => ({ name: nameOfPlayer(uid) ?? '' }))])) } } : null;
 
-      {scorer ? (
+  const pad = scorer ? (
+    <View style={{ gap: 14 }}>
+      {f.status === 'scheduled' ? <ABtn title="⚡ Kick off" tone="live" onPress={() => control('start')} loading={busy} /> : null}
+      {f.status === 'paused' ? <ABtn title="▶ Resume play" tone="lime" onPress={() => control('resume')} loading={busy} /> : null}
+      {(f.status === 'finished' || f.status === 'completed') ? <ABtn title="📝 Open the score sheet" tone="neon" onPress={() => go('ScoreSheet', { id })} /> : null}
+
+      {live ? (
         <>
-          {f.status === 'scheduled' ? <ABtn title="⚡ Kick off" tone="live" onPress={() => control('start')} loading={busy} /> : null}
-          {f.status === 'paused' ? <ABtn title="▶ Resume play" tone="lime" onPress={() => control('resume')} loading={busy} /> : null}
-          {(f.status === 'finished' || f.status === 'completed') ? <ABtn title="📝 Open the score sheet" tone="neon" onPress={() => go('ScoreSheet', { id })} /> : null}
+          {(rs.kind === 'manual' || (rs.kind === 'points_events' && (ph.period_open || !(rs.extra_time || rs.shootout) || ph.period < ph.periods_total))) ? (
+            <ABtn tone={ph.period_open ? 'ghost' : 'neon'} small title={ph.period_open ? `⏹ End ${rs.periods.label.toLowerCase()} ${ph.period}` : `▶ Start ${rs.periods.label.toLowerCase()} ${ph.period + 1}`} onPress={() => log(ph.period_open ? 'period_end' : 'period_start')} />
+          ) : null}
+          {between ? <AT size={12.5} weight="700" color={A.sun}>Between {rs.periods.label.toLowerCase()}s: start the next one to score.</AT> : null}
+          {rs.kind === 'sets' && !ph.can_score ? <AT size={13} weight="800" color={A.green}>Match decided. Tap Full time.</AT> : null}
+          {rs.kind === 'points_events' ? <FootballExtras g={g} names={names} disabled={busy} onLog={log} /> : null}
 
-          {live ? (
+          {rs.kind === 'cricket' ? (
+            <View style={{ gap: 10 }}>
+              {lineRows.length ? <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>{sides.map((sd) => lineRows.some((r) => r.side === sd) ? <ABtn key={sd} small tone="ghost" title={`${declared[sd]?.length ? '✎' : '＋'} ${names[sd]} batting order`} onPress={() => setOrder(sd)} /> : null)}</View> : null}
+            <View style={{ backgroundColor: '#F8FAFC', borderRadius: 22, padding: 12 }}>
+              <CricketScorer s={book} record={(kind, side, x = {}) => log(kind, side, x)} undo={() => setAsk('undo')} patch={() => {}} busy={busy} />
+            </View>
+            </View>
+          ) : games ? (
             <>
-              {rs.kind === 'points_events' ? (
-                <ABtn tone={ph.period_open ? 'ghost' : 'neon'} small title={ph.period_open ? `⏹ End ${rs.periods.label.toLowerCase()} ${ph.period}` : `▶ Start ${rs.periods.label.toLowerCase()} ${ph.period + 1}`} onPress={() => log(ph.period_open ? 'period_end' : 'period_start')} loading={busy} />
-              ) : null}
-              {between ? <AT size={12.5} weight="700" color={A.sun}>Between {rs.periods.label.toLowerCase()}s: start the next one to score.</AT> : null}
-              {rs.kind === 'sets' && !ph.can_score ? <AT size={13} weight="800" color={A.green}>Match decided. Tap Full time.</AT> : null}
-
-              {rs.kind === 'cricket' ? (
-                <ACard pad={14} style={{ gap: 8 }}>
-                  <AT weight="800">Cricket is scored ball by ball</AT>
-                  <AT size={13} color={A.mute}>Use the scorebook in Tools. It keeps the batting card, bowling figures and fall of wickets, and enforces the over limits.</AT>
-                  <ABtn small tone="neon" title="🏏 Open the cricket scorebook" onPress={() => go('ScoringTool', { fixtureId: id })} />
-                </ACard>
-              ) : null}
+              <RacketPad g={g} names={names} disabled={busy} onLog={log} />
+              {sides.map((s) => <PlayerQuick key={s} rows={lineRows} side={s} name={names[s]} value={who[s]} onChange={(x) => setWho((w) => ({ ...w, [s]: x }))} />)}
+            </>
+          ) : rs.kind === 'manual' ? (
+            <ACard pad={14} style={{ gap: 6 }}>
+              <AT size={15} weight="900">Scored by totals or by judges</AT>
+              <AT size={13} color={A.mute}>{`This sport has no running score to tap. Run the clock${rs.stats?.length ? ` and note ${rs.stats.map((x) => x.label.toLowerCase()).join(', ')}` : ''} here, then enter the result on the score sheet at full time.`}</AT>
+            </ACard>
+          ) : (
+            <>
               <ASection title="Score" sub={rs.kind === 'sets' ? 'Every rally point' : 'Tap the moment it happens'} />
+              {rs.kind === 'sets' ? <ServerPick g={g} names={names} onLog={log} /> : null}
               <View style={{ flexDirection: 'row', gap: 10 }}>
                 {sides.map((s) => (
                   <View key={s} style={{ flex: 1, gap: 8 }}>
-                    <AT size={12} weight="800" color={A.mute} numberOfLines={1} style={{ textAlign: 'center' }}>{names[s].toUpperCase()}</AT>
+                    <AT size={12} weight="800" color={A.mute} numberOfLines={1} style={{ textAlign: 'center' }}>{names[s].toUpperCase()}{g.score.server === s ? '  🏸' : ''}</AT>
                     {(rs.kind === 'sets' ? [{ kind: 'point', label: 'Point', points: 1, icon: '🏸' }] : rs.events ?? []).map((e) => (
-                      <ABtn key={e.kind} tone={s === 'home' ? 'hero' : 'neon'} title={`${e.icon ? `${e.icon} ` : ''}${e.label}${rs.kind === 'sets' ? '' : ` +${e.points}`}`} disabled={!canPoint || busy} onPress={() => log(e.kind, s)} />
+                      <ABtn key={e.kind} tone={s === 'home' ? 'hero' : 'neon'} title={`${e.icon ? `${e.icon} ` : ''}${e.label}${rs.kind === 'sets' ? '' : ` +${e.points}`}`} disabled={!canPoint || busy} onPress={() => log(e.kind, s)} style={{ minHeight: 56 }} />
                     ))}
                   </View>
                 ))}
               </View>
+              {sides.map((s) => <PlayerQuick key={s} rows={lineRows} side={s} name={names[s]} value={who[s]} onChange={(x) => setWho((w) => ({ ...w, [s]: x }))} />)}
+            </>
+          )}
 
-              {rs.stats?.length ? (
-                <>
-                  <ASection title="Track" sub="Fouls, cards, timeouts" />
-                  <ACard pad={12} style={{ gap: 8 }}>
-                    {rs.stats.map((st) => (
-                      <View key={st.kind} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                        <AT size={13} weight="700" style={{ flex: 1 }}>{st.icon ? `${st.icon} ` : ''}{st.label}</AT>
-                        <AT size={12} weight="800" color={A.mute} num>{g.score.stats?.home?.[st.kind] ?? 0} – {g.score.stats?.away?.[st.kind] ?? 0}</AT>
-                        {sides.map((s) => <AChip key={s} label={s === 'home' ? 'Home' : 'Away'} color={s === 'home' ? A.magenta : A.cyan} onPress={() => log(st.kind, s)} />)}
-                      </View>
-                    ))}
-                  </ACard>
-                </>
-              ) : null}
-
-              <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
-                <ABtn small tone="ghost" title="↩ Undo last" disabled={!lastLogged || busy} onPress={() => setAsk('undo')} />
-                <ABtn small tone="sun" title="⏸ Pause" onPress={() => control('pause')} loading={busy} />
-                <ABtn small tone="live" title="🏁 Full time" onPress={() => setAsk('end')} />
-              </View>
+          {rs.stats?.length && rs.kind !== 'cricket' ? (
+            <>
+              <ASection title="Track" sub="Fouls, cards, timeouts" />
+              <ACard pad={12} style={{ gap: 8 }}>
+                {rs.stats.map((st) => (
+                  <View key={st.kind} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <AT size={13} weight="700" style={{ flex: 1 }}>{st.icon ? `${st.icon} ` : ''}{st.label}</AT>
+                    <AT size={12} weight="800" color={A.mute} num>{g.score.stats?.home?.[st.kind] ?? 0} – {g.score.stats?.away?.[st.kind] ?? 0}</AT>
+                    {sides.map((s) => <AChip key={s} label={s === 'home' ? 'Home' : 'Away'} color={s === 'home' ? A.magenta : A.cyan} onPress={() => log(st.kind, s)} />)}
+                  </View>
+                ))}
+              </ACard>
             </>
           ) : null}
-        </>
-      ) : <AT size={13} color={A.mute}>You are watching. Only the organiser and match officials can score.</AT>}
 
-      <ASection title="Timeline" sub={`${g.events.length} moment${g.events.length === 1 ? '' : 's'}`} />
-      {!g.events.length ? <AEmpty emoji="⏱️" title="Nothing yet" sub="Moments appear here as they happen." /> : (
+          <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
+            <ABtn small tone="ghost" title="↩ Undo last" disabled={!lastLogged || busy} onPress={() => setAsk('undo')} />
+            <ABtn small tone="ghost" title="✎ Correct last" disabled={!lastLogged || busy} onPress={() => setFix(lastLogged)} />
+            <ABtn small tone="sun" title="⏸ Pause" onPress={() => control('pause')} loading={busy} />
+            <ABtn small tone="live" title="🏁 Full time" onPress={() => setAsk('end')} />
+          </View>
+        </>
+      ) : null}
+    </View>
+  ) : null;
+
+  const timeline = (
+    <>
+      <ASection title="Timeline" sub={`${events.filter((e) => !e.voided_at).length} moment${events.filter((e) => !e.voided_at).length === 1 ? '' : 's'}`} />
+      {!events.length ? <AEmpty emoji="⏱️" title="Nothing yet" sub="Moments appear here as they happen." /> : (
         <View style={{ gap: 8 }}>
-          {[...g.events].reverse().map((e) => (
-            <ACard key={e.id} pad={12} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, opacity: e.voided_at ? 0.45 : 1 }}>
+          {[...events].reverse().map((e) => (
+            <ACard key={e.id ?? e.seq} pad={12} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, opacity: e.voided_at ? 0.45 : 1 }}>
               <AT size={12} weight="800" color={A.cyan} style={{ width: 38 }}>{clockOf(e.clock_seconds) || `#${e.seq}`}</AT>
               <View style={{ flex: 1 }}>
-                <AT size={14} weight="800" style={e.voided_at ? { textDecorationLine: 'line-through' } : null}>{label(e.kind)}{e.side ? ` · ${names[e.side]}` : ''}</AT>
-                {e.voided_at ? <AT size={11.5} color={A.mute}>Voided: {e.void_reason}</AT> : e.period ? <AT size={11.5} color={A.mute}>{rs.periods?.label ?? 'Period'} {e.period}</AT> : null}
+                <AT size={14} weight="800" style={e.voided_at ? { textDecorationLine: 'line-through' } : null}>{what(e)}{e.side ? ` · ${names[e.side]}` : ''}</AT>
+                {e.voided_at ? <AT size={11.5} color={A.mute}>{/^Corrected/.test(e.void_reason ?? '') ? `${e.void_reason} (replaced by a later entry)` : `Voided: ${e.void_reason}`}</AT>
+                  : <AT size={11.5} color={A.mute}>{[e.period ? `${rs.periods?.label ?? 'Period'} ${e.period}` : null, e.supersedes_id || e.corrects_seq ? '✎ corrected entry' : null].filter(Boolean).join(' · ')}</AT>}
               </View>
+              {scorer && live && !e.voided_at && !['period_start', 'period_end', 'note'].includes(e.kind) ? (
+                <Pressable onPress={() => setFix(e)} accessibilityRole="button" accessibilityLabel={`Correct ${describe(e)}`} hitSlop={8} style={{ minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }}><AT size={18}>✎</AT></Pressable>
+              ) : null}
             </ACard>
           ))}
         </View>
       )}
+    </>
+  );
+
+  const split = L.tablet && scorer;
+  return (
+    <AScreen>
+      <ScoreTicker g={g} />
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        {['provisional', 'final', 'corrected'].includes(g.live?.state) ? <LiveBadge status={LIVE_STATE[g.live.state]} label={LIVE_LABEL[g.live.state]} /> : null}
+        {g.live?.corrected && g.live.state === 'live' ? <AT size={12} weight="800" color={A.sun}>✎ includes corrections</AT> : null}
+        {scorer ? <SyncLine pending={queue.pending.length} onRetry={queue.flush} mode={mode} /> : <AT size={12} weight="700" color={mode === 'stream' ? A.green : A.mute}>{mode === 'stream' ? '⚡ Live updates' : mode === 'polling' ? '↻ Refreshing every few seconds' : 'Connecting…'}</AT>}
+        <View style={{ flex: 1 }} />
+        <Pressable onPress={refresh} accessibilityRole="button" accessibilityLabel="Refresh" hitSlop={10} style={{ minHeight: 44, justifyContent: 'center' }}><AT size={12} weight="800" color={A.cyan}>Refresh</AT></Pressable>
+      </View>
+      {revoked ? <ACard pad={12} tone={A.sun}><AT size={13} weight="800">Your scoring access for this game has ended. You are now watching.</AT></ACard> : null}
+      {!scorer && !revoked ? <AT size={13} color={A.mute}>You are watching. Only the organiser and match officials can score.</AT> : null}
+
+      <View style={{ flexDirection: split ? 'row' : 'column', gap: 16, alignItems: 'flex-start' }}>
+        {pad ? <View style={{ flex: split ? 1.2 : undefined, width: split ? undefined : '100%', gap: 14 }}>{pad}</View> : null}
+        <View style={{ flex: split ? 1 : undefined, width: split ? undefined : '100%', gap: 14 }}>
+          <ProjectionCard p={proj.data} names={names} />
+          {timeline}
+        </View>
+      </View>
+
       {scorer || v.manages ? <AppearancesPanel id={id} f={f} names={names} viewer={v} /> : null}
       <RecapCard id={id} f={f} />
 
-      <ReasonSheet visible={ask === 'undo'} onClose={() => setAsk(null)} title="Undo the last moment" sub={lastLogged ? `${label(lastLogged.kind)}${lastLogged.side ? ` · ${names[lastLogged.side]}` : ''} will be voided and the score recomputed. It stays in the log.` : ''}
+      <ReasonSheet visible={ask === 'undo'} onClose={() => setAsk(null)} title="Undo the last moment" sub={lastLogged ? `${describe(lastLogged)} will be voided and the score recomputed. It stays in the log.` : ''}
         presets={['Wrong team', 'Wrong action', 'Disallowed by referee', 'Review overturned']} confirmLabel="Void it" tone="sun"
         onConfirm={(reason) => run(async () => push(await api.post(`/match-events/${lastLogged.id}/void`, { reason })))} />
+      {fix ? <CorrectSheet event={fix} rs={rs} names={names} label={label} onClose={() => setFix(null)} onSubmit={async (body) => { const r = await api.post(`/match-events/${body.id}/correct`, { ...body, id: undefined }); push(r.state); toast('Corrected. The original stays in the log.'); }} /> : null}
+      {order ? <BattingOrderSheet name={names[order]} players={lineRows.filter((r) => r.side === order)} value={declared[order] ?? []} onClose={() => setOrder(null)} onSave={async (ids) => { await log('lineup', null, { payload: { [order]: ids } }); setOrder(null); }} /> : null}
+      <ConflictSheet conflict={queue.conflict} describe={describe} names={names} onResend={() => queue.resolve('resend')} onDiscard={() => queue.resolve('discard')} />
       <Sheet visible={ask === 'end'} onClose={() => setAsk(null)} title="Full time?">
         <T size={14} color="#475569">This ends the match and opens the score sheet, pre-filled from what you logged. The result is not official until it is signed, approved and published.</T>
-        <ABtn title="🏁 Yes, full time" tone="live" loading={busy} onPress={async () => { const r = await run(() => api.post(`/fixtures/${id}/end`)); if (r) { setAsk(null); refresh(); go('ScoreSheet', { id }); } }} />
+        {queue.pending.length ? <T size={13} color="#B45309">{queue.pending.length} tap{queue.pending.length === 1 ? ' is' : 's are'} still waiting to be sent. Send them first so the sheet is complete.</T> : null}
+        <ABtn title="🏁 Yes, full time" tone="live" loading={busy} disabled={queue.pending.length > 0} onPress={async () => { const r = await run(() => api.post(`/fixtures/${id}/end`)); if (r) { setAsk(null); refresh(); go('ScoreSheet', { id }); } }} />
       </Sheet>
     </AScreen>
   );

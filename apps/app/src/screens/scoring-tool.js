@@ -1,7 +1,7 @@
 // Tools > Scoring & Game Tracking (#416). Anyone can start a sheet, track live, print it and keep it as an unofficial record.
 // Linking a sheet to a real game turns it into a result PROPOSAL: it is reviewed by the game's own officials and only then reaches
 // the existing score-sheet lifecycle. Scoring rules always come from the server (the canonical engine); nothing is computed here.
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Platform, Pressable, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
@@ -14,7 +14,7 @@ import { useLayout } from '../layout';
 import { c } from '../theme';
 import { LinkSheet, SessionLinkSheet, ProposalReview, StateTag, UploadFlow, EventScoringConfig } from './scoring-review';
 import { openPdf } from '../open-file';
-import { storage } from '../storage';
+import { useScoreQueue } from '../scorer/queue';
 import { CricketScorer } from './cricket-scorer';
 import { ContestResult, DetailsPanel, HeatSheet, LiftSheet, PlayerPick, RulesBanner, ScoreCards } from './scorer-panels';
 
@@ -96,7 +96,6 @@ export function Tracker({ id, onClose, openLink }) {
   const load = useLoad(() => api.get(`/tracking/sheets/${id}`), [id]);
   const [fresh, setFresh] = useState(null);
   const [period, setPeriod] = useState(1);
-  const [pending, setPending] = useState([]);
   const [link, setLink] = useState(!!openLink);
   const [review, setReview] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -105,46 +104,22 @@ export function Tracker({ id, onClose, openLink }) {
   const [useMinute, setUseMinute] = useState(false);
   const [goalType, setGoalType] = useState('open_play');
   const [sub, setSub] = useState(null);
-  const flushing = useRef(false);
-  const pendingRef = useRef([]);
-  pendingRef.current = pending;
   const kits = useLoad(() => api.get('/brand-kits').catch(() => []), []);
   const [kit, setKit] = useState(null);
   const s = fresh ?? load.data;
-  const queueKey = `sa_queue_${id}`;
   // taps that could not reach the server are kept on the device (and retried) so they survive a restart or a dead zone; the same client_key makes a retry safe
-  useEffect(() => { (async () => { try { const raw = await storage.get(queueKey); const q = raw ? JSON.parse(raw) : []; if (Array.isArray(q) && q.length) setPending((p) => [...q.filter((e) => !p.some((x) => x.client_key === e.client_key)), ...p]); } catch { /* an unreadable queue is ignored */ } })(); }, [queueKey]);
-  useEffect(() => { if (pending.length) storage.set(queueKey, JSON.stringify(pending)); else storage.del(queueKey); }, [pending, queueKey]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    if (!pending.length) return undefined;
-    const t = setInterval(() => flush(), 8000);
-    const on = () => flush();
-    if (typeof window !== 'undefined' && window.addEventListener) window.addEventListener('online', on);
-    flush();
-    return () => { clearInterval(t); if (typeof window !== 'undefined' && window.removeEventListener) window.removeEventListener('online', on); };
-  }, [pending.length > 0]); // eslint-disable-line react-hooks/exhaustive-deps
+  const queue = useScoreQueue(`sa_queue_${id}`, async (e) => { const r = await api.patch(`/tracking/sheets/${id}`, { add_entry: e }); setFresh(r); return r; }, { onDrop: (err) => toast(err.message) });
+  const pending = queue.pending, flush = queue.flush;
   if (load.error) return <ErrorBox error={load.error} onRetry={load.reload} />;
   if (!s) return <Loading />;
   const layout = s.template.layout, live = s.status === 'in_progress';
   const labelOf = (side) => s.labels[side];
 
-  const send = async (e) => {
-    try { const r = await api.patch(`/tracking/sheets/${id}`, { add_entry: e }); setFresh(r); setPending((p) => p.filter((x) => x.client_key !== e.client_key)); return true; }
-    catch (err) {
-      if (err.status && err.status < 500) { setPending((p) => p.filter((x) => x.client_key !== e.client_key)); toast(err.message); return true; }
-      return false; // offline or server trouble: keep it, the same client_key makes a retry safe
-    }
-  };
-  const flush = async () => {
-    if (flushing.current) return; flushing.current = true;
-    try { for (const e of [...pendingRef.current]) if (!(await send(e))) break; } finally { flushing.current = false; }
-  };
   const record = async (kind, side, extra = {}) => {
-    const e = { kind, ...(side ? { side } : {}), period: extra.period ?? (layout.mode === 'points_events' ? period : undefined), ...(extra.payload ? { payload: extra.payload } : {}), client_key: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}` };
-    setPending((p) => [...p, e]);
-    const ok = await send(e);
-    if (!ok) toast('Not saved yet. It will be retried; tap Retry when you are back online.');
-    return ok;
+    const e = { kind, ...(side ? { side } : {}), period: extra.period ?? (layout.mode === 'points_events' ? period : undefined), ...(extra.payload ? { payload: extra.payload } : {}) };
+    const r = await queue.enqueue(e);
+    if (r.queued && !r.full) toast('Not saved yet. It will be retried; tap Retry when you are back online.');
+    return !r.queued;
   };
   const undo = () => patch({ void_entry: { reason: 'Undone' } });
   const patch = async (body, ok) => { try { setFresh(await api.patch(`/tracking/sheets/${id}`, body)); if (ok) toast(ok); } catch (e) { toast(e.message); } };
