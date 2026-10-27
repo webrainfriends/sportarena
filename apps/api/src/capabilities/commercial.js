@@ -283,7 +283,7 @@ cap({
   },
 });
 
-const LAUNCH_FILE = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'data', 'commercial', 'india-launch.json');
+const LAUNCH_FILE = join(dirname(fileURLToPath(import.meta.url)), '..', 'commercial', 'india-launch.json');
 cap({
   name: 'commercial_admin_import', method: 'POST', path: '/admin/commercial/import', tag: TAG,
   summary: 'Platform admin: load a catalogue document (or the bundled India launch baseline with source=india_launch). Creates what is missing and publishes new versions; existing products, plans and published versions are never changed, so it is safe to repeat.',

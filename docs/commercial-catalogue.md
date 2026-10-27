@@ -37,7 +37,7 @@ Two or more plans of different profile families, same interval/currency/region. 
 Cancelling or downgrading never deletes anything: entitlements fall back (the default plan), creating premium things is refused by the guard, everything already created stays readable.
 
 ## Console and API
-`apps/app/src/screens/commercial-console.js` (platform admin only; hidden for every other role) over `/admin/commercial/*`; customers use `/commercial/*` (catalogue, account, quote, subscribe, change, cancel, usage). Every capability is REST + OpenAPI + MCP from one definition (`apps/api/src/capabilities/commercial.js`). Load the India launch baseline from the console ("Load India launch catalogue", `apps/api/data/commercial/india-launch.json`); re-importing never changes anything existing.
+`apps/app/src/screens/commercial-console.js` (platform admin only; hidden for every other role) over `/admin/commercial/*`; customers use `/commercial/*` (catalogue, account, quote, subscribe, change, cancel, usage). Every capability is REST + OpenAPI + MCP from one definition (`apps/api/src/capabilities/commercial.js`). Load the India launch baseline from the console ("Load India launch catalogue", `apps/api/src/commercial/india-launch.json`); re-importing never changes anything existing.
 
 ## Reuse / duplication matrix
 | Existing | Decision |
