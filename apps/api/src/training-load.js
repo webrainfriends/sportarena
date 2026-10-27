@@ -41,7 +41,8 @@ export function buildWeeks(sessions, phases, athleteData, compareFn) {
   for (const s of sessions) {
     if (s.status === 'cancelled') continue;
     const k = monday(s.starts_at);
-    const w = by.get(k) ?? { week_start: k, sessions: 0, completed: 0, skipped: 0, planned_min: 0, completed_min: 0, planned_load: 0, actual_load: 0, _pcts: [] };
+    const w = by.get(k) ?? { week_start: k, sessions: 0, completed: 0, skipped: 0, planned_min: 0, completed_min: 0, planned_load: 0, actual_load: 0, _pcts: [], _first: s.starts_at };
+    if (new Date(s.starts_at) < new Date(w._first)) w._first = s.starts_at;
     w.sessions++; w.planned_min += s.duration_min; w.planned_load += load(s.target_rpe, s.duration_min) ?? 0;
     if (athleteData) {
       if (s.status === 'completed') {
@@ -54,7 +55,8 @@ export function buildWeeks(sessions, phases, athleteData, compareFn) {
   const weeks = [...by.values()].sort((a, b) => a.week_start.localeCompare(b.week_start));
   weeks.forEach((w, i) => {
     const pcts = w._pcts.filter((x) => x !== null && x !== undefined); delete w._pcts;
-    w.phase = phaseOn(phases, `${w.week_start}T12:00:00Z`)?.label ?? null;
+    // a week belongs to the phase that is running at its first session; a plan that starts midweek still labels its first week (Monday alone would miss it)
+    w.phase = (phaseOn(phases, w._first) ?? phaseOn(phases, `${w.week_start}T12:00:00Z`))?.label ?? null; delete w._first;
     w.compliance_pct = pcts.length ? Math.round(pcts.reduce((a, x) => a + x, 0) / pcts.length) : null;
     const prev = weeks[i - 1];
     w.planned_load_change_pct = prev?.planned_load ? Math.round(((w.planned_load - prev.planned_load) / prev.planned_load) * 100) : null;

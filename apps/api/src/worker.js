@@ -23,6 +23,7 @@ import { accrueActiveContracts } from './player-contracts.js';
 import { runServiceSweeps } from './svc/sweeps.js';
 import { runFederationSweeps } from './federation-sweeps.js';
 import { runOfficialsSweeps } from './officials-sweeps.js';
+import { runMediaRightsSweeps } from './media-rights-sweeps.js';
 
 export const STEPS = [
   ['holds', 'holds_released', expireUnpaidHolds, 0],
@@ -52,6 +53,7 @@ export const STEPS = [
   ['supplier_services', 'supplier_services', runServiceSweeps, null],
   ['federation', 'federation', runFederationSweeps, null],
   ['officials_development', 'officials_development', runOfficialsSweeps, null],
+  ['media_rights', 'media_rights', runMediaRightsSweeps, null],
 ];
 
 export async function maintenanceCycle() {

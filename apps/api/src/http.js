@@ -26,6 +26,7 @@ import { passportFilesRouter } from './capabilities/passport-recruitment.js';
 import { applicationFilesRouter } from './capabilities/sponsorship-application-forms.js';
 import { subjectDocsRouter } from './capabilities/subject-docs.js';
 import { tenderFilesRouter } from './capabilities/tender-files.js';
+import { mediaAssetFilesRouter } from './capabilities/media-rights-assets.js';
 import { contractReceiptsRouter } from './capabilities/player-contract-money.js';
 import { staffDocsRouter } from './capabilities/event-openings.js';
 import { liveRouter } from './live.js';
@@ -72,6 +73,8 @@ export function createApp() {
   app.use('/api/v1/webhooks/signatures', signatureCallbackRouter());
   // Media: streaming upload + file serving (binary, so outside the JSON capability router); base64 uploads get a larger JSON limit on their own path.
   app.use('/api/v1/venues/:id/media', express.json({ limit: '12mb' }));
+  // Race day bulk files (entrant lists, chip lists, timing batches): bounded bigger JSON body on those three paths only.
+  app.use(/^\/api\/v1\/races\/[0-9a-f-]{36}\/(entrants|chips|reads)\/import$/, express.json({ limit: '6mb' }));
   app.use('/api/v1', mediaRouter());
   app.use('/api/v1', marketMediaRouter());
   app.use('/api/v1', insuranceDocsRouter());
@@ -86,6 +89,7 @@ export function createApp() {
   app.use('/api/v1', matchFileRouter());
   app.use('/api/v1', subjectDocsRouter());
   app.use('/api/v1', tenderFilesRouter());
+  app.use('/api/v1', mediaAssetFilesRouter());
   app.use('/api/v1', contractReceiptsRouter());
   app.use('/api/v1', staffDocsRouter());
   app.use(express.json({ limit: '100kb' }));

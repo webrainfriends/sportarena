@@ -1,6 +1,6 @@
 // Event console: the one place to run an event from first idea to the final whistle. Setup checklist, teams and invitations, departments,
 // hiring, boards, games (live, schedule, bracket), venue, sponsors, requests, budget and official results, plus lifecycle controls
-// (open, start, pause, resume, end). It replaces the separate Tournament console and Plan & budget screens: one feature, one place.
+// (open, start, pause, resume, end) and the media side: broadcast rights, production, streams, media and data feeds. It replaces the separate Tournament console and Plan & budget screens: one feature, one place.
 import { locale } from '../locale';
 import React, { useState } from 'react';
 import { View } from 'react-native';
@@ -15,6 +15,7 @@ import { ErrorBox, Field, Loading, Sheet, T } from '../ui';
 import { c } from '../theme';
 import { DepartmentsTab } from './event-departments';
 import { BoardTab } from './event-board';
+import { BroadcastTab } from './media-broadcast';
 import { FixturesTab } from './match-centre';
 import { ResultsTab } from './event-results';
 import { TeamsTab } from './event-teams';
@@ -26,6 +27,7 @@ import { ServicesBuyer } from './svc-buyer';
 import { EventVenues } from './event-venues';
 import { Requests, Budget } from './event-plan';
 import { GameRow } from './event-schedule';
+import { RaceDay } from './race-desk';
 
 const STEPS = [['draft', 'Setup'], ['open', 'Open'], ['ongoing', 'Running'], ['completed', 'Ended']];
 const rank = { draft: 0, open: 1, ongoing: 2, paused: 2, completed: 3, cancelled: 3 };
@@ -56,9 +58,10 @@ function useConsoleData(id, org) {
   const vend = L(() => api.get(`/events/${id}/vendors`));
   const money = L(() => api.get(`/events/${id}/commercials`));
   const plan = L(() => api.get(`/events/${id}/plan`));
+  const races = useLoad(() => api.get(`/events/${id}/races`), [id]);
   const rosters = L(() => api.get(`/events/${id}/rosters`).catch(() => null));   // registrations awaiting a decision, for the tab badge
-  const all = [fx, bracket, venues, inv, seeds, roles, staff, vend, money, plan, rosters];
-  return { fx, bracket, venues, inv, seeds, roles, staff, vend, money, plan, rosters, reload: () => all.forEach((l) => l.reload()) };
+  const all = [fx, bracket, venues, inv, seeds, roles, staff, vend, money, plan, rosters, races];
+  return { fx, bracket, venues, inv, seeds, roles, staff, vend, money, plan, rosters, races, reload: () => all.forEach((l) => l.reload()) };
 }
 
 export function EventCommand({ id, tab: first = 'overview' }) {
@@ -99,7 +102,8 @@ export function EventCommand({ id, tab: first = 'overview' }) {
     { key: 'people', label: 'People', icon: '🧩' },
     { key: 'boards', label: 'Boards', icon: '🗂️' },
     { key: 'games', label: 'Games', icon: '⚡' },
-    ...(isOrg ? [{ key: 'venue', label: 'Venue', icon: '🏟️' }, { key: 'business', label: 'Business', icon: '💼', badge: waiting }] : []),
+    ...(isOrg || (D.races.data ?? []).length ? [{ key: 'race', label: 'Race day', icon: '🏃' }] : []),
+    ...(isOrg ? [{ key: 'venue', label: 'Venue', icon: '🏟️' }, { key: 'business', label: 'Business', icon: '💼', badge: waiting }, { key: 'broadcast', label: 'Broadcast', icon: '📡' }] : []),
     { key: 'results', label: 'Results', icon: '🏆' },
   ];
   const P = { id, e, isOrg, go, reload: reloadAll };
@@ -136,6 +140,7 @@ export function EventCommand({ id, tab: first = 'overview' }) {
         </>
       )}
       {tab === 'boards' && <BoardTab id={id} isOrg={isOrg} />}
+      {tab === 'race' && <RaceDay id={id} isOrg={isOrg} />}
       {tab === 'games' && <FixturesTab id={id} isOrg={isOrg} games={games} accepted={accepted} venues={D.venues.data ?? []} bracket={D.bracket.data} reload={reloadAll} goVenue={() => go('venue')} />}
       {tab === 'venue' && isOrg && <EventVenues e={e} toast={toast} onChange={reloadAll} />}
       {tab === 'business' && isOrg && (
@@ -151,6 +156,7 @@ export function EventCommand({ id, tab: first = 'overview' }) {
             : D.plan.data ? <Paper>{sub.business === 'requests' ? <Requests id={id} e={e} p={D.plan.data} toast={toast} reload={D.plan.reload} /> : <Budget id={id} p={D.plan.data} toast={toast} reload={D.plan.reload} />}</Paper> : <Loading />}
         </>
       )}
+      {tab === 'broadcast' && isOrg && <BroadcastTab id={id} e={e} isOrg={isOrg} games={games} />}
       {tab === 'results' && <ResultsTab id={id} e={e} />}
 
       <ReasonSheet visible={ask === 'pause'} onClose={() => setAsk(null)} title="Pause the event" sub="Live games freeze, and everyone entered or on the crew is told why." presets={['Rain delay', 'Safety issue', 'Power cut', 'Running behind', 'Medical emergency']} confirmLabel="Pause event" tone="sun"
@@ -169,7 +175,7 @@ function Paper({ children }) {
   return <View style={{ backgroundColor: c.bg, borderRadius: 24, paddingHorizontal: 12, paddingBottom: 14, overflow: 'hidden' }}>{children}</View>;
 }
 
-function Overview({ id, e, isOrg, go, D, games, accepted, money }) {
+function Overview({ id, e, isOrg, go, D, games, accepted, money, reload }) {
   const { push } = useNav();
   const depts = useLoad(() => api.get(`/events/${id}/departments`), [id]);
   const plans = useLoad(() => api.get(`/events/${id}/plans`), [id]);
@@ -201,7 +207,7 @@ function Overview({ id, e, isOrg, go, D, games, accepted, money }) {
       </View>
 
       {isOrg ? <ASetupSteps steps={steps} title="Get the event ready" /> : null}
-      {isOrg ? <EventSanctions event={e} canManage={isOrg} onChanged={reloadAll} /> : null}
+      {isOrg ? <EventSanctions event={e} canManage={isOrg} onChanged={reload} /> : null}
 
       {isOrg ? (
         <ACard tone={A.violet} style={{ gap: 8 }}>
