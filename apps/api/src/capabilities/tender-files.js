@@ -8,7 +8,7 @@ import { z } from 'zod';
 import { id } from '../registry.js';
 import { config } from '../config.js';
 import { authenticate } from '../auth.js';
-import { one, pool } from '../db.js';
+import { one, pool, tx } from '../db.js';
 import { AppError, badRequest, conflict, forbidden, notFound, unauthorized } from '../errors.js';
 import { toErrorBody } from '../invoke.js';
 import { requireApproved } from '../access.js';
@@ -40,7 +40,7 @@ export function tenderFilesRouter() {
   const fail = (res, e) => { const { status, code, message, details } = toErrorBody(e); res.status(status).json({ error: { code, message, details } }); };
   const limiter = rateLimit({ windowMs: 60_000, limit: config.isProd ? 30 : 1000, standardHeaders: true, legacyHeaders: false });
 
-  async function store(req, user, p, { entityId, proposalId, audience }) {
+  async function store(req, user, p, { entityId, proposalId, audience, visitPack = false, replaces = null }) {
     if (Number(req.headers['content-length'] ?? 0) > DOC_LIMITS.bytes) throw new AppError(413, 'too_large', 'File too large');
     const used = await one('SELECT count(*)::int AS n FROM proc_files WHERE project_id=$1 AND archived_at IS NULL AND entity_id IS NOT DISTINCT FROM $2 AND proposal_id IS NOT DISTINCT FROM $3', [p.id, entityId, proposalId]);
     if (used.n >= PER_PROJECT) throw new AppError(409, 'limit_reached', `Up to ${PER_PROJECT} files can be attached here`);
@@ -54,22 +54,35 @@ export function tenderFilesRouter() {
     if (scan.status === 'infected') throw badRequest('That file was rejected by the malware scan');
     if (scan.status === 'unavailable' && scanPolicy().mode === 'required') throw new AppError(503, 'scan_unavailable', 'Files cannot be checked right now. Try again shortly.');
     const { id: fid, file } = await saveEncrypted('procurement', 'proc_files.stored', buf);
-    const row = await one(`INSERT INTO proc_files(id, project_id, entity_id, proposal_id, uploaded_by, audience, name, mime, bytes, sha256, stored, scan) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'clean') RETURNING id, name, mime, bytes, audience, created_at`,
-      [fid, p.id, entityId, proposalId, user.id, audience, name, t.type, buf.length, createHash('sha256').update(buf).digest('hex'), file]);
-    await auditLog(pool, p.id, user.id, 'file_uploaded', { file_id: fid, audience, entity_id: entityId });
+    const row = await tx(async (c) => {
+      const r = (await c.query(`INSERT INTO proc_files(id, project_id, entity_id, proposal_id, uploaded_by, audience, name, mime, bytes, sha256, stored, scan, visit_pack, replaces_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'clean',$12,$13) RETURNING id, name, mime, bytes, audience, visit_pack, replaces_id, created_at`,
+        [fid, p.id, entityId, proposalId, user.id, audience, name, t.type, buf.length, createHash('sha256').update(buf).digest('hex'), file, visitPack, replaces])).rows[0];
+      if (replaces) await c.query('UPDATE proc_files SET archived_at=now() WHERE id=$1 AND archived_at IS NULL', [replaces]);
+      return r;
+    });
+    await auditLog(pool, p.id, user.id, replaces ? 'file_replaced' : 'file_uploaded', { file_id: fid, audience, entity_id: entityId, visit_pack: visitPack, ...(replaces ? { replaces } : {}) });
     return { ...row, url: `/api/v1/tender-files/${fid}` };
   }
 
-  // PUT /api/v1/rfps/:id/files?name=…&audience=public|participants|buyer   body = the raw file (tender pack documents)
+  // PUT /api/v1/rfps/:id/files?name=…&audience=public|participants|buyer[&visit_pack=true][&replaces=<file id>]   body = the raw file (tender pack documents)
   r.put('/rfps/:id/files', limiter, async (req, res) => {
     try {
       const user = await authenticate(req.headers.authorization);
       if (!user) throw unauthorized();
       requireApproved(user);
-      const q = z.object({ id, audience: z.enum(['public', 'participants', 'buyer']).default('participants') }).parse({ ...req.query, id: req.params.id });
+      const q = z.object({ id, audience: z.enum(['public', 'participants', 'buyer']).optional(), visit_pack: z.enum(['true', 'false']).optional(), replaces: id.optional() }).parse({ ...req.query, id: req.params.id });
       const { project: p } = await requireBuyer(user, q.id, 'files');
       if (['cancelled', 'archived'].includes(p.status)) throw conflict('This tender is finished');
-      res.status(201).json(await store(req, user, p, { entityId: null, proposalId: null, audience: q.audience }));
+      let audience = q.audience ?? 'participants', visitPack = q.visit_pack === 'true';
+      if (q.replaces) {
+        // an amended document replaces the earlier one: only while the tender is still a draft (after approval a change goes through an addendum)
+        if (p.status !== 'draft') throw conflict('After approval a document cannot be replaced. Add the amended document as a new one and issue an addendum that says what changed.');
+        const old = await one('SELECT * FROM proc_files WHERE id=$1 AND project_id=$2 AND entity_id IS NULL AND archived_at IS NULL', [q.replaces, p.id]);
+        if (!old) throw notFound('File');
+        audience = q.audience ?? old.audience; visitPack = q.visit_pack ? q.visit_pack === 'true' : old.visit_pack;
+      }
+      if (visitPack && audience !== 'participants') throw badRequest('A site-visit document goes to participants who accepted the terms');
+      res.status(201).json(await store(req, user, p, { entityId: null, proposalId: null, audience, visitPack, replaces: q.replaces ?? null }));
     } catch (e) { req.resume(); fail(res, e); }
   });
 

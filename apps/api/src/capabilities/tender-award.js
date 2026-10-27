@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { cap, id, page } from '../registry.js';
 import { one, many, tx, pool } from '../db.js';
 import { badRequest, conflict, forbidden, notFound, unprocessable } from '../errors.js';
-import { auditLog, buyerIds, buyerRoles, can, entityUserIds, getProject, lockProject, myEntityIds, requireBuyer, requireEntity, tellUsers } from '../tender/core.js';
+import { auditLog, buyerIds, buyerRoles, can, entityUserIds, getProject, issuerOf, lockProject, myEntityIds, requireBuyer, requireEntity, tellUsers } from '../tender/core.js';
 import { onApproved, onRejected, requestApproval } from '../tender/approvals.js';
 import { buildScenario, SCENARIO_KINDS } from '../tender/award.js';
 import { lotsOf, credentialCheck } from '../tender/rfp.js';
@@ -21,6 +21,28 @@ const takenQty = async (c, projectId) => {
   return Object.fromEntries(rows.map((r) => [r.lot_code, r.q]));
 };
 
+/**
+ * Lots that still have quantity to award after a supplier declined or let its offer expire, with who was already offered each lot and, under
+ * the tender's published reserve rule, the next eligible bidder in ranking order (never one who already had the lot). Reserve awards are never
+ * automatic: they go through a fresh scenario, recommendation and approval.
+ */
+export async function reservePlan(c, p, rk) {
+  const hist = (await c.query("SELECT l.id, l.lot_code, l.entity_id, l.status, l.decline_reason, l.responded_at, e.legal_name FROM proc_award_lines l JOIN supplier_entities e ON e.id=l.entity_id WHERE l.project_id=$1 AND l.status IN ('declined','expired') ORDER BY l.responded_at NULLS LAST, l.id", [p.id])).rows;
+  if (!hist.length) return [];
+  const taken = await takenQty(c, p.id);
+  const byLot = {};
+  for (const h of hist) (byLot[h.lot_code] ??= []).push(h);
+  const out = [];
+  for (const lot of await lotsOf(c, p.id)) {
+    const open = lot.qty - (taken[lot.code] ?? 0);
+    if (!byLot[lot.code] || open <= 1e-9) continue;
+    const tried = new Set(byLot[lot.code].map((h) => h.entity_id));
+    const next = (rk?.rows ?? []).filter((r) => r.rank && r.evaluated_cost?.per_lot?.[lot.code] && r.evaluated_cost.qty_per_lot?.[lot.code] && !tried.has(r.entity_id)).sort((a, b) => a.rank - b.rank || b.total - a.total)[0];
+    out.push({ lot: lot.code, title: lot.title, qty_open: open, previous: byLot[lot.code].map((h) => ({ line_id: h.id, entity_id: h.entity_id, supplier: h.legal_name, status: h.status, reason: h.decline_reason })), next: next ? { entity_id: next.entity_id, supplier: next.legal_name, rank: next.rank } : null, allowed: p.reserve_policy === 'next_ranked' });
+  }
+  return out;
+}
+
 // ------------------------------------------------------------------ scenarios
 cap({
   name: 'build_award_scenario', method: 'POST', path: '/rfps/:id/scenarios', tag: TAG, status: 201,
@@ -33,8 +55,15 @@ cap({
       const rk = (await c.query(`SELECT * FROM proc_rankings WHERE project_id=$1 AND ($2::uuid IS NULL OR id=$2) ORDER BY created_at DESC LIMIT 1`, [p.id, i.ranking_id ?? null])).rows[0];
       if (!rk) throw conflict('Commit a final ranking first');
       const taken = await takenQty(c, p.id);
-      const lots = (await lotsOf(c, p.id)).map((l) => ({ code: l.code, qty: l.qty - (taken[l.code] ?? 0), estimate_minor: l.estimate_minor })).filter((l) => l.qty > 1e-9);
+      let lots = (await lotsOf(c, p.id)).map((l) => ({ code: l.code, qty: l.qty - (taken[l.code] ?? 0), estimate_minor: l.estimate_minor })).filter((l) => l.qty > 1e-9);
       if (!lots.length) throw conflict('Every lot is already awarded');
+      const plan = await reservePlan(c, p, rk);
+      const reserveByLot = new Map(plan.map((x) => [x.lot, x]));
+      const blocked = p.reserve_policy === 'none' ? plan.map((x) => x.lot) : [];
+      if (blocked.length) {
+        lots = lots.filter((l) => !blocked.includes(l.code));
+        if (!lots.length) throw conflict(`This tender's published rule does not allow a declined or expired lot to go to another bidder (lots ${blocked.join(', ')}). Re-tender those lots or close the tender without further award.`, { blocked });
+      }
       const declined = (await c.query("SELECT lot_code, entity_id FROM proc_award_lines WHERE project_id=$1 AND status IN ('declined','expired')", [p.id])).rows;
       const offers = [];
       for (const row of rk.rows.filter((r) => r.rank && r.evaluated_cost)) {
@@ -42,6 +71,7 @@ cap({
         for (const l of lots) {
           const q = row.evaluated_cost.qty_per_lot?.[l.code], cost = row.evaluated_cost.per_lot?.[l.code];
           if (!q || !cost || declined.some((d) => d.lot_code === l.code && d.entity_id === row.entity_id)) continue;
+          if (reserveByLot.has(l.code) && reserveByLot.get(l.code).next?.entity_id !== row.entity_id) continue;   // a reserve lot is offered only to the next bidder in ranking order
           const unit = cost / q;
           lotsMap[l.code] = { unit_cost_minor: unit, capacity: Math.min(q, l.qty), cost_minor: q >= l.qty ? Math.round(unit * l.qty) : cost };
         }
@@ -50,9 +80,9 @@ cap({
       const budget = i.budget_minor ?? (p.budget_minor !== null ? Number(p.budget_minor) : undefined);
       const res = buildScenario(i.kind, lots, offers, { max_suppliers: i.max_suppliers, min_score: i.min_score, budget_minor: budget, max_exposure_minor: i.max_exposure_minor });
       const names = Object.fromEntries(rk.rows.map((r) => [r.entity_id, r.legal_name]));
-      const row = (await c.query('INSERT INTO proc_scenarios(project_id, ranking_id, kind, constraints, result, created_by) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, created_at', [p.id, rk.id, i.kind, JSON.stringify({ max_suppliers: i.max_suppliers, min_score: i.min_score, budget_minor: budget, max_exposure_minor: i.max_exposure_minor }), JSON.stringify({ ...res, entities: names, currency: p.currency, ranking_id: rk.id }), user.id])).rows[0];
+      const row = (await c.query('INSERT INTO proc_scenarios(project_id, ranking_id, kind, constraints, result, created_by) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, created_at', [p.id, rk.id, i.kind, JSON.stringify({ max_suppliers: i.max_suppliers, min_score: i.min_score, budget_minor: budget, max_exposure_minor: i.max_exposure_minor }), JSON.stringify({ ...res, entities: names, currency: p.currency, ranking_id: rk.id, reserve: plan.filter((x) => lots.some((l) => l.code === x.lot)).map((x) => ({ lot: x.lot, entity: x.next?.entity_id ?? null, rank: x.next?.rank ?? null, replaces: x.previous.map((h) => h.line_id) })), reserve_blocked: blocked }), user.id])).rows[0];
       await auditLog(c, p.id, user.id, 'scenario_built', { scenario_id: row.id, kind: i.kind, feasible: res.feasible, solver: res.solver });
-      return { id: row.id, ...res, entities: names, currency: p.currency, ranking_id: rk.id };
+      return { id: row.id, ...res, entities: names, currency: p.currency, ranking_id: rk.id, reserve: plan.filter((x) => lots.some((l) => l.code === x.lot)), reserve_blocked: blocked };
     });
   },
 });
@@ -82,7 +112,7 @@ cap({
       if (r.unfilled?.length && !i.allow_partial) throw conflict('That scenario leaves lots unfilled. Confirm a partial award to continue.', { unfilled: r.unfilled });
       const rk = (await c.query('SELECT id, rubric_version FROM proc_rankings WHERE id=$1', [sc.ranking_id])).rows[0];
       const a = (await c.query(`INSERT INTO proc_awards(project_id, scenario_id, rationale, rubric_version, rfp_version, snapshot, recommended_by) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`, [p.id, sc.id, i.rationale, rk.rubric_version, p.version, JSON.stringify({ scenario: r, ranking_id: sc.ranking_id }), user.id])).rows[0];
-      const ap = await requestApproval(c, p, user, 'award', { award_id: a.id, subject: `award:${a.id}` }, i.rationale, r.cost_minor);
+      const ap = await requestApproval(c, p, user, 'award', { award_id: a.id, subject: `award:${a.id}`, reserve: (r.reserve ?? []).map((x) => x.lot) }, i.rationale, r.cost_minor);
       await c.query('UPDATE proc_awards SET approval_id=$2 WHERE id=$1', [a.id, ap.id]);
       await c.query("UPDATE proc_projects SET status='award' WHERE id=$1", [p.id]);
       await auditLog(c, p.id, user.id, 'award_recommended', { award_id: a.id, scenario_id: sc.id });
@@ -155,7 +185,13 @@ cap({
       if (problems.length) throw conflict('The award cannot be issued yet', { problems });
       const accept_after = new Date(Date.now() + p.standstill_days * 864e5), accept_by = new Date(accept_after.getTime() + i.accept_within_days * 864e5);
       const sub = async (entity) => (await c.query("SELECT pr.id AS proposal_id, pr.current_submission_id AS submission_id FROM proc_proposals pr WHERE pr.project_id=$1 AND pr.entity_id=$2 AND pr.status='submitted' AND pr.alt_key='base' ORDER BY pr.round DESC LIMIT 1", [p.id, entity])).rows[0];
-      for (const x of alloc) { const s = await sub(x.entity); await c.query('INSERT INTO proc_award_lines(award_id, project_id, lot_code, entity_id, proposal_id, submission_id, qty, amount_minor, currency) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)', [a.id, p.id, x.lot, x.entity, s.proposal_id, s.submission_id, x.qty, x.cost_minor, p.currency]); }
+      for (const x of alloc) {
+        const s = await sub(x.entity);
+        const reserve = (a.snapshot.scenario.reserve ?? []).find((r) => r.lot === x.lot && r.entity === x.entity);
+        if (reserve && p.reserve_policy !== 'next_ranked') throw conflict('The tender\'s published rule does not allow reserve awards');
+        const replaces = reserve ? (await c.query("SELECT id FROM proc_award_lines WHERE project_id=$1 AND lot_code=$2 AND status IN ('declined','expired') ORDER BY responded_at DESC NULLS LAST, id DESC LIMIT 1", [p.id, x.lot])).rows[0]?.id ?? null : null;
+        await c.query('INSERT INTO proc_award_lines(award_id, project_id, lot_code, entity_id, proposal_id, submission_id, qty, amount_minor, currency, reserve_of) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)', [a.id, p.id, x.lot, x.entity, s.proposal_id, s.submission_id, x.qty, x.cost_minor, p.currency, replaces]);
+      }
       await c.query("UPDATE proc_awards SET status='notified', notified_at=now(), accept_after=$2, accept_by=$3, updated_at=now() WHERE id=$1", [a.id, accept_after, accept_by]);
       await auditLog(c, p.id, user.id, 'award_notified', { award_id: a.id, lines: alloc.length, total_minor: total });
       const winners = new Set(alloc.map((x) => x.entity));
@@ -209,7 +245,7 @@ cap({
     await requireBuyer(user, a.project_id, 'view');
     await tx((c) => expireLines(c, a.id));
     const fresh = await one('SELECT * FROM proc_awards WHERE id=$1', [a.id]);
-    const lines = await many('SELECT l.id, l.lot_code, l.entity_id, e.legal_name AS supplier, l.qty::float AS qty, l.amount_minor, l.currency, l.status, l.responded_at, l.decline_reason, o.id AS order_id, o.ref AS order_ref FROM proc_award_lines l JOIN supplier_entities e ON e.id=l.entity_id LEFT JOIN proc_orders o ON o.award_line_id=l.id WHERE l.award_id=$1 ORDER BY l.lot_code', [a.id]);
+    const lines = await many('SELECT l.id, l.lot_code, l.entity_id, e.legal_name AS supplier, l.qty::float AS qty, l.amount_minor, l.currency, l.status, l.reserve_of, l.responded_at, l.decline_reason, o.id AS order_id, o.ref AS order_ref FROM proc_award_lines l JOIN supplier_entities e ON e.id=l.entity_id LEFT JOIN proc_orders o ON o.award_line_id=l.id WHERE l.award_id=$1 ORDER BY l.lot_code', [a.id]);
     const approval = fresh.approval_id ? await one("SELECT a.id, a.status, a.required, (SELECT count(*)::int FROM proc_approval_votes v WHERE v.approval_id=a.id AND v.decision='approve') AS approvals FROM proc_approvals a WHERE a.id=$1", [fresh.approval_id]) : null;
     return { ...fresh, lines, approval };
   },
@@ -258,12 +294,15 @@ cap({
       const evalCost = (await c.query('SELECT cost FROM proc_submission_costs WHERE submission_id=$1', [sub.id])).rows[0]?.cost;
       const totalAward = (await c.query('SELECT coalesce(sum(amount_minor),0)::bigint AS t FROM proc_award_lines WHERE award_id=$1 AND status <> \'cancelled\'', [l.award_id])).rows[0].t;
       const ceiling = p.contract_type === 'framework' && p.ceiling_minor ? Math.round(Number(p.ceiling_minor) * Number(l.amount_minor) / Math.max(1, Number(totalAward))) : null;
+      const renewalCeiling = p.contract_type === 'framework' && p.renewal_ceiling_minor ? Math.round(Number(p.renewal_ceiling_minor) * Number(l.amount_minor) / Math.max(1, Number(totalAward))) : null;
       const scope = { tender: { ref: p.ref, title: p.title, version: a.rfp_version, category: p.category }, lot: { code: lot.code, title: lot.title, qty: Number(l.qty), unit: lot.unit, description: lot.description }, supplier: { id: ent.id, legal_name: ent.legal_name },
-        submission: { receipt_no: sub.receipt_no, version: sub.version, content_hash: sub.content_hash, submitted_at: sub.submitted_at }, evaluated: evalCost ? { total_minor: evalCost.total_minor, basis: evalCost.basis } : null, award: { id: a.id, rationale: a.rationale, rubric_version: a.rubric_version, ranking_id: a.snapshot.ranking_id, approval_id: a.approval_id }, dates: { prep_start: p.prep_start, service_start: p.service_start, service_end: p.service_end, teardown_end: p.teardown_end }, contract_type: p.contract_type };
-      const order = (await c.query(`INSERT INTO proc_orders(ref, project_id, award_line_id, organisation_id, buyer_user_id, event_id, entity_id, lot_code, scope, amount_minor, currency, contract_type, prep_start, service_start, service_end, teardown_end, ceiling_minor)
-        VALUES ('PO-' || to_char(now(), 'YYYY') || '-' || lpad(nextval('proc_order_seq')::text, 5, '0'), $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) ON CONFLICT (award_line_id) DO NOTHING RETURNING *`,
-        [p.id, l.id, p.organisation_id, p.owner_user_id, p.event_id, l.entity_id, l.lot_code, JSON.stringify(scope), l.amount_minor, l.currency, p.contract_type, p.prep_start, p.service_start, p.service_end, p.teardown_end, ceiling])).rows[0];
+        submission: { receipt_no: sub.receipt_no, version: sub.version, content_hash: sub.content_hash, submitted_at: sub.submitted_at }, evaluated: evalCost ? { total_minor: evalCost.total_minor, basis: evalCost.basis } : null, award: { id: a.id, rationale: a.rationale, rubric_version: a.rubric_version, ranking_id: a.snapshot.ranking_id, approval_id: a.approval_id }, dates: { prep_start: p.prep_start, service_start: p.service_start, service_end: p.service_end, teardown_end: p.teardown_end }, contract_type: p.contract_type, terms: { renewal_options: p.renewal_options, renewal_term_months: p.renewal_term_months, notice_days: p.notice_days, milestones: p.milestones ?? [] } };
+      const order = (await c.query(`INSERT INTO proc_orders(ref, project_id, award_line_id, organisation_id, buyer_user_id, event_id, entity_id, lot_code, scope, amount_minor, currency, contract_type, prep_start, service_start, service_end, teardown_end, ceiling_minor, renewal_options, renewal_term_months, renewal_ceiling_minor, notice_days)
+        VALUES ('PO-' || to_char(now(), 'YYYY') || '-' || lpad(nextval('proc_order_seq')::text, 5, '0'), $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) ON CONFLICT (award_line_id) DO NOTHING RETURNING *`,
+        [p.id, l.id, p.organisation_id, p.owner_user_id, p.event_id, l.entity_id, l.lot_code, JSON.stringify(scope), l.amount_minor, l.currency, p.contract_type, p.prep_start, p.service_start, p.service_end, p.teardown_end, ceiling, p.renewal_options, p.renewal_term_months, renewalCeiling, p.notice_days])).rows[0];
       if (!order) return { status: 'accepted', order: (await c.query('SELECT id, ref, status, amount_minor, currency FROM proc_orders WHERE award_line_id=$1', [l.id])).rows[0], replayed: true };
+      let pos = 0;
+      for (const m of p.milestones ?? []) await c.query('INSERT INTO proc_order_milestones(order_id, position, name, description, due_on) VALUES ($1,$2,$3,$4,$5)', [order.id, pos++, m.name, m.description ?? null, m.due_on]);
       let budgetLine = null, note = null;
       if (p.event_id) {
         const eb = (await c.query('SELECT * FROM event_budgets WHERE event_id=$1 FOR UPDATE', [p.event_id])).rows[0];
@@ -317,10 +356,13 @@ async function orderFor(user, oid, c = pool) {
 cap({
   name: 'get_procurement_order', method: 'GET', path: '/procurement-orders/:id', tag: TAG, summary: 'One order with its scope snapshot (tender and proposal versions, ranking and approval references), commitment, call-offs and the separate statuses: award line, order, contract. None of them says anything about delivery or payment.', input: z.object({ id }),
   async handler({ user }, i) {
-    const { o } = await orderFor(user, i.id);
+    const { o, roles, supplier } = await orderFor(user, i.id);
     const [commit, calloffs, line] = await Promise.all([one('SELECT amount_minor, currency, budget_line_id, note FROM proc_commitments WHERE order_id=$1', [o.id]), many("SELECT id, amount_minor, description, service_date, status, created_at FROM proc_calloffs WHERE order_id=$1 ORDER BY created_at", [o.id]), one('SELECT status FROM proc_award_lines WHERE id=$1', [o.award_line_id])]);
     const committed = calloffs.filter((x) => x.status === 'approved').reduce((a, x) => a + Number(x.amount_minor), 0);
-    return { ...o, award_line_status: line?.status, commitment: commit, call_offs: calloffs, framework: o.ceiling_minor ? { ceiling_minor: Number(o.ceiling_minor), committed_call_offs_minor: committed, remaining_minor: Number(o.ceiling_minor) - committed, note: 'A ceiling is not guaranteed spend. Actual invoices are tracked separately.' } : null };
+    const [milestones, renewals] = await Promise.all([many('SELECT id, position, name, description, due_on, status, note, updated_at FROM proc_order_milestones WHERE order_id=$1 ORDER BY position', [o.id]), many('SELECT n, previous_service_end, new_service_end, added_ceiling_minor, created_at FROM proc_order_renewals WHERE order_id=$1 ORDER BY n', [o.id])]);
+    const terms = { renewal_options: o.renewal_options, renewals_used: o.renewals_used, renewals_left: Math.max(0, o.renewal_options - o.renewals_used), renewal_term_months: o.renewal_term_months, renewal_ceiling_minor: o.renewal_ceiling_minor ? Number(o.renewal_ceiling_minor) : null, notice_days: o.notice_days,
+      notice: o.notice_kind ? { kind: o.notice_kind, served_at: o.notice_served_at, effective_on: o.notice_effective_on } : null, milestones, renewals };
+    return { ...o, viewer: { buyer: can(roles, 'order'), supplier }, terms, award_line_status: line?.status, commitment: commit, call_offs: calloffs, framework: o.ceiling_minor ? { ceiling_minor: Number(o.ceiling_minor), committed_call_offs_minor: committed, remaining_minor: Number(o.ceiling_minor) - committed, note: 'A ceiling is not guaranteed spend. Actual invoices are tracked separately.' } : null };
   },
 });
 
@@ -360,11 +402,85 @@ cap({
       if (!['confirmed', 'in_progress'].includes(o.status)) throw conflict(`The order is ${o.status}`);
       if (i.idempotency_key) { const prev = (await c.query('SELECT * FROM proc_calloffs WHERE order_id=$1 AND idempotency_key=$2', [o.id, i.idempotency_key])).rows[0]; if (prev) return { ...prev, replayed: true }; }
       if (i.service_date && ((o.service_start && i.service_date < new Date(o.service_start).toISOString().slice(0, 10)) || (o.service_end && i.service_date > new Date(o.service_end).toISOString().slice(0, 10)))) throw badRequest('The call-off is outside the service period');
+      if (o.notice_kind === 'terminate' && o.notice_effective_on) {
+        const late = (await c.query('SELECT (coalesce($2::date, current_date) > $1::date) AS late', [o.notice_effective_on, i.service_date ?? null])).rows[0].late;
+        if (late) throw conflict('A termination notice has been served: call-offs cannot be placed for dates after it takes effect', { effective_on: o.notice_effective_on });
+      }
       const used = Number((await c.query("SELECT coalesce(sum(amount_minor),0)::bigint AS s FROM proc_calloffs WHERE order_id=$1 AND status='approved'", [o.id])).rows[0].s);
       if (used + i.amount_minor > Number(o.ceiling_minor)) throw conflict('This call-off would exceed the framework ceiling. A ceiling change needs a new approved award.', { remaining_minor: Number(o.ceiling_minor) - used });
       const row = (await c.query('INSERT INTO proc_calloffs(order_id, amount_minor, description, service_date, requested_by, idempotency_key) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *', [o.id, i.amount_minor, i.description, i.service_date ?? null, user.id, i.idempotency_key ?? null])).rows[0];
       await auditLog(c, o.project_id, user.id, 'call_off_created', { order_id: o.id, call_off_id: row.id, amount_minor: i.amount_minor });
       await tellUsers(c, await entityUserIds(o.entity_id, c, ['owner', 'bid_manager']), await getProject(o.project_id, c), 'tender_call_off', 'New call-off', `A call-off was placed on order ${o.ref}.`, `co${row.id}`);
+      return row;
+    });
+  },
+});
+
+cap({
+  name: 'update_order_milestone', method: 'POST', path: '/procurement-milestones/:id/update', tag: TAG,
+  summary: 'Record a contract milestone as completed or waived, or put it back to planned (buying team with order authority). This records the contract milestone only: it is not acceptance of delivered work and does not trigger payment. Both stay in the service delivery and finance records.',
+  input: z.object({ id, status: z.enum(['planned', 'completed', 'waived']), note: z.string().max(500).optional() }),
+  async handler({ user }, i) {
+    return tx(async (c) => {
+      const m0 = (await c.query('SELECT * FROM proc_order_milestones WHERE id=$1', [i.id])).rows[0];
+      if (!m0) throw notFound('Milestone');
+      const { o: o0, roles } = await orderFor(user, m0.order_id, c);
+      if (!can(roles, 'order')) throw forbidden('Only the buying team can record milestones');
+      if (['cancelled'].includes(o0.status)) throw conflict('The order is cancelled');
+      if (i.status === 'waived' && !i.note) throw badRequest('Say why the milestone is waived');
+      const m = (await c.query('UPDATE proc_order_milestones SET status=$2, note=$3, updated_by=$4, updated_at=now() WHERE id=$1 RETURNING id, name, due_on, status, note', [i.id, i.status, i.note ?? null, user.id])).rows[0];
+      await auditLog(c, o0.project_id, user.id, 'order_milestone_recorded', { order_id: o0.id, milestone_id: m.id, status: m.status });
+      return m;
+    });
+  },
+});
+
+cap({
+  name: 'renew_procurement_order', method: 'POST', path: '/procurement-orders/:id/renew', tag: TAG,
+  summary: 'Exercise one of the renewal options the tender published (buying team with order authority). It extends the service period by the published renewal term and, for a framework, adds the published renewal ceiling. It must be exercised at least the published notice period before the service period ends, and never after a notice of termination or non-renewal. Idempotent by renewal number. Earlier terms are kept as history.',
+  input: z.object({ id, renewal_no: z.number().int().min(1).max(10).describe('the renewal you are exercising: 1 for the first, 2 for the second. Retrying the same number never renews twice') }),
+  async handler({ user }, i) {
+    return tx(async (c) => {
+      const { o: o0, roles } = await orderFor(user, i.id, c);
+      if (!can(roles, 'order')) throw forbidden('Only the buying team can renew an order');
+      const o = (await c.query('SELECT * FROM proc_orders WHERE id=$1 FOR UPDATE', [o0.id])).rows[0];
+      const prev = (await c.query('SELECT n, previous_service_end, new_service_end, added_ceiling_minor FROM proc_order_renewals WHERE order_id=$1 AND n=$2', [o.id, i.renewal_no])).rows[0];
+      if (prev) return { ...prev, replayed: true };
+      if (i.renewal_no !== o.renewals_used + 1) throw conflict(`The next renewal is number ${o.renewals_used + 1}`);
+      if (!['confirmed', 'in_progress'].includes(o.status)) throw conflict(`The order is ${o.status}`);
+      if (o.renewals_used >= o.renewal_options || !o.renewal_term_months) throw conflict('This order has no renewal option left');
+      if (o.notice_kind) throw conflict(o.notice_kind === 'terminate' ? 'A termination notice has been served' : 'A notice of non-renewal has been served');
+      if (!o.service_end) throw conflict('The order has no service end date to renew from');
+      const window = (await c.query('SELECT (current_date <= ($1::date - $2::int)) AS ok, ($1::date - $2::int) AS last_day FROM (SELECT 1) x', [o.service_end, o.notice_days])).rows[0];
+      if (!window.ok) throw conflict('The renewal must be exercised before the notice period begins', { last_day: window.last_day, notice_days: o.notice_days });
+      const add = o.contract_type === 'framework' && o.renewal_ceiling_minor ? Number(o.renewal_ceiling_minor) : 0;
+      const upd = (await c.query(`UPDATE proc_orders SET renewals_used=renewals_used+1, service_end=(service_end + make_interval(months => $2))::date, teardown_end=CASE WHEN teardown_end IS NULL THEN NULL ELSE (teardown_end + make_interval(months => $2))::date END, ceiling_minor=CASE WHEN ceiling_minor IS NULL THEN NULL ELSE ceiling_minor + $3 END, updated_at=now() WHERE id=$1 RETURNING service_end`, [o.id, o.renewal_term_months, add])).rows[0];
+      const row = (await c.query('INSERT INTO proc_order_renewals(order_id, n, previous_service_end, new_service_end, added_ceiling_minor, renewed_by) VALUES ($1,$2,$3,$4,$5,$6) RETURNING n, previous_service_end, new_service_end, added_ceiling_minor', [o.id, i.renewal_no, o.service_end, upd.service_end, add, user.id])).rows[0];
+      await auditLog(c, o.project_id, user.id, 'order_renewed', { order_id: o.id, n: i.renewal_no, new_service_end: upd.service_end, added_ceiling_minor: add });
+      await tellUsers(c, await entityUserIds(o.entity_id, c, ['owner', 'bid_manager', 'signatory']), await getProject(o.project_id, c), 'tender_order_renewed', 'Order renewed', `Order ${o.ref} was renewed (renewal ${i.renewal_no}).`, `rn${o.id}${i.renewal_no}`);
+      return row;
+    });
+  },
+});
+
+cap({
+  name: 'serve_order_notice', method: 'POST', path: '/procurement-orders/:id/notice', tag: TAG, status: 201,
+  summary: 'Serve a notice of termination or of non-renewal, as the buying team (order authority) or the supplier (owner or signatory), with a reason. It takes effect after the notice period the tender published. One notice per order; it is recorded permanently. While it runs the order carries on; renewals stop, and after a termination notice takes effect no further call-offs can be placed. Cancelling the order itself stays a separate, reasoned action.',
+  input: z.object({ id, kind: z.enum(['terminate', 'not_renew']), reason: z.string().min(10).max(1000) }),
+  async handler({ user }, i) {
+    return tx(async (c) => {
+      const { o: o0, roles, supplier } = await orderFor(user, i.id, c);
+      const buyer = can(roles, 'order');
+      const signs = supplier && (await c.query("SELECT 1 FROM supplier_entity_members WHERE entity_id=$1 AND user_id=$2 AND status='active' AND role IN ('owner','signatory')", [o0.entity_id, user.id])).rowCount > 0;
+      if (!buyer && !signs) throw forbidden('Only the buying team, or the supplier owner or signatory, can serve notice');
+      const o = (await c.query('SELECT * FROM proc_orders WHERE id=$1 FOR UPDATE', [o0.id])).rows[0];
+      if (o.notice_kind) throw conflict('A notice has already been served on this order');
+      if (!['confirmed', 'in_progress'].includes(o.status)) throw conflict(`The order is ${o.status}`);
+      const row = (await c.query(`UPDATE proc_orders SET notice_kind=$2, notice_served_at=now(), notice_served_by=$3, notice_effective_on=(current_date + $4::int), updated_at=now() WHERE id=$1 RETURNING id, ref, notice_kind, notice_served_at, notice_effective_on`, [o.id, i.kind, user.id, o.notice_days])).rows[0];
+      await auditLog(c, o.project_id, user.id, 'order_notice_served', { order_id: o.id, kind: i.kind, by: buyer ? 'buyer' : 'supplier', reason: i.reason, effective_on: row.notice_effective_on });
+      const p = await getProject(o.project_id, c);
+      const tell = buyer ? await entityUserIds(o.entity_id, c, ['owner', 'bid_manager', 'signatory']) : await buyerIds(p, ['chair', 'owner']);
+      await tellUsers(c, tell, p, 'tender_order_notice', 'Notice served', `Order ${o.ref}: notice of ${i.kind === 'terminate' ? 'termination' : 'non-renewal'} served, effective ${row.notice_effective_on}.`, `nt${o.id}`);
       return row;
     });
   },
@@ -440,4 +556,77 @@ cap({
 cap({
   name: 'list_tender_appeals', method: 'GET', path: '/rfps/:id/appeals', tag: TAG, summary: 'Appeals filed on a tender (buying team).', input: z.object({ id }),
   async handler({ user }, i) { const { project: p } = await requireBuyer(user, i.id, 'recommend'); return many('SELECT a.id, e.legal_name AS supplier, a.reason, a.status, a.decision, a.created_at FROM proc_appeals a JOIN supplier_entities e ON e.id=a.entity_id WHERE a.project_id=$1 ORDER BY a.created_at', [p.id]); },
+});
+
+// ------------------------------------------------------------------ reserve bidders
+cap({
+  name: 'list_reserve_options', method: 'GET', path: '/rfps/:id/reserve', tag: TAG,
+  summary: 'Lots that are open again because a supplier declined or let its offer expire: who already had each lot and why, the tender\'s published reserve rule, and, if the rule allows it, the next eligible bidder in ranking order. Offering a lot to that bidder is never automatic: build a scenario, recommend it and get a fresh approval.',
+  input: z.object({ id }),
+  async handler({ user }, i) {
+    const { project: p } = await requireBuyer(user, i.id, 'scenario');
+    const rk = await one('SELECT rows FROM proc_rankings WHERE project_id=$1 ORDER BY created_at DESC LIMIT 1', [p.id]);
+    return { reserve_policy: p.reserve_policy, lots: await reservePlan(pool, p, rk) };
+  },
+});
+
+// ------------------------------------------------------------------ public award publication (separately approved)
+const PUBLIC_FIELDS = ['supplier', 'lots', 'award_date', 'service_period', 'value'];
+
+cap({
+  name: 'request_award_publication', method: 'POST', path: '/rfps/:id/award-publication', tag: TAG, status: 201,
+  summary: 'Ask to publish the award result on the tender notice. Only if the tender\'s published disclosure policy allows public award notices. You choose exactly which fields may appear (supplier names, lots, award date, service period, contract value); anything not chosen never appears, losing bids and scores never do, and the contract value is off unless you choose it. The record is built now from accepted award lines and cannot be edited, and it is published only after a separate approval by someone other than you. It can be withdrawn later with a reason; the record is kept.',
+  input: z.object({ id, fields: z.array(z.enum(PUBLIC_FIELDS)).min(1).max(5), note: z.string().max(500).optional() }),
+  async handler({ user }, i) {
+    return tx(async (c) => {
+      const { project: p } = await requireBuyer(user, i.id, 'recommend', c, { lock: true });
+      if (!p.disclosure?.award_public) throw conflict('This tender\'s published disclosure policy does not allow a public award notice');
+      const lines = (await c.query("SELECT l.lot_code, l.amount_minor, l.currency, l.responded_at, e.legal_name, lt.title AS lot_title FROM proc_award_lines l JOIN supplier_entities e ON e.id=l.entity_id LEFT JOIN proc_lots lt ON lt.project_id=l.project_id AND lt.code=l.lot_code WHERE l.project_id=$1 AND l.status='accepted' ORDER BY l.lot_code", [p.id])).rows;
+      if (!lines.length) throw conflict('Nothing has been accepted yet, so there is nothing to publish');
+      if ((await c.query("SELECT 1 FROM proc_award_publications WHERE project_id=$1 AND status IN ('approval_pending','published')", [p.id])).rowCount) throw conflict('An award notice is already waiting for approval or published. Withdraw it first to publish a corrected one.');
+      const f = new Set(i.fields);
+      const record = { tender: { ref: p.ref, title: p.title, issuer: (await issuerOf(p, c))?.name ?? null }, as_of: new Date().toISOString() };
+      if (f.has('award_date')) record.award_date = new Date(Math.max(...lines.map((l) => new Date(l.responded_at).getTime()))).toISOString().slice(0, 10);
+      if (f.has('service_period')) record.service_period = { start: p.service_start, end: p.service_end };
+      if (f.has('lots') || f.has('supplier') || f.has('value')) record.awards = lines.map((l) => ({ ...(f.has('lots') ? { lot: l.lot_code, lot_title: l.lot_title } : {}), ...(f.has('supplier') ? { supplier: l.legal_name } : {}), ...(f.has('value') ? { amount_minor: Number(l.amount_minor), currency: l.currency } : {}) }));
+      const row = (await c.query('INSERT INTO proc_award_publications(project_id, fields, record, requested_by) VALUES ($1,$2,$3,$4) RETURNING id, status, fields, record', [p.id, i.fields, JSON.stringify(record), user.id])).rows[0];
+      const ap = await requestApproval(c, p, user, 'award_publication', { publication_id: row.id, subject: `pub:${row.id}`, fields: i.fields, includes_value: f.has('value') }, i.note ?? 'Publish the award result on the tender notice');
+      await c.query('UPDATE proc_award_publications SET approval_id=$2 WHERE id=$1', [row.id, ap.id]);
+      await auditLog(c, p.id, user.id, 'award_publication_requested', { publication_id: row.id, fields: i.fields });
+      return { ...row, approval_id: ap.id };
+    });
+  },
+});
+onApproved('award_publication', async (c, a, p) => {
+  const r = (await c.query("UPDATE proc_award_publications SET status='published', published_at=now() WHERE id=$1 AND status='approval_pending' RETURNING id", [a.payload.publication_id])).rows[0];
+  if (!r) return;
+  await auditLog(c, p.id, a.requested_by, 'award_published', { publication_id: r.id, approval_id: a.id });
+  await tellUsers(c, [a.requested_by], p, 'tender_award_published', 'Award notice published', `The award result for tender ${p.ref} is now on the notice.`, `pub${r.id}`);
+});
+onRejected('award_publication', async (c, a) => { await c.query("UPDATE proc_award_publications SET status='rejected' WHERE id=$1 AND status='approval_pending'", [a.payload.publication_id]); });
+
+cap({
+  name: 'withdraw_award_publication', method: 'POST', path: '/award-publications/:id/withdraw', tag: TAG,
+  summary: 'Take a published award result off the notice, with a reason. The record and the approval trail are kept; a corrected one can be requested and approved again.',
+  input: z.object({ id, reason: z.string().min(10).max(500) }),
+  async handler({ user }, i) {
+    return tx(async (c) => {
+      const pub0 = (await c.query('SELECT * FROM proc_award_publications WHERE id=$1', [i.id])).rows[0];
+      if (!pub0) throw notFound('Publication');
+      const { project: p } = await requireBuyer(user, pub0.project_id, 'recommend', c, { lock: true });
+      const r = (await c.query("UPDATE proc_award_publications SET status='withdrawn', withdrawn_at=now(), withdrawn_by=$2, withdraw_reason=$3 WHERE id=$1 AND status='published' RETURNING id, status", [i.id, user.id, i.reason])).rows[0];
+      if (!r) throw conflict('Only a published award notice can be withdrawn');
+      await auditLog(c, p.id, user.id, 'award_publication_withdrawn', { publication_id: r.id, reason: i.reason });
+      return r;
+    });
+  },
+});
+
+cap({
+  name: 'list_award_publications', method: 'GET', path: '/rfps/:id/award-publications', tag: TAG,
+  summary: 'The tender\'s public award notices with status, the fields allowed, the exact record, and the approval state (buying team).', input: z.object({ id }),
+  async handler({ user }, i) {
+    const { project: p } = await requireBuyer(user, i.id, 'view');
+    return many("SELECT u.id, u.status, u.fields, u.record, u.requested_at, u.published_at, u.withdrawn_at, u.withdraw_reason, a.status AS approval_status, a.required, (SELECT count(*)::int FROM proc_approval_votes v WHERE v.approval_id=a.id AND v.decision='approve') AS approvals FROM proc_award_publications u LEFT JOIN proc_approvals a ON a.id=u.approval_id WHERE u.project_id=$1 ORDER BY u.requested_at DESC", [p.id]);
+  },
 });

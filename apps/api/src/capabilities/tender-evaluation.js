@@ -122,7 +122,7 @@ cap({
       const { project: p, roles } = await requireBuyer(user, i.id, 'view', c, { lock: true });
       const ok = can(roles, 'gate') || (can(roles, 'score_commercial') && i.gate_key === 'commercial_review');
       if (!ok) throw forbidden('Your role cannot record that gate');
-      if (['terms', 'site_visit', 'current_version', 'credentials', 'requirements'].includes(i.gate_key)) throw conflict('That gate is automatic. Use a disqualify or reinstate request to override it.');
+      if (['terms', 'site_visit', 'visit_documents', 'current_version', 'credentials', 'requirements'].includes(i.gate_key)) throw conflict('That gate is automatic. Use a disqualify or reinstate request to override it.');
       if (i.result === 'fail' && !i.reason) throw badRequest('Say why the gate failed');
       const pr = (await c.query('SELECT * FROM proc_proposals WHERE id=$1 AND project_id=$2', [i.pid, p.id])).rows[0];
       if (!pr || pr.status !== 'submitted') throw notFound('Proposal');

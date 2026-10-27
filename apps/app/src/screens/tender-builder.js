@@ -16,7 +16,7 @@ import { Head } from './coaching';
 import { c } from '../theme';
 import { explain } from '../access';
 import { CATEGORIES } from './tender-zone';
-import { Checks, Chips, DataTable, KV, Notice, Panel, Split, StageTag, Status, amount, day, fromMinor, nice, toMinor, wallOf, when, zonedIso, openDocument } from '../tender-ui';
+import { Checks, Chips, DataTable, KV, Notice, Panel, Split, StageTag, Status, amount, blobOf, day, fromMinor, nice, openStored, toMinor, wallOf, when, zonedIso, openDocument } from '../tender-ui';
 
 const STEPS = ['Context', 'Scope and lots', 'Schedule', 'Eligibility', 'Questionnaire', 'Evaluation', 'Terms and access', 'Review'];
 const UNITS = ['hour', 'shift', 'day', 'person-hour', 'person-shift', 'visit', 'area', 'job', 'trip', 'room-night', 'site', 'month'];
@@ -43,6 +43,65 @@ function When({ label, value, tz, onChange, optional = true }) {
 }
 
 const defaultRubric = () => ({ weights: { technical: 60, commercial: 40 }, technical_pass_mark: 50, min_reviewers: 1, commercial_method: 'lowest_ratio', na_policy: 'exclude_and_reweight', tie_break: ['commercial_score', 'technical_score', 'earlier_submission'], criteria: [] });
+
+
+const AUDIENCES = [{ value: 'public', label: 'Public notice' }, { value: 'participants', label: 'Participants' }, { value: 'buyer', label: 'Buying team only' }];
+
+/** The tender pack while drafting: upload the RFP document and annexes, open one, amend it by uploading the new version (the earlier one is kept), or add another. */
+function PackDocuments({ id, toast }) {
+  const docs = useLoad(() => api.get(`/rfps/${id}/documents`, { include_archived: 'true' }), [id]);
+  const [aud, setAud] = useState('participants');
+  const [visit, setVisit] = useState(false);
+  const [busy, setBusy] = useState(null);
+  const [history, setHistory] = useState(false);
+  const all = docs.data?.documents ?? [], editable = !!docs.data?.editable;
+  const current = all.filter((d) => d.current), old = all.filter((d) => !d.current);
+  const version = (d) => { let n = 1, x = d; while (x?.replaces_id) { x = all.find((y) => y.id === x.replaces_id); n += 1; } return n; };
+  const pick = async (replace) => {
+    try {
+      const { pickEvidence } = await import('../evidence');
+      const f = await pickEvidence('files', { documents: true });
+      if (!f) return;
+      setBusy(replace?.id ?? 'new');
+      await api.upload(`/rfps/${id}/files`, await blobOf(f), { name: f.file_name, ...(replace ? { replaces: replace.id } : { audience: aud, ...(visit && aud === 'participants' ? { visit_pack: 'true' } : {}) }) });
+      toast(replace ? 'Document replaced. The earlier version is kept in the history.' : 'Document added');
+      docs.reload();
+    } catch (e) { toast(explain(e)); } finally { setBusy(null); }
+  };
+  const act = async (fn, msg) => { try { await fn(); toast(msg); docs.reload(); } catch (e) { toast(explain(e)); } };
+  return (
+    <Panel title="Tender documents" right={docs.data ? <Status tone="neutral" label={`${current.length} document${current.length === 1 ? '' : 's'}`} /> : null}>
+      <T size={13} color={c.mute}>Upload the RFP document and any annexes now or later. PDF, Word, Excel (without macros) or images, up to 10 MB each. Open a document to review it, amend it by uploading the new version (the earlier version is kept), or add another.</T>
+      {docs.error ? <ErrorBox error={docs.error} onRetry={docs.reload} /> : null}
+      {current.map((d) => (
+        <View key={d.id} style={{ gap: 8, borderWidth: 1, borderColor: c.line, borderRadius: 12, padding: 12 }}>
+          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <T size={14} weight="700" style={{ flex: 1, minWidth: 180 }}>{d.name}</T>
+            <Status tone="neutral" label={AUDIENCES.find((a) => a.value === d.audience)?.label ?? d.audience} />
+            {d.visit_pack ? <Status tone="warn" label="Site-visit document" /> : null}
+            {version(d) > 1 ? <Status tone="info" label={`Version ${version(d)}`} /> : null}
+          </View>
+          <T size={12} color={c.mute}>{Math.max(1, Math.round(d.bytes / 1024))} KB · added {day(d.created_at)}{d.added_by ? ` by @${d.added_by}` : ''}</T>
+          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+            <Btn small title="Open" color={c.violet} onPress={() => openStored(`/tender-files/${d.id}`, d.name).catch((e) => toast(explain(e)))} accessibilityLabel={`Open ${d.name}`} />
+            {editable ? <Btn small title={busy === d.id ? 'Uploading…' : 'Amend (upload new version)'} color={c.paper} ink={c.ink} disabled={!!busy} onPress={() => pick(d)} accessibilityLabel={`Replace ${d.name} with an amended version`} /> : null}
+            {editable && d.audience === 'participants' ? <Btn small title={d.visit_pack ? 'Not a site-visit document' : 'Make it a site-visit document'} color={c.paper} ink={c.ink} onPress={() => act(() => api.post(`/rfps/${id}/visit-documents`, { file_id: d.id, visit_pack: !d.visit_pack }), d.visit_pack ? 'No longer a site-visit document' : 'Suppliers must acknowledge it')} /> : null}
+            {editable ? <Btn small title="Remove" color={c.paper} ink={c.ink} onPress={() => act(() => api.post(`/rfps/${id}/documents/${d.id}/archive`), 'Removed from the pack. It stays in the history.')} accessibilityLabel={`Remove ${d.name}`} /> : null}
+          </View>
+        </View>
+      ))}
+      {!current.length && docs.data ? <T size={13} color={c.mute}>No documents yet.</T> : null}
+      <View style={{ gap: 8, borderTopWidth: 1, borderColor: c.line, paddingTop: 12 }}>
+        <Lbl>Add a document for</Lbl>
+        <Chips options={AUDIENCES} value={aud} onChange={(v) => { setAud(v); if (v !== 'participants') setVisit(false); }} />
+        {aud === 'participants' ? <Chips options={[{ value: false, label: 'Ordinary document' }, { value: true, label: 'Site-visit document' }]} value={visit} onChange={setVisit} /> : null}
+        <Btn title={busy === 'new' ? 'Uploading…' : 'Upload a document'} disabled={!!busy} onPress={() => pick(null)} style={{ alignSelf: 'flex-start' }} accessibilityLabel="Upload a tender document" />
+        {!editable && docs.data ? <Notice tone="info">This tender is no longer a draft. New documents can still be added, but an existing one cannot be replaced or removed: add the amended document and issue an addendum that says what changed.</Notice> : null}
+      </View>
+      {old.length ? <><Btn small title={history ? 'Hide earlier versions' : `Earlier versions (${old.length})`} color={c.paper} ink={c.ink} onPress={() => setHistory(!history)} style={{ alignSelf: 'flex-start' }} />{history ? old.map((d) => <T key={d.id} size={12} color={c.mute}>{d.name} · {day(d.created_at)} · replaced or removed {day(d.archived_at)}</T>) : null}</> : null}
+    </Panel>
+  );
+}
 
 export function TenderBuilder({ id: openId, event_id, organisation_id, venue_id }) {
   const { toast } = useSession();
@@ -82,6 +141,8 @@ export function TenderBuilder({ id: openId, event_id, organisation_id, venue_id 
       currency: t.currency, budget_minor: t.budget_minor ?? null, budget_public: !!t.budget_public, ceiling_minor: t.ceiling_minor ?? null, cost_basis: t.cost_basis, publication: t.publication, envelope_mode: t.envelope_mode, timezone: t.timezone,
       publish_at: t.publish_at ?? null, clarification_deadline: t.clarification_deadline ?? null, site_visit_at: t.site_visit_at ?? null, site_visit_mandatory: !!t.site_visit_mandatory, closes_at: t.closes_at ?? null, opens_at: t.opens_at ?? null, evaluation_due: t.evaluation_due ?? null, award_target: t.award_target ?? null,
       standstill_days: t.standstill_days ?? 0, allow_revision: !!t.allow_revision, allow_withdrawal: !!t.allow_withdrawal, allow_alternatives: !!t.allow_alternatives, quorum: t.quorum ?? 1, required_credentials: t.required_credentials ?? [], disclosure: t.disclosure ?? { rank: false, bidder_count: false, award_public: false }, fx: t.fx ?? null, sites: t.sites ?? [],
+      renewal_options: t.renewal_options ?? 0, renewal_term_months: t.renewal_options > 0 ? (t.renewal_term_months ?? null) : null, renewal_ceiling_minor: t.renewal_options > 0 ? (t.renewal_ceiling_minor ?? null) : null, notice_days: t.notice_days ?? 0,
+      milestones: (t.milestones ?? []).filter((m) => m.name?.trim() && m.due_on).map((m) => ({ name: m.name.trim(), due_on: String(m.due_on).slice(0, 10), description: m.description || undefined })), reserve_policy: t.reserve_policy ?? 'none',
       lots: lots.map((l) => ({ code: l.code, title: l.title, description: l.description || undefined, qty: Number(l.qty), unit: l.unit || undefined, estimate_minor: l.estimate_minor ?? undefined, allow_partial: l.allow_partial !== false, bundle_with: l.bundle_with ?? [] })),
       questions: qs.map((q) => ({ key: q.key, section: q.section, prompt: q.prompt, type: q.type, options: q.options ?? undefined, unit: q.unit ?? undefined, required: q.required !== false, pass_fail: !!q.pass_fail, pass_value: q.pass_fail ? q.pass_value : undefined, evidence_required: !!q.evidence_required, lot_code: q.lot_code ?? undefined })),
       rubric: t.kind === 'rfi' ? null : (rubric.criteria.length || rubric.weights ? rubric : null), ...extra };
@@ -237,6 +298,37 @@ export function TenderBuilder({ id: openId, event_id, organisation_id, venue_id 
         <Choice label="Show the budget to suppliers"><Chips options={[{ value: false, label: 'Keep it private' }, { value: true, label: 'Publish it' }]} value={!!t?.budget_public} onChange={(v) => set({ budget_public: v })} /></Choice>
         {t?.contract_type === 'framework' ? <Field label={`Framework ceiling (${t.currency})`} value={t.ceiling_minor != null ? fromMinor(t.ceiling_minor, t.currency) : ''} onChangeText={(v) => set({ ceiling_minor: toMinor(v, t.currency) })} keyboardType="decimal-pad" hint="A ceiling is not guaranteed spend. Call-offs can never exceed it." /> : null}
       </Panel>
+      {t?.contract_type !== 'one_off' ? (
+        <Panel title="Contract terms">
+          <T size={13} color={c.mute}>Published with the tender and copied onto each order. They cannot change after approval except by reissuing the tender.</T>
+          <View style={{ gap: 6 }}><Lbl>Renewal options</Lbl><Counter value={t?.renewal_options ?? 0} onChange={(v) => set({ renewal_options: v })} min={0} max={10} /></View>
+          {(t?.renewal_options ?? 0) > 0 ? (
+            <>
+              <View style={{ gap: 6 }}><Lbl>Each renewal lasts (months)</Lbl><Counter value={t?.renewal_term_months ?? 6} onChange={(v) => set({ renewal_term_months: v })} min={1} max={60} /></View>
+              {t?.contract_type === 'framework' ? <Field label={`Spend ceiling added by each renewal (${t.currency}, optional)`} value={t.renewal_ceiling_minor != null ? fromMinor(t.renewal_ceiling_minor, t.currency) : ''} onChangeText={(v) => set({ renewal_ceiling_minor: v === '' ? null : toMinor(v, t.currency) })} keyboardType="decimal-pad" hint="Renewing never adds spend beyond what is published here." /> : null}
+            </>
+          ) : null}
+          <View style={{ gap: 6 }}><Lbl>Notice period (days)</Lbl><Counter value={t?.notice_days ?? 0} onChange={(v) => set({ notice_days: v })} min={0} max={365} /><T size={12} color={c.mute}>Renewals must be exercised before it begins, and a notice of termination or non-renewal takes effect after it.</T></View>
+        </Panel>
+      ) : null}
+      <Panel title="Milestones" right={<Btn small title="Add milestone" color={c.violet} onPress={() => set({ milestones: [...(t?.milestones ?? []), { name: '', due_on: null }] })} accessibilityLabel="Add a contract milestone" />}>
+        <T size={13} color={c.mute}>Dates the contract commits to inside the preparation-to-teardown window. They are records on the order, not payment triggers.</T>
+        {(t?.milestones ?? []).length === 0 ? <T size={13} color={c.mute}>No milestones.</T> : null}
+        {(t?.milestones ?? []).map((m, i) => (
+          <View key={i} style={{ gap: 8, borderWidth: 1, borderColor: c.line, borderRadius: 12, padding: 12 }}>
+            <Row2>
+              <Field label="Milestone" value={m.name} onChangeText={(v) => set({ milestones: t.milestones.map((x, j) => (j === i ? { ...x, name: v } : x)) })} accessibilityLabel={`Milestone ${i + 1} name`} />
+              <DateField label="Due" value={m.due_on ? String(m.due_on).slice(0, 10) : null} min={(t?.prep_start ?? t?.service_start) ? String(t.prep_start ?? t.service_start).slice(0, 10) : undefined} max={(t?.teardown_end ?? t?.service_end) ? String(t.teardown_end ?? t.service_end).slice(0, 10) : undefined} onChange={(v) => set({ milestones: t.milestones.map((x, j) => (j === i ? { ...x, due_on: v } : x)) })} />
+            </Row2>
+            <Btn small title="Remove" color={c.paper} ink={c.ink} onPress={() => set({ milestones: t.milestones.filter((_, j) => j !== i) })} accessibilityLabel={`Remove milestone ${i + 1}`} />
+          </View>
+        ))}
+      </Panel>
+      <Panel title="If a winning supplier declines or does not respond">
+        <Choice label="Reserve bidders" hint="Published with the tender. Offering a lot to a reserve bidder is never automatic: it needs a new scenario, recommendation and approval.">
+          <Chips options={[{ value: 'none', label: 'Do not offer it to anyone else' }, { value: 'next_ranked', label: 'Offer it to the next ranked bidder' }]} value={t?.reserve_policy ?? 'none'} onChange={(v) => set({ reserve_policy: v })} />
+        </Choice>
+      </Panel>
       <Panel title="Rules for suppliers">
         <Choice label="Revisions before the deadline"><Chips options={[{ value: true, label: 'Allowed' }, { value: false, label: 'Not allowed' }]} value={!!t?.allow_revision} onChange={(v) => set({ allow_revision: v })} /></Choice>
         <Choice label="Withdrawal before the deadline"><Chips options={[{ value: true, label: 'Allowed' }, { value: false, label: 'Not allowed' }]} value={!!t?.allow_withdrawal} onChange={(v) => set({ allow_withdrawal: v })} /></Choice>
@@ -264,7 +356,8 @@ export function TenderBuilder({ id: openId, event_id, organisation_id, venue_id 
     </>
   );
 
-  const bodies = [ctx, lotEditor, sched, elig, quest, evalStep, terms, review];
+  const docsPanel = id ? <PackDocuments id={id} toast={toast} /> : null;
+  const bodies = [ctx, <>{docsPanel}{lotEditor}</>, sched, elig, quest, evalStep, terms, review];
   return (
     <Screen wide>
       <Head eyebrow={t ? `${t.ref} · ${t.kind.toUpperCase()}` : 'NEW TENDER'} title={t?.title ?? (form.title.trim() || 'Create an RFP')} sub={t ? `Draft saved to ${t.ref}. Each step saves when you continue.` : 'A guided flow from context to approval.'} right={t ? <StageTag stage={t.status === 'draft' ? 'draft' : t.status} /> : null} />

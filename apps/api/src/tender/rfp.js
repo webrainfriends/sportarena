@@ -31,6 +31,21 @@ export async function validateProject(c, p) {
   if (d(p.teardown_end) && d(p.service_end) && d(p.teardown_end) < d(p.service_end)) add('error', 'teardown_end', 'Teardown cannot end before the service period ends');
   if (['fixed_term', 'recurring', 'one_off'].includes(p.contract_type) && (!p.service_start || !p.service_end)) add('error', 'service_start', 'Give the service start and end dates');
   if (p.contract_type === 'framework' && !(p.ceiling_minor > 0)) add('error', 'ceiling_minor', 'A framework needs a spend ceiling (a ceiling is not guaranteed spend)');
+  // contract terms: renewals, notice and milestones
+  if (p.renewal_options > 0 && !p.renewal_term_months) add('error', 'renewal_term_months', 'Say how long each renewal lasts');
+  if (p.renewal_options === 0 && (p.renewal_term_months || p.renewal_ceiling_minor)) add('warning', 'renewal_options', 'A renewal term or ceiling is set but there are no renewal options');
+  if (p.renewal_ceiling_minor && p.contract_type !== 'framework') add('warning', 'renewal_ceiling_minor', 'A renewal ceiling only applies to frameworks');
+  if (p.notice_days > 0 && d(p.service_start) && d(p.service_end) && (d(p.service_end) - d(p.service_start)) / 864e5 < p.notice_days) add('warning', 'notice_days', 'The notice period is longer than the service period');
+  const ms = p.milestones ?? [];
+  const seen = new Set();
+  for (const m of ms) {
+    const due = d(m.due_on);
+    if (seen.has(`${m.name}|${m.due_on}`)) add('error', 'milestones', `Milestone "${m.name}" is listed twice`);
+    seen.add(`${m.name}|${m.due_on}`);
+    const from = d(p.prep_start) ?? d(p.service_start), to = d(p.teardown_end) ?? d(p.service_end);
+    if (from && to && due && (due < from || due > to)) add('error', 'milestones', `Milestone "${m.name}" falls outside the preparation to teardown window`);
+  }
+  if (ms.length && p.kind === 'rfi') add('warning', 'milestones', 'Milestones apply to a contract; an RFI does not lead to one');
   if (d(p.service_start) && p.award_target && d(p.service_start) < at(p.award_target) - 864e5) add('warning', 'award_target', 'The service period starts before the planned award date');
   const sumEst = lots.reduce((a, l) => a + (Number(l.estimate_minor) || 0), 0);
   if (p.budget_minor !== null && sumEst > Number(p.budget_minor)) add('warning', 'budget_minor', 'Lot estimates add up to more than the budget');
@@ -58,6 +73,14 @@ export async function validateProject(c, p) {
   }
   if ((p.sites ?? []).length === 0 && !p.location) add('warning', 'location', 'Add the site or location so suppliers can check coverage');
   return { ok: !issues.some((i) => i.severity === 'error'), issues };
+}
+
+/** Site-visit documents the buyer marked for acknowledgement, and which of them this entity has not acknowledged yet. `before` limits to files that existed then. */
+export async function visitDocs(c, projectId, entityId, before = null) {
+  const rows = (await c.query(`SELECT f.id, f.name, f.sha256, (k.id IS NOT NULL) AS acknowledged FROM proc_files f
+    LEFT JOIN proc_visit_acks k ON k.file_id=f.id AND k.entity_id=$2
+    WHERE f.project_id=$1 AND f.visit_pack AND f.archived_at IS NULL AND f.scan='clean' AND ($3::timestamptz IS NULL OR f.created_at <= $3) ORDER BY f.created_at`, [projectId, entityId, before])).rows;
+  return { total: rows.length, outstanding: rows.filter((r) => !r.acknowledged).map(({ id, name }) => ({ id, name })), documents: rows.map(({ id, name, acknowledged }) => ({ id, name, acknowledged })) };
 }
 
 /** Credential check against a tender's requirements, for one supplier entity. */

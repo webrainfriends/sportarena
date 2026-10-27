@@ -7,21 +7,24 @@ import { c } from './theme';
 // API returned as base64. The server is the authority on type and size (PDF, JPEG, PNG, WebP; 5 MB); these only fail early with a plain message.
 export const MAX_BYTES = 5 * 2 ** 20;
 const WEB = Platform.OS === 'web' && typeof document !== 'undefined';
-const MIME = { pdf: 'application/pdf', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' };
+const MIME = { pdf: 'application/pdf', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' };
+// tender and contract documents: also Word and Excel (macro-free), up to 10 MB; the server checks the content, not the name
+const DOCS = { types: ['application/pdf', 'image/jpeg', 'image/png', 'image/webp', MIME.docx, MIME.xlsx], accept: '.pdf,.jpg,.jpeg,.png,.webp,.docx,.xlsx,application/pdf,image/jpeg,image/png,image/webp', max: 10 * 2 ** 20 };
 const mimeOf = (name = '', hint) => hint ?? MIME[String(name).split('.').pop().toLowerCase()] ?? 'application/octet-stream';
-const tooBig = (bytes) => { if (bytes > MAX_BYTES) throw new Error('That file is over 5 MB. Choose a smaller photo or file.'); };
+const tooBig = (bytes, max = MAX_BYTES) => { if (bytes > max) throw new Error(`That file is over ${max / 2 ** 20} MB. Choose a smaller file.`); };
 const toBase64 = (blob) => new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1] ?? ''); r.onerror = () => no(new Error('That file could not be read')); r.readAsDataURL(blob); });
 
 /** Pick one file: `source` is 'camera' (phones and tablets only), 'photos' or 'files'. Resolves { file_name, data (base64), type } or null when cancelled. */
-export async function pickEvidence(source = 'files') {
+export async function pickEvidence(source = 'files', { documents = false } = {}) {
+  const max = documents ? DOCS.max : MAX_BYTES;
   if (WEB) {
     return new Promise((resolve, reject) => {
       const input = document.createElement('input');
-      input.type = 'file'; input.accept = 'application/pdf,image/jpeg,image/png,image/webp';
+      input.type = 'file'; input.accept = documents ? DOCS.accept : 'application/pdf,image/jpeg,image/png,image/webp';
       input.onchange = async () => {
         const f = input.files?.[0];
         if (!f) return resolve(null);
-        try { tooBig(f.size); resolve({ file_name: f.name, data: await toBase64(f), type: f.type || mimeOf(f.name) }); } catch (e) { reject(e); }
+        try { tooBig(f.size, max); resolve({ file_name: f.name, data: await toBase64(f), type: f.type || mimeOf(f.name) }); } catch (e) { reject(e); }
       };
       input.oncancel = () => resolve(null);
       input.click();
@@ -29,9 +32,9 @@ export async function pickEvidence(source = 'files') {
   }
   if (source === 'files') {
     const DocumentPicker = await import('expo-document-picker');
-    const r = await DocumentPicker.getDocumentAsync({ type: ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'], copyToCacheDirectory: true });
+    const r = await DocumentPicker.getDocumentAsync({ type: documents ? DOCS.types : ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'], copyToCacheDirectory: true });
     if (r.canceled || !r.assets?.[0]) return null;
-    const a = r.assets[0]; tooBig(a.size ?? 0);
+    const a = r.assets[0]; tooBig(a.size ?? 0, max);
     const { File } = await import('expo-file-system');
     return { file_name: a.name, data: await new File(a.uri).base64(), type: mimeOf(a.name, a.mimeType) };
   }

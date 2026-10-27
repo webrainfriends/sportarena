@@ -2,7 +2,7 @@
 // Everything here reads sealed content only inside an opening or sign-off that is already authorised and audited.
 import { createHash } from 'node:crypto';
 import { auditLog, canon, opening, unsealJson } from './core.js';
-import { credentialCheck, lotsOf, questionsOf } from './rfp.js';
+import { credentialCheck, lotsOf, questionsOf, visitDocs } from './rfp.js';
 import { evaluatedCost } from './money.js';
 import { rubricSchema, technicalScore, rank } from './scoring.js';
 
@@ -30,6 +30,8 @@ export async function runGates(c, p, pr, { atAward = false } = {}) {
   const part = (await c.query('SELECT * FROM proc_participants WHERE project_id=$1 AND entity_id=$2', [p.id, pr.entity_id])).rows[0];
   await setGate(c, pr.id, 'terms', part?.terms_accepted_at ? 'pass' : 'fail', part?.terms_accepted_at ? null : 'Terms not accepted');
   if (p.site_visit_mandatory) { const ok = part?.site_visit_attended || part?.site_visit_exempt_reason; await setGate(c, pr.id, 'site_visit', ok ? 'pass' : 'fail', ok ? null : 'Mandatory site visit not attended'); }
+  const vd = await visitDocs(c, p.id, pr.entity_id, sub.submitted_at);
+  if (vd.total) await setGate(c, pr.id, 'visit_documents', vd.outstanding.length ? 'fail' : 'pass', vd.outstanding.length ? `Site-visit documents not acknowledged: ${vd.outstanding.map((d) => d.name).join(', ')}` : null);
   await setGate(c, pr.id, 'current_version', sub.rfp_version >= p.version ? 'pass' : 'fail', sub.rfp_version >= p.version ? null : 'Submitted against an earlier tender version; resubmission was required');
   const creds = (await credentialCheck(c, p, pr.entity_id, atAward ? new Date() : null)).filter((x) => x.state !== 'ok');
   await setGate(c, pr.id, 'credentials', creds.length ? 'fail' : 'pass', creds.length ? creds.map((x) => x.detail).join('; ') : null);

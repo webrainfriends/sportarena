@@ -180,6 +180,10 @@ export function TenderNotice({ id }) {
   })();
   const credItems = (elig.data?.checks ?? []).map((x) => ({ key: x.kind, state: x.state === 'ok' ? 'ok' : x.state === 'missing' || x.state === 'expired' ? 'bad' : 'warn', title: x.title, detail: x.detail }));
   const canBid = part && ['interested', 'invited', 'approved'].includes(part.status) && part.terms_accepted_at;
+  const visitDocs = (d.files ?? []).filter((f) => f.visit_pack);
+  const acked = (fid) => (d.visit_acks ?? []).some((a) => a.file_id === fid && a.entity_id === entity);
+  const visitOutstanding = visitDocs.filter((f) => !acked(f.id));
+  const ackVisit = async () => { try { const r = await api.post(`/tenders/${id}/visit-documents/acknowledge`, { entity_id: entity }); toast(r.acknowledged ? 'Site-visit documents acknowledged' : 'Already acknowledged'); n.reload(); } catch (e) { toast(explain(e)); } };
   const actions = d.is_buyer ? (
     <Panel title="Buying team"><Btn title="Open tender console" onPress={() => push('TenderConsole', { id })} /></Panel>
   ) : (
@@ -194,6 +198,8 @@ export function TenderNotice({ id }) {
           {canBid ? <Btn title={proposal ? 'Continue proposal' : 'Start proposal'} onPress={() => (proposal ? push('TenderProposal', { id: proposal.id }) : setSheet('start'))} /> : null}
           {part && !['declined', 'withdrawn', 'requested'].includes(part.status) ? <Btn small title="Ask a question" color={c.violet} onPress={() => setSheet('ask')} /> : null}
           {part && ['invited', 'interested', 'approved'].includes(part.status) ? <Btn small title="Decline to bid" color={c.violet} onPress={() => setSheet('decline')} /> : null}
+          {canBid && visitOutstanding.length ? <Notice>{visitOutstanding.length === 1 ? 'A site-visit document needs' : `${visitOutstanding.length} site-visit documents need`} your acknowledgement before you can submit. </Notice> : null}
+          {canBid && visitOutstanding.length ? <Btn small title="Open documents" color={c.violet} onPress={() => setTab('documents')} /> : null}
           {d.unacknowledged_addenda?.length ? <Notice>Addendum {d.unacknowledged_addenda.join(', ')} needs your acknowledgement before you can submit.</Notice> : null}
         </>
       )}
@@ -213,6 +219,18 @@ export function TenderNotice({ id }) {
                 <>
                   <Panel title="Scope">{notice.objective ? <T size={14}>{notice.objective}</T> : null}<T size={14}>{notice.scope}</T>{notice.inclusions ? <T size={13} color={c.mute}>Included: {notice.inclusions}</T> : null}{notice.exclusions ? <T size={13} color={c.mute}>Not included: {notice.exclusions}</T> : null}</Panel>
                   <Panel title="Key facts"><KV items={[['Contract', nice(notice.contract_type)], ['Envelopes', notice.envelope_mode === 'sealed_dual' ? 'Technical and commercial sealed' : notice.envelope_mode === 'sealed_single' ? 'One sealed envelope' : 'Open evaluation'], ['Currency', `${notice.currency}, costs compared ${notice.cost_basis} of tax`], ['Service period', card.service_start ? `${day(card.service_start)} to ${day(card.service_end)}` : null], ['Preparation', card.prep_start ? day(card.prep_start) : null], ['Teardown', card.teardown_end ? day(card.teardown_end) : null], ['Clarifications until', notice.schedule.clarification_deadline ? when(notice.schedule.clarification_deadline.utc, card.timezone) : null], ['Site visit', notice.schedule.site_visit_at ? `${when(notice.schedule.site_visit_at.utc, card.timezone)}${notice.site_visit_mandatory ? ' (mandatory)' : ''}` : null], ['Alternatives', notice.allow_alternatives ? 'Allowed' : 'Not allowed'], ['Revision', notice.allow_revision ? 'Allowed until close' : 'Not allowed']]} /></Panel>
+                  {notice.terms && (notice.terms.renewal_options > 0 || notice.terms.notice_days > 0 || notice.terms.milestones.length || notice.terms.reserve_policy === 'next_ranked') ? (
+                    <Panel title="Contract terms">
+                      <KV items={[['Renewal options', notice.terms.renewal_options > 0 ? `${notice.terms.renewal_options} × ${notice.terms.renewal_term_months} months` : null], ['Renewal ceiling', notice.terms.renewal_ceiling_minor ? `${amount(notice.terms.renewal_ceiling_minor, notice.currency)} per renewal` : null], ['Notice period', notice.terms.notice_days > 0 ? `${notice.terms.notice_days} days` : null], ['If a winner declines', notice.terms.reserve_policy === 'next_ranked' ? 'The lot may be offered to the next ranked bidder, with a new approval' : 'The lot is not offered to another bidder']]} />
+                      {notice.terms.milestones.length ? <View style={{ gap: 6 }}><T size={11} weight="700" color={c.mute} style={{ letterSpacing: 0.7 }}>MILESTONES</T>{notice.terms.milestones.map((m, i) => <View key={i} style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}><T size={13} weight="700" style={{ minWidth: 100 }}>{day(m.due_on)}</T><T size={13} style={{ flex: 1, minWidth: 180 }}>{m.name}{m.description ? ` — ${m.description}` : ''}</T></View>)}</View> : null}
+                    </Panel>
+                  ) : null}
+                  {d.public_award ? (
+                    <Panel title="Award result" right={<Status tone="ok" label="Published" />}>
+                      {(d.public_award.awards ?? []).map((a, i) => <View key={i} style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>{a.lot ? <T size={13} weight="700" style={{ minWidth: 70 }}>{a.lot}</T> : null}<T size={13} style={{ flex: 1, minWidth: 160 }}>{[a.lot_title, a.supplier].filter(Boolean).join(' · ')}</T>{a.amount_minor != null ? <T size={13} weight="700">{amount(a.amount_minor, a.currency)}</T> : null}</View>)}
+                      <T size={12} color={c.mute}>{[d.public_award.award_date ? `Awarded ${day(d.public_award.award_date)}` : null, d.public_award.service_period ? `Service ${day(d.public_award.service_period.start)} to ${day(d.public_award.service_period.end)}` : null, `Published ${day(d.public_award.published_at)}`].filter(Boolean).join(' · ')}</T>
+                    </Panel>
+                  ) : null}
                 </>
               )}
             </>
@@ -224,7 +242,7 @@ export function TenderNotice({ id }) {
               {d.questionnaire ? <Panel title="Questionnaire"><DataTable cols={[{ key: 'section', label: 'Section', render: (q) => nice(q.section), min: 110 }, { key: 'prompt', label: 'Question', flex: 3, min: 220 }, { key: 'type', label: 'Answer', render: (q) => `${nice(q.type)}${q.required ? '' : ' (optional)'}`, min: 130 }, { key: 'pf', label: 'Rule', render: (q) => (q.pass_fail ? 'Pass or fail' : q.evidence_required ? 'Evidence needed' : ''), min: 110 }]} rows={d.questionnaire} keyOf={(q) => q.key} /></Panel> : <Notice tone="info">The questionnaire opens after you accept the terms.</Notice>}
             </>
           ) : null}
-          {tab === 'documents' ? <Panel title="Tender pack">{d.files.length ? d.files.map((f) => <View key={f.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}><View style={{ flex: 1 }}><T weight="600" size={13}>{f.name}</T><T size={12} color={c.mute}>{f.audience === 'public' ? 'Public' : 'Participants'} · {Math.max(1, Math.round(f.bytes / 1024))} KB</T></View><Btn small title="Open" color={c.violet} onPress={() => openStored(`/tender-files/${f.id}`, f.name).catch((e) => toast(explain(e)))} /></View>) : <T size={13} color={c.mute}>No documents yet. Participants see more after accepting the terms.</T>}</Panel> : null}
+          {tab === 'documents' ? <Panel title="Tender pack" right={canBid && visitOutstanding.length ? <Btn small title="Acknowledge site-visit documents" onPress={ackVisit} accessibilityLabel="Acknowledge the site-visit documents" /> : null}>{d.files.length ? d.files.map((f) => <View key={f.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}><View style={{ flex: 1, minWidth: 180 }}><T weight="600" size={13}>{f.name}</T><T size={12} color={c.mute}>{f.audience === 'public' ? 'Public' : 'Participants'} · {Math.max(1, Math.round(f.bytes / 1024))} KB</T></View>{f.visit_pack ? <Status tone={acked(f.id) ? 'ok' : 'warn'} label={acked(f.id) ? 'Site-visit document · acknowledged' : 'Site-visit document · read and acknowledge'} /> : null}<Btn small title="Open" color={c.violet} onPress={() => openStored(`/tender-files/${f.id}`, f.name).catch((e) => toast(explain(e)))} /></View>) : <T size={13} color={c.mute}>No documents yet. Participants see more after accepting the terms.</T>}</Panel> : null}
           {tab === 'qa' ? (
             <Panel title="Clarifications" right={part ? <Btn small title="Ask" onPress={() => setSheet('ask')} /> : null}>
               {(qa.data ?? []).length ? qa.data.map((x) => <View key={x.id} style={{ gap: 4, paddingVertical: 6, borderTopWidth: 1, borderColor: c.line }}><T weight="700" size={13}>{x.question}</T>{x.answer ? <T size={13}>{x.answer}</T> : <T size={12} color={c.mute}>Waiting for the buyer{x.mine ? ' (your question)' : ''}</T>}</View>) : <T size={13} color={c.mute}>No clarifications yet. Material answers are shared with everyone without naming who asked.</T>}
