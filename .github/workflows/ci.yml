@@ -40,7 +40,9 @@ jobs:
       # the Postgres service log is appended after the test output, so the failing tests are listed here where they are easy to find
       - name: Failing tests
         if: failure()
-        run: grep -nE '^not ok|^# (tests|pass|fail) ' test.log || true
+        run: |
+          grep -nE '^# (tests|pass|fail) ' test.log || true
+          grep -nE -A30 '^not ok' test.log | head -300 || true
 
   app-web:
     name: App web build (compile check)
