@@ -7,6 +7,7 @@ import { resolveRule, ruleOfVersion, builtinRule, aggregationFor, standardOf } f
 import { isAdmin, mustFind, PUBLIC_USER, sportBySlugOrId } from '../helpers.js';
 import { NOT_YOUTH_SQL } from '../youth.js';
 import { notify } from '../notify.js';
+import { onResultsChanged } from '../rankings/data.js';
 
 const TAG_PERF = 'Scores & Awards';
 const label = (p) => EVIDENCE_LABELS[p] ?? p;
@@ -110,6 +111,11 @@ cap({
 
 /** Shared by approve / reject / dispute / correct: lock the row, check the transition and who is acting. */
 async function transition(user, perfId, { from, to, action, note, needOfficial = true, needNote = false, mutate }) {
+  const result = await transitionTx(user, perfId, { from, to, action, note, needOfficial, needNote, mutate });
+  if (['approved', 'rejected', 'disputed'].includes(result.status)) onResultsChanged(result.sport_id); // a changed result re-runs the rankings; earlier snapshots are kept
+  return result;
+}
+async function transitionTx(user, perfId, { from, to, action, note, needOfficial, needNote, mutate }) {
   return tx(async (c) => {
     const perf = (await c.query('SELECT * FROM performances WHERE id=$1 FOR UPDATE', [perfId])).rows[0];
     if (!perf || perf.provenance !== 'approved_competition') throw notFound('Competition result');

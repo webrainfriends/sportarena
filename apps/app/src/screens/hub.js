@@ -25,6 +25,7 @@ import { WellnessSharing } from './wellness-sharing';
 import { DoctorEntry } from './doctor';
 import { money as curMoney } from '../offer-lines';
 import { MyHealthFile } from './health-file';
+import { RankingsPanel } from './rankings';
 import { c, grad, money, day, when, withUnit, unitName } from '../theme';
 
 const STATUS_TAG = { recorded: ['Private', null], submitted: ['Waiting for approval', 'sun'], approved: ['Approved', 'lime'], disputed: ['Disputed — not counted', 'orangeSoft'], rejected: ['Rejected', 'orangeSoft'], superseded: ['Replaced by a correction', 'cyanSoft'] };
@@ -146,6 +147,7 @@ export function Leaderboard() {
   const { push } = useNav();
   const { user, has, toast } = useSession();
   const [tab, setTab] = useState('rank');
+  const [view, setView] = useState('governed'); // governed rankings (scope, formula, sample, why) or the plain official-points table
   const [sport, setSport] = useState(null);
   const [season, setSeason] = useState(null);
   const [category, setCategory] = useState(null);
@@ -198,6 +200,10 @@ export function Leaderboard() {
       <Seg options={[{ value: 'rank', label: 'Rankings', emoji: '🏆' }, { value: 'mine', label: 'My results', emoji: '📈' }, ...(isOfficial ? [{ value: 'approve', label: `Officials${todo.length ? ` (${todo.length})` : ''}`, emoji: '✅' }] : [])]} value={tab} onChange={setTab} />
       {tab === 'rank' ? <>
         <SportSelect allLabel="All sports" value={sport} onChange={pickSport} />
+        <View style={{ marginTop: 8 }}><Seg options={[{ value: 'governed', label: 'By formula', emoji: '🏅' }, { value: 'points', label: 'Official points', emoji: '🔢' }]} value={view} onChange={setView} /></View>
+        {view === 'governed' ? <RankingsPanel sport={sport} sports={sports.data} onOfficial={() => setView('points')} /> : null}
+      </> : null}
+      {tab === 'rank' && view === 'points' ? <>
         {categories.length ? <View accessibilityLabel="Sport category filter" style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
           <Chip label="All categories" active={category === null} onPress={() => { setCategory(null); setLim(25); }} />
           {categories.map((k) => <Chip key={k} label={k.replace(/_/g, ' ')} active={category === k} onPress={() => { setCategory(k); setLim(25); }} />)}

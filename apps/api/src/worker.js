@@ -26,6 +26,10 @@ import { runFederationSweeps } from './federation-sweeps.js';
 import { runOfficialsSweeps } from './officials-sweeps.js';
 import { runMediaRightsSweeps } from './media-rights-sweeps.js';
 import { sendFollowerAlerts } from './spectator.js';
+import { snapshotAll } from './rankings/data.js';
+
+/** Weekly ranking snapshots: the worker runs often, so only act once a week (Monday UTC), and a rerun on identical results adds nothing. */
+const weeklyRankingSnapshots = () => (new Date().getUTCDay() === 1 ? snapshotAll('weekly') : 0);
 
 export const STEPS = [
   ['holds', 'holds_released', expireUnpaidHolds, 0],
@@ -58,6 +62,7 @@ export const STEPS = [
   ['officials_development', 'officials_development', runOfficialsSweeps, null],
   ['media_rights', 'media_rights', runMediaRightsSweeps, null],
   ['follower_alerts', 'follower_alerts_sent', sendFollowerAlerts, 0],
+  ['ranking_snapshots', 'ranking_snapshots', weeklyRankingSnapshots, 0],
 ];
 
 export async function maintenanceCycle() {
