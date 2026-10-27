@@ -72,6 +72,7 @@ cap({
       if (!['pending_supplier', 'changes_proposed'].includes(o.status)) throw conflict(`Order is ${o.status}`);
       if (i.action === 'reject') {
         if (!i.reason) throw badRequest('Give a reason');
+        await release(c, o.id);                              // free the held days
         const row = await q1(c, "UPDATE svc_orders SET status='rejected', reason=$2, row_version=row_version+1, updated_at=now() WHERE id=$1 RETURNING *", [o.id, i.reason]);
         await c.query("UPDATE svc_quotes SET status='rejected' WHERE id=$1", [o.quote_id]);
         const live = (await c.query("SELECT 1 FROM svc_orders WHERE rfq_id=$1 AND status NOT IN ('cancelled','rejected','terminated') AND id <> $2", [o.rfq_id, o.id])).rowCount;

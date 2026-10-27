@@ -221,3 +221,4 @@ import './media-rights-assets.js';
 import './media-rights-feeds.js';
 import './spectator.js';
 import './spectator-admin.js';
+import './media-rights-fees.js';

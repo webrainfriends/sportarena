@@ -2,7 +2,7 @@
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { priced } from './money.js';
 import { supplierAccess, buyerAccess, log } from './access.js';
-import { reserve, release, occurrences, daysBetween } from './capacity.js';
+import { reserve, hold, release, occurrences, daysBetween } from './capacity.js';
 import { recommit } from './budget.js';
 
 export const LIVE = ['pending_supplier', 'changes_proposed', 'confirmed', 'in_progress', 'paused', 'completed'];
@@ -59,6 +59,14 @@ const dateWindow = (order, rfqScope) => {
   const starts = t.starts_at ?? rfqScope?.starts_at, ends = t.ends_at ?? rfqScope?.ends_at;
   return { starts, ends, recurrence: t.recurrence ?? rfqScope?.recurrence ?? null, units: Number(t.headcount ?? rfqScope?.headcount ?? 1) };
 };
+/** Set days aside (expiring hold) for a freshly placed order; null when nothing could be held. */
+export async function holdForOrder(c, order) {
+  const rfq = order.rfq_id ? await q1(c, 'SELECT scope FROM svc_rfqs WHERE id=$1', [order.rfq_id]) : null;
+  const w = dateWindow(order, rfq?.scope);
+  if (!w.starts) return null;
+  const profile = await q1(c, 'SELECT * FROM svc_profiles WHERE id=$1', [order.profile_id]);
+  return hold(c, profile, order.id, occurrences(w.starts, w.recurrence, w.ends), w.units);
+}
 export async function reserveForOrder(c, order) {
   const rfq = order.rfq_id ? await q1(c, 'SELECT scope FROM svc_rfqs WHERE id=$1', [order.rfq_id]) : null;
   const w = dateWindow(order, rfq?.scope);

@@ -49,6 +49,28 @@ export function TenderOrder({ id }) {
           <>
             <Panel title="Three separate statuses"><Checks items={[{ state: 'ok', title: `Award line: ${nice(d.award_line_status ?? 'accepted')}`, detail: 'The supplier accepted the provisional award.' }, { state: d.status === 'cancelled' ? 'bad' : d.status === 'completed' ? 'ok' : 'warn', title: `Order: ${nice(d.status)}`, detail: 'Completion is confirmed by the buyer. It does not mean the work was paid.' }, { state: d.contract_status === 'pending' ? 'warn' : 'ok', title: `Contract: ${nice(d.contract_status)}`, detail: 'Signed here is a manual record, not a validated e-signature.' }]} /></Panel>
             <Panel title="Order"><KV items={[['Amount', amount(d.amount_minor, d.currency)], ['Contract type', nice(d.contract_type)], ['Preparation', d.prep_start ? day(d.prep_start) : null], ['Service', d.service_start ? `${day(d.service_start)} to ${day(d.service_end)}` : null], ['Teardown', d.teardown_end ? day(d.teardown_end) : null], ['Commitment', d.commitment ? amount(d.commitment.amount_minor, d.commitment.currency) : null], ['Proposal receipt', s.submission.receipt_no], ['Tender version', `v${s.tender.version}`], ['Rubric version', `v${s.award.rubric_version}`]]} />{d.commitment?.note ? <Notice tone="info">{d.commitment.note}</Notice> : null}<T size={12} color={c.mute}>A commitment is not proof of delivery or payment. Service scheduling, acceptance, invoices and payment continue from this order.</T></Panel>
+            {d.terms && (d.terms.renewal_options > 0 || d.terms.notice_days > 0 || d.terms.milestones.length || d.terms.notice) ? (
+              <Panel title="Contract terms" right={d.viewer?.buyer && d.terms.renewals_left > 0 && !d.terms.notice && ['confirmed', 'in_progress'].includes(d.status) ? <Btn small title={`Renew (${d.terms.renewals_used + 1} of ${d.terms.renewal_options})`} onPress={() => setSheet('renew')} accessibilityLabel="Exercise the next renewal option" /> : null}>
+                <KV items={[['Renewals', d.terms.renewal_options > 0 ? `${d.terms.renewals_used} used of ${d.terms.renewal_options} · ${d.terms.renewal_term_months} months each` : null], ['Added ceiling per renewal', d.terms.renewal_ceiling_minor ? amount(d.terms.renewal_ceiling_minor, d.currency) : null], ['Notice period', d.terms.notice_days > 0 ? `${d.terms.notice_days} days` : null]]} />
+                {d.terms.notice ? <Notice tone="warn">{d.terms.notice.kind === 'terminate' ? 'Notice of termination' : 'Notice of non-renewal'} served {day(d.terms.notice.served_at)}, effective {day(d.terms.notice.effective_on)}. The order carries on until then.</Notice> : null}
+                {d.terms.renewals.map((r) => <T key={r.n} size={12} color={c.mute}>Renewal {r.n}: service end {day(r.previous_service_end)} → {day(r.new_service_end)}{Number(r.added_ceiling_minor) ? `, ceiling +${amount(r.added_ceiling_minor, d.currency)}` : ''}</T>)}
+                {d.terms.milestones.length ? (
+                  <View style={{ gap: 8 }}>
+                    <T size={11} weight="700" color={c.mute} style={{ letterSpacing: 0.7 }}>MILESTONES</T>
+                    {d.terms.milestones.map((m) => (
+                      <View key={m.id} style={{ flexDirection: 'row', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                        <T size={13} weight="700" style={{ minWidth: 100 }}>{day(m.due_on)}</T>
+                        <T size={13} style={{ flex: 1, minWidth: 160 }}>{m.name}{m.note ? <T size={12} color={c.mute}> · {m.note}</T> : null}</T>
+                        <Status tone={m.status === 'completed' ? 'ok' : m.status === 'waived' ? 'neutral' : 'warn'} label={nice(m.status)} />
+                        {d.viewer?.buyer && d.status !== 'cancelled' && m.status === 'planned' ? <><Btn small title="Completed" onPress={() => setSheet({ milestone: m, status: 'completed' })} accessibilityLabel={`Mark ${m.name} completed`} /><Btn small title="Waive" color={c.paper} ink={c.ink} onPress={() => setSheet({ milestone: m, status: 'waived' })} accessibilityLabel={`Waive ${m.name}`} /></> : null}
+                        {d.viewer?.buyer && m.status !== 'planned' && d.status !== 'cancelled' ? <Btn small title="Reopen" color={c.paper} ink={c.ink} onPress={async () => { try { await api.post(`/procurement-milestones/${m.id}/update`, { status: 'planned' }); o.reload(); } catch (e) { toast(explain(e)); } }} /> : null}
+                      </View>
+                    ))}
+                    <T size={12} color={c.mute}>A milestone record is not acceptance of delivered work and does not trigger payment.</T>
+                  </View>
+                ) : null}
+              </Panel>
+            ) : null}
             {d.framework ? (
               <Panel title="Framework call-offs" right={<Btn small title="New call-off" onPress={() => setSheet('calloff')} />}>
                 <KV items={[['Ceiling', amount(d.framework.ceiling_minor, d.currency)], ['Committed call-offs', amount(d.framework.committed_call_offs_minor, d.currency)], ['Remaining', amount(d.framework.remaining_minor, d.currency)]]} />
@@ -59,10 +81,19 @@ export function TenderOrder({ id }) {
           </>
         } side={
           <>
-            {d.status !== 'cancelled' && d.status !== 'completed' ? <Panel title="Buying team"><Btn small title="Record agreement" color={c.violet} onPress={() => act('record_agreement')} /><Btn small title="Record signature" color={c.violet} onPress={() => act('record_signature')} /><Btn small title="Cancel order" color={c.red} onPress={() => setSheet('cancel')} /></Panel> : null}
+            {(d.viewer?.buyer || d.viewer?.supplier) && !d.terms?.notice && ['confirmed', 'in_progress'].includes(d.status) ? <Panel title="Notice"><T size={13} color={c.mute}>A notice takes effect after the {d.terms?.notice_days ?? 0}-day notice period the tender published. It is recorded permanently.</T><Btn small title="Serve notice" color={c.violet} onPress={() => setSheet('notice')} accessibilityLabel="Serve a notice of termination or non-renewal" /></Panel> : null}
+            {d.viewer?.buyer && d.status !== 'cancelled' && d.status !== 'completed' ? <Panel title="Buying team"><Btn small title="Record agreement" color={c.violet} onPress={() => act('record_agreement')} /><Btn small title="Record signature" color={c.violet} onPress={() => act('record_signature')} /><Btn small title="Cancel order" color={c.red} onPress={() => setSheet('cancel')} /></Panel> : null}
           </>
         } />
       </View>
+      <FormSheet visible={sheet === 'renew'} onClose={() => setSheet(null)} title="Exercise a renewal" submitLabel="Renew"
+        fields={[]} notice={`This extends the service period by ${d.terms?.renewal_term_months} months${d.terms?.renewal_ceiling_minor ? ` and adds ${amount(d.terms.renewal_ceiling_minor, d.currency)} to the ceiling` : ''}, as published in the tender. It must be done before the notice period begins and cannot be undone.`}
+        onSubmit={async () => { await api.post(`/procurement-orders/${id}/renew`, { renewal_no: (d.terms?.renewals_used ?? 0) + 1 }); o.reload(); return 'Renewed. The earlier terms are kept in the history.'; }} />
+      <FormSheet visible={!!sheet?.milestone} onClose={() => setSheet(null)} title={sheet?.status === 'waived' ? 'Waive the milestone' : 'Mark the milestone completed'} submitLabel="Save" fields={[{ key: 'note', label: sheet?.status === 'waived' ? 'Reason' : 'Note (optional)', type: 'multiline' }]}
+        onSubmit={async (v) => { await api.post(`/procurement-milestones/${sheet.milestone.id}/update`, { status: sheet.status, note: v.note || undefined }); o.reload(); return 'Recorded'; }} />
+      <FormSheet visible={sheet === 'notice'} onClose={() => setSheet(null)} title="Serve a notice" submitLabel="Serve notice" initial={{ kind: 'not_renew' }}
+        fields={[{ key: 'kind', label: 'Notice', type: 'chips', options: [{ value: 'not_renew', label: 'Non-renewal' }, { value: 'terminate', label: 'Termination' }] }, { key: 'reason', label: 'Reason (at least 10 characters)', type: 'multiline' }]}
+        onSubmit={async (v) => { await api.post(`/procurement-orders/${id}/notice`, { kind: v.kind, reason: v.reason }); o.reload(); return 'Notice served'; }} />
       <FormSheet visible={sheet === 'calloff'} onClose={() => setSheet(null)} title="New call-off" submitLabel="Place call-off" fields={[{ key: 'description', label: 'What is being called off' }, { key: 'amount_minor', label: 'Amount', type: 'money', currency: d.currency }, { key: 'service_date', label: 'Service date', type: 'date', optional: true }]}
         onSubmit={async (v) => { await api.post(`/procurement-orders/${id}/call-offs`, { description: v.description, amount_minor: v.amount_minor, service_date: v.service_date || undefined, idempotency_key: `co-${id}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}` }); o.reload(); return 'Call-off placed'; }} />
       <FormSheet visible={sheet === 'cancel'} onClose={() => setSheet(null)} title="Cancel the order" submitLabel="Cancel order" fields={[{ key: 'reason', label: 'Reason', type: 'multiline' }]} onSubmit={async (v) => { await api.post(`/procurement-orders/${id}/update`, { action: 'cancel', reason: v.reason }); o.reload(); return 'Order cancelled. Its budget commitment is voided; history is kept.'; }} />

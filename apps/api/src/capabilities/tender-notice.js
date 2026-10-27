@@ -6,7 +6,7 @@ import { cap, id, page } from '../registry.js';
 import { one, many, tx, pool } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { auditLog, buyerIds, entityUserIds, getProject, myEntityIds, noticeAccess, requireBuyer, requireEntity, stageOf, tellUsers } from '../tender/core.js';
-import { cardOf, credentialCheck, lotsOf, questionsOf } from '../tender/rfp.js';
+import { cardOf, credentialCheck, lotsOf, questionsOf, visitDocs } from '../tender/rfp.js';
 export { credentialCheck };
 import { scheduleOf } from './tender-rfps.js';
 
@@ -55,12 +55,13 @@ cap({
     if (restricted) return base;
     const participating = acc.buyer.length || (acc.part && ['invited', 'approved', 'interested'].includes(acc.part.status));
     const termsOk = acc.buyer.length || !!acc.part?.terms_accepted_at;
-    const files = await many(`SELECT id, name, mime, bytes, audience FROM proc_files WHERE project_id=$1 AND entity_id IS NULL AND archived_at IS NULL AND scan='clean' AND (audience='public' OR ($2 AND audience='participants')) ORDER BY created_at`, [p.id, !!(participating && termsOk)]);
+    const files = await many(`SELECT id, name, mime, bytes, audience, visit_pack FROM proc_files WHERE project_id=$1 AND entity_id IS NULL AND archived_at IS NULL AND scan='clean' AND (audience='public' OR ($2 AND audience='participants')) ORDER BY created_at`, [p.id, !!(participating && termsOk)]);
+    const visit_acks = acc.entityIds.length ? await many('SELECT file_id, entity_id, acknowledged_at FROM proc_visit_acks WHERE project_id=$1 AND entity_id = ANY($2)', [p.id, acc.entityIds]) : [];
     const addenda = await many('SELECT n, summary, body, material, rfp_version, issued_at FROM proc_addenda WHERE project_id=$1 ORDER BY n', [p.id]);
     const unack = acc.entityIds.length ? await many('SELECT a.n FROM proc_addenda a WHERE a.project_id=$1 AND NOT EXISTS (SELECT 1 FROM proc_addendum_acks k WHERE k.project_id=a.project_id AND k.n=a.n AND k.entity_id = ANY($2))', [p.id, acc.entityIds]) : [];
-    const outcome = p.disclosure?.award_public && p.status === 'awarded' ? await many("SELECT l.lot_code, e.legal_name AS supplier FROM proc_award_lines l JOIN proc_awards a ON a.id=l.award_id JOIN supplier_entities e ON e.id=l.entity_id WHERE l.project_id=$1 AND l.status='accepted'", [p.id]) : null;
-    return { ...base, notice: { objective: p.objective, scope: p.scope, inclusions: p.inclusions, exclusions: p.exclusions, lots: await lotsOf(pool, p.id), schedule: scheduleOf(p), site_visit_mandatory: p.site_visit_mandatory, required_credentials: p.required_credentials, envelope_mode: p.envelope_mode, allow_alternatives: p.allow_alternatives, allow_revision: p.allow_revision, allow_withdrawal: p.allow_withdrawal, cost_basis: p.cost_basis, currency: p.currency, contract_type: p.contract_type, fx: p.fx ? { date: p.fx.date, base: p.fx.base, currencies: Object.keys(p.fx.rates ?? {}) } : null },
-      questionnaire: termsOk ? (await questionsOf(pool, p.id)).map(({ pass_value, ...q }) => q) : null, files, addenda, unacknowledged_addenda: unack.map((u) => u.n), public_award: outcome };
+    const outcome = p.disclosure?.award_public ? (await one("SELECT record, published_at FROM proc_award_publications WHERE project_id=$1 AND status='published'", [p.id])) : null;
+    return { ...base, notice: { objective: p.objective, scope: p.scope, inclusions: p.inclusions, exclusions: p.exclusions, lots: await lotsOf(pool, p.id), schedule: scheduleOf(p), site_visit_mandatory: p.site_visit_mandatory, required_credentials: p.required_credentials, envelope_mode: p.envelope_mode, allow_alternatives: p.allow_alternatives, allow_revision: p.allow_revision, allow_withdrawal: p.allow_withdrawal, cost_basis: p.cost_basis, currency: p.currency, contract_type: p.contract_type, terms: { renewal_options: p.renewal_options, renewal_term_months: p.renewal_term_months, renewal_ceiling_minor: p.renewal_ceiling_minor ? Number(p.renewal_ceiling_minor) : null, notice_days: p.notice_days, milestones: p.milestones ?? [], reserve_policy: p.reserve_policy, ceiling_minor: p.contract_type === 'framework' && p.ceiling_minor && p.budget_public ? Number(p.ceiling_minor) : null }, fx: p.fx ? { date: p.fx.date, base: p.fx.base, currencies: Object.keys(p.fx.rates ?? {}) } : null },
+      questionnaire: termsOk ? (await questionsOf(pool, p.id)).map(({ pass_value, ...q }) => q) : null, files, addenda, unacknowledged_addenda: unack.map((u) => u.n), visit_acks, public_award: outcome ? { ...outcome.record, published_at: outcome.published_at } : null };
   },
 });
 
@@ -144,7 +145,9 @@ cap({
   input: z.object({ id, ...page }),
   async handler({ user }, i) {
     const { project: p } = await requireBuyer(user, i.id, 'invite');
-    return many(`SELECT pa.id, pa.entity_id, e.legal_name, e.kind, pa.status, pa.terms_accepted_at, pa.nda_accepted_at, pa.site_visit_attended, pa.site_visit_exempt_reason, pa.updated_at
+    return many(`SELECT pa.id, pa.entity_id, e.legal_name, e.kind, pa.status, pa.terms_accepted_at, pa.nda_accepted_at, pa.site_visit_attended, pa.site_visit_exempt_reason, pa.updated_at,
+      (SELECT count(*)::int FROM proc_files f WHERE f.project_id=pa.project_id AND f.visit_pack AND f.archived_at IS NULL) AS visit_documents,
+      (SELECT count(*)::int FROM proc_visit_acks k WHERE k.project_id=pa.project_id AND k.entity_id=pa.entity_id) AS visit_documents_acknowledged
       FROM proc_participants pa JOIN supplier_entities e ON e.id=pa.entity_id WHERE pa.project_id=$1 ORDER BY e.legal_name LIMIT $2 OFFSET $3`, [p.id, i.limit, i.offset]);
   },
 });
@@ -160,6 +163,50 @@ cap({
       if (!r) throw notFound('Participant');
       await auditLog(c, p.id, user.id, 'site_visit_recorded', { entity_id: i.entity_id, attended: !!i.attended, exempt: !!i.exempt_reason });
       return r;
+    });
+  },
+});
+
+cap({
+  name: 'mark_visit_document', method: 'POST', path: '/rfps/:id/visit-documents', tag: TAG,
+  summary: 'Buying team: mark a pack document (a site safety briefing, access rules, an induction sheet) as one that every supplier must acknowledge for the site visit, or take the mark off a document nobody has acknowledged yet. Acknowledgements are kept for the record, so a document that has been acknowledged stays marked.',
+  input: z.object({ id, file_id: id, visit_pack: z.boolean() }),
+  async handler({ user }, i) {
+    return tx(async (c) => {
+      const { project: p } = await requireBuyer(user, i.id, 'files', c, { lock: true });
+      if (['cancelled', 'archived'].includes(p.status)) throw conflict('This tender is finished');
+      const f = (await c.query('SELECT * FROM proc_files WHERE id=$1 AND project_id=$2 AND entity_id IS NULL AND archived_at IS NULL', [i.file_id, p.id])).rows[0];
+      if (!f) throw notFound('File');
+      if (i.visit_pack && f.audience !== 'participants') throw badRequest('Only a document shared with participants can be a site-visit document');
+      if (!i.visit_pack && (await c.query('SELECT 1 FROM proc_visit_acks WHERE file_id=$1', [f.id])).rowCount) throw conflict('Suppliers have already acknowledged this document, so it stays marked');
+      await c.query('UPDATE proc_files SET visit_pack=$2 WHERE id=$1', [f.id, i.visit_pack]);
+      await auditLog(c, p.id, user.id, 'visit_document_marked', { file_id: f.id, visit_pack: i.visit_pack });
+      return { id: f.id, name: f.name, visit_pack: i.visit_pack };
+    });
+  },
+});
+
+cap({
+  name: 'acknowledge_visit_documents', method: 'POST', path: '/tenders/:id/visit-documents/acknowledge', tag: TAG,
+  summary: 'Record that your supplier entity has read the site-visit documents (safety briefing, access rules). Each acknowledgement is stored with the exact content fingerprint and cannot be undone. Needs accepted terms; it is separate from attending the visit and from any exemption. A proposal cannot be submitted, and cannot pass the qualification gate, while a document that existed at submission is unacknowledged.',
+  input: z.object({ id, entity_id: id }),
+  async handler({ user }, i) {
+    return tx(async (c) => {
+      const p = await getProject(i.id, c);
+      await noticeAccess(user, p, c);
+      await requireEntity(user, i.entity_id, ['owner', 'bid_manager', 'contributor', 'signatory'], c);
+      const part = (await c.query('SELECT * FROM proc_participants WHERE project_id=$1 AND entity_id=$2', [p.id, i.entity_id])).rows[0];
+      if (!part || !['invited', 'interested', 'approved'].includes(part.status)) throw forbidden('Register interest or accept the invitation first');
+      if (!part.terms_accepted_at) throw conflict('Accept the tender terms first');
+      if (p.status !== 'published' || p.suspended_at || (p.closes_at && new Date() >= new Date(p.closes_at))) throw conflict('This tender is not accepting responses');
+      const before = await visitDocs(c, p.id, i.entity_id);
+      for (const d of before.outstanding) {
+        const f = (await c.query('SELECT sha256 FROM proc_files WHERE id=$1', [d.id])).rows[0];
+        await c.query('INSERT INTO proc_visit_acks(project_id, entity_id, file_id, sha256, acknowledged_by) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (entity_id, file_id) DO NOTHING', [p.id, i.entity_id, d.id, f.sha256, user.id]);
+      }
+      if (before.outstanding.length) await auditLog(c, p.id, user.id, 'visit_documents_acknowledged', { entity_id: i.entity_id, files: before.outstanding.map((d) => d.id) });
+      const after = await visitDocs(c, p.id, i.entity_id);
+      return { acknowledged: before.outstanding.length, outstanding: after.outstanding, documents: after.documents };
     });
   },
 });

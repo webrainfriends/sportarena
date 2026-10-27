@@ -9,7 +9,7 @@ import { Counter } from '../pickers';
 import { FormSheet } from '../FormSheet';
 import { c } from '../theme';
 import { explain } from '../access';
-import { Checks, Chips, DataTable, Heat, KV, Notice, Panel, Split, Status, amount, fromMinor, nice, openDocument, toMinor, when } from '../tender-ui';
+import { Checks, Chips, DataTable, Heat, KV, Notice, Panel, Split, Status, amount, day, fromMinor, nice, openDocument, toMinor, when } from '../tender-ui';
 
 const ELIG = { eligible: 'ok', ineligible: 'bad', pending: 'warn', withdrawn: 'neutral' };
 
@@ -179,6 +179,7 @@ function ScenarioCard({ s, onRecommend, cur }) {
       <T weight="800" size={20}>{amount(r.cost_minor, r.currency ?? cur)}</T>
       <KV items={[['Coverage', `${r.coverage.filled} of ${r.coverage.total} lots`], ['Suppliers', r.suppliers], ['Budget impact', r.budget_impact_minor != null ? amount(r.budget_impact_minor, r.currency ?? cur) : null], ['Solver', r.solver]]} />
       {r.allocation.map((a, i) => <T key={i} size={13}>Lot {a.lot} → <T size={13} weight="700">{r.entities?.[a.entity] ?? 'Supplier'}</T> · {a.qty} · {amount(a.cost_minor, r.currency ?? cur)}</T>)}
+      {r.reserve?.length ? <Notice tone="info">Reserve award: lot {r.reserve.map((x) => x.lot).join(', ')} goes to the next ranked bidder because the earlier supplier declined or did not respond. It needs a fresh approval.</Notice> : null}
       {r.unfilled?.map((u) => <Notice key={u.lot}>Lot {u.lot} unfilled ({u.missing_qty}): {u.reason}</Notice>)}
       {r.violations?.map((v) => <Notice key={v} tone="bad">{v}</Notice>)}
       <T size={12} color={c.mute}>{r.explanation}</T>
@@ -194,10 +195,12 @@ export function AwardTab({ t, id, can, toast, reload, push }) {
   const award = useLoad(() => (live ? api.get(`/awards/${live.id}`) : Promise.resolve(null)), [live?.id, live?.status]);
   const orders = useLoad(() => api.get('/procurement-orders', { project_id: id, limit: 50 }).catch(() => []), [id, award.data?.status]);
   const appeals = useLoad(() => api.get(`/rfps/${id}/appeals`).catch(() => []), [id]);
+  const reserve = useLoad(() => (can('scenario') ? api.get(`/rfps/${id}/reserve`).catch(() => null) : Promise.resolve(null)), [id, award.data?.status, t.status]);
+  const pubs = useLoad(() => (t.disclosure?.award_public ? api.get(`/rfps/${id}/award-publications`).catch(() => []) : Promise.resolve([])), [id, t.status, award.data?.status]);
   const [sheet, setSheet] = useState(null);
   const [kind, setKind] = useState('highest_score');
   const [maxS, setMaxS] = useState(0), [minScore, setMinScore] = useState(0), [budget, setBudget] = useState('');
-  const act = async (fn, ok) => { try { await fn(); if (ok) toast(ok); sc.reload(); awards.reload(); award.reload(); orders.reload(); reload(); } catch (e) { toast(explain(e)); } };
+  const act = async (fn, ok) => { try { await fn(); if (ok) toast(ok); sc.reload(); awards.reload(); award.reload(); orders.reload(); reserve.reload(); pubs.reload(); reload(); } catch (e) { toast(explain(e)); } };
   if (!['evaluation', 'award', 'awarded', 'closed'].includes(t.status)) return <Notice tone="info">Awards start after evaluation.</Notice>;
   const a = award.data;
   const step = !a ? 0 : a.status === 'approval_pending' ? 1 : a.status === 'approved' ? 2 : a.status === 'notified' ? 3 : ['partially_accepted', 'accepted'].includes(a.status) ? 4 : 0;
@@ -207,8 +210,33 @@ export function AwardTab({ t, id, can, toast, reload, push }) {
       {a ? (
         <Panel title={`Award · ${nice(a.status)}`} right={<View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}><Btn small title="Recommendation PDF" color={c.violet} onPress={() => openDocument('recommendation', a.id, {}, 'recommendation').catch((e) => toast(explain(e)))} />{a.status === 'approved' && can('recommend') ? <Btn small title="Issue award notices" onPress={() => act(() => api.post(`/awards/${a.id}/notify`, {}), 'Award notices issued')} /> : null}{['approval_pending', 'approved', 'notified'].includes(a.status) && can('recommend') ? <Btn small title="Cancel award" color={c.red} onPress={() => setSheet('cancel')} /> : null}</View>}>
           <Checks items={stages.map((s, i) => ({ state: i < step ? 'ok' : i === step ? 'warn' : 'idle', title: s, detail: i === 1 && a.approval ? `${a.approval.approvals} of ${a.approval.required} approvals (never the requester)` : i === 3 && a.accept_by ? `Respond by ${when(a.accept_by, t.timezone)}${a.accept_after && new Date(a.accept_after) > new Date() ? ` · standstill until ${when(a.accept_after, t.timezone)}` : ''}` : undefined }))} />
-          <DataTable rows={a.lines} empty="Lines appear when the award notice is issued." cols={[{ key: 'lot_code', label: 'Lot', min: 60, flex: 0.5, bold: true }, { key: 'supplier', label: 'Supplier', flex: 2, min: 150 }, { key: 'amount_minor', label: 'Amount', min: 120, render: (l) => amount(l.amount_minor, l.currency) }, { key: 'status', label: 'Response', min: 110, render: (l) => <Status tone={l.status === 'accepted' ? 'ok' : l.status === 'provisional' ? 'warn' : 'bad'} label={nice(l.status)} /> }, { key: 'order_ref', label: 'Order', min: 120, render: (l) => l.order_ref ?? '—' }]} />
+          <DataTable rows={a.lines} empty="Lines appear when the award notice is issued." cols={[{ key: 'lot_code', label: 'Lot', min: 60, flex: 0.5, bold: true }, { key: 'supplier', label: 'Supplier', flex: 2, min: 150 }, { key: 'amount_minor', label: 'Amount', min: 120, render: (l) => amount(l.amount_minor, l.currency) }, { key: 'status', label: 'Response', min: 130, render: (l) => <View style={{ gap: 4 }}><Status tone={l.status === 'accepted' ? 'ok' : l.status === 'provisional' ? 'warn' : 'bad'} label={nice(l.status)} />{l.reserve_of ? <Status tone="info" label="Reserve bidder" /> : null}</View> }, { key: 'order_ref', label: 'Order', min: 120, render: (l) => l.order_ref ?? '—' }]} />
           <T size={12} color={c.mute}>A provisional award is not a contract or a confirmed order. Accepting creates exactly one order and one budget commitment per lot; contract, delivery and payment are tracked separately.</T>
+        </Panel>
+      ) : null}
+      {(reserve.data?.lots ?? []).length ? (
+        <Panel title="Lots open again" right={<Status tone={reserve.data.reserve_policy === 'next_ranked' ? 'info' : 'neutral'} label={reserve.data.reserve_policy === 'next_ranked' ? 'Reserve: next ranked' : 'Reserve: not allowed'} />}>
+          {reserve.data.lots.map((l) => (
+            <View key={l.lot} style={{ gap: 6, paddingVertical: 8, borderTopWidth: 1, borderColor: c.line }}>
+              <T weight="700" size={13}>Lot {l.lot} · {l.title} <T size={12} color={c.mute}>({l.qty_open} still to award)</T></T>
+              {l.previous.map((h) => <T key={h.line_id} size={12} color={c.mute}>{h.supplier} {h.status === 'declined' ? 'declined' : 'did not respond'}{h.reason ? `: ${h.reason}` : ''}</T>)}
+              {l.allowed ? (l.next ? <T size={13}>Next in ranking order: <T size={13} weight="700">{l.next.supplier}</T> (rank {l.next.rank})</T> : <Notice>No other eligible, ranked bidder priced this lot.</Notice>) : <Notice tone="info">This tender's published rule does not allow the lot to go to another bidder. Re-tender it or close the tender.</Notice>}
+            </View>
+          ))}
+          {reserve.data.reserve_policy === 'next_ranked' && can('scenario') && reserve.data.lots.some((l) => l.next) ? <Btn small title="Build a reserve scenario" onPress={() => act(() => api.post(`/rfps/${id}/scenarios`, { kind: 'highest_score' }), 'Reserve scenario built')} style={{ alignSelf: 'flex-start' }} /> : null}
+          <T size={12} color={c.mute}>Offering a lot to a reserve bidder is never automatic. The scenario is recommended and approved again before any notice is issued.</T>
+        </Panel>
+      ) : null}
+      {t.disclosure?.award_public && can('recommend') && ['awarded', 'award', 'closed'].includes(t.status) ? (
+        <Panel title="Public award notice" right={(pubs.data ?? []).every((x) => !['approval_pending', 'published'].includes(x.status)) ? <Btn small title="Request publication" onPress={() => setSheet('pub')} accessibilityLabel="Request publication of the award result" /> : null}>
+          <T size={13} color={c.mute}>Nothing is public until it is approved by someone other than the requester. You choose exactly which fields appear; losing bids, scores and prices never do.</T>
+          {(pubs.data ?? []).length ? pubs.data.map((x) => (
+            <View key={x.id} style={{ gap: 6, paddingVertical: 8, borderTopWidth: 1, borderColor: c.line }}>
+              <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}><Status tone={x.status === 'published' ? 'ok' : x.status === 'approval_pending' ? 'warn' : 'neutral'} label={nice(x.status)} />{x.fields.map((f) => <Status key={f} tone="neutral" label={nice(f)} />)}{x.status === 'approval_pending' ? <T size={12} color={c.mute}>{x.approvals}/{x.required} approvals</T> : null}</View>
+              <T size={12} color={c.mute}>{x.status === 'published' ? `Published ${day(x.published_at)}` : x.status === 'withdrawn' ? `Withdrawn ${day(x.withdrawn_at)}: ${x.withdraw_reason}` : `Requested ${day(x.requested_at)}`}</T>
+              {x.status === 'published' ? <Btn small title="Withdraw" color={c.red} onPress={() => setSheet({ withdraw: x })} style={{ alignSelf: 'flex-start' }} /> : null}
+            </View>
+          )) : <T size={13} color={c.mute}>Not requested yet.</T>}
         </Panel>
       ) : null}
       {can('scenario') && ['evaluation', 'award'].includes(t.status) ? (
@@ -231,6 +259,10 @@ export function AwardTab({ t, id, can, toast, reload, push }) {
       {can('recommend') && ['evaluation', 'award'].includes(t.status) && !(live && ['approval_pending', 'approved', 'notified'].includes(live.status)) ? <Btn small title="Close without an award" color={c.violet} onPress={() => setSheet('noaward')} style={{ alignSelf: 'flex-start' }} /> : null}
       <FormSheet visible={!!sheet?.rec} onClose={() => setSheet(null)} title="Recommend this award" submitLabel="Send for approval" fields={[{ key: 'rationale', label: 'Rationale (at least 20 characters)', type: 'multiline', hint: 'Why this allocation is the best value, against the published rubric.' }, ...(sheet?.rec?.result?.unfilled?.length ? [{ key: 'partial', label: 'I confirm this is a partial award: some lots stay unfilled', type: 'switch' }] : [])]}
         onSubmit={async (v) => { await api.post(`/rfps/${id}/awards`, { scenario_id: sheet.rec.id, rationale: v.rationale, allow_partial: !!v.partial }); sc.reload(); awards.reload(); reload(); return 'Sent for approval. Nothing is awarded until it is approved and issued.'; }} />
+      <FormSheet visible={sheet === 'pub'} onClose={() => setSheet(null)} title="Request a public award notice" submitLabel="Send for approval"
+        fields={[{ key: 'fields', label: 'What may appear', type: 'multi', options: [{ value: 'supplier', label: 'Supplier names' }, { value: 'lots', label: 'Lots awarded' }, { value: 'award_date', label: 'Award date' }, { value: 'service_period', label: 'Service period' }, { value: 'value', label: 'Contract value (commercially sensitive)' }], hint: 'The contract value is off unless you choose it, and the approver sees that you did.' }, { key: 'note', label: 'Note for the approver (optional)', type: 'multiline' }]} initial={{ fields: ['supplier', 'lots', 'award_date'] }}
+        onSubmit={async (v) => { if (!v.fields?.length) throw new Error('Choose at least one field'); await api.post(`/rfps/${id}/award-publication`, { fields: v.fields, note: v.note || undefined }); pubs.reload(); reload(); return 'Sent for approval. It is not public until approved.'; }} />
+      <FormSheet visible={!!sheet?.withdraw} onClose={() => setSheet(null)} title="Withdraw the award notice" submitLabel="Withdraw" fields={[{ key: 'reason', label: 'Reason', type: 'multiline' }]} onSubmit={async (v) => { await api.post(`/award-publications/${sheet.withdraw.id}/withdraw`, { reason: v.reason }); pubs.reload(); return 'Withdrawn. The record is kept.'; }} />
       <FormSheet visible={sheet === 'cancel'} onClose={() => setSheet(null)} title="Cancel the award" submitLabel="Cancel award" fields={[{ key: 'reason', label: 'Reason', type: 'multiline' }]} onSubmit={async (v) => { await api.post(`/awards/${a.id}/cancel`, { reason: v.reason }); awards.reload(); award.reload(); reload(); return 'Award cancelled'; }} />
       <FormSheet visible={sheet === 'noaward'} onClose={() => setSheet(null)} title="Close without an award" submitLabel="Close tender" fields={[{ key: 'reason', label: 'Reason (bidders are told)', type: 'multiline' }]} onSubmit={async (v) => { await api.post(`/rfps/${id}/no-award`, { reason: v.reason }); reload(); return 'Closed without an award'; }} />
       <FormSheet visible={!!sheet?.appeal} onClose={() => setSheet(null)} title={`${nice(sheet?.outcome ?? '')} this appeal`} submitLabel="Record decision" fields={[{ key: 'decision', label: 'Decision sent to the supplier', type: 'multiline' }]} onSubmit={async (v) => { await api.post(`/appeals/${sheet.appeal.id}/decide`, { outcome: sheet.outcome, decision: v.decision }); appeals.reload(); return 'Recorded'; }} />
