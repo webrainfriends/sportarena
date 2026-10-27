@@ -375,7 +375,7 @@ test('every sport in the catalogue can host and be found as an open game (the mo
   for (const s of sports) {
     const r = await api('POST', '/open-games', { token: hostU.token, body: { sport: s.slug, starts_at: at(6, 9), location: 'Public ground', max_players: 4, min_players: 2, approval_mode: 'auto' } });
     if (r.status !== 201) { missing.push(`${s.slug}: host ${r.status}`); continue; }
-    const found = (await api('GET', '/open-games', { query: { sport: s.slug, limit: '5' } })).body.some((x) => x.id === r.body.id);
+    const found = (await api('GET', '/open-games', { query: { sport: s.slug, host_id: hostU.id, limit: '100' } })).body.some((x) => x.id === r.body.id);
     if (!found) missing.push(`${s.slug}: not found`);
     if ((await api('POST', `/open-games/${r.body.id}/join`, { token: player.token, body: {} })).status !== 201) missing.push(`${s.slug}: join`);
   }
