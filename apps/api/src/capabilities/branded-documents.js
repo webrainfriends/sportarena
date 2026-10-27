@@ -26,6 +26,7 @@ import { canReadEnrolmentLetter } from './academy-letters.js';
 import { LOADERS } from '../svc/documents.js';
 import { supplierAccess, buyerAccess } from '../svc/access.js';
 import { canReadPackDocument } from './export-packs.js';
+import { canReadFederationDocument } from './federation-home.js';
 
 const TAG = 'Branded documents';
 const color = z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Use a #RRGGBB colour');
@@ -369,6 +370,7 @@ export function brandedDocumentsRouter() {
       } else if (d.source_type === 'sponsorship_contract') await canReadContractDocument(user, d.source_id); // parties to the agreement only, checked live
       else if (d.source_type === 'export_pack') await canReadPackDocument(user, d.source_id); // the athlete, their verified guardian, or the coach who built it from a still-live share
       else if (d.source_type === 'academy_enrolment') await canReadEnrolmentLetter(user, d.source_id); // academy staff, the enrolled adult or their verified guardian, checked live
+      else if (d.source_type.startsWith('federation_')) await canReadFederationDocument(user, d.source_type, d.source_id); // the body's officers or the other party, checked live
       else if (d.source_type.startsWith('svc_')) await LOADERS[d.source_type.slice(4)]?.(user, d.source_id); // supplier-services documents: access re-checked live on every download
       else await invoiceFor(user, d.source_id); // live check on every download: revoked venue-team access ends here
       const bytes = await loadEncrypted('documents', 'generated_documents.file', d.file_name);

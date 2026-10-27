@@ -1,4 +1,5 @@
 import { VerifiedBadges } from './verification';
+import { SanctionBadge } from './federation-club';
 import { SubjectPanel } from './insurance';
 import { AvailabilityPicker, MySelections } from './team-manage';
 import React, { useEffect, useState } from 'react';
@@ -125,6 +126,7 @@ export function Event({ id }) {
           {e.rating?.n ? <Tag label={`⭐ ${e.rating.avg}`} color={c.pinkSoft} /> : null}
         </View>
       </GradCard>
+      <SanctionBadge id={id} />
       {e.description ? <T style={{ marginTop: 12 }}>{e.description}</T> : null}
       {isOrg || e.is_assessor ? <Btn title={isOrg ? '⚡ Event console' : '🎽 Trial desk'} color={c.violet} onPress={() => push('EventCommand', { id })} style={{ marginTop: 14 }} /> : null}
       {!isOrg && e.entrants.some((x) => (myTeams.data ?? []).some((t) => t.id === x.team_id)) ? <Btn title="🪪 My registration" color={c.violet} onPress={() => push('EventCommand', { id, tab: 'registration' })} style={{ marginTop: 14 }} /> : null}

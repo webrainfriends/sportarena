@@ -1,0 +1,65 @@
+# Federation & Governing Body OS (#475)
+
+A governing layer over the canonical SportArena entities: **international / national federation → regional or state association → league organiser →
+club, academy or school → teams and participants.** A governing body is an ordinary organisation plus one `governing_bodies` row (level, jurisdiction,
+abbreviation); clubs, teams, events, people, rule packs, payments and cases are **referenced, never copied**.
+
+## Reuse and gap matrix
+| Requested capability | Existing source (reused) | Verified gap | Smallest compatible extension |
+|---|---|---|---|
+| Body identity, legal/registration ids, public contact, owners | `organisations` (legal_name, registration_no, website, contact_*), `organisation_members` | level, jurisdiction, recognised parent, scoped federation roles | `governing_bodies` (1:1 with an organisation), `governing_body_sports`, `governing_body_links`, `governing_body_roles`; `organisations.kind` also allows `federation` |
+| Affiliation of clubs / academies / schools / leagues | `organisations`, `teams.organisation_id`, `organisation_members` | applications, requirements, number, season, renewal chain, fee state | `fed_affiliations` + `fed_affiliation_categories`; **never touches** org owners, members or teams |
+| Licences for athletes, coaches, officials | `users` (identity + roles), `guardian_links`/`youth_consents`, `verification_cases` (verified coach/physio/doctor), club membership via `team_members`/`organisation_members` | licence type/grade, standing, issue/expiry, renewal | `fed_licence_types`, `fed_licences` (public check code; a young person's name is never public) |
+| Sanctioning an event | `events` (dates, venue, sport), `event_staff_assignments`, `event_entries`, `insurance_policies`, `ruleset_versions` (#68) | request/decision workflow, number, conditions, drift | `fed_sanctions` references the event; **no events row is created or changed** |
+| Governance calendar | `events`, `fed_sanctions`, affiliations, licences | the federation's own windows/congress/deadlines | `fed_dates`; everything else is read live from its source |
+| Versioned governing requirements | #68 keeps playing/scoring rules | administrative requirements by sport/category/season/date | `fed_policies` + immutable `fed_policy_versions`; inherited down the hierarchy |
+| Federation Home, reports, exports | canonical tables above | dashboards, as-of reports, hashed export log | `get_federation_home`, `get_federation_report`, `fed_exports` (append-only) |
+| Certificates, licences, sanction letters | #249 branded documents (templates, kits, encrypted PDFs) | a family | `federation_document` family; same `generated_documents` and live download check |
+| Disciplinary / appeal links | `cases` + `case_links` | link types | `federation_licence` / `_affiliation` / `_sanction` link types; the holder, club admin or organiser raises the case |
+| Audit, notifications, jobs | `audit_log`, `notify`, worker steps | immutable decision history | `fed_events` (append-only), sweep `federation` in the worker |
+
+## Rules
+- **Hierarchy.** One recognised parent at a time, answered by the other side (an admin of both sides recognises at once), serialised with an advisory lock and
+  backed by a database trigger so it can never loop. Ending a recognition keeps the row and dates.
+- **Least privilege.** Owners/admins of the body's organisation do everything; scoped roles (`registrar`, `licensing`, `sanctioner`, `secretary`,
+  `compliance`, `auditor`) each do one job, optionally for one sport, read live (revoking is immediate). Staff of a body *above* another get read-only
+  roll-ups of it, never decisions. No federation capability reads a club's members, finance, coaching notes or medical data; outsiders get 404.
+- **Decisions.** Every transition runs inside a row-locked transaction with an optional `version` (stale → 409), is validated against a transition table and lands
+  in the append-only `fed_events` with who, why and the **policy version used**. Approval runs the published requirements; a failed requirement needs an
+  `override_reason`, stored as a **compliance exception** and shown on Federation Home.
+- **Policies.** `publish_policy_version` adds an immutable, dated version (later than the previous). `policyAt` picks the most specific policy
+  (sport > category > season) of the nearest body up the hierarchy, then the latest version in force on the date. `affiliation`, `licence` and `sanction`
+  policies are **enforced** at decision time; the others (eligibility, roster, entry, grades, registration, transfer, discipline, para-classification) are
+  published governing references.
+- **Standing is live.** An approved affiliation or active licence past its end date reads as expired immediately; the worker sweep persists it (with history),
+  lifts timed suspensions and sends renewal reminders at 30 and 7 days.
+- **Evidence** (documents, numbers, links) is encrypted at rest; lists show metadata only; every read by a reviewer is audit-logged.
+- **Fees** are recorded (due → paid with date/reference, or waived with a reason). No money moves through this module.
+- **Young people.** A verified guardian applies; current participation consent is required to apply and to issue; the public check hides a young person's name.
+- **Reports** read the same status rules as the lists, so Federation Home, the lists and the reports reconcile; exports are spreadsheet-safe, capped at
+  5,000 rows, logged in `fed_exports` with a hash of the file.
+
+## Capabilities (REST + OpenAPI + MCP, tag `Federation`)
+Bodies and hierarchy: `create_governing_body`, `list_governing_bodies`, `my_governing_bodies`, `get_governing_body`, `update_governing_body`, `set_governing_body_status`,
+`propose_body_link`, `respond_body_link`, `end_body_link`, `list_body_links`, `grant_federation_role`, `revoke_federation_role`, `list_federation_roles`,
+`list_federation_history`, `list_policy_kinds`. Affiliation: `save_affiliation_category`, `list_affiliation_categories`, `apply_affiliation`, `submit_affiliation`,
+`decide_affiliation`, `record_affiliation_fee`, `withdraw_affiliation`, `renew_affiliation`, `list_affiliations`, `get_affiliation`, `*_affiliation_evidence`,
+`list_affiliated_organisations`. Licences: `save_licence_type`, `list_licence_types`, `apply_licence`, `submit_licence`, `decide_licence`, `record_licence_fee`,
+`withdraw_licence`, `renew_licence`, `list_licences`, `get_licence`, `*_licence_evidence`, `verify_licence`. Sanctions: `check_sanction_readiness`, `request_sanction`,
+`amend_sanction`, `withdraw_sanction`, `decide_sanction`, `list_sanctions`, `get_sanction`, `*_sanction_evidence`, `get_event_sanctions`, `list_jurisdiction_events`.
+Governance: `save_federation_policy`, `publish_policy_version`, `retire_federation_policy`, `list_federation_policies`, `get_federation_policy`,
+`resolve_federation_policy`, `save_federation_date`, `cancel_federation_date`, `get_federation_calendar`. Workspace: `get_federation_home`, `get_federation_report`,
+`list_federation_exports`, `generate_federation_document`, `list_federation_documents`.
+
+## UI
+`Federations` (hub: my bodies, my licences, club affiliations, check a licence, directory, set up a federation), `FederationHome` (Overview, Affiliations, Licences,
+Sanctions, Calendar, Policies, Reports, Setup), `FederationRecord` (one detail screen for an affiliation, licence or sanction), `VerifyLicence`, `OrgAffiliations`
+(from the organisation screen), `MyLicences` (More wheel) and a sanction section inside the existing event console. One codebase for iOS, iPadOS, Android and web.
+
+## Migration and rollback
+`115_federation_os.sql` only adds tables and widens two CHECK constraints (`organisations.kind`, `case_links.entity_type`); every existing value stays valid. No
+data is deleted, rewritten or cascaded. Rollback = deploy the previous code; the tables stay, unused.
+
+## Limits
+Playing and scoring rules stay in the governed rulebook (#68). Transfers, rosters and discipline policies are published references (there is no transfer ledger
+yet). Fee collection through the payments gateway is not part of this change; the module records what was paid.

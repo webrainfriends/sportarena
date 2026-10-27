@@ -44,11 +44,11 @@ after(async () => { server.close(); await pool.end(); });
 
 const kitBody = { name: 'Main', display_name: 'Brand Arena', legal_name: 'Brand Arena Pvt Ltd', address: '1 Court Road', footer_text: 'Thank you for playing' };
 
-test('families are listed honestly: only invoices, coaching reports, sponsorship agreements and enrolment letters have a connected source', async () => {
+test('families are listed honestly: only invoices, coaching reports, sponsorship agreements enrolment letters and federation documents have a connected source', async () => {
   const u = await signup();
   const f = must(await api('GET', '/branded-documents/families', { token: u.token }));
   assert.equal(f.families.find((x) => x.family === 'invoice').source.available, true);
-  assert.ok(f.families.filter((x) => !['invoice', 'coaching_report', 'season_report', 'sponsorship_agreement', 'enrolment_letter'].includes(x.family)).every((x) => x.source.available === false && x.source.reason));
+  assert.ok(f.families.filter((x) => !['invoice', 'coaching_report', 'season_report', 'sponsorship_agreement', 'enrolment_letter', 'federation_document'].includes(x.family)).every((x) => x.source.available === false && x.source.reason));
   const t = await api('POST', '/document-templates', { token: u.token, body: { family: 'rehab_plan', name: 'Rehab' } });
   assert.equal(t.status, 409);
 });

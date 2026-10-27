@@ -9,6 +9,7 @@ import { useLoad } from '../hooks';
 import { usePoll } from '../live';
 import { useSession } from '../session';
 import { useNav } from '../nav';
+import { EventSanctions } from './federation-club';
 import { A, ABtn, ACard, AChip, AEmpty, AHero, AScreen, ASection, ASetupSteps, AStat, AT, ATabs, AG, LiveBadge, ReasonSheet, StageRail } from '../arena';
 import { ErrorBox, Field, Loading, Sheet, T } from '../ui';
 import { c } from '../theme';
@@ -200,6 +201,7 @@ function Overview({ id, e, isOrg, go, D, games, accepted, money }) {
       </View>
 
       {isOrg ? <ASetupSteps steps={steps} title="Get the event ready" /> : null}
+      {isOrg ? <EventSanctions event={e} canManage={isOrg} onChanged={reloadAll} /> : null}
 
       {isOrg ? (
         <ACard tone={A.violet} style={{ gap: 8 }}>

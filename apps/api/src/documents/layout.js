@@ -4,9 +4,9 @@ import { z } from 'zod';
 
 export const BLOCKS = ['header', 'title', 'parties', 'lines', 'totals', 'text', 'footer'];
 /** Blocks an invoice can never be issued without: a template cannot hide the canonical number, parties, lines or totals. */
-export const REQUIRED = { invoice: ['title', 'parties', 'lines', 'totals'], coaching_report: ['title'], season_report: ['title'], sponsorship_agreement: ['title', 'parties', 'lines'], enrolment_letter: ['title'] };
+export const REQUIRED = { invoice: ['title', 'parties', 'lines', 'totals'], coaching_report: ['title'], season_report: ['title'], sponsorship_agreement: ['title', 'parties', 'lines'], enrolment_letter: ['title'], federation_document: ['title'] };
 /** Blocks that mean something for a family; others are refused so a template cannot claim content the document does not have. */
-export const ALLOWED = { coaching_report: ['header', 'title', 'text', 'footer'], season_report: ['header', 'title', 'text', 'footer'], enrolment_letter: ['header', 'title', 'text', 'footer'], sponsorship_agreement: ['header', 'title', 'parties', 'lines', 'text', 'footer'] };
+export const ALLOWED = { coaching_report: ['header', 'title', 'text', 'footer'], season_report: ['header', 'title', 'text', 'footer'], enrolment_letter: ['header', 'title', 'text', 'footer'], federation_document: ['header', 'title', 'text', 'footer'], sponsorship_agreement: ['header', 'title', 'parties', 'lines', 'text', 'footer'] };
 
 const block = z.object({ type: z.enum(BLOCKS), text: z.string().max(2000).optional(), align: z.enum(['left', 'center', 'right']).optional(), size: z.enum(['small', 'normal', 'large']).optional() }).strict()
   .refine((b) => b.type === 'text' ? !!b.text?.trim() : b.text === undefined && b.align === undefined && b.size === undefined, 'Only text blocks carry text, alignment and size, and they need some text');
@@ -29,7 +29,7 @@ export const starterFor = (family, name) => {
   const s = STARTERS[name] ?? STARTERS.classic;
   const blocks = ALLOWED[family] ? s.blocks.filter((b) => ALLOWED[family].includes(b.type)) : s.blocks;
   // the shared modern starter thanks people "for their business"; a letter to a family says something fitting instead
-  const thanks = { enrolment_letter: 'We look forward to seeing you at the academy.', season_report: 'Prepared from the athlete\'s Sportarena records.' }[family];
+  const thanks = { enrolment_letter: 'We look forward to seeing you at the academy.', season_report: 'Prepared from the athlete\'s Sportarena records.', federation_document: 'Issued from the federation register.' }[family];
   return thanks ? { ...s, blocks: blocks.map((b) => (b.type === 'text' ? { ...b, text: thanks } : b)) } : { ...s, blocks };
 };
 
@@ -52,6 +52,7 @@ export const FAMILIES = [
   { family: 'season_report', label: 'Athlete season / career report', roles: ['athlete', 'coach'], source: SOURCE(true) },
   { family: 'sponsorship_agreement', label: 'Sponsorship agreement', roles: ['sponsor', 'athlete', 'organizer'], source: SOURCE(true) },
   { family: 'enrolment_letter', label: 'Academy enrolment letter', roles: ['organizer'], source: SOURCE(true) },
+  { family: 'federation_document', label: 'Federation certificate, licence or sanction letter', roles: ['organizer'], source: SOURCE(true) },
   ...[
     ['coaching_plan', 'Training / coaching plan', ['coach']], ['coach_agreement', 'Coaching agreement', ['coach']],
     ['referee_letter', 'Appointment / engagement letter', ['referee']], ['event_timetable', 'Event programme / timetable', ['organizer']],
