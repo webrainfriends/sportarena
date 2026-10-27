@@ -60,27 +60,6 @@ export function TrophyShelf({ awards }) {
   );
 }
 
-export function FixtureCard({ f, onScore }) {
-  const done = f.status === 'completed';
-  return (
-    <Card pad={12}>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Tag label={f.round ?? f.event_name ?? 'Game'} color={c.violetSoft} />
-        <T size={12} color={c.mute} weight="800">{done ? 'FULL TIME' : f.status === 'live' ? 'LIVE' : new Date(f.scheduled_at).toLocaleString(locale, { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</T>
-      </View>
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10, gap: 6 }}>
-        <View style={{ flex: 1, alignItems: 'center' }}><T size={30}>{f.home_emoji}</T><T weight="900" size={13} style={{ textAlign: 'center' }}>{f.home_name}</T></View>
-        <View style={{ backgroundColor: c.violet, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 6 }}>
-          <T color="#fff" weight="800" size={20}>{done ? `${f.home_score} – ${f.away_score}` : 'VS'}</T>
-        </View>
-        <View style={{ flex: 1, alignItems: 'center' }}><T size={30}>{f.away_emoji}</T><T weight="900" size={13} style={{ textAlign: 'center' }}>{f.away_name}</T></View>
-      </View>
-      {f.resource_name ? <T size={12} color={c.mute} style={{ marginTop: 8, textAlign: 'center' }}>📍 {f.resource_name}</T> : null}
-      {onScore && !done ? <Btn small title="Enter result" color={c.mint} ink={c.ink} onPress={() => onScore(f)} style={{ marginTop: 10, alignSelf: 'center' }} /> : null}
-    </Card>
-  );
-}
-
 export function StandingsTable({ rows }) {
   if (!rows?.length) return <Empty emoji="📊" title="No table yet" sub="Teams appear here once accepted." />;
   const th = { width: 30, textAlign: 'center' };

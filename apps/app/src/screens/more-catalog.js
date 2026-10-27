@@ -4,6 +4,7 @@ export const MODULES = [
   ['CareerTimeline', 'Career & clubs', 'Your clubs, verified by them', 'play'], ['MyLicences', 'My licences', 'Federation licences & standing', 'play'],
   ['MyApplications', 'My applications', 'Trials, offers & answers', 'play'],
   ['MyAccreditations', 'My badges', 'Event accreditation & QR', 'play'],
+  ['Following', 'Following', 'Events, teams & games you follow', 'play'],
   ['RecruiterAccess', 'Recruiter access', 'Who may see your profile', 'play'],
   ['MyDevelopment', 'My development', 'Goals, plans, feedback & reports', 'play'], ['MyPlans', 'Training plans', 'Your plans & sessions', 'play'], ['ToolsHome', 'Tools', 'Scoring sheets & documents', 'play'], ['Pathways', 'Learn & study', 'Rules, courses & colleges', 'play'], ['OpportunityMatches', 'Opportunities for me', 'Teams, trials, study & sponsors that fit you', 'play'],
   ['Health', 'Health', 'Physio · doctors · fit to play', 'care'], ['Insure', 'My cover', 'What covers me today', 'care'],

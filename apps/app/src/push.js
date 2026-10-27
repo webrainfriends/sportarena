@@ -61,6 +61,7 @@ export async function disablePush(deviceId) {
 
 /** Where a tapped notification should land: [screen, params] or null. */
 export function targetFor(data = {}) {
+  if (data.spectator && data.fixture_id) return ['LiveCentre', { id: data.fixture_id }]; // an alert for a game you follow
   if (data.screen === 'PlayerFunding') return ['PlayerFunding', data.athlete_id ? { athlete_id: data.athlete_id } : {}]; // an athlete shared their funding with a coach
   if (data.assessment_id) return ['OfficialAssessment', { id: data.assessment_id }]; // an assessment published, corrected, voided or appealed (private development record)
   if (data.observation_id) return ['OfficialsDevelopment', { tab: 'assessor' }];
@@ -98,6 +99,9 @@ export function parseTarget(t) {
   if (kind === 'tenders') return ['TenderHome', {}];
   if (kind === 'tender-zone') return ['TenderZone', {}];
   if (kind === 'billboard') return ['Billboard', {}];
+  if (kind === 'event' && id) return ['Event', { id }];
+  if (kind === 'fixture' && id) return ['LiveCentre', { id }];
+  if (kind === 'following') return ['Following', {}];
   if (kind === 'accreditation') return ['MyAccreditations', {}];
   if (kind === 'event-accreditation' && id) return ['EventCommand', { id, tab: 'accreditation' }];
   if (kind === 'gate' && id) return ['GateScan', { id }];

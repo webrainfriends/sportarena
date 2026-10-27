@@ -8,11 +8,12 @@ import { canManageTeam } from './teams.js';
 import { hasOrgGrant } from '../org-access.js';
 import { reserve } from './venues.js';
 import { notify } from '../notify.js';
-import { WHO_FOR, ageBand, AGE_BAND_MSG } from '../opportunity-fields.js';
+import { WHO_FOR, levels as LEVELS_FIELD, ageBand, AGE_BAND_MSG } from '../opportunity-fields.js';
 import { advanceKnockout, isKnockout } from '../tournament/advance.js';
 import { createRequest } from '../event-planning.js';
 import { eventWindow, windowFit, consentNeeded } from '../event-fit.js';
 import { toLocal } from '../booking/time.js';
+import { assertEventReadable, participantSql } from '../spectator.js';
 import { OFFICIAL_ROLES, lockOfficial, assertOfficialEligible, recordHistory, closeOfficial } from '../officials.js';
 
 const dt = z.string().datetime({ offset: true });
@@ -86,6 +87,9 @@ const SEARCH_INPUT = {
   date_from: date.optional(), date_to: date.optional(), open_for_entry: flag.optional(), free: flag.optional(),
   max_fee_cents: money.optional(), seeking_sponsors: flag.optional(), verified: flag.optional(),
   as_official: flag.optional().describe('only events where you are the organiser, an accepted official (referee, umpire, judge, starter, timekeeper, scorer) or a fixture referee; needs sign-in'),
+  phase: z.enum(['live', 'upcoming', 'completed']).optional().describe('live = a game is in progress right now; upcoming = open and not started; completed = finished (default: everything still running or coming)'),
+  level: z.string().max(40).optional().describe('playing level / category the event is for, e.g. beginner, club, elite'), region: z.string().max(80).optional(),
+  include_archived: flag.optional().describe('also list archived events'),
   sort: z.enum(['soonest', 'newest', 'fee_low']).default('soonest'), ...page,
 };
 const REG_OPEN = `(e.status='open' AND (e.registration_deadline IS NULL OR e.registration_deadline > now())
@@ -99,8 +103,17 @@ async function searchEvents(i, user) {
   const p = (v) => { args.push(v); return `$${args.length}`; };
   const w = ["e.status <> 'draft'"];
   if (sport) w.push(`e.sport_id=${p(sport.id)}`);
+  // public discovery shows public events only; an organiser or participant still finds their own unlisted / private events
+  w.push(user ? `(e.public_visibility='public' OR ${participantSql('e', p(user.id))})` : "e.public_visibility='public'");
+  if (!i.include_archived) w.push('e.archived_at IS NULL');
+  if (i.phase === 'live') w.push("EXISTS (SELECT 1 FROM fixtures lf WHERE lf.event_id=e.id AND lf.status IN ('live','paused'))");
+  if (i.phase === 'upcoming') w.push("e.status='open'");
+  if (i.phase === 'completed') w.push("e.status='completed'");
+  if (i.level) w.push(`${p(i.level.toLowerCase())} = ANY(SELECT lower(x) FROM unnest(e.levels) x)`);
+  if (i.region) w.push(`lower(e.region) = lower(${p(i.region)})`);
   if (i.status) w.push(`e.status=${p(i.status)}`);
-  else w.push("e.status IN ('open','ongoing','paused')");
+  else if (!i.phase) w.push("e.status IN ('open','ongoing','paused')");
+  else if (i.phase === 'live') w.push("e.status IN ('ongoing','paused')");
   if (i.kind) w.push(`e.kind=${p(i.kind)}`);
   if (i.organizer_id) w.push(`e.organizer_id=${p(i.organizer_id)}`);
   if (i.q) w.push(`(e.name ILIKE ${p(`%${i.q}%`)} OR e.description ILIKE $${args.length} OR e.city ILIKE $${args.length})`);
@@ -125,7 +138,9 @@ async function searchEvents(i, user) {
               e.registration_deadline, e.seeking_sponsors, e.banner_emoji, e.sport_id, s.slug AS sport_slug, s.name AS sport, s.emoji AS sport_emoji,
               (SELECT count(*)::int FROM event_entries n WHERE n.event_id=e.id AND n.status='accepted') AS entrants,
               CASE WHEN e.capacity IS NULL THEN NULL ELSE greatest(e.capacity - (SELECT count(*)::int FROM event_entries n WHERE n.event_id=e.id AND n.status IN ('accepted','pending')), 0) END AS spots_left,
-              ${REG_OPEN} AS registration_open
+              ${REG_OPEN} AS registration_open, e.levels, e.region,
+              EXISTS (SELECT 1 FROM fixtures lf WHERE lf.event_id=e.id AND lf.status IN ('live','paused')) AS live_now,
+              (SELECT min(nf.scheduled_at) FROM fixtures nf WHERE nf.event_id=e.id AND nf.status='scheduled' AND nf.scheduled_at > now()) AS next_fixture_at
          FROM events e JOIN sports s ON s.id=e.sport_id WHERE ${where} ORDER BY ${order} LIMIT ${p(i.limit)} OFFSET ${p(i.offset)}`, args),
     one(`SELECT count(*)::int AS n FROM events e WHERE ${where}`, args.slice(0, args.length - 2)),
   ]);
@@ -152,6 +167,7 @@ cap({
   async handler({ user }, i) {
     const ev = await one('SELECT e.*, s.name AS sport, s.emoji AS sport_emoji FROM events e JOIN sports s ON s.id=e.sport_id WHERE e.id=$1', [i.id]);
     if (!ev) throw notFound('Event');
+    await assertEventReadable(user, ev.id);
     // an accepted trial assessor gets the trial desk (the rest of the console stays organiser-only)
     ev.is_assessor = !!user && ev.kind === 'trial' && !!(await one("SELECT 1 FROM event_staff_assignments a JOIN event_staff_roles r ON r.id=a.role_id WHERE a.event_id=$1 AND a.user_id=$2 AND a.status='accepted' AND r.role='assessor'", [ev.id, user.id]));
     const [entrants, table, sponsors, rating, venue] = await Promise.all([
@@ -173,7 +189,7 @@ cap({
     id, name: z.string().min(2).max(100).optional(), description: z.string().max(2000).optional(), status: z.enum(['open', 'ongoing', 'cancelled']).optional(),
     starts_on: date.optional(), ends_on: date.optional(), venue_id: id.optional(), city: z.string().max(80).optional(),
     capacity: z.number().int().min(1).max(100000).optional(), registration_deadline: dt.optional(), seeking_sponsors: z.boolean().optional(),
-    levels: WHO_FOR.levels.optional(), region: WHO_FOR.region, min_age: WHO_FOR.min_age, max_age: WHO_FOR.max_age,
+    levels: LEVELS_FIELD.optional(), region: WHO_FOR.region, min_age: WHO_FOR.min_age, max_age: WHO_FOR.max_age,
   }),
   async handler({ user }, i) {
     return tx(async (c) => {
@@ -351,13 +367,13 @@ cap({
 cap({
   name: 'list_fixtures', method: 'GET', path: '/fixtures', tag: 'Schedule', auth: 'public', summary: 'Game schedule and results, filterable by event, team, referee or date.',
   input: z.object({ event_id: id.optional(), team_id: id.optional(), referee_id: id.optional(), from: dt.optional(), to: dt.optional(), status: z.enum(['scheduled', 'live', 'paused', 'finished', 'completed', 'cancelled', 'postponed', 'abandoned']).optional(), ...page }),
-  handler: (_, i) => many(
+  handler: ({ user }, i) => many(
     `SELECT f.*, h.name AS home_name, h.emoji AS home_emoji, h.color AS home_color, a.name AS away_name, a.emoji AS away_emoji, a.color AS away_color, e.name AS event_name, r.name AS resource_name, ve.timezone AS venue_timezone
        FROM fixtures f JOIN events e ON e.id=f.event_id LEFT JOIN teams h ON h.id=f.home_team_id LEFT JOIN teams a ON a.id=f.away_team_id LEFT JOIN resources r ON r.id=f.resource_id LEFT JOIN venues ve ON ve.id=r.venue_id
-      WHERE ($1::uuid IS NULL OR f.event_id=$1) AND ($2::uuid IS NULL OR f.home_team_id=$2 OR f.away_team_id=$2) AND ($3::uuid IS NULL OR f.referee_id=$3)
+      WHERE (e.public_visibility <> 'private' OR ($9::uuid IS NOT NULL AND ${participantSql('e', '$9')})) AND ($1::uuid IS NULL OR f.event_id=$1) AND ($2::uuid IS NULL OR f.home_team_id=$2 OR f.away_team_id=$2) AND ($3::uuid IS NULL OR f.referee_id=$3)
         AND ($4::timestamptz IS NULL OR f.scheduled_at >= $4) AND ($5::timestamptz IS NULL OR f.scheduled_at < $5) AND ($6::text IS NULL OR f.status=$6)
       ORDER BY f.scheduled_at LIMIT $7 OFFSET $8`,
-    [i.event_id ?? null, i.team_id ?? null, i.referee_id ?? null, i.from ?? null, i.to ?? null, i.status ?? null, i.limit, i.offset]),
+    [i.event_id ?? null, i.team_id ?? null, i.referee_id ?? null, i.from ?? null, i.to ?? null, i.status ?? null, i.limit, i.offset, user?.id ?? null]),
 });
 
 cap({
@@ -449,7 +465,7 @@ cap({
 
 cap({
   name: 'get_standings', method: 'GET', path: '/events/:id/standings', tag: 'Schedule', auth: 'public', summary: 'League table computed from completed fixtures.', input: z.object({ id }),
-  handler: (_, i) => standings(i.id),
+  async handler({ user }, i) { await assertEventReadable(user, i.id); return standings(i.id); },
 });
 
 cap({

@@ -8,6 +8,7 @@ import { canManageTeam } from './teams.js';
 import { isOrganiser } from './event-departments.js';
 import { eventForOrganizer } from './events.js';
 import { publish } from '../live.js';
+import { assertEventReadable, assertFixtureReadable } from '../spectator.js';
 import { liveState, loggedEvents, rulesetForEvent, pinFixtureRuleset } from '../scoring/state.js';
 import { rejectReason, matchPhase, CONTROL_KINDS } from '../scoring/engine.js';
 import { rulesetSchema, builtinSlugs, builtinRuleset } from '../scoring/rulesets.js';
@@ -188,6 +189,7 @@ cap({
   async handler({ user }, i) {
     const f = (await pool.query("SELECT f.id, e.status AS es FROM fixtures f JOIN events e ON e.id=f.event_id WHERE f.id=$1", [i.id])).rows[0];
     if (!f || f.es === 'draft') throw notFound('Fixture');
+    await assertFixtureReadable(user, i.id);
     const x = user ? await fixtureContext(user, i.id) : null;
     const state = await liveState(i.id, null, { sinceSeq: i.since_seq, limit: i.limit, includeVoided: !!x?.canScore });
     return { ...state, viewer: { can_score: !!x?.canScore, organiser: !!x?.organiser, manages: x?.side ?? null } };
@@ -198,9 +200,10 @@ cap({
   name: 'get_event_live', method: 'GET', path: '/events/:id/live', tag: TAG, auth: 'public',
   summary: 'Live ticker for an event: every game that is live, paused or at full time awaiting its sheet, with the score.',
   input: z.object({ id }),
-  async handler(_, i) {
+  async handler({ user }, i) {
     const ev = await mustFind('events', i.id, 'id, status');
     if (ev.status === 'draft') throw notFound('Event');
+    await assertEventReadable(user, i.id);
     const ids = (await many("SELECT id FROM fixtures WHERE event_id=$1 AND status IN ('live','paused','finished') ORDER BY started_at NULLS LAST, scheduled_at", [i.id])).map((r) => r.id);
     const games = await Promise.all(ids.map((fid) => liveState(fid, null, { limit: 5 })));
     return games.map((g) => ({ fixture: g.fixture, score: g.score, phase: g.phase, ruleset: { label: g.ruleset.label, kind: g.ruleset.kind, periods: g.ruleset.periods }, last_events: g.events }));
