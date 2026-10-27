@@ -91,8 +91,12 @@ test('outcomes and reporting: public award fields only when disclosed, reports e
   const rep0 = ok(await call('GET', '/procurement/reports?scope=buyer', { token: w.owner.token }));
   assert.equal(rep0.participation.submitted, 1, 'withdrawn proposals are not counted as submitted');
   const { award } = await awardAll(w, 'single_supplier', w.sup.A.user);
+  assert.equal(ok(await call('GET', `/tenders/${w.t.id}`, { token: w.sup.B.user.token })).public_award, null, 'an award alone is not public');
+  // the chair chooses the fields and a different approver approves the notice; only then is anything public
+  const req = ok(await call('POST', `/rfps/${w.t.id}/award-publication`, { token: w.chair.token, body: { fields: ['supplier'] } }), 201);
+  ok(await call('POST', `/approvals/${req.approval_id}/decide`, { token: w.approver.token, body: { decision: 'approve' } }));
   const pub = ok(await call('GET', `/tenders/${w.t.id}`, { token: w.sup.B.user.token }));
-  assert.deepEqual(pub.public_award.map((x) => Object.keys(x).sort()), [['lot_code', 'supplier'], ['lot_code', 'supplier']], 'only the approved fields are public');
+  assert.deepEqual(pub.public_award.awards.map((x) => Object.keys(x).sort()), [['supplier'], ['supplier']], 'only the approved fields are public');
   assert.ok(!JSON.stringify(pub).includes('4600000'), 'no amounts are public');
   const order = ok(await call('GET', `/procurement-orders?project_id=${w.t.id}`, { token: w.owner.token }))[0];
   const before = ok(await call('GET', '/procurement/reports?scope=buyer', { token: w.owner.token })).spend.committed_minor.INR;
