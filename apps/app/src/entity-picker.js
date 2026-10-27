@@ -8,10 +8,11 @@ import { A, AAvatar, ABtn, AChip, AT } from './arena';
 
 const asItem = (kind) => (x) => (kind === 'team'
   ? { id: x.id, label: x.name, sub: [x.sport, x.city].filter(Boolean).join(' · '), emoji: x.emoji, color: x.color }
+  : kind === 'partner' ? { id: x.id, label: x.name, sub: String(x.kind ?? '').replace(/_/g, ' '), emoji: '📡' }   // a registered media partner
   : { id: x.id, label: x.display_name, sub: x.handle ? `@${x.handle}` : '', emoji: x.avatar_emoji, color: x.avatar_color });
 
 /**
- * @param {{ kind?: 'person'|'team', label: string, value: {id:string,label:string}[], onChange: (v: any[]) => void, multi?: boolean,
+ * @param {{ kind?: 'person'|'team'|'partner', label: string, value: {id:string,label:string}[], onChange: (v: any[]) => void, multi?: boolean,
  *           options?: any[], sport?: string, role?: string, optional?: boolean, mine?: boolean, noun?: string }} p
  */
 export function EntityPicker({ kind = 'person', label, value = [], onChange, multi = false, options, sport, role, optional, mine, noun }) {
@@ -28,7 +29,7 @@ export function EntityPicker({ kind = 'person', label, value = [], onChange, mul
     const t = setTimeout(async () => {
       setBusy(true);
       try {
-        const rows = kind === 'team' ? await api.get('/teams', { q: q.trim() || undefined, sport, mine: mine || undefined, limit: 12 }) : await api.get('/people', { q: q.trim() || undefined, sport, role, limit: 12 });
+        const rows = kind === 'partner' ? await api.get('/media/partners/search', { q: q.trim() || undefined, limit: 12 }) : kind === 'team' ? await api.get('/teams', { q: q.trim() || undefined, sport, mine: mine || undefined, limit: 12 }) : await api.get('/people', { q: q.trim() || undefined, sport, role, limit: 12 });
         if (live) setFound(rows.map(asItem(kind)));
       } catch { if (live) setFound([]); } finally { if (live) setBusy(false); }
     }, 250);
@@ -49,7 +50,7 @@ export function EntityPicker({ kind = 'person', label, value = [], onChange, mul
         <AChip label={value.length && !multi ? 'Change' : `+ ${multi ? 'Add' : 'Pick'} ${what}`} onPress={() => { setQ(''); setOpen(true); }} />
       </View>
       <Sheet visible={open} onClose={() => setOpen(false)} title={label}>
-        <Field value={q} onChangeText={setQ} placeholder={noun ? `Search ${noun}s…` : kind === 'team' ? 'Search teams…' : 'Search by name or @handle…'} />
+        <Field value={q} onChangeText={setQ} placeholder={noun ? `Search ${noun}s…` : kind === 'partner' ? 'Search media partners…' : kind === 'team' ? 'Search teams…' : 'Search by name or @handle…'} />
         {busy ? <T size={12} color="#94A3B8">Searching…</T> : null}
         {!busy && !list.length ? <T size={13} color="#94A3B8">{known ? 'Nobody matches.' : q.trim() ? 'No results.' : 'Type to search.'}</T> : null}
         <View style={{ gap: 8 }}>

@@ -152,6 +152,24 @@ export function TimeField({ label, value, onChange, optional, step = 30, hint })
   );
 }
 
+/** A date and a time of day in one control. value / onChange use an ISO timestamp; the person picks in their own time zone. */
+export function DateTimeField({ label, value, onChange, optional, min, step = 15, hint }) {
+  const d = value ? new Date(value) : null;
+  const pad = (n) => String(n).padStart(2, '0');
+  const date = d ? `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` : undefined;
+  const time = d ? `${pad(d.getHours())}:${pad(d.getMinutes())}` : undefined;
+  const put = (dt, tm) => { if (!dt) return onChange(undefined); onChange(new Date(`${dt}T${tm ?? '09:00'}:00`).toISOString()); };
+  return (
+    <View style={{ gap: 8 }}>
+      <View style={{ flexDirection: 'row', gap: 10 }}>
+        <View style={{ flex: 3 }}><DateField label={label} value={date} onChange={(x) => put(x, time)} optional={optional} min={min} /></View>
+        <View style={{ flex: 2 }}><TimeField label="Time" value={time} onChange={(x) => put(date ?? todayLocal(), x)} step={step} optional={optional} /></View>
+      </View>
+      {hint ? <T size={12} color={c.mute}>{hint}</T> : null}
+    </View>
+  );
+}
+
 /** − 2 + control for quantities (units, players, hours). */
 export function Counter({ value, onChange, min = 1, max = 99, label, suffix, step = 1 }) {
   const btn = (txt, d, off) => (

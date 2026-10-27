@@ -10,7 +10,7 @@ export const MODULES = [
   ['Wallet', 'Wallet', 'Balance, gift cards, loyalty', 'money'], ['Earnings', 'Earnings', 'Sales, fees & payouts', 'money'], ['PlayerContracts', 'Contracts', 'Fees, bonuses, expenses & pay', 'money'], ['PlayerFunding', 'Funding', 'Needs, applications & sponsor support', 'money'], ['Shop', 'Shop', 'Kit, gear & orders', 'money'],
   ['Billboard', 'Billboard', 'Wanted, for sale & ads', 'money'], ['Sponsors', 'Sponsor home', 'Offers, dues & agreements', 'money'], ['Supply', 'Supply chain', 'Kit, stock & orders', 'money'], ['ServicesBuyer', 'Services & suppliers', 'Buy grounds, crew, Wi-Fi, travel…', 'work'],
   ['Openings', 'Open positions', 'Jobs, stalls & contracts at events', 'community'], ['EventInbox', 'Event requests', 'Invites & quotes for you', 'community'],
-  ['Orgs', 'Organisations', 'Clubs & associations', 'community'], ['Federations', 'Federations', 'Affiliations, licences & sanctions', 'community'], ['Support', 'Support', 'Cases & disputes', 'community'],
+  ['Orgs', 'Organisations', 'Clubs & associations', 'community'], ['Federations', 'Federations', 'Affiliations, licences & sanctions', 'community'], ['MediaWorkspace', 'Media & broadcast', 'Rights, production & data feeds', 'work'], ['Support', 'Support', 'Cases & disputes', 'community'],
 ];
 
 export const GROUP_COLOR = { play: '#D0BDF4', care: '#A0D2EB', money: '#E5EAF5', community: '#A0D2EB', work: '#4C9A7A' };
@@ -39,7 +39,7 @@ export const workspacesFor = (roles = []) => WORKSPACES.filter(([r]) => roles.in
 
 // Modules lifted to the front of the wheel for people who hold these roles (first match wins; everyone else: player set).
 export const PRIORITY = [
-  [['organizer', 'venue_manager'], ['EventInbox', 'Openings', 'Orgs', 'Federations', 'Earnings', 'PlayerContracts', 'Billboard', 'Support', 'ToolsHome']],
+  [['organizer', 'venue_manager'], ['EventInbox', 'Openings', 'Orgs', 'Federations', 'MediaWorkspace', 'Earnings', 'PlayerContracts', 'Billboard', 'Support', 'ToolsHome']],
   [['sponsor', 'supplier'], ['Sponsors', 'Supply', 'Wallet', 'Earnings', 'Billboard', 'Shop', 'ToolsHome']],
   [['physio', 'doctor', 'lawyer', 'insurer'], ['Health', 'Insure', 'Legal', 'Wallet', 'Leaderboard', 'Support', 'ToolsHome']],
 ];
