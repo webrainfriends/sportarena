@@ -4,6 +4,8 @@
 import { encrypt } from './crypto.js';
 import { notify } from './notify.js';
 import { activateUserPlan } from './booking/plans.js';
+import { returnCredits } from './booking/credits.js';
+import { academyChargePaid } from './rewards/activity.js';
 
 const ZERO = 0;
 /** A short, unique, readable prefix for an organisation's invoices: the profile's own, else 3 letters of the name + a slice of the id. */
@@ -67,7 +69,10 @@ export async function syncChargeInvoice(c, chargeId) {
   if (inv?.status === 'paid') return inv;
   const wanted = ctx.status === 'awaiting_payment' && Number(ctx.amount_minor) > 0;
   if (!wanted) {
-    if (inv) await c.query("UPDATE invoices SET status='void', voided_at=now() WHERE id=$1", [inv.id]);
+    if (inv) {
+      await returnCredits(c, [inv.id], Number(inv.credits_cents), { adjustInvoice: true, note: 'Academy charge changed' });   // points paid onto it come back
+      await c.query("UPDATE invoices SET status='void', voided_at=now() WHERE id=$1", [inv.id]);
+    }
     return null;
   }
   const rate = Number(ctx.terms?.tax_rate_bp ?? 0);
@@ -95,6 +100,7 @@ export async function fulfilChargePaid(c, chargeId, { method = 'online' } = {}) 
   await c.query("UPDATE invoices SET status='paid', paid_at=now(), payment_method=$2 WHERE academy_charge_id=$1 AND kind='invoice' AND status='open'", [chargeId, method]);
   await c.query("UPDATE academy_charges SET status='paid', paid_at=now() WHERE id=$1", [chargeId]);
   if (ch.user_plan_id) await activateUserPlan(c, ch.user_plan_id);
+  await academyChargePaid(c, ch);                // the payer earns under every live loyalty programme that applies (once per charge)
   await notify(c, ch.payer_id, { kind: 'academy_payment_received', title: 'Payment received', body: 'Open Gotmygame to see your receipt.', data: { organisation_id: ch.organisation_id, charge_id: ch.id }, dedupe_key: `academy:paid:${ch.id}` });
   return true;
 }
@@ -103,6 +109,8 @@ export async function fulfilChargePaid(c, chargeId, { method = 'online' } = {}) 
 export async function cancelUnpaidCharges(c, where, params) {
   const rows = (await c.query(`UPDATE academy_charges SET status='cancelled' WHERE status='awaiting_payment' AND ${where} RETURNING id, user_plan_id`, params)).rows;
   for (const r of rows) {
+    const open = (await c.query("SELECT id, credits_cents FROM invoices WHERE academy_charge_id=$1 AND kind='invoice' AND status='open' FOR UPDATE", [r.id])).rows[0];
+    if (open?.credits_cents > 0) await returnCredits(c, [open.id], Number(open.credits_cents), { adjustInvoice: true, note: 'Academy charge cancelled' });
     await c.query("UPDATE invoices SET status='void', voided_at=now() WHERE academy_charge_id=$1 AND kind='invoice' AND status='open'", [r.id]);
     if (r.user_plan_id) await c.query("UPDATE user_plans SET status='cancelled' WHERE id=$1 AND status='awaiting_payment'", [r.user_plan_id]);
   }

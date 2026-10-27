@@ -13,6 +13,7 @@ import { Pill, StatusPill, nice } from './marketplace';
 import { AUDIENCES, Confirm, Head, Tile, UNIT, cardPrice, price } from './coaching';
 import { c } from '../theme';
 import { addDays, moneyIn, todayIn, WEEKDAYS } from '../vtime';
+import { LoyaltyConsole } from './rewards';
 
 const deviceTz = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return 'UTC'; } })();
 const LEVELS = ['beginner', 'amateur', 'semi_pro', 'pro'].map((value) => ({ value, label: nice(value).replace(/^./, (x) => x.toUpperCase()) }));
@@ -123,7 +124,8 @@ export function CoachRates() {
       {spec ? <SpecSheet spec={spec.id ? spec : null} onClose={() => setSpec(null)} onDone={reload} /> : null}
       <Confirm visible={!!retire} title="Retire this rate card?" yes="Retire" danger onClose={() => setRetire(null)} body="It disappears from your profile and from booking. Sessions already booked on it stay on record."
         onYes={async () => { try { await api.patch(`/coach/rate-cards/${retire.id}`, { archive: true }); setRetire(null); await reload(); toast('Retired'); } catch (e) { toast(e.message); } }} />
-    </Screen>
+      <LoyaltyConsole ownerKind="coach" currency={cur} />
+      </Screen>
   );
 }
 

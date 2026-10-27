@@ -16,6 +16,8 @@ import { AppError } from '../errors.js';
 import { hhmm, fromLocal, validTimezone } from '../booking/time.js';
 import { loadCoachSchedule } from '../coach-slots.js';
 import { venueText } from '../session-links.js';
+import { coachSessionDone } from '../rewards/activity.js';
+import { restoreForPurpose } from '../rewards/redeem.js';
 
 const esc = (x) => (x ? x.replace(/[%_\\]/g, '\\$&') : null);
 
@@ -198,6 +200,8 @@ cap({
       }
       const out = (await c.query("UPDATE coach_hires SET status=$2, payment_status=$4, completed_at=CASE WHEN $2='completed' THEN now() ELSE completed_at END, cancelled_by=CASE WHEN $2='cancelled' THEN $3::uuid ELSE cancelled_by END WHERE id=$1 AND status=$5 RETURNING id, status, payment_status", [i.id, i.status, user.id, payment, h.status])).rows[0];
       if (!out) throw conflict('This session was just changed by someone else; reload and try again');
+      if (i.status === 'cancelled') await restoreForPurpose(c, 'coach_hire', h.id, { reason: 'Coaching session cancelled' });
+      if (i.status === 'completed') await coachSessionDone(c, h.id);   // paid + completed earns coach-programme points (once)
       if (i.status === 'cancelled') await c.query("UPDATE session_venue_links SET released_at=now(), release_reason='session cancelled' WHERE session_type='coach_hire' AND session_id=$1 AND released_at IS NULL", [h.id]);
       const other = isCoach ? h.hirer_id : h.coach_id;
       const verb = { confirmed: 'confirmed your coaching session', completed: 'marked your session complete — leave a review', cancelled: 'cancelled the coaching session' }[i.status];
