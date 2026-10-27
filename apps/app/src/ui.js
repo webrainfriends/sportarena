@@ -66,7 +66,7 @@ export function Btn({ title, onPress, color: want = c.pink, ink = '#fff', style,
   return (
     <Pressable disabled={disabled || loading} onPress={onPress} accessibilityRole="button" accessibilityLabel={accessibilityLabel ?? title} accessibilityState={{ disabled: !!(disabled || loading), busy: !!loading }}
       hitSlop={small ? 4 : 0} style={({ pressed }) => [{ opacity: disabled ? 0.4 : pressed ? 0.85 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] }, style]}>
-      <View style={[s.btn, { backgroundColor: color, borderWidth: plain ? 1 : 0, borderColor: c.line, paddingVertical: small ? 10 : 15, paddingHorizontal: small ? 18 : 24, minHeight: small ? 40 : 50 }]}>
+      <View style={[s.btn, { backgroundColor: color, borderWidth: plain ? 1 : 0, borderColor: c.line, paddingVertical: small ? 10 : 15, paddingHorizontal: small ? 18 : 24, minHeight: small ? 44 : 50 }]}>
         {loading ? <ActivityIndicator color={fg} /> : <T weight="700" size={small ? 13 : 15} color={fg} style={{ letterSpacing: 0.2 }}>{title}</T>}
       </View>
     </Pressable>
@@ -264,7 +264,7 @@ const s = StyleSheet.create({
   card: { borderWidth: 1, borderColor: c.line, borderRadius: r.card, ...lift },
   gradWrap: { borderRadius: r.card + 4, overflow: 'hidden' },
   btn: { borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  chip: { borderWidth: 1, borderColor: c.line, backgroundColor: c.paper, borderRadius: r.pill, paddingVertical: 10, paddingHorizontal: 16, minHeight: 40, justifyContent: 'center' },
+  chip: { borderWidth: 1, borderColor: c.line, backgroundColor: c.paper, borderRadius: r.pill, paddingVertical: 10, paddingHorizontal: 16, minHeight: 44, justifyContent: 'center' },
   tag: { borderRadius: 5, paddingHorizontal: 8, paddingVertical: 3, alignSelf: 'flex-start' },
   input: { borderWidth: 1.5, borderColor: c.line, borderRadius: r.input, backgroundColor: c.paper, paddingHorizontal: 16, paddingVertical: 13, minHeight: 50, fontSize: 16, fontWeight: '500', color: c.ink },
   secRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
