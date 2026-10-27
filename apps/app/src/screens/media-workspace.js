@@ -136,7 +136,7 @@ function EventScoped({ w, evId, setEvId, children }) {
 }
 
 function Opportunities({ partner, onChanged }) {
-  const d = useLoad(() => api.get('/media/opportunities', { limit: 50 }), []);
+  const d = useLoad(() => api.get('/media-opportunities', { limit: 50 }), []);
   const [apply, setApply] = useState(null);
   if (d.error) return <ErrorBox error={d.error} onRetry={d.reload} />;
   if (!d.data) return <Loading />;

@@ -416,7 +416,7 @@ cap({
 });
 
 cap({
-  name: 'list_open_rights_packages', method: 'GET', path: '/media/opportunities', tag: TAG,
+  name: 'list_open_rights_packages', method: 'GET', path: '/media-opportunities', tag: TAG,
   summary: 'Rights packages that organisers have opened to media partners, across events that are open or running, with what each offers. For partners looking for rights to apply for. Shows whether one of your partner organisations already has an offer on it.',
   input: z.object({ q: text(80).optional(), right: right.optional(), ...page }),
   async handler({ user }, i) {
