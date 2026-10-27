@@ -9,6 +9,7 @@ import { mustFind, PUBLIC_USER } from '../helpers.js';
 import { notify } from '../notify.js';
 import { requireConsent } from '../youth.js';
 import { canManageTeam } from './teams.js';
+import { capture, loadSubject, recordCorrection } from '../access-layer.js';
 
 const STATUSES = ['new', 'in_progress', 'review', 'done'];
 const status = z.enum(STATUSES);
@@ -391,16 +392,27 @@ cap({
 
 cap({
   name: 'check_in_attendee', method: 'POST', path: '/teams/:id/attendance/:user_id/check-in', tag: 'Team attendance',
-  summary: 'Mark a player as arrived (or undo it) on the day. Owner/managers; works even if the player never RSVP\'d.',
-  input: z.object({ id, user_id: id, event_id: id.optional(), fixture_id: id.optional(), checked_in: z.boolean().default(true) }),
+  summary: 'Mark a player as arrived (or undo it) on the day. Owner/managers; works even if the player never RSVP\'d. Goes through the shared access layer, so every check-in leaves capture evidence and an undo needs a reason that is kept with who did it. A young person is checked in by their guardian (check_in_child); managers can still record the arrival by hand once a guardian has dropped them off. For passes and cards use record_access_capture.',
+  input: z.object({ id, user_id: id, event_id: id.optional(), fixture_id: id.optional(), checked_in: z.boolean().default(true), reason: z.string().trim().min(3).max(200).optional() }),
   async handler({ user }, i) {
     const team = await mustManage(user, i.id);
     const s = await attendanceScope(team, i);
     if (!(await isActive(team.id, i.user_id))) throw badRequest('Only active team members can be checked in');
-    return one(
-      `INSERT INTO team_attendance(team_id, event_id, fixture_id, user_id, checked_in_at, checked_in_by) VALUES ($1,$2,$3,$4,CASE WHEN $5::boolean THEN now() END,CASE WHEN $5::boolean THEN $6::uuid END)
-       ON CONFLICT (team_id, event_id, fixture_id, user_id) DO UPDATE SET checked_in_at=EXCLUDED.checked_in_at, checked_in_by=EXCLUDED.checked_in_by
-       RETURNING id, user_id, rsvp, confirmed_at, checked_in_at`, [team.id, s.event_id, s.fixture_id, i.user_id, i.checked_in, user.id]);
+    const subject_ref = `${team.id}_${s.fixture_id ? `f_${s.fixture_id}` : `e_${s.event_id}`}`;
+    return tx(async (c) => {
+      if (i.checked_in) {
+        const out = await capture(c, { user, domain: 'team_event', subject_ref, method: 'manual', user_id: i.user_id, reason_code: 'roster_tap' });
+        if (out.capture.verdict === 'denied') throw conflict(out.capture.message ?? 'That check-in was not accepted', { reason: out.capture.reason_code });
+      } else {
+        if (!i.reason) throw badRequest('Say why you are undoing this check-in');
+        const had = (await c.query('SELECT 1 FROM team_attendance WHERE team_id=$1 AND event_id IS NOT DISTINCT FROM $2 AND fixture_id IS NOT DISTINCT FROM $3 AND user_id=$4 AND checked_in_at IS NOT NULL', [team.id, s.event_id, s.fixture_id, i.user_id])).rowCount;
+        if (had) {
+          await c.query('UPDATE team_attendance SET checked_in_at=NULL, checked_in_by=NULL, checked_out_at=NULL, checked_out_by=NULL WHERE team_id=$1 AND event_id IS NOT DISTINCT FROM $2 AND fixture_id IS NOT DISTINCT FROM $3 AND user_id=$4', [team.id, s.event_id, s.fixture_id, i.user_id]);
+          await recordCorrection(c, user, await loadSubject(c, 'team_event', subject_ref), i.user_id, { reasonText: `undo check-in: ${i.reason}` });
+        }
+      }
+      return (await c.query('SELECT id, user_id, rsvp, confirmed_at, checked_in_at, checked_out_at FROM team_attendance WHERE team_id=$1 AND event_id IS NOT DISTINCT FROM $2 AND fixture_id IS NOT DISTINCT FROM $3 AND user_id=$4', [team.id, s.event_id, s.fixture_id, i.user_id])).rows[0] ?? { user_id: i.user_id, checked_in_at: null };
+    });
   },
 });
 

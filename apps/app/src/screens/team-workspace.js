@@ -5,6 +5,7 @@ import { Pressable, ScrollView, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
+import { HeldList, ScanPanel, SiteCodeSheet } from '../access-ui';
 import { useNav } from '../nav';
 import { Avatar, Btn, Card, Chip, Empty, ErrorBox, Field, GradCard, H1, Loading, Row, Screen, Seg, Section, Sheet, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
@@ -280,6 +281,8 @@ function Attendance({ t, scope, manage, onClose }) {
   const { toast } = useSession();
   const q = scope ? { event_id: scope.event_id, fixture_id: scope.fixture_id } : null;
   const data = useLoad(() => (q ? api.get(`/teams/${t.id}/attendance`, q) : null), [scope?.event_id, scope?.fixture_id]);
+  const [scan, setScan] = useState(false), [door, setDoor] = useState(false), [held, setHeld] = useState(false), [undo, setUndo] = useState(null);
+  const ref = scope ? `${t.id}_${scope.fixture_id ? `f_${scope.fixture_id}` : `e_${scope.event_id}`}` : null;
   const act = async (fn, msg) => { try { await fn(); toast(msg); data.reload(); } catch (e) { toast('' + e.message); } };
   const d = data.data;
   return (
@@ -289,6 +292,13 @@ function Attendance({ t, scope, manage, onClose }) {
           <Tag label={`✅ ${d.counts.going} going`} color={c.mint} /><Tag label={`🤔 ${d.counts.maybe} maybe`} color={c.sun} /><Tag label={`🚫 ${d.counts.no} no`} color={c.orange} /><Tag label={`${d.counts.pending} no answer`} />
           <Tag label={`${d.counts.checked_in} arrived`} color={c.cyan} />
         </View>
+        {d.can_manage ? (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            <Btn small title="📷 Scan pass or card" onPress={() => setScan(true)} accessibilityLabel="Scan a pass or card to check a player in" />
+            <Btn small title="🚪 Door code" color={c.paper} ink={c.ink} onPress={() => setDoor(true)} />
+            <Btn small title="Needs a decision" color={c.paper} ink={c.ink} onPress={() => setHeld(true)} />
+          </View>
+        ) : null}
         {d.can_manage ? <Btn small title="Ask everyone to RSVP" color={c.violet} onPress={() => act(async () => { const r = await api.post(`/teams/${t.id}/attendance/request`, q); toast(`Asked ${r.asked} people`); }, 'Reminder sent')} /> : null}
         {d.people.map((p) => (
           <Card key={p.id} pad={12}>
@@ -304,13 +314,18 @@ function Attendance({ t, scope, manage, onClose }) {
               {d.can_manage ? (
                 <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
                   {p.rsvp === 'going' || p.rsvp === 'maybe' ? <Chip label={p.confirmed_at ? 'Unconfirm' : '✔ Confirm'} onPress={() => act(() => api.patch(`/teams/${t.id}/attendance/${p.id}`, { ...q, confirmed: !p.confirmed_at }), p.confirmed_at ? 'Unconfirmed' : 'Confirmed')} /> : null}
-                  <Chip label={p.checked_in_at ? 'Undo check-in' : '📍 Check in'} onPress={() => act(() => api.post(`/teams/${t.id}/attendance/${p.id}/check-in`, { ...q, checked_in: !p.checked_in_at }), p.checked_in_at ? 'Check-in undone' : 'Checked in')} />
+                  <Chip label={p.checked_in_at ? 'Undo check-in' : '📍 Check in'} onPress={() => (p.checked_in_at ? setUndo(p) : act(() => api.post(`/teams/${t.id}/attendance/${p.id}/check-in`, { ...q, checked_in: true }), 'Checked in'))} />
                 </View>
               ) : null}
             </View>
           </Card>
         ))}
       </>}
+      {ref ? <Sheet visible={scan} onClose={() => { setScan(false); data.reload(); }} title="Check in"><ScanPanel domain="team_event" subjectRef={ref} people={(d?.people ?? []).map((x) => ({ user_id: x.id, display_name: x.display_name }))} onChange={data.reload} /></Sheet> : null}
+      {ref ? <SiteCodeSheet visible={door} onClose={() => setDoor(false)} domain="team_event" subjectRef={ref} /> : null}
+      {ref ? <Sheet visible={held} onClose={() => setHeld(false)} title="Needs your decision"><HeldList scope={{ team_id: t.id }} reload={data.reload} /></Sheet> : null}
+      <FormSheet visible={!!undo} onClose={() => setUndo(null)} title={`Undo ${undo?.display_name ?? ''}'s check-in`} submitLabel="Undo" fields={[{ key: 'reason', label: 'Why? (kept with your name)' }]}
+        onSubmit={async (v) => { await api.post(`/teams/${t.id}/attendance/${undo.id}/check-in`, { ...q, checked_in: false, reason: v.reason }); data.reload(); return 'Undone. The history keeps who and why.'; }} />
     </Sheet>
   );
 }

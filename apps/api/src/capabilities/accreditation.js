@@ -10,6 +10,7 @@ import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { audit, mustFind } from '../helpers.js';
 import { encrypt, decrypt } from '../crypto.js';
 import { notify } from '../notify.js';
+import { revokeGrantsForSource } from '../access-grants.js';
 import { YOUTH_SQL } from '../youth.js';
 import { canManageTeam } from './teams.js';
 import { departmentScope } from './event-departments.js';
@@ -370,6 +371,7 @@ cap({
     await c.query("UPDATE accreditations SET status='withdrawn', decided_at=now(), decided_by=$2 WHERE id=$1", [a.id, user.id]);
     await record(c, a.id, user.id, 'withdrawn', a.status, 'withdrawn', a.credential_version || null);
     await syncRosterFlag(c, { ...a, status: 'withdrawn' });
+    await revokeGrantsForSource(c, 'accreditation', a.id, 'accreditation_withdrawn');
     return rowOf(c, a.id);
   }),
 });
@@ -391,6 +393,7 @@ cap({
       await c.query("UPDATE accreditations SET status='revoked', decided_by=$2, decided_at=now(), reason=$3, note_enc=$4 WHERE id=$1", [a.id, user.id, i.reason, i.note ? encrypt(i.note, NOTE) : null]);
       await record(c, a.id, user.id, 'revoked', 'approved', 'revoked', a.credential_version, i.reason);
       await syncRosterFlag(c, { ...a, status: 'revoked' });
+      await revokeGrantsForSource(c, 'accreditation', a.id, 'accreditation_revoked');
       await ping(c, a.holder_id, ev, 'Accreditation revoked', `${cat.name} for ${ev.name} no longer admits you.`, a.id);
     } else {
       if (a.status !== 'approved') throw conflict(`This accreditation is ${a.status}`);
@@ -398,6 +401,7 @@ cap({
       if (a.access === to) return rowOf(c, a.id);
       await c.query('UPDATE accreditations SET access=$2, reason=$3 WHERE id=$1', [a.id, to, i.action === 'suspend' ? i.reason : null]);
       await record(c, a.id, user.id, i.action === 'suspend' ? 'suspended' : 'restored', 'approved', 'approved', a.credential_version, i.reason);
+      if (i.action === 'suspend') await revokeGrantsForSource(c, 'accreditation', a.id, 'accreditation_suspended');
       await ping(c, a.holder_id, ev, i.action === 'suspend' ? 'Accreditation suspended' : 'Accreditation restored', `${cat.name} for ${ev.name}.`, a.id);
     }
     await audit(c, user.id, `accreditation_${i.action}`, 'accreditations', a.id);
