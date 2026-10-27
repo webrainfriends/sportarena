@@ -1,7 +1,7 @@
 // Every module the More wheel offers: [route, title, sub, group]. The route is the PAGES key in App.js.
 export const MODULES = [
   ['Leaderboard', 'Leaderboard', 'Points & glory', 'play'], ['Awards', 'Trophy room', 'Cups, medals, MVPs', 'play'],
-  ['CareerTimeline', 'Career & clubs', 'Your clubs, verified by them', 'play'],
+  ['CareerTimeline', 'Career & clubs', 'Your clubs, verified by them', 'play'], ['MyLicences', 'My licences', 'Federation licences & standing', 'play'],
   ['MyApplications', 'My applications', 'Trials, offers & answers', 'play'],
   ['RecruiterAccess', 'Recruiter access', 'Who may see your profile', 'play'],
   ['MyDevelopment', 'My development', 'Goals, plans, feedback & reports', 'play'], ['MyPlans', 'Training plans', 'Your plans & sessions', 'play'], ['ToolsHome', 'Tools', 'Scoring sheets & documents', 'play'], ['Pathways', 'Learn & study', 'Rules, courses & colleges', 'play'], ['OpportunityMatches', 'Opportunities for me', 'Teams, trials, study & sponsors that fit you', 'play'],
@@ -10,7 +10,7 @@ export const MODULES = [
   ['Wallet', 'Wallet', 'Balance, gift cards, loyalty', 'money'], ['Earnings', 'Earnings', 'Sales, fees & payouts', 'money'], ['PlayerContracts', 'Contracts', 'Fees, bonuses, expenses & pay', 'money'], ['PlayerFunding', 'Funding', 'Needs, applications & sponsor support', 'money'], ['Shop', 'Shop', 'Kit, gear & orders', 'money'],
   ['Billboard', 'Billboard', 'Wanted, for sale & ads', 'money'], ['Sponsors', 'Sponsor home', 'Offers, dues & agreements', 'money'], ['Supply', 'Supply chain', 'Kit, stock & orders', 'money'], ['ServicesBuyer', 'Services & suppliers', 'Buy grounds, crew, Wi-Fi, travel…', 'work'],
   ['Openings', 'Open positions', 'Jobs, stalls & contracts at events', 'community'], ['EventInbox', 'Event requests', 'Invites & quotes for you', 'community'],
-  ['Orgs', 'Organisations', 'Clubs & associations', 'community'], ['Support', 'Support', 'Cases & disputes', 'community'],
+  ['Orgs', 'Organisations', 'Clubs & associations', 'community'], ['Federations', 'Federations', 'Affiliations, licences & sanctions', 'community'], ['Support', 'Support', 'Cases & disputes', 'community'],
 ];
 
 export const GROUP_COLOR = { play: '#D0BDF4', care: '#A0D2EB', money: '#E5EAF5', community: '#A0D2EB', work: '#4C9A7A' };
@@ -39,7 +39,7 @@ export const workspacesFor = (roles = []) => WORKSPACES.filter(([r]) => roles.in
 
 // Modules lifted to the front of the wheel for people who hold these roles (first match wins; everyone else: player set).
 export const PRIORITY = [
-  [['organizer', 'venue_manager'], ['EventInbox', 'Openings', 'Orgs', 'Earnings', 'PlayerContracts', 'Billboard', 'Support', 'ToolsHome']],
+  [['organizer', 'venue_manager'], ['EventInbox', 'Openings', 'Orgs', 'Federations', 'Earnings', 'PlayerContracts', 'Billboard', 'Support', 'ToolsHome']],
   [['sponsor', 'supplier'], ['Sponsors', 'Supply', 'Wallet', 'Earnings', 'Billboard', 'Shop', 'ToolsHome']],
   [['physio', 'doctor', 'lawyer', 'insurer'], ['Health', 'Insure', 'Legal', 'Wallet', 'Leaderboard', 'Support', 'ToolsHome']],
 ];

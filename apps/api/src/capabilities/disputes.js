@@ -25,6 +25,9 @@ const SAFE = {
   insurance_policy: ['insurance_policies', 'status, starts_on, ends_on, amount_cents'],
   sponsorship: ['sponsorships', 'status, target_type, amount_cents, starts_on, ends_on'],
   event: ['events', 'name, status, starts_on'],
+  federation_licence: ['fed_licences', 'status, licence_no, issued_on, expires_on, suspended_until'],
+  federation_affiliation: ['fed_affiliations', 'status, affiliation_no, effective_from, effective_to'],
+  federation_sanction: ['fed_sanctions', 'status, sanction_no, approved_starts_on, approved_ends_on'],
   game: ['games', 'title, status, starts_at'],
   fixture: ['fixtures', 'status, home_score, away_score, scheduled_at'],
 };

@@ -11,7 +11,7 @@ const LIGHT = {
   // money: peach to crimson
   Wallet: ['#4F96C0', '#8458B3'], Earnings: ['#4A8FBA', '#6E4A9E'], Shop: ['#5A9CC6', '#6E4A9E'], Billboard: ['#6AA8D0', '#8458B3'], Sponsors: ['#8961B8', '#59397E'], Supply: ['#8961B8', '#6A4496'],
   // community: navy with a warm edge
-  Openings: ['#5E86AE', '#234C69'], EventInbox: ['#4F7FA8', '#234C69'], Orgs: ['#5A83AD', '#234C69'], Support: ['#7C86A2', '#2A5B7E'], Schedule: ['#336F9A', '#2D303B'], Workspace: ['#8458B3', '#363B48'], Notifications: ['#5A9CC6', '#5E4A86'],
+  Openings: ['#5E86AE', '#234C69'], EventInbox: ['#4F7FA8', '#234C69'], Orgs: ['#5A83AD', '#234C69'], Federations: ['#4F7FA8', '#2B2E39'], MyLicences: ['#7B4EAE', '#2A5B7E'], Support: ['#7C86A2', '#2A5B7E'], Schedule: ['#336F9A', '#2D303B'], Workspace: ['#8458B3', '#363B48'], Notifications: ['#5A9CC6', '#5E4A86'],
 };
 // Dark mode: deeper stops so a bright card never glares against the night background.
 const DARK = Object.fromEntries(Object.entries(LIGHT).map(([k, [a, b]]) => [k, [shade(a), shade(b)]]));

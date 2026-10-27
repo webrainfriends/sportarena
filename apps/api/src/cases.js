@@ -42,6 +42,10 @@ const PARTY = {
   game: ['games'],
   fixture: ['fixtures'],
   billboard_post: ['billboard_posts'], // public listings: reporting one needs only that it exists
+  // federation records (#475): an appeal is raised by the other party only (the licence holder or their guardian, the club's admin, the event's organiser); the body's staff never open cases about a person
+  federation_licence: ['fed_licences', 'holder_id', 'applicant_id'],
+  federation_affiliation: ['fed_affiliations', 'applicant_id'],
+  federation_sanction: ['fed_sanctions', 'applicant_id'],
 };
 export const LINK_TYPES = Object.keys(PARTY);
 // Links to the exact sponsorship record in dispute. Never offered by the generic case form: only sponsorship-disputes.js sets them, after checking the caller's side.

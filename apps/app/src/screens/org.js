@@ -21,6 +21,7 @@ import { explain, LoadError } from '../access';
 import { AddressBook } from '../address-book';
 import { OrgWizard, ORG_KINDS, profileFields } from './org-wizard';
 import { Agreements } from './academy-money';
+import { FederationLinks } from './federation-club';
 
 const KINDS = ORG_KINDS;
 const ROLE_LABEL = { owner: 'Owner', admin: 'Admin', coach: 'Coach', staff: 'Staff', finance: 'Finance', manager: 'Sponsor manager', evaluator: 'Evaluator', legal: 'Legal', approver: 'Approver', auditor: 'Auditor' };
@@ -138,6 +139,7 @@ function Overview({ o, d, role, archived, reload, toast }) {
         <Section title="Manage" color={c.cyan}>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
             {!archived ? <Btn small title="Edit details" color={c.paper} ink={c.ink} onPress={() => setEdit(true)} /> : null}
+            <FederationLinks orgId={o.id} role={role} archived={archived} />
             <Btn small title="Tenders and procurement" color={c.paper} ink={c.ink} onPress={() => push('TenderHome')} />
             <Btn small title="Create an RFP" color={c.paper} ink={c.ink} onPress={() => push('TenderBuilder', { organisation_id: o.id })} />
             {!archived && ['owner', 'admin'].includes(role) ? <Btn small title="Services & suppliers" color={c.paper} ink={c.ink} onPress={() => push('ServicesBuyer', { organisation_id: o.id })} /> : null}
