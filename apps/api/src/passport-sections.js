@@ -36,6 +36,9 @@ export async function openLink(tokenHash, viewer, kind = 'passport') {
   return link;
 }
 
+/** A link by id rather than by secret, live under the same rules as openLink (not revoked, not expired, a young athlete's guardian consent in force). Used when an applicant attaches their passport to one funding application. */
+export const liveLinkById = (linkId) => one(`SELECT ${RET} FROM passport_links l WHERE l.id=$1 AND l.revoked_at IS NULL AND l.expires_at > now() AND ${CONSENT_OK}`, [linkId]);
+
 export async function recruitmentSections(userId, scope, { viewerId = null, token = null } = {}) {
   const [videos, references, preferences, availability, academic] = await Promise.all([
     scope.show_video ? many(

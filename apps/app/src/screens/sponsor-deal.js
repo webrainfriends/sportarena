@@ -147,7 +147,7 @@ export function SponsorDeal({ id }) {
           <T size={12} color={c.mute}>Online payments are collected by Gotmygame through Stripe or PayPal, counted only once the provider verifies them, and paid out to the recipient after the hold period (see Earnings). Bank or cash payments you report stay unverified until the recipient confirms them.</T>
         </Section>) : null}
       {d.obligations?.some((x) => x.kind === 'money') ? <Reconciliation id={d.id} /> : null}
-      {d.target_type === 'athlete' && ['proposed', 'active', 'paused', 'ended', 'term_expired', 'completed'].includes(d.status) && (sponsor || recipient) ? <SponsorPerformance deal={d} /> : null}
+      {['proposed', 'active', 'paused', 'ended', 'term_expired', 'completed'].includes(d.status) && (sponsor || recipient) ? <SponsorPerformance deal={d} /> : null}
       <Section title="History" color={c.lime}>
         {d.history.map((h) => <T key={h.id} size={12} color={c.mute}>{new Date(h.created_at).toLocaleDateString()} · {h.action.replace(/_/g, ' ')}{h.version ? ` (v${h.version})` : ''} · {h.actor ?? 'system'}{h.reason ? ` — ${h.reason}` : ''}</T>)}
       </Section>

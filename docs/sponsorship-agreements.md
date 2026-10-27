@@ -58,7 +58,7 @@ never erased. Returns and refunds reference the delivery / payment, and the fina
 ## Remaining gaps (not in this slice)
 * **Group target** — no durable "group" entity exists (only teams); not silently treated as a team. Needs its own design.
 * **Pause and renewal successor.** (Termination with refunds/returns: [sponsorship-termination.md](sponsorship-termination.md). Amendments of an accepted agreement: see [sponsorship-amendments.md](sponsorship-amendments.md).)
-* **Performance review for teams/events/groups** and pre-agreement review (the athlete slice is below; sharing through #64 Sports Passport is not wired),
+* **Performance review for teams/events** and pre-agreement evidence: delivered, see [sponsorship-impact.md](sponsorship-impact.md) (#303),
   CSV export, approaching-due reminders, per-line payer/payee/channel fields, disputes→cases linking, guardian/youth rules
   for sponsorship agreements.
 * Agreement builder in the app covers fixed-term monthly money only; goods/endorsement lines are available through the API.
@@ -77,7 +77,7 @@ A branded contract can be issued for any proposed or active agreement's current 
 * Objectives (metric, direction, baseline, target, window, evidence kind) are proposed by the sponsor and evaluated only once the athlete
   agrees. They are a review aid: **missing a target never cancels, pauses or reduces a due.**
 * Reviews are dated notes (`shared` or `author_only`) with an optional next-review date and a single athlete reply. Notifications carry no content.
-* Youth athletes cannot be enabled (guardian authority is not wired here); team and event deals have no performance view.
+* Youth athletes: only a verified guardian can switch sharing on, and it stops when that authority ends. Team and event agreements: see [sponsorship-impact.md](sponsorship-impact.md).
 * Migration `075_sponsorship_performance.sql` is additive (new columns default to no access); rollback = deploy the previous code.
 
 ## Online checkout, payouts and reconciliation (#294)

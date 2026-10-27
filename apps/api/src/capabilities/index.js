@@ -107,6 +107,7 @@ import './sponsorship-renewals.js';
 import './sponsorship-collaboration.js';
 import './sponsorship-reports.js';
 import './sponsorship-performance.js';
+import './sponsorship-impact.js';
 import './sponsorship-youth.js';
 import './sponsor-identities.js';
 import './sponsorship-programs.js';
