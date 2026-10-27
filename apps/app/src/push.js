@@ -99,6 +99,8 @@ export function parseTarget(t) {
   if (kind === 'proposal' && id) return ['ScoringTool', { proposalId: id }];
   if (kind === 'tool' && id === 'scoring') return ['ScoringTool', {}];
   if (kind === 'tools') return ['ToolsHome', {}];
+  if (kind === 'media') return ['MediaWorkspace', {}];
+  if (kind === 'event-media' && id) return ['EventCommand', { id, tab: 'broadcast' }];
   if (kind === 'funding') return ['PlayerFunding', id ? { athlete_id: id } : {}];
   return ['Notifications', {}];
 }

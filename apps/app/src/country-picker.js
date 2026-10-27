@@ -33,3 +33,14 @@ export function CountryPicker({ label, value, onChange, optional, hint }) {
     </View>
   );
 }
+
+/** Several countries: the chosen ones as removable chips, and a search to add more. The value is a list of two-letter ISO codes. */
+export function CountriesMulti({ label, value = [], onChange, optional, hint }) {
+  return (
+    <View style={{ gap: 8 }}>
+      <T weight="800" size={13}>{label}{optional ? ' (optional)' : ''}</T>
+      {value.length ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{value.map((code) => <Chip key={code} label={`🌍 ${countryName(code)}  ✕`} active onPress={() => onChange(value.filter((x) => x !== code))} />)}</View> : null}
+      <CountryPicker label="Add a country" value="" onChange={(code) => { if (code && !value.includes(code)) onChange([...value, code]); }} optional hint={hint} />
+    </View>
+  );
+}

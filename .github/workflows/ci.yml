@@ -34,7 +34,17 @@ jobs:
         with: { node-version: 22, cache: npm }
       - run: bash -n scripts/deploy-remote.sh
       - run: npm ci
-      - run: npm test
+      # tender-extras reads the generated PDFs back as text with pdftotext
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends poppler-utils
+      - name: npm test
+        shell: bash   # explicit bash runs with -eo pipefail, so a failing npm test still fails the step through tee
+        run: npm test 2>&1 | tee test.log
+      # the Postgres service log is appended after the test output, so the failing tests are listed here where they are easy to find
+      - name: Failing tests
+        if: failure()
+        run: |
+          grep -nE '^# (tests|pass|fail) ' test.log || true
+          grep -nE -A30 '^not ok' test.log | head -300 || true
 
   app-web:
     name: App web build (compile check)

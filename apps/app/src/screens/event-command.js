@@ -1,6 +1,6 @@
 // Event console: the one place to run an event from first idea to the final whistle. Setup checklist, teams and invitations, departments,
 // hiring, boards, games (live, schedule, bracket), venue, sponsors, requests, budget and official results, plus lifecycle controls
-// (open, start, pause, resume, end). It replaces the separate Tournament console and Plan & budget screens: one feature, one place.
+// (open, start, pause, resume, end) and the media side: broadcast rights, production, streams, media and data feeds. It replaces the separate Tournament console and Plan & budget screens: one feature, one place.
 import { locale } from '../locale';
 import React, { useState } from 'react';
 import { View } from 'react-native';
@@ -15,6 +15,7 @@ import { ErrorBox, Field, Loading, Sheet, T } from '../ui';
 import { c } from '../theme';
 import { DepartmentsTab } from './event-departments';
 import { BoardTab } from './event-board';
+import { BroadcastTab } from './media-broadcast';
 import { FixturesTab } from './match-centre';
 import { ResultsTab } from './event-results';
 import { TeamsTab } from './event-teams';
@@ -102,7 +103,7 @@ export function EventCommand({ id, tab: first = 'overview' }) {
     { key: 'boards', label: 'Boards', icon: '🗂️' },
     { key: 'games', label: 'Games', icon: '⚡' },
     ...(isOrg || (D.races.data ?? []).length ? [{ key: 'race', label: 'Race day', icon: '🏃' }] : []),
-    ...(isOrg ? [{ key: 'venue', label: 'Venue', icon: '🏟️' }, { key: 'business', label: 'Business', icon: '💼', badge: waiting }] : []),
+    ...(isOrg ? [{ key: 'venue', label: 'Venue', icon: '🏟️' }, { key: 'business', label: 'Business', icon: '💼', badge: waiting }, { key: 'broadcast', label: 'Broadcast', icon: '📡' }] : []),
     { key: 'results', label: 'Results', icon: '🏆' },
   ];
   const P = { id, e, isOrg, go, reload: reloadAll };
@@ -155,6 +156,7 @@ export function EventCommand({ id, tab: first = 'overview' }) {
             : D.plan.data ? <Paper>{sub.business === 'requests' ? <Requests id={id} e={e} p={D.plan.data} toast={toast} reload={D.plan.reload} /> : <Budget id={id} p={D.plan.data} toast={toast} reload={D.plan.reload} />}</Paper> : <Loading />}
         </>
       )}
+      {tab === 'broadcast' && isOrg && <BroadcastTab id={id} e={e} isOrg={isOrg} games={games} />}
       {tab === 'results' && <ResultsTab id={id} e={e} />}
 
       <ReasonSheet visible={ask === 'pause'} onClose={() => setAsk(null)} title="Pause the event" sub="Live games freeze, and everyone entered or on the crew is told why." presets={['Rain delay', 'Safety issue', 'Power cut', 'Running behind', 'Medical emergency']} confirmLabel="Pause event" tone="sun"
