@@ -29,16 +29,17 @@ export const SCAN_RESULTS = ['valid', 'invalid', 'expired', 'not_yet_valid', 're
 
 const STAFF_TO_ENGAGEMENT = { referee: 'official', umpire: 'official', linesman: 'official', scorer: 'official', assessor: 'official', doctor: 'medical', physio: 'medical', medic: 'medical', volunteer: 'volunteer', security: 'security', retail: 'vendor', catering: 'vendor', vendor: 'vendor', other: 'operations' };
 const DEPARTMENT_TO_ENGAGEMENT = { media: 'media', officials: 'official', medical: 'medical', security: 'security', volunteers: 'volunteer', hospitality: 'hospitality' };
-const VENDOR_TO_ENGAGEMENT = { sponsor: 'sponsor', retail: 'vendor', catering: 'vendor', other: 'vendor' };
+export const VENDOR_TO_ENGAGEMENT = { sponsor: 'sponsor', retail: 'vendor', catering: 'vendor', other: 'vendor' };
 const TEAM_STAFF_ROLES = ['coach', 'manager', 'physio'];
 
 /** What the person is at this event, read live from the canonical records. Nothing here is stored on the credential. */
-export async function engagementsOf(c, ev, userId) {
-  const out = new Set();
+export async function engagementsOf(c, ev, userId, extra = []) {
+  const out = new Set(extra);
   const add = (rows, key) => rows.forEach((r) => { const k = typeof key === 'function' ? key(r) : key; if (k) out.add(k); });
   add((await c.query("SELECT r.role FROM event_staff_assignments a JOIN event_staff_roles r ON r.id=a.role_id WHERE a.event_id=$1 AND a.user_id=$2 AND a.status='accepted'", [ev.id, userId])).rows, (r) => STAFF_TO_ENGAGEMENT[r.role] ?? 'operations');
   add((await c.query("SELECT 1 FROM fixture_officials fo JOIN fixtures f ON f.id=fo.fixture_id WHERE f.event_id=$1 AND fo.user_id=$2 AND fo.status='accepted' LIMIT 1", [ev.id, userId])).rows, 'official');
   add((await c.query("SELECT kind FROM event_vendors WHERE event_id=$1 AND vendor_user_id=$2 AND status='accepted'", [ev.id, userId])).rows, (r) => VENDOR_TO_ENGAGEMENT[r.kind]);
+  add((await c.query("SELECT v.kind FROM event_vendor_crew cr JOIN event_vendors v ON v.id=cr.vendor_id WHERE cr.event_id=$1 AND cr.user_id=$2 AND cr.removed_at IS NULL AND v.status='accepted'", [ev.id, userId])).rows, (r) => VENDOR_TO_ENGAGEMENT[r.kind]); // a vendor's own crew
   add((await c.query("SELECT 1 FROM event_entries WHERE event_id=$1 AND user_id=$2 AND status='accepted' LIMIT 1", [ev.id, userId])).rows, 'athlete');
   add((await c.query(
     `SELECT m.role FROM event_entries en JOIN team_members m ON m.team_id=en.team_id
@@ -88,10 +89,10 @@ export const WINDOW_SQL = `coalesce(k.valid_from, (e.starts_on)::timestamp AT TI
 export const purposeOf = (cat) => (cat.eligible.length === 1 && cat.eligible[0] === 'media' ? 'media' : 'participation');
 
 /** What stops this person being accredited in this category, or null. Applications that fail this are refused, nobody can override it. */
-export async function blocker(c, ev, cat, userId, { invited = false } = {}) {
+export async function blocker(c, ev, cat, userId, { invited = false, also = [] } = {}) {
   if (cat.status !== 'active') return 'This category is closed';
   if (['completed', 'cancelled'].includes(ev.status)) return `The event is ${ev.status}`;
-  if (!eligibleFor(cat, await engagementsOf(c, ev, userId), { invited })) return 'Not eligible: this category is for people with a matching role at this event';
+  if (!eligibleFor(cat, await engagementsOf(c, ev, userId, also), { invited })) return 'Not eligible: this category is for people with a matching role at this event';
   if (cat.requires_verification) {
     const ok = (await c.query("SELECT 1 FROM verification_cases WHERE subject_type='user' AND subject_id=$1 AND type=$2 AND status='approved' AND expires_at > now() LIMIT 1", [userId, cat.requires_verification])).rowCount;
     if (!ok) return `Needs a current ${cat.requires_verification} verification`;

@@ -9,8 +9,9 @@ import { ABtn, ReasonSheet } from '../arena';
 import { ErrorBox, Loading, Sheet, T } from '../ui';
 import { c } from '../theme';
 import { FormSheet } from '../FormSheet';
+import { PaySheet } from '../PaySheet';
 import { countryName } from '../country-picker';
-import { RIGHT_OPTIONS, TERRITORY, SCOPES, SUBLICENSING, LANGUAGES, platformOptions, rightLabel, territoryText, money, fmtRange, fmtDT, dayOf, spanIso, nice, Facts, LSection, LTag, LTags, LCard, LEmpty, DATASETS } from '../media-ui';
+import { RIGHT_OPTIONS, TERRITORY, SCOPES, SUBLICENSING, LANGUAGES, platformOptions, rightLabel, territoryText, money, fmtRange, fmtDT, fmtD, dayOf, spanIso, nice, Facts, LSection, LTag, LTags, LCard, LEmpty, DATASETS } from '../media-ui';
 
 const today = () => dayOf(new Date().toISOString());
 const names = (r) => (r.countries ?? []).map(countryName);
@@ -128,6 +129,9 @@ export function LicenceSheet({ id, onClose, onChanged }) {
           <LSection title="Data feeds" sub={l.approved_rights.includes('data_feed') ? 'Official scores and results for licensed systems' : 'This licence has no data-feed right'} action={l.as.organiser && l.in_force && l.approved_rights.includes('data_feed') ? '+ Grant' : undefined} onAction={() => setForm('feed')} />
           {l.feeds.map((f) => <FeedCard key={f.id} f={f} l={l} onDone={done} toast={toast} />)}
 
+          <LSection title="Fees" sub="What has been invoiced and collected against the contracted fee" action={l.as.organiser && ['active', 'suspended', 'expired'].includes(l.stage_now) && Number(l.fee_minor) ? '+ Issue fee' : undefined} onAction={() => setForm('fee')} />
+          <Fees licence={l} reloadKey={l.row_version} openIssue={form === 'fee'} closeIssue={() => setForm(null)} onDone={done} />
+
           <LSection title="Deliverables" sub="Sponsor and content obligations; the sponsorship stays in Sponsorship" action={l.as.organiser ? '+ Add' : undefined} onAction={() => setForm('deliver')} />
           <Deliverables licence={l} onDone={done} />
 
@@ -220,6 +224,58 @@ function Deliverables({ licence, onDone }) {
         fields={[{ key: 'metric', label: 'Metric', type: 'chips', options: [{ value: 'views', label: 'Views' }, { value: 'unique_viewers', label: 'Unique viewers' }, { value: 'peak_concurrent', label: 'Peak concurrent' }, { value: 'watch_minutes', label: 'Watch minutes' }, { value: 'impressions', label: 'Impressions' }], default: 'views' },
           { key: 'value', label: 'Value', type: 'number' }, { key: 'period_start', toKey: 'period_end', label: 'Period', type: 'daterange' }, { key: 'source_name', label: 'Source (provider or analytics tool)' }, { key: 'source_ref', label: 'Report or export reference' }]}
         submitLabel="Record" onSubmit={async (v) => { const s = spanIso(v.period_start, v.period_end); await api.post(`/media/licences/${licence.id}/measurements`, { ...v, period_start: s.from, period_end: s.to }); d.reload(); return 'Recorded'; }} />
+    </>
+  );
+}
+
+const FEE_TAG = { awaiting_payment: 'sun', paid: 'green', cancelled: 'mute', refunded: 'orange' };
+
+/** Fees invoiced against a licence, with the contracted / invoiced / collected / outstanding picture in the licence's own currency. */
+function Fees({ licence: l, reloadKey, openIssue, closeIssue, onDone }) {
+  const { toast } = useSession();
+  const d = useLoad(() => api.get(`/media/licences/${l.id}/fees`), [l.id, reloadKey]);
+  const [pay, setPay] = useState(null);
+  const [recv, setRecv] = useState(null);
+  const [cancel, setCancel] = useState(null);
+  const { user } = useSession();
+  if (d.error) return <ErrorBox error={d.error} onRetry={d.reload} />;
+  if (!d.data) return <Loading />;
+  const t = d.data.totals, cur = t.currency;
+  const act = async (fn, ok) => { try { await fn(); toast(ok); d.reload(); } catch (x) { toast(x.message); } };
+  return (
+    <>
+      {Number(t.contracted_minor) ? (
+        <LCard>
+          <T size={12.5} color={c.mute}>{cur} · contracted {money(t.contracted_minor, cur)}</T>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 14 }}>
+            {[['Invoiced', t.invoiced_minor], ['Collected', t.collected_minor], ['Outstanding', t.outstanding_minor], ['Not yet invoiced', t.not_yet_invoiced_minor]].map(([k, v]) => <View key={k}><T size={11.5} weight="700" color={c.mute}>{k.toUpperCase()}</T><T size={16} weight="800">{money(v, cur)}</T></View>)}
+          </View>
+        </LCard>
+      ) : <LEmpty title="No fee on this licence" sub="Agree a fee in the terms to invoice it." />}
+      {d.data.fees.map((f) => (
+        <LCard key={f.id}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <View style={{ flex: 1 }}><T weight="800">{f.number} · {money(f.amount_minor, f.currency)}</T><T size={12.5} color={c.mute}>{[f.description, f.due_on ? `due ${fmtD(f.due_on)}` : null, f.paid_at ? `paid ${fmtD(f.paid_at)} ${f.paid_method === 'offline' ? `(recorded as received${f.offline_ref ? `: ${f.offline_ref}` : ''})` : '(online)'}` : null, f.cancel_reason].filter(Boolean).join(' · ')}</T></View>
+            <LTag state={f.overdue ? 'attention' : f.status === 'paid' ? 'verified' : f.status === 'awaiting_payment' ? 'proposed' : f.status === 'refunded' ? 'attention' : 'declined'} label={f.overdue ? 'Overdue' : nice(f.status)} />
+          </View>
+          {f.status === 'awaiting_payment' ? (
+            <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+              {d.data.as.can_pay && f.payer_id === user.id ? <ABtn small title="Pay now" tone="lime" onPress={() => setPay({ type: 'media_rights_fee', id: f.id, label: `Rights fee ${f.number}`, amount: Number(f.amount_minor), currency: f.currency })} /> : null}
+              {d.data.as.can_pay && f.payer_id !== user.id ? <ABtn small title="Make me the payer" tone="ghost" onPress={() => act(() => api.post(`/media/fees/${f.id}/payer`, {}), 'You are now the payer')} /> : null}
+              {d.data.as.organiser ? <ABtn small title="Record as received" tone="neon" onPress={() => setRecv(f)} /> : null}
+              {d.data.as.organiser ? <ABtn small title="Cancel" tone="ghost" onPress={() => setCancel(f)} /> : null}
+            </View>
+          ) : null}
+        </LCard>
+      ))}
+      {pay ? <PaySheet target={pay} onClose={() => setPay(null)} onDone={() => { d.reload(); onDone(); }} /> : null}
+      <FormSheet visible={openIssue} onClose={closeIssue} title="Issue a rights fee" notice={`Billed in ${cur}. The total invoiced can never exceed the contracted fee (${money(t.contracted_minor, cur)}); ${money(t.not_yet_invoiced_minor, cur)} is still to invoice.`}
+        fields={[{ key: 'amount_minor', label: 'Amount', type: 'money', currency: cur, optional: true, hint: 'Leave empty to invoice everything still to invoice' }, { key: 'due_on', label: 'Due date', type: 'date', optional: true, min: dayOf(new Date().toISOString()) }, { key: 'description', label: 'Description', optional: true, hint: 'Deposit, final instalment …' }]}
+        submitLabel="Issue fee" onSubmit={async (v) => { await api.post(`/media/licences/${l.id}/fees`, v).catch((x) => { throw new Error(x.message); }); d.reload(); onDone(); return 'Fee issued. The partner has been notified.'; }} />
+      <FormSheet visible={!!recv} onClose={() => setRecv(null)} title="Record as received" notice="Use this when the fee was paid outside the platform. It then counts as collected, marked as recorded offline."
+        fields={[{ key: 'reference', label: 'Reference', hint: 'Bank transfer reference, cheque number …' }]} submitLabel="Record" onSubmit={async (v) => { await api.post(`/media/fees/${recv.id}/received`, v); d.reload(); onDone(); return 'Recorded'; }} />
+      <ReasonSheet visible={!!cancel} onClose={() => setCancel(null)} title="Cancel this fee" sub="It stays on record, stops counting as invoiced, and can be issued again." presets={['Wrong amount', 'Wrong payer', 'Terms changed']} confirmLabel="Cancel fee" tone="live"
+        onConfirm={async (reason) => { try { await api.post(`/media/fees/${cancel.id}/cancel`, { reason }); d.reload(); onDone(); } catch (x) { toast(x.message); } }} />
     </>
   );
 }

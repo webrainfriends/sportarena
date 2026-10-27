@@ -188,7 +188,7 @@ cap({
 const REPORTS = ['rights_inventory', 'expiring', 'partner_coverage', 'production_readiness', 'published_assets', 'embargo_takedown', 'revenue'];
 cap({
   name: 'get_media_report', method: 'GET', path: '/events/:id/media/reports/:report', tag: TAG,
-  summary: 'Organiser reports: `rights_inventory` (what is offered, licensed and still unsold), `expiring` (licences and feeds ending soon), `partner_coverage` (per partner: rights, games covered, crew, streams, assets), `production_readiness` (per upcoming game: crew confirmed and badged, run sheet, stream, open incidents), `published_assets` (by right and state), `embargo_takedown` (what is embargoed, expired, withdrawn, taken down or blocked by consent) and `revenue` (contracted rights fees, one line per currency; invoiced and collected are not available because canonical finance has no rights-fee source, and say so).',
+  summary: 'Organiser reports: `rights_inventory` (what is offered, licensed and still unsold), `expiring` (licences and feeds ending soon), `partner_coverage` (per partner: rights, games covered, crew, streams, assets), `production_readiness` (per upcoming game: crew confirmed and badged, run sheet, stream, open incidents), `published_assets` (by right and state), `embargo_takedown` (what is embargoed, expired, withdrawn, taken down or blocked by consent) and `revenue` (contracted, invoiced, collected online or offline, outstanding, overdue and refunded rights fees, one line per currency).',
   input: z.object({ id, report: z.enum(REPORTS), days: z.coerce.number().int().min(1).max(365).default(60) }),
   async handler({ user }, i) {
     const ev = await eventOf(i.id);
@@ -242,11 +242,17 @@ cap({
       data = out.slice(0, 300);
     } else {
       const rows = await q(`SELECT l.currency, ${LIC_STAGE('l')} AS stage, count(*)::int AS licences, sum(l.fee_minor)::bigint AS fee_minor FROM mr_licences l JOIN mr_packages p ON p.id=l.package_id WHERE p.event_id=$1 AND l.stage NOT IN ('declined') GROUP BY l.currency, ${LIC_STAGE('l')} ORDER BY l.currency`);
-      const cur = [...new Set(rows.map((r) => r.currency))].map((currency) => {
+      const fees = await q(`SELECT f.currency, f.status, f.paid_method, count(*)::int AS n, sum(f.amount_minor)::bigint AS amount_minor, sum(f.amount_minor) FILTER (WHERE f.status='awaiting_payment' AND f.due_on < current_date)::bigint AS overdue_minor
+        FROM mr_fees f JOIN mr_licences l ON l.id=f.licence_id JOIN mr_packages p ON p.id=l.package_id WHERE p.event_id=$1 GROUP BY f.currency, f.status, f.paid_method`);
+      const cur = [...new Set([...rows.map((r) => r.currency), ...fees.map((r) => r.currency)])].sort().map((currency) => {
         const of = (...st) => rows.filter((r) => r.currency === currency && st.includes(r.stage)).reduce((t, r) => t + Number(r.fee_minor), 0);
-        return { currency, contracted_minor: of('active', 'suspended', 'expired'), pending_minor: of('proposed', 'negotiating'), terminated_minor: of('terminated'), licences: rows.filter((r) => r.currency === currency).reduce((t, r) => t + r.licences, 0) };
+        const fe = (st, pred = () => true) => fees.filter((r) => r.currency === currency && st.includes(r.status) && pred(r)).reduce((t, r) => t + Number(r.amount_minor), 0);
+        const contracted = of('active', 'suspended', 'expired');
+        return { currency, contracted_minor: contracted, pending_minor: of('proposed', 'negotiating'), terminated_minor: of('terminated'), licences: rows.filter((r) => r.currency === currency).reduce((t, r) => t + r.licences, 0),
+          invoiced_minor: fe(['awaiting_payment', 'paid', 'refunded']), collected_minor: fe(['paid']), collected_online_minor: fe(['paid'], (r) => r.paid_method === 'online'), collected_offline_minor: fe(['paid'], (r) => r.paid_method === 'offline'),
+          outstanding_minor: fe(['awaiting_payment']), overdue_minor: fees.filter((r) => r.currency === currency).reduce((t, r) => t + Number(r.overdue_minor ?? 0), 0), refunded_minor: fe(['refunded']), not_yet_invoiced_minor: Math.max(0, contracted - fe(['awaiting_payment', 'paid', 'refunded'])) };
       });
-      data = { currencies: cur, invoiced: { available: false }, collected: { available: false }, note: 'Contracted is the agreed fee on active, suspended or lapsed licences; pending is still being negotiated. Each currency stands alone and is never converted or added to another. Rights fees are not invoiced or collected through SportArena finance yet, so invoiced and collected are not reported rather than guessed.' };
+      data = { currencies: cur, note: 'Contracted is the agreed fee on active, suspended or lapsed licences; pending is still being negotiated. Invoiced, collected (online or recorded as received outside the platform), outstanding and refunded come from the fees raised against those licences. Each currency stands alone and is never converted or added to another.' };
     }
     return { report: i.report, event_id: i.id, generated_at: new Date().toISOString(), data };
   },

@@ -159,7 +159,7 @@ export default function Landing() {
   const scroller = useRef(null);
   const feedRef = useRef(null);
   const discoverRef = useRef(null);
-  const [tab, setTab] = useState('sponsors');
+  const [tab, setTab] = useState('events');
   const sports = useSports();
   const hl = useLoad(() => api.get('/market/highlights'), []);
 

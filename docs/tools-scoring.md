@@ -81,5 +81,5 @@ Taps that cannot reach the server are queued in the app, kept on the device acro
 - Reading a photo or scan needs `ANTHROPIC_API_KEY`; without it the user types the values from the sheet. Reading of rotated or photographed sheets is only as good as that reader and has been tested here with a stubbed reader.
 - Virus scanning needs a `clamd` the operator runs; none ships with the platform.
 - A heat proposal records results for the session's existing entries; it does not create entries or heats. Lifting sheets can be proposed as scores.
-- Live cricket scoring through Match Centre points to the Tools scorebook; the canonical `log_match_event` accepts the same cricket entries.
+- Live cricket scoring now runs inside Match Centre (the same scorebook component, over `log_match_event`); see [live-scoring.md](live-scoring.md). The Tools tracker keeps its own sheet (unofficial or proposal) and shares only the device send queue.
 - The rulebook text is a SportArena summary; the official books are linked, not reproduced.

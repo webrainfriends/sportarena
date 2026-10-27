@@ -2,6 +2,7 @@
 import { tx } from '../db.js';
 import { notify } from '../notify.js';
 import { supplierAudience, buyerAudience } from '../capabilities/svc-rfq.js';
+import { releaseExpiredHolds } from './capacity.js';
 
 /** Quotes past their validity become expired (the supplier is told once); RFQs whose quote deadline passed with nothing to evaluate stay open for the buyer to close. */
 export async function expireQuotes() {
@@ -30,4 +31,16 @@ export async function remindOverdueInvoices() {
     return due.length;
   });
 }
-export const runServiceSweeps = async () => ({ quotes_expired: await expireQuotes(), visit_reminders: await remindVisits(), overdue_notices: await remindOverdueInvoices() });
+/** Capacity holds that lapsed are released; the buyer hears once that the supplier did not confirm in time (the order stays open for it to confirm if capacity remains). */
+export async function expireHolds() {
+  return tx(async (c) => {
+    const lapsed = (await releaseExpiredHolds(c)).rows;
+    for (const orderId of new Set(lapsed.map((r) => r.order_id))) {
+      const o = (await c.query("SELECT id, number, buyer_id FROM svc_orders WHERE id=$1 AND status='pending_supplier'", [orderId])).rows[0];
+      if (!o) continue;
+      for (const u of await buyerAudience(c, o.buyer_id, ['purchaser', 'requester'])) await notify(c, u, { kind: 'svc_hold_lapsed', title: 'A supplier has not confirmed yet', body: `Order ${o.number} is still waiting for the supplier; the days held for it were released.`, data: { order_id: o.id }, dedupe_key: `svc:holdlapse:${o.id}:${u}` });
+    }
+    return lapsed.length;
+  });
+}
+export const runServiceSweeps = async () => ({ holds_released: await expireHolds(), quotes_expired: await expireQuotes(), visit_reminders: await remindVisits(), overdue_notices: await remindOverdueInvoices() });

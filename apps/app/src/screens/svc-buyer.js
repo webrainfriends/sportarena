@@ -9,7 +9,7 @@ import { FormSheet } from '../FormSheet';
 import { Btn, Card, Chip, Empty, ErrorBox, H1, Loading, Row, Screen, Section, Sheet, T } from '../ui';
 import { localToIso } from '../vtime';
 import { useDo } from './console-utils';
-import { DocButton, Kpi, Kv, Note, Status, Tabs, Wrap, catLabel, collectScope, day, label, money, scopeFields, useCatalogue, when } from './svc-common';
+import { DocButton, ExportsPanel, Kpi, Kv, Note, Status, Tabs, Wrap, catLabel, collectScope, day, label, money, scopeFields, useCatalogue, when } from './svc-common';
 
 const TABS = [['plan', 'Plan'], ['rfqs', 'Quotes'], ['orders', 'Orders'], ['invoices', 'Invoices'], ['team', 'People & policy'], ['reports', 'Reports']];
 
@@ -41,7 +41,7 @@ export function ServicesBuyer({ event_id, venue_id, organisation_id, embedded })
           {tab === 'reports' ? <Reports b={b} /> : null}
         </>
       )}
-      <FormSheet visible={setup} onClose={() => setSetup(false)} title="Which currency do you buy in?" fields={[{ key: 'currency', label: 'Currency', type: 'currency' }]} onSubmit={async (v) => { await open(v.currency); setSetup(false); }} />
+      <FormSheet visible={setup} onClose={() => setSetup(false)} title="Which currency do you buy in?" fields={[{ key: 'currency', label: 'Currency', type: 'currency', endpoint: '/service-currencies' }]} onSubmit={async (v) => { await open(v.currency); setSetup(false); }} />
     </Wrapper>
   );
 }
@@ -304,7 +304,8 @@ function Reports({ b }) {
       <Section title="Supplier performance">{x.supplier_performance.map((p) => <Row key={p.profile_id} title={p.supplier} sub={`${p.orders} order(s) · ${p.accepted} accepted · ${p.rework} rework · ${p.no_show} no-show · ${p.incidents} incident(s)`} />)}</Section>
       <Section title="Next 14 days">{x.work.upcoming.length ? x.work.upcoming.map((v) => <Row key={v.id} title={`${v.number} · ${when(v.starts_at)}`} sub={v.site_label ?? ''} right={<Status s={v.status} />} />) : <Note>No visits scheduled.</Note>}</Section>
       {x.work.overdue.length ? <Section title="Overdue">{x.work.overdue.map((v) => <Row key={v.id} title={`${v.number} · ${when(v.starts_at)}`} right={<Status s={v.status} />} />)}</Section> : null}
-      <Wrap>{['orders', 'invoices', 'payments', 'tax'].map((k) => <Btn key={k} small color={c.paper} ink={c.ink} title={`CSV: ${k}`} onPress={async () => setCsv(await api.get('/service-reports/export', { side: 'buyer', scope_id: b.id, report: k }))} />)}</Wrap>
+      <Wrap>{['orders', 'invoices', 'payments', 'tax'].map((k) => <Btn key={k} small color={c.paper} ink={c.ink} title={`CSV: ${k}`} onPress={async () => setCsv(await api.get('/service-reports/export', { side: 'buyer', scope_id: b.id, report: k }))} />)}<DocButton type="buyer_report" id={b.id} title="Dashboard PDF" small={false} /></Wrap>
+      <ExportsPanel side="buyer" scopeId={b.id} />
       <Sheet visible={!!csv} onClose={() => setCsv(null)} title={csv?.filename ?? ''}><Note>{csv?.rows} rows{csv?.truncated ? ' (truncated — narrow the dates)' : ''}. Copy into a spreadsheet.</Note><T size={11} selectable>{csv?.csv}</T></Sheet>
     </>
   );

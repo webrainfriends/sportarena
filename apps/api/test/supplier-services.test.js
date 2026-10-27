@@ -372,3 +372,98 @@ test('an existing supplier event request is the single entry: confirming the ord
   assert.equal(lines.length, 1); assert.equal(lines[0].svc_order_id, aw.orders[0].id); assert.equal(Number(lines[0].committed_cents), 300000);
   assert.equal((await pool.query('SELECT status FROM event_requests WHERE id=$1', [er.id])).rows[0].status, 'finalized');
 });
+
+const { runServiceJobs } = await import('../src/capabilities/svc-reports.js');
+const { expireHolds } = await import('../src/svc/sweeps.js');
+
+test('three-decimal currencies (KWD): exact minor units through quote, tax, invoice, payment and reports; card payment refused', async () => {
+  assert.ok(!must(await api('GET', '/currencies')).some((c) => c.code === 'KWD'));                 // the platform list stays as it was
+  const sc = must(await api('GET', '/service-currencies'));
+  assert.equal(sc.find((c) => c.code === 'KWD').exponent, 3); assert.equal(sc.find((c) => c.code === 'KWD').online_payments, false);
+  const o = await confirmedOrder({ rate: 1500, qty: 3, currency: 'KWD', taxRule: { code: 'VAT5', name: 'VAT', jurisdiction: 'KW', rate_bp: 500 } });
+  assert.deepEqual([o.order.net_minor, o.order.tax_minor, o.order.gross_minor].map(Number), [4500, 225, 4725]);       // 4.500 + 0.225 = 4.725 KWD
+  assert.equal(o.order.currency, 'KWD');
+  await deliver(o, 3);
+  const d = must(await bill(o, { kind: 'final', lines: [{ line_no: 1, quantity: 3 }] }), 201);
+  assert.equal(Number(d.gross_minor), 4725);
+  must(await api('POST', `/service-invoices/${d.id}/issue`, { token: o.s.owner.token }));
+  assert.equal((await api('POST', `/service-invoices/${d.id}/pay`, { token: o.u.token, body: { provider: 'stripe' } })).status, 409);   // no card payment in a 3-decimal currency
+  const pay = must(await api('POST', `/service-invoices/${d.id}/payments`, { token: o.u.token, body: { source: 'manual_bank', amount_minor: 1725, paid_on: ymd(0), reference: 'KW-1', evidence: 'bank slip' } }), 201);
+  assert.equal(pay.invoice.pay_status, 'partially_paid');
+  const inv = must(await api('GET', `/service-invoices/${d.id}`, { token: o.u.token }));
+  assert.equal(inv.outstanding_minor, 3000); assert.equal(inv.can_pay_online, false);
+  const sd = must(await api('GET', `/supplier-profiles/${o.s.p.id}/dashboard`, { token: o.s.owner.token })).finance.by_currency.find((x) => x.currency === 'KWD');
+  assert.deepEqual([sd.billed_minor, sd.collected_minor, sd.outstanding_minor], [4725, 1725, 3000]);
+  assert.equal((await api('POST', '/service-documents', { token: o.u.token, body: { type: 'invoice', source_id: d.id } })).status, 201);
+  assert.equal((await api('POST', '/service-buyers', { token: (await signup(['athlete'])).token, body: { currency: 'XXX' } })).status, 400);   // unknown currencies are still refused
+});
+
+test('capacity holds: a placed order holds the days for 72h; a full hold blocks others until it lapses; lapsed holds are released by the sweep', async () => {
+  const s = await supplier();                                                         // capacity 4 per day
+  const place = async (headcount) => {
+    const { u, buyer } = await organiser();
+    const req = must(await requirement(buyer, u.token, { quantity: 3, headcount, starts_at: iso(10), ends_at: iso(12) }), 201);
+    const rfq = await rfqFlow(buyer, u.token, req, [s]);
+    const inv = must(await api('GET', '/me/rfq-invitations', { token: s.owner.token, query: { profile_id: s.p.id } })).find((x) => x.rfq_id === rfq.id);
+    must(await api('POST', `/rfq-invites/${inv.id}/respond`, { token: s.owner.token, body: { action: 'accept' } }));
+    const q = must(await api('POST', `/rfq-invites/${inv.id}/quote`, { token: s.owner.token, body: { valid_until: iso(5), lines: [{ line_type: 'service', description: 'Crew', quantity: 3, unit: 'visit', rate_minor: 1000 }] } }), 201);
+    const f = must(await api('GET', `/rfqs/${rfq.id}`, { token: u.token }));
+    return must(await api('POST', `/rfqs/${rfq.id}/award`, { token: u.token, body: { row_version: f.row_version, awards: [{ quote_id: q.id }], justification: 'ok' } }), 201).orders[0];
+  };
+  const a = await place(3), b = await place(3);
+  const held = async (id) => (await pool.query("SELECT status, hold_expires_at FROM svc_allocations WHERE order_id=$1 ORDER BY day", [id])).rows;
+  assert.equal((await held(a.id)).length, 3); assert.ok((await held(a.id)).every((r) => r.status === 'held' && new Date(r.hold_expires_at) > new Date(Date.now() + 71 * 3600e3)));
+  assert.equal((await held(b.id)).length, 0);                                          // no room to hold: the order is still placed, the supplier decides
+  assert.ok(a.terms.hold_expires_at || (await pool.query('SELECT terms FROM svc_orders WHERE id=$1', [a.id])).rows[0].terms.hold_expires_at);
+  assert.equal((await api('POST', `/service-orders/${b.id}/respond`, { token: s.owner.token, body: { action: 'confirm' } })).status, 409);   // a live hold counts
+  await pool.query("UPDATE svc_allocations SET hold_expires_at = now() - interval '1 minute' WHERE order_id=$1", [a.id]);                // the 72 hours pass
+  assert.equal((await expireHolds()) >= 3, true);
+  assert.ok((await held(a.id)).every((r) => r.status === 'released'));
+  must(await api('POST', `/service-orders/${b.id}/respond`, { token: s.owner.token, body: { action: 'confirm' } }));                       // room again
+  assert.equal((await api('POST', `/service-orders/${a.id}/respond`, { token: s.owner.token, body: { action: 'confirm' } })).status, 409);   // and a's days are now taken
+  const rej = await place(1);                                                          // 3 + 1 fits only while b holds 3
+  assert.equal((await held(rej.id)).length, 3);
+  must(await api('POST', `/service-orders/${rej.id}/respond`, { token: s.owner.token, body: { action: 'reject', reason: 'no' } }));
+  assert.ok((await held(rej.id)).every((r) => r.status === 'released'));                // a rejected order frees its hold
+});
+
+test('durable exports: CSV, XLSX and PDF are built by the worker, private to the requester, re-authorised on download; dashboards print as PDF', async () => {
+  const o = await confirmedOrder({ rate: 100000, qty: 3, taxRule: { code: 'GST', name: 'GST', jurisdiction: 'IN', rate_bp: 1800 } });
+  await deliver(o, 2);
+  const d = must(await bill(o, { kind: 'progress', lines: [{ line_no: 1, quantity: 2 }] }), 201);
+  must(await api('POST', `/service-invoices/${d.id}/issue`, { token: o.s.owner.token }));
+  const ask = (token, body) => api('POST', '/service-reports/exports', { token, body });
+  const exps = [];
+  for (const [report, format] of [['invoices', 'csv'], ['invoices', 'xlsx'], ['invoices', 'pdf'], ['dashboard', 'csv'], ['dashboard', 'pdf'], ['orders', 'xlsx']]) exps.push(must(await ask(o.s.owner.token, { side: 'supplier', scope_id: o.s.p.id, report, format }), 202));
+  assert.ok(exps.every((x) => x.status === 'queued'));
+  assert.equal((await api('GET', `/service-reports/exports/${exps[0].id}`, { token: o.s.owner.token })).body.status, 'queued');
+  await runServiceJobs();
+  const got = async (token, x) => api('GET', `/service-reports/exports/${x.id}`, { token });
+  const csv = must(await got(o.s.owner.token, exps[0])); assert.equal(csv.status, 'ready'); assert.match(csv.data, /gross_minor/); assert.match(csv.data, /236000/); assert.equal(csv.rows, 1);
+  const xl = must(await got(o.s.owner.token, exps[1])); assert.equal(Buffer.from(xl.data, 'base64').subarray(0, 2).toString(), 'PK');
+  const pdf = must(await got(o.s.owner.token, exps[2])); assert.equal(Buffer.from(pdf.data, 'base64').subarray(0, 4).toString(), '%PDF'); assert.match(pdf.sha256, /^[0-9a-f]{64}$/);
+  const dash = must(await got(o.s.owner.token, exps[3])); assert.match(dash.data, /finance\.by_currency\[0\]\.billed_minor,236000/);
+  assert.equal(Buffer.from(must(await got(o.s.owner.token, exps[4])).data, 'base64').subarray(0, 4).toString(), '%PDF');
+  assert.equal(must(await api('GET', '/service-reports/exports', { token: o.s.owner.token })).length, 6);
+  // private to the requester; a stranger and the buyer cannot read the supplier's file, or order one for the supplier
+  const stranger = await signup(['athlete']);
+  assert.equal((await got(stranger.token, exps[0])).status, 404); assert.equal((await got(o.u.token, exps[0])).status, 404);
+  assert.equal((await ask(stranger.token, { side: 'supplier', scope_id: o.s.p.id, report: 'orders', format: 'csv' })).status, 404);
+  assert.equal((await ask(o.u.token, { side: 'supplier', scope_id: o.s.p.id, report: 'orders', format: 'csv' })).status, 404);
+  // access is checked again when the job runs and when downloading: a removed staff member gets nothing
+  const fin = await signup(['athlete']);
+  must(await api('POST', `/supplier-profiles/${o.s.p.id}/staff`, { token: o.s.owner.token, body: { user_id: fin.id, role: 'finance' } }), 201);
+  const mine = must(await ask(fin.token, { side: 'supplier', scope_id: o.s.p.id, report: 'payments', format: 'csv' }), 202);
+  await runServiceJobs(); assert.equal(must(await got(fin.token, mine)).status, 'ready');
+  const staff = (await pool.query("SELECT id FROM svc_staff WHERE user_id=$1 AND status='active'", [fin.id])).rows[0];
+  must(await api('DELETE', `/supplier-staff/${staff.id}`, { token: o.s.owner.token }));
+  assert.equal((await got(fin.token, mine)).status, 404);
+  // buyer side, and dashboards as documents
+  const bx = must(await ask(o.u.token, { side: 'buyer', scope_id: o.buyer.id, report: 'dashboard', format: 'pdf' }), 202);
+  await runServiceJobs(); assert.equal(Buffer.from(must(await got(o.u.token, bx)).data, 'base64').subarray(0, 4).toString(), '%PDF');
+  const gen = (token, type, source_id) => api('POST', '/service-documents', { token, body: { type, source_id } });
+  const sr = must(await gen(o.s.owner.token, 'supplier_report', o.s.p.id), 201), br = must(await gen(o.u.token, 'buyer_report', o.buyer.id), 201);
+  for (const [t, dd] of [[o.s.owner.token, sr], [o.u.token, br]]) { const r = await fetch(`${base}${dd.url}`, { headers: { authorization: `Bearer ${t}` } }); assert.equal(r.status, 200); assert.equal(Buffer.from(await r.arrayBuffer()).subarray(0, 4).toString(), '%PDF'); }
+  assert.equal((await gen(stranger.token, 'supplier_report', o.s.p.id)).status, 404); assert.equal((await gen(o.u.token, 'supplier_report', o.s.p.id)).status, 404);
+  assert.equal((await gen(o.s.owner.token, 'buyer_report', o.buyer.id)).status, 404);
+});

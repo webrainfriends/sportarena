@@ -9,6 +9,7 @@ import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { Btn, Chip, Empty, ErrorBox, Field, GradCard, H1, Loading, Row, Screen, Seg, Section, Sheet, StatPill, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
+import { SessionLive } from './session-live';
 import { c } from '../theme';
 import { locale } from '../locale';
 
@@ -205,7 +206,7 @@ function Sports({ id, toast }) {
 }
 
 function DisciplineSheet({ d, id, toast, onClose }) {
-  const [nom, setNom] = useState(false), [advance, setAdvance] = useState(false), [heats, setHeats] = useState(false), [draw, setDraw] = useState(false);
+  const [nom, setNom] = useState(false), [advance, setAdvance] = useState(false), [heats, setHeats] = useState(false), [draw, setDraw] = useState(false), [prog, setProg] = useState(false);
   const people = useLoad(() => api.get(`/events/${id}/participants`, { limit: 100 }), [id]);
   const noms = useLoad(() => api.get(`/disciplines/${d.id}/nominations`), [d.id]);
   const teams = useLoad(() => (d.mode === 'team' ? api.get(`/disciplines/${d.id}/teams`) : Promise.resolve([])), [d.id]);
@@ -222,6 +223,7 @@ function DisciplineSheet({ d, id, toast, onClose }) {
           {d.mode === 'team' && !made ? <Btn small title="Build house teams" color={c.violet} onPress={() => done(() => api.post(`/disciplines/${d.id}/teams/build`, {}), (r) => `${r.built.length} team(s) built${r.skipped.length ? `, ${r.skipped.length} house(s) skipped: ${r.skipped[0].reason}` : ''}`)} /> : null}
           {!made && d.mode === 'individual' ? <Btn small title="Make heats" color={c.cyan} onPress={() => setHeats(true)} /> : null}
           {!made && d.mode === 'team' ? <Btn small title="Draw fixtures" color={c.cyan} onPress={() => setDraw(true)} /> : null}
+          {d.mode === 'individual' && d.status !== 'cancelled' ? <Btn small title="Live scoring rules" color={c.violet} onPress={() => setProg(true)} /> : null}
           {made ? <Btn small title="Next round" color={c.orange} onPress={() => setAdvance(true)} /> : null}
           {made ? <Btn small title="Finalize & award points" color={c.lime} onPress={() => done(() => api.post(`/disciplines/${d.id}/finalize`), (r) => `${r.points_awarded} points awarded`)} /> : null}
           {d.finalized_at ? <Btn small title="Issue certificates" color={c.sun} onPress={() => done(() => api.post(`/disciplines/${d.id}/certificates`, { participation: true }), (r) => `${r.issued} certificate(s) issued`)} /> : null}
@@ -249,7 +251,16 @@ function DisciplineSheet({ d, id, toast, onClose }) {
       <FormSheet visible={draw} onClose={() => setDraw(false)} title="Draw fixtures" submitLabel="Draw" initial={{ format: 'round_robin', duration_min: 40 }}
         fields={[{ key: 'format', label: 'Format', type: 'choice', options: [{ value: 'round_robin', label: 'Everyone plays everyone' }, { value: 'knockout', label: 'Knockout' }] }, { key: 'duration_min', label: 'Minutes per match', type: 'stepper', min: 5, max: 600, step: 5 }]}
         onSubmit={async (v) => { const r = await api.post(`/disciplines/${d.id}/draw`, v); refresh(); return `${r.sessions.length} match(es) drawn`; }} />
-      <FormSheet visible={advance} onClose={() => setAdvance(false)} title="Next round" submitLabel="Create" initial={{ qualifiers_per_session: 2, wildcards: 0, lanes: 8, qualifiers: 4, third_place: false }}
+      <FormSheet visible={prog} onClose={() => setProg(false)} title="How marks add up and who goes through" submitLabel="Save"
+        initial={{ aggregate: d.live_rules?.aggregate ?? 'default', lower_is_better: d.live_rules?.lower_is_better ?? 'default', drop_extremes: !!d.live_rules?.drop_extremes, qualifiers_per_session: d.live_rules?.qualifiers_per_session ?? 2, wildcards: d.live_rules?.wildcards ?? 0, cut_after_round: d.live_rules?.cut_after_round ?? 0, cut_to: d.live_rules?.cut_to ?? 0 }}
+        fields={[
+          { key: 'aggregate', label: 'Marks are', type: 'choice', options: [{ value: 'default', label: "The sport's usual way" }, { value: 'best', label: 'The best mark' }, { value: 'sum', label: 'Attempts added up' }, { value: 'panel', label: "A judges' panel" }] },
+          { key: 'lower_is_better', label: 'Who wins', type: 'choice', options: [{ value: 'default', label: "The sport's usual way" }, { value: false, label: 'The highest' }, { value: true, label: 'The lowest (golf)' }] },
+          { key: 'drop_extremes', label: "Panel: drop the highest and lowest mark (5 judges or more)", type: 'switch' },
+          { key: 'qualifiers_per_session', label: 'Qualify from each heat', type: 'stepper', min: 1, max: 24 }, { key: 'wildcards', label: 'Extra places for the next best', type: 'stepper', min: 0, max: 48 },
+          { key: 'cut_after_round', label: 'Field events: cut after round (0 = no cut)', type: 'stepper', min: 0, max: 12 }, { key: 'cut_to', label: 'Field events: athletes who continue (0 = no cut)', type: 'stepper', min: 0, max: 64 }]}
+        onSubmit={async (v) => { await api.patch(`/disciplines/${d.id}/live-rules`, { ...(v.aggregate !== 'default' ? { aggregate: v.aggregate } : {}), ...(v.lower_is_better !== 'default' ? { lower_is_better: v.lower_is_better } : {}), drop_extremes: !!v.drop_extremes, qualifiers_per_session: v.qualifiers_per_session, wildcards: v.wildcards, ...(v.cut_after_round ? { cut_after_round: v.cut_after_round, cut_to: v.cut_to } : {}) }); refresh(); return 'Saved. The live view follows this.'; }} />
+      <FormSheet visible={advance} onClose={() => setAdvance(false)} title="Next round" submitLabel="Create" initial={{ qualifiers_per_session: d.live_rules?.qualifiers_per_session ?? 2, wildcards: d.live_rules?.wildcards ?? 0, lanes: 8, qualifiers: 4, third_place: false }}
         fields={d.mode === 'individual'
           ? [{ key: 'qualifiers_per_session', label: 'Qualify from each heat', type: 'stepper', min: 1, max: 24 }, { key: 'wildcards', label: 'Extra places for the next best', type: 'stepper', min: 0, max: 48 }, { key: 'lanes', label: 'Lanes in the next round', type: 'stepper', min: 2, max: 24 }]
           : [{ key: 'qualifiers', label: 'Teams through from the league (if any)', type: 'stepper', min: 2, max: 64 }, { key: 'third_place', label: 'Play a third-place game', type: 'switch' }]}
@@ -311,7 +322,7 @@ const SessionRow = ({ s, onPress }) => (
 );
 
 function SessionSheet({ s, isOrg, toast, onClose }) {
-  const [time, setTime] = useState(false), [vals, setVals] = useState({});
+  const [time, setTime] = useState(false), [vals, setVals] = useState({}), [manual, setManual] = useState(false);
   const det = useLoad(() => api.get(`/sessions/${s.id}`), [s.id]);
   const d = det.data;
   const done = useDo(toast, () => det.reload());
@@ -326,7 +337,9 @@ function SessionSheet({ s, isOrg, toast, onClose }) {
         <View style={{ gap: 10 }}>
           <T color={c.mute}>{STAGE[d.stage]} · {d.discipline}{d.scheduled_at ? ` · ${dayName(d.scheduled_at)} ${hm(d.scheduled_at)}` : ' · not scheduled'}{d.ground ?? d.location ? ` · ${d.location}` : ''}</T>
           {d.officials?.length ? <T>Officials: {d.officials.map((o) => `${o.display_name} (${o.role})`).join(', ')}</T> : null}
-          {d.entries.map((e) => (
+          {d.status !== 'cancelled' && d.status !== 'draft' ? <SessionLive id={s.id} toast={toast} onFinalised={() => det.reload()} /> : null}
+          {isOrg && d.status !== 'cancelled' ? <Chip label={manual ? 'Hide the by-hand result form' : 'Enter the result by hand instead'} active={manual} onPress={() => setManual(!manual)} /> : null}
+          {(manual || d.status === 'draft' || d.status === 'cancelled') ? d.entries.map((e) => (
             <View key={e.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <T style={{ flex: 1 }} weight="700">{e.lane ? `L${e.lane} ` : ''}{e.team_name ?? e.full_name ?? 'Participant'}{e.house ? ` · ${e.house}` : ''}{e.result_status === 'scratched' ? ' (scratched)' : ''}</T>
               {e.position ? <Tag label={`#${e.position}`} color={c.limeSoft} /> : null}
@@ -334,10 +347,10 @@ function SessionSheet({ s, isOrg, toast, onClose }) {
                 <View style={{ width: 90 }}><Field value={String(vals[e.id] ?? e.result_value ?? e.score ?? '')} onChangeText={(x) => setVals((p) => ({ ...p, [e.id]: x.replace(/[^0-9.]/g, '') }))} keyboardType="decimal-pad" placeholder={team ? 'score' : d.result_type} /></View>
               ) : (e.result_value ?? e.score) != null ? <T weight="800">{e.result_value ?? e.score}</T> : null}
             </View>
-          ))}
+          )) : null}
           {isOrg && d.status !== 'cancelled' ? (
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-              <Btn small title="Save result" color={c.lime} onPress={() => save(true)} />
+              {manual ? <Btn small title="Save result" color={c.lime} onPress={() => save(true)} /> : null}
               <Btn small title="Set time / ground" color={c.cyan} onPress={() => setTime(true)} />
               <Btn small title="Cancel session" color={c.paper} ink={c.red} onPress={() => done(() => api.patch(`/sessions/${s.id}`, { cancel: true }), 'Cancelled')} />
             </View>

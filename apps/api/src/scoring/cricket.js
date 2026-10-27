@@ -8,8 +8,9 @@
 //   declare    the batting captain declares (Test only)         innings_end  an innings ends for another reason (light, time)
 //   follow_on  the side that led by enough enforces the follow-on (Test only)
 //   result     payload { outcome: draw|abandoned|no_result|tie }
+//   lineup     payload { home?: [playerId ×≤11], away?: [...] } the batting order, so slots 0-10 map to verified players (no effect on the score)
 
-export const CRICKET_KINDS = ['ball', 'declare', 'innings_end', 'follow_on', 'result'];
+export const CRICKET_KINDS = ['ball', 'declare', 'innings_end', 'follow_on', 'result', 'lineup'];
 export const HOW_OUT = ['bowled', 'caught', 'lbw', 'run_out', 'stumped', 'hit_wicket', 'handled_ball', 'obstructing', 'hit_twice', 'timed_out', 'retired_out'];
 const BOWLER_CREDIT = new Set(['bowled', 'caught', 'lbw', 'stumped', 'hit_wicket']);
 const FREE_HIT_OUT = new Set(['run_out', 'obstructing', 'hit_twice', 'handled_ball']);
@@ -24,6 +25,7 @@ const newInnings = (n, side) => ({
   batters: Array.from({ length: 11 }, (_, idx) => ({ idx, runs: 0, balls: 0, fours: 0, sixes: 0, out: null, arrived: idx < 2 })),
   bowlers: {}, fow: [], overs: [], striker: 0, non_striker: 1, next_batter: 2,
   closed: false, closed_reason: null, free_hit: false, over_bowler: null, prev_over_bowler: null,
+  partnerships: [], partnership: { runs: 0, balls: 0, a: 0, b: 1 },
 });
 
 const symbol = (e, p) => {
@@ -58,7 +60,8 @@ function applyBall(inn, e, c) {
     team = p.runs; striker.runs += p.runs; striker.balls++; if (p.runs === 4) striker.fours++; if (p.runs === 6) striker.sixes++; bw.runs += p.runs; bo.runs += p.runs; running = p.runs;
   }
   inn.runs += team;
-  if (legal) { inn.legal++; bw.legal++; bo.legal++; }
+  inn.partnership.runs += team;
+  if (legal) { inn.legal++; bw.legal++; bo.legal++; inn.partnership.balls++; }
   const ov = (inn.overs[ovIdx] ??= []);
   ov.push({ sym: symbol(e, p), bowler: p.bowler, wicket: !!p.wicket, four: p.extra == null && p.runs === 4, six: p.extra == null && p.runs === 6, extra: p.extra, free_hit: inn.free_hit });
   if (running % 2) [inn.striker, inn.non_striker] = [inn.non_striker, inn.striker];
@@ -68,7 +71,10 @@ function applyBall(inn, e, c) {
     b.out = { how: p.wicket.how, bowler: BOWLER_CREDIT.has(p.wicket.how) ? p.bowler : null, fielder: p.wicket.fielder ?? null };
     inn.wickets++; if (BOWLER_CREDIT.has(p.wicket.how)) bw.wickets++;
     inn.fow.push({ n: inn.wickets, runs: inn.runs, batter: outIdx, over: oversText(inn.legal) });
+    const partner = outPos === 'striker' ? inn.non_striker : inn.striker;
+    inn.partnerships.push({ wicket: inn.wickets, runs: inn.partnership.runs, balls: inn.partnership.balls, batters: [outIdx, partner], ended: true });
     if (inn.next_batter < 11 && inn.wickets < 10) { inn[outPos] = inn.next_batter; inn.batters[inn.next_batter].arrived = true; inn.next_batter++; }
+    inn.partnership = { runs: 0, balls: 0, a: inn.striker, b: inn.non_striker };
   }
   if (legal) { inn.free_hit = false; if (inn.legal % 6 === 0) { [inn.striker, inn.non_striker] = [inn.non_striker, inn.striker]; inn.prev_over_bowler = p.bowler; inn.over_bowler = null; } else inn.over_bowler = p.bowler; }
   else if (p.extra === 'nb') { inn.free_hit = c.free_hit !== false && c.format !== 'Test'; inn.over_bowler = p.bowler; }
@@ -113,9 +119,10 @@ function decide(rs, st) {
 /** Everything the scorer's book shows. `events` are the sheet's live entries in order (voided ones already removed). */
 export function cricketState(rs, events) {
   const c = rs.cricket;
-  const st = { innings: [], follow_on: false, outcome: null, first_side: null };
+  const st = { innings: [], follow_on: false, outcome: null, first_side: null, lineup: null };
   let cur = null;
   for (const e of events.filter((x) => !x.voided_at)) {
+    if (e.kind === 'lineup') { st.lineup = { ...(st.lineup ?? {}), ...Object.fromEntries(['home', 'away'].filter((side) => Array.isArray(e.payload?.[side])).map((side) => [side, e.payload[side]])) }; continue; }
     if (e.kind === 'follow_on') { st.follow_on = true; continue; }
     if (e.kind === 'result') { st.outcome = e.payload?.outcome ?? null; continue; }
     if (e.kind === 'declare' || e.kind === 'innings_end') { if (cur && !cur.closed) { cur.closed = true; cur.closed_reason = e.kind === 'declare' ? 'declared' : 'ended'; } continue; }
@@ -137,12 +144,23 @@ export function cricketState(rs, events) {
   const result = decide(rs, st);
   const open = st.innings[st.innings.length - 1];
   const need = open && !open.closed && st.innings.length === c.innings ? totalFor(st, other(open.side)) - totalFor(st, open.side) + 1 : null;
+  const ballsLeft = open && !open.closed && c.overs ? c.overs * 6 - open.legal : null;
+  const rate = (runs, balls) => (balls > 0 ? Math.round((runs * 6 / balls) * 100) / 100 : null);
+  for (const i of st.innings) {
+    i.run_rate = rate(i.runs, i.legal);
+    i.current_partnership = i.closed ? null : { ...i.partnership, batters: [i.partnership.a, i.partnership.b] };
+    i.powerplay = !i.closed && (c.powerplays ?? []).some((w) => Math.floor(i.legal / 6) >= w.from_over && Math.floor(i.legal / 6) <= w.to_over);
+  }
+  const chasing = open && !open.closed && need != null && need > 0 && st.innings.length === c.innings;
   return {
     ...st, home, away, wickets: { home: wicketsFor(st, 'home'), away: wicketsFor(st, 'away') }, result,
     over: !!result, winner: result?.winner ?? null,
     current: open ? { n: open.n, side: open.side, closed: open.closed } : { n: 0, side: null, closed: true },
     to_win: need && need > 0 ? need : null,
-    balls_left: open && !open.closed && c.overs ? c.overs * 6 - open.legal : null,
+    balls_left: ballsLeft,
+    target: chasing ? totalFor(st, other(open.side)) + 1 : null,
+    current_run_rate: open ? open.run_rate : null,
+    required_run_rate: chasing && ballsLeft > 0 ? rate(need, ballsLeft) : null,
     lead: st.innings.length >= 2 && c.format === 'Test' ? totalFor(st, st.first_side) - totalFor(st, other(st.first_side)) : null,
   };
 }
@@ -150,11 +168,15 @@ export function cricketState(rs, events) {
 /** Why an entry cannot be added now, or null. */
 export function cricketReject(rs, live, next) {
   const c = rs.cricket;
-  if (next.kind === 'note' || next.kind === 'period_start' || next.kind === 'period_end') return null; // the match log's period markers carry no cricket meaning
+  if (next.kind === 'note' || next.kind === 'period_start' || next.kind === 'period_end' || next.kind === 'added_time') return null; // the match log's period markers carry no cricket meaning
   if (!CRICKET_KINDS.includes(next.kind)) return `"${next.kind}" is not part of cricket scoring`;
   const st = cricketState(rs, live);
   const p = next.payload ?? {};
   if (next.kind === 'result') return OUTCOMES.includes(p.outcome) ? null : `outcome must be one of ${OUTCOMES.join(', ')}`;
+  if (next.kind === 'lineup') {
+    const bad = ['home', 'away'].find((side) => p[side] != null && !(Array.isArray(p[side]) && p[side].length <= 11 && new Set(p[side]).size === p[side].length && p[side].every((x) => typeof x === 'string' && x)));
+    return bad ? `The ${bad} batting order must be up to 11 different players` : null;
+  }
   if (st.over) return 'The match is already decided';
   const cur = st.innings[st.innings.length - 1];
   if (next.kind === 'declare') {

@@ -18,11 +18,11 @@ const REGION_CURRENCY = {
 export const localeCurrency = (tag = locale) => { try { return REGION_CURRENCY[new Intl.Locale(tag).region] ?? null; } catch { return null; } };
 
 /**
- * @param {{ label?: string, value?: string, onChange: (code: string) => void, hint?: string, suggest?: boolean, disabled?: boolean }} p
+ * @param {{ label?: string, value?: string, onChange: (code: string) => void, hint?: string, suggest?: boolean, disabled?: boolean, endpoint?: string }} p
  * `suggest`: while no value is set, choose the currency of the person's region (they can change it).
  */
-export function CurrencyDropdown({ label = 'Currency', value, onChange, hint, suggest = true, disabled }) {
-  const cur = useLoad(() => api.get('/currencies'), []);
+export function CurrencyDropdown({ label = 'Currency', value, onChange, hint, suggest = true, disabled, endpoint = '/currencies' }) {
+  const cur = useLoad(() => api.get(endpoint), [endpoint]);
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
   const mine = localeCurrency();

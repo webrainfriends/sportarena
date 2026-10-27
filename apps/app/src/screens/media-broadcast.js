@@ -125,9 +125,15 @@ function Report({ name, data }) {
     return (
       <>
         {!data.currencies.length ? <AEmpty emoji="💰" title="No fees contracted yet" /> : data.currencies.map((c) => (
-          <ACard key={c.currency} pad={14} style={{ gap: 4 }}>
+          <ACard key={c.currency} pad={14} style={{ gap: 8 }}>
             <AT size={12} weight="800" color={A.mute}>{c.currency} · {c.licences} licence{c.licences === 1 ? '' : 's'}</AT>
             <AT size={26} weight="900" num>{money(c.contracted_minor, c.currency)}</AT><AT size={12.5} color={A.mute}>contracted{c.pending_minor ? ` · ${money(c.pending_minor, c.currency)} still being negotiated` : ''}</AT>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 16 }}>
+              {[['Invoiced', c.invoiced_minor], ['Collected', c.collected_minor], ['Outstanding', c.outstanding_minor], ['Overdue', c.overdue_minor], ['Not yet invoiced', c.not_yet_invoiced_minor], ['Refunded', c.refunded_minor]].map(([k, v]) => (
+                <View key={k}><AT size={10.5} weight="800" color={A.mute}>{k.toUpperCase()}</AT><AT size={16} weight="900" num color={k === 'Overdue' && v ? A.red : A.ink}>{money(v, c.currency)}</AT></View>
+              ))}
+            </View>
+            {c.collected_minor ? <AT size={12} color={A.mute}>Collected: {money(c.collected_online_minor, c.currency)} online · {money(c.collected_offline_minor, c.currency)} recorded as received outside the platform</AT> : null}
           </ACard>
         ))}
         <ACard pad={12} tone={A.sun}><AT size={12.5} color={A.mute}>{data.note}</AT></ACard>

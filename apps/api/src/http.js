@@ -30,6 +30,7 @@ import { mediaAssetFilesRouter } from './capabilities/media-rights-assets.js';
 import { contractReceiptsRouter } from './capabilities/player-contract-money.js';
 import { staffDocsRouter } from './capabilities/event-openings.js';
 import { liveRouter } from './live.js';
+import { publicWebRouter } from './public-web.js';
 import { appleWebRouter } from './apple-web.js';
 import { randomUUID } from 'node:crypto';
 import { logger, runWithContext } from './logger.js';
@@ -110,7 +111,10 @@ export function createApp() {
   });
 
   app.use('/api/v1', appleWebRouter());
+  // public spectator surfaces: anonymous, so they get their own (tighter) allowance on top of the global one
+  app.use(['/api/v1/public', '/api/v1/share', '/api/v1/live/public'], rateLimit({ windowMs: 60_000, limit: config.isProd ? 120 : 5000, standardHeaders: true, legacyHeaders: false }));
   app.use('/api/v1', liveRouter());
+  app.use('/api/v1', publicWebRouter());
 
   const v1 = express.Router();
   v1.get('/openapi.json', (_, res) => res.json(buildOpenApi()));

@@ -2,7 +2,7 @@
 // Everything reads the existing public endpoints; nothing is created here. Acting on a card (apply, book, enquire) sends the visitor
 // to sign in, remembering what they wanted.
 import React, { useEffect, useState } from 'react';
-import { Pressable, TextInput, View } from 'react-native';
+import { Linking, Platform, Pressable, TextInput, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { Avatar, T } from '../ui';
@@ -10,8 +10,10 @@ import { c, fam } from '../theme';
 import { setIntent } from '../market/intent';
 import { HScroll } from '../pickers';
 import { moneyIn } from '../vtime';
+import { absolute } from './spectate';
 
 export const DISCOVER_TABS = [
+  { key: 'events', emoji: '🏆', label: 'Events' },
   { key: 'sponsors', emoji: '🤝', label: 'Sponsors' },
   { key: 'health', emoji: '🩺', label: 'Physio & doctors' },
   { key: 'coaches', emoji: '🧑‍🏫', label: 'Coaches' },
@@ -19,6 +21,7 @@ export const DISCOVER_TABS = [
 ];
 
 const COPY = {
+  events: ['Tournaments & events', 'Live scores, schedules, tables and results of public events. Open one to follow it — no login needed to watch.', 'Search events, cities and sports…'],
   sponsors: ['Sponsorship calls', 'Brands with a round open for applications right now. Apply for yourself, your team or your event.', 'Search calls and sponsors…'],
   health: ['Physios & doctors', 'Verified practitioners who treat athletes. See their fees and ratings, then log in to book.', 'Search by name, clinic or speciality…'],
   coaches: ['Coaches & trainers', 'Find a coach by sport and city. Log in to see open slots and book a session.', 'Search by name or speciality…'],
@@ -40,6 +43,30 @@ const Cta = ({ title, onPress, label }) => (
 );
 const Rating = ({ r, n }) => (n ? <T size={12} weight="700" color={c.ink}>★ {Number(r).toFixed(1)} <T size={11} color={c.mute}>({n})</T></T> : <T size={12} weight="700" color={c.mute}>New</T>);
 const Verified = ({ on }) => (on ? <T size={11} weight="800" color={c.lime}>✔ VERIFIED</T> : null);
+
+/** Public events: live now, upcoming and completed. Opening one shows the public page (live games, table, bracket) without signing in. */
+function Events({ q, sport }) {
+  const [phase, setPhase] = useState(null);
+  const res = useLoad(async () => (await api.get('/events/search', { limit: 12, sort: 'soonest', ...(phase ? { phase } : {}), ...(q ? { q } : {}), ...(sport ? { sport } : {}) })).items, [phase, q, sport]);
+  const open = (id) => { if (Platform.OS === 'web' && typeof window !== 'undefined') window.location.assign(`/?event=${id}`); else Linking.openURL(absolute(`/api/v1/share/events/${id}`)); };
+  return (
+    <View style={{ gap: 14 }}>
+      <Chips value={phase} onChange={setPhase} options={[[null, 'All'], ['live', '🔴 Live now'], ['upcoming', 'Upcoming'], ['completed', 'Completed']]} />
+      <Grid load={res} empty={['🏆', q || sport || phase ? 'No events match' : 'No public events yet', 'Organisers publish events here. Join free to host your own or to get alerts for the ones you follow.']} ask={() => {}}
+        render={(e) => (
+          <Tile key={e.id} tone={e.live_now ? '#F43F5E' : undefined}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <View style={{ width: 42, height: 42, borderRadius: 14, backgroundColor: c.pinkSoft, alignItems: 'center', justifyContent: 'center' }}><T size={22}>{e.banner_emoji}</T></View>
+              <View style={{ flex: 1 }}><T weight="800" size={16} numberOfLines={2}>{e.name}</T><T size={12} color={c.mute} numberOfLines={1}>{e.sport_emoji} {e.sport}{e.city ? ` · ${e.city}` : ''}</T></View>
+              {e.live_now ? <T size={11} weight="900" color={c.red}>● LIVE</T> : null}
+            </View>
+            <Facts items={[shortDay(e.starts_on), e.entrants ? `${e.entrants} in` : null, e.registration_open ? 'Registration open' : null, e.entry_fee_cents === 0 ? 'Free entry' : null]} />
+            <Cta title={e.live_now ? 'Watch live' : 'Open event page'} onPress={() => open(e.id)} label={`Open ${e.name}`} />
+          </Tile>
+        )} />
+    </View>
+  );
+}
 
 function Sponsors({ q, sport, ask }) {
   const calls = useLoad(() => api.get('/funding-opportunities', { limit: 12, ...(q ? { q } : {}), ...(sport ? { sport } : {}) }), [q, sport]);
@@ -170,12 +197,12 @@ export function Discover({ tab, onTab, sport, onAsk }) {
   useEffect(() => { const t = setTimeout(() => setQ(typed), 300); return () => clearTimeout(t); }, [typed]);
   const ask = (action, title) => { const i = { action, title }; setIntent(i); onAsk(i); };
   const [head, sub, ph] = COPY[tab];
-  const Body = { sponsors: Sponsors, health: Health, coaches: Coaches, study: Study }[tab];
+  const Body = { events: Events, sponsors: Sponsors, health: Health, coaches: Coaches, study: Study }[tab];
   return (
     <View style={{ gap: 16 }}>
       <View>
         <T weight="800" size={28} style={{ letterSpacing: -1 }}>Find support for your game</T>
-        <T color={c.mute} size={15} style={{ marginTop: 4 }}>Sponsors, physios and doctors, coaches and study options — browse freely, log in only when you want to apply or book.</T>
+        <T color={c.mute} size={15} style={{ marginTop: 4 }}>Live events, sponsors, physios and doctors, coaches and study options — browse freely, log in only when you want to apply or book.</T>
       </View>
       <HScroll gap={8}>
         {DISCOVER_TABS.map((t) => (

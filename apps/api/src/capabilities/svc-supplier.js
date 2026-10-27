@@ -6,7 +6,7 @@ import { one, many, tx } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { isAdmin, hasRole } from '../helpers.js';
 import { orgRole } from '../org-access.js';
-import { assertCurrency } from '../svc/money.js';
+import { assertCurrency, serviceCurrencies } from '../svc/money.js';
 import { CATEGORY, catalogue, validateSpec, assertUnit, UNITS } from '../svc/catalogue.js';
 import { supplierAccess, myProfileIds, log } from '../svc/access.js';
 import { audit } from '../helpers.js';
@@ -23,6 +23,12 @@ export const credentialState = (c, today = new Date()) => {
   return d < 0 ? 'expired' : d <= 30 ? 'expiring' : 'valid';
 };
 const badge = { self_declared: 'Self-declared — not checked by Gotmygame', document_seen: 'Document uploaded and seen by Gotmygame', verified_by_admin: 'Verified by a Gotmygame administrator' };
+
+cap({
+  name: 'list_service_currencies', method: 'GET', path: '/service-currencies', tag: TAG, auth: 'public',
+  summary: 'Currencies usable for service procurement: the platform list plus three-decimal currencies (KWD, BHD, OMR, JOD, TND), with their minor-unit exponent. Three-decimal currencies cannot be paid by card online; record a bank or cash payment.',
+  handler: () => serviceCurrencies(),
+});
 
 cap({
   name: 'list_service_catalogue', method: 'GET', path: '/service-catalogue', tag: TAG, auth: 'public',
