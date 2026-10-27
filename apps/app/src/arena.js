@@ -53,7 +53,7 @@ export function AScreen({ children, scroll = true, refreshControl, padBottom }) 
 export function ACard({ children, onPress, tone, pad = 16, style }) {
   const edge = tone ?? A.line;
   const inner = <View style={[{ backgroundColor: A.panel, borderRadius: 22, borderWidth: 1, borderColor: edge, padding: pad }, tone ? glow(tone, 0.18, 14) : null, style]}>{children}</View>;
-  return onPress ? <Pressable onPress={onPress} style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.985 : 1 }] })}>{inner}</Pressable> : inner;
+  return onPress ? <Pressable onPress={onPress} accessibilityRole="button" style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.985 : 1 }] })}>{inner}</Pressable> : inner;
 }
 
 /** Big gradient banner: kicker, huge title, optional emoji sticker and extra content. */
@@ -79,7 +79,7 @@ export function ABtn({ title, onPress, tone = 'hero', small, disabled, loading, 
   const ghost = tone === 'ghost';
   const ink = INK_ON[tone] ?? '#fff';
   const inner = (
-    <View style={{ paddingVertical: small ? 10 : 15, paddingHorizontal: small ? 18 : 26, minHeight: small ? 40 : 52, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8 }}>
+    <View style={{ paddingVertical: small ? 10 : 15, paddingHorizontal: small ? 18 : 26, minHeight: small ? 44 : 52, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8 }}>
       {loading ? <ActivityIndicator color={ghost ? A.ink : ink} /> : <AT weight="800" size={small ? 13 : 15} color={ghost ? A.ink : ink}>{title}</AT>}
     </View>
   );
@@ -93,7 +93,7 @@ export function ABtn({ title, onPress, tone = 'hero', small, disabled, loading, 
 }
 
 export const AChip = ({ label, active, onPress, color = A.violet, badge, style }) => (
-  <Pressable onPress={onPress} accessibilityRole="button" accessibilityState={{ selected: !!active }} style={({ pressed }) => [{ opacity: pressed ? 0.8 : 1, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 999, paddingVertical: 9, paddingHorizontal: 15, minHeight: 40, borderWidth: 1.5, borderColor: active ? color : A.line, backgroundColor: active ? `${color}33` : A.panel }, style]}>
+  <Pressable onPress={onPress} accessibilityRole="button" accessibilityState={{ selected: !!active }} style={({ pressed }) => [{ opacity: pressed ? 0.8 : 1, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 999, paddingVertical: 9, paddingHorizontal: 15, minHeight: 44, borderWidth: 1.5, borderColor: active ? color : A.line, backgroundColor: active ? `${color}33` : A.panel }, style]}>
     <AT size={13} weight="800" color={active ? '#fff' : A.mute}>{label}</AT>
     {badge ? <View style={{ minWidth: 18, height: 18, borderRadius: 9, backgroundColor: A.magenta, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 }}><AT size={10} weight="900" color="#fff">{badge}</AT></View> : null}
   </Pressable>
@@ -108,8 +108,8 @@ export function ATabs({ tabs, value, onChange }) {
           <Pressable key={t.key} onPress={() => onChange(t.key)} accessibilityRole="tab" accessibilityState={{ selected: on }}>
             <View style={[{ borderRadius: 999, overflow: 'hidden' }, on ? glow(A.violet, 0.45, 12) : null]}>
               {on
-                ? <LinearGradient colors={AG.hero} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={{ paddingVertical: 10, paddingHorizontal: 16, flexDirection: 'row', gap: 6, alignItems: 'center' }}><AT size={13} weight="800" color="#fff">{t.icon ? `${t.icon} ` : ''}{t.label}</AT></LinearGradient>
-                : <View style={{ paddingVertical: 10, paddingHorizontal: 16, flexDirection: 'row', gap: 6, alignItems: 'center', backgroundColor: A.panel, borderWidth: 1, borderColor: A.line, borderRadius: 999 }}><AT size={13} weight="700" color={A.mute}>{t.icon ? `${t.icon} ` : ''}{t.label}</AT>{t.badge ? <View style={{ minWidth: 18, height: 18, borderRadius: 9, backgroundColor: A.magenta, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 }}><AT size={10} weight="900" color="#fff">{t.badge}</AT></View> : null}</View>}
+                ? <LinearGradient colors={AG.hero} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={{ paddingVertical: 10, paddingHorizontal: 16, minHeight: 44, flexDirection: 'row', gap: 6, alignItems: 'center' }}><AT size={13} weight="800" color="#fff">{t.icon ? `${t.icon} ` : ''}{t.label}</AT></LinearGradient>
+                : <View style={{ paddingVertical: 10, paddingHorizontal: 16, minHeight: 44, flexDirection: 'row', gap: 6, alignItems: 'center', backgroundColor: A.panel, borderWidth: 1, borderColor: A.line, borderRadius: 999 }}><AT size={13} weight="700" color={A.mute}>{t.icon ? `${t.icon} ` : ''}{t.label}</AT>{t.badge ? <View style={{ minWidth: 18, height: 18, borderRadius: 9, backgroundColor: A.magenta, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 }}><AT size={10} weight="900" color="#fff">{t.badge}</AT></View> : null}</View>}
             </View>
           </Pressable>
         );

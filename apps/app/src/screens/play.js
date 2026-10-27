@@ -105,6 +105,7 @@ export function Event({ id }) {
   const [panel, setPanel] = useState(false);
   const ev = useLoad(() => api.get(`/events/${id}`), [id]);
   const fx = useLoad(() => api.get('/fixtures', { event_id: id, limit: 100 }), [id]);
+  const races = useLoad(() => api.get(`/events/${id}/races`), [id]);
   const myTeams = useLoad(() => (user ? api.get('/teams', { mine: true, limit: 50 }) : []), [id]);
   const entries = useLoad(async () => (ev.data && ev.data.organizer_id === user.id ? api.get(`/events/${id}/entries`) : []), [ev.data?.organizer_id]);
   if (ev.loading && !ev.data) return <Screen><Loading /></Screen>;
@@ -130,6 +131,7 @@ export function Event({ id }) {
       {e.description ? <T style={{ marginTop: 12 }}>{e.description}</T> : null}
       {isOrg || e.is_assessor ? <Btn title={isOrg ? '⚡ Event console' : '🎽 Trial desk'} color={c.violet} onPress={() => push('EventCommand', { id })} style={{ marginTop: 14 }} /> : null}
       {!isOrg && e.entrants.some((x) => (myTeams.data ?? []).some((t) => t.id === x.team_id)) ? <Btn title="🪪 My registration" color={c.violet} onPress={() => push('EventCommand', { id, tab: 'registration' })} style={{ marginTop: 14 }} /> : null}
+      {(races.data ?? []).filter((r) => r.public).map((r) => <Btn key={r.id} title={`🏃 ${r.name}: live results`} color={c.violet} onPress={() => push('RaceLive', { id: r.id })} style={{ marginTop: 14 }} />)}
       {e.sport === 'Multi-sport games' ? <Btn title={isOrg ? 'Run the games programme' : 'Open the games programme'} color={c.violet} onPress={() => push('Games', { id })} style={{ marginTop: 14 }} /> : null}
 
       {e.status === 'open' && !isOrg && !e.entrants.some((x) => x.user_id === user.id || eligible.some((t) => t.id === x.team_id)) ? <Btn title="Join this event" onPress={() => setJoining(true)} style={{ marginTop: 14 }} /> : null}
