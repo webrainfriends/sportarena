@@ -42,7 +42,7 @@ export function AScreen({ children, scroll = true, refreshControl, padBottom }) 
     <View style={{ paddingHorizontal: L.gutter, paddingTop: 8, paddingBottom: padBottom ?? L.bottomPad, maxWidth: L.contentMax, width: '100%', alignSelf: 'center', gap: 14 }}>{children}</View>
   );
   return (
-    <View style={{ flex: 1, backgroundColor: A.bg }}>
+    <View style={{ flex: 1, backgroundColor: A.bg, overflow: 'hidden' }}>
       <View pointerEvents="none" style={{ position: 'absolute', top: -120, right: -80, width: 320, height: 320, borderRadius: 160, backgroundColor: A.violet, opacity: 0.22 }} />
       <View pointerEvents="none" style={{ position: 'absolute', top: 260, left: -140, width: 300, height: 300, borderRadius: 150, backgroundColor: A.magenta, opacity: 0.12 }} />
       {scroll ? <ScrollView refreshControl={refreshControl} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ flexGrow: 1 }}>{body}</ScrollView> : body}

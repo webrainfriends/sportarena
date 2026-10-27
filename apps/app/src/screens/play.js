@@ -10,7 +10,8 @@ import { useSession } from '../session';
 import { useNav } from '../nav';
 import { Field, Avatar, Btn, Bubble, Card, Chip, Empty, ErrorBox, GradCard, H1, H2, Loading, Row, Screen, Seg, Section, StatPill, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
-import { FixtureCard, Reviews, StandingsTable, TrophyShelf, Stars } from '../blocks';
+import { Reviews, TrophyShelf, Stars } from '../blocks';
+import { EventFacts, EventHeader, SpectatorBody, Sponsors } from './spectate';
 import { SportSelect } from '../sportpicker';
 import { CredentialList } from './pathways';
 import { c, grad, day, accentFor, money, withUnit } from '../theme';
@@ -53,16 +54,18 @@ export function Explore() {
   const [dq, setDq] = useState('');
   const [flags, setFlags] = useState({});
   const [sort, setSort] = useState('soonest');
+  const [phase, setPhase] = useState(null);   // live | upcoming | completed
+  const [level, setLevel] = useState(null);
   const [size, setSize] = useState(20);
   useEffect(() => { const t = setTimeout(() => setDq(q.trim()), 350); return () => clearTimeout(t); }, [q]);
-  useEffect(() => setSize(20), [tab, sport, dq, flags, sort]);
+  useEffect(() => setSize(20), [tab, sport, dq, flags, sort, phase, level]);
   const toggle = (k) => setFlags((f) => ({ ...f, [k]: !f[k] }));
   const list = useLoad(() => {
     const p = { sport: sport ?? undefined, limit: size };
-    if (tab === 'events') return api.get('/events/search', { ...p, q: dq || undefined, sort, ...Object.fromEntries(Object.entries(flags).filter(([, v]) => v)) });
+    if (tab === 'events') return api.get('/events/search', { ...p, q: dq || undefined, sort, phase: phase ?? undefined, level: level ?? undefined, ...Object.fromEntries(Object.entries(flags).filter(([, v]) => v)) });
     if (tab === 'teams') return api.get('/teams', { ...p, q: dq || undefined });
     return api.get('/people', { ...p, sport: undefined, q: dq || undefined });
-  }, [tab, sport, dq, flags, sort, size]);
+  }, [tab, sport, dq, flags, sort, size, phase, level]);
   const raw = tab === 'events' ? list.data?.items : list.data;
   const rows = Array.isArray(raw) ? raw : [];
   const total = tab === 'events' ? list.data?.total ?? rows.length : rows.length;
@@ -76,6 +79,16 @@ export function Explore() {
 
       <View style={{ marginTop: 8 }}><Field value={q} onChangeText={setQ} placeholder={tab === 'events' ? 'Search events, cities, sports' : tab === 'teams' ? 'Search teams' : 'Search people'} /></View>
       {tab === 'events' ? (
+        <View style={{ gap: 8, marginTop: 8 }}>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }} accessibilityRole="toolbar">
+            {[['live', '🔴 Live now'], ['upcoming', 'Upcoming'], ['completed', 'Completed']].map(([k, label]) => <Chip key={k} label={label} active={phase === k} onPress={() => setPhase((v) => (v === k ? null : k))} />)}
+          </View>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }} accessibilityRole="toolbar">
+            {[['beginner', 'Beginner'], ['amateur', 'Amateur'], ['semi_pro', 'Semi-pro'], ['pro', 'Pro']].map(([k, label]) => <Chip key={k} label={label} active={level === k} onPress={() => setLevel((v) => (v === k ? null : k))} />)}
+          </View>
+        </View>
+      ) : null}
+      {tab === 'events' ? (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }} accessibilityRole="toolbar">
           {[['open_for_entry', 'Open to join'], ['free', 'Free entry'], ['seeking_sponsors', 'Needs sponsors'], ['verified', 'Verified']].map(([k, label]) => <Chip key={k} label={label} active={!!flags[k]} onPress={() => toggle(k)} />)}
           <Chip label={sort === 'soonest' ? 'Sort: soonest' : sort === 'fee_low' ? 'Sort: lowest fee' : 'Sort: newest'} onPress={() => setSort((v) => (v === 'soonest' ? 'fee_low' : v === 'fee_low' ? 'newest' : 'soonest'))} />
@@ -85,7 +98,7 @@ export function Explore() {
       <View style={{ gap: 12, marginTop: 14 }}>
         {list.loading && !list.data ? <Loading /> : list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : !rows.length ? (dq || Object.values(flags).some(Boolean) || sport ? <Empty title="No matches" sub="Try fewer filters or a different search." /> : <Empty title="Nothing here yet" sub="Be the one who starts it." />) :
           rows.map((x, i) => {
-            if (tab === 'events') return <Row key={x.id} onPress={() => push('Event', { id: x.id })} color={[c.pinkSoft, c.violetSoft, c.limeSoft, c.sunSoft][i % 4]} left={<Bubble emoji={x.banner_emoji} color={c.paper} />} title={x.name} sub={`${x.sport_emoji} ${x.sport} · ${x.entrants} in${x.spots_left != null ? ` · ${x.spots_left} spots left` : ''}${x.city ? ' · ' + x.city : ''}${x.starts_on ? ' · ' + day(x.starts_on) : ''}${x.entry_fee_cents ? ' · ' + money(x.entry_fee_cents) : ' · Free'}`} right={<Tag label={x.registration_open ? 'open' : x.status === 'open' ? 'full / closed' : x.status} color={x.registration_open ? c.lime : c.sun} />} />;
+            if (tab === 'events') return <Row key={x.id} onPress={() => push('Event', { id: x.id })} color={[c.pinkSoft, c.violetSoft, c.limeSoft, c.sunSoft][i % 4]} left={<Bubble emoji={x.banner_emoji} color={c.paper} />} title={x.name} sub={`${x.live_now ? '🔴 LIVE · ' : ''}${x.sport_emoji} ${x.sport} · ${x.entrants} in${x.spots_left != null ? ` · ${x.spots_left} spots left` : ''}${x.city ? ' · ' + x.city : ''}${x.starts_on ? ' · ' + day(x.starts_on) : ''}${x.entry_fee_cents ? ' · ' + money(x.entry_fee_cents) : ' · Free'}`} right={<Tag label={x.registration_open ? 'open' : x.status === 'open' ? 'full / closed' : x.status} color={x.registration_open ? c.lime : c.sun} />} />;
             if (tab === 'teams') return <Row key={x.id} onPress={() => push('Team', { id: x.id })} left={<Bubble emoji={x.emoji} color={x.color} />} title={x.name} sub={`${x.sport_emoji} ${x.sport} · ${x.members} members${x.city ? ' · ' + x.city : ''}`} />;
             return <Row key={x.id} onPress={() => push('Person', { id: x.id })} left={<Avatar user={x} />} title={x.display_name} sub={`@${x.handle} · ${(x.roles ?? []).join(', ')}`} />;
           })}
@@ -96,26 +109,28 @@ export function Explore() {
   );
 }
 
+/** The one event page, for everyone: the public tournament home (live games, table, bracket, awards, media, partners, follow and share) with the
+ *  participant and organiser actions around it. It works signed out too (see PublicShell); running the event is the Event console. */
 export function Event({ id }) {
   const { user, has, toast } = useSession();
   const { push } = useNav();
-  const [tab, setTab] = useState('table');
-  const [score, setScore] = useState(null);
   const [joining, setJoining] = useState(false);
   const [panel, setPanel] = useState(false);
+  const pub = useLoad(() => api.get(`/public/events/${id}`), [id]);
   const ev = useLoad(() => api.get(`/events/${id}`), [id]);
-  const fx = useLoad(() => api.get('/fixtures', { event_id: id, limit: 100 }), [id]);
-  const races = useLoad(() => api.get(`/events/${id}/races`), [id]);
-  const myTeams = useLoad(() => (user ? api.get('/teams', { mine: true, limit: 50 }) : []), [id]);
-  const entries = useLoad(async () => (ev.data && ev.data.organizer_id === user.id ? api.get(`/events/${id}/entries`) : []), [ev.data?.organizer_id]);
-  const badges = useLoad(() => (user ? api.get('/me/accreditations', { limit: 100 }).catch(() => []) : Promise.resolve([])), [id]);
-  if (ev.loading && !ev.data) return <Screen><Loading /></Screen>;
+  const myTeams = useLoad(() => (user ? api.get('/teams', { mine: true, limit: 50 }) : Promise.resolve([])), [id, user?.id]);
+  const entries = useLoad(async () => (ev.data && user && ev.data.organizer_id === user.id ? api.get(`/events/${id}/entries`) : []), [ev.data?.organizer_id, user?.id]);
+  const badges = useLoad(() => (user ? api.get('/me/accreditations', { limit: 100 }).catch(() => []) : Promise.resolve([])), [id, user?.id]);
+  if ((pub.loading && !pub.data) || (ev.loading && !ev.data)) return <Screen><Loading /></Screen>;
+  if (pub.error) return <Screen><ErrorBox error={pub.error} onRetry={pub.reload} /></Screen>;
   if (ev.error) return <Screen><ErrorBox error={ev.error} onRetry={ev.reload} /></Screen>;
-  const e = ev.data;
-  const isOrg = e.organizer_id === user.id || has('admin');
-  const reloadAll = () => { ev.reload(); fx.reload(); entries.reload(); };
+  const p = pub.data, e = ev.data;
+  const isOrg = !!user && (e.organizer_id === user.id || has('admin'));
+  const reloadAll = () => { pub.reload(); ev.reload(); entries.reload(); };
   const act = (fn, msg) => async () => { try { await fn(); toast(msg); reloadAll(); } catch (x) { toast('' + x.message); } };
   const eligible = (myTeams.data ?? []).filter((t) => t.sport === e.sport);
+  const mine = !!user && e.entrants.some((x) => x.user_id === user.id || eligible.some((t) => t.id === x.team_id));
+  const nav = { team: (tid) => push('Team', { id: tid }), race: (rid) => push('RaceLive', { id: rid }) };
 
   return (
     <Screen>
@@ -124,19 +139,21 @@ export function Event({ id }) {
         <H1 color="#fff" style={{ fontSize: 30 }}>{e.name}</H1>
         <T color="#fff" weight="800">{e.sport_emoji} {e.sport} · {e.kind}{e.starts_on ? ` · ${day(e.starts_on)}` : ''}{e.venue ? ` · 📍${e.venue.name}` : ''}</T>
         <View style={{ flexDirection: 'row', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-          <Tag label={e.status} color={c.lime} /><Tag label={`${e.entrants.length} in`} color={c.sun} />{e.entry_fee_cents ? <Tag label={`Entry ${money(e.entry_fee_cents)}`} color={c.cyan} /> : null}
+          <Tag label={`${e.entrants.length} in`} color={c.sun} />{e.entry_fee_cents ? <Tag label={`Entry ${money(e.entry_fee_cents)}`} color={c.cyan} /> : null}
           {e.rating?.n ? <Tag label={`⭐ ${e.rating.avg}`} color={c.pinkSoft} /> : null}
         </View>
       </GradCard>
+      <View style={{ marginTop: 12 }}><EventHeader p={p} mine={p.follow.mine} onFollowChange={pub.reload} /></View>
+      <EventFacts p={p} />
       <SanctionBadge id={id} />
       {e.description ? <T style={{ marginTop: 12 }}>{e.description}</T> : null}
       {isOrg || e.is_assessor ? <Btn title={isOrg ? '⚡ Event console' : '🎽 Trial desk'} color={c.violet} onPress={() => push('EventCommand', { id })} style={{ marginTop: 14 }} /> : null}
-      {!isOrg && e.entrants.some((x) => (myTeams.data ?? []).some((t) => t.id === x.team_id)) ? <Btn title="🪪 My registration" color={c.violet} onPress={() => push('EventCommand', { id, tab: 'registration' })} style={{ marginTop: 14 }} /> : null}
+      {isOrg ? <Btn title="📣 Public page: visibility, sponsors, sharing" color={c.paper} ink={c.ink} onPress={() => push('EventCommand', { id, tab: 'public' })} style={{ marginTop: 10 }} /> : null}
+      {mine ? <Btn title="🪪 My registration" color={c.violet} onPress={() => push('EventCommand', { id, tab: 'registration' })} style={{ marginTop: 14 }} /> : null}
       {!isOrg && (badges.data ?? []).some((b) => b.event_id === id && b.status !== 'draft') ? <Btn title="🎫 My accreditation" color={c.violet} onPress={() => push('EventCommand', { id, tab: 'accreditation' })} style={{ marginTop: 14 }} /> : null}
-      {(races.data ?? []).filter((r) => r.public).map((r) => <Btn key={r.id} title={`🏃 ${r.name}: live results`} color={c.violet} onPress={() => push('RaceLive', { id: r.id })} style={{ marginTop: 14 }} />)}
       {e.sport === 'Multi-sport games' ? <Btn title={isOrg ? 'Run the games programme' : 'Open the games programme'} color={c.violet} onPress={() => push('Games', { id })} style={{ marginTop: 14 }} /> : null}
-
-      {e.status === 'open' && !isOrg && !e.entrants.some((x) => x.user_id === user.id || eligible.some((t) => t.id === x.team_id)) ? <Btn title="Join this event" onPress={() => setJoining(true)} style={{ marginTop: 14 }} /> : null}
+      {user && e.status === 'open' && !isOrg && !mine ? <Btn title="Join this event" onPress={() => setJoining(true)} style={{ marginTop: 14 }} /> : null}
+      {!user && p.registration.open ? <T size={13} color={c.mute} style={{ marginTop: 14 }}>Sign in to register for this event.</T> : null}
 
       {isOrg ? (
         <Card color={c.limeSoft} style={{ marginTop: 14 }}>
@@ -149,36 +166,20 @@ export function Event({ id }) {
             </View>
           ))}
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
-            {!fx.data?.length && e.entrants.filter((x) => x.team_id).length > 1 ? <Btn small title="Auto-schedule" color={c.violet} onPress={act(() => api.post(`/events/${id}/schedule/round-robin`, { first_round_at: new Date(Date.now() + 2 * 864e5).toISOString() }), 'Round-robin created')} /> : null}
             {e.status === 'open' ? <Btn small title="Start" color={c.cyan} ink={c.ink} onPress={act(() => api.patch(`/events/${id}`, { status: 'ongoing' }), 'Event is underway')} /> : null}
             <Btn small title="Insurance & documents" color={c.paper} ink={c.ink} onPress={() => setPanel((x) => !x)} />
             {e.status !== 'completed' ? <Btn small title="Finish & award" color={c.orange} onPress={act(() => api.post(`/events/${id}/complete`), 'Champions crowned')} /> : null}
           </View>
         </Card>
       ) : null}
-
       {isOrg && panel ? <View style={{ marginTop: 14 }}><SubjectPanel type="event" id={id} name={e.name} /></View> : null}
-      <View style={{ marginTop: 14 }}>
-        <Seg options={[{ value: 'table', label: 'Table', emoji: '📊' }, { value: 'games', label: 'Games', emoji: '⚽' }, { value: 'crew', label: 'Crew', emoji: '🤝' }, { value: 'reviews', label: 'Reviews', emoji: '💬' }]} value={tab} onChange={setTab} color={c.pink} />
-      </View>
-      <View style={{ gap: 12, marginTop: 8 }}>
-        {tab === 'table' && <StandingsTable rows={e.standings} />}
-        {tab === 'games' && (fx.data?.length ? fx.data.map((f) => <FixtureCard key={f.id} f={f} onScore={isOrg || f.referee_id === user.id ? setScore : null} />) : <Empty emoji="🗓️" title="No games scheduled" />)}
-        {tab === 'crew' && <>
-          <H2>Teams & players</H2>
-          {e.entrants.map((x) => <Row key={x.entry_id} onPress={() => (x.team_id ? push('Team', { id: x.team_id }) : push('Person', { id: x.user_id }))} left={<Bubble emoji={x.emoji ?? '🏃'} color={x.color ?? c.cyan} />} title={x.name ?? x.display_name} />)}
-          <H2 style={{ marginTop: 8 }}>Sponsors</H2>
-          {e.sponsors.length ? e.sponsors.map((s) => <Row key={s.id} left={<Bubble emoji={s.emoji} color={c.sun} />} title={s.name} sub={s.in_kind ?? 'Title partner'} />) : <Empty emoji="💎" title="No sponsors yet" />}
-        </>}
-        {tab === 'reviews' && <Reviews type="event" id={id} />}
-      </View>
+
+      <SpectatorBody id={id} p={p} openGame={(gid) => push('LiveCentre', { id: gid })} goTeam={nav} extra={[{ value: 'reviews', label: '💬 Reviews', node: <Reviews type="event" id={id} canWrite={!!user && !isOrg} /> }]} />
+      <Sponsors list={p.sponsors.placements.filter((x) => x.slot === 'fixture' || x.slot === 'scorecard')} title="Event partners" />
 
       <FormSheet visible={joining} onClose={() => setJoining(false)} title="Join as…" submitLabel="Register"
         fields={[{ key: 'team_id', label: 'Register', type: 'choice', options: [...eligible.map((t) => ({ value: t.id, label: `${t.emoji} ${t.name}` })), { value: 'solo', label: 'Just me' }] }]}
         onSubmit={async (v) => { await api.post(`/events/${id}/entries`, v.team_id === 'solo' ? {} : { team_id: v.team_id }); reloadAll(); return 'Registered — waiting for the organizer'; }} />
-      <FormSheet visible={!!score} onClose={() => setScore(null)} title={score ? `${score.home_name} vs ${score.away_name}` : ''} submitLabel="Save result"
-        fields={[{ key: 'home_score', label: score?.home_name ?? 'Home', type: 'number' }, { key: 'away_score', label: score?.away_name ?? 'Away', type: 'number' }]}
-        onSubmit={async (v) => { await api.post(`/fixtures/${score.id}/result`, v); reloadAll(); return 'Result saved'; }} />
     </Screen>
   );
 }

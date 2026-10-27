@@ -12,3 +12,4 @@ export const forbidden = (m = 'You are not allowed to do that') => new AppError(
 export const notFound = (what = 'Resource') => new AppError(404, 'not_found', `${what} not found`);
 export const conflict = (m, d) => new AppError(409, 'conflict', m, d);
 export const unprocessable = (m, d) => new AppError(422, 'unprocessable', m, d);
+export const tooMany = (m = 'Too many requests', d) => new AppError(429, 'too_many_requests', m, d);
