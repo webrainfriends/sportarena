@@ -80,11 +80,25 @@ export async function buyerDashboard(buyerId, i = {}) {
 }
 
 /** Rows for CSV / PDF export, bounded. */
-export async function exportRows(kind, scope, i = {}) {
-  const [from, to] = win(i); const LIMIT = 5000;
+export const SYNC_LIMIT = 5000, EXPORT_LIMIT = 100000;
+export async function exportRows(kind, scope, i = {}, LIMIT = SYNC_LIMIT) {
+  const [from, to] = win(i);
   if (kind === 'orders') return rows(`SELECT o.number, o.status, o.fulfilment, o.billing, o.settlement, o.currency, o.net_minor, o.tax_minor, o.gross_minor, b.name AS buyer, coalesce(p.trading_name, p.legal_name) AS supplier, r.scope->>'category' AS category, o.created_at::date AS created_on FROM svc_orders o JOIN svc_buyers b ON b.id=o.buyer_id JOIN svc_profiles p ON p.id=o.profile_id LEFT JOIN svc_rfqs r ON r.id=o.rfq_id WHERE ${scope.side === 'supplier' ? 'o.profile_id' : 'o.buyer_id'}=$1 AND o.created_at >= $2::date AND o.created_at < $3::date + 1 AND ($4::text IS NULL OR o.currency=$4) ORDER BY o.created_at, o.id LIMIT ${LIMIT}`, [scope.id, from, to, i.currency ?? null]);
   if (kind === 'invoices') return rows(`SELECT s.supplier_number AS number, s.doc_type, s.kind, s.status, s.currency, s.net_minor, s.tax_minor, s.gross_minor, s.withholding_minor, s.payable_minor, s.credited_minor, s.paid_minor, s.pay_status, s.match_status, s.due_on, s.issued_at::date AS issued_on, o.number AS order_number FROM svc_invoices s JOIN svc_orders o ON o.id=s.order_id WHERE ${scope.side === 'supplier' ? 's.profile_id' : 's.buyer_id'}=$1 AND s.status='issued' AND s.issued_at >= $2::date AND s.issued_at < $3::date + 1 AND ($4::text IS NULL OR s.currency=$4) ORDER BY s.issued_at, s.id LIMIT ${LIMIT}`, [scope.id, from, to, i.currency ?? null]);
   if (kind === 'payments') return rows(`SELECT p.paid_on, s.supplier_number AS invoice, p.source, p.currency, p.amount_minor, p.reference, p.status, p.payout_state FROM svc_payments p JOIN svc_invoices s ON s.id=p.svc_invoice_id WHERE ${scope.side === 'supplier' ? 's.profile_id' : 's.buyer_id'}=$1 AND p.paid_on BETWEEN $2::date AND $3::date AND ($4::text IS NULL OR p.currency=$4) ORDER BY p.paid_on, p.id LIMIT ${LIMIT}`, [scope.id, from, to, i.currency ?? null]);
   if (kind === 'tax') return rows(`SELECT s.currency, coalesce(l->>'tax_code','(none)') AS tax_code, s.doc_type, count(DISTINCT s.id)::int AS documents, sum((l->>'net_minor')::bigint)::bigint AS net_minor, sum((l->>'tax_minor')::bigint)::bigint AS tax_minor FROM svc_invoices s, jsonb_array_elements(s.lines) l WHERE ${scope.side === 'supplier' ? 's.profile_id' : 's.buyer_id'}=$1 AND s.status='issued' AND s.issued_at >= $2::date AND s.issued_at < $3::date + 1 AND ($4::text IS NULL OR s.currency=$4) GROUP BY 1, 2, 3 ORDER BY 1, 2, 3`, [scope.id, from, to, i.currency ?? null]);
   return [];
+}
+
+/** A dashboard flattened to metric / value rows (for CSV and XLSX). */
+export function flattenReport(report) {
+  const rows = [];
+  const walk = (prefix, v) => {
+    if (v === null || v === undefined) rows.push({ metric: prefix, value: '' });
+    else if (Array.isArray(v)) v.forEach((x, n) => walk(`${prefix}[${n}]`, x));
+    else if (typeof v === 'object') for (const [k, x] of Object.entries(v)) walk(prefix ? `${prefix}.${k}` : k, x);
+    else rows.push({ metric: prefix, value: v });
+  };
+  walk('', report);
+  return rows.slice(0, EXPORT_LIMIT);
 }

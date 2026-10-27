@@ -7,6 +7,7 @@ import { one, many, tx } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { supplierAccess, buyerAccess, log } from '../svc/access.js';
 import { loadOrder, activeLines, q1 } from '../svc/orders.js';
+import { serviceExponent } from '../svc/money.js';
 import { priceInvoice, refreshOrderMoney, recomputeInvoice, addPayment, writeCanonical, docNumber } from '../svc/finance.js';
 import { approvalNeeded, handlers } from '../svc/approvals.js';
 import { unmirrorPayment } from '../svc/budget.js';
@@ -203,7 +204,7 @@ cap({
       const payments = (await c.query("SELECT id, source, amount_minor, paid_on, reference, status, payout_state, recorded_by, created_at, voided_at, void_reason FROM svc_payments WHERE svc_invoice_id=$1 ORDER BY created_at", [row.id])).rows;
       const o = await q1(c, 'SELECT number, event_id FROM svc_orders WHERE id=$1', [row.order_id]);
       const { idempotency_key, ...rest } = row;
-      return { ...rest, label: row.doc_type === 'proforma' ? 'PRO FORMA — not a tax invoice' : null, order_number: o.number, outstanding_minor: row.doc_type === 'invoice' ? Number(row.payable_minor) - Number(row.credited_minor) - Number(row.paid_minor) : 0, payments, can_pay_online: enabledProviders().length > 0 && row.doc_type === 'invoice' && row.status === 'issued' && ['matched', 'exception_approved'].includes(row.match_status) && row.pay_status !== 'paid', side: sup ? 'supplier' : 'buyer' };
+      return { ...rest, label: row.doc_type === 'proforma' ? 'PRO FORMA — not a tax invoice' : null, order_number: o.number, outstanding_minor: row.doc_type === 'invoice' ? Number(row.payable_minor) - Number(row.credited_minor) - Number(row.paid_minor) : 0, payments, can_pay_online: enabledProviders().length > 0 && serviceExponent(row.currency) !== 3 && row.doc_type === 'invoice' && row.status === 'issued' && ['matched', 'exception_approved'].includes(row.match_status) && row.pay_status !== 'paid', side: sup ? 'supplier' : 'buyer' };
     });
   },
 });
@@ -341,6 +342,7 @@ cap({
       if (!row || row.status !== 'issued' || row.doc_type !== 'invoice') throw notFound('Invoice');
       await buyerAccess(user, row.buyer_id, ['finance'], c);
       if (!['matched', 'exception_approved'].includes(row.match_status)) throw conflict('This invoice does not match its order and acceptance yet');
+      if (serviceExponent(row.currency) === 3) throw conflict('Card providers do not take three-decimal currencies; record a bank or cash payment instead');
       return q1(c, 'UPDATE svc_invoices SET payer_id=$2 WHERE id=$1 RETURNING *', [row.id, user.id]);
     });
     return startCheckout(user, { purpose_type: 'service_invoice', purpose_id: inv.id, provider: i.provider, return_url: i.return_url });

@@ -149,7 +149,7 @@ export function FormSheet({ visible, onClose, title, fields, initial = {}, submi
       case 'date': return <DateField label={f.label} value={v[f.key]} onChange={(x) => set(f.key, x)} optional={f.optional} min={f.min} max={f.max} hint={f.hint} />;
       case 'time': return <TimeField label={f.label} value={v[f.key]} onChange={(x) => set(f.key, x)} optional={f.optional} step={f.step} hint={f.hint} />;
       case 'timezone': return <ZonePicker label={f.label} value={v[f.key]} onChange={(x) => set(f.key, x)} />;
-      case 'currency': return <CurrencyDropdown label={f.label} value={v[f.key]} onChange={(x) => set(f.key, x)} hint={f.hint} suggest={!f.optional} />;
+      case 'currency': return <CurrencyDropdown label={f.label} value={v[f.key]} onChange={(x) => set(f.key, x)} hint={f.hint} suggest={!f.optional} endpoint={f.endpoint} />;
       case 'location': return <LocationPicker f={f} v={v} set={set} />;
       case 'daterange': return <DateRangeField label={f.label} from={v[f.key]} to={v[f.toKey]} onChange={({ from, to }) => { set(f.key, from); set(f.toKey, to); }} optional={f.optional} min={f.min} hint={f.hint} />;
       case 'datetime': return <DateTimeField label={f.label} value={v[f.key]} onChange={(x) => set(f.key, x)} optional={f.optional} min={f.min} step={f.step} hint={typeof f.hint === 'function' ? f.hint(v) : f.hint} />;
