@@ -1,0 +1,153 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Got My Game — 4K ad</title>
+<style>
+:root{--ink:#1A1033;--pink:#FF2D8D;--purple:#7C3AED;--cyan:#00D1FF;--lime:#B9FF3C;--yellow:#FFD23F;--orange:#FF7A1A;--mint:#00E5A8;--bg:#FFF5FB}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:1920px;height:1080px;overflow:hidden;background:#000;font-family:'Inter','Noto Color Emoji',sans-serif}
+#stage{position:relative;width:1920px;height:1080px;overflow:hidden}
+.el{position:absolute;will-change:transform,opacity;opacity:0}
+.bg{inset:0}
+.emo{font-family:'Noto Color Emoji';line-height:1}
+.h1{font-weight:900;letter-spacing:-.03em;line-height:.95;color:#fff}
+.sub{font-weight:700;color:#fff;letter-spacing:-.01em}
+.chip{padding:14px 28px;border:5px solid var(--ink);border-radius:26px;font-weight:900;font-size:40px;color:var(--ink);box-shadow:8px 8px 0 var(--ink);white-space:nowrap}
+.phone{width:470px;height:940px;border-radius:64px;background:#0d0820;padding:14px;box-shadow:0 50px 120px rgba(0,0,0,.45),0 0 0 3px #2c2150}
+.phone .scr{width:100%;height:100%;border-radius:52px;overflow:hidden;background:var(--bg)}
+.phone img{width:100%;height:100%;object-fit:cover;object-position:top;display:block}
+.card{background:#fff;border:6px solid var(--ink);border-radius:36px;box-shadow:12px 12px 0 var(--ink);padding:28px 34px;width:520px}
+.card b{display:block;font-size:44px;font-weight:900;color:var(--ink);letter-spacing:-.02em}
+.card span{font-size:27px;font-weight:600;color:#5b4d7a}
+.card .emo{font-size:80px;display:block;margin-bottom:10px}
+.bubble{background:#fff;border:6px solid var(--ink);border-radius:50%;box-shadow:8px 8px 0 var(--ink);width:150px;height:150px;display:flex;align-items:center;justify-content:center;font-size:90px}
+.cap{font-size:34px;font-weight:800;color:var(--pink);letter-spacing:.14em;text-transform:uppercase}
+.big{font-size:118px}
+</style></head><body><div id="stage"></div>
+<script>
+const W=1920,H=1080,TOTAL=33;
+const C={ink:'#1A1033',pink:'#FF2D8D',purple:'#7C3AED',cyan:'#00D1FF',lime:'#B9FF3C',yellow:'#FFD23F',orange:'#FF7A1A',mint:'#00E5A8',bg:'#FFF5FB'};
+const E=[]; // {el,s,e,inT,x,y,dx,dy,rot,sc,bob}
+const stage=document.getElementById('stage');
+const clamp=(v,a=0,b=1)=>Math.min(b,Math.max(a,v));
+const easeOut=t=>1-Math.pow(1-t,3);
+const back=t=>{const c=1.9;return 1+(c+1)*Math.pow(t-1,3)+c*Math.pow(t-1,2)};
+function add(o){
+  const el=document.createElement('div');
+  el.className='el '+(o.cls||'');
+  if(o.html!=null)el.innerHTML=o.html;
+  Object.assign(el.style,{left:(o.x??0)+'px',top:(o.y??0)+'px'},o.css||{});
+  if(o.w)el.style.width=o.w+'px'; if(o.h)el.style.height=o.h+'px';
+  stage.appendChild(el);
+  E.push(Object.assign({inT:'pop',dx:0,dy:0,rot:0,sc:1,bob:0,fi:.45,fo:.35},o,{el}));
+  return el;
+}
+// ---------- scene helpers ----------
+const bgGrad=(s,e,g)=>add({s,e,cls:'bg',css:{background:g},inT:'fade',fi:.4,fo:.3});
+const text=(s,e,x,y,html,size,o={})=>add(Object.assign({s,e,x,y,cls:'h1',html},o,{css:{fontSize:size+'px',...(o.css||{})}}));
+const emo=(s,e,x,y,ch,size,o={})=>add(Object.assign({s,e,x,y,cls:'emo',html:ch},o,{css:{fontSize:size+'px',...(o.css||{})}}));
+const phone=(s,e,x,y,img,o={})=>add(Object.assign({s,e,x,y,cls:'phone',html:`<div class="scr"><img src="assets/${img}"></div>`},o));
+const card=(s,e,x,y,ch,t,d,o={})=>add(Object.assign({s,e,x,y,cls:'card',html:`<span class="emo">${ch}</span><b>${t}</b><span>${d}</span>`},o));
+const chip=(s,e,x,y,t,bg,o={})=>add(Object.assign({s,e,x,y,cls:'chip',html:t,css:{background:bg}},o));
+const bub=(s,e,x,y,ch,o={})=>add(Object.assign({s,e,x,y,cls:'bubble emo',html:ch},o));
+const blobs=(s,e)=>{ // brand confetti circles
+  [[ -200,-250,700,'#FFB9DA'],[1500,600,800,'#E1FF8F'],[-150,700,500,'#BDEBFF']].forEach(([x,y,r,c],i)=>
+    add({s,e,x,y,css:{width:r+'px',height:r+'px',borderRadius:'50%',background:c},inT:'fade',dx:i%2?-40:40,dy:20,fi:.5}));
+};
+
+/* ===== S1 0–3.6  hook (dark) ===== */
+bgGrad(0,3.7,`radial-gradient(circle at 70% 30%,#3a1d7a,${C.ink} 65%)`);
+text(0.1,1.5,160,330,'Tired of<br>chasing a game?',130,{inT:'up'});
+emo(.3,1.5,1380,300,'😩',300,{inT:'pop',bob:10});
+text(1.5,2.3,160,420,'A team.',200,{inT:'slideL',css:{color:C.lime}});
+add({s:2.3,e:3.0,x:160,y:420,cls:'h1',html:'A court.',css:{fontSize:'200px',color:C.cyan},inT:'slideL'});
+add({s:3.0,e:3.7,x:160,y:420,cls:'h1',html:'A coach.',css:{fontSize:'200px',color:C.yellow},inT:'slideL'});
+[['⚽',1380,720,1.5],['🎾',1560,520,2.3],['🏀',1400,540,3.0]].forEach(([c,x,y,s])=>emo(s,s+.75,x,y,c,200,{inT:'pop',rot:25}));
+
+/* ===== S2 3.6–6.4  logo burst ===== */
+bgGrad(3.6,6.5,`linear-gradient(135deg,${C.pink},${C.purple} 60%,${C.cyan})`);
+add({s:3.7,e:6.5,x:660,y:60,html:'<img src="assets/logo.png" style="width:600px;border-radius:50%;box-shadow:0 30px 100px rgba(0,0,0,.4)">',inT:'pop',rot:-8,dx:0,dy:-10});
+text(4.3,6.5,0,690,'Got My Game.',170,{inT:'up',css:{width:'1920px',textAlign:'center'}});
+text(4.8,6.5,0,880,'One platform. Every sport. Everyone.',52,{inT:'fade',cls:'sub',css:{width:'1920px',textAlign:'center'}});
+['🏃','🏊','🤸','🎾','⚽','🏏','🏋️','🚴'].forEach((c,i)=>{
+  const a=i/8*Math.PI*2; emo(3.9+i*.06,6.5,(i<4?90+i%2*200:1520+i%2*200),(i%4<2?80:420)+(i>>1&1)*150,c,140,{inT:'pop',rot:i%2?20:-20,bob:12});
+});
+
+/* ===== S3 6.4–11  home screen ===== */
+bgGrad(6.4,11.1,`linear-gradient(120deg,${C.bg},#FFE0F0)`);blobs(6.4,11.1);
+emo(6.6,11.1,80,520,'🏃‍♂️',420,{inT:'slideL',dx:300,dy:-20,bob:14});
+bub(7.2,11.1,70,230,'🤔',{inT:'pop'}); bub(8.6,11.1,70,230,'🤩',{inT:'pop'});
+phone(6.6,11.1,1280,70,'2-home.png',{inT:'slideR',dx:-30,rot:4});
+add({s:6.9,e:11.1,x:560,y:300,cls:'cap',html:'Your season',inT:'fade'});
+text(7.0,11.1,560,350,'Your next game.<br><span style="color:'+C.pink+'">One glance.</span>',92,{css:{color:C.ink},inT:'up'});
+chip(8.0,11.1,560,700,'✅ Fit to play',C.mint,{inT:'pop',rot:-4});
+chip(8.4,11.1,560,830,'🏆 Trophies · 🔥 Streak',C.yellow,{inT:'pop',rot:3});
+
+/* ===== S4 11–15.6  event / live standings ===== */
+bgGrad(11,15.7,`linear-gradient(120deg,#1a0f3a,${C.purple})`);
+phone(11.2,15.7,160,70,'7-event.png',{inT:'slideL',dx:30,rot:-4});
+add({s:11.5,e:15.7,x:760,y:220,cls:'cap',html:'Run the league',css:{color:C.lime},inT:'fade'});
+text(11.6,15.7,760,270,'Live standings.<br>Zero spreadsheets.',88,{inT:'up'});
+chip(12.6,15.7,760,640,'📅 Auto round-robin',C.cyan,{inT:'pop',rot:3});
+chip(13.0,15.7,1200,730,'🧑‍⚖️ Referee clash-free',C.lime,{inT:'pop',rot:-3});
+chip(13.4,15.7,760,820,'🏅 One-click awards',C.yellow,{inT:'pop',rot:2});
+bub(14.2,15.0,1640,110,'😮',{inT:'pop'}); bub(15.0,15.7,1640,110,'😄',{inT:'pop'});
+emo(11.8,15.7,1580,640,'⚽',200,{inT:'pop',dx:-60,dy:60,rot:360});
+
+/* ===== S5 15.6–20.4  feature burst ===== */
+bgGrad(15.6,20.5,`linear-gradient(135deg,${C.yellow},${C.orange} 55%,${C.pink})`);
+text(15.8,20.5,0,70,'Everything you need to play.',96,{inT:'up',css:{width:'1920px',textAlign:'center',color:C.ink}});
+const feats=[['👥','Teams & chat','Roster, squads, RSVP'],['📍','Book venues','Courts, slots, instantly'],['🎓','Hire coaches','Plans, sessions, reviews'],['🪪','Player passport','Shareable sports CV'],['📝','Contracts & pay','Clear fees & payouts'],['🧑‍⚖️','Officials','Assign & manage'],['📊','Scores & stats','Verified performance'],['🎽','Sports shop','Kit delivered']];
+feats.forEach((f,i)=>card(16.1+i*.22,20.5,100+(i%4)*440,230+Math.floor(i/4)*390,f[0],f[1],f[2],{w:410,css:{padding:'22px 26px'},inT:'pop',rot:(i%2?2:-2)}));
+['🤩','😍'].forEach((c,i)=>bub(18.4+i*.8,20.5,i?1700:60,i?880:880,c,{inT:'pop'}));
+[['🏊',1480,930],['🎾',1620,10]].forEach(([c,x,y],i)=>emo(16.2,20.5,x,y,c,150,{bob:10,inT:'pop'}));
+
+/* ===== S6 20.3–24.8  hub ===== */
+bgGrad(20.3,24.9,`linear-gradient(120deg,${C.bg},#D7F4FF)`);blobs(20.3,24.9);
+phone(20.5,24.9,1050,70,'5-hub.png',{inT:'slideR',dx:-30,rot:3});
+add({s:20.8,e:24.9,x:140,y:170,cls:'cap',html:'The whole ecosystem',inT:'fade'});
+text(20.9,24.9,140,220,'Health. Cover.<br>Sponsors. Kit.',104,{css:{color:C.ink},inT:'up'});
+[['🩺 Physios & doctors',C.mint,140,520],['🛡️ Insurance',C.cyan,560,620],['💎 Sponsors',C.yellow,140,720],['📦 Supply chain',C.orange,560,820],['🏆 Trophy room',C.pink,140,920]]
+ .forEach(([t,c,x,y],i)=>chip(21.5+i*.4,24.9,x,y-20,t,c,{inT:'slideL',rot:i%2?2:-2}));
+bub(23.2,24.9,880,330,'🤗',{inT:'pop'});
+
+/* ===== S7 24.7–28.9  privacy + MCP ===== */
+bgGrad(24.7,29,`radial-gradient(circle at 30% 40%,#2a1670,${C.ink} 70%)`);
+phone(24.9,29,1070,70,'10-me-reveal.png',{inT:'slideR',dx:-30,rot:-3});
+add({s:25.1,e:29,x:130,y:180,cls:'cap',html:'Built secure. Built open.',css:{color:C.cyan},inT:'fade'});
+text(25.2,29,130,230,'Your data<br>stays <span style="color:'+C.lime+'">yours.</span>',130,{inT:'up'});
+chip(26.1,29,130,610,'🔐 AES-256 encrypted',C.lime,{inT:'pop',rot:-2});
+chip(26.5,29,130,730,'🤖 Plug in your AI agent (MCP)',C.cyan,{inT:'pop',rot:2});
+chip(26.9,29,130,850,'📱 iOS · iPadOS · Android · Web',C.yellow,{inT:'pop',rot:-1});
+
+/* ===== S8 28.8–33  CTA ===== */
+bgGrad(28.8,33.01,`linear-gradient(135deg,${C.pink},${C.purple} 60%,${C.cyan})`);
+add({s:29,e:33.01,x:760,y:70,html:'<img src="assets/logo.png" style="width:400px;border-radius:50%;box-shadow:0 30px 100px rgba(0,0,0,.4)">',inT:'pop',fo:0.01});
+text(29.4,33.01,0,500,'Find your game.',190,{inT:'up',fo:.01,css:{width:'1920px',textAlign:'center'}});
+add({s:30.1,e:33.01,x:710,y:790,cls:'chip',html:'🚀 Get Got My Game',css:{background:C.lime,fontSize:'64px',padding:'26px 52px'},inT:'pop',fo:.01});
+text(30.6,33.01,0,960,'Teams · Venues · Coaches · Events · Health · Sponsors',38,{cls:'sub',inT:'fade',fo:.01,css:{width:'1920px',textAlign:'center',opacity:.9}});
+['🏃','🏊','🤸','⚽','🎾','🏏'].forEach((c,i)=>emo(29.5+i*.1,33.01,(i<3?90+i*190:1300+(i-3)*190),(i%2?250:90),c,130,{bob:14,inT:'pop',fo:.01,rot:i%2?15:-15}));
+
+/* ===== renderer ===== */
+function render(t){
+  for(const o of E){
+    const {el}=o; const life=o.e-o.s;
+    if(t<o.s||t>o.e){el.style.opacity=0;continue;}
+    const u=clamp((t-o.s)/o.fi), d=clamp((o.e-t)/o.fo);
+    const prog=(t-o.s)/life;
+    let op=Math.min(u,d), tx=o.dx*prog, ty=o.dy*prog, sc=o.sc, r=o.rot*(o.inT==='pop'?(1-easeOut(u))+0:0);
+    if(o.rot&&o.inT!=='pop')r=o.rot;
+    if(o.inT==='pop'){sc*=Math.max(.001,back(u));}
+    if(o.inT==='up'){ty+=(1-easeOut(u))*90;}
+    if(o.inT==='slideL'){tx-=(1-easeOut(u))*500;}
+    if(o.inT==='slideR'){tx+=(1-easeOut(u))*500;}
+    if(o.inT==='fade'){}
+    if(o.bob)ty+=Math.sin(t*4+o.x)*o.bob;
+    if(o.inT==='pop'&&o.rot)r=o.rot*Math.sin(t*3+o.y)*.4+(1-easeOut(u))*o.rot;
+    if(d<1){sc*=.96+.04*d;}
+    el.style.opacity=(o.inT==='fade'&&o.cls==='bg')?Math.min(u,d):op;
+    el.style.transform=`translate(${tx}px,${ty}px) rotate(${r}deg) scale(${sc})`;
+  }
+}
+window.render=render; window.TOTAL=TOTAL;
+render(0);
+if(location.hash==='#play'){let t0=performance.now();(function f(){render(((performance.now()-t0)/1000)%TOTAL);requestAnimationFrame(f)})()}
+</script></body></html>
