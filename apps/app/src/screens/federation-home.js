@@ -12,6 +12,7 @@ import { Banner, Metric, StatusTag, fmtDate, fmtRange } from '../federation-ui';
 import { Bar, Cols, Hero, ListCard, SwitchRow } from '../federation-bits';
 import { RegisterTab } from './federation-lists';
 import { CalendarTab, PoliciesTab, ReportsTab, SetupTab } from './federation-gov';
+import { OfficialsTab } from './officials-body';
 
 function Overview({ home, go, push }) {
   const n = home.counts;
@@ -81,7 +82,7 @@ export function FederationHome({ id, tab: startTab }) {
   const go = (t, p = {}) => { setPreset(p); setTab(t); };
   const tabs = [
     { value: 'overview', label: 'Overview' }, { value: 'affiliations', label: 'Affiliations' }, { value: 'licences', label: 'Licences' }, { value: 'sanctions', label: 'Sanctions' },
-    { value: 'calendar', label: 'Calendar' }, { value: 'policies', label: 'Policies' }, ...(can.reports ? [{ value: 'reports', label: 'Reports' }] : []), { value: 'setup', label: 'Setup' },
+    { value: 'officials', label: 'Officials' }, { value: 'calendar', label: 'Calendar' }, { value: 'policies', label: 'Policies' }, ...(can.reports ? [{ value: 'reports', label: 'Reports' }] : []), { value: 'setup', label: 'Setup' },
   ];
   const shared = { id, home: h, me: h.me, below, preset, reloadHome: home.reload, go };
   return (
@@ -97,6 +98,7 @@ export function FederationHome({ id, tab: startTab }) {
       <View style={{ marginTop: 8 }}>
         {tab === 'overview' ? <Overview home={h} go={go} push={push} /> : null}
         {['affiliations', 'licences', 'sanctions'].includes(tab) ? <RegisterTab key={tab} kind={tab} {...shared} /> : null}
+        {tab === 'officials' ? <OfficialsTab id={id} below={below} me={h.me} /> : null}
         {tab === 'calendar' ? <CalendarTab {...shared} /> : null}
         {tab === 'policies' ? <PoliciesTab {...shared} /> : null}
         {tab === 'reports' ? <ReportsTab {...shared} /> : null}

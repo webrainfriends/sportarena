@@ -207,3 +207,7 @@ import './federation-licences.js';
 import './federation-sanctions.js';
 import './federation-governance.js';
 import './federation-home.js';
+import './officials-assessors.js';
+import './officials-assessments.js';
+import './officials-progression.js';
+import './officials-mentoring.js';

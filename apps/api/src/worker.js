@@ -22,6 +22,7 @@ import { deliverDueReports } from './sponsor-report-schedules.js';
 import { accrueActiveContracts } from './player-contracts.js';
 import { runServiceSweeps } from './svc/sweeps.js';
 import { runFederationSweeps } from './federation-sweeps.js';
+import { runOfficialsSweeps } from './officials-sweeps.js';
 
 export const STEPS = [
   ['holds', 'holds_released', expireUnpaidHolds, 0],
@@ -50,6 +51,7 @@ export const STEPS = [
   ['player_contracts', 'contract_earnings_posted', accrueActiveContracts, 0],
   ['supplier_services', 'supplier_services', runServiceSweeps, null],
   ['federation', 'federation', runFederationSweeps, null],
+  ['officials_development', 'officials_development', runOfficialsSweeps, null],
 ];
 
 export async function maintenanceCycle() {

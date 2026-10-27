@@ -12,6 +12,7 @@ import { encrypt } from '../crypto.js';
 import { requireApproved } from '../access.js';
 import { hasConsent, requireConsent, isYouth } from '../youth.js';
 import { authority, need, mustBeActive, bodyById, lockBody, logFed, historyOf, nextNumber, policyAt, paramsOf, check, blocking, LIC_STATUS, AFF_STATUS, addMonths, today, isGuardianOf, subtree } from '../federation.js';
+import { developmentChecks } from '../officials-development.js';
 import { subjectFor, needStaff, staffCan, staffRecipients, evidenceIn, addEvidence, evidenceList, readEvidence, removeEvidence, missingDocuments } from '../federation-subjects.js';
 
 const TAG = 'Federation';
@@ -109,6 +110,7 @@ export async function licenceChecks(c, l, type, { issuedOn }) {
     const w = (await c.query("SELECT 1 FROM fed_dates WHERE body_id=$1 AND kind='registration_window' AND status='active' AND (sport_id IS NULL OR sport_id=$2) AND current_date BETWEEN starts_on AND ends_on LIMIT 1", [l.body_id, type.sport_id])).rowCount > 0;
     checks.push(check('window', 'A registration window is open', w, w ? null : 'Registration is closed right now'));
   }
+  checks.push(...await developmentChecks(c, l, type, { issuedOn })); // officials: prerequisite grade, assessments, CPD, fitness (#486), read live from their own records
   if (await isYouth(l.holder_id, c)) checks.push(check('guardian_consent', 'A verified guardian consents', await hasConsent(l.holder_id, 'participation', c), 'Needs current guardian consent for taking part'));
   return { checks, policy: pol };
 }
