@@ -133,14 +133,14 @@ cap({
   name: 'advance_discipline', method: 'POST', path: '/disciplines/:id/advance', tag: TAG, status: 201,
   summary: 'Run the next round once the current one is complete. Individual: pick the top finishers of each heat (+ fastest/best of the rest as wildcards) and create the next heats or the final. Team: round robin → knockout of the top N, or winners → next knockout round (optionally a third-place game).',
   input: z.object({
-    id, qualifiers_per_session: z.number().int().min(1).max(24).optional().describe('defaults to what set_discipline_progression pinned, else 2'), wildcards: z.number().int().min(0).max(48).optional().describe('defaults to what set_discipline_progression pinned, else 0'),
+    id, qualifiers_per_session: z.number().int().min(1).max(24).optional().describe('defaults to what set_discipline_live_rules pinned, else 2'), wildcards: z.number().int().min(0).max(48).optional().describe('defaults to what set_discipline_live_rules pinned, else 0'),
     lanes: z.number().int().min(2).max(24).default(8), qualifiers: z.number().int().min(2).max(64).optional().describe('team round robin: how many teams go through'),
     third_place: z.boolean().default(false), duration_min: z.number().int().min(5).max(600).optional(),
   }),
   async handler({ user }, i) {
     return tx(async (c) => {
       const d = await discipline(c, i.id);
-      i = { ...i, qualifiers_per_session: i.qualifiers_per_session ?? d.progression?.qualifiers_per_session ?? 2, wildcards: i.wildcards ?? d.progression?.wildcards ?? 0 };
+      i = { ...i, qualifiers_per_session: i.qualifiers_per_session ?? d.live_rules?.qualifiers_per_session ?? 2, wildcards: i.wildcards ?? d.live_rules?.wildcards ?? 0 };
       const { ev } = await organizerOnly(c, user, d.event_id);
       await lockEvent(c, ev.id);
       if (['completed', 'cancelled'].includes(d.status)) throw conflict(`Discipline is ${d.status}`);

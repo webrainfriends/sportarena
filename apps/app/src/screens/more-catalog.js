@@ -2,7 +2,7 @@
 export const MODULES = [
   ['Leaderboard', 'Leaderboard', 'Points & glory', 'play'], ['Awards', 'Trophy room', 'Cups, medals, MVPs', 'play'],
   ['CareerTimeline', 'Career & clubs', 'Your clubs, verified by them', 'play'], ['MyLicences', 'My licences', 'Federation licences & standing', 'play'],
-  ['MyApplications', 'My applications', 'Trials, offers & answers', 'play'],
+  ['FindGames', 'Find a game', 'Open games near you, today & this weekend', 'play'], ['MyApplications', 'My applications', 'Trials, offers & answers', 'play'],
   ['MyAccreditations', 'My badges', 'Event accreditation & QR', 'play'],
   ['Following', 'Following', 'Events, teams & games you follow', 'play'],
   ['RecruiterAccess', 'Recruiter access', 'Who may see your profile', 'play'],
@@ -45,7 +45,7 @@ export const PRIORITY = [
   [['sponsor', 'supplier'], ['Sponsors', 'Supply', 'Wallet', 'Earnings', 'Billboard', 'Shop', 'ToolsHome']],
   [['physio', 'doctor', 'lawyer', 'insurer'], ['Health', 'Insure', 'Legal', 'Wallet', 'Leaderboard', 'Support', 'ToolsHome']],
 ];
-export const PRIORITY_DEFAULT = ['Leaderboard', 'MyApplications', 'PlayerContracts', 'Health', 'Insure', 'Wallet', 'Shop', 'Billboard', 'ToolsHome'];
+export const PRIORITY_DEFAULT = ['FindGames', 'Leaderboard', 'MyApplications', 'PlayerContracts', 'Health', 'Insure', 'Wallet', 'Shop', 'Billboard', 'ToolsHome'];
 
 /** The wheel's order for someone with these roles: their priority modules first, then the rest in catalogue order. */
 export function orderedModules(roles = []) {

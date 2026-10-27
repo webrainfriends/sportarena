@@ -73,6 +73,7 @@ export function targetFor(data = {}) {
   if (data.sponsorship_id) return ['SponsorDeal', { id: data.sponsorship_id }];
   if (data.program_id && (data.task_id || data.application_id)) return ['SponsorProgram', { id: data.program_id }];
   if (data.application_id) return ['FundingOpportunities', {}]; // the applicant's own conversation: opened from My applications
+  if (data.open_game_id) return ['OpenGame', { id: data.open_game_id }]; // a request, approval, waitlist move, change or cancellation of a game
   if (data.reservation_id) return ['Reservation', { id: data.reservation_id }];
   if (data.venue_id && data.date) return ['BookFlow', { venueId: data.venue_id, resourceId: data.resource_id, date: data.date }];
   if (data.venue_id) return ['Venue', { id: data.venue_id }];
@@ -87,6 +88,8 @@ export function parseTarget(t) {
   if (kind === 'assessment' && id) return ['OfficialAssessment', { id }];
   if (kind === 'officials-development') return ['OfficialsDevelopment', id ? { tab: id } : {}];
   if (kind === 'federation' && id) return ['FederationHome', extra ? { id, tab: extra } : { id }];
+  if (kind === 'open-game' && id) return ['OpenGame', { id }];
+  if (kind === 'find-games') return ['FindGames', {}];
   if (kind === 'reservation' && id) return ['Reservation', { id }];
   if (kind === 'venue' && id) return ['Venue', { id }];
   if (kind === 'sponsorship' && id) return ['SponsorDeal', { id }];

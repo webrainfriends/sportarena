@@ -17,7 +17,7 @@ export function sheetAnomalies(rs, events, sheet, fixture) {
     const need = Math.ceil(rs.sets.best_of / 2);
     if (Math.max(h, a) !== need || Math.min(h, a) >= need) add('impossible_sets', 'error', `A best-of-${rs.sets.best_of} match ends with one side on exactly ${need} sets and the other on fewer`);
   }
-  if (rs.kind !== 'manual' && events.length) {
+  if ((rs.kind !== 'manual' || rs.cards) && events.length) {
     const live = events.filter((e) => !e.voided_at);
     const computed = computeScore(rs, live);
     if (computed.home !== h || computed.away !== a) add('differs_from_log', 'warn', `The match log adds up to ${computed.home}–${computed.away}, the sheet says ${h}–${a}`);
