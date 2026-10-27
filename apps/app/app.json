@@ -46,6 +46,12 @@
       "expo-apple-authentication",
       "expo-web-browser",
       [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Find games and venues near you. Your location is used for the search only and is never stored or shown to other people."
+        }
+      ],
+      [
         "expo-camera",
         {
           "cameraPermission": "Scan event accreditation badges at the gate.",
