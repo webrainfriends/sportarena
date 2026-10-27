@@ -13,6 +13,8 @@ Docker Postgres + nginx) and the same credentials. Everything it creates is name
 | App dir / env | `~/sportarena`, `~/sportarena/.env` (mode 600) | created on first deploy |
 | Master key | `/var/lib/sportarena/master.key.enc` | **wrapped by AWS KMS**; plaintext never on disk |
 
+Live scoring streams (`/live/...`, Server-Sent Events) run on an in-process bus, which is right for the single `sportarena-api` process. If you ever run more than one API process, set `LIVE_BRIDGE=pg` in `~/sportarena/.env`: each publish then also notifies Postgres (`LISTEN/NOTIFY`) and the other processes refresh their own streams. See [live-scoring.md](live-scoring.md).
+
 ## One-time setup
 1. **Repository secrets** (Settings → Secrets and variables → Actions) —
    - `EC2_SSH_KEY` — the `sportarena.pem` private key (whole file, including the BEGIN/END lines)
