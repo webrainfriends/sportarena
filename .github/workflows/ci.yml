@@ -34,7 +34,9 @@ jobs:
         with: { node-version: 22, cache: npm }
       - run: bash -n scripts/deploy-remote.sh
       - run: npm ci
-      - run: npm test 2>&1 | tee test.log
+      - name: npm test
+        shell: bash   # explicit bash runs with -eo pipefail, so a failing npm test still fails the step through tee
+        run: npm test 2>&1 | tee test.log
       # the Postgres service log is appended after the test output, so the failing tests are listed here where they are easy to find
       - name: Failing tests
         if: failure()
