@@ -13,6 +13,9 @@ import { runPoints, runSets, SIDES, SHOOTOUT_KINDS, otherSide } from '../basic.j
 import { isGames, runRacket, racketReject, rallyServer, RACKET_KINDS } from '../racket.js';
 import { sessionState, sessionReject, SESSION_KINDS } from '../session.js';
 import { boxingDecision, roundProblem } from '../scorecards.js';
+import { basketballState, basketballReject, basketballOver } from '../rules/basketball.js';
+import { kabaddiState } from '../rules/kabaddi.js';
+import { rallyState, rallyReject } from '../rules/rally.js';
 
 export const CONTROL_KINDS = ['period_start', 'period_end', 'note', 'added_time'];
 const winnerOf = (h, a) => (h === a ? null : h > a ? 'home' : 'away');
@@ -56,7 +59,8 @@ const pointsPlugin = {
   kind: 'points_events',
   state(rs, live) {
     const r = runPoints(rs, live);
-    return { ...r, winner: winnerOf(r.home, r.away), level: r.home === r.away, over: false };
+    const rules = rs.basketball ? basketballState(rs, live) : rs.kabaddi ? kabaddiState(rs, live) : null;
+    return { ...r, winner: winnerOf(r.home, r.away), level: r.home === r.away, over: basketballOver(rs, r), ...(rules ? { rules } : {}) };
   },
   validate(rs, live, next, ctx = {}) {
     if (CONTROL_KINDS.includes(next.kind)) {
@@ -93,7 +97,8 @@ const pointsPlugin = {
     const so = pointsPlugin.state(rs, live).shootout;
     if (so?.started && rs.events.some((e) => e.kind === next.kind)) return 'The shoot-out has started; the score no longer changes';
     if (next.player_id && pointsPlugin.state(rs, live).sent_off?.some((p) => p.player_id === next.player_id)) return 'That player has been sent off';
-    return null;
+    if (rs.events.some((e) => e.kind === next.kind) && pointsPlugin.state(rs, live).over) return 'The game is already decided';
+    return basketballReject(rs, live, next);
   },
   phase: periodPhase,
   attribution(rs, live) {
@@ -110,7 +115,7 @@ const pointsPlugin = {
     return [...by.values()];
   },
   liveStats: (rs, live, state) => state.stats,
-  publicView: (state) => ({ home: state.home, away: state.away, periods: state.periods, shootout: state.shootout ?? null, sent_off: state.sent_off ?? [] }),
+  publicView: (state) => ({ home: state.home, away: state.away, periods: state.periods, shootout: state.shootout ?? null, sent_off: state.sent_off ?? [], ...(state.rules ? { rules: state.rules } : {}) }),
   toResult(state) {
     const so = state.shootout?.over ? state.shootout : null;
     const winner = state.winner ?? so?.winner ?? null;
@@ -125,7 +130,8 @@ const setsPlugin = {
     const r = runSets(rs, live);
     const winner = r.over ? winnerOf(r.home, r.away) : null;
     const server = rallyServer(rs, live);
-    return { ...r, winner, level: r.home === r.away, ...(server ? { server } : {}) };
+    const rules = rs.rally ? rallyState(rs, live, r, server) : null;
+    return { ...r, winner, level: r.home === r.away, ...(server ? { server } : {}), ...(rules ? { rules } : {}) };
   },
   validate(rs, live, next) {
     if (CONTROL_KINDS.includes(next.kind)) return controlReject(next);
@@ -133,8 +139,9 @@ const setsPlugin = {
     if (!known.has(next.kind)) return `"${next.kind}" is not part of the ${rs.label} rules`;
     if (!SIDES.includes(next.side)) return 'side must be home or away';
     if (setsPlugin.state(rs, live).over) return 'The match is already decided';
-    if (next.kind === 'server' && live.some((e) => e.kind === 'point')) return 'The first server is set before the first point';
-    return null;
+    const cur = setsPlugin.state(rs, live);
+    if (next.kind === 'server' && live.slice(cur.current_from ?? 0).some((e) => e.kind === 'point')) return 'The server is set before the first point of the set';
+    return rs.rally ? rallyReject(rs, live, next, cur) : null;
   },
   phase: (rs, live, state) => {
     let period = 0, open = false;
@@ -143,7 +150,7 @@ const setsPlugin = {
   },
   attribution: (rs, live) => pointsAttribution(live),
   liveStats: (rs, live, state) => state.stats,
-  publicView: (state) => ({ home: state.home, away: state.away, sets: state.sets, current_set: state.current_set, over: state.over, server: state.server ?? null }),
+  publicView: (state) => ({ home: state.home, away: state.away, sets: state.sets, current_set: state.current_set, over: state.over, server: state.server ?? null, ...(state.rules ? { rules: state.rules } : {}) }),
   toResult: (state) => ({ home: state.home, away: state.away, winner: state.winner, totals: { sets: state.sets } }),
 };
 

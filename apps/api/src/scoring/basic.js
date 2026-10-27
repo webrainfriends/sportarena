@@ -77,8 +77,8 @@ export function runSets(rs, events) {
   const stats = { home: {}, away: {} };
   let cur = { home: 0, away: 0 };
   const won = { home: 0, away: 0 };
-  let over = false;
-  for (const e of events) {
+  let over = false, currentFrom = 0;
+  for (const [i, e] of events.entries()) {
     if (!SIDES.includes(e.side)) continue;
     stats[e.side][e.kind] = (stats[e.side][e.kind] ?? 0) + 1;
     if (e.kind !== 'point' || over) continue;
@@ -91,8 +91,9 @@ export function runSets(rs, events) {
       sets.push({ ...cur, winner: w });
       won[w]++;
       cur = { home: 0, away: 0 };
+      currentFrom = i + 1;
       if (won[w] >= need) over = true;
     }
   }
-  return { home: won.home, away: won.away, sets, current_set: over ? null : cur, over, stats };
+  return { home: won.home, away: won.away, sets, current_set: over ? null : cur, over, stats, current_from: currentFrom };
 }
