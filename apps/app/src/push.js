@@ -67,6 +67,7 @@ export function targetFor(data = {}) {
   if (data.mentorship_id || data.item_id) return ['OfficialsDevelopment', { tab: 'growth' }];
   if (data.cpd_id || data.result_id) return ['OfficialsDevelopment', { tab: 'cpd' }];
   if (data.proposal_id) return ['ScoringTool', { proposalId: data.proposal_id }]; // a proposed result to review, or the outcome of yours
+  if (data.accreditation_id && data.event_id) return ['MyAccreditations', {}]; // a nomination, approval, reissue or revocation of your badge
   if (data.request_id && data.event_id) return ['EventInbox', {}];
   if (data.sponsorship_id) return ['SponsorDeal', { id: data.sponsorship_id }];
   if (data.program_id && (data.task_id || data.application_id)) return ['SponsorProgram', { id: data.program_id }];
@@ -97,6 +98,9 @@ export function parseTarget(t) {
   if (kind === 'tenders') return ['TenderHome', {}];
   if (kind === 'tender-zone') return ['TenderZone', {}];
   if (kind === 'billboard') return ['Billboard', {}];
+  if (kind === 'accreditation') return ['MyAccreditations', {}];
+  if (kind === 'event-accreditation' && id) return ['EventCommand', { id, tab: 'accreditation' }];
+  if (kind === 'gate' && id) return ['GateScan', { id }];
   if (kind === 'tender-orders') return ['TenderOrders', {}];
   if (kind === 'tender-reports') return ['TenderReports', {}];
   if (kind === 'tender-order' && id) return ['TenderOrder', { id }];

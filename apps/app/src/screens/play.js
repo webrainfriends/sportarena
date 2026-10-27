@@ -108,6 +108,7 @@ export function Event({ id }) {
   const races = useLoad(() => api.get(`/events/${id}/races`), [id]);
   const myTeams = useLoad(() => (user ? api.get('/teams', { mine: true, limit: 50 }) : []), [id]);
   const entries = useLoad(async () => (ev.data && ev.data.organizer_id === user.id ? api.get(`/events/${id}/entries`) : []), [ev.data?.organizer_id]);
+  const badges = useLoad(() => (user ? api.get('/me/accreditations', { limit: 100 }).catch(() => []) : Promise.resolve([])), [id]);
   if (ev.loading && !ev.data) return <Screen><Loading /></Screen>;
   if (ev.error) return <Screen><ErrorBox error={ev.error} onRetry={ev.reload} /></Screen>;
   const e = ev.data;
@@ -131,6 +132,7 @@ export function Event({ id }) {
       {e.description ? <T style={{ marginTop: 12 }}>{e.description}</T> : null}
       {isOrg || e.is_assessor ? <Btn title={isOrg ? '⚡ Event console' : '🎽 Trial desk'} color={c.violet} onPress={() => push('EventCommand', { id })} style={{ marginTop: 14 }} /> : null}
       {!isOrg && e.entrants.some((x) => (myTeams.data ?? []).some((t) => t.id === x.team_id)) ? <Btn title="🪪 My registration" color={c.violet} onPress={() => push('EventCommand', { id, tab: 'registration' })} style={{ marginTop: 14 }} /> : null}
+      {!isOrg && (badges.data ?? []).some((b) => b.event_id === id && b.status !== 'draft') ? <Btn title="🎫 My accreditation" color={c.violet} onPress={() => push('EventCommand', { id, tab: 'accreditation' })} style={{ marginTop: 14 }} /> : null}
       {(races.data ?? []).filter((r) => r.public).map((r) => <Btn key={r.id} title={`🏃 ${r.name}: live results`} color={c.violet} onPress={() => push('RaceLive', { id: r.id })} style={{ marginTop: 14 }} />)}
       {e.sport === 'Multi-sport games' ? <Btn title={isOrg ? 'Run the games programme' : 'Open the games programme'} color={c.violet} onPress={() => push('Games', { id })} style={{ marginTop: 14 }} /> : null}
 

@@ -27,6 +27,7 @@ import { ServicesBuyer } from './svc-buyer';
 import { EventVenues } from './event-venues';
 import { Requests, Budget } from './event-plan';
 import { GameRow } from './event-schedule';
+import { AccreditationTab } from './event-accreditation';
 import { RaceDay } from './race-desk';
 
 const STEPS = [['draft', 'Setup'], ['open', 'Open'], ['ongoing', 'Running'], ['completed', 'Ended']];
@@ -100,6 +101,7 @@ export function EventCommand({ id, tab: first = 'overview' }) {
     ...(isOrg ? [{ key: 'teams', label: 'Teams', icon: '👥', badge: (D.inv.data ?? []).filter((n) => n.status === 'invited').length || undefined }] : []),
     { key: 'registration', label: 'Registration', icon: '🪪', badge: regAwaiting || undefined },
     { key: 'people', label: 'People', icon: '🧩' },
+    { key: 'accreditation', label: 'Accreditation', icon: '🎫' },
     { key: 'boards', label: 'Boards', icon: '🗂️' },
     { key: 'games', label: 'Games', icon: '⚡' },
     ...(isOrg || (D.races.data ?? []).length ? [{ key: 'race', label: 'Race day', icon: '🏃' }] : []),
@@ -139,6 +141,7 @@ export function EventCommand({ id, tab: first = 'overview' }) {
           {sub.people === 'hiring' && isOrg ? <HiringTab {...P} roles={D.roles.data ?? []} staff={D.staff.data ?? []} reload={reloadAll} /> : <DepartmentsTab id={id} isOrg={isOrg} />}
         </>
       )}
+      {tab === 'accreditation' && <AccreditationTab id={id} e={e} isOrg={isOrg} />}
       {tab === 'boards' && <BoardTab id={id} isOrg={isOrg} />}
       {tab === 'race' && <RaceDay id={id} isOrg={isOrg} />}
       {tab === 'games' && <FixturesTab id={id} isOrg={isOrg} games={games} accepted={accepted} venues={D.venues.data ?? []} bracket={D.bracket.data} reload={reloadAll} goVenue={() => go('venue')} />}

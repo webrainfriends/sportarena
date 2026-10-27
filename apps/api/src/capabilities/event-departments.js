@@ -208,23 +208,6 @@ cap({
 });
 
 cap({
-  name: 'set_accreditation', method: 'POST', path: '/department-members/:id/accreditation', tag: 'Departments',
-  summary: 'Move a member\'s accreditation (none → requested → issued, or revoked). Organiser or the department lead. Issuing needs the person\'s ID number on file.',
-  input: z.object({ id, status: z.enum(['requested', 'issued', 'revoked']) }),
-  async handler({ user }, i) {
-    return tx(async (c) => {
-      const m = (await c.query('SELECT * FROM event_department_members WHERE id=$1 FOR UPDATE', [i.id])).rows[0];
-      if (!m) throw notFound('Roster entry');
-      const ev = await mustFind('events', m.event_id, '*', c);
-      if (!canRun(await departmentScope(user, ev, c), m.department_id)) throw forbidden('Only the organiser or the department lead can do that');
-      if (m.status !== 'active') throw conflict('Only active members can be accredited');
-      if (i.status === 'issued' && !m.id_number_enc) throw conflict('The member has not given an ID number yet');
-      return (await c.query('UPDATE event_department_members SET accreditation=$2 WHERE id=$1 RETURNING id, status, accreditation', [i.id, i.status])).rows[0];
-    });
-  },
-});
-
-cap({
   name: 'list_roster', method: 'GET', path: '/events/:id/roster', tag: 'Departments',
   summary: 'The event roster, optionally for one department. The organiser sees everyone, a lead sees their departments, a member sees their own departments. include_pii returns phone/DOB/ID number only to the organiser and leads, and the read is audit-logged.',
   input: z.object({ id, department_id: id.optional(), status: z.enum(['invited', 'active', 'declined', 'left']).optional(), include_pii: z.coerce.boolean().default(false), ...page }),
