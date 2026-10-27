@@ -197,6 +197,7 @@ function LicenceCard({ l, L, onChanged }) {
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 2 }}>
             {['draft', 'needs_info'].includes(l.status) ? <Btn small title={l.status === 'draft' ? 'Add documents and submit' : 'Respond'} onPress={open} /> : null}
             {renewable ? <Btn small title="Renew" loading={busy === 'renew'} onPress={renew} /> : null}
+            {l.holder_role === 'official' && l.status === 'active' ? <Btn small title="Development" color={c.paper} ink={c.ink} onPress={() => push('OfficialsDevelopment')} /> : null}
             {l.status === 'active' ? <Btn small title="Licence document" color={c.paper} ink={c.ink} loading={busy === 'doc'} onPress={() => run('doc', () => issueDocument('licence', l.id))} /> : null}
             {l.public_code && l.status === 'active' ? <Btn small title="Share code" color={c.paper} ink={c.ink} onPress={() => run('share', async () => { const m = await shareCode(l); if (m) toast(m); })} /> : null}
             {l.public_code ? <Btn small title="Check" color={c.paper} ink={c.ink} onPress={() => push('VerifyLicence', { code: l.public_code })} /> : null}
