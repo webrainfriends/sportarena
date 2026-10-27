@@ -26,6 +26,7 @@ import { passportFilesRouter } from './capabilities/passport-recruitment.js';
 import { applicationFilesRouter } from './capabilities/sponsorship-application-forms.js';
 import { subjectDocsRouter } from './capabilities/subject-docs.js';
 import { tenderFilesRouter } from './capabilities/tender-files.js';
+import { mediaAssetFilesRouter } from './capabilities/media-rights-assets.js';
 import { contractReceiptsRouter } from './capabilities/player-contract-money.js';
 import { staffDocsRouter } from './capabilities/event-openings.js';
 import { liveRouter } from './live.js';
@@ -86,6 +87,7 @@ export function createApp() {
   app.use('/api/v1', matchFileRouter());
   app.use('/api/v1', subjectDocsRouter());
   app.use('/api/v1', tenderFilesRouter());
+  app.use('/api/v1', mediaAssetFilesRouter());
   app.use('/api/v1', contractReceiptsRouter());
   app.use('/api/v1', staffDocsRouter());
   app.use(express.json({ limit: '100kb' }));
