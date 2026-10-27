@@ -17,6 +17,7 @@ import { BoardTab } from './event-board';
 import { FixturesTab } from './match-centre';
 import { ResultsTab } from './event-results';
 import { TeamsTab } from './event-teams';
+import { RegistrationTab } from './event-registration';
 import { TrialsTab } from './event-trials';
 import { HiringTab } from './event-hiring';
 import { BusinessTab, MoneyTiles } from './event-business';
@@ -54,8 +55,9 @@ function useConsoleData(id, org) {
   const vend = L(() => api.get(`/events/${id}/vendors`));
   const money = L(() => api.get(`/events/${id}/commercials`));
   const plan = L(() => api.get(`/events/${id}/plan`));
-  const all = [fx, bracket, venues, inv, seeds, roles, staff, vend, money, plan];
-  return { fx, bracket, venues, inv, seeds, roles, staff, vend, money, plan, reload: () => all.forEach((l) => l.reload()) };
+  const rosters = L(() => api.get(`/events/${id}/rosters`).catch(() => null));   // registrations awaiting a decision, for the tab badge
+  const all = [fx, bracket, venues, inv, seeds, roles, staff, vend, money, plan, rosters];
+  return { fx, bracket, venues, inv, seeds, roles, staff, vend, money, plan, rosters, reload: () => all.forEach((l) => l.reload()) };
 }
 
 export function EventCommand({ id, tab: first = 'overview' }) {
@@ -87,10 +89,12 @@ export function EventCommand({ id, tab: first = 'overview' }) {
   };
   const steps = STEPS.map(([k, label], i) => ({ key: k, label: st === 'paused' && k === 'ongoing' ? 'Paused' : label, state: i < rank[st] ? 'done' : i === rank[st] ? 'now' : 'todo' }));
   const waiting = D.plan.data?.requests?.waiting_for_you?.length || undefined;
+  const regAwaiting = (D.rosters.data?.teams ?? []).reduce((a, t) => a + t.awaiting, 0);
   const tabs = [
     { key: 'overview', label: 'Overview', icon: '🏁' },
     ...(e.kind === 'trial' ? [{ key: 'trial', label: 'Trial', icon: '🎽' }] : []),
     ...(isOrg ? [{ key: 'teams', label: 'Teams', icon: '👥', badge: (D.inv.data ?? []).filter((n) => n.status === 'invited').length || undefined }] : []),
+    { key: 'registration', label: 'Registration', icon: '🪪', badge: regAwaiting || undefined },
     { key: 'people', label: 'People', icon: '🧩' },
     { key: 'boards', label: 'Boards', icon: '🗂️' },
     { key: 'games', label: 'Games', icon: '⚡' },
@@ -123,6 +127,7 @@ export function EventCommand({ id, tab: first = 'overview' }) {
       {tab === 'overview' && <Overview {...P} D={D} games={games} accepted={accepted} money={money} />}
       {tab === 'trial' && e.kind === 'trial' && <TrialsTab id={id} isOrg={isOrg} />}
       {tab === 'teams' && isOrg && <TeamsTab {...P} accepted={accepted} inv={D.inv.data ?? []} seeds={D.seeds.data ?? []} />}
+      {tab === 'registration' && <RegistrationTab id={id} e={e} isOrg={isOrg} reload={reloadAll} />}
       {tab === 'people' && (
         <>
           {isOrg ? <View style={{ flexDirection: 'row', gap: 8 }}><AChip label="🧩 Departments" active={sub.people === 'departments'} onPress={() => go('people', 'departments')} /><AChip label="🩺 Hiring" active={sub.people === 'hiring'} onPress={() => go('people', 'hiring')} /></View> : null}
