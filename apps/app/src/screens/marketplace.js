@@ -240,13 +240,13 @@ function PostSheet({ onClose, onDone }) {
   const today = new Date().toISOString().slice(0, 10);
   const team = (teams.data ?? []).map((t) => ({ id: t.id, label: t.name, sub: t.sport ?? '', emoji: t.emoji }));
   const evs = (events.data ?? []).map((e) => ({ id: e.id, label: e.name, sub: e.starts_on ? day(`${String(e.starts_on).slice(0, 10)}T12:00:00`) : '', emoji: e.sport_emoji }));
-  const kinds = [{ value: 'match_players', label: 'Players for a match' }, { value: 'team_recruiting', label: 'Players for my team' }, { value: 'assignment', label: 'Work or volunteers' }, { value: 'sponsorship_wanted', label: 'A sponsor' }, ...(has('sponsor') ? [{ value: 'sponsor_call', label: 'Athletes (as sponsor)' }] : [])];
+  const kinds = [{ value: 'team_recruiting', label: 'Players for my team' }, { value: 'assignment', label: 'Work or volunteers' }, { value: 'sponsorship_wanted', label: 'A sponsor' }, ...(has('sponsor') ? [{ value: 'sponsor_call', label: 'Athletes (as sponsor)' }] : [])];
   const player = (v) => ['match_players', 'team_recruiting'].includes(v.kind);
   const paidAssignment = (v) => v.kind === 'assignment' && v.opportunity_type === 'paid_assignment';
   const showAmount = (v) => isSponsorKind(v.kind) || v.compensation === 'paid' || paidAssignment(v);
   return (
     <FormSheet visible onClose={onClose} title="Post an opportunity" submitLabel="Post"
-      initial={{ kind: 'match_players', opportunity_type: 'volunteering', positions_needed: 1, role: 'volunteer', required_sections: [], ...whoForInitial() }}
+      initial={{ kind: 'team_recruiting', opportunity_type: 'volunteering', positions_needed: 1, role: 'volunteer', required_sections: [], ...whoForInitial() }}
       fields={[
         { key: 'kind', label: 'What do you need?', type: 'chips', options: kinds },
         { key: 'opportunity_type', label: 'What kind of work is it?', type: 'chips', options: [{ value: 'volunteering', label: 'Volunteering' }, { value: 'paid_assignment', label: 'Paid assignment' }], show: (v) => v.kind === 'assignment' },
@@ -323,6 +323,7 @@ function ApplySheet({ post, onClose, onDone }) {
 
 export function Billboard() {
   const { toast } = useSession();
+  const { push } = useNav();
   const { w } = useCols();
   const [f, setF] = useState('all');
   const [paidOnly, setPaidOnly] = useState(false);
@@ -343,13 +344,19 @@ export function Billboard() {
   return (
     <Screen wide>
       <Head eyebrow="BILLBOARD" title="Who's looking for you" sub="Trials, matches, paid work, volunteering, sponsors and open events — with the pay stated up front."
-        right={<Btn small title="+ Post an opportunity" onPress={() => setPost(true)} />} />
+        right={<View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}><Btn small title="Find a game" color={c.paper} ink={c.ink} onPress={() => push('FindGames')} /><Btn small title="+ Post an opportunity" onPress={() => setPost(true)} /></View>} />
       <View style={{ marginTop: 14 }}><Seg options={FILTERS.map(([value, label]) => ({ value, label }))} value={f} onChange={setF} /></View>
       {filtering ? (
         <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
           <Chip label="Paid only" active={paidOnly} onPress={() => setPaidOnly(!paidOnly)} />
           <Chip label="Verified publishers" active={verifiedOnly} onPress={() => setVerifiedOnly(!verifiedOnly)} />
         </View>
+      ) : null}
+      {f === 'match_players' ? (
+        <Card color={c.cyanSoft} pad={14} style={{ marginTop: 12 }} onPress={() => push('FindGames')} accessibilityLabel="Open Find a game">
+          <T weight="800">Need players for a match? Host a game instead.</T>
+          <T size={13}>Games at a real venue with seats, a waitlist, level and cost. Older player posts stay listed below.</T>
+        </Card>
       ) : null}
       {f === 'all' || f === 'sponsor' ? <SponsorInbox /> : null}
       {f === 'tender' ? <TenderZone embedded /> : f === 'insurance' ? <View style={{ marginTop: 14, gap: 10 }}><InsuranceMarket onAsk={() => setQuote({})} /></View> : posts.error ? <ErrorBox error={posts.error} onRetry={posts.reload} /> : loading ? <Loading /> : empty ? (

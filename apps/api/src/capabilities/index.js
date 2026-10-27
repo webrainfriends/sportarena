@@ -223,3 +223,4 @@ import './media-rights-feeds.js';
 import './spectator.js';
 import './spectator-admin.js';
 import './media-rights-fees.js';
+import './open-games.js';
