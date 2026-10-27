@@ -9,6 +9,7 @@ import { activatePhysioPackage } from '../capabilities/provider-packages.js';
 import { fulfilSponsorshipPayment } from '../sponsor-agreements.js';
 import { fulfilChargePaid } from '../academy-invoices.js';
 import { fulfilServiceInvoicePaid } from '../svc/finance.js';
+import { fulfilMediaFeePaid } from '../media-fees.js';
 import { raiseException, recordSale, syncRefunds } from '../settlement.js';
 
 export { paymentsEnabled, enabledProviders };
@@ -61,6 +62,10 @@ export async function describePurpose(c, type, id) {
     const x = await q("SELECT ch.payer_id, ch.amount_minor AS amount, ch.currency, ch.status, ch.kind, o.name, o.status AS org_status FROM academy_charges ch JOIN organisations o ON o.id=ch.organisation_id WHERE ch.id=$1 FOR UPDATE OF ch");
     return x && { payerId: x.payer_id, amount: Number(x.amount), currency: x.currency, name: `Academy ${x.kind} · ${x.name}`, payable: x.status === 'awaiting_payment' && Number(x.amount) > 0 };
   }
+  if (type === 'media_rights_fee') {
+    const x = await q("SELECT f.payer_id, f.amount_minor AS amount, f.currency, f.status, f.number, o.name FROM mr_fees f JOIN mr_licences l ON l.id=f.licence_id JOIN media_partners m ON m.id=l.partner_id JOIN organisations o ON o.id=m.organisation_id WHERE f.id=$1 FOR UPDATE OF f");
+    return x && { payerId: x.payer_id, amount: Number(x.amount), currency: x.currency, name: `Rights fee ${x.number} · ${x.name}`, payable: x.status === 'awaiting_payment' };
+  }
   if (type === 'service_invoice') {
     const x = await q("SELECT s.payer_id, s.payable_minor - s.credited_minor - s.paid_minor AS amount, s.currency, s.status, s.doc_type, s.match_status, s.supplier_number, coalesce(p.trading_name, p.legal_name) AS name FROM svc_invoices s JOIN svc_profiles p ON p.id=s.profile_id WHERE s.id=$1 FOR UPDATE OF s");
     return x && { payerId: x.payer_id, amount: Number(x.amount), currency: x.currency, name: `Invoice ${x.supplier_number} · ${x.name}`, payable: x.status === 'issued' && x.doc_type === 'invoice' && ['matched', 'exception_approved'].includes(x.match_status) && Number(x.amount) > 0 };
@@ -86,6 +91,7 @@ async function fulfil(c, type, id, payment) {
   if (type === 'sponsorship_payment') return fulfilSponsorshipPayment(c, id);
   if (type === 'academy_charge') return fulfilChargePaid(c, id, { method: 'online' });
   if (type === 'service_invoice') return fulfilServiceInvoicePaid(c, id, payment);
+  if (type === 'media_rights_fee') return fulfilMediaFeePaid(c, id);
   return (await c.query(sql, [id])).rowCount > 0;
 }
 

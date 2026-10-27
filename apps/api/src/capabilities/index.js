@@ -211,3 +211,4 @@ import './media-rights-licensing.js';
 import './media-rights-ops.js';
 import './media-rights-assets.js';
 import './media-rights-feeds.js';
+import './media-rights-fees.js';
