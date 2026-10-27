@@ -18,7 +18,7 @@ const dt = z.string().datetime({ offset: true });
 const date = z.string().date();
 const lotIn = z.object({ code: z.string().regex(/^[A-Za-z0-9_-]{1,20}$/), title: z.string().min(2).max(120), description: z.string().max(1000).optional(), service_family: z.string().max(40).optional(), qty: z.number().positive().max(1e7), unit: z.string().max(30).optional(), estimate_minor: money.optional(), allow_partial: z.boolean().default(true), bundle_with: z.array(z.string()).max(20).default([]), starts_on: date.optional(), ends_on: date.optional(), site: z.string().max(120).optional() });
 const credReq = z.object({ kind: z.enum(['insurance', 'safeguarding', 'safety_certificate', 'trade_licence', 'tax_registration', 'qualification', 'other']), title: z.string().max(120), verified_required: z.boolean().default(false) });
-const SCALAR = ['title', 'objective', 'scope', 'inclusions', 'exclusions', 'category', 'location', 'contract_type', 'prep_start', 'service_start', 'service_end', 'teardown_end', 'currency', 'budget_minor', 'budget_public', 'ceiling_minor', 'cost_basis', 'publication', 'envelope_mode', 'timezone', 'publish_at', 'clarification_deadline', 'site_visit_at', 'site_visit_mandatory', 'closes_at', 'opens_at', 'evaluation_due', 'negotiation_due', 'award_target', 'standstill_days', 'allow_revision', 'allow_withdrawal', 'allow_alternatives', 'quorum', 'required_credentials', 'disclosure', 'fx', 'sites'];
+const SCALAR = ['title', 'objective', 'scope', 'inclusions', 'exclusions', 'category', 'location', 'contract_type', 'prep_start', 'service_start', 'service_end', 'teardown_end', 'currency', 'budget_minor', 'budget_public', 'ceiling_minor', 'cost_basis', 'publication', 'envelope_mode', 'timezone', 'publish_at', 'clarification_deadline', 'site_visit_at', 'site_visit_mandatory', 'closes_at', 'opens_at', 'evaluation_due', 'negotiation_due', 'award_target', 'standstill_days', 'allow_revision', 'allow_withdrawal', 'allow_alternatives', 'quorum', 'required_credentials', 'disclosure', 'fx', 'sites', 'renewal_options', 'renewal_term_months', 'renewal_ceiling_minor', 'notice_days', 'milestones', 'reserve_policy'];
 const editable = z.object({
   title: z.string().min(3).max(140), objective: z.string().max(3000).nullable(), scope: z.string().max(10000).nullable(), inclusions: z.string().max(4000).nullable(), exclusions: z.string().max(4000).nullable(), category: z.string().min(2).max(40), location: z.string().max(200).nullable(),
   contract_type: z.enum(['one_off', 'fixed_term', 'recurring', 'framework']), prep_start: date.nullable(), service_start: date.nullable(), service_end: date.nullable(), teardown_end: date.nullable(),
@@ -30,6 +30,9 @@ const editable = z.object({
   required_credentials: z.array(credReq).max(20), disclosure: z.object({ rank: z.boolean().default(false), bidder_count: z.boolean().default(false), award_public: z.boolean().default(false) }),
   fx: z.object({ date: date, base: z.string().length(3), rates: z.record(z.string().length(3), z.string().regex(/^\d+(\.\d{1,8})?$/)) }).nullable(),
   sites: z.array(z.object({ venue_id: id.optional(), label: z.string().min(1).max(120) })).max(30),
+  renewal_options: z.number().int().min(0).max(10), renewal_term_months: z.number().int().min(1).max(60).nullable(), renewal_ceiling_minor: money.nullable(), notice_days: z.number().int().min(0).max(365),
+  milestones: z.array(z.object({ name: z.string().min(2).max(120), due_on: date, description: z.string().max(500).optional() })).max(30),
+  reserve_policy: z.enum(['none', 'next_ranked']),
 }).partial();
 
 // ------------------------------------------------------------------ create & edit
@@ -91,7 +94,7 @@ cap({
       if (p.status !== 'draft') throw conflict('Only a draft can be edited. Approved and published tenders change through addenda.');
       if (p.row_version !== i.row_version) throw conflict('Someone else changed this tender; reload and try again');
       const keys = SCALAR.filter((k) => i[k] !== undefined);
-      const vals = keys.map((k) => (['required_credentials', 'disclosure', 'fx', 'sites'].includes(k) && i[k] !== null ? JSON.stringify(i[k]) : i[k]));
+      const vals = keys.map((k) => (['required_credentials', 'disclosure', 'fx', 'sites', 'milestones'].includes(k) && i[k] !== null ? JSON.stringify(i[k]) : i[k]));
       if (i.sites) for (const s of i.sites) if (s.venue_id && !(await c.query('SELECT 1 FROM venues WHERE id=$1', [s.venue_id])).rowCount) throw notFound('Venue');
       const sets = keys.map((k, n) => `${k}=$${n + 3}`);
       if (i.sport !== undefined) { const sp = (await c.query('SELECT id FROM sports WHERE slug=$1 OR id::text=$1', [i.sport])).rows[0]; if (!sp) throw notFound('Sport'); sets.push(`sport_id=$${keys.length + 3}`); vals.push(sp.id); }
@@ -100,6 +103,36 @@ cap({
       await applyStructure(c, p.id, i);
       await auditLog(c, p.id, user.id, 'rfp_edited', { fields: [...keys, ...(i.lots ? ['lots'] : []), ...(i.questions ? ['questions'] : []), ...(i.rubric !== undefined ? ['rubric'] : [])] });
       return row;
+    });
+  },
+});
+
+cap({
+  name: 'list_tender_documents', method: 'GET', path: '/rfps/:id/documents', tag: TAG,
+  summary: 'The tender pack for the buying team: every document with who it is for, whether suppliers must acknowledge it for the site visit, who added it and when, and the version history of amended documents (an amendment is a new file that points at the one it replaced; the earlier file is archived, never deleted). Files themselves are uploaded with PUT /rfps/:id/files and opened from /tender-files/:id.',
+  input: z.object({ id, include_archived: z.enum(['true', 'false']).default('false') }),
+  async handler({ user }, i) {
+    const { project: p, roles } = await requireBuyer(user, i.id, 'view');
+    const rows = await many(`SELECT f.id, f.name, f.mime, f.bytes, f.audience, f.visit_pack, f.replaces_id, f.archived_at, f.created_at, u.handle AS added_by,
+        (f.archived_at IS NULL) AS current, EXISTS (SELECT 1 FROM proc_visit_acks k WHERE k.file_id=f.id) AS acknowledged
+      FROM proc_files f LEFT JOIN users u ON u.id=f.uploaded_by
+      WHERE f.project_id=$1 AND f.entity_id IS NULL AND ($2 OR f.archived_at IS NULL) ORDER BY f.created_at`, [p.id, i.include_archived === 'true']);
+    return { editable: p.status === 'draft' && can(roles, 'files'), documents: rows };
+  },
+});
+
+cap({
+  name: 'archive_tender_document', method: 'POST', path: '/rfps/:id/documents/:file_id/archive', tag: TAG,
+  summary: 'Take a document out of a draft tender pack. It is archived, not deleted, and stays in the history. After approval the pack cannot lose a document: add the amended one and issue an addendum instead.',
+  input: z.object({ id, file_id: id }),
+  async handler({ user }, i) {
+    return tx(async (c) => {
+      const { project: p } = await requireBuyer(user, i.id, 'files', c, { lock: true });
+      if (p.status !== 'draft') throw conflict('After approval a document cannot be removed. Add the amended document as a new one and issue an addendum that says what changed.');
+      const r = (await c.query('UPDATE proc_files SET archived_at=now() WHERE id=$1 AND project_id=$2 AND entity_id IS NULL AND archived_at IS NULL RETURNING id, name', [i.file_id, p.id])).rows[0];
+      if (!r) throw notFound('File');
+      await auditLog(c, p.id, user.id, 'file_archived', { file_id: r.id });
+      return { id: r.id, archived: true };
     });
   },
 });
@@ -160,11 +193,11 @@ cap({
       many('SELECT envelope, round, opened_at, participants, hash FROM proc_openings WHERE project_id=$1 ORDER BY opened_at', [p.id]),
       one("SELECT (SELECT count(*)::int FROM proc_participants WHERE project_id=$1) AS participants, (SELECT count(*)::int FROM proc_proposals WHERE project_id=$1 AND status='submitted') AS proposals_submitted, (SELECT count(*)::int FROM proc_qna WHERE project_id=$1 AND answered_at IS NULL) AS questions_waiting", [p.id]),
       many('SELECT n, summary, material, rfp_version, issued_at FROM proc_addenda WHERE project_id=$1 ORDER BY n', [p.id]),
-      many("SELECT id, name, mime, bytes, audience, created_at FROM proc_files WHERE project_id=$1 AND entity_id IS NULL AND archived_at IS NULL ORDER BY created_at", [p.id]),
+      many("SELECT id, name, mime, bytes, audience, visit_pack, created_at FROM proc_files WHERE project_id=$1 AND entity_id IS NULL AND archived_at IS NULL ORDER BY created_at", [p.id]),
       many('SELECT n, kind, invited, closes_at, note FROM proc_rounds WHERE project_id=$1 ORDER BY n', [p.id]),
     ]);
     const { fx, ...rest } = p;
-    return { ...rest, fx, stage: stageOf(p), schedule: scheduleOf(p), my_roles: roles, can: ['edit', 'request_approval', 'approve', 'publish', 'addendum', 'schedule', 'invite', 'open', 'rank', 'recommend', 'scenario', 'members', 'audit'].filter((a) => can(roles, a)), lots, questions, members, approvals, openings, counts, addenda, files, rounds };
+    return { ...rest, fx, stage: stageOf(p), schedule: scheduleOf(p), my_roles: roles, can: ['edit', 'request_approval', 'approve', 'publish', 'addendum', 'schedule', 'invite', 'open', 'rank', 'recommend', 'scenario', 'members', 'audit', 'files', 'qna', 'order', 'rounds', 'gate', 'consensus', 'report', 'disqualify_request', 'score_technical', 'score_commercial'].filter((a) => can(roles, a)), lots, questions, members, approvals, openings, counts, addenda, files, rounds };
   },
 });
 
@@ -399,6 +432,7 @@ cap({
       if (!['cancelled', 'closed', 'awarded'].includes(p.status)) throw conflict('Only a cancelled, closed or awarded tender can be reissued');
       const n = (await c.query(`INSERT INTO proc_projects(ref, kind, parent_id, organisation_id, owner_user_id, event_id, sites, title, objective, scope, inclusions, exclusions, category, sport_id, location, contract_type, prep_start, service_start, service_end, teardown_end, currency, budget_minor, budget_public, ceiling_minor, cost_basis, publication, envelope_mode, timezone, site_visit_mandatory, standstill_days, allow_revision, allow_withdrawal, allow_alternatives, quorum, required_credentials, disclosure, rubric)
         SELECT 'TND-' || to_char(now(), 'YYYY') || '-' || lpad(nextval('proc_ref_seq')::text, 5, '0'), kind, id, organisation_id, $2, event_id, sites, title, objective, scope, inclusions, exclusions, category, sport_id, location, contract_type, prep_start, service_start, service_end, teardown_end, currency, budget_minor, budget_public, ceiling_minor, cost_basis, publication, envelope_mode, timezone, site_visit_mandatory, standstill_days, allow_revision, allow_withdrawal, allow_alternatives, quorum, required_credentials, disclosure, rubric FROM proc_projects WHERE id=$1 RETURNING *`, [p.id, user.id])).rows[0];
+      await c.query('UPDATE proc_projects n SET renewal_options=o.renewal_options, renewal_term_months=o.renewal_term_months, renewal_ceiling_minor=o.renewal_ceiling_minor, notice_days=o.notice_days, milestones=o.milestones, reserve_policy=o.reserve_policy FROM proc_projects o WHERE o.id=$1 AND n.id=$2', [p.id, n.id]);
       await c.query('INSERT INTO proc_lots(project_id, code, title, description, service_family, qty, unit, estimate_minor, allow_partial, bundle_with, starts_on, ends_on, site, position) SELECT $2, code, title, description, service_family, qty, unit, estimate_minor, allow_partial, bundle_with, starts_on, ends_on, site, position FROM proc_lots WHERE project_id=$1 AND archived_at IS NULL', [p.id, n.id]);
       await c.query('INSERT INTO proc_questions(project_id, key, section, prompt, type, options, unit, required, pass_fail, pass_value, evidence_required, lot_code, show_if, position) SELECT $2, key, section, prompt, type, options, unit, required, pass_fail, pass_value, evidence_required, lot_code, show_if, position FROM proc_questions WHERE project_id=$1 AND archived_at IS NULL', [p.id, n.id]);
       await auditLog(c, p.id, user.id, 'rfp_reissued', { new_id: n.id, reason: i.reason });

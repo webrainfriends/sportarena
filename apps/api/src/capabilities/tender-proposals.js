@@ -8,7 +8,7 @@ import { one, many, tx, pool } from '../db.js';
 import { badRequest, conflict, forbidden, notFound, unprocessable } from '../errors.js';
 import { encrypt, decrypt } from '../crypto.js';
 import { auditLog, buyerIds, contentHash, entityUserIds, getProject, noticeAccess, requireEntity, sealJson, stageOf, tellUsers, myEntityIds } from '../tender/core.js';
-import { credentialCheck, lotsOf, questionsOf } from '../tender/rfp.js';
+import { credentialCheck, lotsOf, questionsOf, visitDocs } from '../tender/rfp.js';
 import { lineAmounts, convertMinor } from '../tender/money.js';
 import { exportSheet, importSheet } from '../tender/sheet.js';
 
@@ -112,6 +112,8 @@ export async function checklist(c, p, pr, draft, part) {
   const ent = (await c.query('SELECT * FROM supplier_entities WHERE id=$1', [pr.entity_id])).rows[0];
   if (!part?.terms_accepted_at) add('error', 'terms', 'Accept the tender terms');
   if (p.site_visit_mandatory && !(part?.site_visit_attended || part?.site_visit_exempt_reason)) add('error', 'site_visit', 'Attendance at the site visit is mandatory and has not been recorded');
+  const vd = await visitDocs(c, p.id, pr.entity_id);
+  for (const d of vd.outstanding) add('error', `visit_doc_${d.id}`, `Acknowledge the site-visit document "${d.name}"`);
   const adds = (await c.query('SELECT a.n FROM proc_addenda a WHERE a.project_id=$1 AND NOT EXISTS (SELECT 1 FROM proc_addendum_acks k WHERE k.project_id=a.project_id AND k.n=a.n AND k.entity_id=$2)', [p.id, pr.entity_id])).rows;
   for (const a of adds) add('error', `addendum_${a.n}`, `Acknowledge addendum ${a.n}`);
   const chosen = new Set(pr.lots);
