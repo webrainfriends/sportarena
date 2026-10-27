@@ -74,10 +74,10 @@ test('rights package: scoped to the competition, a game or a collection; only th
   assert.equal(p2.scope_kind, 'collection');
   // partners discover open packages across events
   must(await api('POST', `/media/packages/${p1.id}/status`, { token: org.token, body: { status: 'open' } }));
-  const found = must(await api('GET', '/media/opportunities', { token: pu.token, query: { q: ev.name } }));
+  const found = must(await api('GET', '/media-opportunities', { token: pu.token, query: { q: ev.name } }));
   assert.ok(found.some((x) => x.id === p1.id) && found.every((x) => x.event_id === ev.id));
   must(await api('POST', `/media/packages/${p1.id}/status`, { token: org.token, body: { status: 'closed' } }));
-  assert.equal(must(await api('GET', '/media/opportunities', { token: pu.token, query: { q: ev.name } })).some((x) => x.id === p1.id), false, 'closed packages are not offered');
+  assert.equal(must(await api('GET', '/media-opportunities', { token: pu.token, query: { q: ev.name } })).some((x) => x.id === p1.id), false, 'closed packages are not offered');
   // public sees only OPEN packages; the organiser sees all
   must(await api('POST', `/media/packages/${p2.id}/status`, { token: org.token, body: { status: 'open' } }));
   assert.deepEqual(must(await api('GET', `/events/${ev.id}/media/packages`, { token: pu.token })).map((x) => x.id), [p2.id]);
