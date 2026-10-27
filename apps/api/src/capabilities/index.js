@@ -117,6 +117,8 @@ import './sponsorship-awards.js';
 import './sponsorship-budgets.js';
 import './beneficiary-portfolio.js';
 import './sponsorship-beneficiaries.js';
+import './registration.js';
+import './registration-eligibility.js';
 import './supply.js';
 import './medical.js';
 import './care-plans.js';

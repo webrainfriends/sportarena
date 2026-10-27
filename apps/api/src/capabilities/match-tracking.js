@@ -1,3 +1,4 @@
+import { lockFixtureEligibility } from '../registration.js';
 import { z } from 'zod';
 import { cap, id } from '../registry.js';
 import { many, tx, pool } from '../db.js';
@@ -83,6 +84,7 @@ cap({
       if (x.f.status !== 'scheduled') throw conflict(`A game that is ${x.f.status} cannot be started`);
       if (!x.f.home_team_id || !x.f.away_team_id) throw conflict('The teams for this game are not decided yet');
       if (['draft', 'paused', 'completed', 'cancelled'].includes(x.ev.status)) throw conflict(`Event is ${x.ev.status}`);
+      await lockFixtureEligibility(c, x.ev, x.f, user.id, 'start');   // re-check eligibility at kick-off and preserve the decision (no-op without a registration policy)
       await pinFixtureRuleset(i.id, x.f.event_id, c);
       await c.query("UPDATE fixtures SET status='live', started_at=now() WHERE id=$1", [i.id]);
     });

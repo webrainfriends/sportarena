@@ -11,6 +11,7 @@ import { notify } from '../notify.js';
 import { canManageTeam } from './teams.js';
 import { requireConsent } from '../youth.js';
 import { hasOrgGrant } from '../org-access.js';
+import { assertSquadEligible } from '../registration.js';
 
 const availability = z.enum(['available', 'tentative', 'unavailable', 'injured']);
 const rateUnit = z.enum(['match', 'hour', 'month', 'season']);
@@ -181,6 +182,13 @@ cap({
       const strangers = ids.filter((u) => !roster.has(u));
       if (strangers.length) throw badRequest('Only active team members can be selected', { user_ids: strangers });
       for (const uid of ids) await requireConsent(uid, 'participation', 'being selected for a match or event', c);
+      // a competition with a registration policy decides eligibility on the server, at selection time (events without one are unchanged)
+      const playing = i.members.filter((m) => ['player', 'captain', 'vice_captain', 'substitute'].includes(m.role)).map((m) => m.user_id);
+      if (playing.length && scope.event_id) {
+        const evRow = (await c.query('SELECT * FROM events WHERE id=$1', [scope.event_id])).rows[0];
+        const fx = scope.fixture_id ? (await c.query('SELECT scheduled_at FROM fixtures WHERE id=$1', [scope.fixture_id])).rows[0] : null;
+        await assertSquadEligible(c, evRow, team.id, playing, user.id, { fixtureAt: fx?.scheduled_at });
+      }
       if (!i.allow_unavailable) {
         const out = ids.filter((u) => ['unavailable', 'injured'].includes(roster.get(u).availability));
         if (out.length) throw conflict('Some selected people are marked unavailable or injured', { user_ids: out });
