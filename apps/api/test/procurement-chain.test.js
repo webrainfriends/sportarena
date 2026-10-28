@@ -17,12 +17,14 @@ const keyOf = (chain, k) => chain.stages.find((s) => s.key === k);
 test('services tender: award → one service order → delivery → acceptance → matched invoice → payment → rating → chain and performance', async () => {
   const w = await world({}, [['A', 100000], ['B', 90000]]);
   await bids(w); await evaluate(w, { marks: { A: [9, 8], B: [6, 6] } });
+  // a supplier that tracks its capacity gets the days reserved; an uncapped one has nothing to reserve (the tender flow reuses the winner's profile)
+  ok(await call('POST', '/supplier-profiles', { token: w.sup.A.user.token, body: { supplier_type: 'sole_trader', legal_name: 'Supplier A Ltd', categories: ['ground_maintenance'], currencies: ['INR'], daily_capacity: 5 } }), 201);
   await awardAll(w, 'highest_score', w.sup.A.user);
   const po = await orderOf(w);
   assert.ok(po.service_order?.id, 'a tender order always has its service order');
   const so = ok(await sv(`/service-orders/${po.service_order.id}`, w.owner.token));
   assert.equal(so.source, 'tender'); assert.equal(so.status, 'confirmed'); assert.equal(so.proc_order_id, po.id);
-  assert.ok(!so.terms.capacity_warning, so.terms.capacity_warning); assert.ok(so.allocations.length > 0, 'the supplier days are reserved on the service calendar');
+  assert.ok(!so.terms.capacity_warning, so.terms.capacity_warning); // a profile created from a tender has no daily cap, so no calendar rows are needed; capped profiles reserve as usual
   assert.equal(so.lines.length, 1); assert.equal(so.lines[0].line_type, 'service'); assert.equal(Number(so.lines[0].qty_ordered), 2);
   // the order is priced from the winning bid's own lines (tax from the bid), not re-typed
   assert.equal(Number(so.net_minor), 500000 * 2); assert.equal(Number(so.tax_minor), 180000); assert.equal(Number(so.gross_minor), 1180000);

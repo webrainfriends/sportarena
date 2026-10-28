@@ -7,6 +7,7 @@ import { SportPicker, SportsMulti } from './sportpicker';
 import { RegionPicker } from './region-picker';
 import { EntityPicker } from './entity-picker';
 import { CountryPicker, CountriesMulti } from './country-picker';
+import { PlacePicker } from './place-picker';
 import { useSession } from './session';
 import { CurrencyDropdown } from './currency-dropdown';
 import { EvidenceField } from './evidence';
@@ -40,6 +41,7 @@ const opt = (o) => (typeof o === 'object' ? o : { value: o, label: String(o) });
  *   sports                                  several sports (chips + add) → [slugs]
  *   regions                                 several cities / areas (chips + search) → [names]
  *   daterange {toKey}                       from–to on one calendar → key = start, toKey = end
+ *   place                                   a place: search countries / cities, pick the country, optional Google / Apple Maps point → { name, country?, lat?, lng? }
  *   country                                 search a country by name → two-letter ISO code
  *   countries                               several countries (chips + search) → [two-letter ISO codes]
  *   datetime {min,step}                     a date and a time of day together → an ISO timestamp in the person's own time zone
@@ -154,6 +156,7 @@ export function FormSheet({ visible, onClose, title, fields, initial = {}, submi
       case 'daterange': return <DateRangeField label={f.label} from={v[f.key]} to={v[f.toKey]} onChange={({ from, to }) => { set(f.key, from); set(f.toKey, to); }} optional={f.optional} min={f.min} hint={f.hint} />;
       case 'datetime': return <DateTimeField label={f.label} value={v[f.key]} onChange={(x) => set(f.key, x)} optional={f.optional} min={f.min} step={f.step} hint={typeof f.hint === 'function' ? f.hint(v) : f.hint} />;
       case 'countries': return <CountriesMulti label={f.label} value={v[f.key] ?? []} onChange={(x) => set(f.key, x)} optional={f.optional} hint={typeof f.hint === 'function' ? f.hint(v) : f.hint} />;
+      case 'place': return <PlacePicker label={f.label} value={v[f.key]} onChange={(x) => set(f.key, x)} optional={f.optional} hint={typeof f.hint === 'function' ? f.hint(v) : f.hint} />;
       case 'country': return <CountryPicker label={f.label} value={v[f.key]} onChange={(x) => set(f.key, x)} optional={f.optional} hint={typeof f.hint === 'function' ? f.hint(v) : f.hint} />;
       case 'files': return <EvidenceField label={f.label + (f.optional ? ' (optional)' : '')} value={v[f.key] ?? []} onChange={(x) => set(f.key, x)} max={f.max} />;
       case 'sports': return <SportsMulti label={f.label} value={v[f.key] ?? []} onChange={(x) => set(f.key, x)} optional={f.optional} />;

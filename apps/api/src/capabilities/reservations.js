@@ -17,6 +17,8 @@ import { autoAssignLockers, refitLockers } from '../booking/lockers.js';
 import { canManageTeam } from './teams.js';
 import { config } from '../config.js';
 import { toMajor } from '../currency.js';
+import { CATEGORIES, LOCALE_CODES } from '../comms-catalogue.js';
+import { recordConsent } from '../comms.js';
 
 const TAG = 'Venues & Booking';
 const dt = z.string().datetime({ offset: true });
@@ -323,7 +325,7 @@ cap({
       else await c.query('UPDATE bookings SET discount_cents=0, price_cents=base_cents WHERE id=$1', [b.id]);
       const what = `${res.name} at ${ctx.venue.name}, ${start.toISOString()}`;
       const data = { booking_id: b.id, reservation_id: b.reservation_id, venue_id: ctx.venue.id };
-      if (staff && b.user_id !== user.id) await notify(c, b.user_id, { kind: 'booking_modified', title: 'The venue changed your booking', body: `Now: ${what}.`, data });
+      if (staff && b.user_id !== user.id) await notify(c, b.user_id, { kind: 'booking_modified', title: 'The venue changed your booking', body: `Now: ${what}.`, data, comm: { essential: true } });
       else {
         await notify(c, b.user_id, { kind: 'booking_modified', title: 'Booking updated', body: `Now: ${what}.`, data });
         await notifyVenueTeam(c, ctx.venue, user.id, { kind: 'booking_modified', title: 'A booking was changed', body: what, data });
@@ -372,20 +374,27 @@ cap({
   },
 });
 cap({
-  name: 'get_notification_preferences', method: 'GET', path: '/me/notification-preferences', tag: 'Notifications', summary: 'Which channels you get notifications on (in-app, email), how far ahead booking reminders arrive, and muted kinds.',
-  handler: async ({ user }) => (await one('SELECT in_app, email, push, whatsapp, reminder_hours, muted_kinds FROM notification_prefs WHERE user_id=$1', [user.id])) ?? DEFAULT_PREFS,
+  name: 'get_notification_preferences', method: 'GET', path: '/me/notification-preferences', tag: 'Notifications', summary: 'Which channels you get notifications on (in-app, push, email, WhatsApp, SMS), how far ahead booking reminders arrive, muted kinds, the WhatsApp/SMS message categories you switched off and your message language.',
+  handler: async ({ user }) => (await one('SELECT in_app, email, push, whatsapp, sms, reminder_hours, muted_kinds, comm_categories_off, comm_locale FROM notification_prefs WHERE user_id=$1', [user.id])) ?? DEFAULT_PREFS,
 });
 cap({
   name: 'update_notification_preferences', method: 'PATCH', path: '/me/notification-preferences', tag: 'Notifications',
-  summary: 'Turn notification channels on/off (in_app, email, push, whatsapp), set the booking reminder lead time in hours, and mute kinds (e.g. new_booking).',
-  input: z.object({ in_app: z.boolean().optional(), email: z.boolean().optional(), push: z.boolean().optional(), whatsapp: z.boolean().optional(), reminder_hours: z.number().int().min(1).max(168).optional(), muted_kinds: z.array(z.string().max(40)).max(30).optional() }),
+  summary: 'Turn notification channels on/off (in_app, email, push, whatsapp, sms), set the booking reminder lead time in hours, mute kinds (e.g. new_booking), switch off WhatsApp/SMS message categories (fees, sessions, bookings, events, business) and choose the language of templated messages. WhatsApp and SMS need a verified number first; turning one on or off is recorded as consent evidence.',
+  input: z.object({ in_app: z.boolean().optional(), email: z.boolean().optional(), push: z.boolean().optional(), whatsapp: z.boolean().optional(), sms: z.boolean().optional(), reminder_hours: z.number().int().min(1).max(168).optional(), muted_kinds: z.array(z.string().max(40)).max(30).optional(), comm_categories_off: z.array(z.enum(CATEGORIES.map(([k]) => k))).max(10).optional(), comm_locale: z.enum(LOCALE_CODES).optional() }),
   async handler({ user }, i) {
     const cur = (await one('SELECT * FROM notification_prefs WHERE user_id=$1', [user.id])) ?? DEFAULT_PREFS;
     const n = { ...cur, ...Object.fromEntries(Object.entries(i).filter(([, v]) => v !== undefined)) };
     if (i.whatsapp === true && !(await one('SELECT 1 FROM whatsapp_contacts WHERE user_id=$1 AND verified_at IS NOT NULL AND opted_out_at IS NULL', [user.id]))) throw badRequest('Verify your WhatsApp number first');
-    return one(`INSERT INTO notification_prefs(user_id, in_app, email, push, whatsapp, reminder_hours, muted_kinds) VALUES ($1,$2,$3,$4,$7,$5,$6)
-                ON CONFLICT (user_id) DO UPDATE SET in_app=$2, email=$3, push=$4, whatsapp=$7, reminder_hours=$5, muted_kinds=$6 RETURNING in_app, email, push, whatsapp, reminder_hours, muted_kinds`,
-      [user.id, n.in_app, n.email, n.push ?? true, n.reminder_hours, n.muted_kinds, n.whatsapp ?? false]);
+    if (i.sms === true && !(await one('SELECT 1 FROM sms_contacts WHERE user_id=$1 AND verified_at IS NOT NULL AND opted_out_at IS NULL', [user.id]))) throw badRequest('Verify your mobile number for SMS first');
+    return tx(async (c) => {
+      const row = (await c.query(`INSERT INTO notification_prefs(user_id, in_app, email, push, whatsapp, sms, reminder_hours, muted_kinds, comm_categories_off, comm_locale) VALUES ($1,$2,$3,$4,$7,$8,$5,$6,$9,$10)
+                ON CONFLICT (user_id) DO UPDATE SET in_app=$2, email=$3, push=$4, whatsapp=$7, sms=$8, reminder_hours=$5, muted_kinds=$6, comm_categories_off=$9, comm_locale=$10
+                RETURNING in_app, email, push, whatsapp, sms, reminder_hours, muted_kinds, comm_categories_off, comm_locale`,
+        [user.id, n.in_app, n.email, n.push ?? true, n.reminder_hours, n.muted_kinds, n.whatsapp ?? false, n.sms ?? false, n.comm_categories_off ?? [], n.comm_locale ?? 'en-IN'])).rows[0];
+      // switching a verified channel on or off is a consent decision: keep the evidence (source, time)
+      for (const ch of ['whatsapp', 'sms']) if (i[ch] !== undefined && i[ch] !== !!cur[ch]) await recordConsent(c, user.id, ch, i[ch] ? 'opt_in' : 'opt_out', 'app_switch');
+      return row;
+    });
   },
 });
 cap({

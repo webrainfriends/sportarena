@@ -32,6 +32,7 @@ import { runServiceSweeps } from './svc/sweeps.js';
 import { runServiceJobs } from './capabilities/svc-reports.js';
 import { runFederationSweeps } from './federation-sweeps.js';
 import { runOfficialsSweeps } from './officials-sweeps.js';
+import { runTripSweeps } from './trips-sweeps.js';
 import { runMediaRightsSweeps } from './media-rights-sweeps.js';
 import { sendFollowerAlerts } from './spectator.js';
 import { snapshotAll } from './rankings/data.js';
@@ -39,6 +40,7 @@ import { snapshotAll } from './rankings/data.js';
 /** Weekly ranking snapshots: the worker runs often, so only act once a week (Monday UTC), and a rerun on identical results adds nothing. */
 const weeklyRankingSnapshots = () => (new Date().getUTCDay() === 1 ? snapshotAll('weekly') : 0);
 import { syncOpenGames } from './open-games-sweeps.js';
+import { adSweeps } from './ads/engine.js';
 import { raiseTeamDues } from './team-money.js';
 
 export const STEPS = [
@@ -79,11 +81,13 @@ export const STEPS = [
   ['supplier_exports', 'supplier_exports', runServiceJobs, null],
   ['federation', 'federation', runFederationSweeps, null],
   ['officials_development', 'officials_development', runOfficialsSweeps, null],
+  ['team_travel', 'team_travel', runTripSweeps, null],
   ['media_rights', 'media_rights', runMediaRightsSweeps, null],
   ['follower_alerts', 'follower_alerts_sent', sendFollowerAlerts, 0],
   ['ranking_snapshots', 'ranking_snapshots', weeklyRankingSnapshots, 0],
   ['open_games', 'open_games_synced', syncOpenGames, 0],
   ['team_dues', 'team_dues_raised', raiseTeamDues, 0],
+  ['advertising', 'advertising', adSweeps, null],
 ];
 
 export async function maintenanceCycle() {

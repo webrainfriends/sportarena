@@ -86,6 +86,7 @@ export function YouthPanel({ deal, reload }) {
       {y.guardian_acting ? (
         <Section title="Permissions for this agreement" color={c.mint}>
           <Card>
+            <View style={{ gap: 16 }}>
             <Row2 title="Photos & videos" sub="Needed before any endorsement content can be submitted." value={y.media_allowed} onChange={(on) => toggle('media', on)} />
             <Row2 title="Sponsor messages" sub="Lets the sponsor write notes, reviews and objectives. They come to you, not to your child." value={y.contact_allowed} onChange={(on) => toggle('contact', on)} />
             <View accessibilityRole="summary" style={{ gap: 6 }}>
@@ -99,6 +100,7 @@ export function YouthPanel({ deal, reload }) {
               </View>
             </View>
             <T size={12} color={c.mute}>Sharing results is set under Performance & reviews. Each permission can be withdrawn at any time; payments and history are unaffected.</T>
+            </View>
           </Card>
         </Section>) : null}
       {deal.role === 'sponsor' ? <T size={12} color={c.mute}>Results: {y.results_shared ? 'shared by the guardian' : 'not shared'} · Photos & videos: {y.media_allowed ? 'allowed' : 'not allowed'} · Messages: {y.contact_allowed ? 'allowed' : 'not allowed'}</T> : null}

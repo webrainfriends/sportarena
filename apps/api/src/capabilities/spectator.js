@@ -140,7 +140,7 @@ cap({
     ]);
     const mvp = ev.public_mvp_vote && !youth ? await mvpView(f, user) : null;
     return {
-      fixture: row, live, event: { id: ev.id, name: ev.name, sport: ev.sport, youth, state: eventState(ev, 0) },
+      fixture: row, live, event: { id: ev.id, name: ev.name, sport: ev.sport, sport_slug: ev.sport_slug, youth, state: eventState(ev, 0) },
       officials, streams, media, sponsors,
       corrections: changes.map((c) => ({ id: c.id, kind: c.kind, official_before: c.was_final, before: c.before, after: c.after, at: c.created_at })),
       engagement: { reactions: ev.public_reactions && !youth ? { enabled: true, counts: Object.fromEntries(REACTIONS.map((r) => [r, reactions.find((x) => x.emoji === r)?.n ?? 0])), mine: myReaction?.emoji ?? null, choices: REACTIONS } : { enabled: false },

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { WhatsAppCard } from './whatsapp';
+import { SmsCard, WhatsAppCard } from './whatsapp';
+import { CommsPrefs } from './communications';
 import { Linking, Platform, Pressable, ScrollView, Share, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
@@ -541,7 +542,8 @@ export function Notifications() {
   const readAll = async () => { await api.post('/notifications/read', {}); list.reload(); };
   const tap = async (n) => {
     if (!n.read_at) { await api.post('/notifications/read', { ids: [n.id] }); list.reload(); }
-    if (n.data?.open_game_id) push('OpenGame', { id: n.data.open_game_id });
+    if (n.data?.trip_id) push('Trip', { id: n.data.trip_id });
+    else if (n.data?.open_game_id) push('OpenGame', { id: n.data.open_game_id });
     else if (n.data?.reservation_id) push('Reservation', { id: n.data.reservation_id });
     else if (n.data?.request_id) push('CoachRequest', { id: n.data.request_id });
     else if (n.data?.sponsorship_id) push('SponsorDeal', { id: n.data.sponsorship_id });
@@ -567,6 +569,8 @@ export function Notifications() {
       </Section>
       <Section title="Push" color={c.violet}><PushCard /></Section>
       <Section title="WhatsApp" color={c.lime}><WhatsAppCard onChanged={prefs.reload} /></Section>
+      <Section title="SMS" color={c.lime}><SmsCard onChanged={prefs.reload} /></Section>
+      <Section title="WhatsApp & SMS preferences" color={c.lime}><CommsPrefs onChanged={prefs.reload} /></Section>
       <Section title="Waitlist" color={c.lime}><WaitlistList /></Section>
       <Section title="Slot alerts" color={c.sun}><AlertsList /></Section>
       <Section title="Inbox" action={list.data?.unread ? 'Mark all read' : undefined} onAction={readAll} color={c.pink}>

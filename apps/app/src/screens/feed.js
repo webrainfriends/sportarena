@@ -16,6 +16,7 @@ import { PlayerHero, COL } from '../hero';
 import { ACTIONS, HomeReminders } from './athlete-home';
 import { locale } from '../locale';
 import { DoctorEntry } from './doctor';
+import { AdSlot } from '../ads';
 
 const PAGE = 10;
 
@@ -78,7 +79,7 @@ export function Feed({ header, narrow }) {
         <OpenPositions compact limit={3} onSeeAll={() => push('Openings')} onOpenMine={() => push('Openings')} />
       </View>
       {err ? <ErrorBox error={err} onRetry={() => load(0)} /> : null}
-      {busy && !rows.length ? <Loading /> : !rows.length && !err ? <Empty emoji="📭" title="Nothing here yet" sub="Be the first to post — athletes wanted, a match, kit for sale or a campaign." /> : rows.map((p) => <MarketCard key={p.id} p={p} user={user} gate={gate} feed />)}
+      {busy && !rows.length ? <Loading /> : !rows.length && !err ? <Empty emoji="📭" title="Nothing here yet" sub="Be the first to post — athletes wanted, a match, kit for sale or a campaign." /> : rows.map((p, i) => <React.Fragment key={p.id}><MarketCard p={p} user={user} gate={gate} feed />{i === 2 ? <AdSlot placement="sponsored_post" style={{ marginVertical: 6 }} /> : null}</React.Fragment>)}
       {more ? <Pressable onPress={() => load(rows.length)} disabled={busy} style={{ alignSelf: 'center', borderRadius: 999, borderWidth: 1.5, borderColor: c.ink, paddingVertical: 11, paddingHorizontal: 26 }}><T weight="800">{busy ? 'Loading…' : 'Show more'}</T></Pressable> : null}
     </View>
   );

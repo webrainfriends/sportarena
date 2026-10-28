@@ -75,12 +75,12 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /** Send every pending WhatsApp message, a few per cycle with a pause between them. Safe from several instances (claim first). */
 export async function dispatchWhatsapp({ limit = config.whatsapp.perCycle } = {}) {
-  const pending = Number((await one("SELECT count(*) AS n FROM notification_deliveries WHERE status='pending' AND channel='whatsapp'")).n);
+  const pending = Number((await one("SELECT count(*) AS n FROM notification_deliveries WHERE status='pending' AND channel='whatsapp' AND provider IS NULL")).n);
   if (!gateway.configured()) return { configured: false, pending, sent: 0, failed: 0 };
   const todo = await many(
     `SELECT d.id, d.attempts, n.id AS notification_id, n.title, n.body, n.data, n.user_id
        FROM notification_deliveries d JOIN notifications n ON n.id=d.notification_id
-      WHERE d.status='pending' AND d.channel='whatsapp' AND (d.next_attempt_at IS NULL OR d.next_attempt_at <= now())
+      WHERE d.status='pending' AND d.channel='whatsapp' AND d.provider IS NULL AND (d.next_attempt_at IS NULL OR d.next_attempt_at <= now())
         AND (d.claimed_at IS NULL OR d.claimed_at < now() - interval '5 minutes') ORDER BY d.created_at LIMIT $1`, [limit]);
   const out = { configured: true, pending, sent: 0, failed: 0 };
   let first = true;
