@@ -42,6 +42,12 @@ export const RULES = {
     required: ['id_document'], one_of: ['coaching_certificate', 'federation_licence'],
     checklist: [...identity, { key: 'credential_valid', label: 'Certificate / licence is current and issued by a recognised body' }, { key: 'sport_matches', label: 'Credential covers the sport on the profile' }],
   },
+  referee: {
+    label: 'Verified official', subject: 'user', needs_role: 'referee', validity_months: 24,
+    summary: 'Confirms a referee, umpire, assistant referee or scorer with a current licence or certification. Name the sport; the licence grade and issuing body go in the claim note. A self-declared referee profile is not verification.',
+    required: ['id_document'], one_of: ['federation_licence', 'coaching_certificate', 'club_letter'],
+    checklist: [...identity, { key: 'licence_current', label: 'Licence or certificate is current and in good standing with the issuing federation or association' }, { key: 'sport_level_matches', label: 'Sport, level and grade match the sport profile and the claim' }, { key: 'scope_recorded', label: 'Issuing body and competition scope are recorded in the decision' }],
+  },
   physio: {
     label: 'Verified physio', subject: 'user', needs_role: 'physio', validity_months: 12,
     summary: 'Confirms a registered physiotherapist.',

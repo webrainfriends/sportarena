@@ -4,7 +4,7 @@ import { many, tx } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { isAdmin } from '../helpers.js';
 import { notify } from '../notify.js';
-import { OFFICIAL_ROLES, lockOfficial, assertOfficialEligible, recordHistory, closeOfficial } from '../officials.js';
+import { OFFICIAL_ROLES, ASSIGNMENT_SQL, lockOfficial, assertOfficialEligible, recordHistory, closeOfficial } from '../officials.js';
 import { eventForOrganizer, inviteOfficial } from './events.js';
 
 const role = z.enum(OFFICIAL_ROLES);
@@ -52,7 +52,7 @@ cap({
       if (f.status === 'cancelled' || f.status === 'completed') throw conflict(`Fixture is ${f.status}`);
       const ev = (await c.query('SELECT * FROM events WHERE id=$1', [f.event_id])).rows[0];
       await lockOfficial(c, user.id);
-      await assertOfficialEligible(c, { sportId: ev.sport_id, fixtureId: f.id, userId: user.id, role: fo.role, start: f.scheduled_at, durationMin: f.duration_min });
+      await assertOfficialEligible(c, { event: ev, fixtureId: f.id, userId: user.id, role: fo.role, start: f.scheduled_at, durationMin: f.duration_min });
       if (fo.status === 'accepted') {
         await c.query('UPDATE fixture_officials SET needs_ack=false WHERE id=$1', [fo.id]);
         await recordHistory(c, fo.id, user.id, 'accepted', 'accepted', 'Acknowledged change');
@@ -130,13 +130,10 @@ cap({
 
 cap({
   name: 'list_my_official_assignments', method: 'GET', path: '/me/official-assignments', tag: 'Officials',
-  summary: 'My officiating requests and assignments with match, event and crew role, soonest first.',
+  summary: 'My officiating requests and assignments with match, event and crew role, soonest first. A confirmed assignment on a completed match reads as completed.',
   input: z.object({ status: z.enum(['invited', 'accepted', 'declined', 'withdrawn', 'released', 'cancelled', 'completed']).optional(), upcoming: z.boolean().optional(), ...page }),
   handler: ({ user }, i) => many(
-    `SELECT fo.id, fo.fixture_id, fo.role, fo.status, fo.needs_ack, fo.reason, f.scheduled_at, f.duration_min, f.status AS fixture_status, f.round, e.id AS event_id, e.name AS event_name,
-            h.name AS home_name, a.name AS away_name, r.name AS resource_name
-       FROM fixture_officials fo JOIN fixtures f ON f.id=fo.fixture_id JOIN events e ON e.id=f.event_id
-       LEFT JOIN teams h ON h.id=f.home_team_id LEFT JOIN teams a ON a.id=f.away_team_id LEFT JOIN resources r ON r.id=f.resource_id
-      WHERE fo.user_id=$1 AND ($2::text IS NULL OR fo.status=$2) AND (NOT coalesce($3::boolean, false) OR f.scheduled_at >= now())
-      ORDER BY f.scheduled_at, fo.id LIMIT $4 OFFSET $5`, [user.id, i.status ?? null, i.upcoming ?? null, i.limit, i.offset]),
+    `SELECT x.* FROM (${ASSIGNMENT_SQL} WHERE fo.user_id=$1) x
+      WHERE ($2::text IS NULL OR x.status=$2) AND (NOT coalesce($3::boolean, false) OR x.scheduled_at >= now())
+      ORDER BY x.scheduled_at, x.id LIMIT $4 OFFSET $5`, [user.id, i.status ?? null, i.upcoming ?? null, i.limit, i.offset]),
 });

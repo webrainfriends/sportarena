@@ -95,6 +95,7 @@ export async function raiseSubscriptionRenewals({ limit = 100 } = {}) {
          VALUES ($1,$2,$3,$4,$5,'membership',$6,$7,$8,$9,$10,$11,$12,$13,true,$14) RETURNING id`,
         [up.plan_id, up.venue_id, up.organisation_id, up.enrolment_id, up.user_id, up.name, up.new_price, up.currency, up.new_discount, up.new_days, up.new_months, up.resource_ids, up.includes, up.id])).rows[0];
       if (up.organisation_id) await (await import('../academy.js')).raiseRenewalCharge(c, up, nx.id);   // the money side of an academy period is an academy charge
+      await (await import('../cover.js')).notifyCoveringPayers(c, up.user_id, { purposeType: 'venue_plan', purposeId: nx.id, amount: Number(up.new_price), currency: up.currency });   // a sponsor or family member who covers memberships hears about it too
       await notify(c, up.user_id, {
         kind: 'plan_renewal', title: `Renew ${up.name}`, dedupe_key: `plan_renewal:${up.id}`,
         body: `Your ${up.name} at ${up.place_name} ends on ${up.expires_at.toISOString().slice(0, 10)}. Renewal: ${money(up.new_price, up.currency)} — pay it to keep your place without a gap.`,
