@@ -34,7 +34,7 @@ export async function pnl(orgId, { from, to, programmeId = null, sport = null } 
   const programmes = await many('SELECT id, title, sport, capacity, status FROM academy_programmes WHERE organisation_id=$1 ORDER BY title, id', [orgId]);
   const byId = new Map(programmes.map((p) => [p.id, p]));
   const charges = await many(
-    `SELECT ch.id, ch.currency, ch.status, ch.gross_minor, ch.discount_minor, ch.funded_minor, ch.funding_source, ch.tax_minor, ch.amount_minor, coalesce(e.programme_id, a.programme_id) AS programme_id, coalesce(e.user_id, a.athlete_id) AS athlete_id,
+    `SELECT ch.id, ch.currency, ch.status, ch.gross_minor, ch.discount_minor, ch.funded_minor, ch.funding_source, ch.tax_minor, ch.amount_minor, ch.settled_minor, ch.adjusted_minor, coalesce(e.programme_id, a.programme_id) AS programme_id, coalesce(e.user_id, a.athlete_id) AS athlete_id,
             coalesce(p.refunded, 0) AS refunded_minor
        ${CHARGE_BASE}
        LEFT JOIN LATERAL (SELECT sum(refunded_cents) AS refunded FROM payments WHERE purpose_type='academy_charge' AND purpose_id=ch.id AND status IN ('paid','refunded')) p ON true
@@ -66,7 +66,7 @@ export async function pnl(orgId, { from, to, programmeId = null, sport = null } 
     const r = row(ch.currency, ch.programme_id);
     r.charge_count++; r.gross += n(ch.gross_minor); r.discounts += n(ch.discount_minor); r.net_invoiced += n(ch.amount_minor); r.tax += n(ch.tax_minor); r.refunds += n(ch.refunded_minor);
     if (ch.funding_source) r.funded[ch.funding_source] += n(ch.funded_minor);
-    if (ch.status === 'awaiting_payment') r.outstanding += n(ch.amount_minor);
+    if (ch.status === 'awaiting_payment') r.outstanding += n(ch.amount_minor) - n(ch.settled_minor) - n(ch.adjusted_minor);
     if (ch.athlete_id) r.athletes.add(ch.athlete_id);
   }
   for (const c of cashIn) row(c.currency, c.programme_id).cash_collected += n(c.collected);
@@ -150,13 +150,15 @@ export async function pnl(orgId, { from, to, programmeId = null, sport = null } 
 
 const BUCKETS = [['not_yet_due', -Infinity, 0], ['d1_30', 1, 30], ['d31_60', 31, 60], ['d61_90', 61, 90], ['d90_plus', 91, Infinity]];
 
-/** Receivables as of a date. A charge counts when it existed by then and was still unpaid on that day (paid later counts as outstanding then). Uses the charge terms as they stand now. */
+/** Receivables as of a date. A charge counts when it existed by then and still had a balance on that day: its amount less receipts and waivers/concessions recorded by then (paid later counts as outstanding then). Uses the charge terms as they stand now. */
 export async function ageing(orgId, asOf, { lines = 0 } = {}) {
   const rows = await many(
-    `SELECT ch.id, ch.currency, ch.kind, ch.due_on, ch.amount_minor, ch.status, coalesce(e.programme_id, a.programme_id) AS programme_id, pr.title AS programme, coalesce(e.user_id, a.athlete_id) AS athlete_id, u.display_name AS athlete_name,
+    `SELECT ch.id, ch.currency, ch.kind, ch.due_on, b.bal AS amount_minor, ch.status, coalesce(e.programme_id, a.programme_id) AS programme_id, pr.title AS programme, coalesce(e.user_id, a.athlete_id) AS athlete_id, u.display_name AS athlete_name,
             ($2::date - ch.due_on) AS days_past_due
        ${CHARGE_BASE} LEFT JOIN academy_programmes pr ON pr.id=coalesce(e.programme_id, a.programme_id) LEFT JOIN users u ON u.id=coalesce(e.user_id, a.athlete_id)
-      WHERE ch.organisation_id=$1 AND ch.created_at::date <= $2 AND ch.amount_minor > 0 AND (ch.status='awaiting_payment' OR (ch.status IN ('paid','refunded') AND ch.paid_at::date > $2))
+       JOIN LATERAL (SELECT ch.amount_minor - coalesce((SELECT sum(x.amount_minor) FROM charge_receipts x WHERE x.charge_id=ch.id AND x.created_at::date <= $2), 0)
+                                            - coalesce((SELECT sum(x.amount_minor) FROM charge_adjustments x WHERE x.charge_id=ch.id AND x.created_at::date <= $2), 0) AS bal) b ON b.bal > 0
+      WHERE ch.organisation_id=$1 AND ch.created_at::date <= $2 AND ch.amount_minor > 0 AND (ch.status IN ('awaiting_payment','waived') OR (ch.status IN ('paid','refunded') AND ch.paid_at::date > $2))
       ORDER BY ch.due_on, ch.id`, [orgId, asOf]);
   const cur = new Map();
   for (const r of rows) {

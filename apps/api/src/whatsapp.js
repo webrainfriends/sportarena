@@ -14,7 +14,7 @@ const MAX_ATTEMPTS = 5;
  * Only these kinds ever go to WhatsApp (an allow-list, so a new kind is private by default): bookings, teams, events and
  * invitations. Security (`security_*`), health, insurance, legal, payouts and anything clinical are not on it.
  */
-const ALLOWED = /^(booking_(modified|cancelled|reminder|expired)|reservation_confirmed|new_booking|waitlist_(offer|expired)|slot_available|team_(invite|announcement|selection|attendance_request|task_assigned)|event_(invitation|announcement|schedule|cancelled|paused|resumed|waitlist|staff)|official_assignment|department_invite|venue_staff_added|enquiry_(reply|message|broadcast))$/;
+const ALLOWED = /^(booking_(modified|cancelled|reminder|expired)|reservation_confirmed|new_booking|waitlist_(offer|expired)|slot_available|team_(invite|announcement|selection|attendance_request|task_assigned)|event_(invitation|announcement|schedule|cancelled|paused|resumed|waitlist|staff)|official_assignment|department_invite|venue_staff_added|enquiry_(reply|message|broadcast)|collections_(reminder|retry)|academy_payment_(received|part))$/;
 export const whatsappKind = (kind) => ALLOWED.test(kind);
 
 /** "+91 98765-43210" -> "919876543210" (digits, country code included; 8-15 digits per E.164). Null when it cannot be a phone number. */

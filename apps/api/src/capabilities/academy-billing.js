@@ -9,7 +9,7 @@ import { audit } from '../helpers.js';
 import { orgFor } from '../org-access.js';
 import { refundPartial } from '../payments/service.js';
 import { flag, STAFF, STAFF_MONEY, outstandingPolicies, waitlistPosition, planCharges, actFor, findPromo, SESSIONS_SQL, INVOICE_SQL, INVOICE_NO_SQL } from '../academy.js';
-import { syncChargeInvoice, creditChargeInvoice, fulfilChargePaid } from '../academy-invoices.js';
+import { syncChargeInvoice, creditChargeInvoice, applyReceipt } from '../academy-invoices.js';
 import { restoreForPurpose } from '../rewards/redeem.js';
 import { reverseActivity } from '../rewards/activity.js';
 import { localView } from '../academy-trials.js';
@@ -23,7 +23,7 @@ cap({
   async handler({ user }, i) {
     await orgFor(user, i.id, STAFF_MONEY);
     return many(
-      `SELECT ch.id, ch.enrolment_id, ch.application_id, ch.kind, ch.seq, ch.due_on, ch.currency, ch.gross_minor, ch.discount_minor, ch.funded_minor, ch.funding_source, ch.tax_minor, ch.amount_minor, ch.status, ch.paid_at, ${INVOICE_SQL} AS invoice_id, ${INVOICE_NO_SQL} AS invoice_number,
+      `SELECT ch.id, ch.enrolment_id, ch.application_id, ch.kind, ch.seq, ch.due_on, ch.currency, ch.gross_minor, ch.discount_minor, ch.funded_minor, ch.funding_source, ch.tax_minor, ch.amount_minor, ch.settled_minor, ch.adjusted_minor, ch.amount_minor - ch.settled_minor - ch.adjusted_minor AS balance_minor, ch.status, ch.paid_at, ${INVOICE_SQL} AS invoice_id, ${INVOICE_NO_SQL} AS invoice_number,
               u.id AS athlete_id, u.display_name, (ch.status='awaiting_payment' AND ch.due_on < current_date) AS overdue
          FROM academy_charges ch LEFT JOIN org_enrolments e ON e.id=ch.enrolment_id LEFT JOIN academy_applications a ON a.id=ch.application_id
          JOIN users u ON u.id = coalesce(e.user_id, a.athlete_id)
@@ -42,6 +42,7 @@ cap({
     await orgFor(user, ch.organisation_id, STAFF_MONEY, { write: true, c });
     if (ch.status !== 'awaiting_payment') throw conflict('Only an unpaid charge can be funded');
     if (i.funded_minor + Number(ch.discount_minor) > Number(ch.gross_minor)) throw badRequest('Funding and discounts cannot exceed the charge');
+    if (Number(ch.gross_minor) - Number(ch.discount_minor) - i.funded_minor < Number(ch.settled_minor) + Number(ch.adjusted_minor)) throw conflict('Part of this charge has already been paid, waived or reduced. Funding cannot take it below that.');
     // sponsor money is traceable: it must point at an active canonical sponsorship that targets this academy (or one of its groups, or the athlete)
     let sponsorshipId = null;
     if (i.funding_source === 'sponsor' && !i.sponsorship_id) throw badRequest('Choose the sponsorship agreement that funds this charge');
@@ -114,15 +115,16 @@ cap({
 const METHODS = ['cash', 'card', 'upi', 'bank', 'other'];
 cap({
   name: 'record_academy_payment', method: 'POST', path: '/academy-charges/:id/paid', tag: 'Academy',
-  summary: 'Staff record that a charge was paid at the academy desk (cash, card, UPI, bank transfer) (owner/admin/finance). The invoice becomes a paid receipt and a pack or subscription period it buys starts. Online payments do this automatically.',
-  input: z.object({ id, method: z.enum(METHODS).default('cash') }),
+  summary: 'Staff record a payment received at the academy desk (cash, card, UPI, bank transfer) (owner/admin/finance). Without amount_minor it is the whole balance and the invoice becomes a paid receipt (a pack or subscription period it buys starts). With amount_minor it is a part payment: the original charge and invoice stay as they were and the balance reduces. A retry with the same idempotency_key adds nothing. Online payments do this automatically.',
+  input: z.object({ id, method: z.enum(METHODS).default('cash'), amount_minor: z.number().int().min(1).optional(), idempotency_key: z.string().min(8).max(80).optional() }),
   handler: ({ user }, i) => tx(async (c) => {
     const ch = (await c.query('SELECT * FROM academy_charges WHERE id=$1', [i.id])).rows[0];
     if (!ch) throw notFound('Charge');
     await orgFor(user, ch.organisation_id, STAFF_MONEY, { write: true, c });
-    if (await fulfilChargePaid(c, i.id, { method: i.method }) === false) throw conflict('That charge is not waiting for payment');
+    const r = await applyReceipt(c, i.id, { method: i.method, amountMinor: i.amount_minor ?? null, actor: user.id, key: i.idempotency_key ?? null });
+    if (!r.applied) throw conflict('That charge is not waiting for payment');
     await audit(c, user.id, 'record_academy_payment', 'academy_charges', i.id);
-    return (await c.query('SELECT id, status, paid_at FROM academy_charges WHERE id=$1', [i.id])).rows[0];
+    return { ...(await c.query('SELECT id, status, paid_at, amount_minor, settled_minor, adjusted_minor, amount_minor - settled_minor - adjusted_minor AS balance_minor FROM academy_charges WHERE id=$1', [i.id])).rows[0], completed: r.completed, replay: !!r.replay };
   }),
 });
 
@@ -232,7 +234,7 @@ cap({
            FROM org_enrolments e JOIN org_cohorts k ON k.id=e.cohort_id JOIN academy_programmes pr ON pr.id=e.programme_id JOIN organisations o ON o.id=k.organisation_id
           WHERE e.user_id=$1 ORDER BY e.enrolled_at DESC, e.id LIMIT 50`, [p.id]);
       const charges = await many(
-        `SELECT ch.id, ch.kind, ch.due_on, ch.currency, ch.amount_minor, ch.gross_minor, ch.discount_minor, ch.funded_minor, ch.funding_source, ch.status, ch.paid_at, ch.enrolment_id, ch.application_id, (ch.status='awaiting_payment' AND ch.due_on < current_date) AS overdue, ${INVOICE_SQL} AS invoice_id, ${INVOICE_NO_SQL} AS invoice_number
+        `SELECT ch.id, ch.kind, ch.due_on, ch.currency, ch.amount_minor, ch.settled_minor, ch.adjusted_minor, ch.amount_minor - ch.settled_minor - ch.adjusted_minor AS balance_minor, ch.gross_minor, ch.discount_minor, ch.funded_minor, ch.funding_source, ch.status, ch.paid_at, ch.enrolment_id, ch.application_id, (ch.status='awaiting_payment' AND ch.due_on < current_date) AS overdue, (SELECT pp.instalments FROM payment_plans pp WHERE pp.charge_id=ch.id AND pp.status='active') AS payment_plan, EXISTS (SELECT 1 FROM entitlement_suspensions xs WHERE xs.enrolment_id=ch.enrolment_id AND xs.status='active') AS access_paused, ${INVOICE_SQL} AS invoice_id, ${INVOICE_NO_SQL} AS invoice_number
            FROM academy_charges ch LEFT JOIN org_enrolments e ON e.id=ch.enrolment_id LEFT JOIN academy_applications a ON a.id=ch.application_id
           WHERE ch.payer_id=$1 AND coalesce(e.user_id, a.athlete_id)=$2 ORDER BY ch.due_on, ch.id LIMIT 100`, [user.id, p.id]);
       const todo = [];
@@ -246,7 +248,7 @@ cap({
           WHERE c.user_id=$1 AND c.status='issued' AND c.enrolment_id IS NOT NULL ORDER BY c.issued_on DESC, c.id LIMIT 20`, [p.id]);
       out.push({ athlete: p, applications: apps, enrolments, charges, certificates, to_do: todo });
     }
-    return { people: out, due: money(await many("SELECT currency, sum(amount_minor)::bigint AS due_minor, count(*)::int AS charges FROM academy_charges WHERE payer_id=$1 AND status='awaiting_payment' GROUP BY currency ORDER BY currency", [user.id])) };
+    return { people: out, due: money(await many("SELECT currency, sum(amount_minor - settled_minor - adjusted_minor)::bigint AS due_minor, count(*)::int AS charges FROM academy_charges WHERE payer_id=$1 AND status='awaiting_payment' GROUP BY currency ORDER BY currency", [user.id])) };
   },
 });
 
@@ -260,8 +262,8 @@ cap({
     const money_ = {
       by_currency: await many(
         `SELECT currency, coalesce(sum(amount_minor) FILTER (WHERE status IN ('awaiting_payment','paid','refunded')),0)::bigint AS billed_minor, coalesce(sum(amount_minor) FILTER (WHERE status='paid'),0)::bigint AS paid_minor,
-                coalesce(sum(amount_minor) FILTER (WHERE status='awaiting_payment'),0)::bigint AS outstanding_minor, coalesce(sum(amount_minor) FILTER (WHERE status='awaiting_payment' AND due_on < current_date),0)::bigint AS overdue_minor,
-                coalesce(sum(amount_minor) FILTER (WHERE status='awaiting_payment' AND due_on BETWEEN current_date AND current_date + 14),0)::bigint AS due_14d_minor
+                coalesce(sum(amount_minor - settled_minor - adjusted_minor) FILTER (WHERE status='awaiting_payment'),0)::bigint AS outstanding_minor, coalesce(sum(amount_minor - settled_minor - adjusted_minor) FILTER (WHERE status='awaiting_payment' AND due_on < current_date),0)::bigint AS overdue_minor,
+                coalesce(sum(amount_minor - settled_minor - adjusted_minor) FILTER (WHERE status='awaiting_payment' AND due_on BETWEEN current_date AND current_date + 14),0)::bigint AS due_14d_minor
            FROM academy_charges WHERE organisation_id=$1 GROUP BY currency ORDER BY currency`, [i.id]),
       funded: await many("SELECT funding_source, currency, count(*)::int AS charges, sum(funded_minor)::bigint AS funded_minor FROM academy_charges WHERE organisation_id=$1 AND funded_minor > 0 GROUP BY funding_source, currency ORDER BY funding_source, currency", [i.id]),
       note: 'Paid means the customer paid. It does not mean the academy has been paid out.',
@@ -292,7 +294,7 @@ cap({
       ...(await many("SELECT a.id, u.display_name, p.title, a.stage, a.updated_at FROM academy_applications a JOIN users u ON u.id=a.athlete_id JOIN academy_programmes p ON p.id=a.programme_id WHERE a.organisation_id=$1 AND a.stage IN ('submitted','under_review') ORDER BY a.updated_at, a.id LIMIT 8", [i.id])).map((r) => ({ kind: 'review', application_id: r.id, title: `Review ${r.display_name}`, sub: `${r.title} · waiting ${Math.max(0, Math.floor((Date.now() - new Date(r.updated_at)) / 864e5))} days`, at: r.updated_at })),
       ...(await many("SELECT a.id, u.display_name, p.title, a.offer_expires_at FROM academy_applications a JOIN users u ON u.id=a.athlete_id JOIN academy_programmes p ON p.id=a.programme_id WHERE a.organisation_id=$1 AND a.stage='offered' AND a.offer_expires_at < now() + interval '48 hours' ORDER BY a.offer_expires_at, a.id LIMIT 8", [i.id])).map((r) => ({ kind: 'offer_expiring', application_id: r.id, title: `${r.display_name}'s offer is about to expire`, sub: r.title, at: r.offer_expires_at })),
       ...(await many("SELECT a.id, u.display_name, a.next_action, a.next_action_on FROM academy_applications a JOIN users u ON u.id=a.athlete_id WHERE a.organisation_id=$1 AND a.next_action_on <= current_date AND a.stage NOT IN ('enrolled','declined','withdrawn','expired','cancelled') ORDER BY a.next_action_on, a.id LIMIT 8", [i.id])).map((r) => ({ kind: 'follow_up', application_id: r.id, title: `${r.next_action || 'Follow up'} · ${r.display_name}`, sub: `Due ${String(r.next_action_on).slice(0, 10)}`, at: r.next_action_on })),
-      ...(await many("SELECT ch.currency, count(*)::int AS n, sum(ch.amount_minor)::bigint AS total FROM academy_charges ch WHERE ch.organisation_id=$1 AND ch.status='awaiting_payment' AND ch.due_on < current_date GROUP BY ch.currency ORDER BY ch.currency", [i.id])).map((r) => ({ kind: 'overdue', title: `${r.n} overdue payment${r.n === 1 ? '' : 's'} (${r.currency})`, sub: `${r.total} minor units outstanding`, currency: r.currency, amount_minor: r.total })),
+      ...(await many("SELECT ch.currency, count(*)::int AS n, sum(ch.amount_minor - ch.settled_minor - ch.adjusted_minor)::bigint AS total FROM academy_charges ch WHERE ch.organisation_id=$1 AND ch.status='awaiting_payment' AND ch.due_on < current_date GROUP BY ch.currency ORDER BY ch.currency", [i.id])).map((r) => ({ kind: 'overdue', title: `${r.n} overdue payment${r.n === 1 ? '' : 's'} (${r.currency})`, sub: `${r.total} minor units outstanding`, currency: r.currency, amount_minor: r.total })),
     ];
     return { programmes, stages, enrolments: flow, families, fill_trend: trend, outstanding_actions, inbox, money: money_ };
   },

@@ -60,7 +60,7 @@ export async function describePurpose(c, type, id) {
     return x && { payerId: x.payer_id, amount: Number(x.amount), currency: x.currency, name: `Sponsorship payment · ${x.name}`, payable: x.pay_status === 'awaiting_payment' && x.due_status === 'scheduled' && ['active', 'ended', 'term_expired'].includes(x.deal_status) };
   }
   if (type === 'academy_charge') {
-    const x = await q("SELECT ch.payer_id, ch.amount_minor - coalesce((SELECT sum(i.credits_cents) FROM invoices i WHERE i.academy_charge_id=ch.id AND i.kind='invoice' AND i.status='open'),0) AS amount, ch.currency, ch.status, ch.kind, o.name, o.status AS org_status FROM academy_charges ch JOIN organisations o ON o.id=ch.organisation_id WHERE ch.id=$1 FOR UPDATE OF ch");
+    const x = await q("SELECT ch.payer_id, ch.amount_minor - ch.settled_minor - ch.adjusted_minor - coalesce((SELECT sum(i.credits_cents) FROM invoices i WHERE i.academy_charge_id=ch.id AND i.kind='invoice' AND i.status='open'),0) AS amount, ch.currency, ch.status, ch.kind, o.name, o.status AS org_status FROM academy_charges ch JOIN organisations o ON o.id=ch.organisation_id WHERE ch.id=$1 FOR UPDATE OF ch");
     return x && { payerId: x.payer_id, amount: Number(x.amount), currency: x.currency, name: `Academy ${x.kind} · ${x.name}`, payable: x.status === 'awaiting_payment' && Number(x.amount) > 0 };
   }
   if (type === 'media_rights_fee') {
@@ -90,7 +90,7 @@ async function fulfil(c, type, id, payment) {
   if (type === 'venue_plan') return activateUserPlan(c, id);
   if (type === 'physio_package') return activatePhysioPackage(c, id);
   if (type === 'sponsorship_payment') return fulfilSponsorshipPayment(c, id);
-  if (type === 'academy_charge') return fulfilChargePaid(c, id, { method: 'online' });
+  if (type === 'academy_charge') return fulfilChargePaid(c, id, { method: 'online', payment });
   if (type === 'service_invoice') return fulfilServiceInvoicePaid(c, id, payment);
   if (type === 'media_rights_fee') return fulfilMediaFeePaid(c, id);
   const done = (await c.query(sql, [id])).rowCount > 0;

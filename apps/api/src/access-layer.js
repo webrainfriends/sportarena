@@ -14,6 +14,7 @@ import { AppError, badRequest, conflict, forbidden, notFound } from './errors.js
 import { isYouth, requireGuardian } from './youth.js';
 import { canManage } from './booking/engine.js';
 import { canManageTeam } from './capabilities/teams.js';
+import { isSuspended } from './collections.js';
 import { eligible as onAcademyRoster, markAttendance, LATE_AFTER_MIN, PRESENT } from './capabilities/academy-attendance.js';
 import { sessionFor } from './academy-ops.js';
 import { isGateOperator, judge, tokenFor } from './accreditation.js';
@@ -31,7 +32,7 @@ export const MESSAGES = {
   qr_invalid: 'This code is not valid.', qr_expired: 'This code has expired. Ask for a fresh one.', qr_wrong_subject: 'This code is for a different session, team or door.',
   qr_replay: 'This code was already used. Ask the person to open a fresh one.', credential_unknown: 'This card or tag is not registered to anyone.',
   credential_inactive: 'This card or tag has been suspended or revoked.', credential_expired: 'This card or tag has expired.',
-  not_eligible: 'This person is not on the roster for this.', outside_window: 'Outside the check-in window. Staff can still record it by hand.',
+  not_eligible: 'This person is not on the roster for this.', access_paused: 'Access to sessions is paused until a payment is made. The organisation can tell you more.', outside_window: 'Outside the check-in window. Staff can still record it by hand.',
   session_not_open: 'This session is not open for attendance.', guardian_required: 'A parent or guardian checks a young person in.',
   guardian_drop_off_required: 'A guardian has not dropped this young person off yet.', pickup_authorisation_required: 'A young person leaves only with a guardian or an authorised pickup. Choose who is collecting.',
   self_checkin_off: 'Self check-in is not switched on here.', geo_not_enabled: 'Location check-in is not switched on here.',
@@ -116,7 +117,13 @@ const academy = {
     };
   },
   operator: async (user, sub, c) => sessionFor(user, sub.ref, 'attendance', { write: true, c }).then(() => true, (e) => swallow(e, 403, 404)),
-  async eligibility(c, sub, personId) { return (await onAcademyRoster(c, sub.raw, personId)) ? null : 'not_eligible'; },
+  async eligibility(c, sub, personId, ctx) {
+    const on = await onAcademyRoster(c, sub.raw, personId);
+    if (!on) return 'not_eligible';
+    // access paused for non-payment: prospective and reversible, and staff can still record who is in the building by hand
+    if (ctx?.method !== 'manual' && on.enrolment_id && await isSuspended(c, on.enrolment_id)) return 'access_paused';
+    return null;
+  },
   async youth(c, sub, personId, direction, ctx) {
     if (direction === 'out' && !(await mayCollect(c, personId, ctx.releasedTo))) return { verdict: 'denied', reason: 'pickup_authorisation_required', release_candidates: await releaseCandidates(c, personId) };
     return null;
@@ -434,7 +441,11 @@ export async function passFor(c, user, domain, ref, athleteId) {
   const personId = athleteId ?? user.id;
   if (personId !== user.id) await requireGuardian(user, personId, c);
   else if (await isYouth(personId, c)) throw forbidden('A parent or guardian holds a young person\'s pass');
-  if (domain === 'academy_session' || domain === 'team_event') { if (await ADAPTERS[domain].eligibility(c, sub, personId, {})) throw notFound('Session'); }
+  if (domain === 'academy_session' || domain === 'team_event') {
+    const why = await ADAPTERS[domain].eligibility(c, sub, personId, {});
+    if (why === 'access_paused') throw forbidden(MESSAGES.access_paused);
+    if (why) throw notFound('Session');
+  }
   return { ...mintToken(domain, ref, { type: 'P', userId: personId }), subject: { domain, ref, label: sub.label } };
 }
 export async function siteCodeFor(c, user, domain, ref) {
