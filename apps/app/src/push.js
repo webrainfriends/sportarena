@@ -67,6 +67,8 @@ export function targetFor(data = {}) {
   if (data.observation_id) return ['OfficialsDevelopment', { tab: 'assessor' }];
   if (data.mentorship_id || data.item_id) return ['OfficialsDevelopment', { tab: 'growth' }];
   if (data.cpd_id || data.result_id) return ['OfficialsDevelopment', { tab: 'cpd' }];
+  if (data.official_id && data.fixture_id) return ['OfficialsHome', { tab: 'today' }]; // a request, change, release or withdrawal on your officiating crew
+  if (data.report_id && data.fixture_id) return ['OfficialMatch', { id: data.fixture_id }]; // an official filed a report on your match
   if (data.proposal_id) return ['ScoringTool', { proposalId: data.proposal_id }]; // a proposed result to review, or the outcome of yours
   if (data.accreditation_id && data.event_id) return ['MyAccreditations', {}]; // a nomination, approval, reissue or revocation of your badge
   if (data.request_id && data.event_id) return ['EventInbox', {}];
@@ -75,6 +77,7 @@ export function targetFor(data = {}) {
   if (data.application_id) return ['FundingOpportunities', {}]; // the applicant's own conversation: opened from My applications
   if (data.cover_id) return ['Cover', {}]; // a cover request, offer, answer, bill to pay or payment made
   if (data.programme_id) return ['Rewards', {}]; // points earned, a referral reward or an adjustment
+  if (data.open_game_id) return ['OpenGame', { id: data.open_game_id }]; // a request, approval, waitlist move, change or cancellation of a game
   if (data.reservation_id) return ['Reservation', { id: data.reservation_id }];
   if (data.venue_id && data.date) return ['BookFlow', { venueId: data.venue_id, resourceId: data.resource_id, date: data.date }];
   if (data.venue_id) return ['Venue', { id: data.venue_id }];
@@ -89,6 +92,8 @@ export function parseTarget(t) {
   if (kind === 'assessment' && id) return ['OfficialAssessment', { id }];
   if (kind === 'officials-development') return ['OfficialsDevelopment', id ? { tab: id } : {}];
   if (kind === 'federation' && id) return ['FederationHome', extra ? { id, tab: extra } : { id }];
+  if (kind === 'open-game' && id) return ['OpenGame', { id }];
+  if (kind === 'find-games') return ['FindGames', {}];
   if (kind === 'reservation' && id) return ['Reservation', { id }];
   if (kind === 'cover') return ['Cover', {}];
   if (kind === 'rewards') return ['Rewards', {}];

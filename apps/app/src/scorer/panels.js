@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { A, ABtn, ACard, AChip, AT } from '../arena';
 import { Btn, Chip, Field, Sheet, T } from '../ui';
+import { Counter } from '../pickers';
 import { c } from '../theme';
 
 const oversText = (legal) => `${Math.floor(legal / 6)}${legal % 6 ? `.${legal % 6}` : ''}`;
@@ -88,11 +89,23 @@ function PointsSummary({ pr, names }) {
   );
 }
 
+function CardsSummary({ pr, names }) {
+  return (
+    <View style={{ gap: 6 }}>
+      <AT size={15} weight="900">{pr.complete ? (pr.winner ? `${names[pr.winner]} win` : 'Draw') : 'Judges are still scoring'}{pr.decision ? ` · ${pr.decision}` : ''}</AT>
+      <AT size={12.5} color={A.mute}>Judges: {pr.votes.red} for {names.home}, {pr.votes.blue} for {names.away}{pr.votes.draw ? `, ${pr.votes.draw} level` : ''}</AT>
+      {pr.judges.map((j, i) => <AT key={i} size={12} color={A.mute} num>{`Judge ${i + 1}: ${j.rounds ? `${j.red}–${j.blue} over ${j.rounds} round${j.rounds === 1 ? '' : 's'}` : 'no card yet'}`}</AT>)}
+    </View>
+  );
+}
+
 /** The sport-specific live read-out for a game. `p` is /fixtures/:id/projection. */
 export function ProjectionCard({ p, names }) {
   if (!p) return null;
   const pr = p.projection;
-  const body = pr.innings ? <CricketSummary pr={pr} names={names} /> : pr.current_game ? <RacketSummary pr={pr} names={names} /> : pr.sets ? (
+  const body = pr.judges ? <CardsSummary pr={pr} names={names} /> : 'result' in pr && !pr.sets && !pr.innings ? (
+    <AT size={15} weight="900">{pr.result ? (pr.result.outcome === 'draw' ? 'Drawn' : `${names[pr.result.outcome]} won`) + (pr.result.method ? ` · ${pr.result.method}` : '') : 'Result to come'}</AT>
+  ) : pr.innings ? <CricketSummary pr={pr} names={names} /> : pr.current_game ? <RacketSummary pr={pr} names={names} /> : pr.sets ? (
     <View style={{ gap: 6 }}>
       <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>{pr.sets.map((s, i) => <Pill key={i} color={s.winner === 'home' ? A.magenta : A.cyan}>{s.home}–{s.away}</Pill>)}</View>
       {pr.server ? <AT size={13} weight="800" color={A.sun}>Serving: {names[pr.server]}</AT> : null}
@@ -248,4 +261,166 @@ export function BattingOrderSheet({ name, players, value, onClose, onSave }) {
       <Btn title="Save batting order" loading={busy} disabled={!ids.length} onPress={async () => { setBusy(true); try { await onSave(ids); } finally { setBusy(false); } }} />
     </Sheet>
   );
+}
+
+// ------------------------------------------------------------------ bouts decided by the judges' cards
+const QUICK = [[10, 9], [9, 10], [10, 10], [10, 8], [8, 10], [10, 7], [7, 10]];
+/** Boxing-style bouts: pick the judge and the round, tap the card the judge wrote. The decision is derived on the server from every card. */
+export function CardsPad({ g, names, disabled, onLog }) {
+  const { judges, rounds } = g.phase;
+  const [judge, setJudge] = useState(1);
+  const [round, setRound] = useState(1);
+  const cards = {};
+  for (const e of g.events) if (e.kind === 'round_card' && !e.voided_at) cards[`${e.payload.judge}:${e.payload.round}`] = `${e.payload.home}–${e.payload.away}`;
+  const next = Array.from({ length: rounds }, (_, i) => i + 1).find((r) => !cards[`${judge}:${r}`]);
+  useEffect(() => { if (next) setRound(next); }, [judge, next]);
+  const decided = !!g.score.over;
+  return (
+    <View style={{ gap: 12 }}>
+      <ACard pad={12} style={{ gap: 8 }}>
+        <AT size={12} weight="800" color={A.mute}>WHICH JUDGE'S CARD?</AT>
+        <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>{Array.from({ length: judges }, (_, i) => <AChip key={i} label={`Judge ${i + 1}`} active={judge === i + 1} onPress={() => setJudge(i + 1)} />)}</View>
+        <Counter label="Round" value={round} min={1} max={rounds} onChange={setRound} />
+        <AT size={12.5} color={A.mute}>{cards[`${judge}:${round}`] ? `Judge ${judge} already scored round ${round}: ${cards[`${judge}:${round}`]}` : `${names.home} (red) – ${names.away} (blue)`}</AT>
+      </ACard>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+        {QUICK.map(([h, a]) => <AChip key={`${h}${a}`} label={h === a ? `${h}–${a} level` : `${h}–${a} ${names[h > a ? 'home' : 'away']}`} disabled={disabled || decided || !!cards[`${judge}:${round}`]} onPress={() => onLog('round_card', null, { payload: { judge, round, home: h, away: a } })} />)}
+      </View>
+      <AT size={11.5} color={A.mute}>A round is out of 10 for each side; the pad lists the usual cards. Knockdowns and warnings are tracked below.</AT>
+    </View>
+  );
+}
+
+// ------------------------------------------------------------------ sports decided by a result (chess, esports, judo …)
+const METHODS = ['points', 'decision', 'knockout', 'submission', 'checkmate', 'resignation', 'time', 'forfeit', 'disqualification', 'agreed'];
+export function OutcomePad({ g, names, disabled, onLog }) {
+  const [outcome, setOutcome] = useState(null);
+  const [method, setMethod] = useState(null);
+  const done = g.score.result;
+  if (done) return <ACard pad={14} tone={A.green}><AT size={15} weight="900">{done.outcome === 'draw' ? 'Drawn' : `${names[done.outcome]} won`}{done.method ? ` · ${done.method}` : ''}</AT><AT size={12.5} color={A.mute}>Recorded live. The score sheet is entered by the official at full time.</AT></ACard>;
+  return (
+    <ACard pad={14} style={{ gap: 10 }}>
+      <AT size={15} weight="900">Who won?</AT>
+      <AT size={12.5} color={A.mute}>This sport has no running score. Run the clock, then record the result here; the score sheet is entered at full time.</AT>
+      <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+        {[['home', `${names.home} won`], ['draw', 'Draw'], ['away', `${names.away} won`]].map(([k, l]) => <AChip key={k} label={l} active={outcome === k} onPress={() => setOutcome(k)} />)}
+      </View>
+      <AT size={12} weight="800" color={A.mute}>HOW? (OPTIONAL)</AT>
+      <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>{METHODS.map((m) => <AChip key={m} label={m[0].toUpperCase() + m.slice(1)} active={method === m} onPress={() => setMethod(method === m ? null : m)} />)}</View>
+      <ABtn title="Record the result" tone="live" disabled={disabled || !outcome} onPress={() => onLog('result', null, { payload: { outcome, ...(method ? { method } : {}) } })} />
+    </ACard>
+  );
+}
+
+// ------------------------------------------------------------------ stoppage time
+/** The referee's announced added time for the period now running. */
+export function AddedTimeBar({ g, disabled, onLog }) {
+  const [open, setOpen] = useState(false);
+  const [mins, setMins] = useState(3);
+  const ph = g.phase;
+  if (!ph.period_open) return null;
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+      {ph.added_time ? <AT size={13} weight="900" color={A.sun} accessibilityLiveRegion="polite">+{ph.added_time}′ added time</AT> : null}
+      <ABtn small tone="ghost" title={ph.added_time ? '✎ Change added time' : '＋ Added time'} disabled={disabled} onPress={() => setOpen(true)} />
+      <Sheet visible={open} onClose={() => setOpen(false)} title="Added time">
+        <T size={14} color="#334155">The minutes the referee has announced at the end of this period.</T>
+        <Counter label="Minutes" value={mins} min={1} max={30} onChange={setMins} />
+        <Btn title="Announce" onPress={async () => { await onLog('added_time', null, { payload: { minutes: mins } }); setOpen(false); }} />
+      </Sheet>
+    </View>
+  );
+}
+
+// ------------------------------------------------------------------ sport rules (basketball, kabaddi, volleyball, badminton …)
+const PROMPTS = { technical_timeout: ['Technical timeout due', 'technical_timeout', 'Log it'], interval: ['Interval due', 'interval', 'Log it'], change_ends: ['Change ends', 'change_ends', 'Ends changed'] };
+const Dots = ({ n, of, color, label }) => (
+  <View accessible accessibilityLabel={label} style={{ flexDirection: 'row', gap: 4, flexWrap: 'wrap' }}>
+    {Array.from({ length: of }, (_, i) => <View key={i} style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: i < n ? color : 'transparent', borderWidth: 1.5, borderColor: color }} />)}
+  </View>
+);
+
+/**
+ * What the server derived from the taps under the sport's own rules: team fouls and the bonus, fouled-out players, timeouts left (basketball);
+ * players on the mat, do-or-die raids and the all-out (kabaddi); timeouts, substitutions, rotation, service court and the prompts that are due
+ * (volleyball, badminton). Prompts clear when the scorer logs them. Renders nothing for a sport with no rules block.
+ */
+export function RulesPanel({ g, names, disabled, onLog, playerName }) {
+  const r = g.score?.rules, rs = g.ruleset;
+  if (!r) return null;
+  const sides = ['home', 'away'];
+  const Row = ({ s, children }) => (
+    <View key={s} style={{ flex: 1, minWidth: 140, gap: 6 }}>
+      <AT size={12} weight="800" color={A.mute} numberOfLines={1}>{names[s].toUpperCase()}</AT>
+      {children}
+    </View>
+  );
+  if (rs.basketball) {
+    const B = rs.basketball;
+    return (
+      <ACard pad={12} style={{ gap: 10 }}>
+        <AT size={12} weight="800" color={A.mute}>FOULS AND TIMEOUTS</AT>
+        <View style={{ flexDirection: 'row', gap: 14, flexWrap: 'wrap' }}>
+          {sides.map((s) => (
+            <Row key={s} s={s}>
+              <AT size={13} weight="800" accessibilityLiveRegion="polite">Team fouls {r.team_fouls[s]}{B.team_fouls_bonus ? ` / ${B.team_fouls_bonus}` : ''}</AT>
+              {B.team_fouls_bonus ? <Dots n={Math.min(r.team_fouls[s], B.team_fouls_bonus)} of={B.team_fouls_bonus} color={r.bonus[other(s)] ? A.red : A.sun} label={`${names[s]} team fouls ${r.team_fouls[s]}`} /> : null}
+              {r.bonus[other(s)] ? <Pill color={A.red}>{names[other(s)]} in the bonus</Pill> : null}
+              {r.timeouts_left[s] != null ? <AT size={12.5} color={A.mute}>Timeouts left: {r.timeouts_left[s]}</AT> : null}
+            </Row>
+          ))}
+        </View>
+        {r.fouled_out.length ? <AT size={12.5} weight="800" color={A.red} accessibilityLiveRegion="polite">Fouled out: {r.fouled_out.map((p) => playerName?.(p.player_id) ?? 'A player').join(', ')}</AT> : null}
+        {r.target_score ? <AT size={12} color={A.mute}>First to {r.target_score} wins.</AT> : null}
+      </ACard>
+    );
+  }
+  if (rs.kabaddi) {
+    const K = rs.kabaddi;
+    return (
+      <ACard pad={12} style={{ gap: 10 }}>
+        <AT size={12} weight="800" color={A.mute}>ON THE MAT</AT>
+        <View style={{ flexDirection: 'row', gap: 14, flexWrap: 'wrap' }}>
+          {sides.map((s) => (
+            <Row key={s} s={s}>
+              <AT size={13} weight="800" accessibilityLiveRegion="polite">{r.on_mat[s]} of {K.players} players</AT>
+              <Dots n={r.on_mat[s]} of={K.players} color={s === 'home' ? A.magenta : A.cyan} label={`${names[s]} ${r.on_mat[s]} on the mat`} />
+              <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
+                {r.do_or_die[s] ? <Pill color={A.red}>Do-or-die raid</Pill> : null}
+                {r.super_tackle[s] ? <Pill color={A.sun}>Super tackle on</Pill> : null}
+              </View>
+            </Row>
+          ))}
+        </View>
+        {r.all_out_for ? <AT size={13} weight="900" color={A.red} accessibilityLiveRegion="polite">{names[other(r.all_out_for)]} have no one on the mat: log the all-out for {names[r.all_out_for]}.</AT> : null}
+      </ACard>
+    );
+  }
+  if (rs.rally) {
+    const due = (r.prompts ?? []).map((p) => PROMPTS[p]).filter(Boolean);
+    const info = r.service_court || r.rotation || r.timeouts_left || r.subs_left;
+    if (!due.length && !info) return null;
+    return (
+      <ACard pad={12} style={{ gap: 10 }}>
+        {due.map(([text, kind, action]) => (
+          <View key={kind} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <AT size={14} weight="900" color={A.sun} accessibilityLiveRegion="polite" style={{ flex: 1 }}>{text}</AT>
+            <ABtn small tone="sun" title={action} disabled={disabled} onPress={() => onLog(kind, 'home')} />
+          </View>
+        ))}
+        {r.decider ? <AT size={12} weight="800" color={A.mute}>Deciding set</AT> : null}
+        <View style={{ flexDirection: 'row', gap: 14, flexWrap: 'wrap' }}>
+          {sides.map((s) => (
+            <Row key={s} s={s}>
+              {r.service_court && g.score.server === s ? <Pill color={A.green}>Serves from the {r.service_court} court ({r.server_score})</Pill> : null}
+              {r.rotation ? <AT size={12.5} color={A.mute}>Rotation {r.rotation[s]}{r.rotation.serving === s ? ' · serving' : ''}</AT> : null}
+              {r.timeouts_left ? <AT size={12.5} color={A.mute}>Timeouts left: {r.timeouts_left[s]}</AT> : null}
+              {r.subs_left ? <AT size={12.5} color={A.mute}>Substitutions left: {r.subs_left[s]}</AT> : null}
+            </Row>
+          ))}
+        </View>
+      </ACard>
+    );
+  }
+  return null;
 }

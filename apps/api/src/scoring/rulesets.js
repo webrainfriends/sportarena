@@ -1,6 +1,7 @@
 // Scoring rulesets: how a match in a sport is scored, in the style of Olympic / Asian Games rules.
 // A ruleset is plain data, so organisers can define their own (stored per event) with the same shape.
 import { z } from 'zod';
+import { sessionDefaults } from './session.js';
 
 const key = z.string().regex(/^[a-z][a-z0-9_]{0,23}$/);
 
@@ -38,12 +39,42 @@ export const rulesetSchema = z.object({
     serve: z.enum(['none', 'rally_winner', 'alternate']).default('none').describe('derive the server: rally_winner serves next, alternate swaps every serve_every points'),
     serve_every: z.number().int().min(1).max(5).default(2),
   }).optional().describe('optional refinement of kind "sets": game-within-set scoring (tennis, padel) and server tracking for rally sports'),
+  basketball: z.object({
+    team_fouls_bonus: z.number().int().min(1).max(20).nullable().default(null).describe('team fouls in a period after which the opponent shoots bonus free throws'),
+    player_fouls_out: z.number().int().min(1).max(10).nullable().default(null).describe('personal fouls after which a player may not take part again'),
+    timeouts: z.array(z.object({ from: z.number().int().min(1).max(20), to: z.number().int().min(1).max(20), allowed: z.number().int().min(0).max(10) })).max(6).default([])
+      .describe('timeouts each team may take, counted over the periods from..to'),
+    target_score: z.number().int().min(1).max(200).nullable().default(null).describe('the game ends as soon as a side reaches this score (3x3)'),
+  }).optional().describe('optional refinement of points_events: team and player fouls, bonus, timeouts and a target score (basketball family)'),
+  kabaddi: z.object({
+    players: z.number().int().min(2).max(12).default(7),
+    super_tackle_at: z.number().int().min(1).max(12).default(3).describe('a tackle with this many defenders or fewer on the mat is a super tackle'),
+    do_or_die_after: z.number().int().min(1).max(5).default(2).describe('consecutive empty raids after which the next raid is do-or-die'),
+  }).optional().describe('optional refinement of points_events: players on the mat, revivals, do-or-die raids and all-outs (kabaddi)'),
+  rally: z.object({
+    timeouts_per_set: z.number().int().min(0).max(5).nullable().default(null),
+    subs_per_set: z.number().int().min(0).max(20).nullable().default(null),
+    technical_at: z.array(z.number().int().min(1).max(100)).max(3).default([]).describe('leader scores at which a technical timeout is due (not in the deciding set)'),
+    interval_at: z.number().int().min(1).max(100).nullable().default(null).describe('leader score at which the interval is due every set (badminton 11)'),
+    court_change: z.object({
+      every: z.number().int().min(1).max(30).nullable().default(null).describe('change ends after every N total points'),
+      decider_every: z.number().int().min(1).max(30).nullable().default(null).describe('the same, in the deciding set'),
+      decider_at_leader: z.number().int().min(1).max(100).nullable().default(null).describe('deciding set only: change ends when the leader reaches this score'),
+    }).default({}),
+    service_court: z.boolean().default(false).describe('the server serves from the right with an even score and from the left with an odd one (badminton)'),
+    rotation: z.boolean().default(false).describe('track the serving rotation: a side that wins the rally from the other side rotates (volleyball)'),
+  }).optional().describe('optional refinement of kind "sets": timeouts, substitutions, intervals, court changes, service court and rotation'),
+  cards: z.object({ rounds: z.number().int().min(1).max(15), judges: z.number().int().min(1).max(5) }).optional()
+    .describe('optional refinement of kind "manual": a bout decided by the judges\' round cards (10-point-must); each judge scores each round and the decision is derived'),
   extra_time: z.object({ periods: z.number().int().min(1).max(4), minutes: z.number().int().min(1).max(60) }).optional()
     .describe('points_events: periods played after regulation when level in a knockout; they are numbered after periods.count'),
   shootout: z.object({ rounds: z.number().int().min(1).max(10).default(5) }).optional()
     .describe('points_events: penalty shoot-out when still level (events shootout_goal / shootout_miss, alternating sides)'),
   draw_allowed: z.boolean().default(true),
 }).superRefine((r, ctx) => {
+  if (r.cards && r.kind !== 'manual') ctx.addIssue({ code: 'custom', message: 'cards{} refines a manual ruleset', path: ['cards'] });
+  if ((r.basketball || r.kabaddi) && r.kind !== 'points_events') ctx.addIssue({ code: 'custom', message: 'basketball{} and kabaddi{} refine a points_events ruleset', path: ['basketball'] });
+  if (r.rally && r.kind !== 'sets') ctx.addIssue({ code: 'custom', message: 'rally{} refines a sets ruleset', path: ['rally'] });
   if (r.racket && r.kind !== 'sets') ctx.addIssue({ code: 'custom', message: 'racket{} refines a sets ruleset', path: ['racket'] });
   if ((r.extra_time || r.shootout) && r.kind !== 'points_events') ctx.addIssue({ code: 'custom', message: 'extra_time and shootout belong to points_events rulesets', path: ['extra_time'] });
   if (r.kind === 'cricket' && !r.cricket) ctx.addIssue({ code: 'custom', message: 'a cricket ruleset needs cricket{}', path: ['cricket'] });
@@ -59,11 +90,18 @@ const goals = (label, count, periodLabel, extra = []) => R({
   events: [{ kind: 'goal', label: 'Goal', points: 1, icon: '⚽' }],
   stats: [{ kind: 'foul', label: 'Foul' }, { kind: 'yellow_card', label: 'Yellow card', icon: '🟨' }, { kind: 'red_card', label: 'Red card', icon: '🟥' }, { kind: 'timeout', label: 'Timeout' }, { kind: 'substitution', label: 'Substitution' }, ...extra],
 });
-const rally = (label, best_of, points_to_win, win_by, cap, deciding_points, stats = [], racket) => R({
+const rally = (label, best_of, points_to_win, win_by, cap, deciding_points, stats = [], racket, rules) => R({
   kind: 'sets', label, sets: { best_of, points_to_win, win_by, cap, deciding_points }, draw_allowed: false,
-  events: [], stats: [{ kind: 'timeout', label: 'Timeout' }, { kind: 'fault', label: 'Fault' }, ...stats], ...(racket ? { racket } : {}),
+  events: [], stats: [{ kind: 'timeout', label: 'Timeout' }, { kind: 'fault', label: 'Fault' }, ...stats], ...(racket ? { racket } : {}), ...(rules ? { rally: rules } : {}),
 });
 const MANUAL = R({ kind: 'manual', label: 'Manual totals', events: [], stats: [{ kind: 'foul', label: 'Foul' }, { kind: 'warning', label: 'Warning' }] });
+
+/** A bout decided by the judges' round cards, 10-point-must (boxing, MMA, muay thai, kickboxing). Rounds and judges are the usual defaults; a template or governed format sets the real ones. */
+const cardBout = (label, rounds, judges = 3) => R({
+  kind: 'manual', label, periods: { count: rounds, label: 'Round' }, draw_allowed: true, events: [],
+  stats: [{ kind: 'knockdown', label: 'Knockdown' }, { kind: 'warning', label: 'Warning' }, { kind: 'point_deduction', label: 'Point deduction' }],
+  cards: { rounds, judges },
+});
 
 const BUILTIN = {
   football: goals('Football', 2, 'Half', [{ kind: 'corner', label: 'Corner' }, { kind: 'offside', label: 'Offside' }]),
@@ -77,16 +115,19 @@ const BUILTIN = {
     kind: 'points_events', label: 'Basketball', periods: { count: 4, label: 'Quarter' }, draw_allowed: false,
     events: [{ kind: 'free_throw', label: 'Free throw', points: 1 }, { kind: 'two_pointer', label: '2-pointer', points: 2, icon: '🏀' }, { kind: 'three_pointer', label: '3-pointer', points: 3, icon: '🎯' }],
     stats: [{ kind: 'foul', label: 'Foul' }, { kind: 'timeout', label: 'Timeout' }, { kind: 'rebound', label: 'Rebound' }, { kind: 'assist', label: 'Assist' }, { kind: 'turnover', label: 'Turnover' }],
+    basketball: { team_fouls_bonus: 5, player_fouls_out: 5, timeouts: [{ from: 1, to: 2, allowed: 2 }, { from: 3, to: 4, allowed: 3 }, { from: 5, to: 20, allowed: 1 }], target_score: null },
   }),
   '3x3-basketball': R({
     kind: 'points_events', label: '3x3 Basketball', periods: { count: 1, label: 'Game' }, draw_allowed: false,
     events: [{ kind: 'one_pointer', label: 'Inside the arc', points: 1 }, { kind: 'two_pointer', label: 'Beyond the arc', points: 2 }, { kind: 'free_throw', label: 'Free throw', points: 1 }],
     stats: [{ kind: 'foul', label: 'Foul' }, { kind: 'timeout', label: 'Timeout' }],
+    basketball: { team_fouls_bonus: 7, player_fouls_out: null, timeouts: [{ from: 1, to: 20, allowed: 1 }], target_score: 21 },
   }),
   kabaddi: R({
     kind: 'points_events', label: 'Kabaddi', periods: { count: 2, label: 'Half' }, draw_allowed: true,
     events: [{ kind: 'raid_point', label: 'Raid point', points: 1, icon: '🤼' }, { kind: 'tackle_point', label: 'Tackle point', points: 1 }, { kind: 'bonus_point', label: 'Bonus point', points: 1 }, { kind: 'all_out', label: 'All-out (+2)', points: 2, icon: '💥' }, { kind: 'technical_point', label: 'Technical point', points: 1 }],
     stats: [{ kind: 'super_raid', label: 'Super raid' }, { kind: 'super_tackle', label: 'Super tackle' }, { kind: 'empty_raid', label: 'Empty raid' }, { kind: 'review', label: 'Review' }, { kind: 'timeout', label: 'Timeout' }],
+    kabaddi: { players: 7, super_tackle_at: 3, do_or_die_after: 2 },
   }),
   rugby: R({
     kind: 'points_events', label: 'Rugby', periods: { count: 2, label: 'Half' },
@@ -105,9 +146,12 @@ const BUILTIN = {
   }),
   baseball: R({ kind: 'points_events', label: 'Baseball', periods: { count: 9, label: 'Inning' }, draw_allowed: false, events: [{ kind: 'run', label: 'Run', points: 1, icon: '⚾' }], stats: [{ kind: 'hit', label: 'Hit' }, { kind: 'error', label: 'Error' }, { kind: 'strikeout', label: 'Strikeout' }] }),
   softball: R({ kind: 'points_events', label: 'Softball', periods: { count: 7, label: 'Inning' }, draw_allowed: false, events: [{ kind: 'run', label: 'Run', points: 1, icon: '🥎' }], stats: [{ kind: 'hit', label: 'Hit' }, { kind: 'error', label: 'Error' }, { kind: 'strikeout', label: 'Strikeout' }] }),
-  volleyball: rally('Volleyball', 5, 25, 2, null, 15, [{ kind: 'ace', label: 'Ace' }, { kind: 'block', label: 'Block' }, { kind: 'substitution', label: 'Substitution' }], { serve: 'rally_winner' }),
-  'beach-volleyball': rally('Beach volleyball', 3, 21, 2, null, 15, [{ kind: 'ace', label: 'Ace' }, { kind: 'block', label: 'Block' }], { serve: 'rally_winner' }),
-  badminton: rally('Badminton', 3, 21, 2, 30, null, [{ kind: 'service_fault', label: 'Service fault' }], { serve: 'rally_winner' }),
+  volleyball: rally('Volleyball', 5, 25, 2, null, 15, [{ kind: 'ace', label: 'Ace' }, { kind: 'block', label: 'Block' }, { kind: 'substitution', label: 'Substitution' }, { kind: 'technical_timeout', label: 'Technical timeout' }, { kind: 'change_ends', label: 'Ends changed' }], { serve: 'rally_winner' },
+    { timeouts_per_set: 2, subs_per_set: 6, technical_at: [8, 16], court_change: { decider_at_leader: 8 }, rotation: true }),
+  'beach-volleyball': rally('Beach volleyball', 3, 21, 2, null, 15, [{ kind: 'ace', label: 'Ace' }, { kind: 'block', label: 'Block' }, { kind: 'change_ends', label: 'Ends changed' }], { serve: 'rally_winner' },
+    { timeouts_per_set: 1, court_change: { every: 7, decider_every: 5 }, rotation: false }),
+  badminton: rally('Badminton', 3, 21, 2, 30, null, [{ kind: 'service_fault', label: 'Service fault' }, { kind: 'interval', label: 'Interval' }, { kind: 'change_ends', label: 'Ends changed' }], { serve: 'rally_winner' },
+    { interval_at: 11, court_change: { decider_at_leader: 11 }, service_court: true }),
   'table-tennis': rally('Table tennis', 5, 11, 2, null, null, [{ kind: 'ace', label: 'Ace' }], { serve: 'alternate', serve_every: 2 }),
   squash: rally('Squash', 5, 11, 2, null, null, [{ kind: 'let', label: 'Let' }, { kind: 'stroke', label: 'Stroke' }], { serve: 'rally_winner' }),
   pickleball: rally('Pickleball', 3, 11, 2, null, null),
@@ -136,6 +180,7 @@ const BUILTIN = {
     events: [{ kind: 'goal', label: 'Goal', points: 3, icon: '🥅' }, { kind: 'point', label: 'Point', points: 1 }],
     stats: [{ kind: 'wide', label: 'Wide' }, { kind: 'yellow_card', label: 'Yellow card', icon: '🟨' }, { kind: 'red_card', label: 'Red card', icon: '🟥' }],
   }),
+  boxing: cardBout('Boxing', 3), mma: cardBout('MMA', 3), 'muay-thai': cardBout('Muay Thai', 5), kickboxing: cardBout('Kickboxing', 3),
   'ice-hockey': goals('Ice hockey', 3, 'Period', [{ kind: 'penalty', label: 'Penalty (2 min)' }, { kind: 'shot', label: 'Shot on goal' }]),
 };
 
@@ -146,12 +191,6 @@ const genericPoints = (name) => R({
   kind: 'points_events', label: `${name} (points)`, periods: { count: 1, label: 'Game' }, draw_allowed: true,
   events: [{ kind: 'point', label: 'Point', points: 1 }], stats: [{ kind: 'foul', label: 'Foul' }, { kind: 'warning', label: 'Warning' }, { kind: 'timeout', label: 'Timeout' }],
 });
-/** Head-to-head games and matches (board and card games, esports): the score is games or rounds won. */
-const gamesWon = (name) => R({
-  kind: 'points_events', label: `${name} (games won)`, periods: { count: 1, label: 'Match' }, draw_allowed: true,
-  events: [{ kind: 'game_win', label: 'Game won', points: 1, icon: '🏆' }], stats: [{ kind: 'game_drawn', label: 'Game drawn' }, { kind: 'warning', label: 'Warning' }, { kind: 'timeout', label: 'Timeout' }],
-});
-
 const CRICKET_FORMATS = {
   T10: { overs: 10, innings: 2 }, T20: { overs: 20, innings: 2 }, ODI: { overs: 50, innings: 2 }, Test: { overs: null, innings: 4 },
 };
@@ -177,9 +216,8 @@ export function builtinRuleset(sport) {
   if (sport?.slug && BUILTIN[sport.slug]) return BUILTIN[sport.slug];
   if (sport?.scoring === 'goals') return goals(sport.name ?? 'Goals', 2, 'Half');
   if (sport?.scoring === 'sets') return rally(sport.name ?? 'Sets', 3, 21, 2, 30, null);
-  if (sport?.scoring === 'points' && sport.category === 'team_ball') return genericPoints(sport.name ?? 'Team game');
-  if (sport?.scoring === 'points' && (sport.category === 'mind' || sport.category === 'esports')) return gamesWon(sport.name ?? 'Match');
-  return MANUAL; // timed, measured and judged sports are scored by sessions, scorecards or totals on the score sheet
+  if (sport?.scoring === 'points' && (sport.category === 'team_ball' || (sport.category === 'winter' && sport.play_type === 'team'))) return genericPoints(sport.name ?? 'Team game');
+  return MANUAL; // outcome-decided, timed, measured and judged sports: see liveModelOf for how each is scored live
 }
 export const builtinSlugs = () => [...Object.keys(BUILTIN), 'cricket'];
 export const MANUAL_RULESET = MANUAL;
@@ -206,4 +244,20 @@ export function describeRuleset(rs) {
   }
   if (rs.stats.length) out.push({ title: 'Also recorded in a match', body: rs.stats.map((x) => x.label).join(', ') + '.' });
   return out;
+}
+
+/** Head-to-head sports with no running score: the result (who won, and how) is the score. */
+const OUTCOME = (sport) => sport.scoring === 'combat' || (sport.scoring === 'points' && ['mind', 'esports', 'combat', 'racquet'].includes(sport.category));
+
+/**
+ * How a sport is scored live: a head-to-head model (`points_events`, `sets`, `racket`, `cricket`, `cards`), an `outcome` model for head-to-head
+ * sports decided by a result rather than a running score (chess, esports, judo …: the clock, notes and the result recorded live), or, for
+ * individual performance sports, a `session` scored by an aggregate (best mark, sum of attempts, judges' panel) with its direction.
+ * Every catalogued sport has exactly one.
+ */
+export function liveModelOf(sport) {
+  const rs = builtinRuleset(sport);
+  if (rs.cards) return { model: 'cards' };
+  if (rs.kind === 'manual') return OUTCOME(sport) ? { model: 'outcome' } : { model: 'session', ...sessionDefaults(sport) };
+  return { model: rs.kind === 'sets' && rs.racket?.scoring === 'games' ? 'racket' : rs.kind };
 }

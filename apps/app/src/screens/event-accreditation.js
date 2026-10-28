@@ -15,6 +15,8 @@ import { Btn, Card, Chip, Empty, ErrorBox, GradCard, Loading, Screen, Sheet, T }
 import { c } from '../theme';
 import { locale } from '../locale';
 import { QrCode } from './passport';
+import { CameraScan, hasCamera } from '../camera-scan';
+import { AccessPoints } from '../access-ui';
 
 const stamp = (d) => (d ? new Date(d).toLocaleString(locale, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : null);
 const midnight = (d) => d.getHours() === 0 && d.getMinutes() === 0;
@@ -201,6 +203,8 @@ export function AccreditationTab({ id, e, isOrg }) {
             <ARow key={z.id} title={`${z.name}${z.archived_at ? ' · archived' : ''}`} sub={[(kinds.data?.zone_kinds ?? []).find((k) => k.key === z.kind)?.label, z.venue].filter((x) => x && x !== z.name).join(' · ') || undefined}
               right={<ABtn small tone="ghost" title={z.archived_at ? 'Restore' : 'Archive'} onPress={() => act(() => api.patch(`/accreditation/zones/${z.id}`, { archived: !z.archived_at }), z.archived_at ? 'Restored' : 'Archived')} />} />
           )) : <AEmpty emoji="🚪" title="No zones yet" sub="Field of play, athlete area, locker room, media centre, mixed zone, hospitality, operations, loading area." action="Add a zone" onAction={() => setZoneForm(true)} />}
+          <ASection title="Gates and readers" sub="Doors that accept rotating passes and cards, and can open hardware" />
+          <AccessPoints eventId={id} zones={(zones.data ?? []).filter((z) => !z.archived_at)} />
           <ASection title="Categories" sub="Who is eligible, where and when" action="Add category" onAction={() => setCatForm({})} />
           {(cats.data ?? []).length ? cats.data.map((k) => (
             <ACard key={k.id} pad={14} onPress={() => setCatForm(k)} style={{ gap: 6 }}>
@@ -409,26 +413,15 @@ const VERDICT = {
   wrong_zone: ['WRONG ZONE', '#D97706', 'Not permitted in this zone'],
   outside_hours: ['OUTSIDE HOURS', '#D97706', 'Not permitted at this time of day'],
   not_eligible: ['DENY', '#DC2626', 'The role behind this credential has ended'],
+  qr_replay: ['USED ALREADY', '#D97706', 'This pass was already scanned. Ask the holder to open a fresh one.'],
+  qr_expired: ['EXPIRED CODE', '#D97706', 'This pass code has expired. Ask the holder to open it again.'],
+  qr_invalid: ['DENY', '#DC2626', 'Not a pass issued by this platform'],
+  qr_wrong_subject: ['WRONG GATE', '#D97706', 'This pass is for a different gate'],
+  credential_unknown: ['UNKNOWN TAG', '#DC2626', 'This card or tag is not registered to anyone'],
+  credential_inactive: ['TAG PAUSED', '#D97706', 'This card or tag is paused or expired'],
+  no_accreditation: ['NO BADGE', '#DC2626', 'No accreditation for this event'],
+  accreditation_cancelled: ['CANCELLED', '#DC2626', 'This accreditation was revoked or withdrawn'],
 };
-let CameraMod = null;
-try { CameraMod = require('expo-camera'); } catch { CameraMod = null; }
-
-/** Camera reader: scans QR codes continuously; a code seen again within 3 seconds is ignored. */
-function CameraScan({ onCode, onClose }) {
-  const [perm, ask] = CameraMod.useCameraPermissions();
-  const last = useRef({ code: null, at: 0 });
-  useEffect(() => { if (perm && !perm.granted && perm.canAskAgain) ask(); }, [perm?.granted]);
-  if (!perm?.granted) return <Card><T>Camera access is needed to scan. {perm?.canAskAgain === false ? 'Allow it in Settings, or type the code below.' : ''}</T><Btn small title="Allow camera" onPress={ask} style={{ marginTop: 8, alignSelf: 'flex-start' }} /></Card>;
-  const { CameraView } = CameraMod;
-  return (
-    <View style={{ borderRadius: 24, overflow: 'hidden', height: 280, backgroundColor: '#000' }}>
-      <CameraView style={{ flex: 1 }} facing="back" barcodeScannerSettings={{ barcodeTypes: ['qr'] }} accessibilityLabel="Camera view for scanning a QR code"
-        onBarcodeScanned={({ data }) => { const now = Date.now(); if (data === last.current.code && now - last.current.at < 3000) return; last.current = { code: data, at: now }; onCode(data); }} />
-      <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel="Close camera" style={{ position: 'absolute', top: 10, right: 10, minWidth: 44, minHeight: 44, borderRadius: 22, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center' }}><T color="#fff" weight="800">✕</T></Pressable>
-    </View>
-  );
-}
-
 const key = () => `gate-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 
 export function GateScan({ id }) {
@@ -436,6 +429,7 @@ export function GateScan({ id }) {
   const ev = useLoad(() => api.get(`/events/${id}`), [id]);
   const zones = useLoad(() => api.get(`/events/${id}/accreditation/zones`).catch(() => []), [id]);
   const report = useLoad(() => api.get(`/events/${id}/accreditation/report`), [id]);
+  const points = useLoad(() => api.get('/access/points', { event_id: id }).catch(() => []), [id]);
   const [zone, setZone] = useState(null), [dir, setDir] = useState('in'), [code, setCode] = useState(''), [res, setRes] = useState(null), [busy, setBusy] = useState(false), [cam, setCam] = useState(false), [recent, setRecent] = useState([]);
   const input = useRef(null);
   const submit = async (token) => {
@@ -443,7 +437,14 @@ export function GateScan({ id }) {
     if (!t || busy) return;
     setBusy(true);
     try {
-      const r = await api.post(`/events/${id}/accreditation/scan`, { token: t, zone_id: zone || undefined, direction: dir, idempotency_key: key() });
+      let r;
+      if (t.startsWith('GQ1.')) {      // a rotating pass: the shared access layer judges it (and records the same accreditation scan)
+        const pt = (points.data ?? []).find((p) => zone && p.zone_id === zone) ?? (points.data ?? []).find((p) => !p.zone_id) ?? (points.data ?? [])[0];
+        if (!pt) { toast('Add a gate under Accreditation → Scheme → Gates and readers to accept rotating passes'); return; }
+        const out = await api.post('/access/captures', { domain: 'event_gate', subject_ref: pt.id, method: 'qr', token: t, direction: dir, idempotency_key: key() });
+        const cap = out.capture;
+        r = { result: cap.verdict === 'granted' ? 'valid' : (VERDICT[cap.reason_code] ? cap.reason_code : 'invalid'), holder: cap.person ? { display_name: cap.person.display_name, avatar_emoji: cap.person.avatar_emoji, avatar_color: cap.person.avatar_color } : undefined, at: cap.received_at, scan_id: cap.id, replayed: out.replayed };
+      } else r = await api.post(`/events/${id}/accreditation/scan`, { token: t, zone_id: zone || undefined, direction: dir, idempotency_key: key() });
       setRes(r); setRecent((p) => [{ ...r, at: r.at ?? new Date().toISOString(), zone: zones.data?.find((z) => z.id === zone)?.name ?? 'Event gate' }, ...p].slice(0, 8)); setCode('');
       if (r.result === 'valid') report.reload();
     } catch (x) { toast('' + x.message); } finally { setBusy(false); setTimeout(() => input.current?.focus?.(), 50); }
@@ -464,7 +465,7 @@ export function GateScan({ id }) {
         <T size={13} color={c.mute} style={{ marginLeft: 'auto' }}>Inside now: <T size={15} weight="800">{inside ?? '–'}</T></T>
       </View>
 
-      {cam && CameraMod ? <CameraScan onCode={submit} onClose={() => setCam(false)} /> : CameraMod ? <Btn title="📷 Scan with the camera" onPress={() => setCam(true)} /> : null}
+      {cam && hasCamera ? <CameraScan onCode={submit} onClose={() => setCam(false)} /> : hasCamera ? <Btn title="📷 Scan with the camera" onPress={() => setCam(true)} /> : null}
 
       <View style={{ flexDirection: 'row', gap: 8 }}>
         <TextInput ref={input} value={code} onChangeText={setCode} onSubmitEditing={() => submit()} autoCapitalize="none" autoCorrect={false} autoFocus={Platform.OS === 'web'} returnKeyType="go" placeholder="Scan or paste the code"

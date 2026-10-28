@@ -39,6 +39,8 @@ export function SessionLive({ id, toast, onFinalised }) {
   const [dist, setDist] = useState(50);
   const [round, setRound] = useState(1);
   const [outcome, setOutcome] = useState('valid');
+  const [judge, setJudge] = useState(1);
+  const [mult, setMult] = useState(1);
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const seen = React.useRef(0);
@@ -48,7 +50,7 @@ export function SessionLive({ id, toast, onFinalised }) {
     { onDrop: (err) => toast('' + err.message) });
   if (!s) return <Loading />;
 
-  const pr = s.projection, type = s.session.result_type, field = pr.kind === 'field';
+  const pr = s.projection, type = s.session.result_type, field = pr.kind === 'field', panel = pr.aggregate === 'panel';
   const scorer = !!s.viewer?.can_score && !revoked;
   const official = ['final', 'corrected'].includes(s.live.state);
   const [stateLabel, stateColor] = STATE[s.live.state] ?? STATE.scheduled;
@@ -60,6 +62,12 @@ export function SessionLive({ id, toast, onFinalised }) {
   const lastEvent = [...(s.events ?? [])].reverse().find((e) => !e.voided && e.id);
   const describe = (e) => `${e.kind.replace('_', ' ')}${e.payload?.value != null ? ` ${showMark(type, e.payload.value)}` : ''}`;
   const open = (kind, entry) => {
+    if (kind === 'judge') {
+      const r = Math.max(1, ...entry.panel.map((m) => m.round ?? 1));
+      const used = new Set(entry.panel.filter((m) => m.round === r).map((m) => m.judge));
+      setJudge([...Array(20).keys()].map((k) => k + 1).find((j) => !used.has(j)) ?? 1); setRound(r); setMark(entry.panel.length ? entry.panel[entry.panel.length - 1].value : 5); setMult(entry.panel.length ? entry.panel[entry.panel.length - 1].multiplier ?? 1 : 1);
+      setSheet({ kind, entry }); return;
+    }
     setMark(0); setOutcome('valid'); setDist(Math.min(50 * ((entry.splits?.length ?? 0) + 1), 1000));
     setRound(Math.max(1, ...entry.attempts.map((a) => a.round ?? 0)) + (entry.attempts.length ? 1 : 0));
     setSheet({ kind, entry });
@@ -71,6 +79,7 @@ export function SessionLive({ id, toast, onFinalised }) {
       if (kind === 'finish') await send('finish', entry, { value: mark });
       else if (kind === 'split') await send('split', entry, { distance_m: dist, value: mark });
       else if (kind === 'attempt') await send('attempt', entry, { round, outcome, ...(outcome === 'valid' ? { value: mark } : {}) });
+      else if (kind === 'judge') await send('judge_score', entry, { judge, round, value: mark, ...(mult !== 1 ? { multiplier: mult } : {}) });
       else await send('entry_status', entry, { status: kind, reason: outcome === 'valid' ? undefined : outcome });
       setSheet(null);
     } finally { setBusy(false); }
@@ -105,7 +114,7 @@ export function SessionLive({ id, toast, onFinalised }) {
         {pr.entries.map((e) => {
           const out = ['dns', 'dnf', 'dq'].includes(e.status);
           const last = e.splits?.[e.splits.length - 1];
-          const sub = [out ? e.status.toUpperCase() : e.best != null ? showMark(type, e.best) : e.status === 'competing' ? 'competing' : 'waiting', last ? `split ${showMark('time', last.value)} @ ${last.distance_m} m` : null, field && e.attempts.length ? `${e.attempts.length} attempt${e.attempts.length === 1 ? '' : 's'}` : null].filter(Boolean).join(' · ');
+          const sub = [out ? e.status.toUpperCase() : e.best != null ? showMark(type, e.best) : e.status === 'competing' ? 'competing' : 'waiting', last ? `split ${showMark('time', last.value)} @ ${last.distance_m} m` : null, field && !panel && e.attempts.length ? `${e.attempts.length} attempt${e.attempts.length === 1 ? '' : 's'}` : null, panel && e.rounds?.length ? e.rounds.map((r) => `R${r.round}: ${r.mark} (${r.judges} judge${r.judges === 1 ? '' : 's'})`).join(', ') : null].filter(Boolean).join(' · ');
           return (
             <Card key={e.entry_id} pad={12} accessibilityLabel={`${e.rank ? `Place ${e.rank}, ` : ''}${e.name ?? 'Participant'}, ${sub}`}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
@@ -118,7 +127,7 @@ export function SessionLive({ id, toast, onFinalised }) {
               </View>
               {scorer && !official && !out ? (
                 <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
-                  {field ? <Btn small title="Attempt" onPress={() => open('attempt', e)} />
+                  {panel ? <Btn small title="Judges' marks" onPress={() => open('judge', e)} /> : field ? <Btn small title="Attempt" onPress={() => open('attempt', e)} />
                     : (<>{e.status !== 'finished' ? <Btn small title="Finish" onPress={() => open('finish', e)} /> : null}<Btn small title="Split" color={c.paper} ink={c.ink} onPress={() => open('split', e)} /></>)}
                   <Btn small title="DNS / DNF / DQ" color={c.paper} ink={c.ink} onPress={() => open('status', e)} />
                 </View>
@@ -135,7 +144,7 @@ export function SessionLive({ id, toast, onFinalised }) {
         </View>
       ) : null}
 
-      <Sheet visible={!!sheet} onClose={() => setSheet(null)} title={sheet ? { finish: 'Finish', split: 'Split time', attempt: 'Attempt', status: 'Did not complete' }[sheet.kind] + ` · ${sheet.entry.name ?? 'Participant'}` : ''}>
+      <Sheet visible={!!sheet} onClose={() => setSheet(null)} title={sheet ? { finish: 'Finish', split: 'Split time', attempt: 'Attempt', judge: 'Judge\'s mark', status: 'Did not complete' }[sheet.kind] + ` · ${sheet.entry.name ?? 'Participant'}` : ''}>
         {sheet?.kind === 'status' ? (
           <View style={{ gap: 10 }}>
             <T size={13} color={c.mute}>This takes them out of the ranking.</T>
@@ -146,6 +155,15 @@ export function SessionLive({ id, toast, onFinalised }) {
             <T weight="800">Reason</T>
             <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>{['False start', 'Lane violation', 'Injury', 'Withdrew', 'Did not report'].map((r) => <Chip key={r} label={r} active={outcome === r} onPress={() => setOutcome(r)} />)}</View>
             <Btn title={`Confirm ${sheet.kind.toUpperCase()}`} color={c.red} loading={busy} disabled={outcome === 'valid'} onPress={submit} />
+          </View>
+        ) : sheet?.kind === 'judge' ? (
+          <View style={{ gap: 12 }}>
+            <Counter label="Judge" value={judge} min={1} max={20} onChange={setJudge} />
+            <Counter label="Round / routine" value={round} min={1} max={12} onChange={setRound} />
+            <Counter label="Mark" value={mark} min={0} max={30} step={0.1} onChange={setMark} />
+            <Counter label="Difficulty (1 = none)" value={mult} min={0.1} max={10} step={0.1} onChange={setMult} />
+            <T weight="800" size={16} accessibilityLiveRegion="polite">Judge {judge} gives {mark}{mult !== 1 ? ` × ${mult}` : ''}</T>
+            <Btn title="Record the mark" loading={busy} onPress={submit} />
           </View>
         ) : sheet ? (
           <View style={{ gap: 12 }}>

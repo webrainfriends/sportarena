@@ -348,8 +348,8 @@ test('sessions: a heat is run live, stays provisional, then becomes the official
   assert.equal(live.events.some((e) => e.id !== undefined), false, 'spectators get no internals');
   assert.equal((await api('GET', `/sessions/${sess.id}`)).body.entries.every((e) => e.position == null), true, 'nothing official yet');
   // pinned progression drives Q/q, and only that
-  assert.equal((await api('PATCH', `/disciplines/${d.id}/progression`, { token: ref.token, body: { qualifiers_per_session: 1, wildcards: 1 } })).status, 403);
-  assert.equal((await api('PATCH', `/disciplines/${d.id}/progression`, { token: T, body: { qualifiers_per_session: 1, wildcards: 1 } })).status, 200);
+  assert.equal((await api('PATCH', `/disciplines/${d.id}/live-rules`, { token: ref.token, body: { qualifiers_per_session: 1, wildcards: 1 } })).status, 403);
+  assert.equal((await api('PATCH', `/disciplines/${d.id}/live-rules`, { token: T, body: { qualifiers_per_session: 1, wildcards: 1 } })).status, 200);
   assert.deepEqual((await api('GET', `/sessions/${sess.id}/live`)).body.projection.entries.map((e) => e.q), ['Q', 'q', '']);
   // the assigned official's scorer stream closes the moment their shift is cancelled
   assert.equal((await frames(`/live/sessions/${sess.id}/scorer`)).status, 401);
@@ -452,38 +452,39 @@ test('spectators are never told who a young person is without a guardian\'s curr
 });
 
 test('every sport in the catalogue has a defined live model; nothing is silently left without one', async () => {
-  const sports = (await pool.query('SELECT slug, name, scoring, category FROM sports ORDER BY slug')).rows;
+  const sports = (await pool.query('SELECT slug, name, scoring, category, play_type FROM sports ORDER BY slug')).rows;
   assert.ok(sports.length >= 200, `catalogue has ${sports.length} sports`);
-  const { builtinRuleset, rulesetSchema } = await import('../src/scoring/rulesets.js');
+  const { builtinRuleset, rulesetSchema, liveModelOf } = await import('../src/scoring/rulesets.js');
   const { pluginFor } = await import('../src/scoring/plugins/index.js');
   const { computeScore, rejectReason } = await import('../src/scoring/engine.js');
+  const MODELS = new Set(['points_events', 'sets', 'racket', 'cricket', 'cards', 'outcome', 'session']);
   const by = {};
   for (const sport of sports) {
+    const { model, aggregate } = liveModelOf(sport);
+    assert.ok(MODELS.has(model), `${sport.slug}: ${model}`);
+    (by[model] ??= []).push(sport.slug);
+    if (model === 'session') { assert.ok(['best', 'sum', 'panel'].includes(aggregate), `${sport.slug}: ${aggregate}`); continue; }
     const rs = rulesetSchema.parse(builtinRuleset(sport));
     const plugin = pluginFor(rs);
     for (const fn of ['state', 'validate', 'phase', 'attribution', 'liveStats', 'publicView', 'toResult']) assert.equal(typeof plugin[fn], 'function', `${sport.slug}: ${fn}`);
-    const s0 = computeScore(rs, []);
-    assert.equal(typeof s0.home, 'number', sport.slug); assert.equal(typeof s0.away, 'number', sport.slug);
-    const model = plugin.kind === 'racket' ? 'racket' : rs.kind;
-    (by[model] ??= []).push(sport.slug);
-    if (rs.kind === 'manual') {
-      const stat = rs.stats[0]?.kind ?? 'foul';
-      assert.match(rejectReason(rs, [], { kind: stat, side: 'home' }) ?? '', /score sheet/, `${sport.slug}: totals are entered on the sheet`);
-      assert.equal(rejectReason(rs, [], { kind: 'period_start' }), null, `${sport.slug}: the clock still runs`);
-      continue;
-    }
+    assert.equal(typeof computeScore(rs, []).home, 'number', sport.slug);
     // a real scoring event is accepted and moves the score
-    const ev = rs.kind === 'points_events' ? { kind: rs.events[0].kind, side: 'home' } : rs.kind === 'cricket' ? { kind: 'ball', side: 'home', payload: { bowler: 0, runs: 1 } } : { kind: 'point', side: 'home' };
+    const ev = model === 'outcome' ? { kind: 'result', payload: { outcome: 'home', method: 'decision' } } : model === 'cards' ? { kind: 'round_card', payload: { judge: 1, round: 1, home: 10, away: 9 } }
+      : rs.kind === 'points_events' ? { kind: rs.events[0].kind, side: 'home' } : rs.kind === 'cricket' ? { kind: 'ball', side: 'home', payload: { bowler: 0, runs: 1 } } : { kind: 'point', side: 'home' };
     assert.equal(rejectReason(rs, [], ev), null, `${sport.slug}: ${ev.kind} is accepted`);
     const after = computeScore(rs, [{ ...ev, seq: 1 }]);
-    assert.ok(after.home > 0 || after.cricket?.home > 0 || after.current_game?.home > 0 || after.current_set?.home > 0, `${sport.slug}: the score moves`);
+    assert.ok(after.home > 0 || after.cricket?.home > 0 || after.current_game?.home > 0 || after.current_set?.home > 0 || after.scorecard?.judges?.[0]?.red > 0, `${sport.slug}: the score moves`);
   }
-  // sports whose scoring is a running count always get a live model
-  for (const sport of sports.filter((x) => ['goals', 'sets'].includes(x.scoring) || (x.scoring === 'points' && ['team_ball', 'mind', 'esports'].includes(x.category)))) {
-    assert.notEqual(builtinRuleset(sport).kind, 'manual', `${sport.slug} must not be left on manual totals`);
+  // sports with a running score between two sides always get a head-to-head model
+  for (const sport of sports.filter((x) => ['goals', 'sets', 'combat'].includes(x.scoring) || (x.scoring === 'points' && ['team_ball', 'mind', 'esports', 'combat', 'racquet'].includes(x.category)))) {
+    assert.notEqual(liveModelOf(sport).model, 'session', `${sport.slug} is head to head`);
   }
-  assert.ok(by.cricket.includes('cricket') && by.racket.includes('tennis') && by.racket.includes('padel'), 'native models are used where they exist');
-  assert.equal(Object.values(by).reduce((n, l) => n + l.length, 0), sports.length);
+  for (const slug of ['chess', 'judo', 'valorant']) if (sports.some((x) => x.slug === slug)) assert.equal(liveModelOf(sports.find((x) => x.slug === slug)).model, 'outcome', slug);
+  // judged, timed and measured sports are scored as sessions with the right aggregate
+  for (const sport of sports.filter((x) => x.scoring === 'judged')) assert.equal(liveModelOf(sport).aggregate, 'panel', sport.slug);
+  for (const sport of sports.filter((x) => x.scoring === 'time')) assert.deepEqual([liveModelOf(sport).model, liveModelOf(sport).lowerIsBetter], ['session', true], sport.slug);
+  assert.ok(by.cricket.includes('cricket') && by.racket.includes('tennis') && by.racket.includes('padel') && by.cards.includes('boxing'), 'native models are used where they exist');
+  assert.equal(Object.values(by).reduce((n, l) => n + l.length, 0), sports.length, 'every sport has exactly one model');
   console.log('# live model by sport:', Object.fromEntries(Object.entries(by).map(([k, v]) => [k, v.length])));
 });
 
@@ -508,4 +509,128 @@ test('a private event is invisible to outsiders on every new read and stream; th
   assert.equal((await frames(`/live/fixtures/${fx}`)).status, 404);
   assert.equal((await frames(`/live/public/fixtures/${fx}`)).status, 404);
   assert.equal((await frames(`/live/fixtures/${fx}/scorer`, { token: ref.token, ms: 800, done: (f) => f.length >= 1 })).status, 200, 'the assigned official still scores a private event');
+});
+
+test('a boxing bout is scored by three judges\' round cards and the sheet starts from the derived decision', async () => {
+  const { org, ref, m1, m2, fx } = await setup('boxing');
+  await start(ref, fx);
+  const card = (judge, round, home, away) => log(ref, fx, { kind: 'round_card', payload: { judge, round, home, away } });
+  assert.equal((await card(1, 1, 10, 9)).status, 201);
+  assert.equal((await card(1, 1, 9, 10)).status, 400, 'a card is scored once; correct it through history');
+  assert.equal((await card(4, 1, 10, 9)).status, 400);
+  for (const [j, r, h, a] of [[1, 2, 10, 9], [1, 3, 10, 9], [2, 1, 10, 9], [2, 2, 10, 9], [2, 3, 9, 10], [3, 1, 9, 10], [3, 2, 10, 9], [3, 3, 10, 9]]) assert.equal((await card(j, r, h, a)).status, 201);
+  const proj = (await api('GET', `/fixtures/${fx}/projection`)).body;
+  assert.equal(proj.ruleset.kind, 'manual');
+  assert.deepEqual([proj.projection.votes.red, proj.projection.votes.blue], [3, 0]);
+  assert.equal(proj.projection.complete, true); assert.equal(proj.projection.winner, 'home');
+  assert.equal((await card(1, 2, 10, 9)).status, 400, 'the bout is decided');
+  assert.equal((await log(ref, fx, { kind: 'knockdown', side: 'away' })).status, 201);
+  assert.equal((await api('POST', `/fixtures/${fx}/end`, { token: ref.token })).status, 200);
+  const sheet = (await api('GET', `/fixtures/${fx}/score-sheet`, { token: org.token })).body;
+  assert.deepEqual([sheet.home_score, sheet.away_score], [3, 0], 'judges\' votes, the same as the Tools scorecard');
+  assert.ok(sheet.m1 === undefined && m1 && m2);
+});
+
+test('judged and precision sessions: a gymnastics panel and a golf round score through the same live session and official result', async () => {
+  const org = await signup(['organizer']);
+  const T = org.token;
+  const ev = (await api('POST', '/events', { token: T, body: { name: `Mixed Day ${++n}`, sport: 'multi-sport', kind: 'tournament' } })).body;
+  assert.equal((await api('PATCH', `/events/${ev.id}/programme`, { token: T, body: { public_names: true } })).status, 200);
+  const house = (await api('POST', `/events/${ev.id}/houses`, { token: T, body: { name: 'Red', color: '#e11' } })).body;
+  const people = [];
+  for (let k = 0; k < 3; k++) people.push((await api('POST', `/events/${ev.id}/participants`, { token: T, body: { full_name: `Athlete ${n}-${k}`, house_id: house.id, gender: 'male', grade: '7', roll_no: `M${n}-${k}` } })).body);
+  const run = async (sport, name, rules) => {
+    const d = (await api('POST', `/events/${ev.id}/disciplines`, { token: T, body: { sport, name, officials_required: 0, result_type: 'score' } })).body;
+    assert.ok(d.id, JSON.stringify(d));
+    for (const [k, p] of people.entries()) assert.equal((await api('POST', `/disciplines/${d.id}/nominations`, { token: T, body: { participant_id: p.id, seed: 1 + k } })).status, 201);
+    assert.equal((await api('POST', `/disciplines/${d.id}/heats`, { token: T, body: { lanes: 8 } })).status, 201);
+    if (rules) assert.equal((await api('PATCH', `/disciplines/${d.id}/live-rules`, { token: T, body: rules })).status, 200);
+    const sess = (await api('GET', `/events/${ev.id}/sessions`, { query: { discipline_id: d.id } })).body[0];
+    const ids = (await api('GET', `/sessions/${sess.id}`, { token: T })).body.entries.map((e) => e.id);
+    return { d, sess, ids, post: (body) => api('POST', `/sessions/${sess.id}/events`, { token: T, body }) };
+  };
+  // gymnastics: judges' panel by default, five judges with the extremes dropped
+  const g = await run('artistic-gymnastics', 'Floor', { drop_extremes: true });
+  assert.equal((await g.post({ kind: 'attempt', entry_id: g.ids[0], payload: { round: 1, outcome: 'valid', value: 5 } })).status, 400, 'a panel session takes judges\' marks, not attempts');
+  const marks = [[7, 8, 8.5, 9, 6], [8, 8, 8, 8, 8], [9, 9, 9, 9, 9.5]];
+  for (const [k, list] of marks.entries()) for (const [j, v] of list.entries()) assert.equal((await g.post({ kind: 'judge_score', entry_id: g.ids[k], payload: { judge: j + 1, value: v } })).status, 201);
+  assert.equal((await g.post({ kind: 'judge_score', entry_id: g.ids[0], payload: { judge: 1, value: 9 } })).status, 400, 'a judge scores a round once');
+  const live = (await api('GET', `/sessions/${g.sess.id}/live`)).body;
+  assert.equal(live.projection.aggregate, 'panel');
+  assert.deepEqual(live.projection.entries.map((e) => [e.entry_id, e.best, e.rank]), [[g.ids[2], 9.0, 1], [g.ids[1], 8, 2], [g.ids[0], 7.833, 3]]);
+  const fin = await api('POST', `/sessions/${g.sess.id}/finalize-live`, { token: T });
+  assert.equal(fin.status, 200, JSON.stringify(fin.body));
+  assert.deepEqual(fin.body.entries.map((e) => [e.id, e.position]).sort(), [[g.ids[0], 3], [g.ids[1], 2], [g.ids[2], 1]].sort());
+  // golf: strokes are added up and the lowest total wins
+  const golf = await run('golf', 'Round 1');
+  for (const [k, strokes] of [[72, 70], [69, 74], [75, 71]].entries()) for (const [r, v] of strokes.entries()) assert.equal((await golf.post({ kind: 'attempt', entry_id: golf.ids[k], payload: { round: r + 1, outcome: 'valid', value: v } })).status, 201);
+  const gl = (await api('GET', `/sessions/${golf.sess.id}/live`)).body;
+  assert.equal(gl.projection.aggregate, 'sum'); assert.equal(gl.projection.lower_is_better, true);
+  assert.deepEqual(gl.projection.entries.map((e) => [e.entry_id, e.best, e.rank]), [[golf.ids[0], 142, 1], [golf.ids[1], 143, 2], [golf.ids[2], 146, 3]], 'lowest total first');
+  const gf = await api('POST', `/sessions/${golf.sess.id}/finalize-live`, { token: T });
+  assert.equal(gf.status, 200, JSON.stringify(gf.body));
+  assert.deepEqual(gf.body.entries.map((e) => [e.id, e.position]).sort(), [[golf.ids[0], 1], [golf.ids[1], 2], [golf.ids[2], 3]].sort(), 'the official places follow the live ranking, lowest strokes first');
+});
+
+test('stoppage time is announced by the referee and shows to everyone', async () => {
+  const { ref, fx } = await setup();
+  await start(ref, fx);
+  await log(ref, fx, { kind: 'period_start' });
+  assert.equal((await log(ref, fx, { kind: 'added_time', payload: { minutes: 40 } })).status, 400);
+  assert.equal((await log(ref, fx, { kind: 'added_time', payload: { minutes: 4 } })).status, 201);
+  assert.equal((await api('GET', `/fixtures/${fx}/projection`)).body.phase.added_time, 4);
+  assert.equal((await api('GET', `/fixtures/${fx}/live`)).body.phase.added_time, 4);
+});
+
+test('basketball over REST: a fouled-out player and an exhausted timeout are refused; spectators see the bonus and mat state without anything private', async () => {
+  const { ref, rando, fx, m1 } = await setup('basketball');
+  await start(ref, fx);
+  await log(ref, fx, { kind: 'period_start' });
+  for (let i = 0; i < 5; i++) assert.equal((await log(ref, fx, { kind: 'foul', side: 'home', player_id: rando.id })).status, 201);
+  const out = await log(ref, fx, { kind: 'two_pointer', side: 'home', player_id: rando.id });
+  assert.equal(out.status, 400);
+  assert.match(JSON.stringify(out.body), /fouled out/);
+  const live = (await api('GET', `/fixtures/${fx}/live`)).body;
+  assert.equal(live.score.rules.bonus.away, true);
+  assert.equal(live.score.rules.fouled_out.length, 1);
+  await log(ref, fx, { kind: 'timeout', side: 'away' }); await log(ref, fx, { kind: 'timeout', side: 'away' });
+  assert.equal((await log(ref, fx, { kind: 'timeout', side: 'away' })).status, 400);
+  // a team manager cannot score
+  assert.equal((await log(m1, fx, { kind: 'foul', side: 'away' })).status, 403);
+  // the same projection is served over MCP
+  const proj = await mcp('get_live_projection', { id: fx });
+  assert.match(JSON.stringify(proj), /"bonus":\{"home":false,"away":true\}/);
+});
+
+test('3x3, kabaddi and volleyball over REST follow their own rules', async () => {
+  const t = await setup('3x3-basketball');
+  await start(t.ref, t.fx); await log(t.ref, t.fx, { kind: 'period_start' });
+  for (let i = 0; i < 21; i++) assert.equal((await log(t.ref, t.fx, { kind: 'one_pointer', side: 'home' })).status, 201);
+  assert.equal((await log(t.ref, t.fx, { kind: 'one_pointer', side: 'away' })).status, 400, 'the game is over at 21');
+  assert.equal((await api('GET', `/fixtures/${t.fx}/live`)).body.phase.can_score, false);
+
+  const k = await setup('kabaddi');
+  await start(k.ref, k.fx); await log(k.ref, k.fx, { kind: 'period_start' });
+  for (let i = 0; i < 7; i++) await log(k.ref, k.fx, { kind: 'raid_point', side: 'home' });
+  let kr = (await api('GET', `/fixtures/${k.fx}/live`)).body.score.rules;
+  assert.deepEqual([kr.on_mat.away, kr.all_out_for], [0, 'home']);
+  await log(k.ref, k.fx, { kind: 'all_out', side: 'home' });
+  kr = (await api('GET', `/fixtures/${k.fx}/live`)).body.score.rules;
+  assert.deepEqual([kr.on_mat.away, kr.all_out_for], [7, null]);
+
+  const v = await setup('volleyball');
+  await start(v.ref, v.fx);
+  await log(v.ref, v.fx, { kind: 'server', side: 'home' });
+  await log(v.ref, v.fx, { kind: 'point', side: 'away' });
+  await log(v.ref, v.fx, { kind: 'timeout', side: 'home' }); await log(v.ref, v.fx, { kind: 'timeout', side: 'home' });
+  assert.equal((await log(v.ref, v.fx, { kind: 'timeout', side: 'home' })).status, 400);
+  const vr = (await api('GET', `/fixtures/${v.fx}/live`)).body.score.rules;
+  assert.deepEqual([vr.rotation.away, vr.rotation.serving, vr.timeouts_left.home], [2, 'away', 0]);
+
+  const b = await setup('badminton');
+  await start(b.ref, b.fx);
+  await log(b.ref, b.fx, { kind: 'server', side: 'home' });
+  await log(b.ref, b.fx, { kind: 'point', side: 'home' });
+  const br = (await api('GET', `/fixtures/${b.fx}/live`)).body.score.rules;
+  assert.deepEqual([br.service_court, br.server_score], ['left', 1]);
 });

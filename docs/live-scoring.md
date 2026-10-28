@@ -14,7 +14,7 @@ and MCP expose the same operations with the same permission rules, and the same 
 | Football, futsal and other team games | `log_match_event`, periods, cards, substitutions in appearances | `points_events` | no extra time, shoot-out, two-yellows-is-red, lineup validation | `extra_time{}` and `shootout{}` on the ruleset (only in knockout games, only when level); sent-off tracking; players and assists must be in the declared lineup; assist attribution |
 | Badminton, table tennis, squash, volleyball … | rally points as a `sets` ruleset | `sets` | no server tracking | `racket.serve` (`rally_winner`, `alternate`) derives the server; first server is an event |
 | Tennis, padel | game scores entered as "points" | `sets` | no points → games → sets, no deuce / no-ad, tie-break, match tie-break, server, retirement | `racket.scoring = 'games'`: point-by-point scoring in `scoring/racket.js`, deuce or no-ad, tie-break, super tie-break, serve rotation, retirement and walkover |
-| Athletics, swimming | results recorded after the fact (`record_session_results`) | `event_sessions` / `event_session_entries` | no live status, lanes, splits, attempts, provisional places, progression | `session_events` log, `scoring/session.js` projection, `log_session_event`, `get_live_session`, `finalize_session_live` (calls `record_session_results`), `set_discipline_progression` |
+| Athletics, swimming | results recorded after the fact (`record_session_results`) | `event_sessions` / `event_session_entries` | no live status, lanes, splits, attempts, provisional places, progression | `session_events` log, `scoring/session.js` projection, `log_session_event`, `get_live_session`, `finalize_session_live` (calls `record_session_results`), `set_discipline_live_rules` |
 | All | SSE for fixtures, `client_key`, `seq` | in-process bus, no cursor, no auth on the stream | stale-state detection, correction provenance, scorer conflicts, bounded history, live revocation | below |
 
 ## Coverage by sport
@@ -25,15 +25,39 @@ ruleset of its own the fallback is labelled in its name.
 
 | Model | Sports | What the scorer gets |
 |---|---|---|
-| Points / goals (`points_events`) | 80: football, futsal, handball, hockey, ice hockey, basketball (3x3, wheelchair), rugby, kabaddi, American football, Australian rules, Gaelic football, hurling, baseball, softball, karate … plus **generic points** for every other team ball sport and **games won** for board, card and mind games and esports | periods, scoring events, cards and fouls, extra time and shoot-out where pinned, lineup and player attribution |
+| Points / goals (`points_events`) | 39: football, futsal, handball, hockey, ice hockey, basketball (3x3, wheelchair), rugby, kabaddi, American football, Australian rules, Gaelic football, hurling, baseball, softball … plus a **labelled generic points** fallback for every other team ball and winter team sport | periods, scoring events, cards and fouls, extra time and shoot-out where pinned, announced added time, lineup and player attribution |
 | Rally sets (`sets`) | 12: badminton, volleyball, beach volleyball, table tennis, squash, pickleball, sepak takraw, soft tennis … | set and point scoring, derived server |
 | Games in sets (`racket`) | tennis, padel | points, games, sets, deuce or no-ad, tie-breaks, match tie-break, server, retirement, walkover |
 | Innings (`cricket`) | cricket (T10, T20, ODI, Test) | ball by ball, run rates, target, partnerships, batting order |
-| Timed and measured sessions | 55 sports scored by time or distance (running, swimming, cycling, winter sports, jumps and throws …) | live heats, finals and field flights in the Games screen (a multi-sport programme): call room, splits, finishes, attempts, provisional places, Q / q, official result |
-| Totals or judges (`manual`) | the rest (judged, bout, weight-class and precision sports, other individual aggregate scoring) | the match clock, tracked warnings and notes; the result is entered on the score sheet. Boxing 10-point-must cards and weightlifting attempts stay in the Tools tracker |
+| Round cards (`cards`) | 4: boxing, MMA, Muay Thai, kickboxing | each judge's 10-point-must card per round, the decision derived from the cards, warnings and knockdowns tracked |
+| Result only (`outcome`) | 55 sports decided by a result and not a running score (chess and other mind games, esports, judo, wrestling, fencing and other bout sports …) | the match clock and a live `result` (winner or draw, optional method); the score sheet is still entered by the official at full time |
+| Timed, measured and judged sessions | 106: running, swimming, cycling, winter sports, jumps and throws, plus judged disciplines (gymnastics, diving, figure skating …) | live heats, finals and field flights in the Games screen: call room, splits, finishes, attempts, provisional places, Q / q; each discipline has an aggregate: **best** attempt, **sum** of attempts, or a judges' **panel** (mean of the marks with optional dropped extremes and a difficulty multiplier); lower-is-better (golf, timed events) is a setting |
 
-Judged panels (gymnastics, diving, figure skating) and bout-by-bout combat scoring have no live model yet: they are the honest gap in "every sport".
-The fallback ruleset for a sport is only a default: an organiser can pin a template or a governed format that gives it the right values.
+Counts are the output of `liveModelOf()` over the whole catalogue (39 + 12 + 2 + 1 + 4 + 55 + 106 = 219). The only labelled fallback is generic
+points for team ball and winter team sports. A fallback ruleset is only a default: an organiser can pin a template or a governed format that gives
+it the right values.
+
+**Honest gaps**: judging panels need at least five judges before extremes can be dropped; combat sports beyond the four carded ones record a
+result, not round scores; per-sport telemetry (possession, wind, reaction times) is stored when sent but never derived.
+
+### Sport rules for basketball, kabaddi, volleyball and badminton
+
+Optional ruleset blocks (`basketball{}`, `kabaddi{}` on `points_events`; `rally{}` on `sets`) add the sport's own rules on top of plain scoring. Everything is
+derived from the taps in `match_events` (`scoring/rules/*`), appears under `score.rules` for officials and spectators, and every threshold is a ruleset
+field a template or governed format can change. Old pinned versions without the blocks behave as before.
+
+| Sport | Derived state | Refused (unambiguous breaches only) | Advisory prompts |
+|---|---|---|---|
+| Basketball, wheelchair | team fouls per period, bonus, personal fouls, fouled-out players, timeouts left per half / overtime | an event for a fouled-out player; a timeout when none is left | bonus |
+| 3x3 basketball | bonus at 7 team fouls, game decided at 21 | scoring after the target is reached | |
+| Kabaddi | players on the mat (out on raid / tackle points, revived one per point), empty raids, super-tackle window | none | do-or-die, all-out due |
+| Volleyball | rotation per side, timeouts and substitutions left per set | a timeout or substitution over the limit | technical timeouts at 8 and 16, change of ends in the deciding set |
+| Beach volleyball | timeouts left | a timeout over the limit | change ends every 7 points (5 in the decider) |
+| Badminton | service court from the server's own score, server named per set | none | interval at 11, change of ends in the decider |
+
+Honest gaps: libero and exact court positions in volleyball, doubles partner identity in badminton and the individual raider in kabaddi need a lineup with
+positions and are not guessed; kabaddi's revival rule is the standard one (touch, tackle and bonus points revive one player, an all-out revives all), which a
+league with different rules would need to change in code.
 
 ## The sport plugin contract (`scoring/plugins/index.js`)
 
@@ -49,7 +73,7 @@ Each plugin serves one ruleset kind and separates what differs between sports so
 | Public projection | `publicView(state)` |
 | Result conversion | `toResult(state)` (a starting point for a sheet; never published by itself) |
 
-Registered kinds: `points_events`, `sets`, `racket` (the game-in-set refinement of `sets`), `cricket`, `manual`, plus `sessionPlugin` for timed and
+Registered kinds: `points_events`, `sets`, `racket` (the game-in-set refinement of `sets`), `cricket`, `manual` (with `cards` for round-scored bouts and a live `result` for outcome sports), plus `sessionPlugin` for timed and
 measured sessions. `engine.js` only dispatches; `registerSportPlugin()` adds a kind without touching it. Rulesets stay governed and pinned
 (`ruleset_versions`, `fixtures.ruleset_version_id`); every new ruleset field is optional, so published versions still parse.
 
@@ -93,12 +117,12 @@ revised); a live game with corrections shows `corrected: true`. Sessions use the
   session pad), a sport-aware pad (cricket scorebook, tennis / padel pad, football extra time and shoot-out, rally server), quick player
   picks from the declared lineup, Undo and Correct, a conflict sheet, and a phone / tablet / desktop layout (pad beside timeline from 768 px).
 * **Games > session sheet** is the one home for a heat: call room, start, splits, finishes, attempts, DNS / DNF / DQ, provisional places, Q / q
-  from pinned progression, Undo, and "Finalise result". Marks are built from steppers, not typed.
+  from the discipline's live rules, Undo, and "Finalise result". Marks are built from steppers, not typed.
 * Taps are saved on the device first and survive closing the app; "N not sent yet" and Retry are always visible.
 
 ## Limits worth knowing
 
-* Q / q and field cuts show only from `set_discipline_progression`; with nothing pinned none are shown. Rest-of-field rules beyond that are not
+* Aggregate, direction, dropped extremes, Q / q, wildcards and field cuts come from the discipline's live rules (`set_discipline_live_rules`, edited under Games > Live scoring rules); with nothing set the sport's default applies and no cut is shown. Rest-of-field rules beyond that are not
   guessed.
 * Wind, reaction times and photo-finish imports are stored if sent but are not interpreted.
 * Possession and similar telemetry appear only if a scorer records them as events; nothing is derived or invented.

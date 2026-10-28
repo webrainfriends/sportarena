@@ -4,6 +4,7 @@
 import { encrypt } from './crypto.js';
 import { notify } from './notify.js';
 import { activateUserPlan } from './booking/plans.js';
+import { conflict } from './errors.js';
 import { returnCredits } from './booking/credits.js';
 import { academyChargePaid } from './rewards/activity.js';
 
@@ -45,7 +46,7 @@ const chargeContext = async (c, chargeId) => (await c.query(
      LEFT JOIN academy_programmes pr ON pr.id = coalesce(e.programme_id, a.programme_id)
      JOIN users u ON u.id=ch.payer_id WHERE ch.id=$1`, [chargeId])).rows[0];
 
-const KIND = { registration: 'Joining fee', deposit: 'Deposit', tuition: 'Tuition', instalment: 'Instalment', trial: 'Trial fee', pack: 'Session pack' };
+const KIND = { registration: 'Joining fee', deposit: 'Deposit', tuition: 'Tuition', instalment: 'Instalment', trial: 'Trial fee', pack: 'Session pack', dues: 'Dues', late_fee: 'Late fee' };
 const sellerOf = async (c, ctx) => {
   const p = (await c.query('SELECT legal_name, tax_id, billing_address FROM academy_profiles WHERE organisation_id=$1', [ctx.org_id])).rows[0] ?? {};
   return { name: p.legal_name ?? ctx.org_name, tax_id: p.tax_id ?? null, address: p.billing_address ?? null, phone: null, email: null };
@@ -89,20 +90,95 @@ export async function syncChargeInvoice(c, chargeId) {
       encrypt(JSON.stringify({ name: ctx.payer_name, address: null, tax_id: null }), 'invoices.buyer'), JSON.stringify(linesOf(ctx))])).rows[0];
 }
 
+/** What is still owed on a charge: the amount less what was received and what was waived or conceded. */
+export const balanceOf = (ch) => Number(ch.amount_minor) - Number(ch.settled_minor ?? 0) - Number(ch.adjusted_minor ?? 0);
+
+/** Finish a charge whose balance reached zero: the invoice is settled, a linked pack/membership period starts, the payer is told. */
+async function closeCharge(c, ch, { method, paid }) {
+  if (paid) {
+    await syncChargeInvoice(c, ch.id);            // make sure there is an invoice to settle (a free-standing charge may not have one yet)
+    await c.query("UPDATE invoices SET status='paid', paid_at=now(), payment_method=$2 WHERE academy_charge_id=$1 AND kind='invoice' AND status='open'", [ch.id, method]);
+    await c.query("UPDATE academy_charges SET status='paid', paid_at=now() WHERE id=$1", [ch.id]);
+  } else {
+    await c.query("UPDATE academy_charges SET status='waived' WHERE id=$1", [ch.id]);
+    await syncChargeInvoice(c, ch.id);            // nothing is left to pay: the open invoice is voided
+  }
+  if (ch.user_plan_id) await activateUserPlan(c, ch.user_plan_id);
+}
+
 /**
- * The charge was paid (online by the provider, or recorded by staff). Marks the charge and its invoice paid, starts a linked pack/membership
+ * Money received against a charge: a desk payment (the whole balance, or a part when `amountMinor` is given) or an online payment. Every receipt is a
+ * row (append-only); the charge keeps the running total, and when the balance reaches zero the charge and its invoice become paid. Idempotent per
+ * `key` and per payment, so a retry, a replayed webhook or a double tap adds nothing. The original charge and invoice are never edited.
+ * Returns { applied, replay, completed, balance_minor, receipt_id } - applied is false when the charge can no longer be paid.
+ */
+export async function applyReceipt(c, chargeId, { amountMinor = null, method = 'online', payment = null, actor = null, key = null } = {}) {
+  const ch = (await c.query('SELECT * FROM academy_charges WHERE id=$1 FOR UPDATE', [chargeId])).rows[0];
+  if (!ch) return { applied: false };
+  const prior = payment
+    ? (await c.query('SELECT * FROM charge_receipts WHERE payment_id=$1', [payment.id])).rows[0]
+    : key ? (await c.query('SELECT * FROM charge_receipts WHERE charge_id=$1 AND idempotency_key=$2', [chargeId, key])).rows[0] : null;
+  if (prior) return { applied: true, replay: true, completed: ch.status === 'paid', balance_minor: balanceOf(ch), receipt_id: prior.id };
+  if (ch.status !== 'awaiting_payment') return { applied: false };
+  // loyalty points already applied to the open invoice pay part of it: what is still owed in money is the balance less those credits
+  const credits = Number((await c.query("SELECT coalesce(sum(credits_cents),0) AS n FROM invoices WHERE academy_charge_id=$1 AND kind='invoice' AND status='open'", [chargeId])).rows[0].n);
+  const balance = balanceOf(ch) - credits;
+  let amount = amountMinor ?? (payment ? Number(payment.amount_cents) : balance);
+  if (amount > balance) {
+    if (!payment) throw conflict(`Only ${balance} is still owed on this charge`, { balance_minor: balance });
+    // the balance shrank (a desk payment or a waiver) after this checkout started: take what is owed and put the difference in front of finance
+    const { raiseException } = await import('./settlement.js');
+    await raiseException(c, { kind: 'amount_mismatch', dedupeKey: `charge_balance_changed:${payment.id}`, paymentId: payment.id, currency: payment.currency, amount: amount - balance, detail: { reason: 'charge_balance_changed', charge_id: chargeId, paid_minor: amount, balance_minor: balance } });
+    amount = balance;
+  }
+  if (amount <= 0) return { applied: false };
+  const receipt = (await c.query(
+    'INSERT INTO charge_receipts(charge_id, amount_minor, method, payment_id, recorded_by, idempotency_key) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id', [chargeId, amount, method, payment?.id ?? null, actor, key])).rows[0];
+  const after = (await c.query('UPDATE academy_charges SET settled_minor = settled_minor + $2 WHERE id=$1 RETURNING *', [chargeId, amount])).rows[0];
+  const left = balanceOf(after) - credits;
+  if (left === 0) {
+    await closeCharge(c, after, { method, paid: true });
+    await academyChargePaid(c, after);            // the payer earns under every live loyalty programme that applies (once per charge)
+    await notify(c, ch.payer_id, { kind: 'academy_payment_received', title: 'Payment received', body: 'Open Gotmygame to see your receipt.', data: { organisation_id: ch.organisation_id, charge_id: ch.id }, dedupe_key: `academy:paid:${ch.id}` });
+  } else {
+    await notify(c, ch.payer_id, { kind: 'academy_payment_part', title: 'Part payment received', body: 'Open Gotmygame to see what is still due.', data: { organisation_id: ch.organisation_id, charge_id: ch.id }, dedupe_key: `academy:part:${receipt.id}` });
+  }
+  return { applied: true, replay: false, completed: left === 0, balance_minor: left, receipt_id: receipt.id, amount_minor: amount };
+}
+
+/**
+ * The charge was paid in full (online by the provider, or recorded by staff). Marks the charge and its invoice paid, starts a linked pack/membership
  * period and tells the payer. Idempotent: false when the charge can no longer be paid.
  */
-export async function fulfilChargePaid(c, chargeId, { method = 'online' } = {}) {
-  const ch = (await c.query("SELECT * FROM academy_charges WHERE id=$1 AND status='awaiting_payment' FOR UPDATE", [chargeId])).rows[0];
-  if (!ch) return false;
-  await syncChargeInvoice(c, chargeId);          // make sure there is an invoice to settle (a free-standing charge may not have one yet)
-  await c.query("UPDATE invoices SET status='paid', paid_at=now(), payment_method=$2 WHERE academy_charge_id=$1 AND kind='invoice' AND status='open'", [chargeId, method]);
-  await c.query("UPDATE academy_charges SET status='paid', paid_at=now() WHERE id=$1", [chargeId]);
-  if (ch.user_plan_id) await activateUserPlan(c, ch.user_plan_id);
-  await academyChargePaid(c, ch);                // the payer earns under every live loyalty programme that applies (once per charge)
-  await notify(c, ch.payer_id, { kind: 'academy_payment_received', title: 'Payment received', body: 'Open Gotmygame to see your receipt.', data: { organisation_id: ch.organisation_id, charge_id: ch.id }, dedupe_key: `academy:paid:${ch.id}` });
-  return true;
+export async function fulfilChargePaid(c, chargeId, { method = 'online', payment = null } = {}) {
+  return (await applyReceipt(c, chargeId, { method, payment })).applied;
+}
+
+/**
+ * A waiver (forgiven) or concession (goodwill reduction) against an unpaid charge: an explicit, attributed row that lowers the balance. The price is
+ * not edited and the invoice is not rewritten. When the balance reaches zero the charge is waived (nothing was paid) or paid (it was part paid).
+ */
+export async function applyAdjustment(c, chargeId, { kind, amountMinor, reasonEnc, actor, key }) {
+  const ch = (await c.query('SELECT * FROM academy_charges WHERE id=$1 FOR UPDATE', [chargeId])).rows[0];
+  if (!ch) return null;
+  const prior = (await c.query('SELECT * FROM charge_adjustments WHERE charge_id=$1 AND idempotency_key=$2', [chargeId, key])).rows[0];
+  if (prior) return { replay: true, adjustment_id: prior.id, balance_minor: balanceOf(ch), charge_status: ch.status };
+  if (ch.status !== 'awaiting_payment') throw conflict('Only an unpaid charge can be waived or reduced');
+  const balance = balanceOf(ch);
+  if (amountMinor > balance) throw conflict(`Only ${balance} is still owed on this charge`, { balance_minor: balance });
+  const row = (await c.query('INSERT INTO charge_adjustments(charge_id, kind, amount_minor, reason_enc, actor_id, idempotency_key) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id', [chargeId, kind, amountMinor, reasonEnc, actor, key])).rows[0];
+  const after = (await c.query('UPDATE academy_charges SET adjusted_minor = adjusted_minor + $2 WHERE id=$1 RETURNING *', [chargeId, amountMinor])).rows[0];
+  const left = balanceOf(after);
+  if (left === 0) {
+    await closeCharge(c, after, { method: 'settled', paid: Number(after.settled_minor) > 0 });
+    if (kind === 'waiver') {
+      // forgiving the fee forgives the lateness: an unpaid late fee on it goes with it (a fee already part paid or adjusted is left for staff to decide)
+      const fees = (await c.query("UPDATE academy_charges SET status='cancelled' WHERE parent_charge_id=$1 AND kind='late_fee' AND status='awaiting_payment' AND settled_minor=0 AND adjusted_minor=0 RETURNING id", [chargeId])).rows;
+      for (const f of fees) await syncChargeInvoice(c, f.id);
+    }
+  }
+  await notify(c, ch.payer_id, { kind: 'academy_balance_adjusted', title: left === 0 ? 'Nothing more to pay' : 'Your balance was reduced', body: 'Open Gotmygame to see the details.', data: { organisation_id: ch.organisation_id, charge_id: ch.id }, dedupe_key: `academy:adjust:${row.id}` });
+  return { replay: false, adjustment_id: row.id, balance_minor: left, charge_status: left === 0 ? (Number(after.settled_minor) > 0 ? 'paid' : 'waived') : 'awaiting_payment' };
 }
 
 /** Cancel what is unpaid for a set of charges (a withdrawal): the charge, its invoice and the plan period it would have bought. */

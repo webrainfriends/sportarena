@@ -168,7 +168,7 @@ export function cricketState(rs, events) {
 /** Why an entry cannot be added now, or null. */
 export function cricketReject(rs, live, next) {
   const c = rs.cricket;
-  if (next.kind === 'note' || next.kind === 'period_start' || next.kind === 'period_end') return null; // the match log's period markers carry no cricket meaning
+  if (next.kind === 'note' || next.kind === 'period_start' || next.kind === 'period_end' || next.kind === 'added_time') return null; // the match log's period markers carry no cricket meaning
   if (!CRICKET_KINDS.includes(next.kind)) return `"${next.kind}" is not part of cricket scoring`;
   const st = cricketState(rs, live);
   const p = next.payload ?? {};

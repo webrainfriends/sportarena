@@ -26,7 +26,7 @@ subsystem. Everything else on the screens (Athlete 360, P&L, receivables, retent
 
 ## Overlap review (what was merged, what was not duplicated)
 - **One home.** The executive view is the lower half of the existing Academy **Home** tab (no second dashboard).
-- **One place for money.** The existing **Billing** tab is now **Finance** with sub-tabs *Charges* (the unchanged billing screen), *Profit & loss*, *Receivables*, *Costs* and *Forecast*.
+- **One place for money.** The existing **Billing** tab is now **Finance** with sub-tabs *Charges* (the billing screen), *Profit & loss*, *Collections* (the work queue, schedules, policy and report; its ageing is the receivables ageing, and #511 replaced the old *Receivables* sub-tab with it), *Costs* and *Forecast*.
 - **One athlete page.** The existing Families detail gained the Athlete 360 sections; no separate screen.
 - **No second sponsor, legal, health, coaching or ledger system.** Sponsorship, legal and health appear as links/projections into their own tables.
 - Coaches now reach the academy desk through the existing **Academy** workspace tab (Progress only).

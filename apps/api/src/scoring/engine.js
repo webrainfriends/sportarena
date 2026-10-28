@@ -20,7 +20,7 @@ export function matchPhase(rs, events) {
   const plugin = pluginFor(rs);
   const score = plugin.state(rs, live);
   const phase = plugin.phase(rs, live, score);
-  const decided = (rs.kind === 'sets' || rs.kind === 'cricket') && score.over;
+  const decided = (rs.kind === 'sets' || rs.kind === 'cricket' || rs.kind === 'manual' || rs.kind === 'points_events') && score.over;
   const shootoutDone = !!score.shootout?.over;
   return { ...phase, can_score: !decided && !shootoutDone, score };
 }

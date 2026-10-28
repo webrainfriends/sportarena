@@ -2,8 +2,9 @@
 export const MODULES = [
   ['Leaderboard', 'Leaderboard', 'Points & glory', 'play'], ['Awards', 'Trophy room', 'Cups, medals, MVPs', 'play'],
   ['CareerTimeline', 'Career & clubs', 'Your clubs, verified by them', 'play'], ['MyLicences', 'My licences', 'Federation licences & standing', 'play'],
-  ['MyApplications', 'My applications', 'Trials, offers & answers', 'play'],
+  ['FindGames', 'Find a game', 'Open games near you, today & this weekend', 'play'], ['MyApplications', 'My applications', 'Trials, offers & answers', 'play'],
   ['MyAccreditations', 'My badges', 'Event accreditation & QR', 'play'],
+  ['MyPasses', 'My passes', 'Rotating QR pass, cards & wristbands', 'play'],
   ['Following', 'Following', 'Events, teams & games you follow', 'play'],
   ['RecruiterAccess', 'Recruiter access', 'Who may see your profile', 'play'],
   ['MyDevelopment', 'My development', 'Goals, plans, feedback & reports', 'play'], ['MyPlans', 'Training plans', 'Your plans & sessions', 'play'], ['ToolsHome', 'Tools', 'Scoring sheets & documents', 'play'], ['Pathways', 'Learn & study', 'Rules, courses & colleges', 'play'], ['OpportunityMatches', 'Opportunities for me', 'Teams, trials, study & sponsors that fit you', 'play'],
@@ -24,7 +25,7 @@ export const WORKSPACES = [
   ['organizer', 'Schedule', 'Your events, teams & requests', { tab: 'Schedule', section: 'manage' }],
   ['venue_manager', 'VenueWorkspace', 'Your venues, revenue & partner account'],
   ['coach', 'CoachHome', 'Athletes, plans & sessions'],
-  ['referee', 'Openings', 'Games to officiate & open positions'],
+  ['referee', 'OfficialsHome', 'Matches, requests, calendar & rules'],
   ['sponsor', 'Sponsors', 'Offers, dues & agreements'],
   ['supplier', 'SupplierWorkspace', 'Services, quotes, orders & invoices'],
   ['physio', 'Health', 'Your practice & rehab plans'],
@@ -34,6 +35,7 @@ export const WORKSPACES = [
   ['insurer', 'InsurerDesk', 'Products, quotes & claims'],
   ['athlete', 'Passport', 'Player passport & QR'],
   ['admin', 'PartnerConsole', 'Partners & platform team'],
+  ['platform_admin', 'CommercialConsole', 'Catalogue, pricing & entitlements'],
 ];
 
 /** The workspaces this person can open: [role, route, sub, tab?], in catalogue order. */
@@ -45,7 +47,7 @@ export const PRIORITY = [
   [['sponsor', 'supplier'], ['Sponsors', 'Supply', 'Wallet', 'Earnings', 'Billboard', 'Shop', 'ToolsHome']],
   [['physio', 'doctor', 'lawyer', 'insurer'], ['Health', 'Insure', 'Legal', 'Wallet', 'Leaderboard', 'Support', 'ToolsHome']],
 ];
-export const PRIORITY_DEFAULT = ['Leaderboard', 'MyApplications', 'PlayerContracts', 'Health', 'Insure', 'Wallet', 'Shop', 'Billboard', 'ToolsHome'];
+export const PRIORITY_DEFAULT = ['FindGames', 'Leaderboard', 'MyApplications', 'PlayerContracts', 'Health', 'Insure', 'Wallet', 'Shop', 'Billboard', 'ToolsHome'];
 
 /** The wheel's order for someone with these roles: their priority modules first, then the rest in catalogue order. */
 export function orderedModules(roles = []) {

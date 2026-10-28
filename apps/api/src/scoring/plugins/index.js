@@ -12,8 +12,12 @@ import { cricketReject, cricketState } from '../cricket.js';
 import { runPoints, runSets, SIDES, SHOOTOUT_KINDS, otherSide } from '../basic.js';
 import { isGames, runRacket, racketReject, rallyServer, RACKET_KINDS } from '../racket.js';
 import { sessionState, sessionReject, SESSION_KINDS } from '../session.js';
+import { boxingDecision, roundProblem } from '../scorecards.js';
+import { basketballState, basketballReject, basketballOver } from '../rules/basketball.js';
+import { kabaddiState } from '../rules/kabaddi.js';
+import { rallyState, rallyReject } from '../rules/rally.js';
 
-export const CONTROL_KINDS = ['period_start', 'period_end', 'note'];
+export const CONTROL_KINDS = ['period_start', 'period_end', 'note', 'added_time'];
 const winnerOf = (h, a) => (h === a ? null : h > a ? 'home' : 'away');
 
 /** Period / clock position shared by period-based sports (football, basketball, rugby …), including extra time and the shoot-out. */
@@ -26,7 +30,10 @@ function periodPhase(rs, live, score) {
   const regulation = rs.periods.count;
   const level = score.home === score.away;
   const extra = rs.extra_time ?? null;
-  const out = { period, period_open: open, periods_total: regulation, stage: period > regulation ? 'extra_time' : period > 0 ? 'regulation' : 'not_started' };
+  // the latest added (stoppage) time announced in the period now running or last played
+  let added = null;
+  for (const e of live) { if (e.kind === 'period_start') added = null; else if (e.kind === 'added_time') added = e.payload?.minutes ?? null; }
+  const out = { period, period_open: open, periods_total: regulation, stage: period > regulation ? 'extra_time' : period > 0 ? 'regulation' : 'not_started', added_time: added };
   if (extra) {
     out.extra_periods = extra.periods; out.extra_minutes = extra.minutes;
     out.extra_time_available = !open && period >= regulation && period < regulation + extra.periods && level;
@@ -40,15 +47,25 @@ function periodPhase(rs, live, score) {
   return out;
 }
 
+/** Control entries every ruleset accepts. Added (stoppage) time is the referee's announcement of minutes to be played at the end of a period. */
+function controlReject(next) {
+  if (next.kind !== 'added_time') return null;
+  const m = next.payload?.minutes;
+  return Number.isInteger(m) && m >= 1 && m <= 30 ? null : 'Added time is a whole number of minutes, 1 to 30';
+}
+
 // ------------------------------------------------------------------ points_events (football, futsal, basketball, rugby, kabaddi …)
 const pointsPlugin = {
   kind: 'points_events',
   state(rs, live) {
     const r = runPoints(rs, live);
-    return { ...r, winner: winnerOf(r.home, r.away), level: r.home === r.away, over: false };
+    const rules = rs.basketball ? basketballState(rs, live) : rs.kabaddi ? kabaddiState(rs, live) : null;
+    return { ...r, winner: winnerOf(r.home, r.away), level: r.home === r.away, over: basketballOver(rs, r), ...(rules ? { rules } : {}) };
   },
   validate(rs, live, next, ctx = {}) {
     if (CONTROL_KINDS.includes(next.kind)) {
+      const bad = controlReject(next);
+      if (bad) return bad;
       if (next.kind === 'period_start') {
         const p = next.period;
         const st = pointsPlugin.state(rs, live);
@@ -80,7 +97,8 @@ const pointsPlugin = {
     const so = pointsPlugin.state(rs, live).shootout;
     if (so?.started && rs.events.some((e) => e.kind === next.kind)) return 'The shoot-out has started; the score no longer changes';
     if (next.player_id && pointsPlugin.state(rs, live).sent_off?.some((p) => p.player_id === next.player_id)) return 'That player has been sent off';
-    return null;
+    if (rs.events.some((e) => e.kind === next.kind) && pointsPlugin.state(rs, live).over) return 'The game is already decided';
+    return basketballReject(rs, live, next);
   },
   phase: periodPhase,
   attribution(rs, live) {
@@ -97,7 +115,7 @@ const pointsPlugin = {
     return [...by.values()];
   },
   liveStats: (rs, live, state) => state.stats,
-  publicView: (state) => ({ home: state.home, away: state.away, periods: state.periods, shootout: state.shootout ?? null, sent_off: state.sent_off ?? [] }),
+  publicView: (state) => ({ home: state.home, away: state.away, periods: state.periods, shootout: state.shootout ?? null, sent_off: state.sent_off ?? [], ...(state.rules ? { rules: state.rules } : {}) }),
   toResult(state) {
     const so = state.shootout?.over ? state.shootout : null;
     const winner = state.winner ?? so?.winner ?? null;
@@ -112,16 +130,18 @@ const setsPlugin = {
     const r = runSets(rs, live);
     const winner = r.over ? winnerOf(r.home, r.away) : null;
     const server = rallyServer(rs, live);
-    return { ...r, winner, level: r.home === r.away, ...(server ? { server } : {}) };
+    const rules = rs.rally ? rallyState(rs, live, r, server) : null;
+    return { ...r, winner, level: r.home === r.away, ...(server ? { server } : {}), ...(rules ? { rules } : {}) };
   },
   validate(rs, live, next) {
-    if (CONTROL_KINDS.includes(next.kind)) return null;
+    if (CONTROL_KINDS.includes(next.kind)) return controlReject(next);
     const known = new Set([...rs.events.map((e) => e.kind), ...rs.stats.map((s) => s.kind), 'point', ...(rs.racket?.serve && rs.racket.serve !== 'none' ? ['server'] : [])]);
     if (!known.has(next.kind)) return `"${next.kind}" is not part of the ${rs.label} rules`;
     if (!SIDES.includes(next.side)) return 'side must be home or away';
     if (setsPlugin.state(rs, live).over) return 'The match is already decided';
-    if (next.kind === 'server' && live.some((e) => e.kind === 'point')) return 'The first server is set before the first point';
-    return null;
+    const cur = setsPlugin.state(rs, live);
+    if (next.kind === 'server' && live.slice(cur.current_from ?? 0).some((e) => e.kind === 'point')) return 'The server is set before the first point of the set';
+    return rs.rally ? rallyReject(rs, live, next, cur) : null;
   },
   phase: (rs, live, state) => {
     let period = 0, open = false;
@@ -130,7 +150,7 @@ const setsPlugin = {
   },
   attribution: (rs, live) => pointsAttribution(live),
   liveStats: (rs, live, state) => state.stats,
-  publicView: (state) => ({ home: state.home, away: state.away, sets: state.sets, current_set: state.current_set, over: state.over, server: state.server ?? null }),
+  publicView: (state) => ({ home: state.home, away: state.away, sets: state.sets, current_set: state.current_set, over: state.over, server: state.server ?? null, ...(state.rules ? { rules: state.rules } : {}) }),
   toResult: (state) => ({ home: state.home, away: state.away, winner: state.winner, totals: { sets: state.sets } }),
 };
 
@@ -139,7 +159,7 @@ const racketPlugin = {
   kind: 'racket',
   state(rs, live) { const r = runRacket(rs, live); return { ...r, level: r.home === r.away }; },
   validate(rs, live, next) {
-    if (CONTROL_KINDS.includes(next.kind)) return null;
+    if (CONTROL_KINDS.includes(next.kind)) return controlReject(next);
     const known = new Set([...rs.stats.map((s) => s.kind), ...RACKET_KINDS]);
     if (!known.has(next.kind)) return `"${next.kind}" is not part of the ${rs.label} rules`;
     if (!SIDES.includes(next.side)) return 'side must be home or away';
@@ -197,21 +217,86 @@ const cricketPlugin = {
   toResult: (state) => ({ home: state.home, away: state.away, winner: state.winner, totals: { cricket: { wickets: state.cricket.wickets, result: state.cricket.result, innings: state.cricket.innings.map((i) => ({ n: i.n, side: i.side, runs: i.runs, wickets: i.wickets, legal_balls: i.legal })) } } }),
 };
 
-// ------------------------------------------------------------------ manual totals
+// ------------------------------------------------------------------ manual: totals, or an outcome (chess, esports, judo …)
+// There is no running score to add up. The clock, tracked warnings and notes run live, and the result - who won, and how - can be recorded
+// as it happens: `result` { outcome: home | away | draw, method? }. The score sheet is still entered by the official (manual totals).
+const OUTCOMES = ['home', 'away', 'draw'];
+export const RESULT_METHODS = ['points', 'decision', 'knockout', 'submission', 'checkmate', 'resignation', 'time', 'forfeit', 'disqualification', 'agreed'];
+const manualResult = (live) => [...live].reverse().find((e) => e.kind === 'result');
 const manualPlugin = {
   kind: 'manual',
-  state: () => ({ home: 0, away: 0, winner: null, level: true, over: false, stats: { home: {}, away: {} } }),
+  state(rs, live) {
+    const r = manualResult(live);
+    const outcome = r?.payload?.outcome ?? null;
+    const stats = { home: {}, away: {} };
+    for (const e of live) if (SIDES.includes(e.side) && e.kind !== 'result') stats[e.side][e.kind] = (stats[e.side][e.kind] ?? 0) + 1;
+    return { home: outcome === 'home' ? 1 : 0, away: outcome === 'away' ? 1 : 0, winner: outcome === 'home' || outcome === 'away' ? outcome : null, level: outcome !== 'home' && outcome !== 'away', over: !!outcome, stats, ...(outcome ? { result: { outcome, method: r.payload.method ?? null } } : {}) };
+  },
   validate(rs, live, next) {
-    if (CONTROL_KINDS.includes(next.kind)) return null;
+    if (CONTROL_KINDS.includes(next.kind)) return controlReject(next);
+    if (next.kind === 'result') {
+      const p = next.payload ?? {};
+      if (!OUTCOMES.includes(p.outcome)) return `outcome must be one of ${OUTCOMES.join(', ')}`;
+      if (p.method != null && !RESULT_METHODS.includes(p.method)) return `method must be one of ${RESULT_METHODS.join(', ')}`;
+      return manualResult(live) ? 'The result is already recorded; correct it through the match history' : null;
+    }
     if (![...rs.events, ...rs.stats].some((x) => x.kind === next.kind)) return `"${next.kind}" is not part of the ${rs.label} rules`;
     if (!SIDES.includes(next.side)) return 'side must be home or away';
     return 'This sport is scored by entering the totals on the score sheet';
   },
-  phase: (rs) => ({ period: 0, period_open: false, periods_total: rs.periods.count }),
+  phase: (rs, live) => {
+    let period = 0, open = false;
+    for (const e of live) { if (e.kind === 'period_start') { period = e.period ?? period + 1; open = true; } else if (e.kind === 'period_end') open = false; }
+    return { period, period_open: open, periods_total: rs.periods.count };
+  },
   attribution: () => null,
-  liveStats: () => ({ home: {}, away: {} }),
-  publicView: () => ({ home: 0, away: 0 }),
-  toResult: () => ({ home: 0, away: 0, winner: null, totals: {} }),
+  liveStats: (rs, live, state) => state.stats,
+  publicView: (state) => ({ home: state.home, away: state.away, result: state.result ?? null }),
+  toResult: (state) => ({ home: state.home, away: state.away, winner: state.winner, totals: state.result ? { result: state.result } : {} }),
+};
+
+// ------------------------------------------------------------------ judged bouts decided by round cards (boxing, MMA, muay thai, kickboxing)
+// A refinement of `manual`: every judge scores every round out of 10 for each side and the decision is derived (scoring/scorecards.js, the same
+// 10-point-must logic the Tools scorebook uses). Event `round_card` { judge 1..judges, round 1..rounds, home 0-10, away 0-10 }; home is the red corner.
+const cardsFrom = (rs, live) => {
+  const cards = Array.from({ length: rs.cards.judges }, () => ({ rounds: [] }));
+  for (const e of live) if (e.kind === 'round_card' && cards[e.payload?.judge - 1]) cards[e.payload.judge - 1].rounds[e.payload.round - 1] = { red: e.payload.home, blue: e.payload.away };
+  return cards;
+};
+const cardsPlugin = {
+  kind: 'cards',
+  state(rs, live) {
+    const d = boxingDecision(cardsFrom(rs, live), rs.cards.rounds, rs.cards.judges);
+    const stats = { home: {}, away: {} };
+    for (const e of live) if (SIDES.includes(e.side) && e.kind !== 'round_card') stats[e.side][e.kind] = (stats[e.side][e.kind] ?? 0) + 1;
+    const winner = d.complete ? (d.winner === 'red' ? 'home' : d.winner === 'blue' ? 'away' : null) : null;
+    return { home: d.votes.red, away: d.votes.blue, winner, level: d.votes.red === d.votes.blue, over: d.complete, stats, scorecard: d };
+  },
+  validate(rs, live, next) {
+    if (CONTROL_KINDS.includes(next.kind)) return controlReject(next);
+    if (next.kind === 'round_card') {
+      const p = next.payload ?? {};
+      if (!Number.isInteger(p.judge) || p.judge < 1 || p.judge > rs.cards.judges) return `judge must be 1 to ${rs.cards.judges}`;
+      if (!Number.isInteger(p.round) || p.round < 1 || p.round > rs.cards.rounds) return `round must be 1 to ${rs.cards.rounds}`;
+      const bad = roundProblem({ red: p.home, blue: p.away });
+      if (bad) return bad;
+      if (cardsPlugin.state(rs, live).over) return 'The bout is already decided';
+      if (live.some((e) => e.kind === 'round_card' && e.payload?.judge === p.judge && e.payload?.round === p.round)) return `Judge ${p.judge} has already scored round ${p.round}; correct that card instead`;
+      return null;
+    }
+    if (!rs.stats.some((x) => x.kind === next.kind)) return `"${next.kind}" is not part of the ${rs.label} rules`;
+    return SIDES.includes(next.side) ? null : 'side must be home or away';
+  },
+  phase: (rs, live, state) => {
+    let period = 0, open = false;
+    for (const e of live) { if (e.kind === 'period_start') { period = e.period ?? period + 1; open = true; } else if (e.kind === 'period_end') open = false; }
+    const carded = live.filter((e) => e.kind === 'round_card').map((e) => e.payload.round);
+    return { period, period_open: open, periods_total: rs.periods.count, rounds: rs.cards.rounds, judges: rs.cards.judges, last_carded_round: carded.length ? Math.max(...carded) : 0 };
+  },
+  attribution: () => null,
+  liveStats: (rs, live, state) => state.stats,
+  publicView: (state) => ({ home: state.home, away: state.away, judges: state.scorecard.judges, votes: state.scorecard.votes, decision: state.scorecard.kind, complete: state.scorecard.complete, winner: state.winner }),
+  toResult: (state) => ({ home: state.home, away: state.away, winner: state.winner, totals: { scorecard: state.scorecard, stats: state.stats } }),
 };
 
 /** Per-player tally of whatever events carry a player_id (no player = nothing invented). */
@@ -225,14 +310,14 @@ function pointsAttribution(live) {
   return [...by.values()];
 }
 
-const registry = new Map([pointsPlugin, setsPlugin, racketPlugin, cricketPlugin, manualPlugin].map((p) => [p.kind, p]));
+const registry = new Map([pointsPlugin, setsPlugin, racketPlugin, cricketPlugin, cardsPlugin, manualPlugin].map((p) => [p.kind, p]));
 /** Register another sport plugin (a new ruleset kind) without touching the engine. */
 export function registerSportPlugin(p) { registry.set(p.kind, p); }
 export const sportPlugins = () => [...registry.keys()];
 
 /** The plugin that scores a ruleset. Tennis-style games refine `sets` and have their own plugin. */
 export function pluginFor(rs) {
-  const key = isGames(rs) ? 'racket' : rs.kind;
+  const key = isGames(rs) ? 'racket' : rs.kind === 'manual' && rs.cards ? 'cards' : rs.kind;
   const p = registry.get(key);
   if (!p) throw new Error(`No scoring plugin for "${key}"`);
   return p;
@@ -244,9 +329,9 @@ export const sessionPlugin = {
   state: (cfg, events) => sessionState(cfg, events),
   validate: (cfg, state, next) => sessionReject(cfg, state, next),
   attribution: (cfg, events) => sessionState(cfg, events).entries.map((e) => ({ entry_id: e.entry_id, rank: e.rank, best: e.best, status: e.status })),
-  publicView: (state) => ({ status: state.status, provisional: state.provisional, round: state.round, entries: state.entries.map((e) => ({ entry_id: e.entry_id, lane: e.lane, status: e.status, rank: e.rank, best: e.best, result: e.result, q: e.q ?? '', attempts: e.attempts, splits: e.splits })) }),
+  publicView: (state) => ({ status: state.status, provisional: state.provisional, round: state.round, aggregate: state.aggregate, lower_is_better: state.lower_is_better, entries: state.entries.map((e) => ({ entry_id: e.entry_id, lane: e.lane, status: e.status, rank: e.rank, best: e.best, result: e.result, q: e.q ?? '', attempts: e.attempts, splits: e.splits, rounds: e.rounds, panel: e.panel })) }),
   /** A result list for recordSessionResults; only competitors that finished or have a mark are included. */
   toResult: (state) => state.entries.filter((e) => ['finished', 'dns', 'dnf', 'dq'].includes(e.status) || (state.kind === 'field' && e.best != null))
-    .map((e) => ({ entry_id: e.entry_id, value: e.best, status: ['dns', 'dnf', 'dq'].includes(e.status) ? e.status : 'finished', ...(e.reason ? { note: e.reason } : {}) })),
+    .map((e) => ({ entry_id: e.entry_id, value: e.best, status: ['dns', 'dnf', 'dq'].includes(e.status) ? e.status : 'finished', ...(e.rank != null && !['dns', 'dnf', 'dq'].includes(e.status) ? { position: e.rank } : {}), ...(e.reason ? { note: e.reason } : {}) })),
 };
 export { SESSION_KINDS };

@@ -20,6 +20,7 @@ const TONE = { match: [c.red, c.redSoft], training: [c.cyan, c.cyanSoft], health
 const STATUS = { proposed: 'Proposed', awaiting_response: 'Awaiting your response', confirmed: 'Confirmed', completed: 'Completed', cancelled: 'Cancelled', open: 'Open', ongoing: 'Ongoing' };
 
 export const ACTIONS = [
+  ['🎟️', 'My passes', (n) => n.push('MyPasses')],
   ['🔎', 'Find a match', (n) => n.goTab('Explore')],
   ['🧑‍🏫', 'Find a coach', (n) => n.goTab('Schedule', { section: 'coach' })],
   ['📍', 'Book venue', (n) => n.goTab('Schedule', { section: 'book' })],
