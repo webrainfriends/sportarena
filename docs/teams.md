@@ -69,8 +69,13 @@ A contribution ledger, not a bank account: nothing here holds money.
 * Fundraising: `create_team_fundraiser` (owner-created opens at once; otherwise the owner approves with `decide_team_fundraiser`), `contribute_to_team_fundraiser` (pay online) or `record_team_contribution` (by hand), `get_team_fundraiser`, `list_team_fundraisers`. Progress counts paid gifts only.
 * Privacy: a member sees only their own obligations (`list_my_team_charges`, `get_my_team_finance`); team totals only if the team switches `members_see_totals` on (no names, no other balances). The ledger and per-member lists are for owners, managers and the organisation's finance staff. Player rates and payouts live in `team_payouts` / the roster and are never read by these capabilities.
 
+### Invoices and collections for teams
+* **Invoices**: every team charge gets one numbered invoice in the shared `invoices` table (`team_id` + `team_charge_id`; numbers `TM<NAME><ID>-<year>-<seq>`, gapless per team). It is created when the charge is raised, revised while open (a reduction), settled when the charge is paid in full (online, by hand, or the share of the member who fronted an expense), and voided by a waiver or cancellation. A paid invoice is never edited. `get_invoice` shows it to the payer and to the team's finance staff only (a young member's invoice is addressed to the guardian who pays; the child cannot read it); `list_invoices?team_id=` lists the team's.
+* **Collections**: a team is the third owner of the recurring-collections desk (`owner_type = team`, `source_type = team_charge`). Every unpaid charge with a due date gets a case, and the shared worker step sends the cadence reminders (default 3 days before, on the day, then 3 / 7 / 14 days after), retry messages after a failed online payment, and tells the team's owner and managers once when a payment is `escalated`. The same capabilities work with `team_id`: `list_collection_cases`, `get_collection_case`, `act_on_collection_case` (note, promise to pay, hold with a reason), `get_collection_policy` / `set_collection_policy` (cadence, grace days, escalation days). Late fees and suspension are not offered to teams (there is no enrolment to pause). Reminders to a young member's charge go to their guardians, never the child; they use `notify`, so push / WhatsApp / email follow each person's own settings.
+* Visibility: only the team's owner, managers and organisation finance staff reach the desk; everyone else gets `404`.
+
 ### Known limits
-No in-app dunning ladder for teams (the academy `collection_cases` are organisation/venue owned); no refund sync from an admin refund back to a team charge (the ledger reconciliation flags it); donations come from members and guardians only, not the public.
+No refund sync from an admin refund back to a team charge (the ledger reconciliation flags it); donations come from members and guardians only, not the public.
 
 ## Team workspace (tasks, schedule, attendance)
 

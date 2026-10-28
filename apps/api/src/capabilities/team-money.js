@@ -9,21 +9,17 @@ import { badRequest, conflict, forbidden, notFound, unprocessable } from '../err
 import { audit, mustFind } from '../helpers.js';
 import { notify } from '../notify.js';
 import { isSupportedCurrency } from '../currency.js';
-import { hasOrgGrant } from '../org-access.js';
 import { isYouth, YOUTH_SQL } from '../youth.js';
-import { canManageTeam } from './teams.js';
 import { attendanceScope } from './team-workspace.js';
-import { adjust, applyReceipt, openReason, raiseBatch, raiseTeamDues, sealReason, splitShares } from '../team-money.js';
+import { adjust, applyReceipt, financeStaff, openReason, raiseBatch, raiseTeamDues, sealReason, splitShares } from '../team-money.js';
+import { syncTeamChargeInvoice } from '../team-invoices.js';
+import { ensureCases } from '../collections.js';
 
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a date like 2026-11-01');
 const minor = z.coerce.number().int().min(1).max(1_000_000_000).describe('amount in minor units (paise / cents)');
 const key = z.string().min(8).max(64).describe('any unique string; a retry with the same key changes nothing');
 const METHODS = ['cash', 'upi', 'bank', 'card', 'other'];
 
-/** Managers, and finance staff of the team's organisation. They reconcile; ordinary members never get this. */
-async function financeStaff(user, team) {
-  return (await canManageTeam(user, team)) || (await hasOrgGrant(user, team.organisation_id, ['owner', 'admin', 'finance']));
-}
 async function mustRun(user, teamId) {
   const team = await mustFind('teams', teamId);
   if (!(await financeStaff(user, team))) throw forbidden('Only the team owner, managers or the organisation\'s finance staff can do this');
@@ -46,7 +42,9 @@ const mustBeInvolved = async (user, team) => {
 
 const CHARGE_SQL = `SELECT ch.id AS charge_id, ch.team_id, ch.batch_id, b.kind, b.title, b.currency, b.split_mode, b.event_id, b.fixture_id, ch.due_on::text AS due_on, ch.amount_minor, ch.adjusted_minor, ch.settled_minor,
                            (ch.amount_minor - ch.adjusted_minor - ch.settled_minor) AS balance_minor, ch.status, ch.paid_at, ch.created_at,
-                           (ch.status='awaiting_payment' AND ch.due_on IS NOT NULL AND ch.due_on < current_date) AS overdue, ch.member_id, ch.payer_id`;
+                           (ch.status='awaiting_payment' AND ch.due_on IS NOT NULL AND ch.due_on < current_date) AS overdue, ch.member_id, ch.payer_id,
+                           (SELECT i.id FROM invoices i WHERE i.team_charge_id=ch.id AND i.kind='invoice' AND i.status IN ('open','paid') LIMIT 1) AS invoice_id,
+                           (SELECT i.number FROM invoices i WHERE i.team_charge_id=ch.id AND i.kind='invoice' AND i.status IN ('open','paid') LIMIT 1) AS invoice_number`;
 
 // ------------------------------------------------------------------------------------------------------------------ settings
 cap({
@@ -154,7 +152,9 @@ cap({
   async handler({ user }, i) {
     await mustRun(user, i.id);
     return many(
-      `${CHARGE_SQL}, mu.display_name AS member_name, pu.display_name AS payer_name FROM team_charges ch JOIN team_charge_batches b ON b.id=ch.batch_id JOIN users mu ON mu.id=ch.member_id JOIN users pu ON pu.id=ch.payer_id
+      `${CHARGE_SQL}, mu.display_name AS member_name, pu.display_name AS payer_name,
+              (SELECT cs.state FROM collection_cases cs WHERE cs.source_type='team_charge' AND cs.source_id=ch.id) AS collection_state
+         FROM team_charges ch JOIN team_charge_batches b ON b.id=ch.batch_id JOIN users mu ON mu.id=ch.member_id JOIN users pu ON pu.id=ch.payer_id
         WHERE ch.team_id=$1 AND ($2::text IS NULL OR ch.status=$2) AND ($3::text IS NULL OR b.kind=$3) AND ($4::uuid IS NULL OR ch.member_id=$4) AND ($5::uuid IS NULL OR ch.batch_id=$5)
         ORDER BY ch.created_at DESC, mu.display_name LIMIT $6 OFFSET $7`, [i.id, i.status ?? null, i.kind ?? null, i.member_id ?? null, i.batch_id ?? null, i.limit, i.offset]);
   },
@@ -172,8 +172,13 @@ cap({
     if (!staff && ch.payer_id !== user.id) throw notFound('Charge');   // not yours: it does not exist as far as you can tell
     const entries = await many('SELECT e.id, e.kind, e.amount_minor, e.method, e.payment_id, e.reason_enc, e.created_at, u.display_name AS actor FROM team_charge_entries e LEFT JOIN users u ON u.id=e.actor_id WHERE e.charge_id=$1 ORDER BY e.created_at, e.id', [i.charge_id]);
     if (staff && entries.some((e) => e.reason_enc)) await audit(null, user.id, 'read_pii', 'team_charge_entries', i.charge_id);
+    let collection = null;
+    if (staff && ch.status === 'awaiting_payment') {
+      await tx((c) => ensureCases(c, 'team', ch.team_id));   // the collections desk follows every unpaid charge that has a due date
+      collection = await one("SELECT id AS case_id, state, promised_on::text AS promised_on, hold_until::text AS hold_until, next_action, last_reminder_at, failed_attempts FROM collection_cases WHERE source_type='team_charge' AND source_id=$1", [i.charge_id]);
+    }
     const { member_id, payer_id, ...rest } = ch;
-    return { ...rest, for_member: member_id === payer_id ? null : (await one('SELECT display_name FROM users WHERE id=$1', [member_id])).display_name,
+    return { ...rest, collection, for_member: member_id === payer_id ? null : (await one('SELECT display_name FROM users WHERE id=$1', [member_id])).display_name,
       entries: entries.map(({ reason_enc, ...e }) => ({ ...e, note: staff ? openReason(reason_enc) : null })),
       purpose: ch.status === 'awaiting_payment' && ch.payer_id === user.id ? { purpose_type: 'team_charge', purpose_id: ch.charge_id } : null };
   },
@@ -285,6 +290,7 @@ cap({
       const r = (await c.query("UPDATE team_charges SET status='cancelled' WHERE id=$1 AND status='awaiting_payment' AND settled_minor=0 RETURNING id", [i.charge_id])).rowCount;
       if (!r) throw conflict('Only an unpaid charge with nothing received can be cancelled');
       await c.query("INSERT INTO team_charge_entries(charge_id, kind, reason_enc, actor_id, idempotency_key) VALUES ($1,'cancelled',$2,$3,'cancelled')", [i.charge_id, sealReason(i.reason), user.id]);
+      await syncTeamChargeInvoice(c, i.charge_id);   // the open invoice is voided
       await audit(c, user.id, 'cancel_team_charge', 'team_charges', i.charge_id);
       return (await c.query(`${CHARGE_SQL} FROM team_charges ch JOIN team_charge_batches b ON b.id=ch.batch_id WHERE ch.id=$1`, [i.charge_id])).rows[0];
     });

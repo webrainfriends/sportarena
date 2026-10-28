@@ -11,10 +11,15 @@ import { guardiansOf, isYouth } from './youth.js';
 import { allocate } from './settlement.js';
 import { toMajor } from './currency.js';
 import { addMonths } from './sponsor-schedule.js';
+import { settleTeamChargeInvoice, syncTeamChargeInvoice } from './team-invoices.js';
+import { hasOrgGrant } from './org-access.js';
+import { canManageTeam } from './capabilities/teams.js';
 
 export const sealReason = (t) => (t ? encrypt(t, 'team_charge_entries.reason') : null);
 export const openReason = (s) => (s ? decrypt(s, 'team_charge_entries.reason') : null);
 export const balanceOf = (ch) => Number(ch.amount_minor) - Number(ch.adjusted_minor) - Number(ch.settled_minor);
+/** Managers, and finance staff of the team's organisation. They reconcile and run collections; ordinary members never get this. */
+export const financeStaff = async (user, team) => (await canManageTeam(user, team)) || (await hasOrgGrant(user, team.organisation_id, ['owner', 'admin', 'finance']));
 const money = (minor, currency) => `${currency} ${toMajor(Number(minor), currency)}`;
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -51,8 +56,10 @@ export async function raiseBatch(c, { team, batch, members, actor, notifyPayers 
       [batch.id, team.id, m.user_id, payer, m.amount_minor, batch.due_text ?? null])).rows[0];
     if (!ch) continue;
     await c.query("INSERT INTO team_charge_entries(charge_id, kind, amount_minor, actor_id, idempotency_key) VALUES ($1,'raised',$2,$3,'raised')", [ch.id, m.amount_minor, actor]);
+    await syncTeamChargeInvoice(c, ch.id);
     if (m.settled_minor) {   // the person who fronted an expense already carries their own share
       await c.query("INSERT INTO team_charge_entries(charge_id, kind, amount_minor, method, actor_id, idempotency_key) VALUES ($1,'receipt',$2,'fronted',$3,'fronted')", [ch.id, m.settled_minor, actor]);
+      if (m.settled_minor >= m.amount_minor) await settleTeamChargeInvoice(c, ch.id, 'fronted');
       await c.query("UPDATE team_charges SET settled_minor=$2, status=CASE WHEN $2 >= amount_minor THEN 'paid' ELSE status END, paid_at=CASE WHEN $2 >= amount_minor THEN now() END WHERE id=$1", [ch.id, m.settled_minor]);
       continue;
     }
@@ -79,7 +86,10 @@ export async function applyReceipt(c, chargeId, { amount, method, payment = null
     [chargeId, amount, method, payment?.id ?? null, sealReason(note), actor, key ?? (payment ? `payment:${payment.id}` : null)]);
   const after = (await c.query(
     `UPDATE team_charges SET settled_minor = settled_minor + $2 WHERE id=$1 RETURNING *`, [chargeId, amount])).rows[0];
-  if (balanceOf(after) === 0) await c.query("UPDATE team_charges SET status='paid', paid_at=now() WHERE id=$1", [chargeId]);
+  if (balanceOf(after) === 0) {
+    await settleTeamChargeInvoice(c, chargeId, method);   // the invoice is settled before the charge itself closes
+    await c.query("UPDATE team_charges SET status='paid', paid_at=now() WHERE id=$1", [chargeId]);
+  }
   const team = (await c.query('SELECT t.name FROM teams t WHERE t.id=$1', [ch.team_id])).rows[0];
   await notify(c, ch.payer_id, { kind: 'team_charge_paid', title: `${team.name}: payment received`, body: `${money(amount, (await c.query('SELECT currency FROM team_charge_batches WHERE id=$1', [ch.batch_id])).rows[0].currency)} recorded.`, data: { team_id: ch.team_id, charge_id: ch.id }, dedupe_key: `team_charge:receipt:${chargeId}:${payment?.id ?? key}` });
   return true;
@@ -105,7 +115,11 @@ export async function adjust(c, chargeId, { kind, amount, reason, actor, key }) 
   if (!give || give < 1 || give > bal) throw conflict(`Only ${bal} is still owed on this charge`, { balance_minor: bal });
   await c.query('INSERT INTO team_charge_entries(charge_id, kind, amount_minor, reason_enc, actor_id, idempotency_key) VALUES ($1,$2,$3,$4,$5,$6)', [chargeId, kind, give, sealReason(reason), actor, key]);
   const after = (await c.query('UPDATE team_charges SET adjusted_minor = adjusted_minor + $2 WHERE id=$1 RETURNING *', [chargeId, give])).rows[0];
-  if (balanceOf(after) === 0) await c.query("UPDATE team_charges SET status=CASE WHEN settled_minor > 0 THEN 'paid' ELSE 'waived' END, paid_at=CASE WHEN settled_minor > 0 THEN now() END WHERE id=$1", [chargeId]);
+  if (balanceOf(after) === 0) {
+    if (Number(after.settled_minor) > 0) await settleTeamChargeInvoice(c, chargeId, 'other');
+    await c.query("UPDATE team_charges SET status=CASE WHEN settled_minor > 0 THEN 'paid' ELSE 'waived' END, paid_at=CASE WHEN settled_minor > 0 THEN now() END WHERE id=$1", [chargeId]);
+  }
+  await syncTeamChargeInvoice(c, chargeId);   // revised while open, voided when nothing is left to pay
   const team = (await c.query('SELECT name FROM teams WHERE id=$1', [ch.team_id])).rows[0];
   await notify(c, ch.payer_id, { kind: 'team_charge_adjusted', title: `${team.name}: your balance changed`, body: balanceOf(after) === 0 ? 'Nothing more to pay.' : 'Open the team to see what is still due.', data: { team_id: ch.team_id, charge_id: ch.id }, dedupe_key: `team_charge:adjust:${chargeId}:${key}` });
   return { replay: false, charge: (await c.query('SELECT * FROM team_charges WHERE id=$1', [chargeId])).rows[0] };
@@ -135,21 +149,6 @@ export async function raiseTeamDues() {
     });
   }
   return raised;
-}
-
-/** Remind payers of unpaid charges: 3 days before, on the day, and a week after. Each reminder is sent once (dedupe key per charge and step). */
-export async function remindTeamCharges() {
-  let sent = 0;
-  const rows = await many(
-    `SELECT ch.id, ch.payer_id, ch.team_id, ch.due_on, ch.amount_minor - ch.adjusted_minor - ch.settled_minor AS balance, b.title, b.currency, t.name AS team_name, (ch.due_on - current_date) AS days
-       FROM team_charges ch JOIN team_charge_batches b ON b.id=ch.batch_id JOIN teams t ON t.id=ch.team_id
-      WHERE ch.status='awaiting_payment' AND b.status='active' AND ch.due_on IS NOT NULL AND ch.due_on - current_date IN (3, 0, -7) LIMIT 1000`);
-  for (const r of rows) {
-    const step = r.days === 3 ? 'soon' : r.days === 0 ? 'today' : 'late';
-    const n = await notify(null, r.payer_id, { kind: 'team_charge_reminder', title: `${r.team_name}: ${r.title}`, body: `${money(r.balance, r.currency)} ${step === 'soon' ? 'is due in 3 days' : step === 'today' ? 'is due today' : 'is a week overdue'}.`, data: { team_id: r.team_id, charge_id: r.id }, dedupe_key: `team_charge:remind:${r.id}:${step}` });
-    if (n) sent++;
-  }
-  return sent;
 }
 
 export { today };

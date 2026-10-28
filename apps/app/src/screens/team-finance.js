@@ -3,6 +3,7 @@
 // Everything is decided by the API (team-money capabilities); this screen only shows it. It never reads player rates or payouts - those stay in "Rates".
 import React, { useRef, useState } from 'react';
 import { Switch, View } from 'react-native';
+import { useNav } from '../nav';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
@@ -17,16 +18,24 @@ import { c, day, when } from '../theme';
 const KIND = { dues: 'Dues', season_fee: 'Season fee', match_fee: 'Match fee', expense: 'Shared expense' };
 const STATUS = { awaiting_payment: ['Due', c.sunSoft], paid: ['Paid', c.mintSoft], waived: ['Waived', c.violetSoft], cancelled: ['Cancelled', c.violetSoft] };
 const METHODS = [{ value: 'upi', label: 'UPI' }, { value: 'cash', label: 'Cash' }, { value: 'bank', label: 'Bank transfer' }, { value: 'card', label: 'Card' }, { value: 'other', label: 'Other' }];
+const CADENCE = {
+  standard: { label: 'Standard', offsets: [-3, 0, 3, 7, 14], hint: '3 days before, on the day, then 3, 7 and 14 days after.' },
+  gentle: { label: 'Gentle', offsets: [0, 7], hint: 'On the due date and a week later.' },
+  firm: { label: 'Firm', offsets: [-7, -3, 0, 1, 3, 7, 14], hint: 'A week and 3 days before, on the day, then 1, 3, 7 and 14 days after.' },
+};
+const CADENCE_OF = (offsets) => Object.entries(CADENCE).find(([, x]) => JSON.stringify(x.offsets) === JSON.stringify(offsets))?.[0] ?? 'standard';
 const newKey = () => `k-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 const Bar = ({ pct, color = c.mint }) => <View style={{ height: 8, borderRadius: 4, backgroundColor: c.line, overflow: 'hidden' }}><View style={{ height: 8, width: `${Math.min(100, pct)}%`, backgroundColor: color }} /></View>;
 const ChargeTag = ({ ch }) => <Tag label={ch.overdue ? 'Overdue' : STATUS[ch.status]?.[0] ?? ch.status} color={ch.overdue ? c.redSoft : STATUS[ch.status]?.[1]} />;
 
 export function TeamFinance({ t, w }) {
   const { toast, user } = useSession();
+  const { push } = useNav();
   const fin = useLoad(() => api.get(`/teams/${t.id}/my-finance`), [t.id]);
   const manage = !!fin.data?.can_manage;
   const ledger = useLoad(() => (manage ? api.get(`/teams/${t.id}/ledger`) : Promise.resolve(null)), [t.id, manage]);
   const open = useLoad(() => (manage ? api.get(`/teams/${t.id}/charges`, { status: 'awaiting_payment', limit: 50 }) : Promise.resolve([])), [t.id, manage]);
+  const policy = useLoad(() => (manage ? api.get('/collections/policy', { team_id: t.id }) : Promise.resolve(null)), [t.id, manage]);
   const plans = useLoad(() => (manage ? api.get(`/teams/${t.id}/dues-plans`) : Promise.resolve([])), [t.id, manage]);
   const [pay, setPay] = useState(null);
   const [charge, setCharge] = useState(null);      // a charge opened by a manager
@@ -56,7 +65,7 @@ export function TeamFinance({ t, w }) {
       <Section title="What you owe">
         {f.charges.length ? f.charges.map((ch) => (
           <Row key={ch.charge_id} title={ch.title} sub={`${KIND[ch.kind]}${ch.for_member ? ` · for ${ch.for_member}` : ''}${ch.due_on ? ` · due ${day(ch.due_on)}` : ''}${ch.settled_minor ? ` · paid ${moneyIn(ch.settled_minor, ch.currency)}` : ''}`}
-            right={<View style={{ alignItems: 'flex-end', gap: 6 }}><T weight="800">{moneyIn(ch.status === 'awaiting_payment' ? ch.balance_minor : ch.amount_minor, ch.currency)}</T><ChargeTag ch={ch} />{ch.purpose ? <Btn small title="Pay" onPress={() => setPay({ type: 'team_charge', id: ch.charge_id, label: ch.title, amount: ch.balance_minor, currency: ch.currency })} accessibilityLabel={`Pay ${ch.title}`} /> : null}</View>} />
+            right={<View style={{ alignItems: 'flex-end', gap: 6 }}><T weight="800">{moneyIn(ch.status === 'awaiting_payment' ? ch.balance_minor : ch.amount_minor, ch.currency)}</T><ChargeTag ch={ch} />{ch.invoice_id ? <Btn small title={`Invoice ${String(ch.invoice_number).split('-').pop()}`} color={c.paper} ink={c.ink} onPress={() => push('Invoice', { id: ch.invoice_id })} accessibilityLabel={`Open invoice ${ch.invoice_number}`} /> : null}{ch.purpose ? <Btn small title="Pay" onPress={() => setPay({ type: 'team_charge', id: ch.charge_id, label: ch.title, amount: ch.balance_minor, currency: ch.currency })} accessibilityLabel={`Pay ${ch.title}`} /> : null}</View>} />
         )) : <Empty emoji="🎉" title="Nothing to pay" sub="Dues, fees and your share of team expenses appear here." />}
       </Section>
 
@@ -107,6 +116,10 @@ export function TeamFinance({ t, w }) {
                 {L.expenses_owed_back.map((e) => <Row key={e.batch_id} title={`${e.paid_by_name} is owed back for ${e.title}`} sub={`Collected from others ${moneyIn(e.collected_from_others_minor, L.currency)} · still to collect ${moneyIn(e.still_to_collect_minor, L.currency)}`} />)}
               </>
             ) : <Loading />}
+            <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+              <Btn small title="🔔 Reminder schedule" color={c.paper} ink={c.ink} onPress={() => setSheet('policy')} />
+              <Btn small title="Invoices" color={c.paper} ink={c.ink} onPress={() => setSheet('invoices')} />
+            </View>
             <T weight="800" style={{ marginTop: 6 }}>Open charges</T>
             {open.data?.length ? open.data.map((ch) => (
               <Row key={ch.charge_id} title={`${ch.member_name} · ${ch.title}`} sub={`${KIND[ch.kind]} · ${ch.due_on ? `due ${day(ch.due_on)}` : 'no due date'}${ch.payer_id !== ch.member_id ? ` · paid by ${ch.payer_name}` : ''}`}
@@ -121,7 +134,7 @@ export function TeamFinance({ t, w }) {
       ) : null}
 
       {pay ? <PaySheet target={pay} onClose={() => setPay(null)} onDone={reload} /> : null}
-      {charge ? <ChargeSheet charge={charge} onClose={() => setCharge(null)} onChanged={() => { setCharge(null); reload(); }} /> : null}
+      {charge ? <ChargeSheet charge={charge} onClose={() => setCharge(null)} onChanged={() => { setCharge(null); reload(); }} onInvoice={(id) => { setCharge(null); push('Invoice', { id }); }} /> : null}
 
       <FormSheet visible={sheet === 'raise'} onClose={() => setSheet(null)} title="Raise dues or a fee" submitLabel="Charge members"
         initial={{ kind: 'dues', audience: 'all_active' }}
@@ -172,13 +185,22 @@ export function TeamFinance({ t, w }) {
           setTimeout(() => setPay({ type: 'team_contribution', id: g.contribution_id, label: `Gift: ${sheet.give.title}`, amount: g.amount_minor, currency: g.currency }), 300);
         }} />
 
+      <FormSheet visible={sheet === 'policy'} onClose={() => setSheet(null)} title="Reminder schedule" submitLabel="Save"
+        initial={{ cadence: CADENCE_OF(policy.data?.reminder_offsets), grace_days: policy.data?.grace_days ?? 3, escalate_after_days: policy.data?.escalate_after_days ?? 21 }}
+        fields={[
+          { key: 'cadence', label: 'When to remind payers', type: 'chips', options: Object.entries(CADENCE).map(([value, x]) => ({ value, label: x.label })), hint: (v) => CADENCE[v.cadence]?.hint },
+          { key: 'grace_days', label: 'Days of grace before it counts as overdue', type: 'stepper', min: 0, max: 30, suffix: ' days' },
+          { key: 'escalate_after_days', label: 'Tell the managers when it is this late', type: 'stepper', min: 7, max: 90, step: 7, suffix: ' days' },
+        ]}
+        onSubmit={async (v) => { await api.patch('/collections/policy', { team_id: t.id, reminder_offsets: CADENCE[v.cadence].offsets, grace_days: v.grace_days, escalate_after_days: v.escalate_after_days }); policy.reload(); return 'Reminder schedule saved'; }} />
+      {sheet === 'invoices' ? <TeamInvoices t={t} onClose={() => setSheet(null)} onOpen={(id) => { setSheet(null); push('Invoice', { id }); }} /> : null}
       {sheet === 'expense' ? <ExpenseSheet t={t} cur={cur} people={people} idKey={key.current} onClose={() => setSheet(null)} onDone={reload} /> : null}
     </View>
   );
 }
 
 /** One charge, from the manager's side: record money received outside the app, reduce or waive it, or cancel it. */
-function ChargeSheet({ charge, onClose, onChanged }) {
+function ChargeSheet({ charge, onClose, onChanged, onInvoice }) {
   const { toast } = useSession();
   const d = useLoad(() => api.get(`/team-charges/${charge.charge_id}`), [charge.charge_id]);
   const [form, setForm] = useState(null);   // receive | reduce | waive | cancel
@@ -187,11 +209,15 @@ function ChargeSheet({ charge, onClose, onChanged }) {
   return (
     <Sheet visible onClose={onClose} title={charge.title}>
       <T>{charge.member_name}{charge.payer_id !== charge.member_id ? ` (paid by ${charge.payer_name})` : ''} · {moneyIn(charge.balance_minor, charge.currency)} of {moneyIn(charge.amount_minor, charge.currency)} still due</T>
+      {d.data?.collection ? <T size={13} color={c.mute}>Reminders: {String(d.data.collection.state).replace('_', ' ')}{d.data.collection.promised_on ? ` · promised by ${day(d.data.collection.promised_on)}` : ''}{d.data.collection.hold_until ? ` · paused until ${day(d.data.collection.hold_until)}` : ''}</T> : null}
       {d.data ? d.data.entries.map((e) => <T key={e.id} size={13} color={c.mute}>{when(e.created_at)} · {e.kind}{e.amount_minor ? ` ${moneyIn(e.amount_minor, charge.currency)}` : ''}{e.method ? ` · ${e.method}` : ''}{e.note ? ` · “${e.note}”` : ''}</T>) : <Loading />}
       <View style={{ gap: 8 }}>
         <Btn title="Record money received" onPress={() => { key.current = newKey(); setForm('receive'); }} />
         <Btn title="Reduce the amount" color={c.paper} ink={c.ink} onPress={() => { key.current = newKey(); setForm('reduce'); }} />
         <Btn title="Waive what is left" color={c.paper} ink={c.ink} onPress={() => { key.current = newKey(); setForm('waive'); }} />
+        {d.data?.collection ? <Btn title="They promised to pay by…" color={c.paper} ink={c.ink} onPress={() => setForm('promise')} /> : null}
+        {d.data?.collection ? <Btn title="Pause reminders…" color={c.paper} ink={c.ink} onPress={() => setForm('hold')} /> : null}
+        {charge.invoice_id ? <Btn title={`Open invoice ${charge.invoice_number}`} color={c.paper} ink={c.ink} onPress={() => onInvoice(charge.invoice_id)} /> : null}
         {Number(charge.settled_minor) === 0 ? <Btn title="Cancel this charge" color={c.red} onPress={() => setForm('cancel')} /> : null}
       </View>
       <FormSheet visible={form === 'receive'} onClose={() => setForm(null)} title="Money received" submitLabel="Record"
@@ -204,6 +230,12 @@ function ChargeSheet({ charge, onClose, onChanged }) {
       <FormSheet visible={form === 'waive'} onClose={() => setForm(null)} title="Waive what is left" submitLabel="Waive"
         fields={[{ key: 'reason', label: 'Why', hint: 'Kept with the charge. Stored encrypted.' }]}
         onSubmit={async (v) => { await api.post(`/team-charges/${charge.charge_id}/adjustments`, { kind: 'waiver', reason: v.reason, idempotency_key: key.current }); onChanged(); return 'Waived'; }} />
+      <FormSheet visible={form === 'promise'} onClose={() => setForm(null)} title="Promise to pay" submitLabel="Record"
+        fields={[{ key: 'promised_on', label: 'They will pay by', type: 'date', min: new Date().toISOString().slice(0, 10) }, { key: 'note', label: 'Note', optional: true, hint: 'Internal. Never sent to the payer.' }]}
+        onSubmit={async (v) => { await api.post(`/collections/cases/${d.data.collection.case_id}/actions`, { action: 'promise', promised_on: v.promised_on, note: v.note, idempotency_key: key.current }); onChanged(); return 'Reminders pause until then'; }} />
+      <FormSheet visible={form === 'hold'} onClose={() => setForm(null)} title="Pause reminders" submitLabel="Pause"
+        fields={[{ key: 'until', label: 'Pause until', type: 'date', min: new Date().toISOString().slice(0, 10) }, { key: 'reason', label: 'Why', hint: 'Internal. Never sent to the payer.' }]}
+        onSubmit={async (v) => { await api.post(`/collections/cases/${d.data.collection.case_id}/actions`, { action: 'hold', until: v.until, reason: v.reason, idempotency_key: key.current }); onChanged(); return 'Reminders paused'; }} />
       <FormSheet visible={form === 'cancel'} onClose={() => setForm(null)} title="Cancel this charge" submitLabel="Cancel charge" color={c.red}
         fields={[{ key: 'reason', label: 'Why' }]}
         onSubmit={async (v) => { await api.post(`/team-charges/${charge.charge_id}/cancel`, v); onChanged(); return 'Cancelled'; }} />
@@ -276,5 +308,17 @@ export function TeamDues({ id }) {
       <T color={c.mute} weight="700">Dues & funds</T>
       <TeamFinance t={team.data} w={null} />
     </Screen>
+  );
+}
+
+/** The team's invoices, newest first, for the owner, managers and finance staff. Each opens the shared invoice screen. */
+function TeamInvoices({ t, onClose, onOpen }) {
+  const inv = useLoad(() => api.get('/invoices', { team_id: t.id, limit: 50 }), [t.id]);
+  return (
+    <Sheet visible onClose={onClose} title="Team invoices">
+      {inv.loading && !inv.data ? <Loading /> : inv.error ? <ErrorBox error={inv.error} onRetry={inv.reload} /> : inv.data.length ? inv.data.map((i) => (
+        <Row key={i.id} title={i.number} sub={`${i.status}${i.paid_at ? ` · paid ${day(String(i.paid_at).slice(0, 10))}` : ''}`} right={<T weight="800">{moneyIn(i.total_cents, i.currency)}</T>} onPress={() => onOpen(i.id)} />
+      )) : <Empty emoji="🧾" title="No invoices yet" sub="Every dues, fee and expense share you raise gets a numbered invoice." />}
+    </Sheet>
   );
 }

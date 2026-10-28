@@ -8,7 +8,8 @@ const { pool } = await import('../src/db.js');
 const { migrate } = await import('../src/migrate.js');
 const { createApp } = await import('../src/http.js');
 const { settle } = await import('../src/payments/service.js');
-const { raiseTeamDues, remindTeamCharges, splitShares } = await import('../src/team-money.js');
+const { raiseTeamDues, splitShares } = await import('../src/team-money.js');
+const { runCollections } = await import('../src/collections.js');
 const { capabilities } = await import('../src/registry.js');
 const { buildOpenApi } = await import('../src/openapi.js');
 
@@ -434,11 +435,14 @@ test('recurring dues are raised once per period and reminders are sent once', as
   assert.equal(await count(), 1, 'running the worker again raises nothing');
   assert.ok(plan.body.next_on > day(-1), 'the plan moved on one period');
   assert.equal((await call('GET', `/teams/${team.id}/dues-plans`, { token: p.token })).status, 403);
-  // a due-today charge is reminded exactly once
+  // a due-today charge is reminded exactly once by the shared collections desk
   await pool.query("UPDATE team_charges SET due_on=current_date WHERE team_id=$1", [team.id]);
-  assert.equal(await remindTeamCharges(), 1);
-  assert.equal(await remindTeamCharges(), 0, 'each reminder carries a dedupe key');
-  assert.ok(JSON.stringify((await call('GET', '/notifications', { token: p.token })).body).includes('due today'));
+  const reminders = async () => (await pool.query("SELECT count(*)::int AS n FROM notifications WHERE user_id=$1 AND kind='collections_reminder'", [p.id])).rows[0].n;
+  await runCollections({ ownerId: team.id });
+  assert.equal(await reminders(), 1);
+  await runCollections({ ownerId: team.id });
+  assert.equal(await reminders(), 1, 'each reminder step is sent once');
+  assert.ok(JSON.stringify((await call('GET', '/notifications', { token: p.token })).body).includes('A payment is due'));
   assert.equal((await call('PATCH', `/team-dues-plans/${plan.body.plan_id}`, { token: owner.token, body: { status: 'paused' } })).body.status, 'paused');
 });
 
@@ -535,4 +539,136 @@ test('API first and MCP enabled: every new capability is in OpenAPI and carries 
   }
   const { classify } = await import('../src/scopes.js');
   for (const nm of ['record_team_payment', 'adjust_team_charge', 'create_team_charges', 'create_team_expense']) assert.equal(classify(capabilities.find((x) => x.name === nm)), 'payment', `${nm} needs the payment scope`);
+});
+
+// ------------------------------------------------------------------------------------------------------------------ invoices and collections
+const raise = async (owner, team, memberIds, extra = {}) => {
+  const made = (await call('POST', `/teams/${team.id}/charges`, { token: owner.token, body: { kind: 'dues', title: 'Dues', amount_minor: 100000, due_on: day(5), audience: 'members', member_ids: memberIds, idempotency_key: key(), ...extra } })).body;
+  return (await call('GET', `/teams/${team.id}/charges?batch_id=${made.batch_id}`, { token: owner.token })).body;
+};
+
+test('team invoices: numbered and gapless per team, settled with the charge, revised or voided with it, visible to the payer and finance staff only', async () => {
+  const { owner, team, ps: [p, q] } = await setup(2);
+  const other = await setup(1);
+  const charges = await raise(owner, team, [p.id, q.id]);
+  const inv = async (c) => (await pool.query("SELECT * FROM invoices WHERE team_charge_id=$1 AND kind='invoice' ORDER BY issued_at", [c.charge_id])).rows;
+  const nums = (await Promise.all(charges.map(inv))).flat().map((i) => i.number).sort();
+  assert.equal(nums.length, 2); assert.match(nums[0], /^TM[A-Z0-9]{3}[A-Z0-9]{5}-\d{4}-000001$/); assert.match(nums[1], /-000002$/, 'gapless per team');
+  const otherNum = (await raise(other.owner, other.team, [other.ps[0].id])).length && (await pool.query('SELECT number FROM invoices WHERE team_id=$1', [other.team.id])).rows[0].number;
+  assert.match(otherNum, /-000001$/, 'each team has its own sequence');
+  const cp = charges.find((c) => c.member_id === p.id), cq = charges.find((c) => c.member_id === q.id);
+  assert.ok(cp.invoice_number && cp.invoice_id, 'the charge carries its invoice');
+
+  // who may read it
+  const mine = (await call('GET', `/invoices/${cp.invoice_id}`, { token: p.token }));
+  assert.equal(mine.status, 200, JSON.stringify(mine.body)); assert.equal(mine.body.status, 'open'); assert.equal(mine.body.total_cents, 100000); assert.equal(mine.body.pay.purpose_type, 'team_charge'); assert.equal(mine.body.seller.name, team.name);
+  assert.equal((await call('GET', `/invoices/${cp.invoice_id}`, { token: owner.token })).status, 200, 'team finance staff');
+  assert.equal((await call('GET', `/invoices/${cp.invoice_id}`, { token: q.token })).status, 403, 'another member');
+  assert.equal((await call('GET', `/invoices?team_id=${team.id}`, { token: owner.token })).body.length, 2);
+  assert.equal((await call('GET', `/invoices?team_id=${team.id}`, { token: p.token })).status, 404, 'members cannot list the team\'s invoices');
+  assert.equal((await call('GET', '/invoices', { token: p.token })).body.length, 1, 'a member lists their own');
+  assert.equal((await call('POST', `/invoices/${cp.invoice_id}/paid`, { token: owner.token, body: { method: 'cash' } })).status, 400, 'paid through the team charge, not the venue desk');
+
+  // a part payment leaves it open; the rest settles it; it is never edited afterwards
+  await call('POST', `/team-charges/${cp.charge_id}/payments`, { token: owner.token, body: { amount_minor: 40000, method: 'upi', idempotency_key: key() } });
+  assert.equal((await inv(cp))[0].status, 'open');
+  await call('POST', `/team-charges/${cp.charge_id}/payments`, { token: owner.token, body: { amount_minor: 60000, method: 'cash', idempotency_key: key() } });
+  const paid = (await inv(cp))[0];
+  assert.equal(paid.status, 'paid'); assert.equal(paid.payment_method, 'cash'); assert.ok(paid.paid_at);
+
+  // a reduction revises the open invoice, a waiver voids it
+  await call('POST', `/team-charges/${cq.charge_id}/adjustments`, { token: owner.token, body: { kind: 'reduction', amount_minor: 30000, reason: 'Student discount', idempotency_key: key() } });
+  let iq = (await inv(cq))[0];
+  assert.equal(iq.total_cents, 70000); assert.equal(iq.revision, 2); assert.equal(iq.status, 'open'); assert.equal(iq.lines.length, 2);
+  await call('POST', `/team-charges/${cq.charge_id}/adjustments`, { token: owner.token, body: { kind: 'waiver', reason: 'Injured', idempotency_key: key() } });
+  iq = (await inv(cq))[0];
+  assert.equal(iq.status, 'void'); assert.equal((await pool.query("SELECT count(*)::int AS n FROM invoices WHERE team_charge_id=$1 AND status IN ('open','paid')", [cq.charge_id])).rows[0].n, 0);
+
+  // a cancelled charge voids its invoice; the number is never reused
+  const [c3] = await raise(owner, team, [p.id], { title: 'Mistake' });
+  await call('POST', `/team-charges/${c3.charge_id}/cancel`, { token: owner.token, body: { reason: 'Raised by mistake' } });
+  assert.equal((await inv(c3))[0].status, 'void');
+  const [c4] = await raise(owner, team, [p.id], { title: 'Next' });
+  assert.match((await inv(c4))[0].number, /-000004$/);
+
+  // the member who fronted an expense has a paid invoice for their own share
+  const e = (await call('POST', `/teams/${team.id}/expenses`, { token: owner.token, body: { title: 'Nets', total_minor: 20000, participants: [{ user_id: p.id }, { user_id: q.id }], paid_by: p.id, idempotency_key: key() } })).body;
+  const fronted = (await pool.query('SELECT id FROM team_charges WHERE batch_id=$1 AND member_id=$2', [e.batch_id, p.id])).rows[0];
+  assert.equal((await inv({ charge_id: fronted.id }))[0].status, 'paid');
+  assert.equal((await pool.query("SELECT count(*)::int AS n FROM invoices WHERE team_id=$1 AND status='paid' AND payment_method IS NULL", [team.id])).rows[0].n, 0);
+  // a young member's invoice is addressed to the guardian who pays
+  const { kid, parent } = await youngPlayer(team, owner);
+  const [kc] = await raise(owner, team, [kid.id], { title: 'Kit' });
+  const ki = (await inv(kc))[0];
+  assert.equal(ki.user_id, parent.id);
+  assert.equal((await call('GET', `/invoices/${ki.id}`, { token: kid.token })).status, 403, 'the child never sees it');
+  assert.equal((await call('GET', `/invoices/${ki.id}`, { token: parent.token })).status, 200);
+});
+
+test('collections follow team charges: reminders, escalation to managers, promises and holds, closing on payment, policy; youth go to guardians', async () => {
+  const { owner, team, ps: [p, q] } = await setup(2);
+  const { kid, parent } = await youngPlayer(team, owner);
+  const chs = await raise(owner, team, [p.id, q.id, kid.id], { due_on: day(5) });
+  const cp = chs.find((c) => c.member_id === p.id), cq = chs.find((c) => c.member_id === q.id), ck = chs.find((c) => c.member_id === kid.id);
+  const n = async (u, kind = 'collections_reminder') => (await pool.query('SELECT count(*)::int AS n FROM notifications WHERE user_id=$1 AND kind=$2', [u.id, kind])).rows[0].n;
+
+  // nothing yet: due in 5 days and the first reminder is 3 days before
+  await runCollections({ ownerId: team.id });
+  assert.equal(await n(p), 0);
+  const cases = (await call('GET', `/collections/cases?team_id=${team.id}`, { token: owner.token })).body;
+  assert.equal(cases.items.length, 3); assert.equal(cases.owner.type, 'team'); assert.ok(cases.items.every((c) => c.source_type === 'team_charge' && c.invoice_number));
+  assert.equal(cases.totals[0].balance_minor, 300000);
+  // access: only the team's finance staff
+  assert.equal((await call('GET', `/collections/cases?team_id=${team.id}`, { token: p.token })).status, 404);
+  assert.equal((await call('GET', `/collections/cases?team_id=${team.id}`, { token: (await signup()).token })).status, 404);
+
+  // three days before: a reminder, once. The young player's reminder goes to the guardian, never the child
+  await pool.query('UPDATE team_charges SET due_on=current_date + 3 WHERE team_id=$1', [team.id]);
+  await runCollections({ ownerId: team.id }); await runCollections({ ownerId: team.id });
+  assert.equal(await n(p), 1); assert.equal(await n(parent), 1); assert.equal(await n(kid), 0, 'the child is not chased for money');
+  assert.ok(JSON.stringify((await call('GET', '/notifications', { token: p.token })).body).includes('Dues'), 'the message names the charge');
+
+  // a promise pauses reminders until it passes; a hold needs a reason
+  const caseOf = (c) => cases.items.find((x) => x.source_id === c.charge_id).id;
+  const act = (c, body) => call('POST', `/collections/cases/${caseOf(c)}/actions`, { token: owner.token, body });
+  assert.equal((await act(cq, { action: 'promise', promised_on: day(2) })).status, 200);
+  assert.equal((await act(cq, { action: 'hold', until: day(3) })).status, 400, 'a hold says why');
+  assert.equal((await act(cq, { action: 'suspend', reason: 'x never' })).status, 422, 'no access to pause for a team');
+  assert.equal((await call('POST', `/collections/cases/${caseOf(cq)}/actions`, { token: p.token, body: { action: 'note', note: 'hi' } })).status, 404);
+  await pool.query('UPDATE team_charges SET due_on=current_date - 8 WHERE team_id=$1', [team.id]);
+  await runCollections({ ownerId: team.id });
+  assert.ok(await n(p) >= 2, 'a later step reminds again'); assert.equal(await n(q), 1, 'but not a payer who promised to pay');
+  const detail = (await call('GET', `/team-charges/${cq.charge_id}`, { token: owner.token })).body;
+  assert.equal(detail.collection.state, 'overdue'); assert.ok(detail.collection.promised_on);
+
+  // escalation tells the team's managers once
+  await pool.query('UPDATE team_charges SET due_on=current_date - 40 WHERE team_id=$1', [team.id]);
+  await runCollections({ ownerId: team.id }); await runCollections({ ownerId: team.id });
+  assert.equal(await n(owner, 'collections_escalated'), 3);
+  assert.equal((await call('GET', `/collections/cases/${caseOf(cp)}`, { token: owner.token })).body.state, 'escalated');
+  const full = (await call('GET', `/collections/cases/${caseOf(cp)}`, { token: owner.token })).body;
+  assert.equal(full.source.invoice_number.startsWith('TM'), true); assert.deepEqual(full.receipts, []);
+
+  // late fees and suspension are not offered to teams; the cadence can be changed
+  const pol = await call('GET', `/collections/policy?team_id=${team.id}`, { token: owner.token });
+  assert.equal(pol.status, 200); assert.deepEqual(pol.body.reminder_offsets, [-3, 0, 3, 7, 14]);
+  assert.equal((await call('PATCH', '/collections/policy', { token: owner.token, body: { team_id: team.id, late_fee_enabled: true, late_fee_minor: 100, late_fee_currency: 'INR', late_fee_basis: 'Club rules, clause 4' } })).status, 422);
+  const set = await call('PATCH', '/collections/policy', { token: owner.token, body: { team_id: team.id, reminder_offsets: [0, 7], escalate_after_days: 14 } });
+  assert.deepEqual(set.body.reminder_offsets, [0, 7]);
+  assert.equal((await call('PATCH', '/collections/policy', { token: p.token, body: { team_id: team.id, grace_days: 1 } })).status, 404);
+
+  // paying closes the case and the invoice; a part payment keeps it open
+  await call('POST', `/team-charges/${cp.charge_id}/payments`, { token: owner.token, body: { amount_minor: 100000, method: 'upi', idempotency_key: key() } });
+  await call('POST', `/team-charges/${ck.charge_id}/payments`, { token: owner.token, body: { amount_minor: 40000, method: 'cash', idempotency_key: key() } });
+  await runCollections({ ownerId: team.id });
+  const state = async (c) => (await pool.query("SELECT state FROM collection_cases WHERE source_type='team_charge' AND source_id=$1", [c.charge_id])).rows[0].state;
+  assert.equal(await state(cp), 'resolved', 'paid after trouble is recorded as recovered');
+  assert.notEqual(await state(ck), 'resolved');
+  await call('POST', `/team-charges/${cq.charge_id}/adjustments`, { token: owner.token, body: { kind: 'waiver', reason: 'Left the team', idempotency_key: key() } });
+  await runCollections({ ownerId: team.id });
+  assert.equal(await state(cq), 'waived');
+  // a charge with no due date is never chased
+  const [nodue] = await raise(owner, team, [p.id], { due_on: undefined, title: 'No date' });
+  await runCollections({ ownerId: team.id });
+  assert.equal((await pool.query("SELECT count(*)::int AS n FROM collection_cases WHERE source_id=$1", [nodue.charge_id])).rows[0].n, 0);
 });
