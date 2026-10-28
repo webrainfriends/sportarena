@@ -15,6 +15,7 @@
     "@mediapipe/tasks-vision": "^0.10.14",
     "expo": "~57.0.27",
     "expo-apple-authentication": "~57.0.2",
+    "expo-audio": "~57.0.5",
     "expo-auth-session": "^57.0.15",
     "expo-blur": "~57.0.3",
     "expo-camera": "~57.0.6",

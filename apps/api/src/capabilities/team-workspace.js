@@ -289,7 +289,7 @@ cap({
 // ------------------------------------------------------------------ attendance
 
 /** exactly one of event_id / fixture_id, and the team (or its master) must take part */
-async function attendanceScope(team, i) {
+export async function attendanceScope(team, i) {
   if (!!i.event_id === !!i.fixture_id) throw badRequest('Give either event_id or fixture_id');
   const ids = [team.id, team.parent_team_id].filter(Boolean);
   if (i.fixture_id) {
@@ -326,6 +326,24 @@ cap({
   },
 });
 
+/** Give every wanted member a "pending" attendance row and tell them. Shared by the attendance request and the chat's RSVP prompt, so RSVP state lives only in team_attendance. */
+export async function askAttendance(c, team, user, s, squadOnly) {
+  const people = (await c.query(
+    `SELECT m.user_id FROM team_members m WHERE m.team_id=$1 AND m.status='active'
+        AND (NOT $4::boolean OR EXISTS (SELECT 1 FROM team_squads q WHERE q.team_id=m.team_id AND q.user_id=m.user_id AND q.status IN ('selected','confirmed')
+                                          AND q.event_id IS NOT DISTINCT FROM $2 AND q.fixture_id IS NOT DISTINCT FROM $3))`, [team.id, s.event_id, s.fixture_id, squadOnly])).rows.map((r) => r.user_id);
+  const label = s.fixture_id ? 'a match' : (await c.query('SELECT name FROM events WHERE id=$1', [s.event_id])).rows[0].name;
+  let asked = 0;
+  for (const u of people) {
+    const r = await c.query('INSERT INTO team_attendance(team_id, event_id, fixture_id, user_id) VALUES ($1,$2,$3,$4) ON CONFLICT (team_id, event_id, fixture_id, user_id) DO NOTHING', [team.id, s.event_id, s.fixture_id, u]);
+    if (r.rowCount && u !== user.id) {
+      asked++;
+      await notify(c, u, { kind: 'team_attendance_request', title: `${team.name}: are you coming to ${label}?`, body: 'Open the team schedule and answer going / maybe / no.', data: { team_id: team.id, event_id: s.event_id, fixture_id: s.fixture_id } });
+    }
+  }
+  return { asked, total: people.length };
+}
+
 cap({
   name: 'request_attendance', method: 'POST', path: '/teams/:id/attendance/request', tag: 'Team attendance',
   summary: 'Ask the roster (or the selected squad only) to RSVP for an event or match. Everyone gets a "pending" row and a notification. Owner/managers.',
@@ -333,22 +351,7 @@ cap({
   async handler({ user }, i) {
     const team = await mustManage(user, i.id);
     const s = await attendanceScope(team, i);
-    return tx(async (c) => {
-      const people = (await c.query(
-        `SELECT m.user_id FROM team_members m WHERE m.team_id=$1 AND m.status='active'
-            AND (NOT $4::boolean OR EXISTS (SELECT 1 FROM team_squads q WHERE q.team_id=m.team_id AND q.user_id=m.user_id AND q.status IN ('selected','confirmed')
-                                              AND q.event_id IS NOT DISTINCT FROM $2 AND q.fixture_id IS NOT DISTINCT FROM $3))`, [team.id, s.event_id, s.fixture_id, i.squad_only])).rows.map((r) => r.user_id);
-      const label = s.fixture_id ? 'a match' : (await c.query('SELECT name FROM events WHERE id=$1', [s.event_id])).rows[0].name;
-      let asked = 0;
-      for (const u of people) {
-        const r = await c.query('INSERT INTO team_attendance(team_id, event_id, fixture_id, user_id) VALUES ($1,$2,$3,$4) ON CONFLICT (team_id, event_id, fixture_id, user_id) DO NOTHING', [team.id, s.event_id, s.fixture_id, u]);
-        if (r.rowCount && u !== user.id) {
-          asked++;
-          await notify(c, u, { kind: 'team_attendance_request', title: `${team.name}: are you coming to ${label}?`, body: 'Open the team schedule and answer going / maybe / no.', data: { team_id: team.id, event_id: s.event_id, fixture_id: s.fixture_id } });
-        }
-      }
-      return { asked, total: people.length };
-    });
+    return tx((c) => askAttendance(c, team, user, s, i.squad_only));
   },
 });
 

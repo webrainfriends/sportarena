@@ -11,6 +11,7 @@ import { markInvoicePaid, buyerOf } from '../booking/invoices.js';
 import { notify } from '../notify.js';
 import { CURRENCIES, toMajor } from '../currency.js';
 import { enabledProviders } from '../payments/service.js';
+import { financeStaff } from '../team-money.js';
 
 const TAG = 'Invoices & payments';
 const day = z.string().date();
@@ -22,20 +23,21 @@ cap({
   handler: () => Object.entries(CURRENCIES).map(([code, c]) => ({ code, name: c.name, symbol: c.symbol, exponent: c.exp })),
 });
 
-const summaryCols = 'i.id, i.number, i.kind, i.status, i.venue_id, v.name AS venue_name, i.reservation_id, rs.code AS reservation_code, i.currency, i.total_cents, i.credits_cents, i.tax_cents, i.issued_at, i.paid_at, i.payment_method, i.refund_status, i.parent_id, i.organisation_id, o.name AS organisation_name, i.academy_charge_id';
+const summaryCols = 'i.id, i.number, i.kind, i.status, i.venue_id, v.name AS venue_name, i.reservation_id, rs.code AS reservation_code, i.currency, i.total_cents, i.credits_cents, i.tax_cents, i.issued_at, i.paid_at, i.payment_method, i.refund_status, i.parent_id, i.organisation_id, o.name AS organisation_name, i.academy_charge_id, i.team_id, tm.name AS team_name, i.team_charge_id';
 cap({
   name: 'list_invoices', method: 'GET', path: '/invoices', tag: TAG,
   summary: 'Your invoices and credit notes (newest first). The venue team passes venue_id to list that venue\'s, filtered by status, kind or date.',
-  input: z.object({ venue_id: id.optional(), organisation_id: id.optional().describe('an academy\'s finance team: list that academy\'s invoices'), reservation_id: id.optional(), kind: z.enum(['invoice', 'credit_note']).optional(), status: z.enum(['open', 'paid', 'void']).optional(), from: day.optional(), to: day.optional(), ...page }),
+  input: z.object({ venue_id: id.optional(), organisation_id: id.optional().describe('an academy\'s finance team: list that academy\'s invoices'), team_id: id.optional().describe('a team\'s owner, managers or finance staff: list that team\'s invoices'), reservation_id: id.optional(), kind: z.enum(['invoice', 'credit_note']).optional(), status: z.enum(['open', 'paid', 'void']).optional(), from: day.optional(), to: day.optional(), ...page }),
   async handler({ user }, i) {
     if (i.venue_id) await mustManage(user, i.venue_id);
     if (i.organisation_id) await orgFor(user, i.organisation_id, ['owner', 'admin', 'finance']);
+    if (i.team_id && !(await financeStaff(user, await mustFind('teams', i.team_id)))) throw notFound('Team');
     return many(
-      `SELECT ${summaryCols} FROM invoices i LEFT JOIN venues v ON v.id=i.venue_id LEFT JOIN reservations rs ON rs.id=i.reservation_id LEFT JOIN organisations o ON o.id=i.organisation_id
-        WHERE (($1::uuid IS NULL AND $10::uuid IS NULL AND i.user_id=$2 AND NOT i.walk_in) OR i.venue_id=$1 OR i.organisation_id=$10) AND ($3::uuid IS NULL OR i.reservation_id=$3) AND ($4::text IS NULL OR i.kind=$4) AND ($5::text IS NULL OR i.status=$5)
+      `SELECT ${summaryCols} FROM invoices i LEFT JOIN venues v ON v.id=i.venue_id LEFT JOIN reservations rs ON rs.id=i.reservation_id LEFT JOIN organisations o ON o.id=i.organisation_id LEFT JOIN teams tm ON tm.id=i.team_id
+        WHERE (($1::uuid IS NULL AND $10::uuid IS NULL AND $11::uuid IS NULL AND i.user_id=$2 AND NOT i.walk_in) OR i.venue_id=$1 OR i.organisation_id=$10 OR i.team_id=$11) AND ($3::uuid IS NULL OR i.reservation_id=$3) AND ($4::text IS NULL OR i.kind=$4) AND ($5::text IS NULL OR i.status=$5)
           AND ($6::date IS NULL OR i.issued_at >= $6) AND ($7::date IS NULL OR i.issued_at < $7::date + 1)
         ORDER BY i.issued_at DESC, i.number DESC LIMIT $8 OFFSET $9`,
-      [i.venue_id ?? null, user.id, i.reservation_id ?? null, i.kind ?? null, i.status ?? null, i.from ?? null, i.to ?? null, i.limit, i.offset, i.organisation_id ?? null]);
+      [i.venue_id ?? null, user.id, i.reservation_id ?? null, i.kind ?? null, i.status ?? null, i.from ?? null, i.to ?? null, i.limit, i.offset, i.organisation_id ?? null, i.team_id ?? null]);
   },
 });
 
@@ -47,21 +49,23 @@ cap({
     const inv = await one(`SELECT i.*, v.name AS venue_name, rs.code AS reservation_code, o.name AS organisation_name FROM invoices i LEFT JOIN venues v ON v.id=i.venue_id LEFT JOIN reservations rs ON rs.id=i.reservation_id LEFT JOIN organisations o ON o.id=i.organisation_id WHERE i.id=$1`, [i.id]);
     if (!inv) throw notFound('Invoice');
     const academy = !!inv.organisation_id;
-    const team = academy ? ['owner', 'admin', 'finance'].includes(await orgRole(user, inv.organisation_id)) : await canManage(user, inv.venue_id);
+    const forTeam = !!inv.team_id;
+    const team = forTeam ? await financeStaff(user, await mustFind('teams', inv.team_id)) : academy ? ['owner', 'admin', 'finance'].includes(await orgRole(user, inv.organisation_id)) : await canManage(user, inv.venue_id);
     if (inv.user_id !== user.id && !team && !isAdmin(user)) throw forbidden();
     await audit(null, user.id, 'read_pii', 'invoices', inv.id);
     const [payments, credits] = await Promise.all([
-      academy ? many("SELECT id, provider, amount_cents, currency, status, paid_at, refunded_cents FROM payments WHERE purpose_type='academy_charge' AND purpose_id=$1 ORDER BY created_at", [inv.academy_charge_id])
+      forTeam ? many("SELECT id, provider, amount_cents, currency, status, paid_at, refunded_cents FROM payments WHERE purpose_type='team_charge' AND purpose_id=$1 ORDER BY created_at", [inv.team_charge_id])
+        : academy ? many("SELECT id, provider, amount_cents, currency, status, paid_at, refunded_cents FROM payments WHERE purpose_type='academy_charge' AND purpose_id=$1 ORDER BY created_at", [inv.academy_charge_id])
         : inv.pos_sale_id ? many("SELECT id, provider, amount_cents, currency, status, paid_at, refunded_cents FROM payments WHERE purpose_type='pos_sale' AND purpose_id=$1 ORDER BY created_at", [inv.pos_sale_id])
         : many("SELECT id, provider, amount_cents, currency, status, paid_at, refunded_cents FROM payments WHERE purpose_type='venue_invoice' AND purpose_id=$1 ORDER BY created_at", [inv.id]),
-      inv.kind !== 'invoice' ? [] : academy ? many("SELECT id, number, total_cents, status, refund_status, issued_at FROM invoices WHERE kind='credit_note' AND academy_charge_id=$1 ORDER BY issued_at", [inv.academy_charge_id])
+      inv.kind !== 'invoice' ? [] : forTeam ? [] : academy ? many("SELECT id, number, total_cents, status, refund_status, issued_at FROM invoices WHERE kind='credit_note' AND academy_charge_id=$1 ORDER BY issued_at", [inv.academy_charge_id])
         : inv.pos_sale_id ? many("SELECT id, number, total_cents, status, refund_status, issued_at FROM invoices WHERE kind='credit_note' AND parent_id=$1 ORDER BY issued_at", [inv.id])
         : many("SELECT id, number, total_cents, status, refund_status, issued_at FROM invoices WHERE kind='credit_note' AND reservation_id=$1 AND venue_id=$2 ORDER BY issued_at", [inv.reservation_id, inv.venue_id]),
     ]);
     const { buyer_enc, ...rest } = inv;
-    const online = academy ? enabledProviders().length > 0 : (await one('SELECT payment_mode FROM venues WHERE id=$1', [inv.venue_id])).payment_mode !== 'pay_at_venue' && enabledProviders().length > 0;
+    const online = academy || forTeam ? enabledProviders().length > 0 : (await one('SELECT payment_mode FROM venues WHERE id=$1', [inv.venue_id])).payment_mode !== 'pay_at_venue' && enabledProviders().length > 0;
     return { ...rest, amount_due_cents: inv.status === 'open' ? inv.total_cents - inv.credits_cents : 0, buyer: buyerOf(inv), payments, credit_notes: credits, can_pay_online: online && !inv.pos_sale_id && inv.kind === 'invoice' && inv.status === 'open' && inv.user_id === user.id, providers: enabledProviders(), amount: toMajor(inv.total_cents, inv.currency),
-      ...(academy ? { pay: { purpose_type: 'academy_charge', purpose_id: inv.academy_charge_id } } : {}) };
+      ...(forTeam ? { pay: { purpose_type: 'team_charge', purpose_id: inv.team_charge_id }, team_name: (await one('SELECT name FROM teams WHERE id=$1', [inv.team_id])).name } : academy ? { pay: { purpose_type: 'academy_charge', purpose_id: inv.academy_charge_id } } : {}) };
   },
 });
 
@@ -73,6 +77,7 @@ cap({
     const inv = await mustFind('invoices', i.id);
     if (inv.kind !== 'invoice') throw badRequest('Only invoices are paid; a credit note is refunded');
     if (inv.organisation_id) throw badRequest('An academy fee is paid online or recorded with record_academy_payment');
+    if (inv.team_id) throw badRequest('A team charge is paid online or recorded with record_team_payment');
     if (inv.pos_sale_id) throw badRequest('A front-desk invoice is paid on its sale (add_pos_payment), so the drawer and the invoice cannot disagree');
     if ((await one("SELECT 1 FROM pos_sale_invoices psi JOIN pos_sales s ON s.id=psi.sale_id WHERE psi.invoice_id=$1 AND s.status='awaiting_payment'", [inv.id]))) throw badRequest('This invoice is part of a front-desk sale that is awaiting payment — settle it there');
     await mustManage(user, inv.venue_id);

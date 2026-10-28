@@ -12,6 +12,7 @@ import { FormSheet } from '../FormSheet';
 import { DateField } from '../pickers';
 import { c, when, day } from '../theme';
 import { RosterTab, SquadsTab, RecruitTab, MoneyTab, AVAIL } from './team-manage';
+import { TeamFinance } from './team-finance';
 
 const COLUMNS = [['new', 'New', c.cyan], ['in_progress', 'In progress', c.sun], ['review', 'Ready for review', c.violet], ['done', 'Complete', c.mint]];
 const RSVP = [['going', '✅ Going'], ['maybe', '🤔 Maybe'], ['no', '🚫 Can’t']];
@@ -39,7 +40,7 @@ export function TeamWorkspace({ id }) {
   if (!team.data || !ws.data) return <Screen><Loading /></Screen>;
   const t = team.data, w = ws.data, r = roster.data;
   const reload = () => { team.reload(); ws.reload(); roster.reload(); };
-  const tabs = [['board', 'Board'], ['mine', `My tasks${w.my_open_tasks ? ` · ${w.my_open_tasks}` : ''}`], ['schedule', 'Schedule'], ['roster', 'Roster'],
+  const tabs = [['board', 'Board'], ['mine', `My tasks${w.my_open_tasks ? ` · ${w.my_open_tasks}` : ''}`], ['schedule', 'Schedule'], ['roster', 'Roster'], ['dues', 'Dues & funds'],
     ...(w.can_manage ? [['squads', 'Squads'], ['recruit', 'Recruit']] : []), ...(r?.can_manage_money ? [['money', 'Rates']] : [])];
   const P = { t, r, reload, toast };
   const master = w.master_team;
@@ -75,6 +76,7 @@ export function TeamWorkspace({ id }) {
       {tab === 'mine' ? <Board teamId={id} mine reloadWs={ws.reload} /> : null}
       {tab === 'schedule' ? <Schedule t={t} w={w} reload={reload} /> : null}
       {tab === 'roster' ? <RosterPanel {...P} w={w} /> : null}
+      {tab === 'dues' ? <TeamFinance t={t} w={w} /> : null}
       {tab === 'squads' && r ? <SquadsTab {...P} /> : null}
       {tab === 'recruit' && r ? <RecruitTab {...P} /> : null}
       {tab === 'money' && r ? <MoneyTab {...P} /> : null}
