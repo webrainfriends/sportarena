@@ -17,6 +17,8 @@ const keyOf = (chain, k) => chain.stages.find((s) => s.key === k);
 test('services tender: award → one service order → delivery → acceptance → matched invoice → payment → rating → chain and performance', async () => {
   const w = await world({}, [['A', 100000], ['B', 90000]]);
   await bids(w); await evaluate(w, { marks: { A: [9, 8], B: [6, 6] } });
+  // a supplier that tracks its capacity gets the days reserved; an uncapped one has nothing to reserve (the tender flow reuses the winner's profile)
+  ok(await call('POST', '/supplier-profiles', { token: w.sup.A.user.token, body: { supplier_type: 'sole_trader', legal_name: 'Supplier A Ltd', categories: ['ground_maintenance'], currencies: ['INR'], daily_capacity: 5 } }), 201);
   await awardAll(w, 'highest_score', w.sup.A.user);
   const po = await orderOf(w);
   assert.ok(po.service_order?.id, 'a tender order always has its service order');
