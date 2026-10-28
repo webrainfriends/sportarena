@@ -42,3 +42,7 @@ Dashboards are available as JSON, as printable PDFs (`generate_service_document`
 - Verified service reviews (#215) are not implemented in the repository, so no review hook exists yet.
 - Native iOS/Android devices were not run; web, iOS and Android bundles export successfully and the web build was checked at phone, tablet and desktop widths.
 - Dates and times in reports are UTC.
+
+## Tender orders (#520)
+
+An accepted Tender-zone award creates an `svc_orders` row with `source = 'tender'` (see [`procurement-chain.md`](procurement-chain.md)). It behaves like any other order: visits, acceptance (receiving for goods), variations, invoices and matching, payments, and the single event-budget commitment. Direct RFQ evaluations now keep every superseded score (`svc_evaluation_revisions`), and an evaluator can declare a conflict (`declare_rfq_conflict`) that recuses them from scoring, shortlisting and awarding that supplier.

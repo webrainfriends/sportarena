@@ -10,12 +10,15 @@ const newRefreshSecret = () => 'sr_' + randomBytes(32).toString('base64url');
 const trim = (s, n) => (s ? String(s).slice(0, n) : null);
 
 /** Open a session for a user and return the access JWT plus the first refresh token. */
-export async function startSession(user, meta = {}, { mfa = false } = {}) {
+export async function startSession(user, meta = {}, { mfa = false, sso = null } = {}) {
   const refresh = newRefreshSecret();
   const session = await tx(async (c) => {
     const s = (await c.query(
-      `INSERT INTO auth_sessions(user_id, expires_at, user_agent, ip, mfa_verified_at) VALUES ($1, now() + make_interval(days => $2), $3, $4, CASE WHEN $5 THEN now() END) RETURNING id, expires_at`,
-      [user.id, config.refreshTtlDays, trim(meta.userAgent, 300), trim(meta.ip, 64), mfa])).rows[0];
+      // an organisation sign-in may carry a hard session length (sso.hours) that sliding refresh can never extend past
+      `INSERT INTO auth_sessions(user_id, expires_at, user_agent, ip, mfa_verified_at, sso_connection_id, hard_expires_at)
+       VALUES ($1, LEAST(now() + make_interval(days => $2), coalesce(now() + make_interval(hours => $6), 'infinity')), $3, $4, CASE WHEN $5 THEN now() END, $7, now() + make_interval(hours => $6))
+       RETURNING id, expires_at`,
+      [user.id, config.refreshTtlDays, trim(meta.userAgent, 300), trim(meta.ip, 64), mfa, sso?.hours ?? null, sso?.connection_id ?? null])).rows[0];
     await c.query('INSERT INTO refresh_tokens(session_id, token_hash, expires_at) VALUES ($1,$2,$3)', [s.id, sha256(refresh), s.expires_at]);
     return s;
   });
@@ -46,9 +49,9 @@ export async function rotateRefresh(secret) {
     const used = (await c.query(
       `UPDATE refresh_tokens r SET used_at = now() FROM auth_sessions s
         WHERE r.token_hash = $1 AND r.used_at IS NULL AND r.expires_at > now() AND s.id = r.session_id AND s.revoked_at IS NULL AND s.expires_at > now()
-        RETURNING r.id, r.session_id, s.user_id`, [hash])).rows[0];
+        RETURNING r.id, r.session_id, s.user_id, s.hard_expires_at`, [hash])).rows[0];
     if (!used) return null;
-    const ins = (await c.query('INSERT INTO refresh_tokens(session_id, token_hash, expires_at) VALUES ($1,$2, now() + make_interval(days => $3)) RETURNING id, expires_at', [used.session_id, sha256(next), config.refreshTtlDays])).rows[0];
+    const ins = (await c.query('INSERT INTO refresh_tokens(session_id, token_hash, expires_at) VALUES ($1,$2, LEAST(now() + make_interval(days => $3), coalesce($4::timestamptz, \'infinity\'))) RETURNING id, expires_at', [used.session_id, sha256(next), config.refreshTtlDays, used.hard_expires_at])).rows[0];
     await c.query('UPDATE refresh_tokens SET replaced_by = $2 WHERE id = $1', [used.id, ins.id]);
     await c.query('UPDATE auth_sessions SET last_seen_at = now(), expires_at = $2 WHERE id = $1', [used.session_id, ins.expires_at]);
     return used;

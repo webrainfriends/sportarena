@@ -228,8 +228,15 @@ CREATE INDEX IF NOT EXISTS ad_reports_open ON ad_reports (created_at) WHERE stat
 ALTER TABLE events ADD COLUMN IF NOT EXISTS public_ads boolean NOT NULL DEFAULT false;
 
 -- ------------------------------------------------------------------ payments can be made for an ad funding
-ALTER TABLE payments DROP CONSTRAINT IF EXISTS payments_purpose_type_check;
-ALTER TABLE payments ADD CONSTRAINT payments_purpose_type_check CHECK (purpose_type IN ('shop_order','coach_hire','insurance_policy','venue_invoice','wallet_topup','gift_card','venue_plan','appointment','shop_checkout','physio_package','sponsorship_payment','academy_charge','service_invoice','media_rights_fee','pos_sale','ad_funding'));
+DO $$
+DECLARE d text;
+BEGIN
+  SELECT pg_get_constraintdef(oid) INTO d FROM pg_constraint WHERE conname = 'payments_purpose_type_check' AND conrelid = 'payments'::regclass;
+  IF d IS NOT NULL AND position('ad_funding' IN d) = 0 THEN   -- widen whatever list is in force; never rewrite it, so other modules' purposes survive
+    ALTER TABLE payments DROP CONSTRAINT payments_purpose_type_check;
+    EXECUTE 'ALTER TABLE payments ADD CONSTRAINT payments_purpose_type_check ' || replace(d, '::text])', '::text, ''ad_funding''::text])');
+  END IF;
+END $$;
 
 -- ------------------------------------------------------------------ append-only guards (facts and reviews can be added, never changed or removed)
 CREATE OR REPLACE FUNCTION ad_append_only() RETURNS trigger LANGUAGE plpgsql AS $$

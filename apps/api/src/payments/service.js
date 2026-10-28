@@ -10,6 +10,7 @@ import { fulfilSponsorshipPayment } from '../sponsor-agreements.js';
 import { fulfilChargePaid } from '../academy-invoices.js';
 import { fulfilServiceInvoicePaid } from '../svc/finance.js';
 import { fulfilMediaFeePaid } from '../media-fees.js';
+import { fulfilContributionPaid, fulfilTeamChargePaid } from '../team-money.js';
 import { raiseException, recordSale, syncRefunds } from '../settlement.js';
 import { coachSessionDone } from '../rewards/activity.js';
 import { saleDue, confirmOnlineSalePayment } from '../pos/due.js';
@@ -76,6 +77,14 @@ export async function describePurpose(c, type, id) {
     const inDesk = x && (await c.query("SELECT 1 FROM pos_sale_lines l JOIN pos_sales s ON s.id=l.sale_id WHERE l.charge_id=$1 AND s.status='awaiting_payment'", [id])).rowCount > 0;
     return x && { payerId: x.payer_id, amount: Number(x.amount), currency: x.currency, name: `Academy ${x.kind} · ${x.name}`, payable: !inDesk && x.status === 'awaiting_payment' && Number(x.amount) > 0 };
   }
+  if (type === 'team_charge') {
+    const x = await q("SELECT ch.payer_id, ch.amount_minor - ch.adjusted_minor - ch.settled_minor AS amount, b.currency, ch.status, b.title, b.status AS batch_status, t.name FROM team_charges ch JOIN team_charge_batches b ON b.id=ch.batch_id JOIN teams t ON t.id=ch.team_id WHERE ch.id=$1 FOR UPDATE OF ch");
+    return x && { payerId: x.payer_id, amount: Number(x.amount), currency: x.currency, name: `${x.title} · ${x.name}`, payable: x.status === 'awaiting_payment' && x.batch_status === 'active' && Number(x.amount) > 0 };
+  }
+  if (type === 'team_contribution') {
+    const x = await q("SELECT c.contributor_id AS payer_id, c.amount_minor AS amount, f.currency, c.status, f.status AS fund_status, f.title, t.name FROM team_contributions c JOIN team_fundraisers f ON f.id=c.fundraiser_id JOIN teams t ON t.id=f.team_id WHERE c.id=$1 FOR UPDATE OF c");
+    return x && { payerId: x.payer_id, amount: Number(x.amount), currency: x.currency, name: `Fundraiser: ${x.title} · ${x.name}`, payable: x.status === 'awaiting_payment' && x.fund_status === 'active' };
+  }
   if (type === 'media_rights_fee') {
     const x = await q("SELECT f.payer_id, f.amount_minor AS amount, f.currency, f.status, f.number, o.name FROM mr_fees f JOIN mr_licences l ON l.id=f.licence_id JOIN media_partners m ON m.id=l.partner_id JOIN organisations o ON o.id=m.organisation_id WHERE f.id=$1 FOR UPDATE OF f");
     return x && { payerId: x.payer_id, amount: Number(x.amount), currency: x.currency, name: `Rights fee ${x.number} · ${x.name}`, payable: x.status === 'awaiting_payment' };
@@ -112,6 +121,8 @@ async function fulfil(c, type, id, payment) {
   if (type === 'service_invoice') return fulfilServiceInvoicePaid(c, id, payment);
   if (type === 'media_rights_fee') return fulfilMediaFeePaid(c, id);
   if (type === 'ad_funding') return fulfilAdFundingPaid(c, id);
+  if (type === 'team_charge') return fulfilTeamChargePaid(c, id, payment);
+  if (type === 'team_contribution') return fulfilContributionPaid(c, id, payment);
   const done = (await c.query(sql, [id])).rowCount > 0;
   if (done && type === 'coach_hire') await coachSessionDone(c, id);   // a session completed before it was paid earns once the payment lands
   return done;

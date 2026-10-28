@@ -5,6 +5,7 @@ import { badRequest, conflict, forbidden, notFound, unauthorized } from '../erro
 import { RESOURCE_TYPES, SCOPES, scopeAllows } from '../scopes.js';
 import { blindIndex, decrypt, decryptFields, encrypt, encryptFields, hashPassword, newOpaqueToken, sha256, verifyPassword } from '../crypto.js';
 import { audit, PUBLIC_USER, sportBySlugOrId } from '../helpers.js';
+import { assertLocalLoginAllowed } from '../identity/sso.js';
 import { startSession } from '../sessions.js';
 import { issueToken } from '../account-security.js';
 import { badgesFor, withBadges } from '../verification.js';
@@ -91,6 +92,7 @@ cap({
     const ok = await verifyPassword(i.password, u?.password_hash ?? await decoyHash());
     if (!u || !ok) throw unauthorized('Invalid email or password');
     delete u.password_hash;
+    await assertLocalLoginAllowed(u.id); // an organisation that requires SSO for its provisioned people closes the password door (break-glass owners excepted)
     // Two-step verification: the password alone only earns a short-lived challenge; login_mfa completes the sign-in.
     if (await one('SELECT 1 FROM user_mfa WHERE user_id = $1 AND enabled_at IS NOT NULL AND disabled_at IS NULL', [u.id])) {
       return { mfa_required: true, mfa_token: await issueToken(u.id, 'mfa_login', 5) };

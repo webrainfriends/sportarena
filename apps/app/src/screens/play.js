@@ -204,7 +204,8 @@ export function Team({ id }) {
         <T color="#fff" weight="800">{x.sport_emoji} {x.sport}{x.city ? ` · ${x.city}` : ''} · {x.members.length} players</T>
         {x.rating?.n ? <Stars n={x.rating.avg} /> : null}
       </GradCard>
-      {x.my_membership?.status === 'active' || x.can_manage ? <Btn title="💬 Team chat" color={c.violet} onPress={() => push('TeamChat', { id })} style={{ marginTop: 12 }} /> : null}
+      {x.my_membership?.status === 'active' || x.can_manage || x.guardian_of_member ? <Btn title={x.guardian_of_member && !x.my_membership && !x.can_manage ? '💬 Guardians chat' : '💬 Team chat'} color={c.violet} onPress={() => push('TeamChat', { id })} style={{ marginTop: 12 }} /> : null}
+      {x.my_membership?.status === 'active' || x.can_manage || x.guardian_of_member ? <Btn title="💳 Dues & funds" color={c.paper} ink={c.ink} onPress={() => push('TeamDues', { id })} style={{ marginTop: 10 }} /> : null}
       {x.can_manage || x.my_membership?.status === 'active' ? <Btn title={x.can_manage ? '🗂️ Team workspace — tasks, schedule, roster, squads' : '🗂️ Team workspace — tasks & schedule'} onPress={() => push('TeamWorkspace', { id })} style={{ marginTop: 12 }} /> : null}
       {x.my_membership?.status === 'active' ? <>
         <Section title="My availability" color={c.mint}><AvailabilityPicker teamId={id} userId={user.id} value={x.my_membership.availability} onDone={t.reload} /></Section>

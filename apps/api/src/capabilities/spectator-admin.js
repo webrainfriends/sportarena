@@ -58,8 +58,8 @@ cap({
 // ------------------------------------------------------------------ sponsor placements: a slot on the public pages for a real, active sponsorship
 cap({
   name: 'save_sponsor_placement', method: 'POST', path: '/events/:id/sponsor-placements', tag: TAG, status: 201,
-  summary: 'Give an active sponsorship of the event a placement on its public pages: title partner (event page), fixture sponsor (one game), scorecard sponsor (live centres) or leaderboard sponsor (table). Optionally add a call to action (label + https link); youth events never show one. The sponsorship must be an active agreement for this event — a paused, ended or declined agreement cannot hold a placement. One sponsor per slot per target.',
-  input: z.object({ id, sponsorship_id: id, slot: z.enum(SLOTS), fixture_id: id.optional(), cta_label: z.string().trim().min(2).max(40).optional(), cta_url: https.optional() })
+  summary: 'Give an active sponsorship of the event a placement on its public pages: title partner (event page), fixture sponsor (one game), scorecard sponsor (live centres) or leaderboard sponsor (table). When the event has defined sponsor inventory for the slot, only a sponsor holding a live booking of that unit can take it (the booking is found automatically or named with booking_id). Optionally add a call to action (label + https link); youth events never show one. The sponsorship must be an active agreement for this event — a paused, ended or declined agreement cannot hold a placement. One sponsor per slot per target.',
+  input: z.object({ id, sponsorship_id: id, slot: z.enum(SLOTS), fixture_id: id.optional(), cta_label: z.string().trim().min(2).max(40).optional(), cta_url: https.optional(), booking_id: id.optional().describe('the sponsor inventory booking (#519) that backs this placement; required when the event sells this slot as inventory') })
     .refine((x) => (x.slot === 'fixture') === !!x.fixture_id, 'A fixture-sponsor placement names the game; other slots do not')
     .refine((x) => !!x.cta_label === !!x.cta_url, 'Give both a call-to-action label and link, or neither'),
   async handler({ user }, i) {
@@ -70,10 +70,19 @@ cap({
       if (!(await c.query("SELECT 1 FROM sponsorships WHERE id=$1 AND status='active'", [ss.id])).rowCount) throw conflict('Only an active sponsorship can hold a placement');
       if (i.fixture_id && !(await c.query('SELECT 1 FROM fixtures WHERE id=$1 AND event_id=$2', [i.fixture_id, ev.id])).rowCount) throw notFound('Game of this event');
       if (isYouthEvent(ev) && i.cta_url) throw unprocessable('Youth events do not show sponsor calls to action');
+      // inventory-governed slot (#519): a placement must be backed by a live booking of a unit that sells this slot for this event
+      const governed = (await c.query("SELECT 1 FROM sponsor_inventory_units WHERE target_type='event' AND target_id=$1 AND status='active' AND placement_slot=$2", [ev.id, i.slot])).rowCount > 0;
+      let bookingId = null;
+      if (governed || i.booking_id) {
+        const b = (await c.query(`SELECT b.id FROM sponsor_inventory_bookings b JOIN sponsor_inventory_units u ON u.id=b.unit_id WHERE b.sponsorship_id=$1 AND b.status='confirmed' AND b.ends_on >= current_date
+          AND u.target_type='event' AND u.target_id=$2 AND u.placement_slot=$3 AND ($4::uuid IS NULL OR b.id=$4) ORDER BY b.starts_on LIMIT 1`, [ss.id, ev.id, i.slot, i.booking_id ?? null])).rows[0];
+        if (!b) throw conflict(governed ? 'This event sells that slot as sponsor inventory: the sponsor needs a live booking for it first' : 'That booking does not back this slot', { code: 'inventory_required' });
+        bookingId = b.id;
+      }
       try {
         return (await c.query(
-          `INSERT INTO event_sponsor_placements(event_id, sponsorship_id, slot, fixture_id, cta_label, cta_url, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7)
-           RETURNING id, slot, fixture_id, sponsorship_id, cta_label, cta_url, status, created_at`, [ev.id, ss.id, i.slot, i.fixture_id ?? null, i.cta_label ?? null, i.cta_url ?? null, user.id])).rows[0];
+          `INSERT INTO event_sponsor_placements(event_id, sponsorship_id, slot, fixture_id, cta_label, cta_url, created_by, booking_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+           RETURNING id, slot, fixture_id, sponsorship_id, cta_label, cta_url, status, created_at, booking_id`, [ev.id, ss.id, i.slot, i.fixture_id ?? null, i.cta_label ?? null, i.cta_url ?? null, user.id, bookingId])).rows[0];
       } catch (e) {
         if (e.code === '23505') throw conflict('That slot already has a sponsor — end the current placement first');
         throw e;

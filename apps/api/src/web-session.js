@@ -8,7 +8,7 @@ export const SESSION_COOKIE = 'sa_session';
 export const REFRESH_COOKIE = 'sa_refresh';
 export const CSRF_COOKIE = 'sa_csrf';
 const SAFE = new Set(['GET', 'HEAD', 'OPTIONS']);
-const COOKIE_CAPS = new Set(['login', 'login_mfa', 'login_google', 'login_apple', 'register', 'refresh_session']);
+const COOKIE_CAPS = new Set(['login', 'login_mfa', 'login_google', 'login_apple', 'complete_sso', 'confirm_sso_link', 'register', 'refresh_session']);
 
 export function parseCookies(header) {
   const out = {};

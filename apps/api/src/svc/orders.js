@@ -3,7 +3,7 @@ import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { priced } from './money.js';
 import { supplierAccess, buyerAccess, log } from './access.js';
 import { reserve, hold, release, occurrences, daysBetween } from './capacity.js';
-import { recommit } from './budget.js';
+import { recommit, committedOf, voidCommitment } from './budget.js';
 
 export const LIVE = ['pending_supplier', 'changes_proposed', 'confirmed', 'in_progress', 'paused', 'completed'];
 export const q1 = async (c, t, a) => (await c.query(t, a)).rows[0];
@@ -36,7 +36,7 @@ export const repriceLines = (order, lines) => priced(lines.map((l) => ({ ...l, q
 /** Roll acceptance up to the order: fulfilment state, and completed once every active line is fully accepted. Never touches billing or settlement. */
 export async function refreshOrder(c, orderId) {
   const o = await loadOrder(c, orderId);
-  if (['cancelled', 'rejected', 'terminated'].includes(o.status)) return o;
+  if (['cancelled', 'rejected', 'terminated'].includes(o.status)) { await syncTenderOrder(c, o); return o; }
   const lines = await activeLines(c, orderId);
   const ordered = lines.reduce((s, l) => s + Number(l.qty_ordered), 0);
   const accepted = lines.reduce((s, l) => s + Number(l.qty_accepted), 0);
@@ -50,6 +50,7 @@ export async function refreshOrder(c, orderId) {
   else if (v.scheduled || v.confirmed) f = 'scheduled';
   const status = f === 'accepted' && ['confirmed', 'in_progress'].includes(o.status) ? 'completed' : (v.in_progress || accepted > 0) && o.status === 'confirmed' ? 'in_progress' : o.status;
   const row = await q1(c, 'UPDATE svc_orders SET fulfilment=$2, status=$3, updated_at=now(), row_version=row_version+1 WHERE id=$1 RETURNING *', [orderId, f, status]);
+  await syncTenderOrder(c, row);
   if (status === 'completed') await c.query("UPDATE svc_requirements SET status='delivered', updated_at=now() WHERE id=$1 AND status IN ('confirmed','awarded')", [o.requirement_id]);
   return row;
 }
@@ -148,10 +149,29 @@ export async function applyVariation(c, order, v, actor) {
     impact.after = { net: t.net, tax: t.tax, gross: t.gross }; impact.cancelled_visits = cancelled.rowCount; impact.accepted_work_kept = true; impact.paid_minor = paid; impact.refund_due_minor = Math.max(0, paid - t.gross);
   }
   const fresh = await loadOrder(c, order.id);
-  if (fresh.event_id) await recommit(c, fresh, Math.max(Number(fresh.gross_minor), 0));
+  if (fresh.event_id) await recommit(c, fresh, Math.max(committedOf(fresh), 0));
   await c.query("UPDATE svc_variations SET status='applied', applied_at=now(), impact=$2 WHERE id=$1", [v.id, impact]);
   await c.query('UPDATE svc_orders SET row_version=row_version+1, updated_at=now() WHERE id=$1', [order.id]);
   await log(c, 'order', order.id, actor.id, `variation_${v.kind}_applied`, { variation: v.version, reason: v.reason });
   return refreshOrder(c, order.id);
 }
 export { daysBetween };
+
+/** Cancel an order that has no accepted or invoiced work: capacity released, event commitment ended (the budget line is voided, never deleted), visits cancelled, the order kept on record. */
+export async function cancelOrderRecords(c, o, reason) {
+  await release(c, o.id);
+  await voidCommitment(c, o);
+  await c.query("UPDATE svc_visits SET status='cancelled', row_version=row_version+1 WHERE order_id=$1 AND status NOT IN ('accepted','partially_accepted')", [o.id]);
+  await c.query("UPDATE svc_quotes SET status='rejected' WHERE id=$1 AND status IN ('awarded','partially_awarded')", [o.quote_id]);
+  const row = await q1(c, "UPDATE svc_orders SET status='cancelled', fulfilment='cancelled', reason=$2, row_version=row_version+1, updated_at=now() WHERE id=$1 RETURNING *", [o.id, reason]);
+  await c.query("UPDATE svc_rfqs SET status=CASE WHEN EXISTS (SELECT 1 FROM svc_orders WHERE rfq_id=$1 AND status NOT IN ('cancelled','rejected','terminated') AND id <> $2) THEN 'partially_awarded' ELSE 'evaluation' END, row_version=row_version+1 WHERE id=$1 AND status IN ('awarded','partially_awarded')", [o.rfq_id, o.id]);
+  await syncTenderOrder(c, row);
+  return row;
+}
+
+/** A tender order is the contract record for a service order; its status follows the delivery record so the two never disagree. */
+export async function syncTenderOrder(c, o) {
+  if (!o.proc_order_id) return;
+  const status = ['cancelled', 'rejected', 'terminated'].includes(o.status) ? 'cancelled' : o.status === 'completed' ? 'completed' : o.status === 'in_progress' ? 'in_progress' : 'confirmed';
+  await c.query("UPDATE proc_orders SET status=$2, cancelled_reason=CASE WHEN $2='cancelled' THEN coalesce($3, cancelled_reason) ELSE cancelled_reason END, updated_at=now() WHERE id=$1 AND status <> $2 AND status <> 'cancelled'", [o.proc_order_id, status, o.reason ?? null]);
+}

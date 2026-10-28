@@ -464,7 +464,7 @@ export async function renderSponsorshipContract({ layout, kit, logo, snapshot, s
   return { buffer: Buffer.concat(chunks), pages: range.count };
 }
 
-const KIND_TITLE = { ageing: 'Financial ageing', funnel: 'Award funnel', outcomes: 'Beneficiary outcomes', fulfilment: 'Fulfilment', renewals: 'Renewals' };
+const KIND_TITLE = { ageing: 'Financial ageing', funnel: 'Award funnel', outcomes: 'Beneficiary outcomes', fulfilment: 'Fulfilment', renewals: 'Renewals', roi: 'Sponsorship ROI & exposure' };
 const SOURCE_MARK = { ok: 'OK', stale: 'STALE', missing: 'MISSING' };
 
 /**
