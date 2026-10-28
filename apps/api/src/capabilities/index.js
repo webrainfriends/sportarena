@@ -34,6 +34,7 @@ import './favourite-sports.js';
 import './waitlist.js';
 import './wallet.js';
 import './loyalty.js';
+import './cover.js';
 import './timetable.js';
 import './plans.js';
 import './invoices.js';

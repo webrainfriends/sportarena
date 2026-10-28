@@ -6,6 +6,7 @@ import { useSession } from './session';
 import { Btn, Loading, Sheet, T } from './ui';
 import { c } from './theme';
 import { PointsSheet } from './screens/rewards';
+import { CoverSendSheet } from './screens/cover-ui';
 import { moneyIn } from './vtime';
 
 /**
@@ -19,6 +20,7 @@ export function PaySheet({ target, onClose, onDone }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
   const [points, setPoints] = useState(false);
+  const [cover, setCover] = useState(false);
   const balances = useLoad(() => api.get('/me/loyalty'), []);
   const go = async (provider) => {
     setBusy(true); setErr(null);
@@ -49,6 +51,7 @@ export function PaySheet({ target, onClose, onDone }) {
         </View>
       ) : (
         <View style={{ gap: 10 }}>
+          <Btn title="🤝 Ask someone else to pay" color={c.paper} ink={c.ink} onPress={() => setCover(true)} />
           {balances.data?.length && ['venue_invoice', 'academy_charge', 'coach_hire'].includes(target.type ?? 'venue_invoice') ? <Btn title="⭐ Use my points first" color={c.violet} onPress={() => setPoints(true)} /> : null}
           {m.providers.includes('stripe') ? <Btn title="Pay with card (Stripe)" onPress={() => go('stripe')} loading={busy} /> : null}
           {m.providers.includes('paypal') ? <Btn title="Pay with PayPal" color={c.paper} onPress={() => go('paypal')} loading={busy} /> : null}
@@ -56,6 +59,7 @@ export function PaySheet({ target, onClose, onDone }) {
         </View>
       )}
       {err ? <T color={c.red} weight="700">{err}</T> : null}
+      {cover ? <CoverSendSheet target={{ id: target.id, type: target.type ?? 'venue_invoice', label: target.label, amount: target.amount, currency: target.currency }} onClose={() => setCover(false)} onDone={onDone} /> : null}
       {points ? <PointsSheet target={{ id: target.id, type: target.type ?? 'venue_invoice', label: target.label, amount: target.amount, currency: target.currency }} onClose={() => setPoints(false)} onDone={async () => { await onDone?.(); onClose(); }} /> : null}
     </Sheet>
   );

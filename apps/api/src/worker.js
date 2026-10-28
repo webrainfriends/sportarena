@@ -9,6 +9,7 @@ import { expireLoyalty } from './booking/loyalty.js';
 import { tx } from './db.js';
 import { eventParticipationSweep, membershipTenureSweep } from './rewards/activity.js';
 import { releaseDueReferrals } from './rewards/referrals.js';
+import { expireCover } from './cover.js';
 import { expireUserPlans, raiseSubscriptionRenewals } from './booking/plans.js';
 import { venueOpsReminders } from './booking/venue-ops.js';
 import { expireStaleRequests } from './lifecycle.js';
@@ -35,6 +36,7 @@ export const STEPS = [
   ['refunds', 'refunds', processRefunds, { done: 0, failed: 0, manual: 0 }],
   ['waitlist', 'waitlist', processWaitlist, null],
   ['loyalty', 'points_expired', expireLoyalty, 0],
+  ['cover', 'cover_agreements_expired', () => tx((c) => expireCover(c)), 0],
   ['loyalty_referrals', 'referral_rewards_released', () => tx((c) => releaseDueReferrals(c)), 0],
   ['loyalty_events', 'event_points_awarded', () => tx((c) => eventParticipationSweep(c)), 0],
   ['loyalty_memberships', 'membership_points_awarded', () => tx((c) => membershipTenureSweep(c)), 0],
