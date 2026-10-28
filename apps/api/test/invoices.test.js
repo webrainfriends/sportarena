@@ -1,6 +1,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
+import { slotAhead } from './support/slots.js';
 
 // ---- stand-ins for the Stripe / PayPal HTTP APIs ----
 const fake = { sessions: {}, refunds: [], paypalOrders: [], n: 0, failRefunds: 0 };
@@ -239,7 +240,7 @@ test('online payment in the venue currency: Stripe checkout, confirm, partial re
   assert.deepEqual(fake.paypalOrders.at(-1), { currency_code: 'JPY', value: '5000' });
 
   // a refund that the provider rejects stays pending, then goes through; it is partial and idempotent
-  const soon = new Date(Date.now() + 5 * 3600e3); soon.setUTCMinutes(0, 0, 0);
+  const soon = slotAhead(5, 2);
   const s = must(await api('POST', '/reservations', { token: u.token, body: { items: [{ resource_id: jpy.court.id, starts_at: soon.toISOString(), ends_at: new Date(+soon + 7200e3).toISOString() }] } }), 201);
   const sp = must(await api('POST', '/payments', { token: u.token, body: { purpose_type: 'venue_invoice', purpose_id: s.invoices[0].id, provider: 'stripe', return_url: 'http://app.test/' } }), 201);
   Object.values(fake.sessions).at(-1).payment_status = 'paid';
