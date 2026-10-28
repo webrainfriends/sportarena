@@ -8,10 +8,13 @@ import { conflict, forbidden, notFound } from '../errors.js';
 export async function lockPayableInvoice(c, user, invoiceId) {
   const inv = (await c.query("SELECT * FROM invoices WHERE id=$1 AND kind='invoice' FOR UPDATE", [invoiceId])).rows[0];
   if (!inv) throw notFound('Invoice');
-  if (inv.user_id !== user.id) throw forbidden('This is not your invoice');
+  if (inv.user_id !== user.id || inv.walk_in) throw forbidden('This is not your invoice');
   if (inv.status !== 'open') throw conflict('That invoice is not open');
   const due = inv.total_cents - inv.credits_cents;
   if (due <= 0) throw conflict('Nothing left to pay');
+  // part of a front-desk sale that already has money taken or on its way: the desk finishes it, so credit cannot be stacked on top
+  if ((await c.query("SELECT 1 FROM pos_sale_invoices psi JOIN pos_sales s ON s.id=psi.sale_id JOIN pos_sale_payments p ON p.sale_id=s.id AND p.kind='payment' AND p.status IN ('confirmed','pending') WHERE psi.invoice_id=$1 AND s.status='awaiting_payment' LIMIT 1", [invoiceId])).rowCount)
+    throw conflict('This invoice is part of a front-desk sale that already has a payment — finish it at the desk');
   if ((await c.query("SELECT 1 FROM payments WHERE purpose_type='venue_invoice' AND purpose_id=$1 AND status='pending' AND provider_ref IS NOT NULL AND created_at > now() - interval '30 minutes'", [invoiceId])).rowCount)
     throw conflict('A card checkout for this invoice is in progress — finish it, or try again in half an hour');
   return { inv, due };
