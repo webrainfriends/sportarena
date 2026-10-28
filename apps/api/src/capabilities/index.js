@@ -27,6 +27,7 @@ import './venue-admin.js';
 import './reservations.js';
 import './venue-media.js';
 import './venue-operations.js';
+import './smart-access.js';
 import './push.js';
 import './whatsapp.js';
 import './favourites.js';

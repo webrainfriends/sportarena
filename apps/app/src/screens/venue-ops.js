@@ -6,6 +6,7 @@ import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { Btn, Card, Chip, Empty, ErrorBox, Loading, Row, Section, StatPill, T, Tag } from '../ui';
+import { AccessInsights, AccessPoints, HeldList } from '../access-ui';
 import { FormSheet } from '../FormSheet';
 import { c } from '../theme';
 import { addDays, dateTimeIn, moneyIn, timeIn, todayIn } from '../vtime';
@@ -276,5 +277,16 @@ export function VendorsContracts({ v }) {
           all(); return 'Saved';
         }} />
     </>
+  );
+}
+
+/** Doors, gates and readers of the venue, who was admitted, what needs a decision, and the evidence kept apart from the final record. */
+export function AccessTab({ v }) {
+  return (
+    <View style={{ gap: 14 }}>
+      <Section title="Doors, gates and readers" color={c.cyan}><AccessPoints venueId={v.id} /></Section>
+      <Section title="Held for your decision" color={c.orange}><HeldList scope={{ venue_id: v.id }} /></Section>
+      <Section title="Attendance and access" color={c.violet}><AccessInsights scope={{ venue_id: v.id }} /></Section>
+    </View>
   );
 }

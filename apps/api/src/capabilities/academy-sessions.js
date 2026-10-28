@@ -161,7 +161,7 @@ cap({
   name: 'create_academy_session', method: 'POST', path: '/cohorts/:id/academy/sessions', tag: TAG, status: 201,
   summary: 'Add one session to a cohort: a special session, a trial, or a make-up for a cancelled one (makeup_for).',
   input: z.object({ id, starts_at: dt, duration_min: z.number().int().min(10).max(600), title: z.string().trim().min(2).max(120).optional(), delivery_type: z.enum(DELIVERY).default('training'), timezone: z.string().max(60).optional(),
-    makeup_for: id.optional(), capacity: z.number().int().min(1).max(500).optional(), lead_id: id.optional(), assistant_ids: z.array(id).max(10).default([]), duty_roles: z.array(z.string().max(40)).max(6).default([]), self_checkin: z.boolean().default(false) }),
+    makeup_for: id.optional(), capacity: z.number().int().min(1).max(500).optional(), lead_id: id.optional(), assistant_ids: z.array(id).max(10).default([]), duty_roles: z.array(z.string().max(40)).max(6).default([]), self_checkin: z.boolean().default(false), geo_checkin: z.boolean().default(false), geo_radius_m: z.number().int().min(50).max(2000).default(200) }),
   handler: ({ user }, i) => tx(async (c) => {
     const { cohort } = await cohortOf(user, i.id, { write: true, c });
     await lockCohort(c, cohort.id);
@@ -173,9 +173,9 @@ cap({
     if (i.makeup_for && !(await c.query("SELECT 1 FROM academy_sessions WHERE id=$1 AND cohort_id=$2 AND status='cancelled'", [i.makeup_for, cohort.id])).rowCount) throw badRequest('A make-up must be for a cancelled session of the same cohort');
     const programme = cohort.programme_id ? (await c.query('SELECT sport, title, season_id FROM academy_programmes WHERE id=$1', [cohort.programme_id])).rows[0] : null;
     const s = (await c.query(
-      `INSERT INTO academy_sessions(organisation_id, cohort_id, programme_id, season_id, sport, title, delivery_type, timezone, starts_at, ends_at, capacity, min_coaches, max_ratio, lead_credential_required, enforce_staffing, duty_roles, makeup_for, self_checkin, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *`,
-      [cohort.organisation_id, cohort.id, cohort.programme_id, cohort.season_id ?? programme?.season_id ?? null, programme?.sport ?? null, i.title ?? `${cohort.name}${i.makeup_for ? ' · make-up' : ''}`, i.makeup_for ? 'makeup' : i.delivery_type, tz, i.starts_at, ends, i.capacity ?? cohort.capacity, cohort.min_coaches ?? 1, cohort.max_ratio, cohort.lead_credential_required, cohort.enforce_staffing, i.duty_roles, i.makeup_for ?? null, i.self_checkin, user.id]
+      `INSERT INTO academy_sessions(organisation_id, cohort_id, programme_id, season_id, sport, title, delivery_type, timezone, starts_at, ends_at, capacity, min_coaches, max_ratio, lead_credential_required, enforce_staffing, duty_roles, makeup_for, self_checkin, geo_checkin, geo_radius_m, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21) RETURNING *`,
+      [cohort.organisation_id, cohort.id, cohort.programme_id, cohort.season_id ?? programme?.season_id ?? null, programme?.sport ?? null, i.title ?? `${cohort.name}${i.makeup_for ? ' · make-up' : ''}`, i.makeup_for ? 'makeup' : i.delivery_type, tz, i.starts_at, ends, i.capacity ?? cohort.capacity, cohort.min_coaches ?? 1, cohort.max_ratio, cohort.lead_credential_required, cohort.enforce_staffing, i.duty_roles, i.makeup_for ?? null, i.self_checkin, i.geo_checkin, i.geo_radius_m, user.id]
     )).rows[0];
     await change(c, s.id, 'created', user.id, i.makeup_for ? 'make-up session' : null, null, { starts_at: s.starts_at });
     const lead = i.lead_id ?? cohort.coach_id;
@@ -238,7 +238,7 @@ cap({
 cap({
   name: 'update_academy_session', method: 'PATCH', path: '/academy/sessions/:id', tag: TAG,
   summary: 'Reschedule or edit a session. Needs the current row_version (a stale edit gets 409) and a reason when the time of a published session moves; history is kept and staff, athletes and guardians are notified. A held venue booking is never changed automatically: the response tells you to move it through the booking.',
-  input: z.object({ id, row_version: z.number().int(), starts_at: dt.optional(), duration_min: z.number().int().min(10).max(600).optional(), title: z.string().trim().min(2).max(120).optional(), capacity: z.number().int().min(1).max(500).nullable().optional(), self_checkin: z.boolean().optional(), duty_roles: z.array(z.string().max(40)).max(6).optional(), reason: z.string().trim().min(3).max(300).optional() }),
+  input: z.object({ id, row_version: z.number().int(), starts_at: dt.optional(), duration_min: z.number().int().min(10).max(600).optional(), title: z.string().trim().min(2).max(120).optional(), capacity: z.number().int().min(1).max(500).nullable().optional(), self_checkin: z.boolean().optional(), geo_checkin: z.boolean().optional(), geo_radius_m: z.number().int().min(50).max(2000).optional(), duty_roles: z.array(z.string().max(40)).max(6).optional(), reason: z.string().trim().min(3).max(300).optional() }),
   handler: ({ user }, i) => tx(async (c) => {
     const { s } = await sessionFor(user, i.id, 'schedule', { write: true, c });
     if (s.row_version !== i.row_version) throw conflict('This session was changed by someone else. Reload and try again.', { row_version: s.row_version });
@@ -258,8 +258,8 @@ cap({
       }
     }
     const next = (await c.query(
-      `UPDATE academy_sessions SET starts_at=$2, ends_at=$3, title=coalesce($4,title), capacity=CASE WHEN $5::boolean THEN $6 ELSE capacity END, self_checkin=coalesce($7,self_checkin), duty_roles=coalesce($8,duty_roles), row_version=row_version+1, updated_at=now() WHERE id=$1 RETURNING *`,
-      [s.id, start, end, i.title ?? null, i.capacity !== undefined, i.capacity ?? null, i.self_checkin ?? null, i.duty_roles ?? null])).rows[0];
+      `UPDATE academy_sessions SET starts_at=$2, ends_at=$3, title=coalesce($4,title), capacity=CASE WHEN $5::boolean THEN $6 ELSE capacity END, self_checkin=coalesce($7,self_checkin), duty_roles=coalesce($8,duty_roles), geo_checkin=coalesce($9,geo_checkin), geo_radius_m=coalesce($10,geo_radius_m), row_version=row_version+1, updated_at=now() WHERE id=$1 RETURNING *`,
+      [s.id, start, end, i.title ?? null, i.capacity !== undefined, i.capacity ?? null, i.self_checkin ?? null, i.duty_roles ?? null, i.geo_checkin ?? null, i.geo_radius_m ?? null])).rows[0];
     await change(c, s.id, moved ? 'rescheduled' : 'edited', user.id, i.reason, { starts_at: s.starts_at, ends_at: s.ends_at, title: s.title }, { starts_at: next.starts_at, ends_at: next.ends_at, title: next.title });
     if (moved && s.status === 'published') await tellSession(c, next, 'rescheduled', 'A session was rescheduled', 'Open Gotmygame to see the new time.');
     const venue = await heldVenue(c, s.id);
