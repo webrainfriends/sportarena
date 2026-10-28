@@ -419,7 +419,7 @@ test('issued reports are immutable, hash-verified, reproducible from their snaps
 
   // exports come from the snapshot
   const csv = must(await api('GET', `/sponsorship-roi-reports/${rep.id}/export`, { token: a.sponsor.token, query: { format: 'csv' } }));
-  assert.match(csv.content, /^recipient,status,period/); assert.match(csv.content, /page_views 5000/);
+  assert.match(csv.content, /^recipient,status,period,currency,/); assert.match(csv.content, /,SGD,/, 'every money row carries its currency'); assert.match(csv.content, /page_views 5000/);
   const xlsx = must(await api('GET', `/sponsorship-roi-reports/${rep.id}/export`, { token: a.sponsor.token, query: { format: 'xlsx' } }));
   assert.equal(xlsx.encoding, 'base64'); assert.equal(Buffer.from(xlsx.content, 'base64').subarray(0, 2).toString(), 'PK');
   const pdf = must(await api('GET', `/sponsorship-roi-reports/${rep.id}/export`, { token: a.sponsor.token, query: { format: 'pdf' } }));
@@ -480,4 +480,80 @@ test('inventory of teams and athletes: owners only, adult athletes only, and an 
   assert.equal((await api('GET', '/sponsor-inventory', { token: viewer.token, query: { target_type: 'athlete', target_id: ath.id } })).status, 404, 'hidden until the athlete is open to sponsors');
   must(await api('POST', '/me/sponsorship-profile', { token: ath.token, body: { open_to_sponsors: true } }));
   assert.equal(must(await api('GET', '/sponsor-inventory', { token: viewer.token, query: { target_type: 'athlete', target_id: ath.id } })).units.length, 1);
+});
+
+test('a department-scoped member can use ROI for their own department only; brand-wide assumptions stay brand-wide', async () => {
+  const w = await world();
+  // a corporate brand: organisation, identity, a finance member scoped to one department
+  const owner = await signup(['sponsor']);
+  const org = must(await api('POST', '/organisations', { token: owner.token, body: { name: `Acme ${++n}`, kind: 'company' } }), 201);
+  const brand = must(await api('POST', '/sponsors', { token: owner.token, body: { name: `Corp ${n}` } }), 201);
+  must(await api('POST', `/sponsors/${brand.id}/identity`, { token: owner.token, body: { sponsor_type: 'organization', organisation_id: org.id } }));
+  const dept = must(await api('POST', `/organisations/${org.id}/departments`, { token: owner.token, body: { name: 'Marketing' } }), 201);
+  const scoped = await signup(['athlete']);
+  must(await api('POST', `/organisations/${org.id}/members`, { token: owner.token, body: { person: scoped.handle, role: 'finance', department_id: dept.id } }), 201);
+  must(await api('POST', `/organisations/${org.id}/invite/respond`, { token: scoped.token, body: { accept: true } }));
+  const deal = async (extra = {}) => {
+    const d = must(await api('POST', '/sponsorships', { token: owner.token, body: { sponsor_id: brand.id, target_type: 'event', target_id: w.ev.id, deliverables: 'Title', starts_on: '2031-01-01', ends_on: '2031-12-31', lines: [money], ...extra } }), 201);
+    must(await api('PATCH', `/sponsorships/${d.id}`, { token: w.org.token, body: { status: 'active', version: d.terms_version } }));
+    await pool.query("UPDATE sponsorships SET starts_on=current_date - 30, ends_on=DATE '2032-12-31' WHERE id=$1", [d.id]);
+    return d;
+  };
+  const inDept = await deal({ department_id: dept.id }), brandWide = await deal();
+  const dash = must(await api('GET', '/sponsorship-intelligence', { token: scoped.token, query: { sponsor_id: brand.id } }));
+  assert.equal(dash.total, 1, 'only their department\'s agreement'); assert.equal(dash.agreements[0].agreement.id, inDept.id);
+  assert.equal(must(await api('GET', '/sponsorship-intelligence', { token: owner.token, query: { sponsor_id: brand.id } })).total, 2);
+  // reports: issue for the department's agreement, read and export it; one that includes a brand-wide agreement is not theirs to read
+  const body = { sponsorship_ids: [inDept.id], from: await inDays(-10), to: await inDays(0) };
+  const rep = must(await api('POST', '/sponsorship-roi-reports', { token: scoped.token, body }), 201);
+  assert.equal(must(await api('GET', `/sponsorship-roi-reports/${rep.id}`, { token: scoped.token })).verified, true);
+  must(await api('GET', `/sponsorship-roi-reports/${rep.id}/export`, { token: scoped.token, query: { format: 'csv' } }));
+  assert.equal((await api('POST', '/sponsorship-roi-reports', { token: scoped.token, body: { ...body, sponsorship_ids: [brandWide.id] } })).status, 403, 'a brand-wide agreement is outside the department');
+  const wide = must(await api('POST', '/sponsorship-roi-reports', { token: owner.token, body: { ...body, sponsorship_ids: [inDept.id, brandWide.id] } }), 201);
+  assert.equal((await api('GET', `/sponsorship-roi-reports/${wide.id}`, { token: scoped.token })).status, 404, 'a report that spans other departments is not readable');
+  assert.equal(must(await api('GET', '/sponsorship-roi-reports', { token: scoped.token })).length, 1);
+  // valuation assumptions are brand-wide
+  assert.equal((await api('GET', `/sponsors/${brand.id}/valuation-models`, { token: scoped.token })).status, 403);
+  assert.equal((await api('POST', `/sponsors/${brand.id}/valuation-models`, { token: scoped.token, body: { name: 'x1', currency: 'SGD', basis_note: 'department attempt at rates', assumptions: { page_views: { per: 1, value_cents: 1 } } } })).status, 403);
+});
+
+test('deliverable file evidence can be opened by both sides, never by outsiders, and the read is audit-logged', async () => {
+  const w = await world();
+  const a = await w.deal();
+  const d = must(await api('POST', `/sponsorships/${a.id}/deliverables`, { token: w.org.token, body: { kind: 'content', title: 'Reel', owed_by: 'recipient', due_on: await inDays(10), evidence_required: 'file' } }), 201);
+  const pdf = Buffer.from('%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n').toString('base64');
+  const sub = must(await api('POST', `/sponsorship-deliverables/${d.id}/evidence`, { token: w.org.token, body: { files: [{ file_name: 'reel-proof.pdf', data: pdf }], label: 'Proof' } }), 201);
+  assert.equal(sub.status, 'submitted');
+  const list = must(await api('GET', `/sponsorships/${a.id}/deliverables`, { token: a.sponsor.token }));
+  const ev = list[0].evidence[0];
+  assert.equal(ev.file_name, 'reel-proof.pdf'); assert.equal(ev.data, undefined, 'the list carries metadata only');
+  const file = must(await api('GET', `/sponsorship-deliverable-evidence/${ev.id}`, { token: a.sponsor.token }));
+  assert.equal(Buffer.from(file.data, 'base64').subarray(0, 4).toString(), '%PDF'); assert.equal(file.content_type, 'application/pdf');
+  must(await api('GET', `/sponsorship-deliverable-evidence/${ev.id}`, { token: w.org.token }));
+  assert.equal((await api('GET', `/sponsorship-deliverable-evidence/${ev.id}`, { token: (await signup(['sponsor'])).token })).status, 403);
+  assert.ok((await sql("SELECT 1 FROM audit_log WHERE action='sponsorship.deliverable_evidence.read' AND entity_id=$1", [ev.id])).length >= 2, 'reads are audit-logged');
+  assert.equal(JSON.stringify((await sql('SELECT file_enc FROM sponsorship_deliverable_evidence WHERE id=$1', [ev.id]))[0]).includes('PDF'), false, 'stored encrypted');
+});
+
+test('an agreement with money in several currencies keeps every currency in issued reports and exports, never combined', async () => {
+  const w = await world();
+  const a = await w.deal(`Multi${++n}`, [money, { ...money, currency: 'USD', label: 'USD fee', amount_cents: 70000 }]);
+  const rep = must(await api('POST', '/sponsorship-roi-reports', { token: a.sponsor.token, body: { sponsorship_ids: [a.id], from: await inDays(-10), to: await inDays(0) } }), 201);
+  const got = must(await api('GET', `/sponsorship-roi-reports/${rep.id}`, { token: a.sponsor.token }));
+  const rows = got.snapshot.table.rows;
+  assert.deepEqual(rows.map((r) => r.currency).sort(), ['SGD', 'USD'], 'one row per currency');
+  assert.equal(rows.find((r) => r.currency === 'USD').committed_cents, 280000);
+  assert.equal(rows.find((r) => r.currency === 'SGD').committed_cents, 400000);
+  assert.equal(rows.filter((r) => r.deliverables_accepted !== null).length, 1, 'non-money figures are not repeated on the second currency row');
+  const csv = must(await api('GET', `/sponsorship-roi-reports/${rep.id}/export`, { token: a.sponsor.token, query: { format: 'csv' } }));
+  assert.match(csv.content, /,SGD,400000,/); assert.match(csv.content, /,USD,280000,/);
+  assert.equal(csv.rows, 2);
+  // an estimate in a currency the agreement has no money in gets its own row and is never shown under another currency
+  const m = must(await api('POST', `/sponsors/${a.brand.id}/valuation-models`, { token: a.sponsor.token, body: { name: 'EUR plan', currency: 'EUR', basis_note: 'Our euro media plan rates', assumptions: { page_views: { per: 1000, value_cents: 1000 } } } }), 201);
+  await pool.query("INSERT INTO sponsor_exposure_signals(sponsorship_id, metric, day, value, source, source_ref, recorded_by) VALUES ($1,'page_views',current_date - 1, 2000,'SiteStats','export 3',$2)", [a.id, w.org.id]);
+  const rep2 = must(await api('POST', '/sponsorship-roi-reports', { token: a.sponsor.token, body: { sponsorship_ids: [a.id], from: await inDays(-10), to: await inDays(0), valuation_version_id: m.versions[0].id } }), 201);
+  const rows2 = must(await api('GET', `/sponsorship-roi-reports/${rep2.id}`, { token: a.sponsor.token })).snapshot.table.rows;
+  assert.deepEqual(rows2.map((r) => r.currency).sort(), ['EUR', 'SGD', 'USD']);
+  assert.equal(rows2.find((r) => r.currency === 'EUR').estimated_value_cents, 2000);
+  assert.equal(rows2.filter((r) => r.estimated_value_cents != null).length, 1);
 });
