@@ -11,6 +11,8 @@ import { buildScenario, SCENARIO_KINDS } from '../tender/award.js';
 import { lotsOf, credentialCheck } from '../tender/rfp.js';
 import { rubricSchema, technicalScore } from '../tender/scoring.js';
 import { lockedScores } from '../tender/evaluation.js';
+import { ensureServiceOrder, commitTenderOrder, addCallOffLine } from '../svc/from-tender.js';
+import { cancelOrderRecords } from '../svc/orders.js';
 
 const TAG = 'Tender zone';
 const BUDGET_CATEGORY = (cat) => (/ground|pitch|pool|venue|maint/i.test(cat) ? 'venue' : /crew|staff|ball/i.test(cat) ? 'staff' : /electric|wi-?fi|connect|equip|install/i.test(cat) ? 'equipment' : /travel|transport/i.test(cat) ? 'transport' : /cater/i.test(cat) ? 'catering' : 'other');
@@ -303,26 +305,16 @@ cap({
       if (!order) return { status: 'accepted', order: (await c.query('SELECT id, ref, status, amount_minor, currency FROM proc_orders WHERE award_line_id=$1', [l.id])).rows[0], replayed: true };
       let pos = 0;
       for (const m of p.milestones ?? []) await c.query('INSERT INTO proc_order_milestones(order_id, position, name, description, due_on) VALUES ($1,$2,$3,$4,$5)', [order.id, pos++, m.name, m.description ?? null, m.due_on]);
-      let budgetLine = null, note = null;
-      if (p.event_id) {
-        const eb = (await c.query('SELECT * FROM event_budgets WHERE event_id=$1 FOR UPDATE', [p.event_id])).rows[0];
-        if (eb && eb.currency !== p.currency) note = `The event budget is in ${eb.currency}; the commitment is recorded in ${p.currency} on the order only`;
-        else {
-          if (!eb) await c.query('INSERT INTO event_budgets(event_id, currency) VALUES ($1,$2) ON CONFLICT DO NOTHING', [p.event_id, p.currency]);
-          if (eb?.spend_cap_cents !== null && eb?.spend_cap_cents !== undefined) {
-            const used = (await c.query("SELECT coalesce(sum(committed_cents),0)::bigint AS s FROM event_budget_lines WHERE event_id=$1 AND direction='expense' AND status <> 'void'", [p.event_id])).rows[0].s;
-            if (Number(used) + Number(l.amount_minor) > Number(eb.spend_cap_cents)) throw conflict('Accepting would exceed the event spend cap. Ask the buyer to review the budget.');
-          }
-          budgetLine = (await c.query("INSERT INTO event_budget_lines(event_id, direction, category, name, planned_cents, committed_cents, status, proc_order_id, notes, created_by) VALUES ($1,'expense',$2,$3,$4,$4,'committed',$5,$6,$7) ON CONFLICT DO NOTHING RETURNING id",
-            [p.event_id, BUDGET_CATEGORY(p.category), `${order.ref} · ${lot.title}`.slice(0, 100), l.amount_minor, order.id, `Tender ${p.ref}, lot ${lot.code}. A commitment, not proof of delivery or payment.`, p.owner_user_id])).rows[0];
-        }
-      }
+      // one canonical order for delivery, acceptance, invoices and payments (#458) and one budget commitment on it
+      const { order: svcOrder, warning } = await ensureServiceOrder(c, order.id, user);
+      const { line: budgetLine, note } = await commitTenderOrder(c, svcOrder, p, BUDGET_CATEGORY(p.category), user);
       await c.query('INSERT INTO proc_commitments(order_id, event_id, budget_line_id, amount_minor, currency, note) VALUES ($1,$2,$3,$4,$5,$6)', [order.id, p.event_id, budgetLine?.id ?? null, l.amount_minor, l.currency, note]);
+      await auditLog(c, p.id, user.id, 'service_order_created', { order_id: order.id, service_order_id: svcOrder.id, warning: warning ?? null });
       await c.query("UPDATE proc_award_lines SET status='accepted', responded_by=$2, responded_at=now() WHERE id=$1", [l.id, user.id]);
       await auditLog(c, p.id, user.id, 'award_line_accepted', { line_id: l.id, order_id: order.id });
       await refreshAward(c, l.award_id);
       await tellUsers(c, await buyerIds(p, ['chair', 'author']), p, 'tender_award_accepted', 'Award accepted', `A supplier accepted lot ${l.lot_code} on tender ${p.ref}. Order ${order.ref} was created.`, `ac${l.id}`);
-      return { status: 'accepted', order: { id: order.id, ref: order.ref, status: order.status, amount_minor: order.amount_minor, currency: order.currency }, budget_note: note };
+      return { status: 'accepted', order: { id: order.id, ref: order.ref, status: order.status, amount_minor: order.amount_minor, currency: order.currency, service_order_id: svcOrder.id, service_order_number: svcOrder.number }, budget_note: note };
     });
   },
 });
@@ -334,9 +326,9 @@ cap({
   async handler({ user }, i) {
     if (i.role === 'supplier') {
       const ents = await myEntityIds(user);
-      return many('SELECT o.id, o.ref, o.project_id, p.ref AS tender_ref, p.title, o.lot_code, o.amount_minor, o.currency, o.status, o.contract_status, o.contract_type, o.service_start, o.service_end, o.ceiling_minor FROM proc_orders o JOIN proc_projects p ON p.id=o.project_id WHERE o.entity_id = ANY($1) ORDER BY o.created_at DESC LIMIT $2 OFFSET $3', [ents, i.limit, i.offset]);
+      return many('SELECT o.id, o.ref, o.project_id, p.ref AS tender_ref, p.title, o.lot_code, o.amount_minor, o.currency, o.status, o.contract_status, o.contract_type, o.service_start, o.service_end, o.ceiling_minor, o.svc_order_id FROM proc_orders o JOIN proc_projects p ON p.id=o.project_id WHERE o.entity_id = ANY($1) ORDER BY o.created_at DESC LIMIT $2 OFFSET $3', [ents, i.limit, i.offset]);
     }
-    return many(`SELECT o.id, o.ref, o.project_id, p.ref AS tender_ref, p.title, e.legal_name AS supplier, o.lot_code, o.amount_minor, o.currency, o.status, o.contract_status, o.contract_type, o.service_start, o.service_end, o.ceiling_minor
+    return many(`SELECT o.id, o.ref, o.project_id, p.ref AS tender_ref, p.title, e.legal_name AS supplier, o.lot_code, o.amount_minor, o.currency, o.status, o.contract_status, o.contract_type, o.service_start, o.service_end, o.ceiling_minor, o.svc_order_id
       FROM proc_orders o JOIN proc_projects p ON p.id=o.project_id JOIN supplier_entities e ON e.id=o.entity_id
       WHERE ($4::uuid IS NULL OR o.project_id=$4) AND (p.owner_user_id=$1 OR EXISTS (SELECT 1 FROM proc_members m WHERE m.project_id=p.id AND m.user_id=$1 AND m.revoked_at IS NULL) OR (p.venue_id IS NOT NULL AND EXISTS (SELECT 1 FROM venues vv WHERE vv.id=p.venue_id AND (vv.owner_id=$1 OR EXISTS (SELECT 1 FROM venue_staff vs WHERE vs.venue_id=vv.id AND vs.user_id=$1 AND vs.role='manager' AND vs.removed_at IS NULL)))) OR (p.organisation_id IS NOT NULL AND EXISTS (SELECT 1 FROM organisation_members om WHERE om.organisation_id=p.organisation_id AND om.user_id=$1 AND om.status='active' AND om.role IN ('owner','admin'))))
       ORDER BY o.created_at DESC LIMIT $2 OFFSET $3`, [user.id, i.limit, i.offset, i.project_id ?? null]);
@@ -362,7 +354,8 @@ cap({
     const [milestones, renewals] = await Promise.all([many('SELECT id, position, name, description, due_on, status, note, updated_at FROM proc_order_milestones WHERE order_id=$1 ORDER BY position', [o.id]), many('SELECT n, previous_service_end, new_service_end, added_ceiling_minor, created_at FROM proc_order_renewals WHERE order_id=$1 ORDER BY n', [o.id])]);
     const terms = { renewal_options: o.renewal_options, renewals_used: o.renewals_used, renewals_left: Math.max(0, o.renewal_options - o.renewals_used), renewal_term_months: o.renewal_term_months, renewal_ceiling_minor: o.renewal_ceiling_minor ? Number(o.renewal_ceiling_minor) : null, notice_days: o.notice_days,
       notice: o.notice_kind ? { kind: o.notice_kind, served_at: o.notice_served_at, effective_on: o.notice_effective_on } : null, milestones, renewals };
-    return { ...o, viewer: { buyer: can(roles, 'order'), supplier }, terms, award_line_status: line?.status, commitment: commit, call_offs: calloffs, framework: o.ceiling_minor ? { ceiling_minor: Number(o.ceiling_minor), committed_call_offs_minor: committed, remaining_minor: Number(o.ceiling_minor) - committed, note: 'A ceiling is not guaranteed spend. Actual invoices are tracked separately.' } : null };
+    const so = o.svc_order_id ? await one('SELECT id, number, status, fulfilment, billing, settlement, net_minor, gross_minor, currency FROM svc_orders WHERE id=$1', [o.svc_order_id]) : null;
+    return { ...o, service_order: so, viewer: { buyer: can(roles, 'order'), supplier }, terms, award_line_status: line?.status, commitment: commit, call_offs: calloffs, framework: o.ceiling_minor ? { ceiling_minor: Number(o.ceiling_minor), committed_call_offs_minor: committed, remaining_minor: Number(o.ceiling_minor) - committed, note: 'A ceiling is not guaranteed spend. Actual invoices are tracked separately.' } : null };
   },
 });
 
@@ -375,11 +368,17 @@ cap({
       const { o: o0, roles, supplier } = await orderFor(user, i.id, c);
       const o = (await c.query('SELECT * FROM proc_orders WHERE id=$1 FOR UPDATE', [o0.id])).rows[0];
       const buyer = can(roles, 'order');
-      if (i.action === 'start') { if (!buyer && !supplier) throw forbidden('Not allowed'); if (o.status !== 'confirmed') throw conflict(`The order is ${o.status}`); await c.query("UPDATE proc_orders SET status='in_progress', updated_at=now() WHERE id=$1", [o.id]); }
+      if (i.action === 'start') { if (!buyer && !supplier) throw forbidden('Not allowed'); if (o.svc_order_id) throw conflict('Delivery is run on the linked service order (visits, receiving and acceptance); this order follows it', { service_order_id: o.svc_order_id }); if (o.status !== 'confirmed') throw conflict(`The order is ${o.status}`); await c.query("UPDATE proc_orders SET status='in_progress', updated_at=now() WHERE id=$1", [o.id]); }
       else {
         if (!buyer) throw forbidden('Only the buying team can do that');
-        if (i.action === 'complete') { if (o.status !== 'in_progress') throw conflict('Only an order in progress can be completed'); await c.query("UPDATE proc_orders SET status='completed', updated_at=now() WHERE id=$1", [o.id]); }
-        else if (i.action === 'cancel') { if (!i.reason) throw badRequest('Say why'); if (['completed', 'cancelled'].includes(o.status)) throw conflict(`The order is ${o.status}`); await c.query("UPDATE proc_orders SET status='cancelled', cancelled_reason=$2, updated_at=now() WHERE id=$1", [o.id, i.reason]); await c.query("UPDATE event_budget_lines SET status='void' WHERE proc_order_id=$1", [o.id]); }
+        if (i.action === 'complete') { if (o.svc_order_id) throw conflict('Delivery is run on the linked service order (visits, receiving and acceptance); this order follows it', { service_order_id: o.svc_order_id }); if (o.status !== 'in_progress') throw conflict('Only an order in progress can be completed'); await c.query("UPDATE proc_orders SET status='completed', updated_at=now() WHERE id=$1", [o.id]); }
+        else if (i.action === 'cancel') { if (!i.reason) throw badRequest('Say why'); if (['completed', 'cancelled'].includes(o.status)) throw conflict(`The order is ${o.status}`);
+          if (o.svc_order_id) {
+            const so = (await c.query('SELECT * FROM svc_orders WHERE id=$1 FOR UPDATE', [o.svc_order_id])).rows[0];
+            if (!['pending_supplier', 'changes_proposed', 'confirmed'].includes(so.status) || (await c.query("SELECT 1 FROM svc_order_lines WHERE order_id=$1 AND status='active' AND (qty_accepted > 0 OR qty_invoiced > 0)", [so.id])).rowCount) throw conflict('Work was already accepted or invoiced: end the order with a termination on the service order', { service_order_id: so.id });
+            await cancelOrderRecords(c, so, i.reason);
+          }
+          await c.query("UPDATE proc_orders SET status='cancelled', cancelled_reason=$2, updated_at=now() WHERE id=$1", [o.id, i.reason]); await c.query("UPDATE event_budget_lines SET status='void' WHERE proc_order_id=$1", [o.id]); }
         else if (i.action === 'record_agreement') await c.query("UPDATE proc_orders SET contract_status='agreed', updated_at=now() WHERE id=$1 AND contract_status='pending'", [o.id]);
         else await c.query("UPDATE proc_orders SET contract_status='signed_recorded', updated_at=now() WHERE id=$1 AND contract_status='agreed'", [o.id]);
       }
@@ -409,6 +408,7 @@ cap({
       const used = Number((await c.query("SELECT coalesce(sum(amount_minor),0)::bigint AS s FROM proc_calloffs WHERE order_id=$1 AND status='approved'", [o.id])).rows[0].s);
       if (used + i.amount_minor > Number(o.ceiling_minor)) throw conflict('This call-off would exceed the framework ceiling. A ceiling change needs a new approved award.', { remaining_minor: Number(o.ceiling_minor) - used });
       const row = (await c.query('INSERT INTO proc_calloffs(order_id, amount_minor, description, service_date, requested_by, idempotency_key) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *', [o.id, i.amount_minor, i.description, i.service_date ?? null, user.id, i.idempotency_key ?? null])).rows[0];
+      if (o.svc_order_id) await addCallOffLine(c, o.id, row);
       await auditLog(c, o.project_id, user.id, 'call_off_created', { order_id: o.id, call_off_id: row.id, amount_minor: i.amount_minor });
       await tellUsers(c, await entityUserIds(o.entity_id, c, ['owner', 'bid_manager']), await getProject(o.project_id, c), 'tender_call_off', 'New call-off', `A call-off was placed on order ${o.ref}.`, `co${row.id}`);
       return row;

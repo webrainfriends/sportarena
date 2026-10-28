@@ -467,3 +467,29 @@ test('durable exports: CSV, XLSX and PDF are built by the worker, private to the
   assert.equal((await gen(stranger.token, 'supplier_report', o.s.p.id)).status, 404); assert.equal((await gen(o.u.token, 'supplier_report', o.s.p.id)).status, 404);
   assert.equal((await gen(o.s.owner.token, 'buyer_report', o.buyer.id)).status, 404);
 });
+
+test('RFQ evaluation integrity (#520): re-scoring keeps history, a declared conflict recuses the evaluator, and declarations are append-only', async () => {
+  const s1 = await supplier(), s2 = await supplier();
+  const { u, buyer } = await organiser();
+  const req = must(await requirement(buyer, u.token, { quantity: 3 }), 201);
+  const rfq = await rfqFlow(buyer, u.token, req, [s1, s2]);
+  const q1 = must(await quote(s1, rfq.id, 100000), 201), q2 = must(await quote(s2, rfq.id, 90000), 201);
+  const ev1 = must(await api('POST', `/quotes/${q1.id}/evaluate`, { token: u.token, body: { scores: { price: 7, quality: 8 }, rationale: 'Solid method statement' } }), 201);
+  const ev2 = must(await api('POST', `/quotes/${q1.id}/evaluate`, { token: u.token, body: { scores: { price: 7, quality: 5 }, rationale: 'Re-read the references: weaker' } }), 201);
+  assert.equal(ev2.id, ev1.id, 'one current evaluation per evaluator');
+  const hist = (await pool.query('SELECT scores, rationale FROM svc_evaluation_revisions WHERE evaluation_id=$1', [ev1.id])).rows;
+  assert.equal(hist.length, 1); assert.equal(hist[0].scores.quality, 8); assert.equal(hist[0].rationale, 'Solid method statement');
+  // conflict: declared once (idempotent), then the evaluator cannot score, shortlist or award that supplier; the other supplier is unaffected
+  const c1 = must(await api('POST', `/rfqs/${rfq.id}/conflicts`, { token: u.token, body: { profile_id: s2.p.id, reason: 'Family member owns this company' } }), 201);
+  const c2 = must(await api('POST', `/rfqs/${rfq.id}/conflicts`, { token: u.token, body: { profile_id: s2.p.id, reason: 'Family member owns this company' } }), 201);
+  assert.equal(c1.id, c2.id);
+  assert.equal((await api('POST', `/quotes/${q2.id}/evaluate`, { token: u.token, body: { scores: { price: 9 }, rationale: 'Cheapest' } })).status, 403);
+  assert.equal((await api('POST', `/quotes/${q2.id}/decision`, { token: u.token, body: { decision: 'shortlisted' } })).status, 403);
+  must(await api('POST', `/quotes/${q1.id}/evaluate`, { token: u.token, body: { scores: { price: 7, quality: 6 }, rationale: 'Still fine' } }), 201);
+  const fresh = must(await api('GET', `/rfqs/${rfq.id}`, { token: u.token }));
+  assert.equal((await api('POST', `/rfqs/${rfq.id}/award`, { token: u.token, body: { row_version: fresh.row_version, awards: [{ quote_id: q2.id }], justification: 'Lowest price' } })).status, 403, 'a recused person cannot award the supplier');
+  await assert.rejects(pool.query('DELETE FROM svc_rfq_conflicts WHERE id=$1', [c1.id]), /append-only/);
+  // people who work for a bidder cannot evaluate it, with no declaration needed
+  must(await api('POST', `/service-buyers/${buyer.id}/roles`, { token: u.token, body: { person: s1.owner.handle, role: 'evaluator' } }), 201);
+  assert.equal((await api('POST', `/quotes/${q1.id}/evaluate`, { token: s1.owner.token, body: { scores: { price: 10, quality: 10 }, rationale: 'Marking my own homework' } })).status, 403);
+});

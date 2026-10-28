@@ -534,3 +534,26 @@ test('deliverable file evidence can be opened by both sides, never by outsiders,
   assert.ok((await sql("SELECT 1 FROM audit_log WHERE action='sponsorship.deliverable_evidence.read' AND entity_id=$1", [ev.id])).length >= 2, 'reads are audit-logged');
   assert.equal(JSON.stringify((await sql('SELECT file_enc FROM sponsorship_deliverable_evidence WHERE id=$1', [ev.id]))[0]).includes('PDF'), false, 'stored encrypted');
 });
+
+test('an agreement with money in several currencies keeps every currency in issued reports and exports, never combined', async () => {
+  const w = await world();
+  const a = await w.deal(`Multi${++n}`, [money, { ...money, currency: 'USD', label: 'USD fee', amount_cents: 70000 }]);
+  const rep = must(await api('POST', '/sponsorship-roi-reports', { token: a.sponsor.token, body: { sponsorship_ids: [a.id], from: await inDays(-10), to: await inDays(0) } }), 201);
+  const got = must(await api('GET', `/sponsorship-roi-reports/${rep.id}`, { token: a.sponsor.token }));
+  const rows = got.snapshot.table.rows;
+  assert.deepEqual(rows.map((r) => r.currency).sort(), ['SGD', 'USD'], 'one row per currency');
+  assert.equal(rows.find((r) => r.currency === 'USD').committed_cents, 280000);
+  assert.equal(rows.find((r) => r.currency === 'SGD').committed_cents, 400000);
+  assert.equal(rows.filter((r) => r.deliverables_accepted !== null).length, 1, 'non-money figures are not repeated on the second currency row');
+  const csv = must(await api('GET', `/sponsorship-roi-reports/${rep.id}/export`, { token: a.sponsor.token, query: { format: 'csv' } }));
+  assert.match(csv.content, /,SGD,400000,/); assert.match(csv.content, /,USD,280000,/);
+  assert.equal(csv.rows, 2);
+  // an estimate in a currency the agreement has no money in gets its own row and is never shown under another currency
+  const m = must(await api('POST', `/sponsors/${a.brand.id}/valuation-models`, { token: a.sponsor.token, body: { name: 'EUR plan', currency: 'EUR', basis_note: 'Our euro media plan rates', assumptions: { page_views: { per: 1000, value_cents: 1000 } } } }), 201);
+  await pool.query("INSERT INTO sponsor_exposure_signals(sponsorship_id, metric, day, value, source, source_ref, recorded_by) VALUES ($1,'page_views',current_date - 1, 2000,'SiteStats','export 3',$2)", [a.id, w.org.id]);
+  const rep2 = must(await api('POST', '/sponsorship-roi-reports', { token: a.sponsor.token, body: { sponsorship_ids: [a.id], from: await inDays(-10), to: await inDays(0), valuation_version_id: m.versions[0].id } }), 201);
+  const rows2 = must(await api('GET', `/sponsorship-roi-reports/${rep2.id}`, { token: a.sponsor.token })).snapshot.table.rows;
+  assert.deepEqual(rows2.map((r) => r.currency).sort(), ['EUR', 'SGD', 'USD']);
+  assert.equal(rows2.find((r) => r.currency === 'EUR').estimated_value_cents, 2000);
+  assert.equal(rows2.filter((r) => r.estimated_value_cents != null).length, 1);
+});

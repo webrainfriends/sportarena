@@ -295,13 +295,19 @@ const COLUMNS = [
   { key: 'placement_impressions', label: 'Impressions', type: 'int' }, { key: 'placement_clicks', label: 'Clicks', type: 'int' }, { key: 'provider_reported', label: 'Provider-reported', type: 'text' },
   { key: 'estimated_value_cents', label: 'Estimate (assumption-based)', type: 'money' },
 ];
-const rowOf = (f) => {
-  const fin = f.finance.totals[0] ?? {}, m = (k) => f.exposure.metrics.find((x) => x.key === k)?.value ?? null;
-  return { recipient: f.agreement.beneficiary, status: f.agreement.status, period: `${f.window.from} to ${f.window.to}`, currency: fin.currency ?? f.agreement.currency ?? null,
-    committed_cents: fin.committed_cents ?? null, confirmed_cents: fin.confirmed_cents ?? null, outstanding_cents: fin.outstanding_cents ?? null,
-    deliverables_accepted: f.deliverables.accepted, deliverables_missed: f.deliverables.missed, placement_impressions: m('placement_impressions'), placement_clicks: m('placement_clicks'),
-    provider_reported: f.exposure.metrics.filter((x) => x.basis === 'provider_reported').map((x) => `${x.key} ${x.value} (${x.sources.join('/')})`).join('; '),
-    estimated_value_cents: f.valuation?.estimated_value_cents ?? null };
+/** One table row per currency of the agreement (currencies are never combined); the non-money figures are shown once, on the first row. */
+const rowsOf = (f) => {
+  const m = (k) => f.exposure.metrics.find((x) => x.key === k)?.value ?? null;
+  const shared = { recipient: f.agreement.beneficiary, status: f.agreement.status, period: `${f.window.from} to ${f.window.to}` };
+  const figures = { deliverables_accepted: f.deliverables.accepted, deliverables_missed: f.deliverables.missed, placement_impressions: m('placement_impressions'), placement_clicks: m('placement_clicks'),
+    provider_reported: f.exposure.metrics.filter((x) => x.basis === 'provider_reported').map((x) => `${x.key} ${x.value} (${x.sources.join('/')})`).join('; ') };
+  const blank = { deliverables_accepted: null, deliverables_missed: null, placement_impressions: null, placement_clicks: null, provider_reported: '' };
+  const cur = f.finance.totals.length ? f.finance.totals : [{ currency: f.agreement.currency ?? null, committed_cents: null, confirmed_cents: null, outstanding_cents: null }];
+  const rows = cur.map((t, i) => ({ ...shared, currency: t.currency ?? null, committed_cents: t.committed_cents, confirmed_cents: t.confirmed_cents, outstanding_cents: t.outstanding_cents, ...(i === 0 ? figures : blank),
+    estimated_value_cents: f.valuation && f.valuation.currency === t.currency ? f.valuation.estimated_value_cents : null }));
+  // the estimate is in the valuation model's own currency: if no money row has that currency it gets its own row, never a mislabelled cell
+  if (f.valuation && !rows.some((r) => r.currency === f.valuation.currency)) rows.push({ ...shared, currency: f.valuation.currency, committed_cents: null, confirmed_cents: null, outstanding_cents: null, ...blank, estimated_value_cents: f.valuation.estimated_value_cents });
+  return rows;
 };
 
 cap({
@@ -336,7 +342,7 @@ cap({
       }
       const used = new Set(facts.flatMap((f) => f.exposure.metrics.map((m) => m.key)));
       const generated = new Date().toISOString();
-      const rows = facts.map(rowOf);
+      const rows = facts.flatMap(rowsOf);
       const snapshot = {
         schema: 1, view: i.view, kind: i.kind, generated_at: generated, period: { from: i.from, to: i.to }, agreements: facts,
         table: { columns: COLUMNS, rows, totals: [] },

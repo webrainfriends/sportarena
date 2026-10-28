@@ -4,7 +4,7 @@ import { one, many, query } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { isSupportedCurrency } from '../currency.js';
 import { isAdmin, mustFind, mustOwn, PUBLIC_USER, sportBySlugOrId } from '../helpers.js';
-import { hiddenYouth, requireConsent } from '../youth.js';
+import { hiddenYouth, requireConsent, YOUTH_SQL } from '../youth.js';
 import { hasOrgGrant, orgFor } from '../org-access.js';
 import { closeRosterStint, openRosterStint } from '../career.js';
 
@@ -73,13 +73,17 @@ cap({
       one("SELECT round(avg(rating),2) AS avg, count(*)::int AS n FROM testimonials WHERE subject_type='team' AND subject_id=$1 AND status='published' AND visibility='public'", [i.id]),
     ]);
     const mine = user ? await one('SELECT role, status, availability FROM team_members WHERE team_id=$1 AND user_id=$2', [i.id, user.id]) : null;
+    // a verified guardian of a young member gets the guardians channel and pays that member's dues, without being on the team
+    const guardian = user ? !!(await one(
+      `SELECT 1 FROM team_members tm JOIN users u ON u.id=tm.user_id JOIN guardian_links l ON l.child_id=tm.user_id
+        WHERE tm.team_id=$1 AND tm.status='active' AND l.guardian_id=$2 AND l.status='active' AND l.revoked_at IS NULL AND (l.expires_at IS NULL OR l.expires_at > now()) AND ${YOUTH_SQL}`, [i.id, user.id])) : false;
     // young members are only listed for people who may see them (themselves, their guardians, the team's managers)
     const hidden = await hiddenYouth(user, members.map((m) => m.id));
     const [sub_teams, master] = await Promise.all([
       many("SELECT s.id, s.name, s.emoji, s.color, s.event_id, e.name AS event_name, (SELECT count(*)::int FROM team_members m WHERE m.team_id=s.id AND m.status='active') AS members FROM teams s LEFT JOIN events e ON e.id=s.event_id WHERE s.parent_team_id=$1 AND s.archived_at IS NULL ORDER BY s.created_at DESC", [i.id]),
       t.parent_team_id ? one('SELECT id, name, emoji, color FROM teams WHERE id=$1', [t.parent_team_id]) : null,
     ]);
-    return { ...t, sub_teams, master_team: master, members: members.filter((m) => !hidden.has(m.id)), members_restricted: hidden.size, awards, rating, can_manage: !!user && (await canManageTeam(user, t)), my_membership: mine };
+    return { ...t, sub_teams, master_team: master, members: members.filter((m) => !hidden.has(m.id)), members_restricted: hidden.size, awards, rating, can_manage: !!user && (await canManageTeam(user, t)), my_membership: mine, guardian_of_member: guardian };
   },
 });
 

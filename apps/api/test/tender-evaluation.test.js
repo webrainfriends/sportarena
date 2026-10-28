@@ -234,8 +234,9 @@ test('award: scenarios, human approval, atomic acceptance creates exactly one or
   assert.equal(ord.status, 'confirmed'); assert.equal(ord.contract_status, 'pending'); assert.equal(ord.award_line_status, 'accepted');
   assert.equal(ord.scope.supplier.legal_name, 'Supplier A Ltd'); assert.ok(ord.scope.submission.content_hash && ord.scope.award.approval_id);
   assert.equal((await call('POST', `/procurement-orders/${ord.id}/update`, { token: w.sup.A.user.token, body: { action: 'complete' } })).status, 403, 'a supplier cannot sign off its own work');
-  ok(await call('POST', `/procurement-orders/${ord.id}/update`, { token: w.sup.A.user.token, body: { action: 'start' } }));
-  ok(await call('POST', `/procurement-orders/${ord.id}/update`, { token: w.owner.token, body: { action: 'complete' } }));
+  // delivery is run on the linked service order (#520), so the contract record no longer starts or completes by hand
+  assert.ok(ord.service_order?.id, 'acceptance creates the one service order');
+  for (const [tok, action] of [[w.sup.A.user.token, 'start'], [w.owner.token, 'complete']]) assert.equal((await call('POST', `/procurement-orders/${ord.id}/update`, { token: tok, body: { action } })).status, 409);
   // debrief: a loser sees only their own result; no rank or bidder count unless disclosed
   const out = ok(await call('GET', `/proposals/${w.sup.B.pid}/outcome`, { token: w.sup.B.user.token }));
   assert.equal(out.technical.score, 60); assert.ok(!('rank' in out) && !('bidder_count' in out)); assert.ok(out.your_evaluated_cost);

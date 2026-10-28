@@ -3,12 +3,13 @@ import { Platform, Pressable, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { api } from '../api';
 import { useSession } from '../session';
-import { Btn, Card, Chip, Field, Screen, T } from '../ui';
+import { Btn, Card, Chip, Field, Screen, Sheet, T } from '../ui';
 import { c, grad, fam } from '../theme';
 import { ROLES } from '../roles';
 import { INTENT_COPY } from '../market/intent';
 import GoogleButton from '../google-button';
 import AppleButton from '../apple-button';
+import { OrgSsoButton, SsoFinish } from '../sso';
 import { Logo } from '../logo';
 
 
@@ -26,6 +27,7 @@ export default function Auth({ intent, initialMode, onClose } = {}) {
   const [busy, setBusy] = useState(false);
   const [info, setInfo] = useState(null);
   const [mfaToken, setMfaToken] = useState(null);
+  const [ssoParams, setSsoParams] = useState(null);   // callback values of an organisation sign-in that returned in-app (native)
 
   // Links from security emails open the app with ?reset_password=<code> or ?verify_email=<code>.
   useEffect(() => {
@@ -162,6 +164,7 @@ export default function Auth({ intent, initialMode, onClose } = {}) {
             <T size={12} color={c.mute} style={{ textAlign: 'center' }}>or</T>
             <GoogleButton onCredential={withGoogle} onError={setErr} />
             <AppleButton onCredential={withApple} onError={setErr} />
+            {mode === 'login' ? <OrgSsoButton email={f.email} onResult={setSsoParams} onError={setErr} /> : null}
             <T size={11} color={c.mute} style={{ textAlign: 'center', lineHeight: 16 }}>New Google or Apple accounts are checked by the administrator before they can add or change anything. Until then you can look around read-only.</T>
           </> : null}
           {mode === 'login' ? <Pressable onPress={() => { setErr(null); setInfo(null); setMode('forgot'); }} accessibilityRole="button" style={{ alignSelf: 'center', paddingVertical: 8 }}><T color={c.pink} weight="700" size={13}>Forgot your password?</T></Pressable> : null}
@@ -169,6 +172,10 @@ export default function Auth({ intent, initialMode, onClose } = {}) {
           {['forgot', 'reset', 'mfa'].includes(mode) ? <Pressable onPress={() => { setErr(null); setInfo(null); setMfaToken(null); setMode('login'); }} accessibilityRole="button" style={{ alignSelf: 'center', paddingVertical: 8 }}><T color={c.mute} weight="700" size={13}>Back to log in</T></Pressable> : null}
         </View>
       </Card>
+
+      <Sheet visible={!!ssoParams} onClose={() => setSsoParams(null)} title="Organisation sign-in">
+        {ssoParams ? <SsoFinish params={ssoParams} onDone={() => setSsoParams(null)} onCancel={() => setSsoParams(null)} /> : null}
+      </Sheet>
 
       {__DEV__ && mode === 'login' ? (
         <Card style={{ marginTop: 14 }} pad={14}>
