@@ -23,7 +23,7 @@ const PII = [['email', 'Email'], ['full_name', 'Full name'], ['phone', 'Phone'],
 
 export function Me() {
   const { user, signOut, refresh, toast, activeRole, setActiveRole } = useSession();
-  const { push } = useNav();
+  const { push, goTab } = useNav();
   const [reveal, setReveal] = useState(false);
   const [edit, setEdit] = useState(false);
   const [sp, setSp] = useState(false);
@@ -44,12 +44,12 @@ export function Me() {
         <Btn small title="Upload without cut-out" color={c.paper} ink={c.ink} disabled={photo.busy} onPress={() => photo.change({ asIs: true })} />
         {user.avatar_url ? <Btn small title="Remove photo" color={c.paper} ink={c.ink} disabled={photo.busy} onPress={photo.remove} /> : null}
       </View>
-      <Section title="Acting as" color={c.cyan}>
-        <T size={13} color={c.mute}>One login, several roles. Pick the one you want to use right now — the app shows that role's tools.</T>
-        <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
-          {user.roles.filter(isEditableRole).map((r) => <Chip key={r} label={roleLabel(r)} active={r === activeRole} onPress={() => { setActiveRole(r); toast(`Now acting as ${roleLabel(r)}`); }} />)}
+      <Section title="Your roles" color={c.cyan}>
+        <T size={13} color={c.mute}>One login, several roles. Switch the role you are working as on Home; each role has its own Today, Actions, Calendar, Inbox, Work and Insights.</T>
+        <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
+          <Btn small title="Open my command centre" onPress={() => goTab('Home')} />
+          <Btn small title="Add or remove roles" color={c.paper} ink={c.ink} onPress={() => setRolesForm(true)} />
         </View>
-        <Btn small title="Add or remove roles" color={c.paper} ink={c.ink} onPress={() => setRolesForm(true)} style={{ marginTop: 10, alignSelf: 'flex-start' }} />
       </Section>
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
         <Btn small title="View my public page" color={c.violet} onPress={() => push('Person', { id: user.id })} />
