@@ -14,6 +14,7 @@ import { canManageTeam } from './teams.js';
 import { sharedClearance } from './academy-athlete360.js';
 import { EDGE_COLS, RELS, canManageEntity, describe, ownerLike, personAccess } from '../graph.js';
 import { visibleEdges, withEnds } from './graph.js';
+import { ORG_STAFF, PERSON_PRIVATE, orgMedia, orgSponsorships, personRegistrations, personSponsorships, personTrainingForCoach } from '../graph-sources.js';
 
 const TAG = 'Sports Graph';
 const denied = (reason = 'Not shared with you') => ({ access: 'forbidden', reason });
@@ -148,7 +149,8 @@ cap({
   },
 });
 
-const DOMAINS = ['career', 'competition', 'result', 'achievement', 'contract', 'relationship', 'health', 'organisation'];
+const DOMAINS = ['career', 'competition', 'result', 'achievement', 'contract', 'relationship', 'health', 'organisation', 'registration', 'accreditation', 'travel', 'payment', 'invoice', 'sponsorship', 'assessment', 'media', 'training', 'opportunity', 'supplier'];
+const PERSON_ONLY_PRIVATE = ['payment', 'invoice', 'accreditation', 'travel', 'assessment', 'opportunity'];
 cap({
   name: 'get_graph_timeline', method: 'GET', path: '/graph/timeline', tag: TAG,
   summary: 'Chronological timeline across domains for a person or an organisation, newest first. Every row names its domain and links back to the source record (table + id); domains the caller may not see are left out and listed in hidden_domains. Page with offset.',
@@ -182,12 +184,17 @@ cap({
       if (gate('achievement')) for (const a of await awardsOf(i.id)) add('achievement', a.awarded_at, a.kind, a.name, a.competition, 'awards', a.id);
       if (gate('contract')) for (const c of await visibleContracts(user, access, i.id)) add('contract', c.starts_on ?? c.created_at, 'contract', c.title, [c.role, c.team, c.status].filter(Boolean).join(' · '), 'player_contracts', c.id);
       if (gate('relationship')) for (const e of await relationships(user, 'person', i.id)) add('relationship', e.valid_from, e.rel, `${e.from.label} ${e.rel_label} ${e.to.label}`, e.verification_state, 'graph_edges', e.id, { verification: e.verification_state });
+      const push = (rows) => { for (const r of rows) add(...r); };
+      for (const d of PERSON_ONLY_PRIVATE) if (want.includes(d)) { if (owner && !youthLimited) push(await PERSON_PRIVATE[d](i.id)); else hidden.push(d); }
+      if (gate('registration')) push(await personRegistrations(user, i.id, owner));
+      if (gate('sponsorship')) push(await personSponsorships(user, i.id, owner));
+      if (gate('training')) push(owner ? await PERSON_PRIVATE.training(i.id) : await personTrainingForCoach(user, i.id));
       if (want.includes('health')) {
         const h = youthLimited ? denied() : await availability(user, access, i.id, i.organisation_id);
         if (h.access === 'ok' && h.data.status && h.data.status !== 'unknown' && h.data.as_of) {
           add('health', h.data.as_of, 'availability', `Availability: ${String(h.data.status).replace(/_/g, ' ')}`, h.data.valid_until ? `valid until ${day(h.data.valid_until)}` : null, h.source, i.id);
           await audit(null, user.id, 'read_graph_timeline_health', 'users', i.id);
-        } else hidden.push('health');
+        } else if (h.access === 'forbidden') hidden.push('health');
       }
     } else {
       if (!(await one("SELECT 1 FROM organisations WHERE id=$1 AND status='active'", [i.id]))) throw notFound('Organisation');
@@ -197,7 +204,11 @@ cap({
         for (const s of await many('SELECT id, name, starts_on FROM org_seasons WHERE organisation_id=$1', [i.id])) add('organisation', s.starts_on, 'season', `Season ${s.name} began`, null, 'org_seasons', s.id);
       }
       if (want.includes('competition')) for (const e of await many("SELECT id, name, starts_on, kind FROM events WHERE organisation_id=$1 AND status <> 'draft' AND starts_on IS NOT NULL", [i.id])) add('competition', e.starts_on, e.kind, e.name, null, 'events', e.id);
-      for (const d of want) if (['career', 'result', 'achievement', 'contract', 'health'].includes(d)) hidden.push(d);
+      const staff = await canManageEntity(user, 'organisation', i.id);
+      const push = (rows) => { for (const r of rows) add(...r); };
+      for (const d of Object.keys(ORG_STAFF)) if (want.includes(d)) { if (staff) push(await ORG_STAFF[d](i.id)); else hidden.push(d); }
+      if (want.includes('sponsorship')) push(await orgSponsorships(i.id));
+      if (want.includes('media')) push(await orgMedia(i.id, staff));
     }
     const sorted = items.sort((a, b) => b.at.localeCompare(a.at) || a.source.id.localeCompare(b.source.id) || a.type.localeCompare(b.type));
     const rows = sorted.slice(i.offset, i.offset + i.limit);

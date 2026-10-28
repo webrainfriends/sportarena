@@ -18,8 +18,11 @@ const say = (e) => (e?.details?.code === 'stale_version' ? 'This was changed som
 const KINDS = [['all', 'All'], ['person', 'People'], ['organisation', 'Organisations'], ['team', 'Teams'], ['event', 'Events'], ['venue', 'Venues']];
 const ROUTE = { person: 'Athlete360', organisation: 'Organisation360', team: 'Team', event: 'Event', venue: 'Venue' };
 const VERIFY = { verified: ['Verified', c.mint], unverified: ['Not yet verified', c.sun], rejected: ['Rejected', c.red], claimed: ['Claimed', c.sun] };
-const DOMAIN_LABEL = { career: 'Career', competition: 'Matches', result: 'Results', achievement: 'Achievements', contract: 'Contracts', relationship: 'Network', health: 'Availability', organisation: 'Organisation' };
-const SOURCE_ROUTE = { career_memberships: 'CareerTimeline', player_contracts: 'PlayerContracts', teams: 'Team', events: 'Event' };
+const DOMAIN_LABEL = {
+  career: 'Career', competition: 'Matches', result: 'Results', achievement: 'Achievements', contract: 'Contracts', relationship: 'Network', health: 'Availability', organisation: 'Organisation',
+  registration: 'Registrations', accreditation: 'Badges', travel: 'Travel', payment: 'Payments', invoice: 'Invoices', sponsorship: 'Sponsors', assessment: 'Assessments', media: 'Media', training: 'Training', opportunity: 'Opportunities', supplier: 'Suppliers',
+};
+const SOURCE_ROUTE = { career_memberships: 'CareerTimeline', player_contracts: 'PlayerContracts', teams: 'Team', events: 'Event', trips: 'Trip', invoices: 'Invoice', accreditations: 'MyAccreditations' };
 const newKey = () => `web-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 
 const Locked = ({ reason }) => <Card color={c.violetSoft}><T size={13} color={c.mute}>🔒 {reason ?? 'Not shared with you'}</T></Card>;
@@ -83,7 +86,7 @@ export function GraphTimeline({ kind, id, organisation_id }) {
         <View style={{ gap: 8 }}>
           {d.items.map((it) => (
             <Row key={`${it.source.table}${it.source.id}${it.type}${it.at}`} title={it.title} sub={[day(it.at), it.summary].filter(Boolean).join(' · ')}
-              onPress={SOURCE_ROUTE[it.source.table] ? () => push(SOURCE_ROUTE[it.source.table], it.source.table === 'career_memberships' || it.source.table === 'player_contracts' ? {} : { id: it.source.id }) : undefined}
+              onPress={SOURCE_ROUTE[it.source.table] ? () => push(SOURCE_ROUTE[it.source.table], ['career_memberships', 'player_contracts', 'accreditations'].includes(it.source.table) ? {} : { id: it.source.id }) : undefined}
               right={<View style={{ gap: 4, alignItems: 'flex-end' }}><Tag label={DOMAIN_LABEL[it.domain] ?? it.domain} color={c.cyan} />{it.provenance === 'derived' ? <Tag label="Derived" color={c.violetSoft} /> : it.verification === 'verified' ? <Tag label="Verified" color={c.mint} /> : null}</View>} />
           ))}
           {d.next_offset ? <Btn small title="Show more" color={c.paper} ink={c.ink} onPress={() => setPages((p) => p + 1)} /> : null}

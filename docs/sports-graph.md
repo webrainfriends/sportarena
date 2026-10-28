@@ -32,7 +32,21 @@ repeat its academy sections; it reuses `sharedClearance` for the organisation-sh
 * Health is availability only, shown to the athlete/guardian or an organisation the athlete shared with (live revocation); every health read, external-id read and edge change is audit-logged.
 
 ## Sport coverage
-Results use the ontology's sport-neutral model (`outcome`, `rank`, `score`, `score_units`), so each family keeps its own units and no sport falls back to a silent default; a test walks the whole sports catalogue. Entities listed in the issue that live in their own module (payments, invoices, tickets, trips, media rights, assessments …) are *projected*: reachable through their source record, not yet rows on the graph timeline. `get_graph_schema` reports each entity as `native` or `projected`.
+Results use the ontology's sport-neutral model (`outcome`, `rank`, `score`, `score_units`), so each family keeps its own units and no sport falls back to a silent default; a test walks the whole sports catalogue. Every entity in the issue is on the graph except **Ticket**, for which the platform has no ticketing store to link (event budgets only plan ticket revenue); `get_graph_schema` reports it as `gap`. Modules that own their data are read at request time by `graph-sources.js` and appear on the timeline with a link back to the source record:
+
+| Domain | Source | Audience |
+|---|---|---|
+| registration (with division) | `reg_registrations`, `reg_divisions` | person, guardian, registering team managers; org staff |
+| accreditation | `accreditations` | person, guardian; org staff (their events) |
+| travel | `trips`, `trip_participants` | person, guardian; org staff |
+| payment | `payments` | payer only |
+| invoice | `invoices` | bill-to; organisation staff (their venues) |
+| sponsorship | `sponsorships` | person, guardian, the sponsor's owner; public for a team or event |
+| assessment | `academy_assessments` (approved) | person, guardian; org owners and admins |
+| media | `mr_assets` | published public assets for everyone; staff also see unpublished |
+| training | `training_sessions` | person, guardian, their coach |
+| opportunity | `billboard_responses` | person, guardian |
+| supplier | `svc_orders`, `svc_profiles` | organisation staff |
 
 ## Migration plan
 `124_sports_graph.sql` only adds four tables and indexes. No existing row is touched, nothing is backfilled or dropped.

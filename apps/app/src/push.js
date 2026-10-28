@@ -104,6 +104,9 @@ export function parseTarget(t) {
   if (kind === 'sponsorship' && id) return ['SponsorDeal', { id }];
   if (kind === 'organisation' && id) return ['Org', { id }];
   if (kind === 'organisations') return ['Orgs', {}];
+  if (kind === 'graph') return ['SportsGraph', {}];
+  if (kind === 'athlete-360' && id) return ['Athlete360', { id }];
+  if (kind === 'organisation-360' && id) return ['Organisation360', { id }];
   if (kind === 'tender' && id) return ['TenderNotice', { id }];
   if (kind === 'tender-console' && id) return ['TenderConsole', { id }];
   if (kind === 'tender-proposal' && id) return ['TenderProposal', { id }];

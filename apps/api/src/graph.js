@@ -25,13 +25,13 @@ export const COVERAGE = [
   ['Doctor', 'native', 'users (role doctor)'], ['Physio', 'native', 'users (role physio)'], ['Agent', 'native', 'graph_edges represents'], ['Guardian', 'native', 'guardian links'],
   ['Organisation', 'native', 'organisations'], ['Federation', 'native', 'governing_bodies (an organisation)'], ['Association', 'native', 'organisations'], ['League', 'native', 'events (kind league) / governing_bodies'],
   ['Club', 'native', 'organisations'], ['Academy', 'native', 'organisations'], ['School/University', 'native', 'organisations'], ['Team', 'native', 'teams'], ['Competition', 'native', 'events'],
-  ['Season', 'native', 'org_seasons (timeline)'], ['Division', 'projected', 'events / governing_bodies'], ['Event', 'native', 'events'], ['Fixture', 'native', 'fixtures'], ['Match', 'native', 'games'],
-  ['Venue', 'native', 'venues'], ['Sponsor', 'projected', 'sponsors'], ['Supplier', 'projected', 'supplier accounts'], ['Contract', 'native', 'player_contracts (timeline, 360)'], ['Opportunity', 'projected', 'billboard / opportunities'],
-  ['Registration', 'projected', 'registrations'], ['Accreditation', 'projected', 'accreditations'], ['Ticket', 'projected', 'tickets'], ['Payment', 'projected', 'payments'], ['Invoice', 'projected', 'invoices'],
-  ['Travel', 'projected', 'trips'], ['Media rights/assets', 'projected', 'media_rights_assets'], ['Health episode', 'native', 'clinical clearances (availability only, consent-gated)'], ['Training session', 'projected', 'training plans'],
-  ['Assessment', 'projected', 'assessments'], ['Result', 'native', 'game_participants (every sport: outcome, score, rank)'], ['Achievement', 'native', 'awards'],
+  ['Season', 'native', 'org_seasons (timeline)'], ['Division', 'native', 'reg_divisions (shown on registrations)'], ['Event', 'native', 'events'], ['Fixture', 'native', 'fixtures'], ['Match', 'native', 'games'],
+  ['Venue', 'native', 'venues'], ['Sponsor', 'native', 'sponsorships (timeline; sponsor owners and the athlete)'], ['Supplier', 'native', 'svc_orders / svc_profiles (organisation timeline, staff)'], ['Contract', 'native', 'player_contracts (timeline, 360)'], ['Opportunity', 'native', 'billboard_responses (timeline)'],
+  ['Registration', 'native', 'reg_registrations (timeline)'], ['Accreditation', 'native', 'accreditations (timeline)'], ['Ticket', 'gap', 'no ticketing store exists in the platform yet; nothing to link'], ['Payment', 'native', 'payments (timeline, payer only)'], ['Invoice', 'native', 'invoices (timeline, bill-to and organisation staff)'],
+  ['Travel', 'native', 'trips + trip_participants (timeline)'], ['Media rights/assets', 'native', 'mr_assets (timeline)'], ['Health episode', 'native', 'clinical clearances (availability only, consent-gated)'], ['Training session', 'native', 'training_sessions (timeline)'],
+  ['Assessment', 'native', 'academy_assessments (timeline, approved only)'], ['Result', 'native', 'game_participants (every sport: outcome, score, rank)'], ['Achievement', 'native', 'awards'],
 ].map(([entity, status, stored_in]) => ({ entity, status, stored_in }));
-// native = the graph search/360/timeline reads it today; projected = lives in its own canonical table and is reachable through the source link; no entity is copied.
+// native = search, 360 or timeline read it today; projected = lives in its own canonical table, reachable through the source link; gap = no store exists. No entity is copied.
 
 const SELECTS = {
   person: { sql: `SELECT u.id, u.display_name AS label, '@' || u.handle AS sub, u.avatar_emoji AS emoji FROM users u WHERE u.id = ANY($1::uuid[])` },
