@@ -107,7 +107,7 @@ export function priceWindow(ctx, resource, start, end, quantity = 1) {
 
 // ------------------------------------------------------------------ window validation
 /** Checks a booking window against the venue's rules. Staff overrides skip the "customer" rules. */
-export function checkWindow(ctx, resource, start, end, { staff = false, now = new Date() } = {}) {
+export function checkWindow(ctx, resource, start, end, { staff = false, walkIn = false, now = new Date() } = {}) {
   const { venue } = ctx;
   if (!(end > start)) throw badRequest('ends_at must be after starts_at');
   const dur = (end - start) / 60_000;
@@ -116,8 +116,9 @@ export function checkWindow(ctx, resource, start, end, { staff = false, now = ne
   const l = toLocal(start, venue.timezone);
   if (l.minutes % resource.slot_minutes !== 0) throw badRequest(`Slots on ${resource.name} start on the ${resource.slot_minutes}-minute grid`);
   if (staff) return { slots };
-  if (start < now) throw badRequest('Cannot book in the past');
-  if (start < new Date(now.getTime() + venue.min_notice_minutes * 60_000)) throw badRequest(`${venue.name} needs at least ${venue.min_notice_minutes} minutes' notice`);
+  // a walk-in at the front desk may start in the slot that is running now, so the notice rule does not apply; every other rule still does
+  if (start < (walkIn ? new Date(now.getTime() - resource.slot_minutes * 60_000) : now)) throw badRequest('Cannot book in the past');
+  if (!walkIn && start < new Date(now.getTime() + venue.min_notice_minutes * 60_000)) throw badRequest(`${venue.name} needs at least ${venue.min_notice_minutes} minutes' notice`);
   if (start > new Date(now.getTime() + venue.max_advance_days * 864e5)) throw badRequest(`${venue.name} takes bookings up to ${venue.max_advance_days} days ahead`);
   if (slots < resource.min_slots) throw badRequest(`${resource.name} needs at least ${resource.min_slots} slot(s) per booking`);
   if (slots > resource.max_slots) throw badRequest(`${resource.name} allows at most ${resource.max_slots} slots per booking`);
@@ -211,10 +212,10 @@ export async function repriceReservation(c, reservationId) {
 const newCode = () => randomBytes(5).toString('base64url').replace(/[^A-Za-z0-9]/g, '').slice(0, 7).toUpperCase().padEnd(7, 'X');
 
 /** Core insert for one line. Caller holds the resource locks. Throws on any rule violation. */
-async function placeLine(c, ctx, resource, line, { reservationId, userId, teamId, staff, source, ignoreBlocks, price, guest, note }) {
+async function placeLine(c, ctx, resource, line, { reservationId, userId, teamId, staff, walkIn, source, ignoreBlocks, price, guest, note }) {
   const start = new Date(line.starts_at), end = new Date(line.ends_at);
   const qty = line.quantity ?? 1;
-  const { slots } = checkWindow(ctx, resource, start, end, { staff });
+  const { slots } = checkWindow(ctx, resource, start, end, { staff, walkIn });
   if (line.players && resource.max_players && line.players > resource.max_players * qty) throw badRequest(`${resource.name} fits ${resource.max_players * qty} players`);
   if (qty > resource.capacity) throw badRequest(`${resource.name} has ${resource.capacity} unit(s)`);
   if (!ignoreBlocks) {
@@ -243,13 +244,13 @@ export async function loadResources(c, ids) {
  * Create a reservation: one or many lines across one or many areas / venues, all-or-nothing.
  * `collect` (used by quotes) records per-line problems instead of throwing so the caller can show every issue at once.
  */
-export async function createReservation(c, { user, userId = user.id, items, promo_codes = [], note, billing, ...rest }) {
+export async function createReservation(c, { user, userId = user.id, items, promo_codes = [], note, billing, walkInGuest = false, ...rest }) {
   const resources = await loadResources(c, items.map((i) => i.resource_id));
   const currencies = await currenciesOf(c, [...resources.values()]);
-  const rs = (await c.query('INSERT INTO reservations(code, user_id, currency, promo_codes, note, billing_enc) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *',
-    [newCode(), userId, currencies.length > 1 ? 'MULTI' : currencies[0], promo_codes, note ?? null, billing ? encryptBilling(billing) : null])).rows[0];
+  const rs = (await c.query('INSERT INTO reservations(code, user_id, currency, promo_codes, note, billing_enc, walk_in) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *',
+    [newCode(), userId, currencies.length > 1 ? 'MULTI' : currencies[0], promo_codes, note ?? null, billing ? encryptBilling(billing) : null, walkInGuest])).rows[0];
   const out = await addLines(c, rs, { userId, items, note, ...rest });
-  const deadline = rest.staff ? null : await applyPaymentDeadline(c, rs.id, out.venueIds);
+  const deadline = rest.staff || rest.walkIn ? null : await applyPaymentDeadline(c, rs.id, out.venueIds);
   return { reservationId: rs.id, ...out, payment_deadline: deadline };
 }
 
@@ -264,7 +265,7 @@ export async function applyPaymentDeadline(c, reservationId, venueIds) {
 }
 
 /** Place lines on an existing reservation (also used to add slots later). Locks every area first, in a stable order. */
-export async function addLines(c, rs, { userId, items, team_id, staff = false, source = 'user', ignoreBlocks = false, prices, guest, note, collect = false }) {
+export async function addLines(c, rs, { userId, items, team_id, staff = false, walkIn = false, source = 'user', ignoreBlocks = false, prices, guest, note, collect = false }) {
   const resources = await loadResources(c, items.map((i) => i.resource_id));
   await lockResources(c, items.map((i) => i.resource_id));
   const ctxs = new Map();
@@ -273,7 +274,7 @@ export async function addLines(c, rs, { userId, items, team_id, staff = false, s
     const res = resources.get(line.resource_id);
     if (!ctxs.has(res.venue_id)) ctxs.set(res.venue_id, await loadVenueCtx(c, res.venue_id));
     try {
-      lines.push(await placeLine(c, ctxs.get(res.venue_id), res, line, { reservationId: rs.id, userId, teamId: team_id, staff, source, ignoreBlocks, price: prices?.[idx], guest, note }));
+      lines.push(await placeLine(c, ctxs.get(res.venue_id), res, line, { reservationId: rs.id, userId, teamId: team_id, staff, walkIn, source, ignoreBlocks, price: prices?.[idx], guest, note }));
     } catch (e) {
       if (!collect || !e.status) throw e;
       problems.push({ index: idx, resource_id: res.id, code: e.code, message: e.message });

@@ -12,6 +12,7 @@ import { fulfilServiceInvoicePaid } from '../svc/finance.js';
 import { fulfilMediaFeePaid } from '../media-fees.js';
 import { raiseException, recordSale, syncRefunds } from '../settlement.js';
 import { coachSessionDone } from '../rewards/activity.js';
+import { saleDue, confirmOnlineSalePayment } from '../pos/due.js';
 import { coverFor, startUse, settleUse } from '../cover.js';
 
 export { paymentsEnabled, enabledProviders };
@@ -41,8 +42,16 @@ export async function describePurpose(c, type, id) {
     return k && { payerId: k.payer_id, amount: Number(k.amount), currency: k.currency, name: `Session package with ${k.display_name}`, payable: k.status === 'awaiting_payment' && Number(k.amount) > 0 };
   }
   if (type === 'venue_invoice') {
-    const i = await q("SELECT i.user_id AS payer_id, i.total_cents - i.credits_cents AS amount, i.currency, i.status, i.number, v.name, v.payment_mode FROM invoices i JOIN venues v ON v.id=i.venue_id WHERE i.id=$1 AND i.kind='invoice' FOR UPDATE OF i");
-    return i && { payerId: i.payer_id, amount: Number(i.amount), currency: i.currency, name: `Booking ${i.number} · ${i.name}`, payable: i.status === 'open' && i.payment_mode !== 'pay_at_venue' && Number(i.amount) > 0 };
+    const i = await q("SELECT i.user_id AS payer_id, i.total_cents - i.credits_cents AS amount, i.currency, i.status, i.number, v.name, v.payment_mode, i.pos_sale_id FROM invoices i JOIN venues v ON v.id=i.venue_id WHERE i.id=$1 AND i.kind='invoice' FOR UPDATE OF i");
+    // a front-desk invoice is only ever paid through its sale (so the drawer, the sale and the invoice cannot disagree)
+    const inDesk = i && !i.pos_sale_id && (await c.query("SELECT 1 FROM pos_sale_invoices psi JOIN pos_sales s ON s.id=psi.sale_id WHERE psi.invoice_id=$1 AND s.status='awaiting_payment'", [id])).rowCount > 0;
+    return i && { payerId: i.payer_id, amount: Number(i.amount), currency: i.currency, name: `Booking ${i.number} · ${i.name}`, payable: !i.pos_sale_id && !inDesk && i.status === 'open' && i.payment_mode !== 'pay_at_venue' && Number(i.amount) > 0 };
+  }
+  if (type === 'pos_sale') {
+    const sale = await q("SELECT s.id, s.cashier_id AS payer_id, s.currency, s.status, v.name FROM pos_sales s JOIN venues v ON v.id=s.venue_id WHERE s.id=$1 FOR UPDATE OF s");
+    if (!sale) return null;
+    const due = await saleDue(c, sale.id);
+    return { payerId: sale.payer_id, amount: due.total, currency: sale.currency, name: `Front desk sale · ${sale.name}`, payable: sale.status === 'awaiting_payment' && due.total > 0 };
   }
   if (type === 'wallet_topup') {
     const t = await q("SELECT user_id AS payer_id, amount_cents AS amount, currency, status FROM wallet_topups WHERE id=$1 FOR UPDATE");
@@ -62,7 +71,9 @@ export async function describePurpose(c, type, id) {
   }
   if (type === 'academy_charge') {
     const x = await q("SELECT ch.payer_id, ch.amount_minor - ch.settled_minor - ch.adjusted_minor - coalesce((SELECT sum(i.credits_cents) FROM invoices i WHERE i.academy_charge_id=ch.id AND i.kind='invoice' AND i.status='open'),0) AS amount, ch.currency, ch.status, ch.kind, o.name, o.status AS org_status FROM academy_charges ch JOIN organisations o ON o.id=ch.organisation_id WHERE ch.id=$1 FOR UPDATE OF ch");
-    return x && { payerId: x.payer_id, amount: Number(x.amount), currency: x.currency, name: `Academy ${x.kind} · ${x.name}`, payable: x.status === 'awaiting_payment' && Number(x.amount) > 0 };
+    // a fee that is part of a front-desk sale waiting for payment is settled there, not online
+    const inDesk = x && (await c.query("SELECT 1 FROM pos_sale_lines l JOIN pos_sales s ON s.id=l.sale_id WHERE l.charge_id=$1 AND s.status='awaiting_payment'", [id])).rowCount > 0;
+    return x && { payerId: x.payer_id, amount: Number(x.amount), currency: x.currency, name: `Academy ${x.kind} · ${x.name}`, payable: !inDesk && x.status === 'awaiting_payment' && Number(x.amount) > 0 };
   }
   if (type === 'media_rights_fee') {
     const x = await q("SELECT f.payer_id, f.amount_minor AS amount, f.currency, f.status, f.number, o.name FROM mr_fees f JOIN mr_licences l ON l.id=f.licence_id JOIN media_partners m ON m.id=l.partner_id JOIN organisations o ON o.id=m.organisation_id WHERE f.id=$1 FOR UPDATE OF f");
@@ -86,6 +97,7 @@ async function fulfil(c, type, id, payment) {
     appointment: "UPDATE appointments SET payment_status='paid', updated_at=now() WHERE id=$1 AND payment_status='unpaid' AND status IN ('requested','confirmed')",
   }[type];
   if (type === 'venue_invoice') return markInvoicePaid(c, id, { method: 'online' });
+  if (type === 'pos_sale') return confirmOnlineSalePayment(c, id, payment);
   if (type === 'wallet_topup') return completeTopup(c, id);
   if (type === 'gift_card') return activateGiftCard(c, id);
   if (type === 'venue_plan') return activateUserPlan(c, id);

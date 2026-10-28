@@ -3,6 +3,26 @@ import { query, tx } from '../db.js';
 import { notify } from '../notify.js';
 import { toMajor } from '../currency.js';
 
+/**
+ * Start buying a plan for someone: the terms are copied from the plan now, and the plan starts when it is paid (activateUserPlan).
+ * One path for the app's own checkout and for the front desk, so a plan means the same thing wherever it is sold.
+ */
+export async function startUserPlan(c, planId, userId) {
+  const p = (await c.query('SELECT p.*, v.currency FROM venue_plans p JOIN venues v ON v.id=p.venue_id WHERE p.id=$1 AND p.active', [planId])).rows[0];
+  if (!p) return null;
+  if (p.kind === 'membership') {
+    await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`member:${userId}:${p.venue_id}`]);
+    if ((await c.query("SELECT 1 FROM user_plans WHERE user_id=$1 AND venue_id=$2 AND kind='membership' AND status='awaiting_payment' AND created_at > now() - interval '1 day'", [userId, p.venue_id])).rowCount)
+      return { error: 'You already have a membership waiting for payment at this venue' };
+    if ((await c.query("SELECT 1 FROM user_plans WHERE user_id=$1 AND venue_id=$2 AND kind='membership' AND status='active' AND expires_at > now() + interval '30 days'", [userId, p.venue_id])).rowCount)
+      return { error: 'You are already a member here — you can renew in the last 30 days' };
+  }
+  return { plan: (await c.query(
+    `INSERT INTO user_plans(plan_id, venue_id, user_id, kind, name, price_cents, currency, discount_bp, sessions_total, sessions_left, session_value_cents, duration_days, resource_ids, includes, auto_renew)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9,$10,$11,$12,$13,$14) RETURNING id, kind, name, status, price_cents, currency`,
+    [p.id, p.venue_id, userId, p.kind, p.name, p.price_cents, p.currency, p.discount_bp, p.sessions, p.session_value_cents, p.duration_days ?? p.valid_days, p.resource_ids, p.includes, p.auto_renew])).rows[0] };
+}
+
 /** Payment confirmed: the plan starts. A renewal starts when the current membership ends. */
 export async function activateUserPlan(c, id) {
   const p = (await c.query("SELECT * FROM user_plans WHERE id=$1 AND status='awaiting_payment' FOR UPDATE", [id])).rows[0];
