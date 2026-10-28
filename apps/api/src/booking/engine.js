@@ -356,7 +356,7 @@ export async function cancelBookings(c, bookingIds, { actor, byVenue, reason, wa
     const what = `${b.resource_name} at ${venue.name}, ${b.starts_at.toISOString()}`;
     const data = { booking_id: id, reservation_id: b.reservation_id, venue_id: venue.id, refund_cents: refund };
     if (silent) { /* the caller sends its own message */ } else if (byVenue && b.user_id !== actor.id) {
-      await notify(c, b.user_id, { kind: 'booking_cancelled', title: 'Your booking was cancelled by the venue', body: `${what}.${reason ? ` Reason: ${reason}.` : ''} You're refunded in full.`, data });
+      await notify(c, b.user_id, { kind: 'booking_cancelled', title: 'Your booking was cancelled by the venue', body: `${what}.${reason ? ` Reason: ${reason}.` : ''} You're refunded in full.`, data, comm: { essential: true } });
     } else {
       await notify(c, b.user_id, { kind: 'booking_cancelled', title: 'Booking cancelled', body: `${what}. Refund due: ${refund} (minor units).`, data });
       await notifyVenueTeam(c, venue, actor.id, { kind: 'booking_cancelled', title: 'A booking was cancelled', body: what, data });

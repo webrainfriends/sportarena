@@ -9,10 +9,19 @@ import { Btn, Card, Chip, Empty, ErrorBox, Field, HScroll, Loading, T, Tag } fro
 import { EntityPicker } from '../entity-picker';
 import { c } from '../theme';
 
-/** Notifications screen: add / verify / stop WhatsApp. `onChanged` reloads the channel switches. */
-export function WhatsAppCard({ onChanged }) {
+const NUMBER_COPY = {
+  whatsapp: { title: 'WhatsApp', blurb: 'Bookings, fees, team and event messages on WhatsApp. Security codes and health messages are never sent here.', stop: 'Stop WhatsApp', on: 'WhatsApp is on 💬', sent: 'Code sent on WhatsApp', via: 'on WhatsApp', label: 'WhatsApp number', off: 'WhatsApp turned off' },
+  sms: { title: 'SMS', blurb: 'Fee reminders, session and booking updates by text message. Reply STOP to any message to opt out. Security codes and health messages are never sent here.', stop: 'Stop SMS', on: 'SMS is on 📱', sent: 'Code sent by SMS', via: 'by SMS', label: 'Mobile number', off: 'SMS turned off' },
+};
+
+/**
+ * Notifications screen: add / verify / stop a WhatsApp or SMS number. One card for both channels (same API shape: /me/whatsapp, /me/sms).
+ * `onChanged` reloads the channel switches.
+ */
+export function NumberCard({ channel = 'whatsapp', onChanged }) {
   const { toast } = useSession();
-  const st = useLoad(() => api.get('/me/whatsapp'), []);
+  const k = NUMBER_COPY[channel], base = `/me/${channel}`;
+  const st = useLoad(() => api.get(base), [base]);
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
@@ -25,32 +34,34 @@ export function WhatsAppCard({ onChanged }) {
   if (st.error) return <Card><ErrorBox error={st.error} onRetry={st.reload} /></Card>;
   return (
     <Card>
-      <T weight="700">WhatsApp</T>
-      <T size={13} color={c.mute} style={{ marginTop: 2 }}>Bookings, team and event messages on WhatsApp. Security codes and health messages are never sent here.</T>
-      {!s.available ? <T size={13} color={c.mute} style={{ marginTop: 8 }}>WhatsApp is not set up on this server yet.</T> : s.state === 'verified' ? (
+      <T weight="700">{k.title}</T>
+      <T size={13} color={c.mute} style={{ marginTop: 2 }}>{k.blurb}</T>
+      {!s.available ? <T size={13} color={c.mute} style={{ marginTop: 8 }}>{k.title} is not set up on this server yet.</T> : s.state === 'verified' ? (
         <View style={{ marginTop: 10, gap: 8 }}>
           <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}><Tag label="On" /><T size={13}>{s.number}</T></View>
-          <Btn small title="Stop WhatsApp" color={c.paper} ink={c.red} loading={busy} style={{ alignSelf: 'flex-start' }} onPress={() => run(() => api.del('/me/whatsapp'), 'WhatsApp turned off')} />
+          <Btn small title={k.stop} color={c.paper} ink={c.red} loading={busy} style={{ alignSelf: 'flex-start' }} accessibilityLabel={k.stop} onPress={() => run(() => api.del(base), k.off)} />
         </View>
       ) : s.state === 'pending_code' ? (
         <View style={{ marginTop: 10, gap: 8 }}>
-          <T size={13}>We sent a 6-digit code to {s.number} on WhatsApp.</T>
+          <T size={13}>We sent a 6-digit code to {s.number} {k.via}.</T>
           <Field label="Code" value={code} onChangeText={(v) => setCode(v.replace(/\D/g, '').slice(0, 6))} keyboardType="number-pad" maxLength={6} />
           <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-            <Btn small title="Confirm" loading={busy} disabled={code.length !== 6} onPress={() => run(async () => { await api.post('/me/whatsapp/confirm', { code }); setCode(''); }, 'WhatsApp is on 💬')} />
-            <Btn small title="Use another number" color={c.paper} onPress={() => run(() => api.del('/me/whatsapp'))} />
+            <Btn small title="Confirm" loading={busy} disabled={code.length !== 6} onPress={() => run(async () => { await api.post(`${base}/confirm`, { code }); setCode(''); }, k.on)} />
+            <Btn small title="Use another number" color={c.paper} onPress={() => run(() => api.del(base))} />
           </View>
         </View>
       ) : (
         <View style={{ marginTop: 10, gap: 8 }}>
-          {s.state === 'opted_out' ? <T size={13} color={c.mute}>WhatsApp is off for {s.number}. Verify a number to switch it back on.</T> : null}
-          <Field label="WhatsApp number" hint="with the country code, starting with +" value={phone} onChangeText={setPhone} keyboardType="phone-pad" maxLength={24} />
-          <Btn small title="Send me a code" loading={busy} disabled={phone.replace(/\D/g, '').length < 8} style={{ alignSelf: 'flex-start' }} onPress={() => run(() => api.post('/me/whatsapp/verify', { phone }), 'Code sent on WhatsApp')} />
+          {s.state === 'opted_out' ? <T size={13} color={c.mute}>{k.title} is off for {s.number}. Verify a number to switch it back on.</T> : null}
+          <Field label={k.label} hint="with the country code, starting with +" value={phone} onChangeText={setPhone} keyboardType="phone-pad" maxLength={24} />
+          <Btn small title="Send me a code" loading={busy} disabled={phone.replace(/\D/g, '').length < 8} style={{ alignSelf: 'flex-start' }} onPress={() => run(() => api.post(`${base}/verify`, { phone }), k.sent)} />
         </View>
       )}
     </Card>
   );
 }
+export const WhatsAppCard = (p) => <NumberCard channel="whatsapp" {...p} />;
+export const SmsCard = (p) => <NumberCard channel="sms" {...p} />;
 
 const SCOPES = [['platform', 'Platform number'], ['event', 'Event'], ['venue', 'Venue'], ['sponsor', 'Sponsor'], ['provider', 'Physio / doctor / coach']];
 const asOption = (x) => ({ id: x.id, label: x.name ?? x.display_name ?? x.title, sub: [x.city, x.sport, x.industry].filter(Boolean).join(' · ') });
