@@ -3,7 +3,7 @@
 // Everything here is the same REST API agents use over MCP; the platform-only actions are rejected by the server for anyone else.
 import { LoyaltyConsole } from './rewards';
 import React, { useState } from 'react';
-import { WhatsAppNumbers } from './whatsapp';
+import { CommsPlatform } from './communications';
 import { Platform, Switch, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
@@ -435,14 +435,14 @@ export function AccessRequests() {
   );
 }
 
-const TABS = [['overview', 'Overview'], ['partners', 'Partners'], ['approvals', 'Venue approvals'], ['pricing', 'Pricing'], ['contracts', 'Contracts'], ['settlements', 'Settlements'], ['payouts', 'Provider payouts'], ['reports', 'Reports'], ['team', 'Platform team'], ['rewards', 'Rewards'], ['whatsapp', 'WhatsApp']];
+const TABS = [['overview', 'Overview'], ['partners', 'Partners'], ['approvals', 'Venue approvals'], ['pricing', 'Pricing'], ['contracts', 'Contracts'], ['settlements', 'Settlements'], ['payouts', 'Provider payouts'], ['reports', 'Reports'], ['team', 'Platform team'], ['rewards', 'Rewards'], ['whatsapp', 'Communications']];
 
 /** The platform team's partner-management console. */
 export function PartnerConsole() {
   const { user } = useSession();
   const [tab, setTab] = useState('overview');
   if (!user.roles.includes('admin')) return <Screen><H1>Partner management</H1><Empty emoji="🔒" title="Platform team only" sub="This console is for Gotmygame platform staff." /></Screen>;
-  const body = { rewards: <LoyaltyConsole ownerKind="platform" currency="INR" />, whatsapp: <WhatsAppNumbers />, overview: <Overview go={setTab} />, partners: <Partners />, approvals: <Approvals />, pricing: <Pricing />, contracts: <Contracts />, settlements: <Settlements />, payouts: <ProviderPayouts />, reports: <Reports />, team: <Team /> }[tab];
+  const body = { rewards: <LoyaltyConsole ownerKind="platform" currency="INR" />, whatsapp: <CommsPlatform />, overview: <Overview go={setTab} />, partners: <Partners />, approvals: <Approvals />, pricing: <Pricing />, contracts: <Contracts />, settlements: <Settlements />, payouts: <ProviderPayouts />, reports: <Reports />, team: <Team /> }[tab];
   return (
     <Screen wide>
       <H1>Partner management</H1>

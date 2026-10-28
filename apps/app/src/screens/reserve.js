@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { WhatsAppCard } from './whatsapp';
+import { SmsCard, WhatsAppCard } from './whatsapp';
+import { CommsPrefs } from './communications';
 import { Linking, Platform, Pressable, ScrollView, Share, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
@@ -567,6 +568,8 @@ export function Notifications() {
       </Section>
       <Section title="Push" color={c.violet}><PushCard /></Section>
       <Section title="WhatsApp" color={c.lime}><WhatsAppCard onChanged={prefs.reload} /></Section>
+      <Section title="SMS" color={c.lime}><SmsCard onChanged={prefs.reload} /></Section>
+      <Section title="WhatsApp & SMS preferences" color={c.lime}><CommsPrefs onChanged={prefs.reload} /></Section>
       <Section title="Waitlist" color={c.lime}><WaitlistList /></Section>
       <Section title="Slot alerts" color={c.sun}><AlertsList /></Section>
       <Section title="Inbox" action={list.data?.unread ? 'Mark all read' : undefined} onAction={readAll} color={c.pink}>

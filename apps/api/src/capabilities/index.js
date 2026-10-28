@@ -30,6 +30,7 @@ import './venue-operations.js';
 import './smart-access.js';
 import './push.js';
 import './whatsapp.js';
+import './communications.js';
 import './favourites.js';
 import './favourite-sports.js';
 import './waitlist.js';
