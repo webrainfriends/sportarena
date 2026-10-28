@@ -12,7 +12,7 @@ import { encrypt, decrypt } from '../crypto.js';
 import { audit } from '../helpers.js';
 import { notify } from '../notify.js';
 import { hasOrgGrant } from '../org-access.js';
-import { requireConsent } from '../youth.js';
+import { YOUTH_SQL, guardianLink, requireConsent } from '../youth.js';
 import { fromLocal, validTimezone } from '../booking/time.js';
 import { canManageTeam } from './teams.js';
 import { LIVE, LISTS, RULES, latestPolicy, protectedIds, PROTECTED_NAME } from '../registration.js';
@@ -186,7 +186,7 @@ async function assertCapacity(c, ev, policy, reg, next) {
 
 cap({
   name: 'submit_registration', method: 'POST', path: '/events/:id/registrations', tag: TAG, status: 201,
-  summary: 'Register a player for a team in this competition. A player registers themselves (they must be an active member of the team), a team manager registers their own players, the organiser can register anyone. The server enforces the registration windows (late / emergency windows need a reason; an authorised window exception opens a closed one), the roster freeze, one live registration per person per competition, guardian consent for young people, and that the team is entered in the event. The registration starts as `submitted`; the organiser decides it.',
+  summary: 'Register a player for a team in this competition. A player registers themselves (they must be an active member of the team), a verified guardian registers a young person they look after, a team manager registers their own players, the organiser can register anyone. The server enforces the registration windows (late / emergency windows need a reason; an authorised window exception opens a closed one), the roster freeze, one live registration per person per competition, guardian consent for young people, and that the team is entered in the event. The registration starts as `submitted`; the organiser decides it.',
   input: z.object({ id, team_id: id, user_id: id.optional(), division_id: id.optional(), roster_list: z.enum(LISTS).default('active'), reason: txt(500).optional() }),
   async handler({ user }, i) {
     const target = i.user_id ?? user.id;
@@ -197,7 +197,9 @@ cap({
       const team = (await c.query('SELECT * FROM teams WHERE id=$1', [i.team_id])).rows[0];
       if (!team) throw notFound('Team');
       const staff = await isEventStaff(user, ev, c), manager = await canManageTeam(user, team);
-      if (!(staff || manager || target === user.id)) throw notFound('Team');
+      // a verified guardian registers a young person they look after; the row records them as submitter and counts as a self-registration
+      const guardian = !staff && !manager && target !== user.id && !!(await guardianLink(user.id, target, c));
+      if (!(staff || manager || target === user.id || guardian)) throw notFound('Team');
       const source = staff ? 'staff' : manager ? 'team' : 'self';
       // lock the team's entry: the per-team roster is decided one transaction at a time
       const entry = (await c.query("SELECT id FROM event_entries WHERE event_id=$1 AND team_id=$2 AND status='accepted' FOR UPDATE", [ev.id, team.id])).rows[0];
@@ -261,11 +263,13 @@ cap({
 
 cap({
   name: 'list_my_registrations', method: 'GET', path: '/me/registrations', tag: TAG,
-  summary: 'Your own competition registrations with their state and what, if anything, you need to do next. No organiser notes are included.', input: z.object({ ...page }),
+  summary: 'Your own competition registrations with their state and what, if anything, you need to do next. No organiser notes are included. With include_dependents, also those of the young people you are a verified guardian of.',
+  input: z.object({ include_dependents: z.coerce.boolean().default(false), ...page }),
   async handler({ user }, i) {
-    const rows = await many(`SELECT r.id, r.event_id, e.name AS event_name, e.status AS event_status, r.team_id, t.name AS team_name, d.name AS division_name, r.registration_no, r.status, r.roster_list, r.window_kind,
+    const who = [user.id, ...(i.include_dependents ? (await many(`SELECT l.child_id FROM guardian_links l JOIN users u ON u.id=l.child_id WHERE l.guardian_id=$1 AND l.status='active' AND l.revoked_at IS NULL AND (l.expires_at IS NULL OR l.expires_at > now()) AND ${YOUTH_SQL}`, [user.id])).map((r) => r.child_id) : [])];
+    const rows = await many(`SELECT r.id, r.user_id, pu.display_name AS player_name, r.event_id, e.name AS event_name, e.status AS event_status, r.team_id, t.name AS team_name, d.name AS division_name, r.registration_no, r.status, r.roster_list, r.window_kind,
         r.effective_from::text AS effective_from, r.effective_to::text AS effective_to, r.row_version, r.created_at
-      FROM reg_registrations r JOIN events e ON e.id=r.event_id JOIN teams t ON t.id=r.team_id LEFT JOIN reg_divisions d ON d.id=r.division_id WHERE r.user_id=$1 ORDER BY r.created_at DESC, r.id LIMIT $2 OFFSET $3`, [user.id, i.limit, i.offset]);
+      FROM reg_registrations r JOIN users pu ON pu.id=r.user_id JOIN events e ON e.id=r.event_id JOIN teams t ON t.id=r.team_id LEFT JOIN reg_divisions d ON d.id=r.division_id WHERE r.user_id = ANY($1::uuid[]) ORDER BY r.created_at DESC, r.id LIMIT $2 OFFSET $3`, [who, i.limit, i.offset]);
     const NEXT = { submitted: 'Waiting for the organiser', under_review: 'Under review', registered: null, suspended: 'Suspended: contact the organiser', rejected: 'Not accepted', withdrawn: null, expired: 'Expired' };
     return rows.map((r) => ({ ...r, next_step: NEXT[r.status] ?? null }));
   },

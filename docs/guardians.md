@@ -77,3 +77,18 @@ automated because the project never deletes data: operators handle retention req
 
 ## Sponsorship
 Sponsors reach a young person only through a sponsor their guardian authorizes by name; see [sponsorship-youth.md](sponsorship-youth.md).
+
+## Family dashboard (issue #572)
+One guardian account manages every verified dependent; nothing is duplicated and no tables were added. `get_family_dashboard` (`GET /me/family`) and
+`get_family_schedule` (`GET /me/family/schedule`) are read projections over guardian links, consents, the athlete schedule, team attendance, team
+charges, academy charges, competition registrations and trips, on REST, OpenAPI and MCP. A dependent appears only while the link is verified,
+unexpired and the child is still youth; anyone else gets an empty list or `404`. `child_id` switches between dependents.
+
+Acting for a child reuses the owning capability, which re-checks the verified link on the server: `set_event_rsvp` (`for_user_id`),
+`submit_registration` (a guardian may register a child; `submitted_by` records them), `list_my_registrations` (`include_dependents`),
+`create_payment` for team charges (the guardian is the payer), `decide_trip_consent` and `grant_youth_consent`. `request_attendance` also notifies
+the child's verified guardians. A child's calendar excludes health, recovery, duty and imported busy time. The screen is the top of
+"Family & guardians" in the app (phone, tablet and desktop layouts); deep link `?open=family`.
+
+Limits: authority is verified link + consent purposes + the jurisdiction age policy; there is no finer per-guardian permission model, and
+organisation-specific policy is enforced by the capabilities that own it. Academy charges are shown and paid in the existing academy portal.
