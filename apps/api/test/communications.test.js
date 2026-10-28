@@ -556,7 +556,7 @@ test('retry only re-sends what the provider never accepted and whose fallback ha
   assert.equal(d.status, 'failed'); assert.equal(d.error_code, 'E_DEST');
   assert.ok(!/\d{6}/.test(d.last_error) && /\[number\]/.test(d.last_error), `the number is scrubbed: ${d.last_error}`);
   const listed = ok(await api('GET', '/communications/deliveries', { token: k.owner.token, query: { organisation_id: k.org.id, state: 'failed' } }));
-  assert.ok(listed.length >= 1 && !/\d{6}/.test(JSON.stringify(listed)));
+  assert.ok(listed.length >= 1 && listed.every((x) => !/\d{6}/.test(x.reason ?? '')), 'no number in the listed reasons'); // not the whole JSON: ids and timestamps contain six digits by chance
   sms.mode = 'ok';
   ok(await api('POST', `/communications/deliveries/${d.id}/retry`, { token: k.owner.token }));
   await cycle();
