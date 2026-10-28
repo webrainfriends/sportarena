@@ -39,6 +39,7 @@ physios & doctors, suppliers and insurers. **API-first. MCP-first.** One React N
 | **Sponsors** | Brand profiles (encrypted contacts), offers to events/teams/athletes, accept/decline workflow, **funding programs & rounds** with applications and awards ([docs](docs/sponsorship-programs.md)), **award approvals and conditional offers** ([docs](docs/sponsorship-awards.md)), **pause and resume of agreements** ([docs](docs/sponsorship-pause.md)) |
 * Term expiry, final settlement and explicit renewals: [`docs/sponsorship-renewals.md`](docs/sponsorship-renewals.md)
 * Tasks, assignments, notes, reminders and escalation for sponsors and recipients: [`docs/sponsorship-collaboration.md`](docs/sponsorship-collaboration.md)
+* ROI & portfolio intelligence — governed inventory with conflict-aware bookings, deliverables with evidence and reviewer acceptance, measured exposure with published definitions, brand-owned valuation estimates, comparison, factual renewal packs and immutable issued reports: [`docs/sponsorship-roi.md`](docs/sponsorship-roi.md)
 | **Supply chain** | Inventory, low-stock flags, supplier orders; receiving an order restocks atomically |
 | **Health** | Find physios/doctors, appointments, **athlete-controlled consent**, encrypted clinical notes, fit-to-play status without clinical detail |
 | **Insurance** | Plans for individual / team / event, policies (encrypted number + beneficiary), claims with coverage checks, admin review |

@@ -493,6 +493,7 @@ export function Sponsors() {
           <Btn small title="Sponsorship calls" color={c.pink} onPress={() => push('FundingOpportunities')} />
           <Btn small title="Beneficiary portfolio" color={c.violet} onPress={() => push('SponsorPortfolio')} />
           <Btn small title="Reports" color={c.violet} onPress={() => push('SponsorReports')} />
+          <Btn small title="ROI & exposure" color={c.violet} onPress={() => push('SponsorRoi')} />
           {mine.data?.length ? <Btn small title="Run programs" color={c.violet} onPress={() => push('SponsorPrograms')} /> : null}
           {mine.data?.some((b) => ['manager', 'finance', 'approver', 'auditor'].includes(b.my_role)) ? <Btn small title="Budgets" color={c.paper} ink={c.ink} onPress={() => push('SponsorBudgets')} /> : null}
         </View>
