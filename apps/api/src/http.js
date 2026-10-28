@@ -20,6 +20,7 @@ import { brandedDocumentsRouter } from './capabilities/branded-documents.js';
 import { orgAgreementsRouter } from './capabilities/org-agreements.js';
 import { trackingFilesRouter } from './capabilities/tracking-files.js';
 import { rulebookRouter } from './capabilities/rulebook.js';
+import { officialExtractRouter } from './capabilities/officials-extract.js';
 import { coachingEvidenceRouter } from './capabilities/coaching-evidence.js';
 import { calendarFeedRouter } from './capabilities/calendar-sync.js';
 import { passportFilesRouter } from './capabilities/passport-recruitment.js';
@@ -85,6 +86,7 @@ export function createApp() {
   app.use('/api/v1', orgAgreementsRouter());
   app.use('/api/v1', trackingFilesRouter());
   app.use('/api/v1', rulebookRouter());
+  app.use('/api/v1', officialExtractRouter());
   app.use('/api/v1', coachingEvidenceRouter());
   app.use('/api/v1', calendarFeedRouter());
   app.use('/api/v1', passportFilesRouter());

@@ -12,6 +12,7 @@ import { PlansManager } from './plans';
 import { SetupChecklist, Timetable } from './timetable';
 import { SetupWizard } from './venue-setup';
 import { DayBoard } from './dayboard';
+import { FrontDesk } from './front-desk';
 import { AccessTab, Lockers, Maintenance, OpsAttention, VendorsContracts } from './venue-ops';
 import { useNav } from '../nav';
 import { WEEKDAYS, addDays, dateTimeIn, fmtMin, hoursSummary, localToIso, longDay, moneyIn, timeIn, todayIn } from '../vtime';
@@ -20,19 +21,21 @@ import { SubjectPanel } from './insurance';
 import { locale } from '../locale';
 
 const AMENITIES = ['Parking', 'Changing rooms', 'Showers', 'Lockers', 'Café', 'Floodlights', 'Equipment hire', 'Coaching', 'First aid', 'Seating', 'WiFi', 'Wheelchair access'];
-const TABS = [['schedule', 'Today'], ['timetable', 'Timetable & prices'], ['blocks', 'Block slots'], ['payments', 'Invoices'], ['plans', 'Passes, packages & memberships'], ['discounts', 'Offers'], ['pricing', 'Courts & special rates'], ['media', 'Photos & videos'], ['lockers', 'Lockers'], ['access', 'Doors & attendance'], ['maintenance', 'Maintenance'], ['vendors', 'Vendors & contracts'], ['reviews', 'Reviews'], ['reports', 'Reports'], ['docs', 'Documents & insurance'], ['setup', 'Settings']];
+const TABS = [['schedule', 'Today'], ['frontdesk', 'Front desk'], ['timetable', 'Timetable & prices'], ['blocks', 'Block slots'], ['payments', 'Invoices'], ['plans', 'Passes, packages & memberships'], ['discounts', 'Offers'], ['pricing', 'Courts & special rates'], ['media', 'Photos & videos'], ['lockers', 'Lockers'], ['access', 'Doors & attendance'], ['maintenance', 'Maintenance'], ['vendors', 'Vendors & contracts'], ['reviews', 'Reviews'], ['reports', 'Reports'], ['docs', 'Documents & insurance'], ['setup', 'Settings']];
 const num = (x) => (x === undefined || x === '' ? undefined : Number(x));
 
-export function Manage({ id, wizard: startWizard }) {
+export function Manage({ id, wizard: startWizard, tab: startTab, desk }) {
   const { push } = useNav();
   const v = useLoad(() => api.get(`/venues/${id}`), [id]);
-  const [tab, setTab] = useState('schedule');
+  const [tab, setTab] = useState(startTab ?? 'schedule');
   const [wizard, setWizard] = useState(!!startWizard);
   const tenders = useLoad(() => api.get('/rfps', { limit: 50 }).catch(() => []), [id]);
   if (v.loading && !v.data) return <Screen><Loading /></Screen>;
   if (v.error) return <Screen><ErrorBox error={v.error} onRetry={v.reload} /></Screen>;
   const x = v.data;
   const P = { v: x, reload: v.reload };
+  // a cashier works the front desk and nothing else at this venue
+  if (desk) return <Screen wide><H1 style={{ marginTop: 8 }}>{x.emoji} {x.name}</H1><T color={c.mute} weight="700">Front desk · {x.timezone} · {x.currency}</T><FrontDesk v={x} /></Screen>;
   return (
     <Screen wide>
       <H1 style={{ marginTop: 8 }}>{x.emoji} {x.name}</H1>
@@ -42,10 +45,10 @@ export function Manage({ id, wizard: startWizard }) {
         <Btn small title="Services & suppliers" color={c.paper} ink={c.ink} onPress={() => push('ServicesBuyer', { venue_id: x.id })} accessibilityLabel="Browse supplier services for this venue" />
         {(tenders.data ?? []).filter((t) => t.venue_id === x.id).slice(0, 3).map((t) => <Btn key={t.id} small title={`${t.ref} · ${t.stage}`} color={c.paper} ink={c.ink} onPress={() => push('TenderConsole', { id: t.id })} />)}
       </View>
-      {wizard ? <SetupWizard v={x} onExit={() => { setWizard(false); v.reload(); }} goTab={setTab} /> : <><SetupChecklist venueId={x.id} go={setTab} onWizard={() => setWizard(true)} /><OpsAttention venueId={x.id} go={setTab} /></>}
+      {wizard ? <SetupWizard v={x} onExit={() => { setWizard(false); v.reload(); }} goTab={setTab} /> : tab === 'frontdesk' ? null : <><SetupChecklist venueId={x.id} go={setTab} onWizard={() => setWizard(true)} /><OpsAttention venueId={x.id} go={setTab} /></>}
       {wizard ? null : <>
       <View style={{ marginTop: 10 }}><Seg options={TABS.map(([value, label]) => ({ value, label }))} value={tab} onChange={setTab} color={c.violet} /></View>
-      {tab === 'schedule' ? <DayBoard {...P} /> : tab === 'timetable' ? <Timetable {...P} /> : tab === 'blocks' ? <Blocks {...P} /> : tab === 'pricing' ? <Pricing {...P} /> : tab === 'discounts' ? <Discounts {...P} /> : tab === 'payments' ? <Payments {...P} /> : tab === 'plans' ? <PlansManager {...P} /> : tab === 'lockers' ? <Lockers {...P} /> : tab === 'access' ? <AccessTab {...P} /> : tab === 'maintenance' ? <Maintenance {...P} /> : tab === 'vendors' ? <VendorsContracts {...P} /> : tab === 'media' ? <Section title="Photos & videos" color={c.cyan}><MediaManager venue={x} /></Section> : tab === 'reviews' ? <Section title="Reviews" color={c.pink}><VenueReviews venueId={x.id} /></Section> : tab === 'reports' ? <Reports {...P} /> : tab === 'docs' ? <SubjectPanel type="venue" id={x.id} name={x.name} /> : <Setup {...P} />}
+      {tab === 'schedule' ? <DayBoard {...P} /> : tab === 'frontdesk' ? <FrontDesk {...P} /> : tab === 'timetable' ? <Timetable {...P} /> : tab === 'blocks' ? <Blocks {...P} /> : tab === 'pricing' ? <Pricing {...P} /> : tab === 'discounts' ? <Discounts {...P} /> : tab === 'payments' ? <Payments {...P} /> : tab === 'plans' ? <PlansManager {...P} /> : tab === 'lockers' ? <Lockers {...P} /> : tab === 'access' ? <AccessTab {...P} /> : tab === 'maintenance' ? <Maintenance {...P} /> : tab === 'vendors' ? <VendorsContracts {...P} /> : tab === 'media' ? <Section title="Photos & videos" color={c.cyan}><MediaManager venue={x} /></Section> : tab === 'reviews' ? <Section title="Reviews" color={c.pink}><VenueReviews venueId={x.id} /></Section> : tab === 'reports' ? <Reports {...P} /> : tab === 'docs' ? <SubjectPanel type="venue" id={x.id} name={x.name} /> : <Setup {...P} />}
       </>}
     </Screen>
   );

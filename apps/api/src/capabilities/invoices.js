@@ -2,6 +2,7 @@
 import { z } from 'zod';
 import { cap, id, page } from '../registry.js';
 import { one, many, tx } from '../db.js';
+import { saleOfCreditNote } from '../pos/due.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { audit, mustFind, isAdmin } from '../helpers.js';
 import { canManage, mustManage } from '../booking/engine.js';
@@ -31,7 +32,7 @@ cap({
     if (i.organisation_id) await orgFor(user, i.organisation_id, ['owner', 'admin', 'finance']);
     return many(
       `SELECT ${summaryCols} FROM invoices i LEFT JOIN venues v ON v.id=i.venue_id LEFT JOIN reservations rs ON rs.id=i.reservation_id LEFT JOIN organisations o ON o.id=i.organisation_id
-        WHERE (($1::uuid IS NULL AND $10::uuid IS NULL AND i.user_id=$2) OR i.venue_id=$1 OR i.organisation_id=$10) AND ($3::uuid IS NULL OR i.reservation_id=$3) AND ($4::text IS NULL OR i.kind=$4) AND ($5::text IS NULL OR i.status=$5)
+        WHERE (($1::uuid IS NULL AND $10::uuid IS NULL AND i.user_id=$2 AND NOT i.walk_in) OR i.venue_id=$1 OR i.organisation_id=$10) AND ($3::uuid IS NULL OR i.reservation_id=$3) AND ($4::text IS NULL OR i.kind=$4) AND ($5::text IS NULL OR i.status=$5)
           AND ($6::date IS NULL OR i.issued_at >= $6) AND ($7::date IS NULL OR i.issued_at < $7::date + 1)
         ORDER BY i.issued_at DESC, i.number DESC LIMIT $8 OFFSET $9`,
       [i.venue_id ?? null, user.id, i.reservation_id ?? null, i.kind ?? null, i.status ?? null, i.from ?? null, i.to ?? null, i.limit, i.offset, i.organisation_id ?? null]);
@@ -51,13 +52,15 @@ cap({
     await audit(null, user.id, 'read_pii', 'invoices', inv.id);
     const [payments, credits] = await Promise.all([
       academy ? many("SELECT id, provider, amount_cents, currency, status, paid_at, refunded_cents FROM payments WHERE purpose_type='academy_charge' AND purpose_id=$1 ORDER BY created_at", [inv.academy_charge_id])
+        : inv.pos_sale_id ? many("SELECT id, provider, amount_cents, currency, status, paid_at, refunded_cents FROM payments WHERE purpose_type='pos_sale' AND purpose_id=$1 ORDER BY created_at", [inv.pos_sale_id])
         : many("SELECT id, provider, amount_cents, currency, status, paid_at, refunded_cents FROM payments WHERE purpose_type='venue_invoice' AND purpose_id=$1 ORDER BY created_at", [inv.id]),
       inv.kind !== 'invoice' ? [] : academy ? many("SELECT id, number, total_cents, status, refund_status, issued_at FROM invoices WHERE kind='credit_note' AND academy_charge_id=$1 ORDER BY issued_at", [inv.academy_charge_id])
+        : inv.pos_sale_id ? many("SELECT id, number, total_cents, status, refund_status, issued_at FROM invoices WHERE kind='credit_note' AND parent_id=$1 ORDER BY issued_at", [inv.id])
         : many("SELECT id, number, total_cents, status, refund_status, issued_at FROM invoices WHERE kind='credit_note' AND reservation_id=$1 AND venue_id=$2 ORDER BY issued_at", [inv.reservation_id, inv.venue_id]),
     ]);
     const { buyer_enc, ...rest } = inv;
     const online = academy ? enabledProviders().length > 0 : (await one('SELECT payment_mode FROM venues WHERE id=$1', [inv.venue_id])).payment_mode !== 'pay_at_venue' && enabledProviders().length > 0;
-    return { ...rest, amount_due_cents: inv.status === 'open' ? inv.total_cents - inv.credits_cents : 0, buyer: buyerOf(inv), payments, credit_notes: credits, can_pay_online: online && inv.kind === 'invoice' && inv.status === 'open' && inv.user_id === user.id, providers: enabledProviders(), amount: toMajor(inv.total_cents, inv.currency),
+    return { ...rest, amount_due_cents: inv.status === 'open' ? inv.total_cents - inv.credits_cents : 0, buyer: buyerOf(inv), payments, credit_notes: credits, can_pay_online: online && !inv.pos_sale_id && inv.kind === 'invoice' && inv.status === 'open' && inv.user_id === user.id, providers: enabledProviders(), amount: toMajor(inv.total_cents, inv.currency),
       ...(academy ? { pay: { purpose_type: 'academy_charge', purpose_id: inv.academy_charge_id } } : {}) };
   },
 });
@@ -70,6 +73,8 @@ cap({
     const inv = await mustFind('invoices', i.id);
     if (inv.kind !== 'invoice') throw badRequest('Only invoices are paid; a credit note is refunded');
     if (inv.organisation_id) throw badRequest('An academy fee is paid online or recorded with record_academy_payment');
+    if (inv.pos_sale_id) throw badRequest('A front-desk invoice is paid on its sale (add_pos_payment), so the drawer and the invoice cannot disagree');
+    if ((await one("SELECT 1 FROM pos_sale_invoices psi JOIN pos_sales s ON s.id=psi.sale_id WHERE psi.invoice_id=$1 AND s.status='awaiting_payment'", [inv.id]))) throw badRequest('This invoice is part of a front-desk sale that is awaiting payment — settle it there');
     await mustManage(user, inv.venue_id);
     return tx(async (c) => {
       if (!(await markInvoicePaid(c, i.id, { method: i.method, by: user.id }))) throw conflict('That invoice is not open (already paid or void)');
@@ -87,6 +92,7 @@ cap({
     const cn = await mustFind('invoices', i.id);
     if (cn.kind !== 'credit_note') throw badRequest('That is not a credit note');
     if (cn.organisation_id) throw badRequest('Academy refunds go back through the payment provider and are recorded automatically');
+    if (await saleOfCreditNote((t, p) => one(t, p).then((r) => ({ rows: r ? [r] : [] })), cn)) throw badRequest('A front-desk refund is paid back with complete_pos_refund, so the cash lands on the right shift');
     await mustManage(user, cn.venue_id);
     return tx(async (c) => {
       const r = await c.query("UPDATE invoices SET refund_status='done', refunded_at=now(), refund_error=NULL WHERE id=$1 AND refund_status IN ('manual','failed') RETURNING id, number, refund_status, refunded_at", [i.id]);

@@ -128,7 +128,7 @@ const ownerOnly = async (user, venueId) => {
 };
 cap({
   name: 'add_venue_staff', method: 'POST', path: '/venues/:id/staff', tag: TAG, status: 201,
-  summary: 'Give another user (by handle) access to run this venue: bookings, blocks, pricing, discounts, reports. Owner only.',
+  summary: 'Give another user (by handle) access to run this venue: bookings, blocks, pricing, discounts, reports, and the front desk as its manager. Owner only. (A front-desk cashier who should do nothing else is added with add_pos_cashier.)',
   input: z.object({ id, handle: z.string().min(3).max(24) }),
   async handler({ user }, i) {
     await ownerOnly(user, i.id);

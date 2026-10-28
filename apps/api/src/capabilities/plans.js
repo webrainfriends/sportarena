@@ -7,6 +7,7 @@ import { mustFind } from '../helpers.js';
 import { mustManage } from '../booking/engine.js';
 import { markInvoicePaid } from '../booking/invoices.js';
 import { lockPayableInvoice } from '../booking/credits.js';
+import { startUserPlan } from '../booking/plans.js';
 
 const TAG = 'Memberships & passes';
 const PUBLIC = 'id, venue_id, kind, name, description, price_cents, duration_days, discount_bp, sessions, session_value_cents, valid_days, active, resource_ids, includes, auto_renew';
@@ -75,19 +76,10 @@ cap({
   input: z.object({ id }),
   async handler({ user }, i) {
     return tx(async (c) => {
-      const p = (await c.query('SELECT p.*, v.currency FROM venue_plans p JOIN venues v ON v.id=p.venue_id WHERE p.id=$1 AND p.active', [i.id])).rows[0];
-      if (!p) throw notFound('Plan');
-      if (p.kind === 'membership') {
-        await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`member:${user.id}:${p.venue_id}`]);
-        if ((await c.query("SELECT 1 FROM user_plans WHERE user_id=$1 AND venue_id=$2 AND kind='membership' AND status='awaiting_payment' AND created_at > now() - interval '1 day'", [user.id, p.venue_id])).rowCount)
-          throw conflict('You already have a membership waiting for payment at this venue');
-        if ((await c.query("SELECT 1 FROM user_plans WHERE user_id=$1 AND venue_id=$2 AND kind='membership' AND status='active' AND expires_at > now() + interval '30 days'", [user.id, p.venue_id])).rowCount)
-          throw conflict('You are already a member here — you can renew in the last 30 days');
-      }
-      return (await c.query(
-        `INSERT INTO user_plans(plan_id, venue_id, user_id, kind, name, price_cents, currency, discount_bp, sessions_total, sessions_left, session_value_cents, duration_days, resource_ids, includes, auto_renew)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9,$10,$11,$12,$13,$14) RETURNING id, kind, name, status, price_cents, currency`,
-        [p.id, p.venue_id, user.id, p.kind, p.name, p.price_cents, p.currency, p.discount_bp, p.sessions, p.session_value_cents, p.duration_days ?? p.valid_days, p.resource_ids, p.includes, p.auto_renew])).rows[0];
+      const r = await startUserPlan(c, i.id, user.id);
+      if (!r) throw notFound('Plan');
+      if (r.error) throw conflict(r.error);
+      return r.plan;
     });
   },
 });
@@ -120,6 +112,7 @@ cap({
   async handler({ user }, i) {
     return tx(async (c) => {
       const { inv, due } = await lockPayableInvoice(c, user, i.id);
+      if (inv.pos_sale_id) throw badRequest('A pass pays for court time, not for goods bought at the front desk');
       const pass = (await c.query(
         `SELECT * FROM user_plans WHERE user_id=$1 AND venue_id=$2 AND kind='pass' AND status='active' AND sessions_left > 0 AND expires_at > now() AND ($3::uuid IS NULL OR id=$3)
             AND (cardinality(resource_ids) = 0 OR NOT EXISTS (SELECT 1 FROM bookings b JOIN resources r ON r.id=b.resource_id WHERE b.reservation_id=$4 AND r.venue_id=$2 AND b.status='confirmed' AND NOT (b.resource_id = ANY(user_plans.resource_ids))))
