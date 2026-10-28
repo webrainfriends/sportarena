@@ -5,6 +5,7 @@ import { randomInt } from 'node:crypto';
 import { encrypt, decrypt } from '../crypto.js';
 import { notify } from '../notify.js';
 import { badRequest, conflict } from '../errors.js';
+import { revokeGrantsForSource, revokeStaleBookingGrants } from '../access-grants.js';
 
 export const LOCKER_PAD_MS = 30 * 60_000;
 const CTX = 'locker_assignments.pin';
@@ -83,6 +84,7 @@ export async function renewPin(c, assignmentId, { digits = 4 } = {}) {
 
 export async function releaseAssignment(c, assignmentId, by, why) {
   const a = (await c.query("UPDATE locker_assignments SET status='released', released_at=now(), released_by=$2 WHERE id=$1 AND status='active' RETURNING *", [assignmentId, by])).rows[0];
+  if (a) await revokeGrantsForSource(c, 'locker_assignment', a.id, 'locker_released');
   if (a && why) await notify(c, a.user_id, { kind: 'locker_released', title: 'Your locker was released', body: why, data: { reservation_id: a.reservation_id, venue_id: a.venue_id } });
   return a;
 }
@@ -93,6 +95,7 @@ export async function releaseAssignment(c, assignmentId, by, why) {
  * left of the booking — the locker is released and the person told.
  */
 export async function refitLockers(c, reservationId) {
+  await revokeStaleBookingGrants(c, reservationId);   // gate / smart-lock grants follow the booking, not a copied list
   const { rows } = await c.query("SELECT * FROM locker_assignments WHERE reservation_id=$1 AND status='active' FOR UPDATE", [reservationId]);
   for (const a of rows) {
     await lockVenue(c, a.venue_id);

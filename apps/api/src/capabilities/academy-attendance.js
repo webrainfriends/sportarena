@@ -10,17 +10,18 @@ import { requireGuardian, hasConsent } from '../youth.js';
 import { isAdmin } from '../helpers.js';
 import { sessionFor, expectedCount } from '../academy-ops.js';
 import { syncTrialFromAttendance } from '../academy-trials.js';
+import { capture } from '../access-layer.js';
 
 const TAG = 'Academy operations';
 const day = z.string().date();
 const STATUS = ['expected', 'present', 'late', 'left_early', 'absent', 'excused', 'not_held'];
 const REASONS = ['illness', 'family', 'travel', 'school', 'injury_non_clinical', 'other'];
-const LATE_AFTER_MIN = 10;      // arriving more than this long after the start is recorded as late
+export const LATE_AFTER_MIN = 10;      // arriving more than this long after the start is recorded as late
 const EARLY_OPEN_MIN = 60;      // presence can be recorded from this long before the start
-const PRESENT = ['present', 'late', 'left_early'];
+export const PRESENT = ['present', 'late', 'left_early'];
 
 /** Athletes who may be marked: enrolled in the cohort, or a guest added by a transfer / make-up. */
-async function eligible(c, s, userId) {
+export async function eligible(c, s, userId) {
   const e = (await c.query("SELECT id FROM org_enrolments WHERE cohort_id=$1 AND user_id=$2 AND status='enrolled'", [s.cohort_id, userId])).rows[0];
   if (e) return { enrolment_id: e.id, guest: false };
   if ((await c.query('SELECT 1 FROM academy_attendance WHERE session_id=$1 AND user_id=$2 AND guest', [s.id, userId])).rowCount) return { enrolment_id: null, guest: true };
@@ -31,13 +32,13 @@ async function eligible(c, s, userId) {
  * The single write path for attendance. Returns { changed, row }. A repeated idempotency key (scan retry, double tap) changes nothing;
  * changing an already-marked status needs a reason and is logged; presence cannot be recorded long before the session starts.
  */
-export async function markAttendance(c, s, userId, status, { source = 'staff', actor, key = null, reason = null, reason_code = null } = {}) {
+export async function markAttendance(c, s, userId, status, { source = 'staff', actor, key = null, reason = null, reason_code = null, at = new Date() } = {}) {
   if (!STATUS.includes(status)) throw badRequest('Unknown attendance status');
   if (s.status === 'cancelled') throw conflict('This session was cancelled, so attendance is "not held"');
   if (s.status === 'draft') throw conflict('Publish the session before taking attendance');
   const who = await eligible(c, s, userId);
   if (!who) throw badRequest('That person is not on this session\'s roster', { user_id: userId });
-  if (PRESENT.includes(status) && Date.now() < new Date(s.starts_at).getTime() - EARLY_OPEN_MIN * 60000) throw conflict('Attendance can be taken from one hour before the session starts');
+  if (PRESENT.includes(status) && at.getTime() < new Date(s.starts_at).getTime() - EARLY_OPEN_MIN * 60000) throw conflict('Attendance can be taken from one hour before the session starts');
   if (key) {
     const seen = (await c.query('SELECT 1 FROM academy_attendance_log WHERE session_id=$1 AND user_id=$2 AND idempotency_key=$3', [s.id, userId, key])).rowCount;
     if (seen) return { changed: false, replay: true, row: (await c.query('SELECT * FROM academy_attendance WHERE session_id=$1 AND user_id=$2', [s.id, userId])).rows[0] };
@@ -45,7 +46,7 @@ export async function markAttendance(c, s, userId, status, { source = 'staff', a
   const cur = (await c.query('SELECT * FROM academy_attendance WHERE session_id=$1 AND user_id=$2 FOR UPDATE', [s.id, userId])).rows[0];
   if (cur && cur.status === status && (reason_code ?? cur.reason_code) === cur.reason_code) return { changed: false, row: cur };
   if (cur && cur.status !== 'expected' && !reason && source !== 'system') throw badRequest('Say why you are correcting this mark');
-  const now = new Date();
+  const now = at;
   const row = (await c.query(
     `INSERT INTO academy_attendance(session_id, user_id, enrolment_id, status, reason_code, source, guest, marked_by, marked_at, arrived_at, left_at)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
@@ -103,24 +104,26 @@ cap({
   }),
 });
 
+const FAIL = { session_not_open: (m) => conflict(m.message ?? 'This session is not open for attendance'), not_eligible: () => badRequest('That person is not on this session\'s roster') };
+const attendanceOf = async (c, sessionId, userId) => (await c.query('SELECT status FROM academy_attendance WHERE session_id=$1 AND user_id=$2', [sessionId, userId])).rows[0]?.status ?? 'expected';
+
 cap({
   name: 'check_in_academy_athlete', method: 'POST', path: '/academy/sessions/:id/check-in', tag: TAG,
-  summary: 'Staff check-in from a roster tap, a search result or an athlete/guardian QR pass (the pass holds only the athlete id). Records present, or late after 10 minutes. A repeated scan with the same idempotency_key, or an athlete already present, changes nothing. Not a venue check-in.',
-  input: z.object({ id, user_id: id, idempotency_key: z.string().min(8).max(80), source: z.enum(['staff', 'qr']).default('qr') }),
+  summary: 'Staff roster tap or search-result check-in. Records present, or late after 10 minutes, through the shared access layer, so it leaves capture evidence (who, when) next to the attendance mark. For passes and cards use record_access_capture (rotating QR, RFID/NFC): the old static athlete QR is retired and a `qr` source is treated as a roster tap. A repeated idempotency_key, or an athlete already present, changes nothing. Not a venue check-in.',
+  input: z.object({ id, user_id: id, idempotency_key: z.string().min(8).max(80), source: z.enum(['staff', 'qr']).default('staff') }),
   handler: ({ user }, i) => tx(async (c) => {
     const { s } = await sessionFor(user, i.id, 'attendance', { write: true, c });
-    const cur = (await c.query('SELECT status FROM academy_attendance WHERE session_id=$1 AND user_id=$2', [s.id, i.user_id])).rows[0];
-    const status = Date.now() > new Date(s.starts_at).getTime() + LATE_AFTER_MIN * 60000 ? 'late' : 'present';
-    if (cur && PRESENT.includes(cur.status)) return { user_id: i.user_id, status: cur.status, changed: false };
-    const r = await markAttendance(c, s, i.user_id, status, { source: i.source, actor: user.id, key: i.idempotency_key, reason: 'check-in', reason_code: null });
-    return { user_id: i.user_id, status: r.row.status, changed: r.changed };
+    const out = await capture(c, { user, domain: 'academy_session', subject_ref: s.id, method: 'manual', user_id: i.user_id, reason_code: 'roster_tap', idempotency_key: i.idempotency_key });
+    const v = out.capture;
+    if (v.verdict === 'denied' && FAIL[v.reason_code]) throw FAIL[v.reason_code](v);
+    return { user_id: i.user_id, status: await attendanceOf(c, s.id, i.user_id), changed: !out.replayed && v.verdict === 'recorded' && v.reason_code !== 'already_recorded' };
   }),
 });
 
 cap({
   name: 'self_check_in_academy_session', method: 'POST', path: '/academy/sessions/:id/self-check-in', tag: TAG,
-  summary: 'An enrolled athlete (or their verified guardian, with athlete_id) checks in themselves, only when the session allows self check-in and only from an hour before the start until it ends.',
-  input: z.object({ id, athlete_id: id.optional(), idempotency_key: z.string().min(8).max(80) }),
+  summary: 'An enrolled athlete (or their verified guardian, with athlete_id) checks in themselves, only when the session allows self check-in and from an hour before the start until it ends. If the session uses the venue geofence, send the device location (compared once, never stored); without it, or outside the fence, the check-in is held for staff to confirm (status pending_review). For the door QR use record_access_capture.',
+  input: z.object({ id, athlete_id: id.optional(), idempotency_key: z.string().min(8).max(80), geo: z.object({ lat: z.number().min(-90).max(90), lng: z.number().min(-180).max(180), accuracy_m: z.number().min(0).max(100000).optional() }).optional() }),
   handler: ({ user }, i) => tx(async (c) => {
     const s = (await c.query('SELECT * FROM academy_sessions WHERE id=$1', [i.id])).rows[0];
     if (!s) throw notFound('Session');
@@ -129,10 +132,10 @@ cap({
     if (!s.self_checkin) throw forbidden('Self check-in is not switched on for this session');
     if (!(await eligible(c, s, who))) throw notFound('Session');
     if (Date.now() > new Date(s.ends_at).getTime()) throw conflict('This session has ended');
-    const cur = (await c.query('SELECT status FROM academy_attendance WHERE session_id=$1 AND user_id=$2', [s.id, who])).rows[0];
-    if (cur && PRESENT.includes(cur.status)) return { status: cur.status, changed: false };
-    const r = await markAttendance(c, s, who, Date.now() > new Date(s.starts_at).getTime() + LATE_AFTER_MIN * 60000 ? 'late' : 'present', { source: 'self', actor: user.id, key: i.idempotency_key, reason: 'self check-in' });
-    return { status: r.row.status, changed: r.changed };
+    const out = await capture(c, { user, domain: 'academy_session', subject_ref: s.id, method: 'self', athlete_id: i.athlete_id, geo: i.geo, idempotency_key: i.idempotency_key });
+    const v = out.capture;
+    if (v.verdict === 'denied' && FAIL[v.reason_code]) throw FAIL[v.reason_code](v);
+    return { status: v.verdict === 'pending_review' ? 'pending_review' : await attendanceOf(c, s.id, who), verdict: v.verdict, reason_code: v.reason_code, message: v.message, changed: !out.replayed && v.verdict === 'recorded' && v.reason_code !== 'already_recorded' };
   }),
 });
 
