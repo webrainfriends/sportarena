@@ -21,6 +21,7 @@ import { explain, LoadError } from '../access';
 import { AddressBook } from '../address-book';
 import { OrgWizard, ORG_KINDS, profileFields } from './org-wizard';
 import { Agreements } from './academy-money';
+import { Collections } from './collections';
 import { FederationLinks } from './federation-club';
 
 const KINDS = ORG_KINDS;
@@ -86,7 +87,7 @@ export function Org({ id }) {
   const o = org.data, d = dash.data, role = d.role, archived = o.status === 'archived';
   const P = { o, d, role, archived, toast, brands, reload: () => { org.reload(); dash.reload(); brands.reload(); } };
   const teaching = !SPONSOR_ONLY.includes(role) && role !== 'finance' && role !== 'staff';
-  const tabs = [['overview', 'Overview'], ...(teaching ? [['cohorts', 'Cohorts']] : []), ['people', 'People'], ...(brands.data?.length && role !== 'coach' ? [['sponsor', 'Sponsor']] : []), ...(teaching ? [['assets', 'Teams, events & venues']] : []), ...(STAFF.includes(role) && o.kind !== 'academy' ? [['agreements', 'Agreements']] : []), ...(STAFF.includes(role) || (o.kind === 'academy' && ['finance', 'coach', 'staff', 'auditor'].includes(role)) ? [[o.kind === 'academy' ? 'academy' : 'admissions', o.kind === 'academy' ? 'Academy' : 'Admissions']] : [])];
+  const tabs = [['overview', 'Overview'], ...(teaching ? [['cohorts', 'Cohorts']] : []), ['people', 'People'], ...(brands.data?.length && role !== 'coach' ? [['sponsor', 'Sponsor']] : []), ...(teaching ? [['assets', 'Teams, events & venues']] : []), ...(STAFF.includes(role) && o.kind !== 'academy' ? [['agreements', 'Agreements']] : []), ...(['owner', 'admin', 'finance'].includes(role) && o.kind !== 'academy' ? [['collections', 'Collections']] : []), ...(STAFF.includes(role) || (o.kind === 'academy' && ['finance', 'coach', 'staff', 'auditor'].includes(role)) ? [[o.kind === 'academy' ? 'academy' : 'admissions', o.kind === 'academy' ? 'Academy' : 'Admissions']] : [])];
   return (
     <Screen wide>
       <GradCard colors={[c.violet, c.ink]}>
@@ -95,7 +96,7 @@ export function Org({ id }) {
       </GradCard>
       {archived ? <View style={{ marginTop: 10 }}><Empty emoji="🗄️" title="This organisation is archived" sub="Everything is kept and readable. Ask an owner to restore it to make changes." /></View> : null}
       <View style={{ marginTop: 10 }}><Seg options={tabs.map(([value, label]) => ({ value, label }))} value={tab} onChange={setTab} color={c.violet} /></View>
-      {tab === 'overview' ? <Overview {...P} /> : tab === 'cohorts' ? <Cohorts {...P} /> : tab === 'people' ? <People {...P} /> : tab === 'admissions' ? <Admissions {...P} /> : tab === 'academy' ? <AcademyDesk {...P} /> : tab === 'sponsor' ? <SponsorTab {...P} /> : tab === 'agreements' ? <Agreements {...P} /> : <Assets {...P} />}
+      {tab === 'overview' ? <Overview {...P} /> : tab === 'cohorts' ? <Cohorts {...P} /> : tab === 'people' ? <People {...P} /> : tab === 'admissions' ? <Admissions {...P} /> : tab === 'academy' ? <AcademyDesk {...P} /> : tab === 'sponsor' ? <SponsorTab {...P} /> : tab === 'agreements' ? <Agreements {...P} /> : tab === 'collections' ? <Collections target={{ organisation_id: o.id }} archived={archived} /> : <Assets {...P} />}
     </Screen>
   );
 }

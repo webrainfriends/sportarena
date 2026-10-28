@@ -12,6 +12,7 @@ import { c } from '../theme';
 import { moneyIn } from '../vtime';
 import { Bars, Block, Fact, Kpi, pct, saveCsv, when } from './academy-ui';
 import { Billing } from './academy-money';
+import { Collections } from './collections';
 
 const Panel = ({ children }) => <View style={{ backgroundColor: c.paper, borderRadius: 20, padding: 16, gap: 10, borderWidth: 1, borderColor: c.line }}>{children}</View>;
 const day = (n) => new Date(Date.now() - n * 864e5).toISOString().slice(0, 10);
@@ -21,13 +22,13 @@ const idem = (p) => `${p}-${Date.now().toString(36)}${Math.random().toString(36)
 export function Finance({ o, role, archived, toast }) {
   const [tab, setTab] = useState('charges');
   const staff = role === 'owner' || role === 'admin' || role === 'finance';
-  const opts = [{ value: 'charges', label: 'Charges' }, ...(staff ? [{ value: 'pnl', label: 'Profit & loss' }, { value: 'receivables', label: 'Receivables' }, { value: 'costs', label: 'Costs' }, { value: 'forecast', label: 'Forecast' }] : [])];
+  const opts = [{ value: 'charges', label: 'Charges' }, ...(staff ? [{ value: 'pnl', label: 'Profit & loss' }, { value: 'collections', label: 'Collections' }, { value: 'costs', label: 'Costs' }, { value: 'forecast', label: 'Forecast' }] : [])];
   return (
     <View style={{ gap: 12 }}>
       <Seg value={tab} onChange={setTab} color={c.violet} options={opts} />
       {tab === 'charges' ? <Billing o={o} archived={archived} /> : null}
       {tab === 'pnl' ? <Pnl o={o} /> : null}
-      {tab === 'receivables' ? <Receivables o={o} /> : null}
+      {tab === 'collections' ? <Collections target={{ organisation_id: o.id }} archived={archived} /> : null}
       {tab === 'costs' ? <Costs o={o} archived={archived} toast={toast} /> : null}
       {tab === 'forecast' ? <Forecast o={o} archived={archived} toast={toast} /> : null}
     </View>
@@ -94,62 +95,6 @@ function Pnl({ o }) {
 }
 
 const BUCKETS = [['not_yet_due', 'Not yet due'], ['d1_30', '1–30 days'], ['d31_60', '31–60 days'], ['d61_90', '61–90 days'], ['d90_plus', '90+ days']];
-function Receivables({ o }) {
-  const [asOf, setAsOf] = useState(day(0));
-  const r = useLoad(() => api.get(`/organisations/${o.id}/academy/receivables`, { as_of: asOf, lines: 50 }), [o.id, asOf]);
-  return (
-    <View style={{ gap: 12 }}>
-      <Panel><DateField label="As of" value={asOf} onChange={setAsOf} max={day(0)} /><T size={12} color={c.mute}>{r.data?.basis ?? ''} Access to this view is limited to owners, admins and finance.</T></Panel>
-      {r.error ? <ErrorBox error={r.error} onRetry={r.reload} /> : !r.data ? <Loading /> : !r.data.currencies.length ? <Empty emoji="✅" title="Nothing outstanding" sub={`No fees were awaiting payment on ${when(asOf)}.`} /> : r.data.currencies.map((cur) => (
-        <Panel key={cur.currency}>
-          <Block title={`${cur.currency} — ${moneyIn(cur.total_minor, cur.currency)} outstanding`}>
-            <Bars label={`Ageing in ${cur.currency}`} rows={BUCKETS.map(([k, l]) => ({ label: `${l} (${cur.buckets[k].count})`, value: cur.buckets[k].amount_minor, text: moneyIn(cur.buckets[k].amount_minor, cur.currency), tone: k === 'not_yet_due' ? c.cyan : c.orange }))} />
-            <T size={12} color={c.mute}>Due in the next 14 days: {moneyIn(cur.due_within_14_days_minor, cur.currency)}</T>
-            {cur.lines.map((l) => <Row key={l.source_id} title={`${l.athlete_name ?? 'Athlete'} · ${l.kind}`} sub={`${l.programme ?? ''} · due ${when(l.due_on)}${l.days_past_due ? ` · ${l.days_past_due} days past due` : ''}`} right={<T weight="800" size={13}>{moneyIn(l.amount_minor, cur.currency)}</T>} />)}
-          </Block>
-        </Panel>
-      ))}
-    </View>
-  );
-}
-
-const CATS = [['staff', 'Staff'], ['venue', 'Venue'], ['other_direct', 'Other direct'], ['overhead', 'Overhead']];
-function Costs({ o, archived, toast }) {
-  const list = useLoad(() => api.get(`/organisations/${o.id}/academy/cost-entries`, { limit: 100 }), [o.id]);
-  const progs = useLoad(() => api.get(`/organisations/${o.id}/academy/programmes`, { limit: 100 }), [o.id]);
-  const profile = useLoad(() => api.get(`/organisations/${o.id}/academy`), [o.id]);
-  const [form, setForm] = useState(false), [voidIt, setVoid] = useState(null), [key, setKey] = useState('');
-  const options = (progs.data ?? []).map((p) => ({ id: p.id, label: p.title, sub: p.sport }));
-  return (
-    <Panel>
-      <Block title="Management cost entries" right={!archived ? <Btn small title="＋ Add cost" onPress={() => { setKey(idem('cost')); setForm(true); }} /> : null}>
-        <T size={12} color={c.mute}>These are management-accounting lines for the P&L (coach fees, pitch hire, a share of overhead). They are not payments or invoices and move no money. Until Academy OS 2/3 brings timesheets and payroll, staff cost is entered here. Entries are never edited: void and re-add.</T>
-        {list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : !list.data ? <Loading /> : list.data.length ? list.data.map((e) => (
-          <Row key={e.id} title={`${moneyIn(e.amount_minor, e.currency)} · ${CATS.find(([k]) => k === e.category)?.[1]}${e.programme ? ` · ${e.programme}` : ''}`} sub={`${when(e.incurred_on)} · ${e.description}${e.category === 'overhead' ? ` · spread by ${e.allocation.method.replace('_', ' ')}` : ''}${e.voided_at ? ` · voided: ${e.void_reason}` : ''}`}
-            right={e.voided_at ? <Tag label="Voided" /> : !archived ? <Btn small title="Void" color={c.paper} ink={c.ink} onPress={() => setVoid(e)} /> : null} />
-        )) : <Empty emoji="🧾" title="No cost entries" sub="Add staff, venue and other costs so the P&L shows contribution and margin." />}
-      </Block>
-      <FormSheet visible={form} onClose={() => setForm(false)} title="Add a cost" submitLabel="Add cost" initial={{ category: 'staff', currency: profile.data?.currency ?? 'GBP', incurred_on: day(0), allocation: 'participants' }}
-        fields={[{ key: 'category', label: 'Kind of cost', type: 'chips', options: CATS.map(([value, label]) => ({ value, label })) },
-          { key: 'programme_id', label: 'Programme', type: 'entity', entityKind: 'programme', noun: 'programme', options, show: (v) => v.category !== 'overhead' },
-          { key: 'allocation', label: 'Spread across programmes by', type: 'chips', options: [{ value: 'participants', label: 'Participants' }, { value: 'revenue_share', label: 'Revenue share' }, { value: 'even', label: 'Evenly (selected)' }], show: (v) => v.category === 'overhead' },
-          { key: 'even_programmes', label: 'Programmes to share between', type: 'multi', options: options.map((p) => ({ value: p.id, label: p.label })), show: (v) => v.category === 'overhead' && v.allocation === 'even' },
-          { key: 'currency', label: 'Currency', type: 'currency' }, { key: 'amount_minor', label: 'Amount', type: 'money', currency: (v) => v.currency ?? 'GBP' },
-          { key: 'incurred_on', label: 'Incurred on', type: 'date' }, { key: 'description', label: 'What it is', hint: 'For example “Coach fees, spring term”.' }, { key: 'source_ref', label: 'Reference (invoice or payslip no.)', optional: true }]}
-        onSubmit={async (v) => {
-          const even = v.allocation === 'even' ? v.even_programmes ?? [] : [];
-          if (v.category === 'overhead' && v.allocation === 'even' && !even.length) throw new Error('Choose the programmes to share between');
-          const share = even.map((id, i) => ({ programme_id: id, pct: i === even.length - 1 ? Math.round((100 - Math.floor(10000 / even.length) / 100 * (even.length - 1)) * 100) / 100 : Math.floor(10000 / even.length) / 100 }));
-          const allocation = v.category !== 'overhead' ? { method: 'direct' } : v.allocation === 'even' ? { method: 'split', splits: share } : { method: v.allocation };
-          await api.post(`/organisations/${o.id}/academy/cost-entries`, { category: v.category, programme_id: v.programme_id, currency: v.currency, amount_minor: v.amount_minor, incurred_on: v.incurred_on, description: v.description, source_ref: v.source_ref, allocation, idempotency_key: key });
-          list.reload(); return 'Cost added';
-        }} />
-      <FormSheet visible={!!voidIt} onClose={() => setVoid(null)} title="Void this cost" submitLabel="Void" fields={[{ key: 'reason', label: 'Why', type: 'multiline' }]}
-        onSubmit={async (v) => { await api.post(`/academy/cost-entries/${voidIt.id}/void`, v); list.reload(); return 'Voided. It stays on record but leaves the P&L.'; }} />
-    </Panel>
-  );
-}
-
 function Forecast({ o, archived, toast }) {
   const list = useLoad(() => api.get(`/organisations/${o.id}/academy/scenarios`, { limit: 50 }), [o.id]);
   const progs = useLoad(() => api.get(`/organisations/${o.id}/academy/programmes`, { limit: 100 }), [o.id]);
