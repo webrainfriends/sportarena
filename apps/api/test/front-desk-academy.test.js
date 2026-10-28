@@ -53,10 +53,12 @@ test('an academy front desk sells kit, rents equipment and collects the academy 
   await pool.query('UPDATE venues SET organisation_id=$2 WHERE id=$1', [inr.id, org.id]);
   assert.equal((await api('POST', `/venues/${inr.id}/pos/sales`, { token: owner.token, body: { lines: [{ kind: 'academy_charge', charge_id: charge.id }], payments: [{ method: 'cash' }] } })).status, 400);
 
+  // a part payment already received at the academy desk lowers what the front desk collects
+  must(await api('POST', `/academy-charges/${charge.id}/paid`, { token: owner.token, body: { method: 'cash', amount_minor: 5000 } }));
   const sale = must(await api('POST', `/venues/${v.id}/pos/sales`, { token: cashier.token, body: {
     lines: [{ kind: 'academy_charge', charge_id: charge.id }, { kind: 'item', item_id: kit.id, qty: 2 }], customer_handle: parent.handle, payments: [{ method: 'cash', tendered_cents: 20000 }] } }), 201);
   assert.equal(sale.status, 'paid');
-  assert.equal(sale.total_cents, 12000 + 5000);
+  assert.equal(sale.total_cents, 7000 + 5000, 'only the 70 still owed on the fee, plus two shirts');
   assert.equal((await pool.query('SELECT status FROM academy_charges WHERE id=$1', [charge.id])).rows[0].status, 'paid');
   const inv = (await pool.query("SELECT status, payment_method FROM invoices WHERE academy_charge_id=$1 AND kind='invoice'", [charge.id])).rows[0];
   assert.deepEqual([inv.status, inv.payment_method], ['paid', 'cash']);
@@ -65,5 +67,5 @@ test('an academy front desk sells kit, rents equipment and collects the academy 
   assert.equal((await api('POST', `/venues/${v.id}/pos/sales`, { token: cashier.token, body: { lines: [{ kind: 'academy_charge', charge_id: charge.id }], payments: [{ method: 'cash' }] } })).status, 409);
   const rep = must(await api('GET', `/venues/${v.id}/pos/report`, { token: owner.token }));
   assert.equal(rep.reconciliation.reconciled, true, JSON.stringify(rep.reconciliation));
-  assert.equal(rep.by_category.find((c) => c.category === 'academy').total_cents, 12000);
+  assert.equal(rep.by_category.find((c) => c.category === 'academy').total_cents, 7000);
 });
