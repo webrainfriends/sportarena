@@ -21,6 +21,7 @@ export const EVIDENCE_KINDS = {
   public_listing: 'Official public listing of the event (link)',
   insurer_licence: 'Insurance regulator licence / certificate of authority',
   bar_admission: 'Bar / law-society admission or practising certificate',
+  agent_licence: 'Agent licence / registration with the issuing body (where one exists)',
   other: 'Other supporting document',
 };
 
@@ -77,6 +78,15 @@ export const RULES = {
     summary: 'Confirms a recruiter or scout who really works for a club, academy, school, college or federation. Verification lets you ask athletes for access; it never gives access on its own.',
     required: ['id_document'], one_of: ['club_letter', 'federation_licence', 'authorisation_letter', 'profile_link'],
     checklist: [...identity, { key: 'affiliation_confirmed', label: 'The organisation named is real and confirms this person recruits for it (letter, licence or official staff listing)' }, { key: 'sport_matches', label: 'The sports and regions claimed fit the organisation' }],
+  },
+  agent: {
+    label: 'Verified agent', subject: 'user', needs_role: 'agent', validity_months: 12,
+    summary: 'Confirms the person (or the person accountable for an agency) behind an agent profile, and records exactly which business registration or licence was looked at. It is not a statement that the agent is licensed everywhere, and it never gives access to any athlete: only a mandate an athlete agrees does. Reviewers: in each checklist note say exactly what was checked and what was not; never write licence numbers (athletes read these notes).',
+    required: ['id_document'], one_of: ['agent_licence', 'business_registration', 'authorisation_letter'],
+    checklist: [...identity,
+      { key: 'standing_checked', label: 'Business registration or licence (where one exists in the jurisdiction) was checked with the issuing body or its public register' },
+      { key: 'scope_recorded', label: 'Sports, markets and licence validity match what the profile declares; no universal licensing is implied' },
+      { key: 'authorised_to_act', label: 'For an agency: the requester is authorised to act for it' }],
   },
   sponsor: {
     label: 'Verified sponsor', subject: 'sponsor', needs_role: null, validity_months: 12,

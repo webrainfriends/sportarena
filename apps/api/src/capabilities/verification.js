@@ -197,7 +197,10 @@ cap({
     // the reviewer checks "registered name matches": show the declared legal identity (never the registration number itself)
     const identity = isAdmin(user) && row.subject_type === 'sponsor'
       ? await one('SELECT sp.name AS display_name, e.legal_name, e.sponsor_type, e.registration_country FROM sponsors sp LEFT JOIN sponsor_entities e ON e.id=sp.entity_id WHERE sp.id=$1', [row.subject_id]) : undefined;
-    return { ...row, sponsor_identity: identity, label: RULES[row.type].label, checklist_template: RULES[row.type].checklist, evidence, history };
+    // the reviewer checks the declared registrations against the evidence: show them (the reference is only the last four characters)
+    const agentDecl = isAdmin(user) && row.type === 'agent'
+      ? await one(`SELECT a.display_name, a.kind, a.sport_ids, a.markets, (SELECT coalesce(json_agg(json_build_object('issuing_body', l.issuing_body, 'grade', l.grade, 'jurisdiction', l.jurisdiction, 'reference_last4', l.reference_last4, 'valid_from', l.valid_from, 'valid_to', l.valid_to)), '[]') FROM agent_licences l WHERE l.agent_id=a.id AND l.status='declared') AS licences FROM agent_profiles a WHERE a.user_id=$1`, [row.subject_id]) : undefined;
+    return { ...row, sponsor_identity: identity, agent_declaration: agentDecl, label: RULES[row.type].label, checklist_template: RULES[row.type].checklist, evidence, history };
   },
 });
 
@@ -291,6 +294,8 @@ cap({
       await c.query('UPDATE verification_cases SET status=$2, checklist=$3, decision_reason=$4, decided_at=now(), expires_at=$5, updated_at=now() WHERE id=$1', [row.id, to, JSON.stringify(i.checklist), i.reason ?? null, expires]);
       await logEvent(c, row.id, user.id, i.decision, 'in_review', to, i.reason);
       if (to === 'approved' && row.type === 'insurer') await c.query('UPDATE insurers SET verified_at=now(), verified_by=$2 WHERE owner_id=$1', [row.subject_id, user.id]);
+      // the licences the agent declared when this review was decided are the ones the reviewer's "standing checked" tick covers; later ones stay "declared" until reviewed
+      if (to === 'approved' && row.type === 'agent') await c.query("UPDATE agent_licences l SET verified_case_id=$2, verified_at=now() FROM agent_profiles a WHERE a.id=l.agent_id AND a.user_id=$1 AND l.status='declared'", [row.subject_id, row.id]);
       const label = rule.label;
       await notify(c, row.requested_by, {
         kind: 'verification_decision', data: { case_id: row.id },

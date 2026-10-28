@@ -10,7 +10,7 @@ export const MODULES = [
   ['MyDevelopment', 'My development', 'Goals, plans, feedback & reports', 'play'], ['MyPlans', 'Training plans', 'Your plans & sessions', 'play'], ['ToolsHome', 'Tools', 'Scoring sheets & documents', 'play'], ['Pathways', 'Learn & study', 'Rules, courses & colleges', 'play'], ['OpportunityMatches', 'Opportunities for me', 'Teams, trials, study & sponsors that fit you', 'play'],
   ['Health', 'Health', 'Physio · doctors · fit to play', 'care'], ['Insure', 'My cover', 'What covers me today', 'care'],
   ['Insurance', 'Insurance', 'You · your team · your event', 'care'], ['Legal', 'Legal', 'Verified lawyers & matters', 'care'], ['Family', 'Family', 'Guardians & consents', 'care'],
-  ['Wallet', 'Wallet', 'Balance, gift cards & passes', 'money'], ['Rewards', 'Rewards', 'Points, invites & statement', 'money'], ['Cover', 'Who pays', 'Sponsor, club & family payments', 'money'], ['Earnings', 'Earnings', 'Sales, fees & payouts', 'money'], ['PlayerContracts', 'Contracts', 'Fees, bonuses, expenses & pay', 'money'], ['PlayerFunding', 'Funding', 'Needs, applications & sponsor support', 'money'], ['Shop', 'Shop', 'Kit, gear & orders', 'money'],
+  ['Wallet', 'Wallet', 'Balance, gift cards & passes', 'money'], ['Rewards', 'Rewards', 'Points, invites & statement', 'money'], ['Cover', 'Who pays', 'Sponsor, club & family payments', 'money'], ['Earnings', 'Earnings', 'Sales, fees & payouts', 'money'], ['PlayerContracts', 'Contracts', 'Fees, bonuses, expenses & pay', 'money'], ['Representation', 'Representation', 'Your agent, what they can see & commission', 'money'], ['PlayerFunding', 'Funding', 'Needs, applications & sponsor support', 'money'], ['Shop', 'Shop', 'Kit, gear & orders', 'money'],
   ['Billboard', 'Billboard', 'Wanted, for sale & ads', 'money'], ['Sponsors', 'Sponsor home', 'Offers, dues & agreements', 'money'], ['Supply', 'Supply chain', 'Kit, stock & orders', 'money'], ['ServicesBuyer', 'Services & suppliers', 'Buy grounds, crew, Wi-Fi, travel…', 'work'],
   ['Openings', 'Open positions', 'Jobs, stalls & contracts at events', 'community'], ['EventInbox', 'Event requests', 'Invites & quotes for you', 'community'],
   ['Orgs', 'Organisations', 'Clubs & associations', 'community'], ['Federations', 'Federations', 'Affiliations, licences & sanctions', 'community'], ['MediaWorkspace', 'Media & broadcast', 'Rights, production & data feeds', 'work'], ['Support', 'Support', 'Cases & disputes', 'community'],
@@ -32,6 +32,7 @@ export const WORKSPACES = [
   ['doctor', 'DoctorHome', 'Patients, records & results'],
   ['lawyer', 'Legal', 'Matters & clients'],
   ['recruiter', 'RecruiterHome', 'Pipeline, requests & messages'],
+  ['agent', 'Representation', 'Clients, mandates, negotiations & commission'],
   ['insurer', 'InsurerDesk', 'Products, quotes & claims'],
   ['athlete', 'Passport', 'Player passport & QR'],
   ['admin', 'PartnerConsole', 'Partners & platform team'],
@@ -47,7 +48,7 @@ export const PRIORITY = [
   [['sponsor', 'supplier'], ['Sponsors', 'Supply', 'Wallet', 'Earnings', 'Billboard', 'Shop', 'ToolsHome']],
   [['physio', 'doctor', 'lawyer', 'insurer'], ['Health', 'Insure', 'Legal', 'Wallet', 'Leaderboard', 'Support', 'ToolsHome']],
 ];
-export const PRIORITY_DEFAULT = ['FindGames', 'Leaderboard', 'MyApplications', 'PlayerContracts', 'Health', 'Insure', 'Wallet', 'Shop', 'Billboard', 'ToolsHome'];
+export const PRIORITY_DEFAULT = ['FindGames', 'Leaderboard', 'MyApplications', 'PlayerContracts', 'Representation', 'Health', 'Insure', 'Wallet', 'Shop', 'Billboard', 'ToolsHome'];
 
 /** The wheel's order for someone with these roles: their priority modules first, then the rest in catalogue order. */
 export function orderedModules(roles = []) {
