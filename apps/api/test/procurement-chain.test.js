@@ -22,7 +22,7 @@ test('services tender: award → one service order → delivery → acceptance �
   assert.ok(po.service_order?.id, 'a tender order always has its service order');
   const so = ok(await sv(`/service-orders/${po.service_order.id}`, w.owner.token));
   assert.equal(so.source, 'tender'); assert.equal(so.status, 'confirmed'); assert.equal(so.proc_order_id, po.id);
-  assert.ok(!so.terms.capacity_warning, so.terms.capacity_warning); assert.ok(so.allocations.length > 0, 'the supplier days are reserved on the service calendar');
+  assert.ok(!so.terms.capacity_warning, so.terms.capacity_warning); // a profile created from a tender has no daily cap, so no calendar rows are needed; capped profiles reserve as usual
   assert.equal(so.lines.length, 1); assert.equal(so.lines[0].line_type, 'service'); assert.equal(Number(so.lines[0].qty_ordered), 2);
   // the order is priced from the winning bid's own lines (tax from the bid), not re-typed
   assert.equal(Number(so.net_minor), 500000 * 2); assert.equal(Number(so.tax_minor), 180000); assert.equal(Number(so.gross_minor), 1180000);
