@@ -8,7 +8,7 @@ export const RESOURCE_TYPES = ['venue', 'team', 'event', 'organisation'];
 
 const PAYMENT = new Set([
   'create_payment', 'confirm_payment', 'refund_payment', 'topup_wallet', 'apply_wallet_to_invoice', 'adjust_wallet', 'buy_gift_card', 'redeem_gift_card',
-  'apply_points_to_invoice', 'buy_plan', 'apply_pass_to_invoice', 'mark_invoice_paid', 'mark_credit_note_refunded', 'buy_product', 'buy_policy',
+  'redeem_points', 'exchange_loyalty_points', 'buy_plan', 'apply_pass_to_invoice', 'mark_invoice_paid', 'mark_credit_note_refunded', 'buy_product', 'buy_policy',
   'accept_quote', 'renew_policy', 'file_claim', 'create_team_payout', 'create_squad_payouts', 'update_team_payout', 'set_booking_payment',
   'set_academy_charge_funding', 'refund_academy_charge', 'record_academy_payment', 'record_budget_payment', 'void_budget_payment', 'record_staff_payment', 'report_sponsorship_payment', 'request_sponsorship_refund', 'decide_sponsorship_refund', 'generate_settlement', 'add_settlement_adjustment', 'decide_settlement',
   'create_payout_run', 'approve_payout_run', 'export_payout_run', 'record_payout_line_result', 'cancel_payout_run', 'add_contract_adjustment', 'record_contract_refund', 'issue_contract_credit_note', 'decide_contract_expense', 'submit_contract_expense',

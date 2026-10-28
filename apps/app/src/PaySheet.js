@@ -5,6 +5,7 @@ import { useLoad } from './hooks';
 import { useSession } from './session';
 import { Btn, Loading, Sheet, T } from './ui';
 import { c } from './theme';
+import { PointsSheet } from './screens/rewards';
 import { moneyIn } from './vtime';
 
 /**
@@ -17,6 +18,8 @@ export function PaySheet({ target, onClose, onDone }) {
   const [pay, setPay] = useState(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
+  const [points, setPoints] = useState(false);
+  const balances = useLoad(() => api.get('/me/loyalty'), []);
   const go = async (provider) => {
     setBusy(true); setErr(null);
     try {
@@ -46,12 +49,14 @@ export function PaySheet({ target, onClose, onDone }) {
         </View>
       ) : (
         <View style={{ gap: 10 }}>
+          {balances.data?.length && ['venue_invoice', 'academy_charge', 'coach_hire'].includes(target.type ?? 'venue_invoice') ? <Btn title="⭐ Use my points first" color={c.violet} onPress={() => setPoints(true)} /> : null}
           {m.providers.includes('stripe') ? <Btn title="Pay with card (Stripe)" onPress={() => go('stripe')} loading={busy} /> : null}
           {m.providers.includes('paypal') ? <Btn title="Pay with PayPal" color={c.paper} onPress={() => go('paypal')} loading={busy} /> : null}
           <T size={12} color={c.mute}>You'll be charged in {target.currency}. You'll be taken to the provider's secure page; your card details never reach Gotmygame.</T>
         </View>
       )}
       {err ? <T color={c.red} weight="700">{err}</T> : null}
+      {points ? <PointsSheet target={{ id: target.id, type: target.type ?? 'venue_invoice', label: target.label, amount: target.amount, currency: target.currency }} onClose={() => setPoints(false)} onDone={async () => { await onDone?.(); onClose(); }} /> : null}
     </Sheet>
   );
 }

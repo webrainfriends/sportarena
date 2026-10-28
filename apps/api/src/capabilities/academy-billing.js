@@ -10,6 +10,8 @@ import { orgFor } from '../org-access.js';
 import { refundPartial } from '../payments/service.js';
 import { flag, STAFF, STAFF_MONEY, outstandingPolicies, waitlistPosition, planCharges, actFor, findPromo, SESSIONS_SQL, INVOICE_SQL, INVOICE_NO_SQL } from '../academy.js';
 import { syncChargeInvoice, creditChargeInvoice, fulfilChargePaid } from '../academy-invoices.js';
+import { restoreForPurpose } from '../rewards/redeem.js';
+import { reverseActivity } from '../rewards/activity.js';
 import { localView } from '../academy-trials.js';
 
 const money = (rows, key = 'currency') => Object.fromEntries(rows.map((r) => [r[key], r]));
@@ -76,6 +78,11 @@ cap({
     const after = await one('SELECT * FROM payments WHERE id=$1', [pay.id]);
     await tx(async (c) => {
       if (give > 0) await creditChargeInvoice(c, ch.id, give, key);       // a numbered credit note against the invoice; a retry with the same key adds nothing
+      if (give > 0) {                                                     // loyalty: points paid onto the charge come back, points it earned are taken back, in proportion
+        const done = Number(after.refunded_cents), card = Number(after.amount_cents);
+        await restoreForPurpose(c, 'academy_charge', ch.id, { fraction: { num: done, den: card }, reason: 'Academy charge refunded' });
+        await reverseActivity(c, { sourceType: 'academy_charge', sourceId: ch.id, refundedMinor: done, totalMinor: card, reason: 'Academy charge refunded' });
+      }
       if (Number(after.refunded_cents) >= Number(after.amount_cents)) await c.query("UPDATE academy_charges SET status='refunded' WHERE id=$1", [ch.id]);
     });
     await audit(null, user.id, 'refund_academy_charge', 'academy_charges', ch.id);

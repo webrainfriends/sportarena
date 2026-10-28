@@ -37,6 +37,7 @@ export function BusinessTab({ id, e, vend, money, reload }) {
       <MoneyTiles money={money} />
       <ABtn title="Invite a sponsor or vendor" onPress={() => setInvite(true)} />
       <ABtn title="Source services with a tender" tone="ghost" onPress={() => push('TenderBuilder', { event_id: id })} />
+      <ABtn title="⭐ Rewards & referrals for this event" tone="ghost" onPress={() => push('RewardsConsole', { ownerKind: 'event', ownerId: id, currency: e.currency, title: e.name })} />
       {(tenders.data ?? []).map((tn) => <ARow key={tn.id} left={<AT size={22}>📋</AT>} title={`${tn.ref} · ${tn.title}`} sub={`${tn.stage} · ${tn.submitted} proposal(s)`} right={<ATag label={tn.stage} />} onPress={() => push('TenderConsole', { id: tn.id })} />)}
       {vend.length ? vend.map((v) => (
         <ARow key={v.id} left={<AT size={26}>{KINDS.find(([k]) => k === v.kind)?.[1]}</AT>} title={v.sponsor_name ?? v.vendor_name} sub={`${v.kind}${v.fee_cents ? ` · ${moneyIn(v.fee_cents, v.currency)}` : ''}${v.in_kind ? ` · ${v.in_kind}` : ''}`}
