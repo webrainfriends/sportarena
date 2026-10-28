@@ -127,7 +127,9 @@ export async function createSale(user, i) {
           if (ch.currency !== venue.currency) throw badRequest(`This charge is in ${ch.currency} but the front desk sells in ${venue.currency}`);
           await assertNotInOpenSale(c, { chargeId: ch.id });
           const credits = Number((await c.query("SELECT coalesce(sum(credits_cents),0) AS n FROM invoices WHERE academy_charge_id=$1 AND kind='invoice' AND status='open'", [ch.id])).rows[0].n);
-          collected.push({ kind: 'academy_charge', category: 'academy', description: `Academy ${ch.kind} fee`, charge_id: ch.id, total: Number(ch.amount_minor) - credits, tax: Number(ch.tax_minor) });
+          const balance = Number(ch.amount_minor) - Number(ch.settled_minor) - Number(ch.adjusted_minor) - credits;   // part payments and waivers already lowered what is owed
+          if (balance <= 0) throw conflict('Nothing is left to pay on that academy charge');
+          collected.push({ kind: 'academy_charge', category: 'academy', description: `Academy ${ch.kind} fee`, charge_id: ch.id, total: balance, tax: Math.round(Number(ch.tax_minor) * balance / Math.max(1, Number(ch.amount_minor))) });
         }
       }
 

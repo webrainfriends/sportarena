@@ -10,7 +10,7 @@ export async function saleDue(c, saleId) {
   const inv = (await c.query(
     `SELECT i.id, i.total_cents - i.credits_cents AS due FROM pos_sale_invoices psi JOIN invoices i ON i.id=psi.invoice_id WHERE psi.sale_id=$1 AND i.kind='invoice' AND i.status='open'`, [saleId])).rows;
   const charges = (await c.query(
-    `SELECT ch.id, ch.amount_minor - coalesce((SELECT sum(i.credits_cents) FROM invoices i WHERE i.academy_charge_id=ch.id AND i.kind='invoice' AND i.status='open'), 0) AS due
+    `SELECT ch.id, ch.amount_minor - ch.settled_minor - ch.adjusted_minor - coalesce((SELECT sum(i.credits_cents) FROM invoices i WHERE i.academy_charge_id=ch.id AND i.kind='invoice' AND i.status='open'), 0) AS due
        FROM pos_sale_lines l JOIN academy_charges ch ON ch.id=l.charge_id WHERE l.sale_id=$1 AND l.kind='academy_charge' AND ch.status='awaiting_payment'`, [saleId])).rows;
   const outstanding = inv.reduce((s, r) => s + Number(r.due), 0) + charges.reduce((s, r) => s + Number(r.due), 0);
   const received = Number((await c.query("SELECT coalesce(sum(amount_cents),0) AS n FROM pos_sale_payments WHERE sale_id=$1 AND kind='payment' AND status='confirmed'", [saleId])).rows[0].n);

@@ -1,6 +1,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
+import { slotAhead } from './support/slots.js';
 
 // ---- stand-in for Stripe with real idempotency-key semantics, so "money moved" can be counted ----
 const fake = { sessions: {}, moved: new Map(), calls: 0, n: 0, dropAfterMoving: 0 };
@@ -59,7 +60,7 @@ async function venue(mgr, over = {}) {
 }
 // A paid online booking cancelled late: a credit note of 5000 that must go back to the card.
 async function paidThenCancelled(u, mgrVenue, beforeCancel) {
-  const soon = new Date(Date.now() + 5 * 3600e3); soon.setUTCMinutes(0, 0, 0);
+  const soon = slotAhead(5, 2);
   const s = must(await api('POST', '/reservations', { token: u.token, body: { items: [{ resource_id: mgrVenue.court.id, starts_at: new Date(+soon + n * 0).toISOString(), ends_at: new Date(+soon + 7200e3).toISOString() }] } }), 201);
   const sp = must(await api('POST', '/payments', { token: u.token, body: { purpose_type: 'venue_invoice', purpose_id: s.invoices[0].id, provider: 'stripe', return_url: 'http://app.test/' } }), 201);
   Object.values(fake.sessions).at(-1).payment_status = 'paid';

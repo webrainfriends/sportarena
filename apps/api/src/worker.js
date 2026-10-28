@@ -25,6 +25,7 @@ import { expireAcademyOffers, remindTrials, runAcademyJobs } from './academy-swe
 import { runTenderJobs, sendTenderReminders } from './capabilities/tender-reports.js';
 import { deliverDueReports } from './sponsor-report-schedules.js';
 import { accrueActiveContracts } from './player-contracts.js';
+import { raiseScheduledCharges, runCollections } from './collections.js';
 import { runServiceSweeps } from './svc/sweeps.js';
 import { runServiceJobs } from './capabilities/svc-reports.js';
 import { runFederationSweeps } from './federation-sweeps.js';
@@ -61,6 +62,8 @@ export const STEPS = [
   ['academy_offers', 'academy_offers_expired', expireAcademyOffers, 0],
   ['academy_trial_reminders', 'academy_trial_reminders_sent', remindTrials, 0],
   ['academy_jobs', 'academy_jobs', runAcademyJobs, null],
+  ['billing_schedules', 'billing_periods_raised', raiseScheduledCharges, 0],
+  ['collections', 'collection_cases_advanced', runCollections, 0],
   ['access_grants', 'access_grants_revoked', sweepAccessGrants, 0],
   ['tender_jobs', 'tender_jobs', runTenderJobs, null],
   ['tender_reminders', 'tender_deadline_reminders', sendTenderReminders, 0],

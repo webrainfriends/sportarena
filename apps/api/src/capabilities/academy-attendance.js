@@ -104,7 +104,7 @@ cap({
   }),
 });
 
-const FAIL = { session_not_open: (m) => conflict(m.message ?? 'This session is not open for attendance'), not_eligible: () => badRequest('That person is not on this session\'s roster') };
+const FAIL = { access_paused: (m) => forbidden(m.message ?? 'Access to sessions is paused until a payment is made'), session_not_open: (m) => conflict(m.message ?? 'This session is not open for attendance'), not_eligible: () => badRequest('That person is not on this session\'s roster') };
 const attendanceOf = async (c, sessionId, userId) => (await c.query('SELECT status FROM academy_attendance WHERE session_id=$1 AND user_id=$2', [sessionId, userId])).rows[0]?.status ?? 'expected';
 
 cap({

@@ -2,7 +2,7 @@
 // A ranking only ever reads existing verified results (performances, appearances, fixtures) and never writes one.
 import { createHash } from 'node:crypto';
 import { query, many, one, tx } from '../db.js';
-import { PUBLIC_USER } from '../helpers.js';
+import { PUBLIC_USER, PUBLIC_ROLES_SQL } from '../helpers.js';
 import { NOT_YOUTH_SQL } from '../youth.js';
 import { metricKey } from '../scoring/metric-defs.js';
 import { computeRanking, describeFormula } from './engine.js';
@@ -84,7 +84,7 @@ export async function runRanking(def, v, { asOf = new Date(), client } = {}) {
 
 const subjectCols = (subject) => (subject === 'team'
   ? ['SELECT id, name, emoji, color, city FROM teams WHERE id = ANY($1)']
-  : [`SELECT ${PUBLIC_USER.replace(/u\.roles, /, '')} FROM users u WHERE u.id = ANY($1)`]);
+  : [`SELECT ${PUBLIC_USER.replace(`${PUBLIC_ROLES_SQL}, `, '')} FROM users u WHERE u.id = ANY($1)`]);
 export async function subjectsOf(def, ids, c) {
   if (!ids.length) return new Map();
   const [sql] = subjectCols(def.subject);

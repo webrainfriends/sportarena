@@ -41,7 +41,7 @@ export async function duesFor(user, { venue_id, customer_handle }) {
         AND NOT EXISTS (SELECT 1 FROM pos_sale_invoices psi JOIN pos_sales s ON s.id=psi.sale_id WHERE psi.invoice_id=i.id AND s.status='awaiting_payment')
       ORDER BY i.issued_at DESC LIMIT 50`, [venue_id, cust?.id ?? null]);
   const charges = cust ? await many(
-    `SELECT ch.id, ch.kind, ch.amount_minor AS due_cents, ch.currency, ch.due_on FROM academy_charges ch JOIN venues v ON v.organisation_id=ch.organisation_id
+    `SELECT ch.id, ch.kind, ch.amount_minor - ch.settled_minor - ch.adjusted_minor AS due_cents, ch.currency, ch.due_on FROM academy_charges ch JOIN venues v ON v.organisation_id=ch.organisation_id
       WHERE v.id=$1 AND ch.payer_id=$2 AND ch.status='awaiting_payment'
         AND NOT EXISTS (SELECT 1 FROM pos_sale_lines l JOIN pos_sales s ON s.id=l.sale_id WHERE l.charge_id=ch.id AND s.status='awaiting_payment') ORDER BY ch.due_on LIMIT 50`, [venue_id, cust.id]) : [];
   return { customer: cust ? { id: cust.id, name: cust.display_name } : null, invoices, academy_charges: charges };
