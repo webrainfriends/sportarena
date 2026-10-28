@@ -61,6 +61,7 @@ export async function disablePush(deviceId) {
 
 /** Where a tapped notification should land: [screen, params] or null. */
 export function targetFor(data = {}) {
+  if (data.governance_notice) return ['MyIntegrity', {}]; // a generic notice: the substance is only ever shown after opening the app
   if (data.spectator && data.fixture_id) return ['LiveCentre', { id: data.fixture_id }]; // an alert for a game you follow
   if (data.screen === 'PlayerFunding') return ['PlayerFunding', data.athlete_id ? { athlete_id: data.athlete_id } : {}]; // an athlete shared their funding with a coach
   if (data.assessment_id) return ['OfficialAssessment', { id: data.assessment_id }]; // an assessment published, corrected, voided or appealed (private development record)
@@ -94,8 +95,11 @@ export function parseTarget(t) {
   if (kind === 'assessment' && id) return ['OfficialAssessment', { id }];
   if (kind === 'officials-development') return ['OfficialsDevelopment', id ? { tab: id } : {}];
   if (kind === 'federation' && id) return ['FederationHome', extra ? { id, tab: extra } : { id }];
+  if (kind === 'integrity-case' && id) return ['IntegrityCase', { id }];
+  if (kind === 'my-integrity') return ['MyIntegrity', {}];
   if (kind === 'open-game' && id) return ['OpenGame', { id }];
   if (kind === 'find-games') return ['FindGames', {}];
+  if (kind === 'family') return ['Family', {}];
   if (kind === 'reservation' && id) return ['Reservation', { id }];
   if (kind === 'cover') return ['Cover', {}];
   if (kind === 'rewards') return ['Rewards', {}];

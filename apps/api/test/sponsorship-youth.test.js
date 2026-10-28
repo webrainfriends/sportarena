@@ -17,11 +17,11 @@ const must = (r, status = 200) => { assert.equal(r.status, status, JSON.stringif
 const yearsAgo = (y) => { const d = new Date(); d.setUTCFullYear(d.getUTCFullYear() - y); d.setUTCDate(d.getUTCDate() - 3); return d.toISOString().slice(0, 10); };
 const signup = async (roles = ['athlete'], extra = {}) => { n++; const r = await api('POST', '/auth/register', { body: { handle: `ys_${n}_${roles[0]}`, display_name: `Youth ${n}`, email: `ys${n}@example.com`, password: 'correct-horse-battery', roles, phone: '+15550100', ...extra } }); assert.equal(r.status, 201, JSON.stringify(r.body)); return { ...r.body.user, token: r.body.token }; };
 const evidence = { reference: 'https://example.com/birth-certificate-ref-123', label: 'Birth certificate' };
-async function verifiedGuardian(parent, child) {
+async function verifiedGuardian(parent, child, exceptional = false) {
   const l = must(await api('POST', '/youth/guardian-links', { token: parent.token, body: { guardian_id: parent.id, child_id: child.id, relationship: 'parent' } }), 201);
   must(await api('POST', `/youth/guardian-links/${l.id}/respond`, { token: child.token, body: { accept: true } }));
   must(await api('POST', `/youth/guardian-links/${l.id}/evidence`, { token: parent.token, body: { evidence } }), 201);
-  must(await api('POST', `/youth/guardian-links/${l.id}/decision`, { token: admin.token, body: { decision: 'approve', note: 'Documents match' } }));
+  must(await api('POST', `/youth/guardian-links/${l.id}/decision`, { token: admin.token, body: { decision: 'approve', note: 'Documents match', ...(exceptional ? { exceptional: true } : {}) } }));
   return l;
 }
 const world = async ({ authorize = true } = {}) => {
@@ -178,4 +178,31 @@ test('a young athlete\'s money goes to a guardian payee, never to the minor', as
   must(await api('POST', `/sponsorships/${w.deal.id}/youth-payee`, { token: w.parent.token, body: { guardian_id: w.parent.id } }));
   must(await report(500, 'TT-D'), 201);
   assert.equal(must(await api('PATCH', `/sponsorship-payments/${p2.id}`, { token: w.parent.token, body: { status: 'confirmed' } })).status, 'confirmed', 'a verified guardian can confirm when the frozen payee left');
+});
+
+test('reports and exports never name the young person, and stop reading once the authority is withdrawn', async () => {
+  const w = await active(await world());
+  const exp = (kind = 'ageing') => api('GET', `/sponsorship-reports/${kind}/export`, { token: w.sponsor.token, query: { format: 'csv' } });
+  const out = must(await exp());
+  assert.ok(!out.content.includes(w.kid.display_name) && !out.content.includes(w.kid.handle), 'a young athlete is "Youth athlete" in an export');
+  const dash = must(await api('GET', '/sponsorship-reports/ageing', { token: w.sponsor.token }));
+  assert.ok(!JSON.stringify(dash).includes(w.kid.display_name), 'nor on the dashboard');
+  must(await api('DELETE', `/youth/children/${w.kid.id}/sponsors/${w.brand.id}`, { token: w.parent.token }));
+  const after = await exp('outcomes');
+  assert.ok(after.status !== 200 || !after.body.content.includes(w.kid.display_name), 'withdrawal never opens a name');
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM sponsorships WHERE id=$1', [w.deal.id])).rows[0].n, 1, 'the agreement is kept');
+});
+
+test('two verified guardians answering at once settle the agreement exactly once, and authorizing twice at once is one authority', async () => {
+  const w = await world({ authorize: false });
+  const other = await signup(['athlete']);
+  await verifiedGuardian(other, w.kid, true); // a second guardian needs an exceptional platform review
+  const auths = await Promise.all([w.parent, other].map((g) => api('POST', `/youth/children/${w.kid.id}/sponsors`, { token: g.token, body: { sponsor_id: w.brand.id } })));
+  assert.deepEqual(auths.map((r) => r.status), [201, 201]);
+  assert.equal(auths.filter((r) => r.body.created).length, 1, 'one authority row, however many guardians press it');
+  w.deal = must(await w.offer(), 201);
+  const res = await Promise.all([w.parent, other].map((g) => decide(w, g)));
+  assert.deepEqual(res.map((r) => r.status).sort(), [200, 409], JSON.stringify(res.map((r) => r.body)));
+  const row = (await pool.query("SELECT status, guardian_id FROM sponsorships WHERE id=$1", [w.deal.id])).rows[0];
+  assert.equal(row.status, 'active'); assert.ok([w.parent.id, other.id].includes(row.guardian_id));
 });

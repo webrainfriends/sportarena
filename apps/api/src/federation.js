@@ -10,13 +10,13 @@ import { conflict, forbidden, notFound } from './errors.js';
 import { guardianLink } from './youth.js';
 
 export const LEVELS = ['international', 'continental', 'national', 'regional', 'state', 'district', 'league'];
-export const ROLES = ['registrar', 'licensing', 'sanctioner', 'secretary', 'compliance', 'auditor'];
+export const ROLES = ['registrar', 'licensing', 'sanctioner', 'secretary', 'compliance', 'auditor', 'integrity'];
 export const ROLE_LABEL = {
   registrar: 'Registrar (affiliations)', licensing: 'Licensing officer', sanctioner: 'Sanctioning officer', secretary: 'Secretary (policies and calendar)',
-  compliance: 'Compliance (read-only, incl. evidence)', auditor: 'Auditor (read-only, reports)',
+  compliance: 'Compliance (read-only, incl. evidence)', auditor: 'Auditor (read-only, reports)', integrity: 'Integrity officer (sport integrity and anti-doping administration)',
 };
 // What each scoped role may do. Owners and admins of the body's organisation may do all of it; nobody here ever reaches a club's finance, coaching or medical data.
-const PERMS = { affiliations: ['registrar'], licences: ['licensing'], sanctions: ['sanctioner'], governance: ['secretary'], evidence: ['registrar', 'licensing', 'sanctioner', 'compliance'], reports: ['auditor', 'compliance', 'registrar', 'licensing', 'sanctioner', 'secretary'] };
+const PERMS = { affiliations: ['registrar'], licences: ['licensing'], sanctions: ['sanctioner'], governance: ['secretary'], evidence: ['registrar', 'licensing', 'sanctioner', 'compliance'], integrity: ['integrity'], reports: ['auditor', 'compliance', 'registrar', 'licensing', 'sanctioner', 'secretary'] };
 export const UNSCOPED = '00000000-0000-0000-0000-000000000000';
 
 export const BODY_SQL = `SELECT b.*, o.name, o.legal_name, o.registration_no, o.website, o.contact_email, o.contact_phone, o.description, o.status AS org_status

@@ -7,7 +7,7 @@ import { one, many, query, tx } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { mustFind, PUBLIC_USER } from '../helpers.js';
 import { notify } from '../notify.js';
-import { requireConsent } from '../youth.js';
+import { guardiansOf, requireConsent, requireGuardian } from '../youth.js';
 import { canManageTeam } from './teams.js';
 import { capture, loadSubject, recordCorrection } from '../access-layer.js';
 
@@ -308,10 +308,16 @@ const where = 'a.team_id=$1 AND a.event_id IS NOT DISTINCT FROM $2 AND a.fixture
 
 cap({
   name: 'set_event_rsvp', method: 'POST', path: '/teams/:id/attendance', tag: 'Team attendance',
-  summary: 'Tell the team whether you are coming to an event or match (going / maybe / no). Managers are notified when someone says no.',
-  input: z.object({ id, event_id: id.optional(), fixture_id: id.optional(), rsvp, note: z.string().max(200).optional() }),
-  async handler({ user }, i) {
+  summary: 'Tell the team whether you are coming to an event or match (going / maybe / no). Managers are notified when someone says no. A verified guardian can answer for a young team member with for_user_id.',
+  input: z.object({ id, event_id: id.optional(), fixture_id: id.optional(), rsvp, note: z.string().max(200).optional(), for_user_id: id.optional().describe('A young person you are a verified guardian of') }),
+  async handler({ user: actor }, i) {
     const team = await mustFind('teams', i.id);
+    let user = actor;
+    if (i.for_user_id && i.for_user_id !== actor.id) {
+      if (!(await isActive(team.id, i.for_user_id))) throw notFound('Team member');
+      await requireGuardian(actor, i.for_user_id);
+      user = { ...(await one('SELECT id, display_name FROM users WHERE id=$1', [i.for_user_id])) };
+    }
     if (!(await isActive(team.id, user.id))) throw forbidden('Only active team members can RSVP');
     const s = await attendanceScope(team, i);
     const row = await one(
@@ -339,6 +345,8 @@ export async function askAttendance(c, team, user, s, squadOnly) {
     if (r.rowCount && u !== user.id) {
       asked++;
       await notify(c, u, { kind: 'team_attendance_request', title: `${team.name}: are you coming to ${label}?`, body: 'Open the team schedule and answer going / maybe / no.', data: { team_id: team.id, event_id: s.event_id, fixture_id: s.fixture_id } });
+      // a young member's verified guardians are asked too, so they can answer for the child from the family dashboard
+      for (const g of await guardiansOf(u, c)) if (g !== user.id) await notify(c, g, { kind: 'team_attendance_request', title: `${team.name}: is your child coming to ${label}?`, body: 'Answer from your family dashboard.', data: { team_id: team.id, event_id: s.event_id, fixture_id: s.fixture_id, for_user_id: u } });
     }
   }
   return { asked, total: people.length };

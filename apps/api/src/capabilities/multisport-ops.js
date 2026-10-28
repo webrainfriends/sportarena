@@ -384,7 +384,7 @@ cap({
       const row = (await c.query(
         'INSERT INTO event_announcements(event_id, audience, house_id, discipline_id, session_id, title, body, urgent, recipients, sent_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *',
         [ev.id, i.audience, i.house_id ?? null, i.discipline_id ?? null, i.session_id ?? null, i.title, i.body, i.urgent, users.length, user.id])).rows[0];
-      for (const u of users) await notify(c, u, { kind: 'event_announcement', title: `${i.urgent ? '🚨 ' : ''}${i.title}`, body: i.body, data: { event_id: ev.id, announcement_id: row.id, sender_scope: { kind: 'event', id: ev.id } } });
+      for (const u of users) await notify(c, u, { kind: 'event_announcement', title: `${i.urgent ? '🚨 ' : ''}${i.title}`, body: i.body, data: { event_id: ev.id, announcement_id: row.id, sender_scope: { kind: 'event', id: ev.id } } , ...(i.urgent ? { comm: { use_case: 'emergency_announcement', essential: true } } : {}) });
       return row;
     });
   },
