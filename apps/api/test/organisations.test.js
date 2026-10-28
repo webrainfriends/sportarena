@@ -245,7 +245,7 @@ test('seasons and cohorts validate their links; migration kept pre-existing team
   assert.equal((await api('POST', `/organisations/${org.id}/cohorts`, { token: owner.token, body: { name: 'X', coach_id: staff.finance.id } })).status, 400);
   const c1 = await api('POST', `/organisations/${org.id}/cohorts`, { token: owner.token, body: { name: 'Seniors', season_id: s.body.id, coach_id: staff.coach.id } });
   assert.equal(c1.status, 201);
-  assert.equal((await api('POST', `/organisations/${org.id}/cohorts`, { token: owner.token, body: { name: 'Seniors' } })).status, 409, 'unique name');
+  assert.equal((await api('POST', `/organisations/${org.id}/cohorts`, { token: owner.token, body: { name: 'Seniors', season_id: s.body.id } })).status, 409, 'unique name within a season (a later season may reuse it: season rollover, #573)');
   assert.equal((await api('GET', `/organisations/${org.id}/cohorts`, { token: staff.coach.token })).body.length, 1);
   assert.equal((await api('GET', `/organisations/${org.id}/cohorts`, { token: staff.finance.token })).status, 403);
   const seasons = (await api('GET', `/organisations/${org.id}/seasons`, { token: owner.token })).body;
