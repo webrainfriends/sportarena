@@ -3,7 +3,7 @@
 // beneficiary (event organiser, team owner, adult athlete) sells inventory, delivers with evidence and records provider figures.
 // Nothing here is estimated unless the brand wrote the assumptions itself, and an estimate is always labelled as one.
 import React, { useMemo, useState } from 'react';
-import { Platform, View } from 'react-native';
+import { Linking, Platform, Pressable, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
@@ -38,6 +38,13 @@ const deliver = async (out) => {
   file.write(out.encoding === 'base64' ? Uint8Array.from(atob(out.content), (ch) => ch.charCodeAt(0)) : out.content);
   if (!(await Sharing.isAvailableAsync())) throw new Error('This device cannot open the file from here. Download it from the web app.');
   await Sharing.shareAsync(file.uri, { mimeType: out.content_type, dialogTitle: out.filename });
+};
+
+/** A link opens in the browser; a file is fetched through the audited endpoint (only the two sides may read it) and handed to the browser or the share sheet. */
+const openEvidence = async (e) => {
+  if (e.url) { await Linking.openURL(e.url); return; }
+  const f = await api.get(`/sponsorship-deliverable-evidence/${e.id}`);
+  await deliver({ filename: f.file_name ?? 'evidence', content_type: f.content_type ?? 'application/octet-stream', encoding: 'base64', content: f.data });
 };
 
 const Banner = ({ tone = c.sunSoft, children }) => <View accessibilityRole="alert" style={{ backgroundColor: tone, borderRadius: 12, padding: 12 }}><T size={13}>{children}</T></View>;
@@ -81,7 +88,10 @@ function Deliverables({ id, role, reload }) {
             <T size={12} color={c.mute}>{word(d.kind)} · owed by the {d.owed_by} · due {d.due_on} · evidence: {d.evidence_required === 'either' ? 'a link or a file' : `a ${d.evidence_required}`}</T>
             {d.brief ? <T size={13}>{d.brief}</T> : null}
             {d.review_note ? <T size={12} color={c.mute}>Reviewer note: {d.review_note}</T> : null}
-            {d.evidence.map((e) => <T key={e.id} size={12} color={c.violet}>• {e.label ?? (e.url ? 'Link' : e.file_name)}{e.url ? ` — ${e.url}` : ' (file)'}</T>)}
+            {d.evidence.map((e) => (
+              <Pressable key={e.id} accessibilityRole="button" accessibilityLabel={`Open evidence: ${e.label ?? e.file_name ?? 'link'}`} style={{ minHeight: 44, justifyContent: 'center' }} onPress={() => openEvidence(e).catch((x) => toast(explain(x)))}>
+                <T size={13} weight="700" color={c.violet}>• {e.label ?? (e.url ? 'Link' : e.file_name)} — {e.url ? 'open link' : `open file${e.size_bytes ? ` (${Math.max(1, Math.round(e.size_bytes / 1024))} KB)` : ''}`}</T>
+              </Pressable>))}
             {d.exceptions.filter((x) => x.status === 'requested').map((x) => (
               <Banner key={x.id}>{word(x.kind)} requested{x.new_due_on ? ` to ${x.new_due_on}` : ''}: {x.reason}
                 {!d.you_owe ? <Row><Btn small title="Approve" color={c.mint} ink={c.ink} onPress={() => act(() => api.patch(`/sponsorship-deliverable-exceptions/${x.id}`, { decision: 'approve' }), 'Approved')} /><Btn small title="Decline…" color={c.paper} ink={c.red} onPress={() => setForm({ type: 'decline', x })} /></Row> : null}
