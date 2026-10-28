@@ -331,3 +331,96 @@ export function AddedTimeBar({ g, disabled, onLog }) {
     </View>
   );
 }
+
+// ------------------------------------------------------------------ sport rules (basketball, kabaddi, volleyball, badminton …)
+const PROMPTS = { technical_timeout: ['Technical timeout due', 'technical_timeout', 'Log it'], interval: ['Interval due', 'interval', 'Log it'], change_ends: ['Change ends', 'change_ends', 'Ends changed'] };
+const Dots = ({ n, of, color, label }) => (
+  <View accessible accessibilityLabel={label} style={{ flexDirection: 'row', gap: 4, flexWrap: 'wrap' }}>
+    {Array.from({ length: of }, (_, i) => <View key={i} style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: i < n ? color : 'transparent', borderWidth: 1.5, borderColor: color }} />)}
+  </View>
+);
+
+/**
+ * What the server derived from the taps under the sport's own rules: team fouls and the bonus, fouled-out players, timeouts left (basketball);
+ * players on the mat, do-or-die raids and the all-out (kabaddi); timeouts, substitutions, rotation, service court and the prompts that are due
+ * (volleyball, badminton). Prompts clear when the scorer logs them. Renders nothing for a sport with no rules block.
+ */
+export function RulesPanel({ g, names, disabled, onLog, playerName }) {
+  const r = g.score?.rules, rs = g.ruleset;
+  if (!r) return null;
+  const sides = ['home', 'away'];
+  const Row = ({ s, children }) => (
+    <View key={s} style={{ flex: 1, minWidth: 140, gap: 6 }}>
+      <AT size={12} weight="800" color={A.mute} numberOfLines={1}>{names[s].toUpperCase()}</AT>
+      {children}
+    </View>
+  );
+  if (rs.basketball) {
+    const B = rs.basketball;
+    return (
+      <ACard pad={12} style={{ gap: 10 }}>
+        <AT size={12} weight="800" color={A.mute}>FOULS AND TIMEOUTS</AT>
+        <View style={{ flexDirection: 'row', gap: 14, flexWrap: 'wrap' }}>
+          {sides.map((s) => (
+            <Row key={s} s={s}>
+              <AT size={13} weight="800" accessibilityLiveRegion="polite">Team fouls {r.team_fouls[s]}{B.team_fouls_bonus ? ` / ${B.team_fouls_bonus}` : ''}</AT>
+              {B.team_fouls_bonus ? <Dots n={Math.min(r.team_fouls[s], B.team_fouls_bonus)} of={B.team_fouls_bonus} color={r.bonus[other(s)] ? A.red : A.sun} label={`${names[s]} team fouls ${r.team_fouls[s]}`} /> : null}
+              {r.bonus[other(s)] ? <Pill color={A.red}>{names[other(s)]} in the bonus</Pill> : null}
+              {r.timeouts_left[s] != null ? <AT size={12.5} color={A.mute}>Timeouts left: {r.timeouts_left[s]}</AT> : null}
+            </Row>
+          ))}
+        </View>
+        {r.fouled_out.length ? <AT size={12.5} weight="800" color={A.red} accessibilityLiveRegion="polite">Fouled out: {r.fouled_out.map((p) => playerName?.(p.player_id) ?? 'A player').join(', ')}</AT> : null}
+        {r.target_score ? <AT size={12} color={A.mute}>First to {r.target_score} wins.</AT> : null}
+      </ACard>
+    );
+  }
+  if (rs.kabaddi) {
+    const K = rs.kabaddi;
+    return (
+      <ACard pad={12} style={{ gap: 10 }}>
+        <AT size={12} weight="800" color={A.mute}>ON THE MAT</AT>
+        <View style={{ flexDirection: 'row', gap: 14, flexWrap: 'wrap' }}>
+          {sides.map((s) => (
+            <Row key={s} s={s}>
+              <AT size={13} weight="800" accessibilityLiveRegion="polite">{r.on_mat[s]} of {K.players} players</AT>
+              <Dots n={r.on_mat[s]} of={K.players} color={s === 'home' ? A.magenta : A.cyan} label={`${names[s]} ${r.on_mat[s]} on the mat`} />
+              <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
+                {r.do_or_die[s] ? <Pill color={A.red}>Do-or-die raid</Pill> : null}
+                {r.super_tackle[s] ? <Pill color={A.sun}>Super tackle on</Pill> : null}
+              </View>
+            </Row>
+          ))}
+        </View>
+        {r.all_out_for ? <AT size={13} weight="900" color={A.red} accessibilityLiveRegion="polite">{names[other(r.all_out_for)]} have no one on the mat: log the all-out for {names[r.all_out_for]}.</AT> : null}
+      </ACard>
+    );
+  }
+  if (rs.rally) {
+    const due = (r.prompts ?? []).map((p) => PROMPTS[p]).filter(Boolean);
+    const info = r.service_court || r.rotation || r.timeouts_left || r.subs_left;
+    if (!due.length && !info) return null;
+    return (
+      <ACard pad={12} style={{ gap: 10 }}>
+        {due.map(([text, kind, action]) => (
+          <View key={kind} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <AT size={14} weight="900" color={A.sun} accessibilityLiveRegion="polite" style={{ flex: 1 }}>{text}</AT>
+            <ABtn small tone="sun" title={action} disabled={disabled} onPress={() => onLog(kind, 'home')} />
+          </View>
+        ))}
+        {r.decider ? <AT size={12} weight="800" color={A.mute}>Deciding set</AT> : null}
+        <View style={{ flexDirection: 'row', gap: 14, flexWrap: 'wrap' }}>
+          {sides.map((s) => (
+            <Row key={s} s={s}>
+              {r.service_court && g.score.server === s ? <Pill color={A.green}>Serves from the {r.service_court} court ({r.server_score})</Pill> : null}
+              {r.rotation ? <AT size={12.5} color={A.mute}>Rotation {r.rotation[s]}{r.rotation.serving === s ? ' · serving' : ''}</AT> : null}
+              {r.timeouts_left ? <AT size={12.5} color={A.mute}>Timeouts left: {r.timeouts_left[s]}</AT> : null}
+              {r.subs_left ? <AT size={12.5} color={A.mute}>Substitutions left: {r.subs_left[s]}</AT> : null}
+            </Row>
+          ))}
+        </View>
+      </ACard>
+    );
+  }
+  return null;
+}

@@ -91,12 +91,13 @@ export function Wallet() {
 
       <MyPlans />
 
-      <Section title="Rewards" color={c.sun}>
-        {rewards.data?.length ? rewards.data.map((p) => (
-          <Row key={p.venue_id} onPress={() => push('Venue', { id: p.venue_id })} title={`${p.emoji ?? '⭐'} ${p.venue_name}`}
-            sub={p.expiring_soon > 0 ? `${p.expiring_soon} points expire by ${new Date(p.next_expiry).toLocaleDateString(locale)}` : `Worth ${moneyIn(p.points, p.currency)} on your next booking there`}
+      <Section title="Rewards" color={c.sun} action={rewards.data?.length ? 'All rewards' : undefined} onAction={() => push('Rewards')}>
+        {rewards.data?.length ? rewards.data.slice(0, 3).map((p) => (
+          <Row key={p.id} onPress={() => push('Rewards')} title={`${p.emoji ?? '⭐'} ${p.name}`}
+            sub={p.expiring_soon > 0 ? `${p.expiring_soon} points expire by ${new Date(p.next_expiry).toLocaleDateString(locale)}` : `Worth ${moneyIn(p.value_minor, p.currency)} on your next payment there`}
             right={<T weight="800">{p.points} pts</T>} />
-        )) : <T size={13} color={c.mute}>Venues that run a rewards programme give you points when you pay. They'll show up here.</T>}
+        )) : <T size={13} color={c.mute}>Venues, academies, coaches and events that run a rewards programme give you points when you pay. Invite friends and track it all under Rewards.</T>}
+        <Btn small title="Open Rewards" color={c.paper} ink={c.ink} onPress={() => push('Rewards')} style={{ alignSelf: 'flex-start' }} />
       </Section>
 
       <Section title="Activity" color={c.cyan}>
@@ -152,31 +153,6 @@ export function WalletApplySheet({ invoice, onClose, onDone }) {
           <Btn title={use > 0 ? `Use ${moneyIn(use, invoice.currency)}` : 'Nothing to use'} disabled={use <= 0} loading={busy} onPress={async () => {
             setBusy(true);
             try { const r = await api.post(`/invoices/${invoice.id}/wallet`, {}); toast(r.paid ? 'Paid from your wallet ✓' : `${moneyIn(r.applied_cents, invoice.currency)} applied`); await onDone?.(); onClose(); } catch (e) { toast(e.message); } finally { setBusy(false); }
-          }} />
-        </View>
-      )}
-    </Sheet>
-  );
-}
-
-/** "Use my points" for an open invoice. */
-export function PointsApplySheet({ invoice, onClose, onDone }) {
-  const { toast } = useSession();
-  const r = useLoad(() => api.get('/me/loyalty'), []);
-  const [busy, setBusy] = useState(false);
-  const have = r.data?.find((p) => p.venue_id === invoice.venue_id)?.points ?? 0;
-  const due = invoice.total_cents - (invoice.credits_cents ?? 0);
-  const use = Math.min(have, due);
-  return (
-    <Sheet visible onClose={onClose} title="Pay with points">
-      {r.loading ? <Loading /> : (
-        <View style={{ gap: 10 }}>
-          <T>Your points here: <T weight="700">{have} = {moneyIn(have, invoice.currency)}</T></T>
-          <T>Amount due: <T weight="700">{moneyIn(due, invoice.currency)}</T></T>
-          <T color={c.mute} size={13}>The venue limits how much of one booking points can pay, so you may be able to use fewer than you have. Points paid this way don't earn new points.</T>
-          <Btn title={use > 0 ? 'Use my points' : 'No points to use'} disabled={use <= 0} loading={busy} onPress={async () => {
-            setBusy(true);
-            try { const x = await api.post(`/invoices/${invoice.id}/points`, {}); toast(x.paid ? 'Paid with points ✓' : `${x.points_used} points used`); await onDone?.(); onClose(); } catch (e) { toast(e.message); } finally { setBusy(false); }
           }} />
         </View>
       )}

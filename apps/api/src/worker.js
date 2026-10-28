@@ -6,6 +6,9 @@ import { processRefunds } from './booking/refunds.js';
 import { checkSlotAlerts } from './booking/alerts.js';
 import { processWaitlist } from './booking/waitlist.js';
 import { expireLoyalty } from './booking/loyalty.js';
+import { tx } from './db.js';
+import { eventParticipationSweep, membershipTenureSweep } from './rewards/activity.js';
+import { releaseDueReferrals } from './rewards/referrals.js';
 import { expireUserPlans, raiseSubscriptionRenewals } from './booking/plans.js';
 import { venueOpsReminders } from './booking/venue-ops.js';
 import { expireStaleRequests } from './lifecycle.js';
@@ -16,10 +19,12 @@ import { endDueTerminations } from './sponsor-termination.js';
 import { activateDuePauses } from './sponsor-pause.js';
 import { processSponsorshipTerms } from './sponsor-renewals.js';
 import { processSponsorTasks } from './sponsor-collaboration.js';
+import { sweepAccessGrants } from './access-grants.js';
 import { expireAcademyOffers, remindTrials, runAcademyJobs } from './academy-sweeps.js';
 import { runTenderJobs, sendTenderReminders } from './capabilities/tender-reports.js';
 import { deliverDueReports } from './sponsor-report-schedules.js';
 import { accrueActiveContracts } from './player-contracts.js';
+import { raiseScheduledCharges, runCollections } from './collections.js';
 import { runServiceSweeps } from './svc/sweeps.js';
 import { runServiceJobs } from './capabilities/svc-reports.js';
 import { runFederationSweeps } from './federation-sweeps.js';
@@ -37,6 +42,9 @@ export const STEPS = [
   ['refunds', 'refunds', processRefunds, { done: 0, failed: 0, manual: 0 }],
   ['waitlist', 'waitlist', processWaitlist, null],
   ['loyalty', 'points_expired', expireLoyalty, 0],
+  ['loyalty_referrals', 'referral_rewards_released', () => tx((c) => releaseDueReferrals(c)), 0],
+  ['loyalty_events', 'event_points_awarded', () => tx((c) => eventParticipationSweep(c)), 0],
+  ['loyalty_memberships', 'membership_points_awarded', () => tx((c) => membershipTenureSweep(c)), 0],
   ['plans', 'plans_expired', expireUserPlans, 0],
   ['subscriptions', 'subscriptions_renewed', raiseSubscriptionRenewals, 0],
   ['venue_ops', 'venue_ops_reminders', venueOpsReminders, 0],
@@ -52,6 +60,9 @@ export const STEPS = [
   ['academy_offers', 'academy_offers_expired', expireAcademyOffers, 0],
   ['academy_trial_reminders', 'academy_trial_reminders_sent', remindTrials, 0],
   ['academy_jobs', 'academy_jobs', runAcademyJobs, null],
+  ['billing_schedules', 'billing_periods_raised', raiseScheduledCharges, 0],
+  ['collections', 'collection_cases_advanced', runCollections, 0],
+  ['access_grants', 'access_grants_revoked', sweepAccessGrants, 0],
   ['tender_jobs', 'tender_jobs', runTenderJobs, null],
   ['tender_reminders', 'tender_deadline_reminders', sendTenderReminders, 0],
   ['sponsor_tasks', 'sponsor_task_reminders', processSponsorTasks, 0],

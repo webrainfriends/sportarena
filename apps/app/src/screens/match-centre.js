@@ -15,7 +15,7 @@ import { GamesByDay, SchedulePlanner } from './event-schedule';
 import { AppearancesPanel } from './appearances';
 import { CricketScorer } from './cricket-scorer';
 import { useScoreQueue } from '../scorer/queue';
-import { AddedTimeBar, BattingOrderSheet, CardsPad, ConflictSheet, CorrectSheet, FootballExtras, OutcomePad, ProjectionCard, RacketPad, ServerPick, SyncLine } from '../scorer/panels';
+import { AddedTimeBar, BattingOrderSheet, CardsPad, ConflictSheet, CorrectSheet, FootballExtras, OutcomePad, ProjectionCard, RacketPad, RulesPanel, ServerPick, SyncLine } from '../scorer/panels';
 
 const EXTRA = { wd: 'Wide', nb: 'No-ball', b: 'Bye', lb: 'Leg bye', pen: 'Penalty' };
 /** What a cricket ball was, in the scorer's words: so the timeline can be read, and a ball found to correct. */
@@ -153,11 +153,13 @@ export function MatchCentre({ id }) {
             </>
           )}
 
+          {(rs.basketball || rs.kabaddi || rs.rally) ? <RulesPanel g={g} names={names} disabled={busy} onLog={log} playerName={nameOfPlayer} /> : null}
+
           {rs.stats?.length && rs.kind !== 'cricket' && (rs.kind !== 'manual' || rs.cards) ? (
             <>
               <ASection title="Track" sub="Fouls, cards, timeouts" />
               <ACard pad={12} style={{ gap: 8 }}>
-                {rs.stats.map((st) => (
+                {rs.stats.filter((st) => !(rs.rally && ['technical_timeout', 'interval', 'change_ends'].includes(st.kind))).map((st) => (
                   <View key={st.kind} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                     <AT size={13} weight="700" style={{ flex: 1 }}>{st.icon ? `${st.icon} ` : ''}{st.label}</AT>
                     <AT size={12} weight="800" color={A.mute} num>{g.score.stats?.home?.[st.kind] ?? 0} – {g.score.stats?.away?.[st.kind] ?? 0}</AT>

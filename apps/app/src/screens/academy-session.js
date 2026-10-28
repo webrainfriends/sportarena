@@ -14,6 +14,7 @@ import { c } from '../theme';
 import { dateTimeIn, localDate, localHHMM, localToIso, timeIn } from '../vtime';
 import { Block, Fact, Timeline } from './academy-ui';
 import { CourtPicker } from './training-venue';
+import { HeldList, PassSheet, ScanPanel, SiteCodeSheet } from '../access-ui';
 
 const uid = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
 const STATUS = [['present', 'Present'], ['late', 'Late'], ['left_early', 'Left early'], ['absent', 'Absent'], ['excused', 'Excused']];
@@ -50,7 +51,8 @@ export function Compliance({ compliance, conflicts = [] }) {
 // ================================================================================== ATTENDANCE
 function Attendance({ s, reload, toast }) {
   const r = useLoad(() => api.get(`/academy/sessions/${s.id}/roster`), [s.id]);
-  const [fix, setFix] = useState(null), [busy, setBusy] = useState(null);
+  const [fix, setFix] = useState(null), [busy, setBusy] = useState(null), [scan, setScan] = useState(false), [door, setDoor] = useState(false), [held, setHeld] = useState(false);
+  const heldN = useLoad(() => api.get('/access/captures', { domain: 'academy_session', subject_ref: s.id, unresolved: true, limit: 50 }).catch(() => []), [s.id, r.data]);
   if (r.error) return <LoadError error={r.error} onRetry={r.reload} />;
   if (!r.data) return <Loading />;
   const { roster, counts, expected } = r.data;
@@ -74,7 +76,14 @@ function Attendance({ s, reload, toast }) {
       <View accessible accessibilityLabel={`${expected} expected. ${STATUS.map(([k, l]) => `${counts[k]} ${l}`).join(', ')}`} style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
         <Tag label={`${expected} expected`} />{STATUS.filter(([k]) => counts[k]).map(([k, l]) => <Tag key={k} label={`${counts[k]} ${l.toLowerCase()}`} />)}
       </View>
-      {open ? <Btn small title="Mark everyone still expected as present" color={c.paper} ink={c.ink} onPress={everyone} style={{ alignSelf: 'flex-start' }} /> : null}
+      {open ? (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          <Btn small title="📷 Scan pass or card" onPress={() => setScan(true)} accessibilityLabel="Scan a pass or card to check someone in" />
+          {s.self_checkin ? <Btn small title="🚪 Door code" color={c.paper} ink={c.ink} onPress={() => setDoor(true)} /> : null}
+          {heldN.data?.length ? <Btn small title={`⏸ ${heldN.data.length} to confirm`} color={c.orange} onPress={() => setHeld(true)} /> : null}
+          <Btn small title="Mark everyone still expected as present" color={c.paper} ink={c.ink} onPress={everyone} />
+        </View>
+      ) : null}
       {roster.length ? roster.map((row) => (
         <View key={row.user_id} style={{ padding: 12, borderRadius: 16, backgroundColor: c.paper, borderWidth: 1, borderColor: c.line, gap: 8 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -88,6 +97,9 @@ function Attendance({ s, reload, toast }) {
           ) : null}
         </View>
       )) : <Empty emoji="👥" title="Nobody is enrolled in this group" sub="Enrol athletes in the cohort and they appear here." />}
+      <Sheet visible={scan} onClose={() => { setScan(false); r.reload(); reload(); }} title="Check in"><ScanPanel domain="academy_session" subjectRef={s.id} people={roster.map((x) => ({ user_id: x.user_id, display_name: x.display_name }))} onChange={() => { r.reload(); reload(); heldN.reload(); }} /></Sheet>
+      <SiteCodeSheet visible={door} onClose={() => setDoor(false)} domain="academy_session" subjectRef={s.id} />
+      <Sheet visible={held} onClose={() => { setHeld(false); heldN.reload(); }} title="Needs your decision"><HeldList scope={{ domain: 'academy_session', subject_ref: s.id }} reload={() => { r.reload(); reload(); heldN.reload(); }} /></Sheet>
       <T size={12} color={c.mute}>This records attendance at the session. Arrival at the venue is recorded by the venue's own check-in and is not counted here. Clocking in as staff never marks anyone present.</T>
       <FormSheet visible={!!fix} onClose={() => setFix(null)} title={fix ? `Correct ${fix.row.display_name}: ${MARK[fix.row.status]} → ${MARK[fix.status]}` : ''} submitLabel="Save correction" fields={[{ key: 'reason', label: 'Why are you changing it?' }]}
         onSubmit={async (v) => { await api.post(`/academy/sessions/${s.id}/attendance`, { idempotency_key: uid(), reason: v.reason, entries: [{ user_id: fix.row.user_id, status: fix.status }] }); r.reload(); reload(); return 'Corrected. The history keeps both marks.'; }} />
@@ -186,7 +198,7 @@ function Venue({ s, reload, toast }) {
 
 // ================================================================================== DETAILS
 function Details({ s, reload, toast, onPublished }) {
-  const [move, setMove] = useState(false), [cancel, setCancel] = useState(false), [note, setNote] = useState(false);
+  const [move, setMove] = useState(false), [cancel, setCancel] = useState(false), [note, setNote] = useState(false), [checkin, setCheckin] = useState(false);
   const tz = tzOf(s);
   const publish = async (ack) => {
     try {
@@ -200,13 +212,14 @@ function Details({ s, reload, toast, onPublished }) {
       <Block title="This session">
         <Fact k="Group" v={s.cohort_name} /><Fact k="Programme" v={s.programme_title} /><Fact k="Sport" v={s.sport} /><Fact k="Type" v={s.delivery_type.replace('_', ' ')} />
         <Fact k="When" v={`${dateTimeIn(s.starts_at, tz)} – ${timeIn(s.ends_at, tz)} (${tz})`} /><Fact k="Capacity" v={s.capacity ? `${s.capacity} places` : 'No limit'} />
-        <Fact k="Self check-in" v={s.self_checkin ? 'Allowed' : 'Off'} />{s.status === 'cancelled' ? <Fact k="Cancelled because" v={s.cancel_reason} /> : null}
+        <Fact k="Self check-in" v={s.self_checkin ? (s.geo_checkin ? `Allowed, phone within ${s.geo_radius_m} m of the venue` : 'Allowed') : 'Off'} />{s.status === 'cancelled' ? <Fact k="Cancelled because" v={s.cancel_reason} /> : null}
       </Block>
       {s.canEdit && ['draft', 'published'].includes(s.status) ? (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           {s.status === 'draft' ? <Btn small title="Publish" onPress={() => publish(false)} /> : null}
           {s.status === 'draft' && s.compliance.level === 'warning' ? <Btn small title="Publish anyway" color={c.paper} ink={c.ink} onPress={() => publish(true)} /> : null}
           <Btn small title="Move / reschedule" color={c.paper} ink={c.ink} onPress={() => setMove(true)} />
+          <Btn small title="Check-in settings" color={c.paper} ink={c.ink} onPress={() => setCheckin(true)} />
           <Btn small title="Notify the group" color={c.paper} ink={c.ink} onPress={() => setNote(true)} />
           <Btn small title="Cancel session" color={c.paper} ink={c.red} onPress={() => setCancel(true)} />
         </View>
@@ -218,6 +231,11 @@ function Details({ s, reload, toast, onPublished }) {
       <FormSheet visible={move} onClose={() => setMove(false)} title="Move this session" submitLabel="Move" initial={{ date: localDate(s.starts_at, tz), time: localHHMM(s.starts_at, tz), duration_min: Math.round((new Date(s.ends_at) - new Date(s.starts_at)) / 60000) }}
         fields={[{ key: 'date', label: 'New date', type: 'date' }, { key: 'time', label: 'Start time', type: 'time' }, { key: 'duration_min', label: 'Length (minutes)', type: 'stepper', min: 10, max: 600, step: 5, default: 60 }, { key: 'reason', label: 'Reason (shown to staff and families)' }]}
         onSubmit={async (v) => { const r = await api.patch(`/academy/sessions/${s.id}`, { row_version: s.row_version, starts_at: localToIso(v.date, v.time, tz), duration_min: v.duration_min, reason: v.reason }); reload(); return r.notice ?? 'Moved. Everyone affected has been told.'; }} />
+      <FormSheet visible={checkin} onClose={() => setCheckin(false)} title="Check-in settings" submitLabel="Save" initial={{ self_checkin: !!s.self_checkin, geo_checkin: !!s.geo_checkin, geo_radius_m: s.geo_radius_m ?? 200 }}
+        fields={[{ key: 'self_checkin', label: 'Let people check themselves in (door code, or their own pass)', type: 'switch', default: false },
+          { key: 'geo_checkin', label: 'Also require their phone to be at the venue', type: 'switch', default: false, show: (v) => v.self_checkin, hint: 'Location is compared once and never saved. If it is off or missing, staff confirm the check-in.' },
+          { key: 'geo_radius_m', label: 'How close (metres)', type: 'stepper', min: 50, max: 2000, step: 50, default: 200, show: (v) => v.self_checkin && v.geo_checkin }]}
+        onSubmit={async (v) => { await api.patch(`/academy/sessions/${s.id}`, { row_version: s.row_version, self_checkin: v.self_checkin, geo_checkin: v.self_checkin ? v.geo_checkin : false, geo_radius_m: v.geo_radius_m }); reload(); return 'Saved.'; }} />
       <FormSheet visible={cancel} onClose={() => setCancel(false)} title="Cancel this session" submitLabel="Cancel session" color={c.red} fields={[{ key: 'reason', label: 'Reason (shown to families)' }]}
         onSubmit={async (v) => { await api.post(`/academy/sessions/${s.id}/cancel`, { reason: v.reason }); reload(); return 'Cancelled. A venue booking, if any, is unchanged: cancel it from the booking.'; }} />
       <FormSheet visible={note} onClose={() => setNote(false)} title="Message the group" submitLabel="Send" fields={[{ key: 'title', label: 'Title' }, { key: 'body', label: 'Message', type: 'multiline' }, { key: 'include_staff', label: 'Also send to assigned staff', type: 'switch', default: false }]}
@@ -333,7 +351,7 @@ export function AcademyAgenda() {
 /** Embedded in "My academy": upcoming and past sessions for an athlete (or their child), with absence notice and make-up options. */
 export function MySessions({ athleteId, toast }) {
   const d = useLoad(() => api.get('/me/academy/sessions', { athlete_id: athleteId }), [athleteId]);
-  const [away, setAway] = useState(null), [ask, setAsk] = useState(null);
+  const [away, setAway] = useState(null), [ask, setAsk] = useState(null), [pass, setPass] = useState(null);
   if (d.error) return <LoadError error={d.error} onRetry={d.reload} />;
   if (!d.data) return <Loading />;
   const { sessions, makeup_options, summary } = d.data;
@@ -345,6 +363,7 @@ export function MySessions({ athleteId, toast }) {
       <T size={13} color={c.mute}>{dateTimeIn(s.starts_at, s.timezone)} · {s.organisation}{s.venue ? ` · 📍 ${s.venue}` : ''}</T>
       {s.status === 'cancelled' ? <T size={13}>Cancelled: {s.cancel_reason}</T> : null}
       {s.rescheduled_at && s.status !== 'cancelled' ? <T size={12} color={c.mute}>This session was moved. The time shown is the new one.</T> : null}
+      {s.status === 'published' && new Date(s.ends_at) >= now && new Date(s.starts_at) - now < 12 * 3600000 && !['absent', 'excused'].includes(s.attendance) ? <Btn small title="🎟️ Show my pass" onPress={() => setPass(s)} style={{ alignSelf: 'flex-start', marginTop: 8 }} accessibilityLabel={`Show the pass for ${s.title}`} /> : null}
       {new Date(s.ends_at) >= now && s.status === 'published' && !['absent', 'excused'].includes(s.attendance) ? <Btn small title="Can't attend" color={c.paper} ink={c.ink} onPress={() => setAway(s)} style={{ alignSelf: 'flex-start', marginTop: 8 }} /> : null}
     </Card>
   );
@@ -358,6 +377,7 @@ export function MySessions({ athleteId, toast }) {
         </Block>
       ) : null}
       <Block title="Attendance history">{past.length ? past.slice(0, 20).map(Card1) : <T size={13} color={c.mute}>Nothing yet.</T>}</Block>
+      <PassSheet visible={!!pass} onClose={() => setPass(null)} domain="academy_session" subjectRef={pass?.id} athleteId={athleteId} title={pass?.title} />
       <FormSheet visible={!!away} onClose={() => setAway(null)} title="Tell the academy" submitLabel="Send" fields={[{ key: 'reason_code', label: 'Reason (kept simple: no health details)', type: 'chips', options: REASONS.map(([value, label]) => ({ value, label })) }]}
         onSubmit={async (v) => { await api.post(`/academy/sessions/${away.id}/absence`, { athlete_id: athleteId, reason_code: v.reason_code, idempotency_key: uid() }); d.reload(); return 'Thanks. The coaches have been told.'; }} />
       <FormSheet visible={!!ask} onClose={() => setAsk(null)} title="Ask for a make-up place" submitLabel="Ask" fields={[{ key: 'from', label: 'Which missed session is it for?', type: 'chips', options: sessions.filter((s) => s.programme_id === ask?.programme_id && (['absent', 'excused', 'not_held'].includes(s.attendance) || s.status === 'cancelled')).map((s) => ({ value: s.id, label: `${s.title} · ${String(s.starts_at).slice(0, 10)}` })) }]}

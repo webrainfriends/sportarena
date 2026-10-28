@@ -10,6 +10,7 @@ import { PaySheet } from '../PaySheet';
 import { c } from '../theme';
 import { moneyIn } from '../vtime';
 import { locale } from '../locale';
+import { Collections } from './collections';
 
 const until = (d) => new Date(d).toLocaleDateString(locale);
 const PERKS = ['Locker', 'Towel', 'Coaching clinic', 'Equipment hire', 'Free guest pass', 'Priority booking', 'Shower & changing room', 'Café discount'];
@@ -103,6 +104,7 @@ export function PlansManager({ v }) {
   const meta = (id) => (plans.data ?? []).find((p) => p.id === id);
   const courtNames = (ids) => ids.map((rid) => v.resources.find((r) => r.id === rid)?.name).filter(Boolean).join(', ');
   return (
+    <>
     <Section title="Passes, packages & memberships" color={c.violet}>
       <T color={c.mute} size={13}>A pass is prepaid sessions; a package is a pass that only works on the courts you choose and lists what comes with it. A membership takes a % off every booking; make it a subscription and members are reminded to renew a week before it ends. Customers pay online in {v.currency}; the money is collected by the platform.</T>
       <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
@@ -158,5 +160,10 @@ export function PlansManager({ v }) {
           { key: 'session_value_cents', label: 'Most one session pays toward a booking', type: 'money', currency: v.currency, optional: true, hint: 'Leave empty to use price ÷ sessions' }]}
         onSubmit={async (f) => { await api.post(`/venues/${v.id}/plans`, { ...f, kind: 'pass' }); reload(); return 'Package created'; }} />
     </Section>
+      <Section title="Renewals waiting for payment" color={c.violet}>
+        <T color={c.mute} size={13}>Subscriptions that have renewed and are waiting for the member to pay: who was reminded, who promised to pay, and what is overdue. The same desk academies and clubs use.</T>
+        <Collections target={{ venue_id: v.id }} />
+      </Section>
+    </>
   );
 }

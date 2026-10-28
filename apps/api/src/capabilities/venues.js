@@ -62,8 +62,6 @@ export const venueProfile = {
   currency: z.string().length(3).transform((x) => x.toUpperCase()).refine(isSupportedCurrency, `Supported currencies: ${Object.keys(CURRENCIES).join(', ')}`).optional(),
   legal_name: z.string().max(120).optional(), tax_id: z.string().max(40).optional(), billing_address: z.string().max(300).optional(),
   tax_name: z.string().min(1).max(20).optional(), tax_rate_bp: z.number().int().min(0).max(10000).describe('basis points: 1800 = 18%').optional(), tax_inclusive: z.boolean().optional(),
-  loyalty_earn_bp: z.number().int().min(0).max(5000).optional().describe('percent of what customers pay returned as loyalty points, in basis points (500 = 5%); 0 switches the programme off'),
-  loyalty_expiry_months: z.number().int().min(1).max(60).optional(), loyalty_max_redeem_bp: z.number().int().min(100).max(10000).optional().describe('largest share of one invoice that points may pay'),
   invoice_prefix: z.string().regex(/^[A-Z0-9]{2,8}$/, '2–8 capital letters or digits').optional(),
   payment_mode: z.enum(['pay_at_venue', 'online_optional', 'online_required']).optional().describe('online modes need Stripe/PayPal switched on; online_required releases unpaid slots after a few minutes'),
   phone: z.string().max(30).optional(), email: z.string().email().optional(), website: z.string().url().optional(),
@@ -153,7 +151,12 @@ cap({
       many('SELECT * FROM venue_media WHERE venue_id=$1 AND removed_at IS NULL ORDER BY is_cover DESC, position, created_at LIMIT 40', [i.id]),
       one("SELECT round(avg(rating),2) AS rating, count(*)::int AS reviews FROM testimonials WHERE subject_type='venue' AND subject_id=$1 AND status='published' AND visibility='public'", [i.id]),
       one('SELECT count(*)::int AS favourites, coalesce(bool_or(user_id = $2::uuid), false) AS is_favourite FROM favourite_venues WHERE venue_id=$1 AND removed_at IS NULL', [i.id, user?.id ?? null]),
-      user ? one('SELECT coalesce(sum(remaining),0)::int AS my_points FROM loyalty_lots WHERE user_id=$1 AND venue_id=$2 AND remaining > 0 AND expires_at > now()', [user.id, i.id]) : { my_points: 0 },
+      one(`SELECT coalesce(max((r.rules->'redeem'->>'max_redeem_bp')::int),5000) AS loyalty_max_redeem_bp, coalesce(max((r.rules->>'expiry_months')::int),12) AS loyalty_expiry_months,
+                  coalesce(max((SELECT (e->>'percent_bp')::int FROM jsonb_array_elements(r.rules->'earn') e WHERE e->>'event'='venue_booking_paid' AND e->>'mode'='percent' LIMIT 1)),0) AS loyalty_earn_bp,
+                  coalesce((SELECT sum(l.remaining) FROM loyalty_lots_open l JOIN loyalty_programmes q ON q.id=l.programme_id WHERE q.owner_kind='venue' AND q.owner_id=$1 AND l.user_id=$2::uuid AND l.remaining > 0 AND l.expires_at > now()),0)::int AS my_points,
+                  (array_agg(p.id))[1] AS loyalty_programme_id
+             FROM loyalty_programmes p JOIN loyalty_programme_versions r ON r.programme_id=p.id AND r.version=p.current_version
+            WHERE p.owner_kind='venue' AND p.owner_id=$1 AND p.status='active'`, [i.id, user?.id ?? null]),
       many('SELECT id, kind, name, description, price_cents, duration_days, discount_bp, sessions, session_value_cents, valid_days, resource_ids, includes, auto_renew FROM venue_plans WHERE venue_id=$1 AND active ORDER BY kind DESC, price_cents', [i.id]),
       user ? one("SELECT coalesce(max(discount_bp) FILTER (WHERE kind='membership' AND starts_at <= now()),0)::int AS my_member_discount_bp, max(expires_at) FILTER (WHERE kind='membership') AS my_membership_until, coalesce(sum(sessions_left) FILTER (WHERE kind='pass'),0)::int AS my_pass_sessions FROM user_plans WHERE user_id=$1 AND venue_id=$2 AND status='active' AND expires_at > now()", [user.id, i.id]) : { my_member_discount_bp: 0, my_membership_until: null, my_pass_sessions: 0 },
     ]);
