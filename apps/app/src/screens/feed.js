@@ -120,7 +120,7 @@ export default function HomeTab() {
       <PlayerHero user={user} profile={main} pad={pad} onBell={() => nav.push('Notifications')} onAvatar={() => nav.goTab('Me')} />
       <View style={[wrap, { marginTop: 18 }]}>
         <HScroll>
-          {ACTIONS.map(([emoji, label, go]) => <Chip key={label} label={`${emoji} ${label}`} onPress={() => go(nav)} />)}
+          {[...(user?.roles?.includes('referee') ? [['🏅', 'Officials home', (n) => n.push('OfficialsHome')]] : []), ...ACTIONS].map(([emoji, label, go]) => <Chip key={label} label={`${emoji} ${label}`} onPress={() => go(nav)} />)}
         </HScroll>
         <View style={{ marginTop: 16 }}><DoctorEntry /></View>
         <View style={{ marginTop: 22 }}><HomeReminders /></View>

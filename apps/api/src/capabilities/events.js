@@ -15,6 +15,7 @@ import { eventWindow, windowFit, consentNeeded } from '../event-fit.js';
 import { toLocal } from '../booking/time.js';
 import { assertEventReadable, participantSql } from '../spectator.js';
 import { OFFICIAL_ROLES, lockOfficial, assertOfficialEligible, recordHistory, closeOfficial } from '../officials.js';
+import { kitOf, mustAccess } from './branded-documents.js';
 
 const dt = z.string().datetime({ offset: true });
 const date = z.string().date();
@@ -190,12 +191,16 @@ cap({
     starts_on: date.optional(), ends_on: date.optional(), venue_id: id.optional(), city: z.string().max(80).optional(),
     capacity: z.number().int().min(1).max(100000).optional(), registration_deadline: dt.optional(), seeking_sponsors: z.boolean().optional(),
     levels: LEVELS_FIELD.optional(), region: WHO_FOR.region, min_age: WHO_FOR.min_age, max_age: WHO_FOR.max_age,
+    official_policy: z.enum(['optional', 'verified', 'licensed']).optional().describe('who may be assigned as an official: anyone with a referee profile, a verified-official badge, or a current federation licence (see official_min_grade_rank)'),
+    official_min_grade_rank: z.number().int().min(0).max(20).optional(),
+    brand_kit_id: id.nullable().optional().describe('the brand kit whose logo appears on this event\'s documents (null clears it)'),
   }),
   async handler({ user }, i) {
     return tx(async (c) => {
       const ev = (await c.query('SELECT * FROM events WHERE id=$1 FOR UPDATE', [i.id])).rows[0];
       if (!ev) throw notFound('Event');
       mustOwn(user, ev.organizer_id, 'event');
+      if (i.brand_kit_id) { const kit = await kitOf(i.brand_kit_id); if (!kit || kit.archived_at) throw notFound('Brand kit'); await mustAccess(user, kit, 'Brand kit'); }
       if (i.status && i.status !== ev.status && !NEXT_STATUS[ev.status].includes(i.status)) throw conflict(`An event that is ${ev.status} cannot become ${i.status}`);
       if ((i.starts_on || i.ends_on) && (await c.query('SELECT coalesce($2::date, ends_on) < coalesce($1::date, starts_on) AS bad FROM events WHERE id=$3', [i.starts_on ?? null, i.ends_on ?? null, i.id])).rows[0].bad) throw badRequest('ends_on is before starts_on');
       if (i.capacity) {
@@ -205,9 +210,11 @@ cap({
       const out = (await c.query(
         `UPDATE events SET name=coalesce($2,name), description=coalesce($3,description), status=coalesce($4,status), starts_on=coalesce($5,starts_on), ends_on=coalesce($6,ends_on),
            venue_id=coalesce($7,venue_id), city=coalesce($8,city), capacity=coalesce($9,capacity), registration_deadline=coalesce($10,registration_deadline), seeking_sponsors=coalesce($11,seeking_sponsors),
-           levels=coalesce($12,levels), region=coalesce($13,region), min_age=coalesce($14,min_age), max_age=coalesce($15,max_age)
+           levels=coalesce($12,levels), region=coalesce($13,region), min_age=coalesce($14,min_age), max_age=coalesce($15,max_age),
+           official_policy=coalesce($16,official_policy), official_min_grade_rank=coalesce($17,official_min_grade_rank),
+           brand_kit_id=CASE WHEN $18::boolean THEN $19::uuid ELSE brand_kit_id END
          WHERE id=$1 RETURNING *`,
-        [i.id, i.name, i.description, i.status, i.starts_on, i.ends_on, i.venue_id, i.city, i.capacity, i.registration_deadline, i.seeking_sponsors, i.levels ?? null, i.region ?? null, i.min_age ?? null, i.max_age ?? null])).rows[0];
+        [i.id, i.name, i.description, i.status, i.starts_on, i.ends_on, i.venue_id, i.city, i.capacity, i.registration_deadline, i.seeking_sponsors, i.levels ?? null, i.region ?? null, i.min_age ?? null, i.max_age ?? null, i.official_policy ?? null, i.official_min_grade_rank ?? null, i.brand_kit_id !== undefined, i.brand_kit_id ?? null])).rows[0];
       if (i.status === 'cancelled' && ev.status !== 'cancelled') {
         const who = (await c.query("SELECT DISTINCT coalesce(t.owner_id, e.user_id) AS uid FROM event_entries e LEFT JOIN teams t ON t.id=e.team_id WHERE e.event_id=$1 AND e.status IN ('pending','accepted','waitlisted')", [i.id])).rows;
         for (const r of who) if (r.uid) await notify(c, r.uid, { kind: 'event_cancelled', title: 'Event cancelled', body: `${ev.name} was cancelled by the organiser.`, data: { event_id: ev.id } });
@@ -322,7 +329,7 @@ cap({
         if (clash.rowCount) throw conflict('A team already has a game in that window');
       }
       if (i.referee_id) await lockOfficial(c, i.referee_id);
-      if (i.referee_id) await assertOfficialEligible(c, { sportId: ev.sport_id, userId: i.referee_id, role: 'referee', start: i.scheduled_at, durationMin: i.duration_min });
+      if (i.referee_id) await assertOfficialEligible(c, { event: ev, userId: i.referee_id, role: 'referee', start: i.scheduled_at, durationMin: i.duration_min });
       if (i.resource_id) {
         const v = await one('SELECT v.timezone, v.currency FROM resources r JOIN venues v ON v.id=r.venue_id WHERE r.id=$1', [i.resource_id]);
         const fit = v && windowFit(await eventWindow(c, i.id), [{ date: toLocal(i.scheduled_at, v.timezone).date, cents: 0 }], [], [], v.currency, { edges: false });
@@ -392,7 +399,7 @@ cap({
       if (i.status !== 'cancelled') {
         for (const fo of [...new Set(open.map((o) => o.user_id))].sort()) await lockOfficial(c, fo);
         if (retimed) {
-          for (const fo of open) await assertOfficialEligible(c, { sportId: ev.sport_id, fixtureId: f.id, userId: fo.user_id, role: fo.role, start, durationMin: dur });
+          for (const fo of open) await assertOfficialEligible(c, { event: ev, fixtureId: f.id, userId: fo.user_id, role: fo.role, start, durationMin: dur });
         }
       }
       const out = (await c.query('UPDATE fixtures SET scheduled_at=$2, duration_min=$3, status=coalesce($4,status) WHERE id=$1 RETURNING *', [f.id, start, dur, i.status])).rows[0];
@@ -428,7 +435,7 @@ cap({
 export async function inviteOfficial(c, user, ev, fixture, userId, role) {
   if (!OFFICIAL_ROLES.includes(role)) throw badRequest('Unknown official role');
   await lockOfficial(c, userId);
-  await assertOfficialEligible(c, { sportId: ev.sport_id, fixtureId: fixture.id, userId, role, start: fixture.scheduled_at, durationMin: fixture.duration_min });
+  await assertOfficialEligible(c, { event: ev, fixtureId: fixture.id, userId, role, start: fixture.scheduled_at, durationMin: fixture.duration_min });
   const dup = await c.query("SELECT 1 FROM fixture_officials WHERE fixture_id=$1 AND user_id=$2 AND role=$3 AND status IN ('invited','accepted')", [fixture.id, userId, role]);
   if (dup.rowCount) throw conflict('That person already has this role on the fixture');
   const fo = (await c.query("INSERT INTO fixture_officials(fixture_id, user_id, role, requested_by) VALUES ($1,$2,$3,$4) RETURNING *", [fixture.id, userId, role, user.id])).rows[0];

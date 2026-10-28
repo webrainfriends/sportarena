@@ -67,6 +67,8 @@ export function targetFor(data = {}) {
   if (data.observation_id) return ['OfficialsDevelopment', { tab: 'assessor' }];
   if (data.mentorship_id || data.item_id) return ['OfficialsDevelopment', { tab: 'growth' }];
   if (data.cpd_id || data.result_id) return ['OfficialsDevelopment', { tab: 'cpd' }];
+  if (data.official_id && data.fixture_id) return ['OfficialsHome', { tab: 'today' }]; // a request, change, release or withdrawal on your officiating crew
+  if (data.report_id && data.fixture_id) return ['OfficialMatch', { id: data.fixture_id }]; // an official filed a report on your match
   if (data.proposal_id) return ['ScoringTool', { proposalId: data.proposal_id }]; // a proposed result to review, or the outcome of yours
   if (data.accreditation_id && data.event_id) return ['MyAccreditations', {}]; // a nomination, approval, reissue or revocation of your badge
   if (data.request_id && data.event_id) return ['EventInbox', {}];
