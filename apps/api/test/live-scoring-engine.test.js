@@ -326,3 +326,139 @@ test('outcome sports (chess, esports, judo): the result is recorded live, once, 
   const draw = book(rs); draw.add('result', null, { payload: { outcome: 'draw' } });
   assert.deepEqual([draw.score().winner, draw.score().level, draw.score().over], [null, true, true]);
 });
+
+// ------------------------------------------------------------------ sport rules: basketball, kabaddi, volleyball, badminton
+const sport = (slug) => builtinRuleset({ slug });
+
+test('basketball: team fouls reset each quarter, the bonus follows, a fifth foul puts a player out, timeouts run out', () => {
+  const b = book(sport('basketball'));
+  b.add('period_start', null);
+  for (let i = 0; i < 4; i++) b.add('foul', 'home', { player_id: 'p1' });
+  assert.equal(b.score().rules.bonus.away, false);
+  b.add('foul', 'home', { player_id: 'p2' });
+  assert.deepEqual([b.score().rules.team_fouls.home, b.score().rules.bonus.away, b.score().rules.bonus.home], [5, true, false]);
+  assert.deepEqual(b.score().rules.fouled_out, []);
+  b.add('foul', 'home', { player_id: 'p1' });
+  assert.deepEqual(b.score().rules.fouled_out, [{ player_id: 'p1', side: 'home' }]);
+  assert.throws(() => b.add('two_pointer', 'home', { player_id: 'p1' }), /fouled out/);
+  b.add('two_pointer', 'home', { player_id: 'p2' });
+  b.add('period_end', null); b.add('period_start', null);
+  assert.equal(b.score().rules.team_fouls.home, 0);
+  assert.equal(b.score().rules.bonus.away, false);
+  // two timeouts in the first half, a third is refused; the second half has its own three
+  b.add('timeout', 'away'); b.add('timeout', 'away');
+  assert.throws(() => b.add('timeout', 'away'), /no timeouts left/);
+  b.add('period_end', null); b.add('period_start', null);
+  assert.equal(b.score().rules.timeouts_left.away, 3);
+});
+
+test('3x3 basketball ends the moment a side reaches 21 and has a 7-foul bonus', () => {
+  const rs = sport('3x3-basketball');
+  assert.equal(rs.basketball.target_score, 21);
+  const b = book(rs);
+  b.add('period_start', null);
+  for (let i = 0; i < 6; i++) b.add('foul', 'away');
+  assert.equal(b.score().rules.bonus.home, false);
+  b.add('foul', 'away');
+  assert.equal(b.score().rules.bonus.home, true);
+  for (let i = 0; i < 10; i++) b.add('two_pointer', 'home');
+  assert.equal(b.score().over, false);
+  b.add('one_pointer', 'home');
+  assert.deepEqual([b.score().home, b.score().over, b.score().winner], [21, true, 'home']);
+  assert.equal(b.phase().can_score, false);
+  assert.throws(() => b.add('one_pointer', 'away'), /already decided/);
+});
+
+test('kabaddi: players on the mat, revivals, do-or-die raids and the all-out prompt', () => {
+  const b = book(sport('kabaddi'));
+  b.add('period_start', null);
+  b.add('raid_point', 'home'); b.add('raid_point', 'home');
+  assert.deepEqual(b.score().rules.on_mat, { home: 7, away: 5 });
+  b.add('tackle_point', 'away'); // the raider is out; the tackling side gets one back
+  assert.deepEqual(b.score().rules.on_mat, { home: 6, away: 6 });
+  b.add('empty_raid', 'home');
+  assert.equal(b.score().rules.do_or_die.home, false);
+  b.add('empty_raid', 'home');
+  assert.equal(b.score().rules.do_or_die.home, true);
+  b.add('bonus_point', 'home');
+  assert.equal(b.score().rules.do_or_die.home, false);
+  assert.equal(b.score().rules.all_out_for, null);
+  const all = book(sport('kabaddi')); all.add('period_start', null);
+  for (let i = 0; i < 7; i++) all.add('raid_point', 'home');
+  assert.deepEqual([all.score().rules.on_mat.away, all.score().rules.all_out_for], [0, 'home']);
+  all.add('all_out', 'home');
+  assert.deepEqual([all.score().rules.on_mat.away, all.score().rules.all_out_for], [7, null]);
+  assert.equal(all.score().home, 7 + 2);
+});
+
+test('volleyball: rotation follows side-outs, timeouts and substitutions are limited per set, technical timeouts and the decider switch are prompted', () => {
+  const b = book(sport('volleyball'));
+  b.add('server', 'home');
+  b.add('point', 'away'); b.add('point', 'home'); b.add('point', 'away'); b.add('point', 'away');
+  assert.deepEqual(b.score().rules.rotation, { home: 2, away: 3, serving: 'away' });
+  b.add('timeout', 'home'); b.add('timeout', 'home');
+  assert.throws(() => b.add('timeout', 'home'), /no timeouts left/);
+  for (let i = 0; i < 6; i++) b.add('substitution', 'away');
+  assert.throws(() => b.add('substitution', 'away'), /used all substitutions/);
+  for (let i = 0; i < 8; i++) b.point('home');
+  assert.ok(b.score().rules.prompts.includes('technical_timeout'));
+  b.add('technical_timeout', 'home');
+  assert.ok(!b.score().rules.prompts.includes('technical_timeout'));
+  // a new set resets the limits
+  b.point('home', 25);
+  assert.equal(b.score().sets.length, 1);
+  assert.deepEqual(b.score().rules.timeouts_left, { home: 2, away: 2 });
+  assert.equal(b.score().rules.decider, false);
+});
+
+test('volleyball deciding set prompts a change of ends when the leader reaches 8; beach volleyball every 7 points', () => {
+  const b = book(sport('volleyball'));
+  for (let s = 0; s < 4; s++) { b.point(s % 2 ? 'away' : 'home', 25); }
+  assert.equal(b.score().rules.decider, true);
+  b.point('home', 7);
+  assert.ok(!b.score().rules.prompts.includes('change_ends'));
+  b.point('home');
+  assert.ok(b.score().rules.prompts.includes('change_ends'));
+  b.add('change_ends', 'home');
+  assert.ok(!b.score().rules.prompts.includes('change_ends'));
+  const bv = book(sport('beach-volleyball'));
+  bv.point('home', 6); assert.deepEqual(bv.score().rules.prompts, []);
+  bv.point('away'); assert.deepEqual(bv.score().rules.prompts, ['change_ends']);
+});
+
+test('badminton: service court from the server\'s own score, interval at 11, and a server can be named for each set', () => {
+  const b = book(sport('badminton'));
+  b.add('server', 'home');
+  assert.equal(b.score().rules.service_court, 'right');
+  b.point('home');
+  assert.deepEqual([b.score().rules.service_court, b.score().rules.server_score], ['left', 1]);
+  b.point('away'); // the receiver wins the rally and serves from its own (odd) score
+  assert.deepEqual([b.score().server, b.score().rules.service_court], ['away', 'left']);
+  b.point('home', 10);
+  assert.deepEqual(b.score().rules.prompts, ['interval']);
+  b.add('interval', 'home');
+  assert.deepEqual(b.score().rules.prompts, []);
+  b.point('home', 10); // 21-1: set one done (home), set two begins
+  b.point('home', 21); // home takes set two and the match
+  assert.equal(b.score().over, true);
+  // a three-set match: the server of set two is named explicitly
+  const c = book(sport('badminton'));
+  c.add('server', 'home'); c.point('home', 21);
+  c.add('server', 'away');
+  assert.equal(c.score().server, 'away');
+  assert.equal(c.score().rules.service_court, 'right');
+  assert.throws(() => c.add('server', 'home') && (c.point('away'), c.add('server', 'home')), /before the first point of the set/);
+});
+
+test('every new rules block parses back through the schema and belongs only to its kind', () => {
+  for (const slug of ['basketball', '3x3-basketball', 'wheelchair-basketball', 'kabaddi', 'volleyball', 'beach-volleyball', 'badminton']) {
+    const rs = sport(slug);
+    assert.deepEqual(rulesetSchema.parse(JSON.parse(JSON.stringify(rs))), rs, slug);
+  }
+  assert.throws(() => rulesetSchema.parse({ ...sport('football'), rally: { timeouts_per_set: 1 } }), /refines a sets ruleset/);
+  assert.throws(() => rulesetSchema.parse({ ...sport('badminton'), kabaddi: {} }), /refine a points_events ruleset/);
+  // an old pinned ruleset without any of the blocks still works
+  const old = { ...sport('badminton') }; delete old.rally;
+  assert.equal(computeScore(rulesetSchema.parse(old), [{ kind: 'point', side: 'home' }]).home, 0);
+  assert.equal(computeScore(rulesetSchema.parse(old), [{ kind: 'point', side: 'home' }]).rules, undefined);
+});

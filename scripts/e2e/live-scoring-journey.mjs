@@ -211,6 +211,36 @@ try {
     check(await vis(p, /Recorded live/), 'the result is recorded live'); await shot(p, '20-chess-outcome-phone');
     await ctx.close();
   }
+  // ---------------------------------------------------------------- sport rules: basketball, kabaddi, volleyball, badminton
+  {
+    const hoops = await mkGame('basketball', 'Hoops Night'), mat = await mkGame('kabaddi', 'Mat Night'), net = await mkGame('volleyball', 'Net Night'), shuttle = await mkGame('badminton', 'Shuttle Night');
+    for (const g of [hoops, mat, net, shuttle]) await call('POST', `/fixtures/${g.fx}/start`, { token: ref.token });
+    await play(ref.token, hoops.fx, 'period_start');
+    for (let i = 0; i < 5; i++) await play(ref.token, hoops.fx, 'foul', 'home');
+    await play(ref.token, hoops.fx, 'timeout', 'away');
+    await play(ref.token, mat.fx, 'period_start');
+    for (let i = 0; i < 7; i++) await play(ref.token, mat.fx, 'raid_point', 'home');
+    await play(ref.token, net.fx, 'server', 'home');
+    for (let i = 0; i < 8; i++) await play(ref.token, net.fx, 'point', 'home');
+    await play(ref.token, shuttle.fx, 'server', 'home');
+    for (let i = 0; i < 11; i++) await play(ref.token, shuttle.fx, 'point', 'home');
+    const { ctx, page: p } = await session(ref, phone);
+    await navTo(p, 'MatchCentre', { id: hoops.fx });
+    check(await vis(p, /in the bonus/) && await vis(p, /Team fouls 5/) && await vis(p, /Timeouts left: 1/), 'basketball shows team fouls, the bonus and timeouts left'); await scroll(p, 520); await shot(p, '21-basketball-rules-phone');
+    await navTo(p, 'MatchCentre', { id: mat.fx });
+    check(await vis(p, /7 of 7 players/) && await vis(p, /log the all-out/), 'kabaddi shows players on the mat and prompts the all-out'); await scroll(p, 640); await shot(p, '22-kabaddi-rules-phone');
+    await navTo(p, 'MatchCentre', { id: net.fx });
+    check(await vis(p, 'Technical timeout due') && await vis(p, /Rotation/), 'volleyball prompts the technical timeout and shows the rotation'); await shot(p, '23-volleyball-rules-phone');
+    await p.getByText('Log it', { exact: true }).first().click(); await wait(p, 1500);
+    check(!(await vis(p, 'Technical timeout due')), 'logging the technical timeout clears the prompt');
+    await navTo(p, 'MatchCentre', { id: shuttle.fx });
+    check(await vis(p, 'Interval due') && await vis(p, /Serves from the/), 'badminton prompts the interval and shows the service court'); await shot(p, '24-badminton-rules-phone');
+    await ctx.close();
+    const t = await session(ref, tablet);
+    await navTo(t.page, 'MatchCentre', { id: hoops.fx });
+    check(await vis(t.page, /in the bonus/), 'the basketball rules panel shows on a tablet'); await scroll(t.page, 300); await shot(t.page, '25-basketball-rules-tablet');
+    await t.ctx.close();
+  }
   // ---------------------------------------------------------------- a heat, run live from the Games screen
   {
     const mev = await call('POST', '/events', { token: org.token, body: { name: 'School Track Day', sport: 'multi-sport', kind: 'tournament' } });

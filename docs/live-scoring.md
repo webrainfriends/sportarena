@@ -40,6 +40,25 @@ it the right values.
 **Honest gaps**: judging panels need at least five judges before extremes can be dropped; combat sports beyond the four carded ones record a
 result, not round scores; per-sport telemetry (possession, wind, reaction times) is stored when sent but never derived.
 
+### Sport rules for basketball, kabaddi, volleyball and badminton
+
+Optional ruleset blocks (`basketball{}`, `kabaddi{}` on `points_events`; `rally{}` on `sets`) add the sport's own rules on top of plain scoring. Everything is
+derived from the taps in `match_events` (`scoring/rules/*`), appears under `score.rules` for officials and spectators, and every threshold is a ruleset
+field a template or governed format can change. Old pinned versions without the blocks behave as before.
+
+| Sport | Derived state | Refused (unambiguous breaches only) | Advisory prompts |
+|---|---|---|---|
+| Basketball, wheelchair | team fouls per period, bonus, personal fouls, fouled-out players, timeouts left per half / overtime | an event for a fouled-out player; a timeout when none is left | bonus |
+| 3x3 basketball | bonus at 7 team fouls, game decided at 21 | scoring after the target is reached | |
+| Kabaddi | players on the mat (out on raid / tackle points, revived one per point), empty raids, super-tackle window | none | do-or-die, all-out due |
+| Volleyball | rotation per side, timeouts and substitutions left per set | a timeout or substitution over the limit | technical timeouts at 8 and 16, change of ends in the deciding set |
+| Beach volleyball | timeouts left | a timeout over the limit | change ends every 7 points (5 in the decider) |
+| Badminton | service court from the server's own score, server named per set | none | interval at 11, change of ends in the decider |
+
+Honest gaps: libero and exact court positions in volleyball, doubles partner identity in badminton and the individual raider in kabaddi need a lineup with
+positions and are not guessed; kabaddi's revival rule is the standard one (touch, tackle and bonus points revive one player, an all-out revives all), which a
+league with different rules would need to change in code.
+
 ## The sport plugin contract (`scoring/plugins/index.js`)
 
 Each plugin serves one ruleset kind and separates what differs between sports so nothing is forced into home/away totals:
