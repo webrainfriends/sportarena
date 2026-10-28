@@ -118,6 +118,7 @@ function Overview({ o, d, role, archived, reload, toast }) {
   const archive = async () => { try { await api.post(`/organisations/${o.id}/${archived ? 'restore' : 'archive'}`); toast(archived ? 'Organisation restored' : 'Organisation archived — data is kept'); reload(); } catch (e) { fail(toast)(e); } };
   return (
     <>
+      <View style={{ marginTop: 10, alignItems: 'flex-start' }}><Btn small title="360° view" color={c.paper} ink={c.ink} onPress={() => push('Organisation360', { id: o.id })} accessibilityLabel="Open the 360 view" /></View>
       {d.counts ? (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
           {[['Staff', d.counts.staff], ['People', d.counts.people], ['Cohorts', d.counts.cohorts], ['Teams', d.counts.teams], ['Events', d.counts.events], ['Venues', d.counts.venues]].map(([l, n]) => <Tag key={l} label={`${n} ${l.toLowerCase()}`} />)}
