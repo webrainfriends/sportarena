@@ -4,14 +4,16 @@ import { finalizeRequest } from '../event-planning.js';
 
 const BUDGET_CATEGORY = { ground_maintenance: 'venue', pitch_maintenance: 'venue', pool_maintenance: 'venue', cleaning: 'venue', event_crew: 'staff', security: 'staff', electrical: 'equipment', wifi: 'equipment', equipment_rental: 'equipment', travel: 'transport', logistics: 'transport', accommodation: 'other', catering: 'catering' };
 const catOf = (o) => BUDGET_CATEGORY[o.category] ?? 'other';
+/** What an order commits on the event budget: its gross by default; a tender priced on a net basis commits its net award (terms.commit_basis). */
+export const committedOf = (order) => Number(order.terms?.commit_basis === 'net' ? order.net_minor : order.gross_minor);
 
 /** Commit the order on the event budget (event currency only; other currencies are never converted silently). Returns the line or null. */
-export async function commitOrder(c, order, actor) {
+export async function commitOrder(c, order, actor, { budgetCategory = null, currencyChecked = false } = {}) {
   if (!order.event_id) return null;
   const ev = (await c.query('SELECT * FROM events WHERE id=$1', [order.event_id])).rows[0];
-  if (!ev || (ev.currency ?? 'INR') !== order.currency) return null;
+  if (!ev || (!currencyChecked && (ev.currency ?? 'INR') !== order.currency)) return null;
   const cat = (await c.query("SELECT scope->>'category' AS category, event_request_id FROM svc_rfqs WHERE id=$1", [order.rfq_id])).rows[0] ?? {};
-  const committed = Number(order.gross_minor);
+  const committed = committedOf(order);
   let line = (await c.query("SELECT * FROM event_budget_lines WHERE svc_order_id=$1 AND status <> 'void' FOR UPDATE", [order.id])).rows[0];
   if (line) {
     line = (await c.query("UPDATE event_budget_lines SET committed_cents=$2, planned_cents=greatest(planned_cents,$2), status='committed' WHERE id=$1 RETURNING *", [line.id, committed])).rows[0];
@@ -23,7 +25,7 @@ export async function commitOrder(c, order, actor) {
   }
   if (!line) {
     line = (await c.query("INSERT INTO event_budget_lines(event_id, direction, category, name, planned_cents, committed_cents, status, svc_order_id, created_by) VALUES ($1,'expense',$2,$3,$4,$4,'committed',$5,$6) RETURNING *",
-      [ev.id, catOf(cat), `${order.number} — service order`.slice(0, 120), committed, order.id, actor.id])).rows[0];
+      [ev.id, budgetCategory ?? catOf(cat), `${order.number} — service order`.slice(0, 120), committed, order.id, actor.id])).rows[0];
   }
   await c.query('UPDATE svc_orders SET budget_line_id=$2 WHERE id=$1', [order.id, line.id]);
   return line;

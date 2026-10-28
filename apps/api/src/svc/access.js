@@ -83,13 +83,17 @@ export async function resolveBuyer(user, ctx, c = pool) {
     where = ['organisation_id', organisation_id]; name = o.name; org = organisation_id;
   } else { where = ['owner_id', user.id]; name = user.display_name ?? 'Personal'; }
   if (!currency) throw conflict('Say which currency this buyer spends in');
-  const col = where[0];
+  return findOrCreateBuyer(c, { col: where[0], val: where[1], name, currency, owner, org, ev, ven });
+}
+
+/** The one active buyer for a context (event, venue, organisation or person); created on first use. Callers prove authority first. */
+export async function findOrCreateBuyer(c, { col, val, name, currency, owner, org = null, ev = null, ven = null }) {
   const extra = col === 'owner_id' ? 'AND organisation_id IS NULL AND event_id IS NULL AND venue_id IS NULL' : col === 'organisation_id' ? 'AND event_id IS NULL AND venue_id IS NULL' : '';
-  const found = (await q(c, `SELECT * FROM svc_buyers WHERE ${col}=$1 ${extra} AND status='active'`, [where[1]]))[0];
+  const found = (await q(c, `SELECT * FROM svc_buyers WHERE ${col}=$1 ${extra} AND status='active'`, [val]))[0];
   if (found) return found;
   try {
     return (await q(c, 'INSERT INTO svc_buyers(owner_id, organisation_id, event_id, venue_id, name, currency) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *', [owner, org, ev, ven, name, currency]))[0];
-  } catch (e) { if (e.code === '23505') return (await q(c, `SELECT * FROM svc_buyers WHERE ${col}=$1 ${extra} AND status='active'`, [where[1]]))[0]; throw e; }
+  } catch (e) { if (e.code === '23505') return (await q(c, `SELECT * FROM svc_buyers WHERE ${col}=$1 ${extra} AND status='active'`, [val]))[0]; throw e; }
 }
 
 export const log = (c, entity, entityId, actor, action, detail = {}) => c.query('INSERT INTO svc_activity(entity, entity_id, actor_id, action, detail) VALUES ($1,$2,$3,$4,$5)', [entity, entityId, actor, action, detail]);

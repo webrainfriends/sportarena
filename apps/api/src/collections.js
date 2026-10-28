@@ -73,6 +73,17 @@ export async function ensureCases(c, ownerType, ownerId) {
        ON CONFLICT (source_type, source_id) DO NOTHING`, [ownerId]);
     return r.rowCount;
   }
+  if (ownerType === 'team') {
+    // a team charge with a due date; late fees and suspension do not apply to teams, reminders, retries and escalation do
+    const r = await c.query(
+      `INSERT INTO collection_cases(owner_type, owner_id, source_type, source_id, payer_id, currency, due_on, state)
+       SELECT 'team', ch.team_id, 'team_charge', ch.id, ch.payer_id, b.currency, ch.due_on,
+              CASE WHEN ch.due_on > current_date THEN 'upcoming' WHEN ch.due_on + 3 >= current_date THEN 'due' ELSE 'overdue' END
+         FROM team_charges ch JOIN team_charge_batches b ON b.id=ch.batch_id
+        WHERE ch.team_id=$1 AND ch.status='awaiting_payment' AND ch.due_on IS NOT NULL AND ch.amount_minor - ch.adjusted_minor - ch.settled_minor > 0
+       ON CONFLICT (source_type, source_id) DO NOTHING`, [ownerId]);
+    return r.rowCount;
+  }
   const r = await c.query(
     `INSERT INTO collection_cases(owner_type, owner_id, source_type, source_id, payer_id, currency, due_on, state)
      SELECT 'venue', up.venue_id, 'venue_plan', up.id, up.user_id, up.currency, prev.expires_at::date,
@@ -91,6 +102,14 @@ async function facts(c, cs) {
     if (!ch) return null;
     const closed = { paid: 'paid', refunded: 'paid', waived: 'waived', cancelled: 'cancelled' }[ch.status] ?? null;
     return { ch, closed, balance: Number(ch.balance_minor), billed: Number(ch.amount_minor), dueOn: ch.due_s, enrolmentId: ch.enrolment_id, orgId: ch.organisation_id, payerId: ch.payer_id };
+  }
+  if (cs.source_type === 'team_charge') {
+    const tc = (await c.query(
+      `SELECT ch.*, ch.due_on::text AS due_s, ch.amount_minor - ch.settled_minor - ch.adjusted_minor AS balance_minor, t.name AS team_name, b.title
+         FROM team_charges ch JOIN teams t ON t.id=ch.team_id JOIN team_charge_batches b ON b.id=ch.batch_id WHERE ch.id=$1 FOR UPDATE OF ch`, [cs.source_id])).rows[0];
+    if (!tc) return null;
+    const closed = { paid: 'paid', waived: 'waived', cancelled: 'cancelled' }[tc.status] ?? null;
+    return { ch: null, tc, closed, balance: Number(tc.balance_minor), billed: Number(tc.amount_minor), dueOn: tc.due_s, enrolmentId: null, orgId: null, payerId: tc.payer_id };
   }
   const up = (await c.query(
     `SELECT up.*, prev.expires_at::date::text AS due_s FROM user_plans up LEFT JOIN user_plans prev ON prev.id=up.renews_id WHERE up.id=$1 FOR UPDATE OF up`, [cs.source_id])).rows[0];
@@ -120,7 +139,7 @@ async function planDue(c, f, policy, today, cs) {
 
 /** Read the payments made for this source and write each attempt into the case history exactly once. Returns the number of payments still in flight. */
 async function syncAttempts(c, cs, today) {
-  const type = cs.source_type === 'academy_charge' ? 'academy_charge' : 'venue_plan';
+  const type = cs.source_type === 'academy_charge' ? 'academy_charge' : cs.source_type === 'team_charge' ? 'team_charge' : 'venue_plan';
   const pays = (await c.query('SELECT id, status, created_at, paid_at FROM payments WHERE purpose_type=$1 AND purpose_id=$2 ORDER BY created_at, id', [type, cs.source_id])).rows;
   let inflight = 0, attempts = 0, failed = 0, lastAt = null;
   for (const p of pays) {
@@ -201,6 +220,13 @@ async function reinstateIfClear(c, enrolmentId, orgId, policy, today) {
 }
 
 // ---------------------------------------------------------------------------------------------------------------- lifecycle
+/** Who to tell about this case, and what a tapped notification opens. A team charge is told to its payer; a young member's is told to their guardians, never the child. */
+const tellWho = (f) => (f.tc ? { payer_id: f.tc.payer_id, athlete_id: f.tc.member_id } : { ...(f.ch ?? { payer_id: f.payerId }), athlete_id: f.ch?.athlete_id });
+const dataOf = (cs, f) => (f.tc ? { team_id: cs.owner_id, charge_id: f.tc.id } : f.ch ? { organisation_id: f.orgId, charge_id: f.ch.id } : { venue_id: cs.owner_id, user_plan_id: cs.source_id });
+const BODY = (f, text) => (f.tc ? `${f.tc.team_name}: ${f.tc.title}. ${text}` : text);
+/** The people who run a team's money: its owner and managers / captains. */
+const teamStaff = async (c, teamId) => (await c.query(
+  `SELECT owner_id AS user_id FROM teams WHERE id=$1 UNION SELECT user_id FROM team_members WHERE team_id=$1 AND status='active' AND role IN ('captain','manager')`, [teamId])).rows.map((r) => r.user_id);
 const TITLE = (offset) => (offset < 0 ? 'A payment is coming up' : offset === 0 ? 'A payment is due' : 'A payment is overdue');
 
 async function lateFee(c, cs, f, policy, today) {
@@ -264,8 +290,8 @@ export async function advanceCase(c, caseId, { today = todayStr() } = {}) {
   if (!quiet && k > 0 && k <= retryDays.length && lastFail && daysBetween(lastFail, today) >= retryDays[k - 1] && !inflight) {
     if (await addEvent(c, cs.id, 'retry_requested', { data: { attempt: k }, dedupe: `retry:${k}` })) {
       state = 'retrying';
-      for (const uid of await payersToTell(c, { ...(f.ch ?? { payer_id: f.payerId }), athlete_id: f.ch?.athlete_id })) {
-        await notify(c, uid, { kind: 'collections_retry', title: 'Your payment did not go through', body: 'Open Gotmygame to try again.', data: { ...(f.ch ? { organisation_id: f.orgId, charge_id: f.ch.id } : { venue_id: cs.owner_id, user_plan_id: cs.source_id }) }, dedupe_key: `coll:retry:${cs.id}:${k}:${uid}` });
+      for (const uid of await payersToTell(c, tellWho(f))) {
+        await notify(c, uid, { kind: 'collections_retry', title: 'Your payment did not go through', body: BODY(f, 'Open Gotmygame to try again.'), data: dataOf(cs, f), dedupe_key: `coll:retry:${cs.id}:${k}:${uid}` });
       }
     }
   }
@@ -278,8 +304,8 @@ export async function advanceCase(c, caseId, { today = todayStr() } = {}) {
       const sent = (await c.query("SELECT max((data->>'offset')::int) AS o FROM collection_events WHERE case_id=$1 AND kind='reminder_sent' AND data->>'due_on'=$2", [cs.id, dueEff])).rows[0].o;
       if (sent == null || sent < due) {
         let n = 0;
-        for (const uid of await payersToTell(c, { ...(f.ch ?? { payer_id: f.payerId }), athlete_id: f.ch?.athlete_id })) {
-          const made = await notify(c, uid, { kind: 'collections_reminder', title: TITLE(due), body: 'Open Gotmygame to see the details and pay.', data: { ...(f.ch ? { organisation_id: f.orgId, charge_id: f.ch.id } : { venue_id: cs.owner_id, user_plan_id: cs.source_id }) }, dedupe_key: `coll:rem:${cs.id}:${due}:${dueEff}:${uid}`, ...(f.ch ? { comm: { use_case: due > 0 ? 'fee_overdue' : 'fee_due' } } : {}) });
+        for (const uid of await payersToTell(c, tellWho(f))) {
+          const made = await notify(c, uid, { kind: 'collections_reminder', title: TITLE(due), body: BODY(f, 'Open Gotmygame to see the details and pay.'), data: dataOf(cs, f), dedupe_key: `coll:rem:${cs.id}:${due}:${dueEff}:${uid}`, ...(f.ch ? { comm: { use_case: due > 0 ? 'fee_overdue' : 'fee_due' } } : {}) });
           if (made) n++;
         }
         if (await addEvent(c, cs.id, 'reminder_sent', { data: { offset: due, due_on: dueEff, recipients: n }, dedupe: `rem:${due}:${dueEff}` })) reached = new Date();
@@ -299,10 +325,10 @@ export async function advanceCase(c, caseId, { today = todayStr() } = {}) {
       }
     }
   }
-  if (!held && state === 'escalated' && cs.owner_type === 'organisation') {
+  if (!held && state === 'escalated' && (cs.owner_type === 'organisation' || cs.owner_type === 'team')) {
     if (await addEvent(c, cs.id, 'escalated', { data: { days_past_due: d }, dedupe: 'escalated' })) {
-      for (const uid of await moneyStaff(c, cs.owner_id)) {
-        await notify(c, uid, { kind: 'collections_escalated', title: 'A payment needs your attention', body: 'Open the collections desk to see what is overdue.', data: { organisation_id: cs.owner_id, case_id: cs.id }, dedupe_key: `coll:esc:${cs.id}:${uid}` });
+      for (const uid of await (cs.owner_type === 'team' ? teamStaff(c, cs.owner_id) : moneyStaff(c, cs.owner_id))) {
+        await notify(c, uid, { kind: 'collections_escalated', title: 'A payment needs your attention', body: BODY(f, 'Open the collections desk to see what is overdue.'), data: cs.owner_type === 'team' ? { team_id: cs.owner_id, charge_id: f.tc.id, case_id: cs.id } : { organisation_id: cs.owner_id, case_id: cs.id }, dedupe_key: `coll:esc:${cs.id}:${uid}` });
       }
     }
   }
@@ -319,7 +345,8 @@ export async function advanceCase(c, caseId, { today = todayStr() } = {}) {
 export async function runCollections({ today = todayStr(), limit = 300, ownerId = null } = {}) {
   const owners = await many(
     `SELECT t, id FROM (SELECT DISTINCT 'organisation' AS t, organisation_id AS id FROM academy_charges WHERE status='awaiting_payment' AND amount_minor > 0
-      UNION SELECT DISTINCT 'venue', venue_id FROM user_plans WHERE status='awaiting_payment' AND renews_id IS NOT NULL AND venue_id IS NOT NULL) o WHERE $1::uuid IS NULL OR id=$1`, [ownerId]);
+      UNION SELECT DISTINCT 'venue', venue_id FROM user_plans WHERE status='awaiting_payment' AND renews_id IS NOT NULL AND venue_id IS NOT NULL
+      UNION SELECT DISTINCT 'team', team_id FROM team_charges WHERE status='awaiting_payment' AND due_on IS NOT NULL) o WHERE $1::uuid IS NULL OR id=$1`, [ownerId]);
   for (const o of owners) await tx((c) => ensureCases(c, o.t, o.id));
   const open = await many('SELECT id FROM collection_cases WHERE state = ANY($1) AND ($3::uuid IS NULL OR owner_id=$3) ORDER BY due_on, id LIMIT $2', [OPEN_STATES, limit, ownerId]);
   let n = 0;

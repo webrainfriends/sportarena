@@ -427,7 +427,7 @@ cap({
 });
 cap({
   name: 'evaluate_quote', method: 'POST', path: '/quotes/:id/evaluate', tag: TAG, status: 201,
-  summary: 'Score a quote against the RFQ rubric (0–10 per criterion, weighted to 100) with a recorded rationale. One evaluation per evaluator; re-scoring replaces your own.',
+  summary: 'Score a quote against the RFQ rubric (0–10 per criterion, weighted to 100) with a recorded rationale. One evaluation per evaluator; re-scoring replaces the current one and keeps every earlier version. Not available to someone who works for the supplier or declared a conflict.',
   input: z.object({ id, scores: z.record(z.string(), z.number().min(0).max(10)).default({}), rationale: z.string().min(1).max(2000), compliant: z.boolean().default(true) }),
   async handler({ user }, i) {
     return tx(async (c) => {
@@ -435,6 +435,7 @@ cap({
       if (!q || q.status === 'draft') throw notFound('Quote');
       const r = await rfqFor(c, q.rfq_id);
       await buyerAccess(user, r.buyer_id, ['evaluator'], c);
+      await assertNoConflict(c, r.id, user, q.profile_id);
       if (!OPEN.includes(r.status)) throw conflict(`RFQ is ${r.status}`);
       const rub = r.rubric ?? [];
       for (const k of Object.keys(i.scores)) if (!rub.some((x) => x.key === k)) throw badRequest(`${k} is not a criterion of this RFQ`);
@@ -443,6 +444,22 @@ cap({
       return (await c.query(
         'INSERT INTO svc_evaluations(rfq_id, quote_id, evaluator_id, scores, total, rationale, compliant) VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (quote_id, evaluator_id) DO UPDATE SET scores=EXCLUDED.scores, total=EXCLUDED.total, rationale=EXCLUDED.rationale, compliant=EXCLUDED.compliant, created_at=now() RETURNING *',
         [r.id, q.id, user.id, i.scores, Math.round(total * 100) / 100, i.rationale, i.compliant])).rows[0];
+    });
+  },
+});
+cap({
+  name: 'declare_rfq_conflict', method: 'POST', path: '/rfqs/:id/conflicts', tag: TAG, status: 201,
+  summary: 'Evaluator or approver: declare a conflict of interest on an RFQ, for one supplier or the whole RFQ. From then on you cannot score, shortlist or award the supplier concerned. Append-only: a declaration is never edited or removed; idempotent.',
+  input: z.object({ id, profile_id: id.optional(), reason: z.string().min(5).max(500) }),
+  async handler({ user }, i) {
+    return tx(async (c) => {
+      const r = await rfqFor(c, i.id);
+      await buyerAccess(user, r.buyer_id, ['evaluator', 'approver', 'purchaser'], c);
+      if (i.profile_id && !(await c.query('SELECT 1 FROM svc_invites WHERE rfq_id=$1 AND profile_id=$2', [r.id, i.profile_id])).rowCount) throw notFound('Supplier');
+      const row = (await c.query('INSERT INTO svc_rfq_conflicts(rfq_id, user_id, profile_id, reason) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING RETURNING *', [r.id, user.id, i.profile_id ?? null, i.reason])).rows[0]
+        ?? (await c.query('SELECT * FROM svc_rfq_conflicts WHERE rfq_id=$1 AND user_id=$2 AND profile_id IS NOT DISTINCT FROM $3', [r.id, user.id, i.profile_id ?? null])).rows[0];
+      await log(c, 'rfq', r.id, user.id, 'conflict_declared', { profile_id: i.profile_id ?? null });
+      return row;
     });
   },
 });
@@ -456,6 +473,7 @@ cap({
       if (!q) throw notFound('Quote');
       const r = await rfqFor(c, q.rfq_id);
       await buyerAccess(user, r.buyer_id, ['evaluator', 'purchaser'], c);
+      await assertNoConflict(c, r.id, user, q.profile_id);
       if (!['submitted', 'shortlisted'].includes(q.status)) throw conflict(`Quote is ${q.status}`);
       if (i.decision === 'rejected' && !i.reason) throw badRequest('Give a reason');
       const row = (await c.query('UPDATE svc_quotes SET status=$2, terms = terms || $3::jsonb WHERE id=$1 RETURNING *', [q.id, i.decision, JSON.stringify(i.reason ? { decision_reason: i.reason } : {})])).rows[0];
@@ -477,6 +495,14 @@ const eligible = async (c, rfq, q, profile) => {
   if (bad) throw conflict(`That supplier’s required credential “${bad.title}” has expired; new awards are blocked until it is renewed`);
 };
 
+/** Nobody scores, shortlists or awards a supplier they work for or have declared a conflict with. Declarations are append-only. */
+export async function assertNoConflict(c, rfqId, user, profileId) {
+  const own = (await c.query("SELECT 1 FROM svc_profiles p WHERE p.id=$1 AND (p.owner_id=$2 OR EXISTS (SELECT 1 FROM svc_staff s WHERE s.profile_id=p.id AND s.user_id=$2 AND s.status='active'))", [profileId, user.id])).rowCount;
+  if (own) throw forbidden('You work for this supplier, so you cannot evaluate or award it');
+  const declared = (await c.query('SELECT reason FROM svc_rfq_conflicts WHERE rfq_id=$1 AND user_id=$2 AND (profile_id IS NULL OR profile_id=$3)', [rfqId, user.id, profileId])).rows[0];
+  if (declared) throw forbidden('You declared a conflict on this RFQ and are recused from it');
+}
+
 /** Create the purchase / service orders for approved awards. Runs inside the award (or approval) transaction with the RFQ row locked. */
 export async function createOrders(c, rfq, awards, actor, { approvalId = null, justification = null } = {}) {
   const buyer = (await c.query('SELECT * FROM svc_buyers WHERE id=$1', [rfq.buyer_id])).rows[0];
@@ -488,6 +514,7 @@ export async function createOrders(c, rfq, awards, actor, { approvalId = null, j
     if (!q || q.rfq_id !== rfq.id) throw notFound('Quote');
     const profile = (await c.query('SELECT * FROM svc_profiles WHERE id=$1', [q.profile_id])).rows[0];
     await eligible(c, rfq, q, profile);
+    await assertNoConflict(c, rfq.id, actor, q.profile_id);
     if ((await c.query("SELECT 1 FROM svc_orders WHERE quote_id=$1 AND status NOT IN ('cancelled','rejected','terminated')", [q.id])).rowCount) throw conflict('That quote has already been awarded');
     const qCovers = Number(q.terms.covers_quantity ?? need);
     const covers = a.covers_quantity ?? qCovers;

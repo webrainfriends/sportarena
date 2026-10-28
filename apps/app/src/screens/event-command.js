@@ -28,6 +28,7 @@ import { EventVenues } from './event-venues';
 import { Requests, Budget } from './event-plan';
 import { GameRow } from './event-schedule';
 import { AccreditationTab } from './event-accreditation';
+import { TravelTab } from './trips';
 import { RaceDay } from './race-desk';
 import { PublicPageTab } from './event-public';
 import { EventOfficialsSettings } from './officials-home';
@@ -104,6 +105,7 @@ export function EventCommand({ id, tab: first = 'overview' }) {
     { key: 'registration', label: 'Registration', icon: '🪪', badge: regAwaiting || undefined },
     { key: 'people', label: 'People', icon: '🧩' },
     { key: 'accreditation', label: 'Accreditation', icon: '🎫' },
+    { key: 'travel', label: 'Travel', icon: '🧳' },
     { key: 'boards', label: 'Boards', icon: '🗂️' },
     { key: 'games', label: 'Games', icon: '⚡' },
     ...(isOrg || (D.races.data ?? []).length ? [{ key: 'race', label: 'Race day', icon: '🏃' }] : []),
@@ -145,6 +147,7 @@ export function EventCommand({ id, tab: first = 'overview' }) {
         </>
       )}
       {tab === 'accreditation' && <AccreditationTab id={id} e={e} isOrg={isOrg} />}
+      {tab === 'travel' && <TravelTab id={id} e={e} />}
       {tab === 'boards' && <BoardTab id={id} isOrg={isOrg} />}
       {tab === 'race' && <RaceDay id={id} isOrg={isOrg} />}
       {tab === 'games' && <FixturesTab id={id} isOrg={isOrg} games={games} accepted={accepted} venues={D.venues.data ?? []} bracket={D.bracket.data} reload={reloadAll} goVenue={() => go('venue')} />}

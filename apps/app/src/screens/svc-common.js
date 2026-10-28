@@ -133,3 +133,63 @@ export function ExportsPanel({ side, scopeId }) {
     </View>
   );
 }
+
+// ---------------------------------------------------------------- procurement chain (#520)
+const DOT = { done: c.mint, active: c.sun, pending: c.line, gap: c.red };
+const STAGE_WORD = { done: 'done', active: 'in progress', pending: 'not yet', gap: 'needs attention' };
+const factText = (s, cur) => {
+  const f = s.facts ?? {};
+  if (s.key === 'fulfilment') return `${f.accepted} of ${f.ordered} accepted · ${f.invoiced} invoiced`;
+  if (s.key === 'invoice' && f.issued) return `billed ${money(f.billed_minor, cur)} · ${f.matched} matched${f.exceptions ? ` · ${f.exceptions} need a decision` : ''}`;
+  if (s.key === 'payment' && f.paid_minor) return `paid ${money(f.paid_minor, cur)}`;
+  if (s.key === 'budget' && f.committed_minor !== undefined) return `committed ${money(f.committed_minor, cur)} · paid ${money(f.actual_minor, cur)} · still committed ${money(f.remaining_commitment_minor, cur)}`;
+  if (s.key === 'order' && f.gross_minor) return `${money(f.gross_minor, cur)} incl. tax`;
+  return '';
+};
+/**
+ * The commercial chain of one order, demand to supplier performance, from the API (one definition for REST, OpenAPI and MCP). Works at phone,
+ * tablet and desktop widths: a single column that becomes a wrapped grid of cards; every stage is readable by a screen reader as one item.
+ */
+export function ChainTrace({ path }) {
+  const r = useLoad(() => api.get(path), [path]);
+  if (r.loading && !r.data) return <T size={13} color={c.mute}>Loading the chain…</T>;
+  if (r.error || !r.data) return <T size={13} color={c.mute}>The chain is not available for this order.</T>;
+  const x = r.data, cur = x.stages.find((s) => s.key === 'order')?.facts?.currency;
+  return (
+    <View style={{ gap: 8 }} accessibilityRole="list">
+      <T size={12} color={c.mute}>{x.route === 'tender' ? 'Formal tender' : x.route === 'rfq' ? 'Request for quotation' : 'Direct order'} · each step names the record it comes from{x.unlinked ? ' · not linked to a service order yet' : ''}</T>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+        {x.stages.map((s) => (
+          <View key={s.key} accessible accessibilityRole="text" accessibilityLabel={`${s.label}: ${STAGE_WORD[s.status]}. ${s.summary}. ${factText(s, cur)}`}
+            style={{ flexGrow: 1, flexBasis: 220, minHeight: 56, borderWidth: 1, borderColor: c.line, borderLeftWidth: 5, borderLeftColor: DOT[s.status], borderRadius: 12, padding: 10, backgroundColor: c.paper }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 6 }}><T weight="700" size={13}>{s.label}</T><T size={11} color={c.mute}>{STAGE_WORD[s.status]}</T></View>
+            <T size={12}>{s.summary}</T>
+            {factText(s, cur) ? <T size={11} color={c.mute}>{factText(s, cur)}</T> : null}
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+const pct = (v) => `${Math.round(v * 100)}%`;
+const dimValue = (d) => (d.value === null ? '—' : d.unit === 'ratio' ? pct(d.value) : d.unit === 'hours' ? `${d.value} h` : d.unit === 'stars_1_5' ? `${d.value} / 5` : String(d.value));
+/** Supplier facts with their sample size. Fewer than five observations are shown but marked; there is no combined score. */
+export function PerformanceRecord({ profileId, buyerId }) {
+  const r = useLoad(() => api.get(`/supplier-profiles/${profileId}/performance`, buyerId ? { buyer_id: buyerId } : {}), [profileId, buyerId]);
+  if (r.loading && !r.data) return <T size={13} color={c.mute}>Loading…</T>;
+  if (r.error || !r.data) return <T size={13} color={c.mute}>Performance is not available.</T>;
+  const x = r.data;
+  return (
+    <View style={{ gap: 8 }}>
+      <T size={12} color={c.mute}>{x.orders.total} order(s){buyerId ? ' with you' : ` from ${x.orders.buyers} buyer(s)`}. {x.method}</T>
+      {x.dimensions.map((d) => (
+        <View key={d.key} accessible accessibilityLabel={`${d.label}: ${dimValue(d)} from ${d.n} observations${d.reliable ? '' : ', too few to rely on'}`} style={{ borderWidth: 1, borderColor: c.line, borderRadius: 12, padding: 10, backgroundColor: c.paper, opacity: d.n ? 1 : 0.7 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}><T weight="700" size={13}>{d.label}</T><T weight="800" size={14}>{dimValue(d)}</T></View>
+          <T size={11} color={c.mute}>n = {d.n}{d.note ? ` · ${d.note}` : ''}</T>
+          <T size={11} color={c.mute}>{d.definition}</T>
+        </View>
+      ))}
+    </View>
+  );
+}
