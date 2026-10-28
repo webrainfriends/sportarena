@@ -8,6 +8,7 @@ import { GuardianCalendarSheet } from './calendar-sync';
 import { FormSheet } from '../FormSheet';
 import { Btn, Card, Empty, ErrorBox, H1, Loading, Row, Screen, Section, Sheet, T, Tag } from '../ui';
 import { GuardianSponsors } from './sponsor-youth';
+import { FamilyDashboard } from './family-dashboard';
 import { c } from '../theme';
 import { locale } from '../locale';
 
@@ -121,6 +122,7 @@ function LinkCard({ l, reload, onConsents, onPickup, onSponsors, onCalendar }) {
           <Btn small title="Sponsors" color={c.paper} ink={c.ink} onPress={() => onSponsors(l.child)} />
           <Btn small title="Wellness sharing" color={c.paper} ink={c.ink} onPress={() => push('ChildWellnessSharing', { child_id: l.child.id, name: l.child.display_name })} />
           <Btn small title="Season reports" color={c.paper} ink={c.ink} onPress={() => push('ChildSeasonReports', { child_id: l.child.id, name: l.child.display_name })} />
+          <Btn small title="Representation" color={c.paper} ink={c.ink} onPress={() => push('Representation', { athlete_id: l.child.id, name: l.child.display_name })} />
           <Btn small title="Development" color={c.paper} ink={c.ink} onPress={() => push('MyDevelopment', { child_id: l.child.id, name: l.child.display_name })} />
           <Btn small title="Career" color={c.paper} ink={c.ink} onPress={() => push('CareerTimeline', { user_id: l.child.id })} />
           <Btn small title="Funding" color={c.paper} ink={c.ink} onPress={() => push('PlayerFunding', { athlete_id: l.child.id, name: l.child.display_name })} />
@@ -222,6 +224,7 @@ export function Family() {
           <T size={13} color={c.mute}>{status.active_guardians ? `${status.active_guardians} verified guardian${status.active_guardians > 1 ? 's' : ''}.` : 'You need a verified guardian before you can join teams or share health information.'}</T>
         </Card>
       ) : null}
+      {!status?.is_youth ? <FamilyDashboard onConsents={setConsents} /> : null}
       <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginVertical: 10 }}>
         {status?.is_youth
           ? <Btn title="Ask a parent or guardian" color={c.pink} onPress={() => setAsk('child')} />
@@ -229,7 +232,7 @@ export function Family() {
       </View>
       <Section title="Family links" color={c.pink}>
         {links.loading && !links.data ? <Loading /> : links.error ? <ErrorBox error={links.error} onRetry={links.reload} /> : links.data?.length
-          ? links.data.map((l) => <LinkCard key={l.id} l={l} reload={reload} onConsents={setConsents} onPickup={setPickup} onSponsors={setSponsors} />)
+          ? links.data.map((l) => <LinkCard key={l.id} l={l} reload={reload} onConsents={setConsents} onPickup={setPickup} onSponsors={setSponsors} onCalendar={setCalendar} />)
           : <Empty emoji="👨‍👩‍👧" title="No family links yet" sub={status?.is_youth ? 'Ask a parent or guardian to link with your account.' : 'Add a child you look after to manage their permissions.'} />}
       </Section>
       <ApprovalRequests />
