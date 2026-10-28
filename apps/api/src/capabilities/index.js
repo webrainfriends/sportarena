@@ -29,6 +29,7 @@ import './appearances.js';
 import './team-chat.js';
 import './team-money.js';
 import './team-workspace.js';
+import './workspace.js';
 import './venues.js';
 import './venue-admin.js';
 import './reservations.js';
