@@ -96,6 +96,7 @@ export function parseTarget(t) {
   if (kind === 'federation' && id) return ['FederationHome', extra ? { id, tab: extra } : { id }];
   if (kind === 'open-game' && id) return ['OpenGame', { id }];
   if (kind === 'find-games') return ['FindGames', {}];
+  if (kind === 'family') return ['Family', {}];
   if (kind === 'reservation' && id) return ['Reservation', { id }];
   if (kind === 'cover') return ['Cover', {}];
   if (kind === 'rewards') return ['Rewards', {}];

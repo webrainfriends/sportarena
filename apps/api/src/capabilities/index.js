@@ -163,6 +163,7 @@ import './subject-docs.js';
 import './community.js';
 import './home.js';
 import './athlete-schedule.js';
+import './family.js';
 import './athlete-performance.js';
 import './player-insights.js';
 import './player-assistant.js';
