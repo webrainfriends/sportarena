@@ -209,6 +209,7 @@ import './tender-notice.js';
 import './tender-proposals.js';
 import './tender-evaluation.js';
 import './tender-award.js';
+import './procurement-chain.js';
 import './tender-reports.js';
 import './export-packs.js';
 import './org-agreements.js';
