@@ -199,6 +199,14 @@ CREATE TABLE IF NOT EXISTS team_contributions (
 CREATE INDEX IF NOT EXISTS team_contributions_fund ON team_contributions (fundraiser_id, status);
 CREATE UNIQUE INDEX IF NOT EXISTS team_contributions_key ON team_contributions (fundraiser_id, contributor_id, idempotency_key) WHERE idempotency_key IS NOT NULL;
 
--- the canonical payments table learns the two new purposes
-ALTER TABLE payments DROP CONSTRAINT IF EXISTS payments_purpose_type_check;
-ALTER TABLE payments ADD CONSTRAINT payments_purpose_type_check CHECK (purpose_type IN ('shop_order','coach_hire','insurance_policy','venue_invoice','wallet_topup','gift_card','venue_plan','appointment','shop_checkout','physio_package','sponsorship_payment','academy_charge','service_invoice','media_rights_fee','team_charge','team_contribution'));
+-- the canonical payments table learns the two new purposes. The current list is read and extended, never rewritten, so purposes added by
+-- other migrations stay valid.
+DO $$
+DECLARE d text;
+BEGIN
+  SELECT pg_get_constraintdef(oid) INTO d FROM pg_constraint WHERE conname = 'payments_purpose_type_check' AND conrelid = 'payments'::regclass;
+  IF d IS NOT NULL AND d NOT LIKE '%team_charge%' THEN
+    ALTER TABLE payments DROP CONSTRAINT payments_purpose_type_check;
+    EXECUTE 'ALTER TABLE payments ADD CONSTRAINT payments_purpose_type_check ' || replace(d, '::text])', '::text, ''team_charge''::text, ''team_contribution''::text])');
+  END IF;
+END $$;

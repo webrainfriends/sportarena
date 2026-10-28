@@ -18,6 +18,7 @@ import { hasConsent } from '../youth.js';
 import { DOC_LIMITS, docHeaders, loadEncrypted, readBody, saveEncrypted, sniffDoc } from '../doc-store.js';
 import { scanBuffer, scanPolicy } from '../malware-scan.js';
 import { RIGHT_KEYS, PLATFORMS, ASSET_COLS, assetState, entitlementsFor, licenceCovers, logMr, historyOf, eventOf, isOrganiserOf, myPartners, partnerFor, partnerAdmins, eventOrganisers, IN_FORCE } from '../media-rights.js';
+import { MR_UNIT_KINDS } from '../sponsor-roi.js';
 
 const TAG = 'Media assets';
 const text = (n) => z.string().trim().max(n);
@@ -366,11 +367,19 @@ cap({
     const a = await licForDeliverables(user, i.id, c);
     if (!a.organiser) throw forbidden('Only the organiser can set deliverables');
     if (i.sponsorship_id && !(await c.query("SELECT 1 FROM sponsorships WHERE id=$1 AND target_type='event' AND target_id=$2", [i.sponsorship_id, a.lic.event_id])).rowCount) throw badRequest('That sponsorship is not one of this event\'s');
+    // sponsor inventory (#519): once the event sells this kind of placement, a deliverable that names a sponsorship needs that sponsorship's live booking
+    let bookingId = null;
+    const unitKinds = MR_UNIT_KINDS[i.kind] ?? [];
+    if (i.sponsorship_id && unitKinds.length && (await c.query("SELECT 1 FROM sponsor_inventory_units WHERE target_type='event' AND target_id=$1 AND status='active' AND kind = ANY($2)", [a.lic.event_id, unitKinds])).rowCount) {
+      bookingId = (await c.query(`SELECT b.id FROM sponsor_inventory_bookings b JOIN sponsor_inventory_units u ON u.id=b.unit_id WHERE b.sponsorship_id=$1 AND b.status='confirmed' AND b.ends_on >= current_date
+        AND u.target_type='event' AND u.target_id=$2 AND u.kind = ANY($3) ORDER BY b.starts_on LIMIT 1`, [i.sponsorship_id, a.lic.event_id, unitKinds])).rows[0]?.id;
+      if (!bookingId) throw conflict('This event sells that kind of placement as sponsor inventory: the sponsor needs a live booking for it first', { code: 'inventory_required' });
+    }
     let row;
     if (i.deliverable_id) {
-      row = (await c.query("UPDATE mr_deliverables SET kind=$3, title=$4, detail=$5, due_at=$6, sponsorship_id=$7 WHERE id=$1 AND licence_id=$2 AND status IN ('planned','missed') RETURNING *", [i.deliverable_id, a.lic.id, i.kind, i.title, i.detail ?? null, i.due_at ?? null, i.sponsorship_id ?? null])).rows[0];
+      row = (await c.query("UPDATE mr_deliverables SET kind=$3, title=$4, detail=$5, due_at=$6, sponsorship_id=$7, booking_id=$8 WHERE id=$1 AND licence_id=$2 AND status IN ('planned','missed') RETURNING *", [i.deliverable_id, a.lic.id, i.kind, i.title, i.detail ?? null, i.due_at ?? null, i.sponsorship_id ?? null, bookingId])).rows[0];
       if (!row) throw conflict('That deliverable cannot be changed any more');
-    } else row = (await c.query('INSERT INTO mr_deliverables(licence_id, kind, title, detail, due_at, sponsorship_id, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *', [a.lic.id, i.kind, i.title, i.detail ?? null, i.due_at ?? null, i.sponsorship_id ?? null, user.id])).rows[0];
+    } else row = (await c.query('INSERT INTO mr_deliverables(licence_id, kind, title, detail, due_at, sponsorship_id, created_by, booking_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *', [a.lic.id, i.kind, i.title, i.detail ?? null, i.due_at ?? null, i.sponsorship_id ?? null, user.id, bookingId])).rows[0];
     await logMr(c, a.lic.event_id, 'deliverable', row.id, i.deliverable_id ? 'updated' : 'created', { actor: user.id });
     return row;
   }),
@@ -387,6 +396,7 @@ cap({
     if (i.status === 'delivered') {
       if (!a.partnerCanAct && !a.organiser) throw forbidden('Your role cannot do that');
       if (!['planned', 'missed'].includes(d.status)) throw conflict('Already delivered');
+      if (d.booking_id && !(await c.query("SELECT 1 FROM sponsor_inventory_bookings WHERE id=$1 AND status='confirmed'", [d.booking_id])).rowCount) throw conflict('The sponsor inventory booking that authorised this placement was released', { code: 'booking_released' });
       if (!i.evidence_url && !i.evidence_asset_id) throw badRequest('Attach evidence of delivery: a link or an asset', { code: 'evidence_required' });
       if (i.evidence_asset_id && !(await c.query('SELECT 1 FROM mr_assets WHERE id=$1 AND event_id=$2', [i.evidence_asset_id, a.lic.event_id])).rowCount) throw badRequest('That asset is not one of this event\'s');
     } else {

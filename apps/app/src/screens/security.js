@@ -4,7 +4,8 @@ import { Linking, Platform, Share, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
-import { Btn, Card, Chip, Empty, ErrorBox, Field, Section, Sheet, T, Tag } from '../ui';
+import { Btn, Card, Chip, Empty, ErrorBox, Field, Row, Section, Sheet, T, Tag } from '../ui';
+import { beginLinkSso, SsoFinish } from '../sso';
 import { FormSheet } from '../FormSheet';
 import { useNav } from '../nav';
 import { SyncDevices } from './offline-sync';
@@ -266,6 +267,36 @@ export function SecuritySection() {
       <FormSheet visible={pwForm} onClose={() => setPwForm(false)} title="Change password" submitLabel="Change password"
         fields={[{ key: 'current_password', label: 'Current password', type: 'secret' }, { key: 'new_password', label: 'New password', type: 'secret', hint: 'At least 10 characters. Your other devices will be signed out.' }]}
         onSubmit={async (v) => { await api.post('/me/password', v); sess.reload(); return 'Password changed'; }} />
+      <OrgSignIns />
     </Section>
+  );
+}
+
+/** Organisation single sign-ons linked to this account, and a way to add another (an account can belong to several organisations). */
+function OrgSignIns() {
+  const { toast } = useSession();
+  const list = useLoad(() => api.get('/me/sso'), []);
+  const [add, setAdd] = useState(false);
+  const [finish, setFinish] = useState(null);
+  if (list.error || !list.data) return null;
+  return (
+    <>
+      <Card color={c.violetSoft} style={{ marginTop: 12 }}>
+        <T weight="800">Organisation sign-ins</T>
+        <T size={12} color={c.mute}>Your school, club or federation can let you sign in with your work account. It links to this account - it never creates a second one.</T>
+        {list.data.map((i) => <Row key={i.id} title={i.organisation_name} sub={`Linked ${String(i.linked_at).slice(0, 10)} · ${i.my_status === 'active' ? `role: ${i.my_role}` : 'no current access'}`} />)}
+        <Btn small title="Add an organisation sign-in" color={c.paper} ink={c.ink} onPress={() => setAdd(true)} style={{ alignSelf: 'flex-start', marginTop: 8 }} />
+      </Card>
+      <FormSheet visible={add} onClose={() => setAdd(false)} title="Add an organisation sign-in" submitLabel="Continue"
+        fields={[{ key: 'email', label: 'Your work or school email', type: 'email' }]}
+        onSubmit={async (v) => {
+          const r = await beginLinkSso(v.email);
+          if (r.none) throw new Error('No organisation single sign-on was found for that email.');
+          if (r.params) setFinish(r.params);
+        }} />
+      <Sheet visible={!!finish} onClose={() => setFinish(null)} title="Organisation sign-in">
+        {finish ? <SsoFinish params={finish} onDone={() => { setFinish(null); list.reload(); toast('Organisation sign-in added'); }} onCancel={() => setFinish(null)} /> : null}
+      </Sheet>
+    </>
   );
 }

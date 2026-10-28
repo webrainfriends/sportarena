@@ -21,6 +21,7 @@ import { brandedDocumentsRouter } from './capabilities/branded-documents.js';
 import { orgAgreementsRouter } from './capabilities/org-agreements.js';
 import { trackingFilesRouter } from './capabilities/tracking-files.js';
 import { rulebookRouter } from './capabilities/rulebook.js';
+import { officialExtractRouter } from './capabilities/officials-extract.js';
 import { coachingEvidenceRouter } from './capabilities/coaching-evidence.js';
 import { calendarFeedRouter } from './capabilities/calendar-sync.js';
 import { passportFilesRouter } from './capabilities/passport-recruitment.js';
@@ -33,6 +34,8 @@ import { staffDocsRouter } from './capabilities/event-openings.js';
 import { liveRouter } from './live.js';
 import { publicWebRouter } from './public-web.js';
 import { appleWebRouter } from './apple-web.js';
+import { ssoRouter } from './identity/sso-routes.js';
+import { scimRouter } from './identity/scim.js';
 import { randomUUID } from 'node:crypto';
 import { logger, runWithContext } from './logger.js';
 import { recordRequest } from './metrics.js';
@@ -85,6 +88,7 @@ export function createApp() {
   app.use('/api/v1', orgAgreementsRouter());
   app.use('/api/v1', trackingFilesRouter());
   app.use('/api/v1', rulebookRouter());
+  app.use('/api/v1', officialExtractRouter());
   app.use('/api/v1', coachingEvidenceRouter());
   app.use('/api/v1', calendarFeedRouter());
   app.use('/api/v1', passportFilesRouter());
@@ -101,6 +105,8 @@ export function createApp() {
   app.use((_, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
 
   const authLimiter = rateLimit({ windowMs: 15 * 60_000, limit: config.isProd ? 20 : 1000, standardHeaders: true, legacyHeaders: false });
+  // single sign-on is per-IP too, but a campus or office shares one address, so it gets a wider (still bounded) window
+  app.use('/api/v1/auth/sso', rateLimit({ windowMs: 15 * 60_000, limit: config.isProd ? 300 : 5000, standardHeaders: true, legacyHeaders: false }));
   app.use(['/api/v1/auth/login', '/api/v1/auth/register', '/api/v1/auth/google', '/api/v1/auth/apple', '/api/v1/auth/refresh', '/api/v1/auth/password-reset', '/api/v1/auth/verify-email'], authLimiter);
 
   app.get('/', (_, res) => res.json({ name: 'Gotmygame', api: '/api/v1', openapi: '/api/v1/openapi.json', mcp: '/mcp', tools: capabilities.length }));
@@ -113,6 +119,8 @@ export function createApp() {
   });
 
   app.use('/api/v1', appleWebRouter());
+  app.use('/api/v1', ssoRouter());
+  app.use('/api/v1/scim/v2', scimRouter());
   // public spectator surfaces: anonymous, so they get their own (tighter) allowance on top of the global one
   app.use(['/api/v1/public', '/api/v1/share', '/api/v1/live/public'], rateLimit({ windowMs: 60_000, limit: config.isProd ? 120 : 5000, standardHeaders: true, legacyHeaders: false }));
   app.use('/api/v1', liveRouter());

@@ -9,6 +9,7 @@ import { FormSheet } from '../FormSheet';
 import { Chip, Empty, Field, Loading, Row, Sheet, T } from '../ui';
 import { moneyIn } from '../vtime';
 import { useDo } from './console-utils';
+import { Inventory } from './sponsor-roi';
 
 const KINDS = [['sponsor', '💎', 'Sponsor'], ['retail', '🛍️', 'Retail stall'], ['catering', '🍽️', 'Catering'], ['other', '🔧', 'Other']];
 
@@ -43,6 +44,9 @@ export function BusinessTab({ id, e, vend, money, reload }) {
         <ARow key={v.id} left={<AT size={26}>{KINDS.find(([k]) => k === v.kind)?.[1]}</AT>} title={v.sponsor_name ?? v.vendor_name} sub={`${v.kind}${v.fee_cents ? ` · ${moneyIn(v.fee_cents, v.currency)}` : ''}${v.in_kind ? ` · ${v.in_kind}` : ''}`}
           right={<><ATag label={v.status} />{v.status === 'accepted' ? <ABtn small tone="ghost" title="End" onPress={() => act(() => api.post(`/event-vendors/${v.id}/end`), 'Ended')} /> : null}</>} />
       )) : <AEmpty emoji="💼" title="No sponsors or vendors yet" sub="Invite a brand to sponsor, or shops and caterers to run stalls." />}
+      <ASection title="Sponsor inventory" />
+      <AT size={13} color={A.mute}>What sponsors can have at this event, with capacity and category exclusivity. A booking is tied to an accepted sponsorship; ROI and exposure are under Sponsors → ROI & exposure.</AT>
+      <Inventory target={{ type: 'event', id, label: e.name }} />
       <ASection title="On sale at the event" />
       {prods.data?.length ? prods.data.map((p) => <ARow key={p.id} left={<AT size={24}>{p.emoji}</AT>} title={p.name} sub={`${moneyIn(p.price_cents, e.currency)} · ${p.seller_name}`} />) : <AT size={13} color={A.mute}>Confirmed retail vendors list their shop products here.</AT>}
       {invite ? <InviteSheet id={id} e={e} onClose={() => setInvite(false)} onSent={reload} /> : null}

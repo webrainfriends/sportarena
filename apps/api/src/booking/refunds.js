@@ -49,9 +49,16 @@ export async function processRefunds({ limit = 20 } = {}) {
     const claimed = await one("UPDATE invoices SET refund_attempts=refund_attempts+1, refund_claimed_at=now() WHERE id=$1 AND refund_status='pending' AND (refund_claimed_at IS NULL OR refund_claimed_at < now() - interval '5 minutes') RETURNING id, refund_attempts", [cn.id]);
     if (!claimed) continue;
     try {
-      const pays = await many(
-        `SELECT p.* FROM payments p JOIN invoices i ON i.id=p.purpose_id AND p.purpose_type='venue_invoice'
-          WHERE i.reservation_id=$1 AND i.venue_id=$2 AND i.kind='invoice' AND p.status IN ('paid','refunded') ORDER BY p.paid_at DESC`, [cn.reservation_id, cn.venue_id]);
+      // the card payments that funded this credit note's invoice: the booking's own invoice payments, or - for a front-desk sale - the sale's online payment
+      const pays = cn.pos_sale_id && !cn.reservation_id
+        ? await many("SELECT p.* FROM payments p WHERE p.purpose_type='pos_sale' AND p.purpose_id=$1 AND p.status IN ('paid','refunded') ORDER BY p.paid_at DESC", [cn.pos_sale_id])
+        : await many(
+          `SELECT p.* FROM payments p JOIN invoices i ON i.id=p.purpose_id AND p.purpose_type='venue_invoice'
+            WHERE i.reservation_id=$1 AND i.venue_id=$2 AND i.kind='invoice' AND p.status IN ('paid','refunded')
+          UNION ALL
+          SELECT p.* FROM payments p JOIN pos_sale_invoices psi ON psi.sale_id=p.purpose_id AND p.purpose_type='pos_sale' JOIN invoices i ON i.id=psi.invoice_id
+            WHERE i.reservation_id=$1 AND i.venue_id=$2 AND i.kind='invoice' AND p.status IN ('paid','refunded')
+          ORDER BY paid_at DESC`, [cn.reservation_id, cn.venue_id]);
       let left = cn.total_cents - cn.refund_to_credits_cents; // the wallet-funded part was already returned
       for (const p of pays) { if (left <= 0) break; left -= await refundWithIntent(cn, p, left); }
       // anything the card could not take back (cash part of a mixed payment) is returned by the venue

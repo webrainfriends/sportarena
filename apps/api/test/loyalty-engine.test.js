@@ -444,7 +444,7 @@ test('loyalty has zero impact on rankings: no ranking or standings code reads or
   const src = new URL('../src/', import.meta.url);
   const walk = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(new URL(`${e.name}/`, dir)) : [new URL(e.name, dir)]));
   const files = walk(src).filter((f) => f.pathname.endsWith('.js'));
-  const allowed = /\/(rewards\/|scopes\.js|booking\/(loyalty|credits)\.js|capabilities\/(loyalty|venues)\.js|academy-invoices\.js|payments\/service\.js|worker\.js|capabilities\/(hire|academy-billing)\.js|migrate\.js)/;
+  const allowed = /\/(rewards\/|cover\.js|scopes\.js|booking\/(loyalty|credits)\.js|capabilities\/(loyalty|venues)\.js|academy-invoices\.js|payments\/service\.js|worker\.js|capabilities\/(hire|academy-billing)\.js|migrate\.js)/;
   const users = files.filter((f) => /loyalty_|rewards\//.test(readFileSync(f, 'utf8'))).map((f) => f.pathname.split('/src/')[1]).filter((p) => !allowed.test(`/${p}`));
   assert.deepEqual(users, [], 'only the loyalty engine and the bills it settles touch the ledger');
   const ranking = files.filter((f) => /standings|leaderboard|ranking|rating/i.test(f.pathname)).map((f) => readFileSync(f, 'utf8')).join('\n');
