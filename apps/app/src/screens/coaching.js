@@ -9,6 +9,7 @@ import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { useNav } from '../nav';
 import { Avatar, Btn, Card, Chip, Empty, ErrorBox, Field, GradCard, H1, H2, Loading, Screen, Section, Seg, Sheet, StatPill, T } from '../ui';
+import { AdSlot } from '../ads';
 import { FormSheet } from '../FormSheet';
 import { TimelineSheet } from '../Timeline';
 import { SportSelect } from '../sportpicker';
@@ -296,6 +297,8 @@ function FindCoaches({ onPost, onBook }) {
         <Chip label={active ? `More filters · ${active}` : 'More filters'} active={!!active} onPress={() => setMore(true)} />
       </HScroll>
       <HScroll>{[['rating', 'Top rated'], ['rate', 'Lowest rate'], ['sessions', 'Most sessions'], ['name', 'A–Z']].map(([v, l]) => <Chip key={v} label={`↕ ${l}`} active={f.sort === v} onPress={() => set('sort', v)} />)}</HScroll>
+      <AdSlot placement="featured_coach" sport={f.sport || undefined} />
+      <AdSlot placement="search_sponsored" q={f.q} sport={f.sport || undefined} />
       {list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : list.loading && !list.data ? <Loading /> : !list.data?.length ? (
         <Empty emoji="🧑‍🏫" title="No coach matches" sub="Loosen a filter, or post a request so coaches can come to you." />
       ) : (

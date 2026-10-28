@@ -14,6 +14,7 @@ import { VenuePlans } from './plans';
 import { AlertSheet } from './alerts';
 import { Calendar, StickyBar } from '../pickers';
 import { SportSelect } from '../sportpicker';
+import { AdSlot } from '../ads';
 import { c } from '../theme';
 import { WEEKDAYS, addDays, dateTimeIn, dayLabel, fmtMin, moneyIn, offerLabel, openStatus, todayIn } from '../vtime';
 
@@ -138,7 +139,9 @@ export function Book() {
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{favs.data.map((f) => <Pressable key={f.id} onPress={() => push('Venue', { id: f.id })} style={{ borderRadius: 999, borderWidth: 1, borderColor: c.line, backgroundColor: c.paper, paddingHorizontal: 14, paddingVertical: 8, flexDirection: 'row', gap: 6, alignItems: 'center' }}><T size={14}>{f.emoji}</T><T weight="700" size={13}>{f.name}</T>{f.offers ? <T size={11} color={c.lime} weight="700">🏷️ {f.offers}</T> : null}</Pressable>)}</View>
         </Section>
       ) : null}
-      <View style={{ marginTop: 14 }}>
+      <View style={{ marginTop: 14, gap: 12 }}>
+        <AdSlot placement="featured_venue" sport={sport || undefined} />
+        <AdSlot placement="search_sponsored" q={q} sport={sport || undefined} />
         {venues.loading && !venues.data ? <Loading /> : venues.error ? <ErrorBox error={venues.error} onRetry={venues.reload} /> : venues.data?.length ? (
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
             {venues.data.map((v) => <VenueCard key={v.id} v={v} width={cardW} onFav={() => toggleFav(v)} onOpen={() => push('Venue', { id: v.id, date: date ?? undefined })} picked={compare.includes(v.id)} onPick={() => toggleCompare(v.id)} />)}

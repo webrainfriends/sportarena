@@ -9,6 +9,7 @@ import { conflict } from './errors.js';
 import { inclusiveTax } from './capabilities/provider-tax.js';
 import { syncSponsorshipRefund, targetOwner } from './sponsor-agreements.js';
 import { syncMediaFeeRefund } from './media-fees.js';
+import { syncAdFundingRefund } from './ads/engine.js';
 
 /** Who ends up owning the money of a paid payment. */
 export const PROVIDER_PURPOSES = ['coach_hire', 'appointment', 'physio_package', 'shop_order', 'shop_checkout', 'sponsorship_payment'];
@@ -18,6 +19,7 @@ export function fundsClass(purposeType) {
   if (purposeType === 'wallet_topup' || purposeType === 'gift_card') return 'platform_wallet';          // stored value owed to the customer, not provider money
   if (purposeType === 'service_invoice') return 'supplier_receivable';                                  // collected for a supplier; paying the supplier out is a manual, audited record (svc_payments.payout_state)
   if (purposeType === 'media_rights_fee') return 'organisation_receivable';                           // owed to the event organiser; not a provider payout
+  if (purposeType === 'ad_funding') return 'platform_revenue';                                           // advertising funds belong to the platform; spend and refunds are tracked in the ad ledger
   if (purposeType === 'academy_charge') return 'organisation_receivable';                               // owed to the academy; not a provider payout until a settlement confirms it
   return 'insurer_premium';
 }
@@ -117,7 +119,8 @@ export async function syncRefunds(c, paymentId, { sellerId = null } = {}) {
       WHERE kind='refund_unrecorded' AND payment_id=$1 AND status='open' AND (detail->>'provider_refunded_cents')::bigint <= $2`, [p.id, refunded]);
   if (refunded <= 0) return 0;
   await syncSponsorshipRefund(c, p);
-  await syncMediaFeeRefund(c, p);   // an online sponsorship payment: the due is net of what was given back
+  await syncMediaFeeRefund(c, p);
+  await syncAdFundingRefund(c, p);   // an advertising funding: refunded money leaves the campaign's funds
   const lines = (await c.query('SELECT seller_id, kind, amount_cents, gross_cents, tax_cents FROM provider_ledger WHERE payment_id=$1 ORDER BY id', [p.id])).rows;
   const sales = lines.filter((l) => l.kind === 'sale').sort((a, b) => (a.seller_id < b.seller_id ? -1 : 1));
   if (!sales.length) return 0;
@@ -260,7 +263,7 @@ export async function onProviderDispute(c, payment, { disputeId, amountCents }) 
     detail: { dispute_id: disputeId, provider: payment.provider, amount_cents: disputed, held, recorded_in_ledger: sales.length > 0 } }));
 }
 
-const CLASS_SQL = `CASE WHEN p.purpose_type = ANY($1) THEN 'provider' WHEN p.purpose_type IN ('venue_invoice','venue_plan') THEN 'partner_settlement' WHEN p.purpose_type IN ('wallet_topup','gift_card') THEN 'platform_wallet' WHEN p.purpose_type = 'service_invoice' THEN 'supplier_receivable' WHEN p.purpose_type = 'media_rights_fee' THEN 'organisation_receivable' ELSE 'insurer_premium' END`;
+const CLASS_SQL = `CASE WHEN p.purpose_type = ANY($1) THEN 'provider' WHEN p.purpose_type IN ('venue_invoice','venue_plan') THEN 'partner_settlement' WHEN p.purpose_type IN ('wallet_topup','gift_card') THEN 'platform_wallet' WHEN p.purpose_type = 'service_invoice' THEN 'supplier_receivable' WHEN p.purpose_type = 'media_rights_fee' THEN 'organisation_receivable' WHEN p.purpose_type = 'ad_funding' THEN 'platform_revenue' ELSE 'insurer_premium' END`;
 
 /**
  * Catch the ledger up with the payments table: post sales for paid provider payments that have none (payments made before settlement

@@ -7,8 +7,9 @@ import { enabledProviders, refundPartial, startCheckout, settle } from '../payme
 import { audit } from '../helpers.js';
 import { notify } from '../notify.js';
 import { provider } from '../payments/providers.js';
+import { refundableMinor } from '../ads/engine.js';
 
-const purposes = ['shop_order', 'coach_hire', 'insurance_policy', 'venue_invoice', 'wallet_topup', 'gift_card', 'venue_plan', 'appointment', 'shop_checkout', 'physio_package', 'academy_charge', 'media_rights_fee'];
+const purposes = ['shop_order', 'coach_hire', 'insurance_policy', 'venue_invoice', 'wallet_topup', 'gift_card', 'venue_plan', 'appointment', 'shop_checkout', 'physio_package', 'academy_charge', 'media_rights_fee', 'ad_funding'];
 
 cap({
   name: 'list_payment_methods', method: 'GET', path: '/payments/methods', tag: 'Payments', auth: 'public',
@@ -56,6 +57,11 @@ cap({
     const left = Number(p.amount_cents) - Number(p.refunded_cents);
     const give = i.amount_cents ?? left;
     if (give > left) throw conflict(`Only ${left} is left to refund on this payment`);
+    if (p.purpose_type === 'ad_funding') {   // money already spent on delivery is not refundable; the campaign's funds must still cover what was spent
+      const f = await one('SELECT campaign_id FROM ad_fundings WHERE id=$1', [p.purpose_id]);
+      const free = await refundableMinor(f.campaign_id);
+      if (give > free) throw conflict(`Only ${free} of this advertising payment is unspent and can be refunded`);
+    }
     if (i.case_id) {
       const cs = await one("SELECT c.id, c.requester_id, c.status FROM cases c JOIN case_links l ON l.case_id=c.id AND l.entity_type='payment' AND l.entity_id=$2 WHERE c.id=$1", [i.case_id, p.id]);
       if (!cs) throw badRequest('That case does not link this payment');

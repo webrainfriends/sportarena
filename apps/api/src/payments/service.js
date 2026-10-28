@@ -14,6 +14,7 @@ import { raiseException, recordSale, syncRefunds } from '../settlement.js';
 import { coachSessionDone } from '../rewards/activity.js';
 import { saleDue, confirmOnlineSalePayment } from '../pos/due.js';
 import { coverFor, startUse, settleUse } from '../cover.js';
+import { fulfilAdFundingPaid } from '../ads/engine.js';
 
 export { paymentsEnabled, enabledProviders };
 
@@ -79,6 +80,10 @@ export async function describePurpose(c, type, id) {
     const x = await q("SELECT f.payer_id, f.amount_minor AS amount, f.currency, f.status, f.number, o.name FROM mr_fees f JOIN mr_licences l ON l.id=f.licence_id JOIN media_partners m ON m.id=l.partner_id JOIN organisations o ON o.id=m.organisation_id WHERE f.id=$1 FOR UPDATE OF f");
     return x && { payerId: x.payer_id, amount: Number(x.amount), currency: x.currency, name: `Rights fee ${x.number} · ${x.name}`, payable: x.status === 'awaiting_payment' };
   }
+  if (type === 'ad_funding') {
+    const x = await q("SELECT f.payer_id, f.amount_minor AS amount, f.currency, f.status, f.number, c.name, c.status AS camp_status FROM ad_fundings f JOIN ad_campaigns c ON c.id=f.campaign_id WHERE f.id=$1 FOR UPDATE OF f");
+    return x && { payerId: x.payer_id, amount: Number(x.amount), currency: x.currency, name: `Advertising funds ${x.number} · ${x.name}`, payable: x.status === 'awaiting_payment' && !['ended', 'withdrawn'].includes(x.camp_status) };
+  }
   if (type === 'service_invoice') {
     const x = await q("SELECT s.payer_id, s.payable_minor - s.credited_minor - s.paid_minor AS amount, s.currency, s.status, s.doc_type, s.match_status, s.supplier_number, coalesce(p.trading_name, p.legal_name) AS name FROM svc_invoices s JOIN svc_profiles p ON p.id=s.profile_id WHERE s.id=$1 FOR UPDATE OF s");
     return x && { payerId: x.payer_id, amount: Number(x.amount), currency: x.currency, name: `Invoice ${x.supplier_number} · ${x.name}`, payable: x.status === 'issued' && x.doc_type === 'invoice' && ['matched', 'exception_approved'].includes(x.match_status) && Number(x.amount) > 0 };
@@ -106,6 +111,7 @@ async function fulfil(c, type, id, payment) {
   if (type === 'academy_charge') return fulfilChargePaid(c, id, { method: 'online', payment });
   if (type === 'service_invoice') return fulfilServiceInvoicePaid(c, id, payment);
   if (type === 'media_rights_fee') return fulfilMediaFeePaid(c, id);
+  if (type === 'ad_funding') return fulfilAdFundingPaid(c, id);
   const done = (await c.query(sql, [id])).rowCount > 0;
   if (done && type === 'coach_hire') await coachSessionDone(c, id);   // a session completed before it was paid earns once the payment lands
   return done;

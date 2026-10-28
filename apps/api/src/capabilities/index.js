@@ -236,3 +236,6 @@ import './rankings.js';
 import './open-games.js';
 import './front-desk.js';
 import './front-desk-ops.js';
+import './advertising.js';
+import './advertising-admin.js';
+import './directory.js';

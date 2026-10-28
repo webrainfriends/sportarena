@@ -13,7 +13,7 @@ const https = z.string().url().max(500).refine((u) => u.startsWith('https://'), 
 
 const settingsOf = (ev) => ({
   visibility: ev.public_visibility, indexable: !!ev.public_indexable, effective_indexable: isIndexable(ev), reactions: !!ev.public_reactions, mvp_vote: !!ev.public_mvp_vote,
-  show_officials: !!ev.public_show_officials, archived: !!ev.archived_at, youth_event: isYouthEvent(ev),
+  show_officials: !!ev.public_show_officials, ads: !!ev.public_ads, archived: !!ev.archived_at, youth_event: isYouthEvent(ev),
 });
 
 cap({
@@ -28,25 +28,26 @@ cap({
 
 cap({
   name: 'set_event_public_settings', method: 'PATCH', path: '/events/:id/public-settings', tag: TAG,
-  summary: 'Set what the public may see of an event you organise. Making it private or unlisted switches indexing off; youth events (maximum age under 18) can never be indexed and never get reactions or MVP voting. Reactions and fan MVP voting are off until you enable them. Archiving removes the event from discovery but keeps it reachable by its link. Every change is logged.',
+  summary: 'Set what the public may see of an event you organise, and whether paid, clearly labelled advertising may appear on its public page and live centres (off by default; youth events never carry ads). Making it private or unlisted switches indexing off; youth events (maximum age under 18) can never be indexed and never get reactions or MVP voting. Reactions and fan MVP voting are off until you enable them. Archiving removes the event from discovery but keeps it reachable by its link. Every change is logged.',
   input: z.object({
     id, visibility: z.enum(['public', 'unlisted', 'private']).optional(), indexable: z.boolean().optional(), reactions: z.boolean().optional(), mvp_vote: z.boolean().optional(),
-    show_officials: z.boolean().optional(), archived: z.boolean().optional(),
+    show_officials: z.boolean().optional(), ads: z.boolean().optional(), archived: z.boolean().optional(),
   }),
   async handler({ user }, i) {
     return tx(async (c) => {
       const ev = await eventForOrganizer(user, i.id, c);
       const youth = isYouthEvent(ev);
       const next = { visibility: i.visibility ?? ev.public_visibility, indexable: i.indexable ?? ev.public_indexable, reactions: i.reactions ?? ev.public_reactions, mvp_vote: i.mvp_vote ?? ev.public_mvp_vote };
+      if (youth && i.ads) throw unprocessable('Youth events never carry advertising');
       if (youth && (i.indexable || i.reactions || i.mvp_vote)) throw unprocessable('Youth events are never indexed and cannot have fan reactions or MVP voting');
       if (i.indexable && next.visibility !== 'public') throw unprocessable('Only a public event can be indexed by search engines');
       if (next.visibility !== 'public') next.indexable = false; // withdrawing the page withdraws its indexing too
       const archived = i.archived === undefined ? !!ev.archived_at : i.archived;
       await c.query(
         `UPDATE events SET public_visibility=$2, public_indexable=$3, public_reactions=$4, public_mvp_vote=$5, public_show_officials=coalesce($6, public_show_officials),
-                archived_at = CASE WHEN $7 THEN coalesce(archived_at, now()) ELSE NULL END WHERE id=$1`,
-        [ev.id, next.visibility, youth ? false : next.indexable, youth ? false : next.reactions, youth ? false : next.mvp_vote, i.show_officials ?? null, archived]);
-      const changes = Object.fromEntries(Object.entries({ visibility: i.visibility, indexable: i.indexable, reactions: i.reactions, mvp_vote: i.mvp_vote, show_officials: i.show_officials, archived: i.archived }).filter(([, v]) => v !== undefined));
+                public_ads = CASE WHEN $8::boolean IS NULL THEN public_ads ELSE $8 END, archived_at = CASE WHEN $7 THEN coalesce(archived_at, now()) ELSE NULL END WHERE id=$1`,
+        [ev.id, next.visibility, youth ? false : next.indexable, youth ? false : next.reactions, youth ? false : next.mvp_vote, i.show_officials ?? null, archived, youth ? false : (i.ads ?? null)]);
+      const changes = Object.fromEntries(Object.entries({ visibility: i.visibility, indexable: i.indexable, reactions: i.reactions, mvp_vote: i.mvp_vote, show_officials: i.show_officials, ads: i.ads, archived: i.archived }).filter(([, v]) => v !== undefined));
       if (!Object.keys(changes).length) throw unprocessable('Nothing to change');
       await c.query('INSERT INTO event_public_settings_log(event_id, actor_id, changes) VALUES ($1,$2,$3)', [ev.id, user.id, changes]);
       return settingsOf((await c.query('SELECT * FROM events WHERE id=$1', [ev.id])).rows[0]);
