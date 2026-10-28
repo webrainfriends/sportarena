@@ -228,3 +228,4 @@ import './spectator-admin.js';
 import './media-rights-fees.js';
 import './rankings.js';
 import './open-games.js';
+import './enterprise-identity.js';

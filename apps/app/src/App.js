@@ -1,3 +1,4 @@
+import { isSsoCallback, SsoCallbackScreen } from './sso';
 import { OfflineSync } from './screens/offline-sync';
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Platform, Pressable, StatusBar, Text, View } from 'react-native';
@@ -302,6 +303,8 @@ function Shell() {
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
   if (PASSPORT_TOKEN) return <View style={{ flex: 1, backgroundColor: c.bg, paddingTop: ins.top }}><PassportPublic token={PASSPORT_TOKEN} /></View>;
   if (!ready) return <View style={{ flex: 1, backgroundColor: c.bg, justifyContent: 'center', padding: 24 }}><Loading /></View>;
+  // back from an organisation's identity provider (web): finish the sign-in, whether or not someone is already signed in
+  if (isSsoCallback()) return <View style={{ flex: 1, backgroundColor: c.bg, paddingTop: ins.top }}><SsoCallbackScreen /></View>;
   if (!user && PUBLIC_LINK) return <View style={{ flex: 1, backgroundColor: c.bg, paddingTop: ins.top }}><PublicShell eventId={PUBLIC_LINK.event} fixtureId={PUBLIC_LINK.fixture} renderEvent={(params) => <Event {...params} />} /></View>;
   if (!user) return <View style={{ flex: 1, backgroundColor: c.bg, paddingTop: ins.top }}><BetaBanner /><View style={{ flex: 1 }}><Landing /></View></View>;
   const top = stack[stack.length - 1];
