@@ -32,7 +32,13 @@ The queue never decides anything itself. Each item carries the existing capabili
 | Compliance | submitted agreements (owner only), accreditations | `decide_org_agreement`, `decide_accreditation` |
 | Sponsors | payments reported by a sponsor | `decide_sponsorship_payment` |
 | Procurement | supplier approvals, tender approvals (not your own requests) | `decide_service_approval`, `decide_approval` |
+| Sponsors (offers) | offers a sponsor made that this organisation has not answered (never ones its own staff proposed) | `decide_sponsorship` (organisation and group targets; a team or event offer is answered on the deal) |
+| Procurement (agreements, invoices) | orders whose agreement waits for this side, supplier invoices past their due date | `sign_service_agreement` (typed name), `record_service_payment` (amount, date, bank reference, evidence) |
+| Finance | overdue fees with no promise or hold: academy charges and team dues | `act_on_collection_case` (promise to pay by a date, or a note) |
+| Documents | sponsor contracts waiting for signatures | opens the contract: the exact text and its fingerprint must be reviewed, so there is no one-tap signature |
 | Tasks | overdue team, event and sponsor tasks | open the record; update with the existing task capabilities |
+
+Every item has a `record` (`{screen, params}`, an app route) that opens the screen that owns it on that very record: the application inside the academy admissions tab, the event console on the registration, teams or accreditation tab, the sponsor deal, the services buyer, the team's dues or workspace. An item whose action needs input carries `ask`: a list of fields (`text`, `line`, `date`, `amount` with its currency and a default) that the client shows as a small form and sends with the action. Items with no action carry `open_label` ("Review & sign", "Review offer", "Open").
 
 Items a role may see but not decide (for example an entering club's own registration, or finance on a supplier approval) have no actions and are marked view only.
 
@@ -51,3 +57,9 @@ Items a role may see but not decide (for example an entering club's own registra
 ## Platforms
 
 One React Native screen (`apps/app/src/screens/org-command-centre.js`) with a shared dropdown field (`menu-field.js`): one column on phones, two on tablets and desktop, 44pt+ targets, accessible labels, sheets instead of web-only popovers. Verified with `expo export` for web, iOS and Android, and the web build driven at phone, tablet and desktop widths against a real API. Not run on a physical iOS, iPadOS or Android device.
+
+## Reuse (inspected against latest `main`)
+
+Built on, not copied from: `organisations` and their membership roles (`orgFor`), the Academy OS read models and decision capabilities, event registration and entries, the event organiser grant (`eventForOrganizer` / `hasOrgGrant`), team workspace, event planning and sponsorship tasks, collections (`ensureCases`, `act_on_collection_case`), sponsorship offers and payments, services & suppliers (`svc_*`), tenders (`proc_*`), federation affiliations, agreements and accreditations. No organisation-specific copy of any module's data exists: every count and queue item is a live query over the owning module's tables.
+
+The issue also names "10 items -2" and the Sports Graph. Neither exists on `main` (there is no graph layer or table; the nearest shared model is the IPTC-based ontology in `docs/ontology.md`, which already governs the entities used here), so there was nothing to extend. If a graph layer lands later, the tiles and queue read through `orgFor` and the owning tables and can be pointed at it without a screen change.

@@ -80,9 +80,10 @@ export function Orgs() {
   );
 }
 
-export function Org({ id }) {
+export function Org({ id, tab: first = 'overview', focus: firstFocus = null }) {
   const { toast } = useSession();
-  const [tab, setTab] = useState('overview');
+  const [tab, setTab] = useState(first);
+  const [focus, setFocus] = useState(firstFocus);   // a record to open inside the tab (for example an academy application)
   const org = useLoad(() => api.get(`/organisations/${id}`), [id]);
   const dash = useLoad(() => api.get(`/organisations/${id}/dashboard`), [id]);
   const brands = useLoad(() => api.get(`/organisations/${id}/assets`, { kind: 'sponsor' }).catch(() => []), [id]); // a coach has no sponsor access: treated as none
@@ -90,10 +91,10 @@ export function Org({ id }) {
   if (!org.data || !dash.data) return <Screen><Loading /></Screen>;
   const o = org.data, d = dash.data, role = d.role, archived = o.status === 'archived';
   // a Command Centre area opens the tab that owns it; academies keep money, agreements and admissions under their Academy tab
-  const go = (want) => {
+  const go = (want, to = null) => {
     const alias = o.kind === 'academy' ? { admissions: 'academy', collections: 'academy', agreements: 'academy' } : { admissions: 'admissions' };
     const t = alias[want] ?? want;
-    if (tabs.some(([v]) => v === t)) setTab(t);
+    if (tabs.some(([v]) => v === t)) { setFocus(to); setTab(t); }
   };
   const P = { o, d, role, archived, toast, brands, go, reload: () => { org.reload(); dash.reload(); brands.reload(); } };
   const teaching = !SPONSOR_ONLY.includes(role) && role !== 'finance' && role !== 'staff';
@@ -106,7 +107,7 @@ export function Org({ id }) {
       </GradCard>
       {archived ? <View style={{ marginTop: 10 }}><Empty emoji="🗄️" title="This organisation is archived" sub="Everything is kept and readable. Ask an owner to restore it to make changes." /></View> : null}
       <View style={{ marginTop: 10 }}><Seg options={tabs.map(([value, label]) => ({ value, label }))} value={tab} onChange={setTab} color={c.violet} /></View>
-      {tab === 'overview' ? <Overview {...P} /> : tab === 'cohorts' ? <Cohorts {...P} /> : tab === 'people' ? <People {...P} /> : tab === 'admissions' ? <Admissions {...P} /> : tab === 'academy' ? <AcademyDesk {...P} /> : tab === 'collections' ? <Collections target={{ organisation_id: o.id }} archived={archived} /> : tab === 'rewards' ? <LoyaltyConsole ownerKind="organisation" ownerId={o.id} /> : tab === 'sponsor' ? <SponsorTab {...P} /> : tab === 'agreements' ? <Agreements {...P} /> : tab === 'comms' ? <Communications organisationId={o.id} organisationName={o.name} archived={archived} /> : tab === 'signin' ? <OrgIdentity {...P} /> : <Assets {...P} />}
+      {tab === 'overview' ? <Overview {...P} /> : tab === 'cohorts' ? <Cohorts {...P} /> : tab === 'people' ? <People {...P} /> : tab === 'admissions' ? <Admissions {...P} /> : tab === 'academy' ? <AcademyDesk key={JSON.stringify(focus)} {...P} focus={focus} /> : tab === 'collections' ? <Collections target={{ organisation_id: o.id }} archived={archived} /> : tab === 'rewards' ? <LoyaltyConsole ownerKind="organisation" ownerId={o.id} /> : tab === 'sponsor' ? <SponsorTab {...P} /> : tab === 'agreements' ? <Agreements {...P} /> : tab === 'comms' ? <Communications organisationId={o.id} organisationName={o.name} archived={archived} /> : tab === 'signin' ? <OrgIdentity {...P} /> : <Assets {...P} />}
     </Screen>
   );
 }

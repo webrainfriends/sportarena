@@ -11,40 +11,49 @@ import { useNav } from '../nav';
 import { useLayout } from '../layout';
 import { explain } from '../access';
 import { MenuField } from '../menu-field';
-import { DateRangeField } from '../pickers';
+import { DateField, DateRangeField } from '../pickers';
+import { toMinor } from '../contracts-ui';
 import { SwitchRow } from '../federation-bits';
 
-const DOMAIN = { admissions: 'Admissions', registrations: 'Registrations', staff: 'Staff', compliance: 'Compliance', procurement: 'Procurement', finance: 'Finance', sponsors: 'Sponsors', events: 'Events', tasks: 'Tasks' };
+const DOMAIN = { admissions: 'Admissions', registrations: 'Registrations', staff: 'Staff', compliance: 'Compliance', procurement: 'Procurement', finance: 'Finance', sponsors: 'Sponsors', documents: 'Documents', tasks: 'Tasks' };
 const SEV = { ok: c.lime, warn: c.sun, bad: c.red };
 const when = (iso) => { if (!iso) return ''; const days = Math.floor((Date.now() - Date.parse(iso)) / 864e5); return days <= 0 ? 'today' : days === 1 ? '1 day' : `${days} days`; };
 
 function Dot({ sev }) { return <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: SEV[sev] ?? c.lime }} />; }
 
-/** Asks for the reason or note an action needs, then calls the capability the server named. */
+/** Asks for what an action needs (a reason, a date, an amount, a typed name…), then calls the capability the server named. */
+function Field1({ f, value, onChange }) {
+  if (f.kind === 'date') return <DateField label={f.label} value={value || undefined} onChange={onChange} />;
+  return <Field label={f.label} value={value ?? ''} onChangeText={onChange} multiline={f.kind === 'text'} keyboardType={f.kind === 'amount' ? 'decimal-pad' : undefined} placeholder={f.kind === 'text' ? 'The person sees this' : undefined} />;
+}
+const digits = (cur) => { try { return new Intl.NumberFormat('en', { style: 'currency', currency: cur }).resolvedOptions().maximumFractionDigits; } catch { return 2; } };
+const initial = (f) => (f.kind === 'amount' && f.default_minor != null ? (f.default_minor / 10 ** digits(f.currency)).toFixed(digits(f.currency)) : f.default ?? '');
+
 function ActionSheet({ item, onClose, onDone, toast }) {
-  const [pick, setPick] = useState(null), [text, setText] = useState(''), [busy, setBusy] = useState(false);
-  const run = async (a, note) => {
+  const [pick, setPick] = useState(null), [vals, setVals] = useState({}), [busy, setBusy] = useState(false);
+  const fields = pick?.ask ?? [];
+  const value = (f) => vals[f.key] ?? initial(f);
+  const body = (a) => Object.fromEntries((a.ask ?? []).map((f) => [f.key, f.kind === 'amount' ? toMinor(value(f), f.currency) : String(value(f)).trim()]).filter(([, v]) => v !== '' && !(typeof v === 'number' && Number.isNaN(v))));
+  const missing = (a) => (a.ask ?? []).some((f) => f.required && (f.kind === 'amount' ? !(toMinor(value(f), f.currency) > 0) : String(value(f)).trim().length < (f.kind === 'text' ? 3 : f.kind === 'line' ? 2 : 1)));
+  const run = async (a) => {
     setBusy(true);
-    try {
-      const body = { ...a.body, ...(a.ask && note ? { [a.ask]: note } : {}) };
-      await api[a.method === 'PATCH' ? 'patch' : 'post'](a.path, body);
-      toast('Done'); onDone();
-    } catch (e) { toast(explain(e)); } finally { setBusy(false); }
+    try { await api[a.method === 'PATCH' ? 'patch' : 'post'](a.path, { ...a.body, ...body(a) }); toast('Done'); onDone(); }
+    catch (e) { toast(explain(e)); } finally { setBusy(false); }
   };
   if (!item) return null;
   return (
     <Sheet visible onClose={onClose} title={pick ? pick.label : item.title}>
       {pick ? (
         <>
-          <Field label={pick.ask === 'reason' ? 'Reason' : 'Note'} value={text} onChangeText={setText} multiline placeholder="Say why. The person sees this." />
-          <Btn title={busy ? 'Working…' : pick.label} color={pick.tone === 'danger' ? c.red : c.pink} disabled={busy || text.trim().length < 3} onPress={() => run(pick, text.trim())} />
+          {fields.map((f) => <Field1 key={f.key} f={f} value={value(f)} onChange={(v) => setVals({ ...vals, [f.key]: v })} />)}
+          <Btn title={busy ? 'Working…' : pick.label} color={pick.tone === 'danger' ? c.red : c.pink} disabled={busy || missing(pick)} onPress={() => run(pick)} />
         </>
       ) : (
         <>
           <T size={13} color={c.mute}>{item.sub}</T>
           {item.actions.map((a) => (
             <Btn key={a.label} title={a.label} color={a.tone === 'primary' ? c.pink : a.tone === 'danger' ? c.red : c.paper} ink={a.tone ? '#fff' : c.ink} disabled={busy}
-              onPress={() => (a.ask ? (setText(''), setPick(a)) : run(a))} />
+              onPress={() => (a.ask?.length ? (setVals({}), setPick(a)) : run(a))} />
           ))}
         </>
       )}
@@ -52,19 +61,18 @@ function ActionSheet({ item, onClose, onDone, toast }) {
   );
 }
 
-function Queue({ o, cc, filter, setFilter, go, toast, reload }) {
-  const { push } = useNav();
+function Queue({ o, cc, filter, setFilter, openRecord, toast, reload }) {
   const q = useLoad(() => api.get(`/organisations/${o.id}/command-centre/approvals`, { ...(filter !== 'all' ? { domain: filter } : {}), limit: 50 }), [o.id, filter, cc.waiting.total]);
   const [acting, setActing] = useState(null);
   const options = [{ value: 'all', label: 'Everything' }, ...Object.entries(cc.waiting.by_domain).map(([k, n]) => ({ value: k, label: `${DOMAIN[k] ?? k} · ${n}` }))];
-  const open = (it) => { const r = it.record; if (!r) return; if (r.id && (r.screen === 'Team' || r.screen === 'EventConsole')) push(r.screen === 'EventConsole' ? 'Event' : 'Team', { id: r.id }); else go(r.tab); };
   return (
     <Section title={`Waiting on you${cc.waiting.total ? ` · ${cc.waiting.total}` : ''}`} color={cc.waiting.total ? c.sun : c.lime}>
       {options.length > 2 ? <MenuField label="Show" value={options.some((x) => x.value === filter) ? filter : 'all'} onChange={setFilter} options={options} /> : null}
       {q.error ? <ErrorBox error={q.error} onRetry={q.reload} /> : !q.data ? <Loading /> : q.data.items.length ? q.data.items.map((it) => (
-        <Row key={it.key} title={it.title} sub={`${DOMAIN[it.domain] ?? it.domain} · ${it.sub}${it.at ? ` · ${when(it.at)}` : ''}`} onPress={() => open(it)}
-          right={it.actions.length ? <Btn small title={it.actions.length > 1 ? `${it.actions[0].label} ▼` : it.actions[0].label} onPress={() => setActing(it)} accessibilityLabel={`Decide: ${it.title}`} /> : <Tag label={it.domain === 'tasks' || it.can_act ? 'Open' : 'View only'} />} />
-      )) : <Empty emoji="✅" title="Nothing is waiting on you" sub="Decisions from admissions, registrations, staff, compliance, sponsors and suppliers appear here." />}
+        <Row key={it.key} title={it.title} sub={`${DOMAIN[it.domain] ?? it.domain} · ${it.sub}${it.at ? ` · ${when(it.at)}` : ''}`} onPress={() => openRecord(it.record)}
+          right={it.actions.length ? <Btn small title={it.actions.length > 1 ? `${it.actions[0].label} ▼` : it.actions[0].label} onPress={() => setActing(it)} accessibilityLabel={`Decide: ${it.title}`} />
+            : <Btn small title={it.open_label ?? 'Open'} color={it.can_act ? c.pink : c.paper} ink={it.can_act ? '#fff' : c.ink} onPress={() => openRecord(it.record)} accessibilityLabel={`${it.open_label ?? 'Open'}: ${it.title}`} />} />
+      )) : <Empty emoji="✅" title="Nothing is waiting on you" sub="Decisions from admissions, registrations, staff, compliance, sponsors, suppliers and fees appear here." />}
       {acting ? <ActionSheet item={acting} onClose={() => setActing(null)} onDone={() => { setActing(null); q.reload(); reload(); }} toast={toast} /> : null}
     </Section>
   );
@@ -163,10 +171,13 @@ function Templates({ o, mode, onClose, toast, reload }) {
 export function CommandCentre({ o, role, archived, go, toast, reload }) {
   const [filter, setFilter] = useState('all'), [sheet, setSheet] = useState(null), [menu, setMenu] = useState(false);
   const { tablet } = useLayout();
+  const { push } = useNav();
   const cc = useLoad(() => api.get(`/organisations/${o.id}/command-centre`), [o.id]);
   if (cc.error) return <ErrorBox error={cc.error} onRetry={cc.reload} />;
   if (!cc.data) return <Loading />;
   const refresh = () => { cc.reload(); reload(); };
+  // an item opens the screen that owns the record, on that record; this organisation's own tabs open in place
+  const openRecord = (r) => { if (!r) return; if (r.screen === 'Org' && r.params.id === o.id) go(r.params.tab, r.params.focus); else push(r.screen, r.params); };
   const manage = ['owner', 'admin'].includes(role) && !archived;
   const col = tablet ? { flex: 1, minWidth: 0 } : null;
   return (
@@ -177,7 +188,7 @@ export function CommandCentre({ o, role, archived, go, toast, reload }) {
         </View>
       ) : null}
       <View style={{ flexDirection: tablet ? 'row' : 'column', gap: 12, alignItems: 'flex-start' }}>
-        <View style={[col, { width: tablet ? undefined : '100%' }]}><Queue o={o} cc={cc.data} filter={filter} setFilter={setFilter} go={go} toast={toast} reload={refresh} /></View>
+        <View style={[col, { width: tablet ? undefined : '100%' }]}><Queue o={o} cc={cc.data} filter={filter} setFilter={setFilter} openRecord={openRecord} toast={toast} reload={refresh} /></View>
         <View style={[col, { width: tablet ? undefined : '100%' }]}><Areas cc={cc.data} go={go} setFilter={setFilter} /></View>
       </View>
       <Sheet visible={menu} onClose={() => setMenu(false)} title="Manage">
