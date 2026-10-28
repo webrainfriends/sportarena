@@ -5,6 +5,10 @@ import { cap, id } from '../registry.js';
 import { many, pool, tx } from '../db.js';
 import { badRequest, forbidden, notFound } from '../errors.js';
 import { audit } from '../helpers.js';
+import { createHash } from 'node:crypto';
+import { saveEncrypted } from '../doc-store.js';
+import { renderServiceDocument } from '../documents/service-render.js';
+import { kitOf, loadLogo, mustAccess } from './branded-documents.js';
 import { ISSUE_LABEL, LIVE_PARTICIPANT, assertOpen, localDay, localText, readiness, record, tripCtx, youthIdsAmong } from '../trips.js';
 import { costSummary } from '../trips-finance.js';
 
@@ -142,57 +146,89 @@ cap({
 const KINDS = ['manifest', 'itinerary', 'rooming', 'movement', 'equipment', 'readiness', 'cost'];
 const AUDIENCES = ['manager', 'traveller', 'supplier'];
 
+/** Build one audience-safe report from the live records. Used by the JSON/CSV export and by the branded PDF, so both carry exactly the same rows and permissions. */
+export async function buildReport(user, ctx, i) {
+  if (i.audience !== 'traveller' && !ctx.ops) throw forbidden('Only trip staff can export the full or supplier version');
+  if (i.audience === 'supplier' && ['rooming', 'readiness', 'cost'].includes(i.kind)) throw badRequest('That report is not available in the supplier version');
+  if (i.kind === 'cost' && !ctx.ops) throw forbidden('Only trip staff can export the cost summary');
+  const { trip } = ctx;
+  const mine = new Set([ctx.mine?.id, ...ctx.wards.map((w) => w.id)].filter(Boolean));
+  const personal = i.audience === 'traveller';
+  const parts = await many(`SELECT p.id, p.user_id, p.role, p.status, u.display_name FROM trip_participants p JOIN users u ON u.id=p.user_id WHERE p.trip_id=$1 AND p.status = ANY($2) ORDER BY p.created_at`, [trip.id, LIVE_PARTICIPANT]);
+  const youth = new Set(await youthIdsAmong(pool, parts.map((p) => p.user_id)));
+  const nameOf = (p) => (i.audience === 'supplier' && youth.has(p.user_id) ? null : p.display_name);
+  let columns, rows;
+  if (i.kind === 'manifest') {
+    columns = ['name', 'role', 'status']; const list = parts.filter((p) => !personal || mine.has(p.id));
+    rows = list.filter((p) => !(i.audience === 'supplier' && youth.has(p.user_id))).map((p) => [p.display_name, p.role, p.status]);
+    if (i.audience === 'supplier') { const n = list.filter((p) => youth.has(p.user_id)).length; if (n) rows.push([`${n} young traveller${n === 1 ? '' : 's'} (names withheld)`, 'athlete', 'counted only']); }
+  } else if (i.kind === 'itinerary' || i.kind === 'movement') {
+    const segs = (await activeSegs(trip.id)).filter((s) => !personal || (s.pax ?? []).some((p) => mine.has(p)));
+    columns = ['departs (local)', 'zone', 'from', 'to', 'arrives (local)', 'zone', 'mode', 'status', 'meeting point'];
+    rows = segs.map((s) => [localText(s.depart_at, s.depart_tz), s.depart_tz, s.origin, s.destination, localText(s.arrive_at, s.arrive_tz), s.arrive_tz, s.mode, s.status, s.meeting_point ?? '']);
+    if (i.kind === 'movement') {
+      const stays = await many("SELECT property_name, check_in_at, check_out_at, tz FROM trip_stays WHERE trip_id=$1 AND archived_at IS NULL AND status<>'cancelled'", [trip.id]);
+      for (const st of stays) rows.push([localText(st.check_in_at, st.tz), st.tz, '', st.property_name, '', '', 'check-in', '', '']);
+      rows.sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+    }
+  } else if (i.kind === 'rooming') {
+    if (personal) throw badRequest('Use the Stay screen for your own room');
+    columns = ['property', 'room', 'type', 'traveller', 'young'];
+    const rr = await many(`SELECT s.property_name, r.label, r.room_type, u.display_name, p.user_id FROM trip_rooms r JOIN trip_stays s ON s.id=r.stay_id LEFT JOIN trip_room_assignments a ON a.room_id=r.id AND a.released_at IS NULL LEFT JOIN trip_participants p ON p.id=a.participant_id LEFT JOIN users u ON u.id=p.user_id WHERE s.trip_id=$1 AND r.archived_at IS NULL ORDER BY s.property_name, r.label NULLS LAST`, [trip.id]);
+    rows = rr.map((r) => [r.property_name, r.label ?? '', r.room_type, r.display_name ?? '(empty)', r.user_id && youth.has(r.user_id) ? 'yes' : '']);
+  } else if (i.kind === 'equipment') {
+    columns = ['item', 'category', 'quantity', 'state', 'responsible', 'logistics ref'];
+    const g = await many('SELECT g.description, g.category, g.quantity, g.state, u.display_name, g.logistics_ref, g.responsible_id FROM trip_gear g LEFT JOIN users u ON u.id=g.responsible_id WHERE g.trip_id=$1 AND g.archived_at IS NULL ORDER BY g.created_at', [trip.id]);
+    rows = g.filter((x) => !personal || x.responsible_id === user.id).map((x) => [x.description, x.category, x.quantity, x.state, x.display_name ?? '', x.logistics_ref ?? '']);
+  } else if (i.kind === 'readiness') {
+    columns = ['traveller', 'role', 'ready', 'open items'];
+    const r = await readiness(pool, trip);
+    rows = [...r.byId.values()].filter((x) => !personal || mine.has(x.participant.id)).map((x) => [x.participant.display_name, x.participant.role, x.ready ? 'yes' : 'no', x.issues.map((c) => ISSUE_LABEL[c]).join('; ')]);
+  } else {
+    columns = ['currency', 'supplier orders (gross)', 'per diem entitlement', 'per diem paid', 'advances paid', 'claims pending', 'claims approved', 'claims reimbursed'];
+    const m = (n) => (n / 100).toFixed(2);
+    rows = (await costSummary(pool, trip)).map((x) => [x.currency, m(x.supplier_orders_gross_minor), m(x.per_diem_entitlement_minor), m(x.per_diem_paid_minor), m(x.advances_minor), m(x.claims_pending_minor), m(x.claims_approved_minor), m(x.claims_reimbursed_minor)]);
+  }
+  await audit(null, user.id, `export_trip_report_${i.kind}_${i.audience}`, 'trips', trip.id);
+  const expires = new Date(Date.now() + 24 * 36e5).toISOString();
+  const title = `${trip.name} — ${i.kind}`;
+  return { title, kind: i.kind, audience: i.audience, generated_at: new Date().toISOString(), expires_at: expires, timezone_note: 'Times are local to the place named; zones are shown beside them.', columns, rows,
+    csv: [columns.map(csvEsc).join(','), ...rows.map((r) => r.map(csvEsc).join(','))].join('\n'), filename: `${trip.name.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-${i.kind}-${i.audience}.csv` };
+}
+
 cap({
   name: 'get_trip_report', method: 'GET', path: '/trips/:id/reports/:kind', tag: TAG,
   summary: 'Travel manifest, itinerary, rooming list, movement plan, equipment manifest, readiness exceptions or cost summary, as rows plus CSV. Audience-safe: manager (trip staff, full), traveller (your own rows only) or supplier (trip staff only; adult travellers by name, young travellers counted only, no rooms, documents or money). Every export is audit-logged and marked with an expiry; it inherits the source records\' permissions.',
   input: z.object({ id, kind: z.enum(KINDS), audience: z.enum(AUDIENCES).default('manager') }),
+  async handler({ user }, i) { return buildReport(user, await tripCtx(user, i.id), i); },
+});
+
+
+const REPORT_LABEL = { manifest: 'Travel manifest', itinerary: 'Itinerary', movement: 'Movement plan', rooming: 'Rooming list', equipment: 'Equipment manifest', readiness: 'Readiness exceptions', cost: 'Cost summary' };
+const AUDIENCE_LABEL = { manager: 'Trip staff copy', supplier: 'Supplier copy (young travellers counted only)', traveller: 'Personal copy' };
+
+cap({
+  name: 'generate_trip_report_document', method: 'POST', path: '/trips/:id/reports/:kind/document', tag: TAG, status: 201,
+  summary: 'The same audience-safe report as get_trip_report, rendered as a branded PDF (shared document module #249; optionally with your brand kit). It is a snapshot with a 24-hour expiry: every download re-checks live that you may still see the trip, and every generation and download is audit-logged.',
+  input: z.object({ id, kind: z.enum(KINDS), audience: z.enum(AUDIENCES).default('manager'), kit_id: id.optional().describe('your brand kit (personal, or an organisation you may use); the plain layout when omitted') }),
   async handler({ user }, i) {
     const ctx = await tripCtx(user, i.id);
-    if (i.audience !== 'traveller' && !ctx.ops) throw forbidden('Only trip staff can export the full or supplier version');
-    if (i.audience === 'supplier' && ['rooming', 'readiness', 'cost'].includes(i.kind)) throw badRequest('That report is not available in the supplier version');
-    if (i.kind === 'cost' && !ctx.ops) throw forbidden('Only trip staff can export the cost summary');
-    const { trip } = ctx;
-    const mine = new Set([ctx.mine?.id, ...ctx.wards.map((w) => w.id)].filter(Boolean));
-    const personal = i.audience === 'traveller';
-    const parts = await many(`SELECT p.id, p.user_id, p.role, p.status, u.display_name FROM trip_participants p JOIN users u ON u.id=p.user_id WHERE p.trip_id=$1 AND p.status = ANY($2) ORDER BY p.created_at`, [trip.id, LIVE_PARTICIPANT]);
-    const youth = new Set(await youthIdsAmong(pool, parts.map((p) => p.user_id)));
-    const nameOf = (p) => (i.audience === 'supplier' && youth.has(p.user_id) ? null : p.display_name);
-    let columns, rows;
-    if (i.kind === 'manifest') {
-      columns = ['name', 'role', 'status']; const list = parts.filter((p) => !personal || mine.has(p.id));
-      rows = list.filter((p) => !(i.audience === 'supplier' && youth.has(p.user_id))).map((p) => [p.display_name, p.role, p.status]);
-      if (i.audience === 'supplier') { const n = list.filter((p) => youth.has(p.user_id)).length; if (n) rows.push([`${n} young traveller${n === 1 ? '' : 's'} (names withheld)`, 'athlete', 'counted only']); }
-    } else if (i.kind === 'itinerary' || i.kind === 'movement') {
-      const segs = (await activeSegs(trip.id)).filter((s) => !personal || (s.pax ?? []).some((p) => mine.has(p)));
-      columns = ['departs (local)', 'zone', 'from', 'to', 'arrives (local)', 'zone', 'mode', 'status', 'meeting point'];
-      rows = segs.map((s) => [localText(s.depart_at, s.depart_tz), s.depart_tz, s.origin, s.destination, localText(s.arrive_at, s.arrive_tz), s.arrive_tz, s.mode, s.status, s.meeting_point ?? '']);
-      if (i.kind === 'movement') {
-        const stays = await many("SELECT property_name, check_in_at, check_out_at, tz FROM trip_stays WHERE trip_id=$1 AND archived_at IS NULL AND status<>'cancelled'", [trip.id]);
-        for (const st of stays) rows.push([localText(st.check_in_at, st.tz), st.tz, '', st.property_name, '', '', 'check-in', '', '']);
-        rows.sort((a, b) => String(a[0]).localeCompare(String(b[0])));
-      }
-    } else if (i.kind === 'rooming') {
-      if (personal) throw badRequest('Use the Stay screen for your own room');
-      columns = ['property', 'room', 'type', 'traveller', 'young'];
-      const rr = await many(`SELECT s.property_name, r.label, r.room_type, u.display_name, p.user_id FROM trip_rooms r JOIN trip_stays s ON s.id=r.stay_id LEFT JOIN trip_room_assignments a ON a.room_id=r.id AND a.released_at IS NULL LEFT JOIN trip_participants p ON p.id=a.participant_id LEFT JOIN users u ON u.id=p.user_id WHERE s.trip_id=$1 AND r.archived_at IS NULL ORDER BY s.property_name, r.label NULLS LAST`, [trip.id]);
-      rows = rr.map((r) => [r.property_name, r.label ?? '', r.room_type, r.display_name ?? '(empty)', r.user_id && youth.has(r.user_id) ? 'yes' : '']);
-    } else if (i.kind === 'equipment') {
-      columns = ['item', 'category', 'quantity', 'state', 'responsible', 'logistics ref'];
-      const g = await many('SELECT g.description, g.category, g.quantity, g.state, u.display_name, g.logistics_ref, g.responsible_id FROM trip_gear g LEFT JOIN users u ON u.id=g.responsible_id WHERE g.trip_id=$1 AND g.archived_at IS NULL ORDER BY g.created_at', [trip.id]);
-      rows = g.filter((x) => !personal || x.responsible_id === user.id).map((x) => [x.description, x.category, x.quantity, x.state, x.display_name ?? '', x.logistics_ref ?? '']);
-    } else if (i.kind === 'readiness') {
-      columns = ['traveller', 'role', 'ready', 'open items'];
-      const r = await readiness(pool, trip);
-      rows = [...r.byId.values()].filter((x) => !personal || mine.has(x.participant.id)).map((x) => [x.participant.display_name, x.participant.role, x.ready ? 'yes' : 'no', x.issues.map((c) => ISSUE_LABEL[c]).join('; ')]);
-    } else {
-      columns = ['currency', 'supplier orders (gross)', 'per diem entitlement', 'per diem paid', 'advances paid', 'claims pending', 'claims approved', 'claims reimbursed'];
-      const m = (n) => (n / 100).toFixed(2);
-      rows = (await costSummary(pool, trip)).map((x) => [x.currency, m(x.supplier_orders_gross_minor), m(x.per_diem_entitlement_minor), m(x.per_diem_paid_minor), m(x.advances_minor), m(x.claims_pending_minor), m(x.claims_approved_minor), m(x.claims_reimbursed_minor)]);
-    }
-    await audit(null, user.id, `export_trip_report_${i.kind}_${i.audience}`, 'trips', trip.id);
-    const expires = new Date(Date.now() + 24 * 36e5).toISOString();
-    const title = `${trip.name} — ${i.kind}`;
-    return { title, kind: i.kind, audience: i.audience, generated_at: new Date().toISOString(), expires_at: expires, timezone_note: 'Times are local to the place named; zones are shown beside them.', columns, rows,
-      csv: [columns.map(csvEsc).join(','), ...rows.map((r) => r.map(csvEsc).join(','))].join('\n'), filename: `${trip.name.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-${i.kind}-${i.audience}.csv` };
+    const rep = await buildReport(user, ctx, i);
+    let kit = null;
+    if (i.kit_id) { kit = await kitOf(i.kit_id); await mustAccess(user, kit, 'Brand kit'); if (kit.archived_at) throw badRequest('That brand kit is archived'); }
+    const w = rep.columns.map((c, n) => ({ t: c, w: Math.max(6, Math.min(24, Math.max(c.length, ...rep.rows.map((r) => String(r[n] ?? '').length)))) }));
+    const { buffer, pages } = await renderServiceDocument({
+      doc: { title: `${ctx.trip.name}: ${REPORT_LABEL[i.kind]}`, status: AUDIENCE_LABEL[i.audience], issued_at: rep.generated_at,
+        sections: [{ kind: 'table', columns: w, rows: rep.rows.map((r) => r.map((x) => String(x ?? ''))) }],
+        footnote: `Times are local to the place named. Generated ${rep.generated_at.slice(0, 16).replace('T', ' ')} UTC for ${AUDIENCE_LABEL[i.audience].toLowerCase()}; this copy expires ${rep.expires_at.slice(0, 16).replace('T', ' ')} UTC. It contains no passport or visa numbers.` },
+      kit, logo: kit ? await loadLogo(kit.logo_asset_id) : null,
+    });
+    const { id: did, file } = await saveEncrypted('documents', 'generated_documents.file', buffer);
+    await pool.query(
+      `INSERT INTO generated_documents(id, family, source_type, source_id, logo_asset_id, file_name, size_bytes, sha256, pages, generated_by)
+       VALUES ($1,'trip_report',$2,$3,$4,$5,$6,$7,$8,$9)`,
+      [did, `trip_report:${i.audience}`, ctx.trip.id, kit?.logo_asset_id ?? null, file, buffer.length, createHash('sha256').update(buffer).digest('hex'), pages, user.id]);
+    await audit(null, user.id, `generate_trip_report_document_${i.kind}_${i.audience}`, 'generated_documents', did);
+    return { id: did, kind: i.kind, audience: i.audience, pages, expires_at: rep.expires_at, url: `/api/v1/branded-documents/${did}/file` };
   },
 });

@@ -11,6 +11,8 @@ import { c } from '../theme';
 import { localDate, localHHMM, localToIso, moneyIn } from '../vtime';
 import { useLayout } from '../layout';
 import { MapLinks, placeIn, placeOut } from '../place-picker';
+import { openPdf } from '../open-file';
+import { useNav } from '../nav';
 
 const uid = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 export const MODE = { air: '✈️ Air', rail: '🚆 Rail', coach: '🚌 Coach', car: '🚗 Car / van', ferry: '⛴️ Ferry', local_transfer: '🚕 Local transfer', other: '🧭 Other' };
@@ -114,9 +116,50 @@ function InviteSheet({ visible, onClose, id, cands, party, trip, reload }) {
   );
 }
 
+// ---------------------------------------------------------------- supplier sourcing (procurement stays in Services & suppliers)
+
+const ORDER_OK = ['confirmed', 'in_progress', 'completed'];
+/** Accepted supplier orders of one category the person can buy for, as options for an order picker. */
+export function useOrders(category) {
+  const st = useLoad(() => api.get('/service-orders', { side: 'buyer', limit: 100 }).catch(() => []), []);
+  return (st.data ?? []).filter((o) => ORDER_OK.includes(o.status) && o.category === category).map((o) => ({ id: o.id, label: `${o.number} · ${o.supplier_name}`, sub: `${o.title ?? label(o.category)} · ${label(o.status)}`, emoji: category === 'travel' ? '🚌' : '🏨' }));
+}
+
+/** The trip's linked RFQs and orders, how to link more, and a way into Services & suppliers where quotes and orders really live. */
+export function SuppliersCard({ id, data, reload, purpose }) {
+  const { you, trip } = data;
+  const nav = useNav();
+  const st = useLoad(() => (you.ops ? api.get(`/trips/${id}/suppliers`) : Promise.resolve([])), [id]);
+  const orders = useLoad(() => (you.manager ? api.get('/service-orders', { side: 'buyer', limit: 100 }).catch(() => []) : Promise.resolve([])), [id]);
+  const [link, setLink] = useState(false);
+  const { act } = useAct(st.reload);
+  if (!you.ops) return null;
+  const open = !['completed', 'cancelled'].includes(trip.status);
+  const mine = (st.data ?? []).filter((l) => !purpose || l.purpose === purpose);
+  return (
+    <Card pad={14} color={c.violetSoft}>
+      <Wrap><T weight="800" style={{ flex: 1 }}>🤝 Suppliers & orders</T>
+        <Btn small title="Source in Services" color={c.paper} ink={c.ink} onPress={() => nav.push('ServicesBuyer')} />
+        {you.manager && open ? <Btn small title="Link an order" onPress={() => setLink(true)} /> : null}</Wrap>
+      <T size={12} color={c.mute} style={{ marginTop: 4 }}>Quotes, orders and supplier contact stay in Services & suppliers; nothing is duplicated here. A confirmed order can then feed a leg or stay.</T>
+      {mine.map((l) => (
+        <View key={l.id} style={{ marginTop: 8 }}>
+          <T size={13.5} weight="700">{label(l.purpose)} · {l.order_number ? `order ${l.order_number}` : `RFQ ${l.rfq_title}`}{l.supplier_name ? ` · ${l.supplier_name}` : ''}</T>
+          <T size={12} color={c.mute}>{l.order_number ? `${label(l.order_status)}${l.travel_confirmation ? ` · ${label(l.travel_confirmation)}` : ''}` : label(l.rfq_status)}{l.gross_minor ? ` · ${moneyIn(l.gross_minor, l.currency)}` : ''}</T>
+          {you.manager && open ? <Btn small title="Unlink" color={c.paper} ink={c.ink} onPress={() => act(() => api.post(`/trips/${id}/suppliers/${l.id}/unlink`, {}), 'Unlinked')} style={{ alignSelf: 'flex-start', marginTop: 4 }} /> : null}
+        </View>))}
+      <FormSheet visible={link} onClose={() => setLink(false)} title="Link a supplier order" submitLabel="Link"
+        notice="Pick an order your buyer account already holds. This only links it to the trip; the order itself is not copied or changed."
+        fields={[{ key: 'purpose', label: 'What is it for', type: 'chips', options: ['travel', 'accommodation', 'local_transfer', 'equipment_freight', 'other'].map((value) => ({ value, label: label(value) })), default: purpose ?? 'travel' },
+          { key: 'order_id', label: 'Order', type: 'entity', entityKind: 'person', noun: 'order', options: (orders.data ?? []).filter((o) => ORDER_OK.includes(o.status)).map((o) => ({ id: o.id, label: `${o.number} · ${o.supplier_name}`, sub: `${o.title ?? label(o.category)} · ${label(o.status)}`, emoji: '📦' })) }]}
+        onSubmit={async (v) => { await api.post(`/trips/${id}/suppliers`, { purpose: v.purpose, order_id: v.order_id }); await st.reload(); return 'Linked'; }} />
+    </Card>
+  );
+}
+
 // ---------------------------------------------------------------- itinerary
 
-const legFields = (party, edit) => [
+const legFields = (party, edit, orders = []) => [
   { key: 'mode', label: 'How', type: 'chips', options: Object.entries(MODE).map(([value, l]) => ({ value, label: l })), default: 'coach' },
   { key: 'mode_label', label: 'Name the mode', type: 'text', show: (v) => v.mode === 'other' },
   { key: 'provider', label: 'Provider (airline, rail, coach company)', type: 'text', optional: true },
@@ -126,6 +169,7 @@ const legFields = (party, edit) => [
   { key: 'dep_date', label: 'Departure date', type: 'date' }, { key: 'dep_time', label: 'Departure time', type: 'time', step: 5 }, { key: 'depart_tz', label: 'Time zone of the departure place', type: 'timezone' },
   { key: 'a1', label: 'Arrives', type: 'section' },
   { key: 'arr_date', label: 'Arrival date', type: 'date' }, { key: 'arr_time', label: 'Arrival time', type: 'time', step: 5 }, { key: 'arrive_tz', label: 'Time zone of the arrival place', type: 'timezone' },
+  ...(orders.length ? [{ key: 'svc_order_id', label: 'Supplier order that provides this leg', type: 'entity', entityKind: 'person', noun: 'order', optional: true, options: orders, hint: 'A confirmed order from Services & suppliers. The reference is then labelled as a supplier order.' }] : []),
   { key: 'meeting_point', label: 'Meeting point / terminal', type: 'text', optional: true }, { key: 'baggage_ref', label: 'Baggage / equipment allowance reference', type: 'text', optional: true },
   { key: 'passenger_ids', label: 'Who is on this leg', type: 'multi', options: party.filter((p) => !p.masked || true).map((p) => ({ value: p.id, label: p.display_name })), optional: true },
   ...(edit ? [{ key: 'status', label: 'Status', type: 'chips', options: ['planned', 'booked', 'delayed', 'cancelled', 'completed'].map((value) => ({ value, label: label(value) })) }, { key: 'change_note', label: 'What changed (travellers are told)', type: 'text' }] : []),
@@ -133,13 +177,14 @@ const legFields = (party, edit) => [
 const legBody = (v, clear) => ({
   mode: v.mode, mode_label: v.mode === 'other' ? v.mode_label : undefined, provider: v.provider || undefined, reference: v.reference || undefined, ...placeOut('origin_', v.origin, clear), origin: v.origin.name, ...placeOut('destination_', v.destination, clear), destination: v.destination.name,
   depart_at: localToIso(v.dep_date, v.dep_time, v.depart_tz), depart_tz: v.depart_tz, arrive_at: localToIso(v.arr_date, v.arr_time, v.arrive_tz), arrive_tz: v.arrive_tz,
-  meeting_point: v.meeting_point || undefined, baggage_ref: v.baggage_ref || undefined, passenger_ids: v.passenger_ids ?? [],
+  meeting_point: v.meeting_point || undefined, baggage_ref: v.baggage_ref || undefined, passenger_ids: v.passenger_ids ?? [], svc_order_id: v.svc_order_id || undefined,
 });
 const legInitial = (s) => ({ mode: s.mode, mode_label: s.mode_label, provider: s.provider, reference: s.reference, origin: placeIn('origin_', s, 'origin'), destination: placeIn('destination_', s, 'destination'), dep_date: localDate(s.depart_at, s.depart_tz), dep_time: localHHMM(s.depart_at, s.depart_tz), depart_tz: s.depart_tz, arr_date: localDate(s.arrive_at, s.arrive_tz), arr_time: localHHMM(s.arrive_at, s.arrive_tz), arrive_tz: s.arrive_tz, meeting_point: s.meeting_point, baggage_ref: s.baggage_ref, status: s.status, passenger_ids: (s.travellers ?? []).map((t) => t.participant_id) });
 
 export function ItineraryTab({ id, data, reload }) {
   const { you, party, trip } = data;
   const st = useLoad(() => api.get(`/trips/${id}/itinerary`), [id]);
+  const travelOrders = useOrders('travel');
   const [add, setAdd] = useState(false), [edit, setEdit] = useState(null), [impact, setImpact] = useState(null);
   const done = async () => { await st.reload(); await reload(); };
   const open = !['completed', 'cancelled'].includes(trip.status);
@@ -147,6 +192,7 @@ export function ItineraryTab({ id, data, reload }) {
   return (
     <View style={{ gap: 12 }}>
       <Head title="Transport" sub={`Times are shown in the zone of each place. Trip zone: ${tz0.replace(/_/g, ' ')}.`} action={you.ops && open ? <Btn small title="＋ Add a leg" onPress={() => setAdd(true)} /> : null} />
+      <SuppliersCard id={id} data={data} reload={reload} purpose="travel" />
       <Block state={st}>{(legs) => (!legs.length ? <Empty emoji="🧳" title="No transport yet" sub={you.ops ? 'Add each leg: flight, train, coach, ferry or local transfer.' : 'Nothing has been planned for you yet.'} /> : (
         <Grid>{legs.map((s) => (
           <Card key={s.id} pad={14} accessibilityLabel={`${MODE[s.mode]} from ${s.origin} to ${s.destination}, ${s.status}`}>
@@ -163,9 +209,9 @@ export function ItineraryTab({ id, data, reload }) {
             </View>
             {you.ops && open ? <Wrap style={{ marginTop: 10 }}><Btn small title="Edit / report a change" color={c.paper} ink={c.ink} onPress={() => setEdit(s)} />{['delayed', 'cancelled'].includes(s.status) ? <Btn small title="See impact" onPress={() => setImpact(s)} /> : null}</Wrap> : null}
           </Card>))}</Grid>))}</Block>
-      <FormSheet visible={add} onClose={() => setAdd(false)} title="Add a transport leg" fields={legFields(party, false)} initial={{ dep_date: localDate(trip.depart_at, tz0), depart_tz: tz0, arrive_tz: tz0 }}
+      <FormSheet visible={add} onClose={() => setAdd(false)} title="Add a transport leg" fields={legFields(party, false, travelOrders)} initial={{ dep_date: localDate(trip.depart_at, tz0), depart_tz: tz0, arrive_tz: tz0 }}
         onSubmit={async (v) => { await api.post(`/trips/${id}/segments`, legBody(v)); await done(); return 'Leg added'; }} />
-      <FormSheet visible={!!edit} onClose={() => setEdit(null)} title="Change this leg" submitLabel="Save and tell the travellers" fields={legFields(party, true)} initial={edit ? legInitial(edit) : {}}
+      <FormSheet visible={!!edit} onClose={() => setEdit(null)} title="Change this leg" submitLabel="Save and tell the travellers" fields={legFields(party, true, travelOrders)} initial={edit ? legInitial(edit) : {}}
         notice="Only the travellers on this leg, their guardians and the trip manager are told. The old version stays in the history. A fixture is never edited from here."
         onSubmit={async (v) => { const { passenger_ids, ...body } = legBody(v, true); await api.patch(`/trips/${id}/segments/${edit.id}`, { ...body, passenger_ids, status: v.status, change_note: v.change_note, row_version: edit.row_version }); await done(); return 'Leg updated'; }} />
       <ImpactSheet id={id} seg={impact} onClose={() => setImpact(null)} />
@@ -197,22 +243,25 @@ function ImpactSheet({ id, seg, onClose }) {
 export function StayTab({ id, data, reload }) {
   const { you, party, trip } = data;
   const st = useLoad(() => api.get(`/trips/${id}/rooming`), [id]);
+  const stayOrders = useOrders('accommodation');
   const [add, setAdd] = useState(false), [edit, setEdit] = useState(null), [rooms, setRooms] = useState(null), [assign, setAssign] = useState(null);
   const { act } = useAct(st.reload);
   const open = !['completed', 'cancelled'].includes(trip.status);
   const tz0 = trip.timezone;
   const stayFields = [
     { key: 'property_name', label: 'Property', type: 'text' }, { key: 'where', label: 'Location', type: 'place', optional: true, hint: 'Search the city or country, then pin the exact spot from Google Maps or Apple Maps.' }, { key: 'reference', label: 'Booking reference', type: 'text', optional: true, hint: 'Recorded as typed by the team; not a live availability check.' },
+    ...(stayOrders.length ? [{ key: 'svc_order_id', label: 'Supplier order that provides this stay', type: 'entity', entityKind: 'person', noun: 'order', optional: true, options: stayOrders }] : []),
     { key: 'tz', label: 'Time zone of the property', type: 'timezone' },
     { key: 'in_date', label: 'Check-in date', type: 'date' }, { key: 'in_time', label: 'Check-in time', type: 'time', step: 15 },
     { key: 'out_date', label: 'Check-out date', type: 'date' }, { key: 'out_time', label: 'Check-out time', type: 'time', step: 15 },
     { key: 'status', label: 'Status', type: 'chips', options: ['planned', 'booked', 'changed', 'cancelled', 'completed'].map((value) => ({ value, label: label(value) })) },
     ...(edit ? [{ key: 'change_note', label: 'What changed (people with rooms are told)', type: 'text' }] : []),
   ];
-  const stayBody = (v) => ({ property_name: v.property_name, address: v.where?.name || undefined, country: v.where?.country ?? (edit ? null : undefined), lat: v.where?.lat ?? (edit ? null : undefined), lng: v.where?.lng ?? (edit ? null : undefined), reference: v.reference || undefined, tz: v.tz, check_in_at: localToIso(v.in_date, v.in_time, v.tz), check_out_at: localToIso(v.out_date, v.out_time, v.tz), status: v.status });
+  const stayBody = (v) => ({ property_name: v.property_name, address: v.where?.name || undefined, country: v.where?.country ?? (edit ? null : undefined), lat: v.where?.lat ?? (edit ? null : undefined), lng: v.where?.lng ?? (edit ? null : undefined), reference: v.reference || undefined, tz: v.tz, check_in_at: localToIso(v.in_date, v.in_time, v.tz), check_out_at: localToIso(v.out_date, v.out_time, v.tz), status: v.status, svc_order_id: v.svc_order_id || undefined });
   return (
     <View style={{ gap: 12 }}>
       <Head title="Stay & rooming" sub={you.ops ? 'Staff see the full rooming list. Room numbers and roommates of young travellers are never shown to other travellers.' : 'You see your own room. Others\' rooms stay private.'} action={you.ops && open ? <Btn small title="＋ Add a stay" onPress={() => setAdd(true)} /> : null} />
+      <SuppliersCard id={id} data={data} reload={reload} purpose="accommodation" />
       <Block state={st}>{(stays) => (!stays.length ? <Empty emoji="🏨" title="No accommodation yet" sub={you.ops ? 'Add the hotel or lodging, then its rooms.' : 'Your stay has not been shared yet.'} /> : (
         <Grid>{stays.map((s) => (
           <Card key={s.id} pad={14}>
@@ -393,7 +442,8 @@ const REPORTS = [['manifest', 'Travel manifest'], ['itinerary', 'Itinerary'], ['
 export function ReportsTab({ id, data }) {
   const { you } = data;
   const [kind, setKind] = useState('manifest'), [audience, setAudience] = useState(you.ops ? 'manager' : 'traveller');
-  const [rep, setRep] = useState(null), [busy, setBusy] = useState(false);
+  const [rep, setRep] = useState(null), [busy, setBusy] = useState(false), [kit, setKit] = useState(null);
+  const kits = useLoad(() => api.get('/brand-kits').catch(() => []), []);
   const { toast } = useSession();
   const run = async (k, a) => { setBusy(true); try { setRep(await api.get(`/trips/${id}/reports/${k}`, { audience: a })); } catch (e) { setRep(null); toast(e.message); } finally { setBusy(false); } };
   const save = async () => {
@@ -401,6 +451,7 @@ export function ReportsTab({ id, data }) {
     if (Platform.OS === 'web' && typeof document !== 'undefined') { const url = URL.createObjectURL(new Blob([rep.csv], { type: 'text/csv' })); const a = document.createElement('a'); a.href = url; a.download = rep.filename; a.click(); setTimeout(() => URL.revokeObjectURL(url), 5000); return; }
     try { await Share.share({ message: rep.csv, title: rep.title }); } catch (e) { toast(e.message); }
   };
+  const pdf = async () => { setBusy(true); try { const d = await api.post(`/trips/${id}/reports/${kind}/document`, { audience, ...(kit ? { kit_id: kit } : {}) }); await openPdf(d.url.replace('/api/v1', ''), `${kind}-${audience}`); } catch (e) { toast(e.message); } finally { setBusy(false); } };
   const kinds = REPORTS.filter(([k]) => you.ops || !['rooming', 'cost'].includes(k));
   return (
     <View style={{ gap: 12 }}>
@@ -416,7 +467,8 @@ export function ReportsTab({ id, data }) {
             <T size={11.5} weight="800" color={c.mute}>{rep.columns.join('  ·  ')}</T>
             {rep.rows.length ? rep.rows.map((r, i) => <T key={i} size={13}>{r.filter((x) => x !== '' && x !== null).join('  ·  ')}</T>) : <T size={13} color={c.mute}>Nothing to list.</T>}
           </View>
-          <Btn small title={Platform.OS === 'web' ? 'Download CSV' : 'Share / save CSV'} onPress={save} style={{ alignSelf: 'flex-start', marginTop: 10 }} />
+          <Wrap style={{ marginTop: 10 }}><Btn small title={Platform.OS === 'web' ? 'Download CSV' : 'Share / save CSV'} onPress={save} color={c.paper} ink={c.ink} /><Btn small title="Branded PDF" onPress={pdf} loading={busy} /></Wrap>
+          {(kits.data ?? []).length ? <View style={{ marginTop: 8 }}><T size={12} color={c.mute}>Brand kit for the PDF</T><Wrap style={{ marginTop: 4 }}><Chip label="Plain" active={!kit} onPress={() => setKit(null)} />{kits.data.map((k) => <Chip key={k.id} label={k.display_name} active={kit === k.id} onPress={() => setKit(k.id)} />)}</Wrap></View> : null}
         </Card>) : null}
     </View>
   );

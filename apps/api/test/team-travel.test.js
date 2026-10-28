@@ -262,6 +262,13 @@ test('passport and visa data is minimised, encrypted, revealed only to the holde
   assert.ok(must(await api('GET', `/trips/${trip.id}/readiness`, { token: mgr.token })).find((r) => r.participant_id === pa).issues.some((i) => i.code === 'passport_expiry'));
   const raw = (await pool.query('SELECT number_enc, evidence_ref_enc FROM trip_documents WHERE participant_id=$1 AND kind=$2', [pa, 'passport'])).rows[0];
   assert.ok(!raw.number_enc.includes(NUMBER) && !raw.evidence_ref_enc.includes(REF));
+  // the sweep re-checks passports against the trip's current dates and tells the right people, once, without any number
+  const sweeps = await import('../src/trips-sweeps.js');
+  must(await api('PATCH', `/trips/${trip.id}`, { token: mgr.token, body: { row_version: (await pool.query('SELECT row_version FROM trips WHERE id=$1', [trip.id])).rows[0].row_version, passport_min_months: 24 } }));
+  must(await api('POST', `/trips/${trip.id}/party/${pa}/documents/passport`, { token: a.token, body: { status: 'held', expires_on: iso(400).slice(0, 10) } }));
+  const first = await sweeps.remindPassports(), again = await sweeps.remindPassports();
+  assert.ok(first >= 1); assert.equal(again, 0);
+  assert.ok(!JSON.stringify(must(await api('GET', '/notifications', { token: a.token }))).includes(NUMBER));
   // the number never reaches notifications, history, compliance lists or reports
   for (const t of [a, mgr]) assert.ok(!JSON.stringify(must(await api('GET', '/notifications', { token: t.token })).items).includes(NUMBER));
   assert.ok(!JSON.stringify((await pool.query('SELECT snapshot, note FROM trip_changes WHERE trip_id=$1', [trip.id])).rows).includes(NUMBER));
@@ -385,6 +392,17 @@ test('equipment, incidents, the movement board and audience-safe reports', async
   assert.equal(own.rows.length, 1);
   assert.equal(must(await api('GET', `/trips/${trip.id}/reports/itinerary`, { token: (await (async () => { const z = await signup(['athlete']); await addTo(team.id, z); must(await api('POST', `/trips/${trip.id}/party`, { token: mgr.token, body: { user_id: z.id, role: 'athlete' } }), 201); return z; })()).token, query: { audience: 'traveller' } })).rows.length, 0);
   assert.ok((await pool.query("SELECT 1 FROM audit_log WHERE action LIKE 'export_trip_report_%' AND entity_id=$1", [trip.id])).rowCount >= 3);
+  // branded PDF (#249): same rows, live access check on every download, personal copies stay personal
+  const pdf = must(await api('POST', `/trips/${trip.id}/reports/manifest/document`, { token: mgr.token, body: { audience: 'supplier' } }), 201);
+  const get = (id, token) => fetch(`${base}${pdf.url.replace(pdf.id, id)}`, { headers: { authorization: `Bearer ${token}` } });
+  const dl = await get(pdf.id, mgr.token);
+  assert.equal(dl.status, 200); assert.match(dl.headers.get('content-type'), /pdf/); assert.equal(Buffer.from(await dl.arrayBuffer()).subarray(0, 4).toString(), '%PDF');
+  assert.equal((await get(pdf.id, a.token)).status, 404);   // a traveller cannot fetch the supplier / staff copy
+  assert.equal((await api('POST', `/trips/${trip.id}/reports/manifest/document`, { token: a.token, body: { audience: 'supplier' } })).status, 403);
+  const mineDoc = must(await api('POST', `/trips/${trip.id}/reports/itinerary/document`, { token: a.token, body: { audience: 'traveller' } }), 201);
+  assert.equal((await get(mineDoc.id, a.token)).status, 200);
+  assert.equal((await get(mineDoc.id, mgr.token)).status, 404); // even staff cannot open someone's personal copy
+  assert.ok((await pool.query("SELECT 1 FROM audit_log WHERE action LIKE 'generate_trip_report_document_%' AND actor_id=$1", [a.id])).rowCount);
   for (const k of ['equipment', 'readiness', 'movement', 'itinerary']) assert.ok(must(await api('GET', `/trips/${trip.id}/reports/${k}`, { token: mgr.token })).columns.length);
 });
 

@@ -164,3 +164,11 @@ export function assertPoint(o, prefix) {
   const a = o[`${prefix}lat`], b = o[`${prefix}lng`];
   if ((a === null || a === undefined) !== (b === null || b === undefined)) throw badRequest('A map point needs both latitude and longitude');
 }
+
+/** Download check for a branded trip report PDF: still within its 24 h life, and the person may still see this trip in this audience (checked live). */
+export async function canReadTripReport(user, d) {
+  const audience = String(d.source_type).split(':')[1];
+  if (Date.now() > new Date(d.created_at).getTime() + 24 * 36e5) throw notFound('Document');
+  const ctx = await tripCtx(user, d.source_id).catch(() => { throw notFound('Document'); });
+  if (audience === 'traveller') { if (d.generated_by !== user.id) throw notFound('Document'); } else if (!ctx.ops) throw notFound('Document');
+}

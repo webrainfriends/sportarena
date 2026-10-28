@@ -44,7 +44,11 @@ API: `apps/api/src/capabilities/trips-*.js` (REST `/api/v1/trips/...`, OpenAPI, 
 | Money | staff: everyone; traveller or guardian: their own statement | per-diem policy needs team-owner / organisation-admin approval |
 | Notifications, history snapshots, reports, logs | never contain document numbers | enforced and tested |
 
-Nothing is public. Reports are audience-safe (`manager`, `traveller`, `supplier`), audit-logged and marked with a 24 h expiry.
+Nothing is public. Reports are audience-safe (`manager`, `traveller`, `supplier`), audit-logged and marked with a 24 h expiry. They export as CSV and as a **branded PDF** through the shared document module (#249, optionally with your brand kit): the PDF carries exactly the same rows, every download re-checks live that you may still see the trip in that audience (a personal copy opens only for the person who made it), and it stops opening after 24 hours.
+
+## Background reminders
+
+The worker (`trips-sweeps.js`) re-checks passports against the trip's current dates (including after dates move) and reminds trip managers three days before departure when travellers are not ready. Reminders are deduplicated and never contain document numbers or young travellers' names.
 
 ## Rules enforced on the server
 
@@ -65,6 +69,7 @@ Travel is sport-agnostic: nothing in a trip depends on a sport's scoring or rule
 - No live location tracking. Planned times only.
 - No immigration eligibility decisions or advice.
 - No payroll. Passport / visa scans are not stored (an encrypted reference only).
-- Branded documents (#249) are not used for the reports yet; they export as CSV.
+- The branded PDF uses the plain layout or your brand kit; custom travel templates are not offered yet.
+- Equipment can reference a canonical resource (`resource_id`) through the API; the app has no resource picker because there is no equipment catalogue screen to pick from.
 - Short Google / Apple Maps links (`maps.app.goo.gl`) cannot be read; paste the full link or coordinates.
 - Not run on a physical iOS, iPadOS or Android device; the web build was exercised at phone, tablet and desktop widths and the iOS and Android bundles export.
