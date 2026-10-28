@@ -542,7 +542,8 @@ export function Notifications() {
   const readAll = async () => { await api.post('/notifications/read', {}); list.reload(); };
   const tap = async (n) => {
     if (!n.read_at) { await api.post('/notifications/read', { ids: [n.id] }); list.reload(); }
-    if (n.data?.trip_id) push('Trip', { id: n.data.trip_id });
+    if (n.data?.marketplace_engagement_id) push('MarketplaceEngagement', { id: n.data.marketplace_engagement_id });
+    else if (n.data?.trip_id) push('Trip', { id: n.data.trip_id });
     else if (n.data?.open_game_id) push('OpenGame', { id: n.data.open_game_id });
     else if (n.data?.reservation_id) push('Reservation', { id: n.data.reservation_id });
     else if (n.data?.request_id) push('CoachRequest', { id: n.data.request_id });

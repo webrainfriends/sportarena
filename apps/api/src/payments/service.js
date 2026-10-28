@@ -93,6 +93,10 @@ export async function describePurpose(c, type, id) {
     const x = await q("SELECT f.payer_id, f.amount_minor AS amount, f.currency, f.status, f.number, c.name, c.status AS camp_status FROM ad_fundings f JOIN ad_campaigns c ON c.id=f.campaign_id WHERE f.id=$1 FOR UPDATE OF f");
     return x && { payerId: x.payer_id, amount: Number(x.amount), currency: x.currency, name: `Advertising funds ${x.number} · ${x.name}`, payable: x.status === 'awaiting_payment' && !['ended', 'withdrawn'].includes(x.camp_status) };
   }
+  if (type === 'marketplace_engagement') {
+    const m = await q("SELECT m.buyer_id AS payer_id, m.agreed_minor AS amount, m.currency, m.status, m.title, m.invoice_number, u.display_name FROM marketplace_engagements m JOIN users u ON u.id=m.provider_id WHERE m.id=$1 FOR UPDATE OF m");
+    return m && { payerId: m.payer_id, amount: Number(m.amount), currency: m.currency, name: `${m.title} · ${m.display_name} (${m.invoice_number})`, payable: m.status === 'invoiced' && Number(m.amount) > 0 };
+  }
   if (type === 'service_invoice') {
     const x = await q("SELECT s.payer_id, s.payable_minor - s.credited_minor - s.paid_minor AS amount, s.currency, s.status, s.doc_type, s.match_status, s.supplier_number, coalesce(p.trading_name, p.legal_name) AS name FROM svc_invoices s JOIN svc_profiles p ON p.id=s.profile_id WHERE s.id=$1 FOR UPDATE OF s");
     return x && { payerId: x.payer_id, amount: Number(x.amount), currency: x.currency, name: `Invoice ${x.supplier_number} · ${x.name}`, payable: x.status === 'issued' && x.doc_type === 'invoice' && ['matched', 'exception_approved'].includes(x.match_status) && Number(x.amount) > 0 };
@@ -108,6 +112,7 @@ async function fulfil(c, type, id, payment) {
     shop_checkout: "UPDATE shop_orders SET status='placed' WHERE checkout_id=$1 AND status='awaiting_payment'",
     coach_hire: "UPDATE coach_hires SET payment_status='paid', status=CASE WHEN request_response_id IS NOT NULL AND status='requested' THEN 'confirmed' ELSE status END WHERE id=$1 AND payment_status='unpaid' AND status IN ('requested','confirmed')",
     insurance_policy: "UPDATE insurance_policies SET status='active' WHERE id=$1 AND status='pending_payment'",
+    marketplace_engagement: "UPDATE marketplace_engagements SET status='paid', paid_at=now(), updated_at=now() WHERE id=$1 AND status='invoiced'",
     appointment: "UPDATE appointments SET payment_status='paid', updated_at=now() WHERE id=$1 AND payment_status='unpaid' AND status IN ('requested','confirmed')",
   }[type];
   if (type === 'venue_invoice') return markInvoicePaid(c, id, { method: 'online' });

@@ -36,7 +36,7 @@ export async function buildSchedule(user, i) {
     const win = [user.id, from, to];
     const D = `${DEFAULT_MATCH_MIN} minutes`;
 
-    const [squads, games, entries, organised, bookings, hires, appts, follows, gameSessions, planSessions, teamFixtures, teamEntries, officiating, crew, patients, commitments, blocks, attendance, academy] = await Promise.all([
+    const [squads, games, entries, organised, bookings, hires, appts, follows, gameSessions, planSessions, teamFixtures, teamEntries, officiating, crew, patients, commitments, blocks, attendance, academy, services] = await Promise.all([
       many(`SELECT q.id, q.status, q.team_id, f.id AS fixture_id, f.event_id AS fx_event_id, f.scheduled_at AS starts_at, f.scheduled_at + f.duration_min * interval '1 minute' AS ends_at, e.name AS event_name, s.slug AS sport,
                    t.name AS team_name, h.name AS home_name, a.name AS away_name, rs.timezone AS tz
             FROM team_squads q JOIN fixtures f ON f.id=q.fixture_id JOIN events e ON e.id=f.event_id JOIN sports s ON s.id=e.sport_id
@@ -115,6 +115,9 @@ export async function buildSchedule(user, i) {
             SELECT s.id, s.title, s.status, s.starts_at, s.ends_at, s.timezone, s.sport, k.name, o.name, 'expected', true, ${venueText('academy_session', 's.id')}
               FROM academy_session_staff st JOIN academy_sessions s ON s.id=st.session_id JOIN org_cohorts k ON k.id=s.cohort_id JOIN organisations o ON o.id=s.organisation_id
              WHERE st.user_id=$1 AND st.status IN ('assigned','confirmed') AND s.status='published' AND s.starts_at >= $2::date AND s.starts_at < $3::date + 1`, win),
+      many(`SELECT x.id, x.title, x.status, x.starts_at, x.ends_at, x.timezone AS tz, x.family, CASE WHEN x.provider_id=$1 THEN bu.display_name ELSE pu.display_name END AS other_name, (x.provider_id=$1) AS as_provider
+              FROM marketplace_engagements x JOIN users bu ON bu.id=x.buyer_id JOIN users pu ON pu.id=x.provider_id
+             WHERE (x.buyer_id=$1 OR x.provider_id=$1) AND x.status IN ('scheduled','delivered') AND x.starts_at >= $2::date AND x.starts_at < $3::date + 1`, win),
     ]);
 
     // Busy time imported from another calendar (no titles kept). A young person's imports are hidden the moment guardian consent is withdrawn.
@@ -141,6 +144,7 @@ export async function buildSchedule(user, i) {
     for (const r of gameSessions) add({ kind: 'match', source_type: 'event_session', source_id: r.id, sport: r.sport, title: r.label, context: `${r.event_name}${r.ground ? ` · ${r.ground}` : ''}`, starts_at: r.starts_at, ends_at: r.ends_at, status: 'confirmed', link: { screen: 'Games', params: { id: r.event_id } }, actions: [] });
     for (const r of bookings) add({ kind: 'venue', source_type: 'booking', source_id: r.id, title: r.venue_name, context: r.resource_name, starts_at: r.starts_at, ends_at: r.ends_at, timezone: r.tz ?? 'UTC', status: 'confirmed', link: { screen: 'Reservation', params: {} }, actions: [] });
     for (const r of hires) add({ kind: 'training', source_type: 'coach_hire', source_id: r.id, sport: r.sport, title: r.as_coach ? 'Coaching session' : 'Session with your coach', context: [r.other_name, r.venue].filter(Boolean).join(' · '), starts_at: r.starts_at, ends_at: r.ends_at, status: r.status === 'confirmed' ? 'confirmed' : 'proposed', action_required: r.as_coach && r.status === 'requested', link: { screen: 'Hub', params: {} }, actions: [] });
+    for (const r of services) add({ kind: 'duty', source_type: 'marketplace_engagement', source_id: r.id, title: r.title, context: `${r.as_provider ? 'For' : 'With'} ${r.other_name}`, starts_at: r.starts_at, ends_at: r.ends_at, timezone: r.tz ?? 'UTC', status: 'confirmed', link: { screen: 'MarketplaceEngagement', params: { id: r.id } }, actions: [] });
     for (const r of appts) add({ kind: 'health', source_type: 'appointment', source_id: r.id, title: r.provider_type === 'physio' ? 'Physio appointment' : r.provider_type === 'doctor' ? 'Doctor appointment' : 'Appointment', starts_at: r.starts_at, ends_at: r.ends_at, timezone: r.tz ?? 'UTC', status: r.status === 'confirmed' ? 'confirmed' : 'proposed', link: { screen: 'Health', params: {} }, actions: [] });
     for (const r of follows) add({ kind: 'health', source_type: 'followup', source_id: r.id, title: 'Health follow-up due', starts_at: `${r.due_on.toISOString?.().slice(0, 10) ?? r.due_on}T00:00:00Z`, ends_at: r.window_end ? `${r.window_end.toISOString?.().slice(0, 10) ?? r.window_end}T23:59:59Z` : null, all_day: true, status: 'awaiting_response', action_required: true, link: { screen: 'Health', params: {} }, actions: [] });
 
