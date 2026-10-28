@@ -3,7 +3,7 @@ import { cap, id } from '../registry.js';
 import { one, many } from '../db.js';
 import { conflict, forbidden, notFound } from '../errors.js';
 import { newOpaqueToken, sha256 } from '../crypto.js';
-import { PUBLIC_USER } from '../helpers.js';
+import { PUBLIC_USER, PUBLIC_ROLES_SQL } from '../helpers.js';
 import { guardianLink, isYouth, requireConsent } from '../youth.js';
 import { ACTIVITIES_CTE } from '../athlete-history.js';
 import { config } from '../config.js';
@@ -17,7 +17,7 @@ const TAG = 'Passport';
 // official vs self-reported), approved competition results and awards. It carries no personal identification data (no email, phone, date
 // of birth, address, notes or health data), and what is shown is chosen by the athlete when they create each link.
 export async function buildPassport(userId, scope = FULL_SCOPE, ctx = {}) {
-  const u = await one(`SELECT ${PUBLIC_USER.replace('u.roles, ', '')} FROM users u WHERE u.id=$1`, [userId]);
+  const u = await one(`SELECT ${PUBLIC_USER.replace(`${PUBLIC_ROLES_SQL}, `, '')} FROM users u WHERE u.id=$1`, [userId]);
   // the club career timeline is checked at read time: a young person's is never shown on a share link, so consent changes and revocation apply at once
   const [profiles, activity, results, awards, credentials, memberships] = await Promise.all([
     many(`SELECT s.slug AS sport_slug, s.name AS sport, s.emoji AS sport_emoji, p.role, p.level, p.position, p.jersey_no, p.club, p.experience_years, p.is_default

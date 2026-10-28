@@ -220,6 +220,7 @@ import './media-rights-licensing.js';
 import './media-rights-ops.js';
 import './media-rights-assets.js';
 import './media-rights-feeds.js';
+import './commercial.js';
 import './spectator.js';
 import './spectator-admin.js';
 import './media-rights-fees.js';
