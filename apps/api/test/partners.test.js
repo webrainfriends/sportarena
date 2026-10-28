@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 // This suite runs with platform approvals ON (the rest of the suite switches them off to stay focused on its own module).
 Object.assign(process.env, {
   DATABASE_URL: process.env.TEST_DATABASE_URL ?? 'postgres://postgres@/sportarena_test?host=/tmp', PLATFORM_APPROVALS: 'on',
-  PLATFORM_ADMIN_EMAIL: 'platform-owner@example.com', PLATFORM_ADMIN_PASSWORD: 'owner-test-pass', PLATFORM_ADMIN_HANDLE: 'platformarena',
+  PLATFORM_ADMIN_EMAIL: 'platform-owner@example.com', PLATFORM_ADMIN_EMAILS: 'platform-owner@example.com,staff1@example.com', PLATFORM_ADMIN_PASSWORD: 'owner-test-pass', PLATFORM_ADMIN_HANDLE: 'platformarena',
 });
 const { pool } = await import('../src/db.js');
 const { migrate } = await import('../src/migrate.js');
@@ -55,6 +55,7 @@ test('the platform owner is bootstrapped from the environment and is the only on
 
   const staff = must(await api('POST', '/admin/platform-users', { token: owner.token, body: { handle: 'staff_one', display_name: 'Staff One', email: 'staff1@example.com', password: 'correct-horse-battery' } }), 201);
   assert.deepEqual(staff.roles, ['admin']);
+  assert.equal((await api('POST', '/admin/platform-users', { token: owner.token, body: { handle: 'staff_off_list', display_name: 'Off', email: 'not-listed@example.com', password: 'correct-horse-battery' } })).status, 403, 'only the platform-admin list can hold platform roles');
   const sl = must(await api('POST', '/auth/login', { body: { email: 'staff1@example.com', password: 'correct-horse-battery' } }));
   // platform staff can work the queues but cannot add more staff
   assert.equal((await api('GET', '/admin/partners', { token: sl.token })).status, 200);

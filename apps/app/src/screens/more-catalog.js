@@ -35,6 +35,7 @@ export const WORKSPACES = [
   ['insurer', 'InsurerDesk', 'Products, quotes & claims'],
   ['athlete', 'Passport', 'Player passport & QR'],
   ['admin', 'PartnerConsole', 'Partners & platform team'],
+  ['platform_admin', 'CommercialConsole', 'Catalogue, pricing & entitlements'],
 ];
 
 /** The workspaces this person can open: [role, route, sub, tab?], in catalogue order. */

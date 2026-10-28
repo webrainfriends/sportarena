@@ -33,6 +33,8 @@ const managesOpen = async (user, og, g) => {
 
 // ---------------------------------------------------------------- reading
 
+// the host as host_* columns; platform roles are filtered inside PUBLIC_USER, so alias each expression rather than rewriting it
+const HOST_USER = PUBLIC_USER.split(', ').map((x) => (/ AS (\w+)$/.test(x) ? x.replace(/u\./g, 'h.').replace(/ AS (\w+)$/, ' AS host_$1') : `${x.replace('u.', 'h.')} AS host_${x.slice(2)}`)).join(', ');
 const CARD_COLS = `og.id, og.game_id, og.team_id, og.fixture_game_id, og.visibility, og.approval_mode, og.min_players, og.max_players, og.skill_min, og.skill_max, og.format, og.role_needs,
   og.audience, og.min_age, og.max_age, og.cost_mode, og.cost_cents, og.currency, og.cancel_before_hours, og.notes, og.status, og.place_city,
   g.title, g.starts_at, g.ends_at, g.location, g.venue_id, g.resource_id, s.id AS sport_id, s.slug AS sport_slug, s.name AS sport, s.emoji AS sport_emoji,
@@ -41,7 +43,7 @@ const CARD_COLS = `og.id, og.game_id, og.team_id, og.fixture_game_id, og.visibil
   (SELECT count(*)::int FROM open_game_members m WHERE m.open_game_id=og.id AND m.status='confirmed') AS taken,
   (SELECT count(*)::int FROM open_game_members m WHERE m.open_game_id=og.id AND m.status='waitlisted') AS waitlist,
   (t.id IS NOT NULL) AS has_team, t.name AS team_name, t.emoji AS team_emoji,
-  ${PUBLIC_USER.replace(/u\./g, 'h.').replace(/h\.(\w+)/g, (m, c) => `${m} AS host_${c}`)}`;
+  ${HOST_USER}`;
 const CARD_FROM = `FROM open_games og JOIN games g ON g.id=og.game_id JOIN sports s ON s.id=g.sport_id JOIN users h ON h.id=og.host_id
   LEFT JOIN venues v ON v.id=g.venue_id LEFT JOIN bookings b ON b.id=og.booking_id LEFT JOIN teams t ON t.id=og.team_id`;
 

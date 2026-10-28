@@ -1,0 +1,671 @@
+{
+ "meters": [],
+ "products": [
+  {
+   "key": "athlete",
+   "name": "Athlete",
+   "family": "athlete",
+   "plans": [
+    {
+     "key": "athlete_free",
+     "name": "Athlete Free",
+     "eligible_actors": [
+      "user"
+     ],
+     "is_default": true,
+     "versions": [
+      {
+       "region": "IN",
+       "currency": "INR",
+       "billing_interval": "monthly",
+       "amount_minor": 0,
+       "components": [],
+       "effective_from": "2026-10-01",
+       "entitlements": [
+        {
+         "key": "ai_credits",
+         "limit_value": 20,
+         "limit_behaviour": "hard"
+        },
+        {
+         "key": "storage_mb",
+         "limit_value": 1024,
+         "limit_behaviour": "hard"
+        }
+       ]
+      }
+     ],
+     "kind": "base"
+    },
+    {
+     "key": "athlete_pro",
+     "name": "Athlete Pro",
+     "eligible_actors": [
+      "user"
+     ],
+     "versions": [
+      {
+       "region": "IN",
+       "currency": "INR",
+       "billing_interval": "annual",
+       "amount_minor": 59900,
+       "components": [],
+       "effective_from": "2026-10-01",
+       "entitlements": [
+        {
+         "key": "ai_credits",
+         "limit_value": 300,
+         "limit_behaviour": "hard"
+        },
+        {
+         "key": "storage_mb",
+         "limit_value": 20480,
+         "limit_behaviour": "hard"
+        },
+        {
+         "key": "athlete.pro_insights",
+         "limit_value": null,
+         "limit_behaviour": "hard"
+        }
+       ]
+      }
+     ],
+     "kind": "base"
+    }
+   ]
+  },
+  {
+   "key": "professional",
+   "name": "Professional / Coach",
+   "family": "professional",
+   "plans": [
+    {
+     "key": "coach_pro",
+     "name": "Professional / Coach Pro",
+     "eligible_actors": [
+      "user"
+     ],
+     "versions": [
+      {
+       "region": "IN",
+       "currency": "INR",
+       "billing_interval": "monthly",
+       "amount_minor": 39900,
+       "components": [],
+       "effective_from": "2026-10-01",
+       "entitlements": [
+        {
+         "key": "ai_credits",
+         "limit_value": 500,
+         "limit_behaviour": "hard"
+        },
+        {
+         "key": "storage_mb",
+         "limit_value": 20480,
+         "limit_behaviour": "hard"
+        },
+        {
+         "key": "coach.pro_tools",
+         "limit_value": null,
+         "limit_behaviour": "hard"
+        }
+       ]
+      }
+     ],
+     "kind": "base"
+    },
+    {
+     "key": "coach_business",
+     "name": "Coach Business",
+     "eligible_actors": [
+      "user",
+      "organisation"
+     ],
+     "versions": [
+      {
+       "region": "IN",
+       "currency": "INR",
+       "billing_interval": "monthly",
+       "amount_minor": 89900,
+       "components": [],
+       "effective_from": "2026-10-01",
+       "entitlements": [
+        {
+         "key": "ai_credits",
+         "limit_value": 1500,
+         "limit_behaviour": "hard"
+        },
+        {
+         "key": "storage_mb",
+         "limit_value": 51200,
+         "limit_behaviour": "hard"
+        },
+        {
+         "key": "messages",
+         "limit_value": 500,
+         "limit_behaviour": "hard"
+        },
+        {
+         "key": "coach.business_tools",
+         "limit_value": null,
+         "limit_behaviour": "hard"
+        }
+       ]
+      }
+     ],
+     "kind": "base"
+    }
+   ]
+  },
+  {
+   "key": "team",
+   "name": "Team",
+   "family": "team",
+   "plans": [
+    {
+     "key": "team_free",
+     "name": "Team Free",
+     "eligible_actors": [
+      "team"
+     ],
+     "is_default": true,
+     "versions": [
+      {
+       "region": "IN",
+       "currency": "INR",
+       "billing_interval": "monthly",
+       "amount_minor": 0,
+       "components": [],
+       "effective_from": "2026-10-01",
+       "entitlements": [
+        {
+         "key": "active_athletes",
+         "limit_value": 30,
+         "limit_behaviour": "hard"
+        }
+       ]
+      }
+     ],
+     "kind": "base"
+    },
+    {
+     "key": "team_pro",
+     "name": "Team Pro",
+     "eligible_actors": [
+      "team"
+     ],
+     "versions": [
+      {
+       "region": "IN",
+       "currency": "INR",
+       "billing_interval": "monthly",
+       "amount_minor": 19900,
+       "components": [],
+       "effective_from": "2026-10-01",
+       "entitlements": [
+        {
+         "key": "active_athletes",
+         "limit_value": 60,
+         "limit_behaviour": "hard"
+        },
+        {
+         "key": "ai_credits",
+         "limit_value": 200,
+         "limit_behaviour": "hard"
+        },
+        {
+         "key": "team.advanced_stats",
+         "limit_value": null,
+         "limit_behaviour": "hard"
+        }
+       ]
+      },
+      {
+       "region": "IN",
+       "currency": "INR",
+       "billing_interval": "annual",
+       "amount_minor": 199900,
+       "components": [],
+       "effective_from": "2026-10-01",
+       "entitlements": [
+        {
+         "key": "active_athletes",
+         "limit_value": 60,
+         "limit_behaviour": "hard"
+        },
+        {
+         "key": "ai_credits",
+         "limit_value": 200,
+         "limit_behaviour": "hard"
+        },
+        {
+         "key": "team.advanced_stats",
+         "limit_value": null,
+         "limit_behaviour": "hard"
+        }
+       ]
+      }
+     ],
+     "kind": "base"
+    },
+    {
+     "key": "team_elite",
+     "name": "Team Elite",
+     "eligible_actors": [
+      "team"
+     ],
+     "versions": [
+      {
+       "region": "IN",
+       "currency": "INR",
+       "billing_interval": "monthly",
+       "amount_minor": 49900,
+       "components": [],
+       "effective_from": "2026-10-01",
+       "entitlements": [
+        {
+         "key": "active_athletes",
+         "limit_value": 150,
+         "limit_behaviour": "hard"
+        },
+        {
+         "key": "ai_credits",
+         "limit_value": 600,
+         "limit_behaviour": "hard"
+        },
+        {
+         "key": "messages",
+         "limit_value": 300,
+         "limit_behaviour": "hard"
+        },
+        {
+         "key": "team.advanced_stats",
+         "limit_value": null,
+         "limit_behaviour": "hard"
+        }
+       ]
+      }
+     ],
+     "kind": "base"
+    }
+   ]
+  },
+  {
+   "key": "club",
+   "name": "Club",
+   "family": "club",
+   "plans": [
+    {
+     "key": "club_starter",
+     "name": "Club Starter",
+     "eligible_actors": [
+      "organisation"
+     ],
+     "versions": [
+      {
+       "region": "IN",
+       "currency": "INR",
+       "billing_interval": "monthly",
+       "amount_minor": 99900,
+       "components": [],
+       "effective_from": "2026-10-01",
+       "entitlements": [
+        {
+         "key": "staff_seats",
+         "limit_value": 5,
+         "limit_behaviour": "hard"
+        },
+        {
+         "key": "teams",
+         "limit_value": 10,
+         "limit_behaviour": "hard"
+        },
+        {
+         "key": "active_athletes",
+         "limit_value": 150,
+         "limit_behaviour": "hard"
+        }
+       ]
+      }
+     ],
+     "kind": "base"
+    },
+    {
+     "key": "club_pro",
+     "name": "Club Pro",
+     "eligible_actors": [
+      "organisation"
+     ],
+     "versions": [
+      {
+       "region": "IN",
+       "currency": "INR",
+       "billing_interval": "monthly",
+       "amount_minor": 249900,
+       "components": [],
+       "effective_from": "2026-10-01",
+       "entitlements": [
+        {
+         "key": "staff_seats",
+         "limit_value": 15,
+         "limit_behaviour": "hard"
+        },
+        {
+         "key": "teams",
+         "limit_value": 40,
+         "limit_behaviour": "hard"
+        },
+        {
+         "key": "active_athletes",
+         "limit_value": 600,
+         "limit_behaviour": "hard"
+        },
+        {
+         "key": "ai_credits",
+         "limit_value": 1000,
+         "limit_behaviour": "hard"
+        },
+        {
+         "key": "messages",
+         "limit_value": 1000,
+         "limit_behaviour": "hard"
+        }
+       ]
+      }
+     ],
+     "kind": "base"
+    }
+   ]
+  },
+  {
+   "key": "academy",
+   "name": "Academy",
+   "family": "academy",
+   "description": "Free up to 30 active athletes; scale bands are published by the platform admin in the console.",
+   "plans": [
+    {
+     "key": "academy_free",
+     "name": "Academy Free (up to 30 athletes)",
+     "eligible_actors": [
+      "organisation"
+     ],
+     "versions": [
+      {
+       "region": "IN",
+       "currency": "INR",
+       "billing_interval": "monthly",
+       "amount_minor": 0,
+       "components": [],
+       "effective_from": "2026-10-01",
+       "entitlements": [
+        {
+         "key": "active_athletes",
+         "limit_value": 30,
+         "limit_behaviour": "hard"
+        }
+       ]
+      }
+     ],
+     "kind": "base"
+    }
+   ]
+  },
+  {
+   "key": "venue",
+   "name": "Venue",
+   "family": "venue",
+   "description": "0% venue commission at launch is a priced component, not code.",
+   "plans": [
+    {
+     "key": "venue_free",
+     "name": "Venue Free",
+     "eligible_actors": [
+      "venue"
+     ],
+     "is_default": true,
+     "versions": [
+      {
+       "region": "IN",
+       "currency": "INR",
+       "billing_interval": "monthly",
+       "amount_minor": 0,
+       "components": [
+        {
+         "kind": "percent_fee",
+         "label": "Venue booking commission (launch)",
+         "applies_to": "booking",
+         "bp": 0
+        }
+       ],
+       "effective_from": "2026-10-01",
+       "entitlements": [
+        {
+         "key": "locations",
+         "limit_value": 1,
+         "limit_behaviour": "hard"
+        }
+       ]
+      }
+     ],
+     "kind": "base"
+    },
+    {
+     "key": "venue_starter",
+     "name": "Venue Starter",
+     "eligible_actors": [
+      "venue"
+     ],
+     "kind": "base"
+    },
+    {
+     "key": "venue_pro",
+     "name": "Venue Pro",
+     "eligible_actors": [
+      "venue"
+     ],
+     "kind": "base"
+    },
+    {
+     "key": "venue_business",
+     "name": "Venue Business",
+     "eligible_actors": [
+      "venue"
+     ],
+     "kind": "base"
+    }
+   ]
+  },
+  {
+   "key": "event",
+   "name": "Event organiser",
+   "family": "event",
+   "plans": [
+    {
+     "key": "event_basic",
+     "name": "Basic event (Free)",
+     "eligible_actors": [
+      "event"
+     ],
+     "is_default": true,
+     "versions": [
+      {
+       "region": "IN",
+       "currency": "INR",
+       "billing_interval": "per_event",
+       "amount_minor": 0,
+       "components": [],
+       "effective_from": "2026-10-01",
+       "entitlements": []
+      }
+     ],
+     "kind": "base"
+    },
+    {
+     "key": "event_business",
+     "name": "Event Business",
+     "eligible_actors": [
+      "event"
+     ],
+     "versions": [
+      {
+       "region": "IN",
+       "currency": "INR",
+       "billing_interval": "per_event",
+       "amount_minor": 99900,
+       "components": [],
+       "effective_from": "2026-10-01",
+       "entitlements": [
+        {
+         "key": "event.business_tools",
+         "limit_value": null,
+         "limit_behaviour": "hard"
+        }
+       ]
+      }
+     ],
+     "kind": "base"
+    },
+    {
+     "key": "organiser_pro",
+     "name": "Organiser Pro",
+     "eligible_actors": [
+      "user",
+      "organisation"
+     ],
+     "versions": [
+      {
+       "region": "IN",
+       "currency": "INR",
+       "billing_interval": "monthly",
+       "amount_minor": 149900,
+       "components": [],
+       "effective_from": "2026-10-01",
+       "entitlements": [
+        {
+         "key": "event.organiser_tools",
+         "limit_value": null,
+         "limit_behaviour": "hard"
+        },
+        {
+         "key": "ai_credits",
+         "limit_value": 500,
+         "limit_behaviour": "hard"
+        }
+       ]
+      }
+     ],
+     "kind": "base"
+    }
+   ]
+  },
+  {
+   "key": "supplier",
+   "name": "Supplier",
+   "family": "supplier",
+   "plans": [
+    {
+     "key": "supplier_free",
+     "name": "Supplier Free",
+     "eligible_actors": [
+      "user",
+      "organisation"
+     ],
+     "versions": [
+      {
+       "region": "IN",
+       "currency": "INR",
+       "billing_interval": "monthly",
+       "amount_minor": 0,
+       "components": [],
+       "effective_from": "2026-10-01",
+       "entitlements": []
+      }
+     ],
+     "kind": "base"
+    },
+    {
+     "key": "supplier_pro",
+     "name": "Supplier Pro",
+     "eligible_actors": [
+      "user",
+      "organisation"
+     ],
+     "kind": "base"
+    },
+    {
+     "key": "supplier_business",
+     "name": "Supplier Business",
+     "eligible_actors": [
+      "user",
+      "organisation"
+     ],
+     "kind": "base"
+    }
+   ]
+  },
+  {
+   "key": "sponsor",
+   "name": "Sponsor",
+   "family": "sponsor",
+   "plans": [
+    {
+     "key": "sponsor_pro",
+     "name": "Sponsor Pro",
+     "eligible_actors": [
+      "user",
+      "organisation"
+     ],
+     "kind": "base"
+    },
+    {
+     "key": "sponsor_business",
+     "name": "Sponsor Business",
+     "eligible_actors": [
+      "user",
+      "organisation"
+     ],
+     "kind": "base"
+    }
+   ]
+  },
+  {
+   "key": "education",
+   "name": "Schools & universities",
+   "family": "education",
+   "plans": [
+    {
+     "key": "school_licence",
+     "name": "School annual licence",
+     "eligible_actors": [
+      "organisation"
+     ],
+     "kind": "base"
+    },
+    {
+     "key": "university_licence",
+     "name": "University annual licence",
+     "eligible_actors": [
+      "organisation"
+     ],
+     "kind": "base"
+    }
+   ]
+  },
+  {
+   "key": "enterprise",
+   "name": "Enterprise",
+   "family": "enterprise",
+   "plans": [
+    {
+     "key": "enterprise_contract",
+     "name": "Enterprise contract",
+     "eligible_actors": [
+      "organisation"
+     ],
+     "kind": "base"
+    }
+   ]
+  }
+ ],
+ "promotions": []
+}

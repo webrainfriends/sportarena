@@ -200,6 +200,7 @@ test('an API process started with WORKER_MODE=external runs no maintenance; the 
 });
 
 test('admin-only operations (list_jobs, requeue_job, get_worker_health, get_metrics): 401 anonymous, 403 non-admin, 200 admin, over REST and MCP', async () => {
+  await pool.query("UPDATE users SET roles='{admin}' WHERE handle='ops_root'"); // an earlier test boots the real server.js, whose start-up drops platform roles from accounts that are not on the platform-admin list
   const [job] = (await pool.query("INSERT INTO jobs(category, kind, status) VALUES ('authz','authz.task','dead') RETURNING id")).rows;
   const rest = [['GET', '/api/v1/admin/jobs'], ['POST', `/api/v1/admin/jobs/${job.id}/requeue`], ['GET', '/api/v1/admin/worker-health'], ['GET', '/api/v1/admin/metrics']];
   const call = (method, path, token) => fetch(`${base}${path}`, { method, headers: { ...(token ? { authorization: `Bearer ${token}` } : {}), 'content-type': 'application/json' }, ...(method === 'POST' ? { body: '{}' } : {}) });
@@ -228,6 +229,7 @@ test('admin-only operations (list_jobs, requeue_job, get_worker_health, get_metr
 });
 
 test('a maintenance category failing several cycles in a row is surfaced by worker health; one success clears it', async () => {
+  await pool.query("UPDATE users SET roles='{admin}' WHERE handle='ops_root'"); // an earlier test boots the real server.js, whose start-up drops platform roles from accounts that are not on the platform-admin list
   const mod = await import('../src/worker.js');
   const original = mod.STEPS[0][2];
   mod.STEPS[0][2] = async () => { throw new Error('holds keep failing'); };

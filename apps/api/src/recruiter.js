@@ -9,6 +9,7 @@ import { badgesFor } from './verification.js';
 import { SCOPED_FIELDS, visibleFields } from './athlete-profile.js';
 import { publicCareer } from './career.js';
 import { guardianLink, guardiansOf, hasConsent, isYouth } from './youth.js';
+import { publicRankingsOf } from './rankings/data.js';
 import { forbidden, notFound } from './errors.js';
 
 export const GRANT_SCOPES = ['profile', 'measurements', 'career', 'contact', 'messages'];
@@ -127,6 +128,7 @@ export async function dossier(r, scopes, viewer) {
     out.career = (await publicCareer(r.athlete_id)).filter((m) => m.sport_slug === r.sport_slug).map(({ team_id, organisation_id, org_season_id, ...m }) => m);
   }
   out.verified = (await badgesFor('user', [r.athlete_id])).get(r.athlete_id) ?? [];
+  out.rankings = youth ? [] : await publicRankingsOf(r.athlete_id, r.sport_id); // already-public rankings, always with sample size and version, never a bare rank number
   await audit(null, viewer.id, 'read_recruiter_dossier', 'users', r.athlete_id);
   return out;
 }

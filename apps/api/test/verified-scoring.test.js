@@ -46,7 +46,7 @@ const approve = (t, perf, by = t.other) => api('POST', `/performances/${perf.id}
 const admin = async () => {
   const a = await signup(['athlete']);
   await pool.query("UPDATE users SET roles = roles || '{admin}' WHERE id=$1", [a.id]);
-  return { ...a, roles: [...a.roles, 'admin'], token: (await api('POST', '/auth/login', { body: { email: `vs${n}@example.com`, password: 'correct-horse-battery' } })).body.token };
+  return { ...a, roles: [...a.roles, 'admin'] }; // keep the registration token: roles are read live, and signing in would drop the label (the account is not on the platform-admin list)
 };
 
 test('self-reported practice, however high, never changes the official ranking', async () => {

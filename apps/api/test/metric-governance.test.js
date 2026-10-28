@@ -19,7 +19,7 @@ const signup = async (roles, admin = false) => {
   let u = { ...r.body.user, token: r.body.token };
   if (admin) {
     await pool.query("UPDATE users SET roles = roles || '{admin}' WHERE id=$1", [u.id]);
-    u = { ...u, roles: [...u.roles, 'admin'], token: (await api('POST', '/auth/login', { body: { email: `mg${n}@example.com`, password: 'correct-horse-battery' } })).body.token };
+    u = { ...u, roles: [...u.roles, 'admin'] }; // the registration token keeps working (roles are read live); signing in again would drop the label, since the account is not on the platform-admin list
   }
   return u;
 };
