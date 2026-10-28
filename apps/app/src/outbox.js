@@ -6,7 +6,7 @@
 import { useEffect, useState } from 'react';
 import { api } from './api';
 
-let queue = [];            // [{ id, path, body, tries }]
+let queue = [];            // [{ method, path, body, tries }]
 let running = false;
 const listeners = new Set();
 const emit = () => listeners.forEach((f) => f({ pending: queue.length }));
@@ -20,7 +20,7 @@ export async function flush() {
   try {
     while (queue.length) {
       const item = queue[0];
-      try { await api.post(item.path, item.body); queue.shift(); }
+      try { await api[item.method](item.path, item.body); queue.shift(); }
       catch (e) {
         if (retryable(e) && item.tries < 8) { item.tries++; break; }
         queue.shift();
@@ -33,13 +33,14 @@ export async function flush() {
 export let rejected = null;
 export const clearRejected = () => { rejected = null; emit(); };
 
-/** Try now; if the connection is down, keep it and retry later. Resolves 'saved' or 'queued'; throws on a refusal the person must fix. */
-export async function send(path, body) {
+/** Try now; if the connection is down, keep it and retry later. Resolves 'saved' or 'queued'; throws on a refusal the person must fix.
+ *  `method` is 'post' (default) or 'patch'; a patch must be a plain state change (answering a selection), so repeating it is harmless. */
+export async function send(path, body, method = 'post') {
   if (!body?.client_key) throw new Error('outbox writes need a client_key');
-  try { const r = await api.post(path, body); return { status: 'saved', result: r }; }
+  try { const r = await api[method](path, body); return { status: 'saved', result: r }; }
   catch (e) {
     if (!retryable(e)) throw e;
-    queue.push({ path, body, tries: 0 }); emit();
+    queue.push({ method, path, body, tries: 0 }); emit();
     setTimeout(flush, 4000);
     return { status: 'queued' };
   }

@@ -46,6 +46,12 @@
       "expo-apple-authentication",
       "expo-web-browser",
       [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Unlock Gotmygame with Face ID if you turned on the device lock in Account security."
+        }
+      ],
+      [
         "expo-audio",
         {
           "microphonePermission": "Record a short voice note for your team chat. A recording is only sent when you press send."
