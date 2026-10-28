@@ -106,6 +106,9 @@ export const config = {
   notifyIntervalSeconds: Number(env.NOTIFY_INTERVAL_SECONDS ?? 60),
   // Payments (redirect checkout; no card data ever touches this server). A provider is enabled when its keys are set.
   appUrl: env.APP_URL,
+  // Enterprise single sign-on (#521): the public origin of this API (SAML ACS / metadata URLs) and the app URLs an IdP may send people back to.
+  apiPublicUrl: (env.API_PUBLIC_URL ?? new URL(env.APPLE_REDIRECT_URI ?? 'https://gotmygame.com/api/v1/auth/apple/callback').origin).replace(/\/$/, ''),
+  ssoRedirectUris: (env.SSO_REDIRECT_URIS ?? 'https://gotmygame.com/sso/callback,sportarena://sso/callback').split(',').map((x) => x.trim()).filter(Boolean),
   // what the platform owes coaches, physios/doctors and shop sellers after the customer has paid (see docs/settlement.md)
   settlement: {
     commissionBp: Math.min(10000, Math.max(0, Number.parseInt(env.PROVIDER_COMMISSION_BP ?? '0', 10) || 0)),   // platform fee on provider sales, basis points

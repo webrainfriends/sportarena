@@ -189,14 +189,16 @@ cap({
   summary: 'Finish a sign-in that returned mfa_required: send the mfa_token with a 6-digit authenticator code or a recovery code. The challenge lasts 5 minutes and allows 5 wrong tries.',
   input: z.object({ mfa_token: z.string().min(10).max(200), code: code6 }),
   async handler({ meta }, i) {
-    const ch = await one("SELECT id, user_id, attempts FROM account_tokens WHERE token_hash=$1 AND purpose='mfa_login' AND used_at IS NULL AND expires_at > now()", [sha256(i.mfa_token)]);
+    const ch = await one("SELECT id, user_id, attempts, sso_connection_id FROM account_tokens WHERE token_hash=$1 AND purpose='mfa_login' AND used_at IS NULL AND expires_at > now()", [sha256(i.mfa_token)]);
     if (!ch) throw unauthorized('This sign-in expired. Please sign in again.');
     if (ch.attempts >= 5) { await query('UPDATE account_tokens SET used_at = now() WHERE id=$1', [ch.id]); throw unauthorized('Too many wrong codes. Please sign in again.'); }
     try { await checkSecondFactor(ch.user_id, i.code); }
     catch (e) { await query('UPDATE account_tokens SET attempts = attempts + 1 WHERE id=$1', [ch.id]); throw e; }
     if (!(await one('UPDATE account_tokens SET used_at = now() WHERE id=$1 AND used_at IS NULL RETURNING id', [ch.id]))) throw unauthorized('This sign-in was already completed.');
     const u = await one('SELECT id, handle, display_name, roles, avatar_emoji, avatar_color, avatar_url, avatar_cutout, access_status FROM users WHERE id=$1', [ch.user_id]);
-    return { user: u, ...(await startSession(u, meta, { mfa: true })) };
+    // a challenge that followed an organisation sign-in opens a session tagged to that connection (so offboarding and its session length apply)
+    const sso = ch.sso_connection_id ? await one('SELECT id AS connection_id, session_hours AS hours FROM org_sso_connections WHERE id=$1', [ch.sso_connection_id]) : null;
+    return { user: u, ...(await startSession(u, meta, { mfa: true, sso })) };
   },
 });
 cap({
