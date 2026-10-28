@@ -14,6 +14,7 @@ import { starterFor } from '../documents/layout.js';
 import { renderEnrolmentLetter } from '../documents/render.js';
 import { authority, can, need, subtree, bodyById, logFed, AFF_STATUS, LIC_STATUS, today, dateStr } from '../federation.js';
 import { subjectFor, staffCan } from '../federation-subjects.js';
+import { officerOf } from '../integrity.js';
 import { loadLogo, mustAccess } from './branded-documents.js';
 
 const TAG = 'Federation';
@@ -81,7 +82,7 @@ cap({
     return {
       body: { id: body.id, name: body.name, level: body.level, abbreviation: body.abbreviation, country: body.country, status: body.status },
       scope: { include_descendants: i.include_descendants, bodies: ids.length },
-      me: { admin: auth.admin, roles: auth.roles.map((r) => r.role), read_only_via_parent: auth.viaAncestor, can: Object.fromEntries(['affiliations', 'licences', 'sanctions', 'governance', 'evidence', 'reports'].map((p) => [p, can(auth, p)])) },
+      me: { admin: auth.admin, roles: auth.roles.map((r) => r.role), read_only_via_parent: auth.viaAncestor, can: Object.fromEntries(['affiliations', 'licences', 'sanctions', 'governance', 'evidence', 'reports'].map((p) => [p, can(auth, p)]).concat([['integrity', !!(await officerOf(user, body.id))]])) },
       counts: {
         affiliations: { pending: (a.submitted ?? 0) + (a.under_review ?? 0), needs_info: a.needs_info ?? 0, approved: a.approved ?? 0, suspended: a.suspended ?? 0, expired: a.expired ?? 0, expiring_30: affExp.d30, expiring_60: affExp.d60 },
         licences: { pending: (l.submitted ?? 0) + (l.under_review ?? 0), needs_info: l.needs_info ?? 0, active: l.active ?? 0, suspended: l.suspended ?? 0, expired: l.expired ?? 0, expiring_30: licExp.d30, expiring_60: licExp.d60 },

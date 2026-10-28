@@ -14,10 +14,10 @@ import { explain } from './access';
 import { c } from './theme';
 
 export const LEVEL_LABEL = { international: 'International', continental: 'Continental', national: 'National', regional: 'Regional', state: 'State', district: 'District', league: 'League' };
-export const ROLE_LABEL = { registrar: 'Registrar', licensing: 'Licensing officer', sanctioner: 'Sanctioning officer', secretary: 'Secretary', compliance: 'Compliance', auditor: 'Auditor' };
+export const ROLE_LABEL = { registrar: 'Registrar', licensing: 'Licensing officer', sanctioner: 'Sanctioning officer', secretary: 'Secretary', compliance: 'Compliance', auditor: 'Auditor', integrity: 'Integrity officer' };
 export const ROLE_HELP = {
   registrar: 'Reviews and decides club affiliations', licensing: 'Reviews and decides licences', sanctioner: 'Reviews and decides competition sanctions',
-  secretary: 'Publishes policies and sets the federation calendar', compliance: 'Reads everything including evidence; decides nothing', auditor: 'Reads reports and exports; decides nothing',
+  secretary: 'Publishes policies and sets the federation calendar', compliance: 'Reads everything including evidence; decides nothing', auditor: 'Reads reports and exports; decides nothing', integrity: 'Runs sport integrity and anti-doping administration: cases, references, decisions and education',
 };
 export const HOLDER_ROLES = [{ value: 'athlete', label: 'Athlete' }, { value: 'coach', label: 'Coach' }, { value: 'official', label: 'Official' }, { value: 'administrator', label: 'Administrator' }, { value: 'other', label: 'Other' }];
 export const POLICY_LABEL = {

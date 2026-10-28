@@ -223,6 +223,8 @@ import './federation-bodies.js';
 import './federation-affiliations.js';
 import './federation-licences.js';
 import './federation-sanctions.js';
+import './integrity-cases.js';
+import './integrity-records.js';
 import './federation-governance.js';
 import './federation-home.js';
 import './officials-assessors.js';
