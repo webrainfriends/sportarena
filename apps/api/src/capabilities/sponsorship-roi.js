@@ -7,7 +7,7 @@ import { tx, many, one, pool } from '../db.js';
 import { badRequest, conflict, forbidden, notFound, unprocessable } from '../errors.js';
 import { audit } from '../helpers.js';
 import { dealContext, logHistory } from '../sponsor-agreements.js';
-import { sponsorAccess, assertSponsorCan, sponsorStaffSql } from '../sponsor-access.js';
+import { sponsorAccess, assertSponsorCan, sponsorStaffSql, SPONSOR_ACTIONS } from '../sponsor-access.js';
 import { recipientSql } from '../beneficiary-portfolio.js';
 import { exportReport } from '../sponsor-report-export.js';
 import { capabilities } from '../registry.js';
@@ -95,12 +95,18 @@ const assumptions = z.partialRecord(z.enum(VALUABLE_METRICS), z.object({ per: z.
 const versionIn = { currency: z.string().regex(/^[A-Z]{3}$/), assumptions, basis_note: z.string().trim().min(10).max(1000).describe('why these rates: your own rationale, shown beside every estimate') };
 const SV = 'v.id, v.model_id, v.version, v.currency, v.assumptions, v.basis_note, v.created_at, m.name, m.sponsor_id';
 
-async function brand(c, user, sponsorId, action) {
+/**
+ * The caller's live authority over a brand. Brand-wide by default (valuation assumptions belong to the whole brand, so a department-scoped member is refused).
+ * `scoped: true` checks the ROLE only: the agreement-level department rules (dealContext / the department-filtered SQL) then decide what the person sees.
+ */
+async function brand(c, user, sponsorId, action, { scoped = false } = {}) {
   const sp = (await c.query('SELECT id, name, owner_id, organisation_id, entity_id FROM sponsors WHERE id=$1', [sponsorId])).rows[0];
   if (!sp) throw notFound('Brand');
   const access = await sponsorAccess(user, sp, c);
   if (!access) throw notFound('Brand');
-  assertSponsorCan(access, action, { what: action === 'valuation' ? 'set valuation assumptions' : 'read ROI data' });
+  if (scoped) {
+    if (!SPONSOR_ACTIONS[action].includes(access.role)) throw forbidden(`Your role (${access.repRole ?? access.role}) cannot read ROI data for this brand`);
+  } else assertSponsorCan(access, action, { what: action === 'valuation' ? 'set valuation assumptions' : 'read ROI data' });
   return { sp, access };
 }
 
@@ -185,7 +191,7 @@ cap({
     const where = `${sponsorStaffSql(1, 'roi')} AND ss.sponsor_id=$2 AND ss.accepted_version IS NOT NULL AND ss.status = ANY(ARRAY[${RUNNING.map((s) => `'${s}'`).join(',')}]) AND ($3::text IS NULL OR ss.status=$3) AND ($4::text IS NULL OR ss.target_type=$4)
       AND (ss.budget_approval IS NULL OR ss.budget_approval NOT IN ('pending','rejected'))`;
     const base = `FROM sponsorships ss JOIN sponsors sp ON sp.id=ss.sponsor_id WHERE ${where}`;
-    await brand(pool, user, i.sponsor_id, 'roi'); // 404 when you do not run this brand, 403 when your role cannot read ROI
+    await brand(pool, user, i.sponsor_id, 'roi', { scoped: true }); // 404 when you do not run this brand, 403 when your role cannot read ROI; department scope is applied by the query below
     const total = (await one(`SELECT count(*)::int AS n ${base}`, params)).n;
     const ids = (await many(`SELECT ss.id ${base} ORDER BY ss.ends_on NULLS LAST, ss.id LIMIT $5 OFFSET $6`, [...params, i.limit, i.offset])).map((r) => r.id);
     const rows = [];
@@ -283,7 +289,7 @@ cap({
 
 // ------------------------------------------------------------------ immutable reports
 const COLUMNS = [
-  { key: 'recipient', label: 'Beneficiary', type: 'text' }, { key: 'status', label: 'Status', type: 'text' }, { key: 'period', label: 'Period', type: 'text' },
+  { key: 'recipient', label: 'Beneficiary', type: 'text' }, { key: 'status', label: 'Status', type: 'text' }, { key: 'period', label: 'Period', type: 'text' }, { key: 'currency', label: 'Currency', type: 'text' },
   { key: 'committed_cents', label: 'Committed', type: 'money' }, { key: 'confirmed_cents', label: 'Confirmed', type: 'money' }, { key: 'outstanding_cents', label: 'Outstanding', type: 'money' },
   { key: 'deliverables_accepted', label: 'Accepted', type: 'int' }, { key: 'deliverables_missed', label: 'Missed', type: 'int' },
   { key: 'placement_impressions', label: 'Impressions', type: 'int' }, { key: 'placement_clicks', label: 'Clicks', type: 'int' }, { key: 'provider_reported', label: 'Provider-reported', type: 'text' },
@@ -358,7 +364,7 @@ async function reportFor(c, user, rid) {
     if (r.view === 'sponsor') {
       const sp = (await c.query('SELECT id, name, owner_id, organisation_id, entity_id FROM sponsors WHERE id=$1', [r.sponsor_id])).rows[0];
       const access = await sponsorAccess(user, sp, c);
-      assertSponsorCan(access, 'roi', { what: 'read ROI reports' });
+      if (!access || !SPONSOR_ACTIONS.roi.includes(access.role)) throw forbidden();
       if (access.departmentId) { const own = (await c.query('SELECT count(*)::int AS n FROM sponsorships WHERE id = ANY($1) AND department_id IS NOT DISTINCT FROM $2', [r.sponsorship_ids, access.departmentId])).rows[0].n; if (own !== r.sponsorship_ids.length) throw forbidden(); }
     } else {
       const ctx = await dealContext(c, r.sponsorship_ids[0], user);
@@ -369,6 +375,9 @@ async function reportFor(c, user, rid) {
 }
 const verified = (r) => sha(r.snapshot) === r.content_sha256;
 
+/** Every agreement a report covers must be inside the caller's (department) scope, exactly as when the report is opened. */
+const ALL_MINE = `NOT EXISTS (SELECT 1 FROM unnest(r.sponsorship_ids) AS u(sid) JOIN sponsorships ss2 ON ss2.id=u.sid WHERE NOT (${sponsorStaffSql(1, 'roi').replace(/\bss\./g, 'ss2.')}))`;
+
 cap({
   name: 'list_sponsorship_roi_reports', method: 'GET', path: '/sponsorship-roi-reports', tag: TAG,
   summary: 'Issued ROI reports you may read now: as the brand (roi permission) or as the beneficiary of the agreement. Access is checked live, so losing a role or the agreement removes the report from the list.',
@@ -377,7 +386,7 @@ cap({
     const params = [user.id, i.sponsor_id ?? null, i.limit, i.offset];
     const rows = i.view === 'sponsor'
       ? await many(`SELECT r.id, r.view, r.kind, r.sponsorship_ids, r.period_from::text AS period_from, r.period_to::text AS period_to, r.content_sha256, r.issued_at, r.valuation_version_id IS NOT NULL AS has_estimate, sp.name AS sponsor_name
-          FROM sponsor_roi_reports r JOIN sponsors sp ON sp.id=r.sponsor_id JOIN sponsorships ss ON ss.id=r.sponsorship_ids[1] WHERE r.view='sponsor' AND ${sponsorStaffSql(1, 'roi')} AND ($2::uuid IS NULL OR r.sponsor_id=$2) ORDER BY r.issued_at DESC, r.id LIMIT $3 OFFSET $4`, params)
+          FROM sponsor_roi_reports r JOIN sponsors sp ON sp.id=r.sponsor_id JOIN sponsorships ss ON ss.id=r.sponsorship_ids[1] WHERE r.view='sponsor' AND ${sponsorStaffSql(1, 'roi')} AND ${ALL_MINE} AND ($2::uuid IS NULL OR r.sponsor_id=$2) ORDER BY r.issued_at DESC, r.id LIMIT $3 OFFSET $4`, params)
       : await many(`SELECT r.id, r.view, r.kind, r.sponsorship_ids, r.period_from::text AS period_from, r.period_to::text AS period_to, r.content_sha256, r.issued_at, false AS has_estimate, sp.name AS sponsor_name
           FROM sponsor_roi_reports r JOIN sponsors sp ON sp.id=r.sponsor_id JOIN sponsorships ss ON ss.id=r.sponsorship_ids[1] WHERE r.view='recipient' AND ${recipientSql('ss')} AND ($2::uuid IS NULL OR r.sponsor_id=$2) ORDER BY r.issued_at DESC, r.id LIMIT $3 OFFSET $4`, params);
     return rows;
