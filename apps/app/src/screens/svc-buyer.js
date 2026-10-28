@@ -9,7 +9,7 @@ import { FormSheet } from '../FormSheet';
 import { Btn, Card, Chip, Empty, ErrorBox, H1, Loading, Row, Screen, Section, Sheet, T } from '../ui';
 import { localToIso } from '../vtime';
 import { useDo } from './console-utils';
-import { DocButton, ExportsPanel, Kpi, Kv, Note, Status, Tabs, Wrap, catLabel, collectScope, day, label, money, scopeFields, useCatalogue, when } from './svc-common';
+import { ChainTrace, DocButton, ExportsPanel, Kpi, Kv, Note, PerformanceRecord, Status, Tabs, Wrap, catLabel, collectScope, day, label, money, scopeFields, useCatalogue, when } from './svc-common';
 
 const TABS = [['plan', 'Plan'], ['rfqs', 'Quotes'], ['orders', 'Orders'], ['invoices', 'Invoices'], ['team', 'People & policy'], ['reports', 'Reports']];
 
@@ -210,6 +210,7 @@ function OrderSheet({ b, id, onClose }) {
       {o.travel_confirmation ? <Kv k="booking" v={`${label(o.travel_confirmation)}${o.third_party_ref ? ` · ref ${o.third_party_ref}` : ''} — not a live airline/hotel reservation`} /> : null}
       <Wrap><DocButton type="service_order" id={o.id} title="Order PDF" /><DocButton type="agreement" id={o.id} title="Agreement / SOW" /><DocButton type="service_receipt" id={o.id} title="Service receipt" /><DocButton type="completion_report" id={o.id} title="Completion report" /></Wrap>
       {!['not_required', 'fully_signed', 'signed_by_buyer'].includes(o.agreement_status) && can('purchaser') ? <Btn small color={c.paper} ink={c.ink} title="Acknowledge agreement" onPress={() => setForm('sign')} style={{ alignSelf: 'flex-start' }} /> : null}
+      <Section title="Commercial chain"><ChainTrace path={`/service-orders/${o.id}/chain`} /></Section>
       <Section title="Lines">{o.lines.map((l) => <Row key={l.id} title={`${l.line_no}. ${l.description}`} sub={`ordered ${Number(l.qty_ordered)} ${label(l.unit)} · accepted ${Number(l.qty_accepted)} · invoiced ${Number(l.qty_invoiced)}`} right={live && can('acceptor') && Number(l.qty_accepted) < Number(l.qty_ordered) ? <Btn small title="Accept work" onPress={() => setForm({ accept: l })} /> : null} />)}</Section>
       <Section title="Visits & shifts">
         {vis.data?.length ? vis.data.map((v) => <Row key={v.id} title={when(v.starts_at)} sub={`${v.site_label ?? ''} ${v.crew_count ? `· ${v.crew_count} crew` : ''} ${v.actual_qty ? `· reported ${Number(v.actual_qty)}` : ''}`} right={<><Status s={v.status} />{v.status === 'submitted_for_acceptance' && can('acceptor') ? <><Btn small title="Accept" onPress={() => setForm({ visit: v, decision: 'accepted' })} /><Btn small color={c.paper} ink={c.red} title="Reject" onPress={() => setForm({ visit: v, decision: 'rejected' })} /></> : null}</>} />) : <Note>No visits yet.</Note>}
@@ -219,6 +220,14 @@ function OrderSheet({ b, id, onClose }) {
         {live && can('purchaser') ? <Wrap><Btn small color={c.paper} ink={c.ink} title="Request a change" onPress={() => setForm('variation')} /><Btn small color={c.paper} ink={c.red} title="End this order" onPress={() => setForm('terminate')} /></Wrap> : null}
         {['pending_supplier', 'changes_proposed', 'confirmed'].includes(o.status) && can('purchaser') && o.lines.every((l) => Number(l.qty_accepted) === 0) ? <Btn small color={c.paper} ink={c.red} title="Cancel order" onPress={() => setForm('cancel')} style={{ alignSelf: 'flex-start' }} /> : null}
       </Section>
+      <Section title="This supplier, with you">
+        <PerformanceRecord profileId={o.profile_id} buyerId={o.buyer_id} />
+        {(can('acceptor') || can('purchaser')) && o.lines.some((l) => Number(l.qty_accepted) > 0) ? <Btn small color={c.paper} ink={c.ink} title="Rate this supplier" onPress={() => setForm('rate')} style={{ alignSelf: 'flex-start' }} accessibilityLabel="Rate this supplier" /> : null}
+      </Section>
+      <FormSheet visible={form === 'rate'} onClose={() => setForm(null)} title="Rate the supplier" submitLabel="Save rating" initial={{ stars: 5 }}
+        notice="One rating per order. It is kept as written and shown to the supplier with how many orders it rests on; it is not a hidden score."
+        fields={[{ key: 'stars', label: 'How did the supplier do?', type: 'chips', options: [1, 2, 3, 4, 5].map((n) => ({ value: n, label: `${n} ★` })) }, { key: 'comment', label: 'Comment (optional)', type: 'multiline' }]}
+        onSubmit={async (v) => { await api.post(`/service-orders/${o.id}/rating`, { stars: Number(v.stars), comment: v.comment || undefined }); r.reload(); return 'Thank you — rating recorded'; }} />
       <FormSheet visible={form === 'sign'} onClose={() => setForm(null)} title="Acknowledge agreement" fields={[{ key: 'typed_name', label: 'Type your full name to acknowledge' }]} onSubmit={async (v) => { await api.post(`/service-orders/${o.id}/agreement`, v); r.reload(); return 'Recorded (an acknowledgement, not a qualified e-signature)'; }} />
       <FormSheet visible={!!form?.accept} onClose={() => setForm(null)} title="Accept work" fields={[{ key: 'quantity', label: `Quantity accepted (up to ${form?.accept ? Number(form.accept.qty_ordered) - Number(form.accept.qty_accepted) : ''})`, type: 'number' }]}
         onSubmit={async (v) => { await api.post(`/service-orders/${o.id}/acceptance`, { line_no: form.accept.line_no, decision: 'accepted', quantity: Number(v.quantity) }); act(async () => null); return 'Accepted'; }} />

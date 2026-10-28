@@ -12,6 +12,7 @@ import { Head } from './coaching';
 import { c } from '../theme';
 import { explain } from '../access';
 import { CATEGORIES } from './tender-zone';
+import { ChainTrace } from './svc-common';
 import { Checks, Chips, DataTable, KV, Notice, Panel, Split, Status, amount, day, nice, openDocument, saveExport, openBase64, when } from '../tender-ui';
 
 export function TenderOrders() {
@@ -48,6 +49,10 @@ export function TenderOrder({ id }) {
         <Split main={
           <>
             <Panel title="Three separate statuses"><Checks items={[{ state: 'ok', title: `Award line: ${nice(d.award_line_status ?? 'accepted')}`, detail: 'The supplier accepted the provisional award.' }, { state: d.status === 'cancelled' ? 'bad' : d.status === 'completed' ? 'ok' : 'warn', title: `Order: ${nice(d.status)}`, detail: 'Completion is confirmed by the buyer. It does not mean the work was paid.' }, { state: d.contract_status === 'pending' ? 'warn' : 'ok', title: `Contract: ${nice(d.contract_status)}`, detail: 'Signed here is a manual record, not a validated e-signature.' }]} /></Panel>
+            <Panel title="Delivery, invoice and payment" right={d.viewer?.buyer && !d.service_order && d.status !== 'cancelled' ? <Btn small title="Link to service order" onPress={async () => { try { await api.post(`/procurement-orders/${id}/service-order`, {}); toast('Linked'); o.reload(); } catch (e) { toast(explain(e)); } }} accessibilityLabel="Link this order to a service order" /> : null}>
+              <T size={13} color={c.mute}>{d.service_order ? `Service order ${d.service_order.number} carries scheduling, receiving and acceptance, invoices and matching, payments and the event commitment. This tender order is its contract record.` : 'This older order has no service order yet. Link it to run delivery, acceptance, invoices and payments in one place; nothing is lost.'}</T>
+              <ChainTrace path={`/procurement-orders/${id}/chain`} />
+            </Panel>
             <Panel title="Order"><KV items={[['Amount', amount(d.amount_minor, d.currency)], ['Contract type', nice(d.contract_type)], ['Preparation', d.prep_start ? day(d.prep_start) : null], ['Service', d.service_start ? `${day(d.service_start)} to ${day(d.service_end)}` : null], ['Teardown', d.teardown_end ? day(d.teardown_end) : null], ['Commitment', d.commitment ? amount(d.commitment.amount_minor, d.commitment.currency) : null], ['Proposal receipt', s.submission.receipt_no], ['Tender version', `v${s.tender.version}`], ['Rubric version', `v${s.award.rubric_version}`]]} />{d.commitment?.note ? <Notice tone="info">{d.commitment.note}</Notice> : null}<T size={12} color={c.mute}>A commitment is not proof of delivery or payment. Service scheduling, acceptance, invoices and payment continue from this order.</T></Panel>
             {d.terms && (d.terms.renewal_options > 0 || d.terms.notice_days > 0 || d.terms.milestones.length || d.terms.notice) ? (
               <Panel title="Contract terms" right={d.viewer?.buyer && d.terms.renewals_left > 0 && !d.terms.notice && ['confirmed', 'in_progress'].includes(d.status) ? <Btn small title={`Renew (${d.terms.renewals_used + 1} of ${d.terms.renewal_options})`} onPress={() => setSheet('renew')} accessibilityLabel="Exercise the next renewal option" /> : null}>
