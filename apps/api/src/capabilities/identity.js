@@ -11,6 +11,7 @@ import { badgesFor, withBadges } from '../verification.js';
 import { profileCredentials } from '../education.js';
 import { viewerTiers, visibleFields } from '../athlete-profile.js';
 import { affiliationsFor } from './athlete-profile.js';
+import { PLATFORM_ROLES, reconcilePlatformRoles, withoutPlatformRoles } from '../platform.js';
 import { canSeeYouth, NOT_YOUTH_SQL, refreshYouth, YOUTH_SQL } from '../youth.js';
 
 const PII = ['full_name', 'phone', 'dob', 'national_id', 'address'];
@@ -84,6 +85,7 @@ cap({
   summary: 'Exchange email + password for a session (if two-step verification is on you get mfa_required + mfa_token instead; finish with login_mfa): a short-lived access token (bearer) plus a rotating refresh_token (use refresh_session). Each sign-in is a revocable server session (see list_login_sessions, logout).',
   input: z.object({ email: z.string().email(), password: z.string() }),
   async handler({ meta }, i) {
+    await reconcilePlatformRoles(console, { email: i.email }); // platform roles only ever stay with the platform-admin list
     const u = await one('SELECT id, handle, display_name, roles, avatar_emoji, avatar_color, avatar_url, avatar_cutout, access_status, password_hash FROM users WHERE email_idx = $1', [blindIndex(i.email)]);
     // always run a hash to keep timing similar for unknown emails
     const ok = await verifyPassword(i.password, u?.password_hash ?? await decoyHash());
@@ -148,13 +150,15 @@ cap({
   input: z.object({ add: z.array(z.enum(selfRoles)).default([]), remove: z.array(z.enum(selfRoles)).default([]) })
     .refine((i) => i.add.length + i.remove.length > 0, 'Nothing to change'),
   async handler({ user }, i) {
-    const next = [...new Set([...user.roles.filter((r) => !i.remove.includes(r)), ...i.add])];
-    if (!next.length) throw badRequest('Keep at least one role');
+    // platform roles are not part of this feature: they are kept as they are and can neither be added nor removed here
+    const held = user.roles.filter((r) => PLATFORM_ROLES.includes(r));
+    const next = [...new Set([...user.roles.filter((r) => !i.remove.includes(r)), ...i.add.filter((r) => !PLATFORM_ROLES.includes(r)), ...held])];
+    if (!withoutPlatformRoles(next).length) throw badRequest('Keep at least one role');
     await tx(async (c) => {
       await c.query('UPDATE users SET roles = $2 WHERE id = $1', [user.id, next]);
       await audit(c, user.id, 'update_roles', 'users', user.id);
     });
-    return { roles: next };
+    return { roles: withoutPlatformRoles(next) };
   },
 });
 

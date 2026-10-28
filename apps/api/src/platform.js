@@ -2,12 +2,47 @@
 // the approval switch, the contract text and the explainable "assistant" scoring used by the partner module.
 import { createHash } from 'node:crypto';
 import { config } from './config.js';
-import { one } from './db.js';
+import { one, query } from './db.js';
+import { isPlatformAdminEmail, platformAdminEmails } from './access.js';
 import { blindIndex, encrypt, hashPassword } from './crypto.js';
+import { forbidden } from './errors.js';
 
 /** Platform team = the `admin` role. The platform owner additionally holds `platform_admin` and is the only one who can add team members. */
 export const isPlatform = (user) => !!user?.roles?.includes('admin');
 export const isPlatformOwner = (user) => !!user?.roles?.includes('platform_admin');
+
+/**
+ * Server-side gate for the platform-admin-only surfaces (commercial console). The `platform_admin` role alone is not enough: the account's
+ * email must also be on the platform-admin list right now, so a stale role label can never open these doors. Others get 403.
+ */
+export async function mustBePlatformAdmin(user) {
+  if (!isPlatformOwner(user)) throw forbidden('Only the platform admin can do that');
+  const idx = platformAdminEmails().map((e) => blindIndex(e));
+  const ok = await one('SELECT 1 AS x FROM users WHERE id = $1 AND email_idx = ANY($2::text[])', [user.id, idx]);
+  if (!ok) throw forbidden('Only the platform admin can do that');
+}
+
+/** The two platform-only roles. They are never shown or offered anywhere an ordinary person manages roles, and only allow-listed emails hold them. */
+export const PLATFORM_ROLES = ['admin', 'platform_admin'];
+export const withoutPlatformRoles = (roles = []) => roles.filter((r) => !PLATFORM_ROLES.includes(r));
+
+/**
+ * Enforce the allow-list (PLATFORM_ADMIN_EMAILS): any account holding `admin` / `platform_admin` whose email is not on it loses those two
+ * role labels (it keeps every other role, its data and its history; at least `athlete` remains). Idempotent. Runs for everyone at start-up and
+ * for the signing-in account at every sign-in (`{ email }`).
+ */
+export async function reconcilePlatformRoles(log = console, { email } = {}) {
+  const idx = platformAdminEmails().map((e) => blindIndex(e));
+  const rows = (await query(
+    `UPDATE users SET roles = CASE WHEN cardinality(array_remove(array_remove(roles,'admin'),'platform_admin')) = 0 THEN ARRAY['athlete']
+                                   ELSE array_remove(array_remove(roles,'admin'),'platform_admin') END
+      WHERE ('admin' = ANY(roles) OR 'platform_admin' = ANY(roles)) AND (email_idx IS NULL OR NOT (email_idx = ANY($1::text[])))
+        AND ($2::text IS NULL OR email_idx = $2)
+      RETURNING id`, [idx, email ? blindIndex(email) : null])).rows;
+  for (const r of rows) await query("INSERT INTO audit_log(actor_id, action, entity, entity_id) VALUES (NULL,'revoke_platform_roles','users',$1)", [r.id]);
+  if (rows.length) log.log(`[platform] removed platform roles from ${rows.length} account(s) not on the platform-admin list`);
+  return rows.length;
+}
 
 /** When false (development / tests only) venues and prices go live without platform approval. Production always requires it. */
 export const approvalsOn = () => config.isProd || process.env.PLATFORM_APPROVALS !== 'off';
@@ -19,6 +54,7 @@ export const approvalsOn = () => config.isProd || process.env.PLATFORM_APPROVALS
  */
 export async function bootstrapPlatformOwner(log = console) {
   const { PLATFORM_ADMIN_EMAIL: email, PLATFORM_ADMIN_PASSWORD: password } = process.env;
+  if (email && !isPlatformAdminEmail(email)) { log.error('[platform] PLATFORM_ADMIN_EMAIL is not on the platform-admin list (PLATFORM_ADMIN_EMAILS); not creating it'); return null; }
   if (!email || !password) return null;
   const handle = (process.env.PLATFORM_ADMIN_HANDLE ?? 'platformarena').toLowerCase().replace(/[^a-z0-9_]/g, '_').slice(0, 24);
   const name = process.env.PLATFORM_ADMIN_NAME ?? 'PlatformArena';

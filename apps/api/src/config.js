@@ -46,6 +46,8 @@ export const config = {
   appleRedirectUri: env.APPLE_REDIRECT_URI ?? 'https://gotmygame.com/api/v1/auth/apple/callback',
   // The Google account that approves or rejects everyone else's access (and holds the platform owner role). Set by the deploy workflow; unset = nobody gets it.
   superAdminEmail: env.SUPER_ADMIN_EMAIL,
+  // The only accounts that may hold the `admin` / `platform_admin` roles (comma-separated). Falls back to SUPER_ADMIN_EMAIL; unset = nobody holds them.
+  platformAdminEmails: env.PLATFORM_ADMIN_EMAILS ?? env.SUPER_ADMIN_EMAIL,
   tokenTtl: env.TOKEN_TTL ?? '12h', // access-token lifetime
   refreshTtlDays: Number(env.REFRESH_TTL_DAYS ?? 30), // sliding: each rotation extends the session by this much
   requireSession: env.AUTH_REQUIRE_SESSION === 'true', // refuse pre-session JWTs that carry no session id

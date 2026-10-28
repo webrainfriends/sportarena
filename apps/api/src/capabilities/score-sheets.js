@@ -29,7 +29,7 @@ async function loadSheet(sheetId, c, lock = false) {
   if (!s) throw notFound('Score sheet');
   return s;
 }
-const totalsOf = (rs, score) => ({ ruleset: rs.label, kind: rs.kind, sets: score.sets, periods: score.periods, current_set: score.current_set, stats: score.stats });
+const totalsOf = (rs, score) => ({ ruleset: rs.label, kind: rs.kind, sets: score.sets, periods: score.periods, current_set: score.current_set, stats: score.stats, ...(score.scorecard ? { scorecard: score.scorecard } : {}), ...(score.shootout?.started ? { shootout: { home: score.shootout.goals.home, away: score.shootout.goals.away, winner: score.shootout.winner } } : {}) });
 const winnerTeam = (f, home, away) => (home === away ? null : home > away ? f.home_team_id : f.away_team_id);
 const notifyParties = async (c, f, ev, user, msg) => {
   const owners = (await c.query('SELECT DISTINCT owner_id FROM teams WHERE id = ANY($1::uuid[])', [[f.home_team_id, f.away_team_id].filter(Boolean)])).rows.map((r) => r.owner_id);
@@ -69,7 +69,7 @@ cap({
       }
       await c.query("UPDATE fixtures SET status='finished', finished_at=now(), paused_by_event=false WHERE id=$1", [i.id]);
       const score = computeScore(ruleset, events);
-      const manual = ruleset.kind === 'manual';
+      const manual = ruleset.kind === 'manual' && !ruleset.cards; // a bout decided by round cards has a log to pre-fill from
       const created = (await c.query(
         `INSERT INTO score_sheets(fixture_id, event_id, source, home_score, away_score, winner_team_id, totals, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
         [i.id, x.f.event_id, manual ? 'manual' : 'match_log', manual ? null : score.home, manual ? null : score.away, manual ? null : winnerTeam(x.f, score.home, score.away), JSON.stringify(totalsOf(ruleset, score)), user.id])).rows[0];

@@ -72,6 +72,7 @@ try {
   const session = async (who, viewport) => {
     const ctx = await browser.newContext({ viewport, deviceScaleFactor: 1 }); const page = await ctx.newPage();
     page.on('pageerror', (e) => log('[pageerror]', e.message));
+    if (process.env.V) { page.on('console', (m) => ['error', 'warning'].includes(m.type()) && log('[console]', m.text().slice(0, 220))); page.on('response', (r) => r.request().method() === 'POST' && log('[post]', r.status(), r.url().replace(/^.*\/api\/v1/, ''))); }
     if (who) { const r = await ctx.request.post(`${B}/auth/login`, { headers: { 'x-sa-client': 'web', origin: 'http://localhost:4100' }, data: { email: who.email, password: 'correct-horse-battery' } }); if (!r.ok()) throw new Error(`login ${who.handle} ${r.status()}`); }
     await page.goto('http://localhost:4100/'); await page.waitForTimeout(2500);
     return { ctx, page };
@@ -103,6 +104,10 @@ try {
     check(await vis(p, /Goal \+1/), 'the scoring pad appears once the game is live');
     await p.getByText(players.home[0].display_name).first().click().catch(() => {}); await wait(p, 300);
     await p.getByText(/Goal \+1/).first().click(); await wait(p, 1500);
+    await tap(p, '＋ Added time'); await wait(p, 500);
+    await p.getByText('Announce', { exact: true }).first().click(); await wait(p, 1200);
+    await shot(p, '02a-added-time-debug');
+    check(await vis(p, /\+3′ added time/), 'the referee can announce added time and it shows on the pad');
     await shot(p, '02-football-live-phone');
     check(await vis(p, 'All saved'), 'a tap that reached the server shows "All saved"');
     const row = (await db.query("SELECT player_id FROM match_events WHERE fixture_id=$1 AND kind='goal'", [football.fx])).rows[0];
@@ -188,15 +193,22 @@ try {
     check(await vis(p, /Penalty shoot-out/), 'the shoot-out board appears'); await shot(p, '14-cup-shootout-phone');
     await ctx.close();
   }
-  // ---------------------------------------------------------------- other sports: a native ruleset that was missing, and a judged sport scored by totals
+  // ---------------------------------------------------------------- other sports: a native ruleset, round cards, a result-decided sport
   {
-    const gridiron = await mkGame('american-football', 'Gridiron Cup'), ring = await mkGame('boxing', 'Ring Night');
-    for (const g of [gridiron, ring]) await call('POST', `/fixtures/${g.fx}/start`, { token: ref.token });
+    const gridiron = await mkGame('american-football', 'Gridiron Cup'), ring = await mkGame('boxing', 'Ring Night'), board = await mkGame('chess', 'Board Night');
+    for (const g of [gridiron, ring, board]) await call('POST', `/fixtures/${g.fx}/start`, { token: ref.token });
     const { ctx, page: p } = await session(ref, phone);
     await navTo(p, 'MatchCentre', { id: gridiron.fx });
     check(await vis(p, /Touchdown \+6/) && await vis(p, /Field goal \+3/), 'American football has its own scoring buttons'); await shot(p, '18-american-football-phone');
     await navTo(p, 'MatchCentre', { id: ring.fx });
-    check(await vis(p, 'Scored by totals or by judges'), 'a judged sport says plainly that its result is entered on the score sheet'); await shot(p, '19-boxing-totals-phone');
+    check(await vis(p, "WHICH JUDGE'S CARD?"), 'a boxing bout offers the judges\' round-card pad');
+    await p.getByText(`10–9 ${ring.home.name}`).first().click(); await wait(p, 1500);
+    check(await vis(p, /Judge 1 · round 1: 10–9/), 'the card appears in the timeline'); await shot(p, '19-boxing-cards-phone');
+    check((await db.query("SELECT count(*)::int AS n FROM match_events WHERE fixture_id=$1 AND kind='round_card'", [ring.fx])).rows[0].n === 1, 'one round card was recorded');
+    await navTo(p, 'MatchCentre', { id: board.fx });
+    check(await vis(p, 'Who won?'), 'a chess game asks for its result: it has no running score');
+    await p.getByText(`${board.home.name} won`, { exact: true }).first().click(); await p.getByText('Checkmate', { exact: true }).first().click(); await p.getByText('Record the result', { exact: true }).first().click(); await wait(p, 1500);
+    check(await vis(p, /Recorded live/), 'the result is recorded live'); await shot(p, '20-chess-outcome-phone');
     await ctx.close();
   }
   // ---------------------------------------------------------------- a heat, run live from the Games screen
@@ -229,6 +241,28 @@ try {
     await t.page.getByText(/Timetable|Schedule/).first().click().catch(() => {}); await wait(t.page, 1200);
     await t.page.getByText(sess.label).first().click().catch(() => {}); await wait(t.page, 2200); await shot(t.page, '17-session-live-tablet');
     await t.ctx.close();
+  }
+  // ---------------------------------------------------------------- a judged routine: the judges' panel decides
+  {
+    const mev = await call('POST', '/events', { token: org.token, body: { name: 'Gym Showcase', sport: 'multi-sport', kind: 'tournament' } });
+    await call('PATCH', `/events/${mev.id}/programme`, { token: org.token, body: { public_names: true } });
+    const house = await call('POST', `/events/${mev.id}/houses`, { token: org.token, body: { name: 'Gold', color: '#fb0' } });
+    const gym = [];
+    for (const nm of ['Isha Kapoor', 'Tara Bose', 'Neha Rao']) gym.push(await call('POST', `/events/${mev.id}/participants`, { token: org.token, body: { full_name: nm, house_id: house.id, gender: 'female', grade: '8', roll_no: `G${gym.length}` } }));
+    const disc = await call('POST', `/events/${mev.id}/disciplines`, { token: org.token, body: { sport: 'artistic-gymnastics', name: 'Floor', officials_required: 0, result_type: 'score' } });
+    for (const [k, r] of gym.entries()) await call('POST', `/disciplines/${disc.id}/nominations`, { token: org.token, body: { participant_id: r.id, seed: 1 + k } });
+    await call('POST', `/disciplines/${disc.id}/heats`, { token: org.token, body: { lanes: 8 } });
+    const sess = (await call('GET', `/events/${mev.id}/sessions?discipline_id=${disc.id}`))[0];
+    await call('PATCH', `/sessions/${sess.id}`, { token: org.token, body: { scheduled_at: new Date(Date.now() + 7200e3).toISOString(), location: 'Gym hall' } });
+    const detail = await call('GET', `/sessions/${sess.id}`, { token: org.token });
+    for (const [j, v] of [7, 8, 8.5, 9, 6].entries()) await call('POST', `/sessions/${sess.id}/events`, { token: org.token, body: { kind: 'judge_score', entry_id: detail.entries[0].id, payload: { judge: j + 1, value: v } } });
+    const { ctx, page: p } = await session(org, phone);
+    await navTo(p, 'Games', { id: mev.id });
+    await p.getByText(/Timetable|Schedule/).first().click().catch(() => {}); await wait(p, 1200);
+    await p.getByText(sess.label).first().click().catch((e) => log('[open gym session]', e.message.slice(0, 80))); await wait(p, 2200);
+    check(await vis(p, "Judges' marks"), 'a judged discipline offers the judges\' marks sheet');
+    check(await vis(p, /R1: 7\.7 \(5 judges\)/), 'the panel mark is derived from the five judges (their mean)'); await shot(p, '21-gymnastics-panel-phone');
+    await ctx.close();
   }
   await browser.close();
 } catch (e) { log('FAIL  journey crashed:', e.stack ?? e.message); failures++; }

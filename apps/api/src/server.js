@@ -13,7 +13,9 @@ import { logger } from './logger.js';
 startMetrics();
 await initKeys();   // fail fast if the master key can't be loaded
 await migrate();
-await (await import('./platform.js')).bootstrapPlatformOwner();
+const platformMod = await import('./platform.js');
+await platformMod.reconcilePlatformRoles();   // only the platform-admin list may hold admin / platform_admin
+await platformMod.bootstrapPlatformOwner();
 if (config.isProd && config.allowInsecureHttp) console.warn('[security] ALLOW_INSECURE_HTTP=true: serving over plain HTTP. Personal data is NOT encrypted in transit. Enable TLS before real users sign up.');
 const app = createApp();
 const server = config.sslKeyFile && config.sslCertFile

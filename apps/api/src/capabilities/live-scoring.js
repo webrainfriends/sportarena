@@ -12,6 +12,7 @@ import { serialized } from '../serialize.js';
 import { fixtureContext, authorityOf, assertInLineup, broadcast } from './match-tracking.js';
 import { liveState, loggedEvents, rulesetForEvent, redactForPublic, publiclyNameable } from '../scoring/state.js';
 import { pluginFor, sessionPlugin, SESSION_KINDS } from '../scoring/plugins/index.js';
+import { sessionDefaults, AGGREGATES } from '../scoring/session.js';
 import { replayStream, withCorrection } from '../scoring/replay.js';
 import { isKnockout } from '../tournament/advance.js';
 import { discipline, mustSession, viewer, entryRows, isAssignedOfficial, recordSessionResults } from './multisport-play.js';
@@ -132,8 +133,9 @@ cap({
     const subs = (await pool.query('SELECT team_id, player_off_id, player_on_id, period, clock_seconds FROM match_substitutions WHERE fixture_id=$1 AND voided_at IS NULL ORDER BY clock_seconds, id', [i.id])).rows;
     const lease = x?.canScore ? (await pool.query("SELECT l.user_id, u.display_name, l.device, l.expires_at FROM fixture_scorer_leases l JOIN users u ON u.id=l.user_id WHERE l.fixture_id=$1 AND l.expires_at > now()", [i.id])).rows[0] ?? null : undefined;
     const staff = !!x?.canScore;
-    const okIds = staff ? null : await publiclyNameable([...score.shootout?.sequence?.map((k) => k.player_id) ?? [], ...(score.sent_off ?? []).map((p) => p.player_id), ...plugin.attribution(ruleset, logged).map((p) => p.player_id), ...subs.flatMap((r) => [r.player_off_id, r.player_on_id])], null);
-    const view = staff ? { projection: plugin.publicView(score), stats: plugin.liveStats(ruleset, logged, score), players: plugin.attribution(ruleset, logged) } : await redactForPublic({ projection: plugin.publicView(score), stats: plugin.liveStats(ruleset, logged, score), players: plugin.attribution(ruleset, logged).filter((p) => p.player_id == null || okIds.has(p.player_id)) }, null);
+    const attribution = plugin.attribution(ruleset, logged) ?? []; // a sport that records no per-player attribution has none, not an error
+    const okIds = staff ? null : await publiclyNameable([...score.shootout?.sequence?.map((k) => k.player_id) ?? [], ...(score.sent_off ?? []).map((p) => p.player_id), ...attribution.map((p) => p.player_id), ...subs.flatMap((r) => [r.player_off_id, r.player_on_id])], null);
+    const view = staff ? { projection: plugin.publicView(score), stats: plugin.liveStats(ruleset, logged, score), players: attribution } : await redactForPublic({ projection: plugin.publicView(score), stats: plugin.liveStats(ruleset, logged, score), players: attribution.filter((p) => p.player_id == null || okIds.has(p.player_id)) }, null);
     return {
       fixture: st.fixture, live: st.live, version: st.version, last_seq: st.last_seq,
       ruleset: { kind: ruleset.kind, label: ruleset.label, source: st.ruleset.source, version: st.ruleset.version, format_key: st.ruleset.format_key },
@@ -200,7 +202,7 @@ export async function canScoreSession(user, sessionId) {
 }
 
 const progressionOf = (d) => {
-  const p = d.progression ?? {};
+  const p = d.live_rules ?? {};
   return { ...(p.qualifiers_per_session != null ? { qp: p.qualifiers_per_session, qt: p.wildcards ?? 0 } : {}), ...(p.cut_after_round != null ? { cut_after_round: p.cut_after_round, cut_to: p.cut_to } : {}) };
 };
 const sessionRows = async (c, sessionId) => (await c.query('SELECT * FROM session_events WHERE session_id=$1 ORDER BY seq', [sessionId])).rows;
@@ -208,13 +210,17 @@ const toEvents = (rows) => rows.map((r) => ({ ...r, payload: { ...(r.payload ?? 
 async function sessionConfig(c, s, d) {
   const entryIds = (await c.query("SELECT id FROM event_session_entries WHERE session_id=$1 AND result_status <> 'scratched' ORDER BY lane NULLS LAST, id", [s.id])).rows.map((r) => r.id);
   const hasAttempts = (await c.query("SELECT 1 FROM session_events WHERE session_id=$1 AND kind='attempt' AND voided_at IS NULL LIMIT 1", [s.id])).rowCount > 0;
-  const field = hasAttempts || (d.result_type === 'distance');
-  return { resultType: d.result_type, entryIds, field, progression: progressionOf(d) };
+  const sport = (await c.query('SELECT slug, scoring, category FROM sports WHERE id=$1', [d.sport_id])).rows[0] ?? {};
+  const pinned = d.live_rules ?? {}, dflt = sessionDefaults(sport);
+  const aggregate = AGGREGATES.includes(pinned.aggregate) ? pinned.aggregate : dflt.aggregate;
+  const lowerIsBetter = pinned.lower_is_better ?? (dflt.lowerIsBetter || d.result_type === 'time');
+  const field = hasAttempts || d.result_type === 'distance' || aggregate !== 'best';
+  return { resultType: d.result_type, entryIds, field, aggregate, lowerIsBetter, dropExtremes: pinned.drop_extremes ?? false, progression: progressionOf(d) };
 }
 
 /** The public live view of one session (names follow the programme's privacy setting for this viewer). */
 export async function sessionLive(sessionId, user = null, { sinceSeq = 0, limit = 50, includeVoided = false } = {}) {
-  const s = (await pool.query('SELECT s.*, d.name AS discipline, d.result_type, d.mode, d.progression, ev.status AS event_status FROM event_sessions s JOIN event_disciplines d ON d.id=s.discipline_id JOIN events ev ON ev.id=s.event_id WHERE s.id=$1', [sessionId])).rows[0];
+  const s = (await pool.query('SELECT s.*, d.name AS discipline, d.result_type, d.mode, d.live_rules, d.sport_id, ev.status AS event_status FROM event_sessions s JOIN event_disciplines d ON d.id=s.discipline_id JOIN events ev ON ev.id=s.event_id WHERE s.id=$1', [sessionId])).rows[0];
   if (!s || s.event_status === 'draft') throw notFound('Session');
   const rows = await sessionRows(pool, sessionId);
   const live = toEvents(rows);
@@ -325,18 +331,20 @@ cap({
   },
 });
 
-// ------------------------------------------------------------------ pinned progression
+// ------------------------------------------------------------------ pinned live rules
 cap({
-  name: 'set_discipline_progression', method: 'PATCH', path: '/disciplines/:id/progression', tag: TAG,
-  summary: 'Pin how athletes progress in a discipline (organiser): heats send qualifiers_per_session through plus `wildcards` fastest/best of the rest; a field event cuts to cut_to after cut_after_round rounds. The live session view shows Q/q and the cut from this and from nothing else; advance_discipline uses it as its default.',
-  input: z.object({ id, qualifiers_per_session: z.number().int().min(1).max(24).optional(), wildcards: z.number().int().min(0).max(48).optional(), cut_after_round: z.number().int().min(1).max(12).optional(), cut_to: z.number().int().min(1).max(64).optional() })
-    .refine((v) => (v.cut_after_round == null) === (v.cut_to == null), 'Give cut_after_round and cut_to together'),
+  name: 'set_discipline_live_rules', method: 'PATCH', path: '/disciplines/:id/live-rules', tag: TAG,
+  summary: 'Pin how a discipline is scored live and who goes through (organiser). aggregate: best (a time or measured mark, or the best attempt), sum (attempts added up: archery, shooting, golf) or panel (judges\' marks, optionally dropping the highest and lowest); lower_is_better for sports where the lowest wins; heats send qualifiers_per_session through plus `wildcards`; a field event cuts to cut_to after cut_after_round rounds. The live session view shows places, Q/q and the cut from this and from nothing else; advance_discipline uses it as its default.',
+  input: z.object({
+    id, aggregate: z.enum(AGGREGATES).optional(), lower_is_better: z.boolean().optional(), drop_extremes: z.boolean().optional(),
+    qualifiers_per_session: z.number().int().min(1).max(24).optional(), wildcards: z.number().int().min(0).max(48).optional(), cut_after_round: z.number().int().min(1).max(12).optional(), cut_to: z.number().int().min(1).max(64).optional(),
+  }).refine((v) => (v.cut_after_round == null) === (v.cut_to == null), 'Give cut_after_round and cut_to together'),
   async handler({ user }, i) {
     return tx(async (c) => {
       const d = await discipline(c, i.id);
       await organizerOnly(c, user, d.event_id);
       const { id: _id, ...p } = i;
-      return (await c.query('UPDATE event_disciplines SET progression=$2 WHERE id=$1 RETURNING id, progression', [i.id, JSON.stringify(p)])).rows[0];
+      return (await c.query('UPDATE event_disciplines SET live_rules=$2 WHERE id=$1 RETURNING id, live_rules', [i.id, JSON.stringify(p)])).rows[0];
     });
   },
 });
