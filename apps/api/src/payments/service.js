@@ -11,6 +11,7 @@ import { fulfilChargePaid } from '../academy-invoices.js';
 import { fulfilServiceInvoicePaid } from '../svc/finance.js';
 import { fulfilMediaFeePaid } from '../media-fees.js';
 import { raiseException, recordSale, syncRefunds } from '../settlement.js';
+import { coachSessionDone } from '../rewards/activity.js';
 
 export { paymentsEnabled, enabledProviders };
 
@@ -27,8 +28,8 @@ export async function describePurpose(c, type, id) {
     return o?.payer_id && { payerId: o.payer_id, amount: Number(o.amount), name: `Gotmygame Shop order (${o.due} item${o.due === 1 ? '' : 's'})`, payable: o.due > 0 };
   }
   if (type === 'coach_hire') {
-    const h = await q("SELECT h.hirer_id AS payer_id, h.total_cents AS amount, h.status, h.payment_status, u.display_name FROM coach_hires h JOIN users u ON u.id=h.coach_id WHERE h.id=$1 FOR UPDATE OF h");
-    return h && { payerId: h.payer_id, amount: Number(h.amount), name: `Coaching session with ${h.display_name}`, payable: h.payment_status === 'unpaid' && h.status !== 'cancelled' };
+    const h = await q("SELECT h.hirer_id AS payer_id, h.total_cents - h.loyalty_credit_cents AS amount, h.status, h.payment_status, u.display_name FROM coach_hires h JOIN users u ON u.id=h.coach_id WHERE h.id=$1 FOR UPDATE OF h");
+    return h && { payerId: h.payer_id, amount: Number(h.amount), name: `Coaching session with ${h.display_name}`, payable: h.payment_status === 'unpaid' && h.status !== 'cancelled' && Number(h.amount) > 0 };
   }
   if (type === 'appointment') {
     const a = await q("SELECT a.athlete_id AS payer_id, a.fee_cents AS amount, a.currency, a.status, a.payment_status, u.display_name FROM appointments a JOIN users u ON u.id=a.provider_id WHERE a.id=$1 FOR UPDATE OF a");
@@ -59,7 +60,7 @@ export async function describePurpose(c, type, id) {
     return x && { payerId: x.payer_id, amount: Number(x.amount), currency: x.currency, name: `Sponsorship payment · ${x.name}`, payable: x.pay_status === 'awaiting_payment' && x.due_status === 'scheduled' && ['active', 'ended', 'term_expired'].includes(x.deal_status) };
   }
   if (type === 'academy_charge') {
-    const x = await q("SELECT ch.payer_id, ch.amount_minor - ch.settled_minor - ch.adjusted_minor AS amount, ch.currency, ch.status, ch.kind, o.name, o.status AS org_status FROM academy_charges ch JOIN organisations o ON o.id=ch.organisation_id WHERE ch.id=$1 FOR UPDATE OF ch");
+    const x = await q("SELECT ch.payer_id, ch.amount_minor - ch.settled_minor - ch.adjusted_minor - coalesce((SELECT sum(i.credits_cents) FROM invoices i WHERE i.academy_charge_id=ch.id AND i.kind='invoice' AND i.status='open'),0) AS amount, ch.currency, ch.status, ch.kind, o.name, o.status AS org_status FROM academy_charges ch JOIN organisations o ON o.id=ch.organisation_id WHERE ch.id=$1 FOR UPDATE OF ch");
     return x && { payerId: x.payer_id, amount: Number(x.amount), currency: x.currency, name: `Academy ${x.kind} · ${x.name}`, payable: x.status === 'awaiting_payment' && Number(x.amount) > 0 };
   }
   if (type === 'media_rights_fee') {
@@ -92,7 +93,9 @@ async function fulfil(c, type, id, payment) {
   if (type === 'academy_charge') return fulfilChargePaid(c, id, { method: 'online', payment });
   if (type === 'service_invoice') return fulfilServiceInvoicePaid(c, id, payment);
   if (type === 'media_rights_fee') return fulfilMediaFeePaid(c, id);
-  return (await c.query(sql, [id])).rowCount > 0;
+  const done = (await c.query(sql, [id])).rowCount > 0;
+  if (done && type === 'coach_hire') await coachSessionDone(c, id);   // a session completed before it was paid earns once the payment lands
+  return done;
 }
 
 /**

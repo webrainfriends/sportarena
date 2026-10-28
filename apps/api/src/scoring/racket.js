@@ -108,7 +108,12 @@ export function rallyServer(rs, events) {
   if (!R || R.serve === 'none') return null;
   const pts = events.filter((e) => e.kind === 'point' && SIDES.includes(e.side));
   const first = events.find((e) => e.kind === 'server' && SIDES.includes(e.side));
-  if (R.serve === 'rally_winner') return pts.length ? pts[pts.length - 1].side : first?.side ?? null;
+  if (R.serve === 'rally_winner') {
+    // the latest of the last rally winner and a server named after it (the first server of a new set)
+    const lastPoint = events.findLastIndex((e) => e.kind === 'point' && SIDES.includes(e.side));
+    const lastServer = events.findLastIndex((e) => e.kind === 'server' && SIDES.includes(e.side));
+    return lastServer > lastPoint ? events[lastServer].side : pts.length ? pts[pts.length - 1].side : first?.side ?? null;
+  }
   // alternate: swap every `serve_every` points inside the current set (and every point once both sides are within one of the target)
   if (!first) return null;
   const set = currentSetPoints(rs, pts);

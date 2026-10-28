@@ -5,6 +5,8 @@ import { encrypt } from './crypto.js';
 import { notify } from './notify.js';
 import { activateUserPlan } from './booking/plans.js';
 import { conflict } from './errors.js';
+import { returnCredits } from './booking/credits.js';
+import { academyChargePaid } from './rewards/activity.js';
 
 const ZERO = 0;
 /** A short, unique, readable prefix for an organisation's invoices: the profile's own, else 3 letters of the name + a slice of the id. */
@@ -68,7 +70,10 @@ export async function syncChargeInvoice(c, chargeId) {
   if (inv?.status === 'paid') return inv;
   const wanted = ctx.status === 'awaiting_payment' && Number(ctx.amount_minor) > 0;
   if (!wanted) {
-    if (inv) await c.query("UPDATE invoices SET status='void', voided_at=now() WHERE id=$1", [inv.id]);
+    if (inv) {
+      await returnCredits(c, [inv.id], Number(inv.credits_cents), { adjustInvoice: true, note: 'Academy charge changed' });   // points paid onto it come back
+      await c.query("UPDATE invoices SET status='void', voided_at=now() WHERE id=$1", [inv.id]);
+    }
     return null;
   }
   const rate = Number(ctx.terms?.tax_rate_bp ?? 0);
@@ -115,7 +120,9 @@ export async function applyReceipt(c, chargeId, { amountMinor = null, method = '
     : key ? (await c.query('SELECT * FROM charge_receipts WHERE charge_id=$1 AND idempotency_key=$2', [chargeId, key])).rows[0] : null;
   if (prior) return { applied: true, replay: true, completed: ch.status === 'paid', balance_minor: balanceOf(ch), receipt_id: prior.id };
   if (ch.status !== 'awaiting_payment') return { applied: false };
-  const balance = balanceOf(ch);
+  // loyalty points already applied to the open invoice pay part of it: what is still owed in money is the balance less those credits
+  const credits = Number((await c.query("SELECT coalesce(sum(credits_cents),0) AS n FROM invoices WHERE academy_charge_id=$1 AND kind='invoice' AND status='open'", [chargeId])).rows[0].n);
+  const balance = balanceOf(ch) - credits;
   let amount = amountMinor ?? (payment ? Number(payment.amount_cents) : balance);
   if (amount > balance) {
     if (!payment) throw conflict(`Only ${balance} is still owed on this charge`, { balance_minor: balance });
@@ -128,9 +135,10 @@ export async function applyReceipt(c, chargeId, { amountMinor = null, method = '
   const receipt = (await c.query(
     'INSERT INTO charge_receipts(charge_id, amount_minor, method, payment_id, recorded_by, idempotency_key) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id', [chargeId, amount, method, payment?.id ?? null, actor, key])).rows[0];
   const after = (await c.query('UPDATE academy_charges SET settled_minor = settled_minor + $2 WHERE id=$1 RETURNING *', [chargeId, amount])).rows[0];
-  const left = balanceOf(after);
+  const left = balanceOf(after) - credits;
   if (left === 0) {
     await closeCharge(c, after, { method, paid: true });
+    await academyChargePaid(c, after);            // the payer earns under every live loyalty programme that applies (once per charge)
     await notify(c, ch.payer_id, { kind: 'academy_payment_received', title: 'Payment received', body: 'Open Gotmygame to see your receipt.', data: { organisation_id: ch.organisation_id, charge_id: ch.id }, dedupe_key: `academy:paid:${ch.id}` });
   } else {
     await notify(c, ch.payer_id, { kind: 'academy_payment_part', title: 'Part payment received', body: 'Open Gotmygame to see what is still due.', data: { organisation_id: ch.organisation_id, charge_id: ch.id }, dedupe_key: `academy:part:${receipt.id}` });
@@ -177,6 +185,8 @@ export async function applyAdjustment(c, chargeId, { kind, amountMinor, reasonEn
 export async function cancelUnpaidCharges(c, where, params) {
   const rows = (await c.query(`UPDATE academy_charges SET status='cancelled' WHERE status='awaiting_payment' AND ${where} RETURNING id, user_plan_id`, params)).rows;
   for (const r of rows) {
+    const open = (await c.query("SELECT id, credits_cents FROM invoices WHERE academy_charge_id=$1 AND kind='invoice' AND status='open' FOR UPDATE", [r.id])).rows[0];
+    if (open?.credits_cents > 0) await returnCredits(c, [open.id], Number(open.credits_cents), { adjustInvoice: true, note: 'Academy charge cancelled' });
     await c.query("UPDATE invoices SET status='void', voided_at=now() WHERE academy_charge_id=$1 AND kind='invoice' AND status='open'", [r.id]);
     if (r.user_plan_id) await c.query("UPDATE user_plans SET status='cancelled' WHERE id=$1 AND status='awaiting_payment'", [r.user_plan_id]);
   }

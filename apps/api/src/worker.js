@@ -6,6 +6,9 @@ import { processRefunds } from './booking/refunds.js';
 import { checkSlotAlerts } from './booking/alerts.js';
 import { processWaitlist } from './booking/waitlist.js';
 import { expireLoyalty } from './booking/loyalty.js';
+import { tx } from './db.js';
+import { eventParticipationSweep, membershipTenureSweep } from './rewards/activity.js';
+import { releaseDueReferrals } from './rewards/referrals.js';
 import { expireUserPlans, raiseSubscriptionRenewals } from './booking/plans.js';
 import { venueOpsReminders } from './booking/venue-ops.js';
 import { expireStaleRequests } from './lifecycle.js';
@@ -39,6 +42,9 @@ export const STEPS = [
   ['refunds', 'refunds', processRefunds, { done: 0, failed: 0, manual: 0 }],
   ['waitlist', 'waitlist', processWaitlist, null],
   ['loyalty', 'points_expired', expireLoyalty, 0],
+  ['loyalty_referrals', 'referral_rewards_released', () => tx((c) => releaseDueReferrals(c)), 0],
+  ['loyalty_events', 'event_points_awarded', () => tx((c) => eventParticipationSweep(c)), 0],
+  ['loyalty_memberships', 'membership_points_awarded', () => tx((c) => membershipTenureSweep(c)), 0],
   ['plans', 'plans_expired', expireUserPlans, 0],
   ['subscriptions', 'subscriptions_renewed', raiseSubscriptionRenewals, 0],
   ['venue_ops', 'venue_ops_reminders', venueOpsReminders, 0],

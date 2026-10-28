@@ -581,3 +581,56 @@ test('stoppage time is announced by the referee and shows to everyone', async ()
   assert.equal((await api('GET', `/fixtures/${fx}/projection`)).body.phase.added_time, 4);
   assert.equal((await api('GET', `/fixtures/${fx}/live`)).body.phase.added_time, 4);
 });
+
+test('basketball over REST: a fouled-out player and an exhausted timeout are refused; spectators see the bonus and mat state without anything private', async () => {
+  const { ref, rando, fx, m1 } = await setup('basketball');
+  await start(ref, fx);
+  await log(ref, fx, { kind: 'period_start' });
+  for (let i = 0; i < 5; i++) assert.equal((await log(ref, fx, { kind: 'foul', side: 'home', player_id: rando.id })).status, 201);
+  const out = await log(ref, fx, { kind: 'two_pointer', side: 'home', player_id: rando.id });
+  assert.equal(out.status, 400);
+  assert.match(JSON.stringify(out.body), /fouled out/);
+  const live = (await api('GET', `/fixtures/${fx}/live`)).body;
+  assert.equal(live.score.rules.bonus.away, true);
+  assert.equal(live.score.rules.fouled_out.length, 1);
+  await log(ref, fx, { kind: 'timeout', side: 'away' }); await log(ref, fx, { kind: 'timeout', side: 'away' });
+  assert.equal((await log(ref, fx, { kind: 'timeout', side: 'away' })).status, 400);
+  // a team manager cannot score
+  assert.equal((await log(m1, fx, { kind: 'foul', side: 'away' })).status, 403);
+  // the same projection is served over MCP
+  const proj = await mcp('get_live_projection', { id: fx });
+  assert.match(JSON.stringify(proj), /"bonus":\{"home":false,"away":true\}/);
+});
+
+test('3x3, kabaddi and volleyball over REST follow their own rules', async () => {
+  const t = await setup('3x3-basketball');
+  await start(t.ref, t.fx); await log(t.ref, t.fx, { kind: 'period_start' });
+  for (let i = 0; i < 21; i++) assert.equal((await log(t.ref, t.fx, { kind: 'one_pointer', side: 'home' })).status, 201);
+  assert.equal((await log(t.ref, t.fx, { kind: 'one_pointer', side: 'away' })).status, 400, 'the game is over at 21');
+  assert.equal((await api('GET', `/fixtures/${t.fx}/live`)).body.phase.can_score, false);
+
+  const k = await setup('kabaddi');
+  await start(k.ref, k.fx); await log(k.ref, k.fx, { kind: 'period_start' });
+  for (let i = 0; i < 7; i++) await log(k.ref, k.fx, { kind: 'raid_point', side: 'home' });
+  let kr = (await api('GET', `/fixtures/${k.fx}/live`)).body.score.rules;
+  assert.deepEqual([kr.on_mat.away, kr.all_out_for], [0, 'home']);
+  await log(k.ref, k.fx, { kind: 'all_out', side: 'home' });
+  kr = (await api('GET', `/fixtures/${k.fx}/live`)).body.score.rules;
+  assert.deepEqual([kr.on_mat.away, kr.all_out_for], [7, null]);
+
+  const v = await setup('volleyball');
+  await start(v.ref, v.fx);
+  await log(v.ref, v.fx, { kind: 'server', side: 'home' });
+  await log(v.ref, v.fx, { kind: 'point', side: 'away' });
+  await log(v.ref, v.fx, { kind: 'timeout', side: 'home' }); await log(v.ref, v.fx, { kind: 'timeout', side: 'home' });
+  assert.equal((await log(v.ref, v.fx, { kind: 'timeout', side: 'home' })).status, 400);
+  const vr = (await api('GET', `/fixtures/${v.fx}/live`)).body.score.rules;
+  assert.deepEqual([vr.rotation.away, vr.rotation.serving, vr.timeouts_left.home], [2, 'away', 0]);
+
+  const b = await setup('badminton');
+  await start(b.ref, b.fx);
+  await log(b.ref, b.fx, { kind: 'server', side: 'home' });
+  await log(b.ref, b.fx, { kind: 'point', side: 'home' });
+  const br = (await api('GET', `/fixtures/${b.fx}/live`)).body.score.rules;
+  assert.deepEqual([br.service_court, br.server_score], ['left', 1]);
+});
