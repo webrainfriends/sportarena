@@ -96,6 +96,20 @@ share sheet, or the web share / clipboard. Payment QR reuses the shared QR compo
 The desk is sport-agnostic: court time is any bookable area (court, pitch, pool lane, rink, range, table…), stock and rentals are items, plans are venue plans.
 No scoring, rules or athlete data is touched, so no sport uses a fallback and none is a gap.
 
+## Screens (web build rendered at phone, tablet and desktop widths against a real venue created through the API)
+
+| | |
+|---|---|
+| Till on a tablet — catalogue, customer, cart | ![](ux/front-desk-01-sell-tablet.png) |
+| Cart with a discount, GST included, total | ![](ux/front-desk-02-cart-tablet.png) |
+| Receipt on a phone, change to give | ![](ux/front-desk-03-receipt-phone.png) |
+| Court time (calendar, time and length pickers) | ![](ux/front-desk-09-court-time-phone.png) |
+| Cashier asks for a manager's code | ![](ux/front-desk-04-approval-needed-phone.png) |
+| Manager's one-time code | ![](ux/front-desk-05-approval-code-tablet.png) |
+| A cashier sees the desk and nothing else | ![](ux/front-desk-06-cashier-desk-only-phone.png) |
+| Cash drawer, variance to review | ![](ux/front-desk-07-cash-drawer-desktop.png) |
+| Report that reconciles | ![](ux/front-desk-08-report-desktop.png) |
+
 ## Known limits (honest)
 
 * Razorpay / UPI-collect, GST fields, AutoPay: blocked on #498 / #503 (see above).
