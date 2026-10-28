@@ -120,6 +120,7 @@ cap({
     const ch = (await c.query('SELECT * FROM academy_charges WHERE id=$1', [i.id])).rows[0];
     if (!ch) throw notFound('Charge');
     await orgFor(user, ch.organisation_id, STAFF_MONEY, { write: true, c });
+    if ((await c.query("SELECT 1 FROM pos_sale_lines l JOIN pos_sales s ON s.id=l.sale_id WHERE l.charge_id=$1 AND s.status='awaiting_payment'", [i.id])).rowCount) throw conflict('This fee is part of a front-desk sale that is waiting for payment — settle it there');
     if (await fulfilChargePaid(c, i.id, { method: i.method }) === false) throw conflict('That charge is not waiting for payment');
     await audit(c, user.id, 'record_academy_payment', 'academy_charges', i.id);
     return (await c.query('SELECT id, status, paid_at FROM academy_charges WHERE id=$1', [i.id])).rows[0];
