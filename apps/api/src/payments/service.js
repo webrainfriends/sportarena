@@ -12,6 +12,7 @@ import { fulfilServiceInvoicePaid } from '../svc/finance.js';
 import { fulfilMediaFeePaid } from '../media-fees.js';
 import { raiseException, recordSale, syncRefunds } from '../settlement.js';
 import { coachSessionDone } from '../rewards/activity.js';
+import { coverFor, startUse, settleUse } from '../cover.js';
 
 export { paymentsEnabled, enabledProviders };
 
@@ -110,12 +111,14 @@ export async function settle(paymentId, result) {
     if (p.status !== 'pending') return { payment: p, refund: false };
     if (Number(result.amount) !== Number(p.amount_cents) || String(result.currency).toUpperCase() !== p.currency) {
       await c.query("UPDATE payments SET status='failed' WHERE id=$1", [p.id]);
+      await settleUse(c, p.id, false);
       await raiseException(c, { kind: 'amount_mismatch', dedupeKey: `amount_mismatch:${p.id}`, paymentId: p.id, currency: p.currency, amount: Number(p.amount_cents), detail: { expected_cents: Number(p.amount_cents), expected_currency: p.currency, provider_cents: Number(result.amount), provider_currency: String(result.currency).toUpperCase(), provider_ref: p.provider_ref } });
       return { payment: { ...p, status: 'failed' }, refund: false, mismatch: true };
     }
     const ok = await fulfil(c, p.purpose_type, p.purpose_id, p);
     const paid = (await c.query("UPDATE payments SET status='paid', paid_at=now(), provider_payment_ref=$2 WHERE id=$1 RETURNING *", [p.id, result.paymentRef ?? null])).rows[0];
     await recordSale(c, paid);   // what the seller is owed, in the same transaction as 'the customer paid'
+    await settleUse(c, p.id, true);   // a payment made under a cover agreement counts against it
     return { payment: paid, refund: !ok };
   });
   if (out.mismatch) throw new AppError(409, 'payment_mismatch', 'The amount paid does not match the order — contact support');
@@ -179,12 +182,15 @@ export async function startCheckout(user, i) {
     await client.query('BEGIN');
     d = await describePurpose(client, i.purpose_type, i.purpose_id);
     if (!d) throw notFound('Item to pay for');
-    if (d.payerId !== user.id) throw forbidden('This is not yours to pay');
+    currency = d.currency ?? config.payments.currency;
+    // someone else's bill: allowed only under a live cover agreement that both sides approved and that covers this bill
+    const cover = d.payerId === user.id ? null : await coverFor(client, user, d, { purposeType: i.purpose_type, purposeId: i.purpose_id, currency });
+    if (d.payerId !== user.id && !cover) throw forbidden('This is not yours to pay');
     if (!d.payable) throw conflict('Nothing to pay: it is already paid, cancelled or free');
     if (d.amount <= 0) throw conflict('Nothing to pay');
-    currency = d.currency ?? config.payments.currency;
-    const row = (await client.query('INSERT INTO payments(payer_id, provider, purpose_type, purpose_id, amount_cents, currency) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id', [user.id, i.provider, i.purpose_type, i.purpose_id, d.amount, currency])).rows[0];
+    const row = (await client.query('INSERT INTO payments(payer_id, provider, purpose_type, purpose_id, amount_cents, currency, cover_mandate_id) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id', [user.id, i.provider, i.purpose_type, i.purpose_id, d.amount, currency, cover?.id ?? null])).rows[0];
     paymentId = row.id;
+    if (cover) await startUse(client, cover, { paymentId, userId: user.id, purposeType: i.purpose_type, purposeId: i.purpose_id, amount: d.amount, currency });
     await client.query('COMMIT');
   } catch (e) { await client.query('ROLLBACK'); throw e; } finally { client.release(); }
 
@@ -196,6 +202,7 @@ export async function startCheckout(user, i) {
     return { id: paymentId, provider: i.provider, amount_cents: d.amount, currency, checkout_url: out.url };
   } catch (e) {
     await one("UPDATE payments SET status='failed' WHERE id=$1", [paymentId]);
+    await one("UPDATE cover_uses SET status='cancelled', settled_at=now() WHERE payment_id=$1 AND status='pending'", [paymentId]);
     throw e;
   }
 }
