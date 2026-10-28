@@ -21,6 +21,7 @@ import './credentials.js';
 import './team-management.js';
 import './appearances.js';
 import './team-chat.js';
+import './team-money.js';
 import './team-workspace.js';
 import './venues.js';
 import './venue-admin.js';

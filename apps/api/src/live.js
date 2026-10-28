@@ -32,6 +32,9 @@ export const publish = (channel, data) => {
   if (process.env.LIVE_BRIDGE === 'pg') pool.query('SELECT pg_notify($1, $2)', [NOTIFY_CHANNEL, JSON.stringify({ channel, from: processId })]).catch(() => {});
 };
 export const streamCount = () => open;
+/** Other features (the team chat) ride the same bus, including the Postgres bridge. A REFRESH payload means "another process published; re-read from the database". */
+export const subscribe = (channel, fn) => { bus.on(channel, fn); return () => bus.off(channel, fn); };
+export { REFRESH };
 
 /** Listen for other processes' publishes (LIVE_BRIDGE=pg) and refresh local streams from the database. */
 let bridge = null;

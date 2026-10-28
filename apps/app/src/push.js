@@ -80,6 +80,8 @@ export function targetFor(data = {}) {
   if (data.venue_id) return ['Venue', { id: data.venue_id }];
   if (data.representative_id) return ['Sponsors', {}]; // an invitation to (or removal from) a sponsor team
   if (data.project_id) return ['TenderNotice', { id: data.project_id }];   // tender notices, receipts, approvals and awards open the tender (the buying team gets a link to its console)
+  if (data.team_id && (data.charge_id || data.fundraiser_id)) return ['TeamDues', { id: data.team_id }];   // dues, fees, shared expenses, reminders and fundraisers
+  if (data.team_id && !data.event_id && !data.fixture_id) return ['TeamChat', { id: data.team_id }];                         // announcements and polls
   if (data.organisation_id) return ['Org', { id: data.organisation_id }];   // academy and workspace messages open the organisation (academy tab / My academy)
   return ['Notifications', {}];
 }
@@ -122,6 +124,8 @@ export function parseTarget(t) {
   if (kind === 'tools') return ['ToolsHome', {}];
   if (kind === 'media') return ['MediaWorkspace', {}];
   if (kind === 'event-media' && id) return ['EventCommand', { id, tab: 'broadcast' }];
+  if (kind === 'team-chat' && id) return ['TeamChat', { id }];
+  if (kind === 'team-dues' && id) return ['TeamDues', { id }];
   if (kind === 'funding') return ['PlayerFunding', id ? { athlete_id: id } : {}];
   return ['Notifications', {}];
 }

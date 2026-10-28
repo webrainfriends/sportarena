@@ -33,10 +33,44 @@ turns each selected member's per-match rate into a due fee (idempotent), `create
 expense, coaching session), `update_team_payout` marks it paid or cancelled (rows are never deleted), `get_team_settlement`
 gives per-person due / paid totals. Money actions need the owner or a `manager`. No money moves through the platform here.
 
-## Team chat
-One conversation per team, for active members only (`send_team_message`, `list_team_messages`, `mark_team_chat_read`,
-`list_my_team_chats` for unread counts, `delete_team_message` — soft delete; your own, or any as a manager). Managers can mark
-a message as an **announcement**, which notifies every member. The app polls every 5 seconds while the chat is open.
+## Team communication and member finance (#516)
+
+### Assessment: feature → current source → limitation → extension
+| Feature | Current source | Limitation found | Extension (this change) |
+|---|---|---|---|
+| Team chat | `team_messages`, `team-chat` capabilities | one flat channel, text only, 5 s polling | same table and capabilities, plus a reconnect cursor (`seq`), replies, reactions, pins, polls, media, guardians channel; SSE + long poll |
+| Announcements | `announcement` flag + `notify` | members only | also to guardians of young members; still the shared `notify` (push / WhatsApp / email per #499) |
+| RSVP / reminders | `team_attendance`, `request_attendance`, `set_event_rsvp` | not reachable from chat | a chat card (`post_team_rsvp_prompt`) that *asks through* `askAttendance` and *reads* `team_attendance`; chat stores no answer |
+| Photos / files | `doc-store` (encrypted files), `sniff` | none for chat | `team_chat_media`: sniffed from bytes, encrypted at rest, access re-checked on every download |
+| Guardians | `guardian_links`, `youth_consents` | no guardian-facing channel | `audience = guardians` channel; access from the live guardian link |
+| Charges / collections | `academy_charges` + `collection_cases` are organisation/venue owned | a team has no organisation | `team_charges` raised from `team_charge_batches`; paid through the canonical `payments` (new purposes `team_charge`, `team_contribution`) |
+| Team settlement | `team_payouts` (what the team pays players) | private to managers | untouched; none of the finance capabilities read it |
+| Fundraising vs sponsorship | `sponsorships` (agreements with a sponsor) | none for member gifts | `team_fundraisers` / `team_contributions`; linked to a sponsorship only through an explicit `sponsorship_id` |
+
+### Real-time chat
+* **Web**: `GET /teams/:id/messages/stream` (Server-Sent Events). Every frame is `event: messages` with whole messages as *that viewer* may see them; the frame id is the message `seq`. A reconnect sends `Last-Event-ID` (or `?cursor=`) and gets what it missed, oldest first. Access is re-checked on every frame and every 10 s; losing it sends `revoked` and closes. An outsider gets `404`.
+* **iOS / iPadOS / Android** (no `EventSource`): `list_team_messages` with `after_seq` and `wait_seconds` (≤ 25) is a long poll that returns the moment a message arrives.
+* **HTTP is canonical**: both read the same rows. Messages are keyed by `message_id`, so a repeat never duplicates; `send_team_message` takes a `client_id` so a retried send is the same message. After a drop the app re-reads the latest page, which also picks up reactions/removals missed while offline. The app keeps at most 300 messages in memory.
+* Several API processes: set `LIVE_BRIDGE=pg` (shared with live scoring) so every process hears every publish.
+
+### Messages
+`send_team_message` (text, announcement, `reply_to_id`, `media_id`, `audience`), `list_team_messages`, `delete_team_message` (soft; the attachment stops being served), `react_to_team_message`, `pin_team_message` (managers), `create_team_poll` / `vote_team_poll` / `close_team_poll`, `post_team_rsvp_prompt` (managers), `mark_team_chat_read`, `list_my_team_chats`. Reactions and changed votes are kept as withdrawn rows, never deleted. Polls show counts only; nobody sees who voted what. Own messages carry `delivery.delivered` and `read_by`.
+Media: `PUT /teams/:id/chat-media?kind=image|file|voice&name=…&audience=…&seconds=…` (raw body; photos ≤ 10 MB, PDFs ≤ 10 MB, voice ≤ 5 MB / 180 s), then `media_id` on `send_team_message`; `GET /team-chat-media/:id` needs the sign-in header. Revocation: removal from the team, a revoked guardian link, a deleted message all end access immediately.
+
+### Young members and guardians
+Channel `team` is for members; channel `guardians` is for managers and the verified guardians of young members (who need not be on the team). Guardians see names, never contact details or whose guardian someone is. A young member still needs a guardian's current `contact` consent to post. Announcements to guardians go to guardians only.
+
+### Member finance
+A contribution ledger, not a bank account: nothing here holds money.
+* `create_team_charges` (dues / season fee / match fee: same amount each, for the roster, the selected squad, those who said going, or chosen people), `create_team_expense` (equal / weights / exact; exclusions; `paid_by` already carries their share), `create_team_dues_plan` (+ `list_…`, `update_team_dues_plan`; the worker raises one charge per member per period, once), `adjust_team_charge` (reduction / waiver, original amount kept), `record_team_payment` (cash / UPI / bank / card, full or part), `cancel_team_charge`, `get_team_ledger`, `set_team_finance_settings`.
+* A young member is charged to a verified guardian, never to the child; with no verified guardian the member is listed in `skipped` and not charged. Payers are notified once; reminders (3 days before, on the day, a week after) are idempotent.
+* Shares are exact to the minor unit and deterministic: members are ordered by id and rounding is cumulative (`allocate`). Every raise, receipt, reduction and waiver is an append-only `team_charge_entries` row with who and why; reasons and notes are encrypted and reading them is audit-logged.
+* Online payment: pass `purpose: { purpose_type: "team_charge", purpose_id }` from `list_my_team_charges` to `create_payment`. A webhook replay records one receipt; a payment that arrives after the charge was waived is refunded.
+* Fundraising: `create_team_fundraiser` (owner-created opens at once; otherwise the owner approves with `decide_team_fundraiser`), `contribute_to_team_fundraiser` (pay online) or `record_team_contribution` (by hand), `get_team_fundraiser`, `list_team_fundraisers`. Progress counts paid gifts only.
+* Privacy: a member sees only their own obligations (`list_my_team_charges`, `get_my_team_finance`); team totals only if the team switches `members_see_totals` on (no names, no other balances). The ledger and per-member lists are for owners, managers and the organisation's finance staff. Player rates and payouts live in `team_payouts` / the roster and are never read by these capabilities.
+
+### Known limits
+No in-app dunning ladder for teams (the academy `collection_cases` are organisation/venue owned); no refund sync from an admin refund back to a team charge (the ledger reconciliation flags it); donations come from members and guardians only, not the public.
 
 ## Team workspace (tasks, schedule, attendance)
 
