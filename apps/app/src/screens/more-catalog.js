@@ -24,7 +24,7 @@ export const WORKSPACES = [
   ['organizer', 'Schedule', 'Your events, teams & requests', { tab: 'Schedule', section: 'manage' }],
   ['venue_manager', 'VenueWorkspace', 'Your venues, revenue & partner account'],
   ['coach', 'CoachHome', 'Athletes, plans & sessions'],
-  ['referee', 'Openings', 'Games to officiate & open positions'],
+  ['referee', 'OfficialsHome', 'Matches, requests, calendar & rules'],
   ['sponsor', 'Sponsors', 'Offers, dues & agreements'],
   ['supplier', 'SupplierWorkspace', 'Services, quotes, orders & invoices'],
   ['physio', 'Health', 'Your practice & rehab plans'],
