@@ -305,7 +305,7 @@ export async function advanceCase(c, caseId, { today = todayStr() } = {}) {
       if (sent == null || sent < due) {
         let n = 0;
         for (const uid of await payersToTell(c, tellWho(f))) {
-          const made = await notify(c, uid, { kind: 'collections_reminder', title: TITLE(due), body: BODY(f, 'Open Gotmygame to see the details and pay.'), data: dataOf(cs, f), dedupe_key: `coll:rem:${cs.id}:${due}:${dueEff}:${uid}` });
+          const made = await notify(c, uid, { kind: 'collections_reminder', title: TITLE(due), body: BODY(f, 'Open Gotmygame to see the details and pay.'), data: dataOf(cs, f), dedupe_key: `coll:rem:${cs.id}:${due}:${dueEff}:${uid}`, ...(f.ch ? { comm: { use_case: due > 0 ? 'fee_overdue' : 'fee_due' } } : {}) });
           if (made) n++;
         }
         if (await addEvent(c, cs.id, 'reminder_sent', { data: { offset: due, due_on: dueEff, recipients: n }, dedupe: `rem:${due}:${dueEff}` })) reached = new Date();

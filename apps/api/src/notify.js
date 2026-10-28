@@ -7,8 +7,9 @@ import { backoffMs, enqueue, recordDead, requeueHooks, runJobs } from './jobs.js
 import { config } from './config.js';
 import { decrypt, encrypt } from './crypto.js';
 import { audit } from './helpers.js';
+import { planComms } from './comms.js';
 
-export const DEFAULT_PREFS = { in_app: true, email: true, push: true, whatsapp: false, reminder_hours: 24, muted_kinds: [] };
+export const DEFAULT_PREFS = { in_app: true, email: true, push: true, whatsapp: false, sms: false, reminder_hours: 24, muted_kinds: [], comm_categories_off: [], comm_locale: 'en-IN' };
 
 /**
  * Notify one user. An optional `dedupe_key` (e.g. `billboard_response:<id>:owner`) makes the call idempotent per recipient. Respects their channel switches and muted kinds.
@@ -32,9 +33,9 @@ export async function notify(c, userId, msg) {
   }
 }
 
-async function deliver(db, c, userId, { kind, title, body, data = {}, dedupe_key = null }) {
+async function deliver(db, c, userId, { kind, title, body, data = {}, dedupe_key = null, comm = null }) {
   const prefs = (await db.query('SELECT * FROM notification_prefs WHERE user_id=$1', [userId])).rows[0] ?? DEFAULT_PREFS;
-  if (prefs.muted_kinds.includes(kind) || (!prefs.in_app && !prefs.email && prefs.push === false && !prefs.whatsapp)) return null;
+  if (prefs.muted_kinds.includes(kind) || (!prefs.in_app && !prefs.email && prefs.push === false && !prefs.whatsapp && !prefs.sms)) return null;
   const n = (await db.query('INSERT INTO notifications(user_id, kind, title, body, data, dedupe_key) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (user_id, dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING RETURNING *', [userId, kind, title, body, data, dedupe_key])).rows[0];
   if (!n) return null; // same business event already notified for this recipient
   if (prefs.email) await db.query("INSERT INTO notification_deliveries(notification_id, channel) VALUES ($1,'email')", [n.id]);
@@ -45,9 +46,26 @@ async function deliver(db, c, userId, { kind, title, body, data = {}, dedupe_key
     const kick = () => import('./push.js').then((m) => m.dispatchPush()).catch((e) => console.error('[push]', e.message));
     if (c?.afterCommit) c.afterCommit(kick); else setImmediate(kick);
   }
-  // WhatsApp is opt-in (verified number + switch) and limited to an allow-list of kinds; the worker sends it paced
-  if (prefs.whatsapp && await (await import('./whatsapp.js')).whatsappEligible(db, userId, kind)) await db.query("INSERT INTO notification_deliveries(notification_id, channel) VALUES ($1,'whatsapp')", [n.id]);
+  // WhatsApp Business / SMS templates (India): planned by the communications layer from the same notification, never by the calling module
+  const comms = await planCommsSafely(db, c, userId, n, { kind, data, comm });
+  // Legacy WhatsApp (OpenWA, free text) is opt-in (verified number + switch) and limited to an allow-list of kinds; the worker sends it paced.
+  // It is skipped when an approved template for the same message was just queued, so nobody gets the same message twice on WhatsApp.
+  if (!comms.whatsappCloud && !comms.blockLegacyWhatsapp && prefs.whatsapp && await (await import('./whatsapp.js')).whatsappEligible(db, userId, kind)) await db.query("INSERT INTO notification_deliveries(notification_id, channel) VALUES ($1,'whatsapp')", [n.id]);
   return n;
+}
+
+/** Plan the template channels inside a nested savepoint: a problem there must never cost the caller its notification, let alone its transaction. */
+async function planCommsSafely(db, c, userId, n, msg) {
+  if (c) await c.query('SAVEPOINT comms_sp');
+  try {
+    const r = await planComms(db, userId, n, msg);
+    if (c) await c.query('RELEASE SAVEPOINT comms_sp');
+    return r;
+  } catch (e) {
+    if (c) await c.query('ROLLBACK TO SAVEPOINT comms_sp');
+    logger.warn('communication planning skipped', { kind: msg.kind, error: String(e.message).slice(0, 200) });
+    return { whatsappCloud: false, blockLegacyWhatsapp: false };
+  }
 }
 
 /**
@@ -157,7 +175,7 @@ export async function failDelivery(channel, d, error, maxAttempts = DELIVERY_MAX
 }
 
 // A dead delivery goes back to pending with a fresh attempt budget.
-for (const channel of ['email', 'push', 'whatsapp']) {
+for (const channel of ['email', 'push', 'whatsapp', 'sms']) {
   requeueHooks[`${channel}.delivery`] = async ({ delivery_id }) => {
     await query("UPDATE notification_deliveries SET status='pending', attempts=0, claimed_at=NULL, next_attempt_at=NULL WHERE id=$1 AND status='failed'", [delivery_id]);
   };
@@ -221,9 +239,10 @@ export async function notificationCycle() {
   const retries = await isolated('notify', () => runJobs('notify', notifyHandlers), null);
   const push = await isolated('push', () => dispatchPush(), null);
   const whatsapp = await isolated('whatsapp', async () => (await import('./whatsapp.js')).dispatchWhatsapp(), { configured: false, pending: 0, sent: 0, failed: 0 });
+  const comms = await isolated('comms', async () => (await import('./comms-dispatch.js')).dispatchComms(), { configured: false, pending: 0, sent: 0, failed: 0 });
   const email = await isolated('email', () => dispatchPending(), { configured: !!config.notifyWebhook.url, pending: 0, sent: 0, failed: 0 });
-  const errors = Object.fromEntries(Object.entries({ reminders, coaching, notify: retries, push, whatsapp, email }).filter(([, r]) => !r.ok).map(([k, r]) => [k, r.error]));
-  return { reminders: reminders.value, push: push.value, whatsapp: whatsapp.value, ...email.value, ...(Object.keys(errors).length ? { errors } : {}) };
+  const errors = Object.fromEntries(Object.entries({ reminders, coaching, notify: retries, push, whatsapp, comms, email }).filter(([, r]) => !r.ok).map(([k, r]) => [k, r.error]));
+  return { reminders: reminders.value, push: push.value, whatsapp: whatsapp.value, comms: comms.value, ...email.value, ...(Object.keys(errors).length ? { errors } : {}) };
 }
 
 export const inbox = (userId, { unread, limit, offset }) =>

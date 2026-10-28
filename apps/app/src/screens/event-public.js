@@ -63,9 +63,10 @@ export function PublicPageTab({ id, e, games = [] }) {
         <AChip label={`🧑‍⚖️ Match officials ${v.show_officials ? 'shown' : 'hidden'}`} active={v.show_officials} onPress={() => set({ show_officials: !v.show_officials })} />
         <AChip label={`🔥 Fan reactions ${v.reactions ? 'on' : 'off'}`} active={v.reactions} onPress={() => (v.youth_event ? toast('Not available on youth events') : set({ reactions: !v.reactions }))} />
         <AChip label={`⭐ Fan MVP vote ${v.mvp_vote ? 'on' : 'off'}`} active={v.mvp_vote} onPress={() => (v.youth_event ? toast('Not available on youth events') : set({ mvp_vote: !v.mvp_vote }))} />
+        <AChip label={`📣 Paid ads ${v.ads ? 'allowed' : 'off'}`} active={v.ads} onPress={() => (v.youth_event ? toast('Youth events never carry ads') : set({ ads: !v.ads }, v.ads ? 'Ads are off on the public page' : 'Labelled, reviewed ads may appear on the public page'))} />
         <AChip label={v.archived ? '🗄 Archived' : '🗄 Archive'} active={v.archived} onPress={() => set({ archived: !v.archived }, v.archived ? 'Back in discovery' : 'Archived: out of discovery, still reachable by its link')} />
       </View>
-      <AT size={12} color={A.mute}>Fan votes are shown as fan votes and never create an official award. Archiving removes the event from discovery but keeps its link working.</AT>
+      <AT size={12} color={A.mute}>Paid ads, when allowed, are always labelled Sponsored or Promoted, are never mixed into scores, tables or awards, and never appear on youth events. Fan votes are shown as fan votes and never create an official award. Archiving removes the event from discovery but keeps its link working.</AT>
       {v.indexable && !v.effective_indexable ? <AT size={12} color={A.sun}>Search engines are switched on but not applied right now (draft, archived or restricted event).</AT> : null}
 
       <ASection title="Sponsor placements" sub="Real, active sponsorships of this event. Exposure is measured, never estimated." action={unplaced.length ? 'Add' : null} onAction={() => setAdding(true)} />

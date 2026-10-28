@@ -9,6 +9,8 @@ import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { useNav } from '../nav';
 import { Field, Avatar, Btn, Bubble, Card, Chip, Empty, ErrorBox, GradCard, H1, H2, Loading, Row, Screen, Seg, Section, StatPill, T, Tag } from '../ui';
+import { AdSlot } from '../ads';
+import { AcademiesTab, SuppliersTab } from './directory';
 import { FormSheet } from '../FormSheet';
 import { Reviews, TrophyShelf, Stars } from '../blocks';
 import { EventFacts, EventHeader, SpectatorBody, Sponsors } from './spectate';
@@ -63,9 +65,11 @@ export function Explore() {
   const list = useLoad(() => {
     const p = { sport: sport ?? undefined, limit: size };
     if (tab === 'events') return api.get('/events/search', { ...p, q: dq || undefined, sort, phase: phase ?? undefined, level: level ?? undefined, ...Object.fromEntries(Object.entries(flags).filter(([, v]) => v)) });
+    if (tab === 'academies' || tab === 'suppliers') return Promise.resolve([]);   // these tabs load their own directory
     if (tab === 'teams') return api.get('/teams', { ...p, q: dq || undefined });
     return api.get('/people', { ...p, sport: undefined, q: dq || undefined });
   }, [tab, sport, dq, flags, sort, size, phase, level]);
+  const dir = tab === 'academies' || tab === 'suppliers';
   const raw = tab === 'events' ? list.data?.items : list.data;
   const rows = Array.isArray(raw) ? raw : [];
   const total = tab === 'events' ? list.data?.total ?? rows.length : rows.length;
@@ -73,11 +77,12 @@ export function Explore() {
   return (
     <Screen>
       <H1 style={{ marginTop: 8 }}>Explore</H1>
-      <T color={c.mute} weight="600">Find events to join, teams to play for and people to play with.</T>
-      <Seg options={[{ value: 'events', label: 'Events', emoji: '🎟️', color: c.pink }, { value: 'teams', label: 'Teams', emoji: '🛡️', color: c.violet }, { value: 'people', label: 'People', emoji: '🧑‍🤝‍🧑', color: c.orange }]} value={tab} onChange={setTab} />
+      <T color={c.mute} weight="600">Find events to join, teams to play for, people to play with, academies to train at and suppliers to hire.</T>
+      <Seg options={[{ value: 'events', label: 'Events', emoji: '🎟️', color: c.pink }, { value: 'teams', label: 'Teams', emoji: '🛡️', color: c.violet }, { value: 'people', label: 'People', emoji: '🧑‍🤝‍🧑', color: c.orange }, { value: 'academies', label: 'Academies', emoji: '🏫', color: c.cyan }, { value: 'suppliers', label: 'Suppliers', emoji: '📦', color: c.mint }]} value={tab} onChange={setTab} />
       {tab === 'events' || tab === 'teams' ? <View style={{ marginTop: 6 }}><SportSelect allLabel="All sports" value={sport} onChange={setSport} /></View> : null}
 
-      <View style={{ marginTop: 8 }}><Field value={q} onChangeText={setQ} placeholder={tab === 'events' ? 'Search events, cities, sports' : tab === 'teams' ? 'Search teams' : 'Search people'} /></View>
+      {tab === 'academies' ? <AcademiesTab /> : tab === 'suppliers' ? <SuppliersTab /> : null}
+      {dir ? null : <View style={{ marginTop: 8 }}><Field value={q} onChangeText={setQ} placeholder={tab === 'events' ? 'Search events, cities, sports' : tab === 'teams' ? 'Search teams' : 'Search people'} /></View>}
       {tab === 'events' ? (
         <View style={{ gap: 8, marginTop: 8 }}>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }} accessibilityRole="toolbar">
@@ -95,7 +100,8 @@ export function Explore() {
         </View>
       ) : null}
 
-      <View style={{ gap: 12, marginTop: 14 }}>
+      {dir ? null : <View style={{ gap: 12, marginTop: 14 }}>
+        {tab === 'events' ? <><AdSlot placement="featured_event" sport={sport ?? undefined} /><AdSlot placement="search_sponsored" q={dq} sport={sport ?? undefined} /></> : null}
         {list.loading && !list.data ? <Loading /> : list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : !rows.length ? (dq || Object.values(flags).some(Boolean) || sport ? <Empty title="No matches" sub="Try fewer filters or a different search." /> : <Empty title="Nothing here yet" sub="Be the one who starts it." />) :
           rows.map((x, i) => {
             if (tab === 'events') return <Row key={x.id} onPress={() => push('Event', { id: x.id })} color={[c.pinkSoft, c.violetSoft, c.limeSoft, c.sunSoft][i % 4]} left={<Bubble emoji={x.banner_emoji} color={c.paper} />} title={x.name} sub={`${x.live_now ? '🔴 LIVE · ' : ''}${x.sport_emoji} ${x.sport} · ${x.entrants} in${x.spots_left != null ? ` · ${x.spots_left} spots left` : ''}${x.city ? ' · ' + x.city : ''}${x.starts_on ? ' · ' + day(x.starts_on) : ''}${x.entry_fee_cents ? ' · ' + money(x.entry_fee_cents) : ' · Free'}`} right={<Tag label={x.registration_open ? 'open' : x.status === 'open' ? 'full / closed' : x.status} color={x.registration_open ? c.lime : c.sun} />} />;
@@ -103,7 +109,7 @@ export function Explore() {
             return <Row key={x.id} onPress={() => push('Person', { id: x.id })} left={<Avatar user={x} />} title={x.display_name} sub={`@${x.handle} · ${(x.roles ?? []).join(', ')}`} />;
           })}
         {total > rows.length ? <Btn small title={`Show more (${total - rows.length} more)`} color={c.paper} onPress={() => setSize((n) => n + 20)} /> : null}
-      </View>
+      </View>}
 
     </Screen>
   );

@@ -1,5 +1,7 @@
 # WhatsApp notifications
 
+> Approved-template WhatsApp Business (official Cloud API), SMS, consent evidence, quotas and the Communication settings screens are in [communications.md](communications.md). This page covers the OpenWA free-text path, which stays as the fallback and for dedicated numbers.
+
 WhatsApp is a third notification channel next to the in-app inbox, email and push. Messages are sent through a self-hosted
 [OpenWA](https://github.com/rmyndharis/OpenWA) gateway. OpenWA is a standalone server (not a library), so the deploy runs it as a
 Docker container (`sportarena-openwa`, bound to `127.0.0.1:2785`, persistent volume `sportarena_openwa_data`) and the API calls its REST API.

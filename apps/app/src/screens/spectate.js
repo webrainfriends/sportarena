@@ -10,6 +10,7 @@ import { usePoll } from '../live';
 import { useSession } from '../session';
 import { useNav } from '../nav';
 import { Btn, Bubble, Card, Chip, Empty, ErrorBox, H2, Loading, Row, Screen, Seg, Sheet, T, Tag } from '../ui';
+import { AdSlot } from '../ads';
 import { A, ABracket, ABtn, ACard, AChip, AEmpty, AScreen, ASection, AT, ScoreTicker } from '../arena';
 import { StandingsTable } from '../blocks';
 import { c } from '../theme';
@@ -283,11 +284,13 @@ export function SpectatorBody({ id, p, openGame, goTeam, extra = [] }) {
         </View>
       ) : null}
       {p.sponsors.placements.filter((x) => x.slot === 'title_partner').length ? <Sponsors list={p.sponsors.placements.filter((x) => x.slot === 'title_partner')} title="Presented by" /> : null}
+      <AdSlot placement="event_display" eventId={id} sport={p.event.sport?.slug} city={p.event.city || undefined} />
       <Seg options={tabs} value={tab} onChange={setTab} />
       {tab === 'games' && <GamesList id={id} openGame={openGame} />}
       {tab === 'table' && (
         <>
           {p.sponsors.placements.filter((x) => x.slot === 'leaderboard').length ? <Sponsors list={p.sponsors.placements.filter((x) => x.slot === 'leaderboard')} title="Table partner" /> : null}
+          <AdSlot placement="scorecard_leaderboard" eventId={id} sport={p.event.sport?.slug} />
           <TableView id={id} openGame={openGame} />
           {p.races.length ? <View style={{ gap: 8 }}><H2>Races</H2>{p.races.map((r) => <Row key={r.id} onPress={() => (goTeam ? goTeam.race(r.id) : null)} left={<Bubble emoji={r.emoji ?? '🏃'} color={c.limeSoft} />} title={r.name} sub={`${r.sport ?? ''} · live results`} />)}</View> : null}
         </>
@@ -437,6 +440,7 @@ export function LiveCentre({ id }) {
         </ACard>
       ) : null}
 
+      <AdSlot placement="scorecard_leaderboard" eventId={view.event.id} sport={view.event.sport_slug} />
       <ASection title="Timeline" sub={view.live.ruleset.label} />
       {scored.length ? <ACard>{[...scored].reverse().map((e) => (
         <View key={e.seq} style={{ flexDirection: 'row', gap: 10, paddingVertical: 7, alignItems: 'center' }}>

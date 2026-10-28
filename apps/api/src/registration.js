@@ -14,6 +14,7 @@ import { decrypt } from './crypto.js';
 import { audit } from './helpers.js';
 import { hasConsent, isYouth } from './youth.js';
 import { conflict } from './errors.js';
+import { activeSportingSanction } from './integrity.js';
 
 export const LISTS = ['active', 'reserve', 'development'];
 export const LIVE = ['submitted', 'under_review', 'registered', 'suspended'];
@@ -129,6 +130,9 @@ export async function evaluate(c, ctx, teamId, userId) {
       WHERE event_id=$1 AND user_id=$2 AND superseded_at IS NULL AND (valid_from IS NULL OR valid_from <= $3::date) AND (valid_until IS NULL OR valid_until >= $3::date)
       ORDER BY kind, created_at DESC, id`, [event.id, userId, day])).rows;
   const byKind = new Map(deps.map((d) => [d.kind, d]));
+  // an active sporting sanction recorded by a governing body is read live, never copied: it says only that the person is suspended and until when
+  const sanction = await activeSportingSanction(q(c), userId, event.sport_id, day);
+  if (sanction) byKind.set('disciplinary', { id: sanction.id, kind: 'disciplinary', status: 'blocked', valid_until: sanction.valid_until, source_label: 'Sporting sanction' });
   const NAME = { licence: 'Licence', transfer: 'Transfer clearance', loan: 'Loan clearance', classification: 'Classification', disciplinary: 'Disciplinary status' };
   for (const kind of DEP_KINDS) {
     const d = byKind.get(kind);
