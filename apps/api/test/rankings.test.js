@@ -25,7 +25,7 @@ const signup = async (roles = ['athlete']) => {
 const makeAdmin = async () => {
   const a = await signup();
   await pool.query("UPDATE users SET roles = roles || '{admin}' WHERE id=$1", [a.id]);
-  return { ...a, token: (await api('POST', '/auth/login', { body: { email: a.email, password: 'correct-horse-battery' } })).body.token };
+  return a; // the registration token keeps working (roles are read live); signing in again would drop the label, since the account is not on the platform-admin list
 };
 before(async () => {
   await pool.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public');
