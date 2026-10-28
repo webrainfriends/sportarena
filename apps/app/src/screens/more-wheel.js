@@ -31,9 +31,12 @@ export function MoreWheel() {
   const note = useLoad(() => api.get('/notifications', { unread: true, limit: 1 }), []);
   const d = dash.data, unread = note.data?.unread ?? 0;
   const next = d?.next_games?.[0];
-  const mods = useMemo(() => orderedModules(user.roles), [user.roles]);
+  // a front-desk cashier has no role to hold (and no access to anything but the desk), but still needs somewhere to open it
+  const staffed = useLoad(() => (user.roles.includes('venue_manager') ? Promise.resolve([]) : api.get('/me/front-desks').catch(() => [])), [user.id]);
+  const spaceRoles = useMemo(() => (staffed.data?.length ? [...user.roles, 'venue_manager'] : user.roles), [user.roles, staffed.data]);
+  const mods = useMemo(() => orderedModules(spaceRoles), [spaceRoles]);
   const n = mods.length;
-  const spaces = useMemo(() => workspacesFor(user.roles), [user.roles]);
+  const spaces = useMemo(() => workspacesFor(spaceRoles), [spaceRoles]);
   const [picker, setPicker] = useState(false); // the Workspace submenu: one row per role that has a workspace
   const openSpace = useCallback(([role, route, , tab]) => { setActiveRole(role); if (tab) goTab(tab.tab, { section: tab.section }); else push(route); }, [push, goTab, setActiveRole]);
   const open = useCallback((name) => {

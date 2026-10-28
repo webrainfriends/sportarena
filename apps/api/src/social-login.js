@@ -13,7 +13,7 @@ const USER_COLS = 'id, handle, display_name, roles, avatar_emoji, avatar_color, 
 const SUB_COL = { google: 'google_sub', apple: 'apple_sub' };
 
 /** A free public handle: first name + a random 5-digit number (e.g. priya_48213), 3-24 chars of a-z, 0-9, _. Falls back to the email's local part when there is no name. */
-async function freeHandle(email, name) {
+export async function freeHandle(email, name) {
   const clean = (t) => String(t ?? '').normalize('NFKD').toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 18);
   const first = clean(String(name ?? '').trim().split(/\s+/)[0]) || clean(email.split('@')[0]) || 'player';
   for (let n = 0; n < 12; n++) {
@@ -68,6 +68,7 @@ export async function socialSignIn({ provider, sub, email, verified = true, name
     await revokeUserSessions(u.id, 'access_rejected');
     throw unauthorized('Your access request was declined by the administrator.');
   }
+  await (await import('./identity/sso.js')).assertLocalLoginAllowed(u.id, { how: provider });
   if (await one('SELECT 1 FROM user_mfa WHERE user_id = $1 AND enabled_at IS NOT NULL AND disabled_at IS NULL', [u.id])) {
     return { mfa_required: true, mfa_token: await issueToken(u.id, 'mfa_login', 5) };
   }

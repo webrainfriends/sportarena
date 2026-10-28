@@ -142,9 +142,9 @@ export function Invoice({ id }) {
         </View>
         <View style={{ flexDirection: 'row', gap: 16, marginTop: 14, flexWrap: 'wrap' }}>
           <View style={{ flex: 1, minWidth: 200 }}><T size={11} color={c.mute} weight="700">FROM</T><T weight="700">{d.seller.name}</T>{d.seller.address ? <T size={13}>{d.seller.address}</T> : null}{d.seller.tax_id ? <T size={13}>{d.tax_name} ID: {d.seller.tax_id}</T> : null}{d.seller.phone ? <T size={13}>{d.seller.phone}</T> : null}</View>
-          <View style={{ flex: 1, minWidth: 200 }}><T size={11} color={c.mute} weight="700">BILLED TO</T><T weight="700">{d.buyer?.name}</T>{d.buyer?.address ? <T size={13}>{d.buyer.address}</T> : null}{d.buyer?.tax_id ? <T size={13}>Tax ID: {d.buyer.tax_id}</T> : null}</View>
+          <View style={{ flex: 1, minWidth: 200 }}><T size={11} color={c.mute} weight="700">BILLED TO</T><T weight="700">{d.buyer?.name}</T>{d.buyer?.for ? <T size={13}>For {d.buyer.for}</T> : null}{d.buyer?.address ? <T size={13}>{d.buyer.address}</T> : null}{d.buyer?.tax_id ? <T size={13}>Tax ID: {d.buyer.tax_id}</T> : null}</View>
         </View>
-        <T size={12} color={c.mute} style={{ marginTop: 10 }}>Issued {new Date(d.issued_at).toLocaleDateString(locale)} · Booking {d.reservation_code} · {d.venue_name} · {d.currency}{d.paid_at && !credit ? ` · Paid ${new Date(d.paid_at).toLocaleDateString(locale)}${d.payment_method ? ` (${d.payment_method})` : ''}` : ''}</T>
+        <T size={12} color={c.mute} style={{ marginTop: 10 }}>Issued {new Date(d.issued_at).toLocaleDateString(locale)}{d.reservation_code ? ` · Booking ${d.reservation_code} · ${d.venue_name}` : d.team_name ? ` · ${d.team_name}` : d.organisation_name ? ` · ${d.organisation_name}` : ''} · {d.currency}{d.paid_at && !credit ? ` · Paid ${new Date(d.paid_at).toLocaleDateString(locale)}${d.payment_method ? ` (${d.payment_method})` : ''}` : ''}</T>
         <View style={{ marginTop: 14, borderTopWidth: 1, borderColor: c.line }}>
           {d.lines.map((l, k) => (
             <View key={k} style={{ flexDirection: 'row', gap: 10, paddingVertical: 8, borderBottomWidth: 1, borderColor: c.line }}>

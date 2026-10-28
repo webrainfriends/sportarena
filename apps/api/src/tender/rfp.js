@@ -6,7 +6,7 @@ import { rubricSchema, rubricIssues } from './scoring.js';
 import { stageOf, issuerOf } from './core.js';
 import { badgesFor } from '../verification.js';
 
-export const lotsOf = async (c, pid, { archived = false } = {}) => (await c.query(`SELECT code, title, description, service_family, qty::float AS qty, unit, estimate_minor, allow_partial, bundle_with, starts_on, ends_on, site, position FROM proc_lots WHERE project_id=$1 ${archived ? '' : 'AND archived_at IS NULL'} ORDER BY position, code`, [pid])).rows;
+export const lotsOf = async (c, pid, { archived = false } = {}) => (await c.query(`SELECT code, title, description, service_family, supply_kind, qty::float AS qty, unit, estimate_minor, allow_partial, bundle_with, starts_on, ends_on, site, position FROM proc_lots WHERE project_id=$1 ${archived ? '' : 'AND archived_at IS NULL'} ORDER BY position, code`, [pid])).rows;
 export const questionsOf = async (c, pid) => (await c.query('SELECT key, section, prompt, type, options, unit, required, pass_fail, pass_value, evidence_required, lot_code, show_if, position FROM proc_questions WHERE project_id=$1 AND archived_at IS NULL ORDER BY position, key', [pid])).rows;
 
 const at = (d) => (d ? new Date(d).getTime() : null);

@@ -2,6 +2,7 @@
 // Every category runs in its own try/catch: a failure in one (say, the email bridge) never blocks holds, refunds or waitlists.
 import { notificationCycle, isolated } from './notify.js';
 import { expireUnpaidHolds } from './booking/holds.js';
+import { expireStaleSales } from './pos/sale.js';
 import { processRefunds } from './booking/refunds.js';
 import { checkSlotAlerts } from './booking/alerts.js';
 import { processWaitlist } from './booking/waitlist.js';
@@ -9,6 +10,7 @@ import { expireLoyalty } from './booking/loyalty.js';
 import { tx } from './db.js';
 import { eventParticipationSweep, membershipTenureSweep } from './rewards/activity.js';
 import { releaseDueReferrals } from './rewards/referrals.js';
+import { expireCover } from './cover.js';
 import { expireUserPlans, raiseSubscriptionRenewals } from './booking/plans.js';
 import { venueOpsReminders } from './booking/venue-ops.js';
 import { expireStaleRequests } from './lifecycle.js';
@@ -36,12 +38,15 @@ import { snapshotAll } from './rankings/data.js';
 /** Weekly ranking snapshots: the worker runs often, so only act once a week (Monday UTC), and a rerun on identical results adds nothing. */
 const weeklyRankingSnapshots = () => (new Date().getUTCDay() === 1 ? snapshotAll('weekly') : 0);
 import { syncOpenGames } from './open-games-sweeps.js';
+import { raiseTeamDues } from './team-money.js';
 
 export const STEPS = [
   ['holds', 'holds_released', expireUnpaidHolds, 0],
+  ['pos_sales', 'pos_sales_released', expireStaleSales, 0],
   ['refunds', 'refunds', processRefunds, { done: 0, failed: 0, manual: 0 }],
   ['waitlist', 'waitlist', processWaitlist, null],
   ['loyalty', 'points_expired', expireLoyalty, 0],
+  ['cover', 'cover_agreements_expired', () => tx((c) => expireCover(c)), 0],
   ['loyalty_referrals', 'referral_rewards_released', () => tx((c) => releaseDueReferrals(c)), 0],
   ['loyalty_events', 'event_points_awarded', () => tx((c) => eventParticipationSweep(c)), 0],
   ['loyalty_memberships', 'membership_points_awarded', () => tx((c) => membershipTenureSweep(c)), 0],
@@ -76,6 +81,7 @@ export const STEPS = [
   ['follower_alerts', 'follower_alerts_sent', sendFollowerAlerts, 0],
   ['ranking_snapshots', 'ranking_snapshots', weeklyRankingSnapshots, 0],
   ['open_games', 'open_games_synced', syncOpenGames, 0],
+  ['team_dues', 'team_dues_raised', raiseTeamDues, 0],
 ];
 
 export async function maintenanceCycle() {

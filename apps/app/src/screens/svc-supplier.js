@@ -10,7 +10,7 @@ import { useNav } from '../nav';
 import { Btn, Card, Chip, Empty, ErrorBox, H1, Loading, Row, Screen, Section, Sheet, T } from '../ui';
 import { localToIso } from '../vtime';
 import { useDo } from './console-utils';
-import { DocButton, ExportsPanel, Kpi, Kv, Note, Status, Tabs, Wrap, catLabel, collectScope, day, label, money, scopeFields, useCatalogue, when } from './svc-common';
+import { ChainTrace, DocButton, ExportsPanel, Kpi, Kv, Note, PerformanceRecord, Status, Tabs, Wrap, catLabel, collectScope, day, label, money, scopeFields, useCatalogue, when } from './svc-common';
 
 const TABS = [['overview', 'Overview'], ['offerings', 'Offerings'], ['quotes', 'Opportunities & quotes'], ['orders', 'Orders & jobs'], ['calendar', 'Calendar'], ['customers', 'Customers'], ['finance', 'Finance'], ['reports', 'Reports & documents'], ['team', 'Team & credentials']];
 const CURRENCIES = ['INR', 'USD', 'EUR', 'GBP', 'AED', 'SGD', 'AUD', 'KWD', 'BHD', 'OMR'];
@@ -87,6 +87,7 @@ function Overview({ p, go }) {
       <Section title="Opportunities">
         {inbox.data?.length ? inbox.data.map((i) => <Row key={i.id} title={i.title} sub={`${i.buyer_name}${i.quote_deadline ? ` · quote by ${day(i.quote_deadline)}` : ''}`} right={<Status s={i.status} />} onPress={() => go('quotes')} />) : <Empty emoji="📨" title="No requests yet" sub="Publish offerings so buyers can find and invite you." />}
       </Section>
+      <Section title="Your performance record"><PerformanceRecord profileId={p.id} /></Section>
       <Section title="Goods & stock"><Note>Selling goods works as before: products, stock and shipping stay in the shop.</Note><Wrap><Btn small color={c.paper} ink={c.ink} title="My shop" onPress={() => push('Shop')} /><Btn small color={c.paper} ink={c.ink} title="Stock & reorders" onPress={() => push('Supply')} /></Wrap></Section>
       <Note>Dates and times are shown in UTC. Figures are per currency and are never combined.</Note>
     </>
@@ -231,6 +232,7 @@ function OrderSheet({ id, p, onClose }) {
       </Wrap>
       {['pending_supplier', 'changes_proposed'].includes(o.status) ? <Wrap><Btn small title="Confirm order" onPress={() => act(() => api.post(`/service-orders/${o.id}/respond`, { action: 'confirm' }), 'Confirmed — capacity reserved')} /><Btn small color={c.paper} ink={c.red} title="Reject" onPress={() => setForm('reject')} /></Wrap> : null}
       {['not_required', 'fully_signed', 'signed_by_supplier'].includes(o.agreement_status) ? null : <Btn small color={c.paper} ink={c.ink} title="Acknowledge agreement" onPress={() => setForm('sign')} style={{ alignSelf: 'flex-start' }} />}
+      <Section title="Commercial chain"><ChainTrace path={`/service-orders/${o.id}/chain`} /></Section>
       <Section title="Lines">
         {o.lines.map((l) => <Row key={l.id} title={`${l.line_no}. ${l.description}`} sub={`${Number(l.qty_ordered)} ${label(l.unit)} · accepted ${Number(l.qty_accepted)} · invoiced ${Number(l.qty_invoiced)} · ${money(l.rate_minor, o.currency)}`} />)}
       </Section>

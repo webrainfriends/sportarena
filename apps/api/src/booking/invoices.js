@@ -11,7 +11,7 @@ import { earnForInvoice, clawBackPoints } from './loyalty.js';
 const ACTIVE = new Set(['confirmed', 'no_show']);
 const taxIn = (total, rate) => Math.round((total * rate) / (10000 + rate)); // payable always contains its tax
 
-async function nextNumber(c, venue, kind) {
+export async function nextNumber(c, venue, kind) {
   let prefix = venue.invoice_prefix;
   if (!prefix) {
     // 3 letters of the name + a slice of the venue id; the prefix is unique, so on a clash take a longer slice of the id
@@ -36,7 +36,7 @@ async function nextNumber(c, venue, kind) {
   return `${kind === 'credit_note' ? 'CN-' : ''}${prefix}-${year}-${String(seq).padStart(6, '0')}`;
 }
 
-const seller = (v) => ({ name: v.legal_name ?? v.name, tax_id: v.tax_id ?? null, address: v.billing_address ?? [v.address, v.city, v.postal_code, v.country].filter(Boolean).join(', '), phone: v.phone ?? null, email: v.email ?? null });
+export const seller = (v) => ({ name: v.legal_name ?? v.name, tax_id: v.tax_id ?? null, address: v.billing_address ?? [v.address, v.city, v.postal_code, v.country].filter(Boolean).join(', '), phone: v.phone ?? null, email: v.email ?? null });
 
 async function buyerBlob(c, rs) {
   const u = (await c.query('SELECT display_name FROM users WHERE id=$1', [rs.user_id])).rows[0];
@@ -91,9 +91,9 @@ export async function reconcileInvoices(c, reservationId) {
         if ((await c.query('SELECT credits_cents FROM invoices WHERE id=$1', [open.id])).rows[0].credits_cents >= delta) await markInvoicePaid(c, open.id, { method: 'wallet', by: rs.user_id });
       } else {
         await c.query(
-          `INSERT INTO invoices(kind, number, venue_id, reservation_id, user_id, currency, total_cents, tax_cents, tax_name, tax_rate_bp, tax_inclusive, seller, buyer_enc, lines)
-           VALUES ('invoice',$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
-          [await nextNumber(c, venue, 'invoice'), venueId, reservationId, rs.user_id, money.currency, delta, tax, money.tax_name, money.tax_rate_bp, money.tax_inclusive, seller(venue), await buyerBlob(c, rs), JSON.stringify(docLines)]);
+          `INSERT INTO invoices(kind, number, venue_id, reservation_id, user_id, currency, total_cents, tax_cents, tax_name, tax_rate_bp, tax_inclusive, seller, buyer_enc, lines, walk_in)
+           VALUES ('invoice',$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+          [await nextNumber(c, venue, 'invoice'), venueId, reservationId, rs.user_id, money.currency, delta, tax, money.tax_name, money.tax_rate_bp, money.tax_inclusive, seller(venue), await buyerBlob(c, rs), JSON.stringify(docLines), rs.walk_in]);
       }
       await c.query("UPDATE bookings b SET payment_status='unpaid' FROM resources r WHERE r.id=b.resource_id AND r.venue_id=$2 AND b.reservation_id=$1 AND b.status IN ('confirmed','no_show') AND b.payment_status IN ('paid','unpaid')", [reservationId, venueId]);
       continue;
@@ -108,12 +108,15 @@ export async function reconcileInvoices(c, reservationId) {
       // wallet-funded money goes straight back to the wallet; only the rest needs the card provider or the venue
       const toWallet = await returnCredits(c, paid.map((d) => d.id), credit, { note: `Refund for booking ${rs.code}` });
       const rest = credit - toWallet;
-      const online = rest > 0 && (await c.query("SELECT 1 FROM payments WHERE purpose_type='venue_invoice' AND purpose_id = ANY($1::uuid[]) AND status IN ('paid','refunded')", [paid.map((d) => d.id)])).rowCount > 0;
+      // paid by card online: either directly on the invoice, or as part of a front-desk sale that held it
+      const online = rest > 0 && (await c.query(
+        `SELECT 1 FROM payments WHERE status IN ('paid','refunded') AND ((purpose_type='venue_invoice' AND purpose_id = ANY($1::uuid[]))
+            OR (purpose_type='pos_sale' AND purpose_id IN (SELECT sale_id FROM pos_sale_invoices WHERE invoice_id = ANY($1::uuid[]))))`, [paid.map((d) => d.id)])).rowCount > 0;
       await c.query(
-        `INSERT INTO invoices(kind, number, venue_id, reservation_id, user_id, parent_id, currency, status, total_cents, tax_cents, tax_name, tax_rate_bp, tax_inclusive, seller, buyer_enc, lines, paid_at, refund_status, refund_to_credits_cents, refunded_at)
-         VALUES ('credit_note',$1,$2,$3,$4,$5,$6,'paid',$7,$8,$9,$10,$11,$12,$13,$14, now(), $15, $16, CASE WHEN $15 = 'done' THEN now() END)`,
+        `INSERT INTO invoices(kind, number, venue_id, reservation_id, user_id, parent_id, currency, status, total_cents, tax_cents, tax_name, tax_rate_bp, tax_inclusive, seller, buyer_enc, lines, paid_at, refund_status, refund_to_credits_cents, refunded_at, walk_in)
+         VALUES ('credit_note',$1,$2,$3,$4,$5,$6,'paid',$7,$8,$9,$10,$11,$12,$13,$14, now(), $15, $16, CASE WHEN $15 = 'done' THEN now() END, $17)`,
         [await nextNumber(c, venue, 'credit_note'), venueId, reservationId, rs.user_id, paid[paid.length - 1]?.id ?? null, money.currency, credit, taxIn(credit, venue.tax_rate_bp), money.tax_name, money.tax_rate_bp, money.tax_inclusive,
-          seller(venue), await buyerBlob(c, rs), JSON.stringify([{ description: `Credit for changed or cancelled bookings (${rs.code})`, amount_cents: credit, tax_cents: taxIn(credit, venue.tax_rate_bp) }]), rest === 0 ? 'done' : online ? 'pending' : 'manual', toWallet]);
+          seller(venue), await buyerBlob(c, rs), JSON.stringify([{ description: `Credit for changed or cancelled bookings (${rs.code})`, amount_cents: credit, tax_cents: taxIn(credit, venue.tax_rate_bp) }]), rest === 0 ? 'done' : online ? 'pending' : 'manual', toWallet, rs.walk_in]);
       if (online) c.afterCommit?.(() => import('./refunds.js').then((m) => m.kickRefunds()));
       await c.query("UPDATE bookings b SET payment_status=$3 FROM resources r WHERE r.id=b.resource_id AND r.venue_id=$2 AND b.reservation_id=$1 AND b.status='cancelled' AND b.refund_cents > 0 AND b.payment_status IN ('paid','unpaid')", [reservationId, venueId, rest === 0 ? 'refunded' : 'refund_due']);
     }
@@ -123,6 +126,9 @@ export async function reconcileInvoices(c, reservationId) {
   if (!unpaidOpen) await c.query('UPDATE reservations SET payment_deadline=NULL WHERE id=$1 AND payment_deadline IS NOT NULL', [reservationId]);
 }
 
+/** Other modules that must react when an invoice of theirs is paid (the front desk finishes a sale). Registered at start-up; run inside the paying transaction. */
+export const paidHooks = [];
+
 /** Record that an open invoice has been paid (online by a provider, or at the venue). Idempotent: returns false if it can't be paid any more. */
 export async function markInvoicePaid(c, invoiceId, { method, by } = {}) {
   const inv = (await c.query("SELECT * FROM invoices WHERE id=$1 AND kind='invoice' FOR UPDATE", [invoiceId])).rows[0];
@@ -131,6 +137,9 @@ export async function markInvoicePaid(c, invoiceId, { method, by } = {}) {
   await c.query("UPDATE bookings b SET payment_status='paid' FROM resources r WHERE r.id=b.resource_id AND r.venue_id=$2 AND b.reservation_id=$1 AND b.status IN ('confirmed','no_show')", [inv.reservation_id, inv.venue_id]);
   const stillOpen = (await c.query("SELECT 1 FROM invoices WHERE reservation_id=$1 AND kind='invoice' AND status='open'", [inv.reservation_id])).rowCount;
   if (!stillOpen) await c.query('UPDATE reservations SET payment_deadline=NULL WHERE id=$1', [inv.reservation_id]);
+  for (const h of paidHooks) await h(c, inv);
+  // a walk-in guest's invoice is billed to the cashier who rang it up: the cashier earns no points and is not notified
+  if (inv.walk_in) return true;
   await earnForInvoice(c, inv);
   await notify(c, inv.user_id, { kind: 'invoice_paid', title: `Payment received · ${inv.number}`, body: `${inv.currency} ${toMajor(inv.total_cents, inv.currency)} paid${by ? ` (${method ?? 'at the venue'})` : ' online'}. Your receipt is in the booking.`, data: { invoice_id: inv.id, reservation_id: inv.reservation_id, venue_id: inv.venue_id } });
   return true;
