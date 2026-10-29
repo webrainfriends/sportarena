@@ -136,6 +136,7 @@ function Overview({ o, d, role, archived, reload, toast }) {
         <Section title="Money (linked teams)" color={c.lime}>
           {d.finance.length ? d.finance.map((f) => <Row key={f.currency + f.status} title={moneyIn(f.amount_cents, f.currency)} sub={`${f.entries} ${f.status} entries`} />) : <Empty emoji="💸" title="Nothing recorded" sub="Fees owed to players and coaches of linked teams appear here." />}
           <Btn small title="Export finance CSV" color={c.paper} ink={c.ink} onPress={() => exportCsv('finance')} style={{ marginTop: 8, alignSelf: 'flex-start' }} />
+          {['owner', 'admin', 'finance'].includes(role) ? <Btn small title="Open Finance console" onPress={() => push('Finance', { id: o.id })} style={{ marginTop: 8, alignSelf: 'flex-start' }} /> : null}
         </Section>
       ) : null}
       {STAFF.includes(role) || role === 'finance' ? <IncomingSponsorship orgId={o.id} /> : null}

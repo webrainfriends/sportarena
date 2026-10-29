@@ -113,6 +113,7 @@ import './offline-sync.js';
 import './coaching-evidence.js';
 import './payments.js';
 import './settlement.js';
+import './finance.js';
 import './sponsors.js';
 import './sponsorship-agreements.js';
 import './sponsorship-fulfilment.js';

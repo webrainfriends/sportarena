@@ -42,6 +42,7 @@ const weeklyRankingSnapshots = () => (new Date().getUTCDay() === 1 ? snapshotAll
 import { syncOpenGames } from './open-games-sweeps.js';
 import { adSweeps } from './ads/engine.js';
 import { raiseTeamDues } from './team-money.js';
+import { reconcileFinance } from './finance.js';
 
 export const STEPS = [
   ['holds', 'holds_released', expireUnpaidHolds, 0],
@@ -88,6 +89,7 @@ export const STEPS = [
   ['open_games', 'open_games_synced', syncOpenGames, 0],
   ['team_dues', 'team_dues_raised', raiseTeamDues, 0],
   ['advertising', 'advertising', adSweeps, null],
+  ['finance', 'finance', reconcileFinance, null],
 ];
 
 export async function maintenanceCycle() {

@@ -7,6 +7,7 @@
 //   3. the provider call uses that same key, so repeating it is a no-op at Stripe/PayPal;
 //   4. the intent is flipped to 'recorded' and payments.refunded_cents increased in ONE transaction.
 // A retry after any crash reuses the stored amount and key, so the customer is refunded exactly once.
+import { recordRefund } from '../finance.js';
 import { query, many, one, tx } from '../db.js';
 import { provider } from '../payments/providers.js';
 import { AppError } from '../errors.js';
@@ -33,6 +34,7 @@ export async function refundWithIntent(cn, p, wanted) {
     const rec = await c.query("UPDATE refund_intents SET status='recorded', recorded_at=now() WHERE invoice_id=$1 AND payment_id=$2 AND status='intent' RETURNING amount_cents", [cn.id, p.id]);
     if (!rec.rowCount) return; // another run already recorded it
     await c.query("UPDATE payments SET refunded_cents = refunded_cents + $2, status = CASE WHEN refunded_cents + $2 >= amount_cents THEN 'refunded' ELSE status END, refunded_at = CASE WHEN refunded_cents + $2 >= amount_cents THEN now() ELSE refunded_at END WHERE id=$1", [p.id, amount]);
+    await recordRefund(c, (await c.query('SELECT * FROM payments WHERE id=$1', [p.id])).rows[0]);
   });
   return amount;
 }

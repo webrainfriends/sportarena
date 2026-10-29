@@ -9,6 +9,7 @@ import { config } from '../config.js';
 import { audit } from '../helpers.js';
 import { decrypt, encrypt } from '../crypto.js';
 import { notify } from '../notify.js';
+import { recordPayout, resolveDispute } from '../finance.js';
 import { balances, explainFailure, payoutBlockers, postChargeback, postPayout, postPayoutReversal, reconcile, reconciliationReport } from '../settlement.js';
 
 const TAG = 'Earnings & settlement';
@@ -193,6 +194,7 @@ cap({
       const acc = (await c.query("SELECT id FROM payout_accounts WHERE owner_id=$1 AND currency=$2 AND status='verified'", [i.seller_id, i.currency])).rows[0];
       const p = (await c.query('INSERT INTO provider_payouts(seller_id, currency, amount_cents, account_id, idempotency_key, created_by) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *', [i.seller_id, i.currency, bal.available_cents, acc.id, i.idempotency_key, user.id])).rows[0];
       await postPayout(c, { sellerId: p.seller_id, currency: p.currency, payoutId: p.id, amount: Number(p.amount_cents) });
+      await recordPayout(c, p, 'open');
       await audit(c, user.id, 'create_provider_payout', 'provider_payouts', p.id);
       return payoutView(p);
     });
@@ -216,12 +218,14 @@ cap({
         const dup = (await c.query('SELECT 1 FROM provider_payouts WHERE reference=$1 AND id<>$2', [i.reference, p.id])).rowCount;
         if (dup) throw conflict('That transfer reference is already recorded on another payout');
         const row = (await c.query("UPDATE provider_payouts SET status='paid', reference=$2, decided_by=$3, decided_at=now() WHERE id=$1 RETURNING *", [p.id, i.reference, user.id])).rows[0];
+        await recordPayout(c, row, 'settled');
         await audit(c, user.id, 'record_payout_paid', 'provider_payouts', p.id);
         await notify(c, p.seller_id, { kind: 'payout_paid', title: 'Your payout was sent', body: `${(p.amount_cents / 100).toFixed(2)} ${p.currency} was sent to your bank account (reference ${i.reference}).`, data: { payout_id: p.id }, dedupe_key: `payout_paid:${p.id}` });
         return payoutView(row);
       }
       const row = (await c.query("UPDATE provider_payouts SET status='failed', failure_code=$2, failure_reason=$3, decided_by=$4, decided_at=now() WHERE id=$1 RETURNING *", [p.id, i.failure_code, i.reason, user.id])).rows[0];
       await postPayoutReversal(c, { sellerId: p.seller_id, currency: p.currency, payoutId: p.id, amount: Number(p.amount_cents) });
+      await recordPayout(c, row, 'failed');
       await c.query(`INSERT INTO settlement_exceptions(kind, dedupe_key, seller_id, payout_id, currency, amount_cents, detail) VALUES ('payout_failed',$1,$2,$3,$4,$5,$6) ON CONFLICT (dedupe_key) WHERE status='open' DO NOTHING`,
         [`payout_failed:${p.id}`, p.seller_id, p.id, p.currency, p.amount_cents, JSON.stringify({ failure_code: i.failure_code, reason: i.reason })]);
       await audit(c, user.id, 'record_payout_failed', 'provider_payouts', p.id);
@@ -350,6 +354,7 @@ cap({
       if (i.case_id) await assertCaseLinksPayment(c, user, i.case_id, e.payment_id);
       if (isDispute) {
         if (i.action === 'reverse') await postChargeback(c, { exceptionId: e.id, paymentId: e.payment_id, amount: e.amount_cents });
+        await resolveDispute(c, e, i.action);
         await c.query("UPDATE settlement_holds SET released_at=now(), released_by=$2, release_reason=$3 WHERE payment_id=$1 AND released_at IS NULL AND reason LIKE 'Dispute %'", [e.payment_id, user.id, i.reason]);
       }
       const row = (await c.query("UPDATE settlement_exceptions SET status='resolved', resolution=$2, resolved_by=$3, resolved_at=now() WHERE id=$1 RETURNING *", [e.id, `${i.action}: ${i.reason}`, user.id])).rows[0];
