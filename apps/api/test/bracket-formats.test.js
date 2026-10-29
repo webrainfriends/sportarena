@@ -440,7 +440,9 @@ test('previews say how a sport fits the bracket: native for two-sided contests, 
   const pv = await api('POST', `/events/${w.ev.id}/schedule/preview`, { token: w.org.token, body: { ...WINDOW, format: 'knockout', team_ids: w.ids } });
   assert.equal(pv.body.coverage.mode, 'native'); assert.equal(pv.body.coverage.family, 'points');
   await pool.query("UPDATE events SET sport_id=(SELECT id FROM sports WHERE slug='long-jump') WHERE id=$1", [w.ev.id]);
+  await pool.query('UPDATE resources SET sport_id=NULL WHERE venue_id=$1', [w.venue.id]); // the courts serve any sport
   const fb = await api('POST', `/events/${w.ev.id}/schedule/preview`, { token: w.org.token, body: { ...WINDOW, format: 'knockout', team_ids: w.ids } });
+  assert.equal(fb.status, 200, JSON.stringify(fb.body));
   assert.equal(fb.body.coverage.mode, 'fallback');
   assert.ok(fb.body.warnings.some((x) => /generic fallback/.test(x)));
 });
