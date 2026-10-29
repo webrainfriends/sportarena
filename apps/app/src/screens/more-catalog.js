@@ -1,13 +1,14 @@
 // Every module the More wheel offers: [route, title, sub, group]. The route is the PAGES key in App.js.
 export const MODULES = [
   ['Leaderboard', 'Leaderboard', 'Points & glory', 'play'], ['Awards', 'Trophy room', 'Cups, medals, MVPs', 'play'],
-  ['CareerTimeline', 'Career & clubs', 'Your clubs, verified by them', 'play'], ['MyLicences', 'My licences', 'Federation licences & standing', 'play'], ['MyIntegrity', 'My integrity', 'Notices, exemptions & education', 'play'],
+  ['CareerTimeline', 'Career & clubs', 'Your clubs, verified by them', 'play'], ['SportsGraph', 'Sports graph', 'Search people, clubs, teams & events', 'play'], ['MyLicences', 'My licences', 'Federation licences & standing', 'play'], ['MyIntegrity', 'My integrity', 'Notices, exemptions & education', 'play'],
   ['FindGames', 'Find a game', 'Open games near you, today & this weekend', 'play'], ['MyApplications', 'My applications', 'Trials, offers & answers', 'play'],
   ['MyAccreditations', 'My badges', 'Event accreditation & QR', 'play'],
   ['MyPasses', 'My passes', 'Rotating QR pass, cards & wristbands', 'play'],
   ['Following', 'Following', 'Events, teams & games you follow', 'play'],
   ['RecruiterAccess', 'Recruiter access', 'Who may see your profile', 'play'],
   ['MyDevelopment', 'My development', 'Goals, plans, feedback & reports', 'play'], ['MyPlans', 'Training plans', 'Your plans & sessions', 'play'], ['ToolsHome', 'Tools', 'Scoring sheets & documents', 'play'], ['Pathways', 'Learn & study', 'Rules, courses & colleges', 'play'], ['OpportunityMatches', 'Opportunities for me', 'Teams, trials, study & sponsors that fit you', 'play'],
+  ['MyCompliance', 'Compliance', 'Requirements, expiries & safeguarding', 'care'],
   ['Health', 'Health', 'Physio · doctors · fit to play', 'care'], ['Insure', 'My cover', 'What covers me today', 'care'],
   ['Insurance', 'Insurance', 'You · your team · your event', 'care'], ['Legal', 'Legal', 'Verified lawyers & matters', 'care'], ['Family', 'Family', 'Guardians & consents', 'care'],
   ['Finance', 'Finance', 'Revenue, receivables & reconciliation', 'money'], ['Wallet', 'Wallet', 'Balance, gift cards & passes', 'money'], ['Rewards', 'Rewards', 'Points, invites & statement', 'money'], ['Cover', 'Who pays', 'Sponsor, club & family payments', 'money'], ['Advertising', 'Advertising', 'Promote your venue, event or business', 'money'], ['Earnings', 'Earnings', 'Sales, fees & payouts', 'money'], ['PlayerContracts', 'Contracts', 'Fees, bonuses, expenses & pay', 'money'], ['Representation', 'Representation', 'Your agent, what they can see & commission', 'money'], ['PlayerFunding', 'Funding', 'Needs, applications & sponsor support', 'money'], ['Shop', 'Shop', 'Kit, gear & orders', 'money'],

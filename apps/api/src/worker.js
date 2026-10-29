@@ -32,6 +32,7 @@ import { runServiceSweeps } from './svc/sweeps.js';
 import { runServiceJobs } from './capabilities/svc-reports.js';
 import { runFederationSweeps } from './federation-sweeps.js';
 import { runOfficialsSweeps } from './officials-sweeps.js';
+import { runComplianceSweeps } from './compliance-sweeps.js';
 import { runTripSweeps } from './trips-sweeps.js';
 import { runMediaRightsSweeps } from './media-rights-sweeps.js';
 import { sendFollowerAlerts } from './spectator.js';
@@ -82,6 +83,7 @@ export const STEPS = [
   ['supplier_exports', 'supplier_exports', runServiceJobs, null],
   ['federation', 'federation', runFederationSweeps, null],
   ['officials_development', 'officials_development', runOfficialsSweeps, null],
+  ['compliance', 'compliance', runComplianceSweeps, null],
   ['team_travel', 'team_travel', runTripSweeps, null],
   ['media_rights', 'media_rights', runMediaRightsSweeps, null],
   ['follower_alerts', 'follower_alerts_sent', sendFollowerAlerts, 0],
