@@ -1,7 +1,7 @@
 import { isSsoCallback, SsoCallbackScreen } from './sso';
 import { OfflineSync } from './screens/offline-sync';
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Platform, Pressable, StatusBar, Text, View } from 'react-native';
+import { Animated, Easing, Linking, Platform, Pressable, StatusBar, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SessionProvider, useSession } from './session';
@@ -12,6 +12,8 @@ import { useLayout } from './layout';
 import { installWebShell } from './web';
 import { api, setMfaRequiredHandler } from './api';
 import { parseTarget, targetFor } from './push';
+import { AppLockProvider } from './app-lock';
+import { targetFromUrl } from './deeplink';
 import { AccountButton } from './account';
 import { BetaBanner } from './beta-banner';
 import { Logo } from './logo';
@@ -265,6 +267,9 @@ function MfaNotice({ info, onGo, onClose }) {
   );
 }
 
+// https hosts that open this app as a universal / app link (set EXPO_PUBLIC_APP_HOSTS, comma separated); the sportarena:// scheme always works
+const APP_HOSTS = (process.env.EXPO_PUBLIC_APP_HOSTS ?? '').split(',').map((h) => h.trim()).filter(Boolean);
+
 function Shell() {
   const { ready, user, toast } = useSession();
   const { tab, stack, back, goTab, push, menu } = useNav();
@@ -308,12 +313,16 @@ function Shell() {
       navigator.serviceWorker?.addEventListener('message', onMsg);
       return () => navigator.serviceWorker?.removeEventListener('message', onMsg);
     }
+    // links that open the app (sportarena://gate/<event>, universal links): same targets as a tapped push
+    const open = (url) => { const t = targetFromUrl(url, APP_HOSTS); if (t) go(parseTarget(t)); };
+    Linking.getInitialURL().then(open).catch(() => {});
+    const link = Linking.addEventListener('url', (e) => open(e.url));
     let sub;
     import('expo-notifications').then((N) => {
       N.setNotificationHandler({ handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: true, shouldSetBadge: false }) });
       sub = N.addNotificationResponseReceivedListener((r) => go(targetFor(r.notification.request.content.data)));
     }).catch(() => {});
-    return () => sub?.remove();
+    return () => { sub?.remove(); link.remove(); };
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
   if (PASSPORT_TOKEN) return <View style={{ flex: 1, backgroundColor: c.bg, paddingTop: ins.top }}><PassportPublic token={PASSPORT_TOKEN} /></View>;
   if (!ready) return <View style={{ flex: 1, backgroundColor: c.bg, justifyContent: 'center', padding: 24 }}><Loading /></View>;
@@ -344,7 +353,7 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <StatusBar barStyle={dark ? 'light-content' : 'dark-content'} />
-      <SessionProvider><BasketProvider><NavProvider><Shell /></NavProvider></BasketProvider></SessionProvider>
+      <SessionProvider><AppLockProvider><BasketProvider><NavProvider><Shell /></NavProvider></BasketProvider></AppLockProvider></SessionProvider>
     </SafeAreaProvider>
   );
 }
