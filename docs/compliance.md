@@ -40,6 +40,12 @@ It is a checklist of what the rules ask and what a person has verified. It is **
 ## AI
 `explain_compliance` builds the explanation from the engine's result; an optional AI step may reword it, never decides, receives no names, and the text always says a human reviewer decides.
 
+## Standard country rulebooks, AI drafts and tailoring
+* **Standard rulebooks** (`src/compliance/standard-packs.js`) for India, USA, Canada, Singapore, Malaysia, Sri Lanka, Australia and the UK: six rules each (event permission, public liability insurance, child-protection checks, safeguarding training, guardian consent, event privacy), each naming its instrument and the regulator's site. `import_standard_rulebook` (platform admin) loads them as **drafts**, idempotently; `decide_policy_pack` approves a whole pack (a law you wrote yourself still needs a second person). Anyone can download one (`get_standard_rulebook`).
+* **AI-drafted rulebook** for any country: `generate_country_rulebook` (platform admin) returns a validated package, stored nowhere, marked AI-drafted, never waivable for laws, with unverifiable links dropped. Load it with `import_policy_pack`, review, approve.
+* **Tailoring**: edit a rule as a new version (platform admin), or an organisation owner/admin copies it into its own policy (a stricter addition that adds up beside the law; it cannot weaken it).
+* Rulebooks are a research anchor, not legal advice. Effective dates are when the platform adopts a rule, not when a law began, and region-specific duties are written country-wide to be narrowed at approval.
+
 ## Surfaces
 REST + OpenAPI + MCP from `capabilities/compliance-*.js` (catalogue, rules, versions, packs, evidence, review queue, exceptions, evaluate, explain, event dashboard, decisions).
 App (iOS, iPadOS, Android, web): event console → **Compliance** tab (dashboard, review queue, audit trail) and **More → Compliance** (rules in force, rule wizard, my evidence).

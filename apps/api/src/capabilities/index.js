@@ -265,3 +265,4 @@ import './directory.js';
 import './compliance-rules.js';
 import './compliance-evidence.js';
 import './compliance-engine.js';
+import './compliance-packs.js';

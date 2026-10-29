@@ -2,7 +2,7 @@
 // badges, eligibility and tenders) and the Compliance page under More (the rules in force and my own evidence). All logic is in the API; this only
 // calls it. Nothing here claims legal compliance: it shows what the rules ask, what evidence is on file and what a person has verified.
 import React, { useState } from 'react';
-import { Linking, Pressable, View } from 'react-native';
+import { Linking, Platform, Pressable, Share, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
@@ -296,6 +296,7 @@ export function CompliancePage({ tab: first = 'rules' }) {
             {(cat.data?.jurisdictions ?? []).map((j) => <AChip key={j.code} label={j.name} active={country === j.code} onPress={() => setCountry(country === j.code ? null : j.code)} color={A.cyan} />)}
           </HScroll>
           {canWrite ? <ABtn title="Write a rule" tone="neon" onPress={() => setWizard({})} /> : <T size={12} color={A.mute}>Rules are written by the platform team (laws and regulations) and by owners and admins of an organisation (its own policies). Federation rules come from the federation's console.</T>}
+          <Rulebooks isPlatform={isPlatform} onChanged={rules.reload} />
           {rules.error ? <ErrorBox error={rules.error} onRetry={rules.reload} /> : !rules.data ? <Loading /> : rules.data.length === 0 ? (
             <AEmpty emoji="📚" title="No rules yet" sub="When a rule is approved for your place, your organisation or your federation, it appears here with its source and effective date." />
           ) : rules.data.map((r) => {
@@ -314,14 +315,14 @@ export function CompliancePage({ tab: first = 'rules' }) {
           {ev.error ? <ErrorBox error={ev.error} onRetry={ev.reload} /> : !ev.data ? <Loading /> : ev.data.length === 0 ? <AEmpty emoji="🗂️" title="Nothing filed yet" sub="When an organiser asks for a certificate or a declaration, file it here or from the request." /> : ev.data.map((x) => <EvidenceRow key={x.id} e={x} />)}
         </>
       )}
-      <RuleDetail id={open} onClose={() => setOpen(null)} onChanged={rules.reload} onNewVersion={(rule, v) => { setOpen(null); setWizard({ rule, v }); }} />
+      <RuleDetail id={open} onClose={() => setOpen(null)} onChanged={rules.reload} onNewVersion={(rule, v) => { setOpen(null); setWizard({ rule, v }); }} canTailor={adminOrgs.length > 0} onTailor={(tailor, v) => { setOpen(null); setWizard({ tailor, v }); }} />
       <RuleWizard open={wizard} onClose={() => setWizard(null)} cat={cat.data} isPlatform={isPlatform} orgs={adminOrgs} rules={rules.data ?? []} onDone={() => { setWizard(null); toast('Saved as a draft. It applies once approved.'); rules.reload(); }} />
       <EvidenceForm visible={form} onClose={() => setForm(false)} onDone={() => { setForm(false); ev.reload(); toast('Filed'); }} />
     </AScreen>
   );
 }
 
-function RuleDetail({ id, onClose, onChanged, onNewVersion }) {
+function RuleDetail({ id, onClose, onChanged, onNewVersion, onTailor, canTailor }) {
   const { toast } = useSession();
   const r = useLoad(() => (id ? api.get(`/compliance/rules/${id}`) : Promise.resolve(null)), [id]);
   const act = useDo(() => { r.reload(); onChanged?.(); });
@@ -353,6 +354,8 @@ function RuleDetail({ id, onClose, onChanged, onNewVersion }) {
               ) : null}
             </View>
           ))}
+          {canTailor && d.scope_kind === 'platform' && !d.can_manage ? <Btn title="Tailor for my organisation" onPress={() => onTailor(d, d.versions.find((v) => v.status === 'approved') ?? d.versions[0])} /> : null}
+          {canTailor && d.scope_kind === 'platform' && d.can_manage ? <Btn color={c.paper} ink={c.ink} title="Tailor for an organisation" onPress={() => onTailor(d, d.versions.find((v) => v.status === 'approved') ?? d.versions[0])} /> : null}
           {d.can_manage ? <Btn title="Write a new version" onPress={() => onNewVersion(d, d.versions.find((v) => v.status === 'approved') ?? d.versions[0])} /> : null}
           <T size={11.5} color={c.mute}>Versions are never edited or deleted: a change is a new version with its own effective date, so any past decision can be explained with the text that was in force.</T>
         </View>
@@ -374,10 +377,11 @@ function RuleWizard({ open, onClose, cat, isPlatform, orgs, rules, onDone }) {
   if (open && seen !== open) {
     setSeen(open);
     setStep(0);
+    const base = open.rule ?? open.tailor;
     setF(prev ? {
-      scope: open.rule.scope_kind, organisation_id: open.rule.organisation_id, domains: open.rule.domains, topic: open.rule.topic, title: prev.title, classification: prev.classification, country: prev.country ?? undefined, region: prev.region ?? '', municipality: prev.municipality ?? '',
+      scope: open.rule ? open.rule.scope_kind : 'organisation', organisation_id: open.rule ? open.rule.organisation_id : orgs[0]?.id, domains: base.domains, topic: open.rule ? open.rule.topic : undefined, title: open.tailor ? `${prev.title} (our version)` : prev.title, classification: open.tailor ? 'organisation_policy' : prev.classification, country: prev.country ?? undefined, region: prev.region ?? '', municipality: prev.municipality ?? '',
       roles: prev.applies?.roles ?? [], event_types: prev.applies?.event_types ?? [], sports: prev.applies?.sports ?? [], min_age: prev.applies?.min_age, max_age: prev.applies?.max_age, effective_from: undefined, effective_to: undefined,
-      source_title: prev.source_title ?? '', source_url: prev.source_url ?? '', approval_owner: prev.approval_owner, waivable: prev.waivable, reqs: prev.requirements ?? [], change_note: '',
+      source_title: prev.source_title ?? '', source_url: prev.source_url ?? '', approval_owner: open.tailor ? '' : prev.approval_owner, waivable: open.tailor ? false : prev.waivable, reqs: prev.requirements ?? [], change_note: '',
     } : { ...empty, scope: isPlatform ? 'platform' : 'organisation', organisation_id: orgs[0]?.id, domains: [], classification: isPlatform ? 'regulatory' : 'organisation_policy', roles: [], event_types: [], sports: [], region: '', municipality: '', source_title: '', source_url: '', approval_owner: '', waivable: false, title: '' });
   }
   if (!open || !f) return null;
@@ -415,7 +419,7 @@ function RuleWizard({ open, onClose, cat, isPlatform, orgs, rules, onDone }) {
   };
   const chips = (list, key, label) => list.map((v) => <Chip key={v} label={label(v)} active={f[key].includes(v)} onPress={() => toggle(key, v)} />);
   return (
-    <Sheet visible onClose={onClose} title={open.rule ? 'New version of a rule' : 'Write a rule'}>
+    <Sheet visible onClose={onClose} title={open.rule ? 'New version of a rule' : open.tailor ? 'Tailor for my organisation' : 'Write a rule'}>
       <T size={12} color={c.mute}>Step {step + 1} of 3 · {['What it governs and where', 'Who it applies to', 'When, source and evidence'][step]}</T>
       {step === 0 ? (
         <View style={{ gap: 12 }}>
@@ -497,5 +501,56 @@ function RuleWizard({ open, onClose, cat, isPlatform, orgs, rules, onDone }) {
         {step < 2 ? <Btn title="Next" onPress={next} style={{ flex: 1 }} /> : <Btn title="Save as draft" onPress={save} loading={busy} style={{ flex: 1 }} />}
       </View>
     </Sheet>
+  );
+}
+
+// ------------------------------------------------------------------ standard and AI-drafted country rulebooks
+
+/** Hand a package to the person: a file download on the web, the share sheet on a phone or tablet. */
+async function deliver(name, data) {
+  const json = JSON.stringify(data, null, 2);
+  if (Platform.OS === 'web' && typeof document !== 'undefined') {
+    const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+    const a = document.createElement('a'); a.href = url; a.download = `${name}.json`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } else await Share.share({ title: name, message: json });
+}
+
+function Rulebooks({ isPlatform, onChanged }) {
+  const { toast } = useSession();
+  const books = useLoad(() => api.get('/compliance/standard-rulebooks'), []);
+  const [busy, setBusy] = useState(null);
+  const [ai, setAi] = useState(false);
+  const [draft, setDraft] = useState(null);
+  const run = async (key, fn, msg) => { setBusy(key); try { const r = await fn(); if (msg) toast(typeof msg === 'function' ? msg(r) : msg); books.reload(); onChanged?.(); return r; } catch (x) { toast('' + x.message); return null; } finally { setBusy(null); } };
+  return (
+    <View style={{ gap: 8 }}>
+      <ASection title="Standard country rulebooks" sub="A starting point for the priority countries. Importing creates drafts; nothing applies until it is approved, and every rule can then be tailored." />
+      {(books.data ?? []).map((b) => (
+        <ARow key={b.code} title={b.name} sub={`${b.rules} rules · ${b.approved} approved${b.drafts ? ` · ${b.drafts} waiting for approval` : ''}`}
+          right={(
+            <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+              <ABtn small tone="ghost" title="Download" disabled={busy === `d${b.code}`} onPress={() => run(`d${b.code}`, async () => deliver(`rulebook-${b.code}`, await api.get(`/compliance/standard-rulebooks/${b.code}`)))} />
+              {isPlatform && b.approved + b.drafts === 0 ? <ABtn small title="Import" loading={busy === `i${b.code}`} onPress={() => run(`i${b.code}`, () => api.post(`/compliance/standard-rulebooks/${b.code}/import`), (r) => `${r.imported} drafts added`)} /> : null}
+              {isPlatform && b.drafts > 0 ? <ABtn small tone="lime" title="Approve all" loading={busy === `a${b.code}`} onPress={() => run(`a${b.code}`, () => api.post('/compliance/packs/decision', { pack_code: `STD-${b.code}-${b.version}`, decision: 'approve' }), (r) => `${r.done} approved${r.skipped.length ? `, ${r.skipped.length} need a second person` : ''}`)} /> : null}
+            </View>)} />
+      ))}
+      {isPlatform ? <ABtn title="Draft a rulebook with AI" tone="neon" onPress={() => { setDraft(null); setAi(true); }} /> : null}
+      <T size={11.5} color={A.mute}>A standard rulebook is a research anchor and checklist for people to review. It is not legal advice, and the dates are when we adopt a rule, not when a law began.</T>
+      <FormSheet visible={ai} onClose={() => setAi(false)} title="Draft a rulebook with AI" submitLabel="Draft it" color={c.violet}
+        notice="AI drafts a package for you to download and review. It is stored nowhere, may be incomplete or wrong, and never approves anything."
+        fields={[{ key: 'country', label: 'Country', type: 'country' }, { key: 'focus', label: 'Anything specific to cover? (optional)', optional: true }]}
+        onSubmit={async (v) => { if (!v.country) throw new Error('Choose a country'); const r = await api.post('/compliance/rulebook-drafts', { country: v.country, focus: v.focus || undefined }); setAi(false); setDraft(r); }} />
+      <Sheet visible={!!draft} onClose={() => setDraft(null)} title={draft ? `AI draft: ${draft.name}` : ''}>
+        {draft ? (
+          <View style={{ gap: 10 }}>
+            <T>{draft.rules.length} rules drafted{draft.dropped.length ? `, ${draft.dropped.length} dropped as invalid` : ''}.</T>
+            {draft.warnings.map((w) => <T key={w} size={12.5} color={c.mute}>⚠️ {w}</T>)}
+            {draft.rules.map((r) => <T key={r.key} size={13}>• {r.title} <T size={12} color={c.mute}>({CLASS[r.classification]})</T></T>)}
+            <Btn title="Download the package" onPress={() => deliver(draft.pack_code, draft)} />
+            <Btn color={c.violet} title="Load as drafts" onPress={() => run('load', () => api.post('/compliance/packs', { pack_code: draft.pack_code, rules: draft.rules }), (r) => `${r.drafts} drafts added`).then((r) => r && setDraft(null))} loading={busy === 'load'} />
+          </View>
+        ) : null}
+      </Sheet>
+    </View>
   );
 }

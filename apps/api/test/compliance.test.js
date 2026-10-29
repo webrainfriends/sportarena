@@ -450,3 +450,75 @@ test('every sport in the catalogue can be named by a rule and matched by the eng
     assert.equal(E.applicability({ applies: { sports: [slug] } }, {}).result, 'unknown', `${slug}: a missing sport is unknown, not a default`);
   }
 });
+
+// ------------------------------------------------------------------ standard country rulebooks and AI-drafted rulebooks
+test('standard rulebooks: eight priority countries, every rule valid, imported as drafts, approved in one step, then tailored', async () => {
+  const { PACK_RULE } = await import('../src/capabilities/compliance-rules.js');
+  const { standardPack } = await import('../src/compliance/standard-packs.js');
+  const org = await signup(['organizer']);
+  const list = must(await api('GET', '/compliance/standard-rulebooks', { token: org.token }));
+  assert.deepEqual(list.map((c) => c.code), ['IN', 'US', 'CA', 'SG', 'MY', 'LK', 'AU', 'GB']);
+  for (const c of list) {
+    assert.equal(c.rules, 6, c.code);
+    for (const r of standardPack(c.code).rules) {
+      assert.ok(PACK_RULE.safeParse(r).success, `${c.code} ${r.key}: ${JSON.stringify(PACK_RULE.safeParse(r).error?.issues?.[0])}`);
+      assert.ok(r.source_title && r.approval_owner.includes('counsel'), `${r.key} names its instrument and who reviews it`);
+      assert.ok(!r.waivable || r.classification === 'recommended_standard');
+    }
+  }
+  const pack = must(await api('GET', '/compliance/standard-rulebooks/IN', { token: org.token }));
+  assert.equal(pack.rules.length, 6); assert.match(pack.note, /not legal advice/);
+  assert.equal((await api('GET', '/compliance/standard-rulebooks/ZZ', { token: org.token })).status, 404);
+  // importing is the platform admin's; it creates drafts only and is idempotent
+  assert.equal((await api('POST', '/compliance/standard-rulebooks/IN/import', { token: org.token })).status, 403);
+  const first = must(await api('POST', '/compliance/standard-rulebooks/IN/import', { token: admin.token }), 201);
+  assert.equal(first.imported, 6);
+  assert.equal(must(await api('POST', '/compliance/standard-rulebooks/IN/import', { token: admin.token }), 201).imported, 0, 'a second import adds nothing');
+  const ev = await placedEvent(org, { country: 'IN', region: 'Karnataka', locality: 'Bengaluru' });
+  assert.ok(!must(await evalEvent(org, ev)).results.some((r) => r.key.startsWith('std.in.')), 'drafts have no effect');
+  assert.equal(must(await api('GET', '/compliance/standard-rulebooks', { token: org.token })).find((c) => c.code === 'IN').drafts, 6);
+  // one step approves what the approver may; the author's own laws wait for a second person
+  const mine = must(await api('POST', '/compliance/packs/decision', { token: admin.token, body: { pack_code: first.pack_code, decision: 'approve' } }));
+  assert.ok(mine.skipped.length >= 3 && mine.skipped.every((s) => /second person/.test(s.why)) && mine.done >= 1);
+  const rest = must(await api('POST', '/compliance/packs/decision', { token: admin2.token, body: { pack_code: first.pack_code, decision: 'approve' } }));
+  assert.equal(rest.skipped.length, 0); assert.equal(mine.done + rest.done, 6);
+  assert.equal((await api('POST', '/compliance/packs/decision', { token: admin2.token, body: { pack_code: first.pack_code, decision: 'approve' } })).status, 404, 'nothing left to decide');
+  const out = must(await evalEvent(org, ev));
+  const permit = out.results.find((r) => r.key === 'std.in.event-permit');
+  assert.equal(permit.outcome, 'applies'); assert.equal(permit.status, 'missing'); assert.match(permit.source_title, /public gatherings/i);
+  assert.equal(out.results.find((r) => r.key === 'std.in.event-privacy').classification, 'legal_mandatory');
+  // tailoring: a new version of a standard rule narrows it to a state; the older version is kept
+  const rid = must(await api('GET', '/compliance/rules', { token: admin.token, query: { country: 'IN' } })).find((r) => r.key === 'std.in.event-permit').id;
+  const v2 = must(await api('POST', '/compliance/rules', { token: admin.token, body: { rule_id: rid, title: 'Karnataka police permission', classification: 'regulatory', country: 'IN', region: 'Karnataka', effective_from: day(-1), approval_owner: 'Counsel, India', requirements: pack.rules[0].requirements } }), 201);
+  must(await api('POST', `/compliance/versions/${v2.version_id}/decision`, { token: admin2.token, body: { decision: 'approve' } }));
+  assert.equal(must(await evalEvent(org, ev)).results.find((r) => r.key === 'std.in.event-permit').version, 2);
+  assert.equal(must(await api('GET', `/compliance/rules/${rid}`, { token: admin.token })).versions.length, 2);
+  // every priority country imports
+  for (const code of ['US', 'CA', 'SG', 'MY', 'LK', 'AU', 'GB']) assert.equal(must(await api('POST', `/compliance/standard-rulebooks/${code}/import`, { token: admin.token }), 201).imported, 6, code);
+});
+
+test('AI-drafted rulebook: validated, marked, returned as a package and stored nowhere; unavailable AI says so', async () => {
+  const org = await signup(['organizer']);
+  assert.equal((await api('POST', '/compliance/rulebook-drafts', { token: org.token, body: { country: 'NZ' } })).status, 403);
+  const off = await api('POST', '/compliance/rulebook-drafts', { token: admin.token, body: { country: 'NZ' } });
+  assert.equal(off.status, 409); assert.equal(off.body.error.details.code, 'ai_unavailable');
+  const good = { key: 'ai.nz.privacy', domains: ['privacy'], topic: 'ai.nz.privacy', title: 'Privacy notice for event data', classification: 'regulatory', summary: 'Declare how data is used.', source_title: 'Privacy Act 2020', source_url: 'http://not-https.example', effective_from: '2026-01-01',
+    approval_owner: 'whoever', requirements: [{ key: 'notice', kind: 'declaration', label: 'Privacy notice declared', holder: 'event' }], waivable: true, ignore_me: 'x' };
+  const bad = { key: 'x', title: 'no domains' };
+  const injected = { ...good, key: 'ai.nz.fed', topic: 'ai.nz.fed', classification: 'federation_mandated' };
+  let seen;
+  setAiTransport(async (b) => { seen = JSON.stringify(b); return `Here you go: ${JSON.stringify({ rules: [good, bad, injected] })}`; });
+  let pack;
+  try { pack = must(await api('POST', '/compliance/rulebook-drafts', { token: admin.token, body: { country: 'NZ', focus: 'athletics meets' } })); } finally { setAiTransport(null); }
+  assert.match(seen, /Never invent statute numbers/); assert.match(seen, /athletics meets/);
+  assert.equal(pack.rules.length, 1); assert.equal(pack.dropped.length, 2);
+  const r = pack.rules[0];
+  assert.equal(r.waivable, false, 'a regulation is never waivable'); assert.equal(r.source_url, undefined, 'an unverifiable link is dropped');
+  assert.match(r.change_note, /AI-drafted/); assert.match(pack.pack_code, /^AI-NZ-\d{8}$/); assert.equal(r.pack_code, pack.pack_code);
+  assert.match(pack.warnings[0], /counsel/);
+  assert.equal((await pool.query("SELECT count(*)::int AS n FROM cmp_rules WHERE key='ai.nz.privacy'")).rows[0].n, 0, 'nothing is stored');
+  // the package loads like any pack, as a draft that still needs a person
+  const loaded = must(await api('POST', '/compliance/packs', { token: admin.token, body: { pack_code: pack.pack_code, rules: pack.rules } }), 201);
+  assert.equal(loaded.drafts, 1);
+  assert.equal((await pool.query("SELECT status FROM cmp_rule_versions WHERE id=$1", [loaded.versions[0].version_id])).rows[0].status, 'draft');
+});

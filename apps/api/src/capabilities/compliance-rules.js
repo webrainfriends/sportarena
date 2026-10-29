@@ -148,25 +148,28 @@ cap({
   handler: ({ user }, i) => tx((c) => addVersion(c, user, i)),
 });
 
+/** Approve or withdraw one draft version. Shared by the form and by approving a whole pack, so both obey the same rules. */
+export async function decideVersion(c, user, id, decision) {
+  const v = (await c.query('SELECT v.*, r.scope_kind, r.organisation_id FROM cmp_rule_versions v JOIN cmp_rules r ON r.id=v.rule_id WHERE v.id=$1 FOR UPDATE OF v', [id])).rows[0];
+  if (!v) throw notFound('Rule version');
+  await authorise(c, user, v);
+  if (v.status !== 'draft') throw conflict(`This version is already ${v.status}`);
+  const self = v.created_by === user.id;
+  if (decision === 'approve' && self && ['legal_mandatory', 'regulatory'].includes(v.classification)) throw conflict('A law or regulation must be approved by a second person, not its author');
+  const r = (await c.query("UPDATE cmp_rule_versions SET status=$2, approved_by=$3, approved_at=now(), self_approved=$4 WHERE id=$1 RETURNING id, version, status, self_approved, approved_at",
+    [id, decision === 'approve' ? 'approved' : 'withdrawn', user.id, decision === 'approve' && self])).rows[0];
+  await audit(c, user.id, `compliance_rule_version_${decision}`, 'cmp_rule_versions', id);
+  return r;
+}
+
 cap({
   name: 'decide_policy_version', method: 'POST', path: '/compliance/versions/:id/decision', tag: TAG,
   summary: 'Approve a draft rule version so it takes part in decisions from its effective date, or withdraw the draft. Laws and regulations need a second person to approve (not their author); other rules may be self-approved, which is recorded and shown. Approved versions are never edited or deleted.',
   input: z.object({ id, decision: z.enum(['approve', 'withdraw']) }),
-  handler: ({ user }, i) => tx(async (c) => {
-    const v = (await c.query('SELECT v.*, r.scope_kind, r.organisation_id FROM cmp_rule_versions v JOIN cmp_rules r ON r.id=v.rule_id WHERE v.id=$1 FOR UPDATE OF v', [i.id])).rows[0];
-    if (!v) throw notFound('Rule version');
-    await authorise(c, user, v);
-    if (v.status !== 'draft') throw conflict(`This version is already ${v.status}`);
-    const self = v.created_by === user.id;
-    if (i.decision === 'approve' && self && ['legal_mandatory', 'regulatory'].includes(v.classification)) throw conflict('A law or regulation must be approved by a second person, not its author');
-    const r = (await c.query("UPDATE cmp_rule_versions SET status=$2, approved_by=$3, approved_at=now(), self_approved=$4 WHERE id=$1 RETURNING id, version, status, self_approved, approved_at",
-      [i.id, i.decision === 'approve' ? 'approved' : 'withdrawn', user.id, i.decision === 'approve' && self])).rows[0];
-    await audit(c, user.id, `compliance_rule_version_${i.decision}`, 'cmp_rule_versions', i.id);
-    return r;
-  }),
+  handler: ({ user }, i) => tx((c) => decideVersion(c, user, i.id, i.decision)),
 });
 
-const PACK_RULE = z.object({ ...Object.fromEntries(Object.entries(RULE_HEAD).filter(([k]) => ['key', 'domains', 'topic'].includes(k))), ...VERSION });
+export const PACK_RULE = z.object({ ...Object.fromEntries(Object.entries(RULE_HEAD).filter(([k]) => ['key', 'domains', 'topic'].includes(k))), ...VERSION });
 cap({
   name: 'import_policy_pack', method: 'POST', path: '/compliance/packs', tag: TAG, status: 201,
   summary: 'Platform admin: load a jurisdiction pack (a named set of rules written as data) as drafts, each to be approved on its own. A rule whose key already exists gets a new draft version. Nothing is applied until approved; no code changes are needed for a new country.',
