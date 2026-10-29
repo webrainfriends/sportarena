@@ -181,7 +181,8 @@ test('analytics and statement over rate-card sessions; an answer to a team reque
   ok(await api('PATCH', `/hires/${h.id}`, { token: coach.token, body: { status: 'completed' } }));
   const x = ok(await api('POST', '/hires', { token: athlete.token, body: { coach_id: coach.id, sport: 'football', starts_at: dayAt(6, 9), duration_min: 60 } }), 201);
   ok(await api('PATCH', `/hires/${x.id}`, { token: athlete.token, body: { status: 'cancelled' } }));
-  const an = ok(await api('GET', `/coach/analytics?from=${dateOf(0)}&to=${dateOf(10)}`, { token: coach.token }));
+  // the completed sessions started two hours ago, which is yesterday (UTC) just after midnight, so the range opens a day early
+  const an = ok(await api('GET', `/coach/analytics?from=${dateOf(-1)}&to=${dateOf(10)}`, { token: coach.token }));
   assert.equal(an.totals.sessions_completed, 2); assert.equal(an.totals.sessions_cancelled, 1);
   assert.equal(an.totals.income_cents, 120000 + 60000); assert.equal(an.totals.hours_delivered, 2.5); assert.equal(an.totals.clients, 2);
   assert.deepEqual(an.by_audience.map((r) => [r.key, r.income_cents]), [['team', 120000], ['individual', 60000]]);
@@ -190,7 +191,7 @@ test('analytics and statement over rate-card sessions; an answer to a team reque
   assert.equal(an.cancellations.by_client, 1); assert.equal(an.utilisation.pct, null, 'no weekly hours published, so no utilisation');
   assert.equal((await api('GET', `/coach/analytics?from=2020-01-01&to=2026-01-01`, { token: coach.token })).status, 400, 'range is limited');
   assert.equal((await api('GET', '/coach/analytics', { token: athlete.token })).status, 403);
-  const rep = ok(await api('GET', `/coach/report?from=${dateOf(0)}&to=${dateOf(10)}`, { token: coach.token }));
+  const rep = ok(await api('GET', `/coach/report?from=${dateOf(-1)}&to=${dateOf(10)}`, { token: coach.token }));
   assert.equal(rep.rows, 3); assert.ok(rep.csv.includes('Hill Rovers') && rep.csv.includes('Squad clinic'));
   const specList = ok(await api('GET', '/coach/specialisations', { token: coach.token }))[0];
   assert.equal(specList.sessions_done, 1); assert.equal(specList.income_cents, 120000);
