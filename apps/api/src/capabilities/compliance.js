@@ -13,6 +13,9 @@ import {
   CATEGORIES, CONSEQUENCES, METHODS, SCOPES, SENSITIVE_CATEGORIES, SOURCE_KINDS, STATE_LABEL, SUBJECTS,
   evaluateSubject, holderAccess, manages, nameFor, roleChoices, sourceProblems, subjectsInScope, summarise,
 } from '../compliance.js';
+import {
+  CLASSIFICATIONS, CLASS_LABEL, CLASS_RANK, DEFAULT_CLASS, EVENT_TYPES, FIRST_JURISDICTIONS, NEEDS_SECOND_APPROVER, OUTCOMES, SCOPE_CLASSES, STATUSES, statusCounts,
+} from '../compliance-policy.js';
 
 export const TAG = 'Compliance';
 const CREDENTIAL_KINDS = ['insurance', 'electrical', 'pool_operator', 'first_aid', 'safeguarding', 'vehicle', 'food_safety', 'business_registration', 'other'];
@@ -61,6 +64,9 @@ cap({
       subjects: [{ value: 'person', label: 'People' }, { value: 'organisation', label: 'Organisations' }, { value: 'event', label: 'Events' }],
       sources: { kinds: Object.entries(SOURCE_KINDS).map(([value, label]) => ({ value, label })), verification_types: VERIFICATION_TYPES, credential_kinds: CREDENTIAL_KINDS },
       states: Object.entries(STATE_LABEL).map(([value, label]) => ({ value, label })),
+      classifications: CLASSIFICATIONS.map((value) => ({ value, label: CLASS_LABEL[value], rank: CLASS_RANK[value], needs_second_approver: NEEDS_SECOND_APPROVER.includes(value), scopes: SCOPES.filter((k) => SCOPE_CLASSES[k].includes(value)) })),
+      outcomes: OUTCOMES, statuses: STATUSES, event_types: EVENT_TYPES, jurisdictions: FIRST_JURISDICTIONS,
+      precedence: ['Rules of one topic compete: the higher classification wins', 'then the narrower jurisdiction (municipality, state or province, country)', 'then the more specific applicability', 'then the later effective date, then the higher version', 'Rules of different topics all apply'],
       roles, scopes,
     };
   },
@@ -73,17 +79,24 @@ const reqFields = {
   requires_review: z.boolean().default(true), validity_days: z.number().int().min(1).max(3660).nullable().optional(),
   reminder_days: z.array(z.number().int().min(1).max(365)).max(5).default([60, 30, 7]), grace_days: z.number().int().min(0).max(180).default(0),
   escalate_after_days: z.number().int().min(0).max(180).default(7), statement: text(4000).optional(),
+  // the policy facts of a rule (#568)
+  classification: z.enum(CLASSIFICATIONS).optional(), topic: z.string().regex(/^[a-z0-9_.]{2,60}$/).nullable().optional(),
+  source_title: text(200).nullable().optional(), source_url: z.string().url().max(500).nullable().optional(), approval_owner: text(120).nullable().optional(), waivable: z.boolean().nullable().optional(),
 };
-const SUBSTANTIVE = ['category', 'method', 'source', 'validity_days', 'statement', 'subject_kind'];
+const SUBSTANTIVE = ['category', 'method', 'source', 'validity_days', 'statement', 'subject_kind'];   // wording or source changes start a version; policy facts (classification, topic) are carried on the row and in each snapshot
 
 const viewReq = (r) => ({
   id: r.id, scope: { kind: r.scope_kind, id: r.scope_id }, code: r.code, name: r.name, description: r.description, category: r.category, category_label: CATEGORIES[r.category], subject_kind: r.subject_kind,
   method: r.method, source: r.method === 'linked' ? r.source : null, sensitive: r.sensitive, requires_review: r.requires_review, validity_days: r.validity_days, reminder_days: r.reminder_days,
   grace_days: r.grace_days, escalate_after_days: r.escalate_after_days, statement: r.statement, version: r.version, archived: !!r.archived_at, updated_at: r.updated_at,
+  classification: r.classification, classification_label: CLASS_LABEL[r.classification], topic: r.topic ?? null, source_title: r.source_title ?? null, source_url: r.source_url ?? null,
+  approval_owner: r.approval_owner ?? null, waivable: r.waivable ?? null, approval_status: r.approval_status, approved_at: r.approved_at ?? null,
 });
 const viewOb = (o, roleLabels) => ({
   id: o.id, requirement_id: o.requirement_id, roles: o.roles, role_labels: o.roles.map((v) => roleLabels.get(v) ?? v), sport_id: o.sport_id, sport_name: o.sport_name ?? null, youth_work: o.youth_work, mandatory: o.mandatory,
   consequences: o.consequences, starts_on: o.starts_on, ends_on: o.ends_on, archived: !!o.archived_at,
+  country: o.country ?? null, region: o.region ?? null, municipality: o.municipality ?? null, body_ids: o.body_ids ?? [], competition_ids: o.competition_ids ?? [], venue_ids: o.venue_ids ?? [],
+  event_types: o.event_types ?? [], min_age: o.min_age ?? null, max_age: o.max_age ?? null,
 });
 
 function checkReq(i, ex) {
@@ -114,6 +127,18 @@ cap({
         if (used && (i.subject_kind !== ex.subject_kind || i.method !== ex.method)) throw conflict('Records already exist, so who it applies to and how it is satisfied cannot change. Archive it and create a new one.');
       }
       checkReq(i, ex);
+      const classification = i.classification ?? ex?.classification ?? DEFAULT_CLASS[i.scope_kind];
+      if (!SCOPE_CLASSES[i.scope_kind].includes(classification)) throw badRequest(`A ${i.scope_kind} cannot write a ${CLASS_LABEL[classification].toLowerCase()} rule`);
+      if (ex && (NEEDS_SECOND_APPROVER.includes(classification) || NEEDS_SECOND_APPROVER.includes(ex.classification)) && ex.approval_status === 'approved') {
+        throw conflict('A law or regulation is not edited once approved. End it and write the new one, which a second administrator approves.', { code: 'law_not_editable' });
+      }
+      if (ex && classification !== ex.classification && (NEEDS_SECOND_APPROVER.includes(classification) || NEEDS_SECOND_APPROVER.includes(ex.classification))) throw conflict('A rule cannot become, or stop being, a law or regulation. Write it again.', { code: 'class_locked' });
+      const policy = {
+        classification, topic: i.topic === undefined ? ex?.topic ?? null : i.topic, source_title: i.source_title === undefined ? ex?.source_title ?? null : i.source_title,
+        source_url: i.source_url === undefined ? ex?.source_url ?? null : i.source_url, approval_owner: i.approval_owner === undefined ? ex?.approval_owner ?? null : i.approval_owner,
+        waivable: i.waivable === undefined ? ex?.waivable ?? null : i.waivable,
+      };
+      if (NEEDS_SECOND_APPROVER.includes(classification)) policy.waivable = false;       // a law or a regulation is never the organisation's to waive
       const sensitive = SENSITIVE_CATEGORIES.includes(i.category);
       const body = {
         name: i.name, description: i.description ?? null, category: i.category, subject_kind: i.subject_kind, method: i.method, source: i.method === 'linked' ? i.source : {}, sensitive,
@@ -123,9 +148,11 @@ cap({
       if (!ex) {
         const code = i.code ?? (slug(i.name) || 'requirement');
         const row = (await c.query(
-          `INSERT INTO comp_requirements(scope_kind, scope_id, code, name, description, category, subject_kind, method, source, sensitive, requires_review, validity_days, reminder_days, grace_days, escalate_after_days, statement, created_by)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) ON CONFLICT DO NOTHING RETURNING *`,
-          [i.scope_kind, i.scope_id ?? null, code, body.name, body.description, body.category, body.subject_kind, body.method, JSON.stringify(body.source), body.sensitive, body.requires_review, body.validity_days, body.reminder_days, body.grace_days, body.escalate_after_days, body.statement, user.id])).rows[0];
+          `INSERT INTO comp_requirements(scope_kind, scope_id, code, name, description, category, subject_kind, method, source, sensitive, requires_review, validity_days, reminder_days, grace_days, escalate_after_days, statement, created_by,
+                                         classification, topic, source_title, source_url, approval_owner, waivable, approval_status, approved_by, approved_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25, CASE WHEN $24 = 'approved' THEN now() END) ON CONFLICT DO NOTHING RETURNING *`,
+          [i.scope_kind, i.scope_id ?? null, code, body.name, body.description, body.category, body.subject_kind, body.method, JSON.stringify(body.source), body.sensitive, body.requires_review, body.validity_days, body.reminder_days, body.grace_days, body.escalate_after_days, body.statement, user.id,
+            policy.classification, policy.topic, policy.source_title, policy.source_url, policy.approval_owner, policy.waivable, NEEDS_SECOND_APPROVER.includes(classification) ? 'pending_approval' : 'approved', NEEDS_SECOND_APPROVER.includes(classification) ? null : user.id])).rows[0];
         if (!row) throw conflict('A requirement with this name already exists here');
         await c.query('INSERT INTO comp_requirement_versions(requirement_id, version, snapshot, changed_by) VALUES ($1,1,$2,$3)', [row.id, JSON.stringify(viewReq(row)), user.id]);
         await log(c, { requirement_id: row.id, actor_id: user.id, action: 'requirement_created', detail: { name: row.name, version: 1 } });
@@ -134,8 +161,10 @@ cap({
       const bump = SUBSTANTIVE.some((k) => JSON.stringify(k === 'source' ? (body.source ?? {}) : body[k] ?? null) !== JSON.stringify(k === 'source' ? (ex.source ?? {}) : ex[k] ?? null));
       const version = ex.version + (bump ? 1 : 0);
       const row = (await c.query(
-        `UPDATE comp_requirements SET name=$2, description=$3, category=$4, method=$5, source=$6, sensitive=$7, requires_review=$8, validity_days=$9, reminder_days=$10, grace_days=$11, escalate_after_days=$12, statement=$13, version=$14, updated_at=now() WHERE id=$1 RETURNING *`,
-        [ex.id, body.name, body.description, body.category, body.method, JSON.stringify(body.source), body.sensitive, body.requires_review, body.validity_days, body.reminder_days, body.grace_days, body.escalate_after_days, body.statement, version])).rows[0];
+        `UPDATE comp_requirements SET name=$2, description=$3, category=$4, method=$5, source=$6, sensitive=$7, requires_review=$8, validity_days=$9, reminder_days=$10, grace_days=$11, escalate_after_days=$12, statement=$13, version=$14, updated_at=now(),
+                classification=$15, topic=$16, source_title=$17, source_url=$18, approval_owner=$19, waivable=$20 WHERE id=$1 RETURNING *`,
+        [ex.id, body.name, body.description, body.category, body.method, JSON.stringify(body.source), body.sensitive, body.requires_review, body.validity_days, body.reminder_days, body.grace_days, body.escalate_after_days, body.statement, version,
+          policy.classification, policy.topic, policy.source_title, policy.source_url, policy.approval_owner, policy.waivable])).rows[0];
       if (bump) await c.query('INSERT INTO comp_requirement_versions(requirement_id, version, snapshot, changed_by) VALUES ($1,$2,$3,$4)', [row.id, version, JSON.stringify(viewReq(row)), user.id]);
       await log(c, { requirement_id: row.id, actor_id: user.id, action: 'requirement_updated', detail: { version, new_version: bump } });
       return viewReq(row);
@@ -180,10 +209,14 @@ cap({
 
 cap({
   name: 'save_compliance_obligation', method: 'POST', path: '/compliance/requirements/:id/obligations', tag: TAG, status: 201,
-  summary: 'Say who must meet a requirement and what happens if they do not: which roles or engagements (none chosen = everyone in the scope), an optional sport, whether it only applies to adults who coach or manage young people, whether it is mandatory, since when and until when, and what an unmet one blocks (contact with young people, competition registration, event accreditation). Safeguarding that blocks contact with young people can never be waived. Archive an obligation with archived=true.',
+  summary: 'Say who must meet a requirement and what happens if they do not: which roles or engagements (none chosen = everyone in the scope), an optional sport, an optional place (country, state or province, municipality), governing bodies, competitions, venues, event types and an age band (a rule that names something the facts cannot answer is "cannot be judged yet", never silently skipped), whether it only applies to adults who coach or manage young people, whether it is mandatory, since when and until when, and what an unmet one blocks (contact with young people, competition registration, event accreditation, opening or starting an event, recommending a tender award). Safeguarding that blocks contact with young people can never be waived. Archive an obligation with archived=true.',
   input: z.object({
     id, obligation_id: id.optional(), roles: z.array(z.string().max(40)).max(12).default([]), sport_id: id.nullable().optional(), youth_work: z.boolean().default(false), mandatory: z.boolean().default(true),
     consequences: z.array(z.enum(Object.keys(CONSEQUENCES))).default([]), starts_on: day.optional(), ends_on: day.nullable().optional(), archived: z.boolean().optional(),
+    // where and for whom beyond roles and sport (#568); a rule that names a dimension the facts cannot answer is "unknown", never silently "does not apply"
+    country: z.string().regex(/^[A-Z]{2}$/).nullable().optional(), region: text(80).min(1).nullable().optional(), municipality: text(80).min(1).nullable().optional(),
+    body_ids: z.array(id).max(20).default([]), competition_ids: z.array(id).max(50).default([]), venue_ids: z.array(id).max(50).default([]),
+    event_types: z.array(z.enum(EVENT_TYPES)).max(5).default([]), min_age: z.number().int().min(0).max(120).nullable().optional(), max_age: z.number().int().min(0).max(120).nullable().optional(),
   }),
   async handler({ user }, i) {
     const r = await loadRequirement(i.id);
@@ -191,7 +224,15 @@ cap({
     const allowed = new Set(roleChoices(r.scope_kind, r.subject_kind).map((x) => x.value));
     const bad = i.roles.find((x) => !allowed.has(x));
     if (bad) throw badRequest(`"${bad}" is not a role that can be chosen for this scope`);
-    if (r.subject_kind !== 'person' && (i.consequences.length || i.youth_work)) throw badRequest('Only requirements for people can block contact, registration or accreditation, or be limited to people who work with young people');
+    const PERSON_ONLY = ['youth_contact', 'youth_access', 'registration', 'accreditation'];
+    if (r.subject_kind !== 'person' && (i.youth_work || i.consequences.some((x) => PERSON_ONLY.includes(x)))) throw badRequest('Only requirements for people can block contact, registration or accreditation, or be limited to people who work with young people');
+    if (r.subject_kind === 'person' && i.consequences.some((x) => ['event_open', 'event_start'].includes(x))) throw badRequest('Opening and starting an event are decided from the event\'s own requirements, not a person\'s');
+    if (r.subject_kind === 'organisation' && i.consequences.some((x) => ['event_open', 'event_start'].includes(x))) throw badRequest('Opening and starting an event are decided from the event\'s own requirements');
+    if (r.subject_kind !== 'person' && (i.min_age != null || i.max_age != null)) throw badRequest('An age band applies to people');
+    if (i.min_age != null && i.max_age != null && i.max_age < i.min_age) throw badRequest('The maximum age cannot be below the minimum age');
+    if (i.body_ids.length && (await many('SELECT id FROM governing_bodies WHERE id = ANY($1)', [i.body_ids])).length !== new Set(i.body_ids).size) throw badRequest('Choose existing governing bodies');
+    if (i.competition_ids.length && (await many('SELECT id FROM events WHERE id = ANY($1)', [i.competition_ids])).length !== new Set(i.competition_ids).size) throw badRequest('Choose existing competitions');
+    if (i.venue_ids.length && (await many('SELECT id FROM venues WHERE id = ANY($1)', [i.venue_ids])).length !== new Set(i.venue_ids).size) throw badRequest('Choose existing venues');
     if ((i.consequences.includes('youth_contact') || i.consequences.includes('youth_access')) && r.scope_kind === 'event') throw badRequest('Contact with and access to young people are controlled by the organisation or the platform, not by a single event');
     if (i.starts_on && i.ends_on && i.ends_on < i.starts_on) throw badRequest('The end date cannot be before the start date');
     return tx(async (c) => {
@@ -201,12 +242,16 @@ cap({
         if (!ex) throw notFound('Obligation');
         row = (await c.query(
           `UPDATE comp_obligations SET roles=$2, sport_id=$3, youth_work=$4, mandatory=$5, consequences=$6, starts_on=$7, ends_on=$8,
+                  country=$10, region=$11, municipality=$12, body_ids=$13, competition_ids=$14, venue_ids=$15, event_types=$16, min_age=$17, max_age=$18,
                   archived_at = CASE WHEN $9::boolean IS TRUE THEN coalesce(archived_at, now()) WHEN $9::boolean IS FALSE THEN NULL ELSE archived_at END WHERE id=$1 RETURNING *`,
-          [ex.id, i.roles, i.sport_id ?? null, i.youth_work, i.mandatory, i.consequences, i.starts_on ?? ex.starts_on, i.ends_on === undefined ? ex.ends_on : i.ends_on, i.archived ?? null])).rows[0];
+          [ex.id, i.roles, i.sport_id ?? null, i.youth_work, i.mandatory, i.consequences, i.starts_on ?? ex.starts_on, i.ends_on === undefined ? ex.ends_on : i.ends_on, i.archived ?? null,
+            i.country ?? null, i.region ?? null, i.municipality ?? null, i.body_ids, i.competition_ids, i.venue_ids, i.event_types, i.min_age ?? null, i.max_age ?? null])).rows[0];
       } else {
         row = (await c.query(
-          `INSERT INTO comp_obligations(requirement_id, roles, sport_id, youth_work, mandatory, consequences, starts_on, ends_on, created_by) VALUES ($1,$2,$3,$4,$5,$6,coalesce($7::date, current_date),$8,$9) RETURNING *`,
-          [r.id, i.roles, i.sport_id ?? null, i.youth_work, i.mandatory, i.consequences, i.starts_on ?? null, i.ends_on ?? null, user.id])).rows[0];
+          `INSERT INTO comp_obligations(requirement_id, roles, sport_id, youth_work, mandatory, consequences, starts_on, ends_on, created_by, country, region, municipality, body_ids, competition_ids, venue_ids, event_types, min_age, max_age)
+           VALUES ($1,$2,$3,$4,$5,$6,coalesce($7::date, current_date),$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *`,
+          [r.id, i.roles, i.sport_id ?? null, i.youth_work, i.mandatory, i.consequences, i.starts_on ?? null, i.ends_on ?? null, user.id,
+            i.country ?? null, i.region ?? null, i.municipality ?? null, i.body_ids, i.competition_ids, i.venue_ids, i.event_types, i.min_age ?? null, i.max_age ?? null])).rows[0];
       }
       await log(c, { requirement_id: r.id, actor_id: user.id, action: i.obligation_id ? 'obligation_updated' : 'obligation_created', detail: { obligation_id: row.id, consequences: row.consequences, mandatory: row.mandatory } });
       const labels = new Map(roleChoices(r.scope_kind, r.subject_kind).map((x) => [x.value, x.label]));
@@ -217,7 +262,7 @@ cap({
 
 // ---------------------------------------------------------------- status
 /** Items a manager may see: only the obligations of scopes they run. The holder, a guardian and the platform team see everything that applies. */
-async function visibleItems(user, access, items) {
+export async function visibleItems(user, access, items) {
   if (access) return items;
   const out = [];
   const cache = new Map();
@@ -244,7 +289,7 @@ cap({
     const sum = summarise(items);
     return {
       subject: { ...subject, name: await nameFor(pool, user, subject.kind, subject.id) },
-      relation: access ?? 'manager', as_of: full.today, decision: sum.decision, counts: sum.counts, items,
+      relation: access ?? 'manager', as_of: full.today, decision: sum.decision, counts: sum.counts, statuses: statusCounts(items), items,
     };
   },
 });
@@ -258,10 +303,11 @@ cap({
     await mustManage(user, i.scope_kind, i.scope_id);
     const { total, ids } = await subjectsInScope(pool, i.scope_kind, i.scope_id ?? null, i.subject_kind, { limit: i.limit, offset: i.offset });
     const rank = { blocked: 0, pending: 1, clear: 2 };
-    const rows = [];
+    const rows = [], dashboard = statusCounts([]);
     for (const sid of ids) {
       const ev = await evaluateSubject(pool, { kind: i.subject_kind, id: sid }, { scope: { kind: i.scope_kind, id: i.scope_id ?? null } });
       if (!ev.items.length) continue;
+      for (const [k, n] of Object.entries(ev.statuses)) dashboard[k] += n;
       const attention = ev.items.filter((x) => x.blocking || ['pending_review', 'expiring', 'grace'].includes(x.state));
       if (i.attention_only && !attention.length) continue;
       rows.push({
@@ -270,7 +316,7 @@ cap({
       });
     }
     rows.sort((a, b) => rank[a.decision] - rank[b.decision] || b.counts.blocked - a.counts.blocked);
-    return { total, limit: i.limit, offset: i.offset, evaluated: ids.length, subjects: rows,
+    return { total, limit: i.limit, offset: i.offset, evaluated: ids.length, dashboard, subjects: rows,
       summary: { blocked: rows.filter((r) => r.decision === 'blocked').length, pending: rows.filter((r) => r.decision === 'pending').length, expiring: rows.filter((r) => r.counts.expiring > 0).length } };
   },
 });
