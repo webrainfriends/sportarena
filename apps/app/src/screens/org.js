@@ -27,6 +27,7 @@ import { LoyaltyConsole } from './rewards';
 import { FederationLinks } from './federation-club';
 import { OrgIdentity } from './org-identity';
 import { CommandCentre } from './org-command-centre';
+import { ComplianceWorkspace } from './compliance';
 
 const KINDS = ORG_KINDS;
 const ROLE_LABEL = { owner: 'Owner', admin: 'Admin', coach: 'Coach', staff: 'Staff', finance: 'Finance', manager: 'Sponsor manager', evaluator: 'Evaluator', legal: 'Legal', approver: 'Approver', auditor: 'Auditor' };
@@ -97,7 +98,7 @@ export function Org({ id }) {
   };
   const P = { o, d, role, archived, toast, brands, go, reload: () => { org.reload(); dash.reload(); brands.reload(); } };
   const teaching = !SPONSOR_ONLY.includes(role) && role !== 'finance' && role !== 'staff';
-  const tabs = [['overview', ['owner', 'admin', 'coach', 'finance'].includes(role) ? 'Command centre' : 'Overview'], ...(teaching ? [['cohorts', 'Cohorts']] : []), ['people', 'People'], ...(brands.data?.length && role !== 'coach' ? [['sponsor', 'Sponsor']] : []), ...(teaching ? [['assets', 'Teams, events & venues']] : []), ...(STAFF.includes(role) && o.kind !== 'academy' ? [['agreements', 'Agreements']] : []), ...(['owner', 'admin', 'finance'].includes(role) && o.kind !== 'academy' ? [['collections', 'Collections']] : []), ...(['owner', 'admin', 'finance'].includes(role) ? [['rewards', 'Rewards'], ['comms', 'Communication']] : []), ...(STAFF.includes(role) ? [['signin', 'Sign-in & access']] : []), ...(STAFF.includes(role) || (o.kind === 'academy' && ['finance', 'coach', 'staff', 'auditor'].includes(role)) ? [[o.kind === 'academy' ? 'academy' : 'admissions', o.kind === 'academy' ? 'Academy' : 'Admissions']] : [])];
+  const tabs = [['overview', ['owner', 'admin', 'coach', 'finance'].includes(role) ? 'Command centre' : 'Overview'], ...(teaching ? [['cohorts', 'Cohorts']] : []), ['people', 'People'], ...(brands.data?.length && role !== 'coach' ? [['sponsor', 'Sponsor']] : []), ...(teaching ? [['assets', 'Teams, events & venues']] : []), ...(STAFF.includes(role) && o.kind !== 'academy' ? [['agreements', 'Agreements']] : []), ...(['owner', 'admin', 'finance'].includes(role) && o.kind !== 'academy' ? [['collections', 'Collections']] : []), ...(['owner', 'admin', 'finance'].includes(role) ? [['rewards', 'Rewards'], ['comms', 'Communication']] : []), ...(STAFF.includes(role) ? [['compliance', 'Compliance'], ['signin', 'Sign-in & access']] : []), ...(STAFF.includes(role) || (o.kind === 'academy' && ['finance', 'coach', 'staff', 'auditor'].includes(role)) ? [[o.kind === 'academy' ? 'academy' : 'admissions', o.kind === 'academy' ? 'Academy' : 'Admissions']] : [])];
   return (
     <Screen wide>
       <GradCard colors={[c.violet, c.ink]}>
@@ -106,7 +107,7 @@ export function Org({ id }) {
       </GradCard>
       {archived ? <View style={{ marginTop: 10 }}><Empty emoji="🗄️" title="This organisation is archived" sub="Everything is kept and readable. Ask an owner to restore it to make changes." /></View> : null}
       <View style={{ marginTop: 10 }}><Seg options={tabs.map(([value, label]) => ({ value, label }))} value={tab} onChange={setTab} color={c.violet} /></View>
-      {tab === 'overview' ? <Overview {...P} /> : tab === 'cohorts' ? <Cohorts {...P} /> : tab === 'people' ? <People {...P} /> : tab === 'admissions' ? <Admissions {...P} /> : tab === 'academy' ? <AcademyDesk {...P} /> : tab === 'collections' ? <Collections target={{ organisation_id: o.id }} archived={archived} /> : tab === 'rewards' ? <LoyaltyConsole ownerKind="organisation" ownerId={o.id} /> : tab === 'sponsor' ? <SponsorTab {...P} /> : tab === 'agreements' ? <Agreements {...P} /> : tab === 'comms' ? <Communications organisationId={o.id} organisationName={o.name} archived={archived} /> : tab === 'signin' ? <OrgIdentity {...P} /> : <Assets {...P} />}
+      {tab === 'overview' ? <Overview {...P} /> : tab === 'cohorts' ? <Cohorts {...P} /> : tab === 'people' ? <People {...P} /> : tab === 'admissions' ? <Admissions {...P} /> : tab === 'academy' ? <AcademyDesk {...P} /> : tab === 'collections' ? <Collections target={{ organisation_id: o.id }} archived={archived} /> : tab === 'rewards' ? <LoyaltyConsole ownerKind="organisation" ownerId={o.id} /> : tab === 'sponsor' ? <SponsorTab {...P} /> : tab === 'agreements' ? <Agreements {...P} /> : tab === 'comms' ? <Communications organisationId={o.id} organisationName={o.name} archived={archived} /> : tab === 'compliance' ? <ComplianceWorkspace scope={{ kind: 'organisation', id: o.id }} own={{ subject: { kind: 'organisation', id: o.id }, title: `${o.name}: our own requirements` }} /> : tab === 'signin' ? <OrgIdentity {...P} /> : <Assets {...P} />}
     </Screen>
   );
 }
