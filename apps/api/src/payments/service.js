@@ -9,6 +9,7 @@ import { activatePhysioPackage } from '../capabilities/provider-packages.js';
 import { fulfilSponsorshipPayment } from '../sponsor-agreements.js';
 import { fulfilChargePaid } from '../academy-invoices.js';
 import { fulfilServiceInvoicePaid } from '../svc/finance.js';
+import { fulfilMarketplacePaid } from '../marketplace/engine.js';
 import { fulfilMediaFeePaid } from '../media-fees.js';
 import { fulfilContributionPaid, fulfilTeamChargePaid } from '../team-money.js';
 import { raiseException, recordSale, syncRefunds } from '../settlement.js';
@@ -93,6 +94,10 @@ export async function describePurpose(c, type, id) {
     const x = await q("SELECT f.payer_id, f.amount_minor AS amount, f.currency, f.status, f.number, c.name, c.status AS camp_status FROM ad_fundings f JOIN ad_campaigns c ON c.id=f.campaign_id WHERE f.id=$1 FOR UPDATE OF f");
     return x && { payerId: x.payer_id, amount: Number(x.amount), currency: x.currency, name: `Advertising funds ${x.number} · ${x.name}`, payable: x.status === 'awaiting_payment' && !['ended', 'withdrawn'].includes(x.camp_status) };
   }
+  if (type === 'marketplace_engagement') {
+    const m = await q("SELECT m.buyer_id AS payer_id, m.agreed_minor AS amount, m.currency, m.status, m.title, m.invoice_number, u.display_name FROM marketplace_engagements m JOIN users u ON u.id=m.provider_id WHERE m.id=$1 FOR UPDATE OF m");
+    return m && { payerId: m.payer_id, amount: Number(m.amount), currency: m.currency, name: `${m.title} · ${m.display_name} (${m.invoice_number})`, payable: m.status === 'invoiced' && Number(m.amount) > 0 };
+  }
   if (type === 'service_invoice') {
     const x = await q("SELECT s.payer_id, s.payable_minor - s.credited_minor - s.paid_minor AS amount, s.currency, s.status, s.doc_type, s.match_status, s.supplier_number, coalesce(p.trading_name, p.legal_name) AS name FROM svc_invoices s JOIN svc_profiles p ON p.id=s.profile_id WHERE s.id=$1 FOR UPDATE OF s");
     return x && { payerId: x.payer_id, amount: Number(x.amount), currency: x.currency, name: `Invoice ${x.supplier_number} · ${x.name}`, payable: x.status === 'issued' && x.doc_type === 'invoice' && ['matched', 'exception_approved'].includes(x.match_status) && Number(x.amount) > 0 };
@@ -119,6 +124,7 @@ async function fulfil(c, type, id, payment) {
   if (type === 'sponsorship_payment') return fulfilSponsorshipPayment(c, id);
   if (type === 'academy_charge') return fulfilChargePaid(c, id, { method: 'online', payment });
   if (type === 'service_invoice') return fulfilServiceInvoicePaid(c, id, payment);
+  if (type === 'marketplace_engagement') return fulfilMarketplacePaid(c, id);
   if (type === 'media_rights_fee') return fulfilMediaFeePaid(c, id);
   if (type === 'ad_funding') return fulfilAdFundingPaid(c, id);
   if (type === 'team_charge') return fulfilTeamChargePaid(c, id, payment);

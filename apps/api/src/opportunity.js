@@ -8,7 +8,7 @@ import { badgesFor } from './verification.js';
 import { requireConsent } from './youth.js';
 import { loadTarget, canManageTarget } from './capabilities/games.js';
 
-export const TYPES = ['trial', 'paid_assignment', 'volunteering', 'sponsorship', 'team_role'];
+export const TYPES = ['trial', 'paid_assignment', 'volunteering', 'sponsorship', 'team_role', 'service'];
 export const COMPENSATION = ['paid', 'unpaid', 'expenses', 'in_kind'];
 /** The passport sections an applicant may share with a post's selectors. Only the recruitment sections exist as shareable evidence. */
 export const SECTIONS = ['video', 'references', 'preferences', 'availability', 'academic'];
@@ -19,7 +19,7 @@ export const ENGAGEMENT_ROLES = ['volunteer', 'referee', 'umpire', 'linesman', '
 /** Post kinds that are filled from the roster pipeline with versioned offers. */
 export const OFFER_KINDS = ['match_players', 'team_recruiting', 'coach_wanted'];
 
-const defaultType = (kind) => (SPONSOR_KINDS.includes(kind) ? 'sponsorship' : kind === 'assignment' ? 'volunteering' : kind === 'match_players' ? 'trial' : 'team_role');
+const defaultType = (kind) => (kind === 'service_request' ? 'service' : SPONSOR_KINDS.includes(kind) ? 'sponsorship' : kind === 'assignment' ? 'volunteering' : kind === 'match_players' ? 'trial' : 'team_role');
 
 /**
  * Validate and normalise the opportunity terms of a new post. Returns the columns to store.
@@ -28,10 +28,12 @@ const defaultType = (kind) => (SPONSOR_KINDS.includes(kind) ? 'sponsorship' : ki
 export async function termsOf(user, i) {
   const type = i.opportunity_type ?? defaultType(i.kind);
   if (type === 'sponsorship' !== SPONSOR_KINDS.includes(i.kind)) throw badRequest(SPONSOR_KINDS.includes(i.kind) ? 'Sponsorship posts have the sponsorship type' : 'Use a sponsorship post for sponsor calls');
+  if ((type === 'service') !== (i.kind === 'service_request')) throw badRequest(i.kind === 'service_request' ? 'A service request has the service type' : 'The service type is for service requests');
   if ((type === 'paid_assignment' || type === 'volunteering') && i.kind !== 'assignment') throw badRequest('Assignments and volunteering are posted as an assignment');
   if (i.kind === 'assignment' && !['paid_assignment', 'volunteering'].includes(type)) throw badRequest('An assignment is either paid or volunteering');
   let compensation = i.compensation ?? (type === 'volunteering' ? 'unpaid' : type === 'paid_assignment' ? 'paid' : null);
   if (type === 'sponsorship') compensation = null;
+  if (type === 'service') compensation = i.budget_cents > 0 ? 'paid' : null;   // a service request states a budget or leaves it for the quote
   if (type === 'paid_assignment' && compensation !== 'paid') throw badRequest('A paid assignment must be paid; use volunteering for unpaid or expenses-only work');
   if (type === 'volunteering' && compensation === 'paid') throw badRequest('Volunteering is not paid; post a paid assignment instead');
   if (compensation === 'paid' && !(i.budget_cents > 0)) throw badRequest('Say how much the work pays');

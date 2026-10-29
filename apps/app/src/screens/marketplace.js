@@ -105,6 +105,7 @@ const KIND = {
   sponsor_call: ['Sponsor call', c.lime, c.limeSoft, "I'm interested"],
   coach_wanted: ['Coach wanted', c.cyan, c.cyanSoft, 'Apply to coach'],
   assignment: ['Work & volunteering', c.violet, c.violetSoft, 'Apply'],
+  service_request: ['Service wanted', c.mint, c.mintSoft, 'Offer my service'],
 };
 
 const PIPELINE_KINDS = ['match_players', 'team_recruiting', 'coach_wanted', 'assignment'];

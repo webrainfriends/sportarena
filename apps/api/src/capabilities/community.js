@@ -12,6 +12,7 @@ const SUBJECTS = { user: 'users', team: 'teams', event: 'events', venue: 'venues
 const TYPES = Object.keys(SUBJECTS);
 
 const VERIFIED_FOR = {
+  user: "SELECT 1 FROM marketplace_engagements WHERE buyer_id=$1 AND provider_id=$2 AND status IN ('paid','reviewed') AND agreed_minor > 0",
   product: "SELECT 1 FROM shop_orders WHERE buyer_id=$1 AND product_id=$2 AND status='delivered'",
   institution: "SELECT 1 FROM enquiries WHERE athlete_id=$1 AND organisation_id=$2 AND status IN ('admitted','enrolled')",
   programme: "SELECT 1 FROM enquiries WHERE athlete_id=$1 AND programme_id=$2 AND status IN ('admitted','enrolled')",
@@ -44,6 +45,10 @@ cap({
       return { saved: upd, fresh: false };
     });
     if (fresh && i.subject_type === 'venue') await notifyTeamOfReview(i.subject_id, user, i.rating);
+    if (i.subject_type === 'user' && verification === 'verified_interaction') {   // the review closes the marketplace engagements this buyer paid this provider for (#600)
+      const done = await many("UPDATE marketplace_engagements SET status='reviewed', reviewed_at=now(), testimonial_id=$3, updated_at=now() WHERE buyer_id=$1 AND provider_id=$2 AND status='paid' RETURNING id", [user.id, i.subject_id, saved.id]);
+      for (const d of done) await one("INSERT INTO marketplace_events(engagement_id, actor_id, kind, detail) VALUES ($1,$2,'reviewed',$3) RETURNING id", [d.id, user.id, { rating: i.rating }]);
+    }
     return saved;
   },
 });
