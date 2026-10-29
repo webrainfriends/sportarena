@@ -266,3 +266,5 @@ import './advertising.js';
 import './advertising-admin.js';
 import './directory.js';
 import './org-command-centre.js';
+import './compliance.js';
+import './compliance-records.js';
