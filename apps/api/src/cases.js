@@ -8,7 +8,7 @@ import { isAdmin } from './helpers.js';
 
 export const CATEGORIES = {
   support: ['account', 'bookings', 'payments', 'events', 'health', 'insurance', 'sponsorship', 'marketplace_report', 'technical', 'other'],
-  dispute: ['booking_charge', 'refund', 'payment_transfer', 'provider_payment', 'game_data', 'sponsorship', 'other'],
+  dispute: ['booking_charge', 'refund', 'payment_transfer', 'provider_payment', 'game_data', 'sponsorship', 'service_delivery', 'other'],
 };
 export const PRIORITIES = ['low', 'normal', 'high', 'urgent'];
 export const ACTIVE = ['open', 'in_progress', 'awaiting_user', 'escalated'];
@@ -46,6 +46,8 @@ const PARTY = {
   federation_licence: ['fed_licences', 'holder_id', 'applicant_id'],
   federation_affiliation: ['fed_affiliations', 'applicant_id'],
   federation_sanction: ['fed_sanctions', 'applicant_id'],
+  // a service order (#591): either side of the order may reference it; proven against the order's own buyer/supplier access, never by id alone
+  service_order: ['svc_orders'],
 };
 export const LINK_TYPES = Object.keys(PARTY);
 // Links to the exact sponsorship record in dispute. Never offered by the generic case form: only sponsorship-disputes.js sets them, after checking the caller's side.
@@ -69,6 +71,12 @@ const isDealParticipant = (user, id) => dealContext(pool, id, user).then((x) => 
 export async function assertCanLink(user, type, id) {
   const [table, ...cols] = PARTY[type];
   const row = await one(`SELECT * FROM ${table} WHERE id=$1`, [id]);
+  if (type === 'service_order') {
+    const { anySide } = await import('./svc/orders.js');
+    if (!row) throw notFound('service order');
+    try { await anySide(user, row, pool); } catch { throw notFound('service order'); }
+    return;
+  }
   const ok = row && (isAdmin(user) || !cols.length || cols.some((c) => row[c] === user.id)
     || (type === 'sponsorship' && (row.target_type === 'athlete' && row.target_id === user.id || await isDealParticipant(user, id)))
     || (type === 'payment' && await isPayee(user, row)));
@@ -83,6 +91,7 @@ const DISPUTE_RULES = {
   payment_transfer: { need: ['payment'], amount: true },
   provider_payment: { need: ['payment'], any: ['coach_hire', 'appointment'], amount: true },
   game_data: { any: ['game', 'fixture'], field: true },
+  service_delivery: { need: ['service_order'] }, // delivery, acceptance or invoice disagreement on a procurement order (#591)
   sponsorship: { sponsorshipOnly: true }, // opened from the agreement (sponsorship-disputes.js), never through the generic form
   other: {},
 };
