@@ -122,6 +122,7 @@ function LinkCard({ l, reload, onConsents, onPickup, onSponsors, onCalendar }) {
           <Btn small title="Sponsors" color={c.paper} ink={c.ink} onPress={() => onSponsors(l.child)} />
           <Btn small title="Wellness sharing" color={c.paper} ink={c.ink} onPress={() => push('ChildWellnessSharing', { child_id: l.child.id, name: l.child.display_name })} />
           <Btn small title="Season reports" color={c.paper} ink={c.ink} onPress={() => push('ChildSeasonReports', { child_id: l.child.id, name: l.child.display_name })} />
+          <Btn small title="Compliance" color={c.paper} ink={c.ink} onPress={() => push('MyCompliance', { subjectId: l.child.id, subjectName: l.child.display_name })} />
           <Btn small title="Representation" color={c.paper} ink={c.ink} onPress={() => push('Representation', { athlete_id: l.child.id, name: l.child.display_name })} />
           <Btn small title="Development" color={c.paper} ink={c.ink} onPress={() => push('MyDevelopment', { child_id: l.child.id, name: l.child.display_name })} />
           <Btn small title="Career" color={c.paper} ink={c.ink} onPress={() => push('CareerTimeline', { user_id: l.child.id })} />

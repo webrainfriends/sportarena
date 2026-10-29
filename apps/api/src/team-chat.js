@@ -2,10 +2,11 @@
 // One conversation per team (team_messages). A message may carry a reply, reactions, a pin, a poll, a photo/file/voice note, or point at an
 // event/fixture (RSVP prompt) - the RSVP itself always lives in team_attendance. Who may read or post is decided here, from the live
 // membership / guardian link, on every call: removing someone from the team (or revoking a guardian link) ends their access at once.
-import { many, one } from './db.js';
+import { many, one, pool } from './db.js';
 import { forbidden } from './errors.js';
 import { mustFind, PUBLIC_USER } from './helpers.js';
 import { YOUTH_SQL } from './youth.js';
+import { assertMayContactYouth } from './compliance.js';
 import { publish, subscribe } from './live.js';
 import { canManageTeam } from './capabilities/teams.js';
 
@@ -26,6 +27,11 @@ export async function chatAccess(user, teamId) {
   const audiences = [...(manager || member ? ['team'] : []), ...(manager || guardian ? ['guardians'] : [])];
   return { team, manager, member, guardian, audiences, canPostTeam: manager || member, canPostGuardians: manager || guardian };
 }
+
+/** Policy-driven safeguarding (#595): an adult on the team's staff or roster cannot post where young people are until the compliance obligations that block contact are met. */
+export const mustBeSafeToPost = async (user, access) => {
+  if (access.manager || access.member) await assertMayContactYouth(pool, user.id, access.team);
+};
 
 export const mustPost = (access, audience) => {
   if (audience === 'guardians' ? !access.canPostGuardians : !access.canPostTeam) throw forbidden(audience === 'guardians' ? 'Only managers and guardians can post in the guardians channel' : 'Only team members can post in the team channel');

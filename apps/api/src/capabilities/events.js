@@ -298,7 +298,7 @@ cap({
     return tx(async (c) => {
       const e = await mustFind('event_entries', i.id, '*', c);
       const ev = (await c.query('SELECT * FROM events WHERE id=$1 FOR UPDATE', [e.event_id])).rows[0];
-      mustOwn(user, ev.organizer_id, 'event');
+      if (!(await hasOrgGrant(user, ev.organisation_id, ['owner', 'admin'], c))) mustOwn(user, ev.organizer_id, 'event'); // an owner/admin of the organising organisation decides too, as in eventForOrganizer
       if (!['pending', 'waitlisted', 'accepted'].includes(e.status)) throw conflict(`Entry is ${e.status}`);
       if (i.status === 'accepted' && e.status !== 'accepted' && ev.capacity) {
         const used = (await c.query("SELECT count(*)::int AS n FROM event_entries WHERE event_id=$1 AND status='accepted'", [ev.id])).rows[0].n;
