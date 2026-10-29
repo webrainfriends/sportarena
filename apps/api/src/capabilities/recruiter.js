@@ -567,7 +567,6 @@ cap({
       const r = (await c.query('SELECT * FROM recruiter_access_requests WHERE id=$1', [i.id])).rows[0];
       if (!r) throw notFound('Access request');
       await requireAthleteSide(user, r.athlete_id, c);
-      if (role === 'recruiter') await assertMayMessageYouth(c, user.id, r.athlete_id); // policy-driven safeguarding (#595)
       await c.query('INSERT INTO recruiter_threads(request_id) VALUES ($1) ON CONFLICT (request_id) DO NOTHING', [r.id]);
       return (await c.query('UPDATE recruiter_threads SET closed_at=CASE WHEN $2 THEN coalesce(closed_at, now()) END, closed_by=CASE WHEN $2 THEN $3::uuid END WHERE request_id=$1 RETURNING id, closed_at', [r.id, i.closed, user.id])).rows[0];
     });
