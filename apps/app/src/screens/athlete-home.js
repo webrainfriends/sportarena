@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
@@ -87,8 +87,9 @@ const addDaysIso = (d, n) => { const x = new Date(`${d}T00:00:00Z`); x.setUTCDat
  * Everything on the person's calendar, whatever their roles: matches, team fixtures, events and tournaments, coaching sessions and
  * commitments, physio/doctor appointments (as patient or provider), venue bookings and duty. Grouped by day, filterable by kind.
  */
-export function HomeSchedule() {
-  const [range, setRange] = useState('today'), [kind, setKind] = useState(null);
+export function HomeSchedule({ fetcher, initialKind = null, onKindChange }) {
+  const [range, setRange] = useState('today'), [kind, setKind] = useState(initialKind);
+  useEffect(() => { onKindChange?.(kind); }, [kind]); // eslint-disable-line react-hooks/exhaustive-deps
   const [month, setMonth] = useState(null), [picked, setPicked] = useState(null), [block, setBlock] = useState(false);
   const [panel, setPanel] = useState(null);
   const L = useLayout();
@@ -99,7 +100,7 @@ export function HomeSchedule() {
   const inMonth = range === 'month-view';
   const mon = month ?? today.slice(0, 7);
   const lastOfMonth = `${mon}-${String(new Date(Date.UTC(+mon.slice(0, 4), +mon.slice(5, 7), 0)).getUTCDate()).padStart(2, '0')}`;
-  const sched = useLoad(() => api.get('/me/sport-schedule', inMonth ? { from: `${mon}-01`, to: lastOfMonth } : { from: today, to: addDaysIso(today, days - 1) }), [range, mon]);
+  const sched = useLoad(() => (fetcher ?? ((p) => api.get('/me/sport-schedule', p)))(inMonth ? { from: `${mon}-01`, to: lastOfMonth } : { from: today, to: addDaysIso(today, days - 1) }), [range, mon]);
   const all = sched.data?.items ?? [];
   const items = all.filter((x) => (!kind || x.kind === kind) && (!inMonth || !picked || localDate(x.starts_at, x.all_day ? 'UTC' : zone) === picked));
   const need = items.filter((x) => x.action_required);
@@ -143,34 +144,6 @@ export function HomeSchedule() {
       {!wide ? <PanelHost visible={!!panel} title={panelTitle} onClose={() => setPanel(null)}>{panelBody}</PanelHost> : null}
     </View>
     {wide && panel ? <View style={{ width: 420 }}><PanelHost visible wide title={panelTitle} onClose={() => setPanel(null)}>{panelBody}</PanelHost></View> : null}
-    </View>
-  );
-}
-
-/** Home: reminders for the next 7 days, from the same calendar the Schedule tab manages. Needs-response items come first. */
-export function HomeReminders() {
-  const nav = useNav();
-  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const today = localDate(new Date().toISOString(), zone);
-  const sched = useLoad(() => api.get('/me/sport-schedule', { from: today, to: addDaysIso(today, 6) }), [today]);
-  const items = sched.data?.items ?? [];
-  const need = items.filter((x) => x.action_required);
-  const next = items.filter((x) => !x.action_required).slice(0, need.length ? 3 : 5);
-  return (
-    <View style={{ gap: 10 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <T size={19} weight="700" style={{ letterSpacing: -0.3 }}>🔔 Coming up</T>
-        <Btn small title="Open schedule" color={c.paper} ink={c.ink} onPress={() => nav.goTab('Schedule')} />
-      </View>
-      {sched.error ? <ErrorBox error={sched.error} onRetry={sched.reload} /> : sched.loading && !sched.data ? <Loading /> : (
-        <>
-          {sched.data.conflicts ? <T size={13} weight="700" color={c.red}>⚠ {sched.data.conflicts} overlapping commitment{sched.data.conflicts === 1 ? '' : 's'}</T> : null}
-          {need.length ? <T size={13} weight="800" color={c.sun}>NEEDS YOUR RESPONSE · {need.length}</T> : null}
-          {need.map((x) => <Item key={`n${x.source_type}${x.source_id}`} x={x} reload={sched.reload} />)}
-          {next.map((x) => <Item key={`${x.source_type}${x.source_id}${x.starts_at}`} x={x} reload={sched.reload} />)}
-          {!items.length ? <Empty emoji="🗓️" title="Nothing in the next 7 days" sub="Matches, events, coaching, appointments and bookings show up here as soon as you add them." /> : null}
-        </>
-      )}
     </View>
   );
 }
