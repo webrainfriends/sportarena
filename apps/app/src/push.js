@@ -71,6 +71,8 @@ export function targetFor(data = {}) {
   if (data.official_id && data.fixture_id) return ['OfficialsHome', { tab: 'today' }]; // a request, change, release or withdrawal on your officiating crew
   if (data.report_id && data.fixture_id) return ['OfficialMatch', { id: data.fixture_id }]; // an official filed a report on your match
   if (data.proposal_id) return ['ScoringTool', { proposalId: data.proposal_id }]; // a proposed result to review, or the outcome of yours
+  if (data.compliance && data.event_id) return ['EventCommand', { id: data.event_id, tab: 'compliance' }]; // evidence waiting for the organiser's review
+  if (data.evidence_id || data.exception_id) return ['Compliance', { tab: 'mine' }]; // your evidence was reviewed, or an exception was recorded for you
   if (data.accreditation_id && data.event_id) return ['MyAccreditations', {}]; // a nomination, approval, reissue or revocation of your badge
   if (data.request_id && data.event_id) return ['EventInbox', {}];
   if (data.sponsorship_id) return ['SponsorDeal', { id: data.sponsorship_id }];
@@ -119,6 +121,8 @@ export function parseTarget(t) {
   if (kind === 'fixture' && id) return ['LiveCentre', { id }];
   if (kind === 'following') return ['Following', {}];
   if (kind === 'accreditation') return ['MyAccreditations', {}];
+  if (kind === 'compliance') return ['Compliance', id ? { tab: id } : {}];
+  if (kind === 'event-compliance' && id) return ['EventCommand', { id, tab: 'compliance' }];
   if (kind === 'event-accreditation' && id) return ['EventCommand', { id, tab: 'accreditation' }];
   if (kind === 'gate' && id) return ['GateScan', { id }];
   if (kind === 'tender-orders') return ['TenderOrders', {}];

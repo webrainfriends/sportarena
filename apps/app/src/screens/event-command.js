@@ -28,6 +28,7 @@ import { EventVenues } from './event-venues';
 import { Requests, Budget } from './event-plan';
 import { GameRow } from './event-schedule';
 import { AccreditationTab } from './event-accreditation';
+import { ComplianceTab } from './compliance';
 import { TravelTab } from './trips';
 import { RaceDay } from './race-desk';
 import { PublicPageTab } from './event-public';
@@ -105,6 +106,7 @@ export function EventCommand({ id, tab: first = 'overview' }) {
     { key: 'registration', label: 'Registration', icon: '🪪', badge: regAwaiting || undefined },
     { key: 'people', label: 'People', icon: '🧩' },
     { key: 'accreditation', label: 'Accreditation', icon: '🎫' },
+    ...(isOrg ? [{ key: 'compliance', label: 'Compliance', icon: '🛡️' }] : []),
     { key: 'travel', label: 'Travel', icon: '🧳' },
     { key: 'boards', label: 'Boards', icon: '🗂️' },
     { key: 'games', label: 'Games', icon: '⚡' },
@@ -147,6 +149,7 @@ export function EventCommand({ id, tab: first = 'overview' }) {
         </>
       )}
       {tab === 'accreditation' && <AccreditationTab id={id} e={e} isOrg={isOrg} />}
+      {tab === 'compliance' && <ComplianceTab id={id} e={e} isOrg={isOrg} />}
       {tab === 'travel' && <TravelTab id={id} e={e} />}
       {tab === 'boards' && <BoardTab id={id} isOrg={isOrg} />}
       {tab === 'race' && <RaceDay id={id} isOrg={isOrg} />}

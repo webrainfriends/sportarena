@@ -8,6 +8,7 @@
 //   unknown    = something that must be known could not be established (e.g. no date of birth on file); otherwise
 //   pending    = something is awaiting a person (registration under review, clearance not yet confirmed); otherwise eligible.
 // Nationality, residency, sex/gender category and classification are NEVER inferred: they are declared by the registrar or recorded as dependencies.
+import { eligibilityChecks, eligibilityRulesExist } from './compliance/service.js';
 import { z } from 'zod';
 import { many } from './db.js';
 import { decrypt } from './crypto.js';
@@ -164,6 +165,10 @@ export async function evaluate(c, ctx, teamId, userId) {
     const ok = await hasConsent(userId, 'participation', c);
     checks.push(await withWaiver('guardian_consent', ok ? check('guardian_consent', 'pass', 'Guardian consent for participation is current', null) : check('guardian_consent', 'fail', 'Guardian consent for participation is not current', null)));
   }
+
+  // 8 the compliance engine (#568): permits, consent and federation conditions written as versioned rules. Nothing is added when no rule exists.
+  ctx.cmpOn ??= await eligibilityRulesExist(c);
+  if (ctx.cmpOn) checks.push(...await eligibilityChecks(c, ctx.actorId ? { id: ctx.actorId } : null, event.id, userId));
 
   // roster-level waivers for the window are applied at submission; the registration check itself cannot be waived here
   const decision = checks.some((x) => x.status === 'fail') ? 'ineligible' : checks.some((x) => x.status === 'unknown') ? 'unknown' : checks.some((x) => x.status === 'pending') ? 'pending' : 'eligible';

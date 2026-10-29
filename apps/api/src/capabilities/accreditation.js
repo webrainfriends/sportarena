@@ -12,6 +12,7 @@ import { encrypt, decrypt } from '../crypto.js';
 import { notify } from '../notify.js';
 import { revokeGrantsForSource } from '../access-grants.js';
 import { YOUTH_SQL } from '../youth.js';
+import { gate } from '../compliance/service.js';
 import { canManageTeam } from './teams.js';
 import { departmentScope } from './event-departments.js';
 import {
@@ -69,6 +70,8 @@ async function approveRow(c, ev, cat, acc, actor, why) {
   }
   const block = await blocker(c, ev, cat, acc.holder_id, { invited: acc.origin === 'invitation' });
   if (block) throw conflict(block, { code: 'not_approvable' });
+  // the compliance engine (#568): permits, training, background checks and consent that the rules in force require before a badge is issued
+  await gate(c, { actor: { id: actor }, domain: 'accreditation', subject_type: 'person', subject_id: acc.holder_id, context: { event_id: ev.id, category_roles: cat.eligible }, trigger: 'accreditation_approve' });
   const version = acc.credential_version + 1;
   const r = (await c.query(
     `UPDATE accreditations SET status='approved', access='active', serial=coalesce(serial, $2), credential_version=$3, issued_at=now(), issued_by=$4, decided_by=$4, decided_at=now(), reason=NULL WHERE id=$1 RETURNING *`,
@@ -80,6 +83,11 @@ async function approveRow(c, ev, cat, acc, actor, why) {
   return r;
 }
 
+/** An automatic approval that the compliance rules stop is not an error: the application simply stays submitted until someone decides it. */
+async function approveOrHold(c, ev, cat, row, actor, why) {
+  try { return await approveRow(c, ev, cat, row, actor, why); } catch (e) { if (e.details?.code === 'compliance_blocked') return row; throw e; }
+}
+
 async function create(c, ev, cat, holderId, { origin, nominatedBy = null, teamId = null, departmentId = null, vendorId = null, actor, draft = false }) {
   const existing = (await c.query(`SELECT * FROM accreditations WHERE category_id=$1 AND holder_id=$2 AND status IN ('draft','submitted','under_review','approved')`, [cat.id, holderId])).rows[0];
   if (existing) return { row: existing, created: false };
@@ -89,7 +97,7 @@ async function create(c, ev, cat, holderId, { origin, nominatedBy = null, teamId
     [ev.id, cat.id, holderId, origin, nominatedBy, teamId, departmentId, vendorId, draft ? 'draft' : 'submitted'])).rows[0];
   await record(c, row.id, actor, draft ? 'drafted' : 'submitted', null, row.status, null, origin);
   await syncRosterFlag(c, row);
-  if (!draft && (origin === 'invitation' || cat.approval === 'auto')) row = await approveRow(c, ev, cat, row, origin === 'invitation' ? actor : null, origin === 'invitation' ? 'invited by the organiser' : 'auto-approved');
+  if (!draft && (origin === 'invitation' || cat.approval === 'auto')) row = await approveOrHold(c, ev, cat, row, origin === 'invitation' ? actor : null, origin === 'invitation' ? 'invited by the organiser' : 'auto-approved');
   else if (origin !== 'self') await ping(c, holderId, ev, 'You were nominated for accreditation', `${cat.name} for ${ev.name}.`, row.id);
   return { row, created: true };
 }
@@ -326,7 +334,7 @@ cap({
     await record(c, a.id, user.id, 'submitted', 'draft', 'submitted');
     const next = { ...a, status: 'submitted' };
     await syncRosterFlag(c, next);
-    if (cat.approval === 'auto' || a.origin === 'invitation') await approveRow(c, ev, cat, next, a.origin === 'invitation' ? user.id : null, a.origin === 'invitation' ? 'invited by the organiser' : 'auto-approved');
+    if (cat.approval === 'auto' || a.origin === 'invitation') await approveOrHold(c, ev, cat, next, a.origin === 'invitation' ? user.id : null, a.origin === 'invitation' ? 'invited by the organiser' : 'auto-approved');
     else await ping(c, a.holder_id, ev, 'You were nominated for accreditation', `${cat.name} for ${ev.name}.`, a.id);
     return rowOf(c, a.id);
   }),
