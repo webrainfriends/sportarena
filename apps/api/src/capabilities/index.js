@@ -34,6 +34,7 @@ import './team-workspace.js';
 import './workspace.js';
 import './venues.js';
 import './venue-admin.js';
+import './ballots.js';
 import './reservations.js';
 import './venue-media.js';
 import './venue-operations.js';
