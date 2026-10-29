@@ -16,10 +16,10 @@ A family names the account role (or organisation) allowed to list under it and t
 | Verify | `verification_cases` (approved, unexpired) | credential gate at contract time, `credential_verified` in search |
 | Shortlist | – | `marketplace_shortlist` (soft-removed) |
 | Communicate / negotiate | – | `marketplace_messages` (encrypted), `marketplace_quotes` (every version kept) |
-| Apply | #67 billboard responses | `request_marketplace_engagement` with `opportunity_response_id` |
-| Contract | `generated_documents` + the shared PDF renderer | frozen terms snapshot with SHA-256 and contract number; `generate_marketplace_document` |
+| Apply / post a need | #67 Billboard: new kind `service_request` (type `service`); providers with a listing respond; the accepted response is linked to the engagement | `request_marketplace_engagement` with `opportunity_response_id` |
+| Contract | `generated_documents` + the shared PDF renderer | frozen terms snapshot with SHA-256 and contract number, both signatures recorded in `marketplace_contract_signatures`; `generate_marketplace_document` |
 | Schedule | `athlete_blocks`, the athlete schedule feed | conflict check; scheduled work shows in both parties' schedules |
-| Deliver / invoice | – | `deliver_…`, `accept_marketplace_delivery` raises invoice `MI-n` |
+| Deliver / invoice | the shared `invoices` table (new source `marketplace_engagement_id`; `list_invoices` / `get_invoice` work for both parties) | `deliver_…`, `accept_marketplace_delivery` raises a gapless per-provider invoice number |
 | Pay | `payments` (purpose `marketplace_engagement`), the provider ledger (commission, payouts, refunds) | – |
 | Review | `testimonials` (#215): a payer of a completed engagement gets `verified_interaction`; one review per author and provider | the engagement moves to `reviewed` |
 

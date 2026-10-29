@@ -14,7 +14,7 @@ import { FormSheet } from '../FormSheet';
 import { DateField } from '../pickers';
 import { PlacePicker } from '../place-picker';
 import { SportSelect } from '../sportpicker';
-import { Btn, Card, Chip, Empty, ErrorBox, Field, H1, HScroll, Loading, Row, Screen, T, Tag } from '../ui';
+import { Btn, Card, Chip, Empty, ErrorBox, Field, H1, HScroll, Loading, Row, Screen, Section, Sheet, T, Tag } from '../ui';
 import { moneyIn } from '../vtime';
 import { useDo } from './console-utils';
 
@@ -209,6 +209,80 @@ function Listings({ cat }) {
   );
 }
 
+function Requests({ cat }) {
+  const { push } = useNav();
+  const open = useLoad(() => api.get('/billboard', { kind: 'service_request', limit: 50 }), []);
+  const [form, setForm] = useState(false);
+  const [reply, setReply] = useState(null);
+  const [mineOpen, setMineOpen] = useState(null);
+  const mine = (open.data ?? []).filter((p) => p.is_mine);
+  const others = (open.data ?? []).filter((p) => !p.is_mine);
+  return (
+    <View style={{ gap: 12 }}>
+      <T size={13} color={c.mute}>Post what you need and let providers with a listing respond, or answer a request with your listing. An accepted response becomes an engagement you quote, contract, schedule and pay here.</T>
+      <Btn title="＋ Post a request" onPress={() => setForm(true)} style={{ alignSelf: 'flex-start' }} />
+      {open.loading ? <Loading /> : open.error ? <ErrorBox error={open.error} onRetry={open.reload} /> : (
+        <>
+          <Section title="My requests">
+            {!mine.length ? <T size={13} color={c.mute}>You have not posted a request.</T> : mine.map((p) => <Row key={p.id} title={p.title} sub={`${p.accepted} accepted${p.budget_cents != null ? ` · budget ${moneyIn(Number(p.budget_cents), p.currency ?? 'INR')}` : ''}`} onPress={() => setMineOpen(p)} right={<Tag label={p.status} />} />)}
+          </Section>
+          <Section title="Open requests">
+            {!others.length ? <Empty emoji="📭" title="No open requests" sub="Requests from other people appear here." /> : others.map((p) => (
+              <Card key={p.id} pad={14}><View style={{ gap: 6 }}>
+                <T weight="800" size={16}>{p.title}</T>
+                <T size={13} color={c.mute}>{[p.author_name, p.city, p.sport, p.budget_cents != null ? `budget ${moneyIn(Number(p.budget_cents), p.currency ?? 'INR')}` : 'budget open'].filter(Boolean).join(' · ')}</T>
+                {p.body ? <T size={13}>{p.body}</T> : null}
+                <Btn small title={p.my_response ? `Responded (${p.my_response})` : 'Respond with my listing'} disabled={!!p.my_response} onPress={() => setReply(p)} style={{ alignSelf: 'flex-start' }} />
+              </View></Card>
+            ))}
+          </Section>
+        </>
+      )}
+      <FormSheet visible={form} onClose={() => setForm(false)} title="Post a service request" submitLabel="Post request"
+        fields={[
+          { key: 'title', label: 'What do you need?', type: 'text' },
+          { key: 'body', label: 'Details', type: 'multiline', optional: true },
+          { key: 'sport', label: 'Sport', type: 'sport', optional: true },
+          { key: 'place', label: 'Where', type: 'place', optional: true },
+          { key: 'currency', label: 'Currency', type: 'currency', default: 'INR' },
+          { key: 'budget_cents', label: 'Budget', type: 'money', currency: (v) => v.currency ?? 'INR', optional: true },
+          { key: 'closes_at', label: 'Responses close', type: 'datetime', optional: true },
+        ]}
+        initial={{ currency: 'INR' }}
+        onSubmit={async (v) => { await api.post('/billboard', { kind: 'service_request', title: v.title, ...(v.body ? { body: v.body } : {}), ...(v.sport ? { sport: v.sport } : {}), ...(v.place?.name ? { city: v.place.name } : {}), ...(v.budget_cents ? { budget_cents: v.budget_cents, currency: v.currency ?? 'INR' } : {}), ...(v.closes_at ? { closes_at: v.closes_at } : {}) }); setForm(false); open.reload(); }} />
+      <FormSheet visible={!!reply} onClose={() => setReply(null)} title="Respond to this request" submitLabel="Send response" fields={[{ key: 'message', label: 'Why you are a good fit', type: 'multiline', optional: true }]}
+        onSubmit={async (v) => { await api.post(`/billboard/${reply.id}/responses`, v.message ? { message: v.message } : {}); setReply(null); open.reload(); }} />
+      {mineOpen ? <MyRequest post={mineOpen} cat={cat} onClose={() => { setMineOpen(null); open.reload(); }} onEngaged={(e) => { setMineOpen(null); push('MarketplaceEngagement', { id: e.id }); }} /> : null}
+    </View>
+  );
+}
+
+function MyRequest({ post, cat, onClose, onEngaged }) {
+  const r = useLoad(() => api.get(`/billboard/${post.id}/responses`), [post.id]);
+  const act = useDo(r.reload);
+  const [start, setStart] = useState(null);
+  return (
+    <Sheet visible onClose={onClose} title={post.title}>
+      <View style={{ gap: 10 }}>
+        {r.loading ? <Loading /> : r.error ? <ErrorBox error={r.error} onRetry={r.reload} /> : !r.data.length ? <Empty emoji="⏳" title="No responses yet" sub="Providers with a listing can respond." />
+          : r.data.map((x) => x.hidden ? <T key={x.response_id} size={13} color={c.mute}>A response is waiting for guardian consent.</T> : (
+            <Card key={x.response_id} pad={12}><View style={{ gap: 6 }}>
+              <T weight="700">{x.display_name} <T size={12} color={c.mute}>@{x.handle}</T></T>
+              {x.message ? <T size={13}>{x.message}</T> : null}
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                {x.status === 'pending' ? <Btn small title="Accept" onPress={() => act(() => api.patch(`/billboard/responses/${x.response_id}`, { status: 'accepted' }), 'Accepted')} /> : <Tag label={x.status} />}
+                {x.status === 'accepted' ? <Btn small title="Start engagement" onPress={() => setStart(x)} /> : null}
+              </View>
+            </View></Card>
+          ))}
+      </View>
+      <FormSheet visible={!!start} onClose={() => setStart(null)} title="Start the engagement" submitLabel="Ask for a quote"
+        fields={[{ key: 'family', label: 'They are providing', type: 'chips', options: cat.families.map((f) => ({ value: f.slug, label: f.label })) }]}
+        onSubmit={async (v) => { const e = await api.post('/marketplace/engagements', { opportunity_response_id: start.response_id, family: v.family, title: post.title }); setStart(null); onEngaged(e); }} />
+    </Sheet>
+  );
+}
+
 export function MarketplaceHub({ tab: first = 'discover' }) {
   const cat = useLoad(() => api.get('/marketplace/catalogue'), []);
   const [tab, setTab] = useState(first);
@@ -219,11 +293,12 @@ export function MarketplaceHub({ tab: first = 'discover' }) {
     <Screen wide>
       <H1>Marketplace</H1>
       <T size={14} color={c.mute} style={{ marginBottom: 10 }}>Find, verify, quote, contract, schedule, pay and review: coaches, officials, clubs, medics, venues, sponsors, suppliers, agents, lawyers, insurers and media in one place.</T>
-      <HScroll>{[['discover', 'Discover'], ['shortlist', 'Shortlist'], ['engagements', 'My engagements'], ['listings', 'My listings']].map(([k, l]) => <Chip key={k} label={l} active={tab === k} onPress={() => setTab(k)} />)}</HScroll>
+      <HScroll>{[['discover', 'Discover'], ['shortlist', 'Shortlist'], ['engagements', 'My engagements'], ['requests', 'Requests'], ['listings', 'My listings']].map(([k, l]) => <Chip key={k} label={l} active={tab === k} onPress={() => setTab(k)} />)}</HScroll>
       <View style={{ marginTop: 14 }}>
         {tab === 'discover' ? <Discover cat={C} onChanged={() => {}} /> : null}
         {tab === 'shortlist' ? <Shortlist cat={C} /> : null}
         {tab === 'engagements' ? <Engagements cat={C} /> : null}
+        {tab === 'requests' ? <Requests cat={C} /> : null}
         {tab === 'listings' ? <Listings cat={C} /> : null}
       </View>
     </Screen>

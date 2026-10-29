@@ -6,6 +6,7 @@ import { many, query } from '../db.js';
 const db = (c) => c ?? { query };
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { decrypt, encrypt } from '../crypto.js';
+import { toMajor } from '../currency.js';
 import { audit } from '../helpers.js';
 import { isYouth } from '../youth.js';
 import { FAMILY } from './families.js';
@@ -99,3 +100,35 @@ export function nextSteps(e, side) {
 }
 
 export const badTimes = (starts, ends) => { if (ends && !(new Date(ends) > new Date(starts))) throw badRequest('The end must be after the start'); };
+
+/** Gapless invoice number per provider, in the same promise venue, academy and team invoices make. */
+async function invoiceNumber(c, provider) {
+  const base = provider.display_name.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 3).padEnd(3, 'X');
+  const { seq } = (await c.query('INSERT INTO marketplace_invoice_counters(provider_id, seq) VALUES ($1,1) ON CONFLICT (provider_id) DO UPDATE SET seq = marketplace_invoice_counters.seq + 1 RETURNING seq', [provider.id])).rows[0];
+  return `MK${base}${provider.id.replace(/-/g, '').toUpperCase().slice(0, 5)}-${new Date().getUTCFullYear()}-${String(seq).padStart(6, '0')}`;
+}
+
+/** The canonical invoice (shared `invoices` table) for accepted work: seller is the provider (or their organisation), the buyer is the payer. Paid at once when the agreement is free. */
+export async function raiseInvoice(c, e) {
+  const q = async (sql, p) => (await c.query(sql, p)).rows[0];
+  const prov = await q('SELECT id, display_name FROM users WHERE id=$1', [e.provider_id]);
+  const buyer = await q('SELECT id, display_name FROM users WHERE id=$1', [e.buyer_id]);
+  const org = e.provider_org_id ? await q('SELECT name FROM organisations WHERE id=$1', [e.provider_org_id]) : null;
+  const free = Number(e.agreed_minor) === 0;
+  const lines = [{ description: `${e.title} (contract ${e.contract_number})`, amount_cents: Number(e.agreed_minor), tax_cents: 0 }];
+  const inv = await q(
+    `INSERT INTO invoices(kind, number, marketplace_engagement_id, user_id, currency, total_cents, tax_cents, tax_name, tax_rate_bp, tax_inclusive, seller, buyer_enc, lines, status, paid_at, payment_method)
+     VALUES ('invoice',$1,$2,$3,$4,$5,0,'Tax',0,true,$6,$7,$8,$9,$10,$11) RETURNING *`,
+    [await invoiceNumber(c, prov), e.id, e.buyer_id, e.currency, Number(e.agreed_minor), JSON.stringify({ name: org?.name ?? prov.display_name, tax_id: null, address: null, phone: null, email: null }),
+      encrypt(JSON.stringify({ name: buyer.display_name, address: null, tax_id: null }), 'invoices.buyer'), JSON.stringify(lines), free ? 'paid' : 'open', free ? new Date() : null, free ? 'other' : null]);
+  return inv;
+}
+
+/** Payment landed: the engagement and its invoice become paid together. */
+export async function fulfilMarketplacePaid(c, id) {
+  const r = await c.query("UPDATE marketplace_engagements SET status='paid', paid_at=now(), updated_at=now() WHERE id=$1 AND status='invoiced' RETURNING invoice_id", [id]);
+  if (!r.rowCount) return false;
+  await c.query("UPDATE invoices SET status='paid', paid_at=now(), payment_method='online' WHERE id=$1 AND status='open'", [r.rows[0].invoice_id]);
+  await logEvent(c, id, null, 'paid');
+  return true;
+}

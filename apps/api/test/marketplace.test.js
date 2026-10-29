@@ -83,7 +83,11 @@ async function lifecycle({ provider, listing, buyer, price, counter }) {
   must(await api('POST', E(e.id, '/deliver'), { token: provider.token, body: { note: 'done' } }));
   const inv = must(await api('POST', E(e.id, '/accept-delivery'), { token: buyer.token }));
   assert.equal(inv.status, 'invoiced');
-  assert.match(inv.invoice_number, /^MI-\d+$/);
+  assert.match(inv.invoice_number, /^MK[A-Z0-9]{8}-\d{4}-\d{6}$/, 'a gapless provider invoice number');
+  const row = (await pool.query('SELECT id, status, total_cents, user_id FROM invoices WHERE marketplace_engagement_id=$1', [e.id])).rows[0];
+  assert.deepEqual([row.status, Number(row.total_cents), row.user_id], ['open', price, buyer.id], 'a row of the shared invoices table');
+  assert.equal(must(await api('GET', `/invoices/${row.id}`, { token: buyer.token })).number, inv.invoice_number, 'the buyer reads it through get_invoice');
+  assert.ok(must(await api('GET', '/invoices', { token: buyer.token })).some((x) => x.number === inv.invoice_number), 'and lists it');
   const invDoc = must(await api('POST', E(e.id, '/documents'), { token: provider.token, body: { type: 'invoice' } }), 201);
   assert.equal((await download(buyer, invDoc.url)).text, '%PDF-');
 
@@ -95,6 +99,8 @@ async function lifecycle({ provider, listing, buyer, price, counter }) {
   const paid = must(await api('GET', E(e.id), { token: buyer.token }));
   assert.equal(paid.status, 'paid');
   assert.equal(paid.invoice.status, 'paid');
+  assert.equal((await pool.query('SELECT status FROM invoices WHERE marketplace_engagement_id=$1', [e.id])).rows[0].status, 'paid', 'the shared invoice is paid with it');
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM marketplace_contract_signatures WHERE engagement_id=$1', [e.id])).rows[0].n, 2, 'both parties signed the frozen terms');
   const ledger = (await pool.query("SELECT kind, amount_cents FROM provider_ledger WHERE purpose_type='marketplace_engagement' AND purpose_id=$1 AND seller_id=$2 ORDER BY kind", [e.id, provider.id])).rows;
   assert.ok(ledger.some((r) => r.kind === 'commission' || Number(r.amount_cents) > 0), 'provider ledger posted through canonical finance');
 
@@ -239,4 +245,24 @@ test('every sport in the catalogue can be offered and found (the marketplace is 
   assert.equal(l.sport_ids.length, slugs.length);
   for (const slug of slugs) assert.ok(must(await api('GET', '/marketplace/search', { query: { family: 'coach', sport: slug } })).results.some((r) => r.id === l.id), `${slug} searchable`);
   assert.equal((await list(u, { family: 'coach', headline: 'Bad sport', sports: ['not-a-sport'] })).status, 400);
+});
+
+test('service requests are #67 posts: providers with a listing respond, the accepted response becomes the engagement', async () => {
+  const buyer = await signup(), prov = await signup(['athlete']), outsider = await signup();
+  const post = must(await api('POST', '/billboard', { token: buyer.token, body: { kind: 'service_request', title: 'Photographer for the league final', body: 'Full day coverage', budget_cents: 500000, currency: 'INR', city: 'Mumbai' } }), 201);
+  assert.equal(post.opportunity_type, 'service');
+  assert.equal(post.compensation, 'paid');
+  assert.equal((await api('POST', '/billboard', { token: buyer.token, body: { kind: 'service_request', title: 'Wrong type used', opportunity_type: 'trial' } })).status, 400);
+  assert.equal((await api('POST', '/billboard', { token: buyer.token, body: { kind: 'assignment', title: 'Service type misuse', opportunity_type: 'service' } })).status, 400);
+  const r = await api('POST', `/billboard/${post.id}/responses`, { token: prov.token, body: { message: 'I can cover it' } });
+  assert.equal(r.status, 409, 'a provider must list first');
+  assert.match(r.body.error.message, /List your services/);
+  must(await list(prov, { family: 'media', headline: 'Sports photography', city: 'Mumbai' }));
+  const resp = must(await api('POST', `/billboard/${post.id}/responses`, { token: prov.token, body: { message: 'I can cover it' } }), 201);
+  assert.equal((await api('POST', `/billboard/${post.id}/responses`, { token: outsider.token, body: {} })).status, 409);
+  must(await api('PATCH', `/billboard/responses/${resp.id}`, { token: buyer.token, body: { status: 'accepted' } }));
+  const e = must(await api('POST', '/marketplace/engagements', { token: buyer.token, body: { opportunity_response_id: resp.id, family: 'media', title: 'League final photography' } }), 201);
+  assert.equal(Number(e.budget_minor), 500000, 'the budget of the post carries over');
+  const link = (await pool.query('SELECT engagement_type, engagement_id FROM billboard_responses WHERE id=$1', [resp.id])).rows[0];
+  assert.deepEqual([link.engagement_type, link.engagement_id], ['marketplace_engagement', e.id], 'the response points at the canonical engagement');
 });

@@ -14,7 +14,7 @@ import { CURRENCIES, toMajor } from '../currency.js';
 import { saveEncrypted } from '../doc-store.js';
 import { renderServiceDocument } from '../documents/service-render.js';
 import { FAMILY, FAMILY_SLUGS, STAGES } from '../marketplace/families.js';
-import { badTimes, ctx, describe, loadEngagement, logEvent, mustBeAdult, mustHoldCredential, need, other, seal, snapshotTerms } from '../marketplace/engine.js';
+import { badTimes, ctx, describe, loadEngagement, logEvent, mustBeAdult, mustHoldCredential, need, other, raiseInvoice, seal, snapshotTerms } from '../marketplace/engine.js';
 
 const TAG = 'Marketplace';
 const money = z.number().int().min(0).max(100_000_000_000);
@@ -40,10 +40,10 @@ cap({
         provider = listing.provider_id; family = listing.family; currency ??= listing.currency;
       } else {
         if (!i.family) throw badRequest('Say which provider family this is');
-        const r = await q("SELECT r.id, r.responder_id, r.status, p.author_id, p.kind FROM billboard_responses r JOIN billboard_posts p ON p.id=r.post_id WHERE r.id=$1", [i.opportunity_response_id]);
+        const r = await q("SELECT r.id, r.responder_id, r.status, p.author_id, p.kind, p.budget_cents, p.currency AS post_currency FROM billboard_responses r JOIN billboard_posts p ON p.id=r.post_id WHERE r.id=$1", [i.opportunity_response_id]);
         if (!r || r.author_id !== user.id) throw notFound('Opportunity response');
         if (r.status !== 'accepted') throw conflict('Accept the response on your opportunity first');
-        provider = r.responder_id; family = i.family; origin = ['opportunity_response', r.id];
+        provider = r.responder_id; family = i.family; origin = ['opportunity_response', r.id]; currency ??= r.post_currency ?? undefined; i.budget_minor ??= r.budget_cents != null ? Number(r.budget_cents) : undefined;
       }
       if (provider === user.id) throw badRequest('You cannot engage yourself');
       if ((await q('SELECT 1 AS y FROM users u WHERE u.id=$1 AND u.youth_until IS NOT NULL AND u.youth_until > current_date', [provider]))) throw forbidden('This provider cannot be engaged');
@@ -56,6 +56,7 @@ cap({
           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
         [listing?.id ?? null, family, user.id, i.buyer_organisation_id ?? null, provider, listing?.organisation_id ?? null, i.title, sport?.id ?? null, seal(i.brief, 'brief'), i.budget_minor ?? null, currency ?? 'INR', origin[0], origin[1]]);
       } catch (err) { if (err.code === '23505') throw conflict('You already have an open request with this provider'); throw err; }
+      if (origin[0] === 'opportunity_response') await c.query("UPDATE billboard_responses SET engagement_type='marketplace_engagement', engagement_id=$2 WHERE id=$1 AND engagement_id IS NULL", [origin[1], e.id]);
       await logEvent(c, e.id, user.id, 'requested', { family });
       await tell(c, provider, e, `${user.display_name} asked for a quote`, i.title);
       return describe(user, e, 'buyer', c);
@@ -91,7 +92,7 @@ cap({
     const quotes = (await many('SELECT * FROM marketplace_quotes WHERE engagement_id=$1 ORDER BY version', [e.id])).map(({ terms_enc, ...q }) => ({ ...q, terms: decrypt(terms_enc, ctx.terms) }));
     if (quotes.some((q) => q.terms)) await audit(null, user.id, 'marketplace.read_text', 'marketplace_engagement', e.id);
     const events = await many('SELECT ev.id, ev.kind, ev.detail, ev.created_at, u.display_name AS actor FROM marketplace_events ev LEFT JOIN users u ON u.id=ev.actor_id WHERE ev.engagement_id=$1 ORDER BY ev.created_at, ev.id', [e.id]);
-    const invoice = e.invoice_number ? { number: e.invoice_number, issued_at: e.invoiced_at, amount_minor: Number(e.agreed_minor), currency: e.currency, status: e.paid_at ? 'paid' : 'open', paid_at: e.paid_at } : null;
+    const invoice = e.invoice_number ? { id: e.invoice_id, number: e.invoice_number, issued_at: e.invoiced_at, amount_minor: Number(e.agreed_minor), currency: e.currency, status: e.paid_at ? 'paid' : 'open', paid_at: e.paid_at } : null;
     return { ...d, quotes, events, invoice, reviewable: side === 'buyer' && ['paid', 'reviewed'].includes(e.status), review_subject: { subject_type: 'user', subject_id: e.provider_id } };
   },
 });
@@ -140,6 +141,7 @@ cap({
       await c.query("UPDATE marketplace_quotes SET status='accepted', responded_at=now() WHERE id=$1", [q.id]);
       const upd = (await c.query(`UPDATE marketplace_engagements SET status='contracted', agreed_minor=$2, currency=$3, accepted_quote_id=$4, contract_number='MC-'||number, terms_json=$5, terms_sha256=$6, contracted_at=now(), updated_at=now() WHERE id=$1 RETURNING *`,
         [e.id, q.amount_minor, q.currency, q.id, terms, sha])).rows[0];
+      await c.query('INSERT INTO marketplace_contract_signatures(engagement_id, user_id, side, terms_sha256, signed_at) VALUES ($1,$2,$3,$4,$5), ($1,$6,$7,$4,now())', [e.id, q.by_id, q.side, sha, q.created_at, user.id, side]);
       await logEvent(c, e.id, user.id, 'contracted', { version: q.version, amount_minor: Number(q.amount_minor), terms_sha256: sha });
       await tell(c, other(e, side), e, `${user.display_name} accepted — contract ${upd.contract_number}`, e.title);
       return describe(user, upd, side, c);
@@ -206,7 +208,7 @@ cap({
 
 cap({
   name: 'accept_marketplace_delivery', method: 'POST', path: '/marketplace/engagements/:id/accept-delivery', tag: TAG,
-  summary: 'Buyer accepts the delivered work. The provider\'s invoice (number MI-…) is raised for the agreed amount and the engagement becomes payable through create_payment (purpose_type marketplace_engagement), where platform commission and payouts are handled by the provider ledger. A zero-value agreement closes as paid.',
+  summary: 'Buyer accepts the delivered work. The provider\'s invoice (a numbered row of the shared invoices table, visible to the buyer in list_invoices) is raised for the agreed amount and the engagement becomes payable through create_payment (purpose_type marketplace_engagement), where platform commission and payouts are handled by the provider ledger. A zero-value agreement closes as paid.',
   input: z.object({ id }),
   async handler({ user }, i) {
     return tx(async (c) => {
@@ -214,7 +216,8 @@ cap({
       if (side !== 'buyer') throw forbidden('Only the buyer accepts delivery');
       need(e, ['delivered'], 'accept delivery');
       const free = Number(e.agreed_minor) === 0;
-      const upd = (await c.query(`UPDATE marketplace_engagements SET status=$2, delivery_accepted_at=now(), invoice_number='MI-'||number, invoiced_at=now(), paid_at=CASE WHEN $2='paid' THEN now() END, updated_at=now() WHERE id=$1 RETURNING *`, [e.id, free ? 'paid' : 'invoiced'])).rows[0];
+      const inv = await raiseInvoice(c, e);
+      const upd = (await c.query(`UPDATE marketplace_engagements SET status=$2, delivery_accepted_at=now(), invoice_id=$3, invoice_number=$4, invoiced_at=now(), paid_at=CASE WHEN $2='paid' THEN now() END, updated_at=now() WHERE id=$1 RETURNING *`, [e.id, free ? 'paid' : 'invoiced', inv.id, inv.number])).rows[0];
       await logEvent(c, e.id, user.id, 'invoiced', { invoice: upd.invoice_number, amount_minor: Number(e.agreed_minor) });
       await tell(c, e.provider_id, e, `${user.display_name} accepted delivery — invoice ${upd.invoice_number}`, e.title);
       return describe(user, upd, side, c);
@@ -267,6 +270,7 @@ async function documentOf(user, engagementId, type) {
     return { version: q?.version ?? null, doc: { title: 'Service agreement', number: e.contract_number, status: `agreed ${day(e.contracted_at)}`, parties, sections: [
       { heading: 'The engagement', kind: 'kv', rows: [['Service', e.title], ['Category', FAMILY[e.family]?.label ?? e.family], ['Agreed amount', amount(e.agreed_minor, e.currency)], ['Offer', q ? `version ${q.version}${q.valid_until ? `, valid until ${day(q.valid_until)}` : ''}` : ''], ['Scheduled', e.starts_at ? `${e.starts_at.toISOString().slice(0, 16).replace('T', ' ')} UTC` : 'to be scheduled']] },
       ...(q?.terms_enc ? [{ heading: 'Scope and conditions', kind: 'text', text: decrypt(q.terms_enc, ctx.terms) }] : []),
+      { heading: 'Signed', kind: 'kv', rows: (await many('SELECT s.side, s.signed_at, u.display_name FROM marketplace_contract_signatures s JOIN users u ON u.id=s.user_id WHERE s.engagement_id=$1 ORDER BY s.side DESC', [e.id])).map((x) => [x.side === 'provider' ? 'Provider' : 'Client', `${x.display_name} · ${day(x.signed_at)}`]) },
       { heading: 'Acceptance', kind: 'text', text: `Both parties accepted these terms in Gotmygame on ${day(e.contracted_at)}. Terms fingerprint (SHA-256): ${e.terms_sha256}.` }], footnote: 'General wording, not legal advice. The agreed terms above are the record of what both parties accepted.' } };
   }
   if (!e.invoice_number) throw conflict('There is no invoice yet; it is raised when the buyer accepts delivery');

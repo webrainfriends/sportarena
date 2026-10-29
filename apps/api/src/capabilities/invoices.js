@@ -12,6 +12,7 @@ import { notify } from '../notify.js';
 import { CURRENCIES, toMajor } from '../currency.js';
 import { enabledProviders } from '../payments/service.js';
 import { financeStaff } from '../team-money.js';
+import { sideOf } from '../marketplace/engine.js';
 
 const TAG = 'Invoices & payments';
 const day = z.string().date();
@@ -50,22 +51,24 @@ cap({
     if (!inv) throw notFound('Invoice');
     const academy = !!inv.organisation_id;
     const forTeam = !!inv.team_id;
-    const team = forTeam ? await financeStaff(user, await mustFind('teams', inv.team_id)) : academy ? ['owner', 'admin', 'finance'].includes(await orgRole(user, inv.organisation_id)) : await canManage(user, inv.venue_id);
+    const market = !!inv.marketplace_engagement_id;   // a marketplace invoice: the engagement's parties (the provider side included) may read it
+    const team = market ? !!(await sideOf(user, await mustFind('marketplace_engagements', inv.marketplace_engagement_id))) : forTeam ? await financeStaff(user, await mustFind('teams', inv.team_id)) : academy ? ['owner', 'admin', 'finance'].includes(await orgRole(user, inv.organisation_id)) : await canManage(user, inv.venue_id);
     if (inv.user_id !== user.id && !team && !isAdmin(user)) throw forbidden();
     await audit(null, user.id, 'read_pii', 'invoices', inv.id);
     const [payments, credits] = await Promise.all([
-      forTeam ? many("SELECT id, provider, amount_cents, currency, status, paid_at, refunded_cents FROM payments WHERE purpose_type='team_charge' AND purpose_id=$1 ORDER BY created_at", [inv.team_charge_id])
+      market ? many("SELECT id, provider, amount_cents, currency, status, paid_at, refunded_cents FROM payments WHERE purpose_type='marketplace_engagement' AND purpose_id=$1 ORDER BY created_at", [inv.marketplace_engagement_id])
+        : forTeam ? many("SELECT id, provider, amount_cents, currency, status, paid_at, refunded_cents FROM payments WHERE purpose_type='team_charge' AND purpose_id=$1 ORDER BY created_at", [inv.team_charge_id])
         : academy ? many("SELECT id, provider, amount_cents, currency, status, paid_at, refunded_cents FROM payments WHERE purpose_type='academy_charge' AND purpose_id=$1 ORDER BY created_at", [inv.academy_charge_id])
         : inv.pos_sale_id ? many("SELECT id, provider, amount_cents, currency, status, paid_at, refunded_cents FROM payments WHERE purpose_type='pos_sale' AND purpose_id=$1 ORDER BY created_at", [inv.pos_sale_id])
         : many("SELECT id, provider, amount_cents, currency, status, paid_at, refunded_cents FROM payments WHERE purpose_type='venue_invoice' AND purpose_id=$1 ORDER BY created_at", [inv.id]),
-      inv.kind !== 'invoice' ? [] : forTeam ? [] : academy ? many("SELECT id, number, total_cents, status, refund_status, issued_at FROM invoices WHERE kind='credit_note' AND academy_charge_id=$1 ORDER BY issued_at", [inv.academy_charge_id])
+      inv.kind !== 'invoice' ? [] : market || forTeam ? [] : academy ? many("SELECT id, number, total_cents, status, refund_status, issued_at FROM invoices WHERE kind='credit_note' AND academy_charge_id=$1 ORDER BY issued_at", [inv.academy_charge_id])
         : inv.pos_sale_id ? many("SELECT id, number, total_cents, status, refund_status, issued_at FROM invoices WHERE kind='credit_note' AND parent_id=$1 ORDER BY issued_at", [inv.id])
         : many("SELECT id, number, total_cents, status, refund_status, issued_at FROM invoices WHERE kind='credit_note' AND reservation_id=$1 AND venue_id=$2 ORDER BY issued_at", [inv.reservation_id, inv.venue_id]),
     ]);
     const { buyer_enc, ...rest } = inv;
-    const online = academy || forTeam ? enabledProviders().length > 0 : (await one('SELECT payment_mode FROM venues WHERE id=$1', [inv.venue_id])).payment_mode !== 'pay_at_venue' && enabledProviders().length > 0;
+    const online = academy || forTeam || market ? enabledProviders().length > 0 : (await one('SELECT payment_mode FROM venues WHERE id=$1', [inv.venue_id])).payment_mode !== 'pay_at_venue' && enabledProviders().length > 0;
     return { ...rest, amount_due_cents: inv.status === 'open' ? inv.total_cents - inv.credits_cents : 0, buyer: buyerOf(inv), payments, credit_notes: credits, can_pay_online: online && !inv.pos_sale_id && inv.kind === 'invoice' && inv.status === 'open' && inv.user_id === user.id, providers: enabledProviders(), amount: toMajor(inv.total_cents, inv.currency),
-      ...(forTeam ? { pay: { purpose_type: 'team_charge', purpose_id: inv.team_charge_id }, team_name: (await one('SELECT name FROM teams WHERE id=$1', [inv.team_id])).name } : academy ? { pay: { purpose_type: 'academy_charge', purpose_id: inv.academy_charge_id } } : {}) };
+      ...(market ? { pay: { purpose_type: 'marketplace_engagement', purpose_id: inv.marketplace_engagement_id } } : forTeam ? { pay: { purpose_type: 'team_charge', purpose_id: inv.team_charge_id }, team_name: (await one('SELECT name FROM teams WHERE id=$1', [inv.team_id])).name } : academy ? { pay: { purpose_type: 'academy_charge', purpose_id: inv.academy_charge_id } } : {}) };
   },
 });
 
