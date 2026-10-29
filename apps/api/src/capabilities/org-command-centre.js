@@ -10,10 +10,11 @@ import { one, many, tx } from '../db.js';
 import { badRequest, conflict, notFound } from '../errors.js';
 import { audit } from '../helpers.js';
 import { orgFor, lockOrg } from '../org-access.js';
+import { ensureCases } from '../collections.js';
 
 const CC_ROLES = ['owner', 'admin', 'coach', 'finance'];
 const STAFF = ['owner', 'admin'];
-const DOMAINS = ['admissions', 'registrations', 'staff', 'compliance', 'procurement', 'finance', 'sponsors', 'events', 'tasks'];
+const DOMAINS = ['admissions', 'registrations', 'staff', 'compliance', 'procurement', 'finance', 'sponsors', 'documents', 'tasks'];
 const DAY = 864e5;
 const num = (n) => Number(n ?? 0);
 const sev = (bad, warn) => (bad ? 'bad' : warn ? 'warn' : 'ok');
@@ -175,7 +176,7 @@ cap({
   async handler({ user }, i) {
     const { org, role } = await orgFor(user, i.id, CC_ROLES);
     const list = await tiles(i.id, role, user);
-    const queue = await queueItems(i.id, role, user, null);
+    const queue = await queueItems(org, role, user, null);
     const order = { bad: 0, warn: 1, ok: 2 };
     const out = {
       organisation: { id: org.id, name: org.name, kind: org.kind, status: org.status }, role,
@@ -202,12 +203,26 @@ cap({
 const act = (label, cap_, method, path, body, extra = {}) => ({ label, cap: cap_, method, path, body, ...extra });
 const dstr = (d) => (d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10));
 const ago = (d) => (d ? new Date(d).toISOString() : null);
+/** The screen that owns a record, opened on exactly that record: { screen, params } is an app route (push(screen, params)). */
+const rec = (screen, params) => ({ screen, params });
+/** Fields an action needs from the person (shown as a small form): kind is text, date, amount (major units, sent as minor) or choice. */
+const F = {
+  reason: { key: 'reason', label: 'Reason', kind: 'text', required: true },
+  optReason: { key: 'reason', label: 'Reason (optional)', kind: 'text' },
+  note: { key: 'note', label: 'Note', kind: 'text', required: true },
+};
+const orgTab = (org, tab, focusTab) => rec('Org', { id: org.id, tab: org.kind === 'academy' ? 'academy' : tab, ...(org.kind === 'academy' && focusTab ? { focus: { tab: focusTab } } : {}) });
+const money = (minor, cur) => `${cur} ${(num(minor) / 100).toFixed(2)}`;
 
 /** Every pending decision, each carrying the existing capability that resolves it. `can_act` is false when the caller's role cannot decide it (they can still open the record). */
-async function queueItems(orgId, role, user, only) {
+async function queueItems(org, role, user, only) {
+  const orgId = org.id;
   const staff = STAFF.includes(role);
   const items = [];
   const run = (domain, fn) => (only && only !== domain ? null : fn());
+  const SCOPE = `(ss.target_type='organisation' AND ss.target_id=$1 OR ss.target_type='group' AND ss.target_id IN (SELECT id FROM org_cohorts WHERE organisation_id=$1)
+                   OR ss.target_type='team' AND ss.target_id IN (${ORG_TEAMS}) OR ss.target_type='event' AND ss.target_id IN (${ORG_EVENTS}))`;
+  const BUYERS = `SELECT id FROM svc_buyers WHERE status='active' AND (organisation_id=$1 OR event_id IN (${ORG_EVENTS}))`;
 
   if (staff) {
     await run('admissions', async () => {
@@ -216,50 +231,50 @@ async function queueItems(orgId, role, user, only) {
            JOIN academy_programmes p ON p.id=a.programme_id LEFT JOIN users u ON u.id=a.athlete_id
           WHERE a.organisation_id=$1 AND a.stage IN ('submitted','under_review') ORDER BY a.updated_at LIMIT 50`, [orgId]);
       for (const r of rows) items.push({ key: `admissions:${r.id}`, domain: 'admissions', title: `${r.athlete ?? 'An applicant'} · ${r.title}`, sub: r.stage === 'submitted' ? 'Application to review' : 'Application under review', at: ago(r.updated_at), can_act: true,
-        record: { screen: 'Org', tab: 'admissions' }, actions: [
+        record: org.kind === 'academy' ? rec('Org', { id: orgId, tab: 'academy', focus: { tab: 'admissions', open: r.id } }) : rec('Org', { id: orgId, tab: 'admissions' }), actions: [
           act('Offer a place', 'decide_academy_application', 'POST', `/academy/applications/${r.id}/decision`, { row_version: r.row_version, decision: 'offer' }, { tone: 'primary' }),
           act('Waitlist', 'decide_academy_application', 'POST', `/academy/applications/${r.id}/decision`, { row_version: r.row_version, decision: 'waitlist' }),
-          act('Decline', 'decide_academy_application', 'POST', `/academy/applications/${r.id}/decision`, { row_version: r.row_version, decision: 'decline' }, { tone: 'danger', ask: 'reason' }),
+          act('Decline', 'decide_academy_application', 'POST', `/academy/applications/${r.id}/decision`, { row_version: r.row_version, decision: 'decline' }, { tone: 'danger', ask: [F.reason] }),
         ] });
     });
     await run('registrations', async () => {
       const rows = await many(
-        `SELECT r.id, r.status, r.row_version, r.window_kind, r.updated_at, ev.organisation_id AS event_org, ev.name AS event, t.name AS team, u.display_name AS person FROM reg_registrations r
+        `SELECT r.id, r.event_id, r.status, r.row_version, r.window_kind, r.updated_at, ev.organisation_id AS event_org, ev.name AS event, t.name AS team, u.display_name AS person FROM reg_registrations r
            JOIN events ev ON ev.id=r.event_id LEFT JOIN teams t ON t.id=r.team_id LEFT JOIN users u ON u.id=r.user_id
           WHERE r.status IN ('submitted','under_review') AND (ev.organisation_id=$1 OR t.organisation_id=$1) ORDER BY r.updated_at LIMIT 50`, [orgId]);
       for (const r of rows) {
         const canDecide = r.event_org === orgId; // only the organising side decides; the entering club just sees it
         items.push({ key: `registrations:${r.id}`, domain: 'registrations', title: `${r.team ?? r.person ?? 'Entry'} · ${r.event}`, sub: `Registration ${r.status === 'submitted' ? 'submitted' : 'under review'}${r.window_kind !== 'regular' && r.window_kind !== 'open' ? ` · ${r.window_kind} window` : ''}`, at: ago(r.updated_at), can_act: canDecide,
-          record: { screen: 'Org', tab: 'assets' }, actions: canDecide ? [
+          record: rec('EventCommand', { id: r.event_id, tab: 'registration' }), actions: canDecide ? [
             act('Register', 'review_registration', 'POST', `/registrations/${r.id}/review`, { action: 'register', row_version: r.row_version }, { tone: 'primary' }),
-            act('Reject', 'review_registration', 'POST', `/registrations/${r.id}/review`, { action: 'reject', row_version: r.row_version }, { tone: 'danger', ask: 'reason' }),
+            act('Reject', 'review_registration', 'POST', `/registrations/${r.id}/review`, { action: 'reject', row_version: r.row_version }, { tone: 'danger', ask: [F.reason] }),
           ] : [] });
       }
       const ent = await many(
-        `SELECT e.id, e.created_at, ev.name AS event, t.name AS team, u.display_name AS person FROM event_entries e JOIN events ev ON ev.id=e.event_id LEFT JOIN teams t ON t.id=e.team_id LEFT JOIN users u ON u.id=e.user_id
+        `SELECT e.id, e.event_id, e.created_at, ev.name AS event, t.name AS team, u.display_name AS person FROM event_entries e JOIN events ev ON ev.id=e.event_id LEFT JOIN teams t ON t.id=e.team_id LEFT JOIN users u ON u.id=e.user_id
           WHERE e.status='pending' AND ev.organisation_id=$1 ORDER BY e.created_at LIMIT 50`, [orgId]);
-      for (const r of ent) items.push({ key: `registrations:entry:${r.id}`, domain: 'registrations', title: `${r.team ?? r.person ?? 'Entry'} · ${r.event}`, sub: 'Entry request', at: ago(r.created_at), can_act: true, record: { screen: 'Org', tab: 'assets' }, actions: [
+      for (const r of ent) items.push({ key: `registrations:entry:${r.id}`, domain: 'registrations', title: `${r.team ?? r.person ?? 'Entry'} · ${r.event}`, sub: 'Entry request', at: ago(r.created_at), can_act: true, record: rec('EventCommand', { id: r.event_id, tab: 'teams' }), actions: [
         act('Accept', 'decide_entry', 'PATCH', `/entries/${r.id}`, { status: 'accepted' }, { tone: 'primary' }), act('Reject', 'decide_entry', 'PATCH', `/entries/${r.id}`, { status: 'rejected' }, { tone: 'danger' })] });
     });
     await run('staff', async () => {
       const off = await many(
         `SELECT s.id, s.on_date, s.ends_on, s.created_at, u.display_name AS person FROM academy_staff_availability s JOIN users u ON u.id=s.user_id
           WHERE s.organisation_id=$1 AND s.kind='time_off' AND s.status='pending' AND s.user_id<>$2 ORDER BY s.created_at LIMIT 50`, [orgId, user.id]);
-      for (const r of off) items.push({ key: `staff:off:${r.id}`, domain: 'staff', title: `${r.person} · time off`, sub: `${String(r.on_date).slice(0, 10)}${r.ends_on ? ` to ${String(r.ends_on).slice(0, 10)}` : ''} · approving opens cover for affected sessions`, at: ago(r.created_at), can_act: true, record: { screen: 'Org', tab: 'academy' }, actions: [
+      for (const r of off) items.push({ key: `staff:off:${r.id}`, domain: 'staff', title: `${r.person} · time off`, sub: `${dstr(r.on_date)}${r.ends_on ? ` to ${dstr(r.ends_on)}` : ''} · approving opens cover for affected sessions`, at: ago(r.created_at), can_act: true, record: orgTab(org, 'people', 'ops'), actions: [
         act('Approve', 'decide_academy_time_off', 'POST', `/academy/time-off/${r.id}/decision`, { approve: true }, { tone: 'primary' }), act('Decline', 'decide_academy_time_off', 'POST', `/academy/time-off/${r.id}/decision`, { approve: false }, { tone: 'danger' })] });
       const ts = await many(
         `SELECT t.id, t.work_date, t.minutes, t.updated_at, u.display_name AS person FROM academy_timesheets t JOIN users u ON u.id=t.user_id
           WHERE t.organisation_id=$1 AND t.status='submitted' AND t.user_id<>$2 ORDER BY t.updated_at LIMIT 50`, [orgId, user.id]);
-      for (const r of ts) items.push({ key: `staff:ts:${r.id}`, domain: 'staff', title: `${r.person} · timesheet`, sub: `${String(r.work_date).slice(0, 10)} · ${Math.round(num(r.minutes) / 6) / 10} h`, at: ago(r.updated_at), can_act: true, record: { screen: 'Org', tab: 'academy' }, actions: [
-        act('Approve', 'decide_academy_timesheet', 'POST', `/academy/timesheets/${r.id}/decision`, { action: 'approve' }, { tone: 'primary' }), act('Reject', 'decide_academy_timesheet', 'POST', `/academy/timesheets/${r.id}/decision`, { action: 'reject' }, { tone: 'danger', ask: 'reason' })] });
+      for (const r of ts) items.push({ key: `staff:ts:${r.id}`, domain: 'staff', title: `${r.person} · timesheet`, sub: `${dstr(r.work_date)} · ${Math.round(num(r.minutes) / 6) / 10} h`, at: ago(r.updated_at), can_act: true, record: orgTab(org, 'people', 'ops'), actions: [
+        act('Approve', 'decide_academy_timesheet', 'POST', `/academy/timesheets/${r.id}/decision`, { action: 'approve' }, { tone: 'primary' }), act('Reject', 'decide_academy_timesheet', 'POST', `/academy/timesheets/${r.id}/decision`, { action: 'reject' }, { tone: 'danger', ask: [F.reason] })] });
     });
     await run('compliance', async () => {
       if (role === 'owner') {
         const ag = await many("SELECT id, title, kind, submitted_at FROM org_agreements WHERE organisation_id=$1 AND archived_at IS NULL AND status='submitted' ORDER BY submitted_at LIMIT 50", [orgId]);
-        for (const r of ag) items.push({ key: `compliance:agreement:${r.id}`, domain: 'compliance', title: r.title, sub: 'Agreement submitted for approval', at: ago(r.submitted_at), can_act: true, record: { screen: 'Org', tab: 'agreements' }, actions: [
+        for (const r of ag) items.push({ key: `compliance:agreement:${r.id}`, domain: 'compliance', title: r.title, sub: 'Agreement submitted for approval', at: ago(r.submitted_at), can_act: true, record: orgTab(org, 'agreements', 'agreements'), actions: [
           act('Approve', 'decide_org_agreement', 'POST', `/org-agreements/${r.id}/decision`, { decision: 'approve' }, { tone: 'primary' }),
-          act('Request changes', 'decide_org_agreement', 'POST', `/org-agreements/${r.id}/decision`, { decision: 'request_changes' }, { ask: 'note' }),
-          act('Reject', 'decide_org_agreement', 'POST', `/org-agreements/${r.id}/decision`, { decision: 'reject' }, { tone: 'danger', ask: 'note' })] });
+          act('Request changes', 'decide_org_agreement', 'POST', `/org-agreements/${r.id}/decision`, { decision: 'request_changes' }, { ask: [F.note] }),
+          act('Reject', 'decide_org_agreement', 'POST', `/org-agreements/${r.id}/decision`, { decision: 'reject' }, { tone: 'danger', ask: [F.note] })] });
       }
       const evid = await many(
         `SELECT k.id, k.submitted_at, q.name AS requirement, q.category, k.subject_kind, k.subject_id, (CASE k.subject_kind WHEN 'person' THEN (SELECT display_name FROM users WHERE id=k.subject_id) WHEN 'organisation' THEN (SELECT name FROM organisations WHERE id=k.subject_id) ELSE (SELECT name FROM events WHERE id=k.subject_id) END) AS who
@@ -268,41 +283,86 @@ async function queueItems(orgId, role, user, only) {
         act('Approve', 'decide_compliance_record', 'POST', `/compliance/records/${r.id}/decision`, { decision: 'approve' }, { tone: 'primary' }),
         act('Reject', 'decide_compliance_record', 'POST', `/compliance/records/${r.id}/decision`, { decision: 'reject' }, { tone: 'danger', ask: 'reason' })] });
       const acc = await many(
-        `SELECT a.id, a.status, a.submitted_at, ev.name AS event, u.display_name AS person FROM accreditations a JOIN events ev ON ev.id=a.event_id JOIN users u ON u.id=a.holder_id
+        `SELECT a.id, a.event_id, a.status, a.submitted_at, ev.name AS event, u.display_name AS person FROM accreditations a JOIN events ev ON ev.id=a.event_id JOIN users u ON u.id=a.holder_id
           WHERE ev.organisation_id=$1 AND a.status IN ('submitted','under_review') AND a.holder_id<>$2 ORDER BY a.submitted_at LIMIT 50`, [orgId, user.id]);
-      for (const r of acc) items.push({ key: `compliance:accreditation:${r.id}`, domain: 'compliance', title: `${r.person} · ${r.event}`, sub: 'Accreditation to review', at: ago(r.submitted_at), can_act: true, record: { screen: 'Org', tab: 'assets' }, actions: [
-        act('Approve', 'decide_accreditation', 'POST', `/accreditations/${r.id}/decision`, { decision: 'approve' }, { tone: 'primary' }), act('Reject', 'decide_accreditation', 'POST', `/accreditations/${r.id}/decision`, { decision: 'reject' }, { tone: 'danger', ask: 'reason' })] });
+      for (const r of acc) items.push({ key: `compliance:accreditation:${r.id}`, domain: 'compliance', title: `${r.person} · ${r.event}`, sub: 'Accreditation to review', at: ago(r.submitted_at), can_act: true, record: rec('EventCommand', { id: r.event_id, tab: 'accreditation' }), actions: [
+        act('Approve', 'decide_accreditation', 'POST', `/accreditations/${r.id}/decision`, { decision: 'approve' }, { tone: 'primary' }), act('Reject', 'decide_accreditation', 'POST', `/accreditations/${r.id}/decision`, { decision: 'reject' }, { tone: 'danger', ask: [F.reason] })] });
     });
   }
 
   if (staff || role === 'finance') {
     await run('sponsors', async () => {
       const pay = await many(
-        `SELECT p.id, p.amount_cents, p.currency, p.reference, p.created_at FROM sponsorship_payments p JOIN sponsorship_obligations o ON o.id=p.obligation_id JOIN sponsorships ss ON ss.id=o.sponsorship_id
-          WHERE p.status='reported' AND (ss.target_type='organisation' AND ss.target_id=$1 OR ss.target_type='group' AND ss.target_id IN (SELECT id FROM org_cohorts WHERE organisation_id=$1)
-            OR ss.target_type='team' AND ss.target_id IN (${ORG_TEAMS}) OR ss.target_type='event' AND ss.target_id IN (${ORG_EVENTS})) ORDER BY p.created_at LIMIT 50`, [orgId]);
-      for (const r of pay) items.push({ key: `sponsors:payment:${r.id}`, domain: 'sponsors', title: `${r.currency} ${(num(r.amount_cents) / 100).toFixed(2)} reported by a sponsor`, sub: `Reference ${r.reference} · confirm it arrived`, at: ago(r.created_at), can_act: staff, record: { screen: 'Org', tab: 'sponsor' },
-        actions: staff ? [act('Confirm received', 'decide_sponsorship_payment', 'PATCH', `/sponsorship-payments/${r.id}`, { status: 'confirmed' }, { tone: 'primary' }), act('Not received', 'decide_sponsorship_payment', 'PATCH', `/sponsorship-payments/${r.id}`, { status: 'rejected' }, { tone: 'danger', ask: 'note' })] : [] });
+        `SELECT p.id, p.amount_cents, p.currency, p.reference, p.created_at, o.sponsorship_id FROM sponsorship_payments p JOIN sponsorship_obligations o ON o.id=p.obligation_id JOIN sponsorships ss ON ss.id=o.sponsorship_id
+          WHERE p.status='reported' AND ${SCOPE} ORDER BY p.created_at LIMIT 50`, [orgId]);
+      for (const r of pay) items.push({ key: `sponsors:payment:${r.id}`, domain: 'sponsors', title: `${money(r.amount_cents, r.currency)} reported by a sponsor`, sub: `Reference ${r.reference} · confirm it arrived`, at: ago(r.created_at), can_act: staff, record: rec('SponsorDeal', { id: r.sponsorship_id }),
+        actions: staff ? [act('Confirm received', 'decide_sponsorship_payment', 'PATCH', `/sponsorship-payments/${r.id}`, { status: 'confirmed' }, { tone: 'primary' }), act('Not received', 'decide_sponsorship_payment', 'PATCH', `/sponsorship-payments/${r.id}`, { status: 'rejected' }, { tone: 'danger', ask: [F.note] })] : [] });
+      // offers made by a sponsor that this organisation has not answered (an offer its own staff proposed is waiting on the sponsor, not on us)
+      const offers = await many(
+        `SELECT ss.id, ss.target_type, ss.amount_cents, ss.currency, ss.terms_version, ss.created_at, sp.name AS sponsor FROM sponsorships ss JOIN sponsors sp ON sp.id=ss.sponsor_id
+          WHERE ss.status='proposed' AND coalesce(ss.budget_approval,'') NOT IN ('pending','rejected') AND ${SCOPE}
+            AND NOT EXISTS (SELECT 1 FROM organisation_members m WHERE m.organisation_id=$1 AND m.user_id=ss.proposed_by AND m.status='active') ORDER BY ss.created_at LIMIT 50`, [orgId]);
+      for (const r of offers) {
+        const direct = staff && ['organisation', 'group'].includes(r.target_type); // for a team or event target the team owner / organiser decides in the deal screen
+        items.push({ key: `sponsors:offer:${r.id}`, domain: 'sponsors', title: `${r.sponsor} · ${money(r.amount_cents, r.currency ?? 'INR')}`, sub: 'Sponsorship offer to answer', at: ago(r.created_at), can_act: direct, record: rec('SponsorDeal', { id: r.id }), open_label: direct ? undefined : 'Review offer',
+          actions: direct ? [act('Accept offer', 'decide_sponsorship', 'PATCH', `/sponsorships/${r.id}`, { status: 'active', version: r.terms_version }, { tone: 'primary' }), act('Decline', 'decide_sponsorship', 'PATCH', `/sponsorships/${r.id}`, { status: 'declined', version: r.terms_version }, { tone: 'danger', ask: [F.optReason] })] : [] });
+      }
     });
     await run('procurement', async () => {
-      const buyers = `SELECT id FROM svc_buyers WHERE status='active' AND (organisation_id=$1 OR event_id IN (${ORG_EVENTS}))`;
       const ap = await many(
-        `SELECT a.id, a.subject_type, a.amount_minor, a.currency, a.created_at FROM svc_approvals a WHERE a.status='pending' AND a.requested_by<>$2 AND a.buyer_id IN (${buyers}) ORDER BY a.created_at LIMIT 50`, [orgId, user.id]);
-      for (const r of ap) items.push({ key: `procurement:approval:${r.id}`, domain: 'procurement', title: `${r.subject_type.replace('_', ' ')} · ${r.currency} ${(num(r.amount_minor) / 100).toFixed(2)}`, sub: 'Supplier approval', at: ago(r.created_at), can_act: staff, record: { screen: 'Org', tab: 'assets' },
-        actions: staff ? [act('Approve', 'decide_service_approval', 'POST', `/service-approvals/${r.id}/decision`, { approve: true }, { tone: 'primary' }), act('Reject', 'decide_service_approval', 'POST', `/service-approvals/${r.id}/decision`, { approve: false }, { tone: 'danger', ask: 'note' })] : [] });
-      if (staff) {
-        const tn = await many(
-          `SELECT a.id, a.kind, a.created_at, p.title FROM proc_approvals a JOIN proc_projects p ON p.id=a.project_id WHERE a.status='pending' AND a.requested_by<>$2 AND p.organisation_id=$1 ORDER BY a.created_at LIMIT 50`, [orgId, user.id]);
-        for (const r of tn) items.push({ key: `procurement:tender:${r.id}`, domain: 'procurement', title: `${r.title} · ${r.kind.replace('_', ' ')}`, sub: 'Tender approval', at: ago(r.created_at), can_act: true, record: { screen: 'Org', tab: 'assets' }, actions: [
-          act('Approve', 'decide_approval', 'POST', `/approvals/${r.id}/decide`, { decision: 'approve' }, { tone: 'primary' }), act('Reject', 'decide_approval', 'POST', `/approvals/${r.id}/decide`, { decision: 'reject' }, { tone: 'danger', ask: 'reason' })] });
+        `SELECT a.id, a.subject_type, a.amount_minor, a.currency, a.created_at, b.organisation_id AS b_org, b.event_id AS b_event FROM svc_approvals a JOIN svc_buyers b ON b.id=a.buyer_id
+          WHERE a.status='pending' AND a.requested_by<>$2 AND a.buyer_id IN (${BUYERS}) ORDER BY a.created_at LIMIT 50`, [orgId, user.id]);
+      for (const r of ap) items.push({ key: `procurement:approval:${r.id}`, domain: 'procurement', title: `${r.subject_type.replace('_', ' ')} · ${money(r.amount_minor, r.currency)}`, sub: 'Supplier approval', at: ago(r.created_at), can_act: staff, record: r.b_event ? rec('ServicesBuyer', { event_id: r.b_event }) : rec('ServicesBuyer', { organisation_id: orgId }),
+        actions: staff ? [act('Approve', 'decide_service_approval', 'POST', `/service-approvals/${r.id}/decision`, { approve: true }, { tone: 'primary' }), act('Reject', 'decide_service_approval', 'POST', `/service-approvals/${r.id}/decision`, { approve: false }, { tone: 'danger', ask: [F.note] })] : [] });
+      // an order whose agreement is waiting for this side's signature
+      const ag = await many(
+        `SELECT o.id, o.number, o.gross_minor, o.currency, o.updated_at, b.event_id AS b_event FROM svc_orders o JOIN svc_buyers b ON b.id=o.buyer_id
+          WHERE o.agreement_status='pending_signature' AND o.buyer_id IN (${BUYERS}) ORDER BY o.updated_at LIMIT 50`, [orgId]);
+      for (const r of ag) items.push({ key: `procurement:agreement:${r.id}`, domain: 'procurement', title: `Order ${r.number} · ${money(r.gross_minor, r.currency)}`, sub: 'Service agreement to sign', at: ago(r.updated_at), can_act: staff, record: r.b_event ? rec('ServicesBuyer', { event_id: r.b_event }) : rec('ServicesBuyer', { organisation_id: orgId }),
+        actions: staff ? [act('Sign', 'sign_service_agreement', 'POST', `/service-orders/${r.id}/agreement`, {}, { tone: 'primary', ask: [{ key: 'typed_name', label: 'Type your full name to sign', kind: 'line', required: true }] })] : [] });
+      // supplier invoices past their due date
+      const inv = await many(
+        `SELECT i.id, i.supplier_number, i.currency, i.payable_minor, i.paid_minor, i.due_on, b.event_id AS b_event FROM svc_invoices i JOIN svc_buyers b ON b.id=i.buyer_id
+          WHERE i.status='issued' AND i.pay_status<>'paid' AND i.due_on < current_date AND i.buyer_id IN (${BUYERS}) ORDER BY i.due_on LIMIT 50`, [orgId]);
+      for (const r of inv) {
+        const owing = num(r.payable_minor) - num(r.paid_minor);
+        items.push({ key: `procurement:invoice:${r.id}`, domain: 'procurement', title: `Invoice ${r.supplier_number} · ${money(owing, r.currency)} owing`, sub: `Supplier invoice overdue since ${dstr(r.due_on)}`, at: ago(r.due_on), can_act: staff || role === 'finance', record: r.b_event ? rec('ServicesBuyer', { event_id: r.b_event }) : rec('ServicesBuyer', { organisation_id: orgId }),
+          actions: [act('Record payment', 'record_service_payment', 'POST', `/service-invoices/${r.id}/payments`, { source: 'manual_bank' }, { tone: 'primary', ask: [
+            { key: 'amount_minor', label: `Amount paid (${r.currency})`, kind: 'amount', currency: r.currency, default_minor: owing, required: true },
+            { key: 'paid_on', label: 'Paid on', kind: 'date', default: new Date().toISOString().slice(0, 10), required: true },
+            { key: 'reference', label: 'Bank reference', kind: 'line', required: true },
+            { key: 'evidence', label: 'Evidence (for example "bank statement 12 March")', kind: 'line', required: true }] })] });
       }
+    });
+    await run('finance', async () => {
+      // unpaid charges that have gone overdue: the collections cases nobody has a promise or a hold on (cases are opened from unpaid charges, as the collections screen does)
+      await tx(async (c) => { await ensureCases(c, 'organisation', orgId); for (const t of (await c.query(ORG_TEAMS, [orgId])).rows) await ensureCases(c, 'team', t.id); });
+      const cases = await many(
+        `SELECT cs.id, cs.owner_type, cs.owner_id, cs.state, cs.currency, cs.due_on, u.display_name AS payer,
+                CASE cs.source_type WHEN 'academy_charge' THEN (SELECT ac.amount_minor - ac.settled_minor - ac.adjusted_minor FROM academy_charges ac WHERE ac.id=cs.source_id)
+                                    ELSE (SELECT tc.amount_minor - tc.settled_minor - tc.adjusted_minor FROM team_charges tc WHERE tc.id=cs.source_id) END AS balance
+           FROM collection_cases cs LEFT JOIN users u ON u.id=cs.payer_id
+          WHERE ((cs.owner_type='organisation' AND cs.owner_id=$1) OR (cs.owner_type='team' AND cs.owner_id IN (${ORG_TEAMS}))) AND cs.state IN ('overdue','escalated','failed','retrying')
+            AND (cs.promised_on IS NULL OR cs.promised_on < current_date) AND (cs.hold_until IS NULL OR cs.hold_until < current_date) ORDER BY cs.due_on LIMIT 50`, [orgId]);
+      for (const r of cases) items.push({ key: `finance:case:${r.id}`, domain: 'finance', title: `${r.payer ?? 'A payer'} · ${money(r.balance, r.currency)} overdue`, sub: `Due ${dstr(r.due_on)} · ${r.state}`, at: ago(r.due_on), can_act: true,
+        record: r.owner_type === 'team' ? rec('TeamDues', { id: r.owner_id }) : orgTab(org, 'collections', 'billing'), actions: [
+          act('Record a promise to pay', 'act_on_collection_case', 'POST', `/collections/cases/${r.id}/actions`, { action: 'promise' }, { tone: 'primary', ask: [{ key: 'promised_on', label: 'Promised to pay by', kind: 'date', required: true }] }),
+          act('Add a note', 'act_on_collection_case', 'POST', `/collections/cases/${r.id}/actions`, { action: 'note' }, { ask: [F.note] })] });
+    });
+    if (staff) await run('documents', async () => {
+      // a sponsor contract is signed on the contract screen: the text and its fingerprint must be reviewed, so there is no one-tap signature
+      const ct = await many(
+        `SELECT c.id, c.sponsorship_id, c.requested_at, sp.name AS sponsor, EXISTS (SELECT 1 FROM sponsorship_signatories g WHERE g.contract_id=c.id AND g.user_id=$2 AND g.status='pending') AS mine
+           FROM sponsorship_contracts c JOIN sponsorships ss ON ss.id=c.sponsorship_id JOIN sponsors sp ON sp.id=ss.sponsor_id WHERE c.status='awaiting_signatures' AND ${SCOPE} ORDER BY c.requested_at LIMIT 50`, [orgId, user.id]);
+      for (const r of ct) items.push({ key: `documents:contract:${r.id}`, domain: 'documents', title: `${r.sponsor} · sponsorship contract`, sub: r.mine ? 'Waiting for your signature' : 'Waiting for signatures', at: ago(r.requested_at), can_act: r.mine, record: rec('SponsorDeal', { id: r.sponsorship_id }), open_label: r.mine ? 'Review & sign' : 'Open', actions: [] });
     });
   }
 
   if (staff || role === 'coach') {
     await run('tasks', async () => {
       const ts = await taskRows(orgId, role === 'coach' ? user.id : null, 100);
-      for (const t of ts.filter((x) => x.overdue)) items.push({ key: `tasks:${t.source}:${t.id}`, domain: 'tasks', title: t.title, sub: `${t.context} · was due ${t.due_on}`, at: t.due_on ? `${t.due_on}T00:00:00.000Z` : null, can_act: false, record: { screen: t.source === 'team' ? 'Team' : t.source === 'event' ? 'Event' : 'Org', id: t.context_id, tab: t.source === 'sponsor' ? 'sponsor' : undefined }, actions: [] });
+      for (const t of ts.filter((x) => x.overdue)) items.push({ key: `tasks:${t.source}:${t.id}`, domain: 'tasks', title: t.title, sub: `${t.context} · was due ${t.due_on}`, at: t.due_on ? `${t.due_on}T00:00:00.000Z` : null, can_act: false,
+        record: t.source === 'team' ? rec('TeamWorkspace', { id: t.context_id }) : t.source === 'event' ? rec('EventCommand', { id: t.context_id, tab: 'boards' }) : rec('SponsorDeal', { id: t.context_id }), actions: [] });
     });
   }
   return items.sort((a, b) => (a.at ?? '9').localeCompare(b.at ?? '9'));
@@ -313,8 +373,8 @@ cap({
   summary: 'Everything waiting on this organisation, oldest first: admissions to review, registrations and entries, staff time off and timesheets, agreements and accreditations, sponsor payments, supplier and tender approvals, and overdue tasks. Each item names the area, the record, and the actions that resolve it: every action is an existing capability (cap, method, path, body) you call yourself; where `ask` is set (reason or note) the caller must supply it. Items you may view but not decide have no actions. Filter with `domain`.',
   input: z.object({ id, domain: z.enum(DOMAINS).optional(), ...page }),
   async handler({ user }, i) {
-    const { role } = await orgFor(user, i.id, CC_ROLES);
-    const all = await queueItems(i.id, role, user, i.domain ?? null);
+    const { org, role } = await orgFor(user, i.id, CC_ROLES);
+    const all = await queueItems(org, role, user, i.domain ?? null);
     await audit(null, user.id, 'read_org_approvals', 'organisations', i.id);
     return { total: all.length, items: all.slice(i.offset, i.offset + i.limit) };
   },

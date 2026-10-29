@@ -109,7 +109,8 @@ test('agreements are decided by owners only; overdue tasks are listed with their
   assert.equal(must(await api('GET', `/organisations/${org.id}/command-centre/approvals`, { token: admin.token, query: { domain: 'compliance' } })).total, 0);
   const q = must(await api('GET', `/organisations/${org.id}/command-centre/approvals`, { token: owner.token, query: { domain: 'compliance' } }));
   assert.equal(q.total, 1);
-  assert.equal(q.items[0].actions.find((a) => a.label === 'Reject').ask, 'note');
+  assert.deepEqual(q.items[0].actions.find((a) => a.label === 'Reject').ask.map((f) => f.key), ['note']);
+  assert.deepEqual(q.items[0].record, { screen: 'Org', params: { id: org.id, tab: 'agreements' } });
 
   const team = must(await api('POST', '/teams', { token: owner.token, body: { name: `Board ${n}`, sport: 'football', organisation_id: org.id } }), 201);
   must(await api('POST', `/teams/${team.id}/tasks`, { token: owner.token, body: { title: 'Book the minibus', due_on: day(-3), assignee_ids: [owner.id] } }), 201);
@@ -123,6 +124,7 @@ test('agreements are decided by owners only; overdue tasks are listed with their
   assert.equal(must(await api('GET', `/organisations/${org.id}/command-centre/tasks`, { token: coach.token })).length, 0);
   const overdue = must(await api('GET', `/organisations/${org.id}/command-centre/approvals`, { token: owner.token, query: { domain: 'tasks' } }));
   assert.deepEqual(overdue.items.map((i) => i.title), ['Book the minibus']);
+  assert.deepEqual(overdue.items[0].record, { screen: 'TeamWorkspace', params: { id: team.id } });
 });
 
 test('season rollover copies the structure, not the people or money, and is safe to repeat', async () => {
