@@ -5,7 +5,7 @@
 //                         Embedded as the Compliance tab of the organisation and of the event console, and reached from Manage.
 // Nothing is decided here; every control calls the API (REST / MCP share the same capabilities) and the server enforces access, consent and audit.
 import React, { createContext, useContext, useState } from 'react';
-import { View } from 'react-native';
+import { Platform, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useNav } from '../nav';
@@ -34,11 +34,41 @@ const Head = ({ children, style }) => <T weight="800" size={19} color={useContex
 const Note = ({ children, style }) => <T size={13} color={useContext(OnDark) ? 'rgba(255,255,255,0.72)' : c.mute} style={style}>{children}</T>;
 function Block({ title, children }) { return <View style={{ marginTop: 22 }}><Head>{title}</Head><View style={{ gap: 10, marginTop: 10 }}>{children}</View></View>; }
 
+/** Upload picked files (base64) to a record, one by one. Resolves the names that failed with the reason, so a partly saved submission is never lost. */
+async function attachFiles(recordId, files = []) {
+  const failed = [];
+  for (const f of files) {
+    try { await api.post(`/compliance/records/${recordId}/files`, { file_name: f.file_name, data: f.data }); }
+    catch (e) { failed.push(`${f.file_name}: ${e.message}`); }
+  }
+  return failed;
+}
+
+/** Open an evidence file: a tab on the web, the share / open sheet on a phone or tablet. The sign-in header is needed, so it is fetched as a blob. */
+async function openEvidenceFile(recordId, file) {
+  const blob = await api.download(`/compliance/records/${recordId}/files/${file.id}`);
+  const type = file.type || blob.type || 'application/octet-stream', name = String(file.name ?? 'evidence').replace(/[^\w. -]/g, '_');
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    const u = URL.createObjectURL(blob);
+    if (/^(application\/pdf|image\/)/.test(type)) window.open(u, '_blank', 'noopener');
+    else { const a = document.createElement('a'); a.href = u; a.download = name; a.click(); }
+    setTimeout(() => URL.revokeObjectURL(u), 120000);
+    return;
+  }
+  const { File, Paths } = await import('expo-file-system');
+  const Sharing = await import('expo-sharing');
+  const f = new File(Paths.cache, name);
+  f.create({ overwrite: true }); f.write(new Uint8Array(await new Response(blob).arrayBuffer()));
+  if (!(await Sharing.isAvailableAsync())) throw new Error('This device cannot open files from here. Open it in the web app.');
+  await Sharing.shareAsync(f.uri, { mimeType: type, dialogTitle: name });
+}
+
 // ---------------------------------------------------------------- the holder's side
 
 /** One obligation: what it is, who asks, where it stands, why, and the single next step. */
-function ItemCard({ it, onAct, onHistory }) {
+function ItemCard({ it, onAct, onHistory, onAttach }) {
   const step = it.next_step;
+  const canAttach = it.record?.can_attach && it.requirement.method === 'evidence' && !it.requirement.sensitive;
   return (
     <Card pad={14} accessibilityLabel={`${it.requirement.name}. ${it.state_label}. ${it.explanation}`}>
       <View style={{ gap: 8 }}>
@@ -50,9 +80,11 @@ function ItemCard({ it, onAct, onHistory }) {
           <Tag label={it.state_label} color={TONE[it.state] ?? c.violetSoft} />
         </View>
         <T size={14}>{it.explanation}</T>
+        {it.record?.file_count ? <T size={12} color={c.mute}>📎 {it.record.file_count} file{it.record.file_count === 1 ? '' : 's'} attached</T> : null}
         {it.consequences.length ? <T size={12} color={c.mute}>If this is not in order it stops: {it.consequences.map((x) => STOPS[x] ?? x).join(', ')}.</T> : null}
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
           {step && step.action !== 'wait' ? <Btn small title={step.label} onPress={() => onAct(it)} accessibilityLabel={`${step.label}: ${it.requirement.name}`} /> : null}
+          {canAttach ? <Btn small color={c.paper} ink={c.ink} title="Add files" onPress={() => onAttach(it)} accessibilityLabel={`Add files to ${it.requirement.name}`} /> : null}
           <Btn small color={c.paper} ink={c.ink} title="History" onPress={() => onHistory(it)} accessibilityLabel={`History of ${it.requirement.name}`} />
         </View>
       </View>
@@ -84,6 +116,7 @@ function SubmitSheet({ item, subject, onClose, onDone }) {
       { key: 'provider', label: 'Issued by', type: 'text', optional: true },
       { key: 'issued_on', label: 'Issued on', type: 'date', optional: true },
       { key: 'expires_on', label: 'Expires on', type: 'date', optional: true, hint: r.validity_days ? `Leave empty to use ${r.validity_days} days from the issue date.` : 'Leave empty if it does not expire.' },
+      ...(r.sensitive ? [] : [{ key: 'files', label: 'Attach the certificate or document', type: 'files', max: 5, documents: 'wide', optional: true }]),
     ];
   return (
     <FormSheet visible onClose={onClose} title={declare ? r.name : `Submit ${r.name}`} fields={fields} submitLabel={declare ? 'Confirm declaration' : 'Submit for review'}
@@ -91,10 +124,28 @@ function SubmitSheet({ item, subject, onClose, onDone }) {
       onSubmit={async (v) => {
         if (declare && !v.confirm) throw new Error('Confirm that you have read and agree');
         try {
-          await api.post('/compliance/records', { requirement_id: item.requirement_id, subject_kind: subject.kind, subject_id: subject.id, ...v, ...(declare ? { statement_version: r.version } : {}) });
+          const { files, ...rest } = v;
+          const rec = await api.post('/compliance/records', { requirement_id: item.requirement_id, subject_kind: subject.kind, subject_id: subject.id, ...rest, ...(declare ? { statement_version: r.version } : {}) });
+          const failed = declare ? [] : await attachFiles(rec.id, files);
           onDone();
+          if (failed.length) return `Submitted, but ${failed.length === 1 ? 'a file' : 'some files'} did not upload (${failed.join('; ')}). Use Add files to try again.`;
           return declare ? 'Declaration recorded' : 'Submitted for review';
         } catch (e) { if (e.status === 409) toast(explain(e)); throw e; }
+      }} />
+  );
+}
+
+/** Add files to a submission that is still waiting for review. */
+function AttachSheet({ item, onClose, onDone }) {
+  if (!item) return null;
+  return (
+    <FormSheet visible onClose={onClose} title={`Add files to ${item.requirement.name}`} submitLabel="Upload"
+      fields={[{ key: 'files', label: 'Files', type: 'files', max: 5, documents: 'wide' }]}
+      onSubmit={async (v) => {
+        const failed = await attachFiles(item.record.id, v.files);
+        onDone();
+        if (failed.length) throw new Error(failed.join('; '));
+        return 'Files added';
       }} />
   );
 }
@@ -102,7 +153,7 @@ function SubmitSheet({ item, subject, onClose, onDone }) {
 function Subject({ subject, title, empty, hideWhenEmpty }) {
   const { push, goTab } = useNav();
   const s = useLoad(() => api.get('/compliance/status', { subject_kind: subject.kind, subject_id: subject.id }), [subject.kind, subject.id]);
-  const [open, setOpen] = useState(null), [hist, setHist] = useState(null);
+  const [open, setOpen] = useState(null), [hist, setHist] = useState(null), [attach, setAttach] = useState(null);
   if (s.error) return <ErrorBox error={s.error} onRetry={s.reload} />;
   if (!s.data) return <Loading />;
   const d = s.data;
@@ -133,10 +184,11 @@ function Subject({ subject, title, empty, hideWhenEmpty }) {
       </Card>
       {groups.map(([name, list]) => (list.length ? (
         <Block key={name} title={`${name} · ${list.length}`}>
-          {list.map((it) => <ItemCard key={it.obligation_id} it={it} onAct={act} onHistory={() => setHist(subject)} />)}
+          {list.map((it) => <ItemCard key={it.obligation_id} it={it} onAct={act} onHistory={() => setHist(subject)} onAttach={setAttach} />)}
         </Block>
       ) : null))}
       <SubmitSheet item={open} subject={subject} onClose={() => setOpen(null)} onDone={() => { setOpen(null); s.reload(); }} />
+      <AttachSheet item={attach} onClose={() => setAttach(null)} onDone={() => { setAttach(null); s.reload(); }} />
       <History subject={hist} onClose={() => setHist(null)} />
     </View>
   );
@@ -200,6 +252,11 @@ function ReviewQueue({ scope, cat, reload }) {
         <Card key={r.id} pad={14}>
           <T weight="700" size={15}>{r.subject.name} · {r.requirement.name}</T>
           <T size={12} color={c.mute}>{r.requirement.category_label} · submitted {ago(r.submitted_at)}{r.issued_on ? ` · issued ${nice(r.issued_on)}` : ''}{r.expires_on ? ` · expires ${nice(r.expires_on)}` : ''}{r.provider ? ` · ${r.provider}` : ''}</T>
+          {r.files?.length ? (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+              {r.files.map((f) => <Btn key={f.id} small color={c.paper} ink={c.ink} title={`📎 ${f.name}`} onPress={() => openEvidenceFile(r.id, f).catch((e) => toast(explain(e)))} accessibilityLabel={`Open ${f.name}`} />)}
+            </View>
+          ) : null}
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
             <Btn small title="Approve" onPress={() => decide(r, 'approve')} disabled={busy} accessibilityLabel={`Approve ${r.requirement.name} for ${r.subject.name}`} />
             <Btn small color={c.paper} ink={c.ink} title="Decline" onPress={() => { setReason(''); setPick(r); }} accessibilityLabel={`Decline ${r.requirement.name} for ${r.subject.name}`} />

@@ -469,3 +469,69 @@ test('every compliance capability is registered for REST, OpenAPI and MCP', () =
   for (const want of ['archive_compliance_requirement', 'create_compliance_pack', 'decide_compliance_record', 'get_compliance_catalogue', 'get_compliance_pack', 'get_compliance_status', 'grant_compliance_waiver', 'list_compliance_gaps', 'list_compliance_history', 'list_compliance_packs', 'list_compliance_records', 'list_compliance_requirements', 'list_compliance_waivers', 'read_compliance_reference', 'revoke_compliance_pack', 'revoke_compliance_waiver', 'save_compliance_obligation', 'save_compliance_requirement', 'submit_compliance_record', 'withdraw_compliance_record']) assert.ok(names.includes(want), want);
   assert.ok(capabilities.filter((c) => c.tag === 'Compliance').every((c) => c.summary.length > 40));
 });
+
+const upload = (user, rid, file_name, bytes) => api('POST', `/compliance/records/${rid}/files`, { token: user.token, body: { file_name, data: Buffer.from(bytes).toString('base64') } });
+const PNG = Buffer.concat([Buffer.from('89504e470d0a1a0a', 'hex'), Buffer.alloc(32)]);
+const PDF = Buffer.from('%PDF-1.4\n%test\n');
+const zipDoc = (extra = '') => Buffer.concat([Buffer.from('504b0304', 'hex'), Buffer.from(`[Content_Types].xml word/document.xml ${extra}`)]);
+const OLEFILE = (extra = '') => Buffer.concat([Buffer.from('d0cf11e0a1b1', 'hex'), Buffer.alloc(40), Buffer.from(extra)]);
+
+test('evidence files: PDF, photos, Word, Excel, CSV and text are accepted by their bytes; everything else is refused', async () => {
+  const { owner, org } = await club();
+  const coach = await person(), stranger = await person();
+  await join(org.id, coach, 'coach');
+  const req = await requirement(owner, { kind: 'organisation', id: org.id }, { name: 'Insurance certificate', category: 'insurance' });
+  await obligation(owner, req);
+  const rec = must(await api('POST', '/compliance/records', { token: coach.token, body: { requirement_id: req.id, reference: 'POL-1' } }), 201);
+
+  assert.equal((await upload(stranger, rec.id, 'x.pdf', PDF)).status, 404, 'outsiders learn nothing');
+  for (const [name, bytes, type] of [['cert.pdf', PDF, 'application/pdf'], ['scan.png', PNG, 'image/png'], ['letter.docx', zipDoc(), 'wordprocessingml'], ['old.doc', OLEFILE(), 'application/msword'], ['sheet.csv', Buffer.from('a,b\n1,2\n'), 'text/csv']]) {
+    const r = must(await upload(coach, rec.id, name, bytes), 201);
+    assert.match(r.content_type, new RegExp(type)); assert.equal(r.original_name, name);
+  }
+  assert.equal((await upload(coach, rec.id, 'extra.pdf', PDF)).status, 409, 'at most 5 per record');
+
+  const bad = [['run.exe', Buffer.from('MZ\x90\x00 not allowed')], ['evil.svg', Buffer.from('<svg onload="x()"/>')], ['fake.pdf', Buffer.from('this is not a pdf')], ['macro.docx', zipDoc('vbaProject.bin')], ['macro.xls', OLEFILE('_VBA_PROJECT')], ['bin.csv', Buffer.from([1, 2, 0, 3])]];
+  const two = await person(); await join(org.id, two, 'coach');
+  const rec2 = must(await api('POST', '/compliance/records', { token: two.token, body: { requirement_id: req.id, reference: 'POL-2' } }), 201).id;
+  for (const [name, bytes] of bad) assert.equal((await upload(two, rec2, name, bytes)).status, 400, name);
+  assert.equal((await upload(two, rec2, 'empty.pdf', Buffer.alloc(0))).status, 400);
+});
+
+test('evidence files: managers read them (audited), background checks take none, and a decided record is closed', async () => {
+  const { owner, org } = await club();
+  const coach = await person(), stranger = await person();
+  await join(org.id, coach, 'coach');
+  const req = await requirement(owner, { kind: 'organisation', id: org.id }, { name: 'Coaching licence scan', category: 'licence' });
+  const bg = await requirement(owner, { kind: 'organisation', id: org.id }, { name: 'Check status', category: 'background_check' });
+  await obligation(owner, req); await obligation(owner, bg);
+  const rec = must(await api('POST', '/compliance/records', { token: coach.token, body: { requirement_id: req.id, reference: 'L-1' } }), 201);
+  const bgRec = must(await api('POST', '/compliance/records', { token: coach.token, body: { requirement_id: bg.id, reference: 'B-1' } }), 201);
+  const f = must(await upload(coach, rec.id, 'licence.pdf', PDF), 201);
+  const refused = await upload(coach, bgRec.id, 'check.pdf', PDF);
+  assert.equal(refused.status, 409); assert.equal(codeOf(refused), 'files_not_accepted');
+
+  const get = (u, rid, fid) => fetch(`${base}/api/v1/compliance/records/${rid}/files/${fid}`, { headers: { authorization: `Bearer ${u.token}` } });
+  const mine = await get(coach, rec.id, f.id);
+  assert.equal(mine.status, 200); assert.equal(Buffer.from(await mine.arrayBuffer()).equals(PDF), true);
+  assert.match(mine.headers.get('content-disposition'), /inline/);
+  assert.equal((await get(stranger, rec.id, f.id)).status, 404);
+  const queue = must(await api('GET', '/compliance/records', { token: owner.token, query: { scope_kind: 'organisation', scope_id: org.id, status: 'submitted' } }));
+  assert.deepEqual(queue.items.find((r) => r.id === rec.id).files.map((x) => x.name), ['licence.pdf']);
+  assert.equal((await get(owner, rec.id, f.id)).status, 200, 'the reviewer opens it');
+  assert.ok((await pool.query("SELECT 1 FROM audit_log WHERE action='read_compliance_file' AND entity_id=$1 AND actor_id=$2", [f.id, owner.id])).rowCount);
+  assert.ok((await pool.query("SELECT 1 FROM comp_events WHERE action='file_read' AND record_id=$1", [rec.id])).rowCount);
+  const st = itemOf(must(await status(coach)), 'Coaching licence scan');
+  assert.equal(st.record.file_count, 1); assert.equal(st.record.can_attach, true);
+
+  const g = must(await upload(coach, rec.id, 'second.csv', Buffer.from('x\n1\n')), 201);
+  must(await api('DELETE', `/compliance/records/${rec.id}/files/${g.id}`, { token: coach.token }));
+  assert.equal((await get(coach, rec.id, g.id)).status, 404, 'a removed file is hidden');
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM comp_files WHERE id=$1', [g.id])).rows[0].n, 1, 'and kept');
+
+  must(await api('POST', `/compliance/records/${rec.id}/decision`, { token: owner.token, body: { decision: 'approve' } }));
+  assert.equal((await upload(coach, rec.id, 'late.pdf', PDF)).status, 409, 'evidence cannot change after the decision');
+  assert.equal((await api('DELETE', `/compliance/records/${rec.id}/files/${f.id}`, { token: coach.token })).status, 409);
+  assert.equal((await get(owner, rec.id, f.id)).status, 200, 'the reviewed evidence stays readable');
+  assert.equal(itemOf(must(await status(coach)), 'Coaching licence scan').record.can_attach, false);
+});
