@@ -48,5 +48,8 @@ A mandatory obligation in `missing / expired / rejected / revoked` **blocks**. D
 ## Sports
 Sport-agnostic by design: an obligation can target any sport in the catalogue (`test/compliance.test.js` walks every sport). Nothing here scores, rules or schedules a sport, so there is no generic fallback to label.
 
+## Evidence files
+Attach a certificate or document to a submission: **PDF, JPEG, PNG, WebP, GIF, Word (.docx, .doc), Excel (.xlsx, .xls), CSV and text**, up to 10 MB each and 5 per record. The type is decided from the bytes (not the name); Office files with macros, external links or ActiveX are refused; a configured malware scanner is honoured (`UPLOAD_SCAN`). Files are AES-256-GCM encrypted on disk (`comp_files`), hidden, never deleted, and every read is in `audit_log` and the history. Only the holder, a guardian or the organisation / event manager can add or hide files, and only while the submission awaits review. The holder and guardian always read them; the scope's managers (reviewers) read them for ordinary requirements. **A background check takes no files**: only a reference, so reviewers see the outcome and never the underlying detail. Evidence packs never contain files. Upload is `POST /compliance/records/:id/files` (JSON `{ file_name, data: base64 }`), download `GET /compliance/records/:id/files/:file_id`, hide `remove_compliance_evidence_file` (MCP); listing is part of `list_compliance_records`.
+
 ## Not in scope here
-Uploading a scan of a document: the evidence is a reference the reviewer checks against the issuer, as for licences and verifications; the existing encrypted document folders remain where documents live. Immigration, medical-clearance and legal advice are not given.
+Immigration, medical-clearance and legal advice are not given.

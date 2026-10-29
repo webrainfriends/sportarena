@@ -133,9 +133,11 @@ cap({
               (k.detail_enc IS NOT NULL) AS has_detail, k.statement_version, k.submitted_at, k.decided_at, k.previous_id, k.row_version, r.name AS requirement_name, r.category, r.sensitive, r.scope_kind, r.scope_id
          FROM comp_records k JOIN comp_requirements r ON r.id=k.requirement_id WHERE ${where.join(' AND ')}
         ORDER BY ${i.status === 'submitted' ? 'k.submitted_at ASC' : 'k.submitted_at DESC'} LIMIT $${p.length + 1} OFFSET $${p.length + 2}`, [...p, i.limit + 1, i.offset]);
+    const page_ = rows.slice(0, i.limit);
+    const files = page_.length ? await many('SELECT id, record_id, original_name, content_type, size_bytes FROM comp_files WHERE record_id = ANY($1) AND removed_at IS NULL ORDER BY created_at', [page_.map((r) => r.id)]) : [];
     const items = [];
-    for (const r of rows.slice(0, i.limit)) {
-      items.push({ ...viewRecord(r), requirement: { name: r.requirement_name, category: r.category, category_label: CATEGORIES[r.category], sensitive: r.sensitive, scope: { kind: r.scope_kind, id: r.scope_id } },
+    for (const r of page_) {
+      items.push({ ...viewRecord(r), files: files.filter((f) => f.record_id === r.id).map((f) => ({ id: f.id, name: f.original_name, type: f.content_type, size: f.size_bytes })), requirement: { name: r.requirement_name, category: r.category, category_label: CATEGORIES[r.category], sensitive: r.sensitive, scope: { kind: r.scope_kind, id: r.scope_id } },
         subject: { kind: r.subject_kind, id: r.subject_id, name: await nameFor(pool, user, r.subject_kind, r.subject_id) } });
     }
     return { items, has_more: rows.length > i.limit };

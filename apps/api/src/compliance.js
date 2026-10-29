@@ -311,7 +311,7 @@ function pickRecord(list, today) {
   return list.filter((r) => ['rejected', 'revoked'].includes(r.status)).sort((a, b) => b.submitted_at - a.submitted_at)[0] ?? null;
 }
 
-const REC_COLS = `id, requirement_id, requirement_version, status, outcome, issued_on::text AS issued_on, expires_on::text AS expires_on, provider, submitted_at, decided_at, decision_reason, previous_id, (reference_enc IS NOT NULL) AS has_reference, (detail_enc IS NOT NULL) AS has_detail, statement_version`;
+const REC_COLS = `id, requirement_id, requirement_version, status, outcome, issued_on::text AS issued_on, expires_on::text AS expires_on, provider, submitted_at, decided_at, decision_reason, previous_id, (reference_enc IS NOT NULL) AS has_reference, (detail_enc IS NOT NULL) AS has_detail, statement_version, (SELECT count(*)::int FROM comp_files f WHERE f.record_id = comp_records.id AND f.removed_at IS NULL) AS file_count`;
 
 /**
  * Evaluate a subject: every applicable obligation with its state, a plain-language explanation and the next step.
@@ -347,7 +347,7 @@ export async function evaluateSubject(c, subject, opts = {}) {
       mandatory: r.mandatory, consequences: r.consequences, waivable: r.category !== 'background_check' && !unwaivable.has(r.id),
       state: st.state, state_label: STATE_LABEL[st.state], blocking: st.blocking, days_left: st.days_left,
       issued_on: rec?.issued_on ?? null, expires_on: rec?.expires_on ?? null,
-      record: rec?.id ? { id: rec.id, status: rec.status, outcome: rec.outcome ?? null, submitted_at: rec.submitted_at, decided_at: rec.decided_at } : null,
+      record: (rec?.open ?? rec)?.id ? (({ id, status, outcome, file_count, submitted_at, decided_at }) => ({ id, status, outcome: outcome ?? null, file_count: file_count ?? 0, can_attach: status === 'submitted', submitted_at, decided_at }))(rec.open ?? rec) : null,
       waiver: st.waived ? { id: st.waived.id, reason: st.waived.reason, effective_to: st.waived.effective_to } : null,
       explanation: explain(r, st, rec), next_step: nextStep(r, st, rec, src),
       linked: src?.ref ?? null,
