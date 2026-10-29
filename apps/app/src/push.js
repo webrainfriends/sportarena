@@ -89,7 +89,7 @@ export function targetFor(data = {}) {
   if (data.team_id && (data.charge_id || data.fundraiser_id)) return ['TeamDues', { id: data.team_id }];   // dues, fees, shared expenses, reminders and fundraisers
   if (data.team_id && !data.event_id && !data.fixture_id) return ['TeamChat', { id: data.team_id }];                         // announcements and polls
   if (data.organisation_id) return ['Org', { id: data.organisation_id }];   // academy and workspace messages open the organisation (academy tab / My academy)
-  return ['Notifications', {}];
+  return ['Inbox', {}];
 }
 
 export function parseTarget(t) {
@@ -141,5 +141,5 @@ export function parseTarget(t) {
   if (kind === 'team-chat' && id) return ['TeamChat', { id }];
   if (kind === 'team-dues' && id) return ['TeamDues', { id }];
   if (kind === 'funding') return ['PlayerFunding', id ? { athlete_id: id } : {}];
-  return ['Notifications', {}];
+  return ['Inbox', {}];
 }

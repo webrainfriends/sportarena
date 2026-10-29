@@ -28,6 +28,14 @@ export const icons = {
     <Circle cx="12" cy="8.5" r="4" {...P(p)} fill={tint(p)} fillOpacity={0.16} />
     <Path d="M4.5 20.5c.6-4 3.5-6 7.5-6s6.9 2 7.5 6" {...P(p)} />
   </>),
+  Work: wrap((p) => <>
+    <Rect x="3.5" y="7.5" width="17" height="12" rx="2.5" {...P(p)} fill={tint(p)} fillOpacity={0.16} />
+    <Path d="M9 7.5V6a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1.5M3.5 13h17" {...P(p)} />
+  </>),
+  Inbox: wrap((p) => <>
+    <Path d="M3.5 13.5 6 5.5h12l2.5 8V18a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 18z" {...P(p)} fill={tint(p)} fillOpacity={0.16} />
+    <Path d="M3.5 13.5H9a3 3 0 0 0 6 0h5.5" {...P(p)} />
+  </>),
   Bell: wrap((p) => <Path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 1.5h-15zM10 20.5a2 2 0 0 0 4 0" {...P(p)} />),
   Billboard: wrap((p) => <><Path d="M4 10v4h3l7 4V6L7 10z" {...P(p)} fill={tint(p)} fillOpacity={0.16} /><Path d="M17.5 9a4 4 0 0 1 0 6M7 14l1.2 5h2.3L9.6 15.5" {...P(p)} /></>),
   Shop: wrap((p) => <><Path d="M5 8h14l-1 12H6z" {...P(p)} fill={tint(p)} fillOpacity={0.16} /><Path d="M9 8V7a3 3 0 0 1 6 0v1" {...P(p)} /></>),
