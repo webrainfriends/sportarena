@@ -24,12 +24,12 @@ const ALL = [
   { key: 'agreements', label: 'Agreements', icon: '📜' }, { key: 'billing', label: 'Finance', icon: '💷' }, { key: 'partners', label: 'Partners', icon: '🤝' }, { key: 'announce', label: 'Announcements', icon: '📣' }, { key: 'study', label: 'Study listing', icon: '🎓' }, { key: 'settings', label: 'Settings', icon: '⚙️' },
 ];
 
-export function AcademyDesk({ o, role, archived, toast }) {
+export function AcademyDesk({ o, role, archived, toast, focus }) {
   const staff = role === 'owner' || role === 'admin';
   // owners/admins get the whole module; everyone else only the parts their role and permission set reach (Operations decides the rest server-side)
   const items = staff ? ALL : ALL.filter((i) => i.key === 'ops' || (role === 'coach' && i.key === 'progress') || (role === 'finance' && ['billing', 'partners'].includes(i.key)));
-  const [tab, setTab] = useState(staff ? 'home' : role === 'coach' ? 'progress' : 'ops');
-  const [openApp, setOpenApp] = useState(null);
+  const [tab, setTab] = useState(focus?.tab ?? (staff ? 'home' : role === 'coach' ? 'progress' : 'ops'));   // focus: open on a given tab / application (from the Command Centre)
+  const [openApp, setOpenApp] = useState(focus?.open ?? null);
   const { tablet } = useLayout();
   const dash = useLoad(() => (staff ? api.get(`/organisations/${o.id}/academy/dashboard`) : Promise.resolve(null)), [o.id, staff]);
   const a = dash.data?.outstanding_actions;

@@ -6,6 +6,7 @@ import { one, many, tx } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { assertCurrency, checkQty } from '../svc/money.js';
 import { CATEGORY, validateSpec, assertUnit } from '../svc/catalogue.js';
+import { CREDENTIAL_KINDS } from './svc-supplier.js';
 import { buyerAccess, resolveBuyer, myBuyerIds, log } from '../svc/access.js';
 
 const TAG = 'Service procurement';
@@ -99,7 +100,8 @@ const reqFields = {
   recurrence: z.object({ freq: z.enum(['daily', 'weekly', 'monthly']), by_day: z.array(z.enum(['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'])).max(7).optional(), until: day }).optional(),
   site_access: z.string().max(500).optional(), qualifications: z.array(z.string().max(80)).max(20).default([]), budget_minor: money.optional(), currency: cur.optional(),
   owner_id: id.optional(), depends_on: z.array(id).max(20).default([]), deadline: day.optional(), acceptance_criteria: z.array(z.string().min(1).max(300)).max(20).default([]),
-  lot_id: id.optional(), event_id: id.optional(), venue_id: id.optional(),
+  lot_id: id.optional(), event_id: id.optional(), venue_id: id.optional(), competition_id: id.optional(),
+  compliance_kinds: z.array(z.enum(CREDENTIAL_KINDS)).max(9).default([]),
 };
 const check = async (c, buyer, i) => {
   const cat = CATEGORY[i.category];
@@ -108,6 +110,7 @@ const check = async (c, buyer, i) => {
   if (i.starts_at && i.ends_at && i.ends_at < i.starts_at) throw badRequest('ends_at is before starts_at');
   if (i.recurrence && !i.starts_at) throw badRequest('A recurring requirement needs a start');
   if (i.event_id && buyer.event_id && i.event_id !== buyer.event_id) throw badRequest('That event is not this procurement context');
+  if (i.competition_id && !(await c.query('SELECT 1 FROM events WHERE id=$1', [i.competition_id])).rowCount) throw notFound('Competition');
   if (i.lot_id && !(await c.query('SELECT 1 FROM svc_lots WHERE id=$1 AND buyer_id=$2', [i.lot_id, buyer.id])).rowCount) throw notFound('Lot');
   if (i.depends_on?.length && (await c.query('SELECT 1 FROM svc_requirements WHERE id = ANY($1) AND buyer_id=$2', [i.depends_on, buyer.id])).rowCount !== new Set(i.depends_on).size) throw badRequest('A dependency is not a requirement of this procurement context');
   if (i.owner_id && !(await c.query('SELECT 1 FROM users WHERE id=$1', [i.owner_id])).rowCount) throw notFound('Owner');
@@ -124,10 +127,10 @@ cap({
       const { buyer } = await buyerAccess(user, bid, ['requester'], c);
       r.scope = await check(c, buyer, r);
       return (await c.query(
-        `INSERT INTO svc_requirements(buyer_id, lot_id, event_id, venue_id, category, subcategory, title, scope, quantity, unit, headcount, starts_at, ends_at, timezone, recurrence, site_access, qualifications, budget_minor, currency, owner_id, depends_on, deadline, acceptance_criteria, created_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24) RETURNING *`,
+        `INSERT INTO svc_requirements(buyer_id, lot_id, event_id, venue_id, category, subcategory, title, scope, quantity, unit, headcount, starts_at, ends_at, timezone, recurrence, site_access, qualifications, budget_minor, currency, owner_id, depends_on, deadline, acceptance_criteria, created_by, competition_id, compliance_kinds)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *`,
         [bid, r.lot_id ?? null, r.event_id ?? buyer.event_id ?? null, r.venue_id ?? buyer.venue_id ?? null, r.category, r.subcategory ?? null, r.title, r.scope, r.quantity, r.unit, r.headcount ?? null, r.starts_at ?? null, r.ends_at ?? null, r.timezone,
-          r.recurrence ?? null, r.site_access ?? null, r.qualifications, r.budget_minor ?? null, r.currency ?? buyer.currency, r.owner_id ?? null, r.depends_on, r.deadline ?? null, r.acceptance_criteria, user.id])).rows[0];
+          r.recurrence ?? null, r.site_access ?? null, r.qualifications, r.budget_minor ?? null, r.currency ?? buyer.currency, r.owner_id ?? null, r.depends_on, r.deadline ?? null, r.acceptance_criteria, user.id, r.competition_id ?? null, r.compliance_kinds])).rows[0];
     });
   },
 });
@@ -158,11 +161,11 @@ cap({
 });
 cap({
   name: 'list_service_requirements', method: 'GET', path: '/service-buyers/:id/requirements', tag: TAG, summary: 'Requirements of a procurement context, filterable by lot, status, category, event.',
-  input: z.object({ id, lot_id: id.optional(), status: z.string().optional(), category: z.string().optional(), event_id: id.optional(), ...page }),
+  input: z.object({ id, lot_id: id.optional(), status: z.string().optional(), category: z.string().optional(), event_id: id.optional(), competition_id: id.optional(), ...page }),
   async handler({ user }, i) {
     await buyerAccess(user, i.id, null);
-    return many('SELECT * FROM svc_requirements WHERE buyer_id=$1 AND ($2::uuid IS NULL OR lot_id=$2) AND ($3::text IS NULL OR status=$3) AND ($4::text IS NULL OR category=$4) AND ($5::uuid IS NULL OR event_id=$5) ORDER BY coalesce(starts_at, created_at), id LIMIT $6 OFFSET $7',
-      [i.id, i.lot_id ?? null, i.status ?? null, i.category ?? null, i.event_id ?? null, i.limit, i.offset]);
+    return many('SELECT * FROM svc_requirements WHERE buyer_id=$1 AND ($8::uuid IS NULL OR competition_id=$8) AND ($2::uuid IS NULL OR lot_id=$2) AND ($3::text IS NULL OR status=$3) AND ($4::text IS NULL OR category=$4) AND ($5::uuid IS NULL OR event_id=$5) ORDER BY coalesce(starts_at, created_at), id LIMIT $6 OFFSET $7',
+      [i.id, i.lot_id ?? null, i.status ?? null, i.category ?? null, i.event_id ?? null, i.limit, i.offset, i.competition_id ?? null]);
   },
 });
 cap({
@@ -181,9 +184,9 @@ cap({
       const { buyer } = await buyerAccess(user, s.buyer_id, ['requester'], c);
       const shift = (d) => d && new Date(new Date(d).getTime() + i.shift_days * 86400000).toISOString();
       return (await c.query(
-        `INSERT INTO svc_requirements(buyer_id, lot_id, event_id, venue_id, category, subcategory, title, scope, quantity, unit, headcount, starts_at, ends_at, timezone, recurrence, site_access, qualifications, budget_minor, currency, acceptance_criteria, copied_from, created_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22) RETURNING *`,
-        [buyer.id, i.lot_id ?? null, i.event_id ?? (buyer.event_id ?? null), s.venue_id, s.category, s.subcategory, i.title ?? s.title, s.scope, s.quantity, s.unit, s.headcount, shift(s.starts_at), shift(s.ends_at), s.timezone, s.recurrence, s.site_access, s.qualifications, s.budget_minor, s.currency, s.acceptance_criteria, s.id, user.id])).rows[0];
+        `INSERT INTO svc_requirements(buyer_id, lot_id, event_id, venue_id, category, subcategory, title, scope, quantity, unit, headcount, starts_at, ends_at, timezone, recurrence, site_access, qualifications, budget_minor, currency, acceptance_criteria, copied_from, created_by, compliance_kinds)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23) RETURNING *`,
+        [buyer.id, i.lot_id ?? null, i.event_id ?? (buyer.event_id ?? null), s.venue_id, s.category, s.subcategory, i.title ?? s.title, s.scope, s.quantity, s.unit, s.headcount, shift(s.starts_at), shift(s.ends_at), s.timezone, s.recurrence, s.site_access, s.qualifications, s.budget_minor, s.currency, s.acceptance_criteria, s.id, user.id, s.compliance_kinds])).rows[0];
     });
   },
 });
