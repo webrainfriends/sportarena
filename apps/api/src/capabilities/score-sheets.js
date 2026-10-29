@@ -6,7 +6,7 @@ import { mustFind } from '../helpers.js';
 import { eventForOrganizer } from './events.js';
 import { notify } from '../notify.js';
 import { publish } from '../live.js';
-import { advanceKnockout, isKnockout } from '../tournament/advance.js';
+import { afterResult, isKnockout } from '../tournament/advance.js';
 import { fixtureContext } from './match-tracking.js';
 import { verifyAppearances } from './appearances.js';
 import { liveState, loggedEvents, rulesetForEvent } from '../scoring/state.js';
@@ -42,7 +42,7 @@ export async function sheetView(sheetId, c) {
   const [signoffs, history, f] = await Promise.all([
     q(c).query(`SELECT o.role, o.decision, o.comment, o.at, o.user_id, u.display_name FROM score_sheet_signoffs o JOIN users u ON u.id=o.user_id WHERE o.sheet_id=$1 AND o.round=$2 ORDER BY o.at`, [s.id, s.round]).then((r) => r.rows),
     q(c).query('SELECT l.action, l.from_status, l.to_status, l.note, l.at, u.display_name AS actor_name FROM score_sheet_log l JOIN users u ON u.id=l.actor_id WHERE l.sheet_id=$1 ORDER BY l.at', [s.id]).then((r) => r.rows),
-    q(c).query(`SELECT f.id, f.round, f.round_kind, f.status, f.scheduled_at, h.id AS home_id, h.name AS home_name, h.emoji AS home_emoji, h.color AS home_color, a.id AS away_id, a.name AS away_name, a.emoji AS away_emoji, a.color AS away_color
+    q(c).query(`SELECT f.id, f.round, f.round_kind, f.winner_optional, f.tie_id, f.leg_no, f.status, f.scheduled_at, h.id AS home_id, h.name AS home_name, h.emoji AS home_emoji, h.color AS home_color, a.id AS away_id, a.name AS away_name, a.emoji AS away_emoji, a.color AS away_color
                   FROM fixtures f LEFT JOIN teams h ON h.id=f.home_team_id LEFT JOIN teams a ON a.id=f.away_team_id WHERE f.id=$1`, [s.fixture_id]).then((r) => r.rows[0]),
   ]);
   const need = ['referee', 'home_manager', 'away_manager'];
@@ -224,7 +224,7 @@ cap({
 cap({
   name: 'publish_score_sheet', method: 'POST', path: '/score-sheets/:id/publish', tag: TAG,
   summary: 'Organiser publishes an approved sheet. This is the only step that writes the official result: the game becomes completed, standings update, and a knockout winner moves into the next round. A previously published version is kept as superseded.',
-  input: z.object({ id }),
+  input: z.object({ id, accept_downstream_conflicts: z.boolean().default(false).describe('when a correction changes who reaches a game already played: unstarted games are re-filled and played ones are raised as bracket conflicts for an organiser decision') }),
   async handler({ user }, i) {
     const out = await tx(async (c) => {
       const s = await loadSheet(i.id, c, true);
@@ -237,7 +237,7 @@ cap({
       await c.query("UPDATE score_sheets SET status='superseded' WHERE fixture_id=$1 AND status='published'", [s.fixture_id]);
       const done = (await c.query("UPDATE score_sheets SET status='published', published_by=$2, published_at=now() WHERE id=$1 RETURNING *", [i.id, user.id])).rows[0];
       const fx = (await c.query("UPDATE fixtures SET home_score=$2, away_score=$3, winner_team_id=$4, status='completed', finished_at=coalesce(finished_at, now()), paused_by_event=false WHERE id=$1 RETURNING *", [s.fixture_id, s.home_score, s.away_score, winner ?? null])).rows[0];
-      if (isKnockout(fx) && winner) await advanceKnockout(c, fx, winner);
+      await afterResult(c, fx, winner ?? null, { allowConflicts: i.accept_downstream_conflicts });
       await verifyAppearances(c, s.fixture_id, user.id);
       await log(c, s.id, user.id, 'published', 'approved', 'published', s.version > 1 ? `Version ${s.version}: ${s.revision_reason ?? 'correction'}` : null, snap(done));
       await notifyParties(c, x.f, x.ev, user, { title: 'Result published', body: `${x.ev.name}: ${s.home_score}–${s.away_score}` });
