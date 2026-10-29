@@ -9,7 +9,7 @@ import { hasOrgGrant } from '../org-access.js';
 import { reserve } from './venues.js';
 import { notify } from '../notify.js';
 import { WHO_FOR, levels as LEVELS_FIELD, ageBand, AGE_BAND_MSG } from '../opportunity-fields.js';
-import { advanceKnockout, isKnockout } from '../tournament/advance.js';
+import { afterResult, decideWinner } from '../tournament/advance.js';
 import { createRequest } from '../event-planning.js';
 import { eventWindow, windowFit, consentNeeded } from '../event-fit.js';
 import { toLocal } from '../booking/time.js';
@@ -451,7 +451,7 @@ export async function inviteOfficial(c, user, ev, fixture, userId, role) {
 cap({
   name: 'record_result', method: 'POST', path: '/fixtures/:id/result', tag: 'Schedule',
   summary: 'Record the final score (event organiser or the assigned referee). Updates standings. A knockout game cannot end level: pass winner_team_id (e.g. after penalties). The winner moves into the next round of the bracket.',
-  input: z.object({ id, home_score: z.number().int().min(0), away_score: z.number().int().min(0), winner_team_id: id.optional() }),
+  input: z.object({ id, home_score: z.number().int().min(0), away_score: z.number().int().min(0), winner_team_id: id.optional(), accept_downstream_conflicts: z.boolean().default(false).describe('a correction that changes who reaches a game already started or played is refused unless this is true; then unstarted games are re-filled and each played game is raised as a bracket conflict for an organiser decision (see preview_result_correction)') }),
   async handler({ user }, i) {
     return tx(async (c) => {
       const f = (await c.query('SELECT * FROM fixtures WHERE id=$1 FOR UPDATE', [i.id])).rows[0];
@@ -459,16 +459,9 @@ cap({
       const ev = await mustFind('events', f.event_id, '*', c);
       if (!isAdmin(user) && ![ev.organizer_id, f.referee_id].includes(user.id)) throw forbidden('Only the organiser or the assigned referee can record results');
       if ((await c.query("SELECT 1 FROM score_sheets WHERE fixture_id=$1 AND status IN ('draft','submitted','approved','rejected','published')", [i.id])).rowCount) throw conflict('This game has a score sheet; finish it there (submit, sign, approve, publish) or revise the published result');
-      let winner = null;
-      if (isKnockout(f)) {
-        if (!f.home_team_id || !f.away_team_id) throw conflict('The teams for this game are not decided yet');
-        if (i.home_score !== i.away_score) winner = i.home_score > i.away_score ? f.home_team_id : f.away_team_id;
-        else if (i.winner_team_id && [f.home_team_id, f.away_team_id].includes(i.winner_team_id)) winner = i.winner_team_id;
-        else throw badRequest('A knockout game needs a winner: send winner_team_id (home or away team), e.g. after extra time or penalties');
-        if (i.winner_team_id && i.home_score !== i.away_score && i.winner_team_id !== winner) throw badRequest('winner_team_id contradicts the score');
-      }
+      const winner = decideWinner(f, i.home_score, i.away_score, i.winner_team_id);
       const out = (await c.query("UPDATE fixtures SET home_score=$2, away_score=$3, status='completed', winner_team_id=$4 WHERE id=$1 RETURNING *", [i.id, i.home_score, i.away_score, winner])).rows[0];
-      if (winner) await advanceKnockout(c, out, winner);
+      await afterResult(c, out, winner, { allowConflicts: i.accept_downstream_conflicts });
       return out;
     });
   },
@@ -487,13 +480,21 @@ cap({
       const ev = await eventForOrganizer(user, i.id, c);
       if (ev.status === 'completed') throw conflict('Already completed');
       if (!i.force) {
+        const cf = (await c.query("SELECT count(*)::int AS n FROM bracket_conflicts WHERE event_id=$1 AND status='open'", [i.id])).rows[0].n;
+        if (cf) throw conflict(`${cf} bracket conflict(s) need an organiser decision (keep or replay) before the event can be completed`, { open_bracket_conflicts: cf });
         const open = (await c.query("SELECT name FROM event_disciplines WHERE event_id=$1 AND status NOT IN ('completed','cancelled') ORDER BY name", [i.id])).rows;
         if (open.length) throw conflict(`${open.length} discipline(s) are not finalized yet: ${open.slice(0, 5).map((d) => d.name).join(', ')}${open.length > 5 ? '…' : ''}`, { disciplines: open.map((d) => d.name) });
       }
       const table = await standings(i.id, c);
-      const final = (await c.query("SELECT * FROM fixtures WHERE event_id=$1 AND round_kind='final' AND status='completed'", [i.id])).rows[0];
+      let final = (await c.query("SELECT * FROM fixtures WHERE event_id=$1 AND round_kind='final' AND status='completed'", [i.id])).rows[0];
+      let third = null;
+      if (final) third = (await c.query("SELECT winner_team_id FROM fixtures WHERE event_id=$1 AND round_kind='third_place' AND status='completed'", [i.id])).rows[0];
+      else { // double elimination: the decisive grand final, then the losers-bracket final's loser
+        final = (await c.query("SELECT * FROM fixtures WHERE event_id=$1 AND round_kind='grand_final' AND status='completed' ORDER BY round_no DESC LIMIT 1", [i.id])).rows[0];
+        const lf = final && (await c.query("SELECT * FROM fixtures WHERE event_id=$1 AND round_kind='losers' AND status='completed' ORDER BY round_no DESC, bracket_slot LIMIT 1", [i.id])).rows[0];
+        if (lf) third = { winner_team_id: lf.winner_team_id === lf.home_team_id ? lf.away_team_id : lf.home_team_id };
+      }
       if (final) { // a knockout decides the podium, not the group table
-        const third = (await c.query("SELECT winner_team_id FROM fixtures WHERE event_id=$1 AND round_kind='third_place' AND status='completed'", [i.id])).rows[0];
         const places = [final.winner_team_id, final.winner_team_id === final.home_team_id ? final.away_team_id : final.home_team_id, third?.winner_team_id];
         const kinds = [['cup', 'Champions'], ['medal_silver', 'Runners-up'], ['medal_bronze', 'Third place']];
         const awards = [];
