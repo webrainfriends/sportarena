@@ -51,6 +51,7 @@ The event page has a single **⚡ Event console** button. It replaced three over
 | Boards | kanban per department, my day, run sheet; **bring the older planning checklist onto a board** (`import_event_tasks`, safe to repeat, originals kept) |
 | Games | live scoreboards, schedule by day, plan group stage / knockout with preview, days off, holidays, clash check, bracket |
 | Venue | venue cards, court bookings, schedule-and-budget fit, guided booking |
+| Operations | readiness %, live day board, incidents and escalation, contacts, debrief, report and close: see [event-operations.md](event-operations.md) |
 | Accreditation | Badges, zones and QR access for everyone working or playing the event: see [event-accreditation.md](event-accreditation.md) |
 | Business | **Partners** (sponsors, vendors, what is on sale), **Requests** (contact and quote), **Budget** (lines, payments, cap) |
 | Results | standings, podium, published score sheets |

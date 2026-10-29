@@ -32,6 +32,8 @@ SEES.admin = SEES.owner;
 /** Events this organisation runs, and teams it holds: the two joins most domains hang off. */
 const ORG_EVENTS = 'SELECT id FROM events WHERE organisation_id=$1';
 const ORG_TEAMS = 'SELECT id FROM teams WHERE organisation_id=$1 AND archived_at IS NULL';
+/** Compliance records that belong to this organisation's rulebook or to the rulebook of one of its events. */
+const COMP_SCOPE = `((q.scope_kind='organisation' AND q.scope_id=$1) OR (q.scope_kind='event' AND q.scope_id IN (${ORG_EVENTS})))`;
 
 async function tiles(orgId, role, user) {
   const own = role === 'coach' ? user.id : null; // a coach's counts are limited to groups assigned to them
@@ -125,10 +127,13 @@ async function tiles(orgId, role, user) {
       `SELECT (SELECT count(*)::int FROM fed_affiliations WHERE organisation_id=$1 AND status='approved' AND effective_to BETWEEN current_date AND current_date + 60) AS ending,
               (SELECT count(*)::int FROM fed_affiliations WHERE organisation_id=$1 AND status IN ('needs_info','expired','suspended')) AS attention,
               (SELECT count(*)::int FROM org_agreements WHERE organisation_id=$1 AND archived_at IS NULL AND status IN ('approved','signed') AND effective_to BETWEEN current_date AND current_date + 60) AS agreements_ending,
-              (SELECT count(*)::int FROM accreditations WHERE event_id IN (${ORG_EVENTS}) AND status IN ('submitted','under_review')) AS accreditations`, [orgId]);
-    const n = r.ending + r.attention + r.agreements_ending;
-    add({ key: 'compliance', label: 'Compliance', severity: sev(r.attention, n || r.accreditations), count: n + r.accreditations,
-      summary: n + r.accreditations ? [r.ending && `${plural(r.ending, 'affiliation')} ending within 60 days`, r.attention && `${plural(r.attention, 'affiliation')} needing attention`, r.agreements_ending && `${plural(r.agreements_ending, 'agreement')} ending within 60 days`, r.accreditations && `${plural(r.accreditations, 'accreditation')} to review`].filter(Boolean).join(' · ') : 'Nothing expiring or needing attention', link: { tab: 'agreements' } });
+              (SELECT count(*)::int FROM accreditations WHERE event_id IN (${ORG_EVENTS}) AND status IN ('submitted','under_review')) AS accreditations,
+              (SELECT count(*)::int FROM comp_records k JOIN comp_requirements q ON q.id=k.requirement_id WHERE k.status='submitted' AND ${COMP_SCOPE}) AS evidence,
+              (SELECT count(*)::int FROM comp_records k JOIN comp_requirements q ON q.id=k.requirement_id WHERE k.status='valid' AND k.expires_on BETWEEN current_date AND current_date + 30 AND ${COMP_SCOPE}) AS evidence_ending,
+              (SELECT count(*)::int FROM comp_records k JOIN comp_requirements q ON q.id=k.requirement_id WHERE k.status='valid' AND k.expires_on < current_date AND ${COMP_SCOPE}) AS evidence_expired`, [orgId]);
+    const n = r.ending + r.attention + r.agreements_ending + r.evidence_ending + r.evidence_expired;
+    add({ key: 'compliance', label: 'Compliance', severity: sev(r.attention || r.evidence_expired, n || r.accreditations || r.evidence), count: n + r.accreditations + r.evidence,
+      summary: n + r.accreditations + r.evidence ? [r.ending && `${plural(r.ending, 'affiliation')} ending within 60 days`, r.attention && `${plural(r.attention, 'affiliation')} needing attention`, r.agreements_ending && `${plural(r.agreements_ending, 'agreement')} ending within 60 days`, r.accreditations && `${plural(r.accreditations, 'accreditation')} to review`, r.evidence && `${plural(r.evidence, 'compliance submission')} to review`, r.evidence_expired && `${r.evidence_expired} expired`, r.evidence_ending && `${r.evidence_ending} expiring within 30 days`].filter(Boolean).join(' · ') : 'Nothing expiring or needing attention', link: { tab: 'compliance' } });
   }
   if (want.has('documents')) {
     const r = await one(
@@ -271,6 +276,12 @@ async function queueItems(org, role, user, only) {
           act('Request changes', 'decide_org_agreement', 'POST', `/org-agreements/${r.id}/decision`, { decision: 'request_changes' }, { ask: [F.note] }),
           act('Reject', 'decide_org_agreement', 'POST', `/org-agreements/${r.id}/decision`, { decision: 'reject' }, { tone: 'danger', ask: [F.note] })] });
       }
+      const evid = await many(
+        `SELECT k.id, k.submitted_at, q.name AS requirement, q.category, k.subject_kind, k.subject_id, (CASE k.subject_kind WHEN 'person' THEN (SELECT display_name FROM users WHERE id=k.subject_id) WHEN 'organisation' THEN (SELECT name FROM organisations WHERE id=k.subject_id) ELSE (SELECT name FROM events WHERE id=k.subject_id) END) AS who
+           FROM comp_records k JOIN comp_requirements q ON q.id=k.requirement_id WHERE k.status='submitted' AND k.submitted_by<>$2 AND NOT (k.subject_kind='person' AND k.subject_id=$2) AND ${COMP_SCOPE} ORDER BY k.submitted_at LIMIT 50`, [orgId, user.id]);
+      for (const r of evid) items.push({ key: `compliance:record:${r.id}`, domain: 'compliance', title: `${r.who} · ${r.requirement}`, sub: 'Evidence to review', at: ago(r.submitted_at), can_act: true, record: { screen: 'Org', tab: 'compliance' }, actions: [
+        act('Approve', 'decide_compliance_record', 'POST', `/compliance/records/${r.id}/decision`, { decision: 'approve' }, { tone: 'primary' }),
+        act('Reject', 'decide_compliance_record', 'POST', `/compliance/records/${r.id}/decision`, { decision: 'reject' }, { tone: 'danger', ask: 'reason' })] });
       const acc = await many(
         `SELECT a.id, a.event_id, a.status, a.submitted_at, ev.name AS event, u.display_name AS person FROM accreditations a JOIN events ev ON ev.id=a.event_id JOIN users u ON u.id=a.holder_id
           WHERE ev.organisation_id=$1 AND a.status IN ('submitted','under_review') AND a.holder_id<>$2 ORDER BY a.submitted_at LIMIT 50`, [orgId, user.id]);

@@ -27,6 +27,7 @@ import { LoyaltyConsole } from './rewards';
 import { FederationLinks } from './federation-club';
 import { OrgIdentity } from './org-identity';
 import { CommandCentre } from './org-command-centre';
+import { ComplianceWorkspace } from './compliance';
 
 const KINDS = ORG_KINDS;
 const ROLE_LABEL = { owner: 'Owner', admin: 'Admin', coach: 'Coach', staff: 'Staff', finance: 'Finance', manager: 'Sponsor manager', evaluator: 'Evaluator', legal: 'Legal', approver: 'Approver', auditor: 'Auditor' };
@@ -98,7 +99,7 @@ export function Org({ id, tab: first = 'overview', focus: firstFocus = null }) {
   };
   const P = { o, d, role, archived, toast, brands, go, reload: () => { org.reload(); dash.reload(); brands.reload(); } };
   const teaching = !SPONSOR_ONLY.includes(role) && role !== 'finance' && role !== 'staff';
-  const tabs = [['overview', ['owner', 'admin', 'coach', 'finance'].includes(role) ? 'Command centre' : 'Overview'], ...(teaching ? [['cohorts', 'Cohorts']] : []), ['people', 'People'], ...(brands.data?.length && role !== 'coach' ? [['sponsor', 'Sponsor']] : []), ...(teaching ? [['assets', 'Teams, events & venues']] : []), ...(STAFF.includes(role) && o.kind !== 'academy' ? [['agreements', 'Agreements']] : []), ...(['owner', 'admin', 'finance'].includes(role) && o.kind !== 'academy' ? [['collections', 'Collections']] : []), ...(['owner', 'admin', 'finance'].includes(role) ? [['rewards', 'Rewards'], ['comms', 'Communication']] : []), ...(STAFF.includes(role) ? [['signin', 'Sign-in & access']] : []), ...(STAFF.includes(role) || (o.kind === 'academy' && ['finance', 'coach', 'staff', 'auditor'].includes(role)) ? [[o.kind === 'academy' ? 'academy' : 'admissions', o.kind === 'academy' ? 'Academy' : 'Admissions']] : [])];
+  const tabs = [['overview', ['owner', 'admin', 'coach', 'finance'].includes(role) ? 'Command centre' : 'Overview'], ...(teaching ? [['cohorts', 'Cohorts']] : []), ['people', 'People'], ...(brands.data?.length && role !== 'coach' ? [['sponsor', 'Sponsor']] : []), ...(teaching ? [['assets', 'Teams, events & venues']] : []), ...(STAFF.includes(role) && o.kind !== 'academy' ? [['agreements', 'Agreements']] : []), ...(['owner', 'admin', 'finance'].includes(role) && o.kind !== 'academy' ? [['collections', 'Collections']] : []), ...(['owner', 'admin', 'finance'].includes(role) ? [['rewards', 'Rewards'], ['comms', 'Communication']] : []), ...(STAFF.includes(role) ? [['compliance', 'Compliance'], ['signin', 'Sign-in & access']] : []), ...(STAFF.includes(role) || (o.kind === 'academy' && ['finance', 'coach', 'staff', 'auditor'].includes(role)) ? [[o.kind === 'academy' ? 'academy' : 'admissions', o.kind === 'academy' ? 'Academy' : 'Admissions']] : [])];
   return (
     <Screen wide>
       <GradCard colors={[c.violet, c.ink]}>
@@ -107,7 +108,7 @@ export function Org({ id, tab: first = 'overview', focus: firstFocus = null }) {
       </GradCard>
       {archived ? <View style={{ marginTop: 10 }}><Empty emoji="🗄️" title="This organisation is archived" sub="Everything is kept and readable. Ask an owner to restore it to make changes." /></View> : null}
       <View style={{ marginTop: 10 }}><Seg options={tabs.map(([value, label]) => ({ value, label }))} value={tab} onChange={setTab} color={c.violet} /></View>
-      {tab === 'overview' ? <Overview {...P} /> : tab === 'cohorts' ? <Cohorts {...P} /> : tab === 'people' ? <People {...P} /> : tab === 'admissions' ? <Admissions {...P} /> : tab === 'academy' ? <AcademyDesk key={JSON.stringify(focus)} {...P} focus={focus} /> : tab === 'collections' ? <Collections target={{ organisation_id: o.id }} archived={archived} /> : tab === 'rewards' ? <LoyaltyConsole ownerKind="organisation" ownerId={o.id} /> : tab === 'sponsor' ? <SponsorTab {...P} /> : tab === 'agreements' ? <Agreements {...P} /> : tab === 'comms' ? <Communications organisationId={o.id} organisationName={o.name} archived={archived} /> : tab === 'signin' ? <OrgIdentity {...P} /> : <Assets {...P} />}
+      {tab === 'overview' ? <Overview {...P} /> : tab === 'cohorts' ? <Cohorts {...P} /> : tab === 'people' ? <People {...P} /> : tab === 'admissions' ? <Admissions {...P} /> : tab === 'academy' ? <AcademyDesk key={JSON.stringify(focus)} {...P} focus={focus} /> : tab === 'collections' ? <Collections target={{ organisation_id: o.id }} archived={archived} /> : tab === 'rewards' ? <LoyaltyConsole ownerKind="organisation" ownerId={o.id} /> : tab === 'sponsor' ? <SponsorTab {...P} /> : tab === 'agreements' ? <Agreements {...P} /> : tab === 'comms' ? <Communications organisationId={o.id} organisationName={o.name} archived={archived} /> : tab === 'compliance' ? <ComplianceWorkspace scope={{ kind: 'organisation', id: o.id }} own={{ subject: { kind: 'organisation', id: o.id }, title: `${o.name}: our own requirements` }} /> : tab === 'signin' ? <OrgIdentity {...P} /> : <Assets {...P} />}
     </Screen>
   );
 }
@@ -127,6 +128,7 @@ function Overview({ o, d, role, archived, reload, toast, go }) {
   const archive = async () => { try { await api.post(`/organisations/${o.id}/${archived ? 'restore' : 'archive'}`); toast(archived ? 'Organisation restored' : 'Organisation archived — data is kept'); reload(); } catch (e) { fail(toast)(e); } };
   return (
     <>
+      <View style={{ marginTop: 10, alignItems: 'flex-start' }}><Btn small title="360° view" color={c.paper} ink={c.ink} onPress={() => push('Organisation360', { id: o.id })} accessibilityLabel="Open the 360 view" /></View>
       {['owner', 'admin', 'coach', 'finance'].includes(role) ? <CommandCentre o={o} role={role} archived={archived} go={go} toast={toast} reload={reload} /> : null}
       {STAFF.includes(role) && (o.legal_name || o.registration_no || o.tax_id || o.contact_email || o.contact_phone || o.website || o.description || o.founded_on) ? (
         <Section title="Profile" color={c.violet}>

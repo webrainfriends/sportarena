@@ -102,6 +102,8 @@ export async function canSeeYouth(viewer, childId) {
   if (viewer.id === childId || isAdmin(viewer)) return true;
   if (await guardianLink(viewer.id, childId)) return true;
   if (!(await hasConsent(childId, 'participation'))) return false;
+  const { mayAccessYouth } = await import('./compliance.js'); // policy-driven safeguarding (#595): a coach or manager must meet any obligation that blocks access
+  if (!(await mayAccessYouth({ query }, viewer.id, childId))) return false;
   return !!(await one(
     `SELECT 1 FROM team_members m JOIN teams t ON t.id=m.team_id
       WHERE m.user_id=$1 AND m.status='active' AND (t.owner_id=$2 OR EXISTS (SELECT 1 FROM team_members c WHERE c.team_id=t.id AND c.user_id=$2 AND c.status='active' AND c.role IN ('coach','manager','captain')))`, [childId, viewer.id]));

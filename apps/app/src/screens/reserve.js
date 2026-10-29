@@ -19,6 +19,7 @@ import { NewCaseSheet } from './cases';
 import { AttachSessionsSheet } from './training-venue';
 import { currentDevice, disablePush, enablePush, pushSupport } from '../push';
 import { KIND } from './book';
+import { InboxList } from './command-centre';
 import { addDays, dateTimeIn, dayLabel, fmtMin, localDate, hoursSummary, localToIso, moneyIn, offerLabel, timeIn, todayIn } from '../vtime';
 import { locale } from '../locale';
 
@@ -535,20 +536,8 @@ function WaitlistList() {
 
 export function Notifications() {
   const { toast } = useSession();
-  const { push, goTab } = useNav();
-  const list = useLoad(() => api.get('/notifications', { limit: 50 }), []);
   const prefs = useLoad(() => api.get('/me/notification-preferences'), []);
   const setPref = async (patch) => { try { await api.patch('/me/notification-preferences', patch); prefs.reload(); } catch (e) { toast(e.message); } };
-  const readAll = async () => { await api.post('/notifications/read', {}); list.reload(); };
-  const tap = async (n) => {
-    if (!n.read_at) { await api.post('/notifications/read', { ids: [n.id] }); list.reload(); }
-    if (n.data?.trip_id) push('Trip', { id: n.data.trip_id });
-    else if (n.data?.open_game_id) push('OpenGame', { id: n.data.open_game_id });
-    else if (n.data?.reservation_id) push('Reservation', { id: n.data.reservation_id });
-    else if (n.data?.request_id) push('CoachRequest', { id: n.data.request_id });
-    else if (n.data?.sponsorship_id) push('SponsorDeal', { id: n.data.sponsorship_id });
-    else if (n.data?.hire_id || n.data?.review_id) { if (['coach_hire_request', 'coach_review', 'coach_response_accepted'].includes(n.kind)) push('CoachDesk'); else goTab('Schedule', { section: 'coach' }); }
-  };
   const p = prefs.data;
   return (
     <Screen>
@@ -573,12 +562,7 @@ export function Notifications() {
       <Section title="WhatsApp & SMS preferences" color={c.lime}><CommsPrefs onChanged={prefs.reload} /></Section>
       <Section title="Waitlist" color={c.lime}><WaitlistList /></Section>
       <Section title="Slot alerts" color={c.sun}><AlertsList /></Section>
-      <Section title="Inbox" action={list.data?.unread ? 'Mark all read' : undefined} onAction={readAll} color={c.pink}>
-        {list.loading && !list.data ? <Loading /> : list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : list.data.items.length ? list.data.items.map((n) => (
-          <Row key={n.id} onPress={() => tap(n)} color={n.read_at ? c.paper : c.pinkSoft} left={<Bubble emoji={n.kind.includes('cancel') ? '❌' : n.kind.includes('remind') ? '⏰' : n.kind.includes('modif') ? '✏️' : '✅'} />}
-            title={n.title} sub={`${n.body} · ${new Date(n.created_at).toLocaleString(locale)}`} />
-        )) : <Empty emoji="🔕" title="Nothing yet" sub="Booking confirmations, changes and reminders land here." />}
-      </Section>
+      <Section title="Inbox" color={c.pink}><InboxList /></Section>
     </Screen>
   );
 }

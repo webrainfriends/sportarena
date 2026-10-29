@@ -10,7 +10,7 @@ import { isAdmin } from '../helpers.js';
 import { notify } from '../notify.js';
 import { requireConsent, YOUTH_SQL } from '../youth.js';
 import { attendanceScope, askAttendance } from './team-workspace.js';
-import { announce, chatAccess, fetchMessages, markRead, mustPost, waitForChange } from '../team-chat.js';
+import { announce, chatAccess, fetchMessages, markRead, mustBeSafeToPost, mustPost, waitForChange } from '../team-chat.js';
 
 const audience = z.enum(['team', 'guardians']).describe('team = every member; guardians = managers and the verified guardians of young members');
 const seqNo = z.coerce.number().int().min(0);
@@ -41,6 +41,7 @@ cap({
     const access = await chatAccess(user, i.id);
     mustPost(access, i.audience);
     await requireConsent(user.id, 'contact', 'messaging in the team chat');
+    await mustBeSafeToPost(user, access);
     if (i.announcement && !access.manager) throw forbidden('Only owners and managers can post announcements');
     if (i.client_id) {
       const prior = await one('SELECT id FROM team_messages WHERE team_id=$1 AND sender_id=$2 AND client_id=$3', [i.id, user.id, i.client_id]);
@@ -189,6 +190,7 @@ cap({
     const access = await chatAccess(user, i.id);
     mustPost(access, i.audience);
     await requireConsent(user.id, 'contact', 'messaging in the team chat');
+    await mustBeSafeToPost(user, access);
     if (new Set(i.options.map((o) => o.toLowerCase())).size !== i.options.length) throw badRequest('Each option must be different');
     if (i.closes_at && new Date(i.closes_at) <= new Date()) throw badRequest('closes_at must be in the future');
     if (i.client_id) {
