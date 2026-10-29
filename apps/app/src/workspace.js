@@ -1,4 +1,4 @@
-// The role-driven workspace the whole shell reads (issue #599): one load of GET /me/workspace for the active role, shared by Home, Work and the
+// The role-driven workspace the whole shell reads (issue #599): one load of GET /me/role-workspace for the active role, shared by Home, Work and the
 // tab badges. The app owns no business logic here: the API decides the queue, the fast actions and where each one opens.
 // Poor connectivity: the last good answer stays on screen (marked as offline) and one-tap answers go through the retry outbox
 // (outbox.js: in memory only, emptied on sign-out, every write carries a client_key), so a dropped connection never loses a tap
@@ -34,7 +34,7 @@ export function WorkspaceProvider({ children }) {
     if (!user) return;
     const n = ++seq.current;
     try {
-      const data = await api.get('/me/workspace', role ? { role } : {});
+      const data = await api.get('/me/role-workspace', role ? { role } : {});
       if (alive.current && n === seq.current) setSt({ data, error: null, loading: false, offlineSince: null });
     } catch (error) {
       // keep the last good answer; a refusal (4xx) is a real error, no connection (status 0) or a server fault is "offline"

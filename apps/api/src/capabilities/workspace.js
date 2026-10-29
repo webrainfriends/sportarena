@@ -1,187 +1,196 @@
+// Role-based command centres (#562). One capability set serves the app, REST and MCP: which roles you hold right now, and for the
+// chosen role the six common sections (Today, Actions, Calendar, Inbox, Work, Insights). Everything is a live projection over the
+// canonical modules (see src/workspace.js); the only thing stored is the person's own preferences (workspace_prefs).
 import { z } from 'zod';
-import { cap, capabilities } from '../registry.js';
-import { one, many } from '../db.js';
-import { forbidden } from '../errors.js';
-import { invoke } from '../invoke.js';
+import { cap, id } from '../registry.js';
+import { one, many, tx } from '../db.js';
+import { badRequest, forbidden, notFound } from '../errors.js';
+import { audit } from '../helpers.js';
+import { hasConsent } from '../youth.js';
+import { inbox } from '../notify.js';
+import { buildSchedule } from './athlete-schedule.js';
+import { CALENDAR_KINDS, PERSONA_KEYS, SECTIONS, actionsFor, canPin, contextsFor, insightsFor, linkFor, resolvePins, workFor } from '../workspace.js';
 
-// The role-driven mobile workspace (issue #599). The app opens on what the signed-in person does, not on the platform's modules:
-// Home (today and what needs me), Calendar, Work (the queue and the fast actions of the active role), Inbox and Profile.
-// This capability is the one place that decides, per role, which fast actions and which work items to show. It owns no data: every
-// number and item is read through the capability that already owns it (coach_home, get_officials_home, list_my_selections,
-// venue_operations_overview, ...), so the rules, permissions and encryption of those capabilities apply unchanged and the app,
-// REST clients and MCP agents all see the same queue. Items point at the screen that resolves them; nothing is changed here.
 const TAG = 'Workspace';
+const role = z.enum(PERSONA_KEYS);
+const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const PIN_TYPES = ['team', 'event', 'venue', 'org'];
 
-// Roles that have their own workspace. Platform roles (admin, platform_admin) are never listed or switchable.
-const ROLE_LABEL = {
-  athlete: 'Athlete', coach: 'Coach', organizer: 'Event manager', referee: 'Official', venue_manager: 'Venue operator',
-  sponsor: 'Sponsor', physio: 'Physio', doctor: 'Doctor', supplier: 'Supplier', insurer: 'Insurer', lawyer: 'Lawyer', recruiter: 'Recruiter / scout',
+const loadPrefs = async (userId, c) => {
+  const q = c ? (t, p) => c.query(t, p).then((r) => r.rows[0]) : one;
+  return (await q('SELECT * FROM workspace_prefs WHERE user_id=$1', [userId])) ?? { user_id: userId, active_role: null, active_scope_id: null, default_org_id: null, pins: [], saved_filters: [], version: 0 };
 };
-// Roles whose workspace is built natively below; the others get the labelled generic workspace (their own home screen + inbox).
-const NATIVE = ['athlete', 'coach', 'organizer', 'referee', 'venue_manager'];
-const ORDER = [...NATIVE, ...Object.keys(ROLE_LABEL).filter((r) => !NATIVE.includes(r))];
-const OWN_HOME = { sponsor: 'Sponsors', physio: 'Health', doctor: 'DoctorHome', supplier: 'SupplierWorkspace', insurer: 'InsurerDesk', lawyer: 'Legal', recruiter: 'RecruiterHome' };
 
-const go = (screen, params = {}) => ({ screen, params });
-const tab = (name, section) => ({ tab: name, ...(section ? { section } : {}) });
-const act = (key, label, icon, target, extra = {}) => ({ key, label, icon, target, ...extra });
-const call = async (name, user, input = {}) => {
-  const c = capabilities.find((x) => x.name === name);
-  try { return await invoke(c, user, input); } catch { return null; } // one source being unavailable must not blank the whole workspace
-};
-const soon = (iso, hours) => !!iso && new Date(iso).getTime() < Date.now() + hours * 3600000;
-// `quick` = one-tap answers an item can carry. They call the owning capability's own endpoint, are plain state changes (so a retry after a
-// dropped connection is harmless) and are checked again by that capability: ownership, status and clashes are never decided here.
-const item = (kind, title, detail, target, at, urgency = 'info', quick) => ({ kind, title, detail: detail ?? '', target, at: at ?? null, urgency, ...(quick ? { quick } : {}) });
-const answer = (label, tone, method, path, body) => ({ label, tone, method, path, body });
-
-// ---------------------------------------------------------------------------------------------------------------- per-role builders
-// Each returns { summary: [{key,label,value}], today: [item], work: [item], actions: [action], unavailable?: [string] }.
-async function athlete(user) {
-  const [sel, staff, passes, invites] = await Promise.all([
-    call('list_my_selections', user, { limit: 20 }),
-    call('list_my_staff_assignments', user, { status: 'invited', limit: 20 }),
-    call('list_my_accreditations', user, {}),
-    many("SELECT t.id, t.name FROM team_members m JOIN teams t ON t.id=m.team_id WHERE m.user_id=$1 AND m.status='invited' ORDER BY t.name LIMIT 10", [user.id]),
-  ]);
-  const pending = (sel ?? []).filter((s) => s.status === 'selected');
-  const work = [
-    ...pending.map((s) => item('selection', `Confirm you can play: ${s.team_name}`, s.event_name ?? s.round ?? '', go('Team', { id: s.team_id }), s.scheduled_at, soon(s.scheduled_at, 48) ? 'now' : 'soon',
-      [answer('I can play', 'yes', 'PATCH', `/squads/${s.squad_id}`, { status: 'confirmed' }), answer("I can't", 'no', 'PATCH', `/squads/${s.squad_id}`, { status: 'declined' })])),
-    ...invites.map((t) => item('team_invite', `Team invitation: ${t.name}`, '', go('Team', { id: t.id }), null, 'soon')),
-    ...(staff ?? []).map((a) => item('staff_offer', `Event role offered: ${a.title ?? a.role}`, a.event_name, go('MyAccreditations'), a.starts_on, 'soon',
-      [answer('Accept', 'yes', 'POST', `/staff-assignments/${a.id}/respond`, { accept: true }), answer('Decline', 'no', 'POST', `/staff-assignments/${a.id}/respond`, { accept: false })])),
-  ];
-  const today = (sel ?? []).filter((s) => s.status === 'confirmed' && soon(s.scheduled_at, 24)).map((s) => item('match', `${s.team_name}${s.event_name ? ` · ${s.event_name}` : ''}`, '', go('Team', { id: s.team_id }), s.scheduled_at, 'now'));
-  return {
-    summary: [{ key: 'selections', label: 'To confirm', value: pending.length }, { key: 'upcoming', label: 'Upcoming', value: (sel ?? []).filter((s) => s.status === 'confirmed').length }, { key: 'passes', label: 'My passes', value: (passes ?? []).length }],
-    today, work,
-    actions: [
-      act('availability', 'Set availability', 'calendar', tab('Schedule', 'agenda')),
-      act('pass', 'Show my pass', 'qr', go('MyPasses')),
-      act('log', 'Log a match', 'edit', tab('Player')),
-      act('find', 'Find a game', 'search', go('FindGames')),
-    ],
-    unavailable: [sel, staff, passes].some((x) => x === null) ? ['selections'] : [],
-  };
+/** The role (and optional scope) a call is about. Roles and scopes are re-derived from live memberships on every call. */
+async function resolve(user, wantRole, wantScope) {
+  const [contexts, prefs] = await Promise.all([contextsFor(user), loadPrefs(user.id)]);
+  if (!contexts.length) throw notFound('Workspace');
+  const key = wantRole ?? (contexts.some((c) => c.key === prefs.active_role) ? prefs.active_role : contexts[0].key);
+  const ctx = contexts.find((c) => c.key === key);
+  if (!ctx) throw forbidden('You do not hold that role');
+  if (wantScope && !ctx.scopes.some((s) => s.id === wantScope)) throw notFound('Scope');
+  return { ctx, contexts, prefs, scope: wantScope ?? null };
 }
 
-async function coach(user) {
-  const h = await call('coach_home', user);
-  const inbox = h?.inbox ?? [];
-  const work = inbox.map((x) => item(x.kind, x.title, x.detail, x.link?.screen ? go(x.link.screen, x.link.params ?? {}) : go('CoachHome'), x.at, x.kind === 'hire_request' ? 'now' : 'soon'));
-  const next = h?.next_session;
-  return {
-    summary: [{ key: 'athletes', label: 'Athletes', value: h?.counts?.athletes ?? 0 }, { key: 'requests', label: 'Requests', value: h?.counts?.requests ?? 0 }, { key: 'revisions', label: 'Plan replies', value: h?.counts?.plans_needing_revision ?? 0 }],
-    today: next && soon(next.starts_at, 24) ? [item('session', next.title ?? 'Coaching session', '', go('CoachCalendar'), next.starts_at, 'now')] : [],
-    work: [...work, ...(h?.warnings ?? []).map((w) => item('warning', w.title, '', go(w.link?.screen ?? 'CoachHome', w.link?.params ?? {}), null, 'soon'))],
-    actions: [
-      act('attendance', 'Take attendance', 'check', go('AcademyAgenda')),
-      act('calendar', 'My sessions', 'calendar', go('CoachCalendar')),
-      act('athletes', 'My athletes', 'people', go('CoachAthletes')),
-      act('requests', 'Coaching requests', 'inbox', go('CoachBoard')),
-    ],
-    unavailable: h ? [] : ['coach_home'],
-  };
+const withLinks = (rows) => rows.map((n) => ({ id: n.id, kind: n.kind, title: n.title, body: n.body, read_at: n.read_at, created_at: n.created_at, link: linkFor(n.kind, n.data) }));
+
+/** What a guardian may see of their children's day: selections only, and only while participation consent is live. Each read is audited. */
+async function childrenToday(user, scope, from, to) {
+  const kids = await many("SELECT l.child_id AS id, c.display_name AS name FROM guardian_links l JOIN users c ON c.id=l.child_id WHERE l.guardian_id=$1 AND l.status='active' AND l.revoked_at IS NULL AND (l.expires_at IS NULL OR l.expires_at > now()) AND ($2::uuid IS NULL OR l.child_id=$2)", [user.id, scope]);
+  const items = [];
+  for (const k of kids) {
+    if (!(await hasConsent(k.id, 'participation'))) continue;
+    await audit(null, user.id, 'read_child_schedule', 'users', k.id);
+    const rows = await many(
+      `SELECT q.id, q.status, f.scheduled_at AS starts_at, t.name AS team, h.name AS home_name, a.name AS away_name FROM team_squads q JOIN fixtures f ON f.id=q.fixture_id JOIN teams t ON t.id=q.team_id JOIN teams h ON h.id=f.home_team_id JOIN teams a ON a.id=f.away_team_id
+        WHERE q.user_id=$1 AND q.status IN ('selected','confirmed') AND f.status='scheduled' AND f.scheduled_at >= $2::date AND f.scheduled_at < $3::date + 1 ORDER BY f.scheduled_at`, [k.id, from, to]);
+    items.push(...rows.map((r) => ({ source_type: 'child_selection', source_id: r.id, kind: 'match', title: `${k.name}: ${r.home_name} v ${r.away_name}`, starts_at: r.starts_at, status: r.status, context: r.team, link: { screen: 'Family', params: {} } })));
+  }
+  return { items, conflicts: 0 };
 }
 
-async function organizer(user) {
-  const events = await many(
-    `SELECT e.id, e.name, e.status, e.starts_on::text AS starts_on, e.ends_on::text AS ends_on,
-            (SELECT count(*)::int FROM event_entries n WHERE n.event_id=e.id AND n.status='pending') AS pending_entries,
-            (SELECT coalesce(sum(greatest(r.needed - (SELECT count(*) FROM event_staff_assignments a WHERE a.role_id=r.id AND a.status='accepted'), 0)), 0)::int FROM event_staff_roles r WHERE r.event_id=e.id AND r.closed_at IS NULL) AS open_positions,
-            (SELECT count(*)::int FROM accreditations k WHERE k.event_id=e.id AND k.status IN ('submitted','under_review')) AS pending_badges
-       FROM events e WHERE e.organizer_id=$1 AND e.status NOT IN ('cancelled','completed') ORDER BY e.starts_on NULLS LAST, e.created_at DESC LIMIT 12`, [user.id]);
-  const todayIso = new Date().toISOString().slice(0, 10);
-  const running = events.filter((e) => e.starts_on && e.starts_on <= todayIso && (e.ends_on ?? e.starts_on) >= todayIso);
-  const gateEvent = running[0] ?? events[0] ?? null; // the scanner opens on the event happening today, else the nearest one
-  const work = events.flatMap((e) => [
-    ...(e.pending_entries ? [item('entries', `${e.pending_entries} entr${e.pending_entries === 1 ? 'y' : 'ies'} to approve`, e.name, go('EventCommand', { id: e.id }), e.starts_on, 'now')] : []),
-    ...(e.pending_badges ? [item('badges', `${e.pending_badges} badge${e.pending_badges === 1 ? '' : 's'} to decide`, e.name, go('EventCommand', { id: e.id, tab: 'accreditation' }), e.starts_on, 'now')] : []),
-    ...(e.open_positions ? [item('positions', `${e.open_positions} position${e.open_positions === 1 ? '' : 's'} still to fill`, e.name, go('EventCommand', { id: e.id }), e.starts_on, 'soon')] : []),
-  ]);
-  return {
-    summary: [{ key: 'events', label: 'Events', value: events.length }, { key: 'running', label: 'Today', value: running.length }, { key: 'approvals', label: 'To approve', value: events.reduce((n, e) => n + e.pending_entries + e.pending_badges, 0) }],
-    today: running.map((e) => item('event', e.name, e.status, go('EventCommand', { id: e.id }), e.starts_on, 'now')),
-    work,
-    actions: [
-      act('console', 'Event console', 'event', gateEvent ? go('EventCommand', { id: gateEvent.id }) : tab('Schedule', 'manage'), gateEvent ? {} : { hint: 'Create an event first' }),
-      act('scan', 'Scan at the gate', 'scan', gateEvent ? go('GateScan', { id: gateEvent.id }) : null, gateEvent ? { camera: true } : { disabled: 'No event to scan for yet' }),
-      act('approvals', 'Approvals', 'check', gateEvent ? go('EventCommand', { id: (events.find((e) => e.pending_entries || e.pending_badges) ?? gateEvent).id, tab: events.some((e) => e.pending_badges) ? 'accreditation' : 'overview' }) : null, gateEvent ? {} : { disabled: 'No event yet' }),
-      act('create', 'Create event', 'add', tab('Schedule', 'manage')),
-    ],
-  };
-}
+const scheduleFor = (user, ctx, scope, from, to, kinds) => (ctx.key === 'guardian'
+  ? childrenToday(user, scope, from, to)
+  : buildSchedule(user, { from, to, kinds: (kinds?.length ? kinds : CALENDAR_KINDS[ctx.key]).join(',') }));
 
-async function referee(user) {
-  const h = await call('get_officials_home', user, {});
-  const KIND_TAB = { invitation: 'today', changed: 'today', released: 'today', checklist: 'today', report_due: 'history', dispute: 'history', credential: 'credential' };
-  const work = (h?.inbox ?? []).map((x) => item(x.kind, x.title, x.detail, go('OfficialsHome', { tab: KIND_TAB[x.kind] ?? 'today' }), x.at, ['invitation', 'changed'].includes(x.kind) ? 'now' : 'soon',
-    x.kind === 'invitation' ? [answer('Accept', 'yes', 'POST', `/official-assignments/${x.official_id}/respond`, { response: 'accept' }), answer('Decline', 'no', 'POST', `/official-assignments/${x.official_id}/respond`, { response: 'decline' })]
-      : x.kind === 'changed' ? [answer('Acknowledge', 'yes', 'POST', `/official-assignments/${x.official_id}/respond`, { response: 'accept' })] : undefined));
-  return {
-    summary: [{ key: 'today', label: 'Today', value: h?.today?.length ?? 0 }, { key: 'pending', label: 'Requests', value: h?.stats?.pending ?? 0 }, { key: 'week', label: 'This week', value: h?.stats?.this_week ?? 0 }],
-    today: (h?.today ?? []).map((a) => item('assignment', `${a.home_name ?? 'TBD'} v ${a.away_name ?? 'TBD'}`, `${a.role} · ${a.event_name}`, go('OfficialMatch', { id: a.fixture_id }), a.scheduled_at, 'now')),
-    work,
-    actions: [
-      act('assignments', 'My assignments', 'calendar', go('OfficialsHome', { tab: 'calendar' })),
-      act('availability', 'My availability', 'clock', go('OfficialsHome', { tab: 'availability' })),
-      act('requests', 'Pending requests', 'inbox', go('OfficialsHome', { tab: 'today' })),
-      act('match', 'Match-day console', 'whistle', h?.next ? go('MatchCentre', { id: h.next.fixture_id }) : null, h?.next ? {} : { disabled: 'No upcoming assignment' }),
-    ],
-    unavailable: h ? [] : ['officials_home'],
-  };
-}
-
-async function venueManager(user) {
-  const venues = (await call('list_my_venues', user)) ?? [];
-  const live = venues.filter((v) => v.active !== false).slice(0, 6);
-  const ops = await Promise.all(live.map(async (v) => ({ v, o: await call('venue_operations_overview', user, { id: v.id }), today: await one(
-    `SELECT count(*)::int AS n FROM bookings b JOIN resources r ON r.id=b.resource_id WHERE r.venue_id=$1 AND b.status='confirmed' AND b.starts_at::date = current_date`, [v.id]) })));
-  const work = ops.flatMap(({ v, o }) => (o?.attention ?? []).map((a) => item(a.key, a.text, v.name, go('Manage', { id: v.id, tab: a.key.startsWith('maintenance') ? 'maintenance' : 'schedule' }), null, a.key.startsWith('maintenance') ? 'now' : 'soon')));
-  const first = live[0] ?? null;
-  const bookingsToday = ops.reduce((n, x) => n + (x.today?.n ?? 0), 0);
-  return {
-    summary: [{ key: 'venues', label: 'Venues', value: venues.length }, { key: 'today', label: 'Bookings today', value: bookingsToday }, { key: 'attention', label: 'Need attention', value: work.length }],
-    today: ops.filter((x) => x.today?.n).map(({ v, today }) => item('bookings', `${today.n} booking${today.n === 1 ? '' : 's'} today`, v.name, go('Manage', { id: v.id, tab: 'schedule' }), null, 'now')),
-    work,
-    actions: [
-      act('today', 'Today at the venue', 'calendar', first ? go('Manage', { id: first.id, tab: 'schedule' }) : go('VenueWorkspace'), first ? {} : { hint: 'Register a venue first' }),
-      act('checkin', 'Check people in', 'scan', first ? go('Manage', { id: first.id, tab: 'access' }) : null, first ? { camera: true } : { disabled: 'No venue yet' }),
-      act('checks', 'Venue checks', 'check', first ? go('Manage', { id: first.id, tab: 'maintenance' }) : null, first ? {} : { disabled: 'No venue yet' }),
-      act('desk', 'Front desk', 'cash', first ? go('Manage', { id: first.id, tab: 'frontdesk' }) : null, first ? {} : { disabled: 'No venue yet' }),
-    ],
-  };
-}
-
-// Every other role: their own home screen is the workspace (labelled generic: no queue is composed for them yet).
-const generic = (role) => ({
-  generic: true, summary: [], today: [], work: [],
-  actions: [act('home', `Open my ${ROLE_LABEL[role]?.toLowerCase() ?? 'workspace'}`, 'home', OWN_HOME[role] ? go(OWN_HOME[role]) : tab('Explore')), act('find', 'Find a game', 'search', go('FindGames'))],
-});
-const BUILD = { athlete, coach, organizer, referee, venue_manager: venueManager };
+const iso = (d) => d.toISOString().slice(0, 10);
 
 cap({
-  name: 'get_my_workspace', method: 'GET', path: '/me/workspace', tag: TAG,
-  summary: 'Your role-driven mobile workspace: the roles and organisations you can switch between, then for the active role today\'s items, the queue of things waiting on you, headline numbers and the fast actions (each names the screen that does it). Read-only; it composes the role homes, so it shows only what those already let you see.',
-  input: z.object({ role: z.enum(Object.keys(ROLE_LABEL)).optional().describe('which of your roles to show; defaults to your first role') }),
-  async handler({ user }, i) {
-    const held = ORDER.filter((r) => user.roles?.includes(r)); // admin / platform_admin are never offered
-    if (i.role && !held.includes(i.role)) throw forbidden('You do not hold that role');
-    const role = i.role ?? held[0] ?? null;
-    const [orgs, unread] = await Promise.all([
-      many(`SELECT o.id, o.name, m.role AS my_role FROM organisation_members m JOIN organisations o ON o.id=m.organisation_id WHERE m.user_id=$1 AND m.status='active' ORDER BY o.name LIMIT 20`, [user.id]),
-      one('SELECT count(*)::int AS n FROM notifications WHERE user_id=$1 AND read_at IS NULL', [user.id]),
-    ]);
-    const body = role ? await (BUILD[role]?.(user) ?? generic(role)) : { generic: true, summary: [], today: [], work: [], actions: [act('find', 'Find a game', 'search', go('FindGames')), act('book', 'Book a venue', 'calendar', tab('Schedule', 'book'))] };
-    const rank = { now: 0, soon: 1, info: 2 };
-    const work = body.work.sort((a, b) => rank[a.urgency] - rank[b.urgency] || String(a.at ?? '9').localeCompare(String(b.at ?? '9'))).slice(0, 50);
+  name: 'list_workspace_contexts', method: 'GET', path: '/me/workspace', tag: TAG,
+  summary: 'The roles you hold right now (athlete, guardian, coach, team manager, club/academy/federation admin, event manager, official, doctor, physio, sponsor, supplier, venue operator, agent, media, volunteer), the records each acts for (team, organisation, event, venue ...), how many actions wait in each, and your workspace preferences: active role, default organisation, pinned teams and events, saved filters. Roles are derived live from your memberships, so a revoked membership disappears at once.',
+  async handler({ user }) {
+    const [contexts, prefs, unread] = await Promise.all([contextsFor(user), loadPrefs(user.id), one('SELECT count(*)::int AS n FROM notifications WHERE user_id=$1 AND read_at IS NULL', [user.id])]);
+    const withCounts = await Promise.all(contexts.map(async (c) => {
+      const items = await actionsFor(user, c.key, null);
+      return { ...c, actions: items.length, urgent: items.filter((x) => x.urgent).length };
+    }));
+    const active = withCounts.some((c) => c.key === prefs.active_role) ? prefs.active_role : withCounts[0]?.key ?? null;
+    const scopeOk = prefs.active_scope_id && withCounts.find((c) => c.key === active)?.scopes.some((s) => s.id === prefs.active_scope_id);
+    const org = prefs.default_org_id && (await one("SELECT o.id, o.name FROM organisations o JOIN organisation_members m ON m.organisation_id=o.id WHERE o.id=$1 AND m.user_id=$2 AND m.status='active'", [prefs.default_org_id, user.id]));
     return {
-      role, role_label: role ? ROLE_LABEL[role] : null,
-      roles: held.map((r) => ({ key: r, label: ROLE_LABEL[r], native: NATIVE.includes(r) })),
-      organisations: orgs, unread: unread.n,
-      generic: !!body.generic, summary: body.summary, today: body.today.sort((a, b) => String(a.at ?? '').localeCompare(String(b.at ?? ''))), work,
-      actions: body.actions, unavailable: body.unavailable ?? [], as_of: new Date().toISOString(),
+      contexts: withCounts, unread: unread.n,
+      prefs: { active_role: active, active_scope_id: scopeOk ? prefs.active_scope_id : null, default_org: org ?? null, pins: await resolvePins(user, prefs.pins), saved_filters: prefs.saved_filters, version: prefs.version },
     };
+  },
+});
+
+cap({
+  name: 'get_command_centre', method: 'GET', path: '/me/workspace/:section', tag: TAG,
+  summary: 'One section of a role\'s command centre. today = the next things on your calendar plus your most urgent actions; actions = decisions waiting on you, each with the exact record to open and, where it is safe, a one-tap answer that calls the existing capability; calendar = your calendar limited to what that role cares about; inbox = notifications with the exact screen and record each opens; work = the queues you run; insights = counts that match those queues. `role` defaults to your active role; `scope_id` narrows to one team, organisation, event, venue or child you act for.',
+  input: z.object({
+    section: z.enum(SECTIONS), role: role.optional(), scope_id: id.optional(),
+    from: date.optional(), to: date.optional(), kinds: z.string().optional().describe('calendar: comma separated schedule kinds (a saved filter)'),
+    unread: z.coerce.boolean().default(false).describe('inbox: unread only'), limit: z.coerce.number().int().min(1).max(100).default(30), offset: z.coerce.number().int().min(0).default(0),
+  }),
+  async handler({ user }, i) {
+    const { ctx, scope } = await resolve(user, i.role, i.scope_id);
+    const base = { role: ctx.key, label: ctx.label, scope_id: scope };
+    const today = iso(new Date());
+    const kinds = i.kinds ? i.kinds.split(',').map((k) => k.trim()).filter(Boolean) : null;
+    switch (i.section) {
+      case 'today': {
+        const [actions, sched, unread] = await Promise.all([actionsFor(user, ctx.key, scope), scheduleFor(user, ctx, scope, today, today, null), one('SELECT count(*)::int AS n FROM notifications WHERE user_id=$1 AND read_at IS NULL', [user.id])]);
+        return { ...base, section: 'today', date: today, schedule: sched.items, conflicts: sched.conflicts, actions: actions.slice(0, 5), actions_total: actions.length, urgent: actions.filter((x) => x.urgent).length, unread: unread.n };
+      }
+      case 'actions': return { ...base, section: 'actions', items: await actionsFor(user, ctx.key, scope) };
+      case 'calendar': {
+        const from = i.from ?? today, to = i.to ?? iso(new Date(Date.parse(from) + 13 * 864e5));
+        if (to < from) throw badRequest('to is before from');
+        const sched = await scheduleFor(user, ctx, scope, from, to, kinds);
+        return { ...base, section: 'calendar', from, to, kinds: kinds ?? CALENDAR_KINDS[ctx.key], ...sched };
+      }
+      case 'inbox': {
+        const [items, c] = await Promise.all([inbox(user.id, { unread: i.unread, limit: i.limit, offset: i.offset }), one('SELECT count(*)::int AS n FROM notifications WHERE user_id=$1 AND read_at IS NULL', [user.id])]);
+        return { ...base, section: 'inbox', unread: c.n, items: withLinks(items) };
+      }
+      case 'work': return { ...base, section: 'work', items: await workFor(user, ctx.key, scope) };
+      default: return { ...base, section: 'insights', items: await insightsFor(user, ctx.key, scope) };
+    }
+  },
+});
+
+cap({
+  name: 'update_workspace_prefs', method: 'PATCH', path: '/me/workspace/prefs', tag: TAG,
+  summary: 'Choose the role (and the team, organisation, event, venue or child) you are working as, and your default organisation. Switching role changes only what you see: every call still checks your live permissions in that workspace.',
+  input: z.object({ active_role: role.optional(), active_scope_id: id.nullable().optional(), default_org_id: id.nullable().optional() }),
+  async handler({ user }, i) {
+    if (i.active_role || i.active_scope_id) {
+      const wantRole = i.active_role ?? (await loadPrefs(user.id)).active_role;
+      const ctx = (await contextsFor(user)).find((c) => c.key === wantRole);
+      if (!ctx) throw forbidden('You do not hold that role');
+      if (i.active_scope_id && !ctx.scopes.some((s) => s.id === i.active_scope_id)) throw notFound('Scope');
+    }
+    if (i.default_org_id && !(await one("SELECT 1 FROM organisation_members WHERE organisation_id=$1 AND user_id=$2 AND status='active'", [i.default_org_id, user.id]))) throw notFound('Organisation');
+    const sets = { active_role: i.active_role, active_scope_id: i.active_role && i.active_scope_id === undefined ? null : i.active_scope_id, default_org_id: i.default_org_id };
+    return tx(async (c) => {
+      await c.query('INSERT INTO workspace_prefs(user_id) VALUES ($1) ON CONFLICT DO NOTHING', [user.id]);
+      const keys = Object.keys(sets).filter((k) => sets[k] !== undefined);
+      if (!keys.length) return loadPrefs(user.id, c);
+      const row = (await c.query(`UPDATE workspace_prefs SET ${keys.map((k, n) => `${k}=$${n + 2}`).join(', ')}, version=version+1, updated_at=now() WHERE user_id=$1 RETURNING active_role, active_scope_id, default_org_id, version`, [user.id, ...keys.map((k) => sets[k])])).rows[0];
+      return row;
+    });
+  },
+});
+
+cap({
+  name: 'pin_workspace_item', method: 'POST', path: '/me/workspace/pins', tag: TAG, status: 201,
+  summary: 'Pin a team, event, venue or organisation you act for to the top of your workspace (up to 24). You can only pin records you already have a role in.',
+  input: z.object({ type: z.enum(PIN_TYPES), id }),
+  async handler({ user }, i) {
+    if (!(await canPin(user, i.type, i.id))) throw notFound('Record');
+    return tx(async (c) => {
+      await c.query('INSERT INTO workspace_prefs(user_id) VALUES ($1) ON CONFLICT DO NOTHING', [user.id]);
+      const p = (await c.query('SELECT pins FROM workspace_prefs WHERE user_id=$1 FOR UPDATE', [user.id])).rows[0].pins;
+      if (p.some((x) => x.type === i.type && x.id === i.id)) return { pins: p };
+      if (p.length >= 24) throw badRequest('You can pin up to 24 items');
+      const next = [...p, { type: i.type, id: i.id }];
+      await c.query('UPDATE workspace_prefs SET pins=$2, version=version+1, updated_at=now() WHERE user_id=$1', [user.id, JSON.stringify(next)]);
+      return { pins: next };
+    });
+  },
+});
+
+cap({
+  name: 'unpin_workspace_item', method: 'DELETE', path: '/me/workspace/pins/:type/:id', tag: TAG,
+  summary: 'Remove a pin. Only the shortcut is removed, never the team, event, venue or organisation.',
+  input: z.object({ type: z.enum(PIN_TYPES), id }),
+  async handler({ user }, i) {
+    return tx(async (c) => {
+      const row = (await c.query('SELECT pins FROM workspace_prefs WHERE user_id=$1 FOR UPDATE', [user.id])).rows[0];
+      const next = (row?.pins ?? []).filter((x) => !(x.type === i.type && x.id === i.id));
+      if (row) await c.query('UPDATE workspace_prefs SET pins=$2, version=version+1, updated_at=now() WHERE user_id=$1', [user.id, JSON.stringify(next)]);
+      return { pins: next };
+    });
+  },
+});
+
+cap({
+  name: 'save_workspace_filter', method: 'POST', path: '/me/workspace/filters', tag: TAG, status: 201,
+  summary: 'Save a filter for a section of a role\'s workspace (calendar kinds, unread inbox), to re-apply in one tap. Up to 24.',
+  input: z.object({ name: z.string().trim().min(1).max(40), role, section: z.enum(['calendar', 'inbox', 'actions']), kinds: z.array(z.string().max(20)).max(12).optional(), unread: z.boolean().optional() }),
+  async handler({ user }, i) {
+    if (!(await contextsFor(user)).some((c) => c.key === i.role)) throw forbidden('You do not hold that role');
+    return tx(async (c) => {
+      await c.query('INSERT INTO workspace_prefs(user_id) VALUES ($1) ON CONFLICT DO NOTHING', [user.id]);
+      const f = (await c.query('SELECT saved_filters FROM workspace_prefs WHERE user_id=$1 FOR UPDATE', [user.id])).rows[0].saved_filters;
+      if (f.length >= 24) throw badRequest('You can save up to 24 filters');
+      const filter = { id: crypto.randomUUID(), name: i.name, role: i.role, section: i.section, ...(i.kinds ? { kinds: i.kinds } : {}), ...(i.unread !== undefined ? { unread: i.unread } : {}) };
+      await c.query('UPDATE workspace_prefs SET saved_filters=$2, version=version+1, updated_at=now() WHERE user_id=$1', [user.id, JSON.stringify([...f, filter])]);
+      return filter;
+    });
+  },
+});
+
+cap({
+  name: 'delete_workspace_filter', method: 'DELETE', path: '/me/workspace/filters/:id', tag: TAG,
+  summary: 'Remove one of your saved filters (a personal shortcut; no records are touched).', input: z.object({ id: z.string().uuid() }),
+  async handler({ user }, i) {
+    return tx(async (c) => {
+      const row = (await c.query('SELECT saved_filters FROM workspace_prefs WHERE user_id=$1 FOR UPDATE', [user.id])).rows[0];
+      const f = row?.saved_filters ?? [];
+      if (!f.some((x) => x.id === i.id)) throw notFound('Filter');
+      await c.query('UPDATE workspace_prefs SET saved_filters=$2, version=version+1, updated_at=now() WHERE user_id=$1', [user.id, JSON.stringify(f.filter((x) => x.id !== i.id))]);
+      return { deleted: true };
+    });
   },
 });

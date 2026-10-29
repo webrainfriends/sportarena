@@ -9,7 +9,7 @@ import { assertCurrency, checkQty, priced } from '../svc/money.js';
 import { assertUnit, CATEGORY } from '../svc/catalogue.js';
 import { supplierAccess, buyerAccess, myProfileIds, nextNumber, log } from '../svc/access.js';
 import { approvalNeeded, decide } from '../svc/approvals.js';
-import { credentialState } from './svc-supplier.js';
+import { credentialState, complianceGaps } from './svc-supplier.js';
 import { holdForOrder } from '../svc/orders.js';
 
 const TAG = 'Service procurement';
@@ -52,7 +52,7 @@ cap({
         const er = (await c.query("SELECT * FROM event_requests WHERE id=$1 AND kind='supplier'", [i.event_request_id])).rows[0];
         if (!er || er.event_id !== buyer.event_id) throw badRequest('That supplier request does not belong to this event');
       }
-      const scope = { category: rq.category, subcategory: rq.subcategory, scope: rq.scope, quantity: Number(rq.quantity), unit: rq.unit, headcount: rq.headcount, starts_at: rq.starts_at, ends_at: rq.ends_at, timezone: rq.timezone, recurrence: rq.recurrence, site_access: rq.site_access, qualifications: rq.qualifications, acceptance_criteria: rq.acceptance_criteria, title: rq.title };
+      const scope = { category: rq.category, subcategory: rq.subcategory, scope: rq.scope, quantity: Number(rq.quantity), unit: rq.unit, headcount: rq.headcount, starts_at: rq.starts_at, ends_at: rq.ends_at, timezone: rq.timezone, recurrence: rq.recurrence, site_access: rq.site_access, qualifications: rq.qualifications, acceptance_criteria: rq.acceptance_criteria, title: rq.title, compliance_kinds: rq.compliance_kinds ?? [] };
       const r = (await c.query(
         `INSERT INTO svc_rfqs(buyer_id, requirement_id, lot_id, event_request_id, title, scope, currency, audience, invite_deadline, question_deadline, quote_deadline, rubric, allow_partial, created_by)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
@@ -318,6 +318,10 @@ cap({
       if (!OPEN.includes(r.status)) throw conflict(`RFQ is ${r.status}`);
       if (inv.status === 'declined' || inv.status === 'closed') throw conflict(`Your invitation is ${inv.status}`);
       if (r.quote_deadline && new Date(r.quote_deadline) < new Date()) throw conflict('The quote deadline has passed');
+      if (i.submit) {
+        const gaps = await complianceGaps(c, profile.id, r.scope.compliance_kinds);
+        if (gaps.length) throw conflict(`This RFQ requires a current ${gaps.map((g) => g.replace(/_/g, ' ')).join(', ')} credential; add or renew it on your profile before quoting`);
+      }
       const currency = assertCurrency(i.currency ?? r.currency);
       if (profile.currencies.length && !profile.currencies.includes(currency)) throw badRequest(`${currency} is not one of your accepted currencies`);
       if (i.submit && new Date(i.valid_until) <= new Date()) throw badRequest('valid_until must be in the future');
@@ -416,7 +420,7 @@ cap({
         const ev = (await c.query('SELECT avg(total)::float AS score, count(*)::int AS n, bool_and(compliant) AS compliant FROM svc_evaluations WHERE quote_id=$1', [q.id])).rows[0];
         const blackout = r.scope.starts_at ? (await c.query('SELECT 1 FROM svc_blackouts WHERE profile_id=$1 AND day BETWEEN $2::date AND coalesce($3::date, $2::date)', [q.profile_id, r.scope.starts_at, r.scope.ends_at ?? null])).rowCount > 0 : false;
         out.push({ quote_id: q.id, profile_id: q.profile_id, supplier: q.supplier_name, version: q.version, status: q.status, currency: q.currency, net_minor: Number(q.net_minor), tax_minor: Number(q.tax_minor), gross_minor: Number(q.gross_minor),
-          scope_compliant: q.scope_version === r.scope_version, valid_until: q.valid_until, expired: q.status === 'expired', credentials: creds.map((x) => ({ kind: x.kind, title: x.title, verification: x.verification, state: credentialState(x) })), required_credentials_ok: required.every((x) => ['valid', 'no_expiry', 'expiring'].includes(credentialState(x))),
+          scope_compliant: q.scope_version === r.scope_version, valid_until: q.valid_until, expired: q.status === 'expired', credentials: creds.map((x) => ({ kind: x.kind, title: x.title, verification: x.verification, state: credentialState(x) })), compliance_gaps: await complianceGaps(c, q.profile_id, r.scope.compliance_kinds), required_credentials_ok: required.every((x) => ['valid', 'no_expiry', 'expiring'].includes(credentialState(x))),
           available: !blackout && q.terms.capacity_available !== false, lead_time_days: q.lead_time_days, sla: q.terms.sla ?? null, covers_quantity: q.terms.covers_quantity ?? null, evaluation: ev.n ? { score: ev.score, evaluators: ev.n, compliant: ev.compliant } : null,
           ...(fx ? { comparable_gross_minor: q.currency === i.fx_base ? Number(q.gross_minor) : fx[q.currency] ? fxConvert(q.gross_minor, fx[q.currency]) : null } : {}) });
       }
@@ -493,6 +497,8 @@ const eligible = async (c, rfq, q, profile) => {
   const creds = (await c.query("SELECT * FROM svc_credentials WHERE profile_id=$1 AND status='active' AND required_for_award", [q.profile_id])).rows;
   const bad = creds.find((x) => !['valid', 'no_expiry', 'expiring'].includes(credentialState(x)));
   if (bad) throw conflict(`That supplier’s required credential “${bad.title}” has expired; new awards are blocked until it is renewed`);
+  const gaps = await complianceGaps(c, q.profile_id, rfq.scope.compliance_kinds);
+  if (gaps.length) throw conflict(`That supplier no longer holds a current ${gaps.map((g) => g.replace(/_/g, ' ')).join(', ')} credential this RFQ requires; new awards are blocked until it is renewed`);
 };
 
 /** Nobody scores, shortlists or awards a supplier they work for or have declared a conflict with. Declarations are append-only. */

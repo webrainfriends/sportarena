@@ -71,6 +71,7 @@ export function targetFor(data = {}) {
   if (data.official_id && data.fixture_id) return ['OfficialsHome', { tab: 'today' }]; // a request, change, release or withdrawal on your officiating crew
   if (data.report_id && data.fixture_id) return ['OfficialMatch', { id: data.fixture_id }]; // an official filed a report on your match
   if (data.proposal_id) return ['ScoringTool', { proposalId: data.proposal_id }]; // a proposed result to review, or the outcome of yours
+  if ((data.ops_incident_id || data.ops_requirement) && data.event_id) return ['EventCommand', { id: data.event_id, tab: 'operations' }]; // an incident alert / handover, or a readiness requirement you own
   if (data.accreditation_id && data.event_id) return ['MyAccreditations', {}]; // a nomination, approval, reissue or revocation of your badge
   if (data.request_id && data.event_id) return ['EventInbox', {}];
   if (data.sponsorship_id) return ['SponsorDeal', { id: data.sponsorship_id }];
@@ -78,6 +79,7 @@ export function targetFor(data = {}) {
   if (data.application_id) return ['FundingOpportunities', {}]; // the applicant's own conversation: opened from My applications
   if (data.cover_id) return ['Cover', {}]; // a cover request, offer, answer, bill to pay or payment made
   if (data.programme_id) return ['Rewards', {}]; // points earned, a referral reward or an adjustment
+  if (data.marketplace_engagement_id) return ['MarketplaceEngagement', { id: data.marketplace_engagement_id }]; // a quote, answer, schedule, delivery or payment on an engagement
   if (data.open_game_id) return ['OpenGame', { id: data.open_game_id }]; // a request, approval, waitlist move, change or cancellation of a game
   if (data.reservation_id) return ['Reservation', { id: data.reservation_id }];
   if (data.venue_id && data.date) return ['BookFlow', { venueId: data.venue_id, resourceId: data.resource_id, date: data.date }];
@@ -108,6 +110,9 @@ export function parseTarget(t) {
   if (kind === 'sponsorship' && id) return ['SponsorDeal', { id }];
   if (kind === 'organisation' && id) return ['Org', { id }];
   if (kind === 'organisations') return ['Orgs', {}];
+  if (kind === 'graph') return ['SportsGraph', {}];
+  if (kind === 'athlete-360' && id) return ['Athlete360', { id }];
+  if (kind === 'organisation-360' && id) return ['Organisation360', { id }];
   if (kind === 'tender' && id) return ['TenderNotice', { id }];
   if (kind === 'tender-console' && id) return ['TenderConsole', { id }];
   if (kind === 'tender-proposal' && id) return ['TenderProposal', { id }];
@@ -119,6 +124,7 @@ export function parseTarget(t) {
   if (kind === 'fixture' && id) return ['LiveCentre', { id }];
   if (kind === 'following') return ['Following', {}];
   if (kind === 'accreditation') return ['MyAccreditations', {}];
+  if (kind === 'event-ops' && id) return ['EventCommand', { id, tab: 'operations' }];
   if (kind === 'event-accreditation' && id) return ['EventCommand', { id, tab: 'accreditation' }];
   if (kind === 'gate' && id) return ['GateScan', { id }];
   if (kind === 'tender-orders') return ['TenderOrders', {}];

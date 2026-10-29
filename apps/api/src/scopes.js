@@ -7,12 +7,13 @@ export const LEGACY_SCOPE = 'full'; // migrated pre-scope tokens only; never acc
 export const RESOURCE_TYPES = ['venue', 'team', 'event', 'organisation'];
 
 const PAYMENT = new Set([
-  'create_payment', 'confirm_payment', 'refund_payment', 'topup_wallet', 'apply_wallet_to_invoice', 'adjust_wallet', 'buy_gift_card', 'redeem_gift_card',
+  'create_payment', 'confirm_payment', 'accept_marketplace_quote', 'accept_marketplace_delivery', 'refund_payment', 'topup_wallet', 'apply_wallet_to_invoice', 'adjust_wallet', 'buy_gift_card', 'redeem_gift_card',
   'redeem_points', 'exchange_loyalty_points', 'buy_plan', 'apply_pass_to_invoice', 'mark_invoice_paid', 'mark_credit_note_refunded', 'buy_product', 'buy_policy',
   'accept_quote', 'renew_policy', 'file_claim', 'create_team_payout', 'create_squad_payouts', 'update_team_payout', 'set_booking_payment',
   'set_academy_charge_funding', 'adjust_academy_charge', 'refund_academy_charge', 'record_academy_payment', 'record_budget_payment', 'void_budget_payment', 'record_staff_payment', 'report_sponsorship_payment', 'request_sponsorship_refund', 'decide_sponsorship_refund', 'generate_settlement', 'add_settlement_adjustment', 'decide_settlement',
   'fund_ad_campaign', 'refund_ad_balance', 'record_team_payment', 'adjust_team_charge', 'cancel_team_charge', 'create_team_charges', 'create_team_expense', 'create_team_dues_plan', 'record_team_contribution', 'contribute_to_team_fundraiser',
   'create_payout_run', 'approve_payout_run', 'export_payout_run', 'record_payout_line_result', 'cancel_payout_run', 'add_contract_adjustment', 'record_contract_refund', 'issue_contract_credit_note', 'decide_contract_expense', 'submit_contract_expense',
+  'issue_commission_statement', 'void_commission_statement', 'report_commission_payment', 'confirm_commission_payment', 'adjust_commission', 'record_commission_refund',
 ]);
 // Credential / role management must not be reachable with a narrow token (otherwise a read token could mint a wider one).
 const ACCOUNT = new Set(['create_api_token', 'revoke_api_token', 'list_api_tokens', 'update_my_roles', 'list_login_sessions', 'revoke_login_session', 'logout', 'logout_all', 'change_my_password', 'get_security_status', 'mfa_setup', 'mfa_enable', 'mfa_disable', 'verify_mfa', 'request_email_verification', 'admin_reset_mfa']);

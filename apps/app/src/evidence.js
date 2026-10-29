@@ -7,20 +7,23 @@ import { c } from './theme';
 // API returned as base64. The server is the authority on type and size (PDF, JPEG, PNG, WebP; 5 MB); these only fail early with a plain message.
 export const MAX_BYTES = 5 * 2 ** 20;
 const WEB = Platform.OS === 'web' && typeof document !== 'undefined';
-const MIME = { pdf: 'application/pdf', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' };
+const MIME = { pdf: 'application/pdf', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', doc: 'application/msword', xls: 'application/vnd.ms-excel', csv: 'text/csv', txt: 'text/plain', gif: 'image/gif' };
 // tender and contract documents: also Word and Excel (macro-free), up to 10 MB; the server checks the content, not the name
 const DOCS = { types: ['application/pdf', 'image/jpeg', 'image/png', 'image/webp', MIME.docx, MIME.xlsx], accept: '.pdf,.jpg,.jpeg,.png,.webp,.docx,.xlsx,application/pdf,image/jpeg,image/png,image/webp', max: 10 * 2 ** 20 };
+// compliance evidence (documents: 'wide'): also GIF, legacy Word / Excel, CSV and text
+const DOCS_WIDE = { types: [...DOCS.types, 'image/gif', MIME.doc, MIME.xls, MIME.csv, MIME.txt], accept: '.pdf,.jpg,.jpeg,.png,.webp,.gif,.docx,.doc,.xlsx,.xls,.csv,.txt,application/pdf,image/jpeg,image/png,image/webp,image/gif', max: 10 * 2 ** 20 };
 const mimeOf = (name = '', hint) => hint ?? MIME[String(name).split('.').pop().toLowerCase()] ?? 'application/octet-stream';
 const tooBig = (bytes, max = MAX_BYTES) => { if (bytes > max) throw new Error(`That file is over ${max / 2 ** 20} MB. Choose a smaller file.`); };
 const toBase64 = (blob) => new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1] ?? ''); r.onerror = () => no(new Error('That file could not be read')); r.readAsDataURL(blob); });
 
 /** Pick one file: `source` is 'camera' (phones and tablets only), 'photos' or 'files'. Resolves { file_name, data (base64), type } or null when cancelled. */
 export async function pickEvidence(source = 'files', { documents = false } = {}) {
-  const max = documents ? DOCS.max : MAX_BYTES;
+  const D = documents === 'wide' ? DOCS_WIDE : DOCS;
+  const max = documents ? D.max : MAX_BYTES;
   if (WEB) {
     return new Promise((resolve, reject) => {
       const input = document.createElement('input');
-      input.type = 'file'; input.accept = documents ? DOCS.accept : 'application/pdf,image/jpeg,image/png,image/webp';
+      input.type = 'file'; input.accept = documents ? D.accept : 'application/pdf,image/jpeg,image/png,image/webp';
       input.onchange = async () => {
         const f = input.files?.[0];
         if (!f) return resolve(null);
@@ -32,7 +35,7 @@ export async function pickEvidence(source = 'files', { documents = false } = {})
   }
   if (source === 'files') {
     const DocumentPicker = await import('expo-document-picker');
-    const r = await DocumentPicker.getDocumentAsync({ type: documents ? DOCS.types : ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'], copyToCacheDirectory: true });
+    const r = await DocumentPicker.getDocumentAsync({ type: documents ? D.types : ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'], copyToCacheDirectory: true });
     if (r.canceled || !r.assets?.[0]) return null;
     const a = r.assets[0]; tooBig(a.size ?? 0, max);
     const { File } = await import('expo-file-system');
@@ -100,12 +103,12 @@ export async function openBase64(file) {
 }
 
 /** A form control: add up to `max` photos or documents, see what is attached, remove one. The value is [{ file_name, data, type }]. */
-export function EvidenceField({ label, value = [], onChange, max = 3 }) {
+export function EvidenceField({ label, value = [], onChange, max = 3, documents = false }) {
   const [err, setErr] = useState(null);
   const [busy, setBusy] = useState(false);
   const add = async (source) => {
     setErr(null); setBusy(true);
-    try { const f = await pickEvidence(source); if (f) onChange([...value, f]); } catch (e) { setErr(e.message); } finally { setBusy(false); }
+    try { const f = await pickEvidence(source, { documents }); if (f) onChange([...value, f]); } catch (e) { setErr(e.message); } finally { setBusy(false); }
   };
   const full = value.length >= max;
   return (
@@ -118,14 +121,14 @@ export function EvidenceField({ label, value = [], onChange, max = 3 }) {
         </View>))}
       {!full ? (
         <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-          {Platform.OS === 'web' ? <Btn small title="Choose a photo or PDF" color={c.paper} ink={c.ink} onPress={() => add('files')} loading={busy} />
+          {Platform.OS === 'web' ? <Btn small title={documents ? 'Choose a file' : 'Choose a photo or PDF'} color={c.paper} ink={c.ink} onPress={() => add('files')} loading={busy} />
             : <>
               <Btn small title="Take a photo" color={c.paper} ink={c.ink} onPress={() => add('camera')} loading={busy} />
               <Btn small title="Choose a photo" color={c.paper} ink={c.ink} onPress={() => add('photos')} loading={busy} />
-              <Btn small title="Choose a PDF" color={c.paper} ink={c.ink} onPress={() => add('files')} loading={busy} />
+              <Btn small title={documents ? 'Choose a file' : 'Choose a PDF'} color={c.paper} ink={c.ink} onPress={() => add('files')} loading={busy} />
             </>}
         </View>) : <T size={12} color={c.mute}>You can attach up to {max} files.</T>}
-      <T size={12} color={c.mute}>PDF, JPEG, PNG or WebP, up to 5 MB each. Do not attach health records.</T>
+      <T size={12} color={c.mute}>{documents === 'wide' ? 'PDF, photo, Word, Excel, CSV or text, up to 10 MB each. Do not attach health records.' : documents ? 'PDF, photo, Word or Excel, up to 10 MB each. Do not attach health records.' : 'PDF, JPEG, PNG or WebP, up to 5 MB each. Do not attach health records.'}</T>
       {err ? <T size={12} color={c.red} accessibilityRole="alert">{err}</T> : null}
     </View>
   );

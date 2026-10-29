@@ -5,6 +5,7 @@ import { pool } from './db.js';
 import { blindIndex } from './crypto.js';
 import { isOrganiser } from './capabilities/event-departments.js';
 import { hasConsent, isYouth } from './youth.js';
+import { gate, hasObligations } from './compliance.js';
 
 export const ENGAGEMENTS = {
   athlete: { label: 'Athlete', description: 'Accepted entry, or a place on an accepted team' },
@@ -98,6 +99,12 @@ export async function blocker(c, ev, cat, userId, { invited = false, also = [] }
     if (!ok) return `Needs a current ${cat.requires_verification} verification`;
   }
   if (await isYouth(userId, c) && !(await hasConsent(userId, purposeOf(cat), c))) return 'A verified guardian has not given current consent';
+  // compliance & safeguarding obligations that block accreditation (#595), read live from the compliance rulebook
+  const cctx = { event_id: ev.id, organisation_id: ev.organisation_id ?? null };
+  if (await hasObligations(c, 'accreditation', cctx)) {
+    const g = await gate(c, userId, 'accreditation', cctx);
+    if (g.decision !== 'clear') return `Compliance: ${g.reasons[0]}`;
+  }
   return null;
 }
 
@@ -145,6 +152,9 @@ export async function judge(c, ev, token, zoneId) {
     if (!eligibleFor({ eligible: a.eligible }, await engagementsOf(c, ev, a.holder_id))) return out('not_eligible'); // the role behind it has ended
   }
   if (await isYouth(a.holder_id, c) && !(await hasConsent(a.holder_id, purposeOf({ eligible: a.eligible }), c))) return out('not_eligible'); // guardian consent withdrawn
+  // compliance & safeguarding (#595): an obligation that blocks accreditation and has since lapsed or been revoked stops the badge on the next scan
+  const cctx = { event_id: ev.id, organisation_id: ev.organisation_id ?? null };
+  if (await hasObligations(c, 'accreditation', cctx) && (await gate(c, a.holder_id, 'accreditation', cctx)).decision !== 'clear') return out('not_eligible');
   const zones = (await c.query('SELECT z.id, z.name, z.kind, z.venue_id FROM accreditation_category_zones cz JOIN accreditation_zones z ON z.id=cz.zone_id WHERE cz.category_id=$1 AND cz.removed_at IS NULL AND z.archived_at IS NULL ORDER BY z.name', [a.category_id])).rows;
   if (zoneId) {
     const z = zones.find((x) => x.id === zoneId);

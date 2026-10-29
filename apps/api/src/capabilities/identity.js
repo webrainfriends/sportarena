@@ -261,7 +261,9 @@ cap({
       if (measurements.length) await audit(null, user?.id ?? null, 'read_shared_athlete_measurements', 'sport_profiles', pid);
       return { ...card, ...f, measurements };
     }));
-    return { ...u, verified: (await badgesFor('user', [i.id])).get(i.id) ?? [], sport_profiles: shared, awards, rating, teams, credentials };
+    // representation shows only when the athlete opted in, the mandate is in force and the agent is listed and verified
+    const { publicRepresentation } = await import('./representation-mandates.js');
+    return { ...u, verified: (await badgesFor('user', [i.id])).get(i.id) ?? [], sport_profiles: shared, awards, rating, teams, credentials, representation: await publicRepresentation(i.id) };
   },
 });
 

@@ -6,6 +6,8 @@ import { api } from '../api';
 import { useLoad } from '../hooks';
 import { c } from '../theme';
 import { Btn, Card, Chip, T, Tag } from '../ui';
+import { MultiMenuField } from '../menu-field';
+import { DateRangeField } from '../pickers';
 import { openPdf } from '../open-file';
 import { useSession } from '../session';
 import { moneyIn, localToIso } from '../vtime';
@@ -176,20 +178,42 @@ const pct = (v) => `${Math.round(v * 100)}%`;
 const dimValue = (d) => (d.value === null ? '—' : d.unit === 'ratio' ? pct(d.value) : d.unit === 'hours' ? `${d.value} h` : d.unit === 'stars_1_5' ? `${d.value} / 5` : String(d.value));
 /** Supplier facts with their sample size. Fewer than five observations are shown but marked; there is no combined score. */
 export function PerformanceRecord({ profileId, buyerId }) {
-  const r = useLoad(() => api.get(`/supplier-profiles/${profileId}/performance`, buyerId ? { buyer_id: buyerId } : {}), [profileId, buyerId]);
-  if (r.loading && !r.data) return <T size={13} color={c.mute}>Loading…</T>;
-  if (r.error || !r.data) return <T size={13} color={c.mute}>Performance is not available.</T>;
+  const [f, setF] = React.useState({ event_ids: [], venue_ids: [], competition_ids: [], categories: [], range: {} });
+  const query = React.useMemo(() => ({
+    ...(buyerId ? { buyer_id: buyerId } : {}),
+    ...Object.fromEntries(['event_ids', 'venue_ids', 'competition_ids', 'categories'].filter((k) => f[k].length).map((k) => [k, f[k].join(',')])),
+    ...(f.range.from ? { from: `${f.range.from}T00:00:00.000Z` } : {}), ...(f.range.to ? { to: new Date(Date.parse(`${f.range.to}T00:00:00Z`) + 864e5).toISOString() } : {}),
+  }), [f, buyerId]);
+  const r = useLoad(() => api.get(`/supplier-profiles/${profileId}/performance`, query), [profileId, JSON.stringify(query)]);
+  // options come from the orders this reader may see, searched on the server as they type
+  const opts = (kind) => React.useCallback(async (q) => (await api.get(`/supplier-profiles/${profileId}/performance/filters`, { kind, q: q || undefined, ...(buyerId ? { buyer_id: buyerId } : {}) })).map((x) => ({ value: x.id, label: kind === 'category' ? label(x.name) : x.name })), [kind, profileId, buyerId]);
+  const loaders = { event_ids: opts('event'), venue_ids: opts('venue'), competition_ids: opts('competition'), categories: opts('category') };
+  const set = (k) => (v) => setF((x) => ({ ...x, [k]: v }));
+  const filtered = f.event_ids.length || f.venue_ids.length || f.competition_ids.length || f.categories.length || f.range.from;
   const x = r.data;
   return (
     <View style={{ gap: 8 }}>
-      <T size={12} color={c.mute}>{x.orders.total} order(s){buyerId ? ' with you' : ` from ${x.orders.buyers} buyer(s)`}. {x.method}</T>
-      {x.dimensions.map((d) => (
-        <View key={d.key} accessible accessibilityLabel={`${d.label}: ${dimValue(d)} from ${d.n} observations${d.reliable ? '' : ', too few to rely on'}`} style={{ borderWidth: 1, borderColor: c.line, borderRadius: 12, padding: 10, backgroundColor: c.paper, opacity: d.n ? 1 : 0.7 }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}><T weight="700" size={13}>{d.label}</T><T weight="800" size={14}>{dimValue(d)}</T></View>
-          <T size={11} color={c.mute}>n = {d.n}{d.note ? ` · ${d.note}` : ''}</T>
-          <T size={11} color={c.mute}>{d.definition}</T>
-        </View>
-      ))}
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+        {[['event_ids', 'Events', 'All events'], ['venue_ids', 'Venue', 'All venues'], ['competition_ids', 'Competition', 'All competitions'], ['categories', 'Service', 'All services']].map(([k, l, ph]) => (
+          <View key={k} style={{ flexGrow: 1, flexBasis: 170 }}><MultiMenuField label={l} value={f[k]} onChange={set(k)} load={loaders[k]} placeholder={ph} /></View>
+        ))}
+        <View style={{ flexGrow: 1, flexBasis: 170 }}><DateRangeField label="Period" from={f.range.from} to={f.range.to} optional onChange={set('range')} /></View>
+      </View>
+      {filtered ? <Btn small color={c.paper} ink={c.ink} title="Clear filters" accessibilityLabel="Clear all scorecard filters" onPress={() => setF({ event_ids: [], venue_ids: [], competition_ids: [], categories: [], range: {} })} /> : null}
+      {r.loading && !x ? <T size={13} color={c.mute}>Loading…</T> : r.error || !x ? <T size={13} color={c.mute}>Performance is not available.</T> : (
+        <>
+          <T size={12} color={c.mute}>{x.orders.total} order(s){filtered ? ' match these filters' : ''}{buyerId ? ' with you' : ` from ${x.orders.buyers} buyer(s)`}. {x.method}</T>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {x.dimensions.map((d) => (
+              <View key={d.key} accessible accessibilityLabel={`${d.label}: ${dimValue(d)} from ${d.n} observations${d.reliable ? '' : ', too few to rely on'}`} style={{ flexGrow: 1, flexBasis: 260, borderWidth: 1, borderColor: c.line, borderRadius: 12, padding: 10, backgroundColor: c.paper, opacity: d.n ? 1 : 0.7 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}><T weight="700" size={13}>{d.label}</T><T weight="800" size={14} color={d.n && !d.reliable ? c.sun : c.ink}>{dimValue(d)}</T></View>
+                <T size={11} color={c.mute}>n = {d.n}{d.note ? ` · ${d.note}` : ''}</T>
+                <T size={11} color={c.mute}>{d.definition}</T>
+              </View>
+            ))}
+          </View>
+        </>
+      )}
     </View>
   );
 }

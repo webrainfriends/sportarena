@@ -8,9 +8,9 @@ Bottom bar: **Home · Calendar · Work · Inbox · Profile**.
 
 | Tab | What it is | Where it comes from |
 | --- | --- | --- |
-| Home | today, what needs me, headline numbers, fast actions, role/organisation switch | `GET /me/workspace` |
+| Home | today, what needs me, headline numbers, fast actions, role/organisation switch | `GET /me/role-workspace` |
 | Calendar | the existing agenda (`Schedule`, section `agenda`): matches, sessions, duty, bookings, health, other calendars | unchanged |
-| Work | the whole queue of the active role, most urgent first, plus its fast actions and **All tools** (the tools wheel) | `GET /me/workspace` |
+| Work | the whole queue of the active role, most urgent first, plus its fast actions and **All tools** (the tools wheel) | `GET /me/role-workspace` |
 | Inbox | every notification; a tap opens the record using the same mapping as a tapped push | `GET /notifications` |
 | Profile | roles, security, device lock, settings | unchanged (`Me`) |
 
@@ -18,7 +18,7 @@ Explore, the community feed (`Community`) and the player studio stay reachable f
 Switching role (or organisation) is the chip row on Home and Work. It uses the session's `activeRole`, the same one the tools wheel sets.
 
 ## API
-`get_my_workspace` — `GET /me/workspace?role=` (REST, OpenAPI and MCP from one definition, `apps/api/src/capabilities/workspace.js`).
+`get_my_workspace` — `GET /me/role-workspace?role=` (REST, OpenAPI and MCP from one definition, `apps/api/src/capabilities/workspace.js`).
 It owns no data: it composes `coach_home`, `get_officials_home`, `list_my_selections`, `list_my_staff_assignments`,
 `venue_operations_overview`, `list_my_venues` and the event/accreditation counts, so each source's own permissions, consent and
 encryption rules still decide what is shown. Read-only. A role the caller does not hold is refused (403); `admin` and `platform_admin`

@@ -16,6 +16,14 @@ const cur = z.string().length(3).transform((s) => s.toUpperCase());
 const day = z.string().date();
 const PUBLIC = 'p.id, p.supplier_type, p.legal_name, p.trading_name, p.description, p.categories, p.coverage, p.operating_hours, p.lead_time_days, p.currencies, p.timezone, p.status, p.created_at';
 
+/** The credential kinds a supplier can hold; a buyer's requirement can demand any of them (#591). */
+export const CREDENTIAL_KINDS = ['insurance', 'electrical', 'pool_operator', 'first_aid', 'safeguarding', 'vehicle', 'food_safety', 'business_registration', 'other'];
+/** Credential kinds a requirement demands that the supplier has no currently valid credential for. Jurisdiction-neutral: it checks kind and validity, not any regulator's rules. */
+export async function complianceGaps(c, profileId, kinds) {
+  if (!kinds?.length) return [];
+  const rows = (await c.query("SELECT * FROM svc_credentials WHERE profile_id=$1 AND status='active' AND kind = ANY($2)", [profileId, kinds])).rows;
+  return kinds.filter((k) => !rows.some((x) => x.kind === k && ['valid', 'no_expiry', 'expiring'].includes(credentialState(x))));
+}
 export const credentialState = (c, today = new Date()) => {
   if (c.status !== 'active') return 'archived';
   if (!c.valid_to) return 'no_expiry';
@@ -176,7 +184,7 @@ cap({
 cap({
   name: 'add_supplier_credential', method: 'POST', path: '/supplier-profiles/:id/credentials', tag: TAG, status: 201,
   summary: 'Record a certificate or insurance with its validity. It shows as self-declared until the platform has seen/verified it; expiry is flagged and (where required for award) blocks new awards.',
-  input: z.object({ id, kind: z.enum(['insurance', 'electrical', 'pool_operator', 'first_aid', 'safeguarding', 'vehicle', 'food_safety', 'business_registration', 'other']), title: z.string().min(1).max(160), reference: z.string().max(120).optional(), valid_from: day.optional(), valid_to: day.optional(), required_for_award: z.boolean().default(false), document_ref: z.string().max(300).optional() }),
+  input: z.object({ id, kind: z.enum(CREDENTIAL_KINDS), title: z.string().min(1).max(160), reference: z.string().max(120).optional(), valid_from: day.optional(), valid_to: day.optional(), required_for_award: z.boolean().default(false), document_ref: z.string().max(300).optional() }),
   async handler({ user }, i) {
     await supplierAccess(user, i.id, ['owner', 'sales']);
     if (i.valid_from && i.valid_to && i.valid_to < i.valid_from) throw badRequest('valid_to is before valid_from');

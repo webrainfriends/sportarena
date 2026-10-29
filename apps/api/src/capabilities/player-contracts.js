@@ -8,6 +8,7 @@ import { audit, PUBLIC_USER } from '../helpers.js';
 import { encrypt } from '../crypto.js';
 import { notify } from '../notify.js';
 import { guardiansOf, hiddenYouth, isYouth, requireConsent } from '../youth.js';
+import { onContractRevision } from '../representation.js';
 import {
   FINANCE_THRESHOLD_CENTS, ROLES, dayOf, VERSION_COLS, accessFor, accrueContract, blockFor, committedValue, conflictStale, diffTerms, expectedEarnings, financeAuthorities, isSoleAuthority,
   ladderFor, loadContract, loadPayer, normaliseTerms, readinessFor, requiredParties, termsSchema, todayIso, versionAt, versionTerms, versionsOf,
@@ -70,6 +71,7 @@ async function propose(c, user, contract, version, access, { initial }) {
   await c.query("UPDATE player_contract_versions SET status='proposed', required_parties=$2, proposed_at=now(), row_version=row_version+1 WHERE id=$1", [version.id, required]);
   version.required_parties = required; version.status = 'proposed';
   const mine = await partiesFor(user, contract, version, access, c);
+  await onContractRevision(c, contract, version.version); // agents who were shared this contract and are live get a review item (no terms in the notice)
   for (const party of mine) await c.query("INSERT INTO player_contract_signatures(version_id, party, signer_id, decision) VALUES ($1,$2,$3,'signed') ON CONFLICT (version_id, party) DO NOTHING", [version.id, party, user.id]);
   return { required, signed: mine };
 }
