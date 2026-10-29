@@ -6,6 +6,7 @@ import { expireStaleSales } from './pos/sale.js';
 import { processRefunds } from './booking/refunds.js';
 import { checkSlotAlerts } from './booking/alerts.js';
 import { processWaitlist } from './booking/waitlist.js';
+import { processBallots } from './booking/ballots.js';
 import { expireLoyalty } from './booking/loyalty.js';
 import { tx } from './db.js';
 import { eventParticipationSweep, membershipTenureSweep } from './rewards/activity.js';
@@ -49,6 +50,7 @@ export const STEPS = [
   ['pos_sales', 'pos_sales_released', expireStaleSales, 0],
   ['refunds', 'refunds', processRefunds, { done: 0, failed: 0, manual: 0 }],
   ['waitlist', 'waitlist', processWaitlist, null],
+  ['ballots', 'ballots', processBallots, null],
   ['loyalty', 'points_expired', expireLoyalty, 0],
   ['cover', 'cover_agreements_expired', () => tx((c) => expireCover(c)), 0],
   ['loyalty_referrals', 'referral_rewards_released', () => tx((c) => releaseDueReferrals(c)), 0],
