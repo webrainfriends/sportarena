@@ -6,6 +6,7 @@ import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { isAdmin, mustFind } from '../helpers.js';
 import { sponsorContactUser, sponsorRole, snapshotIdentity, CAN } from '../sponsor-identity-access.js';
 import { eventForOrganizer } from './events.js';
+import { requireEventTools } from '../commercial/engine.js';
 import { notify } from '../notify.js';
 
 const KINDS = ['retail', 'catering', 'sponsor', 'other'];
@@ -18,6 +19,7 @@ cap({
     return tx(async (c) => {
       const ev = await eventForOrganizer(user, i.id, c);
       if (['completed', 'cancelled'].includes(ev.status)) throw conflict(`Event is ${ev.status}`);
+      await requireEventTools(user, ev);
       let vendor = i.vendor_user_id;
       if (i.kind === 'sponsor') {
         if (!i.sponsor_id) throw badRequest('A sponsor invitation needs sponsor_id');
