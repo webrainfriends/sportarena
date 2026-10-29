@@ -9,6 +9,7 @@ import { FormSheet } from '../FormSheet';
 import { Btn, Card, Chip, Empty, ErrorBox, H1, Loading, Row, Screen, Section, Sheet, T } from '../ui';
 import { localToIso } from '../vtime';
 import { useDo } from './console-utils';
+import { NeedsPicker } from './svc-needs';
 import { ChainTrace, DocButton, ExportsPanel, Kpi, Kv, Note, PerformanceRecord, Status, Tabs, Wrap, catLabel, collectScope, day, label, money, scopeFields, useCatalogue, when } from './svc-common';
 
 const TABS = [['plan', 'Plan'], ['rfqs', 'Quotes'], ['orders', 'Orders'], ['invoices', 'Invoices'], ['team', 'People & policy'], ['reports', 'Reports']];
@@ -46,7 +47,6 @@ export function ServicesBuyer({ event_id, venue_id, organisation_id, embedded })
   );
 }
 
-const CREDENTIALS = ['insurance', 'electrical', 'pool_operator', 'first_aid', 'safeguarding', 'vehicle', 'food_safety', 'business_registration', 'other'].map((k) => ({ value: k, label: label(k).replace(/^./, (x) => x.toUpperCase()) }));
 const loadCompetitions = async (q) => (await api.get('/events', { q: q || undefined, limit: 20 })).map((e) => ({ value: e.id, label: e.name, sub: [e.kind, e.starts_on].filter(Boolean).join(' · ') }));
 
 function Plan({ b, cat }) {
@@ -67,7 +67,7 @@ function Plan({ b, cat }) {
     { key: 'until', label: 'Repeat until', type: 'date', show: (v) => v.freq && v.freq !== 'none' },
     { key: 'budget', label: 'Budget', type: 'money', currency: b.currency, optional: true }, { key: 'deadline', label: 'Needed ready by', type: 'date', optional: true },
     { key: 'competition', label: 'Competition it supports', type: 'multimenu', max: 1, optional: true, hint: 'Search a league or tournament this work is for', load: loadCompetitions },
-    { key: 'compliance', label: 'Credentials the supplier must hold', type: 'multimenu', optional: true, options: CREDENTIALS, hint: 'Checked when they quote and again when you award' },
+    { key: 'needs', label: 'What this service needs', type: 'custom', render: ({ v, set }) => <NeedsPicker buyerId={b.id} category={v.category} startsAt={v.from ? localToIso(v.from, v.start_t || '08:00', tz) : undefined} endsAt={(v.to ?? v.from) ? localToIso(v.to ?? v.from, v.end_t || '18:00', tz) : undefined} value={v.needs ?? []} onChange={(x) => set('needs', x)} /> },
     { key: 'criteria', label: 'How you will accept it (one measurable check per line)', type: 'multiline', optional: true },
     ...scopeFields(cat, tz),
   ];
@@ -76,7 +76,7 @@ function Plan({ b, cat }) {
     await api.post(`/service-buyers/${b.id}/requirements`, { category: v.category, title: v.title, lot_id: v.lot_id, quantity: Number(v.quantity), unit: v.unit, headcount: v.headcount || undefined,
       ...(startD ? { starts_at: localToIso(startD, v.start_t || '08:00', tz), ends_at: localToIso(endD, v.end_t || '18:00', tz) } : {}), timezone: tz,
       ...(v.freq && v.freq !== 'none' ? { recurrence: { freq: v.freq, until: v.until } } : {}), budget_minor: v.budget || undefined, currency: b.currency, deadline: v.deadline,
-      competition_id: v.competition?.[0], compliance_kinds: v.compliance ?? [], acceptance_criteria: v.criteria ? String(v.criteria).split('\n').map((x) => x.trim()).filter(Boolean) : [], scope: collectScope(cat, v.category, v, tz) });
+      competition_id: v.competition?.[0], needs: v.needs ?? [], acceptance_criteria: v.criteria ? String(v.criteria).split('\n').map((x) => x.trim()).filter(Boolean) : [], scope: collectScope(cat, v.category, v, tz) });
     act(async () => null); return 'Requirement saved';
   };
   if (plan.loading) return <Loading />;
