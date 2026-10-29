@@ -9,7 +9,7 @@ const read = (f) => readFileSync(new URL(f, src), 'utf8');
 const app = read('App.js');
 
 test('the lock provider wraps the shell inside the session, and links are opened with the same targets as a tapped push', () => {
-  assert.match(app, /<SessionProvider><AppLockProvider><BasketProvider><NavProvider><Shell \/>/);
+  assert.match(app, /<SessionProvider><AppLockProvider><BasketProvider><NavProvider>(<WorkspaceProvider>)?<Shell \/>/);
   assert.match(app, /import \{ [^}]*Linking[^}]* \} from 'react-native'/);
   assert.match(app, /targetFromUrl\(url, APP_HOSTS\)/);
   assert.match(app, /link\.remove\(\)/);
