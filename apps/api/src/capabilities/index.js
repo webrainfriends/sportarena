@@ -68,6 +68,7 @@ import './officials-feedback.js';
 import './officials-extract.js';
 import './event-invites.js';
 import './event-schedule.js';
+import './bracket-stages.js';
 import './event-staff.js';
 import './event-vendors.js';
 import './event-openings.js';

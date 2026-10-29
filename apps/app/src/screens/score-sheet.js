@@ -11,7 +11,7 @@ import { A, ABtn, ACard, AChip, AEmpty, AHero, AScreen, AStepper, ASection, AT, 
 import { ErrorBox, Field, Loading } from '../ui';
 
 const TONE = { draft: AG.neon, submitted: AG.sun, approved: AG.lime, rejected: AG.live, published: ['#10B981', '#34D399'], superseded: ['#3B2F7A', '#2A2160'] };
-const KNOCKOUT = ['round_of_32', 'round_of_16', 'quarter', 'semi', 'final', 'third_place'];
+const KNOCKOUT = ['round_of_32', 'round_of_16', 'quarter', 'semi', 'final', 'third_place', 'winners', 'losers', 'grand_final', 'repechage', 'placement'];
 const ROLE = { referee: 'Officials', home_manager: 'Home team', away_manager: 'Away team' };
 const SEV = { error: ['⛔', A.red], warn: ['⚠️', A.sun], info: ['ℹ️', A.cyan] };
 
@@ -23,6 +23,7 @@ export function ScoreSheet({ id }) {
   const [edit, setEdit] = useState(null);       // { home, away, winner, notes, reason }
   const [ask, setAsk] = useState(null);         // 'reject' | 'waive' | 'dispute' | 'revise'
   const [review, setReview] = useState(null);
+  const [impact, setImpact] = useState(null);  // what a corrected result would do to games already played
   const [busy, setBusy] = useState(false);
   const reload = () => { sheet.reload(); live.reload(); };
   if (sheet.error) return <AScreen><ErrorBox error={sheet.error} onRetry={sheet.reload} /></AScreen>;
@@ -30,6 +31,17 @@ export function ScoreSheet({ id }) {
   if (sheet.loading || live.loading || !live.data) return <AScreen><Loading /></AScreen>;
   const g = live.data, v = g.viewer ?? {}, f = g.fixture;
   const run = async (fn, ok) => { setBusy(true); try { const r = await fn(); if (ok) toast(ok); reload(); return r; } catch (x) { toast('' + x.message + (x.details?.anomalies ? ` (${x.details.anomalies.map((a) => a.message).join('; ')})` : '')); return null; } finally { setBusy(false); } };
+
+  /** Publishing a correction that changes who reached a game already played is previewed first; the organiser must accept it explicitly. */
+  const doPublish = async (accept) => {
+    setBusy(true);
+    try { await api.post(`/score-sheets/${sheet.data.id}/publish`, accept ? { accept_downstream_conflicts: true } : {}); toast(accept ? 'Published: played games are waiting for your decision' : 'Published'); setImpact(null); reload(); }
+    catch (x) {
+      if (x.status === 409 && /already started/i.test(x.message)) {
+        try { setImpact(await api.post(`/fixtures/${id}/correction-preview`, { home_score: sheet.data.home_score, away_score: sheet.data.away_score, winner_team_id: sheet.data.winner_team_id ?? undefined })); } catch (y) { toast('' + y.message); }
+      } else toast('' + x.message);
+    } finally { setBusy(false); }
+  };
 
   const s = sheet.data;
   if (!s) {
@@ -47,7 +59,7 @@ export function ScoreSheet({ id }) {
   const e = edit ?? { home: s.home_score, away: s.away_score, winner: s.winner_team_id, notes: s.notes ?? '', reason: s.adjusted_reason ?? '' };
   const set = (patch) => setEdit({ ...e, ...patch });
   const level = e.home != null && e.home === e.away;
-  const needsWinner = KNOCKOUT.includes(s.fixture.round_kind) || g.ruleset.draw_allowed === false; // a league draw is just a draw
+  const needsWinner = (KNOCKOUT.includes(s.fixture.round_kind) && !s.fixture.winner_optional) || g.ruleset.draw_allowed === false; // a league draw is just a draw
   const home = s.fixture.home_id, away = s.fixture.away_id;
   const signed = (role) => s.signoffs.find((x) => x.role === role);
   const myRoles = v.manages === 'both' ? ['home_manager', 'away_manager'] : v.manages ? [`${v.manages}_manager`] : [];
@@ -125,7 +137,7 @@ export function ScoreSheet({ id }) {
         ) : null}
         {v.organiser && s.status === 'approved' ? (
           <>
-            <ABtn title="🚀 Publish official result" tone="hero" loading={busy} onPress={() => run(() => api.post(`/score-sheets/${s.id}/publish`), 'Published')} />
+            <ABtn title="🚀 Publish official result" tone="hero" loading={busy} onPress={() => doPublish(false)} />
             <ABtn title="Send back" tone="ghost" small onPress={() => setAsk('reject')} />
           </>
         ) : null}
@@ -141,6 +153,19 @@ export function ScoreSheet({ id }) {
           {review.concerns?.map((c, i) => <AT key={i} size={13}>{SEV[c.severity]?.[0]} {c.text}</AT>)}
           {review.questions?.length ? <AT size={12} weight="800" color={A.mute} style={{ marginTop: 4 }}>QUESTIONS FOR THE REFEREE</AT> : null}
           {review.questions?.map((q, i) => <AT key={i} size={13}>• {q}</AT>)}
+        </ACard>
+      ) : null}
+
+      {impact ? (
+        <ACard tone={A.red} style={{ gap: 8 }}>
+          <AT size={16} weight="900">This correction reaches games already played</AT>
+          {impact.needs_resolution.map((x) => <AT key={x.fixture_id} size={13.5}>• {x.round}: played with {x.from_team ?? 'the earlier line-up'}; the corrected result puts {x.to_team ?? 'a team to be decided'} there ({x.reason.toLowerCase()})</AT>)}
+          {impact.auto_update.map((x) => <AT key={x.fixture_id} size={13} color={A.mute}>• {x.round}: not started, will be re-filled automatically</AT>)}
+          <AT size={12.5} color={A.mute}>Nothing played is rewritten. Each affected game is raised in the Bracket tab for you to keep as played or replay.</AT>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <ABtn small tone="live" title="Publish and raise them" loading={busy} onPress={() => doPublish(true)} />
+            <ABtn small tone="ghost" title="Cancel" onPress={() => setImpact(null)} />
+          </View>
         </ACard>
       ) : null}
 
