@@ -25,6 +25,7 @@ import { sweepAccessGrants } from './access-grants.js';
 import { expireAcademyOffers, remindTrials, runAcademyJobs } from './academy-sweeps.js';
 import { runTenderJobs, sendTenderReminders } from './capabilities/tender-reports.js';
 import { deliverDueReports } from './sponsor-report-schedules.js';
+import { deliverDueKpiReports } from './kpi/service.js';
 import { accrueActiveContracts } from './player-contracts.js';
 import { runRepresentationSweeps } from './representation.js';
 import { raiseScheduledCharges, runCollections } from './collections.js';
@@ -76,6 +77,7 @@ export const STEPS = [
   ['tender_reminders', 'tender_deadline_reminders', sendTenderReminders, 0],
   ['sponsor_tasks', 'sponsor_task_reminders', processSponsorTasks, 0],
   ['sponsor_reports', 'sponsor_reports_delivered', deliverDueReports, 0],
+  ['kpi_reports', 'kpi_reports_delivered', deliverDueKpiReports, 0],
   ['player_contracts', 'contract_earnings_posted', accrueActiveContracts, 0],
   ['representation', 'representation_swept', runRepresentationSweeps, 0],
   ['supplier_services', 'supplier_services', runServiceSweeps, null],
