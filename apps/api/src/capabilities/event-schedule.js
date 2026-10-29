@@ -8,9 +8,14 @@ import { eventForOrganizer } from './events.js';
 import { reserve } from './venues.js';
 import { loadVenueCtx, loadBusy, daySlots, lockResources } from '../booking/engine.js';
 import { toLocal, fromLocal, addDays, weekdayOf } from '../booking/time.js';
-import { buildBracket, ROUND_LABEL, MAX_KNOCKOUT_TEAMS } from '../tournament/bracket.js';
+import { MAX_KNOCKOUT_TEAMS } from '../tournament/bracket.js';
+import { buildPlan, orderField, coverageOf, FORMATS, STAGE_KIND } from '../tournament/plan.js';
+import { writeItems, recordRevision, snapshotOf } from '../tournament/stage.js';
+import { newDrawSeed } from '../tournament/formats/rng.js';
+import { SWISS_POLICIES, SWISS_TIEBREAKS, FIRST_ROUND, DEFAULT_SWISS } from '../tournament/formats/swiss.js';
+import { POOL_TIEBREAKS, DEFAULT_POOLS } from '../tournament/formats/pools.js';
 import { assertEventReadable, bracketOf } from '../spectator.js';
-import { planSchedule, roundRobinPairs } from '../tournament/scheduler.js';
+import { planSchedule } from '../tournament/scheduler.js';
 import { seededTeams, acceptedTeams } from '../tournament/data.js';
 import { standings, audit } from '../helpers.js';
 import { eventWindow, windowFit, consentNeeded } from '../event-fit.js';
@@ -85,7 +90,7 @@ cap({
 
 // ---------------------------------------------------------------- planning
 const SCHEDULE_INPUT = {
-  id, format: z.enum(['round_robin', 'knockout']),
+  id, format: z.enum(FORMATS),
   from_date: date, to_date: date.optional(),
   venue_id: id.optional(), resource_ids: z.array(id).max(50).optional(),
   match_duration_min: z.number().int().min(10).max(600).default(90), rest_min: z.number().int().min(0).max(1440).default(60),
@@ -93,11 +98,28 @@ const SCHEDULE_INPUT = {
   day_start_min: z.number().int().min(0).max(1439).optional(), day_end_min: z.number().int().min(1).max(1440).optional(),
   weekdays_off: z.array(z.number().int().min(0).max(6)).max(6).default([]), respect_holidays: z.boolean().default(true),
   // knockout only
-  team_ids: z.array(id).max(MAX_KNOCKOUT_TEAMS).optional(), from: z.enum(['seeds', 'standings']).default('seeds'), top_n: z.number().int().min(2).max(MAX_KNOCKOUT_TEAMS).optional(),
+  team_ids: z.array(id).max(128).optional(), from: z.enum(['seeds', 'standings']).default('seeds'), top_n: z.number().int().min(2).max(128).optional(),
   third_place: z.boolean().default(false),
+  format_config: z.object({
+    reset: z.boolean().optional().describe('double elimination: add the conditional grand-final reset game (played only if the losers-bracket champion wins the first grand final)'),
+    placement_up_to: z.union([z.literal(3), z.literal(4), z.literal(8), z.literal(16)]).optional().describe('knockout: play-offs for every place up to this one (3/4 = third place, 8 = 5th-8th too, 16 = 9th-16th too)'),
+    consolation: z.boolean().optional().describe('knockout: a second-chance bracket for first-round losers'),
+    tie: z.object({ mode: z.enum(['best_of', 'legs']), best_of: z.number().int().optional(), legs: z.number().int().min(2).max(4).optional(), home_rotation: z.enum(['alternate', 'two_two_one_one_one', 'fixed_a', 'fixed_b']).optional(),
+      away_goals: z.boolean().optional().describe('count away goals on a level aggregate. Never assumed: only when true'), decider: z.enum(['extra_time_then_penalties', 'penalties', 'golden_point', 'replay', 'manual']).optional(), apply_to: z.enum(['all', 'except_final']).optional() }).optional()
+      .describe('every tie becomes a best-of-N series or a multi-leg aggregate tie made of ordinary games'),
+    swiss: z.object({ rounds: z.number().int().min(1).max(15).optional(), policy: z.enum(Object.keys(SWISS_POLICIES)).optional(), first_round: z.enum(FIRST_ROUND).optional(), tie_breaks: z.array(z.enum(SWISS_TIEBREAKS)).max(7).optional(),
+      bye_points: z.enum(['win', 'draw', 'none']).optional(), allow_rematch: z.boolean().optional(), balance_home_away: z.boolean().optional() }).optional(),
+    pools: z.object({ pool_count: z.number().int().min(2).max(16).optional(), draw: z.enum(['snake', 'pots', 'manual']).optional(), advance_per_pool: z.number().int().min(1).max(8).optional(), wildcards: z.number().int().min(0).max(8).optional(),
+      wildcard_from_place: z.number().int().min(1).max(9).optional(), tie_breaks: z.array(z.enum(POOL_TIEBREAKS)).max(6).optional(), avoid_same_pool_round_one: z.boolean().optional(), third_place: z.boolean().optional(),
+      manual: z.array(z.object({ team: id, pool: z.string().max(3) })).max(128).optional() }).optional(),
+    repechage_template: z.string().max(80).optional().describe('a template id from get_bracket_formats; the repechage ladder is generated once both finalists are known'),
+    manual_pairings: z.array(z.object({ home: id, away: id })).max(64).optional().describe('swiss round 1 set by hand (recorded as a manual draw)'),
+  }).default({}),
+  draw: z.object({ mode: z.enum(['seeded', 'random']).default('seeded'), protect_top: z.number().int().min(0).max(64).default(0), draw_seed: z.string().min(4).max(64).optional().describe('persisted randomness: pass the seed a preview returned to get exactly that draw') }).default({ mode: 'seeded', protect_top: 0 }),
+  publish: z.boolean().default(true).describe('false keeps the stage as a draft: seeds and the draw stay editable and spectators see no bracket until it is published'),
   accept_mismatch: z.boolean().default(false).describe('consent to schedule games on days outside the event’s start/end dates'),
 };
-const scheduleInput = z.object(SCHEDULE_INPUT);
+export const scheduleInput = z.object(SCHEDULE_INPUT);
 
 /** Days the venue cannot host this event: event blackout days, the venue's public holidays, switched-off weekdays. */
 export async function skippedDates(c, ev, venue, i, from, to) {
@@ -110,8 +132,8 @@ export async function skippedDates(c, ev, venue, i, from, to) {
   return out;
 }
 
-async function pickTeams(c, ev, i) {
-  if (i.format === 'round_robin') {
+export async function pickTeams(c, ev, i) {
+  if (i.format === 'round_robin' && !i.team_ids) {
     const t = await acceptedTeams(c, ev.id);
     return t.map((x) => x.team_id);
   }
@@ -131,7 +153,7 @@ async function pickTeams(c, ev, i) {
 }
 
 /** Build (without writing) the fixtures for a stage and place them on the venue's free slots. */
-async function planStage(c, ev, i) {
+export async function planStage(c, ev, i, ov = {}) {
   const venueId = i.venue_id ?? ev.venue_id;
   if (!venueId) throw badRequest('Choose a venue: pass venue_id or set the event’s venue');
   const ctx = await loadVenueCtx(c, venueId), tz = ctx.venue.timezone;
@@ -143,25 +165,21 @@ async function planStage(c, ev, i) {
   if (to < from) throw badRequest('to_date is before from_date');
   if ((Date.parse(to) - Date.parse(from)) / 864e5 > MAX_SPAN_DAYS) throw badRequest(`Scheduling window is limited to ${MAX_SPAN_DAYS} days`);
 
-  const teamIds = await pickTeams(c, ev, i);
-  if (teamIds.length < 2) throw badRequest('Need at least 2 accepted teams');
-
-  // build matches
-  let matches = [], items = [], byes = [];
-  if (i.format === 'round_robin') {
-    matches = roundRobinPairs(teamIds).map((m, n) => ({ key: `rr:${n}`, home: m.home, away: m.away, after: [], order: m.round }));
-    items = matches.map((m) => ({ key: m.key, round: `Round ${m.order}`, round_kind: 'group', slot: null, home_team_id: m.home, away_team_id: m.away, home_placeholder: null, away_placeholder: null }));
-  } else {
-    if (teamIds.length > MAX_KNOCKOUT_TEAMS) throw badRequest(`A knockout supports at most ${MAX_KNOCKOUT_TEAMS} teams`);
-    const b = buildBracket(teamIds, { thirdPlace: i.third_place });
-    byes = b.byes;
-    const feeders = new Map(b.fixtures.map((f) => [f.key, []]));
-    for (const f of b.fixtures) for (const x of [f.win_feeds, f.lose_feeds]) if (x) feeders.get(x.key).push(f.key);
-    const sorted = b.fixtures.slice().sort((x, y) => x.round_index - y.round_index || (x.round_kind === 'third_place' ? -1 : 0) - (y.round_kind === 'third_place' ? -1 : 0) || x.slot - y.slot);
-    matches = sorted.map((f) => ({ key: f.key, home: f.home, away: f.away, after: feeders.get(f.key) }));
-    items = sorted.map((f) => ({ key: f.key, round: `${ROUND_LABEL[f.round_kind]}${f.round_kind === 'final' || f.round_kind === 'third_place' ? '' : ` ${f.slot + 1}`}`, round_kind: f.round_kind, slot: f.slot,
-      home_team_id: f.home, away_team_id: f.away, home_placeholder: f.home_placeholder, away_placeholder: f.away_placeholder, win_feeds: f.win_feeds, lose_feeds: f.lose_feeds }));
+  // the field, drawn: seeded as given, or random with the top seeds protected; the seed is persisted so the draw can be replayed
+  const field = ov.field ?? await pickTeams(c, ev, i);
+  if (field.length < 2) throw badRequest('Need at least 2 accepted teams');
+  const drawSeed = ov.drawSeed ?? i.draw?.draw_seed ?? newDrawSeed();
+  const { order: teamIds } = ov.field ? { order: field } : orderField(field, i.draw, drawSeed);
+  const cfg = { ...i.format_config, third_place: i.third_place || i.format_config?.third_place };
+  let built = ov.plan;
+  if (!built) {
+    try { built = buildPlan(i.format, teamIds, cfg, { drawSeed, points: { pointsWin: ev.points_win, pointsDraw: ev.points_draw, pointsLoss: ev.points_loss } }); }
+    catch (e) { throw e.code ? badRequest(e.message, { code: e.code }) : badRequest(e.message); }
   }
+  const { matches, items, byes } = built;
+  const sportRow = ev.sport_id ? (await c.query('SELECT slug, name, category, scoring FROM sports WHERE id=$1', [ev.sport_id])).rows[0] : null;
+  const coverage = coverageOf(sportRow);
+  const warnings = [...(built.warnings ?? []), ...(i.format !== 'round_robin' && coverage.mode === 'fallback' ? [coverage.note] : [])];
 
   // free slots per day
   const skip = await skippedDates(c, ev, ctx.venue, i, from, to);
@@ -196,7 +214,7 @@ async function planStage(c, ev, i) {
   return {
     venue: { id: ctx.venue.id, name: ctx.venue.name, timezone: tz },
     alignment: windowFit(await eventWindow(c, ev.id), placed.map((p) => ({ date: p.date, cents: 0 })), [], [], ctx.venue.currency, { edges: false }),
-    format: i.format, teams: teamIds.length, byes,
+    format: i.format, teams: teamIds.length, byes, draw_seed: drawSeed, field: teamIds, algorithm: built.algorithm, warnings, coverage, stage_kind: built.stageKind, stage_name: built.stageName, pools: built.pools ?? null, pairing: built.pairing ?? null, bye: built.bye ?? null, config: cfg,
     skipped_dates: Object.fromEntries(skip),
     items: items.map((it) => { const p = where.get(it.key); const h = teamInfo.get(it.home_team_id), a = teamInfo.get(it.away_team_id); return { ...it, home_name: h?.name ?? null, home_emoji: h?.emoji ?? null, home_color: h?.color ?? null, away_name: a?.name ?? null, away_emoji: a?.emoji ?? null, away_color: a?.color ?? null, scheduled_at: p?.start.toISOString() ?? null, ends_at: p?.end.toISOString() ?? null, duration_min: p?.minutes ?? null, local_date: p?.date ?? null, resource_id: p?.resource_id ?? null, resource_name: p ? names.get(p.resource_id) : null }; }),
     unplaced: unplaced.map((u) => ({ ...u })),
@@ -225,10 +243,11 @@ cap({
       if (!ev) throw notFound('Event');
       await eventForOrganizer(user, i.id, c);
       if (['completed', 'cancelled'].includes(ev.status)) throw conflict(`Event is ${ev.status}`);
-      const existing = i.format === 'round_robin'
+      const groupLike = GROUP_FORMATS.includes(i.format);
+      const existing = groupLike
         ? (await c.query(`SELECT 1 FROM fixtures WHERE event_id=$1 AND ${ACTIVE_FIXTURE} AND coalesce(round_kind,'group')='group' LIMIT 1`, [i.id])).rowCount
-        : (await c.query(`SELECT 1 FROM fixtures WHERE event_id=$1 AND ${ACTIVE_FIXTURE} AND round_kind IS NOT NULL AND round_kind <> 'group' LIMIT 1`, [i.id])).rowCount;
-      if (existing) throw conflict(`This event already has ${i.format === 'round_robin' ? 'group-stage' : 'knockout'} fixtures; cancel them first`);
+        : (await c.query(`SELECT 1 FROM fixtures WHERE event_id=$1 AND ${ACTIVE_FIXTURE} AND round_kind IS NOT NULL AND round_kind <> 'group' AND stage_id IN (SELECT id FROM event_stages WHERE kind IN ('knockout','double_elimination')) LIMIT 1`, [i.id])).rowCount;
+      if (existing) throw conflict(`This event already has ${groupLike ? 'group-stage' : 'knockout'} fixtures; cancel them first`);
       // serialise against other bookings on the same courts
       const venueId = i.venue_id ?? ev.venue_id;
       if (venueId) await lockResources(c, (await c.query('SELECT id FROM resources WHERE venue_id=$1', [venueId])).rows.map((r) => r.id));
@@ -237,27 +256,33 @@ cap({
       if (plan.alignment.consent_required && !i.accept_mismatch) throw conflict(plan.alignment.verdict, consentNeeded(plan.alignment));
       if (plan.alignment.consent_required) await audit(c, user.id, 'accept_event_schedule_mismatch', 'events', ev.id);
 
-      const stage = (await c.query('INSERT INTO event_stages(event_id, kind, name, position, config, created_by) VALUES ($1,$2,$3,(SELECT count(*) FROM event_stages WHERE event_id=$1),$4,$5) RETURNING *',
-        [ev.id, i.format, i.format === 'round_robin' ? 'Group stage' : 'Knockout', { third_place: i.third_place, from: i.from, top_n: i.top_n ?? null, venue_id: plan.venue.id }, user.id])).rows[0];
-      const ids = new Map();
-      for (const it of plan.items) {
-        await reserve(c, { resource_id: it.resource_id, user_id: user.id, event_id: ev.id, starts_at: it.scheduled_at, ends_at: it.ends_at, note: `${it.round}` });
-        const dur = Math.min(600, Math.max(10, it.duration_min));
-        const fx = (await c.query(
-          `INSERT INTO fixtures(event_id, round, home_team_id, away_team_id, resource_id, scheduled_at, duration_min, stage_id, round_kind, bracket_slot, home_placeholder, away_placeholder)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
-          [ev.id, it.round, it.home_team_id, it.away_team_id, it.resource_id, it.scheduled_at, dur, stage.id, it.round_kind, it.slot, it.home_placeholder, it.away_placeholder])).rows[0];
-        ids.set(it.key, fx.id);
-      }
-      for (const it of plan.items) {
-        if (!it.win_feeds && !it.lose_feeds) continue;
-        await c.query('UPDATE fixtures SET win_feeds_fixture_id=$2, win_feeds_side=$3, lose_feeds_fixture_id=$4, lose_feeds_side=$5 WHERE id=$1',
-          [ids.get(it.key), it.win_feeds ? ids.get(it.win_feeds.key) : null, it.win_feeds?.side ?? null, it.lose_feeds ? ids.get(it.lose_feeds.key) : null, it.lose_feeds?.side ?? null]);
-      }
-      return { stage, created: plan.items.length, byes: plan.byes, skipped_dates: plan.skipped_dates, fixtures: (await c.query('SELECT * FROM fixtures WHERE stage_id=$1 ORDER BY scheduled_at, bracket_slot', [stage.id])).rows };
+      const stage = await createStage(c, user, ev, i, plan);
+      await writeItems(c, user, ev, stage, plan.items);
+      const out = (await c.query('SELECT * FROM event_stages WHERE id=$1', [stage.id])).rows[0];
+      return { stage: out, created: plan.items.length, byes: plan.byes, skipped_dates: plan.skipped_dates, draw_seed: plan.draw_seed, algorithm: plan.algorithm, warnings: plan.warnings,
+        fixtures: (await c.query('SELECT * FROM fixtures WHERE stage_id=$1 ORDER BY scheduled_at, bracket_slot', [stage.id])).rows };
     });
   },
 });
+
+const GROUP_FORMATS = ['round_robin', 'pools', 'swiss'];
+/** The scheduling window and venue a stage was planned with, kept so later rounds / generated stages reuse them. */
+export const SCHEDULE_KEYS = ['from_date', 'to_date', 'venue_id', 'resource_ids', 'match_duration_min', 'rest_min', 'max_per_team_per_day', 'day_start_min', 'day_end_min', 'weekdays_off', 'respect_holidays', 'accept_mismatch'];
+
+/** Insert the stage row (with its pinned format config, algorithm and persisted draw seed) and its first audit entries. */
+export async function createStage(c, user, ev, i, plan, { parent = null, name = null, kind = null } = {}) {
+  const sched = Object.fromEntries(SCHEDULE_KEYS.filter((k) => i[k] !== undefined).map((k) => [k, i[k]]));
+  const config = { ...plan.config, third_place: i.third_place, from: i.from, top_n: i.top_n ?? null, venue_id: plan.venue.id, schedule_args: sched, field: plan.field, format: i.format, schema: 1 };
+  if (plan.stage_kind === 'swiss') { config.swiss = { ...DEFAULT_SWISS, ...(plan.config.swiss ?? {}) }; config.swiss_state = { rounds_total: config.swiss.rounds, byes: plan.bye ? { 1: plan.bye.team } : {} }; }
+  if (plan.pools) { config.pools = { ...DEFAULT_POOLS, ...(plan.config.pools ?? {}) }; config.pools_drawn = plan.pools; }
+  const stage = (await c.query(
+    `INSERT INTO event_stages(event_id, kind, name, position, config, created_by, published_at, published_by, algorithm, draw_seed, parent_stage_id)
+     VALUES ($1,$2,$3,(SELECT count(*) FROM event_stages WHERE event_id=$1),$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+    [ev.id, kind ?? STAGE_KIND[i.format], name ?? plan.stage_name, JSON.stringify(config), user.id, i.publish ? new Date() : null, i.publish ? user.id : null, plan.algorithm, plan.draw_seed, parent])).rows[0];
+  await recordRevision(c, stage.id, 'generated', { actor: user.id, algorithm: plan.algorithm, inputs: { format: i.format, field: plan.field, draw_seed: plan.draw_seed, draw: i.draw, config: plan.config }, snapshot: { games: snapshotOf(plan.items), byes: plan.byes, pairing: plan.pairing, pools: plan.pools } });
+  if (i.publish) await recordRevision(c, stage.id, 'published', { actor: user.id });
+  return stage;
+}
 
 // ---------------------------------------------------------------- bracket view
 cap({
@@ -267,6 +292,7 @@ cap({
   async handler({ user }, i) {
     await mustFind('events', i.id, 'id');
     await assertEventReadable(user, i.id);
-    return bracketOf(i.id);
+    const ev = await mustFind('events', i.id, 'organizer_id');
+    return bracketOf(i.id, { organiser: !!user && (isAdmin(user) || ev.organizer_id === user.id) });
   },
 });

@@ -14,7 +14,7 @@ import { CURRENCIES } from '../currency.js';
 
 const httpsUrl = z.string().url().max(500).refine((u) => u.startsWith('https://'), 'Use an https link');
 
-const kinds = ['match_players', 'team_recruiting', 'coach_wanted', 'assignment', 'sponsorship_wanted', 'sponsor_call'];
+const kinds = ['match_players', 'team_recruiting', 'coach_wanted', 'assignment', 'sponsorship_wanted', 'sponsor_call', 'service_request'];
 const rateUnit = z.enum(['match', 'hour', 'month', 'season']);
 const POST_COLS = `b.id, b.kind, b.title, b.body, b.city, b.starts_at, b.positions_needed, b.budget_cents, b.rate_unit, b.positions, b.levels, b.region, b.min_age, b.max_age, b.status, b.created_at, b.team_id,
   b.opportunity_type, b.compensation, b.currency, b.closes_at, b.ends_at, b.target_type, b.target_role, b.required_sections, b.verified_applicants_only,
@@ -91,6 +91,7 @@ cap({
     assertOpen(p);
     if (p.author_id === subject) throw badRequest('You cannot respond to your own post');
     if (p.kind === 'sponsorship_wanted' && !hasRole(user, 'sponsor')) throw forbidden('Only sponsors can respond to a sponsorship request');
+    if (p.kind === 'service_request' && !(await one("SELECT 1 FROM marketplace_listings WHERE provider_id=$1 AND status='active' AND archived_at IS NULL LIMIT 1", [subject]))) throw conflict('List your services in the Marketplace first, then respond', { code: 'listing_required' });
     const sections = [...new Set(i.shared_sections)];
     await assertEligible(p, subject, subject === user.id ? user.roles : (await mustFind('users', subject, 'id, roles')).roles, sections);
     try {

@@ -79,6 +79,7 @@ export function targetFor(data = {}) {
   if (data.application_id) return ['FundingOpportunities', {}]; // the applicant's own conversation: opened from My applications
   if (data.cover_id) return ['Cover', {}]; // a cover request, offer, answer, bill to pay or payment made
   if (data.programme_id) return ['Rewards', {}]; // points earned, a referral reward or an adjustment
+  if (data.marketplace_engagement_id) return ['MarketplaceEngagement', { id: data.marketplace_engagement_id }]; // a quote, answer, schedule, delivery or payment on an engagement
   if (data.open_game_id) return ['OpenGame', { id: data.open_game_id }]; // a request, approval, waitlist move, change or cancellation of a game
   if (data.reservation_id) return ['Reservation', { id: data.reservation_id }];
   if (data.venue_id && data.date) return ['BookFlow', { venueId: data.venue_id, resourceId: data.resource_id, date: data.date }];
@@ -88,7 +89,7 @@ export function targetFor(data = {}) {
   if (data.team_id && (data.charge_id || data.fundraiser_id)) return ['TeamDues', { id: data.team_id }];   // dues, fees, shared expenses, reminders and fundraisers
   if (data.team_id && !data.event_id && !data.fixture_id) return ['TeamChat', { id: data.team_id }];                         // announcements and polls
   if (data.organisation_id) return ['Org', { id: data.organisation_id }];   // academy and workspace messages open the organisation (academy tab / My academy)
-  return ['Notifications', {}];
+  return ['Inbox', {}];
 }
 
 export function parseTarget(t) {
@@ -141,5 +142,5 @@ export function parseTarget(t) {
   if (kind === 'team-chat' && id) return ['TeamChat', { id }];
   if (kind === 'team-dues' && id) return ['TeamDues', { id }];
   if (kind === 'funding') return ['PlayerFunding', id ? { athlete_id: id } : {}];
-  return ['Notifications', {}];
+  return ['Inbox', {}];
 }

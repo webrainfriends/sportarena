@@ -156,7 +156,7 @@ export function FamilyDashboard({ onConsents }) {
         <StatPill value={String(d.unread_notifications)} label="Unread" />
       </View>
       <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-        <Btn small title={`🔔 Notifications${d.unread_notifications ? ` (${d.unread_notifications})` : ''}`} color={c.paper} ink={c.ink} onPress={() => push('Notifications')} />
+        <Btn small title={`🔔 Notifications${d.unread_notifications ? ` (${d.unread_notifications})` : ''}`} color={c.paper} ink={c.ink} onPress={() => push('Inbox')} />
       </View>
       {L.tablet ? (
         <View style={{ flexDirection: 'row', gap: 16, alignItems: 'flex-start' }}>

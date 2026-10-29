@@ -7,8 +7,11 @@
 import { Router } from 'express';
 import { many } from './db.js';
 import { toErrorBody } from './invoke.js';
+import { notFound } from './errors.js';
 import { buildCard, cardSvg, esc, isIndexable } from './share-cards.js';
 import { loadViewableEvent, loadViewableFixture, publicFixtures, publicStandings, isYouthEvent, UUID } from './spectator.js';
+import { stageViews } from './tournament/view.js';
+import { sheetOf, sheetHtml, sheetPdf } from './bracket-export.js';
 
 const robots = (res, indexable) => res.set('X-Robots-Tag', indexable ? 'index, follow' : 'noindex, nofollow, noarchive');
 const page404 = (res) => {
@@ -79,6 +82,39 @@ ${app ? `<a class="btn" href="${esc(app)}">Open in the app</a>` : ''}</main></bo
       res.type('html').send(`${head({ ...card, image_url }, url, indexable)}<body><main><p class="k">${esc(card.kicker)}</p><h1>${esc(card.title)}</h1>
 <span class="pill ${card.state === 'live' ? 'live' : card.state === 'provisional' ? 'prov' : ''}">${esc(card.label)}</span><p>${card.lines.map(esc).join('<br>')}</p>${gameRow(g)}
 ${card.app_url ? `<a class="btn" href="${esc(card.app_url)}">Open the live centre</a>` : ''}</main></body></html>`);
+    } catch (e) { fail(res, e); }
+  });
+
+  // Bracket outputs: the same published stages the app shows, as a shareable page (print-ready), an embeddable frame and a PDF.
+  const bracketSheet = async (req) => {
+    if (!UUID.test(req.params.id)) throw notFound('Event');
+    const { ev } = await loadViewableEvent(null, req.params.id);
+    return { ev, sheet: sheetOf(ev, await stageViews(ev.id, { organiser: false })) };
+  };
+  r.get('/share/bracket/:id', async (req, res) => {
+    try {
+      const { ev, sheet } = await bracketSheet(req);
+      robots(res, false);
+      res.set('Cache-Control', 'no-store').type('html').send(sheetHtml(sheet, { link: `${req.protocol}://${req.get('host')}/api/v1/share/events/${ev.id}` }));
+    } catch (e) { fail(res, e); }
+  });
+  r.get('/share/bracket/:id/embed', async (req, res) => {
+    try {
+      const { ev, sheet } = await bracketSheet(req);
+      if (ev.public_visibility !== 'public') return page404(res); // unlisted and private events are never framed on other sites
+      robots(res, false);
+      res.removeHeader('X-Frame-Options');
+      res.set({ 'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors *", 'Cache-Control': 'public, max-age=30' }).type('html')
+        .send(sheetHtml(sheet, { embed: true, theme: ['light', 'dark'].includes(req.query.theme) ? req.query.theme : null, link: `${req.protocol}://${req.get('host')}/api/v1/share/bracket/${ev.id}` }));
+    } catch (e) { fail(res, e); }
+  });
+  r.get('/share/bracket/:id/pdf', async (req, res) => {
+    try {
+      const { ev, sheet } = await bracketSheet(req);
+      if (!sheet.stages.length) return page404(res);
+      const { buffer } = await sheetPdf(sheet);
+      robots(res, false);
+      res.set({ 'Content-Type': 'application/pdf', 'Content-Length': String(buffer.length), 'Cache-Control': 'no-store', 'Content-Disposition': `inline; filename="bracket-${ev.id}.pdf"`, 'X-Content-Type-Options': 'nosniff' }).end(buffer);
     } catch (e) { fail(res, e); }
   });
 

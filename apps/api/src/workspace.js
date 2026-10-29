@@ -51,6 +51,7 @@ export const CALENDAR_KINDS = {
 /** The exact screen and record for a notification or task: one resolver, shared by the inbox, the action queue and the app. */
 export function linkFor(kind = '', d = {}) {
   const has = (k) => d && d[k];
+  if (has('marketplace_engagement_id')) return { screen: 'MarketplaceEngagement', params: { id: d.marketplace_engagement_id } };
   if (has('trip_id')) return { screen: 'Trip', params: { id: d.trip_id } };
   if (has('open_game_id')) return { screen: 'OpenGame', params: { id: d.open_game_id } };
   if (has('reservation_id')) return { screen: 'Reservation', params: { id: d.reservation_id } };

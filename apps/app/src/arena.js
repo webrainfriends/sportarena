@@ -372,11 +372,12 @@ export function ASetupSteps({ title = 'Get the event ready', steps }) {
 }
 
 // ---------------------------------------------------------------- knockout bracket
-const SLOT_H = 112, CARD_H = 92, COL_W = 196, GAP_W = 30;
+export const SLOT_H = 112, CARD_H = 92, COL_W = 196, GAP_W = 30;
 const dayShort = (iso, tz) => new Date(iso).toLocaleDateString(locale, { day: 'numeric', month: 'short', timeZone: tz || undefined });
 const clockShort = (iso, tz) => new Date(iso).toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit', timeZone: tz || undefined });
 
-function BracketGame({ g, onPress }) {
+/** One game of a bracket: both sides, the score, and its state. A series / aggregate tie shows its running total, a game that is not required fades. */
+export function BracketGame({ g, onPress }) {
   const done = g.status === 'completed';
   const hw = done && g.winner_team_id === g.home_team_id, aw = done && g.winner_team_id === g.away_team_id;
   const side = (name, emoji, ph, score, won) => (
@@ -387,11 +388,13 @@ function BracketGame({ g, onPress }) {
     </View>
   );
   return (
-    <Pressable onPress={onPress} disabled={!onPress} style={{ width: COL_W, height: CARD_H, borderRadius: 14, backgroundColor: A.panel, borderWidth: 1, borderColor: done ? `${A.green}99` : g.status === 'live' ? A.red : A.line, overflow: 'hidden', justifyContent: 'center' }}>
+    <Pressable onPress={onPress} disabled={!onPress} accessibilityRole={onPress ? 'button' : undefined}
+      accessibilityLabel={`${g.round ?? 'Game'}: ${g.home_name ?? g.home_placeholder ?? 'to be decided'} versus ${g.away_name ?? g.away_placeholder ?? 'to be decided'}${g.tie ? `. ${g.tie.summary}` : done ? `. ${g.home_score} to ${g.away_score}` : ''}${g.not_required ? '. Not required' : ''}`}
+      style={{ width: COL_W, height: CARD_H, borderRadius: 14, backgroundColor: A.panel, borderWidth: 1, borderColor: done ? `${A.green}99` : g.status === 'live' || g.state === 'live' ? A.red : A.line, overflow: 'hidden', justifyContent: 'center', opacity: g.not_required ? 0.45 : 1 }}>
       {side(g.home_name, g.home_emoji, g.home_placeholder, g.home_score, hw)}
       <View style={{ height: 1, backgroundColor: A.line }} />
       {side(g.away_name, g.away_emoji, g.away_placeholder, g.away_score, aw)}
-      <AT size={10} color={A.mute} weight="700" style={{ position: 'absolute', right: 8, bottom: 1 }}>{g.status === 'live' ? 'LIVE' : g.status !== 'completed' && g.scheduled_at ? `${dayShort(g.scheduled_at, g.venue_timezone)} ${clockShort(g.scheduled_at, g.venue_timezone)}` : ''}</AT>
+      <AT size={10} color={A.mute} weight="700" style={{ position: 'absolute', right: 8, bottom: 1 }}>{g.not_required ? 'NOT REQUIRED' : g.tie ? g.tie.summary : g.status === 'live' ? 'LIVE' : g.state === 'provisional' ? 'PROVISIONAL' : g.status !== 'completed' && g.scheduled_at ? `${dayShort(g.scheduled_at, g.venue_timezone)} ${clockShort(g.scheduled_at, g.venue_timezone)}` : ''}</AT>
     </Pressable>
   );
 }
