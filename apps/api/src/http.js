@@ -17,6 +17,7 @@ import { mediaRouter } from './media.js';
 import { marketMediaRouter } from './market-media.js';
 import { matchFileRouter } from './capabilities/player.js';
 import { insuranceDocsRouter } from './capabilities/insurance-docs.js';
+import { complianceFilesRouter } from './capabilities/compliance-files.js';
 import { teamChatRouter } from './team-chat-stream.js';
 import { brandedDocumentsRouter } from './capabilities/branded-documents.js';
 import { orgAgreementsRouter } from './capabilities/org-agreements.js';
@@ -85,6 +86,9 @@ export function createApp() {
   app.use('/api/v1', mediaRouter());
   app.use('/api/v1', marketMediaRouter());
   app.use('/api/v1', insuranceDocsRouter());
+  // Compliance evidence files arrive as base64 JSON (up to 10 MB of file): a bigger body limit on that one path only.
+  app.use(/^\/api\/v1\/compliance\/records\/[0-9a-f-]{36}\/files$/, express.json({ limit: '14mb' }));
+  app.use('/api/v1', complianceFilesRouter());
   app.use('/api/v1', teamChatRouter());
   app.use('/api/v1', brandedDocumentsRouter());
   app.use('/api/v1', orgAgreementsRouter());

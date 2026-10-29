@@ -10,7 +10,7 @@ import { usePoll } from '../live';
 import { useSession } from '../session';
 import { useNav } from '../nav';
 import { EventSanctions } from './federation-club';
-import { A, ABtn, ACard, AChip, AEmpty, AHero, AScreen, ASection, ASetupSteps, AStat, AT, ATabs, AG, LiveBadge, ReasonSheet, StageRail } from '../arena';
+import { A, ABtn, ACard, AChip, AEmpty, AHero, AScreen, ASection, AStat, AT, ATabs, AG, LiveBadge, ReasonSheet, StageRail } from '../arena';
 import { ErrorBox, Field, Loading, Sheet, T } from '../ui';
 import { c } from '../theme';
 import { DepartmentsTab } from './event-departments';
@@ -28,11 +28,12 @@ import { EventVenues } from './event-venues';
 import { Requests, Budget } from './event-plan';
 import { GameRow } from './event-schedule';
 import { AccreditationTab } from './event-accreditation';
-import { ComplianceTab } from './compliance';
+import { ComplianceWorkspace } from './compliance';
 import { TravelTab } from './trips';
 import { RaceDay } from './race-desk';
 import { PublicPageTab } from './event-public';
 import { EventOfficialsSettings } from './officials-home';
+import { OperationsTab, ReadinessCard } from './event-ops';
 
 const STEPS = [['draft', 'Setup'], ['open', 'Open'], ['ongoing', 'Running'], ['completed', 'Ended']];
 const rank = { draft: 0, open: 1, ongoing: 2, paused: 2, completed: 3, cancelled: 3 };
@@ -74,13 +75,14 @@ export function EventCommand({ id, tab: first = 'overview' }) {
   const nav = useNav();
   const ev = useLoad(() => api.get(`/events/${id}`), [id]);
   const [tab, setTab] = useState(first);
-  const [sub, setSub] = useState({ people: 'departments', business: 'partners' });
+  const [sub, setSub] = useState({ people: 'departments', business: 'partners', operations: '' });
   const [ask, setAsk] = useState(null);       // 'pause' | 'end' | 'force'
   const [blockers, setBlockers] = useState(0);
   const [busy, setBusy] = useState(false);
   const e = ev.data;
   const isOrg = !!e && !!user && (e.organizer_id === user.id || !!user.roles?.includes('admin'));
   const D = useConsoleData(id, isOrg);
+  const ops = useLoad(() => api.get(`/events/${id}/ops/board`).catch(() => null), [id]);   // 404 for anyone who is not on the crew: the tab stays hidden
   if (ev.error) return <AScreen><ErrorBox error={ev.error} onRetry={ev.reload} /></AScreen>;
   if (!e) return <AScreen><Loading /></AScreen>;
   const st = e.status;
@@ -105,6 +107,7 @@ export function EventCommand({ id, tab: first = 'overview' }) {
     ...(isOrg ? [{ key: 'teams', label: 'Teams', icon: '👥', badge: (D.inv.data ?? []).filter((n) => n.status === 'invited').length || undefined }] : []),
     { key: 'registration', label: 'Registration', icon: '🪪', badge: regAwaiting || undefined },
     { key: 'people', label: 'People', icon: '🧩' },
+    ...(ops.data ? [{ key: 'operations', label: 'Operations', icon: '🛰️', badge: ops.data.incidents.open || undefined }] : []),
     { key: 'accreditation', label: 'Accreditation', icon: '🎫' },
     ...(isOrg ? [{ key: 'compliance', label: 'Compliance', icon: '🛡️' }] : []),
     { key: 'travel', label: 'Travel', icon: '🧳' },
@@ -148,8 +151,9 @@ export function EventCommand({ id, tab: first = 'overview' }) {
           {sub.people === 'hiring' && isOrg ? <HiringTab {...P} roles={D.roles.data ?? []} staff={D.staff.data ?? []} reload={reloadAll} /> : <DepartmentsTab id={id} isOrg={isOrg} />}
         </>
       )}
+      {tab === 'operations' && ops.data && <OperationsTab id={id} e={e} isOrg={isOrg} sub={sub.operations} setSub={(s) => go('operations', s)} goTab={go} />}
       {tab === 'accreditation' && <AccreditationTab id={id} e={e} isOrg={isOrg} />}
-      {tab === 'compliance' && <ComplianceTab id={id} e={e} isOrg={isOrg} />}
+      {tab === 'compliance' && isOrg && <ComplianceWorkspace onDark scope={{ kind: 'event', id }} own={{ subject: { kind: 'event', id }, title: 'This event: permits, insurance, licences' }} />}
       {tab === 'travel' && <TravelTab id={id} e={e} />}
       {tab === 'boards' && <BoardTab id={id} isOrg={isOrg} />}
       {tab === 'race' && <RaceDay id={id} isOrg={isOrg} />}
@@ -191,35 +195,20 @@ function Paper({ children }) {
 function Overview({ id, e, isOrg, go, D, games, accepted, money, reload }) {
   const { push } = useNav();
   const depts = useLoad(() => api.get(`/events/${id}/departments`), [id]);
-  const plans = useLoad(() => api.get(`/events/${id}/plans`), [id]);
   const live = useLoad(() => api.get(`/events/${id}/live`), [id]);
   const hist = useLoad(() => (isOrg ? api.get(`/events/${id}/status-history`) : Promise.resolve([])), [id, isOrg]);
   const [plan, setPlan] = useState(false);
   usePoll(live.reload, 8000);
   const n = depts.data?.length ?? 0;
-  const venues = D.venues.data ?? [], slots = venues.reduce((k, v) => k + v.summary.slots, 0);
-  const crew = (D.staff.data ?? []).filter((x) => x.status === 'accepted').length;
-  const sponsors = (D.vend.data ?? []).filter((v) => v.kind === 'sponsor' && v.status === 'accepted').length;
   const next = games.filter((g) => !['completed', 'cancelled', 'abandoned'].includes(g.status)).sort((a, b) => +new Date(a.scheduled_at) - +new Date(b.scheduled_at))[0];
   const played = games.filter((g) => g.status === 'completed').length;
-  const steps = [
-    { key: 'venue', title: 'Book a venue & courts', sub: slots ? `${slots} court booking${slots === 1 ? '' : 's'} at ${venues.find((v) => v.summary.slots)?.name ?? 'your venue'}` : 'Choose a venue with courts for your sport', done: slots > 0, cta: 'Find venue', onPress: () => go('venue') },
-    { key: 'teams', title: 'Invite teams', sub: accepted.length ? `${accepted.length} team${accepted.length === 1 ? '' : 's'} in${e.capacity ? ` of ${e.capacity}` : ''}` : 'Rank teams from past results and invite them', done: accepted.length >= 2, cta: 'Invite', onPress: () => go('teams') },
-    { key: 'seeds', title: 'Seed the teams', sub: (D.seeds.data ?? []).length ? 'Seeds set from results' : 'Strongest team gets seed 1', done: (D.seeds.data ?? []).length >= 2, cta: 'Seed', onPress: () => go('teams') },
-    { key: 'sched', title: 'Schedule the games', sub: games.length ? `${games.length} games scheduled` : 'Fit games into free courts, skipping holidays', done: games.length > 0, cta: 'Plan', onPress: () => go('games') },
-    { key: 'bracket', title: 'Knockout bracket', sub: D.bracket.data?.rounds?.length ? 'Bracket is live' : 'Quarter-finals → semi-finals → final', done: !!D.bracket.data?.rounds?.length, cta: 'Create', onPress: () => go('games') },
-    { key: 'depts', title: 'Set up departments', sub: n ? `${n} department${n === 1 ? '' : 's'}` : 'Medical, media, volunteers, officials…', done: n > 0, cta: 'Create', onPress: () => go('people', 'departments') },
-    { key: 'crew', title: 'Hire referees & medical cover', sub: crew ? `${crew} confirmed` : 'Referees, doctors, physios, volunteers', done: crew > 0, cta: 'Hire', onPress: () => go('people', 'hiring') },
-    { key: 'boards', title: 'Plan the work on boards', sub: plans.data?.length ? `${plans.data.length} board${plans.data.length === 1 ? '' : 's'}` : 'Give each department its tasks', done: !!plans.data?.length, cta: 'Plan', onPress: () => go('boards') },
-    { key: 'biz', title: 'Sponsors & vendors', sub: sponsors ? `${sponsors} sponsor${sponsors === 1 ? '' : 's'}` : 'Bring in sponsors and retail stalls', done: sponsors > 0 || (D.vend.data ?? []).some((v) => v.status === 'accepted'), cta: 'Add', onPress: () => go('business', 'partners') },
-  ];
   return (
     <>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
         <AStat icon="👥" value={accepted.length} label="Teams" /><AStat icon="⚽" value={`${played}/${games.length}`} label="Played" /><AStat icon="🔴" value={live.data?.filter((g) => g.fixture.status === 'live').length ?? 0} label="Live now" /><AStat icon="🧩" value={n} label="Departments" />
       </View>
 
-      {isOrg ? <ASetupSteps steps={steps} title="Get the event ready" /> : null}
+      {isOrg ? <ReadinessCard id={id} goTab={go} /> : null}
       {isOrg ? <EventSanctions event={e} canManage={isOrg} onChanged={reload} /> : null}
 
       {isOrg ? (

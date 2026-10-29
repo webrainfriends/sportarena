@@ -1,501 +1,521 @@
-// Compliance, policy & evidence (#568). One engine, two entry points: the event console's Compliance tab (the organiser's dashboard of permits,
-// badges, eligibility and tenders) and the Compliance page under More (the rules in force and my own evidence). All logic is in the API; this only
-// calls it. Nothing here claims legal compliance: it shows what the rules ask, what evidence is on file and what a person has verified.
-import React, { useState } from 'react';
-import { Linking, Pressable, View } from 'react-native';
+// Compliance, safeguarding & eligibility (#595): the one place to see and run it, on phone, tablet and desktop.
+//   MyCompliance          "Mine": what is required of me (or of a young person I am guardian of), what is missing or expiring, and the next step.
+//                         "Manage": the scopes I run (organisation, event, governing body, platform) opened in the workspace below.
+//   ComplianceWorkspace   one scope: who is short, the review queue, the rulebook (requirements and who must meet them), waivers and evidence packs.
+//                         Embedded as the Compliance tab of the organisation and of the event console, and reached from Manage.
+// Nothing is decided here; every control calls the API (REST / MCP share the same capabilities) and the server enforces access, consent and audit.
+import React, { createContext, useContext, useState } from 'react';
+import { Platform, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
+import { useNav } from '../nav';
 import { useSession } from '../session';
-import { useDo } from './console-utils';
-import { A, AChip, ACard, ABtn, AEmpty, AHero, ARow, AScreen, ASection, AStat, AT, ATabs, ATag, ReasonSheet } from '../arena';
+import { Btn, Card, Chip, Empty, ErrorBox, Loading, Row, Screen, Seg, Sheet, T, Tag, Field } from '../ui';
 import { FormSheet } from '../FormSheet';
-import { Btn, Chip, ErrorBox, Field, HScroll, Loading, Sheet, T } from '../ui';
+import { MenuField } from '../menu-field';
+import { Pager, SwitchRow } from '../federation-bits';
+import { explain } from '../access';
 import { c } from '../theme';
 import { locale } from '../locale';
-import { CountryPicker, countryName } from '../country-picker';
-import { DateField } from '../pickers';
-import { SportsMulti } from '../sportpicker';
 
-const STATUS = {
-  compliant: ['Compliant', A.green], expiring: ['Expiring', A.sun], pending: ['Pending review', A.cyan], missing: ['Missing', A.orange], exception: ['Exception', A.violet],
-  non_compliant: ['Non-compliant', A.red], unknown: ['Unknown', A.mute], no_rules: ['No rules', A.mute],
-};
-const OUTCOME = { applies: 'Applies', does_not_apply: 'Does not apply', unknown: 'Cannot tell yet', exception_required: 'Exception required' };
-const CLASS = { legal_mandatory: 'Legal', regulatory: 'Regulatory', federation_mandated: 'Federation', contractual: 'Contractual', organisation_policy: 'Organisation', recommended_standard: 'Recommended' };
-const CLASS_TONE = { legal_mandatory: A.red, regulatory: A.orange, federation_mandated: A.violet, contractual: A.cyan, organisation_policy: A.sun, recommended_standard: A.mute };
-const KIND = { licence: 'Licence', permit: 'Permit', declaration: 'Declaration', certificate: 'Certificate', training: 'Training', insurance: 'Insurance', background_check: 'Background check', signed_document: 'Signed document', approval: 'Approval' };
-const HOLDER = { person: 'Person', organisation: 'Organisation', event: 'Event', venue: 'Venue', tender: 'Tender', supplier_entity: 'Supplier', subject: 'Whoever is being checked' };
-const ROLE = { athlete: 'Athlete', team_staff: 'Team staff', official: 'Official', medical: 'Medical', volunteer: 'Volunteer', security: 'Security', media: 'Media', vendor: 'Vendor', sponsor: 'Sponsor', hospitality: 'Hospitality', operations: 'Operations', guest: 'Guest', supplier: 'Supplier' };
-const TYPES = { tournament: 'Tournament', league: 'League', friendly: 'Friendly', camp: 'Camp', trial: 'Trial' };
-const DOMAIN = { procurement: 'Procurement', event_permit: 'Event permits', federation_eligibility: 'Federation eligibility', accreditation: 'Accreditation', youth_safeguarding: 'Youth safeguarding', privacy: 'Privacy', general: 'General' };
-const TRIGGER = { accreditation_approve: 'Badge approval', event_open: 'Event opened to entrants', event_start: 'Event start', award_recommend: 'Tender award recommended', eligibility: 'Match-day eligibility', manual: 'Checked and recorded', gate: 'Gate check' };
-const dateShort = (d) => (d ? new Date(`${String(d).slice(0, 10)}T12:00:00`).toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' }) : '');
-const stamp = (d) => (d ? new Date(d).toLocaleString(locale, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '');
-const slug = (s) => String(s).toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48) || 'rule';
-const where = (v) => [v.municipality, v.region, v.country ? countryName(v.country) : null].filter(Boolean).join(', ') || 'Anywhere';
-const endOfDay = (d) => new Date(`${d}T23:59:59`).toISOString();
+const TONE = { met: c.mint, expiring: c.sun, grace: c.sun, pending_review: c.cyan, missing: c.red, expired: c.red, rejected: c.red, revoked: c.red, waived: c.violetSoft };
+const DECISION = { clear: ['In order', c.mint], pending: ['Awaiting review', c.cyan], blocked: ['Action needed', c.red] };
+const SOURCE_SCREEN = { federation_licence: 'MyLicences', service_credential: 'SupplierWorkspace' };
+const VALIDITY = [[null, 'Never expires'], [180, '6 months'], [365, '1 year'], [730, '2 years'], [1095, '3 years'], [1825, '5 years']];
+const REMINDERS = [90, 60, 30, 14, 7];
+const STOPS = { youth_contact: 'contact with young people', youth_access: 'access to young people\'s records', registration: 'competition registration', accreditation: 'event accreditation' };
+const nice = (iso) => (iso ? new Date(`${String(iso).slice(0, 10)}T00:00:00`).toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' }) : '');
+const ago = (iso) => { const d = Math.floor((Date.now() - Date.parse(iso)) / 864e5); return d <= 0 ? 'today' : d === 1 ? '1 day ago' : `${d} days ago`; };
+const subjectWord = { person: 'people', organisation: 'organisations', event: 'events' };
 
-export const StatusTag = ({ s }) => <ATag label={(STATUS[s] ?? [s])[0]} tone={(STATUS[s] ?? [])[1]} />;
-const ClassTag = ({ k }) => <ATag label={CLASS[k] ?? k} tone={CLASS_TONE[k]} />;
+// The event console is a dark canvas; the same workspace sits on a light one elsewhere. Text that lives on the canvas (not inside a card) follows it.
+const OnDark = createContext(false);
+const Head = ({ children, style }) => <T weight="800" size={19} color={useContext(OnDark) ? '#fff' : c.ink} style={style}>{children}</T>;
+const Note = ({ children, style }) => <T size={13} color={useContext(OnDark) ? 'rgba(255,255,255,0.72)' : c.mute} style={style}>{children}</T>;
+function Block({ title, children }) { return <View style={{ marginTop: 22 }}><Head>{title}</Head><View style={{ gap: 10, marginTop: 10 }}>{children}</View></View>; }
 
-// ------------------------------------------------------------------ what one subject owes
+/** Upload picked files (base64) to a record, one by one. Resolves the names that failed with the reason, so a partly saved submission is never lost. */
+async function attachFiles(recordId, files = []) {
+  const failed = [];
+  for (const f of files) {
+    try { await api.post(`/compliance/records/${recordId}/files`, { file_name: f.file_name, data: f.data }); }
+    catch (e) { failed.push(`${f.file_name}: ${e.message}`); }
+  }
+  return failed;
+}
 
-/** Facts, rules and requirements for one subject, with the next step beside each gap. Never says "compliant by law". */
-function SubjectSheet({ subject, event, onClose, onChanged, canManage = true }) {
-  const { toast } = useSession();
-  const act = useDo(() => { r.reload(); onChanged?.(); });
-  const ctx = event ? { event_id: event.id } : {};
-  const r = useLoad(() => (subject ? api.post('/compliance/evaluate', { subject_type: subject.subject_type, subject_id: subject.subject_id, domain: subject.domain, ...ctx, category_roles: subject.category_roles }) : Promise.resolve(null)), [subject?.subject_id, subject?.domain]);
-  const [words, setWords] = useState(null);
-  const [form, setForm] = useState(null);
-  const [waive, setWaive] = useState(null);
-  const d = r.data;
-  const explain = async () => {
-    try { const x = await api.post('/compliance/explain', { subject_type: subject.subject_type, subject_id: subject.subject_id, domain: subject.domain, ...ctx, category_roles: subject.category_roles }); setWords(x.text); }
-    catch (x) { toast('' + x.message); }
-  };
-  const holderId = (h) => (h === 'subject' ? subject.subject_id : h === 'event' ? event?.id : null);
+/** Open an evidence file: a tab on the web, the share / open sheet on a phone or tablet. The sign-in header is needed, so it is fetched as a blob. */
+async function openEvidenceFile(recordId, file) {
+  const blob = await api.download(`/compliance/records/${recordId}/files/${file.id}`);
+  const type = file.type || blob.type || 'application/octet-stream', name = String(file.name ?? 'evidence').replace(/[^\w. -]/g, '_');
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    const u = URL.createObjectURL(blob);
+    if (/^(application\/pdf|image\/)/.test(type)) window.open(u, '_blank', 'noopener');
+    else { const a = document.createElement('a'); a.href = u; a.download = name; a.click(); }
+    setTimeout(() => URL.revokeObjectURL(u), 120000);
+    return;
+  }
+  const { File, Paths } = await import('expo-file-system');
+  const Sharing = await import('expo-sharing');
+  const f = new File(Paths.cache, name);
+  f.create({ overwrite: true }); f.write(new Uint8Array(await new Response(blob).arrayBuffer()));
+  if (!(await Sharing.isAvailableAsync())) throw new Error('This device cannot open files from here. Open it in the web app.');
+  await Sharing.shareAsync(f.uri, { mimeType: type, dialogTitle: name });
+}
+
+// ---------------------------------------------------------------- the holder's side
+
+/** One obligation: what it is, who asks, where it stands, why, and the single next step. */
+function ItemCard({ it, onAct, onHistory, onAttach }) {
+  const step = it.next_step;
+  const canAttach = it.record?.can_attach && it.requirement.method === 'evidence' && !it.requirement.sensitive;
   return (
-    <Sheet visible={!!subject} onClose={onClose} title={subject?.label ?? 'Compliance'}>
-      {r.error ? <ErrorBox error={r.error} onRetry={r.reload} /> : !d ? <Loading /> : (
-        <View style={{ gap: 12 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <StatusTag s={d.summary.overall} />
-            <T size={12} color={c.mute}>Rules in force on {dateShort(d.as_of)}</T>
+    <Card pad={14} accessibilityLabel={`${it.requirement.name}. ${it.state_label}. ${it.explanation}`}>
+      <View style={{ gap: 8 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
+          <View style={{ flex: 1 }}>
+            <T weight="700" size={16}>{it.requirement.name}</T>
+            <T size={12} color={c.mute}>{it.requirement.category_label === it.requirement.name ? '' : `${it.requirement.category_label} · `}asked by {it.scope.name ?? 'the platform'}{it.mandatory ? '' : ' · optional'}</T>
           </View>
-          <View accessible accessibilityLabel="Facts used" style={{ gap: 4 }}>
-            <T weight="800" size={13}>What we know</T>
-            {Object.keys(d.facts.values).length ? Object.entries(d.facts.values).filter(([k]) => !k.endsWith('_id') && !k.endsWith('_ids')).map(([k, v]) => (
-              <T key={k} size={12.5} color={c.mute}><T size={12.5} weight="700">{k.replace(/_/g, ' ')}:</T> {Array.isArray(v) ? v.join(', ') : String(v)}  ·  {d.facts.sources[k] ?? ''}</T>
-            )) : <T size={12.5} color={c.mute}>Nothing on record yet (add the venue's address to the event so place-based rules can be judged).</T>}
-          </View>
-          {d.results.filter((x) => x.outcome !== 'does_not_apply').length === 0 ? <T color={c.mute}>No rule in force applies here on that date. That is not a statement that nothing is required.</T> : null}
-          {d.results.filter((x) => x.outcome !== 'does_not_apply').map((x) => (
-            <View key={x.version_id} style={{ borderWidth: 1, borderColor: c.line, borderRadius: 16, padding: 12, gap: 8 }}>
-              <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}><ClassTag k={x.classification} /><StatusTag s={x.status} /><T size={11.5} color={c.mute}>{OUTCOME[x.outcome]}</T></View>
-              <T weight="800">{x.title}</T>
-              <T size={12} color={c.mute}>{where(x)} · version {x.version} · from {dateShort(x.effective_from)}{x.source_title ? ` · ${x.source_title}` : ''}</T>
-              {x.reason ? <T size={12.5} color={c.mute}>{x.reason}</T> : null}
-              {x.requirements.map((q) => (
-                <View key={q.key} style={{ gap: 4, borderTopWidth: 1, borderColor: c.line, paddingTop: 8 }}>
-                  <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}><T weight="700" size={13.5} style={{ flexShrink: 1 }}>{q.label}</T><StatusTag s={q.status} /></View>
-                  <T size={12} color={c.mute}>{KIND[q.kind]} · {HOLDER[q.holder] ?? q.holder} · {q.detail}</T>
-                  {['missing', 'non_compliant', 'pending'].includes(q.status) && canManage && q.status !== 'pending' && holderId(q.holder)
-                    ? <Btn small title={`Add ${KIND[q.kind].toLowerCase()}`} onPress={() => setForm({ holder_type: q.holder === 'subject' ? subject.subject_type : q.holder, holder_id: holderId(q.holder), kind: q.kind, requirement_key: q.key, title: q.label })} style={{ alignSelf: 'flex-start' }} /> : null}
-                </View>
-              ))}
-              {x.waivable && canManage && ['missing', 'pending', 'non_compliant'].includes(x.status) ? <Btn small color={c.violet} title="Grant an exception…" onPress={() => setWaive(x)} style={{ alignSelf: 'flex-start' }} /> : null}
-            </View>
-          ))}
-          {d.results.filter((x) => x.outcome === 'does_not_apply').length ? (
-            <T size={12} color={c.mute}>Not applying here: {d.results.filter((x) => x.outcome === 'does_not_apply').map((x) => x.superseded_by ? `${x.title} (overridden by ${x.superseded_by.title})` : x.title).join(' · ')}</T>
-          ) : null}
-          {words ? <ACard><AT size={13.5} weight="600" style={{ lineHeight: 20 }}>{words}</AT></ACard> : <Btn small title="Explain in plain words" color={c.cyan ?? c.violet} onPress={explain} style={{ alignSelf: 'flex-start' }} />}
-          {canManage ? <Btn small title="Record this check in the audit trail" color={c.paper} ink={c.ink} onPress={() => act(() => api.post('/compliance/evaluate', { subject_type: subject.subject_type, subject_id: subject.subject_id, domain: subject.domain, ...ctx, category_roles: subject.category_roles, record: true }), 'Recorded')} style={{ alignSelf: 'flex-start' }} /> : null}
-          <T size={11.5} color={c.mute}>This shows what the rules ask and what evidence is on file. A person decides whether a requirement is met; an uploaded document counts only once it has been verified.</T>
+          <Tag label={it.state_label} color={TONE[it.state] ?? c.violetSoft} />
         </View>
-      )}
-      <EvidenceForm visible={!!form} preset={form} event={event} onClose={() => setForm(null)} onDone={() => { setForm(null); r.reload(); onChanged?.(); }} />
-      <WaiveForm rule={waive} subject={subject} event={event} onClose={() => setWaive(null)} onDone={() => { setWaive(null); r.reload(); onChanged?.(); }} />
+        <T size={14}>{it.explanation}</T>
+        {it.record?.file_count ? <T size={12} color={c.mute}>📎 {it.record.file_count} file{it.record.file_count === 1 ? '' : 's'} attached</T> : null}
+        {it.consequences.length ? <T size={12} color={c.mute}>If this is not in order it stops: {it.consequences.map((x) => STOPS[x] ?? x).join(', ')}.</T> : null}
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+          {step && step.action !== 'wait' ? <Btn small title={step.label} onPress={() => onAct(it)} accessibilityLabel={`${step.label}: ${it.requirement.name}`} /> : null}
+          {canAttach ? <Btn small color={c.paper} ink={c.ink} title="Add files" onPress={() => onAttach(it)} accessibilityLabel={`Add files to ${it.requirement.name}`} /> : null}
+          <Btn small color={c.paper} ink={c.ink} title="History" onPress={() => onHistory(it)} accessibilityLabel={`History of ${it.requirement.name}`} />
+        </View>
+      </View>
+    </Card>
+  );
+}
+
+function History({ subject, onClose }) {
+  const h = useLoad(() => (subject ? api.get('/compliance/history', { subject_kind: subject.kind, subject_id: subject.id, limit: 50 }) : Promise.resolve(null)), [subject?.id, subject?.kind]);
+  return (
+    <Sheet visible={!!subject} onClose={onClose} title="History">
+      {h.error ? <ErrorBox error={h.error} onRetry={h.reload} /> : !h.data ? <Loading /> : h.data.items.length ? h.data.items.map((e) => (
+        <Row key={e.id} title={`${String(e.action).replace(/_/g, ' ')}${e.requirement ? ` · ${e.requirement}` : ''}`} sub={`${e.actor ?? 'System'} · ${new Date(e.at).toLocaleString(locale, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}`} />
+      )) : <Empty emoji="🗒️" title="Nothing yet" sub="Submissions, decisions and waivers appear here." />}
     </Sheet>
   );
 }
 
-function WaiveForm({ rule, subject, event, onClose, onDone }) {
-  return (
-    <FormSheet visible={!!rule} onClose={onClose} title={`Exception: ${rule?.title ?? ''}`} submitLabel="Grant exception" color={c.violet}
-      notice="An exception waives this one rule for a limited time, is recorded with your name and reason, and shows in every decision that relies on it."
-      fields={[{ key: 'reason', label: 'Why is this safe to waive?', type: 'multiline' }, { key: 'until', label: 'Waived until', type: 'date' }]}
-      onSubmit={async (v) => {
-        if (!v.reason || v.reason.trim().length < 10) throw new Error('Give a reason of at least a sentence');
-        if (!v.until) throw new Error('Choose the last day of the exception');
-        await api.post('/compliance/exceptions', { rule_id: rule.rule_id, holder_type: subject.subject_type, holder_id: subject.subject_id, event_id: event?.id, reason: v.reason.trim(), valid_to: endOfDay(v.until) });
-        onDone();
-      }} />
-  );
-}
-
-// ------------------------------------------------------------------ evidence
-
-/** File evidence: the right control for each answer (kind chips, calendar dates, a pick of the event), the number kept encrypted. */
-export function EvidenceForm({ visible, preset, event, onClose, onDone, holder }) {
-  const { user } = useSession();
-  const mine = useLoad(() => (visible && !event && !preset ? api.get('/events', { organizer_id: user.id, limit: 50 }).catch(() => []) : Promise.resolve([])), [visible]);
-  const h = holder ?? (preset ? { type: preset.holder_type, id: preset.holder_id } : { type: 'person', id: user.id });
-  return (
-    <FormSheet visible={visible} onClose={onClose} title="Add evidence" submitLabel="File it" color={c.violet} initial={{ kind: preset?.kind ?? 'certificate', title: preset?.title ?? '' }}
-      notice="The number is stored encrypted. Everything except a declaration waits for a reviewer: a document on its own is never treated as proof."
-      fields={[
-        { key: 'kind', label: 'What is it?', type: 'chips', options: Object.entries(KIND).map(([value, label]) => ({ value, label })) },
-        { key: 'title', label: 'Name', hint: 'For example "Fire safety certificate"' },
-        { key: 'issuer', label: 'Issued by', optional: true },
-        { key: 'reference', label: 'Number or reference (kept encrypted)', optional: true },
-        { key: 'document_ref', label: 'Where the document is kept (link or note)', optional: true },
-        { key: 'issued_on', label: 'Issued on', type: 'date', optional: true },
-        { key: 'valid_to', label: 'Valid until', type: 'date', optional: true },
-        ...(!event && !preset ? [{ key: 'event', label: 'File it for one event (its organiser reviews it)', type: 'entity', entityKind: 'team', noun: 'event', options: (mine.data ?? []).map((e) => ({ id: e.id, label: e.name, sub: e.starts_on })), optional: true }] : []),
-      ]}
-      onSubmit={async (v) => {
-        const eventId = event?.id ?? (Array.isArray(v.event) ? v.event[0]?.id : v.event) ?? undefined;
-        await api.post('/compliance/evidence', { holder_type: h.type, holder_id: h.id, event_id: eventId, kind: v.kind, requirement_key: preset?.requirement_key, title: v.title, issuer: v.issuer || undefined, reference: v.reference || undefined, document_ref: v.document_ref || undefined, issued_on: v.issued_on || undefined, valid_to: v.valid_to || undefined });
-        onDone();
-      }} />
-  );
-}
-
-const EV_TONE = { verified: A.green, submitted: A.cyan, rejected: A.red, revoked: A.red };
-const EV_LABEL = { verified: 'Verified', submitted: 'Waiting for a reviewer', rejected: 'Rejected', revoked: 'Revoked' };
-
-function EvidenceRow({ e, review, onReview }) {
-  return (
-    <ARow title={e.title} sub={`${KIND[e.kind] ?? e.kind}${e.issuer ? ` · ${e.issuer}` : ''}${e.valid_to ? ` · until ${dateShort(e.valid_to)}` : ''}${e.has_reference ? ' · number on file' : ''}`}
-      right={<><ATag label={EV_LABEL[e.status]} tone={EV_TONE[e.status]} />{review ? (
-        <View style={{ flexDirection: 'row', gap: 6 }}>
-          <ABtn small title="Verify" tone="lime" onPress={() => onReview(e, 'verify')} />
-          <ABtn small title="Reject" tone="ghost" onPress={() => onReview(e, 'reject')} />
-        </View>) : null}</>} />
-  );
-}
-
-function ReviewSheets({ ask, setAsk, done }) {
-  return (
-    <>
-      <FormSheet visible={ask?.how === 'verify'} onClose={() => setAsk(null)} title="Verify evidence" submitLabel="Verify" color={c.violet}
-        notice="Say what you actually checked. This is recorded with your name."
-        fields={[{ key: 'verified_what', label: 'What did you check?', type: 'multiline', hint: 'For example: original seen, number matches the register' }]}
-        onSubmit={async (v) => { await api.post(`/compliance/evidence/${ask.e.id}/review`, { decision: 'verify', verified_what: v.verified_what }); setAsk(null); done('Verified'); }} />
-      <ReasonSheet visible={ask?.how === 'reject'} onClose={() => setAsk(null)} title="Reject evidence" presets={['Not legible', 'Expired', 'Does not match the requirement', 'Could not be confirmed']} confirmLabel="Reject"
-        onConfirm={async (note) => { await api.post(`/compliance/evidence/${ask.e.id}/review`, { decision: 'reject', note }); done('Rejected'); }} />
-    </>
-  );
-}
-
-// ------------------------------------------------------------------ the event console tab
-
-const SECTION_NOTE = { event_permit: 'Permits, insurance and approvals for the event itself', accreditation: 'Who is waiting for, or holds, a badge', federation_eligibility: 'Registered players', procurement: 'Tenders for this event' };
-
-export function ComplianceTab({ id, e, isOrg }) {
+/** Submit evidence or make a declaration for one obligation of a subject. */
+function SubmitSheet({ item, subject, onClose, onDone }) {
   const { toast } = useSession();
-  const dash = useLoad(() => (isOrg ? api.get(`/events/${id}/compliance`) : Promise.resolve(null)), [id, isOrg]);
-  const queue = useLoad(() => (isOrg ? api.get('/compliance/review-queue', { event_id: id }) : Promise.resolve([])), [id, isOrg]);
-  const log = useLoad(() => (isOrg ? api.get('/compliance/decisions', { event_id: id, limit: 30 }) : Promise.resolve([])), [id, isOrg]);
-  const [sub, setSub] = useState('overview');
-  const [open, setOpen] = useState(null);
-  const [form, setForm] = useState(false);
-  const [ask, setAsk] = useState(null);
-  const [detail, setDetail] = useState(null);
-  const reloadAll = () => { dash.reload(); queue.reload(); log.reload(); };
-  if (!isOrg) return <AEmpty emoji="🛡️" title="Compliance is run by the organiser" sub="If you were asked for a permit, certificate or declaration, open Compliance under More to file it." />;
-  if (dash.error) return <ErrorBox error={dash.error} onRetry={dash.reload} />;
-  const d = dash.data;
-  if (!d) return <Loading />;
-  const t = d.totals;
+  if (!item) return null;
+  const r = item.requirement;
+  const declare = r.method === 'declaration';
+  const fields = declare
+    ? [{ key: 'confirm', label: 'I have read this and agree', type: 'switch' }, ...(r.category === 'conflict_of_interest' ? [{ key: 'detail', label: 'Describe any conflict (leave empty if you have none)', type: 'multiline', optional: true }] : [])]
+    : [
+      { key: 'reference', label: r.category === 'background_check' ? 'Reference of the check' : 'Certificate, permit or policy reference', type: 'text', hint: r.sensitive ? 'Only you can see this reference. Reviewers see the outcome.' : 'Stored encrypted.' },
+      { key: 'provider', label: 'Issued by', type: 'text', optional: true },
+      { key: 'issued_on', label: 'Issued on', type: 'date', optional: true },
+      { key: 'expires_on', label: 'Expires on', type: 'date', optional: true, hint: r.validity_days ? `Leave empty to use ${r.validity_days} days from the issue date.` : 'Leave empty if it does not expire.' },
+      ...(r.sensitive ? [] : [{ key: 'files', label: 'Attach the certificate or document', type: 'files', max: 5, documents: 'wide', optional: true }]),
+    ];
   return (
-    <View style={{ gap: 12 }}>
-      <AT size={13} color={A.mute}>Read live from the rules in force: a rule change shows here at once. This is a checklist of what the rules ask and what has been verified, not legal advice.</AT>
-      <ATabs value={sub} onChange={setSub} tabs={[{ key: 'overview', label: 'Overview' }, { key: 'review', label: `To review${queue.data?.length ? ` · ${queue.data.length}` : ''}` }, { key: 'log', label: 'Decisions' }]} />
-      {sub === 'overview' ? (
-        <>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-            {['compliant', 'expiring', 'pending', 'missing', 'exception', 'non_compliant', 'unknown'].map((s) => <AStat key={s} value={t[s] ?? 0} label={STATUS[s][0]} tone={t[s] ? STATUS[s][1] : undefined} />)}
+    <FormSheet visible onClose={onClose} title={declare ? r.name : `Submit ${r.name}`} fields={fields} submitLabel={declare ? 'Confirm declaration' : 'Submit for review'}
+      notice={declare ? r.statement : undefined}
+      onSubmit={async (v) => {
+        if (declare && !v.confirm) throw new Error('Confirm that you have read and agree');
+        try {
+          const { files, ...rest } = v;
+          const rec = await api.post('/compliance/records', { requirement_id: item.requirement_id, subject_kind: subject.kind, subject_id: subject.id, ...rest, ...(declare ? { statement_version: r.version } : {}) });
+          const failed = declare ? [] : await attachFiles(rec.id, files);
+          onDone();
+          if (failed.length) return `Submitted, but ${failed.length === 1 ? 'a file' : 'some files'} did not upload (${failed.join('; ')}). Use Add files to try again.`;
+          return declare ? 'Declaration recorded' : 'Submitted for review';
+        } catch (e) { if (e.status === 409) toast(explain(e)); throw e; }
+      }} />
+  );
+}
+
+/** Add files to a submission that is still waiting for review. */
+function AttachSheet({ item, onClose, onDone }) {
+  if (!item) return null;
+  return (
+    <FormSheet visible onClose={onClose} title={`Add files to ${item.requirement.name}`} submitLabel="Upload"
+      fields={[{ key: 'files', label: 'Files', type: 'files', max: 5, documents: 'wide' }]}
+      onSubmit={async (v) => {
+        const failed = await attachFiles(item.record.id, v.files);
+        onDone();
+        if (failed.length) throw new Error(failed.join('; '));
+        return 'Files added';
+      }} />
+  );
+}
+
+function Subject({ subject, title, empty, hideWhenEmpty }) {
+  const { push, goTab } = useNav();
+  const s = useLoad(() => api.get('/compliance/status', { subject_kind: subject.kind, subject_id: subject.id }), [subject.kind, subject.id]);
+  const [open, setOpen] = useState(null), [hist, setHist] = useState(null), [attach, setAttach] = useState(null);
+  if (s.error) return <ErrorBox error={s.error} onRetry={s.reload} />;
+  if (!s.data) return <Loading />;
+  const d = s.data;
+  if (hideWhenEmpty && !d.items.length) return null;
+  const act = (it) => {
+    const step = it.next_step;
+    if (step?.action === 'open_source') { const target = SOURCE_SCREEN[step.source]; if (target) push(target); else goTab('Me'); return; }
+    setOpen(it);
+  };
+  const groups = [
+    ['Needs action', d.items.filter((i) => i.blocking || ['expired'].includes(i.state))],
+    ['Awaiting review', d.items.filter((i) => i.state === 'pending_review' && !i.blocking)],
+    ['Expiring soon', d.items.filter((i) => ['expiring', 'grace'].includes(i.state))],
+    ['In order', d.items.filter((i) => ['met', 'waived'].includes(i.state))],
+  ];
+  const [label, color] = DECISION[d.decision];
+  return (
+    <View>
+      {title ? <Head>{title}</Head> : null}
+      <Card pad={16} color={d.decision === 'clear' ? c.mintSoft : d.decision === 'pending' ? c.cyanSoft : c.pinkSoft} style={{ marginTop: 10 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <View style={{ flex: 1, minWidth: 180 }}>
+            <T weight="800" size={20}>{d.items.length ? label : 'Nothing is required'}</T>
+            <T size={13} color={c.mute}>{d.items.length ? `${d.counts.met} in order · ${d.counts.expiring} expiring · ${d.counts.pending} awaiting review · ${d.counts.blocked} need action${d.counts.waived ? ` · ${d.counts.waived} waived` : ''}` : (empty ?? 'No requirement applies to you right now.')}</T>
           </View>
-          {d.truncated ? <T size={12} color={A.mute}>Showing the first 100 people in each list.</T> : null}
-          {Object.entries(d.sections).map(([key, sec]) => (
-            <View key={key} style={{ gap: 8 }}>
-              <ASection title={sec.label} sub={SECTION_NOTE[key]} />
-              {sec.subjects.length === 0 ? <ACard><AT size={13} color={A.mute}>Nothing to check yet.</AT></ACard> : sec.subjects.map((s) => (
-                <ARow key={`${s.subject_type}${s.subject_id}${s.detail ?? ''}`} title={s.label} onPress={() => setOpen({ ...s, domain: key })}
-                  sub={s.overall === 'no_rules' ? 'No rule applies' : s.blockers.length ? s.blockers.map((b) => b.title).join(' · ') : s.unknown_facts.length ? `Needs: ${s.unknown_facts.join(', ')}` : (s.detail ?? 'All requirements met')}
-                  right={<StatusTag s={s.overall} />} />
-              ))}
-            </View>
-          ))}
-          {d.expiring_evidence.length ? (
-            <>
-              <ASection title="Expiring soon" sub="Verified evidence that lapses within 30 days" />
-              {d.expiring_evidence.map((x) => <ARow key={x.id} title={x.title} sub={`${KIND[x.kind]} · ${HOLDER[x.holder_type]} · ends ${dateShort(x.valid_to)}`} right={<StatusTag s="expiring" />} />)}
-            </>
-          ) : null}
-          <ABtn title="Add evidence for this event" tone="neon" onPress={() => setForm(true)} />
-        </>
-      ) : sub === 'review' ? (
-        <>
-          <ASection title="Waiting for your review" sub="Evidence filed for this event. You cannot verify what you filed yourself." />
-          {queue.data?.length ? queue.data.map((x) => <EvidenceRow key={x.id} e={x} review onReview={(ev, how) => setAsk({ e: ev, how })} />) : <AEmpty emoji="✅" title="Nothing waiting" sub="New evidence filed for this event appears here." />}
-        </>
-      ) : (
-        <>
-          <ASection title="Audit trail" sub="Every check that was recorded or that stopped an action" />
-          {log.data?.length ? log.data.map((x) => (
-            <ARow key={x.id} title={TRIGGER[x.trigger] ?? String(x.trigger).replace(/_/g, ' ')} sub={`${DOMAIN[x.domain] ?? x.domain} · ${stamp(x.created_at)}${x.decided_by_name ? ` · ${x.decided_by_name}` : ''}${x.override_exception_ids?.length ? ' · exception used' : ''}`}
-              onPress={() => api.get(`/compliance/decisions/${x.id}`).then(setDetail).catch((z) => toast('' + z.message))}
-              right={<><StatusTag s={x.overall} />{x.blocked ? <ATag label="Stopped" tone={A.red} /> : null}</>} />
-          )) : <AEmpty emoji="📜" title="No decisions recorded yet" sub="Approvals, starts and awards that were checked against the rules are listed here." />}
-        </>
-      )}
-      <SubjectSheet subject={open} event={e} onClose={() => setOpen(null)} onChanged={reloadAll} />
-      <EvidenceForm visible={form} event={e} holder={{ type: 'event', id }} onClose={() => setForm(false)} onDone={() => { setForm(false); toast('Filed. A reviewer will look at it.'); reloadAll(); }} />
-      <ReviewSheets ask={ask} setAsk={setAsk} done={(m) => { toast(m); setAsk(null); reloadAll(); }} />
-      <DecisionSheet d={detail} onClose={() => setDetail(null)} />
+          {d.items.length ? <Tag label={label} color={color} /> : null}
+        </View>
+      </Card>
+      {groups.map(([name, list]) => (list.length ? (
+        <Block key={name} title={`${name} · ${list.length}`}>
+          {list.map((it) => <ItemCard key={it.obligation_id} it={it} onAct={act} onHistory={() => setHist(subject)} onAttach={setAttach} />)}
+        </Block>
+      ) : null))}
+      <SubmitSheet item={open} subject={subject} onClose={() => setOpen(null)} onDone={() => { setOpen(null); s.reload(); }} />
+      <AttachSheet item={attach} onClose={() => setAttach(null)} onDone={() => { setAttach(null); s.reload(); }} />
+      <History subject={hist} onClose={() => setHist(null)} />
     </View>
   );
 }
 
-function DecisionSheet({ d, onClose }) {
+// ---------------------------------------------------------------- evidence packs
+
+function PackView({ id, onClose }) {
+  const p = useLoad(() => (id ? api.get(`/compliance/packs/${id}`) : Promise.resolve(null)), [id]);
   return (
-    <Sheet visible={!!d} onClose={onClose} title="Decision as it was taken">
-      {d ? (
+    <Sheet visible={!!id} onClose={onClose} title="Evidence pack">
+      {p.error ? <ErrorBox error={p.error} onRetry={p.reload} /> : !p.data ? <Loading /> : (
         <View style={{ gap: 10 }}>
-          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}><StatusTag s={d.overall} />{d.blocked ? <ATag label="Stopped the action" tone={A.red} /> : null}</View>
-          <T size={12.5} color={c.mute}>{stamp(d.created_at)} · {d.decided_by_name ?? 'automatic'} · rules in force on {dateShort(d.as_of)}</T>
-          {d.results.filter((x) => x.outcome !== 'does_not_apply').map((x) => (
-            <View key={x.version_id} style={{ borderWidth: 1, borderColor: c.line, borderRadius: 14, padding: 10, gap: 4 }}>
-              <T weight="800">{x.title} <T size={12} color={c.mute}>· version {x.version}</T></T>
-              <T size={12} color={c.mute}>{CLASS[x.classification]} · {OUTCOME[x.outcome]} · {(STATUS[x.status] ?? [x.status])[0]}</T>
-              {x.requirements.map((q) => <T key={q.key} size={12.5}>• {q.label}: {(STATUS[q.status] ?? [q.status])[0]} — {q.detail}</T>)}
-            </View>
+          <T size={13} color={c.mute}>{p.data.purpose}</T>
+          <T size={12} color={c.mute}>{p.data.content.scope.name} · {p.data.content.totals.subjects} {subjectWord[p.data.content.subject_kind]} · {p.data.content.totals.clear} in order · {p.data.content.totals.pending} awaiting review · {p.data.content.totals.blocked} short. SHA-256 {p.data.sha256.slice(0, 16)}… Expires {nice(p.data.expires_at)}.</T>
+          {p.data.content.subjects.map((s) => (
+            <Card key={s.id} pad={12}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><T weight="700" style={{ flex: 1 }}>{s.name}</T><Tag label={DECISION[s.decision][0]} color={DECISION[s.decision][1]} /></View>
+              {s.items.map((x, i) => <T key={i} size={12} color={c.mute}>{x.requirement} · {x.state}{x.expires_on ? ` · until ${nice(x.expires_on)}` : ''}{x.waived_until ? ` · waived until ${nice(x.waived_until)}` : ''}</T>)}
+            </Card>
           ))}
-          {d.exceptions?.length ? <T size={12.5}>Exceptions relied on: {d.exceptions.map((x) => `${x.rule_key} (by ${x.granted_by_name})`).join('; ')}</T> : null}
-          <T size={12} color={c.mute}>Facts used: {Object.entries(d.facts.values).filter(([k]) => !k.endsWith('_id') && !k.endsWith('_ids')).map(([k, v]) => `${k.replace(/_/g, ' ')} ${Array.isArray(v) ? v.join('/') : v} (${d.facts.sources[k]})`).join(' · ') || 'none'}</T>
+          {p.data.content.truncated ? <T size={12} color={c.mute}>The pack is limited to the first 500 entries.</T> : null}
         </View>
-      ) : null}
+      )}
     </Sheet>
   );
 }
 
-// ------------------------------------------------------------------ the page under More
-
-export function CompliancePage({ tab: first = 'rules' }) {
-  const { user, toast } = useSession();
-  const [tab, setTab] = useState(first);
-  const cat = useLoad(() => api.get('/compliance/catalogue'), []);
-  const [domain, setDomain] = useState(null);
-  const [country, setCountry] = useState(null);
-  const rules = useLoad(() => api.get('/compliance/rules', { domain: domain ?? undefined, country: country ?? undefined, limit: 100 }), [domain, country]);
-  const orgs = useLoad(() => api.get('/organisations').catch(() => []), []);
-  const ev = useLoad(() => api.get('/compliance/evidence', { holder_type: 'person', holder_id: user.id, limit: 100 }), [user.id]);
-  const [wizard, setWizard] = useState(null);
+function PacksForMe() {
+  const l = useLoad(() => api.get('/compliance/packs', { limit: 20 }), []);
   const [open, setOpen] = useState(null);
-  const [form, setForm] = useState(false);
-  const isPlatform = !!user.roles?.includes('platform_admin');
-  const adminOrgs = (orgs.data ?? []).filter((o) => o.my_status === 'active' && ['owner', 'admin'].includes(o.my_role));
-  const canWrite = isPlatform || adminOrgs.length > 0;
-  const soon = (ev.data ?? []).filter((x) => x.status === 'verified' && x.valid_to && x.valid_to <= new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10));
+  const mine = (l.data?.items ?? []).filter((p) => p.mine);
+  if (!mine.length) return null;
   return (
-    <AScreen>
-      <AHero kicker="Compliance" title="Rules and evidence" sub="One set of versioned rules for permits, eligibility, accreditation and procurement. Nothing here is legal advice." emoji="🛡️" />
-      <ATabs value={tab} onChange={setTab} tabs={[{ key: 'rules', label: 'Rules in force' }, { key: 'mine', label: `My evidence${soon.length ? ` · ${soon.length} expiring` : ''}` }]} />
-      {tab === 'rules' ? (
-        <>
-          <HScroll>
-            <AChip label="All" active={!domain} onPress={() => setDomain(null)} />
-            {(cat.data?.domains ?? []).filter((x) => x.key !== 'general').map((x) => <AChip key={x.key} label={x.label} active={domain === x.key} onPress={() => setDomain(domain === x.key ? null : x.key)} />)}
-          </HScroll>
-          <HScroll>
-            <AChip label="Any country" active={!country} onPress={() => setCountry(null)} color={A.cyan} />
-            {(cat.data?.jurisdictions ?? []).map((j) => <AChip key={j.code} label={j.name} active={country === j.code} onPress={() => setCountry(country === j.code ? null : j.code)} color={A.cyan} />)}
-          </HScroll>
-          {canWrite ? <ABtn title="Write a rule" tone="neon" onPress={() => setWizard({})} /> : <T size={12} color={A.mute}>Rules are written by the platform team (laws and regulations) and by owners and admins of an organisation (its own policies). Federation rules come from the federation's console.</T>}
-          {rules.error ? <ErrorBox error={rules.error} onRetry={rules.reload} /> : !rules.data ? <Loading /> : rules.data.length === 0 ? (
-            <AEmpty emoji="📚" title="No rules yet" sub="When a rule is approved for your place, your organisation or your federation, it appears here with its source and effective date." />
-          ) : rules.data.map((r) => {
-            const v = r.current ?? r.upcoming;
-            return (
-              <ARow key={r.id} title={v?.title ?? r.key} onPress={() => setOpen(r.id)}
-                sub={`${v ? where(v) : 'Draft only'} · ${r.scope === 'platform' ? 'Platform library' : r.organisation_name} · ${r.domains.map((x) => DOMAIN[x]).join(', ')}`}
-                right={<>{v ? <ClassTag k={v.classification} /> : null}{r.repealed ? <ATag label="Repealed" tone={A.mute} /> : !r.current && r.upcoming ? <ATag label={`From ${dateShort(r.upcoming.effective_from)}`} tone={A.sun} /> : null}{r.drafts ? <ATag label={`${r.drafts} draft`} tone={A.cyan} /> : null}</>} />
-            );
-          })}
-        </>
-      ) : (
-        <>
-          <ASection title="My evidence" sub="Licences, certificates, training and declarations you have filed. Verified evidence counts toward the rules." />
-          <ABtn title="Add evidence" tone="neon" onPress={() => setForm(true)} />
-          {ev.error ? <ErrorBox error={ev.error} onRetry={ev.reload} /> : !ev.data ? <Loading /> : ev.data.length === 0 ? <AEmpty emoji="🗂️" title="Nothing filed yet" sub="When an organiser asks for a certificate or a declaration, file it here or from the request." /> : ev.data.map((x) => <EvidenceRow key={x.id} e={x} />)}
-        </>
-      )}
-      <RuleDetail id={open} onClose={() => setOpen(null)} onChanged={rules.reload} onNewVersion={(rule, v) => { setOpen(null); setWizard({ rule, v }); }} />
-      <RuleWizard open={wizard} onClose={() => setWizard(null)} cat={cat.data} isPlatform={isPlatform} orgs={adminOrgs} rules={rules.data ?? []} onDone={() => { setWizard(null); toast('Saved as a draft. It applies once approved.'); rules.reload(); }} />
-      <EvidenceForm visible={form} onClose={() => setForm(false)} onDone={() => { setForm(false); ev.reload(); toast('Filed'); }} />
-    </AScreen>
+    <Block title="Evidence packs for you">
+      {mine.map((p) => <Row key={p.id} title={p.scope_name ?? 'Compliance'} sub={`${p.purpose} · ${p.readable ? `until ${nice(p.expires_at)}` : p.revoked_at ? 'revoked' : 'expired'}`} onPress={p.readable ? () => setOpen(p.id) : undefined} right={<Tag label={p.readable ? 'Open' : 'Closed'} color={p.readable ? c.mint : c.violetSoft} />} />)}
+      <PackView id={open} onClose={() => setOpen(null)} />
+    </Block>
   );
 }
 
-function RuleDetail({ id, onClose, onChanged, onNewVersion }) {
-  const { toast } = useSession();
-  const r = useLoad(() => (id ? api.get(`/compliance/rules/${id}`) : Promise.resolve(null)), [id]);
-  const act = useDo(() => { r.reload(); onChanged?.(); });
-  const d = r.data;
-  return (
-    <Sheet visible={!!id} onClose={onClose} title={d?.versions?.[0]?.title ?? 'Rule'}>
-      {r.error ? <ErrorBox error={r.error} onRetry={r.reload} /> : !d ? <Loading /> : (
-        <View style={{ gap: 12 }}>
-          <T size={12.5} color={c.mute}>{d.scope_kind === 'platform' ? 'Platform library' : d.organisation_name} · {d.domains.map((x) => DOMAIN[x]).join(', ')} · topic {d.topic}</T>
-          {d.versions.map((v) => (
-            <View key={v.id} style={{ borderWidth: 1, borderColor: c.line, borderRadius: 16, padding: 12, gap: 6 }}>
-              <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-                <T weight="800">Version {v.version}</T><ClassTag k={v.classification} />
-                <ATag label={v.status === 'approved' ? (v.repeals ? 'Repeal' : 'Approved') : v.status === 'draft' ? 'Draft' : 'Withdrawn'} tone={v.status === 'approved' ? A.green : v.status === 'draft' ? A.cyan : A.mute} />
-              </View>
-              <T weight="700">{v.title}</T>
-              {v.summary ? <T size={13} color={c.mute}>{v.summary}</T> : null}
-              <T size={12.5} color={c.mute}>{where(v)} · from {dateShort(v.effective_from)}{v.effective_to ? ` to ${dateShort(v.effective_to)}` : ''}</T>
-              <T size={12.5} color={c.mute}>Approval owner: {v.approval_owner}{v.approved_at ? ` · approved ${dateShort(v.approved_at)}${v.self_approved ? ' (by its author)' : ''}` : ''}</T>
-              {v.source_title || v.source_url ? <Pressable accessibilityRole="link" onPress={() => v.source_url && Linking.openURL(v.source_url)} style={{ minHeight: 44, justifyContent: 'center' }}><T size={13} weight="700" color={c.violet}>Source: {v.source_title ?? v.source_url} ↗</T></Pressable> : null}
-              {Object.entries(v.applies ?? {}).filter(([, x]) => (Array.isArray(x) ? x.length : x != null)).length ? <T size={12.5}>Applies to: {Object.entries(v.applies).filter(([, x]) => (Array.isArray(x) ? x.length : x != null)).map(([k, x]) => `${k.replace(/_/g, ' ')} ${Array.isArray(x) ? x.join(', ') : x}`).join(' · ')}</T> : null}
-              {v.requirements.map((q) => <T key={q.key} size={12.5}>• {q.label} — {KIND[q.kind]}, held by {HOLDER[q.holder] ?? q.holder}{q.max_age_days ? `, not older than ${q.max_age_days} days` : ''}</T>)}
-              {v.waivable ? <T size={12} color={c.mute}>Can be waived by an authorised person, for a limited time.</T> : null}
-              {d.can_manage && v.status === 'draft' ? (
-                <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-                  <Btn small title="Approve" onPress={() => act(() => api.post(`/compliance/versions/${v.id}/decision`, { decision: 'approve' }), 'Approved')} />
-                  <Btn small color={c.paper} ink={c.ink} title="Withdraw draft" onPress={() => act(() => api.post(`/compliance/versions/${v.id}/decision`, { decision: 'withdraw' }), 'Withdrawn')} />
-                </View>
-              ) : null}
-            </View>
-          ))}
-          {d.can_manage ? <Btn title="Write a new version" onPress={() => onNewVersion(d, d.versions.find((v) => v.status === 'approved') ?? d.versions[0])} /> : null}
-          <T size={11.5} color={c.mute}>Versions are never edited or deleted: a change is a new version with its own effective date, so any past decision can be explained with the text that was in force.</T>
-        </View>
-      )}
-    </Sheet>
-  );
-}
+// ---------------------------------------------------------------- the manager's side
 
-// ------------------------------------------------------------------ writing a rule
+function useCatalogue() { return useLoad(() => api.get('/compliance/catalogue'), []); }
 
-const empty = { reqs: [] };
-function RuleWizard({ open, onClose, cat, isPlatform, orgs, rules, onDone }) {
-  const prev = open?.v;
-  const [step, setStep] = useState(0);
-  const [f, setF] = useState(null);
-  const [busy, setBusy] = useState(false);
+function ReviewQueue({ scope, cat, reload }) {
   const { toast } = useSession();
-  const [seen, setSeen] = useState(null);
-  if (open && seen !== open) {
-    setSeen(open);
-    setStep(0);
-    setF(prev ? {
-      scope: open.rule.scope_kind, organisation_id: open.rule.organisation_id, domains: open.rule.domains, topic: open.rule.topic, title: prev.title, classification: prev.classification, country: prev.country ?? undefined, region: prev.region ?? '', municipality: prev.municipality ?? '',
-      roles: prev.applies?.roles ?? [], event_types: prev.applies?.event_types ?? [], sports: prev.applies?.sports ?? [], min_age: prev.applies?.min_age, max_age: prev.applies?.max_age, effective_from: undefined, effective_to: undefined,
-      source_title: prev.source_title ?? '', source_url: prev.source_url ?? '', approval_owner: prev.approval_owner, waivable: prev.waivable, reqs: prev.requirements ?? [], change_note: '',
-    } : { ...empty, scope: isPlatform ? 'platform' : 'organisation', organisation_id: orgs[0]?.id, domains: [], classification: isPlatform ? 'regulatory' : 'organisation_policy', roles: [], event_types: [], sports: [], region: '', municipality: '', source_title: '', source_url: '', approval_owner: '', waivable: false, title: '' });
-  }
-  if (!open || !f) return null;
-  const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
-  const toggle = (k, v) => set(k, f[k].includes(v) ? f[k].filter((x) => x !== v) : [...f[k], v]);
-  const classes = f.scope === 'platform' ? ['legal_mandatory', 'regulatory', 'recommended_standard'] : ['organisation_policy', 'contractual', 'recommended_standard'];
-  const addReq = () => set('reqs', [...f.reqs, { key: `req-${f.reqs.length + 1}-${Math.random().toString(36).slice(2, 5)}`, kind: 'certificate', label: '', holder: 'subject', warn_days: 30 }]);
-  const setReq = (i, patch) => set('reqs', f.reqs.map((q, j) => (j === i ? { ...q, ...patch } : q)));
-  const check = () => {
-    if (step === 0) { if (f.title.trim().length < 3) return 'Give the rule a name'; if (!f.domains.length) return 'Choose what it governs'; if (f.scope === 'organisation' && !f.organisation_id) return 'Choose the organisation'; if (f.municipality && !f.region) return 'A municipality needs its state or province'; if ((f.region || f.municipality) && !f.country) return 'Choose the country first'; }
-    if (step === 2) { if (!f.effective_from) return 'Choose the day it takes effect'; if (f.approval_owner.trim().length < 3) return 'Say who is accountable for approving it'; if (f.reqs.some((q) => q.label.trim().length < 3)) return 'Name each piece of evidence'; if (f.source_url && !/^https:\/\//.test(f.source_url)) return 'The source link must start with https://'; }
-    return null;
-  };
-  const next = () => { const m = check(); if (m) toast(m); else setStep(step + 1); };
-  const save = async () => {
-    const m = check(); if (m) { toast(m); return; }
+  const q = useLoad(() => api.get('/compliance/records', { scope_kind: scope.kind, ...(scope.id ? { scope_id: scope.id } : {}), status: 'submitted', limit: 50 }), [scope.kind, scope.id]);
+  const [pick, setPick] = useState(null), [reason, setReason] = useState(''), [shown, setShown] = useState(null), [busy, setBusy] = useState(false);
+  const decide = async (rec, decision, why) => {
     setBusy(true);
-    try {
-      const applies = {};
-      if (f.roles.length) applies.roles = f.roles;
-      if (f.event_types.length) applies.event_types = f.event_types;
-      if (f.sports.length) applies.sports = f.sports;
-      if (f.min_age != null) applies.min_age = f.min_age;
-      if (f.max_age != null) applies.max_age = f.max_age;
-      const body = {
-        title: f.title.trim(), classification: f.classification, country: f.country || undefined, region: f.region.trim() || undefined, municipality: f.municipality.trim() || undefined, applies,
-        effective_from: f.effective_from, effective_to: f.effective_to || undefined, source_title: f.source_title.trim() || undefined, source_url: f.source_url.trim() || undefined,
-        approval_owner: f.approval_owner.trim(), requirements: f.reqs.map(({ key, kind, label, holder, warn_days }) => ({ key, kind, label: label.trim(), holder, warn_days })), waivable: f.waivable, change_note: f.change_note?.trim() || undefined,
-      };
-      await api.post('/compliance/rules', open.rule
-        ? { ...body, rule_id: open.rule.id }
-        : { ...body, key: `${(f.country ?? 'xx').toLowerCase()}.${slug(f.title)}-${Math.random().toString(36).slice(2, 6)}`, scope: f.scope, organisation_id: f.scope === 'organisation' ? f.organisation_id : undefined, domains: f.domains, topic: f.topic || slug(f.title) });
-      onDone();
-    } catch (x) { toast('' + x.message); } finally { setBusy(false); }
+    try { await api.post(`/compliance/records/${rec.id}/decision`, { decision, ...(why ? { reason: why } : {}), row_version: rec.row_version }); toast(decision === 'approve' ? 'Approved' : 'Declined'); setPick(null); setReason(''); q.reload(); reload(); }
+    catch (e) { toast(explain(e)); q.reload(); } finally { setBusy(false); }
   };
-  const chips = (list, key, label) => list.map((v) => <Chip key={v} label={label(v)} active={f[key].includes(v)} onPress={() => toggle(key, v)} />);
+  const view = async (rec) => { try { setShown({ ...(await api.get(`/compliance/records/${rec.id}/reference`)), name: rec.requirement.name }); } catch (e) { toast(explain(e)); } };
+  if (q.error) return <ErrorBox error={q.error} onRetry={q.reload} />;
+  if (!q.data) return <Loading />;
   return (
-    <Sheet visible onClose={onClose} title={open.rule ? 'New version of a rule' : 'Write a rule'}>
-      <T size={12} color={c.mute}>Step {step + 1} of 3 · {['What it governs and where', 'Who it applies to', 'When, source and evidence'][step]}</T>
-      {step === 0 ? (
-        <View style={{ gap: 12 }}>
-          <Field label="Name of the rule" value={f.title} onChangeText={(x) => set('title', x)} placeholder="" />
-          {!open.rule ? (
-            <View style={{ gap: 6 }}>
-              <T weight="800" size={13}>Who is it written for?</T>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-                {isPlatform ? <Chip label="Platform library" active={f.scope === 'platform'} onPress={() => setF((p) => ({ ...p, scope: 'platform', classification: 'regulatory' }))} /> : null}
-                {orgs.map((o) => <Chip key={o.id} label={o.name} active={f.scope === 'organisation' && f.organisation_id === o.id} onPress={() => setF((p) => ({ ...p, scope: 'organisation', organisation_id: o.id, classification: 'organisation_policy' }))} />)}
+    <View style={{ gap: 10 }}>
+      {q.data.items.length ? q.data.items.map((r) => (
+        <Card key={r.id} pad={14}>
+          <T weight="700" size={15}>{r.subject.name} · {r.requirement.name}</T>
+          <T size={12} color={c.mute}>{r.requirement.category_label} · submitted {ago(r.submitted_at)}{r.issued_on ? ` · issued ${nice(r.issued_on)}` : ''}{r.expires_on ? ` · expires ${nice(r.expires_on)}` : ''}{r.provider ? ` · ${r.provider}` : ''}</T>
+          {r.files?.length ? (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+              {r.files.map((f) => <Btn key={f.id} small color={c.paper} ink={c.ink} title={`📎 ${f.name}`} onPress={() => openEvidenceFile(r.id, f).catch((e) => toast(explain(e)))} accessibilityLabel={`Open ${f.name}`} />)}
+            </View>
+          ) : null}
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+            <Btn small title="Approve" onPress={() => decide(r, 'approve')} disabled={busy} accessibilityLabel={`Approve ${r.requirement.name} for ${r.subject.name}`} />
+            <Btn small color={c.paper} ink={c.ink} title="Decline" onPress={() => { setReason(''); setPick(r); }} accessibilityLabel={`Decline ${r.requirement.name} for ${r.subject.name}`} />
+            {r.has_reference && !r.requirement.sensitive ? <Btn small color={c.paper} ink={c.ink} title="Show reference" onPress={() => view(r)} /> : null}
+          </View>
+          {r.requirement.sensitive ? <T size={11} color={c.mute} style={{ marginTop: 6 }}>The reference of a background check is only shown to the person it belongs to.</T> : null}
+        </Card>
+      )) : <Empty emoji="✅" title="Nothing to review" sub="Evidence people submit for this scope's requirements appears here, oldest first." />}
+      <Sheet visible={!!pick} onClose={() => setPick(null)} title={pick?.requirement.category === 'background_check' ? 'Not cleared' : 'Decline with a reason'}>
+        {pick?.requirement.category === 'background_check' ? <T size={13} color={c.mute}>The person is told the check was not accepted. No reason is recorded or shared for a background check.</T>
+          : <Field label="Reason (they see this)" value={reason} onChangeText={setReason} multiline placeholder="What needs to change?" />}
+        <Btn title={busy ? 'Working…' : 'Decline'} color={c.red} disabled={busy || (pick?.requirement.category !== 'background_check' && reason.trim().length < 5)} onPress={() => decide(pick, 'reject', reason.trim())} />
+      </Sheet>
+      <Sheet visible={!!shown} onClose={() => setShown(null)} title={shown?.name ?? 'Reference'}>
+        <T weight="700" size={17}>{shown?.reference}</T>
+        {shown?.detail ? <T size={14}>{shown.detail}</T> : null}
+        <T size={12} color={c.mute}>Viewing a reference is recorded in the audit log.</T>
+      </Sheet>
+    </View>
+  );
+}
+
+function Overview({ scope, subjectKind, reload }) {
+  const { toast } = useSession();
+  const [offset, setOffset] = useState(0), [open, setOpen] = useState(null), [waive, setWaive] = useState(null);
+  const g = useLoad(() => api.get('/compliance/gaps', { scope_kind: scope.kind, ...(scope.id ? { scope_id: scope.id } : {}), subject_kind: subjectKind, limit: 25, offset }), [scope.kind, scope.id, subjectKind, offset]);
+  if (g.error) return <ErrorBox error={g.error} onRetry={g.reload} />;
+  if (!g.data) return <Loading />;
+  const S = g.data.summary;
+  return (
+    <View style={{ gap: 10 }}>
+      <Card pad={14} color={S.blocked ? c.pinkSoft : S.pending ? c.cyanSoft : c.mintSoft}>
+        <T weight="800" size={18}>{S.blocked ? `${S.blocked} short on a requirement` : S.pending ? `${S.pending} waiting for a review` : g.data.subjects.length ? 'Everyone shown is in order' : 'Nothing to chase'}</T>
+        <T size={13} color={c.mute}>{S.pending} awaiting review · {S.expiring} with something expiring{g.data.total > g.data.limit ? ` · showing ${g.data.offset + 1}–${Math.min(g.data.total, g.data.offset + g.data.limit)} of ${g.data.total} ${subjectWord[subjectKind]}` : ''}</T>
+      </Card>
+      {g.data.subjects.length ? g.data.subjects.map((s) => (
+        <Row key={s.subject.id} title={s.subject.name ?? 'Unknown'} sub={s.items.slice(0, 2).map((i) => `${i.name}: ${i.state_label.toLowerCase()}`).join(' · ') + (s.items.length > 2 ? ` · +${s.items.length - 2} more` : '')}
+          right={<Tag label={DECISION[s.decision][0]} color={DECISION[s.decision][1]} />} onPress={() => setOpen(s)} />
+      )) : <Empty emoji="🛡️" title="No gaps found" sub="Define requirements under Rulebook and say who must meet them. People who are short, or about to be, appear here." />}
+      <Pager total={g.data.total} offset={g.data.offset} limit={g.data.limit} onOffset={setOffset} busy={g.loading} />
+      <Sheet visible={!!open} onClose={() => setOpen(null)} title={open?.subject.name ?? ''}>
+        {open?.items.map((i) => (
+          <Card key={i.requirement_id} pad={12}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><T weight="700" style={{ flex: 1 }}>{i.name}</T><Tag label={i.state_label} color={TONE[i.state] ?? c.violetSoft} /></View>
+            <T size={13}>{i.explanation}</T>
+            {i.blocking ? <View style={{ marginTop: 8 }}>{i.waivable ? <Btn small color={c.paper} ink={c.ink} title="Grant a waiver" onPress={() => setWaive({ requirement_id: i.requirement_id, name: i.name, subject: { ...open.subject } })} /> : <T size={12} color={c.mute}>This protects young people and cannot be waived.</T>}</View> : null}
+          </Card>
+        ))}
+      </Sheet>
+      {waive ? (
+        <FormSheet visible onClose={() => setWaive(null)} title={`Waive ${waive.name}`} submitLabel="Grant waiver" notice="A waiver is documented, lasts at most 180 days and never changes the record. Safeguarding that protects young people and background checks cannot be waived."
+          fields={[{ key: 'reason', label: 'Why', type: 'multiline' }, { key: 'effective_to', label: 'Until', type: 'date' }]}
+          onSubmit={async (v) => { try { await api.post('/compliance/waivers', { requirement_id: waive.requirement_id, subject_kind: subjectKind, subject_id: waive.subject.id, ...v }); g.reload(); reload(); return 'Waiver granted'; } catch (e) { toast(explain(e)); throw e; } }} />
+      ) : null}
+    </View>
+  );
+}
+
+/** The requirement form: what is needed, how it is satisfied, validity and reminders. Every choice is a control; only the name and the wording are typed. */
+function RequirementForm({ scope, cat, edit, onClose, onSaved }) {
+  const verifTypes = cat.sources.verification_types, creds = cat.sources.credential_kinds;
+  const lab = (s) => s.replace(/_/g, ' ').replace(/^./, (x) => x.toUpperCase());
+  const initial = edit ? { ...edit, source_kind: edit.source?.kind, verification_type: edit.source?.type, credential_kind: edit.source?.credential_kind, validity_days: edit.validity_days ?? null } : { subject_kind: 'person', method: 'evidence', category: 'qualification', validity_days: 365, reminder_days: [60, 30, 7], grace_days: 0, escalate_after_days: 7, requires_review: true, source_kind: 'verification' };
+  const fields = [
+    { key: 'name', label: 'Name', type: 'text' },
+    { key: 'category', label: 'What kind of requirement', type: 'chips', options: cat.categories.map((x) => ({ value: x.value, label: x.label })) },
+    { key: 'subject_kind', label: 'Who it is about', type: 'choice', options: cat.subjects.map((x) => ({ value: x.value, label: x.label })) },
+    { key: 'method', label: 'How it is satisfied', type: 'chips', options: cat.methods.map((x) => ({ value: x.value, label: x.label })) },
+    { key: 'source_kind', label: 'Checked from', type: 'chips', options: cat.sources.kinds.filter((k) => k.value !== 'federation_licence' || scope.kind === 'body').map((x) => ({ value: x.value, label: x.label })), show: (v) => v.method === 'linked' },
+    { key: 'verification_type', label: 'Which verification', type: 'chips', options: verifTypes.map((v) => ({ value: v, label: lab(v) })), show: (v) => v.method === 'linked' && v.source_kind === 'verification' },
+    { key: 'credential_kind', label: 'Which credential', type: 'chips', options: creds.map((v) => ({ value: v, label: lab(v) })), show: (v) => v.method === 'linked' && v.source_kind === 'service_credential' },
+    { key: 'statement', label: 'The statement people read and agree to', type: 'multiline', show: (v) => v.method === 'declaration', hint: 'Changing the wording starts a new version; people who agreed to the old one keep that record.' },
+    { key: 'requires_review', label: 'A reviewer must approve the evidence', type: 'switch', show: (v) => v.method === 'evidence' && v.category !== 'background_check' },
+    { key: 'validity_days', label: 'Valid for', type: 'chips', options: VALIDITY.map(([value, label]) => ({ value, label })), show: (v) => v.method !== 'linked', optional: true },
+    { key: 'reminder_days', label: 'Remind before it runs out (days)', type: 'multi', options: REMINDERS.map((d) => ({ value: d, label: `${d}` })), optional: true },
+    { key: 'grace_days', label: 'Grace period after expiry', type: 'stepper', min: 0, max: 180, suffix: ' days' },
+    { key: 'escalate_after_days', label: 'Tell the managers after it has stayed expired for', type: 'stepper', min: 0, max: 180, suffix: ' days' },
+  ];
+  return (
+    <FormSheet visible onClose={onClose} title={edit ? 'Change requirement' : 'New requirement'} fields={fields} initial={initial} submitLabel="Save requirement"
+      onSubmit={async (v) => {
+        const linked = v.method === 'linked';
+        const source = linked ? (v.source_kind === 'verification' ? { kind: 'verification', type: v.verification_type } : v.source_kind === 'service_credential' ? { kind: 'service_credential', credential_kind: v.credential_kind } : { kind: 'federation_licence', body_id: scope.id }) : undefined;
+        await api.post('/compliance/requirements', {
+          ...(edit ? { requirement_id: edit.id } : {}), scope_kind: scope.kind, ...(scope.id ? { scope_id: scope.id } : {}), name: v.name, category: v.category, subject_kind: v.subject_kind, method: v.method, source,
+          requires_review: v.requires_review ?? true, validity_days: linked ? null : (v.validity_days ?? null), reminder_days: v.reminder_days?.length ? v.reminder_days : [30], grace_days: v.grace_days, escalate_after_days: v.escalate_after_days, ...(v.method === 'declaration' ? { statement: v.statement } : {}),
+        });
+        onSaved();
+        return 'Saved';
+      }} />
+  );
+}
+
+function ObligationForm({ req, scope, cat, edit, onClose, onSaved }) {
+  const sports = useLoad(() => api.get('/sports'), []);
+  const roles = req.subject_kind === 'person' ? cat.roles.person[scope.kind] : cat.roles[req.subject_kind];
+  const person = req.subject_kind === 'person';
+  const sportId = (slug) => sports.data?.find((s) => s.slug === slug)?.id ?? null;
+  const fields = [
+    { key: 'roles', label: person ? 'Roles it applies to (none = everyone in this scope)' : 'Kinds it applies to (none = all)', type: 'multi', options: roles.map((r) => ({ value: r.value, label: r.label })), optional: true },
+    { key: 'sport', label: 'Only for one sport', type: 'sport', optional: true },
+    { key: 'youth_work', label: 'Only for adults who coach or manage young people', type: 'switch', show: () => person },
+    { key: 'mandatory', label: 'Mandatory', type: 'switch' },
+    { key: 'consequences', label: 'If it is not in order, stop', type: 'multi', options: cat.consequences.filter((x) => !(scope.kind === 'event' && x.value === 'youth_contact')).map((x) => ({ value: x.value, label: x.label })), optional: true, show: () => person },
+    { key: 'starts_on', label: 'Applies from', type: 'date', optional: true },
+    { key: 'ends_on', label: 'Applies until', type: 'date', optional: true },
+  ];
+  return (
+    <FormSheet visible onClose={onClose} title={`Who must meet “${req.name}”`} fields={fields} submitLabel="Save"
+      initial={edit ? { ...edit } : { mandatory: true, roles: [], consequences: [], youth_work: false }}
+      onSubmit={async (v) => {
+        await api.post(`/compliance/requirements/${req.id}/obligations`, { ...(edit ? { obligation_id: edit.id } : {}), roles: v.roles ?? [], sport_id: v.sport ? sportId(v.sport) : null, youth_work: !!v.youth_work, mandatory: !!v.mandatory, consequences: v.consequences ?? [], ...(v.starts_on ? { starts_on: v.starts_on } : {}), ends_on: v.ends_on ?? null });
+        onSaved();
+        return 'Saved';
+      }} />
+  );
+}
+
+function Rulebook({ scope, cat, reload }) {
+  const { toast } = useSession();
+  const l = useLoad(() => api.get('/compliance/requirements', { scope_kind: scope.kind, ...(scope.id ? { scope_id: scope.id } : {}) }), [scope.kind, scope.id]);
+  const [form, setForm] = useState(null), [ob, setOb] = useState(null);
+  const after = () => { l.reload(); reload(); };
+  const archive = async (r) => { try { await api.post(`/compliance/requirements/${r.id}/archive`); toast('Archived. Records are kept.'); after(); } catch (e) { toast(explain(e)); } };
+  const dropOb = async (r, o) => { try { await api.post(`/compliance/requirements/${r.id}/obligations`, { obligation_id: o.id, roles: o.roles, sport_id: o.sport_id, youth_work: o.youth_work, mandatory: o.mandatory, consequences: o.consequences, archived: true }); after(); } catch (e) { toast(explain(e)); } };
+  if (l.error) return <ErrorBox error={l.error} onRetry={l.reload} />;
+  if (!l.data) return <Loading />;
+  const write = cat.scopes.find((s) => s.kind === scope.kind && (s.id ?? null) === (scope.id ?? null))?.write !== false;
+  return (
+    <View style={{ gap: 10 }}>
+      {write ? <Btn title="+ New requirement" onPress={() => setForm({})} /> : <Note>You can read this rulebook but not change it.</Note>}
+      {l.data.requirements.length ? l.data.requirements.map((r) => (
+        <Card key={r.id} pad={14}>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
+            <View style={{ flex: 1 }}>
+              <T weight="700" size={16}>{r.name}</T>
+              <T size={12} color={c.mute}>{r.category_label} · for {subjectWord[r.subject_kind]} · {({ evidence: 'evidence a reviewer approves', declaration: 'a declaration', linked: 'checked from an existing record' })[r.method]}{r.validity_days ? ` · valid ${r.validity_days >= 365 ? `${Math.round(r.validity_days / 365 * 10) / 10} yr` : `${r.validity_days} days`}` : ''} · v{r.version}</T>
+            </View>
+            <Tag label={`${r.counts.valid} valid`} color={c.mint} />
+          </View>
+          {r.counts.awaiting || r.counts.expiring ? <T size={12} color={c.mute}>{r.counts.awaiting} awaiting review · {r.counts.expiring} expiring within 30 days</T> : null}
+          <View style={{ gap: 6, marginTop: 8 }}>
+            {r.obligations.length ? r.obligations.map((o) => (
+              <View key={o.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <T size={13} style={{ flex: 1, minWidth: 160 }}>{o.role_labels.length ? o.role_labels.join(', ') : 'Everyone in this scope'}{o.sport_name ? ` · ${o.sport_name}` : ''}{o.youth_work ? ' · works with young people' : ''}{o.mandatory ? '' : ' · optional'}{o.consequences.length ? ` · blocks ${o.consequences.map((x) => STOPS[x] ?? x).join(', ')}` : ''}</T>
+                {write ? <><Chip label="Edit" onPress={() => setOb({ req: r, edit: { ...o, sport: undefined } })} /><Chip label="Remove" onPress={() => dropOb(r, o)} /></> : null}
               </View>
+            )) : <T size={13} color={c.red}>Nobody has to meet this yet. Say who must.</T>}
+          </View>
+          {write ? (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+              <Btn small title="+ Who must meet it" onPress={() => setOb({ req: r })} />
+              <Btn small color={c.paper} ink={c.ink} title="Change" onPress={() => setForm(r)} />
+              <Btn small color={c.paper} ink={c.ink} title="Archive" onPress={() => archive(r)} />
             </View>
           ) : null}
-          <View style={{ gap: 6 }}>
-            <T weight="800" size={13}>What does it govern?</T>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{(cat?.domains ?? []).map((x) => <Chip key={x.key} label={x.label} active={f.domains.includes(x.key)} onPress={() => !open.rule && toggle('domains', x.key)} />)}</View>
-          </View>
-          <View style={{ gap: 6 }}>
-            <T weight="800" size={13}>What kind of rule is it?</T>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{classes.map((k) => <Chip key={k} label={CLASS[k]} active={f.classification === k} onPress={() => set('classification', k)} />)}</View>
-            <T size={11.5} color={c.mute}>{f.scope === 'platform' ? 'A law or regulation needs a second person to approve it.' : 'An organisation writes its own policies and contract terms.'}</T>
-          </View>
-          {!open.rule && rules.length ? (
-            <View style={{ gap: 6 }}>
-              <T weight="800" size={13}>Is it about the same thing as an existing rule? (optional)</T>
-              <T size={11.5} color={c.mute}>Rules about the same thing compete: the stronger one wins. Different things add up.</T>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{rules.slice(0, 12).map((r) => <Chip key={r.id} label={(r.current ?? r.upcoming)?.title ?? r.key} active={f.topic === r.topic} onPress={() => set('topic', f.topic === r.topic ? undefined : r.topic)} />)}</View>
-            </View>
-          ) : null}
-          <CountryPicker label="Country" value={f.country} onChange={(x) => set('country', x || undefined)} optional hint="Leave empty for a rule that applies everywhere." />
-          {f.country ? <Field label="State or province (optional)" value={f.region} onChangeText={(x) => set('region', x)} /> : null}
-          {f.region ? <Field label="Municipality (optional)" value={f.municipality} onChangeText={(x) => set('municipality', x)} /> : null}
-        </View>
-      ) : step === 1 ? (
-        <View style={{ gap: 12 }}>
-          <T size={12} color={c.mute}>Leave a group empty to apply to everyone.</T>
-          <View style={{ gap: 6 }}><T weight="800" size={13}>Roles</T><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{chips(Object.keys(ROLE), 'roles', (v) => ROLE[v])}</View></View>
-          <View style={{ gap: 6 }}><T weight="800" size={13}>Kinds of event</T><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{chips(Object.keys(TYPES), 'event_types', (v) => TYPES[v])}</View></View>
-          <SportsMulti label="Sports" value={f.sports} onChange={(v) => set('sports', v)} optional />
-          <View style={{ gap: 6 }}>
-            <T weight="800" size={13}>Age</T>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-              <Chip label="Any age" active={f.min_age == null && f.max_age == null} onPress={() => setF((p) => ({ ...p, min_age: undefined, max_age: undefined }))} />
-              <Chip label="Under 18" active={f.max_age === 17 && f.min_age == null} onPress={() => setF((p) => ({ ...p, min_age: undefined, max_age: 17 }))} />
-              <Chip label="Under 16" active={f.max_age === 15 && f.min_age == null} onPress={() => setF((p) => ({ ...p, min_age: undefined, max_age: 15 }))} />
-              <Chip label="18 and over" active={f.min_age === 18 && f.max_age == null} onPress={() => setF((p) => ({ ...p, min_age: 18, max_age: undefined }))} />
-            </View>
-          </View>
+        </Card>
+      )) : <Empty emoji="📋" title="No requirements yet" sub="A requirement is what is needed (a certificate, a check, a declaration, a permit …). Then choose who must meet it and what an unmet one blocks." />}
+      {form ? <RequirementForm scope={scope} cat={cat} edit={form.id ? form : null} onClose={() => setForm(null)} onSaved={after} /> : null}
+      {ob ? <ObligationForm req={ob.req} scope={scope} cat={cat} edit={ob.edit} onClose={() => setOb(null)} onSaved={after} /> : null}
+    </View>
+  );
+}
+
+function Packs({ scope, subjectKind }) {
+  const { toast } = useSession();
+  const l = useLoad(() => api.get('/compliance/packs', { limit: 30 }), []);
+  const [make, setMake] = useState(false), [open, setOpen] = useState(null);
+  const mine = (l.data?.items ?? []).filter((p) => !p.mine && p.scope_kind === scope.kind && (p.scope_id ?? null) === (scope.id ?? null));
+  const revoke = async (p) => { try { await api.post(`/compliance/packs/${p.id}/revoke`); toast('Revoked'); l.reload(); } catch (e) { toast(explain(e)); } };
+  return (
+    <View style={{ gap: 10 }}>
+      <Note>An evidence pack is a frozen summary for an auditor or federation reviewer: states and dates only, never references or notes. You choose who may read it and for how long.</Note>
+      <Btn title="+ Create an evidence pack" onPress={() => setMake(true)} />
+      {mine.map((p) => <Row key={p.id} title={`For ${p.recipient_name}`} sub={`${p.purpose} · ${p.revoked_at ? 'revoked' : `until ${nice(p.expires_at)}`}`} onPress={() => setOpen(p.id)} right={!p.revoked_at ? <Btn small color={c.paper} ink={c.ink} title="Revoke" onPress={() => revoke(p)} /> : <Tag label="Revoked" />} />)}
+      {make ? (
+        <FormSheet visible onClose={() => setMake(false)} title="Evidence pack" submitLabel="Create pack"
+          fields={[{ key: 'purpose', label: 'Purpose (the reviewer sees this)', type: 'text' }, { key: 'recipient_id', label: 'Who may read it', type: 'entity', entityKind: 'person', noun: 'reviewer' }, { key: 'expires_in_days', label: 'Available for', type: 'stepper', min: 1, max: 30, default: 7, suffix: ' days' }]}
+          onSubmit={async (v) => { await api.post('/compliance/packs', { scope_kind: scope.kind, ...(scope.id ? { scope_id: scope.id } : {}), subject_kind: subjectKind, ...v }); l.reload(); return 'Pack created'; }} />
+      ) : null}
+      <PackView id={open} onClose={() => setOpen(null)} />
+    </View>
+  );
+}
+
+/**
+ * One scope's compliance. `own` (organisation or event) adds the scope's own requirements at the top (its permits, insurance, declarations).
+ */
+export function ComplianceWorkspace({ scope, own = null, initial = 'overview', onDark = false }) {
+  const cat = useCatalogue();
+  const [tab, setTab] = useState(initial), [kind, setKind] = useState('person'), [tick, setTick] = useState(0);
+  if (cat.error) return <ErrorBox error={cat.error} onRetry={cat.reload} />;
+  if (!cat.data) return <Loading />;
+  const reload = () => setTick((t) => t + 1);
+  const tabs = [['overview', 'Who is short'], ['review', 'Review queue'], ['rules', 'Rulebook'], ['waivers', 'Waivers'], ['packs', 'Evidence packs']];
+  return (
+    <OnDark.Provider value={onDark}>
+    <View key={`${scope.kind}:${scope.id}:${tick}`} style={{ gap: 12, marginTop: 4 }}>
+      {own ? <View style={{ marginTop: 8 }}><Subject subject={own.subject} title={own.title} hideWhenEmpty /></View> : null}
+      <Seg options={tabs.map(([value, label]) => ({ value, label }))} value={tab} onChange={setTab} color={c.violet} />
+      {['overview', 'packs'].includes(tab) ? (
+        <Seg options={cat.data.subjects.map((x) => ({ value: x.value, label: x.label }))} value={kind} onChange={setKind} color={c.cyan} />
+      ) : null}
+      {tab === 'overview' ? <Overview scope={scope} subjectKind={kind} reload={reload} />
+        : tab === 'review' ? <ReviewQueue scope={scope} cat={cat.data} reload={reload} />
+        : tab === 'rules' ? <Rulebook scope={scope} cat={cat.data} reload={reload} />
+        : tab === 'waivers' ? <Waivers scope={scope} />
+        : <Packs scope={scope} subjectKind={kind} />}
+    </View>
+    </OnDark.Provider>
+  );
+}
+
+function Waivers({ scope }) {
+  const { toast } = useSession();
+  const [ended, setEnded] = useState(false);
+  const l = useLoad(() => api.get('/compliance/waivers', { scope_kind: scope.kind, ...(scope.id ? { scope_id: scope.id } : {}), include_ended: ended, limit: 50 }), [scope.kind, scope.id, ended]);
+  const revoke = async (w) => { try { await api.post(`/compliance/waivers/${w.id}/revoke`); toast('Waiver ended'); l.reload(); } catch (e) { toast(explain(e)); } };
+  if (l.error) return <ErrorBox error={l.error} onRetry={l.reload} />;
+  if (!l.data) return <Loading />;
+  return (
+    <View style={{ gap: 10 }}>
+      <Note>Waivers are granted from “Who is short”, against one person and one requirement. They last at most 180 days and never change the record.</Note>
+      <Card pad={8}><SwitchRow label="Show ended waivers" value={ended} onChange={setEnded} /></Card>
+      {l.data.items.length ? l.data.items.map((w) => (
+        <Row key={w.id} title={`${w.subject.name} · ${w.requirement_name}`} sub={`${w.reason} · until ${nice(w.effective_to)} · by ${w.granted_by_name}`}
+          right={w.revoked_at ? <Tag label="Ended" /> : <Btn small color={c.paper} ink={c.ink} title="End" onPress={() => revoke(w)} accessibilityLabel={`End waiver for ${w.subject.name}`} />} />
+      )) : <Empty emoji="🧾" title="No waivers" sub="Exceptions you grant appear here with who granted them and why." />}
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------- the page
+
+/** Compliance: what is required of me, and (when I run something) the scopes I manage. A guardian opens a young person's with subjectId. */
+export function MyCompliance({ subjectId, subjectName }) {
+  const { user } = useSession();
+  const cat = useCatalogue();
+  const [view, setView] = useState('mine'), [scopeKey, setScopeKey] = useState(null);
+  const subject = { kind: 'person', id: subjectId ?? user?.id };
+  const scopes = cat.data?.scopes ?? [];
+  const manage = !subjectId && scopes.length > 0;
+  const chosen = scopes.find((s) => `${s.kind}:${s.id ?? ''}` === scopeKey) ?? scopes[0];
+  return (
+    <Screen wide>
+      <Head>{subjectName ? `${subjectName}: compliance` : 'Compliance & safeguarding'}</Head>
+      <Note style={{ marginTop: 4 }}>What is required, what is missing or about to expire, and exactly what to do next.</Note>
+      {manage ? <View style={{ marginTop: 12 }}><Seg options={[{ value: 'mine', label: 'Mine' }, { value: 'manage', label: 'Manage' }]} value={view} onChange={setView} color={c.pink} /></View> : null}
+      {view === 'manage' && manage ? (
+        <View style={{ marginTop: 12, gap: 12 }}>
+          <MenuField label="Scope" value={`${chosen.kind}:${chosen.id ?? ''}`} onChange={setScopeKey} options={scopes.map((s) => ({ value: `${s.kind}:${s.id ?? ''}`, label: s.name, sub: s.kind === 'body' ? 'Governing body' : s.kind[0].toUpperCase() + s.kind.slice(1) }))} />
+          <ComplianceWorkspace key={`${chosen.kind}:${chosen.id}`} scope={{ kind: chosen.kind, id: chosen.id }} />
         </View>
       ) : (
-        <View style={{ gap: 12 }}>
-          <DateField label="Takes effect on" value={f.effective_from} onChange={(x) => set('effective_from', x)} />
-          <DateField label="Ends on" value={f.effective_to} onChange={(x) => set('effective_to', x)} optional hint="Leave empty if it has no end date." />
-          <Field label="Where does it come from?" value={f.source_title} onChangeText={(x) => set('source_title', x)} hint="The law, bylaw, federation rule or contract clause" />
-          <Field label="Link to the source (optional)" value={f.source_url} onChangeText={(x) => set('source_url', x)} keyboardType="url" />
-          <Field label="Who is accountable for approving it?" value={f.approval_owner} onChangeText={(x) => set('approval_owner', x)} hint="For example: legal counsel, the club board" />
-          <T weight="800" size={13}>Evidence it requires</T>
-          {f.reqs.map((q, i) => (
-            <View key={q.key} style={{ borderWidth: 1, borderColor: c.line, borderRadius: 14, padding: 10, gap: 8 }}>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{Object.entries(KIND).map(([k, l]) => <Chip key={k} label={l} active={q.kind === k} onPress={() => setReq(i, { kind: k })} />)}</View>
-              <Field label="What exactly" value={q.label} onChangeText={(x) => setReq(i, { label: x })} />
-              <T weight="700" size={12}>Who holds it?</T>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{Object.entries(HOLDER).map(([k, l]) => <Chip key={k} label={l} active={q.holder === k} onPress={() => setReq(i, { holder: k })} />)}</View>
-              <Btn small color={c.paper} ink={c.ink} title="Remove" onPress={() => set('reqs', f.reqs.filter((_, j) => j !== i))} style={{ alignSelf: 'flex-start' }} />
-            </View>
-          ))}
-          <Btn small title="+ Add evidence" color={c.violet} onPress={addReq} style={{ alignSelf: 'flex-start' }} />
-          {f.classification !== 'legal_mandatory' && f.classification !== 'regulatory' ? (
-            <Pressable onPress={() => set('waivable', !f.waivable)} accessibilityRole="switch" accessibilityState={{ checked: f.waivable }} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 44 }}>
-              <View style={{ width: 24, height: 24, borderRadius: 8, borderWidth: 2, borderColor: c.violet, backgroundColor: f.waivable ? c.violet : 'transparent' }} />
-              <T style={{ flex: 1 }} size={13.5}>An authorised person may waive it for a limited time</T>
-            </Pressable>
-          ) : <T size={12} color={c.mute}>A law or regulation can never be waived by a person.</T>}
-          {open.rule ? <Field label="What changed? (optional)" value={f.change_note} onChangeText={(x) => set('change_note', x)} /> : null}
+        <View style={{ marginTop: 12 }}>
+          <Subject subject={subject} />
+          {!subjectId ? <PacksForMe /> : null}
         </View>
       )}
-      <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
-        {step > 0 ? <Btn title="Back" color={c.paper} ink={c.ink} onPress={() => setStep(step - 1)} style={{ flex: 1 }} /> : null}
-        {step < 2 ? <Btn title="Next" onPress={next} style={{ flex: 1 }} /> : <Btn title="Save as draft" onPress={save} loading={busy} style={{ flex: 1 }} />}
-      </View>
-    </Sheet>
+    </Screen>
   );
 }

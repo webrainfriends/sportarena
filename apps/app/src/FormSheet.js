@@ -28,7 +28,7 @@ const opt = (o) => (typeof o === 'object' ? o : { value: o, label: String(o) });
  * One form, the right control for each kind of answer.
  * fields: [{ key, label, type, hint, optional, show?(values) }] where type is one of
  *   text (default) | multiline | secret | number | date | time
- *   files {max}                             photos or PDFs (camera, library, files); the value is [{ file_name, data (base64), type }]
+ *   files {max, documents}                  photos or PDFs (camera, library, files); documents: also Word, Excel, CSV and text, 10 MB. The value is [{ file_name, data (base64), type }]
  *   stepper {min,max,step,suffix,default}   whole numbers and percentages with − / +
  *   currency {default}                      a searchable dropdown; starts on `default`, else the currency of the person's region
  *   money {currency}                        typed in whole currency units, submitted in minor units
@@ -158,7 +158,7 @@ export function FormSheet({ visible, onClose, title, fields, initial = {}, submi
       case 'countries': return <CountriesMulti label={f.label} value={v[f.key] ?? []} onChange={(x) => set(f.key, x)} optional={f.optional} hint={typeof f.hint === 'function' ? f.hint(v) : f.hint} />;
       case 'place': return <PlacePicker label={f.label} value={v[f.key]} onChange={(x) => set(f.key, x)} optional={f.optional} hint={typeof f.hint === 'function' ? f.hint(v) : f.hint} />;
       case 'country': return <CountryPicker label={f.label} value={v[f.key]} onChange={(x) => set(f.key, x)} optional={f.optional} hint={typeof f.hint === 'function' ? f.hint(v) : f.hint} />;
-      case 'files': return <EvidenceField label={f.label + (f.optional ? ' (optional)' : '')} value={v[f.key] ?? []} onChange={(x) => set(f.key, x)} max={f.max} />;
+      case 'files': return <EvidenceField label={f.label + (f.optional ? ' (optional)' : '')} value={v[f.key] ?? []} onChange={(x) => set(f.key, x)} max={f.max} documents={f.documents} />;
       case 'sports': return <SportsMulti label={f.label} value={v[f.key] ?? []} onChange={(x) => set(f.key, x)} optional={f.optional} />;
       case 'regions': return (
         <View style={{ gap: 8 }}>

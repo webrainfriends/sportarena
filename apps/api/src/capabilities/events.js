@@ -1,6 +1,5 @@
 import { badgesFor, withBadges } from '../verification.js';
 import { z } from 'zod';
-import { gate } from '../compliance/service.js';
 import { cap, id, page, money } from '../registry.js';
 import { one, many, query, tx } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
@@ -203,9 +202,6 @@ cap({
       mustOwn(user, ev.organizer_id, 'event');
       if (i.brand_kit_id) { const kit = await kitOf(i.brand_kit_id); if (!kit || kit.archived_at) throw notFound('Brand kit'); await mustAccess(user, kit, 'Brand kit'); }
       if (i.status && i.status !== ev.status && !NEXT_STATUS[ev.status].includes(i.status)) throw conflict(`An event that is ${ev.status} cannot become ${i.status}`);
-      // the compliance engine (#568): publishing an event, and the moment it starts, are where its permits, insurance and safety approvals must be in order
-      if (i.status === 'open' && ev.status === 'draft') await gate(c, { actor: user, domain: 'event_permit', subject_type: 'event', subject_id: ev.id, trigger: 'event_open' });
-      if (i.status === 'ongoing' && ev.status !== 'ongoing') await gate(c, { actor: user, domain: 'event_permit', subject_type: 'event', subject_id: ev.id, trigger: 'event_start' });
       if ((i.starts_on || i.ends_on) && (await c.query('SELECT coalesce($2::date, ends_on) < coalesce($1::date, starts_on) AS bad FROM events WHERE id=$3', [i.starts_on ?? null, i.ends_on ?? null, i.id])).rows[0].bad) throw badRequest('ends_on is before starts_on');
       if (i.capacity) {
         const used = (await c.query("SELECT count(*)::int AS n FROM event_entries WHERE event_id=$1 AND status='accepted'", [i.id])).rows[0].n;
@@ -302,7 +298,7 @@ cap({
     return tx(async (c) => {
       const e = await mustFind('event_entries', i.id, '*', c);
       const ev = (await c.query('SELECT * FROM events WHERE id=$1 FOR UPDATE', [e.event_id])).rows[0];
-      mustOwn(user, ev.organizer_id, 'event');
+      if (!(await hasOrgGrant(user, ev.organisation_id, ['owner', 'admin'], c))) mustOwn(user, ev.organizer_id, 'event'); // an owner/admin of the organising organisation decides too, as in eventForOrganizer
       if (!['pending', 'waitlisted', 'accepted'].includes(e.status)) throw conflict(`Entry is ${e.status}`);
       if (i.status === 'accepted' && e.status !== 'accepted' && ev.capacity) {
         const used = (await c.query("SELECT count(*)::int AS n FROM event_entries WHERE event_id=$1 AND status='accepted'", [ev.id])).rows[0].n;

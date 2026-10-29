@@ -2,7 +2,6 @@
 // order and one budget commitment, framework call-offs, outcomes/debriefs and appeals. Provisional award, supplier acceptance, contract and
 // order statuses are separate columns on purpose: none implies another, and none implies delivery or payment.
 import { z } from 'zod';
-import { gate } from '../compliance/service.js';
 import { cap, id, page } from '../registry.js';
 import { one, many, tx, pool } from '../db.js';
 import { badRequest, conflict, forbidden, notFound, unprocessable } from '../errors.js';
@@ -113,10 +112,6 @@ cap({
       if (!r.allocation?.length) throw conflict('That scenario allocates nothing');
       if (r.violations?.length) throw conflict('That scenario breaks its constraints', { violations: r.violations });
       if (r.unfilled?.length && !i.allow_partial) throw conflict('That scenario leaves lots unfilled. Confirm a partial award to continue.', { unfilled: r.unfilled });
-      // the compliance engine (#568): the tender's own rules and every supplier the scenario would award to
-      for (const [subject_type, subject_id] of [['tender', p.id], ...[...new Set(r.allocation.map((x) => x.entity))].map((e) => ['supplier_entity', e])]) {
-        await gate(c, { actor: user, domain: 'procurement', subject_type, subject_id, context: { tender_id: p.id }, trigger: 'award_recommend' });
-      }
       const rk = (await c.query('SELECT id, rubric_version FROM proc_rankings WHERE id=$1', [sc.ranking_id])).rows[0];
       const a = (await c.query(`INSERT INTO proc_awards(project_id, scenario_id, rationale, rubric_version, rfp_version, snapshot, recommended_by) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`, [p.id, sc.id, i.rationale, rk.rubric_version, p.version, JSON.stringify({ scenario: r, ranking_id: sc.ranking_id }), user.id])).rows[0];
       const ap = await requestApproval(c, p, user, 'award', { award_id: a.id, subject: `award:${a.id}`, reserve: (r.reserve ?? []).map((x) => x.lot) }, i.rationale, r.cost_minor);
