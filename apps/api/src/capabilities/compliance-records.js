@@ -12,7 +12,9 @@ import { notify } from '../notify.js';
 import { guardiansOf } from '../youth.js';
 import {
   CATEGORIES, SCOPES, SUBJECTS, addDays, applicable, evaluateSubject, holderAccess, managerIds, manages, nameFor, reveal, scopeName, subjectsInScope,
+  NEVER_WAIVABLE_CLASSES,
 } from '../compliance.js';
+import { tenderForcing } from '../compliance-gates.js';
 import { TAG, log, loadRequirement } from './compliance.js';
 
 const day = z.string().date();
@@ -42,6 +44,7 @@ cap({
   input: z.object({
     requirement_id: id, subject_kind: z.enum(SUBJECTS).default('person'), subject_id: id.optional(), issued_on: day.optional(), expires_on: day.optional(),
     provider: text(120).optional(), reference: text(200).optional(), detail: text(2000).optional(), confirm: z.boolean().optional(), statement_version: z.number().int().min(1).optional(),
+    tender_id: id.optional(),   // a supplier answering the buyer's rule inside a tender it takes part in
   }),
   async handler({ user }, i) {
     const sid = i.subject_id ?? (i.subject_kind === 'person' ? user.id : null);
@@ -52,7 +55,9 @@ cap({
     if (req.subject_kind !== i.subject_kind) throw badRequest(`This requirement is for ${req.subject_kind === 'person' ? 'people' : `${req.subject_kind}s`}`);
     if (req.method === 'linked') throw conflict('This is checked from an existing record, so there is nothing to submit here. Update that record and it counts automatically.', { code: 'linked_requirement', source: req.source });
     const subject = { kind: i.subject_kind, id: sid };
-    if (!(await applicable(pool, subject, { scope: { kind: req.scope_kind, id: req.scope_id } })).some((o) => o.id === req.id)) throw conflict('This requirement does not apply to them', { code: 'not_required' });
+    const tf = i.tender_id ? await tenderForcing(pool, i.tender_id, subject) : null;
+    if (i.tender_id && !tf) throw notFound('Tender');
+    if (!(await applicable(pool, subject, { scope: { kind: req.scope_kind, id: req.scope_id }, ...(tf ? { context: tf.ctx, forced: tf.forced, forcedRoles: tf.forcedRoles } : {}) })).some((o) => o.id === req.id)) throw conflict('This requirement does not apply to them', { code: 'not_required' });
 
     const t = await today();
     let issued = i.issued_on ?? t, expires = i.expires_on ?? null, reference = null, detail = null, stmt = null, status = 'submitted', outcome = null;
@@ -204,6 +209,7 @@ cap({
     if (!(await manages(user, req.scope_kind, req.scope_id, { write: true }))) throw notFound('Requirement');
     if (i.subject_kind === 'person' && i.subject_id === user.id) throw forbidden('You cannot waive a requirement for yourself');
     if (req.category === 'background_check') throw conflict('A background check status cannot be waived', { code: 'not_waivable' });
+    if (NEVER_WAIVABLE_CLASSES.includes(req.classification) || req.waivable === false) throw conflict('This rule cannot be waived', { code: 'not_waivable' });
     const blocksYouth = await one("SELECT 1 FROM comp_obligations WHERE requirement_id=$1 AND archived_at IS NULL AND consequences && ARRAY['youth_contact','youth_access']", [req.id]);
     if (blocksYouth) throw conflict('Safeguarding that protects young people cannot be waived', { code: 'not_waivable' });
     const t = await today(), from = i.effective_from ?? t;

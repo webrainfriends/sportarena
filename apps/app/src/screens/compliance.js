@@ -23,7 +23,8 @@ const DECISION = { clear: ['In order', c.mint], pending: ['Awaiting review', c.c
 const SOURCE_SCREEN = { federation_licence: 'MyLicences', service_credential: 'SupplierWorkspace' };
 const VALIDITY = [[null, 'Never expires'], [180, '6 months'], [365, '1 year'], [730, '2 years'], [1095, '3 years'], [1825, '5 years']];
 const REMINDERS = [90, 60, 30, 14, 7];
-const STOPS = { youth_contact: 'contact with young people', youth_access: 'access to young people\'s records', registration: 'competition registration', accreditation: 'event accreditation' };
+const STOPS = { youth_contact: 'contact with young people', youth_access: 'access to young people\'s records', registration: 'competition registration', accreditation: 'event accreditation', event_open: 'opening the event', event_start: 'starting the event', tender_award: 'awarding a tender' };
+const DECISION_TONE = { true: c.red, false: c.mint };
 const nice = (iso) => (iso ? new Date(`${String(iso).slice(0, 10)}T00:00:00`).toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' }) : '');
 const ago = (iso) => { const d = Math.floor((Date.now() - Date.parse(iso)) / 864e5); return d <= 0 ? 'today' : d === 1 ? '1 day ago' : `${d} days ago`; };
 const subjectWord = { person: 'people', organisation: 'organisations', event: 'events' };
@@ -329,6 +330,11 @@ function RequirementForm({ scope, cat, edit, onClose, onSaved }) {
     { key: 'verification_type', label: 'Which verification', type: 'chips', options: verifTypes.map((v) => ({ value: v, label: lab(v) })), show: (v) => v.method === 'linked' && v.source_kind === 'verification' },
     { key: 'credential_kind', label: 'Which credential', type: 'chips', options: creds.map((v) => ({ value: v, label: lab(v) })), show: (v) => v.method === 'linked' && v.source_kind === 'service_credential' },
     { key: 'statement', label: 'The statement people read and agree to', type: 'multiline', show: (v) => v.method === 'declaration', hint: 'Changing the wording starts a new version; people who agreed to the old one keep that record.' },
+    { key: 'classification', label: 'What kind of rule it is', type: 'chips', options: (cat.classifications ?? []).filter((x) => x.scopes.includes(scope.kind)).map((x) => ({ value: x.value, label: x.label })), hint: 'Laws and regulations take effect only after a second platform administrator approves them, and are never waived. A recommended standard advises and never blocks.' },
+    { key: 'topic', label: 'Topic (rules on one topic compete; the higher kind of rule and the narrower place win)', type: 'text', optional: true },
+    { key: 'source_title', label: 'Where it comes from (law, regulation or rulebook)', type: 'text', optional: true },
+    { key: 'source_url', label: 'Link to the source', type: 'text', optional: true },
+    { key: 'approval_owner', label: 'Who owns its approval', type: 'text', optional: true },
     { key: 'requires_review', label: 'A reviewer must approve the evidence', type: 'switch', show: (v) => v.method === 'evidence' && v.category !== 'background_check' },
     { key: 'validity_days', label: 'Valid for', type: 'chips', options: VALIDITY.map(([value, label]) => ({ value, label })), show: (v) => v.method !== 'linked', optional: true },
     { key: 'reminder_days', label: 'Remind before it runs out (days)', type: 'multi', options: REMINDERS.map((d) => ({ value: d, label: `${d}` })), optional: true },
@@ -343,6 +349,7 @@ function RequirementForm({ scope, cat, edit, onClose, onSaved }) {
         await api.post('/compliance/requirements', {
           ...(edit ? { requirement_id: edit.id } : {}), scope_kind: scope.kind, ...(scope.id ? { scope_id: scope.id } : {}), name: v.name, category: v.category, subject_kind: v.subject_kind, method: v.method, source,
           requires_review: v.requires_review ?? true, validity_days: linked ? null : (v.validity_days ?? null), reminder_days: v.reminder_days?.length ? v.reminder_days : [30], grace_days: v.grace_days, escalate_after_days: v.escalate_after_days, ...(v.method === 'declaration' ? { statement: v.statement } : {}),
+          ...(v.classification ? { classification: v.classification } : {}), topic: v.topic || null, source_title: v.source_title || null, source_url: v.source_url || null, approval_owner: v.approval_owner || null,
         });
         onSaved();
         return 'Saved';
@@ -360,15 +367,22 @@ function ObligationForm({ req, scope, cat, edit, onClose, onSaved }) {
     { key: 'sport', label: 'Only for one sport', type: 'sport', optional: true },
     { key: 'youth_work', label: 'Only for adults who coach or manage young people', type: 'switch', show: () => person },
     { key: 'mandatory', label: 'Mandatory', type: 'switch' },
-    { key: 'consequences', label: 'If it is not in order, stop', type: 'multi', options: cat.consequences.filter((x) => !(scope.kind === 'event' && x.value === 'youth_contact')).map((x) => ({ value: x.value, label: x.label })), optional: true, show: () => person },
+    { key: 'consequences', label: 'If it is not in order, stop', type: 'multi', options: cat.consequences.filter((x) => !(scope.kind === 'event' && x.value === 'youth_contact')).filter((x) => (['event_open', 'event_start'].includes(x.value) ? req.subject_kind === 'event' : ['youth_contact', 'youth_access', 'registration', 'accreditation'].includes(x.value) ? person : true)).map((x) => ({ value: x.value, label: x.label })), optional: true },
+    { key: 'country', label: 'Only in one country', type: 'choice', optional: true, options: (cat.jurisdictions ?? []).map((j) => ({ value: j.code, label: j.name })), hint: 'A place the platform does not know yet is “cannot be judged yet”, never silently “does not apply”.' },
+    { key: 'region', label: 'Only in one state or province', type: 'text', optional: true, show: (v) => !!v.country },
+    { key: 'municipality', label: 'Only in one city or municipality', type: 'text', optional: true, show: (v) => !!v.country },
+    { key: 'event_types', label: 'Only for these kinds of event', type: 'multi', options: (cat.event_types ?? []).map((x) => ({ value: x, label: x.replace(/^./, (ch) => ch.toUpperCase()) })), optional: true },
+    { key: 'age_band', label: 'Only for an age band', type: 'switch', show: () => person },
+    { key: 'min_age', label: 'From age', type: 'stepper', min: 0, max: 120, default: 18, show: (v) => person && v.age_band },
+    { key: 'max_age', label: 'Up to age', type: 'stepper', min: 0, max: 120, default: 120, show: (v) => person && v.age_band },
     { key: 'starts_on', label: 'Applies from', type: 'date', optional: true },
     { key: 'ends_on', label: 'Applies until', type: 'date', optional: true },
   ];
   return (
     <FormSheet visible onClose={onClose} title={`Who must meet “${req.name}”`} fields={fields} submitLabel="Save"
-      initial={edit ? { ...edit } : { mandatory: true, roles: [], consequences: [], youth_work: false }}
+      initial={edit ? { ...edit, country: edit.country ?? '', age_band: edit.min_age != null || edit.max_age != null } : { mandatory: true, roles: [], consequences: [], youth_work: false }}
       onSubmit={async (v) => {
-        await api.post(`/compliance/requirements/${req.id}/obligations`, { ...(edit ? { obligation_id: edit.id } : {}), roles: v.roles ?? [], sport_id: v.sport ? sportId(v.sport) : null, youth_work: !!v.youth_work, mandatory: !!v.mandatory, consequences: v.consequences ?? [], ...(v.starts_on ? { starts_on: v.starts_on } : {}), ends_on: v.ends_on ?? null });
+        await api.post(`/compliance/requirements/${req.id}/obligations`, { ...(edit ? { obligation_id: edit.id } : {}), roles: v.roles ?? [], sport_id: v.sport ? sportId(v.sport) : null, youth_work: !!v.youth_work, mandatory: !!v.mandatory, consequences: v.consequences ?? [], country: v.country || null, region: v.country ? (v.region || null) : null, municipality: v.country ? (v.municipality || null) : null, event_types: v.event_types ?? [], min_age: v.age_band ? v.min_age : null, max_age: v.age_band ? v.max_age : null, body_ids: edit?.body_ids ?? [], competition_ids: edit?.competition_ids ?? [], venue_ids: edit?.venue_ids ?? [], ...(v.starts_on ? { starts_on: v.starts_on } : {}), ends_on: v.ends_on ?? null });
         onSaved();
         return 'Saved';
       }} />
@@ -381,6 +395,7 @@ function Rulebook({ scope, cat, reload }) {
   const [form, setForm] = useState(null), [ob, setOb] = useState(null);
   const after = () => { l.reload(); reload(); };
   const archive = async (r) => { try { await api.post(`/compliance/requirements/${r.id}/archive`); toast('Archived. Records are kept.'); after(); } catch (e) { toast(explain(e)); } };
+  const approve = async (r, decision) => { try { await api.post(`/compliance/requirements/${r.id}/approval`, { decision }); toast(decision === 'approve' ? 'Approved. It takes effect now.' : 'Withdrawn'); after(); } catch (e) { toast(explain(e)); } };
   const dropOb = async (r, o) => { try { await api.post(`/compliance/requirements/${r.id}/obligations`, { obligation_id: o.id, roles: o.roles, sport_id: o.sport_id, youth_work: o.youth_work, mandatory: o.mandatory, consequences: o.consequences, archived: true }); after(); } catch (e) { toast(explain(e)); } };
   if (l.error) return <ErrorBox error={l.error} onRetry={l.reload} />;
   if (!l.data) return <Loading />;
@@ -397,11 +412,18 @@ function Rulebook({ scope, cat, reload }) {
             </View>
             <Tag label={`${r.counts.valid} valid`} color={c.mint} />
           </View>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6, alignItems: 'center' }}>
+            <Tag label={r.classification_label} color={['legal_mandatory', 'regulatory'].includes(r.classification) ? c.red : r.classification === 'recommended_standard' ? c.cyan : c.violetSoft} />
+            {r.topic ? <Tag label={`Topic: ${r.topic}`} /> : null}
+            {r.approval_status === 'pending_approval' ? <Tag label="Waiting for a second administrator" color={c.sun} /> : null}
+            {r.source_title ? <T size={12} color={c.mute}>{r.source_title}</T> : null}
+            {r.approval_status === 'pending_approval' && scope.kind === 'platform' && write ? <><Chip label="Approve" onPress={() => approve(r, 'approve')} /><Chip label="Withdraw" onPress={() => approve(r, 'withdraw')} /></> : null}
+          </View>
           {r.counts.awaiting || r.counts.expiring ? <T size={12} color={c.mute}>{r.counts.awaiting} awaiting review · {r.counts.expiring} expiring within 30 days</T> : null}
           <View style={{ gap: 6, marginTop: 8 }}>
             {r.obligations.length ? r.obligations.map((o) => (
               <View key={o.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <T size={13} style={{ flex: 1, minWidth: 160 }}>{o.role_labels.length ? o.role_labels.join(', ') : 'Everyone in this scope'}{o.sport_name ? ` · ${o.sport_name}` : ''}{o.youth_work ? ' · works with young people' : ''}{o.mandatory ? '' : ' · optional'}{o.consequences.length ? ` · blocks ${o.consequences.map((x) => STOPS[x] ?? x).join(', ')}` : ''}</T>
+                <T size={13} style={{ flex: 1, minWidth: 160 }}>{o.role_labels.length ? o.role_labels.join(', ') : 'Everyone in this scope'}{o.sport_name ? ` · ${o.sport_name}` : ''}{[o.municipality, o.region, o.country].filter(Boolean).length ? ` · in ${[o.municipality, o.region, o.country].filter(Boolean).join(', ')}` : ''}{o.event_types?.length ? ` · ${o.event_types.join('/')} events` : ''}{o.min_age != null || o.max_age != null ? ` · ages ${o.min_age ?? 0}–${o.max_age ?? '∞'}` : ''}{o.starts_on && String(o.starts_on).slice(0, 10) > new Date().toISOString().slice(0, 10) ? ` · from ${nice(o.starts_on)}` : ''}{o.youth_work ? ' · works with young people' : ''}{o.mandatory ? '' : ' · optional'}{o.consequences.length ? ` · blocks ${o.consequences.map((x) => STOPS[x] ?? x).join(', ')}` : ''}</T>
                 {write ? <><Chip label="Edit" onPress={() => setOb({ req: r, edit: { ...o, sport: undefined } })} /><Chip label="Remove" onPress={() => dropOb(r, o)} /></> : null}
               </View>
             )) : <T size={13} color={c.red}>Nobody has to meet this yet. Say who must.</T>}
@@ -451,7 +473,7 @@ export function ComplianceWorkspace({ scope, own = null, initial = 'overview', o
   if (cat.error) return <ErrorBox error={cat.error} onRetry={cat.reload} />;
   if (!cat.data) return <Loading />;
   const reload = () => setTick((t) => t + 1);
-  const tabs = [['overview', 'Who is short'], ['review', 'Review queue'], ['rules', 'Rulebook'], ['waivers', 'Waivers'], ['packs', 'Evidence packs']];
+  const tabs = [['overview', 'Who is short'], ['review', 'Review queue'], ['rules', 'Rulebook'], ['waivers', 'Waivers'], ['decisions', 'Decisions'], ['packs', 'Evidence packs']];
   return (
     <OnDark.Provider value={onDark}>
     <View key={`${scope.kind}:${scope.id}:${tick}`} style={{ gap: 12, marginTop: 4 }}>
@@ -464,9 +486,61 @@ export function ComplianceWorkspace({ scope, own = null, initial = 'overview', o
         : tab === 'review' ? <ReviewQueue scope={scope} cat={cat.data} reload={reload} />
         : tab === 'rules' ? <Rulebook scope={scope} cat={cat.data} reload={reload} />
         : tab === 'waivers' ? <Waivers scope={scope} />
+        : tab === 'decisions' ? <Decisions scope={scope} />
         : <Packs scope={scope} subjectKind={kind} />}
     </View>
     </OnDark.Provider>
+  );
+}
+
+/** The kept decisions of an event or organisation, and a check of the rules in force on any date (nothing is saved unless you ask). */
+function Decisions({ scope }) {
+  const { toast } = useSession();
+  const subject = scope.kind === 'event' || scope.kind === 'organisation' ? { kind: scope.kind, id: scope.id } : null;
+  const l = useLoad(() => (scope.kind === 'event' ? api.get('/compliance/decisions', { event_id: scope.id, limit: 30 }) : subject ? api.get('/compliance/decisions', { subject_kind: subject.kind, subject_id: subject.id, limit: 30 }) : Promise.resolve({ items: [] })), [scope.kind, scope.id]);
+  const [check, setCheck] = useState(false), [res, setRes] = useState(null), [open, setOpen] = useState(null);
+  if (l.error) return <ErrorBox error={l.error} onRetry={l.reload} />;
+  if (!l.data) return <Loading />;
+  return (
+    <View style={{ gap: 10 }}>
+      <Note>Every time a rule stopped or allowed opening an event, starting it or awarding a tender, the decision is kept with the facts, the rules (and their versions) and who decided. It cannot be edited or deleted.</Note>
+      {subject ? <Btn title="Check the rules on a date" onPress={() => setCheck(true)} accessibilityLabel="Check the rules in force on a date" /> : <Note>Open an organisation or an event to check its rules on a date.</Note>}
+      {res ? (
+        <Card pad={14}>
+          <T weight="800" size={16}>{DECISION[res.decision][0]} on {nice(res.as_of)}</T>
+          {res.explanation?.text ? <Note style={{ marginTop: 6 }}>{res.explanation.text}</Note> : null}
+          {res.items.map((it) => <Row key={it.requirement_id} title={it.requirement.name} sub={`${it.state_label} · ${it.explanation}`} right={<Tag label={it.policy.classification.replace(/_/g, ' ')} />} />)}
+          {res.excluded?.map((x) => <Note key={x.requirement.id ?? x.requirement.name} style={{ marginTop: 4 }}>{x.requirement.name}: {x.reason}</Note>)}
+        </Card>
+      ) : null}
+      {l.data.items.length ? l.data.items.map((d) => (
+        <Row key={d.id} title={`${STOPS[d.consequence] ?? d.consequence} · ${d.blocked ? 'refused' : 'allowed'}`} sub={`${nice(d.decided_at)} · as of ${nice(d.as_of)} · ${d.blockers ?? 0} of ${d.rules ?? 0} rules in the way${d.decided_by ? ` · ${d.decided_by}` : ''}`}
+          right={<Tag label={d.blocked ? 'Refused' : 'Allowed'} color={DECISION_TONE[d.blocked]} />} onPress={() => setOpen(d.id)} />
+      )) : <Empty emoji="🧭" title="No decisions kept yet" sub="Refused openings, starts and awards appear here. You can also keep a check." />}
+      {check ? (
+        <FormSheet visible onClose={() => setCheck(false)} title="Rules in force on a date" submitLabel="Check"
+          fields={[{ key: 'as_of', label: 'On this date', type: 'date', optional: true }, { key: 'record', label: 'Keep this check in the decision trail', type: 'switch' }]} initial={{ record: false }}
+          onSubmit={async (v) => { try { setRes(await api.post('/compliance/evaluate', { subject_kind: subject.kind, subject_id: subject.id, ...(scope.kind === 'event' ? { event_id: scope.id } : {}), ...(v.as_of ? { as_of: v.as_of } : {}), record: !!v.record })); l.reload(); } catch (e) { toast(explain(e)); throw e; } return 'Checked'; }} />
+      ) : null}
+      <DecisionView id={open} onClose={() => setOpen(null)} />
+    </View>
+  );
+}
+
+function DecisionView({ id, onClose }) {
+  const l = useLoad(() => (id ? api.get(`/compliance/decisions/${id}`) : Promise.resolve(null)), [id]);
+  if (!id) return null;
+  const d = l.data;
+  return (
+    <Sheet visible onClose={onClose} title="Decision">
+      {l.error ? <ErrorBox error={l.error} onRetry={l.reload} /> : !d ? <Loading /> : (
+        <View style={{ gap: 8 }}>
+          <T weight="700">{STOPS[d.consequence] ?? d.consequence} · {d.blocked ? 'refused' : 'allowed'} · as of {nice(d.as_of)}</T>
+          {Object.entries(d.facts?.values ?? {}).map(([k, v]) => <Note key={k}>{k.replace(/_/g, ' ')}: {String(v)} ({d.facts.sources?.[k] ?? 'on record'})</Note>)}
+          {(d.results?.items ?? []).map((it, i) => <Row key={i} title={`${it.name} v${it.version}`} sub={`${(it.classification ?? '').replace(/_/g, ' ')} · ${it.state}${it.blocking ? ' · in the way' : ''}`} />)}
+        </View>
+      )}
+    </Sheet>
   );
 }
 

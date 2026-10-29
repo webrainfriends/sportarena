@@ -272,4 +272,5 @@ import './org-command-centre.js';
 import './compliance.js';
 import './compliance-records.js';
 import './compliance-files.js';
+import './compliance-policy.js';
 import './my-workspace.js';
