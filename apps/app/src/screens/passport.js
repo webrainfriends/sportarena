@@ -10,6 +10,7 @@ import { FormSheet } from '../FormSheet';
 import { c, day, toneFor } from '../theme';
 import { useNav } from '../nav';
 import { CredentialList } from './pathways';
+import { PortfolioJourney } from './journey-ui';
 import { SkillLevelCard } from '../skill-level';
 import { CoachPassportDesk, GuardianPassports, RecruitmentProfile, RecruitmentSections } from './passport-recruitment';
 
@@ -36,7 +37,8 @@ export function QrCode({ value, size = 200, label = "QR code for the passport li
 }
 
 const SECTIONS = [['show_matches', 'Match history by season', 'matches'], ['show_results', 'Approved results', 'results'], ['show_awards', 'Awards', 'awards'], ['show_credentials', 'Certificates & badges', 'certificates'], ['show_career', 'Clubs & teams timeline', 'clubs & teams'],
-  ['show_video', 'Approved video', 'video'], ['show_references', 'Approved coach references', 'references'], ['show_preferences', 'What I\'m looking for', 'preferences'], ['show_availability', 'Availability', 'availability'], ['show_academic', 'Academic evidence', 'academic evidence']];
+  ['show_video', 'Approved video', 'video'], ['show_references', 'Approved coach references', 'references'], ['show_preferences', 'What I\'m looking for', 'preferences'], ['show_availability', 'Availability', 'availability'], ['show_academic', 'Academic evidence', 'academic evidence'],
+  ['show_journey', 'Career & development timeline', 'timeline'], ['show_development', 'Development goals (in the timeline)', 'goals']];
 const EXPIRY = [{ value: 7, label: '7 days' }, { value: 30, label: '30 days' }, { value: 90, label: '90 days' }];
 
 const copyOrShare = async (text, toast) => {
@@ -154,6 +156,8 @@ export function PassportCard({ data, own = false }) {
         </Card>
       ) : null}
 
+      <PortfolioJourney journey={data.journey} />
+
       <RecruitmentSections data={data} />
     </View>
   );
@@ -230,7 +234,7 @@ export function MyPassport() {
             { key: 'label', label: 'Who is it for', optional: true, placeholder: 'Academy scout, club trial…' },
             { key: 'recipient_id', label: 'Only this person may open it', type: 'entity', noun: 'person', optional: true, hint: 'Leave empty to let anyone with the link open it.' },
             { key: 'expires_in_days', label: 'Stops working after', type: 'chips', options: EXPIRY },
-            ...SECTIONS.map(([key, label]) => ({ key, label: `Show ${label[0].toLowerCase()}${label.slice(1)}`, type: 'switch' })),
+            ...SECTIONS.map(([key, label]) => ({ key, label: `Show ${label[0].toLowerCase()}${label.slice(1)}`, type: 'switch', ...(key === 'show_development' ? { show: (v) => !!v.show_journey } : {}) })),
           ]}
           onSubmit={async (v) => { const l = await api.post('/me/passport-links', { label: v.label || undefined, recipient_id: v.recipient_id || undefined, expires_in_days: Number(v.expires_in_days), ...Object.fromEntries(SECTIONS.map(([k]) => [k, !!v[k]])) }); setFresh(l); await links.reload(); return 'Link created'; }} />
       ) : null}
@@ -240,7 +244,7 @@ export function MyPassport() {
           fields={[
             { key: 'label', label: 'Who is it for', optional: true },
             { key: 'extend', label: 'Extend from today by', type: 'chips', options: [{ value: 0, label: 'Keep as is' }, ...EXPIRY], default: 0 },
-            ...SECTIONS.map(([key, label]) => ({ key, label: `Show ${label[0].toLowerCase()}${label.slice(1)}`, type: 'switch' })),
+            ...SECTIONS.map(([key, label]) => ({ key, label: `Show ${label[0].toLowerCase()}${label.slice(1)}`, type: 'switch', ...(key === 'show_development' ? { show: (v) => !!v.show_journey } : {}) })),
           ]}
           onSubmit={async (v) => {
             try { await api.patch(`/me/passport-links/${edit.id}`, { version: edit.version, label: v.label || null, ...(Number(v.extend) ? { expires_in_days: Number(v.extend) } : {}), ...Object.fromEntries(SECTIONS.map(([k]) => [k, !!v[k]])) }); }
