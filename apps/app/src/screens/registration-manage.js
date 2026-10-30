@@ -14,7 +14,7 @@ import { c } from '../theme';
 import { explain, LoadError } from '../access';
 import { fieldsOf, fmtMoney, fromMinor, toMinor } from '../application-forms';
 import { DefinitionEditor, strip, withDefaults } from './sponsor-form-builder';
-import { KINDS, StatusTag, kindOf, places } from './registration';
+import { KINDS, ManagedBanner, StatusTag, kindOf, places } from './registration';
 
 const day = (iso) => (iso ? new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '');
 const stamp = (iso) => (iso ? new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
@@ -52,15 +52,16 @@ export function RegistrationManage({ id }) {
         ))}
         <Card style={{ minWidth: 120, flexGrow: 1 }}><T size={26} weight="900">{a.capacity == null ? '∞' : `${a.held}/${a.capacity}`}</T><T size={12} color={c.mute}>Places held</T></Card>
       </View>
+      {p.legacy_type ? <ManagedBanner managed={{ kind: p.legacy_type === 'event_registration' ? 'roster_registration' : 'academy_application', event_id: p.event_id, organisation_id: p.organisation_id }} /> : null}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-        {p.status !== 'open' && p.status !== 'archived' ? <Btn small title={p.status === 'closed' ? 'Reopen' : 'Open registration'} onPress={() => setProgStatus('open')} /> : null}
-        {p.status === 'open' ? <Btn small title="Close registration" color={c.paper} ink={c.ink} onPress={() => setProgStatus('closed')} /> : null}
-        <Btn small title="Settings" color={c.violet} onPress={() => push('RegistrationSetup', { id })} />
-        <Btn small title="Form, fees and waivers" color={c.violet} onPress={() => push('RegistrationForm', { id })} />
+        {!p.legacy_type && p.status !== 'open' && p.status !== 'archived' ? <Btn small title={p.status === 'closed' ? 'Reopen' : 'Open registration'} onPress={() => setProgStatus('open')} /> : null}
+        {!p.legacy_type && p.status === 'open' ? <Btn small title="Close registration" color={c.paper} ink={c.ink} onPress={() => setProgStatus('closed')} /> : null}
+        {!p.legacy_type ? <Btn small title="Settings" color={c.violet} onPress={() => push('RegistrationSetup', { id })} /> : null}
+        {!p.legacy_type ? <Btn small title="Form, fees and waivers" color={c.violet} onPress={() => push('RegistrationForm', { id })} /> : null}
         <Btn small title="Export CSV" color={c.paper} ink={c.ink} onPress={exportCsv} />
-        {p.status !== 'archived' ? <Btn small title="Archive" color={c.paper} ink={c.red} onPress={() => setProgStatus('archived')} /> : null}
+        {!p.legacy_type && p.status !== 'archived' ? <Btn small title="Archive" color={c.paper} ink={c.red} onPress={() => setProgStatus('archived')} /> : null}
       </View>
-      {!p.current_version ? <Card color={c.sunSoft}><T weight="800">Publish the form first</T><T size={13}>People cannot register until the questions, fees and waivers are published.</T></Card> : null}
+      {!p.legacy_type && !p.current_version ? <Card color={c.sunSoft}><T weight="800">Publish the form first</T><T size={13}>People cannot register until the questions, fees and waivers are published.</T></Card> : null}
       <Section title="Registrations" color={c.pink}>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           <View style={{ flexGrow: 1, minWidth: 220 }}><MenuField value={status} onChange={setStatus} options={STATUS_FILTER} /></View>
