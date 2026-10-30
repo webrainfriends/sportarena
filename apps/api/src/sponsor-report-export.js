@@ -12,7 +12,7 @@ const basisRows = (r) => [['Item', 'Value'], ['Report', r.kind], ['View', r.view
 
 /** @returns {Promise<{ filename: string, type: string, body: Buffer | string }>} */
 export async function exportReport(report, format, { kit = null, logo = null } = {}) {
-  const base = `sponsorship-${report.kind}-${report.basis.as_of}`;
+  const base = `${report.kind === 'kpi' ? 'analytics' : 'sponsorship'}-${report.kind}-${report.basis.as_of}`;
   const keys = report.columns.map((c) => c.key);
   if (format === 'csv') return { filename: `${base}.csv`, type: FORMATS.csv.type, body: toCsv(keys, report.rows) };
   if (format === 'xlsx') {
