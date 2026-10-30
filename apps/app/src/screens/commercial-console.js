@@ -372,6 +372,7 @@ function Offers({ cat }) {
         <Card key={p.id}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><T weight="800" style={{ flex: 1 }}>{p.name}</T><St s={p.status} /></View>
           <T size={13} color={c.mute}>{benefitText(p)}{p.trial_days ? ` · ${p.trial_days}-day trial` : ''} · {d10(p.starts_on)}{p.ends_on ? ` → ${d10(p.ends_on)}` : ' onwards'}</T>
+          <View style={wrap}>{p.auto_apply ? <Tag label="Applied automatically" color={c.cyanSoft} /> : <Tag label={`Code: ${p.key}`} color={c.violetSoft} />}</View>
           <View style={wrap}>{p.price_points.length ? p.price_points.map((code) => <CodeTag key={code} code={code} />) : <Tag label="All price points" color={c.lime} />}</View>
           <Btn small title="Edit price points" color={c.paper} ink={c.ink} accessibilityLabel={`Edit price points for ${p.name}`} onPress={() => setEdit(p)} style={{ alignSelf: 'flex-start' }} />
         </Card>
@@ -380,8 +381,9 @@ function Offers({ cat }) {
         initial={{ all_price_points: !edit?.price_points?.length, price_points: edit?.price_points ?? [] }} fields={appliesFields}
         onSubmit={async (v) => { await api.patch(`/admin/commercial/promotions/${edit.id}/price-points`, { all_price_points: !!v.all_price_points, price_points: v.all_price_points ? [] : v.price_points }); cat.reload(); return 'Price points updated'; }} />
       <FormSheet visible={form} onClose={() => setForm(false)} title="New offer" submitLabel="Create"
-        initial={{ kind: 'launch_offer', benefit: 'free_months', free_months: 1, discount: 10, duration_months: 3, flat: 0, flat_currency: 'INR', trial_days: 0, all_price_points: true, price_points: [], starts_on: new Date().toISOString().slice(0, 10) }}
-        fields={[{ key: 'name', label: 'Name' }, { key: 'key', label: 'Short code (a–z, 0–9, _)' },
+        initial={{ kind: 'launch_offer', benefit: 'free_months', free_months: 1, discount: 10, duration_months: 3, flat: 0, flat_currency: 'INR', trial_days: 0, auto_apply: false, all_price_points: true, price_points: [], starts_on: new Date().toISOString().slice(0, 10) }}
+        fields={[{ key: 'name', label: 'Name' }, { key: 'key', label: 'Short code (a–z, 0–9, _)', hint: 'Lower-case. This is what a customer types to redeem the offer.' },
+          { key: 'auto_apply', label: 'Apply automatically', type: 'switch', hint: 'On = added to every purchase it fits, no code needed. Off = the customer keys in the code. Offers stack.' },
           { key: 'kind', label: 'Shown as', type: 'chips', options: [{ value: 'launch_offer', label: 'Launch offer' }, { value: 'first_term_discount', label: 'First-term discount' }, { value: 'coupon', label: 'Coupon' }, { value: 'trial', label: 'Trial' }] },
           ...appliesFields,
           { key: 'benefit', label: 'What the customer gets', type: 'chips', options: [{ value: 'free_months', label: 'Free months' }, { value: 'percent_off', label: '% off' }, { value: 'flat_off', label: 'Flat amount off' }, { value: 'none', label: 'Trial / extras only' }] },

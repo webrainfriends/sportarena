@@ -8,7 +8,6 @@
 //   unknown    = something that must be known could not be established (e.g. no date of birth on file); otherwise
 //   pending    = something is awaiting a person (registration under review, clearance not yet confirmed); otherwise eligible.
 // Nationality, residency, sex/gender category and classification are NEVER inferred: they are declared by the registrar or recorded as dependencies.
-import { eligibilityChecks, eligibilityRulesExist } from './compliance/service.js';
 import { z } from 'zod';
 import { many } from './db.js';
 import { decrypt } from './crypto.js';
@@ -16,6 +15,7 @@ import { audit } from './helpers.js';
 import { hasConsent, isYouth } from './youth.js';
 import { conflict } from './errors.js';
 import { activeSportingSanction } from './integrity.js';
+import { gate, hasObligations } from './compliance.js';
 
 export const LISTS = ['active', 'reserve', 'development'];
 export const LIVE = ['submitted', 'under_review', 'registered', 'suspended'];
@@ -32,6 +32,7 @@ export const RULES = z.object({
   required_clearances: z.array(z.enum(['licence', 'classification'])).max(2).default([]),
   require_contract: z.boolean().default(false),
   require_guardian_consent: z.boolean().default(true),
+  require_compliance: z.boolean().default(true), // obligations of the compliance rulebook (#595) that block registration; no obligations configured = no effect
   roster: z.object({ max_total: nz.optional(), max_active: nz.optional(), max_reserve: nz.optional(), max_development: nz.optional(), freeze_at: z.string().datetime({ offset: true }).optional() }).strict().default({}),
   quotas: z.object({ max_foreign: nz.optional(), min_homegrown: nz.optional(), min_local: nz.optional() }).strict().default({}),
   waivable: z.array(z.enum(EXCEPTION_RULES)).default([]),
@@ -166,9 +167,18 @@ export async function evaluate(c, ctx, teamId, userId) {
     checks.push(await withWaiver('guardian_consent', ok ? check('guardian_consent', 'pass', 'Guardian consent for participation is current', null) : check('guardian_consent', 'fail', 'Guardian consent for participation is not current', null)));
   }
 
-  // 8 the compliance engine (#568): permits, consent and federation conditions written as versioned rules. Nothing is added when no rule exists.
-  ctx.cmpOn ??= await eligibilityRulesExist(c);
-  if (ctx.cmpOn) checks.push(...await eligibilityChecks(c, ctx.actorId ? { id: ctx.actorId } : null, event.id, userId));
+  // 8 compliance & safeguarding obligations that block registration (#595): read live from the compliance rulebook, never copied here.
+  // They are waived there (documented, time-boxed), not through a second exception mechanism.
+  if (rules.require_compliance !== false) {
+    const cctx = { event_id: event.id, organisation_id: event.organisation_id ?? null };
+    const key = `compliance:${event.id}`;
+    if (!(key in (ctx.cache ??= {}))) ctx.cache[key] = await hasObligations(q(c), 'registration', cctx);
+    if (ctx.cache[key]) {
+      const g = await gate(q(c), userId, 'registration', cctx);
+      for (const it of g.items) checks.push(check('compliance', it.blocking ? 'fail' : 'pending', it.explanation, { kind: 'compliance', id: it.obligation_id, label: it.requirement.name }));
+      if (!g.items.length) checks.push(check('compliance', 'pass', 'Compliance requirements are in order', null));
+    }
+  }
 
   // roster-level waivers for the window are applied at submission; the registration check itself cannot be waived here
   const decision = checks.some((x) => x.status === 'fail') ? 'ineligible' : checks.some((x) => x.status === 'unknown') ? 'unknown' : checks.some((x) => x.status === 'pending') ? 'pending' : 'eligible';

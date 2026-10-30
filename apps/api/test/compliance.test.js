@@ -1,524 +1,537 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 
-Object.assign(process.env, { DATABASE_URL: process.env.TEST_DATABASE_URL ?? 'postgres://postgres@/sportarena_test?host=/tmp', PLATFORM_ADMIN_EMAILS: 'rraja.edge@gmail.com,rrajas1978@icloud.com' });
+Object.assign(process.env, { DATABASE_URL: process.env.TEST_DATABASE_URL ?? 'postgres://postgres@/sportarena_test?host=/tmp' });
 const { pool } = await import('../src/db.js');
 const { migrate } = await import('../src/migrate.js');
 const { createApp } = await import('../src/http.js');
-const E = await import('../src/compliance/engine.js');
-const { setAiTransport } = await import('../src/ai.js');
+const { signToken } = await import('../src/auth.js');
+const { capabilities } = await import('../src/registry.js');
+const { gate, resolveState, assertMayMessageYouth, mayAccessYouth } = await import('../src/compliance.js');
+const { canSeeYouth } = await import('../src/youth.js');
+const { remindCompliance } = await import('../src/compliance-sweeps.js');
+const { evaluate, RULES } = await import('../src/registration.js');
+const { blocker } = await import('../src/accreditation.js');
 
-let server, base, n = 0, admin, admin2;
+let server, base, n = 0, admin;
 const api = async (method, path, { token, body, query } = {}) => {
   const r = await fetch(`${base}/api/v1${path}${query ? `?${new URLSearchParams(query)}` : ''}`, { method, headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) }, body: body ? JSON.stringify(body) : undefined });
-  return { status: r.status, body: await r.json().catch(() => ({})) };
-};
-const rpc = async (method, params, token) => {
-  const r = await fetch(`${base}/mcp`, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', ...(token ? { authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) });
-  return (await r.json()).result;
+  return { status: r.status, body: await r.json() };
 };
 const must = (r, status = 200) => { assert.equal(r.status, status, JSON.stringify(r.body)); return r.body; };
-const day = (d = 0) => new Date(Date.now() + d * 86400000).toISOString().slice(0, 10);
-const yearsAgo = (y) => { const d = new Date(); d.setUTCFullYear(d.getUTCFullYear() - y); d.setUTCDate(d.getUTCDate() - 3); return d.toISOString().slice(0, 10); };
-const signup = async (roles = ['athlete'], extra = {}) => { n++; const r = await api('POST', '/auth/register', { body: { handle: `cm_${n}_${roles[0]}`, display_name: `Cmp ${n}`, email: `cm${n}@example.com`, password: 'correct-horse-battery', roles, ...extra } }); assert.equal(r.status, 201, JSON.stringify(r.body)); return { ...r.body.user, token: r.body.token }; };
-const platformAdmin = async (handle, email) => {
-  const r = await api('POST', '/auth/register', { body: { handle, display_name: handle, email, password: 'correct-horse-battery', roles: ['athlete'] } });
-  assert.equal(r.status, 201, JSON.stringify(r.body));
-  await pool.query("UPDATE users SET roles = '{athlete,admin,platform_admin}' WHERE id = $1", [r.body.user.id]);
-  return { id: r.body.user.id, token: r.body.token };
+const person = async (roles = []) => {
+  n++;
+  const r = await pool.query("INSERT INTO users(handle,display_name,roles,password_hash,email_enc,email_idx) VALUES ($1,$2,$3,'x','x',$1) RETURNING id", [`cp_${n}`, `Person ${n}`, roles]);
+  return { id: r.rows[0].id, token: await signToken({ id: r.rows[0].id, roles }) };
 };
+const join = (org, u, role) => pool.query("INSERT INTO organisation_members(organisation_id, user_id, role, status, joined_at) VALUES ($1,$2,$3,'active',now())", [org, u.id, role]);
+const day = (d = 0) => new Date(Date.now() + d * 864e5).toISOString().slice(0, 10);
+const sportId = async (slug = 'football') => (await pool.query('SELECT id FROM sports WHERE slug=$1', [slug])).rows[0].id;
 
 before(async () => {
   await pool.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public');
   await migrate();
+  const row = (await pool.query("INSERT INTO users(handle,display_name,roles,password_hash,email_enc,email_idx) VALUES ('cp_root','cp_root','{admin}','x','x','cp_root') RETURNING id")).rows[0];
+  admin = { id: row.id, token: await signToken({ id: row.id, roles: ['admin'] }) };
   server = createApp().listen(0);
   base = `http://localhost:${server.address().port}`;
-  admin = await platformAdmin('cmp_boss_one', 'rraja.edge@gmail.com');
-  admin2 = await platformAdmin('cmp_boss_two', 'rrajas1978@icloud.com');
 });
 after(async () => { server.close(); await pool.end(); });
 
-/** A platform rule written by one admin and approved by the other. */
-const rule = async (over = {}) => {
-  const body = {
-    key: `rule.${++n}`, scope: 'platform', domains: ['event_permit'], topic: `topic.${n}`, title: 'Public assembly permit', classification: 'legal_mandatory', country: 'IN',
-    effective_from: day(-30), approval_owner: 'Legal counsel, India', source_title: 'Local public-assembly bylaw', source_url: 'https://example.org/bylaw',
-    requirements: [{ key: 'permit', kind: 'permit', label: 'Public assembly permit', holder: 'event' }], ...over,
-  };
-  const r = must(await api('POST', '/compliance/rules', { token: admin.token, body }), 201);
-  must(await api('POST', `/compliance/versions/${r.version_id}/decision`, { token: admin2.token, body: { decision: 'approve' } }));
-  return { ...r, body };
-};
-const addr = (kind, id, a) => pool.query('INSERT INTO addresses(owner_kind, owner_id, kind, locality, region, country, is_default) VALUES ($1,$2,$3,$4,$5,$6,true)', [kind, id, kind === 'venue' ? 'venue' : 'other', a.locality ?? null, a.region ?? null, a.country ?? null]);
-/** An event whose venue sits in a place, so jurisdiction rules can be judged. */
-const placedEvent = async (org, place = { country: 'IN', region: 'Maharashtra', locality: 'Mumbai' }, extra = {}) => {
-  const ev = must(await api('POST', '/events', { token: org.token, body: { name: `Cmp Cup ${++n}`, sport: 'football', starts_on: day(10), ends_on: day(12), ...extra } }), 201);
-  const v = (await pool.query("INSERT INTO venues(name, city, owner_id) VALUES ($1,$2,$3) RETURNING id", [`Ground ${n}`, place.locality, org.id])).rows[0];
-  await addr('venue', v.id, place);
-  await pool.query('UPDATE events SET venue_id=$2 WHERE id=$1', [ev.id, v.id]);
-  return ev;
-};
-const evalPerson = (u, p, ev, domain = 'federation_eligibility') => api('POST', '/compliance/evaluate', { token: u.token, body: { subject_type: 'person', subject_id: p.id, event_id: ev.id, domain } });
-const evalEvent = (org, ev, extra = {}) => api('POST', '/compliance/evaluate', { token: org.token, body: { subject_type: 'event', subject_id: ev.id, ...extra } });
+async function club() {
+  const owner = await person();
+  const org = must(await api('POST', '/organisations', { token: owner.token, body: { name: `Compliance Club ${++n}`, kind: 'club' } }), 201);
+  return { owner, org };
+}
+const requirement = async (user, scope, body) => must(await api('POST', '/compliance/requirements', { token: user.token, body: { scope_kind: scope.kind, scope_id: scope.id, name: 'Coaching certificate', category: 'qualification', method: 'evidence', validity_days: 365, ...body } }), 201);
+const obligation = async (user, req, body = {}) => must(await api('POST', `/compliance/requirements/${req.id}/obligations`, { token: user.token, body: { roles: ['coach'], ...body } }), 201);
+const status = (user, query = {}) => api('GET', '/compliance/status', { token: user.token, query });
+const codeOf = (r) => r.body.error?.details?.code;
+const itemOf = (s, name) => s.items.find((i) => i.requirement.name === name);
 
-// ------------------------------------------------------------------ the pure engine
-test('engine: applicability says unknown when a fact is missing, never silently "does not apply"', () => {
-  const v = { country: 'IN', region: 'Maharashtra', applies: { roles: ['media'], min_age: 18 } };
-  assert.equal(E.applicability(v, { country: 'IN', region: 'maharashtra', roles: ['media'], age: 30 }).result, 'yes');
-  assert.deepEqual(E.applicability(v, { country: 'IN', roles: ['media'], age: 30 }).unknown, ['state or province']);
-  assert.equal(E.applicability(v, { country: 'US', region: 'Maharashtra', roles: ['media'], age: 30 }).result, 'no');
-  assert.equal(E.applicability(v, { country: 'IN', region: 'Maharashtra', roles: ['media'], age: 12 }).result, 'no');
-  assert.equal(E.applicability(v, { country: 'IN', region: 'Maharashtra', roles: [], age: 30 }).result, 'no', 'a known-empty role list is a "no"');
-  assert.equal(E.applicability({ applies: { roles: ['x'] } }, {}, ['roles']).result, 'no', 'an event has no role to judge');
+test('a requirement for coaches: missing, submitted, reviewed, met, expiring, expired - each explained', async () => {
+  const { owner, org } = await club();
+  const coach = await person(), outsider = await person();
+  await join(org.id, coach, 'coach');
+  const scope = { kind: 'organisation', id: org.id };
+  const req = await requirement(owner, scope, { name: 'First aid certificate', category: 'qualification' });
+  assert.equal(req.version, 1);
+  const ob = await obligation(owner, req, { consequences: [] });
+  assert.equal(ob.mandatory, true);
+
+  let s = must(await status(coach));
+  let item = itemOf(s, 'First aid certificate');
+  assert.equal(item.state, 'missing'); assert.equal(item.blocking, true); assert.equal(s.decision, 'blocked');
+  assert.match(item.explanation, /has not been provided/); assert.equal(item.next_step.action, 'submit');
+  assert.equal(item.scope.name.startsWith('Compliance Club'), true);
+
+  // somebody who is not in the club has nothing to meet
+  s = must(await status(outsider));
+  assert.equal(s.items.length, 0); assert.equal(s.decision, 'clear');
+
+  // evidence needs a reference; an expired certificate is refused
+  assert.equal((await api('POST', '/compliance/records', { token: coach.token, body: { requirement_id: req.id } })).status, 400);
+  assert.equal((await api('POST', '/compliance/records', { token: coach.token, body: { requirement_id: req.id, reference: 'FA-1', issued_on: day(-400), expires_on: day(-5) } })).status, 400);
+  const rec = must(await api('POST', '/compliance/records', { token: coach.token, body: { requirement_id: req.id, reference: 'FA-123456', provider: 'Red Cross', issued_on: day(-10) } }), 201);
+  assert.equal(rec.status, 'submitted'); assert.equal(rec.has_reference, true); assert.equal(rec.expires_on, day(355));
+  assert.equal(JSON.stringify(rec).includes('FA-123456'), false, 'the reference is never in a response');
+  assert.equal((await api('POST', '/compliance/records', { token: coach.token, body: { requirement_id: req.id, reference: 'FA-2' } })).status, 409, 'one open submission at a time');
+
+  s = must(await status(coach));
+  assert.equal(itemOf(s, 'First aid certificate').state, 'pending_review');
+  assert.equal(s.decision, 'pending');
+
+  // the reviewer is the owner; the holder cannot decide their own
+  assert.equal((await api('POST', `/compliance/records/${rec.id}/decision`, { token: coach.token, body: { decision: 'approve' } })).status, 404, 'not a manager');
+  assert.equal((await api('POST', `/compliance/records/${rec.id}/decision`, { token: outsider.token, body: { decision: 'approve' } })).status, 404);
+  const queue = must(await api('GET', '/compliance/records', { token: owner.token, query: { scope_kind: 'organisation', scope_id: org.id, status: 'submitted' } }));
+  assert.deepEqual(queue.items.map((r) => r.id), [rec.id]);
+  assert.equal(queue.items[0].subject.name.startsWith('Person'), true);
+  assert.equal((await api('GET', '/compliance/records', { token: outsider.token, query: { scope_kind: 'organisation', scope_id: org.id } })).status, 404);
+
+  must(await api('POST', `/compliance/records/${rec.id}/decision`, { token: owner.token, body: { decision: 'approve' } }));
+  must(await api('POST', `/compliance/records/${rec.id}/decision`, { token: owner.token, body: { decision: 'approve' } })); // harmless repeat
+  assert.equal((await api('POST', `/compliance/records/${rec.id}/decision`, { token: owner.token, body: { decision: 'reject', reason: 'changed my mind' } })).status, 409);
+  s = must(await status(coach));
+  assert.equal(itemOf(s, 'First aid certificate').state, 'met'); assert.equal(s.decision, 'clear');
+
+  // time passes: 20 days left -> expiring, -2 days -> expired, grace keeps it counting
+  await pool.query('UPDATE comp_records SET expires_on=$2 WHERE id=$1', [rec.id, day(20)]);
+  item = itemOf(must(await status(coach)), 'First aid certificate');
+  assert.equal(item.state, 'expiring'); assert.equal(item.blocking, false); assert.match(item.explanation, /20 days left/);
+  await pool.query('UPDATE comp_records SET expires_on=$2 WHERE id=$1', [rec.id, day(-2)]);
+  item = itemOf(must(await status(coach)), 'First aid certificate');
+  assert.equal(item.state, 'expired'); assert.equal(item.blocking, true);
+  await pool.query('UPDATE comp_requirements SET grace_days=5 WHERE id=$1', [req.id]);
+  item = itemOf(must(await status(coach)), 'First aid certificate');
+  assert.equal(item.state, 'grace'); assert.equal(item.blocking, false); assert.match(item.explanation, /3 more days/);
+  await pool.query('UPDATE comp_requirements SET grace_days=0 WHERE id=$1', [req.id]);
+
+  // renewal: the old record keeps counting only while valid; a renewal while expired reads as awaiting review
+  const renewal = must(await api('POST', '/compliance/records', { token: coach.token, body: { requirement_id: req.id, reference: 'FA-654321', issued_on: day(0) } }), 201);
+  assert.ok(renewal.previous_id);
+  assert.equal(itemOf(must(await status(coach)), 'First aid certificate').state, 'pending_review');
+  must(await api('POST', `/compliance/records/${renewal.id}/decision`, { token: owner.token, body: { decision: 'approve' } }));
+  const all = must(await api('GET', '/compliance/records', { token: coach.token }));
+  assert.deepEqual(all.items.map((r) => r.status).sort(), ['superseded', 'valid']);
+  assert.equal(itemOf(must(await status(coach)), 'First aid certificate').state, 'met');
+
+  // the history shows who did what, never a reference
+  const hist = must(await api('GET', '/compliance/history', { token: coach.token }));
+  assert.ok(hist.items.some((h) => h.action === 'approved'));
+  assert.equal(JSON.stringify(hist).includes('FA-'), false);
 });
 
-test('engine: precedence ranks classification, then jurisdiction, then specificity, then date and version', () => {
-  const base = { rule_id: 'r', key: 'k', version: 1, effective_from: '2026-01-01', applies: {} };
-  const legal = { ...base, classification: 'legal_mandatory', country: 'IN' }, city = { ...legal, municipality: 'Mumbai', region: 'MH' }, org = { ...base, classification: 'organisation_policy' };
-  assert.ok(E.byPrecedence(legal, org) < 0);
-  assert.ok(E.byPrecedence(city, legal) < 0, 'the narrower jurisdiction wins within a class');
-  assert.ok(E.byPrecedence({ ...legal, effective_from: '2026-06-01' }, legal) < 0, 'then the later effective date');
-  assert.ok(E.byPrecedence({ ...legal, version: 2 }, legal) < 0, 'then the higher version');
+test('a manager sees only their own scope\'s requirements; the holder sees all; outsiders get a 404', async () => {
+  const a = await club(), b = await club();
+  const coach = await person();
+  await join(a.org.id, coach, 'coach'); await join(b.org.id, coach, 'coach');
+  const ra = await requirement(a.owner, { kind: 'organisation', id: a.org.id }, { name: 'A club check' });
+  const rb = await requirement(b.owner, { kind: 'organisation', id: b.org.id }, { name: 'B club check' });
+  await obligation(a.owner, ra); await obligation(b.owner, rb);
+  const mine = must(await status(coach));
+  assert.deepEqual(mine.items.map((i) => i.requirement.name).sort(), ['A club check', 'B club check']);
+  const seen = must(await status(a.owner, { subject_id: coach.id }));
+  assert.deepEqual(seen.items.map((i) => i.requirement.name), ['A club check'], 'a manager never sees another club\'s rules');
+  assert.equal(seen.relation, 'manager');
+  assert.equal((await status(await person(), { subject_id: coach.id })).status, 404);
+  assert.equal((await api('GET', '/compliance/requirements', { token: coach.token, query: { scope_kind: 'organisation', scope_id: a.org.id } })).status, 404);
+  assert.equal((await api('POST', '/compliance/requirements', { token: coach.token, body: { scope_kind: 'organisation', scope_id: a.org.id, name: 'Sneaky', category: 'other', method: 'evidence' } })).status, 404);
+  assert.equal((await api('POST', '/compliance/requirements', { token: a.owner.token, body: { scope_kind: 'platform', name: 'Platform', category: 'other', method: 'evidence' } })).status, 404, 'platform rules are the platform team\'s');
+  const listed = must(await api('GET', '/compliance/requirements', { token: a.owner.token, query: { scope_kind: 'organisation', scope_id: a.org.id } }));
+  assert.equal(listed.requirements.length, 1); assert.equal(listed.requirements[0].obligations.length, 1);
+  const cat = must(await api('GET', '/compliance/catalogue', { token: a.owner.token }));
+  assert.ok(cat.scopes.some((s) => s.kind === 'organisation' && s.id === a.org.id));
+  assert.ok(!cat.scopes.some((s) => s.kind === 'platform'));
+  assert.ok(must(await api('GET', '/compliance/catalogue', { token: admin.token })).scopes.some((s) => s.kind === 'platform'));
 });
 
-test('engine: versions are chosen by effective date and a repeal removes the rule', () => {
-  const v = (version, from, to, extra = {}) => ({ rule_id: 'r1', version, status: 'approved', effective_from: from, effective_to: to, ...extra });
-  const vs = [v(1, '2026-01-01', null), v(2, '2027-01-01', null), v(3, '2028-01-01', null, { repeals: true }), v(4, '2025-01-01', null, { status: 'draft' })];
-  assert.equal(E.inForce(vs, '2026-06-01')[0].version, 1);
-  assert.equal(E.inForce(vs, '2027-06-01')[0].version, 2, 'history is kept: asking for 2026 still gives version 1');
-  assert.equal(E.inForce(vs, '2028-06-01').length, 0);
-  assert.equal(E.inForce(vs, '2024-06-01').length, 0, 'a draft never applies');
+test('a background check keeps only its outcome: the reference is the holder\'s, a rejection shares no reason, nobody decides their own', async () => {
+  const { owner, org } = await club();
+  const coach = await person(), reviewer = await person();
+  await join(org.id, coach, 'coach'); await join(org.id, reviewer, 'admin');
+  const req = await requirement(owner, { kind: 'organisation', id: org.id }, { name: 'Background check', category: 'background_check', validity_days: 1095 });
+  assert.equal(req.sensitive, true);
+  assert.equal((await api('POST', '/compliance/requirements', { token: owner.token, body: { scope_kind: 'organisation', scope_id: org.id, name: 'Bad check', category: 'background_check', method: 'declaration', statement: 'I am fine' } })).status, 400, 'cannot be self-declared');
+  await obligation(owner, req, { roles: ['coach', 'admin'] });
+  const rec = must(await api('POST', '/compliance/records', { token: coach.token, body: { requirement_id: req.id, reference: 'CHK-9988', provider: 'Checker Ltd' } }), 201);
+  assert.equal(rec.outcome, 'pending');
+  assert.equal((await api('GET', `/compliance/records/${rec.id}/reference`, { token: reviewer.token })).status, 404, 'a reviewer never gets a background reference');
+  assert.equal((await api('GET', `/compliance/records/${rec.id}/reference`, { token: owner.token })).status, 404);
+  const own = must(await api('GET', `/compliance/records/${rec.id}/reference`, { token: coach.token }));
+  assert.equal(own.reference, 'CHK-9988');
+  assert.ok((await pool.query("SELECT 1 FROM audit_log WHERE action='read_compliance_reference' AND entity_id=$1 AND actor_id=$2", [rec.id, coach.id])).rowCount);
+  assert.equal((await pool.query('SELECT reference_enc FROM comp_records WHERE id=$1', [rec.id])).rows[0].reference_enc.includes('CHK-9988'), false, 'stored encrypted');
+
+  must(await api('POST', `/compliance/records/${rec.id}/decision`, { token: reviewer.token, body: { decision: 'reject' } }));
+  const s = must(await status(coach));
+  const item = itemOf(s, 'Background check');
+  assert.equal(item.state, 'rejected'); assert.equal(item.record.outcome, 'not_clear');
+  assert.doesNotMatch(item.explanation, /:/, 'no reviewer reason is exposed for a background check');
+  assert.equal((await pool.query('SELECT decision_reason FROM comp_records WHERE id=$1', [rec.id])).rows[0].decision_reason, null);
+
+  // a reviewer cannot approve a record they submitted themselves; another reviewer has to
+  const mine = must(await api('POST', '/compliance/records', { token: reviewer.token, body: { requirement_id: req.id, reference: 'OWN-1' } }), 201).id;
+  assert.equal((await api('POST', `/compliance/records/${mine}/decision`, { token: reviewer.token, body: { decision: 'approve' } })).status, 403);
+  must(await api('POST', `/compliance/records/${mine}/decision`, { token: owner.token, body: { decision: 'approve' } }));
+  assert.equal(itemOf(must(await status(reviewer)), 'Background check').record.outcome, 'clear');
+  // a background check can never be waived
+  const w = await api('POST', '/compliance/waivers', { token: reviewer.token, body: { requirement_id: req.id, subject_id: coach.id, reason: 'urgent', effective_to: day(10) } });
+  assert.equal(w.status, 409); assert.equal(codeOf(w), 'not_waivable');
 });
 
-test('engine: evidence status is pending until reviewed, expiring near the end, non-compliant when expired', () => {
-  const req = { key: 'p', kind: 'permit', label: 'Permit', warn_days: 30 };
-  const j = (items, cover = '2026-06-10') => E.judgeRequirement(req, items, { ref: '2026-06-01', cover }).status;
-  assert.equal(j([]), 'missing');
-  assert.equal(j([{ kind: 'permit', status: 'submitted' }]), 'pending');
-  assert.equal(j([{ kind: 'permit', status: 'verified', valid_to: '2026-12-31' }]), 'compliant');
-  assert.equal(j([{ kind: 'permit', status: 'verified', valid_to: '2026-06-20' }]), 'expiring');
-  assert.equal(j([{ kind: 'permit', status: 'verified', valid_to: '2026-06-05' }]), 'non_compliant');
-  assert.equal(j([{ kind: 'permit', status: 'rejected' }]), 'non_compliant');
-  assert.equal(j([{ kind: 'training', status: 'verified' }]), 'missing', 'another kind of evidence does not count');
-  assert.equal(E.judgeRequirement({ ...req, max_age_days: 365 }, [{ kind: 'permit', status: 'verified', issued_on: '2024-01-01' }], { ref: '2026-06-01', cover: '2026-06-10' }).status, 'non_compliant', 'too old');
-});
+test('declarations and acknowledgements are made against the exact current wording', async () => {
+  const { owner, org } = await club();
+  const staff = await person();
+  await join(org.id, staff, 'coach');
+  assert.equal((await api('POST', '/compliance/requirements', { token: owner.token, body: { scope_kind: 'organisation', scope_id: org.id, name: 'No wording', category: 'safeguarding_acknowledgement', method: 'declaration' } })).status, 400);
+  const req = await requirement(owner, { kind: 'organisation', id: org.id }, { name: 'Safeguarding policy acknowledgement', category: 'safeguarding_acknowledgement', method: 'declaration', statement: 'I have read the safeguarding policy and will follow it.', validity_days: 365 });
+  await obligation(owner, req, { roles: [] });
+  assert.equal(itemOf(must(await status(staff)), 'Safeguarding policy acknowledgement').next_step.action, 'declare');
+  assert.equal((await api('POST', '/compliance/records', { token: staff.token, body: { requirement_id: req.id } })).status, 400, 'must confirm');
+  const rec = must(await api('POST', '/compliance/records', { token: staff.token, body: { requirement_id: req.id, confirm: true, statement_version: 1 } }), 201);
+  assert.equal(rec.status, 'valid'); assert.equal(rec.statement_version, 1);
+  assert.equal(itemOf(must(await status(staff)), 'Safeguarding policy acknowledgement').state, 'met');
 
-test('engine: an explanation never says anyone is legally compliant', () => {
-  const results = [{ outcome: 'applies', status: 'missing', title: 'Permit', classification: 'legal_mandatory', requirements: [{ label: 'Permit', status: 'missing', detail: 'No evidence on record' }] }];
-  const x = E.explain(results, E.summarise(results));
-  assert.equal(x.assertion, 'none');
-  assert.doesNotMatch(x.text, /you are (legally )?compliant|is compliant|are compliant/i);
-  assert.match(x.text, /human reviewer/);
-});
-
-// ------------------------------------------------------------------ authoring
-test('the library: platform rules need the platform admin, laws need a second approver, versions are immutable and never deleted', async () => {
-  const org = await signup(['organizer']);
-  const body = { key: `lib.${++n}`, scope: 'platform', domains: ['event_permit'], topic: 'lib.topic', title: 'Fire safety certificate', classification: 'regulatory', country: 'SG', effective_from: day(-5), approval_owner: 'Counsel, Singapore' };
-  assert.equal((await api('POST', '/compliance/rules', { token: org.token, body })).status, 403, 'not the platform admin');
-  const r = must(await api('POST', '/compliance/rules', { token: admin.token, body }), 201);
-  assert.equal(r.status, 'draft');
-  assert.equal((await api('POST', `/compliance/versions/${r.version_id}/decision`, { token: admin.token, body: { decision: 'approve' } })).status, 409, 'a law is not approved by its author');
-  assert.equal((await api('POST', `/compliance/versions/${r.version_id}/decision`, { token: org.token, body: { decision: 'approve' } })).status, 403);
-  const done = must(await api('POST', `/compliance/versions/${r.version_id}/decision`, { token: admin2.token, body: { decision: 'approve' } }));
-  assert.equal(done.status, 'approved'); assert.equal(done.self_approved, false);
-  assert.equal((await api('POST', `/compliance/versions/${r.version_id}/decision`, { token: admin2.token, body: { decision: 'withdraw' } })).status, 409, 'already approved');
-  await assert.rejects(pool.query("UPDATE cmp_rule_versions SET title='Changed' WHERE id=$1", [r.version_id]), /immutable/);
-  await assert.rejects(pool.query('DELETE FROM cmp_rule_versions WHERE id=$1', [r.version_id]), /never deleted/);
-  await assert.rejects(pool.query('DELETE FROM cmp_rules WHERE id=$1', [r.rule_id]), /never deleted/);
-  // a change is a new version
-  const v2 = must(await api('POST', '/compliance/rules', { token: admin.token, body: { ...body, rule_id: r.rule_id, title: 'Fire safety certificate (2027)', effective_from: day(300) } }), 201);
+  // changing the wording starts version 2; an acknowledgement made against version 1 keeps saying so
+  const v2 = must(await api('POST', '/compliance/requirements', { token: owner.token, body: { requirement_id: req.id, scope_kind: 'organisation', scope_id: org.id, name: req.name, category: 'safeguarding_acknowledgement', method: 'declaration', statement: 'Updated policy: report concerns within 24 hours.', validity_days: 365 } }), 201);
   assert.equal(v2.version, 2);
-  const one = must(await api('GET', `/compliance/rules/${r.rule_id}`, { token: org.token }));
-  assert.deepEqual(one.versions.map((v) => v.version), [1], 'drafts are visible only to those who can approve them');
-  assert.equal(one.can_manage, false);
-  assert.equal(must(await api('GET', `/compliance/rules/${r.rule_id}`, { token: admin.token })).versions.length, 2);
-  const list = must(await api('GET', '/compliance/rules', { token: org.token, query: { country: 'SG' } }));
-  assert.ok(list.some((x) => x.id === r.rule_id && x.current?.version === 1 && x.upcoming === null), 'the draft is not scheduled');
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM comp_requirement_versions WHERE requirement_id=$1', [req.id])).rows[0].n, 2);
+  assert.equal((await api('POST', '/compliance/records', { token: staff.token, body: { requirement_id: req.id, confirm: true, statement_version: 1 } })).status, 409, 'the person read an old version');
+
+  // a conflict of interest keeps its description encrypted; managers can read it, audit-logged
+  const coi = await requirement(owner, { kind: 'organisation', id: org.id }, { name: 'Conflict of interest', category: 'conflict_of_interest', method: 'declaration', statement: 'I declare any conflict of interest below, or none.', validity_days: 365 });
+  await obligation(owner, coi, { roles: [] });
+  const decl = must(await api('POST', '/compliance/records', { token: staff.token, body: { requirement_id: coi.id, confirm: true, detail: 'My sister runs the kit supplier.' } }), 201);
+  assert.equal(decl.has_detail, true);
+  assert.equal(must(await api('GET', `/compliance/records/${decl.id}/reference`, { token: owner.token })).detail, 'My sister runs the kit supplier.');
+  assert.ok((await pool.query("SELECT 1 FROM audit_log WHERE action='read_compliance_reference' AND entity_id=$1 AND actor_id=$2", [decl.id, owner.id])).rowCount);
+  assert.equal((await api('GET', `/compliance/records/${decl.id}/reference`, { token: (await person()).token })).status, 404);
 });
 
-test('the library: classification follows who may author it; laws cannot be waivable; federation rules are not authored here', async () => {
-  const owner = await signup(['organizer']);
-  const org = must(await api('POST', '/organisations', { token: owner.token, body: { name: `Club ${++n}`, kind: 'club' } }), 201);
-  const base = { key: `org.${++n}`, scope: 'organisation', organisation_id: org.id, domains: ['event_permit'], topic: 'org.topic', title: 'Club insurance policy', classification: 'organisation_policy', effective_from: day(), approval_owner: 'Club board', waivable: true };
-  assert.equal((await api('POST', '/compliance/rules', { token: owner.token, body: { ...base, classification: 'legal_mandatory', waivable: false } })).status, 400, 'an organisation cannot write a law');
-  assert.equal((await api('POST', '/compliance/rules', { token: owner.token, body: { ...base, classification: 'federation_mandated' } })).status, 400);
-  assert.equal((await api('POST', '/compliance/rules', { token: admin.token, body: { ...base, scope: 'platform', organisation_id: undefined, classification: 'regulatory' } })).status, 400, 'a regulation is never waivable by a person');
-  const stranger = await signup(['organizer']);
-  assert.equal((await api('POST', '/compliance/rules', { token: stranger.token, body: base })).status, 403);
-  const r = must(await api('POST', '/compliance/rules', { token: owner.token, body: base }), 201);
-  const d = must(await api('POST', `/compliance/versions/${r.version_id}/decision`, { token: owner.token, body: { decision: 'approve' } }));
-  assert.equal(d.self_approved, true, 'an organisation may approve its own policy; it is recorded');
-  assert.equal((await api('GET', `/compliance/rules/${r.rule_id}`, { token: stranger.token })).status, 404, "another organisation's rules are not visible");
-  const cat = must(await api('GET', '/compliance/catalogue', { token: owner.token }));
-  assert.deepEqual(cat.jurisdictions.map((j) => j.code), ['IN', 'US', 'CA', 'SG', 'MY', 'LK', 'AU', 'GB']);
-  assert.ok(cat.domains.some((x) => x.key === 'procurement') && cat.evidence_kinds.includes('background_check'));
+test('an unmet safeguarding obligation blocks contact with young people in the team chat, and cannot be waived', async () => {
+  const { owner, org } = await club();
+  const coach = await person(), kid = await person(), sport = await sportId();
+  await join(org.id, coach, 'coach');
+  const team = (await pool.query('INSERT INTO teams(name, sport_id, owner_id, organisation_id) VALUES ($1,$2,$3,$4) RETURNING id', [`U12 ${n}`, sport, coach.id, org.id])).rows[0].id;
+  await pool.query("INSERT INTO team_members(team_id, user_id, role, status) VALUES ($1,$2,'player','active')", [team, kid.id]);
+  await pool.query('UPDATE users SET youth_until = current_date + 365 WHERE id=$1', [kid.id]);
+  const post = () => api('POST', `/teams/${team}/messages`, { token: coach.token, body: { body: 'Training moved to 5pm' } });
+  assert.equal((await post()).status, 201, 'no obligation configured = no restriction');
+
+  const req = await requirement(owner, { kind: 'organisation', id: org.id }, { name: 'Safeguarding training', category: 'safeguarding_training', validity_days: 730 });
+  await obligation(owner, req, { roles: ['coach'], youth_work: true, consequences: ['youth_contact'] });
+  const blocked = await post();
+  assert.equal(blocked.status, 409); assert.equal(codeOf(blocked), 'compliance_required');
+  assert.match(JSON.stringify(blocked.body), /Safeguarding training/);
+  const first = must(await status(coach)).items[0];
+  assert.equal(first.consequences[0], 'youth_contact'); assert.equal(first.waivable, false, 'the app is told this cannot be waived');
+
+  // the young person is never restricted by this; an adult who does not work with young people is not asked
+  assert.notEqual(codeOf(await api('POST', `/teams/${team}/messages`, { token: kid.token, body: { body: 'See you there' } })), 'compliance_required');
+
+  // a safeguarding obligation that protects young people cannot be waived
+  const w = await api('POST', '/compliance/waivers', { token: owner.token, body: { requirement_id: req.id, subject_id: coach.id, reason: 'start of season rush', effective_to: day(14) } });
+  assert.equal(w.status, 409);
+
+  const rec = must(await api('POST', '/compliance/records', { token: coach.token, body: { requirement_id: req.id, reference: 'SG-1', issued_on: day(-1) } }), 201);
+  assert.equal((await post()).status, 409, 'pending is not enough for youth contact');
+  must(await api('POST', `/compliance/records/${rec.id}/decision`, { token: owner.token, body: { decision: 'approve' } }));
+  assert.equal((await post()).status, 201);
+  await pool.query('UPDATE comp_records SET expires_on=$2 WHERE id=$1', [rec.id, day(-1)]);
+  assert.equal((await post()).status, 409, 'expiry applies on the very next message');
 });
 
-test('packs: a jurisdiction pack is data. It loads as drafts, applies only once approved, and exports again', async () => {
-  const pack = { pack_code: 'LK-2026', rules: [
-    { key: `lk.pack.${++n}`, domains: ['event_permit'], topic: 'lk.assembly', title: 'Police notification for public events', classification: 'regulatory', country: 'LK', effective_from: day(-1), approval_owner: 'Counsel, Sri Lanka', requirements: [{ key: 'notice', kind: 'approval', label: 'Police notification acknowledged', holder: 'event' }] },
-    { key: `lk.pack.${++n}`, domains: ['accreditation'], topic: 'lk.accr', title: 'Background check for staff', classification: 'recommended_standard', country: 'LK', effective_from: day(-1), approval_owner: 'Counsel, Sri Lanka', requirements: [] },
-  ] };
-  assert.equal((await api('POST', '/compliance/packs', { token: (await signup(['organizer'])).token, body: pack })).status, 403);
-  const r = must(await api('POST', '/compliance/packs', { token: admin.token, body: pack }), 201);
-  assert.equal(r.drafts, 2);
-  const org = await signup(['organizer']);
-  const ev = await placedEvent(org, { country: 'LK', locality: 'Colombo', region: 'Western' });
-  const before_ = must(await evalEvent(org, ev));
-  assert.equal(before_.results.filter((x) => x.pack).length, 0);
-  assert.ok(!before_.results.some((x) => x.title === 'Police notification for public events'), 'a draft has no effect');
-  must(await api('POST', `/compliance/versions/${r.versions[0].version_id}/decision`, { token: admin2.token, body: { decision: 'approve' } }));
-  const after_ = must(await evalEvent(org, ev));
-  assert.equal(after_.results.find((x) => x.title === 'Police notification for public events').outcome, 'applies');
-  const exp = must(await api('GET', '/compliance/packs/LK', { token: org.token }));
-  assert.ok(exp.rules.some((x) => x.title === 'Police notification for public events') && !exp.rules.some((x) => x.title === 'Background check for staff'), 'only approved rules are exported');
-  assert.match(exp.note, /not legal advice/);
+test('the platform can require an acknowledgement before an adult messages or sees young people outside a team chat', async () => {
+  const recruiter = await person(['recruiter']), kid = await person(), sport = await sportId(), owner = await person();
+  await pool.query('UPDATE users SET youth_until = current_date + 365 WHERE id=$1', [kid.id]);
+  await assertMayMessageYouth(pool, recruiter.id, kid.id); // nothing configured, nothing asked
+  const req = must(await api('POST', '/compliance/requirements', { token: admin.token, body: { scope_kind: 'platform', name: 'Recruiter safeguarding acknowledgement', category: 'safeguarding_acknowledgement', method: 'declaration', statement: 'I will only contact young people through their guardians.', validity_days: 365 } }), 201);
+  must(await api('POST', `/compliance/requirements/${req.id}/obligations`, { token: admin.token, body: { roles: ['recruiter'], consequences: ['youth_contact', 'youth_access'] } }), 201);
+  await assert.rejects(() => assertMayMessageYouth(pool, recruiter.id, kid.id), (e) => e.status === 409 && e.details.code === 'compliance_required' && /Recruiter safeguarding/.test(e.details.reasons[0]));
+  await assertMayMessageYouth(pool, kid.id, kid.id); // a young person is never restricted by this
+  await assertMayMessageYouth(pool, owner.id, kid.id); // a person the obligation does not apply to is not asked
+  assert.equal(await mayAccessYouth(pool, recruiter.id, kid.id), false);
+  must(await api('POST', '/compliance/records', { token: recruiter.token, body: { requirement_id: req.id, confirm: true } }), 201);
+  await assertMayMessageYouth(pool, recruiter.id, kid.id);
+  assert.equal(await mayAccessYouth(pool, recruiter.id, kid.id), true);
+  // the platform's own rulebook belongs to the platform team alone
+  assert.equal((await api('POST', `/compliance/waivers`, { token: admin.token, body: { requirement_id: req.id, subject_id: owner.id, reason: 'trying it', effective_to: day(5) } })).status, 409);
+  assert.equal(sport !== undefined, true);
 });
 
-// ------------------------------------------------------------------ event permits
-test('event permits: jurisdiction and precedence decide which rule governs; unknown facts are surfaced, never assumed', async () => {
-  const org = await signup(['organizer']);
-  const tag = `perm${++n}`;
-  const national = await rule({ topic: tag, title: 'National assembly permit', country: 'IN' });
-  const city = await rule({ topic: tag, title: 'Mumbai municipal permit', country: 'IN', region: 'Maharashtra', municipality: 'Mumbai', requirements: [{ key: 'bmc', kind: 'permit', label: 'Municipal permit', holder: 'event' }] });
-  await rule({ topic: `${tag}.us`, title: 'US permit', country: 'US' });
-  const ev = await placedEvent(org);
-  const out = must(await evalEvent(org, ev));
-  const by = Object.fromEntries(out.results.map((r) => [r.title, r]));
-  assert.equal(by['Mumbai municipal permit'].outcome, 'applies');
-  assert.equal(by['Mumbai municipal permit'].status, 'missing');
-  assert.equal(by['National assembly permit'].outcome, 'does_not_apply');
-  assert.equal(by['National assembly permit'].superseded_by.title, 'Mumbai municipal permit', 'the narrower jurisdiction overrides within the topic');
-  assert.equal(by['US permit'].outcome, 'does_not_apply');
-  assert.equal(out.facts.values.country, 'IN'); assert.equal(out.facts.sources.country, 'venue address');
-  assert.equal(out.summary.overall, 'missing'); assert.equal(out.summary.blocked, true);
-  assert.equal(out.explanation.assertion, 'none');
-  // an event whose place is unknown cannot be judged against a place-specific rule
-  const bare = must(await api('POST', '/events', { token: org.token, body: { name: `Bare ${++n}`, sport: 'football', starts_on: day(10), ends_on: day(11) } }), 201);
-  const unk = must(await evalEvent(org, bare));
-  const u = unk.results.find((r) => r.title === 'National assembly permit');
-  assert.equal(u.outcome, 'unknown'); assert.ok(u.missing_facts.includes('country'), 'it says which fact is missing');
-  assert.equal(unk.summary.blocked, true, 'unknown blocks a gate: the engine will not guess');
-  // nobody but the people who run the event can ask
-  assert.equal((await evalEvent(await signup(['organizer']), ev)).status, 404);
-  assert.equal((await api('POST', '/compliance/evaluate', { body: { subject_type: 'event', subject_id: ev.id } })).status, 401);
-  assert.equal(national.version, 1);
+test('a coach or manager sees a young person\'s record only while their access obligations are met', async () => {
+  const { owner, org } = await club();
+  const coach = await person(), kid = await person(), guardian = await person(), sport = await sportId();
+  await join(org.id, coach, 'coach');
+  const team = (await pool.query('INSERT INTO teams(name, sport_id, owner_id, organisation_id) VALUES ($1,$2,$3,$4) RETURNING id', [`U10 ${n}`, sport, coach.id, org.id])).rows[0].id;
+  await pool.query("INSERT INTO team_members(team_id, user_id, role, status) VALUES ($1,$2,'player','active')", [team, kid.id]);
+  await pool.query('UPDATE users SET youth_until = current_date + 365 WHERE id=$1', [kid.id]);
+  await pool.query("INSERT INTO guardian_links(guardian_id, child_id, relationship, status, requested_by) VALUES ($1,$2,'parent','active',$1)", [guardian.id, kid.id]);
+  await pool.query("INSERT INTO youth_consents(child_id, purpose, granted_by, policy_version, expires_at) VALUES ($1,'participation',$2,1, now() + interval '1 year')", [kid.id, guardian.id]);
+  assert.equal(await canSeeYouth(coach, kid.id), true, 'no obligation: the team coach sees the player, as before');
+  const req = await requirement(owner, { kind: 'organisation', id: org.id }, { name: 'Safeguarding lead sign-off', category: 'attestation', method: 'declaration', statement: 'I have been briefed by the safeguarding lead.' });
+  await obligation(owner, req, { roles: ['coach'], consequences: ['youth_access'] });
+  assert.equal(await canSeeYouth(coach, kid.id), false, 'unmet: the coach no longer sees the young person');
+  assert.equal(await canSeeYouth({ id: guardian.id, roles: [] }, kid.id), true, 'a guardian is never restricted');
+  assert.equal(await canSeeYouth({ id: kid.id, roles: [] }, kid.id), true);
+  must(await api('POST', '/compliance/records', { token: coach.token, body: { requirement_id: req.id, confirm: true } }), 201);
+  assert.equal(await canSeeYouth(coach, kid.id), true);
 });
 
-test('event permits: the same rules govern opening and starting an event; evidence is reviewed by a second person; every attempt is audited', async () => {
-  const org = await signup(['organizer']);
-  await rule({ topic: `start${++n}`, title: 'Venue fire certificate', country: 'AU', classification: 'regulatory', requirements: [{ key: 'fire', kind: 'certificate', label: 'Fire safety certificate', holder: 'venue' }] });
-  const ev = await placedEvent(org, { country: 'AU', region: 'NSW', locality: 'Sydney' });
-  const blocked = await api('PATCH', `/events/${ev.id}`, { token: org.token, body: { status: 'ongoing' } });
-  assert.equal(blocked.status, 409);
-  assert.equal(blocked.body.error.details.code, 'compliance_blocked');
-  assert.equal(blocked.body.error.details.blockers[0].title, 'Venue fire certificate');
-  assert.equal((await pool.query('SELECT status FROM events WHERE id=$1', [ev.id])).rows[0].status, 'open', 'nothing changed');
-  const trail = must(await api('GET', '/compliance/decisions', { token: org.token, query: { event_id: ev.id, blocked: 'true' } }));
-  assert.equal(trail.length, 1, 'the refused attempt is on record even though its transaction rolled back');
-  assert.equal(trail[0].trigger, 'event_start'); assert.equal(trail[0].decided_by, org.id);
-  // the venue's certificate is filed for this event and waits for a reviewer
-  const venueId = (await pool.query('SELECT venue_id FROM events WHERE id=$1', [ev.id])).rows[0].venue_id;
-  const filed = must(await api('POST', '/compliance/evidence', { token: org.token, body: { holder_type: 'venue', holder_id: venueId, event_id: ev.id, kind: 'certificate', title: 'Fire certificate FC-77', reference: 'FC-77/2026', issuer: 'NSW Fire', valid_to: day(200) } }), 201);
-  assert.equal(filed.status, 'submitted');
-  assert.equal(must(await evalEvent(org, ev)).results.find((r) => r.title === 'Venue fire certificate').status, 'pending', 'an uploaded document is not proof');
-  assert.equal((await api('PATCH', `/events/${ev.id}`, { token: org.token, body: { status: 'ongoing' } })).status, 409);
-  // the person who filed it cannot review it; a stranger cannot see it; the platform team can
-  assert.equal((await api('POST', `/compliance/evidence/${filed.id}/review`, { token: org.token, body: { decision: 'verify', verified_what: 'Original seen at the venue office' } })).status, 404);
-  assert.equal((await api('POST', `/compliance/evidence/${filed.id}/review`, { token: (await signup(['organizer'])).token, body: { decision: 'verify', verified_what: 'Original seen' } })).status, 404);
-  assert.equal((await api('POST', `/compliance/evidence/${filed.id}/review`, { token: admin.token, body: { decision: 'verify' } })).status, 400, 'say what you checked');
-  must(await api('POST', `/compliance/evidence/${filed.id}/review`, { token: admin.token, body: { decision: 'verify', verified_what: 'Original certificate seen; number matches the NSW register' } }));
-  const opened = must(await api('PATCH', `/events/${ev.id}`, { token: org.token, body: { status: 'ongoing' } }));
-  assert.equal(opened.status, 'ongoing');
-  const trail2 = must(await api('GET', '/compliance/decisions', { token: org.token, query: { event_id: ev.id } }));
-  assert.equal(trail2.length, 3, 'two refused attempts and the one that went through'); assert.equal(trail2[0].blocked, false); assert.equal(trail2[0].overall, 'compliant');
-  assert.deepEqual(trail2.slice(1).map((d) => d.blocked), [true, true]);
-  const full = must(await api('GET', `/compliance/decisions/${trail2[0].id}`, { token: org.token }));
-  const r0 = full.results.find((r) => r.title === 'Venue fire certificate');
-  assert.equal(r0.version, 1); assert.ok(r0.requirements[0].evidence_id === filed.id, 'the evidence relied on is named');
-  assert.equal(full.facts.values.country, 'AU'); assert.equal(full.facts.sources.country, 'venue address');
-  assert.ok((await pool.query("SELECT 1 FROM audit_log WHERE action='compliance_evidence_verified' AND entity_id=$1", [filed.id])).rowCount === 1);
-  // the reference number: holder side and reviewers only, and every reveal is logged
-  const mine = must(await api('GET', '/compliance/evidence', { token: org.token, query: { holder_type: 'venue', holder_id: venueId, event_id: ev.id } }));
-  assert.equal(mine[0].reference, 'FC-77/2026');
-  assert.ok((await pool.query("SELECT 1 FROM audit_log WHERE action='read_compliance_reference'")).rowCount >= 1);
-  assert.equal((await api('GET', '/compliance/evidence', { token: (await signup(['organizer'])).token, query: { holder_type: 'venue', holder_id: venueId } })).status, 404);
-  // reviewed evidence is never edited
-  await assert.rejects(pool.query("UPDATE cmp_evidence SET title='x' WHERE id=$1", [filed.id]), /immutable/);
-  await assert.rejects(pool.query('DELETE FROM cmp_evidence WHERE id=$1', [filed.id]), /never deleted/);
+test('a coach who does not work with young people is not held to youth-work obligations', async () => {
+  const { owner, org } = await club();
+  const adultsOnly = await person(), sport = await sportId();
+  await join(org.id, adultsOnly, 'coach');
+  await pool.query('INSERT INTO teams(name, sport_id, owner_id, organisation_id) VALUES ($1,$2,$3,$4)', [`Seniors ${n}`, sport, adultsOnly.id, org.id]);
+  const req = await requirement(owner, { kind: 'organisation', id: org.id }, { name: 'Youth safeguarding' });
+  await obligation(owner, req, { youth_work: true, consequences: ['youth_contact'] });
+  assert.equal(must(await status(adultsOnly)).items.length, 0);
 });
 
-test('event permits: expired evidence is non-compliant, a later rule version changes the answer for later dates only, and history is retained', async () => {
-  const org = await signup(['organizer']);
-  const tag = `hist${++n}`;
-  const v1 = await rule({ topic: tag, title: 'Crowd plan', country: 'GB', effective_from: day(-100), requirements: [{ key: 'plan', kind: 'approval', label: 'Crowd management plan approved', holder: 'event' }] });
-  const ev = await placedEvent(org, { country: 'GB', region: 'England', locality: 'Leeds' }, { starts_on: day(40), ends_on: day(41) });
-  const hold = must(await api('POST', '/compliance/evidence', { token: org.token, body: { holder_type: 'event', holder_id: ev.id, event_id: ev.id, kind: 'approval', title: 'Crowd plan approval', valid_to: day(41) } }), 201);
-  must(await api('POST', `/compliance/evidence/${hold.id}/review`, { token: admin.token, body: { decision: 'verify', verified_what: 'Approval letter checked with the council' } }));
-  assert.equal(must(await evalEvent(org, ev)).summary.overall, 'compliant');
-  const rec = must(await evalEvent(org, ev, { record: true }));
-  assert.ok(rec.decision_id);
-  // a stricter version takes effect after the event's own date: today's answer is unchanged, a later date sees it
-  const v2 = must(await api('POST', '/compliance/rules', { token: admin.token, body: { ...v1.body, rule_id: v1.rule_id, key: undefined, scope: undefined, domains: undefined, topic: undefined, title: 'Crowd plan (stricter)', effective_from: day(60), requirements: [{ key: 'plan', kind: 'approval', label: 'Crowd plan approved', holder: 'event' }, { key: 'steward', kind: 'training', label: 'Steward training', holder: 'event' }] } }), 201);
-  must(await api('POST', `/compliance/versions/${v2.version_id}/decision`, { token: admin2.token, body: { decision: 'approve' } }));
-  assert.equal(must(await evalEvent(org, ev)).results.find((r) => r.key === v1.body.key).version, 1);
-  const later = must(await evalEvent(org, ev, { as_of: day(90) }));
-  assert.equal(later.results.find((r) => r.key === v1.body.key).version, 2);
-  assert.equal(later.results.find((r) => r.key === v1.body.key).requirements.find((q) => q.key === 'steward').status, 'missing', 'the new requirement is asked for');
-  assert.equal(later.results.find((r) => r.key === v1.body.key).requirements.find((q) => q.key === 'plan').status, 'non_compliant', 'and the old approval will have lapsed by then');
-  const old = must(await evalEvent(org, ev, { as_of: day(-50) }));
-  assert.equal(old.results.find((r) => r.key === v1.body.key).version, 1, 'a past date is judged by the rule text of that time');
-  // the decision recorded earlier still shows version 1 and its text
-  const keep = must(await api('GET', `/compliance/decisions/${rec.decision_id}`, { token: org.token }));
-  assert.equal(keep.results.find((r) => r.key === v1.body.key).version, 1);
-  // expiry: evidence that lapsed before the event is non-compliant
-  const ev2 = await placedEvent(org, { country: 'GB', region: 'England', locality: 'Leeds' }, { starts_on: day(40), ends_on: day(45) });
-  const short = must(await api('POST', '/compliance/evidence', { token: org.token, body: { holder_type: 'event', holder_id: ev2.id, event_id: ev2.id, kind: 'approval', title: 'Short approval', valid_to: day(20) } }), 201);
-  must(await api('POST', `/compliance/evidence/${short.id}/review`, { token: admin.token, body: { decision: 'verify', verified_what: 'Letter checked' } }));
-  const r2 = must(await evalEvent(org, ev2)).results.find((r) => r.key === v1.body.key);
-  assert.equal(r2.status, 'non_compliant'); assert.match(r2.requirements[0].detail, /Expired on/);
-  assert.equal(r2.outcome, 'applies', 'a legal rule cannot be waived, so no exception is on offer');
-  // revoking evidence takes effect at once
-  must(await api('POST', `/compliance/evidence/${hold.id}/review`, { token: admin.token, body: { decision: 'revoke', note: 'Council withdrew the approval' } }));
-  assert.equal(must(await evalEvent(org, ev)).results.find((r) => r.key === v1.body.key).status, 'non_compliant');
+test('waivers are documented, time-boxed and never rewrite the record', async () => {
+  const { owner, org } = await club();
+  const coach = await person(), admin2 = await person();
+  await join(org.id, coach, 'coach'); await join(org.id, admin2, 'admin');
+  const req = await requirement(owner, { kind: 'organisation', id: org.id }, { name: 'Level 2 award', category: 'qualification' });
+  await obligation(owner, req);
+  const body = { requirement_id: req.id, subject_id: coach.id, reason: 'Course starts next month', effective_to: day(30) };
+  assert.equal((await api('POST', '/compliance/waivers', { token: coach.token, body })).status, 404);
+  assert.equal((await api('POST', '/compliance/waivers', { token: owner.token, body: { ...body, effective_to: day(400) } })).status, 400, 'at most 180 days');
+  assert.equal((await api('POST', '/compliance/waivers', { token: owner.token, body: { ...body, reason: 'no' } })).status, 400);
+  const ownWaiver = await api('POST', '/compliance/waivers', { token: owner.token, body: { ...body, subject_id: owner.id } });
+  assert.equal(ownWaiver.status === 403 || ownWaiver.status === 409, true, 'nobody waives their own');
+  const w = must(await api('POST', '/compliance/waivers', { token: owner.token, body }), 201);
+  const item = itemOf(must(await status(coach)), 'Level 2 award');
+  assert.equal(item.state, 'waived'); assert.equal(item.blocking, false); assert.equal(item.waiver.effective_to, day(30)); assert.match(item.explanation, /waived until/);
+  assert.equal(must(await api('GET', '/compliance/waivers', { token: admin2.token, query: { scope_kind: 'organisation', scope_id: org.id } })).items.length, 1);
+  must(await api('POST', `/compliance/waivers/${w.id}/revoke`, { token: owner.token }));
+  assert.equal(itemOf(must(await status(coach)), 'Level 2 award').state, 'missing');
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM comp_records WHERE subject_id=$1', [coach.id])).rows[0].n, 0, 'the waiver created no record');
 });
 
-test('exceptions: only a waivable rule, only by someone with authority, never for yourself, limited in time, shown in the decision', async () => {
-  const owner = await signup(['organizer']);
-  const orgRow = must(await api('POST', '/organisations', { token: owner.token, body: { name: `Club ${++n}`, kind: 'club' } }), 201);
-  const law = await rule({ topic: `law${n}`, title: 'Law', country: 'CA' });
-  const policy = must(await api('POST', '/compliance/rules', { token: owner.token, body: { key: `pol.${++n}`, scope: 'organisation', organisation_id: orgRow.id, domains: ['event_permit'], topic: `pol${n}`, title: 'Club first-aid policy', classification: 'organisation_policy', effective_from: day(-1), approval_owner: 'Club board', waivable: true, requirements: [{ key: 'aid', kind: 'training', label: 'First-aider on site', holder: 'event' }] } }), 201);
-  must(await api('POST', `/compliance/versions/${policy.version_id}/decision`, { token: owner.token, body: { decision: 'approve' } }));
-  const ev = await placedEvent(owner, { country: 'CA', region: 'Ontario', locality: 'Toronto' });
-  await pool.query('UPDATE events SET organisation_id=$2 WHERE id=$1', [ev.id, orgRow.id]);
-  const grant = (token, rule_id, extra = {}) => api('POST', '/compliance/exceptions', { token, body: { rule_id, holder_type: 'event', holder_id: ev.id, event_id: ev.id, reason: 'Paramedics are on site instead', valid_to: new Date(Date.now() + 5 * 864e5).toISOString(), ...extra } });
-  assert.equal((await grant(owner.token, law.rule_id)).status, 409, 'a law cannot be waived');
-  assert.equal((await grant((await signup(['organizer'])).token, policy.rule_id)).status, 403);
-  assert.equal((await grant(owner.token, policy.rule_id, { valid_to: new Date(Date.now() + 400 * 864e5).toISOString() })).status, 400, 'at most a year');
-  const before_ = must(await evalEvent(owner, ev)).results.find((r) => r.title === 'Club first-aid policy');
-  assert.equal(before_.status, 'missing');
-  const x = must(await grant(owner.token, policy.rule_id), 201);
-  const after_ = must(await evalEvent(owner, ev, { record: true }));
-  const r = after_.results.find((q) => q.title === 'Club first-aid policy');
-  assert.equal(r.status, 'exception'); assert.deepEqual(r.exception_ids, [x.id]);
-  const d = must(await api('GET', `/compliance/decisions/${after_.decision_id}`, { token: owner.token }));
-  assert.deepEqual(d.override_exception_ids, [x.id]); assert.equal(d.exceptions[0].granted_by, owner.id);
-  const listed = must(await api('GET', '/compliance/exceptions', { token: owner.token, query: { holder_type: 'event', holder_id: ev.id } }));
-  assert.equal(listed[0].reason, 'Paramedics are on site instead');
-  must(await api('POST', `/compliance/exceptions/${x.id}/revoke`, { token: owner.token, body: { reason: 'Paramedics withdrew' } }));
-  assert.equal(must(await evalEvent(owner, ev)).results.find((q) => q.title === 'Club first-aid policy').status, 'missing');
-  await assert.rejects(pool.query('DELETE FROM cmp_exceptions WHERE id=$1', [x.id]), /never deleted/);
-  // an organisation's rule applies only to its own events
-  const outsider = await signup(['organizer']);
-  const other = await placedEvent(outsider, { country: 'CA', region: 'Ontario', locality: 'Toronto' });
-  const theirs = must(await evalEvent(outsider, other));
-  assert.ok(theirs.results.some((q) => q.title === 'Law'), 'the platform library applies to everyone');
-  assert.ok(!theirs.results.some((q) => q.title === 'Club first-aid policy'), "another organisation's policy does not");
+test('a requirement can be checked from an existing platform verification instead of a copy', async () => {
+  const { owner, org } = await club();
+  const coach = await person();
+  await join(org.id, coach, 'coach');
+  assert.equal((await api('POST', '/compliance/requirements', { token: owner.token, body: { scope_kind: 'organisation', scope_id: org.id, name: 'Verified coach', category: 'qualification', method: 'linked', source: { kind: 'verification', type: 'nonsense' } } })).status, 400);
+  const req = await requirement(owner, { kind: 'organisation', id: org.id }, { name: 'Verified coach', method: 'linked', source: { kind: 'verification', type: 'coach' }, validity_days: null });
+  await obligation(owner, req);
+  let item = itemOf(must(await status(coach)), 'Verified coach');
+  assert.equal(item.state, 'missing'); assert.equal(item.next_step.action, 'open_source');
+  const sub = await api('POST', '/compliance/records', { token: coach.token, body: { requirement_id: req.id, reference: 'x' } });
+  assert.equal(sub.status, 409, 'nothing to submit: it is read from the verification');
+  const sport = await sportId();
+  const c = (await pool.query("INSERT INTO verification_cases(type, subject_type, subject_id, sport_id, requested_by, status, rules_version, decided_at, expires_at) VALUES ('coach','user',$1,$2,$1,'approved',1,now(), now() + interval '200 days') RETURNING id", [coach.id, sport])).rows[0].id;
+  item = itemOf(must(await status(coach)), 'Verified coach');
+  assert.equal(item.state, 'met'); assert.deepEqual(item.linked, { kind: 'verification', id: c });
+  await pool.query("UPDATE verification_cases SET status='revoked' WHERE id=$1", [c]);
+  assert.equal(itemOf(must(await status(coach)), 'Verified coach').state, 'revoked', 'revocation there applies here immediately');
 });
 
-// ------------------------------------------------------------------ accreditation
-test('accreditation: the rules in force must be met before a badge is issued; an automatic approval waits instead of failing', async () => {
-  const org = await signup(['organizer']);
-  const ev = await placedEvent(org, { country: 'MY', region: 'Selangor', locality: 'Shah Alam' });
-  await rule({ topic: `acc${++n}`, domains: ['accreditation'], title: 'Safeguarding training for athletes', classification: 'regulatory', country: 'MY', applies: { roles: ['athlete'] }, requirements: [{ key: 'safeguarding', kind: 'training', label: 'Safeguarding course', holder: 'person' }] });
-  const cat = must(await api('POST', `/events/${ev.id}/accreditation/categories`, { token: org.token, body: { name: `Players ${++n}`, eligible: ['athlete'], approval: 'organiser', self_apply: true } }), 201);
-  const auto = must(await api('POST', `/events/${ev.id}/accreditation/categories`, { token: org.token, body: { name: `Auto ${++n}`, eligible: ['athlete'], approval: 'auto', self_apply: true } }), 201);
-  const p = await signup(['athlete']);
-  const entry = must(await api('POST', `/events/${ev.id}/entries`, { token: p.token }), 201);
-  must(await api('PATCH', `/entries/${entry.id}`, { token: org.token, body: { status: 'accepted' } }));
-  const app = must(await api('POST', `/accreditation/categories/${cat.id}/apply`, { token: p.token }), 201);
-  const refused = await api('POST', `/accreditations/${app.id}/decision`, { token: org.token, body: { decision: 'approve' } });
-  assert.equal(refused.status, 409); assert.equal(refused.body.error.details.code, 'compliance_blocked');
-  assert.match(refused.body.error.details.blockers[0].reason, /Safeguarding course/);
-  const viaAuto = must(await api('POST', `/accreditation/categories/${auto.id}/apply`, { token: p.token }), 201);
-  assert.equal(viaAuto.status, 'submitted', 'not an error: the application waits for a person');
-  // the athlete files training for this event; the organiser (a different person) verifies it
-  const t = must(await api('POST', '/compliance/evidence', { token: p.token, body: { holder_type: 'person', holder_id: p.id, event_id: ev.id, kind: 'training', title: 'Safeguarding course', valid_to: day(300) } }), 201);
-  assert.equal((await api('POST', `/compliance/evidence/${t.id}/review`, { token: p.token, body: { decision: 'verify', verified_what: 'my own certificate' } })).status, 404, 'no self-verification');
-  const queue = must(await api('GET', '/compliance/review-queue', { token: org.token, query: { event_id: ev.id } }));
-  assert.equal(queue.length, 1);
-  assert.equal((await api('GET', '/compliance/review-queue', { token: p.token, query: { event_id: ev.id } })).status, 404);
-  must(await api('POST', `/compliance/evidence/${t.id}/review`, { token: org.token, body: { decision: 'verify', verified_what: 'Certificate seen and checked with the provider' } }));
-  const approved = must(await api('POST', `/accreditations/${app.id}/decision`, { token: org.token, body: { decision: 'approve' } }));
-  assert.equal(approved.status, 'approved');
-  // the dashboard sees the same thing
-  const dash = must(await api('GET', `/events/${ev.id}/compliance`, { token: org.token }));
-  const row = dash.sections.accreditation.subjects.find((s) => s.subject_id === p.id);
-  assert.equal(row.overall, 'compliant');
-  assert.ok(dash.totals.compliant >= 1);
-  assert.equal((await api('GET', `/events/${ev.id}/compliance`, { token: p.token })).status, 404, 'the athlete does not see the organiser dashboard');
+test('the roll-up names who is short in a scope, worst first, and hides protected young people', async () => {
+  const { owner, org } = await club();
+  const a = await person(), b = await person(), kid = await person();
+  await join(org.id, a, 'coach'); await join(org.id, b, 'coach'); await join(org.id, kid, 'coach');
+  await pool.query('UPDATE users SET youth_until = current_date + 365 WHERE id=$1', [kid.id]);
+  const req = await requirement(owner, { kind: 'organisation', id: org.id }, { name: 'Coaching licence' });
+  await obligation(owner, req);
+  const rec = must(await api('POST', '/compliance/records', { token: b.token, body: { requirement_id: req.id, reference: 'L-1' } }), 201);
+  must(await api('POST', `/compliance/records/${rec.id}/decision`, { token: owner.token, body: { decision: 'approve' } }));
+  await pool.query('UPDATE comp_records SET expires_on=$2 WHERE id=$1', [rec.id, day(10)]);
+  const gaps = must(await api('GET', '/compliance/gaps', { token: owner.token, query: { scope_kind: 'organisation', scope_id: org.id } }));
+  const byId = new Map(gaps.subjects.map((s) => [s.subject.id, s]));
+  assert.equal(byId.get(a.id).decision, 'blocked'); assert.equal(byId.get(b.id).decision, 'clear');
+  assert.equal(byId.get(b.id).counts.expiring, 1);
+  assert.equal(byId.get(kid.id).subject.name, 'Protected participant');
+  assert.equal(gaps.subjects[0].decision, 'blocked', 'worst first');
+  assert.equal((await api('GET', '/compliance/gaps', { token: a.token, query: { scope_kind: 'organisation', scope_id: org.id } })).status, 404);
+  const tile = must(await api('GET', `/organisations/${org.id}/command-centre`, { token: owner.token })).tiles.find((t) => t.key === 'compliance');
+  assert.match(tile.summary, /expiring within 30 days/);
+  // evidence waiting for a decision shows in the organisation's decision queue and is decided through the same capability
+  const pending = must(await api('POST', '/compliance/records', { token: a.token, body: { requirement_id: req.id, reference: 'L-2' } }), 201);
+  const queue = must(await api('GET', `/organisations/${org.id}/command-centre/approvals`, { token: owner.token, query: { domain: 'compliance' } }));
+  const entry = queue.items.find((x) => x.key === `compliance:record:${pending.id}`);
+  assert.ok(entry); assert.equal(entry.actions[0].path, `/compliance/records/${pending.id}/decision`); assert.equal(entry.can_act, true);
 });
 
-test('accreditation: young people are judged by age and their guardian consent is read from the guardian module', async () => {
-  const org = await signup(['organizer']);
-  const ev = await placedEvent(org, { country: 'IN', region: 'Karnataka', locality: 'Bengaluru' });
-  const kid = await signup(['athlete'], { dob: yearsAgo(12) });
-  const adult = await signup(['athlete'], { dob: yearsAgo(30) });
-  await rule({ topic: `kid${++n}`, domains: ['youth_safeguarding', 'accreditation'], title: 'Guardian consent for under-16s', classification: 'regulatory', country: 'IN', applies: { max_age: 15 }, requirements: [{ key: 'guardian', kind: 'signed_document', label: 'Guardian consent', holder: 'person' }] });
-  const ask = (u) => api('POST', '/compliance/evaluate', { token: u.token, body: { subject_type: 'person', subject_id: u.id, event_id: ev.id, domain: 'accreditation' } });
-  const k = must(await ask(kid)), a = must(await ask(adult));
-  assert.equal(k.facts.values.age, 12);
-  assert.equal(k.results.find((r) => r.title === 'Guardian consent for under-16s').outcome, 'applies');
-  assert.equal(a.results.find((r) => r.title === 'Guardian consent for under-16s').outcome, 'does_not_apply');
-  assert.ok((await pool.query("SELECT 1 FROM audit_log WHERE action='read_dob_compliance'")).rowCount >= 1, 'the date-of-birth read is logged');
-  assert.ok(!JSON.stringify(k).includes(yearsAgo(12)), 'only the age is kept, never the date of birth');
+test('registration (#477) and accreditation (#481) read the same rulebook, live', async () => {
+  const org = await person(['organizer']), player = await person(), sport = await sportId();
+  const ev = (await pool.query("INSERT INTO events(name, sport_id, organizer_id, starts_on, ends_on, status) VALUES ('Cup',$1,$2,current_date,current_date + 2,'open') RETURNING *", [sport, org.id])).rows[0];
+  const team = (await pool.query('INSERT INTO teams(name, sport_id, owner_id) VALUES ($1,$2,$3) RETURNING id', ['Reds', sport, org.id])).rows[0].id;
+  await pool.query("INSERT INTO team_members(team_id, user_id, role, status) VALUES ($1,$2,'player','active')", [team, player.id]);
+  await pool.query("INSERT INTO event_entries(event_id, team_id, status) VALUES ($1,$2,'accepted')", [ev.id, team]);
+  const policy = { id: null, version: 1, enforcement: 'blocking', rules: RULES.parse({ check_division_age: false }) };
+  const before = await evaluate(pool, { event: ev, policy }, team, player.id);
+  assert.equal(before.checks.some((c) => c.rule === 'compliance'), false, 'nothing configured, nothing checked');
+
+  const req = await requirement(org, { kind: 'event', id: ev.id }, { name: 'Medical declaration', category: 'declaration', method: 'declaration', statement: 'I am fit to take part.', validity_days: 90 });
+  await obligation(org, req, { roles: [], consequences: ['registration', 'accreditation'] });
+  const after = await evaluate(pool, { event: ev, policy }, team, player.id);
+  const check = after.checks.find((c) => c.rule === 'compliance');
+  assert.equal(check.status, 'fail'); assert.match(check.reason, /Medical declaration/); assert.equal(check.source.kind, 'compliance');
+  assert.equal(after.decision, 'ineligible');
+
+  // accreditation: the organiser is an event engagement, so the same obligation blocks a badge until it is met
+  const cat = { status: 'active', eligible: ['operations'], requires_verification: null };
+  assert.match(await blocker(pool, ev, cat, org.id), /^Compliance: /);
+  must(await api('POST', '/compliance/records', { token: org.token, body: { requirement_id: req.id, confirm: true } }), 201);
+  assert.equal(await blocker(pool, ev, cat, org.id), null);
+  assert.equal((await gate(pool, org.id, 'accreditation', { event_id: ev.id })).decision, 'clear');
+  // the player meets it too, and the check turns into a pass in the next decision (snapshots keep what was decided at the time)
+  await pool.query("INSERT INTO comp_records(requirement_id, requirement_version, subject_kind, subject_id, status, issued_on, expires_on, submitted_by, statement_version) VALUES ($1,1,'person',$2,'valid',current_date,current_date + 30,$2,1)", [req.id, player.id]);
+  const done = await evaluate(pool, { event: ev, policy }, team, player.id);
+  assert.equal(done.checks.find((c) => c.rule === 'compliance').status, 'pass');
+  assert.equal(done.decision === 'ineligible', done.checks.some((c) => c.status === 'fail' && c.rule !== 'compliance'));
+  // switching it off on the policy ignores the rulebook
+  const off = await evaluate(pool, { event: ev, policy: { ...policy, rules: { ...policy.rules, require_compliance: false } } }, team, org.id);
+  assert.equal(off.checks.some((c) => c.rule === 'compliance'), false);
 });
 
-// ------------------------------------------------------------------ federation eligibility (#477) and the federation's own policies (#68)
-test('federation eligibility: the engine adds its rules to the match-day decision, and a federation policy is read as a federation-mandated rule', async () => {
-  const org = await signup(['organizer']), mgr = await signup(['athlete']);
-  const team = must(await api('POST', '/teams', { token: mgr.token, body: { name: `Bats ${++n}`, sport: 'cricket' } }), 201);
-  const ev = await placedEvent(org, { country: 'IN', region: 'Delhi', locality: 'New Delhi' }, { sport: 'cricket' });
-  const en = must(await api('POST', `/events/${ev.id}/entries`, { token: mgr.token, body: { team_id: team.id } }), 201);
-  must(await api('PATCH', `/entries/${en.id}`, { token: org.token, body: { status: 'accepted' } }));
-  const p = await signup(['athlete'], { dob: yearsAgo(25) });
-  must(await api('POST', `/teams/${team.id}/members`, { token: mgr.token, body: { user_id: p.id } }), 201);
-  const reg = must(await api('POST', `/events/${ev.id}/registrations`, { token: mgr.token, body: { team_id: team.id, user_id: p.id } }), 201);
-  must(await api('POST', `/registrations/${reg.id}/review`, { token: org.token, body: { action: 'register', row_version: reg.row_version } }));
-  must(await api('POST', `/events/${ev.id}/registration/policy`, { token: org.token, body: { rules: {}, expected_version: 0 } }), 201);
-  const check = async () => must(await api('GET', `/events/${ev.id}/eligibility`, { token: org.token, query: { team_id: team.id, user_id: p.id } }));
-  assert.equal((await check()).decisions[0].decision, 'eligible', 'no rule written: nothing changes');
-  await rule({ topic: `elig${++n}`, domains: ['federation_eligibility'], title: 'Anti-doping education', classification: 'regulatory', country: 'IN', applies: { roles: ['athlete'] }, requirements: [{ key: 'ade', kind: 'training', label: 'Anti-doping course', holder: 'person' }] });
-  const d1 = (await check()).decisions[0];
-  assert.equal(d1.decision, 'ineligible');
-  const c1 = d1.checks.find((x) => x.rule.startsWith('policy:'));
-  assert.equal(c1.status, 'fail'); assert.match(c1.reason, /Anti-doping course/);
-  const t = must(await api('POST', '/compliance/evidence', { token: p.token, body: { holder_type: 'person', holder_id: p.id, event_id: ev.id, kind: 'training', title: 'WADA education', valid_to: day(300) } }), 201);
-  assert.equal((await check()).decisions[0].checks.find((x) => x.rule.startsWith('policy:')).status, 'pending');
-  must(await api('POST', `/compliance/evidence/${t.id}/review`, { token: org.token, body: { decision: 'verify', verified_what: 'Course certificate checked on the provider site' } }));
-  assert.equal((await check()).decisions[0].decision, 'eligible');
-  // a federation's own versioned policy (#68) is read as a federation-mandated rule: there is no second place to write it
-  const fedOwner = await signup(['organizer']);
-  const sportId = (await pool.query("SELECT id FROM sports WHERE slug='cricket'")).rows[0].id;
-  const body_ = must(await api('POST', '/federation/bodies', { token: fedOwner.token, body: { name: `Cricket Board ${++n}`, level: 'national', abbreviation: `CB${n}`, country: 'IN', sports: [{ sport_id: sportId }] } }), 201);
-  const pol = async (kind, params) => {
-    const q = must(await api('POST', `/federation/bodies/${body_.id}/policies`, { token: fedOwner.token, body: { kind, title: `${kind} rules ${++n}` } }), 201);
-    must(await api('POST', `/federation/policies/${q.id}/versions`, { token: fedOwner.token, body: { effective_from: day(-30), params } }), 201);
-  };
-  await pol('competition_entry', { requires_licensed_players: true });
-  await pol('registration', { requires_guardian_consent_under_18: true });
-  await pool.query("INSERT INTO fed_sanctions(body_id, event_id, applicant_id, status, sanction_no, requested_starts_on, requested_ends_on, approved_starts_on, approved_ends_on) VALUES ($1,$2,$3,'approved',$6,$4,$5,$4,$5)", [body_.id, ev.id, org.id, day(10), day(12), `S-${n}`]);
-  const fx = must(await evalPerson(org, p, ev));
-  const lic = fx.results.find((r) => r.title === 'Licensed players only');
-  assert.equal(lic.classification, 'federation_mandated'); assert.equal(lic.source, 'federation_policy');
-  assert.equal(lic.status, 'missing', 'the licence is read from the federation licence register; this player has none');
-  assert.equal(fx.results.find((r) => r.title.startsWith('Guardian consent for under-18')).outcome, 'does_not_apply', 'an adult');
-  const d2 = (await check()).decisions[0];
-  assert.equal(d2.decision, 'ineligible');
-  assert.match(d2.checks.find((x) => x.source?.label?.startsWith('Licensed players only')).reason, /licence/i);
+test('evidence packs carry states and dates only, are read-audited, expire and can be revoked', async () => {
+  const { owner, org } = await club();
+  const coach = await person(), auditor = await person(), stranger = await person();
+  await join(org.id, coach, 'coach');
+  const req = await requirement(owner, { kind: 'organisation', id: org.id }, { name: 'Insurance cover', category: 'insurance' });
+  await obligation(owner, req);
+  const rec = must(await api('POST', '/compliance/records', { token: coach.token, body: { requirement_id: req.id, reference: 'POLICY-SECRET-77', provider: 'Insurer Co' } }), 201);
+  must(await api('POST', `/compliance/records/${rec.id}/decision`, { token: owner.token, body: { decision: 'approve' } }));
+  assert.equal((await api('POST', '/compliance/packs', { token: stranger.token, body: { scope_kind: 'organisation', scope_id: org.id, purpose: 'audit', recipient_id: auditor.id } })).status, 404);
+  const pack = must(await api('POST', '/compliance/packs', { token: owner.token, body: { scope_kind: 'organisation', scope_id: org.id, purpose: 'Annual federation audit', recipient_id: auditor.id, expires_in_days: 3 } }), 201);
+  assert.match(pack.sha256, /^[0-9a-f]{64}$/);
+  const read = must(await api('GET', `/compliance/packs/${pack.id}`, { token: auditor.token }));
+  assert.equal(read.content.totals.clear, 1);
+  assert.equal(JSON.stringify(read).includes('POLICY-SECRET-77'), false, 'no reference in a pack');
+  assert.equal(JSON.stringify(read).includes('Insurer Co'), false);
+  assert.equal(read.content.subjects[0].items[0].requirement, 'Insurance cover');
+  assert.ok((await pool.query("SELECT 1 FROM audit_log WHERE action='read_compliance_pack' AND entity_id=$1 AND actor_id=$2", [pack.id, auditor.id])).rowCount);
+  assert.equal((await api('GET', `/compliance/packs/${pack.id}`, { token: stranger.token })).status, 404);
+  assert.equal(must(await api('GET', '/compliance/packs', { token: auditor.token })).items.length, 1);
+  must(await api('POST', `/compliance/packs/${pack.id}/revoke`, { token: owner.token }));
+  assert.equal((await api('GET', `/compliance/packs/${pack.id}`, { token: auditor.token })).status, 403);
+  assert.equal((await api('GET', `/compliance/packs/${pack.id}`, { token: owner.token })).status, 200, 'the maker keeps their own record');
 });
 
-// ------------------------------------------------------------------ explain, AI and access
-test('explain: the plain-language answer never asserts compliance, even when an AI step rewords it', async () => {
-  const org = await signup(['organizer']);
-  await rule({ topic: `ex${++n}`, title: 'Ambulance on site', classification: 'regulatory', country: 'US', requirements: [{ key: 'amb', kind: 'permit', label: 'Ambulance booking', holder: 'event' }] });
-  const ev = await placedEvent(org, { country: 'US', region: 'Texas', locality: 'Austin' });
-  const plain = must(await api('POST', '/compliance/explain', { token: org.token, body: { subject_type: 'event', subject_id: ev.id } }));
-  assert.equal(plain.assertion, 'none'); assert.equal(plain.ai_reworded, false);
-  assert.match(plain.text, /Ambulance booking/); assert.match(plain.text, /human reviewer/);
-  let seen;
-  setAiTransport(async (b) => { seen = JSON.stringify(b); return 'Good news: you are fully compliant and safe to proceed.'; });
-  try {
-    const ai = must(await api('POST', '/compliance/explain', { token: org.token, body: { subject_type: 'event', subject_id: ev.id } }));
-    assert.equal(ai.ai_reworded, true);
-    assert.match(ai.text, /not a legal opinion/i);
-    assert.match(seen, /Never say or imply/); assert.ok(!seen.includes(ev.name), 'no names go to the model');
-  } finally { setAiTransport(null); }
+test('reminders go out once per stage and escalate to the managers when a record stays expired', async () => {
+  const { owner, org } = await club();
+  const coach = await person();
+  await join(org.id, coach, 'coach');
+  const req = await requirement(owner, { kind: 'organisation', id: org.id }, { name: 'CPR certificate', escalate_after_days: 3 });
+  await obligation(owner, req);
+  const rec = must(await api('POST', '/compliance/records', { token: coach.token, body: { requirement_id: req.id, reference: 'CPR-1' } }), 201);
+  must(await api('POST', `/compliance/records/${rec.id}/decision`, { token: owner.token, body: { decision: 'approve' } }));
+  const count = async (uid, kind) => (await pool.query('SELECT count(*)::int AS n FROM notifications WHERE user_id=$1 AND kind=$2', [uid, kind])).rows[0].n;
+  await pool.query('UPDATE comp_records SET expires_on=$2 WHERE id=$1', [rec.id, day(6)]);
+  await remindCompliance(); await remindCompliance();
+  assert.equal(await count(coach.id, 'compliance_expiring'), 1, 'one reminder per stage');
+  await pool.query('UPDATE comp_records SET expires_on=$2 WHERE id=$1', [rec.id, day(-1)]);
+  await remindCompliance();
+  assert.equal(await count(coach.id, 'compliance_expiring'), 2);
+  assert.equal(await count(owner.id, 'compliance_escalated'), 0, 'not yet escalated');
+  await pool.query('UPDATE comp_records SET expires_on=$2 WHERE id=$1', [rec.id, day(-10)]);
+  await remindCompliance(); await remindCompliance();
+  assert.equal(await count(owner.id, 'compliance_escalated'), 1);
+  assert.equal(await count(coach.id, 'compliance_escalated'), 0, 'escalation goes to managers, not the holder');
 });
 
-test('access and MCP: outsiders get 404, the decision log is scoped, and every route is also a tool', async () => {
-  const org = await signup(['organizer']), out = await signup(['organizer']);
-  const ev = await placedEvent(org);
-  assert.equal((await api('GET', `/events/${ev.id}/compliance`, { token: out.token })).status, 404);
-  assert.equal((await api('GET', '/compliance/decisions', { token: out.token, query: { event_id: ev.id } })).status, 404);
-  assert.equal((await api('GET', '/compliance/decisions', { token: org.token })).status, 400);
-  assert.equal((await api('GET', '/compliance/review-queue', { token: org.token })).status, 404, 'the platform queue is the platform team\'s');
-  assert.equal((await api('GET', '/compliance/review-queue', { token: admin.token })).status, 200);
-  const tools = (await rpc('tools/list', {}, org.token)).tools.map((t) => t.name);
-  for (const name of ['evaluate_compliance', 'explain_compliance', 'get_event_compliance', 'publish_policy_rule_version', 'decide_policy_version', 'import_policy_pack', 'export_policy_pack', 'submit_compliance_evidence', 'review_compliance_evidence', 'grant_compliance_exception', 'list_compliance_decisions', 'get_compliance_catalogue']) assert.ok(tools.includes(name), `${name} is an MCP tool`);
-  const viaMcp = await rpc('tools/call', { name: 'get_compliance_catalogue', arguments: {} }, org.token);
-  assert.ok(JSON.stringify(viaMcp).includes('procurement'));
+test('every sport in the catalogue can be targeted; nothing is sport-specific', async () => {
+  const { owner, org } = await club();
+  const req = await requirement(owner, { kind: 'organisation', id: org.id }, { name: 'Sport specific licence' });
+  const sports = (await pool.query('SELECT id, slug FROM sports')).rows;
+  assert.ok(sports.length > 10);
+  for (const s of sports) must(await api('POST', `/compliance/requirements/${req.id}/obligations`, { token: owner.token, body: { sport_id: s.id, roles: ['coach'] } }), 201);
+  assert.equal((await pool.query('SELECT count(DISTINCT sport_id)::int AS n FROM comp_obligations WHERE requirement_id=$1', [req.id])).rows[0].n, sports.length);
 });
 
-test('every sport in the catalogue can be named by a rule and matched by the engine (sport-agnostic, no silent default)', async () => {
-  const sports = (await pool.query('SELECT slug FROM sports')).rows.map((r) => r.slug);
-  assert.ok(sports.length > 50);
-  for (const slug of sports) {
-    assert.equal(E.applicability({ applies: { sports: [slug] } }, { sport: slug }).result, 'yes', slug);
-    assert.equal(E.applicability({ applies: { sports: [slug] } }, { sport: 'other-sport' }).result, 'no', slug);
-    assert.equal(E.applicability({ applies: { sports: [slug] } }, {}).result, 'unknown', `${slug}: a missing sport is unknown, not a default`);
+test('archiving keeps every record; the pure state rules are deterministic', async () => {
+  const { owner, org } = await club();
+  const coach = await person();
+  await join(org.id, coach, 'coach');
+  const req = await requirement(owner, { kind: 'organisation', id: org.id }, { name: 'To archive' });
+  await obligation(owner, req);
+  must(await api('POST', '/compliance/records', { token: coach.token, body: { requirement_id: req.id, reference: 'A-1' } }), 201);
+  must(await api('POST', `/compliance/requirements/${req.id}/archive`, { token: owner.token }));
+  assert.equal(must(await status(coach)).items.length, 0, 'an archived requirement applies to nobody');
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM comp_records WHERE requirement_id=$1', [req.id])).rows[0].n, 1, 'records are kept');
+  assert.equal((await api('POST', '/compliance/requirements', { token: owner.token, body: { requirement_id: req.id, scope_kind: 'organisation', scope_id: org.id, name: 'To archive', category: 'qualification', method: 'evidence' } })).status, 409);
+  must(await api('POST', `/compliance/requirements/${req.id}/archive`, { token: owner.token, body: { archived: false } }));
+  assert.equal(must(await status(coach)).items.length, 1);
+  const base = { reminder_days: [30, 7], grace_days: 2 };
+  assert.equal(resolveState(base, { mandatory: true }, { status: 'valid', expires_on: '2030-01-31' }, '2030-01-01', null).state, 'expiring');
+  assert.equal(resolveState(base, { mandatory: true }, { status: 'valid', expires_on: '2030-03-01' }, '2030-01-01', null).state, 'met');
+  assert.equal(resolveState(base, { mandatory: true }, { status: 'valid', expires_on: '2029-12-31' }, '2030-01-01', null).state, 'grace');
+  assert.equal(resolveState(base, { mandatory: false }, null, '2030-01-01', null).blocking, false, 'optional never blocks');
+  assert.equal(resolveState(base, { mandatory: true }, null, '2030-01-01', { reason: 'x', effective_to: '2030-02-01' }).state, 'waived');
+});
+
+test('every compliance capability is registered for REST, OpenAPI and MCP', () => {
+  const names = capabilities.filter((c) => c.tag === 'Compliance').map((c) => c.name).sort();
+  for (const want of ['archive_compliance_requirement', 'create_compliance_pack', 'decide_compliance_record', 'get_compliance_catalogue', 'get_compliance_pack', 'get_compliance_status', 'grant_compliance_waiver', 'list_compliance_gaps', 'list_compliance_history', 'list_compliance_packs', 'list_compliance_records', 'list_compliance_requirements', 'list_compliance_waivers', 'read_compliance_reference', 'revoke_compliance_pack', 'revoke_compliance_waiver', 'save_compliance_obligation', 'save_compliance_requirement', 'submit_compliance_record', 'withdraw_compliance_record']) assert.ok(names.includes(want), want);
+  assert.ok(capabilities.filter((c) => c.tag === 'Compliance').every((c) => c.summary.length > 40));
+});
+
+const upload = (user, rid, file_name, bytes) => api('POST', `/compliance/records/${rid}/files`, { token: user.token, body: { file_name, data: Buffer.from(bytes).toString('base64') } });
+const PNG = Buffer.concat([Buffer.from('89504e470d0a1a0a', 'hex'), Buffer.alloc(32)]);
+const PDF = Buffer.from('%PDF-1.4\n%test\n');
+const zipDoc = (extra = '') => Buffer.concat([Buffer.from('504b0304', 'hex'), Buffer.from(`[Content_Types].xml word/document.xml ${extra}`)]);
+const OLEFILE = (extra = '') => Buffer.concat([Buffer.from('d0cf11e0a1b1', 'hex'), Buffer.alloc(40), Buffer.from(extra)]);
+
+test('evidence files: PDF, photos, Word, Excel, CSV and text are accepted by their bytes; everything else is refused', async () => {
+  const { owner, org } = await club();
+  const coach = await person(), stranger = await person();
+  await join(org.id, coach, 'coach');
+  const req = await requirement(owner, { kind: 'organisation', id: org.id }, { name: 'Insurance certificate', category: 'insurance' });
+  await obligation(owner, req);
+  const rec = must(await api('POST', '/compliance/records', { token: coach.token, body: { requirement_id: req.id, reference: 'POL-1' } }), 201);
+
+  assert.equal((await upload(stranger, rec.id, 'x.pdf', PDF)).status, 404, 'outsiders learn nothing');
+  for (const [name, bytes, type] of [['cert.pdf', PDF, 'application/pdf'], ['scan.png', PNG, 'image/png'], ['letter.docx', zipDoc(), 'wordprocessingml'], ['old.doc', OLEFILE(), 'application/msword'], ['sheet.csv', Buffer.from('a,b\n1,2\n'), 'text/csv']]) {
+    const r = must(await upload(coach, rec.id, name, bytes), 201);
+    assert.match(r.content_type, new RegExp(type)); assert.equal(r.original_name, name);
   }
+  assert.equal((await upload(coach, rec.id, 'extra.pdf', PDF)).status, 409, 'at most 5 per record');
+
+  const bad = [['run.exe', Buffer.from('MZ\x90\x00 not allowed')], ['evil.svg', Buffer.from('<svg onload="x()"/>')], ['fake.pdf', Buffer.from('this is not a pdf')], ['macro.docx', zipDoc('vbaProject.bin')], ['macro.xls', OLEFILE('_VBA_PROJECT')], ['bin.csv', Buffer.from([1, 2, 0, 3])]];
+  const two = await person(); await join(org.id, two, 'coach');
+  const rec2 = must(await api('POST', '/compliance/records', { token: two.token, body: { requirement_id: req.id, reference: 'POL-2' } }), 201).id;
+  for (const [name, bytes] of bad) assert.equal((await upload(two, rec2, name, bytes)).status, 400, name);
+  assert.equal((await upload(two, rec2, 'empty.pdf', Buffer.alloc(0))).status, 400);
 });
 
-// ------------------------------------------------------------------ standard country rulebooks and AI-drafted rulebooks
-test('standard rulebooks: eight priority countries, every rule valid, imported as drafts, approved in one step, then tailored', async () => {
-  const { PACK_RULE } = await import('../src/capabilities/compliance-rules.js');
-  const { standardPack } = await import('../src/compliance/standard-packs.js');
-  const org = await signup(['organizer']);
-  const list = must(await api('GET', '/compliance/standard-rulebooks', { token: org.token }));
-  assert.deepEqual(list.map((c) => c.code), ['IN', 'US', 'CA', 'SG', 'MY', 'LK', 'AU', 'GB']);
-  for (const c of list) {
-    assert.equal(c.rules, 6, c.code);
-    for (const r of standardPack(c.code).rules) {
-      assert.ok(PACK_RULE.safeParse(r).success, `${c.code} ${r.key}: ${JSON.stringify(PACK_RULE.safeParse(r).error?.issues?.[0])}`);
-      assert.ok(r.source_title && r.approval_owner.includes('counsel'), `${r.key} names its instrument and who reviews it`);
-      assert.ok(!r.waivable || r.classification === 'recommended_standard');
-    }
-  }
-  const pack = must(await api('GET', '/compliance/standard-rulebooks/IN', { token: org.token }));
-  assert.equal(pack.rules.length, 6); assert.match(pack.note, /not legal advice/);
-  assert.equal((await api('GET', '/compliance/standard-rulebooks/ZZ', { token: org.token })).status, 404);
-  // importing is the platform admin's; it creates drafts only and is idempotent
-  assert.equal((await api('POST', '/compliance/standard-rulebooks/IN/import', { token: org.token })).status, 403);
-  const first = must(await api('POST', '/compliance/standard-rulebooks/IN/import', { token: admin.token }), 201);
-  assert.equal(first.imported, 6);
-  assert.equal(must(await api('POST', '/compliance/standard-rulebooks/IN/import', { token: admin.token }), 201).imported, 0, 'a second import adds nothing');
-  const ev = await placedEvent(org, { country: 'IN', region: 'Karnataka', locality: 'Bengaluru' });
-  assert.ok(!must(await evalEvent(org, ev)).results.some((r) => r.key.startsWith('std.in.')), 'drafts have no effect');
-  assert.equal(must(await api('GET', '/compliance/standard-rulebooks', { token: org.token })).find((c) => c.code === 'IN').drafts, 6);
-  // one step approves what the approver may; the author's own laws wait for a second person
-  const mine = must(await api('POST', '/compliance/packs/decision', { token: admin.token, body: { pack_code: first.pack_code, decision: 'approve' } }));
-  assert.ok(mine.skipped.length >= 3 && mine.skipped.every((s) => /second person/.test(s.why)) && mine.done >= 1);
-  const rest = must(await api('POST', '/compliance/packs/decision', { token: admin2.token, body: { pack_code: first.pack_code, decision: 'approve' } }));
-  assert.equal(rest.skipped.length, 0); assert.equal(mine.done + rest.done, 6);
-  assert.equal((await api('POST', '/compliance/packs/decision', { token: admin2.token, body: { pack_code: first.pack_code, decision: 'approve' } })).status, 404, 'nothing left to decide');
-  const out = must(await evalEvent(org, ev));
-  const permit = out.results.find((r) => r.key === 'std.in.event-permit');
-  assert.equal(permit.outcome, 'applies'); assert.equal(permit.status, 'missing'); assert.match(permit.source_title, /public gatherings/i);
-  assert.equal(out.results.find((r) => r.key === 'std.in.event-privacy').classification, 'legal_mandatory');
-  // tailoring: a new version of a standard rule narrows it to a state; the older version is kept
-  const rid = must(await api('GET', '/compliance/rules', { token: admin.token, query: { country: 'IN' } })).find((r) => r.key === 'std.in.event-permit').id;
-  const v2 = must(await api('POST', '/compliance/rules', { token: admin.token, body: { rule_id: rid, title: 'Karnataka police permission', classification: 'regulatory', country: 'IN', region: 'Karnataka', effective_from: day(-1), approval_owner: 'Counsel, India', requirements: pack.rules[0].requirements } }), 201);
-  must(await api('POST', `/compliance/versions/${v2.version_id}/decision`, { token: admin2.token, body: { decision: 'approve' } }));
-  assert.equal(must(await evalEvent(org, ev)).results.find((r) => r.key === 'std.in.event-permit').version, 2);
-  assert.equal(must(await api('GET', `/compliance/rules/${rid}`, { token: admin.token })).versions.length, 2);
-  // every priority country imports
-  for (const code of ['US', 'CA', 'SG', 'MY', 'LK', 'AU', 'GB']) assert.equal(must(await api('POST', `/compliance/standard-rulebooks/${code}/import`, { token: admin.token }), 201).imported, 6, code);
-});
+test('evidence files: managers read them (audited), background checks take none, and a decided record is closed', async () => {
+  const { owner, org } = await club();
+  const coach = await person(), stranger = await person();
+  await join(org.id, coach, 'coach');
+  const req = await requirement(owner, { kind: 'organisation', id: org.id }, { name: 'Coaching licence scan', category: 'licence' });
+  const bg = await requirement(owner, { kind: 'organisation', id: org.id }, { name: 'Check status', category: 'background_check' });
+  await obligation(owner, req); await obligation(owner, bg);
+  const rec = must(await api('POST', '/compliance/records', { token: coach.token, body: { requirement_id: req.id, reference: 'L-1' } }), 201);
+  const bgRec = must(await api('POST', '/compliance/records', { token: coach.token, body: { requirement_id: bg.id, reference: 'B-1' } }), 201);
+  const f = must(await upload(coach, rec.id, 'licence.pdf', PDF), 201);
+  const refused = await upload(coach, bgRec.id, 'check.pdf', PDF);
+  assert.equal(refused.status, 409); assert.equal(codeOf(refused), 'files_not_accepted');
 
-test('AI-drafted rulebook: validated, marked, returned as a package and stored nowhere; unavailable AI says so', async () => {
-  const org = await signup(['organizer']);
-  assert.equal((await api('POST', '/compliance/rulebook-drafts', { token: org.token, body: { country: 'NZ' } })).status, 403);
-  const off = await api('POST', '/compliance/rulebook-drafts', { token: admin.token, body: { country: 'NZ' } });
-  assert.equal(off.status, 409); assert.equal(off.body.error.details.code, 'ai_unavailable');
-  const good = { key: 'ai.nz.privacy', domains: ['privacy'], topic: 'ai.nz.privacy', title: 'Privacy notice for event data', classification: 'regulatory', summary: 'Declare how data is used.', source_title: 'Privacy Act 2020', source_url: 'http://not-https.example', effective_from: '2026-01-01',
-    approval_owner: 'whoever', requirements: [{ key: 'notice', kind: 'declaration', label: 'Privacy notice declared', holder: 'event' }], waivable: true, ignore_me: 'x' };
-  const bad = { key: 'x', title: 'no domains' };
-  const injected = { ...good, key: 'ai.nz.fed', topic: 'ai.nz.fed', classification: 'federation_mandated' };
-  let seen;
-  setAiTransport(async (b) => { seen = JSON.stringify(b); return `Here you go: ${JSON.stringify({ rules: [good, bad, injected] })}`; });
-  let pack;
-  try { pack = must(await api('POST', '/compliance/rulebook-drafts', { token: admin.token, body: { country: 'NZ', focus: 'athletics meets' } })); } finally { setAiTransport(null); }
-  assert.match(seen, /Never invent statute numbers/); assert.match(seen, /athletics meets/);
-  assert.equal(pack.rules.length, 1); assert.equal(pack.dropped.length, 2);
-  const r = pack.rules[0];
-  assert.equal(r.waivable, false, 'a regulation is never waivable'); assert.equal(r.source_url, undefined, 'an unverifiable link is dropped');
-  assert.match(r.change_note, /AI-drafted/); assert.match(pack.pack_code, /^AI-NZ-\d{8}$/); assert.equal(r.pack_code, pack.pack_code);
-  assert.match(pack.warnings[0], /counsel/);
-  assert.equal((await pool.query("SELECT count(*)::int AS n FROM cmp_rules WHERE key='ai.nz.privacy'")).rows[0].n, 0, 'nothing is stored');
-  // the package loads like any pack, as a draft that still needs a person
-  const loaded = must(await api('POST', '/compliance/packs', { token: admin.token, body: { pack_code: pack.pack_code, rules: pack.rules } }), 201);
-  assert.equal(loaded.drafts, 1);
-  assert.equal((await pool.query("SELECT status FROM cmp_rule_versions WHERE id=$1", [loaded.versions[0].version_id])).rows[0].status, 'draft');
+  const get = (u, rid, fid) => fetch(`${base}/api/v1/compliance/records/${rid}/files/${fid}`, { headers: { authorization: `Bearer ${u.token}` } });
+  const mine = await get(coach, rec.id, f.id);
+  assert.equal(mine.status, 200); assert.equal(Buffer.from(await mine.arrayBuffer()).equals(PDF), true);
+  assert.match(mine.headers.get('content-disposition'), /inline/);
+  assert.equal((await get(stranger, rec.id, f.id)).status, 404);
+  const queue = must(await api('GET', '/compliance/records', { token: owner.token, query: { scope_kind: 'organisation', scope_id: org.id, status: 'submitted' } }));
+  assert.deepEqual(queue.items.find((r) => r.id === rec.id).files.map((x) => x.name), ['licence.pdf']);
+  assert.equal((await get(owner, rec.id, f.id)).status, 200, 'the reviewer opens it');
+  assert.ok((await pool.query("SELECT 1 FROM audit_log WHERE action='read_compliance_file' AND entity_id=$1 AND actor_id=$2", [f.id, owner.id])).rowCount);
+  assert.ok((await pool.query("SELECT 1 FROM comp_events WHERE action='file_read' AND record_id=$1", [rec.id])).rowCount);
+  const st = itemOf(must(await status(coach)), 'Coaching licence scan');
+  assert.equal(st.record.file_count, 1); assert.equal(st.record.can_attach, true);
+
+  const g = must(await upload(coach, rec.id, 'second.csv', Buffer.from('x\n1\n')), 201);
+  must(await api('DELETE', `/compliance/records/${rec.id}/files/${g.id}`, { token: coach.token }));
+  assert.equal((await get(coach, rec.id, g.id)).status, 404, 'a removed file is hidden');
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM comp_files WHERE id=$1', [g.id])).rows[0].n, 1, 'and kept');
+
+  must(await api('POST', `/compliance/records/${rec.id}/decision`, { token: owner.token, body: { decision: 'approve' } }));
+  assert.equal((await upload(coach, rec.id, 'late.pdf', PDF)).status, 409, 'evidence cannot change after the decision');
+  assert.equal((await api('DELETE', `/compliance/records/${rec.id}/files/${f.id}`, { token: coach.token })).status, 409);
+  assert.equal((await get(owner, rec.id, f.id)).status, 200, 'the reviewed evidence stays readable');
+  assert.equal(itemOf(must(await status(coach)), 'Coaching licence scan').record.can_attach, false);
 });

@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { OpenBallots } from './ballots';
 import { Image, Linking, Platform, Pressable, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { api, mediaUrl } from '../api';
@@ -119,7 +120,7 @@ export function Book() {
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 14, alignItems: 'flex-end' }}>
         <View style={{ flex: 1 }}><Field value={q} onChangeText={setQ} placeholder="Search venues…" /></View>
         <Pressable onPress={() => setFilters(true)} style={{ height: 50, paddingHorizontal: 16, borderRadius: 12, borderWidth: 1.5, borderColor: activeFilters ? c.pink : c.line, backgroundColor: c.paper, justifyContent: 'center' }}><T weight="700" color={activeFilters ? c.pink : c.ink}>⚙ Filters{activeFilters ? ` · ${activeFilters}` : ''}</T></Pressable>
-        <Pressable onPress={() => push('Notifications')} style={{ height: 50, width: 50, borderRadius: 12, borderWidth: 1.5, borderColor: c.line, backgroundColor: c.paper, alignItems: 'center', justifyContent: 'center' }} accessibilityLabel="Notifications"><T size={18}>🔔</T>{note.data?.unread ? <View style={{ position: 'absolute', top: 6, right: 6, minWidth: 16, height: 16, borderRadius: 8, backgroundColor: c.pink, alignItems: 'center', justifyContent: 'center' }}><T size={10} weight="700" color={c.onAccent}>{note.data.unread}</T></View> : null}</Pressable>
+        <Pressable onPress={() => push('Inbox')} style={{ height: 50, width: 50, borderRadius: 12, borderWidth: 1.5, borderColor: c.line, backgroundColor: c.paper, alignItems: 'center', justifyContent: 'center' }} accessibilityLabel="Notifications"><T size={18}>🔔</T>{note.data?.unread ? <View style={{ position: 'absolute', top: 6, right: 6, minWidth: 16, height: 16, borderRadius: 8, backgroundColor: c.pink, alignItems: 'center', justifyContent: 'center' }}><T size={10} weight="700" color={c.onAccent}>{note.data.unread}</T></View> : null}</Pressable>
       </View>
       <View style={{ marginTop: 6 }}><SportSelect allLabel="All sports" value={sport || null} onChange={(x) => setSport(x ?? '')} /></View>
       <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
@@ -247,6 +248,7 @@ export function Venue({ id, date }) {
         {tab === 'overview' ? (
           <View style={{ gap: 12, marginTop: 8 }}>
             {x.description ? <Card><T>{x.description}</T></Card> : null}
+            <OpenBallots venue={x} />
             <Card>
               <T weight="700" size={16}>Check availability</T>
               <T size={12} color={c.mute} style={{ marginBottom: 8 }}>Tap a day to pick your slots.</T>

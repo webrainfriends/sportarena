@@ -1,20 +1,20 @@
 // Every module the More wheel offers: [route, title, sub, group]. The route is the PAGES key in App.js.
 export const MODULES = [
   ['Leaderboard', 'Leaderboard', 'Points & glory', 'play'], ['Awards', 'Trophy room', 'Cups, medals, MVPs', 'play'],
-  ['CareerTimeline', 'Career & clubs', 'Your clubs, verified by them', 'play'], ['MyLicences', 'My licences', 'Federation licences & standing', 'play'], ['MyIntegrity', 'My integrity', 'Notices, exemptions & education', 'play'],
+  ['CareerTimeline', 'Career & clubs', 'Your clubs, verified by them', 'play'], ['SportsGraph', 'Sports graph', 'Search people, clubs, teams & events', 'play'], ['MyLicences', 'My licences', 'Federation licences & standing', 'play'], ['MyIntegrity', 'My integrity', 'Notices, exemptions & education', 'play'],
   ['FindGames', 'Find a game', 'Open games near you, today & this weekend', 'play'], ['MyApplications', 'My applications', 'Trials, offers & answers', 'play'],
   ['MyAccreditations', 'My badges', 'Event accreditation & QR', 'play'],
-  ['Compliance', 'Compliance', 'Rules, permits & my evidence', 'play'],
   ['MyPasses', 'My passes', 'Rotating QR pass, cards & wristbands', 'play'],
   ['Following', 'Following', 'Events, teams & games you follow', 'play'],
   ['RecruiterAccess', 'Recruiter access', 'Who may see your profile', 'play'],
   ['MyDevelopment', 'My development', 'Goals, plans, feedback & reports', 'play'], ['MyPlans', 'Training plans', 'Your plans & sessions', 'play'], ['ToolsHome', 'Tools', 'Scoring sheets & documents', 'play'], ['Pathways', 'Learn & study', 'Rules, courses & colleges', 'play'], ['OpportunityMatches', 'Opportunities for me', 'Teams, trials, study & sponsors that fit you', 'play'],
+  ['MyCompliance', 'Compliance', 'Requirements, expiries & safeguarding', 'care'],
   ['Health', 'Health', 'Physio · doctors · fit to play', 'care'], ['Insure', 'My cover', 'What covers me today', 'care'],
   ['Insurance', 'Insurance', 'You · your team · your event', 'care'], ['Legal', 'Legal', 'Verified lawyers & matters', 'care'], ['Family', 'Family', 'Guardians & consents', 'care'],
-  ['Wallet', 'Wallet', 'Balance, gift cards & passes', 'money'], ['Rewards', 'Rewards', 'Points, invites & statement', 'money'], ['Cover', 'Who pays', 'Sponsor, club & family payments', 'money'], ['Advertising', 'Advertising', 'Promote your venue, event or business', 'money'], ['Earnings', 'Earnings', 'Sales, fees & payouts', 'money'], ['PlayerContracts', 'Contracts', 'Fees, bonuses, expenses & pay', 'money'], ['Representation', 'Representation', 'Your agent, what they can see & commission', 'money'], ['PlayerFunding', 'Funding', 'Needs, applications & sponsor support', 'money'], ['Shop', 'Shop', 'Kit, gear & orders', 'money'],
-  ['Billboard', 'Billboard', 'Wanted, for sale & ads', 'money'], ['Sponsors', 'Sponsor home', 'Offers, dues & agreements', 'money'], ['Supply', 'Supply chain', 'Kit, stock & orders', 'money'], ['ServicesBuyer', 'Services & suppliers', 'Buy grounds, crew, Wi-Fi, travel…', 'work'], ['Trips', 'Trips & travel', 'Itineraries, travel party, stays & movement', 'play'],
+  ['Finance', 'Finance', 'Revenue, receivables & reconciliation', 'money'], ['Wallet', 'Wallet', 'Balance, gift cards & passes', 'money'], ['PlansBilling', 'Plans & billing', 'Your plan, upgrades & payment', 'money'], ['Rewards', 'Rewards', 'Points, invites & statement', 'money'], ['Cover', 'Who pays', 'Sponsor, club & family payments', 'money'], ['Advertising', 'Advertising', 'Promote your venue, event or business', 'money'], ['Earnings', 'Earnings', 'Sales, fees & payouts', 'money'], ['PlayerContracts', 'Contracts', 'Fees, bonuses, expenses & pay', 'money'], ['Representation', 'Representation', 'Your agent, what they can see & commission', 'money'], ['PlayerFunding', 'Funding', 'Needs, applications & sponsor support', 'money'], ['Shop', 'Shop', 'Kit, gear & orders', 'money'],
+  ['Billboard', 'Billboard', 'Wanted, for sale & ads', 'money'], ['Sponsors', 'Sponsor home', 'Offers, dues & agreements', 'money'], ['Supply', 'Supply chain', 'Kit, stock & orders', 'money'], ['Marketplace', 'Marketplace', 'Find, quote, contract & pay any sports service', 'work'], ['ServicesBuyer', 'Services & suppliers', 'Buy grounds, crew, Wi-Fi, travel…', 'work'], ['Trips', 'Trips & travel', 'Itineraries, travel party, stays & movement', 'play'],
   ['Openings', 'Open positions', 'Jobs, stalls & contracts at events', 'community'], ['EventInbox', 'Event requests', 'Invites & quotes for you', 'community'],
-  ['Orgs', 'Organisations', 'Clubs & associations', 'community'], ['Federations', 'Federations', 'Affiliations, licences & sanctions', 'community'], ['MediaWorkspace', 'Media & broadcast', 'Rights, production & data feeds', 'work'], ['Support', 'Support', 'Cases & disputes', 'community'],
+  ['Orgs', 'Organisations', 'Clubs & associations', 'community'], ['Federations', 'Federations', 'Affiliations, licences & sanctions', 'community'], ['MediaWorkspace', 'Media & broadcast', 'Rights, production & data feeds', 'work'], ['Analytics', 'Analytics', 'KPIs, dashboards & scheduled reports', 'work'], ['Support', 'Support', 'Cases & disputes', 'community'],
 ];
 
 export const GROUP_COLOR = { play: '#D0BDF4', care: '#A0D2EB', money: '#E5EAF5', community: '#A0D2EB', work: '#4C9A7A' };
@@ -45,8 +45,8 @@ export const workspacesFor = (roles = []) => WORKSPACES.filter(([r]) => roles.in
 
 // Modules lifted to the front of the wheel for people who hold these roles (first match wins; everyone else: player set).
 export const PRIORITY = [
-  [['organizer', 'venue_manager'], ['EventInbox', 'Openings', 'Orgs', 'Federations', 'MediaWorkspace', 'Earnings', 'PlayerContracts', 'Billboard', 'Support', 'ToolsHome']],
-  [['sponsor', 'supplier'], ['Sponsors', 'Supply', 'Wallet', 'Earnings', 'Billboard', 'Shop', 'ToolsHome']],
+  [['organizer', 'venue_manager'], ['Analytics', 'EventInbox', 'Openings', 'Orgs', 'Federations', 'MediaWorkspace', 'Finance', 'Earnings', 'PlayerContracts', 'Billboard', 'Support', 'ToolsHome']],
+  [['sponsor', 'supplier'], ['Sponsors', 'Analytics', 'Supply', 'Wallet', 'Earnings', 'Billboard', 'Shop', 'ToolsHome']],
   [['physio', 'doctor', 'lawyer', 'insurer'], ['Health', 'Insure', 'Legal', 'Wallet', 'Leaderboard', 'Support', 'ToolsHome']],
 ];
 export const PRIORITY_DEFAULT = ['FindGames', 'Leaderboard', 'MyApplications', 'PlayerContracts', 'Representation', 'Health', 'Insure', 'Wallet', 'Shop', 'Billboard', 'ToolsHome'];

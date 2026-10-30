@@ -12,6 +12,7 @@ import { useNav } from '../nav';
 import { A, ABracket, ABtn, ACard, AChip, AEmpty, AScreen, ASection, AT, LiveBadge, ReasonSheet, ScoreTicker } from '../arena';
 import { Loading, Sheet, T } from '../ui';
 import { GamesByDay, SchedulePlanner } from './event-schedule';
+import { StageDesk, StagesView } from '../bracket-studio';
 import { AppearancesPanel } from './appearances';
 import { CricketScorer } from './cricket-scorer';
 import { useScoreQueue } from '../scorer/queue';
@@ -311,9 +312,7 @@ export function FixturesTab({ id, isOrg, games, accepted, venues, bracket, reloa
           <GamesByDay games={games} onOpen={open} />
           {isOrg ? <SchedulePlanner id={id} accepted={accepted} venues={venues} reload={reload} goVenue={goVenue} /> : null}
         </>
-      ) : bracket?.rounds?.length ? <ABracket data={bracket} onGame={open} /> : (
-        <AEmpty emoji="🏆" title="No knockout yet" sub="Seed the teams, book courts, then plan a knockout: quarter-finals, semi-finals and the final fill in as results are published." action={isOrg ? 'Plan the knockout' : undefined} onAction={() => setView('schedule')} />
-      )}
+      ) : isOrg ? <StageDesk id={id} accepted={accepted} openGame={open} reload={reload} /> : <StagesView id={id} openGame={open} />}
 
       <Sheet visible={!!fix} onClose={() => setFix(null)} title={fix?.ok ? 'Schedule is clean ✅' : 'Schedule clashes'}>
         {fix ? (

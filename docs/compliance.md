@@ -1,54 +1,73 @@
-# Compliance, policy & evidence engine (#568)
+# Compliance, safeguarding & eligibility (#595)
 
-One reusable engine judges **procurement, event permits, federation eligibility, accreditation, youth safeguarding and privacy** rules.
-Rules are data, never code in a module. A jurisdiction pack is a set of rules, so a new country needs no code fork. First designed for
-India, USA, Canada, Singapore, Malaysia, Sri Lanka, Australia and the UK; any ISO country works the same way.
+One platform that says, for a **person, an organisation or an event**, which requirements apply, which are met, which are missing or about to expire, **why**, and what it blocks.
+It does not copy what other modules already know: it asks them, live (`src/compliance.js`).
 
-It is a checklist of what the rules ask and what a person has verified. It is **not legal advice** and never asserts legal compliance.
+## The model (rules are data, there is no sport- or module-specific engine)
+| Table | What it is |
+|---|---|
+| `comp_requirements` | WHAT is required, owned by a **scope**: `platform` (platform team), `organisation` (owners/admins), `body` (a governing body's administrators and its licensing / registrar roles; compliance and auditors read), `event` (the organiser). Category (qualification, background check status, safeguarding training, safeguarding acknowledgement, federation requirement, event permit, insurance, licence, declaration, conflict of interest, attestation, other), subject (person / organisation / event), method, validity, reminder days, grace, escalation, versioned wording. |
+| `comp_obligations` | WHO must meet it: roles / engagements / kinds in the scope (none chosen = everyone), optional sport (any sport in the catalogue), "only adults who coach or manage young people", mandatory or optional, from/until, and what an unmet one **blocks**: `youth_contact`, `registration`, `accreditation`. |
+| `comp_records` | What a subject provided: status (`submitted → valid / rejected`, `revoked`, `withdrawn`, `superseded`), issue and expiry dates, `outcome` for a background check (clear / not clear / pending only), reference and declared text **encrypted** (`*_enc`), the requirement version it was made under, `previous_id` for a renewal. |
+| `comp_waivers` | A documented, time-boxed (≤ 180 days) exception. The record and the rule are never rewritten. |
+| `comp_events` | Append-only history (who, what, when). Never a reference, a number or free text. |
+| `comp_reminders` | One row per reminder or escalation actually sent, so sweeps are idempotent. |
+| `comp_packs` | Evidence packs for an authorised reviewer: frozen, SHA-256 hashed, expiring, revocable, read-audited. |
 
-## Reuse, no duplicates
-| Need | Where it already lives | What the engine does |
-|---|---|---|
-| Federation rules (#68 / #475) | Federation console (`fed_policies`, versioned, effective-dated) | Reads them as *federation mandated* rules (`registration` → guardian consent under 18, `competition_entry` → licensed players). Not authored a second time. |
-| Eligibility (#477) | `registration.js` match-day decision | Adds the engine's rules as extra checks (`policy:<key>`); no rule written = no change. |
-| Procurement (#460) | Tender zone | `recommend_tender_award` is gated for the tender and every supplier in the scenario. Supplier credentials are read live as evidence. |
-| Accreditation (#481) | `accreditation.js` | `approveRow` is gated; an automatic approval that the rules stop waits as *submitted*. |
-| Event permits | Event | Opening a draft and starting an event are gated. |
-| Licences, guardian consent | Federation licences, `youth.js` | Read live as evidence, never copied. |
-| Audit | `audit_log`, encryption in `crypto.js` | Reused. Reference numbers and reasons are encrypted; DOB reads are logged and only the age is kept. |
+**How a requirement is satisfied** (`method`): *evidence* a reviewer approves, a *declaration* made against the exact wording of the current version, or *linked* to a canonical record that is read live and never copied: a platform verification (`verification_cases`), a federation licence (`fed_licences`, via its standing) or a supplier credential (`svc_credentials`, only if somebody checked it). Revoking or expiring it there applies here on the next read.
 
-## Model
-* `cmp_rules` (stable key, domains, topic) → immutable `cmp_rule_versions` (classification, country / state / municipality, applicability
-  by federation, competition, organisation, venue, event type, sport, role, age; effective-from / to; source; approval owner; evidence
-  requirements; waivable). Draft → approved or withdrawn; nothing is edited or deleted (database triggers). A *repeal* ends a rule.
-* Classifications: legal mandatory, regulatory, federation mandated, contractual, organisation policy, recommended standard.
-  Platform admin writes laws, regulations and recommended standards (a law needs a second approver); an organisation owner/admin writes its policies and contracts;
-  laws and regulations can never be waivable.
-* `cmp_evidence` (permit, licence, declaration, certificate, training, insurance, background check, signed document, approval), filed for a
-  person, organisation, event, venue, tender or supplier. Filed for an event: its organiser reviews it and it counts there. Without an event: the platform team reviews it, it counts everywhere.
-  Nobody reviews their own filing. Only a declaration (the holder's own statement) counts without review. An upload is never proof.
-* `cmp_exceptions`: a named person waives one waivable rule for one holder, up to a year, with a reason; revocable; never for yourself.
-* `cmp_decisions` (append-only): facts and their sources, every rule with its exact version and per-requirement result, evidence and exceptions used, trigger, actor, time. Blocked attempts are recorded too.
+## States (deterministic)
+`met · expiring (inside the reminder window) · grace (expired, inside the grace period) · pending_review · missing · expired · rejected · revoked · waived`.
+A mandatory obligation in `missing / expired / rejected / revoked` **blocks**. Decision: `blocked` > `pending` (something awaits a reviewer) > `clear`. Every item carries a plain-language explanation and the next step. A renewal while a record is current keeps the old one valid until the renewal is approved.
 
-## Precedence and effective dates
-1. Per rule, the highest **approved** version whose window contains the as-of date is used (as-of defaults to the event / tender start, else today). Past dates give the text of that time; history is kept.
-2. A rule applies when every dimension it names matches. A dimension the facts cannot answer makes it **unknown**, never silently "does not apply".
-3. Rules of the same **topic** compete: higher classification, then narrower jurisdiction, then more specific applicability, then later effective date, then higher version. Rules of different topics add up. A higher-ranked unknown rule is never skipped.
-4. Result per rule: applies / does not apply / unknown / exception required, with status compliant, expiring, pending, missing, exception or non-compliant.
-5. A gate stops on missing, pending, non-compliant or unknown for any rule except recommended standards. No rule in force = no effect.
+## Integrations (no parallel copies)
+* **#477 registration & eligibility** (`src/registration.js`): `rules.require_compliance` (default on; no obligations configured = no effect) adds a `compliance` check per obligation that blocks `registration`. Failed = `fail`, awaiting review = `pending`; the decision and the reasons are part of the match-lock snapshot like every other check. Waiving happens in compliance (one mechanism), not as a second registration exception.
+* **#481 accreditation** (`src/accreditation.js`): obligations that block `accreditation` stop an application or approval (`blocker`) **and** a badge at the gate (`judge` → `not_eligible`) the moment they lapse.
+* **Youth contact** (`src/team-chat.js → mustBeSafeToPost`): an adult on a team that has young members cannot post, attach or run a poll in its chat until every obligation that blocks `youth_contact` is met; **pending counts as not met**. Young people are never restricted by this. Obligations that block youth contact **can never be waived**, and background checks can never be waived either.
+* **Org Command Centre** (#573): the Compliance tile counts submissions to review and records expiring or expired in the organisation's and its events' rulebooks, and the decision queue lists the evidence with Approve / Reject calling `decide_compliance_record` (no second approval path).
 
-## AI
-`explain_compliance` builds the explanation from the engine's result; an optional AI step may reword it, never decides, receives no names, and the text always says a human reviewer decides.
+## Access and sensitive evidence
+* The holder, a verified guardian, an organisation's owner/admin and an event's organiser can submit; **nobody decides their own or a record they submitted**.
+* A manager sees only the requirements of the scopes they run; the holder, guardian and platform team see everything that applies. Outsiders get a `404`.
+* **References** (`read_compliance_reference`): a background check's reference is shown only to the holder and guardian. For other requirements the scope's managers can read it too. Every reveal is in `audit_log` and the history.
+* A background check is always confirmed by a reviewer (never a self-declaration), a rejection records only "not clear" and shares no reason.
+* Young people are shown as "Protected participant" to anyone who may not see them (`canSeeYouth`), in roll-ups and packs.
+* **Evidence packs** carry states and dates only (never references, notes or declared text); name a reader and an expiry (≤ 30 days). Reading is audit-logged, revoking is immediate.
 
-## Standard country rulebooks, AI drafts and tailoring
-* **Standard rulebooks** (`src/compliance/standard-packs.js`) for India, USA, Canada, Singapore, Malaysia, Sri Lanka, Australia and the UK: six rules each (event permission, public liability insurance, child-protection checks, safeguarding training, guardian consent, event privacy), each naming its instrument and the regulator's site. `import_standard_rulebook` (platform admin) loads them as **drafts**, idempotently; `decide_policy_pack` approves a whole pack (a law you wrote yourself still needs a second person). Anyone can download one (`get_standard_rulebook`).
-* **AI-drafted rulebook** for any country: `generate_country_rulebook` (platform admin) returns a validated package, stored nowhere, marked AI-drafted, never waivable for laws, with unverifiable links dropped. Load it with `import_policy_pack`, review, approve.
-* **Tailoring**: edit a rule as a new version (platform admin), or an organisation owner/admin copies it into its own policy (a stricter addition that adds up beside the law; it cannot weaken it).
-* Rulebooks are a research anchor, not legal advice. Effective dates are when the platform adopts a rule, not when a law began, and region-specific duties are written country-wide to be narrowed at approval.
+## Reminders and escalation
+`src/compliance-sweeps.js` (worker): each record is reminded once per stage (`before:N` for each of the requirement's reminder days, `expired`), then **escalated to the scope's managers** once it has stayed expired for the requirement's escalation period. Persons are reminded together with a young person's guardians; organisations and events via their managers. Linked requirements are reminded by the module that owns them (licence, verification, supplier).
 
-## Surfaces
-REST + OpenAPI + MCP from `capabilities/compliance-*.js` (catalogue, rules, versions, packs, evidence, review queue, exceptions, evaluate, explain, event dashboard, decisions).
-App (iOS, iPadOS, Android, web): event console → **Compliance** tab (dashboard, review queue, audit trail) and **More → Compliance** (rules in force, rule wizard, my evidence).
+## Policy layer: jurisdiction, precedence, dates, decisions (#568)
 
-## Not covered
-No jurisdiction pack content ships: rules are written and approved by people. Evidence holds a link or note rather than an uploaded file.
+One engine, one rulebook, one screen: the policy layer is additive columns and capabilities on the same requirements and obligations; there is no second engine.
+
+- **Classification.** Every requirement is a *legal mandatory*, *regulatory*, *federation mandated*, *contractual*, *organisation policy* or *recommended standard* rule. Platform scope writes laws, regulations and contractual rules; a governing body writes federation rules; organisations and events write policy and standards. A **recommended standard advises and never blocks.** A **law or regulation is pending until a second platform administrator approves it** (the writer cannot), applies to no one while pending, can never be waived, and once approved is not edited (publish a new rule and end the old one).
+- **Where and for whom.** An obligation can also name a country, state or province, municipality, governing bodies, competitions, venues, event types and an age band, besides roles and sport. Facts come from live records (the event, venue or organisation address, federation affiliations, a person's age from the audited date of birth read; only the age is kept). A dimension the facts cannot answer makes the rule **unknown** (“cannot be judged yet”), which blocks like a missing mandatory item, never a silent “does not apply”. First jurisdictions offered: IN, US, CA, SG, MY, LK, AU, GB; a pack adds more without code.
+- **Precedence.** Rules of one `topic` compete: higher classification, then narrower jurisdiction, then more specific applicability, then the later start date, then the higher version. The losers are shown as overridden, with why. If the winner is unknown, the losers wait too.
+- **Dates and history.** `starts_on`/`ends_on` on an obligation are its effective window (a repeal is an end date); `as_of` evaluates the rules of a date, including archived rules and the requirement wording saved by then.
+- **Decisions.** Gates for opening an event, starting an event and awarding a tender (plus registration and accreditation) record refused attempts in `comp_decisions`: facts and their sources, every rule with its version and result, waivers used, who and when. Triggers refuse edits, deletes and truncation. `evaluate_compliance` explains deterministically (no AI) and can keep a check. An AI can reword it later; it never decides.
+- **Tenders.** A buyer's organisation (or event, or the platform) rules with role *supplier* govern the suppliers it awards to; the supplier answers from the tender (`tender_id`) and `recommend_tender_award` is refused until every awarded supplier is clear.
+- **Packs.** `export_compliance_rules` / `import_compliance_rules` move a scope's rulebook as plain data (`sportarena.compliance-rules/1`): validated in full before anything is written, idempotent by code, laws arrive pending.
+- **Dashboard.** `list_compliance_gaps` also returns counts by status: compliant, expiring, pending, missing, exception, non-compliant, unknown.
+
+Merged in the port of #568: its separate rules engine, screen and event tab were dropped in favour of this workspace; its distinctive features above were rebuilt on it. Not carried over: future-dated versions of a requirement (use an obligation window instead) and the AI reword step.
+
+## Standard country rulebooks
+`list_standard_rulebooks`, `get_standard_rulebook` and `install_standard_rulebook` ship six rules for each of IN, US, CA, SG, MY, LK, AU and GB as jurisdiction packs (event permit, public liability, child-protection checks, safeguarding training, guardian consent for children, event privacy), each anchored to the named instrument and regulator. They install through `import_compliance_rules`, so laws and regulations wait for a second platform administrator, recommended standards only advise, and installing twice changes nothing. Where a duty varies by state or municipality the rule is written for the country; narrow it by writing your own rule for that place. A research anchor and checklist, **not legal advice**; every rule's approval owner is qualified local counsel. Not carried over from the earlier separate engine: AI-drafted rulebook packages (explanations stay deterministic).
+
+## Capabilities (REST + OpenAPI + MCP, one definition each)
+`get_compliance_catalogue`, `save_compliance_requirement`, `archive_compliance_requirement`, `list_compliance_requirements`, `save_compliance_obligation`, `get_compliance_status`, `list_compliance_gaps`, `list_compliance_history`, `submit_compliance_record`, `withdraw_compliance_record`, `list_compliance_records`, `decide_compliance_record`, `read_compliance_reference`, `grant_compliance_waiver`, `revoke_compliance_waiver`, `list_compliance_waivers`, `create_compliance_pack`, `list_compliance_packs`, `get_compliance_pack`, `revoke_compliance_pack`. Policy layer: `evaluate_compliance`, `list_compliance_decisions`, `get_compliance_decision`, `approve_compliance_requirement`, `export_compliance_rules`, `import_compliance_rules`.
+
+## App (iOS, iPadOS, Android, web: one React Native codebase)
+* **More → Compliance**: *Mine* (what is required of me, grouped Needs action / Awaiting review / Expiring soon / In order, with one next step each) and *Manage* (every scope I run). A guardian opens a young person's from **Family → Compliance**.
+* **Organisation → Compliance** and **Event console → Compliance** embed the same workspace for that scope: *Who is short*, *Review queue*, *Rulebook*, *Waivers*, *Evidence packs*. Nothing is a second console.
+* Every choice is a control: category, who it is about, method and source are chips; validity and reminder days are chips; grace and escalation are steppers; roles, consequences and sports are pickers; dates use the calendar; reviewers are picked from a people search. Only the name, the wording and references are typed.
+
+## Sports
+Sport-agnostic by design: an obligation can target any sport in the catalogue (`test/compliance.test.js` walks every sport). Nothing here scores, rules or schedules a sport, so there is no generic fallback to label.
+
+## Evidence files
+Attach a certificate or document to a submission: **PDF, JPEG, PNG, WebP, GIF, Word (.docx, .doc), Excel (.xlsx, .xls), CSV and text**, up to 10 MB each and 5 per record. The type is decided from the bytes (not the name); Office files with macros, external links or ActiveX are refused; a configured malware scanner is honoured (`UPLOAD_SCAN`). Files are AES-256-GCM encrypted on disk (`comp_files`), hidden, never deleted, and every read is in `audit_log` and the history. Only the holder, a guardian or the organisation / event manager can add or hide files, and only while the submission awaits review. The holder and guardian always read them; the scope's managers (reviewers) read them for ordinary requirements. **A background check takes no files**: only a reference, so reviewers see the outcome and never the underlying detail. Evidence packs never contain files. Upload is `POST /compliance/records/:id/files` (JSON `{ file_name, data: base64 }`), download `GET /compliance/records/:id/files/:file_id`, hide `remove_compliance_evidence_file` (MCP); listing is part of `list_compliance_records`.
+
+## Not in scope here
+Immigration, medical-clearance and legal advice are not given.

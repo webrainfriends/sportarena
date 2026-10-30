@@ -26,6 +26,8 @@ import { Communications } from './communications';
 import { LoyaltyConsole } from './rewards';
 import { FederationLinks } from './federation-club';
 import { OrgIdentity } from './org-identity';
+import { CommandCentre } from './org-command-centre';
+import { ComplianceWorkspace } from './compliance';
 
 const KINDS = ORG_KINDS;
 const ROLE_LABEL = { owner: 'Owner', admin: 'Admin', coach: 'Coach', staff: 'Staff', finance: 'Finance', manager: 'Sponsor manager', evaluator: 'Evaluator', legal: 'Legal', approver: 'Approver', auditor: 'Auditor' };
@@ -79,18 +81,25 @@ export function Orgs() {
   );
 }
 
-export function Org({ id }) {
+export function Org({ id, tab: first = 'overview', focus: firstFocus = null }) {
   const { toast } = useSession();
-  const [tab, setTab] = useState('overview');
+  const [tab, setTab] = useState(first);
+  const [focus, setFocus] = useState(firstFocus);   // a record to open inside the tab (for example an academy application)
   const org = useLoad(() => api.get(`/organisations/${id}`), [id]);
   const dash = useLoad(() => api.get(`/organisations/${id}/dashboard`), [id]);
   const brands = useLoad(() => api.get(`/organisations/${id}/assets`, { kind: 'sponsor' }).catch(() => []), [id]); // a coach has no sponsor access: treated as none
   if (org.error || dash.error) return <Screen><LoadError error={dash.error ?? org.error} onRetry={() => { org.reload(); dash.reload(); }} /></Screen>;
   if (!org.data || !dash.data) return <Screen><Loading /></Screen>;
   const o = org.data, d = dash.data, role = d.role, archived = o.status === 'archived';
-  const P = { o, d, role, archived, toast, brands, reload: () => { org.reload(); dash.reload(); brands.reload(); } };
+  // a Command Centre area opens the tab that owns it; academies keep money, agreements and admissions under their Academy tab
+  const go = (want, to = null) => {
+    const alias = o.kind === 'academy' ? { admissions: 'academy', collections: 'academy', agreements: 'academy' } : { admissions: 'admissions' };
+    const t = alias[want] ?? want;
+    if (tabs.some(([v]) => v === t)) { setFocus(to); setTab(t); }
+  };
+  const P = { o, d, role, archived, toast, brands, go, reload: () => { org.reload(); dash.reload(); brands.reload(); } };
   const teaching = !SPONSOR_ONLY.includes(role) && role !== 'finance' && role !== 'staff';
-  const tabs = [['overview', 'Overview'], ...(teaching ? [['cohorts', 'Cohorts']] : []), ['people', 'People'], ...(brands.data?.length && role !== 'coach' ? [['sponsor', 'Sponsor']] : []), ...(teaching ? [['assets', 'Teams, events & venues']] : []), ...(STAFF.includes(role) && o.kind !== 'academy' ? [['agreements', 'Agreements']] : []), ...(['owner', 'admin', 'finance'].includes(role) && o.kind !== 'academy' ? [['collections', 'Collections']] : []), ...(['owner', 'admin', 'finance'].includes(role) ? [['rewards', 'Rewards'], ['comms', 'Communication']] : []), ...(STAFF.includes(role) ? [['signin', 'Sign-in & access']] : []), ...(STAFF.includes(role) || (o.kind === 'academy' && ['finance', 'coach', 'staff', 'auditor'].includes(role)) ? [[o.kind === 'academy' ? 'academy' : 'admissions', o.kind === 'academy' ? 'Academy' : 'Admissions']] : [])];
+  const tabs = [['overview', ['owner', 'admin', 'coach', 'finance'].includes(role) ? 'Command centre' : 'Overview'], ...(teaching ? [['cohorts', 'Cohorts']] : []), ['people', 'People'], ...(brands.data?.length && role !== 'coach' ? [['sponsor', 'Sponsor']] : []), ...(teaching ? [['assets', 'Teams, events & venues']] : []), ...(STAFF.includes(role) && o.kind !== 'academy' ? [['agreements', 'Agreements']] : []), ...(['owner', 'admin', 'finance'].includes(role) && o.kind !== 'academy' ? [['collections', 'Collections']] : []), ...(['owner', 'admin', 'finance'].includes(role) ? [['rewards', 'Rewards'], ['comms', 'Communication']] : []), ...(STAFF.includes(role) ? [['compliance', 'Compliance'], ['signin', 'Sign-in & access']] : []), ...(STAFF.includes(role) || (o.kind === 'academy' && ['finance', 'coach', 'staff', 'auditor'].includes(role)) ? [[o.kind === 'academy' ? 'academy' : 'admissions', o.kind === 'academy' ? 'Academy' : 'Admissions']] : [])];
   return (
     <Screen wide>
       <GradCard colors={[c.violet, c.ink]}>
@@ -99,13 +108,13 @@ export function Org({ id }) {
       </GradCard>
       {archived ? <View style={{ marginTop: 10 }}><Empty emoji="🗄️" title="This organisation is archived" sub="Everything is kept and readable. Ask an owner to restore it to make changes." /></View> : null}
       <View style={{ marginTop: 10 }}><Seg options={tabs.map(([value, label]) => ({ value, label }))} value={tab} onChange={setTab} color={c.violet} /></View>
-      {tab === 'overview' ? <Overview {...P} /> : tab === 'cohorts' ? <Cohorts {...P} /> : tab === 'people' ? <People {...P} /> : tab === 'admissions' ? <Admissions {...P} /> : tab === 'academy' ? <AcademyDesk {...P} /> : tab === 'collections' ? <Collections target={{ organisation_id: o.id }} archived={archived} /> : tab === 'rewards' ? <LoyaltyConsole ownerKind="organisation" ownerId={o.id} /> : tab === 'sponsor' ? <SponsorTab {...P} /> : tab === 'agreements' ? <Agreements {...P} /> : tab === 'comms' ? <Communications organisationId={o.id} organisationName={o.name} archived={archived} /> : tab === 'signin' ? <OrgIdentity {...P} /> : <Assets {...P} />}
+      {tab === 'overview' ? <Overview {...P} /> : tab === 'cohorts' ? <Cohorts {...P} /> : tab === 'people' ? <People {...P} /> : tab === 'admissions' ? <Admissions {...P} /> : tab === 'academy' ? <AcademyDesk key={JSON.stringify(focus)} {...P} focus={focus} /> : tab === 'collections' ? <Collections target={{ organisation_id: o.id }} archived={archived} /> : tab === 'rewards' ? <LoyaltyConsole ownerKind="organisation" ownerId={o.id} /> : tab === 'sponsor' ? <SponsorTab {...P} /> : tab === 'agreements' ? <Agreements {...P} /> : tab === 'comms' ? <Communications organisationId={o.id} organisationName={o.name} archived={archived} /> : tab === 'compliance' ? <ComplianceWorkspace scope={{ kind: 'organisation', id: o.id }} own={{ subject: { kind: 'organisation', id: o.id }, title: `${o.name}: our own requirements` }} /> : tab === 'signin' ? <OrgIdentity {...P} /> : <Assets {...P} />}
     </Screen>
   );
 }
 
 // ------------------------------------------------------------------ overview
-function Overview({ o, d, role, archived, reload, toast }) {
+function Overview({ o, d, role, archived, reload, toast, go }) {
   const { push } = useNav();
   const [edit, setEdit] = useState(false);
   const a = d.attendance_30d;
@@ -119,11 +128,8 @@ function Overview({ o, d, role, archived, reload, toast }) {
   const archive = async () => { try { await api.post(`/organisations/${o.id}/${archived ? 'restore' : 'archive'}`); toast(archived ? 'Organisation restored' : 'Organisation archived — data is kept'); reload(); } catch (e) { fail(toast)(e); } };
   return (
     <>
-      {d.counts ? (
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
-          {[['Staff', d.counts.staff], ['People', d.counts.people], ['Cohorts', d.counts.cohorts], ['Teams', d.counts.teams], ['Events', d.counts.events], ['Venues', d.counts.venues]].map(([l, n]) => <Tag key={l} label={`${n} ${l.toLowerCase()}`} />)}
-        </View>
-      ) : null}
+      <View style={{ marginTop: 10, alignItems: 'flex-start' }}><Btn small title="360° view" color={c.paper} ink={c.ink} onPress={() => push('Organisation360', { id: o.id })} accessibilityLabel="Open the 360 view" /></View>
+      {['owner', 'admin', 'coach', 'finance'].includes(role) ? <CommandCentre o={o} role={role} archived={archived} go={go} toast={toast} reload={reload} /> : null}
       {STAFF.includes(role) && (o.legal_name || o.registration_no || o.tax_id || o.contact_email || o.contact_phone || o.website || o.description || o.founded_on) ? (
         <Section title="Profile" color={c.violet}>
           {[['Legal name', o.legal_name], ['Registration', o.registration_no], ['Tax number', o.tax_id], ['Founded', o.founded_on && day(o.founded_on)], ['Email', o.contact_email], ['Phone', o.contact_phone], ['Website', o.website], ['About', o.description]].filter(([, x]) => x).map(([k, x]) => <Row key={k} title={k} sub={String(x)} />)}
@@ -136,6 +142,7 @@ function Overview({ o, d, role, archived, reload, toast }) {
         <Section title="Money (linked teams)" color={c.lime}>
           {d.finance.length ? d.finance.map((f) => <Row key={f.currency + f.status} title={moneyIn(f.amount_cents, f.currency)} sub={`${f.entries} ${f.status} entries`} />) : <Empty emoji="💸" title="Nothing recorded" sub="Fees owed to players and coaches of linked teams appear here." />}
           <Btn small title="Export finance CSV" color={c.paper} ink={c.ink} onPress={() => exportCsv('finance')} style={{ marginTop: 8, alignSelf: 'flex-start' }} />
+          {['owner', 'admin', 'finance'].includes(role) ? <Btn small title="Open Finance console" onPress={() => push('Finance', { id: o.id })} style={{ marginTop: 8, alignSelf: 'flex-start' }} /> : null}
         </Section>
       ) : null}
       {STAFF.includes(role) || role === 'finance' ? <IncomingSponsorship orgId={o.id} /> : null}

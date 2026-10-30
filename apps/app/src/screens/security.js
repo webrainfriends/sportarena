@@ -1,4 +1,5 @@
 // Account security on the Me screen: API tokens (scopes, expiry, resources), signed-in devices, two-step verification, email, password.
+import { DeviceLockRow } from '../app-lock';
 import React, { useState } from 'react';
 import { Linking, Platform, Share, View } from 'react-native';
 import { api } from '../api';
@@ -235,6 +236,8 @@ export function SecuritySection() {
             </View>
             {s.mfa_enabled ? <Btn small title="Turn off" color={c.paper} ink={c.red} onPress={() => setOffForm(true)} /> : <Btn small title="Turn on" onPress={() => setMfaSheet(true)} />}
           </View>
+          <View style={{ height: 1, backgroundColor: c.line, marginVertical: 12 }} />
+          <DeviceLockRow />
           <View style={{ height: 1, backgroundColor: c.line, marginVertical: 12 }} />
           <Btn small title="Change password" color={c.paper} ink={c.ink} onPress={() => setPwForm(true)} style={{ alignSelf: 'flex-start' }} />
         </> : null}

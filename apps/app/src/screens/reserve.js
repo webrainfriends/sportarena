@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { MyBallots } from './ballots';
 import { SmsCard, WhatsAppCard } from './whatsapp';
 import { CommsPrefs } from './communications';
 import { Linking, Platform, Pressable, ScrollView, Share, View } from 'react-native';
@@ -536,12 +537,14 @@ function WaitlistList() {
 
 export function Notifications() {
   const { toast } = useSession();
+  const { goTab } = useNav();
   const prefs = useLoad(() => api.get('/me/notification-preferences'), []);
   const setPref = async (patch) => { try { await api.patch('/me/notification-preferences', patch); prefs.reload(); } catch (e) { toast(e.message); } };
   const p = prefs.data;
   return (
     <Screen>
-      <H1 style={{ marginTop: 8 }}>Notifications</H1>
+      <H1 style={{ marginTop: 8 }}>Notification settings</H1>
+      <Row onPress={() => goTab('Inbox')} left={<Bubble emoji="📥" color={c.pinkSoft} />} title="Open my inbox" sub="Booking confirmations, requests, changes and reminders" right={<T color={c.pink} weight="700">›</T>} />
       <Section title="How you hear from us" color={c.cyan}>
         {p ? (
           <Card>
@@ -561,8 +564,8 @@ export function Notifications() {
       <Section title="SMS" color={c.lime}><SmsCard onChanged={prefs.reload} /></Section>
       <Section title="WhatsApp & SMS preferences" color={c.lime}><CommsPrefs onChanged={prefs.reload} /></Section>
       <Section title="Waitlist" color={c.lime}><WaitlistList /></Section>
+      <Section title="Slot ballots" color={c.violet}><MyBallots /></Section>
       <Section title="Slot alerts" color={c.sun}><AlertsList /></Section>
-      <Section title="Inbox" color={c.pink}><InboxList /></Section>
     </Screen>
   );
 }

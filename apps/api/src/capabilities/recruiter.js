@@ -10,6 +10,7 @@ import { audit, isAdmin, sportBySlugOrId } from '../helpers.js';
 import { notify } from '../notify.js';
 import { toCsv } from '../csv.js';
 import { isYouth, requireConsent } from '../youth.js';
+import { assertMayMessageYouth } from '../compliance.js';
 import {
   BASES, CRITERIA, GRANT_SCOPES, MAX_WINDOW_DAYS, PURPOSES, REQUEST_SQL, SCOPE_LABELS, STAGES,
   athleteAudience, dossier, grantState, isVerifiedRecruiter, ownRequest, presentRequest, requireAthleteSide, requireLive, requireVerifiedRecruiter, sweepExpired,
@@ -523,6 +524,7 @@ cap({
         e.details = { code: 'access_not_live', reason: g.live ? 'scope_not_granted' : g.reason };
         throw e;
       }
+      if (role === 'recruiter') await assertMayMessageYouth(c, user.id, r.athlete_id); // policy-driven safeguarding (#595)
       await c.query('INSERT INTO recruiter_threads(request_id) VALUES ($1) ON CONFLICT (request_id) DO NOTHING', [r.id]);
       const thread = (await c.query('SELECT * FROM recruiter_threads WHERE request_id=$1 FOR UPDATE', [r.id])).rows[0];
       if (thread.closed_at) throw conflict('This conversation has been closed', { code: 'thread_closed' });

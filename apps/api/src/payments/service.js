@@ -9,6 +9,7 @@ import { activatePhysioPackage } from '../capabilities/provider-packages.js';
 import { fulfilSponsorshipPayment } from '../sponsor-agreements.js';
 import { fulfilChargePaid } from '../academy-invoices.js';
 import { fulfilServiceInvoicePaid } from '../svc/finance.js';
+import { fulfilMarketplacePaid } from '../marketplace/engine.js';
 import { fulfilMediaFeePaid } from '../media-fees.js';
 import { fulfilContributionPaid, fulfilTeamChargePaid } from '../team-money.js';
 import { raiseException, recordSale, syncRefunds } from '../settlement.js';
@@ -16,6 +17,8 @@ import { coachSessionDone } from '../rewards/activity.js';
 import { saleDue, confirmOnlineSalePayment } from '../pos/due.js';
 import { coverFor, startUse, settleUse } from '../cover.js';
 import { fulfilAdFundingPaid } from '../ads/engine.js';
+import { recordCharge, closeCharge, recordPayment, recordRefund } from '../finance.js';
+import { describeSubscription, fulfilSubscriptionPaid } from '../commercial/engine.js';
 
 export { paymentsEnabled, enabledProviders };
 
@@ -93,6 +96,11 @@ export async function describePurpose(c, type, id) {
     const x = await q("SELECT f.payer_id, f.amount_minor AS amount, f.currency, f.status, f.number, c.name, c.status AS camp_status FROM ad_fundings f JOIN ad_campaigns c ON c.id=f.campaign_id WHERE f.id=$1 FOR UPDATE OF f");
     return x && { payerId: x.payer_id, amount: Number(x.amount), currency: x.currency, name: `Advertising funds ${x.number} · ${x.name}`, payable: x.status === 'awaiting_payment' && !['ended', 'withdrawn'].includes(x.camp_status) };
   }
+  if (type === 'commercial_subscription') return describeSubscription(c, id);
+  if (type === 'marketplace_engagement') {
+    const m = await q("SELECT m.buyer_id AS payer_id, m.agreed_minor AS amount, m.currency, m.status, m.title, m.invoice_number, u.display_name FROM marketplace_engagements m JOIN users u ON u.id=m.provider_id WHERE m.id=$1 FOR UPDATE OF m");
+    return m && { payerId: m.payer_id, amount: Number(m.amount), currency: m.currency, name: `${m.title} · ${m.display_name} (${m.invoice_number})`, payable: m.status === 'invoiced' && Number(m.amount) > 0 };
+  }
   if (type === 'service_invoice') {
     const x = await q("SELECT s.payer_id, s.payable_minor - s.credited_minor - s.paid_minor AS amount, s.currency, s.status, s.doc_type, s.match_status, s.supplier_number, coalesce(p.trading_name, p.legal_name) AS name FROM svc_invoices s JOIN svc_profiles p ON p.id=s.profile_id WHERE s.id=$1 FOR UPDATE OF s");
     return x && { payerId: x.payer_id, amount: Number(x.amount), currency: x.currency, name: `Invoice ${x.supplier_number} · ${x.name}`, payable: x.status === 'issued' && x.doc_type === 'invoice' && ['matched', 'exception_approved'].includes(x.match_status) && Number(x.amount) > 0 };
@@ -119,8 +127,10 @@ async function fulfil(c, type, id, payment) {
   if (type === 'sponsorship_payment') return fulfilSponsorshipPayment(c, id);
   if (type === 'academy_charge') return fulfilChargePaid(c, id, { method: 'online', payment });
   if (type === 'service_invoice') return fulfilServiceInvoicePaid(c, id, payment);
+  if (type === 'marketplace_engagement') return fulfilMarketplacePaid(c, id);
   if (type === 'media_rights_fee') return fulfilMediaFeePaid(c, id);
   if (type === 'ad_funding') return fulfilAdFundingPaid(c, id);
+  if (type === 'commercial_subscription') return fulfilSubscriptionPaid(c, id, payment.payer_id);
   if (type === 'team_charge') return fulfilTeamChargePaid(c, id, payment);
   if (type === 'team_contribution') return fulfilContributionPaid(c, id, payment);
   const done = (await c.query(sql, [id])).rowCount > 0;
@@ -140,6 +150,7 @@ export async function settle(paymentId, result) {
     if (p.status !== 'pending') return { payment: p, refund: false };
     if (Number(result.amount) !== Number(p.amount_cents) || String(result.currency).toUpperCase() !== p.currency) {
       await c.query("UPDATE payments SET status='failed' WHERE id=$1", [p.id]);
+      await closeCharge(c, p.id, 'failed');
       await settleUse(c, p.id, false);
       await raiseException(c, { kind: 'amount_mismatch', dedupeKey: `amount_mismatch:${p.id}`, paymentId: p.id, currency: p.currency, amount: Number(p.amount_cents), detail: { expected_cents: Number(p.amount_cents), expected_currency: p.currency, provider_cents: Number(result.amount), provider_currency: String(result.currency).toUpperCase(), provider_ref: p.provider_ref } });
       return { payment: { ...p, status: 'failed' }, refund: false, mismatch: true };
@@ -147,6 +158,7 @@ export async function settle(paymentId, result) {
     const ok = await fulfil(c, p.purpose_type, p.purpose_id, p);
     const paid = (await c.query("UPDATE payments SET status='paid', paid_at=now(), provider_payment_ref=$2 WHERE id=$1 RETURNING *", [p.id, result.paymentRef ?? null])).rows[0];
     await recordSale(c, paid);   // what the seller is owed, in the same transaction as 'the customer paid'
+    await recordPayment(c, paid);   // the canonical finance record of the same movement (idempotent; reconcileFinance backfills if this ever fails)
     await settleUse(c, p.id, true);   // a payment made under a cover agreement counts against it
     return { payment: paid, refund: !ok };
   });
@@ -165,6 +177,7 @@ export async function refund(payment, { key } = {}) {
   await tx(async (c) => {
     await c.query("UPDATE payments SET status='refunded', refunded_at=now(), refunded_cents=amount_cents WHERE id=$1 AND status='paid'", [payment.id]);
     await syncRefunds(c, payment.id);
+    await recordRefund(c, (await c.query('SELECT * FROM payments WHERE id=$1', [payment.id])).rows[0]);
   });
 }
 
@@ -178,6 +191,7 @@ export async function refundPartial(payment, amount, key, { sellerId } = {}) {
   await tx(async (c) => {
     await c.query("UPDATE payments SET refunded_cents = refunded_cents + $2, status = CASE WHEN refunded_cents + $2 >= amount_cents THEN 'refunded' ELSE status END, refunded_at = CASE WHEN refunded_cents + $2 >= amount_cents THEN now() ELSE refunded_at END WHERE id=$1", [payment.id, give]);
     await syncRefunds(c, payment.id, { sellerId });   // a refunded shop line comes out of that line's seller, anything else pro rata
+    await recordRefund(c, (await c.query('SELECT * FROM payments WHERE id=$1', [payment.id])).rows[0]);
   });
   return give;
 }
@@ -219,6 +233,7 @@ export async function startCheckout(user, i) {
     if (d.amount <= 0) throw conflict('Nothing to pay');
     const row = (await client.query('INSERT INTO payments(payer_id, provider, purpose_type, purpose_id, amount_cents, currency, cover_mandate_id) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id', [user.id, i.provider, i.purpose_type, i.purpose_id, d.amount, currency, cover?.id ?? null])).rows[0];
     paymentId = row.id;
+    await recordCharge(client, { id: paymentId, payer_id: user.id, purpose_type: i.purpose_type, purpose_id: i.purpose_id, amount_cents: d.amount, currency, provider: i.provider });   // the canonical charge, open until paid
     if (cover) await startUse(client, cover, { paymentId, userId: user.id, purposeType: i.purpose_type, purposeId: i.purpose_id, amount: d.amount, currency });
     await client.query('COMMIT');
   } catch (e) { await client.query('ROLLBACK'); throw e; } finally { client.release(); }
@@ -231,6 +246,7 @@ export async function startCheckout(user, i) {
     return { id: paymentId, provider: i.provider, amount_cents: d.amount, currency, checkout_url: out.url };
   } catch (e) {
     await one("UPDATE payments SET status='failed' WHERE id=$1", [paymentId]);
+    await closeCharge(null, paymentId, 'failed');
     await one("UPDATE cover_uses SET status='cancelled', settled_at=now() WHERE payment_id=$1 AND status='pending'", [paymentId]);
     throw e;
   }

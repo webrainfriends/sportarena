@@ -71,16 +71,18 @@ export function targetFor(data = {}) {
   if (data.official_id && data.fixture_id) return ['OfficialsHome', { tab: 'today' }]; // a request, change, release or withdrawal on your officiating crew
   if (data.report_id && data.fixture_id) return ['OfficialMatch', { id: data.fixture_id }]; // an official filed a report on your match
   if (data.proposal_id) return ['ScoringTool', { proposalId: data.proposal_id }]; // a proposed result to review, or the outcome of yours
-  if (data.compliance && data.event_id) return ['EventCommand', { id: data.event_id, tab: 'compliance' }]; // evidence waiting for the organiser's review
-  if (data.evidence_id || data.exception_id) return ['Compliance', { tab: 'mine' }]; // your evidence was reviewed, or an exception was recorded for you
+  if ((data.ops_incident_id || data.ops_requirement) && data.event_id) return ['EventCommand', { id: data.event_id, tab: 'operations' }]; // an incident alert / handover, or a readiness requirement you own
   if (data.accreditation_id && data.event_id) return ['MyAccreditations', {}]; // a nomination, approval, reissue or revocation of your badge
   if (data.request_id && data.event_id) return ['EventInbox', {}];
+  if (data.kpi_report_run_id) return ['Analytics', { tab: 'reports', run: data.kpi_report_run_id }]; // a scheduled analytics report is ready (it carries no figures)
   if (data.sponsorship_id) return ['SponsorDeal', { id: data.sponsorship_id }];
   if (data.program_id && (data.task_id || data.application_id)) return ['SponsorProgram', { id: data.program_id }];
   if (data.application_id) return ['FundingOpportunities', {}]; // the applicant's own conversation: opened from My applications
   if (data.cover_id) return ['Cover', {}]; // a cover request, offer, answer, bill to pay or payment made
   if (data.programme_id) return ['Rewards', {}]; // points earned, a referral reward or an adjustment
+  if (data.marketplace_engagement_id) return ['MarketplaceEngagement', { id: data.marketplace_engagement_id }]; // a quote, answer, schedule, delivery or payment on an engagement
   if (data.open_game_id) return ['OpenGame', { id: data.open_game_id }]; // a request, approval, waitlist move, change or cancellation of a game
+  if (data.ballot_id && !data.reservation_id) return ['Notifications', {}]; // a slot ballot: an offer to accept and pay, or the result (My ballots lives with the waitlist)
   if (data.reservation_id) return ['Reservation', { id: data.reservation_id }];
   if (data.venue_id && data.date) return ['BookFlow', { venueId: data.venue_id, resourceId: data.resource_id, date: data.date }];
   if (data.venue_id) return ['Venue', { id: data.venue_id }];
@@ -89,7 +91,7 @@ export function targetFor(data = {}) {
   if (data.team_id && (data.charge_id || data.fundraiser_id)) return ['TeamDues', { id: data.team_id }];   // dues, fees, shared expenses, reminders and fundraisers
   if (data.team_id && !data.event_id && !data.fixture_id) return ['TeamChat', { id: data.team_id }];                         // announcements and polls
   if (data.organisation_id) return ['Org', { id: data.organisation_id }];   // academy and workspace messages open the organisation (academy tab / My academy)
-  return ['Notifications', {}];
+  return ['Inbox', {}];
 }
 
 export function parseTarget(t) {
@@ -102,6 +104,7 @@ export function parseTarget(t) {
   if (kind === 'open-game' && id) return ['OpenGame', { id }];
   if (kind === 'find-games') return ['FindGames', {}];
   if (kind === 'family') return ['Family', {}];
+  if (kind === 'finance') return ['Finance', id ? { id } : {}];
   if (kind === 'reservation' && id) return ['Reservation', { id }];
   if (kind === 'cover') return ['Cover', {}];
   if (kind === 'rewards') return ['Rewards', {}];
@@ -110,6 +113,10 @@ export function parseTarget(t) {
   if (kind === 'sponsorship' && id) return ['SponsorDeal', { id }];
   if (kind === 'organisation' && id) return ['Org', { id }];
   if (kind === 'organisations') return ['Orgs', {}];
+  if (kind === 'graph') return ['SportsGraph', {}];
+  if (kind === 'analytics') return ['Analytics', {}];
+  if (kind === 'athlete-360' && id) return ['Athlete360', { id }];
+  if (kind === 'organisation-360' && id) return ['Organisation360', { id }];
   if (kind === 'tender' && id) return ['TenderNotice', { id }];
   if (kind === 'tender-console' && id) return ['TenderConsole', { id }];
   if (kind === 'tender-proposal' && id) return ['TenderProposal', { id }];
@@ -121,8 +128,7 @@ export function parseTarget(t) {
   if (kind === 'fixture' && id) return ['LiveCentre', { id }];
   if (kind === 'following') return ['Following', {}];
   if (kind === 'accreditation') return ['MyAccreditations', {}];
-  if (kind === 'compliance') return ['Compliance', id ? { tab: id } : {}];
-  if (kind === 'event-compliance' && id) return ['EventCommand', { id, tab: 'compliance' }];
+  if (kind === 'event-ops' && id) return ['EventCommand', { id, tab: 'operations' }];
   if (kind === 'event-accreditation' && id) return ['EventCommand', { id, tab: 'accreditation' }];
   if (kind === 'gate' && id) return ['GateScan', { id }];
   if (kind === 'tender-orders') return ['TenderOrders', {}];
@@ -139,5 +145,5 @@ export function parseTarget(t) {
   if (kind === 'team-chat' && id) return ['TeamChat', { id }];
   if (kind === 'team-dues' && id) return ['TeamDues', { id }];
   if (kind === 'funding') return ['PlayerFunding', id ? { athlete_id: id } : {}];
-  return ['Notifications', {}];
+  return ['Inbox', {}];
 }
