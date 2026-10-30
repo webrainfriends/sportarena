@@ -12,7 +12,7 @@ import { storage } from '../storage';
 
 export const uid = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 const CHUNK = 1400;      // SecureStore values are small on some devices, so a queue is kept in pieces
-const MAX_QUEUE = 60;    // a scorer who is offline this long should be told, not buffered forever
+const MAX_QUEUE = 800;   // a whole cricket innings or a long match with no signal fits; beyond that the scorer is told, not buffered forever
 const RETRY_MS = 8000;
 
 async function load(key) {
@@ -29,12 +29,15 @@ async function load(key) {
     return Array.isArray(legacy) ? legacy : [];
   } catch { return []; }
 }
+const written = new Map(); // key -> the pieces last stored, so a tap rewrites only the pieces that changed (a long queue stays cheap on the keychain)
 async function save(key, list) {
   const old = Number(await storage.get(`${key}.n`)) || 0;
   const text = list.length ? JSON.stringify(list) : '';
   const parts = [];
   for (let i = 0; i < text.length; i += CHUNK) parts.push(text.slice(i, i + CHUNK));
-  for (let i = 0; i < parts.length; i++) await storage.set(`${key}.${i}`, parts[i]);
+  const prev = written.get(key) ?? [];
+  for (let i = 0; i < parts.length; i++) if (parts[i] !== prev[i]) await storage.set(`${key}.${i}`, parts[i]);
+  written.set(key, parts);
   if (parts.length) await storage.set(`${key}.n`, String(parts.length));
   for (let i = parts.length; i < old; i++) await storage.del(`${key}.${i}`);
   if (!parts.length) await storage.del(`${key}.n`);
@@ -46,13 +49,13 @@ async function save(key, list) {
  * @param {(event: object) => Promise<any>} send  sends one queued event; throws ApiError on failure
  * @param {{ onSent?: (result: any, event: object) => void, onDrop?: (error: Error, event: object) => void }} [hooks]
  */
-export function useScoreQueue(key, send, { onSent, onDrop } = {}) {
+export function useScoreQueue(key, send, { onSent, onDrop, owner } = {}) {
   const [pending, setPending] = useState([]);
   const [conflict, setConflict] = useState(null);
   const ref = useRef([]);
   const flushing = useRef(false);
-  const hooks = useRef({ send, onSent, onDrop });
-  hooks.current = { send, onSent, onDrop };
+  const hooks = useRef({ send, onSent, onDrop, owner });
+  hooks.current = { send, onSent, onDrop, owner };
   ref.current = pending;
 
   // the stored queue is read before anything is written back, and writes run one at a time, so a restart can never erase unsent taps
@@ -76,6 +79,8 @@ export function useScoreQueue(key, send, { onSent, onDrop } = {}) {
     flushing.current = true;
     try {
       for (const e of [...ref.current]) {
+        // taps made by someone else on this device are kept, never sent under this account and never thrown away
+        if (e.owner && hooks.current.owner && e.owner !== hooks.current.owner) break;
         try {
           const r = await hooks.current.send(e);
           drop(e); hooks.current.onSent?.(r, e);
@@ -87,6 +92,9 @@ export function useScoreQueue(key, send, { onSent, onDrop } = {}) {
       }
     } finally { flushing.current = false; }
   }, [drop]);
+
+  /** A tap still waiting on this device can simply be taken back; one already sent has to be voided on the server. */
+  const cancel = useCallback((clientKey) => { ref.current = ref.current.filter((x) => x.client_key !== clientKey); setPending(ref.current); }, []);
 
   const held = !!conflict;
   useEffect(() => {
@@ -106,13 +114,13 @@ export function useScoreQueue(key, send, { onSent, onDrop } = {}) {
    */
   const enqueue = useCallback(async (event) => {
     if (ref.current.length >= MAX_QUEUE) { hooks.current.onDrop?.(new Error('Too many taps are waiting to be sent. Get back online before scoring more.'), event); return { queued: true, full: true }; }
-    const e = { ...event, client_key: event.client_key ?? uid() };
+    const e = { ...event, client_key: event.client_key ?? uid(), ...(owner ? { owner } : {}) };
     if (ref.current.length) delete e.expected_seq;
     ref.current = [...ref.current, e];
     setPending(ref.current);
     await flush();
     return { queued: ref.current.some((x) => x.client_key === e.client_key) };
-  }, [flush]);
+  }, [flush, owner]);
 
   /** 'resend' sends the held tap on top of the newer state (the server still checks it against the rules); 'discard' drops it. */
   const resolve = useCallback(async (choice) => {
@@ -125,5 +133,9 @@ export function useScoreQueue(key, send, { onSent, onDrop } = {}) {
     await flush();
   }, [conflict, drop, flush]);
 
-  return { pending, conflict, enqueue, flush, resolve };
+  const foreign = owner ? pending.filter((e) => e.owner && e.owner !== owner).length : 0;
+  return { pending, conflict, enqueue, flush, resolve, cancel, foreign, full: pending.length >= MAX_QUEUE };
 }
+
+/** How many taps are waiting on this device for one game (without opening it), for the match-day list. */
+export async function waitingCount(key) { return (await load(key)).length; }

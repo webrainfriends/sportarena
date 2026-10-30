@@ -128,4 +128,4 @@ AWS EC2 (pm2 + Docker Postgres + nginx, KMS-wrapped keys), side by side with oth
 
 ## Roadmap
 Payouts / settlement · knockout & group-stage brackets · media (photos/video highlights) ·
-KYC · multi-currency & i18n · organizations/clubs · webhooks · offline mode in the app.
+KYC · multi-currency & i18n · organizations/clubs · webhooks. (Offline scoring for referees is built: see [docs/live-scoring.md](docs/live-scoring.md).)

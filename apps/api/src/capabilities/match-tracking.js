@@ -48,6 +48,21 @@ export async function assertInLineup(c, f, side, playerIds) {
 const named = (i) => [i.player_id, i.payload?.assist_player_id];
 export const broadcast = async (fixtureId) => { const s = await liveState(fixtureId); publish(`fixture:${fixtureId}`, s); return s; };
 
+// Offline-safe controls: the same client_key never acts twice, and the time the official really pressed the button is kept (bounded).
+export const controlInput = {
+  client_key: z.string().min(1).max(80).optional().describe('idempotency key: sending the same one again returns the current state and changes nothing'),
+  occurred_at: z.string().datetime().optional().describe('when the official pressed it on their device (an offline control is sent later); kept only within the last 24 hours and never in the future'),
+};
+/** Device time, clamped to [now - 24 h, now]. A missing or unreadable time is the server's own. */
+export function occurredAt(at, now = Date.now()) {
+  const t = at ? Date.parse(at) : NaN;
+  return new Date(Number.isFinite(t) ? Math.min(now, Math.max(now - 24 * 3600e3, t)) : now);
+}
+export const controlSeen = async (c, fixtureId, key) => !!key && (await c.query('SELECT 1 FROM fixture_control_ops WHERE fixture_id=$1 AND client_key=$2', [fixtureId, key])).rowCount > 0;
+export const controlDone = (c, fixtureId, user, op, i, at) => i.client_key
+  ? c.query('INSERT INTO fixture_control_ops(fixture_id, client_key, op, occurred_at, recorded_by) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (fixture_id, client_key) DO NOTHING', [fixtureId, i.client_key, op, at, user.id])
+  : null;
+
 // ------------------------------------------------------------------ rulesets
 cap({
   name: 'get_scoring_ruleset', method: 'GET', path: '/events/:id/scoring-ruleset', tag: TAG, auth: 'public',
@@ -92,18 +107,21 @@ cap({
 // ------------------------------------------------------------------ match control
 cap({
   name: 'start_match', method: 'POST', path: '/fixtures/:id/start', tag: TAG,
-  summary: 'Kick off a game (organiser or match official). Both teams must be decided and the event must be running.',
-  input: z.object({ id }),
+  summary: 'Kick off a game (organiser or match official). Both teams must be decided and the event must be running. Safe to send late from an offline device: client_key makes a retry a no-op and occurred_at records when it was really pressed.',
+  input: z.object({ id, ...controlInput }),
   async handler({ user }, i) {
     await tx(async (c) => {
       const x = await fixtureContext(user, i.id, c, { lock: true });
       needScorer(x);
+      if (await controlSeen(c, i.id, i.client_key)) return;
       if (x.f.status !== 'scheduled') throw conflict(`A game that is ${x.f.status} cannot be started`);
       if (!x.f.home_team_id || !x.f.away_team_id) throw conflict('The teams for this game are not decided yet');
       if (['draft', 'paused', 'completed', 'cancelled'].includes(x.ev.status)) throw conflict(`Event is ${x.ev.status}`);
       await lockFixtureEligibility(c, x.ev, x.f, user.id, 'start');   // re-check eligibility at kick-off and preserve the decision (no-op without a registration policy)
       await pinFixtureRuleset(i.id, x.f.event_id, c);
-      await c.query("UPDATE fixtures SET status='live', started_at=now() WHERE id=$1", [i.id]);
+      const at = occurredAt(i.occurred_at);
+      await c.query("UPDATE fixtures SET status='live', started_at=$2 WHERE id=$1", [i.id, at]);
+      await controlDone(c, i.id, user, 'start', i, at);
     });
     return broadcast(i.id);
   },
@@ -111,13 +129,15 @@ cap({
 
 cap({
   name: 'pause_match', method: 'POST', path: '/fixtures/:id/pause', tag: TAG,
-  summary: 'Stop play in a live game (injury, weather, protest).', input: z.object({ id }),
+  summary: 'Stop play in a live game (injury, weather, protest). Offline-safe like start_match.', input: z.object({ id, ...controlInput }),
   async handler({ user }, i) {
     await tx(async (c) => {
       const x = await fixtureContext(user, i.id, c, { lock: true });
       needScorer(x);
+      if (await controlSeen(c, i.id, i.client_key)) return;
       if (x.f.status !== 'live') throw conflict(`Only a live game can be paused; this one is ${x.f.status}`);
       await c.query("UPDATE fixtures SET status='paused', paused_by_event=false WHERE id=$1", [i.id]);
+      await controlDone(c, i.id, user, 'pause', i, occurredAt(i.occurred_at));
     });
     return broadcast(i.id);
   },
@@ -125,14 +145,16 @@ cap({
 
 cap({
   name: 'resume_match', method: 'POST', path: '/fixtures/:id/resume', tag: TAG,
-  summary: 'Restart play in a paused game. A game frozen by an event pause restarts with the event.', input: z.object({ id }),
+  summary: 'Restart play in a paused game. A game frozen by an event pause restarts with the event. Offline-safe like start_match.', input: z.object({ id, ...controlInput }),
   async handler({ user }, i) {
     await tx(async (c) => {
       const x = await fixtureContext(user, i.id, c, { lock: true });
       needScorer(x);
+      if (await controlSeen(c, i.id, i.client_key)) return;
       if (x.f.status !== 'paused') throw conflict(`Only a paused game can be resumed; this one is ${x.f.status}`);
       if (x.ev.status === 'paused') throw conflict('The whole event is paused; resume the event first');
       await c.query("UPDATE fixtures SET status='live', paused_by_event=false WHERE id=$1", [i.id]);
+      await controlDone(c, i.id, user, 'resume', i, occurredAt(i.occurred_at));
     });
     return broadcast(i.id);
   },
