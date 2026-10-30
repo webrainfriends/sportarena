@@ -94,7 +94,8 @@ Full end-to-end picture (components, runtime flows, trust boundaries, deployment
 * **Mobile** — token stored in Keychain/Keystore via `expo-secure-store`.
 
 ### Known limits (next steps, deliberately not faked in the MVP)
-* The master key lives in an env var. For production use a KMS/HSM and rotate via the `v1.` ciphertext prefix (versioning is already in the format).
+* **Keys.** Production wraps the master key with AWS KMS (`KEY_PROVIDER=aws-kms`, see [docs/deployment.md](docs/deployment.md)); the env-var key is for development only. Keys are versioned (`KEY_IDS`, `KEY_ACTIVE`) and the platform admin can re-encrypt stored values under a new key from **Keys & audit** (`start_key_rotation`). Values the job cannot map, or that sit in append-only tables, are left readable and reported, so an old key is retired only when it protects nothing. The blind index (email lookup) stays on key `k1`.
+* **Audit log.** `audit_log` is append-only in the database and hash-chained when sealed (`verify_audit_chain`, `export_audit_log`). A database superuser who disables triggers could rewrite the whole chain, so keep an exported head hash outside the database.
 * Provider/referee/physio/doctor roles are self-declared; add credential verification by an admin before real clinical use. (Consent still protects athletes: an unverified "doctor" sees nothing without a grant.)
 * Payments use hosted checkout (Stripe/PayPal, see [docs/payments.md](docs/payments.md)); payouts to sellers, coaches and venues are not built.
 * Encryption at rest of the Postgres disk/backups is an infrastructure concern; this app encrypts the sensitive fields itself on top of it.
