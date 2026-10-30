@@ -6,6 +6,7 @@ import { useLayout } from '../layout';
 import { useGo, useWorkspace } from '../workspace';
 import { Avatar, Btn, Card, Chip, Empty, ErrorBox, H1, Loading, Screen, Tag, T } from '../ui';
 import { HScroll } from '../pickers';
+import { SetupCard } from './setup';
 import { c, day, when } from '../theme';
 
 // Home and Work: the two role-driven tabs of the mobile shell (issue #599). Both read the one workspace the API composes for the active
@@ -144,6 +145,7 @@ export function RoleHome() {
           </View>
         </View>
         <View style={{ marginTop: 14 }}><Context ws={ws} /></View>
+        <SetupCard />
         <View style={{ marginTop: 14 }}><Tiles items={d.summary} /></View>
         <View style={tablet ? { flexDirection: 'row', gap: 24, alignItems: 'flex-start' } : null}>
           <View style={{ flex: 1 }}>

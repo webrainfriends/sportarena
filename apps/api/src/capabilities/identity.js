@@ -14,6 +14,7 @@ import { viewerTiers, visibleFields } from '../athlete-profile.js';
 import { affiliationsFor } from './athlete-profile.js';
 import { PLATFORM_ROLES, reconcilePlatformRoles, withoutPlatformRoles } from '../platform.js';
 import { canSeeYouth, NOT_YOUTH_SQL, refreshYouth, YOUTH_SQL } from '../youth.js';
+import { claimMigrationInvites } from '../migration.js';
 
 const PII = ['full_name', 'phone', 'dob', 'national_id', 'address'];
 const pii = {
@@ -73,6 +74,7 @@ cap({
         enc.full_name_enc ?? null, enc.phone_enc ?? null, enc.dob_enc ?? null, enc.national_id_enc ?? null, enc.address_enc ?? null, i.avatar_emoji, i.avatar_color],
     ));
     if (i.dob) await refreshYouth(u.id, u.id);
+    await claimMigrationInvites(u.id, i.email); // an organisation may already have imported this person: their team invitations appear now (#514)
     return { user: u, ...(await startSession(u, meta)) };
   },
 });

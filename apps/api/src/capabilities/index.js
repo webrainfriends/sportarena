@@ -12,6 +12,8 @@ import './providers.js';
 import './followups.js';
 import './teams.js';
 import './organisations.js';
+import './migrations.js';
+import './launch-checklist.js';
 import './education-catalogue.js';
 import './education-enquiries.js';
 import './education-discovery.js';
