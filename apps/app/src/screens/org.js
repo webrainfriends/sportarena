@@ -171,6 +171,7 @@ function Overview({ o, d, role, archived, reload, toast, go }) {
 
 // ------------------------------------------------------------------ people
 function People({ o, role, archived, toast, reload: reloadOrg }) {
+  const { push } = useNav();
   const [invite, setInvite] = useState(false);
   const [sel, setSel] = useState(null);
   const [confirm, setConfirm] = useState(false);
@@ -184,7 +185,7 @@ function People({ o, role, archived, toast, reload: reloadOrg }) {
   const roles = Object.entries(ROLE_LABEL).filter(([k]) => role === 'owner' || k !== 'owner');
   return (
     <>
-      {manage ? <View style={{ marginTop: 10 }}><Btn small title="Invite someone" onPress={() => setInvite(true)} /></View> : null}
+      {manage ? <View style={{ marginTop: 10, flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}><Btn small title="Invite someone" onPress={() => setInvite(true)} /><Btn small title="Import people" color={c.paper} ink={c.ink} onPress={() => push('Migrate', { organisation_id: o.id })} accessibilityLabel="Import people and teams from TeamSnap, SportsEngine or a spreadsheet" /></View> : null}
       <Section title="Staff" color={c.violet}>
         {staff.error ? <LoadError error={staff.error} onRetry={staff.reload} /> : !staff.data ? <Loading /> : staff.data.length ? staff.data.map((m) => (
           <Row key={m.id} title={m.display_name} sub={`@${m.handle} · ${ROLE_HELP[m.org_role]}${m.department_name ? ` · ${m.department_name}` : ''}`} right={<Tag label={ROLE_LABEL[m.org_role]} />} onPress={manage ? () => setSel(m) : undefined} accessibilityLabel={`${m.display_name}, ${ROLE_LABEL[m.org_role]}${manage ? ', open to change role or remove' : ''}`} />

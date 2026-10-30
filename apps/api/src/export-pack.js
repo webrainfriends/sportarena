@@ -5,7 +5,7 @@
 import { createHash } from 'node:crypto';
 import { many, one } from './db.js';
 import { ACTIVITIES_CTE } from './athlete-history.js';
-import { CAREER_VIEW_SQL } from './career.js';
+import { CAREER_VIEW_SQL, extVisible } from './career.js';
 import { CONSENT_OK } from './coaching-shared.js';
 import { hasConsent } from './youth.js';
 
@@ -111,9 +111,9 @@ async function awardsSection(athleteId, scope) {
 async function careerSection(athleteId, scope) {
   const [from, to] = yearRange(scope.year);
   const rows = await many(
-    `SELECT x.sport, x.sport_slug, x.club, x.unlisted, x.season_label, x.starts_on, x.ends_on, x.current, x.position, x.competition_level, x.source, x.verification_status, x.verified_at,
+    `SELECT x.sport, x.sport_slug, x.club, x.unlisted, x.season_label, x.starts_on, x.ends_on, x.current, x.position, x.competition_level, x.source, x.verification_status, x.verified_at, x.verified_via, x.external_source,
             (SELECT count(*)::int FROM career_membership_evidence ev WHERE ev.membership_id=x.id AND ev.archived_at IS NULL) AS evidence_items
-       FROM (${CAREER_VIEW_SQL} WHERE c.user_id=$1 AND c.archived_at IS NULL AND c.verification_status <> 'rejected'
+       FROM (${CAREER_VIEW_SQL} WHERE c.user_id=$1 AND c.archived_at IS NULL AND c.verification_status <> 'rejected' AND ${extVisible()}
                 AND ($2::date IS NULL OR (c.starts_on <= $3::date AND (c.ends_on IS NULL OR c.ends_on >= $2::date))) AND ($4::uuid IS NULL OR c.sport_id=$4)) x
       ORDER BY x.starts_on DESC, x.id LIMIT ${ROW_CAP}`, [athleteId, from, to, scope.sportId ?? null]);
   return { rows, provenance: count(rows, 'verification_status') };
