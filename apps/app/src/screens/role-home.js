@@ -4,12 +4,14 @@ import { useSession } from '../session';
 import { useNav } from '../nav';
 import { useLayout } from '../layout';
 import { useGo, useWorkspace } from '../workspace';
-import { Avatar, Btn, Card, Chip, Empty, ErrorBox, H1, Loading, Screen, Tag, T } from '../ui';
+import { Avatar, Btn, Card, Chip, Empty, ErrorBox, H1, Loading, Screen, ScreenHeaderProvider, Tag, T } from '../ui';
+import { roleLabel } from '../roles';
+import { workspaceOf } from './more-catalog';
 import { HScroll } from '../pickers';
 import { c, day, when } from '../theme';
 
-// Home and Work: the two role-driven tabs of the mobile shell (issue #599). Both read the one workspace the API composes for the active
-// role. Home answers "what is on today and what is waiting on me"; Work is the whole queue plus the fast actions of the role.
+// Home and Workbench: the two role-driven tabs of the mobile shell (issue #599). Both read the one workspace the API composes for the active
+// role. Home answers "what is on today and what is waiting on me"; Workbench is the role's one page: its queue and fast actions on top of its own screen.
 const EMOJI = { calendar: '📅', qr: '🎟️', edit: '✍️', search: '🔎', check: '✅', people: '👥', inbox: '📨', event: '🏆', scan: '📷', add: '➕', clock: '🕒', whistle: '🏅', cash: '💳', home: '🏠' };
 const DOT = { now: c.red, soon: c.sun, info: c.mute };
 // a date-only value (an event with no start time) shows the date, not a made-up midnight
@@ -172,24 +174,47 @@ export function RoleHome() {
   );
 }
 
-/** Work: everything waiting on the active role, most urgent first, with the role's fast actions on top. */
-export function WorkTab() {
-  const ws = useWorkspace();
-  const { toggleMenu } = useNav();
+/** The queue of the active role: its numbers, fast actions and everything waiting on it, most urgent first. It tops the role's own workspace screen. */
+function RoleQueue({ ws }) {
   const d = ws.data;
+  const own = !!workspaceOf(d.role); // the role's own screen follows, so the "Open my ..." shortcut to it would only repeat it
+  const actions = own ? d.actions.filter((a) => a.key !== 'home') : d.actions;
+  return (
+    <View style={{ marginBottom: 8 }}>
+      <H1 style={{ fontSize: 28, marginTop: 4 }}>Workbench</H1>
+      <T color={c.mute} weight="600">{d.role_label ? `${d.role_label} · ` : ''}{d.work.length ? `${d.work.length} waiting on you` : 'Nothing waiting on you'}</T>
+      <View style={{ marginTop: 12 }}><Context ws={ws} /></View>
+      {d.summary?.length ? <View style={{ marginTop: 14 }}><Tiles items={d.summary} /></View> : null}
+      <Heading>Fast actions</Heading>
+      <Actions actions={actions} />
+      <Heading>Waiting on you</Heading>
+      {d.work.length ? d.work.map((x, i) => <View key={`${x.kind}${i}`} style={{ marginBottom: 10 }}><QueueItem x={x} ws={ws} /></View>) : <Empty emoji="✅" title="You are all caught up" sub="Requests, approvals and replies waiting on you show up here." />}
+    </View>
+  );
+}
+
+/**
+ * Workbench (the Work tab): the one page of the active role. Its queue and fast actions on top, then that role's own screen (coach, official, venue, sponsor ...)
+ * in the same page, so there is no second "workspace" to find. `pages` is the app's screen registry (passed in to avoid an import cycle).
+ */
+export function WorkTab({ pages }) {
+  const ws = useWorkspace();
+  const { goTab } = useNav();
   const early = gate(ws);
   if (early) return early;
+  const space = workspaceOf(ws.data.role);
+  const Space = space && !space[3] ? pages[space[1]] : null;
+  const queue = <RoleQueue ws={ws} />;
+  if (Space) return <ScreenHeaderProvider value={queue}><Space /></ScreenHeaderProvider>;
   return (
-      <Screen onRefresh={ws.reload} refreshing={ws.loading} wide>
-        <H1 style={{ fontSize: 28, marginTop: 4 }}>Work</H1>
-        <T color={c.mute} weight="600">{d.role_label ? `${d.role_label} · ` : ''}{d.work.length ? `${d.work.length} waiting on you` : 'Nothing waiting on you'}</T>
-        <View style={{ marginTop: 12 }}><Context ws={ws} /></View>
-        <Heading>Fast actions</Heading>
-        <Actions actions={d.actions} />
-        <Heading>Waiting on you</Heading>
-        {d.work.length ? d.work.map((x, i) => <View key={`${x.kind}${i}`} style={{ marginBottom: 10 }}><QueueItem x={x} ws={ws} /></View>) : <Empty emoji="✅" title="You are all caught up" sub="Requests, approvals and replies waiting on you show up here." />}
-        {d.generic && d.role ? <T size={12.5} color={c.mute} style={{ marginTop: 6 }}>This role does not have a queue here yet. Its own workspace opens from the first action.</T> : null}
-        <View style={{ marginTop: 18 }}><Btn title="All tools and modules" color={c.paper} ink={c.ink} onPress={toggleMenu} accessibilityLabel="Open all tools and modules" /></View>
-      </Screen>
+    <Screen onRefresh={ws.reload} refreshing={ws.loading} wide>
+      {queue}
+      {space ? (
+        <>
+          <Heading>{`${roleLabel(space[0])} tools`}</Heading>
+          <Card onPress={() => goTab(space[3].tab, { section: space[3].section })} pad={14} accessibilityLabel={`${space[2]}. Open`}><T weight="700">{space[2]}</T><T size={13} color={c.mute}>Open</T></Card>
+        </>
+      ) : null}
+    </Screen>
   );
 }

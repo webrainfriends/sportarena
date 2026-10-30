@@ -10,6 +10,7 @@ import { notify } from '../notify.js';
 import { requireApproved } from '../access.js';
 import { hasOrgGrant } from '../org-access.js';
 import { authority, need, mustBeActive, bodyById, lockBody, logFed, historyOf, nextNumber, policyAt, paramsOf, check, blocking, AFF_STATUS, LIC_STATUS, today, lineage, subtree, plain } from '../federation.js';
+import { gate } from '../federation-approvals.js';
 import { subjectFor, needStaff, staffCan, staffRecipients, evidenceIn, addEvidence, evidenceList, readEvidence, removeEvidence, missingDocuments } from '../federation-subjects.js';
 
 const TAG = 'Federation';
@@ -183,7 +184,7 @@ cap({
   name: 'decide_sanction', method: 'POST', path: '/federation/sanctions/:id/decision', tag: TAG,
   summary: 'Decide a sanction request (sanctioning officer/admin): start_review, request_info, approve, reject, suspend, reinstate or revoke. Approval sets the sanction number, the approved dates and categories and any conditions, after running the body\'s published conditions against the event as it is now; a failed condition needs an `override_reason`, recorded as a compliance exception. The decision keeps the policy version it was made under. Pass `version` to refuse a decision on a record that changed meanwhile.',
   input: z.object({ id, action: z.enum(['start_review', 'request_info', 'approve', 'reject', 'suspend', 'reinstate', 'revoke']), reason: text(500).optional(), approved_categories: categoryList.optional(), approved_starts_on: day.optional(), approved_ends_on: day.optional(),
-    conditions: z.array(text(200).min(2)).max(10).optional(), override_reason: text(500).min(5).optional(), version: z.number().int().min(1).optional() }),
+    conditions: z.array(text(200).min(2)).max(10).optional(), override_reason: text(500).min(5).optional(), version: z.number().int().min(1).optional(), approval_id: id.optional().describe('the second person\'s approval, where the body requires four eyes') }),
   handler: ({ user }, i) => tx(async (c) => {
     const s = await subjectFor(user, 'sanction', i.id, { c, lock: true });
     needStaff(s, 'sanctions');
@@ -206,6 +207,7 @@ cap({
       const { checks, policy } = await sanctionChecks(c, r, s.event, { range: { from, to: toD } });
       const fails = blocking(checks);
       if (fails.length && !i.override_reason) throw conflict(`Not all conditions are met: ${fails.map((x) => x.label).join('; ')}. Fix them, or approve with an override reason.`, { code: 'requirements_not_met', checks });
+      await gate(c, user, { bodyId: r.body_id, actions: fails.length ? ['eligibility_override', 'sanction_approve'] : ['sanction_approve'], subjectType: 'sanction', subjectId: r.id, request: { act: 'approve', override: fails.length ? i.override_reason : null }, approvalId: i.approval_id });
       to = 'approved';
       patch = { sanction_no: r.sanction_no ?? await nextNumber(c, r.body_id, 'sanction', String(from).slice(0, 4)), approved_categories: i.approved_categories ?? r.categories, approved_starts_on: from, approved_ends_on: toD, conditions: i.conditions ?? r.conditions,
         checks: JSON.stringify(checks), policy_version_id: policy?.version_id ?? null, override_reason: fails.length ? i.override_reason : null, decision_reason: i.reason ?? null };

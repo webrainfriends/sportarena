@@ -11,6 +11,7 @@ import { c, day, toneFor } from '../theme';
 import { useNav } from '../nav';
 import { CredentialList } from './pathways';
 import { PortfolioJourney } from './journey-ui';
+import { SkillLevelCard } from '../skill-level';
 import { CoachPassportDesk, GuardianPassports, RecruitmentProfile, RecruitmentSections } from './passport-recruitment';
 
 const nice = (s) => String(s).replace(/_/g, ' ');
@@ -55,7 +56,7 @@ const Stat = ({ value, label }) => (
 );
 
 /** The athlete CV: who they are, where they play, what they have done (season by season), approved results and awards. */
-export function PassportCard({ data }) {
+export function PassportCard({ data, own = false }) {
   const a = data.athlete;
   const main = data.sport_profiles[0];
   const tone = toneFor(main?.sport_slug);
@@ -83,6 +84,8 @@ export function PassportCard({ data }) {
           {data.sport_profiles.map((p) => <Tag key={p.sport_slug + p.role} label={`${p.sport_emoji} ${p.sport} · ${nice(p.role)} · ${nice(p.level)}`} color={c.violetSoft} />)}
         </View>
       ) : null}
+
+      {data.verified_results != null && a.id ? <SkillLevelCard userId={a.id} own={own} /> : null} {/* a level is built from approved results, so it follows that section's sharing choice */}
 
       {data.career ? (
         <Card pad={16}>
@@ -221,7 +224,7 @@ export function MyPassport() {
       <RecruitmentProfile />
 
       <H2 style={{ marginTop: 26 }}>What people will see</H2>
-      <View style={{ marginTop: 10 }}>{prev.error ? <ErrorBox error={prev.error} onRetry={prev.reload} /> : !prev.data ? <Loading /> : <PassportCard data={prev.data} />}</View>
+      <View style={{ marginTop: 10 }}>{prev.error ? <ErrorBox error={prev.error} onRetry={prev.reload} /> : !prev.data ? <Loading /> : <PassportCard data={prev.data} own />}</View>
       <T size={12} color={c.mute} style={{ marginTop: 14 }}>Never shown: email, phone, date of birth, address, private notes or health data. Each link can hide match history, results, awards or certificates.</T>
 
       {form ? (

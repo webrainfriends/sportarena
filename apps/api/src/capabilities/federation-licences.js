@@ -13,6 +13,7 @@ import { requireApproved } from '../access.js';
 import { hasConsent, requireConsent, isYouth } from '../youth.js';
 import { authority, need, mustBeActive, bodyById, lockBody, logFed, historyOf, nextNumber, policyAt, paramsOf, check, blocking, LIC_STATUS, AFF_STATUS, addMonths, today, isGuardianOf, subtree } from '../federation.js';
 import { developmentChecks } from '../officials-development.js';
+import { gate } from '../federation-approvals.js';
 import { subjectFor, needStaff, staffCan, staffRecipients, evidenceIn, addEvidence, evidenceList, readEvidence, removeEvidence, missingDocuments } from '../federation-subjects.js';
 
 const TAG = 'Federation';
@@ -233,7 +234,7 @@ cap({
 cap({
   name: 'decide_licence', method: 'POST', path: '/federation/licences/:id/decision', tag: TAG,
   summary: 'Review a licence (licensing officer/admin): start_review, request_info, approve (issues the licence and its number), reject, suspend (optionally until a date), reinstate or revoke. Approval runs the type\'s own requirements and the body\'s published licence policy; a failed requirement needs an `override_reason`, recorded as a compliance exception. Pass `version` to refuse a decision on a record that changed meanwhile.',
-  input: z.object({ id, action: z.enum(['start_review', 'request_info', 'approve', 'reject', 'suspend', 'reinstate', 'revoke']), reason: text(500).optional(), issued_on: day.optional(), expires_on: day.optional(), suspended_until: day.optional(), override_reason: text(500).min(5).optional(), version: z.number().int().min(1).optional() }),
+  input: z.object({ id, action: z.enum(['start_review', 'request_info', 'approve', 'reject', 'suspend', 'reinstate', 'revoke']), reason: text(500).optional(), issued_on: day.optional(), expires_on: day.optional(), suspended_until: day.optional(), override_reason: text(500).min(5).optional(), version: z.number().int().min(1).optional(), approval_id: id.optional().describe('the second person\'s approval, where the body requires four eyes') }),
   handler: ({ user }, i) => tx(async (c) => {
     const s = await subjectFor(user, 'licence', i.id, { c, lock: true });
     needStaff(s, 'licences');
@@ -266,6 +267,7 @@ cap({
       const { checks, policy } = await licenceChecks(c, l, type, { issuedOn: issued });
       const fails = blocking(checks);
       if (fails.length && !i.override_reason) throw conflict(`Not all requirements are met: ${fails.map((x) => x.label).join('; ')}. Fix them, or approve with an override reason.`, { code: 'requirements_not_met', checks });
+      if (fails.length) await gate(c, user, { bodyId: l.body_id, actions: ['credential_exception'], subjectType: 'licence', subjectId: l.id, request: { act: 'approve', override: i.override_reason }, approvalId: i.approval_id });
       to = 'active';
       patch = { licence_no: l.licence_no ?? await nextNumber(c, l.body_id, 'licence', issued.slice(0, 4)), public_code: l.public_code ?? randomBytes(6).toString('hex').toUpperCase(), issued_on: issued, expires_on: expires, grade: type.grade,
         checks: JSON.stringify(checks), policy_version_id: policy?.version_id ?? null, override_reason: fails.length ? i.override_reason : null, decision_reason: i.reason ?? null, suspended_until: null };

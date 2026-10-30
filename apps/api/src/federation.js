@@ -60,7 +60,13 @@ export async function authority(user, bodyId, { c = pool, optional = false } = {
   const orgR = await orgRole(user, body.organisation_id, c);
   const admin = isAdmin(user) || ['owner', 'admin'].includes(orgR);
   const roles = (await c.query("SELECT role, sport_id FROM governing_body_roles WHERE body_id=$1 AND user_id=$2 AND status='active'", [bodyId, user.id])).rows;
-  if (admin || roles.length) return { body, admin, roles, viaAncestor: false, org_role: orgR };
+  // Delegated roles (#525): an explicit grant on a node above, live, unexpired and reaching this depth. One query; never a per-row check.
+  const delegated = (await c.query(
+    `WITH RECURSIVE up(id, depth) AS (SELECT $1::uuid, 0 UNION SELECT l.parent_id, up.depth + 1 FROM governing_body_links l JOIN up ON l.child_id=up.id WHERE l.status='recognised' AND up.depth < 12)
+     SELECT d.role, d.sport_id, d.id AS delegation_id FROM fed_delegations d JOIN (SELECT id, min(depth) AS depth FROM up GROUP BY id) u ON u.id=d.body_id
+      WHERE d.user_id=$2 AND d.status='active' AND (d.expires_on IS NULL OR d.expires_on >= current_date) AND u.depth <= d.max_depth`, [bodyId, user.id])).rows;
+  roles.push(...delegated.map((d) => ({ ...d, delegated: true })));
+  if (admin || roles.length) return { body, admin, roles, viaAncestor: false, org_role: orgR, delegated: delegated.length > 0 };
   const above = (await lineage(bodyId, c)).filter((x) => x !== bodyId);
   if (above.length) {
     const hit = await c.query(
@@ -138,14 +144,17 @@ export const POLICY_KINDS = {
  * and within it the latest version whose effective date has arrived. The caller stores the returned version id with its decision.
  */
 export async function policyAt(bodyId, kind, { sportId = null, category = '', seasonYear = null, date = today() } = {}, c = pool) {
-  for (const bid of await lineage(bodyId, c)) {
+  const chain = await lineage(bodyId, c);
+  // A locked requirement (#525) binds everything below it: the highest locked one applies even where a nearer body published its own.
+  const anyLocked = (await c.query("SELECT 1 FROM fed_policies WHERE body_id = ANY($1) AND local_override='locked' AND kind=$2 AND status='active' LIMIT 1", [chain, kind])).rowCount > 0;
+  for (const locked of anyLocked ? [true, false] : [false]) for (const bid of locked ? [...chain].reverse() : chain) {
     const r = await c.query(
-      `SELECT p.id AS policy_id, p.title, p.body_id, p.sport_id, p.category, p.season_year, v.id AS version_id, v.version, v.effective_from::text AS effective_from, v.summary, v.params
+      `SELECT p.id AS policy_id, p.title, p.body_id, p.sport_id, p.category, p.season_year, p.local_override, v.id AS version_id, v.version, v.effective_from::text AS effective_from, v.summary, v.params
          FROM fed_policies p JOIN LATERAL (SELECT * FROM fed_policy_versions x WHERE x.policy_id=p.id AND x.effective_from <= $6::date ORDER BY x.effective_from DESC LIMIT 1) v ON true
-        WHERE p.body_id=$1 AND p.kind=$2 AND p.status='active'
+        WHERE p.body_id=$1 AND p.kind=$2 AND p.status='active' AND ($7::boolean = false OR p.local_override='locked')
           AND (p.sport_id IS NULL OR p.sport_id=$3) AND (p.category='' OR p.category=$4) AND (p.season_year IS NULL OR p.season_year=$5)
         ORDER BY (p.sport_id IS NOT NULL) DESC, (p.category <> '') DESC, (p.season_year IS NOT NULL) DESC, p.created_at, p.id LIMIT 1`,
-      [bid, kind, sportId, category, seasonYear, date]);
+      [bid, kind, sportId, category, seasonYear, date, locked]);
     if (r.rows[0]) return { ...r.rows[0], inherited: bid !== bodyId };
   }
   return null;
