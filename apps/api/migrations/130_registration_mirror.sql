@@ -131,14 +131,15 @@ DO $$ BEGIN
 END $$;
 
 -- ---------------------------------------------------------------- one-time, idempotent backfill of everything that already exists (reads legacy rows, writes only rx_*)
+-- typed loop variables for the two mirror calls: a generic `record` cannot be passed to a function that takes a table row type
 DO $$
-DECLARE r record;
+DECLARE r record; rr reg_registrations; ra academy_applications;
 BEGIN
-  FOR r IN SELECT * FROM reg_registrations ORDER BY created_at, id LOOP PERFORM rx_mirror_roster(r); END LOOP;
+  FOR rr IN SELECT * FROM reg_registrations ORDER BY created_at, id LOOP PERFORM rx_mirror_roster(rr); END LOOP;
   FOR r IN SELECT * FROM reg_history ORDER BY created_at, id LOOP
     PERFORM rx_mirror_history('roster_registration', r.id, r.registration_id, r.action, rx_map_roster_status(r.from_status), rx_map_roster_status(coalesce(r.to_status, r.from_status)), r.actor_id, r.created_at);
   END LOOP;
-  FOR r IN SELECT * FROM academy_applications ORDER BY created_at, id LOOP PERFORM rx_mirror_academy(r); END LOOP;
+  FOR ra IN SELECT * FROM academy_applications ORDER BY created_at, id LOOP PERFORM rx_mirror_academy(ra); END LOOP;
   FOR r IN SELECT * FROM academy_application_events ORDER BY created_at, id LOOP
     PERFORM rx_mirror_history('academy_application', r.id, r.application_id, 'stage_' || r.to_stage, rx_map_academy_stage(r.from_stage), rx_map_academy_stage(r.to_stage), r.actor_id, r.created_at);
   END LOOP;
