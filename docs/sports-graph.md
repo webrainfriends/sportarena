@@ -53,3 +53,21 @@ Results use the ontology's sport-neutral model (`outcome`, `rank`, `score`, `sco
 
 ## App (iOS, iPadOS, Android, web)
 `SportsGraph` (search), `Athlete360`, `Organisation360` use the shared Expo components and theme tokens (`ui.js`, `FormSheet`, `EntityPicker` extended with an `organisation` kind), 44pt targets, accessibility labels, and the phone/tablet/desktop layout hook.
+
+## Athlete 360 journey (#571)
+The career-and-development view is the **same** Athlete 360 and timeline, extended; there is no second athlete store, timeline domain or portfolio.
+
+| Need | Where it lives |
+|---|---|
+| Longitudinal timeline | `get_graph_timeline` (person). New domains `statistics` (approved `performances`), `development` (athlete's `player_goals` / `player_plans`, titles and status only) and `media` (coach-approved `passport_videos`); the last two are for the athlete and guardian only |
+| Verified / user-entered / external | every timeline row and 360 row has `origin`. `verified` = confirmed by a club, coach, organiser, doctor or the platform's own record; `user_entered` = entered by the athlete or staff and not yet confirmed; `external` = imported (`performances.provenance='imported'`, imported graph edges). Defined once in `src/athlete-journey.js` |
+| Career / season filters | `sport`, `from`/`to`, `season_id` (an `org_seasons` row) and `membership_id` (one career stint: its dates and sport) on `get_athlete_360` and `get_graph_timeline`; `origin` on the timeline. With a sport filter only rows that belong to a sport are listed (money, contracts and relationships have none) |
+| Comparison between development periods | `compare_athlete_periods` (`GET /graph/athletes/:id/compare`): two periods (dates, season or stint), 12 figures, change and % change, and the origin mix behind each period. Figures from a domain the caller may not see are omitted and listed in `hidden_domains`; health is never part of it |
+| Evidence / provenance links | every row carries `source: {table, id}` back to its canonical record |
+| Downloadable / shareable portfolio with privacy controls | the **player passport** (#312). Two new switches, `show_journey` and `show_development`, both off by default; the journey is read live through the same builder, without internal ids, and goal reasons are never shared. Revocation, expiry, recipient and youth-consent rules are the passport's. Download = `export_passport` (a link) or `GET /me/passport` (the athlete's own full copy). Existing season/career CSV and PDF reports stay in *Season & career reports* |
+
+Permissions: a young person's journey is 404 for anyone who may not see them, and never goes on a link. Contracts, health, payments, travel, assessments and opportunities are never on a shared portfolio. Reads of comparison are audit-logged (`read_graph_compare`).
+
+Migration `130_athlete_journey.sql` adds two boolean columns (default false) to `passport_links`; no row is changed.
+
+App: `Athlete360` gains *Timeline* filters (sport, season/stint pickers, a date-range picker, origin chips), *Compare*, *Development* and *Portfolio* tabs (`screens/journey-ui.js`); the passport sheet gains the two switches. Sport coverage: filters and comparison use the ontology's sport-neutral rows, so every sport in the catalogue works (a test walks the catalogue); football-style appearances carry minutes, individual sports carry outcome and rank.

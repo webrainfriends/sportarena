@@ -10,6 +10,8 @@ import { Btn, Card, Chip, Empty, ErrorBox, Field, H1, H2, Loading, Row, Screen, 
 import { HScroll } from '../pickers';
 import { FormSheet } from '../FormSheet';
 import { c } from '../theme';
+import { saveFile } from '../contracts-ui';
+import { JourneyCompare, JourneyFilters, OriginLegend, OriginTag, filterQuery, filtered } from './journey-ui';
 
 const nice = (s) => String(s ?? '').replace(/_/g, ' ');
 const day = (s) => (s ? new Date(`${String(s).slice(0, 10)}T12:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '');
@@ -20,9 +22,9 @@ const ROUTE = { person: 'Athlete360', organisation: 'Organisation360', team: 'Te
 const VERIFY = { verified: ['Verified', c.mint], unverified: ['Not yet verified', c.sun], rejected: ['Rejected', c.red], claimed: ['Claimed', c.sun] };
 const DOMAIN_LABEL = {
   career: 'Career', competition: 'Matches', result: 'Results', achievement: 'Achievements', contract: 'Contracts', relationship: 'Network', health: 'Availability', organisation: 'Organisation',
-  registration: 'Registrations', accreditation: 'Badges', travel: 'Travel', payment: 'Payments', invoice: 'Invoices', sponsorship: 'Sponsors', assessment: 'Assessments', media: 'Media', training: 'Training', opportunity: 'Opportunities', supplier: 'Suppliers',
+  registration: 'Registrations', accreditation: 'Badges', travel: 'Travel', payment: 'Payments', invoice: 'Invoices', sponsorship: 'Sponsors', assessment: 'Assessments', media: 'Media', statistics: 'Statistics', development: 'Development', training: 'Training', opportunity: 'Opportunities', supplier: 'Suppliers',
 };
-const SOURCE_ROUTE = { career_memberships: 'CareerTimeline', player_contracts: 'PlayerContracts', teams: 'Team', events: 'Event', trips: 'Trip', invoices: 'Invoice', accreditations: 'MyAccreditations' };
+const SOURCE_ROUTE = { career_memberships: 'CareerTimeline', player_contracts: 'PlayerContracts', player_goals: 'MyDevelopment', player_plans: 'MyDevelopment', passport_videos: 'Passport', teams: 'Team', events: 'Event', trips: 'Trip', invoices: 'Invoice', accreditations: 'MyAccreditations' };
 const newKey = () => `web-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 
 const Locked = ({ reason }) => <Card color={c.violetSoft}><T size={13} color={c.mute}>🔒 {reason ?? 'Not shared with you'}</T></Card>;
@@ -68,12 +70,14 @@ export function SportsGraph() {
 }
 
 // ------------------------------------------------------------------ timeline
-export function GraphTimeline({ kind, id, organisation_id }) {
+export function GraphTimeline({ kind, id, organisation_id, filter = {} }) {
   const { push } = useNav();
   const [domains, setDomains] = useState([]);
+  const [origin, setOrigin] = useState('');
   const [pages, setPages] = useState(1);
+  const fq = filterQuery(filter);
   const csv = domains.length ? domains.join(',') : undefined;
-  const tl = useLoad(() => api.get('/graph/timeline', { kind, id, domains: csv, organisation_id, limit: 30 * pages }), [kind, id, csv, pages]);
+  const tl = useLoad(() => api.get('/graph/timeline', { kind, id, domains: csv, organisation_id, origin: origin || undefined, ...fq, limit: 30 * pages }), [kind, id, csv, pages, origin, JSON.stringify(fq)]);
   const d = tl.data;
   const toggle = (k) => { setPages(1); setDomains((cur) => (cur.includes(k) ? cur.filter((x) => x !== k) : [...cur, k])); };
   return (
@@ -82,17 +86,21 @@ export function GraphTimeline({ kind, id, organisation_id }) {
         <Chip label="All" active={!domains.length} onPress={() => { setPages(1); setDomains([]); }} />
         {Object.entries(DOMAIN_LABEL).filter(([k]) => !d || d.domains.includes(k)).map(([k, l]) => <Chip key={k} label={l} active={domains.includes(k)} onPress={() => toggle(k)} />)}
       </HScroll>
-      {tl.loading && !d ? <Loading /> : tl.error ? <ErrorBox error={tl.error} onRetry={tl.reload} /> : !d.items.length ? <Empty emoji="🕰️" title="Nothing on the timeline yet" sub="Career moves, matches, results, awards and shared availability appear here as they are recorded." /> : (
+      <HScroll>
+        {[['', 'Any origin'], ['verified', '✓ Verified'], ['user_entered', '✎ Entered by athlete'], ['external', '⇄ External']].map(([k, l]) => <Chip key={k || 'any'} label={l} active={origin === k} onPress={() => { setPages(1); setOrigin(k); }} />)}
+      </HScroll>
+      {tl.loading && !d ? <Loading /> : tl.error ? <ErrorBox error={tl.error} onRetry={tl.reload} /> : !d.items.length ? <Empty emoji="🕰️" title="Nothing on the timeline yet" sub={filtered(filter) || origin ? 'No records match these filters. Widen the period or sport, or choose Any origin.' : 'Career moves, matches, results, awards and shared availability appear here as they are recorded.'} /> : (
         <View style={{ gap: 8 }}>
           {d.items.map((it) => (
             <Row key={`${it.source.table}${it.source.id}${it.type}${it.at}`} title={it.title} sub={[day(it.at), it.summary].filter(Boolean).join(' · ')}
-              onPress={SOURCE_ROUTE[it.source.table] ? () => push(SOURCE_ROUTE[it.source.table], ['career_memberships', 'player_contracts', 'accreditations'].includes(it.source.table) ? {} : { id: it.source.id }) : undefined}
-              right={<View style={{ gap: 4, alignItems: 'flex-end' }}><Tag label={DOMAIN_LABEL[it.domain] ?? it.domain} color={c.cyan} />{it.provenance === 'derived' ? <Tag label="Derived" color={c.violetSoft} /> : it.verification === 'verified' ? <Tag label="Verified" color={c.mint} /> : null}</View>} />
+              onPress={SOURCE_ROUTE[it.source.table] ? () => push(SOURCE_ROUTE[it.source.table], ['career_memberships', 'player_contracts', 'accreditations', 'player_goals', 'player_plans', 'passport_videos'].includes(it.source.table) ? {} : { id: it.source.id }) : undefined}
+              right={<View style={{ gap: 4, alignItems: 'flex-end' }}><Tag label={DOMAIN_LABEL[it.domain] ?? it.domain} color={c.cyan} /><OriginTag origin={it.origin} />{it.provenance === 'derived' ? <Tag label="Derived" color={c.violetSoft} /> : null}</View>} />
           ))}
           {d.next_offset ? <Btn small title="Show more" color={c.paper} ink={c.ink} onPress={() => setPages((p) => p + 1)} /> : null}
         </View>
       )}
       {d?.hidden_domains?.length ? <T size={12} color={c.mute}>🔒 Not shown to you: {d.hidden_domains.map((x) => DOMAIN_LABEL[x] ?? x).join(', ')}</T> : null}
+      {d ? <OriginLegend origins={d.origins} /> : null}
     </View>
   );
 }
@@ -181,26 +189,38 @@ function Edges({ edges, reload, anchor }) {
 }
 
 // ------------------------------------------------------------------ Athlete 360
-const A_TABS = [['career', 'Career'], ['play', 'Play'], ['contracts', 'Contracts'], ['health', 'Availability'], ['network', 'Network'], ['timeline', 'Timeline']];
+const A_TABS = [['career', 'Career'], ['play', 'Play'], ['timeline', 'Timeline'], ['compare', 'Compare'], ['development', 'Development'], ['contracts', 'Contracts'], ['health', 'Availability'], ['network', 'Network'], ['portfolio', 'Portfolio']];
 export function Athlete360({ id, organisation_id }) {
+  const { push } = useNav();
+  const { toast } = useSession();
   const [tab, setTab] = useState('career');
-  const r = useLoad(() => api.get(`/graph/athletes/${id}/360`, { organisation_id }), [id, organisation_id]);
+  const [f, setF] = useState({ sport: '', period: '' });
+  const [base, setBase] = useState(null);
+  const fq = filterQuery(f);
+  const r = useLoad(() => api.get(`/graph/athletes/${id}/360`, { organisation_id, ...fq }), [id, organisation_id, JSON.stringify(fq)]);
+  // the sport and stint pickers list the whole career, so they are taken from the unfiltered read and kept while a filter is on
+  useEffect(() => { if (r.data && !filtered(f)) setBase(r.data.sections); }, [r.data]);
   if (r.loading && !r.data) return <Screen><Loading /></Screen>;
   if (r.error) return <Screen><ErrorBox error={r.error} onRetry={r.reload} /></Screen>;
   const s = r.data.sections;
+  const all = base ?? s;
+  const stints = all.career?.access === 'ok' ? all.career.data.stints : [];
+  const sports = [...new Map([...stints.map((m) => [m.sport_slug, m.sport]), ...(all.results?.access === 'ok' ? all.results.data.by_sport.map((x) => [x.sport_slug, x.sport]) : [])]).entries()].map(([slug, name]) => ({ slug, name }));
+  const self = r.data.viewer_relation === 'self';
   const ident = { kind: 'person', ...s.identity.data };
   return (
     <Screen wide refreshing={r.loading} onRefresh={r.reload}>
       <IdentityCard ident={ident} reload={r.reload} />
-      <HScroll style={{ marginTop: 10 }}>{A_TABS.map(([k, l]) => <Chip key={k} label={l} active={tab === k} onPress={() => setTab(k)} />)}</HScroll>
+      <HScroll style={{ marginTop: 10 }}>{A_TABS.filter(([k]) => k !== 'portfolio' || self).map(([k, l]) => <Chip key={k} label={l} active={tab === k} onPress={() => setTab(k)} />)}</HScroll>
+      {['career', 'play', 'timeline', 'development'].includes(tab) && (stints.length || sports.length) ? <JourneyFilters f={f} setF={setF} sports={sports} stints={stints} /> : null}
       <View style={{ marginTop: 6 }}>
         {tab === 'career' ? (
           <>
             <Part title="Clubs and teams" sec={s.career} empty="No clubs on the career timeline yet">{(d) => (
-              <View style={{ gap: 8 }}>{d.stints.map((m) => <Row key={m.id} title={m.club} sub={`${m.sport_emoji ?? ''} ${m.sport} · ${m.starts_on?.slice(0, 7)} – ${m.current ? 'now' : m.ends_on?.slice(0, 7)}`} right={<Verification state={m.verification_status === 'verified' ? 'verified' : 'unverified'} />} />)}</View>
+              <View style={{ gap: 8 }}>{d.stints.map((m) => <Row key={m.id} title={m.club} sub={`${m.sport_emoji ?? ''} ${m.sport} · ${m.starts_on?.slice(0, 7)} – ${m.current ? 'now' : m.ends_on?.slice(0, 7)}`} right={<OriginTag origin={m.origin} />} />)}</View>
             )}</Part>
             {s.career?.access === 'ok' && s.career.data.moves.length ? (
-              <Section title="Moves" color={c.pink}>{s.career.data.moves.map((m) => <Row key={m.to_membership_id} title={`${m.from_club} → ${m.to_club}`} sub={`${day(m.on)} · ${m.sport}`} right={<Tag label="Derived" color={c.violetSoft} />} />)}</Section>
+              <Section title="Moves" color={c.pink}>{s.career.data.moves.map((m) => <Row key={m.to_membership_id} title={`${m.from_club} → ${m.to_club}`} sub={`${day(m.on)} · ${m.sport}`} right={<View style={{ gap: 4, alignItems: 'flex-end' }}><OriginTag origin={m.origin} /><Tag label="Derived" color={c.violetSoft} /></View>} />)}</Section>
             ) : null}
           </>
         ) : null}
@@ -209,7 +229,7 @@ export function Athlete360({ id, organisation_id }) {
             <Part title="Matches played" sec={s.competitions}>{(d) => (
               <View style={{ gap: 8 }}>
                 <T size={13} color={c.mute}>{d.totals.matches} matches · {d.totals.verified_minutes} verified minutes · {d.totals.competitions} competitions</T>
-                {d.recent.map((a) => <Row key={a.id} title={`${a.team} vs ${a.opponent ?? 'TBC'}`} sub={`${day(a.scheduled_at)} · ${a.competition} · ${a.sport}`} />)}
+                {d.recent.map((a) => <Row key={a.id} title={`${a.team} vs ${a.opponent ?? 'TBC'}`} sub={`${day(a.scheduled_at)} · ${a.competition} · ${a.sport}`} right={<OriginTag origin={a.origin} />} />)}
               </View>
             )}</Part>
             <Part title="Results by sport" sec={s.results}>{(d) => (
@@ -218,6 +238,7 @@ export function Athlete360({ id, organisation_id }) {
                 <T size={12} color={c.mute}>{d.note}</T>
               </View>
             )}</Part>
+            <Part title="Performance records" sec={s.statistics} empty="No approved records yet">{(d) => <View style={{ gap: 8 }}>{d.map((x) => <Row key={x.source.id} title={x.title} sub={`${day(x.at)} · ${x.summary}`} right={<OriginTag origin={x.origin} />} />)}</View>}</Part>
             <Part title="Achievements" sec={s.achievements} empty="No awards yet">{(d) => <View style={{ gap: 8 }}>{d.map((a) => <Row key={a.id} title={a.name} sub={`${day(a.awarded_at)}${a.competition ? ` · ${a.competition}` : ''}`} />)}</View>}</Part>
           </>
         ) : null}
@@ -232,7 +253,28 @@ export function Athlete360({ id, organisation_id }) {
           )}</Part>
         ) : null}
         {tab === 'network' ? <Section title="Relationships" color={c.pink}><Edges edges={s.relationships.data} reload={r.reload} anchor={id} /></Section> : null}
-        {tab === 'timeline' ? <GraphTimeline kind="person" id={id} organisation_id={organisation_id} /> : null}
+        {tab === 'timeline' ? <GraphTimeline kind="person" id={id} organisation_id={organisation_id} filter={f} /> : null}
+        {tab === 'compare' ? <JourneyCompare id={id} stints={stints} sport={f.sport} /> : null}
+        {tab === 'development' ? (
+          <Part title="Goals and plans" sec={s.development} empty="No goals or plans yet">{(d) => (
+            <View style={{ gap: 8 }}>
+              {d.map((x) => <Row key={`${x.source.id}${x.type}`} title={x.title} sub={[day(x.at), x.summary].filter(Boolean).join(' · ')} onPress={self ? () => push('MyDevelopment') : undefined} right={<OriginTag origin={x.origin} />} />)}
+              <T size={12} color={c.mute}>Titles and status only. The reasons behind a goal stay with the athlete.</T>
+            </View>
+          )}</Part>
+        ) : null}
+        {tab === 'portfolio' ? (
+          <Section title="Share or download this portfolio" color={c.pink}>
+            <Card>
+              <T>The portfolio is your player passport. Choose what a link shows (this career and development timeline, and separately your goals), who it is for, and how long it lasts. A link can be turned off at any time and always reads the latest records.</T>
+              <T size={12} color={c.mute} style={{ marginTop: 8 }}>Every row on a shared portfolio says whether it is verified, entered by you, or external. Contracts, health, payments and travel are never part of it.</T>
+              <View style={{ marginTop: 12, flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+                <Btn title="Choose what to share" onPress={() => push('Passport')} accessibilityLabel="Open the passport to choose what to share" />
+                <Btn title="Download a copy" color={c.paper} ink={c.ink} onPress={async () => { try { await saveFile('portfolio.json', JSON.stringify(await api.get('/me/passport'), null, 2), 'application/json'); toast('Portfolio saved'); } catch (e) { toast(say(e)); } }} accessibilityLabel="Download a copy of your full portfolio" />
+              </View>
+            </Card>
+          </Section>
+        ) : null}
       </View>
     </Screen>
   );

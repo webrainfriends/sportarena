@@ -95,3 +95,14 @@ data is deleted, rewritten or cascaded. Rollback = deploy the previous code; the
 ## Limits
 Playing and scoring rules stay in the governed rulebook (#68). Transfers, rosters and discipline policies are published references (there is no transfer ledger
 yet). Fee collection through the payments gateway is not part of this change; the module records what was paid.
+
+## Governance at scale (#525)
+Extends the same hierarchy, roles, policies and history; nothing is copied. Migration `130_federation_scale.sql` is additive.
+- **Delegation** (`grant_federation_delegation`, `revoke_federation_delegation`, `list_federation_delegations`, `my_federation_delegations`): one role on a body and the bodies beneath it to `max_depth` levels, optional sport and expiry. Resolved in `authority()` with one recursive query; never reaches siblings or ancestors, cannot be re-delegated.
+- **Maker-checker** (`set_federation_approval_rule`, `get_federation_approval_rules`, `request_federation_approval`, `decide_federation_approval`, `cancel_federation_approval`, `list_federation_approvals`, `get_federation_approval`): rules cover affiliation approve/suspend, eligibility override, credential exception, sanction approve, policy publish and file export. A rule on a body binds everything beneath it. An approval is bound to its requester and to a hash of the exact terms, used once, expires after 7 days, and is immutable (database trigger).
+- **Policy inheritance**: `local_override: locked` on a requirement stops bodies beneath from publishing their own; `get_policy_inheritance` shows source, version and why.
+- **Dashboard and reports**: `get_federation_rollup`, `list_federation_rollup_records`, `list_federation_metric_definitions`, `get_federation_aggregate`. Person-level cells under 5 are hidden (with complementary suppression); youth are never shown separately; file exports need a purpose and name no youth holder.
+- **Access review**: `get_federation_access_review`, `record_federation_access_review`, `list_federation_access_reviews`.
+- UI: the Governance tab of Federation Home (no separate console).
+
+Limits: data-exchange profiles depend on #483, which is not built yet; finance/settlement approval is not applicable (fees are only recorded); delegation covers governing-body levels, clubs stay leaf organisations.

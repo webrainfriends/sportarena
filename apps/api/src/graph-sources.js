@@ -6,6 +6,7 @@
 import { many, one } from './db.js';
 import { isAdmin } from './helpers.js';
 import { canManageTeam } from './capabilities/teams.js';
+import { performanceOrigin } from './athlete-journey.js';
 
 const money = (cents, cur) => { try { return new Intl.NumberFormat('en', { style: 'currency', currency: cur }).format(Number(cents) / 100); } catch { return `${(Number(cents) / 100).toFixed(2)} ${cur}`; } };
 const nice = (s) => String(s ?? '').replace(/_/g, ' ');
@@ -32,6 +33,25 @@ export const PERSON_PRIVATE = {
   training: async (id) => (await many(
     `SELECT s.id, s.title, s.kind, s.starts_at AS at, s.status FROM training_sessions s JOIN training_plans p ON p.id=s.plan_id WHERE p.athlete_id=$1 AND s.status IN ('scheduled','completed') ORDER BY s.starts_at DESC LIMIT 100`, [id]))
     .map((s) => row('training', s.at, s.kind, `Training: ${s.title}`, `${nice(s.kind)} · ${s.status}`, 'training_sessions', s.id)),
+  /** The athlete's own goals and self-directed plans: titles, category and status only (the why and measure are theirs). Always user-entered. */
+  development: async (id) => {
+    const goals = await many(
+      `SELECT g.id, g.title, g.category, g.status, s.slug AS sport_slug, coalesce(g.starts_on, g.created_at::date) AS at, coalesce(g.claimed_at, g.updated_at) AS done_at
+         FROM player_goals g LEFT JOIN sports s ON s.id=g.sport_id WHERE g.owner_id=$1 AND g.status <> 'dropped' ORDER BY 6 DESC LIMIT 100`, [id]);
+    const plans = await many(
+      `SELECT p.id, p.title, p.status, s.slug AS sport_slug, coalesce(p.starts_on, p.created_at::date) AS at FROM player_plans p LEFT JOIN sports s ON s.id=p.sport_id WHERE p.owner_id=$1 AND p.status <> 'dropped' ORDER BY 5 DESC LIMIT 100`, [id]);
+    const out = [];
+    for (const g of goals) {
+      out.push(row('development', g.at, 'goal_set', `Goal: ${g.title}`, `${nice(g.category)} · ${g.status}`, 'player_goals', g.id, { origin: 'user_entered', sport_slug: g.sport_slug }));
+      if (g.status === 'achieved') out.push(row('development', g.done_at, 'goal_achieved', `Achieved: ${g.title}`, nice(g.category), 'player_goals', g.id, { origin: 'user_entered', sport_slug: g.sport_slug }));
+    }
+    for (const p of plans) out.push(row('development', p.at, 'plan', `Plan: ${p.title}`, p.status, 'player_plans', p.id, { origin: 'user_entered', sport_slug: p.sport_slug }));
+    return out;
+  },
+  /** Highlights a coach approved for the passport; unapproved clips never appear. */
+  media: async (id) => (await many(
+    `SELECT v.id, v.title, v.reviewed_at AS at, s.slug AS sport_slug FROM passport_videos v LEFT JOIN sports s ON s.id=v.sport_id WHERE v.user_id=$1 AND v.status='approved' AND v.removed_at IS NULL ORDER BY v.reviewed_at DESC LIMIT 50`, [id]))
+    .map((v) => row('media', v.at, 'highlight', `Highlight: ${v.title}`, 'Approved by a coach', 'passport_videos', v.id, { origin: 'verified', sport_slug: v.sport_slug })),
   opportunity: async (id) => (await many(
     `SELECT r.id, r.status, r.created_at AS at, b.title, b.kind FROM billboard_responses r JOIN billboard_posts b ON b.id=r.post_id WHERE r.responder_id=$1 ORDER BY r.created_at DESC LIMIT 100`, [id]))
     .map((o) => row('opportunity', o.at, o.kind, `Opportunity: ${o.title}`, `${nice(o.kind)} · ${o.status}`, 'billboard_posts', o.id)),
@@ -102,4 +122,12 @@ export async function orgMedia(id, staff) {
     `SELECT m.id, m.kind, m.title, m.status, coalesce(m.publish_at, m.created_at) AS at, e.name AS event FROM mr_assets m JOIN events e ON e.id=m.event_id
       WHERE e.organisation_id=$1 AND (($2 AND m.status <> 'draft') OR (m.status='published' AND m.audience='public')) ORDER BY 5 DESC LIMIT 100`, [id, staff]))
     .map((m) => row('media', m.at, m.kind, m.title, `${m.event} · ${nice(m.kind)}${staff ? ` · ${m.status}` : ''}`, 'mr_assets', m.id));
+}
+
+/** Approved performance records in every sport's own units; the origin says whether a competition, a second person or only the athlete stands behind each. */
+export async function personStatistics(id) {
+  return (await many(
+    `SELECT p.id, p.user_id, p.metric, p.value::float8 AS value, p.unit, p.provenance, p.decided_by, s.slug AS sport_slug, s.name AS sport, coalesce(p.achieved_on, p.recorded_at::date) AS at
+       FROM performances p JOIN sports s ON s.id=p.sport_id WHERE p.user_id=$1 AND p.status='approved' ORDER BY 10 DESC, p.id LIMIT 200`, [id]))
+    .map((p) => row('statistics', p.at, 'record', `${nice(p.metric)}: ${p.value}${p.unit ? ` ${p.unit}` : ''}`, p.sport, 'performances', p.id, { origin: performanceOrigin(p), sport_slug: p.sport_slug }));
 }

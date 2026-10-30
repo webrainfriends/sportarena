@@ -42,6 +42,32 @@ export const money = (minor, cur) => { try { const f = new Intl.NumberFormat(und
 export const jurisdiction = (b) => [b.district, b.state, b.region, b.country].filter(Boolean).join(', ');
 export const ago = (iso) => { const d = Math.round((Date.now() - new Date(iso).getTime()) / 864e5); return d <= 0 ? 'today' : d === 1 ? 'yesterday' : `${d} days ago`; };
 /** The error body of a refused decision carries the failed checks; show them, not just the sentence. */
+/** The machine code of a refused call (e.g. approval_required), and its details. */
+export const codeOf = (e) => e?.details?.code ?? e?.body?.error?.details?.code ?? null;
+export const detailsOf = (e) => e?.details ?? e?.body?.error?.details ?? {};
+/** An approved, unused approval this person asked for, for exactly this action and record (so a second try just uses it). */
+export async function usableApproval(bodyId, action, subjectId) {
+  const rows = await api.get(`/federation/bodies/${bodyId}/approvals`, { mine: true, state: 'approved', limit: 50 });
+  return rows.find((a) => a.action === action && a.subject_id === subjectId && !a.used) ?? null;
+}
+/** Where a four-eyes rule stops an action: say why, take a summary for the second person, and send the request. */
+export function ApprovalAskSheet({ visible, onClose, bodyId, action, label, request }) {
+  const { toast } = useSession();
+  const [summary, setSummary] = useState('');
+  const [busy, setBusy] = useState(false);
+  return (
+    <Sheet visible={visible} onClose={onClose} title="A second person must approve">
+      <View style={{ gap: 12 }}>
+        <T size={13} color={c.mute}>{label ?? 'This action'} is set to need two people. Tell the approver what you checked; once they approve, repeat the action and it goes through. The approval covers exactly what you asked and can be used once.</T>
+        <Field label="What the approver should know" value={summary} onChangeText={setSummary} multiline maxLength={500} />
+        <Btn title="Ask for approval" loading={busy} disabled={summary.trim().length < 5} onPress={async () => {
+          setBusy(true);
+          try { await api.post(`/federation/bodies/${bodyId}/approvals`, { action, summary: summary.trim(), ...request }); toast('Sent for approval'); setSummary(''); onClose(); } catch (e) { toast(explain(e)); } finally { setBusy(false); }
+        }} />
+      </View>
+    </Sheet>
+  );
+}
 export const checksOf = (e) => e?.details?.checks ?? e?.body?.error?.details?.checks ?? null;
 
 /** A persistent notice. Role "alert" so assistive technology announces it. */
@@ -219,7 +245,8 @@ export function DecisionSheet({ visible, onClose, kind, record, action, onDone }
   const [until, setUntil] = useState(null);
   const [failed, setFailed] = useState(null);
   const [busy, setBusy] = useState(false);
-  useEffect(() => { if (visible) { setReason(''); setOverride(''); setFrom(null); setTo(null); setUntil(null); setFailed(null); } }, [visible, action]);
+  const [ask, setAsk] = useState(null);
+  useEffect(() => { if (visible) { setReason(''); setOverride(''); setFrom(null); setTo(null); setUntil(null); setFailed(null); setAsk(null); } }, [visible, action]);
   if (!action) return null;
   const needsReason = ['request_info', 'reject', 'suspend', 'revoke'].includes(action);
   const verb = { start_review: 'Start review', request_info: 'Ask for information', approve: 'Approve', reject: 'Do not approve', suspend: 'Suspend', reinstate: 'Reinstate', revoke: 'Revoke' }[action];
@@ -233,7 +260,15 @@ export function DecisionSheet({ visible, onClose, kind, record, action, onDone }
         if (kind === 'sanctions') Object.assign(body, from ? { approved_starts_on: from } : {}, to ? { approved_ends_on: to } : {});
       }
       if (action === 'suspend' && kind === 'licences' && until) body.suspended_until = until;
-      await api.post(`/federation/${kind}/${record.id}/decision`, body);
+      try { await api.post(`/federation/${kind}/${record.id}/decision`, body); }
+      catch (e) {
+        // a four-eyes rule: use an approval already granted for this record, otherwise ask for one
+        if (codeOf(e) !== 'approval_required') throw e;
+        const key = detailsOf(e).action;
+        const found = await usableApproval(record.body_id, key, record.id);
+        if (!found) { setAsk({ action: key, request: { subject_id: record.id, ...(override ? { override_reason: override } : {}), ...(action === 'suspend' ? { reason } : {}) } }); return; }
+        await api.post(`/federation/${kind}/${record.id}/decision`, { ...body, approval_id: found.id });
+      }
       toast(`${verb}: done`); onClose(); onDone?.();
     } catch (e) {
       const ch = checksOf(e);
@@ -257,6 +292,7 @@ export function DecisionSheet({ visible, onClose, kind, record, action, onDone }
             <Checks checks={failed} title="Not all requirements are met" />
             <Field label="Approve anyway — record why (this is logged as a compliance exception)" value={override} onChangeText={setOverride} multiline maxLength={500} />
           </>) : null}
+        <ApprovalAskSheet visible={!!ask} onClose={() => { setAsk(null); onClose(); }} bodyId={record.body_id} action={ask?.action} label={verb} request={ask?.request} />
         <Btn title={failed && override ? 'Approve with override' : verb} loading={busy} disabled={(needsReason && reason.trim().length < 3) || (!!failed && override.trim().length < 5)} onPress={submit} />
       </View>
     </Sheet>

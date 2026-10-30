@@ -11,6 +11,7 @@ import { orgRole } from '../org-access.js';
 import { encrypt } from '../crypto.js';
 import { requireApproved } from '../access.js';
 import { openException, authority, can, need, jurisdictionScope, mustBeJurisdictionOf, mustBeActive, mustRunOrg, bodyById, lockBody, logFed, historyOf, nextNumber, policyAt, paramsOf, check, blocking, AFF_STATUS, addMonths, today, subtree, dateStr } from '../federation.js';
+import { gate } from '../federation-approvals.js';
 import { subjectFor, needStaff, staffCan, staffRecipients, evidenceIn, addEvidence, evidenceList, readEvidence, removeEvidence, missingDocuments } from '../federation-subjects.js';
 
 const TAG = 'Federation';
@@ -214,7 +215,7 @@ cap({
 cap({
   name: 'decide_affiliation', method: 'POST', path: '/federation/affiliations/:id/decision', tag: TAG,
   summary: 'Move an application along (registrar/admin): start_review, request_info (back to the club), approve, reject, suspend or reinstate. Approval runs the body\'s published requirements; if one fails, approval needs an `override_reason`, which is recorded as a compliance exception. Each decision stores the policy version it was made under. Pass `version` (the row_version you saw) to refuse a decision on a record that has since changed.',
-  input: z.object({ id, action: z.enum(['start_review', 'request_info', 'approve', 'reject', 'suspend', 'reinstate']), reason: text(500).optional(), effective_from: day.optional(), effective_to: day.optional(), override_reason: text(500).min(5).optional(), version: z.number().int().min(1).optional() }),
+  input: z.object({ id, action: z.enum(['start_review', 'request_info', 'approve', 'reject', 'suspend', 'reinstate']), reason: text(500).optional(), effective_from: day.optional(), effective_to: day.optional(), override_reason: text(500).min(5).optional(), version: z.number().int().min(1).optional(), approval_id: id.optional().describe('the second person\'s approval, where the body requires four eyes') }),
   handler: ({ user }, i) => tx(async (c) => {
     const s = await subjectFor(user, 'affiliation', i.id, { c, lock: true });
     needStaff(s, 'affiliations');
@@ -228,8 +229,10 @@ cap({
     if (i.action === 'start_review') to = 'under_review';
     else if (i.action === 'request_info') to = 'needs_info';
     else if (i.action === 'reject') { to = 'rejected'; patch = { decision_reason: i.reason }; }
-    else if (i.action === 'suspend') { to = 'suspended'; patch = { decision_reason: i.reason }; }
-    else if (i.action === 'reinstate') {
+    else if (i.action === 'suspend') {
+      await gate(c, user, { bodyId: a.body_id, actions: ['affiliation_suspend'], subjectType: 'affiliation', subjectId: a.id, request: { act: 'suspend', reason: i.reason }, approvalId: i.approval_id });
+      to = 'suspended'; patch = { decision_reason: i.reason };
+    } else if (i.action === 'reinstate') {
       if (a.effective_to < today()) throw conflict('This affiliation has already run out; the club needs to renew');
       to = 'approved'; patch = { decision_reason: i.reason ?? null };
     } else {
@@ -241,6 +244,7 @@ cap({
       const { checks, policy } = await affiliationChecks(c, a, cat, { from, to: toD });
       const fails = blocking(checks);
       if (fails.length && !i.override_reason) throw conflict(`Not all requirements are met: ${fails.map((x) => x.label).join('; ')}. Fix them, or approve with an override reason.`, { code: 'requirements_not_met', checks });
+      await gate(c, user, { bodyId: a.body_id, actions: fails.length ? ['eligibility_override', 'affiliation_approve'] : ['affiliation_approve'], subjectType: 'affiliation', subjectId: a.id, request: { act: 'approve', override: fails.length ? i.override_reason : null }, approvalId: i.approval_id });
       const no = a.affiliation_no ?? await nextNumber(c, a.body_id, 'affiliation', a.season_year);
       to = 'approved';
       patch = { affiliation_no: no, effective_from: from, effective_to: toD, checks: JSON.stringify(checks), policy_version_id: policy?.version_id ?? null, override_reason: fails.length ? i.override_reason : null, decision_reason: i.reason ?? null };

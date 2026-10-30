@@ -12,6 +12,8 @@ import { saveEncrypted } from '../doc-store.js';
 import { toCsv } from '../csv.js';
 import { starterFor } from '../documents/layout.js';
 import { renderEnrolmentLetter } from '../documents/render.js';
+import { gate } from '../federation-approvals.js';
+import { YOUTH_SQL } from '../youth.js';
 import { authority, canSome, need, jurisdictionScope, EXC_COLS, EXC_FROM, subtree, bodyById, logFed, AFF_STATUS, LIC_STATUS, today, dateStr } from '../federation.js';
 import { subjectFor, staffCan } from '../federation-subjects.js';
 import { officerOf } from '../integrity.js';
@@ -84,7 +86,7 @@ cap({
     return {
       body: { id: body.id, name: body.name, level: body.level, abbreviation: body.abbreviation, country: body.country, status: body.status },
       scope: { include_descendants: i.include_descendants, bodies: ids.length },
-      me: { admin: auth.admin, roles: auth.roles.map((r) => r.role), read_only_via_parent: auth.viaAncestor, can: Object.fromEntries(['affiliations', 'licences', 'sanctions', 'governance', 'evidence', 'reports', 'exceptions'].map((p) => [p, canSome(auth, p)]).concat([['integrity', !!(await officerOf(user, body.id))]])) },
+      me: { user_id: user.id, admin: auth.admin, roles: auth.roles.map((r) => r.role), read_only_via_parent: auth.viaAncestor, can: Object.fromEntries(['affiliations', 'licences', 'sanctions', 'governance', 'evidence', 'reports', 'exceptions'].map((p) => [p, canSome(auth, p)]).concat([['integrity', !!(await officerOf(user, body.id))]])) },
       counts: {
         affiliations: { pending: (a.submitted ?? 0) + (a.under_review ?? 0), needs_info: a.needs_info ?? 0, approved: a.approved ?? 0, suspended: a.suspended ?? 0, expired: a.expired ?? 0, expiring_30: affExp.d30, expiring_60: affExp.d60 },
         licences: { pending: (l.submitted ?? 0) + (l.under_review ?? 0), needs_info: l.needs_info ?? 0, active: l.active ?? 0, suspended: l.suspended ?? 0, expired: l.expired ?? 0, expiring_30: licExp.d30, expiring_60: licExp.d60 },
@@ -120,9 +122,9 @@ async function buildReport(i, ids) {
   if (i.report === 'licences') {
     const w = `l.body_id = ANY($1) AND l.status IN ('active','suspended','expired') AND l.issued_on <= $2 AND l.expires_on >= $2 AND l.decided_at::date <= $2 AND ($3::uuid IS NULL OR t.sport_id=$3) AND ($4::int IS NULL OR extract(year FROM l.issued_on)=$4)`;
     const from = 'fed_licences l JOIN governing_bodies b ON b.id=l.body_id JOIN organisations bo ON bo.id=b.organisation_id JOIN fed_licence_types t ON t.id=l.type_id JOIN sports sp ON sp.id=t.sport_id JOIN users u ON u.id=l.holder_id LEFT JOIN fed_affiliations af ON af.id=l.affiliation_id LEFT JOIN organisations co ON co.id=af.organisation_id LEFT JOIN fed_policy_versions pv ON pv.id=l.policy_version_id LEFT JOIN fed_policies pp ON pp.id=pv.policy_id';
-    const rows = await many(`SELECT bo.name AS body, l.licence_no, u.display_name AS holder, u.id AS holder_id, t.name AS type, t.holder_role, sp.name AS sport, t.discipline, l.grade, CASE WHEN l.status='suspended' THEN 'suspended' ELSE 'good_standing' END AS status_as_of,
+    const rows = await many(`SELECT bo.name AS body, l.licence_no, CASE WHEN ${YOUTH_SQL} THEN 'Youth participant' ELSE u.display_name END AS holder, CASE WHEN ${YOUTH_SQL} THEN NULL ELSE u.id END AS holder_id, t.name AS type, t.holder_role, sp.name AS sport, t.discipline, l.grade, CASE WHEN l.status='suspended' THEN 'suspended' ELSE 'good_standing' END AS status_as_of,
         l.issued_on::text AS issued_on, l.expires_on::text AS expires_on, co.name AS club, CASE WHEN pv.id IS NULL THEN NULL ELSE pp.title || ' v' || pv.version END AS policy_version, l.id AS licence_id FROM ${from} WHERE ${w} ORDER BY bo.name, u.display_name, l.id LIMIT ${MAX_EXPORT_ROWS + 1}`, f);
-    return { asOf, rows, totals: countBy(await many(`SELECT CASE WHEN l.status='suspended' THEN 'suspended' ELSE 'good_standing' END AS st, count(*)::int AS n FROM ${from} WHERE ${w} GROUP BY 1`, f)) };
+    return { asOf, rows, redactions: { youth_holders: rows.filter((x) => x.holder === 'Youth participant').length }, totals: countBy(await many(`SELECT CASE WHEN l.status='suspended' THEN 'suspended' ELSE 'good_standing' END AS st, count(*)::int AS n FROM ${from} WHERE ${w} GROUP BY 1`, f)) };
   }
   if (i.report === 'sanctions') {
     const w = `s.body_id = ANY($1) AND s.status IN ('approved','suspended') AND s.approved_starts_on <= $2 AND s.approved_ends_on >= $2 AND s.decided_at::date <= $2 AND ($3::uuid IS NULL OR e.sport_id=$3) AND ($4::int IS NULL OR extract(year FROM s.approved_starts_on)=$4)`;
@@ -145,7 +147,7 @@ async function buildReport(i, ids) {
 cap({
   name: 'get_federation_report', method: 'GET', path: '/federation/bodies/:id/reports/:report', tag: TAG,
   summary: 'A source-linked report for a body and the bodies recognised under it: `affiliations`, `licences`, `sanctions` (what was in force on the `as_of` date, with the effective dates, the policy version the decision used and the id of the source record) or `jurisdiction` (the hierarchy with what each body has in force). Needs a reporting role (auditor, compliance, or a registrar/licensing/sanctioning officer/secretary) or admin. `format=csv` returns a spreadsheet and records the export (who, when, filters, row count and a hash of the file); exports are capped at 5,000 rows.',
-  input: z.object({ id, report: z.enum(REPORTS), as_of: day.optional(), season_year: z.coerce.number().int().min(1990).max(2200).optional(), sport_id: id.optional(), include_descendants: z.coerce.boolean().default(true), format: z.enum(['json', 'csv']).default('json'), ...page }),
+  input: z.object({ id, report: z.enum(REPORTS), as_of: day.optional(), season_year: z.coerce.number().int().min(1990).max(2200).optional(), sport_id: id.optional(), include_descendants: z.coerce.boolean().default(true), format: z.enum(['json', 'csv']).default('json'), purpose: text(300).min(5).optional().describe('why the file is taken (required for a CSV export; kept with the export log)'), approval_id: id.optional().describe('the second person\'s approval, where the body requires four eyes for exports'), ...page }),
   async handler({ user }, i) {
     const auth = await authority(user, i.id);
     need(auth, 'reports');
@@ -154,10 +156,12 @@ cap({
     const cols = COLUMNS[i.report];
     if (i.format === 'csv') {
       if (r.rows.length > MAX_EXPORT_ROWS) throw badRequest(`This export has more than ${MAX_EXPORT_ROWS} rows; narrow it by sport or season`);
+      if (!i.purpose) throw badRequest('Say why you are taking this file (purpose); it is kept with the export log');
       const csv = toCsv(cols, r.rows);
       const sha256 = createHash('sha256').update(csv).digest('hex');
       await tx(async (c) => {
-        await c.query('INSERT INTO fed_exports(body_id, report, filters, as_of, row_count, sha256, exported_by) VALUES ($1,$2,$3,$4,$5,$6,$7)', [i.id, i.report, { season_year: i.season_year ?? null, sport_id: i.sport_id ?? null, include_descendants: i.include_descendants }, r.asOf, r.rows.length, sha256, user.id]);
+        const ap = await gate(c, user, { bodyId: i.id, actions: ['bulk_export'], subjectType: 'report', subjectId: i.id, request: { report: i.report, as_of: i.as_of ?? null, season_year: i.season_year ?? null, sport_id: i.sport_id ?? null, include_descendants: i.include_descendants }, approvalId: i.approval_id });
+        await c.query('INSERT INTO fed_exports(body_id, report, filters, as_of, row_count, sha256, exported_by, purpose, approval_id, redactions) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)', [i.id, i.report, { season_year: i.season_year ?? null, sport_id: i.sport_id ?? null, include_descendants: i.include_descendants }, r.asOf, r.rows.length, sha256, user.id, i.purpose, ap?.id ?? null, r.redactions ?? {}]);
         await audit(c, user.id, 'export_federation_report', 'governing_bodies', i.id);
       });
       return { report: i.report, as_of: r.asOf, rows: r.rows.length, filename: `${auth.body.abbreviation}-${i.report}-${r.asOf}.csv`, sha256, csv };

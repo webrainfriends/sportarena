@@ -318,7 +318,7 @@ cap({
 cap({
   name: 'list_federation_history', method: 'GET', path: '/federation/bodies/:id/history', tag: TAG,
   summary: 'The body\'s immutable decision log: who did what, when and why (staff of the body).',
-  input: z.object({ id, subject_type: z.enum(['body', 'link', 'role', 'affiliation', 'licence', 'sanction', 'policy', 'date']).optional(), ...page }),
+  input: z.object({ id, subject_type: z.enum(['body', 'link', 'role', 'affiliation', 'licence', 'sanction', 'policy', 'date', 'delegation', 'approval', 'approval_rule', 'access_review']).optional(), ...page }),
   async handler({ user }, i) {
     const a = await authority(user, i.id);
     need(a, 'reports');

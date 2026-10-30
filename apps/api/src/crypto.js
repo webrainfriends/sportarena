@@ -3,56 +3,97 @@
 //  * AES-256-GCM, random 96-bit IV per value, ciphertext bound to a context string (AAD) such as
 //    "users.phone" so a ciphertext cannot be copy-pasted into another column.
 //  * Keys are derived (HKDF) from SPORTARENA_MASTER_KEY: one for encryption, one for blind indexes.
-//  * Format: "v1.<iv>.<tag>.<ciphertext>" (base64url). The version prefix lets us rotate keys later.
+//  * Format: "v1.<iv>.<tag>.<ciphertext>" (base64url), or "v2.<keyId>.<iv>.<tag>.<ciphertext>" once a rotated key is active (see the keyring below).
 //  * blindIndex() = HMAC-SHA256 of the normalised value: equality lookup (e.g. login by email)
 //    without storing the plaintext.
 import { createCipheriv, createDecipheriv, createHmac, hkdfSync, randomBytes, scrypt, timingSafeEqual, createHash } from 'node:crypto';
 import { config } from './config.js';
 import { AppError } from './errors.js';
 
-let keys;
-let unwrappedMaster = null;
+// Keyring: every key is identified by an id ("k1" is the original key; ciphertext written before key ids existed is "v1" and always means k1).
+// KEY_ACTIVE picks the key new values are written with; every id in KEY_IDS stays loaded so older values keep decrypting.
+// While k1 is active nothing changes on disk ("v1." values). Once another id is active new values are "v2.<keyId>.<iv>.<tag>.<ciphertext>".
+// The blind index (email lookups) is always keyed from k1: changing it would need every lookup column re-hashed, which a rotation does not do.
+const KEY_ID = /^[a-z0-9_-]{1,32}$/;
+const masters = new Map();   // key id -> master key bytes (KMS provider: unwrapped at start-up)
+const derived = new Map();   // key id -> { enc, idx }
 
-/** Call once at start-up. With KEY_PROVIDER=aws-kms this unwraps the master key via KMS. */
+/** The file a key's KMS-wrapped master key is stored in: k1 keeps the original path, other ids get a suffix. */
+export const wrappedKeyFile = (cfg, keyId) => (keyId === 'k1' ? cfg.masterKeyFile : `${cfg.masterKeyFile}.${keyId}`);
+
+/** Call once at start-up. With KEY_PROVIDER=aws-kms this unwraps every master key in the ring via KMS. */
 export async function initKeys(kms) {
+  derived.clear(); masters.clear();
   if (config.keyProvider === 'env') return;
   if (config.keyProvider !== 'aws-kms') throw new Error(`Unknown KEY_PROVIDER ${config.keyProvider}`);
   const { unwrapMasterKey } = await import('./kms.js');
-  unwrappedMaster = await unwrapMasterKey(config, kms);
-  keys = undefined;
+  for (const id of knownKeyIds()) masters.set(id, await unwrapMasterKey({ ...config, masterKeyFile: wrappedKeyFile(config, id) }, kms));
 }
 
-function getKeys() {
-  if (keys) return keys;
-  const master = unwrappedMaster ?? (config.masterKey ? Buffer.from(config.masterKey, 'base64') : null);
-  if (!master) throw new Error('Encryption keys not initialised — call initKeys() first');
+export const activeKeyId = () => config.activeKeyId ?? 'k1';
+export const knownKeyIds = () => {
+  const ids = new Set(config.keyIds?.length ? config.keyIds : ['k1']);
+  ids.add('k1'); ids.add(activeKeyId());
+  for (const id of ids) if (!KEY_ID.test(id)) throw new Error(`Invalid key id "${id}" (lowercase letters, digits, - and _ only)`);
+  return [...ids];
+};
+
+function getKeys(keyId = 'k1') {
+  const hit = derived.get(keyId);
+  if (hit) return hit;
+  let master = masters.get(keyId) ?? null;
+  if (!master && config.keyProvider === 'env') {
+    const raw = keyId === 'k1' ? config.masterKey : process.env[`SPORTARENA_MASTER_KEY_${keyId.toUpperCase().replace(/-/g, '_')}`];
+    if (raw) master = Buffer.from(raw, 'base64');
+  }
+  if (!master) throw new Error(keyId === 'k1' ? 'Encryption keys not initialised — call initKeys() first' : `Encryption key "${keyId}" is not loaded`);
   if (master.length < 32) throw new Error('SPORTARENA_MASTER_KEY must be >= 32 bytes, base64-encoded');
   const derive = (info) => Buffer.from(hkdfSync('sha256', master, 'sportarena-v1', info, 32));
-  keys = { enc: derive('field-encryption'), idx: derive('blind-index') };
+  const keys = { enc: derive('field-encryption'), idx: derive('blind-index') };
+  derived.set(keyId, keys);
   return keys;
+}
+
+/** Which key a stored value was written with: "k1" for v1, the id for v2, null when it is not one of our ciphertexts. */
+export function keyIdOf(payload) {
+  const p = typeof payload === 'string' ? payload.split('.') : [];
+  if (p[0] === 'v1' && p.length === 4) return 'k1';
+  if (p[0] === 'v2' && p.length === 5) return p[1];
+  return null;
 }
 
 export function encrypt(plaintext, context) {
   if (plaintext === null || plaintext === undefined || plaintext === '') return null;
+  const kid = activeKeyId();
   const iv = randomBytes(12);
-  const cipher = createCipheriv('aes-256-gcm', getKeys().enc, iv);
+  const cipher = createCipheriv('aes-256-gcm', getKeys(kid).enc, iv);
   cipher.setAAD(Buffer.from(context));
   const ct = Buffer.concat([cipher.update(String(plaintext), 'utf8'), cipher.final()]);
-  return ['v1', iv, cipher.getAuthTag(), ct].map((p) => (typeof p === 'string' ? p : p.toString('base64url'))).join('.');
+  const parts = kid === 'k1' ? ['v1'] : ['v2', kid];
+  return [...parts, iv, cipher.getAuthTag(), ct].map((p) => (typeof p === 'string' ? p : p.toString('base64url'))).join('.');
 }
 
 export function decrypt(payload, context) {
   if (!payload) return null;
-  const [v, iv, tag, ct] = payload.split('.');
-  if (v !== 'v1') throw new Error('Unknown ciphertext version');
-  const decipher = createDecipheriv('aes-256-gcm', getKeys().enc, Buffer.from(iv, 'base64url'));
+  const p = payload.split('.');
+  let kid; let iv; let tag; let ct;
+  if (p[0] === 'v1' && p.length === 4) [, iv, tag, ct] = p, kid = 'k1';
+  else if (p[0] === 'v2' && p.length === 5) [, kid, iv, tag, ct] = p;
+  else throw new Error('Unknown ciphertext version');
+  const decipher = createDecipheriv('aes-256-gcm', getKeys(kid).enc, Buffer.from(iv, 'base64url'));
   decipher.setAAD(Buffer.from(context));
   decipher.setAuthTag(Buffer.from(tag, 'base64url'));
   return Buffer.concat([decipher.update(Buffer.from(ct, 'base64url')), decipher.final()]).toString('utf8');
 }
 
+/** Rewrite a stored value under the active key. Returns the same string when it already is (so callers can skip the write). */
+export function reencrypt(payload, context) {
+  if (!payload || keyIdOf(payload) === activeKeyId()) return payload;
+  return encrypt(decrypt(payload, context), context);
+}
+
 export function blindIndex(value) {
-  return createHmac('sha256', getKeys().idx).update(String(value).trim().toLowerCase()).digest('hex');
+  return createHmac('sha256', getKeys('k1').idx).update(String(value).trim().toLowerCase()).digest('hex');
 }
 
 // ---- Password hashing -------------------------------------------------------------------------

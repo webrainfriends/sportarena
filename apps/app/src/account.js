@@ -6,6 +6,8 @@ import { Icon } from './icons';
 import { c, themeMode, scheme, THEME_KEY } from './theme';
 import { LOCALE_KEY, LOCALES, deviceZone, followsDevice, locale, localeLabel, asLocale, fmtDateTime, localeSearchText } from './locale';
 import { storage } from './storage';
+import { useNav } from './nav';
+import { useWorkspace } from './workspace';
 
 // Theme and language are read when the app loads (screens bake the tokens in), so a change is stored and the app restarts.
 async function restart() {
@@ -69,5 +71,18 @@ export function AccountButton() {
       </Pressable>
       <AccountSheet visible={open} onClose={() => setOpen(false)} />
     </>
+  );
+}
+
+/** Round Inbox button beside the account button: opens the one Inbox page, with the unread count on it. */
+export function InboxButton() {
+  const { push } = useNav();
+  const n = useWorkspace()?.data?.unread ?? 0;
+  return (
+    <Pressable onPress={() => push('Inbox')} accessibilityRole="button" accessibilityLabel={n ? `Inbox, ${n} unread` : 'Inbox'} hitSlop={8}
+      style={({ pressed }) => ({ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: c.paper, borderWidth: 1, borderColor: c.line, opacity: pressed ? 0.6 : 1 })}>
+      <Icon name="Inbox" color={c.ink} size={20} />
+      {n ? <View accessibilityElementsHidden importantForAccessibility="no" style={{ position: 'absolute', top: -4, right: -4, minWidth: 18, height: 18, borderRadius: 9, paddingHorizontal: 4, backgroundColor: c.red, alignItems: 'center', justifyContent: 'center' }}><T weight="800" size={10.5} color="#fff">{n > 99 ? '99+' : n}</T></View> : null}
+    </Pressable>
   );
 }

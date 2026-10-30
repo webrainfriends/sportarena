@@ -4,7 +4,8 @@ import { cap, id, money } from '../registry.js';
 import { pool, many, tx } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { isAdmin, mustFind } from '../helpers.js';
-import { sponsorContactUser, sponsorRole, snapshotIdentity, CAN } from '../sponsor-identity-access.js';
+import { sponsorContactUser, snapshotIdentity } from '../sponsor-identity-access.js';
+import { sponsorMay, notifySponsor } from '../sponsor-access.js';
 import { eventForOrganizer } from './events.js';
 import { requireEventTools } from '../commercial/engine.js';
 import { notify } from '../notify.js';
@@ -34,7 +35,10 @@ cap({
       if (dup.rowCount) throw conflict('That vendor already has an open invitation or place at this event');
       const v = (await c.query('INSERT INTO event_vendors(event_id, kind, vendor_user_id, sponsor_id, fee_cents, currency, in_kind, notes, invited_by) VALUES ($1,$2,$3,$4,$5,upper($6),$7,$8,$9) RETURNING *',
         [ev.id, i.kind, vendor, i.sponsor_id ?? null, i.fee_cents, i.currency ?? ev.currency, i.in_kind ?? null, i.notes ?? null, user.id])).rows[0];
-      await notify(c, vendor, { kind: 'event_vendor', title: `${i.kind === 'sponsor' ? 'Sponsorship' : 'Vendor'} invitation: ${ev.name}`, body: i.notes || `${ev.name} invites you as ${i.kind}.`, data: { event_id: ev.id, vendor_id: v.id } });
+      const msg = { kind: 'event_vendor', title: `${i.kind === 'sponsor' ? 'Sponsorship' : 'Vendor'} invitation: ${ev.name}`, body: i.notes || `${ev.name} invites you as ${i.kind}.`, data: { event_id: ev.id, vendor_id: v.id } };
+      // a brand's invitation reaches everyone who may answer it, not only the contact
+      if (i.kind === 'sponsor') await notifySponsor(c, await mustFind('sponsors', i.sponsor_id, 'id, owner_id, entity_id', c), 'vendor_invite', msg);
+      else await notify(c, vendor, msg);
       return v;
     });
   },
@@ -45,7 +49,7 @@ async function vendorMay(c, user, v) {
   if (isAdmin(user)) return true;
   if (v.kind === 'sponsor' && v.sponsor_id) {
     const sp = (await c.query('SELECT id, owner_id, entity_id FROM sponsors WHERE id=$1', [v.sponsor_id])).rows[0];
-    return !!sp && CAN.manage.includes(await sponsorRole(c, user, sp, { asAdmin: false }));
+    return !!sp && sponsorMay(user, sp, 'vendor_invite', c);
   }
   return v.vendor_user_id === user.id;
 }
