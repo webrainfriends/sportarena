@@ -123,6 +123,7 @@ export function parseTarget(t) {
   if (kind === 'tender-builder') return ['TenderBuilder', id ? { id } : {}];
   if (kind === 'tenders') return ['TenderHome', {}];
   if (kind === 'tender-zone') return ['TenderZone', {}];
+  if (kind === 'platform-security') return ['PlatformSecurity', {}];
   if (kind === 'billboard') return ['Billboard', {}];
   if (kind === 'event' && id) return ['Event', { id }];
   if (kind === 'fixture' && id) return ['LiveCentre', { id }];

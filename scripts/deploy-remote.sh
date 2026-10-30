@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runs ON the EC2 host (copied and executed by .github/workflows/deploy.yml). Configuration arrives as environment
-# variables: APP_DIR BRANCH REPO_URL APP_PORT NGINX_PORT DB_PORT ENABLE_TLS PUBLIC_HOST PUBLIC_IP APP_DOMAIN LETSENCRYPT_EMAIL KMS_KEY_ID KMS_REGION (+ optional STRIPE_*/PAYPAL_*/PAYMENT_CURRENCY/SETTLEMENT_*/PROVIDER_COMMISSION_BP).
+# variables: APP_DIR BRANCH REPO_URL APP_PORT NGINX_PORT DB_PORT ENABLE_TLS PUBLIC_HOST PUBLIC_IP APP_DOMAIN LETSENCRYPT_EMAIL KMS_KEY_ID KMS_REGION (+ optional KEY_IDS/KEY_ACTIVE,  STRIPE_*/PAYPAL_*/PAYMENT_CURRENCY/SETTLEMENT_*/PROVIDER_COMMISSION_BP).
 # Idempotent; see docs/deployment.md.
 set -Eeuo pipefail
 # Persist why a deploy failed: the SSH session can drop its last output lines on a non-zero exit, so the
@@ -85,6 +85,17 @@ sudo chmod 700 "$KEY_DIR"
 (cd apps/api && KEY_PROVIDER=aws-kms KMS_KEY_ID="$KMS_KEY_ID" KMS_REGION="$KMS_REGION" MASTER_KEY_FILE="$KEY_DIR/master.key.enc" \
   node scripts/kms-init.js) || abort_deploy "This server cannot use the KMS key (see [kms] lines above)."
 
+# ---- key ring (optional): KEY_IDS lists every key that stays loaded, KEY_ACTIVE the one new values are written with. Defaults: k1 only. ----
+KEY_IDS="$(printf '%s' "${KEY_IDS:-k1}" | tr -d '\r\n ')"
+KEY_ACTIVE="$(printf '%s' "${KEY_ACTIVE:-k1}" | tr -d '\r\n ')"
+case ",$KEY_IDS," in *",k1,"*) ;; *) abort_deploy "KEY_IDS ($KEY_IDS) must include k1: values written before key rotation depend on it." ;; esac
+case ",$KEY_IDS," in *",$KEY_ACTIVE,"*) ;; *) abort_deploy "KEY_ACTIVE ($KEY_ACTIVE) must be one of KEY_IDS ($KEY_IDS)." ;; esac
+for kid in ${KEY_IDS//,/ }; do
+  [ "$kid" = k1 ] && continue
+  (cd apps/api && KEY_PROVIDER=aws-kms KMS_KEY_ID="$KMS_KEY_ID" KMS_REGION="$KMS_REGION" MASTER_KEY_FILE="$KEY_DIR/master.key.enc" \
+    node scripts/kms-init.js --key-id "$kid") || abort_deploy "This server cannot create or unwrap key $kid (see [kms] lines above)."
+done
+
 # ---- web build (same-origin API: nginx proxies /api and /mcp) ----
 echo "[deploy] building the app for web"
 (cd apps/app && NODE_OPTIONS=--max-old-space-size=1536 CI=1 EXPO_PUBLIC_API_URL= npx expo export --platform web --output-dir dist) \
@@ -140,6 +151,8 @@ set_env KEY_PROVIDER aws-kms
 set_env KMS_KEY_ID "$KMS_KEY_ID"
 set_env KMS_REGION "$KMS_REGION"
 set_env MASTER_KEY_FILE "$KEY_DIR/master.key.enc"
+set_env KEY_IDS "$KEY_IDS"
+set_env KEY_ACTIVE "$KEY_ACTIVE"
 # Uploaded venue photos/videos live outside the repo checkout and the web root, so no deploy ever touches them.
 MEDIA_DIR="$KEY_DIR/media"
 sudo mkdir -p "$MEDIA_DIR"; sudo chown "$(id -un):$(id -gn)" "$MEDIA_DIR"

@@ -46,6 +46,7 @@ import { syncOpenGames } from './open-games-sweeps.js';
 import { adSweeps } from './ads/engine.js';
 import { raiseTeamDues } from './team-money.js';
 import { reconcileFinance } from './finance.js';
+import { sealAuditLog } from './audit-chain.js';
 
 export const STEPS = [
   ['holds', 'holds_released', expireUnpaidHolds, 0],
@@ -76,6 +77,7 @@ export const STEPS = [
   ['billing_schedules', 'billing_periods_raised', raiseScheduledCharges, 0],
   ['collections', 'collection_cases_advanced', runCollections, 0],
   ['access_grants', 'access_grants_revoked', sweepAccessGrants, 0],
+  ['audit_chain', 'audit_rows_sealed', sealAuditLog, 0],
   ['tender_jobs', 'tender_jobs', runTenderJobs, null],
   ['tender_reminders', 'tender_deadline_reminders', sendTenderReminders, 0],
   ['sponsor_tasks', 'sponsor_task_reminders', processSponsorTasks, 0],

@@ -38,6 +38,7 @@ export const WORKSPACES = [
   ['athlete', 'Passport', 'Player passport & QR'],
   ['admin', 'PartnerConsole', 'Partners & platform team'],
   ['platform_admin', 'CommercialConsole', 'Catalogue, pricing & entitlements'],
+  ['platform_admin', 'PlatformSecurity', 'Encryption keys & audit log'],
 ];
 
 /** The workspaces this person can open: [role, route, sub, tab?], in catalogue order. */
