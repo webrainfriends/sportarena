@@ -105,6 +105,7 @@ export function parseTarget(t) {
   if (kind === 'registration-form' && id) return ['RegistrationForm', { id }];
   if (kind === 'assessment' && id) return ['OfficialAssessment', { id }];
   if (kind === 'officials-development') return ['OfficialsDevelopment', id ? { tab: id } : {}];
+  if (kind === 'competition') return ['Competitions', id ? { id } : {}];
   if (kind === 'federation' && id) return ['FederationHome', extra ? { id, tab: extra } : { id }];
   if (kind === 'integrity-case' && id) return ['IntegrityCase', { id }];
   if (kind === 'my-integrity') return ['MyIntegrity', {}];
