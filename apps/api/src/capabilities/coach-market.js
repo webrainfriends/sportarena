@@ -20,6 +20,7 @@ import { venueText } from '../session-links.js';
 
 const TAG = 'Coach marketplace';
 const SHORT = z.string().min(1).max(60);
+export const COACHING_STYLES = ['player_led', 'technical', 'tactical', 'game_based', 'athlete_development', 'holistic', 'performance', 'fun_and_participation', 'discipline', 'data_informed'];
 const LEVELS = ['beginner', 'amateur', 'semi_pro', 'pro'];
 const day = z.number().int().min(0).max(6);
 const rated = `(SELECT round(avg(r.rating)::numeric, 2)::float8 FROM coach_reviews r WHERE r.coach_id=u.id) AS rating, (SELECT count(*)::int FROM coach_reviews r WHERE r.coach_id=u.id) AS rating_count`;
@@ -49,17 +50,19 @@ cap({
     timezone: z.string().max(60).optional(), slot_min: z.number().int().min(15).max(240).optional(), accepting: z.boolean().optional(), listed: z.boolean().optional(),
     tagline: z.string().max(140).nullable().optional(), intro_video_url: z.string().url().max(300).startsWith('https://').nullable().optional(),
     serves: z.array(z.enum(AUDIENCES)).min(1).optional(), travel_km: z.number().int().min(0).max(1000).nullable().optional(),
+    philosophy: z.string().trim().max(1500).nullable().optional().describe('your coaching philosophy in your own words; shown on your public profile and used (as your stated approach) to ground the AI copilot for you'),
+    coaching_styles: z.array(z.enum(COACHING_STYLES)).max(6).optional().describe('how you coach, picked from the catalogue'),
   }),
   async handler({ user }, i) {
     if (i.timezone && !validTimezone(i.timezone)) throw badRequest('Unknown time zone');
     const cur = await one('SELECT * FROM coach_profiles WHERE user_id=$1', [user.id]);
     const v = (k, d) => (i[k] === undefined ? cur?.[k] ?? d : i[k]);
     return one(
-      `INSERT INTO coach_profiles(user_id, headline, bio, city, delivery, specialties, languages, timezone, slot_min, accepting, listed, tagline, intro_video_url, serves, travel_km)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
-       ON CONFLICT (user_id) DO UPDATE SET headline=$2, bio=$3, city=$4, delivery=$5, specialties=$6, languages=$7, timezone=$8, slot_min=$9, accepting=$10, listed=$11, tagline=$12, intro_video_url=$13, serves=$14, travel_km=$15, updated_at=now()
+      `INSERT INTO coach_profiles(user_id, headline, bio, city, delivery, specialties, languages, timezone, slot_min, accepting, listed, tagline, intro_video_url, serves, travel_km, philosophy, coaching_styles)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+       ON CONFLICT (user_id) DO UPDATE SET headline=$2, bio=$3, city=$4, delivery=$5, specialties=$6, languages=$7, timezone=$8, slot_min=$9, accepting=$10, listed=$11, tagline=$12, intro_video_url=$13, serves=$14, travel_km=$15, philosophy=$16, coaching_styles=$17, updated_at=now()
        RETURNING *`,
-      [user.id, v('headline', null), v('bio', null), v('city', null), v('delivery', 'in_person'), v('specialties', []), v('languages', []), v('timezone', 'UTC'), v('slot_min', 60), v('accepting', true), v('listed', true), v('tagline', null), v('intro_video_url', null), v('serves', ['individual']), v('travel_km', null)]);
+      [user.id, v('headline', null), v('bio', null), v('city', null), v('delivery', 'in_person'), v('specialties', []), v('languages', []), v('timezone', 'UTC'), v('slot_min', 60), v('accepting', true), v('listed', true), v('tagline', null), v('intro_video_url', null), v('serves', ['individual']), v('travel_km', null), v('philosophy', null) || null, v('coaching_styles', [])]);
   },
 });
 
@@ -92,7 +95,7 @@ cap({
     const u = await one(`SELECT ${PUBLIC_USER} FROM users u WHERE u.id=$1 AND ${NOT_YOUTH_SQL} AND EXISTS (SELECT 1 FROM active_sport_profiles p WHERE p.user_id=u.id AND p.role='coach')`, [i.id]);
     if (!u) throw notFound('Coach');
     const [profile, sports, summary, spread, reviews, stats, sched, badges, rateCards, specs] = await Promise.all([
-      one('SELECT headline, tagline, intro_video_url, serves, travel_km, bio AS about, city, delivery, specialties, languages, accepting, listed, timezone, slot_min FROM coach_profiles WHERE user_id=$1', [i.id]),
+      one('SELECT headline, tagline, intro_video_url, serves, travel_km, philosophy, coaching_styles, bio AS about, city, delivery, specialties, languages, accepting, listed, timezone, slot_min FROM coach_profiles WHERE user_id=$1', [i.id]),
       many("SELECT s.slug, s.name, s.emoji, p.level, p.hourly_rate_cents, p.experience_years, p.club FROM active_sport_profiles p JOIN sports s ON s.id=p.sport_id WHERE p.user_id=$1 AND p.role='coach' ORDER BY s.name", [i.id]),
       one('SELECT round(avg(rating)::numeric, 2)::float8 AS avg, count(*)::int AS n FROM coach_reviews WHERE coach_id=$1', [i.id]),
       many('SELECT rating, count(*)::int AS n FROM coach_reviews WHERE coach_id=$1 GROUP BY rating', [i.id]),
