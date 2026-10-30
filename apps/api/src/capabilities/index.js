@@ -245,6 +245,7 @@ import './integrity-cases.js';
 import './integrity-records.js';
 import './federation-governance.js';
 import './federation-home.js';
+import './federation-administration.js';
 import './federation-scale.js';
 import './officials-assessors.js';
 import './officials-assessments.js';

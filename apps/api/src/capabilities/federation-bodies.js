@@ -8,7 +8,7 @@ import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { audit, isAdmin, PUBLIC_USER } from '../helpers.js';
 import { notify } from '../notify.js';
 import { requireApproved } from '../access.js';
-import { LEVELS, ROLES, ROLE_LABEL, POLICY_KINDS, authority, can, need, bodyById, lockBody, lineage, logFed, historyOf, BODY_SQL } from '../federation.js';
+import { LEVELS, ROLES, ROLE_LABEL, POLICY_KINDS, authority, can, canSome, need, bodyById, lockBody, lineage, logFed, historyOf, BODY_SQL } from '../federation.js';
 
 const TAG = 'Federation';
 const text = (n) => z.string().trim().max(n);
@@ -119,7 +119,7 @@ cap({
     ]);
     const auth = user ? await authority(user, b.id, { optional: true }) : null;
     const { organisation_id, ...pub } = b;
-    return { ...pub, sports, parent, children, categories, licence_types, me: auth ? { admin: auth.admin, roles: auth.roles.map((r) => r.role), read_only_via_parent: auth.viaAncestor, can: Object.fromEntries(['affiliations', 'licences', 'sanctions', 'governance', 'evidence', 'reports'].map((p) => [p, can(auth, p)])) } : null };
+    return { ...pub, sports, parent, children, categories, licence_types, me: auth ? { admin: auth.admin, roles: auth.roles.map((r) => r.role), read_only_via_parent: auth.viaAncestor, can: Object.fromEntries(['affiliations', 'licences', 'sanctions', 'governance', 'evidence', 'reports', 'exceptions'].map((p) => [p, canSome(auth, p)])) } : null };
   },
 });
 
@@ -266,7 +266,7 @@ cap({
 cap({
   name: 'grant_federation_role', method: 'POST', path: '/federation/bodies/:id/roles', tag: TAG, status: 201,
   summary: 'Give a person one scoped job on the body (registrar, licensing officer, sanctioning officer, secretary, compliance, auditor), for every sport or for one (owner/admin). Roles are checked live on every call and can be revoked at once. None of them can see a club\'s finance, coaching notes or medical data.',
-  input: z.object({ id, user_id: id, role: z.enum(ROLES), sport_id: id.optional().describe('limit the role to one sport the body governs') }),
+  input: z.object({ id, user_id: id, role: z.enum(ROLES), sport_id: id.optional().describe('limit the role to one sport the body governs'), jurisdiction_ids: z.array(id).max(50).default([]).describe('limit the role to records in these jurisdictions of the body (regions, states, districts); empty = the whole body') }),
   handler: ({ user }, i) => tx(async (c) => {
     const auth = await authority(user, i.id, { c });
     if (!auth.admin) throw forbidden('Only the body\'s owners and admins grant roles');
@@ -274,10 +274,12 @@ cap({
     mustBeStaffable(b);
     if (!(await c.query('SELECT 1 FROM users WHERE id=$1', [i.user_id])).rowCount) throw notFound('Person');
     if (i.sport_id && !(await c.query('SELECT 1 FROM governing_body_sports WHERE body_id=$1 AND sport_id=$2 AND ended_on IS NULL', [b.id, i.sport_id])).rowCount) throw badRequest('That sport is not one this body governs');
+    const juris = [...new Set(i.jurisdiction_ids)];
+    if (juris.length && (await c.query('SELECT count(*)::int AS n FROM fed_jurisdictions WHERE body_id=$1 AND archived_at IS NULL AND id = ANY($2)', [b.id, juris])).rows[0].n !== juris.length) throw badRequest('Pick jurisdictions that belong to this body');
     let r;
-    try { r = (await c.query('INSERT INTO governing_body_roles(body_id, user_id, role, sport_id, granted_by) VALUES ($1,$2,$3,$4,$5) RETURNING *', [b.id, i.user_id, i.role, i.sport_id ?? null, user.id])).rows[0]; }
+    try { r = (await c.query('INSERT INTO governing_body_roles(body_id, user_id, role, sport_id, jurisdiction_ids, granted_by) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *', [b.id, i.user_id, i.role, i.sport_id ?? null, juris, user.id])).rows[0]; }
     catch (e) { if (e.code === '23505') throw conflict('They already hold that role'); throw e; }
-    await logFed(c, b.id, 'role', r.id, 'granted', { to: 'active', actor: user.id, detail: { user_id: i.user_id, role: i.role, sport_id: i.sport_id ?? null } });
+    await logFed(c, b.id, 'role', r.id, 'granted', { to: 'active', actor: user.id, detail: { user_id: i.user_id, role: i.role, sport_id: i.sport_id ?? null, jurisdiction_ids: juris } });
     await notify(c, i.user_id, { kind: 'federation_role', title: 'Federation role', body: `You are now ${ROLE_LABEL[i.role]} for ${b.abbreviation}.`, data: { body_id: b.id }, dedupe_key: `fed-role:${r.id}` });
     return r;
   }),
@@ -307,7 +309,7 @@ cap({
     const b = await bodyById(i.id);
     const [owners, roles] = await Promise.all([
       many(`SELECT ${PUBLIC_USER}, m.role FROM organisation_members m JOIN users u ON u.id=m.user_id WHERE m.organisation_id=$1 AND m.status='active' AND m.role IN ('owner','admin') ORDER BY m.role, u.display_name`, [b.organisation_id]),
-      many(`SELECT r.id AS role_id, r.role, r.sport_id, s.name AS sport_name, r.granted_at, ${PUBLIC_USER} FROM governing_body_roles r JOIN users u ON u.id=r.user_id LEFT JOIN sports s ON s.id=r.sport_id WHERE r.body_id=$1 AND r.status='active' ORDER BY r.role, u.display_name`, [i.id]),
+      many(`SELECT r.id AS role_id, r.role, r.sport_id, s.name AS sport_name, r.jurisdiction_ids, coalesce((SELECT json_agg(j.name ORDER BY j.name) FROM fed_jurisdictions j WHERE j.id = ANY(r.jurisdiction_ids)), '[]') AS jurisdiction_names, r.granted_at, ${PUBLIC_USER} FROM governing_body_roles r JOIN users u ON u.id=r.user_id LEFT JOIN sports s ON s.id=r.sport_id WHERE r.body_id=$1 AND r.status='active' ORDER BY r.role, u.display_name`, [i.id]),
     ]);
     return { owners, roles, role_labels: ROLE_LABEL };
   },

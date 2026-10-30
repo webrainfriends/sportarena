@@ -312,6 +312,9 @@ export function SetupTab({ id, me, home, reloadHome }) {
   const sports = useSports();
   const body = useBody(id);
   const roles = useLoad(() => api.get(`/federation/bodies/${id}/roles`), [id]);
+  const juris = useLoad(() => api.get(`/federation/bodies/${id}/jurisdictions`, { include_archived: true }), [id]);
+  const [addJur, setAddJur] = useState(false);
+  const [dropJur, setDropJur] = useState(null);
   const links = useLoad(() => api.get(`/federation/bodies/${id}/links`, { limit: 50 }), [id]);
   const mine = useLoad(() => api.get('/federation/mine', { limit: 100 }).catch(() => []), []);
   const [grant, setGrant] = useState(false);
@@ -335,9 +338,15 @@ export function SetupTab({ id, me, home, reloadHome }) {
             {roles.error ? <LoadError error={roles.error} onRetry={roles.reload} /> : !roles.data ? <Loading /> : (
               <>
                 {roles.data.owners.map((o) => <ListCard key={`o${o.id}`} title={o.display_name} sub={`@${o.handle}`} status="active" statusLabel={o.role === 'owner' ? 'Owner' : 'Admin'} />)}
-                {roles.data.roles.map((r) => <ListCard key={r.role_id} title={r.display_name} sub={`${ROLE_LABEL[r.role]}${r.sport_name ? ` · ${r.sport_name} only` : ' · all sports'}`} sub2={ROLE_HELP[r.role]} right={admin ? <Btn small title="Revoke" color={c.paper} ink={c.ink} onPress={() => setRevoke(r)} /> : undefined} />)}
+                {roles.data.roles.map((r) => <ListCard key={r.role_id} title={r.display_name} sub={`${ROLE_LABEL[r.role]}${r.sport_name ? ` · ${r.sport_name} only` : ' · all sports'}${r.jurisdiction_names?.length ? ` · ${r.jurisdiction_names.join(', ')} only` : ''}`} sub2={ROLE_HELP[r.role]} right={admin ? <Btn small title="Revoke" color={c.paper} ink={c.ink} onPress={() => setRevoke(r)} /> : undefined} />)}
                 {!roles.data.roles.length ? <T size={12.5} color={c.mute}>No scoped roles yet. Give someone one job — registrar, licensing officer, sanctioning officer, secretary, compliance or auditor — without giving them the whole body.</T> : null}
               </>)}
+          </Section>
+          <Section title="Regions, states and districts" color={c.lime} action={me.admin || me.roles.includes('secretary') ? 'Add' : undefined} onAction={() => setAddJur(true)}>
+            {juris.error ? <LoadError error={juris.error} onRetry={juris.reload} /> : !juris.data ? <Loading /> : juris.data.length ? juris.data.map((j) => (
+              <ListCard key={j.id} title={j.name} sub={`${j.level[0].toUpperCase()}${j.level.slice(1)} · ${j.records ?? 0} record${j.records === 1 ? '' : 's'}`} status={j.archived_at ? 'archived' : 'active'}
+                right={!j.archived_at && (me.admin || me.roles.includes('secretary')) ? <Btn small title="Retire" color={c.paper} ink={c.ink} onPress={() => setDropJur(j)} /> : undefined} />))
+              : <T size={12.5} color={c.mute}>None yet. Add the places this body administers so applications can be filed under them and roles limited to them.</T>}
           </Section>
           <Section title="Recognition" color={c.mint} action={admin ? 'Ask or invite' : undefined} onAction={() => setPropose(true)}>
             {b && !b.parent && !(links.data ?? []).length ? <T size={12.5} color={c.mute}>Not recognised under another body, and no bodies recognised below.</T> : null}
@@ -377,8 +386,18 @@ export function SetupTab({ id, me, home, reloadHome }) {
 
       <FormSheet visible={grant} onClose={() => setGrant(false)} title="Give a role" submitLabel="Give role" initial={{ role: 'registrar' }}
         fields={[{ key: 'user_id', label: 'Person', type: 'entity', noun: 'person' }, { key: 'role', label: 'Role', type: 'chips', options: Object.entries(ROLE_LABEL).map(([value, label]) => ({ value, label })), hint: 'Each role does one job. None can see a club\'s finance, coaching notes or medical data.' },
-          ...((b?.sports ?? []).length > 1 ? [{ key: 'sport_id', label: 'Only for one sport (optional)', type: 'chips', options: b.sports.map((s) => ({ value: s.sport_id, label: s.sport_name })), optional: true }] : [])]}
-        onSubmit={async (v) => { await api.post(`/federation/bodies/${id}/roles`, { user_id: v.user_id, role: v.role, sport_id: v.sport_id || undefined }); roles.reload(); return 'Role given'; }} />
+          ...((b?.sports ?? []).length > 1 ? [{ key: 'sport_id', label: 'Only for one sport (optional)', type: 'chips', options: b.sports.map((s) => ({ value: s.sport_id, label: s.sport_name })), optional: true }] : []),
+          ...((juris.data ?? []).some((j) => !j.archived_at) ? [{ key: 'jurisdiction_ids', label: 'Only for these places (optional)', type: 'multimenu', options: juris.data.filter((j) => !j.archived_at).map((j) => ({ value: j.id, label: j.name, sub: j.level })), optional: true, placeholder: 'The whole body', hint: 'They then see and decide only records filed under these regions, states or districts.' }] : [])]}
+        onSubmit={async (v) => { await api.post(`/federation/bodies/${id}/roles`, { user_id: v.user_id, role: v.role, sport_id: v.sport_id || undefined, jurisdiction_ids: v.jurisdiction_ids ?? [] }); roles.reload(); return 'Role given'; }} />
+      <FormSheet visible={addJur} onClose={() => setAddJur(false)} title="Add a place" submitLabel="Add" initial={{ level: 'region' }}
+        fields={[{ key: 'level', label: 'Kind of place', type: 'chips', options: [{ value: 'region', label: 'Region' }, { value: 'state', label: 'State' }, { value: 'district', label: 'District' }] }, { key: 'name', label: 'Name', type: 'text' }]}
+        onSubmit={async (v) => { await api.post(`/federation/bodies/${id}/jurisdictions`, v); juris.reload(); return 'Added'; }} />
+      <Sheet visible={!!dropJur} onClose={() => setDropJur(null)} title={`Retire ${dropJur?.name ?? ''}`}>
+        <View style={{ gap: 12 }}>
+          <T size={13} color={c.mute}>It stops being offered for new applications and roles. Records and roles that already use it keep it.</T>
+          <Btn title="Retire" color={c.red} onPress={async () => { try { await api.post(`/federation/jurisdictions/${dropJur.id}/archive`, {}); setDropJur(null); juris.reload(); toast('Retired'); } catch (e) { toast(explain(e)); } }} />
+        </View>
+      </Sheet>
       <ReasonSheet visible={!!revoke} onClose={() => setRevoke(null)} title={`Revoke ${revoke ? ROLE_LABEL[revoke.role] : ''}`} body={revoke ? `${revoke.display_name} loses this role at once. The grant stays in the history.` : ''} confirm="Revoke" danger
         onConfirm={async () => { await act(() => api.del(`/federation/bodies/${id}/roles/${revoke.role_id}`), 'Role revoked'); roles.reload(); }} />
       <ReasonSheet visible={!!endLink} onClose={() => setEndLink(null)} title="End recognition" body="The link is kept with its end date. Nothing either body has issued is touched." confirm="End recognition" danger

@@ -9,7 +9,7 @@ import { audit } from '../helpers.js';
 import { notify } from '../notify.js';
 import { requireApproved } from '../access.js';
 import { hasOrgGrant } from '../org-access.js';
-import { authority, need, mustBeActive, bodyById, lockBody, logFed, historyOf, nextNumber, policyAt, paramsOf, check, blocking, AFF_STATUS, LIC_STATUS, today, lineage, subtree, plain } from '../federation.js';
+import { openException, authority, need, jurisdictionScope, mustBeJurisdictionOf, mustBeActive, bodyById, lockBody, logFed, historyOf, nextNumber, policyAt, paramsOf, check, blocking, AFF_STATUS, LIC_STATUS, today, lineage, subtree, plain } from '../federation.js';
 import { gate } from '../federation-approvals.js';
 import { subjectFor, needStaff, staffCan, staffRecipients, evidenceIn, addEvidence, evidenceList, readEvidence, removeEvidence, missingDocuments } from '../federation-subjects.js';
 
@@ -78,7 +78,7 @@ export async function sanctionChecks(c, s, ev, { range, withDocuments = true } =
   return { checks, policy: pol, params: p };
 }
 
-const SAN_COLS = `s.id, s.body_id, bo.name AS body_name, b.abbreviation AS body_abbreviation, s.event_id, e.name AS event_name, e.kind AS event_kind, e.status AS event_status, e.sport_id, sp.name AS sport_name, e.city AS event_city,
+const SAN_COLS = `s.id, s.jurisdiction_id, (SELECT j.name FROM fed_jurisdictions j WHERE j.id=s.jurisdiction_id) AS jurisdiction_name, s.body_id, bo.name AS body_name, b.abbreviation AS body_abbreviation, s.event_id, e.name AS event_name, e.kind AS event_kind, e.status AS event_status, e.sport_id, sp.name AS sport_name, e.city AS event_city,
   e.starts_on::text AS event_starts_on, e.ends_on::text AS event_ends_on, e.venue_id, v.name AS venue_name, eo.name AS organiser_organisation, s.status, s.sanction_no, s.categories, s.approved_categories, s.requested_starts_on::text AS requested_starts_on, s.requested_ends_on::text AS requested_ends_on,
   s.approved_starts_on::text AS approved_starts_on, s.approved_ends_on::text AS approved_ends_on, s.ruleset_version_id, rv.label AS ruleset_label, rv.version AS ruleset_version, s.conditions, s.override_reason, s.decision_reason, s.decided_at, s.row_version, s.created_at,
   CASE WHEN s.status IN ('approved','suspended') AND (e.status = 'cancelled' OR e.starts_on < s.approved_starts_on OR e.ends_on > s.approved_ends_on) THEN true ELSE false END AS drift`;
@@ -121,7 +121,7 @@ cap({
 cap({
   name: 'request_sanction', method: 'POST', path: '/federation/sanctions', tag: TAG, status: 201,
   summary: 'Ask a governing body to sanction one of your events (the event\'s organiser or its organisation\'s admins). Name the categories the competition covers, optionally the governed rule version it runs under, and the dates if they differ from the event\'s. This references your existing event: no second event is created, and nothing about the event changes.',
-  input: z.object({ body_id: id, event_id: id, categories: categoryList.default([]), ruleset_version_id: id.optional(), starts_on: day.optional(), ends_on: day.optional(), note: text(1000).optional() }),
+  input: z.object({ body_id: id, event_id: id, categories: categoryList.default([]), ruleset_version_id: id.optional(), starts_on: day.optional(), ends_on: day.optional(), jurisdiction_id: id.optional().describe('the region, state or district the competition is held in'), note: text(1000).optional() }),
   handler: ({ user }, i) => tx(async (c) => {
     requireApproved(user);
     const { ev, organiser } = await organiserEvent(user, i.event_id, c);
@@ -137,8 +137,8 @@ cap({
     if (i.ruleset_version_id && !(await c.query('SELECT 1 FROM ruleset_versions WHERE id=$1 AND sport_id=$2', [i.ruleset_version_id, ev.sport_id])).rowCount) throw badRequest('That rule version is for another sport');
     let s;
     try {
-      s = (await c.query('INSERT INTO fed_sanctions(body_id, event_id, applicant_id, categories, ruleset_version_id, requested_starts_on, requested_ends_on, note) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',
-        [i.body_id, i.event_id, user.id, i.categories, i.ruleset_version_id ?? null, from, to, i.note || null])).rows[0];
+      s = (await c.query('INSERT INTO fed_sanctions(body_id, event_id, applicant_id, categories, ruleset_version_id, requested_starts_on, requested_ends_on, note, jurisdiction_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *',
+        [i.body_id, i.event_id, user.id, i.categories, i.ruleset_version_id ?? null, from, to, i.note || null, await mustBeJurisdictionOf(c, i.body_id, i.jurisdiction_id)])).rows[0];
     } catch (e) { if (e.code === '23505') throw conflict('This body already has an open or current sanction for this event'); throw e; }
     await logFed(c, i.body_id, 'sanction', s.id, 'requested', { to: 'requested', actor: user.id, detail: { event_id: i.event_id } });
     for (const uid of await staffRecipients(c, body, ['sanctioner'])) await notify(c, uid, { kind: 'federation_sanction_requested', title: 'New sanction request', body: `${ev.name} asks ${body.abbreviation} for a sanction.`, data: { sanction_id: s.id, body_id: body.id }, dedupe_key: `fed-san-req:${s.id}:${uid}` });
@@ -214,6 +214,7 @@ cap({
     }
     const keys = Object.keys(patch);
     await c.query(`UPDATE fed_sanctions SET status=$2, decided_by=$3, decided_at=now(), row_version=row_version+1, updated_at=now()${keys.map((k, n) => `, ${k}=$${n + 4}`).join('')} WHERE id=$1`, [r.id, to, user.id, ...keys.map((k) => patch[k])]);
+    if (patch.override_reason) await openException(c, r.body_id, 'sanction', r.id, patch.override_reason, patch.checks, user.id);
     await logFed(c, r.body_id, 'sanction', r.id, i.action, { from: r.status, to, actor: user.id, reason: i.reason ?? patch.override_reason,
       detail: { ...(patch.override_reason ? { override_reason: patch.override_reason } : {}), ...(patch.sanction_no ? { sanction_no: patch.sanction_no, approved_starts_on: patch.approved_starts_on, approved_ends_on: patch.approved_ends_on, conditions: patch.conditions } : {}), ...(patch.policy_version_id ? { policy_version_id: patch.policy_version_id } : {}) } });
     const msg = { start_review: ['Sanction under review', 'The body has started reviewing your request.'], request_info: ['More information needed', i.reason], approve: ['Competition sanctioned', `${s.event.name} is sanctioned: ${patch.sanction_no ?? ''}.`],
@@ -233,15 +234,16 @@ cap({
     if (!i.body_id && !i.mine && !i.event_id) throw badRequest('Give body_id, event_id or mine');
     const auth = i.body_id ? await authority(user, i.body_id, { optional: true }) : null;
     if (i.body_id && !auth && !i.mine && !i.event_id) throw notFound('Governing body');
-    const bodyIds = i.body_id ? (auth && i.include_descendants ? await subtree(i.body_id) : [i.body_id]) : null;
+    const scope = auth ? jurisdictionScope(auth) : null;
+    const bodyIds = i.body_id ? (auth && i.include_descendants && !scope ? await subtree(i.body_id) : [i.body_id]) : null;
     if (i.event_id && !auth) { const { organiser } = await organiserEvent(user, i.event_id); if (!organiser) throw notFound('Event'); }
     const mineFilter = !auth;
     const where = `($1::uuid[] IS NULL OR s.body_id = ANY($1)) AND ($2::uuid IS NULL OR s.event_id=$2) AND ($3::boolean IS FALSE OR (e.organizer_id=$4 OR EXISTS (SELECT 1 FROM organisation_members m WHERE m.organisation_id=e.organisation_id AND m.user_id=$4 AND m.status='active' AND m.role IN ('owner','admin'))))
       AND ($5::text IS NULL OR s.status=$5) AND ($6::boolean IS NULL OR (CASE WHEN s.status IN ('approved','suspended') AND (e.status='cancelled' OR e.starts_on < s.approved_starts_on OR e.ends_on > s.approved_ends_on) THEN true ELSE false END)=$6)
-      AND ($7::text IS NULL OR e.name ILIKE '%'||$7||'%' OR s.sanction_no ILIKE '%'||$7||'%')`;
-    const a = [bodyIds, i.event_id ?? null, mineFilter, user.id, i.status ?? null, i.drift ?? null, i.q || null];
+      AND ($7::text IS NULL OR e.name ILIKE '%'||$7||'%' OR s.sanction_no ILIKE '%'||$7||'%') AND ($8::uuid[] IS NULL OR s.jurisdiction_id = ANY($8))`;
+    const a = [bodyIds, i.event_id ?? null, mineFilter, user.id, i.status ?? null, i.drift ?? null, i.q || null, scope];
     const total = await one(`SELECT count(*)::int AS n FROM ${SAN_FROM} WHERE ${where}`, a);
-    const items = await many(`SELECT ${SAN_COLS} FROM ${SAN_FROM} WHERE ${where} ORDER BY (s.status IN ('requested','under_review')) DESC, s.created_at DESC, s.id LIMIT $8 OFFSET $9`, [...a, i.limit, i.offset]);
+    const items = await many(`SELECT ${SAN_COLS} FROM ${SAN_FROM} WHERE ${where} ORDER BY (s.status IN ('requested','under_review')) DESC, s.created_at DESC, s.id LIMIT $9 OFFSET $10`, [...a, i.limit, i.offset]);
     return { total: total.n, items };
   },
 });
