@@ -7,7 +7,7 @@ import { eventForOrganizer } from './events.js';
 import { notify } from '../notify.js';
 import { publish } from '../live.js';
 import { afterResult, isKnockout } from '../tournament/advance.js';
-import { fixtureContext } from './match-tracking.js';
+import { fixtureContext, controlInput, controlSeen, controlDone, occurredAt } from './match-tracking.js';
 import { verifyAppearances } from './appearances.js';
 import { liveState, loggedEvents, rulesetForEvent } from '../scoring/state.js';
 import { computeScore, matchPhase } from '../scoring/engine.js';
@@ -53,11 +53,12 @@ export async function sheetView(sheetId, c) {
 cap({
   name: 'end_match', method: 'POST', path: '/fixtures/:id/end', tag: TAG,
   summary: 'Full time (organiser or match official). Closes any open period, marks the game finished and opens a draft score sheet pre-filled from the match log. The result is not official until the sheet is approved and published.',
-  input: z.object({ id }),
+  input: z.object({ id, ...controlInput }),
   async handler({ user }, i) {
     const sheet = await tx(async (c) => {
       const x = await fixtureContext(user, i.id, c, { lock: true });
       needScorer(x);
+      if (await controlSeen(c, i.id, i.client_key)) return (await c.query("SELECT * FROM score_sheets WHERE fixture_id=$1 ORDER BY created_at DESC LIMIT 1", [i.id])).rows[0];   // a retry of the same full time: the sheet it opened
       if (!['live', 'paused'].includes(x.f.status)) throw conflict(`Only a live or paused game can be ended; this one is ${x.f.status}`);
       if ((await c.query('SELECT 1 FROM score_sheets WHERE fixture_id=$1 AND status = ANY($2)', [i.id, OPEN])).rowCount) throw conflict('This game already has a score sheet in progress');
       const { ruleset } = await rulesetForEvent(x.f.event_id, c, x.f.id);
@@ -67,7 +68,9 @@ cap({
         await c.query("INSERT INTO match_events(fixture_id, event_id, seq, kind, period, recorded_by, payload) VALUES ($1,$2,$3,'period_end',$4,$5,'{\"auto\":true}')", [i.id, x.f.event_id, seq, matchPhase(ruleset, events).period, user.id]);
         events = await loggedEvents(i.id, c);
       }
-      await c.query("UPDATE fixtures SET status='finished', finished_at=now(), paused_by_event=false WHERE id=$1", [i.id]);
+      const at = occurredAt(i.occurred_at);
+      await c.query("UPDATE fixtures SET status='finished', finished_at=$2, paused_by_event=false WHERE id=$1", [i.id, at]);
+      await controlDone(c, i.id, user, 'end', i, at);
       const score = computeScore(ruleset, events);
       const manual = ruleset.kind === 'manual' && !ruleset.cards; // a bout decided by round cards has a log to pre-fill from
       const created = (await c.query(

@@ -58,6 +58,7 @@ import './event-boards.js';
 import './match-tracking.js';
 import './score-sheets.js';
 import './live-scoring.js';
+import './scorer-pack.js';
 import './tracking-sheets.js';
 import './result-proposals.js';
 import './tracking-files.js';
