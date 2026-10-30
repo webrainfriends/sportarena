@@ -24,8 +24,8 @@ test('the workspace is provided to the shell, behind the session and navigation'
 });
 
 test('Community and Inbox stay reachable as pushed pages with titles, and the old inbox section is gone from the settings page', () => {
-  assert.match(app, /const PAGES = \{ Community, Inbox,/);
-  assert.match(app, /const TITLES = \{ Community: 'Community', Inbox: 'Inbox',/);
+  assert.match(app, /const PAGES = \{[^}\n]*\bCommunity, Inbox\b/); // whatever else is registered before them, they stay in the map
+  assert.match(app, /const TITLES = \{[^}\n]*\bCommunity: 'Community', Inbox: 'Inbox'/);
   const reserve = read('screens/reserve.js');
   const settings = reserve.slice(reserve.indexOf('export function Notifications()'));
   assert.ok(!settings.includes('<Section title="Inbox"'), 'one inbox: the list lives in the Inbox tab only');

@@ -21,12 +21,30 @@ export const KINDS = [
 export const kindOf = (k) => KINDS.find((x) => x.value === k) ?? KINDS[0];
 const STATUS = {
   draft: ['Draft', c.violetSoft], submitted: ['Submitted', c.sunSoft], under_review: ['Under review', c.sunSoft], info_requested: ['More information needed', c.pinkSoft], waitlisted: ['Waiting list', c.cyanSoft],
-  approved: ['Confirmed', c.limeSoft], rejected: ['Declined', c.pinkSoft], withdrawn: ['Withdrawn', c.violetSoft], cancelled: ['Cancelled', c.violetSoft],
+  approved: ['Confirmed', c.limeSoft], suspended: ['Suspended', c.pinkSoft], expired: ['Expired', c.violetSoft], rejected: ['Declined', c.pinkSoft], withdrawn: ['Withdrawn', c.violetSoft], cancelled: ['Cancelled', c.violetSoft],
 };
 export const StatusTag = ({ status }) => <Tag label={(STATUS[status] ?? [status])[0]} color={(STATUS[status] ?? [])[1] ?? c.violetSoft} />;
 const day = (iso) => (iso ? new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '');
 const stamp = (iso) => (iso ? new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
 const REASON = { closed: 'Closed', not_yet_open: 'Not open yet', deadline_passed: 'Deadline passed' };
+
+/** Where a mirrored registration is really managed (stage A of the consolidation): the engine shows it, its own module still decides it. */
+export const MANAGED = {
+  roster_registration: { label: 'the event console', screen: (m) => ['EventCommand', { id: m.event_id, tab: 'registration' }] },
+  academy_application: { label: 'academy admissions', screen: (m) => ['AcademyPage', { id: m.organisation_id }] },
+};
+export function ManagedBanner({ managed }) {
+  const { push } = useNav();
+  const m = MANAGED[managed?.kind];
+  if (!m) return null;
+  return (
+    <Card color={c.cyanSoft}>
+      <T weight="900">Managed in {m.label}</T>
+      <T size={13}>This registration is shown here so everything is in one place. Decisions, changes and payments are made in {m.label}.</T>
+      <Btn small title={`Open ${m.label}`} color={c.violet} style={{ alignSelf: 'flex-start' }} onPress={() => push(...m.screen(managed))} />
+    </Card>
+  );
+}
 
 export function places(a) {
   if (!a) return '';
@@ -347,6 +365,7 @@ export function RegistrationEntry({ id }) {
   return (
     <Screen onRefresh={load.reload} refreshing={load.loading && !!e} wide>
       <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}><T size={28}>{k.emoji}</T><View style={{ flex: 1 }}><H1>{e.programme.title}</H1><T size={12} color={c.mute} style={{ marginTop: 4 }}>{[k.label, e.participant_name ?? e.team_name].filter(Boolean).join(' · ')}</T>{e.receipt_no ? <T size={12} weight="800" color={c.mute}>Receipt {e.receipt_no}</T> : null}</View><StatusTag status={e.status} /></View>
+      <ManagedBanner managed={e.managed_in} />
       {e.status === 'info_requested' ? <Card color={c.pinkSoft}><T weight="900">The organiser needs more information</T><T>{[...e.history].reverse().find((h) => h.action === 'info_requested')?.note}</T><Btn small title="Edit and resend" style={{ alignSelf: 'flex-start' }} onPress={() => push('RegistrationApply', { id: e.programme.id, entry_id: e.id })} /></Card> : null}
       {e.status === 'waitlisted' ? <Card color={c.cyanSoft}><T weight="800">You are on the waiting list</T><T size={13}>No payment is taken until a place opens up.</T></Card> : null}
       {e.status === 'rejected' ? <Card color={c.pinkSoft}><T weight="900">Declined</T><T>{[...e.history].reverse().find((h) => h.action === 'rejected')?.note}</T></Card> : null}
