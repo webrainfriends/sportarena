@@ -21,9 +21,9 @@ export const GROUP_COLOR = { play: '#D0BDF4', care: '#A0D2EB', money: '#E5EAF5',
 
 // The Workspace module: one entry per role that has its own working area, [role, route, sub, tab?] (a `tab` target goes to that tab instead of pushing the route). A person holding several of
 // these gets a submenu in the wheel to pick which workspace to open; with one, the tile opens it directly.
-export const WORKSPACE_MODULE = ['Workspace', 'Workspace', 'Your tools for each role', 'work'];
+export const WORKSPACE_MODULE = ['Workspace', 'Consoles', 'Platform team & front desk', 'work'];
 export const WORKSPACES = [
-  ['organizer', 'Schedule', 'Your events, teams & requests', { tab: 'Schedule', section: 'manage' }],
+  ['organizer', 'EventsWorkspace', 'Your events, teams & requests'],
   ['venue_manager', 'VenueWorkspace', 'Your venues, revenue & partner account'],
   ['coach', 'CoachHome', 'Athletes, plans & sessions'],
   ['referee', 'OfficialsHome', 'Matches, requests, calendar & rules'],
@@ -41,8 +41,14 @@ export const WORKSPACES = [
   ['platform_admin', 'PlatformSecurity', 'Encryption keys & audit log'],
 ];
 
-/** The workspaces this person can open: [role, route, sub, tab?], in catalogue order. */
-export const workspacesFor = (roles = []) => WORKSPACES.filter(([r]) => roles.includes(r));
+/** The workspace of a role as the Work tab shows it: [role, route, sub, tab?], or undefined. */
+export const workspaceOf = (role) => WORKSPACES.find(([r]) => r === role);
+
+// Every working role's workspace is the Work tab (its queue and fast actions on top of its own screen). The platform roles are never offered
+// as a role to work as, so the swivel is where they open their console; so is a front-desk cashier, who holds no role but works the venue desk.
+export const PLATFORM_ROLES = ['admin', 'platform_admin'];
+/** The consoles the swivel's Consoles tile opens: [role, route, sub, tab?], in catalogue order. */
+export const workspacesFor = (roles = [], desk = false) => WORKSPACES.filter(([r]) => (PLATFORM_ROLES.includes(r) && roles.includes(r)) || (desk && r === 'venue_manager'));
 
 // Modules lifted to the front of the wheel for people who hold these roles (first match wins; everyone else: player set).
 export const PRIORITY = [
@@ -53,9 +59,9 @@ export const PRIORITY = [
 export const PRIORITY_DEFAULT = ['FindGames', 'Leaderboard', 'MyApplications', 'PlayerContracts', 'Representation', 'Health', 'Insure', 'Wallet', 'Shop', 'Billboard', 'ToolsHome'];
 
 /** The wheel's order for someone with these roles: their priority modules first, then the rest in catalogue order. */
-export function orderedModules(roles = []) {
+export function orderedModules(roles = [], desk = false) {
   const first = (PRIORITY.find(([rs]) => rs.some((r) => roles.includes(r))) ?? [null, PRIORITY_DEFAULT])[1];
   const byName = Object.fromEntries(MODULES.map((m) => [m[0], m]));
-  const work = workspacesFor(roles).length ? [WORKSPACE_MODULE] : [];
+  const work = workspacesFor(roles, desk).length ? [WORKSPACE_MODULE] : [];
   return [...work, ...first.map((n) => byName[n]), ...MODULES.filter((m) => !first.includes(m[0]))];
 }
