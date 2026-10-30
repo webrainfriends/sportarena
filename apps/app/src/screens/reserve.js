@@ -537,14 +537,14 @@ function WaitlistList() {
 
 export function Notifications() {
   const { toast } = useSession();
-  const { goTab } = useNav();
+  const { push } = useNav();
   const prefs = useLoad(() => api.get('/me/notification-preferences'), []);
   const setPref = async (patch) => { try { await api.patch('/me/notification-preferences', patch); prefs.reload(); } catch (e) { toast(e.message); } };
   const p = prefs.data;
   return (
     <Screen>
       <H1 style={{ marginTop: 8 }}>Notification settings</H1>
-      <Row onPress={() => goTab('Inbox')} left={<Bubble emoji="📥" color={c.pinkSoft} />} title="Open my inbox" sub="Booking confirmations, requests, changes and reminders" right={<T color={c.pink} weight="700">›</T>} />
+      <Row onPress={() => push('Inbox')} left={<Bubble emoji="📥" color={c.pinkSoft} />} title="Open my inbox" sub="Booking confirmations, requests, changes and reminders" right={<T color={c.pink} weight="700">›</T>} />
       <Section title="How you hear from us" color={c.cyan}>
         {p ? (
           <Card>
