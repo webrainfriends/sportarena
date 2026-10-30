@@ -4,10 +4,10 @@
 // notification channels (in-app, push and email, subject to their own switches). Message text is encrypted and staff reads are logged.
 import { z } from 'zod';
 import { cap, id, page } from '../registry.js';
-import { one, many, tx, query } from '../db.js';
+import { one, many, tx } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
-import { audit, mustFind, PUBLIC_USER } from '../helpers.js';
-import { sponsorContactUser, sponsorRole } from '../sponsor-identity-access.js';
+import { audit, isAdmin, mustFind, PUBLIC_USER } from '../helpers.js';
+import { sponsorAccess, assertSponsorCan, notifySponsor } from '../sponsor-access.js';
 import { notify } from '../notify.js';
 import { isYouth } from '../youth.js';
 import { orgFor } from '../org-access.js';
@@ -271,7 +271,7 @@ cap({
     const link = (await c.query('INSERT INTO enquiry_sponsor_links(enquiry_id, sponsor_id, note, linked_by) VALUES ($1,$2,$3,$4) RETURNING id, enquiry_id, sponsor_id, note, status, created_at', [enq.id, sponsor.id, i.note ?? null, user.id])).rows[0];
     await addMessage(c, enq, { senderId: user.id, side: 'system', kind: 'sponsor', body: `${org.name} introduced you to ${sponsor.name}.${i.note ? ` ${i.note}` : ''}` });
     await notify(c, enq.athlete_id, { kind: 'sponsor_introduction', title: `Introduced to ${sponsor.name}`, body: `${org.name} introduced you to a sponsor. They may send you an offer; you decide.`, data: { enquiry_id: enq.id } });
-    await notify(c, await sponsorContactUser(c, sponsor), { kind: 'sponsor_introduction', title: 'An institution introduced an athlete', body: `${org.name} introduced an athlete to ${sponsor.name}. Open the sponsor page to see who.`, data: { sponsor_id: sponsor.id, link_id: link.id } });
+    await notifySponsor(c, sponsor, 'introductions', { kind: 'sponsor_introduction', title: 'An institution introduced an athlete', body: `${org.name} introduced an athlete to ${sponsor.name}. Open the sponsor page to see who.`, data: { sponsor_id: sponsor.id, link_id: link.id } });
     return link;
   }),
 });
@@ -290,11 +290,11 @@ cap({
 
 cap({
   name: 'list_sponsor_introductions', method: 'GET', path: '/sponsors/:id/introductions', tag: TAG,
-  summary: 'Sponsor owner: athletes institutions have introduced to your brand, with the institution, programme and note. Send a sponsorship offer from here; the athlete still decides. Withdrawn introductions are marked.',
+  summary: 'Sponsor owner or staff (manager, approver, evaluator): athletes institutions have introduced to your brand, with the institution, programme and note. Send a sponsorship offer from here; the athlete still decides. Withdrawn introductions are marked.',
   input: z.object({ id, status: z.enum(['introduced', 'withdrawn']).optional(), ...page }),
   async handler({ user }, i) {
     const s = await mustFind('sponsors', i.id, 'id, owner_id, entity_id');
-    if (!['owner', 'admin'].includes(await sponsorRole({ query }, user, s))) throw forbidden('Only the sponsor owner or an administrator can see introductions');
+    if (!isAdmin(user)) assertSponsorCan(await sponsorAccess(user, s), 'introductions', { what: 'see introductions' });
     return many(
       `SELECT l.id, l.status, l.note, l.created_at, u.id AS athlete_id, u.handle, u.display_name, u.avatar_emoji, u.avatar_color, o.name AS institution, p.title AS programme_title, sp.name AS sport
          FROM enquiry_sponsor_links l JOIN enquiries e ON e.id=l.enquiry_id JOIN users u ON u.id=e.athlete_id JOIN organisations o ON o.id=e.organisation_id

@@ -64,7 +64,10 @@ async function buildEvidence(inputs) {
 // ------------------------------------------------------------------ requester
 function RequestSheet({ visible, onClose, rules, onDone, preset, presetSubject }) {
   const { user, toast } = useSession();
-  const eligible = (rules?.types ?? []).filter((t) => (t.needs_role ? user.roles.includes(t.needs_role) : user.roles.includes(t.subject === 'sponsor' ? 'sponsor' : 'organizer') || user.roles.includes('admin')));
+  // sponsor staff do not hold the global sponsor role: what counts is being owner or admin of a brand's team (the server decides again)
+  const brands = useLoad(() => (visible ? api.get('/sponsors', { mine: true, limit: 50 }) : Promise.resolve([])), [visible]);
+  const myBrands = (brands.data ?? []).filter((b) => ['owner', 'admin'].includes(b.my_role));
+  const eligible = (rules?.types ?? []).filter((t) => (t.needs_role ? user.roles.includes(t.needs_role) : (t.subject === 'sponsor' ? user.roles.includes('sponsor') || myBrands.length > 0 : user.roles.includes('organizer')) || user.roles.includes('admin')));
   const [type, setType] = useState(null);
   const [pickedSubject, setSubject] = useState(null);
   const subject = pickedSubject ?? presetSubject ?? null;
@@ -75,7 +78,7 @@ function RequestSheet({ visible, onClose, rules, onDone, preset, presetSubject }
   const [err, setErr] = useState(null);
   const [busy, setBusy] = useState(false);
   const t = eligible.find((x) => x.type === (type ?? preset)) ?? null;
-  const subjects = useLoad(() => (!visible || !t || t.subject === 'user' ? Promise.resolve([]) : t.subject === 'sponsor' ? api.get('/sponsors', { mine: true, limit: 50 }) : api.get('/events', { organizer_id: user.id, limit: 50 })), [visible, t?.type]);
+  const subjects = useLoad(() => (!visible || !t || t.subject === 'user' ? Promise.resolve([]) : t.subject === 'sponsor' ? Promise.resolve(myBrands) : api.get('/events', { organizer_id: user.id, limit: 50 })), [visible, t?.type, brands.data]);
   const kinds = t ? [...t.required, ...(t.one_of ?? [])] : [];
   const send = async () => {
     setBusy(true); setErr(null);
