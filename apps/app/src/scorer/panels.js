@@ -35,7 +35,7 @@ export function OfflineBanner({ offline, saved, savedTime, waiting, full, foreig
         <ACard pad={12} tone={A.sun}>
           <AT size={13.5} weight="800">{saved ? `Offline · scoring from the copy saved${savedTime ? ` at ${savedTime}` : ''}` : 'Offline · this game is not saved on this device'}</AT>
           <AT size={12.5} color={A.mute}>{saved
-            ? `Every tap is checked against the sport's rules here, kept on this device and sent in order when the signal returns${waiting ? ` (${waiting} waiting)` : ''}. The score shown is provisional until then.`
+            ? `Every tap, undo and correction is checked against the sport's rules here, kept on this device and sent in order when the signal returns${waiting ? ` (${waiting} waiting)` : ''}. The score shown is provisional until then.`
             : 'You can look, but not score. Open the game while online to save it for next time.'}</AT>
         </ACard>
       ) : null}
@@ -52,6 +52,12 @@ export function ConflictSheet({ conflict, describe, names, onResend, onDiscard }
     <Sheet visible={!!conflict} onClose={onDiscard} title="The game moved on">
       <T size={14} color="#334155">Someone else has scored since you last looked, so this tap was held back instead of being added blindly.</T>
       {sc ? <T weight="800" size={16}>Now: {names.home} {sc.home} – {sc.away} {names.away}</T> : null}
+      {conflict?.missed?.length ? (
+        <View style={{ gap: 4 }} accessibilityLabel={`${conflict.missed.length} moments you have not seen`}>
+          <T weight="800" size={13}>While you were away</T>
+          {conflict.missed.map((m) => <T key={m.seq} size={13.5} color="#334155" style={m.voided ? { textDecorationLine: 'line-through' } : null}>{`${m.by_you ? 'You' : 'Another official'} · ${describe(m)}${m.voided ? ' (voided)' : ''}`}</T>)}
+        </View>
+      ) : null}
       {conflict ? <T size={14} color="#334155">Your tap: {describe(conflict.event)}</T> : null}
       <Btn title="Still happened: send it" onPress={onResend} />
       <Btn title="Discard my tap" color={c.paper} ink={c.ink} onPress={onDiscard} />
