@@ -16,11 +16,11 @@ const TYPES = [
 ];
 const TYPE_LABEL = Object.fromEntries(TYPES);
 const TYPE_HELP = { text: 'One line, such as a name or a city.', longtext: 'A paragraph, such as a project description.', number: 'A whole or decimal number.', money: 'An amount in the program currency.', date: 'Picked from a calendar.', yesno: 'A simple yes or no switch.', choice: 'The applicant picks one option.', multi: 'The applicant can pick several options.', file: 'PDF or photo upload, always kept confidential.', budget: 'Itemised cost lines that must cover the amount requested. One per form.', references: 'People who can vouch for the applicant. One per form.' };
-const slug = (label, taken) => { let base = (label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').replace(/^[^a-z]+/, '') || 'question').slice(0, 30), k = base, n = 2; while (taken.has(k)) k = `${base}_${n++}`; return k; };
+export const slug = (label, taken) => { let base = (label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').replace(/^[^a-z]+/, '') || 'question').slice(0, 30), k = base, n = 2; while (taken.has(k)) k = `${base}_${n++}`; return k; };
 const move = (list, i, d) => { const j = i + d; if (j < 0 || j >= list.length) return list; const n = [...list]; [n[i], n[j]] = [n[j], n[i]]; return n; };
-const withDefaults = (def) => ({ sections: def.sections.map((x) => ({ ...x, fields: x.fields.map((f) => ({ ...blank(), ...f })) })) });
+export const withDefaults = (def) => ({ sections: def.sections.map((x) => ({ ...x, fields: x.fields.map((f) => ({ ...blank(), ...f })) })) });
 const blank = () => ({ label: '', type: 'text', required: false, confidential: false, options: [], max_files: 3, max_items: 3, when: null });
-const strip = (f) => {
+export const strip = (f) => {
   const o = { key: f.key, label: f.label.trim(), type: f.type, required: !!f.required, confidential: !!f.confidential && !['file', 'budget', 'references'].includes(f.type) };
   if (f.hint?.trim()) o.hint = f.hint.trim();
   if (['choice', 'multi'].includes(f.type)) o.options = f.options;
@@ -34,7 +34,7 @@ const strip = (f) => {
 };
 
 /** Add or change one question: label, kind, required, confidential, options and an optional "show only when" rule. */
-function FieldSheet({ visible, onClose, initial, earlier, onSave }) {
+function FieldSheet({ visible, onClose, initial, earlier, onSave, types = TYPES.map(([v]) => v) }) {
   const [f, setF] = useState(blank());
   const [opt, setOpt] = useState('');
   const [err, setErr] = useState(null);
@@ -54,7 +54,7 @@ function FieldSheet({ visible, onClose, initial, earlier, onSave }) {
       <Field label="Question" value={f.label} onChangeText={(x) => set('label', x)} maxLength={160} />
       <Field label="Help text (optional)" value={f.hint ?? ''} onChangeText={(x) => set('hint', x)} maxLength={300} />
       <T weight="800" size={13}>Kind of answer</T>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{TYPES.map(([v, l]) => <Chip key={v} label={l} active={f.type === v} onPress={() => set('type', v)} />)}</View>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{TYPES.filter(([v]) => types.includes(v)).map(([v, l]) => <Chip key={v} label={l} active={f.type === v} onPress={() => set('type', v)} />)}</View>
       <T size={12} color={c.mute}>{TYPE_HELP[f.type]}</T>
       {['choice', 'multi'].includes(f.type) ? (
         <View style={{ gap: 6 }}>
@@ -133,58 +133,18 @@ function TemplateGallery({ program, onPick, onBlank, onCancel }) {
   );
 }
 
-/** Brand staff: design the application form of a program, publish versions, and pin a version to each round. */
-export function FormBuilder({ program_id }) {
-  const { toast } = useSession();
-  const prog = useLoad(() => api.get(`/sponsorship-programs/${program_id}`), [program_id]);
-  const forms = useLoad(() => api.get(`/sponsorship-programs/${program_id}/forms`, { limit: 50 }), [program_id]);
-  const [edit, setEdit] = useState(null);         // { id|null, name, version, row_version, def }
+/** The shared question designer: sections and questions (kind, required, confidential, "show only when"), reordering. Used by sponsorship forms and the registration engine. */
+export function DefinitionEditor({ def, onChange, types }) {
   const [fieldSheet, setFieldSheet] = useState(null); // { si, fi|null }
   const [secSheet, setSecSheet] = useState(null);
   const [secTitle, setSecTitle] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [picking, setPicking] = useState(false);
-  const reload = () => { prog.reload(); forms.reload(); };
-  const act = async (fn, m) => { try { await fn(); if (m) toast(m); reload(); } catch (e) { toast(explain(e)); if (e.status === 409) reload(); } };
-  if (prog.error) return <Screen><LoadError error={prog.error} onRetry={prog.reload} /></Screen>;
-  if (prog.loading && !prog.data) return <Screen><Loading /></Screen>;
-  const p = prog.data;
-  const may = ['manager', 'approver'].includes(asSponsorRole(p.my_role));
-
-  const open = async (f) => {
-    try { const full = await api.get(`/sponsorship-forms/${f.id}`); setEdit({ id: f.id, name: full.name, row_version: full.row_version, version: full.version, def: structuredClone(full.definition) }); } catch (e) { toast(explain(e)); }
-  };
-  const setDef = (fn) => setEdit((e) => { const def = structuredClone(e.def); fn(def); return { ...e, def }; });
-  const taken = () => new Set(fieldsOf(edit.def).map((f) => f.key));
-  const publish = async () => {
-    setBusy(true);
-    try {
-      const definition = { sections: edit.def.sections.map((s) => ({ id: s.id, title: s.title, fields: s.fields.map(strip) })) };
-      if (edit.id) await api.post(`/sponsorship-forms/${edit.id}/versions`, { version: edit.row_version, definition });
-      else await api.post(`/sponsorship-programs/${p.id}/forms`, { name: edit.name, definition });
-      toast('Published — pin it to a round for applicants to see it'); setEdit(null); reload();
-    } catch (e) {
-      const first = Array.isArray(e.details) ? e.details[0] : null;
-      toast(first ? `${first.path}: ${first.message}` : explain(e));
-    } finally { setBusy(false); }
-  };
-
-  if (picking && !edit) return <TemplateGallery program={p} onCancel={() => setPicking(false)} onBlank={() => { setPicking(false); setEdit({ id: null, name: '', version: 0, row_version: 0, def: { sections: [{ id: 'about', title: 'About the application', fields: [] }] } }); }} onPick={(t) => { setPicking(false); setEdit({ id: null, name: t.name, version: 0, row_version: 0, def: t.def }); }} />;
-
-  if (edit) {
-    const earlierFor = (si, fi) => edit.def.sections.flatMap((s, a) => s.fields.map((f, b) => [a, b, f])).filter(([a, b]) => a < si || (a === si && (fi == null || b < fi))).map(([, , f]) => f).filter((f) => !['file', 'budget', 'references'].includes(f.type));
-    const editing = fieldSheet ? (fieldSheet.fi != null ? edit.def.sections[fieldSheet.si].fields[fieldSheet.fi] : null) : null;
-    return (
-      <Screen>
-        <H1>{edit.id ? `Edit · ${edit.name}` : 'New application form'}</H1>
-        <T size={13} color={c.mute}>{edit.id ? `Publishing creates version ${edit.version + 1}. Earlier versions, and the applications made under them, never change.` : 'Design the questions applicants answer. Publish when ready, then pin it to a round.'}</T>
-        {!edit.id ? <Field label="Form name" value={edit.name} onChangeText={(x) => setEdit({ ...edit, name: x })} maxLength={120} /> : null}
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-          <Tag label={`${edit.def.sections.length} section${edit.def.sections.length === 1 ? '' : 's'}`} color={c.violetSoft} />
-          <Tag label={`${fieldsOf(edit.def).length} questions`} color={c.violetSoft} />
-          <Tag label={`${fieldsOf(edit.def).filter((f) => f.required).length} required`} color={c.mint} />
-          <Tag label={`${fieldsOf(edit.def).filter((f) => f.confidential || ['file', 'budget', 'references'].includes(f.type)).length} confidential`} color={c.violetSoft} />
-        </View>
+  const edit = { def };
+  const setDef = (fn) => { const next = structuredClone(def); fn(next); onChange(next); };
+  const taken = () => new Set(fieldsOf(def).map((f) => f.key));
+  const earlierFor = (si, fi) => def.sections.flatMap((s, a) => s.fields.map((f, b) => [a, b, f])).filter(([a, b]) => a < si || (a === si && (fi == null || b < fi))).map(([, , f]) => f).filter((f) => !['file', 'budget', 'references'].includes(f.type));
+  const editing = fieldSheet ? (fieldSheet.fi != null ? def.sections[fieldSheet.si].fields[fieldSheet.fi] : null) : null;
+  return (
+    <>
         {edit.def.sections.map((s, si) => (
           <Section key={s.id} title={s.title} color={c.cyan}>
             <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
@@ -210,16 +170,66 @@ export function FormBuilder({ program_id }) {
           </Section>
         ))}
         <Btn small title="+ Add a section" color={c.violet} style={{ alignSelf: 'flex-start' }} onPress={() => { setSecTitle(''); setSecSheet({ si: null }); }} />
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          <Btn title="Cancel" color={c.paper} ink={c.ink} onPress={() => setEdit(null)} style={{ flex: 1 }} />
-          <Btn title={edit.id ? 'Publish new version' : 'Publish form'} loading={busy} disabled={edit.def.sections.every((s) => !s.fields.length) || (!edit.id && edit.name.trim().length < 2)} onPress={publish} style={{ flex: 2 }} />
-        </View>
-        <FieldSheet visible={!!fieldSheet} onClose={() => setFieldSheet(null)} initial={editing} earlier={fieldSheet ? earlierFor(fieldSheet.si, fieldSheet.fi) : []}
+        <FieldSheet visible={!!fieldSheet} onClose={() => setFieldSheet(null)} types={types} initial={editing} earlier={fieldSheet ? earlierFor(fieldSheet.si, fieldSheet.fi) : []}
           onSave={(f) => setDef((d) => { const { si, fi } = fieldSheet; if (fi != null) d.sections[si].fields[fi] = { ...f }; else d.sections[si].fields.push({ ...f, key: slug(f.label, taken()) }); })} />
         <Sheet visible={!!secSheet} onClose={() => setSecSheet(null)} title={secSheet?.si == null ? 'New section' : 'Rename section'}>
           <Field label="Section title" value={secTitle} onChangeText={setSecTitle} maxLength={120} />
           <Btn title="Save" disabled={!secTitle.trim()} onPress={() => { setDef((d) => { if (secSheet.si == null) d.sections.push({ id: slug(secTitle, new Set(d.sections.map((s) => s.id))), title: secTitle.trim(), fields: [] }); else d.sections[secSheet.si].title = secTitle.trim(); }); setSecSheet(null); }} />
         </Sheet>
+    </>
+  );
+}
+
+/** Brand staff: design the application form of a program, publish versions, and pin a version to each round. */
+export function FormBuilder({ program_id }) {
+  const { toast } = useSession();
+  const prog = useLoad(() => api.get(`/sponsorship-programs/${program_id}`), [program_id]);
+  const forms = useLoad(() => api.get(`/sponsorship-programs/${program_id}/forms`, { limit: 50 }), [program_id]);
+  const [edit, setEdit] = useState(null);         // { id|null, name, version, row_version, def }
+  const [busy, setBusy] = useState(false);
+  const [picking, setPicking] = useState(false);
+  const reload = () => { prog.reload(); forms.reload(); };
+  const act = async (fn, m) => { try { await fn(); if (m) toast(m); reload(); } catch (e) { toast(explain(e)); if (e.status === 409) reload(); } };
+  if (prog.error) return <Screen><LoadError error={prog.error} onRetry={prog.reload} /></Screen>;
+  if (prog.loading && !prog.data) return <Screen><Loading /></Screen>;
+  const p = prog.data;
+  const may = ['manager', 'approver'].includes(asSponsorRole(p.my_role));
+
+  const open = async (f) => {
+    try { const full = await api.get(`/sponsorship-forms/${f.id}`); setEdit({ id: f.id, name: full.name, row_version: full.row_version, version: full.version, def: structuredClone(full.definition) }); } catch (e) { toast(explain(e)); }
+  };
+  const publish = async () => {
+    setBusy(true);
+    try {
+      const definition = { sections: edit.def.sections.map((s) => ({ id: s.id, title: s.title, fields: s.fields.map(strip) })) };
+      if (edit.id) await api.post(`/sponsorship-forms/${edit.id}/versions`, { version: edit.row_version, definition });
+      else await api.post(`/sponsorship-programs/${p.id}/forms`, { name: edit.name, definition });
+      toast('Published — pin it to a round for applicants to see it'); setEdit(null); reload();
+    } catch (e) {
+      const first = Array.isArray(e.details) ? e.details[0] : null;
+      toast(first ? `${first.path}: ${first.message}` : explain(e));
+    } finally { setBusy(false); }
+  };
+
+  if (picking && !edit) return <TemplateGallery program={p} onCancel={() => setPicking(false)} onBlank={() => { setPicking(false); setEdit({ id: null, name: '', version: 0, row_version: 0, def: { sections: [{ id: 'about', title: 'About the application', fields: [] }] } }); }} onPick={(t) => { setPicking(false); setEdit({ id: null, name: t.name, version: 0, row_version: 0, def: t.def }); }} />;
+
+  if (edit) {
+    return (
+      <Screen>
+        <H1>{edit.id ? `Edit · ${edit.name}` : 'New application form'}</H1>
+        <T size={13} color={c.mute}>{edit.id ? `Publishing creates version ${edit.version + 1}. Earlier versions, and the applications made under them, never change.` : 'Design the questions applicants answer. Publish when ready, then pin it to a round.'}</T>
+        {!edit.id ? <Field label="Form name" value={edit.name} onChangeText={(x) => setEdit({ ...edit, name: x })} maxLength={120} /> : null}
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+          <Tag label={`${edit.def.sections.length} section${edit.def.sections.length === 1 ? '' : 's'}`} color={c.violetSoft} />
+          <Tag label={`${fieldsOf(edit.def).length} questions`} color={c.violetSoft} />
+          <Tag label={`${fieldsOf(edit.def).filter((f) => f.required).length} required`} color={c.mint} />
+          <Tag label={`${fieldsOf(edit.def).filter((f) => f.confidential || ['file', 'budget', 'references'].includes(f.type)).length} confidential`} color={c.violetSoft} />
+        </View>
+        <DefinitionEditor def={edit.def} onChange={(def) => setEdit((e) => ({ ...e, def }))} />
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <Btn title="Cancel" color={c.paper} ink={c.ink} onPress={() => setEdit(null)} style={{ flex: 1 }} />
+          <Btn title={edit.id ? 'Publish new version' : 'Publish form'} loading={busy} disabled={edit.def.sections.every((s) => !s.fields.length) || (!edit.id && edit.name.trim().length < 2)} onPress={publish} style={{ flex: 2 }} />
+        </View>
       </Screen>
     );
   }

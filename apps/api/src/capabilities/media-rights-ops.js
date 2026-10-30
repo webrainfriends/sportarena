@@ -7,9 +7,10 @@ import { one, many, tx, pool } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { notify } from '../notify.js';
 import { isYouth, requireConsent } from '../youth.js';
-import { CREW_ROLES, ZONES, RESTRICTED_ZONES, STREAM_PROVIDERS, logMr, eventOf, isOrganiserOf, myPartners, partnerFor, eventOrganisers, partnerAdmins, IN_FORCE } from '../media-rights.js';
+import { CREW_ROLES, ZONES, RESTRICTED_ZONES, STREAM_PROVIDERS, logMr, CREW_ACCRED, CREW_ACCRED_PICK, eventOf, isOrganiserOf, myPartners, partnerFor, eventOrganisers, partnerAdmins, IN_FORCE } from '../media-rights.js';
 
 const TAG = 'Media production';
+const ACCREDITED_KINDS = ['media_centre', 'mixed_zone', 'locker_room', 'athlete_area', 'officials_room', 'field_of_play'];
 const text = (n) => z.string().trim().max(n);
 const dt = z.string().datetime({ offset: true });
 const https = z.string().url().regex(/^https:\/\//, 'Use a secure https link').max(500);
@@ -30,11 +31,18 @@ async function standing(user, eventId, c = pool) {
 const needAny = (s) => { if (!s.any) throw notFound('Event'); };
 
 // ------------------------------------------------------------------ crew
+const ACCRED_ID = `(SELECT p.id FROM (${CREW_ACCRED_PICK}) p)`;
+const ACCRED_ZONES = `coalesce((SELECT jsonb_agg(DISTINCT z.kind) FROM (${CREW_ACCRED_PICK}) p JOIN accreditation_category_zones cz ON cz.category_id=p.category_id AND cz.removed_at IS NULL JOIN accreditation_zones z ON z.id=cz.zone_id AND z.archived_at IS NULL), '[]'::jsonb)`;
 const CREW_VIEW = `c.id, c.event_id, c.fixture_id, c.licence_id, c.user_id, u.display_name, u.handle, c.role, c.zones, c.call_time, c.camera_position, c.booth_ref, c.technical_provider, c.notes, c.status, c.acknowledged_at,
-  coalesce((SELECT m.accreditation FROM event_department_members m WHERE m.id=c.department_member_id), 'none') AS accreditation, c.department_member_id,
+  ${CREW_ACCRED} AS accreditation, ${ACCRED_ID} AS accreditation_id, ${ACCRED_ZONES} AS accredited_zones, c.department_member_id,
   (c.restricted_approved_by IS NOT NULL) AS restricted_zones_approved, o.name AS partner_name`;
 const CREW_FROM = `mr_crew c JOIN users u ON u.id=c.user_id LEFT JOIN mr_licences l ON l.id=c.licence_id LEFT JOIN media_partners mp ON mp.id=l.partner_id LEFT JOIN organisations o ON o.id=mp.organisation_id`;
-const withReady = (r) => ({ ...r, ready: r.status === 'acknowledged' && r.accreditation === 'issued' });
+// crew zones that are access-controlled zone kinds but are missing from the credential: the badge would be refused at that door
+const withReady = (r) => {
+  const have = r.accredited_zones ?? [];
+  const zone_gaps = r.accreditation_id ? (r.zones ?? []).filter((z) => ACCREDITED_KINDS.includes(z) && !have.includes(z)) : [];
+  return { ...r, zone_gaps, ready: r.status === 'acknowledged' && r.accreditation === 'issued' && !zone_gaps.length };
+};
 
 cap({
   name: 'save_crew_assignment', method: 'POST', path: '/events/:id/media/crew', tag: TAG, status: 201,
@@ -312,11 +320,11 @@ cap({
 
 cap({
   name: 'list_my_media_assignments', method: 'GET', path: '/me/media-assignments', tag: TAG,
-  summary: 'Your own production assignments across events (upcoming first): role, event, game, call time, camera position / booth, whether you have confirmed, and your badge status read live from the event department. Past and released assignments are left out unless asked for.',
+  summary: 'Your own production assignments across events (upcoming first): role, event, game, call time, camera position / booth, whether you have confirmed, and your badge status read live from your event accreditation. Past and released assignments are left out unless asked for.',
   input: z.object({ include_past: z.coerce.boolean().default(false), ...page }),
   handler: ({ user }, i) => many(
     `SELECT c.id, c.event_id, e.name AS event_name, e.status AS event_status, c.fixture_id, h.name AS home_name, a.name AS away_name, f.scheduled_at AS game_at, c.role, c.zones, c.call_time, c.camera_position, c.booth_ref, c.technical_provider, c.status, c.acknowledged_at,
-            coalesce((SELECT m.accreditation FROM event_department_members m WHERE m.id=c.department_member_id), 'none') AS accreditation
+            ${CREW_ACCRED} AS accreditation
        FROM mr_crew c JOIN events e ON e.id=c.event_id LEFT JOIN fixtures f ON f.id=c.fixture_id LEFT JOIN teams h ON h.id=f.home_team_id LEFT JOIN teams a ON a.id=f.away_team_id
       WHERE c.user_id=$1 AND ($2 OR (c.status IN ('assigned','acknowledged') AND coalesce(c.call_time, f.scheduled_at, now()) > now() - interval '1 day'))
       ORDER BY coalesce(c.call_time, f.scheduled_at) NULLS LAST LIMIT $3 OFFSET $4`, [user.id, i.include_past, i.limit, i.offset]),

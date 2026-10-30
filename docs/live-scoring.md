@@ -120,6 +120,46 @@ revised); a live game with corrections shows `corrected: true`. Sessions use the
   from the discipline's live rules, Undo, and "Finalise result". Marks are built from steppers, not typed.
 * Taps are saved on the device first and survive closing the app; "N not sent yet" and Retry are always visible.
 
+## Offline scoring and the referee's match-day pack (#7)
+
+The live scoring engine above already queued every tap on the device. What was missing for a referee with no signal at the ground: the game
+could not be **opened** offline, **kick-off, pause, resume and full time** went straight to the server (so they failed, and a kick-off sent
+late was stamped late), and the score on screen did not move until the server answered. This change closes those gaps **inside the same
+Match Centre and the same capabilities**; there is no second scorer.
+
+| Piece | Where | What it does |
+|---|---|---|
+| `get_scorer_pack` (`GET /me/scorer-pack`, MCP tool of the same name) | `capabilities/scorer-pack.js` | The games the caller may score in the next hours (organiser, or an accepted referee / umpire / scorer; `fixture_id` refreshes one), each with the **whole** event log, pinned ruleset, viewer and declared lineup. Authority is resolved per game with `fixtureContext`, the lineup is the existing `list_fixture_appearances` (a young person without current guardian consent is hidden), team managers and strangers get nothing, and each download is audited. |
+| `client_key` + `occurred_at` on `start_match`, `pause_match`, `resume_match`, `end_match` | `capabilities/match-tracking.js`, `score-sheets.js`, migration `129_scorer_offline.sql` (`fixture_control_ops`, additive) | A retry after a lost reply returns the current state and changes nothing (`end_match` returns the same sheet). `occurred_at` is when the official pressed it on the device; the server clamps it to the last 24 hours and never the future, so kick-off is recorded when it happened. |
+| Device projection | `apps/app/src/scorer/local.js` | Runs the server's own **pure** engine (`apps/api/src/scoring/engine.js`, no database or clock) over the saved log plus the taps still waiting, so score, period and what may be tapped next are right offline. Refuses the unambiguous breaches at once (not live, paused, period not open, the sport's own rules); the server replays everything under the pinned rules again on arrival and stays the only authority. What is shown offline is labelled **provisional**. |
+| Encrypted pack store | `apps/app/src/scorer/pack.js`, `offline-store.js` (`packStore`) | Web: IndexedDB with a non-extractable AES-GCM key. iOS, iPadOS, Android: the platform keychain. Never plain storage. Kept current while online (merged from the feed, or downloaded again when the feed cannot join it), only ever for the signed-in account, and **removed at sign-out**. |
+| Queue | `apps/app/src/scorer/queue.js` | Carries controls (`op`) in order with the taps; holds up to 800 (a whole innings) and rewrites only the pieces that changed; each tap is stamped with its account so taps made by another account on the same device are **kept, never sent and never deleted**; an unsent tap can be taken back. |
+| Screens | Match Centre (`screens/match-centre.js`), Officials home "Match-day pack" (`screens/match-day-pack.js`) | Save the day's games from Officials home; opening a game as a scorer saves it too. Offline banner with when the copy was saved, "N not sent yet", full time queued after the taps, Appearances and AI recap hidden offline (they need the server). |
+
+### Sports covered
+
+`test/scorer-pack.test.js` walks the whole catalogue (219 sports). Every head-to-head sport is scored on the device by the same engine as the
+server; the test checks that kick-off works, a first event is accepted offline, nothing can be scored before kick-off and the device score
+equals the engine's score for the same log.
+
+| Model | Sports | Offline |
+|---|---|---|
+| Points / goals (`points_events`) | 39 (football, handball, hockey, basketball, rugby, kabaddi … and the labelled generic points fallback) | native |
+| Rally sets (`sets`) | 12 | native |
+| Games in sets (`racket`) | tennis, padel | native |
+| Innings (`cricket`) | cricket | native |
+| Round cards (`cards`) | 4 combat sports | native |
+| Result only (`outcome`) | 55 | native |
+| Timed, measured and judged sessions | 106 | **gap**: the heat / field-flight session pad keeps its queue (taps survive no signal and are sent later, as before) but is not in the pack and does not project a provisional result on the device |
+
+### Honest limits
+
+* Undo of a tap that was already **sent** and Correct need a connection (they change the server's log); undo of a tap still waiting just takes it back.
+* A game must have been saved once while online (Officials home, or opening it as a scorer). A game not saved cannot be scored offline, and the screen says so.
+* Offline, another official's taps are not seen. If someone scored meanwhile, the existing `409 stale_state` conflict sheet appears on reconnect; nothing is added blindly.
+* The scorer queue itself (not the pack) is on the same storage as before: the keychain on native, `localStorage` on the web. It holds scoring facts and player ids, no names.
+* Not run on a physical iPhone, iPad or Android device here; the iOS and Android bundles compile with `expo export`.
+
 ## Limits worth knowing
 
 * Aggregate, direction, dropped extremes, Q / q, wildcards and field cuts come from the discipline's live rules (`set_discipline_live_rules`, edited under Games > Live scoring rules); with nothing set the sport's default applies and no cut is shown. Rest-of-field rules beyond that are not
@@ -133,7 +173,7 @@ revised); a live game with corrections shows `corrected: true`. Sessions use the
 
 ## Verification
 
-`apps/api/test/live-scoring-engine.test.js` (pure plugin tests), `apps/api/test/live-scoring.test.js` (concurrency, replay, stale state,
+`apps/api/test/scorer-pack.test.js` (the pack, offline-safe controls, device projection, catalogue walk), `scripts/e2e/offline-referee-journey.mjs` (real web app: save the pack, go offline, score, full time, reconnect; phone, tablet, desktop), `apps/api/test/live-scoring-engine.test.js` (pure plugin tests), `apps/api/test/live-scoring.test.js` (concurrency, replay, stale state,
 corrections and provenance, tennis, cricket, football cup tie, lineup, permissions over REST and MCP, lease, streams and live revocation,
 sessions, public lifecycle, youth consent) and `scripts/e2e/live-scoring-journey.mjs` (the real web app on a phone, tablet and desktop,
 including going offline and the conflict sheet). Native devices were not available in this environment: the iOS and Android bundles compile

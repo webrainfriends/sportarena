@@ -52,7 +52,7 @@ cap({
         const er = (await c.query("SELECT * FROM event_requests WHERE id=$1 AND kind='supplier'", [i.event_request_id])).rows[0];
         if (!er || er.event_id !== buyer.event_id) throw badRequest('That supplier request does not belong to this event');
       }
-      const scope = { category: rq.category, subcategory: rq.subcategory, scope: rq.scope, quantity: Number(rq.quantity), unit: rq.unit, headcount: rq.headcount, starts_at: rq.starts_at, ends_at: rq.ends_at, timezone: rq.timezone, recurrence: rq.recurrence, site_access: rq.site_access, qualifications: rq.qualifications, acceptance_criteria: rq.acceptance_criteria, title: rq.title, compliance_kinds: rq.compliance_kinds ?? [] };
+      const scope = { category: rq.category, subcategory: rq.subcategory, scope: rq.scope, quantity: Number(rq.quantity), unit: rq.unit, headcount: rq.headcount, starts_at: rq.starts_at, ends_at: rq.ends_at, timezone: rq.timezone, recurrence: rq.recurrence, site_access: rq.site_access, qualifications: rq.qualifications, acceptance_criteria: rq.acceptance_criteria, title: rq.title, compliance_kinds: rq.compliance_kinds ?? [], needs: rq.needs ?? [] };
       const r = (await c.query(
         `INSERT INTO svc_rfqs(buyer_id, requirement_id, lot_id, event_request_id, title, scope, currency, audience, invite_deadline, question_deadline, quote_deadline, rubric, allow_partial, created_by)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,

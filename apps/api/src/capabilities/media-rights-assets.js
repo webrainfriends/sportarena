@@ -17,7 +17,8 @@ import { notify } from '../notify.js';
 import { hasConsent } from '../youth.js';
 import { DOC_LIMITS, docHeaders, loadEncrypted, readBody, saveEncrypted, sniffDoc } from '../doc-store.js';
 import { scanBuffer, scanPolicy } from '../malware-scan.js';
-import { RIGHT_KEYS, PLATFORMS, ASSET_COLS, assetState, entitlementsFor, licenceCovers, logMr, historyOf, eventOf, isOrganiserOf, myPartners, partnerFor, partnerAdmins, eventOrganisers, IN_FORCE } from '../media-rights.js';
+import { RIGHT_KEYS, PLATFORMS, ASSET_COLS, assetState, entitlementsFor, licenceCovers, evaluateRights, recordRightsCheck, provenanceOf, logMr, historyOf, eventOf, isOrganiserOf, myPartners, partnerFor, partnerAdmins, eventOrganisers, IN_FORCE } from '../media-rights.js';
+import { notifyAssetFollowers } from '../media-fans.js';
 import { MR_UNIT_KINDS } from '../sponsor-roi.js';
 
 const TAG = 'Media assets';
@@ -29,7 +30,7 @@ const KINDS = ['video', 'clip', 'photo', 'audio', 'graphic', 'document'];
 const CONSENT_KINDS = ['guardian_media', 'athlete_release', 'team_release', 'agreement', 'not_required'];
 
 /** Who the caller is for an asset: organiser, the creator, a member of the owning partner, or a licensee with entitlements. */
-async function viewerOf(user, a, c = pool) {
+export async function viewerOf(user, a, c = pool) {
   const ev = await eventOf(a.event_id, c);
   const organiser = await isOrganiserOf(user, ev, c);
   const owner = !!user && (a.creator_id === user.id || (a.owner_partner_id ? (await myPartners(user, c)).some((p) => p.partner_id === a.owner_partner_id) : false));
@@ -39,14 +40,14 @@ async function viewerOf(user, a, c = pool) {
   return { ev, organiser, owner, ownerCanAct, ents, inColl };
 }
 /** Is the asset visible to this viewer right now? Privileged people see their own material in any state; everyone else only sees what is live and licensed to them. */
-async function visibleTo(a, v, c = pool) {
+export async function visibleTo(a, v, c = pool) {
   const state = await assetState(a, c);
   if (v.organiser || v.owner) return { state, visible: true, privileged: true };
   if (state !== 'live' || a.audience === 'private') return { state, visible: false };
   if (a.audience === 'public') return { state, visible: true };
   return { state, visible: v.ents.some((e) => licenceCovers(a, e, v.inColl)) };
 }
-const getAsset = async (aid, c = pool) => {
+export const getAsset = async (aid, c = pool) => {
   const a = (await c.query(`SELECT ${ASSET_COLS} FROM mr_assets a WHERE a.id=$1`, [aid])).rows[0];
   if (!a) throw notFound('Asset');
   return a;
@@ -215,7 +216,10 @@ cap({
   name: 'set_media_asset_status', method: 'POST', path: '/media/assets/:id/status', tag: TAG,
   summary: 'Publish a draft, withdraw it, take it down, or restore it to draft. Publishing needs a file or link, an owner, and current guardian media consent for every young person in it. Withdrawing and taking down need a reason, are never deletion (the record, the file and the history are kept for retention and contract purposes), and hide the asset and every clip derived from it at once. Only the organiser can take down.',
   input: z.object({ id, action: ASSET_ACTIONS, reason: text(500).optional(), row_version: z.number().int().min(1) }),
-  handler: ({ user }, i) => tx(async (c) => {
+  handler: async ({ user }, i) => {
+   // a blocked publish is still written down: the check is recorded after the failed transaction has rolled back
+   const blocked = {};
+   try { return await tx(async (c) => {
     await c.query('SELECT id FROM mr_assets WHERE id=$1 FOR UPDATE', [i.id]);
     const a = await getAsset(i.id, c);
     const v = await viewerOf(user, a, c);
@@ -225,10 +229,15 @@ cap({
     if (i.action === 'publish') {
       if (!v.ownerCanAct) throw forbidden('Your role cannot publish this asset');
       if (a.status !== 'draft') throw conflict('Only a draft can be published');
-      if (a.source_kind === 'upload' && !a.stored_file) throw badRequest('Upload the file first', { code: 'file_required' });
-      if (a.source_blocked) throw conflict('The asset this was cut from has been withdrawn');
-      const youth = await youthWithoutConsent(c, a.id);
-      if (youth.length) throw conflict('A verified guardian has not given current media consent for a young person in this asset', { code: 'guardian_consent_required', purpose: 'media', count: youth.length });
+      const check = await evaluateRights(c, a, { purpose: 'publish', viewer: v });
+      if (!check.allowed) {
+        blocked.check = { a, user, purpose: 'publish', result: check };
+        const f = check.rules.find((r) => !r.ok);
+        if (f.rule === 'file') throw badRequest(f.detail, { code: 'file_required' });
+        if (f.rule === 'consent') throw conflict(f.detail, { code: 'guardian_consent_required', purpose: 'media', count: f.count });
+        throw conflict(f.detail, { code: `rights_${f.rule}`, rules: check.rules });
+      }
+      await recordRightsCheck(c, a, { user, purpose: 'publish', result: check });
       to = 'published';
     } else if (i.action === 'withdraw') {
       if (!v.ownerCanAct && a.creator_id !== (user?.id)) throw forbidden('Your role cannot withdraw this asset');
@@ -251,8 +260,14 @@ cap({
       for (const uid of new Set(who)) if (uid !== user.id) await notify(c, uid, { kind: `media_asset_${i.action}`, title: i.action === 'take_down' ? 'Media taken down' : 'Media withdrawn', body: `${a.title} · ${v.ev.name}: ${i.reason}`, data: { asset_id: a.id }, dedupe_key: `mr-asset-${i.action}:${a.id}:${row.row_version}:${uid}` });
     }
     const fresh = await getAsset(a.id, c);
-    return shape(fresh, v, { state: await assetState(fresh, c), visible: true, privileged: true }, c);
-  }),
+    const state = await assetState(fresh, c);
+    if (i.action === 'publish') await notifyAssetFollowers(c, fresh, state);
+    return shape(fresh, v, { state, visible: true, privileged: true }, c);
+   }); } catch (e) {
+     if (blocked.check) await recordRightsCheck(pool, blocked.check.a, blocked.check).catch(() => {});
+     throw e;
+   }
+  },
 });
 
 cap({
@@ -339,6 +354,7 @@ export function mediaAssetFilesRouter() {
       const vis = await visibleTo(a, await viewerOf(user, a));
       if (!vis.visible) throw notFound('Asset');
       if (a.audience !== 'public' && !user) throw unauthorized();
+      if (user && !vis.privileged) await recordRightsCheck(pool, a, { user, purpose: 'download', result: { allowed: true, rules: [{ rule: 'visibility', ok: true, label: 'Live, and covered by the audience or licence' }], provenance: await provenanceOf(pool, a) } });
       const bytes = await loadEncrypted('media-rights', 'mr_assets.stored_file', a.stored_file);
       res.set(docHeaders(a.content_type, bytes)).send(bytes);
     } catch (e) { fail(res, e); }
