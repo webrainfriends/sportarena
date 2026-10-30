@@ -8,7 +8,7 @@ import { orgRole, hasOrgGrant } from './org-access.js';
 import { encrypt, decrypt } from './crypto.js';
 import { audit } from './helpers.js';
 import { badRequest, conflict, forbidden, notFound } from './errors.js';
-import { authority, can, isGuardianOf, plain } from './federation.js';
+import { authority, can, jurisdictionScope, isGuardianOf, plain } from './federation.js';
 
 export const TABLE = { affiliation: 'fed_affiliations', licence: 'fed_licences', sanction: 'fed_sanctions' };
 // While the other party may still add or remove evidence.
@@ -19,7 +19,10 @@ const MAX_FILE = 5 * 2 ** 20, MAX_EVIDENCE = 30;
 export async function subjectFor(user, type, subjectId, { c = pool, lock = false } = {}) {
   const row = plain((await c.query(`SELECT * FROM ${TABLE[type]} WHERE id=$1${lock ? ' FOR UPDATE' : ''}`, [subjectId])).rows[0]);
   if (!row) throw notFound(type[0].toUpperCase() + type.slice(1));
-  const auth = await authority(user, row.body_id, { c, optional: true });
+  let auth = await authority(user, row.body_id, { c, optional: true });
+  // staff limited to some jurisdictions do not see (or act on) records outside them; a record with no jurisdiction fails closed
+  const scope = auth && jurisdictionScope(auth);
+  if (scope && !scope.includes(row.jurisdiction_id)) auth = null;
   let party = false, sportId = null, extra = {};
   if (type === 'affiliation') {
     party = ['owner', 'admin'].includes(await orgRole(user, row.organisation_id, c));
@@ -36,7 +39,7 @@ export async function subjectFor(user, type, subjectId, { c = pool, lock = false
   return { type, row, auth, party, sportId, ...extra };
 }
 /** Staff with the given permission on this record's body and sport. */
-export const staffCan = (s, perm) => !!s.auth && can(s.auth, perm, s.sportId);
+export const staffCan = (s, perm) => !!s.auth && can(s.auth, perm, s.sportId, s.row.jurisdiction_id ?? null);
 export function needStaff(s, perm) { if (!staffCan(s, perm)) throw forbidden(`Your role on ${s.auth?.body?.name ?? 'this body'} does not allow that`); }
 
 /** Everyone who should hear about a body's new work: owners/admins plus holders of the matching role. */

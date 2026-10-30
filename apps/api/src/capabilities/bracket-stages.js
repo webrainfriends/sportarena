@@ -122,14 +122,20 @@ cap({
   name: 'redraw_event_stage', method: 'POST', path: '/events/:id/stages/:stage_id/redraw', tag: TAG,
   summary: 'Re-seed or redraw a stage whose games have not started. A draft stage can be re-ordered freely; a published stage needs a reason. mode: manual (send `order`, best seed first), random (new persisted draw seed, `protect_top` seeds stay put), seeds (current event seeds), standings (current table). The old games are kept as history (cancelled, "redrawn") and their courts released, the new games are scheduled through the same scheduler, and the change is added to the stage audit trail. If any game has started or been played the redraw is refused. Swiss: re-pair the latest round only (send `manual_pairings` or a changed policy).',
   input: z.object({ id, stage_id: id, mode: z.enum(['manual', 'random', 'seeds', 'standings']).default('manual'), order: z.array(id).max(128).optional(), protect_top: z.number().int().min(0).max(64).default(0),
-    manual_pairings: z.array(z.object({ home: id, away: id })).max(64).optional(), reason: reason.optional(), accept_mismatch: z.boolean().default(false), ...WINDOW }),
+    manual_pairings: z.array(z.object({ home: id, away: id })).max(64).optional(), reason: reason.optional(), accept_mismatch: z.boolean().default(false),
+    format_config: z.record(z.string(), z.any()).optional().describe('a material change to the format itself (e.g. the grand-final reset, placement depth, series length, consolation): merged over the stage’s options, validated like generate_event_schedule, recorded as a format revision. Needs a reason once published; refused once any game has started'),
+    third_place: z.boolean().optional(), ...WINDOW }),
   async handler({ user }, i) {
     return tx(async (c) => {
       const { ev, stage } = await lockStage(c, user, i.id, i.stage_id);
       const cfg = stage.config ?? {};
       if (stage.published_at && !i.reason) throw badRequest('A published stage can only be redrawn with a reason');
       if (['completed', 'cancelled'].includes(ev.status)) throw conflict(`Event is ${ev.status}`);
-      const sched = argsOf(ev, stage, { accept_mismatch: i.accept_mismatch, ...win(i) });
+      const revising = !!(i.format_config || i.third_place !== undefined);
+      if (revising && stage.published_at && !i.reason) throw badRequest('A format change on a published stage needs a reason');
+      if (revising && stage.kind === 'swiss') throw badRequest('A Swiss stage’s policy is changed by re-pairing the latest round, not by a format revision');
+      const base = argsOf(ev, stage);
+      const sched = argsOf(ev, stage, { accept_mismatch: i.accept_mismatch, ...win(i), ...(i.format_config ? { format_config: { ...base.format_config, ...i.format_config } } : {}), ...(i.third_place !== undefined ? { third_place: i.third_place } : {}) });
       const previous = cfg.field ?? [];
       if (stage.kind === 'swiss') {
         const last = (await c.query("SELECT max(round_no) AS n FROM fixtures WHERE stage_id=$1 AND status <> 'cancelled'", [stage.id])).rows[0].n;
@@ -159,10 +165,10 @@ cap({
       if (plan.unplaced.length) throw conflict(`${plan.unplaced.length} of ${plan.items.length} games do not fit in that window`, { unplaced: plan.unplaced });
       if (plan.alignment.consent_required && !i.accept_mismatch) throw conflict(plan.alignment.verdict);
       await writeItems(c, user, ev, stage, plan.items);
-      const next = { ...cfg, field: order, ...(plan.pools ? { pools_drawn: plan.pools } : {}), ...(stage.kind === 'swiss' ? {} : {}) };
+      const next = { ...cfg, field: order, ...(plan.pools ? { pools_drawn: plan.pools } : {}), ...(revising ? { ...sched.format_config, third_place: sched.third_place } : {}) };
       const out = (await c.query('UPDATE event_stages SET config=$2, revision=revision+1, algorithm=$3, draw_seed=$4 WHERE id=$1 RETURNING *', [stage.id, JSON.stringify(next), plan.algorithm, drawSeed])).rows[0];
-      await recordRevision(c, stage.id, stage.published_at ? 'redraw' : 'seed_edit', { reason: i.reason ?? null, actor: user.id, algorithm: plan.algorithm,
-        inputs: { mode: i.mode, previous_field: previous, field: order, draw_seed: drawSeed, protect_top: i.protect_top, games_retired: retired }, snapshot: { games: snapshotOf(plan.items) } });
+      await recordRevision(c, stage.id, revising ? 'format_revision' : stage.published_at ? 'redraw' : 'seed_edit', { reason: i.reason ?? null, actor: user.id, algorithm: plan.algorithm,
+        inputs: { mode: i.mode, ...(revising ? { previous_format: base.format_config, format: sched.format_config, third_place: sched.third_place } : {}), previous_field: previous, field: order, draw_seed: drawSeed, protect_top: i.protect_top, games_retired: retired }, snapshot: { games: snapshotOf(plan.items) } });
       await audit(c, user.id, 'redraw_event_stage', 'event_stages', stage.id);
       return { stage: out, created: plan.items.length, retired, draw_seed: drawSeed, algorithm: plan.algorithm, warnings: plan.warnings };
     });

@@ -10,7 +10,8 @@ import { notify } from '../notify.js';
 import { orgRole } from '../org-access.js';
 import { encrypt } from '../crypto.js';
 import { requireApproved } from '../access.js';
-import { authority, can, need, mustBeActive, mustRunOrg, bodyById, lockBody, logFed, historyOf, nextNumber, policyAt, paramsOf, check, blocking, AFF_STATUS, addMonths, today, subtree, dateStr } from '../federation.js';
+import { openException, authority, can, need, jurisdictionScope, mustBeJurisdictionOf, mustBeActive, mustRunOrg, bodyById, lockBody, logFed, historyOf, nextNumber, policyAt, paramsOf, check, blocking, AFF_STATUS, addMonths, today, subtree, dateStr } from '../federation.js';
+import { gate } from '../federation-approvals.js';
 import { subjectFor, needStaff, staffCan, staffRecipients, evidenceIn, addEvidence, evidenceList, readEvidence, removeEvidence, missingDocuments } from '../federation-subjects.js';
 
 const TAG = 'Federation';
@@ -59,7 +60,7 @@ cap({
 
 // ------------------------------------------------------------------ views
 const AFF_COLS = `a.id, a.body_id, bo.name AS body_name, b.abbreviation AS body_abbreviation, a.organisation_id, o.name AS organisation_name, o.kind AS organisation_kind, o.city AS organisation_city,
-  a.category_id, c.name AS category_name, c.sport_id, s.name AS sport_name, a.season_year, ${AFF_STATUS('a')} AS status, a.status AS recorded_status, a.affiliation_no, a.effective_from::text AS effective_from, a.effective_to::text AS effective_to,
+  a.jurisdiction_id, (SELECT j.name FROM fed_jurisdictions j WHERE j.id=a.jurisdiction_id) AS jurisdiction_name, a.category_id, c.name AS category_name, c.sport_id, s.name AS sport_name, a.season_year, ${AFF_STATUS('a')} AS status, a.status AS recorded_status, a.affiliation_no, a.effective_from::text AS effective_from, a.effective_to::text AS effective_to,
   a.fee_minor, a.fee_currency, a.fee_status, a.fee_paid_on::text AS fee_paid_on, a.previous_id, a.override_reason, a.decision_reason, a.submitted_at, a.decided_at, a.row_version, a.created_at,
   CASE WHEN a.effective_to IS NOT NULL THEN a.effective_to - current_date END AS days_to_expiry`;
 const AFF_FROM = `fed_affiliations a JOIN governing_bodies b ON b.id=a.body_id JOIN organisations bo ON bo.id=b.organisation_id JOIN organisations o ON o.id=a.organisation_id
@@ -120,7 +121,7 @@ async function tellApplicant(c, a, kind, title, body) {
 cap({
   name: 'apply_affiliation', method: 'POST', path: '/federation/affiliations', tag: TAG, status: 201,
   summary: 'Start an affiliation application for an organisation you own or administer. Pick the body and one of its categories and the season; attach the required documents, then submit. Nothing about the organisation, its members or its teams changes.',
-  input: z.object({ body_id: id, organisation_id: id, category_id: id, season_year: year, note: text(1000).optional() }),
+  input: z.object({ body_id: id, organisation_id: id, category_id: id, season_year: year, jurisdiction_id: id.optional().describe('the region, state or district of the body the club belongs to'), note: text(1000).optional() }),
   handler: ({ user }, i) => tx(async (c) => {
     requireApproved(user);
     const org = await mustRunOrg(user, i.organisation_id, c);
@@ -135,8 +136,8 @@ cap({
     let a;
     try {
       a = (await c.query(
-        `INSERT INTO fed_affiliations(body_id, organisation_id, category_id, season_year, applicant_id, fee_minor, fee_currency, note) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
-        [i.body_id, i.organisation_id, i.category_id, i.season_year, user.id, cat.fee_minor, cat.currency, i.note || null])).rows[0];
+        `INSERT INTO fed_affiliations(body_id, organisation_id, category_id, season_year, applicant_id, fee_minor, fee_currency, note, jurisdiction_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+        [i.body_id, i.organisation_id, i.category_id, i.season_year, user.id, cat.fee_minor, cat.currency, i.note || null, await mustBeJurisdictionOf(c, i.body_id, i.jurisdiction_id)])).rows[0];
     } catch (e) { if (e.code === '23505') throw conflict('This organisation already has an open or current affiliation with this body for that season'); throw e; }
     await logFed(c, i.body_id, 'affiliation', a.id, 'created', { to: 'draft', actor: user.id });
     return affiliationRow(a.id, c);
@@ -197,8 +198,8 @@ cap({
     const season = i.season_year ?? s.row.season_year + 1;
     let n;
     try {
-      n = (await c.query('INSERT INTO fed_affiliations(body_id, organisation_id, category_id, season_year, applicant_id, previous_id, fee_minor, fee_currency) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',
-        [s.row.body_id, s.row.organisation_id, s.row.category_id, season, user.id, s.row.id, cat.fee_minor, cat.currency])).rows[0];
+      n = (await c.query('INSERT INTO fed_affiliations(body_id, organisation_id, category_id, season_year, applicant_id, previous_id, fee_minor, fee_currency, jurisdiction_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *',
+        [s.row.body_id, s.row.organisation_id, s.row.category_id, season, user.id, s.row.id, cat.fee_minor, cat.currency, s.row.jurisdiction_id])).rows[0];
     } catch (e) { if (e.code === '23505') throw conflict('There is already an application for that season'); throw e; }
     if (i.carry_over_documents) {
       await c.query(`INSERT INTO fed_evidence(body_id, subject_type, subject_id, requirement, reference_enc, file_name, content_type, size_bytes, sha256, file_enc, added_by)
@@ -214,7 +215,7 @@ cap({
 cap({
   name: 'decide_affiliation', method: 'POST', path: '/federation/affiliations/:id/decision', tag: TAG,
   summary: 'Move an application along (registrar/admin): start_review, request_info (back to the club), approve, reject, suspend or reinstate. Approval runs the body\'s published requirements; if one fails, approval needs an `override_reason`, which is recorded as a compliance exception. Each decision stores the policy version it was made under. Pass `version` (the row_version you saw) to refuse a decision on a record that has since changed.',
-  input: z.object({ id, action: z.enum(['start_review', 'request_info', 'approve', 'reject', 'suspend', 'reinstate']), reason: text(500).optional(), effective_from: day.optional(), effective_to: day.optional(), override_reason: text(500).min(5).optional(), version: z.number().int().min(1).optional() }),
+  input: z.object({ id, action: z.enum(['start_review', 'request_info', 'approve', 'reject', 'suspend', 'reinstate']), reason: text(500).optional(), effective_from: day.optional(), effective_to: day.optional(), override_reason: text(500).min(5).optional(), version: z.number().int().min(1).optional(), approval_id: id.optional().describe('the second person\'s approval, where the body requires four eyes') }),
   handler: ({ user }, i) => tx(async (c) => {
     const s = await subjectFor(user, 'affiliation', i.id, { c, lock: true });
     needStaff(s, 'affiliations');
@@ -228,8 +229,10 @@ cap({
     if (i.action === 'start_review') to = 'under_review';
     else if (i.action === 'request_info') to = 'needs_info';
     else if (i.action === 'reject') { to = 'rejected'; patch = { decision_reason: i.reason }; }
-    else if (i.action === 'suspend') { to = 'suspended'; patch = { decision_reason: i.reason }; }
-    else if (i.action === 'reinstate') {
+    else if (i.action === 'suspend') {
+      await gate(c, user, { bodyId: a.body_id, actions: ['affiliation_suspend'], subjectType: 'affiliation', subjectId: a.id, request: { act: 'suspend', reason: i.reason }, approvalId: i.approval_id });
+      to = 'suspended'; patch = { decision_reason: i.reason };
+    } else if (i.action === 'reinstate') {
       if (a.effective_to < today()) throw conflict('This affiliation has already run out; the club needs to renew');
       to = 'approved'; patch = { decision_reason: i.reason ?? null };
     } else {
@@ -241,12 +244,14 @@ cap({
       const { checks, policy } = await affiliationChecks(c, a, cat, { from, to: toD });
       const fails = blocking(checks);
       if (fails.length && !i.override_reason) throw conflict(`Not all requirements are met: ${fails.map((x) => x.label).join('; ')}. Fix them, or approve with an override reason.`, { code: 'requirements_not_met', checks });
+      await gate(c, user, { bodyId: a.body_id, actions: fails.length ? ['eligibility_override', 'affiliation_approve'] : ['affiliation_approve'], subjectType: 'affiliation', subjectId: a.id, request: { act: 'approve', override: fails.length ? i.override_reason : null }, approvalId: i.approval_id });
       const no = a.affiliation_no ?? await nextNumber(c, a.body_id, 'affiliation', a.season_year);
       to = 'approved';
       patch = { affiliation_no: no, effective_from: from, effective_to: toD, checks: JSON.stringify(checks), policy_version_id: policy?.version_id ?? null, override_reason: fails.length ? i.override_reason : null, decision_reason: i.reason ?? null };
     }
     const sets = Object.keys(patch);
     await c.query(`UPDATE fed_affiliations SET status=$2, decided_by=$3, decided_at=now(), row_version=row_version+1, updated_at=now()${sets.map((k, n) => `, ${k}=$${n + 4}`).join('')} WHERE id=$1`, [a.id, to, user.id, ...sets.map((k) => patch[k])]);
+    if (patch.override_reason) await openException(c, a.body_id, 'affiliation', a.id, patch.override_reason, patch.checks, user.id);
     await logFed(c, a.body_id, 'affiliation', a.id, i.action, { from: a.status, to, actor: user.id, reason: i.reason ?? patch.override_reason, detail: { ...(patch.override_reason ? { override_reason: patch.override_reason } : {}), ...(patch.effective_from ? { effective_from: ds(patch.effective_from), effective_to: ds(patch.effective_to), affiliation_no: patch.affiliation_no } : {}), ...(patch.policy_version_id ? { policy_version_id: patch.policy_version_id } : {}) } });
     const updated = await affiliationRow(a.id, c);
     const msg = { start_review: ['Application under review', 'The body has started reviewing your affiliation application.'], request_info: ['More information needed', i.reason], approve: ['Affiliation approved', `Your affiliation ${patch.affiliation_no ?? ''} is approved.`],
@@ -284,16 +289,17 @@ cap({
     const auth = i.body_id ? await authority(user, i.body_id, { optional: true }) : null;
     if (!okOrg && !auth) throw notFound(i.body_id ? 'Governing body' : 'Organisation');
     if (i.body_id && !auth && !i.organisation_id) throw notFound('Governing body');
-    const bodyIds = i.body_id ? (i.include_descendants ? await subtree(i.body_id) : [i.body_id]) : null;
-    const total = await one(`SELECT count(*)::int AS n FROM ${AFF_FROM} WHERE ${FILTER}`, args(i, bodyIds, okOrg));
-    const items = await many(`SELECT ${AFF_COLS} FROM ${AFF_FROM} WHERE ${FILTER} ORDER BY (a.status IN ('submitted','under_review')) DESC, a.submitted_at DESC NULLS LAST, a.created_at DESC, a.id LIMIT $8 OFFSET $9`, [...args(i, bodyIds, okOrg), i.limit, i.offset]);
+    const scope = auth ? jurisdictionScope(auth) : null;     // a role limited to some jurisdictions sees only those, in this body
+    const bodyIds = i.body_id ? (i.include_descendants && !scope ? await subtree(i.body_id) : [i.body_id]) : null;
+    const total = await one(`SELECT count(*)::int AS n FROM ${AFF_FROM} WHERE ${FILTER}`, args(i, bodyIds, okOrg, scope));
+    const items = await many(`SELECT ${AFF_COLS} FROM ${AFF_FROM} WHERE ${FILTER} ORDER BY (a.status IN ('submitted','under_review')) DESC, a.submitted_at DESC NULLS LAST, a.created_at DESC, a.id LIMIT $9 OFFSET $10`, [...args(i, bodyIds, okOrg, scope), i.limit, i.offset]);
     return { total: total.n, items };
   },
 });
 const FILTER = `($1::uuid[] IS NULL OR a.body_id = ANY($1)) AND ($2::uuid IS NULL OR a.organisation_id=$2) AND ($3::text IS NULL OR (${AFF_STATUS('a')})=$3) AND ($4::int IS NULL OR a.season_year=$4)
   AND ($5::text IS NULL OR o.name ILIKE '%'||$5||'%' OR a.affiliation_no ILIKE '%'||$5||'%') AND ($6::int IS NULL OR (a.status='approved' AND a.effective_to BETWEEN current_date AND current_date + $6::int))
-  AND ($7::boolean OR a.status <> 'draft')`;
-const args = (i, bodyIds, withDrafts) => [bodyIds, i.organisation_id ?? null, i.status ?? null, i.season_year ?? null, i.q || null, i.expiring_within_days ?? null, withDrafts];
+  AND ($7::boolean OR a.status <> 'draft') AND ($8::uuid[] IS NULL OR a.jurisdiction_id = ANY($8))`;
+const args = (i, bodyIds, withDrafts, scope) => [bodyIds, i.organisation_id ?? null, i.status ?? null, i.season_year ?? null, i.q || null, i.expiring_within_days ?? null, withDrafts, scope ?? null];
 
 cap({
   name: 'get_affiliation', method: 'GET', path: '/federation/affiliations/:id', tag: TAG,

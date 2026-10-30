@@ -149,16 +149,19 @@ cap({
 
 cap({
   name: 'list_coach_templates', method: 'GET', path: '/coach/templates', tag: TAG, auth: COACH,
-  summary: 'Templates you can use: your own, those you shared, and those shared with a team you coach or an organisation where you hold a coach, admin or owner role. Filter by scope (drill, block, session).',
-  input: z.object({ scope: z.enum(['drill', 'block', 'session']).optional(), ...page }),
+  summary: 'Templates you can use: your own, those you shared, and those shared with a team you coach or an organisation where you hold a coach, admin or owner role. Filter by scope (drill, block, session), sport, a skill tag used in its blocks, or a word in the title, objective or instructions - this is the drill library.',
+  input: z.object({ scope: z.enum(['drill', 'block', 'session']).optional(), sport: z.string().max(80).optional(), tag: z.string().trim().max(60).optional(), q: z.string().trim().max(80).optional(), ...page }),
   handler: ({ user }, i) => many(
-    `SELECT t.id, t.title, t.kind, t.scope, t.structure, t.blocks, t.version, t.sport_id, s.slug AS sport_slug, t.shared_team_id, t.shared_organisation_id, t.created_at, t.updated_at, (t.coach_id=$1) AS mine, u.display_name AS shared_by
+    `SELECT t.id, t.title, t.kind, t.scope, t.structure, t.blocks, t.version, t.sport_id, s.slug AS sport_slug, s.name AS sport_name, t.shared_team_id, t.shared_organisation_id, t.created_at, t.updated_at, (t.coach_id=$1) AS mine, u.display_name AS shared_by
        FROM coach_templates t LEFT JOIN sports s ON s.id=t.sport_id JOIN users u ON u.id=t.coach_id
       WHERE t.archived_at IS NULL AND ($2::text IS NULL OR t.scope=$2)
+        AND ($5::text IS NULL OR s.slug=$5 OR s.id::text=$5)
+        AND ($6::text IS NULL OR EXISTS (SELECT 1 FROM jsonb_array_elements(t.blocks) b, jsonb_array_elements_text(coalesce(b->'tags','[]'::jsonb)) g WHERE lower(g)=lower($6)))
+        AND ($7::text IS NULL OR t.title ILIKE '%'||$7||'%' OR EXISTS (SELECT 1 FROM jsonb_array_elements(t.blocks) b WHERE concat_ws(' ', b->>'title', b->>'objective', b->>'instructions') ILIKE '%'||$7||'%'))
         AND (t.coach_id=$1
              OR t.shared_team_id IN (SELECT team_id FROM team_members WHERE user_id=$1 AND status='active' AND role='coach')
              OR t.shared_organisation_id IN (SELECT m.organisation_id FROM organisation_members m JOIN organisations o ON o.id=m.organisation_id WHERE m.user_id=$1 AND m.status='active' AND o.status='active' AND m.role IN ('owner','admin','coach')))
-      ORDER BY t.created_at DESC, t.id LIMIT $3 OFFSET $4`, [user.id, i.scope ?? null, i.limit, i.offset]),
+      ORDER BY t.created_at DESC, t.id LIMIT $3 OFFSET $4`, [user.id, i.scope ?? null, i.limit, i.offset, i.sport ?? null, i.tag || null, i.q || null]),
 });
 
 cap({

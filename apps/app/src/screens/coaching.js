@@ -27,6 +27,8 @@ export const AUDIENCES = [['individual', 'Individual'], ['group', 'Group'], ['te
 export const UNIT = { hour: '/hr', session: '/session', day: '/day', month: '/month', package: ' package' };
 export const cardPrice = (k, currency) => `${price(k.price_cents, currency)}${UNIT[k.unit]}${k.per_person ? ' per person' : ''}`;
 export const audienceTag = (r) => (r.audience && r.audience !== 'individual' ? `${r.audience[0].toUpperCase()}${r.audience.slice(1)}${r.team_name ? `: ${r.team_name}` : r.event_name ? `: ${r.event_name}` : ''}${r.participants > 1 ? ` · ${r.participants} people` : ''}` : null);
+export const COACHING_STYLES = [['player_led', 'Player-led'], ['technical', 'Technical'], ['tactical', 'Tactical'], ['game_based', 'Game-based'], ['athlete_development', 'Athlete development'], ['holistic', 'Holistic'], ['performance', 'Performance'], ['fun_and_participation', 'Fun and participation'], ['discipline', 'Discipline'], ['data_informed', 'Data-informed']];
+const styleName = (k) => COACHING_STYLES.find(([v]) => v === k)?.[1] ?? k;
 const DELIVERY = { in_person: 'In person', online: 'Online', both: 'In person & online', either: 'In person or online' };
 const LEVELS = ['beginner', 'amateur', 'semi_pro', 'pro'].map((value) => ({ value, label: nice(value).replace(/^./, (x) => x.toUpperCase()) }));
 const DAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
@@ -118,7 +120,7 @@ export function CoachToolGrid({ push, counts = {} }) {
   const tools = [
     ['🗂️', 'Desk', 'CoachDesk'], ['📬', 'Request board', 'CoachBoard', counts.board], ['🏃', 'Athletes', 'CoachAthletes'], ['🤝', 'Shared wellness', 'SharedWellness'], ['📄', 'Shared reports', 'SharedSeasonReports'], ['🎬', 'Recruitment', 'PassportDesk'], ['🪪', 'Profile & hours', 'CoachSetup'],
     ['📅', 'Schedule', 'CoachCalendar'], ['🏫', 'Academy week', 'AcademyAgenda'], ['🏷️', 'Rate cards', 'CoachRates'], ['📑', 'Commitments', 'CoachCommitments'], ['⭐', 'Reviews', 'CoachReviews', counts.reviews],
-    ['🧠', 'Performance Studio', 'PerformanceStudio'], ['📏', 'Rubrics', 'CoachRubrics'], ['📈', 'Analytics', 'CoachAnalytics'], ['📝', 'Training plans', 'MyPlans', null, { as: 'coach' }], ['📍', 'Courts', 'TrainingVenue', counts.courts], ['🔁', 'Recurring booking', 'RecurringVenue'],
+    ['🧠', 'Performance Studio', 'PerformanceStudio'], ['🧰', 'Drill library', 'CoachDrills'], ['👥', 'Saved groups', 'CoachGroups'], ['📏', 'Rubrics', 'CoachRubrics'], ['📈', 'Analytics', 'CoachAnalytics'], ['📝', 'Training plans', 'MyPlans', null, { as: 'coach' }], ['📍', 'Courts', 'TrainingVenue', counts.courts], ['🔁', 'Recurring booking', 'RecurringVenue'],
   ];
   return (
     <Card pad={16} color={c.violetSoft}>
@@ -542,6 +544,13 @@ export function CoachProfile({ id }) {
         {p.profile.languages?.length ? <T size={12} color={c.mute}>Speaks {p.profile.languages.join(', ')}</T> : null}
       </Section>
 
+      {p.profile.philosophy || p.profile.coaching_styles?.length ? (
+        <Section title="Coaching philosophy">
+          {p.profile.philosophy ? <T size={14}>{p.profile.philosophy}</T> : null}
+          {p.profile.coaching_styles?.length ? <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>{p.profile.coaching_styles.map((k) => <Pill key={k} label={styleName(k).toUpperCase()} />)}</View> : null}
+        </Section>
+      ) : null}
+
       {p.rate_cards.length ? (
         <Section title="Services & prices">
           {p.rate_cards.map((k) => (
@@ -958,6 +967,9 @@ export function CoachSetup() {
           <T size={13} color={c.mute}>{[pr.city, DELIVERY[pr.delivery], pr.accepting ? 'taking new athletes' : 'not taking new athletes', pr.listed ? null : 'hidden from search'].filter(Boolean).join(' · ')}</T>
           <T size={13} style={{ marginTop: 6 }}>{pr.about ?? 'Write a short introduction so athletes know your approach.'}</T>
           {pr.specialties?.length ? <T size={12} color={c.mute} style={{ marginTop: 6 }}>Specialities: {pr.specialties.join(', ')}</T> : null}
+          <T size={13} weight="700" style={{ marginTop: 8 }}>Coaching philosophy</T>
+          <T size={13}>{pr.philosophy ?? 'Say how you coach and what you value. Athletes see it on your profile, and your AI drafts follow it.'}</T>
+          {pr.coaching_styles?.length ? <T size={12} color={c.mute}>{pr.coaching_styles.map(styleName).join(' · ')}</T> : null}
         </Card>
         <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
           <Btn small title="Rate cards & specialisations" onPress={() => push('CoachRates')} />
@@ -975,6 +987,8 @@ export function CoachSetup() {
           { key: 'serves', label: 'Who you coach', type: 'multi', options: AUDIENCES.map(([value, label]) => ({ value, label: `${label}s` })) },
           { key: 'travel_km', label: 'Willing to travel (km)', type: 'stepper', min: 0, max: 500, step: 5, default: 0, suffix: ' km' },
           { key: 'intro_video_url', label: 'Introduction video link (https)', optional: true }, { key: 'bio', label: 'About you', type: 'multiline', optional: true },
+          { key: 'philosophy', label: 'Your coaching philosophy', type: 'multiline', optional: true, hint: 'What you value and how you coach. Shown on your public profile; do not include player names.' },
+          { key: 'coaching_styles', label: 'How you coach', type: 'multi', optional: true, options: COACHING_STYLES.map(([value, label]) => ({ value, label })) },
           { key: 'city', label: 'City or area', type: 'region', optional: true },
           { key: 'delivery', label: 'How you coach', type: 'choice', options: [{ value: 'in_person', label: 'In person' }, { value: 'online', label: 'Online' }, { value: 'both', label: 'Both' }] },
           { key: 'specialties', label: 'Specialities', optional: true, hint: 'Separate with commas.' }, { key: 'languages', label: 'Languages', optional: true, hint: 'Separate with commas.' },
@@ -984,7 +998,7 @@ export function CoachSetup() {
         ]}
         onSubmit={async (v) => {
           const list = (x) => (x ?? '').split(',').map((s) => s.trim()).filter(Boolean);
-          await api.post('/me/coach-profile', { tagline: v.tagline ?? null, intro_video_url: v.intro_video_url ?? null, serves: v.serves?.length ? v.serves : ['individual'], travel_km: v.travel_km || null, headline: v.headline ?? null, bio: v.bio ?? null, city: v.city ?? null, delivery: v.delivery, specialties: list(v.specialties), languages: list(v.languages), timezone: v.timezone, slot_min: v.slot_min, accepting: v.accepting, listed: v.listed });
+          await api.post('/me/coach-profile', { tagline: v.tagline ?? null, intro_video_url: v.intro_video_url ?? null, serves: v.serves?.length ? v.serves : ['individual'], travel_km: v.travel_km || null, philosophy: v.philosophy ?? null, coaching_styles: v.coaching_styles ?? [], headline: v.headline ?? null, bio: v.bio ?? null, city: v.city ?? null, delivery: v.delivery, specialties: list(v.specialties), languages: list(v.languages), timezone: v.timezone, slot_min: v.slot_min, accepting: v.accepting, listed: v.listed });
           await d.reload(); return 'Profile saved';
         }} />
       <AddCoachSportSheet visible={addSport} onClose={() => setAddSport(false)} onDone={async () => { await refresh(); await d.reload(); }} />
