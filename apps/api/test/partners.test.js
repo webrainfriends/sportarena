@@ -250,6 +250,39 @@ test('revenue is settled per contract: platform-collected vs venue-collected, co
   assert.equal((await api('POST', `/admin/settlements/${s.id}/decision`, { token: owner.token, body: { action: 'void', reason: 'x' } })).status, 409, 'paid is final');
 });
 
+test('venue owners get one payout view: collections, commission, refunds, paid and on its way, scoped, masked and audited', async () => {
+  const from = addDays(today, -30), to = addDays(today, 1);
+  const q = { from, to, detail: 'true' };
+  const mine = must(await api('GET', '/me/venue-payouts', { token: mgr.token, query: q }));
+  assert.ok(mine.venues.some((v) => v.id === venue.id));
+  const cur = mine.by_currency.find((c) => c.currency === mine.venues[0].currency);
+  const st = (await pool.query("SELECT * FROM settlements WHERE venue_id=$1 AND status='paid'", [venue.id])).rows[0];
+  assert.equal(mine.settlements.length, 1);
+  assert.equal(mine.settlements[0].settlement_no, st.settlement_no);
+  assert.equal(cur.paid_cents, Number(st.net_payable_cents), 'paid out equals the settlement net');
+  assert.equal(cur.commission_cents, Number(st.commission_cents) + Number(st.commission_tax_cents));
+  assert.equal(cur.on_its_way_cents, 0);
+  assert.ok(mine.lines.length >= 1 && mine.lines.some((l) => l.settlement_no === st.settlement_no), 'each invoice shows the settlement it was paid out in');
+  assert.ok(!JSON.stringify(mine).includes('payout_enc'));
+  // a credit note shows as a refund owed until it is handed back
+  await pool.query("INSERT INTO invoices(number, venue_id, reservation_id, user_id, currency, status, kind, total_cents, tax_cents, tax_name, tax_rate_bp, tax_inclusive, seller, lines, refund_status) SELECT 'CN-' || gen_random_uuid(), venue_id, reservation_id, user_id, currency, 'open', 'credit_note', 1000, 0, tax_name, tax_rate_bp, tax_inclusive, seller, lines, 'manual' FROM invoices WHERE venue_id=$1 AND kind='invoice' LIMIT 1", [venue.id]);
+  const withRefund = must(await api('GET', '/me/venue-payouts', { token: mgr.token, query: { from, to } }));
+  assert.equal(withRefund.by_currency.find((c) => c.currency === cur.currency).refunds_owed_cents, 1000);
+  assert.deepEqual(withRefund.lines, [], 'lines only with detail');
+  // a stranger sees nothing and no existence is leaked; platform-only actions stay closed to owners
+  const stranger = await signup(['venue_manager']);
+  const none = must(await api('GET', '/me/venue-payouts', { token: stranger.token, query: { from, to } }));
+  assert.deepEqual([none.venues, none.settlements, none.by_currency], [[], [], []]);
+  assert.equal((await api('GET', '/me/venue-payouts', { query: { from, to } })).status, 401);
+  assert.equal((await api('POST', `/admin/settlements/${st.id}/decision`, { token: mgr.token, body: { action: 'void', reason: 'x' } })).status, 403);
+  // CSV export is audited
+  const csv = must(await api('GET', '/me/venue-payouts', { token: mgr.token, query: { from, to, format: 'csv' } }));
+  assert.match(csv.csv, /^invoice,kind,venue,currency/);
+  assert.ok((await pool.query("SELECT 1 FROM audit_log WHERE actor_id=$1 AND action='export_payouts'", [mgr.id])).rowCount >= 1);
+  // a venue filter narrows the view
+  assert.equal(must(await api('GET', '/me/venue-payouts', { token: mgr.token, query: { from, to, venue_ids: '00000000-0000-4000-8000-000000000000' } })).venues.length, 0);
+});
+
 test('voiding a draft frees its invoices to be settled again', async () => {
   const inv = (await pool.query("INSERT INTO invoices(number, venue_id, reservation_id, user_id, currency, status, total_cents, tax_cents, tax_name, tax_rate_bp, tax_inclusive, seller, lines, payment_method, paid_at) SELECT 'X-' || gen_random_uuid(), venue_id, reservation_id, user_id, currency, 'paid', 50000, 0, tax_name, tax_rate_bp, tax_inclusive, seller, lines, 'cash', now() FROM invoices WHERE venue_id=$1 AND kind='invoice' LIMIT 1 RETURNING id", [venue.id])).rows[0];
   const d = must(await api('POST', '/admin/settlements', { token: owner.token, body: { venue_id: venue.id, period_end: today } }), 201);

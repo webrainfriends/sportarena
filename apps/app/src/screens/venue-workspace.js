@@ -34,6 +34,7 @@ export function VenueWorkspace() {
       ) : null}
       <Section title="Money & account" color={c.mint}>
         <Row onPress={() => push('OwnerSummary')} left={<Bubble emoji="📊" color={c.violet} />} title="All my venues" sub="Revenue, tax and payments per venue and per currency" right={<T color={c.pink} weight="700">Open ›</T>} />
+        <Row onPress={() => push('VenuePayouts')} left={<Bubble emoji="💸" color={c.lime} />} title="Payouts" sub="Collected, commission, refunds, paid out and your next payout" right={<T color={c.pink} weight="700">Open ›</T>} />
         <Row onPress={() => push('MyPartner')} left={<Bubble emoji="🤝" color={c.mint} />} title="Partner account" sub="Status, contracts, price requests and settlements" right={<T color={c.pink} weight="700">Open ›</T>} />
       </Section>
       <RegisterVenue visible={form} onClose={() => setForm(false)} onCreated={venues.reload} />

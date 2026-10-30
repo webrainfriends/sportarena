@@ -16,6 +16,7 @@ import { signatureCallbackRouter } from './capabilities/sponsorship-contracts.js
 import { mediaRouter } from './media.js';
 import { marketMediaRouter } from './market-media.js';
 import { matchFileRouter } from './capabilities/player.js';
+import { migrationFileRouter } from './capabilities/migrations.js';
 import { insuranceDocsRouter } from './capabilities/insurance-docs.js';
 import { complianceFilesRouter } from './capabilities/compliance-files.js';
 import { teamChatRouter } from './team-chat-stream.js';
@@ -29,6 +30,7 @@ import { coachingEvidenceRouter } from './capabilities/coaching-evidence.js';
 import { calendarFeedRouter } from './capabilities/calendar-sync.js';
 import { passportFilesRouter } from './capabilities/passport-recruitment.js';
 import { applicationFilesRouter } from './capabilities/sponsorship-application-forms.js';
+import { registrationFilesRouter } from './capabilities/registration-engine.js';
 import { subjectDocsRouter } from './capabilities/subject-docs.js';
 import { tenderFilesRouter } from './capabilities/tender-files.js';
 import { mediaAssetFilesRouter } from './capabilities/media-rights-assets.js';
@@ -83,6 +85,7 @@ export function createApp() {
   // Media: streaming upload + file serving (binary, so outside the JSON capability router); base64 uploads get a larger JSON limit on their own path.
   app.use('/api/v1/venues/:id/media', express.json({ limit: '12mb' }));
   // Race day bulk files (entrant lists, chip lists, timing batches): bounded bigger JSON body on those three paths only.
+  app.use(/^\/api\/v1\/organisations\/[0-9a-f-]{36}\/migrations$/, express.json({ limit: '4mb' }));
   app.use(/^\/api\/v1\/races\/[0-9a-f-]{36}\/(entrants|chips|reads)\/import$/, express.json({ limit: '6mb' }));
   app.use('/api/v1', mediaRouter());
   app.use('/api/v1', marketMediaRouter());
@@ -101,7 +104,9 @@ export function createApp() {
   app.use('/api/v1', calendarFeedRouter());
   app.use('/api/v1', passportFilesRouter());
   app.use('/api/v1', applicationFilesRouter());
+  app.use('/api/v1', registrationFilesRouter());
   app.use('/api/v1', matchFileRouter());
+  app.use('/api/v1', migrationFileRouter());
   app.use('/api/v1', subjectDocsRouter());
   app.use('/api/v1', tenderFilesRouter());
   app.use('/api/v1', mediaAssetFilesRouter());

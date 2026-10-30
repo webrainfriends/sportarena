@@ -16,6 +16,7 @@ import { toLocal } from '../booking/time.js';
 import { assertEventReadable, participantSql } from '../spectator.js';
 import { OFFICIAL_ROLES, lockOfficial, assertOfficialEligible, recordHistory, closeOfficial } from '../officials.js';
 import { kitOf, mustAccess } from './branded-documents.js';
+import { assertEventMayProceed } from '../compliance-gates.js';
 
 const dt = z.string().datetime({ offset: true });
 const date = z.string().date();
@@ -202,6 +203,9 @@ cap({
       mustOwn(user, ev.organizer_id, 'event');
       if (i.brand_kit_id) { const kit = await kitOf(i.brand_kit_id); if (!kit || kit.archived_at) throw notFound('Brand kit'); await mustAccess(user, kit, 'Brand kit'); }
       if (i.status && i.status !== ev.status && !NEXT_STATUS[ev.status].includes(i.status)) throw conflict(`An event that is ${ev.status} cannot become ${i.status}`);
+      // the compliance rules (#568): publishing an event, and the moment it starts, are where its permits, insurance and safety approvals must be in order
+      if (i.status === 'open' && ev.status === 'draft') await assertEventMayProceed(c, user, ev, 'open');
+      if (i.status === 'ongoing' && ev.status !== 'ongoing') await assertEventMayProceed(c, user, ev, 'start');
       if ((i.starts_on || i.ends_on) && (await c.query('SELECT coalesce($2::date, ends_on) < coalesce($1::date, starts_on) AS bad FROM events WHERE id=$3', [i.starts_on ?? null, i.ends_on ?? null, i.id])).rows[0].bad) throw badRequest('ends_on is before starts_on');
       if (i.capacity) {
         const used = (await c.query("SELECT count(*)::int AS n FROM event_entries WHERE event_id=$1 AND status='accepted'", [i.id])).rows[0].n;

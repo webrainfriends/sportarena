@@ -464,7 +464,7 @@ export async function renderSponsorshipContract({ layout, kit, logo, snapshot, s
   return { buffer: Buffer.concat(chunks), pages: range.count };
 }
 
-const KIND_TITLE = { ageing: 'Financial ageing', funnel: 'Award funnel', outcomes: 'Beneficiary outcomes', fulfilment: 'Fulfilment', renewals: 'Renewals', roi: 'Sponsorship ROI & exposure' };
+const KIND_TITLE = { ageing: 'Financial ageing', funnel: 'Award funnel', outcomes: 'Beneficiary outcomes', fulfilment: 'Fulfilment', renewals: 'Renewals', roi: 'Sponsorship ROI & exposure', kpi: 'Analytics' };
 const SOURCE_MARK = { ok: 'OK', stale: 'STALE', missing: 'MISSING' };
 
 /**
@@ -492,8 +492,8 @@ export async function renderSponsorshipReport({ kit, logo, report }) {
 
   let x = left;
   if (logo) { try { doc.image(logo, x, doc.y, { fit: [110, 44] }); x += 120; } catch { throw new AppError(422, 'logo_unreadable', 'The brand logo could not be read. Upload it again as PNG or JPEG.'); } }
-  label(kit?.display_name ?? 'Sponsorship report', x, 36, width - (x - left), { bold: true, size: 14, color: accent });
-  label(`${KIND_TITLE[report.kind]} report`, x, doc.y + 2, width - (x - left), { bold: true, size: 12 });
+  label(kit?.display_name ?? (report.kind === 'kpi' ? 'Sportarena analytics' : 'Sponsorship report'), x, 36, width - (x - left), { bold: true, size: 14, color: accent });
+  label(report.title ?? `${KIND_TITLE[report.kind]} report`, x, doc.y + 2, width - (x - left), { bold: true, size: 12 });
   label(`As of ${report.basis.as_of} · ${report.basis.currency_basis === 'reporting' ? `converted to ${report.basis.currency} at each agreement's sourced rate` : 'every currency kept apart'} · cash and estimates separate · generated ${report.basis.generated_at.slice(0, 16).replace('T', ' ')} UTC`, x, doc.y + 2, width - (x - left), { size: 8 });
   doc.y = Math.max(doc.y, 36 + (logo ? 48 : 0)) + 8;
   doc.moveTo(left, doc.y).lineTo(left + width, doc.y).lineWidth(0.6).stroke(accent); doc.y += 8;

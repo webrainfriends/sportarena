@@ -446,3 +446,36 @@ test('previews say how a sport fits the bracket: native for two-sided contests, 
   assert.equal(fb.body.coverage.mode, 'fallback');
   assert.ok(fb.body.warnings.some((x) => /generic fallback/.test(x)));
 });
+
+test('format revision: a published stage changes its options only with a reason, as a recorded revision, until a game has started', async () => {
+  const w = await world(8);
+  const gen = await api('POST', `/events/${w.ev.id}/schedule`, { token: w.org.token, body: { ...WINDOW, format: 'knockout', team_ids: w.ids, publish: true } });
+  assert.equal(gen.status, 201, JSON.stringify(gen.body));
+  const sid = gen.body.stage.id;
+  const url = `/events/${w.ev.id}/stages/${sid}/redraw`;
+  assert.equal((await api('POST', url, { token: w.org.token, body: { mode: 'seeds', third_place: true } })).status, 400, 'a material change on a published stage needs a reason');
+  assert.equal((await api('POST', url, { token: w.org.token, body: { mode: 'seeds', third_place: true, reason: 'Federation added a bronze match', format_config: { placement_up_to: 99 } } })).status, 400, 'options are validated like at creation');
+  const ok = await api('POST', url, { token: w.org.token, body: { mode: 'seeds', third_place: true, reason: 'Federation added a bronze match' } });
+  assert.equal(ok.status, 200, JSON.stringify(ok.body));
+  assert.equal((await q("SELECT count(*)::int AS n FROM fixtures WHERE stage_id=$1 AND round_kind='third_place' AND status<>'cancelled'", [sid]))[0].n, 1);
+  const rev = (await api('GET', `/events/${w.ev.id}/stages/${sid}/revisions`, { token: w.org.token })).body.at(-1);
+  assert.equal(rev.kind, 'format_revision'); assert.equal(rev.reason, 'Federation added a bronze match'); assert.equal(rev.inputs.third_place, true);
+  assert.equal((await q('SELECT config FROM event_stages WHERE id=$1', [sid]))[0].config.third_place, true, 'the revised format is what later redraws start from');
+  await playAll(w, undefined, { stop: () => false });
+  assert.equal((await api('POST', url, { token: w.org.token, body: { mode: 'seeds', third_place: false, reason: 'Too late to change this' } })).status, 409, 'nothing started or played is rewritten');
+});
+
+test('concurrent advancement: both semi-finals recorded at the same moment fill the final exactly once, with no lost update', async () => {
+  const w = await world(4);
+  const gen = await api('POST', `/events/${w.ev.id}/schedule`, { token: w.org.token, body: { ...WINDOW, format: 'knockout', team_ids: w.ids, publish: true } });
+  assert.equal(gen.status, 201, JSON.stringify(gen.body));
+  const semis = await q("SELECT id FROM fixtures WHERE event_id=$1 AND round_kind='semi' AND status='scheduled' ORDER BY bracket_slot", [w.ev.id]);
+  assert.equal(semis.length, 2);
+  const res = await Promise.all(semis.map((s) => api('POST', `/fixtures/${s.id}/result`, { token: w.org.token, body: { home_score: 3, away_score: 1 } })));
+  for (const r of res) assert.equal(r.status, 200, JSON.stringify(r.body));
+  const [fin] = await q("SELECT home_team_id, away_team_id FROM fixtures WHERE event_id=$1 AND round_kind='final' AND status<>'cancelled'", [w.ev.id]);
+  assert.ok(fin.home_team_id && fin.away_team_id && fin.home_team_id !== fin.away_team_id, 'both finalists present');
+  const winners = (await q("SELECT home_team_id FROM fixtures WHERE event_id=$1 AND round_kind='semi' ORDER BY bracket_slot", [w.ev.id])).map((r) => r.home_team_id);
+  assert.deepEqual([fin.home_team_id, fin.away_team_id].sort(), winners.slice().sort());
+  assert.equal((await q("SELECT count(*)::int AS n FROM bracket_conflicts WHERE event_id=$1", [w.ev.id]))[0].n, 0);
+});

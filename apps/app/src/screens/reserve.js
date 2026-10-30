@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { MyBallots } from './ballots';
 import { SmsCard, WhatsAppCard } from './whatsapp';
 import { CommsPrefs } from './communications';
 import { Linking, Platform, Pressable, ScrollView, Share, View } from 'react-native';
@@ -19,7 +20,7 @@ import { NewCaseSheet } from './cases';
 import { AttachSessionsSheet } from './training-venue';
 import { currentDevice, disablePush, enablePush, pushSupport } from '../push';
 import { KIND } from './book';
-import { InboxBody, QuietHoursCard } from './inbox';
+import { QuietHoursCard } from './inbox';
 import { addDays, dateTimeIn, dayLabel, fmtMin, localDate, hoursSummary, localToIso, moneyIn, offerLabel, timeIn, todayIn } from '../vtime';
 import { locale } from '../locale';
 
@@ -536,16 +537,14 @@ function WaitlistList() {
 
 export function Notifications() {
   const { toast } = useSession();
-  const [tab, setTab] = useState('inbox');
+  const { push } = useNav();
   const prefs = useLoad(() => api.get('/me/notification-preferences'), []);
   const setPref = async (patch) => { try { await api.patch('/me/notification-preferences', patch); prefs.reload(); } catch (e) { toast(e.message); } };
   const p = prefs.data;
   return (
-    <Screen wide>
-      <H1 style={{ marginTop: 8 }}>Inbox</H1>
-      <Seg options={[{ value: 'inbox', label: 'Inbox' }, { value: 'preferences', label: 'Preferences' }]} value={tab} onChange={setTab} color={c.pink} />
-      {tab === 'inbox' ? <View style={{ marginTop: 12 }}><InboxBody /></View> : null}
-      {tab === 'preferences' ? <>
+    <Screen>
+      <H1 style={{ marginTop: 8 }}>Notification settings</H1>
+      <Row onPress={() => push('Inbox')} left={<Bubble emoji="📥" color={c.pinkSoft} />} title="Open my inbox" sub="Booking confirmations, requests, changes and reminders" right={<T color={c.pink} weight="700">›</T>} />
       <Section title="How you hear from us" color={c.cyan}>
         {p ? (
           <Card>
@@ -566,8 +565,8 @@ export function Notifications() {
       <Section title="SMS" color={c.lime}><SmsCard onChanged={prefs.reload} /></Section>
       <Section title="WhatsApp & SMS preferences" color={c.lime}><CommsPrefs onChanged={prefs.reload} /></Section>
       <Section title="Waitlist" color={c.lime}><WaitlistList /></Section>
+      <Section title="Slot ballots" color={c.violet}><MyBallots /></Section>
       <Section title="Slot alerts" color={c.sun}><AlertsList /></Section>
-      </> : null}
     </Screen>
   );
 }

@@ -8,7 +8,7 @@ import { useSession } from '../session';
 import { openLink, useNav } from '../nav';
 import { useLayout } from '../layout';
 import { useLoad } from '../hooks';
-import { Avatar, Btn, Chip, ErrorBox, Field, HScroll, Loading, Screen, Seg, Sheet, T, Tag } from '../ui';
+import { Avatar, Btn, Chip, ErrorBox, Field, H1, HScroll, Loading, Screen, Seg, Sheet, T, Tag } from '../ui';
 import { EntityPicker } from '../entity-picker';
 import { TimeField } from '../pickers';
 import { c } from '../theme';
@@ -473,5 +473,19 @@ export function QuietHoursCard({ prefs, onChange }) {
         </HScroll>
       </View>
     </Panel>
+  );
+}
+
+/** The Inbox page (tab / top bar): the one unified inbox, with a way to the notification settings. */
+export function Inbox() {
+  const nav = useNav();
+  return (
+    <Screen wide>
+      <H1 style={{ marginTop: 4 }}>Inbox</H1>
+      <View style={{ flexDirection: 'row', marginVertical: 8 }}>
+        <Btn small title="Notification settings" color={c.paper} ink={c.ink} onPress={() => nav.push('Notifications')} accessibilityLabel="Notification settings" />
+      </View>
+      <InboxBody />
+    </Screen>
   );
 }

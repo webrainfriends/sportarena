@@ -1,0 +1,14 @@
+export default {
+  'account.title': 'অ্যাকাউন্ট', 'account.appearance': 'চেহারা', 'account.language': 'ভাষা ও অঞ্চল',
+  'account.theme.system': 'সিস্টেম', 'account.theme.light': 'হালকা', 'account.theme.dark': 'গাঢ়', 'account.logout': 'লগ আউট',
+  'account.use_device': 'আমার ডিভাইসের সেটিংস ব্যবহার করুন', 'account.search_language': 'ভাষা বা দেশ খুঁজুন',
+  'account.from_device': 'আপনার ডিভাইস থেকে', 'account.your_choice': 'আপনার পছন্দ',
+  'account.review_note': 'কিছু অনুবাদ মেশিনের তৈরি এবং মাতৃভাষী কারও পর্যালোচনার অপেক্ষায় আছে।',
+  'account.follow_device': 'আপনার ডিভাইস অনুসরণ করছে।', 'account.format_note': 'তারিখ, সময়, সংখ্যা ও মুদ্রা এটি এবং আপনার সময় অঞ্চল অনুসরণ করে।',
+  'common.save': 'সংরক্ষণ করুন', 'common.cancel': 'বাতিল করুন', 'common.close': 'বন্ধ করুন', 'common.back': 'পিছনে', 'common.next': 'পরবর্তী',
+  'common.search': 'খুঁজুন', 'common.loading': 'লোড হচ্ছে…', 'common.retry': 'আবার চেষ্টা করুন', 'common.done': 'সম্পন্ন',
+  'error.generic': 'কিছু ভুল হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।', 'error.network': 'সংযোগ নেই। আপনার নেটওয়ার্ক পরীক্ষা করে আবার চেষ্টা করুন।',
+  'empty.nothing': 'এখানে এখনও কিছু নেই।',
+  'nav.home': 'হোম', 'nav.search': 'অনুসন্ধান', 'nav.bookings': 'বুকিং', 'nav.account': 'অ্যাকাউন্ট',
+  'welcome.hello': 'নমস্কার, {name}',
+};

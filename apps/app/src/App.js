@@ -14,13 +14,18 @@ import { api, setMfaRequiredHandler } from './api';
 import { parseTarget, targetFor } from './push';
 import { AppLockProvider } from './app-lock';
 import { targetFromUrl } from './deeplink';
-import { AccountButton } from './account';
+import { AccountButton, InboxButton } from './account';
+import { WorkspaceProvider, useWorkspace } from './workspace';
+import { RoleHome, WorkTab } from './screens/role-home';
+import { Migrate } from './screens/migrate';
+import { Setup } from './screens/setup';
+import { Inbox } from './screens/inbox';
 import { BetaBanner } from './beta-banner';
 import { Logo } from './logo';
 import { c, dark, fam } from './theme';
 
 installWebShell();
-import Home from './screens/feed';
+import Community from './screens/feed';
 import Landing from './screens/landing';
 import { Explore, Event, Team, Person } from './screens/play';
 import { Following, LiveCentre, PublicShell } from './screens/spectate';
@@ -30,7 +35,7 @@ import { TeamChat } from './screens/team-chat';
 import { Conversation } from './screens/inbox';
 import { TeamDues } from './screens/team-finance';
 import { Venue } from './screens/book';
-import { Schedule } from './screens/schedule';
+import { Schedule, EventsWorkspace } from './screens/schedule';
 import { BookFlow } from './screens/bookflow';
 import { Billboard, Insure } from './screens/marketplace';
 import { FindGames } from './screens/find-games';
@@ -60,6 +65,8 @@ import { Leaderboard, Awards, Health, Sponsors, Supply } from './screens/hub';
 import { SponsorDeal } from './screens/sponsor-deal';
 import { SponsorOffer } from './screens/sponsor-offer';
 import { ApplicationForm } from './screens/sponsor-application';
+import { RegistrationHome, RegistrationApply, RegistrationEntry } from './screens/registration';
+import { RegistrationManage, RegistrationSetup, RegistrationForm } from './screens/registration-manage';
 import { FormBuilder } from './screens/sponsor-form-builder';
 import { SponsorPortfolio, PortfolioEntry } from './screens/sponsor-portfolio';
 import { PlayerFunding } from './screens/player-funding';
@@ -72,7 +79,11 @@ import { Insurance, InsurerPage } from './screens/insurance';
 import { InsurerDesk } from './screens/insurer';
 import { BrandedDocuments } from './screens/branded-documents';
 import { PartnerConsole, MyPartner } from './screens/partners';
+import { VenuePayouts } from './screens/venue-payouts';
 import { CommercialConsole } from './screens/commercial-console';
+import { PlatformSecurity } from './screens/platform-security';
+import { Finance } from './screens/finance';
+import { PlansBilling } from './screens/plans-billing';
 import { Me } from './screens/me';
 import { Support } from './screens/cases';
 import { Family } from './screens/family';
@@ -95,7 +106,9 @@ import { RaceLive } from './screens/race-live';
 import { EventInbox } from './screens/event-plan';
 import { Openings } from './screens/openings';
 import { EventCommand } from './screens/event-command';
+import { Competitions } from './screens/competition-home';
 import { MatchCentre } from './screens/match-centre';
+import { SessionPad } from './screens/session-pad';
 import { ScoreSheet } from './screens/score-sheet';
 import { DoctorHome } from './screens/doctor';
 import { LegalHome } from './screens/legal';
@@ -104,7 +117,7 @@ import { SeasonReports, ChildSeasonReports, SharedSeasonReports } from './screen
 import { CoachHome, CoachAthletes, CoachPlan, CoachCalendar, MyPlans } from './screens/coach';
 import { MyDevelopment } from './screens/player-development';
 import { PlayerAssistant } from './screens/player-assistant';
-import { PerformanceStudio, CoachSession, CoachJournal, CoachGoals, CoachCopilot, CoachReports, CoachReport, CoachReportView, CoachMatch, CoachProgrammes, CoachRubrics } from './screens/coaching-studio';
+import { PerformanceStudio, CoachSession, CoachJournal, CoachGoals, CoachCopilot, CoachReports, CoachReport, CoachReportView, CoachMatch, CoachProgrammes, CoachRubrics, CoachGroups, CoachDrills } from './screens/coaching-studio';
 import { CoachProfile, CoachRequest, CoachBoard, CoachDesk, CoachSetup } from './screens/coaching';
 import { CoachRates, CoachCommitments, CoachReviews, CoachAnalytics } from './screens/coach-business';
 import { SupplierWorkspace } from './screens/svc-supplier';
@@ -123,10 +136,15 @@ import { ToolsHome } from './screens/tools';
 import { ScoringTool } from './screens/scoring-tool';
 import { SportRules } from './screens/sport-rules';
 import { CareerTimeline } from './screens/career';
+import { HistorySources } from './screens/history-sources';
 import { SportsGraph, Athlete360, Organisation360 } from './screens/graph';
+import { Analytics } from './screens/analytics';
 import { RecruiterHome, RecruiterAccess } from './screens/recruiter';
 import { MoreWheel } from './screens/more-wheel';
 import { Glass } from './glass';
+
+// https hosts that open this app as a universal / app link (set EXPO_PUBLIC_APP_HOSTS, comma separated); the sportarena:// scheme always works
+const APP_HOSTS = (process.env.EXPO_PUBLIC_APP_HOSTS ?? '').split(',').map((h) => h.trim()).filter(Boolean);
 
 // A coach or scout opening a passport link (web) sees the athlete's CV without signing in.
 const PASSPORT_TOKEN = Platform.OS === 'web' && typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('passport') : null;
@@ -140,25 +158,32 @@ const PUBLIC_LINK = (() => {
   return event || fixture ? { event, fixture } : null;
 })();
 
-const TABS = [['Home', Home], ['Explore', Explore], ['Schedule', Schedule], ['Player', PlayerHome], ['Me', Me]];
-const PAGES = { Marketplace: MarketplaceHub, MarketplaceEngagement, MyCompliance, SportsGraph, Athlete360, Organisation360, Representation, IntegrityCase, MyIntegrity, AcademyPage, SupplierPage, Advertising, AdCampaign, Trips: TripsHome, Trip, Cover, OfficialsHome, OfficialMatch, Rewards, RewardsConsole, MyPasses: MyPassesPage, MyCards: MyCardsPage, CommercialConsole, FindGames, OpenGame, Following, LiveCentre, GateScan, MyAccreditations, OfficialsDevelopment, OfficialAssessment, AssessmentEditor, MediaWorkspace, Federations, FederationHome, FederationRecord, VerifyLicence, OrgAffiliations, MyLicences, SupplierWorkspace, VenueWorkspace, ServicesBuyer, SeasonReports, ChildSeasonReports, SharedSeasonReports, PlayerFunding, SharedWellness, ChildWellnessSharing, PlayerContracts, OfflineSync, PathwayPlan, SharedPathway, SponsorIdentity, OpportunityMatches, ToolsHome, ScoringTool, SportRules, MyApplications, RecruitmentApplication, RecruitmentPipeline, Trials, RecruiterHome, RecruiterAccess, AcademySession, AcademyAgenda, CareerTimeline, SponsorReports, SponsorRoi, SponsorBudgets, SponsorBudget, BrandedDocuments, Billboard, Shop, ShopProduct, ShopCart, ShopOrders, Insure, Pathways, Programme, Institution, Enquiry, Passport: MyPassport, PassportDesk, Event, PartnerConsole, MyPartner, Team, TeamManage, TeamWorkspace, TeamChat, Conversation, TeamDues, Person, Venue, Wallet, Earnings, BookFlow, Invoice, Basket, Reservation, Compare, Notifications, Manage, OwnerSummary, Leaderboard, Awards, Health, DoctorHome, Legal: LegalHome, Insurance, InsurerPage, InsurerDesk, Sponsors, SponsorDeal, SponsorOffer, SponsorPortfolio, PortfolioEntry, SponsorPrograms, SponsorProgram, FundingOpportunities, SponsorCall, ApplicationForm, FormBuilder, Supply, SportProfile, ImportMatches, Support, Family, CoachHome, CoachAthletes, CoachPlan, CoachCalendar, MyPlans, PerformanceStudio, CoachSession, CoachJournal, CoachGoals, MyDevelopment, PlayerAssistant, CoachCopilot, CoachReports, CoachReport, CoachReportView, CoachMatch, CoachProgrammes, CoachRubrics, Orgs, Org, AcademyFamily, Games, RaceDesk, RaceLive, EventInbox, Openings, CoachProfile, CoachRequest, CoachBoard, CoachDesk, CoachSetup, CoachRates, CoachCommitments, CoachReviews, CoachAnalytics, TrainingVenue, RecurringVenue, EventCommand, MatchCentre, ScoreSheet, TenderNotice, SupplierEntities, TenderProposal, TenderProposals, TenderBuilder, TenderConsole, TenderHome, TenderOrders, TenderOrder, TenderReports, TenderZone: TenderZonePage };
-const TITLES = { Marketplace: 'Marketplace', MarketplaceEngagement: 'Engagement', MyCompliance: 'Compliance', SportsGraph: 'Sports graph', Athlete360: 'Athlete 360', Organisation360: 'Organisation 360', Representation: 'Representation', IntegrityCase: 'Integrity case', MyIntegrity: 'My integrity', AcademyPage: 'Academy', SupplierPage: 'Supplier', Advertising: 'Advertising', AdCampaign: 'Campaign', Trips: 'Trips', Trip: 'Trip', Cover: 'Who pays', OfficialsHome: 'Officials home', OfficialMatch: 'Match briefing', Rewards: 'Rewards', RewardsConsole: 'Rewards & referrals', MyPasses: 'My passes', MyCards: 'Cards and wristbands', CommercialConsole: 'Commercial', FindGames: 'Find a game', OpenGame: 'Game', Following: 'Following', LiveCentre: 'Live game', GateScan: 'Gate scanner', MyAccreditations: 'My badges', OfficialsDevelopment: 'Officials development', OfficialAssessment: 'Assessment', AssessmentEditor: 'Assessment report', MediaWorkspace: 'Media & broadcast', Federations: 'Federations', FederationHome: 'Federation', FederationRecord: 'Federation record', VerifyLicence: 'Check a licence', OrgAffiliations: 'Federation affiliations', MyLicences: 'My licences', VenueWorkspace: 'Venue workspace', SupplierWorkspace: 'Supplier workspace', ServicesBuyer: 'Services & suppliers', SeasonReports: 'Season & career reports', ChildSeasonReports: 'Season & career reports', SharedSeasonReports: 'Shared reports', PlayerFunding: 'Funding', SharedWellness: 'Shared wellness', ChildWellnessSharing: 'Wellness sharing', PlayerContracts: 'Contracts', OfflineSync: 'Offline & sync', PathwayPlan: 'Pathway plan', SharedPathway: 'Athlete pathway', SponsorIdentity: 'Team & identity', OpportunityMatches: 'Opportunities for me', PassportDesk: 'Recruitment', ToolsHome: 'Tools', ScoringTool: 'Scoring & tracking', SportRules: 'Rules & rulebook', MyApplications: 'My applications', RecruitmentApplication: 'Application', RecruitmentPipeline: 'Recruiting', Trials: 'Trials', RecruiterHome: 'Recruiter workspace', RecruiterAccess: 'Recruiter access', AcademySession: 'Academy session', AcademyAgenda: 'Academy week', CareerTimeline: 'Career timeline', SponsorReports: 'Sponsorship reports', SponsorRoi: 'Sponsorship ROI', SponsorBudgets: 'Sponsorship budgets', SponsorBudget: 'Budget', BrandedDocuments: 'Document designer', Billboard: 'Billboard', Shop: 'Shop', ShopProduct: 'Product', ShopCart: 'Cart', ShopOrders: 'Orders', Insure: 'My cover', Pathways: 'Learn & study sport', Programme: 'Programme', Institution: 'Institution', Enquiry: 'Enquiry', Passport: 'Player passport', Event: 'Event', PartnerConsole: 'Partner management', MyPartner: 'Partner account', Team: 'Team', TeamManage: 'Manage team', TeamWorkspace: 'Team workspace', TeamChat: 'Team chat', TeamDues: 'Dues & funds', Person: 'Profile', Venue: 'Venue', Wallet: 'Wallet', Earnings: 'Earnings', BookFlow: 'Book', Invoice: 'Invoice', Basket: 'Basket', Reservation: 'Booking', Compare: 'Compare', Notifications: 'Inbox', Conversation: 'Conversation', Manage: 'Manage venue', OwnerSummary: 'All my venues', Leaderboard: 'Leaderboard', Awards: 'Trophy room', Health: 'Health', DoctorHome: 'Doctor workspace', Legal: 'Legal', Insurance: 'Insurance', InsurerPage: 'Insurer', InsurerDesk: 'Insurer desk', Sponsors: 'Sponsor home', SponsorDeal: 'Sponsorship agreement', SponsorOffer: 'New offer', SponsorPortfolio: 'Beneficiary portfolio', PortfolioEntry: 'Beneficiary', SponsorPrograms: 'Sponsorship programs', SponsorProgram: 'Program', FundingOpportunities: 'Sponsorship calls', SponsorCall: 'Sponsorship call', ApplicationForm: 'Application', FormBuilder: 'Application forms', Supply: 'Supply chain', SportProfile: 'Sport profile', ImportMatches: 'Import matches', Support: 'Support', Family: 'Family & guardians', CoachHome: 'Coach home', CoachAthletes: 'My athletes', CoachPlan: 'Training plan', CoachCalendar: 'Coach calendar', PerformanceStudio: 'Performance Studio', CoachSession: 'Coaching session', CoachJournal: 'Coaching journal', CoachGoals: 'Goals & actions', MyDevelopment: 'My development', PlayerAssistant: 'Assistant', CoachCopilot: 'AI draft', CoachReports: 'Reports', CoachReport: 'Report', CoachReportView: 'Report', CoachMatch: 'Match', CoachProgrammes: 'Programmes', CoachRubrics: 'Rubrics', MyPlans: 'Training plans', Orgs: 'My organisations', Org: 'Organisation', AcademyFamily: 'My academy', Games: 'Games programme', RaceDesk: 'Race day', RaceLive: 'Race results', EventInbox: 'Event requests', Openings: 'Open positions', CoachProfile: 'Coach', CoachRequest: 'Coaching request', CoachBoard: 'Request board', CoachDesk: 'Coach desk', CoachSetup: 'Profile & hours', CoachRates: 'Rate cards', CoachCommitments: 'Commitments', CoachReviews: 'Reviews', CoachAnalytics: 'Analytics', TrainingVenue: 'Court for coaching', RecurringVenue: 'Recurring booking', EventCommand: 'Event console', MatchCentre: 'Live match', ScoreSheet: 'Score sheet', TenderNotice: 'Tender', SupplierEntities: 'Supplier entities', TenderProposal: 'Proposal', TenderProposals: 'My proposals', TenderBuilder: 'RFP builder', TenderConsole: 'Tender console', TenderHome: 'My RFPs', TenderOrders: 'Orders', TenderOrder: 'Order', TenderReports: 'Tender reports', TenderZone: 'Tender zone' };
+// Tabs: the five on the bar are Home, Calendar (Schedule), More (the centre swivel, not a page), Workbench (route Work) and Me; Inbox sits in the top bar; Explore and Player stay reachable by name (goTab) from Home, Work and the swivel.
+// Work hosts the active role's own workspace screen, so it needs the page registry below (resolved when it renders).
+const WorkPage = () => <WorkTab pages={PAGES} />;
+const TABS = [['Home', RoleHome], ['Explore', Explore], ['Schedule', Schedule], ['Player', PlayerHome], ['Work', WorkPage], ['Inbox', Inbox], ['Me', Me]];
+const PAGES = { EventsWorkspace, Finance, Analytics, Community, Inbox, Marketplace: MarketplaceHub, MarketplaceEngagement, MyCompliance, SportsGraph, Athlete360, Organisation360, Representation, IntegrityCase, MyIntegrity, AcademyPage, SupplierPage, Advertising, AdCampaign, Trips: TripsHome, Trip, Cover, OfficialsHome, OfficialMatch, Rewards, RewardsConsole, MyPasses: MyPassesPage, MyCards: MyCardsPage, CommercialConsole, FindGames, OpenGame, Following, LiveCentre, GateScan, MyAccreditations, OfficialsDevelopment, OfficialAssessment, AssessmentEditor, MediaWorkspace, Federations, FederationHome, FederationRecord, VerifyLicence, OrgAffiliations, MyLicences, SupplierWorkspace, VenueWorkspace, ServicesBuyer, SeasonReports, ChildSeasonReports, SharedSeasonReports, PlayerFunding, SharedWellness, ChildWellnessSharing, PlayerContracts, OfflineSync, PathwayPlan, SharedPathway, SponsorIdentity, OpportunityMatches, ToolsHome, ScoringTool, SportRules, MyApplications, RecruitmentApplication, RecruitmentPipeline, Trials, RecruiterHome, RecruiterAccess, AcademySession, AcademyAgenda, CareerTimeline, SponsorReports, SponsorRoi, SponsorBudgets, SponsorBudget, BrandedDocuments, Billboard, Shop, ShopProduct, ShopCart, ShopOrders, Insure, Pathways, Programme, Institution, Enquiry, Passport: MyPassport, PassportDesk, Event, PartnerConsole, MyPartner, Team, TeamManage, TeamWorkspace, TeamChat, TeamDues, Person, Venue, Wallet, Earnings, BookFlow, Invoice, Basket, Reservation, Compare, Notifications, Manage, OwnerSummary, Leaderboard, Awards, Health, DoctorHome, Legal: LegalHome, Insurance, InsurerPage, InsurerDesk, Sponsors, SponsorDeal, SponsorOffer, SponsorPortfolio, PortfolioEntry, SponsorPrograms, SponsorProgram, FundingOpportunities, SponsorCall, ApplicationForm, FormBuilder, Supply, SportProfile, ImportMatches, Support, Family, CoachHome, CoachAthletes, CoachPlan, CoachCalendar, MyPlans, PerformanceStudio, CoachSession, CoachJournal, CoachGoals, MyDevelopment, PlayerAssistant, CoachCopilot, CoachReports, CoachReport, CoachReportView, CoachMatch, CoachProgrammes, CoachRubrics, Orgs, Org, AcademyFamily, Games, RaceDesk, RaceLive, EventInbox, Openings, CoachProfile, CoachRequest, CoachBoard, CoachDesk, CoachSetup, CoachRates, CoachCommitments, CoachReviews, CoachAnalytics, TrainingVenue, RecurringVenue, EventCommand, MatchCentre, SessionPad, ScoreSheet, TenderNotice, SupplierEntities, TenderProposal, TenderProposals, TenderBuilder, TenderConsole, TenderHome, TenderOrders, TenderOrder, TenderReports, TenderZone: TenderZonePage, RegistrationHome, RegistrationApply, RegistrationEntry, RegistrationManage, RegistrationSetup, RegistrationForm, PlatformSecurity, CoachGroups, CoachDrills, HistorySources, Migrate, Setup, Conversation };
+const TITLES = { EventsWorkspace: 'Events & teams', Finance: 'Finance', Analytics: 'Analytics', Community: 'Community', Inbox: 'Inbox', Marketplace: 'Marketplace', MarketplaceEngagement: 'Engagement', MyCompliance: 'Compliance', SportsGraph: 'Sports graph', Athlete360: 'Athlete 360', Organisation360: 'Organisation 360', Representation: 'Representation', IntegrityCase: 'Integrity case', MyIntegrity: 'My integrity', AcademyPage: 'Academy', SupplierPage: 'Supplier', Advertising: 'Advertising', AdCampaign: 'Campaign', Trips: 'Trips', Trip: 'Trip', Cover: 'Who pays', OfficialsHome: 'Officials home', OfficialMatch: 'Match briefing', Rewards: 'Rewards', RewardsConsole: 'Rewards & referrals', MyPasses: 'My passes', MyCards: 'Cards and wristbands', CommercialConsole: 'Commercial', FindGames: 'Find a game', OpenGame: 'Game', Following: 'Following', LiveCentre: 'Live game', GateScan: 'Gate scanner', MyAccreditations: 'My badges', OfficialsDevelopment: 'Officials development', OfficialAssessment: 'Assessment', AssessmentEditor: 'Assessment report', MediaWorkspace: 'Media & broadcast', Federations: 'Federations', FederationHome: 'Federation', FederationRecord: 'Federation record', VerifyLicence: 'Check a licence', OrgAffiliations: 'Federation affiliations', MyLicences: 'My licences', VenueWorkspace: 'Venue workspace', SupplierWorkspace: 'Supplier workspace', ServicesBuyer: 'Services & suppliers', SeasonReports: 'Season & career reports', ChildSeasonReports: 'Season & career reports', SharedSeasonReports: 'Shared reports', PlayerFunding: 'Funding', SharedWellness: 'Shared wellness', ChildWellnessSharing: 'Wellness sharing', PlayerContracts: 'Contracts', OfflineSync: 'Offline & sync', PathwayPlan: 'Pathway plan', SharedPathway: 'Athlete pathway', SponsorIdentity: 'Team & identity', OpportunityMatches: 'Opportunities for me', PassportDesk: 'Recruitment', ToolsHome: 'Tools', ScoringTool: 'Scoring & tracking', SportRules: 'Rules & rulebook', MyApplications: 'My applications', RecruitmentApplication: 'Application', RecruitmentPipeline: 'Recruiting', Trials: 'Trials', RecruiterHome: 'Recruiter workspace', RecruiterAccess: 'Recruiter access', AcademySession: 'Academy session', AcademyAgenda: 'Academy week', CareerTimeline: 'Career timeline', SponsorReports: 'Sponsorship reports', SponsorRoi: 'Sponsorship ROI', SponsorBudgets: 'Sponsorship budgets', SponsorBudget: 'Budget', BrandedDocuments: 'Document designer', Billboard: 'Billboard', Shop: 'Shop', ShopProduct: 'Product', ShopCart: 'Cart', ShopOrders: 'Orders', Insure: 'My cover', Pathways: 'Learn & study sport', Programme: 'Programme', Institution: 'Institution', Enquiry: 'Enquiry', Passport: 'Player passport', Event: 'Event', PartnerConsole: 'Partner management', MyPartner: 'Partner account', Team: 'Team', TeamManage: 'Manage team', TeamWorkspace: 'Team workspace', TeamChat: 'Team chat', TeamDues: 'Dues & funds', Person: 'Profile', Venue: 'Venue', Wallet: 'Wallet', Earnings: 'Earnings', BookFlow: 'Book', Invoice: 'Invoice', Basket: 'Basket', Reservation: 'Booking', Compare: 'Compare', Notifications: 'Notifications', Manage: 'Manage venue', OwnerSummary: 'All my venues', Leaderboard: 'Leaderboard', Awards: 'Trophy room', Health: 'Health', DoctorHome: 'Doctor workspace', Legal: 'Legal', Insurance: 'Insurance', InsurerPage: 'Insurer', InsurerDesk: 'Insurer desk', Sponsors: 'Sponsor home', SponsorDeal: 'Sponsorship agreement', SponsorOffer: 'New offer', SponsorPortfolio: 'Beneficiary portfolio', PortfolioEntry: 'Beneficiary', SponsorPrograms: 'Sponsorship programs', SponsorProgram: 'Program', FundingOpportunities: 'Sponsorship calls', SponsorCall: 'Sponsorship call', ApplicationForm: 'Application', FormBuilder: 'Application forms', Supply: 'Supply chain', SportProfile: 'Sport profile', ImportMatches: 'Import matches', Support: 'Support', Family: 'Family & guardians', CoachHome: 'Coach home', CoachAthletes: 'My athletes', CoachPlan: 'Training plan', CoachCalendar: 'Coach calendar', PerformanceStudio: 'Performance Studio', CoachSession: 'Coaching session', CoachJournal: 'Coaching journal', CoachGoals: 'Goals & actions', MyDevelopment: 'My development', PlayerAssistant: 'Assistant', CoachCopilot: 'AI draft', CoachReports: 'Reports', CoachReport: 'Report', CoachReportView: 'Report', CoachMatch: 'Match', CoachProgrammes: 'Programmes', CoachRubrics: 'Rubrics', MyPlans: 'Training plans', Orgs: 'My organisations', Org: 'Organisation', AcademyFamily: 'My academy', Games: 'Games programme', RaceDesk: 'Race day', RaceLive: 'Race results', EventInbox: 'Event requests', Openings: 'Open positions', CoachProfile: 'Coach', CoachRequest: 'Coaching request', CoachBoard: 'Request board', CoachDesk: 'Coach desk', CoachSetup: 'Profile & hours', CoachRates: 'Rate cards', CoachCommitments: 'Commitments', CoachReviews: 'Reviews', CoachAnalytics: 'Analytics', TrainingVenue: 'Court for coaching', RecurringVenue: 'Recurring booking', EventCommand: 'Event console', MatchCentre: 'Live match', SessionPad: 'Heat', ScoreSheet: 'Score sheet', TenderNotice: 'Tender', SupplierEntities: 'Supplier entities', TenderProposal: 'Proposal', TenderProposals: 'My proposals', TenderBuilder: 'RFP builder', TenderConsole: 'Tender console', TenderHome: 'My RFPs', TenderOrders: 'Orders', TenderOrder: 'Order', TenderReports: 'Tender reports', TenderZone: 'Tender zone', RegistrationHome: 'Registration', RegistrationApply: 'Register', RegistrationEntry: 'Registration', RegistrationManage: 'Manage registration', RegistrationSetup: 'Registration settings', RegistrationForm: 'Form, fees and waivers', PlatformSecurity: 'Keys & audit', CoachGroups: 'Saved groups', CoachDrills: 'Drill library', HistorySources: 'Verified history', Migrate: 'Import people', Setup: 'Get set up', Conversation: 'Conversation' };
 
-const TAB_LABEL = { Hub: 'More' };
-// Home: feed, reminders, jobs · Explore: find events, teams, people · More (raised centre): everything around the game
-// Schedule: create, book, track and manage · Player: matches, scores and AI insights. Me opens from the hero avatar and from More.
-const BAR = ['Home', 'Explore', 'Hub', 'Schedule', 'Player'];
+// The bar follows what a person does, not the platform's modules: Home (today and what needs me), Calendar, More (the raised centre button: the swivel of every
+// module), Workbench (route Work: the active role's queue, fast actions and tools in one page) and Me (profile, roles, security). The Inbox is the button at the top right.
+const TAB_LABEL = { Schedule: 'Calendar', Me: 'Profile', Hub: 'More', Work: 'Workbench' };
+const BAR = ['Home', 'Schedule', 'Hub', 'Work', 'Me'];
 
 /** Bottom tab bar. Phone: edge-to-edge bar. Tablet / large screens: a floating pill, like an iPad app. */
 function TabBar() {
   const { tab, goTab, menu, toggleMenu } = useNav();
   const ins = useSafeAreaInsets();
   const { tablet, width } = useLayout();
+  const ws = useWorkspace();
+  const badge = { Work: ws?.data?.work?.length ?? 0 };
   const items = BAR.map((name) => {
-    const on = name === 'Hub' ? menu || tab === 'Me' : !menu && tab === name;
     const centre = name === 'Hub';
+    const on = centre ? menu : !menu && tab === name;
+    const label = TAB_LABEL[name] ?? name;
+    const n = badge[name] ?? 0;
     return (
-      <Pressable key={name} accessibilityRole="tab" accessibilityLabel={name === 'Hub' && menu ? 'Close More' : TAB_LABEL[name] ?? name} accessibilityState={{ selected: on, expanded: name === 'Hub' ? menu : undefined }} onPress={() => (name === 'Hub' ? toggleMenu() : goTab(name))} style={({ pressed }) => ({ flex: 1, alignItems: 'center', justifyContent: 'flex-end', minHeight: 52, opacity: pressed ? 0.6 : 1 })}>
+      <Pressable key={name} accessibilityRole="tab" accessibilityLabel={centre && menu ? 'Close More' : n ? `${label}, ${n} waiting` : label} accessibilityState={{ selected: on, expanded: centre ? menu : undefined }} onPress={() => (centre ? toggleMenu() : goTab(name, name === 'Schedule' ? { section: 'agenda' } : {}))} style={({ pressed }) => ({ flex: 1, alignItems: 'center', justifyContent: 'flex-end', minHeight: 56, opacity: pressed ? 0.6 : 1 })}>
         {centre ? (
           <View style={{ width: 56, height: 56, marginTop: -24, borderRadius: 28, ...(Platform.OS === 'web' ? { boxShadow: '0 10px 24px rgba(132,88,179,0.45), inset 1.5px 1.5px 0 rgba(255,255,255,0.7), inset -1px -1px 0 rgba(255,255,255,0.25)' } : { shadowColor: '#8458B3', shadowOpacity: 0.45, shadowRadius: 14, shadowOffset: { width: 0, height: 8 }, elevation: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.6)' }) }}>
             <LinearGradient colors={['#9B72C6', '#494D5F']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
@@ -169,15 +194,16 @@ function TabBar() {
         ) : (
           <Glass radius={16} preset="clear" gloss={on} style={{ alignItems: 'center', justifyContent: 'center', paddingHorizontal: tablet ? 18 : 14, paddingVertical: 5, ...(on ? null : { backgroundColor: 'transparent', borderWidth: 0, boxShadow: 'none', backdropFilter: 'none', WebkitBackdropFilter: 'none' }) }}>
             <Icon name={name} on={on} color={on ? c.pink : c.mute} size={tablet ? 26 : 23} />
+            {n ? <View accessibilityElementsHidden importantForAccessibility="no" style={{ position: 'absolute', top: 0, right: tablet ? 8 : 4, minWidth: 18, height: 18, borderRadius: 9, paddingHorizontal: 4, backgroundColor: c.red, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: '#fff', fontSize: 10.5, fontWeight: '800' }}>{n > 99 ? '99+' : n}</Text></View> : null}
           </Glass>
         )}
-        <Text numberOfLines={1} style={[fam, { fontSize: tablet ? 12 : 10.5, fontWeight: on ? '700' : '600', color: on ? c.pink : c.mute, marginTop: 2, marginBottom: 2 }]}>{TAB_LABEL[name] ?? name}</Text>
+        <Text numberOfLines={1} style={[fam, { fontSize: tablet ? 12 : 10.5, fontWeight: on ? '700' : '600', color: on ? c.pink : c.mute, marginTop: 2, marginBottom: 2 }]}>{label}</Text>
       </Pressable>
     );
   });
   return (
     <View pointerEvents="box-none" style={{ position: 'absolute', left: 0, right: 0, bottom: Math.max(ins.bottom, 12), alignItems: 'center' }}>
-      <View style={{ flexDirection: 'row', alignItems: 'flex-end', width: Math.min(620, width - 24), paddingHorizontal: 8, paddingVertical: 6 }}>
+      <View accessibilityRole="tablist" style={{ flexDirection: 'row', alignItems: 'flex-end', width: Math.min(620, width - 24), paddingHorizontal: 8, paddingVertical: 6 }}>
         <Glass pointerEvents="none" radius={32} blur={20} tint={dark ? 'rgba(24,26,47,0.68)' : 'rgba(255,255,255,0.72)'} gloss iris style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }} />
         {items}
       </View>
@@ -197,10 +223,15 @@ function NavOverlay({ onBack, backLabel }) {
             <Icon name="Back" color="#fff" size={24} />
           </Glass>
         </Pressable>
-        <AccountButton />
+        <TopRight />
       </View>
     </View>
   );
+}
+
+/** The Inbox and the account button (appearance, log out), always together at the top right. */
+function TopRight() {
+  return <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}><InboxButton /><AccountButton /></View>;
 }
 
 /** Compact navigation bar for pushed screens: back chevron + title. */
@@ -214,7 +245,7 @@ function NavBar({ title, onBack, backLabel }) {
           <Text numberOfLines={1} style={[fam, { color: c.pink, fontSize: 16, fontWeight: '600', marginLeft: -2, maxWidth: 64 }]}>{backLabel}</Text>
         </Pressable>
         <Text numberOfLines={1} style={[fam, { position: 'absolute', left: 112, right: 112, textAlign: 'center', fontWeight: '700', fontSize: 16, color: c.ink }]} pointerEvents="none">{title}</Text>
-        <View style={{ marginLeft: 'auto' }}><AccountButton /></View>
+        <View style={{ marginLeft: 'auto' }}><TopRight /></View>
       </View>
     </View>
   );
@@ -230,7 +261,7 @@ function TopBar() {
           <Logo size={34} />
           <Text style={[fam, { fontSize: 18, fontWeight: '800', color: c.ink, letterSpacing: -0.4 }]}>Gotmygame</Text>
         </View>
-        <AccountButton />
+        <TopRight />
       </View>
     </View>
   );
@@ -268,8 +299,6 @@ function MfaNotice({ info, onGo, onClose }) {
   );
 }
 
-// https hosts that open this app as a universal / app link (set EXPO_PUBLIC_APP_HOSTS, comma separated); the sportarena:// scheme always works
-const APP_HOSTS = (process.env.EXPO_PUBLIC_APP_HOSTS ?? '').split(',').map((h) => h.trim()).filter(Boolean);
 
 function Shell() {
   const { ready, user, toast } = useSession();
@@ -306,7 +335,7 @@ function Shell() {
   }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!user) return undefined;
-    const go = ([name, params]) => { goTab('Schedule'); setTimeout(() => push(name, params), 0); };
+    const go = ([name, params]) => { goTab('Home'); setTimeout(() => push(name, params), 0); };
     if (Platform.OS === 'web') {
       const q = new URLSearchParams(window.location.search);
       if (q.get('open')) { window.history.replaceState({}, '', window.location.pathname); go(parseTarget(q.get('open'))); }
@@ -333,7 +362,7 @@ function Shell() {
   if (!user) return <View style={{ flex: 1, backgroundColor: c.bg, paddingTop: ins.top }}><BetaBanner /><View style={{ flex: 1 }}><Landing /></View></View>;
   const top = stack[stack.length - 1];
   const Page = top ? PAGES[top.name] : TABS.find((t) => t[0] === tab)[1];
-  const prev = stack.length > 1 ? TITLES[stack[stack.length - 2].name] : tab === 'Hub' ? 'More' : tab;
+  const prev = stack.length > 1 ? TITLES[stack[stack.length - 2].name] : TAB_LABEL[tab] ?? tab;
   const pageKey = top ? `${top.name}:${stack.length}:${top.params?.id ?? ''}` : tab;
   return (
     <View style={{ flex: 1, backgroundColor: c.bg, paddingTop: ins.top, paddingLeft: ins.left, paddingRight: ins.right }}>
@@ -354,7 +383,7 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <StatusBar barStyle={dark ? 'light-content' : 'dark-content'} />
-      <SessionProvider><AppLockProvider><BasketProvider><NavProvider><Shell /></NavProvider></BasketProvider></AppLockProvider></SessionProvider>
+      <SessionProvider><AppLockProvider><BasketProvider><NavProvider><WorkspaceProvider><Shell /></WorkspaceProvider></NavProvider></BasketProvider></AppLockProvider></SessionProvider>
     </SafeAreaProvider>
   );
 }

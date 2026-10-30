@@ -6,17 +6,17 @@ import { z } from 'zod';
 import { pool } from './db.js';
 import { orgRole } from './org-access.js';
 import { isAdmin } from './helpers.js';
-import { conflict, forbidden, notFound } from './errors.js';
+import { badRequest, conflict, forbidden, notFound } from './errors.js';
 import { guardianLink } from './youth.js';
 
 export const LEVELS = ['international', 'continental', 'national', 'regional', 'state', 'district', 'league'];
 export const ROLES = ['registrar', 'licensing', 'sanctioner', 'secretary', 'compliance', 'auditor', 'integrity'];
 export const ROLE_LABEL = {
   registrar: 'Registrar (affiliations)', licensing: 'Licensing officer', sanctioner: 'Sanctioning officer', secretary: 'Secretary (policies and calendar)',
-  compliance: 'Compliance (read-only, incl. evidence)', auditor: 'Auditor (read-only, reports)', integrity: 'Integrity officer (sport integrity and anti-doping administration)',
+  compliance: 'Compliance (evidence and exception reviews)', auditor: 'Auditor (read-only, reports)', integrity: 'Integrity officer (sport integrity and anti-doping administration)',
 };
 // What each scoped role may do. Owners and admins of the body's organisation may do all of it; nobody here ever reaches a club's finance, coaching or medical data.
-const PERMS = { affiliations: ['registrar'], licences: ['licensing'], sanctions: ['sanctioner'], governance: ['secretary'], evidence: ['registrar', 'licensing', 'sanctioner', 'compliance'], integrity: ['integrity'], reports: ['auditor', 'compliance', 'registrar', 'licensing', 'sanctioner', 'secretary'] };
+const PERMS = { exceptions: ['compliance'], affiliations: ['registrar'], licences: ['licensing'], sanctions: ['sanctioner'], governance: ['secretary'], evidence: ['registrar', 'licensing', 'sanctioner', 'compliance'], integrity: ['integrity'], reports: ['auditor', 'compliance', 'registrar', 'licensing', 'sanctioner', 'secretary'] };
 export const UNSCOPED = '00000000-0000-0000-0000-000000000000';
 
 export const BODY_SQL = `SELECT b.*, o.name, o.legal_name, o.registration_no, o.website, o.contact_email, o.contact_phone, o.description, o.status AS org_status
@@ -59,8 +59,14 @@ export async function authority(user, bodyId, { c = pool, optional = false } = {
   if (!body || !user) return none();
   const orgR = await orgRole(user, body.organisation_id, c);
   const admin = isAdmin(user) || ['owner', 'admin'].includes(orgR);
-  const roles = (await c.query("SELECT role, sport_id FROM governing_body_roles WHERE body_id=$1 AND user_id=$2 AND status='active'", [bodyId, user.id])).rows;
-  if (admin || roles.length) return { body, admin, roles, viaAncestor: false, org_role: orgR };
+  const roles = (await c.query("SELECT role, sport_id, jurisdiction_ids FROM governing_body_roles WHERE body_id=$1 AND user_id=$2 AND status='active'", [bodyId, user.id])).rows;
+  // Delegated roles (#525): an explicit grant on a node above, live, unexpired and reaching this depth. One query; never a per-row check.
+  const delegated = (await c.query(
+    `WITH RECURSIVE up(id, depth) AS (SELECT $1::uuid, 0 UNION SELECT l.parent_id, up.depth + 1 FROM governing_body_links l JOIN up ON l.child_id=up.id WHERE l.status='recognised' AND up.depth < 12)
+     SELECT d.role, d.sport_id, '{}'::uuid[] AS jurisdiction_ids, d.id AS delegation_id FROM fed_delegations d JOIN (SELECT id, min(depth) AS depth FROM up GROUP BY id) u ON u.id=d.body_id
+      WHERE d.user_id=$2 AND d.status='active' AND (d.expires_on IS NULL OR d.expires_on >= current_date) AND u.depth <= d.max_depth`, [bodyId, user.id])).rows;
+  roles.push(...delegated.map((d) => ({ ...d, delegated: true })));
+  if (admin || roles.length) return { body, admin, roles, viaAncestor: false, org_role: orgR, delegated: delegated.length > 0 };
   const above = (await lineage(bodyId, c)).filter((x) => x !== bodyId);
   if (above.length) {
     const hit = await c.query(
@@ -71,19 +77,56 @@ export async function authority(user, bodyId, { c = pool, optional = false } = {
   }
   return none();
 }
-/** Is the caller allowed to do `perm` (affiliations | licences | sanctions | governance | evidence | reports) on this body, for this sport? */
-export function can(auth, perm, sportId = null) {
+/**
+ * Is the caller allowed to do `perm` (affiliations | licences | sanctions | governance | evidence | reports | exceptions) on this body, for this sport?
+ * `jurisdictionId` is the record's jurisdiction. A role limited to some jurisdictions only covers records in them; a record with no jurisdiction, and every
+ * body-wide action (reports, policies, the whole calendar), fails closed for such a role. Owners/admins and unlimited roles cover everything.
+ */
+export function can(auth, perm, sportId = null, jurisdictionId = null) {
   if (!auth || auth.viaAncestor) return false;
   if (auth.admin) return true;
-  return auth.roles.some((r) => PERMS[perm]?.includes(r.role) && (!r.sport_id || !sportId || r.sport_id === sportId));
+  return auth.roles.some((r) => PERMS[perm]?.includes(r.role) && (!r.sport_id || !sportId || r.sport_id === sportId)
+    && (!r.jurisdiction_ids?.length || (jurisdictionId && r.jurisdiction_ids.includes(jurisdictionId))));
 }
-export function need(auth, perm, sportId = null) {
-  if (!can(auth, perm, sportId)) throw forbidden(`Your role on ${auth?.body?.name ?? 'this body'} does not allow that`);
+/** Does the caller hold `perm` at all, for some sport or jurisdiction? (Used to show the right tabs; records are still checked one by one with `can`.) */
+export const canSome = (auth, perm) => !!auth && !auth.viaAncestor && (auth.admin || auth.roles.some((r) => PERMS[perm]?.includes(r.role)));
+/** Which jurisdictions the caller's lists and queues are limited to: null = no limit (owner/admin, a body above, or any unlimited role), otherwise the allowed ids. */
+export function jurisdictionScope(auth) {
+  if (!auth || auth.viaAncestor || auth.admin || !auth.roles.length || auth.roles.some((r) => !r.jurisdiction_ids?.length)) return null;
+  return [...new Set(auth.roles.flatMap((r) => r.jurisdiction_ids))];
+}
+/** A record's jurisdiction must be one of the body's live ones. */
+export async function mustBeJurisdictionOf(c, bodyId, jurisdictionId) {
+  if (!jurisdictionId) return null;
+  if (!(await c.query('SELECT 1 FROM fed_jurisdictions WHERE id=$1 AND body_id=$2 AND archived_at IS NULL', [jurisdictionId, bodyId])).rowCount) throw badRequest('That jurisdiction does not belong to this body');
+  return jurisdictionId;
+}
+export function need(auth, perm, sportId = null, jurisdictionId = null) {
+  if (!can(auth, perm, sportId, jurisdictionId)) throw forbidden(`Your role on ${auth?.body?.name ?? 'this body'} does not allow that`);
 }
 /** The body must be taking new work. Reading and history stay open. */
 export function mustBeActive(body) {
   if (body.status !== 'active' || body.org_status === 'archived') throw conflict(`${body.name} is ${body.status === 'active' ? 'archived' : body.status} and is not taking new applications or decisions`);
 }
+
+/** A decision approved over a failed requirement becomes an open compliance exception, due for review in 90 days. Idempotent per record while one is open. */
+export async function openException(c, bodyId, type, subjectId, reason, checks, userId) {
+  const failed = JSON.parse(typeof checks === 'string' ? checks : JSON.stringify(checks ?? [])).filter((x) => x.required && x.status === 'fail').map((x) => ({ key: x.key, label: x.label, detail: x.detail }));
+  const r = await c.query(
+    `INSERT INTO fed_exceptions(body_id, subject_type, subject_id, reason, failed, review_due, decided_by) VALUES ($1,$2,$3,$4,$5,current_date + 90,$6)
+     ON CONFLICT (subject_type, subject_id) WHERE status IN ('open','extended') DO NOTHING RETURNING id`, [bodyId, type, subjectId, reason, JSON.stringify(failed), userId]);
+  if (r.rows[0]) await logFed(c, bodyId, 'exception', r.rows[0].id, 'opened', { to: 'open', actor: userId, reason, detail: { subject_type: type, subject_id: subjectId } });
+}
+
+/** The register of exceptions with what each is about (label, status as today, jurisdiction). */
+export const EXC_COLS = `e.id, e.body_id, e.subject_type, e.subject_id, e.reason, e.failed, e.status, e.review_due::text AS review_due, (e.status IN ('open','extended') AND e.review_due < current_date) AS overdue,
+  e.decided_at, du.display_name AS decided_by_name, e.reviewed_at, e.review_note, e.review_count, e.row_version,
+  coalesce(ao.name, lu.display_name || ' · ' || lt.name, ev.name) AS label, coalesce(a.jurisdiction_id, l.jurisdiction_id, s.jurisdiction_id) AS jurisdiction_id,
+  coalesce(lt.sport_id, ev.sport_id, ac.sport_id) AS sport_id, bo.name AS body_name`;
+export const EXC_FROM = `fed_exceptions e JOIN governing_bodies b ON b.id=e.body_id JOIN organisations bo ON bo.id=b.organisation_id
+  LEFT JOIN fed_affiliations a ON e.subject_type='affiliation' AND a.id=e.subject_id LEFT JOIN organisations ao ON ao.id=a.organisation_id LEFT JOIN fed_affiliation_categories ac ON ac.id=a.category_id
+  LEFT JOIN fed_licences l ON e.subject_type='licence' AND l.id=e.subject_id LEFT JOIN users lu ON lu.id=l.holder_id LEFT JOIN fed_licence_types lt ON lt.id=l.type_id
+  LEFT JOIN fed_sanctions s ON e.subject_type='sanction' AND s.id=e.subject_id LEFT JOIN events ev ON ev.id=s.event_id LEFT JOIN users du ON du.id=e.decided_by`;
 
 /** Append one step to the immutable history. */
 export const logFed = (c, bodyId, subjectType, subjectId, action, { from = null, to = null, actor = null, reason = null, detail = {} } = {}) =>
@@ -138,14 +181,17 @@ export const POLICY_KINDS = {
  * and within it the latest version whose effective date has arrived. The caller stores the returned version id with its decision.
  */
 export async function policyAt(bodyId, kind, { sportId = null, category = '', seasonYear = null, date = today() } = {}, c = pool) {
-  for (const bid of await lineage(bodyId, c)) {
+  const chain = await lineage(bodyId, c);
+  // A locked requirement (#525) binds everything below it: the highest locked one applies even where a nearer body published its own.
+  const anyLocked = (await c.query("SELECT 1 FROM fed_policies WHERE body_id = ANY($1) AND local_override='locked' AND kind=$2 AND status='active' LIMIT 1", [chain, kind])).rowCount > 0;
+  for (const locked of anyLocked ? [true, false] : [false]) for (const bid of locked ? [...chain].reverse() : chain) {
     const r = await c.query(
-      `SELECT p.id AS policy_id, p.title, p.body_id, p.sport_id, p.category, p.season_year, v.id AS version_id, v.version, v.effective_from::text AS effective_from, v.summary, v.params
+      `SELECT p.id AS policy_id, p.title, p.body_id, p.sport_id, p.category, p.season_year, p.local_override, v.id AS version_id, v.version, v.effective_from::text AS effective_from, v.summary, v.params
          FROM fed_policies p JOIN LATERAL (SELECT * FROM fed_policy_versions x WHERE x.policy_id=p.id AND x.effective_from <= $6::date ORDER BY x.effective_from DESC LIMIT 1) v ON true
-        WHERE p.body_id=$1 AND p.kind=$2 AND p.status='active'
+        WHERE p.body_id=$1 AND p.kind=$2 AND p.status='active' AND ($7::boolean = false OR p.local_override='locked')
           AND (p.sport_id IS NULL OR p.sport_id=$3) AND (p.category='' OR p.category=$4) AND (p.season_year IS NULL OR p.season_year=$5)
         ORDER BY (p.sport_id IS NOT NULL) DESC, (p.category <> '') DESC, (p.season_year IS NOT NULL) DESC, p.created_at, p.id LIMIT 1`,
-      [bid, kind, sportId, category, seasonYear, date]);
+      [bid, kind, sportId, category, seasonYear, date, locked]);
     if (r.rows[0]) return { ...r.rows[0], inherited: bid !== bodyId };
   }
   return null;

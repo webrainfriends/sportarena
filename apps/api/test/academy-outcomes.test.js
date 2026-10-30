@@ -372,7 +372,7 @@ test('executive home, retention indicators and the copilot: role-gated, explaina
   await pool.query("UPDATE academy_charges SET due_on = current_date - 10 WHERE id=$1", [charges[0].id]);
 
   const home = must(await api('GET', `/organisations/${a.org.id}/academy/executive`, { token: a.owner.token }));
-  assert.equal(home.people.active_athletes, 1); assert.equal(home.people.utilisation_pct, 25); assert.equal(home.people.link.tab, 'admissions');
+  assert.equal(home.people.enrolled_athletes, 1); assert.equal(home.people.utilisation_pct, 25); assert.equal(home.people.link.tab, 'admissions');
   assert.equal(home.delivery.sessions_cancelled, null); assert.ok(home.delivery.missing_note.includes('Academy OS 2/3'));
   assert.equal(home.finance.currencies[0].outstanding_minor, 12000); assert.equal(home.finance.ageing[0].buckets.d1_30.amount_minor, 12000);
   assert.ok(home.retention.indicators.attendance_decline && home.retention.indicators.repeated_absence && home.retention.indicators.overdue_balance);

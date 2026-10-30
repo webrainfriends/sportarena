@@ -58,6 +58,7 @@ const promotionBase = z.object({
   flat_off_minor: z.number().int().min(0).default(0), flat_currency: z.string().regex(/^[A-Z]{3}$/).optional(), duration_months: z.number().int().min(1).max(60).default(1),
   grants: z.array(z.object({ key: z.string().regex(/^[a-z0-9_.]{2,60}$/), limit_value: z.number().min(0).nullable().default(null) })).max(30).default([]),
   starts_on: date, ends_on: date.optional(), max_redemptions: z.number().int().min(1).optional(),
+  auto_apply: z.boolean().default(false).describe('true = applied automatically to every purchase it fits, no code needed; false = the customer keys in its short code. Offers stack.'),
 });
 export const promotionInput = promotionBase;
 function checkPromotion(i) {
@@ -294,9 +295,9 @@ export async function createPromotion(c, i, actor) {
   checkPromotion(i);
   const codes = await checkPricePoints(c, i);
   const p = (await c.query(
-    `INSERT INTO commercial_promotions(key, name, kind, coupon_ref, trial_days, benefit, free_months, discount_bp, flat_off_minor, flat_currency, duration_months, grants, starts_on, ends_on, max_redemptions, created_by)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
-    [i.key, i.name, i.kind, i.coupon_ref ?? null, i.trial_days, i.benefit, i.free_months, i.discount_bp, i.flat_off_minor, i.flat_currency ?? null, i.duration_months, JSON.stringify(i.grants), i.starts_on, i.ends_on ?? null, i.max_redemptions ?? null, actor])).rows[0];
+    `INSERT INTO commercial_promotions(key, name, kind, coupon_ref, trial_days, benefit, free_months, discount_bp, flat_off_minor, flat_currency, duration_months, grants, starts_on, ends_on, max_redemptions, auto_apply, created_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *`,
+    [i.key, i.name, i.kind, i.coupon_ref ?? null, i.trial_days, i.benefit, i.free_months, i.discount_bp, i.flat_off_minor, i.flat_currency ?? null, i.duration_months, JSON.stringify(i.grants), i.starts_on, i.ends_on ?? null, i.max_redemptions ?? null, !!i.auto_apply, actor])).rows[0];
   for (const code of codes) await c.query('INSERT INTO commercial_promotion_price_points(promotion_id, price_point_code, added_by) VALUES ($1,$2,$3)', [p.id, code, actor]);
   await commercialAudit(c, actor, 'create_promotion', 'commercial_promotions', p.id, { key: p.key, price_points: codes });
   return { ...p, price_points: codes, all_price_points: codes.length === 0 };

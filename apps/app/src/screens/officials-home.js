@@ -18,6 +18,7 @@ import { Banner, Metric, money } from '../federation-ui';
 import { openPdf } from '../open-file';
 import { Cols } from '../federation-bits';
 import { VerificationSection } from './verification';
+import { MatchDayPack } from './match-day-pack';
 
 export const ROLE_LABEL = { referee: 'Referee', umpire: 'Umpire', linesman: 'Assistant referee', scorer: 'Scorer / timekeeper' };
 const STATUS = {
@@ -101,6 +102,8 @@ function Today({ h, reload, go, tz }) {
       ) : h.next ? (
         <Section title="Next match" color={c.mint}><Assignment a={h.next} tz={tz} prominent onOpen={() => go('OfficialMatch', { id: h.next.fixture_id })} /></Section>
       ) : <Empty emoji="🏁" title="No matches coming up" sub="When an organiser asks you to officiate, the request appears here to accept or decline." />}
+
+      <MatchDayPack />
 
       {h.pending_requests.length ? (
         <Section title={`Requests waiting for you (${h.pending_requests.length})`} color={c.sun}>
