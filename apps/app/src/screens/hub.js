@@ -25,6 +25,7 @@ import { WellnessSharing } from './wellness-sharing';
 import { DoctorEntry } from './doctor';
 import { money as curMoney } from '../offer-lines';
 import { MyHealthFile } from './health-file';
+import { StreaksPanel } from './streaks';
 import { RankingsPanel } from './rankings';
 import { c, grad, money, day, when, withUnit, unitName } from '../theme';
 
@@ -197,12 +198,13 @@ export function Leaderboard() {
   return (
     <Screen>
       <H1>Leaderboard</H1>
-      <Seg options={[{ value: 'rank', label: 'Rankings', emoji: '🏆' }, { value: 'mine', label: 'My results', emoji: '📈' }, ...(isOfficial ? [{ value: 'approve', label: `Officials${todo.length ? ` (${todo.length})` : ''}`, emoji: '✅' }] : [])]} value={tab} onChange={setTab} />
+      <Seg options={[{ value: 'rank', label: 'Rankings', emoji: '🏆' }, { value: 'mine', label: 'My results', emoji: '📈' }, { value: 'streaks', label: 'Streaks', emoji: '🔥' }, ...(isOfficial ? [{ value: 'approve', label: `Officials${todo.length ? ` (${todo.length})` : ''}`, emoji: '✅' }] : [])]} value={tab} onChange={setTab} />
       {tab === 'rank' ? <>
         <SportSelect allLabel="All sports" value={sport} onChange={pickSport} />
         <View style={{ marginTop: 8 }}><Seg options={[{ value: 'governed', label: 'By formula', emoji: '🏅' }, { value: 'points', label: 'Official points', emoji: '🔢' }]} value={view} onChange={setView} /></View>
         {view === 'governed' ? <RankingsPanel sport={sport} sports={sports.data} onOfficial={() => setView('points')} /> : null}
       </> : null}
+      {tab === 'streaks' ? <StreaksPanel sports={sports.data} /> : null}
       {tab === 'rank' && view === 'points' ? <>
         {categories.length ? <View accessibilityLabel="Sport category filter" style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
           <Chip label="All categories" active={category === null} onPress={() => { setCategory(null); setLim(25); }} />

@@ -265,6 +265,7 @@ import './spectator.js';
 import './spectator-admin.js';
 import './media-rights-fees.js';
 import './rankings.js';
+import './achievements.js';
 import './skill-ratings.js';
 import './open-games.js';
 import './enterprise-identity.js';

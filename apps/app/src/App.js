@@ -78,6 +78,7 @@ import { Insurance, InsurerPage } from './screens/insurance';
 import { InsurerDesk } from './screens/insurer';
 import { BrandedDocuments } from './screens/branded-documents';
 import { PartnerConsole, MyPartner } from './screens/partners';
+import { VenuePayouts } from './screens/venue-payouts';
 import { CommercialConsole } from './screens/commercial-console';
 import { PlatformSecurity } from './screens/platform-security';
 import { Finance } from './screens/finance';
