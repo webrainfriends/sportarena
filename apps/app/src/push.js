@@ -61,6 +61,7 @@ export async function disablePush(deviceId) {
 
 /** Where a tapped notification should land: [screen, params] or null. */
 export function targetFor(data = {}) {
+  if (data.rx_entry_id) return ['RegistrationEntry', { id: data.rx_entry_id }]; // a registration was decided, sent back, promoted off the waiting list or changed
   if (data.governance_notice) return ['MyIntegrity', {}]; // a generic notice: the substance is only ever shown after opening the app
   if (data.spectator && data.fixture_id) return ['LiveCentre', { id: data.fixture_id }]; // an alert for a game you follow
   if (data.screen === 'PlayerFunding') return ['PlayerFunding', data.athlete_id ? { athlete_id: data.athlete_id } : {}]; // an athlete shared their funding with a coach
@@ -96,6 +97,12 @@ export function targetFor(data = {}) {
 
 export function parseTarget(t) {
   const [kind, id, extra] = String(t ?? '').split(':');
+  if (kind === 'registration') return ['RegistrationHome', id ? { tab: id } : {}];
+  if (kind === 'registration-programme' && id) return ['RegistrationApply', { id }];
+  if (kind === 'registration-entry' && id) return ['RegistrationEntry', { id }];
+  if (kind === 'registration-manage' && id) return ['RegistrationManage', { id }];
+  if (kind === 'registration-setup') return ['RegistrationSetup', id ? { id } : {}];
+  if (kind === 'registration-form' && id) return ['RegistrationForm', { id }];
   if (kind === 'assessment' && id) return ['OfficialAssessment', { id }];
   if (kind === 'officials-development') return ['OfficialsDevelopment', id ? { tab: id } : {}];
   if (kind === 'federation' && id) return ['FederationHome', extra ? { id, tab: extra } : { id }];

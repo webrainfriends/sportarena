@@ -7,6 +7,7 @@ import { ScrollView, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
+import { useNav } from '../nav';
 import { useLayout } from '../layout';
 import { A, AAvatar, ABar, ABtn, ACard, AChip, AEmpty, ARow, ASection, AStat, AT, ATag, ReasonSheet } from '../arena';
 import { FormSheet } from '../FormSheet';
@@ -389,6 +390,19 @@ function RegisterForm({ id, open, onClose, teams, self, staff, onDone }) {
 }
 
 // ---------------------------------------------------------------- the tab
+/** The registration programmes (forms, fees, waivers, capacity) of this event live in the universal registration engine; this is the way in from the event console. */
+function Programmes({ id }) {
+  const { push } = useNav();
+  const list = useLoad(() => api.get('/registration-programmes', { scope: 'managed', event_id: id, limit: 20 }).catch(() => []), [id]);
+  return (
+    <>
+      <ASection title="Registration forms and fees" sub="Questions, waivers, fees, capacity and waiting list for this event" />
+      {(list.data ?? []).map((p) => <ARow key={p.id} title={p.title} sub={`${p.kind_label} · ${p.status}`} onPress={() => push('RegistrationManage', { id: p.id })} />)}
+      <ABtn tone="neon" title={list.data?.length ? 'Add another registration form' : 'Set up registration forms'} onPress={() => push('RegistrationSetup', { kind: 'competition', event_id: id })} />
+    </>
+  );
+}
+
 export function RegistrationTab({ id, e, isOrg, reload }) {
   const { tablet } = useLayout();
   const [section, setSection] = useState('queue');
@@ -406,6 +420,7 @@ export function RegistrationTab({ id, e, isOrg, reload }) {
   if (!isOrg) return <Mine id={id} e={e} rosters={rosters.data} reload={refresh} />;
   return (
     <>
+      <Programmes id={id} />
       <Row>
         <AStat icon="⏳" value={awaiting} label="Awaiting" tone={awaiting ? A.sun : undefined} />
         <AStat icon="✅" value={registered} label="Registered" />
