@@ -12,6 +12,7 @@ import { verifyAppearances } from './appearances.js';
 import { liveState, loggedEvents, rulesetForEvent } from '../scoring/state.js';
 import { computeScore, matchPhase } from '../scoring/engine.js';
 import { sheetAnomalies, hasErrors } from '../scoring/checks.js';
+import { onEventResultsChanged } from '../ratings/data.js';
 
 const TAG = 'Score sheets';
 const q = (c) => c ?? pool;
@@ -244,6 +245,7 @@ cap({
       return done;
     });
     publish(`fixture:${out.fixture_id}`, await liveState(out.fixture_id));
+    onEventResultsChanged(out.event_id); // a published or corrected result re-runs the skill ratings; earlier runs are kept
     return out;
   },
 });
