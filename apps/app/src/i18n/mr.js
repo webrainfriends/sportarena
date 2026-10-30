@@ -1,0 +1,14 @@
+export default {
+  'account.title': 'खाते', 'account.appearance': 'स्वरूप', 'account.language': 'भाषा आणि प्रदेश',
+  'account.theme.system': 'सिस्टम', 'account.theme.light': 'लाइट', 'account.theme.dark': 'डार्क', 'account.logout': 'लॉग आउट',
+  'account.use_device': 'माझ्या डिव्हाइसची सेटिंग्ज वापरा', 'account.search_language': 'भाषा किंवा देश शोधा',
+  'account.from_device': 'तुमच्या डिव्हाइसवरून', 'account.your_choice': 'तुमची निवड',
+  'account.review_note': 'काही भाषांतरे मशीनने तयार केली आहेत आणि मूळ भाषकाच्या पुनरावलोकनाची प्रतीक्षा करत आहेत.',
+  'account.follow_device': 'तुमच्या डिव्हाइसनुसार.', 'account.format_note': 'तारखा, वेळ, संख्या आणि चलन याप्रमाणे आणि तुमच्या वेळ क्षेत्रानुसार दिसतात.',
+  'common.save': 'जतन करा', 'common.cancel': 'रद्द करा', 'common.close': 'बंद करा', 'common.back': 'मागे', 'common.next': 'पुढे',
+  'common.search': 'शोधा', 'common.loading': 'लोड होत आहे…', 'common.retry': 'पुन्हा प्रयत्न करा', 'common.done': 'पूर्ण',
+  'error.generic': 'काहीतरी चुकले. कृपया पुन्हा प्रयत्न करा.', 'error.network': 'कनेक्शन नाही. तुमचे नेटवर्क तपासा आणि पुन्हा प्रयत्न करा.',
+  'empty.nothing': 'येथे अजून काही नाही.',
+  'nav.home': 'होम', 'nav.search': 'शोध', 'nav.bookings': 'बुकिंग', 'nav.account': 'खाते',
+  'welcome.hello': 'नमस्कार, {name}',
+};
