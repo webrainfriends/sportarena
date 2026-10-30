@@ -291,7 +291,7 @@ function Contracts() {
   );
 }
 
-function SettlementView({ id, onClose, onChanged, platform }) {
+export function SettlementView({ id, onClose, onChanged, platform }) {
   const s = useLoad(() => (id ? api.get(`/settlements/${id}`) : Promise.resolve(null)), [id]);
   const act = useAct(() => { s.reload(); onChanged?.(); });
   const [form, setForm] = useState(null);

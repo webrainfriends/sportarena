@@ -426,6 +426,7 @@ export function OwnerSummary() {
     <Screen wide>
       <H1 style={{ marginTop: 8 }}>All my venues</H1>
       <Seg options={ranges.map(([label], value) => ({ value, label }))} value={r} onChange={setR} color={c.cyan} />
+      <Btn small title="💸 Payouts, commission and refunds" color={c.paper} ink={c.ink} onPress={() => push('VenuePayouts')} accessibilityLabel="Open venue payouts" style={{ alignSelf: 'flex-start' }} />
       {s.loading && !s.data ? <Loading /> : s.error ? <ErrorBox error={s.error} onRetry={s.reload} /> : (
         <>
           <Section title="By currency" color={c.lime}>
