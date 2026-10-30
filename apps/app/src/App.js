@@ -75,6 +75,7 @@ import { InsurerDesk } from './screens/insurer';
 import { BrandedDocuments } from './screens/branded-documents';
 import { PartnerConsole, MyPartner } from './screens/partners';
 import { CommercialConsole } from './screens/commercial-console';
+import { PlansBilling } from './screens/plans-billing';
 import { Me } from './screens/me';
 import { Support } from './screens/cases';
 import { Family } from './screens/family';

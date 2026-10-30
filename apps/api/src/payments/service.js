@@ -17,6 +17,7 @@ import { coachSessionDone } from '../rewards/activity.js';
 import { saleDue, confirmOnlineSalePayment } from '../pos/due.js';
 import { coverFor, startUse, settleUse } from '../cover.js';
 import { fulfilAdFundingPaid } from '../ads/engine.js';
+import { describeSubscription, fulfilSubscriptionPaid } from '../commercial/engine.js';
 
 export { paymentsEnabled, enabledProviders };
 
@@ -94,6 +95,7 @@ export async function describePurpose(c, type, id) {
     const x = await q("SELECT f.payer_id, f.amount_minor AS amount, f.currency, f.status, f.number, c.name, c.status AS camp_status FROM ad_fundings f JOIN ad_campaigns c ON c.id=f.campaign_id WHERE f.id=$1 FOR UPDATE OF f");
     return x && { payerId: x.payer_id, amount: Number(x.amount), currency: x.currency, name: `Advertising funds ${x.number} · ${x.name}`, payable: x.status === 'awaiting_payment' && !['ended', 'withdrawn'].includes(x.camp_status) };
   }
+  if (type === 'commercial_subscription') return describeSubscription(c, id);
   if (type === 'marketplace_engagement') {
     const m = await q("SELECT m.buyer_id AS payer_id, m.agreed_minor AS amount, m.currency, m.status, m.title, m.invoice_number, u.display_name FROM marketplace_engagements m JOIN users u ON u.id=m.provider_id WHERE m.id=$1 FOR UPDATE OF m");
     return m && { payerId: m.payer_id, amount: Number(m.amount), currency: m.currency, name: `${m.title} · ${m.display_name} (${m.invoice_number})`, payable: m.status === 'invoiced' && Number(m.amount) > 0 };
@@ -127,6 +129,7 @@ async function fulfil(c, type, id, payment) {
   if (type === 'marketplace_engagement') return fulfilMarketplacePaid(c, id);
   if (type === 'media_rights_fee') return fulfilMediaFeePaid(c, id);
   if (type === 'ad_funding') return fulfilAdFundingPaid(c, id);
+  if (type === 'commercial_subscription') return fulfilSubscriptionPaid(c, id, payment.payer_id);
   if (type === 'team_charge') return fulfilTeamChargePaid(c, id, payment);
   if (type === 'team_contribution') return fulfilContributionPaid(c, id, payment);
   const done = (await c.query(sql, [id])).rowCount > 0;
