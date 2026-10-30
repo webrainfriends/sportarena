@@ -188,6 +188,7 @@ import './passport-recruitment.js';
 import './calendar-sync.js';
 import './athlete-blocks.js';
 import './career-timeline.js';
+import './external-history.js';
 import './market.js';
 import './multisport.js';
 import './multisport-play.js';

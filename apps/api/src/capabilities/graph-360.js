@@ -9,7 +9,7 @@ import { audit, isAdmin } from '../helpers.js';
 import { orgFor, hasOrgGrant } from '../org-access.js';
 import { isYouth } from '../youth.js';
 import { currentClearance } from '../clearance.js';
-import { publicCareer } from '../career.js';
+import { extVisible, publicCareer } from '../career.js';
 import { canManageTeam } from './teams.js';
 import { sharedClearance } from './academy-athlete360.js';
 import { EDGE_COLS, RELS, canManageEntity, describe, ownerLike, personAccess } from '../graph.js';
@@ -158,7 +158,7 @@ cap({
         `SELECT m.id, m.role, m.status, m.joined_at, u.id AS user_id, u.display_name FROM organisation_members m JOIN users u ON u.id=m.user_id WHERE m.organisation_id=$1 AND m.status='active' ORDER BY u.display_name LIMIT 200`, [i.id]));
       s.memberships = ok('career_memberships', (await one(
         `SELECT count(*) FILTER (WHERE c.ends_on IS NULL)::int AS current, count(*)::int AS total, count(*) FILTER (WHERE c.verification_status='verified')::int AS verified
-           FROM career_memberships c WHERE c.archived_at IS NULL AND (c.organisation_id=$1 OR c.team_id IN (SELECT id FROM teams WHERE organisation_id=$1))`, [i.id])));
+           FROM career_memberships c WHERE c.archived_at IS NULL AND ${extVisible()} AND (c.organisation_id=$1 OR c.team_id IN (SELECT id FROM teams WHERE organisation_id=$1))`, [i.id])));
       await audit(null, user.id, 'read_graph_360', 'organisations', i.id);
     } else { s.people = denied('Shown to the organisation\'s owners and admins'); s.memberships = denied('Shown to the organisation\'s owners and admins'); }
     return { subject: { kind: 'organisation', id: i.id }, viewer_relation: staff ? 'staff' : 'public', as_of: i.as_of ?? null, sections: s };
