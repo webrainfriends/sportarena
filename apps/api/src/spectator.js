@@ -19,7 +19,7 @@ export const YOUTH_AGE = 18;
 export const isYouthEvent = (ev) => ev.max_age != null && ev.max_age < YOUTH_AGE;
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const SLOTS = ['title_partner', 'fixture', 'scorecard', 'leaderboard'];
-export const ALERTS = ['start', 'score', 'result', 'schedule'];
+export const ALERTS = ['start', 'score', 'result', 'schedule', 'media'];
 export const REACTIONS = ['fire', 'clap', 'wow', 'strong'];
 const NO_ONE = '00000000-0000-0000-0000-000000000000';
 
