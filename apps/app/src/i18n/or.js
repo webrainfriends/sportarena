@@ -1,0 +1,14 @@
+export default {
+  'account.title': 'ଖାତା', 'account.appearance': 'ଦୃଶ୍ୟ', 'account.language': 'ଭାଷା ଓ ଅଞ୍ଚଳ',
+  'account.theme.system': 'ସିଷ୍ଟମ', 'account.theme.light': 'ଲାଇଟ', 'account.theme.dark': 'ଡାର୍କ', 'account.logout': 'ଲଗ୍ ଆଉଟ',
+  'account.use_device': 'ମୋ ଡିଭାଇସ୍‌ର ସେଟିଂସ ବ୍ୟବହାର କରନ୍ତୁ', 'account.search_language': 'ଭାଷା କିମ୍ବା ଦେଶ ଖୋଜନ୍ତୁ',
+  'account.from_device': 'ଆପଣଙ୍କ ଡିଭାଇସ୍‌ରୁ', 'account.your_choice': 'ଆପଣଙ୍କ ପସନ୍ଦ',
+  'account.review_note': 'କିଛି ଅନୁବାଦ ମେସିନ୍ ଦ୍ୱାରା ପ୍ରସ୍ତୁତ ଏବଂ ମାତୃଭାଷୀଙ୍କ ସମୀକ୍ଷା ଅପେକ୍ଷାରେ ଅଛି।',
+  'account.follow_device': 'ଆପଣଙ୍କ ଡିଭାଇସ୍ ଅନୁସରଣ କରୁଛି।', 'account.format_note': 'ତାରିଖ, ସମୟ, ସଂଖ୍ୟା ଓ ମୁଦ୍ରା ଏହାକୁ ଏବଂ ଆପଣଙ୍କ ସମୟ ଅଞ୍ଚଳକୁ ଅନୁସରଣ କରେ।',
+  'common.save': 'ସେଭ୍ କରନ୍ତୁ', 'common.cancel': 'ବାତିଲ୍ କରନ୍ତୁ', 'common.close': 'ବନ୍ଦ କରନ୍ତୁ', 'common.back': 'ପଛକୁ', 'common.next': 'ପରବର୍ତ୍ତୀ',
+  'common.search': 'ଖୋଜନ୍ତୁ', 'common.loading': 'ଲୋଡ୍ ହେଉଛି…', 'common.retry': 'ପୁଣି ଚେଷ୍ଟା କରନ୍ତୁ', 'common.done': 'ସମାପ୍ତ',
+  'error.generic': 'କିଛି ଭୁଲ ହୋଇଗଲା। ଦୟାକରି ପୁଣି ଚେଷ୍ଟା କରନ୍ତୁ।', 'error.network': 'ସଂଯୋଗ ନାହିଁ। ଆପଣଙ୍କ ନେଟୱାର୍କ ଯାଞ୍ଚ କରି ପୁଣି ଚେଷ୍ଟା କରନ୍ତୁ।',
+  'empty.nothing': 'ଏଠାରେ ଏପର୍ଯ୍ୟନ୍ତ କିଛି ନାହିଁ।',
+  'nav.home': 'ହୋମ୍', 'nav.search': 'ସନ୍ଧାନ', 'nav.bookings': 'ବୁକିଂ', 'nav.account': 'ଖାତା',
+  'welcome.hello': 'ନମସ୍କାର, {name}',
+};

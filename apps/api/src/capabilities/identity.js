@@ -13,6 +13,7 @@ import { profileCredentials } from '../education.js';
 import { viewerTiers, visibleFields } from '../athlete-profile.js';
 import { affiliationsFor } from './athlete-profile.js';
 import { PLATFORM_ROLES, reconcilePlatformRoles, withoutPlatformRoles } from '../platform.js';
+import { LANGUAGE_CODES } from '../comms-catalogue.js';
 import { canSeeYouth, NOT_YOUTH_SQL, refreshYouth, YOUTH_SQL } from '../youth.js';
 import { claimMigrationInvites } from '../migration.js';
 
@@ -111,7 +112,7 @@ cap({
     await audit(null, user.id, 'read_pii', 'users', user.id);
     return {
       id: row.id, handle: row.handle, display_name: row.display_name, roles: row.roles, bio: row.bio,
-      avatar_emoji: row.avatar_emoji, avatar_color: row.avatar_color, avatar_url: row.avatar_url, avatar_cutout: row.avatar_cutout, access_status: row.access_status, created_at: row.created_at,
+      avatar_emoji: row.avatar_emoji, avatar_color: row.avatar_color, avatar_url: row.avatar_url, avatar_cutout: row.avatar_cutout, access_status: row.access_status, language: row.language, created_at: row.created_at,
       email: decryptFields(row, 'users', ['email']).email, ...decryptFields(row, 'users', PII),
     };
   },
@@ -123,12 +124,12 @@ cap({
   input: z.object({
     handle: handleField.optional(),
     display_name: z.string().min(1).max(60).optional(), bio: z.string().max(500).optional(),
-    avatar_emoji: z.string().max(8).optional(), avatar_color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(), ...pii,
+    avatar_emoji: z.string().max(8).optional(), avatar_color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(), language: z.enum(LANGUAGE_CODES).nullable().optional(), ...pii,
   }),
   async handler({ user }, i) {
     const enc = encryptFields(i, 'users', PII);
     const sets = {};
-    for (const k of ['handle', 'display_name', 'bio', 'avatar_emoji', 'avatar_color']) if (i[k] !== undefined) sets[k] = i[k];
+    for (const k of ['handle', 'display_name', 'bio', 'avatar_emoji', 'avatar_color', 'language']) if (i[k] !== undefined) sets[k] = i[k];
     Object.assign(sets, enc);
     const keys = Object.keys(sets);
     if (!keys.length) throw badRequest('Nothing to update');
