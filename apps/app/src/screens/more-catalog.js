@@ -14,7 +14,7 @@ export const MODULES = [
   ['Finance', 'Finance', 'Revenue, receivables & reconciliation', 'money'], ['Wallet', 'Wallet', 'Balance, gift cards & passes', 'money'], ['PlansBilling', 'Plans & billing', 'Your plan, upgrades & payment', 'money'], ['Rewards', 'Rewards', 'Points, invites & statement', 'money'], ['Cover', 'Who pays', 'Sponsor, club & family payments', 'money'], ['Advertising', 'Advertising', 'Promote your venue, event or business', 'money'], ['Earnings', 'Earnings', 'Sales, fees & payouts', 'money'], ['PlayerContracts', 'Contracts', 'Fees, bonuses, expenses & pay', 'money'], ['Representation', 'Representation', 'Your agent, what they can see & commission', 'money'], ['PlayerFunding', 'Funding', 'Needs, applications & sponsor support', 'money'], ['Shop', 'Shop', 'Kit, gear & orders', 'money'],
   ['Billboard', 'Billboard', 'Wanted, for sale & ads', 'money'], ['Sponsors', 'Sponsor home', 'Offers, dues & agreements', 'money'], ['Supply', 'Supply chain', 'Kit, stock & orders', 'money'], ['Marketplace', 'Marketplace', 'Find, quote, contract & pay any sports service', 'work'], ['ServicesBuyer', 'Services & suppliers', 'Buy grounds, crew, Wi-Fi, travel…', 'work'], ['Trips', 'Trips & travel', 'Itineraries, travel party, stays & movement', 'play'],
   ['Openings', 'Open positions', 'Jobs, stalls & contracts at events', 'community'], ['EventInbox', 'Event requests', 'Invites & quotes for you', 'community'],
-  ['Orgs', 'Organisations', 'Clubs & associations', 'community'], ['Federations', 'Federations', 'Affiliations, licences & sanctions', 'community'], ['MediaWorkspace', 'Media & broadcast', 'Rights, production & data feeds', 'work'], ['Analytics', 'Analytics', 'KPIs, dashboards & scheduled reports', 'work'], ['Support', 'Support', 'Cases & disputes', 'community'],
+  ['Orgs', 'Organisations', 'Clubs & associations', 'community'], ['Federations', 'Federations', 'Affiliations, licences & sanctions', 'community'], ['RegistrationHome', 'Registration', 'Join, register and run registrations', 'community'], ['MediaWorkspace', 'Media & broadcast', 'Rights, production & data feeds', 'work'], ['Analytics', 'Analytics', 'KPIs, dashboards & scheduled reports', 'work'], ['Support', 'Support', 'Cases & disputes', 'community'],
 ];
 
 export const GROUP_COLOR = { play: '#D0BDF4', care: '#A0D2EB', money: '#E5EAF5', community: '#A0D2EB', work: '#4C9A7A' };
@@ -51,7 +51,7 @@ export const workspacesFor = (roles = [], desk = false) => WORKSPACES.filter(([r
 
 // Modules lifted to the front of the wheel for people who hold these roles (first match wins; everyone else: player set).
 export const PRIORITY = [
-  [['organizer', 'venue_manager'], ['Analytics', 'EventInbox', 'Openings', 'Orgs', 'Federations', 'MediaWorkspace', 'Finance', 'Earnings', 'PlayerContracts', 'Billboard', 'Support', 'ToolsHome']],
+  [['organizer', 'venue_manager'], ['Analytics', 'EventInbox', 'Openings', 'Orgs', 'Federations', 'RegistrationHome', 'MediaWorkspace', 'Finance', 'Earnings', 'PlayerContracts', 'Billboard', 'Support', 'ToolsHome']],
   [['sponsor', 'supplier'], ['Sponsors', 'Analytics', 'Supply', 'Wallet', 'Earnings', 'Billboard', 'Shop', 'ToolsHome']],
   [['physio', 'doctor', 'lawyer', 'insurer'], ['Health', 'Insure', 'Legal', 'Wallet', 'Leaderboard', 'Support', 'ToolsHome']],
 ];
