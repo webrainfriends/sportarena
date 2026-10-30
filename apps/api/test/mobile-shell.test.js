@@ -8,15 +8,19 @@ const src = new URL('../../app/src/', import.meta.url);
 const read = (f) => readFileSync(new URL(f, src), 'utf8');
 const app = read('App.js');
 
-test('the bar is Home, Calendar, Work, Inbox and Profile, and every one is a registered tab', () => {
+test('the bar is Home, Calendar, More (centre swivel), Work and Profile; the Inbox is the top-right button', () => {
   const bar = app.match(/const BAR = \[([^\]]*)\]/)[1].match(/'([A-Za-z]+)'/g).map((x) => x.replaceAll("'", ''));
-  assert.deepEqual(bar, ['Home', 'Schedule', 'Work', 'Inbox', 'Me']);
+  assert.deepEqual(bar, ['Home', 'Schedule', 'Hub', 'Work', 'Me']);
   const tabs = [...app.match(/const TABS = \[(.*)\];/)[1].matchAll(/\['([A-Za-z]+)',/g)].map((m) => m[1]);
-  for (const t of bar) assert.ok(tabs.includes(t), `${t} is a tab`);
+  for (const t of bar.filter((x) => x !== 'Hub')) assert.ok(tabs.includes(t), `${t} is a tab`); // Hub is the swivel: it toggles the overlay, it is not a page
+  assert.match(app, /centre \? toggleMenu\(\)/, 'the centre button opens the swivel');
+  assert.match(app, /<InboxButton \/><AccountButton \/>/, 'the Inbox sits beside the account button at the top right');
   const labels = app.match(/const TAB_LABEL = \{([^}]*)\}/)[1];
   assert.match(labels, /Schedule: 'Calendar'/);
   assert.match(labels, /Me: 'Profile'/);
-  for (const t of ['Work', 'Inbox']) assert.match(read('icons.js'), new RegExp(`\\n  ${t}: wrap`), `${t} has an icon`);
+  assert.match(labels, /Hub: 'More'/);
+  assert.match(labels, /Work: 'Workbench'/);
+  for (const t of ['Work', 'Inbox', 'Hub']) assert.match(read('icons.js'), new RegExp(`\\n  ${t}: wrap`), `${t} has an icon`);
 });
 
 test('the workspace is provided to the shell, behind the session and navigation', () => {
@@ -24,8 +28,8 @@ test('the workspace is provided to the shell, behind the session and navigation'
 });
 
 test('Community and Inbox stay reachable as pushed pages with titles, and the old inbox section is gone from the settings page', () => {
-  assert.match(app, /const PAGES = \{ Community, Inbox,/);
-  assert.match(app, /const TITLES = \{ Community: 'Community', Inbox: 'Inbox',/);
+  assert.match(app, /const PAGES = \{[^}]*\bCommunity, Inbox,/);
+  assert.match(app, /const TITLES = \{[^}]*\bCommunity: 'Community',[^}]*\bInbox: 'Inbox',/);
   const reserve = read('screens/reserve.js');
   const settings = reserve.slice(reserve.indexOf('export function Notifications()'));
   assert.ok(!settings.includes('<Section title="Inbox"'), 'one inbox: the list lives in the Inbox tab only');
@@ -69,4 +73,16 @@ test('every fast action is at least 44pt and labelled for screen readers', () =>
   assert.match(home, /minHeight: 88/);
   assert.match(home, /accessibilityRole="button" accessibilityLabel=\{a\.label\}/);
   assert.match(home, /accessibilityLiveRegion="polite"/);
+});
+
+test('Work is the role\'s one workspace: no "All tools" button, no second Workspace tile in the swivel', () => {
+  const home = read('screens/role-home.js');
+  assert.ok(!home.includes('All tools and modules'), 'the swivel is the More button now');
+  assert.match(home, /ScreenHeaderProvider value=\{queue\}/, 'the queue tops the role\'s own screen');
+  const catalog = read('screens/more-catalog.js').replace(/export /g, '') + '\nreturn { workspacesFor, orderedModules };';
+  const { workspacesFor, orderedModules } = new Function(catalog)();
+  assert.deepEqual(workspacesFor(['coach', 'sponsor', 'athlete']), [], 'working roles open from Work, not from the swivel');
+  assert.deepEqual(workspacesFor(['platform_admin']).map((w) => w[0]), ['platform_admin']);
+  assert.deepEqual(workspacesFor(['athlete'], true).map((w) => w[0]), ['venue_manager'], 'a front-desk cashier still reaches the desk');
+  assert.ok(!orderedModules(['coach']).some((m) => m[0] === 'Workspace'));
 });
