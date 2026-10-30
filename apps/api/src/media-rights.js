@@ -12,6 +12,7 @@ export const RIGHTS = {
   photography: 'Photography', press: 'Press & news access', data_feed: 'Official data & statistics feed', archive: 'Archive footage', social: 'Social / digital publication',
 };
 export const RIGHT_KEYS = Object.keys(RIGHTS);
+export const PLATFORM_NAMES = { linear_tv: 'TV', ott: 'streaming (OTT)', web: 'web', mobile_app: 'mobile app', social: 'social', radio: 'radio', in_venue: 'in venue', print: 'print' };
 export const PLATFORMS = ['linear_tv', 'ott', 'web', 'mobile_app', 'social', 'radio', 'in_venue', 'print'];
 export const PARTNER_KINDS = ['broadcaster', 'streaming_platform', 'radio', 'press', 'photo_agency', 'production_company', 'data_licensee', 'digital_platform', 'other'];
 export const CREW_ROLES = ['producer', 'director', 'camera_operator', 'commentator', 'analyst', 'photographer', 'audio_engineer', 'technical_crew', 'reporter', 'other'];
@@ -156,3 +157,92 @@ export function licenceCovers(a, e, inCollection) {
   }
   return true;
 }
+
+// ------------------------------------------------------------------ the rights check (#590): one place that decides whether an asset may be published, exported or handed on
+export const RIGHTS_PURPOSES = ['publish', 'export', 'distribute'];
+/** Is this country inside the territory? `worldwide` and an unnamed country (nothing to test) pass. */
+export const countryIn = (t, cc) => !cc || t.mode === 'worldwide' || (t.mode === 'include' ? t.countries.includes(cc) : !t.countries.includes(cc));
+
+/** The first reason a licence does not cover an asset for this use, in plain words; null when it does. Mirrors `licenceCovers`, which stays the yes/no used for visibility. */
+export function whyNotCovered(a, e, inCollection, { platform = null, country = null } = {}) {
+  if (e.event_id !== a.event_id) return 'The licence is for a different event';
+  if (e.scope_kind === 'fixture' && e.fixture_id !== a.fixture_id) return 'The licence only covers another game';
+  if (e.scope_kind === 'collection' && !(inCollection ?? []).includes(e.collection_id)) return 'The asset is not in the licensed collection';
+  if (!e.approved_rights.includes(a.right_kind)) return `The licence does not include the ${RIGHTS[a.right_kind] ?? a.right_kind} right`;
+  if (!platformsOverlap(a.platforms ?? [], e.approved_platforms)) return 'The asset and the licence share no platform';
+  if (platform && !((a.platforms ?? []).length === 0 || a.platforms.includes(platform))) return `The asset is not released for ${(PLATFORM_NAMES[platform] ?? platform)}`;
+  if (platform && !(e.approved_platforms.length === 0 || e.approved_platforms.includes(platform))) return `The licence does not include ${(PLATFORM_NAMES[platform] ?? platform)}`;
+  if (!territoriesOverlap(terr(a), terr(e))) return 'The asset and the licence share no territory';
+  if (!countryIn(terr(a), country)) return `The asset is not released in ${country}`;
+  if (!countryIn(terr(e), country)) return `The licence does not include ${country}`;
+  if (!LIVE_RIGHTS.includes(a.right_kind) && e.embargo_minutes > 0 && a.fixture_id && (!a.fixture_finished_at || new Date(a.fixture_finished_at).getTime() + e.embargo_minutes * 60000 > Date.now())) return `The licence delay (${e.embargo_minutes} minutes after full time) has not passed`;
+  return null;
+}
+
+/** The licence in force with this id, in the shape `entitlementsFor` returns (used when the organiser or owner checks a hand-over on a partner's behalf). */
+export async function entitlementById(c, licenceId) {
+  return (await c.query(
+    `SELECT l.id AS licence_id, l.partner_id, l.approved_rights, l.approved_platforms, l.territory_mode, l.countries, l.effective_from, l.effective_to,
+            p.id AS package_id, p.event_id, p.scope_kind, p.fixture_id, p.collection_id, p.embargo_minutes, p.sublicensing, p.name AS package_name
+       FROM mr_licences l JOIN mr_packages p ON p.id=l.package_id JOIN media_partners m ON m.id=l.partner_id WHERE l.id=$1 AND ${IN_FORCE()}`, [licenceId])).rows[0] ?? null;
+}
+
+/** The chain an asset was cut from, oldest source last, with who owns each link: provenance travels with every check. */
+export async function provenanceOf(c, a) {
+  const chain = (await c.query(
+    `WITH RECURSIVE up AS (SELECT p.id, p.parent_asset_id, p.title, p.owner_kind, p.owner_name, p.status, 1 AS depth FROM mr_assets p WHERE p.id=$1
+       UNION ALL SELECT p.id, p.parent_asset_id, p.title, p.owner_kind, p.owner_name, p.status, up.depth+1 FROM mr_assets p JOIN up ON p.id=up.parent_asset_id WHERE up.depth < 20)
+     SELECT id, title, owner_kind, owner_name, status FROM up ORDER BY depth`, [a.parent_asset_id ?? a.id])).rows;
+  const owner = a.owner_partner_id ? (await c.query('SELECT o.name FROM media_partners m JOIN organisations o ON o.id=m.organisation_id WHERE m.id=$1', [a.owner_partner_id])).rows[0]?.name : null;
+  return { owner_kind: a.owner_kind, owner_name: owner ?? a.owner_name ?? null, credit: a.credit, created_by: a.creator_id, source_kind: a.source_kind, sha256: a.sha256 ?? null, cut_from: a.parent_asset_id ? chain : [] };
+}
+
+/**
+ * Judge one use of an asset. Every rule is listed with its outcome so the answer is explainable; `allowed` is true only when none failed.
+ *  publish    → the draft may go out to its audience (file, source, consent, expiry)
+ *  export     → someone takes a copy or link out of the platform (the asset is live, the audience allows it, the licence covers it)
+ *  distribute → the organiser or owner hands it to a partner (same rules, judged against that partner's licence)
+ */
+export async function evaluateRights(c, a, { purpose, viewer, ent = null, platform = null, country = null }) {
+  const rules = [];
+  const add = (rule, ok, label, detail = null, extra = {}) => rules.push({ rule, ok, label, detail: ok ? null : detail, ...extra });
+  const now = Date.now();
+  if (purpose === 'publish') add('status', a.status === 'draft', 'Ready to publish', 'Only a draft can be published');
+  else add('status', a.status === 'published', 'Published', a.status === 'draft' ? 'It has not been published yet' : `It is ${a.status.replace('_', ' ')}`);
+  if (purpose === 'publish' && a.source_kind === 'upload') add('file', !!a.stored_file, 'File uploaded', 'Upload the file first', { code: 'file_required' });
+  add('source', !a.source_blocked, 'Source still available', 'The asset this was cut from has been withdrawn or taken down');
+  const subs = (await c.query('SELECT user_id FROM mr_asset_subjects WHERE asset_id=$1 AND removed_at IS NULL AND user_id IS NOT NULL', [a.id])).rows;
+  const lapsed = [];
+  for (const s of subs) if (!(await hasConsent(s.user_id, 'media', c))) lapsed.push(s.user_id);
+  add('consent', !lapsed.length, subs.length ? 'Guardian media consent current for everyone shown' : 'Nobody identifiable needs consent', 'A verified guardian has not given current media consent for a young person in this asset', { code: 'guardian_consent_required', count: lapsed.length });
+  add('expiry', !(a.expires_at && new Date(a.expires_at) <= now), 'Not past its expiry date', 'It is past its expiry date');
+  if (purpose !== 'publish') {
+    add('embargo', !(a.embargo_until && new Date(a.embargo_until) > now), 'Embargo lifted', `Under embargo until ${new Date(a.embargo_until).toISOString().slice(0, 16).replace('T', ' ')} UTC`);
+    add('schedule', !(a.publish_at && new Date(a.publish_at) > now), 'Publish time reached', 'It is scheduled for later');
+    const outsider = !viewer.organiser && !viewer.owner;
+    add('audience', a.audience !== 'private' || !outsider, 'Released beyond its owner', 'It is private to its owner and the organiser');
+    if (platform) add('platform_asset', (a.platforms ?? []).length === 0 || a.platforms.includes(platform), `Released for ${(PLATFORM_NAMES[platform] ?? platform)}`, `Not released for ${(PLATFORM_NAMES[platform] ?? platform)}`);
+    if (country) add('territory_asset', countryIn(terr(a), country), `Released in ${country}`, `Not released in ${country}`);
+    if (ent || outsider) {
+      const why = ent ? whyNotCovered(a, ent, viewer.inColl, { platform, country }) : 'No licence in force covers this asset';
+      add('licence', !why, ent ? 'A licence in force covers this use' : 'Covered by a licence', why);
+    }
+  }
+  return { purpose, allowed: rules.every((r) => r.ok), rules, provenance: await provenanceOf(c, a) };
+}
+
+/** Write the check down for good: who asked, for what, what each rule said. Append-only. */
+export async function recordRightsCheck(c, a, { user, purpose, licenceId = null, platform = null, country = null, result }) {
+  const row = (await c.query(
+    `INSERT INTO mr_rights_checks(event_id, asset_id, licence_id, user_id, purpose, platform, country, outcome, rules, provenance) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id, checked_at`,
+    [a.event_id, a.id, licenceId, user?.id ?? null, purpose, platform, country, result.allowed ? 'allowed' : 'blocked', JSON.stringify(result.rules), JSON.stringify(result.provenance)])).rows[0];
+  await logMr(c, a.event_id, 'asset', a.id, `rights_check_${result.allowed ? 'allowed' : 'blocked'}`, { actor: user?.id ?? null, detail: { purpose, check_id: row.id, licence_id: licenceId, failed: result.rules.filter((r) => !r.ok).map((r) => r.rule) } });
+  return row;
+}
+
+// ------------------------------------------------------------------ crew badge (#590): the real accreditation of #481, read live
+/** The person's open accreditation for the crew row's event (alias `c`). An approved, active credential reads 'issued', an approved but suspended one 'suspended', one in review 'pending'.
+ *  Only when the person has none does the older department flag speak, so badges issued before accreditation existed keep their meaning. */
+export const CREW_ACCRED_PICK = `SELECT a.* FROM accreditations a WHERE a.event_id=c.event_id AND a.holder_id=c.user_id AND a.status IN ('approved','submitted','under_review') ORDER BY (a.status='approved') DESC, a.submitted_at DESC LIMIT 1`;
+export const CREW_ACCRED = `coalesce((SELECT CASE WHEN p.status='approved' AND p.access='active' THEN 'issued' WHEN p.status='approved' THEN 'suspended' ELSE 'pending' END FROM (${CREW_ACCRED_PICK}) p),
+  (SELECT m.accreditation FROM event_department_members m WHERE m.id=c.department_member_id), 'none')`;

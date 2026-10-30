@@ -12,7 +12,9 @@ import { saveEncrypted } from '../doc-store.js';
 import { toCsv } from '../csv.js';
 import { starterFor } from '../documents/layout.js';
 import { renderEnrolmentLetter } from '../documents/render.js';
-import { authority, can, need, subtree, bodyById, logFed, AFF_STATUS, LIC_STATUS, today, dateStr } from '../federation.js';
+import { gate } from '../federation-approvals.js';
+import { YOUTH_SQL } from '../youth.js';
+import { authority, canSome, need, jurisdictionScope, EXC_COLS, EXC_FROM, subtree, bodyById, logFed, AFF_STATUS, LIC_STATUS, today, dateStr } from '../federation.js';
 import { subjectFor, staffCan } from '../federation-subjects.js';
 import { officerOf } from '../integrity.js';
 import { loadLogo, mustAccess } from './branded-documents.js';
@@ -33,7 +35,8 @@ cap({
   async handler({ user }, i) {
     const auth = await authority(user, i.id);
     const body = auth.body;
-    const ids = i.include_descendants ? await subtree(i.id) : [i.id];
+    const scope = jurisdictionScope(auth);       // staff limited to some jurisdictions see their own queues, and only this body
+    const ids = i.include_descendants && !scope ? await subtree(i.id) : [i.id];
     const [aff, licSt, sanSt, affExp, licExp, drift, pendAff, pendLic, pendSan, comps, windows, cases, byBody, bySport, bySeason, exceptions, children] = await Promise.all([
       many(`SELECT ${AFF_STATUS('a')} AS st, count(*)::int AS n FROM fed_affiliations a WHERE a.body_id = ANY($1) GROUP BY 1`, [ids]),
       many(`SELECT ${LIC_STATUS('l')} AS st, count(*)::int AS n FROM fed_licences l WHERE l.body_id = ANY($1) GROUP BY 1`, [ids]),
@@ -41,9 +44,9 @@ cap({
       one(`SELECT count(*) FILTER (WHERE a.effective_to <= current_date + 30)::int AS d30, count(*) FILTER (WHERE a.effective_to <= current_date + 60)::int AS d60 FROM fed_affiliations a WHERE a.body_id = ANY($1) AND a.status='approved' AND a.effective_to >= current_date`, [ids]),
       one(`SELECT count(*) FILTER (WHERE l.expires_on <= current_date + 30)::int AS d30, count(*) FILTER (WHERE l.expires_on <= current_date + 60)::int AS d60 FROM fed_licences l WHERE l.body_id = ANY($1) AND l.status='active' AND l.expires_on >= current_date`, [ids]),
       one(`SELECT count(*)::int AS n FROM fed_sanctions s JOIN events e ON e.id=s.event_id WHERE s.body_id = ANY($1) AND s.status IN ('approved','suspended') AND (e.status='cancelled' OR e.starts_on < s.approved_starts_on OR e.ends_on > s.approved_ends_on)`, [ids]),
-      many(`SELECT a.id, o.name AS label, c.name AS sub, a.status, a.season_year, a.submitted_at, a.body_id FROM fed_affiliations a JOIN organisations o ON o.id=a.organisation_id JOIN fed_affiliation_categories c ON c.id=a.category_id WHERE a.body_id = ANY($1) AND a.status IN ('submitted','under_review','needs_info') ORDER BY a.submitted_at LIMIT 5`, [ids]),
-      many(`SELECT l.id, u.display_name AS label, t.name AS sub, l.status, l.submitted_at, l.body_id FROM fed_licences l JOIN users u ON u.id=l.holder_id JOIN fed_licence_types t ON t.id=l.type_id WHERE l.body_id = ANY($1) AND l.status IN ('submitted','under_review','needs_info') ORDER BY l.submitted_at LIMIT 5`, [ids]),
-      many(`SELECT s.id, e.name AS label, e.starts_on::text AS sub, s.status, s.created_at AS submitted_at, s.body_id FROM fed_sanctions s JOIN events e ON e.id=s.event_id WHERE s.body_id = ANY($1) AND s.status IN ('requested','under_review','needs_info') ORDER BY s.created_at LIMIT 5`, [ids]),
+      many(`SELECT a.id, o.name AS label, c.name AS sub, a.status, a.season_year, a.submitted_at, a.body_id FROM fed_affiliations a JOIN organisations o ON o.id=a.organisation_id JOIN fed_affiliation_categories c ON c.id=a.category_id WHERE a.body_id = ANY($1) AND ($2::uuid[] IS NULL OR a.jurisdiction_id = ANY($2)) AND a.status IN ('submitted','under_review','needs_info') ORDER BY a.submitted_at LIMIT 5`, [ids, scope]),
+      many(`SELECT l.id, u.display_name AS label, t.name AS sub, l.status, l.submitted_at, l.body_id FROM fed_licences l JOIN users u ON u.id=l.holder_id JOIN fed_licence_types t ON t.id=l.type_id WHERE l.body_id = ANY($1) AND ($2::uuid[] IS NULL OR l.jurisdiction_id = ANY($2)) AND l.status IN ('submitted','under_review','needs_info') ORDER BY l.submitted_at LIMIT 5`, [ids, scope]),
+      many(`SELECT s.id, e.name AS label, e.starts_on::text AS sub, s.status, s.created_at AS submitted_at, s.body_id FROM fed_sanctions s JOIN events e ON e.id=s.event_id WHERE s.body_id = ANY($1) AND ($2::uuid[] IS NULL OR s.jurisdiction_id = ANY($2)) AND s.status IN ('requested','under_review','needs_info') ORDER BY s.created_at LIMIT 5`, [ids, scope]),
       one(`SELECT count(*)::int AS total, count(*) FILTER (WHERE san.status IN ('approved','suspended'))::int AS sanctioned, count(*) FILTER (WHERE san.status IN ('requested','under_review','needs_info'))::int AS pending,
                   count(*) FILTER (WHERE (san.id IS NULL OR san.status IN ('rejected','withdrawn','revoked')) AND e.starts_on >= current_date)::int AS unsanctioned_upcoming
              FROM events e LEFT JOIN LATERAL (SELECT x.id, x.status FROM fed_sanctions x WHERE x.event_id=e.id AND x.body_id=$2 ORDER BY (x.status IN ('approved','suspended')) DESC, x.created_at DESC LIMIT 1) san ON true
@@ -70,11 +73,12 @@ cap({
               UNION ALL SELECT extract(year FROM l.issued_on)::int, 0, 1, 0 FROM fed_licences l WHERE l.body_id = ANY($1) AND l.issued_on IS NOT NULL AND (${LIC_STATUS('l')}) IN ('active','expired','suspended')
               UNION ALL SELECT extract(year FROM s.approved_starts_on)::int, 0, 0, 1 FROM fed_sanctions s WHERE s.body_id = ANY($1) AND s.status IN ('approved','suspended')) x GROUP BY 1 ORDER BY 1 DESC LIMIT 8`, [ids]),
       many(`SELECT * FROM (
-              SELECT 'affiliation' AS type, a.id, o.name AS label, a.override_reason AS reason, a.decided_at AS at, a.body_id, 'override' AS kind, u.display_name AS by FROM fed_affiliations a JOIN organisations o ON o.id=a.organisation_id LEFT JOIN users u ON u.id=a.decided_by WHERE a.body_id = ANY($1) AND a.override_reason IS NOT NULL AND a.status IN ('approved','suspended')
-              UNION ALL SELECT 'licence', l.id, uu.display_name || ' · ' || t.name, l.override_reason, l.decided_at, l.body_id, 'override', u.display_name FROM fed_licences l JOIN users uu ON uu.id=l.holder_id JOIN fed_licence_types t ON t.id=l.type_id LEFT JOIN users u ON u.id=l.decided_by WHERE l.body_id = ANY($1) AND l.override_reason IS NOT NULL AND l.status IN ('active','suspended')
-              UNION ALL SELECT 'sanction', s.id, e.name, s.override_reason, s.decided_at, s.body_id, 'override', u.display_name FROM fed_sanctions s JOIN events e ON e.id=s.event_id LEFT JOIN users u ON u.id=s.decided_by WHERE s.body_id = ANY($1) AND s.override_reason IS NOT NULL AND s.status IN ('approved','suspended')
-              UNION ALL SELECT 'sanction', s.id, e.name, CASE WHEN e.status='cancelled' THEN 'The event was cancelled after it was sanctioned' ELSE 'The event dates moved outside the sanctioned dates' END, e.created_at, s.body_id, 'event_moved', NULL FROM fed_sanctions s JOIN events e ON e.id=s.event_id WHERE s.body_id = ANY($1) AND s.status IN ('approved','suspended') AND (e.status='cancelled' OR e.starts_on < s.approved_starts_on OR e.ends_on > s.approved_ends_on)
-            ) x ORDER BY at DESC NULLS LAST LIMIT 12`, [ids]),
+              SELECT e.subject_type AS type, e.subject_id AS id, x.label, e.reason, e.decided_at AS at, e.body_id, 'override' AS kind, x.decided_by_name AS by, e.id AS exception_id, x.review_due, x.overdue
+                FROM fed_exceptions e JOIN (SELECT ${EXC_COLS} FROM ${EXC_FROM}) x ON x.id=e.id
+               WHERE e.body_id = ANY($1) AND e.status IN ('open','extended') AND ($2::uuid[] IS NULL OR x.jurisdiction_id = ANY($2))
+              UNION ALL SELECT 'sanction', s.id, ev.name, CASE WHEN ev.status='cancelled' THEN 'The event was cancelled after it was sanctioned' ELSE 'The event dates moved outside the sanctioned dates' END, ev.created_at, s.body_id, 'event_moved', NULL, NULL, NULL, false
+                FROM fed_sanctions s JOIN events ev ON ev.id=s.event_id WHERE s.body_id = ANY($1) AND s.status IN ('approved','suspended') AND (ev.status='cancelled' OR ev.starts_on < s.approved_starts_on OR ev.ends_on > s.approved_ends_on) AND ($2::uuid[] IS NULL OR s.jurisdiction_id = ANY($2))
+            ) y ORDER BY overdue DESC, at DESC NULLS LAST LIMIT 12`, [ids, scope]),
       many(`SELECT l.child_id AS body_id, bo.name, b.level, b.abbreviation FROM governing_body_links l JOIN governing_bodies b ON b.id=l.child_id JOIN organisations bo ON bo.id=b.organisation_id WHERE l.parent_id=$1 AND l.status='recognised' ORDER BY bo.name`, [i.id]),
     ]);
     const links = await one("SELECT count(*)::int AS n FROM governing_body_links WHERE (parent_id=$1 OR child_id=$1) AND status='requested'", [i.id]);
@@ -82,7 +86,7 @@ cap({
     return {
       body: { id: body.id, name: body.name, level: body.level, abbreviation: body.abbreviation, country: body.country, status: body.status },
       scope: { include_descendants: i.include_descendants, bodies: ids.length },
-      me: { admin: auth.admin, roles: auth.roles.map((r) => r.role), read_only_via_parent: auth.viaAncestor, can: Object.fromEntries(['affiliations', 'licences', 'sanctions', 'governance', 'evidence', 'reports'].map((p) => [p, can(auth, p)]).concat([['integrity', !!(await officerOf(user, body.id))]])) },
+      me: { user_id: user.id, admin: auth.admin, roles: auth.roles.map((r) => r.role), read_only_via_parent: auth.viaAncestor, can: Object.fromEntries(['affiliations', 'licences', 'sanctions', 'governance', 'evidence', 'reports', 'exceptions'].map((p) => [p, canSome(auth, p)]).concat([['integrity', !!(await officerOf(user, body.id))]])) },
       counts: {
         affiliations: { pending: (a.submitted ?? 0) + (a.under_review ?? 0), needs_info: a.needs_info ?? 0, approved: a.approved ?? 0, suspended: a.suspended ?? 0, expired: a.expired ?? 0, expiring_30: affExp.d30, expiring_60: affExp.d60 },
         licences: { pending: (l.submitted ?? 0) + (l.under_review ?? 0), needs_info: l.needs_info ?? 0, active: l.active ?? 0, suspended: l.suspended ?? 0, expired: l.expired ?? 0, expiring_30: licExp.d30, expiring_60: licExp.d60 },
@@ -118,9 +122,9 @@ async function buildReport(i, ids) {
   if (i.report === 'licences') {
     const w = `l.body_id = ANY($1) AND l.status IN ('active','suspended','expired') AND l.issued_on <= $2 AND l.expires_on >= $2 AND l.decided_at::date <= $2 AND ($3::uuid IS NULL OR t.sport_id=$3) AND ($4::int IS NULL OR extract(year FROM l.issued_on)=$4)`;
     const from = 'fed_licences l JOIN governing_bodies b ON b.id=l.body_id JOIN organisations bo ON bo.id=b.organisation_id JOIN fed_licence_types t ON t.id=l.type_id JOIN sports sp ON sp.id=t.sport_id JOIN users u ON u.id=l.holder_id LEFT JOIN fed_affiliations af ON af.id=l.affiliation_id LEFT JOIN organisations co ON co.id=af.organisation_id LEFT JOIN fed_policy_versions pv ON pv.id=l.policy_version_id LEFT JOIN fed_policies pp ON pp.id=pv.policy_id';
-    const rows = await many(`SELECT bo.name AS body, l.licence_no, u.display_name AS holder, u.id AS holder_id, t.name AS type, t.holder_role, sp.name AS sport, t.discipline, l.grade, CASE WHEN l.status='suspended' THEN 'suspended' ELSE 'good_standing' END AS status_as_of,
+    const rows = await many(`SELECT bo.name AS body, l.licence_no, CASE WHEN ${YOUTH_SQL} THEN 'Youth participant' ELSE u.display_name END AS holder, CASE WHEN ${YOUTH_SQL} THEN NULL ELSE u.id END AS holder_id, t.name AS type, t.holder_role, sp.name AS sport, t.discipline, l.grade, CASE WHEN l.status='suspended' THEN 'suspended' ELSE 'good_standing' END AS status_as_of,
         l.issued_on::text AS issued_on, l.expires_on::text AS expires_on, co.name AS club, CASE WHEN pv.id IS NULL THEN NULL ELSE pp.title || ' v' || pv.version END AS policy_version, l.id AS licence_id FROM ${from} WHERE ${w} ORDER BY bo.name, u.display_name, l.id LIMIT ${MAX_EXPORT_ROWS + 1}`, f);
-    return { asOf, rows, totals: countBy(await many(`SELECT CASE WHEN l.status='suspended' THEN 'suspended' ELSE 'good_standing' END AS st, count(*)::int AS n FROM ${from} WHERE ${w} GROUP BY 1`, f)) };
+    return { asOf, rows, redactions: { youth_holders: rows.filter((x) => x.holder === 'Youth participant').length }, totals: countBy(await many(`SELECT CASE WHEN l.status='suspended' THEN 'suspended' ELSE 'good_standing' END AS st, count(*)::int AS n FROM ${from} WHERE ${w} GROUP BY 1`, f)) };
   }
   if (i.report === 'sanctions') {
     const w = `s.body_id = ANY($1) AND s.status IN ('approved','suspended') AND s.approved_starts_on <= $2 AND s.approved_ends_on >= $2 AND s.decided_at::date <= $2 AND ($3::uuid IS NULL OR e.sport_id=$3) AND ($4::int IS NULL OR extract(year FROM s.approved_starts_on)=$4)`;
@@ -143,7 +147,7 @@ async function buildReport(i, ids) {
 cap({
   name: 'get_federation_report', method: 'GET', path: '/federation/bodies/:id/reports/:report', tag: TAG,
   summary: 'A source-linked report for a body and the bodies recognised under it: `affiliations`, `licences`, `sanctions` (what was in force on the `as_of` date, with the effective dates, the policy version the decision used and the id of the source record) or `jurisdiction` (the hierarchy with what each body has in force). Needs a reporting role (auditor, compliance, or a registrar/licensing/sanctioning officer/secretary) or admin. `format=csv` returns a spreadsheet and records the export (who, when, filters, row count and a hash of the file); exports are capped at 5,000 rows.',
-  input: z.object({ id, report: z.enum(REPORTS), as_of: day.optional(), season_year: z.coerce.number().int().min(1990).max(2200).optional(), sport_id: id.optional(), include_descendants: z.coerce.boolean().default(true), format: z.enum(['json', 'csv']).default('json'), ...page }),
+  input: z.object({ id, report: z.enum(REPORTS), as_of: day.optional(), season_year: z.coerce.number().int().min(1990).max(2200).optional(), sport_id: id.optional(), include_descendants: z.coerce.boolean().default(true), format: z.enum(['json', 'csv']).default('json'), purpose: text(300).min(5).optional().describe('why the file is taken (required for a CSV export; kept with the export log)'), approval_id: id.optional().describe('the second person\'s approval, where the body requires four eyes for exports'), ...page }),
   async handler({ user }, i) {
     const auth = await authority(user, i.id);
     need(auth, 'reports');
@@ -152,10 +156,12 @@ cap({
     const cols = COLUMNS[i.report];
     if (i.format === 'csv') {
       if (r.rows.length > MAX_EXPORT_ROWS) throw badRequest(`This export has more than ${MAX_EXPORT_ROWS} rows; narrow it by sport or season`);
+      if (!i.purpose) throw badRequest('Say why you are taking this file (purpose); it is kept with the export log');
       const csv = toCsv(cols, r.rows);
       const sha256 = createHash('sha256').update(csv).digest('hex');
       await tx(async (c) => {
-        await c.query('INSERT INTO fed_exports(body_id, report, filters, as_of, row_count, sha256, exported_by) VALUES ($1,$2,$3,$4,$5,$6,$7)', [i.id, i.report, { season_year: i.season_year ?? null, sport_id: i.sport_id ?? null, include_descendants: i.include_descendants }, r.asOf, r.rows.length, sha256, user.id]);
+        const ap = await gate(c, user, { bodyId: i.id, actions: ['bulk_export'], subjectType: 'report', subjectId: i.id, request: { report: i.report, as_of: i.as_of ?? null, season_year: i.season_year ?? null, sport_id: i.sport_id ?? null, include_descendants: i.include_descendants }, approvalId: i.approval_id });
+        await c.query('INSERT INTO fed_exports(body_id, report, filters, as_of, row_count, sha256, exported_by, purpose, approval_id, redactions) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)', [i.id, i.report, { season_year: i.season_year ?? null, sport_id: i.sport_id ?? null, include_descendants: i.include_descendants }, r.asOf, r.rows.length, sha256, user.id, i.purpose, ap?.id ?? null, r.redactions ?? {}]);
         await audit(c, user.id, 'export_federation_report', 'governing_bodies', i.id);
       });
       return { report: i.report, as_of: r.asOf, rows: r.rows.length, filename: `${auth.body.abbreviation}-${i.report}-${r.asOf}.csv`, sha256, csv };

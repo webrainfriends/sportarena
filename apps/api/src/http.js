@@ -29,6 +29,7 @@ import { coachingEvidenceRouter } from './capabilities/coaching-evidence.js';
 import { calendarFeedRouter } from './capabilities/calendar-sync.js';
 import { passportFilesRouter } from './capabilities/passport-recruitment.js';
 import { applicationFilesRouter } from './capabilities/sponsorship-application-forms.js';
+import { registrationFilesRouter } from './capabilities/registration-engine.js';
 import { subjectDocsRouter } from './capabilities/subject-docs.js';
 import { tenderFilesRouter } from './capabilities/tender-files.js';
 import { mediaAssetFilesRouter } from './capabilities/media-rights-assets.js';
@@ -101,6 +102,7 @@ export function createApp() {
   app.use('/api/v1', calendarFeedRouter());
   app.use('/api/v1', passportFilesRouter());
   app.use('/api/v1', applicationFilesRouter());
+  app.use('/api/v1', registrationFilesRouter());
   app.use('/api/v1', matchFileRouter());
   app.use('/api/v1', migrationFileRouter());
   app.use('/api/v1', subjectDocsRouter());

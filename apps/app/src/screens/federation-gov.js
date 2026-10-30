@@ -14,7 +14,7 @@ import { saveText } from '../evidence';
 import { useSports } from '../sportpicker';
 import { LoadError, explain } from '../access';
 import { c } from '../theme';
-import { BodyPicker, Banner, Metric, StatusTag, fmtDate, fmtRange, todayIso, LEVEL_LABEL, ROLE_LABEL, ROLE_HELP, POLICY_LABEL, statusLabel } from '../federation-ui';
+import { BodyPicker, Banner, Metric, StatusTag, ApprovalAskSheet, codeOf, detailsOf, usableApproval, fmtDate, fmtRange, todayIso, LEVEL_LABEL, ROLE_LABEL, ROLE_HELP, POLICY_LABEL, statusLabel } from '../federation-ui';
 import { Cols, ListCard, Pager, Row2, SwitchRow } from '../federation-bits';
 
 const lastDay = (ym) => { const [y, m] = ym.split('-').map(Number); return `${ym}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}`; };
@@ -23,7 +23,7 @@ const DATE_KINDS = [['registration_window', 'Registration window'], ['transfer_w
 const KIND_TONE = { sanctioned_competition: c.mint, registration_window: c.cyan, transfer_window: c.cyan, licence_renewal: c.sun, affiliation_renewal: c.sun, congress: c.violetSoft, deadline: c.pinkSoft };
 
 /** A small reason prompt. */
-function ReasonSheet({ visible, onClose, title, body, confirm, danger, onConfirm }) {
+export function ReasonSheet({ visible, onClose, title, body, confirm, danger, onConfirm }) {
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   return (
@@ -125,6 +125,26 @@ const paramsFrom = (kind, v) => {
 const show = (v) => (Array.isArray(v) ? (v.length ? v.map((x) => (typeof x === 'object' ? `${x.level} ≥ ${x.min_grade_rank}` : x)).join(', ') : 'none') : typeof v === 'boolean' ? (v ? 'Yes' : 'No') : String(v));
 const labelOf = (kind, key) => SPEC[kind]?.find((f) => f.key === key)?.label ?? key.replace(/_/g, ' ');
 
+/** Which version of a requirement reaches a body, from where, and why: the provenance of inheritance and locks. */
+function Inheritance({ p }) {
+  const r = useLoad(() => api.get(`/federation/bodies/${p.body_id}/policy-inheritance`, { kind: p.kind, sport_id: p.sport_id || undefined, category: p.category || undefined, season_year: p.season_year || undefined }), [p.id]);
+  if (!r.data || r.data.levels.length < 2) return null;
+  return (
+    <Card color={c.paper}>
+      <T weight="800" size={14}>Where this applies</T>
+      <View style={{ gap: 8, marginTop: 8 }}>
+        {r.data.levels.map((l) => (
+          <View key={l.policy_id} accessible accessibilityLabel={`${l.body_name}, version ${l.version ?? 'none'}${l.locked ? ', locked' : ''}, ${l.applies ? 'applies' : 'does not apply'}. ${l.why}`}>
+            <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+              <T size={13} weight="700">{l.body_name}</T>{l.locked ? <Tag label="Locked" color={c.sunSoft} /> : null}<Tag label={l.applies ? 'Applies' : 'Overridden'} color={l.applies ? c.mintSoft : c.violetSoft} />
+            </View>
+            <T size={12} color={c.mute}>{l.version ? `Version ${l.version} from ${fmtDate(l.effective_from)}` : 'No version in force'} · {l.why}</T>
+          </View>))}
+      </View>
+    </Card>
+  );
+}
+
 function PolicySheet({ id, onClose, can, onChanged }) {
   const { toast } = useSession();
   const d = useLoad(() => (id ? api.get(`/federation/policies/${id}`) : Promise.resolve(null)), [id]);
@@ -138,6 +158,7 @@ function PolicySheet({ id, onClose, can, onChanged }) {
         <View style={{ gap: 12 }}>
           <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}><Tag label={p.kind_label} color={c.cyan} /><Tag label={p.enforced ? 'Enforced at decisions' : 'Governing reference'} color={p.enforced ? c.mint : c.violetSoft} />{p.status === 'retired' ? <StatusTag status="archived" label="Retired" /> : null}</View>
           <T size={12.5} color={c.mute}>{[p.sport_name, p.category, p.season_year ? `Season ${p.season_year}` : 'All seasons'].filter(Boolean).join(' · ')}</T>
+          <Inheritance p={p} />
           {p.versions.length ? p.versions.map((v) => (
             <Card key={v.id} color={v.in_force ? c.mintSoft : c.paper}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><T weight="800">Version {v.version}</T><StatusTag status={v.in_force ? 'in_force' : new Date(v.effective_from) > new Date() ? 'pending' : 'ended'} label={v.in_force ? 'In force' : new Date(v.effective_from) > new Date() ? 'Starts later' : 'Superseded'} /></View>
@@ -189,7 +210,7 @@ export function PoliciesTab({ id, me }) {
         <Section key={kind} title={POLICY_LABEL[kind] ?? kind} color={c.cyan}>
           {rows.map((p) => (
             <ListCard key={p.id} title={p.title} sub={[p.sport_name, p.category, p.season_year ? `Season ${p.season_year}` : null].filter(Boolean).join(' · ') || 'All sports, categories and seasons'}
-              sub2={p.current ? `Version ${p.current.version} since ${fmtDate(p.current.effective_from)}${p.upcoming ? ` · version ${p.upcoming.version} from ${fmtDate(p.upcoming.effective_from)}` : ''}` : p.upcoming ? `Starts ${fmtDate(p.upcoming.effective_from)}` : 'No version in force'}
+              sub2={(p.local_override === 'locked' ? '🔒 Locked · ' : '') + (p.current ? `Version ${p.current.version} since ${fmtDate(p.current.effective_from)}${p.upcoming ? ` · version ${p.upcoming.version} from ${fmtDate(p.upcoming.effective_from)}` : ''}` : p.upcoming ? `Starts ${fmtDate(p.upcoming.effective_from)}` : 'No version in force')}
               status={p.status === 'retired' ? 'archived' : p.inherited ? 'pending' : p.enforced ? 'in_force' : undefined} statusLabel={p.status === 'retired' ? 'Retired' : p.inherited ? `From ${p.body_name}` : p.enforced ? 'Enforced' : 'Reference'} onPress={() => setOpen(p.id)} />))}
         </Section>)) : <Empty emoji="📜" title="No requirements published" sub="Publish what clubs, people and organisers must meet: affiliation documents, licence conditions, sanctioning conditions and more." />}
       <PolicySheet id={open} onClose={() => setOpen(null)} can={me.can.governance} onChanged={list.reload} />
@@ -197,8 +218,9 @@ export function PoliciesTab({ id, me }) {
         fields={[{ key: 'kind', label: 'Kind', type: 'chips', options: (kinds.data ?? []).map((k) => ({ value: k.kind, label: `${k.label}${k.enforced ? ' ✓' : ''}` })), hint: '✓ = enforced when decisions are made. The rest are published governing references.' },
           { key: 'title', label: 'Title' }, ...(sports.length ? [{ key: 'sport_id', label: 'Only for one sport (optional)', type: 'chips', options: sports.map((s) => ({ value: s.sport_id, label: s.sport_name })), optional: true }] : []),
           { key: 'category', label: 'Category (optional)', optional: true, hint: 'A club category, licence role (athlete, coach, official…) or age group this applies to.' },
-          { key: 'season', label: 'Season', type: 'chips', options: [{ value: 'all', label: 'All seasons' }, { value: String(year), label: String(year) }, { value: String(year + 1), label: String(year + 1) }] }]}
-        onSubmit={async (v) => { const p = await api.post(`/federation/bodies/${id}/policies`, { kind: v.kind, title: v.title, sport_id: v.sport_id || undefined, category: v.category || '', season_year: v.season === 'all' ? undefined : Number(v.season) }); list.reload(); setOpen(p.id); return 'Created. Publish its first version.'; }} />
+          { key: 'season', label: 'Season', type: 'chips', options: [{ value: 'all', label: 'All seasons' }, { value: String(year), label: String(year) }, { value: String(year + 1), label: String(year + 1) }] },
+          { key: 'locked', label: 'Lock for the bodies beneath', type: 'switch', default: false, hint: 'Locked: no body below this one may publish its own version of this requirement.' }]}
+        onSubmit={async (v) => { const p = await api.post(`/federation/bodies/${id}/policies`, { kind: v.kind, title: v.title, sport_id: v.sport_id || undefined, category: v.category || '', season_year: v.season === 'all' ? undefined : Number(v.season), local_override: v.locked ? 'locked' : 'allowed' }); list.reload(); setOpen(p.id); return 'Created. Publish its first version.'; }} />
     </View>
   );
 }
@@ -226,9 +248,23 @@ export function ReportsTab({ id, below }) {
   const log = useLoad(() => api.get(`/federation/bodies/${id}/exports`, { limit: 10 }), [id]);
   const d = res.data;
   const reset = (fn) => (v) => { fn(v); setOffset(0); };
-  const exportCsv = async () => {
+  const [purposeOpen, setPurposeOpen] = useState(false);
+  const [ask, setAsk] = useState(null);
+  const exportCsv = async (purpose) => {
     setBusy(true);
-    try { const out = await api.get(`/federation/bodies/${id}/reports/${report}`, { ...q, format: 'csv' }); await saveText(out.filename, out.csv); toast(`Exported ${out.rows} rows`); log.reload(); } catch (e) { toast(explain(e)); } finally { setBusy(false); }
+    const query = { ...q, format: 'csv', purpose };
+    try {
+      let out;
+      try { out = await api.get(`/federation/bodies/${id}/reports/${report}`, query); }
+      catch (e) {
+        // a four-eyes rule on file exports: use the approval already granted for this exact report, otherwise ask for one
+        if (codeOf(e) !== 'approval_required') throw e;
+        const found = await usableApproval(id, detailsOf(e).action, id);
+        if (!found) { setAsk({ report, as_of: asOf || undefined, season_year: report === 'jurisdiction' ? undefined : season || undefined, sport_id: report === 'jurisdiction' ? undefined : sport || undefined }); return; }
+        out = await api.get(`/federation/bodies/${id}/reports/${report}`, { ...query, approval_id: found.id });
+      }
+      await saveText(out.filename, out.csv); toast(`Exported ${out.rows} rows`); log.reload();
+    } catch (e) { toast(explain(e)); } finally { setBusy(false); }
   };
   const cols = (d?.columns ?? []).filter((k) => !HIDE.test(k));
   const wide = tablet && cols.length <= 8;
@@ -248,7 +284,9 @@ export function ReportsTab({ id, below }) {
             {Object.entries(d.totals).map(([k, v]) => <Metric key={k} value={v} label={HEAD(k)} />)}
           </View>
           <T size={12} color={c.mute}>As of {fmtDate(d.as_of)} · {d.scope.bodies} bod{d.scope.bodies === 1 ? 'y' : 'ies'} · every row links to its source record and carries its effective dates.{d.truncated ? ' Showing the first 5,000 rows.' : ''}</T>
-          <Btn small title="Export to spreadsheet (CSV)" color={c.violet} loading={busy} onPress={exportCsv} style={{ alignSelf: 'flex-start' }} />
+          <Btn small title="Export to spreadsheet (CSV)" color={c.violet} loading={busy} onPress={() => setPurposeOpen(true)} style={{ alignSelf: 'flex-start' }} />
+          <FormSheet visible={purposeOpen} onClose={() => setPurposeOpen(false)} title="Export a file" submitLabel="Export" fields={[{ key: 'purpose', label: 'Why you are taking this file', multiline: true, hint: 'Kept with the export log. Youth holders are never named in a file.' }]} onSubmit={async (v) => { await exportCsv(v.purpose); return null; }} />
+          <ApprovalAskSheet visible={!!ask} onClose={() => setAsk(null)} bodyId={id} action="bulk_export" label="Exporting this report as a file" request={ask ?? undefined} />
           {d.rows.length ? (wide ? (
             <Card color={c.paper} pad={0}>
               <View style={{ flexDirection: 'row', padding: 10, borderBottomWidth: 1, borderColor: c.line }}>{cols.map((k) => <T key={k} size={11} weight="800" color={c.mute} style={{ flex: 1, paddingRight: 6 }}>{HEAD(k).toUpperCase()}</T>)}</View>
@@ -274,6 +312,9 @@ export function SetupTab({ id, me, home, reloadHome }) {
   const sports = useSports();
   const body = useBody(id);
   const roles = useLoad(() => api.get(`/federation/bodies/${id}/roles`), [id]);
+  const juris = useLoad(() => api.get(`/federation/bodies/${id}/jurisdictions`, { include_archived: true }), [id]);
+  const [addJur, setAddJur] = useState(false);
+  const [dropJur, setDropJur] = useState(null);
   const links = useLoad(() => api.get(`/federation/bodies/${id}/links`, { limit: 50 }), [id]);
   const mine = useLoad(() => api.get('/federation/mine', { limit: 100 }).catch(() => []), []);
   const [grant, setGrant] = useState(false);
@@ -297,9 +338,15 @@ export function SetupTab({ id, me, home, reloadHome }) {
             {roles.error ? <LoadError error={roles.error} onRetry={roles.reload} /> : !roles.data ? <Loading /> : (
               <>
                 {roles.data.owners.map((o) => <ListCard key={`o${o.id}`} title={o.display_name} sub={`@${o.handle}`} status="active" statusLabel={o.role === 'owner' ? 'Owner' : 'Admin'} />)}
-                {roles.data.roles.map((r) => <ListCard key={r.role_id} title={r.display_name} sub={`${ROLE_LABEL[r.role]}${r.sport_name ? ` · ${r.sport_name} only` : ' · all sports'}`} sub2={ROLE_HELP[r.role]} right={admin ? <Btn small title="Revoke" color={c.paper} ink={c.ink} onPress={() => setRevoke(r)} /> : undefined} />)}
+                {roles.data.roles.map((r) => <ListCard key={r.role_id} title={r.display_name} sub={`${ROLE_LABEL[r.role]}${r.sport_name ? ` · ${r.sport_name} only` : ' · all sports'}${r.jurisdiction_names?.length ? ` · ${r.jurisdiction_names.join(', ')} only` : ''}`} sub2={ROLE_HELP[r.role]} right={admin ? <Btn small title="Revoke" color={c.paper} ink={c.ink} onPress={() => setRevoke(r)} /> : undefined} />)}
                 {!roles.data.roles.length ? <T size={12.5} color={c.mute}>No scoped roles yet. Give someone one job — registrar, licensing officer, sanctioning officer, secretary, compliance or auditor — without giving them the whole body.</T> : null}
               </>)}
+          </Section>
+          <Section title="Regions, states and districts" color={c.lime} action={me.admin || me.roles.includes('secretary') ? 'Add' : undefined} onAction={() => setAddJur(true)}>
+            {juris.error ? <LoadError error={juris.error} onRetry={juris.reload} /> : !juris.data ? <Loading /> : juris.data.length ? juris.data.map((j) => (
+              <ListCard key={j.id} title={j.name} sub={`${j.level[0].toUpperCase()}${j.level.slice(1)} · ${j.records ?? 0} record${j.records === 1 ? '' : 's'}`} status={j.archived_at ? 'archived' : 'active'}
+                right={!j.archived_at && (me.admin || me.roles.includes('secretary')) ? <Btn small title="Retire" color={c.paper} ink={c.ink} onPress={() => setDropJur(j)} /> : undefined} />))
+              : <T size={12.5} color={c.mute}>None yet. Add the places this body administers so applications can be filed under them and roles limited to them.</T>}
           </Section>
           <Section title="Recognition" color={c.mint} action={admin ? 'Ask or invite' : undefined} onAction={() => setPropose(true)}>
             {b && !b.parent && !(links.data ?? []).length ? <T size={12.5} color={c.mute}>Not recognised under another body, and no bodies recognised below.</T> : null}
@@ -339,8 +386,18 @@ export function SetupTab({ id, me, home, reloadHome }) {
 
       <FormSheet visible={grant} onClose={() => setGrant(false)} title="Give a role" submitLabel="Give role" initial={{ role: 'registrar' }}
         fields={[{ key: 'user_id', label: 'Person', type: 'entity', noun: 'person' }, { key: 'role', label: 'Role', type: 'chips', options: Object.entries(ROLE_LABEL).map(([value, label]) => ({ value, label })), hint: 'Each role does one job. None can see a club\'s finance, coaching notes or medical data.' },
-          ...((b?.sports ?? []).length > 1 ? [{ key: 'sport_id', label: 'Only for one sport (optional)', type: 'chips', options: b.sports.map((s) => ({ value: s.sport_id, label: s.sport_name })), optional: true }] : [])]}
-        onSubmit={async (v) => { await api.post(`/federation/bodies/${id}/roles`, { user_id: v.user_id, role: v.role, sport_id: v.sport_id || undefined }); roles.reload(); return 'Role given'; }} />
+          ...((b?.sports ?? []).length > 1 ? [{ key: 'sport_id', label: 'Only for one sport (optional)', type: 'chips', options: b.sports.map((s) => ({ value: s.sport_id, label: s.sport_name })), optional: true }] : []),
+          ...((juris.data ?? []).some((j) => !j.archived_at) ? [{ key: 'jurisdiction_ids', label: 'Only for these places (optional)', type: 'multimenu', options: juris.data.filter((j) => !j.archived_at).map((j) => ({ value: j.id, label: j.name, sub: j.level })), optional: true, placeholder: 'The whole body', hint: 'They then see and decide only records filed under these regions, states or districts.' }] : [])]}
+        onSubmit={async (v) => { await api.post(`/federation/bodies/${id}/roles`, { user_id: v.user_id, role: v.role, sport_id: v.sport_id || undefined, jurisdiction_ids: v.jurisdiction_ids ?? [] }); roles.reload(); return 'Role given'; }} />
+      <FormSheet visible={addJur} onClose={() => setAddJur(false)} title="Add a place" submitLabel="Add" initial={{ level: 'region' }}
+        fields={[{ key: 'level', label: 'Kind of place', type: 'chips', options: [{ value: 'region', label: 'Region' }, { value: 'state', label: 'State' }, { value: 'district', label: 'District' }] }, { key: 'name', label: 'Name', type: 'text' }]}
+        onSubmit={async (v) => { await api.post(`/federation/bodies/${id}/jurisdictions`, v); juris.reload(); return 'Added'; }} />
+      <Sheet visible={!!dropJur} onClose={() => setDropJur(null)} title={`Retire ${dropJur?.name ?? ''}`}>
+        <View style={{ gap: 12 }}>
+          <T size={13} color={c.mute}>It stops being offered for new applications and roles. Records and roles that already use it keep it.</T>
+          <Btn title="Retire" color={c.red} onPress={async () => { try { await api.post(`/federation/jurisdictions/${dropJur.id}/archive`, {}); setDropJur(null); juris.reload(); toast('Retired'); } catch (e) { toast(explain(e)); } }} />
+        </View>
+      </Sheet>
       <ReasonSheet visible={!!revoke} onClose={() => setRevoke(null)} title={`Revoke ${revoke ? ROLE_LABEL[revoke.role] : ''}`} body={revoke ? `${revoke.display_name} loses this role at once. The grant stays in the history.` : ''} confirm="Revoke" danger
         onConfirm={async () => { await act(() => api.del(`/federation/bodies/${id}/roles/${revoke.role_id}`), 'Role revoked'); roles.reload(); }} />
       <ReasonSheet visible={!!endLink} onClose={() => setEndLink(null)} title="End recognition" body="The link is kept with its end date. Nothing either body has issued is touched." confirm="End recognition" danger

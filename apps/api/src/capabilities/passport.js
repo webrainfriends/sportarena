@@ -8,6 +8,7 @@ import { guardianLink, isYouth, requireConsent } from '../youth.js';
 import { ACTIVITIES_CTE } from '../athlete-history.js';
 import { config } from '../config.js';
 import { profileCredentials } from '../education.js';
+import { portfolioJourney } from './graph-360.js';
 import { FULL_SCOPE, SECTION_FLAGS, openLink, recruitmentSections, scopeOf } from '../passport-sections.js';
 import { publicCareer } from '../career.js';
 
@@ -41,6 +42,8 @@ export async function buildPassport(userId, scope = FULL_SCOPE, ctx = {}) {
     scope.show_career && !(await isYouth(userId)) ? publicCareer(userId) : [],
   ]);
   const rec = await recruitmentSections(userId, scope, ctx);
+  // the journey is read from the same canonical sources as the Athlete 360 at the time of the request; a young person's is never put on a link
+  const journey = scope.show_journey && !(await isYouth(userId)) ? await portfolioJourney(userId, { development: !!scope.show_development }) : null;
   // career totals per sport, derived from the same season rows
   const career = new Map();
   for (const r of activity) {
@@ -53,6 +56,7 @@ export async function buildPassport(userId, scope = FULL_SCOPE, ctx = {}) {
     career: scope.show_matches ? [...career.values()] : null, seasons: scope.show_matches ? activity : null,
     verified_results: scope.show_results ? results : null, awards: scope.show_awards ? awards : null, credentials: scope.show_credentials ? credentials : null,
     memberships: scope.show_career ? memberships : null,
+    journey,
     ...rec,
     evidence: 'Match counts mix official games with matches the athlete logged themselves (see official_matches). Results listed are approved competition results only. Memberships marked verified were confirmed by the club; others are self-reported. Videos and coach references appear only after a coach approved the video and the athlete approved the reference; academic items marked self_reported were entered by the athlete and are not verified.',
     generated_at: new Date().toISOString(),

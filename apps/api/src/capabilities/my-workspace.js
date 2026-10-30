@@ -15,12 +15,12 @@ const TAG = 'Workspace';
 // Roles that have their own workspace. Platform roles (admin, platform_admin) are never listed or switchable.
 const ROLE_LABEL = {
   athlete: 'Athlete', coach: 'Coach', organizer: 'Event manager', referee: 'Official', venue_manager: 'Venue operator',
-  sponsor: 'Sponsor', physio: 'Physio', doctor: 'Doctor', supplier: 'Supplier', insurer: 'Insurer', lawyer: 'Lawyer', recruiter: 'Recruiter / scout',
+  sponsor: 'Sponsor', physio: 'Physio', doctor: 'Doctor', supplier: 'Supplier', insurer: 'Insurer', lawyer: 'Lawyer', recruiter: 'Recruiter / scout', agent: 'Agent',
 };
 // Roles whose workspace is built natively below; the others get the labelled generic workspace (their own home screen + inbox).
 const NATIVE = ['athlete', 'coach', 'organizer', 'referee', 'venue_manager'];
 const ORDER = [...NATIVE, ...Object.keys(ROLE_LABEL).filter((r) => !NATIVE.includes(r))];
-const OWN_HOME = { sponsor: 'Sponsors', physio: 'Health', doctor: 'DoctorHome', supplier: 'SupplierWorkspace', insurer: 'InsurerDesk', lawyer: 'Legal', recruiter: 'RecruiterHome' };
+const OWN_HOME = { sponsor: 'Sponsors', physio: 'Health', doctor: 'DoctorHome', supplier: 'SupplierWorkspace', insurer: 'InsurerDesk', lawyer: 'Legal', recruiter: 'RecruiterHome', agent: 'Representation' };
 
 const go = (screen, params = {}) => ({ screen, params });
 const tab = (name, section) => ({ tab: name, ...(section ? { section } : {}) });

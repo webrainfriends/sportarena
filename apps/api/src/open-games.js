@@ -8,6 +8,7 @@ import { audit } from './helpers.js';
 import { notify } from './notify.js';
 import { hasConsent, isYouth } from './youth.js';
 import { fromLocal, addDays, toLocal, validTimezone } from './booking/time.js';
+import { reliableLevel } from './ratings/data.js';
 
 export const LEVELS = ['beginner', 'amateur', 'semi_pro', 'pro'];
 export const LEVEL_LABEL = { beginner: 'Beginner', amateur: 'Amateur', semi_pro: 'Semi-pro', pro: 'Pro' };
@@ -64,8 +65,10 @@ export async function assertCanPlay(c, og, subjectId, actor) {
   return { youth };
 }
 
-/** The level a person declared for this game's sport, or null when they have no profile for it. */
-export const levelFor = async (c, userId, sportId) => (await c.query('SELECT level FROM sport_profiles WHERE user_id=$1 AND sport_id=$2 AND archived_at IS NULL ORDER BY is_default DESC, created_at LIMIT 1', [userId, sportId])).rows[0]?.level ?? null;
+/** The level used to match a person to this game's sport: their computed skill level (#633) once it is reliable, otherwise the level they declared, or null with neither. */
+export const levelFor = async (c, userId, sportId) =>
+  (await reliableLevel(userId, sportId, c))?.bucket
+  ?? (await c.query('SELECT level FROM sport_profiles WHERE user_id=$1 AND sport_id=$2 AND archived_at IS NULL ORDER BY is_default DESC, created_at LIMIT 1', [userId, sportId])).rows[0]?.level ?? null;
 
 /** fit: 'fits' | 'below' | 'above' | 'unknown' | 'open' (the game states no level). Advisory unless the game auto-approves. */
 export function levelFit(og, level) {
