@@ -3,6 +3,7 @@
 // Rules: every line is posted with an idempotency key (a replayed webhook, retry or reconcile run cannot post twice), the ledger is never
 // edited (a trigger enforces it; corrections are compensating lines), and each currency stands alone. Venue operators settle through partner
 // contracts (settlements table) and wallet top-ups / gift cards are platform value, so neither is posted here.
+import { recordChargeback } from './finance.js';
 import { pool, many, one, tx } from './db.js';
 import { config } from './config.js';
 import { conflict } from './errors.js';
@@ -261,6 +262,7 @@ export async function onProviderDispute(c, payment, { disputeId, amountCents }) 
       held.push({ seller_id: s.seller_id, amount_cents: parts[n] });
     }
   }
+  await recordChargeback(c, payment, { key: `${payment.provider}:${disputeId}`, amount: disputed, status: 'disputed' });
   return !!(await raiseException(c, { kind: 'provider_dispute', dedupeKey: `dispute:${payment.provider}:${disputeId}`, paymentId: payment.id, currency: payment.currency, amount: disputed,
     detail: { dispute_id: disputeId, provider: payment.provider, amount_cents: disputed, held, recorded_in_ledger: sales.length > 0 } }));
 }
