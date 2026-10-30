@@ -16,6 +16,7 @@ import { canManageTeam } from './teams.js';
 import { canManage as canManageVenue } from '../booking/engine.js';
 import { validTimezone } from '../booking/time.js';
 import { CURRENCIES } from '../currency.js';
+import { reliableLevels } from '../ratings/data.js';
 import {
   CHECK_IN_EARLY_MIN, LEVELS, LEVEL_LABEL, assertCanPlay, bookingStateSql, chatClosesAt, endOf, levelFit, levelFor,
   lockOpenGame, notifyAll, notifyMember, nudgeHost, promoteWaitlist, seatsTaken, shareFor, whenWindow,
@@ -60,6 +61,7 @@ function shape(r, badges, me) {
     is_mine: me ? host_id === me.id : false,
   };
 }
+const lvl = (p) => (p.skill_level ? `Level ${p.skill_level.toFixed(1)}` : `${LEVEL_LABEL[p.level]} level`);
 const skillLabel = (lo, hi) => (!lo && !hi ? 'All levels' : lo && hi ? (lo === hi ? LEVEL_LABEL[lo] : `${LEVEL_LABEL[lo]} to ${LEVEL_LABEL[hi]}`) : lo ? `${LEVEL_LABEL[lo]}+` : `Up to ${LEVEL_LABEL[hi]}`);
 
 /** Who may see this game at all. A link game is visible to whoever holds the id; a team game only to its team. */
@@ -293,7 +295,10 @@ cap({
     let list = rows.filter((r) => i.radius_km == null || (r.distance_km != null && Number(r.distance_km) <= i.radius_km));
     const badges = await badgesFor('user', [...new Set(list.map((r) => r.host_id))]);
     if (i.verified_host) list = list.filter((r) => (badges.get(r.host_id) ?? []).length > 0);
-    const profiles = user ? await many('SELECT DISTINCT ON (sport_id) sport_id, level FROM sport_profiles WHERE user_id=$1 AND archived_at IS NULL ORDER BY sport_id, is_default DESC, created_at', [user.id]) : [];
+    const computed = user ? await reliableLevels(user.id) : new Map(); // a reliable skill level (#633) stands in for the declared one
+    const profiles = (user ? await many('SELECT DISTINCT ON (sport_id) sport_id, level FROM sport_profiles WHERE user_id=$1 AND archived_at IS NULL ORDER BY sport_id, is_default DESC, created_at', [user.id]) : [])
+      .map((p) => ({ ...p, level: computed.get(p.sport_id)?.bucket ?? p.level, skill_level: computed.get(p.sport_id)?.level ?? null }));
+    for (const [sportId, c] of computed) if (!profiles.some((p) => p.sport_id === sportId)) profiles.push({ sport_id: sportId, level: c.bucket, skill_level: c.level });
     const out = list.map((r) => {
       const card = shape(r, badges, user);
       const prof = profiles.find((p) => p.sport_id === r.sport_id);
@@ -301,9 +306,9 @@ cap({
       const reasons = [];
       if (user && !r.is_mine) {
         if (prof) reasons.push({ kind: 'sport', ok: true, text: `You play ${r.sport}` });
-        if (prof && fit === 'fits') reasons.push({ kind: 'level', ok: true, text: `${skillLabel(r.skill_min, r.skill_max)} suits your ${LEVEL_LABEL[prof.level]} level` });
+        if (prof && fit === 'fits') reasons.push({ kind: 'level', ok: true, text: `${skillLabel(r.skill_min, r.skill_max)} suits your ${lvl(prof)}` });
         else if (fit === 'open') reasons.push({ kind: 'level', ok: true, text: 'Open to all levels' });
-        else if (fit === 'below' || fit === 'above') reasons.push({ kind: 'level', ok: false, text: `Asks for ${skillLabel(r.skill_min, r.skill_max)}; your profile says ${LEVEL_LABEL[prof.level]}` });
+        else if (fit === 'below' || fit === 'above') reasons.push({ kind: 'level', ok: false, text: `Asks for ${skillLabel(r.skill_min, r.skill_max)}; ${prof.skill_level ? 'your verified level is' : 'your profile says'} ${lvl(prof)}` });
         if (r.fits_availability) reasons.push({ kind: 'time', ok: true, text: 'Fits your weekly availability' });
         if (r.distance_km != null) reasons.push({ kind: 'distance', ok: true, text: Number(r.distance_km) < 1 ? 'Under 1 km away' : `About ${Math.round(Number(r.distance_km))} km away` });
       }
