@@ -16,6 +16,7 @@ import { engagementsOf, ENGAGEMENTS } from './accreditation.js';
 import { authority, can, LIC_STATUS } from './federation.js';
 import { TYPES as VERIFICATION_TYPES } from './verification.js';
 import { roles as GLOBAL_ROLES } from './registry.js';
+import { CLASS_LABEL, STATUS_OF, applicability, factsFor, namesDimension, settleTopics, statusCounts } from './compliance-policy.js';
 
 export const CATEGORIES = {
   qualification: 'Qualification or certificate', background_check: 'Background check status', safeguarding_training: 'Safeguarding training',
@@ -29,6 +30,9 @@ export const CONSEQUENCES = {
   youth_access: 'Access to young people\'s profiles and records as a team coach or manager',
   registration: 'Competition registration and match-day eligibility',
   accreditation: 'Event accreditation and gate access',
+  event_open: 'Opening an event for entries',
+  event_start: 'Starting an event',
+  tender_award: 'Recommending a tender award (the supplier, and the event it serves)',
 };
 export const SCOPES = ['platform', 'organisation', 'body', 'event'];
 export const SUBJECTS = ['person', 'organisation', 'event'];
@@ -37,8 +41,9 @@ export const SOURCE_KINDS = {
   verification: 'Platform verification', federation_licence: 'Federation licence', service_credential: 'Supplier credential',
 };
 const BAD = ['missing', 'expired', 'rejected', 'revoked'];
+export const NEVER_WAIVABLE_CLASSES = ['legal_mandatory', 'regulatory'];       // a law or a regulation is not the organisation's to waive
 export const STATE_LABEL = {
-  met: 'Met', expiring: 'Expiring soon', grace: 'Expired – in grace period', pending_review: 'Awaiting review', missing: 'Missing', expired: 'Expired', rejected: 'Not accepted', revoked: 'Revoked', waived: 'Waived',
+  unknown: 'Cannot be judged yet', met: 'Met', expiring: 'Expiring soon', grace: 'Expired – in grace period', pending_review: 'Awaiting review', missing: 'Missing', expired: 'Expired', rejected: 'Not accepted', revoked: 'Revoked', waived: 'Waived',
 };
 
 const dayMs = 864e5;
@@ -51,7 +56,7 @@ const todayOf = async (c) => (await c.query('SELECT current_date::text AS d')).r
 
 /** Roles you can aim an obligation at, per scope kind: always read from here so the app offers real choices and never a typed role. */
 export function roleChoices(scopeKind, subjectKind) {
-  if (subjectKind === 'organisation') return ['club', 'academy', 'school', 'other'].map((v) => ({ value: v, label: v[0].toUpperCase() + v.slice(1) }));
+  if (subjectKind === 'organisation') return [...['club', 'academy', 'school', 'other'].map((v) => ({ value: v, label: v[0].toUpperCase() + v.slice(1) })), { value: 'supplier', label: 'Supplier bidding on a tender' }];
   if (subjectKind === 'event') return ['tournament', 'league', 'friendly', 'camp', 'trial'].map((v) => ({ value: v, label: v[0].toUpperCase() + v.slice(1) }));
   const label = (k) => k.replace(/_/g, ' ').replace(/^./, (x) => x.toUpperCase());
   const globals = GLOBAL_ROLES.filter((r) => !['admin', 'platform_admin'].includes(r)).map((r) => ({ value: r, label: label(r) }));
@@ -186,17 +191,20 @@ async function worksWithYouth(c, userId, scopeKind, scopeId) {
      UNION SELECT 1 FROM event_entries en JOIN team_members m ON m.team_id=en.team_id AND m.status='active' JOIN users y ON y.id=m.user_id AND ${youthSql('y')} WHERE en.event_id=$1 AND en.status='accepted' LIMIT 1`, [scopeId])).rowCount;
 }
 
-const OB_SQL = `SELECT o.id AS ob_id, o.roles AS ob_roles, o.sport_id AS ob_sport_id, o.youth_work, o.mandatory, o.consequences, o.starts_on::text AS starts_on, o.ends_on::text AS ends_on, r.*
+const OB_SQL = `SELECT o.id AS ob_id, o.roles AS ob_roles, o.sport_id AS ob_sport_id, o.youth_work, o.mandatory, o.consequences, o.starts_on::text AS starts_on, o.ends_on::text AS ends_on,
+                       o.country AS ob_country, o.region AS ob_region, o.municipality AS ob_municipality, o.body_ids, o.competition_ids, o.venue_ids, o.event_types, o.min_age, o.max_age, r.*
                   FROM comp_obligations o JOIN comp_requirements r ON r.id = o.requirement_id
-                 WHERE o.archived_at IS NULL AND r.archived_at IS NULL AND r.subject_kind = $1 AND o.starts_on <= current_date AND (o.ends_on IS NULL OR o.ends_on >= current_date)`;
+                 WHERE (o.archived_at IS NULL OR o.archived_at::date > $2::date) AND (r.archived_at IS NULL OR r.archived_at::date > $2::date) AND r.approval_status = 'approved'
+                   AND r.subject_kind = $1 AND o.starts_on <= $2::date AND (o.ends_on IS NULL OR o.ends_on >= $2::date)`;
 
 /**
  * The obligations that apply to this subject right now. Persons are placed in each scope from the canonical records (organisation membership,
  * event engagements, federation licences, global roles), so nothing is copied and leaving the organisation or the event ends the obligation.
  * `scope` ({kind, id}) narrows to one scope (a manager's view); `consequence` keeps only obligations that block that thing.
  */
-export async function applicable(c, subject, { scope = null, consequence = null, scopes = null } = {}) {
-  let rows = (await c.query(OB_SQL, [subject.kind])).rows;
+export async function applicable(c, subject, { scope = null, consequence = null, scopes = null, asOf = null, context = null, forced = null, forcedRoles = [], actor = null } = {}) {
+  const day = asOf ?? await todayOf(c);
+  let rows = (await c.query(OB_SQL, [subject.kind, day])).rows;
   if (scope) rows = rows.filter((r) => r.scope_kind === scope.kind && (scope.id ? r.scope_id === scope.id : r.scope_kind === 'platform'));
   if (scopes) rows = rows.filter((r) => scopes.some((s) => s.kind === r.scope_kind && (s.id ?? null) === (r.scope_id ?? null)));
   if (consequence) rows = rows.filter((r) => r.consequences.includes(consequence));
@@ -240,6 +248,8 @@ export async function applicable(c, subject, { scope = null, consequence = null,
     }
   }
 
+  if (forced) for (const k of keys) if (forced.has(k)) place.set(k, new Set([...(place.get(k) ?? []), ...forcedRoles]));
+
   const out = [];
   for (const r of rows) {
     const have = place.get(key(r));
@@ -252,7 +262,25 @@ export async function applicable(c, subject, { scope = null, consequence = null,
     if (r.youth_work && !(subject.kind === 'person' && await worksWithYouth(c, subject.id, r.scope_kind, r.scope_id))) continue;
     out.push(r);
   }
-  return out;
+
+  // the policy layer: jurisdiction, governing bodies, competitions, venues, event types and age, judged against facts read live. A rule that names none
+  // of these costs nothing here. Then rules of one topic compete (see compliance-policy.js).
+  let facts = null;
+  const judged = [], excluded = [];
+  for (const r of out) {
+    if (!namesDimension(r)) { judged.push({ ...r, policy: { result: 'yes', no: [], unknown: [] } }); continue; }
+    facts ??= await factsFor(c, subject, context ?? {}, { asOf: day, actor });
+    const a = applicability(r, facts.values, facts.na);
+    if (a.result === 'no') excluded.push({ row: r, reason: `Does not apply: ${a.no.join(', ')} differ${a.no.length === 1 ? 's' : ''}` });
+    else judged.push({ ...r, policy: a });
+  }
+  const order = new Map(out.map((r, n) => [r.ob_id, n]));
+  const { kept, superseded } = settleTopics(judged);
+  kept.sort((a, b) => order.get(a.ob_id) - order.get(b.ob_id));
+  for (const x of superseded) excluded.push({ row: x.row, by: x.by, reason: `Overridden for topic "${x.row.topic}" by ${x.by.name} (${(CLASS_LABEL[x.by.classification] ?? x.by.classification).toLowerCase()})` });
+  kept.facts = facts;
+  kept.excluded = excluded;
+  return kept;
 }
 
 // ---------------------------------------------------------------- state
@@ -318,54 +346,87 @@ const REC_COLS = `id, requirement_id, requirement_version, status, outcome, issu
  * Pure reads. Returns { items, decision, counts }.
  */
 export async function evaluateSubject(c, subject, opts = {}) {
-  const today = opts.today ?? await todayOf(c);
-  const obs = await applicable(c, subject, opts);
-  if (!obs.length) return { subject, today, items: [], decision: 'clear', counts: { met: 0, expiring: 0, pending: 0, blocked: 0, waived: 0 } };
+  const real = await todayOf(c);
+  const today = opts.asOf ?? opts.today ?? real;
+  const obs = await applicable(c, subject, { ...opts, asOf: today });
+  const excluded = (obs.excluded ?? []).map((x) => ({
+    obligation_id: x.row.ob_id, requirement: { code: x.row.code, name: x.row.name }, classification: x.row.classification, topic: x.row.topic ?? null, outcome: 'does_not_apply', reason: x.reason,
+    superseded_by: x.by ? { requirement: x.by.name, classification: x.by.classification } : null,
+  }));
+  const facts = obs.facts ? { values: obs.facts.values, sources: obs.facts.sources } : { values: {}, sources: {} };
+  if (!obs.length) return { subject, today, items: [], excluded, facts, decision: 'clear', counts: { met: 0, expiring: 0, pending: 0, blocked: 0, waived: 0, unknown: 0 }, statuses: statusCounts([]) };
   const reqIds = [...new Set(obs.map((o) => o.id))];
+  // an earlier date shows the wording in force then: the latest version saved on or before it (nothing is ever deleted, so history is kept)
+  if (today < real) {
+    const past = (await c.query(
+      `SELECT DISTINCT ON (requirement_id) requirement_id, version, snapshot FROM comp_requirement_versions WHERE requirement_id = ANY($1) AND changed_at::date <= $2::date ORDER BY requirement_id, version DESC`, [reqIds, today])).rows;
+    for (const o of obs) {
+      const v = past.find((x) => x.requirement_id === o.id);
+      if (v) for (const k of ['name', 'description', 'category', 'method', 'source', 'requires_review', 'validity_days', 'reminder_days', 'grace_days', 'escalate_after_days', 'statement']) if (v.snapshot[k] !== undefined) o[k] = v.snapshot[k];
+      if (v) o.version = v.version;
+    }
+  }
   const recs = (await c.query(`SELECT ${REC_COLS} FROM comp_records WHERE subject_kind=$1 AND subject_id=$2 AND requirement_id = ANY($3) AND status IN ('submitted','valid','rejected','revoked')`, [subject.kind, subject.id, reqIds])).rows;
   const waivers = (await c.query(
-    `SELECT id, requirement_id, reason, effective_to::text AS effective_to FROM comp_waivers WHERE subject_kind=$1 AND subject_id=$2 AND requirement_id = ANY($3) AND revoked_at IS NULL AND effective_from <= current_date AND effective_to >= current_date ORDER BY effective_to DESC`,
-    [subject.kind, subject.id, reqIds])).rows;
+    `SELECT id, requirement_id, reason, effective_to::text AS effective_to FROM comp_waivers WHERE subject_kind=$1 AND subject_id=$2 AND requirement_id = ANY($3) AND revoked_at IS NULL AND effective_from <= $4::date AND effective_to >= $4::date ORDER BY effective_to DESC`,
+    [subject.kind, subject.id, reqIds, today])).rows;
   // safeguarding that protects young people, and background checks, can never be waived (grant_compliance_waiver refuses them too)
   const unwaivable = new Set((await c.query("SELECT DISTINCT requirement_id FROM comp_obligations WHERE requirement_id = ANY($1) AND archived_at IS NULL AND consequences && ARRAY['youth_contact','youth_access']", [reqIds])).rows.map((x) => x.requirement_id));
   const names = new Map();
   const items = [];
   for (const r of obs) {
-    let rec, src = null;
-    if (r.method === 'linked') {
-      src = await SOURCES[r.source.kind](c, subject, r.source);
-      rec = src.raw === 'valid' ? { status: 'valid', issued_on: src.issued_on, expires_on: src.expires_on } : src.raw === 'pending' ? { status: 'submitted' } : ['rejected', 'revoked'].includes(src.raw) ? { status: src.raw } : null;
-    } else rec = pickRecord(recs.filter((x) => x.requirement_id === r.id), today);
-    const waiver = waivers.find((w) => w.requirement_id === r.id) ?? null;
-    const st = resolveState(r, { mandatory: r.mandatory }, rec, today, waiver);
+    const advisory = r.classification === 'recommended_standard';
+    const waivable = r.waivable !== false && !NEVER_WAIVABLE_CLASSES.includes(r.classification) && r.category !== 'background_check' && !unwaivable.has(r.id);
+    let rec = null, src = null, st;
+    if (r.policy.result === 'unknown') {
+      st = { state: 'unknown', blocking: !!r.mandatory && !advisory, days_left: null, waived: null };
+    } else {
+      if (r.method === 'linked') {
+        src = await SOURCES[r.source.kind](c, subject, r.source);
+        rec = src.raw === 'valid' ? { status: 'valid', issued_on: src.issued_on, expires_on: src.expires_on } : src.raw === 'pending' ? { status: 'submitted' } : ['rejected', 'revoked'].includes(src.raw) ? { status: src.raw } : null;
+      } else rec = pickRecord(recs.filter((x) => x.requirement_id === r.id), today);
+      const waiver = waivers.find((w) => w.requirement_id === r.id) ?? null;
+      st = resolveState(r, { mandatory: r.mandatory }, rec, today, waiver);
+      if (advisory) st.blocking = false;     // a recommended standard advises; it never stops anything
+    }
     const sk = `${r.scope_kind}:${r.scope_id ?? ''}`;
     if (!names.has(sk)) names.set(sk, await scopeName(c, r.scope_kind, r.scope_id));
+    const missing = r.policy.unknown ?? [];
     items.push({
       obligation_id: r.ob_id, requirement_id: r.id,
       requirement: { code: r.code, name: r.name, description: r.description, category: r.category, category_label: CATEGORIES[r.category], method: r.method, version: r.version, validity_days: r.validity_days, sensitive: r.sensitive, source: r.method === 'linked' ? r.source : null, statement: r.method === 'declaration' ? r.statement : null },
       scope: { kind: r.scope_kind, id: r.scope_id, name: names.get(sk) },
-      mandatory: r.mandatory, consequences: r.consequences, waivable: r.category !== 'background_check' && !unwaivable.has(r.id),
+      mandatory: r.mandatory, consequences: r.consequences, waivable,
       state: st.state, state_label: STATE_LABEL[st.state], blocking: st.blocking, days_left: st.days_left,
+      status: STATUS_OF[st.state], outcome: st.state === 'unknown' ? 'unknown' : st.blocking && waivable ? 'exception_required' : 'applies',
+      policy: {
+        classification: r.classification, classification_label: CLASS_LABEL[r.classification], topic: r.topic ?? null,
+        jurisdiction: { country: r.ob_country ?? null, region: r.ob_region ?? null, municipality: r.ob_municipality ?? null },
+        applies: { body_ids: r.body_ids, competition_ids: r.competition_ids, venue_ids: r.venue_ids, event_types: r.event_types, min_age: r.min_age, max_age: r.max_age },
+        effective_from: r.starts_on, effective_to: r.ends_on, source_title: r.source_title ?? null, source_url: r.source_url ?? null, approval_owner: r.approval_owner ?? null, missing_facts: missing,
+      },
       issued_on: rec?.issued_on ?? null, expires_on: rec?.expires_on ?? null,
       record: (rec?.open ?? rec)?.id ? (({ id, status, outcome, file_count, submitted_at, decided_at }) => ({ id, status, outcome: outcome ?? null, file_count: file_count ?? 0, can_attach: status === 'submitted', submitted_at, decided_at }))(rec.open ?? rec) : null,
       waiver: st.waived ? { id: st.waived.id, reason: st.waived.reason, effective_to: st.waived.effective_to } : null,
-      explanation: explain(r, st, rec), next_step: nextStep(r, st, rec, src),
+      explanation: st.state === 'unknown' ? `${r.name} might apply, but ${missing.join(', ')} ${missing.length === 1 ? 'is' : 'are'} not on record, so it cannot be judged yet.` : explain(r, st, rec),
+      next_step: st.state === 'unknown' ? { action: 'add_facts', label: `Add the missing information (${missing.join(', ')})` } : nextStep(r, st, rec, src),
       linked: src?.ref ?? null,
     });
   }
-  return { subject, today, items, ...summarise(items) };
+  return { subject, today, items, excluded, facts, statuses: statusCounts(items), ...summarise(items) };
 }
 
 export function summarise(items) {
-  const counts = { met: 0, expiring: 0, pending: 0, blocked: 0, waived: 0 };
+  const counts = { met: 0, expiring: 0, pending: 0, blocked: 0, waived: 0, unknown: 0 };
   for (const i of items) {
+    if (i.state === 'unknown') counts.unknown++;
     if (i.blocking) counts.blocked++;
     else if (i.state === 'pending_review') counts.pending++;
     else if (['expiring', 'grace'].includes(i.state)) counts.expiring++;
     else if (i.state === 'waived') counts.waived++;
     else if (i.state === 'met') counts.met++;
   }
-  const mandatoryPending = items.some((i) => i.mandatory && i.state === 'pending_review');
+  const mandatoryPending = items.some((i) => i.mandatory && i.policy?.classification !== 'recommended_standard' && i.state === 'pending_review');
   return { counts, decision: counts.blocked ? 'blocked' : mandatoryPending ? 'pending' : 'clear' };
 }
 
@@ -377,21 +438,26 @@ const orgsOf = (ctx) => [...new Set([ctx.organisation_id, ...(ctx.organisation_i
  * Platform-scope obligations always count; organisation, event and body obligations count only for the context they belong to.
  * Returns { decision: 'clear' | 'pending' | 'blocked', reasons: [text], items }.
  */
-export async function gate(c, userId, consequence, ctx = {}) {
+export async function gate(c, userId, consequence, ctx = {}, extra = {}) {
+  const r = await evaluateSubject(c, { kind: 'person', id: userId }, { consequence, scopes: scopesOf(ctx), context: ctx, ...extra });
+  const bad = r.items.filter((i) => i.blocking || (i.mandatory && i.state === 'pending_review' && i.policy?.classification !== 'recommended_standard'));
+  return { decision: r.decision, reasons: bad.map((i) => i.explanation), items: bad };
+}
+
+/** The scopes whose rulebooks count in a context: the platform's, the event's, the organisations' and the governing bodies'. */
+export function scopesOf(ctx = {}) {
   const scopes = [{ kind: 'platform', id: null }];
   if (ctx.event_id) scopes.push({ kind: 'event', id: ctx.event_id });
   for (const o of orgsOf(ctx)) scopes.push({ kind: 'organisation', id: o });
   for (const b of ctx.body_ids ?? []) scopes.push({ kind: 'body', id: b });
-  const r = await evaluateSubject(c, { kind: 'person', id: userId }, { consequence, scopes });
-  const bad = r.items.filter((i) => i.blocking || (i.mandatory && i.state === 'pending_review'));
-  return { decision: r.decision, reasons: bad.map((i) => i.explanation), items: bad };
+  return scopes;
 }
 
 /** Any live obligation blocking this consequence in the context? Lets callers skip per-person work entirely when nothing is configured. */
 export async function hasObligations(c, consequence, ctx = {}) {
   const r = await c.query(
     `SELECT 1 FROM comp_obligations o JOIN comp_requirements q ON q.id=o.requirement_id
-      WHERE o.archived_at IS NULL AND q.archived_at IS NULL AND q.subject_kind='person' AND $1 = ANY(o.consequences) AND o.starts_on <= current_date AND (o.ends_on IS NULL OR o.ends_on >= current_date)
+      WHERE o.archived_at IS NULL AND q.archived_at IS NULL AND q.approval_status='approved' AND q.subject_kind='person' AND $1 = ANY(o.consequences) AND o.starts_on <= current_date AND (o.ends_on IS NULL OR o.ends_on >= current_date)
         AND (q.scope_kind='platform' OR (q.scope_kind='event' AND q.scope_id=$2) OR (q.scope_kind='organisation' AND q.scope_id = ANY($3::uuid[])) OR (q.scope_kind='body' AND q.scope_id = ANY($4::uuid[]))) LIMIT 1`,
     [consequence, ctx.event_id ?? null, orgsOf(ctx), ctx.body_ids ?? []]);
   return r.rowCount > 0;

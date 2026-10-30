@@ -23,6 +23,7 @@ import { RegistrationTab } from './event-registration';
 import { TrialsTab } from './event-trials';
 import { HiringTab } from './event-hiring';
 import { BusinessTab, MoneyTiles } from './event-business';
+import { PlanPicker } from './plans-billing';
 import { ServicesBuyer } from './svc-buyer';
 import { EventVenues } from './event-venues';
 import { Requests, Budget } from './event-plan';
@@ -166,8 +167,10 @@ export function EventCommand({ id, tab: first = 'overview' }) {
             <AChip label="📨 Requests" badge={waiting} active={sub.business === 'requests'} onPress={() => go('business', 'requests')} />
             <AChip label="💰 Budget" active={sub.business === 'budget'} onPress={() => go('business', 'budget')} />
             <AChip label="🧰 Services" active={sub.business === 'services'} onPress={() => go('business', 'services')} />
+            <AChip label="⭐ Plan" active={sub.business === 'plan'} onPress={() => go('business', 'plan')} />
           </View>
           {sub.business === 'services' ? <Paper><ServicesBuyer event_id={id} embedded /></Paper>
+            : sub.business === 'plan' ? <Paper><PlanPicker subjectType="event" subjectId={id} subjectName={e.name} /></Paper>
             : sub.business === 'partners' ? <BusinessTab {...P} vend={D.vend.data ?? []} money={money} reload={reloadAll} />
             : D.plan.data ? <Paper>{sub.business === 'requests' ? <Requests id={id} e={e} p={D.plan.data} toast={toast} reload={D.plan.reload} /> : <Budget id={id} p={D.plan.data} toast={toast} reload={D.plan.reload} />}</Paper> : <Loading />}
         </>

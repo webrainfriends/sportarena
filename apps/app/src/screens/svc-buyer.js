@@ -47,7 +47,7 @@ export function ServicesBuyer({ event_id, venue_id, organisation_id, embedded })
   );
 }
 
-const loadCompetitions = async (q) => (await api.get('/events', { q: q || undefined, limit: 20 })).map((e) => ({ value: e.id, label: e.name, sub: [e.kind, e.starts_on].filter(Boolean).join(' · ') }));
+const loadCompetitions = async (q) => (await api.get('/events', { q: q || undefined, limit: 20 })).map((e) => ({ value: e.id, label: e.name, sub: [e.kind, String(e.starts_on ?? '').slice(0, 10)].filter(Boolean).join(' · ') }));
 
 function Plan({ b, cat }) {
   const plan = useLoad(() => api.get(`/service-buyers/${b.id}/plan`), [b.id]);

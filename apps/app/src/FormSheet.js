@@ -85,7 +85,7 @@ function LocationPicker({ f, v, set }) {
   );
 }
 
-export function FormSheet({ visible, onClose, title, fields, initial = {}, submitLabel = 'Save', onSubmit, color = c.pink, inline, onBack, notice }) {
+export function FormSheet({ visible, onClose, title, fields, initial = {}, submitLabel = 'Save', onSubmit, color = c.pink, inline, onBack, notice, extra }) {
   const start = () => {
     const o = {};
     for (const f of fields) {
@@ -207,6 +207,7 @@ export function FormSheet({ visible, onClose, title, fields, initial = {}, submi
           <Btn title={submitLabel} onPress={submit} loading={busy} color={color} style={{ flex: 2 }} />
         </View>
       ) : <Btn title={submitLabel} onPress={submit} loading={busy} color={color} />}
+      {extra}
     </>
   );
   // inline: the form lives inside a sheet that is already open (a wizard step) instead of opening its own

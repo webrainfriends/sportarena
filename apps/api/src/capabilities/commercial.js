@@ -54,6 +54,38 @@ cap({
 });
 
 // ------------------------------------------------------------------ customer
+/** Which price-list families a person's roles open up (a person sees plans for the profiles they actually hold). */
+const FAMILIES_OF_ROLE = {
+  athlete: ['athlete'], coach: ['professional'], physio: ['professional'], doctor: ['professional'], lawyer: ['professional'], agent: ['professional'], referee: ['professional'], recruiter: ['professional'],
+  organizer: ['event'], venue_manager: ['venue'], sponsor: ['sponsor'], supplier: ['supplier'], insurer: ['other'],
+};
+
+cap({
+  name: 'commercial_offers', method: 'GET', path: '/commercial/offers', tag: TAG,
+  summary: 'The plans you can take for a user, organisation, team, venue or event you manage, from the published price list: only plans offered to that kind of account, and for a person only the families of the roles they hold (an event organiser sees the organiser and event plans). Each plan lists its price points and the entitlements it grants, and says whether it is the one held now. Subscribe with commercial_subscribe.',
+  input: z.object({ ...subject, region: z.string().regex(/^[A-Z]{2}$/).default('IN') }),
+  async handler({ user }, i) {
+    await mustManageSubject(user, i.subject_type, i.subject_id);
+    await applyDueChanges(i.subject_type, i.subject_id);
+    const at = new Date().toISOString().slice(0, 10);
+    const families = i.subject_type === 'user' ? new Set((user.roles ?? []).flatMap((r) => FAMILIES_OF_ROLE[r] ?? [])) : null;
+    const [tree, held] = await Promise.all([
+      catalogueTree({ publishedOnly: true, at, region: i.region }),
+      many(`SELECT s.id, s.status, s.kind, s.cancel_at_period_end, s.current_period_end, p.key AS plan_key FROM commercial_subscriptions s JOIN commercial_plans p ON p.id = s.plan_id
+             WHERE s.subject_type=$1 AND s.subject_id=$2 AND s.status IN ('pending_payment','trial','active','scheduled')`, [i.subject_type, i.subject_id]),
+    ]);
+    const heldBy = new Map(held.map((h) => [h.plan_key, h]));
+    const products = tree
+      .filter((p) => !families || families.has(p.family))
+      .map((p) => ({ key: p.key, name: p.name, family: p.family, description: p.description, plans: p.plans
+        .filter((pl) => pl.eligible_actors.includes(i.subject_type))
+        .map((pl) => ({ key: pl.key, name: pl.name, kind: pl.kind, is_default: pl.is_default, requires: pl.requires, held: heldBy.get(pl.key) ?? null,
+          versions: pl.versions.map((v) => ({ price_point_code: v.price_point_code, billing_interval: v.billing_interval, currency: v.currency, region: v.region, amount_minor: Number(v.amount_minor), tax_bp: v.tax_bp, trial_days: v.trial_days, components: v.components, entitlements: v.entitlements })) })) }))
+      .filter((p) => p.plans.length);
+    return { subject_type: i.subject_type, subject_id: i.subject_id, region: i.region, products };
+  },
+});
+
 cap({
   name: 'commercial_my_account', method: 'GET', path: '/commercial/account', tag: TAG,
   summary: 'Plan, add-ons, resolved entitlements (with the sources that shaped each) and usage against limits for a user, organisation, team, venue or event you manage.',
@@ -63,7 +95,7 @@ cap({
     await applyDueChanges(i.subject_type, i.subject_id);
     const [resolved, usage, subscriptions] = await Promise.all([
       resolveEntitlements(i.subject_type, i.subject_id), usageSummary(i.subject_type, i.subject_id),
-      many(`SELECT s.id, s.kind, s.status, s.quantities, s.bundle_group, s.allocated_minor, s.started_at, s.current_period_end, s.trial_ends_at, s.cancel_at_period_end, s.scheduled_for, p.key AS plan_key, p.name AS plan_name,
+      many(`SELECT s.id, s.kind, s.status, s.quote_id, s.quantities, s.bundle_group, s.allocated_minor, s.started_at, s.current_period_end, s.trial_ends_at, s.cancel_at_period_end, s.scheduled_for, p.key AS plan_key, p.name AS plan_name,
                    v.version, v.billing_interval, v.currency, v.amount_minor, sv.version AS scheduled_version, sp.name AS scheduled_plan_name
               FROM commercial_subscriptions s JOIN commercial_plans p ON p.id = s.plan_id JOIN commercial_price_versions v ON v.id = s.version_id
               LEFT JOIN commercial_price_versions sv ON sv.id = s.scheduled_version_id LEFT JOIN commercial_plans sp ON sp.id = sv.plan_id
@@ -88,14 +120,14 @@ cap({
   name: 'commercial_quote', method: 'POST', path: '/commercial/quotes', tag: TAG, status: 201,
   summary: 'Get a frozen, authoritative quote (lines, discount, tax, total, the price-version ids used). Payments take this quote; the client never recomputes prices. Valid 7 days.',
   input: z.object({
-    ...subject, region: z.string().regex(/^[A-Z]{2}$/).default('IN'), currency: z.string().regex(/^[A-Z]{3}$/).optional(), promotion_key: z.string().max(60).optional(),
+    ...subject, region: z.string().regex(/^[A-Z]{2}$/).default('IN'), currency: z.string().regex(/^[A-Z]{3}$/).optional(), promotion_key: z.string().max(60).optional(), promotion_keys: z.array(z.string().max(60)).max(10).optional().describe('codes the customer keyed in; every one is checked and they stack with each other and with the auto-apply offers'),
     items: z.array(z.object({ plan_key: z.string().max(60).optional(), bundle_key: z.string().max(60).optional(), billing_interval: z.enum(['one_time', 'monthly', 'annual', 'per_event', 'usage']).optional(), quantities })
       .refine((x) => !!x.plan_key !== !!x.bundle_key, 'Give either plan_key or bundle_key')).min(1).max(10),
     usage: z.record(z.string(), z.number().min(0)).optional(), gmv_minor: z.number().int().min(0).optional().describe('expected sales, only to show what a percentage fee would be'),
   }),
   async handler({ user }, i) {
     await mustManageSubject(user, i.subject_type, i.subject_id);
-    return createQuote({ subjectType: i.subject_type, subjectId: i.subject_id, user, items: i.items, region: i.region, currency: i.currency, promotionKey: i.promotion_key, usage: i.usage, gmv_minor: i.gmv_minor });
+    return createQuote({ subjectType: i.subject_type, subjectId: i.subject_id, user, items: i.items, region: i.region, currency: i.currency, promotionKey: i.promotion_key, promotionKeys: i.promotion_keys, usage: i.usage, gmv_minor: i.gmv_minor });
   },
 });
 
@@ -116,13 +148,13 @@ cap({
   input: z.object({
     ...subject, plan_key: z.string().max(60).optional(), bundle_key: z.string().max(60).optional().describe('instead of plan_key: take a bundle (several profiles of one person at the bundle price)'),
     billing_interval: z.enum(['one_time', 'monthly', 'annual', 'per_event', 'usage']).optional(), region: z.string().regex(/^[A-Z]{2}$/).default('IN'),
-    currency: z.string().regex(/^[A-Z]{3}$/).optional(), quantities, promotion_key: z.string().max(60).optional(),
+    currency: z.string().regex(/^[A-Z]{3}$/).optional(), quantities, promotion_key: z.string().max(60).optional(), promotion_keys: z.array(z.string().max(60)).max(10).optional(),
   }),
   async handler({ user }, i) {
     await mustManageSubject(user, i.subject_type, i.subject_id);
     if (!!i.plan_key === !!i.bundle_key) throw badRequest('Give either plan_key or bundle_key');
-    if (i.bundle_key) return subscribeBundle({ subjectType: i.subject_type, subjectId: i.subject_id, user, bundleKey: i.bundle_key, promotionKey: i.promotion_key });
-    return subscribe({ subjectType: i.subject_type, subjectId: i.subject_id, user, planKey: i.plan_key, billingInterval: i.billing_interval, region: i.region, currency: i.currency, quantities: i.quantities, promotionKey: i.promotion_key });
+    if (i.bundle_key) return subscribeBundle({ subjectType: i.subject_type, subjectId: i.subject_id, user, bundleKey: i.bundle_key, promotionKey: i.promotion_key, promotionKeys: i.promotion_keys });
+    return subscribe({ subjectType: i.subject_type, subjectId: i.subject_id, user, planKey: i.plan_key, billingInterval: i.billing_interval, region: i.region, currency: i.currency, quantities: i.quantities, promotionKey: i.promotion_key, promotionKeys: i.promotion_keys });
   },
 });
 

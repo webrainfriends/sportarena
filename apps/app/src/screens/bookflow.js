@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { BidSheet } from './ballots';
 import { Image, Pressable, View } from 'react-native';
 import { api, mediaUrl } from '../api';
 import { useLoad } from '../hooks';
@@ -46,6 +47,8 @@ export function BookFlow({ venueId, resourceId, date: startDate, time: startTime
   const [alertOpen, setAlertOpen] = useState(false);
   const [wl, setWl] = useState(null);           // a sold-out slot the person may queue for
   const [wlBusy, setWlBusy] = useState(false);
+  const [bid, setBid] = useState(null);         // a sold-out slot that is up for ballot: bid instead of queueing
+  const ballots = useLoad(() => api.get(`/venues/${venueId}/ballots/open`).catch(() => []), [venueId]);
   const tz = v.data?.timezone ?? 'UTC';
   const today = todayIn(tz);
   const m = month ?? today.slice(0, 7);
@@ -78,7 +81,13 @@ export function BookFlow({ venueId, resourceId, date: startDate, time: startTime
   const keyOf = (rid, s) => `${rid}|${s.starts_at}`;
   const tapSlot = (res, slots, i) => {
     const s = slots[i];
-    if (s.status === 'booked' && !sel[keyOf(res.id, s)]) return setWl({ res, slot: s });
+    if (s.status === 'booked' && !sel[keyOf(res.id, s)]) {
+      for (const b of ballots.data ?? []) {
+        const bs = b.slots.find((q) => q.status === 'open' && q.resource_id === res.id && +new Date(q.starts_at) === +new Date(s.starts_at));
+        if (bs) return setBid({ b, s: bs });
+      }
+      return setWl({ res, slot: s });
+    }
     const units = qty[res.id] ?? 1;
     const key = keyOf(res.id, s);
     if (sel[key]) {
@@ -246,6 +255,7 @@ export function BookFlow({ venueId, resourceId, date: startDate, time: startTime
           catch (e) { toast(e.message); setWl(null); grid.reload(); } finally { setWlBusy(false); }
         }} />
       </Sheet>
+      <BidSheet visible={!!bid} onClose={() => setBid(null)} ballot={bid?.b} slot={bid?.s} venue={x} onDone={() => { ballots.reload(); grid.reload(); }} />
       <AlertSheet venue={x} visible={alertOpen} onClose={() => setAlertOpen(false)} date={date ?? undefined} resourceId={single} />
       <StickyBar title={footer.title} sub={footer.sub} action={footer.action} onAction={next} disabled={footer.off} bottom={L.floatingBar ? 84 : 0} />
     </View>

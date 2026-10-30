@@ -25,11 +25,15 @@ export async function lockResources(c, ids) {
 
 /** Units of a resource already taken in [start, end). */
 export async function usedUnits(c, resourceId, start, end, excludeBooking, holdsFor) {
-  // Slots offered to someone from the waitlist are held for them: taken for everyone else. `holdsFor` = a user id (their own
+  // Slots offered to someone from the waitlist, and slots in a live ballot (open for bids, or held for the winner until they pay),
+  // are held: taken for everyone else, so the ballot (not a race for the booking) decides who gets them. `holdsFor` = a user id (their own
   // holds don't count against them) or 'none' (ignore holds: staff overrides).
   const r = await c.query(
     `SELECT (SELECT coalesce(sum(quantity),0) FROM bookings WHERE resource_id=$1 AND status IN ('confirmed','no_show') AND starts_at < $3 AND ends_at > $2 AND ($4::uuid IS NULL OR id <> $4))::int
-          + CASE WHEN $5::text = 'none' THEN 0 ELSE (SELECT coalesce(sum(w.quantity),0) FROM waitlist_entries w WHERE w.resource_id=$1 AND w.status='offered' AND w.offer_expires_at > now() AND w.starts_at < $3 AND w.ends_at > $2 AND ($5::text IS NULL OR w.user_id::text <> $5)) END::int AS used`,
+          + CASE WHEN $5::text = 'none' THEN 0 ELSE (SELECT coalesce(sum(w.quantity),0) FROM waitlist_entries w WHERE w.resource_id=$1 AND w.status='offered' AND w.offer_expires_at > now() AND w.starts_at < $3 AND w.ends_at > $2 AND ($5::text IS NULL OR w.user_id::text <> $5)) END::int
+          + CASE WHEN $5::text = 'none' THEN 0 ELSE (SELECT coalesce(sum(s.quantity),0) FROM venue_ballot_slots s JOIN venue_ballots vb ON vb.id=s.ballot_id
+              WHERE s.resource_id=$1 AND s.status IN ('open','offered') AND vb.status IN ('open','closed','drawn') AND s.starts_at < $3 AND s.ends_at > $2
+                AND NOT (s.status='offered' AND $5::text IS NOT NULL AND s.holder_user_id::text = $5)) END::int AS used`,
     [resourceId, start, end, excludeBooking ?? null, holdsFor ?? null]);
   return r.rows[0].used;
 }
@@ -404,7 +408,11 @@ export async function loadBusy(c, venueId, from, to, forUser) {
               WHERE r.venue_id=$1 AND b.status IN ('confirmed','no_show') AND b.starts_at < $3 AND b.ends_at > $2
              UNION ALL
              SELECT w.resource_id, w.starts_at, w.ends_at, w.quantity FROM waitlist_entries w
-              WHERE w.venue_id=$1 AND w.status='offered' AND w.offer_expires_at > now() AND w.starts_at < $3 AND w.ends_at > $2 AND ($4::text IS NULL OR w.user_id::text <> $4)`, [venueId, from, to, forUser ?? null]),
+              WHERE w.venue_id=$1 AND w.status='offered' AND w.offer_expires_at > now() AND w.starts_at < $3 AND w.ends_at > $2 AND ($4::text IS NULL OR w.user_id::text <> $4)
+             UNION ALL
+             SELECT s.resource_id, s.starts_at, s.ends_at, s.quantity FROM venue_ballot_slots s JOIN venue_ballots vb ON vb.id=s.ballot_id
+              WHERE vb.venue_id=$1 AND s.status IN ('open','offered') AND vb.status IN ('open','closed','drawn') AND s.starts_at < $3 AND s.ends_at > $2
+                AND NOT (s.status='offered' AND $4::text IS NOT NULL AND s.holder_user_id::text = $4)`, [venueId, from, to, forUser ?? null]),
     c.query('SELECT resource_id, starts_at, ends_at FROM venue_blocks WHERE released_at IS NULL AND venue_id=$1 AND starts_at < $3 AND ends_at > $2', [venueId, from, to]),
   ]);
   return { bookings: b.rows, blocks: k.rows };

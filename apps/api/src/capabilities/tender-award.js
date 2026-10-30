@@ -13,6 +13,7 @@ import { rubricSchema, technicalScore } from '../tender/scoring.js';
 import { lockedScores } from '../tender/evaluation.js';
 import { ensureServiceOrder, commitTenderOrder, addCallOffLine } from '../svc/from-tender.js';
 import { cancelOrderRecords } from '../svc/orders.js';
+import { assertTenderAward } from '../compliance-gates.js';
 
 const TAG = 'Tender zone';
 const BUDGET_CATEGORY = (cat) => (/ground|pitch|pool|venue|maint/i.test(cat) ? 'venue' : /crew|staff|ball/i.test(cat) ? 'staff' : /electric|wi-?fi|connect|equip|install/i.test(cat) ? 'equipment' : /travel|transport/i.test(cat) ? 'transport' : /cater/i.test(cat) ? 'catering' : 'other');
@@ -112,6 +113,8 @@ cap({
       if (!r.allocation?.length) throw conflict('That scenario allocates nothing');
       if (r.violations?.length) throw conflict('That scenario breaks its constraints', { violations: r.violations });
       if (r.unfilled?.length && !i.allow_partial) throw conflict('That scenario leaves lots unfilled. Confirm a partial award to continue.', { unfilled: r.unfilled });
+      // the compliance rules (#568): the event the tender serves and every supplier this scenario would award to must meet the rules that block an award
+      await assertTenderAward(c, user, p, [...new Set(r.allocation.map((x) => x.entity))]);
       const rk = (await c.query('SELECT id, rubric_version FROM proc_rankings WHERE id=$1', [sc.ranking_id])).rows[0];
       const a = (await c.query(`INSERT INTO proc_awards(project_id, scenario_id, rationale, rubric_version, rfp_version, snapshot, recommended_by) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`, [p.id, sc.id, i.rationale, rk.rubric_version, p.version, JSON.stringify({ scenario: r, ranking_id: sc.ranking_id }), user.id])).rows[0];
       const ap = await requestApproval(c, p, user, 'award', { award_id: a.id, subject: `award:${a.id}`, reserve: (r.reserve ?? []).map((x) => x.lot) }, i.rationale, r.cost_minor);

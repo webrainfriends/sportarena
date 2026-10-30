@@ -84,6 +84,28 @@ Every notification (confirmations, changes, reminders, refunds, replies …) is 
 
 `join_waitlist` queues a person for a specific court and time (same booking rules; refused if the slot is free, blocked, or already queued; max 10 at a time). When capacity frees up — a cancellation, a released block — the **first person in line whose request now fits is offered the slot**: it is *held* for them for `WAITLIST_HOLD_MINUTES` (default 15). A held slot counts as taken for everyone else (availability, quotes, bookings, alerts) but shows as free to its holder, who simply books it; booking marks the entry `booked`. Unclaimed offers expire and pass to the next person; `leave_waitlist` gives a slot back. Staff overrides ignore holds. `venue_waitlist` shows the team the demand they couldn't serve (counts per court and time, no names). Offers go out as in-app, push and email notifications.
 
+## Slot ballots (oversubscribed slots)
+
+Capabilities in `apps/api/src/capabilities/ballots.js`, domain in `apps/api/src/booking/ballots.js`, migration `127_venue_ballots.sql`. A ballot is a front door to the booking engine, not a second booking system: a winner's slot becomes a real reservation (`createReservation`, normal price rules, tax, invoice and payment) only when they accept.
+
+```
+ballot  draft -> open -> closed -> drawn -> settled          (or cancelled)
+slot    open -> offered -> awaiting_payment -> confirmed     (or unfilled / cancelled)
+entry   entered -> ranked -> offered -> awaiting_payment -> confirmed   (or lost / expired / withdrawn)
+```
+
+* **Venue team** (owner, staff, organisation admin; anyone else gets a 404): `create_venue_ballot` (title, method, mode, closing time, pay window and slots = court + time window, floor price defaulting to the venue rate), `update_venue_ballot` (drafts), `open_venue_ballot` (every slot must still be free), `close_venue_ballot`, `run_ballot_draw`, `allocate_ballot_slot`, `release_ballot_slot`, `cancel_venue_ballot`, `list_venue_ballots`, `get_venue_ballot` (all entries, bids and the audit log).
+* **Method:** `highest_bid` (ties broken by a seeded shuffle) or `random_draw` (a lottery; everyone pays the floor). The seed is stored with the draw, so the ranking can be reproduced (`rankEntries`).
+* **Mode:** `auto` (the draw offers each slot to its top entrant) or `manual` (the draw only ranks; the venue blocks a slot for a chosen entrant with `allocate_ballot_slot`, and may move an unpaid hold to someone else).
+* **People:** `list_open_ballots` (never shows bids), `enter_ballot` (bid at or above the floor; idempotent with `idempotency_key`; one live entry per slot), `update_ballot_bid`, `withdraw_ballot_entry`, `list_my_ballot_entries`, `accept_ballot_offer`. Bids are sealed: an entrant sees only their own. A young person cannot enter; a guardian enters as themselves.
+* **Held, not booked:** while a ballot is open, and while a winner holds an unpaid slot, `usedUnits` / `loadBusy` count the slot as taken for everyone else (staff overrides ignore holds, like the waitlist), so nobody can book around the ballot.
+* **Pay to allocate:** nothing is charged when bidding. A winner has the venue's pay window (5 minutes to 2 days) to `accept_ballot_offer`, which places the reservation at their bid and returns it so the app can open the normal invoice and payment. Paying (any route that calls `markInvoicePaid`) confirms the slot, tells the other entrants they lost and settles the ballot once every slot has an outcome. At a pay-at-venue venue the slot is confirmed on accept.
+* **Not paid in time:** the worker step `ballots` (`processBallots`) closes ballots at their deadline (drawing auto ones), expires unaccepted offers, notices winners whose unpaid booking the existing hold sweep released, and hands the slot to the next ranked entrant; with nobody left it is marked `unfilled` and is bookable again. Manual ballots reopen the slot for the venue to pick again.
+* **Audit and privacy:** every venue action is written to `audit_log` and to the append-only `venue_ballot_log` (draw seed, allocations, releases). Notifications are `ballot_offer`, `ballot_confirmed`, `ballot_lost`, `ballot_expired`, `ballot_released` and `ballot_cancelled`.
+* **App:** the venue console has a **Slot ballots** tab; the public venue page lists open ballots and tapping a sold-out slot that is up for ballot opens the bid sheet instead of the waitlist; **My ballots** (offers to accept and pay, queue position, withdraw) sits with the waitlist under Notification settings, and a ballot notification opens it.
+
+Known limits: one slot is one court and time window (no bundles across courts); a winner pays the whole bid at once (no deposits); bids are in the venue's currency; young people cannot bid.
+
 ## Venue operations (lockers, maintenance, vendors, contracts)
 
 Capabilities in `apps/api/src/capabilities/venue-operations.js`; every one is venue-team only. Courts, photos/videos, rate cards (timetable categories + special rates), offers, plans, documents and insurance keep their existing tabs — this adds what was missing next to them.
