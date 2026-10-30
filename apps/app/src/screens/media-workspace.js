@@ -9,7 +9,7 @@ import { useSession } from '../session';
 import { A, ABtn, ACard, AChip, AEmpty, AHero, ARow, AScreen, ASection, AStat, AT, AG } from '../arena';
 import { ErrorBox, Loading } from '../ui';
 import { FormSheet } from '../FormSheet';
-import { PARTNER_KINDS, rightLabel, fmtDT, fmtRange, money, nice, StateTag, Tags, crewRole } from '../media-ui';
+import { PARTNER_KINDS, rightLabel, fmtDT, fmtRange, money, nice, badgeOf, StateTag, Tags, crewRole } from '../media-ui';
 import { OfferForm, LicenceSheet } from './media-licence';
 import { ProductionPanel, StreamsPanel } from './media-production';
 import { AssetsPanel } from './media-assets';
@@ -36,7 +36,7 @@ export function MediaWorkspace() {
           <ASection title="My assignments" sub="Production roles you have been given" />
           {mine.data.map((c) => (
             <ARow key={c.id} left={<AT size={22}>🎥</AT>} title={`${crewRole(c.role)} · ${c.event_name}`} sub={[c.home_name ? `${c.home_name} v ${c.away_name}` : 'Whole event', c.call_time ? `Call ${fmtDT(c.call_time)}` : null, c.camera_position, c.booth_ref].filter(Boolean).join(' · ')}
-              right={<><StateTag state={c.status} /><StateTag state={c.accreditation === 'issued' ? 'issued' : c.accreditation === 'revoked' ? 'revoked' : 'none'} label={c.accreditation === 'issued' ? 'Badge issued' : c.accreditation === 'revoked' ? 'Badge revoked' : c.accreditation === 'requested' ? 'Badge requested' : 'No badge yet'} />
+              right={<><StateTag state={c.status} /><StateTag state={badgeOf(c.accreditation)[1]} label={badgeOf(c.accreditation)[0]} />
                 {c.status === 'assigned' ? <ABtn small title="Confirm" tone="lime" onPress={async () => { try { await api.post(`/media/crew/${c.id}/respond`, { accept: true }); toast('Confirmed'); reload(); } catch (x) { toast(x.message); } }} /> : null}</>} />
           ))}
         </>

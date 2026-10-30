@@ -16,7 +16,7 @@ import { toErrorBody } from './invoke.js';
 import { DOC_LIMITS, docHeaders, loadEncrypted, readBody, saveEncrypted, sniffDoc } from './doc-store.js';
 import { sniff } from './media.js';
 import { subscribe, REFRESH } from './live.js';
-import { channel, chatAccess, fetchMessages, mustPost } from './team-chat.js';
+import { channel, chatAccess, fetchMessages, mustBeSafeToPost, mustPost } from './team-chat.js';
 import { requireApproved } from './access.js';
 import { requireConsent } from './youth.js';
 
@@ -103,6 +103,7 @@ export function teamChatRouter() {
       const access = await chatAccess(user, req.params.id);
       mustPost(access, q.audience);
       await requireConsent(user.id, 'contact', 'messaging in the team chat');
+      await mustBeSafeToPost(user, access);
       if (Number(req.headers['content-length'] ?? 0) > LIMITS[q.kind]) throw new AppError(413, 'too_large', `That ${q.kind === 'voice' ? 'voice note' : 'file'} is too large`);
       const used = await one('SELECT count(*)::int AS n FROM team_chat_media WHERE team_id=$1 AND removed_at IS NULL', [req.params.id]);
       if (used.n >= LIMITS.perTeam) throw new AppError(409, 'limit_reached', 'This team has used all of its chat storage');

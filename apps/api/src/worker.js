@@ -6,6 +6,7 @@ import { expireStaleSales } from './pos/sale.js';
 import { processRefunds } from './booking/refunds.js';
 import { checkSlotAlerts } from './booking/alerts.js';
 import { processWaitlist } from './booking/waitlist.js';
+import { processBallots } from './booking/ballots.js';
 import { expireLoyalty } from './booking/loyalty.js';
 import { tx } from './db.js';
 import { eventParticipationSweep, membershipTenureSweep } from './rewards/activity.js';
@@ -25,6 +26,7 @@ import { sweepAccessGrants } from './access-grants.js';
 import { expireAcademyOffers, remindTrials, runAcademyJobs } from './academy-sweeps.js';
 import { runTenderJobs, sendTenderReminders } from './capabilities/tender-reports.js';
 import { deliverDueReports } from './sponsor-report-schedules.js';
+import { deliverDueKpiReports } from './kpi/service.js';
 import { accrueActiveContracts } from './player-contracts.js';
 import { runRepresentationSweeps } from './representation.js';
 import { raiseScheduledCharges, runCollections } from './collections.js';
@@ -32,22 +34,27 @@ import { runServiceSweeps } from './svc/sweeps.js';
 import { runServiceJobs } from './capabilities/svc-reports.js';
 import { runFederationSweeps } from './federation-sweeps.js';
 import { runOfficialsSweeps } from './officials-sweeps.js';
+import { runComplianceSweeps } from './compliance-sweeps.js';
 import { runTripSweeps } from './trips-sweeps.js';
 import { runMediaRightsSweeps } from './media-rights-sweeps.js';
 import { sendFollowerAlerts } from './spectator.js';
 import { snapshotAll } from './rankings/data.js';
+import { hourlyRatingSweep } from './ratings/data.js';
 
 /** Weekly ranking snapshots: the worker runs often, so only act once a week (Monday UTC), and a rerun on identical results adds nothing. */
 const weeklyRankingSnapshots = () => (new Date().getUTCDay() === 1 ? snapshotAll('weekly') : 0);
 import { syncOpenGames } from './open-games-sweeps.js';
 import { adSweeps } from './ads/engine.js';
 import { raiseTeamDues } from './team-money.js';
+import { reconcileFinance } from './finance.js';
+import { sealAuditLog } from './audit-chain.js';
 
 export const STEPS = [
   ['holds', 'holds_released', expireUnpaidHolds, 0],
   ['pos_sales', 'pos_sales_released', expireStaleSales, 0],
   ['refunds', 'refunds', processRefunds, { done: 0, failed: 0, manual: 0 }],
   ['waitlist', 'waitlist', processWaitlist, null],
+  ['ballots', 'ballots', processBallots, null],
   ['loyalty', 'points_expired', expireLoyalty, 0],
   ['cover', 'cover_agreements_expired', () => tx((c) => expireCover(c)), 0],
   ['loyalty_referrals', 'referral_rewards_released', () => tx((c) => releaseDueReferrals(c)), 0],
@@ -71,23 +78,28 @@ export const STEPS = [
   ['billing_schedules', 'billing_periods_raised', raiseScheduledCharges, 0],
   ['collections', 'collection_cases_advanced', runCollections, 0],
   ['access_grants', 'access_grants_revoked', sweepAccessGrants, 0],
+  ['audit_chain', 'audit_rows_sealed', sealAuditLog, 0],
   ['tender_jobs', 'tender_jobs', runTenderJobs, null],
   ['tender_reminders', 'tender_deadline_reminders', sendTenderReminders, 0],
   ['sponsor_tasks', 'sponsor_task_reminders', processSponsorTasks, 0],
   ['sponsor_reports', 'sponsor_reports_delivered', deliverDueReports, 0],
+  ['kpi_reports', 'kpi_reports_delivered', deliverDueKpiReports, 0],
   ['player_contracts', 'contract_earnings_posted', accrueActiveContracts, 0],
   ['representation', 'representation_swept', runRepresentationSweeps, 0],
   ['supplier_services', 'supplier_services', runServiceSweeps, null],
   ['supplier_exports', 'supplier_exports', runServiceJobs, null],
   ['federation', 'federation', runFederationSweeps, null],
   ['officials_development', 'officials_development', runOfficialsSweeps, null],
+  ['compliance', 'compliance', runComplianceSweeps, null],
   ['team_travel', 'team_travel', runTripSweeps, null],
   ['media_rights', 'media_rights', runMediaRightsSweeps, null],
   ['follower_alerts', 'follower_alerts_sent', sendFollowerAlerts, 0],
   ['ranking_snapshots', 'ranking_snapshots', weeklyRankingSnapshots, 0],
+  ['skill_ratings', 'skill_rating_runs', hourlyRatingSweep, 0],
   ['open_games', 'open_games_synced', syncOpenGames, 0],
   ['team_dues', 'team_dues_raised', raiseTeamDues, 0],
   ['advertising', 'advertising', adSweeps, null],
+  ['finance', 'finance', reconcileFinance, null],
 ];
 
 export async function maintenanceCycle() {

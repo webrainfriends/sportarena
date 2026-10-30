@@ -61,6 +61,7 @@ export async function disablePush(deviceId) {
 
 /** Where a tapped notification should land: [screen, params] or null. */
 export function targetFor(data = {}) {
+  if (data.rx_entry_id) return ['RegistrationEntry', { id: data.rx_entry_id }]; // a registration was decided, sent back, promoted off the waiting list or changed
   if (data.governance_notice) return ['MyIntegrity', {}]; // a generic notice: the substance is only ever shown after opening the app
   if (data.spectator && data.fixture_id) return ['LiveCentre', { id: data.fixture_id }]; // an alert for a game you follow
   if (data.screen === 'PlayerFunding') return ['PlayerFunding', data.athlete_id ? { athlete_id: data.athlete_id } : {}]; // an athlete shared their funding with a coach
@@ -71,14 +72,18 @@ export function targetFor(data = {}) {
   if (data.official_id && data.fixture_id) return ['OfficialsHome', { tab: 'today' }]; // a request, change, release or withdrawal on your officiating crew
   if (data.report_id && data.fixture_id) return ['OfficialMatch', { id: data.fixture_id }]; // an official filed a report on your match
   if (data.proposal_id) return ['ScoringTool', { proposalId: data.proposal_id }]; // a proposed result to review, or the outcome of yours
+  if ((data.ops_incident_id || data.ops_requirement) && data.event_id) return ['EventCommand', { id: data.event_id, tab: 'operations' }]; // an incident alert / handover, or a readiness requirement you own
   if (data.accreditation_id && data.event_id) return ['MyAccreditations', {}]; // a nomination, approval, reissue or revocation of your badge
   if (data.request_id && data.event_id) return ['EventInbox', {}];
+  if (data.kpi_report_run_id) return ['Analytics', { tab: 'reports', run: data.kpi_report_run_id }]; // a scheduled analytics report is ready (it carries no figures)
   if (data.sponsorship_id) return ['SponsorDeal', { id: data.sponsorship_id }];
   if (data.program_id && (data.task_id || data.application_id)) return ['SponsorProgram', { id: data.program_id }];
   if (data.application_id) return ['FundingOpportunities', {}]; // the applicant's own conversation: opened from My applications
   if (data.cover_id) return ['Cover', {}]; // a cover request, offer, answer, bill to pay or payment made
   if (data.programme_id) return ['Rewards', {}]; // points earned, a referral reward or an adjustment
+  if (data.marketplace_engagement_id) return ['MarketplaceEngagement', { id: data.marketplace_engagement_id }]; // a quote, answer, schedule, delivery or payment on an engagement
   if (data.open_game_id) return ['OpenGame', { id: data.open_game_id }]; // a request, approval, waitlist move, change or cancellation of a game
+  if (data.ballot_id && !data.reservation_id) return ['Notifications', {}]; // a slot ballot: an offer to accept and pay, or the result (My ballots lives with the waitlist)
   if (data.reservation_id) return ['Reservation', { id: data.reservation_id }];
   if (data.venue_id && data.date) return ['BookFlow', { venueId: data.venue_id, resourceId: data.resource_id, date: data.date }];
   if (data.venue_id) return ['Venue', { id: data.venue_id }];
@@ -87,19 +92,29 @@ export function targetFor(data = {}) {
   if (data.team_id && (data.charge_id || data.fundraiser_id)) return ['TeamDues', { id: data.team_id }];   // dues, fees, shared expenses, reminders and fundraisers
   if (data.team_id && !data.event_id && !data.fixture_id) return ['TeamChat', { id: data.team_id }];                         // announcements and polls
   if (data.organisation_id) return ['Org', { id: data.organisation_id }];   // academy and workspace messages open the organisation (academy tab / My academy)
-  return ['Notifications', {}];
+  return ['Inbox', {}];
 }
 
 export function parseTarget(t) {
   const [kind, id, extra] = String(t ?? '').split(':');
+  if (kind === 'registration') return ['RegistrationHome', id ? { tab: id } : {}];
+  if (kind === 'registration-programme' && id) return ['RegistrationApply', { id }];
+  if (kind === 'registration-entry' && id) return ['RegistrationEntry', { id }];
+  if (kind === 'registration-manage' && id) return ['RegistrationManage', { id }];
+  if (kind === 'registration-setup') return ['RegistrationSetup', id ? { id } : {}];
+  if (kind === 'registration-form' && id) return ['RegistrationForm', { id }];
   if (kind === 'assessment' && id) return ['OfficialAssessment', { id }];
   if (kind === 'officials-development') return ['OfficialsDevelopment', id ? { tab: id } : {}];
+  if (kind === 'competition') return ['Competitions', id ? { id } : {}];
   if (kind === 'federation' && id) return ['FederationHome', extra ? { id, tab: extra } : { id }];
   if (kind === 'integrity-case' && id) return ['IntegrityCase', { id }];
   if (kind === 'my-integrity') return ['MyIntegrity', {}];
   if (kind === 'open-game' && id) return ['OpenGame', { id }];
   if (kind === 'find-games') return ['FindGames', {}];
   if (kind === 'family') return ['Family', {}];
+  if (kind === 'career') return ['CareerTimeline', {}];
+  if (kind === 'history-sources') return ['HistorySources', {}];
+  if (kind === 'finance') return ['Finance', id ? { id } : {}];
   if (kind === 'reservation' && id) return ['Reservation', { id }];
   if (kind === 'cover') return ['Cover', {}];
   if (kind === 'rewards') return ['Rewards', {}];
@@ -108,17 +123,23 @@ export function parseTarget(t) {
   if (kind === 'sponsorship' && id) return ['SponsorDeal', { id }];
   if (kind === 'organisation' && id) return ['Org', { id }];
   if (kind === 'organisations') return ['Orgs', {}];
+  if (kind === 'graph') return ['SportsGraph', {}];
+  if (kind === 'analytics') return ['Analytics', {}];
+  if (kind === 'athlete-360' && id) return ['Athlete360', { id }];
+  if (kind === 'organisation-360' && id) return ['Organisation360', { id }];
   if (kind === 'tender' && id) return ['TenderNotice', { id }];
   if (kind === 'tender-console' && id) return ['TenderConsole', { id }];
   if (kind === 'tender-proposal' && id) return ['TenderProposal', { id }];
   if (kind === 'tender-builder') return ['TenderBuilder', id ? { id } : {}];
   if (kind === 'tenders') return ['TenderHome', {}];
   if (kind === 'tender-zone') return ['TenderZone', {}];
+  if (kind === 'platform-security') return ['PlatformSecurity', {}];
   if (kind === 'billboard') return ['Billboard', {}];
   if (kind === 'event' && id) return ['Event', { id }];
   if (kind === 'fixture' && id) return ['LiveCentre', { id }];
   if (kind === 'following') return ['Following', {}];
   if (kind === 'accreditation') return ['MyAccreditations', {}];
+  if (kind === 'event-ops' && id) return ['EventCommand', { id, tab: 'operations' }];
   if (kind === 'event-accreditation' && id) return ['EventCommand', { id, tab: 'accreditation' }];
   if (kind === 'gate' && id) return ['GateScan', { id }];
   if (kind === 'tender-orders') return ['TenderOrders', {}];
@@ -135,5 +156,5 @@ export function parseTarget(t) {
   if (kind === 'team-chat' && id) return ['TeamChat', { id }];
   if (kind === 'team-dues' && id) return ['TeamDues', { id }];
   if (kind === 'funding') return ['PlayerFunding', id ? { athlete_id: id } : {}];
-  return ['Notifications', {}];
+  return ['Inbox', {}];
 }

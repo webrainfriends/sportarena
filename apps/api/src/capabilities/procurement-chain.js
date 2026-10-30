@@ -8,6 +8,7 @@ import { one, many, tx } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { notify } from '../notify.js';
 import { anySide, orderSide, q1 } from '../svc/orders.js';
+import { credentialState } from './svc-supplier.js';
 import { supplierAccess, buyerAccess, log } from '../svc/access.js';
 import { buyerRoles, can, getProject, auditLog } from '../tender/core.js';
 import { ensureServiceOrder, commitTenderOrder } from '../svc/from-tender.js';
@@ -155,9 +156,19 @@ cap({
  * Facts about a supplier over a set of orders. Every dimension carries its sample size and a plain definition; none is combined into a score.
  * scope: { profileId, buyerId? } — a buyer only ever gets facts from its own orders, so no buyer reads another buyer's experience.
  */
-export async function performanceOf({ profileId, buyerId = null }) {
-  const a = [profileId, buyerId];
-  const w = 'o.profile_id=$1 AND ($2::uuid IS NULL OR o.buyer_id=$2)';
+export async function performanceOf({ profileId, buyerId = null, filters = {} }) {
+  const f = filters;
+  const arr = (x) => (x?.length ? x : null);
+  // $3 events · $4 venues · $5 competitions · $6 categories · $7 from · $8 to. An order matches through its own event/venue or through the requirement it came from;
+  // a competition is an events row, so an order raised directly for it matches too. Every filter narrows; none widens what a buyer may read.
+  const a = [profileId, buyerId, arr(f.event_ids), arr(f.venue_ids), arr(f.competition_ids), arr(f.categories), f.from ?? null, f.to ?? null];
+  const reqIn = (col, p) => `o.requirement_id IN (SELECT id FROM svc_requirements WHERE ${col} = ANY(${p}))`;
+  const scope = `($3::uuid[] IS NULL OR o.event_id = ANY($3) OR ${reqIn('event_id', '$3')})
+    AND ($4::uuid[] IS NULL OR o.venue_id = ANY($4) OR ${reqIn('venue_id', '$4')})
+    AND ($5::uuid[] IS NULL OR o.event_id = ANY($5) OR ${reqIn('competition_id', '$5')})
+    AND ($6::text[] IS NULL OR ${reqIn('category', '$6')})
+    AND ($7::timestamptz IS NULL OR o.created_at >= $7) AND ($8::timestamptz IS NULL OR o.created_at < $8)`;
+  const w = `o.profile_id=$1 AND ($2::uuid IS NULL OR o.buyer_id=$2) AND ${scope}`;
   const [orders] = await many(`SELECT count(*)::int AS n, count(*) FILTER (WHERE o.status NOT IN ('cancelled','rejected','terminated','pending_supplier','changes_proposed'))::int AS live, count(DISTINCT o.buyer_id)::int AS buyers FROM svc_orders o WHERE ${w}`, a);
   const [vis] = await many(`SELECT count(*) FILTER (WHERE v.status IN ('submitted_for_acceptance','accepted','partially_accepted','rework','rejected'))::int AS reached,
       count(*) FILTER (WHERE v.status IN ('submitted_for_acceptance','accepted','partially_accepted') AND v.updated_at <= v.ends_at + interval '24 hours')::int AS on_time,
@@ -166,13 +177,27 @@ export async function performanceOf({ profileId, buyerId = null }) {
   const [acc] = await many(`SELECT count(*) FILTER (WHERE x.decision='accepted')::int AS accepted, count(*) FILTER (WHERE x.decision='rejected')::int AS rejected FROM svc_acceptances x JOIN svc_orders o ON o.id=x.order_id WHERE ${w}`, a);
   const [inc] = await many(`SELECT count(*)::int AS n FROM svc_incidents x JOIN svc_orders o ON o.id=x.order_id WHERE ${w} AND x.kind IN ('incident','exception')`, a);
   const [inv] = await many(`SELECT count(*)::int AS issued, count(*) FILTER (WHERE s.match_status IN ('exception','exception_approved'))::int AS disputed FROM svc_invoices s JOIN svc_orders o ON o.id=s.order_id WHERE ${w} AND s.status='issued' AND s.doc_type='invoice'`, a);
+  // invitations belong to an RFQ, not an order: they follow the same event/venue/competition/category/date filters through the RFQ's requirement
+  const rq = `($3::uuid[] IS NULL OR rq.event_id = ANY($3)) AND ($4::uuid[] IS NULL OR rq.venue_id = ANY($4)) AND ($5::uuid[] IS NULL OR rq.competition_id = ANY($5) OR rq.event_id = ANY($5)) AND ($6::text[] IS NULL OR rq.category = ANY($6)) AND ($7::timestamptz IS NULL OR v.created_at >= $7) AND ($8::timestamptz IS NULL OR v.created_at < $8)`;
   const [resp] = await many(`SELECT count(*) FILTER (WHERE v.responded_at IS NOT NULL)::int AS n, round(percentile_cont(0.5) WITHIN GROUP (ORDER BY extract(epoch FROM (v.responded_at - v.created_at))/3600) FILTER (WHERE v.responded_at IS NOT NULL)::numeric, 1)::float AS median_hours
-    FROM svc_invites v JOIN svc_rfqs r ON r.id=v.rfq_id WHERE v.profile_id=$1 AND ($2::uuid IS NULL OR r.buyer_id=$2) AND r.status <> 'draft'`, a);
+    FROM svc_invites v JOIN svc_rfqs r ON r.id=v.rfq_id LEFT JOIN svc_requirements rq ON rq.id=r.requirement_id WHERE v.profile_id=$1 AND ($2::uuid IS NULL OR r.buyer_id=$2) AND r.status <> 'draft' AND ${rq}`, a);
   const [rate] = await many(`SELECT count(*)::int AS n, round(avg(r.stars)::numeric, 2)::float AS avg FROM svc_order_ratings r JOIN svc_orders o ON o.id=r.order_id WHERE ${w}`, a);
+  // event-specific feedback: the same ratings, only for orders tied to an event or competition (directly or through their requirement)
+  const [evr] = await many(`SELECT count(*)::int AS n, round(avg(r.stars)::numeric, 2)::float AS avg FROM svc_order_ratings r JOIN svc_orders o ON o.id=r.order_id
+      WHERE ${w} AND (o.event_id IS NOT NULL OR o.requirement_id IN (SELECT id FROM svc_requirements WHERE event_id IS NOT NULL OR competition_id IS NOT NULL))`, a);
+  // commercial: per order, how far applied variations moved the order value from what was awarded (currencies are never added together)
+  const [com] = await many(`SELECT count(*)::int AS n, round(avg(d.delta::numeric / (o.net_minor - d.delta)) FILTER (WHERE o.net_minor - d.delta > 0)::numeric, 4)::float AS drift, count(*) FILTER (WHERE d.delta <> 0)::int AS varied
+      FROM svc_orders o CROSS JOIN LATERAL (SELECT coalesce(sum(x.delta_net_minor),0)::bigint AS delta FROM svc_variations x WHERE x.order_id=o.id AND x.status='applied') d
+      WHERE ${w} AND o.status NOT IN ('cancelled','rejected','pending_supplier','changes_proposed') AND o.net_minor - d.delta > 0`, a);
+  // safety & compliance: the supplier's own required credentials, as they stand today (a current state, not filtered by period)
+  const creds = (await many("SELECT * FROM svc_credentials WHERE profile_id=$1 AND status='active' AND required_for_award", [profileId])).map(credentialState);
+  const credOk = creds.filter((x) => ['valid', 'no_expiry', 'expiring'].includes(x)).length;
+  const expiring = creds.filter((x) => x === 'expiring').length;
   const dim = (key, label, value, n, unit, definition) => ({ key, label, value: n ? value : null, n, unit, definition, reliable: n >= MIN_SAMPLE, note: n === 0 ? 'No evidence yet' : n < MIN_SAMPLE ? `Only ${n} observation(s); fewer than ${MIN_SAMPLE} is shown for information, not as a track record` : null });
   return {
     orders: { total: orders.n, delivered_or_live: orders.live, buyers: orders.buyers }, min_sample: MIN_SAMPLE,
     dimensions: [
+      dim('safety_compliance', 'Safety & compliance', creds.length ? credOk / creds.length : 0, creds.length, 'ratio', `Required credentials (insurance, certificates, safeguarding…) that are valid today ÷ required credentials${expiring ? `; ${expiring} expire soon` : ''}. A current state, not filtered by period`),
       dim('on_time_delivery', 'On-time delivery', vis.reached ? vis.on_time / vis.reached : 0, vis.reached, 'ratio', 'Visits submitted for acceptance no later than 24 hours after their planned end ÷ visits that reached submission'),
       dim('acceptance', 'Accepted first time', (acc.accepted + acc.rejected) ? acc.accepted / (acc.accepted + acc.rejected) : 0, acc.accepted + acc.rejected, 'ratio', 'Acceptance decisions that accepted ÷ all acceptance decisions (accepted + rejected)'),
       dim('rework', 'Rework or rejection', vis.visits ? vis.rework / vis.visits : 0, vis.visits, 'ratio', 'Visits sent back for rework or rejected ÷ visits held'),
@@ -180,23 +205,51 @@ export async function performanceOf({ profileId, buyerId = null }) {
       dim('issues', 'Issues per order', orders.n ? inc.n / orders.n : 0, orders.n, 'count_per_order', 'Incidents and exceptions reported ÷ orders'),
       dim('invoice_disputes', 'Invoices needing a matching decision', inv.issued ? inv.disputed / inv.issued : 0, inv.issued, 'ratio', 'Issued invoices that did not match accepted work (exception or approved exception) ÷ issued invoices'),
       dim('response_time', 'Median response time to invitations', resp.median_hours, resp.n, 'hours', 'Hours from an RFQ invitation to the supplier’s reply'),
+      dim('commercial', 'Commercial: final vs awarded value', com.drift ?? 0, com.n, 'ratio', `Average change in order value caused by applied variations ÷ the awarded value, per order (${com.varied} of ${com.n} changed). Currencies are never added together`),
       dim('buyer_rating', 'Buyer rating', rate.avg, rate.n, 'stars_1_5', 'Average of buyers’ 1–5 ratings, one per order'),
+      dim('event_feedback', 'Event feedback', evr.avg, evr.n, 'stars_1_5', 'Average buyer rating (1–5) of orders tied to an event or competition'),
     ],
     method: 'Facts only. Each dimension is computed from the order, visit, acceptance, invoice and rating records; there is no combined or hidden score, and promoted or subscribed placement never changes any figure.',
   };
 }
 
+const csv = (item) => z.preprocess((v) => (typeof v === 'string' ? (v.trim() ? v.split(',').map((x) => x.trim()).filter(Boolean) : undefined) : v), z.array(item).max(50).optional());
+const filterInput = { event_ids: csv(id), venue_ids: csv(id), competition_ids: csv(id), categories: csv(z.string().min(1).max(60)), from: z.string().datetime().optional(), to: z.string().datetime().optional() };
+
+/** Who may read this supplier's record, and from which orders: the supplier sees all of its own; a buyer only its own. Returns the buyer scope or null. */
+async function performanceScope(user, i) {
+  if (i.buyer_id) {
+    await buyerAccess(user, i.buyer_id, ['purchaser', 'requester', 'evaluator', 'approver', 'acceptor', 'finance']);
+    if (!(await one('SELECT 1 AS x FROM svc_orders WHERE profile_id=$1 AND buyer_id=$2 LIMIT 1', [i.id, i.buyer_id])) && !(await one('SELECT 1 AS x FROM svc_invites v JOIN svc_rfqs r ON r.id=v.rfq_id WHERE v.profile_id=$1 AND r.buyer_id=$2 LIMIT 1', [i.id, i.buyer_id]))) throw notFound('Supplier');
+    return i.buyer_id;
+  }
+  await supplierAccess(user, i.id, ['owner', 'finance', 'sales', 'scheduler', 'supervisor']);
+  return null;
+}
+
 cap({
   name: 'get_supplier_performance', method: 'GET', path: '/supplier-profiles/:id/performance', tag: TAG,
-  summary: 'Evidence-based supplier performance: on-time delivery, first-time acceptance, rework, no-shows, issues per order, invoice matching exceptions, response time and buyer rating — each with its sample size, definition and a reliability flag (fewer than 5 observations is shown but marked). The supplier sees all its own orders; a buyer (pass buyer_id) sees only the facts from its own orders. No composite score.',
-  input: z.object({ id, buyer_id: id.optional() }),
+  summary: 'Evidence-based supplier scorecard: safety & compliance, on-time delivery, first-time acceptance, rework, no-shows, issues per order, invoice matching exceptions, response time, commercial drift (final vs awarded value) and buyer / event feedback — each with its sample size, definition and a reliability flag (fewer than 5 observations is shown but marked). Narrow it by events, venues, competitions, categories (comma-separated ids) and a from/to period. The supplier sees all its own orders; a buyer (pass buyer_id) sees only the facts from its own orders. No composite score.',
+  input: z.object({ id, buyer_id: id.optional(), ...filterInput }),
   async handler({ user }, i) {
-    if (i.buyer_id) {
-      await buyerAccess(user, i.buyer_id, ['purchaser', 'requester', 'evaluator', 'approver', 'acceptor', 'finance']);
-      if (!(await one('SELECT 1 AS x FROM svc_orders WHERE profile_id=$1 AND buyer_id=$2 LIMIT 1', [i.id, i.buyer_id])) && !(await one('SELECT 1 AS x FROM svc_invites v JOIN svc_rfqs r ON r.id=v.rfq_id WHERE v.profile_id=$1 AND r.buyer_id=$2 LIMIT 1', [i.id, i.buyer_id]))) throw notFound('Supplier');
-      return { profile_id: i.id, scope: 'buyer', ...(await performanceOf({ profileId: i.id, buyerId: i.buyer_id })) };
-    }
-    await supplierAccess(user, i.id, ['owner', 'finance', 'sales', 'scheduler', 'supervisor']);
-    return { profile_id: i.id, scope: 'supplier', ...(await performanceOf({ profileId: i.id })) };
+    const buyerId = await performanceScope(user, i);
+    const { id: _id, buyer_id, ...filters } = i;
+    return { profile_id: i.id, scope: buyerId ? 'buyer' : 'supplier', filters, ...(await performanceOf({ profileId: i.id, buyerId, filters })) };
+  },
+});
+
+cap({
+  name: 'list_supplier_performance_filters', method: 'GET', path: '/supplier-profiles/:id/performance/filters', tag: TAG,
+  summary: 'Options for the scorecard filters: the events, venues, competitions and categories that actually appear in the orders the caller may read, searchable by name. Same access rule as the scorecard, so nobody learns another buyer’s events.',
+  input: z.object({ id, buyer_id: id.optional(), kind: z.enum(['event', 'venue', 'competition', 'category']), q: z.string().max(80).optional(), limit: z.number().int().min(1).max(50).default(30) }),
+  async handler({ user }, i) {
+    const buyerId = await performanceScope(user, i);
+    const like = i.q ? `%${i.q.replace(/[%_\\]/g, '\\$&')}%` : null;
+    const a = [i.id, buyerId, like, i.limit];
+    const o = 'o.profile_id=$1 AND ($2::uuid IS NULL OR o.buyer_id=$2)';
+    if (i.kind === 'category') return many(`SELECT DISTINCT rq.category AS id, rq.category AS name FROM svc_orders o JOIN svc_requirements rq ON rq.id=o.requirement_id WHERE ${o} AND ($3::text IS NULL OR rq.category ILIKE $3) ORDER BY 2 LIMIT $4`, a);
+    if (i.kind === 'venue') return many(`SELECT DISTINCT v.id, v.name FROM svc_orders o LEFT JOIN svc_requirements rq ON rq.id=o.requirement_id JOIN venues v ON v.id=coalesce(o.venue_id, rq.venue_id) WHERE ${o} AND ($3::text IS NULL OR v.name ILIKE $3) ORDER BY 2 LIMIT $4`, a);
+    const col = i.kind === 'competition' ? 'rq.competition_id' : 'coalesce(o.event_id, rq.event_id)';
+    return many(`SELECT DISTINCT e.id, e.name FROM svc_orders o LEFT JOIN svc_requirements rq ON rq.id=o.requirement_id JOIN events e ON e.id=${col} WHERE ${o} AND ($3::text IS NULL OR e.name ILIKE $3) ORDER BY 2 LIMIT $4`, a);
   },
 });

@@ -13,7 +13,8 @@ import { MarketCard, KINDS } from '../market/MarketCard';
 import { Composer } from '../market/Composer';
 import { useMarketActions, useResumeIntent } from '../market/actions';
 import { PlayerHero, COL } from '../hero';
-import { ACTIONS, HomeReminders } from './athlete-home';
+import { ACTIONS } from './athlete-home';
+import { WorkspaceBody, WorkspaceHeader, WorkspaceSettings, useWorkspace } from './command-centre';
 import { locale } from '../locale';
 import { DoctorEntry } from './doctor';
 import { AdSlot } from '../ads';
@@ -105,33 +106,41 @@ const Title = ({ children, action, onAction }) => (
   </View>
 );
 
-/** Home: who I am, what is coming up, open jobs and the community feed. Playing stats live in Player; planning and booking in Schedule. */
+/** Home: one command centre per role (Today, Actions, Calendar, Inbox, Work, Insights) plus the community feed. Playing stats live in Player; planning and booking in Schedule. */
 export default function HomeTab() {
   const { user } = useSession();
   const nav = useNav();
   const L = useLayout();
+  const ws = useWorkspace();
+  const [section, setSection] = useState('today');
+  const [settings, setSettings] = useState(false);
   const sports = useLoad(() => api.get('/me/sport-profiles'), []);
   const profiles = sports.data ?? [];
   const main = profiles.find((p) => p.is_default) ?? profiles[0];
   const pad = L.gutter;
-  const wrap = { paddingHorizontal: pad, width: '100%', maxWidth: COL, alignSelf: 'center' };
+  const community = section === 'community';
+  const wrap = { paddingHorizontal: pad, width: '100%', maxWidth: community ? COL : L.tablet ? 1000 : COL, alignSelf: 'center' };
 
   const header = (
     <View>
-      <PlayerHero user={user} profile={main} pad={pad} onBell={() => nav.push('Notifications')} onAvatar={() => nav.goTab('Me')} />
+      <PlayerHero user={user} profile={main} pad={pad} onBell={() => setSection('inbox')} onAvatar={() => nav.goTab('Me')} />
       <View style={[wrap, { marginTop: 18 }]}>
         <HScroll>
-          {[...(user?.roles?.includes('referee') ? [['🏅', 'Officials home', (n) => n.push('OfficialsHome')]] : []), ...ACTIONS].map(([emoji, label, go]) => <Chip key={label} label={`${emoji} ${label}`} onPress={() => go(nav)} />)}
+          {ACTIONS.map(([emoji, label, go]) => <Chip key={label} label={`${emoji} ${label}`} onPress={() => go(nav)} />)}
         </HScroll>
         <View style={{ marginTop: 16 }}><DoctorEntry /></View>
-        <View style={{ marginTop: 22 }}><HomeReminders /></View>
-        <View style={{ marginTop: 30 }}><Title>Community</Title></View>
+        <View style={{ marginTop: 22 }}>
+          <WorkspaceHeader ws={ws} section={section} onSection={setSection} onSettings={() => setSettings(true)} />
+          {community ? null : <WorkspaceBody ws={ws} section={section} />}
+        </View>
+        {community ? <View style={{ marginTop: 30 }}><Title>Community</Title></View> : null}
       </View>
     </View>
   );
   return (
     <View style={{ flex: 1 }}>
-      <Feed header={header} narrow />
+      {community ? <Feed header={header} narrow /> : <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: L.bottomPad }}>{header}</ScrollView>}
+      <WorkspaceSettings ws={ws} visible={settings} onClose={() => setSettings(false)} />
     </View>
   );
 }

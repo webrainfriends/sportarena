@@ -13,12 +13,13 @@ import { ASSET_COLS, assetState } from './media-rights.js';
 import { notify } from './notify.js';
 import { YOUTH_SQL } from './youth.js';
 import { ROUND_LABEL } from './tournament/bracket.js';
+import { stageViews } from './tournament/view.js';
 
 export const YOUTH_AGE = 18;
 export const isYouthEvent = (ev) => ev.max_age != null && ev.max_age < YOUTH_AGE;
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const SLOTS = ['title_partner', 'fixture', 'scorecard', 'leaderboard'];
-export const ALERTS = ['start', 'score', 'result', 'schedule'];
+export const ALERTS = ['start', 'score', 'result', 'schedule', 'media'];
 export const REACTIONS = ['fire', 'clap', 'wow', 'strong'];
 const NO_ONE = '00000000-0000-0000-0000-000000000000';
 
@@ -105,6 +106,7 @@ export async function publicFixtures(eventId, { team_id = null, status = null, f
     `SELECT ${FIXTURE_COLS} ${FIXTURE_FROM}
       WHERE f.event_id=$1 AND ($2::uuid IS NULL OR f.home_team_id=$2 OR f.away_team_id=$2) AND ($3::text IS NULL OR f.status=$3)
         AND ($4::timestamptz IS NULL OR f.scheduled_at >= $4) AND ($5::timestamptz IS NULL OR f.scheduled_at < $5) AND ($6::uuid[] IS NULL OR f.id = ANY($6))
+        AND (f.stage_id IS NULL OR EXISTS (SELECT 1 FROM event_stages s WHERE s.id=f.stage_id AND s.published_at IS NOT NULL))
       ORDER BY f.scheduled_at, f.bracket_slot NULLS LAST, f.id LIMIT $7 OFFSET $8`,
     [eventId, team_id, status, from, to, ids, limit, offset]);
   if (!rows.length) return [];
@@ -124,19 +126,21 @@ export async function publicFixtures(eventId, { team_id = null, status = null, f
   return out;
 }
 
-/** The knockout bracket, as rounds of games (also used by get_event_bracket). */
+/** The bracket of an event: `rounds` / `champion` are the single-elimination view older clients read; `stages` carries every format
+ *  (double elimination, Swiss, pools, series, repechage, placement) as sections. Draft stages are shown to organisers only. */
 const ROUND_ORDER = ['round_of_32', 'round_of_16', 'quarter', 'semi', 'final', 'third_place'];
-export async function bracketOf(eventId) {
+export async function bracketOf(eventId, { organiser = false } = {}) {
   const rows = await many(
     `SELECT f.id, f.round, f.round_kind, f.bracket_slot AS slot, f.status, f.scheduled_at, f.duration_min, f.home_team_id, f.away_team_id, f.home_score, f.away_score, f.winner_team_id,
             f.home_placeholder, f.away_placeholder, f.win_feeds_fixture_id, f.lose_feeds_fixture_id, h.name AS home_name, h.emoji AS home_emoji, a.name AS away_name, a.emoji AS away_emoji,
             r.name AS resource_name, ve.timezone AS venue_timezone
        FROM fixtures f LEFT JOIN teams h ON h.id=f.home_team_id LEFT JOIN teams a ON a.id=f.away_team_id LEFT JOIN resources r ON r.id=f.resource_id LEFT JOIN venues ve ON ve.id=r.venue_id
-      WHERE f.event_id=$1 AND f.round_kind IS NOT NULL AND f.round_kind <> 'group' AND f.status <> 'cancelled' ORDER BY f.scheduled_at, f.bracket_slot`, [eventId]);
+      WHERE f.event_id=$1 AND f.round_kind IS NOT NULL AND f.round_kind <> 'group' AND f.status <> 'cancelled' AND f.tie_id IS NULL
+        AND ($2::boolean OR f.stage_id IS NULL OR EXISTS (SELECT 1 FROM event_stages s WHERE s.id=f.stage_id AND s.published_at IS NOT NULL)) ORDER BY f.scheduled_at, f.bracket_slot`, [eventId, organiser]);
   const rounds = ROUND_ORDER.map((kind) => ({ kind, label: ROUND_LABEL[kind], games: rows.filter((r) => r.round_kind === kind).sort((x, y) => x.slot - y.slot) })).filter((r) => r.games.length);
   const final = rows.find((r) => r.round_kind === 'final' && r.status === 'completed');
   const champion = final ? { team_id: final.winner_team_id, name: final.winner_team_id === final.home_team_id ? final.home_name : final.away_name } : null;
-  return { rounds, champion };
+  return { rounds, champion, stages: await stageViews(eventId, { organiser }) };
 }
 
 /** Standings with the honest label: provisional until the event is completed, and how many games are still to be made official. */

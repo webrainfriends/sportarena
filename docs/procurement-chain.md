@@ -76,3 +76,41 @@ Procurement is sport-agnostic (services, goods, suppliers, budgets), so there is
 * A quantity awarded with more than three decimals is rounded to three on the service order.
 * If the supplier's days are blacked out or full, the award is not undone: the clash is recorded on the order (`terms.capacity_warning`) for both sides to resolve.
 * Performance needs real orders to mean anything; with few orders every dimension is flagged unreliable by design.
+
+## Lifecycle depth added for #591
+
+What was already in place (#458, #460, #520) is unchanged. This change closes the gaps found when #591 was checked against `main`:
+
+| #591 requirement | Before | Now |
+|---|---|---|
+| Demand from events, venues, organisations and **competitions** | Requirements linked an event or venue (the buyer context is an event, venue or organisation) | `svc_requirements.competition_id` (a competition is an `events` row, as `games.competition_id` already is); list filter `competition_id`; the form has a searchable "Competition it supports" picker |
+| Qualification / compliance hooks | Only credentials marked `required_for_award` blocked an award | A requirement can name the **credential kinds** the supplier must hold (`compliance_kinds`). It is frozen into the RFQ scope, checked when the supplier submits a quote and again at award, and the comparison lists `compliance_gaps`. It checks kind and current validity only; no jurisdiction rules are built in (hooks stay generic until the compliance module defines them) |
+| Supplier scorecard: quality, timeliness, safety/compliance, responsiveness, commercial, event feedback | No safety/compliance, commercial or event dimension; no filters | Three new dimensions (`safety_compliance`, `commercial`, `event_feedback`) with `n`, definition and reliability flag, and filters by events, venues, competitions, service category and period. `list_supplier_performance_filters` feeds the searchable dropdowns and only returns what the caller may read |
+| Disputes | Incidents only | `service_delivery` dispute category and `service_order` link type in the **existing** case desk (no second dispute store); either side of the order can open one, outsiders get `404` |
+
+Scorecard definitions:
+
+* **Safety & compliance**: required credentials that are valid today ÷ required credentials; a current state, not filtered by period.
+* **Commercial**: per order, applied variations ÷ the awarded value, averaged (currencies are never added together).
+* **Event feedback**: average buyer rating of orders tied to an event or competition.
+
+Migration `126_procurement_scorecard.sql` is additive (two columns, one index, one widened CHECK on `case_links.entity_type`). Tests: `test/procurement-scorecard.test.js`.
+
+Sports: procurement is sport-agnostic, so there is no per-sport model to cover (see **Sports** above).
+Platforms: `MultiMenuField` (in `menu-field.js`) is the shared searchable multi-select dropdown; web, iOS and Android exports pass, and the web build was checked at phone, tablet and desktop widths. Not run on a physical iOS, iPadOS or Android device from this environment.
+
+## What a service needs: built from the event (follow-up to #591)
+
+The credential list on a requirement is no longer fixed. `suggest_service_needs` (`POST /service-buyers/:id/needs/suggest`, REST + OpenAPI + MCP) builds the pick list from the event:
+
+| Group | Source | Enforced? |
+|---|---|---|
+| Required by rules | Live `comp_requirements` of the compliance module that apply: platform, the buyer's or event's organisation, the event itself, filtered by the event's sports | Yes, when the rule is linked to a supplier credential kind |
+| Suggested for this service | What suppliers of this family usually hold (`svc/needs.js`, reference data about service families) | Yes, they carry a credential kind |
+| AI suggestions | Only when asked and AI is configured: drafts from the event's facts (service, purpose, sports, city, dates; no names). Phrased as things to check, never as law, never citing a statute | Never: an AI draft cannot carry a credential kind, cannot block a quote or an award, and is tagged "verify" |
+| Your own | The buyer's items, optionally checked against a supplier credential kind | Only with a credential kind |
+
+* The chosen list is stored on the requirement (`svc_requirements.needs`, migration 127; `compliance_kinds` stays as the enforceable subset so older rows keep working) and frozen into the RFQ scope, so every bidder sees the same list.
+* **Live conditions** (weather, traffic, health advisories, local law feeds): no data source is connected to this installation, so the API answers `live.connected = false` and the app says so. Nothing is invented; connecting a provider is a separate, keyed integration.
+* AI off, slow or wrong never blocks the flow: the other groups still load.
+* Tests: `test/service-needs.test.js`.

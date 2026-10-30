@@ -3,6 +3,7 @@
 import { query } from './db.js';
 import { conflict, forbidden } from './errors.js';
 import { notify } from './notify.js';
+import { assertMayMessageYouth } from './compliance.js';
 import { YOUTH_SQL, guardianLink, guardiansOf, isYouth, requireConsent } from './youth.js';
 
 const LIVE_LINK = `l.status='active' AND l.revoked_at IS NULL AND (l.expires_at IS NULL OR l.expires_at > now())`;
@@ -29,6 +30,7 @@ export async function assertYouthContact(c, ctx) {
   if (ctx.role !== 'sponsor' || !(await isYouthDeal(c, ctx.d))) return;
   await assertYouthAuthority(c, ctx);
   await requireConsent(ctx.d.target_id, 'contact', 'sponsor messages', c);
+  await assertMayMessageYouth(c, ctx.d.sponsor_id, ctx.d.target_id);
 }
 
 /** Notifications for a young person's sponsorship go to their verified guardians, never to the young person; everyone else is notified directly. */

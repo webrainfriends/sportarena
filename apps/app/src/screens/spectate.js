@@ -12,13 +12,15 @@ import { useNav } from '../nav';
 import { Btn, Bubble, Card, Chip, Empty, ErrorBox, H2, Loading, Row, Screen, Seg, Sheet, T, Tag } from '../ui';
 import { AdSlot } from '../ads';
 import { A, ABracket, ABtn, ACard, AChip, AEmpty, AScreen, ASection, AT, ScoreTicker } from '../arena';
+import { StageBoard } from '../bracket-board';
 import { StandingsTable } from '../blocks';
 import { c } from '../theme';
+import { openStored } from '../tender-ui';
 
 // ---------------------------------------------------------------- labels
 export const STATE = { live: ['LIVE', c.red], upcoming: ['UPCOMING', c.cyan], in_progress: ['UNDER WAY', c.mint], paused: ['PAUSED', c.sun], completed: ['COMPLETED', c.lime], cancelled: ['CANCELLED', c.mute] };
 const RESULT = { live: ['LIVE', c.red], provisional: ['FULL TIME · PROVISIONAL', c.sun], final: ['FINAL', c.lime], scheduled: null, cancelled: ['CANCELLED', c.mute], postponed: ['POSTPONED', c.sun], abandoned: ['ABANDONED', c.red] };
-const ALERTS = [['start', 'Kick-off'], ['score', 'Scores'], ['result', 'Results'], ['schedule', 'Schedule changes']];
+const ALERTS = [['start', 'Kick-off'], ['score', 'Scores'], ['result', 'Results'], ['schedule', 'Schedule changes'], ['media', 'New photos & clips']];
 const REACT = { fire: '🔥', clap: '👏', wow: '😮', strong: '💪' };
 const stamp = (iso, tz) => { try { return new Date(iso).toLocaleString(locale, { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', timeZone: tz || undefined }); } catch { return ''; } };
 const dayKey = (iso, tz) => { try { return new Date(iso).toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long', timeZone: tz || undefined }); } catch { return ''; } };
@@ -205,34 +207,18 @@ function TableView({ id, openGame }) {
           <T size={11.5} color={c.mute}>Win {t.data.points.win} · draw {t.data.points.draw} · loss {t.data.points.loss}. Only official (completed) games count.</T>
         </>
       ) : null}
-      {b.data?.rounds?.length ? (
+      {b.data?.stages?.length ? (
         <>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
-            <H2>Knockout</H2><Pill label={b.data.label === 'final' ? 'FINAL' : 'PROVISIONAL'} color={b.data.label === 'final' ? c.lime : c.sun} />
+            <H2>Bracket & rounds</H2><Pill label={b.data.label === 'final' ? 'FINAL' : 'PROVISIONAL'} color={b.data.label === 'final' ? c.lime : c.sun} />
           </View>
-          {b.data.champion ? <Card pad={14}><T size={12} weight="800" color={c.sun}>CHAMPIONS</T><T size={22} weight="800">🏆 {b.data.champion.name}</T></Card> : null}
-          <Seg options={[{ value: 'list', label: 'List' }, { value: 'draw', label: 'Bracket drawing' }]} value={view} onChange={setView} />
-          {view === 'list' ? b.data.rounds.map((r) => (
-            <View key={r.kind} style={{ gap: 8 }}>
-              <T size={13} weight="800" color={c.mute} accessibilityRole="header">{r.label}</T>
-              {b.data.list.filter((g) => g.round === r.label).map((g) => (
-                <Card key={g.id} pad={12} onPress={() => openGame(g.id)} accessibilityLabel={`${g.home} ${g.score ? `${g.score.home} to ${g.score.away}` : 'versus'} ${g.away}`}>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
-                    <View style={{ flex: 1 }}><T weight="700">{g.home}</T><T weight="700">{g.away}</T></View>
-                    <View style={{ alignItems: 'flex-end' }}>
-                      {g.score ? <><T weight="800" size={16}>{g.score.home}</T><T weight="800" size={16}>{g.score.away}</T></> : <T size={12} color={c.mute}>{stamp(g.scheduled_at)}</T>}
-                    </View>
-                  </View>
-                  {RESULT[g.label] ? <View style={{ marginTop: 8 }}><Pill label={RESULT[g.label][0]} color={RESULT[g.label][1]} /></View> : null}
-                </Card>
-              ))}
-            </View>
-          )) : (
-            <View style={{ backgroundColor: A.bg, borderRadius: 20, padding: 12 }}><ABracket data={b.data} onGame={(g) => openGame(g.id)} /></View>
-          )}
+          <View style={{ backgroundColor: A.bg, borderRadius: 20, padding: 8, gap: 12 }}>
+            {b.data.stages.map((s) => <StageBoard key={s.id} stage={s} onGame={(g) => openGame(g.id)} />)}
+          </View>
+          <T size={11.5} color={c.mute}>Provisional results change when official results are published or corrected, and corrections are labelled. <T size={11.5} weight="800" color={c.mute}>Print, share or embed this bracket</T> from the event’s share link.</T>
         </>
       ) : null}
-      {!t.data.rows.length && !b.data?.rounds?.length ? <Empty emoji="📊" title="No table yet" sub="Teams and results appear here as the event gets under way." /> : null}
+      {!t.data.rows.length && !b.data?.stages?.length ? <Empty emoji="📊" title="No table yet" sub="Teams and results appear here as the event gets under way." /> : null}
     </View>
   );
 }
@@ -486,12 +472,22 @@ export function Following() {
   const { toast } = useSession();
   const list = useLoad(() => api.get('/me/follows'), []);
   const [edit, setEdit] = useState(null);
+  const feed = useLoad(() => api.get('/me/media-feed', { limit: 12 }), []);
+  const openMedia = async (m) => { try { if (m.link?.startsWith('http')) await Linking.openURL(m.link); else await openStored(m.link, m.title); } catch (e) { toast('' + e.message); } };
   const open = (x) => (x.subject_type === 'event' ? push('Event', { id: x.subject_id }) : x.subject_type === 'fixture' ? push('LiveCentre', { id: x.subject_id }) : x.subject_type === 'team' ? push('Team', { id: x.subject_id }) : push('Person', { id: x.subject_id }));
   const NAME = { event: 'Events', team: 'Teams', athlete: 'Athletes', fixture: 'Games' };
   return (
     <Screen>
       <H2 style={{ marginTop: 8 }}>Following</H2>
       <T color={c.mute}>Alerts for the events, teams, athletes and games you follow. Following never gives access to private information.</T>
+      {feed.data?.items?.length ? (
+        <View style={{ marginTop: 18, gap: 8 }}>
+          <T size={13} weight="800" color={c.mute} accessibilityRole="header">NEW PHOTOS & CLIPS</T>
+          {feed.data.items.map((m) => (
+            <Row key={m.id} onPress={() => openMedia(m)} left={<Bubble emoji={m.kind === 'photo' ? '📸' : '🎞️'} color={c.violetSoft} />} title={m.title} sub={[m.event.name, m.credit].filter(Boolean).join(' · ')} right={<T size={13} weight="800" color={c.violet}>Open</T>} />
+          ))}
+        </View>
+      ) : null}
       {list.loading && !list.data ? <Loading /> : list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : !list.data.length ? <Empty emoji="🔔" title="You are not following anything yet" sub="Open an event, team or live game and tap Follow." /> : (
         Object.keys(NAME).filter((k) => list.data.some((x) => x.subject_type === k)).map((k) => (
           <View key={k} style={{ marginTop: 18, gap: 8 }}>

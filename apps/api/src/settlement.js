@@ -3,6 +3,7 @@
 // Rules: every line is posted with an idempotency key (a replayed webhook, retry or reconcile run cannot post twice), the ledger is never
 // edited (a trigger enforces it; corrections are compensating lines), and each currency stands alone. Venue operators settle through partner
 // contracts (settlements table) and wallet top-ups / gift cards are platform value, so neither is posted here.
+import { recordChargeback } from './finance.js';
 import { pool, many, one, tx } from './db.js';
 import { config } from './config.js';
 import { conflict } from './errors.js';
@@ -12,14 +13,14 @@ import { syncMediaFeeRefund } from './media-fees.js';
 import { syncAdFundingRefund } from './ads/engine.js';
 
 /** Who ends up owning the money of a paid payment. */
-export const PROVIDER_PURPOSES = ['coach_hire', 'appointment', 'physio_package', 'shop_order', 'shop_checkout', 'sponsorship_payment'];
+export const PROVIDER_PURPOSES = ['coach_hire', 'appointment', 'physio_package', 'shop_order', 'shop_checkout', 'sponsorship_payment', 'marketplace_engagement'];
 export function fundsClass(purposeType) {
   if (PROVIDER_PURPOSES.includes(purposeType)) return 'provider';
   if (purposeType === 'venue_invoice' || purposeType === 'venue_plan') return 'partner_settlement';   // settled through the venue's partner contract
   if (purposeType === 'wallet_topup' || purposeType === 'gift_card') return 'platform_wallet';          // stored value owed to the customer, not provider money
   if (purposeType === 'service_invoice') return 'supplier_receivable';                                  // collected for a supplier; paying the supplier out is a manual, audited record (svc_payments.payout_state)
   if (purposeType === 'media_rights_fee') return 'organisation_receivable';                           // owed to the event organiser; not a provider payout
-  if (purposeType === 'ad_funding') return 'platform_revenue';                                           // advertising funds belong to the platform; spend and refunds are tracked in the ad ledger
+  if (purposeType === 'ad_funding' || purposeType === 'commercial_subscription') return 'platform_revenue';                                           // advertising funds belong to the platform; spend and refunds are tracked in the ad ledger
   if (purposeType === 'team_charge' || purposeType === 'team_contribution') return 'team_receivable';                  // collected for the team's contribution ledger; the team settles it among its members, nothing is a provider payout
   if (purposeType === 'academy_charge') return 'organisation_receivable';                               // owed to the academy; not a provider payout until a settlement confirms it
   return 'insurer_premium';
@@ -54,6 +55,7 @@ export async function sharesFor(c, p) {
   if (p.purpose_type === 'coach_hire') { const h = await one1('SELECT coach_id FROM coach_hires WHERE id=$1'); return h ? [{ sellerId: h.coach_id, amount: Number(p.amount_cents) }] : []; }
   if (p.purpose_type === 'appointment') { const a = await one1('SELECT provider_id, tax_class FROM appointments WHERE id=$1'); return a ? [{ sellerId: a.provider_id, amount: Number(p.amount_cents), taxClass: a.tax_class }] : []; }
   if (p.purpose_type === 'physio_package') { const k = await one1('SELECT provider_id, tax_class FROM patient_packages WHERE id=$1'); return k ? [{ sellerId: k.provider_id, amount: Number(p.amount_cents), taxClass: k.tax_class }] : []; }
+  if (p.purpose_type === 'marketplace_engagement') { const m = await one1('SELECT provider_id FROM marketplace_engagements WHERE id=$1'); return m ? [{ sellerId: m.provider_id, amount: Number(p.amount_cents) }] : []; }
   if (p.purpose_type === 'shop_order') { const o = await one1('SELECT seller_id FROM shop_orders WHERE id=$1'); return o ? [{ sellerId: o.seller_id, amount: Number(p.amount_cents) }] : []; }
   if (p.purpose_type === 'sponsorship_payment') {   // the recipient of the sponsorship is the seller; sponsorship money is never mixed with another purpose
     const d = (await c.query('SELECT s.target_type, s.target_id, x.payee_guardian_id FROM sponsorship_payments x JOIN sponsorship_obligations o ON o.id=x.obligation_id JOIN sponsorships s ON s.id=o.sponsorship_id WHERE x.id=$1', [p.purpose_id])).rows[0];
@@ -260,11 +262,12 @@ export async function onProviderDispute(c, payment, { disputeId, amountCents }) 
       held.push({ seller_id: s.seller_id, amount_cents: parts[n] });
     }
   }
+  await recordChargeback(c, payment, { key: `${payment.provider}:${disputeId}`, amount: disputed, status: 'disputed' });
   return !!(await raiseException(c, { kind: 'provider_dispute', dedupeKey: `dispute:${payment.provider}:${disputeId}`, paymentId: payment.id, currency: payment.currency, amount: disputed,
     detail: { dispute_id: disputeId, provider: payment.provider, amount_cents: disputed, held, recorded_in_ledger: sales.length > 0 } }));
 }
 
-const CLASS_SQL = `CASE WHEN p.purpose_type = ANY($1) THEN 'provider' WHEN p.purpose_type IN ('venue_invoice','venue_plan') THEN 'partner_settlement' WHEN p.purpose_type IN ('wallet_topup','gift_card') THEN 'platform_wallet' WHEN p.purpose_type = 'service_invoice' THEN 'supplier_receivable' WHEN p.purpose_type = 'media_rights_fee' THEN 'organisation_receivable' WHEN p.purpose_type = 'ad_funding' THEN 'platform_revenue' WHEN p.purpose_type IN ('team_charge','team_contribution') THEN 'team_receivable' ELSE 'insurer_premium' END`;
+const CLASS_SQL = `CASE WHEN p.purpose_type = ANY($1) THEN 'provider' WHEN p.purpose_type IN ('venue_invoice','venue_plan') THEN 'partner_settlement' WHEN p.purpose_type IN ('wallet_topup','gift_card') THEN 'platform_wallet' WHEN p.purpose_type = 'service_invoice' THEN 'supplier_receivable' WHEN p.purpose_type = 'media_rights_fee' THEN 'organisation_receivable' WHEN p.purpose_type IN ('ad_funding','commercial_subscription') THEN 'platform_revenue' WHEN p.purpose_type IN ('team_charge','team_contribution') THEN 'team_receivable' ELSE 'insurer_premium' END`;
 
 /**
  * Catch the ledger up with the payments table: post sales for paid provider payments that have none (payments made before settlement
