@@ -1,0 +1,14 @@
+export default {
+  'account.title': 'ගිණුම', 'account.appearance': 'පෙනුම', 'account.language': 'භාෂාව සහ කලාපය',
+  'account.theme.system': 'පද්ධතිය', 'account.theme.light': 'ආලෝක', 'account.theme.dark': 'අඳුරු', 'account.logout': 'ඉවත් වන්න',
+  'account.use_device': 'මගේ උපාංගයේ සැකසුම් භාවිතා කරන්න', 'account.search_language': 'භාෂාවක් හෝ රටක් සොයන්න',
+  'account.from_device': 'ඔබේ උපාංගයෙන්', 'account.your_choice': 'ඔබේ තේරීම',
+  'account.review_note': 'සමහර පරිවර්තන යන්ත්‍රයෙන් සකස් කළ ඒවා වන අතර, ස්වභාෂා කථිකයෙකුගේ සමාලෝචනය බලාපොරොත්තුවෙන් සිටී.',
+  'account.follow_device': 'ඔබේ උපාංගය අනුගමනය කරයි.', 'account.format_note': 'දිනයන්, වේලාවන්, ඉලක්කම් සහ මුදල් මෙය සහ ඔබේ වේලා කලාපය අනුගමනය කරයි.',
+  'common.save': 'සුරකින්න', 'common.cancel': 'අවලංගු කරන්න', 'common.close': 'වසන්න', 'common.back': 'ආපසු', 'common.next': 'ඊළඟ',
+  'common.search': 'සොයන්න', 'common.loading': 'පූරණය වෙමින්…', 'common.retry': 'නැවත උත්සාහ කරන්න', 'common.done': 'අවසන්',
+  'error.generic': 'යමක් වැරදී ඇත. කරුණාකර නැවත උත්සාහ කරන්න.', 'error.network': 'සම්බන්ධතාවයක් නැත. ඔබේ ජාලය පරීක්ෂා කර නැවත උත්සාහ කරන්න.',
+  'empty.nothing': 'මෙහි තවම කිසිවක් නැත.',
+  'nav.home': 'මුල් පිටුව', 'nav.search': 'සෙවීම', 'nav.bookings': 'වෙන්කිරීම්', 'nav.account': 'ගිණුම',
+  'welcome.hello': 'ආයුබෝවන්, {name}',
+};

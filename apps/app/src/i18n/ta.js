@@ -1,0 +1,14 @@
+export default {
+  'account.title': 'கணக்கு', 'account.appearance': 'தோற்றம்', 'account.language': 'மொழி மற்றும் பகுதி',
+  'account.theme.system': 'கணினி', 'account.theme.light': 'ஒளி', 'account.theme.dark': 'இருள்', 'account.logout': 'வெளியேறு',
+  'account.use_device': 'என் சாதன அமைப்புகளைப் பயன்படுத்து', 'account.search_language': 'மொழி அல்லது நாட்டைத் தேடுங்கள்',
+  'account.from_device': 'உங்கள் சாதனத்திலிருந்து', 'account.your_choice': 'உங்கள் தேர்வு',
+  'account.review_note': 'சில மொழிபெயர்ப்புகள் இயந்திரத்தால் உருவாக்கப்பட்டவை; தாய்மொழி பேசுபவரின் மதிப்பாய்வுக்காகக் காத்திருக்கின்றன.',
+  'account.follow_device': 'உங்கள் சாதனத்தைப் பின்பற்றுகிறது.', 'account.format_note': 'தேதிகள், நேரங்கள், எண்கள் மற்றும் நாணயம் இதையும் உங்கள் நேர மண்டலத்தையும் பின்பற்றும்.',
+  'common.save': 'சேமி', 'common.cancel': 'ரத்து செய்', 'common.close': 'மூடு', 'common.back': 'பின்செல்', 'common.next': 'அடுத்து',
+  'common.search': 'தேடு', 'common.loading': 'ஏற்றுகிறது…', 'common.retry': 'மீண்டும் முயற்சி', 'common.done': 'முடிந்தது',
+  'error.generic': 'ஏதோ தவறு நடந்தது. மீண்டும் முயற்சிக்கவும்.', 'error.network': 'இணைப்பு இல்லை. உங்கள் நெட்வொர்க்கைச் சரிபார்த்து மீண்டும் முயற்சிக்கவும்.',
+  'empty.nothing': 'இங்கே இன்னும் எதுவும் இல்லை.',
+  'nav.home': 'முகப்பு', 'nav.search': 'தேடல்', 'nav.bookings': 'முன்பதிவுகள்', 'nav.account': 'கணக்கு',
+  'welcome.hello': 'வணக்கம், {name}',
+};
