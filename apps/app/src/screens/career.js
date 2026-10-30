@@ -7,6 +7,8 @@ import { useLayout } from '../layout';
 import { Btn, Card, Chip, Empty, ErrorBox, H1, H2, Loading, Screen, Sheet, T, Tag } from '../ui';
 import { HScroll } from '../pickers';
 import { FormSheet } from '../FormSheet';
+import { MenuField } from '../menu-field';
+import { useNav } from '../nav';
 import { c } from '../theme';
 
 const nice = (s) => String(s).replace(/_/g, ' ');
@@ -16,6 +18,11 @@ const EVIDENCE = [['club_letter', 'Club letter'], ['registration_card', 'Registr
 const STATUS = {
   verified: ['Verified by club', c.mint], pending: ['Waiting for the club', c.sun], rejected: ['Not verified', c.red], unverified: ['Self-reported', c.violetSoft],
 };
+/** Who vouched for an entry, in plain words. Entries confirmed by an outside source say which, and whether it came by live feed or an uploaded file. */
+const VIA = { external_feed: 'live feed', external_file: 'uploaded file' };
+const statusOf = (m) => (m.verification_status === 'verified' && m.external
+  ? [`Confirmed by ${m.external_source ?? 'a league'}`, c.mint]
+  : STATUS[m.verification_status]);
 const month = (s) => (s ? new Date(`${s}T12:00:00`).toLocaleDateString(undefined, { month: 'short', year: 'numeric' }) : '');
 const span = (m) => `${month(m.starts_on)} – ${m.current ? 'Present' : month(m.ends_on)}`;
 const newKey = () => `web-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
@@ -67,7 +74,7 @@ function EntryForm({ entry, forUser, sport, onClose, onDone }) {
 
 function History({ entry, onClose }) {
   const rev = useLoad(() => api.get(`/me/career/${entry.id}/revisions`), [entry.id, entry.row_version]);
-  const LABEL = { created: 'Added', corrected: 'Corrected', ended: 'Ended', verification_requested: 'Verification requested', verified: 'Verified by the club', rejected: 'Not verified', archived: 'Hidden', restored: 'Restored', roster_opened: 'Joined the roster', roster_closed: 'Left the roster', backfilled: 'Imported from your profile' };
+  const LABEL = { created: 'Added', corrected: 'Corrected', ended: 'Ended', verification_requested: 'Verification requested', verified: 'Verified by the club', rejected: 'Not verified', archived: 'Hidden', restored: 'Restored', roster_opened: 'Joined the roster', roster_closed: 'Left the roster', backfilled: 'Imported from your profile', external_linked: 'Confirmed by a league', external_merged: 'Merged with a league record', external_updated: 'Updated from a league record', external_disputed: 'Disputed by you', external_withdrawn: 'Withdrawn by the league' };
   return (
     <Sheet visible onClose={onClose} title="History">
       {rev.loading && !rev.data ? <Loading /> : rev.error ? <ErrorBox error={rev.error} onRetry={rev.reload} /> : (
@@ -94,7 +101,9 @@ function Detail({ entry, forUser, onClose, onChanged, canEdit = true }) {
   const ev = useLoad(() => api.get(`/me/career/${entry.id}/evidence`), [entry.id, entry.evidence_count]);
   const [sub, setSub] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [label, tone] = STATUS[entry.verification_status];
+  const [label, tone] = statusOf(entry);
+  const ext = useLoad(() => (entry.external ? api.get('/me/external-history', { user_id: forUser, limit: 100 }) : Promise.resolve([])), [entry.id, entry.row_version]);
+  const extRec = (ext.data ?? []).find((r) => r.membership_id === entry.id);
   const run = async (fn, msg) => { setBusy(true); try { await fn(); await onChanged(); if (msg) toast(msg); } catch (e) { toast(say(e)); } finally { setBusy(false); } };
   const needsEvidence = (ev.data?.length ?? entry.evidence_count) === 0;
   return (
@@ -103,7 +112,15 @@ function Detail({ entry, forUser, onClose, onChanged, canEdit = true }) {
         <Tag label={label} color={tone} />
         <T size={14}>{entry.sport_emoji} {entry.sport} · {span(entry)}{entry.season_label ? ` · ${entry.season_label}` : ''}</T>
         <T size={14} color={c.mute}>{[entry.position, cap(nice(entry.competition_level)), entry.jersey_no !== null ? `#${entry.jersey_no}` : null, entry.source === 'roster' ? 'from the team roster' : entry.source === 'backfill' ? 'from your profile' : null].filter(Boolean).join(' · ')}</T>
-        {entry.unlisted ? <T size={12} color={c.mute}>This club is not on Gotmygame, so it can only be confirmed by the platform team.</T> : null}
+        {entry.unlisted && !entry.external ? <T size={12} color={c.mute}>This club is not on Gotmygame, so it can only be confirmed by the platform team.</T> : null}
+        {entry.external ? (
+          <View style={{ gap: 6 }}>
+            <T size={13}>{entry.verification_status === 'verified' ? `Confirmed by ${entry.external_source}` : `Came from ${entry.external_source}, no longer confirmed`}{entry.verified_via ? ` · ${VIA[entry.verified_via] ?? ''}` : ''}</T>
+            {entry.verified_via === 'external_file' ? <T size={12} color={c.mute}>This came from an export file the league’s staff uploaded, not from a live connection.</T> : null}
+            {extRec && ['accepted', 'changed'].includes(extRec.status) && canEdit ? <Btn small title="This is not mine or it is wrong" color={c.paper} ink={c.red} disabled={busy} onPress={() => setSub('dispute')} accessibilityLabel="Dispute this confirmed entry" /> : null}
+            {extRec?.status === 'changed' ? <T size={12} color={c.mute}>{entry.external_source} sent a correction. Their staff will review it before your timeline changes.</T> : null}
+          </View>
+        ) : null}
         {entry.review_note ? <T size={13}>Club note: “{entry.review_note}”</T> : null}
 
         <H2 style={{ marginTop: 8 }}>Evidence</H2>
@@ -129,6 +146,11 @@ function Detail({ entry, forUser, onClose, onChanged, canEdit = true }) {
           <Btn small title="Restore" disabled={busy} onPress={() => run(() => api.post(`/me/career/${entry.id}/archive`, { row_version: entry.row_version, archived: false }), 'Restored').then(onClose)} />
         ) : null}
       </View>
+      {sub === 'dispute' && extRec ? (
+        <FormSheet visible onClose={() => setSub(null)} title="Dispute this entry" submitLabel="Send to the league"
+          fields={[{ key: 'reason', label: 'What is wrong?', multiline: true, hint: 'The entry is hidden and no longer marked confirmed. It is kept, and the league’s staff are told.' }]}
+          onSubmit={async (v) => { try { await api.post(`/me/external-history/${extRec.id}/dispute`, { reason: v.reason, row_version: extRec.row_version }); await onChanged(); onClose(); return 'Sent. The entry is hidden for now.'; } catch (e) { throw new Error(say(e)); } }} />
+      ) : null}
       {sub === 'history' ? <History entry={entry} onClose={() => setSub(null)} /> : null}
       {sub === 'edit' ? <EntryForm entry={entry} forUser={forUser} onClose={() => setSub(null)} onDone={async () => { await onChanged(); onClose(); }} /> : null}
       {sub === 'evidence' ? (
@@ -192,6 +214,48 @@ function Review({ m, onClose, onDone }) {
   );
 }
 
+/** League and federation IDs: say which ID a league knows you by; its staff confirm it before any of its records reach your timeline. */
+function OfficialIds({ forUser, onChanged }) {
+  const { toast } = useSession();
+  const { push } = useNav();
+  const ids = useLoad(() => api.get('/me/history-identities', { user_id: forUser }), [forUser]);
+  const sources = useLoad(() => api.get('/history-sources/approved', { limit: 100 }), []);
+  const mine = useLoad(() => api.get('/history-sources', { limit: 1 }).catch(() => []), []);
+  const [adding, setAdding] = useState(false);
+  const label = { claimed: ['Waiting for the league', c.sun], confirmed: ['Confirmed by the league', c.mint] };
+  return (
+    <View style={{ marginTop: 26 }}>
+      <H2>Leagues and federations</H2>
+      <T size={12} color={c.mute} style={{ marginTop: 4 }}>Link the ID a league or federation knows you by. Once its staff confirm it, they can confirm your clubs and seasons here. You can dispute anything they add.</T>
+      <View style={{ gap: 10, marginTop: 10 }}>
+        {ids.loading && !ids.data ? <Loading /> : ids.error ? <ErrorBox error={ids.error} onRetry={ids.reload} /> : !ids.data.length ? (
+          <T size={13} color={c.mute}>{sources.data?.length ? 'No ID linked yet.' : 'No league or federation has been connected to Gotmygame yet.'}</T>
+        ) : ids.data.map((x) => (
+          <Card key={x.id} pad={14}>
+            <View style={{ flexDirection: 'row', gap: 6, marginBottom: 6 }}><Tag label={label[x.status][0]} color={label[x.status][1]} /></View>
+            <T weight="700">{x.source}</T>
+            <T size={13} color={c.mute}>Your ID there: {x.external_ref}</T>
+            <Btn small title="Remove link" color={c.paper} ink={c.red} style={{ marginTop: 8 }} accessibilityLabel={`Remove the link to ${x.source}`}
+              onPress={async () => { try { await api.post(`/me/history-identities/${x.id}/revoke`, { row_version: x.row_version }); await ids.reload(); await onChanged(); toast('Link removed. Anything it confirmed is hidden and kept.'); } catch (e) { toast(say(e)); } }} />
+          </Card>
+        ))}
+      </View>
+      <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+        {sources.data?.length ? <Btn small title="+ Link my ID" onPress={() => setAdding(true)} accessibilityLabel="Link my ID at a league or federation" /> : null}
+        {mine.data?.length ? <Btn small title="Manage verified sources" color={c.paper} onPress={() => push('HistorySources')} /> : null}
+      </View>
+      {adding ? (
+        <FormSheet visible onClose={() => setAdding(false)} title="Link my ID" submitLabel="Send to the league"
+          fields={[
+            { key: 'source_id', type: 'custom', render: ({ v, set }) => <MenuField label="League or federation" value={v.source_id} onChange={(x) => set('source_id', x)} options={(sources.data ?? []).map((s) => ({ value: s.id, label: s.name, sub: [s.sport, s.connection === 'live' ? 'live feed' : s.connection === 'file_only' ? 'uploaded files' : null].filter(Boolean).join(' · ') }))} /> },
+            { key: 'external_ref', label: 'Your ID there', placeholder: 'Player or registration number', hint: 'Stored encrypted. The league’s staff check it against their register.' },
+          ]}
+          onSubmit={async (v) => { try { if (!v.source_id) throw new Error('Choose a league or federation'); await api.post('/me/history-identities', { source_id: v.source_id, external_ref: v.external_ref, user_id: forUser }); await ids.reload(); return 'Sent. You will be told when they confirm it.'; } catch (e) { throw new Error(say(e)); } }} />
+      ) : null}
+    </View>
+  );
+}
+
 /**
  * Career & membership timeline: every club/team the player has been with, current and former, with season, position, level and
  * how far each entry is verified. `sport` filters to one sport; `user_id` lets a verified guardian manage a young person's timeline.
@@ -235,7 +299,7 @@ export function CareerTimeline({ sport, user_id: forUser }) {
         ) : (
           <View accessibilityRole="list" accessibilityLabel="Career timeline" style={phone ? { gap: 0 } : { gap: 0, maxWidth: 720 }}>
             {shown.map((m, i) => {
-              const [text, tone] = STATUS[m.verification_status];
+              const [text, tone] = statusOf(m);
               return (
                 <View key={m.id} style={{ flexDirection: 'row', gap: 12 }}>
                   <View style={{ alignItems: 'center', width: 16 }}>
@@ -248,7 +312,8 @@ export function CareerTimeline({ sport, user_id: forUser }) {
                     <T size={13} color={c.mute}>{[m.sport_emoji + ' ' + m.sport, m.position, cap(nice(m.competition_level)), m.season_label, m.jersey_no !== null ? `#${m.jersey_no}` : null].filter(Boolean).join(' · ')}</T>
                     <View style={{ flexDirection: 'row', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
                       <Tag label={text} color={tone} />
-                      {m.unlisted ? <Tag label="Not listed" /> : null}
+                      {m.external && m.verified_via ? <Tag label={m.verified_via === 'external_feed' ? 'Live feed' : 'Uploaded file'} /> : null}
+                      {m.unlisted && !m.external ? <Tag label="Not listed" /> : null}
                       {m.evidence_count ? <Tag label={`${m.evidence_count} evidence`} /> : null}
                       {m.corrections ? <Tag label={`${m.corrections} correction${m.corrections === 1 ? '' : 's'}`} /> : null}
                       {m.archived_at ? <Tag label="Hidden" /> : null}
@@ -268,6 +333,7 @@ export function CareerTimeline({ sport, user_id: forUser }) {
       <T size={12} color={c.mute} style={{ marginTop: 10 }}>Clubs can verify entries you have evidence for. Verified entries are labelled; everything else is shown as self-reported. Entries are hidden, never deleted, and every correction is kept.</T>
 
       {!forUser ? <ReviewQueue onChanged={list.reload} /> : null}
+      <OfficialIds forUser={forUser} onChanged={list.reload} />
 
       {adding ? <EntryForm forUser={forUser} sport={sport} onClose={() => setAdding(false)} onDone={list.reload} /> : null}
       {live ? <Detail entry={live} forUser={forUser} onClose={() => setOpen(null)} onChanged={list.reload} /> : null}
