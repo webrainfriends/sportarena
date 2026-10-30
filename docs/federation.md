@@ -1,4 +1,4 @@
-# Federation & Governing Body OS (#475)
+# Federation & Governing Body OS (#475, #574)
 
 A governing layer over the canonical SportArena entities: **international / national federation → regional or state association → league organiser →
 club, academy or school → teams and participants.** A governing body is an ordinary organisation plus one `governing_bodies` row (level, jurisdiction,
@@ -55,6 +55,38 @@ Governance: `save_federation_policy`, `publish_policy_version`, `retire_federati
 `Federations` (hub: my bodies, my licences, club affiliations, check a licence, directory, set up a federation), `FederationHome` (Overview, Affiliations, Licences,
 Sanctions, Calendar, Policies, Reports, Setup), `FederationRecord` (one detail screen for an affiliation, licence or sanction), `VerifyLicence`, `OrgAffiliations`
 (from the organisation screen), `MyLicences` (More wheel) and a sanction section inside the existing event console. One codebase for iOS, iPadOS, Android and web.
+
+## Governance depth (#574)
+Issue #574 asked to close the governing-body administration gap by completing #475. Inspecting `main` first: affiliation categories and lifecycle, licence
+types and lifecycle (issue, renew, suspend, expire, evidence), sanctioning, versioned policy with effective dates, Federation Home, reports and the
+30/7-day reminders already existed, so none of them was rebuilt. Three gaps remained, each added **inside** the existing module:
+
+| #574 scope | Was | Now (one place) |
+|---|---|---|
+| Delegated administration by jurisdiction/region | roles limited by sport only | `fed_jurisdictions` (regions, states, districts per body); records carry an optional `jurisdiction_id` (apply forms offer a picker); a role can be limited to some jurisdictions (`governing_body_roles.jurisdiction_ids`) |
+| Renewal campaigns and notifications | fixed reminders at 30/7 days | `fed_campaigns` + `fed_campaign_recipients`: choose affiliations or licences, categories/types, jurisdictions, sport, the window the records end in, and the reminder schedule; launch, track, close. The automatic 30/7 reminders skip records inside a running campaign so nobody is told twice |
+| Compliance status and exceptions | overrides were only listed on Home | `fed_exceptions` register: opened automatically by an override, due for review in 90 days, reviewed as remedied / extended / accepted with a required note; standing (`get_federation_compliance`) |
+
+Rules:
+- **Jurisdiction limits fail closed.** A limited role covers only records filed under its jurisdictions: lists, queues, the dashboard queues, the compliance
+  register and campaign progress are filtered; a record outside them (or with no jurisdiction) is a `404`, and decisions on it are refused. Body-wide actions
+  (reports, exports, policies, categories, the calendar) are closed to limited roles. Staff of a body above stay read-only; owners/admins and unlimited roles
+  see everything. Dashboard totals are body-level counts with no names.
+- **Campaigns never copy state.** The covered records are fixed at launch; whether each was renewed is read live from the renewal chain (`previous_id`), so
+  progress always agrees with the affiliation or licence itself. Contacts are a club's owners/admins, or a licence's holder and applicant. A campaign closes
+  itself when everything is renewed, or 60 days after its window.
+- **Exceptions are history.** Reviews are rows in the append-only `fed_events`; the decision on the record is never rewritten. The `compliance` role now
+  reviews exceptions (within its jurisdictions); it still decides no applications.
+- **Migration `130`** only adds tables and nullable columns, widens one CHECK (`fed_events.subject_type`), and turns decisions already approved over a failed
+  requirement into open exceptions due 90 days after the decision. Nothing is deleted or rewritten.
+
+New capabilities (REST + OpenAPI + MCP, tag `Federation`): `save_federation_jurisdiction`, `archive_federation_jurisdiction`, `list_federation_jurisdictions`,
+`list_federation_exceptions`, `review_federation_exception`, `get_federation_compliance`, `preview_renewal_campaign`, `save_renewal_campaign`,
+`launch_renewal_campaign`, `close_renewal_campaign`, `list_renewal_campaigns`, `get_renewal_campaign`; `grant_federation_role` takes `jurisdiction_ids`, and
+`apply_affiliation`, `apply_licence` and `request_sanction` take `jurisdiction_id`.
+
+UI: Federation Home gains **Campaigns** and **Compliance** tabs; Setup gains **Regions, states and districts** and a places picker on *Give a role*. Pickers
+are searchable dropdowns (multi-select where several apply), dates use the calendar range picker. One codebase for iOS, iPadOS, Android and web.
 
 ## Migration and rollback
 `115_federation_os.sql` only adds tables and widens two CHECK constraints (`organisations.kind`, `case_links.entity_type`); every existing value stays valid. No

@@ -7,6 +7,7 @@ import { api } from './api';
 import { Btn, Card, Chip, Empty, Field, Loading, Sheet, T, Tag } from './ui';
 import { FormSheet } from './FormSheet';
 import { DateField } from './pickers';
+import { MenuField } from './menu-field';
 import { openBase64, pickEvidence } from './evidence';
 import { openPdf } from './open-file';
 import { useSession } from './session';
@@ -17,7 +18,7 @@ export const LEVEL_LABEL = { international: 'International', continental: 'Conti
 export const ROLE_LABEL = { registrar: 'Registrar', licensing: 'Licensing officer', sanctioner: 'Sanctioning officer', secretary: 'Secretary', compliance: 'Compliance', auditor: 'Auditor', integrity: 'Integrity officer' };
 export const ROLE_HELP = {
   registrar: 'Reviews and decides club affiliations', licensing: 'Reviews and decides licences', sanctioner: 'Reviews and decides competition sanctions',
-  secretary: 'Publishes policies and sets the federation calendar', compliance: 'Reads everything including evidence; decides nothing', auditor: 'Reads reports and exports; decides nothing', integrity: 'Runs sport integrity and anti-doping administration: cases, references, decisions and education',
+  secretary: 'Publishes policies and sets the federation calendar', compliance: 'Reads evidence and reviews compliance exceptions; decides no applications', auditor: 'Reads reports and exports; decides nothing', integrity: 'Runs sport integrity and anti-doping administration: cases, references, decisions and education',
 };
 export const HOLDER_ROLES = [{ value: 'athlete', label: 'Athlete' }, { value: 'coach', label: 'Coach' }, { value: 'official', label: 'Official' }, { value: 'administrator', label: 'Administrator' }, { value: 'other', label: 'Other' }];
 export const POLICY_LABEL = {
@@ -105,6 +106,15 @@ export function History({ history, title = 'History' }) {
       </View>
     </Card>
   );
+}
+
+/** Where the record sits among the body's regions, states and districts (#574). Shown only when the body has set any up; one pick, never typed. */
+export function JurisdictionPick({ bodyId, value, onChange, label = 'Region, state or district', hint }) {
+  const [list, setList] = useState([]);
+  useEffect(() => { setList([]); onChange(undefined); if (bodyId) api.get(`/federation/bodies/${bodyId}/jurisdictions`).then(setList).catch(() => setList([])); }, [bodyId]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!list.length) return null;
+  return <MenuField label={label} value={value ?? ''} onChange={(v) => onChange(v || undefined)} placeholder="Choose" hint={hint}
+    options={[{ value: '', label: 'Not set' }, ...list.map((j) => ({ value: j.id, label: j.name, sub: j.level }))]} />;
 }
 
 /** Search-and-pick a governing body (never an id). Filter by the sport it must govern. */
