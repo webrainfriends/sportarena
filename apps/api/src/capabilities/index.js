@@ -275,4 +275,5 @@ import './compliance.js';
 import './compliance-records.js';
 import './compliance-files.js';
 import './compliance-policy.js';
+import './compliance-rulebooks.js';
 import './my-workspace.js';
