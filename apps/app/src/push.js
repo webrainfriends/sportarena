@@ -61,6 +61,7 @@ export async function disablePush(deviceId) {
 
 /** Where a tapped notification should land: [screen, params] or null. */
 export function targetFor(data = {}) {
+  if (data.conversation_id) return ['Conversation', { id: data.conversation_id }]; // a message, announcement or urgent notice in the Inbox
   if (data.governance_notice) return ['MyIntegrity', {}]; // a generic notice: the substance is only ever shown after opening the app
   if (data.spectator && data.fixture_id) return ['LiveCentre', { id: data.fixture_id }]; // an alert for a game you follow
   if (data.screen === 'PlayerFunding') return ['PlayerFunding', data.athlete_id ? { athlete_id: data.athlete_id } : {}]; // an athlete shared their funding with a coach

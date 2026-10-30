@@ -6,6 +6,7 @@ import { one, many, tx, pool } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { mustFind, sportBySlugOrId, isAdmin } from '../helpers.js';
 import { notify, notifyVenueTeam, inbox, DEFAULT_PREFS } from '../notify.js';
+import { validTimezone } from '../quiet-hours.js';
 import { maintenanceCycle } from '../worker.js';
 import {
   loadVenueCtx, loadBusy, daySlots, nextFreeSlot, priceWindow, checkWindow, openIntervals, usedUnits, blockedBy,
@@ -373,27 +374,32 @@ cap({
     return { marked: r.rowCount };
   },
 });
+// times arrive as HH:MM and leave as HH:MM (Postgres returns HH:MM:SS)
+const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use a 24-hour time like 22:00');
+const shapePrefs = (p) => ({ quiet_tz: 'Asia/Kolkata', quiet_weekdays_only: false, quiet_urgent_override: true, escalate_after_minutes: null, escalation_off: false, ...p, quiet_start: p.quiet_start ? String(p.quiet_start).slice(0, 5) : null, quiet_end: p.quiet_end ? String(p.quiet_end).slice(0, 5) : null });
 cap({
-  name: 'get_notification_preferences', method: 'GET', path: '/me/notification-preferences', tag: 'Notifications', summary: 'Which channels you get notifications on (in-app, push, email, WhatsApp, SMS), how far ahead booking reminders arrive, muted kinds, the WhatsApp/SMS message categories you switched off and your message language.',
-  handler: async ({ user }) => (await one('SELECT in_app, email, push, whatsapp, sms, reminder_hours, muted_kinds, comm_categories_off, comm_locale FROM notification_prefs WHERE user_id=$1', [user.id])) ?? DEFAULT_PREFS,
+  name: 'get_notification_preferences', method: 'GET', path: '/me/notification-preferences', tag: 'Notifications', summary: 'Which channels you get notifications on (in-app, push, email, WhatsApp, SMS), how far ahead booking reminders arrive, muted kinds, the WhatsApp/SMS message categories you switched off and your message language, quiet hours (and whether urgent notices break through) and how soon an unanswered urgent notice escalates.',
+  handler: async ({ user }) => shapePrefs((await one('SELECT in_app, email, push, whatsapp, sms, reminder_hours, muted_kinds, comm_categories_off, comm_locale, quiet_start, quiet_end, quiet_tz, quiet_weekdays_only, quiet_urgent_override, escalate_after_minutes, escalation_off FROM notification_prefs WHERE user_id=$1', [user.id])) ?? DEFAULT_PREFS),
 });
 cap({
   name: 'update_notification_preferences', method: 'PATCH', path: '/me/notification-preferences', tag: 'Notifications',
   summary: 'Turn notification channels on/off (in_app, email, push, whatsapp, sms), set the booking reminder lead time in hours, mute kinds (e.g. new_booking), switch off WhatsApp/SMS message categories (fees, sessions, bookings, events, business) and choose the language of templated messages. WhatsApp and SMS need a verified number first; turning one on or off is recorded as consent evidence.',
-  input: z.object({ in_app: z.boolean().optional(), email: z.boolean().optional(), push: z.boolean().optional(), whatsapp: z.boolean().optional(), sms: z.boolean().optional(), reminder_hours: z.number().int().min(1).max(168).optional(), muted_kinds: z.array(z.string().max(40)).max(30).optional(), comm_categories_off: z.array(z.enum(CATEGORIES.map(([k]) => k))).max(10).optional(), comm_locale: z.enum(LOCALE_CODES).optional() }),
+  input: z.object({ in_app: z.boolean().optional(), email: z.boolean().optional(), push: z.boolean().optional(), whatsapp: z.boolean().optional(), sms: z.boolean().optional(), reminder_hours: z.number().int().min(1).max(168).optional(), muted_kinds: z.array(z.string().max(40)).max(30).optional(), comm_categories_off: z.array(z.enum(CATEGORIES.map(([k]) => k))).max(10).optional(), comm_locale: z.enum(LOCALE_CODES).optional(), quiet_start: hhmm.nullable().optional(), quiet_end: hhmm.nullable().optional(), quiet_tz: z.string().max(60).refine(validTimezone, 'Unknown time zone').optional(), quiet_weekdays_only: z.boolean().optional(), quiet_urgent_override: z.boolean().optional(), escalate_after_minutes: z.number().int().min(5).max(1440).nullable().optional(), escalation_off: z.boolean().optional() }).refine((x) => (x.quiet_start === undefined) === (x.quiet_end === undefined), { message: 'Set both the start and the end of quiet hours (or clear both)', path: ['quiet_end'] }),
   async handler({ user }, i) {
     const cur = (await one('SELECT * FROM notification_prefs WHERE user_id=$1', [user.id])) ?? DEFAULT_PREFS;
     const n = { ...cur, ...Object.fromEntries(Object.entries(i).filter(([, v]) => v !== undefined)) };
     if (i.whatsapp === true && !(await one('SELECT 1 FROM whatsapp_contacts WHERE user_id=$1 AND verified_at IS NOT NULL AND opted_out_at IS NULL', [user.id]))) throw badRequest('Verify your WhatsApp number first');
     if (i.sms === true && !(await one('SELECT 1 FROM sms_contacts WHERE user_id=$1 AND verified_at IS NOT NULL AND opted_out_at IS NULL', [user.id]))) throw badRequest('Verify your mobile number for SMS first');
     return tx(async (c) => {
-      const row = (await c.query(`INSERT INTO notification_prefs(user_id, in_app, email, push, whatsapp, sms, reminder_hours, muted_kinds, comm_categories_off, comm_locale) VALUES ($1,$2,$3,$4,$7,$8,$5,$6,$9,$10)
-                ON CONFLICT (user_id) DO UPDATE SET in_app=$2, email=$3, push=$4, whatsapp=$7, sms=$8, reminder_hours=$5, muted_kinds=$6, comm_categories_off=$9, comm_locale=$10
-                RETURNING in_app, email, push, whatsapp, sms, reminder_hours, muted_kinds, comm_categories_off, comm_locale`,
-        [user.id, n.in_app, n.email, n.push ?? true, n.reminder_hours, n.muted_kinds, n.whatsapp ?? false, n.sms ?? false, n.comm_categories_off ?? [], n.comm_locale ?? 'en-IN'])).rows[0];
+      const row = (await c.query(`INSERT INTO notification_prefs(user_id, in_app, email, push, whatsapp, sms, reminder_hours, muted_kinds, comm_categories_off, comm_locale, quiet_start, quiet_end, quiet_tz, quiet_weekdays_only, quiet_urgent_override, escalate_after_minutes, escalation_off) VALUES ($1,$2,$3,$4,$7,$8,$5,$6,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+                ON CONFLICT (user_id) DO UPDATE SET in_app=$2, email=$3, push=$4, whatsapp=$7, sms=$8, reminder_hours=$5, muted_kinds=$6, comm_categories_off=$9, comm_locale=$10,
+                  quiet_start=$11, quiet_end=$12, quiet_tz=$13, quiet_weekdays_only=$14, quiet_urgent_override=$15, escalate_after_minutes=$16, escalation_off=$17
+                RETURNING in_app, email, push, whatsapp, sms, reminder_hours, muted_kinds, comm_categories_off, comm_locale, quiet_start, quiet_end, quiet_tz, quiet_weekdays_only, quiet_urgent_override, escalate_after_minutes, escalation_off`,
+        [user.id, n.in_app, n.email, n.push ?? true, n.reminder_hours, n.muted_kinds, n.whatsapp ?? false, n.sms ?? false, n.comm_categories_off ?? [], n.comm_locale ?? 'en-IN',
+        n.quiet_start ?? null, n.quiet_end ?? null, n.quiet_tz ?? 'Asia/Kolkata', n.quiet_weekdays_only ?? false, n.quiet_urgent_override ?? true, n.escalate_after_minutes ?? null, n.escalation_off ?? false])).rows[0];
       // switching a verified channel on or off is a consent decision: keep the evidence (source, time)
       for (const ch of ['whatsapp', 'sms']) if (i[ch] !== undefined && i[ch] !== !!cur[ch]) await recordConsent(c, user.id, ch, i[ch] ? 'opt_in' : 'opt_out', 'app_switch');
-      return row;
+      return shapePrefs(row);
     });
   },
 });

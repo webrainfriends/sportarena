@@ -29,6 +29,7 @@ import './trips-ops.js';
 import './trips-money.js';
 import './appearances.js';
 import './team-chat.js';
+import './inbox.js';
 import './team-money.js';
 import './team-workspace.js';
 import './workspace.js';

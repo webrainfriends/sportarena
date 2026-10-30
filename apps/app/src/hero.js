@@ -100,7 +100,7 @@ export function PlayerHero({ user, profile, onBell, onAvatar, pad = 16 }) {
           </Pressable>
         </View>
         <View style={{ position: 'absolute', right: pad, top: 14 }}>
-          <RoundBtn icon="Bell" label="Notifications" onPress={onBell} />
+          <RoundBtn icon="Bell" label="Inbox" onPress={onBell} />
         </View>
         <View style={{ width: '58%', paddingTop: 64, paddingBottom: 62 }}>
           <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>

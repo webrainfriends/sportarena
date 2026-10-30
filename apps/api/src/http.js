@@ -19,6 +19,7 @@ import { matchFileRouter } from './capabilities/player.js';
 import { insuranceDocsRouter } from './capabilities/insurance-docs.js';
 import { complianceFilesRouter } from './capabilities/compliance-files.js';
 import { teamChatRouter } from './team-chat-stream.js';
+import { inboxMediaRouter } from './inbox-media.js';
 import { brandedDocumentsRouter } from './capabilities/branded-documents.js';
 import { orgAgreementsRouter } from './capabilities/org-agreements.js';
 import { trackingFilesRouter } from './capabilities/tracking-files.js';
@@ -90,6 +91,7 @@ export function createApp() {
   app.use(/^\/api\/v1\/compliance\/records\/[0-9a-f-]{36}\/files$/, express.json({ limit: '14mb' }));
   app.use('/api/v1', complianceFilesRouter());
   app.use('/api/v1', teamChatRouter());
+  app.use('/api/v1', inboxMediaRouter());
   app.use('/api/v1', brandedDocumentsRouter());
   app.use('/api/v1', orgAgreementsRouter());
   app.use('/api/v1', trackingFilesRouter());
