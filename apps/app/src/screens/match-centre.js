@@ -1,7 +1,7 @@
 // The Match Centre, and the Games tab of the event console: the referee's live console (kick off, score with the sport's own buttons, track
 // fouls and cards, undo, pause, full time) that doubles as a live scoreboard for everyone else.
 import { locale } from '../locale';
-import React, { useRef, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
@@ -11,12 +11,15 @@ import { useSession } from '../session';
 import { useNav } from '../nav';
 import { A, ABracket, ABtn, ACard, AChip, AEmpty, AScreen, ASection, AT, LiveBadge, ReasonSheet, ScoreTicker } from '../arena';
 import { Loading, Sheet, T } from '../ui';
+import { c } from '../theme';
 import { GamesByDay, SchedulePlanner } from './event-schedule';
 import { StageDesk, StagesView } from '../bracket-studio';
 import { AppearancesPanel } from './appearances';
 import { CricketScorer } from './cricket-scorer';
 import { useScoreQueue } from '../scorer/queue';
-import { AddedTimeBar, BattingOrderSheet, CardsPad, ConflictSheet, CorrectSheet, FootballExtras, OutcomePad, ProjectionCard, RacketPad, RulesPanel, ServerPick, SyncLine } from '../scorer/panels';
+import { useSavedGame } from '../scorer/pack';
+import { controlReject, localReject, project } from '../scorer/local';
+import { AddedTimeBar, BattingOrderSheet, CardsPad, ConflictSheet, CorrectSheet, FootballExtras, OfflineBanner, OutcomePad, ProjectionCard, RacketPad, RulesPanel, ServerPick, SyncLine } from '../scorer/panels';
 
 const EXTRA = { wd: 'Wide', nb: 'No-ball', b: 'Bye', lb: 'Leg bye', pen: 'Penalty' };
 /** What a cricket ball was, in the scorer's words: so the timeline can be read, and a ball found to correct. */
@@ -48,34 +51,61 @@ function PlayerQuick({ rows, side, name, value, onChange }) {
 
 // ---------------------------------------------------------------- Match Centre
 export function MatchCentre({ id }) {
-  const { toast } = useSession();
+  const { toast, user } = useSession();
   const { push: go } = useNav();
   const L = useLayout();
-  const { state: g, mode, push, refresh, revoked } = useLiveFixture(id);
-  const proj = useLoad(() => api.get(`/fixtures/${id}/projection`), [id, g?.version]);
-  const lineup = useLoad(() => (g?.viewer?.can_score ? api.get(`/fixtures/${id}/appearances`).catch(() => null) : Promise.resolve(null)), [id, !!g?.viewer?.can_score, g?.fixture?.status]);
+  const feed = useLiveFixture(id);
+  const { mode, push, refresh, revoked } = feed;
+  const pack = useSavedGame(user?.id, id, feed.state);   // the encrypted copy of this game for scoring with no signal
+  const proj = useLoad(() => api.get(`/fixtures/${id}/projection`), [id, feed.state?.version]);
+  const lineup = useLoad(() => (feed.state?.viewer?.can_score ? api.get(`/fixtures/${id}/appearances`).catch(() => null) : Promise.resolve(null)), [id, !!feed.state?.viewer?.can_score, feed.state?.fixture?.status]);
   const [busy, setBusy] = useState(false);
   const [ask, setAsk] = useState(null); // 'undo' | 'end' | null
   const [fix, setFix] = useState(null); // event being corrected
   const [who, setWho] = useState({ home: null, away: null });
   const [order, setOrder] = useState(null); // side whose batting order is being picked
   const seen = useRef(0);
-  if (g && g.last_seq > seen.current) seen.current = g.last_seq; // what this device has seen, plus its own sent taps
+  const seenNow = Math.max(feed.state?.last_seq ?? 0, pack.saved?.last_seq ?? 0);
+  if (seenNow > seen.current) seen.current = seenNow; // what this device has seen, plus its own sent taps
 
   // every tap goes through the queue: kept on the device, retried, and never counted twice (client_key)
   const queue = useScoreQueue(`sa_queue_fx_${id}`,
-    async (e) => { const r = await api.post(`/fixtures/${id}/events`, e); seen.current = Math.max(seen.current, r.state.last_seq); push(r.state); return r; },
-    { onDrop: (err) => toast('' + err.message) });
+    async ({ owner, op, ...e }) => {
+      if (op) { const r = await api.post(`/fixtures/${id}/${op}`, { client_key: e.client_key, occurred_at: e.occurred_at }); if (r?.fixture) push(r); return r; }   // kick off, pause, resume, full time
+      const r = await api.post(`/fixtures/${id}/events`, e); seen.current = Math.max(seen.current, r.state.last_seq); push(r.state); return r;
+    },
+    { onDrop: (err) => toast('' + err.message), owner: user?.id });
 
-  if (!g) return <AScreen><Loading /></AScreen>;
+  // With no signal the saved copy stands in for the live feed, and the taps still waiting are applied on top of it by the same engine
+  // the server runs. Online, the feed is the truth and nothing is projected.
+  const offline = !feed.state || (!!feed.error && !feed.error.status);
+  const useSaved = !!pack.saved && (offline || queue.pending.length > 0) && pack.saved.last_seq >= (feed.state?.last_seq ?? 0);
+  const g = useMemo(() => (useSaved ? project(pack.saved, queue.pending) : feed.state), [useSaved, pack.saved, queue.pending, feed.state]);
+
+  if (!g) return (
+    <AScreen>
+      {feed.error && pack.ready
+        ? <ACard pad={16} tone={A.sun}><AT size={14} weight="800">No connection, and this game is not saved on this device.</AT><AT size={13} color={A.mute}>Open it once while online and it is saved for scoring with no signal. Officials can also save the day's games from Officials home.</AT><ABtn title="Try again" tone="neon" onPress={refresh} /></ACard>
+        : <Loading />}
+    </AScreen>
+  );
   const f = g.fixture, rs = g.ruleset, ph = g.phase, v = g.viewer ?? {};
   const names = { home: f.home?.name ?? 'Home', away: f.away?.name ?? 'Away' };
   const scorer = !!v.can_score && !revoked;
+  const savedTime = pack.savedAt ? new Date(pack.savedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null;
   const run = async (fn) => { setBusy(true); try { return await fn(); } catch (x) { toast('' + x.message); return null; } finally { setBusy(false); } };
-  const control = (path) => run(async () => push(await api.post(`/fixtures/${id}/${path}`)));
+  // kick off, pause, resume and full time go through the same queue as the taps: kept on the device, sent in order, never applied twice
+  const control = (op) => run(async () => {
+    const bad = controlReject(g, op);
+    if (bad) { toast(bad); return false; }
+    const r = await queue.enqueue({ op, occurred_at: new Date().toISOString() });
+    if (r.queued && !r.full) toast('Saved on this device. It is sent as soon as there is a signal.');
+    return !r.queued;
+  });
   const log = async (kind, side, extra = {}) => {
     const elapsed = f.started_at ? Math.max(0, Math.floor((Date.now() - new Date(f.started_at)) / 1000)) : undefined;
     const pid = side ? who[side] : null;
+    if (useSaved) { const bad = localReject(g, { kind, side, period: extra.period, payload: extra.payload, player_id: pid }); if (bad) { toast(bad); return false; } }   // the sport's own rules, answered at once offline
     const r = await queue.enqueue({ kind, ...(side ? { side } : {}), ...(extra.period ? { period: extra.period } : {}), ...(extra.payload ? { payload: extra.payload } : {}), ...(pid ? { player_id: pid } : {}), clock_seconds: elapsed, expected_seq: seen.current });
     if (pid && side) setWho((w) => ({ ...w, [side]: null }));
     if (r.queued && !r.full) toast('Not sent yet. It is kept on this device and will be retried.');
@@ -90,7 +120,8 @@ export function MatchCentre({ id }) {
   const canPoint = live && ph.can_score && !between && !(g.score.shootout?.started);
   const games = rs.kind === 'sets' && rs.racket?.scoring === 'games';
   const sides = ['home', 'away'];
-  const lineRows = (lineup.data?.appearances ?? []).filter((a) => !a.hidden && ['started', 'substitute_on'].includes(a.status) && a.off_clock_seconds == null)
+  const lineList = lineup.data?.appearances ?? pack.saved?.lineup ?? [];
+  const lineRows = lineList.filter((a) => !a.hidden && ['started', 'substitute_on'].includes(a.status) && a.off_clock_seconds == null)
     .map((a) => ({ ...a, side: a.team_id === f.home?.id ? 'home' : a.team_id === f.away?.id ? 'away' : null })).filter((a) => a.side);
   const what = (e) => (e.kind === 'ball' ? ballText(e.payload)
     : e.kind === 'round_card' ? `Judge ${e.payload?.judge} · round ${e.payload?.round}: ${e.payload?.home}–${e.payload?.away}`
@@ -100,7 +131,7 @@ export function MatchCentre({ id }) {
 
   // the cricket scorebook is the existing component; it is handed the fixture's live state in the shape it already reads
   const declared = g.score.cricket?.lineup ?? {};
-  const nameOfPlayer = (uid) => lineup.data?.appearances?.find((a) => a.user_id === uid)?.display_name;
+  const nameOfPlayer = (uid) => lineList.find((a) => a.user_id === uid)?.display_name;
   const book = rs.kind === 'cricket' ? { template: { ruleset: rs }, result: g.score, status: live ? 'in_progress' : f.status, labels: names, entries: events,
     details: { players: Object.fromEntries(sides.map((sd) => [sd, (declared[sd] ?? []).map((uid) => ({ name: nameOfPlayer(uid) ?? '' }))])) } } : null;
 
@@ -212,10 +243,11 @@ export function MatchCentre({ id }) {
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         {['provisional', 'final', 'corrected'].includes(g.live?.state) ? <LiveBadge status={LIVE_STATE[g.live.state]} label={LIVE_LABEL[g.live.state]} /> : null}
         {g.live?.corrected && g.live.state === 'live' ? <AT size={12} weight="800" color={A.sun}>✎ includes corrections</AT> : null}
-        {scorer ? <SyncLine pending={queue.pending.length} onRetry={queue.flush} mode={mode} /> : <AT size={12} weight="700" color={mode === 'stream' ? A.green : A.mute}>{mode === 'stream' ? '⚡ Live updates' : mode === 'polling' ? '↻ Refreshing every few seconds' : 'Connecting…'}</AT>}
+        {scorer ? <SyncLine offline={offline} pending={queue.pending.length} onRetry={queue.flush} mode={mode} /> : <AT size={12} weight="700" color={mode === 'stream' ? A.green : A.mute}>{mode === 'stream' ? '⚡ Live updates' : mode === 'polling' ? '↻ Refreshing every few seconds' : 'Connecting…'}</AT>}
         <View style={{ flex: 1 }} />
         <Pressable onPress={refresh} accessibilityRole="button" accessibilityLabel="Refresh" hitSlop={10} style={{ minHeight: 44, justifyContent: 'center' }}><AT size={12} weight="800" color={A.cyan}>Refresh</AT></Pressable>
       </View>
+      {scorer ? <OfflineBanner offline={offline} saved={!!pack.saved} savedTime={savedTime} waiting={queue.pending.length} full={queue.full} foreign={queue.foreign} /> : null}
       {revoked ? <ACard pad={12} tone={A.sun}><AT size={13} weight="800">Your scoring access for this game has ended. You are now watching.</AT></ACard> : null}
       {!scorer && !revoked ? <AT size={13} color={A.mute}>You are watching. Only the organiser and match officials can score.</AT> : null}
 
@@ -227,19 +259,27 @@ export function MatchCentre({ id }) {
         </View>
       </View>
 
-      {scorer || v.manages ? <AppearancesPanel id={id} f={f} names={names} viewer={v} /> : null}
-      <RecapCard id={id} f={f} />
+      {(scorer || v.manages) && !offline ? <AppearancesPanel id={id} f={f} names={names} viewer={v} /> : null}
+      {!offline ? <RecapCard id={id} f={f} /> : null}
 
       <ReasonSheet visible={ask === 'undo'} onClose={() => setAsk(null)} title="Undo the last moment" sub={lastLogged ? `${describe(lastLogged)} will be voided and the score recomputed. It stays in the log.` : ''}
         presets={['Wrong team', 'Wrong action', 'Disallowed by referee', 'Review overturned']} confirmLabel="Void it" tone="sun"
-        onConfirm={(reason) => run(async () => push(await api.post(`/match-events/${lastLogged.id}/void`, { reason })))} />
+        onConfirm={(reason) => run(async () => {
+          if (lastLogged.local) { queue.cancel(String(lastLogged.id).slice(6)); return true; }   // not sent yet: just take it back
+          if (offline) { toast('Undo of a tap that was already sent needs a connection.'); return null; }
+          return push(await api.post(`/match-events/${lastLogged.id}/void`, { reason }));
+        })} />
       {fix ? <CorrectSheet event={fix} rs={rs} names={names} label={label} onClose={() => setFix(null)} onSubmit={async (body) => { const r = await api.post(`/match-events/${body.id}/correct`, { ...body, id: undefined }); push(r.state); toast('Corrected. The original stays in the log.'); }} /> : null}
       {order ? <BattingOrderSheet name={names[order]} players={lineRows.filter((r) => r.side === order)} value={declared[order] ?? []} onClose={() => setOrder(null)} onSave={async (ids) => { await log('lineup', null, { payload: { [order]: ids } }); setOrder(null); }} /> : null}
       <ConflictSheet conflict={queue.conflict} describe={describe} names={names} onResend={() => queue.resolve('resend')} onDiscard={() => queue.resolve('discard')} />
       <Sheet visible={ask === 'end'} onClose={() => setAsk(null)} title="Full time?">
         <T size={14} color="#475569">This ends the match and opens the score sheet, pre-filled from what you logged. The result is not official until it is signed, approved and published.</T>
-        {queue.pending.length ? <T size={13} color="#B45309">{queue.pending.length} tap{queue.pending.length === 1 ? ' is' : 's are'} still waiting to be sent. Send them first so the sheet is complete.</T> : null}
-        <ABtn title="🏁 Yes, full time" tone="live" loading={busy} disabled={queue.pending.length > 0} onPress={async () => { const r = await run(() => api.post(`/fixtures/${id}/end`)); if (r) { setAsk(null); refresh(); go('ScoreSheet', { id }); } }} />
+        {queue.pending.length || offline ? <T size={13} color={c.orange}>{offline ? 'There is no signal. ' : ''}{queue.pending.length} tap{queue.pending.length === 1 ? ' is' : 's are'} waiting to be sent. Full time is kept on this device after them and everything is sent in order when the signal returns; the score sheet opens then.</T> : null}
+        <ABtn title="🏁 Yes, full time" tone="live" loading={busy} onPress={async () => {
+          const sent = await control('end');
+          setAsk(null);
+          if (sent) { refresh(); go('ScoreSheet', { id }); }
+        }} />
       </Sheet>
     </AScreen>
   );

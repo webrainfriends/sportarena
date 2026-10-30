@@ -6,6 +6,7 @@ import { PUBLIC_USER, PUBLIC_ROLES_SQL } from '../helpers.js';
 import { NOT_YOUTH_SQL } from '../youth.js';
 import { metricKey } from '../scoring/metric-defs.js';
 import { computeRanking, describeFormula } from './engine.js';
+import { onRatingsEvidenceChanged } from '../ratings/data.js';
 
 const q = (c) => c ?? { query };
 const sc = (v) => v.scope ?? {};
@@ -133,7 +134,7 @@ export async function snapshotAll(reason, { sportId } = {}) {
   return n;
 }
 /** Called after a result is approved, corrected or superseded; never blocks or fails the caller. */
-export const onResultsChanged = (sportId) => snapshotAll('correction', { sportId }).catch(() => 0);
+export const onResultsChanged = (sportId) => Promise.all([snapshotAll('correction', { sportId }).catch(() => 0), onRatingsEvidenceChanged(sportId)]).then(([n]) => n);
 
 /** The plain-language "Why am I here?" for one subject in a ranking. */
 export async function explain(def, v, res, subjectId, { unit, full }) {

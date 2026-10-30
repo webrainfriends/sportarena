@@ -12,6 +12,7 @@ import { fulfilServiceInvoicePaid } from '../svc/finance.js';
 import { fulfilMarketplacePaid } from '../marketplace/engine.js';
 import { fulfilMediaFeePaid } from '../media-fees.js';
 import { fulfilContributionPaid, fulfilTeamChargePaid } from '../team-money.js';
+import { fulfilInstalmentPaid } from '../registration-money.js';
 import { raiseException, recordSale, syncRefunds } from '../settlement.js';
 import { coachSessionDone } from '../rewards/activity.js';
 import { saleDue, confirmOnlineSalePayment } from '../pos/due.js';
@@ -80,6 +81,10 @@ export async function describePurpose(c, type, id) {
     const inDesk = x && (await c.query("SELECT 1 FROM pos_sale_lines l JOIN pos_sales s ON s.id=l.sale_id WHERE l.charge_id=$1 AND s.status='awaiting_payment'", [id])).rowCount > 0;
     return x && { payerId: x.payer_id, amount: Number(x.amount), currency: x.currency, name: `Academy ${x.kind} · ${x.name}`, payable: !inDesk && x.status === 'awaiting_payment' && Number(x.amount) > 0 };
   }
+  if (type === 'registration_instalment') {
+    const x = await q("SELECT e.submitted_by AS payer_id, i.amount_cents AS amount, i.currency, i.status, e.status AS entry_status, p.title FROM rx_instalments i JOIN rx_entries e ON e.id=i.entry_id JOIN rx_programmes p ON p.id=e.programme_id WHERE i.id=$1 FOR UPDATE OF i");
+    return x && { payerId: x.payer_id, amount: Number(x.amount), currency: x.currency, name: `Registration · ${x.title}`, payable: x.status === 'unpaid' && ['submitted', 'under_review', 'info_requested', 'approved'].includes(x.entry_status) };
+  }
   if (type === 'team_charge') {
     const x = await q("SELECT ch.payer_id, ch.amount_minor - ch.adjusted_minor - ch.settled_minor AS amount, b.currency, ch.status, b.title, b.status AS batch_status, t.name FROM team_charges ch JOIN team_charge_batches b ON b.id=ch.batch_id JOIN teams t ON t.id=ch.team_id WHERE ch.id=$1 FOR UPDATE OF ch");
     return x && { payerId: x.payer_id, amount: Number(x.amount), currency: x.currency, name: `${x.title} · ${x.name}`, payable: x.status === 'awaiting_payment' && x.batch_status === 'active' && Number(x.amount) > 0 };
@@ -131,6 +136,7 @@ async function fulfil(c, type, id, payment) {
   if (type === 'media_rights_fee') return fulfilMediaFeePaid(c, id);
   if (type === 'ad_funding') return fulfilAdFundingPaid(c, id);
   if (type === 'commercial_subscription') return fulfilSubscriptionPaid(c, id, payment.payer_id);
+  if (type === 'registration_instalment') return fulfilInstalmentPaid(c, id, payment);
   if (type === 'team_charge') return fulfilTeamChargePaid(c, id, payment);
   if (type === 'team_contribution') return fulfilContributionPaid(c, id, payment);
   const done = (await c.query(sql, [id])).rowCount > 0;

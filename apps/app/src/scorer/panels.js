@@ -12,12 +12,35 @@ const other = (s) => (s === 'home' ? 'away' : 'home');
 const sideTone = (s) => (s === 'home' ? 'hero' : 'neon');
 
 /** "Saved" / "N not sent yet" with a retry: the scorer always knows whether their taps reached the server. */
-export function SyncLine({ pending, onRetry, mode }) {
+export function SyncLine({ pending, onRetry, mode, offline }) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap', flexShrink: 1 }}>
       <AT size={12.5} weight="800" color={pending ? A.sun : A.green} accessibilityLiveRegion="polite">{pending ? `⚠ ${pending} not sent yet` : '✓ All saved'}</AT>
-      {pending ? <ABtn small tone="sun" title="Retry sending" onPress={onRetry} /> : null}
-      {mode ? <AT size={12} weight="700" color={mode === 'stream' ? A.green : A.mute}>{mode === 'stream' ? '⚡ Live' : mode === 'polling' ? '↻ Refreshing' : 'Connecting…'}</AT> : null}
+      {pending && !offline ? <ABtn small tone="sun" title="Retry sending" onPress={onRetry} /> : null}
+      {offline ? <AT size={12} weight="800" color={A.sun}>● Offline</AT>
+        : mode ? <AT size={12} weight="700" color={mode === 'stream' ? A.green : A.mute}>{mode === 'stream' ? '⚡ Live' : mode === 'polling' ? '↻ Refreshing' : 'Connecting…'}</AT> : null}
+    </View>
+  );
+}
+
+/**
+ * What the scorer needs to know about the signal: offline and scoring from the saved copy (provisional until sent), nothing saved yet,
+ * the queue nearly full, or taps made by another account that this one must not send.
+ */
+export function OfflineBanner({ offline, saved, savedTime, waiting, full, foreign }) {
+  if (!offline && !foreign && !full) return null;
+  return (
+    <View style={{ gap: 8 }}>
+      {offline ? (
+        <ACard pad={12} tone={A.sun}>
+          <AT size={13.5} weight="800">{saved ? `Offline · scoring from the copy saved${savedTime ? ` at ${savedTime}` : ''}` : 'Offline · this game is not saved on this device'}</AT>
+          <AT size={12.5} color={A.mute}>{saved
+            ? `Every tap is checked against the sport's rules here, kept on this device and sent in order when the signal returns${waiting ? ` (${waiting} waiting)` : ''}. The score shown is provisional until then.`
+            : 'You can look, but not score. Open the game while online to save it for next time.'}</AT>
+        </ACard>
+      ) : null}
+      {full ? <ACard pad={12} tone={A.sun}><AT size={13} weight="800">Too many taps are waiting. Get back online before scoring more.</AT></ACard> : null}
+      {foreign ? <ACard pad={12} tone={A.sun}><AT size={13} weight="800">{`${foreign} tap${foreign === 1 ? '' : 's'} on this device were made by another account.`}</AT><AT size={12.5} color={A.mute}>They are kept, not sent and not deleted. Sign in as that person to send them.</AT></ACard> : null}
     </View>
   );
 }
