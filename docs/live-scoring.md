@@ -150,13 +150,26 @@ equals the engine's score for the same log.
 | Innings (`cricket`) | cricket | native |
 | Round cards (`cards`) | 4 combat sports | native |
 | Result only (`outcome`) | 55 | native |
-| Timed, measured and judged sessions | 106 | **gap**: the heat / field-flight session pad keeps its queue (taps survive no signal and are sent later, as before) but is not in the pack and does not project a provisional result on the device |
+| Timed, measured and judged sessions (`session`) | 106 | native (#637): in the pack, projected on the device by the server's own `sessionPlugin` |
+
+### Remaining gaps closed (#637)
+
+| Piece | Where | What it does |
+|---|---|---|
+| Heats, finals and field flights in the pack | `get_scorer_pack` → `sessions` (`session_id` refreshes one), `capabilities/live-scoring.js` (`sessionPack`) | Sessions the caller may score (organiser, assigned official), whole log with voids, pinned config and the entry list (names follow the programme's privacy setting), audited like games. |
+| Session projection on the device | `apps/app/src/scorer/local.js` (`projectSession`, `sessionReject`) | The pure `sessionPlugin` runs over the saved log plus waiting entries, voids and finalise: places, Q/q and what may be entered next are right offline, labelled provisional. |
+| `occurred_at` on `log_match_event` and `log_session_event` | migration `133_offline_scoring_gaps.sql` (nullable, additive; guarded like the rest of the event) | The moment the official pressed it, clamped to the last 24 h and never the future; `recorded_at` stays the server's time. The queue stamps it on every tap. |
+| Replay-safe void | `void_match_event`, `void_session_event` (`client_key`) | A void sent twice after a lost reply acts once. |
+| Offline undo and correct | `scorer/queue.js` (`op: 'void' \| 'correct'`), `match-centre.js` | Undo or correct of an already-sent moment is shown at once, queued in order and sent with its `client_key`; a correction is checked with the server's own replay (`correctionReject`) first, so one that would break a later moment is refused on the device. Undo/correct of a tap still waiting just edits the queue. |
+| "While you were away" | `409 stale_state` now carries `missed` (kind, side, whether it was yours; never who) → `ConflictSheet` | When another official scored while you were offline, the sheet lists what you missed before you resend or discard. |
+| Heat screen | `screens/session-pad.js` (route `SessionPad`) | A saved heat opens on its own Arena-styled screen (the same `SessionLive` pad the event console uses, not a second scorer). |
 
 ### Honest limits
 
-* Undo of a tap that was already **sent** and Correct need a connection (they change the server's log); undo of a tap still waiting just takes it back.
-* A game must have been saved once while online (Officials home, or opening it as a scorer). A game not saved cannot be scored offline, and the screen says so.
-* Offline, another official's taps are not seen. If someone scored meanwhile, the existing `409 stale_state` conflict sheet appears on reconnect; nothing is added blindly.
+* A game or heat must have been saved once while online (Officials home, or opening it as a scorer). One not saved cannot be scored offline, and the screen says so.
+* Offline, another official's entries are not seen; on reconnect the `409 stale_state` sheet lists what was missed and nothing is added blindly. A held tap is sent only when you choose to.
+* A correction that is legal on the device can still be refused by the server if someone else changed the log in the meantime; the scorer is told.
+* Correct (the pencil) while offline is covered by the pure-engine test and the code path, not by a browser journey screenshot.
 * The scorer queue itself (not the pack) is on the same storage as before: the keychain on native, `localStorage` on the web. It holds scoring facts and player ids, no names.
 * Not run on a physical iPhone, iPad or Android device here; the iOS and Android bundles compile with `expo export`.
 
@@ -173,7 +186,7 @@ equals the engine's score for the same log.
 
 ## Verification
 
-`apps/api/test/scorer-pack.test.js` (the pack, offline-safe controls, device projection, catalogue walk), `scripts/e2e/offline-referee-journey.mjs` (real web app: save the pack, go offline, score, full time, reconnect; phone, tablet, desktop), `apps/api/test/live-scoring-engine.test.js` (pure plugin tests), `apps/api/test/live-scoring.test.js` (concurrency, replay, stale state,
+`apps/api/test/offline-scoring-gaps.test.js` (#637: `occurred_at`, replay-safe void, missed events, heats in the pack, catalogue walk of the 106 session sports, offline undo/correct on the device), `scripts/e2e/offline-gaps-journey.mjs` (real web app: heat and undo with no signal, conflict sheet; PNGs in `docs/ux/offline-gaps/`), `apps/api/test/scorer-pack.test.js` (the pack, offline-safe controls, device projection, catalogue walk), `scripts/e2e/offline-referee-journey.mjs` (real web app: save the pack, go offline, score, full time, reconnect; phone, tablet, desktop), `apps/api/test/live-scoring-engine.test.js` (pure plugin tests), `apps/api/test/live-scoring.test.js` (concurrency, replay, stale state,
 corrections and provenance, tennis, cricket, football cup tie, lineup, permissions over REST and MCP, lease, streams and live revocation,
 sessions, public lifecycle, youth consent) and `scripts/e2e/live-scoring-journey.mjs` (the real web app on a phone, tablet and desktop,
 including going offline and the conflict sheet). Native devices were not available in this environment: the iOS and Android bundles compile

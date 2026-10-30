@@ -3,12 +3,15 @@
 // What this shows is provisional and says so: the server replays every tap under the pinned rules again when it arrives, and stays the
 // only authority on order and legality.
 import { computeScore, matchPhase, rejectReason } from '../../../api/src/scoring/engine.js';
+import { replayStream, withCorrection } from '../../../api/src/scoring/replay.js';
+import { sessionPlugin } from '../../../api/src/scoring/plugins/index.js';
 
 const CONTROL = { start: 'live', pause: 'paused', resume: 'live', end: 'finished' };
 const STATUS_OK = { start: ['scheduled'], pause: ['live'], resume: ['paused'], end: ['live', 'paused'] };
 
-/** A queued item is a control (kick off, pause, resume, full time) when it has `op`, otherwise it is a game event. */
-export const isControl = (p) => !!p.op;
+/** A queued item is a control (kick off, pause, resume, full time) when its `op` is one of those; `void` / `correct` edit an event already in the log; otherwise it is a game event. */
+export const isControl = (p) => !!p.op && p.op in CONTROL;
+export const isEdit = (p) => p.op === 'void' || p.op === 'correct';
 
 const logged = (events) => events.filter((e) => !e.voided_at);
 
@@ -34,13 +37,37 @@ export function controlReject(game, op) {
   return null;
 }
 
+/**
+ * Why a correction cannot be made right now, or null: the same replay the server runs, so a correction that would make a later event
+ * illegal is refused here, naming it, instead of when the signal returns.
+ */
+export function correctionReject(game, target, patch) {
+  const events = game.events.filter((e) => !e.voided_at);
+  const cur = events.find((e) => e.id === target);
+  if (!cur) return 'That moment is already voided or corrected';
+  const next = { ...cur, id: null, seq: game.last_seq + 1, kind: patch.kind ?? cur.kind, side: patch.side !== undefined ? patch.side : cur.side, supersedes_id: cur.id, position_seq: cur.position_seq ?? cur.seq };
+  const ctx = { knockout: !!game.knockout };
+  const before = replayStream(game.ruleset, events, ctx), after = replayStream(game.ruleset, withCorrection(events, cur.id, next), ctx);
+  if (!after.ok && (before.ok || after.failed.seq !== before.failed.seq)) return `This correction would make a later event illegal (event ${after.failed.seq ?? 'new'}, ${after.failed.kind}: ${after.failed.reason})`;
+  return null;
+}
+
 /** The game with every waiting tap applied on top of the last log the device holds. `pending` is the queue, oldest first. */
 export function project(game, pending) {
   if (!game || !pending?.length) return game;
   let fixture = { ...game.fixture };
   const events = [...game.events];
   let seq = game.last_seq;
+  const WAITING = 'Waiting to be sent';
   for (const p of pending) {
+    if (isEdit(p)) {   // a void or correction of an event already saved: shown at once, sent in order
+      const i = events.findIndex((e) => e.id === p.target && !e.voided_at);
+      if (i < 0) continue;
+      const old = events[i];
+      events[i] = { ...old, voided_at: p.occurred_at ?? 'local', void_reason: p.op === 'correct' ? `Corrected: ${p.reason} (${WAITING.toLowerCase()})` : WAITING, local_edit: true };
+      if (p.op === 'correct') events.splice(i + 1, 0, { ...old, id: `local-${p.client_key}`, kind: p.kind ?? old.kind, side: p.side !== undefined ? p.side : old.side, voided_at: null, void_reason: null, supersedes_id: old.id, local: true });
+      continue;
+    }
     if (isControl(p)) {
       if (STATUS_OK[p.op].includes(fixture.status)) {
         fixture = { ...fixture, status: CONTROL[p.op], ...(p.op === 'start' ? { started_at: p.occurred_at } : {}), ...(p.op === 'end' ? { finished_at: p.occurred_at } : {}) };
@@ -77,4 +104,40 @@ export function mergeLive(saved, live) {
   const rs = live.ruleset ?? saved.ruleset;
   const phase = matchPhase(rs, events);
   return { ...saved, ...live, events, ruleset: rs, score: computeScore(rs, events), phase: { ...phase, score: undefined }, lineup: saved.lineup, knockout: saved.knockout, viewer: live.viewer ?? saved.viewer };
+}
+
+// ------------------------------------------------------------------ heats, finals and field flights (the session model)
+// The pack carries the whole session log and the pinned config; the same pure plugin the server uses derives places, Q/q and what may be
+// entered next, so a heat keeps going with no signal. Entries are named from the saved read (names follow the programme's privacy setting).
+const sessionEvents = (events) => events.map((e) => ({ ...e, voided_at: e.voided ? (e.voided_at ?? 'v') : (e.voided_at ?? null), payload: { ...(e.payload ?? {}), ...(e.entry_id ? { entry_id: e.entry_id } : {}) } }));
+
+/** Why an entry cannot be made right now (the plugin's own refusals), or null. `g` is the projected session, so its waiting taps count. */
+export function sessionReject(g, kind, entry_id, payload = {}) {
+  const evs = sessionEvents(g.events);
+  return sessionPlugin.validate(g.config, sessionPlugin.state(g.config, evs), { kind, payload: { ...payload, ...(entry_id ? { entry_id } : {}) } });
+}
+
+/** The session with every waiting entry, void and result applied on top of the last log the device holds. */
+export function projectSession(pack, pending) {
+  if (!pack) return pack;
+  const events = pack.events.map((e) => ({ ...e }));
+  let seq = pack.last_seq;
+  let finalizing = false;
+  for (const p of pending ?? []) {
+    if (p.op === 'void') { const e = events.find((x) => x.id === p.target && !x.voided); if (e) { e.voided = true; e.voided_at = p.occurred_at ?? 'local'; e.void_reason = 'Waiting to be sent'; } continue; }
+    if (p.op === 'finalize') { finalizing = true; continue; }
+    seq += 1;
+    events.push({ id: `local-${p.client_key}`, seq, kind: p.kind, entry_id: p.entry_id ?? null, payload: p.payload ?? {}, voided: false, local: true });
+  }
+  const state = sessionPlugin.state(pack.config, sessionEvents(events));
+  const view = sessionPlugin.publicView(state);
+  const named = new Map(pack.projection.entries.map((e) => [e.entry_id, e]));
+  const official = ['final', 'corrected'].includes(pack.live.state);
+  const base = official ? pack.live.state : state.status === 'provisional' ? 'provisional' : pack.session.status === 'live' || state.started || state.status !== 'scheduled' ? 'live' : 'scheduled';
+  return {
+    ...pack, events, last_seq: seq,
+    projection: { ...view, entries: view.entries.map((e) => ({ ...e, name: named.get(e.entry_id)?.name ?? null, house: named.get(e.entry_id)?.house ?? null })) },
+    live: { state: base, provisional: !official, corrected: base === 'corrected' },
+    provisional: !!(pending?.length), waiting: pending?.length ?? 0, finalizing,
+  };
 }

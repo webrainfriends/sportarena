@@ -18,7 +18,7 @@ import { AppearancesPanel } from './appearances';
 import { CricketScorer } from './cricket-scorer';
 import { useScoreQueue } from '../scorer/queue';
 import { useSavedGame } from '../scorer/pack';
-import { controlReject, localReject, project } from '../scorer/local';
+import { controlReject, correctionReject, localReject, project } from '../scorer/local';
 import { AddedTimeBar, BattingOrderSheet, CardsPad, ConflictSheet, CorrectSheet, FootballExtras, OfflineBanner, OutcomePad, ProjectionCard, RacketPad, RulesPanel, ServerPick, SyncLine } from '../scorer/panels';
 
 const EXTRA = { wd: 'Wide', nb: 'No-ball', b: 'Bye', lb: 'Leg bye', pen: 'Penalty' };
@@ -70,7 +70,9 @@ export function MatchCentre({ id }) {
 
   // every tap goes through the queue: kept on the device, retried, and never counted twice (client_key)
   const queue = useScoreQueue(`sa_queue_fx_${id}`,
-    async ({ owner, op, ...e }) => {
+    async ({ owner, op, target, ...e }) => {
+      if (op === 'void') return push(await api.post(`/match-events/${target}/void`, { reason: e.reason, client_key: e.client_key }));   // undo and correct of a saved moment: queued like a tap, sent once, in order
+      if (op === 'correct') { const r = await api.post(`/match-events/${target}/correct`, { reason: e.reason, client_key: e.client_key, ...(e.kind ? { kind: e.kind } : {}), ...(e.side ? { side: e.side } : {}) }); push(r.state); return r; }
       if (op) { const r = await api.post(`/fixtures/${id}/${op}`, { client_key: e.client_key, occurred_at: e.occurred_at }); if (r?.fixture) push(r); return r; }   // kick off, pause, resume, full time
       const r = await api.post(`/fixtures/${id}/events`, e); seen.current = Math.max(seen.current, r.state.last_seq); push(r.state); return r;
     },
@@ -223,7 +225,7 @@ export function MatchCentre({ id }) {
               <AT size={12} weight="800" color={A.cyan} style={{ width: 38 }}>{clockOf(e.clock_seconds) || `#${e.seq}`}</AT>
               <View style={{ flex: 1 }}>
                 <AT size={14} weight="800" style={e.voided_at ? { textDecorationLine: 'line-through' } : null}>{what(e)}{e.side ? ` · ${names[e.side]}` : ''}</AT>
-                {e.voided_at ? <AT size={11.5} color={A.mute}>{/^Corrected/.test(e.void_reason ?? '') ? `${e.void_reason} (replaced by a later entry)` : `Voided: ${e.void_reason}`}</AT>
+                {e.voided_at ? <AT size={11.5} color={A.mute}>{/^Corrected/.test(e.void_reason ?? '') ? `${e.void_reason} (replaced by a later entry)` : e.local_edit ? e.void_reason : `Voided: ${e.void_reason}`}</AT>
                   : <AT size={11.5} color={A.mute}>{[e.period ? `${rs.periods?.label ?? 'Period'} ${e.period}` : null, e.supersedes_id || e.corrects_seq ? '✎ corrected entry' : null].filter(Boolean).join(' · ')}</AT>}
               </View>
               {scorer && live && !e.voided_at && !NO_CORRECT.has(e.kind) ? (
@@ -266,10 +268,20 @@ export function MatchCentre({ id }) {
         presets={['Wrong team', 'Wrong action', 'Disallowed by referee', 'Review overturned']} confirmLabel="Void it" tone="sun"
         onConfirm={(reason) => run(async () => {
           if (lastLogged.local) { queue.cancel(String(lastLogged.id).slice(6)); return true; }   // not sent yet: just take it back
-          if (offline) { toast('Undo of a tap that was already sent needs a connection.'); return null; }
-          return push(await api.post(`/match-events/${lastLogged.id}/void`, { reason }));
+          const r = await queue.enqueue({ op: 'void', target: lastLogged.id, reason });          // already sent: voided now, or kept on this device and voided when the signal returns
+          if (r.queued && !r.full) toast('Undo saved on this device. It is sent as soon as there is a signal.');
+          return !r.queued;
         })} />
-      {fix ? <CorrectSheet event={fix} rs={rs} names={names} label={label} onClose={() => setFix(null)} onSubmit={async (body) => { const r = await api.post(`/match-events/${body.id}/correct`, { ...body, id: undefined }); push(r.state); toast('Corrected. The original stays in the log.'); }} /> : null}
+      {fix ? <CorrectSheet event={fix} rs={rs} names={names} label={label} onClose={() => setFix(null)} onSubmit={async (body) => {
+        const bad = correctionReject(g, body.id, body);   // the server's own replay, run here: a correction that breaks a later moment is refused before anything is sent
+        if (bad) throw new Error(bad);
+        if (fix.local) queue.edit(String(fix.id).slice(6), { ...(body.kind ? { kind: body.kind } : {}), ...(body.side ? { side: body.side } : {}) });   // not sent yet: it just goes out as it should have been
+        else {
+          const r = await queue.enqueue({ op: 'correct', target: body.id, reason: body.reason, ...(body.kind ? { kind: body.kind } : {}), ...(body.side ? { side: body.side } : {}) });
+          if (r.queued && !r.full) { toast('Correction saved on this device. It is sent as soon as there is a signal.'); return; }
+        }
+        toast('Corrected. The original stays in the log.');
+      }} /> : null}
       {order ? <BattingOrderSheet name={names[order]} players={lineRows.filter((r) => r.side === order)} value={declared[order] ?? []} onClose={() => setOrder(null)} onSave={async (ids) => { await log('lineup', null, { payload: { [order]: ids } }); setOrder(null); }} /> : null}
       <ConflictSheet conflict={queue.conflict} describe={describe} names={names} onResend={() => queue.resolve('resend')} onDiscard={() => queue.resolve('discard')} />
       <Sheet visible={ask === 'end'} onClose={() => setAsk(null)} title="Full time?">
