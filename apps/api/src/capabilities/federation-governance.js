@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { cap, id, page } from '../registry.js';
 import { one, many, tx, pool } from '../db.js';
 import { badRequest, conflict, notFound } from '../errors.js';
+import { gate } from '../federation-approvals.js';
 import { LIC_STATUS, AFF_STATUS, POLICY_KINDS, authority, need, bodyById, mustBeActive, lockBody, lineage, subtree, logFed, historyOf, policyAt, paramsOf, today } from '../federation.js';
 
 const TAG = 'Federation';
@@ -16,20 +17,22 @@ const DATE_KINDS = ['registration_window', 'transfer_window', 'congress', 'admin
 export const DATE_LABEL = { registration_window: 'Registration window', transfer_window: 'Transfer window', congress: 'Congress', administrative: 'Administrative date', official_development: 'Official development', assessment: 'Assessment', deadline: 'Deadline', sanctioned_competition: 'Sanctioned competition', licence_renewal: 'Licence expiries', affiliation_renewal: 'Affiliation expiries' };
 
 // ------------------------------------------------------------------ policies
-const POL_COLS = 'p.id, p.body_id, p.kind, p.title, p.sport_id, s.name AS sport_name, p.category, p.season_year, p.status, p.created_at';
+const POL_COLS = 'p.id, p.body_id, p.kind, p.title, p.sport_id, s.name AS sport_name, p.category, p.season_year, p.status, p.local_override, p.created_at';
 const polFrom = 'fed_policies p LEFT JOIN sports s ON s.id=p.sport_id';
 const VER_COLS = 'v.id, v.version, v.effective_from::text AS effective_from, v.summary, v.params, v.published_by, v.created_at';
 
 cap({
   name: 'save_federation_policy', method: 'POST', path: '/federation/bodies/:id/policies', tag: TAG, status: 201,
   summary: 'Open a governing requirement for a body (secretary/admin): its kind (affiliation, licence, sanctioning conditions, eligibility, roster limits, competition entry, official grades, registration, transfers, discipline, para-classification), and the sport, category and season it applies to. One active policy per kind and scope; its wording is then published as dated versions (publish_policy_version). Playing and scoring rules belong to the rulebook, not here.',
-  input: z.object({ id, kind: KIND, title: text(120).min(2), sport_id: id.optional(), category: text(60).default(''), season_year: year.optional() }),
+  input: z.object({ id, kind: KIND, title: text(120).min(2), sport_id: id.optional(), category: text(60).default(''), season_year: year.optional(), local_override: z.enum(['allowed', 'locked']).default('allowed').describe('locked: nobody beneath this body may publish their own version of this requirement') }),
   handler: ({ user }, i) => tx(async (c) => {
     const a = await authority(user, i.id, { c });
     need(a, 'governance', i.sport_id ?? null);
+    const above = (await lineage(i.id, c)).filter((x) => x !== i.id);
+    if (above.length && (await c.query("SELECT 1 FROM fed_policies WHERE body_id = ANY($1) AND kind=$2 AND status='active' AND local_override='locked' AND (sport_id IS NULL OR sport_id IS NOT DISTINCT FROM $3) LIMIT 1", [above, i.kind, i.sport_id ?? null])).rowCount) throw conflict('A body above has locked this requirement; it cannot be overridden locally', { code: 'policy_locked' });
     if (i.sport_id && !(await c.query('SELECT 1 FROM governing_body_sports WHERE body_id=$1 AND sport_id=$2 AND ended_on IS NULL', [i.id, i.sport_id])).rowCount) throw badRequest('That sport is not one this body governs');
     let p;
-    try { p = (await c.query('INSERT INTO fed_policies(body_id, kind, title, sport_id, category, season_year, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *', [i.id, i.kind, i.title, i.sport_id ?? null, i.category, i.season_year ?? null, user.id])).rows[0]; }
+    try { p = (await c.query('INSERT INTO fed_policies(body_id, kind, title, sport_id, category, season_year, created_by, local_override) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *', [i.id, i.kind, i.title, i.sport_id ?? null, i.category, i.season_year ?? null, user.id, i.local_override])).rows[0]; }
     catch (e) { if (e.code === '23505') throw conflict('There is already an active policy of this kind for that sport, category and season'); throw e; }
     await logFed(c, i.id, 'policy', p.id, 'created', { to: 'active', actor: user.id, detail: { kind: i.kind } });
     return p;
@@ -39,7 +42,7 @@ cap({
 cap({
   name: 'publish_policy_version', method: 'POST', path: '/federation/policies/:id/versions', tag: TAG, status: 201,
   summary: 'Publish the next version of a requirement with the date it takes effect (secretary/admin). Versions are immutable and never edited: decisions made earlier keep the version they used, and decisions from the effective date on use this one. The date must be later than the previous version\'s.',
-  input: z.object({ id, effective_from: day, summary: text(1000).optional(), params: z.record(z.string(), z.any()).default({}) }),
+  input: z.object({ id, effective_from: day, summary: text(1000).optional(), params: z.record(z.string(), z.any()).default({}), approval_id: id.optional().describe('the second person\'s approval, where the body requires four eyes') }),
   handler: ({ user }, i) => tx(async (c) => {
     const p = (await c.query('SELECT * FROM fed_policies WHERE id=$1 FOR UPDATE', [i.id])).rows[0];
     if (!p) throw notFound('Policy');
@@ -50,6 +53,7 @@ cap({
     if (!parsed.success) throw badRequest(parsed.error.issues.map((x) => `${x.path.join('.') || 'params'}: ${x.message}`).join('; '));
     const last = (await c.query('SELECT version, effective_from::text AS effective_from FROM fed_policy_versions WHERE policy_id=$1 ORDER BY version DESC LIMIT 1', [p.id])).rows[0];
     if (last && i.effective_from <= last.effective_from) throw conflict(`The new version must take effect after version ${last.version} (${last.effective_from})`);
+    await gate(c, user, { bodyId: p.body_id, actions: ['policy_publish'], subjectType: 'policy', subjectId: p.id, request: { effective_from: i.effective_from, params: parsed.data }, approvalId: i.approval_id });
     const v = (await c.query('INSERT INTO fed_policy_versions(policy_id, version, effective_from, summary, params, published_by) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, version, effective_from::text AS effective_from, summary, params, created_at',
       [p.id, (last?.version ?? 0) + 1, i.effective_from, i.summary || null, parsed.data, user.id])).rows[0];
     await logFed(c, p.body_id, 'policy', p.id, 'version_published', { actor: user.id, detail: { version: v.version, effective_from: v.effective_from } });
