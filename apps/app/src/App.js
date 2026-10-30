@@ -104,6 +104,7 @@ import { RaceLive } from './screens/race-live';
 import { EventInbox } from './screens/event-plan';
 import { Openings } from './screens/openings';
 import { EventCommand } from './screens/event-command';
+import { Competitions } from './screens/competition-home';
 import { MatchCentre } from './screens/match-centre';
 import { ScoreSheet } from './screens/score-sheet';
 import { DoctorHome } from './screens/doctor';
