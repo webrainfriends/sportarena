@@ -179,7 +179,12 @@ cap({
       one("SELECT round(avg(rating),2) AS avg, count(*)::int AS n FROM testimonials WHERE subject_type='event' AND subject_id=$1 AND status='published' AND visibility='public'", [i.id]),
       ev.venue_id ? one('SELECT id, name, city, emoji FROM venues WHERE id=$1', [ev.venue_id]) : null,
     ]);
-    return { ...ev, verified: (await badgesFor('event', [ev.id])).get(ev.id) ?? [], venue, entrants, standings: table, sponsors, rating };
+    // a competition season IS this event: say so, so the event workspace (departments, tasks, staff, venue, budget) and the competition point at each other
+    const cs = await one(
+      `SELECT cm.id AS competition_id, cm.name AS competition, cm.is_public, cm.status AS competition_status, cm.owner_id, cm.organisation_id, s.id AS season_id, s.label AS season, s.status AS season_status
+         FROM comp_seasons s JOIN comp_competitions cm ON cm.id=s.competition_id WHERE s.event_id=$1`, [ev.id]);
+    const competition = cs && ((cs.is_public && cs.competition_status !== 'draft' && cs.season_status !== 'draft') || (user && (isAdmin(user) || cs.owner_id === user.id || (await hasOrgGrant(user, cs.organisation_id, ['owner', 'admin']))))) ? { id: cs.competition_id, name: cs.competition, season_id: cs.season_id, season: cs.season, season_status: cs.season_status } : null;
+    return { ...ev, verified: (await badgesFor('event', [ev.id])).get(ev.id) ?? [], venue, entrants, standings: table, sponsors, rating, competition };
   },
 });
 
