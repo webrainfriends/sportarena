@@ -193,7 +193,7 @@ cap({
 });
 
 // ------------------------------------------------------------------ following: subscribes to public alerts, grants nothing private
-const subject = z.object({ subject_type: z.enum(['event', 'team', 'athlete', 'fixture']), subject_id: id, alerts: z.array(z.enum(ALERTS)).max(4).optional() });
+const subject = z.object({ subject_type: z.enum(['event', 'team', 'athlete', 'fixture']), subject_id: id, alerts: z.array(z.enum(ALERTS)).max(5).optional() });
 
 async function checkFollowable(user, type, sid) {
   if (type === 'event') await loadViewableEvent(user, sid);
@@ -208,7 +208,7 @@ async function checkFollowable(user, type, sid) {
 
 cap({
   name: 'follow_subject', method: 'POST', path: '/me/follows', tag: 'Following', status: 201,
-  summary: 'Follow an event, a team, an athlete (adults only) or a single game, and choose which alerts you want: start, score, result, schedule (default: start, result and schedule changes). Calling it again changes the alerts. Following only subscribes you to public alerts; it never grants access to a roster, health, finance or youth information.',
+  summary: 'Follow an event, a team, an athlete (adults only) or a single game, and choose which alerts you want: start, score, result, schedule, media (new public photos and clips; default: start, result and schedule changes). Calling it again changes the alerts. Following only subscribes you to public alerts; it never grants access to a roster, health, finance or youth information.',
   input: subject,
   async handler({ user }, i) {
     await checkFollowable(user, i.subject_type, i.subject_id);
