@@ -9,6 +9,7 @@ import { useNav } from '../nav';
 import { Btn, Card, Chip, Empty, ErrorBox, Field, H1, Loading, Row, Screen, Section, Sheet, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { HScroll } from '../pickers';
+import { MenuField } from '../menu-field';
 import { Platform } from 'react-native';
 import { send, useOutbox } from '../outbox';
 import { useLayout } from '../layout';
@@ -55,6 +56,8 @@ export function PerformanceStudio() {
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
         <Btn small title="New team session" onPress={() => setCreating(true)} disabled={!teams.length} />
         <Btn small title="My athletes" color={c.paper} ink={c.ink} onPress={() => push('CoachAthletes')} />
+        <Btn small title="Saved groups" color={c.paper} ink={c.ink} onPress={() => push('CoachGroups')} />
+        <Btn small title="Drill library" color={c.paper} ink={c.ink} onPress={() => push('CoachDrills')} />
         <Btn small title="Track a practice game" color={c.paper} ink={c.ink} onPress={() => push('ScoringTool', { tab: 'start' })} />
       </View>
       <HScroll>
@@ -915,11 +918,151 @@ export function CoachRubrics() {
   );
 }
 
+// Saved player groups (issue #580): reusable, named sets of people you already coach. Putting one on a session fills the roster and creates the
+// session's named group in one tap; the server re-checks every person's current relationship each time.
+export function CoachGroups() {
+  const { toast } = useSession();
+  const { tablet: wide } = useLayout();
+  const [q, setQ] = useState('');
+  const list = useLoad(() => api.get(`/coaching/groups${q.trim() ? `?q=${encodeURIComponent(q.trim())}` : ''}`), [q]);
+  const athletes = useLoad(() => api.get('/coach/athletes'), []);
+  const coach = useLoad(() => api.get('/coach/home'), []);
+  const [form, setForm] = useState(null);   // null | 'new' | a group being edited
+  const edit = form && form !== 'new' ? form : null;
+  const teams = coach.data?.teams ?? [];
+  const save = async (v) => {
+    try {
+      await api.post('/coaching/groups', { id: edit?.id, row_version: edit?.row_version, name: v.name, team_id: v.team_id || null, sport: v.sport || null, athlete_ids: v.athlete_ids });
+    } catch (e) { if (/changed elsewhere/i.test(e.message)) list.reload(); throw e; }
+    toast(edit ? 'Group saved' : 'Group created'); list.reload();
+  };
+  return (
+    <Screen onRefresh={list.reload}>
+      <H1>Saved groups</H1>
+      <T size={13} color={c.mute}>Name a set of players you coach once, then put the whole group on any session in one tap. A group gives no access by itself: if you stop coaching someone, they are skipped.</T>
+      <View style={{ marginTop: 10, gap: 10 }}>
+        <Btn small title="New group" onPress={() => setForm('new')} accessibilityLabel="Create a saved group" style={{ alignSelf: 'flex-start' }} />
+        <Field label="Search groups" value={q} onChangeText={setQ} placeholder="Group name" />
+      </View>
+      {list.loading && !list.data ? <Loading /> : list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : !list.data.length ? (
+        <Empty emoji="👥" title={q ? 'No group matches' : 'No saved groups yet'} sub={q ? 'Try another name.' : athletes.data?.length ? 'Create one from the people you coach, for example a unit or an age band.' : 'Groups are built from people you coach: a confirmed hire, a team you coach, a cohort you lead or an accepted plan.'} />
+      ) : (
+        <View style={{ flexDirection: wide ? 'row' : 'column', flexWrap: 'wrap', gap: 10 }}>
+          {list.data.map((g) => (
+            <View key={g.id} style={{ width: wide ? '48.8%' : '100%' }}>
+              <Row title={g.name} onPress={() => setForm(g)}
+                sub={`${g.member_count} player${g.member_count === 1 ? '' : 's'}${g.team_name ? ` · ${g.team_name}` : ''}${g.sport ? ` · ${g.sport}` : ''}${g.members.some((m) => !m.current) ? ' · some no longer coached' : ''}`} />
+            </View>))}
+        </View>
+      )}
+      <FormSheet visible={!!form} onClose={() => setForm(null)} title={edit ? 'Edit group' : 'New group'} submitLabel={edit ? 'Save' : 'Create'}
+        initial={edit ? { name: edit.name, team_id: edit.team_id, sport: edit.sport_slug, athlete_ids: edit.members.map((m) => m.id) } : {}}
+        fields={[
+          { key: 'name', label: 'Group name', placeholder: 'e.g. Defenders' },
+          { key: 'athlete_ids', label: 'Players', type: 'multimenu', options: (athletes.data ?? []).map((a) => ({ value: a.id, label: a.display_name })), placeholder: 'Choose players you coach' },
+          ...(teams.length ? [{ key: 'team_id', label: 'Team', type: 'chips', optional: true, options: teams.map((t) => ({ value: t.id, label: t.name })), hint: 'A team group can only hold that team\'s players.' }] : []),
+          { key: 'sport', label: 'Sport', type: 'sport', optional: true },
+        ]}
+        onSubmit={save} />
+    </Screen>
+  );
+}
+
+const SKILL_TAGS = ['passing', 'receiving', 'shooting', 'defending', 'footwork', 'speed and agility', 'strength', 'endurance', 'set plays', 'decision making', 'communication', 'game awareness', 'mental routine', 'technique'];
+
+/** The drill library: your reusable blocks (and those shared with a team or organisation you coach for), searchable by word, sport and skill. */
+export function CoachDrills() {
+  const { toast } = useSession();
+  const { tablet: wide } = useLayout();
+  const [flt, setFlt] = useState({ q: '', sport: '', tag: '' });
+  const qs = Object.entries({ scope: 'block', q: flt.q.trim(), sport: flt.sport, tag: flt.tag }).filter(([, v]) => v).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
+  const list = useLoad(() => api.get(`/coach/templates?${qs}&limit=60`), [qs]);
+  const all = useLoad(() => api.get('/coach/templates?scope=block&limit=100'), []); // what filters can offer
+  const coach = useLoad(() => api.get('/coach/home'), []);
+  const [form, setForm] = useState(false), [open, setOpen] = useState(null);
+  const sportOpts = [{ value: '', label: 'All sports' }, ...[...new Map((all.data ?? []).filter((t) => t.sport_slug).map((t) => [t.sport_slug, t.sport_name ?? t.sport_slug])).entries()].map(([value, name]) => ({ value, label: label(name.replace(/-/g, ' ')) }))];
+  const tagOpts = [...new Set((all.data ?? []).flatMap((t) => t.blocks.flatMap((b) => b.tags ?? [])).map((x) => x.toLowerCase()))].sort();
+  const teams = coach.data?.teams ?? [];
+  const share = async (t, v) => {
+    await api.post(`/coaching/templates/${t.id}/share`, { id: t.id, with: v.with, team_id: v.with === 'team' ? v.team_id : undefined });
+    toast(v.with === 'private' ? 'Only you can use this drill' : 'Shared with your team coaches'); setOpen(null); list.reload(); all.reload();
+  };
+  return (
+    <Screen onRefresh={() => { list.reload(); all.reload(); }}>
+      <H1>Drill library</H1>
+      <T size={13} color={c.mute}>Drills you reuse. They hold no player details, and adding one to a session copies it, so changing a drill later never rewrites a past session.</T>
+      <View style={{ marginTop: 10, gap: 10 }}>
+        <Btn small title="New drill" onPress={() => setForm(true)} accessibilityLabel="Create a drill" style={{ alignSelf: 'flex-start' }} />
+        <Field label="Search drills" value={flt.q} onChangeText={(q) => setFlt({ ...flt, q })} placeholder="Name, objective or instructions" />
+        <MenuField label="Sport" value={flt.sport} onChange={(sport) => setFlt({ ...flt, sport })} options={sportOpts} placeholder="All sports" />
+        {tagOpts.length ? (
+          <Chips wide={wide}>
+            <Chip label="Any skill" active={!flt.tag} onPress={() => setFlt({ ...flt, tag: '' })} />
+            {tagOpts.map((t) => <Chip key={t} label={label(t)} active={flt.tag === t} onPress={() => setFlt({ ...flt, tag: flt.tag === t ? '' : t })} />)}
+          </Chips>) : null}
+      </View>
+      {list.loading && !list.data ? <Loading /> : list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : !list.data.length ? (
+        <Empty emoji="🧰" title={qs.replace('scope=block', '').replace(/^&|&$/g, '') ? 'No drill matches' : 'Your drill library is empty'} sub="Create a drill here, or open a session plan and choose “Save plan as a template”." />
+      ) : (
+        <View style={{ flexDirection: wide ? 'row' : 'column', flexWrap: 'wrap', gap: 10 }}>
+          {list.data.map((t) => {
+            const b = t.blocks[0] ?? {};
+            return (
+              <View key={t.id} style={{ width: wide ? '48.8%' : '100%' }}>
+                <Row title={t.title} onPress={() => setOpen(t)}
+                  sub={[label(b.kind ?? 'skill_drill'), b.duration_min ? `${b.duration_min} min` : null, t.sport_slug ? label(t.sport_slug.replace(/-/g, ' ')) : null, ...(b.tags ?? []).slice(0, 2), t.mine ? (t.shared_team_id ? 'shared with a team' : null) : `shared by ${t.shared_by}`].filter(Boolean).join(' · ')} />
+              </View>);
+          })}
+        </View>
+      )}
+      <FormSheet visible={form} onClose={() => setForm(false)} title="New drill" submitLabel="Save drill"
+        fields={[
+          { key: 'title', label: 'Drill name' },
+          { key: 'sport', label: 'Sport', type: 'sport', optional: true, hint: 'So you can find it by sport later.' },
+          { key: 'kind', label: 'Type', type: 'chips', options: opts(BLOCK_KINDS), default: 'skill_drill' },
+          { key: 'duration_min', label: 'Minutes', type: 'stepper', min: 1, max: 240, step: 5, default: 10 },
+          { key: 'tags', label: 'Skills', type: 'multimenu', optional: true, options: SKILL_TAGS.map((t) => ({ value: t, label: label(t) })), max: 10 },
+          { key: 'objective', label: 'Objective', optional: true },
+          { key: 'instructions', label: 'How it runs', type: 'multiline', optional: true },
+          { key: 'setup', label: 'Set-up and equipment', optional: true },
+          { key: 'cue', label: 'Coaching cue', optional: true },
+        ]}
+        onSubmit={async (v) => {
+          await api.post('/coaching/templates', { title: v.title, scope: 'block', sport: v.sport || undefined, blocks: [{ kind: v.kind, title: v.title, duration_min: v.duration_min, objective: v.objective || undefined, instructions: v.instructions || undefined, setup: v.setup || undefined, cues: v.cue ? [v.cue] : [], tags: v.tags ?? [] }] });
+          toast('Drill saved'); list.reload(); all.reload();
+        }} />
+      <Sheet visible={!!open && !open.sharing} onClose={() => setOpen(null)} title={open?.title ?? ''}>
+        {open ? (() => {
+          const b = open.blocks[0] ?? {};
+          return (
+            <View style={{ gap: 8 }}>
+              <T size={12} color={c.mute}>{[label(b.kind ?? 'skill_drill'), b.duration_min ? `${b.duration_min} min` : null, `version ${open.version}`].filter(Boolean).join(' · ')}</T>
+              {b.objective ? <T size={14}><T weight="700" size={14}>Objective: </T>{b.objective}</T> : null}
+              {b.instructions ? <T size={14}>{b.instructions}</T> : null}
+              {b.setup ? <T size={13} color={c.mute}>Set-up: {b.setup}</T> : null}
+              {b.cues?.length ? <T size={13}>Cues: {b.cues.join(' · ')}</T> : null}
+              {b.tags?.length ? <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>{b.tags.map((t) => <Tag key={t} label={label(t)} color={c.violetSoft} />)}</View> : null}
+              {open.mine ? (
+                <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
+                  {teams.length ? <Btn small title={open.shared_team_id ? 'Stop sharing' : 'Share with a team'} color={c.paper} ink={c.ink} onPress={() => (open.shared_team_id ? share(open, { with: 'private' }).catch((e) => toast(e.message)) : setOpen({ ...open, sharing: true }))} /> : null}
+                  <Btn small title="Archive" color={c.paper} ink={c.ink} onPress={async () => { try { await api.del(`/coach/templates/${open.id}`); toast('Archived; sessions that used it keep their copy'); setOpen(null); list.reload(); all.reload(); } catch (e) { toast(e.message); } }} />
+                </View>) : <T size={12} color={c.mute}>Shared with you by {open.shared_by}. You can use it but not change it.</T>}
+            </View>);
+        })() : null}
+      </Sheet>
+      <FormSheet visible={!!open?.sharing} onClose={() => setOpen({ ...open, sharing: false })} title="Share with a team" submitLabel="Share"
+        fields={[{ key: 'team_id', label: 'Team you coach', type: 'chips', options: teams.map((t) => ({ value: t.id, label: t.name })) }]}
+        onSubmit={async (v) => share(open, { with: 'team', team_id: v.team_id })} />
+    </Screen>
+  );
+}
+
 // Less-used session tools, kept off the main field screen: groups, templates, cloning, delegation and per-player summaries.
 function MoreSheet({ more, setMore, w, reload }) {
   const { toast } = useSession();
   const { push } = useNav();
   const s = w.session;
+  const saved = useLoad(() => (more === 'saved' ? api.get('/coaching/groups') : Promise.resolve([])), [more === 'saved']);
   const tpls = useLoad(() => (more === 'use' ? api.get('/coach/templates?scope=session') : Promise.resolve([])), [more === 'use']);
   const roster = useLoad(() => (more === 'help' && s.team_id ? api.get(`/coach/teams/${s.team_id}/roster`) : Promise.resolve(null)), [more === 'help']);
   const close = () => setMore(null);
@@ -929,12 +1072,20 @@ function MoreSheet({ more, setMore, w, reload }) {
     <>
       <Sheet visible={more === 'menu'} onClose={close} title="Session tools">
         {[
+          ['Use a saved group', 'saved', s.status !== 'completed'],
           ['Split into groups (defenders, forwards …)', 'groups', s.status !== 'completed' && s.team_id],
           ['Save plan as a template', 'template', w.plan.blocks.length > 0], ['Use a template', 'use', s.status !== 'completed'],
           ['Start a new session from this one', 'clone', true], ['Let another coach help', 'help', s.team_id && w.you_are === 'owner'],
         ].filter(([, , show]) => show).map(([label_, key]) => <Row key={key} title={label_} onPress={() => setMore(key)} />)}
         {w.delegates?.length ? <T size={12} color={c.mute} style={{ marginTop: 8 }}>Helping: {w.delegates.map((d) => `${d.display_name} (${d.permissions.join(', ')})`).join('; ')}</T> : null}
         <View style={{ marginTop: 10 }}><Btn small title="Save my own notes about the whole team" color={c.paper} ink={c.ink} onPress={() => { close(); push('CoachReports', { team_id: s.team_id }); }} disabled={!s.team_id} /></View>
+      </Sheet>
+      <Sheet visible={more === 'saved'} onClose={close} title="Use a saved group">
+        {saved.loading ? <Loading /> : !saved.data?.length ? (
+          <View style={{ gap: 8 }}><T size={13} color={c.mute}>You have no saved groups yet.</T><Btn small title="Create a group" onPress={() => { close(); push('CoachGroups'); }} /></View>
+        ) : saved.data.map((g) => (
+          <Row key={g.id} title={g.name} sub={`${g.member_count} player${g.member_count === 1 ? '' : 's'}${g.team_name ? ` · ${g.team_name}` : ''}`}
+            onPress={async () => { try { const r = await api.post(`/coaching/sessions/${s.id}/use-group`, { group_id: g.id }); close(); toast(`${r.added} on the roster${r.skipped ? `; ${r.skipped} skipped (no longer coached or not allowed)` : ''}`); reload(); } catch (e) { toast(e.message); } }} />))}
       </Sheet>
       <FormSheet visible={more === 'groups'} onClose={close} title="Groups" submitLabel="Save groups" initial={{ n1: s.groups?.[0]?.name, m1: s.groups?.[0]?.athlete_ids, n2: s.groups?.[1]?.name, m2: s.groups?.[1]?.athlete_ids, n3: s.groups?.[2]?.name, m3: s.groups?.[2]?.athlete_ids }}
         fields={[1, 2, 3].flatMap((k) => [{ key: `n${k}`, label: `Group ${k} name`, optional: true, placeholder: k === 1 ? 'e.g. Defenders' : undefined }, { key: `m${k}`, label: `Group ${k} players`, type: 'multi', options: players, optional: true }])}
