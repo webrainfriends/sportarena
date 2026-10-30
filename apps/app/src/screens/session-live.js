@@ -1,17 +1,22 @@
 // Live heat / final / field flight: call room, start, splits, finishes or attempts, provisional places and the step to the official
 // result. It lives inside the session sheet of the Games screen (the one place sessions are run) and is read-only for everyone who is
 // not the organiser or an assigned official. The server derives places and Q/q from what is recorded; nothing here ranks anyone.
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { View } from 'react-native';
 import { api } from '../api';
 import { useLiveSession } from '../live';
-import { Btn, Card, Chip, Loading, Sheet, T, Tag } from '../ui';
+import { useSession } from '../session';
+import { Btn, Chip, Loading, Sheet, T } from '../ui';
+import { A, ABtn, ACard, AChip, AT, ATag, LiveBadge } from '../arena';
 import { Counter } from '../pickers';
 import { useScoreQueue } from '../scorer/queue';
-import { ConflictSheet, SyncLine } from '../scorer/panels';
+import { useSavedSession } from '../scorer/pack';
+import { projectSession, sessionReject } from '../scorer/local';
+import { ConflictSheet, OfflineBanner, SyncLine } from '../scorer/panels';
 import { c } from '../theme';
 
-const STATE = { scheduled: ['Not started', c.violetSoft], live: ['Live', c.mint], provisional: ['Provisional', c.sunSoft], final: ['Official', c.limeSoft], corrected: ['Corrected', c.sunSoft] };
+// the same Arena look as the Match Centre: a heat is scored on a midnight scoreboard wherever it is opened
+const STATE = { scheduled: ['scheduled', 'NOT STARTED'], live: ['live', 'LIVE'], provisional: ['finished', 'PROVISIONAL'], final: ['completed', 'OFFICIAL'], corrected: ['completed', 'CORRECTED'] };
 const STEPS = [['call_room', 'Call room'], ['ready', 'Ready'], ['in_progress', 'In progress']];
 const pad2 = (n) => String(n).padStart(2, '0');
 
@@ -32,8 +37,11 @@ export function MarkInput({ type, onChange }) {
 }
 const showMark = (type, v) => (v == null ? '–' : type === 'time' ? (v >= 60 ? `${Math.floor(v / 60)}:${(v % 60).toFixed(2).padStart(5, '0')}` : v.toFixed(2)) : type === 'distance' ? `${v.toFixed(2)} m` : String(v));
 
-export function SessionLive({ id, toast, onFinalised }) {
-  const { state: s, mode, push, revoked } = useLiveSession(id);
+export function SessionLive({ id, toast, onFinalised, framed = true }) {
+  const { user } = useSession();
+  const feed = useLiveSession(id);
+  const { state: live, mode, push, revoked } = feed;
+  const pack = useSavedSession(user?.id, id, live);   // the encrypted copy of this heat for scoring with no signal
   const [sheet, setSheet] = useState(null); // {kind, entry}
   const [mark, setMark] = useState(0);
   const [dist, setDist] = useState(50);
@@ -44,17 +52,34 @@ export function SessionLive({ id, toast, onFinalised }) {
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const seen = React.useRef(0);
-  if (s && s.last_seq > seen.current) seen.current = s.last_seq;
+  const seenNow = Math.max(live?.last_seq ?? 0, pack.saved?.last_seq ?? 0);
+  if (seenNow > seen.current) seen.current = seenNow;
   const queue = useScoreQueue(`sa_queue_ss_${id}`,
-    async (e) => { const r = await api.post(`/sessions/${id}/events`, e); seen.current = Math.max(seen.current, r.state.last_seq); push(r.state); return r; },
-    { onDrop: (err) => toast('' + err.message) });
-  if (!s) return <Loading />;
+    async ({ owner, op, target, ...e }) => {
+      if (op === 'void') { const r = await api.post(`/session-events/${target}/void`, { reason: e.reason, client_key: e.client_key }); push(r); return r; }   // undo of a saved entry: queued like a tap, sent once, in order
+      if (op === 'finalize') { const r = await api.post(`/sessions/${id}/finalize-live`); push(r.live); onFinalised?.(); return r; }                  // re-running re-records, so a retry is safe
+      const r = await api.post(`/sessions/${id}/events`, e); seen.current = Math.max(seen.current, r.state.last_seq); push(r.state); return r;
+    },
+    { onDrop: (err) => toast('' + err.message), owner: user?.id });
+
+  // With no signal the saved copy stands in and the waiting entries are applied on top of it by the same pure plugin the server runs.
+  const offline = !live || (!!feed.error && !feed.error.status);
+  const useSaved = !!pack.saved && (offline || queue.pending.length > 0) && pack.saved.last_seq >= (live?.last_seq ?? 0);
+  const s = useMemo(() => (useSaved ? projectSession(pack.saved, queue.pending) : live), [useSaved, pack.saved, queue.pending, live]);
+  if (!s) return pack.ready && feed.error ? (
+    <ACard pad={16} tone={A.sun}>
+      <AT size={14} weight="800">No connection, and this heat is not saved on this device.</AT>
+      <AT size={13} color={A.mute}>Open it once while online, or save the day's heats from Officials home, and it keeps working with no signal.</AT>
+      <ABtn small title="Try again" tone="neon" onPress={feed.refresh} style={{ marginTop: 10 }} />
+    </ACard>
+  ) : <Loading />;
 
   const pr = s.projection, type = s.session.result_type, field = pr.kind === 'field', panel = pr.aggregate === 'panel';
   const scorer = !!s.viewer?.can_score && !revoked;
   const official = ['final', 'corrected'].includes(s.live.state);
-  const [stateLabel, stateColor] = STATE[s.live.state] ?? STATE.scheduled;
+  const [badge, badgeLabel] = STATE[s.live.state] ?? STATE.scheduled;
   const send = async (kind, entry, payload = {}) => {
+    if (useSaved) { const bad = sessionReject(s, kind, entry?.entry_id, payload); if (bad) { toast(bad); return false; } }   // the plugin's own refusals, answered at once offline
     const r = await queue.enqueue({ kind, ...(entry ? { entry_id: entry.entry_id } : {}), payload, expected_seq: seen.current });
     if (r.queued && !r.full) toast('Not sent yet. It is kept on this device and will be retried.');
     return !r.queued;
@@ -86,64 +111,80 @@ export function SessionLive({ id, toast, onFinalised }) {
   };
   const finalise = async () => {
     setBusy(true);
-    try { const r = await api.post(`/sessions/${id}/finalize-live`); push(r.live); setConfirm(false); toast('Result recorded. It is now official.'); onFinalised?.(); }
-    catch (x) { toast('' + x.message); } finally { setBusy(false); }
+    try {
+      const r = await queue.enqueue({ op: 'finalize' });   // sent now, or kept on this device and sent after the entries when the signal returns
+      setConfirm(false);
+      toast(r.queued ? 'Saved on this device. The result is recorded as soon as there is a signal.' : 'Result recorded. It is now official.');
+    } catch (x) { toast('' + x.message); } finally { setBusy(false); }
+  };
+  const undo = async () => {
+    if (lastEvent.local) { queue.cancel(String(lastEvent.id).slice(6)); return; }   // not sent yet: just take it back
+    const r = await queue.enqueue({ op: 'void', target: lastEvent.id, reason: 'Entered by mistake' });
+    if (r.queued && !r.full) toast('Undo saved on this device. It is sent as soon as there is a signal.');
   };
 
-  return (
-    <View style={{ gap: 12 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        <Tag label={stateLabel} color={stateColor} />
-        {pr.status && !official ? <T size={12} color={c.mute}>{STEPS.find((x) => x[0] === pr.status)?.[1] ?? pr.status.replace('_', ' ')}</T> : null}
-        <T size={12} color={mode === 'stream' ? c.mint : c.mute}>{mode === 'stream' ? '⚡ Live' : '↻ Refreshing'}</T>
+  const FRAME = framed ? { backgroundColor: A.bg, borderRadius: 24, padding: 14 } : null;
+  const body = (
+    <View style={{ gap: 14 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <LiveBadge status={badge} label={badgeLabel} />
+        {pr.status && !official ? <AT size={12} weight="800" color={A.mute}>{STEPS.find((x) => x[0] === pr.status)?.[1] ?? pr.status.replace('_', ' ')}</AT> : null}
+        <AT size={12} weight="700" color={mode === 'stream' ? A.green : A.mute}>{mode === 'stream' ? '⚡ Live' : '↻ Refreshing'}</AT>
       </View>
-      {!official ? <T size={12.5} color={c.mute}>Places shown here are provisional. They become official when the result is recorded.</T> : null}
-      {revoked ? <T size={13} weight="800" color={c.red}>Your scoring access for this session has ended.</T> : null}
+      {!official ? <AT size={12.5} color={A.mute}>Places shown here are provisional. They become official when the result is recorded.</AT> : null}
+      {revoked ? <AT size={13} weight="800" color={A.red}>Your scoring access for this session has ended.</AT> : null}
 
       {scorer && !official ? (
         <View style={{ gap: 10 }}>
-          <SyncLine pending={queue.pending.length} onRetry={queue.flush} />
-          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-            {STEPS.slice(0, 2).map(([k, l]) => <Chip key={k} label={l} active={pr.status === k} onPress={() => send('status', null, { status: k })} />)}
-            <Btn small title="▶ Start the race" color={c.red} disabled={pr.status === 'in_progress' || pr.status === 'provisional'} onPress={() => send('start', null, {})} />
+          <OfflineBanner offline={offline} saved={!!pack.saved} savedTime={pack.savedAt ? new Date(pack.savedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null} waiting={queue.pending.length} full={queue.full} foreign={queue.foreign} />
+          <SyncLine pending={queue.pending.length} onRetry={queue.flush} offline={offline} />
+          {s.finalizing ? <ATag label="Result waiting to be recorded" tone={A.sun} /> : null}
+          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            {STEPS.slice(0, 2).map(([k, l]) => <AChip key={k} label={l} active={pr.status === k} onPress={() => send('status', null, { status: k })} />)}
+            <ABtn small title="▶ Start the race" tone="live" disabled={pr.status === 'in_progress' || pr.status === 'provisional'} onPress={() => send('start', null, {})} />
           </View>
         </View>
       ) : null}
 
-      <View style={{ gap: 8 }}>
+      <View style={{ gap: 10 }}>
         {pr.entries.map((e) => {
           const out = ['dns', 'dnf', 'dq'].includes(e.status);
           const last = e.splits?.[e.splits.length - 1];
           const sub = [out ? e.status.toUpperCase() : e.best != null ? showMark(type, e.best) : e.status === 'competing' ? 'competing' : 'waiting', last ? `split ${showMark('time', last.value)} @ ${last.distance_m} m` : null, field && !panel && e.attempts.length ? `${e.attempts.length} attempt${e.attempts.length === 1 ? '' : 's'}` : null, panel && e.rounds?.length ? e.rounds.map((r) => `R${r.round}: ${r.mark} (${r.judges} judge${r.judges === 1 ? '' : 's'})`).join(', ') : null].filter(Boolean).join(' · ');
           return (
-            <Card key={e.entry_id} pad={12} accessibilityLabel={`${e.rank ? `Place ${e.rank}, ` : ''}${e.name ?? 'Participant'}, ${sub}`}>
+            <ACard key={e.entry_id} pad={14} tone={e.rank === 1 ? A.lime : undefined} accessibilityLabel={`${e.rank ? `Place ${e.rank}, ` : ''}${e.name ?? 'Participant'}, ${sub}`}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                <T weight="800" size={22} style={{ width: 30, textAlign: 'center' }}>{e.rank ?? '–'}</T>
+                <AT weight="900" size={26} num color={e.rank === 1 ? A.lime : A.ink} style={{ width: 34, textAlign: 'center' }}>{e.rank ?? '–'}</AT>
                 <View style={{ flex: 1 }}>
-                  <T weight="700" size={15}>{e.lane ? `Lane ${e.lane} · ` : ''}{e.name ?? 'Participant'}</T>
-                  <T size={13} color={c.mute}>{[e.house, sub].filter(Boolean).join(' · ')}</T>
+                  <AT weight="800" size={15.5}>{e.lane ? `Lane ${e.lane} · ` : ''}{e.name ?? 'Participant'}</AT>
+                  <AT size={13} color={A.mute}>{[e.house, sub].filter(Boolean).join(' · ')}</AT>
                 </View>
-                {e.q ? <Tag label={e.q === 'Q' ? 'Qualified' : 'Fastest loser'} color={c.limeSoft} /> : null}
+                {e.q ? <ATag label={e.q === 'Q' ? 'Qualified' : 'Fastest loser'} tone={A.lime} /> : null}
               </View>
               {scorer && !official && !out ? (
-                <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
-                  {panel ? <Btn small title="Judges' marks" onPress={() => open('judge', e)} /> : field ? <Btn small title="Attempt" onPress={() => open('attempt', e)} />
-                    : (<>{e.status !== 'finished' ? <Btn small title="Finish" onPress={() => open('finish', e)} /> : null}<Btn small title="Split" color={c.paper} ink={c.ink} onPress={() => open('split', e)} /></>)}
-                  <Btn small title="DNS / DNF / DQ" color={c.paper} ink={c.ink} onPress={() => open('status', e)} />
+                <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
+                  {panel ? <ABtn small title="Judges' marks" tone="neon" onPress={() => open('judge', e)} /> : field ? <ABtn small title="Attempt" tone="neon" onPress={() => open('attempt', e)} />
+                    : (<>{e.status !== 'finished' ? <ABtn small title="Finish" tone="neon" onPress={() => open('finish', e)} /> : null}<ABtn small title="Split" tone="ghost" onPress={() => open('split', e)} /></>)}
+                  <ABtn small title="DNS / DNF / DQ" tone="ghost" onPress={() => open('status', e)} />
                 </View>
               ) : null}
-            </Card>
+            </ACard>
           );
         })}
       </View>
 
       {scorer && !official ? (
         <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-          <Btn small title="↩ Undo last entry" color={c.paper} ink={c.ink} disabled={!lastEvent} onPress={async () => { try { push(await api.post(`/session-events/${lastEvent.id}/void`, { reason: 'Entered by mistake' })); } catch (x) { toast('' + x.message); } }} />
-          <Btn small title="Finalise result" color={c.lime} disabled={queue.pending.length > 0} onPress={() => setConfirm(true)} />
+          <ABtn small tone="ghost" title="↩ Undo last entry" disabled={!lastEvent} onPress={undo} />
+          <ABtn small tone="lime" title="Finalise result" disabled={!!s.finalizing} onPress={() => setConfirm(true)} />
         </View>
       ) : null}
 
+    </View>
+  );
+  return (
+    <View style={FRAME}>
+      {body}
       <Sheet visible={!!sheet} onClose={() => setSheet(null)} title={sheet ? { finish: 'Finish', split: 'Split time', attempt: 'Attempt', judge: 'Judge\'s mark', status: 'Did not complete' }[sheet.kind] + ` · ${sheet.entry.name ?? 'Participant'}` : ''}>
         {sheet?.kind === 'status' ? (
           <View style={{ gap: 10 }}>
@@ -180,7 +221,7 @@ export function SessionLive({ id, toast, onFinalised }) {
         ) : null}
       </Sheet>
       <Sheet visible={confirm} onClose={() => setConfirm(false)} title="Record the official result?">
-        <T size={14} color="#475569">This hands the marks to the results record, with the same checks as entering them by hand. Everyone who has not finished must have a result or be DNS / DNF / DQ.</T>
+        <T size={14} color="#475569">This hands the marks to the results record, with the same checks as entering them by hand. Everyone who has not finished must have a result or be DNS / DNF / DQ.{offline || queue.pending.length ? ' With no signal it is kept on this device and recorded, after your entries, as soon as there is one.' : ''}</T>
         <Btn title="Yes, record it" color={c.lime} loading={busy} onPress={finalise} />
       </Sheet>
       <ConflictSheet conflict={queue.conflict} describe={describe} names={{ home: '', away: '' }} onResend={() => queue.resolve('resend')} onDiscard={() => queue.resolve('discard')} />
