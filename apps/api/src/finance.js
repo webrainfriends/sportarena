@@ -8,7 +8,7 @@ import { sharesFor } from './settlement.js';
 export const MODULE_OF = {
   shop_order: 'shop', shop_checkout: 'shop', coach_hire: 'coaching', appointment: 'health', physio_package: 'health', insurance_policy: 'insurance',
   venue_invoice: 'venue', venue_plan: 'venue', pos_sale: 'venue', wallet_topup: 'wallet', gift_card: 'wallet', sponsorship_payment: 'sponsorship',
-  academy_charge: 'registration', team_charge: 'registration', team_contribution: 'registration', media_rights_fee: 'media', ad_funding: 'advertising',
+  academy_charge: 'registration', registration_instalment: 'registration', team_charge: 'registration', team_contribution: 'registration', media_rights_fee: 'media', ad_funding: 'advertising',
   service_invoice: 'suppliers',
 };
 export const moduleOf = (type) => MODULE_OF[type] ?? 'other';
@@ -42,6 +42,9 @@ async function parties(c, p) {
   } else if (t === 'academy_charge') {
     const r = await get('SELECT organisation_id FROM academy_charges WHERE id=$1');
     if (r) out.payeeOrgId = r.organisation_id;
+  } else if (t === 'registration_instalment') {
+    const r = await get('SELECT p.owner_id, p.organisation_id FROM rx_instalments i JOIN rx_entries e ON e.id=i.entry_id JOIN rx_programmes p ON p.id=e.programme_id WHERE i.id=$1');
+    if (r) { out.payeeId = r.owner_id; out.payeeOrgId = r.organisation_id; }
   } else if (t === 'team_charge') {
     const r = await get('SELECT t.owner_id, t.organisation_id FROM team_charges ch JOIN teams t ON t.id=ch.team_id WHERE ch.id=$1');
     if (r) { out.payeeId = r.owner_id; out.payeeOrgId = r.organisation_id; }

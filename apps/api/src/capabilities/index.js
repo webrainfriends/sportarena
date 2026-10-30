@@ -140,6 +140,7 @@ import './sponsor-identities.js';
 import './sponsorship-programs.js';
 import './sponsorship-evaluation.js';
 import './sponsorship-application-forms.js';
+import './registration-engine.js';
 import './sponsorship-awards.js';
 import './sponsorship-budgets.js';
 import './beneficiary-portfolio.js';
