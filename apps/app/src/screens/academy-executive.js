@@ -83,7 +83,7 @@ export function ExecutiveCards({ o, go, canMoney }) {
             <Panel onPress={() => go('admissions')} label="People and demand. Open admissions.">
               <Block title="People & demand">
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                  <Kpi label="Active athletes" value={h.people.active_athletes} sub={`${h.people.new_athletes} new · ${h.people.returning_athletes} returning`} />
+                  <Kpi label="Enrolled athletes" value={h.people.enrolled_athletes} sub={`${h.people.new_athletes} new · ${h.people.returning_athletes} returning`} />
                   <Kpi label="Capacity used" value={pct(h.people.utilisation_pct)} sub={h.people.capacity ? `${h.people.enrolled_in_capped} of ${h.people.capacity} places` : 'no capacities set'} />
                 </View>
                 <T size={12} color={c.mute}>{h.people.waitlisted} waiting · {Object.entries(h.people.funnel).map(([k, v]) => `${v} ${k.replace(/_/g, ' ')}`).join(' · ') || 'no applications in this period'}</T>
