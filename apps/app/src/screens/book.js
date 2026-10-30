@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { OpenBallots } from './ballots';
 import { Image, Linking, Platform, Pressable, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { api, mediaUrl } from '../api';
@@ -247,6 +248,7 @@ export function Venue({ id, date }) {
         {tab === 'overview' ? (
           <View style={{ gap: 12, marginTop: 8 }}>
             {x.description ? <Card><T>{x.description}</T></Card> : null}
+            <OpenBallots venue={x} />
             <Card>
               <T weight="700" size={16}>Check availability</T>
               <T size={12} color={c.mute} style={{ marginBottom: 8 }}>Tap a day to pick your slots.</T>

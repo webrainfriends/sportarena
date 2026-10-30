@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { MyBallots } from './ballots';
 import { SmsCard, WhatsAppCard } from './whatsapp';
 import { CommsPrefs } from './communications';
 import { Linking, Platform, Pressable, ScrollView, Share, View } from 'react-native';
@@ -563,6 +564,7 @@ export function Notifications() {
       <Section title="SMS" color={c.lime}><SmsCard onChanged={prefs.reload} /></Section>
       <Section title="WhatsApp & SMS preferences" color={c.lime}><CommsPrefs onChanged={prefs.reload} /></Section>
       <Section title="Waitlist" color={c.lime}><WaitlistList /></Section>
+      <Section title="Slot ballots" color={c.violet}><MyBallots /></Section>
       <Section title="Slot alerts" color={c.sun}><AlertsList /></Section>
     </Screen>
   );

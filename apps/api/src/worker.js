@@ -6,6 +6,7 @@ import { expireStaleSales } from './pos/sale.js';
 import { processRefunds } from './booking/refunds.js';
 import { checkSlotAlerts } from './booking/alerts.js';
 import { processWaitlist } from './booking/waitlist.js';
+import { processBallots } from './booking/ballots.js';
 import { expireLoyalty } from './booking/loyalty.js';
 import { tx } from './db.js';
 import { eventParticipationSweep, membershipTenureSweep } from './rewards/activity.js';
@@ -25,6 +26,7 @@ import { sweepAccessGrants } from './access-grants.js';
 import { expireAcademyOffers, remindTrials, runAcademyJobs } from './academy-sweeps.js';
 import { runTenderJobs, sendTenderReminders } from './capabilities/tender-reports.js';
 import { deliverDueReports } from './sponsor-report-schedules.js';
+import { deliverDueKpiReports } from './kpi/service.js';
 import { accrueActiveContracts } from './player-contracts.js';
 import { runRepresentationSweeps } from './representation.js';
 import { raiseScheduledCharges, runCollections } from './collections.js';
@@ -50,6 +52,7 @@ export const STEPS = [
   ['pos_sales', 'pos_sales_released', expireStaleSales, 0],
   ['refunds', 'refunds', processRefunds, { done: 0, failed: 0, manual: 0 }],
   ['waitlist', 'waitlist', processWaitlist, null],
+  ['ballots', 'ballots', processBallots, null],
   ['loyalty', 'points_expired', expireLoyalty, 0],
   ['cover', 'cover_agreements_expired', () => tx((c) => expireCover(c)), 0],
   ['loyalty_referrals', 'referral_rewards_released', () => tx((c) => releaseDueReferrals(c)), 0],
@@ -77,6 +80,7 @@ export const STEPS = [
   ['tender_reminders', 'tender_deadline_reminders', sendTenderReminders, 0],
   ['sponsor_tasks', 'sponsor_task_reminders', processSponsorTasks, 0],
   ['sponsor_reports', 'sponsor_reports_delivered', deliverDueReports, 0],
+  ['kpi_reports', 'kpi_reports_delivered', deliverDueKpiReports, 0],
   ['player_contracts', 'contract_earnings_posted', accrueActiveContracts, 0],
   ['representation', 'representation_swept', runRepresentationSweeps, 0],
   ['supplier_services', 'supplier_services', runServiceSweeps, null],
