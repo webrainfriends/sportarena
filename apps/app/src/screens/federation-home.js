@@ -14,9 +14,11 @@ import { RegisterTab } from './federation-lists';
 import { CalendarTab, PoliciesTab, ReportsTab, SetupTab } from './federation-gov';
 import { OfficialsTab } from './officials-body';
 import { IntegrityTab } from './integrity';
+import { ComplianceTab } from './federation-compliance';
 
 function Overview({ home, go, push }) {
   const n = home.counts;
+  const can = home.me.can;
   const Q = ({ title, rows, type, empty }) => (
     <Section title={title} color={c.sun}>
       {rows.length ? rows.map((r) => <ListCard key={r.id} title={r.label} sub={r.sub} status={r.status} onPress={() => push('FederationRecord', { type, id: r.id })} />) : <Empty emoji="✅" title={empty} />}
@@ -32,7 +34,7 @@ function Overview({ home, go, push }) {
         <Metric value={n.licences.expiring_30} label="Licences expiring in 30 days" sub={`${n.licences.active} in good standing`} onPress={() => go('licences', { expiring: 30 })} />
         <Metric value={n.sanctions.pending} label="Sanction requests" sub={`${n.sanctions.approved} sanctioned`} tone={n.sanctions.pending ? c.sunSoft : undefined} onPress={() => go('sanctions', { status: 'requested' })} />
         <Metric value={n.competitions.total} label="Competitions under jurisdiction" sub={`${n.competitions.unsanctioned_upcoming} upcoming without a sanction`} onPress={() => go('sanctions', { view: 'events' })} />
-        <Metric value={n.exceptions} label="Compliance exceptions" tone={n.exceptions ? c.orangeSoft : undefined} sub={n.sanctions.moved ? `${n.sanctions.moved} sanctioned event moved` : undefined} />
+        <Metric value={n.exceptions} label="Open compliance exceptions" tone={n.exceptions ? c.orangeSoft : undefined} sub={n.sanctions.moved ? `${n.sanctions.moved} sanctioned event moved` : undefined} onPress={() => go('compliance', { view: 'exceptions' })} />
         <Metric value={n.cases} label="Open appeals" sub="linked to your records" />
       </View>
 
@@ -43,7 +45,7 @@ function Overview({ home, go, push }) {
           <Q title="Sanction queue" rows={home.queue.sanctions} type="sanction" empty="No sanction request waiting" />
         </>}
         b={<>
-          <Section title="Compliance exceptions" color={c.orange}>
+          <Section title="Open compliance exceptions" color={c.orange} action={can.reports ? 'Review' : undefined} onAction={() => go('compliance', { view: 'exceptions' })}>
             {home.exceptions.length ? home.exceptions.map((e) => (
               <ListCard key={`${e.type}${e.id}${e.kind}`} title={e.label} sub={e.reason} sub2={[e.kind === 'event_moved' ? 'Event moved' : 'Approved over a failed requirement', e.by, e.at ? fmtDate(e.at) : null].filter(Boolean).join(' · ')}
                 tone={e.kind === 'event_moved' ? c.orangeSoft : undefined} onPress={() => push('FederationRecord', { type: e.type, id: e.id })} />)) : <Empty emoji="🛡️" title="No exceptions" sub="Every decision met its published requirements." />}
@@ -83,7 +85,7 @@ export function FederationHome({ id, tab: startTab }) {
   const go = (t, p = {}) => { setPreset(p); setTab(t); };
   const tabs = [
     { value: 'overview', label: 'Overview' }, { value: 'affiliations', label: 'Affiliations' }, { value: 'licences', label: 'Licences' }, { value: 'sanctions', label: 'Sanctions' },
-    { value: 'officials', label: 'Officials' }, { value: 'calendar', label: 'Calendar' }, { value: 'policies', label: 'Policies' }, ...(can.reports ? [{ value: 'reports', label: 'Reports' }] : []), ...(can.integrity ? [{ value: 'integrity', label: 'Integrity' }] : []), { value: 'setup', label: 'Setup' },
+    { value: 'officials', label: 'Officials' }, { value: 'calendar', label: 'Calendar' }, { value: 'policies', label: 'Policies' }, ...(can.reports ? [{ value: 'compliance', label: 'Compliance' }] : []), ...(can.reports ? [{ value: 'reports', label: 'Reports' }] : []), ...(can.integrity ? [{ value: 'integrity', label: 'Integrity' }] : []), { value: 'setup', label: 'Setup' },
   ];
   const shared = { id, home: h, me: h.me, below, preset, reloadHome: home.reload, go };
   return (
@@ -93,7 +95,7 @@ export function FederationHome({ id, tab: startTab }) {
       </Hero>
       <View style={{ marginTop: 14, gap: 4 }}>
         <Seg options={tabs} value={tab} onChange={(t) => go(t)} />
-        {(h.breakdown.by_region.length > 1 || !below) && ['overview', 'affiliations', 'licences', 'sanctions', 'calendar'].includes(tab)
+        {(h.breakdown.by_region.length > 1 || !below) && ['overview', 'affiliations', 'licences', 'sanctions', 'calendar', 'compliance'].includes(tab)
           ? <SwitchRow label="Include the bodies recognised below this one" sub={`${h.scope.bodies} bod${h.scope.bodies === 1 ? 'y' : 'ies'} in view`} value={below} onChange={setBelow} /> : null}
       </View>
       <View style={{ marginTop: 8 }}>
@@ -102,6 +104,7 @@ export function FederationHome({ id, tab: startTab }) {
         {tab === 'officials' ? <OfficialsTab id={id} below={below} me={h.me} /> : null}
         {tab === 'calendar' ? <CalendarTab {...shared} /> : null}
         {tab === 'policies' ? <PoliciesTab {...shared} /> : null}
+        {tab === 'compliance' && can.reports ? <ComplianceTab {...shared} /> : null}
         {tab === 'reports' ? <ReportsTab {...shared} /> : null}
         {tab === 'integrity' && can.integrity ? <IntegrityTab id={id} /> : null}
         {tab === 'setup' ? <SetupTab {...shared} /> : null}

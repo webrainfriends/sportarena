@@ -17,7 +17,7 @@ export const LEVEL_LABEL = { international: 'International', continental: 'Conti
 export const ROLE_LABEL = { registrar: 'Registrar', licensing: 'Licensing officer', sanctioner: 'Sanctioning officer', secretary: 'Secretary', compliance: 'Compliance', auditor: 'Auditor', integrity: 'Integrity officer' };
 export const ROLE_HELP = {
   registrar: 'Reviews and decides club affiliations', licensing: 'Reviews and decides licences', sanctioner: 'Reviews and decides competition sanctions',
-  secretary: 'Publishes policies and sets the federation calendar', compliance: 'Reads everything including evidence; decides nothing', auditor: 'Reads reports and exports; decides nothing', integrity: 'Runs sport integrity and anti-doping administration: cases, references, decisions and education',
+  secretary: 'Publishes policies and sets the federation calendar', compliance: 'Reads everything including evidence, reviews exceptions and runs renewal campaigns; decides no record', auditor: 'Reads reports and exports; decides nothing', integrity: 'Runs sport integrity and anti-doping administration: cases, references, decisions and education',
 };
 export const HOLDER_ROLES = [{ value: 'athlete', label: 'Athlete' }, { value: 'coach', label: 'Coach' }, { value: 'official', label: 'Official' }, { value: 'administrator', label: 'Administrator' }, { value: 'other', label: 'Other' }];
 export const POLICY_LABEL = {
@@ -26,7 +26,7 @@ export const POLICY_LABEL = {
 };
 const STATUS = {
   draft: ['Draft', c.violetSoft], submitted: ['Submitted', c.sun], requested: ['Requested', c.sun], under_review: ['In review', c.cyan], needs_info: ['Needs information', c.orange],
-  approved: ['Approved', c.mint], active: ['Active', c.mint], in_force: ['In force', c.mint], good_standing: ['Good standing', c.mint], recognised: ['Recognised', c.mint],
+  approved: ['Approved', c.mint], active: ['Active', c.mint], in_force: ['In force', c.mint], good_standing: ['Good standing', c.mint], at_risk: ['At risk', c.sun], non_compliant: ['Non-compliant', c.orange], recognised: ['Recognised', c.mint],
   suspended: ['Suspended', c.orange], rejected: ['Not approved', c.pinkSoft], revoked: ['Revoked', c.pinkSoft], expired: ['Expired', c.pinkSoft], withdrawn: ['Withdrawn', c.violetSoft],
   declined: ['Declined', c.violetSoft], ended: ['Ended', c.violetSoft], archived: ['Archived', c.violetSoft], cancelled: ['Cancelled', c.violetSoft], due: ['Due', c.sun], pending: ['Pending', c.sun],
 };

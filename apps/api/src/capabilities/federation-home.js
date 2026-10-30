@@ -15,6 +15,7 @@ import { renderEnrolmentLetter } from '../documents/render.js';
 import { authority, can, need, subtree, bodyById, logFed, AFF_STATUS, LIC_STATUS, today, dateStr } from '../federation.js';
 import { subjectFor, staffCan } from '../federation-subjects.js';
 import { officerOf } from '../integrity.js';
+import { exceptionRows } from './federation-compliance.js';
 import { loadLogo, mustAccess } from './branded-documents.js';
 
 const TAG = 'Federation';
@@ -69,12 +70,7 @@ cap({
               SELECT a.season_year AS y, 1 AS aff, 0 AS lic, 0 AS san FROM fed_affiliations a WHERE a.body_id = ANY($1) AND (${AFF_STATUS('a')}) IN ('approved','expired','suspended')
               UNION ALL SELECT extract(year FROM l.issued_on)::int, 0, 1, 0 FROM fed_licences l WHERE l.body_id = ANY($1) AND l.issued_on IS NOT NULL AND (${LIC_STATUS('l')}) IN ('active','expired','suspended')
               UNION ALL SELECT extract(year FROM s.approved_starts_on)::int, 0, 0, 1 FROM fed_sanctions s WHERE s.body_id = ANY($1) AND s.status IN ('approved','suspended')) x GROUP BY 1 ORDER BY 1 DESC LIMIT 8`, [ids]),
-      many(`SELECT * FROM (
-              SELECT 'affiliation' AS type, a.id, o.name AS label, a.override_reason AS reason, a.decided_at AS at, a.body_id, 'override' AS kind, u.display_name AS by FROM fed_affiliations a JOIN organisations o ON o.id=a.organisation_id LEFT JOIN users u ON u.id=a.decided_by WHERE a.body_id = ANY($1) AND a.override_reason IS NOT NULL AND a.status IN ('approved','suspended')
-              UNION ALL SELECT 'licence', l.id, uu.display_name || ' · ' || t.name, l.override_reason, l.decided_at, l.body_id, 'override', u.display_name FROM fed_licences l JOIN users uu ON uu.id=l.holder_id JOIN fed_licence_types t ON t.id=l.type_id LEFT JOIN users u ON u.id=l.decided_by WHERE l.body_id = ANY($1) AND l.override_reason IS NOT NULL AND l.status IN ('active','suspended')
-              UNION ALL SELECT 'sanction', s.id, e.name, s.override_reason, s.decided_at, s.body_id, 'override', u.display_name FROM fed_sanctions s JOIN events e ON e.id=s.event_id LEFT JOIN users u ON u.id=s.decided_by WHERE s.body_id = ANY($1) AND s.override_reason IS NOT NULL AND s.status IN ('approved','suspended')
-              UNION ALL SELECT 'sanction', s.id, e.name, CASE WHEN e.status='cancelled' THEN 'The event was cancelled after it was sanctioned' ELSE 'The event dates moved outside the sanctioned dates' END, e.created_at, s.body_id, 'event_moved', NULL FROM fed_sanctions s JOIN events e ON e.id=s.event_id WHERE s.body_id = ANY($1) AND s.status IN ('approved','suspended') AND (e.status='cancelled' OR e.starts_on < s.approved_starts_on OR e.ends_on > s.approved_ends_on)
-            ) x ORDER BY at DESC NULLS LAST LIMIT 12`, [ids]),
+      exceptionRows(ids, { open: true, limit: 12 }),
       many(`SELECT l.child_id AS body_id, bo.name, b.level, b.abbreviation FROM governing_body_links l JOIN governing_bodies b ON b.id=l.child_id JOIN organisations bo ON bo.id=b.organisation_id WHERE l.parent_id=$1 AND l.status='recognised' ORDER BY bo.name`, [i.id]),
     ]);
     const links = await one("SELECT count(*)::int AS n FROM governing_body_links WHERE (parent_id=$1 OR child_id=$1) AND status='requested'", [i.id]);
@@ -82,15 +78,15 @@ cap({
     return {
       body: { id: body.id, name: body.name, level: body.level, abbreviation: body.abbreviation, country: body.country, status: body.status },
       scope: { include_descendants: i.include_descendants, bodies: ids.length },
-      me: { admin: auth.admin, roles: auth.roles.map((r) => r.role), read_only_via_parent: auth.viaAncestor, can: Object.fromEntries(['affiliations', 'licences', 'sanctions', 'governance', 'evidence', 'reports'].map((p) => [p, can(auth, p)]).concat([['integrity', !!(await officerOf(user, body.id))]])) },
+      me: { admin: auth.admin, roles: auth.roles.map((r) => r.role), read_only_via_parent: auth.viaAncestor, can: Object.fromEntries(['affiliations', 'licences', 'sanctions', 'governance', 'evidence', 'reports', 'compliance'].map((p) => [p, can(auth, p)]).concat([['integrity', !!(await officerOf(user, body.id))]])) },
       counts: {
         affiliations: { pending: (a.submitted ?? 0) + (a.under_review ?? 0), needs_info: a.needs_info ?? 0, approved: a.approved ?? 0, suspended: a.suspended ?? 0, expired: a.expired ?? 0, expiring_30: affExp.d30, expiring_60: affExp.d60 },
         licences: { pending: (l.submitted ?? 0) + (l.under_review ?? 0), needs_info: l.needs_info ?? 0, active: l.active ?? 0, suspended: l.suspended ?? 0, expired: l.expired ?? 0, expiring_30: licExp.d30, expiring_60: licExp.d60 },
         sanctions: { pending: (s.requested ?? 0) + (s.under_review ?? 0), needs_info: s.needs_info ?? 0, approved: s.approved ?? 0, suspended: s.suspended ?? 0, moved: drift.n },
-        competitions: comps, exceptions: exceptions.length, cases: cases.length, link_requests: links.n,
+        competitions: comps, exceptions: exceptions.total, cases: cases.length, link_requests: links.n,
       },
       queue: { affiliations: pendAff, licences: pendLic, sanctions: pendSan },
-      windows, cases: cases.map((c) => ({ ...c, link_type: c.entity_type.replace('federation_', '') })), exceptions, children,
+      windows, cases: cases.map((c) => ({ ...c, link_type: c.entity_type.replace('federation_', '') })), exceptions: exceptions.items, children,
       breakdown: { by_sport: bySport, by_season: bySeason, by_region: byBody },
     };
   },

@@ -297,7 +297,7 @@ export function SetupTab({ id, me, home, reloadHome }) {
             {roles.error ? <LoadError error={roles.error} onRetry={roles.reload} /> : !roles.data ? <Loading /> : (
               <>
                 {roles.data.owners.map((o) => <ListCard key={`o${o.id}`} title={o.display_name} sub={`@${o.handle}`} status="active" statusLabel={o.role === 'owner' ? 'Owner' : 'Admin'} />)}
-                {roles.data.roles.map((r) => <ListCard key={r.role_id} title={r.display_name} sub={`${ROLE_LABEL[r.role]}${r.sport_name ? ` · ${r.sport_name} only` : ' · all sports'}`} sub2={ROLE_HELP[r.role]} right={admin ? <Btn small title="Revoke" color={c.paper} ink={c.ink} onPress={() => setRevoke(r)} /> : undefined} />)}
+                {roles.data.roles.map((r) => <ListCard key={r.role_id} title={r.display_name} sub={`${ROLE_LABEL[r.role]}${r.sport_name ? ` · ${r.sport_name} only` : ' · all sports'}${r.cascades ? ' · and bodies beneath' : ''}`} sub2={ROLE_HELP[r.role]} right={admin ? <Btn small title="Revoke" color={c.paper} ink={c.ink} onPress={() => setRevoke(r)} /> : undefined} />)}
                 {!roles.data.roles.length ? <T size={12.5} color={c.mute}>No scoped roles yet. Give someone one job — registrar, licensing officer, sanctioning officer, secretary, compliance or auditor — without giving them the whole body.</T> : null}
               </>)}
           </Section>
@@ -339,8 +339,9 @@ export function SetupTab({ id, me, home, reloadHome }) {
 
       <FormSheet visible={grant} onClose={() => setGrant(false)} title="Give a role" submitLabel="Give role" initial={{ role: 'registrar' }}
         fields={[{ key: 'user_id', label: 'Person', type: 'entity', noun: 'person' }, { key: 'role', label: 'Role', type: 'chips', options: Object.entries(ROLE_LABEL).map(([value, label]) => ({ value, label })), hint: 'Each role does one job. None can see a club\'s finance, coaching notes or medical data.' },
-          ...((b?.sports ?? []).length > 1 ? [{ key: 'sport_id', label: 'Only for one sport (optional)', type: 'chips', options: b.sports.map((s) => ({ value: s.sport_id, label: s.sport_name })), optional: true }] : [])]}
-        onSubmit={async (v) => { await api.post(`/federation/bodies/${id}/roles`, { user_id: v.user_id, role: v.role, sport_id: v.sport_id || undefined }); roles.reload(); return 'Role given'; }} />
+          ...((b?.sports ?? []).length > 1 ? [{ key: 'sport_id', label: 'Only for one sport (optional)', type: 'chips', options: b.sports.map((s) => ({ value: s.sport_id, label: s.sport_name })), optional: true }] : []),
+          ...((b?.children ?? []).length ? [{ key: 'cascades', label: 'Also applies to the bodies recognised beneath this one', type: 'switch', hint: 'Delegates this one job to every region, state or league under you, within the same sport limit. Revoking it ends it everywhere at once.', show: (v) => v.role !== 'integrity' }] : [])]}
+        onSubmit={async (v) => { await api.post(`/federation/bodies/${id}/roles`, { user_id: v.user_id, role: v.role, sport_id: v.sport_id || undefined, cascades: v.role !== 'integrity' && !!v.cascades }); roles.reload(); return 'Role given'; }} />
       <ReasonSheet visible={!!revoke} onClose={() => setRevoke(null)} title={`Revoke ${revoke ? ROLE_LABEL[revoke.role] : ''}`} body={revoke ? `${revoke.display_name} loses this role at once. The grant stays in the history.` : ''} confirm="Revoke" danger
         onConfirm={async () => { await act(() => api.del(`/federation/bodies/${id}/roles/${revoke.role_id}`), 'Role revoked'); roles.reload(); }} />
       <ReasonSheet visible={!!endLink} onClose={() => setEndLink(null)} title="End recognition" body="The link is kept with its end date. Nothing either body has issued is touched." confirm="End recognition" danger
