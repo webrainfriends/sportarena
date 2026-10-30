@@ -167,11 +167,13 @@ export async function resolveEntitlements(subjectType, subjectId, { at = new Dat
     for (const e of await entitlementsOf(vid)) applyAdd(map, e, `addon:${v.key}@v${v.version}`);
     sources.push(`addon:${v.key}@v${v.version}`);
   }
-  for (const s of subs.filter((x) => x.promotion_id)) {
-    const promo = await one(`SELECT key, grants FROM commercial_promotions WHERE id = $1 AND status = 'active' AND starts_on <= $2::date AND (ends_on IS NULL OR ends_on >= $2::date)`, [s.promotion_id, day(at)]);
-    if (!promo) continue;
-    for (const g of promo.grants ?? []) applyAdd(map, { key: g.key, limit_value: g.limit_value ?? null }, `promotion:${promo.key}`);
-    sources.push(`promotion:${promo.key}`);
+  for (const s of subs) {
+    const promos = await many(`SELECT p.key, p.grants FROM commercial_subscription_promotions sp JOIN commercial_promotions p ON p.id = sp.promotion_id
+                                WHERE sp.subscription_id = $1 AND p.status = 'active' AND p.starts_on <= $2::date AND (p.ends_on IS NULL OR p.ends_on >= $2::date) ORDER BY p.key`, [s.id, day(at)]);
+    for (const promo of promos) {
+      for (const g of promo.grants ?? []) applyAdd(map, { key: g.key, limit_value: g.limit_value ?? null }, `promotion:${promo.key}`);
+      sources.push(`promotion:${promo.key}`);
+    }
   }
   // 6 contract override, 7 enterprise override (set on an ancestor)
   const live = `status = 'active' AND starts_on <= $1::date AND (ends_on IS NULL OR ends_on >= $1::date)`;
@@ -199,6 +201,18 @@ export async function requireEntitlement(subjectType, subjectId, key, opts = {})
   const d = decide(await resolveEntitlements(subjectType, subjectId, opts), key);
   if (!d.allowed) throw new AppError(402, 'not_entitled', `Your plan does not include ${key}`, { key, sources: d.sources });
   return { ...d, governed: true };
+}
+
+/**
+ * The paid tools of an event (sponsor and vendor invitations, the retail list): open when the event holds Event Business, or the organiser
+ * (or the organising organisation) holds Organiser Pro. Passes while neither key is in the price list, so an unpriced install is unaffected.
+ */
+export async function requireEventTools(user, ev, opts = {}) {
+  const asks = [['event', ev.id, 'event.business_tools'], ['user', user.id, 'event.organiser_tools'], ...(ev.organisation_id ? [['organisation', ev.organisation_id, 'event.organiser_tools']] : [])];
+  const governed = await Promise.all(asks.map(([, , key]) => isGoverned(key)));
+  if (!governed.some(Boolean)) return;
+  for (const [n, [type, id, key]] of asks.entries()) if (governed[n] && decide(await resolveEntitlements(type, id, opts), key).allowed) return;
+  throw new AppError(402, 'not_entitled', 'Sponsor and vendor tools need the Event Business plan for this event, or Organiser Pro', { key: 'event.business_tools', subject_type: 'event', subject_id: ev.id });
 }
 
 // ------------------------------------------------------------------ usage
@@ -298,16 +312,50 @@ export async function usageSummary(subjectType, subjectId, { at = new Date() } =
 // ------------------------------------------------------------------ quotes & subscriptions
 const digestOf = (o) => createHash('sha256').update(JSON.stringify(o)).digest('hex');
 
+/** A subscription that really took the offer: not an unpaid one that was cancelled before it ever started. */
+const REAL = "(s.status <> 'cancelled' OR s.started_at IS NOT NULL)";
+
+/** Find an offer by the code the customer keyed in (its short code, or its coupon reference) and check it can be used now. Says why when it cannot. */
 async function loadPromotion(key, at) {
   if (!key) return null;
-  const p = await one('SELECT * FROM commercial_promotions WHERE key = $1', [key]);
-  if (!p || p.status !== 'active' || new Date(p.starts_on) > at || (p.ends_on && new Date(p.ends_on) < at)) throw badRequest('That offer is not available');
+  const code = String(key).trim().toLowerCase();
+  const p = await one('SELECT * FROM commercial_promotions WHERE key = $1 OR lower(coupon_ref) = $1 ORDER BY (key = $1) DESC LIMIT 1', [code]);
+  if (!p) throw badRequest('That offer code is not valid');
+  if (p.status !== 'active' || (p.ends_on && new Date(p.ends_on) < at)) throw badRequest('That offer has ended');
+  if (new Date(p.starts_on) > at) throw badRequest('That offer has not started yet');
+  p.exhausted = false;
   if (p.max_redemptions != null) {
-    const n = (await one('SELECT count(*)::int AS n FROM commercial_subscriptions WHERE promotion_id = $1', [p.id])).n;
-    if (n >= p.max_redemptions) throw badRequest('That offer has been fully redeemed');
+    const n = (await one(`SELECT count(DISTINCT coalesce(s.bundle_group::text, s.id::text))::int AS n FROM commercial_subscription_promotions sp JOIN commercial_subscriptions s ON s.id = sp.subscription_id WHERE sp.promotion_id = $1 AND ${REAL}`, [p.id])).n;
+    p.exhausted = n >= p.max_redemptions;
   }
   p.price_points = (await many('SELECT price_point_code FROM commercial_promotion_price_points WHERE promotion_id = $1 AND removed_at IS NULL ORDER BY 1', [p.id])).map((r) => r.price_point_code);
   return p;
+}
+
+const usedBy = async (promoId, subjectType, subjectId) => !!(await one(`SELECT 1 AS x FROM commercial_subscription_promotions sp JOIN commercial_subscriptions s ON s.id = sp.subscription_id WHERE sp.promotion_id = $1 AND sp.subject_type = $2 AND sp.subject_id = $3 AND ${REAL} LIMIT 1`, [promoId, subjectType, subjectId]));
+const fits = (p, t) => offerAppliesTo(p, t.code) && (p.benefit !== 'flat_off' || p.flat_currency === t.currency);
+
+/**
+ * The offers a purchase gets, and they stack: every code the customer keyed in (each checked; a bad one is refused with the reason) plus every
+ * auto-apply offer that fits, so the customer never has to ask for it. An account redeems an offer once. `targets` = [{ code, currency }] price points bought.
+ */
+export async function resolveOffers({ keys = [], at, subjectType, subjectId, targets }) {
+  const out = []; const seen = new Set();
+  for (const k of keys) {
+    const p = await loadPromotion(k, at);
+    if (seen.has(p.id)) continue;
+    if (await usedBy(p.id, subjectType, subjectId)) throw badRequest('You have already used that offer');
+    if (p.exhausted) throw badRequest('That offer has been fully redeemed');
+    if (!targets.some((t) => offerAppliesTo(p, t.code))) throw badRequest(`That offer does not apply to this plan${p.price_points.length ? ` (it is attached to: ${p.price_points.join(', ')})` : ''}`);
+    seen.add(p.id); out.push({ ...p, auto: false });
+  }
+  const day0 = day(at);
+  for (const row of await many("SELECT key FROM commercial_promotions WHERE auto_apply AND status = 'active' AND starts_on <= $1::date AND (ends_on IS NULL OR ends_on >= $1::date) ORDER BY created_at, key", [day0])) {
+    const p = await loadPromotion(row.key, at).catch(() => null);   // exhausted or not yet live: simply not offered
+    if (!p || p.exhausted || seen.has(p.id) || !targets.some((t) => fits(p, t)) || await usedBy(p.id, subjectType, subjectId)) continue;
+    seen.add(p.id); out.push({ ...p, auto: true });
+  }
+  return out;
 }
 
 /**
@@ -331,6 +379,19 @@ export function applyPromotion(version, subtotalMinor, promo) {
   }
   const schedule = Array.from({ length: n }, (_, i) => { const d = off(); return { term: i + 1, subtotal_minor: subtotalMinor, discount_minor: d, tax_minor: tax(subtotalMinor - d), total_minor: subtotalMinor - d + tax(subtotalMinor - d) }; });
   return { schedule, first_discount_minor: schedule[0]?.discount_minor ?? 0, extra_free_months: extra, terms_covered: n };
+}
+
+/** Several offers on one price: each term takes the sum of what the offers give for it (never more than the price), extra free months add up. */
+export function applyPromotions(version, subtotalMinor, promos) {
+  const parts = promos.map((p) => applyPromotion(version, subtotalMinor, p));
+  if (parts.length <= 1) return parts[0] ?? { schedule: [], first_discount_minor: 0, extra_free_months: 0, terms_covered: 0 };
+  const tax = (n) => Math.round((n * version.tax_bp) / 10000);
+  const n = Math.max(...parts.map((a) => a.schedule.length));
+  const schedule = Array.from({ length: n }, (_, i) => {
+    const d = Math.min(subtotalMinor, parts.reduce((t, a) => t + (a.schedule[i]?.discount_minor ?? 0), 0));
+    return { term: i + 1, subtotal_minor: subtotalMinor, discount_minor: d, tax_minor: tax(subtotalMinor - d), total_minor: subtotalMinor - d + tax(subtotalMinor - d) };
+  });
+  return { schedule, first_discount_minor: schedule[0]?.discount_minor ?? 0, extra_free_months: parts.reduce((t, a) => t + a.extra_free_months, 0), terms_covered: n };
 }
 
 // ------------------------------------------------------------------ bundles
@@ -377,42 +438,45 @@ export async function priceBundle(bundle, at = new Date()) {
   return { bundle, bv, members: members.map((m, i) => ({ ...m, share_minor: shares[i] })), list_minor: list, subtotal_minor: subtotal, saving_minor: list - subtotal };
 }
 
-async function createBundleQuote({ subjectType, subjectId, user, bundleKey, promotionKey, at = new Date(), persist = true }) {
+const promoKeysOf = (promotionKey, promotionKeys) => [...new Set([promotionKey, ...(promotionKeys ?? [])].filter(Boolean))];
+const offerInfo = (offers) => offers.map((o) => ({ id: o.id, key: o.key, name: o.name, kind: o.kind, auto: o.auto }));
+
+async function createBundleQuote({ subjectType, subjectId, user, bundleKey, promotionKey, promotionKeys, at = new Date(), persist = true }) {
   const bundle = await one("SELECT * FROM commercial_bundles WHERE key = $1 AND status = 'active'", [bundleKey]);
   if (!bundle) throw notFound('Bundle');
   if (!bundle.eligible_actors.includes(subjectType)) throw badRequest(`${bundle.name} is not offered to a ${subjectType}`);
   const pr = await priceBundle(bundle, at);
   const code = bundleCode(bundle);
-  const promo = await loadPromotion(promotionKey, at);
-  if (promo && !offerAppliesTo(promo, code)) throw badRequest(`That offer does not apply to bundle ${code} (it is attached to: ${promo.price_points.join(', ')})`);
+  const offers = await resolveOffers({ keys: promoKeysOf(promotionKey, promotionKeys), at, subjectType, subjectId, targets: [{ code, currency: bundle.currency }] });
   const pseudo = { tax_bp: pr.bv.tax_bp, billing_interval: bundle.billing_interval, currency: bundle.currency };
-  const ap = applyPromotion(pseudo, pr.subtotal_minor, promo);
+  const ap = applyPromotions(pseudo, pr.subtotal_minor, offers);
   const discount = ap.first_discount_minor;
   const tax = Math.round(((pr.subtotal_minor - discount) * pr.bv.tax_bp) / 10000);
   const total = pr.subtotal_minor - discount + tax;
-  const trialDays = Math.max(promo?.trial_days ?? 0, ...pr.members.map((m) => m.v.trial_days));
+  const trialDays = Math.max(0, ...offers.map((o) => o.trial_days), ...pr.members.map((m) => m.v.trial_days));
   const lines = pr.members.map((m) => ({ kind: 'bundle_member', label: m.plan.name, plan_key: m.plan.key, price_point_code: m.code, version_id: m.v.id, version: m.v.version, billing_interval: bundle.billing_interval, quantity: 1, list_minor: m.list_minor, amount_minor: m.share_minor }));
   const bundleInfo = { key: bundle.key, name: bundle.name, price_point_code: code, version_id: pr.bv.id, version: pr.bv.version, price_mode: pr.bv.price_mode, list_minor: pr.list_minor, saving_minor: pr.saving_minor };
-  const schedule = promo ? [{ bundle_key: bundle.key, price_point_code: code, regular_total_minor: pr.subtotal_minor + Math.round((pr.subtotal_minor * pr.bv.tax_bp) / 10000), terms: ap.schedule }] : [];
-  const body = { subject_type: subjectType, subject_id: subjectId, currency: bundle.currency, lines, terms: [], subtotal_minor: pr.subtotal_minor, discount_minor: discount, tax_minor: tax, total_minor: total, version_ids: pr.members.map((m) => m.v.id), promotion: promo?.key ?? null, trial_days: trialDays, extra_free_months: ap.extra_free_months, promotion_terms: ap.terms_covered, schedule, bundle: bundleInfo };
+  const schedule = offers.length ? [{ bundle_key: bundle.key, price_point_code: code, regular_total_minor: pr.subtotal_minor + Math.round((pr.subtotal_minor * pr.bv.tax_bp) / 10000), terms: ap.schedule }] : [];
+  const body = { subject_type: subjectType, subject_id: subjectId, currency: bundle.currency, lines, terms: [], subtotal_minor: pr.subtotal_minor, discount_minor: discount, tax_minor: tax, total_minor: total, version_ids: pr.members.map((m) => m.v.id), promotion: offers[0]?.key ?? null, promotions: offerInfo(offers), trial_days: trialDays, extra_free_months: ap.extra_free_months, promotion_terms: ap.terms_covered, schedule, bundle: bundleInfo };
   if (!persist) return { ...body, persisted: false };
   const quoteNo = `Q-${day(at).replace(/-/g, '')}-${randomBytes(3).toString('hex').toUpperCase()}`;
   const row = await one(
     `INSERT INTO commercial_quotes(quote_no, subject_type, subject_id, requested_by, currency, lines, subtotal_minor, discount_minor, tax_minor, total_minor, version_ids, promotion_id, inputs, expires_at, digest)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13, now() + interval '7 days', $14) RETURNING *`,
-    [quoteNo, subjectType, subjectId, user.id, bundle.currency, JSON.stringify({ lines, terms: [], trial_days: trialDays, extra_free_months: ap.extra_free_months, schedule, bundle: bundleInfo }), pr.subtotal_minor, discount, tax, total, body.version_ids, promo?.id ?? null, JSON.stringify({ bundle_key: bundleKey }), digestOf(body)]);
+    [quoteNo, subjectType, subjectId, user.id, bundle.currency, JSON.stringify({ lines, terms: [], trial_days: trialDays, extra_free_months: ap.extra_free_months, schedule, bundle: bundleInfo }), pr.subtotal_minor, discount, tax, total, body.version_ids, offers[0]?.id ?? null, JSON.stringify({ bundle_key: bundleKey }), digestOf(body)]);
   return { ...body, id: row.id, quote_no: row.quote_no, expires_at: row.expires_at, status: row.status, digest: row.digest, persisted: true };
 }
 
 /** Freeze a quote for a subject: the lines, tax and total payments take as given. Persisted and immutable. */
-export async function createQuote({ subjectType, subjectId, user, items, region = 'IN', currency, promotionKey, usage, gmv_minor, at = new Date(), persist = true }) {
+export async function createQuote({ subjectType, subjectId, user, items, region = 'IN', currency, promotionKey, promotionKeys, usage, gmv_minor, at = new Date(), persist = true }) {
   if (!items?.length) throw badRequest('Nothing to quote');
   if (items.some((x) => x.bundle_key)) {
     if (items.length > 1) throw badRequest('A bundle is quoted on its own');
-    return createBundleQuote({ subjectType, subjectId, user, bundleKey: items[0].bundle_key, promotionKey, at, persist });
+    return createBundleQuote({ subjectType, subjectId, user, bundleKey: items[0].bundle_key, promotionKey, promotionKeys, at, persist });
   }
   const lines = []; const terms = []; const versionIds = [];
-  let subtotal = 0; let discount = 0; let tax = 0; let applied = null; const promo = await loadPromotion(promotionKey, at); let cur = currency ?? null; let trialDays = 0; let extraFree = 0; let termsCovered = 0; const schedules = [];
+  let subtotal = 0; let discount = 0; let tax = 0; let cur = currency ?? null; let trialDays = 0; let extraFree = 0; let termsCovered = 0; const schedules = [];
+  const prepared = [];
   for (const it of items) {
     const plan = await one('SELECT * FROM commercial_plans WHERE key = $1 AND status = $2', [it.plan_key, 'active']);
     if (!plan) throw notFound('Plan');
@@ -421,11 +485,15 @@ export async function createQuote({ subjectType, subjectId, user, items, region 
     if (!v) throw badRequest(`${plan.name} has no price in force for ${region}${cur ? ` in ${cur}` : ''}`);
     if (cur && v.currency !== cur) throw badRequest('All items in a quote must use one currency');
     cur = v.currency;
-    const priced = priceVersion(v, { quantities: it.quantities, usage, gmv_minor });
-    const p = promo && offerAppliesTo(promo, versionCode(v)) ? promo : null;
-    const ap = applyPromotion(v, priced.subtotal_minor, p);
+    prepared.push({ plan, v, it, priced: priceVersion(v, { quantities: it.quantities, usage, gmv_minor }) });
+  }
+  // the offers stack: the codes keyed in plus every auto-apply offer that fits, before the customer ever sees the total
+  const offers = await resolveOffers({ keys: promoKeysOf(promotionKey, promotionKeys), at, subjectType, subjectId, targets: prepared.map((x) => ({ code: versionCode(x.v), currency: x.v.currency })) });
+  for (const { plan, v, priced } of prepared) {
+    const ps = offers.filter((o) => offerAppliesTo(o, versionCode(v)));
+    const ap = applyPromotions(v, priced.subtotal_minor, ps);
     const itemDiscount = ap.first_discount_minor;
-    if (p) { applied = p; trialDays = Math.max(trialDays, p.trial_days); extraFree = Math.max(extraFree, ap.extra_free_months); termsCovered = Math.max(termsCovered, ap.terms_covered); schedules.push({ plan_key: plan.key, price_point_code: versionCode(v), version_id: v.id, regular_total_minor: priced.subtotal_minor + Math.round((priced.subtotal_minor * v.tax_bp) / 10000), terms: ap.schedule }); }
+    if (ps.length) { trialDays = Math.max(trialDays, ...ps.map((o) => o.trial_days)); extraFree = Math.max(extraFree, ap.extra_free_months); termsCovered = Math.max(termsCovered, ap.terms_covered); schedules.push({ plan_key: plan.key, price_point_code: versionCode(v), version_id: v.id, regular_total_minor: priced.subtotal_minor + Math.round((priced.subtotal_minor * v.tax_bp) / 10000), terms: ap.schedule }); }
     if (v.trial_days) trialDays = Math.max(trialDays, v.trial_days);
     versionIds.push(v.id);
     for (const l of priced.lines) lines.push({ ...l, plan_key: plan.key, price_point_code: versionCode(v), version_id: v.id, version: v.version, billing_interval: v.billing_interval });
@@ -433,20 +501,19 @@ export async function createQuote({ subjectType, subjectId, user, items, region 
     subtotal += priced.subtotal_minor; discount += itemDiscount;
     tax += Math.round(((priced.subtotal_minor - itemDiscount) * v.tax_bp) / 10000);
   }
-  if (promo && !applied) throw badRequest(`That offer does not apply to this price point (it is attached to: ${promo.price_points.join(', ')})`);
   const total = subtotal - discount + tax;
-  const body = { subject_type: subjectType, subject_id: subjectId, currency: cur, lines, terms, subtotal_minor: subtotal, discount_minor: discount, tax_minor: tax, total_minor: total, version_ids: versionIds, promotion: applied?.key ?? null, trial_days: trialDays, extra_free_months: extraFree, promotion_terms: termsCovered, schedule: schedules };
+  const body = { subject_type: subjectType, subject_id: subjectId, currency: cur, lines, terms, subtotal_minor: subtotal, discount_minor: discount, tax_minor: tax, total_minor: total, version_ids: versionIds, promotion: offers[0]?.key ?? null, promotions: offerInfo(offers), trial_days: trialDays, extra_free_months: extraFree, promotion_terms: termsCovered, schedule: schedules };
   if (!persist) return { ...body, persisted: false };
   const quoteNo = `Q-${day(at).replace(/-/g, '')}-${randomBytes(3).toString('hex').toUpperCase()}`;
   const row = await one(
     `INSERT INTO commercial_quotes(quote_no, subject_type, subject_id, requested_by, currency, lines, subtotal_minor, discount_minor, tax_minor, total_minor, version_ids, promotion_id, inputs, expires_at, digest)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13, now() + interval '7 days', $14) RETURNING *`,
-    [quoteNo, subjectType, subjectId, user.id, cur, JSON.stringify({ lines, terms, trial_days: trialDays, extra_free_months: extraFree, schedule: schedules }), subtotal, discount, tax, total, versionIds, applied?.id ?? null, JSON.stringify({ items, region, usage: usage ?? {}, gmv_minor: gmv_minor ?? 0 }), digestOf(body)]);
+    [quoteNo, subjectType, subjectId, user.id, cur, JSON.stringify({ lines, terms, trial_days: trialDays, extra_free_months: extraFree, schedule: schedules }), subtotal, discount, tax, total, versionIds, offers[0]?.id ?? null, JSON.stringify({ items, region, usage: usage ?? {}, gmv_minor: gmv_minor ?? 0 }), digestOf(body)]);
   return { ...body, id: row.id, quote_no: row.quote_no, expires_at: row.expires_at, status: row.status, digest: row.digest, persisted: true };
 }
 
 /** Insert one subscription row (shared by a single plan and by each member of a bundle). */
-async function insertSubscription(c, { subjectType, subjectId, plan, versionId, promoId, status, quantities = {}, at, interval, quote, userId, bundleVersionId = null, bundleGroup = null, allocated = null }) {
+async function insertSubscription(c, { subjectType, subjectId, plan, versionId, promoId, offers = [], status, quantities = {}, at, interval, quote, userId, bundleVersionId = null, bundleGroup = null, allocated = null }) {
   const trial = status === 'trial';
   const start = status === 'pending_payment' ? null : at;
   let end = start ? addInterval(start, interval) : null;
@@ -458,6 +525,7 @@ async function insertSubscription(c, { subjectType, subjectId, plan, versionId, 
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *`,
     [subjectType, subjectId, plan.id, plan.product_id, plan.kind, versionId, promoId, status, JSON.stringify(quantities), start, trial ? trialEnd : end, trialEnd, quote.id, userId,
       quote.promotion_terms, quote.promotion_terms && status !== 'pending_payment' && !trial ? 1 : 0, bundleVersionId, bundleGroup, allocated])).rows[0];
+  for (const o of offers) await c.query('INSERT INTO commercial_subscription_promotions(subscription_id, promotion_id, subject_type, subject_id, auto) VALUES ($1,$2,$3,$4,$5)', [s.id, o.id, subjectType, subjectId, !!o.auto]);
   return s;
 }
 
@@ -472,18 +540,18 @@ async function checkAddonRequires(c, plan, subjectType, subjectId, alsoHeld = []
 const startStatus = (quote) => (quote.trial_days > 0 ? 'trial' : quote.total_minor === 0 ? 'active' : 'pending_payment');
 
 /** Subscribe a subject to a plan. Free (or fully trialled) plans start at once; a paid plan waits for payment against its frozen quote. */
-export async function subscribe({ subjectType, subjectId, user, planKey, billingInterval, region = 'IN', currency, quantities = {}, promotionKey, at = new Date() }) {
+export async function subscribe({ subjectType, subjectId, user, planKey, billingInterval, region = 'IN', currency, quantities = {}, promotionKey, promotionKeys, at = new Date() }) {
   const plan = await one("SELECT * FROM commercial_plans WHERE key = $1 AND status = 'active'", [planKey]);
   if (!plan) throw notFound('Plan');
   if (!plan.eligible_actors.includes(subjectType)) throw badRequest(`${plan.name} is not offered to a ${subjectType}`);
-  const quote = await createQuote({ subjectType, subjectId, user, items: [{ plan_key: planKey, billing_interval: billingInterval, quantities }], region, currency, promotionKey, at });
+  const quote = await createQuote({ subjectType, subjectId, user, items: [{ plan_key: planKey, billing_interval: billingInterval, quantities }], region, currency, promotionKey, promotionKeys, at });
   const v = await one('SELECT * FROM commercial_price_versions WHERE id = $1', [quote.version_ids[0]]);
   const status = startStatus(quote);
   const promo = quote.promotion ? await one('SELECT id FROM commercial_promotions WHERE key = $1', [quote.promotion]) : null;
   try {
     return await tx(async (c) => {
       await checkAddonRequires(c, plan, subjectType, subjectId);
-      const s = await insertSubscription(c, { subjectType, subjectId, plan, versionId: v.id, promoId: promo?.id ?? null, status, quantities, at, interval: v.billing_interval, quote, userId: user.id });
+      const s = await insertSubscription(c, { subjectType, subjectId, plan, versionId: v.id, promoId: promo?.id ?? null, offers: quote.promotions, status, quantities, at, interval: v.billing_interval, quote, userId: user.id });
       await commercialAudit(c, user.id, 'subscribe', 'commercial_subscriptions', s.id, { plan: plan.key, version: v.version, status });
       return { subscription: s, quote };
     });
@@ -494,8 +562,8 @@ export async function subscribe({ subjectType, subjectId, user, planKey, billing
 }
 
 /** Subscribe a subject to a bundle: one subscription per member (each pinned to the version bought), sharing the bundle price and a bundle group. */
-export async function subscribeBundle({ subjectType, subjectId, user, bundleKey, promotionKey, at = new Date() }) {
-  const quote = await createQuote({ subjectType, subjectId, user, items: [{ bundle_key: bundleKey }], promotionKey, at });
+export async function subscribeBundle({ subjectType, subjectId, user, bundleKey, promotionKey, promotionKeys, at = new Date() }) {
+  const quote = await createQuote({ subjectType, subjectId, user, items: [{ bundle_key: bundleKey }], promotionKey, promotionKeys, at });
   const status = startStatus(quote);
   const promo = quote.promotion ? await one('SELECT id FROM commercial_promotions WHERE key = $1', [quote.promotion]) : null;
   const group = crypto.randomUUID();
@@ -507,7 +575,7 @@ export async function subscribeBundle({ subjectType, subjectId, user, bundleKey,
       for (const p of plans.filter((x) => x.kind === 'addon')) await checkAddonRequires(c, p, subjectType, subjectId, bases);
       const subs = [];
       for (const [i, l] of quote.lines.entries()) {
-        subs.push(await insertSubscription(c, { subjectType, subjectId, plan: plans[i], versionId: l.version_id, promoId: promo?.id ?? null, status, at, interval: quote.bundle ? l.billing_interval : l.billing_interval, quote, userId: user.id, bundleVersionId: quote.bundle.version_id, bundleGroup: group, allocated: l.amount_minor }));
+        subs.push(await insertSubscription(c, { subjectType, subjectId, plan: plans[i], versionId: l.version_id, promoId: promo?.id ?? null, offers: quote.promotions, status, at, interval: quote.bundle ? l.billing_interval : l.billing_interval, quote, userId: user.id, bundleVersionId: quote.bundle.version_id, bundleGroup: group, allocated: l.amount_minor }));
       }
       await commercialAudit(c, user.id, 'subscribe_bundle', 'commercial_subscriptions', subs[0].id, { bundle: bundleKey, version: quote.bundle.version, members: subs.length, status });
       return { subscriptions: subs, quote, bundle_group: group };
@@ -518,24 +586,43 @@ export async function subscribeBundle({ subjectType, subjectId, user, bundleKey,
   }
 }
 
-/** Payment confirmed (the hook payments #498 calls): a pending subscription starts. */
-export async function activateSubscription(id, actorId, at = new Date()) {
-  return tx(async (c) => {
-    const s = (await c.query('SELECT * FROM commercial_subscriptions WHERE id = $1 FOR UPDATE', [id])).rows[0];
-    if (!s) throw notFound('Subscription');
-    if (s.status !== 'pending_payment') throw conflict('Only a subscription awaiting payment can be activated');
-    // a bundle is paid once: every member of its group starts together
-    const members = s.bundle_group ? (await c.query("SELECT * FROM commercial_subscriptions WHERE bundle_group = $1 AND status = 'pending_payment' FOR UPDATE", [s.bundle_group])).rows : [s];
-    let mine = null;
-    for (const m of members) {
-      const iv = (await c.query('SELECT billing_interval FROM commercial_price_versions WHERE id = $1', [m.version_id])).rows[0].billing_interval;
-      const u = (await c.query("UPDATE commercial_subscriptions SET status='active', started_at=$2, current_period_start=$2, current_period_end=$3 WHERE id=$1 RETURNING *", [m.id, at, addInterval(at, iv)])).rows[0];
-      if (m.id === id) mine = u;
-      await commercialAudit(c, actorId, 'activate', 'commercial_subscriptions', m.id);
-    }
-    if (s.quote_id) await c.query("UPDATE commercial_quotes SET status='accepted' WHERE id=$1", [s.quote_id]);
-    return mine;
-  });
+/** Start a subscription that was awaiting payment (a bundle starts as one group), inside the caller's transaction. */
+async function activateIn(c, id, actorId, at) {
+  const s = (await c.query('SELECT * FROM commercial_subscriptions WHERE id = $1 FOR UPDATE', [id])).rows[0];
+  if (!s) throw notFound('Subscription');
+  if (s.status !== 'pending_payment') throw conflict('Only a subscription awaiting payment can be activated');
+  // a bundle is paid once: every member of its group starts together
+  const members = s.bundle_group ? (await c.query("SELECT * FROM commercial_subscriptions WHERE bundle_group = $1 AND status = 'pending_payment' FOR UPDATE", [s.bundle_group])).rows : [s];
+  let mine = null;
+  for (const m of members) {
+    const iv = (await c.query('SELECT billing_interval FROM commercial_price_versions WHERE id = $1', [m.version_id])).rows[0].billing_interval;
+    const u = (await c.query("UPDATE commercial_subscriptions SET status='active', started_at=$2, current_period_start=$2, current_period_end=$3 WHERE id=$1 RETURNING *", [m.id, at, addInterval(at, iv)])).rows[0];
+    if (m.id === id) mine = u;
+    await commercialAudit(c, actorId, 'activate', 'commercial_subscriptions', m.id);
+  }
+  if (s.quote_id) await c.query("UPDATE commercial_quotes SET status='accepted' WHERE id=$1", [s.quote_id]);
+  return mine;
+}
+
+/** Admin "mark paid". */
+export const activateSubscription = (id, actorId, at = new Date()) => tx((c) => activateIn(c, id, actorId, at));
+
+/** The hosted checkout reported this subscription's quote paid (payments hook): the plan starts. False when it can no longer start (cancelled meanwhile), so the payment is refunded. */
+export async function fulfilSubscriptionPaid(c, subscriptionId, payerId) {
+  const s = (await c.query('SELECT status FROM commercial_subscriptions WHERE id = $1 FOR UPDATE', [subscriptionId])).rows[0];
+  if (!s || s.status !== 'pending_payment') return false;
+  await activateIn(c, subscriptionId, payerId, new Date());
+  return true;
+}
+
+/** What a checkout charges for a subscription awaiting payment: the frozen quote's total (a bundle shares one quote), never a client figure. */
+export async function describeSubscription(c, subscriptionId) {
+  const x = (await c.query(
+    `SELECT s.created_by AS payer_id, s.status, q.total_minor AS amount, q.currency, p.name AS plan_name, b.name AS bundle_name
+       FROM commercial_subscriptions s JOIN commercial_quotes q ON q.id = s.quote_id JOIN commercial_plans p ON p.id = s.plan_id
+       LEFT JOIN commercial_bundle_versions bv ON bv.id = s.bundle_version_id LEFT JOIN commercial_bundles b ON b.id = bv.bundle_id
+      WHERE s.id = $1 FOR UPDATE OF s`, [subscriptionId])).rows[0];
+  return x && { payerId: x.payer_id, amount: Number(x.amount), currency: x.currency, name: `Plan: ${x.bundle_name ?? x.plan_name}`, payable: x.status === 'pending_payment' && Number(x.amount) > 0 };
 }
 
 /** Stop renewal: an unpaid one is cancelled outright; a running one ends at the end of its paid period. History and data are kept. */

@@ -392,7 +392,8 @@ function ObligationForm({ req, scope, cat, edit, onClose, onSaved }) {
 function Rulebook({ scope, cat, reload }) {
   const { toast } = useSession();
   const l = useLoad(() => api.get('/compliance/requirements', { scope_kind: scope.kind, ...(scope.id ? { scope_id: scope.id } : {}) }), [scope.kind, scope.id]);
-  const [form, setForm] = useState(null), [ob, setOb] = useState(null);
+  const [form, setForm] = useState(null), [ob, setOb] = useState(null), [std, setStd] = useState(false);
+  const books = useLoad(() => (scope.kind === 'platform' ? api.get('/compliance/rulebooks') : Promise.resolve({ items: [] })), [scope.kind]);
   const after = () => { l.reload(); reload(); };
   const archive = async (r) => { try { await api.post(`/compliance/requirements/${r.id}/archive`); toast('Archived. Records are kept.'); after(); } catch (e) { toast(explain(e)); } };
   const approve = async (r, decision) => { try { await api.post(`/compliance/requirements/${r.id}/approval`, { decision }); toast(decision === 'approve' ? 'Approved. It takes effect now.' : 'Withdrawn'); after(); } catch (e) { toast(explain(e)); } };
@@ -402,6 +403,7 @@ function Rulebook({ scope, cat, reload }) {
   const write = cat.scopes.find((s) => s.kind === scope.kind && (s.id ?? null) === (scope.id ?? null))?.write !== false;
   return (
     <View style={{ gap: 10 }}>
+      {write && scope.kind === 'platform' && books.data?.items.length ? <Btn title="Install a standard country rulebook" color={c.paper} ink={c.ink} onPress={() => setStd(true)} accessibilityLabel="Install a standard country rulebook" /> : null}
       {write ? <Btn title="+ New requirement" onPress={() => setForm({})} /> : <Note>You can read this rulebook but not change it.</Note>}
       {l.data.requirements.length ? l.data.requirements.map((r) => (
         <Card key={r.id} pad={14}>
@@ -437,6 +439,11 @@ function Rulebook({ scope, cat, reload }) {
           ) : null}
         </Card>
       )) : <Empty emoji="📋" title="No requirements yet" sub="A requirement is what is needed (a certificate, a check, a declaration, a permit …). Then choose who must meet it and what an unmet one blocks." />}
+      {std ? (
+        <FormSheet visible onClose={() => setStd(false)} title="Standard country rulebook" submitLabel="Install"
+          fields={[{ key: 'country', label: 'Country', type: 'choice', options: books.data.items.map((x) => ({ value: x.code, label: `${x.name} · ${x.rules} rules` })), hint: 'A research anchor and checklist, not legal advice. Laws and regulations wait for a second platform administrator to approve them; recommended standards only advise. Installing twice changes nothing.' }]}
+          onSubmit={async (v) => { const r = await api.post(`/compliance/rulebooks/${v.country}/install`, {}); after(); return `${r.created.length} installed, ${r.skipped.length} already there`; }} />
+      ) : null}
       {form ? <RequirementForm scope={scope} cat={cat} edit={form.id ? form : null} onClose={() => setForm(null)} onSaved={after} /> : null}
       {ob ? <ObligationForm req={ob.req} scope={scope} cat={cat} edit={ob.edit} onClose={() => setOb(null)} onSaved={after} /> : null}
     </View>
