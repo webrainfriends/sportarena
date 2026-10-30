@@ -487,7 +487,7 @@ test('calendar and reports reconcile with the canonical records; exports are log
   assert.equal((await api('GET', `/federation/bodies/${F.id}/calendar`, { token: outsider.token, query: { from: day(0), to: day(30) } })).status, 404);
   assert.equal((await api('GET', `/federation/bodies/${F.id}/calendar`, { token: fed.token, query: { from: day(0), to: day(900) } })).status, 400);
   // export: spreadsheet-safe, logged with a hash of the exact bytes, allowed for reporting roles only
-  const csv = must(await report(auditor, F, 'affiliations', { format: 'csv' }));
+  const csv = must(await report(auditor, F, 'affiliations', { format: 'csv', purpose: 'Season audit' }));
   assert.match(csv.csv, /'=Report Club/, 'formulas are neutralised');
   assert.equal(csv.rows, r.total);
   const logged = await q('SELECT * FROM fed_exports WHERE body_id=$1', [F.id]);

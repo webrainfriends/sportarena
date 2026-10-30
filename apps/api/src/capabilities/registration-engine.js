@@ -39,6 +39,9 @@ const today = () => new Date().toISOString().slice(0, 10);
 const stale = (cur) => conflict('This record changed since you loaded it. Reload and try again.', { code: 'stale_version', row_version: cur.row_version, status: cur.status });
 const isDup = (e) => e?.code === '23505';
 const rows = (r) => r.rows;
+// Competition roster registrations (#477) and academy admissions are mirrored here read-only until stage B (docs/registration-consolidation.md): their own flows stay the writer.
+const WHERE = { event_registration: 'the event console', roster_registration: 'the event console', academy_programme: 'academy admissions', academy_application: 'academy admissions' };
+const managed = (x) => conflict(`This is managed in ${WHERE[x.legacy_type] ?? 'its own module'}. Change it there.`, { code: 'managed_elsewhere', legacy_type: x.legacy_type });
 
 // ------------------------------------------------------------------ access
 
@@ -52,6 +55,7 @@ export async function canManageProgramme(user, p, c = pool) {
 const getProgramme = async (c, pid, { lock = false } = {}) => {
   const p = (await c.query(`SELECT * FROM rx_programmes WHERE id=$1${lock ? ' FOR UPDATE' : ''}`, [pid])).rows[0];
   if (!p) throw notFound('Registration programme');
+  if (lock && p.legacy_type) throw managed(p);
   return p;
 };
 /** A programme is visible to its staff always, and to everyone else only once it has been opened (never drafts or archived ones). */
@@ -72,6 +76,7 @@ const versionOf = async (c, pid, v) => (await c.query('SELECT * FROM rx_versions
 async function entryAccess(c, user, entryId, { lock = false } = {}) {
   const e = (await c.query(`SELECT * FROM rx_entries WHERE id=$1${lock ? ' FOR UPDATE' : ''}`, [entryId])).rows[0];
   if (!e) throw notFound('Registration');
+  if (lock && e.legacy_type) throw managed(e);
   const p = await getProgramme(c, e.programme_id);
   const staff = await canManageProgramme(user, p, c);
   const applicant = e.submitted_by === user.id, self = e.participant_id === user.id;
@@ -188,7 +193,8 @@ async function entryView(c, user, a) {
     eligibility: el ? { decision: el.decision, blocking: el.blocking, at: el.at, policy_version: el.policy_version, checks: staff ? el.checks : el.checks.map(publicCheck) } : null,
     waivers: (ver.waivers ?? []).map((w) => ({ key: w.key, title: w.title, body: w.body, required: w.required, guardian_required: w.guardian_required, sha256: waiverHash(w) })),
     waivers_unsigned: unsigned(due, signatures).map((d) => ({ key: d.key, title: d.title, signer: d.signer })),
-    can: {
+    managed_in: e.legacy_type ? { kind: e.legacy_type, event_id: p.event_id, organisation_id: p.organisation_id } : null,
+    can: e.legacy_type ? { edit: false, withdraw: false, decide: false, request_change: false, pay: false } : {
       edit: viewerIsParty && OPEN_FOR_EDIT.includes(e.status), withdraw: viewerIsParty && [...LIVE_STATUSES, 'draft'].includes(e.status), decide: staff && ['submitted', 'under_review', 'waitlisted', 'approved', 'info_requested'].includes(e.status),
       request_change: viewerIsParty && ['submitted', 'under_review', 'approved'].includes(e.status), pay: viewerIsParty && instalments.some((i) => i.status === 'unpaid') && ['submitted', 'under_review', 'info_requested', 'approved'].includes(e.status),
     },
@@ -203,7 +209,7 @@ const programmeFields = {
   quotas: quotasSchema.optional(), waitlist: z.boolean().optional(), needs_approval: z.boolean().optional(), allow_dependents: z.boolean().optional(),
   check_eligibility: z.boolean().optional(), currency: z.string().length(3).toUpperCase().optional(),
 };
-const PROGRAMME_COLS = 'id, kind, title, summary, owner_id, organisation_id, event_id, sport, status, opens_at, closes_at, capacity, quotas, waitlist, needs_approval, allow_dependents, check_eligibility, currency, current_version, row_version, created_at, updated_at';
+const PROGRAMME_COLS = 'id, kind, title, summary, owner_id, organisation_id, event_id, sport, status, opens_at, closes_at, capacity, quotas, waitlist, needs_approval, allow_dependents, check_eligibility, currency, current_version, row_version, legacy_type, created_at, updated_at';
 
 async function assertScope(c, user, i) {
   if (i.organisation_id && !(await hasOrgGrant(user, i.organisation_id, ['owner', 'admin'], c))) throw notFound('Organisation');
@@ -742,6 +748,26 @@ cap({
       for (const u of recipients(e)) await tell(c, u, e, p, `Change ${i.approve ? 'approved' : 'declined'}: ${p.title}`, i.note);
       return { id: ch.id, status: i.approve ? 'approved' : 'rejected' };
     });
+  },
+});
+
+// ------------------------------------------------------------------ consolidation parity
+
+cap({
+  name: 'get_registration_mirror_report', method: 'GET', path: '/admin/registration-mirror', tag: TAG, auth: ['admin'],
+  summary: 'Platform team: parity of the engine\'s read-only mirror against the legacy flows it consolidates (competition roster registrations and academy admissions): legacy rows, mirrored rows, rows missing from the mirror, rows whose mapped status differs, and history rows still to mirror. All zero means the backfill and the live triggers agree. Read-only.',
+  async handler() {
+    const one1 = async (sql) => Number((await one(sql)).n);
+    const roster = { legacy: await one1('SELECT count(*) AS n FROM reg_registrations'), mirrored: await one1("SELECT count(*) AS n FROM rx_entries WHERE legacy_type='roster_registration'"),
+      missing: await one1("SELECT count(*) AS n FROM reg_registrations r WHERE NOT EXISTS (SELECT 1 FROM rx_entries e WHERE e.legacy_type='roster_registration' AND e.legacy_id=r.id)"),
+      status_mismatch: await one1("SELECT count(*) AS n FROM reg_registrations r JOIN rx_entries e ON e.legacy_type='roster_registration' AND e.legacy_id=r.id WHERE e.status <> rx_map_roster_status(r.status)"),
+      history_missing: await one1('SELECT count(*) AS n FROM reg_history h WHERE NOT EXISTS (SELECT 1 FROM rx_history x WHERE x.legacy_id=h.id)') };
+    const academy = { legacy: await one1('SELECT count(*) AS n FROM academy_applications'), mirrored: await one1("SELECT count(*) AS n FROM rx_entries WHERE legacy_type='academy_application'"),
+      missing: await one1("SELECT count(*) AS n FROM academy_applications a WHERE NOT EXISTS (SELECT 1 FROM rx_entries e WHERE e.legacy_type='academy_application' AND e.legacy_id=a.id)"),
+      status_mismatch: await one1("SELECT count(*) AS n FROM academy_applications a JOIN rx_entries e ON e.legacy_type='academy_application' AND e.legacy_id=a.id WHERE e.status <> rx_map_academy_stage(a.stage)"),
+      history_missing: await one1('SELECT count(*) AS n FROM academy_application_events h WHERE NOT EXISTS (SELECT 1 FROM rx_history x WHERE x.legacy_id=h.id)') };
+    const ok = [roster, academy].every((x) => !x.missing && !x.status_mismatch && !x.history_missing && x.legacy === x.mirrored);
+    return { in_parity: ok, roster_registrations: roster, academy_applications: academy, not_mirrored: ['sponsorship_applications (applications for money, not participant registrations)'] };
   },
 });
 

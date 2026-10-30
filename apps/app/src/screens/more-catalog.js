@@ -38,6 +38,7 @@ export const WORKSPACES = [
   ['athlete', 'Passport', 'Player passport & QR'],
   ['admin', 'PartnerConsole', 'Partners & platform team'],
   ['platform_admin', 'CommercialConsole', 'Catalogue, pricing & entitlements'],
+  ['platform_admin', 'PlatformSecurity', 'Encryption keys & audit log'],
 ];
 
 /** The workspace of a role as the Work tab shows it: [role, route, sub, tab?], or undefined. */
