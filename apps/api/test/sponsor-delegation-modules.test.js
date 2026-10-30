@@ -8,8 +8,8 @@ const { migrate } = await import('../src/migrate.js');
 const { createApp } = await import('../src/http.js');
 
 let server, base, n = 0, tennis;
-const api = async (method, path, { token, body } = {}) => {
-  const r = await fetch(`${base}/api/v1${path}`, { method, headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) }, body: body ? JSON.stringify(body) : undefined });
+const api = async (method, path, { token, body, query } = {}) => {
+  const r = await fetch(`${base}/api/v1${path}${query ? `?${new URLSearchParams(query)}` : ''}`, { method, headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) }, body: body ? JSON.stringify(body) : undefined });
   return { status: r.status, body: await r.json().catch(() => null) };
 };
 const must = (r, status = 200) => { assert.equal(r.status, status, JSON.stringify(r.body)); return r.body; };
@@ -84,4 +84,29 @@ test('institution introductions: manager, approver and evaluator see them and ar
   for (const u of [team.finance, team.viewer, outsider, ath]) assert.equal((await list(u)).status, 403);
   must(await api('POST', `/sponsor-representatives/${team.evaluator.rep}/remove`, { token: owner.token, body: {} }));
   assert.equal((await list(team.evaluator)).status, 403, 'revoked staff lose it immediately');
+});
+
+test('feedback: any brand staff member counts as managing the brand (no reviewing your own employer); outsiders and ex-staff can review', async () => {
+  const { brand, team, owner } = await brandWithTeam();
+  const outsider = await signup(['athlete']);
+  const review = (u) => api('POST', '/testimonials', { token: u.token, body: { subject_type: 'sponsor', subject_id: brand.id, rating: 5, body: 'Great partner' } });
+  for (const u of [owner, team.manager, team.evaluator, team.finance, team.viewer]) assert.equal((await review(u)).status, 400, 'conflict of interest');
+  must(await api('POST', `/sponsor-representatives/${team.finance.rep}/remove`, { token: owner.token, body: {} }));
+  assert.equal((await review(team.finance)).status, 201, 'after leaving they are an outsider');
+  assert.equal((await review(outsider)).status, 201);
+});
+
+test('insurance: cover through a sponsored event is listed for live brand staff, and ends when they are removed', async () => {
+  const { brand, team, owner } = await brandWithTeam();
+  const ins = await signup(['insurer']), org = await signup(['organizer']), outsider = await signup(['athlete']);
+  must(await api('POST', '/insurance/my-insurer', { token: ins.token, body: { name: `Cover ${++n}` } }), 201);
+  const plan = must(await api('POST', '/insurance/plans', { token: ins.token, body: { name: 'Meet', cover_for: 'event', premium_cents: 50000, coverage_cents: 500000 } }), 201);
+  const ev = must(await api('POST', '/events', { token: org.token, body: { name: `Cover Cup ${++n}`, sport: 'football' } }), 201);
+  await pool.query("INSERT INTO sponsorships(sponsor_id, target_type, target_id, amount_cents, status, proposed_by) VALUES ($1,'event',$2,0,'active',$3)", [brand.id, ev.id, owner.id]);
+  must(await api('POST', '/insurance/policies', { token: org.token, body: { plan_id: plan.id, subject_id: ev.id, months: 3 } }), 201);
+  const mine = async (u) => must(await api('GET', '/insurance/policies', { token: u.token, query: { covering_me: 'true' } })).map((p) => p.covered_via[0].capacity);
+  for (const [k, u] of Object.entries({ owner, manager: team.manager, evaluator: team.evaluator, viewer: team.viewer })) assert.deepEqual(await mine(u), ['sponsor'], k);
+  assert.deepEqual(await mine(outsider), []);
+  must(await api('POST', `/sponsor-representatives/${team.manager.rep}/remove`, { token: owner.token, body: {} }));
+  assert.deepEqual(await mine(team.manager), [], 'removed staff lose it at once');
 });
