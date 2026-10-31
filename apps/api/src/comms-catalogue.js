@@ -64,7 +64,7 @@ export const USE_CASES = {
   tender_deadline: { label: 'Tender / supplier deadline', category: 'business', kinds: ['tender_deadline'], vars: PERSON },
   coach_booking: { label: 'Coach booking confirmation', category: 'business', kinds: ['coach_response_accepted'], vars: PERSON },
   sponsor_milestone: { label: 'Sponsor / application milestone', category: 'business', kinds: ['sponsorship_update', 'sponsorship_award', 'sponsorship_offer'], vars: PERSON },
-  emergency_announcement: { label: 'Emergency / venue-change announcement', category: 'events', essential: true, kinds: ['event_cancelled', 'event_paused', 'event_resumed'], vars: { ...PERSON, event_name: 'label' } },
+  emergency_announcement: { label: 'Emergency / venue-change announcement', category: 'events', essential: true, kinds: ['event_cancelled', 'event_paused', 'event_resumed', 'conversation_escalation'], vars: { ...PERSON, event_name: 'label' } },
   // Internal: the one-time code that proves a person controls the number. Never produced by a notification kind.
   phone_verification: { label: 'Number verification code', category: 'essential', essential: true, system: true, kinds: [], vars: { code: 'code' } },
 };
