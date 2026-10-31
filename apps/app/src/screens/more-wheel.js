@@ -10,7 +10,7 @@ import { Glass } from '../glass';
 import { c, dark, day, locale } from '../theme';
 import { TileArt, tileColors } from './more-art';
 import { roleLabel } from '../roles';
-import { GROUP_COLOR, orderedModules, workspacesFor } from './more-catalog';
+import { GROUP_COLOR, orderedModules, workspaceTitle, workspacesFor } from './more-catalog';
 
 const STEP_ARC = 26;    // degrees between neighbouring modules on the arc
 const ARC_VIS = 82;     // modules beyond this angle from straight up are hidden
@@ -37,8 +37,8 @@ export function MoreWheel() {
   const desk = !!staffed.data?.length && !user.roles.includes('venue_manager');
   const mods = useMemo(() => orderedModules(spaceRoles, desk), [spaceRoles, desk]);
   const n = mods.length;
-  const spaces = useMemo(() => workspacesFor(spaceRoles, desk), [spaceRoles, desk]); // the platform consoles and a cashier's front desk; every role's own workspace is the Work tab
-  const [picker, setPicker] = useState(false); // the Consoles submenu: one row per console this person can open
+  const spaces = useMemo(() => workspacesFor(spaceRoles, desk), [spaceRoles, desk]); // one workspace per role held, the platform consoles and a cashier's front desk
+  const [picker, setPicker] = useState(false); // the Workspaces submenu: one row per workspace this person can open
   const openSpace = useCallback(([role, route, , tab]) => { setActiveRole(role); if (tab) goTab(tab.tab, { section: tab.section }); else push(route); }, [push, goTab, setActiveRole]);
   const open = useCallback((name) => {
     if (name !== 'Workspace') { push(name); return; }
@@ -49,7 +49,7 @@ export function MoreWheel() {
   const lives = {
     Leaderboard: d?.pending_results > 0 ? `${d.pending_results} result${d.pending_results > 1 ? 's' : ''} waiting for approval` : null,
     Insure: d?.policies_to_renew > 0 ? `${d.policies_to_renew} to renew soon` : null,
-    Workspace: spaces.length > 1 ? `${spaces.length} consoles · ${spaces.map(([r]) => roleLabel(r)).join(', ')}` : spaces[0] ? spaces[0][2] : null,
+    Workspace: spaces.length > 1 ? `${spaces.length} workspaces · ${spaces.map((sp) => workspaceTitle(sp, roleLabel).replace(/ (workspace|console)$/, '')).join(', ')}` : spaces[0] ? spaces[0][2] : null,
     Health: d?.fit_to_play === 'restricted' ? 'Cleared with restrictions' : d?.fit_to_play === 'not_cleared' ? 'Not cleared to play' : d?.fit_to_play === 'cleared' ? 'Fit to play' : null,
   };
 
@@ -172,14 +172,14 @@ export function MoreWheel() {
           <Pressable onPress={() => setPicker(false)} accessible={false} style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, zIndex: 200 }} />
           <View accessibilityViewIsModal style={{ position: 'absolute', left: 16, right: 16, bottom: BAR_C + 28, alignItems: 'center', zIndex: 201 }}>
             <Glass radius={26} preset="soft" gloss style={{ padding: 14, width: '100%', maxWidth: 420, gap: 8 }}>
-              <T weight="800" size={16} color={c.ink}>Open a console</T>
-              <T size={12} color={c.mute}>Pick the console you want.</T>
+              <T weight="800" size={16} color={c.ink}>Open a workspace</T>
+              <T size={12} color={c.mute}>Pick the workspace you want.</T>
               {/* long role lists scroll inside the card instead of running off the screen */}
-              <ScrollView style={{ maxHeight: Math.max(160, h - BAR_C - 200) }} contentContainerStyle={{ gap: 8 }} nestedScrollEnabled showsVerticalScrollIndicator accessibilityLabel="Consoles">
+              <ScrollView style={{ maxHeight: Math.max(160, h - BAR_C - 200) }} contentContainerStyle={{ gap: 8 }} nestedScrollEnabled showsVerticalScrollIndicator accessibilityLabel="Workspaces">
                 {spaces.map((sp) => (
-                  <Pressable key={sp[0]} onPress={() => openSpace(sp)} accessibilityRole="button" accessibilityLabel={`${roleLabel(sp[0])} console. ${sp[2]}`}>
+                  <Pressable key={sp[1]} onPress={() => openSpace(sp)} accessibilityRole="button" accessibilityLabel={`${workspaceTitle(sp, roleLabel)}. ${sp[2]}`}>
                     <Glass radius={18} preset="clear" gloss style={{ paddingVertical: 10, paddingHorizontal: 14, minHeight: 44 }}>
-                      <T weight="800" size={15} color={c.ink}>{roleLabel(sp[0])} console</T>
+                      <T weight="800" size={15} color={c.ink}>{workspaceTitle(sp, roleLabel)}</T>
                       <T size={12} color={c.mute}>{sp[2]}</T>
                     </Glass>
                   </Pressable>
