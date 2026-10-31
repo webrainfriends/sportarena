@@ -40,6 +40,11 @@ export async function describePurpose(c, type, id) {
     const h = await q("SELECT h.hirer_id AS payer_id, h.total_cents - h.loyalty_credit_cents AS amount, h.status, h.payment_status, u.display_name FROM coach_hires h JOIN users u ON u.id=h.coach_id WHERE h.id=$1 FOR UPDATE OF h");
     return h && { payerId: h.payer_id, amount: Number(h.amount), name: `Coaching session with ${h.display_name}`, payable: h.payment_status === 'unpaid' && h.status !== 'cancelled' && Number(h.amount) > 0 };
   }
+  if (type === 'coach_class_seat') {
+    // a seat is payable only while it is held (reserved for the payer) and the class is still open
+    const z = await q("SELECT coalesce(z.applied_by, z.user_id) AS payer_id, z.amount_cents AS amount, z.status, k.status AS class_status, k.title, k.currency FROM coach_class_seats z JOIN coach_classes k ON k.id=z.class_id WHERE z.id=$1 FOR UPDATE OF z");
+    return z && { payerId: z.payer_id, amount: Number(z.amount), name: `Class: ${z.title}`, payable: z.status === 'held' && z.class_status === 'open' && Number(z.amount) > 0 };
+  }
   if (type === 'appointment') {
     const a = await q("SELECT a.athlete_id AS payer_id, a.fee_cents AS amount, a.currency, a.status, a.payment_status, u.display_name FROM appointments a JOIN users u ON u.id=a.provider_id WHERE a.id=$1 FOR UPDATE OF a");
     return a && { payerId: a.payer_id, amount: Number(a.amount), currency: a.currency, name: `Appointment with ${a.display_name}`, payable: a.payment_status === 'unpaid' && ['requested', 'confirmed'].includes(a.status) };
@@ -125,6 +130,7 @@ async function fulfil(c, type, id, payment) {
     shop_order: "UPDATE shop_orders SET status='placed' WHERE id=$1 AND status='awaiting_payment'",
     shop_checkout: "UPDATE shop_orders SET status='placed' WHERE checkout_id=$1 AND status='awaiting_payment'",
     coach_hire: "UPDATE coach_hires SET payment_status='paid', status=CASE WHEN request_response_id IS NOT NULL AND status='requested' THEN 'confirmed' ELSE status END WHERE id=$1 AND payment_status='unpaid' AND status IN ('requested','confirmed')",
+    coach_class_seat: "UPDATE coach_class_seats SET status='confirmed', payment_status='paid', hold_expires_at=NULL, updated_at=now() WHERE id=$1 AND status='held'",
     insurance_policy: "UPDATE insurance_policies SET status='active' WHERE id=$1 AND status='pending_payment'",
     appointment: "UPDATE appointments SET payment_status='paid', updated_at=now() WHERE id=$1 AND payment_status='unpaid' AND status IN ('requested','confirmed')",
   }[type];
