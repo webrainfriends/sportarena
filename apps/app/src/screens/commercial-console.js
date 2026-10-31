@@ -13,7 +13,7 @@ import { moneyIn } from '../vtime';
 
 const label = (s) => String(s ?? '').replace(/[_.]/g, ' ');
 const d10 = (d) => (d ? String(d).slice(0, 10) : '');
-const money = (minor, cur = 'INR') => moneyIn(Number(minor ?? 0), cur);
+const money = (minor, cur) => moneyIn(minor, cur);
 const INTERVALS = ['monthly', 'annual', 'one_time', 'per_event', 'usage'];
 const SUBJECTS = [['user', 'Person'], ['organisation', 'Organisation'], ['team', 'Team'], ['venue', 'Venue'], ['event', 'Event']];
 const TONE = { published: c.lime, active: c.lime, trial: c.cyanSoft, draft: c.violetSoft, retired: c.mute, pending_payment: c.sunSoft, cancelled: c.orangeSoft, ended: c.mute };

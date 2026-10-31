@@ -279,9 +279,9 @@ cap({
       const introScope = introScopeOf(card, x.audience);
       if (introScope) await assertIntroFree(c, { coachId: x.coach_id, athleteId: user.id, sportId: x.sport_id, scope: introScope });
       const hire = (await c.query(
-        `INSERT INTO coach_hires(hirer_id, coach_id, sport_id, starts_at, duration_min, rate_cents_hour, total_cents, note, payment_status, status, request_response_id, audience, participants, team_id, event_id, rate_card_id, athlete_id, intro_scope)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$1,$17) RETURNING id, coach_id, starts_at, duration_min, total_cents, status, payment_status, audience, participants`,
-        [user.id, x.coach_id, x.sport_id, x.proposed_starts_at, x.duration_min, x.rate_cents_hour, cost, x.title, pay, pay === 'unpaid' ? 'requested' : 'confirmed', x.id, x.audience, x.participants, x.team_id, x.event_id, x.rate_card_id, introScope]).catch((e) => { throw mapIntroViolation(e); })).rows[0];
+        `INSERT INTO coach_hires(hirer_id, coach_id, sport_id, starts_at, duration_min, rate_cents_hour, total_cents, note, payment_status, status, request_response_id, audience, participants, team_id, event_id, rate_card_id, athlete_id, intro_scope, currency)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$1,$17,$18) RETURNING id, coach_id, starts_at, duration_min, total_cents, currency, status, payment_status, audience, participants`,
+        [user.id, x.coach_id, x.sport_id, x.proposed_starts_at, x.duration_min, x.rate_cents_hour, cost, x.title, pay, pay === 'unpaid' ? 'requested' : 'confirmed', x.id, x.audience, x.participants, x.team_id, x.event_id, x.rate_card_id, introScope, config.payments.currency]).catch((e) => { throw mapIntroViolation(e); })).rows[0];
       await c.query("UPDATE coach_request_responses SET status='accepted', decided_at=now(), hire_id=$2 WHERE id=$1", [x.id, hire.id]);
       await c.query("UPDATE coach_requests SET status='filled', filled_by=$2, closed_at=now() WHERE id=$1", [x.request_id, x.coach_id]);
       await c.query("UPDATE market_posts SET status='closed' WHERE coach_request_id=$1", [x.request_id]);

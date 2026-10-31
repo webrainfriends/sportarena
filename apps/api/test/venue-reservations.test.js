@@ -227,7 +227,10 @@ test('multi-slot, multi-area and multi-venue baskets are atomic; both venues can
 
   // a basket can span currencies: each venue prices (and later invoices) in its own
   const usd = await makeVenue(m1, { currency: 'USD' });
-  const mixed = must(await api('POST', '/reservations', { token: other.token, body: { items: [L(one.b, 6, 9, 10), L(usd.a, 6, 9, 10)] } }), 201);
+  const refusedMixed = await api('POST', '/reservations', { token: other.token, body: { items: [L(one.b, 6, 9, 10), L(usd.a, 6, 9, 10)] } });
+  assert.equal(refusedMixed.status, 409, 'mixed currencies need an explicit acknowledgement');
+  assert.equal(refusedMixed.body.error.details.code, 'mixed_currency');
+  const mixed = must(await api('POST', '/reservations', { token: other.token, body: { items: [L(one.b, 6, 9, 10), L(usd.a, 6, 9, 10)], accept_mixed_currencies: true } }), 201);
   assert.equal(mixed.currency, 'MULTI');
   assert.deepEqual(mixed.totals.map((t) => t.currency).sort(), ['INR', 'USD']);
 

@@ -2,6 +2,7 @@
 // venue-local wall-clock time into an instant (and back) for display and for forms that take "date + time".
 
 import { locale } from './locale';
+import { formatMoney } from './money';
 
 const fmts = new Map();
 const parts = (tz, ms) => {
@@ -33,14 +34,8 @@ export const localHHMM = (iso, tz) => { const p = parts(tz, Date.parse(iso)); re
 export const fmtMin = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 export const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-const digitsOf = (currency) => { try { return new Intl.NumberFormat('en', { style: 'currency', currency }).resolvedOptions().maximumFractionDigits; } catch { return 2; } };
-/** Minor units (paise, cents, whole yen …) in the currency's own format: ₹1,200 · $25.50 · ¥5,000. */
-export const moneyIn = (minor = 0, currency = 'INR') => {
-  const d = digitsOf(currency);
-  const major = minor / 10 ** d;
-  try { return new Intl.NumberFormat(locale, { style: 'currency', currency, minimumFractionDigits: minor % 10 ** d ? d : 0, maximumFractionDigits: d }).format(major); }
-  catch { return `${currency} ${major.toFixed(d)}`; }
-};
+/** Minor units (paise, cents, whole yen, fils …) in the currency's own format: ₹1,200 · $25.50 · ¥5,000 · KWD 12.345. Same formatter as everywhere (money.js). */
+export const moneyIn = (minor, currency) => formatMoney(minor, currency);
 
 /** Summarise weekly hours: "Mon–Sun 06:00–22:00" (groups days that share the same hours). */
 export function hoursSummary(hours) {

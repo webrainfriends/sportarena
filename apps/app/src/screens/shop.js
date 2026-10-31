@@ -50,12 +50,12 @@ function Photo({ p, size, radius = 16, index = 0, style }) {
   );
 }
 
-/** ₹ price, the struck-through usual price and a green "% off" tag. */
+/** Price in the product's own currency, the struck-through usual price and a green "% off" tag. */
 function Price({ p, size = 17 }) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap', gap: 6 }}>
-      <T weight="800" size={size}>{money(p.price_cents)}</T>
-      {p.compare_at_cents > p.price_cents ? <T size={size * 0.72} color={c.mute} style={{ textDecorationLine: 'line-through' }}>{money(p.compare_at_cents)}</T> : null}
+      <T weight="800" size={size}>{money(p.price_cents, p.currency)}</T>
+      {p.compare_at_cents > p.price_cents ? <T size={size * 0.72} color={c.mute} style={{ textDecorationLine: 'line-through' }}>{money(p.compare_at_cents, p.currency)}</T> : null}
       {p.discount_pct ? <T weight="800" size={size * 0.72} color={GOOD}>{p.discount_pct}% off</T> : null}
     </View>
   );
@@ -141,11 +141,11 @@ function CartBar({ above = 0 }) {
   if (!s.units) return null;
   return (
     <View pointerEvents="box-none" style={{ position: 'absolute', right: 14, bottom: above + (L.floatingBar ? 96 : 14), alignItems: 'flex-end' }}>
-      <Pressable onPress={() => push('ShopCart')} accessibilityRole="button" accessibilityLabel={`View cart, ${s.units} items, ${money(s.total_cents)}`}
+      <Pressable onPress={() => push('ShopCart')} accessibilityRole="button" accessibilityLabel={`View cart, ${s.units} items, ${money(s.total_cents, s.currency)}`}
         style={{ backgroundColor: c.pink, borderRadius: 999, paddingVertical: 10, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 8, shadowColor: '#494D5F', shadowOpacity: 0.3, shadowRadius: 14, shadowOffset: { width: 0, height: 6 } }}>
         <T size={17}>🛒</T>
-        <T weight="800" size={14} color={c.onAccent}>{s.units} · {money(s.total_cents)}</T>
-        {s.savings_cents > 0 ? <T weight="800" size={11} color="#C7F9E4">save {money(s.savings_cents)}</T> : null}
+        <T weight="800" size={14} color={c.onAccent}>{s.units} · {money(s.total_cents, s.currency)}</T>
+        {s.savings_cents > 0 ? <T weight="800" size={11} color="#C7F9E4">save {money(s.savings_cents, s.currency)}</T> : null}
       </Pressable>
     </View>
   );
@@ -172,6 +172,7 @@ export function Shop() {
     category: cat === 'all' ? undefined : cat, sport: sport || undefined, q: q || undefined, sort, limit: 60, wishlist: hearts || undefined,
     on_offer: filters.on_offer || undefined, in_stock: filters.in_stock || undefined, min_rating: filters.min_rating || undefined,
     min_price_cents: filters.min_price_cents || undefined, max_price_cents: filters.max_price_cents || undefined,
+    currency: filters.min_price_cents || filters.max_price_cents ? filters.currency : undefined,
   }), [cat, sport, q, sort, filters, hearts]);
   const prods = useLoad(() => api.get('/shop/products', params), [JSON.stringify(params), user?.id]);
   const plain = cat === 'all' && !sport && !q && !hearts && !filters.on_offer && !filters.in_stock && !filters.min_rating && !filters.min_price_cents && !filters.max_price_cents;
@@ -238,8 +239,9 @@ export function Shop() {
         <FormSheet visible onClose={() => setFiltering(false)} title="Filters" submitLabel="Show results"
           initial={filters}
           fields={[
-            { key: 'min_price_cents', label: 'Lowest price', type: 'money', currency: 'INR', optional: true },
-            { key: 'max_price_cents', label: 'Highest price', type: 'money', currency: 'INR', optional: true },
+            { key: 'currency', label: 'Price range currency', type: 'currency', hint: 'Prices are only compared within one currency.' },
+            { key: 'min_price_cents', label: 'Lowest price', type: 'money', currency: (v) => v.currency, optional: true },
+            { key: 'max_price_cents', label: 'Highest price', type: 'money', currency: (v) => v.currency, optional: true },
             { key: 'min_rating', label: 'Rating', type: 'chips', options: [{ value: 0, label: 'Any' }, { value: 4, label: '4★ & up' }, { value: 3, label: '3★ & up' }] },
             { key: 'on_offer', label: 'Only offers', type: 'switch' },
             { key: 'in_stock', label: 'Only in stock', type: 'switch' },
@@ -354,8 +356,8 @@ export function ShopProduct({ id }) {
   const share = async () => {
     const url = Platform.OS === 'web' ? window.location.href : undefined;
     try {
-      if (Platform.OS === 'web' && navigator.share) await navigator.share({ title: p.name, text: `${p.name} · ${money(p.price_cents)} on Gotmygame`, url });
-      else if (Platform.OS === 'web') { await navigator.clipboard?.writeText(url); toast('Link copied'); } else await Share.share({ message: `${p.name} · ${money(p.price_cents)} on Gotmygame` });
+      if (Platform.OS === 'web' && navigator.share) await navigator.share({ title: p.name, text: `${p.name} · ${money(p.price_cents, p.currency)} on Gotmygame`, url });
+      else if (Platform.OS === 'web') { await navigator.clipboard?.writeText(url); toast('Link copied'); } else await Share.share({ message: `${p.name} · ${money(p.price_cents, p.currency)} on Gotmygame` });
     } catch { /* cancelled */ }
   };
   const stock = p.stock < 1 ? ['Sold out', c.red] : p.stock < 5 ? [`Only ${p.stock} left — order soon`, c.sun] : ['In stock', GOOD];
@@ -392,7 +394,7 @@ export function ShopProduct({ id }) {
       <H1 style={{ fontSize: 26 }}>{p.name}</H1>
       <T size={13} color={c.mute} weight="600">{[p.sport, nice(p.category)].filter(Boolean).join(' · ')} · Sold by <T size={13} weight="700">{p.seller_name}</T></T>
       <Price p={p} size={28} />
-      {p.compare_at_cents > p.price_cents ? <T size={13} weight="700" color={GOOD}>You save {money(p.compare_at_cents - p.price_cents)} on each</T> : null}
+      {p.compare_at_cents > p.price_cents ? <T size={13} weight="700" color={GOOD}>You save {money(p.compare_at_cents - p.price_cents, p.currency)} on each</T> : null}
       <T size={13} weight="800" color={stock[1]}>{stock[0]}</T>
       {p.highlights?.length ? <View style={{ gap: 6, marginTop: 4 }}>{p.highlights.map((h) => <View key={h} style={{ flexDirection: 'row', gap: 8 }}><T color={GOOD} weight="800">✓</T><T size={14} style={{ flex: 1, lineHeight: 20 }}>{h}</T></View>)}</View> : null}
       {mine ? <Pill label="THIS IS YOUR LISTING — edit it from Orders & selling" /> : null}
@@ -488,11 +490,11 @@ export function ShopCart() {
           <View style={{ alignItems: 'center', gap: 6 }}>
             <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: unpaid ? c.sunSoft : c.limeSoft, alignItems: 'center', justifyContent: 'center' }}><T size={36}>{unpaid ? '⏳' : '🎉'}</T></View>
             <H2>{unpaid ? 'Almost there — pay to confirm' : 'Order placed!'}</H2>
-            <T size={14} color={c.mute} style={{ textAlign: 'center' }}>{done.orders.length} item{done.orders.length === 1 ? '' : 's'} · {money(done.total_cents)}{unpaid ? '. Your items are reserved while you pay.' : '. The sellers have been told to get it moving.'}</T>
+            <T size={14} color={c.mute} style={{ textAlign: 'center' }}>{done.orders.length} item{done.orders.length === 1 ? '' : 's'} · {money(done.total_cents, done.currency)}{unpaid ? '. Your items are reserved while you pay.' : '. The sellers have been told to get it moving.'}</T>
           </View>
-          <View style={{ alignSelf: 'stretch', gap: 8, marginTop: 14 }}>{done.orders.map((o) => <View key={o.id} style={{ flexDirection: 'row', justifyContent: 'space-between' }}><T size={13} weight="600" style={{ flex: 1 }}>{o.quantity} × {o.name}</T><T size={13} weight="700">{money(o.total_cents)}</T></View>)}</View>
+          <View style={{ alignSelf: 'stretch', gap: 8, marginTop: 14 }}>{done.orders.map((o) => <View key={o.id} style={{ flexDirection: 'row', justifyContent: 'space-between' }}><T size={13} weight="600" style={{ flex: 1 }}>{o.quantity} × {o.name}</T><T size={13} weight="700">{money(o.total_cents, o.currency)}</T></View>)}</View>
           <View style={{ alignSelf: 'stretch', gap: 8, marginTop: 16 }}>
-            {unpaid ? <Btn title={`Pay ${money(done.amount_due_cents)}`} onPress={() => setPaying({ type: 'shop_checkout', id: done.checkout_id, amount: done.amount_due_cents, label: 'Shop order' })} /> : null}
+            {unpaid ? <Btn title={`Pay ${money(done.amount_due_cents, done.currency)}`} onPress={() => setPaying({ type: 'shop_checkout', id: done.checkout_id, amount: done.amount_due_cents, currency: done.currency, label: 'Shop order' })} /> : null}
             <Btn title="Track my orders" color={unpaid ? c.paper : c.pink} ink={c.ink} onPress={() => push('ShopOrders')} />
             <Btn title="Keep shopping" color={c.paper} ink={c.ink} onPress={() => { goTab('Hub'); setTimeout(() => push('Shop'), 0); }} />
           </View>
@@ -515,7 +517,7 @@ export function ShopCart() {
     <View style={{ flex: 1 }}>
       <Screen padBottom={L.floatingBar ? 190 : 120}>
         <H1 style={{ fontSize: 26, marginTop: 8 }}>Your cart <T size={16} color={c.mute} weight="600">· {s.units} item{s.units === 1 ? '' : 's'}</T></H1>
-        {s.savings_cents > 0 ? <Card pad={12} color={c.limeSoft} style={{ marginTop: 10 }}><T weight="800" color={GOOD} size={14}>🎉 You're saving {money(s.savings_cents)} on this order</T></Card> : null}
+        {s.savings_cents > 0 ? <Card pad={12} color={c.limeSoft} style={{ marginTop: 10 }}><T weight="800" color={GOOD} size={14}>🎉 You're saving {money(s.savings_cents, s.currency)} on this order</T></Card> : null}
         {bySeller.map(([seller, items]) => (
           <Card key={seller} pad={14} style={{ marginTop: 12 }}>
             <T size={12} weight="700" color={c.mute} style={{ marginBottom: 12 }}>SOLD BY {seller.toUpperCase()}</T>
@@ -532,10 +534,10 @@ export function ShopCart() {
             </View></Card>
             <Card pad={14} style={{ marginTop: 12 }}><View style={{ gap: 8 }}>
               <T weight="800" size={15}>Price details</T>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><T color={c.mute}>Items ({s.units})</T><T weight="600">{money(s.subtotal_cents + s.savings_cents)}</T></View>
-              {s.savings_cents > 0 ? <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><T color={c.mute}>Offer savings</T><T weight="700" color={GOOD}>− {money(s.savings_cents)}</T></View> : null}
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><T color={c.mute}>Items ({s.units})</T><T weight="600">{money(s.subtotal_cents + s.savings_cents, s.currency)}</T></View>
+              {s.savings_cents > 0 ? <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><T color={c.mute}>Offer savings</T><T weight="700" color={GOOD}>− {money(s.savings_cents, s.currency)}</T></View> : null}
               <View style={{ height: 1, backgroundColor: c.line }} />
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><T weight="800" size={16}>Total</T><T weight="800" size={16}>{money(s.total_cents)}</T></View>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><T weight="800" size={16}>Total</T><T weight="800" size={16}>{money(s.total_cents, s.currency)}</T></View>
             </View></Card>
           </>
         ) : null}
@@ -549,9 +551,9 @@ export function ShopCart() {
       </Screen>
       {s.lines ? (
         <View pointerEvents="box-none" style={{ position: 'absolute', right: 14, bottom: L.floatingBar ? 96 : 14, alignItems: 'flex-end' }}>
-          <Pressable onPress={place} disabled={busy} accessibilityRole="button" accessibilityLabel={`Place order, ${money(s.total_cents)}`}
+          <Pressable onPress={place} disabled={busy} accessibilityRole="button" accessibilityLabel={`Place order, ${money(s.total_cents, s.currency)}`}
             style={{ backgroundColor: c.pink, borderRadius: 999, paddingVertical: 12, paddingLeft: 18, paddingRight: 14, flexDirection: 'row', alignItems: 'center', gap: 10, opacity: busy ? 0.7 : 1, shadowColor: '#494D5F', shadowOpacity: 0.3, shadowRadius: 14, shadowOffset: { width: 0, height: 6 } }}>
-            <View><T weight="800" size={15} color={c.onAccent}>{money(s.total_cents)}</T>{s.savings_cents > 0 ? <T size={10} weight="700" color="#C7F9E4">you save {money(s.savings_cents)}</T> : null}</View>
+            <View><T weight="800" size={15} color={c.onAccent}>{money(s.total_cents, s.currency)}</T>{s.savings_cents > 0 ? <T size={10} weight="700" color="#C7F9E4">you save {money(s.savings_cents, s.currency)}</T> : null}</View>
             <T weight="800" size={14} color={c.onAccent}>{busy ? 'Placing…' : 'Place order ›'}</T>
           </Pressable>
         </View>
@@ -605,14 +607,14 @@ function MyOrders() {
         const total = lines.reduce((t, o) => t + Number(o.total_cents), 0);
         return (
           <Card key={key} pad={14}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><T size={12} color={c.mute} weight="700">ORDERED {day(lines[0].created_at).toUpperCase()}</T><T weight="800" size={14}>{money(total)}</T></View>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><T size={12} color={c.mute} weight="700">ORDERED {day(lines[0].created_at).toUpperCase()}</T><T weight="800" size={14}>{money(total, lines[0].currency)}</T></View>
             <View style={{ gap: 14, marginTop: 12 }}>
               {lines.map((o) => (
                 <View key={o.id} style={{ flexDirection: 'row', gap: 12 }}>
                   <Pressable onPress={() => push('ShopProduct', { id: o.product_id })}><Photo p={o} size={64} radius={12} /></Pressable>
                   <View style={{ flex: 1, gap: 4 }}>
                     <T weight="700" size={14} numberOfLines={2}>{o.quantity} × {o.product_name}</T>
-                    <T size={12} color={c.mute}>{money(o.total_cents)} · from {o.seller_name}</T>
+                    <T size={12} color={c.mute}>{money(o.total_cents, o.currency)} · from {o.seller_name}</T>
                     <Progress status={o.status} />
                     <View style={{ flexDirection: 'row', gap: 14, flexWrap: 'wrap', marginTop: 2 }}>
                       {['placed', 'shipped', 'delivered'].includes(o.status) ? <Pressable onPress={() => setRating(o)}><T color={c.pink} weight="800" size={12}>★ Rate</T></Pressable> : null}
@@ -623,7 +625,7 @@ function MyOrders() {
                 </View>
               ))}
             </View>
-            {due.length ? <Btn small title={`Pay ${money(due.reduce((t, o) => t + Number(o.total_cents), 0))}`} style={{ marginTop: 12, alignSelf: 'flex-start' }} onPress={() => setPaying(o0(lines[0], due))} /> : null}
+            {due.length ? <Btn small title={`Pay ${money(due.reduce((t, o) => t + Number(o.total_cents), 0), lines[0].currency)}`} style={{ marginTop: 12, alignSelf: 'flex-start' }} onPress={() => setPaying(o0(lines[0], due))} /> : null}
           </Card>
         );
       })}
@@ -638,8 +640,8 @@ function MyOrders() {
 }
 // what to pay for an order group: the whole checkout when it was bought together, else the single order
 const o0 = (first, due) => (first.checkout_id
-  ? { type: 'shop_checkout', id: first.checkout_id, amount: due.reduce((t, o) => t + Number(o.total_cents), 0), label: 'Shop order' }
-  : { type: 'shop_order', id: due[0].id, amount: Number(due[0].total_cents), label: due[0].product_name });
+  ? { type: 'shop_checkout', id: first.checkout_id, amount: due.reduce((t, o) => t + Number(o.total_cents), 0), currency: first.currency, label: 'Shop order' }
+  : { type: 'shop_order', id: due[0].id, amount: Number(due[0].total_cents), currency: due[0].currency, label: due[0].product_name });
 
 /** A seller's photo strip + the product form, in one sheet (photos upload as soon as they are picked). */
 function ProductSheet({ product, onClose, onSaved }) {
@@ -678,8 +680,9 @@ function ProductSheet({ product, onClose, onSaved }) {
           { key: 'brand', label: 'Brand', optional: true },
           { key: 'category', label: 'Category', type: 'chips', options: CATS.map((x) => ({ value: x, label: nice(x).replace(/^./, (m) => m.toUpperCase()) })) },
           { key: 'sport', label: 'Sport', type: 'sport', optional: true },
-          { key: 'price_cents', label: 'Selling price', type: 'money', currency: 'INR' },
-          { key: 'compare_at_cents', label: 'Usual price', type: 'money', currency: 'INR', optional: true, hint: 'Higher than the selling price → shows as an offer with a % off tag.' },
+          { key: 'currency', label: 'Currency', type: 'currency', disabled: !!editing, hint: editing ? 'A listing keeps its currency. To sell in another, list a new item.' : 'Buyers pay in this currency.' },
+          { key: 'price_cents', label: 'Selling price', type: 'money', currency: (v) => v.currency },
+          { key: 'compare_at_cents', label: 'Usual price', type: 'money', currency: (v) => v.currency, optional: true, hint: 'Higher than the selling price → shows as an offer with a % off tag.' },
           { key: 'stock', label: 'In stock', type: 'stepper', min: 0, max: 100000, default: 1 },
           { key: 'highlights_text', label: 'Highlights', type: 'multiline', optional: true, hint: 'One selling point per line (up to 8).' },
           { key: 'description', label: 'Description', type: 'multiline', optional: true },

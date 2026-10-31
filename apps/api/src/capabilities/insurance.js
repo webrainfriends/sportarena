@@ -402,12 +402,12 @@ cap({
   async handler({ user }, i) {
     if (i.as_insurer) {
       const ins = await myInsurer(user);
-      const rows = await many(`SELECT cl.* FROM insurance_claims cl JOIN insurance_policies p ON p.id=cl.policy_id JOIN insurance_plans pl ON pl.id=p.plan_id
-          WHERE pl.insurer_id=$1 AND ($2::text IS NULL OR cl.status=$2) ORDER BY cl.created_at DESC LIMIT $3 OFFSET $4`, [ins.id, i.status ?? null, i.limit, i.offset]);
+      const rows = await many(`SELECT cl.*, coalesce(pl.currency, $5::text) AS currency FROM insurance_claims cl JOIN insurance_policies p ON p.id=cl.policy_id JOIN insurance_plans pl ON pl.id=p.plan_id
+          WHERE pl.insurer_id=$1 AND ($2::text IS NULL OR cl.status=$2) ORDER BY cl.created_at DESC LIMIT $3 OFFSET $4`, [ins.id, i.status ?? null, i.limit, i.offset, config.payments.currency]);
       if (rows.length) await audit(null, user.id, 'read_pii', 'insurance_claims', null);
       return rows.map(({ description_enc, ...r }) => ({ ...r, description: decrypt(description_enc, 'insurance_claims.description') }));
     }
-    const rows = await many('SELECT * FROM insurance_claims WHERE ($1 OR claimant_id=$2) AND ($3::text IS NULL OR status=$3) ORDER BY created_at DESC LIMIT $4 OFFSET $5', [isAdmin(user), user.id, i.status ?? null, i.limit, i.offset]);
+    const rows = await many('SELECT cl.*, coalesce(pl.currency, $6::text) AS currency FROM insurance_claims cl JOIN insurance_policies p ON p.id=cl.policy_id JOIN insurance_plans pl ON pl.id=p.plan_id WHERE ($1 OR cl.claimant_id=$2) AND ($3::text IS NULL OR cl.status=$3) ORDER BY cl.created_at DESC LIMIT $4 OFFSET $5', [isAdmin(user), user.id, i.status ?? null, i.limit, i.offset, config.payments.currency]);
     if (rows.length) await audit(null, user.id, 'read_pii', 'insurance_claims', null);
     return rows.map(({ description_enc, ...r }) => ({ ...r, description: decrypt(description_enc, 'insurance_claims.description') }));
   },

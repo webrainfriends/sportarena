@@ -278,7 +278,7 @@ function Claims() {
       <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>{[['', 'All'], ['submitted', 'New'], ['under_review', 'In review'], ['approved', 'Approved'], ['rejected', 'Rejected'], ['paid', 'Paid']].map(([v, l]) => <Chip key={v} label={l} active={status === v} onPress={() => setStatus(v)} />)}</View>
       {cl.loading && !cl.data ? <Loading /> : cl.error ? <ErrorBox error={cl.error} onRetry={cl.reload} /> : cl.data?.length ? cl.data.map((x) => (
         <Card key={x.id} pad={12} color={c.orangeSoft}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><T weight="800">{money(x.amount_cents)}</T><StatusTag s={x.status} /></View>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><T weight="800">{money(x.amount_cents, x.currency)}</T><StatusTag s={x.status} /></View>
           <T size={12} color={c.mute}>Filed {day(x.created_at)}{x.incident_on ? ` · incident ${day(x.incident_on)}` : ''}</T>
           <T size={13} style={{ marginTop: 4 }}>{x.description}</T>
           {x.decision_reason ? <T size={12} color={c.mute}>Decision note: {x.decision_reason}</T> : null}

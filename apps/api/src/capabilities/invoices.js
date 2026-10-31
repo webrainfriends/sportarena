@@ -20,7 +20,7 @@ const METHODS = ['cash', 'card', 'upi', 'bank', 'other'];
 
 cap({
   name: 'list_currencies', method: 'GET', path: '/currencies', tag: TAG, auth: 'public',
-  summary: 'Currencies a venue can price and invoice in, with symbol and minor-unit exponent (JPY 0, most others 2). Amounts everywhere are integers in minor units.',
+  summary: 'Currencies a venue can price and invoice in, with symbol and minor-unit exponent (JPY 0, most others 2). Amounts everywhere are integers in minor units. Three-decimal currencies (KWD …) are listed by /service-currencies, not here.',
   handler: () => Object.entries(CURRENCIES).map(([code, c]) => ({ code, name: c.name, symbol: c.symbol, exponent: c.exp })),
 });
 

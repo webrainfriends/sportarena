@@ -3,6 +3,8 @@ import { Image, Platform, Pressable, View } from 'react-native';
 import { api, mediaUrl } from '../api';
 import { useSession } from '../session';
 import { Btn, Chip, Field, Sheet, T } from '../ui';
+import { CurrencyDropdown } from '../currency-dropdown';
+import { parseAmount } from '../money';
 import { SportPicker } from '../sportpicker';
 import { c } from '../theme';
 import { KINDS } from './MarketCard';
@@ -30,10 +32,11 @@ export function Composer({ visible, onClose, onPosted, initialKind = 'wanted', a
   const submit = async () => {
     setBusy(true); setErr(null);
     try {
-      const priceRupees = f.price ? Number(f.price) : undefined;
+      const price = f.kind === 'sale' && f.price ? parseAmount(f.price, f.currency) : undefined;
+      if (f.kind === 'sale' && f.price && price === null) throw new Error(`Enter the price in ${f.currency ?? 'the chosen currency'} with no more decimals than it has`);
       const post = await api.post('/market/posts', {
         kind: f.kind, title: f.title, body: f.body || undefined, sport: f.sport || undefined, city: f.city || undefined,
-        starts_at: f.when ? parseWhen(f.when) : undefined, price_cents: priceRupees !== undefined ? Math.round(priceRupees * 100) : undefined,
+        starts_at: f.when ? parseWhen(f.when) : undefined, price_cents: price ?? undefined, currency: price != null ? f.currency : undefined,
         positions: f.positions ? Number(f.positions) : undefined, link_url: f.link_url || undefined, cta_label: f.cta_label || undefined,
         visibility: f.sponsored ? 'public' : f.visibility, sponsored: !!f.sponsored, media_ids: media.map((m) => m.id),
       });
@@ -57,7 +60,7 @@ export function Composer({ visible, onClose, onPosted, initialKind = 'wanted', a
       </View>
       <View style={{ flexDirection: 'row', gap: 10 }}>
         {['wanted', 'match'].includes(f.kind) ? <View style={{ flex: 1 }}><Field label="People needed" value={f.positions} onChangeText={set('positions')} keyboardType="numeric" /></View> : null}
-        {f.kind === 'sale' ? <View style={{ flex: 1 }}><Field label="Price (₹)" value={f.price} onChangeText={set('price')} keyboardType="numeric" /></View> : null}
+        {f.kind === 'sale' ? <View style={{ flex: 1, gap: 10 }}><CurrencyDropdown value={f.currency} onChange={set('currency')} label="Currency" /><Field label="Price" value={f.price} onChangeText={set('price')} keyboardType="decimal-pad" /></View> : null}
       </View>
       {f.kind === 'campaign' ? <View style={{ flexDirection: 'row', gap: 10 }}>
         <View style={{ flex: 2 }}><Field label="Link (https://…)" value={f.link_url} onChangeText={set('link_url')} keyboardType="url" /></View>

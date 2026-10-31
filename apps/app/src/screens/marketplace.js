@@ -58,7 +58,7 @@ export function PaySheet({ target, onClose, onDone }) {
   const m = methods.data;
   return (
     <Sheet visible onClose={onClose} title="Pay securely">
-      <T size={14} color={c.mute}>{target.label} · <T weight="800" size={14}>{money(target.amount)}</T>{m ? ` (${m.currency})` : ''}</T>
+      <T size={14} color={c.mute}>{target.label} · <T weight="800" size={14}>{money(target.amount, target.currency ?? m?.currency)}</T>{(target.currency ?? m?.currency) ? ` (${target.currency ?? m.currency})` : ''}</T>
       {methods.loading && !m ? <Loading /> : !m?.providers.length ? (
         <T weight="700" color={c.red}>Online payments aren't switched on for this server yet. Ask the administrator to add Stripe or PayPal keys.</T>
       ) : pay ? (
@@ -193,7 +193,7 @@ function EventCard({ e, width, onJoin }) {
         <View style={{ gap: 10 }}>
           <Pill label="OPEN EVENT" fg={tone[2]} bg={tone[1]} />
           <T weight="800" size={17} style={{ letterSpacing: -0.2 }}>{e.name}</T>
-          <T size={13} color={c.mute} weight="600">{[`${e.sport_emoji} ${e.sport}`, nice(e.kind), e.starts_on && day(e.starts_on + 'T12:00:00'), `${e.entrants} entered`, e.entry_fee_cents ? `Entry ${money(e.entry_fee_cents)}` : null].filter(Boolean).join(' · ')}</T>
+          <T size={13} color={c.mute} weight="600">{[`${e.sport_emoji} ${e.sport}`, nice(e.kind), e.starts_on && day(e.starts_on + 'T12:00:00'), `${e.entrants} entered`, e.entry_fee_cents ? `Entry ${money(e.entry_fee_cents, e.currency)}` : null].filter(Boolean).join(' · ')}</T>
           <Btn small title="Register to play" onPress={onJoin} style={{ alignSelf: 'flex-start' }} />
         </View>
       </Card>
@@ -216,7 +216,7 @@ function SponsorInbox() {
         {mine.map((d) => (
           <Card key={d.id} pad={14} color={c.sunSoft}>
             <T weight="800" size={15}>{d.sponsor_emoji} {d.sponsor_name} wants to sponsor you</T>
-            <T size={13} color={c.mute} style={{ marginTop: 2 }}>{[d.amount_cents ? (d.currency ? `${d.currency} ${(d.amount_cents / 100).toLocaleString()}` : money(d.amount_cents)) : null, d.in_kind].filter(Boolean).join(' + ') || 'Support offered'}{d.starts_on ? ` · ${day(d.starts_on)} to ${d.ends_on ? day(d.ends_on) : 'open'}` : ''}</T>
+            <T size={13} color={c.mute} style={{ marginTop: 2 }}>{[d.amount_cents ? money(d.amount_cents, d.currency) : null, d.in_kind].filter(Boolean).join(' + ') || 'Support offered'}{d.starts_on ? ` · ${day(d.starts_on)} to ${d.ends_on ? day(d.ends_on) : 'open'}` : ''}</T>
             {d.deliverables ? <T size={12} style={{ marginTop: 4 }}><T size={12} weight="800">They expect: </T>{d.deliverables}</T> : null}
             {d.message ? <T size={12} color={c.mute}>“{d.message}”</T> : null}
             <T size={11} color={c.mute} style={{ marginTop: 4 }}>Accepted deals stay private unless you choose to show them (Ecosystem → Sponsors).</T>
@@ -429,8 +429,8 @@ export function Insure() {
                       <View style={{ flex: 1 }}><T weight="800" size={16}>{p.name}</T><T size={12} color={c.mute} weight="600">{p.insurer}</T></View>
                     </View>
                     <View style={{ flexDirection: 'row', gap: 8 }}>
-                      <View style={{ flex: 1, backgroundColor: tone[1], borderRadius: 14, padding: 10 }}><T weight="800" size={18} color={tone[2]}>{money(p.coverage_cents)}</T><T size={11} color={c.mute} weight="700">COVER</T></View>
-                      <View style={{ flex: 1, backgroundColor: c.bg, borderRadius: 14, padding: 10 }}><T weight="800" size={18}>{money(p.premium_cents)}</T><T size={11} color={c.mute} weight="700">PER MONTH</T></View>
+                      <View style={{ flex: 1, backgroundColor: tone[1], borderRadius: 14, padding: 10 }}><T weight="800" size={18} color={tone[2]}>{money(p.coverage_cents, p.currency)}</T><T size={11} color={c.mute} weight="700">COVER</T></View>
+                      <View style={{ flex: 1, backgroundColor: c.bg, borderRadius: 14, padding: 10 }}><T weight="800" size={18}>{money(p.premium_cents, p.currency)}</T><T size={11} color={c.mute} weight="700">PER MONTH</T></View>
                     </View>
                     {p.description ? <T size={13} color={c.mute}>{p.description}</T> : null}
                     {p.exclusions ? <T size={12} color={c.mute}>Not covered: {p.exclusions}</T> : null}
@@ -456,7 +456,7 @@ export function Insure() {
               <T size={26}>{p.emoji}</T>
               <View style={{ flex: 1, gap: 2 }}>
                 <T weight="700" size={14}>{p.plan_name}</T>
-                <T size={12} color={c.mute}>{p.policy_no ? `${p.policy_no} · ` : ''}until {p.ends_on ? day(`${String(p.ends_on).slice(0, 10)}T12:00:00`) : '—'} · cover {money(p.coverage_cents)}</T>
+                <T size={12} color={c.mute}>{p.policy_no ? `${p.policy_no} · ` : ''}until {p.ends_on ? day(`${String(p.ends_on).slice(0, 10)}T12:00:00`) : '—'} · cover {money(p.coverage_cents, p.currency)}</T>
                 <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
                   {p.routes.map((x, n) => <Pill key={n} label={routeLabel(x, p)} fg={c.violet} bg={c.violetSoft} />)}
                   {p.held_by_me || p.holder_id === user?.id ? <Pill label="HELD BY YOU" fg={c.mute} bg={c.bg} /> : null}
@@ -473,7 +473,7 @@ export function Insure() {
       {buy ? (
         <FormSheet visible onClose={() => setBuy(null)} title={`Cover with ${buy.name}`} submitLabel="Buy policy"
           initial={{ months: 12 }}
-          fields={[{ key: 'months', label: `Months (${money(buy.premium_cents)} each)`, type: 'number' }, { key: 'beneficiary', label: 'Beneficiary (encrypted)', optional: true }]}
+          fields={[{ key: 'months', label: `Months (${money(buy.premium_cents, buy.currency)} each)`, type: 'number' }, { key: 'beneficiary', label: 'Beneficiary (encrypted)', optional: true }]}
           onSubmit={async (v) => { const p = await api.post('/insurance/policies', { plan_id: buy.id, ...v }); await pol.reload(); if (p.status === 'pending_payment') { setPaying({ type: 'insurance_policy', id: p.id, amount: p.premium_cents, label: buy.name }); return 'Policy created — pay to activate it'; } return `You're covered — ${money(p.premium_cents)} for ${v.months} months`; }} />
       ) : null}
     </Screen>

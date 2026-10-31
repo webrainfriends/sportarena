@@ -4,12 +4,14 @@ import { one, many, tx } from '../db.js';
 import { badRequest, conflict, forbidden, notFound, unauthorized } from '../errors.js';
 import { audit, isAdmin, sportBySlugOrId } from '../helpers.js';
 import { decrypt, encrypt } from '../crypto.js';
+import { config } from '../config.js';
+import { isSupportedCurrency } from '../currency.js';
 import { paymentsEnabled, refundFor, refundPartial } from '../payments/service.js';
 
 const cats = ['equipment', 'apparel', 'footwear', 'nutrition', 'medical', 'accessories', 'other'];
 export const MAX_QTY = 50;
 /** Product columns as the storefront needs them. $1 is always the viewing user's id (or null) so wishlist hearts come back with the list. */
-export const PRODUCT = `p.id, p.name, p.category, p.description, p.price_cents, p.compare_at_cents, p.stock, p.emoji, p.brand, p.highlights, p.seller_id, p.sport_id, p.archived_at, p.created_at,
+export const PRODUCT = `p.id, p.name, p.category, p.description, p.price_cents, p.currency, p.compare_at_cents, p.stock, p.emoji, p.brand, p.highlights, p.seller_id, p.sport_id, p.archived_at, p.created_at,
   CASE WHEN p.compare_at_cents > p.price_cents THEN round(100.0 * (p.compare_at_cents - p.price_cents) / p.compare_at_cents)::int END AS discount_pct,
   u.display_name AS seller_name, s.slug AS sport_slug, s.name AS sport, s.emoji AS sport_emoji,
   coalesce((SELECT json_agg(json_build_object('id', m.id, 'url', '/api/v1/market/media/' || m.id) ORDER BY m.position, m.created_at) FROM market_media m WHERE m.product_id = p.id AND m.removed_at IS NULL), '[]'::json) AS images,
@@ -22,7 +24,7 @@ const SORTS = { newest: 'p.created_at DESC', popular: 'sold DESC, p.created_at D
 
 const productFields = {
   name: z.string().min(2).max(100), category: z.enum(cats), sport: z.string().optional(), description: z.string().max(1000).optional(),
-  price_cents: money, compare_at_cents: money.optional().describe('the usual price, shown struck through to advertise an offer (must be above price_cents)'),
+  price_cents: money, currency: z.string().length(3).transform((x) => x.toUpperCase()).refine(isSupportedCurrency, 'Unsupported currency').optional().describe('currency of the price (ISO 4217, minor units); default is the platform settlement currency. Fixed once the product is listed.'), compare_at_cents: money.optional().describe('the usual price, shown struck through to advertise an offer (must be above price_cents)'),
   stock: z.number().int().min(0).max(100000), emoji: z.string().max(8).optional(), brand: z.string().max(60).optional(),
   highlights: z.array(z.string().min(1).max(120)).max(8).optional().describe('short selling points shown as bullets'),
   media_ids: z.array(id).max(8).optional().describe('photo ids uploaded with PUT /market/media; they become the product gallery'),
@@ -44,8 +46,8 @@ cap({
     if (i.sport && !sport) throw notFound('Sport');
     offerOk(i.price_cents, i.compare_at_cents);
     return tx(async (c) => {
-      const p = (await c.query("INSERT INTO shop_products(seller_id, sport_id, name, category, description, price_cents, compare_at_cents, stock, emoji, brand, highlights) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,coalesce($9,'🎽'),$10,$11) RETURNING id, name, category, price_cents, stock",
-        [user.id, sport?.id ?? null, i.name, i.category, i.description, i.price_cents, i.compare_at_cents ?? null, i.stock, i.emoji, i.brand, i.highlights ?? []])).rows[0];
+      const p = (await c.query("INSERT INTO shop_products(seller_id, sport_id, name, category, description, price_cents, compare_at_cents, stock, emoji, brand, highlights, currency) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,coalesce($9,'🎽'),$10,$11,$12) RETURNING id, name, category, price_cents, currency, stock",
+        [user.id, sport?.id ?? null, i.name, i.category, i.description, i.price_cents, i.compare_at_cents ?? null, i.stock, i.emoji, i.brand, i.highlights ?? [], i.currency ?? config.payments.currency])).rows[0];
       await attachPhotos(c, p.id, user.id, i.media_ids);
       return p;
     });
@@ -65,12 +67,13 @@ cap({
     const price = i.price_cents ?? Number(cur.price_cents);
     const was = i.compare_at_cents === undefined ? (cur.compare_at_cents == null ? null : Number(cur.compare_at_cents)) : i.compare_at_cents;
     offerOk(price, was);
+    if (i.currency && i.currency !== cur.currency) throw conflict(`This product is priced in ${cur.currency}. A listing's currency cannot change once it exists; archive it and list a new one in ${i.currency}.`);
     return tx(async (c) => {
       const p = (await c.query(
         `UPDATE shop_products SET name=coalesce($2,name), category=coalesce($3,category), sport_id=coalesce($4,sport_id), description=coalesce($5,description), price_cents=$6, compare_at_cents=$7,
            stock=coalesce($8,stock), emoji=coalesce($9,emoji), brand=coalesce($10,brand), highlights=coalesce($11,highlights),
            archived_at = CASE WHEN $12::boolean IS NULL THEN archived_at WHEN $12 THEN coalesce(archived_at, now()) ELSE NULL END
-         WHERE id=$1 RETURNING id, name, price_cents, compare_at_cents, stock, archived_at`,
+         WHERE id=$1 RETURNING id, name, price_cents, currency, compare_at_cents, stock, archived_at`,
         [i.id, i.name, i.category, sport?.id ?? null, i.description, price, was, i.stock, i.emoji, i.brand, i.highlights, i.archived ?? null])).rows[0];
       if (i.media_ids?.length) {
         const n = (await c.query('SELECT count(*)::int AS n FROM market_media WHERE product_id=$1 AND removed_at IS NULL', [i.id])).rows[0].n;
@@ -87,24 +90,26 @@ cap({
   summary: 'Browse the sports shop. Filter by sport, category, text, price range, offers, stock, your wishlist or your own listings; sort by newest, popular, price, rating or discount. Each product carries photos, rating, discount and whether you hearted it.',
   input: z.object({
     sport: z.string().optional(), category: z.enum(cats).optional(), q: z.string().max(100).optional(), in_stock: z.coerce.boolean().optional(),
-    on_offer: z.coerce.boolean().optional(), min_price_cents: money.optional(), max_price_cents: money.optional(), min_rating: z.coerce.number().min(1).max(5).optional(),
+    on_offer: z.coerce.boolean().optional(), min_price_cents: money.optional(), max_price_cents: money.optional(), currency: z.string().length(3).transform((x) => x.toUpperCase()).refine(isSupportedCurrency, 'Unsupported currency').optional().describe('only products priced in this currency; a price range only compares one currency (default: the platform settlement currency)'), min_rating: z.coerce.number().min(1).max(5).optional(),
     wishlist: z.coerce.boolean().optional().describe('only products you hearted'), mine: z.coerce.boolean().optional().describe('only your own listings, archived ones included'),
     sort: z.enum(['newest', 'popular', 'price_asc', 'price_desc', 'rating', 'discount']).default('newest'), ...page,
   }),
   async handler({ user }, i) {
     if ((i.wishlist || i.mine) && !user) throw unauthorized();
+    // a price range only compares prices of one currency: the one asked for, else the platform settlement currency (the only one before products had a currency)
+    const currency = i.currency ?? (i.min_price_cents !== undefined || i.max_price_cents !== undefined ? config.payments.currency : null);
     const sport = i.sport ? await sportBySlugOrId(i.sport) : null;
     return many(
       `SELECT * FROM (SELECT ${PRODUCT} ${PRODUCT_FROM}
         WHERE ($2::uuid IS NULL OR p.sport_id=$2 OR p.sport_id IS NULL) AND ($3::text IS NULL OR p.category=$3)
           AND ($4::text IS NULL OR p.name ILIKE '%'||$4||'%' OR p.brand ILIKE '%'||$4||'%' OR p.description ILIKE '%'||$4||'%')
           AND (coalesce($5,false) = false OR p.stock > 0) AND (coalesce($6,false) = false OR p.compare_at_cents > p.price_cents)
-          AND ($7::bigint IS NULL OR p.price_cents >= $7) AND ($8::bigint IS NULL OR p.price_cents <= $8)
+          AND ($7::bigint IS NULL OR p.price_cents >= $7) AND ($8::bigint IS NULL OR p.price_cents <= $8) AND ($14::text IS NULL OR p.currency=$14)
           AND (NOT coalesce($9,false) OR EXISTS (SELECT 1 FROM shop_wishlist w WHERE w.product_id=p.id AND w.user_id=$1 AND w.active))
           AND (CASE WHEN coalesce($10,false) THEN p.seller_id=$1 ELSE p.archived_at IS NULL END)) p
         WHERE ($11::float IS NULL OR p.rating >= $11)
         ORDER BY ${SORTS[i.sort]} LIMIT $12 OFFSET $13`,
-      [user?.id ?? null, sport?.id ?? null, i.category ?? null, i.q ?? null, i.in_stock ?? null, i.on_offer ?? null, i.min_price_cents ?? null, i.max_price_cents ?? null, i.wishlist ?? null, i.mine ?? null, i.min_rating ?? null, i.limit, i.offset]);
+      [user?.id ?? null, sport?.id ?? null, i.category ?? null, i.q ?? null, i.in_stock ?? null, i.on_offer ?? null, i.min_price_cents ?? null, i.max_price_cents ?? null, i.wishlist ?? null, i.mine ?? null, i.min_rating ?? null, i.limit, i.offset, currency]);
   },
 });
 
@@ -137,14 +142,14 @@ cap({
       }
       if (p.seller_id === user.id) throw badRequest('You cannot buy your own product');
       const { rows: [o] } = await c.query(
-        'INSERT INTO shop_orders(buyer_id, seller_id, product_id, quantity, unit_price_cents, total_cents, status, ship_to_enc) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id, product_id, quantity, unit_price_cents, total_cents, status, created_at',
-        [user.id, p.seller_id, p.id, i.quantity, p.price_cents, p.price_cents * i.quantity, paymentsEnabled() && p.price_cents > 0 ? 'awaiting_payment' : 'placed', encrypt(i.ship_to, 'shop_orders.ship_to')]);
+        'INSERT INTO shop_orders(buyer_id, seller_id, product_id, quantity, unit_price_cents, total_cents, status, ship_to_enc, currency) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id, product_id, quantity, unit_price_cents, total_cents, currency, status, created_at',
+        [user.id, p.seller_id, p.id, i.quantity, p.price_cents, p.price_cents * i.quantity, paymentsEnabled() && p.price_cents > 0 ? 'awaiting_payment' : 'placed', encrypt(i.ship_to, 'shop_orders.ship_to'), p.currency]);
       return o;
     });
   },
 });
 
-const ORDER = `o.id, o.quantity, o.unit_price_cents, o.total_cents, o.status, o.created_at, o.ship_to_enc, o.checkout_id, p.id AS product_id, p.name AS product_name, p.emoji, (SELECT '/api/v1/market/media/' || m.id FROM market_media m WHERE m.product_id = p.id AND m.removed_at IS NULL ORDER BY m.position, m.created_at LIMIT 1) AS image, bu.display_name AS buyer_name, se.display_name AS seller_name`;
+const ORDER = `o.id, o.quantity, o.unit_price_cents, o.total_cents, o.currency, o.status, o.created_at, o.ship_to_enc, o.checkout_id, p.id AS product_id, p.name AS product_name, p.emoji, (SELECT '/api/v1/market/media/' || m.id FROM market_media m WHERE m.product_id = p.id AND m.removed_at IS NULL ORDER BY m.position, m.created_at LIMIT 1) AS image, bu.display_name AS buyer_name, se.display_name AS seller_name`;
 const ORDER_FROM = 'FROM shop_orders o JOIN shop_products p ON p.id=o.product_id JOIN users bu ON bu.id=o.buyer_id JOIN users se ON se.id=o.seller_id';
 
 cap({

@@ -1,5 +1,6 @@
 import { Appearance, Platform } from 'react-native';
 import { locale } from './locale';
+import { formatMoney } from './money';
 import { HAS_SPORT_THEME, sportTheme } from './sport-theme';
 // Gotmygame design tokens — "Ember": a bright, airy light theme. Lavender-white canvas, white cards with
 // soft shadows, one confident indigo accent plus a small family of sport colours. Colourful hero panels carry white text.
@@ -58,7 +59,8 @@ export const accentFor = (s = '') => accents[[...String(s)].reduce((a, ch) => a 
 export const r = { card: 18, pill: 999, input: 12 };
 export const fam = Platform.OS === 'web' ? { fontFamily: '"Inter", "SF Pro Display", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif' } : null;
 export const font = { black: { fontWeight: '800' }, bold: { fontWeight: '700' }, med: { fontWeight: '600' } };
-export const money = (cents = 0) => `₹${(cents / 100).toLocaleString(locale, { maximumFractionDigits: 0 })}`;
+/** Amount in minor units with the currency it belongs to (see money.js). There is deliberately no default currency: pass the record's own. */
+export const money = (minor, currency) => formatMoney(minor, currency);
 export const when = (iso) => new Date(iso).toLocaleString(locale, { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
 /** A result value with its unit: seconds and metres get a suffix, counts stay plain. */
 export const withUnit = (value, unit) => (value === null || value === undefined ? '–' : unit === 's' ? `${value} s` : unit === 'm' ? `${value} m` : `${value}`);

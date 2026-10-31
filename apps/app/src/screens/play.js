@@ -30,7 +30,7 @@ export function TeamInvites({ onChanged }) {
   const answer = async (x, accept) => { try { await api.post(`/teams/${x.team_id}/invitations/respond`, { accept }); toast(accept ? `Welcome to ${x.name}!` : 'Declined'); inv.reload(); onChanged(); if (accept) push('Team', { id: x.team_id }); } catch (e) { toast('' + e.message); } };
   return (
     <Section title="Team invitations" color={c.pink}>
-      {inv.data.map((x) => <Row key={x.team_id} left={<Bubble emoji={x.emoji} color={x.color} />} title={x.name} sub={`Invited as ${x.role}${x.rate_cents != null ? ` · ${money(x.rate_cents)} ${x.rate_unit}` : ''}`}
+      {inv.data.map((x) => <Row key={x.team_id} left={<Bubble emoji={x.emoji} color={x.color} />} title={x.name} sub={`Invited as ${x.role}${x.rate_cents != null ? ` · ${money(x.rate_cents, x.currency)} ${x.rate_unit}` : ''}`}
         right={<View style={{ flexDirection: 'row', gap: 6 }}><Btn small title="Join" onPress={() => answer(x, true)} /><Btn small title="No" color={c.paper} ink={c.ink} onPress={() => answer(x, false)} /></View>} />)}
     </Section>
   );
@@ -104,7 +104,7 @@ export function Explore() {
         {tab === 'events' ? <><AdSlot placement="featured_event" sport={sport ?? undefined} /><AdSlot placement="search_sponsored" q={dq} sport={sport ?? undefined} /></> : null}
         {list.loading && !list.data ? <Loading /> : list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : !rows.length ? (dq || Object.values(flags).some(Boolean) || sport ? <Empty title="No matches" sub="Try fewer filters or a different search." /> : <Empty title="Nothing here yet" sub="Be the one who starts it." />) :
           rows.map((x, i) => {
-            if (tab === 'events') return <Row key={x.id} onPress={() => push('Event', { id: x.id })} color={[c.pinkSoft, c.violetSoft, c.limeSoft, c.sunSoft][i % 4]} left={<Bubble emoji={x.banner_emoji} color={c.paper} />} title={x.name} sub={`${x.live_now ? '🔴 LIVE · ' : ''}${x.sport_emoji} ${x.sport} · ${x.entrants} in${x.spots_left != null ? ` · ${x.spots_left} spots left` : ''}${x.city ? ' · ' + x.city : ''}${x.starts_on ? ' · ' + day(x.starts_on) : ''}${x.entry_fee_cents ? ' · ' + money(x.entry_fee_cents) : ' · Free'}`} right={<Tag label={x.registration_open ? 'open' : x.status === 'open' ? 'full / closed' : x.status} color={x.registration_open ? c.lime : c.sun} />} />;
+            if (tab === 'events') return <Row key={x.id} onPress={() => push('Event', { id: x.id })} color={[c.pinkSoft, c.violetSoft, c.limeSoft, c.sunSoft][i % 4]} left={<Bubble emoji={x.banner_emoji} color={c.paper} />} title={x.name} sub={`${x.live_now ? '🔴 LIVE · ' : ''}${x.sport_emoji} ${x.sport} · ${x.entrants} in${x.spots_left != null ? ` · ${x.spots_left} spots left` : ''}${x.city ? ' · ' + x.city : ''}${x.starts_on ? ' · ' + day(x.starts_on) : ''}${x.entry_fee_cents ? ' · ' + money(x.entry_fee_cents, x.currency) : ' · Free'}`} right={<Tag label={x.registration_open ? 'open' : x.status === 'open' ? 'full / closed' : x.status} color={x.registration_open ? c.lime : c.sun} />} />;
             if (tab === 'teams') return <Row key={x.id} onPress={() => push('Team', { id: x.id })} left={<Bubble emoji={x.emoji} color={x.color} />} title={x.name} sub={`${x.sport_emoji} ${x.sport} · ${x.members} members${x.city ? ' · ' + x.city : ''}`} />;
             return <Row key={x.id} onPress={() => push('Person', { id: x.id })} left={<Avatar user={x} />} title={x.display_name} sub={`@${x.handle} · ${(x.roles ?? []).join(', ')}`} />;
           })}
@@ -145,7 +145,7 @@ export function Event({ id }) {
         <H1 color="#fff" style={{ fontSize: 30 }}>{e.name}</H1>
         <T color="#fff" weight="800">{e.sport_emoji} {e.sport} · {e.kind}{e.starts_on ? ` · ${day(e.starts_on)}` : ''}{e.venue ? ` · 📍${e.venue.name}` : ''}</T>
         <View style={{ flexDirection: 'row', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-          <Tag label={`${e.entrants.length} in`} color={c.sun} />{e.entry_fee_cents ? <Tag label={`Entry ${money(e.entry_fee_cents)}`} color={c.cyan} /> : null}
+          <Tag label={`${e.entrants.length} in`} color={c.sun} />{e.entry_fee_cents ? <Tag label={`Entry ${money(e.entry_fee_cents, e.currency)}`} color={c.cyan} /> : null}
           {e.rating?.n ? <Tag label={`⭐ ${e.rating.avg}`} color={c.pinkSoft} /> : null}
         </View>
       </GradCard>

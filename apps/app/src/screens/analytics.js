@@ -1,6 +1,7 @@
 // Analytics (#596): the one home for governed cross-domain KPIs. Explore a metric for any scope you may read, drill down to the source records,
 // build and share dashboards, export (CSV / XLSX / branded PDF) and schedule reports. Every number comes from the server's semantic layer, which
 // decides what you may see and states the definition version, freshness and data-quality warnings, so this screen never computes or hard-codes a figure.
+import { formatMoney } from '../money';
 import React, { useEffect, useMemo, useState } from 'react';
 import { View } from 'react-native';
 import { api } from '../api';
@@ -25,7 +26,7 @@ const ROLE_CHOICES = ['organizer', 'venue_manager', 'coach', 'sponsor', 'referee
 const FRESH = { current: [c.lime, 'Current'], stale: [c.sunSoft, 'Stale'], no_records: [c.paper, 'No records'] };
 const SCOPE_WORD = { platform: 'Platform', organisation: 'Organisation', venue: 'Venue', event: 'Event', team: 'Team', sponsor: 'Brand' };
 
-const money = (cents, cur) => { try { const f = new Intl.NumberFormat(undefined, { style: 'currency', currency: cur }); return f.format(cents / 10 ** f.resolvedOptions().maximumFractionDigits); } catch { return `${cents} ${cur ?? ''}`; } };
+const money = (cents, cur) => formatMoney(cents, cur);
 /** The headline text(s) of a result or group: money is one line per currency, never summed. */
 export const headline = (r) => {
   if (r.unit === 'money') return r.amounts?.length ? r.amounts.map((a) => money(a.cents, a.currency)) : ['0'];

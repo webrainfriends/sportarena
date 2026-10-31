@@ -4,12 +4,14 @@ import { one, many, query, tx } from '../db.js';
 import { badRequest, conflict, forbidden, notFound, unauthorized } from '../errors.js';
 import { isAdmin, mustFind, sportBySlugOrId } from '../helpers.js';
 import { notify } from '../notify.js';
+import { config } from '../config.js';
+import { isSupportedCurrency } from '../currency.js';
 import { marketMediaUrl } from '../market-media.js';
 
 const kinds = ['wanted', 'match', 'schedule', 'sale', 'campaign', 'announcement'];
 const ACTIVE_AD = "(p.sponsor_status='approved' AND now() BETWEEN p.promo_starts_at AND p.promo_ends_at)";
 
-const COLS = `p.id, p.kind, p.title, p.body, p.city, p.starts_at, p.price_cents, p.positions, p.cta_label, p.link_url, p.visibility, p.status, p.created_at,
+const COLS = `p.id, p.kind, p.title, p.body, p.city, p.starts_at, p.price_cents, p.currency, p.positions, p.cta_label, p.link_url, p.visibility, p.status, p.created_at,
   p.coach_request_id, p.sponsor_status, p.promo_starts_at, p.promo_ends_at, ${ACTIVE_AD} AS sponsored,
   s.slug AS sport_slug, s.name AS sport, s.emoji AS sport_emoji,
   u.id AS author_id, u.handle AS author_handle, u.display_name AS author_name, u.avatar_emoji AS author_emoji, u.avatar_color AS author_color, u.avatar_url AS author_avatar_url, array_remove(array_remove(u.roles,'admin'),'platform_admin') AS author_roles,
@@ -75,7 +77,7 @@ cap({
   summary: 'Publish a card: athletes wanted, a match, a schedule, an item for sale, a campaign or an announcement. Upload images/videos first (PUT /market/media) and pass their ids. Set sponsored=true to request a paid placement; an admin reviews it before it goes live.',
   input: z.object({
     kind: z.enum(kinds), title: z.string().min(3).max(120), body: z.string().max(2000).optional(), sport: z.string().optional(), city: z.string().max(80).optional(),
-    starts_at: z.string().datetime({ offset: true }).optional(), price_cents: money.optional(), positions: z.number().int().min(1).max(500).optional(),
+    starts_at: z.string().datetime({ offset: true }).optional(), price_cents: money.optional(), currency: z.string().length(3).transform((x) => x.toUpperCase()).refine(isSupportedCurrency, 'Unsupported currency').optional().describe('currency of price_cents; default is the platform settlement currency'), positions: z.number().int().min(1).max(500).optional(),
     cta_label: z.string().max(30).optional(), link_url: z.string().url().max(500).regex(/^https?:\/\//i).optional(),
     visibility: z.enum(['public', 'members']).default('public'), sponsored: z.boolean().default(false), media_ids: z.array(id).max(8).default([]),
   }),
@@ -85,9 +87,9 @@ cap({
     if (i.sponsored && i.visibility !== 'public') throw badRequest('Paid campaigns must be public');
     return tx(async (c) => {
       const post = (await c.query(
-        `INSERT INTO market_posts(author_id, kind, title, body, sport_id, city, starts_at, price_cents, positions, cta_label, link_url, visibility, sponsor_status)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id, kind, title, status, sponsor_status`,
-        [user.id, i.kind, i.title, i.body, sport?.id ?? null, i.city, i.starts_at, i.price_cents, i.positions, i.cta_label, i.link_url, i.visibility, i.sponsored ? 'pending' : 'none'])).rows[0];
+        `INSERT INTO market_posts(author_id, kind, title, body, sport_id, city, starts_at, price_cents, positions, cta_label, link_url, visibility, sponsor_status, currency)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id, kind, title, status, sponsor_status`,
+        [user.id, i.kind, i.title, i.body, sport?.id ?? null, i.city, i.starts_at, i.price_cents, i.positions, i.cta_label, i.link_url, i.visibility, i.sponsored ? 'pending' : 'none', i.currency ?? config.payments.currency])).rows[0];
       for (const [pos, mid] of i.media_ids.entries()) {
         const r = await c.query('UPDATE market_media SET post_id=$1, position=$2 WHERE id=$3 AND uploader_id=$4 AND post_id IS NULL AND removed_at IS NULL', [post.id, pos, mid, user.id]);
         if (!r.rowCount) throw badRequest('One of the attached files is not yours or is already used');
