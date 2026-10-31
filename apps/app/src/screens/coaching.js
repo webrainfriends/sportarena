@@ -10,6 +10,7 @@ import { useSession } from '../session';
 import { useNav } from '../nav';
 import { Avatar, Btn, Card, Chip, Empty, ErrorBox, Field, GradCard, H1, H2, Loading, Screen, Section, Seg, Sheet, StatPill, T } from '../ui';
 import { AdSlot } from '../ads';
+import { t } from '../i18n';
 import { FormSheet } from '../FormSheet';
 import { TimelineSheet } from '../Timeline';
 import { SportSelect } from '../sportpicker';
@@ -119,7 +120,7 @@ export function IconGrid({ items, value, onChange, cols = 4, tint = c.pinkSoft }
 export function CoachToolGrid({ push, counts = {} }) {
   const tools = [
     ['🗂️', 'Desk', 'CoachDesk'], ['📬', 'Request board', 'CoachBoard', counts.board], ['🏃', 'Athletes', 'CoachAthletes'], ['🤝', 'Shared wellness', 'SharedWellness'], ['📄', 'Shared reports', 'SharedSeasonReports'], ['🎬', 'Recruitment', 'PassportDesk'], ['🪪', 'Profile & hours', 'CoachSetup'],
-    ['📅', 'Schedule', 'CoachCalendar'], ['🏫', 'Academy week', 'AcademyAgenda'], ['🏷️', 'Rate cards', 'CoachRates'], ['📑', 'Commitments', 'CoachCommitments'], ['⭐', 'Reviews', 'CoachReviews', counts.reviews],
+    ['📅', 'Schedule', 'CoachCalendar'], ['🏫', 'Academy week', 'AcademyAgenda'], ['🏷️', 'Rate cards', 'CoachRates'], ['🏟️', t('vc.title'), 'CoachVenues'], ['📑', 'Commitments', 'CoachCommitments'], ['⭐', 'Reviews', 'CoachReviews', counts.reviews],
     ['🧠', 'Performance Studio', 'PerformanceStudio'], ['🧰', 'Drill library', 'CoachDrills'], ['👥', 'Saved groups', 'CoachGroups'], ['📏', 'Rubrics', 'CoachRubrics'], ['📈', 'Analytics', 'CoachAnalytics'], ['📝', 'Training plans', 'MyPlans', null, { as: 'coach' }], ['📍', 'Courts', 'TrainingVenue', counts.courts], ['🔁', 'Recurring booking', 'RecurringVenue'],
   ];
   return (
