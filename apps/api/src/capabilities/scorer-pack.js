@@ -9,6 +9,7 @@ import { fixtureContext } from './match-tracking.js';
 import { liveState } from '../scoring/state.js';
 import { isKnockout } from '../tournament/advance.js';
 import { audit } from '../helpers.js';
+import { canScoreSession, sessionPack } from './live-scoring.js';
 
 const TAG = 'Match tracking';
 const SCORERS = ['referee', 'umpire', 'scorer'];
@@ -22,9 +23,10 @@ cap({
     hours_ahead: z.coerce.number().int().min(1).max(168).default(36),
     limit: z.coerce.number().int().min(1).max(20).default(12),
     fixture_id: id.optional().describe('refresh just this one game (the window is ignored); 404-style empty when you may not score it'),
+    session_id: id.optional().describe('refresh just this one heat / final / field flight (the window is ignored); empty when you may not score it'),
   }),
   async handler({ user }, i) {
-    const rows = i.fixture_id ? [{ id: i.fixture_id }] : await many(
+    const rows = i.session_id ? [] : i.fixture_id ? [{ id: i.fixture_id }] : await many(
       `SELECT f.id FROM fixtures f JOIN events e ON e.id=f.event_id
         WHERE e.status NOT IN ('draft','cancelled') AND f.status IN ('scheduled','live','paused','finished')
           AND f.scheduled_at BETWEEN now() - $2 * interval '1 hour' AND now() + $3 * interval '1 hour'
@@ -41,7 +43,21 @@ cap({
       const lineup = await call('list_fixture_appearances', user, { id });
       games.push({ ...live, viewer: { can_score: true, organiser: !!x.organiser, manages: x.side ?? null }, knockout: isKnockout(x.f), lineup: lineup.appearances });
     }
-    if (games.length) await audit(null, user.id, 'scorer_pack.download', 'user', user.id);   // a pack holds lineups: who took one is recorded
-    return { generated_at: new Date().toISOString(), games };
+    // timed, measured and judged sports (heats, finals, field flights): the same pack, the session model (the pure session plugin on the device)
+    const srows = i.fixture_id ? [] : i.session_id ? [{ id: i.session_id }] : await many(
+      `SELECT s.id FROM event_sessions s JOIN events e ON e.id=s.event_id
+        WHERE e.status NOT IN ('draft','cancelled') AND s.status IN ('draft','scheduled','live')
+          AND s.scheduled_at BETWEEN now() - $2 * interval '1 hour' AND now() + $3 * interval '1 hour'
+          AND (e.organizer_id=$1
+               OR EXISTS (SELECT 1 FROM event_shifts sh JOIN event_staff st ON st.id=sh.staff_id WHERE sh.session_id=s.id AND sh.status='assigned' AND st.user_id=$1 AND st.status='accepted')
+               OR EXISTS (SELECT 1 FROM organisation_members m WHERE m.organisation_id=e.organisation_id AND m.user_id=$1 AND m.status='active' AND m.role IN ('owner','admin')))
+        ORDER BY s.scheduled_at LIMIT $4`, [user.id, i.hours_back, i.hours_ahead, i.limit]);
+    const sessions = [];
+    for (const { id } of srows) {
+      if (!(await canScoreSession(user, id).catch(() => false))) continue;   // resolved now, like the games above
+      sessions.push(await sessionPack(user, id));
+    }
+    if (games.length || sessions.length) await audit(null, user.id, 'scorer_pack.download', 'user', user.id);   // a pack holds lineups and entry lists: who took one is recorded
+    return { generated_at: new Date().toISOString(), games, sessions };
   },
 });

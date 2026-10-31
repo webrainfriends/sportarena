@@ -85,7 +85,7 @@ export function useScoreQueue(key, send, { onSent, onDrop, owner } = {}) {
           const r = await hooks.current.send(e);
           drop(e); hooks.current.onSent?.(r, e);
         } catch (err) {
-          if (err?.status === 409 && err.details?.code === 'stale_state') { setConflict({ event: e, state: err.details.state, last_seq: err.details.last_seq }); break; }
+          if (err?.status === 409 && err.details?.code === 'stale_state') { setConflict({ event: e, state: err.details.state, last_seq: err.details.last_seq, missed: err.details.missed ?? [] }); break; }
           if (err?.status && err.status < 500) { drop(e); hooks.current.onDrop?.(err, e); continue; }
           break; // offline or server trouble: keep it, the same client_key makes a retry safe
         }
@@ -114,13 +114,17 @@ export function useScoreQueue(key, send, { onSent, onDrop, owner } = {}) {
    */
   const enqueue = useCallback(async (event) => {
     if (ref.current.length >= MAX_QUEUE) { hooks.current.onDrop?.(new Error('Too many taps are waiting to be sent. Get back online before scoring more.'), event); return { queued: true, full: true }; }
-    const e = { ...event, client_key: event.client_key ?? uid(), ...(owner ? { owner } : {}) };
+    // occurred_at: the moment the official pressed it, so a tap sent an hour late is not recorded as an hour late (the server bounds it)
+    const e = { ...event, client_key: event.client_key ?? uid(), occurred_at: event.occurred_at ?? new Date().toISOString(), ...(owner ? { owner } : {}) };
     if (ref.current.length) delete e.expected_seq;
     ref.current = [...ref.current, e];
     setPending(ref.current);
     await flush();
     return { queued: ref.current.some((x) => x.client_key === e.client_key) };
   }, [flush, owner]);
+
+  /** Change a tap that is still waiting on this device (a correction of something not yet sent): it simply goes out as it should have been. */
+  const edit = useCallback((clientKey, patch) => { ref.current = ref.current.map((x) => (x.client_key === clientKey ? { ...x, ...patch } : x)); setPending(ref.current); }, []);
 
   /** 'resend' sends the held tap on top of the newer state (the server still checks it against the rules); 'discard' drops it. */
   const resolve = useCallback(async (choice) => {
@@ -134,7 +138,7 @@ export function useScoreQueue(key, send, { onSent, onDrop, owner } = {}) {
   }, [conflict, drop, flush]);
 
   const foreign = owner ? pending.filter((e) => e.owner && e.owner !== owner).length : 0;
-  return { pending, conflict, enqueue, flush, resolve, cancel, foreign, full: pending.length >= MAX_QUEUE };
+  return { pending, conflict, enqueue, flush, resolve, cancel, edit, foreign, full: pending.length >= MAX_QUEUE };
 }
 
 /** How many taps are waiting on this device for one game (without opening it), for the match-day list. */

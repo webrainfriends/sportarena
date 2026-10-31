@@ -9,7 +9,7 @@ import { Card, Empty, ErrorBox, H2, Loading, Row, Sheet, T, Tag } from '../ui';
 import { MenuField } from '../menu-field';
 import { c } from '../theme';
 
-const ICON = { results: '🎯', weekly_streak: '🔥', personal_bests: '📈', sports: '🧭', events: '🏟️', medals: '🏅', goal_game_goals: '⚽', goal_game_assists: '🤝', cricket_runs: '🏏', cricket_wickets: '🎳' };
+const ICON = { results: '🎯', weekly_streak: '🔥', personal_bests: '📈', sports: '🧭', events: '🏟️', medals: '🏅', goal_game_goals: '⚽', goal_game_assists: '🤝', cricket_runs: '🏏', cricket_wickets: '🎳', racket_aces: '🎾', racket_sets_won: '🏸', racket_matches_won: '🏆', measured_records: '⏱️', measured_measures: '🧭' };
 const TIER_TONE = { Bronze: c.orangeSoft, Silver: c.violetSoft, Gold: c.sunSoft, Platinum: c.cyanSoft };
 
 const unitOf = (n, u) => (Number(n) === 1 ? u.replace(/s$/, '') : u);

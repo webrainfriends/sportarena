@@ -8,15 +8,22 @@ import { packStore } from '../offline-store';
 import { mergeLive } from './local';
 
 const idOf = (fixtureId) => `g_${String(fixtureId).replace(/-/g, '')}`;
+const sidOf = (sessionId) => `s_${String(sessionId).replace(/-/g, '')}`;
 
-export async function listSaved(userId) {
+/** Everything this account keeps on the device (games and heats); another account's records are erased on sight. */
+async function listAll(userId) {
   const all = await packStore.readAll().catch(() => []);
   const mine = [];
   for (const d of all) { if (d.owner === userId) mine.push(d); else await packStore.erase(d.id).catch(() => {}); }   // never keep another account's pack
   return mine;
 }
+export const listSaved = async (userId) => (await listAll(userId)).filter((d) => d.game);
+/** Timed, measured and judged sports (heats, finals, field flights): the same pack, the session model. */
+export const listSavedSessions = async (userId) => (await listAll(userId)).filter((d) => d.session);
 export const loadSaved = async (userId, fixtureId) => (await listSaved(userId)).find((d) => d.id === idOf(fixtureId)) ?? null;
+export const loadSavedSession = async (userId, sessionId) => (await listSavedSessions(userId)).find((d) => d.id === sidOf(sessionId)) ?? null;
 export const saveGame = (userId, game) => packStore.write({ id: idOf(game.fixture.id), owner: userId, saved_at: new Date().toISOString(), game });
+export const saveSession = (userId, session) => packStore.write({ id: sidOf(session.session.id), owner: userId, saved_at: new Date().toISOString(), session });
 export const forgetGame = (fixtureId) => packStore.erase(idOf(fixtureId));
 /** Sign-out: nothing of a pack outlives the account (the games can be downloaded again). */
 export const clearPack = () => packStore.eraseAll().catch(() => {});
@@ -24,9 +31,11 @@ export const clearPack = () => packStore.eraseAll().catch(() => {});
 /** Download every game the signed-in person may score in the window and keep it; games they no longer may score are removed. */
 export async function downloadPack(userId, query = {}) {
   const r = await api.get('/me/scorer-pack', query);
-  const keep = new Set(r.games.map((g) => idOf(g.fixture.id)));
-  for (const d of await listSaved(userId)) if (!keep.has(d.id)) await packStore.erase(d.id);
+  const sessions = r.sessions ?? [];
+  const keep = new Set([...r.games.map((g) => idOf(g.fixture.id)), ...sessions.map((x) => sidOf(x.session.id))]);
+  for (const d of await listAll(userId)) if (!keep.has(d.id)) await packStore.erase(d.id);
   for (const g of r.games) await saveGame(userId, g);
+  for (const x of sessions) await saveSession(userId, x);
   return r;
 }
 
@@ -73,4 +82,37 @@ export function useSavedGame(userId, fixtureId, live) {
   }, [ready, userId, version, canScore]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return { saved: rec?.game ?? null, savedAt: rec?.saved_at ?? null, ready, refetch };
+}
+
+/**
+ * One heat / final / field flight for the session pad: the saved copy, kept current while online (a heat is small, so the whole log is
+ * downloaded again whenever the live version moves). With no signal the saved copy stands in and the pure session plugin projects the taps.
+ */
+export function useSavedSession(userId, sessionId, live) {
+  const [rec, setRec] = useState(null);
+  const [ready, setReady] = useState(false);
+  const busy = useRef(false);
+
+  useEffect(() => {
+    let on = true;
+    if (!userId) { setReady(true); return undefined; }
+    loadSavedSession(userId, sessionId).then((d) => { if (on) { setRec(d); setReady(true); } }).catch(() => on && setReady(true));
+    return () => { on = false; };
+  }, [userId, sessionId]);
+
+  const canScore = !!live?.viewer?.can_score;
+  const version = live?.version;
+  const refetch = useCallback(async () => {
+    if (busy.current || !userId) return;
+    busy.current = true;
+    try {
+      const r = await api.get('/me/scorer-pack', { session_id: sessionId });
+      const x = r.sessions?.[0];
+      if (x) { await saveSession(userId, x); setRec({ id: sidOf(sessionId), owner: userId, saved_at: new Date().toISOString(), session: x }); }
+    } catch { /* offline: the copy already held stays */ } finally { busy.current = false; }
+  }, [userId, sessionId]);
+
+  useEffect(() => { if (ready && userId && canScore) refetch(); }, [ready, userId, version, canScore]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return { saved: rec?.session ?? null, savedAt: rec?.saved_at ?? null, ready, refetch };
 }
