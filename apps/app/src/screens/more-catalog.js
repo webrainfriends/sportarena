@@ -8,6 +8,7 @@ export const MODULES = [
   ['Following', 'Following', 'Events, teams & games you follow', 'play'],
   ['RecruiterAccess', 'Recruiter access', 'Who may see your profile', 'play'],
   ['MyDevelopment', 'My development', 'Goals, plans, feedback & reports', 'play'], ['MyPlans', 'Training plans', 'Your plans & sessions', 'play'], ['ToolsHome', 'Tools', 'Scoring sheets & documents', 'play'], ['Pathways', 'Learn & study', 'Rules, courses & colleges', 'play'], ['OpportunityMatches', 'Opportunities for me', 'Teams, trials, study & sponsors that fit you', 'play'],
+  ['Copilots', 'Copilots', 'Role helpers that cite their sources', 'play'],
   ['MyCompliance', 'Compliance', 'Requirements, expiries & safeguarding', 'care'],
   ['Health', 'Health', 'Physio · doctors · fit to play', 'care'], ['Insure', 'My cover', 'What covers me today', 'care'],
   ['Insurance', 'Insurance', 'You · your team · your event', 'care'], ['Legal', 'Legal', 'Verified lawyers & matters', 'care'], ['Family', 'Family', 'Guardians & consents', 'care'],
