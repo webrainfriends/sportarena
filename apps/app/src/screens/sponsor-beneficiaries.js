@@ -1,3 +1,4 @@
+import { formatMoney } from '../money';
 import React, { useState } from 'react';
 import { View } from 'react-native';
 import { api } from '../api';
@@ -11,7 +12,7 @@ import { useNav } from '../nav';
 
 const TYPE_LABEL = { organisation: 'Organisation', group: 'Group', team: 'Team' };
 const pct = (bp) => `${bp / 100}%`;
-const money = (cents, cur) => { try { return new Intl.NumberFormat(undefined, { style: 'currency', currency: cur }).format(cents / 100); } catch { return `${cents / 100} ${cur ?? ''}`; } };
+const money = (cents, cur) => formatMoney(cents, cur);
 
 /** Beneficiaries & payees of an organisation / group sponsorship: the sponsor sees names and shares only; an owner/admin edits them. */
 export function SponsorAllocations({ deal }) {

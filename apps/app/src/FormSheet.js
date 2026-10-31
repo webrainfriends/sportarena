@@ -10,10 +10,10 @@ import { CountryPicker, CountriesMulti } from './country-picker';
 import { PlacePicker } from './place-picker';
 import { useSession } from './session';
 import { CurrencyDropdown } from './currency-dropdown';
+import { parseAmount, toMajorText } from './money';
 import { EvidenceField } from './evidence';
 import { MultiMenuField } from './menu-field';
 
-const digits = (cur) => { try { return new Intl.NumberFormat('en', { style: 'currency', currency: cur }).resolvedOptions().maximumFractionDigits; } catch { return 2; } };
 const DAYS = [[1, 'Mon'], [2, 'Tue'], [3, 'Wed'], [4, 'Thu'], [5, 'Fri'], [6, 'Sat'], [0, 'Sun']];
 const ZONES = ['Asia/Kolkata', 'Asia/Dubai', 'Asia/Singapore', 'Asia/Colombo', 'Asia/Dhaka', 'Asia/Karachi', 'Asia/Kathmandu', 'Europe/London', 'Europe/Paris', 'America/New_York', 'America/Los_Angeles', 'Australia/Sydney', 'UTC'];
 const deviceZone = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return null; } };
@@ -90,7 +90,7 @@ export function FormSheet({ visible, onClose, title, fields, initial = {}, submi
     const o = {};
     for (const f of fields) {
       const x = initial[f.key];
-      if (f.type === 'money') o[f.key] = x === undefined || x === null || x === '' ? '' : String(Number(x) / 10 ** digits(curOf(f, initial)));
+      if (f.type === 'money') o[f.key] = x === undefined || x === null || x === '' ? '' : toMajorText(x, curOf(f, initial));
       else if (f.type === 'stepper') o[f.key] = x ?? f.default ?? f.min ?? 0;
       else if (f.type === 'switch') o[f.key] = x ?? f.default ?? false;
       else if (f.type === 'custom') o[f.key] = x ?? f.default ?? [];
@@ -126,7 +126,7 @@ export function FormSheet({ visible, onClose, title, fields, initial = {}, submi
         if (f.type === 'daterange') { const a = v[f.key], b = v[f.toKey]; if (!a) { if (!f.optional) throw new Error(`${f.label}: pick the dates`); continue; } out[f.key] = a; out[f.toKey] = b ?? a; continue; }
         if (f.type === 'multi' || f.type === 'multimenu' || f.type === 'weekdays' || f.type === 'sports' || f.type === 'regions' || f.type === 'countries' || f.type === 'files') { if (!x?.length) { if (!f.optional) throw new Error(`${f.label}: choose at least one`); continue; } out[f.key] = x; continue; }
         if (x === '' || x === undefined || x === null) { if (!f.optional) throw new Error(`${f.label} is required`); continue; }
-        if (f.type === 'money') { const n = Number(String(x).replace(/,/g, '')); if (!(n >= 0)) throw new Error(`${f.label}: enter an amount`); out[f.key] = Math.round(n * 10 ** digits(curOf(f, v))); }
+        if (f.type === 'money') { const m = parseAmount(x, curOf(f, v)); if (m === null) throw new Error(`${f.label}: enter an amount${curOf(f, v) ? ` in ${curOf(f, v)}` : ''} with no more decimals than the currency has`); out[f.key] = m; }
         else out[f.key] = f.type === 'number' ? Number(x) : x;
       }
       const msg = await onSubmit(out);
@@ -154,7 +154,7 @@ export function FormSheet({ visible, onClose, title, fields, initial = {}, submi
       case 'date': return <DateField label={f.label} value={v[f.key]} onChange={(x) => set(f.key, x)} optional={f.optional} min={f.min} max={f.max} hint={f.hint} />;
       case 'time': return <TimeField label={f.label} value={v[f.key]} onChange={(x) => set(f.key, x)} optional={f.optional} step={f.step} hint={f.hint} />;
       case 'timezone': return <ZonePicker label={f.label} value={v[f.key]} onChange={(x) => set(f.key, x)} />;
-      case 'currency': return <CurrencyDropdown label={f.label} value={v[f.key]} onChange={(x) => set(f.key, x)} hint={f.hint} suggest={!f.optional} endpoint={f.endpoint} />;
+      case 'currency': return <CurrencyDropdown label={f.label} value={v[f.key]} onChange={(x) => set(f.key, x)} hint={f.hint} suggest={!f.optional} endpoint={f.endpoint} disabled={f.disabled} />;
       case 'location': return <LocationPicker f={f} v={v} set={set} />;
       case 'daterange': return <DateRangeField label={f.label} from={v[f.key]} to={v[f.toKey]} onChange={({ from, to }) => { set(f.key, from); set(f.toKey, to); }} optional={f.optional} min={f.min} hint={f.hint} />;
       case 'datetime': return <DateTimeField label={f.label} value={v[f.key]} onChange={(x) => set(f.key, x)} optional={f.optional} min={f.min} step={f.step} hint={typeof f.hint === 'function' ? f.hint(v) : f.hint} />;

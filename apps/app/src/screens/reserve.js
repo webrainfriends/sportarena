@@ -34,9 +34,10 @@ export function Basket() {
   const { replace, back } = useNav();
   const [code, setCode] = useState('');
   const [codes, setCodes] = useState([]);
+  const [ackMixed, setAckMixed] = useState(false); // venues in different currencies: the booker says they understand there is one invoice and one payment per currency
   const [quote, setQuote] = useState(null);
   const [busy, setBusy] = useState(false);
-  const body = () => ({ items: items.map(({ resource_id, starts_at, ends_at, quantity }) => ({ resource_id, starts_at, ends_at, quantity })), promo_codes: codes });
+  const body = () => ({ items: items.map(({ resource_id, starts_at, ends_at, quantity }) => ({ resource_id, starts_at, ends_at, quantity })), promo_codes: codes, accept_mixed_currencies: ackMixed });
   const sig = JSON.stringify(body());
 
   useEffect(() => {
@@ -91,7 +92,12 @@ export function Basket() {
       <Card style={{ marginTop: 20 }}>
         {!quote ? <Loading /> : quote.error ? <T color={c.red} weight="700">{quote.error}</T> : (
           <>
-            {currencies.length > 1 ? <T size={12} color={c.mute} style={{ marginBottom: 6 }}>Venues in {currencies.join(' and ')} — you'll get one invoice per venue, each in its own currency.</T> : null}
+            {currencies.length > 1 ? (
+              <View style={{ marginBottom: 8, gap: 6 }}>
+                <T size={12} color={c.mute}>Venues in {currencies.join(' and ')}: you'll get a separate invoice and pay a separate amount in each currency. The amounts are never added together.</T>
+                <Chip label={ackMixed ? '✓ I understand' : 'I understand: one payment per currency'} active={ackMixed} onPress={() => setAckMixed(!ackMixed)} />
+              </View>
+            ) : null}
             {(quote.totals ?? []).map((t) => (
               <View key={t.currency}>
                 {currencies.length > 1 ? <T weight="700" size={12} color={c.mute} style={{ marginTop: 6 }}>{t.currency}</T> : null}
@@ -106,7 +112,7 @@ export function Basket() {
           </>
         )}
       </Card>
-      <Btn title={quote?.ok ? `Confirm booking · ${(quote.totals ?? []).map((t) => moneyIn(t.payable_cents, t.currency)).join(' + ')}` : 'Fix the highlighted slots to continue'} disabled={!quote?.ok} loading={busy} onPress={confirm} style={{ marginTop: 14 }} />
+      <Btn title={quote?.ok ? `Confirm booking · ${(quote.totals ?? []).map((t) => moneyIn(t.payable_cents, t.currency)).join(' + ')}` : currencies.length > 1 && !ackMixed ? 'Confirm the currencies above to continue' : 'Fix the highlighted slots to continue'} disabled={!quote?.ok} loading={busy} onPress={confirm} style={{ marginTop: 14 }} />
       <Btn small title="Empty basket" color={c.paper} onPress={clear} style={{ marginTop: 10, alignSelf: 'flex-start' }} />
     </Screen>
   );
