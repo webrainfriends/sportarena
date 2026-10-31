@@ -147,6 +147,7 @@ import './sponsorship-evaluation.js';
 import './sponsorship-application-forms.js';
 import './registration-engine.js';
 import './competitions.js';
+import './competition-operations.js';
 import './sponsorship-awards.js';
 import './sponsorship-budgets.js';
 import './beneficiary-portfolio.js';
