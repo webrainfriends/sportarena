@@ -23,6 +23,7 @@ import { activateDuePauses } from './sponsor-pause.js';
 import { processSponsorshipTerms } from './sponsor-renewals.js';
 import { processSponsorTasks } from './sponsor-collaboration.js';
 import { sweepAccessGrants } from './access-grants.js';
+import { sweepTickets } from './ticketing.js';
 import { expireAcademyOffers, remindTrials, runAcademyJobs } from './academy-sweeps.js';
 import { runTenderJobs, sendTenderReminders } from './capabilities/tender-reports.js';
 import { deliverDueReports } from './sponsor-report-schedules.js';
@@ -79,6 +80,7 @@ export const STEPS = [
   ['billing_schedules', 'billing_periods_raised', raiseScheduledCharges, 0],
   ['collections', 'collection_cases_advanced', runCollections, 0],
   ['access_grants', 'access_grants_revoked', sweepAccessGrants, 0],
+  ['ticket_holds_and_refunds', 'ticket_holds_released_or_refunded', sweepTickets, 0],
   ['audit_chain', 'audit_rows_sealed', sealAuditLog, 0],
   ['tender_jobs', 'tender_jobs', runTenderJobs, null],
   ['tender_reminders', 'tender_deadline_reminders', sendTenderReminders, 0],
