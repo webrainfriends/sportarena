@@ -20,6 +20,7 @@ import { coverFor, startUse, settleUse } from '../cover.js';
 import { fulfilAdFundingPaid } from '../ads/engine.js';
 import { recordCharge, closeCharge, recordPayment, recordRefund } from '../finance.js';
 import { describeSubscription, fulfilSubscriptionPaid } from '../commercial/engine.js';
+import { confirmOrder } from '../ticketing.js';
 
 export { paymentsEnabled, enabledProviders };
 
@@ -101,6 +102,10 @@ export async function describePurpose(c, type, id) {
     const x = await q("SELECT f.payer_id, f.amount_minor AS amount, f.currency, f.status, f.number, c.name, c.status AS camp_status FROM ad_fundings f JOIN ad_campaigns c ON c.id=f.campaign_id WHERE f.id=$1 FOR UPDATE OF f");
     return x && { payerId: x.payer_id, amount: Number(x.amount), currency: x.currency, name: `Advertising funds ${x.number} · ${x.name}`, payable: x.status === 'awaiting_payment' && !['ended', 'withdrawn'].includes(x.camp_status) };
   }
+  if (type === 'ticket_order') {
+    const o = await q("SELECT o.buyer_id AS payer_id, o.total_minor AS amount, o.currency, o.status, e.name FROM ticket_orders o JOIN events e ON e.id=o.event_id WHERE o.id=$1 FOR UPDATE OF o");
+    return o && { payerId: o.payer_id, amount: Number(o.amount), currency: o.currency, name: `Tickets · ${o.name}`, payable: o.status === 'pending_payment' && Number(o.amount) > 0 };
+  }
   if (type === 'commercial_subscription') return describeSubscription(c, id);
   if (type === 'marketplace_engagement') {
     const m = await q("SELECT m.buyer_id AS payer_id, m.agreed_minor AS amount, m.currency, m.status, m.title, m.invoice_number, u.display_name FROM marketplace_engagements m JOIN users u ON u.id=m.provider_id WHERE m.id=$1 FOR UPDATE OF m");
@@ -136,6 +141,7 @@ async function fulfil(c, type, id, payment) {
   if (type === 'media_rights_fee') return fulfilMediaFeePaid(c, id);
   if (type === 'ad_funding') return fulfilAdFundingPaid(c, id);
   if (type === 'commercial_subscription') return fulfilSubscriptionPaid(c, id, payment.payer_id);
+  if (type === 'ticket_order') return confirmOrder(c, id, payment.payer_id);   // false (cancelled, sold out meanwhile) = the payment is refunded straight away
   if (type === 'registration_instalment') return fulfilInstalmentPaid(c, id, payment);
   if (type === 'team_charge') return fulfilTeamChargePaid(c, id, payment);
   if (type === 'team_contribution') return fulfilContributionPaid(c, id, payment);

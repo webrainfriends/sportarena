@@ -8,6 +8,7 @@ import { canManageTeam } from './teams.js';
 import { hasOrgGrant } from '../org-access.js';
 import { reserve } from './venues.js';
 import { notify } from '../notify.js';
+import { onEventCancelled, onFixtureChanged } from '../ticketing.js';
 import { WHO_FOR, levels as LEVELS_FIELD, ageBand, AGE_BAND_MSG } from '../opportunity-fields.js';
 import { afterResult, decideWinner } from '../tournament/advance.js';
 import { createRequest } from '../event-planning.js';
@@ -222,6 +223,7 @@ cap({
       if (i.status === 'cancelled' && ev.status !== 'cancelled') {
         const who = (await c.query("SELECT DISTINCT coalesce(t.owner_id, e.user_id) AS uid FROM event_entries e LEFT JOIN teams t ON t.id=e.team_id WHERE e.event_id=$1 AND e.status IN ('pending','accepted','waitlisted')", [i.id])).rows;
         for (const r of who) if (r.uid) await notify(c, r.uid, { kind: 'event_cancelled', title: 'Event cancelled', body: `${ev.name} was cancelled by the organiser.`, data: { event_id: ev.id } });
+        await onEventCancelled(c, ev, user);   // spectator tickets: every live ticket becomes refund_due; the refund sweep pays them back through the original payments
       }
       return out;
     });
@@ -408,6 +410,7 @@ cap({
       }
       const out = (await c.query('UPDATE fixtures SET scheduled_at=$2, duration_min=$3, status=coalesce($4,status) WHERE id=$1 RETURNING *', [f.id, start, dur, i.status])).rows[0];
       if (i.status === 'cancelled') {
+        await onFixtureChanged(c, ev, f, { kind: 'cancelled' }, user);   // tickets that only admit to this match become refund_due
         for (const fo of open) {
           await closeOfficial(c, fo, user.id, 'cancelled', 'Fixture cancelled');
           await notify(c, fo.user_id, { kind: 'official_assignment', title: 'Fixture cancelled', body: `Your ${fo.role} assignment for ${ev.name} was cancelled.`, data: { fixture_id: f.id, official_id: fo.id } });
@@ -415,6 +418,7 @@ cap({
         return out;
       }
       if (retimed) {
+        await onFixtureChanged(c, ev, f, { kind: 'rescheduled', oldAt: f.scheduled_at, newAt: start }, user);   // ticket holders are told and may refund past the usual cutoff
         for (const fo of open) {
           if (fo.status === 'accepted') await c.query('UPDATE fixture_officials SET needs_ack=true WHERE id=$1', [fo.id]);
           await notify(c, fo.user_id, { kind: 'official_assignment', title: 'Fixture time changed', body: `${ev.name} now starts ${new Date(start).toISOString()}. Please ${fo.status === 'accepted' ? 'acknowledge' : 'respond'}.`, data: { fixture_id: f.id, official_id: fo.id } });
