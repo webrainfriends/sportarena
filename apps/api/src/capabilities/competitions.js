@@ -11,7 +11,7 @@ import { hasOrgGrant } from '../org-access.js';
 import { notify } from '../notify.js';
 import { toCsv } from '../csv.js';
 import { canManageTeam } from './teams.js';
-import { computeStandings, normaliseRules, tableHash, roundRobin, proposeMovements, unitFor, TIEBREAKERS, DEFAULT_RULES } from '../competition-standings.js';
+import { computeStandings, computeRankedStandings, tableModelOf, DEFAULT_PLACEMENT_POINTS, normaliseRules, tableHash, roundRobin, proposeMovements, unitFor, TIEBREAKERS, DEFAULT_RULES } from '../competition-standings.js';
 
 const TAG = 'Competitions';
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a calendar date (YYYY-MM-DD)');
@@ -21,21 +21,22 @@ const GENDER = z.enum(['open', 'men', 'women', 'mixed']);
 const LEVEL = z.enum(['elite', 'professional', 'semi_pro', 'amateur', 'recreational', 'school', 'youth']);
 const today = () => new Date().toISOString().slice(0, 10);
 // node-pg hands `date` columns back as local-midnight Date objects; every comparison and every response uses plain YYYY-MM-DD strings instead
-const ymd = (v) => (v instanceof Date ? `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, '0')}-${String(v.getDate()).padStart(2, '0')}` : v == null ? null : String(v).slice(0, 10));
+export const ymd = (v) => (v instanceof Date ? `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, '0')}-${String(v.getDate()).padStart(2, '0')}` : v == null ? null : String(v).slice(0, 10));
 const SEASON_DATES = ['starts_on', 'ends_on', 'registration_opens_on', 'registration_closes_on', 'transfer_opens_on', 'transfer_closes_on'];
-const dates = (s) => (s ? { ...s, ...Object.fromEntries(SEASON_DATES.filter((k) => k in s).map((k) => [k, ymd(s[k])])) } : s);
+export const dates = (s) => (s ? { ...s, ...Object.fromEntries(SEASON_DATES.filter((k) => k in s).map((k) => [k, ymd(s[k])])) } : s);
 const NEXT = { draft: ['open'], open: ['active', 'draft'], active: ['open'], completed: ['archived'], archived: [] };
-const CLOSED = new Set(['completed', 'archived']);
+export const CLOSED = new Set(['completed', 'archived']);
 const rulesIn = z.object({
   points: z.object({ win: z.number().int().min(0).max(10), draw: z.number().int().min(0).max(10), loss: z.number().int().min(0).max(10) }).partial().optional(),
   forfeit: z.object({ winner_for: z.number().int().min(0).max(20), winner_against: z.number().int().min(0).max(20), loser_points: z.number().int().min(-10).max(10) }).partial().optional(),
   tiebreakers: z.array(z.enum(Object.keys(TIEBREAKERS))).min(1).max(9).optional(),
+  placement_points: z.array(z.number().int().min(0).max(1000)).min(1).max(50).optional(),
   movement: z.object({ champion: z.boolean(), promote: z.number().int().min(0).max(20), relegate: z.number().int().min(0).max(20), playoff: z.number().int().min(0).max(20), qualify: z.number().int().min(0).max(20) }).partial().optional(),
 }).strict();
 
 // ------------------------------------------------------------------ access
 const slugify = (s) => s.toLowerCase().normalize('NFKD').replace(/[^\w\s-]/g, '').trim().replace(/[\s_]+/g, '-').replace(/-+/g, '-').slice(0, 70) || 'competition';
-const comp = async (c, cid, { lock = false } = {}) => {
+export const comp = async (c, cid, { lock = false } = {}) => {
   const r = (await c.query(`SELECT * FROM comp_competitions WHERE id=$1${lock ? ' FOR UPDATE' : ''}`, [cid])).rows[0];
   if (!r) throw notFound('Competition');
   return r;
@@ -46,42 +47,42 @@ export async function canManageCompetition(user, cm, c = pool) {
   return isAdmin(user) || cm.owner_id === user.id || (cm.organisation_id ? hasOrgGrant(user, cm.organisation_id, ['owner', 'admin'], c) : false);
 }
 const visible = (cm, staff) => staff || (cm.is_public && cm.status !== 'draft');
-async function readComp(c, user, cid) {
+export async function readComp(c, user, cid) {
   const cm = await comp(c, cid);
   const staff = await canManageCompetition(user, cm, c);
   if (!visible(cm, staff)) throw notFound('Competition');
   return { cm, staff };
 }
-async function manageComp(c, user, cid, opts) {
+export async function manageComp(c, user, cid, opts) {
   const cm = await comp(c, cid, opts);
   if (!(await canManageCompetition(user, cm, c))) throw notFound('Competition');
   return cm;
 }
-const seasonRow = async (c, sid, { lock = false } = {}) => {
+export const seasonRow = async (c, sid, { lock = false } = {}) => {
   const s = (await c.query(`SELECT * FROM comp_seasons WHERE id=$1${lock ? ' FOR UPDATE' : ''}`, [sid])).rows[0];
   if (!s) throw notFound('Season');
   return dates(s);
 };
 /** A season is public only once it is open or later; its draft is for staff. */
-async function readSeason(c, user, sid) {
+export async function readSeason(c, user, sid) {
   const s = await seasonRow(c, sid);
   const { cm, staff } = await readComp(c, user, s.competition_id);
   if (!staff && s.status === 'draft') throw notFound('Season');
   return { s, cm, staff };
 }
-async function manageSeason(c, user, sid, { lock = false, open = true } = {}) {
+export async function manageSeason(c, user, sid, { lock = false, open = true } = {}) {
   const s = await seasonRow(c, sid, { lock });
   const cm = await manageComp(c, user, s.competition_id);
   if (open && CLOSED.has(s.status)) throw conflict(`This season is ${s.status}; its history is closed`, { code: 'season_closed' });
   return { s, cm };
 }
-const divisionRow = async (c, did, { lock = false } = {}) => {
+export const divisionRow = async (c, did, { lock = false } = {}) => {
   const d = (await c.query(`SELECT * FROM comp_divisions WHERE id=$1${lock ? ' FOR UPDATE' : ''}`, [did])).rows[0];
   if (!d) throw notFound('Division');
   return d;
 };
-const currentRules = async (c, sid) => (await c.query('SELECT * FROM comp_rule_versions WHERE season_id=$1 ORDER BY version DESC LIMIT 1', [sid])).rows[0];
-const asOpen = (e) => { if (e?.code === '23514') throw conflict(String(e.message).replace(/^.*?: /, ''), { code: 'history_closed' }); throw e; };
+export const currentRules = async (c, sid) => (await c.query('SELECT * FROM comp_rule_versions WHERE season_id=$1 ORDER BY version DESC LIMIT 1', [sid])).rows[0];
+export const asOpen = (e) => { if (e?.code === '23514') throw conflict(String(e.message).replace(/^.*?: /, ''), { code: 'history_closed' }); throw e; };
 
 // ------------------------------------------------------------------ competitions
 cap({
@@ -165,6 +166,28 @@ cap({
 const seasonDates = { starts_on: day, ends_on: day, registration_opens_on: day.nullable().optional(), registration_closes_on: day.nullable().optional(), transfer_opens_on: day.nullable().optional(), transfer_closes_on: day.nullable().optional() };
 const brandingIn = z.object({ primary_color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(), title_sponsor: txt(80).optional(), banner_emoji: txt(8).optional() }).strict();
 
+/** Create a season (its canonical event, rule version 1 and the link to the previous season). Shared by create_season and rollover_season. */
+export async function createSeasonRow(c, user, cm, i) {
+  const prev = (await c.query('SELECT * FROM comp_seasons WHERE competition_id=$1 ORDER BY starts_on DESC, created_at DESC LIMIT 1', [cm.id])).rows[0];
+  if ((await c.query('SELECT 1 FROM comp_seasons WHERE competition_id=$1 AND lower(label)=lower($2)', [cm.id, i.label])).rowCount) throw conflict('This competition already has a season with that label');
+  let rules = i.rules;
+  if (!rules && i.copy_rules_from_previous && prev) rules = (await currentRules(c, prev.id))?.rules;
+  rules = normaliseRules(rules ?? {});
+  const ev = (await c.query(
+    `INSERT INTO events(name,sport_id,organizer_id,kind,status,starts_on,ends_on,points_win,points_draw,points_loss,organisation_id,description)
+     VALUES ($1,$2,$3,'league','draft',$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
+    [`${cm.name} ${i.label}`.slice(0, 200), cm.sport_id, cm.owner_id, i.starts_on, i.ends_on, rules.points.win, rules.points.draw, rules.points.loss, cm.organisation_id, cm.description],
+  )).rows[0];
+  const s = (await c.query(
+    `INSERT INTO comp_seasons(competition_id,event_id,label,starts_on,ends_on,registration_opens_on,registration_closes_on,transfer_opens_on,transfer_closes_on,rule_policy_ref,branding,previous_season_id,created_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
+    [cm.id, ev.id, i.label, i.starts_on, i.ends_on, i.registration_opens_on ?? null, i.registration_closes_on ?? null, i.transfer_opens_on ?? null, i.transfer_closes_on ?? null, i.rule_policy_ref ?? null, JSON.stringify(i.branding ?? {}), prev?.id ?? null, user.id],
+  )).rows[0];
+  await c.query('INSERT INTO comp_rule_versions(season_id,version,rules,note,created_by) VALUES ($1,1,$2,$3,$4)', [s.id, JSON.stringify(rules), 'First version', user.id]);
+  await audit(c, user.id, 'competition.season_create', 'competition_season', s.id);
+  return { ...dates(s), rule_version: 1, rules };
+}
+
 cap({
   name: 'create_season', method: 'POST', path: '/competitions/:id/seasons', tag: TAG, status: 201,
   summary: 'Add a season (e.g. 2026/27) to a competition. It creates the season’s canonical event (no teams or games are copied), rule version 1 and links it to the previous season. Optionally start from the previous season’s rules.',
@@ -174,24 +197,7 @@ cap({
       const cm = await manageComp(c, user, i.id, { lock: true });
       if (cm.status === 'archived') throw conflict('This competition is archived');
       if (i.ends_on < i.starts_on) throw badRequest('The season must end on or after it starts');
-      const prev = (await c.query('SELECT * FROM comp_seasons WHERE competition_id=$1 ORDER BY starts_on DESC, created_at DESC LIMIT 1', [cm.id])).rows[0];
-      if ((await c.query('SELECT 1 FROM comp_seasons WHERE competition_id=$1 AND lower(label)=lower($2)', [cm.id, i.label])).rowCount) throw conflict('This competition already has a season with that label');
-      let rules = i.rules;
-      if (!rules && i.copy_rules_from_previous && prev) rules = (await currentRules(c, prev.id))?.rules;
-      rules = normaliseRules(rules ?? {});
-      const ev = (await c.query(
-        `INSERT INTO events(name,sport_id,organizer_id,kind,status,starts_on,ends_on,points_win,points_draw,points_loss,organisation_id,description)
-         VALUES ($1,$2,$3,'league','draft',$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
-        [`${cm.name} ${i.label}`.slice(0, 200), cm.sport_id, cm.owner_id, i.starts_on, i.ends_on, rules.points.win, rules.points.draw, rules.points.loss, cm.organisation_id, cm.description],
-      )).rows[0];
-      const s = (await c.query(
-        `INSERT INTO comp_seasons(competition_id,event_id,label,starts_on,ends_on,registration_opens_on,registration_closes_on,transfer_opens_on,transfer_closes_on,rule_policy_ref,branding,previous_season_id,created_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
-        [cm.id, ev.id, i.label, i.starts_on, i.ends_on, i.registration_opens_on ?? null, i.registration_closes_on ?? null, i.transfer_opens_on ?? null, i.transfer_closes_on ?? null, i.rule_policy_ref ?? null, JSON.stringify(i.branding ?? {}), prev?.id ?? null, user.id],
-      )).rows[0];
-      await c.query('INSERT INTO comp_rule_versions(season_id,version,rules,note,created_by) VALUES ($1,1,$2,$3,$4)', [s.id, JSON.stringify(rules), 'First version', user.id]);
-      await audit(c, user.id, 'competition.season_create', 'competition_season', s.id);
-      return { ...dates(s), rule_version: 1, rules };
+      return createSeasonRow(c, user, cm, i);
     });
   },
 });
@@ -347,10 +353,10 @@ async function eligibilitySnapshot(c, cm, s, team, division) {
   ];
   return { taken_at: new Date().toISOString(), team: { id: team.id, name: team.name, sport_id: team.sport_id }, roster_size: members, division: division ? { id: division.id, name: division.name, tier: division.tier } : null, checks };
 }
-const logMembership = (c, m, action, actor, { reason = null, from = null } = {}) =>
+export const logMembership = (c, m, action, actor, { reason = null, from = null } = {}) =>
   c.query('INSERT INTO comp_membership_events(membership_id,season_id,team_id,division_id,action,from_division_id,reason,actor_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)', [m.id, m.season_id, m.team_id, m.division_id, action, from, reason, actor]);
 /** The canonical entry the rest of the platform already understands; created once per team, never duplicated. */
-const ensureEntry = (c, s, teamId) =>
+export const ensureEntry = (c, s, teamId) =>
   c.query("INSERT INTO event_entries(event_id,team_id,status) VALUES ($1,$2,'accepted') ON CONFLICT (event_id,team_id,user_id) DO UPDATE SET status='accepted'", [s.event_id, teamId]);
 const dropEntry = (c, s, teamId) => c.query("UPDATE event_entries SET status='withdrawn' WHERE event_id=$1 AND team_id=$2", [s.event_id, teamId]);
 const full = async (c, d) => d?.capacity != null && (await c.query("SELECT count(*)::int AS n FROM comp_memberships WHERE division_id=$1 AND status='accepted'", [d.id])).rows[0].n >= d.capacity;
@@ -483,9 +489,10 @@ cap({
 });
 
 // ------------------------------------------------------------------ schedule: rounds & fixtures
-const acceptedTeams = async (c, did) => (await c.query("SELECT t.id AS team_id, t.name FROM comp_memberships m JOIN teams t ON t.id=m.team_id WHERE m.division_id=$1 AND m.status='accepted' ORDER BY t.name, t.id", [did])).rows;
-const stamp = (date, time, offset) => new Date(new Date(`${date}T${time}:00Z`).getTime() - offset * 60000).toISOString();
-const addDays = (d, n) => new Date(new Date(`${d}T00:00:00Z`).getTime() + n * 864e5).toISOString().slice(0, 10);
+export const acceptedTeams = async (c, did) => (await c.query(
+  `SELECT t.id AS team_id, t.name FROM teams t WHERE t.id IN (SELECT team_id FROM comp_memberships WHERE division_id=$1 AND status='accepted' UNION SELECT team_id FROM comp_stage_entries WHERE division_id=$1) ORDER BY t.name, t.id`, [did])).rows;
+export const stamp = (date, time, offset) => new Date(new Date(`${date}T${time}:00Z`).getTime() - offset * 60000).toISOString();
+export const addDays = (d, n) => new Date(new Date(`${d}T00:00:00Z`).getTime() + n * 864e5).toISOString().slice(0, 10);
 
 cap({
   name: 'create_round', method: 'POST', path: '/divisions/:id/rounds', tag: TAG, status: 201,
@@ -508,12 +515,19 @@ cap({
 cap({
   name: 'generate_division_fixtures', method: 'POST', path: '/divisions/:id/generate-fixtures', tag: TAG, status: 201,
   summary: 'Generate a single or double round robin for a division’s accepted teams: one round per match week, ordinary fixtures in the season’s event (so scoring, officials and results work as everywhere else), each linked to its round. Refused if the division already has linked fixtures.',
-  input: z.object({ id, double: z.boolean().default(false), first_round_on: day, days_between_rounds: z.number().int().min(1).max(30).default(7), kickoff: hhmm.default('18:00'), duration_min: z.number().int().min(10).max(600).default(90), utc_offset_minutes: z.number().int().min(-720).max(840).default(0) }),
+  input: z.object({ id, double: z.boolean().default(false), first_round_on: day, days_between_rounds: z.number().int().min(1).max(30).default(7), kickoff: hhmm.default('18:00'), duration_min: z.number().int().min(10).max(600).default(90), utc_offset_minutes: z.number().int().min(-720).max(840).default(0), meets: z.number().int().min(1).max(60).optional().describe('ranked-meet sports (time, distance, weight, judged): how many meets the series has') }),
   async handler({ user }, i) {
     return tx(async (c) => {
       const d = await divisionRow(c, i.id, { lock: true });
       const { s } = await manageSeason(c, user, d.season_id, { lock: true });
       if (d.archived_at) throw conflict('This division is archived');
+      if (await isRanked(c, d)) {
+        if (!i.meets) throw badRequest('This sport is ranked by time, distance, weight or score: say how many meets the series has (meets)');
+        if ((await c.query('SELECT 1 FROM comp_rounds WHERE division_id=$1 LIMIT 1', [d.id])).rowCount) throw conflict('This division already has meets', { code: 'already_scheduled' });
+        for (let n = 0; n < i.meets; n++) { const on = addDays(i.first_round_on, n * i.days_between_rounds); await c.query('INSERT INTO comp_rounds(season_id,division_id,number,label,starts_on,ends_on,created_by) VALUES ($1,$2,$3,$4,$5,$6,$7)', [s.id, d.id, n + 1, `Meet ${n + 1}`, on, addDays(on, i.days_between_rounds - 1), user.id]); }
+        await audit(c, user.id, 'competition.fixtures_generate', 'competition_division', d.id);
+        return { division_id: d.id, rounds: i.meets, fixtures: 0, teams: (await acceptedTeams(c, d.id)).length, model: 'ranked_meets' };
+      }
       if ((await c.query('SELECT 1 FROM comp_fixture_links WHERE division_id=$1 LIMIT 1', [d.id])).rowCount) throw conflict('This division already has fixtures; link or reschedule them instead', { code: 'already_scheduled' });
       const teams = await acceptedTeams(c, d.id);
       if (teams.length < 2) throw conflict('Accept at least two teams into this division first');
@@ -578,7 +592,7 @@ cap({
 cap({
   name: 'decide_competition_fixture', method: 'POST', path: '/competition-fixtures/:id/decision', tag: TAG,
   summary: 'Record an administrative decision on a division fixture without editing the match result: a forfeit (home, away or both, with a reason — the table applies the season’s forfeit rule), a postponement, a reschedule to a new date and time, or a move to another round.',
-  input: z.object({ id, outcome: z.enum(['played', 'forfeit_home', 'forfeit_away', 'double_forfeit']).optional(), postpone: z.boolean().optional(), scheduled_at: z.string().datetime({ offset: true }).optional(), round_id: id.optional(), reason: z.string().trim().min(3).max(500) }),
+  input: z.object({ id, outcome: z.enum(['played', 'forfeit_home', 'forfeit_away', 'double_forfeit']).optional(), postpone: z.boolean().optional(), scheduled_at: z.string().datetime({ offset: true }).optional(), round_id: id.optional(), outside_window: z.boolean().optional().describe('confirm a kick-off outside the round\'s scheduling window'), reason: z.string().trim().min(3).max(500) }),
   async handler({ user }, i) {
     return tx(async (c) => {
       const l = (await c.query('SELECT * FROM comp_fixture_links WHERE fixture_id=$1 FOR UPDATE', [i.id])).rows[0];
@@ -588,10 +602,17 @@ cap({
       if (!i.outcome && i.postpone === undefined && !i.scheduled_at && !i.round_id) throw badRequest('Nothing to decide');
       if (i.outcome && i.outcome !== 'played' && (await c.query('SELECT 1 FROM comp_standing_snapshots WHERE division_id=$1', [l.division_id])).rowCount) throw conflict('This division’s table is frozen');
       if (i.round_id && (await c.query('SELECT 1 FROM comp_rounds WHERE id=$1 AND division_id=$2', [i.round_id, l.division_id])).rowCount === 0) throw badRequest('Choose a round of this division');
+      const round = l.round_id ? (await c.query('SELECT * FROM comp_rounds WHERE id=$1', [l.round_id])).rows[0] : null;
+      if (round?.closed_at && (i.scheduled_at || i.postpone !== undefined || i.round_id || (i.outcome && i.outcome !== 'played'))) throw conflict(`${round.label} is closed; reopen it to change its games`, { code: 'round_closed' });
       if (i.scheduled_at || i.postpone !== undefined) {
         if (f.status === 'completed') throw conflict('A completed game cannot be rescheduled; its result is canonical');
+        if (i.scheduled_at && round?.window_enforced && (round.starts_on || round.ends_on) && !i.outside_window) {
+          const d = i.scheduled_at.slice(0, 10);
+          if ((round.starts_on && d < ymd(round.starts_on)) || (round.ends_on && d > ymd(round.ends_on))) throw conflict(`That date is outside ${round.label}'s scheduling window (${ymd(round.starts_on) ?? '…'} to ${ymd(round.ends_on) ?? '…'}). Confirm it with outside_window, or move the game to another round.`, { code: 'outside_round_window', starts_on: ymd(round.starts_on), ends_on: ymd(round.ends_on) });
+        }
         const status = i.postpone ? 'postponed' : 'scheduled';
         await c.query('UPDATE fixtures SET status=$2, scheduled_at=coalesce($3, scheduled_at) WHERE id=$1', [f.id, status, i.scheduled_at ?? null]);
+        await c.query('INSERT INTO comp_schedule_changes(season_id,division_id,fixture_id,action,from_at,to_at,reason,actor_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)', [l.season_id, l.division_id, f.id, i.postpone ? 'postponed' : f.status === 'postponed' ? 'restored' : 'rescheduled', f.scheduled_at, i.scheduled_at ?? f.scheduled_at, i.reason, user.id]);
       }
       const r = (await c.query(
         `UPDATE comp_fixture_links SET outcome=coalesce($2,outcome), outcome_reason=CASE WHEN $2::text IS NULL THEN outcome_reason ELSE $3 END, outcome_by=CASE WHEN $2::text IS NULL THEN outcome_by ELSE $4 END,
@@ -604,8 +625,19 @@ cap({
 });
 
 // ------------------------------------------------------------------ standings & adjustments
-async function liveTable(c, d, rv) {
+/** Is this division's sport ranked by time / distance / weight / judged score (a meet series) rather than played as two-sided fixtures? */
+export async function sportModel(c, d) {
+  const r = (await c.query('SELECT sp.scoring FROM comp_seasons s JOIN comp_competitions cm ON cm.id=s.competition_id JOIN sports sp ON sp.id=cm.sport_id WHERE s.id=$1', [d.season_id])).rows[0];
+  return tableModelOf(r?.scoring);
+}
+export const isRanked = async (c, d) => (await sportModel(c, d)).model === 'ranked_meets';
+export async function liveTable(c, d, rv) {
   const teams = await acceptedTeams(c, d.id);
+  if (await isRanked(c, d)) {
+    const meets = (await c.query("SELECT rd.id, coalesce(jsonb_agg(jsonb_build_object('team_id', m.team_id, 'position', m.position, 'status', m.status)) FILTER (WHERE m.team_id IS NOT NULL), '[]') AS results FROM comp_rounds rd LEFT JOIN comp_meet_results m ON m.round_id=rd.id WHERE rd.division_id=$1 GROUP BY rd.id", [d.id])).rows;
+    const adj = (await c.query('SELECT team_id, points_delta FROM comp_adjustments WHERE division_id=$1', [d.id])).rows;
+    return { teams, table: computeRankedStandings(teams, meets, rv.rules, adj), fixtures: [] };
+  }
   const fixtures = (await c.query("SELECT f.home_team_id,f.away_team_id,f.status,f.home_score,f.away_score,l.outcome FROM comp_fixture_links l JOIN fixtures f ON f.id=l.fixture_id WHERE l.division_id=$1 AND f.status<>'cancelled'", [d.id])).rows;
   const adj = (await c.query('SELECT team_id, points_delta FROM comp_adjustments WHERE division_id=$1', [d.id])).rows;
   return { teams, table: computeStandings(teams, fixtures, rv.rules, adj), fixtures };
@@ -677,16 +709,20 @@ cap({
       const { s } = await manageSeason(c, user, i.id, { lock: true });
       if (s.status !== 'active') throw conflict('Only an active season can be completed', { code: 'not_active' });
       const open = (await c.query("SELECT count(*)::int AS n FROM comp_fixture_links l JOIN fixtures f ON f.id=l.fixture_id WHERE l.season_id=$1 AND f.status NOT IN ('completed','cancelled') AND l.outcome='played'", [s.id])).rows[0].n;
-      if (open && !i.force) throw conflict(`${open} games are not finished`, { code: 'games_open', open });
+      const ranked = (await sportModel(c, { season_id: s.id })).model === 'ranked_meets';
+      const meetsOpen = ranked ? (await c.query("SELECT count(*)::int AS n FROM comp_rounds rd JOIN comp_divisions d ON d.id=rd.division_id WHERE rd.season_id=$1 AND d.archived_at IS NULL AND NOT EXISTS (SELECT 1 FROM comp_meet_results m WHERE m.round_id=rd.id)", [s.id])).rows[0].n : 0;
+      if ((open + meetsOpen) && !i.force) throw conflict(`${open + meetsOpen} games or meets are not finished`, { code: 'games_open', open: open + meetsOpen });
       const rv = await currentRules(c, s.id);
       const divs = (await c.query('SELECT * FROM comp_divisions WHERE season_id=$1 AND archived_at IS NULL ORDER BY tier, name', [s.id])).rows;
       const tops = [];
       for (const d of divs) {
         const { teams, table } = await liveTable(c, d, rv);
         await c.query('INSERT INTO comp_standing_snapshots(season_id,division_id,rule_version,table_json,members_json,hash,created_by) VALUES ($1,$2,$3,$4,$5,$6,$7)', [s.id, d.id, rv.version, JSON.stringify(table), JSON.stringify(teams), tableHash(table, rv.version), user.id]);
-        if (d.tier === divs[0]?.tier && table[0]?.played > 0) tops.push(table[0].team_id);
+        if (d.tier === divs.find((x) => x.kind !== 'playoff')?.tier && d.kind !== 'playoff' && table[0]?.played > 0) tops.push(table[0].team_id);
       }
-      const champion = tops.length === 1 ? tops[0] : null;           // several top-tier divisions have no single champion until a playoff is recorded
+      // a knockout play-off stage decides the champion when its final has been played; otherwise the single top-tier table does
+      const final = (await c.query("SELECT f.winner_team_id FROM comp_divisions d JOIN comp_fixture_links l ON l.division_id=d.id JOIN fixtures f ON f.id=l.fixture_id WHERE d.season_id=$1 AND d.stage_format='knockout' AND f.round_kind='final' AND f.status='completed' AND f.winner_team_id IS NOT NULL ORDER BY f.scheduled_at DESC LIMIT 1", [s.id])).rows[0];
+      const champion = final?.winner_team_id ?? (tops.length === 1 ? tops[0] : null);           // several top-tier divisions have no single champion until a playoff is recorded
       const r = (await c.query("UPDATE comp_seasons SET status='completed', completed_at=now(), champion_team_id=$2 WHERE id=$1 RETURNING *", [s.id, champion])).rows[0];
       await c.query("UPDATE events SET status='completed' WHERE id=$1", [s.event_id]);
       await audit(c, user.id, 'competition.season_complete', 'competition_season', s.id);

@@ -8,7 +8,6 @@ import { hiddenYouth, relationships, requireCoachingConsent, requireRelationship
 import { canSeeYouth, isYouth } from '../youth.js';
 import { canCoachTeam } from './teams.js';
 import { sharedNotes, sharedSummaries } from '../coaching-shared.js';
-import { mirrorClassAttendance } from '../coach-classes.js';
 
 // Coaching journal (issue #269, slice 1): a session record over a canonical source, attendance, structured observations with explicit
 // visibility, and a longitudinal timeline. Nothing here is medical data and nothing here edits a booking, plan, score or match event.
@@ -72,10 +71,10 @@ async function resolveSource(user, i) {
     return { title: i.title ?? x.title, scheduled_at: x.starts_at, sport_id: sp?.id ?? null, team_id: null, athletes: athletes.filter((a) => !hidden.has(a)) };
   }
   if (i.source_type === 'coach_class') {
-    // a class is run by its coach; the roster is the confirmed seats (read live), minus young people the coach may not see
-    const k = await one("SELECT k.id, k.title, k.starts_at, k.sport_id FROM coach_classes k WHERE k.id=$1 AND k.coach_id=$2 AND k.status IN ('scheduled','completed')", [i.source_id, user.id]);
-    if (!k) throw notFound('Class');
-    const athletes = (await many("SELECT user_id FROM coach_class_seats WHERE class_id=$1 AND status='confirmed' ORDER BY queued_at, id", [k.id])).map((r) => r.user_id);
+    // a coach class is run by its coach; the roster is the confirmed seats, read live (a young person only when the coach may see them)
+    const k = await one("SELECT id, title, starts_at, sport_id FROM coach_classes WHERE id::text=$1 AND coach_id=$2 AND status IN ('open','completed')", [i.source_id, user.id]);
+    if (!k) throw notFound('Coach class');
+    const athletes = (await many("SELECT user_id FROM coach_class_seats WHERE class_id=$1 AND status='confirmed' ORDER BY created_at, id", [k.id])).map((r) => r.user_id);
     const hidden = isAdmin(user) ? new Set() : await hiddenYouth(user, athletes);
     return { title: i.title ?? k.title, scheduled_at: k.starts_at, sport_id: k.sport_id, team_id: null, athletes: athletes.filter((a) => !hidden.has(a)) };
   }
@@ -137,7 +136,6 @@ export async function openSession(user, i) {
        ON CONFLICT (coach_id, source_type, source_id) DO UPDATE SET updated_at=coaching_session_records.updated_at RETURNING *`,
       [user.id, src.sport_id, src.team_id, i.source_type, i.source_id, i.title ?? src.title, i.objective, src.scheduled_at])).rows[0];
     for (const a of src.athletes) await c.query('INSERT INTO coaching_session_participants(session_record_id, athlete_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [rec.id, a]);
-    if (i.source_type === 'coach_class') await mirrorClassAttendance(c, i.source_id);
     return rec;
   });
 }
@@ -243,8 +241,8 @@ cap({
     return tx(async (c) => {
       const { rec } = await sessionAccess(user, i.id, 'attendance', c);
       // one attendance fact per academy session: it is taken in the academy session and only mirrored here
+      if (rec.source_type === 'coach_class') throw conflict('Attendance for a coach class is recorded in the class itself; it appears here automatically.');
       if (rec.source_type === 'academy_session') throw conflict('Attendance for an academy session is taken in the academy session itself; it appears here automatically.');
-      if (rec.source_type === 'coach_class') throw conflict('Attendance for a class is taken on the class itself; it appears here automatically.');
       for (const e of i.entries) {
         const r = await c.query(
           `UPDATE coaching_session_participants SET attendance=$3, focus=coalesce($4, focus), updated_at=now(),

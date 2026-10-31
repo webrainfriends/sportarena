@@ -44,7 +44,7 @@ import { hourlyRatingSweep } from './ratings/data.js';
 /** Weekly ranking snapshots: the worker runs often, so only act once a week (Monday UTC), and a rerun on identical results adds nothing. */
 const weeklyRankingSnapshots = () => (new Date().getUTCDay() === 1 ? snapshotAll('weekly') : 0);
 import { syncOpenGames } from './open-games-sweeps.js';
-import { syncCoachClasses } from './coach-class-sweeps.js';
+import { syncCoachClasses } from './coach-classes-sweeps.js';
 import { adSweeps } from './ads/engine.js';
 import { raiseTeamDues } from './team-money.js';
 import { reconcileFinance } from './finance.js';

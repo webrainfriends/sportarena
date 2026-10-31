@@ -1,16 +1,14 @@
-// Browser-driven check of coach-published group classes (#656): phone, tablet and desktop; coach, athletes and a waitlisted athlete.
-// Needs: a throwaway Postgres database (E2E_DATABASE_URL; it is migrated, never dropped here), a same-origin web build
-//   EXPO_PUBLIC_API_URL='' npx expo export --platform web --output-dir <dir>   (E2E_DIST, default /tmp/e2e-dist)
-// and playwright-core (`npm i --no-save playwright-core`) with a Chromium (E2E_CHROMIUM, default the pre-installed one).
-// Payments are switched on with a placeholder Stripe key so a paid seat is HELD and the Pay button shows; nothing is ever charged.
-// It starts the API and a tiny static+proxy server itself. Run: node scripts/e2e/coach-classes-journey.mjs
+// Browser-driven check of coach-published group classes (#656): the coach publishes and runs classes on a phone, tablet and desktop, an athlete sees seat counts only and joins from the coach profile.
+// Same prerequisites as pathway-plan-journey.mjs (throwaway Postgres in E2E_DATABASE_URL, a same-origin web build in E2E_DIST, playwright + Chromium). Run: node scripts/e2e/coach-classes-journey.mjs
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import { chromium } from 'playwright-core';
+import { createRequire } from 'node:module';
+const { chromium } = createRequire('/opt/node-tools/')('playwright');
+import pg from 'pg';
 const E = { DATABASE_URL: process.env.E2E_DATABASE_URL ?? 'postgres://postgres@127.0.0.1:5432/sportarena_e2e', SPORTARENA_MASTER_KEY: Buffer.alloc(32, 7).toString('base64'), SPORTARENA_JWT_SECRET: Buffer.alloc(32, 9).toString('base64'),
-  PORT: '4000', APP_URL: 'http://localhost:4100', CORS_ORIGINS: 'http://localhost:4100', PLATFORM_APPROVALS: 'off', RATE_LIMIT_DISABLED: 'true', STRIPE_SECRET_KEY: 'sk_test_preview_only' };
+  PORT: '4000', APP_URL: 'http://localhost:4100', CORS_ORIGINS: 'http://localhost:4100', PLATFORM_APPROVALS: 'off', RATE_LIMIT_DISABLED: 'true' };
 const OUT = (process.env.E2E_SHOTS ?? '/tmp/e2e-shots') + '/'; fs.mkdirSync(OUT, { recursive: true });
 const log = (...a) => console.log(...a);
 const api = spawn('node', ['src/server.js'], { cwd: new URL('../../apps/api/', import.meta.url).pathname, env: { ...process.env, ...E }, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -18,111 +16,93 @@ api.stdout.on('data', (d) => process.env.V && log('[api]', String(d).trim())); a
 for (let i = 0; i < 60; i++) { try { if ((await fetch('http://127.0.0.1:4000/api/v1/payments/methods')).ok) break; } catch {} await new Promise((r) => setTimeout(r, 1000)); }
 const DIST = process.env.E2E_DIST ?? '/tmp/e2e-dist';
 const web = http.createServer((req, res) => {
-  if (req.url.startsWith('/api') || req.url.startsWith('/mcp')) {
-    const p = http.request({ host: '127.0.0.1', port: 4000, path: req.url, method: req.method, headers: req.headers }, (r) => { res.writeHead(r.statusCode, r.headers); r.pipe(res); });
-    p.on('error', () => { res.writeHead(502); res.end(); }); req.pipe(p); return;
-  }
+  if (req.url.startsWith('/api') || req.url.startsWith('/mcp')) { const p = http.request({ host: '127.0.0.1', port: 4000, path: req.url, method: req.method, headers: req.headers }, (r) => { res.writeHead(r.statusCode, r.headers); r.pipe(res); }); req.pipe(p); return; }
   let f = path.join(DIST, decodeURIComponent(req.url.split('?')[0])); if (!fs.existsSync(f) || fs.statSync(f).isDirectory()) f = path.join(DIST, 'index.html');
   const ext = path.extname(f); res.writeHead(200, { 'content-type': { '.js': 'text/javascript', '.html': 'text/html', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.ttf': 'font/ttf', '.ico': 'image/x-icon' }[ext] ?? 'application/octet-stream' }); fs.createReadStream(f).pipe(res);
 });
 await new Promise((r) => web.listen(4100, r));
 const B = 'http://localhost:4100/api/v1';
-const call = async (method, p, { token, body } = {}) => { const r = await fetch(`http://127.0.0.1:4000/api/v1${p}`, { method, headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) }, body: body ? JSON.stringify(body) : undefined }); const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(`${method} ${p} -> ${r.status} ${JSON.stringify(j)}`); return j; };
-const stamp = Date.now().toString(36);
-const reg = async (name, roles) => { const handle = `${name.toLowerCase().replace(/\W/g, '')}${stamp}`; const r = await call('POST', '/auth/register', { body: { handle, display_name: name, email: `${handle}@example.com`, password: 'correct-horse-battery', roles } }); return { ...r.user, token: r.token, email: `${handle}@example.com` }; };
+const call = async (method, p, { token, body } = {}) => { const r = await fetch(`http://127.0.0.1:4000/api/v1${p}`, { method, headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) }, body: body ? JSON.stringify(body) : undefined }); const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(`${method} ${p} ${r.status} ${JSON.stringify(j)}`); return j; };
+const reg = async (h, name, roles = ['athlete']) => { const r = await call('POST', '/auth/register', { body: { handle: h, display_name: name, email: `${h}@example.com`, password: 'correct-horse-battery', roles } }); return { ...r.user, token: r.token, email: `${h}@example.com` }; };
+const db = new pg.Pool({ connectionString: E.DATABASE_URL });
 let failures = 0; const check = (ok, msg) => { log(`${ok ? 'PASS' : 'FAIL'}  ${msg}`); if (!ok) failures++; };
-const at = (n, h) => { const d = new Date(Date.now() + n * 864e5); d.setUTCHours(h, 0, 0, 0); return d.toISOString(); };
-const VIEWPORTS = [['phone', { width: 390, height: 844 }], ['tablet', { width: 820, height: 1180 }], ['desktop', { width: 1280, height: 900 }]];
-let browser;
+const day = (n) => { const d = new Date(); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+const key = () => `e2e-${Math.random().toString(36).slice(2)}${Date.now()}`;
+const wait = (p, ms = 1200) => p.waitForTimeout(ms);
+
+const R = Date.now().toString(36); // handles are unique per run: the throwaway database is never reset
+const inH = (h) => new Date(Date.now() + h * 36e5).toISOString();
 try {
-  browser = await chromium.launch({ executablePath: process.env.E2E_CHROMIUM ?? fs.globSync('/opt/pw-browsers/chromium-*/chrome-linux*/chrome')[0], args: ['--no-sandbox'] });
-  const session = async (who, viewport, locale) => {
+  const coach = await reg(`cc_c${R}`, 'Coach Meera', ['coach']), mgr = await reg(`cc_m${R}`, 'Venue Admin', ['venue_manager']);
+  const people = []; for (const [i, nm] of ['Asha Rao', 'Dev Patel', 'Isha Nair', 'Kabir Shah', 'Lena Roy'].entries()) people.push(await reg(`cc_p${i}${R}`, nm));
+  const joiners = {}; for (const v of ['phone', 'tablet', 'desktop']) joiners[v] = await reg(`cc_j${v[0]}${R}`, 'Mira Kapoor');
+  await call('POST', '/me/sport-profiles', { token: coach.token, body: { sport: 'badminton', role: 'coach', level: 'pro', hourly_rate_cents: 80000 } });
+  await call('POST', '/me/sport-profiles', { token: coach.token, body: { sport: 'football', role: 'coach', level: 'pro', hourly_rate_cents: 80000 } });
+  const venue = await call('POST', '/venues', { token: mgr.token, body: { name: `Smash Arena ${R}`, city: 'Pune', timezone: 'Asia/Kolkata', latitude: 18.52, longitude: 73.85 } });
+  const card = (b) => call('POST', '/coach/rate-cards', { token: coach.token, body: { audience: 'group', unit: 'session', duration_min: 60, per_person: true, min_participants: 2, max_participants: 8, delivery: 'both', ...b } });
+  const badm = await card({ title: 'Badminton footwork clinic', sport: 'badminton', price_cents: 45000 });
+  const foot = await card({ title: 'Five-a-side passing', sport: 'football', price_cents: 0 });
+  const k1 = await call('POST', '/coach/classes', { token: coach.token, body: { rate_card_id: badm.id, starts_at: inH(30), venue_id: venue.id, max_participants: 6, min_participants: 3, skill_min: 'beginner', skill_max: 'amateur', notes: 'Bring non-marking shoes. Shuttles provided.' } });
+  const k2 = await call('POST', '/coach/classes', { token: coach.token, body: { rate_card_id: foot.id, starts_at: inH(76), online_url: 'https://meet.example.com/passing', max_participants: 8, min_participants: 2, title: 'Passing patterns (online walkthrough)' } });
+  for (const p of people.slice(0, 5)) await call('POST', `/coach/classes/${k1.id}/join`, { token: p.token, body: {} });
+  await call('POST', `/coach/classes/${k2.id}/join`, { token: people[0].token, body: {} });
+  check(!!k1.id && !!k2.id, 'a coach, a venue, two group rate cards and two published classes with joined athletes exist (API)');
+
+  const browser = await chromium.launch({ executablePath: process.env.E2E_CHROMIUM ?? fs.globSync('/opt/pw-browsers/chromium-*/chrome-linux*/chrome')[0], args: ['--no-sandbox'] });
+  const session = async (who, viewport) => {
     const ctx = await browser.newContext({ viewport, deviceScaleFactor: 1 }); const page = await ctx.newPage();
-    if (locale) await ctx.addInitScript((l) => { try { localStorage.setItem('locale', l); } catch {} }, locale);
     page.on('pageerror', (e) => log('[pageerror]', e.message));
-    const r = await ctx.request.post(`${B}/auth/login`, { headers: { 'x-sa-client': 'web', origin: 'http://localhost:4100' }, data: { email: who.email, password: 'correct-horse-battery' } }); if (!r.ok()) throw new Error(`login ${r.status()}`);
+    const r = await ctx.request.post(`${B}/auth/login`, { headers: { 'x-sa-client': 'web', origin: 'http://localhost:4100' }, data: { email: who.email, password: 'correct-horse-battery' } }); if (!r.ok()) throw new Error('login failed');
+    await page.goto('http://localhost:4100/'); await page.waitForTimeout(2500);
     return { ctx, page };
   };
-  const open = async (who, vp, target, locale) => { const s = await session(who, vp, locale); await s.page.goto(`http://localhost:4100/?open=${target}`); await s.page.waitForTimeout(3500); return s; };
-  const shot = (page, n, full = true) => page.screenshot({ path: `${OUT}${n}.png`, fullPage: full });
+  const shot = (page, n) => page.screenshot({ path: `${OUT}${n}.png`, fullPage: false });
+  const vis = async (p, t, ms = 5000) => { try { await p.getByText(t).first().waitFor({ state: 'visible', timeout: ms }); return true; } catch { return false; } };
+  const navTo = async (p, name, params = {}) => {
+    await p.evaluate(({ name, params }) => {
+      if (!window.__nav) {
+        const root = document.getElementById('root') ?? document.body.firstElementChild;
+        const key = Object.keys(root).find((k) => k.startsWith('__reactContainer'));
+        const todo = [root[key]];
+        while (todo.length && !window.__nav) { const n = todo.pop(); const v = n.memoizedProps?.value; if (v && typeof v.push === 'function' && typeof v.goTab === 'function') { window.__nav = v; break; } if (n.sibling) todo.push(n.sibling); if (n.child) todo.push(n.child); }
+      }
+      window.__nav.push(name, params);
+    }, { name, params });
+    await wait(p, 2200);
+  };
+  const VIEWS = { phone: { width: 390, height: 844 }, tablet: { width: 820, height: 1180 }, desktop: { width: 1360, height: 860 } };
 
-  // real people, a real rate card and real classes: the same calls the forms make
-  const coach = await reg('Coach Rohan', ['coach']);
-  const [aarav, meera, kabir, isha, dev] = [await reg('Aarav', ['athlete']), await reg('Meera', ['athlete']), await reg('Kabir', ['athlete']), await reg('Isha', ['athlete']), await reg('Dev', ['athlete'])];
-  await call('POST', '/me/sport-profiles', { token: coach.token, body: { sport: 'football', role: 'coach', level: 'pro', hourly_rate_cents: 60000 } });
-  const card = await call('POST', '/coach/rate-cards', { token: coach.token, body: { title: 'Small-group football', sport: 'football', audience: 'group', delivery: 'both', unit: 'session', duration_min: 60, price_cents: 60000, per_person: true, min_participants: 2, max_participants: 8 } });
-  const free = await call('POST', '/coach/rate-cards', { token: coach.token, body: { title: 'Open footwork clinic', sport: 'football', audience: 'group', unit: 'session', duration_min: 45, price_cents: 0, per_person: true, min_participants: 1, max_participants: 3 } });
-  const pub = async (cardId, body) => (await call('POST', '/coach/classes', { token: coach.token, body: { rate_card_id: cardId, ...body } })).classes[0];
-  const paid = await pub(card.id, { title: 'Passing & movement', starts_at: at(3, 12), location: 'Riverside ground', max_participants: 6, min_participants: 3, cutoff_hours: 12, notes: 'Bring boots and a water bottle. We work in small passing triangles.' });
-  const full = await pub(free.id, { title: 'Footwork clinic', starts_at: at(4, 13), location: 'Riverside ground', max_participants: 3, min_participants: 1 });
-  const online = await pub(card.id, { title: 'Tactics review (online)', delivery: 'online', online_link: 'https://meet.example.com/tactics-review', starts_at: at(5, 14), max_participants: 8, min_participants: 2 });
-  const pg = new (await import('pg')).default.Pool({ connectionString: E.DATABASE_URL });
-  // athletes join: the paid class holds seats (payment pending); the free clinic fills up and Dev queues
-  for (const u of [aarav, meera]) await call('POST', `/coach-classes/${paid.id}/join`, { token: u.token, body: {} });
-  for (const u of [aarav, meera, kabir]) await call('POST', `/coach-classes/${full.id}/join`, { token: u.token, body: {} });
-  const w = await call('POST', `/coach-classes/${full.id}/join`, { token: dev.token, body: {} });
-  check(w.status === 'waitlisted', 'a full class puts the next person on the waitlist');
-  // two seats on the paid class are already paid (throwaway database; real payments settle through canonical payments, covered by the API tests)
-  await pg.query("UPDATE coach_class_seats SET status='confirmed', payment_status='paid', pay_by=NULL WHERE class_id=$1 AND user_id=$2", [paid.id, meera.id]);
-  const held = (await call('GET', `/coach-classes/${paid.id}`, { token: aarav.token })).my_seats[0];
-  check(held.status === 'held' && held.pay_by, 'a paid class holds the seat with a payment deadline');
-  // a class that has started, to show attendance
-  const done = await pub(free.id, { title: 'Early footwork session', starts_at: at(9, 7), location: 'Riverside ground', max_participants: 3, min_participants: 1 });
-  await call('POST', `/coach-classes/${done.id}/join`, { token: isha.token, body: {} }); await call('POST', `/coach-classes/${done.id}/join`, { token: kabir.token, body: {} });
-  await pg.query("UPDATE coach_classes SET starts_at = now() - interval '20 minutes', cutoff_at = now() - interval '3 hours' WHERE id=$1", [done.id]);
-
-  for (const [vn, vp] of VIEWPORTS) {
-    // 1 athlete: the Classes segment of Hire
-    const a = await session(aarav, vp); await a.page.goto('http://localhost:4100/'); await a.page.waitForTimeout(2500);
-    await a.page.getByText('Calendar', { exact: true }).first().click(); await a.page.waitForTimeout(1500);
-    await a.page.getByText('Hire a coach').first().click(); await a.page.waitForTimeout(1800);
-    await a.page.getByText('Classes', { exact: true }).first().click(); await a.page.waitForTimeout(2200);
-    await shot(a.page, `coach-classes-01-find-${vn}`);
-    check(await a.page.getByText('Passing & movement').first().isVisible(), `${vn}: the Classes segment lists the coach's classes with seats`);
-    await a.ctx.close();
-    // 2 athlete: a held seat with the payment deadline and the Pay button
-    const h = await open(aarav, vp, `coach-class:${paid.id}`); await shot(h.page, `coach-classes-02-held-${vn}`);
-    check(await h.page.getByText(/Pay ₹/).first().isVisible() && await h.page.getByText(/Needs 2 more people/).first().isVisible(), `${vn}: held seat shows Pay and how many more people the class needs`);
-    await h.ctx.close();
-    // 3 athlete on the waitlist
-    const q = await open(dev, vp, `coach-class:${full.id}`); await shot(q.page, `coach-classes-03-waitlist-${vn}`);
-    check(await q.page.getByText(/On the waitlist/).first().isVisible(), `${vn}: a full class shows the waitlist position`);
-    await q.ctx.close();
-    // 4 coach: all classes
-    const k = await open(coach, vp, 'coach-classes'); await shot(k.page, `coach-classes-04-coach-list-${vn}`);
-    check(await k.page.getByText('Court needed').first().isVisible(), `${vn}: the coach's list flags classes that still need a court`);
-    check(await k.page.getByText('Footwork clinic').first().isVisible(), `${vn}: the coach sees every class with seats`);
-    // 5 coach: publish sheet
-    await k.page.getByText('+ Publish a class').first().click(); await k.page.waitForTimeout(1200);
-    const pick = k.page.getByText('Small-group football').first(); if (await pick.isVisible().catch(() => false)) { await pick.click(); await k.page.getByText('Next', { exact: true }).first().click(); await k.page.waitForTimeout(1500); }
-    await shot(k.page, `coach-classes-05-publish-${vn}`, false);
-    await k.ctx.close();
-    // 6 coach: roster with payment state, and a started class with attendance
-    const r = await open(coach, vp, `coach-class:${paid.id}`); await shot(r.page, `coach-classes-06-roster-${vn}`);
-    check(await r.page.getByText(/Who is coming/).first().isVisible() && await r.page.getByText('Cancel class').first().isVisible(), `${vn}: the coach sees who is coming and can cancel`);
-    check(await r.page.getByText('Book a court for this class').first().isVisible() && await r.page.getByText('No court booked yet').first().isVisible(), `${vn}: an in-person class without a court offers Book a court`);
-    await r.ctx.close();
-    const t = await open(coach, vp, `coach-class:${done.id}`); await shot(t.page, `coach-classes-07-attendance-${vn}`);
-    check(await t.page.getByText('Attended').first().isVisible() && await t.page.getByText('No-show').first().isVisible(), `${vn}: a started class offers attendance`);
-    await t.page.getByText('No-show').first().click(); await t.page.waitForTimeout(1500);
-    check((await pg.query("SELECT count(*)::int AS n FROM coach_class_seats WHERE class_id=$1 AND attendance='no_show'", [done.id])).rows[0].n === 1, `${vn}: tapping No-show records it`);
-    await pg.query("UPDATE coach_class_seats SET attendance=NULL WHERE class_id=$1", [done.id]);
-    await t.ctx.close();
+  for (const [name, vp] of Object.entries(VIEWS)) {
+    // the coach's desk, then one class with its seat list
+    const { ctx, page: p } = await session(coach, vp);
+    await navTo(p, 'CoachClasses');
+    check(await vis(p, 'My classes') && await vis(p, 'Badminton footwork clinic') && await vis(p, 'Last seats'), `${name}: the coach desk lists published classes with live seat counts`);
+    await shot(p, `cls-01-coach-desk-${name}`);
+    await p.getByText('Badminton footwork clinic', { exact: false }).first().click(); await wait(p, 1500);
+    check(await vis(p, 'Attendance') && await vis(p, 'Asha Rao'), `${name}: the coach sees who joined and can cancel the class`);
+    await shot(p, `cls-02-coach-class-${name}`);
+    await p.keyboard.press('Escape'); await ctx.close();
   }
-  // 7 online link only for a confirmed seat
-  const iseat = await call('POST', `/coach-classes/${online.id}/join`, { token: isha.token, body: {} });
-  check(iseat.status === 'held', 'a paid online seat is held until it is paid, and the link stays hidden');
-  await pg.query("UPDATE coach_class_seats SET status='confirmed', payment_status='paid', pay_by=NULL WHERE id=$1", [iseat.seat_id]);   // as if the payment settled
-  const o = await open(isha, VIEWPORTS[0][1], `coach-class:${online.id}`); await shot(o.page, 'coach-classes-08-online-phone');
-  check(await o.page.getByText('Open the class link').first().isVisible(), 'a confirmed seat reveals the online link');
-  // 8 languages: the same held seat in Urdu (right-to-left) and Tamil, from the machine-drafted packs
-  const ur = await open(aarav, VIEWPORTS[0][1], `coach-class:${paid.id}`, 'ur-PK'); await shot(ur.page, 'coach-classes-09-urdu-rtl-phone');
-  check(await ur.page.evaluate(() => document.documentElement.dir) === 'rtl', 'Urdu switches the page to right-to-left');
-  check(await ur.page.getByText('سیٹ برقرار رکھنے کے لیے ادائیگی کریں').first().isVisible(), 'the held-seat card is in Urdu');
-  await ur.ctx.close();
-  const ta = await open(coach, VIEWPORTS[1][1], 'coach-classes', 'ta-IN'); await shot(ta.page, 'coach-classes-10-tamil-tablet');
-  check(await ta.page.getByText('உங்கள் வகுப்புகள்').first().isVisible(), 'the coach list is in Tamil');
-  await ta.ctx.close();
-} catch (e) { log('ERROR', e.stack); failures++; }
-finally { await browser?.close(); api.kill(); web.close(); }
-log(failures ? `${failures} FAILED` : 'ALL PASSED'); process.exit(failures ? 1 : 0);
+  for (const [name, vp] of Object.entries(VIEWS)) {
+    // an athlete on the coach's profile: classes with seat counts only, then the join sheet
+    const { ctx, page: p } = await session(joiners[name], vp);
+    await navTo(p, 'CoachProfile', { id: coach.id });
+    check(await vis(p, 'Upcoming classes') && await vis(p, 'Badminton footwork clinic'), `${name}: the coach profile shows upcoming classes`);
+    await shot(p, `cls-03-profile-${name}`);
+    await p.getByText('Badminton footwork clinic', { exact: false }).first().click(); await wait(p, 1500);
+    check(await vis(p, 'Join'), `${name}: an athlete can join (or join the waitlist once full) from the class sheet`);
+    check(!(await p.getByText('Dev Patel').count()), `${name}: other participants are never named to an athlete`);
+    await shot(p, `cls-04-join-${name}`);
+    if (name === 'phone') { await p.getByText('Join class', { exact: true }).first().click(); await wait(p, 1800); check(await vis(p, 'Leave class'), 'joining takes the last seat and offers Leave class'); await shot(p, 'cls-05-joined-phone'); }
+    await ctx.close();
+  }
+  {
+    const { ctx, page: p } = await session(coach, VIEWS.phone);
+    await navTo(p, 'CoachClasses');
+    await p.getByText('Publish a class', { exact: true }).first().click(); await wait(p, 1500);
+    check(await vis(p, 'Rate card') && await vis(p, 'Seats'), 'the publish form uses chips, a date-time picker, venue search and steppers');
+    await shot(p, 'cls-06-publish-phone'); await ctx.close();
+  }
+  await browser.close();
+} catch (e) { log('ERROR', e.message); failures++; } finally { await db.end().catch(() => {}); api.kill(); web.close(); }
+process.exit(failures ? 1 : 0);

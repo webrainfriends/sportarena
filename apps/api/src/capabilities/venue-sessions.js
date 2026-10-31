@@ -17,17 +17,13 @@ import { expandDates, patternFields } from '../recurrence.js';
 import { fromLocal, hhmm } from '../booking/time.js';
 import { config } from '../config.js';
 import { hasVenue, isParty, loadSessions, sessionsOf } from '../session-links.js';
-import { onClassVenueHeld } from '../coach-classes.js';
 
 const TAG = 'Venue sessions';
-const ref = z.object({ type: z.enum(['coach_hire', 'training_session', 'coach_class']), id, resource_id: id.optional().describe('a different court for this session') });
+const ref = z.object({ type: z.enum(['coach_hire', 'training_session']), id, resource_id: id.optional().describe('a different court for this session') });
 const basketExtras = { promo_codes: z.array(z.string().min(1).max(30)).max(5).default([]), note: z.string().max(300).optional(), team_id: id.optional(), on_conflict: z.enum(['skip', 'fail']).default('skip') };
 
 const releaseStale = (c, type, sid) => c.query("UPDATE session_venue_links SET released_at=now(), release_reason='venue booking cancelled' WHERE session_type=$1 AND session_id=$2 AND released_at IS NULL", [type, sid]);
-const link = async (c, { reservationId, bookingId, s, userId }) => {
-  await c.query('INSERT INTO session_venue_links(reservation_id, booking_id, session_type, session_id, linked_by) VALUES ($1,$2,$3,$4,$5)', [reservationId, bookingId, s.type, s.id, userId]);
-  if (s.type === 'coach_class') await onClassVenueHeld(c, s.id, bookingId);   // the class now names the venue that holds it
-};
+const link = (c, { reservationId, bookingId, s, userId }) => c.query('INSERT INTO session_venue_links(reservation_id, booking_id, session_type, session_id, linked_by) VALUES ($1,$2,$3,$4,$5)', [reservationId, bookingId, s.type, s.id, userId]);
 const label = (s, userId) => (s.title ?? (s.audience !== 'individual' && s.team_name ? `${s.team_name} coaching` : `Session with ${s.coach_id === userId ? s.athlete_name : s.coach_name}`));
 
 /** Tell the other side of each session where it will be held. One message per person. */

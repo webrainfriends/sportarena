@@ -9,11 +9,7 @@ export const SESSION_SQL = `
   UNION ALL
   SELECT 'training_session', t.id, t.starts_at, t.starts_at + t.duration_min * interval '1 minute', t.duration_min, p.coach_id, p.athlete_id, p.sport_id,
          t.status = 'scheduled', t.status, 'individual', 1, NULL::uuid, t.title
-    FROM training_sessions t JOIN training_plans p ON p.id = t.plan_id
-  UNION ALL
-  SELECT 'coach_class', k.id, k.starts_at, k.starts_at + k.duration_min * interval '1 minute', k.duration_min, k.coach_id, k.coach_id, k.sport_id,
-         k.status = 'scheduled', k.status, 'group', k.max_participants, NULL::uuid, k.title
-    FROM coach_classes k WHERE k.delivery = 'in_person'`;
+    FROM training_sessions t JOIN training_plans p ON p.id = t.plan_id`;
 
 const LIVE_LINK = `
   LEFT JOIN LATERAL (
@@ -29,9 +25,8 @@ const COLS = `s.*, uc.display_name AS coach_name, ua.display_name AS athlete_nam
 
 /** Sessions by reference, keyed `type:id`, with their live venue link (if any). */
 export async function loadSessions(refs, db = pool) {
-  const ids = (type) => refs.filter((r) => r.type === type).map((r) => r.id);
-  const hires = ids('coach_hire'), plans = ids('training_session'), classes = ids('coach_class');
-  const { rows } = await db.query(`SELECT ${COLS} FROM (${SESSION_SQL}) s ${NAMES} ${LIVE_LINK} WHERE (s.type = 'coach_hire' AND s.id = ANY($1::uuid[])) OR (s.type = 'training_session' AND s.id = ANY($2::uuid[])) OR (s.type = 'coach_class' AND s.id = ANY($3::uuid[]))`, [hires, plans, classes]);
+  const hires = refs.filter((r) => r.type === 'coach_hire').map((r) => r.id), plans = refs.filter((r) => r.type === 'training_session').map((r) => r.id);
+  const { rows } = await db.query(`SELECT ${COLS} FROM (${SESSION_SQL}) s ${NAMES} ${LIVE_LINK} WHERE (s.type = 'coach_hire' AND s.id = ANY($1::uuid[])) OR (s.type = 'training_session' AND s.id = ANY($2::uuid[]))`, [hires, plans]);
   return new Map(rows.map((r) => [`${r.type}:${r.id}`, r]));
 }
 

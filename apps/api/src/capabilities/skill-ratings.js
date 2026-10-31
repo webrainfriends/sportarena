@@ -7,7 +7,7 @@ import { notFound } from '../errors.js';
 import { audit, isAdmin, sportBySlugOrId } from '../helpers.js';
 import { NOT_YOUTH_SQL } from '../youth.js';
 import { MODELS, describeModel, modelOf } from '../ratings/models.js';
-import { ratingsOf, historyOf, recomputeSport, recomputeAll } from '../ratings/data.js';
+import { ratingsOf, historyOf, changeOf, recomputeSport, recomputeAll } from '../ratings/data.js';
 import { LEVEL_BUCKETS, RELIABLE_RD, OUTCOME_WEIGHT, bucketOf } from '../ratings/engine.js';
 
 const TAG = 'Skill ratings';
@@ -68,6 +68,30 @@ cap({
     const h = await historyOf(i.user_id, sport.id, { ledger, limit: i.limit, offset: i.offset });
     const [current] = await ratingsOf(i.user_id, { sportId: sport.id });
     return { sport: { slug: sport.slug, name: sport.name }, model: describeModel(modelOf(sport)), current: current ?? null, evidence_visible: ledger, total: h.total, history: h.points };
+  },
+});
+
+const explainText = (c) => {
+  const chance = `${c.expected_win_chance}% chance of winning`;
+  const move = c.delta > 0 ? `rose by ${c.delta.toFixed(2)}` : c.delta < 0 ? `fell by ${Math.abs(c.delta).toFixed(2)}` : 'did not move';
+  const surprise = c.result === 'win' ? (c.expected_win_chance < 50 ? 'a win against the odds, which counts for more' : 'a win that was expected, which counts for less')
+    : c.result === 'loss' ? (c.expected_win_chance >= 50 ? 'a loss that was not expected, which costs more' : 'a loss that was expected, which costs less') : 'a draw';
+  return `Going in you had a ${chance} against an opposing level of ${c.opponent_level.toFixed(1)}. The result was ${surprise}, so your level ${move} (${c.level_before.toFixed(1)} to ${c.level_after.toFixed(1)}).`;
+};
+
+cap({
+  name: 'explain_skill_rating_change', method: 'GET', path: '/ratings/players/:user_id/:sport/games/:game_id', tag: TAG, auth: 'user',
+  summary: 'Why one verified game moved a level: the result, the chance of winning going in, the opposing level and the movement, in plain words. Only the player themselves (and an admin) can see it; anyone else gets a 404 so nothing leaks. The audit log records an admin read.',
+  input: z.object({ user_id: id, sport: z.string(), game_id: id }),
+  async handler({ user }, i) {
+    if (user.id !== i.user_id && !isAdmin(user)) throw notFound('Rating change');
+    await ratedUser(i.user_id);
+    const sport = await sportBySlugOrId(i.sport);
+    if (!sport) throw notFound('Sport');
+    const ch = await changeOf(i.user_id, sport.id, i.game_id);
+    if (!ch) throw notFound('Rating change');
+    if (user.id !== i.user_id) await audit(null, user.id, 'read_rating_evidence', 'skill_rating_changes', i.game_id);
+    return { sport: { slug: sport.slug, name: sport.name }, ...ch, explanation: explainText(ch) };
   },
 });
 

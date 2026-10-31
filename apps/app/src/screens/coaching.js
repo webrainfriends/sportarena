@@ -15,9 +15,8 @@ import { TimelineSheet } from '../Timeline';
 import { SportSelect } from '../sportpicker';
 import { Counter, DateField, DayStrip, HScroll, TimeField } from '../pickers';
 import { NewCaseSheet } from './cases';
-import { ClassesFinder } from './coach-classes';
-import { t } from '../i18n';
 import { SeriesBookingSheet, VenueLine } from './training-venue';
+import { CoachClassList } from './coach-classes';
 import { Grid, PaySheet, Pill, StatusPill, nice, useCols } from './marketplace';
 import { c, grad, toneFor } from '../theme';
 import { dateTimeIn, localDate, localToIso, moneyIn, timeIn, todayIn, WEEKDAYS } from '../vtime';
@@ -121,7 +120,7 @@ export function IconGrid({ items, value, onChange, cols = 4, tint = c.pinkSoft }
 export function CoachToolGrid({ push, counts = {} }) {
   const tools = [
     ['🗂️', 'Desk', 'CoachDesk'], ['📬', 'Request board', 'CoachBoard', counts.board], ['🏃', 'Athletes', 'CoachAthletes'], ['🤝', 'Shared wellness', 'SharedWellness'], ['📄', 'Shared reports', 'SharedSeasonReports'], ['🎬', 'Recruitment', 'PassportDesk'], ['🪪', 'Profile & hours', 'CoachSetup'],
-    ['📅', 'Schedule', 'CoachCalendar'], ['🏫', 'Academy week', 'AcademyAgenda'], ['🏷️', 'Rate cards', 'CoachRates'], ['🎽', t('cc.classes'), 'CoachClasses'], ['📑', 'Commitments', 'CoachCommitments'], ['⭐', 'Reviews', 'CoachReviews', counts.reviews],
+    ['📅', 'Schedule', 'CoachCalendar'], ['🏫', 'Academy week', 'AcademyAgenda'], ['🏷️', 'Rate cards', 'CoachRates'], ['🎽', 'My classes', 'CoachClasses'], ['📑', 'Commitments', 'CoachCommitments'], ['⭐', 'Reviews', 'CoachReviews', counts.reviews],
     ['🧠', 'Performance Studio', 'PerformanceStudio'], ['🧰', 'Drill library', 'CoachDrills'], ['👥', 'Saved groups', 'CoachGroups'], ['📏', 'Rubrics', 'CoachRubrics'], ['📈', 'Analytics', 'CoachAnalytics'], ['📝', 'Training plans', 'MyPlans', null, { as: 'coach' }], ['📍', 'Courts', 'TrainingVenue', counts.courts], ['🔁', 'Recurring booking', 'RecurringVenue'],
   ];
   return (
@@ -490,7 +489,6 @@ export function Hire() {
   const waiting = o?.athlete.requests.new_answers ?? 0, todo = o ? o.athlete.awaiting_payment.length + o.athlete.to_review.length : 0;
   const tabs = [
     { value: 'find', label: 'Find a coach' },
-    { value: 'classes', label: t('cc.classes') },
     { value: 'requests', label: waiting ? `My requests · ${waiting} new` : 'My requests' },
     { value: 'mine', label: todo ? `My coaching · ${todo}` : 'My coaching' },
   ];
@@ -499,7 +497,6 @@ export function Hire() {
       <Head eyebrow="HIRE" title="Build your team around you" sub="Find a coach, or post what you need and let coaches come to you." />
       <View style={{ marginTop: 14 }}><Seg options={tabs} value={tab} onChange={setTab} /></View>
       {tab === 'find' ? <FindCoaches onPost={() => setPost(true)} onBook={setBook} /> : null}
-      {tab === 'classes' ? <ClassesFinder /> : null}
       {tab === 'requests' ? <MyRequests onPost={() => setPost(true)} reloadOverview={ov.reload} /> : null}
       {tab === 'mine' ? (ov.error ? <ErrorBox error={ov.error} onRetry={ov.reload} /> : !o ? <Loading /> : <MyCoaching ov={o} reloadOverview={ov.reload} goFind={() => setTab('find')} goRequests={() => setTab('requests')} />) : null}
       <PostRequestSheet visible={post} onClose={() => setPost(false)} currency={o?.currency} onDone={async () => { await ov.reload(); setTab('requests'); }} />
@@ -554,6 +551,8 @@ export function CoachProfile({ id }) {
           {p.profile.coaching_styles?.length ? <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>{p.profile.coaching_styles.map((k) => <Pill key={k} label={styleName(k).toUpperCase()} />)}</View> : null}
         </Section>
       ) : null}
+
+      <CoachClassList coachId={p.id} />
 
       {p.rate_cards.length ? (
         <Section title="Services & prices">

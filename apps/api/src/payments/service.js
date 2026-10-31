@@ -40,9 +40,9 @@ export async function describePurpose(c, type, id) {
     return h && { payerId: h.payer_id, amount: Number(h.amount), name: `Coaching session with ${h.display_name}`, payable: h.payment_status === 'unpaid' && h.status !== 'cancelled' && Number(h.amount) > 0 };
   }
   if (type === 'coach_class_seat') {
-    // a held seat is payable only inside its window; a youth's guardian (who applied) is the payer
-    const s = await q("SELECT coalesce(s.applied_by, s.user_id) AS payer_id, s.price_cents AS amount, k.currency, s.status, s.payment_status, s.pay_by, k.title, k.status AS class_status FROM coach_class_seats s JOIN coach_classes k ON k.id=s.class_id WHERE s.id=$1 FOR UPDATE OF s");
-    return s && { payerId: s.payer_id, amount: Number(s.amount), currency: s.currency, name: `Class seat · ${s.title}`, payable: s.status === 'held' && s.payment_status === 'unpaid' && s.class_status === 'scheduled' && (!s.pay_by || new Date(s.pay_by) > new Date()) && Number(s.amount) > 0 };
+    // a seat is payable only while it is held (reserved for the payer) and the class is still open
+    const z = await q("SELECT coalesce(z.applied_by, z.user_id) AS payer_id, z.amount_cents AS amount, z.status, k.status AS class_status, k.title, k.currency FROM coach_class_seats z JOIN coach_classes k ON k.id=z.class_id WHERE z.id=$1 FOR UPDATE OF z");
+    return z && { payerId: z.payer_id, amount: Number(z.amount), name: `Class: ${z.title}`, payable: z.status === 'held' && z.class_status === 'open' && Number(z.amount) > 0 };
   }
   if (type === 'appointment') {
     const a = await q("SELECT a.athlete_id AS payer_id, a.fee_cents AS amount, a.currency, a.status, a.payment_status, u.display_name FROM appointments a JOIN users u ON u.id=a.provider_id WHERE a.id=$1 FOR UPDATE OF a");
@@ -125,9 +125,8 @@ async function fulfil(c, type, id, payment) {
     shop_order: "UPDATE shop_orders SET status='placed' WHERE id=$1 AND status='awaiting_payment'",
     shop_checkout: "UPDATE shop_orders SET status='placed' WHERE checkout_id=$1 AND status='awaiting_payment'",
     coach_hire: "UPDATE coach_hires SET payment_status='paid', status=CASE WHEN request_response_id IS NOT NULL AND status='requested' THEN 'confirmed' ELSE status END WHERE id=$1 AND payment_status='unpaid' AND status IN ('requested','confirmed')",
+    coach_class_seat: "UPDATE coach_class_seats SET status='confirmed', payment_status='paid', hold_expires_at=NULL, updated_at=now() WHERE id=$1 AND status='held'",
     insurance_policy: "UPDATE insurance_policies SET status='active' WHERE id=$1 AND status='pending_payment'",
-    // paid inside the window: the held seat becomes a confirmed one. If it lapsed or the class was called off, false => settle() refunds.
-    coach_class_seat: "UPDATE coach_class_seats s SET status='confirmed', payment_status='paid', pay_by=NULL, updated_at=now() FROM coach_classes k WHERE s.id=$1 AND k.id=s.class_id AND s.status='held' AND s.payment_status='unpaid' AND k.status='scheduled' AND (s.pay_by IS NULL OR s.pay_by > now())",
     appointment: "UPDATE appointments SET payment_status='paid', updated_at=now() WHERE id=$1 AND payment_status='unpaid' AND status IN ('requested','confirmed')",
   }[type];
   if (type === 'venue_invoice') return markInvoicePaid(c, id, { method: 'online' });

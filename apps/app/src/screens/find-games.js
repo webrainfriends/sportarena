@@ -7,9 +7,9 @@ import { useNav } from '../nav';
 import { Avatar, Btn, Card as BaseCard, Chip, Empty, ErrorBox, H1, HScroll, Loading, Screen, Seg, T, Tag } from '../ui';
 import { SportSelect } from '../sportpicker';
 import { currentPosition } from '../location';
-import { t } from '../i18n';
 import { c, when } from '../theme';
 import { locale } from '../locale';
+import { t } from '../i18n';
 import { useCols } from './marketplace';
 import { HostGameSheet } from './host-game';
 
@@ -31,9 +31,9 @@ export const STATUS = { confirmed: ['You are in', c.mint], requested: ['Waiting 
 export function Seats({ g }) {
   const n = Math.min(g.max_players, 12), filled = Math.min(g.taken, n);
   return (
-    <View accessible accessibilityLabel={t('seats.a11y', { taken: g.taken, max: g.max_players })} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+    <View accessible accessibilityLabel={`${g.taken} of ${g.max_players} seats taken`} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
       <View style={{ flexDirection: 'row', gap: 4 }}>{Array.from({ length: n }, (_, k) => <View key={k} style={{ width: 11, height: 11, borderRadius: 6, backgroundColor: k < filled ? c.ink : 'transparent', borderWidth: 1.5, borderColor: c.ink }} />)}</View>
-      <T size={13} weight="700" color={g.is_full ? c.red : c.ink}>{g.is_full ? (g.waitlist ? t('seats.full_waiting', { n: g.waitlist }) : t('seats.full')) : g.slots_left === 1 ? t('seats.left_one') : t('seats.left', { n: g.slots_left })}</T>
+      <T size={13} weight="700" color={g.is_full ? c.red : c.ink}>{g.is_full ? `Full${g.waitlist ? ` · ${g.waitlist} waiting` : ''}` : `${g.slots_left} seat${g.slots_left === 1 ? '' : 's'} left`}</T>
     </View>
   );
 }
@@ -57,6 +57,7 @@ export function GameCard({ g, width, onOpen }) {
           <Seats g={g} />
           <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
             <Tag label={g.skill.label} />
+            {g.my_level ? <View accessible accessibilityLabel={t('skill.my_level_a11y', { level: g.my_level.level.toFixed(1) })}><Tag label={t('skill.my_level', { level: g.my_level.level.toFixed(1) })} color={c.mint} /></View> : null}
             {g.audience !== 'adults' ? <Tag label={g.audience === 'youth' ? 'Young players' : 'All ages'} color={c.cyan} /> : null}
             {g.venue_id ? <Tag label={bl} color={bc} /> : null}
             {g.has_team ? <Tag label={`${g.team_emoji ?? ''} ${g.team_name}`.trim()} color={c.sun} /> : null}

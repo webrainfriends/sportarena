@@ -112,6 +112,7 @@ export function describeFormula(v) {
   const win = v.window_days ? ` over the last ${v.window_days} days` : v.window_games ? ` over the last ${v.window_games} games` : '';
   switch (v.formula_kind) {
     case 'team_form': return `Points per game${win} (win/draw/loss points from each event), ties broken by goal difference per game, then more games.`;
+    case 'rating': return `Verified skill level (1.0–7.0) from approved competition results only${win}; only reliable levels are ranked, ties broken by who reached it first, then more games.`;
     case 'per_90': return `${v.metric} per 90 verified minutes played${win}: total ${v.metric} ÷ total verified minutes × 90.`;
     case 'per_match': return `${v.metric} per match${win}: total ${v.metric} ÷ number of matches.`;
     default: return `${{ best: v.direction === 'lower' ? 'Lowest' : 'Highest', sum: 'Total', mean: 'Average', last: 'Most recent' }[v.aggregation]} ${v.metric}${win}.`;

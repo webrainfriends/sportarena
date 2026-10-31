@@ -175,13 +175,11 @@ async function clashesOf(coachId, c) {
   const mine = occurrences(c, from, to);
   if (!mine.length) return [];
   const hires = await many("SELECT id, starts_at, duration_min FROM coach_hires WHERE coach_id=$1 AND status IN ('requested','confirmed') AND starts_at >= $2::date AND starts_at < $3::date + 1", [coachId, from, to]);
-  const classes = await many("SELECT id, starts_at, duration_min FROM coach_classes WHERE coach_id=$1 AND status='scheduled' AND starts_at >= $2::date AND starts_at < $3::date + 1", [coachId, from, to]);
   const others = (await many("SELECT * FROM coach_commitments WHERE coach_id=$1 AND status='active' AND id <> $2 AND starts_on <= $3::date AND (ends_on IS NULL OR ends_on >= $4::date)", [coachId, c.id, to, from])).map(plain);
   const out = [];
   for (const o of mine) {
     const a = +new Date(o.starts_at), b = +new Date(o.ends_at);
     for (const h of hires) if (a < +new Date(h.starts_at) + h.duration_min * 60_000 && +new Date(h.starts_at) < b) out.push({ on_date: o.on_date, with: 'session', id: h.id });
-    for (const h of classes) if (a < +new Date(h.starts_at) + h.duration_min * 60_000 && +new Date(h.starts_at) < b) out.push({ on_date: o.on_date, with: 'class', id: h.id });
     for (const x of others) for (const y of occurrences(x, o.on_date, o.on_date)) if (a < +new Date(y.ends_at) && +new Date(y.starts_at) < b) out.push({ on_date: o.on_date, with: 'commitment', id: x.id });
   }
   return out;
