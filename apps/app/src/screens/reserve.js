@@ -20,7 +20,7 @@ import { NewCaseSheet } from './cases';
 import { AttachSessionsSheet } from './training-venue';
 import { currentDevice, disablePush, enablePush, pushSupport } from '../push';
 import { KIND } from './book';
-import { InboxList } from './command-centre';
+import { QuietHoursCard } from './inbox';
 import { addDays, dateTimeIn, dayLabel, fmtMin, localDate, hoursSummary, localToIso, moneyIn, offerLabel, timeIn, todayIn } from '../vtime';
 import { locale } from '../locale';
 
@@ -559,6 +559,7 @@ export function Notifications() {
           </Card>
         ) : <Loading />}
       </Section>
+      <Section title="Quiet hours and urgent notices" color={c.violet}>{p ? <QuietHoursCard prefs={p} onChange={setPref} /> : <Loading />}</Section>
       <Section title="Push" color={c.violet}><PushCard /></Section>
       <Section title="WhatsApp" color={c.lime}><WhatsAppCard onChanged={prefs.reload} /></Section>
       <Section title="SMS" color={c.lime}><SmsCard onChanged={prefs.reload} /></Section>
