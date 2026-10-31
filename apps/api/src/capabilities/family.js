@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { cap, id } from '../registry.js';
 import { many } from '../db.js';
 import { notFound } from '../errors.js';
-import { PURPOSES, YOUTH_SQL, hasConsent } from '../youth.js';
+import { PURPOSES, SCOPES, YOUTH_SQL, guardiansOf, hasConsent } from '../youth.js';
 import { buildSchedule } from './athlete-schedule.js';
 
 const TAG = 'Family';
@@ -22,7 +22,7 @@ const plus = (d, n) => ymd(new Date(Date.parse(d) + n * 864e5));
 /** Verified dependents of `user`, optionally one of them. Anyone who is not a verified guardian of `childId` gets "not found". */
 export async function dependentsOf(user, childId) {
   const rows = await many(
-    `SELECT u.id, u.handle, u.display_name, u.avatar_emoji, u.avatar_color, u.avatar_url, u.youth_until::text AS independent_on, l.id AS link_id, l.relationship, l.expires_at,
+    `SELECT u.id, u.handle, u.display_name, u.avatar_emoji, u.avatar_color, u.avatar_url, u.youth_until::text AS independent_on, l.id AS link_id, l.scopes, l.relationship, l.expires_at,
             (SELECT count(*)::int FROM guardian_links o WHERE o.child_id=l.child_id AND o.status='active' AND o.revoked_at IS NULL AND (o.expires_at IS NULL OR o.expires_at > now())) AS guardians
        FROM guardian_links l JOIN users u ON u.id=l.child_id
       WHERE l.guardian_id=$1 AND l.status='active' AND l.revoked_at IS NULL AND (l.expires_at IS NULL OR l.expires_at > now()) AND ${YOUTH_SQL}
@@ -53,13 +53,17 @@ function merge(parts) {
 cap({
   name: 'get_family_schedule', method: 'GET', path: '/me/family/schedule', tag: TAG,
   summary: 'One calendar for the household: your own schedule and that of every young person you are a verified guardian of (matches, team sessions, events, training, venue bookings), each item tagged with whose it is and carrying the RSVP state, with a warning when two people have to be in different places at the same time. Health, recovery and imported calendars are never included for a child.',
-  input: z.object({ from: day.optional(), to: day.optional(), child_id: id.optional().describe('Show only this dependent'), include_me: z.coerce.boolean().default(true) }),
+  input: z.object({ from: day.optional(), to: day.optional(), child_id: id.optional().describe('Show only this dependent'), include_me: z.coerce.boolean().default(true), include_entries: z.coerce.boolean().default(false).describe('Also list events a team is merely entered in and nobody has asked the person to answer') }),
   async handler({ user }, i) {
     const kids = await dependentsOf(user, i.child_id);
     const range = { from: i.from, to: i.to };
     const parts = [];
     if (i.include_me && !i.child_id) parts.push({ who: person(user, true), sched: await buildSchedule(user, { ...range, kinds: KID_KINDS }) });
-    for (const k of kids) parts.push({ who: person(k), sched: await buildSchedule({ id: k.id }, { ...range, kinds: KID_KINDS }) });
+    for (const k of kids.filter((x) => (x.scopes ?? SCOPES).includes('calendar'))) parts.push({ who: person(k), sched: await buildSchedule({ id: k.id }, { ...range, kinds: KID_KINDS }) });
+    if (!i.include_entries) {
+      const rows = await asks(parts.map((p) => p.who.id));
+      for (const p of parts) p.sched = { ...p.sched, items: quiet(p.sched.items, rows, p.who.id) };
+    }
     const { items, clashes } = merge(parts);
     const first = parts[0]?.sched;
     return { from: first?.from ?? i.from ?? null, to: first?.to ?? i.to ?? null, people: parts.map((p) => p.who), items, family_clashes: clashes, action_required: items.filter((x) => x.action_required).length };
@@ -71,7 +75,8 @@ const CHARGE = `SELECT ch.id AS charge_id, ch.member_id AS child_id, t.name AS t
                   FROM team_charges ch JOIN team_charge_batches b ON b.id=ch.batch_id JOIN teams t ON t.id=ch.team_id
                  WHERE ch.payer_id=$1 AND ch.member_id = ANY($2::uuid[]) AND ch.status='awaiting_payment' ORDER BY ch.due_on NULLS LAST, ch.created_at LIMIT 200`;
 const ACADEMY = `SELECT ch.id AS charge_id, coalesce(e.user_id, a.athlete_id) AS child_id, o.name AS organisation_name, ch.kind AS title, ch.currency, ch.due_on::text AS due_on, (ch.amount_minor - ch.settled_minor - ch.adjusted_minor)::bigint AS balance_minor,
-                        (ch.due_on IS NOT NULL AND ch.due_on < current_date) AS overdue
+                        (ch.due_on IS NOT NULL AND ch.due_on < current_date) AS overdue,
+                        NOT EXISTS (SELECT 1 FROM pos_sale_lines l JOIN pos_sales s ON s.id=l.sale_id WHERE l.charge_id=ch.id AND s.status='awaiting_payment') AS payable_online
                    FROM academy_charges ch LEFT JOIN org_enrolments e ON e.id=ch.enrolment_id LEFT JOIN academy_applications a ON a.id=ch.application_id JOIN organisations o ON o.id=ch.organisation_id
                   WHERE ch.payer_id=$1 AND ch.status='awaiting_payment' AND coalesce(e.user_id, a.athlete_id) = ANY($2::uuid[]) ORDER BY ch.due_on NULLS LAST, ch.id LIMIT 200`;
 const REGS = `SELECT r.id, r.user_id AS child_id, r.event_id, e.name AS event_name, t.name AS team_name, r.status, r.registration_no FROM reg_registrations r JOIN events e ON e.id=r.event_id JOIN teams t ON t.id=r.team_id
@@ -110,6 +115,22 @@ async function consentStates(childIds) {
   return out;
 }
 
+/** Event-level "entered" items are never answered (nobody asked), so they only add noise: keep an event only when its team actually asked this person. */
+const asks = (ids) => (ids.length ? many("SELECT user_id, team_id, event_id, fixture_id FROM team_attendance WHERE user_id = ANY($1::uuid[]) AND rsvp='pending'", [ids]) : []);
+const asked = (rows, personId, rsvp) => rows.some((a) => a.user_id === personId && a.team_id === rsvp.team_id && (rsvp.fixture_id ? a.fixture_id === rsvp.fixture_id : !a.fixture_id && a.event_id === rsvp.event_id));
+const quiet = (items, rows, personId) => items.filter((x) => !(x.source_type === 'event' && x.rsvp?.value === 'pending' && !asked(rows, personId, x.rsvp)));
+
+/** The primary guardian (verified first) may narrow the other guardians, so they see who those are and what each may do. Everyone else sees nothing of them. */
+async function coGuardians(userId, childIds) {
+  const out = new Map();
+  for (const cid of childIds) {
+    if ((await guardiansOf(cid))[0] !== userId) continue;
+    out.set(cid, await many(`SELECT l.id AS link_id, l.guardian_id, u.display_name, l.scopes FROM guardian_links l JOIN users u ON u.id=l.guardian_id
+                              WHERE l.child_id=$1 AND l.guardian_id<>$2 AND l.status='active' AND l.revoked_at IS NULL AND (l.expires_at IS NULL OR l.expires_at > now()) ORDER BY l.created_at, l.id`, [cid, userId]));
+  }
+  return out;
+}
+
 const sum = (rows) => Object.entries(rows.reduce((m, r) => ({ ...m, [r.currency]: (m[r.currency] ?? 0) + Number(r.balance_minor) }), {})).map(([currency, due_minor]) => ({ currency, due_minor })).sort((a, b) => a.currency.localeCompare(b.currency));
 
 cap({
@@ -120,33 +141,35 @@ cap({
     const kids = await dependentsOf(user, i.child_id);
     const ids = kids.map((k) => k.id);
     const from = ymd(new Date()), to = plus(from, i.days);
-    const [charges, academy, regs, openRegs, trips, teams, consents, unread, asked, scheds] = await Promise.all([
+    const [charges, academy, regs, openRegs, trips, teams, consents, unread, askedRows, scheds, co] = await Promise.all([
       ids.length ? many(CHARGE, [user.id, ids]) : [], ids.length ? many(ACADEMY, [user.id, ids]) : [], ids.length ? many(REGS, [ids]) : [], ids.length ? many(OPEN_REGS, [ids]) : [],
       ids.length ? many(TRIPS, [ids]) : [], ids.length ? many(TEAMS, [ids]) : [], consentStates(ids), many('SELECT count(*)::int AS n FROM notifications WHERE user_id=$1 AND read_at IS NULL', [user.id]),
-      ids.length ? many("SELECT user_id, team_id, event_id, fixture_id FROM team_attendance WHERE user_id = ANY($1::uuid[]) AND rsvp='pending'", [ids]) : [],
+      asks(ids),
       Promise.all(kids.map((k) => buildSchedule({ id: k.id }, { from, to, kinds: KID_KINDS }))),
+      coGuardians(user.id, ids),
     ]);
     const todo = [];
+    const push = (k, scope, t) => todo.push(k.scopes.includes(scope) ? t : { ...t, blocked: 'scope', scope });
     const dependents = kids.map((k, n) => {
       const who = person(k);
       const sched = scheds[n];
       const mine = (rows) => rows.filter((r) => r.child_id === k.id);
       // only a question the team actually asked: the schedule shows 'pending' for every entered event, a pending attendance row means someone asked
-      const wanted = (x) => asked.some((a) => a.user_id === k.id && a.team_id === x.rsvp.team_id && (x.rsvp.fixture_id ? a.fixture_id === x.rsvp.fixture_id : !a.fixture_id && a.event_id === x.rsvp.event_id));
+      const wanted = (x) => asked(askedRows, k.id, x.rsvp);
       const rsvp = sched.items.filter((x) => x.rsvp && x.rsvp.value === 'pending' && wanted(x)).map((x) => ({ title: x.title, context: x.context ?? null, starts_at: x.starts_at, team_id: x.rsvp.team_id, event_id: x.rsvp.event_id, fixture_id: x.rsvp.fixture_id }));
-      const fees = [...mine(charges).map((r) => ({ ...r, source: 'team', purpose: { purpose_type: 'team_charge', purpose_id: r.charge_id } })), ...mine(academy).map((r) => ({ ...r, source: 'academy', purpose: null }))];
+      const fees = [...mine(charges).map((r) => ({ ...r, source: 'team', purpose: { purpose_type: 'team_charge', purpose_id: r.charge_id } })), ...mine(academy).map((r) => ({ ...r, source: 'academy', purpose: r.payable_online ? { purpose_type: 'academy_charge', purpose_id: r.charge_id } : null }))];
       const lapsed = (consents.get(k.id) ?? []).filter((c) => ['expired', 'lapsed'].includes(c.state) || (c.purpose === 'participation' && c.state !== 'active'));
       const awaitingTrips = mine(trips).filter((t) => !t.consent_current);
       const renewal = k.expires_at && new Date(k.expires_at) < new Date(Date.now() + LINK_WARN_DAYS * 864e5);
-      for (const r of rsvp) todo.push({ kind: 'rsvp', person: who, title: `Are ${k.display_name} coming? ${r.title}`, due_at: r.starts_at, action: { type: 'rsvp', child_id: k.id, team_id: r.team_id, event_id: r.event_id, fixture_id: r.fixture_id } });
-      for (const f of fees) todo.push({ kind: 'payment', person: who, title: `${f.title}${f.team_name ? ` · ${f.team_name}` : f.organisation_name ? ` · ${f.organisation_name}` : ''}`, due_at: f.due_on, overdue: f.overdue, amount: { currency: f.currency, minor: Number(f.balance_minor) }, action: { type: 'pay', child_id: k.id, source: f.source, charge_id: f.charge_id, purpose: f.purpose } });
-      for (const o of mine(openRegs)) todo.push({ kind: 'registration', person: who, title: `Register ${k.display_name} for ${o.event_name}`, due_at: null, action: { type: 'register', child_id: k.id, event_id: o.event_id, team_id: o.team_id } });
-      for (const t of awaitingTrips) todo.push({ kind: 'trip_consent', person: who, title: `Trip consent for ${k.display_name}: ${t.name}`, due_at: t.depart_at, action: { type: 'trip_consent', child_id: k.id, trip_id: t.trip_id, participant_id: t.participant_id } });
-      for (const c of lapsed) todo.push({ kind: 'consent', person: who, title: `${c.purpose} permission for ${k.display_name} is ${c.state === 'not_given' ? 'not given' : 'not current'}`, due_at: null, action: { type: 'consent', child_id: k.id, purpose: c.purpose } });
+      for (const r of rsvp) push(k, 'rsvp', { kind: 'rsvp', person: who, title: `Are ${k.display_name} coming? ${r.title}`, due_at: r.starts_at, action: { type: 'rsvp', child_id: k.id, team_id: r.team_id, event_id: r.event_id, fixture_id: r.fixture_id } });
+      for (const f of fees) push(k, 'pay', { kind: 'payment', person: who, title: `${f.title}${f.team_name ? ` · ${f.team_name}` : f.organisation_name ? ` · ${f.organisation_name}` : ''}`, due_at: f.due_on, overdue: f.overdue, amount: { currency: f.currency, minor: Number(f.balance_minor) }, action: { type: 'pay', child_id: k.id, source: f.source, charge_id: f.charge_id, purpose: f.purpose } });
+      for (const o of mine(openRegs)) push(k, 'register', { kind: 'registration', person: who, title: `Register ${k.display_name} for ${o.event_name}`, due_at: null, action: { type: 'register', child_id: k.id, event_id: o.event_id, team_id: o.team_id } });
+      for (const t of awaitingTrips) push(k, 'travel_consent', { kind: 'trip_consent', person: who, title: `Trip consent for ${k.display_name}: ${t.name}`, due_at: t.depart_at, action: { type: 'trip_consent', child_id: k.id, trip_id: t.trip_id, participant_id: t.participant_id } });
+      for (const c of lapsed) push(k, 'consent', { kind: 'consent', person: who, title: `${c.purpose} permission for ${k.display_name} is ${c.state === 'not_given' ? 'not given' : 'not current'}`, due_at: null, action: { type: 'consent', child_id: k.id, purpose: c.purpose } });
       if (renewal) todo.push({ kind: 'renew_link', person: who, title: `Renew your guardian verification for ${k.display_name}`, due_at: k.expires_at, action: { type: 'renew_link', child_id: k.id, link_id: k.link_id } });
       return {
-        person: who, relationship: k.relationship, independent_on: k.independent_on, link_expires_at: k.expires_at, guardians: k.guardians, link_id: k.link_id,
-        teams: mine(teams).map(({ child_id, ...t }) => t), upcoming: sched.items.slice(0, 8), rsvp_pending: rsvp, fees, registrations: mine(regs), registrations_open: mine(openRegs), trips: mine(trips).map(({ child_id, ...t }) => t), consents: consents.get(k.id) ?? [], needs_attention: lapsed.length + awaitingTrips.length + (renewal ? 1 : 0),
+        person: who, relationship: k.relationship, independent_on: k.independent_on, link_expires_at: k.expires_at, guardians: k.guardians, link_id: k.link_id, scopes: k.scopes, primary: co.has(k.id), co_guardians: co.get(k.id) ?? [],
+        teams: mine(teams).map(({ child_id, ...t }) => t), upcoming: k.scopes.includes('calendar') ? quiet(sched.items, askedRows, k.id).slice(0, 8) : [], rsvp_pending: rsvp, fees, registrations: mine(regs), registrations_open: mine(openRegs), trips: mine(trips).map(({ child_id, ...t }) => t), consents: consents.get(k.id) ?? [], needs_attention: lapsed.length + awaitingTrips.length + (renewal ? 1 : 0),
       };
     });
     todo.sort((a, b) => (b.overdue ? 1 : 0) - (a.overdue ? 1 : 0) || (a.due_at ? Date.parse(a.due_at) : Infinity) - (b.due_at ? Date.parse(b.due_at) : Infinity) || a.title.localeCompare(b.title));

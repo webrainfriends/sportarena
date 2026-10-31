@@ -9,6 +9,8 @@ import { useSession } from '../session';
 import { useNav } from '../nav';
 import { useLayout } from '../layout';
 import { PaySheet } from '../PaySheet';
+import { FormSheet } from '../FormSheet';
+import { t as tr } from '../i18n';
 import { Avatar, Btn, Card, Chip, Empty, ErrorBox, HScroll, Loading, Section, StatPill, T, Tag } from '../ui';
 import { c } from '../theme';
 import { locale } from '../locale';
@@ -16,16 +18,28 @@ import { dateTimeIn, moneyIn } from '../vtime';
 
 const day = (d) => (d ? new Date(d).toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short' }) : '');
 const KIND = { rsvp: ['Answer', c.cyanSoft], payment: ['Pay', c.sunSoft], registration: ['Register', c.mintSoft], trip_consent: ['Trip consent', c.orangeSoft], consent: ['Permission', c.violetSoft], renew_link: ['Verification', c.pinkSoft] };
+const SCOPES = ['pay', 'register', 'rsvp', 'travel_consent', 'consent', 'calendar'];
+const scopeOptions = () => SCOPES.map((s) => ({ value: s, label: tr(`family.scope.${s}`) }));
 const REG = { submitted: 'Submitted', under_review: 'Under review', registered: 'Registered', suspended: 'Suspended' };
 
 function Who({ p, size = 28 }) {
   return <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><Avatar user={p} size={size} /><T weight="800" size={13}>{p.display_name}</T></View>;
 }
 
-function Todo({ t, reload, onConsents, onPay }) {
+/** Narrow what one guardian may do (own link: reduce only; another guardian's: the primary guardian). Re-checked on the server. */
+function ScopesSheet({ target, onClose, onDone }) {
+  return (
+    <FormSheet visible={!!target} onClose={onClose} title={target ? `${tr('family.scopes.open')} · ${target.name}` : tr('family.scopes.open')} initial={{ scopes: target?.scopes ?? SCOPES }}
+      fields={[{ key: 'scopes', label: tr('family.scopes.title'), type: 'multimenu', options: scopeOptions(), hint: tr('family.scopes.note') }]}
+      onSubmit={async (v) => { await api.patch(`/youth/guardian-links/${target.link_id}/scopes`, { scopes: v.scopes ?? [] }); onDone(); return tr('family.scopes.saved'); }} />
+  );
+}
+
+function Todo({ t: item, reload, onConsents, onPay }) {
   const { toast } = useSession();
   const { push } = useNav();
   const [busy, setBusy] = useState(false);
+  const t = item;
   const a = t.action;
   const run = async (fn, msg) => { setBusy(true); try { await fn(); toast(msg); reload(); } catch (e) { toast(e.message); } finally { setBusy(false); } };
   const rsvp = (v) => run(() => api.post(`/teams/${a.team_id}/attendance`, { for_user_id: a.child_id, rsvp: v, ...(a.fixture_id ? { fixture_id: a.fixture_id } : { event_id: a.event_id }) }), 'Answer sent');
@@ -40,18 +54,19 @@ function Todo({ t, reload, onConsents, onPay }) {
       </View>
       <T weight="700" style={{ marginTop: 8 }}>{t.title}</T>
       {t.due_at ? <T size={12} color={c.mute}>{t.kind === 'payment' ? 'Due' : 'On'} {day(t.due_at)}</T> : null}
+      {t.blocked ? <T size={12} color={c.orange} style={{ marginTop: 8 }} accessibilityRole="alert">{tr('family.blocked')}</T> : null}
       <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
         {t.kind === 'rsvp' ? <>
-          <Btn small title="Going" color={c.pink} disabled={busy} onPress={() => rsvp('going')} />
-          <Btn small title="Maybe" color={c.paper} ink={c.ink} disabled={busy} onPress={() => rsvp('maybe')} />
-          <Btn small title="Can't go" color={c.paper} ink={c.red} disabled={busy} onPress={() => rsvp('no')} />
+          <Btn small title="Going" color={c.pink} disabled={busy || !!t.blocked} onPress={() => rsvp('going')} />
+          <Btn small title="Maybe" color={c.paper} ink={c.ink} disabled={busy || !!t.blocked} onPress={() => rsvp('maybe')} />
+          <Btn small title="Can't go" color={c.paper} ink={c.red} disabled={busy || !!t.blocked} onPress={() => rsvp('no')} />
         </> : null}
         {t.kind === 'payment' ? (a.purpose
-          ? <Btn small title={`Pay ${moneyIn(t.amount.minor, t.amount.currency)}`} color={c.pink} onPress={() => onPay({ type: a.purpose.purpose_type, id: a.purpose.purpose_id, label: t.title, amount: t.amount.minor, currency: t.amount.currency })} />
-          : <Btn small title={`Open academy · ${moneyIn(t.amount.minor, t.amount.currency)}`} color={c.pink} onPress={() => push('AcademyFamily')} />) : null}
-        {t.kind === 'registration' ? <Btn small title="Register" color={c.pink} disabled={busy} onPress={() => run(() => api.post(`/events/${a.event_id}/registrations`, { team_id: a.team_id, user_id: a.child_id }), 'Registration sent')} /> : null}
-        {t.kind === 'trip_consent' ? <Btn small title="Review trip" color={c.pink} onPress={() => push('Trip', { id: a.trip_id })} /> : null}
-        {t.kind === 'consent' ? <Btn small title="Review permissions" color={c.pink} onPress={() => onConsents(t.person)} /> : null}
+          ? <Btn small title={`Pay ${moneyIn(t.amount.minor, t.amount.currency)}`} color={c.pink} disabled={!!t.blocked} onPress={() => onPay({ type: a.purpose.purpose_type, id: a.purpose.purpose_id, label: t.title, amount: t.amount.minor, currency: t.amount.currency })} />
+          : <T size={12} color={c.mute}>Part of a sale waiting at the front desk: pay it there.</T>) : null}
+        {t.kind === 'registration' ? <Btn small title="Register" color={c.pink} disabled={busy || !!t.blocked} onPress={() => run(() => api.post(`/events/${a.event_id}/registrations`, { team_id: a.team_id, user_id: a.child_id }), 'Registration sent')} /> : null}
+        {t.kind === 'trip_consent' ? <Btn small title="Review trip" color={c.pink} disabled={!!t.blocked} onPress={() => push('Trip', { id: a.trip_id })} /> : null}
+        {t.kind === 'consent' ? <Btn small title="Review permissions" color={c.pink} disabled={!!t.blocked} onPress={() => onConsents(t.person)} /> : null}
       </View>
     </Card>
   );
@@ -86,7 +101,7 @@ function Calendar({ who }) {
   );
 }
 
-function Child({ d, onConsents, onPay }) {
+function Child({ d, onConsents, onScopes }) {
   const { push } = useNav();
   const lapsed = d.consents.filter((k) => ['expired', 'lapsed'].includes(k.state)).length;
   return (
@@ -116,8 +131,18 @@ function Child({ d, onConsents, onPay }) {
       </> : null}
       <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
         <Btn small title={lapsed ? `Permissions (${lapsed} to renew)` : 'Permissions'} color={c.violet} onPress={() => onConsents(d.person)} />
+        <Btn small title={tr('family.scopes.open')} color={c.paper} ink={c.ink} onPress={() => onScopes({ link_id: d.link_id, name: d.person.display_name, scopes: d.scopes })} />
         {d.link_expires_at ? <T size={12} color={c.mute} style={{ alignSelf: 'center' }}>Verified until {day(d.link_expires_at)}{d.guardians > 1 ? ` · ${d.guardians} guardians` : ''}</T> : null}
       </View>
+      {d.co_guardians?.length ? <>
+        <T size={12} weight="800" color={c.mute} style={{ marginTop: 10 }}>{tr('family.scopes.title').toUpperCase()}</T>
+        {d.co_guardians.map((g) => (
+          <View key={g.link_id} style={{ flexDirection: 'row', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 4 }}>
+            <T size={13} style={{ flex: 1 }}>{g.display_name} · {g.scopes.length} / {SCOPES.length}</T>
+            <Btn small title={tr('family.scopes.open')} color={c.paper} ink={c.ink} onPress={() => onScopes({ link_id: g.link_id, name: g.display_name, scopes: g.scopes })} />
+          </View>
+        ))}
+      </> : null}
     </Card>
   );
 }
@@ -128,6 +153,7 @@ export function FamilyDashboard({ onConsents }) {
   const L = useLayout();
   const [who, setWho] = useState(null);
   const [pay, setPay] = useState(null);
+  const [scopes, setScopes] = useState(null);
   const q = useLoad(() => api.get('/me/family', who ? { child_id: who } : {}), [who]);
   const kids = useLoad(() => api.get('/me/family'), []);
   if (kids.data && !kids.data.dependents.length) return null;
@@ -165,8 +191,9 @@ export function FamilyDashboard({ onConsents }) {
         </View>
       ) : <>{todo}{cal}</>}
       <Section title={who ? 'This family member' : 'Each family member'} color={c.violet}>
-        {d.dependents.map((x) => <Child key={x.person.id} d={x} onConsents={onConsents} onPay={setPay} />)}
+        {d.dependents.map((x) => <Child key={x.person.id} d={x} onConsents={onConsents} onScopes={setScopes} />)}
       </Section>
+      <ScopesSheet target={scopes} onClose={() => setScopes(null)} onDone={reload} />
       {pay ? <PaySheet target={pay} onClose={() => setPay(null)} onDone={reload} /> : null}
     </View>
   );
