@@ -11,4 +11,6 @@ export default {
   'empty.nothing': 'ಇಲ್ಲಿ ಇನ್ನೂ ಏನೂ ಇಲ್ಲ.',
   'nav.home': 'ಮುಖಪುಟ', 'nav.search': 'ಹುಡುಕಾಟ', 'nav.bookings': 'ಬುಕಿಂಗ್‌ಗಳು', 'nav.account': 'ಖಾತೆ',
   'welcome.hello': 'ನಮಸ್ಕಾರ, {name}',
+  'coaching.introUsed': "ನೀವು ಈ ತರಬೇತುದಾರರ ಪರಿಚಯ ಅವಧಿಯನ್ನು ಈಗಾಗಲೇ ಬಳಸಿದ್ದೀರಿ", 'coaching.introAvailable': "ಪರಿಚಯ ಆಫರ್ ಲಭ್ಯವಿದೆ", 'coaching.bookingFor': "ಯಾರಿಗಾಗಿ ಬುಕಿಂಗ್",
+  'coaching.introScope': "ಪ್ರತಿ ಕ್ರೀಡಾಪಟುವಿಗೆ ಒಂದು ಪರಿಚಯ", 'coaching.introScopeCoach': "ತರಬೇತುದಾರನಿಗೆ ಒಂದು", 'coaching.introScopeSport': "ಕ್ರೀಡೆಗೆ ಒಂದು",
 };

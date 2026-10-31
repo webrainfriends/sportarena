@@ -31,4 +31,6 @@ export default {
   'nav.bookings': 'Bookings',
   'nav.account': 'Account',
   'welcome.hello': 'Hello, {name}',
+  'coaching.introUsed': "You've used this coach's intro session", 'coaching.introAvailable': "Intro offer available", 'coaching.bookingFor': "Booking for",
+  'coaching.introScope': "One intro per athlete", 'coaching.introScopeCoach': "Per coach", 'coaching.introScopeSport': "Per sport",
 };

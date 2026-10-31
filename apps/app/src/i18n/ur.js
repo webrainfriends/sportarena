@@ -11,4 +11,6 @@ export default {
   'empty.nothing': 'یہاں ابھی کچھ نہیں ہے۔',
   'nav.home': 'ہوم', 'nav.search': 'تلاش', 'nav.bookings': 'بکنگز', 'nav.account': 'اکاؤنٹ',
   'welcome.hello': 'السلام علیکم، {name}',
+  'coaching.introUsed': "آپ اس کوچ کا تعارفی سیشن پہلے ہی استعمال کر چکے ہیں", 'coaching.introAvailable': "تعارفی آفر دستیاب ہے", 'coaching.bookingFor': "بکنگ کس کے لیے",
+  'coaching.introScope': "ہر کھلاڑی کے لیے ایک تعارفی سیشن", 'coaching.introScopeCoach': "فی کوچ", 'coaching.introScopeSport': "فی کھیل",
 };

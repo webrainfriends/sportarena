@@ -11,4 +11,6 @@ export default {
   'empty.nothing': 'এখানে এখনও কিছু নেই।',
   'nav.home': 'হোম', 'nav.search': 'অনুসন্ধান', 'nav.bookings': 'বুকিং', 'nav.account': 'অ্যাকাউন্ট',
   'welcome.hello': 'নমস্কার, {name}',
+  'coaching.introUsed': "আপনি এই কোচের পরিচিতি সেশন ইতিমধ্যে ব্যবহার করেছেন", 'coaching.introAvailable': "পরিচিতি অফার উপলব্ধ", 'coaching.bookingFor': "কার জন্য বুকিং",
+  'coaching.introScope': "প্রতি অ্যাথলিটের জন্য একটি পরিচিতি", 'coaching.introScopeCoach': "কোচ প্রতি", 'coaching.introScopeSport': "খেলা প্রতি",
 };

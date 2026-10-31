@@ -12,6 +12,7 @@ import { FormSheet } from '../FormSheet';
 import { Pill, StatusPill, nice } from './marketplace';
 import { AUDIENCES, Confirm, Head, Tile, UNIT, cardPrice, price } from './coaching';
 import { c } from '../theme';
+import { t } from '../i18n';
 import { addDays, moneyIn, todayIn, WEEKDAYS } from '../vtime';
 import { LoyaltyConsole } from './rewards';
 
@@ -42,11 +43,12 @@ function CardSheet({ card, specs, currency, onClose, onDone }) {
         { key: 'max_participants', label: 'Most people', type: 'stepper', min: 1, max: 500, default: 20, show: (v) => v.audience !== 'individual' },
         { key: 'sessions_included', label: 'Sessions in the package', type: 'stepper', min: 1, max: 500, default: 5, show: (v) => v.unit === 'package' },
         { key: 'is_intro', label: 'This is a trial / introductory offer', type: 'switch' },
+        { key: 'intro_scope', label: t('coaching.introScope'), type: 'choice', default: 'coach', options: [{ value: 'coach', label: t('coaching.introScopeCoach') }, { value: 'sport', label: t('coaching.introScopeSport') }], show: (v) => !!v.is_intro && v.audience === 'individual' },
         { key: 'description', label: 'What is included', type: 'multiline', optional: true },
         { key: 'active', label: 'Available to book', type: 'switch', default: true },
       ]}
       onSubmit={async (v) => {
-        const body = { title: v.title, audience: v.audience, delivery: v.delivery, unit: v.unit, price_cents: v.price_cents, per_person: !!v.per_person && (v.audience === 'group' || v.audience === 'event'), is_intro: !!v.is_intro, active: v.active !== false,
+        const body = { title: v.title, audience: v.audience, delivery: v.delivery, unit: v.unit, price_cents: v.price_cents, per_person: !!v.per_person && (v.audience === 'group' || v.audience === 'event'), is_intro: !!v.is_intro, ...(v.is_intro ? { intro_scope: v.intro_scope ?? 'coach' } : {}), active: v.active !== false,
           ...(v.sport ? { sport: v.sport } : {}), ...(v.specialisation_id ? { specialisation_id: v.specialisation_id } : {}), ...(v.description ? { description: v.description } : {}),
           ...(v.unit === 'session' || v.unit === 'day' ? { duration_min: v.duration_min } : {}), ...(v.unit === 'package' ? { sessions_included: v.sessions_included } : {}),
           ...(v.audience !== 'individual' ? { min_participants: v.min_participants, max_participants: v.max_participants } : { min_participants: 1 }) };

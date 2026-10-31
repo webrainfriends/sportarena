@@ -11,4 +11,6 @@ export default {
   'empty.nothing': 'यहाँ अभी कुछ नहीं है।',
   'nav.home': 'होम', 'nav.search': 'खोज', 'nav.bookings': 'बुकिंग', 'nav.account': 'खाता',
   'welcome.hello': 'नमस्ते, {name}',
+  'coaching.introUsed': "आप इस कोच का इंट्रो सत्र पहले ही इस्तेमाल कर चुके हैं", 'coaching.introAvailable': "इंट्रो ऑफ़र उपलब्ध है", 'coaching.bookingFor': "किसके लिए बुकिंग",
+  'coaching.introScope': "प्रति एथलीट एक इंट्रो", 'coaching.introScopeCoach': "प्रति कोच", 'coaching.introScopeSport': "प्रति खेल",
 };

@@ -11,4 +11,6 @@ export default {
   'empty.nothing': 'මෙහි තවම කිසිවක් නැත.',
   'nav.home': 'මුල් පිටුව', 'nav.search': 'සෙවීම', 'nav.bookings': 'වෙන්කිරීම්', 'nav.account': 'ගිණුම',
   'welcome.hello': 'ආයුබෝවන්, {name}',
+  'coaching.introUsed': "ඔබ මෙම පුහුණුකරුගේ හැඳින්වීමේ සැසිය දැනටමත් භාවිතා කර ඇත", 'coaching.introAvailable': "හැඳින්වීමේ දීමනාව ලබාගත හැක", 'coaching.bookingFor': "බුකිං කරන්නේ කා වෙනුවෙන්ද",
+  'coaching.introScope': "ක්‍රීඩකයෙකුට එක් හැඳින්වීමක්", 'coaching.introScopeCoach': "පුහුණුකරුවෙකුට එකක්", 'coaching.introScopeSport': "ක්‍රීඩාවකට එකක්",
 };

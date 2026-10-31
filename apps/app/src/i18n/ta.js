@@ -11,4 +11,6 @@ export default {
   'empty.nothing': 'இங்கே இன்னும் எதுவும் இல்லை.',
   'nav.home': 'முகப்பு', 'nav.search': 'தேடல்', 'nav.bookings': 'முன்பதிவுகள்', 'nav.account': 'கணக்கு',
   'welcome.hello': 'வணக்கம், {name}',
+  'coaching.introUsed': "இந்தப் பயிற்சியாளரின் அறிமுக அமர்வை ஏற்கெனவே பயன்படுத்திவிட்டீர்கள்", 'coaching.introAvailable': "அறிமுகச் சலுகை உள்ளது", 'coaching.bookingFor': "யாருக்கான முன்பதிவு",
+  'coaching.introScope': "ஒரு வீரருக்கு ஒரு அறிமுகம்", 'coaching.introScopeCoach': "பயிற்சியாளருக்கு ஒன்று", 'coaching.introScopeSport': "விளையாட்டுக்கு ஒன்று",
 };

@@ -14,7 +14,7 @@ import { notify } from '../notify.js';
 import { paymentsEnabled } from '../payments/service.js';
 import { fmtMin, hhmm, validTimezone } from '../booking/time.js';
 import { MAX_RANGE_DAYS, loadCoachSchedule, openCoachSlots } from '../coach-slots.js';
-import { AUDIENCES, cardFor, clientFor, priceFor } from '../coach-pricing.js';
+import { AUDIENCES, assertIntroFree, cardFor, clientFor, introScopeOf, mapIntroViolation, priceFor } from '../coach-pricing.js';
 import { commitmentBusy } from '../coach-commitments.js';
 import { venueText } from '../session-links.js';
 
@@ -103,7 +103,7 @@ cap({
       one("SELECT count(*) FILTER (WHERE status='completed')::int AS sessions_done, count(DISTINCT hirer_id) FILTER (WHERE status IN ('confirmed','completed'))::int AS athletes FROM coach_hires WHERE coach_id=$1", [i.id]),
       loadCoachSchedule(i.id),
       badgesFor('user', [i.id]),
-      many(`SELECT k.id, k.title, k.audience, k.delivery, k.unit, k.price_cents, k.per_person, k.duration_min, k.min_participants, k.max_participants, k.sessions_included, k.is_intro, k.description, s.slug AS sport_slug, s.name AS sport FROM coach_rate_cards k LEFT JOIN sports s ON s.id=k.sport_id WHERE k.coach_id=$1 AND k.archived_at IS NULL AND k.active ORDER BY k.is_intro DESC, k.audience, k.price_cents`, [i.id]),
+      many(`SELECT k.id, k.title, k.audience, k.delivery, k.unit, k.price_cents, k.per_person, k.duration_min, k.min_participants, k.max_participants, k.sessions_included, k.is_intro, k.intro_scope, k.description, s.slug AS sport_slug, s.name AS sport FROM coach_rate_cards k LEFT JOIN sports s ON s.id=k.sport_id WHERE k.coach_id=$1 AND k.archived_at IS NULL AND k.active ORDER BY k.is_intro DESC, k.audience, k.price_cents`, [i.id]),
       many('SELECT z.id, z.name, z.levels, z.years, z.certification, s.slug AS sport_slug, s.name AS sport, s.emoji FROM coach_specialisations z JOIN sports s ON s.id=z.sport_id WHERE z.coach_id=$1 AND z.archived_at IS NULL ORDER BY s.name, z.name', [i.id]),
     ]);
     const next = sched.windows.length ? (await openCoachSlots(i.id, new Date(), new Date(Date.now() + 14 * 864e5), { schedule: sched }))[0] ?? null : null;
@@ -275,10 +275,13 @@ cap({
       if (await clashes(c, x.coach_id, x.proposed_starts_at, x.duration_min)) throw conflict('The coach is no longer free at that time — ask them to propose another');
       const cost = x.total_cents != null ? Number(x.total_cents) : total(x.rate_cents_hour, x.duration_min);
       const pay = paymentsEnabled() && cost > 0 ? 'unpaid' : 'not_required';
+      const card = x.rate_card_id ? (await c.query('SELECT is_intro, intro_scope, audience FROM coach_rate_cards WHERE id=$1', [x.rate_card_id])).rows[0] : null;
+      const introScope = introScopeOf(card, x.audience);
+      if (introScope) await assertIntroFree(c, { coachId: x.coach_id, athleteId: user.id, sportId: x.sport_id, scope: introScope });
       const hire = (await c.query(
-        `INSERT INTO coach_hires(hirer_id, coach_id, sport_id, starts_at, duration_min, rate_cents_hour, total_cents, note, payment_status, status, request_response_id, audience, participants, team_id, event_id, rate_card_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING id, coach_id, starts_at, duration_min, total_cents, status, payment_status, audience, participants`,
-        [user.id, x.coach_id, x.sport_id, x.proposed_starts_at, x.duration_min, x.rate_cents_hour, cost, x.title, pay, pay === 'unpaid' ? 'requested' : 'confirmed', x.id, x.audience, x.participants, x.team_id, x.event_id, x.rate_card_id])).rows[0];
+        `INSERT INTO coach_hires(hirer_id, coach_id, sport_id, starts_at, duration_min, rate_cents_hour, total_cents, note, payment_status, status, request_response_id, audience, participants, team_id, event_id, rate_card_id, athlete_id, intro_scope)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$1,$17) RETURNING id, coach_id, starts_at, duration_min, total_cents, status, payment_status, audience, participants`,
+        [user.id, x.coach_id, x.sport_id, x.proposed_starts_at, x.duration_min, x.rate_cents_hour, cost, x.title, pay, pay === 'unpaid' ? 'requested' : 'confirmed', x.id, x.audience, x.participants, x.team_id, x.event_id, x.rate_card_id, introScope]).catch((e) => { throw mapIntroViolation(e); })).rows[0];
       await c.query("UPDATE coach_request_responses SET status='accepted', decided_at=now(), hire_id=$2 WHERE id=$1", [x.id, hire.id]);
       await c.query("UPDATE coach_requests SET status='filled', filled_by=$2, closed_at=now() WHERE id=$1", [x.request_id, x.coach_id]);
       await c.query("UPDATE market_posts SET status='closed' WHERE coach_request_id=$1", [x.request_id]);

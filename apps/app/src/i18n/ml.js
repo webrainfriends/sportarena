@@ -11,4 +11,6 @@ export default {
   'empty.nothing': 'ഇവിടെ ഇതുവരെ ഒന്നുമില്ല.',
   'nav.home': 'ഹോം', 'nav.search': 'തിരയൽ', 'nav.bookings': 'ബുക്കിംഗുകൾ', 'nav.account': 'അക്കൗണ്ട്',
   'welcome.hello': 'നമസ്കാരം, {name}',
+  'coaching.introUsed': "ഈ കോച്ചിന്റെ ആമുഖ സെഷൻ നിങ്ങൾ ഇതിനകം ഉപയോഗിച്ചു", 'coaching.introAvailable': "ആമുഖ ഓഫർ ലഭ്യമാണ്", 'coaching.bookingFor': "ആർക്കുവേണ്ടിയുള്ള ബുക്കിംഗ്",
+  'coaching.introScope': "ഒരു അത്‌ലറ്റിന് ഒരു ആമുഖം", 'coaching.introScopeCoach': "കോച്ചിന് ഒന്ന്", 'coaching.introScopeSport': "കായികത്തിന് ഒന്ന്",
 };

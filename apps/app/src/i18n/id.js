@@ -11,4 +11,6 @@ export default {
   'empty.nothing': 'Belum ada apa pun di sini.',
   'nav.home': 'Beranda', 'nav.search': 'Cari', 'nav.bookings': 'Pemesanan', 'nav.account': 'Akun',
   'welcome.hello': 'Halo, {name}',
+  'coaching.introUsed': "Anda sudah memakai sesi perkenalan pelatih ini", 'coaching.introAvailable': "Penawaran perkenalan tersedia", 'coaching.bookingFor': "Pemesanan untuk",
+  'coaching.introScope': "Satu perkenalan per atlet", 'coaching.introScopeCoach': "Per pelatih", 'coaching.introScopeSport': "Per olahraga",
 };
