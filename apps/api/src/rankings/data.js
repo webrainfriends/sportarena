@@ -7,6 +7,7 @@ import { NOT_YOUTH_SQL } from '../youth.js';
 import { metricKey } from '../scoring/metric-defs.js';
 import { computeRanking, describeFormula } from './engine.js';
 import { onRatingsEvidenceChanged } from '../ratings/data.js';
+import { toLevel, inflate, RELIABLE_RD } from '../ratings/engine.js';
 
 const q = (c) => c ?? { query };
 const sc = (v) => v.scope ?? {};
@@ -23,7 +24,22 @@ export async function isClubMember(user, def, c) {
 }
 
 /** Eligible evidence for a player ranking. Official rankings read approved competition results only; youth accounts and unapproved accounts never appear. */
+/** The verified skill level (#633) as ranking evidence: one row per person, reliable levels only, youth and unapproved accounts never appear. */
+async function ratingEvidence(def, v, c) {
+  const rows = (await q(c).query(
+    `SELECT r.user_id, r.rating, r.rd, r.sigma, r.games, r.last_played_at
+       FROM skill_ratings r JOIN users u ON u.id = r.user_id
+      WHERE r.sport_id = $1 AND r.status = 'active' AND ${NOT_YOUTH_SQL} AND u.access_status = 'approved'
+        AND ($2::uuid IS NULL OR EXISTS (SELECT 1 FROM team_members tm WHERE tm.team_id = $2 AND tm.user_id = u.id AND tm.status = 'active'))
+      ORDER BY r.user_id`, [def.sport_id, def.visibility === 'club' ? def.scope_team_id : null])).rows;
+  return rows
+    .filter((r) => (r.last_played_at ? inflate({ rd: r.rd, sigma: r.sigma }, (Date.now() - new Date(r.last_played_at).getTime()) / 86400000) : Number(r.rd)) <= RELIABLE_RD)
+    .map((r) => ({ id: r.user_id, subject: r.user_id, value: toLevel(r.rating), minutes: null, event_id: null, fixture_id: null, same_owner: false,
+      on: (r.last_played_at ? new Date(r.last_played_at) : new Date()).toISOString().slice(0, 10), games: r.games }));
+}
+
 async function playerEvidence(def, v, c) {
+  if (v.formula_kind === 'rating') return ratingEvidence(def, v, c);
   const s = sc(v);
   const development = v.evidence === 'development';
   return (await q(c).query(

@@ -2,11 +2,11 @@
 // has its own set of formulas; a sport with no native family gets the generic metric ranking and is labelled as a fallback, never silently defaulted.
 
 export const FAMILIES = {
-  cricket:   { label: 'Cricket', native: true, kinds: ['metric', 'per_match'], note: 'Runs, wickets and per-match rates from approved scorecards.' },
-  goal_game: { label: 'Goal games (football, futsal, hockey …)', native: true, kinds: ['metric', 'per_match', 'per_90'], note: 'Goals and assists, per match or per 90 verified minutes.' },
-  racket:    { label: 'Racket and set sports', native: true, kinds: ['metric', 'per_match'], note: 'Match and set statistics from approved results.' },
-  measured:  { label: 'Timed and measured events', native: true, kinds: ['metric'], note: 'Best or average time/distance; lower is better for times.' },
-  generic:   { label: 'Generic metric ranking (fallback)', native: false, kinds: ['metric'], note: 'This sport has no dedicated model yet: it ranks one governed metric. Labelled as a fallback.' },
+  cricket:   { label: 'Cricket', native: true, kinds: ['metric', 'per_match', 'rating'], note: 'Runs, wickets and per-match rates from approved scorecards.' },
+  goal_game: { label: 'Goal games (football, futsal, hockey …)', native: true, kinds: ['metric', 'per_match', 'per_90', 'rating'], note: 'Goals and assists, per match or per 90 verified minutes.' },
+  racket:    { label: 'Racket and set sports', native: true, kinds: ['metric', 'per_match', 'rating'], note: 'Match and set statistics from approved results.' },
+  measured:  { label: 'Timed and measured events', native: true, kinds: ['metric', 'rating'], note: 'Best or average time/distance; lower is better for times.' },
+  generic:   { label: 'Generic metric ranking (fallback)', native: false, kinds: ['metric', 'rating'], note: 'This sport has no dedicated model yet: it ranks one governed metric. Labelled as a fallback.' },
   team_form: { label: 'Team form', native: true, kinds: ['team_form'], note: 'Points per game from completed fixtures.' },
 };
 
