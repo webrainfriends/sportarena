@@ -16,6 +16,7 @@ import { SportSelect } from '../sportpicker';
 import { Counter, DateField, DayStrip, HScroll, TimeField } from '../pickers';
 import { NewCaseSheet } from './cases';
 import { SeriesBookingSheet, VenueLine } from './training-venue';
+import { CoachClassList } from './coach-classes';
 import { Grid, PaySheet, Pill, StatusPill, nice, useCols } from './marketplace';
 import { c, grad, toneFor } from '../theme';
 import { dateTimeIn, localDate, localToIso, moneyIn, timeIn, todayIn, WEEKDAYS } from '../vtime';
@@ -119,7 +120,7 @@ export function IconGrid({ items, value, onChange, cols = 4, tint = c.pinkSoft }
 export function CoachToolGrid({ push, counts = {} }) {
   const tools = [
     ['🗂️', 'Desk', 'CoachDesk'], ['📬', 'Request board', 'CoachBoard', counts.board], ['🏃', 'Athletes', 'CoachAthletes'], ['🤝', 'Shared wellness', 'SharedWellness'], ['📄', 'Shared reports', 'SharedSeasonReports'], ['🎬', 'Recruitment', 'PassportDesk'], ['🪪', 'Profile & hours', 'CoachSetup'],
-    ['📅', 'Schedule', 'CoachCalendar'], ['🏫', 'Academy week', 'AcademyAgenda'], ['🏷️', 'Rate cards', 'CoachRates'], ['📑', 'Commitments', 'CoachCommitments'], ['⭐', 'Reviews', 'CoachReviews', counts.reviews],
+    ['📅', 'Schedule', 'CoachCalendar'], ['🏫', 'Academy week', 'AcademyAgenda'], ['🏷️', 'Rate cards', 'CoachRates'], ['🎽', 'My classes', 'CoachClasses'], ['📑', 'Commitments', 'CoachCommitments'], ['⭐', 'Reviews', 'CoachReviews', counts.reviews],
     ['🧠', 'Performance Studio', 'PerformanceStudio'], ['🧰', 'Drill library', 'CoachDrills'], ['👥', 'Saved groups', 'CoachGroups'], ['📏', 'Rubrics', 'CoachRubrics'], ['📈', 'Analytics', 'CoachAnalytics'], ['📝', 'Training plans', 'MyPlans', null, { as: 'coach' }], ['📍', 'Courts', 'TrainingVenue', counts.courts], ['🔁', 'Recurring booking', 'RecurringVenue'],
   ];
   return (
@@ -550,6 +551,8 @@ export function CoachProfile({ id }) {
           {p.profile.coaching_styles?.length ? <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>{p.profile.coaching_styles.map((k) => <Pill key={k} label={styleName(k).toUpperCase()} />)}</View> : null}
         </Section>
       ) : null}
+
+      <CoachClassList coachId={p.id} />
 
       {p.rate_cards.length ? (
         <Section title="Services & prices">
