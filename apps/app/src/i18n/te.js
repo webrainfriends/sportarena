@@ -11,6 +11,8 @@ export default {
   'empty.nothing': 'ఇక్కడ ఇంకా ఏమీ లేదు.',
   'nav.home': 'హోమ్', 'nav.search': 'శోధన', 'nav.bookings': 'బుకింగ్‌లు', 'nav.account': 'ఖాతా',
   'welcome.hello': 'నమస్కారం, {name}',
+  'coaching.introUsed': "మీరు ఈ కోచ్ పరిచయ సెషన్‌ను ఇప్పటికే ఉపయోగించారు", 'coaching.introAvailable': "పరిచయ ఆఫర్ అందుబాటులో ఉంది", 'coaching.bookingFor': "ఎవరి కోసం బుకింగ్",
+  'coaching.introScope': "ప్రతి అథ్లెట్‌కు ఒక పరిచయం", 'coaching.introScopeCoach': "కోచ్‌కు ఒకటి", 'coaching.introScopeSport': "క్రీడకు ఒకటి",
   'cls.all_levels': 'అన్ని స్థాయిలు',
   'cls.attendance': 'హాజరు',
   'cls.attended': 'హాజరయ్యారు',

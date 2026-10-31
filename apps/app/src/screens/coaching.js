@@ -10,6 +10,8 @@ import { useSession } from '../session';
 import { useNav } from '../nav';
 import { Avatar, Btn, Card, Chip, Empty, ErrorBox, Field, GradCard, H1, H2, Loading, Screen, Section, Seg, Sheet, StatPill, T } from '../ui';
 import { AdSlot } from '../ads';
+import { MenuField } from '../menu-field';
+import { t } from '../i18n';
 import { FormSheet } from '../FormSheet';
 import { TimelineSheet } from '../Timeline';
 import { SportSelect } from '../sportpicker';
@@ -139,7 +141,10 @@ export function BookCoachSheet({ coach, onClose, onDone }) {
   const { toast, user } = useSession();
   const detail = useLoad(() => api.get(`/coaches/${coach.id}`), [coach.id]);
   const cards = (detail.data?.rate_cards ?? []).filter((k) => !k.sport_slug || k.sport_slug === coach.sport_slug);
-  const [cardId, setCardId] = useState(null);
+  const [cardId, setCardId] = useState(null), [athleteId, setAthleteId] = useState(user.id);
+  const kids = useLoad(() => api.get('/youth/guardian-links', { as: 'guardian', status: 'active', limit: 50 }).catch(() => []), []);
+  const intro = useLoad(() => api.get(`/coaches/${coach.id}/intro-status`, athleteId !== user.id ? { athlete_id: athleteId } : {}).catch(() => ({ offers: [] })), [coach.id, athleteId]);
+  const introUsed = (k) => k.is_intro && k.audience === 'individual' && (intro.data?.offers ?? []).some((o) => o.rate_card_id === k.id && !o.available);
   const card = cards.find((k) => k.id === cardId) ?? null;
   const [hours, setHours] = useState(60), [people, setPeople] = useState(1), [teamId, setTeamId] = useState(null), [eventId, setEventId] = useState(null);
   const [day, setDay] = useState(null), [pick, setPick] = useState(null), [date, setDate] = useState(), [time, setTime] = useState(), [note, setNote] = useState('');
@@ -158,11 +163,12 @@ export function BookCoachSheet({ coach, onClose, onDone }) {
   const base = !card || card.unit === 'hour' ? Math.round((rate * mins) / 60) : rate;
   const cost = card?.per_person ? base * people : base;
   const need = card?.audience === 'team' ? !teamId : card?.audience === 'event' ? !eventId : false;
-  const choose = (k) => { setCardId(k?.id ?? null); setPeople(k ? k.min_participants : 1); setTeamId(null); setEventId(null); setPick(null); setDay(null); };
+  const choose = (k) => { if (k && introUsed(k)) return; setCardId(k?.id ?? null); setPeople(k ? k.min_participants : 1); setTeamId(null); setEventId(null); setPick(null); setDay(null); };
   const send = async () => {
     setBusy(true); setErr(null);
     try {
       const hire = await api.post('/hires', { coach_id: coach.id, sport: coach.sport_slug, starts_at: startsAt, duration_min: mins, ...(note.trim() ? { note: note.trim() } : {}),
+        ...(athleteId !== user.id ? { athlete_id: athleteId } : {}),
         ...(card ? { rate_card_id: card.id, participants: people, ...(teamId ? { team_id: teamId } : {}), ...(eventId ? { event_id: eventId } : {}) } : {}) });
       toast(hire.payment_status === 'unpaid' ? 'Requested — pay to let the coach confirm' : 'Requested — the coach will confirm');
       await onDone(hire); onClose();
@@ -171,14 +177,16 @@ export function BookCoachSheet({ coach, onClose, onDone }) {
   return (
     <Sheet visible onClose={onClose} title={`Book ${coach.display_name}`}>
       <T size={13} color={c.mute}>{coach.sport_emoji} {coach.sport}</T>
+      {kids.data?.length ? <MenuField label={t('coaching.bookingFor')} value={athleteId} onChange={(v) => { setAthleteId(v); setCardId(null); }} options={[{ value: user.id, label: user.display_name }, ...kids.data.map((l) => ({ value: l.child_id, label: l.child?.display_name ?? 'Child' }))]} /> : null}
       {cards.length ? (
         <View style={{ gap: 8 }}>
           <T weight="800" size={13}>What do you need?</T>
           <View style={{ gap: 8 }}>
             {coach.hourly_rate_cents ? <Card pad={12} color={!card ? c.pinkSoft : c.paper} onPress={() => choose(null)}><View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><T weight="700">Standard hourly rate</T><T weight="800">{rateOf(coach, coach.currency)}</T></View><T size={12} color={c.mute}>One person</T></Card> : null}
             {cards.map((k) => (
-              <Card key={k.id} pad={12} color={card?.id === k.id ? c.pinkSoft : c.paper} onPress={() => choose(k)}>
+              <Card key={k.id} pad={12} color={card?.id === k.id ? c.pinkSoft : c.paper} onPress={() => choose(k)} accessibilityLabel={introUsed(k) ? `${k.title}. ${t('coaching.introUsed')}` : k.title} style={introUsed(k) ? { opacity: 0.6 } : undefined}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}><View style={{ flex: 1 }}><T weight="700">{k.title}{k.is_intro ? ' · trial' : ''}</T></View><T weight="800">{cardPrice(k, coach.currency)}</T></View>
+                {introUsed(k) ? <T size={12} weight="700" color={c.sun}>{t('coaching.introUsed')}</T> : null}
                 <T size={12} color={c.mute}>{[nice(k.audience), k.duration_min && k.unit !== 'hour' ? `${k.duration_min} min` : null, k.audience !== 'individual' ? `${k.min_participants}${k.max_participants ? `–${k.max_participants}` : '+'} people` : null, k.sessions_included ? `${k.sessions_included} sessions` : null].filter(Boolean).join(' · ')}</T>
                 {k.description ? <T size={12} color={c.mute}>{k.description}</T> : null}
               </Card>

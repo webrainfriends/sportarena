@@ -11,6 +11,8 @@ export default {
   'empty.nothing': 'ଏଠାରେ ଏପର୍ଯ୍ୟନ୍ତ କିଛି ନାହିଁ।',
   'nav.home': 'ହୋମ୍', 'nav.search': 'ସନ୍ଧାନ', 'nav.bookings': 'ବୁକିଂ', 'nav.account': 'ଖାତା',
   'welcome.hello': 'ନମସ୍କାର, {name}',
+  'coaching.introUsed': "ଆପଣ ଏହି କୋଚ୍‌ଙ୍କ ପରିଚୟ ସେସନ୍ ପୂର୍ବରୁ ବ୍ୟବହାର କରିସାରିଛନ୍ତି", 'coaching.introAvailable': "ପରିଚୟ ଅଫର୍ ଉପଲବ୍ଧ", 'coaching.bookingFor': "କାହା ପାଇଁ ବୁକିଂ",
+  'coaching.introScope': "ପ୍ରତି ଆଥଲିଟ୍ ପାଇଁ ଗୋଟିଏ ପରିଚୟ", 'coaching.introScopeCoach': "କୋଚ୍ ପ୍ରତି", 'coaching.introScopeSport': "ଖେଳ ପ୍ରତି",
   'cls.all_levels': 'ସମସ୍ତ ସ୍ତର',
   'cls.attendance': 'ଉପସ୍ଥିତି',
   'cls.attended': 'ଉପସ୍ଥିତ',
