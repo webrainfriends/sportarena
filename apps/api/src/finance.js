@@ -6,7 +6,7 @@ import { sharesFor } from './settlement.js';
 
 /** payments.purpose_type -> the business module whose money it is. A type missing here is labelled 'other', never dropped. */
 export const MODULE_OF = {
-  shop_order: 'shop', shop_checkout: 'shop', coach_hire: 'coaching', appointment: 'health', physio_package: 'health', insurance_policy: 'insurance',
+  shop_order: 'shop', shop_checkout: 'shop', coach_hire: 'coaching', coach_class_seat: 'coaching', appointment: 'health', physio_package: 'health', insurance_policy: 'insurance',
   venue_invoice: 'venue', venue_plan: 'venue', pos_sale: 'venue', wallet_topup: 'wallet', gift_card: 'wallet', sponsorship_payment: 'sponsorship',
   academy_charge: 'registration', registration_instalment: 'registration', team_charge: 'registration', team_contribution: 'registration', media_rights_fee: 'media', ad_funding: 'advertising',
   service_invoice: 'suppliers',

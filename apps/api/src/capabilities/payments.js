@@ -9,7 +9,7 @@ import { notify } from '../notify.js';
 import { provider } from '../payments/providers.js';
 import { refundableMinor } from '../ads/engine.js';
 
-const purposes = ['shop_order', 'coach_hire', 'insurance_policy', 'venue_invoice', 'wallet_topup', 'gift_card', 'venue_plan', 'appointment', 'shop_checkout', 'physio_package', 'academy_charge', 'media_rights_fee', 'team_charge', 'team_contribution', 'ad_funding', 'marketplace_engagement', 'commercial_subscription', 'registration_instalment'];
+const purposes = ['shop_order', 'coach_hire', 'insurance_policy', 'venue_invoice', 'wallet_topup', 'gift_card', 'venue_plan', 'appointment', 'shop_checkout', 'physio_package', 'academy_charge', 'media_rights_fee', 'team_charge', 'team_contribution', 'ad_funding', 'marketplace_engagement', 'commercial_subscription', 'registration_instalment', 'coach_class_seat'];
 
 cap({
   name: 'list_payment_methods', method: 'GET', path: '/payments/methods', tag: 'Payments', auth: 'public',
