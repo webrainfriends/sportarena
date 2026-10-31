@@ -7,6 +7,7 @@ import { Btn, Chip, Empty, ErrorBox, Loading, Row, Sheet, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { c } from '../theme';
 import { moneyIn } from '../vtime';
+import { t as tr } from '../i18n';
 import { Block, Kpi, opts, openInvoicePdf, when } from './academy-ui';
 import { useSession } from '../session';
 import { AgreementList, AgreementWizard } from './agreement-wizard';
@@ -155,18 +156,28 @@ export function Announcements({ o, archived }) {
 export function Settings({ o, archived }) {
   const prof = useLoad(() => api.get(`/organisations/${o.id}/academy`), [o.id]);
   const [edit, setEdit] = useState(false);
+  const [guard, setGuard] = useState(false);
+  const gpol = useLoad(() => (guard ? api.get(`/organisations/${o.id}/guardian-policy`) : Promise.resolve(null)), [guard, o.id]);
   if (prof.error) return <ErrorBox error={prof.error} onRetry={prof.reload} />;
   if (!prof.data) return <Loading />;
   const p = prof.data;
   return (
     <View style={{ gap: 12 }}>
       <Panel>
-        <Block title="Academy profile" right={!archived ? <Btn small title="Edit" onPress={() => setEdit(true)} /> : null}>
+        <Block title="Academy profile" right={!archived ? <View style={{ flexDirection: 'row', gap: 8 }}><Btn small title={tr('family.policy.open')} color={c.paper} ink={c.ink} onPress={() => setGuard(true)} /><Btn small title="Edit" onPress={() => setEdit(true)} /></View> : null}>
           {[['Legal / trading name', p.legal_name], ['Sports', (p.sports ?? []).join(', ')], ['Focus', p.focus], ['Ages', p.age_min != null ? `${p.age_min}–${p.age_max ?? '+'}` : null], ['Currency', p.currency], ['Timezone', p.timezone], ['Preferred contact', p.contact_channel], ['Policies page', p.policy_url], ['Invoice prefix', p.invoice_prefix], ['Tax ID on invoices', p.tax_id], ['Billing address', p.billing_address]].map(([k, v]) => v ? <View key={k} style={{ flexDirection: 'row', gap: 8 }}><T size={13} color={c.mute} style={{ width: 140 }}>{k}</T><T size={13} weight="700" style={{ flex: 1 }}>{String(v)}</T></View> : null)}
           <Tag label={p.listed ? 'Listed in programme discovery' : 'Not listed'} color={p.listed ? c.lime : c.orangeSoft} />
           {!p.row_version ? <T size={13} color={c.mute}>Set your academy profile so families can find your published programmes.</T> : null}
         </Block>
       </Panel>
+      {guard && gpol.data ? (
+        <FormSheet visible onClose={() => setGuard(false)} title={tr('family.policy.title')} initial={{ primary_only_scopes: gpol.data.primary_only_scopes, note: gpol.data.note ?? '' }}
+          fields={[
+            { key: 'primary_only_scopes', label: tr('family.policy.primary_only'), type: 'multimenu', placeholder: 'None', hint: tr('family.policy.note'), options: gpol.data.available_scopes.map((s) => ({ value: s, label: tr(`family.scope.${s}`) })) },
+            { key: 'note', label: 'Note for the record', optional: true },
+          ]}
+          onSubmit={async (v) => { await api.post(`/organisations/${o.id}/guardian-policy`, { primary_only_scopes: v.primary_only_scopes ?? [], note: v.note || undefined }); setGuard(false); return tr('family.policy.saved'); }} />
+      ) : null}
       <FormSheet visible={edit} onClose={() => setEdit(false)} title="Academy profile" initial={p}
         fields={[
           { key: 'legal_name', label: 'Legal / trading name', optional: true }, { key: 'sports', label: 'Sports offered', type: 'sports', optional: true },

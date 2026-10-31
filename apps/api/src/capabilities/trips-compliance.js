@@ -9,7 +9,7 @@ import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { audit } from '../helpers.js';
 import { decrypt, encrypt } from '../crypto.js';
 import { notify } from '../notify.js';
-import { guardianLink } from '../youth.js';
+import { checkGuardianScope, guardianLink } from '../youth.js';
 import { LIVE_PARTICIPANT, addMonths, assertOpen, audienceOf, guardiansOfMany, localDay, record, tripCtx, youthIdsAmong } from '../trips.js';
 
 const TAG = 'Team travel';
@@ -101,6 +101,7 @@ cap({
       const p = (await c.query('SELECT * FROM trip_participants WHERE id=$1 AND trip_id=$2 AND status = ANY($3) FOR UPDATE', [i.participant_id, ctx.trip.id, LIVE_PARTICIPANT])).rows[0];
       if (!p || !ctx.wardIds.has(p.id)) throw notFound('Traveller');
       if (!(await guardianLink(user.id, p.user_id, c))) throw forbidden('You are no longer a verified guardian of this young person');
+      await checkGuardianScope(user.id, p.user_id, 'travel_consent', null, c);
       const live = (await c.query('SELECT * FROM trip_consents WHERE participant_id=$1 AND revoked_at IS NULL', [p.id])).rows[0];
       if (i.decision === 'grant') {
         if (live) throw conflict('Trip consent is already recorded. Revoke it first to change it.');

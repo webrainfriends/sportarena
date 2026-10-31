@@ -11,7 +11,8 @@ import { audit, isAdmin } from '../helpers.js';
 import { notify } from '../notify.js';
 import { prepEvidence } from '../cases.js';
 import { canManageTeam } from './teams.js';
-import { PURPOSES, RELATIONSHIPS, YOUTH_SQL, getPolicy, guardianLink, guardiansOf, hasConsent, isYouth, refreshYouth, requireConsent } from '../youth.js';
+import { hasOrgGrant } from '../org-access.js';
+import { PURPOSES, RELATIONSHIPS, SCOPES, YOUTH_SQL, getPolicy, guardianLink, guardiansOf, hasConsent, isYouth, primaryGuardian, refreshYouth, requireConsent, requireGuardian } from '../youth.js';
 
 const TAG = 'Youth & guardians';
 const DAY = 864e5;
@@ -40,7 +41,7 @@ const setStatus = async (c, l, actor, action, to, reason, cols = {}) => {
 const linkView = (l) => ({
   id: l.id, guardian_id: l.guardian_id, child_id: l.child_id, relationship: l.relationship, status: l.status, requested_by: l.requested_by,
   needs_existing_guardian_approval: !!l.needs_co && !l.co_guardian_ok_at, expires_at: l.expires_at, decided_at: l.decided_at, decision_note: l.decision_note,
-  revoked_at: l.revoked_at, created_at: l.created_at, policy_version: l.policy_version,
+  revoked_at: l.revoked_at, created_at: l.created_at, policy_version: l.policy_version, scopes: l.scopes ?? SCOPES,
   guardian: l.guardian_name ? { id: l.guardian_id, display_name: l.guardian_name, avatar_emoji: l.guardian_emoji, avatar_color: l.guardian_color, avatar_url: l.guardian_avatar_url } : undefined,
   child: l.child_name ? { id: l.child_id, display_name: l.child_name, avatar_emoji: l.child_emoji, avatar_color: l.child_color, avatar_url: l.child_avatar_url } : undefined,
 });
@@ -303,6 +304,60 @@ cap({
   },
 });
 
+// ---- guardian scopes and organisation overrides (issue #604) ----------------------------------------------------------------
+
+cap({
+  name: 'set_guardian_link_scopes', method: 'PATCH', path: '/youth/guardian-links/:id/scopes', tag: TAG,
+  summary: 'Narrow or restore what one verified guardian may do for a young person: pay fees, register for competitions, answer RSVPs, consent to travel, grant permissions, see the calendar (for example a non-custodial parent who may see the calendar but not pay or consent). A guardian can always reduce their own scopes; the primary guardian (verified first) or the platform team can change another guardian\'s. Withdrawing a permission stays open to every guardian. History is kept and everyone involved is told.',
+  input: z.object({ id, scopes: z.array(z.enum(SCOPES)).max(SCOPES.length).describe('The full set of actions this guardian may take; leave out the ones to withhold') }),
+  async handler({ user }, i) {
+    return tx(async (c) => {
+      const l = await lockLink(c, i.id);
+      if (l.status !== 'active' || l.revoked_at) throw notFound('Guardian link');
+      const own = l.guardian_id === user.id;
+      if (!own && !isAdmin(user)) {
+        if (!(await guardianLink(user.id, l.child_id, c)) || (await primaryGuardian(l.child_id, c)) !== user.id) throw notFound('Guardian link');
+      }
+      const scopes = SCOPES.filter((s) => i.scopes.includes(s));
+      if (own && !isAdmin(user) && scopes.some((s) => !(l.scopes ?? SCOPES).includes(s))) throw forbidden('You can reduce your own authority but not widen it; ask the primary guardian or the platform team');
+      await c.query('UPDATE guardian_links SET scopes=$2, scopes_updated_by=$3, scopes_updated_at=now(), updated_at=now() WHERE id=$1', [l.id, scopes, user.id]);
+      await logLink(c, l.id, user.id, 'scopes_changed', l.status, l.status, scopes.join(',') || 'none');
+      await audit(c, user.id, 'set_guardian_link_scopes', 'guardian_links', l.id);
+      for (const to of new Set([l.guardian_id, l.child_id, ...(await guardiansOf(l.child_id, c))])) if (to !== user.id) await notify(c, to, { kind: 'guardian_scopes', title: 'Guardian permissions changed', body: 'What a guardian may do for a young person was updated under Family & guardians.', data: { link_id: l.id } });
+      return fullLink(c, l.id);
+    });
+  },
+});
+
+const orgAdmin = async (user, orgId, c) => { if (!isAdmin(user) && !(await hasOrgGrant(user, orgId, ['owner', 'admin'], c))) throw notFound('Organisation'); };
+const policyView = (r) => ({ organisation_id: r?.organisation_id, primary_only_scopes: r?.primary_only_scopes ?? [], note: r?.note ?? null, version: r?.version ?? 0, updated_at: r?.created_at ?? null });
+
+cap({
+  name: 'get_org_guardian_policy', method: 'GET', path: '/organisations/:id/guardian-policy', tag: TAG,
+  summary: 'The organisation\'s own tightening of guardian authority (which scopes only the primary guardian may use for its charges and registrations). It can only restrict, never widen what a guardian\'s link allows.',
+  input: z.object({ id }),
+  async handler({ user }, i) {
+    await orgAdmin(user, i.id);
+    return { ...policyView((await one('SELECT * FROM org_guardian_policies WHERE organisation_id=$1 AND retired_at IS NULL', [i.id])) ?? { organisation_id: i.id }), available_scopes: SCOPES };
+  },
+});
+
+cap({
+  name: 'set_org_guardian_policy', method: 'POST', status: 201, path: '/organisations/:id/guardian-policy', tag: TAG,
+  summary: 'Organisation owner or admin: reserve some guardian scopes (for example pay or register) for the primary guardian of a young person within this organisation\'s academy charges and registrations. The previous version is retired, not deleted.',
+  input: z.object({ id, primary_only_scopes: z.array(z.enum(SCOPES)).max(SCOPES.length), note: z.string().max(500).optional() }),
+  async handler({ user }, i) {
+    return tx(async (c) => {
+      await orgAdmin(user, i.id, c);
+      const prev = (await c.query('SELECT * FROM org_guardian_policies WHERE organisation_id=$1 AND retired_at IS NULL FOR UPDATE', [i.id])).rows[0];
+      if (prev) await c.query('UPDATE org_guardian_policies SET retired_at=now() WHERE id=$1', [prev.id]);
+      const row = (await c.query('INSERT INTO org_guardian_policies(organisation_id, primary_only_scopes, note, version, created_by) VALUES ($1,$2,$3,$4,$5) RETURNING *', [i.id, SCOPES.filter((s) => i.primary_only_scopes.includes(s)), i.note ?? null, (prev?.version ?? 0) + 1, user.id])).rows[0];
+      await audit(c, user.id, 'set_org_guardian_policy', 'organisations', i.id);
+      return policyView(row);
+    });
+  },
+});
+
 // ---- purpose-specific consent -----------------------------------------------------------------------------------------------
 
 cap({
@@ -311,8 +366,7 @@ cap({
   input: z.object({ child_id: id, purpose: z.enum(PURPOSES), expires_in_days: z.number().int().min(1).max(730).optional() }),
   async handler({ user }, i) {
     return tx(async (c) => {
-      const link = await guardianLink(user.id, i.child_id, c);
-      if (!link) throw forbidden('You are not a verified guardian of this young person');
+      const link = await requireGuardian({ id: user.id }, i.child_id, c, 'consent');
       const policy = await getPolicy(link.policy_jurisdiction, c);
       const days = Math.min(i.expires_in_days ?? policy.consent_max_days, policy.consent_max_days);
       const expires = new Date(Date.now() + days * DAY);
