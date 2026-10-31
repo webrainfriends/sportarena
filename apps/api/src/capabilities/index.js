@@ -121,6 +121,7 @@ import './player-development.js';
 import './player-goals.js';
 import './offline-sync.js';
 import './coaching-evidence.js';
+import './coach-classes.js';
 import './payments.js';
 import './settlement.js';
 import './finance.js';

@@ -12,6 +12,7 @@ import { FormSheet } from '../FormSheet';
 import { Pill, StatusPill, nice } from './marketplace';
 import { AUDIENCES, Confirm, Head, Tile, UNIT, cardPrice, price } from './coaching';
 import { c } from '../theme';
+import { t } from '../i18n';
 import { addDays, moneyIn, todayIn, WEEKDAYS } from '../vtime';
 import { LoyaltyConsole } from './rewards';
 
@@ -71,6 +72,7 @@ function SpecSheet({ spec, onClose, onDone }) {
 
 export function CoachRates() {
   const { toast } = useSession();
+  const { push } = useNav();
   const cards = useLoad(() => api.get('/coach/rate-cards'), []);
   const specs = useLoad(() => api.get('/coach/specialisations'), []);
   const [sheet, setSheet] = useState(null), [spec, setSpec] = useState(null), [retire, setRetire] = useState(null);
@@ -98,6 +100,7 @@ export function CoachRates() {
             <T size={12} color={c.mute} style={{ marginTop: 6 }}>{[k.duration_min && k.unit !== 'hour' ? `${k.duration_min} min` : null, k.audience !== 'individual' ? `${k.min_participants}${k.max_participants ? `–${k.max_participants}` : '+'} people` : null, k.sessions_included ? `${k.sessions_included} sessions` : null, `${k.bookings} booking${k.bookings === 1 ? '' : 's'}`, Number(k.income_cents) ? `${price(k.income_cents, k.currency)} earned` : null].filter(Boolean).join(' · ')}</T>
             <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
               <Btn small title="Edit" onPress={() => setSheet(k)} />
+              {k.audience === 'group' && k.active ? <Btn small title={t('cc.publish_a_class')} color={c.paper} ink={c.ink} onPress={() => push('CoachClasses')} /> : null}
               <Btn small title={k.active ? 'Switch off' : 'Switch on'} color={c.paper} ink={c.ink} onPress={() => toggle(k)} />
               <Btn small title="Retire" color={c.paper} ink={c.red} onPress={() => setRetire(k)} />
             </View>

@@ -83,6 +83,7 @@ export function targetFor(data = {}) {
   if (data.cover_id) return ['Cover', {}]; // a cover request, offer, answer, bill to pay or payment made
   if (data.programme_id) return ['Rewards', {}]; // points earned, a referral reward or an adjustment
   if (data.marketplace_engagement_id) return ['MarketplaceEngagement', { id: data.marketplace_engagement_id }]; // a quote, answer, schedule, delivery or payment on an engagement
+  if (data.class_id) return ['CoachClass', { id: data.class_id }]; // a coach class: seat held, promoted off the waitlist, changed, cancelled or a guardian's approval
   if (data.open_game_id) return ['OpenGame', { id: data.open_game_id }]; // a request, approval, waitlist move, change or cancellation of a game
   if (data.ballot_id && !data.reservation_id) return ['Notifications', {}]; // a slot ballot: an offer to accept and pay, or the result (My ballots lives with the waitlist)
   if (data.reservation_id) return ['Reservation', { id: data.reservation_id }];
@@ -111,6 +112,8 @@ export function parseTarget(t) {
   if (kind === 'integrity-case' && id) return ['IntegrityCase', { id }];
   if (kind === 'my-integrity') return ['MyIntegrity', {}];
   if (kind === 'open-game' && id) return ['OpenGame', { id }];
+  if (kind === 'coach-class' && id) return ['CoachClass', { id }];
+  if (kind === 'coach-classes') return ['CoachClasses', {}];
   if (kind === 'find-games') return ['FindGames', {}];
   if (kind === 'family') return ['Family', {}];
   if (kind === 'career') return ['CareerTimeline', {}];
