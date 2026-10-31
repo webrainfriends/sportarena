@@ -6,7 +6,7 @@ const { pool } = await import('../src/db.js');
 const { migrate } = await import('../src/migrate.js');
 const { createApp } = await import('../src/http.js');
 const { capabilities } = await import('../src/capabilities/index.js');
-const { weeklyStreak, personalBestRun, weekOf, evaluate, modelFor } = await import('../src/achievements/engine.js');
+const { weeklyStreak, personalBestRun, personalBestCount, weekOf, evaluate, modelFor } = await import('../src/achievements/engine.js');
 const { FAMILIES, familyOf } = await import('../src/rankings/families.js');
 
 let server, base;
@@ -138,6 +138,27 @@ test('goal-game and cricket milestones are native; shared ones apply to any spor
   const run = evaluate({ ...base, results: [{ id: 'b', sport: 'sprint', family: 'measured', metric: 'time', value: 11, direction: 'lower', on: '2026-10-01', event_id: 'e2' }] });
   assert.ok(run.achievements.some((x) => x.key === 'results:1'));
   assert.ok(!run.achievements.some((x) => x.group?.startsWith('goal_game')));
+});
+
+test('every native family has its own milestones; only the generic fallback has none', () => {
+  for (const f of ['cricket', 'goal_game', 'racket', 'measured']) assert.ok(modelFor(f).milestones.length >= 2, f);
+  assert.equal(modelFor('generic').milestones.length, 0);
+  const d = (id, sport, family, metric, value, on, direction = 'higher') => ({ id, sport, family, metric, value, direction, on, event_id: `e-${on}` });
+  const racket = evaluate({ today: '2026-10-30', results: [d('1', 'tennis', 'racket', 'aces', 30, '2026-10-01'), d('2', 'tennis', 'racket', 'aces', 25, '2026-10-08'), d('3', 'tennis', 'racket', 'matches_won', 5, '2026-10-08'), d('4', 'tennis', 'racket', 'sets_won', 99, '2026-10-09')] });
+  const keys = racket.achievements.map((x) => x.key);
+  assert.ok(keys.includes('racket_aces:50') && keys.includes('racket_matches_won:5') && keys.includes('racket_sets_won:10'));
+  assert.ok(!keys.includes('racket_aces:250'));
+  // times are never summed: only improvements and the spread of events count
+  const run = evaluate({ today: '2026-10-30', results: [
+    d('a', 'athletics-100m', 'measured', '100m_time_s', 12.5, '2026-09-01', 'lower'), d('b', 'athletics-100m', 'measured', '100m_time_s', 12.1, '2026-09-15', 'lower'),
+    d('c', 'athletics-100m', 'measured', '100m_time_s', 12.3, '2026-10-01', 'lower'), d('e', 'athletics-100m', 'measured', '100m_time_s', 11.9, '2026-10-10', 'lower'),
+    d('f', 'long-jump', 'measured', 'distance_m', 5.1, '2026-09-02'), d('g', 'long-jump', 'measured', 'distance_m', 5.4, '2026-10-05'), d('h', 'swimming-50m', 'measured', '50m_time_s', 30, '2026-10-06', 'lower')] });
+  const rec = run.achievements.find((x) => x.key === 'measured_records:1');
+  const five = run.achievements.find((x) => x.key === 'measured_records:5');
+  assert.ok(rec && !five, 'two improvements in the 100m plus one in the jump is three records');
+  assert.equal(run.next_up.find((x) => x.key === 'measured_records:5').progress, 3);
+  assert.ok(run.achievements.some((x) => x.key === 'measured_measures:3'), 'three different events');
+  assert.deepEqual(personalBestCount([10, 9, 11, 8], 'lower'), [1, 3]);
 });
 
 test('capabilities are exposed over REST, OpenAPI and MCP', () => {

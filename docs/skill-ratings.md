@@ -48,7 +48,14 @@ Additive migration `129_skill_ratings.sql`: `skill_rating_runs` (one per changed
 | `list_rating_models` | public | how it works, the model per sport, native or fallback |
 | `get_skill_ratings` | public | a player's level per sport with reliability, record, peak and what it matches as in open games |
 | `get_skill_rating_history` | public | level after each game; the player (and an admin) also see the evidence behind each move |
+| `explain_skill_rating_change` | the player (admin audited) | why one verified game moved the level, in plain words; anyone else gets a `404` |
 | `recompute_skill_ratings` | admin | force a re-run; audit-logged |
+
+## Rankings and open games
+
+Rankings: a ranking version may use `formula_kind = 'rating'` (migration `133_rating_ranking_formula.sql`, additive). It ranks reliable levels only, players only, from approved competition results; youth and unapproved accounts never appear. There is no separate leaderboard.
+
+Open games: a card carries `my_level` (the viewer's own reliable level in that sport, never anyone else's) and the app shows it as a "Your level" chip; matching uses the computed level when reliable, else the stated level.
 
 ## Privacy and security
 
