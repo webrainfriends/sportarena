@@ -18,6 +18,7 @@ import { PaySheet } from '../PaySheet';
 import { WalletApplySheet } from './wallet';
 import { PointsSheet } from './rewards';
 import { PassApplySheet } from './plans';
+import { track } from '../track';
 import { NewCaseSheet } from './cases';
 import { AttachSessionsSheet } from './training-venue';
 import { currentDevice, disablePush, enablePush, pushSupport } from '../push';
@@ -55,6 +56,7 @@ export function Basket() {
     setBusy(true);
     try {
       const r = await api.post('/reservations', body());
+      track('booking_completed', { entityType: 'reservation', entityId: r.id });
       clear(); toast(`Booked ${r.code} 🎉`); replace('Reservation', { id: r.id });
     } catch (e) { toast(e.message); setQuote(null); api.post('/reservations/quote', body()).then(setQuote).catch(() => {}); } finally { setBusy(false); }
   };

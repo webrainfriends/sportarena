@@ -9,6 +9,7 @@
 // stay readable forever (kpi_definition_versions is append-only), so a figure quoted last quarter can always be traced to the formula that produced it.
 import { createHash } from 'node:crypto';
 import { YOUTH_SQL } from '../youth.js';
+import { ACTIVITY_SOURCES, completedActivitySql } from './activity.js';
 
 /** Parameters every facts query receives: $1 event ids, $2 venue ids, $3 team ids, $4 organisation id, $5 unrestricted, $6 from (date), $7 to (date, inclusive), $9 sponsor ids. */
 const FROM = '$6::date';
@@ -19,6 +20,11 @@ const person = (u) => `CASE WHEN ${YOUTH_SQL.replaceAll('u.', `${u}.`)} THEN 'Yo
 const TYPES = { rec_id: 'text', rec_kind: 'text', label: 'text', at: 'timestamptz', subject: 'text', sport_id: 'uuid', event_id: 'uuid', venue_id: 'uuid', team_id: 'uuid', org_id: 'uuid', sponsor_id: 'uuid', currency: 'text', amount: 'bigint', num: 'numeric', den: 'numeric', channel: 'text', flag: 'text', link_kind: 'text', link_id: 'uuid' };
 /** One SELECT list with every fact column typed, so each UNION branch lines up and a missing column is NULL rather than a different shape. */
 const fact = (o) => Object.entries(TYPES).map(([k, t]) => `${o[k] ?? 'NULL'}::${t} AS ${k}`).join(', ');
+/** Same, plus the provider a record belongs to (only the metrics readable in a person's own "provider" scope carry it; the other metrics' SQL is unchanged). */
+const factP = (o) => `${fact(o)}, ${o.provider_id ?? 'NULL'}::uuid AS provider_id`;
+/** How a person arrived: invited by a member (the loyalty referral record), else the first-touch source they consented to share, else direct. */
+const ACQUISITION = (u) => `CASE WHEN EXISTS (SELECT 1 FROM loyalty_referrals lr WHERE lr.invitee_id=${u}.id AND lr.status NOT IN ('blocked','void')) THEN 'referral'
+  ELSE coalesce((SELECT aa.source FROM analytics_attributions aa JOIN analytics_consents ac ON ac.user_id=aa.user_id AND ac.granted WHERE aa.user_id=${u}.id), 'direct') END`;
 
 export const AUDIENCES = {
   // who may read the metric in an organisation scope (organisation_members.role)
@@ -26,7 +32,7 @@ export const AUDIENCES = {
   finance: ['owner', 'admin', 'finance', 'auditor'],
   squad: ['owner', 'admin', 'manager', 'coach'],
 };
-export const SCOPE_TYPES = ['platform', 'organisation', 'venue', 'event', 'team', 'sponsor'];
+export const SCOPE_TYPES = ['platform', 'organisation', 'venue', 'event', 'team', 'sponsor', 'provider'];
 
 const CHANNEL = `CASE WHEN i.academy_charge_id IS NOT NULL THEN 'academy' WHEN i.team_charge_id IS NOT NULL THEN 'team' WHEN i.marketplace_engagement_id IS NOT NULL THEN 'marketplace'
   WHEN i.svc_order_id IS NOT NULL THEN 'services' WHEN i.pos_sale_id IS NOT NULL THEN 'pos' WHEN i.venue_id IS NOT NULL THEN 'venue_booking' ELSE 'other' END`;
@@ -197,6 +203,102 @@ export const METRICS = [
         num: "(m.availability = 'available')::int", den: '1', link_kind: "'Person'", link_id: 'm.user_id' })}
         FROM team_members m JOIN teams t ON t.id=m.team_id AND t.archived_at IS NULL JOIN users u ON u.id=m.user_id
        WHERE m.status='active' AND m.role IN ('player','captain')`,
+  },
+  // ------------------------------------------------------------------------------------------------ growth & participation (#73)
+  {
+    key: 'first_completed_activity', version: 1, label: 'First completed activity', domain: 'Growth', unit: 'count', aggregation: 'distinct_count', audience: 'ops',
+    owner: 'Participation & Competition', scopes: ['platform', 'organisation', 'venue', 'event', 'team'], dimensions: ['sport', 'event', 'venue', 'team', 'city', 'month', 'channel'],
+    formula: 'Distinct people whose very first completed activity on the platform happened in the period. A completed activity is a game that reached "completed", a started or substitute match appearance, a confirmed venue booking that was checked in, academy attendance marked present, or a team check-in. Created, open, cancelled, postponed and no-show items never count, and a booking cancelled after check-in does not count. Attributed to where that first activity took place; "channel" is how the person arrived (invited by a member, a source they consented to share, or direct).',
+    sources: ACTIVITY_SOURCES,
+    flags: {},
+    drilldown: 'The first completed activity of each person',
+    facts: () => `
+      SELECT ${fact({ rec_id: 'a.rec_id', rec_kind: 'a.kind', label: `${person('u')} || ' · first activity'`, at: 'a.at', subject: 'a.user_id::text', sport_id: 'a.sport_id', event_id: 'a.event_id', venue_id: 'a.venue_id', team_id: 'a.team_id', org_id: 'a.org_id', channel: ACQUISITION('u'), link_kind: "'Person'", link_id: 'a.user_id' })}
+        FROM (SELECT DISTINCT ON (x.user_id) x.* FROM (${completedActivitySql()}) x ORDER BY x.user_id, x.at, x.rec_id) a JOIN users u ON u.id=a.user_id
+       WHERE ${inRange('a.at')}`,
+  },
+  {
+    key: 'repeat_participants', version: 1, label: 'Repeat participants', domain: 'Growth', unit: 'count', aggregation: 'distinct_count', audience: 'ops',
+    owner: 'Participation & Competition', scopes: ['platform', 'organisation', 'venue', 'event', 'team'], dimensions: ['sport', 'event', 'venue', 'team', 'city', 'month'],
+    formula: 'Distinct people who completed an activity in the period on a later calendar day than their first completed activity ever. A second activity on the same day as the first does not make someone a repeat participant. Uses the same completed-activity definition as "First completed activity".',
+    sources: ACTIVITY_SOURCES,
+    flags: {},
+    drilldown: 'The repeat activities behind each person',
+    facts: () => `
+      SELECT ${fact({ rec_id: 'a.rec_id', rec_kind: 'a.kind', label: `${person('u')} || ' · repeat activity'`, at: 'a.at', subject: 'a.user_id::text', sport_id: 'a.sport_id', event_id: 'a.event_id', venue_id: 'a.venue_id', team_id: 'a.team_id', org_id: 'a.org_id', link_kind: "'Person'", link_id: 'a.user_id' })}
+        FROM (SELECT x.*, min(x.at::date) OVER (PARTITION BY x.user_id) AS first_day FROM (${completedActivitySql()}) x) a JOIN users u ON u.id=a.user_id
+       WHERE a.at::date > a.first_day AND ${inRange('a.at')}`,
+  },
+  {
+    key: 'activation_rate', version: 1, label: 'Activation rate', domain: 'Growth', unit: 'percent', aggregation: 'ratio', audience: 'ops', noSportFilter: true,
+    owner: 'Growth', scopes: ['platform'], dimensions: ['month', 'channel'],
+    formula: 'Of the people who signed up in the period, the share who completed their first activity within 14 days of signing up (same completed-activity definition as "First completed activity"). Sign-ups still inside their 14-day window are counted in the denominator and flagged, so a recent period reads low until the window closes. It cannot be split or filtered by sport, because someone who has not yet played has no sport.',
+    sources: [{ key: 'signup', label: 'Sign-ups' }],
+    flags: { window_open: 'still inside their 14-day activation window' },
+    drilldown: 'Sign-ups and whether each activated',
+    facts: () => `
+      WITH act AS (${completedActivitySql()}),
+      activated AS (SELECT DISTINCT a.user_id FROM act a JOIN users s ON s.id=a.user_id AND a.at >= s.created_at AND a.at < s.created_at + interval '14 days')
+      SELECT ${fact({ rec_id: 'u.id::text', rec_kind: "'signup'", label: `${person('u')} || CASE WHEN ac.user_id IS NOT NULL THEN ' · activated' ELSE ' · not yet' END`, at: 'u.created_at', subject: 'u.id::text', channel: ACQUISITION('u'),
+        num: '(ac.user_id IS NOT NULL)::int', den: '1', flag: "CASE WHEN ac.user_id IS NULL AND u.created_at > now() - interval '14 days' THEN 'window_open' END", link_kind: "'Person'", link_id: 'u.id' })}
+        FROM users u LEFT JOIN activated ac ON ac.user_id=u.id
+       WHERE ${inRange('u.created_at')}`,
+  },
+  {
+    key: 'vacancy_fill_rate', version: 1, label: 'Vacancy fill rate', domain: 'Growth', unit: 'percent', aggregation: 'ratio', audience: 'ops',
+    owner: 'Find & Join Games', scopes: ['platform', 'organisation', 'venue', 'event', 'team'], dimensions: ['sport', 'event', 'venue', 'team', 'city', 'month'],
+    formula: 'Of the places offered in open games that start in the period, the share taken by confirmed players (never more than the places offered). Cancelled games are excluded. Requested, waitlisted, declined and cancelled places are not filled places. Games that have not started yet are included at their current fill.',
+    sources: [{ key: 'open_game', label: 'Open games' }],
+    flags: {},
+    drilldown: 'Open games with places filled and offered',
+    facts: () => `
+      SELECT ${fact({ rec_id: 'og.id::text', rec_kind: "'open_game'", label: "g.title || ' · ' || LEAST(coalesce(m.n, 0), og.max_players) || '/' || og.max_players", at: 'g.starts_at', subject: 'og.id::text', sport_id: 'g.sport_id', event_id: 'g.competition_id', venue_id: 'g.venue_id', team_id: 'og.team_id', org_id: 'v.organisation_id',
+        num: 'LEAST(coalesce(m.n, 0), og.max_players)', den: 'og.max_players', link_kind: "'Game'", link_id: 'g.id' })}
+        FROM open_games og JOIN games g ON g.id=og.game_id LEFT JOIN venues v ON v.id=g.venue_id
+        LEFT JOIN LATERAL (SELECT count(*)::int AS n FROM open_game_members mm WHERE mm.open_game_id=og.id AND mm.status='confirmed') m ON true
+       WHERE og.status IN ('open','completed') AND ${inRange('g.starts_at')}`,
+  },
+  {
+    key: 'booking_failure_rate', version: 1, label: 'Booking failure rate', domain: 'Venues', unit: 'percent', aggregation: 'ratio', audience: 'ops',
+    owner: 'Venue Operations', scopes: ['platform', 'organisation', 'venue', 'event', 'team'], dimensions: ['sport', 'event', 'venue', 'team', 'city', 'month'],
+    formula: 'Of the bookings starting in the period that the customer did not cancel themselves, the share that failed: ended as a no-show, or were cancelled by the venue or by the system (for example an unpaid hold that expired). Bookings the customer cancelled are excluded from both sides, so changing your mind is not a failure.',
+    sources: [{ key: 'booking', label: 'Venue bookings' }],
+    flags: {},
+    drilldown: 'Bookings and how each ended',
+    facts: () => `
+      SELECT ${fact({ rec_id: 'b.id::text', rec_kind: "'booking'", label: "rs.name || ' · ' || b.status", at: 'b.starts_at', subject: 'b.id::text', sport_id: 'rs.sport_id', event_id: 'b.event_id', venue_id: 'rs.venue_id', team_id: 'b.team_id',
+        num: "(b.status IN ('no_show','cancelled'))::int", den: '1', link_kind: "'Reservation'", link_id: 'b.reservation_id' })}
+        FROM bookings b JOIN resources rs ON rs.id=b.resource_id
+       WHERE NOT (b.status = 'cancelled' AND b.cancelled_by IS NOT NULL AND b.cancelled_by = b.user_id) AND ${inRange('b.starts_at')}`,
+  },
+  {
+    key: 'payment_failure_rate', version: 1, label: 'Payment failure rate', domain: 'Finance', unit: 'percent', aggregation: 'ratio', audience: 'finance',
+    owner: 'Payments', scopes: ['platform', 'organisation', 'venue', 'team'], dimensions: ['venue', 'team', 'channel', 'month'],
+    formula: 'Of the card and wallet payments started in the period that reached an outcome, the share that failed. Payments still pending are left out until they resolve; paid and refunded payments count as successful attempts. Inside an organisation, venue or team only venue-invoice payments can be attributed; the platform scope covers every payment purpose.',
+    sources: [{ key: 'payment', label: 'Payments' }],
+    flags: {},
+    drilldown: 'Payments and their outcome',
+    facts: () => `
+      SELECT ${fact({ rec_id: 'p.id::text', rec_kind: "'payment'", label: "p.purpose_type || ' · ' || p.status", at: 'p.created_at', subject: 'p.id::text', venue_id: 'i.venue_id', team_id: 'i.team_id', org_id: 'i.organisation_id', currency: 'p.currency', channel: 'p.purpose_type',
+        num: "(p.status = 'failed')::int", den: '1', link_kind: "'Invoice'", link_id: 'i.id' })}
+        FROM payments p LEFT JOIN invoices i ON p.purpose_type='venue_invoice' AND i.id=p.purpose_id
+       WHERE p.status IN ('paid','failed','refunded') AND ${inRange('p.created_at')}`,
+  },
+  {
+    key: 'provider_earnings', version: 1, label: 'Provider earnings', domain: 'Finance', unit: 'money', aggregation: 'sum_money', audience: 'finance',
+    owner: 'Marketplace', scopes: ['platform', 'provider'], dimensions: ['sport', 'channel', 'month'],
+    formula: 'Payments received for a provider\'s coaching sessions and marketplace engagements, dated by the day they were paid. Refunded and failed payments never count. It is the amount the customer paid, before any platform fee, in the payment currency and never added across currencies. A provider sees only their own earnings; the platform scope shows the total with no provider named.',
+    sources: [{ key: 'coach_hire', label: 'Coaching session payments' }, { key: 'marketplace_engagement', label: 'Marketplace engagement payments' }],
+    flags: {},
+    drilldown: 'Payments received',
+    facts: () => `
+      SELECT ${factP({ rec_id: 'p.id::text', rec_kind: "'coach_hire'", label: "'Coaching session'", at: 'p.paid_at', subject: 'p.id::text', sport_id: 'ch.sport_id', currency: 'p.currency', amount: 'p.amount_cents', channel: "'coach_hire'", provider_id: 'ch.coach_id' })}
+        FROM payments p JOIN coach_hires ch ON ch.id=p.purpose_id
+       WHERE p.purpose_type='coach_hire' AND p.status='paid' AND p.paid_at IS NOT NULL AND ${inRange('p.paid_at')}
+      UNION ALL
+      SELECT ${factP({ rec_id: 'p.id::text', rec_kind: "'marketplace_engagement'", label: "me.title", at: 'p.paid_at', subject: 'p.id::text', sport_id: 'me.sport_id', currency: 'p.currency', amount: 'p.amount_cents', channel: "'marketplace_engagement'", provider_id: 'me.provider_id' })}
+        FROM payments p JOIN marketplace_engagements me ON me.id=p.purpose_id
+       WHERE p.purpose_type='marketplace_engagement' AND p.status='paid' AND p.paid_at IS NOT NULL AND ${inRange('p.paid_at')}`,
   },
 ];
 
