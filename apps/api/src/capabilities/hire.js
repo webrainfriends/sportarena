@@ -18,6 +18,7 @@ import { loadCoachSchedule } from '../coach-slots.js';
 import { venueText } from '../session-links.js';
 import { coachSessionDone } from '../rewards/activity.js';
 import { restoreForPurpose } from '../rewards/redeem.js';
+import { redeemSubscriptionSession, restoreSubscriptionSession } from '../coach-subscriptions.js';
 
 const esc = (x) => (x ? x.replace(/[%_\\]/g, '\\$&') : null);
 
@@ -96,8 +97,19 @@ export async function placeHire(user, i, opts = {}) {
     const rate = card ? Math.round((total * 60) / mins) : Number(prof.hourly_rate_cents ?? 0);
     if (opts.dry && introScope && opts.introSeen) opts.introSeen.used = true;
     if (opts.dry) return { ok: true, starts_at: i.starts_at, duration_min: mins, total_cents: total, audience, participants: i.participants };
-    const hire = await one('INSERT INTO coach_hires(hirer_id, coach_id, sport_id, starts_at, duration_min, rate_cents_hour, total_cents, note, payment_status, audience, participants, team_id, event_id, rate_card_id, series_id, athlete_id, intro_scope, currency) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING id, coach_id, starts_at, duration_min, total_cents, currency, status, payment_status, audience, participants, athlete_id, intro_scope',
-      [user.id, i.coach_id, sport.id, i.starts_at, mins, rate, total, i.note, paymentsEnabled() && total > 0 ? 'unpaid' : 'not_required', audience, i.participants, client.team_id, client.event_id, card?.id ?? null, opts.series_id ?? null, athleteId, introScope, config.payments.currency]).catch((e) => { throw mapIntroViolation(e); });
+    const insertSql = 'INSERT INTO coach_hires(hirer_id, coach_id, sport_id, starts_at, duration_min, rate_cents_hour, total_cents, note, payment_status, audience, participants, team_id, event_id, rate_card_id, series_id, athlete_id, intro_scope, currency) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING id, coach_id, starts_at, duration_min, total_cents, currency, status, payment_status, audience, participants, athlete_id, intro_scope';
+    const args = (covered) => [user.id, i.coach_id, sport.id, i.starts_at, mins, rate, covered ? 0 : total, i.note, !covered && paymentsEnabled() && total > 0 ? 'unpaid' : 'not_required', audience, i.participants, client.team_id, client.event_id, card?.id ?? null, opts.series_id ?? null, athleteId, introScope, config.payments.currency];
+    // an included session of a monthly subscription covers the booking: no payment, and the session comes back if it is cancelled (coach-subscriptions.js)
+    const hire = i.subscription_id
+      ? await tx(async (c) => {
+        if (audience !== 'individual') throw badRequest('Included sessions are for individual coaching');
+        const h = (await c.query(insertSql, args(true))).rows[0];
+        const r = await redeemSubscriptionSession(c, { subscriptionId: i.subscription_id, hirerId: user.id, coachId: i.coach_id, athleteId, hireId: h.id });
+        if (r.error === 'notFound') throw notFound('Subscription');
+        if (r.error) throw conflict('No included sessions are left this month. Book and pay for this session instead.', { code: 'subscription_empty' });
+        return h;
+      }).catch((e) => { throw mapIntroViolation(e); })
+      : await one(insertSql, args(false)).catch((e) => { throw mapIntroViolation(e); });
     if (opts.quiet) return hire;
     await notify(null, i.coach_id, { kind: 'coach_hire_request', title: `${client.name ?? user.display_name} wants a ${sport.name} ${audience === 'individual' ? 'session' : `${audience} booking`}`, body: hire.payment_status === 'unpaid' ? 'Waiting for their payment, then you can confirm.' : 'Open your coach desk to confirm.', data: { hire_id: hire.id } });
     return hire;
@@ -110,6 +122,7 @@ cap({
     coach_id: id, sport: z.string().optional(), starts_at: z.string().datetime({ offset: true }), duration_min: z.number().int().min(15).max(1440).optional(), note: z.string().max(500).optional(),
     rate_card_id: id.optional(), participants: z.number().int().min(1).max(500).default(1), team_id: id.optional(), event_id: id.optional(),
     athlete_id: id.optional().describe('book for a young person you are a verified guardian of; an intro offer counts against them, not you'),
+    subscription_id: id.optional().describe('use one of the included sessions of your monthly subscription with this coach instead of paying'),
   }),
   handler: ({ user }, i) => placeHire(user, i),
 });
@@ -201,6 +214,7 @@ cap({
       const out = (await c.query("UPDATE coach_hires SET status=$2, payment_status=$4, completed_at=CASE WHEN $2='completed' THEN now() ELSE completed_at END, cancelled_by=CASE WHEN $2='cancelled' THEN $3::uuid ELSE cancelled_by END WHERE id=$1 AND status=$5 RETURNING id, status, payment_status", [i.id, i.status, user.id, payment, h.status])).rows[0];
       if (!out) throw conflict('This session was just changed by someone else; reload and try again');
       if (i.status === 'cancelled') await restoreForPurpose(c, 'coach_hire', h.id, { reason: 'Coaching session cancelled' });
+      if (i.status === 'cancelled') await restoreSubscriptionSession(c, h.id);   // an included session of a subscription comes back
       if (i.status === 'completed') await coachSessionDone(c, h.id);   // paid + completed earns coach-programme points (once)
       if (i.status === 'cancelled') await c.query("UPDATE session_venue_links SET released_at=now(), release_reason='session cancelled' WHERE session_type='coach_hire' AND session_id=$1 AND released_at IS NULL", [h.id]);
       const other = isCoach ? h.hirer_id : h.coach_id;

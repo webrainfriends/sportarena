@@ -106,6 +106,7 @@ import './hire.js';
 import './coach-market.js';
 import './coach-business.js';
 import './coach-classes.js';
+import './coach-subscriptions.js';
 import './venue-sessions.js';
 import './training-plans.js';
 import './coach.js';
