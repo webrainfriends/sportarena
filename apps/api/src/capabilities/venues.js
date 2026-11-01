@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { bboxField, parseBbox, haversineSql, bboxSql } from '../geo.js';
 import { cap, id, page, money } from '../registry.js';
 import { one, many, tx, pool } from '../db.js';
 import { inheritTimetable } from '../booking/timetable.js';
@@ -97,7 +98,7 @@ cap({
   summary: 'Browse and search venues: by name/city/sport, near a point (lat, lng, radius_km), by price, by amenity, and — with available_from/available_to — only venues with a free area in that window. Sort by name, distance, rating or price.',
   input: z.object({
     city: z.string().optional(), q: z.string().optional(), sport: z.string().optional(),
-    lat: z.coerce.number().min(-90).max(90).optional(), lng: z.coerce.number().min(-180).max(180).optional(), radius_km: z.coerce.number().min(0.1).max(20000).optional(),
+    lat: z.coerce.number().min(-90).max(90).optional(), lng: z.coerce.number().min(-180).max(180).optional(), radius_km: z.coerce.number().min(0.1).max(20000).optional(), bbox: bboxField,
     max_hourly_rate_cents: z.coerce.number().int().min(0).optional(), amenity: z.string().optional(),
     available_from: dt.optional(), available_to: dt.optional(),
     sort: z.enum(['name', 'distance', 'rating', 'price']).default('name'), ...page,
@@ -106,11 +107,12 @@ cap({
     const sport = i.sport ? await sportBySlugOrId(i.sport) : null;
     if (i.sport && !sport) throw notFound('Sport');
     if (i.sort === 'distance' && i.lat == null) throw badRequest('sort=distance needs lat and lng');
+    if (i.bbox && !parseBbox(i.bbox)) throw badRequest('bbox must be south,west,north,east');
+    const box = parseBbox(i.bbox);
     const rows = await many(
       `WITH base AS (
          SELECT v.*,
-           CASE WHEN $5::float8 IS NULL OR v.latitude IS NULL THEN NULL ELSE round((6371 * 2 * asin(sqrt(
-             power(sin(radians(v.latitude - $5) / 2), 2) + cos(radians($5)) * cos(radians(v.latitude)) * power(sin(radians(v.longitude - $6) / 2), 2))))::numeric, 2) END AS distance_km,
+           ${haversineSql('v.latitude', 'v.longitude', '$5', '$6', 2)} AS distance_km,
            (SELECT count(*)::int FROM resources r WHERE r.venue_id=v.id AND r.active) AS resources,
            (SELECT round(avg(rating),2) FROM testimonials t WHERE t.subject_type='venue' AND t.subject_id=v.id AND t.status='published' AND t.visibility='public') AS rating,
            (SELECT count(*)::int FROM testimonials t WHERE t.subject_type='venue' AND t.subject_id=v.id AND t.status='published' AND t.visibility='public') AS reviews,
@@ -124,6 +126,7 @@ cap({
          WHERE v.active AND ($1::text IS NULL OR v.city ILIKE $1) AND ($2::text IS NULL OR v.name ILIKE '%'||$2||'%')
            AND ($3::uuid IS NULL OR EXISTS (SELECT 1 FROM resources r WHERE r.venue_id=v.id AND r.active AND r.sport_id=$3))
            AND ($4::text IS NULL OR $4 = ANY(v.amenities))
+           AND ${bboxSql('v.latitude', 'v.longitude', ['$15', '$16', '$17', '$18'])}
            AND ($9::timestamptz IS NULL OR EXISTS (
                  SELECT 1 FROM resources r WHERE r.venue_id=v.id AND r.active AND r.kind <> 'equipment' AND ($3::uuid IS NULL OR r.sport_id=$3)
                    AND NOT EXISTS (SELECT 1 FROM venue_blocks k WHERE k.released_at IS NULL AND k.venue_id=v.id AND (k.resource_id IS NULL OR k.resource_id=r.id) AND k.starts_at < $10 AND k.ends_at > $9)
@@ -134,7 +137,7 @@ cap({
        ORDER BY CASE WHEN $11 = 'distance' THEN distance_km END ASC NULLS LAST, CASE WHEN $11 = 'rating' THEN rating END DESC NULLS LAST,
                 CASE WHEN $11 = 'price' THEN min_hourly_rate_cents END ASC NULLS LAST, name
        LIMIT $12 OFFSET $13`,
-      [i.city ?? null, i.q ?? null, sport?.id ?? null, i.amenity ?? null, i.lat ?? null, i.lng ?? null, i.max_hourly_rate_cents ?? null, i.radius_km ?? null, i.available_from ?? null, i.available_to ?? null, i.sort, i.limit, i.offset, user?.id ?? null]);
+      [i.city ?? null, i.q ?? null, sport?.id ?? null, i.amenity ?? null, i.lat ?? null, i.lng ?? null, i.max_hourly_rate_cents ?? null, i.radius_km ?? null, i.available_from ?? null, i.available_to ?? null, i.sort, i.limit, i.offset, user?.id ?? null, box?.south ?? null, box?.west ?? null, box?.north ?? null, box?.east ?? null]);
     return rows.map((v) => ({ ...v, map_links: mapLinks(v) }));
   },
 });

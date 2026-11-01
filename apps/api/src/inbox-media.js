@@ -18,7 +18,7 @@ import { assertMayPostHere, conversationAccess } from './inbox.js';
 import { requireConsent, isYouth } from './youth.js';
 
 const UUID = /^[0-9a-f-]{36}$/;
-export const ATTACHMENT_LIMITS = { bytes: DOC_LIMITS.bytes, perConversation: 500 };
+export const ATTACHMENT_LIMITS = { get bytes() { return DOC_LIMITS.bytes; }, perConversation: 500 };
 
 export function inboxMediaRouter() {
   const r = express.Router();

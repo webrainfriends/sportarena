@@ -8,7 +8,10 @@ import { saveText } from '../evidence';
 import { useLoad } from '../hooks';
 import { useLayout } from '../layout';
 import { useSession } from '../session';
-import { Btn, Card, Empty, ErrorBox, H1, Loading, Row, Screen, Section, Seg, Sheet, T, Tag } from '../ui';
+import { Btn, Card, Chip, Empty, ErrorBox, H1, Loading, Row, Screen, Section, Seg, Sheet, T, Tag } from '../ui';
+import { t } from '../i18n';
+import { docLimitRange, setKnownUploadLimits, useUploadLimit } from '../upload-limits';
+import { Pressable } from 'react-native';
 import { c } from '../theme';
 
 const PAGE = 1000;
@@ -133,6 +136,47 @@ function AuditTab() {
   );
 }
 
+// ------------------------------------------------------------------ uploads
+const QUICK = [5, 10, 25, 50];
+/** The one document size limit every upload field in the system obeys. The server enforces it; the apps read the same number. */
+function UploadsTab() {
+  const lim = useUploadLimit();
+  const { toast } = useSession();
+  const { min, max } = docLimitRange();
+  const [mb, setMb] = useState(lim.document_max_mb);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { setMb(lim.document_max_mb); }, [lim.document_max_mb]);
+  const clamp = (n) => Math.min(max, Math.max(min, n));
+  const save = async () => {
+    setBusy(true);
+    try { const r = await api.patch('/admin/upload-limits', { document_max_mb: mb }); setKnownUploadLimits(r); toast(t('upload.saved', { mb: r.document_max_mb })); } catch (e) { toast(e.message); } finally { setBusy(false); }
+  };
+  const step = (label, text, delta, off) => (
+    <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled: off }} disabled={off} onPress={() => setMb((v) => clamp(v + delta))}
+      style={{ width: 48, height: 48, borderRadius: 24, borderWidth: 1.5, borderColor: c.line, backgroundColor: c.paper, alignItems: 'center', justifyContent: 'center', opacity: off ? 0.4 : 1 }}>
+      <T size={24} weight="700">{text}</T>
+    </Pressable>
+  );
+  return (
+    <Card>
+      <T weight="700" size={17}>{t('upload.title')}</T>
+      <T size={13} color={c.mute} style={{ marginTop: 6, lineHeight: 19 }}>{t('upload.help')}</T>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 20, marginTop: 18 }}>
+        {step(t('upload.less'), '−', -1, mb <= min)}
+        <View accessibilityRole="adjustable" accessibilityLabel={t('upload.title')} accessibilityValue={{ min, max, now: mb, text: t('upload.mb', { mb }) }} style={{ minWidth: 120, alignItems: 'center' }}>
+          <T size={34} weight="800" style={{ fontVariant: ['tabular-nums'] }}>{t('upload.mb', { mb })}</T>
+        </View>
+        {step(t('upload.more'), '+', 1, mb >= max)}
+      </View>
+      <T size={12} color={c.mute} style={{ textAlign: 'center', marginTop: 6 }}>{t('upload.range', { min, max })}</T>
+      <View style={{ ...wrap, justifyContent: 'center', marginTop: 14 }}>
+        {QUICK.map((q) => <Chip key={q} label={t('upload.mb', { mb: q })} active={mb === q} onPress={() => setMb(q)} />)}
+      </View>
+      <View style={{ marginTop: 18 }}><Btn title={t('upload.save')} onPress={save} loading={busy} disabled={mb === lim.document_max_mb} /></View>
+    </Card>
+  );
+}
+
 export function PlatformSecurity() {
   const { user } = useSession();
   const [tab, setTab] = useState('keys');
@@ -140,10 +184,10 @@ export function PlatformSecurity() {
   return (
     <Screen wide>
       <H1>Keys & audit</H1>
-      <T color={c.mute} style={{ marginBottom: 12 }}>Encryption keys and the tamper-evident audit log.</T>
-      <Seg options={[{ value: 'keys', label: 'Keys' }, { value: 'audit', label: 'Audit log' }]} value={tab} onChange={setTab} />
+      <T color={c.mute} style={{ marginBottom: 12 }}>Encryption keys, the tamper-evident audit log and the document upload limit.</T>
+      <Seg options={[{ value: 'keys', label: 'Keys' }, { value: 'audit', label: 'Audit log' }, { value: 'uploads', label: t('upload.tab') }]} value={tab} onChange={setTab} />
       <View style={{ height: 12 }} />
-      {tab === 'keys' ? <KeysTab /> : <AuditTab />}
+      {tab === 'keys' ? <KeysTab /> : tab === 'uploads' ? <UploadsTab /> : <AuditTab />}
     </Screen>
   );
 }

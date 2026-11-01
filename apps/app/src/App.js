@@ -29,6 +29,7 @@ import Community from './screens/feed';
 import Landing from './screens/landing';
 import { Explore, Event, Team, Person } from './screens/play';
 import { Following, LiveCentre, PublicShell } from './screens/spectate';
+import { showPublicEvent, usePublicEvent } from './public-event';
 import { TeamManage } from './screens/team-manage';
 import { TeamWorkspace } from './screens/team-workspace';
 import { TeamChat } from './screens/team-chat';
@@ -90,6 +91,7 @@ import { Support } from './screens/cases';
 import { Family } from './screens/family';
 import { Orgs, Org } from './screens/org';
 import { Federations, FederationHome, FederationRecord, VerifyLicence } from './screens/federation';
+import { SharedLicenceCard } from './screens/licence-card';
 import { MediaWorkspace } from './screens/media-workspace';
 import { OrgAffiliations, MyLicences } from './screens/federation-club';
 import { IntegrityCase, MyIntegrity } from './screens/integrity';
@@ -148,6 +150,7 @@ import { Analytics } from './screens/analytics';
 import { RecruiterHome, RecruiterAccess } from './screens/recruiter';
 import { MoreWheel } from './screens/more-wheel';
 import { Glass } from './glass';
+import { tapped } from './haptics';
 import { t } from './i18n';
 
 // https hosts that open this app as a universal / app link (set EXPO_PUBLIC_APP_HOSTS, comma separated); the sportarena:// scheme always works
@@ -155,6 +158,9 @@ const APP_HOSTS = (process.env.EXPO_PUBLIC_APP_HOSTS ?? '').split(',').map((h) =
 
 // A coach or scout opening a passport link (web) sees the athlete's CV without signing in.
 const PASSPORT_TOKEN = Platform.OS === 'web' && typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('passport') : null;
+// A licence QR or shared card link (web): the public check, and a shared card, open without signing in.
+const WEB_QUERY = Platform.OS === 'web' && typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+const VERIFY_VALUE = WEB_QUERY?.get('verify') ?? null, LICENCE_CARD_TOKEN = WEB_QUERY?.get('licence_card') ?? null;
 
 // A shared event or game link (web): signed-out visitors see the public page; signed-in people are taken to the same screens inside the app.
 const PUBLIC_LINK = (() => {
@@ -192,7 +198,7 @@ function TabBar() {
     const label = TAB_LABEL[name] ?? name;
     const n = badge[name] ?? 0;
     return (
-      <Pressable key={name} accessibilityRole="tab" accessibilityLabel={centre && menu ? 'Close More' : n ? `${label}, ${n} waiting` : label} accessibilityState={{ selected: on, expanded: centre ? menu : undefined }} onPress={() => (centre ? toggleMenu() : goTab(name, name === 'Schedule' ? { section: 'agenda' } : {}))} style={({ pressed }) => ({ flex: 1, alignItems: 'center', justifyContent: 'flex-end', minHeight: 56, opacity: pressed ? 0.6 : 1 })}>
+      <Pressable key={name} accessibilityRole="tab" accessibilityLabel={centre && menu ? 'Close More' : n ? `${label}, ${n} waiting` : label} accessibilityState={{ selected: on, expanded: centre ? menu : undefined }} onPress={tapped(() => (centre ? toggleMenu() : goTab(name, name === 'Schedule' ? { section: 'agenda' } : {})))} style={({ pressed }) => ({ flex: 1, alignItems: 'center', justifyContent: 'flex-end', minHeight: 56, opacity: pressed ? 0.6 : 1 })}>
         {centre ? (
           <View style={{ width: 56, height: 56, marginTop: -24, borderRadius: 28, ...(Platform.OS === 'web' ? { boxShadow: '0 10px 24px rgba(132,88,179,0.45), inset 1.5px 1.5px 0 rgba(255,255,255,0.7), inset -1px -1px 0 rgba(255,255,255,0.25)' } : { shadowColor: '#8458B3', shadowOpacity: 0.45, shadowRadius: 14, shadowOffset: { width: 0, height: 8 }, elevation: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.6)' }) }}>
             <LinearGradient colors={['#9B72C6', '#494D5F']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
@@ -314,6 +320,7 @@ function Shell() {
   const { tab, stack, back, goTab, push, menu } = useNav();
   const ins = useSafeAreaInsets();
   const [mfa, setMfa] = useState(null);
+  const nativeEvent = usePublicEvent();
   useEffect(() => { setMfaRequiredHandler(setMfa); return () => setMfaRequiredHandler(() => {}); }, []);
   useEffect(() => { if (!user) setMfa(null); }, [user]);
   // Logging out (from any screen) starts the next session from Home, not from a leftover pushed screen.
@@ -336,6 +343,14 @@ function Shell() {
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
   // A tapped push notification opens the right screen: from the web service worker (?open= or a message) or from the phone.
   // Opening a shared link while signed in: straight to the event or the live game.
+  // A public event opened from the landing page on a phone: once they sign in, carry on to the same event inside the app.
+  useEffect(() => {
+    if (!user || !nativeEvent) return;
+    const id = nativeEvent;
+    showPublicEvent(null);
+    goTab('Explore');
+    setTimeout(() => push('Event', { id }), 0);
+  }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!user || !PUBLIC_LINK) return;
     window.history.replaceState({}, '', window.location.pathname);
@@ -364,10 +379,12 @@ function Shell() {
     return () => { sub?.remove(); link.remove(); };
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
   if (PASSPORT_TOKEN) return <View style={{ flex: 1, backgroundColor: c.bg, paddingTop: ins.top }}><PassportPublic token={PASSPORT_TOKEN} /></View>;
+  if (VERIFY_VALUE) return <View style={{ flex: 1, backgroundColor: c.bg, paddingTop: ins.top }}><VerifyLicence code={VERIFY_VALUE} /></View>;
+  if (LICENCE_CARD_TOKEN) return <View style={{ flex: 1, backgroundColor: c.bg, paddingTop: ins.top }}><SharedLicenceCard token={LICENCE_CARD_TOKEN} /></View>;
   if (!ready) return <View style={{ flex: 1, backgroundColor: c.bg, justifyContent: 'center', padding: 24 }}><Loading /></View>;
   // back from an organisation's identity provider (web): finish the sign-in, whether or not someone is already signed in
   if (isSsoCallback()) return <View style={{ flex: 1, backgroundColor: c.bg, paddingTop: ins.top }}><SsoCallbackScreen /></View>;
-  if (!user && PUBLIC_LINK) return <View style={{ flex: 1, backgroundColor: c.bg, paddingTop: ins.top }}><PublicShell eventId={PUBLIC_LINK.event} fixtureId={PUBLIC_LINK.fixture} renderEvent={(params) => <Event {...params} />} /></View>;
+  if (!user && (PUBLIC_LINK || nativeEvent)) return <View style={{ flex: 1, backgroundColor: c.bg, paddingTop: ins.top }}><PublicShell eventId={PUBLIC_LINK?.event ?? nativeEvent} fixtureId={PUBLIC_LINK?.fixture} onExit={PUBLIC_LINK ? undefined : () => showPublicEvent(null)} renderEvent={(params) => <Event {...params} />} /></View>;
   if (!user) return <View style={{ flex: 1, backgroundColor: c.bg, paddingTop: ins.top }}><BetaBanner /><View style={{ flex: 1 }}><Landing /></View></View>;
   const top = stack[stack.length - 1];
   const Page = top ? PAGES[top.name] : TABS.find((t) => t[0] === tab)[1];

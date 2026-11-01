@@ -335,7 +335,7 @@ cap({
 cap({
   name: 'pay_service_invoice_online', method: 'POST', path: '/service-invoices/:id/pay', tag: TAG,
   summary: 'Buyer finance: pay an issued, matched invoice through a configured provider (hosted checkout). The amount is read from the invoice; the payment settles only through the signed provider callback, is idempotent, and is refunded automatically if the invoice can no longer take it. Paying the supplier out afterwards is a manual, audited record (record_supplier_payout) — Gotmygame never marks funds as transferred on its own.',
-  input: z.object({ id, provider: z.enum(['stripe', 'paypal']), return_url: z.string().url().optional() }),
+  input: z.object({ id, provider: z.enum(['stripe', 'paypal', 'razorpay']), method: z.enum(['card', 'paypal', 'upi', 'netbanking', 'wallet']).optional(), return_url: z.string().url().optional() }),
   async handler({ user }, i) {
     const inv = await tx(async (c) => {
       const row = await q1(c, 'SELECT * FROM svc_invoices WHERE id=$1 FOR UPDATE', [i.id]);
@@ -345,7 +345,7 @@ cap({
       if (serviceExponent(row.currency) === 3) throw conflict('Card providers do not take three-decimal currencies; record a bank or cash payment instead');
       return q1(c, 'UPDATE svc_invoices SET payer_id=$2 WHERE id=$1 RETURNING *', [row.id, user.id]);
     });
-    return startCheckout(user, { purpose_type: 'service_invoice', purpose_id: inv.id, provider: i.provider, return_url: i.return_url });
+    return startCheckout(user, { purpose_type: 'service_invoice', purpose_id: inv.id, provider: i.provider, method: i.method, return_url: i.return_url });
   },
 });
 cap({

@@ -336,7 +336,7 @@ export function EventFacts({ p }) {
 
 // ---------------------------------------------------------------- the signed-out page
 /** Signed-out visitors opening a shared link (?event=…&fixture=…): a small navigator that can only open public screens. */
-export function PublicShell({ eventId, fixtureId, renderEvent }) {
+export function PublicShell({ eventId, fixtureId, renderEvent, onExit }) {
   const { stack, back } = useNav();
   const signIn = useSignIn();
   const top = stack[stack.length - 1];
@@ -344,7 +344,7 @@ export function PublicShell({ eventId, fixtureId, renderEvent }) {
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, height: 52, borderBottomWidth: 1, borderColor: c.line }}>
-        {top ? <Pressable onPress={back} accessibilityRole="button" accessibilityLabel="Back" style={{ minHeight: 44, minWidth: 44, justifyContent: 'center' }}><T weight="700" color={c.pink}>‹ Back</T></Pressable> : <T weight="800" size={17}>Gotmygame</T>}
+        {top || onExit ? <Pressable onPress={top ? back : onExit} accessibilityRole="button" accessibilityLabel="Back" style={{ minHeight: 44, minWidth: 44, justifyContent: 'center' }}><T weight="700" color={c.pink}>‹ Back</T></Pressable> : <T weight="800" size={17}>Gotmygame</T>}
         <Btn small title="Sign in" onPress={signIn} />
       </View>
       {view.name === 'LiveCentre' ? <LiveCentre {...view.params} /> : renderEvent(view.params)}

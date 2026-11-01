@@ -110,6 +110,9 @@ export function parseTarget(t) {
   if (kind === 'officials-development') return ['OfficialsDevelopment', id ? { tab: id } : {}];
   if (kind === 'competition') return ['Competitions', id ? { id } : {}];
   if (kind === 'federation' && id) return ['FederationHome', extra ? { id, tab: extra } : { id }];
+  if (kind === 'verify' && id) return ['VerifyLicence', { code: id }];
+  if (kind === 'my-licences') return ['MyLicences', {}];
+  if (kind === 'my-compliance') return ['MyCompliance', {}];
   if (kind === 'integrity-case' && id) return ['IntegrityCase', { id }];
   if (kind === 'my-integrity') return ['MyIntegrity', {}];
   if (kind === 'open-game' && id) return ['OpenGame', { id }];

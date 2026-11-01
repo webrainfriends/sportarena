@@ -14,6 +14,7 @@ import { c } from '../theme';
 import { t } from '../i18n';
 import { locale } from '../locale';
 import { moneyIn } from '../vtime';
+import { Collections } from './collections';
 
 const day = (d) => new Date(d).toLocaleDateString(locale, { day: 'numeric', month: 'short' });
 const TONE = { active: [c.mint, c.mintSoft], paused: [c.sun, c.sunSoft], past_due: [c.red, c.redSoft], lapsed: [c.mute, c.violetSoft], cancelled: [c.mute, c.violetSoft] };
@@ -131,6 +132,17 @@ export function CoachSubscribers() {
       })}
       <Confirm visible={!!cancel} title={t('coachSub.endForClient')} yes={t('coachSub.endForClient')} danger onClose={() => setCancel(null)} body={t('coachSub.endForClientBody')}
         onYes={async () => { const s = cancel; setCancel(null); try { await api.post(`/coach-subscriptions/${s.id}/cancel`); await rep.reload(); toast(t('coachSub.done.cancel')); } catch (e) { toast(e.message); } }} />
+    </Section>
+  );
+}
+
+/** A coach's late subscription months, in the one collections desk (same states, reminders, promises and holds as every other receivable). */
+export function CoachLatePayments() {
+  const { user } = useSession();
+  if (!user?.id) return null;
+  return (
+    <Section title={t('collections.coach.title')} color={c.violet}>
+      <Collections target={{ coach_id: user.id }} />
     </Section>
   );
 }

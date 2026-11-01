@@ -16,6 +16,8 @@ import { CampaignsTab, ComplianceTab } from './federation-admin';
 import { OfficialsTab } from './officials-body';
 import { IntegrityTab } from './integrity';
 import { GovernanceTab } from './federation-scale';
+import { CensusTab } from './federation-census';
+import { t } from '../i18n';
 
 function Overview({ home, go, push }) {
   const n = home.counts;
@@ -85,7 +87,7 @@ export function FederationHome({ id, tab: startTab }) {
   const go = (t, p = {}) => { setPreset(p); setTab(t); };
   const tabs = [
     { value: 'overview', label: 'Overview' }, { value: 'affiliations', label: 'Affiliations' }, { value: 'licences', label: 'Licences' }, { value: 'sanctions', label: 'Sanctions' },
-    { value: 'officials', label: 'Officials' }, { value: 'campaigns', label: 'Campaigns' }, { value: 'compliance', label: 'Compliance' }, { value: 'calendar', label: 'Calendar' }, { value: 'policies', label: 'Policies' }, ...(can.reports ? [{ value: 'governance', label: 'Governance' }, { value: 'reports', label: 'Reports' }] : []), ...(can.integrity ? [{ value: 'integrity', label: 'Integrity' }] : []), { value: 'setup', label: 'Setup' },
+    { value: 'officials', label: 'Officials' }, { value: 'campaigns', label: 'Campaigns' }, { value: 'compliance', label: 'Compliance' }, { value: 'calendar', label: 'Calendar' }, { value: 'policies', label: 'Policies' }, ...(can.reports ? [{ value: 'governance', label: 'Governance' }, { value: 'census', label: t('fedx.census.title') }, { value: 'reports', label: 'Reports' }] : []), ...(can.integrity ? [{ value: 'integrity', label: 'Integrity' }] : []), { value: 'setup', label: 'Setup' },
   ];
   const shared = { id, home: h, me: h.me, below, preset, reloadHome: home.reload, go };
   return (
@@ -107,6 +109,7 @@ export function FederationHome({ id, tab: startTab }) {
         {tab === 'calendar' ? <CalendarTab {...shared} /> : null}
         {tab === 'policies' ? <PoliciesTab {...shared} /> : null}
         {tab === 'governance' && can.reports ? <GovernanceTab id={id} home={h} me={h.me} /> : null}
+        {tab === 'census' && can.reports ? <CensusTab id={id} /> : null}
         {tab === 'reports' ? <ReportsTab {...shared} /> : null}
         {tab === 'integrity' && can.integrity ? <IntegrityTab id={id} /> : null}
         {tab === 'setup' ? <SetupTab {...shared} /> : null}

@@ -5,21 +5,23 @@ import { c } from './theme';
 
 // Evidence files and downloads that behave the same on iOS, iPadOS, Android and the web: pick a photo or a PDF, save text such as a CSV, open a file the
 // API returned as base64. The server is the authority on type and size (PDF, JPEG, PNG, WebP; 5 MB); these only fail early with a plain message.
-export const MAX_BYTES = 5 * 2 ** 20;
+import { docMaxBytes, docMaxMb, useUploadLimit } from './upload-limits';
+/** Largest document, as set by the platform admin (the same number for every upload field). */
+export const MAX_BYTES = () => docMaxBytes();
 const WEB = Platform.OS === 'web' && typeof document !== 'undefined';
 const MIME = { pdf: 'application/pdf', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', doc: 'application/msword', xls: 'application/vnd.ms-excel', csv: 'text/csv', txt: 'text/plain', gif: 'image/gif' };
-// tender and contract documents: also Word and Excel (macro-free), up to 10 MB; the server checks the content, not the name
-const DOCS = { types: ['application/pdf', 'image/jpeg', 'image/png', 'image/webp', MIME.docx, MIME.xlsx], accept: '.pdf,.jpg,.jpeg,.png,.webp,.docx,.xlsx,application/pdf,image/jpeg,image/png,image/webp', max: 10 * 2 ** 20 };
+// tender and contract documents: also Word and Excel (macro-free), up to the platform limit; the server checks the content, not the name
+const DOCS = { types: ['application/pdf', 'image/jpeg', 'image/png', 'image/webp', MIME.docx, MIME.xlsx], accept: '.pdf,.jpg,.jpeg,.png,.webp,.docx,.xlsx,application/pdf,image/jpeg,image/png,image/webp' };
 // compliance evidence (documents: 'wide'): also GIF, legacy Word / Excel, CSV and text
-const DOCS_WIDE = { types: [...DOCS.types, 'image/gif', MIME.doc, MIME.xls, MIME.csv, MIME.txt], accept: '.pdf,.jpg,.jpeg,.png,.webp,.gif,.docx,.doc,.xlsx,.xls,.csv,.txt,application/pdf,image/jpeg,image/png,image/webp,image/gif', max: 10 * 2 ** 20 };
+const DOCS_WIDE = { types: [...DOCS.types, 'image/gif', MIME.doc, MIME.xls, MIME.csv, MIME.txt], accept: '.pdf,.jpg,.jpeg,.png,.webp,.gif,.docx,.doc,.xlsx,.xls,.csv,.txt,application/pdf,image/jpeg,image/png,image/webp,image/gif' };
 const mimeOf = (name = '', hint) => hint ?? MIME[String(name).split('.').pop().toLowerCase()] ?? 'application/octet-stream';
-const tooBig = (bytes, max = MAX_BYTES) => { if (bytes > max) throw new Error(`That file is over ${max / 2 ** 20} MB. Choose a smaller file.`); };
+const tooBig = (bytes, max = docMaxBytes()) => { if (bytes > max) throw new Error(`That file is over ${docMaxMb()} MB. Choose a smaller file.`); };
 const toBase64 = (blob) => new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1] ?? ''); r.onerror = () => no(new Error('That file could not be read')); r.readAsDataURL(blob); });
 
 /** Pick one file: `source` is 'camera' (phones and tablets only), 'photos' or 'files'. Resolves { file_name, data (base64), type } or null when cancelled. */
 export async function pickEvidence(source = 'files', { documents = false } = {}) {
   const D = documents === 'wide' ? DOCS_WIDE : DOCS;
-  const max = documents ? D.max : MAX_BYTES;
+  const max = docMaxBytes();
   if (WEB) {
     return new Promise((resolve, reject) => {
       const input = document.createElement('input');
@@ -104,6 +106,7 @@ export async function openBase64(file) {
 
 /** A form control: add up to `max` photos or documents, see what is attached, remove one. The value is [{ file_name, data, type }]. */
 export function EvidenceField({ label, value = [], onChange, max = 3, documents = false }) {
+  const { document_max_mb: mb } = useUploadLimit();
   const [err, setErr] = useState(null);
   const [busy, setBusy] = useState(false);
   const add = async (source) => {
@@ -128,7 +131,7 @@ export function EvidenceField({ label, value = [], onChange, max = 3, documents 
               <Btn small title={documents ? 'Choose a file' : 'Choose a PDF'} color={c.paper} ink={c.ink} onPress={() => add('files')} loading={busy} />
             </>}
         </View>) : <T size={12} color={c.mute}>You can attach up to {max} files.</T>}
-      <T size={12} color={c.mute}>{documents === 'wide' ? 'PDF, photo, Word, Excel, CSV or text, up to 10 MB each. Do not attach health records.' : documents ? 'PDF, photo, Word or Excel, up to 10 MB each. Do not attach health records.' : 'PDF, JPEG, PNG or WebP, up to 5 MB each. Do not attach health records.'}</T>
+      <T size={12} color={c.mute}>{documents === 'wide' ? `PDF, photo, Word, Excel, CSV or text, up to ${mb} MB each. Do not attach health records.` : documents ? `PDF, photo, Word or Excel, up to ${mb} MB each. Do not attach health records.` : `PDF, JPEG, PNG or WebP, up to ${mb} MB each. Do not attach health records.`}</T>
       {err ? <T size={12} color={c.red} accessibilityRole="alert">{err}</T> : null}
     </View>
   );

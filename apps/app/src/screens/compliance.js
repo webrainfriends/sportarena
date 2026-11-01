@@ -17,6 +17,8 @@ import { Pager, SwitchRow } from '../federation-bits';
 import { explain } from '../access';
 import { c } from '../theme';
 import { locale } from '../locale';
+import { t } from '../i18n';
+import { BackgroundCheckSheet, CheckResultSheet } from './background-check';
 
 const TONE = { met: c.mint, expiring: c.sun, grace: c.sun, pending_review: c.cyan, missing: c.red, expired: c.red, rejected: c.red, revoked: c.red, waived: c.violetSoft };
 const DECISION = { clear: ['In order', c.mint], pending: ['Awaiting review', c.cyan], blocked: ['Action needed', c.red] };
@@ -67,7 +69,7 @@ async function openEvidenceFile(recordId, file) {
 // ---------------------------------------------------------------- the holder's side
 
 /** One obligation: what it is, who asks, where it stands, why, and the single next step. */
-function ItemCard({ it, onAct, onHistory, onAttach }) {
+function ItemCard({ it, onAct, onHistory, onAttach, onCheck }) {
   const step = it.next_step;
   const canAttach = it.record?.can_attach && it.requirement.method === 'evidence' && !it.requirement.sensitive;
   return (
@@ -85,6 +87,7 @@ function ItemCard({ it, onAct, onHistory, onAttach }) {
         {it.consequences.length ? <T size={12} color={c.mute}>If this is not in order it stops: {it.consequences.map((x) => STOPS[x] ?? x).join(', ')}.</T> : null}
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
           {step && step.action !== 'wait' ? <Btn small title={step.label} onPress={() => onAct(it)} accessibilityLabel={`${step.label}: ${it.requirement.name}`} /> : null}
+          {it.requirement.category === 'background_check' && it.requirement.method === 'evidence' && onCheck ? <Btn small color={c.paper} ink={c.ink} title={t('fedx.bgc.title')} onPress={() => onCheck(it)} accessibilityLabel={`${t('fedx.bgc.title')}: ${it.requirement.name}`} /> : null}
           {canAttach ? <Btn small color={c.paper} ink={c.ink} title="Add files" onPress={() => onAttach(it)} accessibilityLabel={`Add files to ${it.requirement.name}`} /> : null}
           <Btn small color={c.paper} ink={c.ink} title="History" onPress={() => onHistory(it)} accessibilityLabel={`History of ${it.requirement.name}`} />
         </View>
@@ -154,7 +157,7 @@ function AttachSheet({ item, onClose, onDone }) {
 function Subject({ subject, title, empty, hideWhenEmpty }) {
   const { push, goTab } = useNav();
   const s = useLoad(() => api.get('/compliance/status', { subject_kind: subject.kind, subject_id: subject.id }), [subject.kind, subject.id]);
-  const [open, setOpen] = useState(null), [hist, setHist] = useState(null), [attach, setAttach] = useState(null);
+  const [open, setOpen] = useState(null), [hist, setHist] = useState(null), [attach, setAttach] = useState(null), [check, setCheck] = useState(null);
   if (s.error) return <ErrorBox error={s.error} onRetry={s.reload} />;
   if (!s.data) return <Loading />;
   const d = s.data;
@@ -185,11 +188,12 @@ function Subject({ subject, title, empty, hideWhenEmpty }) {
       </Card>
       {groups.map(([name, list]) => (list.length ? (
         <Block key={name} title={`${name} · ${list.length}`}>
-          {list.map((it) => <ItemCard key={it.obligation_id} it={it} onAct={act} onHistory={() => setHist(subject)} onAttach={setAttach} />)}
+          {list.map((it) => <ItemCard key={it.obligation_id} it={it} onAct={act} onHistory={() => setHist(subject)} onAttach={setAttach} onCheck={setCheck} />)}
         </Block>
       ) : null))}
       <SubmitSheet item={open} subject={subject} onClose={() => setOpen(null)} onDone={() => { setOpen(null); s.reload(); }} />
       <AttachSheet item={attach} onClose={() => setAttach(null)} onDone={() => { setAttach(null); s.reload(); }} />
+      <BackgroundCheckSheet item={check} subject={subject.kind === 'person' ? subject : null} onClose={() => setCheck(null)} onDone={() => { setCheck(null); s.reload(); }} />
       <History subject={hist} onClose={() => setHist(null)} />
     </View>
   );
@@ -238,7 +242,7 @@ function useCatalogue() { return useLoad(() => api.get('/compliance/catalogue'),
 function ReviewQueue({ scope, cat, reload }) {
   const { toast } = useSession();
   const q = useLoad(() => api.get('/compliance/records', { scope_kind: scope.kind, ...(scope.id ? { scope_id: scope.id } : {}), status: 'submitted', limit: 50 }), [scope.kind, scope.id]);
-  const [pick, setPick] = useState(null), [reason, setReason] = useState(''), [shown, setShown] = useState(null), [busy, setBusy] = useState(false);
+  const [pick, setPick] = useState(null), [reason, setReason] = useState(''), [shown, setShown] = useState(null), [busy, setBusy] = useState(false), [result, setResult] = useState(null);
   const decide = async (rec, decision, why) => {
     setBusy(true);
     try { await api.post(`/compliance/records/${rec.id}/decision`, { decision, ...(why ? { reason: why } : {}), row_version: rec.row_version }); toast(decision === 'approve' ? 'Approved' : 'Declined'); setPick(null); setReason(''); q.reload(); reload(); }
@@ -261,6 +265,7 @@ function ReviewQueue({ scope, cat, reload }) {
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
             <Btn small title="Approve" onPress={() => decide(r, 'approve')} disabled={busy} accessibilityLabel={`Approve ${r.requirement.name} for ${r.subject.name}`} />
             <Btn small color={c.paper} ink={c.ink} title="Decline" onPress={() => { setReason(''); setPick(r); }} accessibilityLabel={`Decline ${r.requirement.name} for ${r.subject.name}`} />
+            {r.requirement.category === 'background_check' && r.provider ? <Btn small color={c.paper} ink={c.ink} title={t('fedx.bgc.resultTitle')} onPress={() => setResult(r.id)} accessibilityLabel={`${t('fedx.bgc.resultTitle')}: ${r.subject.name}`} /> : null}
             {r.has_reference && !r.requirement.sensitive ? <Btn small color={c.paper} ink={c.ink} title="Show reference" onPress={() => view(r)} /> : null}
           </View>
           {r.requirement.sensitive ? <T size={11} color={c.mute} style={{ marginTop: 6 }}>The reference of a background check is only shown to the person it belongs to.</T> : null}
@@ -271,6 +276,7 @@ function ReviewQueue({ scope, cat, reload }) {
           : <Field label="Reason (they see this)" value={reason} onChangeText={setReason} multiline placeholder="What needs to change?" />}
         <Btn title={busy ? 'Working…' : 'Decline'} color={c.red} disabled={busy || (pick?.requirement.category !== 'background_check' && reason.trim().length < 5)} onPress={() => decide(pick, 'reject', reason.trim())} />
       </Sheet>
+      <CheckResultSheet recordId={result} onClose={() => setResult(null)} />
       <Sheet visible={!!shown} onClose={() => setShown(null)} title={shown?.name ?? 'Reference'}>
         <T weight="700" size={17}>{shown?.reference}</T>
         {shown?.detail ? <T size={14}>{shown.detail}</T> : null}

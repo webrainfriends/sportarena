@@ -1,6 +1,7 @@
 // Sponsored goods returns / replacements and service vouchers (#300). Built on the canonical dues of sponsorship-agreements.js:
 // a return hangs off a received delivery, a replacement is an ordinary delivery that names the return, a voucher is one funded unit of a 'service' due.
 // Dispatch is never receipt, goods value is an estimate (never cash), and funding a service never opens anyone's health or private data.
+import { B64_MAX_CHARS, documentMaxBytes } from '../platform-settings.js';
 import { z } from 'zod';
 import { cap, id } from '../registry.js';
 import { tx, one, many, pool } from '../db.js';
@@ -15,7 +16,7 @@ import { ping, open } from './sponsorship-agreements.js';
 
 const url = z.string().url().max(500).refine((u) => /^https:\/\//i.test(u), 'evidence must be an https link');
 const REASON = z.enum(['damaged', 'wrong_item', 'not_as_described', 'other']);
-const fileIn = z.object({ label: z.string().max(120).optional(), file_name: z.string().max(120).optional(), data: z.string().min(16).max(7_200_000).describe('base64 file: PDF, JPEG, PNG or WebP, up to 5 MB') });
+const fileIn = z.object({ label: z.string().max(120).optional(), file_name: z.string().max(120).optional(), data: z.string().min(16).max(B64_MAX_CHARS).describe('base64 file: PDF, JPEG, PNG or WebP, up to the platform document limit') });
 const FILE_COLS = 'id, label, file_name, content_type, size_bytes, created_at';
 /** Store evidence files for a return (validated and encrypted like case evidence). The uploader must consent to the other side and case reviewers seeing them; a case already opened for the return receives a copy. */
 async function storeFiles(c, ret, userId, files, consent) {
@@ -188,7 +189,7 @@ cap({
 
 cap({
   name: 'add_sponsorship_return_files', method: 'POST', path: '/sponsorship-delivery-returns/:id/files', tag: 'Sponsors', status: 201,
-  summary: 'Either side adds photos or documents (PDF, JPEG, PNG, WebP; up to 5 MB, 3 at a time, 10 per return) to an open or disputed return. `consent` must be true: the other side and case reviewers may see the file. Files are encrypted, record who added them and when, and are copied to the return\'s dispute case if there is one. A young person\'s guardian adds them, never the young person.',
+  summary: 'Either side adds photos or documents (PDF, JPEG, PNG, WebP; up to the platform document limit, 3 at a time, 10 per return) to an open or disputed return. `consent` must be true: the other side and case reviewers may see the file. Files are encrypted, record who added them and when, and are copied to the return\'s dispute case if there is one. A young person\'s guardian adds them, never the young person.',
   input: z.object({ id, files: z.array(fileIn).min(1).max(3), consent: z.literal(true) }),
   async handler({ user }, i) {
     return tx(async (c) => {
