@@ -136,6 +136,10 @@ export async function openSession(user, i) {
        ON CONFLICT (coach_id, source_type, source_id) DO UPDATE SET updated_at=coaching_session_records.updated_at RETURNING *`,
       [user.id, src.sport_id, src.team_id, i.source_type, i.source_id, i.title ?? src.title, i.objective, src.scheduled_at])).rows[0];
     for (const a of src.athletes) await c.query('INSERT INTO coaching_session_participants(session_record_id, athlete_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [rec.id, a]);
+    if (i.source_type === 'coach_class') { // attendance already recorded in the class is the one fact: carry it over, never ask twice
+      await c.query(`UPDATE coaching_session_participants p SET attendance=CASE z.attendance WHEN 'attended' THEN 'present' ELSE 'absent' END, arrived_at=CASE WHEN z.attendance='attended' THEN now() END, updated_at=now()
+          FROM coach_class_seats z WHERE z.class_id::text=$2 AND z.user_id=p.athlete_id AND z.status='confirmed' AND z.attendance IS NOT NULL AND p.session_record_id=$1`, [rec.id, i.source_id]);
+    }
     return rec;
   });
 }
