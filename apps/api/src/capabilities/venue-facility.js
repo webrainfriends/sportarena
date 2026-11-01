@@ -15,6 +15,7 @@ import { mustManage, mustWork, canManage, createReservation, cancelBookings } fr
 import { expandDates, patternFields } from '../recurrence.js';
 import { fromLocal, hhmm } from '../booking/time.js';
 import { workOrderRefs } from './venue-operations.js';
+import { capture, frontDeskPoint } from '../access-layer.js';
 
 const TAG = 'Venue facility';
 const day = z.string().date();
@@ -103,6 +104,31 @@ cap({
       await c.query("UPDATE venue_booking_series SET status='cancelled', cancelled_at=now(), cancelled_by=$2 WHERE id=$1", [i.id, user.id]);
       await audit(c, user.id, 'cancel_booking_series', 'venue_booking_series', i.id);
       return { id: i.id, status: 'cancelled', released: ids.length };
+    });
+  },
+});
+
+// ------------------------------------------------------------------ check in a booking from the Today board
+cap({
+  name: 'check_in_booking', method: 'POST', path: '/bookings/:id/check-in', tag: TAG, status: 201,
+  summary: 'Venue team (incl. floor staff): check the person in for a booking from the Today board. It is the venue access layer (record_access_capture) pointed at the booking\'s booker at the venue\'s front-desk door, so the same rules, evidence and report apply (exactly this booking: it opens from `early_min` before it starts until 30 minutes after it ends; denials are recorded with the reason). The booker\'s own QR for the same booking is `get_booking_pass`. A walk-in guest booking, which has no account to check in, is marked arrived directly. `guests` arriving with them are recorded.',
+  input: z.object({ id, guests: z.number().int().min(0).max(20).default(0) }),
+  async handler({ user }, i) {
+    const b = await one(`SELECT b.id, b.status, b.checked_in_at, b.user_id, r.venue_id, rs.walk_in FROM bookings b JOIN resources r ON r.id=b.resource_id LEFT JOIN reservations rs ON rs.id=b.reservation_id WHERE b.id=$1`, [i.id]);
+    if (!b) throw notFound('Booking');
+    await mustWork(user, b.venue_id).catch(() => { throw notFound('Booking'); });
+    if (b.status !== 'confirmed') throw conflict(`The booking is ${b.status.replace('_', ' ')}`);
+    return tx(async (c) => {
+      if (b.walk_in) {
+        const r = (await c.query('UPDATE bookings SET checked_in_at=coalesce(checked_in_at, now()) WHERE id=$1 RETURNING checked_in_at', [i.id])).rows[0];
+        await audit(c, user.id, 'check_in_walk_in', 'bookings', i.id);
+        return { verdict: 'recorded', reason_code: null, checked_in_at: r.checked_in_at, basis: 'walk_in' };
+      }
+      const point = await frontDeskPoint(c, b.venue_id, user.id);
+      const out = await capture(c, { user, domain: 'venue_access', subject_ref: point.id, method: 'manual', user_id: b.user_id, booking_id: b.id, reason_code: 'roster_tap', direction: 'in', guests: i.guests });
+      const v = out.capture;
+      const at = (await c.query('SELECT checked_in_at FROM bookings WHERE id=$1', [i.id])).rows[0].checked_in_at;
+      return { verdict: v.verdict, reason_code: v.reason_code, message: v.message ?? null, checked_in_at: at, basis: 'booking', capture_id: v.id };
     });
   },
 });
