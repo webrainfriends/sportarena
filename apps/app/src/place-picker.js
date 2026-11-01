@@ -8,6 +8,7 @@ import { Btn, Chip, Field, Sheet, T } from './ui';
 import { CountryPicker, countryName, regionList } from './country-picker';
 import { currentPosition } from './location';
 import { c } from './theme';
+import { t } from './i18n';
 
 const enc = encodeURIComponent;
 const round = (n) => Math.round(n * 1e6) / 1e6;
@@ -18,7 +19,7 @@ export function mapLinks({ name, lat, lng }) {
   const q = lat !== undefined && lat !== null ? `${lat},${lng}` : name ?? '';
   return {
     google: `https://www.google.com/maps/search/?api=1&query=${enc(q)}`,
-    apple: lat !== undefined && lat !== null ? `https://maps.apple.com/?ll=${lat},${lng}&q=${enc(name || 'Pinned location')}` : `https://maps.apple.com/?q=${enc(q)}`,
+    apple: lat !== undefined && lat !== null ? `https://maps.apple.com/?ll=${lat},${lng}&q=${enc(name || t('place.pinned_name'))}` : `https://maps.apple.com/?q=${enc(q)}`,
   };
 }
 
@@ -26,7 +27,7 @@ export function mapLinks({ name, lat, lng }) {
 export function parseMapInput(text) {
   const raw = String(text ?? '').trim();
   if (!raw) return null;
-  if (/(maps\.app\.goo\.gl|goo\.gl\/maps)/i.test(raw)) return { error: 'That is a shortened link. Open it in your browser or maps app, then copy the full address (or the coordinates) and paste that.' };
+  if (/(maps\.app\.goo\.gl|goo\.gl\/maps)/i.test(raw)) return { error: t('place.err_short') };
   let s = raw; try { s = decodeURIComponent(raw); } catch { /* keep as typed */ }
   const pair = (a, b) => { const lat = Number(a), lng = Number(b); return ok(lat, lng) ? { lat: round(lat), lng: round(lng) } : null; };
   const num = '(-?\\d{1,3}(?:\\.\\d+)?)';
@@ -34,7 +35,7 @@ export function parseMapInput(text) {
   if (m) return pair(m[1], m[2]);
   m = new RegExp(`!3d${num}!4d${num}`).exec(s) || new RegExp(`@${num},${num}`).exec(s) || new RegExp(`[?&](?:q|query|ll|sll|center|coordinate|destination|daddr|saddr)=${num}[, +]+${num}`).exec(s);
   const point = m ? pair(m[1], m[2]) : null;
-  if (!point) return { error: 'No coordinates found. Paste a full Google or Apple Maps link, or type them as “12.9716, 77.5946”.' };
+  if (!point) return { error: t('place.err_none') };
   const place = /\/place\/([^/@?]+)/.exec(s)?.[1]?.replace(/\+/g, ' ');
   return { ...point, ...(place ? { name: place } : {}) };
 }
@@ -66,47 +67,47 @@ export function PlacePicker({ label, value, onChange, optional, hint }) {
   const set = (patch) => setDraft((d) => ({ ...d, ...patch }));
   const pin = draft.lat !== undefined && draft.lat !== null ? { lat: draft.lat, lng: draft.lng } : null;
   const links = mapLinks({ name: draft.name || typed, ...(pin ?? {}) });
-  const useHere = async () => { setMsg('Finding you…'); const p = await currentPosition(); if (!p) { setMsg('Location is not available. Paste a map link instead.'); return; } set({ lat: p.lat, lng: p.lng }); setMsg('Pinned to your current location (rounded to about 100 m).'); };
+  const useHere = async () => { setMsg(t('form.loc_finding')); const p = await currentPosition(); if (!p) { setMsg(t('place.loc_na')); return; } set({ lat: p.lat, lng: p.lng }); setMsg(t('place.pinned_here')); };
   const apply = () => {
     const r = parseMapInput(paste);
     if (!r) return;
     if (r.error) { setMsg(r.error); return; }
     set({ lat: r.lat, lng: r.lng, ...(r.name && !draft.name ? { name: r.name } : {}) });
     if (r.name && !draft.name) setQ(r.name);
-    setPaste(''); setMsg('Map point saved.');
+    setPaste(''); setMsg(t('place.saved'));
   };
   const done = () => {
     const name = (draft.name || typed).trim();
-    if (!name) { setMsg('Choose or type a place first.'); return; }
+    if (!name) { setMsg(t('place.choose_first')); return; }
     onChange({ name, ...(draft.country ? { country: draft.country } : {}), ...(pin ? { lat: pin.lat, lng: pin.lng } : {}) });
     setOpen(false);
   };
   return (
     <View style={{ gap: 6 }}>
-      <T weight="600" size={12} color={c.mute} style={{ letterSpacing: 0.4 }}>{(label + (optional ? ' (optional)' : '')).toUpperCase()}</T>
-      <Pressable onPress={() => setOpen(true)} accessibilityRole="button" accessibilityLabel={`${label}. ${value ? placeText(value) : 'Choose a place'}`}
+      <T weight="600" size={12} color={c.mute} style={{ letterSpacing: 0.4 }}>{(label + (optional ? ` (${t('form.optional')})` : '')).toUpperCase()}</T>
+      <Pressable onPress={() => setOpen(true)} accessibilityRole="button" accessibilityLabel={`${label}. ${value ? placeText(value) : t('place.choose')}`}
         style={{ borderWidth: 1.5, borderColor: c.line, borderRadius: 12, backgroundColor: c.paper, paddingHorizontal: 16, minHeight: 50, justifyContent: 'center', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        <T style={{ flex: 1 }} color={value ? c.ink : c.mute} weight="600">{value ? `📍 ${placeText(value)}${value.lat !== undefined ? '  · pinned' : ''}` : 'Search a place or country'}</T><T size={16} color={c.mute}>▾</T>
+        <T style={{ flex: 1 }} color={value ? c.ink : c.mute} weight="600">{value ? `📍 ${placeText(value)}${value.lat !== undefined ? `  · ${t('place.pinned_tag')}` : ''}` : t('place.search_place')}</T><T size={16} color={c.mute}>▾</T>
       </Pressable>
       {hint ? <T size={12} color={c.mute}>{hint}</T> : null}
-      <Sheet visible={open} onClose={() => setOpen(false)} title={label} footer={<Btn title="Use this place" onPress={done} style={{ flex: 1 }} />}>
-        <Field label="Search" value={q} onChangeText={(x) => { setQ(x); set({ name: x }); }} placeholder="Type a city, area or country" />
-        {hits.length ? <View style={{ gap: 6 }}><T weight="800" size={13}>Countries</T><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{hits.map((x) => <Chip key={x.code} label={`🌍 ${x.name}`} active={draft.country === x.code} onPress={() => { set({ country: x.code, name: draft.name && draft.name !== typed ? draft.name : x.name }); setQ(x.name); }} />)}</View></View> : null}
-        {shown.length ? <View style={{ gap: 6 }}><T weight="800" size={13}>Cities and areas people use</T><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{shown.map((x) => <Chip key={x} label={`📍 ${x}`} active={draft.name === x} onPress={() => { set({ name: x }); setQ(x); }} />)}</View></View> : null}
-        {typed && !regions.some((x) => x.toLowerCase() === typed.toLowerCase()) ? <Chip label={`Use “${typed}”`} active={draft.name === typed} onPress={() => set({ name: typed })} /> : null}
-        <CountryPicker label="Country" value={draft.country} onChange={(x) => set({ country: x || undefined })} optional hint="Pick the country so people, documents and filters line up." />
+      <Sheet visible={open} onClose={() => setOpen(false)} title={label} footer={<Btn title={t('place.use_this')} onPress={done} style={{ flex: 1 }} />}>
+        <Field label={t('common.search')} value={q} onChangeText={(x) => { setQ(x); set({ name: x }); }} placeholder={t('place.type_ph')} />
+        {hits.length ? <View style={{ gap: 6 }}><T weight="800" size={13}>{t('place.countries')}</T><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{hits.map((x) => <Chip key={x.code} label={`🌍 ${x.name}`} active={draft.country === x.code} onPress={() => { set({ country: x.code, name: draft.name && draft.name !== typed ? draft.name : x.name }); setQ(x.name); }} />)}</View></View> : null}
+        {shown.length ? <View style={{ gap: 6 }}><T weight="800" size={13}>{t('place.cities')}</T><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{shown.map((x) => <Chip key={x} label={`📍 ${x}`} active={draft.name === x} onPress={() => { set({ name: x }); setQ(x); }} />)}</View></View> : null}
+        {typed && !regions.some((x) => x.toLowerCase() === typed.toLowerCase()) ? <Chip label={t('place.use_typed', { name: typed })} active={draft.name === typed} onPress={() => set({ name: typed })} /> : null}
+        <CountryPicker label={t('place.country')} value={draft.country} onChange={(x) => set({ country: x || undefined })} optional hint={t('place.country_hint')} />
         <View style={{ gap: 8 }}>
-          <T weight="800" size={13}>Exact spot on a map (optional)</T>
+          <T weight="800" size={13}>{t('place.exact')}</T>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-            <Btn small title="Open Google Maps" color={c.paper} ink={c.ink} onPress={() => Linking.openURL(links.google)} />
-            <Btn small title="Open Apple Maps" color={c.paper} ink={c.ink} onPress={() => Linking.openURL(links.apple)} />
-            <Btn small title="📍 Use my location" color={c.paper} ink={c.ink} onPress={useHere} />
+            <Btn small title={t('place.open_google')} color={c.paper} ink={c.ink} onPress={() => Linking.openURL(links.google)} />
+            <Btn small title={t('place.open_apple')} color={c.paper} ink={c.ink} onPress={() => Linking.openURL(links.apple)} />
+            <Btn small title={t('place.use_location')} color={c.paper} ink={c.ink} onPress={useHere} />
           </View>
-          <T size={12} color={c.mute}>Find the spot in Google Maps or Apple Maps, tap Share, copy the link and paste it below. Coordinates like “12.9716, 77.5946” work too.</T>
-          <Field value={paste} onChangeText={setPaste} placeholder="Paste a map link or coordinates" />
-          <Btn small title="Read the link" onPress={apply} disabled={!paste.trim()} style={{ alignSelf: 'flex-start' }} />
-          {pin ? <View style={{ gap: 6 }}><T size={13} weight="700">📌 Pinned: {pin.lat}, {pin.lng}</T>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}><Btn small title="View in Google Maps" color={c.paper} ink={c.ink} onPress={() => Linking.openURL(mapLinks({ name: draft.name, ...pin }).google)} /><Btn small title="View in Apple Maps" color={c.paper} ink={c.ink} onPress={() => Linking.openURL(mapLinks({ name: draft.name, ...pin }).apple)} /><Btn small title="Remove pin" color={c.paper} ink={c.red} onPress={() => set({ lat: undefined, lng: undefined })} /></View></View> : null}
+          <T size={12} color={c.mute}>{t('place.help')}</T>
+          <Field value={paste} onChangeText={setPaste} placeholder={t('place.paste_ph')} />
+          <Btn small title={t('place.read_link')} onPress={apply} disabled={!paste.trim()} style={{ alignSelf: 'flex-start' }} />
+          {pin ? <View style={{ gap: 6 }}><T size={13} weight="700">{t('place.pinned', { lat: pin.lat, lng: pin.lng })}</T>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}><Btn small title={t('place.view_google')} color={c.paper} ink={c.ink} onPress={() => Linking.openURL(mapLinks({ name: draft.name, ...pin }).google)} /><Btn small title={t('place.view_apple')} color={c.paper} ink={c.ink} onPress={() => Linking.openURL(mapLinks({ name: draft.name, ...pin }).apple)} /><Btn small title={t('place.remove_pin')} color={c.paper} ink={c.red} onPress={() => set({ lat: undefined, lng: undefined })} /></View></View> : null}
           {msg ? <T size={12.5} color={c.mute}>{msg}</T> : null}
         </View>
       </Sheet>

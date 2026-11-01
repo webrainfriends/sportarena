@@ -1,6 +1,7 @@
 // Thin REST client. The app only ever talks to the public API (/api/v1) — same surface agents get over MCP.
 import { Platform } from 'react-native';
 import { storage } from './storage';
+import { t } from './i18n';
 
 const guess = () => {
   // '' (set but empty) means same-origin: the web build is served by nginx next to /api (see docs/deployment.md)
@@ -58,9 +59,9 @@ export const setMfaRequiredHandler = (fn) => { onMfaRequired = fn; };
 export class ApiError extends Error {
   constructor(status, body) {
     const nice = (path) => String(path).split('.').filter((x) => !/^\d+$/.test(x)).join(' › ').replace(/_(cents|bp)$/, '').replace(/_/g, ' ');
-    const plain = (m) => (/expected (number|int)/i.test(m) ? 'enter a number' : /received undefined|required/i.test(m) ? 'is required' : /^invalid input$/i.test(m) ? 'is not valid' : m);
+    const plain = (m) => (/expected (number|int)/i.test(m) ? t('error.enter_number') : /received undefined|required/i.test(m) ? t('error.is_required') : /^invalid input$/i.test(m) ? t('error.is_invalid') : m);
     const all = (Array.isArray(body?.error?.details) ? body.error.details : []).filter((d) => d?.message).map((d) => `${d.path ? `${nice(d.path)}: ` : ''}${plain(d.message)}`);
-    super(all.length ? [...new Set(all)].join('; ') : body?.error?.message ?? `Request failed (${status})`);
+    super(all.length ? [...new Set(all)].join('; ') : body?.error?.message ?? t('error.request_failed', { status }));
     this.status = status; this.code = body?.error?.code; this.details = body?.error?.details;
   }
 }
@@ -74,7 +75,7 @@ async function request(method, path, data, retried = false) {
       body: method !== 'GET' && method !== 'DELETE' && data ? JSON.stringify(data) : undefined,
     });
   } catch {
-    throw new ApiError(0, { error: { message: `Can't reach the Gotmygame server at ${API}` } });
+    throw new ApiError(0, { error: { message: t('error.unreachable', { server: API }) } });
   }
   const body = await res.json().catch(() => null);
   if (!res.ok) {
@@ -91,7 +92,7 @@ async function upload(path, blob, query = {}) {
   const qs = new URLSearchParams(Object.entries(query).filter(([, v]) => v)).toString();
   let res;
   try { res = await fetch(`${API}${path}${qs ? `?${qs}` : ''}`, { method: 'PUT', ...creds, headers: withAuth({ 'content-type': blob.type || 'application/octet-stream' }), body: blob }); }
-  catch { throw new ApiError(0, { error: { message: `Can't reach the Gotmygame server at ${API}` } }); }
+  catch { throw new ApiError(0, { error: { message: t('error.unreachable', { server: API }) } }); }
   const body = await res.json().catch(() => null);
   if (!res.ok) throw new ApiError(res.status, body);
   return body;
@@ -101,7 +102,7 @@ async function upload(path, blob, query = {}) {
 async function postRaw(path, blob) {
   let res;
   try { res = await fetch(`${API}${path}`, { method: 'POST', ...creds, headers: withAuth({ 'content-type': blob.type || 'application/octet-stream' }), body: blob }); }
-  catch { throw new ApiError(0, { error: { message: `Can't reach the Gotmygame server at ${API}` } }); }
+  catch { throw new ApiError(0, { error: { message: t('error.unreachable', { server: API }) } }); }
   const body = await res.json().catch(() => null);
   if (!res.ok) throw new ApiError(res.status, body);
   return body;
@@ -111,7 +112,7 @@ async function postRaw(path, blob) {
 async function download(path) {
   let res;
   try { res = await fetch(`${API}${path}`, { ...creds, headers: withAuth() }); }
-  catch { throw new ApiError(0, { error: { message: `Can't reach the Gotmygame server at ${API}` } }); }
+  catch { throw new ApiError(0, { error: { message: t('error.unreachable', { server: API }) } }); }
   if (!res.ok) throw new ApiError(res.status, await res.json().catch(() => null));
   return res.blob();
 }
@@ -119,7 +120,7 @@ async function download(path) {
 async function postBlob(path, data) {
   let res;
   try { res = await fetch(`${API}${path}`, { method: 'POST', ...creds, headers: withAuth({ 'content-type': 'application/json' }), body: JSON.stringify(data ?? {}) }); }
-  catch { throw new ApiError(0, { error: { message: `Can't reach the Gotmygame server at ${API}` } }); }
+  catch { throw new ApiError(0, { error: { message: t('error.unreachable', { server: API }) } }); }
   if (!res.ok) throw new ApiError(res.status, await res.json().catch(() => null));
   return res.blob();
 }

@@ -1,9 +1,7 @@
 {
  "App.js": 1,
  "Timeline.js": 4,
- "access-ui.js": 80,
  "access.js": 1,
- "address-book.js": 21,
  "ads.js": 9,
  "app-lock.js": 5,
  "apple-button.js": 1,
@@ -34,7 +32,7 @@
  "open-file.js": 2,
  "outbox.js": 1,
  "pickers.js": 7,
- "place-picker.js": 23,
+ "place-picker.js": 1,
  "promo.js": 18,
  "push.js": 4,
  "region-picker.js": 1,
