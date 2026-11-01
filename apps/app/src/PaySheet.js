@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
-import { Linking, Platform, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { AppState, Linking, Platform, View } from 'react-native';
 import { api } from './api';
+import { CLIENT, openCheckout } from './checkout';
 import { useLoad } from './hooks';
 import { useSession } from './session';
 import { Btn, Field, Loading, Sheet, T } from './ui';
@@ -38,9 +39,10 @@ export function PaySheet({ target, onClose, onDone }) {
     const provider = providerFor(method, methods.data?.providers ?? []);
     setBusy(true); setErr(null);
     try {
-      const p = await api.post('/payments', { purpose_type: target.type ?? 'venue_invoice', purpose_id: target.id, provider, method, country: methods.data?.country ?? undefined, return_url: Platform.OS === 'web' ? `${window.location.origin}${window.location.pathname}` : undefined });
+      const p = await api.post('/payments', { purpose_type: target.type ?? 'venue_invoice', purpose_id: target.id, provider, method, country: methods.data?.country ?? undefined, return_url: Platform.OS === 'web' ? `${window.location.origin}${window.location.pathname}` : undefined, client: CLIENT });
       setPay(p);
-      if (Platform.OS === 'web') window.location.assign(p.checkout_url); else await Linking.openURL(p.checkout_url);
+      // on a phone the checkout opens in a sheet that closes by itself when the provider returns; then we ask the server how it went
+      if (Platform.OS === 'web') window.location.assign(p.checkout_url); else { setBusy(false); await openCheckout(p.checkout_url); await check(p.id, true); }
     } catch (e) { setErr(e.message); } finally { setBusy(false); }
   };
   // UPI without leaving the app: collect (a request lands in the customer's UPI app) or intent (a upi:// link / QR for any UPI app)
@@ -60,13 +62,30 @@ export function PaySheet({ target, onClose, onDone }) {
       if (Platform.OS === 'web') window.open(mdt.authorisation_url, '_blank', 'noopener'); else await Linking.openURL(mdt.authorisation_url);
     } catch (e) { setErr(e.message); } finally { setBusy(false); }
   };
-  const check = async () => {
-    setBusy(true); setErr(null);
+  // Ask the server whether the payment went through (the only source of truth). quiet = an automatic check: no spinner, no "not paid yet" message.
+  const finished = useRef(false);
+  const check = async (id = pay?.id, quiet = false) => {
+    if (!id || finished.current) return;
+    if (!quiet) { setBusy(true); setErr(null); }
     try {
-      const r = await api.post(`/payments/${pay.id}/confirm`);
-      if (r.status === 'paid') { toast('Payment received ✓'); await onDone?.(); onClose(); } else setErr('Not paid yet — finish the checkout, then check again.');
-    } catch (e) { setErr(e.message); } finally { setBusy(false); }
+      const r = await api.post(`/payments/${id}/confirm`);
+      if (r.status === 'paid') { finished.current = true; toast('Payment received ✓'); await onDone?.(); onClose(); } else if (!quiet) setErr('Not paid yet — finish the checkout, then check again.');
+    } catch (e) { if (!quiet) setErr(e.message); } finally { if (!quiet) setBusy(false); }
   };
+  // Coming back to the app after paying elsewhere (a UPI app, a bank app, the browser) checks automatically; a UPI request is also checked every few seconds for a while.
+  const payId = pay?.id;
+  useEffect(() => {
+    if (!payId || Platform.OS === 'web') return undefined;
+    const sub = AppState.addEventListener('change', (s) => { if (s === 'active') check(payId, true); });
+    return () => sub.remove();
+  }, [payId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const collecting = pay?.upi_flow === 'collect';
+  useEffect(() => {
+    if (!payId || !collecting) return undefined;
+    let n = 0;
+    const timer = setInterval(() => { if (++n > 20) clearInterval(timer); else check(payId, true); }, 4000);
+    return () => clearInterval(timer);
+  }, [payId, collecting]); // eslint-disable-line react-hooks/exhaustive-deps
   const m = methods.data;
   const mobileOk = !!m?.contact_known || /^\+?[0-9]{10,13}$/.test(mobile.trim());   // UPI needs a mobile number: the account's own, or one typed here
   return (
@@ -83,13 +102,13 @@ export function PaySheet({ target, onClose, onDone }) {
               {pay.upi_intent_url ? <Btn title={t('pay.upi.app')} color={c.paper} ink={c.ink} onPress={() => Linking.openURL(pay.upi_intent_url)} /> : null}
             </View>
           ) : <T size={14}>{t('pay.upi.waiting')}</T>}
-          <Btn title={t('pay.paid_check')} onPress={check} loading={busy} />
+          <Btn title={t('pay.paid_check')} onPress={() => check()} loading={busy} />
         </View>
       ) : pay ? (
         <View style={{ gap: 10 }}>
           <T size={14}>{t('pay.opened', { provider: PROVIDER_NAME[pay.provider] ?? pay.provider })}</T>
-          <Btn title={t('pay.paid_check')} onPress={check} loading={busy} />
-          <Btn title={t('pay.reopen')} color={c.paper} onPress={() => (Platform.OS === 'web' ? window.location.assign(pay.checkout_url) : Linking.openURL(pay.checkout_url))} />
+          <Btn title={t('pay.paid_check')} onPress={() => check()} loading={busy} />
+          <Btn title={t('pay.reopen')} color={c.paper} onPress={async () => { await openCheckout(pay.checkout_url); if (Platform.OS !== 'web') await check(pay.id, true); }} />
         </View>
       ) : upi ? (
         <View style={{ gap: 10 }}>
