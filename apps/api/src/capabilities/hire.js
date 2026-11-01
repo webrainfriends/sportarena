@@ -5,11 +5,11 @@ import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { assertTransition, setTransitionContext, refundKey, timelineFor } from '../lifecycle.js';
 import { isAdmin, mustFind, PUBLIC_USER, sportBySlugOrId } from '../helpers.js';
 import { paymentsEnabled, refundFor } from '../payments/service.js';
-import { NOT_YOUTH_SQL } from '../youth.js';
+import { NOT_YOUTH_SQL, guardianLink } from '../youth.js';
 import { notify } from '../notify.js';
 import { config } from '../config.js';
 import { coachSlotOk } from '../coach-slots.js';
-import { AUDIENCES, cardFor, clientFor, priceFor } from '../coach-pricing.js';
+import { AUDIENCES, INTRO_USED, assertIntroFree, cardFor, clientFor, introScopeOf, introStatus, mapIntroViolation, priceFor } from '../coach-pricing.js';
 import { commitmentBusy } from '../coach-commitments.js';
 import { expandDates, patternFields } from '../recurrence.js';
 import { AppError } from '../errors.js';
@@ -57,6 +57,13 @@ cap({
   },
 });
 
+/** Who the session is for: the caller, or a young person the caller is a verified guardian of. Anyone else gets a 404 so existence is not leaked. */
+async function athleteFor(user, athleteId) {
+  if (!athleteId || athleteId === user.id) return user.id;
+  if (!(await guardianLink(user.id, athleteId))) throw notFound('Athlete');
+  return athleteId;
+}
+
 /** Validate and (unless `dry`) create one coaching hire. Shared by a single booking and each date of a series. */
 export async function placeHire(user, i, opts = {}) {
     if (new Date(i.starts_at) <= new Date()) throw badRequest('Pick a time in the future');
@@ -72,6 +79,7 @@ export async function placeHire(user, i, opts = {}) {
     if (!card && mins > 480) throw badRequest('Choose a rate card for sessions longer than 8 hours');
     if (audience === 'individual' && !card && i.participants > 1) throw badRequest('Choose a group rate card for more than one person');
     const client = await clientFor(user, { audience, team_id: i.team_id, event_id: i.event_id });
+    const athleteId = await athleteFor(user, i.athlete_id);
     if ((await one('SELECT accepting FROM coach_profiles WHERE user_id=$1', [i.coach_id]))?.accepting === false) throw badRequest('This coach is not taking new athletes right now');
     const grid = await coachSlotOk(i.coach_id, i.starts_at, mins);
     if (grid.grid && !grid.ok) throw conflict("That time is not one of the coach's open slots");
@@ -79,11 +87,17 @@ export async function placeHire(user, i, opts = {}) {
     if (clash) throw conflict('Coach is not free then');
     const start = new Date(i.starts_at);
     if ((await commitmentBusy(i.coach_id, start, new Date(+start + mins * 60_000))).length) throw conflict('The coach has another commitment then');
+    const introScope = introScopeOf(card, audience);
+    if (introScope) {
+      if (opts.introSeen?.used) throw conflict(INTRO_USED, { code: 'intro_used', hire_id: null });   // a series books the intro once
+      await assertIntroFree(null, { coachId: i.coach_id, athleteId, sportId: sport.id, scope: introScope });
+    }
     const total = card ? priceFor(card, mins, i.participants) : Math.round((Number(prof.hourly_rate_cents ?? 0) * mins) / 60);
     const rate = card ? Math.round((total * 60) / mins) : Number(prof.hourly_rate_cents ?? 0);
+    if (opts.dry && introScope && opts.introSeen) opts.introSeen.used = true;
     if (opts.dry) return { ok: true, starts_at: i.starts_at, duration_min: mins, total_cents: total, audience, participants: i.participants };
-    const hire = await one('INSERT INTO coach_hires(hirer_id, coach_id, sport_id, starts_at, duration_min, rate_cents_hour, total_cents, note, payment_status, audience, participants, team_id, event_id, rate_card_id, series_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING id, coach_id, starts_at, duration_min, total_cents, status, payment_status, audience, participants',
-      [user.id, i.coach_id, sport.id, i.starts_at, mins, rate, total, i.note, paymentsEnabled() && total > 0 ? 'unpaid' : 'not_required', audience, i.participants, client.team_id, client.event_id, card?.id ?? null, opts.series_id ?? null]);
+    const hire = await one('INSERT INTO coach_hires(hirer_id, coach_id, sport_id, starts_at, duration_min, rate_cents_hour, total_cents, note, payment_status, audience, participants, team_id, event_id, rate_card_id, series_id, athlete_id, intro_scope) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING id, coach_id, starts_at, duration_min, total_cents, status, payment_status, audience, participants, athlete_id, intro_scope',
+      [user.id, i.coach_id, sport.id, i.starts_at, mins, rate, total, i.note, paymentsEnabled() && total > 0 ? 'unpaid' : 'not_required', audience, i.participants, client.team_id, client.event_id, card?.id ?? null, opts.series_id ?? null, athleteId, introScope]).catch((e) => { throw mapIntroViolation(e); });
     if (opts.quiet) return hire;
     await notify(null, i.coach_id, { kind: 'coach_hire_request', title: `${client.name ?? user.display_name} wants a ${sport.name} ${audience === 'individual' ? 'session' : `${audience} booking`}`, body: hire.payment_status === 'unpaid' ? 'Waiting for their payment, then you can confirm.' : 'Open your coach desk to confirm.', data: { hire_id: hire.id } });
     return hire;
@@ -95,33 +109,18 @@ cap({
   input: z.object({
     coach_id: id, sport: z.string().optional(), starts_at: z.string().datetime({ offset: true }), duration_min: z.number().int().min(15).max(1440).optional(), note: z.string().max(500).optional(),
     rate_card_id: id.optional(), participants: z.number().int().min(1).max(500).default(1), team_id: id.optional(), event_id: id.optional(),
+    athlete_id: id.optional().describe('book for a young person you are a verified guardian of; an intro offer counts against them, not you'),
   }),
+  handler: ({ user }, i) => placeHire(user, i),
+});
+
+cap({
+  name: 'get_coach_intro_status', method: 'GET', path: '/coaches/:id/intro-status', tag: 'Hire',
+  summary: 'Which of this coach\'s intro / trial offers the athlete can still book. An intro offer is usable once per athlete per coach (or per sport, set on the card); cancelled, expired and refunded intros free it again. `athlete_id` is a young person you are a verified guardian of (default: you).',
+  input: z.object({ id, athlete_id: id.optional() }),
   async handler({ user }, i) {
-    if (i.coach_id === user.id) throw badRequest('You cannot hire yourself');
-    const card = i.rate_card_id ? await cardFor(i.coach_id, i.rate_card_id, { participants: i.participants }) : null;
-    const sport = await sportBySlugOrId(i.sport ?? card?.sport_id ?? '');
-    if (!sport) throw badRequest('Choose a sport');
-    if (card?.sport_id && card.sport_id !== sport.id) throw badRequest('That rate card is for a different sport');
-    const prof = await one("SELECT hourly_rate_cents FROM active_sport_profiles WHERE user_id=$1 AND sport_id=$2 AND role='coach'", [i.coach_id, sport.id]);
-    if (!prof) throw badRequest('That person does not coach this sport');
-    const audience = card?.audience ?? 'individual';
-    const mins = card && card.unit !== 'hour' ? card.duration_min ?? i.duration_min ?? 60 : i.duration_min ?? card?.duration_min ?? 60;
-    if (!card && mins > 480) throw badRequest('Choose a rate card for sessions longer than 8 hours');
-    if (audience === 'individual' && !card && i.participants > 1) throw badRequest('Choose a group rate card for more than one person');
-    const client = await clientFor(user, { audience, team_id: i.team_id, event_id: i.event_id });
-    if ((await one('SELECT accepting FROM coach_profiles WHERE user_id=$1', [i.coach_id]))?.accepting === false) throw badRequest('This coach is not taking new athletes right now');
-    const grid = await coachSlotOk(i.coach_id, i.starts_at, mins);
-    if (grid.grid && !grid.ok) throw conflict("That time is not one of the coach's open slots");
-    const clash = await one("SELECT 1 FROM coach_hires WHERE coach_id=$1 AND status IN ('requested','confirmed') AND starts_at < $2::timestamptz + make_interval(mins => $3) AND starts_at + make_interval(mins => duration_min) > $2", [i.coach_id, i.starts_at, mins]);
-    if (clash) throw conflict('Coach is not free then');
-    const start = new Date(i.starts_at);
-    if ((await commitmentBusy(i.coach_id, start, new Date(+start + mins * 60_000))).length) throw conflict('The coach has another commitment then');
-    const total = card ? priceFor(card, mins, i.participants) : Math.round((Number(prof.hourly_rate_cents ?? 0) * mins) / 60);
-    const rate = card ? Math.round((total * 60) / mins) : Number(prof.hourly_rate_cents ?? 0);
-    const hire = await one('INSERT INTO coach_hires(hirer_id, coach_id, sport_id, starts_at, duration_min, rate_cents_hour, total_cents, note, payment_status, audience, participants, team_id, event_id, rate_card_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id, coach_id, starts_at, duration_min, total_cents, status, payment_status, audience, participants',
-      [user.id, i.coach_id, sport.id, i.starts_at, mins, rate, total, i.note, paymentsEnabled() && total > 0 ? 'unpaid' : 'not_required', audience, i.participants, client.team_id, client.event_id, card?.id ?? null]);
-    await notify(null, i.coach_id, { kind: 'coach_hire_request', title: `${client.name ?? user.display_name} wants a ${sport.name} ${audience === 'individual' ? 'session' : `${audience} booking`}`, body: hire.payment_status === 'unpaid' ? 'Waiting for their payment, then you can confirm.' : 'Open your coach desk to confirm.', data: { hire_id: hire.id } });
-    return hire;
+    const athleteId = await athleteFor(user, i.athlete_id);
+    return { coach_id: i.id, athlete_id: athleteId, offers: await introStatus(i.id, athleteId) };
   },
 });
 
@@ -129,7 +128,7 @@ cap({
   name: 'book_coach_series', method: 'POST', path: '/hires/series', tag: 'Hire', status: 201,
   summary: 'Book a coach for many dates at once: a weekly pattern (weekdays, every N weeks, until a date or a number of sessions), custom extra dates, and dates to skip. Each date becomes its own hire so it can be confirmed, paid and cancelled separately. `preview: true` checks every date and prices the series without booking. `on_conflict`: skip the dates that cannot be booked (default) or refuse the whole series. Times are in `timezone` (default: the coach\'s).',
   input: z.object({
-    coach_id: id, sport: z.string().optional(), rate_card_id: id.optional(), participants: z.number().int().min(1).max(500).default(1), team_id: id.optional(), event_id: id.optional(), note: z.string().max(500).optional(),
+    coach_id: id, sport: z.string().optional(), rate_card_id: id.optional(), participants: z.number().int().min(1).max(500).default(1), team_id: id.optional(), event_id: id.optional(), note: z.string().max(500).optional(), athlete_id: id.optional(),
     start: z.string().describe('HH:MM local time of each session'), duration_min: z.number().int().min(15).max(1440).optional(), timezone: z.string().max(60).optional(),
     ...patternFields, on_conflict: z.enum(['skip', 'fail']).default('skip'), preview: z.boolean().default(false),
   }),
@@ -139,14 +138,15 @@ cap({
     const tz = i.timezone ?? (await loadCoachSchedule(i.coach_id)).timezone;
     if (!validTimezone(tz)) throw badRequest('Unknown time zone');
     const dates = expandDates(i);
-    const base = { coach_id: i.coach_id, sport: i.sport, rate_card_id: i.rate_card_id, participants: i.participants, team_id: i.team_id, event_id: i.event_id, note: i.note, duration_min: i.duration_min };
+    const base = { coach_id: i.coach_id, sport: i.sport, rate_card_id: i.rate_card_id, participants: i.participants, team_id: i.team_id, event_id: i.event_id, note: i.note, duration_min: i.duration_min, athlete_id: i.athlete_id };
     const check = async (date, opts) => {
       const starts_at = fromLocal(date, startMin, tz).toISOString();
       try { return { date, starts_at, ok: true, hire: await placeHire(user, { ...base, starts_at }, opts) }; }
       catch (e) { if (!(e instanceof AppError)) throw e; return { date, starts_at, ok: false, problem: e.message }; }
     };
     const plan = [];
-    for (const d of dates) plan.push(await check(d, { dry: true }));
+    const introSeen = {};   // an intro offer is booked on one date only
+    for (const d of dates) plan.push(await check(d, { dry: true, introSeen }));
     const good = plan.filter((p) => p.ok), bad = plan.filter((p) => !p.ok);
     const total = good.reduce((n, p) => n + Number(p.hire.total_cents), 0);
     const summary = { timezone: tz, requested: dates.length, bookable: good.length, skipped: bad.map(({ date, problem }) => ({ date, problem })), total_cents: total, currency: config.payments.currency, dates: plan.map(({ date, starts_at, ok, problem }) => ({ date, starts_at, ok, problem })) };

@@ -20,6 +20,7 @@ import { coverFor, startUse, settleUse } from '../cover.js';
 import { fulfilAdFundingPaid } from '../ads/engine.js';
 import { recordCharge, closeCharge, recordPayment, recordRefund } from '../finance.js';
 import { describeSubscription, fulfilSubscriptionPaid } from '../commercial/engine.js';
+import { confirmOrder } from '../ticketing.js';
 
 export { paymentsEnabled, enabledProviders };
 
@@ -38,6 +39,11 @@ export async function describePurpose(c, type, id) {
   if (type === 'coach_hire') {
     const h = await q("SELECT h.hirer_id AS payer_id, h.total_cents - h.loyalty_credit_cents AS amount, h.status, h.payment_status, u.display_name FROM coach_hires h JOIN users u ON u.id=h.coach_id WHERE h.id=$1 FOR UPDATE OF h");
     return h && { payerId: h.payer_id, amount: Number(h.amount), name: `Coaching session with ${h.display_name}`, payable: h.payment_status === 'unpaid' && h.status !== 'cancelled' && Number(h.amount) > 0 };
+  }
+  if (type === 'coach_class_seat') {
+    // a seat is payable only while it is held (reserved for the payer) and the class is still open
+    const z = await q("SELECT coalesce(z.applied_by, z.user_id) AS payer_id, z.amount_cents AS amount, z.status, k.status AS class_status, k.title, k.currency FROM coach_class_seats z JOIN coach_classes k ON k.id=z.class_id WHERE z.id=$1 FOR UPDATE OF z");
+    return z && { payerId: z.payer_id, amount: Number(z.amount), name: `Class: ${z.title}`, payable: z.status === 'held' && z.class_status === 'open' && Number(z.amount) > 0 };
   }
   if (type === 'appointment') {
     const a = await q("SELECT a.athlete_id AS payer_id, a.fee_cents AS amount, a.currency, a.status, a.payment_status, u.display_name FROM appointments a JOIN users u ON u.id=a.provider_id WHERE a.id=$1 FOR UPDATE OF a");
@@ -101,6 +107,10 @@ export async function describePurpose(c, type, id) {
     const x = await q("SELECT f.payer_id, f.amount_minor AS amount, f.currency, f.status, f.number, c.name, c.status AS camp_status FROM ad_fundings f JOIN ad_campaigns c ON c.id=f.campaign_id WHERE f.id=$1 FOR UPDATE OF f");
     return x && { payerId: x.payer_id, amount: Number(x.amount), currency: x.currency, name: `Advertising funds ${x.number} · ${x.name}`, payable: x.status === 'awaiting_payment' && !['ended', 'withdrawn'].includes(x.camp_status) };
   }
+  if (type === 'ticket_order') {
+    const o = await q("SELECT o.buyer_id AS payer_id, o.total_minor AS amount, o.currency, o.status, e.name FROM ticket_orders o JOIN events e ON e.id=o.event_id WHERE o.id=$1 FOR UPDATE OF o");
+    return o && { payerId: o.payer_id, amount: Number(o.amount), currency: o.currency, name: `Tickets · ${o.name}`, payable: o.status === 'pending_payment' && Number(o.amount) > 0 };
+  }
   if (type === 'commercial_subscription') return describeSubscription(c, id);
   if (type === 'marketplace_engagement') {
     const m = await q("SELECT m.buyer_id AS payer_id, m.agreed_minor AS amount, m.currency, m.status, m.title, m.invoice_number, u.display_name FROM marketplace_engagements m JOIN users u ON u.id=m.provider_id WHERE m.id=$1 FOR UPDATE OF m");
@@ -120,6 +130,7 @@ async function fulfil(c, type, id, payment) {
     shop_order: "UPDATE shop_orders SET status='placed' WHERE id=$1 AND status='awaiting_payment'",
     shop_checkout: "UPDATE shop_orders SET status='placed' WHERE checkout_id=$1 AND status='awaiting_payment'",
     coach_hire: "UPDATE coach_hires SET payment_status='paid', status=CASE WHEN request_response_id IS NOT NULL AND status='requested' THEN 'confirmed' ELSE status END WHERE id=$1 AND payment_status='unpaid' AND status IN ('requested','confirmed')",
+    coach_class_seat: "UPDATE coach_class_seats SET status='confirmed', payment_status='paid', hold_expires_at=NULL, updated_at=now() WHERE id=$1 AND status='held'",
     insurance_policy: "UPDATE insurance_policies SET status='active' WHERE id=$1 AND status='pending_payment'",
     appointment: "UPDATE appointments SET payment_status='paid', updated_at=now() WHERE id=$1 AND payment_status='unpaid' AND status IN ('requested','confirmed')",
   }[type];
@@ -136,6 +147,7 @@ async function fulfil(c, type, id, payment) {
   if (type === 'media_rights_fee') return fulfilMediaFeePaid(c, id);
   if (type === 'ad_funding') return fulfilAdFundingPaid(c, id);
   if (type === 'commercial_subscription') return fulfilSubscriptionPaid(c, id, payment.payer_id);
+  if (type === 'ticket_order') return confirmOrder(c, id, payment.payer_id);   // false (cancelled, sold out meanwhile) = the payment is refunded straight away
   if (type === 'registration_instalment') return fulfilInstalmentPaid(c, id, payment);
   if (type === 'team_charge') return fulfilTeamChargePaid(c, id, payment);
   if (type === 'team_contribution') return fulfilContributionPaid(c, id, payment);

@@ -48,7 +48,7 @@ export function OperationsTab({ id, e, isOrg, sub, setSub, goTab }) {
 
 // ---------------------------------------------------------------------------------------------------------------- readiness
 /** Where each requirement is fixed: the tab that owns the data (never re-entered here). */
-export const FIX = { programme: ['games'], venue: ['venue'], participants: ['teams'], officials: ['people', 'hiring'], staff: ['people', 'departments'], suppliers: ['business', 'partners'], accreditation: ['accreditation'], transport: ['travel'], media: ['broadcast'], sponsors: ['business', 'partners'], finance: ['business', 'budget'], tasks: ['boards'], safety: ['people', 'departments'], medical: ['people', 'departments'], tickets: null, procurement: ['business', 'services'] };
+export const FIX = { programme: ['games'], venue: ['venue'], participants: ['teams'], officials: ['people', 'hiring'], staff: ['people', 'departments'], suppliers: ['business', 'partners'], accreditation: ['accreditation'], transport: ['travel'], media: ['broadcast'], sponsors: ['business', 'partners'], finance: ['business', 'budget'], tasks: ['boards'], safety: ['people', 'departments'], medical: ['people', 'departments'], tickets: ['tickets'], procurement: ['business', 'services'] };
 
 export function Readiness({ id, goTab }) {
   const r = useLoad(() => api.get(`/events/${id}/ops/readiness`), [id]);
