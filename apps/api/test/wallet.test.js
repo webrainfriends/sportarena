@@ -58,6 +58,8 @@ const book = (u, court, d, h, len = 1) => api('POST', '/reservations', { token: 
 before(async () => {
   await pool.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public');
   await migrate();
+  // countries the platform admin has switched card and PayPal on for (a country with no switch offers nothing)
+  await pool.query("INSERT INTO payment_method_countries(country, method, enabled) SELECT c, m, true FROM unnest(ARRAY['IN','JP','US','GB','AE','SG','AU','DE']) c CROSS JOIN unnest(ARRAY['card','paypal']) m ON CONFLICT DO NOTHING");
   server = createApp().listen(0);
   base = `http://localhost:${server.address().port}`;
   const row = (await pool.query("INSERT INTO users(handle,display_name,roles,password_hash,email_enc,email_idx) VALUES ('wa_root','Root','{admin}','x','x','wa_adminidx') RETURNING id")).rows[0];

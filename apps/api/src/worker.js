@@ -1,5 +1,7 @@
 // Background maintenance: reminders + queued email, release of unpaid holds, credit-note refunds.
 // Every category runs in its own try/catch: a failure in one (say, the email bridge) never blocks holds, refunds or waitlists.
+import { sweepMandates } from './payments/mandates.js';
+import { autoReconcile } from './payments/reconcile.js';
 import { notificationCycle, isolated } from './notify.js';
 import { expireUnpaidHolds } from './booking/holds.js';
 import { expireStaleSales } from './pos/sale.js';
@@ -67,6 +69,8 @@ export const STEPS = [
   ['loyalty_memberships', 'membership_points_awarded', () => tx((c) => membershipTenureSweep(c)), 0],
   ['plans', 'plans_expired', expireUserPlans, 0],
   ['subscriptions', 'subscriptions_renewed', raiseSubscriptionRenewals, 0],
+  ['settlement_recon', 'settlements_reconciled', autoReconcile, 0],
+  ['mandates', 'mandates_cancelled', async () => (await sweepMandates()).cancelled, 0],
   ['venue_ops', 'venue_ops_reminders', venueOpsReminders, 0],
   ['venue_pm', 'venue_pm_work_orders', raisePreventiveWork, 0],
   ['membership_grants', 'membership_grants_issued', syncMembershipGrants, 0],
