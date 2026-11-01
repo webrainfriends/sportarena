@@ -60,6 +60,7 @@ export function linkFor(kind = '', d = {}) {
   if (has('staff_id') && has('event_id')) return { screen: 'EventCommand', params: { id: d.event_id } };
   if (has('event_id')) return { screen: 'Event', params: { id: d.event_id } };
   if (has('fixture_id') && /official/.test(kind)) return { screen: 'OfficialMatch', params: { id: d.fixture_id } };
+  if (has('person_id') && has('section')) return { screen: 'Network', params: { section: d.section } };
   if (has('team_id')) return { screen: 'Team', params: { id: d.team_id } };
   if (has('hire_id') || has('review_id') || kind.startsWith('coach_')) return { screen: 'CoachDesk', params: {} };
   if (has('request_id')) return { screen: 'CoachRequest', params: { id: d.request_id } };

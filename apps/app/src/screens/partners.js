@@ -6,6 +6,7 @@ import React, { useState } from 'react';
 import { CommsPlatform } from './communications';
 import { Platform, Switch, View } from 'react-native';
 import { api } from '../api';
+import { saveExport } from '../open-file';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { Btn, Card, Chip, Empty, ErrorBox, Field, H1, Loading, Row, Screen, Section, Seg, Sheet, StatPill, T, Tag } from '../ui';
@@ -23,12 +24,7 @@ const iso = (offset) => new Date(Date.now() + offset * 864e5).toISOString().slic
 const TONE = { active: c.lime, approved: c.lime, paid: c.lime, applied: c.sunSoft, onboarding: c.cyanSoft, pending: c.sunSoft, sent: c.cyanSoft, draft: c.violetSoft, countered: c.orangeSoft, changes_requested: c.orangeSoft, suspended: c.orangeSoft, rejected: c.pinkSoft, offboarded: c.pinkSoft, terminated: c.pinkSoft, void: c.pinkSoft, declined: c.pinkSoft, superseded: c.violetSoft, withdrawn: c.violetSoft };
 const St = ({ s }) => <Tag label={label(s)} color={TONE[s] ?? c.violetSoft} />;
 
-function download(name, text) {
-  if (Platform.OS !== 'web') return false;
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([text], { type: 'text/csv' })); a.download = name; a.click();
-  return true;
-}
+const download = (name, text) => saveExport({ filename: name, content_type: 'text/csv', encoding: 'utf8', content: text });
 
 /** Runs an API call and reports the outcome; reloads on success. */
 function useAct(reload) {
@@ -297,7 +293,7 @@ export function SettlementView({ id, onClose, onChanged, platform }) {
   const [form, setForm] = useState(null);
   const x = s.data;
   const row = (t, v, strong) => <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><T size={13} weight={strong ? '800' : '500'}>{t}</T><T size={13} weight={strong ? '800' : '500'}>{v}</T></View>;
-  const csv = async () => { const r = await api.get(`/settlements/${id}`, { format: 'csv' }); if (!download(`${x.settlement_no}.csv`, r.csv)) await act(async () => r, 'CSV ready (open on web to download)'); };
+  const csv = async () => { const r = await api.get(`/settlements/${id}`, { format: 'csv' }); await act(async () => { await download(`${x.settlement_no}.csv`, r.csv); return r; }, 'CSV ready'); };
   return (
     <Sheet visible={!!id} onClose={onClose} title={x?.settlement_no ?? 'Settlement'}>
       {s.loading && !x ? <Loading /> : x ? <>
@@ -363,7 +359,7 @@ function Reports() {
   const pnl = useLoad(() => api.get('/admin/reports/pnl', { from, to }), [days]);
   const sett = useLoad(() => api.get('/admin/reports/settlements', { from, to }), [days]);
   const [led, setLed] = useState(false);
-  const csv = async (path, name) => { const r = await api.get(path, { from, to, format: 'csv' }); download(name, r.csv); };
+  const csv = async (path, name) => { const r = await api.get(path, { from, to, format: 'csv' }); await download(name, r.csv); };
   return (
     <>
       <Seg options={[{ value: 30, label: '30 days' }, { value: 90, label: '90 days' }, { value: 365, label: 'Year' }]} value={days} onChange={setDays} />

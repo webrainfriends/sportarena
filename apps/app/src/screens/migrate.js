@@ -2,6 +2,7 @@
 // source -> file -> columns -> check (dry run) -> import -> report. Nothing is created until the person has seen the check and approved it,
 // people are invited (never added), and an import that went wrong can be rolled back. The API decides every rule; this screen only shows the
 // answers: mapping and review work side by side on tablet and desktop, one column on a phone.
+import { docMaxBytes, docMaxMb } from '../upload-limits';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Platform, Pressable, View } from 'react-native';
 import { api } from '../api';
@@ -22,7 +23,6 @@ const stepOf = (p) => (!p ? 0 : p.status === 'mapping' ? 2 : p.status === 'dry_r
 const OUTCOME = { valid: ['Ready', c.limeSoft], warning: ['Ready, check', c.sunSoft], rejected: ['Needs fixing', c.pinkSoft], duplicate: ['Duplicate', c.violetSoft], conflict: ['Who is this?', c.orangeSoft], skipped: ['Skipped', c.violetSoft], pending: ['Not checked', c.violetSoft] };
 const ROLE_OPTIONS = [['player', 'Player'], ['captain', 'Captain'], ['coach', 'Coach'], ['manager', 'Manager'], ['physio', 'Physio']];
 const csvCell = (v) => { let s = String(v ?? ''); if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`; return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
-const MAX_FILE = 10 * 2 ** 20;
 
 /** Pick a spreadsheet on this device: the browser's file dialog on web, the Files picker in the app. */
 async function chooseFile() {
@@ -85,7 +85,7 @@ export function Migrate({ organisation_id, id: resume }) {
   const pick = () => run('pick', async () => {
     const f = await chooseFile();
     if (!f) return;
-    if (f.blob.size > MAX_FILE) throw new Error('That file is over 10 MB. Split it by team or season.');
+    if (f.blob.size > docMaxBytes()) throw new Error(`That file is over ${docMaxMb()} MB. Split it by team or season.`);
     const r = await api.upload('/migrations/extract', f.blob);
     setFile({ name: f.name, csv: r.csv, rows: r.rows, kind: r.kind });
   });
@@ -145,7 +145,7 @@ export function Migrate({ organisation_id, id: resume }) {
             {source ? (
               <Card style={{ marginTop: 12 }}>
                 <T weight="800" size={13}>Your file</T>
-                <T size={12.5} color={c.mute} style={{ marginTop: 4, lineHeight: 18 }}>Excel (.xlsx), CSV or tab-separated, first row = column names, up to {info.data.max_rows} rows. Up to 10 MB.</T>
+                <T size={12.5} color={c.mute} style={{ marginTop: 4, lineHeight: 18 }}>Excel (.xlsx), CSV or tab-separated, first row = column names, up to {info.data.max_rows} rows. Up to {docMaxMb()} MB.</T>
                 <View style={{ flexDirection: 'row', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
                   <Btn title="Choose file" onPress={pick} loading={busy === 'pick'} disabled={!orgId} accessibilityLabel="Choose a spreadsheet file from this device" />
                   <Btn title="Download template" color={c.paper} ink={c.ink} onPress={template} loading={busy === 'tpl'} />

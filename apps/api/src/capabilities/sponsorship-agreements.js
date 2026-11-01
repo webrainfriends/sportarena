@@ -357,7 +357,7 @@ cap({
 cap({
   name: 'start_sponsorship_checkout', method: 'POST', path: '/sponsorship-obligations/:id/checkout', tag: 'Sponsors', status: 201,
   summary: 'Sponsor (finance/manager): pay a money due online through Stripe or PayPal, in full or in part (an instalment can be paid in several checkouts, bounded by what is still due). The amount is held against the due while the checkout is open; the due counts the money only when the verified provider result arrives (never from the redirect or a client claim), so retries and webhooks cannot double-charge or double-settle. The platform collects the money and the recipient is paid out through the earnings and payout flow, which is a separate later step. Refused until the recipient has a payout account in that currency. Send the person to checkout_url, then call confirm_payment (or wait for the webhook).',
-  input: z.object({ id, provider: z.enum(['stripe', 'paypal']), amount_cents: z.coerce.number().int().positive().optional().describe('defaults to everything still due'), return_url: z.string().url().optional() }),
+  input: z.object({ id, provider: z.enum(['stripe', 'paypal', 'razorpay']), method: z.enum(['card', 'paypal', 'upi', 'netbanking', 'wallet']).optional(), amount_cents: z.coerce.number().int().positive().optional().describe('defaults to everything still due'), return_url: z.string().url().optional() }),
   async handler({ user }, i) {
     if (!enabledProviders().includes(i.provider)) throw conflict(`${i.provider} is not switched on for online payments yet`);
     // the recipient must be able to be paid in this currency, or the money would be collected and stuck
@@ -387,7 +387,7 @@ cap({
       return { id: x.id, amount };
     });
     try {
-      const out = await startCheckout(user, { purpose_type: 'sponsorship_payment', purpose_id: row.id, provider: i.provider, return_url: i.return_url });
+      const out = await startCheckout(user, { purpose_type: 'sponsorship_payment', purpose_id: row.id, provider: i.provider, method: i.method, return_url: i.return_url });
       await one('UPDATE sponsorship_payments SET payment_id=$2 WHERE id=$1', [row.id, out.id]);
       return { ...out, sponsorship_payment_id: row.id, obligation_id: i.id };
     } catch (e) {

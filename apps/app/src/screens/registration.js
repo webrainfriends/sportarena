@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Platform, View } from 'react-native';
 import { api } from '../api';
+import { openProtected } from '../open-file';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { useNav } from '../nav';
@@ -360,7 +361,7 @@ export function RegistrationEntry({ id }) {
   const k = kindOf(e.programme.kind);
   const fields = ver.data?.version ? fieldsOf(ver.data.version.form) : [];
   const show = (f, v) => (Array.isArray(v) ? v.map((x) => f.options?.find((o) => o.value === x)?.label ?? x).join(', ') : f.type === 'yesno' ? (v ? 'Yes' : 'No') : f.type === 'choice' ? (f.options?.find((o) => o.value === v)?.label ?? v) : String(v));
-  const openFile = async (x) => { try { const blob = await api.download(`/registration-files/${x.id}`); if (Platform.OS === 'web') { const u = URL.createObjectURL(blob); window.open(u, '_blank', 'noopener'); setTimeout(() => URL.revokeObjectURL(u), 120000); } else toast('Open this file on the web app'); } catch (x2) { toast(explain(x2)); } };
+  const openFile = async (x) => { try { await openProtected(`/registration-files/${x.id}`, x.file_name ?? `file-${x.id}`); } catch (x2) { toast(explain(x2)); } };
   const needsNote = ['reject', 'request_info'].includes(sheet?.action);
   return (
     <Screen onRefresh={load.reload} refreshing={load.loading && !!e} wide>

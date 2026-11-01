@@ -133,13 +133,13 @@ export async function syncCoachSubscriptions() {
             await tell(c, sub, { kind: 'coach_sub_lapsed', title: `${sub.title} has lapsed`, body: 'The payment was not received in time, so your included sessions have ended. Your history is kept — subscribe again any time.', data: { subscription_id: sub.id }, dedupe_key: `coach_sub_lapsed:${sub.id}:${last.period_no}` });
             await notify(c, sub.coach_id, { kind: 'coach_sub_lapsed_coach', title: 'A subscriber lapsed', body: `${sub.title}: payment for period ${last.period_no} was not received.`, data: { subscription_id: sub.id, for_coach: true }, dedupe_key: `coach_sub_lapsed_c:${sub.id}:${last.period_no}` });
             changed++;
-          } else if (lateDays >= 0 && (sub.status === 'active' || lateDays > 0)) {
+          } else if (lateDays >= 0) {
             if (sub.status === 'active') {
               await c.query("UPDATE coach_subscriptions SET status='past_due' WHERE id=$1 AND status='active'", [sub.id]);
               await notify(c, sub.coach_id, { kind: 'coach_sub_past_due_coach', title: 'A subscription payment is late', body: `${sub.title}: period ${last.period_no} is unpaid. Grace ends in ${sub.grace_days - lateDays} day(s).`, data: { subscription_id: sub.id, for_coach: true }, dedupe_key: `coach_sub_pd_c:${sub.id}:${last.period_no}` });
               changed++;
             }
-            await tell(c, sub, { kind: 'coach_sub_past_due', title: `Payment due: ${sub.title}`, body: `${money(sub.price_cents, sub.currency)} was due ${last.due_s}. Pay within ${sub.grace_days - lateDays} day(s) to keep your sessions.`, data: { subscription_id: sub.id, user_plan_id: last.id }, dedupe_key: `coach_sub_pd:${last.id}:${Math.min(lateDays, sub.grace_days)}` });
+            // the payer's reminders for a late month are sent once, by the collections engine (collections.js), which owns the case for this period
           }
           return;
         }

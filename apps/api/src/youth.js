@@ -8,7 +8,7 @@ import { audit, isAdmin } from './helpers.js';
 
 export const PURPOSES = ['participation', 'medical', 'media', 'contact', 'coaching', 'recruitment', 'recruitment_sharing', 'calendar_sharing'];
 /** What a guardian may do for a young person. A link carries a subset (all by default); an organisation can reserve some for the primary guardian. */
-export const SCOPES = ['pay', 'register', 'rsvp', 'travel_consent', 'consent', 'calendar'];
+export const SCOPES = ['pay', 'register', 'rsvp', 'travel_consent', 'consent', 'calendar', 'social'];
 export const RELATIONSHIPS = ['parent', 'legal_guardian', 'foster_carer', 'other'];
 
 /** Built-in policy used when no row exists for a jurisdiction. Operators override it with set_age_policy (a new version each time). */

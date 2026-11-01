@@ -5,6 +5,7 @@ import { providerOf } from './access-providers.js';
 
 async function sourceState(c, g) {
   if (g.source_type === 'booking') return (await c.query("SELECT b.ends_at AS valid_to, (b.status='confirmed' AND rs.status='confirmed') AS ok FROM bookings b JOIN reservations rs ON rs.id=b.reservation_id WHERE b.id=$1", [g.source_id])).rows[0];
+  if (g.source_type === 'membership') return (await c.query("SELECT expires_at AS valid_to, (status='active') AS ok FROM user_plans WHERE id=$1", [g.source_id])).rows[0];
   if (g.source_type === 'locker_assignment') return (await c.query("SELECT ends_at AS valid_to, status='active' AS ok FROM locker_assignments WHERE id=$1", [g.source_id])).rows[0];
   return (await c.query("SELECT k.valid_to, (a.status='approved' AND a.access='active') AS ok FROM accreditations a JOIN accreditation_categories k ON k.id=a.category_id WHERE a.id=$1", [g.source_id])).rows[0];
 }
