@@ -13,6 +13,7 @@ import { createMcpServer } from './mcp.js';
 import { pool } from './db.js';
 import { webhookRouter } from './payments/webhooks.js';
 import { commsWebhookRouter } from './comms-webhooks.js';
+import { backgroundCheckWebhookRouter } from './background-check-webhooks.js';
 import { integrationWebhookRouter } from './integrations/webhooks.js';
 import { signatureCallbackRouter } from './capabilities/sponsorship-contracts.js';
 import { mediaRouter } from './media.js';
@@ -82,6 +83,7 @@ export function createApp() {
   }));
   app.use(cookieAuth);
   app.use('/api/v1/webhooks/comms', commsWebhookRouter());
+  app.use('/api/v1/webhooks/background-checks', backgroundCheckWebhookRouter());
   app.use('/api/v1/webhooks/integrations', integrationWebhookRouter());
   app.use('/api/v1/webhooks', webhookRouter());
   app.use('/api/v1/webhooks/signatures', signatureCallbackRouter());

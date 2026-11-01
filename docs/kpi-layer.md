@@ -49,3 +49,11 @@ A record belongs to a scope when its event, venue, team, organisation or brand i
 ## Known gaps
 Legacy dashboards are not yet rewired to call the layer (only the guard test prevents new conflicting definitions); venue utilisation ignores maintenance
 closures; department-scoped sponsor members cannot use brand-wide analytics; native iOS/Android devices were not run (web build verified at phone, tablet and desktop widths).
+
+## Federation census (#703)
+Scope type `federation` (a governing body and the bodies recognised under it), read live with `authority()`: the caller needs a reports role on the body or one
+above it that covers every sport and jurisdiction (404 otherwise, 403 with the reason when the role is too narrow). Metrics `members`, `new_members`,
+`licence_renewals`, `renewal_rate` (all version 1) carry `minCell: 5` (ratio: `minGroup: 5`): person counts below 5 are hidden together with the next
+smallest figure, source record counts are hidden with them, and `drillScopes: []` makes them aggregate-only. New dimensions: `body`, `region`, `club`,
+`age_band`, `gender` (a keyed blind index, labelled in the engine), `status`. Every metric's facts gain a `body_id` column outside its own SQL, so no existing
+definition hash changed.
