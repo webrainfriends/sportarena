@@ -24,7 +24,6 @@ import { BallotsManager } from './ballots';
 import { VenueCoachesPanel } from './venue-coaches';
 import { t } from '../i18n';
 
-import { t } from '../i18n';
 const AMENITIES = ['Parking', 'Changing rooms', 'Showers', 'Lockers', 'Café', 'Floodlights', 'Equipment hire', 'Coaching', 'First aid', 'Seating', 'WiFi', 'Wheelchair access'];
 const TABS = [['schedule', 'Today'], ['frontdesk', 'Front desk'], ['timetable', 'Timetable & prices'], ['blocks', 'Block slots'], ['ballots', 'Slot ballots'], ['coaches', t('vc.title')], ['payments', 'Invoices'], ['plans', 'Passes, packages & memberships'], ['discounts', 'Offers'], ['pricing', 'Courts & special rates'], ['seating', t('seat.tab')], ['media', 'Photos & videos'], ['lockers', 'Lockers'], ['access', 'Doors & attendance'], ['maintenance', 'Maintenance'], ['vendors', 'Vendors & contracts'], ['reviews', 'Reviews'], ['reports', 'Reports'], ['docs', 'Documents & insurance'], ['setup', 'Settings']];
 const num = (x) => (x === undefined || x === '' ? undefined : Number(x));
