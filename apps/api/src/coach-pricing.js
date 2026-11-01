@@ -79,3 +79,31 @@ export async function introStatus(coachId, athleteId) {
                               AND (k.intro_scope='coach' OR h.sport_id=k.sport_id)
       WHERE k.coach_id=$1 AND k.is_intro AND k.audience='individual' AND k.archived_at IS NULL AND k.active`, [coachId, athleteId]);
 }
+
+// ---- series (block) pricing: the one function the preview, the booking and a re-quote after a date drops out all use ----
+/** Split `total` across `weights` so the parts are whole minor units that add up to exactly `total` (largest remainder). */
+export function allocate(total, weights) {
+  const sum = weights.reduce((n, w) => n + w, 0);
+  if (!weights.length) return [];
+  if (sum <= 0) { const even = Math.floor(total / weights.length); const out = weights.map(() => even); out[0] += total - even * weights.length; return out; }
+  const raw = weights.map((w) => (total * w) / sum), out = raw.map(Math.floor);
+  let left = total - out.reduce((n, x) => n + x, 0);
+  raw.map((r, i) => [r - Math.floor(r), i]).sort((a, b) => b[0] - a[0] || a[1] - b[1]).forEach(([, i]) => { if (left-- > 0) out[i]++; });
+  return out;
+}
+
+/**
+ * Price a block of dates. `lists` = the undiscounted price of each bookable date. The coach's block discount (on the rate card,
+ * `block_discount_pct` once `block_min_sessions` dates are booked) comes off the whole block and is shared out across the dates
+ * so each date's share is a whole number and the shares add up to the total. Intro / trial offers are never discounted.
+ */
+export function seriesQuote(card, lists) {
+  const list_total = lists.reduce((n, x) => n + x, 0);
+  const pct = card && !card.is_intro && lists.length >= Number(card.block_min_sessions ?? 0) ? Number(card.block_discount_pct ?? 0) : 0;
+  const discount = Math.min(list_total, Math.round((list_total * pct) / 100));
+  const shares = allocate(discount, lists), per_date = lists.map((l, i) => l - shares[i]);
+  return { list_total_cents: list_total, discount_pct: discount ? pct : 0, discount_cents: discount, total_cents: list_total - discount, per_date_cents: per_date };
+}
+
+/** Which ways a block may be paid for: always once; per date unless the coach switched it off on the card. */
+export const payModesFor = (card) => (card && card.allow_pay_per_date === false ? ['once'] : ['once', 'per_date']);

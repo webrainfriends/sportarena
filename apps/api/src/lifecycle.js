@@ -8,6 +8,7 @@ import { audit } from './helpers.js';
 import { conflict, forbidden } from './errors.js';
 import { notify } from './notify.js';
 import { refundFor } from './payments/service.js';
+import { refundHire, resyncSeries } from './coach-series.js';
 
 export const NEXT = { requested: ['confirmed', 'cancelled', 'expired'], confirmed: ['completed', 'cancelled'], completed: [], cancelled: [], expired: [] };
 /**
@@ -74,11 +75,11 @@ export async function expireStaleRequests({ limit = 200 } = {}) {
           if (!r) return false;
           await setTransitionContext(c, null, 'Not confirmed before the start time');
           let payment = r.payment_status;
-          if (payment === 'paid') { await refundFor(s.purpose, r.id, { key: refundKey(s.purpose, r.id) }); payment = 'refunded'; }
+          if (payment === 'paid') { if (s.table === 'coach_hires') await refundHire(r); else await refundFor(s.purpose, r.id, { key: refundKey(s.purpose, r.id) }); payment = 'refunded'; }
           const upd = await c.query(`UPDATE ${s.table} SET status='expired', payment_status=$2 WHERE id=$1 AND status='requested'`, [r.id, payment]);
           if (!upd.rowCount) return false;
           if (s.table === 'appointments') await c.query("UPDATE appointment_followups SET status='due', booked_appointment_id=NULL, updated_at=now() WHERE booked_appointment_id=$1 AND status='booked'", [r.id]);
-          else await c.query("UPDATE session_venue_links SET released_at=now(), release_reason='request expired' WHERE session_type='coach_hire' AND session_id=$1 AND released_at IS NULL", [r.id]);
+          else { await c.query("UPDATE session_venue_links SET released_at=now(), release_reason='request expired' WHERE session_type='coach_hire' AND session_id=$1 AND released_at IS NULL", [r.id]); if (r.series_id) await resyncSeries(c, r.series_id); }
           for (const u of [r[s.customerCol], r[s.providerCol]]) {
             await notify(c, u, { kind: s.kind, title: `${s.noun} request expired`, body: 'It was not confirmed before the start time.', data: { [s.dataKey]: r.id } });
           }
