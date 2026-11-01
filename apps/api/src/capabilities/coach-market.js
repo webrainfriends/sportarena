@@ -103,7 +103,7 @@ cap({
       one("SELECT count(*) FILTER (WHERE status='completed')::int AS sessions_done, count(DISTINCT hirer_id) FILTER (WHERE status IN ('confirmed','completed'))::int AS athletes FROM coach_hires WHERE coach_id=$1", [i.id]),
       loadCoachSchedule(i.id),
       badgesFor('user', [i.id]),
-      many(`SELECT k.id, k.title, k.audience, k.delivery, k.unit, k.price_cents, k.per_person, k.duration_min, k.min_participants, k.max_participants, k.sessions_included, k.is_intro, k.intro_scope, k.description, s.slug AS sport_slug, s.name AS sport FROM coach_rate_cards k LEFT JOIN sports s ON s.id=k.sport_id WHERE k.coach_id=$1 AND k.archived_at IS NULL AND k.active ORDER BY k.is_intro DESC, k.audience, k.price_cents`, [i.id]),
+      many(`SELECT k.id, k.title, k.audience, k.delivery, k.unit, k.price_cents, k.per_person, k.duration_min, k.min_participants, k.max_participants, k.sessions_included, k.rollover_max, k.grace_days, k.is_intro, k.intro_scope, k.description, s.slug AS sport_slug, s.name AS sport FROM coach_rate_cards k LEFT JOIN sports s ON s.id=k.sport_id WHERE k.coach_id=$1 AND k.archived_at IS NULL AND k.active ORDER BY k.is_intro DESC, k.audience, k.price_cents`, [i.id]),
       many('SELECT z.id, z.name, z.levels, z.years, z.certification, s.slug AS sport_slug, s.name AS sport, s.emoji FROM coach_specialisations z JOIN sports s ON s.id=z.sport_id WHERE z.coach_id=$1 AND z.archived_at IS NULL ORDER BY s.name, z.name', [i.id]),
     ]);
     const next = sched.windows.length ? (await openCoachSlots(i.id, new Date(), new Date(Date.now() + 14 * 864e5), { schedule: sched }))[0] ?? null : null;
@@ -346,7 +346,7 @@ cap({
 });
 
 // ----------------------------------------------------------------------------------------------- schedule + money
-const SESSION_COLS = `h.id, h.starts_at, h.duration_min, h.total_cents, h.status, h.payment_status, h.note, h.coach_id, h.hirer_id, s.name AS sport, s.emoji AS sport_emoji, s.slug AS sport_slug, h.audience, h.participants, h.series_id, ${venueText('coach_hire', 'h.id')}`;
+const SESSION_COLS = `h.id, h.starts_at, h.duration_min, h.total_cents, h.status, h.payment_status, h.note, h.coach_id, h.hirer_id, s.name AS sport, s.emoji AS sport_emoji, s.slug AS sport_slug, h.audience, h.participants, h.series_id, (SELECT x.pay_mode FROM coach_series x WHERE x.id=h.series_id) AS series_pay_mode, ${venueText('coach_hire', 'h.id')}`;
 
 cap({
   name: 'coaching_overview', method: 'GET', path: '/coaching/overview', tag: TAG,
@@ -392,7 +392,7 @@ cap({
     return (await many(
       `SELECT ${SESSION_COLS}, h.rate_cents_hour, o.display_name AS counterparty_name, o.avatar_emoji, o.avatar_color, o.avatar_url, p.paid_at, p.refunded_at, p.provider AS paid_with, $2::text AS as_role
          FROM coach_hires h JOIN users o ON o.id=${other} LEFT JOIN sports s ON s.id=h.sport_id
-         LEFT JOIN LATERAL (SELECT paid_at, refunded_at, provider FROM payments WHERE purpose_type='coach_hire' AND purpose_id=h.id AND status IN ('paid','refunded') ORDER BY created_at DESC LIMIT 1) p ON true
+         LEFT JOIN LATERAL (SELECT paid_at, refunded_at, provider FROM payments WHERE ((purpose_type='coach_hire' AND purpose_id=h.id) OR id=(SELECT x.payment_id FROM coach_series x WHERE x.id=h.series_id)) AND status IN ('paid','refunded') ORDER BY created_at DESC LIMIT 1) p ON true
         WHERE ${mine}=$1 AND ($3::text IS NULL OR h.payment_status=$3) ORDER BY h.starts_at DESC, h.id LIMIT $4 OFFSET $5`, [user.id, i.as, i.payment_status ?? null, i.limit, i.offset])).map((r) => ({ ...r, currency: config.payments.currency }));
   },
 });

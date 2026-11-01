@@ -5,6 +5,7 @@ import { provider, paymentsEnabled, enabledProviders } from './providers.js';
 import { markInvoicePaid } from '../booking/invoices.js';
 import { completeTopup, activateGiftCard } from '../wallet.js';
 import { activateUserPlan } from '../booking/plans.js';
+import { activateCoachPeriod } from '../coach-subscriptions.js';
 import { activatePhysioPackage } from '../capabilities/provider-packages.js';
 import { fulfilSponsorshipPayment } from '../sponsor-agreements.js';
 import { fulfilChargePaid } from '../academy-invoices.js';
@@ -13,6 +14,7 @@ import { fulfilMarketplacePaid } from '../marketplace/engine.js';
 import { fulfilMediaFeePaid } from '../media-fees.js';
 import { fulfilContributionPaid, fulfilTeamChargePaid } from '../team-money.js';
 import { fulfilInstalmentPaid } from '../registration-money.js';
+import { checkGuardianScope } from '../youth.js';
 import { raiseException, recordSale, syncRefunds } from '../settlement.js';
 import { coachSessionDone } from '../rewards/activity.js';
 import { saleDue, confirmOnlineSalePayment } from '../pos/due.js';
@@ -37,8 +39,18 @@ export async function describePurpose(c, type, id) {
     return o?.payer_id && o.currencies === 1 && { payerId: o.payer_id, amount: Number(o.amount), currency: o.currency, name: `Gotmygame Shop order (${o.due} item${o.due === 1 ? '' : 's'})`, payable: o.due > 0 };
   }
   if (type === 'coach_hire') {
-    const h = await q("SELECT h.hirer_id AS payer_id, h.total_cents - h.loyalty_credit_cents AS amount, h.currency, h.status, h.payment_status, u.display_name FROM coach_hires h JOIN users u ON u.id=h.coach_id WHERE h.id=$1 FOR UPDATE OF h");
+    const h = await q("SELECT h.hirer_id AS payer_id, h.total_cents - h.loyalty_credit_cents AS amount, h.currency, h.status, h.payment_status, h.series_id, u.display_name, s.pay_mode, s.payment_id, s.anchor_hire_id FROM coach_hires h JOIN users u ON u.id=h.coach_id LEFT JOIN coach_series s ON s.id=h.series_id WHERE h.id=$1 FOR UPDATE OF h");
+    if (h?.series_id && h.pay_mode === 'once') {
+      // a pay-once block is paid in one go, raised on its anchor date: the amount is everything still unpaid in the block
+      const due = (await c.query("SELECT coalesce(sum(total_cents - loyalty_credit_cents), 0)::bigint AS amount, count(*)::int AS n FROM coach_hires WHERE series_id=$1 AND payment_status='unpaid' AND status IN ('requested','confirmed') AND series_state IS DISTINCT FROM 'paused'", [h.series_id])).rows[0];
+      return { payerId: h.payer_id, amount: Number(due.amount), currency: h.currency, name: `Coaching block with ${h.display_name} (${due.n} session${due.n === 1 ? '' : 's'})`, payable: !h.payment_id && h.anchor_hire_id === id && h.payment_status === 'unpaid' && h.status !== 'cancelled' && Number(due.amount) > 0 };
+    }
     return h && { payerId: h.payer_id, amount: Number(h.amount), currency: h.currency, name: `Coaching session with ${h.display_name}`, payable: h.payment_status === 'unpaid' && h.status !== 'cancelled' && Number(h.amount) > 0 };
+  }
+  if (type === 'coach_subscription_period') {
+    // payable while the period waits for payment and the agreement is still alive (a paused or lapsed one cannot be paid into)
+    const u = await q("SELECT up.user_id AS payer_id, up.price_cents AS amount, up.currency, up.status, up.name, s.status AS sub_status, c.display_name FROM user_plans up JOIN coach_subscriptions s ON s.id=up.subscription_id JOIN users c ON c.id=up.coach_id WHERE up.id=$1 FOR UPDATE OF up");
+    return u && { payerId: u.payer_id, amount: Number(u.amount), currency: u.currency, name: `${u.name} · ${u.display_name}`, payable: u.status === 'awaiting_payment' && ['active', 'past_due'].includes(u.sub_status) };
   }
   if (type === 'coach_class_seat') {
     // a seat is payable only while it is held (reserved for the payer) and the class is still open
@@ -139,6 +151,7 @@ async function fulfil(c, type, id, payment) {
   if (type === 'wallet_topup') return completeTopup(c, id);
   if (type === 'gift_card') return activateGiftCard(c, id);
   if (type === 'venue_plan') return activateUserPlan(c, id);
+  if (type === 'coach_subscription_period') return activateCoachPeriod(c, id);
   if (type === 'physio_package') return activatePhysioPackage(c, id);
   if (type === 'sponsorship_payment') return fulfilSponsorshipPayment(c, id);
   if (type === 'academy_charge') return fulfilChargePaid(c, id, { method: 'online', payment });
@@ -151,6 +164,19 @@ async function fulfil(c, type, id, payment) {
   if (type === 'registration_instalment') return fulfilInstalmentPaid(c, id, payment);
   if (type === 'team_charge') return fulfilTeamChargePaid(c, id, payment);
   if (type === 'team_contribution') return fulfilContributionPaid(c, id, payment);
+  if (type === 'coach_hire') {
+    const s = (await c.query("SELECT s.id, s.pay_mode FROM coach_hires h JOIN coach_series s ON s.id=h.series_id WHERE h.id=$1", [id])).rows[0];
+    if (s?.pay_mode === 'once') {
+      // one payment covers every unpaid date still to come in the block; remember it so a later cancel refunds each date's share
+      const owed = (await c.query("SELECT coalesce(sum(total_cents - loyalty_credit_cents), 0)::bigint AS n FROM coach_hires WHERE series_id=$1 AND payment_status='unpaid' AND status IN ('requested','confirmed') AND series_state IS DISTINCT FROM 'paused'", [s.id])).rows[0].n;
+      if (Number(owed) !== Number(payment.amount_cents)) return false;   // the block changed after checkout began: refund rather than mis-allocate
+      const paid = (await c.query("UPDATE coach_hires SET payment_status='paid', status=CASE WHEN request_response_id IS NOT NULL AND status='requested' THEN 'confirmed' ELSE status END WHERE series_id=$1 AND payment_status='unpaid' AND status IN ('requested','confirmed') AND series_state IS DISTINCT FROM 'paused' RETURNING id", [s.id])).rows;
+      if (!paid.length) return false;
+      await c.query('UPDATE coach_series SET payment_id=$2, anchor_hire_id=$3, updated_at=now() WHERE id=$1', [s.id, payment.id, id]);
+      for (const r of paid) await coachSessionDone(c, r.id);
+      return true;
+    }
+  }
   const done = (await c.query(sql, [id])).rowCount > 0;
   if (done && type === 'coach_hire') await coachSessionDone(c, id);   // a session completed before it was paid earns once the payment lands
   return done;
@@ -235,6 +261,13 @@ export function safeReturnBase(requested) {
 }
 
 /** Start a hosted checkout for something `user` owes. The amount and currency are read from the record, never from the client. */
+/** A guardian paying a young person's team or academy fee needs the `pay` scope (and the academy's own policy, if it reserves payment for the primary guardian). */
+async function checkPayScope(c, userId, type, id) {
+  const r = type === 'team_charge' ? (await c.query('SELECT member_id AS child_id, NULL::uuid AS org_id FROM team_charges WHERE id=$1', [id])).rows[0]
+    : type === 'academy_charge' ? (await c.query('SELECT coalesce(e.user_id, a.athlete_id) AS child_id, ch.organisation_id AS org_id FROM academy_charges ch LEFT JOIN org_enrolments e ON e.id=ch.enrolment_id LEFT JOIN academy_applications a ON a.id=ch.application_id WHERE ch.id=$1', [id])).rows[0] : null;
+  if (r) await checkGuardianScope(userId, r.child_id, 'pay', r.org_id, c);
+}
+
 export async function startCheckout(user, i) {
   if (!enabledProviders().includes(i.provider)) throw badRequest(`${i.provider} is not enabled on this server`);
   const client = await pool.connect();
@@ -247,6 +280,7 @@ export async function startCheckout(user, i) {
     // someone else's bill: allowed only under a live cover agreement that both sides approved and that covers this bill
     const cover = d.payerId === user.id ? null : await coverFor(client, user, d, { purposeType: i.purpose_type, purposeId: i.purpose_id, currency });
     if (d.payerId !== user.id && !cover) throw forbidden('This is not yours to pay');
+    if (d.payerId === user.id) await checkPayScope(client, user.id, i.purpose_type, i.purpose_id);
     if (!d.payable) throw conflict('Nothing to pay: it is already paid, cancelled or free');
     if (d.amount <= 0) throw conflict('Nothing to pay');
     const row = (await client.query('INSERT INTO payments(payer_id, provider, purpose_type, purpose_id, amount_cents, currency, cover_mandate_id) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id', [user.id, i.provider, i.purpose_type, i.purpose_id, d.amount, currency, cover?.id ?? null])).rows[0];

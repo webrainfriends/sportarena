@@ -47,6 +47,7 @@ import { hourlyRatingSweep } from './ratings/data.js';
 const weeklyRankingSnapshots = () => (new Date().getUTCDay() === 1 ? snapshotAll('weekly') : 0);
 import { syncOpenGames } from './open-games-sweeps.js';
 import { syncCoachClasses } from './coach-classes-sweeps.js';
+import { syncCoachSubscriptions } from './coach-subscriptions.js';
 import { adSweeps } from './ads/engine.js';
 import { raiseTeamDues } from './team-money.js';
 import { reconcileFinance } from './finance.js';
@@ -104,6 +105,7 @@ export const STEPS = [
   ['skill_ratings', 'skill_rating_runs', hourlyRatingSweep, 0],
   ['open_games', 'open_games_synced', syncOpenGames, 0],
   ['coach_classes', 'coach_classes_synced', syncCoachClasses, 0],
+  ['coach_subscriptions', 'coach_subscriptions_synced', syncCoachSubscriptions, 0],
   ['team_dues', 'team_dues_raised', raiseTeamDues, 0],
   ['advertising', 'advertising', adSweeps, null],
   ['finance', 'finance', reconcileFinance, null],

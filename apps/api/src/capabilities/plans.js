@@ -90,7 +90,7 @@ cap({
   input: z.object({ venue_id: id.optional(), ...page }),
   handler: ({ user }, i) => many(
     `SELECT up.id, up.venue_id, coalesce(v.name, o.name) AS venue_name, up.organisation_id, up.enrolment_id, v.emoji, up.kind, up.name, up.status, up.price_cents, up.currency, up.discount_bp, up.sessions_total, up.sessions_left, up.session_value_cents, up.starts_at, up.expires_at, up.created_at, up.resource_ids, up.includes, up.auto_renew
-       FROM user_plans up LEFT JOIN venues v ON v.id=up.venue_id LEFT JOIN organisations o ON o.id=up.organisation_id WHERE up.user_id=$1 AND ($2::uuid IS NULL OR up.venue_id=$2) AND up.status <> 'cancelled'
+       FROM user_plans up LEFT JOIN venues v ON v.id=up.venue_id LEFT JOIN organisations o ON o.id=up.organisation_id WHERE up.user_id=$1 AND up.coach_id IS NULL AND ($2::uuid IS NULL OR up.venue_id=$2) AND up.status <> 'cancelled'
       ORDER BY (up.status = 'active') DESC, (up.status = 'awaiting_payment') DESC, up.created_at DESC LIMIT $3 OFFSET $4`, [user.id, i.venue_id ?? null, i.limit, i.offset]),
 });
 

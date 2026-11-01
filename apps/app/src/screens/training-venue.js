@@ -13,6 +13,7 @@ import { useNav } from '../nav';
 import { Btn, Card, Chip, Empty, ErrorBox, Field, GradCard, Loading, Screen, Seg, Sheet, T } from '../ui';
 import { Counter, DateField, HScroll, Stepper, TimeField } from '../pickers';
 import { Pill } from './marketplace';
+import { t } from '../i18n';
 import { c, grad } from '../theme';
 import { addDays, dateTimeIn, moneyIn, todayIn, WEEKDAYS } from '../vtime';
 
@@ -423,12 +424,12 @@ export function SeriesBookingSheet({ coach, card, people = 1, teamId, eventId, m
   const { push } = useNav();
   const today = todayIn(deviceTz);
   const [pat, setPat] = useState(() => newPattern(today));
-  const [time, setTime] = useState('17:00'), [note, setNote] = useState(''), [skip, setSkip] = useState(true);
+  const [time, setTime] = useState('17:00'), [note, setNote] = useState(''), [skip, setSkip] = useState(true), [payMode, setPayMode] = useState(null);
   const [prev, setPrev] = useState(null), [err, setErr] = useState(null), [busy, setBusy] = useState(false), [made, setMade] = useState(null);
   const dates = useMemo(() => { try { return expand(pat); } catch { return []; } }, [pat]);
-  const body = (extra = {}) => ({ coach_id: coach.id, sport: coach.sport_slug, start: time, timezone: deviceTz, duration_min: minutes, participants: people, ...(card ? { rate_card_id: card.id } : {}), ...(teamId ? { team_id: teamId } : {}), ...(eventId ? { event_id: eventId } : {}), ...(note.trim() ? { note: note.trim() } : {}), ...patternBody(pat), on_conflict: skip ? 'skip' : 'fail', ...extra });
+  const body = (extra = {}) => ({ coach_id: coach.id, sport: coach.sport_slug, start: time, timezone: deviceTz, duration_min: minutes, participants: people, ...(card ? { rate_card_id: card.id } : {}), ...(teamId ? { team_id: teamId } : {}), ...(eventId ? { event_id: eventId } : {}), ...(note.trim() ? { note: note.trim() } : {}), ...patternBody(pat), on_conflict: skip ? 'skip' : 'fail', ...(payMode ? { pay_mode: payMode } : {}), ...extra });
   const check = async () => { setErr(null); try { setPrev(await api.post('/hires/series', body({ preview: true }))); } catch (e) { setPrev(null); setErr(e); } };
-  useEffect(() => { setPrev(null); if (dates.length && time) { const t = setTimeout(check, 400); return () => clearTimeout(t); } return undefined; }, [JSON.stringify(pat), time, skip]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setPrev(null); if (dates.length && time) { const t = setTimeout(check, 400); return () => clearTimeout(t); } return undefined; }, [JSON.stringify(pat), time, skip, payMode]); // eslint-disable-line react-hooks/exhaustive-deps
   const checked = {};
   for (const d of prev?.dates ?? err?.details?.dates ?? []) if (!d.ok) checked[d.date] = d.problem;
   const send = async () => {
@@ -439,7 +440,7 @@ export function SeriesBookingSheet({ coach, card, people = 1, teamId, eventId, m
   if (made) {
     return (
       <Sheet visible onClose={onClose} title="Sessions requested">
-        <T size={14}>{made.hires.length} session{made.hires.length === 1 ? '' : 's'} with {coach.display_name} requested{made.skipped.length ? `; ${made.skipped.length} skipped` : ''}. Each is confirmed (and paid) on its own.</T>
+        <T size={14}>{made.hires.length} session{made.hires.length === 1 ? '' : 's'} with {coach.display_name} requested{made.skipped.length ? `; ${made.skipped.length} skipped` : ''}. {made.pay_mode === 'once' ? t('series.paidOnceNote') : t('series.payPerDateNote')}</T>
         {made.skipped.map((s) => <T key={s.date} size={12} color={c.mute}>{plainDay(s.date)}: {s.problem}</T>)}
         <Card color={c.pinkSoft} pad={14}>
           <T weight="800">Need a court for these?</T>
@@ -463,11 +464,27 @@ export function SeriesBookingSheet({ coach, card, people = 1, teamId, eventId, m
       <Field label="What do you want to work on? (optional)" value={note} onChangeText={setNote} multiline />
       {err && !prev ? <T color={c.red} weight="700" size={13}>{err.message}</T> : null}
       {!prev && !err && dates.length ? <Loading /> : null}
+      {prev && prev.pay_modes?.length ? (
+        <View style={{ gap: 6 }}>
+          <T weight="700">{t('series.payHow')}</T>
+          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+            {prev.pay_modes.includes('per_date') ? <Chip label={t('series.payPerDate')} active={prev.pay_mode === 'per_date'} onPress={() => setPayMode('per_date')} /> : null}
+            <Chip label={t('series.payOnce')} active={prev.pay_mode === 'once'} onPress={() => setPayMode('once')} />
+          </View>
+          <T size={12} color={c.mute}>{prev.pay_modes.length === 1 ? t('series.upfrontOnly') : prev.pay_mode === 'once' ? t('series.payOnceNote') : t('series.payPerDateNote')}</T>
+        </View>
+      ) : null}
       {prev ? (
         <Card color={c.pinkSoft} pad={14}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><T weight="700">{prev.bookable} of {prev.requested} sessions available</T><T weight="800" size={16}>{moneyIn(prev.total_cents, prev.currency)}</T></View>
+          <T weight="700">{prev.bookable} of {prev.requested} sessions available</T>
+          {prev.discount_cents > 0 ? (
+            <>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><T size={13} color={c.mute}>{t('series.listTotal')}</T><T size={13} color={c.mute}>{moneyIn(prev.list_total_cents, prev.currency)}</T></View>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><T size={13} color={c.mint}>{t('series.discountLine', { pct: prev.discount_pct })}</T><T size={13} color={c.mint}>−{moneyIn(prev.discount_cents, prev.currency)}</T></View>
+            </>
+          ) : prev.block_discount ? <T size={12} color={c.mint}>{t('series.discountHint', { n: prev.block_discount.min_sessions, pct: prev.block_discount.pct })}</T> : null}
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><T weight="800">{t('series.total')}</T><T weight="800" size={16}>{moneyIn(prev.total_cents, prev.currency)}</T></View>
           {prev.skipped.slice(0, 4).map((s) => <T key={s.date} size={12} color={c.mute}>{plainDay(s.date)}: {s.problem}</T>)}
-          <T size={12} color={c.mute}>Each session is confirmed by the coach; you pay for each as you would for a single booking.</T>
         </Card>
       ) : null}
       <Btn title={prev ? `Request ${prev.bookable} session${prev.bookable === 1 ? '' : 's'}` : 'Request sessions'} loading={busy} disabled={!prev || !prev.bookable} onPress={send} />

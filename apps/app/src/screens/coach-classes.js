@@ -66,7 +66,8 @@ export function ClassSheet({ id, onClose, onChanged }) {
   const reload = async () => { await d.reload(); onChanged?.(); };
   const act = async (fn, ok) => { setBusy(true); try { const r = await fn(); if (ok) toast(ok); await reload(); return r; } catch (e) { toast(e.message ?? t('error.generic')); } finally { setBusy(false); } };
   if (!k) return <Sheet visible onClose={onClose} title={t('cls.open')}>{d.error ? <ErrorBox error={d.error} onRetry={d.reload} /> : <Loading />}</Sheet>;
-  const mine = k.my.find((m) => !['cancelled', 'declined'].includes(m.status));
+  const seats = k.my.filter((m) => !['cancelled', 'declined'].includes(m.status));   // my own seat and, for a guardian, each linked child's
+  const mine = seats.find((m) => m.user_id === user?.id);
   const started = new Date(k.starts_at) <= new Date();
   const payNow = (m) => setPay({ type: 'coach_class_seat', id: m.seat_id, label: k.title, amount: m.amount_cents, currency: k.currency });
   return (
@@ -87,17 +88,19 @@ export function ClassSheet({ id, onClose, onChanged }) {
 
         {!k.can_manage && k.status === 'open' ? (
           <View style={{ gap: 8 }}>
-            {mine ? (
-              <>
-                <Pill label={t(`cls.status.${mine.status}`).toUpperCase()} fg="#fff" bg={STATUS_TONE[mine.status] ?? c.violet} />
-                {mine.status === 'held' ? <T size={13} color={c.mute}>{t('cls.held_until', { time: when(mine.hold_expires_at) })}</T> : null}
-                {mine.status === 'held' ? <Btn title={t('cls.pay_seat')} loading={busy} onPress={() => payNow(mine)} /> : null}
-                {!started ? <Btn small title={t('cls.leave')} color={c.paper} ink={c.ink} loading={busy} onPress={() => act(() => api.post(`/coach/classes/${k.id}/leave`), t('cls.left'))} /> : null}
-              </>
-            ) : <Btn title={k.is_full ? t('cls.join_waitlist') : t('cls.join')} loading={busy} disabled={started || user?.id === k.coach.id} onPress={async () => {
+            {seats.map((m) => (
+              <View key={m.seat_id} style={{ gap: 8 }}>
+                {m.for_name ? <T weight="700">{m.for_name}</T> : null}
+                <Pill label={t(`cls.status.${m.status}`).toUpperCase()} fg="#fff" bg={STATUS_TONE[m.status] ?? c.violet} />
+                {m.status === 'held' ? <T size={13} color={c.mute}>{t('cls.held_until', { time: when(m.hold_expires_at) })}</T> : null}
+                {m.status === 'held' ? <Btn title={t('cls.pay_seat')} loading={busy} onPress={() => payNow(m)} /> : null}
+                {!started ? <Btn small title={t('cls.leave')} color={c.paper} ink={c.ink} loading={busy} onPress={() => act(() => api.post(`/coach/classes/${k.id}/leave`, m.user_id !== user.id ? { on_behalf_of: m.user_id } : {}), t('cls.left'))} /> : null}
+              </View>
+            ))}
+            {!mine ? <Btn title={k.is_full ? t('cls.join_waitlist') : t('cls.join')} loading={busy} disabled={started || user?.id === k.coach.id} onPress={async () => {
               const r = await act(() => api.post(`/coach/classes/${k.id}/join`, { idempotency_key: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}` }), null);
               if (r?.status === 'held') payNow(r);
-            }} />}
+            }} /> : null}
           </View>
         ) : null}
 

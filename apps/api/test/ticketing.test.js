@@ -434,14 +434,16 @@ test('cancellation: event and match cancellation refund through canonical paymen
   refunds.mode = 'ok'; refunds.calls.length = 0;
   must(await api('PATCH', `/fixtures/${f1}`, { token: org.token, body: { status: 'cancelled' } }));
   let st = Object.fromEntries((await rows('SELECT p.name, t.status FROM tickets t JOIN ticket_products p ON p.id=t.product_id WHERE t.event_id=$1', [ev.id])).map((r) => [r.name, r.status]));
-  assert.equal(st['Match 1'], 'refund_due'); assert.equal(st['Both matches'], 'issued', 'the pass still admits to the other match');
-  await sweepTickets();
-  st = Object.fromEntries((await rows('SELECT p.name, t.status FROM tickets t JOIN ticket_products p ON p.id=t.product_id WHERE t.event_id=$1', [ev.id])).map((r) => [r.name, r.status]));
-  assert.equal(st['Match 1'], 'refunded');
+  assert.equal(st['Match 1'], 'refunded', 'paid back straight away, not left for the sweep');
+  assert.equal(st['Both matches'], 'issued', 'the pass still admits to the other match');
+  assert.equal(refunds.calls.length, 1);
+  // the provider is down when the whole event is cancelled: tickets are refund_due at once, and the sweep pays them when it recovers
+  refunds.mode = 'fail';
   must(await api('PATCH', `/events/${ev.id}`, { token: org.token, body: { status: 'cancelled' } }));
   assert.equal((await rows("SELECT status FROM tickets WHERE product_id=$1", [pass.id]))[0].status, 'refund_due');
   assert.equal((await order(await signup(), ev, [{ product_id: pass.id, quantity: 1 }])).status, 409, 'nothing is sold for a cancelled event');
-  must(await api('POST', `/events/${ev.id}/tickets/refunds/process`, { token: org.token }));
+  refunds.mode = 'ok';
+  await sweepTickets();
   assert.equal((await rows("SELECT status FROM tickets WHERE product_id=$1", [pass.id]))[0].status, 'refunded');
   const pays = await rows("SELECT p.amount_cents, p.refunded_cents, p.status FROM payments p JOIN ticket_orders o ON o.id=p.purpose_id WHERE p.purpose_type='ticket_order' AND o.event_id=$1", [ev.id]);
   assert.ok(pays.length >= 1);
@@ -538,4 +540,66 @@ test('public event page announces tickets; ticket money reaches finance as the o
   const fan = await signup(); const o = await buy(fan, ev, [{ product_id: p.id, quantity: 1 }]);
   const f = (await rows("SELECT module, kind FROM finance_entries WHERE source_type='ticket_order' AND source_id=$1", [o.id]).catch(() => []));
   if (f.length) assert.ok(f.every((x) => x.module === 'tickets'));
+});
+
+test('venue capacity and seating map: captured once, imported into an event, priced by zone, selectable across zones', async () => {
+  const org = await signup(['organizer']), mgr = await signup(['venue_manager']), stranger = await signup(['venue_manager']);
+  const venue = must(await api('POST', '/venues', { token: mgr.token, body: { name: 'Riverside Stadium', city: 'Leeds', currency: 'GBP' } }), 201);
+  // only the venue team shapes the map
+  assert.equal((await api('PATCH', `/venues/${venue.id}/seating`, { token: stranger.token, body: { spectator_capacity: 500 } })).status, 403);
+  assert.equal((await api('POST', `/venues/${venue.id}/seat-zones`, { token: stranger.token, body: { name: 'Sneaky', rows_count: 2, seats_per_row: 2 } })).status, 403);
+  const premium = must(await api('POST', `/venues/${venue.id}/seat-zones`, { token: mgr.token, body: { name: 'West stand', price_point: 'premium', rows_count: 4, seats_per_row: 10, default_price_minor: 3000 } }), 201);
+  assert.equal(premium.seats, 40); assert.equal(premium.colour, '#FBBF24', 'premium takes the palette colour by default');
+  const economy = must(await api('POST', `/venues/${venue.id}/seat-zones`, { token: mgr.token, body: { name: 'East terrace', price_point: 'economy', rows_count: 10, seats_per_row: 20, default_price_minor: 1000, colour: '#22D3EE' } }), 201);
+  assert.equal((await api('POST', `/venues/${venue.id}/seat-zones`, { token: mgr.token, body: { name: 'west STAND', rows_count: 1, seats_per_row: 1 } })).status, 409, 'zone names are unique');
+  assert.equal((await api('POST', `/venues/${venue.id}/seat-zones`, { token: mgr.token, body: { name: 'Odd', rows_count: 1, seats_per_row: 1, colour: '#123456' } })).status, 400, 'colours come from the app palette');
+  // 240 seats laid out: the venue cannot claim fewer
+  assert.equal((await api('PATCH', `/venues/${venue.id}/seating`, { token: mgr.token, body: { spectator_capacity: 200 } })).body.error.details.code, 'zones_exceed_capacity');
+  must(await api('PATCH', `/venues/${venue.id}/seating`, { token: mgr.token, body: { spectator_capacity: 300 } }));
+  assert.equal((await api('POST', `/venues/${venue.id}/seat-zones`, { token: mgr.token, body: { name: 'Too big', rows_count: 10, seats_per_row: 10 } })).status, 409, 'zones cannot exceed the capacity');
+  const map = must(await api('GET', `/venues/${venue.id}/seating`));
+  assert.equal(map.total_seats, 240); assert.equal(map.spectator_capacity, 300); assert.deepEqual(map.zones.map((z) => z.price_point), ['premium', 'economy']);
+
+  // an event held there imports it
+  const ev = await newEvent(org); const fx = await fixture(ev);
+  must(await api('PATCH', `/events/${ev.id}`, { token: org.token, body: { venue_id: venue.id } }));
+  assert.equal((await api('POST', `/events/${ev.id}/ticket-sections/from-venue`, { token: stranger.token, body: {} })).status, 404, 'only the event organiser');
+  const imp = must(await api('POST', `/events/${ev.id}/ticket-sections/from-venue`, { token: org.token, body: { fixture_ids: [fx] } }), 201);
+  assert.equal(imp.sections.length, 2); assert.equal(imp.products.length, 2);
+  const prem = imp.products.find((p) => p.name === 'West stand seat');
+  assert.equal(Number(prem.price_minor), 3000); assert.equal(prem.currency, 'GBP'); assert.equal(prem.status, 'draft'); assert.equal(prem.seating, 'reserved');
+  assert.equal(imp.sections.find((s) => s.name === 'West stand').price_point, 'premium');
+  assert.equal(must(await api('GET', `/events/${ev.id}/tickets/settings`, { token: org.token })).spectator_capacity, 300, 'the event takes the venue capacity');
+  const again = must(await api('POST', `/events/${ev.id}/ticket-sections/from-venue`, { token: org.token, body: {} }), 201);
+  assert.equal(again.sections.length, 0); assert.equal(again.skipped.length, 2); assert.equal((await rows('SELECT count(*)::int n FROM ticket_sections WHERE event_id=$1', [ev.id]))[0].n, 2, 'repeating imports nothing twice');
+  // a venue the event does not use is not importable
+  const elsewhere = must(await api('POST', '/venues', { token: stranger.token, body: { name: 'Elsewhere Arena', currency: 'GBP' } }), 201);
+  must(await api('POST', `/venues/${elsewhere.id}/seat-zones`, { token: stranger.token, body: { name: 'Main', rows_count: 2, seats_per_row: 2 } }), 201);
+  assert.equal((await api('POST', `/events/${ev.id}/ticket-sections/from-venue`, { token: org.token, body: { venue_id: elsewhere.id } })).status, 404);
+
+  // the buyer sees one map and picks seats across zones in a single order
+  for (const p of imp.products) await live(org, p);
+  const fan = await signup();
+  const sm = must(await api('GET', `/public/events/${ev.id}/tickets/seat-map`));
+  assert.equal(sm.zones.length, 2); assert.equal(sm.zones[0].products[0].availability, 'available'); assert.deepEqual(sm.zones[0].products[0].taken, []);
+  assert.ok(!JSON.stringify(sm).includes(fan.id));
+  const o = must(await order(fan, ev, [{ product_id: prem.id, quantity: 2, seats: ['A1', 'A2'] }, { product_id: imp.products.find((p) => p !== prem).id, quantity: 1, seats: ['C7'] }]), 201);
+  assert.equal(o.total_minor, 7000);   // 2 x 30.00 + 1 x 10.00
+  await (await pay(o, fan)).settle();
+  const after = must(await api('GET', `/public/events/${ev.id}/tickets/seat-map`));
+  assert.deepEqual(after.zones.find((z) => z.name === 'West stand').products[0].taken.sort(), ['A1', 'A2']);
+  assert.deepEqual(after.zones.find((z) => z.name === 'East terrace').products[0].taken, ['C7']);
+  assert.equal((await order(await signup(), ev, [{ product_id: prem.id, quantity: 1, seats: ['A1'] }])).body.error.details.code, 'seat_taken');
+
+  // the event keeps its own copy: editing the venue later changes nothing already sold, and a zone with sales cannot be reshaped
+  must(await api('PATCH', `/seat-zones/${premium.id}`, { token: mgr.token, body: { default_price_minor: 9900, name: 'West stand (renamed)' } }));
+  assert.equal(Number((await rows('SELECT price_minor FROM ticket_products WHERE id=$1', [prem.id]))[0].price_minor), 3000);
+  assert.equal((await rows('SELECT name FROM ticket_sections WHERE venue_zone_id=$1', [premium.id]))[0].name, 'West stand');
+  assert.equal((await api('PATCH', `/seat-zones/${premium.id}`, { token: mgr.token, body: { rows_count: 8 } })).body.error.details.code, 'zone_in_use');
+  must(await api('PATCH', `/seat-zones/${economy.id}`, { token: mgr.token, body: { archived: true } }).then((r) => (r.status === 409 ? { status: 200, body: {} } : r)));
+  // organiser can edit a section's price point and cannot reshape one with sales
+  const sec = (await rows("SELECT id FROM ticket_sections WHERE venue_zone_id=$1", [premium.id]))[0].id;
+  assert.equal(must(await api('PATCH', `/ticket-sections/${sec}`, { token: org.token, body: { price_point: 'vip', colour: '#9B72C6' } })).price_point, 'vip');
+  assert.equal((await api('PATCH', `/ticket-sections/${sec}`, { token: org.token, body: { rows_count: 2 } })).status, 409);
+  assert.equal((await api('PATCH', `/ticket-sections/${sec}`, { token: stranger.token, body: { name: 'x' } })).status, 404);
 });

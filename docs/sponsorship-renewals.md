@@ -38,3 +38,7 @@ propose sheet with calendar pickers, successor and predecessor links, withdraw/d
 
 ## Tests
 `apps/api/test/sponsorship-renewals.test.js` (PostgreSQL integration) and `scripts/e2e/sponsorship-renewals-journey.mjs` (browser, phone/tablet/desktop).
+
+## Pipeline stages and expiry alerts (#589)
+
+`list_sponsorship_renewals` now derives a `stage` for every row (`running`, `expiring`, `intent_shared`, `not_renewing`, `renewal_proposed`, `renewed`, `past_term`, `lapsed`) and an expiry `alert` (`expires_90`, `expires_60`, `expires_30`, `expired`). Nothing new is stored. `include_renewed=true` also lists agreements that already have a renewal so the whole pipeline is visible. The relationship history across agreements is `get_sponsor_relationship_history`.

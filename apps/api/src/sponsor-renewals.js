@@ -113,3 +113,15 @@ export async function sendRenewalNotices() {
 export async function processSponsorshipTerms() {
   return (await expireAgreementTerms()) + (await settleExpiredAgreements()) + (await sendRenewalNotices());
 }
+
+/** The renewal pipeline stage of an agreement, derived from what is recorded (nothing is stored): the stage and, while it is running out, the expiry alert level. */
+export function renewalStage({ status, days_left, assessments = [], successor_status = null }) {
+  if (successor_status === 'active' || successor_status === 'completed') return { stage: 'renewed', alert: null };
+  if (successor_status) return { stage: 'renewal_proposed', alert: null };
+  const alert = status === 'active' && days_left != null ? (days_left <= 30 ? 'expires_30' : days_left <= 60 ? 'expires_60' : days_left <= 90 ? 'expires_90' : null) : null;
+  if (status === 'completed') return { stage: 'lapsed', alert: null };
+  if (status === 'term_expired') return { stage: 'past_term', alert: 'expired' };
+  if (assessments.some((a) => a.intent && a.intent !== 'not_renew')) return { stage: 'intent_shared', alert };
+  if (assessments.some((a) => a.intent === 'not_renew')) return { stage: 'not_renewing', alert };
+  return { stage: alert ? 'expiring' : 'running', alert };
+}
