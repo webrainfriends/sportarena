@@ -15,8 +15,9 @@ import { requireConsent } from '../youth.js';
 import { RELATIONSHIP_SQL } from '../coaching.js';
 import { DOC_LIMITS, docHeaders, loadEncrypted, readBody, saveEncrypted, sniffDoc } from '../doc-store.js';
 import { sniff } from '../media.js';
+import { ACTIVITIES_CTE } from '../athlete-history.js';
 import { sha256 } from '../crypto.js';
-import { coachesAthlete, openLink, videoEmbed, withEmbed } from '../passport-sections.js';
+import { coachesAthlete, openLink, videoEmbed, visibleVideos, withEmbed } from '../passport-sections.js';
 
 // Recruitment evidence behind the player passport (issue #312). The athlete owns every row; coaches approve videos and write references;
 // nothing reaches a recipient until the right person approved it. Files are encrypted on disk and never deleted - removing only hides.
@@ -30,6 +31,15 @@ const sportId = async (slug) => {
   if (!s) throw notFound('Sport');
   return s.id;
 };
+export const VIDEO_LIMIT = 50; // clips kept per player (was 10 for the passport alone)
+const VIS = ['private', 'shared', 'public'];
+/** A match reference must be one of the player's own activities (official games/fixtures they played, or matches they logged). */
+export async function checkMatchRef(userId, activityId) {
+  if (!activityId) return null;
+  const ok = await one(`${ACTIVITIES_CTE} SELECT 1 AS ok FROM acts a WHERE a.activity_id=$2`, [userId, activityId]);
+  if (!ok) throw notFound('Match');
+  return activityId;
+}
 const stale = () => conflict('This was changed elsewhere; reload and try again', STALE);
 
 // ───── video ─────
@@ -39,15 +49,20 @@ cap({
   name: 'list_my_passport_videos', method: 'GET', path: '/me/passport-videos', tag: TAG,
   summary: 'Your recruitment videos and where each is in approval (pending, approved or rejected). Only approved videos can appear on a shared passport. Upload a clip with PUT /me/passport-videos/upload?title= (raw MP4, MOV or WebM, up to 50 MB) or add a YouTube or Vimeo link.',
   input: z.object({ ...page }),
-  handler: async ({ user }, i) => (await many(`SELECT ${VIDEO_COLS} FROM passport_videos v LEFT JOIN sports s ON s.id=v.sport_id WHERE v.user_id=$1 AND v.removed_at IS NULL ORDER BY v.created_at DESC, v.id LIMIT $2 OFFSET $3`, [user.id, i.limit, i.offset])).map(withEmbed),
+  handler: async ({ user }, i) => (await many(`SELECT ${VIDEO_COLS} FROM passport_videos v LEFT JOIN sports s ON s.id=v.sport_id WHERE v.user_id=$1 AND v.removed_at IS NULL AND v.archived_at IS NULL ORDER BY v.created_at DESC, v.id LIMIT $2 OFFSET $3`, [user.id, i.limit, i.offset])).map(withEmbed),
 });
 
 cap({
   name: 'add_passport_video_link', method: 'POST', path: '/me/passport-videos', tag: TAG, status: 201,
   summary: 'Add a recruitment video by YouTube or Vimeo link (it plays inside the app). It stays pending until a coach who coaches you approves it.',
-  input: z.object({ title: z.string().trim().min(1).max(120), link_url: z.string().trim().url().max(500).refine((u) => u.startsWith('https://'), 'Use an https link').refine((u) => !!videoEmbed(u), 'Use a YouTube or Vimeo video link'), sport_slug: z.string().max(60).optional() }),
+  input: z.object({ title: z.string().trim().min(1).max(120), link_url: z.string().trim().url().max(500).refine((u) => u.startsWith('https://'), 'Use an https link').refine((u) => !!videoEmbed(u), 'Use a YouTube or Vimeo video link'), sport_slug: z.string().max(60).optional(), description: z.string().trim().max(500).optional(), match_activity_id: z.string().max(80).optional().describe('one of your matches (from GET /me/matches)'),
+    visibility: z.enum(VIS).optional().describe('private keeps it in your library only; defaults to shared, as passport videos always were'), client_key: z.string().max(80).optional().describe('send the same key when retrying so a clip is never added twice') }),
   async handler({ user }, i) {
-    return one(`INSERT INTO passport_videos(user_id, sport_id, title, link_url) VALUES ($1,$2,$3,$4) RETURNING id, title, link_url, status, version, created_at`, [user.id, await sportId(i.sport_slug), i.title, i.link_url]).then(withEmbed);
+    if (i.client_key) { const dup = await one('SELECT id, title, link_url, status, version, created_at FROM passport_videos WHERE user_id=$1 AND client_key=$2', [user.id, i.client_key]); if (dup) return withEmbed(dup); }
+    if ((await one('SELECT count(*)::int AS n FROM passport_videos WHERE user_id=$1 AND removed_at IS NULL AND archived_at IS NULL', [user.id])).n >= VIDEO_LIMIT) throw badRequest(`You can keep up to ${VIDEO_LIMIT} videos; archive one first`);
+    const match = await checkMatchRef(user.id, i.match_activity_id);
+    return one(`INSERT INTO passport_videos(user_id, sport_id, title, link_url, source, description_enc, match_activity_id, visibility, client_key) VALUES ($1,$2,$3,$4,'link',$5,$6,$7,$8) RETURNING id, title, link_url, status, version, created_at`,
+      [user.id, await sportId(i.sport_slug), i.title, i.link_url, i.description ? encrypt(i.description, 'passport_videos.description') : null, match, i.visibility ?? 'shared', i.client_key ?? null]).then(withEmbed);
   },
 });
 
@@ -68,7 +83,7 @@ cap({
   handler: async ({ user }, i) => (await many(
     `SELECT v.id, v.title, s.slug AS sport_slug, v.link_url, (v.file_name IS NOT NULL) AS has_file, v.version, v.created_at, u.id AS athlete_id, u.display_name AS athlete_name, u.handle AS athlete_handle
        FROM passport_videos v JOIN users u ON u.id=v.user_id LEFT JOIN sports s ON s.id=v.sport_id
-      WHERE v.status='pending' AND v.removed_at IS NULL AND (
+      WHERE v.status='pending' AND v.removed_at IS NULL AND v.archived_at IS NULL AND v.visibility<>'private' AND (
             EXISTS (SELECT 1 FROM team_members a JOIN team_members c ON c.team_id=a.team_id WHERE a.user_id=v.user_id AND c.user_id=$1 AND a.status='active' AND c.status='active' AND c.role IN ('coach','manager'))
          OR EXISTS (SELECT 1 FROM (${RELATIONSHIP_SQL}) r WHERE r.coach_id=$1 AND r.athlete_id=v.user_id))
       ORDER BY v.created_at, v.id LIMIT $2 OFFSET $3`, [user.id, i.limit, i.offset])).map(withEmbed),
@@ -256,10 +271,16 @@ export function passportFilesRouter() {
       if (!buf.length) throw badRequest('Empty upload');
       const t = sniff(buf);
       if (!t || t.kind !== 'video') throw badRequest('Unsupported file. Use an MP4, MOV or WebM video.');
-      if ((await one('SELECT count(*)::int AS n FROM passport_videos WHERE user_id=$1 AND removed_at IS NULL', [user.id])).n >= 10) throw badRequest('You can keep up to 10 videos; remove one first');
+      const ck = req.query.client_key ? String(req.query.client_key).slice(0, 80) : null;
+      if (ck) { const dup = await one('SELECT id, title, status, version, created_at FROM passport_videos WHERE user_id=$1 AND client_key=$2', [user.id, ck]); if (dup) return res.status(200).json(dup); }
+      if ((await one('SELECT count(*)::int AS n FROM passport_videos WHERE user_id=$1 AND removed_at IS NULL AND archived_at IS NULL', [user.id])).n >= VIDEO_LIMIT) throw badRequest(`You can keep up to ${VIDEO_LIMIT} videos; archive one first`);
+      const vis = req.query.visibility ? String(req.query.visibility) : 'shared';
+      if (!VIS.includes(vis)) throw badRequest('visibility must be private, shared or public');
+      const match = await checkMatchRef(user.id, req.query.match_activity_id ? String(req.query.match_activity_id) : null);
+      const desc = req.query.description ? String(req.query.description).trim().slice(0, 500) : null;
       const { id: vid, file } = await saveEncrypted('passport', 'passport_videos.file', buf);
-      const row = await one(`INSERT INTO passport_videos(id, user_id, sport_id, title, file_name, content_type, size_bytes, sha256) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id, title, status, version, created_at`,
-        [vid, user.id, await sportId(req.query.sport_slug ? String(req.query.sport_slug) : null), title, file, t.type, buf.length, createHash('sha256').update(buf).digest('hex')]);
+      const row = await one(`INSERT INTO passport_videos(id, user_id, sport_id, title, file_name, content_type, size_bytes, sha256, source, description_enc, match_activity_id, visibility, client_key) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'upload',$9,$10,$11,$12) RETURNING id, title, status, version, created_at`,
+        [vid, user.id, await sportId(req.query.sport_slug ? String(req.query.sport_slug) : null), title, file, t.type, buf.length, createHash('sha256').update(buf).digest('hex'), desc ? encrypt(desc, 'passport_videos.description') : null, match, vis, ck]);
       res.status(201).json(row);
     } catch (e) { fail(res, e); }
   });
@@ -269,7 +290,7 @@ export function passportFilesRouter() {
     try {
       const user = await who(req);
       const v = await one('SELECT * FROM passport_videos WHERE id=$1 AND removed_at IS NULL AND file_name IS NOT NULL', [uuid(req.params.id, 'Video')]);
-      if (!v || (v.user_id !== user.id && !(await coachesAthlete(user.id, v.user_id)))) throw notFound('Video');
+      if (!v || (v.user_id !== user.id && (v.visibility === 'private' || v.archived_at || !(await coachesAthlete(user.id, v.user_id))))) throw notFound('Video');
       if (v.user_id !== user.id) await audit(null, user.id, 'read_passport_video', 'passport_videos', v.id);
       send(res, v.content_type, await read('passport', 'passport_videos.file', v.file_name));
     } catch (e) { fail(res, e); }
@@ -307,12 +328,23 @@ export function passportFilesRouter() {
       const viewer = await authenticate(req.headers.authorization);
       const link = await openLink(sha256(String(req.params.token)), viewer, kind === 'video' ? 'video' : 'academic');
       if (!link[kind === 'video' ? 'show_video' : 'show_academic']) throw notFound(label);
-      const f = await one(kind === 'video'
-        ? `SELECT id, file_name, content_type FROM passport_videos WHERE id=$1 AND user_id=$2 AND status='approved' AND removed_at IS NULL AND file_name IS NOT NULL`
-        : `SELECT id, file_name, content_type FROM academic_evidence WHERE id=$1 AND user_id=$2 AND removed_at IS NULL AND file_name IS NOT NULL`, [uuid(req.params.fid, label), link.user_id]);
+      const fid = uuid(req.params.fid, label);
+      const f = kind === 'video'
+        ? (await visibleVideos(link.user_id, link.playlist_id ?? null, fid)).find((v) => v.has_file) && await one('SELECT id, file_name, content_type FROM passport_videos WHERE id=$1 AND user_id=$2', [fid, link.user_id])
+        : await one(`SELECT id, file_name, content_type FROM academic_evidence WHERE id=$1 AND user_id=$2 AND removed_at IS NULL AND file_name IS NOT NULL`, [fid, link.user_id]);
       if (!f) throw notFound(label);
       if (viewer?.id !== link.user_id) await audit(null, viewer?.id ?? null, `read_passport_${kind}`, column, f.id);
       send(res, f.content_type, await read('passport', ctx, f.file_name));
+    } catch (e) { fail(res, e); }
+  });
+  // the public showcase: only clips the player made public, with a young person's guardian media consent checked live
+  r.get('/showcase/:handle/video/:fid', limiter, async (req, res) => {
+    try {
+      const { showcaseFor } = await import('./video-library.js');
+      const { u, rows } = await showcaseFor(String(req.params.handle));
+      const v = rows.find((x) => x.id === req.params.fid && x.has_file) && await one('SELECT file_name, content_type FROM passport_videos WHERE id=$1 AND user_id=$2', [uuid(req.params.fid, 'Video'), u.id]);
+      if (!v) throw notFound('Video');
+      send(res, v.content_type, await read('passport', 'passport_videos.file', v.file_name));
     } catch (e) { fail(res, e); }
   });
   shared('video', 'passport_videos', 'passport_videos.file', 'Video');
