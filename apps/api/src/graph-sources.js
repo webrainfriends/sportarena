@@ -7,6 +7,7 @@ import { many, one } from './db.js';
 import { isAdmin } from './helpers.js';
 import { canManageTeam } from './capabilities/teams.js';
 import { performanceOrigin } from './athlete-journey.js';
+import { CONSENT_OK } from './coaching-shared.js';
 
 const money = (cents, cur) => { try { return new Intl.NumberFormat('en', { style: 'currency', currency: cur }).format(Number(cents) / 100); } catch { return `${(Number(cents) / 100).toFixed(2)} ${cur}`; } };
 const nice = (s) => String(s ?? '').replace(/_/g, ' ');
@@ -130,4 +131,32 @@ export async function personStatistics(id) {
     `SELECT p.id, p.user_id, p.metric, p.value::float8 AS value, p.unit, p.provenance, p.decided_by, s.slug AS sport_slug, s.name AS sport, coalesce(p.achieved_on, p.recorded_at::date) AS at
        FROM performances p JOIN sports s ON s.id=p.sport_id WHERE p.user_id=$1 AND p.status='approved' ORDER BY 10 DESC, p.id LIMIT 200`, [id]))
     .map((p) => row('statistics', p.at, 'record', `${nice(p.metric)}: ${p.value}${p.unit ? ` ${p.unit}` : ''}`, p.sport, 'performances', p.id, { origin: performanceOrigin(p), sport_slug: p.sport_slug }));
+}
+
+/**
+ * Goals and actions a coach set for the athlete: titles, category and status only (the coach's criteria and notes never leave the coaching module).
+ * The athlete and guardian see what the coach deliberately shared (a goal with wording for the athlete, an action marked shared), and for a young
+ * person only while the guardian's coaching consent is in force. A coach sees only what they set themselves. Entered by staff, so user-entered.
+ */
+export async function personCoaching(viewer, id, owner) {
+  const goalWhere = owner ? `${CONSENT_OK('$1::uuid')} AND g.athlete_text IS NOT NULL AND g.status IN ('planned','active','achieved')` : 'g.coach_id=$2';
+  const actionWhere = owner ? `${CONSENT_OK('$1::uuid')} AND a.owner_id=$1 AND a.shared` : 'a.coach_id=$2';
+  const args = owner ? [id] : [id, viewer?.id ?? null];
+  if (!owner && !viewer) return [];
+  const goals = await many(
+    `SELECT g.id, g.title, g.category, g.status, s.slug AS sport_slug, coalesce(g.starts_on, g.created_at::date) AS at, g.achieved_at FROM coaching_goals g LEFT JOIN sports s ON s.id=g.sport_id
+      WHERE g.athlete_id=$1 AND ${goalWhere} ORDER BY 6 DESC LIMIT 100`, args);
+  const actions = await many(
+    `SELECT a.id, a.title, a.status, a.priority, a.created_at AS at, a.completed_at FROM coaching_actions a WHERE a.athlete_id=$1 AND ${actionWhere} AND a.status <> 'cancelled' ORDER BY 5 DESC LIMIT 100`, args);
+  const out = [];
+  for (const g of goals) {
+    const x = { origin: 'user_entered', sport_slug: g.sport_slug };
+    out.push(row('coaching', g.at, 'coach_goal_set', `Coach goal: ${g.title}`, `${nice(g.category)} · ${g.status}`, 'coaching_goals', g.id, x));
+    if (g.status === 'achieved' && g.achieved_at) out.push(row('coaching', g.achieved_at, 'coach_goal_achieved', `Achieved: ${g.title}`, nice(g.category), 'coaching_goals', g.id, x));
+  }
+  for (const a of actions) {
+    out.push(row('coaching', a.at, 'coach_action', `Action: ${a.title}`, `${nice(a.priority)} priority · ${nice(a.status)}`, 'coaching_actions', a.id, { origin: 'user_entered' }));
+    if (a.status === 'done' && a.completed_at) out.push(row('coaching', a.completed_at, 'action_done', `Done: ${a.title}`, null, 'coaching_actions', a.id, { origin: 'user_entered' }));
+  }
+  return out;
 }

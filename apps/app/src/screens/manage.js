@@ -10,6 +10,7 @@ import { KIND } from './book';
 import { MediaManager, VenueReviews } from './venue-media';
 import { PlansManager } from './plans';
 import { SetupChecklist, Timetable } from './timetable';
+import { SeatingEditor } from './venue-seating';
 import { SetupWizard } from './venue-setup';
 import { DayBoard } from './dayboard';
 import { FrontDesk } from './front-desk';
@@ -21,13 +22,14 @@ import { SubjectPanel } from './insurance';
 import { locale } from '../locale';
 import { BallotsManager } from './ballots';
 import { VenueCoachesPanel } from './venue-coaches';
+import { FacilityPanel, NetworkOps } from './venue-facility';
 import { t } from '../i18n';
 
 const AMENITIES = ['Parking', 'Changing rooms', 'Showers', 'Lockers', 'Café', 'Floodlights', 'Equipment hire', 'Coaching', 'First aid', 'Seating', 'WiFi', 'Wheelchair access'];
-const TABS = [['schedule', 'Today'], ['frontdesk', 'Front desk'], ['timetable', 'Timetable & prices'], ['blocks', 'Block slots'], ['ballots', 'Slot ballots'], ['coaches', t('vc.title')], ['payments', 'Invoices'], ['plans', 'Passes, packages & memberships'], ['discounts', 'Offers'], ['pricing', 'Courts & special rates'], ['media', 'Photos & videos'], ['lockers', 'Lockers'], ['access', 'Doors & attendance'], ['maintenance', 'Maintenance'], ['vendors', 'Vendors & contracts'], ['reviews', 'Reviews'], ['reports', 'Reports'], ['docs', 'Documents & insurance'], ['setup', 'Settings']];
+const TABS = [['schedule', 'Today'], ['frontdesk', 'Front desk'], ['timetable', 'Timetable & prices'], ['blocks', 'Block slots'], ['ballots', 'Slot ballots'], ['coaches', t('vc.title')], ['payments', 'Invoices'], ['plans', 'Passes, packages & memberships'], ['discounts', 'Offers'], ['pricing', 'Courts & special rates'], ['facility', t('vf.title')], ['seating', t('seat.tab')], ['media', 'Photos & videos'], ['lockers', 'Lockers'], ['access', 'Doors & attendance'], ['maintenance', 'Maintenance'], ['vendors', 'Vendors & contracts'], ['reviews', 'Reviews'], ['reports', 'Reports'], ['docs', 'Documents & insurance'], ['setup', 'Settings']];
 const num = (x) => (x === undefined || x === '' ? undefined : Number(x));
 
-export function Manage({ id, wizard: startWizard, tab: startTab, desk }) {
+export function Manage({ id, wizard: startWizard, step: startStep, tab: startTab, desk }) {
   const { push } = useNav();
   const v = useLoad(() => api.get(`/venues/${id}`), [id]);
   const [tab, setTab] = useState(startTab ?? 'schedule');
@@ -48,10 +50,10 @@ export function Manage({ id, wizard: startWizard, tab: startTab, desk }) {
         <Btn small title="Services & suppliers" color={c.paper} ink={c.ink} onPress={() => push('ServicesBuyer', { venue_id: x.id })} accessibilityLabel="Browse supplier services for this venue" />
         {(tenders.data ?? []).filter((t) => t.venue_id === x.id).slice(0, 3).map((t) => <Btn key={t.id} small title={`${t.ref} · ${t.stage}`} color={c.paper} ink={c.ink} onPress={() => push('TenderConsole', { id: t.id })} />)}
       </View>
-      {wizard ? <SetupWizard v={x} onExit={() => { setWizard(false); v.reload(); }} goTab={setTab} /> : tab === 'frontdesk' ? null : <><SetupChecklist venueId={x.id} go={setTab} onWizard={() => setWizard(true)} /><OpsAttention venueId={x.id} go={setTab} /></>}
+      {wizard ? <SetupWizard v={x} start={Number(startStep) || 0} onExit={() => { setWizard(false); v.reload(); }} goTab={setTab} /> : tab === 'frontdesk' ? null : <><SetupChecklist venueId={x.id} go={setTab} onWizard={() => setWizard(true)} /><OpsAttention venueId={x.id} go={setTab} /></>}
       {wizard ? null : <>
       <View style={{ marginTop: 10 }}><Seg options={TABS.map(([value, label]) => ({ value, label }))} value={tab} onChange={setTab} color={c.violet} /></View>
-      {tab === 'schedule' ? <DayBoard {...P} /> : tab === 'frontdesk' ? <FrontDesk {...P} /> : tab === 'timetable' ? <Timetable {...P} /> : tab === 'blocks' ? <Blocks {...P} /> : tab === 'coaches' ? <VenueCoachesPanel venue={x} /> : tab === 'ballots' ? <BallotsManager {...P} /> : tab === 'pricing' ? <Pricing {...P} /> : tab === 'discounts' ? <Discounts {...P} /> : tab === 'payments' ? <Payments {...P} /> : tab === 'plans' ? <PlansManager {...P} /> : tab === 'lockers' ? <Lockers {...P} /> : tab === 'access' ? <AccessTab {...P} /> : tab === 'maintenance' ? <Maintenance {...P} /> : tab === 'vendors' ? <VendorsContracts {...P} /> : tab === 'media' ? <Section title="Photos & videos" color={c.cyan}><MediaManager venue={x} /></Section> : tab === 'reviews' ? <Section title="Reviews" color={c.pink}><VenueReviews venueId={x.id} /></Section> : tab === 'reports' ? <Reports {...P} /> : tab === 'docs' ? <SubjectPanel type="venue" id={x.id} name={x.name} /> : <Setup {...P} />}
+      {tab === 'schedule' ? <DayBoard {...P} /> : tab === 'frontdesk' ? <FrontDesk {...P} /> : tab === 'timetable' ? <Timetable {...P} /> : tab === 'blocks' ? <Blocks {...P} /> : tab === 'coaches' ? <VenueCoachesPanel venue={x} /> : tab === 'ballots' ? <BallotsManager {...P} /> : tab === 'pricing' ? <Pricing {...P} /> : tab === 'discounts' ? <Discounts {...P} /> : tab === 'payments' ? <Payments {...P} /> : tab === 'plans' ? <PlansManager {...P} /> : tab === 'lockers' ? <Lockers {...P} /> : tab === 'access' ? <AccessTab {...P} /> : tab === 'maintenance' ? <Maintenance {...P} /> : tab === 'vendors' ? <VendorsContracts {...P} /> : tab === 'facility' ? <FacilityPanel v={x} go={setTab} /> : tab === 'seating' ? <Section title={t('seat.title')} color={c.violet}><SeatingEditor v={x} compact onChanged={v.reload} /></Section> : tab === 'media' ? <Section title="Photos & videos" color={c.cyan}><MediaManager venue={x} /></Section> : tab === 'reviews' ? <Section title="Reviews" color={c.pink}><VenueReviews venueId={x.id} /></Section> : tab === 'reports' ? <Reports {...P} /> : tab === 'docs' ? <SubjectPanel type="venue" id={x.id} name={x.name} /> : <Setup {...P} />}
       </>}
     </Screen>
   );
@@ -333,7 +335,9 @@ function Setup({ v, reload }) {
         fields={[{ key: 'role', label: 'Role', type: 'chips', options: [{ value: 'manager', label: 'Manager' }, { value: 'reception', label: 'Reception' }, { value: 'emergency', label: 'Emergency' }, { value: 'billing', label: 'Billing' }, { value: 'general', label: 'General' }] },
           { key: 'name', label: 'Name', optional: true }, { key: 'phone', label: 'Phone', input: 'phone', optional: true }, { key: 'email', label: 'Email', input: 'email', optional: true }, { key: 'is_public', label: 'Show to customers', type: 'switch', default: true }]}
         onSubmit={async (f) => { await api.post(`/venues/${v.id}/contacts`, f); contacts.reload(); return 'Contact added'; }} />
-      <FormSheet visible={st} onClose={() => setSt(false)} title="Add a team member" fields={[{ key: 'handle', label: 'Their handle', hint: 'They can then manage bookings, blocks, pricing and reports' }]}
+      <FormSheet visible={st} onClose={() => setSt(false)} title="Add a team member" fields={[{ key: 'handle', label: 'Their handle', hint: t('vf.staff.hint') },
+          { key: 'role', label: t('vf.staff.role'), type: 'chips', default: 'manager', options: [{ value: 'manager', label: t('vf.staff.manager') }, { value: 'staff', label: t('vf.staff.floor') }] },
+          { key: 'duty', label: t('vf.sh.duty'), type: 'chips', default: 'general', options: ['general', 'reception', 'maintenance', 'lifeguard', 'groundskeeper', 'coach_liaison'].map((value) => ({ value, label: t(`vf.duty.${value}`) })) }]}
         onSubmit={async (f) => { await api.post(`/venues/${v.id}/staff`, f); staff.reload(); return 'Added'; }} />
     </>
   );
@@ -439,6 +443,7 @@ export function OwnerSummary() {
               </Card>
             )) : <Empty emoji="🏟️" title="No venues yet" />}
           </Section>
+          <NetworkOps from={from} to={to} />
           <Section title="By venue" color={c.pink}>
             {s.data.venues.map((x) => <Row key={x.id} onPress={() => push('Manage', { id: x.id })} title={`${x.emoji} ${x.name}`} sub={`${x.currency} · ${x.bookings} bookings · to collect ${moneyIn(x.outstanding_cents, x.currency)}`} right={<T weight="700">{moneyIn(x.revenue_cents, x.currency)}</T>} />)}
           </Section>

@@ -255,3 +255,127 @@ test('every sport in the catalogue can have a class published, joined and found'
   assert.equal(found.length, sports.length);
   assert.equal(must(await api('GET', '/coach/classes', { query: { coach_id: coach.id, sport: sports[0].slug } })).length, 1);
 });
+
+// ---- review follow-ups (the seven findings raised on #670)
+
+test('a paid seat is the coach\'s sale: it lands in the settlement ledger and a refund reverses it', async () => {
+  stripeOn();
+  try {
+    const coach = await signup(['coach']); const g = await card(coach); const a = await signup();
+    const k = must(await publish(coach, g, { max_participants: 3 }), 201);
+    const seat = must(await join(a, k), 201);
+    const p = await pay(seat, a);
+    const sale = (await pool.query("SELECT seller_id, amount_cents FROM provider_ledger WHERE payment_id=$1 AND kind='sale'", [p.id])).rows;
+    assert.equal(sale.length, 1, 'one sale credited'); assert.equal(sale[0].seller_id, coach.id); assert.equal(Number(sale[0].amount_cents), 50000);
+    must(await api('POST', `/coach/classes/${k.id}/cancel`, { token: coach.token, body: { reason: 'Rain' } }));
+    const rows = (await pool.query("SELECT kind, amount_cents FROM provider_ledger WHERE payment_id=$1 ORDER BY created_at, id", [p.id])).rows;
+    assert.ok(rows.some((r) => r.kind !== 'sale'), 'the refund is posted against the coach too');
+  } finally { stripeOff(); }
+});
+
+test('the coach still sees a class after it starts (to record attendance); public discovery stays future-only', async () => {
+  const coach = await signup(['coach']); const g = await card(coach); const a = await signup();
+  const k = must(await publish(coach, g, { starts_at: inHours(24) }), 201);
+  must(await join(a, k), 201);
+  await pool.query("UPDATE coach_classes SET starts_at = now() - interval '20 minutes' WHERE id=$1", [k.id]);
+  assert.equal(must(await api('GET', '/coach/classes', { token: coach.token, query: { mine: 'true' } })).filter((x) => x.id === k.id).length, 1, 'in progress, still on the desk');
+  assert.equal(must(await api('GET', '/coach/classes', { query: { coach_id: coach.id } })).filter((x) => x.id === k.id).length, 0, 'not offered to the public once started');
+});
+
+test('a hire cannot be placed over a published class (either order), and the lock is shared', async () => {
+  const coach = await signup(['coach']); const g = await card(coach); const hirer = await signup();
+  const when = inHours(60);
+  must(await publish(coach, g, { starts_at: when }), 201);
+  const hire = await api('POST', '/hires', { token: hirer.token, body: { coach_id: coach.id, sport: 'football', starts_at: new Date(+new Date(when) + 15 * 6e4).toISOString(), duration_min: 60 } });
+  assert.equal(hire.status, 409, JSON.stringify(hire.body));
+  // and a concurrent publish + hire for the same time: exactly one wins
+  const t2 = inHours(80);
+  const [h, k] = await Promise.all([
+    api('POST', '/hires', { token: hirer.token, body: { coach_id: coach.id, sport: 'football', starts_at: t2, duration_min: 60 } }),
+    publish(coach, g, { starts_at: t2 }),
+  ]);
+  assert.equal([h.status, k.status].filter((s) => s === 201).length, 1, `one booking only: hire ${h.status}, class ${k.status}`);
+});
+
+test('minimum-not-met also covers a zero-hour cutoff, and never cancels a class the coach already ran', async () => {
+  stripeOn();
+  try {
+    const coach = await signup(['coach']); const g = await card(coach); const [a, b] = await Promise.all([signup(), signup()]);
+    const k0 = must(await publish(coach, g, { starts_at: inHours(5), min_participants: 3, max_participants: 6, min_cutoff_hours: 0 }), 201);
+    const s0 = must(await join(a, k0), 201); await pay(s0, a);
+    await pool.query("UPDATE coach_classes SET starts_at = now() - interval '2 minutes' WHERE id=$1", [k0.id]);
+    await syncCoachClasses();
+    assert.equal(must(await api('GET', `/coach/classes/${k0.id}`)).status, 'cancelled', 'zero-hour cutoff reached at the start');
+    assert.equal(refunds.length, 1);
+    const k1 = must(await publish(coach, g, { starts_at: inHours(9), min_participants: 3, max_participants: 6, min_cutoff_hours: 0 }), 201);
+    const s1 = must(await join(b, k1), 201); await pay(s1, b);
+    await pool.query("UPDATE coach_classes SET starts_at = now() - interval '2 minutes' WHERE id=$1", [k1.id]);
+    must(await api('POST', `/coach/classes/${k1.id}/seats/${s1.seat_id}/attendance`, { token: coach.token, body: { attendance: 'attended' } }));
+    await syncCoachClasses();
+    assert.equal(must(await api('GET', `/coach/classes/${k1.id}`)).status, 'open', 'it ran, so it is not cancelled');
+  } finally { stripeOff(); }
+});
+
+test('the approving guardian becomes the payer and sees the child\'s seat; the guardian queue lists it', async () => {
+  const coach = await signup(['coach']); const parent = await signup(['athlete']); const child = await signup(['athlete'], { dob: yearsAgo(12) });
+  await verifiedGuardian(parent, child);
+  must(await api('POST', `/youth/children/${child.id}/consents`, { token: parent.token, body: { purpose: 'participation' } }), 201);
+  const g = await card(coach);
+  const k = must(await publish(coach, g, { starts_at: inHours(40), audience: 'youth', min_age: 8, max_age: 14 }), 201);
+  const asked = must(await join(child, k), 201);
+  const queue = must(await api('GET', '/me/coach-class-guardian-requests', { token: parent.token }));
+  assert.equal(queue.length, 1); assert.equal(queue[0].seat_id, asked.seat_id); assert.equal(queue[0].child_name, child.display_name);
+  assert.equal(must(await api('GET', '/me/coach-class-guardian-requests', { token: (await signup()).token })).length, 0, 'only the child\'s guardian sees it');
+  must(await api('POST', `/coach/classes/${k.id}/seats/${asked.seat_id}/guardian-decision`, { token: parent.token, body: { decision: 'approve' } }));
+  assert.equal((await pool.query('SELECT applied_by FROM coach_class_seats WHERE id=$1', [asked.seat_id])).rows[0].applied_by, parent.id);
+  assert.equal(must(await api('GET', `/coach/classes/${k.id}`, { token: parent.token })).my.length, 1, 'the guardian can manage the seat');
+  assert.equal(must(await api('GET', '/me/coach-class-guardian-requests', { token: parent.token })).length, 0, 'decided, so it leaves the queue');
+});
+
+test('attendance recorded before the journal record exists is carried into it', async () => {
+  const coach = await signup(['coach']); const g = await card(coach); const [a, b] = await Promise.all([signup(), signup()]);
+  const k = must(await publish(coach, g, { starts_at: inHours(30) }), 201);
+  const sa = must(await join(a, k), 201); const sb = must(await join(b, k), 201);
+  await pool.query("UPDATE coach_classes SET starts_at = now() - interval '10 minutes' WHERE id=$1", [k.id]);
+  must(await api('POST', `/coach/classes/${k.id}/seats/${sa.seat_id}/attendance`, { token: coach.token, body: { attendance: 'attended' } }));
+  must(await api('POST', `/coach/classes/${k.id}/seats/${sb.seat_id}/attendance`, { token: coach.token, body: { attendance: 'no_show' } }));
+  const rec = must(await api('POST', '/coaching/sessions', { token: coach.token, body: { source_type: 'coach_class', source_id: k.id } }), 201);
+  const ws = must(await api('GET', `/coaching/sessions/${rec.id ?? rec.session.id}`, { token: coach.token }));
+  const byId = Object.fromEntries(ws.participants.map((p) => [p.id, p.attendance]));
+  assert.equal(byId[a.id], 'present'); assert.equal(byId[b.id], 'absent');
+});
+
+test('a guardian sees the child\'s class seat on the class and can leave for them', async () => {
+  const coach = await signup(['coach']); const parent = await signup(['athlete']); const child = await signup(['athlete'], { dob: yearsAgo(12) });
+  await verifiedGuardian(parent, child);
+  const g = await card(coach);
+  const k = must(await publish(coach, g, { starts_at: inHours(44), audience: 'youth', min_age: 8, max_age: 14 }), 201);
+  const asked = must(await join(child, k), 201);
+  const mine = must(await api('GET', `/coach/classes/${k.id}`, { token: parent.token })).my;
+  assert.equal(mine.length, 1); assert.equal(mine[0].seat_id, asked.seat_id); assert.equal(mine[0].user_id, child.id); assert.equal(mine[0].status, 'guardian_pending');
+  assert.equal(must(await api('GET', `/coach/classes/${k.id}`, { token: (await signup()).token })).my.length, 0, 'strangers see nothing of it');
+  must(await leave(parent, k, { on_behalf_of: child.id }));
+  assert.equal((await pool.query('SELECT status FROM coach_class_seats WHERE id=$1', [asked.seat_id])).rows[0].status, 'cancelled');
+});
+
+test('many concurrent hires for one coach never starve the connection pool (the calendar lock is a transaction lock)', async () => {
+  const coach = await signup(['coach']); await card(coach); const hirers = await Promise.all(Array.from({ length: 14 }, () => signup()));
+  const t0 = Date.now();
+  const res = await Promise.all(hirers.map((h, i) => api('POST', '/hires', { token: h.token, body: { coach_id: coach.id, sport: 'football', starts_at: inHours(300 + i * 2), duration_min: 60 } })));
+  assert.ok(Date.now() - t0 < 30_000, 'finished, no deadlock');
+  assert.equal(res.filter((r) => r.status === 201).length, 14, JSON.stringify(res.map((r) => r.status)));
+});
+
+test('a guardian with two children sees each seat separately, labelled, and can still join for themselves', async () => {
+  const coach = await signup(['coach']); const parent = await signup(['athlete']); const kid1 = await signup(['athlete'], { dob: yearsAgo(11) }); const kid2 = await signup(['athlete'], { dob: yearsAgo(13) });
+  await verifiedGuardian(parent, kid1); await verifiedGuardian(parent, kid2);
+  for (const kid of [kid1, kid2]) must(await api('POST', `/youth/children/${kid.id}/consents`, { token: parent.token, body: { purpose: 'participation' } }), 201);
+  const g = await card(coach);
+  const k = must(await publish(coach, g, { starts_at: inHours(46), audience: 'all_ages', max_participants: 6 }), 201);
+  for (const kid of [kid1, kid2]) { const s = must(await join(kid, k), 201); must(await api('POST', `/coach/classes/${k.id}/seats/${s.seat_id}/guardian-decision`, { token: parent.token, body: { decision: 'approve' } })); }
+  const my = must(await api('GET', `/coach/classes/${k.id}`, { token: parent.token })).my;
+  assert.equal(my.length, 2); assert.deepEqual(my.map((m) => m.for_name).sort(), [kid1.display_name, kid2.display_name].sort());
+  must(await join(parent, k), 201); // their own seat is still theirs to take
+  const all = must(await api('GET', `/coach/classes/${k.id}`, { token: parent.token })).my;
+  assert.equal(all.length, 3); assert.equal(all[0].user_id, parent.id, 'own seat first'); assert.equal(all[0].for_name, undefined);
+});

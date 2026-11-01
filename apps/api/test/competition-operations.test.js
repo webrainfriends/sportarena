@@ -92,7 +92,8 @@ test('match weeks: windows are enforced, every kick-off change is logged, a week
   assert.equal(refused.status, 409); assert.match(JSON.stringify(refused.body), /outside_round_window/);
   must(await api('POST', `/competition-fixtures/${g.id}/decision`, { token: L.org.token, body: { scheduled_at: far, outside_window: true, reason: 'Pitch unavailable' } }));
   const staff = must(await api('GET', `/seasons/${L.season.id}/calendar`, { token: L.org.token, query: { limit: '100' } }));
-  assert.equal(staff.changes.length, 1); assert.equal(staff.changes[0].action, 'rescheduled');
+  // both kick-off changes are logged: the first while windows were still advisory, the second outside the enforced window
+  assert.equal(staff.changes.length, 2); assert.ok(staff.changes.every((x) => x.action === 'rescheduled'));
   // update the window, then shift the whole of round 2 by two days
   const rid = cal.items.find((x) => x.round_number === 2).round_id;
   const before = cal.items.filter((x) => x.round_id === rid).map((x) => +new Date(x.scheduled_at));

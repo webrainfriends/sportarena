@@ -18,6 +18,7 @@ import { SportSelect } from '../sportpicker';
 import { Counter, DateField, DayStrip, HScroll, TimeField } from '../pickers';
 import { NewCaseSheet } from './cases';
 import { SeriesBookingSheet, VenueLine } from './training-venue';
+import { SeriesSheet } from './coach-series';
 import { CoachClassList } from './coach-classes';
 import { SubscribeSheet } from './coach-subscriptions';
 import { Grid, PaySheet, Pill, StatusPill, nice, useCols } from './marketplace';
@@ -429,7 +430,7 @@ function Session({ h, who, children }) {
 function MyCoaching({ ov, reloadOverview, goFind, goRequests }) {
   const { toast, user } = useSession();
   const { push } = useNav();
-  const [payTarget, setPayTarget] = useState(null), [rev, setRev] = useState(null), [cancel, setCancel] = useState(null), [disp, setDisp] = useState(null);
+  const [payTarget, setPayTarget] = useState(null), [rev, setRev] = useState(null), [cancel, setCancel] = useState(null), [disp, setDisp] = useState(null), [series, setSeries] = useState(null);
   const ledger = useLoad(() => api.get('/coaching/payments', { as: 'athlete', limit: 30 }), []);
   const a = ov.athlete, cur = ov.currency;
   const reloadAll = () => Promise.all([reloadOverview(), ledger.reload()]);
@@ -450,7 +451,7 @@ function MyCoaching({ ov, reloadOverview, goFind, goRequests }) {
       {a.awaiting_payment.length || a.to_review.length || a.requests.new_answers ? (
         <Section title="Needs you">
           {a.requests.new_answers ? <Card color={c.sunSoft} pad={12} onPress={goRequests}><T weight="800">{a.requests.new_answers} coach answer{a.requests.new_answers === 1 ? '' : 's'} waiting</T><T size={12} color={c.mute}>Open “My requests” to compare and choose.</T></Card> : null}
-          {a.awaiting_payment.map((h) => <Session key={h.id} h={h} who="coach"><Btn small title={`Pay ${price(h.total_cents, cur)}`} onPress={() => setPayTarget(paying(h, h.coach_name))} /></Session>)}
+          {a.awaiting_payment.map((h) => <Session key={h.id} h={h} who="coach">{h.series_pay_mode === 'once' ? <Btn small title={t('series.manage')} onPress={() => setSeries(h.series_id)} /> : <Btn small title={`Pay ${price(h.total_cents, cur)}`} onPress={() => setPayTarget(paying(h, h.coach_name))} />}</Session>)}
           {a.to_review.map((h) => <Session key={h.id} h={h} who="coach"><Btn small title="★ Rate this session" onPress={() => setRev(h)} /></Session>)}
         </Section>
       ) : null}
@@ -459,8 +460,9 @@ function MyCoaching({ ov, reloadOverview, goFind, goRequests }) {
         <Section title="Your schedule">
           {a.upcoming.map((h) => (
             <Session key={h.id} h={h} who="coach">
-              {h.payment_status === 'unpaid' ? <Btn small title={`Pay ${price(h.total_cents, cur)}`} onPress={() => setPayTarget(paying(h, h.coach_name))} /> : null}
-              <Btn small title="Cancel" color={c.paper} ink={c.red} onPress={() => setCancel(h)} />
+              {h.payment_status === 'unpaid' && h.series_pay_mode !== 'once' ? <Btn small title={`Pay ${price(h.total_cents, cur)}`} onPress={() => setPayTarget(paying(h, h.coach_name))} /> : null}
+              {h.series_id ? <Btn small title={t('series.manage')} color={c.violet} accessibilityLabel={t('series.manage')} onPress={() => setSeries(h.series_id)} /> : null}
+              {h.series_id && h.series_pay_mode === 'once' ? null : <Btn small title="Cancel" color={c.paper} ink={c.red} onPress={() => setCancel(h)} />}
             </Session>
           ))}
           {a.plan_sessions.map((p) => <Card key={p.id} pad={12} onPress={() => push('CoachPlan', { id: p.plan_id })}><T weight="700">{p.title}</T><T size={12} color={c.mute}>Training plan with {p.coach_name} · {dateTimeIn(p.starts_at, deviceTz)}</T></Card>)}
@@ -492,6 +494,7 @@ function MyCoaching({ ov, reloadOverview, goFind, goRequests }) {
       </Section>
 
       {payTarget ? <PaySheet target={payTarget} onClose={() => setPayTarget(null)} onDone={reloadAll} /> : null}
+      {series ? <SeriesSheet id={series} who="athlete" onClose={() => setSeries(null)} onChanged={reloadAll} /> : null}
       {rev ? <ReviewSheet hire={rev} onClose={() => setRev(null)} onDone={reloadAll} /> : null}
       <Confirm visible={!!cancel} title="Cancel this session?" yes="Cancel session" danger askReason="Why are you cancelling?" onClose={() => setCancel(null)} onYes={doCancel}
         body={cancel ? `${cancel.coach_name} will be told.${cancel.payment_status === 'paid' ? ' Your payment is refunded.' : ''}` : ''} />
