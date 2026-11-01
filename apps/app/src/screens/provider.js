@@ -168,7 +168,7 @@ export function ProviderProfileSection() {
           { key: 'accepting_patients', label: 'Accepting new appointments', type: 'switch' }, { key: 'listed', label: 'Show me in search', type: 'switch' }]} />
       <FormSheet visible={form === 'hours'} onClose={() => setForm(null)} title="Opening hours" submitLabel="Save hours"
         initial={{ days, start: p?.hours.windows[0]?.start ?? '09:00', end: p?.hours.windows[0]?.end ?? '17:00' }}
-        fields={[{ key: 'days', label: 'Days', type: 'weekdays' }, { key: 'start', label: 'From', type: 'time' }, { key: 'end', label: 'Until', type: 'time' }]}
+        fields={[{ key: 'days', label: 'Days', type: 'weekdays' }, { key: 'start', label: 'From', type: 'time' }, { key: 'end', label: 'Until', type: 'time', endOfDay: true }]}
         onSubmit={async (v) => { await api.post('/me/provider-availability', { windows: v.days.map((weekday) => ({ weekday, start: v.start, end: v.end })) }); prof.reload(); return 'Hours saved'; }} />
     </Section>
   );

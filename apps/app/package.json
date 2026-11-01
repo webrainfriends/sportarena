@@ -13,6 +13,7 @@
   "dependencies": {
     "@expo/metro-runtime": "~57.0.16",
     "@mediapipe/tasks-vision": "^0.10.14",
+    "@react-native-community/datetimepicker": "^9.1.0",
     "expo": "~57.0.27",
     "expo-apple-authentication": "~57.0.2",
     "expo-audio": "~57.0.5",
@@ -22,6 +23,7 @@
     "expo-crypto": "^57.0.4",
     "expo-document-picker": "~57.0.3",
     "expo-file-system": "~57.0.7",
+    "expo-haptics": "~57.0.3",
     "expo-image-picker": "~57.0.20",
     "expo-linear-gradient": "~57.0.2",
     "expo-local-authentication": "~57.0.3",

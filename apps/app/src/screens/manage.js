@@ -139,7 +139,7 @@ function Pricing({ v, reload }) {
         fields={[{ key: 'name', label: 'What is it', type: 'chips', options: ['Holiday rate', 'Tournament', 'Festival', 'Happy hour', 'Special event'] },
           { key: 'resource_id', label: 'Applies to', type: 'chips', blank: true, options: [{ value: '', label: 'All courts' }, ...v.resources.map((r) => ({ value: r.id, label: `${r.sport_emoji ?? ''} ${r.name}`.trim() }))] },
           { key: 'hourly_rate_cents', label: 'Rate per hour', type: 'money', currency: v.currency },
-          { key: 'start', label: 'From', type: 'time', default: '00:00' }, { key: 'end', label: 'Until', type: 'time', default: '24:00' },
+          { key: 'start', label: 'From', type: 'time', default: '00:00' }, { key: 'end', label: 'Until', type: 'time', default: '24:00', endOfDay: true },
           { key: 'weekdays', label: 'Days', type: 'weekdays', optional: true, hint: 'Leave empty for every day' },
           { key: 'valid_from', label: 'Starts on', type: 'date', optional: true }, { key: 'valid_to', label: 'Ends on', type: 'date', optional: true }]}
         onSubmit={async (f) => { await api.post(`/venues/${v.id}/price-rules`, { ...f, start: f.start ?? '00:00', end: f.end ?? '24:00', resource_id: f.resource_id || undefined }); done(); return 'Special rate added'; }} />

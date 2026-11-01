@@ -149,6 +149,7 @@ import { Analytics } from './screens/analytics';
 import { RecruiterHome, RecruiterAccess } from './screens/recruiter';
 import { MoreWheel } from './screens/more-wheel';
 import { Glass } from './glass';
+import { tapped } from './haptics';
 import { t } from './i18n';
 
 // https hosts that open this app as a universal / app link (set EXPO_PUBLIC_APP_HOSTS, comma separated); the sportarena:// scheme always works
@@ -193,7 +194,7 @@ function TabBar() {
     const label = TAB_LABEL[name] ?? name;
     const n = badge[name] ?? 0;
     return (
-      <Pressable key={name} accessibilityRole="tab" accessibilityLabel={centre && menu ? 'Close More' : n ? `${label}, ${n} waiting` : label} accessibilityState={{ selected: on, expanded: centre ? menu : undefined }} onPress={() => (centre ? toggleMenu() : goTab(name, name === 'Schedule' ? { section: 'agenda' } : {}))} style={({ pressed }) => ({ flex: 1, alignItems: 'center', justifyContent: 'flex-end', minHeight: 56, opacity: pressed ? 0.6 : 1 })}>
+      <Pressable key={name} accessibilityRole="tab" accessibilityLabel={centre && menu ? 'Close More' : n ? `${label}, ${n} waiting` : label} accessibilityState={{ selected: on, expanded: centre ? menu : undefined }} onPress={tapped(() => (centre ? toggleMenu() : goTab(name, name === 'Schedule' ? { section: 'agenda' } : {})))} style={({ pressed }) => ({ flex: 1, alignItems: 'center', justifyContent: 'flex-end', minHeight: 56, opacity: pressed ? 0.6 : 1 })}>
         {centre ? (
           <View style={{ width: 56, height: 56, marginTop: -24, borderRadius: 28, ...(Platform.OS === 'web' ? { boxShadow: '0 10px 24px rgba(132,88,179,0.45), inset 1.5px 1.5px 0 rgba(255,255,255,0.7), inset -1px -1px 0 rgba(255,255,255,0.25)' } : { shadowColor: '#8458B3', shadowOpacity: 0.45, shadowRadius: 14, shadowOffset: { width: 0, height: 8 }, elevation: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.6)' }) }}>
             <LinearGradient colors={['#9B72C6', '#494D5F']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
