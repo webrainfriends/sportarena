@@ -5,6 +5,7 @@ import { provider, paymentsEnabled, enabledProviders } from './providers.js';
 import { markInvoicePaid } from '../booking/invoices.js';
 import { completeTopup, activateGiftCard } from '../wallet.js';
 import { activateUserPlan } from '../booking/plans.js';
+import { activateCoachPeriod } from '../coach-subscriptions.js';
 import { activatePhysioPackage } from '../capabilities/provider-packages.js';
 import { fulfilSponsorshipPayment } from '../sponsor-agreements.js';
 import { fulfilChargePaid } from '../academy-invoices.js';
@@ -40,6 +41,11 @@ export async function describePurpose(c, type, id) {
   if (type === 'coach_hire') {
     const h = await q("SELECT h.hirer_id AS payer_id, h.total_cents - h.loyalty_credit_cents AS amount, h.currency, h.status, h.payment_status, u.display_name FROM coach_hires h JOIN users u ON u.id=h.coach_id WHERE h.id=$1 FOR UPDATE OF h");
     return h && { payerId: h.payer_id, amount: Number(h.amount), currency: h.currency, name: `Coaching session with ${h.display_name}`, payable: h.payment_status === 'unpaid' && h.status !== 'cancelled' && Number(h.amount) > 0 };
+  }
+  if (type === 'coach_subscription_period') {
+    // payable while the period waits for payment and the agreement is still alive (a paused or lapsed one cannot be paid into)
+    const u = await q("SELECT up.user_id AS payer_id, up.price_cents AS amount, up.currency, up.status, up.name, s.status AS sub_status, c.display_name FROM user_plans up JOIN coach_subscriptions s ON s.id=up.subscription_id JOIN users c ON c.id=up.coach_id WHERE up.id=$1 FOR UPDATE OF up");
+    return u && { payerId: u.payer_id, amount: Number(u.amount), currency: u.currency, name: `${u.name} · ${u.display_name}`, payable: u.status === 'awaiting_payment' && ['active', 'past_due'].includes(u.sub_status) };
   }
   if (type === 'coach_class_seat') {
     // a seat is payable only while it is held (reserved for the payer) and the class is still open
@@ -140,6 +146,7 @@ async function fulfil(c, type, id, payment) {
   if (type === 'wallet_topup') return completeTopup(c, id);
   if (type === 'gift_card') return activateGiftCard(c, id);
   if (type === 'venue_plan') return activateUserPlan(c, id);
+  if (type === 'coach_subscription_period') return activateCoachPeriod(c, id);
   if (type === 'physio_package') return activatePhysioPackage(c, id);
   if (type === 'sponsorship_payment') return fulfilSponsorshipPayment(c, id);
   if (type === 'academy_charge') return fulfilChargePaid(c, id, { method: 'online', payment });
