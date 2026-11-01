@@ -22,7 +22,7 @@ const ROUTE = { person: 'Athlete360', organisation: 'Organisation360', team: 'Te
 const VERIFY = { verified: ['Verified', c.mint], unverified: ['Not yet verified', c.sun], rejected: ['Rejected', c.red], claimed: ['Claimed', c.sun] };
 const DOMAIN_LABEL = {
   career: 'Career', competition: 'Matches', result: 'Results', achievement: 'Achievements', contract: 'Contracts', relationship: 'Network', health: 'Availability', organisation: 'Organisation',
-  registration: 'Registrations', accreditation: 'Badges', travel: 'Travel', payment: 'Payments', invoice: 'Invoices', sponsorship: 'Sponsors', assessment: 'Assessments', media: 'Media', statistics: 'Statistics', development: 'Development', training: 'Training', opportunity: 'Opportunities', supplier: 'Suppliers',
+  registration: 'Registrations', accreditation: 'Badges', travel: 'Travel', payment: 'Payments', invoice: 'Invoices', sponsorship: 'Sponsors', assessment: 'Assessments', media: 'Media', statistics: 'Statistics', development: 'Development', coaching: 'Coaching', training: 'Training', opportunity: 'Opportunities', supplier: 'Suppliers',
 };
 const SOURCE_ROUTE = { career_memberships: 'CareerTimeline', player_contracts: 'PlayerContracts', player_goals: 'MyDevelopment', player_plans: 'MyDevelopment', passport_videos: 'Passport', teams: 'Team', events: 'Event', trips: 'Trip', invoices: 'Invoice', accreditations: 'MyAccreditations' };
 const newKey = () => `web-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
@@ -87,7 +87,7 @@ export function GraphTimeline({ kind, id, organisation_id, filter = {} }) {
         {Object.entries(DOMAIN_LABEL).filter(([k]) => !d || d.domains.includes(k)).map(([k, l]) => <Chip key={k} label={l} active={domains.includes(k)} onPress={() => toggle(k)} />)}
       </HScroll>
       <HScroll>
-        {[['', 'Any origin'], ['verified', '✓ Verified'], ['user_entered', '✎ Entered by athlete'], ['external', '⇄ External']].map(([k, l]) => <Chip key={k || 'any'} label={l} active={origin === k} onPress={() => { setPages(1); setOrigin(k); }} />)}
+        {[['', 'Any origin'], ['verified', '✓ Verified'], ['user_entered', '✎ Entered, unconfirmed'], ['external', '⇄ External']].map(([k, l]) => <Chip key={k || 'any'} label={l} active={origin === k} onPress={() => { setPages(1); setOrigin(k); }} />)}
       </HScroll>
       {tl.loading && !d ? <Loading /> : tl.error ? <ErrorBox error={tl.error} onRetry={tl.reload} /> : !d.items.length ? <Empty emoji="🕰️" title="Nothing on the timeline yet" sub={filtered(filter) || origin ? 'No records match these filters. Widen the period or sport, or choose Any origin.' : 'Career moves, matches, results, awards and shared availability appear here as they are recorded.'} /> : (
         <View style={{ gap: 8 }}>
@@ -260,6 +260,14 @@ export function Athlete360({ id, organisation_id }) {
             <View style={{ gap: 8 }}>
               {d.map((x) => <Row key={`${x.source.id}${x.type}`} title={x.title} sub={[day(x.at), x.summary].filter(Boolean).join(' · ')} onPress={self ? () => push('MyDevelopment') : undefined} right={<OriginTag origin={x.origin} />} />)}
               <T size={12} color={c.mute}>Titles and status only. The reasons behind a goal stay with the athlete.</T>
+            </View>
+          )}</Part>
+        ) : null}
+        {tab === 'development' ? (
+          <Part title="Coaching goals and actions" sec={s.coaching} empty="No coach-set goals or actions shared yet">{(d) => (
+            <View style={{ gap: 8 }}>
+              {d.map((x) => <Row key={`${x.source.id}${x.type}`} title={x.title} sub={[day(x.at), x.summary].filter(Boolean).join(' · ')} right={<OriginTag origin={x.origin} />} />)}
+              <T size={12} color={c.mute}>Titles and status only. A coach's notes and criteria stay in the coaching module.</T>
             </View>
           )}</Part>
         ) : null}

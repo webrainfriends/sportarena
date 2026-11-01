@@ -26,14 +26,16 @@ export async function syncCoachClasses() {
 
   // 2. minimum not met at the cut-off: cancel the class and refund everyone
   for (const r of await many(
-    `SELECT k.id FROM coach_classes k WHERE k.status='open' AND k.starts_at > now() AND k.starts_at - make_interval(hours => k.min_cutoff_hours) <= now()
-        AND (SELECT count(*) FROM coach_class_seats z WHERE z.class_id=k.id AND z.status='confirmed') < k.min_participants LIMIT 100`)) {
+    `SELECT k.id FROM coach_classes k WHERE k.status='open' AND k.starts_at - make_interval(hours => k.min_cutoff_hours) <= now() AND now() < k.starts_at + interval '1 hour'
+        AND (SELECT count(*) FROM coach_class_seats z WHERE z.class_id=k.id AND z.status='confirmed') < k.min_participants
+        AND NOT EXISTS (SELECT 1 FROM coach_class_seats z WHERE z.class_id=k.id AND z.attendance IS NOT NULL) LIMIT 100`)) {
     try {
       await tx(async (c) => {
         const k = await lockClass(c, r.id);
         if (!k || k.status !== 'open') return;
         const n = Number((await c.query("SELECT count(*) AS n FROM coach_class_seats WHERE class_id=$1 AND status='confirmed'", [k.id])).rows[0].n);
         if (n >= k.min_participants) return;
+        if ((await c.query('SELECT 1 FROM coach_class_seats WHERE class_id=$1 AND attendance IS NOT NULL LIMIT 1', [k.id])).rows[0]) return; // the coach ran it and recorded who came
         await cancelClass(c, k, { reason: 'Not enough people joined', by: 'system' });
         await c.query("UPDATE session_venue_links SET released_at=now(), release_reason='class cancelled' WHERE session_type='coach_class' AND session_id=$1 AND released_at IS NULL", [k.id]);
         await notify(c, k.coach_id, { kind: 'coach_class_auto_cancelled', title: 'Class cancelled: too few joined', body: `"${k.title}" did not reach its minimum by the cut-off, so it was cancelled and everyone was refunded.`, data: { class_id: k.id }, dedupe_key: `cc_autocancel:${k.id}` });

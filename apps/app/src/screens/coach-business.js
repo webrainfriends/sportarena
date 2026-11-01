@@ -29,7 +29,7 @@ function CardSheet({ card, specs, currency, onClose, onDone }) {
   const edit = !!card;
   return (
     <FormSheet visible onClose={onClose} title={edit ? 'Edit rate card' : 'New rate card'} submitLabel={edit ? 'Save changes' : 'Add rate card'}
-      initial={edit ? { ...card, sport: card.sport_slug ?? undefined, specialisation_id: card.specialisation_id ?? undefined, description: card.description ?? undefined } : { audience: 'individual', delivery: 'in_person', unit: 'hour', duration_min: 60, min_participants: 1, max_participants: 20, sessions_included: 5, active: true }}
+      initial={edit ? { ...card, block_discount_pct: Number(card.block_discount_pct ?? 0), sport: card.sport_slug ?? undefined, specialisation_id: card.specialisation_id ?? undefined, description: card.description ?? undefined } : { audience: 'individual', delivery: 'in_person', unit: 'hour', duration_min: 60, min_participants: 1, max_participants: 20, sessions_included: 5, active: true }}
       fields={[
         { key: 'title', label: 'Name of this service' },
         { key: 'audience', label: 'Who it is for', type: 'chips', hint: undefined, options: AUDIENCES.map(([value, label]) => ({ value, label })) },
@@ -48,11 +48,15 @@ function CardSheet({ card, specs, currency, onClose, onDone }) {
         { key: 'grace_days', label: t('coachSub.fieldGrace'), type: 'stepper', min: 0, max: 30, default: 3, suffix: ' d', hint: t('coachSub.fieldGraceHint'), show: (v) => v.unit === 'month' },
         { key: 'is_intro', label: 'This is a trial / introductory offer', type: 'switch' },
         { key: 'intro_scope', label: t('coaching.introScope'), type: 'choice', default: 'coach', options: [{ value: 'coach', label: t('coaching.introScopeCoach') }, { value: 'sport', label: t('coaching.introScopeSport') }], show: (v) => !!v.is_intro && v.audience === 'individual' },
+        { key: 'block_discount_pct', label: t('series.blockDiscountPct'), type: 'stepper', min: 0, max: 90, step: 5, default: 0, suffix: ' %', hint: t('series.blockHint'), show: (v) => !v.is_intro },
+        { key: 'block_min_sessions', label: t('series.blockMin'), type: 'stepper', min: 2, max: 60, default: 4, show: (v) => !v.is_intro && Number(v.block_discount_pct) > 0 },
+        { key: 'allow_pay_per_date', label: t('series.allowPerDate'), type: 'switch', default: true, show: (v) => !v.is_intro },
         { key: 'description', label: 'What is included', type: 'multiline', optional: true },
         { key: 'active', label: 'Available to book', type: 'switch', default: true },
       ]}
       onSubmit={async (v) => {
         const body = { title: v.title, audience: v.audience, delivery: v.delivery, unit: v.unit, price_cents: v.price_cents, per_person: v.unit !== 'month' && !!v.per_person && (v.audience === 'group' || v.audience === 'event'), is_intro: !!v.is_intro, ...(v.is_intro ? { intro_scope: v.intro_scope ?? 'coach' } : {}), active: v.active !== false,
+          block_discount_pct: v.is_intro ? 0 : Number(v.block_discount_pct ?? 0), block_min_sessions: Number(v.block_min_sessions ?? 4), allow_pay_per_date: v.allow_pay_per_date !== false,
           ...(v.sport ? { sport: v.sport } : {}), ...(v.specialisation_id ? { specialisation_id: v.specialisation_id } : {}), ...(v.description ? { description: v.description } : {}),
           ...(v.unit === 'session' || v.unit === 'day' ? { duration_min: v.duration_min } : {}), ...(v.unit === 'package' ? { sessions_included: v.sessions_included } : {}),
           ...(v.unit === 'month' ? { sessions_included: v.sessions_included ?? 4, rollover_max: v.rollover_max ?? 0, grace_days: v.grace_days ?? 3 } : {}),

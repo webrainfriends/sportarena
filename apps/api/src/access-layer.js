@@ -39,7 +39,7 @@ export const MESSAGES = {
   geo_unavailable: 'Location was not available, so staff need to confirm this.', geofence_mismatch: 'The device was not near the venue, so staff need to confirm this.',
   staff_mark_exists: 'Staff already set a mark that differs, so staff need to confirm this.', not_checked_in: 'Not checked in, so there is nothing to check out.',
   already_recorded: 'Already recorded.', no_current_booking: 'No booking or membership that is valid right now.', booking_cancelled: 'The booking for this time was cancelled.',
-  membership_inactive: 'The membership is not active.', no_accreditation: 'No accreditation for this event.', accreditation_cancelled: 'This accreditation was revoked or suspended.',
+  membership_inactive: 'The membership is not active.', membership_not_covered: 'The membership does not cover this day or time.', no_accreditation: 'No accreditation for this event.', accreditation_cancelled: 'This accreditation was revoked or suspended.',
   provider_unavailable: 'The door controller could not be reached. Nothing was opened.', provider_rejected: 'The door controller declined to open.',
   offline_too_old: 'This offline scan is too old to accept.', revoked: 'This accreditation was revoked.', suspended: 'This accreditation is suspended.', expired: 'This accreditation has expired.',
   not_yet_valid: 'This accreditation is not valid yet.', replaced: 'This badge was replaced by a newer one.', wrong_zone: 'Not allowed in this zone.', wrong_event: 'This badge is for a different event.',
@@ -213,7 +213,15 @@ const venueAccess = {
         WHERE r.venue_id=$1 AND rs.user_id=$2 AND b.status='confirmed' AND rs.status='confirmed' AND b.starts_at - ($4 * interval '1 minute') <= $3 AND b.ends_at + interval '30 minutes' >= $3 ORDER BY b.starts_at LIMIT 1`,
       [sub.venue_id, personId, at, early])).rows[0];
     if (b) { ctx.basis = { type: 'booking', id: b.id }; return null; }
-    if ((await c.query("SELECT 1 FROM user_plans WHERE venue_id=$1 AND user_id=$2 AND kind='membership' AND status='active' AND expires_at > $3 LIMIT 1", [sub.venue_id, personId, at])).rowCount) { ctx.basis = { type: 'membership' }; return null; }
+    const plans = (await c.query("SELECT p.entitlements FROM user_plans up JOIN venue_plans p ON p.id=up.plan_id WHERE up.venue_id=$1 AND up.user_id=$2 AND up.kind='membership' AND up.status='active' AND up.expires_at > $3", [sub.venue_id, personId, at])).rows;
+    if (plans.length) {
+      // the plan's entitlements (days of the week, a daily window in venue time) are read live; a plan without any covers every time (as before)
+      const when = (await c.query("SELECT extract(dow FROM $2::timestamptz AT TIME ZONE v.timezone)::int AS dow, (extract(hour FROM $2::timestamptz AT TIME ZONE v.timezone)*60 + extract(minute FROM $2::timestamptz AT TIME ZONE v.timezone))::int AS minutes FROM venues v WHERE v.id=$1", [sub.venue_id, at])).rows[0];
+      const mins = (x) => { const [h, m] = String(x).split(':').map(Number); return h * 60 + m; };
+      const covers = (e = {}) => !(e.days?.length && !e.days.includes(when.dow)) && !(e.from && when.minutes < mins(e.from)) && !(e.to && when.minutes >= mins(e.to));
+      if (plans.some((x) => covers(x.entitlements))) { ctx.basis = { type: 'membership' }; return null; }
+      return { reason: 'membership_not_covered', anomaly: null };
+    }
     if (await hasStaff(c, sub.venue_id, personId)) { ctx.basis = { type: 'staff' }; return null; }
     if ((await c.query(
       `SELECT 1 FROM bookings b JOIN resources r ON r.id=b.resource_id JOIN reservations rs ON rs.id=b.reservation_id WHERE r.venue_id=$1 AND rs.user_id=$2 AND (b.status='cancelled' OR rs.status='cancelled') AND b.starts_at - ($4 * interval '1 minute') <= $3 AND b.ends_at + interval '30 minutes' >= $3 LIMIT 1`,
