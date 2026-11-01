@@ -301,4 +301,6 @@ import './my-workspace.js';
 import './security-keys.js';
 import './role-copilots.js';
 import './ticketing.js';
+import './integrations.js';
+import './integration-access.js';
 import './venue-seating.js';

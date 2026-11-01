@@ -51,6 +51,7 @@ import { adSweeps } from './ads/engine.js';
 import { raiseTeamDues } from './team-money.js';
 import { reconcileFinance } from './finance.js';
 import { sealAuditLog } from './audit-chain.js';
+import { integrationSweep } from './integrations/engine.js';
 
 export const STEPS = [
   ['holds', 'holds_released', expireUnpaidHolds, 0],
@@ -107,6 +108,7 @@ export const STEPS = [
   ['team_dues', 'team_dues_raised', raiseTeamDues, 0],
   ['advertising', 'advertising', adSweeps, null],
   ['finance', 'finance', reconcileFinance, null],
+  ['integrations', 'integrations', integrationSweep, null],
 ];
 
 export async function maintenanceCycle() {
