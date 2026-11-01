@@ -10,6 +10,8 @@ import { SportPicker } from '../sportpicker';
 import { c } from '../theme';
 import { moneyIn } from '../vtime';
 import { PaintGrid } from './paintgrid';
+import { SeatingEditor } from './venue-seating';
+import { t } from '../i18n';
 
 const digits = (cur) => { try { return new Intl.NumberFormat('en', { style: 'currency', currency: cur }).resolvedOptions().maximumFractionDigits; } catch { return 2; } };
 const toMinor = (text, cur) => Math.round(Number(String(text).replace(/,/g, '')) * 10 ** digits(cur));
@@ -84,15 +86,15 @@ function PricesStep({ v, data, reload, next }) {
   );
 }
 
-export function SetupWizard({ v, onExit, goTab }) {
-  const [step, setStep] = useState(0);
+export function SetupWizard({ v, onExit, goTab, start = 0 }) {
+  const [step, setStep] = useState(start);
   const tt = useLoad(() => api.get(`/venues/${v.id}/timetable`), [v.id]);
   const st = useLoad(() => api.get(`/venues/${v.id}/setup`), [v.id, step]);
   if (tt.loading && !tt.data) return <Loading />;
   const d = tt.data;
   return (
     <View style={{ gap: 8 }}>
-      <Stepper steps={['Courts', 'Prices', 'Timetable', 'Finish']} current={step} onJump={setStep} />
+      <Stepper steps={['Courts', 'Prices', 'Timetable', t('seat.step'), 'Finish']} current={step} onJump={setStep} />
       {step === 0 ? <CourtsStep v={v} data={d} reload={tt.reload} next={() => setStep(1)} /> : null}
       {step === 1 ? <PricesStep v={v} data={d} reload={tt.reload} next={() => setStep(2)} /> : null}
       {step === 2 ? (
@@ -104,6 +106,13 @@ export function SetupWizard({ v, onExit, goTab }) {
         </View>
       ) : null}
       {step === 3 ? (
+        <View style={{ gap: 12 }}>
+          <SeatingEditor v={v} />
+          <Btn title={t('seat.next_finish')} onPress={() => setStep(4)} />
+          <Btn small title={t('seat.skip')} color={c.paper} onPress={() => setStep(4)} accessibilityLabel={t('seat.skip')} />
+        </View>
+      ) : null}
+      {step === 4 ? (
         <View style={{ gap: 10 }}>
           <T size={18} weight="800">{st.data?.ready ? '🎉 You are ready for bookings' : 'Almost there'}</T>
           {(st.data?.steps ?? []).map((s) => <T key={s.key} size={13} color={s.done ? c.lime : c.ink}>{s.done ? '✓' : '○'} {s.title} <T size={12} color={c.mute}>— {s.detail}</T></T>)}
