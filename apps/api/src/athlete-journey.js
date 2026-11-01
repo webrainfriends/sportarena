@@ -50,6 +50,9 @@ export const METRICS = [
   { key: 'clubs_joined', label: 'Clubs joined', domain: 'career', of: (i) => (i.type === 'joined' ? 1 : 0) },
   { key: 'moves', label: 'Moves between clubs', domain: 'career', of: (i) => (i.type === 'transfer' ? 1 : 0) },
   { key: 'training', label: 'Training sessions', domain: 'training', of: () => 1 },
+  { key: 'coach_goals', label: 'Coach goals set', domain: 'coaching', of: (i) => (i.type === 'coach_goal_set' ? 1 : 0) },
+  { key: 'coach_goals_achieved', label: 'Coach goals achieved', domain: 'coaching', of: (i) => (i.type === 'coach_goal_achieved' ? 1 : 0) },
+  { key: 'coach_actions_done', label: 'Coach actions completed', domain: 'coaching', of: (i) => (i.type === 'action_done' ? 1 : 0) },
   { key: 'goals_set', label: 'Goals set', domain: 'development', of: (i) => (i.type === 'goal_set' ? 1 : 0) },
   { key: 'goals_achieved', label: 'Goals achieved', domain: 'development', of: (i) => (i.type === 'goal_achieved' ? 1 : 0) },
 ];

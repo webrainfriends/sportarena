@@ -181,3 +181,33 @@ test('the new capabilities are REST, OpenAPI and MCP from one definition', async
   const cmp = capabilities.find((c) => c.name === 'compare_athlete_periods');
   assert.equal(cmp.method, 'GET'); assert.equal(cmp.path, '/graph/athletes/:id/compare');
 });
+
+test('coach-set goals and actions are on the journey for the athlete, guardian and the coach who set them, and nobody else', async () => {
+  const { mgr, p } = await career();
+  const stranger = await signup(), other = await signup(['coach']);
+  const fb = "(SELECT id FROM sports WHERE slug='football')";
+  await q(`INSERT INTO coaching_goals(coach_id, athlete_id, sport_id, title, status, athlete_text, starts_on, achieved_at) VALUES ($1,$2,${fb},'Win more second balls','achieved','Be first to the second ball','2023-02-01','2023-08-01')`, [mgr.id, p.id]);
+  await q(`INSERT INTO coaching_goals(coach_id, athlete_id, sport_id, title, status, coach_notes, starts_on) VALUES ($1,$2,${fb},'Private coach plan','active','secret note','2023-02-02')`, [mgr.id, p.id]);
+  await q(`INSERT INTO coaching_actions(coach_id, athlete_id, owner_id, title, status, shared, completed_at) VALUES ($1,$2,$2,'Film review','done',true,'2023-05-01')`, [mgr.id, p.id]);
+  await q(`INSERT INTO coaching_actions(coach_id, athlete_id, owner_id, title, shared) VALUES ($1,$2,$2,'Unshared action',false)`, [mgr.id, p.id]);
+  const titles = async (u) => (must(await timeline(u, p, { domains: 'coaching', limit: 100 })).items.map((i) => i.title).sort());
+  assert.deepEqual(await titles(p), ['Achieved: Win more second balls', 'Action: Film review', 'Coach goal: Win more second balls', 'Done: Film review'], 'the athlete sees only what was shared');
+  assert.equal((await titles(mgr)).filter((t) => /Private|Unshared/.test(t)).length, 2, 'the coach sees everything they set');
+  assert.deepEqual(await titles(stranger), []); assert.deepEqual(await titles(other), [], 'another coach sees nothing');
+  const r360 = (u) => api('GET', `/graph/athletes/${p.id}/360`, { token: u.token }).then((r) => must(r).sections.coaching);
+  assert.equal((await r360(p)).access, 'ok'); assert.equal((await r360(stranger)).access, 'forbidden');
+  assert.ok(!JSON.stringify(await r360(p)).includes('secret note') && !JSON.stringify(await r360(p)).includes('Be first to the second ball'), 'notes and wording never leave the coaching module');
+  const cmp = must(await api('GET', `/graph/athletes/${p.id}/compare`, { token: p.token, query: { a_from: '2022-01-01', a_to: '2022-12-31', b_from: '2023-01-01', b_to: '2023-12-31' } }));
+  const m = Object.fromEntries(cmp.metrics.map((x) => [x.key, x]));
+  assert.deepEqual([m.coach_goals.b, m.coach_goals_achieved.b, m.coach_actions_done.b], [1, 1, 1]);
+  const seen = must(await api('GET', `/graph/athletes/${p.id}/compare`, { token: stranger.token, query: { a_from: '2022-01-01', a_to: '2022-12-31', b_from: '2023-01-01', b_to: '2023-12-31' } }));
+  assert.equal(seen.metrics.find((x) => x.key === 'coach_goals').b, 0);
+});
+
+test('a young person\'s coach-set goals show only while the guardian\'s coaching consent is in force', async () => {
+  const coach = await signup(['coach']), kid = await signup();
+  await q('UPDATE users SET youth_until = current_date + 365 WHERE id=$1', [kid.id]);
+  await q("INSERT INTO coaching_goals(coach_id, athlete_id, title, status, athlete_text, starts_on) VALUES ($1,$2,'Confidence','active','Speak up','2024-01-01')", [coach.id, kid.id]);
+  const items = async () => must(await timeline(kid, kid, { domains: 'coaching' })).items.length;
+  assert.equal(await items(), 0, 'no guardian consent: hidden');
+});
