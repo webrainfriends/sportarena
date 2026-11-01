@@ -103,6 +103,7 @@ import './recruitment.js';
 import './shop.js';
 import './shop-cart.js';
 import './hire.js';
+import './coach-series.js';
 import './coach-market.js';
 import './coach-business.js';
 import './coach-classes.js';
