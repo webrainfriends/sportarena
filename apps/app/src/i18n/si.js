@@ -4626,4 +4626,8 @@ export default {
   'invoice.pdf': 'ඉන්වොයිස් PDF බාගන්න',
   'invoice.receipt_pdf': 'රිසිට්පත PDF බාගන්න',
   'invoice.credit_note_pdf': 'ණය සටහන PDF බාගන්න',
+  'fin.cat.commissions': 'නියෝජිත කොමිස්',
+  'fin.cat.contracts': 'ක්‍රීඩකයින් සහ නිලධාරීන්ගේ වැටුප්',
+  'fin.cat.travel': 'ගමන් සහ චාරිකා',
+  'fin.mod.contracts': 'ක්‍රීඩක ගිවිසුම්',
 };

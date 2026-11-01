@@ -4626,4 +4626,8 @@ export default {
   'invoice.pdf': 'Unduh PDF faktur',
   'invoice.receipt_pdf': 'Unduh PDF tanda terima',
   'invoice.credit_note_pdf': 'Unduh PDF nota kredit',
+  'fin.cat.commissions': 'Komisi agen',
+  'fin.cat.contracts': 'Gaji pemain & ofisial',
+  'fin.cat.travel': 'Perjalanan & tur',
+  'fin.mod.contracts': 'Kontrak pemain',
 };

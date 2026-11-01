@@ -4626,4 +4626,8 @@ export default {
   'invoice.pdf': 'ଇନଭଏସ୍ PDF ଡାଉନଲୋଡ୍ କରନ୍ତୁ',
   'invoice.receipt_pdf': 'ରସିଦ PDF ଡାଉନଲୋଡ୍ କରନ୍ତୁ',
   'invoice.credit_note_pdf': 'କ୍ରେଡିଟ୍ ନୋଟ୍ PDF ଡାଉନଲୋଡ୍ କରନ୍ତୁ',
+  'fin.cat.commissions': 'ଏଜେଣ୍ଟ କମିସନ୍',
+  'fin.cat.contracts': 'ଖେଳାଳି ଓ ଅଧିକାରୀଙ୍କ ଦରମା',
+  'fin.cat.travel': 'ଯାତ୍ରା ଓ ଭ୍ରମଣ',
+  'fin.mod.contracts': 'ଖେଳାଳି ଚୁକ୍ତିନାମା',
 };

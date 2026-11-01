@@ -4626,4 +4626,8 @@ export default {
   'invoice.pdf': 'इनव्हॉइस PDF डाउनलोड करा',
   'invoice.receipt_pdf': 'पावती PDF डाउनलोड करा',
   'invoice.credit_note_pdf': 'क्रेडिट नोट PDF डाउनलोड करा',
+  'fin.cat.commissions': 'एजंट कमिशन',
+  'fin.cat.contracts': 'खेळाडू आणि अधिकाऱ्यांचे वेतन',
+  'fin.cat.travel': 'प्रवास आणि सहली',
+  'fin.mod.contracts': 'खेळाडू करार',
 };

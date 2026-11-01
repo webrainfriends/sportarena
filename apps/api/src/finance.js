@@ -14,17 +14,17 @@ export const MODULE_OF = {
 export const moduleOf = (type) => MODULE_OF[type] ?? 'other';
 export const MODULE_LABEL = {
   registration: 'Registration & dues', venue: 'Venue', coaching: 'Coaching', health: 'Doctor & physio', shop: 'Shop', wallet: 'Wallet', sponsorship: 'Sponsorship',
-  suppliers: 'Suppliers', insurance: 'Insurance', media: 'Media rights', advertising: 'Advertising', travel: 'Travel', officials: 'Officials', agents: 'Agents', tickets: 'Spectator tickets', events: 'Event budget', payouts: 'Payouts', other: 'Other',
+  suppliers: 'Suppliers', insurance: 'Insurance', media: 'Media rights', advertising: 'Advertising', travel: 'Travel', officials: 'Officials', agents: 'Agents', tickets: 'Spectator tickets', events: 'Event budget', payouts: 'Payouts', contracts: 'Player contracts', other: 'Other',
 };
 
 /** The canonical views an organisation reads its books by (#593). Every module maps to exactly one; an unmapped module is 'other', never dropped. */
 export const CATEGORY_LABEL = {
   registration: 'Registration & membership', tickets: 'Event & ticket income', venue_service: 'Venue & service income', sponsorship: 'Sponsorship',
-  suppliers: 'Supplier spend', event_budget: 'Event budget spend', payouts: 'Settlements & payouts', other: 'Other',
+  suppliers: 'Supplier spend', event_budget: 'Event budget spend', payouts: 'Settlements & payouts', commissions: 'Agent commissions', contracts: 'Player & official pay', travel: 'Travel & trips', other: 'Other',
 };
 const CATEGORY_OF_MODULE = {
   registration: 'registration', tickets: 'tickets', venue: 'venue_service', coaching: 'venue_service', health: 'venue_service', insurance: 'venue_service', shop: 'venue_service',
-  sponsorship: 'sponsorship', suppliers: 'suppliers', events: 'event_budget', payouts: 'payouts', officials: 'payouts',
+  sponsorship: 'sponsorship', suppliers: 'suppliers', events: 'event_budget', payouts: 'payouts', officials: 'contracts', contracts: 'contracts', agents: 'commissions', travel: 'travel', wallet: 'venue_service',
 };
 export const categoryOf = (module) => CATEGORY_OF_MODULE[module] ?? 'other';
 
@@ -62,6 +62,11 @@ async function parties(c, p) {
   } else if (t === 'team_contribution') {
     const r = await get('SELECT t.owner_id, t.organisation_id FROM team_contributions c JOIN team_fundraisers f ON f.id=c.fundraiser_id JOIN teams t ON t.id=f.team_id WHERE c.id=$1');
     if (r) { out.payeeId = r.owner_id; out.payeeOrgId = r.organisation_id; }
+  } else if (t === 'sponsorship_payment') {
+    const r = await get(`SELECT sr.owner_id, sr.organisation_id AS payer_org,
+        CASE sp.target_type WHEN 'event' THEN (SELECT organisation_id FROM events WHERE id = sp.target_id) WHEN 'team' THEN (SELECT organisation_id FROM teams WHERE id = sp.target_id) END AS payee_org
+      FROM sponsorship_payments x JOIN sponsorship_obligations o ON o.id = x.obligation_id JOIN sponsorships sp ON sp.id = o.sponsorship_id JOIN sponsors sr ON sr.id = sp.sponsor_id WHERE x.id=$1`);
+    if (r) { out.payerOrgId = r.payer_org; out.payeeOrgId = r.payee_org; }
   } else if (t === 'ticket_order') {
     const r = await get('SELECT e.organizer_id, e.organisation_id FROM ticket_orders o JOIN events e ON e.id=o.event_id WHERE o.id=$1');
     if (r) { out.payeeId = r.organizer_id; out.payeeOrgId = r.organisation_id; }
@@ -123,6 +128,13 @@ export async function applyDimensions(c, ids = null) {
                 workspace_id = coalesce(f.workspace_id, sp.department_id)
               FROM sponsorship_payments x JOIN sponsorship_obligations o ON o.id = x.obligation_id JOIN sponsorships sp ON sp.id = o.sponsorship_id
               WHERE f.source_type='sponsorship_payment' AND x.id=f.source_id AND (f.event_id IS NULL OR f.team_id IS NULL OR f.workspace_id IS NULL) AND /*SEL*/`);
+  await set(`UPDATE fin_transactions f SET payer_org_id = coalesce(f.payer_org_id, sr.organisation_id),
+                payee_org_id = coalesce(f.payee_org_id, CASE sp.target_type WHEN 'event' THEN (SELECT organisation_id FROM events WHERE id = sp.target_id) WHEN 'team' THEN (SELECT organisation_id FROM teams WHERE id = sp.target_id) END)
+              FROM sponsorship_payments x JOIN sponsorship_obligations o ON o.id = x.obligation_id JOIN sponsorships sp ON sp.id = o.sponsorship_id JOIN sponsors sr ON sr.id = sp.sponsor_id
+              WHERE f.source_type='sponsorship_payment' AND x.id=f.source_id AND (f.payer_org_id IS NULL OR f.payee_org_id IS NULL) AND /*SEL*/`);
+  await set(`UPDATE fin_transactions f SET payer_org_id = coalesce(f.payer_org_id, e.organisation_id), event_id = coalesce(f.event_id, fx.event_id)
+              FROM payout_items pi JOIN fixture_officials fo ON fo.id = pi.source_id JOIN fixtures fx ON fx.id = fo.fixture_id JOIN events e ON e.id = fx.event_id
+              WHERE f.source_type='payout_item' AND pi.id=f.source_id AND pi.source_type='official_fee' AND (f.payer_org_id IS NULL OR f.event_id IS NULL) AND /*SEL*/`);
   await set(`UPDATE fin_transactions f SET event_id = coalesce(f.event_id, bp.event_id) FROM event_budget_payments bp WHERE f.source_type='event_budget_payment' AND bp.id=f.source_id AND f.event_id IS NULL AND /*SEL*/`);
   await set(`UPDATE fin_transactions f SET season_id = (SELECT s.id FROM org_seasons s WHERE s.organisation_id = coalesce(f.payee_org_id, f.payer_org_id) AND f.occurred_at::date BETWEEN s.starts_on AND s.ends_on ORDER BY s.starts_on DESC LIMIT 1)
               WHERE f.season_id IS NULL AND coalesce(f.payee_org_id, f.payer_org_id) IS NOT NULL AND /*SEL*/`);
@@ -277,7 +289,11 @@ const side = (scope, params) => {   // 'in' = money to the organisation, 'out' =
 };
 
 /** What is still owed on an open charge: its amount less the payments the ledger already holds for the same source (online or recorded by staff). */
-export const OUTSTANDING = `greatest(f.gross_minor - coalesce((SELECT sum(p.gross_minor) FROM fin_transactions p WHERE p.kind = 'payment' AND p.status = 'settled' AND p.source_type = f.source_type AND p.source_id = f.source_id), 0), 0)`;
+export const OUTSTANDING = `greatest(f.gross_minor
+  - coalesce((SELECT sum(p.gross_minor) FROM fin_transactions p WHERE p.kind IN ('payment','credit_note') AND p.status = 'settled' AND p.source_type = f.source_type AND p.source_id = f.source_id), 0)
+  - CASE WHEN f.source_type = 'sponsorship_obligation' THEN coalesce((SELECT sum(p.gross_minor) FROM fin_transactions p JOIN sponsorship_payments x ON x.id = p.source_id WHERE p.kind = 'payment' AND p.status = 'settled' AND p.source_type = 'sponsorship_payment' AND x.obligation_id = f.source_id), 0) ELSE 0 END
+  + CASE WHEN f.source_type = 'sponsorship_obligation' THEN coalesce((SELECT sum(r.gross_minor) FROM fin_transactions r WHERE r.kind = 'refund' AND r.status = 'settled' AND (r.source_type = f.source_type AND r.source_id = f.source_id
+        OR (r.source_type = 'sponsorship_payment' AND r.source_id IN (SELECT x.id FROM sponsorship_payments x WHERE x.obligation_id = f.source_id)))), 0) ELSE 0 END, 0)`;
 
 /** The organisation filters (#593): season, event, team, workspace and revenue category, each one value or a list. Returns SQL to AND onto a query on `f`. */
 export const DIMENSIONS = { season_id: 'uuid', event_id: 'uuid', team_id: 'uuid', workspace_id: 'uuid', category: 'text' };

@@ -4626,4 +4626,8 @@ export default {
   'invoice.pdf': 'ഇൻവോയ്സ് PDF ഡൗൺലോഡ് ചെയ്യുക',
   'invoice.receipt_pdf': 'രസീത് PDF ഡൗൺലോഡ് ചെയ്യുക',
   'invoice.credit_note_pdf': 'ക്രെഡിറ്റ് നോട്ട് PDF ഡൗൺലോഡ് ചെയ്യുക',
+  'fin.cat.commissions': 'ഏജന്റ് കമ്മീഷനുകൾ',
+  'fin.cat.contracts': 'കളിക്കാരുടെയും ഒഫീഷ്യലുകളുടെയും ശമ്പളം',
+  'fin.cat.travel': 'യാത്രയും ടൂറുകളും',
+  'fin.mod.contracts': 'കളിക്കാരുടെ കരാറുകൾ',
 };

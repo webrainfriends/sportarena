@@ -4626,4 +4626,8 @@ export default {
   'invoice.pdf': 'விலைப்பட்டியல் PDF பதிவிறக்கவும்',
   'invoice.receipt_pdf': 'ரசீது PDF பதிவிறக்கவும்',
   'invoice.credit_note_pdf': 'கடன் குறிப்பு PDF பதிவிறக்கவும்',
+  'fin.cat.commissions': 'முகவர் கமிஷன்',
+  'fin.cat.contracts': 'வீரர்கள் மற்றும் அதிகாரிகள் ஊதியம்',
+  'fin.cat.travel': 'பயணம் மற்றும் சுற்றுப்பயணங்கள்',
+  'fin.mod.contracts': 'வீரர் ஒப்பந்தங்கள்',
 };

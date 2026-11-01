@@ -4626,4 +4626,8 @@ export default {
   'invoice.pdf': 'ಇನ್‌ವಾಯ್ಸ್ PDF ಡೌನ್‌ಲೋಡ್ ಮಾಡಿ',
   'invoice.receipt_pdf': 'ರಸೀದಿ PDF ಡೌನ್‌ಲೋಡ್ ಮಾಡಿ',
   'invoice.credit_note_pdf': 'ಕ್ರೆಡಿಟ್ ನೋಟ್ PDF ಡೌನ್‌ಲೋಡ್ ಮಾಡಿ',
+  'fin.cat.commissions': 'ಏಜೆಂಟ್ ಕಮಿಷನ್‌ಗಳು',
+  'fin.cat.contracts': 'ಆಟಗಾರರು ಮತ್ತು ಅಧಿಕಾರಿಗಳ ವೇತನ',
+  'fin.cat.travel': 'ಪ್ರಯಾಣ ಮತ್ತು ಪ್ರವಾಸಗಳು',
+  'fin.mod.contracts': 'ಆಟಗಾರರ ಒಪ್ಪಂದಗಳು',
 };

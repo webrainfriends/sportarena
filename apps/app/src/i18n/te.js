@@ -4626,4 +4626,8 @@ export default {
   'invoice.pdf': 'ఇన్వాయిస్ PDF డౌన్‌లోడ్ చేయండి',
   'invoice.receipt_pdf': 'రసీదు PDF డౌన్‌లోడ్ చేయండి',
   'invoice.credit_note_pdf': 'క్రెడిట్ నోట్ PDF డౌన్‌లోడ్ చేయండి',
+  'fin.cat.commissions': 'ఏజెంట్ కమిషన్లు',
+  'fin.cat.contracts': 'ఆటగాళ్లు మరియు అధికారుల వేతనం',
+  'fin.cat.travel': 'ప్రయాణం మరియు పర్యటనలు',
+  'fin.mod.contracts': 'ఆటగాళ్ల ఒప్పందాలు',
 };
