@@ -89,6 +89,7 @@ import { Support } from './screens/cases';
 import { Family } from './screens/family';
 import { Orgs, Org } from './screens/org';
 import { Federations, FederationHome, FederationRecord, VerifyLicence } from './screens/federation';
+import { SharedLicenceCard } from './screens/licence-card';
 import { MediaWorkspace } from './screens/media-workspace';
 import { OrgAffiliations, MyLicences } from './screens/federation-club';
 import { IntegrityCase, MyIntegrity } from './screens/integrity';
@@ -153,6 +154,9 @@ const APP_HOSTS = (process.env.EXPO_PUBLIC_APP_HOSTS ?? '').split(',').map((h) =
 
 // A coach or scout opening a passport link (web) sees the athlete's CV without signing in.
 const PASSPORT_TOKEN = Platform.OS === 'web' && typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('passport') : null;
+// A licence QR or shared card link (web): the public check, and a shared card, open without signing in.
+const WEB_QUERY = Platform.OS === 'web' && typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+const VERIFY_VALUE = WEB_QUERY?.get('verify') ?? null, LICENCE_CARD_TOKEN = WEB_QUERY?.get('licence_card') ?? null;
 
 // A shared event or game link (web): signed-out visitors see the public page; signed-in people are taken to the same screens inside the app.
 const PUBLIC_LINK = (() => {
@@ -362,6 +366,8 @@ function Shell() {
     return () => { sub?.remove(); link.remove(); };
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
   if (PASSPORT_TOKEN) return <View style={{ flex: 1, backgroundColor: c.bg, paddingTop: ins.top }}><PassportPublic token={PASSPORT_TOKEN} /></View>;
+  if (VERIFY_VALUE) return <View style={{ flex: 1, backgroundColor: c.bg, paddingTop: ins.top }}><VerifyLicence code={VERIFY_VALUE} /></View>;
+  if (LICENCE_CARD_TOKEN) return <View style={{ flex: 1, backgroundColor: c.bg, paddingTop: ins.top }}><SharedLicenceCard token={LICENCE_CARD_TOKEN} /></View>;
   if (!ready) return <View style={{ flex: 1, backgroundColor: c.bg, justifyContent: 'center', padding: 24 }}><Loading /></View>;
   // back from an organisation's identity provider (web): finish the sign-in, whether or not someone is already signed in
   if (isSsoCallback()) return <View style={{ flex: 1, backgroundColor: c.bg, paddingTop: ins.top }}><SsoCallbackScreen /></View>;
