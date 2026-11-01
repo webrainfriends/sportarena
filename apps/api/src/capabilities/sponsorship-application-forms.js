@@ -20,6 +20,7 @@ import { toCsv } from '../csv.js';
 import { DOC_LIMITS, docHeaders, loadEncrypted, readBody, saveEncrypted, sniffDoc } from '../doc-store.js';
 import { sponsorAccess, notifySponsor } from '../sponsor-access.js';
 import { formDefinition, fieldsOf, validateApplication, splitConfidential, budgetShape, referencesShape } from '../application-forms.js';
+import { screenApplication } from '../sponsorship-screening.js';
 import { assertCanApply, checkVersion, iso, programFor, termsOf } from './sponsorship-programs.js';
 import { roundState } from '../sponsorship-calls.js';
 import { askJson, aiConfigured, quoteData, AI_RULES } from '../ai.js';
@@ -363,6 +364,8 @@ cap({
         throw e;
       }
       await c.query("INSERT INTO sponsorship_application_events(application_id, kind, actor_id, form_version) VALUES ($1,'submitted',$2,$3)", [a.id, user.id, a.form_version]);
+      const screened = await screenApplication(c, row, { trigger: 'submit', userId: user.id }); // eligibility screening (#287): reasons, missing items, duplicate flags
+      if (screened.outcome === 'needs_info') await notify(c, user.id, { kind: 'sponsorship_program', title: 'More information needed', body: `${row.receipt_no}: your application is missing information. Open it to see what to add.`.slice(0, 300), data: { application_id: a.id } });
       const sp = await mustFind('sponsors', p.sponsor_id, '*', c);
       await notify(c, user.id, { kind: 'sponsorship_program', title: 'Application received', body: `Your application ${row.receipt_no} to ${p.name} was submitted.`, data: { application_id: a.id, receipt_no: row.receipt_no }, dedupe_key: `application-receipt:${a.id}` });
       await notifySponsor(c, sp, 'program', { kind: 'sponsorship_program', title: 'New funding application', body: `A new application arrived for ${p.name}. Open the program to review it.`, data: { program_id: p.id, application_id: a.id } });
@@ -388,24 +391,28 @@ cap({
   name: 'request_application_correction', method: 'POST', path: '/program-applications/:id/request-correction', tag: TAG,
   summary: 'Brand manager/approver: send a submitted application back to its applicant, naming the questions to fix (form field keys, plus `requested_cents` for the amount) and why. The applicant can then change only those answers; everything else stays exactly as submitted. While returned it cannot be awarded or declined.',
   input: z.object({ id, reason: z.string().min(1).max(1000), fields: z.array(z.string().min(1).max(60)).min(1).max(40) }),
-  async handler({ user }, i) {
-    return tx(async (c) => {
-      const { a } = await applicationFor(c, user, i.id, { lock: true });
-      await staffOnly(c, user, a, 'program');
-      if (a.status !== 'submitted') throw conflict(`Only a submitted application can be returned (this one is ${a.status})`);
-      if (!a.form_id) throw conflict('This application was made without a form; decline it or ask the applicant to apply again');
-      const def = (await formDefinitionOf(c, a.form_id, a.form_version)).definition;
-      const keys = new Set([...fieldsOf(def).map((f) => f.key), 'requested_cents']);
-      const unknown = [...new Set(i.fields)].filter((k) => !keys.has(k));
-      if (unknown.length) throw badRequest(`Unknown question(s): ${unknown.join(', ')}`);
-      const row = (await c.query("UPDATE sponsorship_applications SET status='returned', row_version=row_version+1, updated_at=now() WHERE id=$1 RETURNING *", [a.id])).rows[0];
-      await c.query("INSERT INTO sponsorship_application_events(application_id, kind, actor_id, form_version, note, fields) VALUES ($1,'correction_requested',$2,$3,$4,$5)", [a.id, user.id, a.form_version, i.reason, [...new Set(i.fields)]]);
-      await notify(c, a.applicant_id, { kind: 'sponsorship_program', title: 'Please correct your application', body: `${a.receipt_no}: ${i.reason}`.slice(0, 300), data: { application_id: a.id } });
-      await audit(c, user.id, 'request_correction', 'sponsorship_applications', a.id);
-      return applicationView(c, user, row, 'staff');
-    });
-  },
+  async handler({ user }, i) { return returnForCorrection(user, i); },
 });
+
+/** Send a submitted application back for named corrections (also used by the eligibility screening's missing-information request). */
+export async function returnForCorrection(user, i, c0 = null) {
+  const run = async (c) => {
+    const { a } = await applicationFor(c, user, i.id, { lock: true });
+    await staffOnly(c, user, a, 'program');
+    if (a.status !== 'submitted') throw conflict(`Only a submitted application can be returned (this one is ${a.status})`);
+    if (!a.form_id) throw conflict('This application was made without a form; decline it or ask the applicant to apply again');
+    const def = (await formDefinitionOf(c, a.form_id, a.form_version)).definition;
+    const keys = new Set([...fieldsOf(def).map((f) => f.key), 'requested_cents']);
+    const unknown = [...new Set(i.fields)].filter((k) => !keys.has(k));
+    if (unknown.length) throw badRequest(`Unknown question(s): ${unknown.join(', ')}`);
+    const row = (await c.query("UPDATE sponsorship_applications SET status='returned', row_version=row_version+1, updated_at=now() WHERE id=$1 RETURNING *", [a.id])).rows[0];
+    await c.query("INSERT INTO sponsorship_application_events(application_id, kind, actor_id, form_version, note, fields) VALUES ($1,'correction_requested',$2,$3,$4,$5)", [a.id, user.id, a.form_version, i.reason, [...new Set(i.fields)]]);
+    await notify(c, a.applicant_id, { kind: 'sponsorship_program', title: 'Please correct your application', body: `${a.receipt_no}: ${i.reason}`.slice(0, 300), data: { application_id: a.id } });
+    await audit(c, user.id, 'request_correction', 'sponsorship_applications', a.id);
+    return applicationView(c, user, row, 'staff');
+  };
+  return c0 ? run(c0) : tx(run);
+}
 
 cap({
   name: 'submit_application_correction', method: 'POST', path: '/program-applications/:id/correction', tag: TAG,
@@ -447,6 +454,7 @@ cap({
         `UPDATE sponsorship_applications SET status='submitted', answers=$2, confidential_enc=$3, budget=$4, refs_enc=$5, requested_cents=$6, correction_idempotency_key=$7, row_version=row_version+1, updated_at=now() WHERE id=$1 RETURNING *`,
         [a.id, openAnswers, seal(Object.keys(secret).length ? secret : null, CONF), jsonb(budget), seal(refs?.length ? refs : null, REFS), requested, i.idempotency_key])).rows[0];
       await c.query("INSERT INTO sponsorship_application_events(application_id, kind, actor_id, form_version, fields, before) VALUES ($1,'corrected',$2,$3,$4,$5)", [a.id, user.id, a.form_version, changed, before]);
+      await screenApplication(c, row, { trigger: 'correction', userId: user.id }); // re-screen the corrected application; the earlier run stays
       const sp = await mustFind('sponsors', p.sponsor_id, '*', c);
       await notifySponsor(c, sp, 'program', { kind: 'sponsorship_program', title: 'Application corrected', body: `${a.receipt_no} for ${p.name} was corrected and is ready for review.`, data: { program_id: p.id, application_id: a.id } });
       await audit(c, user.id, 'correct', 'sponsorship_applications', a.id);
@@ -480,11 +488,11 @@ cap({
   async handler({ user }, i) {
     const { p } = await programFor(user, i.id, 'export', pool);
     const rows = await many(
-      `SELECT a.receipt_no, r.seq AS round, ap.handle AS applicant, a.target_type, a.status, a.form_version, a.requested_cents, a.currency, a.submitted_at, a.answers::text AS answers
+      `SELECT a.receipt_no, r.seq AS round, ap.handle AS applicant, a.target_type, a.status, a.form_version, a.requested_cents, a.currency, a.submitted_at, a.screening_outcome, (SELECT rules_version FROM sponsorship_screenings sc WHERE sc.id=a.screening_id) AS eligibility_version, a.answers::text AS answers
          FROM sponsorship_applications a JOIN sponsorship_rounds r ON r.id=a.round_id JOIN users ap ON ap.id=a.applicant_id
         WHERE a.program_id=$1 AND a.status <> 'draft' AND ($2::uuid IS NULL OR a.round_id=$2) ORDER BY r.seq, a.submitted_at NULLS LAST, a.id`, [p.id, i.round_id ?? null]);
     await audit(null, user.id, 'export', 'sponsorship_applications', p.id);
-    return { filename: `program-${p.id}-applications.csv`, rows: rows.length, csv: toCsv(['receipt_no', 'round', 'applicant', 'target_type', 'status', 'form_version', 'requested_cents', 'currency', 'submitted_at', 'answers'], rows) };
+    return { filename: `program-${p.id}-applications.csv`, rows: rows.length, csv: toCsv(['receipt_no', 'round', 'applicant', 'target_type', 'status', 'form_version', 'requested_cents', 'currency', 'submitted_at', 'screening_outcome', 'eligibility_version', 'answers'], rows) };
   },
 });
 
