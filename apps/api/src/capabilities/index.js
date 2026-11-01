@@ -294,4 +294,5 @@ import './compliance-policy.js';
 import './compliance-rulebooks.js';
 import './my-workspace.js';
 import './security-keys.js';
+import './role-copilots.js';
 import './ticketing.js';
