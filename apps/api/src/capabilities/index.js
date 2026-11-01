@@ -29,6 +29,8 @@ import './trips-logistics.js';
 import './trips-compliance.js';
 import './trips-ops.js';
 import './trips-money.js';
+import './trips-bookings.js';
+import './travel-partners.js';
 import './appearances.js';
 import './team-chat.js';
 import './inbox.js';
