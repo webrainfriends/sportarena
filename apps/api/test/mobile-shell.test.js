@@ -16,10 +16,12 @@ test('the bar is Home, Calendar, More (centre swivel), Work and Profile; the Inb
   assert.match(app, /centre \? toggleMenu\(\)/, 'the centre button opens the swivel');
   assert.match(app, /<InboxButton \/><AccountButton \/>/, 'the Inbox sits beside the account button at the top right');
   const labels = app.match(/const TAB_LABEL = \{([^}]*)\}/)[1];
-  assert.match(labels, /Schedule: 'Calendar'/);
-  assert.match(labels, /Me: 'Profile'/);
-  assert.match(labels, /Hub: 'More'/);
-  assert.match(labels, /Work: 'Workbench'/);
+  // the labels are translated (t('nav.tab.*')); the English text stays what the bar always said
+  const en = read('i18n/en.js');
+  for (const [tab, key, text] of [['Schedule', 'Calendar', 'Calendar'], ['Me', 'Profile', 'Profile'], ['Hub', 'More', 'More'], ['Work', 'Workbench', 'Workbench']]) {
+    assert.match(labels, new RegExp(`${tab}: t\\('nav\\.tab\\.${key}'\\)`), `${tab} reads its label through t()`);
+    assert.match(en, new RegExp(`'nav\\.tab\\.${key}': '${text}'`), `${tab} is labelled "${text}" in English`);
+  }
   for (const t of ['Work', 'Inbox', 'Hub']) assert.match(read('icons.js'), new RegExp(`\\n  ${t}: wrap`), `${t} has an icon`);
 });
 
@@ -29,7 +31,12 @@ test('the workspace is provided to the shell, behind the session and navigation'
 
 test('Community and Inbox stay reachable as pushed pages with titles, and the old inbox section is gone from the settings page', () => {
   assert.match(app, /const PAGES = \{[^}\n]*\bCommunity, Inbox\b/); // whatever else is registered before them, they stay in the map
-  assert.match(app, /const TITLES = \{[^}\n]*\bCommunity: 'Community', Inbox: 'Inbox'/);
+  // titles are translated: every title route is read through t('nav.title.<route>')
+  assert.match(app, /const TITLE_ROUTES = \[[^\]]*'Community'[^\]]*'Inbox'|const TITLE_ROUTES = \[[^\]]*'Inbox'[^\]]*'Community'/);
+  assert.match(app, /const TITLES = Object\.fromEntries\(TITLE_ROUTES\.map\(\(n\) => \[n, t\(`nav\.title\.\$\{n\}`\)\]\)\)/);
+  const enTitles = read('i18n/en.js');
+  assert.match(enTitles, /'nav\.title\.Community': 'Community'/);
+  assert.match(enTitles, /'nav\.title\.Inbox': 'Inbox'/);
   const reserve = read('screens/reserve.js');
   const settings = reserve.slice(reserve.indexOf('export function Notifications()'));
   assert.ok(!settings.includes('<Section title="Inbox"'), 'one inbox: the list lives in the Inbox tab only');
