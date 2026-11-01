@@ -57,7 +57,10 @@ async function getDetail(classId, user) {
   const mine = user ? await many(`SELECT * FROM coach_class_seats WHERE class_id=$1 AND (user_id=$2 OR applied_by=$2
       OR user_id IN (SELECT child_id FROM guardian_links WHERE guardian_id=$2 AND status='active' AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now()))) ORDER BY (user_id=$2) DESC, created_at`, [r.id, user.id]) : [];
   const isCoach = !!user && (r.coach_id === user.id || isAdmin(user));
-  const out = { ...card, my: mine.map((m) => seatView(m)) };
+  // a guardian's view also holds their children's seats; label those with the child's name (the guardian already knows it) so each can be paid or left on its own
+  const others = [...new Set(mine.filter((m) => m.user_id !== user?.id).map((m) => m.user_id))];
+  const names = new Map(others.length ? (await many('SELECT id, display_name FROM users WHERE id = ANY($1::uuid[])', [others])).map((u) => [u.id, u.display_name]) : []);
+  const out = { ...card, my: mine.map((m) => seatView(m, m.user_id !== user?.id ? { for_name: names.get(m.user_id) } : {})) };
   // the online link is for the people who hold a seat (and the coach), not for browsers
   if (r.is_online && (isCoach || mine.some((m) => m.status === 'confirmed'))) out.online_url = (await one('SELECT online_url FROM coach_classes WHERE id=$1', [r.id])).online_url;
   if (isCoach) {

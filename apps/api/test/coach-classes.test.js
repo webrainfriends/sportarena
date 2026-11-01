@@ -365,3 +365,17 @@ test('many concurrent hires for one coach never starve the connection pool (the 
   assert.ok(Date.now() - t0 < 30_000, 'finished, no deadlock');
   assert.equal(res.filter((r) => r.status === 201).length, 14, JSON.stringify(res.map((r) => r.status)));
 });
+
+test('a guardian with two children sees each seat separately, labelled, and can still join for themselves', async () => {
+  const coach = await signup(['coach']); const parent = await signup(['athlete']); const kid1 = await signup(['athlete'], { dob: yearsAgo(11) }); const kid2 = await signup(['athlete'], { dob: yearsAgo(13) });
+  await verifiedGuardian(parent, kid1); await verifiedGuardian(parent, kid2);
+  for (const kid of [kid1, kid2]) must(await api('POST', `/youth/children/${kid.id}/consents`, { token: parent.token, body: { purpose: 'participation' } }), 201);
+  const g = await card(coach);
+  const k = must(await publish(coach, g, { starts_at: inHours(46), audience: 'all_ages', max_participants: 6 }), 201);
+  for (const kid of [kid1, kid2]) { const s = must(await join(kid, k), 201); must(await api('POST', `/coach/classes/${k.id}/seats/${s.seat_id}/guardian-decision`, { token: parent.token, body: { decision: 'approve' } })); }
+  const my = must(await api('GET', `/coach/classes/${k.id}`, { token: parent.token })).my;
+  assert.equal(my.length, 2); assert.deepEqual(my.map((m) => m.for_name).sort(), [kid1.display_name, kid2.display_name].sort());
+  must(await join(parent, k), 201); // their own seat is still theirs to take
+  const all = must(await api('GET', `/coach/classes/${k.id}`, { token: parent.token })).my;
+  assert.equal(all.length, 3); assert.equal(all[0].user_id, parent.id, 'own seat first'); assert.equal(all[0].for_name, undefined);
+});
