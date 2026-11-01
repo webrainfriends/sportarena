@@ -1,11 +1,14 @@
 import { isSsoCallback, SsoCallbackScreen } from './sso';
 import { OfflineSync } from './screens/offline-sync';
-import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Linking, Platform, Pressable, StatusBar, Text, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Linking, Platform, Pressable, StatusBar, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SessionProvider, useSession } from './session';
-import { NavProvider, useNav } from './nav';
+import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { NavProvider, NavBridge, FocusScope, flushNavigation, navRef, syncActiveTab, useActiveTab, useNav } from './nav';
 import { Btn, Loading } from './ui';
 import { Icon } from './icons';
 import { useLayout } from './layout';
@@ -187,7 +190,8 @@ const BAR = ['Home', 'Schedule', 'Hub', 'Work', 'Me'];
 
 /** Bottom tab bar. Phone: edge-to-edge bar. Tablet / large screens: a floating pill, like an iPad app. */
 function TabBar() {
-  const { tab, goTab, menu, toggleMenu } = useNav();
+  const { goTab, menu, toggleMenu } = useNav();
+  const tab = useActiveTab();
   const ins = useSafeAreaInsets();
   const { tablet, width } = useLayout();
   const ws = useWorkspace();
@@ -282,20 +286,6 @@ function TopBar() {
   );
 }
 
-/** Screen change: tabs cross-fade, pushed screens slide in from the right (like a native stack). */
-function Transition({ id, push, children }) {
-  const v = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    v.setValue(0);
-    Animated.timing(v, { toValue: 1, duration: push ? 260 : 160, easing: Easing.out(Easing.cubic), useNativeDriver: Platform.OS !== 'web' }).start();
-  }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
-  return (
-    <Animated.View style={{ flex: 1, opacity: v, transform: [{ translateX: push ? v.interpolate({ inputRange: [0, 1], outputRange: [36, 0] }) : 0 }, { translateY: push ? 0 : v.interpolate({ inputRange: [0, 1], outputRange: [6, 0] }) }] }}>
-      {children}
-    </Animated.View>
-  );
-}
-
 /** Shown when the API says this role must set up (or confirm) two-step verification before a health/admin action. */
 function MfaNotice({ info, onGo, onClose }) {
   const { gutter, contentMax } = useLayout();
@@ -315,16 +305,81 @@ function MfaNotice({ info, onGo, onClose }) {
 }
 
 
-function Shell() {
-  const { ready, user, toast } = useSession();
-  const { tab, stack, back, goTab, push, menu } = useNav();
-  const ins = useSafeAreaInsets();
-  const [mfa, setMfa] = useState(null);
+// ---------------------------------------------------------------- the native stack and tabs
+// Pushed pages sit on a native stack (swipe back on iOS, the platform's own transition, the Android back button) and the tab roots on a tab
+// navigator that keeps each tab alive, so scroll position and typed text survive a switch. The look is unchanged: our own back bar and top bar are
+// drawn inside each screen, and the floating tab bar sits above both (TabBar).
+const Stack = createNativeStackNavigator();
+const Tab = createBottomTabNavigator();
+const NAV_THEME = { ...DefaultTheme, colors: { ...DefaultTheme.colors, background: c.bg, card: c.bg, border: c.line, text: c.ink, primary: c.pink } };
+const tabOf = (r) => (r?.state ? r.state.routes[r.state.index]?.name : r?.params?.screen) ?? 'Home';
+
+/** A pushed page: the back bar on top and the page below it. */
+function PushedPage({ name, Page, route, navigation }) {
+  const { back } = useNav();
+  const routes = navigation.getState().routes;
+  const before = routes[routes.findIndex((r) => r.key === route.key) - 1];
+  const prev = before?.name === 'Tabs' ? TAB_LABEL[tabOf(before)] ?? tabOf(before) : TITLES[before?.name] ?? '';
+  const hero = HERO_ROUTES.has(name);
+  const Body = Page;
+  return (
+    <FocusScope navigation={navigation}>
+      <View style={{ flex: 1, backgroundColor: c.bg }}>
+        {hero ? null : <NavBar title={TITLES[name]} backLabel={prev} onBack={back} />}
+        <View style={{ flex: 1 }}>
+          <Body {...(route.params ?? {})} />
+          {hero ? <NavOverlay backLabel={prev} onBack={back} /> : null}
+        </View>
+      </View>
+    </FocusScope>
+  );
+}
+const PUSHED = Object.entries(PAGES).map(([name, Page]) => [name, (props) => <PushedPage name={name} Page={Page} {...props} />]);
+
+/** A tab root: the top bar (logo, Inbox, account) and the tab's screen. goTab('Schedule', { section }) arrives as the screen's props. */
+function TabPage({ Page, route, navigation }) {
+  const Body = Page;
+  return (
+    <FocusScope navigation={navigation}>
+      <View style={{ flex: 1, backgroundColor: c.bg }}>
+        <TopBar />
+        <Body {...(route.params ?? {})} />
+      </View>
+    </FocusScope>
+  );
+}
+const TAB_SCREENS = TABS.map(([name, Page]) => [name, (props) => <TabPage Page={Page} {...props} />]);
+
+function Tabs() {
+  return (
+    <Tab.Navigator initialRouteName="Home" backBehavior="none" tabBar={() => null} screenOptions={{ headerShown: false, lazy: true, sceneStyle: { backgroundColor: c.bg } }}>
+      {TAB_SCREENS.map(([name, component]) => <Tab.Screen key={name} name={name} component={component} />)}
+    </Tab.Navigator>
+  );
+}
+
+/** Everything between the banner and the tab bar: the notice, the stack and the More wheel. */
+function Chrome({ mfa, onMfaClose }) {
+  const { menu, goTab } = useNav();
+  return (
+    <View style={{ flex: 1 }}>
+      {mfa ? <MfaNotice info={mfa} onGo={() => { onMfaClose(); goTab('Me'); }} onClose={onMfaClose} /> : null}
+      <View style={{ flex: 1 }}>
+        <Stack.Navigator initialRouteName="Tabs" screenOptions={{ headerShown: false, contentStyle: { backgroundColor: c.bg }, fullScreenGestureEnabled: true }}>
+          <Stack.Screen name="Tabs" component={Tabs} options={{ gestureEnabled: false }} />
+          {PUSHED.map(([name, component]) => <Stack.Screen key={name} name={name} component={component} />)}
+        </Stack.Navigator>
+        {menu ? <MoreWheel /> : null}
+      </View>
+    </View>
+  );
+}
+
+/** What happens when a link, a tapped notification or a payment return opens the app. It lives inside the navigators, so push / goTab reach them. */
+function NavEffects() {
+  const { user, toast } = useSession();
+  const { goTab, push } = useNav();
   const nativeEvent = usePublicEvent();
-  useEffect(() => { setMfaRequiredHandler(setMfa); return () => setMfaRequiredHandler(() => {}); }, []);
-  useEffect(() => { if (!user) setMfa(null); }, [user]);
-  // Logging out (from any screen) starts the next session from Home, not from a leftover pushed screen.
-  useEffect(() => { if (ready && !user) goTab('Home'); }, [ready, user]); // eslint-disable-line react-hooks/exhaustive-deps
   // Back from Stripe/PayPal checkout (web): ?payment=<id>&result=success|cancel
   useEffect(() => {
     if (Platform.OS !== 'web' || !user) return;
@@ -378,6 +433,19 @@ function Shell() {
     }).catch(() => {});
     return () => { sub?.remove(); link.remove(); };
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
+  return null;
+}
+
+function Shell() {
+  const { ready, user, toast } = useSession();
+  const { goTab } = useNav();
+  const ins = useSafeAreaInsets();
+  const [mfa, setMfa] = useState(null);
+  const nativeEvent = usePublicEvent();
+  useEffect(() => { setMfaRequiredHandler(setMfa); return () => setMfaRequiredHandler(() => {}); }, []);
+  useEffect(() => { if (!user) setMfa(null); }, [user]);
+  // Logging out (from any screen) starts the next session from Home, not from a leftover pushed screen.
+  useEffect(() => { if (ready && !user) goTab('Home'); }, [ready, user]); // eslint-disable-line react-hooks/exhaustive-deps
   if (PASSPORT_TOKEN) return <View style={{ flex: 1, backgroundColor: c.bg, paddingTop: ins.top }}><PassportPublic token={PASSPORT_TOKEN} /></View>;
   if (VERIFY_VALUE) return <View style={{ flex: 1, backgroundColor: c.bg, paddingTop: ins.top }}><VerifyLicence code={VERIFY_VALUE} /></View>;
   if (LICENCE_CARD_TOKEN) return <View style={{ flex: 1, backgroundColor: c.bg, paddingTop: ins.top }}><SharedLicenceCard token={LICENCE_CARD_TOKEN} /></View>;
@@ -386,21 +454,16 @@ function Shell() {
   if (isSsoCallback()) return <View style={{ flex: 1, backgroundColor: c.bg, paddingTop: ins.top }}><SsoCallbackScreen /></View>;
   if (!user && (PUBLIC_LINK || nativeEvent)) return <View style={{ flex: 1, backgroundColor: c.bg, paddingTop: ins.top }}><PublicShell eventId={PUBLIC_LINK?.event ?? nativeEvent} fixtureId={PUBLIC_LINK?.fixture} onExit={PUBLIC_LINK ? undefined : () => showPublicEvent(null)} renderEvent={(params) => <Event {...params} />} /></View>;
   if (!user) return <View style={{ flex: 1, backgroundColor: c.bg, paddingTop: ins.top }}><BetaBanner /><View style={{ flex: 1 }}><Landing /></View></View>;
-  const top = stack[stack.length - 1];
-  const Page = top ? PAGES[top.name] : TABS.find((t) => t[0] === tab)[1];
-  const prev = stack.length > 1 ? TITLES[stack[stack.length - 2].name] : TAB_LABEL[tab] ?? tab;
-  const pageKey = top ? `${top.name}:${stack.length}:${top.params?.id ?? ''}` : tab;
   return (
     <View style={{ flex: 1, backgroundColor: c.bg, paddingTop: ins.top, paddingLeft: ins.left, paddingRight: ins.right }}>
       <BetaBanner />
-      {top ? (HERO_ROUTES.has(top.name) ? null : <NavBar title={TITLES[top.name]} backLabel={prev} onBack={back} />) : <TopBar />}
-      {mfa ? <MfaNotice info={mfa} onGo={() => { setMfa(null); goTab('Me'); }} onClose={() => setMfa(null)} /> : null}
-      <View style={{ flex: 1 }}>
-        <Transition id={pageKey} push={!!top}><Page key={pageKey} {...(top?.params ?? {})} /></Transition>
-        {top && HERO_ROUTES.has(top.name) ? <NavOverlay backLabel={prev} onBack={back} /> : null}
-        {menu ? <MoreWheel /> : null}
-      </View>
-      <TabBar />
+      <NavigationContainer ref={navRef} theme={NAV_THEME} documentTitle={{ enabled: false }} onReady={() => { flushNavigation(); syncActiveTab(); }} onStateChange={syncActiveTab}>
+        <NavBridge>
+          <NavEffects />
+          <Chrome mfa={mfa} onMfaClose={() => setMfa(null)} />
+          <TabBar />
+        </NavBridge>
+      </NavigationContainer>
     </View>
   );
 }
