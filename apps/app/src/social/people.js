@@ -3,7 +3,10 @@
 import React, { useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { api } from '../api';
+import { useLoad } from '../hooks';
 import { useSession } from '../session';
+import { useNav } from '../nav';
+import { FormSheet } from '../FormSheet';
 import { Avatar, Btn, Card, Chip, T, Tag } from '../ui';
 import { c, when } from '../theme';
 import { t } from '../i18n';
@@ -96,4 +99,66 @@ export function ActivityCard({ item, mine, onChanged }) {
   );
 }
 
+
+const REASONS = ['harassment', 'unsafe_contact', 'impersonation', 'spam', 'privacy', 'inaccurate', 'other'];
+
+/** Report a person, an activity item, a community post or a comment. The reporter is told the outcome once it is decided. */
+export function ReportSheet({ visible, onClose, target }) {
+  const { toast } = useSession();
+  return (
+    <FormSheet visible={visible} onClose={onClose} title={t('community.report_title')} submitLabel={t('social.report')}
+      fields={[
+        { key: 'reason', label: t('community.reason'), type: 'chips', options: REASONS.map((r) => ({ value: r, label: t(`community.reason_${r}`) })), default: 'other' },
+        { key: 'note', label: t('community.report_note'), type: 'multiline', optional: true },
+      ]}
+      onSubmit={async (v) => { await api.post('/social/reports', { ...target, reason: v.reason, ...(v.note ? { note: v.note } : {}) }); toast(t('social.reported')); onClose(); }} />
+  );
+}
+
+/** Everything you can do about another person from their profile: follow, befriend, message, mute, block, report. The API decides what is allowed (a person you cannot reach answers 404). */
+export function PersonActions({ p }) {
+  const { toast, user } = useSession();
+  const { push } = useNav();
+  const [report, setReport] = useState(false);
+  if (!user || user.id === p.id) return null;
+  const run = (fn, msg) => async () => { try { await fn(); if (msg) toast(msg); } catch (e) { toast(e.message); } };
+  const message = async () => { try { const v = await api.post('/conversations', { kind: 'direct', user_id: p.id }); push('Conversation', { id: v.conversation_id }); } catch (e) { toast(e.message); } };
+  return (
+    <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
+      <RelationButtons personId={p.id} />
+      <Small label={t('social.message')} onPress={message} />
+      <Small label={t('social.mute')} onPress={run(() => api.patch(`/me/mutes/${p.id}`, { muted: true }), t('social.muted'))} />
+      <Small label={t('social.report')} onPress={() => setReport(true)} />
+      <Small label={t('social.block')} tone={c.red} onPress={run(() => api.post('/me/contact-blocks', { user_id: p.id, blocked: true }), t('social.blocked'))} />
+      <ReportSheet visible={report} onClose={() => setReport(false)} target={{ target_type: 'user', target_id: p.id }} />
+    </View>
+  );
+}
+
 export { Btn };
+
+/** Follow / friend actions for someone who is not yet connected. */
+export function ConnectButtons({ p, onDone, initial = {} }) {
+  const { toast } = useSession();
+  const [state, setState] = useState(initial);
+  const go = (key, fn) => async () => { try { const r = await fn(); setState((s) => ({ ...s, [key]: r.status ?? 'active' })); onDone?.(); } catch (e) { toast(e.message); } };
+  const label = (s, base) => (s === 'pending' ? t('social.waiting') : s === 'guardian_pending' ? t('social.waiting_guardian') : base);
+  return (
+    <>
+      <Small label={state.follow ? label(state.follow, t('social.following')) : t('social.follow')} disabled={!!state.follow} onPress={go('follow', () => api.post('/me/follows', { subject_type: 'athlete', subject_id: p.id }))} />
+      <Small label={state.friend ? label(state.friend, t('social.friends')) : t('social.add_friend')} disabled={!!state.friend} onPress={go('friend', () => api.post('/me/friends', { user_id: p.id }))} />
+    </>
+  );
+}
+
+/** Follow and friend actions on a person's profile: reads where the relationship already stands, so it never offers what already happened. */
+export function RelationButtons({ personId }) {
+  const following = useLoad(() => api.get('/me/following'), [personId]);
+  const friends = useLoad(() => api.get('/me/friends'), [personId]);
+  if (!following.data || !friends.data) return null;
+  const initial = {};
+  if (following.data.some((x) => x.id === personId)) initial.follow = 'active';
+  if (friends.data.friends.some((x) => x.person_id === personId)) initial.friend = 'accepted';
+  else if (friends.data.outgoing.some((x) => x.person_id === personId)) initial.friend = 'pending';
+  return <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}><ConnectButtons p={{ id: personId }} initial={initial} /></View>;
+}

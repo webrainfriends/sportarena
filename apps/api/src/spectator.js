@@ -302,4 +302,12 @@ export async function spendAllowance(c, userId, kind, perHour) {
   return true;
 }
 
+/** Like spendAllowance, but counts only this kind of action, so chatty and quiet actions do not eat each other's allowance. */
+export async function spendKindAllowance(c, userId, kind, perHour) {
+  const used = (await c.query("SELECT count(*)::int AS n FROM spectator_actions WHERE user_id=$1 AND kind=$2 AND created_at > now() - interval '1 hour'", [userId, kind])).rows[0].n;
+  if (used >= perHour) return false;
+  await c.query('INSERT INTO spectator_actions(user_id, kind) VALUES ($1,$2)', [userId, kind]);
+  return true;
+}
+
 export const ZERO_UUID = NO_ONE;

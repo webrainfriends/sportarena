@@ -46,6 +46,7 @@
     "plugins": [
       "expo-apple-authentication",
       "expo-web-browser",
+      ["expo-video", { "supportsPictureInPicture": true }],
       [
         "expo-local-authentication",
         {

@@ -20,6 +20,14 @@ export function targetFromUrl(url, hosts = []) {
     const t = new URLSearchParams(query).get('target');
     return t && /^[a-z0-9:_-]{1,120}$/i.test(t) ? t : null;
   }
+  // coming back from a hosted checkout (sportarena://payment?payment=<id>&result=success|cancel), only on the app's own scheme. The result is a hint:
+  // the app asks the server whether the payment went through before showing anything.
+  if (parts[0] === 'payment') {
+    if (parts.length !== 1 || !SCHEME.test(url)) return null;
+    const q = new URLSearchParams(query);
+    const id = q.get('payment'), result = q.get('result');
+    return /^[0-9a-f-]{36}$/i.test(id ?? '') && (result === 'success' || result === 'cancel') ? `payment:${id}:${result}` : null;
+  }
   // a licence card QR opens the public check: the root of the app's own host with ?verify=<12-character code | signed card code> (nothing else is accepted there)
   if (!parts.length) {
     const v = new URLSearchParams(query).get('verify');

@@ -3,7 +3,8 @@
 //   Coach:   CoachDesk (confirm, complete, earnings, reviews), CoachBoard (answer requests), CoachSetup (profile + weekly hours).
 import { locale } from '../locale';
 import React, { useEffect, useState } from 'react';
-import { Linking, Pressable, View } from 'react-native';
+import { Pressable, View } from 'react-native';
+import { openPage } from '../video-player';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
@@ -597,7 +598,7 @@ export function CoachProfile({ id }) {
           {p.specialisations.map((z) => <Card key={z.id} pad={12}><T weight="800">{z.emoji} {z.name}</T><T size={12} color={c.mute}>{[z.sport, z.levels.length ? `for ${z.levels.map(nice).join(', ')}` : null, z.years != null ? `${z.years} yrs` : null, z.certification].filter(Boolean).join(' · ')}</T></Card>)}
         </Section>
       ) : null}
-      {p.profile.intro_video_url ? <Btn small title="▶ Watch introduction" color={c.paper} ink={c.ink} onPress={() => Linking.openURL(p.profile.intro_video_url)} style={{ alignSelf: 'flex-start', marginTop: 8 }} /> : null}
+      {p.profile.intro_video_url ? <Btn small title="▶ Watch introduction" color={c.paper} ink={c.ink} onPress={() => openPage(p.profile.intro_video_url)} style={{ alignSelf: 'flex-start', marginTop: 8 }} /> : null}
       <Section title="Sports & rates">
         {p.sports.map((s) => (
           <Card key={s.slug} pad={12} color={sp?.slug === s.slug && p.sports.length > 1 ? c.pinkSoft : c.paper} onPress={() => setSport(s.slug)}>

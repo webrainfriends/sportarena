@@ -243,7 +243,7 @@ export async function notificationCycle() {
   const push = await isolated('push', () => dispatchPush(), null);
   const whatsapp = await isolated('whatsapp', async () => (await import('./whatsapp.js')).dispatchWhatsapp(), { configured: false, pending: 0, sent: 0, failed: 0 });
   const comms = await isolated('comms', async () => (await import('./comms-dispatch.js')).dispatchComms(), { configured: false, pending: 0, sent: 0, failed: 0 });
-  const inboxSweep = await isolated('inbox', async () => { const m = await import('./inbox.js'); return { escalated: await m.escalateUnacknowledged(), archived: await m.archiveStaleConversations() }; }, { escalated: 0, archived: 0 });
+  const inboxSweep = await isolated('inbox', async () => { const m = await import('./inbox.js'); return { escalated: await m.escalateUnacknowledged(), archived: await m.archiveStaleConversations(), community: await (await import('./communities.js')).archiveStaleCommunityContent() }; }, { escalated: 0, archived: 0 });
   const email = await isolated('email', () => dispatchPending(), { configured: !!config.notifyWebhook.url, pending: 0, sent: 0, failed: 0 });
   const errors = Object.fromEntries(Object.entries({ reminders, coaching, notify: retries, push, whatsapp, comms, inbox: inboxSweep, email }).filter(([, r]) => !r.ok).map(([k, r]) => [k, r.error]));
   return { reminders: reminders.value, push: push.value, whatsapp: whatsapp.value, comms: comms.value, inbox: inboxSweep.value, ...email.value, ...(Object.keys(errors).length ? { errors } : {}) };

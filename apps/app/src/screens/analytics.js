@@ -16,15 +16,17 @@ import { DateRangeField } from '../pickers';
 import { EntityPicker } from '../entity-picker';
 import { SportsMulti, useSports } from '../sportpicker';
 import { saveExport } from '../open-file';
+import { Growth } from './analytics-growth';
+import { t } from '../i18n';
 
 const PRESETS = [{ value: 'last_7', label: '7 days' }, { value: 'last_30', label: '30 days' }, { value: 'last_90', label: '90 days' }, { value: 'year_to_date', label: 'This year' }, { value: 'custom', label: 'Pick dates' }];
 const CADENCE = [{ value: 'weekly', label: 'Weekly' }, { value: 'monthly', label: 'Monthly' }, { value: 'quarterly', label: 'Quarterly' }];
 const FORMATS = [{ value: 'pdf', label: 'PDF' }, { value: 'xlsx', label: 'XLSX' }, { value: 'csv', label: 'CSV' }];
-const DIM = { sport: 'Sport', event: 'Event', venue: 'Venue', team: 'Team', month: 'Month', channel: 'Channel' };
+const DIM = { sport: 'Sport', event: 'Event', venue: 'Venue', team: 'Team', city: 'City', month: 'Month', channel: 'Channel' };
 const SHARE = [{ value: 'private', label: 'Only me' }, { value: 'organisation', label: 'An organisation' }, { value: 'roles', label: 'Roles' }];
 const ROLE_CHOICES = ['organizer', 'venue_manager', 'coach', 'sponsor', 'referee', 'physio'];
 const FRESH = { current: [c.lime, 'Current'], stale: [c.sunSoft, 'Stale'], no_records: [c.paper, 'No records'] };
-const SCOPE_WORD = { platform: 'Platform', organisation: 'Organisation', venue: 'Venue', event: 'Event', team: 'Team', sponsor: 'Brand' };
+const SCOPE_WORD = { platform: 'Platform', organisation: 'Organisation', venue: 'Venue', event: 'Event', team: 'Team', sponsor: 'Brand', provider: 'Provider' };
 
 const money = (cents, cur) => formatMoney(cents, cur);
 /** The headline text(s) of a result or group: money is one line per currency, never summed. */
@@ -488,6 +490,9 @@ function Catalogue({ metrics }) {
 // ------------------------------------------------------------------ screen
 const TABS = [{ value: 'explore', label: 'Explore' }, { value: 'dashboards', label: 'Boards' }, { value: 'reports', label: 'Reports' }, { value: 'metrics', label: 'Metrics' }];
 export function Analytics({ tab: first = 'explore', run: firstRun }) {
+  const { user } = useSession();
+  const operator = !!user?.roles?.includes('admin');           // growth data quality and experiments are for platform operators; the server enforces it too
+  const tabs = operator ? [...TABS, { value: 'growth', label: t('growth.tab') }] : TABS;
   const [tab, setTab] = useState(first);
   const [openId, setOpenId] = useState(null);
   const [openRun, setOpenRun] = useState(firstRun ?? null);
@@ -499,12 +504,13 @@ export function Analytics({ tab: first = 'explore', run: firstRun }) {
     <Screen refreshing={scopes.loading && !!scopes.data} onRefresh={() => { scopes.reload(); dashboards.reload(); }} wide>
       <H1>Analytics</H1>
       <T size={13} color={c.mute}>Governed KPIs across participation, finance, sponsorship and venues. Each number states its definition, source freshness and any data-quality issue.</T>
-      <Seg options={TABS} value={tab} onChange={(t) => { setTab(t); setOpenId(null); setOpenRun(null); }} />
+      <Seg options={tabs} value={tab} onChange={(t) => { setTab(t); setOpenId(null); setOpenRun(null); }} />
       {err ? <LoadError error={err} onRetry={() => { scopes.reload(); metrics.reload(); }} /> : !scopes.data || !metrics.data ? <Loading /> : (
         tab === 'explore' ? <Explore scopes={scopes.data} metrics={metrics.data} dashboards={dashboards.data ?? []} onSaved={dashboards.reload} />
           : tab === 'dashboards' ? <Dashboards scopes={scopes.data} dashboards={dashboards.data ?? []} reload={dashboards.reload} openId={openId} setOpenId={setOpenId} />
             : tab === 'reports' ? <Reports openRun={openRun} setOpenRun={setOpenRun} scopes={scopes.data} />
-              : <Catalogue metrics={metrics.data} />)}
+              : tab === 'growth' && operator ? <Growth />
+                : <Catalogue metrics={metrics.data} />)}
     </Screen>
   );
 }

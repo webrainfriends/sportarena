@@ -90,9 +90,17 @@ export function marketMediaRouter() {
       if (!/^[0-9a-f-]{36}$/.test(req.params.id)) throw notFound('Media');
       const m = (await query('SELECT * FROM market_media WHERE id=$1 AND removed_at IS NULL', [req.params.id])).rows[0];
       if (!m) throw notFound('Media');
+      // media on a community post is as private as the post: only people who may read that community can fetch it
+      const cp = m.post_id ? await one('SELECT community_id FROM market_posts WHERE id=$1', [m.post_id]) : null;
+      if (cp?.community_id) {
+        const viewer = await authenticate(req.headers.authorization).catch(() => null);
+        if (!viewer) throw notFound('Media');
+        const { communityFor } = await import('./communities.js');
+        await communityFor(viewer, cp.community_id, { need: 'read' });
+      }
       const path = join(root(), m.file_name);
       await stat(path);
-      res.set({ 'Content-Type': m.content_type, 'Cache-Control': 'public, max-age=31536000, immutable', 'Cross-Origin-Resource-Policy': 'cross-origin', 'Content-Disposition': 'inline', 'X-Content-Type-Options': 'nosniff' });
+      res.set({ 'Content-Type': m.content_type, 'Cache-Control': cp?.community_id ? 'private, max-age=3600' : 'public, max-age=31536000, immutable', 'Cross-Origin-Resource-Policy': 'cross-origin', 'Content-Disposition': 'inline', 'X-Content-Type-Options': 'nosniff' });
       res.sendFile(path, { cacheControl: false, headers: {} }, (err) => { if (err && !res.headersSent) fail(res, notFound('Media')); });
     } catch (e) { fail(res, e.code === 'ENOENT' ? notFound('Media') : e); }
   });

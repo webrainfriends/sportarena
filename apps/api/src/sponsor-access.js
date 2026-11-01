@@ -27,6 +27,7 @@ export const SPONSOR_ACTIONS = {
   manage: ['manager'], // link the brand to an organisation
   program: ['manager', 'approver'], // run sponsorship programs and rounds, decide awards (#284)
   evaluation: ['manager', 'approver', 'evaluator', 'auditor'], // read the confidential scoring of applications (#288)
+  screening_exception: ['manager', 'approver'], // grant or revoke a manual eligibility exception (#287)
   award_approve: ['manager', 'approver'], // second approval of a large award (#289)
   award_finance: ['finance'], // finance sign-off of an award (#289)
   award_legal: ['legal'], // legal sign-off of an award (#289)

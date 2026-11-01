@@ -9,7 +9,7 @@ import { audit } from '../helpers.js';
 import { notify } from '../notify.js';
 import { eventForOrganizer } from './events.js';
 import { LIVE_PARTICIPANT, assertOpen, canApproveTrip, record, tripCtx } from '../trips.js';
-import { entitlementFor, livePolicy, statements } from '../trips-finance.js';
+import { costSummary, entitlementFor, livePolicy, statements } from '../trips-finance.js';
 
 const TAG = 'Team travel';
 const cur = z.string().regex(/^[A-Z]{3}$/);
@@ -54,7 +54,7 @@ cap({
 });
 
 /** Optional link to the canonical event budget ledger: only for an event this trip is linked to, and only if the caller organises it. */
-async function ledger(c, user, trip, lineId, amount, ref, note) {
+export async function ledger(c, user, trip, lineId, amount, ref, note) {
   if (!lineId) return { source: 'external_record', budget_payment_id: null };
   const l = (await c.query('SELECT * FROM event_budget_lines WHERE id=$1', [lineId])).rows[0];
   if (!l) throw notFound('Budget line');
@@ -189,6 +189,6 @@ cap({
     const ctx = await tripCtx(user, i.id);
     const only = ctx.ops ? null : [ctx.mine?.id, ...ctx.wards.map((w) => w.id)].filter(Boolean);
     const s = await statements(pool, ctx.trip, only);
-    return { policy: s.policy ? { currency: s.policy.currency, daily_minor: Number(s.policy.daily_minor), roles: s.policy.roles, approved: !!s.policy.approved_at, approved_at: s.policy.approved_at } : null, travellers: s.rows, can_manage: ctx.manager };
+    return { policy: s.policy ? { currency: s.policy.currency, daily_minor: Number(s.policy.daily_minor), roles: s.policy.roles, approved: !!s.policy.approved_at, approved_at: s.policy.approved_at } : null, travellers: s.rows, can_manage: ctx.manager, ...(ctx.ops ? { costs: await costSummary(pool, ctx.trip) } : {}) };
   },
 });

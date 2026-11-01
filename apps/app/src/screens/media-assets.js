@@ -4,6 +4,7 @@
 import React, { useRef, useState } from 'react';
 import { View } from 'react-native';
 import { api } from '../api';
+import { openPage } from '../video-player';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { A, ABtn, ACard, AChip, AEmpty, ARow, ASection, AT, ReasonSheet } from '../arena';
@@ -111,7 +112,7 @@ function AssetSheet({ id, isOrg, onClose, onChanged }) {
   const reload = () => { d.reload(); onChanged?.(); };
   const act = async (action, reason) => { try { await api.post(`/media/assets/${id}/status`, { action, reason: reason || undefined, row_version: a.row_version }); toast({ publish: 'Published', withdraw: 'Withdrawn', take_down: 'Taken down', restore: 'Back to draft' }[action]); reload(); } catch (x) { toast(x.details?.code === 'guardian_consent_required' ? 'A young person in this needs current guardian media consent before it can be published' : x.details?.code === 'file_required' ? 'Upload the file first' : x.message); } };
   const upload = async () => { try { const f = await pickDocument(); if (!f) return; await api.upload(`/media/assets/${id}/file`, f.blob, { name: f.name }); toast('File stored securely'); reload(); } catch (x) { toast(x.message); } };
-  const open = async () => { try { if (a.link?.startsWith('http')) { const { Linking } = await import('react-native'); await Linking.openURL(a.link); } else await openStored(a.link, a.title); } catch (x) { toast(x.message); } };
+  const open = async () => { try { if (a.link?.startsWith('http')) await openPage(a.link); else await openStored(a.link, a.title); } catch (x) { toast(x.message); } };
   const rows = a?.can ? [['State', a.state ? STATE_HELP[a.state] : null], ['Status', nice(a.status)], ['Why', a.status_reason], ['Right', rightLabel(a.right_kind)], ['Owner', a.owner_kind === 'partner' ? 'A media partner' : a.owner_name ? `${nice(a.owner_kind)}: ${a.owner_name}` : nice(a.owner_kind)], ['Audience', nice(a.audience)], ['Territory', territoryText(a, countryName)],
     ['Platforms', a.platforms?.length ? a.platforms.map(nice).join(', ') : 'Any'], ['Publishes', a.publish_at ? fmtDT(a.publish_at) : null], ['Embargo lifts', a.embargo_until ? fmtDT(a.embargo_until) : null], ['Expires', a.expires_at ? fmtDT(a.expires_at) : null], ['Credit', a.credit], ['Caption', a.caption]] : [];
   return (

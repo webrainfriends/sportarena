@@ -88,6 +88,7 @@ cap({
     if (MANAGED.some((m) => m.key === i.provider_key)) throw conflict(`This integration is managed in ${MANAGED.find((m) => m.key === i.provider_key).managed_in}`);
     const p = providerOf(i.provider_key);
     if (!p) throw notFound('Integration provider');
+    if (p.athlete_scoped) throw conflict('Athletes connect their own account for this provider (Recovery → Connected devices). Request access here so your organisation is authorised.');
     if (i.event_id && !(await one('SELECT 1 AS x FROM events WHERE id=$1 AND organisation_id=$2', [i.event_id, i.organisation_id]))) throw notFound('Event');
     const access = await requireIntegrationAccess(user, i.organisation_id, i.provider_key, i.event_id ?? null);
     if (i.mode === 'sandbox' && !p.sandbox) throw badRequest('This provider has no sandbox');
