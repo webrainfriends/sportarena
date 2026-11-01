@@ -13,16 +13,17 @@ test('the whole sport catalogue: each sport has a live model, and a generic rule
   const sports = (await pool.query('SELECT * FROM sports ORDER BY slug')).rows;
   assert.ok(sports.length > 20, 'the catalogue is seeded by migrations');
   const MODELS = ['points_events', 'sets', 'racket', 'cricket', 'cards', 'outcome', 'session'];
-  const generic = [];
+  const generic = [], by = {};
   for (const sp of sports) {
     const model = liveModelOf(sp);
     assert.ok(MODELS.includes(model?.model ?? model), `${sp.slug} has no live model (${JSON.stringify(model)})`);
     const rs = builtinRuleset(sp);
     assert.ok(rs.label, `${sp.slug} ruleset has a label`);
-    if (/\(points\)$/.test(rs.label) || rs.kind === 'manual') generic.push(sp.slug);
+    (by[model.model] ??= []).push(sp.slug);
+    if (/\(points\)$/.test(rs.label)) generic.push(sp.slug);
     // the live centre's stats projection works for any ruleset, with or without events
-    const stats = statsOf({ ruleset: rs, events: [] });
-    assert.deepEqual(stats.rows, []);
+    assert.deepEqual(statsOf({ ruleset: rs, events: [] }).rows, []);
   }
-  console.log(`# live-centre sports: ${sports.length} total, ${generic.length} on a labelled generic/manual fallback`);
+  assert.deepEqual(generic, [], `sports still on the labelled generic team-points fallback: ${generic.join(', ')}`);
+  console.log(`# live-centre sports: ${sports.length} total; by model ${JSON.stringify(Object.fromEntries(Object.entries(by).map(([k, v]) => [k, v.length])))}`);
 });

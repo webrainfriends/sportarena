@@ -87,4 +87,4 @@ Organisers choose the modules with `set_event_public_settings { modules: [...] }
 
 The app shows the modules in `LiveCentre` (two columns from tablet width) with a reconnecting banner and back-off retry; staff reach the same screen from Match Centre ("Open spectator view").
 
-Sport coverage: `test/live-centre-catalogue.test.js` walks the whole catalogue. Every sport has a live model; sports without a dedicated ruleset use the labelled generic points or manual-totals fallback. Not run on a native device: iOS, iPadOS and Android are verified through `expo export` and shared components only.
+Sport coverage: `test/live-centre-catalogue.test.js` walks the whole catalogue (219 sports) and fails if any sport lacks a live model or falls back to the generic team-points ruleset. Models: 37 points-and-events, 14 rally sets, 2 racket games, 1 cricket, 4 judges-cards, 106 heat/session (time, distance, weight, judged, multi-attempt) and 55 outcome (win/loss: combat, mind, esports and racquet formats). Not run on a native device: iOS, iPadOS and Android are verified through `expo export` and shared components only.
