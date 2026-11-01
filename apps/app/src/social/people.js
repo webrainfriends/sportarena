@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { api } from '../api';
+import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { Avatar, Btn, Card, Chip, T, Tag } from '../ui';
 import { c, when } from '../theme';
@@ -97,3 +98,29 @@ export function ActivityCard({ item, mine, onChanged }) {
 }
 
 export { Btn };
+
+/** Follow / friend actions for someone who is not yet connected. */
+export function ConnectButtons({ p, onDone, initial = {} }) {
+  const { toast } = useSession();
+  const [state, setState] = useState(initial);
+  const go = (key, fn) => async () => { try { const r = await fn(); setState((s) => ({ ...s, [key]: r.status ?? 'active' })); onDone?.(); } catch (e) { toast(e.message); } };
+  const label = (s, base) => (s === 'pending' ? t('social.waiting') : s === 'guardian_pending' ? t('social.waiting_guardian') : base);
+  return (
+    <>
+      <Small label={state.follow ? label(state.follow, t('social.following')) : t('social.follow')} disabled={!!state.follow} onPress={go('follow', () => api.post('/me/follows', { subject_type: 'athlete', subject_id: p.id }))} />
+      <Small label={state.friend ? label(state.friend, t('social.friends')) : t('social.add_friend')} disabled={!!state.friend} onPress={go('friend', () => api.post('/me/friends', { user_id: p.id }))} />
+    </>
+  );
+}
+
+/** Follow and friend actions on a person's profile: reads where the relationship already stands, so it never offers what already happened. */
+export function RelationButtons({ personId }) {
+  const following = useLoad(() => api.get('/me/following'), [personId]);
+  const friends = useLoad(() => api.get('/me/friends'), [personId]);
+  if (!following.data || !friends.data) return null;
+  const initial = {};
+  if (following.data.some((x) => x.id === personId)) initial.follow = 'active';
+  if (friends.data.friends.some((x) => x.person_id === personId)) initial.friend = 'accepted';
+  else if (friends.data.outgoing.some((x) => x.person_id === personId)) initial.friend = 'pending';
+  return <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}><ConnectButtons p={{ id: personId }} initial={initial} /></View>;
+}
