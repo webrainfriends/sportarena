@@ -4623,4 +4623,7 @@ export default {
   'fin.mod.events': 'ایونٹ بجٹ',
   'fin.mod.payouts': 'ادائیگیاں',
   'fin.mod.other': 'دیگر',
+  'invoice.pdf': 'انوائس PDF ڈاؤن لوڈ کریں',
+  'invoice.receipt_pdf': 'رسید PDF ڈاؤن لوڈ کریں',
+  'invoice.credit_note_pdf': 'کریڈٹ نوٹ PDF ڈاؤن لوڈ کریں',
 };

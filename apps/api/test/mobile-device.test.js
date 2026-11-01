@@ -29,6 +29,14 @@ test('deep links: only the app\'s own scheme or a listed https host open anythin
   assert.equal(targetFromUrl('sportarena://open?target=event-accreditation:abc-123'), 'event-accreditation:abc-123');
   assert.equal(targetFromUrl('https://gotmygame.com/event/abc-123', ['gotmygame.com']), 'event:abc-123');
   assert.equal(targetFromUrl('https://evil.example/event/abc-123', ['gotmygame.com']), null, 'a foreign host is ignored');
+  // coming back from a hosted checkout: only the app's own scheme, a UUID and a known result; everything else is ignored
+  const pid = '3f2b8c1e-9d4a-4e6b-8a57-1c2d3e4f5a6b';
+  assert.equal(targetFromUrl(`sportarena://payment?payment=${pid}&result=success`), `payment:${pid}:success`);
+  assert.equal(targetFromUrl(`sportarena://payment?payment=${pid}&result=cancel`), `payment:${pid}:cancel`);
+  assert.equal(targetFromUrl(`sportarena://payment?payment=${pid}&result=other`), null, 'unknown result');
+  assert.equal(targetFromUrl('sportarena://payment?payment=../../x&result=success'), null, 'not a UUID');
+  assert.equal(targetFromUrl(`sportarena://payment/extra?payment=${pid}&result=success`), null, 'no extra path');
+  assert.equal(targetFromUrl(`https://gotmygame.com/payment?payment=${pid}&result=success`, ['gotmygame.com']), null, 'a web link cannot trigger it');
   assert.equal(targetFromUrl('https://gotmygame.com/event/abc-123'), null, 'no hosts configured: https links are ignored');
   assert.equal(targetFromUrl('sportarena://gate/../../etc'), null);
   assert.equal(targetFromUrl('sportarena://open?target=<script>'), null);

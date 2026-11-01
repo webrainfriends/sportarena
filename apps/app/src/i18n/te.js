@@ -4623,4 +4623,7 @@ export default {
   'fin.mod.events': 'ఈవెంట్ బడ్జెట్',
   'fin.mod.payouts': 'చెల్లింపులు',
   'fin.mod.other': 'ఇతరం',
+  'invoice.pdf': 'ఇన్వాయిస్ PDF డౌన్‌లోడ్ చేయండి',
+  'invoice.receipt_pdf': 'రసీదు PDF డౌన్‌లోడ్ చేయండి',
+  'invoice.credit_note_pdf': 'క్రెడిట్ నోట్ PDF డౌన్‌లోడ్ చేయండి',
 };

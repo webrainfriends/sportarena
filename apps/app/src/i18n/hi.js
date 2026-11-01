@@ -4623,4 +4623,7 @@ export default {
   'fin.mod.events': 'इवेंट बजट',
   'fin.mod.payouts': 'भुगतान',
   'fin.mod.other': 'अन्य',
+  'invoice.pdf': 'इनवॉइस PDF डाउनलोड करें',
+  'invoice.receipt_pdf': 'रसीद PDF डाउनलोड करें',
+  'invoice.credit_note_pdf': 'क्रेडिट नोट PDF डाउनलोड करें',
 };

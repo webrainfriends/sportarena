@@ -15,6 +15,7 @@ const KIND_LABEL = { team_opening: 'Team opening', competition: 'Event / trial',
 const FIT = { strong: ['Strong fit', c.mint], possible: ['Possible fit', c.sunSoft], weak: ['Weak fit', c.violetSoft], unknown: ['Not enough data', c.violetSoft], ineligible: ['Not eligible', c.pinkSoft] };
 const MARK = { match: '✓', mismatch: '✕', unknown: '?' };
 const TONE = { match: c.mint, mismatch: c.pinkSoft, unknown: c.sunSoft };
+const RULE = { sport: 'Sport', age: 'Age', deadline: 'Deadline', target: 'Who it funds', youth: 'Age rule', verification: 'Verification' };
 const DIM = { position: 'Position', level: 'Level', region: 'Region', availability: 'Availability', cost: 'Cost', eligibility: 'Eligibility', sport: 'Sport' };
 const say = (e) => (e?.code === 'guardian_consent_required' ? 'A guardian needs to allow recruitment sharing under Family & guardians before opportunities can be matched.' : e?.message ?? 'Something went wrong');
 
@@ -28,9 +29,9 @@ const saveCsv = (filename, csv, setText) => {
 
 function RuleLine({ r }) {
   return (
-    <View accessible accessibilityLabel={`${DIM[r.dimension] ?? r.dimension}: ${r.status === 'match' ? 'fits' : r.status === 'mismatch' ? 'does not fit' : 'unknown'}. ${r.detail}`} style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-start' }}>
+    <View accessible accessibilityLabel={`${RULE[r.rule] ?? DIM[r.dimension] ?? r.dimension}: ${r.status === 'match' ? 'fits' : r.status === 'mismatch' ? 'does not fit' : 'unknown'}. ${r.detail}`} style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-start' }}>
       <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: TONE[r.status], alignItems: 'center', justifyContent: 'center' }}><T weight="800" size={12}>{MARK[r.status]}</T></View>
-      <View style={{ flex: 1 }}><T size={13} weight="700">{DIM[r.dimension] ?? r.dimension}</T><T size={13} color={c.mute}>{r.detail}</T></View>
+      <View style={{ flex: 1 }}><T size={13} weight="700">{RULE[r.rule] ?? DIM[r.dimension] ?? r.dimension}</T><T size={13} color={c.mute}>{r.detail}</T></View>
     </View>
   );
 }
@@ -93,7 +94,7 @@ export function OpportunityMatches({ child_id, name }) {
       {q.error ? <ErrorBox error={{ ...q.error, message: say(q.error) }} onRetry={q.reload} /> : !d ? <Loading /> : (
         <>
           {d.profile_gaps.map((g) => <Card key={g.dimension} color={c.sunSoft} pad={14}><T size={13}>{g.detail}</T><Btn small title="Add a sport card" onPress={() => fix(g.where)} style={{ alignSelf: 'flex-start', marginTop: 8 }} /></Card>)}
-          {d.gaps.length ? (
+          {d.gaps.some((g) => g.who === 'player') ? (
             <Card pad={14} color={c.violetSoft}>
               <T weight="800" size={13}>Add this to improve your matches</T>
               {d.gaps.filter((g) => g.who === 'player').map((g) => (
@@ -108,10 +109,10 @@ export function OpportunityMatches({ child_id, name }) {
           {d.items.length === 0 && !d.profile_gaps.length ? <Empty emoji="🔎" title="Nothing open fits right now" sub={d.hidden_ineligible ? `${d.hidden_ineligible} you cannot apply to are hidden.` : 'New posts, events, programmes and sponsorship calls appear here as they are published.'} /> : d.items.map((m) => (
             <MatchCard key={`${m.opportunity.kind}${m.opportunity.id}`} m={m} open={openId === m.opportunity.id} onToggle={() => setOpenId(openId === m.opportunity.id ? null : m.opportunity.id)} onFix={fix} onOpen={open} />
           ))}
-          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+          {d.profile_gaps.length ? null : <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
             <Btn small title={showAll ? 'Hide ones I cannot apply to' : `Show ones I cannot apply to${d.hidden_ineligible ? ` (${d.hidden_ineligible})` : ''}`} color={c.paper} ink={c.ink} onPress={() => setShowAll(!showAll)} />
             <Btn small title="Export CSV" color={c.paper} ink={c.ink} onPress={exportCsv} />
-          </View>
+          </View>}
           {csv ? <Card pad={12}><T size={12} selectable>{csv}</T></Card> : null}
         </>
       )}

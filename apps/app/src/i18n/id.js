@@ -4623,4 +4623,7 @@ export default {
   'fin.mod.events': 'Anggaran acara',
   'fin.mod.payouts': 'Pembayaran',
   'fin.mod.other': 'Lainnya',
+  'invoice.pdf': 'Unduh PDF faktur',
+  'invoice.receipt_pdf': 'Unduh PDF tanda terima',
+  'invoice.credit_note_pdf': 'Unduh PDF nota kredit',
 };

@@ -4623,4 +4623,7 @@ export default {
   'fin.mod.events': 'ඉසව් අයවැය',
   'fin.mod.payouts': 'ගෙවීම්',
   'fin.mod.other': 'වෙනත්',
+  'invoice.pdf': 'ඉන්වොයිස් PDF බාගන්න',
+  'invoice.receipt_pdf': 'රිසිට්පත PDF බාගන්න',
+  'invoice.credit_note_pdf': 'ණය සටහන PDF බාගන්න',
 };

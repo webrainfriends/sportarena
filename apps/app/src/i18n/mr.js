@@ -4623,4 +4623,7 @@ export default {
   'fin.mod.events': 'स्पर्धा अंदाजपत्रक',
   'fin.mod.payouts': 'देयके',
   'fin.mod.other': 'इतर',
+  'invoice.pdf': 'इनव्हॉइस PDF डाउनलोड करा',
+  'invoice.receipt_pdf': 'पावती PDF डाउनलोड करा',
+  'invoice.credit_note_pdf': 'क्रेडिट नोट PDF डाउनलोड करा',
 };

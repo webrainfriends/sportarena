@@ -4623,4 +4623,7 @@ export default {
   'fin.mod.events': 'ಕಾರ್ಯಕ್ರಮ ಬಜೆಟ್',
   'fin.mod.payouts': 'ಪಾವತಿಗಳು',
   'fin.mod.other': 'ಇತರೆ',
+  'invoice.pdf': 'ಇನ್‌ವಾಯ್ಸ್ PDF ಡೌನ್‌ಲೋಡ್ ಮಾಡಿ',
+  'invoice.receipt_pdf': 'ರಸೀದಿ PDF ಡೌನ್‌ಲೋಡ್ ಮಾಡಿ',
+  'invoice.credit_note_pdf': 'ಕ್ರೆಡಿಟ್ ನೋಟ್ PDF ಡೌನ್‌ಲೋಡ್ ಮಾಡಿ',
 };

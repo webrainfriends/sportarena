@@ -4623,4 +4623,7 @@ export default {
   'fin.mod.events': 'ଇଭେଣ୍ଟ ବଜେଟ୍',
   'fin.mod.payouts': 'ପେଆଉଟ୍',
   'fin.mod.other': 'ଅନ୍ୟାନ୍ୟ',
+  'invoice.pdf': 'ଇନଭଏସ୍ PDF ଡାଉନଲୋଡ୍ କରନ୍ତୁ',
+  'invoice.receipt_pdf': 'ରସିଦ PDF ଡାଉନଲୋଡ୍ କରନ୍ତୁ',
+  'invoice.credit_note_pdf': 'କ୍ରେଡିଟ୍ ନୋଟ୍ PDF ଡାଉନଲୋଡ୍ କରନ୍ତୁ',
 };

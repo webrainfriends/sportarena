@@ -4623,4 +4623,7 @@ export default {
   'fin.mod.events': 'ഇവന്റ് ബജറ്റ്',
   'fin.mod.payouts': 'പേഔട്ടുകൾ',
   'fin.mod.other': 'മറ്റുള്ളവ',
+  'invoice.pdf': 'ഇൻവോയ്സ് PDF ഡൗൺലോഡ് ചെയ്യുക',
+  'invoice.receipt_pdf': 'രസീത് PDF ഡൗൺലോഡ് ചെയ്യുക',
+  'invoice.credit_note_pdf': 'ക്രെഡിറ്റ് നോട്ട് PDF ഡൗൺലോഡ് ചെയ്യുക',
 };

@@ -4623,4 +4623,7 @@ export default {
   'fin.mod.events': 'ইভেন্ট বাজেট',
   'fin.mod.payouts': 'পেআউট',
   'fin.mod.other': 'অন্যান্য',
+  'invoice.pdf': 'ইনভয়েস PDF ডাউনলোড করুন',
+  'invoice.receipt_pdf': 'রসিদ PDF ডাউনলোড করুন',
+  'invoice.credit_note_pdf': 'ক্রেডিট নোট PDF ডাউনলোড করুন',
 };

@@ -4643,4 +4643,7 @@ export default {
   'fin.mod.events': 'Event budget',
   'fin.mod.payouts': 'Payouts',
   'fin.mod.other': 'Other',
+  'invoice.pdf': 'Download invoice PDF',
+  'invoice.receipt_pdf': 'Download receipt PDF',
+  'invoice.credit_note_pdf': 'Download credit note PDF',
 };

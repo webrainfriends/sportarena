@@ -4623,4 +4623,7 @@ export default {
   'fin.mod.events': 'நிகழ்வு பட்ஜெட்',
   'fin.mod.payouts': 'பணப்பட்டுவாடா',
   'fin.mod.other': 'மற்றவை',
+  'invoice.pdf': 'விலைப்பட்டியல் PDF பதிவிறக்கவும்',
+  'invoice.receipt_pdf': 'ரசீது PDF பதிவிறக்கவும்',
+  'invoice.credit_note_pdf': 'கடன் குறிப்பு PDF பதிவிறக்கவும்',
 };
