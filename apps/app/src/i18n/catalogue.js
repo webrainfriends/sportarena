@@ -40,3 +40,12 @@ export function translate(code, key, params) {
   const text = CATALOGUES[code]?.[key] ?? en[key] ?? key;
   return params ? text.replace(/\{(\w+)\}/g, (m, k) => (params[k] === undefined ? m : String(params[k]))) : text;
 }
+
+/** True when a key exists in the English pack (used to fall back gracefully for values the server sends that we have no key for). */
+export const hasKey = (key) => key in en;
+/** An enum value from the server (left_early, skill_drill…) as readable text: the translated enum.<value> key when we have one, else the value humanised. */
+export function translateEnum(code, value) {
+  const key = `enum.${String(value ?? '').toLowerCase().replace(/[\s-]+/g, '_')}`;
+  if (hasKey(key)) return translate(code, key);
+  return String(value ?? '').replace(/_/g, ' ').replace(/^./, (x) => x.toUpperCase());
+}

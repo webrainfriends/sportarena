@@ -4,11 +4,11 @@
 import { z } from 'zod';
 import { cap, id, page, money } from '../registry.js';
 import { one, many, tx, pool } from '../db.js';
-import { badRequest, conflict, notFound } from '../errors.js';
+import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { audit, mustFind, patchRow } from '../helpers.js';
 import { encryptFields, decryptFields } from '../crypto.js';
 import { notify } from '../notify.js';
-import { mustManage, canManage } from '../booking/engine.js';
+import { mustManage, canManage, canWork } from '../booking/engine.js';
 import { hhmm } from '../booking/time.js';
 import { blockSlots } from './venue-admin.js';
 import { assignLocker, releaseAssignment, renewPin, openPin } from '../booking/lockers.js';
@@ -241,11 +241,21 @@ const vendorOfVenue = async (venueId, vendorId) => {
 
 // ------------------------------------------------------------------ maintenance
 const CATEGORIES = ['general', 'surface', 'lighting', 'equipment', 'plumbing', 'electrical', 'cleaning', 'safety', 'inspection', 'other'];
+const checklistShape = z.array(z.object({ label: z.string().trim().min(1).max(120), done: z.boolean().default(false) })).max(40);
+const partsShape = z.array(z.object({ name: z.string().trim().min(1).max(80), quantity: z.number().int().min(1).max(10000).default(1), cost_cents: money.default(0) })).max(40);
 const maintenanceFields = {
   title: z.string().trim().min(2).max(120), category: z.enum(CATEGORIES).default('general'), priority: z.enum(['low', 'normal', 'high', 'urgent']).default('normal'),
   resource_id: id.optional().describe('the court it is about; omit for the whole venue'), due_on: day.optional(), vendor_id: id.optional(),
   estimated_cost_cents: money.optional(), repeat_every_days: z.number().int().min(1).max(3650).optional().describe('when finished, the next job is raised this many days later'), notes: z.string().max(1000).optional(),
+  asset_id: id.optional().describe('the asset from the venue asset register this work is about'), assignee_id: id.optional().describe('team member doing the work (venue owner or staff)'),
+  checklist: checklistShape.default([]).describe('steps to tick off; a job with open steps cannot be marked done'),
+  parts: partsShape.default([]).describe('parts used'),
 };
+/** The asset must be a stock row of this venue; the assignee must be on its team. */
+export async function workOrderRefs(venueId, { asset_id, assignee_id }) {
+  if (asset_id && !(await one('SELECT 1 FROM inventory_items WHERE id=$1 AND venue_id=$2', [asset_id, venueId]))) throw badRequest('That asset belongs to another venue');
+  if (assignee_id && !(await one('SELECT 1 FROM venues WHERE id=$1 AND owner_id=$2 UNION ALL SELECT 1 FROM venue_staff WHERE venue_id=$1 AND user_id=$2 AND removed_at IS NULL', [venueId, assignee_id]))) throw badRequest('The assignee is not on this venue\'s team');
+}
 const sameVenue = async (venueId, resourceId) => {
   if (resourceId && !(await one('SELECT 1 FROM resources WHERE id=$1 AND venue_id=$2', [resourceId, venueId]))) throw badRequest('That court belongs to another venue');
 };
@@ -261,6 +271,7 @@ cap({
     await mustManage(user, i.id);
     await sameVenue(i.id, i.resource_id);
     await vendorOfVenue(i.id, i.vendor_id);
+    await workOrderRefs(i.id, i);
     let batch = null;
     if (i.close) {
       const b = await blockSlots(user, { id: i.id, resource_ids: i.resource_id ? [i.resource_id] : [], ...i.close, kind: 'maintenance', reason: i.title, dry_run: false });
@@ -268,9 +279,9 @@ cap({
     }
     try {
       return await one(
-        `INSERT INTO venue_maintenance(venue_id, resource_id, title, category, priority, due_on, vendor_id, estimated_cost_cents, repeat_every_days, block_batch_id, notes, created_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
-        [i.id, i.resource_id ?? null, i.title, i.category, i.priority, i.due_on ?? null, i.vendor_id ?? null, i.estimated_cost_cents ?? null, i.repeat_every_days ?? null, batch, i.notes ?? null, user.id]);
+        `INSERT INTO venue_maintenance(venue_id, resource_id, title, category, priority, due_on, vendor_id, estimated_cost_cents, repeat_every_days, block_batch_id, notes, created_by, asset_id, assignee_id, checklist, parts)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
+        [i.id, i.resource_id ?? null, i.title, i.category, i.priority, i.due_on ?? null, i.vendor_id ?? null, i.estimated_cost_cents ?? null, i.repeat_every_days ?? null, batch, i.notes ?? null, user.id, i.asset_id ?? null, i.assignee_id ?? null, JSON.stringify(i.checklist), JSON.stringify(i.parts)]);
     } catch (e) {
       if (batch) await pool.query('UPDATE venue_blocks SET released_at=now() WHERE batch_id=$1 AND released_at IS NULL', [batch]);
       throw e;
@@ -285,8 +296,8 @@ cap({
   async handler({ user }, i) {
     await mustManage(user, i.id);
     const items = await many(
-      `SELECT m.*, r.name AS court, vd.name AS vendor_name, (m.status IN ('scheduled','in_progress') AND m.due_on < current_date) AS overdue
-         FROM venue_maintenance m LEFT JOIN resources r ON r.id=m.resource_id LEFT JOIN venue_vendors vd ON vd.id=m.vendor_id
+      `SELECT m.*, r.name AS court, vd.name AS vendor_name, a.name AS asset_name, u.display_name AS assignee_name, (m.status IN ('scheduled','in_progress') AND m.due_on < current_date) AS overdue
+         FROM venue_maintenance m LEFT JOIN resources r ON r.id=m.resource_id LEFT JOIN venue_vendors vd ON vd.id=m.vendor_id LEFT JOIN inventory_items a ON a.id=m.asset_id LEFT JOIN users u ON u.id=m.assignee_id
         WHERE m.venue_id=$1 AND ($2='all' OR ($2='open' AND m.status IN ('scheduled','in_progress')) OR m.status=$2) AND ($3::uuid IS NULL OR m.resource_id=$3) AND ($4::uuid IS NULL OR m.vendor_id=$4)
         ORDER BY (m.status IN ('done','cancelled')), CASE m.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END, m.due_on NULLS LAST, m.created_at DESC LIMIT $5 OFFSET $6`,
       [i.id, i.status, i.resource_id ?? null, i.vendor_id ?? null, i.limit, i.offset]);
@@ -306,21 +317,32 @@ cap({
     id, title: maintenanceFields.title.optional(), category: z.enum(CATEGORIES).optional(), priority: z.enum(['low', 'normal', 'high', 'urgent']).optional(), due_on: day.nullable().optional(),
     resource_id: id.nullable().optional(), vendor_id: id.nullable().optional(), estimated_cost_cents: money.nullable().optional(), actual_cost_cents: money.nullable().optional(),
     repeat_every_days: z.number().int().min(1).max(3650).nullable().optional(), notes: z.string().max(1000).nullable().optional(), status: z.enum(['scheduled', 'in_progress', 'done', 'cancelled']).optional(),
+    asset_id: id.nullable().optional(), assignee_id: id.nullable().optional(), checklist: checklistShape.optional(), parts: partsShape.optional(),
   }),
   async handler({ user }, i) {
     return tx(async (c) => {
       const m = (await c.query('SELECT * FROM venue_maintenance WHERE id=$1 FOR UPDATE', [i.id])).rows[0];
       if (!m) throw notFound('Maintenance job');
-      await mustManage(user, m.venue_id, c);
+      if (!(await canManage(user, m.venue_id, c))) {
+        // the person the job is assigned to may report progress (steps, parts, notes, in progress / done) without being a manager
+        const mine = m.assignee_id === user.id && await canWork(user, m.venue_id, c);
+        if (!mine) { await mustManage(user, m.venue_id, c); }
+        const extra = Object.keys(i).filter((k) => !['id', 'checklist', 'parts', 'notes', 'status'].includes(k));
+        if (extra.length || i.status === 'cancelled') throw forbidden('You can update steps, parts, notes and progress on your own jobs; a manager changes the rest');
+      }
       const closed = ['done', 'cancelled'].includes(m.status);
       if (closed && i.status && i.status !== m.status) throw conflict(`That job is already ${m.status}`);
       if (closed && Object.keys(i).some((k) => k !== 'id' && k !== 'notes' && k !== 'actual_cost_cents')) throw conflict(`A ${m.status} job can only have its notes and cost changed`);
       if (i.resource_id) await sameVenue(m.venue_id, i.resource_id);
       if (i.vendor_id) await vendorOfVenue(m.venue_id, i.vendor_id);
+      await workOrderRefs(m.venue_id, i);
+      const steps = i.checklist ?? m.checklist;
+      if (!closed && i.status === 'done' && steps.some((x) => !x.done)) throw conflict('Tick every checklist step before marking the job done');
       const finishing = !closed && (i.status === 'done' || i.status === 'cancelled');
-      const patch = { ...i, updated_at: new Date(), ...(finishing ? { completed_at: new Date(), completed_by: user.id } : {}) };
+      const patch = { ...i, ...(i.checklist ? { checklist: JSON.stringify(i.checklist) } : {}), ...(i.parts ? { parts: JSON.stringify(i.parts) } : {}), updated_at: new Date(),
+        ...(finishing ? { completed_at: new Date(), completed_by: user.id } : {}), ...(!closed && i.status === 'done' ? { signed_off_by: user.id, signed_off_at: new Date() } : {}) };
       const row = await patchRow('venue_maintenance', i.id, patch,
-        ['title', 'category', 'priority', 'due_on', 'resource_id', 'vendor_id', 'estimated_cost_cents', 'actual_cost_cents', 'repeat_every_days', 'notes', 'status', 'completed_at', 'completed_by', 'updated_at'], c);
+        ['title', 'category', 'priority', 'due_on', 'resource_id', 'vendor_id', 'estimated_cost_cents', 'actual_cost_cents', 'repeat_every_days', 'notes', 'status', 'completed_at', 'completed_by', 'updated_at', 'asset_id', 'assignee_id', 'checklist', 'parts', 'signed_off_by', 'signed_off_at'], c);
       let next = null;
       if (finishing) {
         if (m.block_batch_id) {

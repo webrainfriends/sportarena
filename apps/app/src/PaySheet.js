@@ -8,6 +8,7 @@ import { c } from './theme';
 import { PointsSheet } from './screens/rewards';
 import { CoverSendSheet } from './screens/cover-ui';
 import { moneyIn } from './vtime';
+import { t } from './i18n';
 
 /**
  * Hosted checkout for one invoice, in the invoice's own currency: pick Stripe or PayPal, pay on the provider's page, then confirm.
@@ -39,23 +40,23 @@ export function PaySheet({ target, onClose, onDone }) {
   };
   const m = methods.data;
   return (
-    <Sheet visible onClose={onClose} title="Pay securely">
+    <Sheet visible onClose={onClose} title={t('pay.secure')}>
       <T size={14} color={c.mute}>{target.label} · <T weight="800" size={14}>{moneyIn(target.amount, target.currency)}</T> ({target.currency})</T>
       {methods.loading && !m ? <Loading /> : !m?.providers.length ? (
-        <T weight="700" color={c.red}>Online payment isn't switched on yet — please pay at the venue.</T>
+        <T weight="700" color={c.red}>{t('pay.not_on')}</T>
       ) : pay ? (
         <View style={{ gap: 10 }}>
-          <T size={14}>Checkout opened in {pay.provider === 'stripe' ? 'Stripe' : 'PayPal'}. When you're done, come back and check.</T>
-          <Btn title="I've paid — check payment" onPress={check} loading={busy} />
-          <Btn title="Reopen checkout" color={c.paper} onPress={() => (Platform.OS === 'web' ? window.location.assign(pay.checkout_url) : Linking.openURL(pay.checkout_url))} />
+          <T size={14}>{t('pay.opened', { provider: pay.provider === 'stripe' ? 'Stripe' : 'PayPal' })}</T>
+          <Btn title={t('pay.paid_check')} onPress={check} loading={busy} />
+          <Btn title={t('pay.reopen')} color={c.paper} onPress={() => (Platform.OS === 'web' ? window.location.assign(pay.checkout_url) : Linking.openURL(pay.checkout_url))} />
         </View>
       ) : (
         <View style={{ gap: 10 }}>
-          <Btn title="🤝 Ask someone else to pay" color={c.paper} ink={c.ink} onPress={() => setCover(true)} />
-          {balances.data?.length && ['venue_invoice', 'academy_charge', 'coach_hire'].includes(target.type ?? 'venue_invoice') ? <Btn title="⭐ Use my points first" color={c.violet} onPress={() => setPoints(true)} /> : null}
-          {m.providers.includes('stripe') ? <Btn title="Pay with card (Stripe)" onPress={() => go('stripe')} loading={busy} /> : null}
-          {m.providers.includes('paypal') ? <Btn title="Pay with PayPal" color={c.paper} onPress={() => go('paypal')} loading={busy} /> : null}
-          <T size={12} color={c.mute}>You'll be charged in {target.currency}. You'll be taken to the provider's secure page; your card details never reach Gotmygame.</T>
+          <Btn title={t('pay.ask_other')} color={c.paper} ink={c.ink} onPress={() => setCover(true)} />
+          {balances.data?.length && ['venue_invoice', 'academy_charge', 'coach_hire'].includes(target.type ?? 'venue_invoice') ? <Btn title={t('pay.points')} color={c.violet} onPress={() => setPoints(true)} /> : null}
+          {m.providers.includes('stripe') ? <Btn title={t('pay.card')} onPress={() => go('stripe')} loading={busy} /> : null}
+          {m.providers.includes('paypal') ? <Btn title={t('pay.paypal')} color={c.paper} onPress={() => go('paypal')} loading={busy} /> : null}
+          <T size={12} color={c.mute}>{t('pay.note', { currency: target.currency })}</T>
         </View>
       )}
       {err ? <T color={c.red} weight="700">{err}</T> : null}

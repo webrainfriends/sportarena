@@ -10,7 +10,7 @@ import { DateRangeField, addDays, todayLocal } from '../pickers';
 import { MenuField } from '../menu-field';
 import { c } from '../theme';
 
-export const ORIGIN = { verified: ['✓ Verified', c.mint], user_entered: ['✎ Entered by athlete', c.sun], external: ['⇄ External', c.violetSoft] };
+export const ORIGIN = { verified: ['✓ Verified', c.mint], user_entered: ['✎ Entered, unconfirmed', c.sun], external: ['⇄ External', c.violetSoft] };
 const day = (s) => (s ? new Date(`${String(s).slice(0, 10)}T12:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '');
 
 /** The glyph and the words both say where a row comes from, so colour is never the only signal. */

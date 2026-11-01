@@ -13,7 +13,7 @@ import { eventParticipationSweep, membershipTenureSweep } from './rewards/activi
 import { releaseDueReferrals } from './rewards/referrals.js';
 import { expireCover } from './cover.js';
 import { expireUserPlans, raiseSubscriptionRenewals } from './booking/plans.js';
-import { venueOpsReminders } from './booking/venue-ops.js';
+import { venueOpsReminders, raisePreventiveWork } from './booking/venue-ops.js';
 import { expireStaleRequests } from './lifecycle.js';
 import { expireQuotes, sendRenewalReminders } from './insurance-cycle.js';
 import { sendCallNotices } from './sponsorship-calls.js';
@@ -46,6 +46,7 @@ import { hourlyRatingSweep } from './ratings/data.js';
 const weeklyRankingSnapshots = () => (new Date().getUTCDay() === 1 ? snapshotAll('weekly') : 0);
 import { syncOpenGames } from './open-games-sweeps.js';
 import { syncCoachClasses } from './coach-classes-sweeps.js';
+import { syncCoachSubscriptions } from './coach-subscriptions.js';
 import { adSweeps } from './ads/engine.js';
 import { raiseTeamDues } from './team-money.js';
 import { reconcileFinance } from './finance.js';
@@ -66,6 +67,7 @@ export const STEPS = [
   ['plans', 'plans_expired', expireUserPlans, 0],
   ['subscriptions', 'subscriptions_renewed', raiseSubscriptionRenewals, 0],
   ['venue_ops', 'venue_ops_reminders', venueOpsReminders, 0],
+  ['venue_pm', 'venue_pm_work_orders', raisePreventiveWork, 0],
   ['requests', 'requests_expired', expireStaleRequests, 0],
   ['alerts', 'alerts_fulfilled', checkSlotAlerts, 0],
   ['quotes', 'quotes_expired', expireQuotes, 0],
@@ -102,6 +104,7 @@ export const STEPS = [
   ['skill_ratings', 'skill_rating_runs', hourlyRatingSweep, 0],
   ['open_games', 'open_games_synced', syncOpenGames, 0],
   ['coach_classes', 'coach_classes_synced', syncCoachClasses, 0],
+  ['coach_subscriptions', 'coach_subscriptions_synced', syncCoachSubscriptions, 0],
   ['team_dues', 'team_dues_raised', raiseTeamDues, 0],
   ['advertising', 'advertising', adSweeps, null],
   ['finance', 'finance', reconcileFinance, null],

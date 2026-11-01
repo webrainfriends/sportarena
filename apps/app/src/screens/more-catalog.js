@@ -52,7 +52,7 @@ export const workspaceOf = (role) => WORKSPACES.find(([r]) => r === role);
 export const PLATFORM_ROLES = ['admin', 'platform_admin'];
 /** The workspaces the swivel's Workspaces tile opens: [role, route, sub, tab?, title?], in catalogue order. */
 export const workspacesFor = (roles = [], desk = false) => WORKSPACES.filter(([r]) => roles.includes(r) || (desk && r === 'venue_manager'));
-/** The picker row title: an explicit title, else "<Role> workspace". */
+/** The picker row title: an explicit title, else the role name followed by "workspace". */
 export const workspaceTitle = (ws, roleLabel) => ws[4] ?? `${roleLabel(ws[0])} workspace`;
 
 // Modules lifted to the front of the wheel for people who hold these roles (first match wins; everyone else: player set).

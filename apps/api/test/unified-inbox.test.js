@@ -361,7 +361,9 @@ test('compose pick lists: contacts are people you are connected to, contexts are
   assert.ok(!(await call('GET', '/inbox/contacts', { token: p.token })).body.people.some((x) => x.id === q.id), 'a person who blocked you is left out');
 
   const members = await call('GET', `/inbox/contacts?team_id=${t.id}`, { token: coach.token });
-  assert.equal(members.status, 200); assert.ok(members.body.people.length >= 4, 'the people of a team you run');
+  assert.equal(members.status, 200);
+  const ids = members.body.people.map((x) => x.id);
+  assert.ok([p.id, q.id, kid.id].every((id) => ids.includes(id)) && !ids.includes(coach.id), 'the people of a team you run, never yourself');
   assert.equal((await call('GET', `/inbox/contacts?team_id=${t.id}`, { token: stranger.token })).status, 404, 'a team you do not run is not listed');
   const ctx = await call('GET', '/inbox/contexts', { token: coach.token });
   assert.ok(ctx.body.teams.some((x) => x.team_id === t.id) && ctx.body.events.some((x) => x.event_id === ev.id));

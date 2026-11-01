@@ -449,13 +449,21 @@ export async function nextFreeSlot(c, ctx, resources, { from = new Date(), days 
   return best;
 }
 
+// canManage = owner, manager-role staff, organisation admin. canWork also admits floor staff (venue_staff.role 'staff'): they run the day
+// (check-in, incidents, readiness, their own shifts) but cannot change pricing, plans, finance or the roster. Existing rows are all managers.
+const staffRoles = (floor) => (floor ? "('manager','staff')" : "('manager')");
+const teamSql = (floor) => `SELECT 1 FROM venues WHERE id=$1 AND owner_id=$2 UNION ALL SELECT 1 FROM venue_staff WHERE venue_id=$1 AND user_id=$2 AND removed_at IS NULL AND role IN ${staffRoles(floor)} UNION ALL SELECT 1 FROM venues v JOIN organisations o ON o.id=v.organisation_id AND o.status='active' JOIN organisation_members m ON m.organisation_id=o.id AND m.status='active' AND m.role IN ('owner','admin') WHERE v.id=$1 AND m.user_id=$2`;
+export const canWork = async (user, venueId, c = pool) => !!user && (user.roles?.includes('admin') || (await c.query(teamSql(true), [venueId, user.id])).rowCount > 0);
+export async function mustWork(user, venueId, c = pool) {
+  if (!(await c.query('SELECT 1 FROM venues WHERE id=$1', [venueId])).rowCount) throw notFound('Venue');
+  if (!(await canWork(user, venueId, c))) throw forbidden('Only the venue team can do that');
+}
 export const canManage = async (user, venueId, c = pool) => {
   if (!user) return false;
   if (user.roles?.includes('admin')) return true;
-  const r = await c.query('SELECT 1 FROM venues WHERE id=$1 AND owner_id=$2 UNION ALL SELECT 1 FROM venue_staff WHERE venue_id=$1 AND user_id=$2 AND removed_at IS NULL UNION ALL SELECT 1 FROM venues v JOIN organisations o ON o.id=v.organisation_id AND o.status=\'active\' JOIN organisation_members m ON m.organisation_id=o.id AND m.status=\'active\' AND m.role IN (\'owner\',\'admin\') WHERE v.id=$1 AND m.user_id=$2', [venueId, user.id]);
+  const r = await c.query(teamSql(false), [venueId, user.id]);
   return r.rowCount > 0;
 };
-
 export async function mustManage(user, venueId, c = pool) {
   const exists = (await c.query('SELECT 1 FROM venues WHERE id=$1', [venueId])).rowCount;
   if (!exists) throw notFound('Venue');

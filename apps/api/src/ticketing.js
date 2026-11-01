@@ -417,6 +417,11 @@ export async function processTicketRefunds({ eventId = null, limit = 200 } = {})
   return { processed: due.length, refunded, failed };
 }
 
+/** Pay back what a cancellation just made refundable, straight after its transaction committed. Never throws: anything that fails stays refund_due for the sweep. */
+export async function refundTicketsNow(eventId) {
+  try { return await processTicketRefunds({ eventId }); } catch (e) { console.error('[tickets] immediate refunds failed, the sweep will retry', e.message); return null; }
+}
+
 /** Hold sweep: unpaid orders whose hold ran out (and have no payment in flight) are released; then waiting refunds are retried. */
 export async function sweepTickets() {
   const stale = (await pool.query(
