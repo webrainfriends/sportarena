@@ -566,19 +566,35 @@ cap({
   async handler({ user }, i) { const ev = await organiserOf(user, i.id); return processTicketRefunds({ eventId: ev.id }); },
 });
 
+/** An allocation may name the agreement (and booking) it fulfils: both must be the sponsor deal of THIS event, and a booking must belong to the named agreement. */
+async function sponsorLink(c, eventId, sponsorshipId, bookingId) {
+  if (!sponsorshipId && !bookingId) return { sponsorship_id: null, booking_id: null };
+  let sid = sponsorshipId ?? null;
+  if (bookingId) {
+    const b = (await c.query("SELECT b.sponsorship_id FROM sponsor_inventory_bookings b JOIN sponsor_inventory_units u ON u.id=b.unit_id WHERE b.id=$1 AND u.target_type='event' AND u.target_id=$2 AND b.status='confirmed'", [bookingId, eventId])).rows[0];
+    if (!b) throw notFound('Inventory booking');
+    if (sid && sid !== b.sponsorship_id) throw badRequest('That booking belongs to a different agreement');
+    sid = b.sponsorship_id;
+  }
+  if (!(await c.query("SELECT 1 FROM sponsorships WHERE id=$1 AND target_type='event' AND target_id=$2 AND accepted_version IS NOT NULL", [sid, eventId])).rowCount) throw notFound('Sponsorship agreement');
+  return { sponsorship_id: sid, booking_id: bookingId ?? null };
+}
+
 // ---- complimentary and sponsor allocations ----------------------------------------------------------------------------------------------------
 
 cap({
   name: 'create_ticket_allocation', method: 'POST', path: '/events/:id/ticket-allocations', tag: TAG, status: 201,
   summary: 'Organiser: set aside a number of free tickets of a complimentary-enabled product for a sponsor, team, VIPs, media or a partner, with a reason. Issuing from it creates real tickets that count towards capacity and are scanned like any other.',
-  input: z.object({ id, product_id: id, kind: z.enum(['sponsor', 'team', 'vip', 'partner', 'media', 'other']), label: z.string().trim().min(2).max(80), team_id: id.optional(), quota: z.number().int().min(1).max(100000), reason }),
+  input: z.object({ id, product_id: id, kind: z.enum(['sponsor', 'team', 'vip', 'partner', 'media', 'other']), label: z.string().trim().min(2).max(80), team_id: id.optional(), quota: z.number().int().min(1).max(100000), reason,
+    sponsorship_id: id.optional().describe('the sponsorship agreement this hospitality/ticket allocation fulfils'), booking_id: id.optional().describe('the inventory booking (e.g. a hospitality unit) it fulfils') }),
   handler: ({ user }, i) => tx(async (c) => {
     const ev = await organiserOf(user, i.id, c);
+    const link = await sponsorLink(c, ev.id, i.sponsorship_id, i.booking_id);
     const p = (await c.query('SELECT * FROM ticket_products WHERE id=$1 AND event_id=$2', [i.product_id, ev.id])).rows[0];
     if (!p) throw notFound('Ticket product');
     if (!p.channels.includes('complimentary') || Number(p.price_minor) !== 0) throw badRequest('Choose a free product that is enabled for complimentary issue');
     if (i.team_id && !(await c.query('SELECT 1 FROM teams WHERE id=$1', [i.team_id])).rowCount) throw notFound('Team');
-    return (await c.query('INSERT INTO ticket_allocations(event_id, product_id, kind, label, team_id, quota, reason, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *', [ev.id, p.id, i.kind, i.label, i.team_id ?? null, i.quota, i.reason, user.id])).rows[0];
+    return (await c.query('INSERT INTO ticket_allocations(event_id, product_id, kind, label, team_id, quota, reason, created_by, sponsorship_id, booking_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *', [ev.id, p.id, i.kind, i.label, i.team_id ?? null, i.quota, i.reason, user.id, link.sponsorship_id, link.booking_id])).rows[0];
   }),
 });
 
@@ -589,7 +605,7 @@ cap({
   async handler({ user }, i) {
     const ev = await organiserOf(user, i.id);
     return many(
-      `SELECT a.*, p.name AS product, (SELECT count(*)::int FROM tickets t WHERE t.allocation_id=a.id AND t.supersedes_id IS NULL AND t.status <> 'void') AS issued FROM ticket_allocations a JOIN ticket_products p ON p.id=a.product_id WHERE a.event_id=$1 ORDER BY a.created_at`, [ev.id]);
+      `SELECT a.*, (SELECT agreement_ref FROM sponsorships WHERE id=a.sponsorship_id) AS agreement_ref, p.name AS product, (SELECT count(*)::int FROM tickets t WHERE t.allocation_id=a.id AND t.supersedes_id IS NULL AND t.status <> 'void') AS issued FROM ticket_allocations a JOIN ticket_products p ON p.id=a.product_id WHERE a.event_id=$1 ORDER BY a.created_at`, [ev.id]);
   },
 });
 

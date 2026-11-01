@@ -12,7 +12,7 @@ import { snapshotIdentity } from '../sponsor-identity-access.js';
 import { sponsorStaffSql } from '../sponsor-access.js';
 import { ORG_TARGETS, beneficiaryScopeSql } from '../sponsor-beneficiaries.js';
 import { pingParties } from '../sponsor-pause.js';
-import { localToday, RENEWABLE, RENEWAL_INTENTS, RENEWAL_WINDOW_DAYS, openDues } from '../sponsor-renewals.js';
+import { localToday, RENEWABLE, RENEWAL_INTENTS, RENEWAL_WINDOW_DAYS, openDues, renewalStage } from '../sponsor-renewals.js';
 import { NOT_YOUTH_SQL } from '../youth.js';
 
 const date = z.string().date();
@@ -108,19 +108,21 @@ cap({
 
 cap({
   name: 'list_sponsorship_renewals', method: 'GET', path: '/sponsorship-renewals', tag: 'Sponsors',
-  summary: 'Agreements you are part of that are in their renewal window, past their term, or fully settled, and have no renewal yet, soonest end first, with what is still owed (per currency) and each side\'s stated plan. Pure read; limited to what you may see.',
-  input: z.object({ as: z.enum(['sponsor', 'target']).optional(), ...page }),
-  handler: ({ user }, i) => many(
+  summary: 'Agreements you are part of that are in their renewal window, past their term, or fully settled, and have no renewal yet, soonest end first, with what is still owed (per currency) and each side\'s stated plan. Each row carries a derived pipeline `stage` (running, expiring, intent_shared, not_renewing, renewal_proposed, renewed, past_term, lapsed) and an expiry `alert` (expires_90/60/30, expired). Pure read; limited to what you may see.',
+  input: z.object({ as: z.enum(['sponsor', 'target']).optional(), include_renewed: z.coerce.boolean().default(false).describe('also list agreements that already have a renewal, so the whole pipeline (proposed and renewed too) is visible'), ...page }),
+  handler: async ({ user }, i) => (await many(
     `SELECT ss.id, ss.agreement_ref, ss.status, ss.target_type, ss.target_id, ss.ends_on::text AS ends_on, (ss.ends_on - ${localToday('ss')})::int AS days_left, ss.renewal_rev, ss.term_expired_at, ss.settled_at,
             sp.name AS sponsor_name, ${sponsorStaffSql(1)} AS i_am_sponsor,
             (SELECT count(*)::int FROM sponsorship_obligations o WHERE o.sponsorship_id=ss.id AND o.status='scheduled') AS open_dues,
-            (SELECT coalesce(jsonb_agg(jsonb_build_object('side', a.side, 'intent', a.intent) ORDER BY a.side), '[]') FROM sponsorship_renewal_assessments a WHERE a.sponsorship_id=ss.id) AS assessments
+            (SELECT coalesce(jsonb_agg(jsonb_build_object('side', a.side, 'intent', a.intent) ORDER BY a.side), '[]') FROM sponsorship_renewal_assessments a WHERE a.sponsorship_id=ss.id) AS assessments,
+            (SELECT n.id FROM sponsorships n WHERE n.renews_id=ss.id AND n.status NOT IN ('declined','withdrawn') LIMIT 1) AS successor_id,
+            (SELECT n.status FROM sponsorships n WHERE n.renews_id=ss.id AND n.status NOT IN ('declined','withdrawn') LIMIT 1) AS successor_status
        FROM sponsorships ss JOIN sponsors sp ON sp.id=ss.sponsor_id
       WHERE ss.accepted_version IS NOT NULL AND ss.ends_on IS NOT NULL AND ss.status IN ('active','term_expired','completed')
         AND (ss.status <> 'active' OR ss.ends_on - ${localToday('ss')} <= ${RENEWAL_WINDOW_DAYS})
-        AND NOT EXISTS (SELECT 1 FROM sponsorships n WHERE n.renews_id=ss.id AND n.status NOT IN ('declined','withdrawn'))
+        AND ($5::boolean OR NOT EXISTS (SELECT 1 FROM sponsorships n WHERE n.renews_id=ss.id AND n.status NOT IN ('declined','withdrawn')))
         AND (($4::text IS DISTINCT FROM 'target' AND ${sponsorStaffSql(1)})
           OR ($4::text IS DISTINCT FROM 'sponsor' AND ((ss.target_type='event' AND ss.target_id IN (SELECT id FROM events WHERE organizer_id=$1))
               OR (ss.target_type='team' AND ss.target_id IN (SELECT id FROM teams WHERE owner_id=$1)) OR (ss.target_type='athlete' AND ss.target_id=$1) OR ${guardedAthleteSql('ss')} OR ${beneficiaryScopeSql('$1')})))
-      ORDER BY ss.ends_on, ss.id LIMIT $2 OFFSET $3`, [user.id, i.limit, i.offset, i.as ?? null]),
+      ORDER BY ss.ends_on, ss.id LIMIT $2 OFFSET $3`, [user.id, i.limit, i.offset, i.as ?? null, i.include_renewed])).map((r) => ({ ...r, ...renewalStage(r) })),
 });

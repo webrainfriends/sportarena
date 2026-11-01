@@ -317,6 +317,7 @@ export function TicketsTab({ id, e, isOrg }) {
   const settings = useLoad(() => (isOrg ? api.get(`/events/${id}/tickets/settings`) : Promise.resolve(null)), [id, isOrg]);
   const sections = useLoad(() => (isOrg ? api.get(`/events/${id}/ticket-sections`) : Promise.resolve([])), [id, isOrg]);
   const allocs = useLoad(() => (isOrg ? api.get(`/events/${id}/ticket-allocations`) : Promise.resolve([])), [id, isOrg]);
+  const eventDeals = useLoad(() => (isOrg ? api.get('/sponsorships', { limit: 100 }).catch(() => []) : Promise.resolve([])), [id, isOrg]);
   const fx = useLoad(() => api.get('/fixtures', { event_id: id, limit: 100 }), [id]);
   const [q, setQ] = useState(''), [status, setStatus] = useState('');
   const found = useLoad(() => (isOrg && sub === 'find' ? api.get(`/events/${id}/tickets`, { q: q || undefined, status: status || undefined, limit: 50 }) : Promise.resolve(null)), [id, isOrg, sub, q, status]);
@@ -396,7 +397,7 @@ export function TicketsTab({ id, e, isOrg }) {
           {(allocs.data ?? []).length ? allocs.data.map((a) => (
             <ACard key={a.id} pad={14} style={{ gap: 6 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><AT size={15} weight="800" style={{ flex: 1 }}>{a.label}</AT><ATag label={t(`tix.alloc_kind.${a.kind}`)} /></View>
-              <AT size={12} color={A.mute}>{a.product} · {a.reason}</AT>
+              <AT size={12} color={A.mute}>{a.product} · {a.reason}{a.agreement_ref ? ` · ${a.agreement_ref}` : ''}</AT>
               <ABar pct={(a.issued / a.quota) * 100} color={A.cyan} />
               <AT size={12} color={A.mute}>{t('tix.alloc_line', { issued: a.issued, quota: a.quota })}</AT>
               <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -441,6 +442,8 @@ export function TicketsTab({ id, e, isOrg }) {
           { key: 'product_id', label: t('tix.product'), type: 'chips', options: (products.data ?? []).filter((p) => p.channels.includes('complimentary') && Number(p.price_minor) === 0).map((p) => ({ value: p.id, label: p.name })), hint: t('tix.alloc_product_hint') },
           { key: 'kind', label: t('tix.alloc_for'), type: 'chips', options: ['sponsor', 'team', 'vip', 'partner', 'media', 'other'].map((x) => ({ value: x, label: t(`tix.alloc_kind.${x}`) })) },
           { key: 'label', label: t('tix.alloc_name') }, { key: 'quota', label: t('tix.quota'), type: 'stepper', min: 1, max: 1000 },
+          { key: 'sponsorship_id', label: t('spl.fulfils'), type: 'chips', optional: true, show: (v) => v.kind === 'sponsor' && (eventDeals.data ?? []).some((d) => d.target_type === 'event' && d.target_id === id && d.accepted_version != null), hint: t('spl.fulfils_hint'),
+            options: (eventDeals.data ?? []).filter((d) => d.target_type === 'event' && d.target_id === id && d.accepted_version != null && ['active', 'paused'].includes(d.status)).map((d) => ({ value: d.id, label: d.sponsor_name })) },
           { key: 'reason', label: t('tix.reason'), type: 'multiline' },
         ]}
         onSubmit={async (v) => { await api.post(`/events/${id}/ticket-allocations`, v); reload(); return null; }} />

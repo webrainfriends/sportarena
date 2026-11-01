@@ -62,3 +62,14 @@ Inventory, deliverables, exposure and reports are sport-agnostic: they attach to
 - Portfolio exposure totals cover the rows returned; finance totals cover all matches.
 - AI-drafted renewal narratives are not wired in; the pack exposes `facts` for any drafting.
 - Native iOS, iPadOS and Android builds were not run in this environment: the shared React Native code compiles for web and was verified in a browser at phone, tablet and desktop widths.
+
+## Rights, territory, packages and the one-lifecycle view (#589)
+
+Extends the inventory above; nothing parallel was added.
+
+- **Rights on a unit.** `sponsor_inventory_units` gain `territory_mode` (worldwide / include / exclude), `countries`, `platforms` (the media-rights vocabulary), `exclusivity_scope` and an optional asking price. A booking may narrow this (`countries`, `platforms`) but never exceed it (409 `outside_rights`). Category exclusivity only collides where two bookings share a territory **and** a platform in the same period.
+- **Rights packages.** `save_sponsor_rights_package` / `list_sponsor_rights_packages` bundle an owner's own units with a price and validity. A package only groups units: booking still goes unit by unit, so availability and rights are never bypassed. These are *sponsor* bundles; broadcast licensing stays in media rights (`mr_packages`). Membership changes are soft (`removed_at`).
+- **Hospitality.** `ticket_allocations` may name the `sponsorship_id` / `booking_id` they fulfil (organiser only, same event); issued vs quota feeds the delivered side of the matrix.
+- **`get_sponsorship_lifecycle`.** One read for both sides: rights held, the contracted-vs-delivered matrix (dues from `list_sponsorship_obligations`, rights, deliverables, hospitality), activation with owner/state/evidence count, exposure and the renewal stage. Sponsor-side members need `roi`; anyone else gets 404.
+- **`get_sponsorship_activation_calendar`** merges deliverables, open tasks you may see, rights start/end and dues in date order. **`get_sponsor_relationship_history`** lists the agreements between a sponsor and a rights-holder you may see, and their recorded actions.
+- **Provenance.** Every exposure metric carries `provenance`: `measured` (counted by Sportarena), `imported` (supplied by a named provider, with source and reference) or `estimated` (a customer's own assumption model). Matrix counts are `recorded`. ROI is never invented.
