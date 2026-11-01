@@ -284,7 +284,9 @@ server {
     server_name _;
     ${SSL_CONF}
 
-    client_max_body_size 2m;
+    # The ceiling for any upload (documents go up to 50 MB; as base64 JSON that is ~67 MB). The API enforces the real, admin-set limit per route
+    # and keeps its own small JSON limit everywhere else, so this only lets a legitimate upload reach it.
+    client_max_body_size 72m;
 
     # profile photos and post media: the API enforces the real limits (10 MB photos, 60 MB videos); nginx's 2m default would 413 phone photos
     location ~ ^/api/v1/(me/avatar|market/media)$ {

@@ -3,6 +3,7 @@ import { Platform, Switch, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
+import { docMaxBytes, docMaxMb } from '../upload-limits';
 import { Btn, Card, Chip, Empty, ErrorBox, Field, Loading, Row, Section, Seg, Sheet, T, Tag } from '../ui';
 import { c } from '../theme';
 
@@ -36,10 +37,15 @@ const toBase64 = (blob) => new Promise((res, rej) => { const f = new FileReader(
 
 /** One evidence line: a reference (number or link) and/or a file. */
 function EvidenceInput({ kind, label, value, onChange }) {
+  const { toast } = useSession();
   const [busy, setBusy] = useState(false);
   const attach = async () => {
     setBusy(true);
-    try { const f = await pickDocument(); if (f) onChange({ ...value, file: f, file_name: f.name }); } finally { setBusy(false); }
+    try {
+      const f = await pickDocument();
+      if (f && f.size > docMaxBytes()) { toast(`That file is over ${docMaxMb()} MB. Choose a smaller PDF or photo.`); return; }
+      if (f) onChange({ ...value, file: f, file_name: f.name });
+    } finally { setBusy(false); }
   };
   return (
     <Card color={c.violetSoft} pad={12}>

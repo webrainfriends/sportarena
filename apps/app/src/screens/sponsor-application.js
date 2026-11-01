@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { docMaxMb } from '../upload-limits';
 import { Platform, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
@@ -42,7 +43,7 @@ function FileQuestion({ f, files, applicationId, ensureDraft, onChanged, disable
         </View>
       ))}
       {!disabled && mine.length < (f.max_files ?? 5) ? <Btn small title={mine.length ? 'Attach another file' : 'Attach a PDF or photo'} color={c.violet} loading={busy} onPress={add} style={{ alignSelf: 'flex-start' }} /> : null}
-      <T size={12} color={c.mute}>Up to {f.max_files ?? 5} file{(f.max_files ?? 5) === 1 ? '' : 's'}, 10 MB each. Stored encrypted; only you and {who} can open them.</T>
+      <T size={12} color={c.mute}>Up to {f.max_files ?? 5} file{(f.max_files ?? 5) === 1 ? '' : 's'}, {docMaxMb()} MB each. Stored encrypted; only you and {who} can open them.</T>
     </View>
   );
 }
