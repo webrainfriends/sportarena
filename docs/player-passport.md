@@ -20,7 +20,7 @@ Email, phone, date of birth, national ID, address, private match notes or rating
 The secret is `sa_` + 32 random bytes; only its SHA-256 is stored (like API tokens). It is shown once at creation, in a QR code and as a link. Links expire and can be revoked; revoking is immediate. Young people (`isYouth`) cannot arrange sharing alone: a verified guardian creates the link (`athlete_id`) and it works only while the guardian's `recruitment_sharing` consent is in force.
 
 ## App
-**Me -> Player passport & QR**: create a link (label, expiry chips, switches for what to show), see its QR code and copy or share it, list links with status and views, turn one off, and preview the passport. Opening a link on the web (`/?passport=<secret>`) shows the passport without signing in. The QR is drawn client-side with `qrcode-generator` (pure JavaScript, no network).
+**Me -> Player passport & QR**: create a link (label, expiry chips, switches for what to show), see its QR code and copy or share it, list links with status and views, turn one off, and preview the passport. Links are always absolute (`https://<host>/?passport=<secret>`, host from `APP_URL`, else the public API host). Opening one on the web shows the passport without signing in. The QR is drawn client-side with `qrcode-generator` (pure JavaScript, no network).
 
 Biometrics (height, weight) are not collected anywhere in Gotmygame today, so the passport does not show them; add them as an athlete-controlled opt-in field when they exist.
 
