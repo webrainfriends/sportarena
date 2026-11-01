@@ -50,7 +50,7 @@ export function AccountSheet({ visible, onClose }) {
               {typed && !list.includes(typed) ? <Chip key={typed} label={localeLabel(typed)} active={typed === locale && !followsDevice} onPress={() => pickLocale(typed)} /> : null}
               {list.map((t) => <Chip key={t} label={localeLabel(t)} active={t === locale && !followsDevice} onPress={() => pickLocale(t)} />)}
             </View>
-            {!list.length && !typed ? <T size={12} color={c.mute}>Nothing matches. Try a country or language name, or a tag like en-SG.</T> : null}
+            {!list.length && !typed ? <T size={12} color={c.mute}>{t('account.no_match')}</T> : null}
             {!followsDevice ? <Btn small title={t('account.use_device')} color={c.paper} ink={c.ink} onPress={() => pickLocale(null)} style={{ alignSelf: 'flex-start' }} /> : null}
           </View>
         ) : null}

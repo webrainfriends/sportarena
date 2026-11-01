@@ -407,6 +407,11 @@ test('issued reports are immutable, hash-verified, reproducible from their snaps
   assert.equal(got.snapshot.agreements[0].valuation.estimated_value_cents, 10000);
   assert.match(got.snapshot.agreements[0].valuation.label, /ESTIMATE/);
   assert.ok(got.snapshot.definitions.some((d) => d.key === 'page_views') && got.snapshot.not_measured.length);
+  // #589: every figure in an issued report names its provenance; existing reports are never rewritten
+  assert.equal(got.snapshot.agreements[0].exposure.metrics.find((x) => x.key === 'page_views').provenance, 'imported');
+  assert.equal(got.snapshot.definitions.find((d) => d.key === 'page_views').provenance, 'imported');
+  assert.equal(got.snapshot.agreements[0].valuation.provenance, 'estimated');
+  assert.ok(got.snapshot.agreements[0].exposure.metrics.every((x) => ['measured', 'imported'].includes(x.provenance)));
 
   // later data changes do not alter the issued report
   await pool.query("UPDATE sponsor_exposure_signals SET value=1 WHERE sponsorship_id=$1", [a.id]);

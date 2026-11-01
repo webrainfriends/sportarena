@@ -11,7 +11,7 @@ import { sponsorAccess, assertSponsorCan, sponsorStaffSql, SPONSOR_ACTIONS } fro
 import { recipientSql } from '../beneficiary-portfolio.js';
 import { exportReport } from '../sponsor-report-export.js';
 import { capabilities } from '../registry.js';
-import { METRICS, PROVIDER_METRICS, VALUABLE_METRICS, NOT_MEASURED, RUNNING, today, canon, sha, windowOf, exposureFor, agreementFacts, estimateFrom, sharedOutcomes, metricOf } from '../sponsor-roi.js';
+import { METRICS, PROVIDER_METRICS, VALUABLE_METRICS, NOT_MEASURED, RUNNING, today, canon, sha, windowOf, exposureFor, agreementFacts, estimateFrom, sharedOutcomes, metricOf, provenanceOf } from '../sponsor-roi.js';
 
 const TAG = 'Sponsors';
 const date = z.string().date();
@@ -255,11 +255,11 @@ const sentence = (f, out) => {
   s.push(`${a.sponsor} and ${a.beneficiary}: agreement ${a.ref ?? a.id.slice(0, 8)} is ${a.status.replace('_', ' ')}, ${a.starts_on ?? '?'} to ${a.ends_on ?? 'open-ended'}${a.days_left != null ? ` (${a.days_left >= 0 ? `${a.days_left} days left` : `ended ${-a.days_left} days ago`})` : ''}.`);
   for (const t of f.finance.totals) s.push(`Money (${t.currency}): ${t.confirmed_cents} of ${t.committed_cents} committed has been confirmed received; ${t.outstanding_cents} is outstanding${t.overdue_cents ? `, of which ${t.overdue_cents} is overdue` : ''} (minor units).`);
   s.push(d.total ? `Deliverables: ${d.accepted} accepted, ${d.missed} missed, ${d.excepted} excepted by agreement, ${d.awaiting_review} awaiting review, ${d.upcoming} upcoming of ${d.total}.` : 'Deliverables: none were set up for this agreement.');
-  for (const m of f.exposure.metrics) s.push(`${m.label}: ${m.value} ${m.unit} (${m.basis === 'platform_measured' ? 'measured by Sportarena' : `reported by ${m.sources.join(', ')}`}${m.period_bound ? '' : ', point in time'}).`);
+  for (const m of f.exposure.metrics) s.push(`${m.label}: ${m.value} ${m.unit} (${m.provenance === 'measured' ? 'measured by Sportarena' : `imported from ${m.sources.join(', ')}`}${m.period_bound ? '' : ', point in time'}).`);
   for (const m of f.exposure.missing) s.push(`No figures for ${metricOf(m.metric).label} on ${m.inventory}: ${m.reason}.`);
   if (f.disputes.open) s.push(`${f.disputes.open} dispute(s) are still open.`);
   if (out) s.push(out.status === 'shared' ? `The beneficiary shares results with the sponsor: ${out.metrics} metric(s), ${out.objectives} objective(s).` : 'The beneficiary has not shared results with the sponsor, so none are included.');
-  if (f.valuation) s.push(`Estimate (assumption-based, model "${f.valuation.model.name}" v${f.valuation.model.version}): ${f.valuation.estimated_value_cents} ${f.valuation.currency} minor units. This is not a measured figure.`);
+  if (f.valuation) s.push(`Estimated (assumption-based, model "${f.valuation.model.name}" v${f.valuation.model.version}): ${f.valuation.estimated_value_cents} ${f.valuation.currency} minor units. This is not a measured figure.`);
   s.push(`Not measured by Sportarena: ${NOT_MEASURED.slice(0, 3).join('; ')}.`);
   return s;
 };
@@ -292,7 +292,7 @@ const COLUMNS = [
   { key: 'recipient', label: 'Beneficiary', type: 'text' }, { key: 'status', label: 'Status', type: 'text' }, { key: 'period', label: 'Period', type: 'text' }, { key: 'currency', label: 'Currency', type: 'text' },
   { key: 'committed_cents', label: 'Committed', type: 'money' }, { key: 'confirmed_cents', label: 'Confirmed', type: 'money' }, { key: 'outstanding_cents', label: 'Outstanding', type: 'money' },
   { key: 'deliverables_accepted', label: 'Accepted', type: 'int' }, { key: 'deliverables_missed', label: 'Missed', type: 'int' },
-  { key: 'placement_impressions', label: 'Impressions', type: 'int' }, { key: 'placement_clicks', label: 'Clicks', type: 'int' }, { key: 'provider_reported', label: 'Provider-reported', type: 'text' },
+  { key: 'placement_impressions', label: 'Impressions', type: 'int' }, { key: 'placement_clicks', label: 'Clicks', type: 'int' }, { key: 'provider_reported', label: 'Imported (provider-reported)', type: 'text' },
   { key: 'estimated_value_cents', label: 'Estimate (assumption-based)', type: 'money' },
 ];
 /** One table row per currency of the agreement (currencies are never combined); the non-money figures are shown once, on the first row. */
@@ -346,7 +346,7 @@ cap({
       const snapshot = {
         schema: 1, view: i.view, kind: i.kind, generated_at: generated, period: { from: i.from, to: i.to }, agreements: facts,
         table: { columns: COLUMNS, rows, totals: [] },
-        definitions: METRICS.filter((m) => used.has(m.key)), not_measured: NOT_MEASURED,
+        definitions: METRICS.filter((m) => used.has(m.key)).map((m) => ({ ...m, provenance: provenanceOf(m.basis) })), not_measured: NOT_MEASURED,
         valuation_note: version ? 'The estimate column comes from the brand\'s own assumptions (versioned) and is not a measured fact.' : 'No valuation was applied: no monetary media value or ROI is shown.',
         sources: [{ label: 'Dues and confirmed payments', status: 'ok', detail: 'read from list_sponsorship_obligations at the time of issue' }, { label: 'Deliverables', status: 'ok', detail: 'accepted only by a named reviewer, with evidence links' },
           { label: 'Exposure', status: facts.some((f) => f.exposure.missing.length) ? 'stale' : 'ok', detail: facts.some((f) => f.exposure.missing.length) ? 'Some expected metrics have no figures yet (see each agreement)' : 'Platform-measured and provider-reported figures are labelled and never merged' }],
