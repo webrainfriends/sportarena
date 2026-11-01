@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { c, dark, grad, r, accentFor, fam } from './theme';
 import { useLayout } from './layout';
 import { mediaUrl } from './api';
+import { t } from './i18n';
 // The native animation driver does not exist on the web; asking for it logs a warning and falls back to JS anyway.
 const NATIVE = Platform.OS !== 'web';
 
@@ -225,7 +226,7 @@ export const Empty = ({ emoji = '🫥', title, sub }) => (
 );
 
 export const ErrorBox = ({ error, onRetry }) => (
-  <Card color={c.orangeSoft}><T weight="700">{error?.message ?? 'Something went wrong'}</T>{onRetry ? <Btn small title="Try again" onPress={onRetry} style={{ marginTop: 10, alignSelf: 'flex-start' }} color={c.violet} /> : null}</Card>
+  <Card color={c.orangeSoft}><T weight="700">{error?.message ?? t('error.generic')}</T>{onRetry ? <Btn small title={t('common.retry')} onPress={onRetry} style={{ marginTop: 10, alignSelf: 'flex-start' }} color={c.violet} /> : null}</Card>
 );
 
 /** Phone: bottom sheet that rises from the edge. Tablet: centred form sheet, like an iPad modal. */

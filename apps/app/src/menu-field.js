@@ -4,9 +4,10 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { c } from './theme';
 import { Btn, Field, Sheet, T } from './ui';
+import { t } from './i18n';
 
 /** options: [{ value, label, sub? }]. `value` may be '' for a real "none" choice. */
-export function MenuField({ label, value, onChange, options, placeholder = 'Choose', hint, disabled, title }) {
+export function MenuField({ label, value, onChange, options, placeholder = t('common.choose'), hint, disabled, title }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
   const now = options.find((o) => o.value === value);
@@ -23,15 +24,15 @@ export function MenuField({ label, value, onChange, options, placeholder = 'Choo
         <T size={12} color={c.mute}>▼</T>
       </Pressable>
       {hint ? <T size={12} color={c.mute}>{hint}</T> : null}
-      <Sheet visible={open} onClose={() => setOpen(false)} title={title ?? label ?? 'Choose'}>
-        {options.length > 8 ? <Field value={q} onChangeText={setQ} placeholder="Search" accessibilityLabel="Search the list" /> : null}
+      <Sheet visible={open} onClose={() => setOpen(false)} title={title ?? label ?? t('common.choose')}>
+        {options.length > 8 ? <Field value={q} onChangeText={setQ} placeholder={t('common.search')} accessibilityLabel={t('common.search_list')} /> : null}
         {shown.length ? shown.map((o) => (
           <Pressable key={String(o.value)} onPress={() => { onChange(o.value); setOpen(false); }} accessibilityRole="button" accessibilityLabel={o.label} accessibilityState={{ selected: o.value === value }}
             style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 48, paddingHorizontal: 12, borderRadius: 12, backgroundColor: o.value === value ? c.violetSoft : pressed ? c.bg : 'transparent' })}>
             <View style={{ flex: 1 }}><T weight="600">{o.label}</T>{o.sub ? <T size={12} color={c.mute}>{o.sub}</T> : null}</View>
             <T size={14} color={c.pink} weight="800" style={{ width: 16 }}>{o.value === value ? '✓' : ''}</T>
           </Pressable>
-        )) : <T size={13} color={c.mute}>Nothing matches that search.</T>}
+        )) : <T size={13} color={c.mute}>{t('common.no_match')}</T>}
       </Sheet>
     </View>
   );
@@ -42,7 +43,7 @@ export function MenuField({ label, value, onChange, options, placeholder = 'Choo
  * the current choice, a sheet with a search box and tick boxes. Give it `options` for a list you already hold, or `load(q)` to search the server as you type.
  * `max` = 1 behaves as a single choice. value is an array of ids; labels of chosen items are remembered so the row can name them after the list changes.
  */
-export function MultiMenuField({ label, value = [], onChange, options, load, max, placeholder = 'All', hint, title, disabled }) {
+export function MultiMenuField({ label, value = [], onChange, options, load, max, placeholder = t('common.all'), hint, title, disabled }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
   const [found, setFound] = useState([]);
@@ -78,10 +79,10 @@ export function MultiMenuField({ label, value = [], onChange, options, load, max
         <T size={12} color={c.mute}>▼</T>
       </Pressable>
       {hint ? <T size={12} color={c.mute}>{hint}</T> : null}
-      <Sheet visible={open} onClose={() => setOpen(false)} title={title ?? label ?? 'Choose'}
-        footer={max === 1 ? null : <View style={{ flexDirection: 'row', gap: 8 }}>{value.length ? <Btn small color={c.paper} ink={c.ink} title="Clear" onPress={() => onChange([])} accessibilityLabel="Clear the selection" /> : null}<Btn small title={value.length ? `Done (${value.length})` : 'Done'} onPress={() => setOpen(false)} accessibilityLabel="Done choosing" /></View>}>
-        {(load || (options ?? []).length > 8) ? <Field value={q} onChangeText={setQ} placeholder="Search" accessibilityLabel="Search the list" /> : null}
-        {busy ? <T size={12} color={c.mute}>Searching…</T> : null}
+      <Sheet visible={open} onClose={() => setOpen(false)} title={title ?? label ?? t('common.choose')}
+        footer={max === 1 ? null : <View style={{ flexDirection: 'row', gap: 8 }}>{value.length ? <Btn small color={c.paper} ink={c.ink} title={t('common.clear')} onPress={() => onChange([])} accessibilityLabel={t('common.clear_selection')} /> : null}<Btn small title={value.length ? t('common.done_count', { n: value.length }) : t('common.done')} onPress={() => setOpen(false)} accessibilityLabel={t('common.done_choosing')} /></View>}>
+        {(load || (options ?? []).length > 8) ? <Field value={q} onChangeText={setQ} placeholder={t('common.search')} accessibilityLabel={t('common.search_list')} /> : null}
+        {busy ? <T size={12} color={c.mute}>{t('common.searching')}</T> : null}
         {list.map((o) => {
           const on = value.includes(o.value);
           return (
@@ -92,7 +93,7 @@ export function MultiMenuField({ label, value = [], onChange, options, load, max
             </Pressable>
           );
         })}
-        {!busy && !list.length ? <T size={13} color={c.mute}>{load && !q.trim() ? 'Nothing to choose from yet.' : 'Nothing matches that search.'}</T> : null}
+        {!busy && !list.length ? <T size={13} color={c.mute}>{load && !q.trim() ? t('empty.nothing') : t('common.no_match')}</T> : null}
       </Sheet>
     </View>
   );

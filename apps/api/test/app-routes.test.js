@@ -13,7 +13,9 @@ test('every screen the app navigates to is registered in PAGES and has a title',
     const body = app.match(new RegExp(`const ${name} = \\{([^\\n]*)\\}`))?.[1] ?? '';
     return [...body.matchAll(/(?:^|,)\s*([A-Za-z]+)\s*(?::|(?=,|$))/g)].map((m) => m[1]);
   };
-  const pages = new Set(keys('PAGES')), titles = new Set(keys('TITLES'));
+  // Titles are translated: App.js lists the routes in TITLE_ROUTES and builds TITLES from them with t('nav.title.<Route>').
+  const titleRoutes = (app.match(/const TITLE_ROUTES = \[([^\]]*)\]/)?.[1] ?? '').match(/'([A-Za-z0-9]+)'/g)?.map((x) => x.slice(1, -1)) ?? [];
+  const pages = new Set(keys('PAGES')), titles = new Set([...keys('TITLES'), ...titleRoutes]);
   assert.ok(pages.size > 20, 'could not read PAGES from App.js');
   const files = ['App.js', ...readdirSync(new URL('screens/', src)).filter((f) => f.endsWith('.js')).map((f) => `screens/${f}`), ...readdirSync(src).filter((f) => f.endsWith('.js'))];
   const targets = new Set();

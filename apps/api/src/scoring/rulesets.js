@@ -186,6 +186,14 @@ const BUILTIN = {
 
 BUILTIN['wheelchair-basketball'] = R({ ...BUILTIN.basketball, label: 'Wheelchair basketball' });
 
+// Team sports that used the labelled generic fallback until #578: each now has its own native model, from the sport's own laws (a template or governed format can still replace any value).
+BUILTIN.curling = R({ kind: 'points_events', label: 'Curling', periods: { count: 10, label: 'End' }, draw_allowed: false, events: [{ kind: 'stone_point', label: 'Stone scoring', points: 1, icon: '🥌' }], stats: [{ kind: 'timeout', label: 'Timeout' }, { kind: 'hammer', label: 'Hammer (last stone)' }, { kind: 'steal', label: 'Steal' }, { kind: 'blank_end', label: 'Blank end' }] });
+BUILTIN.dodgeball = rally('Dodgeball', 3, 1, 1, null, null, [{ kind: 'hit', label: 'Hit (player out)' }, { kind: 'catch', label: 'Catch' }, { kind: 'foul', label: 'Foul' }]);
+BUILTIN['kho-kho'] = R({ kind: 'points_events', label: 'Kho-kho', periods: { count: 4, label: 'Turn' }, draw_allowed: true, events: [{ kind: 'dismissal', label: 'Dismissal', points: 1, icon: '🏃' }], stats: [{ kind: 'foul', label: 'Foul' }, { kind: 'timeout', label: 'Timeout' }, { kind: 'warning', label: 'Warning' }] });
+BUILTIN.rounders = R({ kind: 'points_events', label: 'Rounders', periods: { count: 2, label: 'Innings' }, draw_allowed: true, events: [{ kind: 'rounder', label: 'Rounder', points: 1, icon: '🏏' }], stats: [{ kind: 'half_rounder', label: 'Half rounder (not in score)' }, { kind: 'no_ball', label: 'No ball' }, { kind: 'stumped', label: 'Stumped out' }] });
+BUILTIN['tug-of-war'] = rally('Tug of war', 3, 1, 1, null, null, [{ kind: 'foul', label: 'Foul' }, { kind: 'warning', label: 'Warning' }]);
+BUILTIN['ultimate-frisbee'] = R({ kind: 'points_events', label: 'Ultimate frisbee', periods: { count: 2, label: 'Half' }, draw_allowed: false, events: [{ kind: 'goal', label: 'Goal', points: 1, icon: '🥏' }], stats: [{ kind: 'turnover', label: 'Turnover' }, { kind: 'foul', label: 'Foul' }, { kind: 'timeout', label: 'Timeout' }, { kind: 'callahan', label: 'Callahan' }] });
+
 /** A clearly labelled fallback for team ball sports with no ruleset of their own: every score is one point; set your own values with a scoring template. */
 const genericPoints = (name) => R({
   kind: 'points_events', label: `${name} (points)`, periods: { count: 1, label: 'Game' }, draw_allowed: true,
