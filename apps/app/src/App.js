@@ -381,21 +381,25 @@ function NavEffects() {
   const { user, toast } = useSession();
   const { goTab, push } = useNav();
   const nativeEvent = usePublicEvent();
-  // Back from Stripe/PayPal checkout (web): ?payment=<id>&result=success|cancel
-  useEffect(() => {
-    if (Platform.OS !== 'web' || !user) return;
-    const q = new URLSearchParams(window.location.search);
-    const id = q.get('payment');
-    if (!id) return;
-    window.history.replaceState({}, '', window.location.pathname);
+  // Back from Stripe / PayPal / Razorpay checkout: the web gets ?payment=<id>&result=success|cancel, the phone apps get sportarena://payment?... (see /api/v1/pay/return).
+  // The address is only a hint: the server is asked whether the payment went through, and the screen is chosen from its answer.
+  const finishPayment = (id, result) => {
     goTab('Schedule');
-    if (q.get('result') !== 'success') return toast('Payment cancelled — nothing was charged');
+    if (result !== 'success') return toast('Payment cancelled — nothing was charged');
     api.post(`/payments/${id}/confirm`).then(async (r) => {
       toast(r.status === 'paid' ? 'Payment received ✓' : 'Payment is still processing — check back shortly');
       if (r.purpose_type === 'shop_checkout' || r.purpose_type === 'shop_order') push('ShopOrders');
       if (r.purpose_type === 'sponsorship_payment' && r.sponsorship_id) { goTab('Schedule'); push('SponsorDeal', { id: r.sponsorship_id }); }
       if (r.purpose_type === 'venue_invoice') { const inv = await api.get(`/invoices/${r.purpose_id}`).catch(() => null); if (inv) { goTab('Schedule'); push('Reservation', { id: inv.reservation_id }); } }
     }).catch((e) => toast(e.message));
+  };
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !user) return;
+    const q = new URLSearchParams(window.location.search);
+    const id = q.get('payment');
+    if (!id) return;
+    window.history.replaceState({}, '', window.location.pathname);
+    finishPayment(id, q.get('result'));
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
   // A tapped push notification opens the right screen: from the web service worker (?open= or a message) or from the phone.
   // Opening a shared link while signed in: straight to the event or the live game.
@@ -424,7 +428,11 @@ function NavEffects() {
       return () => navigator.serviceWorker?.removeEventListener('message', onMsg);
     }
     // links that open the app (sportarena://gate/<event>, universal links): same targets as a tapped push
-    const open = (url) => { const t = targetFromUrl(url, APP_HOSTS); if (t) go(parseTarget(t)); };
+    const open = (url) => {
+      const t = targetFromUrl(url, APP_HOSTS);
+      const pay = /^payment:([0-9a-f-]{36}):(success|cancel)$/i.exec(t ?? '');
+      if (pay) finishPayment(pay[1], pay[2]); else if (t) go(parseTarget(t));
+    };
     Linking.getInitialURL().then(open).catch(() => {});
     const link = Linking.addEventListener('url', (e) => open(e.url));
     let sub;

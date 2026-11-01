@@ -309,7 +309,10 @@ export async function startCheckout(user, i) {
   } catch (e) { await client.query('ROLLBACK'); throw e; } finally { client.release(); }
 
   const base = safeReturnBase(i.return_url);
-  const mk = (r) => `${base}/?payment=${paymentId}&result=${r}`;
+  // The phone app asks for client:'app': the provider then returns to a page on our own server that hands the person back to the app (sportarena://payment).
+  // The target is built from config only, never from the request, and the app still confirms the payment with the server (the URL is only a hint).
+  const appBase = i.client === 'app' ? safeReturnBase(undefined) : null;
+  const mk = (r) => (appBase ? `${appBase}/api/v1/pay/return?payment=${paymentId}&result=${r}` : `${base}/?payment=${paymentId}&result=${r}`);
   try {
     const out = i.upi
       ? await provider(i.provider).createUpi({ paymentId, amount: d.amount, currency, name: d.name, upi: i.upi, payer: await upiPayer(user.id, i.upi) })
