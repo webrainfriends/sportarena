@@ -3,6 +3,7 @@ import { Platform, Switch, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
+import { docMaxBytes, docMaxMb } from '../upload-limits';
 import { Btn, Card, Chip, Empty, ErrorBox, Field, Loading, Row, Section, Seg, Sheet, T, Tag } from '../ui';
 import { c } from '../theme';
 
@@ -42,7 +43,7 @@ function EvidenceInput({ kind, label, value, onChange }) {
     setBusy(true);
     try {
       const f = await pickDocument();
-      if (f && f.size > 5 * 2 ** 20) { toast('That file is over 5 MB. Choose a smaller PDF or photo.'); return; }
+      if (f && f.size > docMaxBytes()) { toast(`That file is over ${docMaxMb()} MB. Choose a smaller PDF or photo.`); return; }
       if (f) onChange({ ...value, file: f, file_name: f.name });
     } finally { setBusy(false); }
   };

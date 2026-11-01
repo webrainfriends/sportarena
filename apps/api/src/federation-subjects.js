@@ -1,6 +1,7 @@
 // Federation & Governing Body OS (#475): who may see and act on an affiliation, a licence or a sanction, and the evidence attached to them.
 // Two sides only: the body's staff (scoped roles, read live) and the other party (the club's owner/admin, the licence holder or their verified guardian,
 // the event's organiser). Anyone else gets a 404, so existence of a record is never leaked.
+import { B64_MAX_CHARS, documentMaxBytes } from './platform-settings.js';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { pool } from './db.js';
@@ -13,7 +14,7 @@ import { authority, can, jurisdictionScope, isGuardianOf, plain } from './federa
 export const TABLE = { affiliation: 'fed_affiliations', licence: 'fed_licences', sanction: 'fed_sanctions' };
 // While the other party may still add or remove evidence.
 const EDITABLE = { affiliation: ['draft', 'needs_info'], licence: ['draft', 'needs_info'], sanction: ['requested', 'needs_info'] };
-const MAX_FILE = 5 * 2 ** 20, MAX_EVIDENCE = 30;
+const MAX_EVIDENCE = 30;
 
 /** The record, the caller's staff authority over its body (if any) and whether the caller is the other party. 404 if neither. */
 export async function subjectFor(user, type, subjectId, { c = pool, lock = false } = {}) {
@@ -54,7 +55,7 @@ export async function staffRecipients(c, body, roles) {
 export const evidenceIn = z.object({
   requirement: z.string().trim().min(1).max(80).describe('which requirement this evidences, e.g. "Constitution" or "First-aid certificate"'),
   reference: z.string().trim().min(2).max(500).optional().describe('registration number or https link'),
-  file_name: z.string().max(120).optional(), data: z.string().max(7_200_000).optional().describe('base64 file: PDF, JPEG, PNG or WebP, up to 5 MB'),
+  file_name: z.string().max(120).optional(), data: z.string().max(B64_MAX_CHARS).optional().describe('base64 file: PDF, JPEG, PNG or WebP, up to the platform document limit'),
 }).refine((e) => e.reference || e.data, 'Give a reference (number or link) or attach a file');
 
 function sniffDoc(b) {
@@ -82,7 +83,7 @@ export async function addEvidence(c, s, user, e) {
     const b64 = e.data.replace(/^data:[^,]*,/, '');
     const buf = Buffer.from(b64, 'base64');
     if (buf.length < 16) throw badRequest('That file is empty');
-    if (buf.length > MAX_FILE) throw badRequest(`Files can be up to ${MAX_FILE / 2 ** 20} MB`);
+    if (buf.length > documentMaxBytes()) throw badRequest(`Files can be up to ${documentMaxBytes() / 2 ** 20} MB`);
     const type = sniffDoc(buf);
     if (!type) throw badRequest('Unsupported file. Use PDF, JPEG, PNG or WebP.');
     Object.assign(out, { file_name: (e.file_name ?? 'document').replace(/[^\w. -]/g, '_').slice(0, 120), content_type: type, size_bytes: buf.length, sha256: createHash('sha256').update(buf).digest('hex'), file_enc: encrypt(b64, 'fed_evidence.file') });

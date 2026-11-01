@@ -13,6 +13,9 @@ import { logger } from './logger.js';
 startMetrics();
 await initKeys();   // fail fast if the master key can't be loaded
 await migrate();
+const settingsMod = await import('./platform-settings.js');
+await settingsMod.loadPlatformSettings();   // the platform admin's document size limit
+settingsMod.startSettingsRefresh();
 const platformMod = await import('./platform.js');
 await platformMod.reconcilePlatformRoles();   // only the platform-admin list may hold admin / platform_admin
 await platformMod.bootstrapPlatformOwner();

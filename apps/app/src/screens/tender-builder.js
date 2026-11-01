@@ -1,6 +1,7 @@
 // RFP builder: a guided flow from context to approval. Every structured answer uses the control that fits it (date and time pickers in the
 // tender's own time zone, money fields in the right currency, steppers for numbers, chips for fixed choices, search-and-pick for people,
 // organisations, events and venues). Each step saves to the draft; the server validates before approval and the rubric freezes on approval.
+import { docMaxMb } from '../upload-limits';
 import React, { useEffect, useMemo, useState } from 'react';
 import { View } from 'react-native';
 import { api } from '../api';
@@ -71,7 +72,7 @@ function PackDocuments({ id, toast }) {
   const act = async (fn, msg) => { try { await fn(); toast(msg); docs.reload(); } catch (e) { toast(explain(e)); } };
   return (
     <Panel title="Tender documents" right={docs.data ? <Status tone="neutral" label={`${current.length} document${current.length === 1 ? '' : 's'}`} /> : null}>
-      <T size={13} color={c.mute}>Upload the RFP document and any annexes now or later. PDF, Word, Excel (without macros) or images, up to 10 MB each. Open a document to review it, amend it by uploading the new version (the earlier version is kept), or add another.</T>
+      <T size={13} color={c.mute}>Upload the RFP document and any annexes now or later. PDF, Word, Excel (without macros) or images, up to {docMaxMb()} MB each. Open a document to review it, amend it by uploading the new version (the earlier version is kept), or add another.</T>
       {docs.error ? <ErrorBox error={docs.error} onRetry={docs.reload} /> : null}
       {current.map((d) => (
         <View key={d.id} style={{ gap: 8, borderWidth: 1, borderColor: c.line, borderRadius: 12, padding: 12 }}>

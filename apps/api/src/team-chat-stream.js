@@ -24,7 +24,7 @@ const UUID = /^[0-9a-f-]{36}$/;
 const MAX_PER_USER = 6;
 const RECHECK_MS = 10_000;
 const open = new Map();
-export const LIMITS = { image: DOC_LIMITS.bytes, file: DOC_LIMITS.bytes, voice: 5 * 2 ** 20, perTeam: 2000 };
+export const LIMITS = { get image() { return DOC_LIMITS.bytes; }, get file() { return DOC_LIMITS.bytes; }, voice: 5 * 2 ** 20, perTeam: 2000 };
 
 /** A short voice note, recognised from its bytes (never from what the client says it is). */
 export function sniffAudio(b) {

@@ -1,5 +1,6 @@
 // Insurance for people, teams and events: find an insurer, compare plans, ask for a quote, track it, accept (cover is assigned),
 // pay, renew, keep the paperwork, claim. Insurers run their side from the Insurer desk (./insurer.js).
+import { docMaxMb } from '../upload-limits';
 import React, { useState } from 'react';
 import { Image, Linking, Modal, Platform, Pressable, View } from 'react-native';
 import { api, API, authHeader } from '../api';
@@ -75,7 +76,7 @@ export function DocumentsSheet({ parent, subject, canEdit, linkable, title, kind
   const save = async (d) => { try { const r = await api.post('/documents/link', { insurance_document_id: d.id }); toast(r.already_linked ? 'Already in the documents folder' : 'Saved to the documents folder'); } catch (e) { toast(e.message); } };
   return (
     <Sheet visible={!!scope} onClose={onClose} title={title}>
-      <T size={12} color={c.mute}>{blurb ?? (subject ? 'PDF or photo, up to 10 MB each. Files are encrypted on the server. Everyone in the team, event or venue can open them; the people who manage it add and hide them. Removing one only hides it.' : 'PDF or photo, up to 10 MB each. Files are encrypted on the server and only the policy holder, the people who manage what is covered, and the insurer can open them. Removing one only hides it.')}</T>
+      <T size={12} color={c.mute}>{blurb ?? (subject ? `PDF or photo, up to ${docMaxMb()} MB each. Files are encrypted on the server. Everyone in the team, event or venue can open them; the people who manage it add and hide them. Removing one only hides it.` : `PDF or photo, up to ${docMaxMb()} MB each. Files are encrypted on the server and only the policy holder, the people who manage what is covered, and the insurer can open them. Removing one only hides it.`)}</T>
       {docs.loading ? <Loading /> : docs.error ? <ErrorBox error={docs.error} onRetry={docs.reload} /> : docs.data?.length ? docs.data.map((d) => (
         <Card key={d.id} pad={12}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>

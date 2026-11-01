@@ -284,25 +284,15 @@ server {
     server_name _;
     ${SSL_CONF}
 
-    client_max_body_size 2m;
+    # The ceiling for any upload (documents go up to 50 MB; as base64 JSON that is ~67 MB). The API enforces the real, admin-set limit per route
+    # and keeps its own small JSON limit everywhere else, so this only lets a legitimate upload reach it.
+    client_max_body_size 72m;
 
     # profile photos and post media: the API enforces the real limits (10 MB photos, 60 MB videos); nginx's 2m default would 413 phone photos
     location ~ ^/api/v1/(me/avatar|market/media)$ {
         client_max_body_size 64m;
         proxy_request_buffering off;
         proxy_read_timeout 300s;
-        proxy_pass http://127.0.0.1:${APP_PORT};
-        proxy_http_version 1.1;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$sportarena_proto;
-    }
-
-    # verification evidence (base64 JSON, files up to 5 MB each): the API enforces the real limits; nginx's 2m default would 413 a photo
-    location ~ ^/api/v1/verification/cases(/[0-9a-f-]+/evidence)?$ {
-        client_max_body_size 24m;
-        proxy_read_timeout 120s;
         proxy_pass http://127.0.0.1:${APP_PORT};
         proxy_http_version 1.1;
         proxy_set_header Host \$host;

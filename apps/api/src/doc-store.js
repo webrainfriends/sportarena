@@ -8,7 +8,9 @@ import { AppError } from './errors.js';
 import { decrypt, encrypt } from './crypto.js';
 import { sniff } from './media.js';
 
-export const DOC_LIMITS = { bytes: 10 * 2 ** 20, perParent: 50 };
+import { documentMaxBytes } from './platform-settings.js';
+/** `bytes` is the platform admin's one document size limit (src/platform-settings.js), read live so a change applies everywhere at once. */
+export const DOC_LIMITS = { get bytes() { return documentMaxBytes(); }, perParent: 50 };
 
 /** PDF or a photo, decided from the bytes (never from what the client says). */
 export function sniffDoc(b) {
