@@ -11,6 +11,7 @@ import { encrypt, decrypt } from '../crypto.js';
 import { isYouth } from '../youth.js';
 import { isOrganiser } from './event-departments.js';
 import { isGateOperator } from '../accreditation.js';
+import { PRICE_POINTS, POINT_COLOUR } from './venue-seating.js';
 import { loadViewableEvent } from '../spectator.js';
 import {
   CLASSES, CHANNELS, ENTRY_BEFORE_MIN, ENTRY_AFTER_MIN, OFFLINE_MAX_AGE_H,
@@ -114,10 +115,10 @@ cap({
 cap({
   name: 'create_ticket_section', method: 'POST', path: '/events/:id/ticket-sections', tag: TAG, status: 201,
   summary: 'Organiser: define a seating section (rows by seats per row, seats are A1, A2 ... B1 ...). Products with reserved seating sell seats from one section.',
-  input: z.object({ id, name: z.string().trim().min(1).max(60), rows_count: z.number().int().min(1).max(100), seats_per_row: z.number().int().min(1).max(200) }),
+  input: z.object({ id, name: z.string().trim().min(1).max(60), rows_count: z.number().int().min(1).max(100), seats_per_row: z.number().int().min(1).max(200), price_point: z.enum(PRICE_POINTS).optional(), colour: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional() }),
   handler: ({ user }, i) => tx(async (c) => {
     const ev = await organiserOf(user, i.id, c);
-    try { return (await c.query('INSERT INTO ticket_sections(event_id, name, rows_count, seats_per_row, created_by) VALUES ($1,$2,$3,$4,$5) RETURNING *', [ev.id, i.name, i.rows_count, i.seats_per_row, user.id])).rows[0]; }
+    try { return (await c.query('INSERT INTO ticket_sections(event_id, name, rows_count, seats_per_row, price_point, colour, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *', [ev.id, i.name, i.rows_count, i.seats_per_row, i.price_point ?? null, i.colour?.toUpperCase() ?? (i.price_point ? POINT_COLOUR[i.price_point] : null), user.id])).rows[0]; }
     catch (e) { if (e.code === '23505') throw conflict('A section with that name already exists'); throw e; }
   }),
 });
@@ -130,6 +131,67 @@ cap({
     const ev = await organiserOf(user, i.id);
     return (await many('SELECT * FROM ticket_sections WHERE event_id=$1 AND archived_at IS NULL ORDER BY name', [ev.id])).map((s) => ({ ...s, seats: sectionSeats(s) }));
   },
+});
+
+cap({
+  name: 'update_ticket_section', method: 'PATCH', path: '/ticket-sections/:id', tag: TAG,
+  summary: 'Organiser: rename a seating section, change its price point or colour, or archive it (kept for history). Rows and seats cannot change once tickets have been sold from it.',
+  input: z.object({ id, name: z.string().trim().min(1).max(60).optional(), price_point: z.enum(PRICE_POINTS).nullable().optional(), colour: z.string().regex(/^#[0-9A-Fa-f]{6}$/).nullable().optional(), rows_count: z.number().int().min(1).max(100).optional(), seats_per_row: z.number().int().min(1).max(200).optional(), archived: z.boolean().optional() }),
+  handler: ({ user }, i) => tx(async (c) => {
+    const s0 = (await c.query('SELECT * FROM ticket_sections WHERE id=$1', [i.id])).rows[0];
+    if (!s0) throw notFound('Section');
+    const ev = await organiserOf(user, s0.event_id, c);
+    await lockEvent(c, ev.id);
+    const s = (await c.query('SELECT * FROM ticket_sections WHERE id=$1 FOR UPDATE', [i.id])).rows[0];
+    const rows = i.rows_count ?? s.rows_count, per = i.seats_per_row ?? s.seats_per_row;
+    const sold = (await c.query("SELECT count(*)::int AS n FROM tickets WHERE section_id=$1 AND status IN ('reserved','issued','refund_due')", [s.id])).rows[0].n;
+    if (sold && (rows !== s.rows_count || per !== s.seats_per_row)) throw conflict('Tickets have been sold from this section, so its rows and seats cannot change');
+    if (i.archived === true && (await c.query("SELECT 1 FROM ticket_products WHERE section_id=$1 AND status IN ('active','paused')", [s.id])).rowCount) throw conflict('Archive or move the tickets sold in this section first');
+    try {
+      return (await c.query(
+        `UPDATE ticket_sections SET name=coalesce($2,name), price_point=CASE WHEN $3::boolean THEN $4 ELSE price_point END, colour=CASE WHEN $5::boolean THEN $6 ELSE colour END, rows_count=$7, seats_per_row=$8,
+                archived_at=CASE WHEN $9::boolean IS NULL THEN archived_at WHEN $9 THEN coalesce(archived_at, now()) ELSE NULL END WHERE id=$1 RETURNING *`,
+        [s.id, i.name ?? null, i.price_point !== undefined, i.price_point ?? null, i.colour !== undefined, i.colour?.toUpperCase() ?? null, rows, per, i.archived ?? null])).rows[0];
+    } catch (e) { if (e.code === '23505') throw conflict('A section with that name already exists'); throw e; }
+  }),
+});
+
+cap({
+  name: 'import_venue_seating', method: 'POST', path: '/events/:id/ticket-sections/from-venue', tag: TAG, status: 201,
+  summary: 'Organiser: use the seating map of the venue the event is held at. Each venue zone becomes a ticket section of the event (a copy: later venue edits never change tickets sold), keeping its price point and colour. Optionally create a draft reserved-seat ticket for every new zone, priced from the zone\'s default price in the venue\'s currency, for the chosen fixtures. If the event has no spectator capacity yet it takes the venue\'s. Safe to repeat: zones already imported are skipped.',
+  input: z.object({ id, venue_id: id.optional(), create_products: z.boolean().default(true), fixture_ids: z.array(id).max(500).default([]) }),
+  handler: ({ user }, i) => tx(async (c) => {
+    const ev = await organiserOf(user, i.id, c);
+    const vid = i.venue_id ?? ev.venue_id;
+    if (!vid) throw badRequest('Choose the event\'s venue first');
+    const allowed = (await c.query(
+      `SELECT 1 WHERE $2::uuid = $3::uuid OR EXISTS (SELECT 1 FROM event_requests WHERE event_id=$1 AND kind='venue' AND venue_id=$2 AND status IN ('sent','quoted','accepted','finalized'))
+         OR EXISTS (SELECT 1 FROM bookings b JOIN resources r ON r.id=b.resource_id WHERE b.event_id=$1 AND r.venue_id=$2 AND b.status='confirmed')`, [ev.id, vid, ev.venue_id])).rowCount;
+    if (!allowed) throw notFound('Venue');
+    const venue = (await c.query('SELECT id, name, currency, spectator_capacity FROM venues WHERE id=$1', [vid])).rows[0];
+    const zones = (await c.query('SELECT * FROM venue_seat_zones WHERE venue_id=$1 AND archived_at IS NULL ORDER BY sort_order, name', [vid])).rows;
+    if (!zones.length) throw conflict('This venue has not set up a seating map yet', { code: 'no_venue_map' });
+    await fixturesOk(c, ev.id, i.fixture_ids);
+    await lockEvent(c, ev.id);
+    const sections = [], products = [], skipped = [];
+    for (const z of zones) {
+      const have = (await c.query('SELECT id FROM ticket_sections WHERE event_id=$1 AND archived_at IS NULL AND (venue_zone_id=$2 OR lower(name)=lower($3))', [ev.id, z.id, z.name])).rows[0];
+      if (have) { skipped.push({ zone_id: z.id, name: z.name, reason: 'already imported' }); continue; }
+      const sec = (await c.query('INSERT INTO ticket_sections(event_id, name, rows_count, seats_per_row, venue_zone_id, price_point, colour, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *', [ev.id, z.name, z.rows_count, z.seats_per_row, z.id, z.price_point, z.colour, user.id])).rows[0];
+      sections.push(sec);
+      if (i.create_products) {
+        const name = `${z.name} seat`;
+        const p = (await c.query(
+          `INSERT INTO ticket_products(event_id, name, class, seating, section_id, price_minor, currency, channels, created_by) VALUES ($1,$2,'adult','reserved',$3,$4,$5,'{online}',$6) ON CONFLICT DO NOTHING RETURNING *`,
+          [ev.id, name, sec.id, z.default_price_minor, venue.currency, user.id])).rows[0];
+        if (p) { await setFixtures(c, p.id, i.fixture_ids); products.push({ ...p, fixture_ids: i.fixture_ids }); }
+      }
+    }
+    if (venue.spectator_capacity != null) {
+      await c.query(`INSERT INTO ticket_settings(event_id, spectator_capacity, updated_by) VALUES ($1,$2,$3) ON CONFLICT (event_id) DO UPDATE SET spectator_capacity=coalesce(ticket_settings.spectator_capacity, EXCLUDED.spectator_capacity), updated_by=$3, updated_at=now()`, [ev.id, venue.spectator_capacity, user.id]);
+    }
+    return { venue: { id: venue.id, name: venue.name, currency: venue.currency, spectator_capacity: venue.spectator_capacity }, sections, products, skipped };
+  }),
 });
 
 // ---- products -----------------------------------------------------------------------------------------------------------------------------------------
@@ -255,6 +317,15 @@ cap({
   },
 });
 
+/** Seat labels already held by a live ticket that overlaps this product in time (labels only, never who). */
+async function takenSeats(c, p) {
+  const linked = (await c.query('SELECT fixture_id FROM ticket_product_fixtures WHERE product_id=$1', [p.id])).rows.map((r) => r.fixture_id);
+  return (await c.query(
+    `SELECT DISTINCT t.seat_label FROM tickets t WHERE t.section_id=$1 AND (t.status='issued' OR (t.status='reserved' AND t.hold_expires_at > now()))
+       AND ($2::boolean OR NOT EXISTS (SELECT 1 FROM ticket_product_fixtures x WHERE x.product_id=t.product_id) OR EXISTS (SELECT 1 FROM ticket_product_fixtures x WHERE x.product_id=t.product_id AND x.fixture_id = ANY($3::uuid[])))`,
+    [p.section_id, !linked.length, linked])).rows.map((r) => r.seat_label);
+}
+
 cap({
   name: 'get_ticket_seat_map', method: 'GET', path: '/ticket-products/:id/seats', tag: TAG, auth: 'public',
   summary: 'The seats of a reserved-seating product: the section grid and which seats are already taken. Seat labels only, never who holds them.',
@@ -264,12 +335,27 @@ cap({
     if (!p) throw notFound('Ticket product');
     await loadViewableEvent(user, p.event_id);
     const s = (await pool.query('SELECT * FROM ticket_sections WHERE id=$1', [p.section_id])).rows[0];
-    const linked = (await pool.query('SELECT fixture_id FROM ticket_product_fixtures WHERE product_id=$1', [p.id])).rows.map((r) => r.fixture_id);
-    const taken = (await pool.query(
-      `SELECT DISTINCT t.seat_label FROM tickets t WHERE t.section_id=$1 AND (t.status='issued' OR (t.status='reserved' AND t.hold_expires_at > now()))
-         AND ($2::boolean OR NOT EXISTS (SELECT 1 FROM ticket_product_fixtures x WHERE x.product_id=t.product_id) OR EXISTS (SELECT 1 FROM ticket_product_fixtures x WHERE x.product_id=t.product_id AND x.fixture_id = ANY($3::uuid[])))`,
-      [s.id, !linked.length, linked])).rows.map((r) => r.seat_label);
-    return { section: { id: s.id, name: s.name, rows_count: s.rows_count, seats_per_row: s.seats_per_row }, taken };
+    return { section: { id: s.id, name: s.name, rows_count: s.rows_count, seats_per_row: s.seats_per_row, price_point: s.price_point, colour: s.colour }, taken: await takenSeats(pool, p) };
+  },
+});
+
+cap({
+  name: 'get_event_seat_map', method: 'GET', path: '/public/events/:id/tickets/seat-map', tag: TAG, auth: 'public',
+  summary: 'The whole seating plan of an event for choosing seats: every zone with seats on sale (rows by seats, price point, colour), the tickets that sell seats in it with price and availability, and the seats already taken. One call draws the map; seats can then be chosen across zones in a single order. Seat labels only, never who holds them.',
+  input: z.object({ id }),
+  async handler({ user }, i) {
+    const { ev } = await loadViewableEvent(user, i.id);
+    if (ev.status === 'cancelled') return { event_id: ev.id, price_points: PRICE_POINTS, zones: [] };
+    const secs = await many('SELECT * FROM ticket_sections WHERE event_id=$1 AND archived_at IS NULL ORDER BY created_at, name', [ev.id]);
+    const zones = [];
+    for (const s of secs) {
+      const prods = await many(`SELECT p.* FROM ticket_products p WHERE p.event_id=$1 AND p.section_id=$2 AND p.seating='reserved' AND ${SELLABLE} ORDER BY p.price_minor, p.created_at`, [ev.id, s.id]);
+      if (!prods.length) continue;
+      const products = [];
+      for (const p of prods) products.push({ ...(await publicProduct(pool, ev, p)), taken: await takenSeats(pool, p) });
+      zones.push({ section_id: s.id, name: s.name, rows_count: s.rows_count, seats_per_row: s.seats_per_row, seats: s.rows_count * s.seats_per_row, price_point: s.price_point, colour: s.colour ?? POINT_COLOUR[s.price_point] ?? null, products });
+    }
+    return { event_id: ev.id, price_points: PRICE_POINTS, zones };
   },
 });
 

@@ -12,7 +12,7 @@ import { encrypt, decrypt } from '../crypto.js';
 import { audit } from '../helpers.js';
 import { notify } from '../notify.js';
 import { hasOrgGrant } from '../org-access.js';
-import { YOUTH_SQL, guardianLink, requireConsent } from '../youth.js';
+import { YOUTH_SQL, checkGuardianScope, guardianLink, requireConsent } from '../youth.js';
 import { fromLocal, validTimezone } from '../booking/time.js';
 import { canManageTeam } from './teams.js';
 import { LIVE, LISTS, RULES, latestPolicy, protectedIds, PROTECTED_NAME } from '../registration.js';
@@ -200,6 +200,7 @@ cap({
       // a verified guardian registers a young person they look after; the row records them as submitter and counts as a self-registration
       const guardian = !staff && !manager && target !== user.id && !!(await guardianLink(user.id, target, c));
       if (!(staff || manager || target === user.id || guardian)) throw notFound('Team');
+      if (guardian) await checkGuardianScope(user.id, target, 'register', ev.organisation_id ?? null, c);
       const source = staff ? 'staff' : manager ? 'team' : 'self';
       // lock the team's entry: the per-team roster is decided one transaction at a time
       const entry = (await c.query("SELECT id FROM event_entries WHERE event_id=$1 AND team_id=$2 AND status='accepted' FOR UPDATE", [ev.id, team.id])).rows[0];
