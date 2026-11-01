@@ -10,28 +10,28 @@ import { MyPlans } from './plans';
 import { c } from '../theme';
 import { moneyIn } from '../vtime';
 import { locale } from '../locale';
+import { minorDigits, parseAmount } from '../money';
 
-const digits = (cur) => { try { return new Intl.NumberFormat('en', { style: 'currency', currency: cur }).resolvedOptions().maximumFractionDigits; } catch { return 2; } };
-const toMinor = (text, cur) => Math.round(Number(String(text).replace(/,/g, '')) * 10 ** digits(cur));
 const KIND = { topup: '➕ Top-up', gift_card: '🎁 Gift card', spend: '🏟️ Booking', refund: '↩️ Refund', adjustment: '🛠️ Adjustment' };
 
 /** Choose a currency and an amount (typed in whole currency units). Used by top-up and gift card purchase. */
 function AmountSheet({ title, cta, visible, onClose, currencies, onSubmit, withMessage }) {
-  const [cur, setCur] = useState('INR');
+  const [picked, setPicked] = useState(null);
+  const cur = picked ?? currencies?.[0]?.code ?? null; // the server's settlement currencies; the first is the default
   const [amount, setAmount] = useState('');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
   const go = async () => {
     setBusy(true); setErr(null);
-    try { const minor = toMinor(amount, cur); if (!(minor > 0)) throw new Error('Enter an amount'); await onSubmit({ currency: cur, amount_cents: minor, ...(withMessage && message ? { message } : {}) }); setAmount(''); setMessage(''); onClose(); }
+    try { if (!cur) throw new Error('Choose a currency'); const minor = parseAmount(amount, cur); if (!(minor > 0)) throw new Error(`Enter an amount in ${cur}${minorDigits(cur) ? ` with up to ${minorDigits(cur)} decimals` : ', in whole units'}`); await onSubmit({ currency: cur, amount_cents: minor, ...(withMessage && message ? { message } : {}) }); setAmount(''); setMessage(''); onClose(); }
     catch (e) { setErr(e.message); } finally { setBusy(false); }
   };
   return (
     <Sheet visible={visible} onClose={onClose} title={title}>
       <T weight="700">Currency</T>
-      <Seg options={(currencies ?? [{ code: 'INR', symbol: '₹' }]).map((x) => ({ value: x.code, label: `${x.code} ${x.symbol}` }))} value={cur} onChange={setCur} color={c.violet} />
-      <Field label={`Amount (${cur})`} value={amount} onChangeText={setAmount} keyboardType="numeric" placeholder={digits(cur) ? '500.00' : '5000'} />
+      <Seg options={(currencies ?? []).map((x) => ({ value: x.code, label: `${x.code} ${x.symbol}` }))} value={cur} onChange={setPicked} color={c.violet} />
+      <Field label={`Amount (${cur})`} value={amount} onChangeText={setAmount} keyboardType="decimal-pad" placeholder={minorDigits(cur) ? `0.${'0'.repeat(minorDigits(cur))}` : '0'} />
       {withMessage ? <Field label="Message (optional)" value={message} onChangeText={setMessage} placeholder="Happy birthday!" /> : null}
       {err ? <T color={c.red} weight="700">{err}</T> : null}
       <Btn title={cta} onPress={go} loading={busy} />

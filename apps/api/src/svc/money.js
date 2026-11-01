@@ -1,17 +1,10 @@
 // Server decimal arithmetic for quotes, orders and invoices. Everything is integer minor units + ISO currency; quantities carry up to 3 decimals
 // and are handled as integer thousandths, so no floating-point error reaches a stored total. Tax rates are basis points. Never aggregate currencies.
-import { CURRENCIES, exponent, isSupportedCurrency } from '../currency.js';
+import { CURRENCIES, THREE_DECIMAL, exponent, isSupportedCurrency } from '../currency.js';
+
+export { THREE_DECIMAL }; // defined once in currency.js: accepted here for service procurement only (online card payment is refused)
 import { badRequest } from '../errors.js';
 
-/**
- * Three-decimal currencies (1 dinar = 1000 fils). The platform currency table leaves them out because card providers need special rounding
- * for them, so they are accepted for service procurement only: quotes, orders, tax, invoices, manual payments and reports all work in their
- * own minor unit; online card payment is refused (record a bank/cash payment instead).
- */
-export const THREE_DECIMAL = {
-  KWD: { name: 'Kuwaiti dinar', symbol: 'KD', exp: 3 }, BHD: { name: 'Bahraini dinar', symbol: 'BD', exp: 3 }, OMR: { name: 'Omani rial', symbol: 'OMR', exp: 3 },
-  JOD: { name: 'Jordanian dinar', symbol: 'JD', exp: 3 }, TND: { name: 'Tunisian dinar', symbol: 'DT', exp: 3 },
-};
 export const isServiceCurrency = (c) => isSupportedCurrency(c) || Object.hasOwn(THREE_DECIMAL, c);
 export const serviceExponent = (c) => (Object.hasOwn(THREE_DECIMAL, c) ? THREE_DECIMAL[c].exp : exponent(c));
 export const serviceCurrencies = () => [...Object.entries(CURRENCIES), ...Object.entries(THREE_DECIMAL)].map(([code, c]) => ({ code, name: c.name, symbol: c.symbol, exponent: c.exp, online_payments: c.exp !== 3 }));

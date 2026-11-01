@@ -17,6 +17,8 @@ import { locale } from '../locale';
 import { QrCode } from './passport';
 import { CameraScan, hasCamera } from '../camera-scan';
 import { AccessPoints } from '../access-ui';
+import { TicketGatePanel } from './event-tickets';
+import { t } from '../i18n';
 
 const stamp = (d) => (d ? new Date(d).toLocaleString(locale, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : null);
 const midnight = (d) => d.getHours() === 0 && d.getMinutes() === 0;
@@ -430,7 +432,7 @@ export function GateScan({ id }) {
   const zones = useLoad(() => api.get(`/events/${id}/accreditation/zones`).catch(() => []), [id]);
   const report = useLoad(() => api.get(`/events/${id}/accreditation/report`), [id]);
   const points = useLoad(() => api.get('/access/points', { event_id: id }).catch(() => []), [id]);
-  const [zone, setZone] = useState(null), [dir, setDir] = useState('in'), [code, setCode] = useState(''), [res, setRes] = useState(null), [busy, setBusy] = useState(false), [cam, setCam] = useState(false), [recent, setRecent] = useState([]);
+  const [mode, setMode] = useState('badges'), [zone, setZone] = useState(null), [dir, setDir] = useState('in'), [code, setCode] = useState(''), [res, setRes] = useState(null), [busy, setBusy] = useState(false), [cam, setCam] = useState(false), [recent, setRecent] = useState([]);
   const input = useRef(null);
   const submit = async (token) => {
     const t = String(token ?? code).trim();
@@ -455,6 +457,12 @@ export function GateScan({ id }) {
   return (
     <Screen>
       <T size={13} color={c.mute}>{ev.data?.name}</T>
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        <Chip label={`🎫 ${t('tix.mode_badges')}`} active={mode === 'badges'} onPress={() => setMode('badges')} />
+        <Chip label={`🎟️ ${t('tix.mode_tickets')}`} active={mode === 'tickets'} onPress={() => setMode('tickets')} />
+      </View>
+      {mode === 'tickets' ? <TicketGatePanel id={id} /> : null}
+      {mode === 'tickets' ? null : <>
       <T size={15} weight="800" style={{ marginTop: 4 }}>Where are you scanning?</T>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
         <Chip label="Event gate" active={!zone} onPress={() => setZone(null)} />
@@ -510,6 +518,7 @@ export function GateScan({ id }) {
           ))}
         </>
       ) : null}
+      </>}
     </Screen>
   );
 }

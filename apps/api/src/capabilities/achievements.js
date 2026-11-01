@@ -61,7 +61,7 @@ cap({
   async handler() {
     const sports = await many('SELECT slug, name, emoji, scoring, category FROM sports ORDER BY name');
     const families = Object.keys(FAMILIES).filter((f) => f !== 'team_form');
-    return { families: families.map((f) => modelFor(f)), milestone_metrics: Object.fromEntries(Object.entries(FAMILY_MILESTONES).map(([k, v]) => [k, v.map(([metric]) => metric)])),
+    return { families: families.map((f) => modelFor(f)), milestone_metrics: Object.fromEntries(Object.entries(FAMILY_MILESTONES).map(([k, v]) => [k, v.map(([key]) => key)])),
       sports: sports.map((s) => { const family = familyOf(s); return { slug: s.slug, name: s.name, emoji: s.emoji, family, native: FAMILIES[family].native }; }) };
   },
 });

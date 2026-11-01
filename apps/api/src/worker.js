@@ -23,6 +23,7 @@ import { activateDuePauses } from './sponsor-pause.js';
 import { processSponsorshipTerms } from './sponsor-renewals.js';
 import { processSponsorTasks } from './sponsor-collaboration.js';
 import { sweepAccessGrants } from './access-grants.js';
+import { sweepTickets } from './ticketing.js';
 import { expireAcademyOffers, remindTrials, runAcademyJobs } from './academy-sweeps.js';
 import { runTenderJobs, sendTenderReminders } from './capabilities/tender-reports.js';
 import { deliverDueReports } from './sponsor-report-schedules.js';
@@ -44,6 +45,7 @@ import { hourlyRatingSweep } from './ratings/data.js';
 /** Weekly ranking snapshots: the worker runs often, so only act once a week (Monday UTC), and a rerun on identical results adds nothing. */
 const weeklyRankingSnapshots = () => (new Date().getUTCDay() === 1 ? snapshotAll('weekly') : 0);
 import { syncOpenGames } from './open-games-sweeps.js';
+import { syncCoachClasses } from './coach-classes-sweeps.js';
 import { adSweeps } from './ads/engine.js';
 import { raiseTeamDues } from './team-money.js';
 import { reconcileFinance } from './finance.js';
@@ -78,6 +80,7 @@ export const STEPS = [
   ['billing_schedules', 'billing_periods_raised', raiseScheduledCharges, 0],
   ['collections', 'collection_cases_advanced', runCollections, 0],
   ['access_grants', 'access_grants_revoked', sweepAccessGrants, 0],
+  ['ticket_holds_and_refunds', 'ticket_holds_released_or_refunded', sweepTickets, 0],
   ['audit_chain', 'audit_rows_sealed', sealAuditLog, 0],
   ['tender_jobs', 'tender_jobs', runTenderJobs, null],
   ['tender_reminders', 'tender_deadline_reminders', sendTenderReminders, 0],
@@ -97,6 +100,7 @@ export const STEPS = [
   ['ranking_snapshots', 'ranking_snapshots', weeklyRankingSnapshots, 0],
   ['skill_ratings', 'skill_rating_runs', hourlyRatingSweep, 0],
   ['open_games', 'open_games_synced', syncOpenGames, 0],
+  ['coach_classes', 'coach_classes_synced', syncCoachClasses, 0],
   ['team_dues', 'team_dues_raised', raiseTeamDues, 0],
   ['advertising', 'advertising', adSweeps, null],
   ['finance', 'finance', reconcileFinance, null],

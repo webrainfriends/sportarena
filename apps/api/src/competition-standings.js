@@ -12,6 +12,7 @@ export const TIEBREAKERS = {
   for: 'Scored',
   wins: 'Wins',
   away_for: 'Scored away',
+  countback: 'Countback of best finishes (ranked-meet series)',
   name: 'Name (A–Z)',
 };
 export const DEFAULT_RULES = {
@@ -20,9 +21,20 @@ export const DEFAULT_RULES = {
   tiebreakers: ['points', 'head_to_head_points', 'head_to_head_diff', 'diff', 'for', 'wins', 'name'],
   movement: { champion: true, promote: 0, relegate: 0, playoff: 0, qualify: 0 },   // per division: how many promote / relegate / go to a playoff / qualify
 };
+export const DEFAULT_PLACEMENT_POINTS = [10, 8, 6, 5, 4, 3, 2, 1];                  // ranked-meet series: points by finishing place, first place first
 
 /** The unit a sport's score is counted in, so a table never calls cricket runs "goals". Unlisted sports get the labelled generic fallback. */
-const UNIT = { goals: ['Goals', 'GF', 'GA', 'GD'], points: ['Points scored', 'PF', 'PA', 'PD'], sets: ['Sets', 'SF', 'SA', 'SD'], time: ['Result', 'F', 'A', 'D'], distance: ['Result', 'F', 'A', 'D'] };
+const UNIT = { goals: ['Goals', 'GF', 'GA', 'GD'], points: ['Points scored', 'PF', 'PA', 'PD'], sets: ['Sets', 'SF', 'SA', 'SD'], time: ['Result', 'F', 'A', 'D'], distance: ['Result', 'F', 'A', 'D'], combat: ['Bout score', 'F', 'A', 'D'], weight: ['Result', 'F', 'A', 'D'], judged: ['Score', 'F', 'A', 'D'] };
+
+/**
+ * Every scoring family has its own native competition model; none is a silent default:
+ *  head_to_head: two sides per fixture (goals, points, sets, combat bouts): played / won / drawn / lost.
+ *  ranked_meets: many competitors per meet, ranked by time (lowest wins), distance, weight or judged score (highest wins): series points by place.
+ */
+const RANKED = { time: 'lowest', distance: 'highest', weight: 'highest', judged: 'highest' };
+export const tableModelOf = (scoring) => (RANKED[scoring]
+  ? { model: 'ranked_meets', native: true, scoring, best: RANKED[scoring], note: `Ranked by ${scoring === 'time' ? 'time (fastest wins)' : scoring === 'judged' ? 'judged score (highest wins)' : `${scoring} (highest wins)`}: each meet awards series points by finishing place.` }
+  : { model: 'head_to_head', native: true, scoring });
 export const unitFor = (scoring) => { const u = UNIT[scoring]; return u ? { unit: u[0], for: u[1], against: u[2], diff: u[3], generic: false } : { unit: 'Score', for: 'F', against: 'A', diff: 'D', generic: true }; };
 
 export function normaliseRules(r = {}) {
@@ -31,6 +43,7 @@ export function normaliseRules(r = {}) {
     forfeit: { ...DEFAULT_RULES.forfeit, ...(r.forfeit ?? {}) },
     tiebreakers: Array.isArray(r.tiebreakers) && r.tiebreakers.length ? r.tiebreakers.filter((t) => TIEBREAKERS[t]) : DEFAULT_RULES.tiebreakers,
     movement: { ...DEFAULT_RULES.movement, ...(r.movement ?? {}) },
+    placement_points: Array.isArray(r.placement_points) && r.placement_points.length ? r.placement_points : DEFAULT_PLACEMENT_POINTS,
   };
   if (!out.tiebreakers.includes('points')) out.tiebreakers.unshift('points');
   if (!out.tiebreakers.includes('name')) out.tiebreakers.push('name');
@@ -158,4 +171,45 @@ export function proposeMovements(divisions) {
     });
   }
   return out;
+}
+
+/** Rank one meet's entries: by value in the sport's direction (equal values share a place, the next place is skipped), else by the places given. */
+export function rankMeet(entries, best) {
+  const done = entries.filter((e) => e.status === 'finished');
+  if (done.length && done.every((e) => e.value != null)) {
+    const sorted = [...done].sort((a, b) => (best === 'lowest' ? a.value - b.value : b.value - a.value));
+    return entries.map((e) => (e.status !== 'finished' ? { ...e, position: null } : { ...e, position: sorted.findIndex((x) => x.value === e.value) + 1 }));
+  }
+  return entries.map((e) => ({ ...e, position: e.status === 'finished' ? e.position ?? null : null }));
+}
+
+/**
+ * Ranked-meet series table: the place in each meet gives series points (rules.placement_points), then the same adjustments; level teams are separated by
+ * the configured tie-breakers (wins = firsts, countback = who has more firsts, then more seconds ...), then by name.
+ * @param {{team_id,name?}[]} teams  @param {{results:{team_id,position,status}[]}[]} meets  @param {object} rawRules  @param {{team_id,points_delta}[]} adjustments
+ */
+export function computeRankedStandings(teams, meets, rawRules, adjustments = []) {
+  const rules = normaliseRules(rawRules), scale = rules.placement_points;
+  const row = new Map(teams.map((t) => [t.team_id, { ...blank(t), firsts: 0, podiums: 0, finishes: [] }]));
+  for (const m of meets) {
+    for (const r of m.results) {
+      const x = row.get(r.team_id);
+      if (!x) continue;
+      x.played++;
+      if (r.status === 'finished' && r.position) {
+        x.base_points += scale[r.position - 1] ?? 0;
+        x.finishes.push(r.position);
+        if (r.position === 1) { x.firsts++; x.won++; }
+        if (r.position <= 3) x.podiums++;
+      }
+    }
+  }
+  for (const a of adjustments) { const x = row.get(a.team_id); if (x) x.adjustment += a.points_delta; }
+  const countback = (x) => { let v = 0; for (let k = 1; k <= 8; k++) v = v * 1000 + x.finishes.filter((p) => p === k).length; return v; };
+  const list = [...row.values()];
+  for (const x of list) x.points = x.base_points + x.adjustment;
+  const val = { points: (x) => x.points, wins: (x) => x.firsts, countback };
+  const chain = rules.tiebreakers.filter((k) => val[k]);
+  list.sort((a, b) => { for (const k of chain) { const d = val[k](b) - val[k](a); if (d) return d; } return String(a.name ?? '').localeCompare(String(b.name ?? '')) || a.team_id.localeCompare(b.team_id); });
+  return list.map(({ finishes, ...x }, i) => ({ rank: i + 1, ...x, diff: 0 }));
 }

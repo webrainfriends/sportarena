@@ -2,6 +2,8 @@
 // Everything reads the public projection (/public/...); the UI only calls the API. Works on phone, tablet, desktop web, iOS and Android:
 // no web-only APIs without a Platform branch, 44pt touch targets, accessible labels, and lists as well as drawings for tables and brackets.
 import { locale } from '../locale';
+import { t } from '../i18n';
+import { moneyIn } from '../vtime';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Linking, Platform, Pressable, Share, View } from 'react-native';
 import { API, api, mediaUrl } from '../api';
@@ -297,6 +299,7 @@ export function SpectatorBody({ id, p, openGame, goTeam, extra = [] }) {
 
 // ---------------------------------------------------------------- the public event header (shared by the event page and the signed-out page)
 export function EventHeader({ p, mine, onFollowChange }) {
+  const { push } = useNav();
   const e = p.event;
   const st = STATE[e.state] ?? STATE.upcoming;
   return (
@@ -309,6 +312,7 @@ export function EventHeader({ p, mine, onFollowChange }) {
       <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
         <FollowButton type="event" id={e.id} name={e.name} mine={mine} onChange={onFollowChange} />
         <ShareButton card={p.share.card} />
+        {p.tickets?.on_sale ? <Btn small title={`🎟️ ${t('tix.get_tickets')}${p.tickets.from_price_minor != null ? ` · ${p.tickets.from_price_minor ? moneyIn(p.tickets.from_price_minor, p.tickets.currency) : t('tix.free')}` : ''}`} onPress={() => push('Tickets', { id: e.id })} accessibilityLabel={t('tix.get_tickets')} /> : null}
       </View>
     </View>
   );

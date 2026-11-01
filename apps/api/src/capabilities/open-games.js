@@ -302,6 +302,7 @@ cap({
     const out = list.map((r) => {
       const card = shape(r, badges, user);
       const prof = profiles.find((p) => p.sport_id === r.sport_id);
+      card.my_level = prof?.skill_level ? { level: prof.skill_level, verified: true } : null; // the viewer's own reliable level in this sport (#633); never anyone else's
       const fit = levelFit(r, prof?.level ?? null);
       const reasons = [];
       if (user && !r.is_mine) {

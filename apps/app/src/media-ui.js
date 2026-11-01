@@ -1,5 +1,6 @@
 // Sports Media, Broadcast & Rights (#482): the vocabulary, formats and small pieces every media screen shares, in the Arena palette of the event console.
 // The server is the authority on every rule (scope, exclusivity, embargo, consent, entitlement); these only show what it returns and hide what a role cannot use.
+import { formatMoney } from './money';
 import React from 'react';
 import { View } from 'react-native';
 import { locale } from './locale';
@@ -36,7 +37,7 @@ export const PROVIDERS = { youtube: 'YouTube Live', twitch: 'Twitch', vimeo: 'Vi
 export const fmtDT = (iso) => (iso ? new Date(iso).toLocaleString(locale, { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '');
 export const fmtD = (iso) => (iso ? new Date(iso).toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' }) : '');
 export const fmtRange = (a, b) => (a && b ? `${fmtD(a)} → ${fmtD(b)}` : fmtD(a ?? b));
-export const money = (minor, cur) => { try { const f = new Intl.NumberFormat(locale, { style: 'currency', currency: cur }); return f.format(Number(minor) / 10 ** f.resolvedOptions().maximumFractionDigits); } catch { return `${minor} ${cur ?? ''}`; } };
+export const money = (minor, cur) => formatMoney(minor, cur);
 const pad = (n) => String(n).padStart(2, '0');
 export const dayOf = (iso) => { const d = new Date(iso); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
 /** A calendar range (YYYY-MM-DD, YYYY-MM-DD) becomes the instants it covers in the person's own time zone: start of the first day to the end of the last. */

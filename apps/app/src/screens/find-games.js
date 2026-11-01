@@ -9,6 +9,7 @@ import { SportSelect } from '../sportpicker';
 import { currentPosition } from '../location';
 import { c, when } from '../theme';
 import { locale } from '../locale';
+import { t } from '../i18n';
 import { useCols } from './marketplace';
 import { HostGameSheet } from './host-game';
 
@@ -56,6 +57,7 @@ export function GameCard({ g, width, onOpen }) {
           <Seats g={g} />
           <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
             <Tag label={g.skill.label} />
+            {g.my_level ? <View accessible accessibilityLabel={t('skill.my_level_a11y', { level: g.my_level.level.toFixed(1) })}><Tag label={t('skill.my_level', { level: g.my_level.level.toFixed(1) })} color={c.mint} /></View> : null}
             {g.audience !== 'adults' ? <Tag label={g.audience === 'youth' ? 'Young players' : 'All ages'} color={c.cyan} /> : null}
             {g.venue_id ? <Tag label={bl} color={bc} /> : null}
             {g.has_team ? <Tag label={`${g.team_emoji ?? ''} ${g.team_name}`.trim()} color={c.sun} /> : null}

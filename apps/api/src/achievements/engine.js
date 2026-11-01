@@ -31,12 +31,22 @@ export function personalBestRun(values, direction = 'higher') {
   return { current: run, longest };
 }
 
-/** The native milestone model for each family: [metric, label, tiers]. Metrics are the governed performance metrics. */
+/** Results that each beat every earlier one of the same sport and metric (oldest first); the first result is the baseline and does not count. */
+export function personalBestCount(values, direction = 'higher') {
+  const better = direction === 'lower' ? (a, b) => a < b : (a, b) => a > b;
+  let best = null; const improved = [];
+  values.forEach((v, i) => { if (best === null) best = v; else if (better(v, best)) { best = v; improved.push(i); } });
+  return improved;
+}
+
+/** The native milestone model for each family: [key, label, tiers, how]. A counted metric is summed (runs, aces); a timed or measured
+ *  result is never summed (adding up times means nothing), so that family earns improvement-based milestones instead.
+ *  how: { sum: metric } totals a counted metric; { records: true } counts personal records set; { measures: true } counts distinct measured metrics. */
 export const FAMILY_MILESTONES = {
-  cricket: [['runs', 'Runs', [100, 500, 1000]], ['wickets', 'Wickets', [10, 50, 100]]],
-  goal_game: [['goals', 'Goals', [10, 50, 100]], ['assists', 'Assists', [10, 50, 100]]],
-  racket: [],
-  measured: [],
+  cricket: [['runs', 'Runs', [100, 500, 1000], { sum: 'runs' }], ['wickets', 'Wickets', [10, 50, 100], { sum: 'wickets' }]],
+  goal_game: [['goals', 'Goals', [10, 50, 100], { sum: 'goals' }], ['assists', 'Assists', [10, 50, 100], { sum: 'assists' }]],
+  racket: [['aces', 'Aces', [50, 250, 1000], { sum: 'aces' }], ['sets_won', 'Sets won', [10, 50, 200], { sum: 'sets_won' }], ['matches_won', 'Matches won', [5, 25, 100], { sum: 'matches_won' }]],
+  measured: [['records', 'Personal records set', [1, 5, 15], { records: true }], ['measures', 'Events and distances', [3, 5, 10], { measures: true }]],
   generic: [],
   team_form: [],
 };
@@ -94,9 +104,20 @@ export function evaluate(facts) {
     ...tierDefs('medals', 'all', 'Podium', 'medals', MEDAL_TIERS, medals.length, medals.map((m) => ({ id: m.id, on: String(m.on).slice(0, 10), sport: null, metric: m.kind, value: 1 }))),
   ];
   for (const fam of families) {
-    for (const [metric, label, tiers] of FAMILY_MILESTONES[fam] ?? []) {
-      const rs = ordered.filter((r) => r.family === fam && r.metric === metric);
-      a.push(...tierDefs(`${fam}_${metric}`, fam, label, metric, tiers, rs.reduce((s, r) => s + Number(r.value), 0), rs.map(ref)));
+    for (const [key, label, tiers, how] of FAMILY_MILESTONES[fam] ?? []) {
+      const rs = ordered.filter((r) => r.family === fam);
+      if (how.sum) {
+        const m = rs.filter((r) => r.metric === how.sum);
+        a.push(...tierDefs(`${fam}_${key}`, fam, label, key.replace(/_/g, ' '), tiers, m.reduce((t, r) => t + Number(r.value), 0), m.map(ref)));
+      } else if (how.records) {
+        const hits = [];
+        for (const rows of new Map([...rs.reduce((g, r) => g.set(`${r.sport}|${r.metric}`, [...(g.get(`${r.sport}|${r.metric}`) ?? []), r]), new Map())]).values()) personalBestCount(rows.map((r) => Number(r.value)), rows[0].direction).forEach((i) => hits.push(rows[i]));
+        hits.sort((x, y) => (x.on < y.on ? -1 : x.on > y.on ? 1 : 0));
+        a.push(...tierDefs(`${fam}_${key}`, fam, label, 'records', tiers, hits.length, hits.map(ref)));
+      } else if (how.measures) {
+        const seen = new Map(); for (const r of rs) if (!seen.has(`${r.sport}|${r.metric}`)) seen.set(`${r.sport}|${r.metric}`, r);
+        a.push(...tierDefs(`${fam}_${key}`, fam, label, 'events', tiers, seen.size, [...seen.values()].map(ref)));
+      }
     }
   }
   // only a tier you can see: all earned tiers, plus the very next one of each group as progress

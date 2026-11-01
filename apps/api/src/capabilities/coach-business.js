@@ -76,7 +76,7 @@ const cardInput = {
   audience: z.enum(AUDIENCES).default('individual'), delivery: z.enum(['in_person', 'online', 'both']).default('in_person'),
   unit: z.enum(['hour', 'session', 'day', 'month', 'package']).default('hour'), price_cents: money, per_person: z.boolean().default(false),
   duration_min: z.number().int().min(15).max(1440).nullable().optional(), min_participants: z.number().int().min(1).max(500).default(1), max_participants: z.number().int().min(1).max(500).nullable().optional(),
-  sessions_included: z.number().int().min(1).max(500).nullable().optional(), is_intro: z.boolean().default(false), description: z.string().max(600).nullable().optional(), active: z.boolean().default(true),
+  sessions_included: z.number().int().min(1).max(500).nullable().optional(), is_intro: z.boolean().default(false), intro_scope: z.enum(['coach', 'sport']).default('coach').describe('an intro offer is usable once per athlete per coach, or once per sport'), description: z.string().max(600).nullable().optional(), active: z.boolean().default(true),
 };
 
 async function checkCard(user, v) {
@@ -97,9 +97,9 @@ cap({
   async handler({ user }, i) {
     const sportId = await checkCard(user, i);
     return one(
-      `INSERT INTO coach_rate_cards(coach_id, sport_id, specialisation_id, title, audience, delivery, unit, price_cents, per_person, duration_min, min_participants, max_participants, sessions_included, is_intro, description, active)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
-      [user.id, sportId, i.specialisation_id ?? null, i.title, i.audience, i.delivery, i.unit, i.price_cents, i.per_person, i.duration_min ?? null, i.min_participants, i.max_participants ?? null, i.sessions_included ?? null, i.is_intro, i.description ?? null, i.active]);
+      `INSERT INTO coach_rate_cards(coach_id, sport_id, specialisation_id, title, audience, delivery, unit, price_cents, per_person, duration_min, min_participants, max_participants, sessions_included, is_intro, intro_scope, description, active)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *`,
+      [user.id, sportId, i.specialisation_id ?? null, i.title, i.audience, i.delivery, i.unit, i.price_cents, i.per_person, i.duration_min ?? null, i.min_participants, i.max_participants ?? null, i.sessions_included ?? null, i.is_intro, i.intro_scope, i.description ?? null, i.active]);
   },
 });
 
@@ -115,8 +115,8 @@ cap({
     if (i.sport === undefined && cur.sport_id) v.sport = cur.sport_id;
     const sportId = await checkCard(user, { ...v, sport: v.sport ?? null });
     return one(
-      `UPDATE coach_rate_cards SET sport_id=$2, specialisation_id=$3, title=$4, audience=$5, delivery=$6, unit=$7, price_cents=$8, per_person=$9, duration_min=$10, min_participants=$11, max_participants=$12, sessions_included=$13, is_intro=$14, description=$15, active=$16 WHERE id=$1 RETURNING *`,
-      [cur.id, sportId, v.specialisation_id ?? null, v.title, v.audience, v.delivery, v.unit, v.price_cents, v.per_person, v.duration_min ?? null, v.min_participants, v.max_participants ?? null, v.sessions_included ?? null, v.is_intro, v.description ?? null, v.active]);
+      `UPDATE coach_rate_cards SET sport_id=$2, specialisation_id=$3, title=$4, audience=$5, delivery=$6, unit=$7, price_cents=$8, per_person=$9, duration_min=$10, min_participants=$11, max_participants=$12, sessions_included=$13, is_intro=$14, intro_scope=$17, description=$15, active=$16 WHERE id=$1 RETURNING *`,
+      [cur.id, sportId, v.specialisation_id ?? null, v.title, v.audience, v.delivery, v.unit, v.price_cents, v.per_person, v.duration_min ?? null, v.min_participants, v.max_participants ?? null, v.sessions_included ?? null, v.is_intro, v.description ?? null, v.active, v.intro_scope]);
   },
 });
 

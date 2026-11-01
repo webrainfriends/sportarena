@@ -119,7 +119,7 @@ export function BookProviderSheet({ provider, followupId, onClose, onDone }) {
       ) : <Field label="When (2026-11-02 17:30)" value={when2} onChangeText={setWhen} />}
       {grid ? <T size={12} color={c.mute}>Times shown in {slots.data.timezone}.</T> : <T size={12} color={c.mute}>This provider has not published opening hours yet, so they will confirm or suggest another time.</T>}
       {both ? <View style={{ flexDirection: 'row', gap: 6 }}>{[['in_person', 'In person'], ['remote', 'Remote']].map(([v, l]) => <Chip key={v} label={l} active={mode === v} onPress={() => setMode(v)} />)}</View> : null}
-      {d?.consult_fee_cents && !svc ? <T size={13}>Fee: <T weight="800">{money(d.consult_fee_cents)}</T> — you pay after the request, before the provider confirms.</T> : null}
+      {d?.consult_fee_cents && !svc ? <T size={13}>Fee: <T weight="800">{money(d.consult_fee_cents, d.currency)}</T> — you pay after the request, before the provider confirms.</T> : null}
       <Field label="What is it about? (encrypted — only you and the provider can read it)" value={reason} onChangeText={setReason} multiline />
       <Btn title="Request appointment" color={c.pink} loading={busy} disabled={grid ? !pick : !when2.trim()} onPress={send} />
       <FormSheet visible={ext} onClose={() => setExt(false)} title="Add your booking" submitLabel="Add to my appointments"
@@ -137,7 +137,7 @@ export function ProviderProfileSection() {
   const [form, setForm] = useState(null);
   const p = prof.data;
   const save = async (v) => {
-    await api.post('/me/provider-profile', { provider_type: v.provider_type, headline: v.headline ?? null, bio: v.bio ?? null, clinic: v.clinic ?? null, city: v.city ?? null, in_person: v.in_person, remote_ok: v.remote_ok, specialties: v.specialties ?? [], languages: (v.languages ?? '').split(',').map((x) => x.trim()).filter(Boolean), accepting_patients: v.accepting_patients, consult_fee_cents: v.fee === undefined || v.fee === '' ? null : Math.round(Number(v.fee) * 100), timezone: v.timezone, slot_min: v.slot_min, listed: v.listed, external_booking: v.ext_provider === 'none' || !v.ext_url ? null : { provider: v.ext_provider, url: v.ext_url } });
+    await api.post('/me/provider-profile', { provider_type: v.provider_type, headline: v.headline ?? null, bio: v.bio ?? null, clinic: v.clinic ?? null, city: v.city ?? null, in_person: v.in_person, remote_ok: v.remote_ok, specialties: v.specialties ?? [], languages: (v.languages ?? '').split(',').map((x) => x.trim()).filter(Boolean), accepting_patients: v.accepting_patients, consult_fee_cents: v.fee_cents === undefined || v.fee_cents === '' ? null : v.fee_cents, currency: v.fee_cents === undefined || v.fee_cents === '' ? undefined : v.currency, timezone: v.timezone, slot_min: v.slot_min, listed: v.listed, external_booking: v.ext_provider === 'none' || !v.ext_url ? null : { provider: v.ext_provider, url: v.ext_url } });
     prof.reload(); return 'Profile saved';
   };
   const days = p ? [...new Set(p.hours.windows.map((w) => w.weekday))] : [];
@@ -158,12 +158,12 @@ export function ProviderProfileSection() {
         </Card>
       )}
       <FormSheet visible={form === 'profile'} onClose={() => setForm(null)} title="Provider profile" onSubmit={save}
-        initial={{ provider_type: p?.provider_type ?? type, headline: p?.headline ?? '', bio: p?.bio ?? '', clinic: p?.clinic ?? '', city: p?.city ?? '', in_person: p?.in_person ?? true, remote_ok: p?.remote_ok ?? false, specialties: p?.specialties ?? [], languages: (p?.languages ?? []).join(', '), accepting_patients: p?.accepting_patients ?? true, ext_provider: p?.external_booking?.provider ?? 'none', ext_url: p?.external_booking?.url ?? '', fee: p?.consult_fee_cents ? String(p.consult_fee_cents / 100) : '', timezone: p?.hours.timezone ?? 'UTC', slot_min: p?.hours.slot_min ?? 30, listed: true }}
+        initial={{ provider_type: p?.provider_type ?? type, headline: p?.headline ?? '', bio: p?.bio ?? '', clinic: p?.clinic ?? '', city: p?.city ?? '', in_person: p?.in_person ?? true, remote_ok: p?.remote_ok ?? false, specialties: p?.specialties ?? [], languages: (p?.languages ?? []).join(', '), accepting_patients: p?.accepting_patients ?? true, ext_provider: p?.external_booking?.provider ?? 'none', ext_url: p?.external_booking?.url ?? '', fee_cents: p?.consult_fee_cents ?? undefined, currency: p?.currency ?? undefined, timezone: p?.hours.timezone ?? 'UTC', slot_min: p?.hours.slot_min ?? 30, listed: true }}
         fields={[{ key: 'provider_type', label: 'I am a', type: 'choice', options: ['physio', 'doctor'].filter((r) => user.roles.includes(r)).map((r) => ({ value: r, label: r })) },
           { key: 'headline', label: 'Headline', optional: true }, { key: 'bio', label: 'About you', type: 'multiline', optional: true }, { key: 'clinic', label: 'Clinic', optional: true }, { key: 'city', label: 'City or area', type: 'region', optional: true },
           { key: 'in_person', label: 'See patients in person', type: 'switch' }, { key: 'remote_ok', label: 'Offer remote consultations', type: 'switch' },
           { key: 'specialties', label: 'Specialties', type: 'multi', optional: true, options: SPECIALTIES }, { key: 'languages', label: 'Languages (comma separated)', optional: true },
-          { key: 'fee', label: 'Consultation fee (₹)', type: 'number', optional: true }, { key: 'timezone', label: 'Time zone', type: 'timezone' }, { key: 'slot_min', label: 'Appointment length (minutes)', type: 'stepper', min: 10, max: 240, step: 5 },
+          { key: 'currency', label: 'Fee currency', type: 'currency', optional: true }, { key: 'fee_cents', label: 'Consultation fee', type: 'money', currency: (v) => v.currency, optional: true }, { key: 'timezone', label: 'Time zone', type: 'timezone' }, { key: 'slot_min', label: 'Appointment length (minutes)', type: 'stepper', min: 10, max: 240, step: 5 },
           { key: 'ext_provider', label: 'Take bookings on another site?', type: 'choice', options: [{ value: 'none', label: 'No' }, { value: 'calendly', label: 'Calendly' }, { value: 'cal_com', label: 'Cal.com' }, { value: 'generic', label: 'My own site' }], hint: 'Patients are sent there with a notice that they are leaving Gotmygame.' }, { key: 'ext_url', label: 'Booking page address (https://…)', optional: true, show: (v) => v.ext_provider !== 'none' },
           { key: 'accepting_patients', label: 'Accepting new appointments', type: 'switch' }, { key: 'listed', label: 'Show me in search', type: 'switch' }]} />
       <FormSheet visible={form === 'hours'} onClose={() => setForm(null)} title="Opening hours" submitLabel="Save hours"
@@ -346,7 +346,7 @@ export function ProviderSearch({ onBooked }) {
               <T weight="800" size={15}>{x.display_name}{x.credential_verified ? ' ✓' : ''}</T>
               <T size={12} color={c.mute}>{[String(x.provider_type ?? '').replace(/_/g, ' '), x.clinic, x.city, x.remote_ok ? 'remote' : null].filter(Boolean).join(' · ')}</T>
               {x.headline ? <T size={12}>{x.headline}</T> : null}
-              <T size={12} color={c.mute}>{[x.rating ? `★ ${Number(x.rating).toFixed(1)} (${x.rating_count})` : 'No reviews yet', x.fee_cents ? moneyIn(Number(x.fee_cents), x.currency ?? 'INR') : 'Fee on request', x.accepting_patients === false ? 'not taking new patients' : null].filter(Boolean).join(' · ')}</T>
+              <T size={12} color={c.mute}>{[x.rating ? `★ ${Number(x.rating).toFixed(1)} (${x.rating_count})` : 'No reviews yet', x.fee_cents ? moneyIn(Number(x.fee_cents), x.currency) : 'Fee on request', x.accepting_patients === false ? 'not taking new patients' : null].filter(Boolean).join(' · ')}</T>
             </View>
             {x.id !== user.id ? <Btn small title="Book" disabled={x.accepting_patients === false} onPress={() => setBook(x)} /> : null}
           </View>
