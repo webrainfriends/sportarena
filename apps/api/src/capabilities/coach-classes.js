@@ -48,13 +48,14 @@ function shape(r, me) {
   };
 }
 
-const seatView = (m, extra = {}) => ({ seat_id: m.id, class_id: m.class_id, status: m.status, payment_status: m.payment_status, amount_cents: Number(m.amount_cents), hold_expires_at: m.hold_expires_at, attendance: m.attendance, late_cancel: m.late_cancel, ...extra });
+const seatView = (m, extra = {}) => ({ seat_id: m.id, class_id: m.class_id, user_id: m.user_id, status: m.status, payment_status: m.payment_status, amount_cents: Number(m.amount_cents), hold_expires_at: m.hold_expires_at, attendance: m.attendance, late_cancel: m.late_cancel, ...extra });
 
 async function getDetail(classId, user) {
   const r = await one(`SELECT ${COLS} ${FROM} WHERE k.id=$1`, [classId]);
   if (!r) throw notFound('Class');
   const card = shape(r, user);
-  const mine = user ? await many('SELECT * FROM coach_class_seats WHERE class_id=$1 AND (user_id=$2 OR applied_by=$2) ORDER BY created_at', [r.id, user.id]) : [];
+  const mine = user ? await many(`SELECT * FROM coach_class_seats WHERE class_id=$1 AND (user_id=$2 OR applied_by=$2
+      OR user_id IN (SELECT child_id FROM guardian_links WHERE guardian_id=$2 AND status='active' AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now()))) ORDER BY (user_id=$2) DESC, created_at`, [r.id, user.id]) : [];
   const isCoach = !!user && (r.coach_id === user.id || isAdmin(user));
   const out = { ...card, my: mine.map((m) => seatView(m)) };
   // the online link is for the people who hold a seat (and the coach), not for browsers
@@ -153,9 +154,10 @@ cap({
     const p = [];
     const arg = (v) => (p.push(v), `$${p.length}`);
     const where = [`k.status=${arg(i.status)}`];
-    if (i.status === 'open') where.push('k.starts_at > now()');
     if (i.mine) { const u = arg(user.id); where.push(`(k.coach_id=${u} OR EXISTS (SELECT 1 FROM coach_class_seats z WHERE z.class_id=k.id AND (z.user_id=${u} OR z.applied_by=${u}) AND z.status = ANY(${arg(LIVE)}::text[])))`); }
     else where.push(user ? `(k.visibility='public' OR k.coach_id=${arg(user.id)} OR EXISTS (SELECT 1 FROM coach_class_seats z WHERE z.class_id=k.id AND z.user_id=$${p.length}))` : "k.visibility='public'");
+    // discovery is future-only; a coach's own classes (mine) stay listed until completed, so attendance can be recorded after the start
+    if (i.status === 'open' && !i.mine) where.push('k.starts_at > now()');
     if (i.coach_id) where.push(`k.coach_id=${arg(i.coach_id)}`);
     if (sport) where.push(`k.sport_id=${arg(sport.id)}`);
     if (i.from) where.push(`k.starts_at >= ${arg(i.from)}`);
@@ -265,9 +267,21 @@ cap({
       if (i.decision === 'decline') return seatView((await c.query("UPDATE coach_class_seats SET status='declined', updated_at=now() WHERE id=$1 RETURNING *", [seat.id])).rows[0]);
       await requireConsent(seat.user_id, 'participation', 'taking part in a class', c);
       if (k.status !== 'open' || new Date(k.starts_at) <= new Date()) throw conflict('This class is closed');
-      return seatView(await place(c, k, seat));
+      // the guardian who approves is the one who pays and manages the seat (checkout reads applied_by), as when a guardian joins for the child
+      const approved = (await c.query('UPDATE coach_class_seats SET applied_by=$2, updated_at=now() WHERE id=$1 RETURNING *', [seat.id, user.id])).rows[0];
+      return seatView(await place(c, k, approved));
     });
   },
+});
+
+cap({
+  name: 'list_guardian_coach_class_requests', method: 'GET', path: '/me/coach-class-guardian-requests', tag: TAG,
+  summary: 'Guardian: coach classes a young person you look after has asked to join, waiting for your decision.', input: z.object({ ...page }),
+  handler: ({ user }, i) => many(
+    `SELECT z.id AS seat_id, z.class_id, z.created_at, k.title, k.starts_at, k.price_cents, k.currency, k.audience, s.name AS sport, v.name AS venue_name, (k.online_url IS NOT NULL) AS is_online, u.id AS child_id, u.display_name AS child_name
+       FROM coach_class_seats z JOIN users u ON u.id=z.user_id JOIN coach_classes k ON k.id=z.class_id JOIN sports s ON s.id=k.sport_id LEFT JOIN venues v ON v.id=k.venue_id
+       JOIN guardian_links l ON l.child_id=z.user_id AND l.guardian_id=$1 AND l.status='active' AND l.revoked_at IS NULL AND (l.expires_at IS NULL OR l.expires_at > now())
+      WHERE z.status='guardian_pending' AND k.status='open' AND k.starts_at > now() ORDER BY k.starts_at LIMIT $2 OFFSET $3`, [user.id, i.limit, i.offset]),
 });
 
 // ---------------------------------------------------------------- running it

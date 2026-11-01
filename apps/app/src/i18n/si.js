@@ -512,4 +512,12 @@ export default {
   'copilot.task.plan_session': 'සැසියක් සැලසුම් කරන්න',
   'copilot.task.player_focus': 'ක්‍රීඩකයා කෙරෙහි අවධානය',
   'copilot.task.outstanding_actions': 'ඉතිරි ක්‍රියාමාර්ග',
+  'cls.guardian_title': 'ඔබේ අනුමැතිය බලාපොරොත්තුවෙන්',
+  'cls.guardian_asked': '{child} {title} වෙත එක්වීමට ඉල්ලා ඇත',
+  'cls.approve': 'අනුමත කරන්න',
+  'cls.decline': 'ප්‍රතික්ෂේප කරන්න',
+  'cls.view_class': 'පන්තිය බලන්න',
+  'cls.approved': 'අනුමත කළා',
+  'cls.declined': 'ප්‍රතික්ෂේප කළා',
+  'cls.costs_money': 'මුදල් අයවේ',
 };

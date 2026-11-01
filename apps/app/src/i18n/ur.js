@@ -512,4 +512,12 @@ export default {
   'copilot.task.plan_session': 'سیشن کی منصوبہ بندی کریں',
   'copilot.task.player_focus': 'کھلاڑی پر توجہ',
   'copilot.task.outstanding_actions': 'باقی کام',
+  'cls.guardian_title': 'آپ کی منظوری کا انتظار',
+  'cls.guardian_asked': '{child} نے {title} میں شامل ہونے کی درخواست کی',
+  'cls.approve': 'منظور کریں',
+  'cls.decline': 'مسترد کریں',
+  'cls.view_class': 'کلاس دیکھیں',
+  'cls.approved': 'منظور کیا گیا',
+  'cls.declined': 'مسترد کیا گیا',
+  'cls.costs_money': 'فیس لگے گی',
 };

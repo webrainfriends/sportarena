@@ -512,4 +512,12 @@ export default {
   'copilot.task.plan_session': 'সেশনের পরিকল্পনা করুন',
   'copilot.task.player_focus': 'খেলোয়াড়ের ওপর মনোযোগ',
   'copilot.task.outstanding_actions': 'বাকি কাজ',
+  'cls.guardian_title': 'আপনার অনুমোদনের অপেক্ষায়',
+  'cls.guardian_asked': '{child} {title}-এ যোগ দিতে চেয়েছে',
+  'cls.approve': 'অনুমোদন করুন',
+  'cls.decline': 'প্রত্যাখ্যান করুন',
+  'cls.view_class': 'ক্লাস দেখুন',
+  'cls.approved': 'অনুমোদিত',
+  'cls.declined': 'প্রত্যাখ্যাত',
+  'cls.costs_money': 'খরচ আছে',
 };

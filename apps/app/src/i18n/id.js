@@ -512,4 +512,12 @@ export default {
   'copilot.task.plan_session': 'Rencanakan sesi',
   'copilot.task.player_focus': 'Fokus pemain',
   'copilot.task.outstanding_actions': 'Tindakan tertunda',
+  'cls.guardian_title': 'MENUNGGU PERSETUJUAN ANDA',
+  'cls.guardian_asked': '{child} meminta bergabung di {title}',
+  'cls.approve': 'Setujui',
+  'cls.decline': 'Tolak',
+  'cls.view_class': 'Lihat kelas',
+  'cls.approved': 'Disetujui',
+  'cls.declined': 'Ditolak',
+  'cls.costs_money': 'berbayar',
 };

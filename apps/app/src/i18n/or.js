@@ -512,4 +512,12 @@ export default {
   'copilot.task.plan_session': 'ସେସନ୍ ଯୋଜନା କରନ୍ତୁ',
   'copilot.task.player_focus': 'ଖେଳାଳିଙ୍କ ଉପରେ ଧ୍ୟାନ',
   'copilot.task.outstanding_actions': 'ବାକି ଥିବା କାର୍ଯ୍ୟ',
+  'cls.guardian_title': 'ଆପଣଙ୍କ ଅନୁମୋଦନ ପାଇଁ ଅପେକ୍ଷା',
+  'cls.guardian_asked': '{child} {title}ରେ ଯୋଗ ଦେବାକୁ ଅନୁରୋଧ କରିଛନ୍ତି',
+  'cls.approve': 'ଅନୁମୋଦନ କରନ୍ତୁ',
+  'cls.decline': 'ପ୍ରତ୍ୟାଖ୍ୟାନ କରନ୍ତୁ',
+  'cls.view_class': 'କ୍ଲାସ ଦେଖନ୍ତୁ',
+  'cls.approved': 'ଅନୁମୋଦିତ',
+  'cls.declined': 'ପ୍ରତ୍ୟାଖ୍ୟାତ',
+  'cls.costs_money': 'ଖର୍ଚ୍ଚ ଅଛି',
 };

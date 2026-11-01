@@ -10,7 +10,7 @@ import { notify } from '../notify.js';
 import { config } from '../config.js';
 import { coachSlotOk } from '../coach-slots.js';
 import { AUDIENCES, INTRO_USED, assertIntroFree, cardFor, clientFor, introScopeOf, introStatus, mapIntroViolation, priceFor } from '../coach-pricing.js';
-import { commitmentBusy } from '../coach-commitments.js';
+import { commitmentBusy, withCoachCalendar } from '../coach-commitments.js';
 import { expandDates, patternFields } from '../recurrence.js';
 import { AppError } from '../errors.js';
 import { hhmm, fromLocal, validTimezone } from '../booking/time.js';
@@ -83,21 +83,27 @@ export async function placeHire(user, i, opts = {}) {
     if ((await one('SELECT accepting FROM coach_profiles WHERE user_id=$1', [i.coach_id]))?.accepting === false) throw badRequest('This coach is not taking new athletes right now');
     const grid = await coachSlotOk(i.coach_id, i.starts_at, mins);
     if (grid.grid && !grid.ok) throw conflict("That time is not one of the coach's open slots");
-    const clash = await one("SELECT 1 FROM coach_hires WHERE coach_id=$1 AND status IN ('requested','confirmed') AND starts_at < $2::timestamptz + make_interval(mins => $3) AND starts_at + make_interval(mins => duration_min) > $2", [i.coach_id, i.starts_at, mins]);
-    if (clash || (await one("SELECT 1 FROM venue_coach_slots WHERE coach_id=$1 AND status='agreed' AND starts_at < $2::timestamptz + make_interval(mins => $3) AND ends_at > $2", [i.coach_id, i.starts_at, mins]))) throw conflict('Coach is not free then');
-    const start = new Date(i.starts_at);
-    if ((await commitmentBusy(i.coach_id, start, new Date(+start + mins * 60_000))).length) throw conflict('The coach has another commitment then');
-    const introScope = introScopeOf(card, audience);
-    if (introScope) {
-      if (opts.introSeen?.used) throw conflict(INTRO_USED, { code: 'intro_used', hire_id: null });   // a series books the intro once
-      await assertIntroFree(null, { coachId: i.coach_id, athleteId, sportId: sport.id, scope: introScope });
-    }
-    const total = card ? priceFor(card, mins, i.participants) : Math.round((Number(prof.hourly_rate_cents ?? 0) * mins) / 60);
-    const rate = card ? Math.round((total * 60) / mins) : Number(prof.hourly_rate_cents ?? 0);
-    if (opts.dry && introScope && opts.introSeen) opts.introSeen.used = true;
-    if (opts.dry) return { ok: true, starts_at: i.starts_at, duration_min: mins, total_cents: total, audience, participants: i.participants };
-    const hire = await one('INSERT INTO coach_hires(hirer_id, coach_id, sport_id, starts_at, duration_min, rate_cents_hour, total_cents, note, payment_status, audience, participants, team_id, event_id, rate_card_id, series_id, athlete_id, intro_scope, currency) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING id, coach_id, starts_at, duration_min, total_cents, currency, status, payment_status, audience, participants, athlete_id, intro_scope',
-      [user.id, i.coach_id, sport.id, i.starts_at, mins, rate, total, i.note, paymentsEnabled() && total > 0 ? 'unpaid' : 'not_required', audience, i.participants, client.team_id, client.event_id, card?.id ?? null, opts.series_id ?? null, athleteId, introScope, config.payments.currency]).catch((e) => { throw mapIntroViolation(e); });
+    // one coach calendar at a time: the same lock a class publish takes, so a hire and a class can never both claim the slot
+    const made = await withCoachCalendar(i.coach_id, async () => {
+      const clash = await one("SELECT 1 FROM coach_hires WHERE coach_id=$1 AND status IN ('requested','confirmed') AND starts_at < $2::timestamptz + make_interval(mins => $3) AND starts_at + make_interval(mins => duration_min) > $2", [i.coach_id, i.starts_at, mins]);
+      if (clash || (await one("SELECT 1 FROM venue_coach_slots WHERE coach_id=$1 AND status='agreed' AND starts_at < $2::timestamptz + make_interval(mins => $3) AND ends_at > $2", [i.coach_id, i.starts_at, mins]))) throw conflict('Coach is not free then');
+      const start = new Date(i.starts_at);
+      if ((await commitmentBusy(i.coach_id, start, new Date(+start + mins * 60_000))).length) throw conflict('The coach has another commitment then');
+      const introScope = introScopeOf(card, audience);
+      if (introScope) {
+        if (opts.introSeen?.used) throw conflict(INTRO_USED, { code: 'intro_used', hire_id: null });   // a series books the intro once
+        await assertIntroFree(null, { coachId: i.coach_id, athleteId, sportId: sport.id, scope: introScope });
+      }
+      const total = card ? priceFor(card, mins, i.participants) : Math.round((Number(prof.hourly_rate_cents ?? 0) * mins) / 60);
+      const rate = card ? Math.round((total * 60) / mins) : Number(prof.hourly_rate_cents ?? 0);
+      if (opts.dry && introScope && opts.introSeen) opts.introSeen.used = true;
+      if (opts.dry) return { early: { ok: true, starts_at: i.starts_at, duration_min: mins, total_cents: total, audience, participants: i.participants } };
+      const hire = await one('INSERT INTO coach_hires(hirer_id, coach_id, sport_id, starts_at, duration_min, rate_cents_hour, total_cents, note, payment_status, audience, participants, team_id, event_id, rate_card_id, series_id, athlete_id, intro_scope, currency) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING id, coach_id, starts_at, duration_min, total_cents, currency, status, payment_status, audience, participants, athlete_id, intro_scope',
+        [user.id, i.coach_id, sport.id, i.starts_at, mins, rate, total, i.note, paymentsEnabled() && total > 0 ? 'unpaid' : 'not_required', audience, i.participants, client.team_id, client.event_id, card?.id ?? null, opts.series_id ?? null, athleteId, introScope, config.payments.currency]).catch((e) => { throw mapIntroViolation(e); });
+      return { hire };
+    });
+    if (made.early) return made.early;
+    const hire = made.hire;
     if (opts.quiet) return hire;
     await notify(null, i.coach_id, { kind: 'coach_hire_request', title: `${client.name ?? user.display_name} wants a ${sport.name} ${audience === 'individual' ? 'session' : `${audience} booking`}`, body: hire.payment_status === 'unpaid' ? 'Waiting for their payment, then you can confirm.' : 'Open your coach desk to confirm.', data: { hire_id: hire.id } });
     return hire;

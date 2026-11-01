@@ -512,4 +512,12 @@ export default {
   'copilot.task.plan_session': 'அமர்வைத் திட்டமிடவும்',
   'copilot.task.player_focus': 'வீரர் கவனம்',
   'copilot.task.outstanding_actions': 'நிலுவை செயல்கள்',
+  'cls.guardian_title': 'உங்கள் ஒப்புதலுக்காகக் காத்திருக்கிறது',
+  'cls.guardian_asked': '{child} {title} வகுப்பில் சேர கேட்டார்',
+  'cls.approve': 'ஒப்புக்கொள்',
+  'cls.decline': 'நிராகரி',
+  'cls.view_class': 'வகுப்பைப் பார்',
+  'cls.approved': 'ஒப்புக்கொள்ளப்பட்டது',
+  'cls.declined': 'நிராகரிக்கப்பட்டது',
+  'cls.costs_money': 'கட்டணம் உண்டு',
 };

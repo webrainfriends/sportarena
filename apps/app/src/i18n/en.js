@@ -532,4 +532,12 @@ export default {
   'copilot.task.plan_session': 'Plan a session',
   'copilot.task.player_focus': 'Player focus',
   'copilot.task.outstanding_actions': 'Outstanding actions',
+  'cls.guardian_title': 'WAITING FOR YOUR APPROVAL',
+  'cls.guardian_asked': '{child} asked to join {title}',
+  'cls.approve': 'Approve',
+  'cls.decline': 'Decline',
+  'cls.view_class': 'View class',
+  'cls.approved': 'Approved',
+  'cls.declined': 'Declined',
+  'cls.costs_money': 'costs money',
 };

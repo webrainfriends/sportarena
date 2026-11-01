@@ -512,4 +512,12 @@ export default {
   'copilot.task.plan_session': 'सत्र की योजना बनाएँ',
   'copilot.task.player_focus': 'खिलाड़ी पर ध्यान',
   'copilot.task.outstanding_actions': 'बकाया कार्य',
+  'cls.guardian_title': 'आपकी मंज़ूरी का इंतज़ार',
+  'cls.guardian_asked': '{child} ने {title} में जुड़ने को कहा',
+  'cls.approve': 'मंज़ूर करें',
+  'cls.decline': 'अस्वीकार करें',
+  'cls.view_class': 'क्लास देखें',
+  'cls.approved': 'मंज़ूर किया',
+  'cls.declined': 'अस्वीकार किया',
+  'cls.costs_money': 'शुल्क लगेगा',
 };

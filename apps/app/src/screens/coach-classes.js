@@ -92,7 +92,7 @@ export function ClassSheet({ id, onClose, onChanged }) {
                 <Pill label={t(`cls.status.${mine.status}`).toUpperCase()} fg="#fff" bg={STATUS_TONE[mine.status] ?? c.violet} />
                 {mine.status === 'held' ? <T size={13} color={c.mute}>{t('cls.held_until', { time: when(mine.hold_expires_at) })}</T> : null}
                 {mine.status === 'held' ? <Btn title={t('cls.pay_seat')} loading={busy} onPress={() => payNow(mine)} /> : null}
-                {!started ? <Btn small title={t('cls.leave')} color={c.paper} ink={c.ink} loading={busy} onPress={() => act(() => api.post(`/coach/classes/${k.id}/leave`), t('cls.left'))} /> : null}
+                {!started ? <Btn small title={t('cls.leave')} color={c.paper} ink={c.ink} loading={busy} onPress={() => act(() => api.post(`/coach/classes/${k.id}/leave`, mine.user_id !== user.id ? { on_behalf_of: mine.user_id } : {}), t('cls.left'))} /> : null}
               </>
             ) : <Btn title={k.is_full ? t('cls.join_waitlist') : t('cls.join')} loading={busy} disabled={started || user?.id === k.coach.id} onPress={async () => {
               const r = await act(() => api.post(`/coach/classes/${k.id}/join`, { idempotency_key: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}` }), null);

@@ -512,4 +512,12 @@ export default {
   'copilot.task.plan_session': 'ಅಧಿವೇಶನ ಯೋಜಿಸಿ',
   'copilot.task.player_focus': 'ಆಟಗಾರನ ಮೇಲೆ ಗಮನ',
   'copilot.task.outstanding_actions': 'ಬಾಕಿ ಇರುವ ಕ್ರಮಗಳು',
+  'cls.guardian_title': 'ನಿಮ್ಮ ಅನುಮೋದನೆಗಾಗಿ ಕಾಯುತ್ತಿದೆ',
+  'cls.guardian_asked': '{child} {title} ತರಗತಿಗೆ ಸೇರಲು ಕೇಳಿದ್ದಾರೆ',
+  'cls.approve': 'ಅನುಮೋದಿಸಿ',
+  'cls.decline': 'ನಿರಾಕರಿಸಿ',
+  'cls.view_class': 'ತರಗತಿ ನೋಡಿ',
+  'cls.approved': 'ಅನುಮೋದಿಸಲಾಗಿದೆ',
+  'cls.declined': 'ನಿರಾಕರಿಸಲಾಗಿದೆ',
+  'cls.costs_money': 'ಹಣ ಖರ್ಚಾಗುತ್ತದೆ',
 };
