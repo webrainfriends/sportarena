@@ -335,13 +335,13 @@ export async function kpiRecords(user, key, q, { limit = 25, offset = 0 } = {}) 
   const range = m.pointInTime ? { from: today(), to: today() } : resolveRange(q.range, q.as_of);
   const p = params(scope, range, q.sport_ids ?? []);
   const g = q.group_by ? DIMENSIONS[q.group_by].expr.replaceAll('f.', 's.') : null;
-  const where = [g && q.group_key !== undefined ? (q.group_key === null || q.group_key === '' ? `${g} IS NULL` : `${g}::text = $13`) : null, q.currency ? '(s.currency = $14)' : null].filter(Boolean);
+  const where = [g && q.group_key !== undefined ? (q.group_key === null || q.group_key === '' ? `${g} IS NULL` : `${g}::text = $14`) : null, q.currency ? '(s.currency = $15)' : null].filter(Boolean);
   const args = [...p, limit, offset, ...(g && q.group_key ? [q.group_key] : [null]), q.currency ?? null];
   const sql = `WITH f AS MATERIALIZED (${factsOf(m)}), s AS MATERIALIZED (SELECT f.* FROM f WHERE ${predFor(m)}), t AS (SELECT s.* FROM s ${where.length ? `WHERE ${where.join(' AND ')}` : ''})
-    SELECT 'row' AS k, to_jsonb(r) AS j FROM (SELECT rec_id, rec_kind, label, at, currency, amount, num, den, flag, channel, link_kind, link_id FROM t ORDER BY at DESC NULLS LAST, rec_id LIMIT $11 OFFSET $12) r
+    SELECT 'row' AS k, to_jsonb(r) AS j FROM (SELECT rec_id, rec_kind, label, at, currency, amount, num, den, flag, channel, link_kind, link_id FROM t ORDER BY at DESC NULLS LAST, rec_id LIMIT $12 OFFSET $13) r
     UNION ALL SELECT 'sum', to_jsonb(q) FROM (SELECT count(*)::int AS records, count(DISTINCT subject)::int AS distinct_subjects, sum(num)::float8 AS num, sum(den)::float8 AS den FROM t) q
     UNION ALL SELECT 'money', to_jsonb(c) FROM (SELECT currency, sum(amount)::bigint AS cents FROM t WHERE currency IS NOT NULL GROUP BY currency ORDER BY currency) c
-    UNION ALL SELECT 'arg', to_jsonb(a) FROM (SELECT $13::text AS a, $14::text AS b) a`;
+    UNION ALL SELECT 'arg', to_jsonb(a) FROM (SELECT $14::text AS a, $15::text AS b) a`;
   const rows = (await pool.query(sql, args)).rows;
   const sum = rows.find((r) => r.k === 'sum').j;
   return {
