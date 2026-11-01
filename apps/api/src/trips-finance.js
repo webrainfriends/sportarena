@@ -45,12 +45,13 @@ export async function statements(c, trip, onlyParticipantIds = null) {
 export async function costSummary(c, trip) {
   const st = await statements(c, trip);
   const by = {};
-  const slot = (cur) => (by[cur] ??= { currency: cur, supplier_orders_gross_minor: 0, per_diem_entitlement_minor: 0, per_diem_paid_minor: 0, advances_minor: 0, claims_approved_minor: 0, claims_reimbursed_minor: 0, claims_pending_minor: 0 });
+  const slot = (cur) => (by[cur] ??= { currency: cur, supplier_orders_gross_minor: 0, partner_bookings_minor: 0, partner_bookings_refunded_minor: 0, per_diem_entitlement_minor: 0, per_diem_paid_minor: 0, advances_minor: 0, claims_approved_minor: 0, claims_reimbursed_minor: 0, claims_pending_minor: 0 });
   for (const r of st.rows) {
     if (r.entitlement) { const s = slot(r.entitlement.currency); s.per_diem_entitlement_minor += r.entitlement.amount_minor; s.per_diem_paid_minor += r.per_diem_paid_minor; }
     for (const x of r.claims.items) { const s = slot(x.currency); if (x.status === 'approved') s.claims_approved_minor += Number(x.amount_minor); if (x.status === 'submitted') s.claims_pending_minor += Number(x.amount_minor); if (x.reimbursed) s.claims_reimbursed_minor += Number(x.amount_minor); }
   }
   for (const p of (await c.query("SELECT currency, sum(amount_minor)::float8 AS n FROM trip_payments WHERE trip_id=$1 AND voided_at IS NULL AND kind='advance' GROUP BY currency", [trip.id])).rows) slot(p.currency).advances_minor += p.n;
   for (const o of (await c.query("SELECT o.currency, sum(o.gross_minor)::float8 AS n FROM trip_supplier_links l JOIN svc_orders o ON o.id=l.order_id WHERE l.trip_id=$1 AND l.unlinked_at IS NULL AND o.status NOT IN ('cancelled','rejected','terminated') GROUP BY o.currency", [trip.id])).rows) slot(o.currency).supplier_orders_gross_minor += o.n;
+  for (const b of (await c.query("SELECT currency, sum(price_minor) FILTER (WHERE status IN ('held','booked','changed'))::float8 AS live, sum(price_minor) FILTER (WHERE status='cancelled' AND (terms->>'refundable')='true')::float8 AS refunded FROM travel_bookings WHERE trip_id=$1 GROUP BY currency", [trip.id])).rows) { const s = slot(b.currency); s.partner_bookings_minor += b.live ?? 0; s.partner_bookings_refunded_minor += b.refunded ?? 0; }
   return Object.values(by);
 }
