@@ -1,5 +1,5 @@
 // What both map implementations share: pin colours and emoji per kind (theme tokens only) and the prop contract.
-//   <MapView pins selectedKey center onSelect(pin) onSearchArea(bboxString) height />
+//   MapView props: pins, selectedKey, center, onSelect(pin), onSearchArea(bboxString), height
 //   pins: [{ key, kind: 'venue'|'game'|'class', id, latitude, longitude }]
 import { c } from './theme';
 
