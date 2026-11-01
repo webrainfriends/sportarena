@@ -4,6 +4,7 @@
 // players are found from `sport_profiles` + `availability_windows`, notifications go through `notify`, and a confirmed attendee
 // becomes a `game_participants` row (which feeds the sports history the same way a fixture does).
 import { z } from 'zod';
+import { bboxField, parseBbox, inBbox, haversineSql } from '../geo.js';
 import { cap, id, page, money } from '../registry.js';
 import { one, many, query, tx } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
@@ -253,7 +254,7 @@ cap({
   summary: 'Find games to play: filter by sport, when (now / today / tomorrow / weekend / this week, in your time zone) or dates, distance from a point you send (never stored), level, format, cost, free seats, verified host or team. sort=best_match (signed in) ranks by your sport profiles, level and weekly availability and says why each game was suggested. mine=true lists games you host or hold a place in.',
   input: z.object({
     sport: z.string().optional(), when: z.enum(['now', 'today', 'tomorrow', 'weekend', 'week']).optional(), tz: z.string().max(60).default('UTC'), from: dt.optional(), to: dt.optional(),
-    lat: z.coerce.number().min(-90).max(90).optional(), lng: z.coerce.number().min(-180).max(180).optional(), radius_km: z.coerce.number().min(0.5).max(20000).optional(),
+    lat: z.coerce.number().min(-90).max(90).optional(), lng: z.coerce.number().min(-180).max(180).optional(), radius_km: z.coerce.number().min(0.5).max(20000).optional(), bbox: bboxField,
     level: level.optional().describe('only games whose level range includes this level'), format: z.string().max(40).optional(), max_cost_cents: z.coerce.number().int().min(0).optional(), free_only: z.coerce.boolean().optional(),
     has_slots: z.coerce.boolean().optional(), verified_host: z.coerce.boolean().optional(), team_id: id.optional(), host_id: id.optional(), audience: z.enum(['adults', 'all_ages', 'youth']).optional(),
     q: z.string().max(80).optional(), mine: z.coerce.boolean().optional(), sort: z.enum(['soonest', 'distance', 'best_match']).default('soonest'), ...page,
@@ -273,8 +274,7 @@ cap({
     const showYouth = viewerYouth || i.audience === 'youth' || (!!user && !!(await one("SELECT 1 FROM guardian_links WHERE guardian_id=$1 AND status='active' AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now())", [user.id])));
     const rows = await many(
       `SELECT ${CARD_COLS},
-         CASE WHEN $4::float8 IS NULL OR coalesce(v.latitude, og.place_latitude) IS NULL THEN NULL ELSE round((6371 * 2 * asin(sqrt(
-           power(sin(radians(coalesce(v.latitude, og.place_latitude) - $4) / 2), 2) + cos(radians($4)) * cos(radians(coalesce(v.latitude, og.place_latitude))) * power(sin(radians(coalesce(v.longitude, og.place_longitude) - $5) / 2), 2))))::numeric, 1) END AS distance_km,
+         ${haversineSql('coalesce(v.latitude, og.place_latitude)', 'coalesce(v.longitude, og.place_longitude)', '$4', '$5', 1)} AS distance_km,
          (SELECT m.status FROM open_game_members m WHERE m.open_game_id=og.id AND m.user_id=$1) AS my_status,
          EXISTS (SELECT 1 FROM availability_windows w WHERE w.user_id=$1 AND w.archived_at IS NULL AND w.weekday = extract(dow FROM g.starts_at AT TIME ZONE w.timezone)
                    AND (g.starts_at AT TIME ZONE w.timezone)::time >= w.from_time AND (coalesce(g.ends_at, g.starts_at + interval '2 hours') AT TIME ZONE w.timezone)::time <= w.to_time
@@ -292,7 +292,9 @@ cap({
          AND (coalesce($6,false) OR ((og.audience <> 'youth' OR $17::boolean) AND (og.audience <> 'adults' OR NOT $18::boolean)))
          AND ($16::text IS NULL OR g.title ILIKE '%'||$16||'%' OR coalesce(v.name, g.location, '') ILIKE '%'||$16||'%' OR coalesce(v.city, og.place_city, '') ILIKE '%'||$16||'%')`,
       [uid, sport?.id ?? null, from ?? null, i.lat ?? null, i.lng ?? null, i.mine ?? null, to ?? null, i.level ?? null, i.format ?? null, i.max_cost_cents ?? null, i.free_only ?? null, i.has_slots ?? null, i.team_id ?? null, i.host_id ?? null, i.audience ?? null, i.q ?? null, showYouth, viewerYouth]);
-    let list = rows.filter((r) => i.radius_km == null || (r.distance_km != null && Number(r.distance_km) <= i.radius_km));
+    const box = parseBbox(i.bbox);
+    if (i.bbox && !box) throw badRequest('bbox must be south,west,north,east');
+    let list = rows.filter((r) => (i.radius_km == null || (r.distance_km != null && Number(r.distance_km) <= i.radius_km)) && inBbox(box, r.lat, r.lng));
     const badges = await badgesFor('user', [...new Set(list.map((r) => r.host_id))]);
     if (i.verified_host) list = list.filter((r) => (badges.get(r.host_id) ?? []).length > 0);
     const computed = user ? await reliableLevels(user.id) : new Map(); // a reliable skill level (#633) stands in for the declared one
