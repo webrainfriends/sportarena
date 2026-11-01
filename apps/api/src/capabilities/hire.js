@@ -70,7 +70,7 @@ async function athleteFor(user, athleteId) {
 export async function assertCoachFree(coachId, startsAt, mins, excludeHireId = null) {
   const grid = await coachSlotOk(coachId, startsAt, mins);
   if (grid.grid && !grid.ok) throw conflict("That time is not one of the coach's open slots");
-  const clash = await one("SELECT 1 FROM coach_hires WHERE coach_id=$1 AND status IN ('requested','confirmed') AND ($4::uuid IS NULL OR id <> $4) AND starts_at < $2::timestamptz + make_interval(mins => $3) AND starts_at + make_interval(mins => duration_min) > $2", [coachId, startsAt, mins, excludeHireId]);
+  const clash = await one("SELECT 1 FROM coach_hires WHERE coach_id=$1 AND status IN ('requested','confirmed') AND ($4::uuid IS NULL OR id <> $4) AND series_state IS DISTINCT FROM 'paused' AND starts_at < $2::timestamptz + make_interval(mins => $3) AND starts_at + make_interval(mins => duration_min) > $2", [coachId, startsAt, mins, excludeHireId]);
   if (clash) throw conflict('Coach is not free then');
   const start = new Date(startsAt);
   if ((await commitmentBusy(coachId, start, new Date(+start + mins * 60_000))).length) throw conflict('The coach has another commitment then');
@@ -243,6 +243,7 @@ cap({
       if (!h) throw notFound('Hire');
       const isCoach = h.coach_id === user.id, isHirer = h.hirer_id === user.id;
       assertTransition(h, i.status, { isProvider: isCoach, isCustomer: isHirer, isAdmin: isAdmin(user) }, { noun: 'coaching session', customerWord: 'hirer' });
+      if (i.status === 'confirmed' && h.series_state === 'paused') throw conflict('This date is on hold while the series is paused; resume the series first');
       await setTransitionContext(c, user.id, i.reason);
       let payment = h.payment_status;
       if (i.status === 'cancelled' && payment === 'paid') {

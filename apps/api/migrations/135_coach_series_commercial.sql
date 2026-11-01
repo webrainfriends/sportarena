@@ -21,11 +21,12 @@ ALTER TABLE coach_series ADD COLUMN IF NOT EXISTS total_cents bigint NOT NULL DE
 ALTER TABLE coach_series ADD COLUMN IF NOT EXISTS currency text NOT NULL DEFAULT 'INR';
 ALTER TABLE coach_series ADD COLUMN IF NOT EXISTS anchor_hire_id uuid REFERENCES coach_hires;   -- the hire a pay-once checkout is raised on
 ALTER TABLE coach_series ADD COLUMN IF NOT EXISTS payment_id uuid REFERENCES payments;          -- the single payment of a pay-once series
+ALTER TABLE coach_series ADD COLUMN IF NOT EXISTS paused_at timestamptz;
 ALTER TABLE coach_series ADD COLUMN IF NOT EXISTS cancelled_at timestamptz;
 ALTER TABLE coach_series ADD COLUMN IF NOT EXISTS cancelled_by uuid REFERENCES users;
 ALTER TABLE coach_series ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
 DO $$ BEGIN
-  ALTER TABLE coach_series ADD CONSTRAINT coach_series_status_chk CHECK (status IN ('active','cancelled','completed'));
+  ALTER TABLE coach_series ADD CONSTRAINT coach_series_status_chk CHECK (status IN ('active','paused','cancelled','completed'));
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN
   ALTER TABLE coach_series ADD CONSTRAINT coach_series_pay_mode_chk CHECK (pay_mode IN ('once','per_date'));
@@ -36,7 +37,7 @@ ALTER TABLE coach_hires ADD COLUMN IF NOT EXISTS list_cents bigint;
 ALTER TABLE coach_hires ADD COLUMN IF NOT EXISTS series_state text;
 ALTER TABLE coach_hires ADD COLUMN IF NOT EXISTS rescheduled_from timestamptz;
 DO $$ BEGIN
-  ALTER TABLE coach_hires ADD CONSTRAINT coach_hires_series_state_chk CHECK (series_state IS NULL OR series_state IN ('booked','skipped'));
+  ALTER TABLE coach_hires ADD CONSTRAINT coach_hires_series_state_chk CHECK (series_state IS NULL OR series_state IN ('booked','skipped','paused'));
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- backfill so existing series read the same under the new shape: list price = what was charged, totals = sum of their hires

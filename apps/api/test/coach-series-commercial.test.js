@@ -146,7 +146,7 @@ test('pay per date: skipping a date refunds that date only; the rest carry on', 
   assert.equal(s.total_cents, sum(booked.hires.slice(1).map((h) => Number(h.total_cents))), 'the block price already agreed stays; only the skipped share leaves');
 });
 
-test('pause = skip a range of dates, unpaid dates are never charged', async () => {
+test('skipping a date range refunds nothing for unpaid dates and charges only the rest', async () => {
   next();
   const { coach, rc } = await coachOf();
   const me = await signup(['athlete']);
@@ -229,4 +229,49 @@ test('every sport in the catalogue can be priced as a series (sport-agnostic)', 
     const pv = ok(await api('POST', '/hires/series', { token: me.token, body: { coach_id: coach.id, sport: sp.slug, rate_card_id: rc.id, start: '10:00', timezone: 'UTC', starts_on: dayPlus(off), weekdays: [1], count: 2, preview: true } }), 201);
     assert.equal(pv.total_cents, 16000, sp.slug);
   }
+});
+
+test('pause holds every upcoming date, keeps the payment, frees the coach, and resume restores them', async () => {
+  next();
+  const { coach, rc } = await coachOf();
+  const me = await signup(['athlete']), other = await signup(['athlete']);
+  const booked = ok(await api('POST', '/hires/series', { token: me.token, body: seriesBody(coach, rc, { pay_mode: 'once' }) }), 201);
+  await pay(me, booked.pay_hire_id);
+  const before = fake.refunds.length;
+  const pv = ok(await api('POST', `/hires/series/${booked.series_id}/pause`, { token: me.token, body: { preview: true } }), 200);
+  assert.equal(pv.held.length, 4);
+  const paused = ok(await api('POST', `/hires/series/${booked.series_id}/pause`, { token: me.token, body: {} }), 200);
+  assert.equal(paused.series.status, 'paused');
+  assert.ok(paused.series.dates.every((d) => d.series_state === 'paused' && d.payment_status === 'paid'), 'held dates stay paid');
+  assert.equal(fake.refunds.length, before, 'pausing refunds nothing');
+  assert.equal(paused.series.total_cents, booked.total_cents, 'price unchanged');
+  // the coach's time is free while held: someone else can take the first date
+  const taken = await api('POST', '/hires', { token: other.token, body: { coach_id: coach.id, sport: 'football', rate_card_id: rc.id, starts_at: booked.hires[0].starts_at } });
+  assert.equal(taken.status, 201, JSON.stringify(taken.body));
+  // a held date cannot be confirmed
+  assert.equal((await api('PATCH', `/hires/${booked.hires[1].id}`, { token: coach.token, body: { status: 'confirmed' } })).status, 409);
+  const again = await api('POST', `/hires/series/${booked.series_id}/pause`, { token: me.token, body: {} });
+  assert.equal(again.status, 409);
+  // resume: the date someone else took is reported, the other three come back
+  const back = ok(await api('POST', `/hires/series/${booked.series_id}/resume`, { token: coach.token, body: {} }), 200);
+  assert.equal(back.resumed, 3); assert.equal(back.problems.length, 1); assert.equal(back.problems[0].hire_id, booked.hires[0].id);
+  assert.equal(back.series.status, 'paused', 'stays paused while a date is still held');
+  // the held date can still be skipped: refunded its own share
+  const sk = ok(await api('POST', `/hires/series/${booked.series_id}/skip`, { token: me.token, body: { hire_ids: [booked.hires[0].id] } }), 200);
+  assert.equal(sk.refund_cents, Number(booked.hires[0].total_cents));
+  assert.equal(sk.series.status, 'active');
+});
+
+test('pay-once amount excludes held unpaid dates; non-parties get 404', async () => {
+  next();
+  const { coach, rc } = await coachOf();
+  const me = await signup(['athlete']), stranger = await signup(['athlete']);
+  const booked = ok(await api('POST', '/hires/series', { token: me.token, body: seriesBody(coach, rc, { pay_mode: 'once' }) }), 201);
+  assert.equal((await api('POST', `/hires/series/${booked.series_id}/pause`, { token: stranger.token, body: {} })).status, 404);
+  ok(await api('POST', `/hires/series/${booked.series_id}/pause`, { token: me.token, body: {} }), 200);
+  const resumed = ok(await api('POST', `/hires/series/${booked.series_id}/resume`, { token: me.token, body: {} }), 200);
+  assert.equal(resumed.resumed, 4); assert.equal(resumed.series.status, 'active');
+  const p = await pay(me, resumed.series.pay_hire_id);
+  assert.equal(p.amount_cents, booked.total_cents, 'everything is due again once resumed');
+  assert.equal((await api('POST', `/hires/series/${booked.series_id}/resume`, { token: me.token, body: {} })).status, 409);
 });

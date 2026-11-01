@@ -49,6 +49,7 @@ export function SeriesSheet({ id, who, onClose, onChanged }) {
             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><T weight="800">{t('series.total')}</T><T weight="800" size={16}>{moneyIn(s.total_cents, s.currency)}</T></View>
             <T size={12} color={c.mute}>{t('series.upcoming', { n: s.upcoming })}</T>
           </Card>
+          {s.status === 'paused' ? <Card color={c.sunSoft} pad={12}><T weight="800">{t('series.paused')}</T><T size={12} color={c.mute}>{t('series.pausedNote')}</T></Card> : null}
           {who !== 'coach' && s.pay_hire_id && unpaid > 0 ? <Btn title={t('series.payBlock', { amount: moneyIn(unpaid, s.currency) })} onPress={() => setPay(true)} /> : null}
 
           {s.dates.map((d) => {
@@ -60,7 +61,7 @@ export function SeriesSheet({ id, who, onClose, onChanged }) {
                     <T weight="700">{dateTimeIn(d.starts_at, deviceTz)}</T>
                     <T size={12} color={c.mute}>{moneyIn(d.total_cents, s.currency)}{d.rescheduled_from ? ` · ${t('series.movedTag')}` : ''}</T>
                   </View>
-                  <StatusPill s={d.series_state === 'skipped' ? 'cancelled' : d.status} />
+                  <StatusPill s={d.series_state === 'skipped' ? 'cancelled' : d.series_state === 'paused' && live(d) ? 'on_hold' : d.status} />
                   {d.payment_status === 'paid' ? <StatusPill s="paid" /> : null}
                 </View>
                 {can ? (
@@ -86,15 +87,18 @@ export function SeriesSheet({ id, who, onClose, onChanged }) {
               {pick.length ? <Btn title={t('series.skipDo', { n: pick.length })} color={c.paper} ink={c.ink} onPress={() => preview('skip', { hire_ids: pick })} /> : null}
               <DateRangeField label={t('series.pauseRange')} from={range.from} to={range.to} min={today} onChange={(r) => setRange(r)} optional />
               {range.from && range.to ? <Btn title={t('series.skip')} color={c.paper} ink={c.ink} onPress={() => preview('skip', { from: range.from, to: range.to })} /> : null}
+              {s.status === 'paused'
+                ? <Btn title={t('series.resume')} loading={busy} onPress={() => run(async () => { const r = await api.post(`/hires/series/${id}/resume`, {}); if (r.problems.length) toast(t('series.resumeProblems', { n: r.problems.length })); }, t('series.resume'))} />
+                : s.status === 'active' ? <Btn title={t('series.pause')} color={c.paper} ink={c.ink} onPress={() => setAsk({ kind: 'pause', body: {}, refund: 0, n: upcoming.length })} /> : null}
               <Btn title={t('series.cancelRest')} color={c.paper} ink={c.red} onPress={() => preview('cancel', {})} />
             </>
           ) : null}
         </>
       )}
       {pay && s ? <PaySheet target={{ type: 'coach_hire', id: s.pay_hire_id, amount: unpaid, label: `${t('series.title')} · ${s.coach_name}` }} onClose={() => setPay(false)} onDone={changed} /> : null}
-      <Confirm visible={!!ask} title={ask?.kind === 'cancel' ? t('series.cancelRest') : t('series.skipDo', { n: ask?.n ?? 0 })} yes={ask?.kind === 'cancel' ? t('series.cancelRest') : t('series.skip')} danger askReason={t('series.cancelConfirm')} onClose={() => setAsk(null)}
-        body={ask ? `${ask.kind === 'cancel' ? `${t('series.cancelConfirm')}\n` : ''}${ask.refund > 0 ? t('series.refund', { amount: moneyIn(ask.refund, s?.currency) }) : t('series.noRefund')}` : ''}
-        onYes={(reason) => run(() => api.post(`/hires/series/${id}/${ask.kind}`, { ...ask.body, ...(reason ? { reason } : {}) }), ask.kind === 'cancel' ? t('series.cancelRest') : t('series.skip'))} />
+      <Confirm visible={!!ask} title={ask?.kind === 'cancel' ? t('series.cancelRest') : ask?.kind === 'pause' ? t('series.pause') : t('series.skipDo', { n: ask?.n ?? 0 })} yes={ask?.kind === 'cancel' ? t('series.cancelRest') : ask?.kind === 'pause' ? t('series.pause') : t('series.skip')} danger={ask?.kind !== 'pause'} askReason={ask?.kind === 'pause' ? undefined : t('series.cancelConfirm')} onClose={() => setAsk(null)}
+        body={ask?.kind === 'pause' ? t('series.pauseConfirm') : ask ? `${ask.kind === 'cancel' ? `${t('series.cancelConfirm')}\n` : ''}${ask.refund > 0 ? t('series.refund', { amount: moneyIn(ask.refund, s?.currency) }) : t('series.noRefund')}` : ''}
+        onYes={(reason) => run(() => api.post(`/hires/series/${id}/${ask.kind}`, { ...ask.body, ...(reason ? { reason } : {}) }), ask.kind === 'cancel' ? t('series.cancelRest') : ask.kind === 'pause' ? t('series.paused') : t('series.skip'))} />
     </Sheet>
   );
 }

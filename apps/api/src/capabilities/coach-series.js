@@ -3,7 +3,7 @@
 import { z } from 'zod';
 import { cap, id } from '../registry.js';
 import { one, many, tx } from '../db.js';
-import { badRequest, conflict, forbidden, notFound } from '../errors.js';
+import { AppError, badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { isAdmin } from '../helpers.js';
 import { notify } from '../notify.js';
 import { assertCoachFree } from './hire.js';
@@ -31,7 +31,7 @@ const shape = (s, dates) => {
   return {
     id: s.id, coach_id: s.coach_id, hirer_id: s.hirer_id, coach_name: s.coach_name, hirer_name: s.hirer_name, status: s.status, pay_mode: s.pay_mode, currency: s.currency,
     list_total_cents: Number(s.list_total_cents), discount_pct: Number(s.discount_pct), discount_cents: Number(s.discount_cents), total_cents: Number(s.total_cents),
-    pay_hire_id: s.pay_mode === 'once' && !s.payment_id ? s.anchor_hire_id : null, paid_once: !!s.payment_id, rate_card_id: s.rate_card_id, pattern: s.pattern, created_at: s.created_at, cancelled_at: s.cancelled_at,
+    pay_hire_id: s.pay_mode === 'once' && !s.payment_id ? s.anchor_hire_id : null, paid_once: !!s.payment_id, rate_card_id: s.rate_card_id, pattern: s.pattern, created_at: s.created_at, paused_at: s.paused_at, cancelled_at: s.cancelled_at,
     upcoming: live.length, refundable_cents: refundPreview(live), dates,
   };
 };
@@ -86,6 +86,60 @@ cap({
       await notify(c, other, { kind: 'coach_series_skipped', title: `${user.display_name} skipped ${pick.length} coaching date${pick.length === 1 ? '' : 's'}`, body: '', data: { series_id: s.id } });
     });
     return { ...preview, series: shape(await mine(user, i.id), await datesOf(s.id)) };
+  },
+});
+
+cap({
+  name: 'pause_coach_series', method: 'POST', path: '/hires/series/:id/pause', tag: TAG,
+  summary: 'Put a series on hold without losing anything. Every upcoming date is held: it keeps its price and payment (a paid date stays paid, nothing is refunded), stops blocking the coach\'s calendar, is not charged and cannot be confirmed. Resume later with `resume_coach_series`, or skip or cancel held dates as usual. `preview: true` lists the dates that would be held. The hirer or the coach can pause.',
+  input: z.object({ id, reason: z.string().trim().max(500).optional(), preview: z.boolean().default(false) }),
+  async handler({ user }, i) {
+    const s = await mine(user, i.id);
+    if (s.status !== 'active') throw conflict(s.status === 'paused' ? 'This series is already paused' : `A ${s.status} series cannot be paused`);
+    const pick = (await upcomingDates(s.id)).filter((h) => h.series_state !== 'paused');
+    if (!pick.length) throw conflict('Nothing is left to pause');
+    const preview = { held: pick.map((h) => ({ hire_id: h.id, starts_at: h.starts_at, paid: h.payment_status === 'paid' })), currency: s.currency };
+    if (i.preview) return { preview: true, ...preview };
+    await tx(async (c) => {
+      const cur = await mine(user, i.id, c);
+      if (cur.status !== 'active') throw conflict('This series was just changed; reload and try again');
+      await setTransitionContext(c, user.id, i.reason ?? 'Series paused');
+      await c.query("UPDATE coach_hires SET series_state='paused' WHERE id = ANY($1::uuid[]) AND status IN ('requested','confirmed') AND starts_at > now()", [pick.map((h) => h.id)]);
+      await resyncSeries(c, s.id);
+      const other = user.id === s.hirer_id ? s.coach_id : s.hirer_id;
+      await notify(c, other, { kind: 'coach_series_paused', title: `${user.display_name} paused the coaching series`, body: '', data: { series_id: s.id } });
+    });
+    return { ...preview, series: shape(await mine(user, i.id), await datesOf(s.id)) };
+  },
+});
+
+cap({
+  name: 'resume_coach_series', method: 'POST', path: '/hires/series/:id/resume', tag: TAG,
+  summary: 'Resume a paused series. Each held date is checked again (still in the future, coach free, no clash): free dates go back on the calendar with their price and payment unchanged; dates that clash or have already passed are returned in `problems` and stay held so they can be moved (`reschedule_series_date`), skipped or cancelled. The hirer or the coach can resume.',
+  input: z.object({ id }),
+  async handler({ user }, i) {
+    const s = await mine(user, i.id);
+    if (s.status !== 'paused') throw conflict('This series is not paused');
+    const held = (await upcomingDates(s.id)).filter((h) => h.series_state === 'paused');
+    const problems = [], resumed = [];
+    await tx(async (c) => {
+      await mine(user, i.id, c);
+      await setTransitionContext(c, user.id, 'Series resumed');
+      for (const h of held) {
+        try {
+          if (new Date(h.starts_at) <= new Date()) throw conflict('This date has already passed');
+          await assertCoachFree(h.coach_id, h.starts_at, h.duration_min, h.id);
+          await c.query("UPDATE coach_hires SET series_state='booked' WHERE id=$1 AND series_state='paused'", [h.id]);
+          resumed.push(h.id);
+        } catch (e) { if (!(e instanceof AppError)) throw e; problems.push({ hire_id: h.id, starts_at: h.starts_at, problem: e.message }); }
+      }
+      await resyncSeries(c, s.id);
+      if (resumed.length) {
+        const other = user.id === s.hirer_id ? s.coach_id : s.hirer_id;
+        await notify(c, other, { kind: 'coach_series_resumed', title: `${user.display_name} resumed the coaching series`, body: '', data: { series_id: s.id } });
+      }
+    });
+    return { resumed: resumed.length, problems, series: shape(await mine(user, i.id), await datesOf(s.id)) };
   },
 });
 
