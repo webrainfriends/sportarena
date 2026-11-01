@@ -1,5 +1,6 @@
 // Public tournament & spectator experience (#501): the public projection of an event, game, table and bracket; following; share cards; fan engagement.
 // Reads are `auth: 'public'` and return an allow-listed view of the canonical data (see ../spectator.js); REST, OpenAPI and MCP all share these definitions.
+import { clockOf, lineupsOf, substitutionsOf, disciplineOf, statsOf, standingsImpact, highlightsOf, enabledModules } from '../live-centre.js';
 import { z } from 'zod';
 import { cap, capabilities, id, page } from '../registry.js';
 import { one, many, tx, pool } from '../db.js';
@@ -145,9 +146,23 @@ cap({
       user && ev.public_reactions && !youth ? one('SELECT emoji FROM fixture_reactions WHERE fixture_id=$1 AND user_id=$2', [f.id, user.id]) : null,
     ]);
     const mvp = ev.public_mvp_vote && !youth ? await mvpView(f, user) : null;
+    // the premium centre: every module is a projection of the same canonical state, switched by the organiser's module list
+    const modules = enabledModules(ev);
+    const on = (m) => modules.includes(m);
+    const centre = {
+      modules,
+      clock: await clockOf(state),
+      lineups: on('lineups') ? await lineupsOf(ev, f.id, f) : null,
+      substitutions: on('substitutions') ? await substitutionsOf(ev, f.id, f) : null,
+      discipline: on('discipline') ? disciplineOf(live) : null,
+      stats: on('stats') ? statsOf(state) : null,
+      standings_impact: on('standings_impact') ? await standingsImpact(ev, f, { home: live.score.home, away: live.score.away }) : null,
+      highlights: on('highlights') ? highlightsOf(media) : null,
+    };
     return {
+      centre,
       fixture: row, live, event: { id: ev.id, name: ev.name, sport: ev.sport, sport_slug: ev.sport_slug, youth, state: eventState(ev, 0) },
-      officials, streams, media, sponsors,
+      officials, streams, media, sponsors: on('partners') ? sponsors : [],
       corrections: changes.map((c) => ({ id: c.id, kind: c.kind, official_before: c.was_final, before: c.before, after: c.after, at: c.created_at })),
       engagement: { reactions: ev.public_reactions && !youth ? { enabled: true, counts: Object.fromEntries(REACTIONS.map((r) => [r, reactions.find((x) => x.emoji === r)?.n ?? 0])), mine: myReaction?.emoji ?? null, choices: REACTIONS } : { enabled: false },
         mvp_vote: mvp ?? { enabled: false } },

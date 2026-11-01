@@ -39,3 +39,25 @@ export async function venueOpsReminders({ limit = 200 } = {}) {
     return sent;
   });
 }
+
+/**
+ * Preventive maintenance: a few days before a template is due, raise its work order (kind 'preventive', with the template's checklist),
+ * then move the template on by its interval. One open job per template at a time. Returns how many jobs were raised.
+ */
+export async function raisePreventiveWork({ leadDays = 3, limit = 200 } = {}) {
+  return tx(async (c) => {
+    const due = (await c.query(
+      `SELECT * FROM venue_pm_templates WHERE active AND next_due_on <= current_date + $1::int ORDER BY next_due_on LIMIT $2 FOR UPDATE SKIP LOCKED`, [leadDays, limit])).rows;
+    let raised = 0;
+    for (const t of due) {
+      const open = (await c.query("SELECT 1 FROM venue_maintenance WHERE template_id=$1 AND status IN ('scheduled','in_progress')", [t.id])).rowCount;
+      if (open) continue;
+      await c.query(
+        `INSERT INTO venue_maintenance(venue_id, resource_id, asset_id, title, category, priority, due_on, kind, checklist, template_id, created_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,'preventive',$8,$9,$10)`, [t.venue_id, t.resource_id, t.asset_id, t.title, t.category, t.priority, t.next_due_on, JSON.stringify(t.checklist), t.id, t.created_by]);
+      await c.query("UPDATE venue_pm_templates SET next_due_on = next_due_on + every_days WHERE id=$1", [t.id]);
+      raised++;
+    }
+    return raised;
+  });
+}

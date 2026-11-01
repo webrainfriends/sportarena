@@ -13,7 +13,7 @@ import { eventParticipationSweep, membershipTenureSweep } from './rewards/activi
 import { releaseDueReferrals } from './rewards/referrals.js';
 import { expireCover } from './cover.js';
 import { expireUserPlans, raiseSubscriptionRenewals } from './booking/plans.js';
-import { venueOpsReminders } from './booking/venue-ops.js';
+import { venueOpsReminders, raisePreventiveWork } from './booking/venue-ops.js';
 import { expireStaleRequests } from './lifecycle.js';
 import { expireQuotes, sendRenewalReminders } from './insurance-cycle.js';
 import { sendCallNotices } from './sponsorship-calls.js';
@@ -51,6 +51,7 @@ import { adSweeps } from './ads/engine.js';
 import { raiseTeamDues } from './team-money.js';
 import { reconcileFinance } from './finance.js';
 import { sealAuditLog } from './audit-chain.js';
+import { integrationSweep } from './integrations/engine.js';
 
 export const STEPS = [
   ['holds', 'holds_released', expireUnpaidHolds, 0],
@@ -66,6 +67,7 @@ export const STEPS = [
   ['plans', 'plans_expired', expireUserPlans, 0],
   ['subscriptions', 'subscriptions_renewed', raiseSubscriptionRenewals, 0],
   ['venue_ops', 'venue_ops_reminders', venueOpsReminders, 0],
+  ['venue_pm', 'venue_pm_work_orders', raisePreventiveWork, 0],
   ['requests', 'requests_expired', expireStaleRequests, 0],
   ['alerts', 'alerts_fulfilled', checkSlotAlerts, 0],
   ['quotes', 'quotes_expired', expireQuotes, 0],
@@ -106,6 +108,7 @@ export const STEPS = [
   ['team_dues', 'team_dues_raised', raiseTeamDues, 0],
   ['advertising', 'advertising', adSweeps, null],
   ['finance', 'finance', reconcileFinance, null],
+  ['integrations', 'integrations', integrationSweep, null],
 ];
 
 export async function maintenanceCycle() {

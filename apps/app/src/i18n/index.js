@@ -1,6 +1,6 @@
 import { I18nManager, Platform } from 'react-native';
 import { locale } from '../locale';
-import { LANGUAGES, languageInfo, languageOf, translate } from './catalogue';
+import { LANGUAGES, languageInfo, languageOf, translate, translateEnum } from './catalogue';
 
 // The language follows the chosen locale (account sheet) or the device, resolved once at load like the theme and locale.
 export const language = languageOf(locale);
@@ -10,6 +10,9 @@ export { LANGUAGES };
 
 /** t('account.logout') or t('welcome.hello', { name }) — falls back to English for anything not yet translated. */
 export const t = (key, params) => translate(language, key, params);
+
+/** tEnum('left_early') -> the translated enum.left_early, or "Left early" when there is no key for it. */
+export const tEnum = (value) => translateEnum(language, value);
 
 // Right-to-left (Urdu): web gets dir/lang on <html>; native flips the layout and applies it on the next launch (the app reloads when the language changes).
 if (Platform.OS === 'web') {

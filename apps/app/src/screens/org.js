@@ -8,6 +8,7 @@ import { useSession } from '../session';
 import { useNav } from '../nav';
 import { Btn, Chip, Empty, ErrorBox, Field, GradCard, H1, Loading, Row, Screen, Seg, Section, Sheet, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
+import { t } from '../i18n';
 import { c, day } from '../theme';
 import { moneyIn } from '../vtime';
 import { Admissions } from './admissions';
@@ -151,6 +152,7 @@ function Overview({ o, d, role, archived, reload, toast, go }) {
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
             {!archived ? <Btn small title="Edit details" color={c.paper} ink={c.ink} onPress={() => setEdit(true)} /> : null}
             <FederationLinks orgId={o.id} role={role} archived={archived} />
+            {!archived && ['owner', 'admin'].includes(role) ? <Btn small title={t('ih.title')} color={c.paper} ink={c.ink} onPress={() => push('IntegrationHub', { organisation_id: o.id })} /> : null}
             <Btn small title="Tenders and procurement" color={c.paper} ink={c.ink} onPress={() => push('TenderHome')} />
             <Btn small title="Create an RFP" color={c.paper} ink={c.ink} onPress={() => push('TenderBuilder', { organisation_id: o.id })} />
             {!archived && ['owner', 'admin'].includes(role) ? <Btn small title="Services & suppliers" color={c.paper} ink={c.ink} onPress={() => push('ServicesBuyer', { organisation_id: o.id })} /> : null}

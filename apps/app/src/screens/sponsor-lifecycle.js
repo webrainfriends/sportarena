@@ -117,3 +117,25 @@ export function RenewalPipeline() {
     </View>
   );
 }
+
+/** Every agreement between this sponsor and this rights-holder that you may see, and the recorded actions across them in time order. */
+export function RelationshipHistory({ id }) {
+  const h = useLoad(async () => { const d = await api.get(`/sponsorships/${id}`); return api.get('/sponsor-relationship-history', { sponsor_id: d.sponsor.id, target_type: d.target_type, target_id: d.target_id }); }, [id]);
+  if (h.error) return <LoadError error={h.error} onRetry={h.reload} />;
+  if (!h.data) return <Loading />;
+  const ref = (id) => h.data.agreements.find((a) => a.id === id)?.ref ?? '';
+  return (
+    <View style={{ gap: 10 }}>
+      <Card color={c.paper}><View style={{ gap: 6 }}>
+        <T weight="800">{t('spl.relationship_agreements')}</T>
+        {h.data.agreements.map((a) => (
+          <Row key={a.id}><T size={13} weight="700" style={{ flexShrink: 1 }}>{a.ref ?? a.id.slice(0, 8)}</T><Tag label={word(a.status)} color={c.violetSoft} />
+            <T size={12} color={c.mute}>{a.starts_on ?? '?'} → {a.ends_on ?? '…'}{a.renews_id ? ` · ${t('spl.renews', { ref: ref(a.renews_id) })}` : ''}</T></Row>))}
+      </View></Card>
+      <Card color={c.paper}><View style={{ gap: 6 }}>
+        <T weight="800">{t('spl.relationship_events')}</T>
+        {h.data.events.length ? h.data.events.map((e) => <T key={e.id} size={12} color={c.mute}>{String(e.created_at).slice(0, 10)} · {ref(e.sponsorship_id)} · {word(e.action)}{e.reason ? ` — ${e.reason}` : ''}</T>) : <T size={12} color={c.mute}>{t('spl.empty_history')}</T>}
+      </View></Card>
+    </View>
+  );
+}
