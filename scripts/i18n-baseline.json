@@ -129,7 +129,7 @@
  "screens/health-privacy.js": 55,
  "screens/history-sources.js": 61,
  "screens/host-game.js": 56,
- "screens/hub.js": 220,
+ "screens/hub.js": 2,
  "screens/inbox.js": 67,
  "screens/insurance-panel.js": 30,
  "screens/insurance.js": 84,
@@ -256,7 +256,10 @@
  "screens/team-finance.js": 102,
  "screens/team-manage.js": 58,
  "screens/team-workspace.js": 49,
+<<<<<<< HEAD
+=======
  "screens/tender-builder.js": 206,
+>>>>>>> origin/main
  "screens/tender-console.js": 148,
  "screens/tender-evaluation.js": 108,
  "screens/tender-orders.js": 75,
