@@ -141,6 +141,7 @@ import './sponsorship-impact.js';
 import './sponsorship-inventory.js';
 import './sponsorship-deliverables.js';
 import './sponsorship-roi.js';
+import './sponsorship-lifecycle.js';
 import './sponsorship-youth.js';
 import './sponsor-identities.js';
 import './sponsorship-programs.js';
