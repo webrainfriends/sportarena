@@ -2,7 +2,8 @@
 // spectator sees and the staff console shows. No state is kept here; every string goes through t(); Arena theme tokens only; start/end (not left/right)
 // so Urdu lays out right-to-left; cards flow into two columns on tablet and desktop widths and stack on a phone.
 import React from 'react';
-import { Linking, View, useWindowDimensions } from 'react-native';
+import { View, useWindowDimensions } from 'react-native';
+import { openPage } from '../video-player';
 import { mediaUrl } from '../api';
 import { t } from '../i18n';
 import { A, ABtn, ACard, AChip, AEmpty, ASection, AT } from '../arena';
@@ -135,7 +136,7 @@ export default function LiveModules({ centre, fixture }) {
     cards.push(
       <Block key="highlights" title={t('livec.highlights')} width={width}>
         {highlights.map((m) => (
-          <ACard key={m.id} onPress={() => Linking.openURL(mediaUrl(m.link))} accessibilityRole="link" accessibilityLabel={m.title}>
+          <ACard key={m.id} onPress={() => openPage(mediaUrl(m.link))} accessibilityRole="link" accessibilityLabel={m.title}>
             <AT weight="700">🎬 {m.title}</AT>
             {m.credit ? <AT size={12} color={A.mute}>{m.credit}</AT> : null}
           </ACard>
