@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform, View } from 'react-native';
 import { api } from '../api';
+import { openProtected } from '../open-file';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { useNav } from '../nav';
@@ -263,7 +264,7 @@ export function ApplicationForm({ round_id, target_type, target_id }) {
   const reviewing = step >= sections.length;
   const form = { values: answers, setValue, currency, texts, setText: (k, t) => setTexts((p) => ({ ...p, [k]: t })), files: app?.files ?? [], applicationId: app?.id, ensureDraft, reloadFiles, budget, setBudget: (b) => { setBudget(b); touch(); }, refs, setRefs: (r) => { setRefs(r); touch(); }, requested, fromProfile };
   const badOf = (f) => issues.find((i) => i.path === `answers.${f.key}` || i.path === `files.${f.key}` || (f.type === 'budget' && i.path === 'budget') || (f.type === 'references' && i.path === 'references'))?.message;
-  const openFile = async (x) => { try { const blob = await api.download(`/application-files/${x.id}`); if (Platform.OS === 'web') { const u = URL.createObjectURL(blob); window.open(u, '_blank', 'noopener'); setTimeout(() => URL.revokeObjectURL(u), 120000); } else toast('Open documents in the web app'); } catch (e) { toast(explain(e)); } };
+  const openFile = async (x) => { try { await openProtected(`/application-files/${x.id}`, x.file_name ?? `file-${x.id}`); } catch (e) { toast(explain(e)); } };
   const remember = async () => {
     try {
       const cur = await api.get('/me/applicant-profile');

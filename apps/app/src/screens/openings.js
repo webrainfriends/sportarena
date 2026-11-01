@@ -3,6 +3,7 @@
 import React, { useRef, useState } from 'react';
 import { Platform, View } from 'react-native';
 import { api } from '../api';
+import { openProtected } from '../open-file';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { useNav } from '../nav';
@@ -41,8 +42,7 @@ export function PositionDocs({ assignmentId, title, onClose, onChanged }) {
   };
   const open = async (d) => {
     try {
-      if (Platform.OS === 'web') { const url = URL.createObjectURL(await api.download(`/staff-documents/${d.id}/file`)); window.open(url, '_blank', 'noopener'); setTimeout(() => URL.revokeObjectURL(url), 120000); }
-      else toast('Open documents in the web app');
+      await openProtected(`/staff-documents/${d.id}/file`, d.file_name ?? `document-${d.id}`);
     } catch (e) { toast(e.message); }
   };
   const remove = async (d) => { try { await api.del(`/staff-documents/${d.id}`); await docs.reload(); onChanged?.(); } catch (e) { toast(e.message); } };

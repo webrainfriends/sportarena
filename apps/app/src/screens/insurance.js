@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { Image, Linking, Modal, Platform, Pressable, View } from 'react-native';
 import { api, API, authHeader } from '../api';
+import { openProtected } from '../open-file';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { useNav } from '../nav';
@@ -66,9 +67,8 @@ export function DocumentsSheet({ parent, subject, canEdit, linkable, title, kind
   };
   const open = async (d) => {
     try {
-      if (Platform.OS === 'web') { const url = URL.createObjectURL(await api.download(`${base}/${d.id}/file`)); window.open(url, '_blank', 'noopener'); setTimeout(() => URL.revokeObjectURL(url), 120000); }
-      else if (d.content_type.startsWith('image/')) setImg(d);
-      else toast('Open PDFs in the web app');
+      if (Platform.OS !== 'web' && d.content_type.startsWith('image/')) setImg(d);
+      else await openProtected(`${base}/${d.id}/file`, d.file_name ?? `document-${d.id}`);
     } catch (e) { toast(e.message); }
   };
   const remove = async (d) => { try { await api.del(`${base}/${d.id}`); await docs.reload(); onChanged?.(); } catch (e) { toast(e.message); } };

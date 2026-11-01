@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { Platform, View } from 'react-native';
 import { api } from '../api';
+import { saveExport } from '../open-file';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { Btn, Card, Empty, ErrorBox, H1, Loading, Row, Screen, Section, Seg, StatPill, T, Tag } from '../ui';
@@ -17,12 +18,7 @@ const when = (d) => (d ? new Date(d).toLocaleDateString(locale) : '');
 const TONE = { processing: c.sunSoft, paid: c.lime, failed: c.pinkSoft, pending: c.sunSoft, verified: c.lime, rejected: c.pinkSoft };
 const PAGE = 25;
 
-function download(name, text) {
-  if (Platform.OS !== 'web') return false;
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([text], { type: 'text/csv' })); a.download = name; a.click();
-  return true;
-}
+const download = (name, text) => saveExport({ filename: name, content_type: 'text/csv', encoding: 'utf8', content: text });
 
 const Line = ({ t, v, strong, sub }) => (
   <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
@@ -148,7 +144,7 @@ export function Earnings() {
         fields={[{ key: 'from', toKey: 'to', label: 'Period', type: 'daterange', optional: true }]}
         onSubmit={async (v) => {
           const r = await api.get('/me/earnings/export', { ...(v.from ? { from: v.from } : {}), ...(v.to ? { to: v.to } : {}), ...(cur ? { currency: cur } : {}) });
-          return download(r.filename, r.csv) ? `${r.rows} lines exported` : `${r.rows} lines ready — open this on the web app to download`;
+          await download(r.filename, r.csv); return `${r.rows} lines exported`;
         }} />
     </Screen>
   );

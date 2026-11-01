@@ -29,6 +29,7 @@ import Community from './screens/feed';
 import Landing from './screens/landing';
 import { Explore, Event, Team, Person } from './screens/play';
 import { Following, LiveCentre, PublicShell } from './screens/spectate';
+import { showPublicEvent, usePublicEvent } from './public-event';
 import { TeamManage } from './screens/team-manage';
 import { TeamWorkspace } from './screens/team-workspace';
 import { TeamChat } from './screens/team-chat';
@@ -314,6 +315,7 @@ function Shell() {
   const { tab, stack, back, goTab, push, menu } = useNav();
   const ins = useSafeAreaInsets();
   const [mfa, setMfa] = useState(null);
+  const nativeEvent = usePublicEvent();
   useEffect(() => { setMfaRequiredHandler(setMfa); return () => setMfaRequiredHandler(() => {}); }, []);
   useEffect(() => { if (!user) setMfa(null); }, [user]);
   // Logging out (from any screen) starts the next session from Home, not from a leftover pushed screen.
@@ -336,6 +338,14 @@ function Shell() {
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
   // A tapped push notification opens the right screen: from the web service worker (?open= or a message) or from the phone.
   // Opening a shared link while signed in: straight to the event or the live game.
+  // A public event opened from the landing page on a phone: once they sign in, carry on to the same event inside the app.
+  useEffect(() => {
+    if (!user || !nativeEvent) return;
+    const id = nativeEvent;
+    showPublicEvent(null);
+    goTab('Explore');
+    setTimeout(() => push('Event', { id }), 0);
+  }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!user || !PUBLIC_LINK) return;
     window.history.replaceState({}, '', window.location.pathname);
@@ -367,7 +377,7 @@ function Shell() {
   if (!ready) return <View style={{ flex: 1, backgroundColor: c.bg, justifyContent: 'center', padding: 24 }}><Loading /></View>;
   // back from an organisation's identity provider (web): finish the sign-in, whether or not someone is already signed in
   if (isSsoCallback()) return <View style={{ flex: 1, backgroundColor: c.bg, paddingTop: ins.top }}><SsoCallbackScreen /></View>;
-  if (!user && PUBLIC_LINK) return <View style={{ flex: 1, backgroundColor: c.bg, paddingTop: ins.top }}><PublicShell eventId={PUBLIC_LINK.event} fixtureId={PUBLIC_LINK.fixture} renderEvent={(params) => <Event {...params} />} /></View>;
+  if (!user && (PUBLIC_LINK || nativeEvent)) return <View style={{ flex: 1, backgroundColor: c.bg, paddingTop: ins.top }}><PublicShell eventId={PUBLIC_LINK?.event ?? nativeEvent} fixtureId={PUBLIC_LINK?.fixture} onExit={PUBLIC_LINK ? undefined : () => showPublicEvent(null)} renderEvent={(params) => <Event {...params} />} /></View>;
   if (!user) return <View style={{ flex: 1, backgroundColor: c.bg, paddingTop: ins.top }}><BetaBanner /><View style={{ flex: 1 }}><Landing /></View></View>;
   const top = stack[stack.length - 1];
   const Page = top ? PAGES[top.name] : TABS.find((t) => t[0] === tab)[1];
