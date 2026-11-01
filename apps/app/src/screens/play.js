@@ -8,7 +8,7 @@ import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { useNav } from '../nav';
-import { Field, Avatar, Btn, Bubble, Card, Chip, Empty, ErrorBox, GradCard, H1, H2, Loading, Row, Screen, Seg, Section, StatPill, T, Tag } from '../ui';
+import { Field, Avatar, Btn, Bubble, Card, Chip, Empty, ErrorBox, GradCard, H1, H2, Loading, ListScreen, Row, Screen, Seg, Section, StatPill, T, Tag } from '../ui';
 import { AdSlot } from '../ads';
 import { AcademiesTab, SuppliersTab } from './directory';
 import { FormSheet } from '../FormSheet';
@@ -73,9 +73,22 @@ export function Explore() {
   const raw = tab === 'events' ? list.data?.items : list.data;
   const rows = Array.isArray(raw) ? raw : [];
   const total = tab === 'events' ? list.data?.total ?? rows.length : rows.length;
+  // Events say how many there are in all; teams and people do not, so a full page means there may be more.
+  const more = tab === 'events' ? total > rows.length : rows.length >= size;
 
+  const renderRow = ({ item: x, index: i }) => {
+    if (tab === 'events') return <Row key={x.id} onPress={() => push('Event', { id: x.id })} color={[c.pinkSoft, c.violetSoft, c.limeSoft, c.sunSoft][i % 4]} left={<Bubble emoji={x.banner_emoji} color={c.paper} />} title={x.name} sub={`${x.live_now ? '🔴 LIVE · ' : ''}${x.sport_emoji} ${x.sport} · ${x.entrants} in${x.spots_left != null ? ` · ${x.spots_left} spots left` : ''}${x.city ? ' · ' + x.city : ''}${x.starts_on ? ' · ' + day(x.starts_on) : ''}${x.entry_fee_cents ? ' · ' + money(x.entry_fee_cents, x.currency) : ' · Free'}`} right={<Tag label={x.registration_open ? 'open' : x.status === 'open' ? 'full / closed' : x.status} color={x.registration_open ? c.lime : c.sun} />} />;
+    if (tab === 'teams') return <Row key={x.id} onPress={() => push('Team', { id: x.id })} left={<Bubble emoji={x.emoji} color={x.color} />} title={x.name} sub={`${x.sport_emoji} ${x.sport} · ${x.members} members${x.city ? ' · ' + x.city : ''}`} />;
+    return <Row key={x.id} onPress={() => push('Person', { id: x.id })} left={<Avatar user={x} />} title={x.display_name} sub={`@${x.handle} · ${(x.roles ?? []).join(', ')}`} />;
+  };
+  // The rows are a virtualized list (only what is on screen is built); the filters above them are its header. Scrolling to the end loads 20 more.
+  const status = list.loading && !list.data ? <Loading /> : list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : (dq || Object.values(flags).some(Boolean) || sport ? <Empty title="No matches" sub="Try fewer filters or a different search." /> : <Empty title="Nothing here yet" sub="Be the one who starts it." />);
   return (
-    <Screen>
+    <ListScreen data={dir ? [] : rows} renderItem={renderRow} keyExtractor={(x) => String(x.id)} extraData={tab} gap={8}
+      onEndReached={() => { if (!dir && !list.loading && more) setSize((n) => n + 20); }}
+      empty={dir ? null : status}
+      footer={!dir && more ? <Btn small title={tab === 'events' ? `Show more (${total - rows.length} more)` : 'Show more'} color={c.paper} onPress={() => setSize((n) => n + 20)} style={{ marginTop: 8 }} /> : null}
+      header={<>
       <H1 style={{ marginTop: 8 }}>Explore</H1>
       <T color={c.mute} weight="600">Find events to join, teams to play for, people to play with, academies to train at and suppliers to hire.</T>
       <Seg options={[{ value: 'events', label: 'Events', emoji: '🎟️', color: c.pink }, { value: 'teams', label: 'Teams', emoji: '🛡️', color: c.violet }, { value: 'people', label: 'People', emoji: '🧑‍🤝‍🧑', color: c.orange }, { value: 'academies', label: 'Academies', emoji: '🏫', color: c.cyan }, { value: 'suppliers', label: 'Suppliers', emoji: '📦', color: c.mint }]} value={tab} onChange={setTab} />
@@ -100,18 +113,10 @@ export function Explore() {
         </View>
       ) : null}
 
-      {dir ? null : <View style={{ gap: 12, marginTop: 14 }}>
+      {dir ? null : <View style={{ gap: 12, marginTop: 14, marginBottom: 12 }}>
         {tab === 'events' ? <><AdSlot placement="featured_event" sport={sport ?? undefined} /><AdSlot placement="search_sponsored" q={dq} sport={sport ?? undefined} /></> : null}
-        {list.loading && !list.data ? <Loading /> : list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : !rows.length ? (dq || Object.values(flags).some(Boolean) || sport ? <Empty title="No matches" sub="Try fewer filters or a different search." /> : <Empty title="Nothing here yet" sub="Be the one who starts it." />) :
-          rows.map((x, i) => {
-            if (tab === 'events') return <Row key={x.id} onPress={() => push('Event', { id: x.id })} color={[c.pinkSoft, c.violetSoft, c.limeSoft, c.sunSoft][i % 4]} left={<Bubble emoji={x.banner_emoji} color={c.paper} />} title={x.name} sub={`${x.live_now ? '🔴 LIVE · ' : ''}${x.sport_emoji} ${x.sport} · ${x.entrants} in${x.spots_left != null ? ` · ${x.spots_left} spots left` : ''}${x.city ? ' · ' + x.city : ''}${x.starts_on ? ' · ' + day(x.starts_on) : ''}${x.entry_fee_cents ? ' · ' + money(x.entry_fee_cents, x.currency) : ' · Free'}`} right={<Tag label={x.registration_open ? 'open' : x.status === 'open' ? 'full / closed' : x.status} color={x.registration_open ? c.lime : c.sun} />} />;
-            if (tab === 'teams') return <Row key={x.id} onPress={() => push('Team', { id: x.id })} left={<Bubble emoji={x.emoji} color={x.color} />} title={x.name} sub={`${x.sport_emoji} ${x.sport} · ${x.members} members${x.city ? ' · ' + x.city : ''}`} />;
-            return <Row key={x.id} onPress={() => push('Person', { id: x.id })} left={<Avatar user={x} />} title={x.display_name} sub={`@${x.handle} · ${(x.roles ?? []).join(', ')}`} />;
-          })}
-        {total > rows.length ? <Btn small title={`Show more (${total - rows.length} more)`} color={c.paper} onPress={() => setSize((n) => n + 20)} /> : null}
       </View>}
-
-    </Screen>
+      </>} />
   );
 }
 
