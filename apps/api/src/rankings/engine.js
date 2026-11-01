@@ -72,6 +72,7 @@ export function computeRanking(rows, v, { asOf }) {
     const reasons = [];
     if (list.length < v.min_samples) reasons.push({ code: 'below_min_samples', have: list.length, need: v.min_samples });
     if (!scoped && events.size < v.min_distinct_events) reasons.push({ code: 'too_few_events', have: events.size, need: v.min_distinct_events });
+    if (v.formula_kind === 'skill_level' && list.some((r) => r.reliable === false)) reasons.push({ code: 'level_not_reliable' });
     const first_on = String(list.map((r) => r.on).sort()[0]).slice(0, 10);
     if (reasons.length) { ineligible.push({ subject, sample_n: list.length, events_n: events.size, reasons, evidence_ids: list.map((r) => r.id) }); continue; }
     let score;
@@ -112,6 +113,7 @@ export function describeFormula(v) {
   const win = v.window_days ? ` over the last ${v.window_days} days` : v.window_games ? ` over the last ${v.window_games} games` : '';
   switch (v.formula_kind) {
     case 'team_form': return `Points per game${win} (win/draw/loss points from each event), ties broken by goal difference per game, then more games.`;
+    case 'skill_level': return `Verified skill level (1.0–7.0)${win}: the level after each player's latest verified game, worked out from published results only. A player appears once the level is reliable.`;
     case 'per_90': return `${v.metric} per 90 verified minutes played${win}: total ${v.metric} ÷ total verified minutes × 90.`;
     case 'per_match': return `${v.metric} per match${win}: total ${v.metric} ÷ number of matches.`;
     default: return `${{ best: v.direction === 'lower' ? 'Lowest' : 'Highest', sum: 'Total', mean: 'Average', last: 'Most recent' }[v.aggregation]} ${v.metric}${win}.`;

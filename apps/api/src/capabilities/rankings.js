@@ -42,7 +42,7 @@ const readDef = async (user, defId) => {
   return def;
 };
 
-const unitOf = async (def, v) => (v.metric ? (await resolveRule({ id: def.sport_id, scoring: (await one('SELECT scoring FROM sports WHERE id=$1', [def.sport_id])).scoring }, v.metric)).unit : null);
+const unitOf = async (def, v) => (v.metric && v.formula_kind !== 'skill_level' ? (await resolveRule({ id: def.sport_id, scoring: (await one('SELECT scoring FROM sports WHERE id=$1', [def.sport_id])).scoring }, v.metric)).unit : null);
 
 const publicVersion = (v) => v && ({
   version: v.version, formula_kind: v.formula_kind, metric: v.metric, aggregation: v.aggregation, direction: v.direction, evidence: v.evidence,
@@ -140,7 +140,7 @@ cap({
   summary: 'Define a ranking or publish its next version. Public rankings need a platform admin or an appointed rules governor for the sport; club rankings need a manager of that team. Direction comes from the governed metric, never from the caller, so cohorts stay comparable; the formula must be one the sport’s family supports. Public rankings require at least 3 results across at least 2 events unless scoped to a single event. Send expected_version (0 for new) and client_key to retry safely. Versions are immutable.',
   input: z.object({
     definition_id: id.optional(), sport: z.string(), subject: z.enum(['player', 'team']), name: z.string().min(2).max(80), expected_version: z.number().int().min(0),
-    formula_kind: z.enum(['metric', 'per_90', 'per_match', 'team_form']), metric: z.string().min(1).max(40).optional(), aggregation: z.enum(['best', 'sum', 'mean', 'last']).default('best'),
+    formula_kind: z.enum(['metric', 'per_90', 'per_match', 'team_form', 'skill_level']), metric: z.string().min(1).max(40).optional(), aggregation: z.enum(['best', 'sum', 'mean', 'last']).default('best'),
     evidence: z.enum(['official', 'development']).default('official'), visibility: z.enum(['public', 'club']).default('public'), scope_team_id: id.optional(),
     min_samples: z.number().int().min(1).max(500), min_distinct_events: z.number().int().min(1).max(100).default(2),
     window_days: z.number().int().min(1).max(3660).optional(), window_games: z.number().int().min(1).max(200).optional(),
@@ -151,7 +151,13 @@ cap({
     if (!sport) throw notFound('Sport');
     const family = i.subject === 'team' ? 'team_form' : familyOf(sport);
     if (!kindsFor(family).includes(i.formula_kind)) throw unprocessable(`${FAMILIES[family].label} supports: ${kindsFor(family).join(', ')}`);
-    if (i.formula_kind === 'team_form' ? !!i.metric : !i.metric) throw unprocessable(i.formula_kind === 'team_form' ? 'Team form does not use a metric' : 'Choose the metric to rank');
+    const skill = i.formula_kind === 'skill_level';
+    if (skill) {
+      const { position, ...rest } = i.scope;
+      if (i.metric) throw unprocessable('A skill-level ranking ranks the verified level, not a metric');
+      if (Object.values(rest).some((x) => x !== undefined)) throw unprocessable('A level is worked out from all verified games, so a skill-level ranking can be narrowed by position or by a club, not by season, event, city or competition type');
+      if (i.evidence !== 'official') throw unprocessable('Levels come from verified results only');
+    } else if (i.formula_kind === 'team_form' ? !!i.metric : !i.metric) throw unprocessable(i.formula_kind === 'team_form' ? 'Team form does not use a metric' : 'Choose the metric to rank');
     if (i.formula_kind === 'team_form' && (i.window_days)) throw unprocessable('Team form uses a number of games, not days');
     if (i.formula_kind !== 'team_form' && i.window_games) throw unprocessable('Player rankings use a window in days');
     if (i.subject === 'team' && i.scope.position) throw unprocessable('Position applies to player rankings only');
@@ -160,7 +166,7 @@ cap({
     if (i.visibility === 'public' && !i.scope.event_id && (i.min_samples < 3 || i.min_distinct_events < 2)) throw unprocessable('A public ranking needs at least 3 results across at least 2 events, unless it is scoped to one event');
     if (i.scope.event_id && !(await one('SELECT 1 AS ok FROM events WHERE id=$1 AND sport_id=$2', [i.scope.event_id, sport.id]))) throw unprocessable('That event is not in this sport');
     let direction = 'higher', unit = null;
-    if (i.formula_kind !== 'team_form') {
+    if (i.formula_kind !== 'team_form' && !skill) {
       const rule = await resolveRule(sport, i.metric);
       unit = rule.unit; direction = rule.direction;
       if (i.formula_kind !== 'metric' && (rule.unit !== 'count')) throw unprocessable('Rates (per match, per 90) apply to counted metrics, not times or distances');
@@ -189,7 +195,7 @@ cap({
         if (dup) return { definition: pub(def), version: publicVersion(dup), replayed: true };
       }
       if (def.current_version !== i.expected_version) throw conflict(`This ranking is now at version ${def.current_version}; you edited version ${i.expected_version}. Reload and re-apply your change.`, { current_version: def.current_version });
-      const v = { formula_kind: i.formula_kind, metric: i.metric ? metricKey(i.metric) : null, aggregation: i.formula_kind === 'metric' ? i.aggregation : (i.formula_kind === 'team_form' ? 'sum' : 'sum'),
+      const v = { formula_kind: i.formula_kind, metric: skill ? 'skill_level' : i.metric ? metricKey(i.metric) : null, aggregation: i.formula_kind === 'metric' ? i.aggregation : skill ? 'last' : 'sum',
         direction, evidence: i.evidence, min_samples: i.min_samples, min_distinct_events: i.min_distinct_events, window_days: i.window_days ?? null, window_games: i.window_games ?? null, scope: i.scope };
       const hash = createHash('sha256').update(JSON.stringify(v)).digest('hex');
       const prev = def.current_version ? await loadVersion(def.id, def.current_version, c) : null;

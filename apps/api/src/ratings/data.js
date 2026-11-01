@@ -122,6 +122,10 @@ export async function recomputeSport(sport, { reason = 'sweep', userId = null } 
   });
 }
 
+const listeners = new Set();
+/** Run `fn(sportIds)` after a recompute that changed ratings (the rankings module re-snapshots its skill-level rankings from here, so ratings never import rankings). */
+export const afterRatingsChange = (fn) => { listeners.add(fn); };
+
 /** Every sport that has any verified game or an earlier run (so a sport whose evidence was withdrawn is re-run too). */
 export async function recomputeAll(reason = 'sweep', { sportId } = {}) {
   const sports = await many(
@@ -132,9 +136,11 @@ export async function recomputeAll(reason = 'sweep', { sportId } = {}) {
           OR EXISTS (SELECT 1 FROM event_sessions es JOIN event_disciplines d ON d.id = es.discipline_id WHERE d.sport_id = s.id AND es.status = 'completed'))
       ORDER BY s.slug`, [sportId ?? null]);
   let runs = 0;
+  const changed = [];
   for (const s of sports) {
-    try { if ((await recomputeSport(s, { reason })).changed) runs++; } catch (e) { console.error('[ratings]', s.slug, e.message); } // one sport never stops the rest
+    try { if ((await recomputeSport(s, { reason })).changed) { runs++; changed.push(s.id); } } catch (e) { console.error('[ratings]', s.slug, e.message); } // one sport never stops the rest
   }
+  if (changed.length) for (const fn of listeners) await fn(changed).catch((e) => console.error('[ratings] listener', e.message));
   return runs;
 }
 /** Called after a result is approved, corrected or superseded; never blocks or fails the caller. */

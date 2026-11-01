@@ -11,13 +11,15 @@ import { FormSheet } from '../FormSheet';
 import { c, day, withUnit } from '../theme';
 
 const STRENGTH = { limited: ['Limited evidence', 'sun'], solid: ['Solid evidence', 'lime'], strong: ['Strong evidence', 'mint'] };
-const KIND_LABEL = { metric: 'The metric itself', per_match: 'Per match', per_90: 'Per 90 verified minutes', team_form: 'Team form' };
+const KIND_LABEL = { metric: 'The metric itself', per_match: 'Per match', per_90: 'Per 90 verified minutes', team_form: 'Team form', skill_level: 'Verified skill level' };
 const AGG_LABEL = { best: 'Best result', sum: 'Total', mean: 'Average', last: 'Most recent' };
 const REASON = {
   duplicate: 'Duplicate of another result', outside_window: 'Older than the window', minutes_not_verified: 'Minutes not verified', self_generated: 'Same-owner teams',
 };
-const UNMET = { below_min_samples: (u) => `${u.have} of the ${u.need} results needed`, too_few_events: (u) => `${u.have} of the ${u.need} different events needed` };
-const score = (r, unit) => (unit && unit !== 'count' ? withUnit(r.score, unit) : `${Number(r.score)}`);
+const UNMET = { level_not_reliable: () => 'Level not reliable yet: more verified games needed', below_min_samples: (u) => `${u.have} of the ${u.need} results needed`, too_few_events: (u) => `${u.have} of the ${u.need} different events needed` };
+const isLevel = (x) => x?.formula_kind === 'skill_level';
+const level = (n) => `Level ${Number(n).toFixed(1)}`;
+const score = (r, unit, skill) => (skill ? level(r.score) : unit && unit !== 'count' ? withUnit(r.score, unit) : `${Number(r.score)}`);
 
 /** The scope a version was published with, in words. */
 const scopeText = (v) => {
@@ -67,6 +69,8 @@ function RankingTable({ def, canDefine, onEdit }) {
   if (t.error) return <ErrorBox error={t.error} onRetry={t.reload} />;
   const { version: v, entries, unit } = t.data;
   const team = def.subject === 'team';
+  const skill = isLevel(v);
+  const noun = team || skill ? 'game' : 'result';
   return (
     <View style={{ gap: 10 }}>
       <Card pad={14} accessibilityLabel={`${def.name} scope and formula`}>
@@ -75,7 +79,7 @@ function RankingTable({ def, canDefine, onEdit }) {
         <T size={13} style={{ marginTop: 6 }}>{t.data.formula}</T>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
           <Tag label={`Version ${v.version}`} />
-          <Tag label={`Min ${v.min_samples} ${team ? 'games' : 'results'}${v.scope?.event_id ? '' : ` · ${v.min_distinct_events}+ events`}`} />
+          <Tag label={`Min ${v.min_samples} ${noun}s${v.scope?.event_id ? '' : ` · ${v.min_distinct_events}+ events`}`} />
           <Tag label={v.evidence === 'official' ? 'Approved competition results only' : 'Development data · private'} color={v.evidence === 'official' ? c.lime : c.sunSoft} />
           <Tag label={`${t.data.total} ranked${t.data.not_yet_eligible ? ` · ${t.data.not_yet_eligible} below minimum` : ''}`} color={c.paper} />
         </View>
@@ -92,10 +96,10 @@ function RankingTable({ def, canDefine, onEdit }) {
         return (
           <Row key={r.subject?.id ?? r.rank} color={r.rank === 1 ? c.sunSoft : c.paper} onPress={() => setWhy(r.subject?.id)}
             left={<T weight="900" size={20} accessibilityLabel={`Rank ${r.rank}`}>{r.rank === 1 ? '🥇' : r.rank === 2 ? '🥈' : r.rank === 3 ? '🥉' : `#${r.rank}`}</T>}
-            title={name} sub={`Based on ${r.sample_n} verified ${team ? 'game' : 'result'}${r.sample_n === 1 ? '' : 's'} across ${r.events_n} event${r.events_n === 1 ? '' : 's'}`}
-            right={<View style={{ alignItems: 'flex-end', gap: 4 }}><Tag label={score(r, unit)} color={c.lime} /><Tag label={sl} color={c[sc] ?? c.sunSoft} /></View>} />
+            title={name} sub={`Based on ${r.sample_n} verified ${noun}${r.sample_n === 1 ? '' : 's'} across ${r.events_n} event${r.events_n === 1 ? '' : 's'}`}
+            right={<View style={{ alignItems: 'flex-end', gap: 4 }}><Tag label={score(r, unit, skill)} color={c.lime} /><Tag label={sl} color={c[sc] ?? c.sunSoft} /></View>} />
         );
-      }) : <Empty emoji="📊" title="Nobody qualifies yet" sub={`A ${team ? 'team' : 'player'} appears once they have ${v.min_samples} eligible ${team ? 'games' : 'results'}${v.scope?.event_id ? '' : ` across ${v.min_distinct_events} events`}. Ranking from fewer would be luck, not form.`} />}
+      }) : <Empty emoji="📊" title="Nobody qualifies yet" sub={skill ? `A player appears once their level is reliable and rests on ${v.min_samples} verified games across ${v.min_distinct_events} events. A level from fewer would be luck, not skill.` : `A ${team ? 'team' : 'player'} appears once they have ${v.min_samples} eligible ${team ? 'games' : 'results'}${v.scope?.event_id ? '' : ` across ${v.min_distinct_events} events`}. Ranking from fewer would be luck, not form.`} />}
       {entries.length >= lim ? <Btn title="Show more" color={c.paper} ink={c.ink} onPress={() => setLim(lim + 25)} /> : null}
       <WhySheet def={def} subject={why} onClose={() => setWhy(null)} unit={unit} onOpen={(id) => { setWhy(null); push(team ? 'Team' : 'Person', { id }); }} />
     </View>
@@ -108,17 +112,18 @@ export function WhySheet({ def, subject, onClose, unit, onOpen }) {
   const why = useLoad(() => (subject ? api.get(`/rankings/${def.id}/subjects/${subject}/why`) : Promise.resolve(null)), [def.id, subject]);
   const hist = useLoad(() => (subject ? api.get(`/rankings/${def.id}/subjects/${subject}/history`, { limit: 12 }) : Promise.resolve(null)), [def.id, subject]);
   const w = why.data;
+  const skill = isLevel(def);
   const points = (hist.data?.history ?? []).slice().reverse();
   const worst = Math.max(1, ...points.map((p) => p.rank));
   return (
     <Sheet visible={!!subject} onClose={onClose} title="Why am I here?">
       {why.loading && !w ? <Loading /> : why.error ? <ErrorBox error={why.error} onRetry={why.reload} /> : w ? <View style={{ gap: 10 }}>
-        <T weight="800" size={18}>{w.status === 'ranked' ? `Rank ${w.rank}` : 'Not ranked yet'}{w.score != null ? ` · ${score(w, unit)}` : ''}</T>
+        <T weight="800" size={18}>{w.status === 'ranked' ? `Rank ${w.rank}` : 'Not ranked yet'}{w.score != null ? ` · ${score(w, unit, skill)}` : ''}</T>
         <T size={13}>{w.formula}</T>
         <T size={12} color={c.mute}>{w.weighting}</T>
         {w.unmet?.length ? w.unmet.map((u, k) => <Tag key={k} label={(UNMET[u.code] ?? (() => u.code))(u)} color={c.sunSoft} />) : null}
-        <H2>Results counted ({w.sample_n})</H2>
-        {w.included.map((r) => <Row key={r.id} title={day(r.on)} sub={r.points != null ? `${r.goals_for}–${r.goals_against} · ${r.points} pts` : r.minutes ? `${r.minutes} min` : undefined} right={r.value != null ? <Tag label={unit && unit !== 'count' ? withUnit(r.value, unit) : `${r.value}`} /> : undefined} />)}
+        <H2>{skill ? 'Games counted' : 'Results counted'} ({w.sample_n})</H2>
+        {w.included.map((r) => <Row key={r.id} title={day(r.on)} sub={r.points != null ? `${r.goals_for}–${r.goals_against} · ${r.points} pts` : r.minutes ? `${r.minutes} min` : undefined} right={r.value != null ? <Tag label={skill ? level(r.value) : unit && unit !== 'count' ? withUnit(r.value, unit) : `${r.value}`} /> : undefined} />)}
         {Object.keys(w.excluded_counts ?? {}).length ? <>
           <H2>Left out</H2>
           {Object.entries(w.excluded_counts).map(([k, n]) => <T key={k} size={13}>{n} × {REASON[k] ?? k}</T>)}
@@ -147,26 +152,27 @@ function DefineSheet({ sport, sports, model, edit, onClose, onDone }) {
     { key: 'name', label: 'Name', hint: 'What people will see, for example “Goals per 90”', maxLength: 80 },
     { key: 'subject', label: 'Ranks', type: 'chips', options: [{ value: 'player', label: 'Players' }, { value: 'team', label: 'Teams (form)' }] },
     { key: 'formula_kind', label: 'Formula', type: 'chips', options: kindOpts, show: (v) => v.subject === 'player', hint: 'Only formulas this sport’s model supports are offered.' },
-    { key: 'metric', label: 'Metric', type: 'chips', options: (model?.metrics ?? []).map((m) => ({ value: m, label: m.replace(/_/g, ' ') })), show: (v) => v.subject === 'player', hint: 'Metrics with approved results in this sport. Direction (lower or higher is better) comes from the governed metric.' },
+    { key: 'metric', label: 'Metric', type: 'chips', options: (model?.metrics ?? []).map((m) => ({ value: m, label: m.replace(/_/g, ' ') })), show: (v) => v.subject === 'player' && v.formula_kind !== 'skill_level', hint: 'Metrics with approved results in this sport. Direction (lower or higher is better) comes from the governed metric.' },
     { key: 'aggregation', label: 'Combine results as', type: 'chips', options: Object.entries(AGG_LABEL).map(([value, label]) => ({ value, label })), show: (v) => v.subject === 'player' && (v.formula_kind ?? 'metric') === 'metric' },
-    { key: 'min_samples', label: 'Minimum results to appear', type: 'stepper', min: 1, max: 100, default: 3, hint: 'Public rankings need at least 3.' },
+    { key: 'min_samples', label: 'Minimum results to appear', type: 'stepper', min: 1, max: 100, default: 3, hint: 'Public rankings need at least 3. For a skill level these are verified games.' },
     { key: 'min_distinct_events', label: 'Minimum different events', type: 'stepper', min: 1, max: 20, default: 2, hint: 'Stops one lucky event deciding a ranking.' },
     { key: 'window', label: 'Period', type: 'chips', optional: true, options: [{ value: 'all', label: 'All time' }, { value: '90', label: 'Last 90 days' }, { value: '365', label: 'Last 12 months' }], default: 'all', show: (v) => v.subject === 'player' },
     { key: 'window_games', label: 'Latest games counted', type: 'stepper', min: 1, max: 50, default: 5, show: (v) => v.subject === 'team' },
-    { key: 'season', label: 'Season', type: 'chips', optional: true, options: [{ value: 'any', label: 'Any' }, ...[0, 1, 2].map((k) => ({ value: String(new Date().getFullYear() - k), label: String(new Date().getFullYear() - k) }))], default: 'any' },
-    { key: 'format', label: 'Competition type', type: 'chips', optional: true, options: [{ value: 'any', label: 'Any' }, ...['tournament', 'league', 'friendly'].map((x) => ({ value: x, label: x }))], default: 'any' },
-    ...(model?.cities?.length ? [{ key: 'region', label: 'City', type: 'chips', optional: true, options: [{ value: 'any', label: 'Anywhere' }, ...model.cities.map((x) => ({ value: x, label: x }))], default: 'any' }] : []),
+    { key: 'season', label: 'Season', type: 'chips', optional: true, options: [{ value: 'any', label: 'Any' }, ...[0, 1, 2].map((k) => ({ value: String(new Date().getFullYear() - k), label: String(new Date().getFullYear() - k) }))], default: 'any', show: (v) => v.formula_kind !== 'skill_level', hint: 'A level uses every verified game, so it cannot be narrowed by season.' },
+    { key: 'format', label: 'Competition type', type: 'chips', optional: true, options: [{ value: 'any', label: 'Any' }, ...['tournament', 'league', 'friendly'].map((x) => ({ value: x, label: x }))], default: 'any', show: (v) => v.formula_kind !== 'skill_level' },
+    ...(model?.cities?.length ? [{ key: 'region', label: 'City', type: 'chips', optional: true, options: [{ value: 'any', label: 'Anywhere' }, ...model.cities.map((x) => ({ value: x, label: x }))], default: 'any', show: (v) => v.formula_kind !== 'skill_level' }] : []),
     ...(model?.positions?.length ? [{ key: 'position', label: 'Position', type: 'chips', optional: true, options: [{ value: 'any', label: 'All positions' }, ...model.positions.map((x) => ({ value: x, label: x }))], default: 'any', show: (v) => v.subject === 'player', hint: 'Only people who list this position are compared.' }] : []),
     { key: 'note', label: 'Why this version (optional)', type: 'multiline', optional: true },
   ];
   const submit = async (v) => {
     const pick = (x) => (x && x !== 'any' && x !== 'all' ? x : undefined);
     const team = v.subject === 'team';
+    const lvl = !team && v.formula_kind === 'skill_level';
     const r = await api.post('/rankings', {
       definition_id: edit?.id, expected_version: edit?.current_version ?? 0, sport, subject: v.subject, name: v.name,
-      formula_kind: team ? 'team_form' : (v.formula_kind ?? 'metric'), metric: team ? undefined : v.metric, aggregation: v.aggregation ?? 'best',
+      formula_kind: team ? 'team_form' : (v.formula_kind ?? 'metric'), metric: team || lvl ? undefined : v.metric, aggregation: v.aggregation ?? 'best',
       min_samples: v.min_samples, min_distinct_events: v.min_distinct_events, window_days: !team && pick(v.window) ? Number(v.window) : undefined, window_games: team ? v.window_games : undefined,
-      scope: { season: pick(v.season) ? Number(v.season) : undefined, format: pick(v.format), region: pick(v.region), position: team ? undefined : pick(v.position) }, note: v.note || undefined,
+      scope: lvl ? { position: pick(v.position) } : { season: pick(v.season) ? Number(v.season) : undefined, format: pick(v.format), region: pick(v.region), position: team ? undefined : pick(v.position) }, note: v.note || undefined,
       client_key: `rk-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     });
     toast(`Published ${r.definition.name} · version ${r.version.version}`);
