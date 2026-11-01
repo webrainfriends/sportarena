@@ -10,6 +10,7 @@ import { c, fam, when } from '../theme';
 import { locale } from '../locale';
 import { BOOKING, STATUS, Seats, costLabel, price } from './find-games';
 import { HostGameSheet } from './host-game';
+import { track } from '../track';
 
 /** A card whose content is spaced, so a title never touches the line under it. */
 const Card = ({ children, gap = 6, ...p }) => <BaseCard {...p}><View style={{ gap }}>{children}</View></BaseCard>;
@@ -33,6 +34,7 @@ function JoinSheet({ g, kids, onClose, onDone }) {
     try {
       const r = await api.post(`/open-games/${g.id}/join`, { ...(who ? { on_behalf_of: who } : {}), position: position || undefined, message: message.trim() || undefined, idempotency_key: key.current });
       toast({ confirmed: 'You are in! 🎉', requested: 'Request sent — the host will review it', waitlisted: 'You are on the waitlist', guardian_pending: 'A guardian has been asked to approve' }[r.status] ?? 'Done');
+      if (r.status === 'confirmed') track('game_joined', { entityType: 'open_game', entityId: g.id });
       onDone();
     } catch (e) { toast(e.message); } finally { setBusy(false); }
   };

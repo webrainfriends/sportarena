@@ -52,6 +52,8 @@ export const config = {
   superAdminEmail: env.SUPER_ADMIN_EMAIL,
   // The only accounts that may hold the `admin` / `platform_admin` roles (comma-separated). Falls back to SUPER_ADMIN_EMAIL; unset = nobody holds them.
   platformAdminEmails: env.PLATFORM_ADMIN_EMAILS ?? env.SUPER_ADMIN_EMAIL,
+  // Product-analytics telemetry older than this many days is de-identified (the person link, the entity and the properties are removed; the row and its counts stay). Min 30.
+  analyticsRetentionDays: Math.max(30, Number(env.ANALYTICS_RETENTION_DAYS ?? 395)),
   tokenTtl: env.TOKEN_TTL ?? '12h', // access-token lifetime
   refreshTtlDays: Number(env.REFRESH_TTL_DAYS ?? 30), // sliding: each rotation extends the session by this much
   requireSession: env.AUTH_REQUIRE_SESSION === 'true', // refuse pre-session JWTs that carry no session id

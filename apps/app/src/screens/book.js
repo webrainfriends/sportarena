@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { OpenBallots } from './ballots';
 import { Image, Linking, Platform, Pressable, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -17,6 +17,7 @@ import { Calendar, StickyBar } from '../pickers';
 import { SportSelect } from '../sportpicker';
 import { AdSlot } from '../ads';
 import { c } from '../theme';
+import { track } from '../track';
 import { WEEKDAYS, addDays, dateTimeIn, dayLabel, fmtMin, moneyIn, offerLabel, openStatus, todayIn } from '../vtime';
 
 export const KIND = { court: '🏀', ground: '⚽', pool: '🏊', track: '🏃', room: '🧘', equipment: '🎒', table: '🏓', lane: '🎳', rink: '🏒', range: '🎯', studio: '🧘', other: '📍' };
@@ -211,6 +212,7 @@ export function Venue({ id, date }) {
   const tz = v.data?.timezone ?? 'UTC';
   const m = month ?? (v.data ? todayIn(tz).slice(0, 7) : null);
   const cal = useLoad(() => (v.data ? api.get(`/venues/${id}/calendar`, { month: m }) : Promise.resolve(null)), [id, m, v.data?.id]);
+  useEffect(() => { if (v.data?.id) track('discovery_viewed', { entityType: 'venue', entityId: v.data.id, properties: { surface: 'search' } }); }, [v.data?.id]);
   if (v.loading && !v.data) return <Screen><Loading /></Screen>;
   if (v.error) return <Screen><ErrorBox error={v.error} onRetry={v.reload} /></Screen>;
   const x = v.data;
