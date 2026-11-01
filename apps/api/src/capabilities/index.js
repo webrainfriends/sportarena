@@ -126,6 +126,8 @@ import './player-goals.js';
 import './offline-sync.js';
 import './coaching-evidence.js';
 import './payments.js';
+import './payment-countries.js';
+import './gst.js';
 import './settlement.js';
 import './finance.js';
 import './sponsors.js';

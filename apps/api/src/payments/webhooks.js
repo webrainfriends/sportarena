@@ -3,7 +3,7 @@ import express from 'express';
 import { one, tx } from '../db.js';
 import { settle } from './service.js';
 import { onProviderDispute, onProviderRefund } from '../settlement.js';
-import { stripe, paypal } from './providers.js';
+import { stripe, paypal, razorpay } from './providers.js';
 
 const byRef = (provider, ref) => (ref ? one('SELECT id FROM payments WHERE provider=$1 AND provider_ref=$2', [provider, ref]) : null);
 const byPaymentRef = (provider, ref) => (ref ? one('SELECT * FROM payments WHERE provider=$1 AND provider_payment_ref=$2', [provider, ref]) : null);
@@ -58,5 +58,33 @@ export function webhookRouter() {
     await markSeen('paypal', event.id, event.event_type);
     res.json({ received: true });
   }));
+  // Razorpay: X-Razorpay-Signature is an HMAC of the raw body; X-Razorpay-Event-Id makes a replay a visible no-op.
+  r.post('/razorpay', raw, safe(async (req, res) => {
+    const body = req.body.toString('utf8');
+    if (!razorpay.verifyWebhook(body, req.headers['x-razorpay-signature'])) return res.status(400).json({ error: 'bad_signature' });
+    const event = JSON.parse(body);
+    const eventId = req.headers['x-razorpay-event-id'] ?? null;
+    if (await seen('razorpay', eventId)) return res.json({ received: true, duplicate: true });
+    if (event.event === 'payment_link.paid') {
+      const link = event.payload?.payment_link?.entity;
+      const p = await byRef('razorpay', link?.id);
+      if (p) {
+        const result = razorpay.fromLink(link);
+        if (result.method) await one("UPDATE payments SET method=$2 WHERE id=$1 AND status='pending'", [p.id, result.method]);
+        await settle(p.id, result);
+      }
+    } else if (event.event === 'refund.processed') {
+      const rf = event.payload?.refund?.entity;
+      const p = await byPaymentRef('razorpay', rf?.payment_id);
+      if (p) await tx((c) => onProviderRefund(c, p, rf.amount));
+    } else if (event.event === 'payment.dispute.created') {
+      const d = event.payload?.dispute?.entity;
+      const p = await byPaymentRef('razorpay', d?.payment_id);
+      if (p) await tx((c) => onProviderDispute(c, p, { disputeId: d.id, amountCents: d.amount }));
+    }
+    await markSeen('razorpay', eventId, event.event);
+    res.json({ received: true });
+  }));
+
   return r;
 }

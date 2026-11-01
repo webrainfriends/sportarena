@@ -7,8 +7,9 @@ import { toMajor, fromMajor } from '../currency.js';
 const cfg = () => config.payments;
 export const stripeEnabled = () => !!cfg().stripe.secretKey;
 export const paypalEnabled = () => !!(cfg().paypal.clientId && cfg().paypal.secret);
-export const enabledProviders = () => [stripeEnabled() && 'stripe', paypalEnabled() && 'paypal'].filter(Boolean);
-export const paymentsEnabled = () => enabledProviders().length > 0;
+export const razorpayEnabled = () => !!(cfg().razorpay.keyId && cfg().razorpay.keySecret);
+/** Providers with keys on this server. Which of them a person is offered also depends on the country (payments/countries.js). */
+export const configuredProviders = () => [stripeEnabled() && 'stripe', paypalEnabled() && 'paypal', razorpayEnabled() && 'razorpay'].filter(Boolean);
 
 const fail = (provider, status, detail) => new AppError(502, 'payment_provider_error', `${provider} rejected the request${detail ? `: ${detail}` : ` (${status})`}`);
 async function call(provider, url, init) {
@@ -124,4 +125,40 @@ export const paypal = {
   },
 };
 
-export const provider = (name) => (name === 'stripe' ? stripe : paypal);
+// ---------------- Razorpay (India: UPI, cards, netbanking, wallets) ----------------
+// Hosted Payment Links, so no card or UPI data touches our servers. Amounts are paise; the link's `reference_id` is our payment id.
+const rzpAuth = () => ({ authorization: `Basic ${Buffer.from(`${cfg().razorpay.keyId}:${cfg().razorpay.keySecret}`).toString('base64')}`, 'content-type': 'application/json' });
+const rzpMsg = (b) => b?.error?.description;
+
+export const razorpay = {
+  async createCheckout({ paymentId, amount, currency, name, successUrl }) {
+    const { res, body: b } = await call('Razorpay', `${cfg().razorpay.base}/v1/payment_links`, { method: 'POST', headers: rzpAuth(), body: JSON.stringify({
+      amount, currency, reference_id: paymentId, description: name.slice(0, 120), callback_url: successUrl, callback_method: 'get', notes: { payment_id: paymentId },
+    }) });
+    if (!res.ok || !b?.short_url) throw fail('Razorpay', res.status, rzpMsg(b));
+    return { ref: b.id, url: b.short_url };
+  },
+  async retrieve(ref) {
+    const { res, body: b } = await call('Razorpay', `${cfg().razorpay.base}/v1/payment_links/${encodeURIComponent(ref)}`, { headers: rzpAuth() });
+    if (!res.ok) throw fail('Razorpay', res.status, rzpMsg(b));
+    return razorpay.fromLink(b);
+  },
+  /** `method` is what the customer actually used (upi, card, netbanking, wallet) so it can be checked against the country switches. */
+  fromLink(l) {
+    const pay = l?.payments?.find((x) => x.status === 'captured') ?? l?.payments?.[0];
+    return { paid: l?.status === 'paid', amount: l?.amount_paid ?? null, currency: String(l?.currency ?? '').toUpperCase(), paymentRef: pay?.payment_id ?? null, method: pay?.method ?? null };
+  },
+  async refund(paymentRef, paymentId, { amount, key } = {}) {
+    const { res, body: b } = await call('Razorpay', `${cfg().razorpay.base}/v1/payments/${encodeURIComponent(paymentRef)}/refund`, { method: 'POST', headers: { ...rzpAuth(), 'x-refund-idempotency': `refund-${key ?? paymentId}` }, body: JSON.stringify({ ...(amount ? { amount } : {}), receipt: `refund-${key ?? paymentId}`.slice(0, 40), notes: { payment_id: paymentId } }) });
+    if (!res.ok) throw fail('Razorpay', res.status, rzpMsg(b));
+  },
+  /** X-Razorpay-Signature = hex HMAC-SHA256 of the raw body with the webhook secret. */
+  verifyWebhook(raw, header, secret = cfg().razorpay.webhookSecret) {
+    if (!secret || !header) return false;
+    const want = createHmac('sha256', secret).update(raw).digest('hex');
+    const got = String(header);
+    return got.length === want.length && timingSafeEqual(Buffer.from(got), Buffer.from(want));
+  },
+};
+
+export const provider = (name) => (name === 'stripe' ? stripe : name === 'razorpay' ? razorpay : paypal);

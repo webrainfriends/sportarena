@@ -1,6 +1,7 @@
 // The booking engine: slot grid, opening hours, pricing rules, discounts, race-free placement and cancellation policy.
 // Everything that touches capacity runs inside a caller-supplied transaction after taking the per-resource advisory lock,
 // so no combination of concurrent requests can oversell an area.
+import { countryOfCurrency } from '../payments/countries.js';
 import { randomBytes } from 'node:crypto';
 import { linkedForReservation } from '../session-links.js';
 import { pool } from '../db.js';
@@ -270,7 +271,7 @@ export async function createReservation(c, { user, userId = user.id, items, prom
 }
 
 /** How a venue is really paid: online modes need a payment provider to be switched on, otherwise it is pay-at-venue. */
-export const effectivePaymentMode = (venue) => (venue.payment_mode !== 'pay_at_venue' && paymentsEnabled() ? venue.payment_mode : 'pay_at_venue');
+export const effectivePaymentMode = (venue) => (venue.payment_mode !== 'pay_at_venue' && paymentsEnabled(countryOfCurrency(venue.currency)) ? venue.payment_mode : 'pay_at_venue');
 
 /** Venues that insist on online payment give the customer a few minutes to pay before the slots are released. */
 export async function applyPaymentDeadline(c, reservationId, venueIds) {

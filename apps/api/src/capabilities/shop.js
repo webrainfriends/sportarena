@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { countryOfCurrency } from '../payments/countries.js';
 import { cap, id, page, money } from '../registry.js';
 import { one, many, tx } from '../db.js';
 import { badRequest, conflict, forbidden, notFound, unauthorized } from '../errors.js';
@@ -143,7 +144,7 @@ cap({
       if (p.seller_id === user.id) throw badRequest('You cannot buy your own product');
       const { rows: [o] } = await c.query(
         'INSERT INTO shop_orders(buyer_id, seller_id, product_id, quantity, unit_price_cents, total_cents, status, ship_to_enc, currency) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id, product_id, quantity, unit_price_cents, total_cents, currency, status, created_at',
-        [user.id, p.seller_id, p.id, i.quantity, p.price_cents, p.price_cents * i.quantity, paymentsEnabled() && p.price_cents > 0 ? 'awaiting_payment' : 'placed', encrypt(i.ship_to, 'shop_orders.ship_to'), p.currency]);
+        [user.id, p.seller_id, p.id, i.quantity, p.price_cents, p.price_cents * i.quantity, paymentsEnabled(countryOfCurrency(p.currency)) && p.price_cents > 0 ? 'awaiting_payment' : 'placed', encrypt(i.ship_to, 'shop_orders.ship_to'), p.currency]);
       return o;
     });
   },

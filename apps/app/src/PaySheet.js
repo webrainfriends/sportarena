@@ -8,6 +8,13 @@ import { c } from './theme';
 import { PointsSheet } from './screens/rewards';
 import { CoverSendSheet } from './screens/cover-ui';
 import { moneyIn } from './vtime';
+import { t } from './i18n';
+
+// Method families the admin can switch per country, with the provider that serves each when several can. Labels come from the language packs.
+const ORDER = ['upi', 'card', 'netbanking', 'wallet', 'paypal'];
+const PROVIDER = { card: ['stripe', 'razorpay'], paypal: ['paypal'], upi: ['razorpay'], netbanking: ['razorpay'], wallet: ['razorpay'] };
+const PROVIDER_NAME = { stripe: 'Stripe', paypal: 'PayPal', razorpay: 'Razorpay' };
+const providerFor = (method, offered) => PROVIDER[method].find((p) => offered.includes(p));
 
 /**
  * Hosted checkout for one invoice, in the invoice's own currency: pick Stripe or PayPal, pay on the provider's page, then confirm.
@@ -15,17 +22,18 @@ import { moneyIn } from './vtime';
  */
 export function PaySheet({ target, onClose, onDone }) {
   const { toast } = useSession();
-  const methods = useLoad(() => api.get('/payments/methods'), []);
+  const methods = useLoad(() => api.get('/payments/methods', target.currency ? { currency: target.currency } : undefined), [target.currency]);
   const [pay, setPay] = useState(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
   const [points, setPoints] = useState(false);
   const [cover, setCover] = useState(false);
   const balances = useLoad(() => api.get('/me/loyalty'), []);
-  const go = async (provider) => {
+  const go = async (method) => {
+    const provider = providerFor(method, methods.data?.providers ?? []);
     setBusy(true); setErr(null);
     try {
-      const p = await api.post('/payments', { purpose_type: target.type ?? 'venue_invoice', purpose_id: target.id, provider, return_url: Platform.OS === 'web' ? `${window.location.origin}${window.location.pathname}` : undefined });
+      const p = await api.post('/payments', { purpose_type: target.type ?? 'venue_invoice', purpose_id: target.id, provider, method, country: methods.data?.country ?? undefined, return_url: Platform.OS === 'web' ? `${window.location.origin}${window.location.pathname}` : undefined });
       setPay(p);
       if (Platform.OS === 'web') window.location.assign(p.checkout_url); else await Linking.openURL(p.checkout_url);
     } catch (e) { setErr(e.message); } finally { setBusy(false); }
@@ -42,10 +50,10 @@ export function PaySheet({ target, onClose, onDone }) {
     <Sheet visible onClose={onClose} title="Pay securely">
       <T size={14} color={c.mute}>{target.label} · <T weight="800" size={14}>{moneyIn(target.amount, target.currency)}</T> ({target.currency})</T>
       {methods.loading && !m ? <Loading /> : !m?.providers.length ? (
-        <T weight="700" color={c.red}>Online payment isn't switched on yet — please pay at the venue.</T>
+        <T weight="700" color={c.red}>{t('pay.none_country')}</T>
       ) : pay ? (
         <View style={{ gap: 10 }}>
-          <T size={14}>Checkout opened in {pay.provider === 'stripe' ? 'Stripe' : 'PayPal'}. When you're done, come back and check.</T>
+          <T size={14}>Checkout opened in {PROVIDER_NAME[pay.provider] ?? pay.provider}. When you're done, come back and check.</T>
           <Btn title="I've paid — check payment" onPress={check} loading={busy} />
           <Btn title="Reopen checkout" color={c.paper} onPress={() => (Platform.OS === 'web' ? window.location.assign(pay.checkout_url) : Linking.openURL(pay.checkout_url))} />
         </View>
@@ -53,8 +61,7 @@ export function PaySheet({ target, onClose, onDone }) {
         <View style={{ gap: 10 }}>
           <Btn title="🤝 Ask someone else to pay" color={c.paper} ink={c.ink} onPress={() => setCover(true)} />
           {balances.data?.length && ['venue_invoice', 'academy_charge', 'coach_hire'].includes(target.type ?? 'venue_invoice') ? <Btn title="⭐ Use my points first" color={c.violet} onPress={() => setPoints(true)} /> : null}
-          {m.providers.includes('stripe') ? <Btn title="Pay with card (Stripe)" onPress={() => go('stripe')} loading={busy} /> : null}
-          {m.providers.includes('paypal') ? <Btn title="Pay with PayPal" color={c.paper} onPress={() => go('paypal')} loading={busy} /> : null}
+          {ORDER.filter((x) => (m.methods ?? []).includes(x)).map((x, i) => <Btn key={x} title={t(`pay.method.${x}`)} color={i === 0 ? undefined : c.paper} ink={i === 0 ? undefined : c.ink} onPress={() => go(x)} loading={busy} accessibilityLabel={t(`pay.method.${x}`)} />)}
           <T size={12} color={c.mute}>You'll be charged in {target.currency}. You'll be taken to the provider's secure page; your card details never reach Gotmygame.</T>
         </View>
       )}
