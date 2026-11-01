@@ -243,6 +243,36 @@ test('open games match on the computed level once it is reliable, and on the sta
   assert.equal(await levelFor(pool, rookie.id, ts.id), 'beginner');
 });
 
+test('open-game cards carry the viewer\'s own level chip: verified once reliable, stated before that, nothing for the host or a signed-out visitor', async () => {
+  const org = await signup(['organizer']);
+  const [pro, rookie, host, ...field] = [await signup(), await signup(), await signup(), await signup(), await signup(), await signup()];
+  const ts = await sport('table-tennis'), ev = await mkEvent(org, 'table-tennis');
+  for (const u of [pro, rookie]) await pool.query("INSERT INTO sport_profiles(user_id, sport_id, role, level) VALUES ($1,$2,'athlete','amateur')", [u.id, ts.id]);
+  for (let i = 0; i < 18; i++) await game('table-tennis', ev, org, [pro], [field[i % 3]], i % 3 === 2 ? 2 : 3, i % 3 === 2 ? 3 : 0, { day: 1 + i });
+  await recomputeSport(ts, { reason: 'manual' });
+  const mine = await level(pro, 'table-tennis');
+  assert.ok(mine.reliable);
+  const at = new Date(Date.now() + 2 * 864e5); at.setUTCHours(18, 0, 0, 0);
+  const made = await api('POST', '/open-games', { token: host.token, body: { sport: 'table-tennis', starts_at: at.toISOString(), duration_minutes: 90, location: 'Club hall', max_players: 4, approval_mode: 'auto', skill_min: 'beginner', skill_max: 'pro' } });
+  assert.equal(made.status, 201, JSON.stringify(made.body));
+  const id = made.body.id;
+  const find = async (token) => (await api('GET', '/open-games?sport=table-tennis&limit=100', { token })).body.find((g) => g.id === id);
+  const v = (await find(pro.token)).my_level;
+  assert.equal(v.source, 'verified');
+  assert.equal(v.level, mine.level, 'the chip shows the same level as the passport');
+  assert.equal(v.fit, 'fits');
+  assert.equal((await api('GET', `/open-games/${id}`, { token: pro.token })).body.my_level.level, mine.level, 'the detail page agrees with the card');
+  const st = (await find(rookie.token)).my_level;
+  assert.equal(st.source, 'stated');
+  assert.equal(st.level, null, 'a stated level is never presented as a verified number');
+  assert.equal(st.bucket, 'amateur');
+  assert.equal((await find(host.token)).my_level, undefined, 'the host sees no level chip on their own game');
+  assert.equal((await find()).my_level, undefined, 'a signed-out visitor sees none');
+  const nothing = await signup();
+  assert.equal((await find(nothing.token)).my_level.source, null, 'no profile and no verified games: nothing to show, and the fit is unknown');
+  assert.equal((await find(nothing.token)).my_level.fit, 'unknown');
+});
+
 test('recompute is admin-only and the capabilities carry REST, OpenAPI and MCP names', async () => {
   const user = await signup();
   assert.equal((await api('POST', '/ratings/recompute', { token: user.token, body: {} })).status, 403);

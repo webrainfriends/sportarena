@@ -37,6 +37,19 @@ export function Seats({ g }) {
   );
 }
 
+const FIT_WORD = { fits: 'fits', below: 'below range', above: 'above range' };
+/**
+ * The viewer's own level against this game (#633): their verified level once it is reliable, otherwise the level they stated (labelled as stated, never as verified).
+ * Hidden for the host and when signed out; a game with no stated range just shows the level.
+ */
+export function MyLevelTag({ my }) {
+  if (!my) return null;
+  if (!my.source) return my.fit === 'unknown' ? <Tag label="Add your level" color={c.violetSoft} /> : null;
+  const word = FIT_WORD[my.fit];
+  const label = my.source === 'verified' ? `Your level ${my.level.toFixed(1)}${word ? ` · ${word}` : ''}` : `Your level: ${my.label.replace(/ level$/, '')} (stated)${word ? ` · ${word}` : ''}`;
+  return <Tag label={label} color={my.fit === 'fits' ? c.mint : my.fit === 'below' || my.fit === 'above' ? c.sun : c.violetSoft} />;
+}
+
 export function GameCard({ g, width, onOpen }) {
   const km = g.distance_km != null ? (g.distance_km < 1 ? 'under 1 km' : `~${Math.round(g.distance_km)} km`) : null;
   const [bl, bc] = BOOKING[g.booking_state] ?? BOOKING.no_venue;
@@ -56,6 +69,7 @@ export function GameCard({ g, width, onOpen }) {
           <Seats g={g} />
           <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
             <Tag label={g.skill.label} />
+            <MyLevelTag my={g.my_level} />
             {g.audience !== 'adults' ? <Tag label={g.audience === 'youth' ? 'Young players' : 'All ages'} color={c.cyan} /> : null}
             {g.venue_id ? <Tag label={bl} color={bc} /> : null}
             {g.has_team ? <Tag label={`${g.team_emoji ?? ''} ${g.team_name}`.trim()} color={c.sun} /> : null}

@@ -62,6 +62,13 @@ function shape(r, badges, me) {
   };
 }
 const lvl = (p) => (p.skill_level ? `Level ${p.skill_level.toFixed(1)}` : `${LEVEL_LABEL[p.level]} level`);
+/**
+ * The viewer's own level chip for a game (#633): their verified level once it is reliable, otherwise the level they stated, plus whether it fits the game's range.
+ * `source` says which, so a card never presents a stated level as verified. Null for the host and for people who are not signed in.
+ */
+const myLevelFor = (prof, fit) => ({
+  source: prof ? (prof.skill_level ? 'verified' : 'stated') : null, level: prof?.skill_level ?? null, bucket: prof?.level ?? null, label: prof ? lvl(prof) : null, fit,
+});
 const skillLabel = (lo, hi) => (!lo && !hi ? 'All levels' : lo && hi ? (lo === hi ? LEVEL_LABEL[lo] : `${LEVEL_LABEL[lo]} to ${LEVEL_LABEL[hi]}`) : lo ? `${LEVEL_LABEL[lo]}+` : `Up to ${LEVEL_LABEL[hi]}`);
 
 /** Who may see this game at all. A link game is visible to whoever holds the id; a team game only to its team. */
@@ -206,8 +213,15 @@ async function getDetail(openGameId, user) {
   const booking = row.booking_id ? await one('SELECT b.id, b.status, b.starts_at, b.ends_at, rs.id AS reservation_id, rs.code FROM bookings b LEFT JOIN reservations rs ON rs.id=b.reservation_id WHERE b.id=$1', [row.booking_id]) : null;
   const closes = chatClosesAt(g);
   const chatAccess = user ? await chatRole(user, row) : null;
+  let my_level;
+  if (user && !card.is_mine) {
+    const computed = (await reliableLevels(user.id, undefined, { sportId: row.sport_id })).get(row.sport_id);
+    const declared = (await one('SELECT level FROM sport_profiles WHERE user_id=$1 AND sport_id=$2 AND archived_at IS NULL ORDER BY is_default DESC, created_at LIMIT 1', [user.id, row.sport_id]))?.level ?? null;
+    const prof = computed ? { level: computed.bucket, skill_level: computed.level } : declared ? { level: declared, skill_level: null } : null;
+    my_level = myLevelFor(prof, levelFit(row, prof?.level ?? null));
+  }
   const out = {
-    ...card, roster, other_players: youthCount, my: mine,
+    ...card, my_level, roster, other_players: youthCount, my: mine,
     booking: booking && { booking_id: booking.id, reservation_id: booking.reservation_id, code: booking.code, status: booking.status },
     venue_hint: card.booking_state === 'confirmed' || card.status !== 'open' ? null : { needs: card.booking_state === 'cancelled' ? 'rebook' : 'book', sport: card.sport_slug, available_from: g.starts_at, available_to: endOf(g), use: 'list_venues, then create_reservation, then update_open_game with booking_id' },
     chat: { available: !!chatAccess, open: !!chatAccess && new Date() < closes && card.status === 'open', closes_at: closes },
@@ -313,7 +327,7 @@ cap({
         if (r.distance_km != null) reasons.push({ kind: 'distance', ok: true, text: Number(r.distance_km) < 1 ? 'Under 1 km away' : `About ${Math.round(Number(r.distance_km))} km away` });
       }
       const score = (prof ? 3 : 0) + (fit === 'fits' ? 2 : fit === 'open' ? 1 : fit === 'below' || fit === 'above' ? -2 : 0) + (r.fits_availability ? 2 : 0) + (r.distance_km != null && Number(r.distance_km) <= 5 ? 1 : 0);
-      return { ...card, distance_km: r.distance_km == null ? null : Number(r.distance_km), my_status: r.my_status, level_fit: user ? fit : undefined, reasons, match_score: score };
+      return { ...card, distance_km: r.distance_km == null ? null : Number(r.distance_km), my_status: r.my_status, level_fit: user ? fit : undefined, my_level: user && !card.is_mine ? myLevelFor(prof, fit) : undefined, reasons, match_score: score };
     });
     const by = { soonest: (a, b) => (a.starts_at < b.starts_at ? -1 : 1), distance: (a, b) => (a.distance_km ?? 1e9) - (b.distance_km ?? 1e9) || (a.starts_at < b.starts_at ? -1 : 1), best_match: (a, b) => b.match_score - a.match_score || (a.starts_at < b.starts_at ? -1 : 1) };
     return out.sort(by[i.sort]).slice(i.offset, i.offset + i.limit);

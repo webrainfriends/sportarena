@@ -8,7 +8,7 @@ import { Avatar, Btn, Card as BaseCard, Chip, Empty, ErrorBox, Field, H1, H2, Lo
 import { FormSheet } from '../FormSheet';
 import { c, fam, when } from '../theme';
 import { locale } from '../locale';
-import { BOOKING, STATUS, Seats, costLabel, price } from './find-games';
+import { BOOKING, MyLevelTag, STATUS, Seats, costLabel, price } from './find-games';
 import { HostGameSheet } from './host-game';
 
 /** A card whose content is spaced, so a title never touches the line under it. */
@@ -240,7 +240,7 @@ export function OpenGame({ id }) {
       <Card pad={16} style={{ marginTop: 14 }}>
         <View style={{ gap: 10 }}>
           <Seats g={g} />
-          <Wrap gap={6}><Tag label={g.skill.label} /><Tag label={costLabel(g)} color={g.cost.mode === 'free' ? c.mint : c.violetSoft} />{g.audience !== 'adults' ? <Tag label={g.audience === 'youth' ? `Young players${g.min_age != null ? ` ${g.min_age}–${g.max_age ?? ''}` : ''}` : 'All ages'} color={c.cyan} /> : null}<Tag label={g.approval_mode === 'auto' ? 'Auto-approve if you fit' : 'Host approves'} />{g.venue_id ? <Tag label={bl} color={bc} /> : null}{g.team_name ? <Tag label={`${g.team_emoji ?? ''} ${g.team_name}`.trim()} color={c.sun} /> : null}</Wrap>
+          <Wrap gap={6}><Tag label={g.skill.label} /><MyLevelTag my={g.my_level} /><Tag label={costLabel(g)} color={g.cost.mode === 'free' ? c.mint : c.violetSoft} />{g.audience !== 'adults' ? <Tag label={g.audience === 'youth' ? `Young players${g.min_age != null ? ` ${g.min_age}–${g.max_age ?? ''}` : ''}` : 'All ages'} color={c.cyan} /> : null}<Tag label={g.approval_mode === 'auto' ? 'Auto-approve if you fit' : 'Host approves'} />{g.venue_id ? <Tag label={bl} color={bc} /> : null}{g.team_name ? <Tag label={`${g.team_emoji ?? ''} ${g.team_name}`.trim()} color={c.sun} /> : null}</Wrap>
           {g.cost.mode === 'split_total' ? <T size={13} color={c.mute}>{price(g.cost.total_cents, g.cost.currency)} split across {g.max_players} seats.</T> : null}
           {g.role_needs.length ? <T size={13}>Looking for: <T weight="800" size={13}>{g.role_needs.join(', ')}</T></T> : null}
           {g.notes ? <T size={14}>{g.notes}</T> : null}
