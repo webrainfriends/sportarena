@@ -311,6 +311,7 @@ import './security-keys.js';
 import './upload-limits.js';
 import './role-copilots.js';
 import './ticketing.js';
+import './ticketing-commerce.js';
 import './integrations.js';
 import './integration-access.js';
 import './venue-seating.js';
