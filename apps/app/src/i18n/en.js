@@ -4446,4 +4446,7 @@ export default {
   'scr.check_none': 'Nothing you own can apply to this call',
   'scr.check_hint': 'Nothing is filed. This only shows what is met and what is missing.',
   'scr.f_amount': 'Amount requested',
+  'invoice.pdf': 'Download invoice PDF',
+  'invoice.receipt_pdf': 'Download receipt PDF',
+  'invoice.credit_note_pdf': 'Download credit note PDF',
 };

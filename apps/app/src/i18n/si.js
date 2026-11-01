@@ -4426,4 +4426,7 @@ export default {
   'scr.check_none': 'ඔබ සතු කිසිවකට මෙම ඇමතුමට අයදුම් කළ නොහැක',
   'scr.check_hint': 'කිසිවක් ඉදිරිපත් නොවේ. සපුරා ඇති දේ සහ අඩු දේ පමණක් පෙන්වයි.',
   'scr.f_amount': 'ඉල්ලූ මුදල',
+  'invoice.pdf': 'ඉන්වොයිස් PDF බාගන්න',
+  'invoice.receipt_pdf': 'රිසිට්පත PDF බාගන්න',
+  'invoice.credit_note_pdf': 'ණය සටහන PDF බාගන්න',
 };

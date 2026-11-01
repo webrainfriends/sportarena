@@ -4426,4 +4426,7 @@ export default {
   'scr.check_none': 'আপনার মালিকানাধীন কিছুই এই কলে আবেদন করতে পারে না',
   'scr.check_hint': 'কিছু জমা হয় না। কী পূরণ হয়েছে ও কী বাকি তা শুধু দেখায়।',
   'scr.f_amount': 'অনুরোধকৃত অর্থ',
+  'invoice.pdf': 'ইনভয়েস PDF ডাউনলোড করুন',
+  'invoice.receipt_pdf': 'রসিদ PDF ডাউনলোড করুন',
+  'invoice.credit_note_pdf': 'ক্রেডিট নোট PDF ডাউনলোড করুন',
 };

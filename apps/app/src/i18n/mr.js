@@ -4426,4 +4426,7 @@ export default {
   'scr.check_none': 'तुमच्या मालकीचे काहीही या कॉलसाठी अर्ज करू शकत नाही',
   'scr.check_hint': 'काहीही दाखल होत नाही. काय पूर्ण आहे आणि काय राहिले ते फक्त दिसते.',
   'scr.f_amount': 'मागितलेली रक्कम',
+  'invoice.pdf': 'इनव्हॉइस PDF डाउनलोड करा',
+  'invoice.receipt_pdf': 'पावती PDF डाउनलोड करा',
+  'invoice.credit_note_pdf': 'क्रेडिट नोट PDF डाउनलोड करा',
 };

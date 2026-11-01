@@ -4426,4 +4426,7 @@ export default {
   'scr.check_none': 'آپ کی ملکیت میں کوئی چیز اس کال پر درخواست نہیں دے سکتی',
   'scr.check_hint': 'کچھ جمع نہیں ہوتا۔ یہ صرف دکھاتا ہے کہ کیا پورا ہے اور کیا باقی ہے۔',
   'scr.f_amount': 'مطلوبہ رقم',
+  'invoice.pdf': 'انوائس PDF ڈاؤن لوڈ کریں',
+  'invoice.receipt_pdf': 'رسید PDF ڈاؤن لوڈ کریں',
+  'invoice.credit_note_pdf': 'کریڈٹ نوٹ PDF ڈاؤن لوڈ کریں',
 };
