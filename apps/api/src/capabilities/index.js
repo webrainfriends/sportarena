@@ -301,3 +301,4 @@ import './security-keys.js';
 import './role-copilots.js';
 import './ticketing.js';
 import './venue-seating.js';
+import './discovery.js';

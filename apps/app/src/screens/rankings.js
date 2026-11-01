@@ -22,14 +22,14 @@ const score = (r, unit) => (unit && unit !== 'count' ? withUnit(r.score, unit) :
 /** The scope a version was published with, in words. */
 const scopeText = (v) => {
   const s = v.scope ?? {};
-  return [s.season && `Season ${s.season}`, s.region && s.region, s.format && s.format, s.position && s.position, s.event_id && 'One event',
+  return [s.season && `Season ${s.season}`, s.region && s.region, s.venue_id && 'One venue', s.format && s.format, s.position && s.position, s.event_id && 'One event',
     v.window_days && `Last ${v.window_days} days`, v.window_games && `Last ${v.window_games} games`].filter(Boolean).join(' · ') || 'All time, all competitions';
 };
 
-export function RankingsPanel({ sport, sports, onOfficial }) {
+export function RankingsPanel({ sport, sports, onOfficial, region, venueId }) {
   const [pick, setPick] = useState(null);
   const [form, setForm] = useState(false);
-  const defs = useLoad(() => api.get('/rankings', { sport: sport ?? undefined, limit: 100 }), [sport]);
+  const defs = useLoad(() => api.get('/rankings', { sport: sport ?? undefined, region: region || undefined, venue_id: venueId || undefined, limit: 100 }), [sport, region, venueId]);
   const list = defs.data?.definitions ?? [];
   const model = defs.data?.sport_model;
   const chosen = list.find((d) => d.id === pick) ?? list[0];
@@ -50,7 +50,7 @@ export function RankingsPanel({ sport, sports, onOfficial }) {
       {chosen ? <RankingTable key={chosen.id} def={chosen} canDefine={!!model?.can_define} onEdit={() => setForm(chosen)} /> : <Empty emoji="🏅" title="No rankings defined yet" sub={sport ? 'A platform admin or appointed rules governor can define a ranking for this sport. Official points are still available.' : 'Choose a sport to see its rankings.'} />}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
         {sport && model?.can_define ? <Btn small title="Define a ranking" color={c.violet} onPress={() => setForm(true)} /> : null}
-        <Btn small title="Official points" color={c.paper} ink={c.ink} onPress={onOfficial} accessibilityLabel="Show the official points leaderboard" />
+        {onOfficial ? <Btn small title="Official points" color={c.paper} ink={c.ink} onPress={onOfficial} accessibilityLabel="Show the official points leaderboard" /> : null}
       </View>
       {sport && form ? <DefineSheet sport={sport} sports={sports} model={model} edit={form === true ? null : form} onClose={() => setForm(false)} onDone={() => { setForm(false); defs.reload(); }} /> : null}
     </View>

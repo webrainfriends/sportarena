@@ -5,6 +5,7 @@ import { expireUnpaidHolds } from './booking/holds.js';
 import { expireStaleSales } from './pos/sale.js';
 import { processRefunds } from './booking/refunds.js';
 import { checkSlotAlerts } from './booking/alerts.js';
+import { checkSavedSearches } from './discovery-alerts.js';
 import { processWaitlist } from './booking/waitlist.js';
 import { processBallots } from './booking/ballots.js';
 import { expireLoyalty } from './booking/loyalty.js';
@@ -68,6 +69,7 @@ export const STEPS = [
   ['venue_ops', 'venue_ops_reminders', venueOpsReminders, 0],
   ['requests', 'requests_expired', expireStaleRequests, 0],
   ['alerts', 'alerts_fulfilled', checkSlotAlerts, 0],
+  ['saved_searches', 'saved_search_alerts', checkSavedSearches, 0],
   ['quotes', 'quotes_expired', expireQuotes, 0],
   ['renewals', 'renewal_reminders', sendRenewalReminders, 0],
   ['sponsor_calls', 'sponsor_call_notices', sendCallNotices, 0],
