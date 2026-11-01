@@ -269,6 +269,7 @@ import './media-rights-fans.js';
 import './media-rights-feeds.js';
 import './commercial.js';
 import './spectator.js';
+import './social.js';
 import './spectator-admin.js';
 import './media-rights-fees.js';
 import './rankings.js';
