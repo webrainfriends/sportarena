@@ -115,20 +115,6 @@ export function ReportSheet({ visible, onClose, target }) {
   );
 }
 
-/** Follow / friend actions for someone who is not yet connected. */
-export function ConnectButtons({ p, onDone }) {
-  const { toast } = useSession();
-  const [state, setState] = useState({});
-  const go = (key, fn) => async () => { try { const r = await fn(); setState((s) => ({ ...s, [key]: r.status ?? 'active' })); onDone?.(); } catch (e) { toast(e.message); } };
-  const label = (s, base) => (s === 'pending' ? t('social.waiting') : s === 'guardian_pending' ? t('social.waiting_guardian') : base);
-  return (
-    <>
-      <Small label={state.follow ? label(state.follow, t('social.following')) : t('social.follow')} disabled={!!state.follow} onPress={go('follow', () => api.post('/me/follows', { subject_type: 'athlete', subject_id: p.id }))} />
-      <Small label={state.friend ? label(state.friend, t('social.friends')) : t('social.add_friend')} disabled={!!state.friend} onPress={go('friend', () => api.post('/me/friends', { user_id: p.id }))} />
-    </>
-  );
-}
-
 /** Everything you can do about another person from their profile: follow, befriend, message, mute, block, report. The API decides what is allowed (a person you cannot reach answers 404). */
 export function PersonActions({ p }) {
   const { toast, user } = useSession();
