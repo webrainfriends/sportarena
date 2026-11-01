@@ -289,3 +289,37 @@ test('booking QR: every confirmed booking has its own code; the venue team confi
   assert.equal(must(await api('GET', `/bookings/${c3.id}/pass`, { token: other.token })).token, null);
   assert.equal(must(await scan(old), 201).capture.reason_code, 'booking_cancelled');
 });
+
+test('income reconciliation with real money: front-desk tenders, a short till, and an online payment the ledger has not recorded', async () => {
+  const mgr = await signup(['venue_manager']), cashier = await signup(), outsider = await signup();
+  const { v } = await venue(mgr);
+  must(await api('POST', `/venues/${v.id}/pos/cashiers`, { token: mgr.token, body: { handle: cashier.handle } }), 201);
+  const tube = must(await api('POST', '/inventory', { token: mgr.token, body: { name: 'Shuttle tube', category: 'merch', quantity: 20, sell_price_cents: 30000, unit_cost_cents: 20000, venue_id: v.id } }), 201);
+  const shift = must(await api('POST', `/venues/${v.id}/pos/shifts`, { token: cashier.token, body: { opening_float_cents: 100000 } }), 201);
+  const sale = must(await api('POST', `/venues/${v.id}/pos/sales`, { token: cashier.token, body: { lines: [{ kind: 'item', item_id: tube.id, qty: 2 }], payments: [{ method: 'cash', tendered_cents: 60000 }] } }), 201);
+  assert.equal(sale.status, 'paid'); assert.equal(sale.total_cents, 60000);
+  const range = { from: today, to: today };
+  const first = must(await api('GET', `/venues/${v.id}/income`, { token: mgr.token, query: range }));
+  const inr = first.currencies.find((x) => x.currency === 'INR');
+  assert.equal(inr.pos.taken_cents, 60000); assert.equal(inr.pos.net_cents, 60000); assert.equal(inr.pos.paid_sales, 1);
+  assert.deepEqual(inr.pos.by_tender.map((t) => [t.method, t.taken_cents]), [['cash', 60000]]);
+  assert.equal(inr.unposted_online.tenders, 0);
+  assert.equal(first.till.closed, 0);
+  // the till is closed 500 short: the variance is reported and the shift waits for a manager's review
+  must(await api('POST', `/pos/shifts/${shift.id}/close`, { token: cashier.token, body: { counted_cash_cents: 159500, note: 'Gave wrong change' } }));
+  const closed = must(await api('GET', `/venues/${v.id}/income`, { token: mgr.token, query: range }));
+  assert.equal(closed.till.closed, 1); assert.equal(Number(closed.till.variance_cents), -500);
+  assert.equal(Number(closed.till.expected_cents), 160000); assert.equal(Number(closed.till.counted_cents), 159500);
+  assert.ok(closed.till.pending_review >= 1 || closed.exceptions >= 1, 'a short till is an exception to look at');
+  // an online tender whose payment never reached the canonical ledger is called out
+  const pay = (await pool.query("INSERT INTO payments(payer_id, provider, purpose_type, purpose_id, amount_cents, currency, status, provider_ref, paid_at) VALUES ($1,'stripe','pos_sale',$2,20000,'INR','paid',$3, now()) RETURNING id", [cashier.id, sale.id, `ref-${Math.random()}`])).rows[0];
+  await pool.query("INSERT INTO pos_sale_payments(sale_id, shift_id, kind, method, status, amount_cents, payment_id, recorded_by, confirmed_at) VALUES ($1,$2,'payment','online','confirmed',20000,$3,$4, now())", [sale.id, shift.id, pay.id, cashier.id]);
+  const after = must(await api('GET', `/venues/${v.id}/income`, { token: mgr.token, query: range }));
+  const x = after.currencies.find((c) => c.currency === 'INR');
+  assert.equal(x.unposted_online.tenders, 1); assert.equal(Number(x.unposted_online.cents), 20000);
+  assert.equal(x.pos.taken_cents, 80000); assert.deepEqual(x.pos.by_tender.map((t) => t.method).sort(), ['cash', 'online']);
+  assert.ok(after.exceptions > closed.exceptions - 0 && after.exceptions >= 2);
+  // only the venue's managers read it; another venue's operator and the cashier do not
+  assert.equal((await api('GET', `/venues/${v.id}/income`, { token: outsider.token, query: range })).status, 403);
+  assert.equal((await api('GET', `/venues/${v.id}/income`, { token: cashier.token, query: range })).status, 403);
+});
