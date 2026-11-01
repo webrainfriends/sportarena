@@ -23,6 +23,7 @@ import { activateDuePauses } from './sponsor-pause.js';
 import { processSponsorshipTerms } from './sponsor-renewals.js';
 import { processSponsorTasks } from './sponsor-collaboration.js';
 import { sweepAccessGrants } from './access-grants.js';
+import { syncMembershipGrants } from './access-layer.js';
 import { sweepTickets } from './ticketing.js';
 import { expireAcademyOffers, remindTrials, runAcademyJobs } from './academy-sweeps.js';
 import { runTenderJobs, sendTenderReminders } from './capabilities/tender-reports.js';
@@ -66,6 +67,7 @@ export const STEPS = [
   ['subscriptions', 'subscriptions_renewed', raiseSubscriptionRenewals, 0],
   ['venue_ops', 'venue_ops_reminders', venueOpsReminders, 0],
   ['venue_pm', 'venue_pm_work_orders', raisePreventiveWork, 0],
+  ['membership_grants', 'membership_grants_issued', syncMembershipGrants, 0],
   ['requests', 'requests_expired', expireStaleRequests, 0],
   ['alerts', 'alerts_fulfilled', checkSlotAlerts, 0],
   ['quotes', 'quotes_expired', expireQuotes, 0],

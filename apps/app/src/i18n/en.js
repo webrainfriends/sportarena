@@ -726,4 +726,13 @@ export default {
   "vf.net.not_ready": "Areas not ready",
   "vf.net.util": "{pct}% used",
   "vf.net.line": "{open} jobs ({overdue} overdue), {inc} incidents, {nr} areas not ready, {ci} check-ins today, {shift} on shift",
+  "vf.ent.guests": "Guests per visit",
+  "vf.ci.button": "Check in",
+  "vf.ci.badge": "Arrived",
+  "vf.ci.done": "{name} checked in",
+  "vf.qr.show": "Check-in QR",
+  "vf.qr.title": "Check-in QR code",
+  "vf.qr.note": "Show this code at the venue. The venue team scans it to confirm you have arrived. It is unique to this booked slot, works once, and stops working if the booking is cancelled.",
+  "vf.confirm.title": "Confirm check-ins",
+  "vf.confirm.sub": "Scan a booking's QR code, or a pass, card or tag, to confirm that someone has arrived.",
 };

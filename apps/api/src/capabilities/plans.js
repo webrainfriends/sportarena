@@ -43,7 +43,7 @@ cap({
 cap({
   name: 'create_venue_plan', method: 'POST', path: '/venues/:id/plans', tag: TAG, status: 201,
   summary: 'Venue team: sell a membership (kind "membership": duration_days + discount_bp off every booking) or a pass (kind "pass": sessions, valid_days, optional session_value_cents). Priced in the venue currency.',
-  input: z.object({ id, kind: z.enum(['membership', 'pass']), ...planFields, entitlements: z.object({ days: z.array(z.number().int().min(0).max(6)).max(7).default([]), from: z.string().regex(/^\d{2}:\d{2}$/).optional(), to: z.string().regex(/^\d{2}:\d{2}$/).optional() }).describe('access entitlements read by the venue access layer at check-in: allowed weekdays (0=Sun, empty = every day) and a daily window in venue time').optional() }),
+  input: z.object({ id, kind: z.enum(['membership', 'pass']), ...planFields, entitlements: z.object({ days: z.array(z.number().int().min(0).max(6)).max(7).default([]), from: z.string().regex(/^\d{2}:\d{2}$/).optional(), to: z.string().regex(/^\d{2}:\d{2}$/).optional(), guest_quota: z.number().int().min(0).max(20).default(0) }).describe('access entitlements read by the venue access layer at check-in: allowed weekdays (0=Sun, empty = every day), a daily window in venue time, and how many guests the member may bring on one visit').optional() }),
   async handler({ user }, i) {
     await mustManage(user, i.id);
     const s = shape(i);
@@ -59,7 +59,7 @@ cap({
 cap({
   name: 'update_venue_plan', method: 'PATCH', path: '/venue-plans/:id', tag: TAG,
   summary: 'Venue team: edit a plan or stop selling it (active=false). Changes apply to future purchases only; people who already bought keep the terms they paid for.',
-  input: z.object({ id, name: planFields.name.optional(), description: planFields.description, price_cents: planFields.price_cents.optional(), active: z.boolean().optional(), includes: planFields.includes.optional(), auto_renew: z.boolean().optional(), entitlements: z.object({ days: z.array(z.number().int().min(0).max(6)).max(7).default([]), from: z.string().regex(/^\d{2}:\d{2}$/).optional(), to: z.string().regex(/^\d{2}:\d{2}$/).optional() }).describe('access entitlements read by the venue access layer at check-in: allowed weekdays (0=Sun, empty = every day) and a daily window in venue time').optional() }),
+  input: z.object({ id, name: planFields.name.optional(), description: planFields.description, price_cents: planFields.price_cents.optional(), active: z.boolean().optional(), includes: planFields.includes.optional(), auto_renew: z.boolean().optional(), entitlements: z.object({ days: z.array(z.number().int().min(0).max(6)).max(7).default([]), from: z.string().regex(/^\d{2}:\d{2}$/).optional(), to: z.string().regex(/^\d{2}:\d{2}$/).optional(), guest_quota: z.number().int().min(0).max(20).default(0) }).describe('access entitlements read by the venue access layer at check-in: allowed weekdays (0=Sun, empty = every day), a daily window in venue time, and how many guests the member may bring on one visit').optional() }),
   async handler({ user }, i) {
     const p = await mustFind('venue_plans', i.id, 'id, venue_id, sessions');
     await mustManage(user, p.venue_id);

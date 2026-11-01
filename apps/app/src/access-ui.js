@@ -42,6 +42,7 @@ export function VerdictCard({ cap, onRelease }) {
     <View accessibilityRole="alert" accessibilityLiveRegion="assertive" accessibilityLabel={`${word}. ${cap.person?.display_name ?? ''}. ${cap.message ?? ''}`} style={{ borderRadius: 24, backgroundColor: tone, padding: 18, gap: 8 }}>
       <T size={26} weight="800" color="#fff" style={{ letterSpacing: 0.5 }}>{icon} {word}</T>
       {cap.person ? <T size={20} weight="800" color="#fff">{cap.person.display_name}{cap.person.youth ? '  · under 18' : ''}</T> : <T size={16} weight="700" color="#fff">Nobody was identified</T>}
+      {cap.booking ? <T size={15} weight="700" color="#fff">{cap.booking.resource_name} · {new Date(cap.booking.starts_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', timeZone: cap.booking.timezone })}–{new Date(cap.booking.ends_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', timeZone: cap.booking.timezone })}</T> : null}
       {cap.message ? <T size={15} weight="700" color="#fff">{cap.message}</T> : null}
       {cap.flags?.includes('offline') ? <T size={13} weight="800" color="#fff">Captured offline · checked by the server when it synced</T> : null}
       {cap.release_candidates?.length ? (
