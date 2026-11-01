@@ -18,26 +18,28 @@ import {
   claimHash, createOrder, fixturesFor, loadTicket, lockEvent, newClaimCode, processTicketRefunds, record, refundDueFor, refundRule, releaseOrder, remainingOf, scanOne, sectionSeats,
   settingsOf, settleRefund, succeed, ticketView, transferRule, priced,
 } from '../ticketing.js';
+import { ADDON_LIVE, addonView, promoteWaitlist, salesReport } from '../ticketing-commerce.js';
 
 const TAG = 'Spectator ticketing';
+const POLICY_FIELDS = ['transfer_allowed', 'transfer_cutoff_hours', 'refund_policy', 'refund_cutoff_hours', 'resale_mode', 'resale_cap_bp', 'resale_fee_bp', 'waitlist_enabled', 'waitlist_offer_minutes', 'sales_open', 'hold_minutes'];
 const when = z.string().datetime({ offset: true });
 const money = z.coerce.number().int().min(0).max(100_000_000);
 const currency = z.string().regex(/^[A-Z]{3}$/, 'use a 3-letter currency code');
 const reason = z.string().trim().min(3).max(300);
 const guest = z.object({ name: z.string().trim().min(2).max(80), email: z.string().trim().email().max(160).optional() });
 
-const eventOf = async (eventId, c = pool) => {
+export const eventOf = async (eventId, c = pool) => {
   const ev = (await c.query('SELECT * FROM events WHERE id=$1', [eventId])).rows[0];
   if (!ev) throw notFound('Event');
   return ev;
 };
 /** The organiser of the event, or 404 (nothing about the event's ticketing is revealed to anyone else). */
-async function organiserOf(user, eventId, c = pool) {
+export async function organiserOf(user, eventId, c = pool) {
   const ev = await eventOf(eventId, c);
   if (!(await isOrganiser(user, ev, c))) throw notFound('Event');
   return ev;
 }
-async function operatorOf(user, eventId, c = pool) {
+export async function operatorOf(user, eventId, c = pool) {
   const ev = await eventOf(eventId, c);
   if (!(await isGateOperator(user, ev, c))) throw notFound('Event');
   return ev;
@@ -83,12 +85,16 @@ cap({
 
 cap({
   name: 'update_ticket_settings', method: 'PATCH', path: '/events/:id/tickets/settings', tag: TAG,
-  summary: 'Organiser: set capacity (per fixture, or for the event when it has none), safety capacity and what counts towards it, pause or open sales, hold minutes, transfer and refund policy. A fixture can have its own limits.',
+  summary: 'Organiser: set capacity (per fixture, or for the event when it has none), safety capacity and what counts towards it, pause or open sales, hold minutes, transfer, resale (mode, price cap, fee) and refund policy, and the waitlist. A fixture can have its own limits. Every change to a policy field is recorded in the policy history and the audit log.',
   input: z.object({
     id, spectator_capacity: z.number().int().min(0).max(1_000_000).nullable().optional(), safety_capacity: z.number().int().min(0).max(1_000_000).nullable().optional(),
     count_participants: z.boolean().optional(), count_accreditations: z.boolean().optional(), sales_open: z.boolean().optional(), hold_minutes: z.number().int().min(5).max(120).optional(),
     transfer_allowed: z.boolean().optional(), transfer_cutoff_hours: z.number().int().min(0).max(720).optional(),
     refund_policy: z.enum(['anytime', 'until_cutoff', 'never']).optional(), refund_cutoff_hours: z.number().int().min(0).max(720).optional(),
+    resale_mode: z.enum(['transfer_only', 'resale']).optional().describe('transfer_only: tickets can only be given away; resale: they can also be handed to a named account for a price up to resale_cap_bp of what was paid'),
+    resale_cap_bp: z.number().int().min(0).max(10000).optional().describe('highest resale price in basis points of the price paid (10000 = face value; never above it)'),
+    resale_fee_bp: z.number().int().min(0).max(5000).optional().describe('the organiser fee on a resale, in basis points of the resale price'),
+    waitlist_enabled: z.boolean().optional(), waitlist_offer_minutes: z.number().int().min(5).max(120).optional(),
     fixture_limits: z.array(z.object({ fixture_id: id, spectator_capacity: z.number().int().min(0).max(1_000_000).nullable(), safety_capacity: z.number().int().min(0).max(1_000_000).nullable() })).max(500).optional(),
   }),
   handler: ({ user }, i) => tx(async (c) => {
@@ -97,11 +103,21 @@ cap({
     const cur = await settingsOf(c, ev.id);
     const next = { ...cur, ...Object.fromEntries(Object.entries(i).filter(([k, v]) => k !== 'id' && k !== 'fixture_limits' && v !== undefined)) };
     if (next.safety_capacity != null && next.spectator_capacity != null && next.safety_capacity < next.spectator_capacity) throw badRequest('Safety capacity cannot be lower than spectator capacity');
+    if (next.resale_mode === 'resale' && !next.transfer_allowed) throw badRequest('Resale needs transfers to be allowed');
     await c.query(
-      `INSERT INTO ticket_settings(event_id, spectator_capacity, safety_capacity, count_participants, count_accreditations, sales_open, hold_minutes, transfer_allowed, transfer_cutoff_hours, refund_policy, refund_cutoff_hours, updated_by, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,now())
-       ON CONFLICT (event_id) DO UPDATE SET spectator_capacity=$2, safety_capacity=$3, count_participants=$4, count_accreditations=$5, sales_open=$6, hold_minutes=$7, transfer_allowed=$8, transfer_cutoff_hours=$9, refund_policy=$10, refund_cutoff_hours=$11, updated_by=$12, updated_at=now()`,
-      [ev.id, next.spectator_capacity, next.safety_capacity, next.count_participants, next.count_accreditations, next.sales_open, next.hold_minutes, next.transfer_allowed, next.transfer_cutoff_hours, next.refund_policy, next.refund_cutoff_hours, user.id]);
+      `INSERT INTO ticket_settings(event_id, spectator_capacity, safety_capacity, count_participants, count_accreditations, sales_open, hold_minutes, transfer_allowed, transfer_cutoff_hours, refund_policy, refund_cutoff_hours,
+                                   resale_mode, resale_cap_bp, resale_fee_bp, waitlist_enabled, waitlist_offer_minutes, updated_by, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$13,$14,$15,$16,$17,$12,now())
+       ON CONFLICT (event_id) DO UPDATE SET spectator_capacity=$2, safety_capacity=$3, count_participants=$4, count_accreditations=$5, sales_open=$6, hold_minutes=$7, transfer_allowed=$8, transfer_cutoff_hours=$9, refund_policy=$10, refund_cutoff_hours=$11,
+                                            resale_mode=$13, resale_cap_bp=$14, resale_fee_bp=$15, waitlist_enabled=$16, waitlist_offer_minutes=$17, updated_by=$12, updated_at=now()`,
+      [ev.id, next.spectator_capacity, next.safety_capacity, next.count_participants, next.count_accreditations, next.sales_open, next.hold_minutes, next.transfer_allowed, next.transfer_cutoff_hours, next.refund_policy, next.refund_cutoff_hours, user.id,
+        next.resale_mode ?? 'transfer_only', next.resale_cap_bp ?? 10000, next.resale_fee_bp ?? 0, next.waitlist_enabled ?? true, next.waitlist_offer_minutes ?? 15]);
+    for (const f of POLICY_FIELDS) {
+      if (i[f] === undefined || JSON.stringify(cur[f] ?? null) === JSON.stringify(i[f])) continue;
+      await c.query('INSERT INTO ticket_policy_history(event_id, actor_id, field, old_value, new_value) VALUES ($1,$2,$3,$4,$5)', [ev.id, user.id, f, JSON.stringify(cur[f] ?? null), JSON.stringify(i[f])]);
+      await audit(c, user.id, `ticket.policy.${f}`, 'ticket_settings', ev.id);
+    }
+    await promoteWaitlist(c, ev.id);   // more capacity, or sales reopened, can free places for the people waiting
     if (i.fixture_limits) {
       await fixturesOk(c, ev.id, i.fixture_limits.map((f) => f.fixture_id));
       for (const f of i.fixture_limits) {
@@ -279,6 +295,7 @@ cap({
           next.per_order_limit, next.per_account_limit, next.channels, next.transferable, next.reentry, next.access_point_ids, next.status, next.kind])).rows[0];
     } catch (e) { if (e.code === '23505') throw conflict('A ticket product with that name already exists'); if (e.code === '23514') throw badRequest('Check the sale window and limits'); throw e; }
     if (fixture_ids) await setFixtures(c, cur.id, fixture_ids);
+    await promoteWaitlist(c, ev.id);   // a raised allocation or a reopened product can free places for the people waiting
     return { ...row, fixture_ids: fx };
   }),
 });
@@ -312,8 +329,20 @@ cap({
     const settings = await settingsOf(pool, ev.id);
     const rows = await many(`SELECT p.* FROM ticket_products p WHERE p.event_id=$1 AND ${SELLABLE} ORDER BY p.price_minor, p.created_at`, [ev.id]);
     const products = [];
-    for (const p of rows) products.push(await publicProduct(pool, ev, p));
-    return { event_id: ev.id, on_sale: settings.sales_open && products.some((p) => ['available', 'low'].includes(p.availability)), products };
+    for (const p of rows) {
+      const pp = await publicProduct(pool, ev, p);
+      if (pp.availability === 'sold_out' && settings.waitlist_enabled && settings.sales_open) {
+        pp.waitlist = { open: true, ahead: (await pool.query("SELECT count(*)::int AS n FROM ticket_waitlist WHERE product_id=$1 AND status IN ('waiting','offered')", [p.id])).rows[0].n };   // a head count only, never who
+      }
+      products.push(pp);
+    }
+    const addons = (await many("SELECT * FROM ticket_addons WHERE event_id=$1 AND status IN ('active','paused') ORDER BY kind, price_minor, name", [ev.id])).map(async (a) => {
+      const taken = a.stock == null ? 0 : (await pool.query(`SELECT count(*)::int AS n FROM ticket_addon_items i WHERE i.addon_id=$1 AND ${ADDON_LIVE}`, [a.id])).rows[0].n;
+      const left = a.stock == null ? null : Math.max(a.stock - taken, 0);
+      return { id: a.id, kind: a.kind, name: a.name, description: a.description, collect_note: a.collect_note, price_minor: priced(a).gross, tax_minor: priced(a).tax, currency: a.currency, per_order_limit: a.per_order_limit,
+        availability: a.status === 'paused' ? 'paused' : left === 0 ? 'sold_out' : left != null && left <= 20 ? 'low' : 'available', remaining: left != null && left <= 20 ? left : null };
+    });
+    return { event_id: ev.id, on_sale: settings.sales_open && products.some((p) => ['available', 'low'].includes(p.availability)), products, addons: await Promise.all(addons) };
   },
 });
 
@@ -361,19 +390,23 @@ cap({
 
 // ---- orders -------------------------------------------------------------------------------------------------------------------------------------------
 
-const orderView = async (c, orderId) => {
+export const orderView = async (c, orderId) => {
   const o = (await c.query('SELECT o.*, e.name AS event FROM ticket_orders o JOIN events e ON e.id=o.event_id WHERE o.id=$1', [orderId])).rows[0];
   const lines = (await c.query('SELECT product_id, name, class, qty, unit_minor, unit_tax_minor, currency FROM ticket_order_lines WHERE order_id=$1 ORDER BY name', [orderId])).rows;
-  const tickets = (await c.query('SELECT id, serial, status, seat_label, class FROM tickets WHERE order_id=$1 AND supersedes_id IS NULL ORDER BY created_at, id', [orderId])).rows;
-  return { ...o, subtotal_minor: Number(o.subtotal_minor), tax_minor: Number(o.tax_minor), total_minor: Number(o.total_minor), lines, tickets, pay: o.status === 'pending_payment' && Number(o.total_minor) > 0 ? { purpose_type: 'ticket_order', purpose_id: o.id, amount_minor: Number(o.total_minor), currency: o.currency } : null };
+  const tickets = (await c.query('SELECT id, serial, status, seat_label, class, discount_minor FROM tickets WHERE order_id=$1 AND supersedes_id IS NULL ORDER BY created_at, id', [orderId])).rows.map((t) => ({ ...t, discount_minor: Number(t.discount_minor) }));
+  const addons = (await c.query('SELECT * FROM ticket_addon_items WHERE order_id=$1 ORDER BY name, created_at', [orderId])).rows.map((i) => addonView(i));
+  const promos = (await c.query('SELECT d.code, d.kind, d.value, x.amount_cents FROM discount_redemptions x JOIN discounts d ON d.id=x.discount_id WHERE x.ticket_order_id=$1 AND x.reversed_at IS NULL ORDER BY d.created_at', [orderId])).rows.map((r) => ({ code: r.code, kind: r.kind, value: r.value, amount_minor: Number(r.amount_cents) }));
+  return { ...o, subtotal_minor: Number(o.subtotal_minor), tax_minor: Number(o.tax_minor), total_minor: Number(o.total_minor), discount_minor: Number(o.discount_minor), addons_minor: Number(o.addons_minor), lines, tickets, addons, promos, pay: o.status === 'pending_payment' && Number(o.total_minor) > 0 ? { purpose_type: 'ticket_order', purpose_id: o.id, amount_minor: Number(o.total_minor), currency: o.currency } : null };
 };
 
 cap({
   name: 'create_ticket_order', method: 'POST', path: '/events/:id/ticket-orders', tag: TAG, status: 201,
-  summary: 'Buy tickets: choose products and quantities (and seats for reserved seating). The tickets are reserved for a short hold under a per-event lock so allocation and capacity can never be oversold; pay with POST /payments (purpose_type ticket_order) to issue them. Free orders are issued immediately. Send an idempotency_key to make a retry safe. Box-office and partner staff sell through the other channels.',
+  summary: 'Buy tickets: choose products and quantities (and seats for reserved seating), optionally promo codes and parking / merchandise add-ons. The total is tickets less promos plus add-ons, and is exactly what the payment charges. The tickets are reserved for a short hold under a per-event lock so allocation and capacity can never be oversold; pay with POST /payments (purpose_type ticket_order) to issue them. Free orders are issued immediately. Send an idempotency_key to make a retry safe. Box-office and partner staff sell through the other channels.',
   input: z.object({
     id, channel: z.enum(['online', 'box_office', 'partner']).default('online'), idempotency_key: z.string().trim().min(8).max(80).optional(),
     lines: z.array(z.object({ product_id: id, quantity: z.number().int().min(1).max(100), seats: z.array(z.string().trim().min(2).max(6)).max(100).optional() })).min(1).max(10),
+    promo_codes: z.array(z.string().trim().min(2).max(40)).max(5).optional().describe('promo codes to apply; each is checked and a code that cannot be combined is refused'),
+    addons: z.array(z.object({ addon_id: id, quantity: z.number().int().min(1).max(100) })).max(10).optional().describe('parking / merchandise add-ons for the same order and payment'),
   }),
   handler: ({ user }, i) => tx(async (c) => {
     const ev = await eventOf(i.id, c);
@@ -403,6 +436,8 @@ cap({
   summary: 'Give up an order that is not paid yet; its reserved tickets are released at once. A paid order is refunded ticket by ticket (refund_ticket), never cancelled here.',
   input: z.object({ id }),
   handler: ({ user }, i) => tx(async (c) => {
+    const pre = (await c.query('SELECT event_id FROM ticket_orders WHERE id=$1', [i.id])).rows[0];
+    if (pre) await lockEvent(c, pre.event_id);   // the event lock first, as everywhere else
     const o = (await c.query('SELECT * FROM ticket_orders WHERE id=$1 FOR UPDATE', [i.id])).rows[0];
     if (!o || o.buyer_id !== user.id) throw notFound('Order');
     if (o.status !== 'pending_payment') throw conflict(`This order is ${o.status}`);
@@ -466,8 +501,8 @@ cap({
 
 cap({
   name: 'transfer_ticket', method: 'POST', path: '/tickets/:id/transfer', tag: TAG,
-  summary: 'Give a ticket to another account (to_user_id) or to a guest by name (the response then carries a one-time claim code to hand over). Allowed until the organiser\'s cutoff, and only if the ticket is transferable. The old ticket stops working at once; the new holder sees only the ticket, never the previous holder.',
-  input: z.object({ id, to_user_id: id.optional(), guest: guest.optional() }).refine((i) => !!i.to_user_id !== !!i.guest, 'Give either to_user_id or guest'),
+  summary: 'Give a ticket to another account (to_user_id) or to a guest by name (the response then carries a one-time claim code to hand over), or, where the organiser allows resale, hand it to a named account for a price (resale_price_minor) that is checked on the server against the organiser\'s cap (never above what was paid) and recorded with the organiser\'s fee. Allowed until the organiser\'s cutoff, and only if the ticket is transferable. The old ticket stops working at once; the new holder sees only the ticket, never the previous holder.',
+  input: z.object({ id, to_user_id: id.optional(), guest: guest.optional(), resale_price_minor: money.optional().describe('hand the ticket over for this price (only when the organiser allows resale; never above the cap)') }).refine((i) => !!i.to_user_id !== !!i.guest, 'Give either to_user_id or guest'),
   handler: ({ user }, i) => tx(async (c) => {
     const t0 = await loadTicket(c, i.id);
     await lockEvent(c, t0.event_id);
@@ -479,7 +514,24 @@ cap({
       if (i.to_user_id === user.id) throw badRequest('That ticket is already yours');
       if (!(await c.query('SELECT 1 FROM users WHERE id=$1', [i.to_user_id])).rowCount) throw notFound('Recipient');
     }
-    const next = await succeed(c, t, user.id, { holder_id: i.to_user_id ?? null, guest: i.guest ?? null, status: 'transferred', kind: 'transferred' });
+    let resale = null;
+    if (i.resale_price_minor !== undefined) {
+      const s = await settingsOf(c, t.event_id);
+      if (!i.to_user_id) throw badRequest('A resale needs a named buyer with an account');
+      if (s.resale_mode !== 'resale') throw conflict('The organiser allows transfers only; this ticket cannot be sold on', { code: 'resale_not_allowed' });
+      // the platform never takes a minor's money: a young person's ticket is handed over by a guardian without a price
+      if ((await isYouth(user.id, c)) || (await isYouth(i.to_user_id, c))) throw forbidden('Tickets cannot be resold to or by a young person; a parent or guardian can transfer them without a price');
+      const paid = Number(t.price_minor) - Number(t.discount_minor);
+      const cap = Math.floor((paid * s.resale_cap_bp) / 10000);
+      if (i.resale_price_minor > cap) throw conflict('That is more than this ticket may be resold for', { code: 'resale_cap', cap_minor: cap, currency: t.currency });
+      resale = { price: i.resale_price_minor, fee: Math.round((i.resale_price_minor * s.resale_fee_bp) / 10000), face: paid, cap_bp: s.resale_cap_bp, fee_bp: s.resale_fee_bp };
+    }
+    const next = await succeed(c, t, user.id, { holder_id: i.to_user_id ?? null, guest: i.guest ?? null, status: 'transferred', kind: resale ? 'resold' : 'transferred' });
+    if (resale) {
+      await c.query('INSERT INTO ticket_resales(event_id, entitlement_id, from_ticket_id, to_ticket_id, seller_id, buyer_id, face_minor, price_minor, fee_minor, currency, cap_bp, fee_bp) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)',
+        [t.event_id, t.entitlement_id, t.id, next.ticket.id, user.id, i.to_user_id, resale.face, resale.price, resale.fee, t.currency, resale.cap_bp, resale.fee_bp]);
+      await audit(c, user.id, 'ticket.resale', 'tickets', t.id);
+    }
     if (i.to_user_id) {
       const ev = await eventOf(t.event_id, c);
       await notify(c, i.to_user_id, { kind: 'ticket_received', title: 'You were given a ticket', body: `A ticket for ${ev.name} is now in My tickets.`, data: { ticket: true, event_id: ev.id, ticket_id: next.ticket.id } });
@@ -555,6 +607,7 @@ cap({
     }
     await c.query("UPDATE tickets SET status='void', ended_at=now(), end_reason=$2 WHERE id=$1", [t.id, i.reason]);
     await record(c, t.id, user.id, 'voided', 'issued', 'void', { reason: i.reason });
+    await promoteWaitlist(c, ev.id);
     return ticketView(c, { ...t, status: 'void' }, { organiser: true });
   }),
 });
@@ -739,7 +792,7 @@ cap({
 
 cap({
   name: 'ticket_report', method: 'GET', path: '/events/:id/tickets/report', tag: TAG,
-  summary: 'Organiser: ticketing report. Sold, issued, refunded, voided, scanned (actual attendance) and no-show are kept apart; money is per currency, gross of tax with tax shown, net of refunds; sales by product, class and channel; per fixture capacity, sold and attended; gate throughput by hour.',
+  summary: 'Organiser: ticketing report (money is net of promo discounts; `commerce` adds sales by channel, promo usage, add-on attach rate, the waitlist and whether order totals reconcile to the payments taken). Sold, issued, refunded, voided, scanned (actual attendance) and no-show are kept apart; money is per currency, gross of tax with tax shown, net of refunds; sales by product, class and channel; per fixture capacity, sold and attended; gate throughput by hour.',
   input: z.object({ id, fixture_id: id.optional() }),
   async handler({ user }, i) {
     const ev = await organiserOf(user, i.id);
@@ -751,7 +804,7 @@ cap({
     const sales = await many(
       `${base} SELECT o.currency, p.name AS product, o.class, o.channel, count(*)::int AS sold, count(*) FILTER (WHERE cur.status='issued')::int AS issued,
               count(*) FILTER (WHERE cur.status IN ('refund_due','refunded'))::int AS refunded, count(*) FILTER (WHERE cur.status='void')::int AS voided,
-              sum(o.price_minor)::bigint AS gross_minor, sum(o.tax_minor)::bigint AS tax_minor, sum(o.refunded_minor)::bigint AS refunded_minor
+              sum(o.price_minor - o.discount_minor)::bigint AS gross_minor, sum(o.tax_minor - o.discount_tax_minor)::bigint AS tax_minor, sum(o.refunded_minor)::bigint AS refunded_minor
          FROM o JOIN cur USING (entitlement_id) JOIN ticket_products p ON p.id=o.product_id WHERE ${cover} GROUP BY o.currency, p.name, o.class, o.channel ORDER BY o.currency, p.name`, [ev.id, f]);
     const refundsByEnt = await many('SELECT currency, coalesce(sum(refunded_minor),0)::bigint AS refunded_minor FROM tickets WHERE event_id=$1 GROUP BY currency', [ev.id]);
     const totals = {};
@@ -781,6 +834,7 @@ cap({
     const attendedTotal = (await pool.query('SELECT count(*)::int AS n FROM ticket_attendance WHERE event_id=$1 AND ($2::uuid IS NULL OR fixture_id=$2)', [ev.id, f])).rows[0].n;
     return {
       event_id: ev.id, counts: { sold: sum('sold'), issued: sum('issued'), refunded: sum('refunded'), voided: sum('voided'), scanned_in: attendedTotal },
+      commerce: await salesReport(pool, ev.id),
       money: Object.values(totals), sales: sales.map((s) => ({ ...s, gross_minor: Number(s.gross_minor), tax_minor: Number(s.tax_minor), refunded_minor: Number(s.refunded_minor) })), fixtures, gates, throughput: perHour,
       note: 'Sold is the number of tickets sold; scanned_in is how many actually came through a gate. They are different numbers.',
     };
