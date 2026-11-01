@@ -311,3 +311,4 @@ import './ticketing.js';
 import './integrations.js';
 import './integration-access.js';
 import './venue-seating.js';
+import './discovery.js';

@@ -64,8 +64,9 @@ async function playerEvidence(def, v, c) {
         AND ($8::text IS NULL OR EXISTS (SELECT 1 FROM active_sport_profiles sp WHERE sp.user_id = u.id AND sp.sport_id = p.sport_id
                                             AND EXISTS (SELECT 1 FROM unnest(sp.positions) x WHERE lower(x) = lower($8))))
         AND ($9::uuid IS NULL OR EXISTS (SELECT 1 FROM team_members tm WHERE tm.team_id = $9 AND tm.user_id = u.id AND tm.status = 'active'))
+        AND ($10::uuid IS NULL OR e.venue_id = $10)
       ORDER BY p.id`,
-    [def.sport_id, metricKey(v.metric), development, s.season ?? null, s.event_id ?? null, s.region ?? null, s.format ?? null, s.position ?? null, def.visibility === 'club' ? def.scope_team_id : null])).rows
+    [def.sport_id, metricKey(v.metric), development, s.season ?? null, s.event_id ?? null, s.region ?? null, s.format ?? null, s.position ?? null, def.visibility === 'club' ? def.scope_team_id : null, s.venue_id ?? null])).rows
     .map((r) => ({ ...r, value: Number(r.value), minutes: r.minutes == null ? null : Number(r.minutes) }));
 }
 
@@ -86,8 +87,9 @@ async function teamEvidence(def, v, c) {
         AND ($3::uuid IS NULL OR f.event_id = $3)
         AND ($4::text IS NULL OR lower(coalesce(e.city, tm.city)) = lower($4))
         AND (($5::text IS NULL AND e.kind <> 'friendly') OR e.kind = $5)
+        AND ($6::uuid IS NULL OR e.venue_id = $6)
       ORDER BY f.id, t.team`,
-    [def.sport_id, s.season ?? null, s.event_id ?? null, s.region ?? null, s.format ?? null])).rows
+    [def.sport_id, s.season ?? null, s.event_id ?? null, s.region ?? null, s.format ?? null, s.venue_id ?? null])).rows
     .map((r) => ({ ...r, points: Number(r.points), gf: Number(r.gf), ga: Number(r.ga) }));
 }
 

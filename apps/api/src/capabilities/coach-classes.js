@@ -5,6 +5,7 @@
 // canonical payments and refunds, and the youth/guardian rules are the shared ones (youth.js). A class is not an academy session: an
 // academy session belongs to an organisation's cohort programme with enrolled athletes; a coach class is one coach selling single seats.
 import { z } from 'zod';
+import { bboxField, parseBbox, bboxSql, haversineSql } from '../geo.js';
 import { cap, id, page } from '../registry.js';
 import { one, many, tx } from '../db.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
@@ -145,17 +146,26 @@ cap({
 
 cap({
   name: 'list_coach_classes', method: 'GET', path: '/coach/classes', tag: TAG, auth: 'public',
-  summary: 'Open coach classes with live seat counts, soonest first. Filter by coach, sport, dates or free seats; mine=true lists the classes you coach or hold a seat in. Public listing: no personal data, seat counts only. Link-only classes appear only to their coach and seat holders.',
+  summary: 'Open coach classes with live seat counts, soonest first. Filter by coach, sport, dates, free seats, level, price, audience, city, distance from a point (never stored) or a map viewport (bbox); sort by soonest, distance or price; mine=true lists the classes you coach or hold a seat in. Public listing: no personal data, seat counts only. Link-only classes appear only to their coach and seat holders.',
   input: z.object({
     coach_id: id.optional(), sport: z.string().optional(), from: dt.optional(), to: dt.optional(), has_seats: z.coerce.boolean().optional(), mine: z.coerce.boolean().optional(),
-    status: z.enum(['open', 'cancelled', 'completed']).default('open'), ...page,
-  }),
+    status: z.enum(['open', 'cancelled', 'completed']).default('open'),
+    lat: z.coerce.number().min(-90).max(90).optional(), lng: z.coerce.number().min(-180).max(180).optional(), radius_km: z.coerce.number().min(0.5).max(20000).optional(), bbox: bboxField,
+    city: z.string().max(80).optional(), level: level.optional().describe('only classes whose level range includes this level'),
+    max_price_cents: z.coerce.number().int().min(0).optional(), audience: z.enum(['adults', 'all_ages', 'youth']).optional(),
+    sort: z.enum(['soonest', 'distance', 'price']).default('soonest'), ...page,
+  }).refine((i) => (i.lat == null) === (i.lng == null), 'lat and lng go together'),
   async handler({ user }, i) {
     if (i.mine && !user) throw forbidden('Sign in to see your classes');
     const sport = i.sport ? await sportBySlugOrId(i.sport) : null;
     if (i.sport && !sport) throw notFound('Sport');
+    if (i.sort === 'distance' && i.lat == null) throw badRequest('sort=distance needs lat and lng');
+    const box = parseBbox(i.bbox);
+    if (i.bbox && !box) throw badRequest('bbox must be south,west,north,east');
     const p = [];
     const arg = (v) => (p.push(v), `$${p.length}`);
+    const latP = arg(i.lat ?? null), lngP = arg(i.lng ?? null);
+    const dist = haversineSql('v.latitude', 'v.longitude', latP, lngP, 1);
     const where = [`k.status=${arg(i.status)}`];
     if (i.mine) { const u = arg(user.id); where.push(`(k.coach_id=${u} OR EXISTS (SELECT 1 FROM coach_class_seats z WHERE z.class_id=k.id AND (z.user_id=${u} OR z.applied_by=${u}) AND z.status = ANY(${arg(LIVE)}::text[])))`); }
     else where.push(user ? `(k.visibility='public' OR k.coach_id=${arg(user.id)} OR EXISTS (SELECT 1 FROM coach_class_seats z WHERE z.class_id=k.id AND z.user_id=$${p.length}))` : "k.visibility='public'");
@@ -166,9 +176,16 @@ cap({
     if (i.from) where.push(`k.starts_at >= ${arg(i.from)}`);
     if (i.to) where.push(`k.starts_at < ${arg(i.to)}`);
     if (i.has_seats) where.push("(SELECT count(*) FROM coach_class_seats z WHERE z.class_id=k.id AND z.status IN ('held','confirmed')) < k.max_participants");
+    if (i.city) where.push(`v.city ILIKE ${arg(i.city)}`);
+    if (i.level) { const lv = arg(i.level); where.push(`(k.skill_min IS NULL OR array_position(${arg(LEVELS)}::text[], k.skill_min) <= array_position($${p.length}::text[], ${lv})) AND (k.skill_max IS NULL OR array_position($${p.length}::text[], k.skill_max) >= array_position($${p.length}::text[], ${lv}))`); }
+    if (i.max_price_cents != null) where.push(`k.price_cents <= ${arg(i.max_price_cents)}`);
+    if (i.audience) where.push(`k.audience=${arg(i.audience)}`);
+    if (box) where.push(bboxSql('v.latitude', 'v.longitude', [arg(box.south), arg(box.west), arg(box.north), arg(box.east)]));
+    if (i.radius_km != null) where.push(`(${dist}) <= ${arg(i.radius_km)}`);
     // a class for young people or adults only is shown to anyone, but joining is checked on the server; seat counts are all the public sees
-    const rows = await many(`SELECT ${COLS} ${FROM} WHERE ${where.join(' AND ')} ORDER BY k.starts_at, k.id LIMIT ${arg(i.limit)} OFFSET ${arg(i.offset)}`, p);
-    return rows.map((r) => shape(r, user));
+    const order = i.sort === 'distance' ? `(${dist}) ASC NULLS LAST, k.starts_at, k.id` : i.sort === 'price' ? 'k.price_cents, k.starts_at, k.id' : 'k.starts_at, k.id';
+    const rows = await many(`SELECT ${COLS}, ${dist} AS distance_km ${FROM} WHERE ${where.join(' AND ')} ORDER BY ${order} LIMIT ${arg(i.limit)} OFFSET ${arg(i.offset)}`, p);
+    return rows.map((r) => ({ ...shape(r, user), distance_km: r.distance_km == null ? null : Number(r.distance_km) }));
   },
 });
 
