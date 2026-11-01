@@ -147,7 +147,7 @@ async function venueManager(user) {
     work,
     actions: [
       act('today', 'Today at the venue', 'calendar', first ? go('Manage', { id: first.id, tab: 'schedule' }) : go('VenueWorkspace'), first ? {} : { hint: 'Register a venue first' }),
-      act('checkin', 'Check people in', 'scan', first ? go('Manage', { id: first.id, tab: 'access' }) : null, first ? { camera: true } : { disabled: 'No venue yet' }),
+      act('checkin', 'Confirm check-ins', 'scan', first ? go('Manage', { id: first.id, tab: 'access' }) : null, first ? { camera: true } : { disabled: 'No venue yet' }),
       act('checks', 'Venue checks', 'check', first ? go('Manage', { id: first.id, tab: 'maintenance' }) : null, first ? {} : { disabled: 'No venue yet' }),
       act('desk', 'Front desk', 'cash', first ? go('Manage', { id: first.id, tab: 'frontdesk' }) : null, first ? {} : { disabled: 'No venue yet' }),
     ],

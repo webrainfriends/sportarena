@@ -6,7 +6,7 @@ import { api } from '../api';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { Btn, Card, Chip, Empty, ErrorBox, Loading, Row, Section, StatPill, T, Tag } from '../ui';
-import { AccessInsights, AccessPoints, HeldList } from '../access-ui';
+import { AccessInsights, AccessPoints, HeldList, ScanPanel } from '../access-ui';
 import { FormSheet } from '../FormSheet';
 import { c } from '../theme';
 import { t as tr } from '../i18n';
@@ -292,9 +292,21 @@ export function VendorsContracts({ v }) {
 }
 
 /** Doors, gates and readers of the venue, who was admitted, what needs a decision, and the evidence kept apart from the final record. */
+/** "Confirm check-ins": scan a booking's QR (or a pass, card or tag) at the venue's front-desk door. Floor staff and managers. */
+function ConfirmCheckins({ venueId }) {
+  const desk = useLoad(() => api.get(`/venues/${venueId}/front-desk-access-point`), [venueId]);
+  return (
+    <Section title={tr('vf.confirm.title')} color={c.mint}>
+      <T color={c.mute} size={13}>{tr('vf.confirm.sub')}</T>
+      {desk.loading && !desk.data ? <Loading /> : desk.error ? <ErrorBox error={desk.error} onRetry={desk.reload} /> : <ScanPanel domain="venue_access" subjectRef={desk.data.id} />}
+    </Section>
+  );
+}
+
 export function AccessTab({ v }) {
   return (
     <View style={{ gap: 14 }}>
+      <ConfirmCheckins venueId={v.id} />
       <Section title="Doors, gates and readers" color={c.cyan}><AccessPoints venueId={v.id} /></Section>
       <Section title="Held for your decision" color={c.orange}><HeldList scope={{ venue_id: v.id }} /></Section>
       <Section title="Attendance and access" color={c.violet}><AccessInsights scope={{ venue_id: v.id }} /></Section>

@@ -7,6 +7,7 @@ import { notify } from '../notify.js';
 import { toMajor } from '../currency.js';
 import { returnCredits } from './credits.js';
 import { earnForInvoice, clawBackPoints } from './loyalty.js';
+import { gstBreakup, gstCreditBreakup, validGstin, stateOfGstin } from '../gst.js';
 
 const ACTIVE = new Set(['confirmed', 'no_show']);
 const taxIn = (total, rate) => Math.round((total * rate) / (10000 + rate)); // payable always contains its tax
@@ -37,6 +38,18 @@ export async function nextNumber(c, venue, kind) {
 }
 
 export const seller = (v) => ({ name: v.legal_name ?? v.name, tax_id: v.tax_id ?? null, address: v.billing_address ?? [v.address, v.city, v.postal_code, v.country].filter(Boolean).join(', '), phone: v.phone ?? null, email: v.email ?? null });
+
+/** The venue's India GST profile (INR documents only) and the buyer's place of supply: their GSTIN's state, else the supplier's own state. Null = no GST profile, plain venue tax. */
+async function gstContext(c, venue, rs) {
+  if (venue.currency !== 'INR') return null;
+  const p = (await c.query("SELECT * FROM gst_profiles WHERE owner_kind='venue' AND owner_id=$1 AND archived_at IS NULL", [venue.id])).rows[0];
+  if (!p) return null;
+  let buyer = null;
+  if (rs.billing_enc) { try { buyer = JSON.parse(decrypt(rs.billing_enc, 'reservations.billing'))?.tax_id ?? null; } catch { buyer = null; } }
+  return { p, place: validGstin(buyer) ? stateOfGstin(buyer) : p.state_code, buyer_gstin: validGstin(buyer) ? String(buyer).toUpperCase() : null };
+}
+/** CGST+SGST (same state) or IGST split of a tax-inclusive amount; payables here always contain their tax. */
+const gstSplit = (g, amount, credit = false) => (g ? { ...(credit ? gstCreditBreakup : gstBreakup)({ amount_cents: amount, rate_bp: g.p.rate_bp, inclusive: true, supplier_state: g.p.state_code, place_of_supply: g.place }), supplier_gstin: g.p.gstin, buyer_gstin: g.buyer_gstin, sac: g.p.default_sac } : null);
 
 async function buyerBlob(c, rs) {
   const u = (await c.query('SELECT display_name FROM users WHERE id=$1', [rs.user_id])).rows[0];
@@ -70,30 +83,35 @@ export async function reconcileInvoices(c, reservationId) {
     const open = docs.find((d) => d.kind === 'invoice' && d.status === 'open');
     const netPaid = paid.reduce((s, d) => s + d.total_cents, 0) - credits.reduce((s, d) => s + d.total_cents, 0);
     const delta = target - netPaid;
-    const money = { currency: venue.currency, tax_name: venue.tax_name, tax_rate_bp: venue.tax_rate_bp, tax_inclusive: venue.tax_inclusive };
+    const gst = await gstContext(c, venue, rs);
+    const money = gst ? { currency: venue.currency, tax_name: 'GST', tax_rate_bp: gst.p.rate_bp, tax_inclusive: true } : { currency: venue.currency, tax_name: venue.tax_name, tax_rate_bp: venue.tax_rate_bp, tax_inclusive: venue.tax_inclusive };
+    const rate = money.tax_rate_bp;
 
     if (delta > 0) {
       let docLines, tax;
       if (!paid.length) {
         docLines = lines.map(({ b, amount, tax: t, kind }) => ({ description: `${kind === 'fee' ? 'Cancellation fee · ' : ''}${b.resource_name}${b.quantity > 1 ? ` × ${b.quantity}` : ''}`, starts_at: b.starts_at, ends_at: b.ends_at, slots: b.slots, amount_cents: amount, tax_cents: t, discount_cents: kind === 'fee' ? 0 : b.discount_cents, booking_id: b.id }));
-        tax = lines.reduce((s, l) => s + l.tax, 0);
+        if (gst) docLines = docLines.map((l) => ({ ...l, tax_cents: taxIn(l.amount_cents, rate) }));
+        tax = gst ? docLines.reduce((s, l) => s + l.tax_cents, 0) : lines.reduce((s, l) => s + l.tax, 0);
       } else {
-        docLines = [{ description: `Changes to booking ${rs.code}`, amount_cents: delta, tax_cents: taxIn(delta, venue.tax_rate_bp) }];
-        tax = taxIn(delta, venue.tax_rate_bp);
+        docLines = [{ description: `Changes to booking ${rs.code}`, amount_cents: delta, tax_cents: taxIn(delta, rate) }];
+        tax = taxIn(delta, rate);
       }
+      const split = gstSplit(gst, delta);
+      if (split) split.tax_cents = tax;   // the documents carry the sum of their lines' tax, never a different total
       if (open) {
         const changed = open.total_cents !== delta || open.lines.length !== docLines.length;
         // the invoice got smaller than the wallet credit already put on it: give the excess back
         if (open.credits_cents > delta) await returnCredits(c, [open.id], open.credits_cents - delta, { adjustInvoice: true, note: `Booking ${rs.code} changed` });
-        await c.query(`UPDATE invoices SET lines=$2, total_cents=$3, tax_cents=$4, revision=revision+$9, tax_name=$5, tax_rate_bp=$6, tax_inclusive=$7, seller=$8 WHERE id=$1`,
-          [open.id, JSON.stringify(docLines), delta, tax, money.tax_name, money.tax_rate_bp, money.tax_inclusive, seller(venue), changed ? 1 : 0]);
+        await c.query(`UPDATE invoices SET lines=$2, total_cents=$3, tax_cents=$4, revision=revision+$9, tax_name=$5, tax_rate_bp=$6, tax_inclusive=$7, seller=$8, tax_breakup=$10 WHERE id=$1`,
+          [open.id, JSON.stringify(docLines), delta, tax, money.tax_name, money.tax_rate_bp, money.tax_inclusive, seller(venue), changed ? 1 : 0, split ? JSON.stringify(split) : null]);
         // wallet credit now covers all of it: it is paid
         if ((await c.query('SELECT credits_cents FROM invoices WHERE id=$1', [open.id])).rows[0].credits_cents >= delta) await markInvoicePaid(c, open.id, { method: 'wallet', by: rs.user_id });
       } else {
         await c.query(
-          `INSERT INTO invoices(kind, number, venue_id, reservation_id, user_id, currency, total_cents, tax_cents, tax_name, tax_rate_bp, tax_inclusive, seller, buyer_enc, lines, walk_in)
-           VALUES ('invoice',$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
-          [await nextNumber(c, venue, 'invoice'), venueId, reservationId, rs.user_id, money.currency, delta, tax, money.tax_name, money.tax_rate_bp, money.tax_inclusive, seller(venue), await buyerBlob(c, rs), JSON.stringify(docLines), rs.walk_in]);
+          `INSERT INTO invoices(kind, number, venue_id, reservation_id, user_id, currency, total_cents, tax_cents, tax_name, tax_rate_bp, tax_inclusive, seller, buyer_enc, lines, walk_in, tax_breakup)
+           VALUES ('invoice',$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+          [await nextNumber(c, venue, 'invoice'), venueId, reservationId, rs.user_id, money.currency, delta, tax, money.tax_name, money.tax_rate_bp, money.tax_inclusive, seller(venue), await buyerBlob(c, rs), JSON.stringify(docLines), rs.walk_in, split ? JSON.stringify(split) : null]);
       }
       await c.query("UPDATE bookings b SET payment_status='unpaid' FROM resources r WHERE r.id=b.resource_id AND r.venue_id=$2 AND b.reservation_id=$1 AND b.status IN ('confirmed','no_show') AND b.payment_status IN ('paid','unpaid')", [reservationId, venueId]);
       continue;
@@ -113,10 +131,10 @@ export async function reconcileInvoices(c, reservationId) {
         `SELECT 1 FROM payments WHERE status IN ('paid','refunded') AND ((purpose_type='venue_invoice' AND purpose_id = ANY($1::uuid[]))
             OR (purpose_type='pos_sale' AND purpose_id IN (SELECT sale_id FROM pos_sale_invoices WHERE invoice_id = ANY($1::uuid[]))))`, [paid.map((d) => d.id)])).rowCount > 0;
       await c.query(
-        `INSERT INTO invoices(kind, number, venue_id, reservation_id, user_id, parent_id, currency, status, total_cents, tax_cents, tax_name, tax_rate_bp, tax_inclusive, seller, buyer_enc, lines, paid_at, refund_status, refund_to_credits_cents, refunded_at, walk_in)
-         VALUES ('credit_note',$1,$2,$3,$4,$5,$6,'paid',$7,$8,$9,$10,$11,$12,$13,$14, now(), $15, $16, CASE WHEN $15 = 'done' THEN now() END, $17)`,
-        [await nextNumber(c, venue, 'credit_note'), venueId, reservationId, rs.user_id, paid[paid.length - 1]?.id ?? null, money.currency, credit, taxIn(credit, venue.tax_rate_bp), money.tax_name, money.tax_rate_bp, money.tax_inclusive,
-          seller(venue), await buyerBlob(c, rs), JSON.stringify([{ description: `Credit for changed or cancelled bookings (${rs.code})`, amount_cents: credit, tax_cents: taxIn(credit, venue.tax_rate_bp) }]), rest === 0 ? 'done' : online ? 'pending' : 'manual', toWallet, rs.walk_in]);
+        `INSERT INTO invoices(kind, number, venue_id, reservation_id, user_id, parent_id, currency, status, total_cents, tax_cents, tax_name, tax_rate_bp, tax_inclusive, seller, buyer_enc, lines, paid_at, refund_status, refund_to_credits_cents, refunded_at, walk_in, tax_breakup)
+         VALUES ('credit_note',$1,$2,$3,$4,$5,$6,'paid',$7,$8,$9,$10,$11,$12,$13,$14, now(), $15, $16, CASE WHEN $15 = 'done' THEN now() END, $17, $18)`,
+        [await nextNumber(c, venue, 'credit_note'), venueId, reservationId, rs.user_id, paid[paid.length - 1]?.id ?? null, money.currency, credit, taxIn(credit, rate), money.tax_name, money.tax_rate_bp, money.tax_inclusive,
+          seller(venue), await buyerBlob(c, rs), JSON.stringify([{ description: `Credit for changed or cancelled bookings (${rs.code})`, amount_cents: credit, tax_cents: taxIn(credit, rate) }]), rest === 0 ? 'done' : online ? 'pending' : 'manual', toWallet, rs.walk_in, gst ? JSON.stringify(gstSplit(gst, credit, true)) : null]);
       if (online) c.afterCommit?.(() => import('./refunds.js').then((m) => m.kickRefunds()));
       await c.query("UPDATE bookings b SET payment_status=$3 FROM resources r WHERE r.id=b.resource_id AND r.venue_id=$2 AND b.reservation_id=$1 AND b.status='cancelled' AND b.refund_cents > 0 AND b.payment_status IN ('paid','unpaid')", [reservationId, venueId, rest === 0 ? 'refunded' : 'refund_due']);
     }

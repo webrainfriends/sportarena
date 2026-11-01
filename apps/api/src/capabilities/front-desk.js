@@ -94,8 +94,8 @@ cap({
 cap({
   name: 'start_pos_online_payment', method: 'POST', path: '/pos/sales/:id/online-payment', tag: TAG, scope: 'payment',
   summary: 'Start a provider checkout for what is still due (card / UPI wallet via the enabled provider). Returns a checkout_url to show the customer (open it, or show it as a QR). The sale stays awaiting payment — pending — until the provider itself confirms; staff cannot mark it paid.',
-  input: z.object({ id, provider: z.enum(['stripe', 'paypal']), return_url: z.string().url().optional() }),
-  handler: ({ user }, i) => startOnlinePayment(user, i.id, { provider: i.provider, return_url: i.return_url }),
+  input: z.object({ id, provider: z.enum(['stripe', 'paypal', 'razorpay']), method: z.enum(['card', 'paypal', 'upi', 'netbanking', 'wallet']).optional(), return_url: z.string().url().optional() }),
+  handler: ({ user }, i) => startOnlinePayment(user, i.id, { provider: i.provider, method: i.method, return_url: i.return_url }),
 });
 
 cap({

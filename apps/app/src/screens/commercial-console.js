@@ -10,6 +10,7 @@ import { Btn, Card, Chip, Empty, ErrorBox, Field, H1, Loading, Row, Screen, Sect
 import { FormSheet } from '../FormSheet';
 import { c } from '../theme';
 import { moneyIn } from '../vtime';
+import { PaymentCountries } from './payment-countries';
 
 const label = (s) => String(s ?? '').replace(/[_.]/g, ' ');
 const d10 = (d) => (d ? String(d).slice(0, 10) : '');
@@ -471,7 +472,7 @@ function Audit() {
   );
 }
 
-const TABS = [['catalogue', 'Catalogue'], ['bundles', 'Bundles'], ['simulate', 'Simulate'], ['accounts', 'Accounts'], ['offers', 'Offers'], ['audit', 'Audit']];
+const TABS = [['catalogue', 'Catalogue'], ['bundles', 'Bundles'], ['simulate', 'Simulate'], ['accounts', 'Accounts'], ['offers', 'Offers'], ['payments', 'Payments'], ['audit', 'Audit']];
 
 
 export function CommercialConsole() {
@@ -486,7 +487,7 @@ export function CommercialConsole() {
       <H1>Commercial</H1>
       <T color={c.mute} weight="700">Catalogue, prices, plans, entitlements and usage — one place, versioned, never hard-coded.</T>
       <View style={{ marginVertical: 8 }}><Seg options={TABS.map(([value, l]) => ({ value, label: l }))} value={tab} onChange={setTab} /></View>
-      {tab === 'catalogue' ? <Catalogue cat={cat} keys={keys} /> : tab === 'bundles' ? <Bundles cat={cat} /> : tab === 'simulate' ? <Simulate cat={cat} /> : tab === 'accounts' ? <Account cat={cat} keys={keys} /> : tab === 'offers' ? <Offers cat={cat} /> : <Audit />}
+      {tab === 'catalogue' ? <Catalogue cat={cat} keys={keys} /> : tab === 'bundles' ? <Bundles cat={cat} /> : tab === 'simulate' ? <Simulate cat={cat} /> : tab === 'accounts' ? <Account cat={cat} keys={keys} /> : tab === 'offers' ? <Offers cat={cat} /> : tab === 'payments' ? <PaymentCountries /> : <Audit />}
     </Screen>
   );
 }
