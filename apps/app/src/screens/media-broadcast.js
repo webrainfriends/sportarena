@@ -13,8 +13,10 @@ import { rightChip, rightLabel, territoryText, money, fmtRange, fmtDT, nice, Sta
 import { PackageForm, OfferForm, LicenceSheet } from './media-licence';
 import { ProductionPanel, StreamsPanel } from './media-production';
 import { AssetsPanel, RightsLog } from './media-assets';
+import { ClipsPanel } from './clips';
+import { t } from '../i18n';
 
-const SUBS = [['rights', '🧾 Rights'], ['production', '🎬 Production'], ['streams', '📺 Streams'], ['media', '🎞️ Media'], ['data', '📡 Data & reports']];
+const SUBS = [['rights', '🧾 Rights'], ['production', '🎬 Production'], ['streams', '📺 Streams'], ['media', '🎞️ Media'], ['highlights', `✨ ${t('clips.tab')}`], ['data', '📡 Data & reports']];
 
 export function BroadcastTab({ id, e, isOrg, games }) {
   const [sub, setSub] = useState('rights');
@@ -26,6 +28,7 @@ export function BroadcastTab({ id, e, isOrg, games }) {
       {sub === 'production' ? <ProductionPanel id={id} isOrg games={games} /> : null}
       {sub === 'streams' ? <StreamsPanel id={id} isOrg games={games} /> : null}
       {sub === 'media' ? <><AssetsPanel id={id} isOrg games={games} partners={[]} /><RightsLog id={id} /></> : null}
+      {sub === 'highlights' ? <ClipsPanel id={id} games={games} /> : null}
       {sub === 'data' ? <DataPanel id={id} /> : null}
     </>
   );

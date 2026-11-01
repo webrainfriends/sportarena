@@ -42,6 +42,7 @@ import { runOfficialsSweeps } from './officials-sweeps.js';
 import { runComplianceSweeps } from './compliance-sweeps.js';
 import { runTripSweeps } from './trips-sweeps.js';
 import { runMediaRightsSweeps } from './media-rights-sweeps.js';
+import { runClipJobs } from './smart-clips.js';
 import { sendFollowerAlerts } from './spectator.js';
 import { snapshotAll } from './rankings/data.js';
 import { hourlyRatingSweep } from './ratings/data.js';
@@ -107,6 +108,7 @@ export const STEPS = [
   ['compliance', 'compliance', runComplianceSweeps, null],
   ['team_travel', 'team_travel', runTripSweeps, null],
   ['media_rights', 'media_rights', runMediaRightsSweeps, null],
+  ['smart_clips', 'smart_clips', runClipJobs, null],
   ['follower_alerts', 'follower_alerts_sent', sendFollowerAlerts, 0],
   ['ranking_snapshots', 'ranking_snapshots', weeklyRankingSnapshots, 0],
   ['skill_ratings', 'skill_rating_runs', hourlyRatingSweep, 0],
