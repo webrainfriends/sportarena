@@ -75,7 +75,7 @@ test('every fast action is at least 44pt and labelled for screen readers', () =>
   assert.match(home, /accessibilityLiveRegion="polite"/);
 });
 
-test('Work is the role\'s one workspace: no "All tools" button, the swivel's Workspaces tile lists every held role', () => {
+test('Work is the role\'s one workspace: no "All tools" button, the swivel\'s Workspaces tile lists every held role', () => {
   const home = read('screens/role-home.js');
   assert.ok(!home.includes('All tools and modules'), 'the swivel is the More button now');
   assert.match(home, /ScreenHeaderProvider value=\{queue\}/, 'the queue tops the role\'s own screen');
@@ -84,7 +84,7 @@ test('Work is the role\'s one workspace: no "All tools" button, the swivel's Wor
   assert.deepEqual(workspacesFor(['coach', 'sponsor', 'athlete']).map((w) => w[0]), ['coach', 'sponsor', 'athlete'], 'every held role has a workspace in the swivel');
   assert.deepEqual(workspacesFor([]), []);
   assert.deepEqual(workspacesFor(['platform_admin']).map((w) => w[0]), ['platform_admin', 'platform_admin']); // the commercial console and the keys & audit console
-  assert.deepEqual(workspacesFor(['athlete'], true).map((w) => w[0]), ['venue_manager'], 'a front-desk cashier still reaches the desk');
+  assert.deepEqual(workspacesFor(['athlete'], true).map((w) => w[0]), ['venue_manager', 'athlete'], 'a front-desk cashier still reaches the desk, next to the workspace of the role they hold');
   assert.ok(orderedModules(['coach']).some((m) => m[0] === 'Workspace'));
   assert.ok(!orderedModules([]).some((m) => m[0] === 'Workspace'));
 });
