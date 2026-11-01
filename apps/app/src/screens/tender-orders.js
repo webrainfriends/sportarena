@@ -13,7 +13,7 @@ import { c } from '../theme';
 import { explain } from '../access';
 import { CATEGORIES } from './tender-zone';
 import { ChainTrace } from './svc-common';
-import { Checks, Chips, DataTable, KV, Notice, Panel, Split, Status, amount, day, nice, openDocument, saveExport, openBase64, when } from '../tender-ui';
+import { Checks, Chips, DataTable, KV, Notice, Panel, Split, Status, amount, day, nice, openDocument, saveExport, when } from '../tender-ui';
 
 export function TenderOrders() {
   const { push } = useNav();
