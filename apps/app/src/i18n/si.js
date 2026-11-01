@@ -710,4 +710,9 @@ export default {
   'seat.n_free': 'ආසන {n} ක් හිස්',
   'seat.pick_up_to': 'උපරිම ආසන {n} ක් තෝරන්න',
   'seat.done_n': 'අවසන් · ආසන {n} ක් · {total}',
+  'spl.relationship': 'සම්බන්ධතාව',
+  'spl.relationship_agreements': 'මෙම හවුල්කරු සමඟ ගිවිසුම්',
+  'spl.relationship_events': 'සටහන් කළ ඉතිහාසය',
+  'spl.empty_history': 'තවමත් ක්‍රියා සටහන් කර නැත',
+  'spl.renews': '{ref} අලුත් කරයි',
 };

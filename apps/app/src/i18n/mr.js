@@ -710,4 +710,9 @@ export default {
   'seat.n_free': '{n} आसने रिकामी',
   'seat.pick_up_to': 'जास्तीत जास्त {n} आसने निवडा',
   'seat.done_n': 'पूर्ण · {n} आसने · {total}',
+  'spl.relationship': 'संबंध',
+  'spl.relationship_agreements': 'या भागीदारासोबतचे करार',
+  'spl.relationship_events': 'नोंदवलेला इतिहास',
+  'spl.empty_history': 'अजून कोणतीही कृती नोंदवलेली नाही',
+  'spl.renews': '{ref} चे नूतनीकरण',
 };

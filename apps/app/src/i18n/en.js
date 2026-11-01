@@ -730,4 +730,9 @@ export default {
   'seat.n_free': '{n} seats free',
   'seat.pick_up_to': 'Pick up to {n} seats',
   'seat.done_n': 'Done · {n} seats · {total}',
+  'spl.relationship': 'Relationship',
+  'spl.relationship_agreements': 'Agreements with this partner',
+  'spl.relationship_events': 'Recorded history',
+  'spl.empty_history': 'No recorded actions yet',
+  'spl.renews': 'Renews {ref}',
 };

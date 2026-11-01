@@ -710,4 +710,9 @@ export default {
   'seat.n_free': '{n}ଟି ଆସନ ଖାଲି',
   'seat.pick_up_to': 'ସର୍ବାଧିକ {n}ଟି ଆସନ ବାଛନ୍ତୁ',
   'seat.done_n': 'ସରିଲା · {n}ଟି ଆସନ · {total}',
+  'spl.relationship': 'ସମ୍ପର୍କ',
+  'spl.relationship_agreements': 'ଏହି ସହଯୋଗୀଙ୍କ ସହ ଚୁକ୍ତି',
+  'spl.relationship_events': 'ଦାଖଲ ଇତିହାସ',
+  'spl.empty_history': 'ଏପର୍ଯ୍ୟନ୍ତ କୌଣସି କାର୍ଯ୍ୟ ଦାଖଲ ହୋଇନାହିଁ',
+  'spl.renews': '{ref} ନବୀକରଣ',
 };

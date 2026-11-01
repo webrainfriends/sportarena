@@ -710,4 +710,9 @@ export default {
   'seat.n_free': '{n}টি আসন খালি',
   'seat.pick_up_to': 'সর্বোচ্চ {n}টি আসন বাছুন',
   'seat.done_n': 'হয়েছে · {n}টি আসন · {total}',
+  'spl.relationship': 'সম্পর্ক',
+  'spl.relationship_agreements': 'এই অংশীদারের সঙ্গে চুক্তি',
+  'spl.relationship_events': 'নথিভুক্ত ইতিহাস',
+  'spl.empty_history': 'এখনও কোনো কার্যক্রম নথিভুক্ত হয়নি',
+  'spl.renews': '{ref} নবায়ন',
 };

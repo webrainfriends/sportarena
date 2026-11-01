@@ -710,4 +710,9 @@ export default {
   'seat.n_free': '{n} సీట్లు ఖాళీ',
   'seat.pick_up_to': 'గరిష్టంగా {n} సీట్లు ఎంచుకోండి',
   'seat.done_n': 'పూర్తి · {n} సీట్లు · {total}',
+  'spl.relationship': 'సంబంధం',
+  'spl.relationship_agreements': 'ఈ భాగస్వామితో ఒప్పందాలు',
+  'spl.relationship_events': 'నమోదైన చరిత్ర',
+  'spl.empty_history': 'ఇంకా చర్యలు నమోదు కాలేదు',
+  'spl.renews': '{ref} పునరుద్ధరణ',
 };

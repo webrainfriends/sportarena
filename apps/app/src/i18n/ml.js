@@ -710,4 +710,9 @@ export default {
   'seat.n_free': '{n} സീറ്റുകൾ ഒഴിവ്',
   'seat.pick_up_to': 'പരമാവധി {n} സീറ്റുകൾ തിരഞ്ഞെടുക്കുക',
   'seat.done_n': 'പൂർത്തിയായി · {n} സീറ്റുകൾ · {total}',
+  'spl.relationship': 'ബന്ധം',
+  'spl.relationship_agreements': 'ഈ പങ്കാളിയുമായുള്ള കരാറുകൾ',
+  'spl.relationship_events': 'രേഖപ്പെടുത്തിയ ചരിത്രം',
+  'spl.empty_history': 'ഇതുവരെ നടപടികൾ രേഖപ്പെടുത്തിയിട്ടില്ല',
+  'spl.renews': '{ref} പുതുക്കുന്നു',
 };

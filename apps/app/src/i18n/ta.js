@@ -710,4 +710,9 @@ export default {
   'seat.n_free': '{n} இருக்கைகள் காலி',
   'seat.pick_up_to': 'அதிகபட்சம் {n} இருக்கைகள் தேர்வு செய்யவும்',
   'seat.done_n': 'முடிந்தது · {n} இருக்கைகள் · {total}',
+  'spl.relationship': 'உறவு',
+  'spl.relationship_agreements': 'இந்தப் பங்குதாரருடன் ஒப்பந்தங்கள்',
+  'spl.relationship_events': 'பதிவான வரலாறு',
+  'spl.empty_history': 'இதுவரை நடவடிக்கைகள் பதிவாகவில்லை',
+  'spl.renews': '{ref} ஐ புதுப்பிக்கிறது',
 };

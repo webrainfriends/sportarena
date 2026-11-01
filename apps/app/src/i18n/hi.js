@@ -710,4 +710,9 @@ export default {
   'seat.n_free': '{n} सीटें खाली',
   'seat.pick_up_to': '{n} सीटें तक चुनें',
   'seat.done_n': 'पूरा · {n} सीटें · {total}',
+  'spl.relationship': 'संबंध',
+  'spl.relationship_agreements': 'इस साझेदार के साथ अनुबंध',
+  'spl.relationship_events': 'दर्ज इतिहास',
+  'spl.empty_history': 'अभी कोई कार्रवाई दर्ज नहीं',
+  'spl.renews': '{ref} का नवीनीकरण',
 };

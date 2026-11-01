@@ -710,4 +710,9 @@ export default {
   'seat.n_free': '{n} ಆಸನಗಳು ಖಾಲಿ',
   'seat.pick_up_to': 'ಗರಿಷ್ಠ {n} ಆಸನಗಳನ್ನು ಆರಿಸಿ',
   'seat.done_n': 'ಮುಗಿಯಿತು · {n} ಆಸನಗಳು · {total}',
+  'spl.relationship': 'ಸಂಬಂಧ',
+  'spl.relationship_agreements': 'ಈ ಪಾಲುದಾರರೊಂದಿಗಿನ ಒಪ್ಪಂದಗಳು',
+  'spl.relationship_events': 'ದಾಖಲಾದ ಇತಿಹಾಸ',
+  'spl.empty_history': 'ಇನ್ನೂ ಕ್ರಿಯೆಗಳು ದಾಖಲಾಗಿಲ್ಲ',
+  'spl.renews': '{ref} ನವೀಕರಣ',
 };
