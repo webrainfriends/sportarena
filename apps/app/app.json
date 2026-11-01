@@ -21,7 +21,7 @@
       "requireFullScreen": false
     },
     "android": {
-      "package": "dev.sportarena.app",
+      "package": "dev.gotmygame.app",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#E5EAF5"
