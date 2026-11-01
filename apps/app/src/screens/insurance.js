@@ -433,7 +433,7 @@ export function Insurance() {
       <Section title="Your claims" color={c.orange}>
         {claims.data?.length ? claims.data.map((cl) => (
           <Card key={cl.id} color={c.orangeSoft} pad={12}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><T weight="800">{money(cl.amount_cents)}</T><StatusTag s={cl.status} /></View>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><T weight="800">{money(cl.amount_cents, cl.currency)}</T><StatusTag s={cl.status} /></View>
             <T size={12} color={c.mute}>Filed {day(cl.created_at)}{cl.incident_on ? ` · incident ${day(cl.incident_on)}` : ''}</T>
             {cl.decision_reason ? <T size={13} style={{ marginTop: 4 }}>Reviewer: {cl.decision_reason}</T> : null}
             <Btn small title="Evidence" color={c.paper} ink={c.ink} onPress={() => setDocs({ claim_id: cl.id, name: 'Claim evidence' })} style={{ marginTop: 8, alignSelf: 'flex-start' }} />
@@ -460,8 +460,8 @@ export function Insurance() {
       {paying ? <PaySheet target={paying} onClose={() => setPaying(null)} onDone={changed} /> : null}
       <DocumentsSheet linkable={!!docs?.linkable} parent={docs ? (docs.policy_id ? { policy_id: docs.policy_id } : { claim_id: docs.claim_id }) : null} title={docs?.name ?? ''} kinds={docs?.policy_id ? ['policy_schedule', 'certificate', 'receipt', 'other'] : ['claim_evidence']} onClose={() => setDocs(null)} onChanged={changed} />
       <FormSheet visible={!!claim} onClose={() => setClaim(null)} title="File a claim" submitLabel="Submit claim"
-        fields={[{ key: 'amount', label: 'Amount (₹)', type: 'number' }, { key: 'incident_on', label: 'Date of the incident', type: 'date', optional: true }, { key: 'description', label: 'What happened?', type: 'multiline', hint: 'Encrypted at rest. Add photos or reports under Evidence once it is filed.' }]}
-        onSubmit={async (v) => { await api.post(`/insurance/policies/${claim.id}/claims`, { description: v.description, amount_cents: Math.round(v.amount * 100), ...(v.incident_on ? { incident_on: v.incident_on } : {}) }); claims.reload(); return 'Claim submitted'; }} />
+        fields={[{ key: 'amount_cents', label: 'Claim amount', type: 'money', currency: () => claim?.terms?.currency ?? claim?.currency, hint: 'In the currency of your policy.' }, { key: 'incident_on', label: 'Date of the incident', type: 'date', optional: true }, { key: 'description', label: 'What happened?', type: 'multiline', hint: 'Encrypted at rest. Add photos or reports under Evidence once it is filed.' }]}
+        onSubmit={async (v) => { await api.post(`/insurance/policies/${claim.id}/claims`, { description: v.description, amount_cents: v.amount_cents, ...(v.incident_on ? { incident_on: v.incident_on } : {}) }); claims.reload(); return 'Claim submitted'; }} />
       <FormSheet visible={!!renew} onClose={() => setRenew(null)} title={renew ? `Renew ${renew.plan_name}` : ''} submitLabel="Renew" initial={{ months: renew ? Math.min(36, monthsOf(renew)) : 12 }}
         fields={[{ key: 'months', label: 'Months', type: 'stepper', min: 1, max: 36, suffix: ' mo', hint: 'Priced on the plan\'s current premium and terms. Cover continues the day after your current policy ends.' }, { key: 'beneficiary', label: 'Beneficiary', optional: true, hint: 'Encrypted.' }]}
         onSubmit={async (v) => { const p = await api.post(`/insurance/policies/${renew.id}/renew`, v); changed(); if (p.status === 'pending_payment') { setPaying({ type: 'insurance_policy', id: p.id, amount: p.amount_cents ?? p.premium_cents, currency: renew.terms?.currency, label: renew.plan_name }); return 'Renewal created: pay to confirm it'; } return 'Renewed: you stay covered'; }} />

@@ -139,7 +139,7 @@ test('multi-currency basket: one invoice per venue in its own currency; owner su
   const usd = await venue(mgr, { currency: 'USD', rate: 2500 });
   const u = await signup();
   const r = must(await api('POST', '/reservations', { token: u.token, body: { items: [
-    { resource_id: inr.court.id, starts_at: at(3, 10), ends_at: at(3, 11) }, { resource_id: jpy.court.id, starts_at: at(3, 10), ends_at: at(3, 12) }, { resource_id: usd.court.id, starts_at: at(3, 10), ends_at: at(3, 11) }] } }), 201);
+    { resource_id: inr.court.id, starts_at: at(3, 10), ends_at: at(3, 11) }, { resource_id: jpy.court.id, starts_at: at(3, 10), ends_at: at(3, 12) }, { resource_id: usd.court.id, starts_at: at(3, 10), ends_at: at(3, 11) }], accept_mixed_currencies: true } }), 201);
   assert.equal(r.currency, 'MULTI');
   const by = Object.fromEntries(r.totals.map((t) => [t.currency, t.payable_cents]));
   assert.deepEqual(by, { INR: 120000, JPY: 10000, USD: 2500 }, 'whole yen: 5000 an hour for two hours');
