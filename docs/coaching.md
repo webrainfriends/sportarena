@@ -111,7 +111,7 @@ Extends the shared training plan; nothing is duplicated and completed sessions a
 * **Recording**: `PATCH /training-sessions/:id` with `actuals` + `expected_version` saves progress (stale copy -> 409); `status` finishes it. A finished session is final; an identical retry returns the same row.
 * **Access**: the coach sees the athlete's recorded results only while a coaching relationship is live and, for young people, guardian *coaching* consent stands; guardians can read (not write) with consent. A structured plan for a young person needs that consent to be proposed. Nothing is deleted when access ends.
 * **Export**: `GET /training-plans/:id/export` returns a PDF (base64 JSON, like other exports) built from the same view the screen shows, audit-logged. Also exposed over OpenAPI and MCP.
-* **Not covered**: acute:chronic workload ratios and wearable imports (no data source yet), and coach-authored pace entry as min:sec (steppers in seconds are used).
+* **Not covered**: acute:chronic workload ratios (see `docs/athlete-health.md`); wearable imports now exist as the athlete-consented hub in `docs/wearables.md`, and coach-authored pace entry as min:sec (steppers in seconds are used).
 ## Coach Performance Studio completion (issue #580)
 Gap review of #580 against main (`#87` Coach Home and shared plans, `#269` Performance Studio): the planner, journal, goals and programmes, team development goals, actions, match prep and review, reports and the AI copilot were already delivered. Three pieces of the issue's scope were missing and are added here, each extending something that exists. Migration `129_coaching_profile_groups.sql` is additive.
 

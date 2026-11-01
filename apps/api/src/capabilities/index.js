@@ -313,6 +313,7 @@ import './role-copilots.js';
 import './ticketing.js';
 import './ticketing-commerce.js';
 import './integrations.js';
+import './wearables.js';
 import './integration-access.js';
 import './venue-seating.js';
 import './payouts.js';
