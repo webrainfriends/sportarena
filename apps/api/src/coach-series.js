@@ -34,9 +34,10 @@ export async function resyncSeries(c, seriesId) {
   const s = (await c.query('SELECT * FROM coach_series WHERE id=$1 FOR UPDATE', [seriesId])).rows[0];
   if (!s) return;
   const t = (await c.query("SELECT coalesce(sum(list_cents) FILTER (WHERE status NOT IN ('cancelled','expired')), 0)::bigint AS list, coalesce(sum(total_cents) FILTER (WHERE status NOT IN ('cancelled','expired')), 0)::bigint AS total, count(*) FILTER (WHERE status IN ('requested','confirmed'))::int AS open, count(*) FILTER (WHERE status = 'completed')::int AS done FROM coach_hires WHERE series_id=$1", [seriesId])).rows[0];
-  const anchor = s.payment_id ? s.anchor_hire_id : (await c.query("SELECT id FROM coach_hires WHERE series_id=$1 AND status IN ('requested','confirmed') ORDER BY starts_at, id LIMIT 1", [seriesId])).rows[0]?.id ?? null;
-  const status = s.status === 'cancelled' ? 'cancelled' : t.open === 0 ? (t.done > 0 ? 'completed' : 'cancelled') : 'active';
-  await c.query('UPDATE coach_series SET list_total_cents=$2, total_cents=$3, discount_cents=$2::bigint - $3::bigint, anchor_hire_id=$4, status=$5, cancelled_at=CASE WHEN $5=\'cancelled\' THEN coalesce(cancelled_at, now()) ELSE cancelled_at END, updated_at=now() WHERE id=$1', [seriesId, t.list, t.total, anchor, status]);
+  const anchor = s.payment_id ? s.anchor_hire_id : (await c.query("SELECT id FROM coach_hires WHERE series_id=$1 AND status IN ('requested','confirmed') AND series_state IS DISTINCT FROM 'paused' ORDER BY starts_at, id LIMIT 1", [seriesId])).rows[0]?.id ?? null;
+  const held = (await c.query("SELECT 1 FROM coach_hires WHERE series_id=$1 AND series_state='paused' AND status IN ('requested','confirmed') LIMIT 1", [seriesId])).rowCount > 0;
+  const status = s.status === 'cancelled' ? 'cancelled' : t.open === 0 ? (t.done > 0 ? 'completed' : 'cancelled') : held ? 'paused' : 'active';
+  await c.query('UPDATE coach_series SET list_total_cents=$2, total_cents=$3, discount_cents=$2::bigint - $3::bigint, anchor_hire_id=$4, status=$5, paused_at=CASE WHEN $5=\'paused\' THEN coalesce(paused_at, now()) ELSE NULL END, cancelled_at=CASE WHEN $5=\'cancelled\' THEN coalesce(cancelled_at, now()) ELSE cancelled_at END, updated_at=now() WHERE id=$1', [seriesId, t.list, t.total, anchor, status]);
 }
 
 /**

@@ -87,7 +87,15 @@ try {
       const opened = await p.getByText('Manage series').first().click({ timeout: 5000 }).then(() => true).catch(() => false);
       await wait(p, 2000);
       check(opened && await vis(p, 'Price before discount'), `${name}: manage series sheet opens with the discount breakdown`);
-      await shot(p, `series-manage-${name}`); await ctx.close(); }
+      await shot(p, `series-manage-${name}`);
+      await reveal(p, 'Pause series'); await wait(p, 400);
+      await p.getByText('Pause series', { exact: true }).first().click().catch(() => {}); await wait(p, 1200);
+      await p.getByText('Pause series', { exact: true }).last().click().catch(() => {}); await wait(p, 2500);
+      check(await vis(p, 'On hold'), `${name}: pausing shows the series on hold`);
+      await p.evaluate(() => { const el = [...document.querySelectorAll('div,span')].find((e) => e.children.length === 0 && e.textContent.trim() === 'On hold'); el?.scrollIntoView({ block: 'center' }); }); await wait(p, 500);
+      await shot(p, `series-paused-${name}`);
+      await reveal(p, 'Resume series'); await wait(p, 400); await shot(p, `series-resume-${name}`);
+      await ctx.close(); }
   }
   // 3. the coach sets the discount on the rate card
   { const { ctx, page: p } = await session(coach, VIEWS.phone);
