@@ -78,7 +78,7 @@ test('the device lock is native-only, asks for one successful check before turni
 test('every fast action is at least 44pt and labelled for screen readers', () => {
   const home = read('screens/role-home.js');
   assert.match(home, /minHeight: 88/);
-  assert.match(home, /accessibilityRole="button" accessibilityLabel=\{a\.label\}/);
+  assert.match(home, /accessibilityRole="button" accessibilityLabel=\{(a\.label|actionLabel\(role, a\))\}/);
   assert.match(home, /accessibilityLiveRegion="polite"/);
 });
 

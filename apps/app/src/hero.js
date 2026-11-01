@@ -5,6 +5,8 @@ import { Avatar, T } from './ui';
 import { Icon } from './icons';
 import { c, toneFor } from './theme';
 import { roleLabel } from './roles';
+import { t, tEnum } from './i18n';
+import { hasKey } from './i18n/catalogue';
 import { useLayout } from './layout';
 import { api, mediaUrl } from './api';
 import { useSession } from './session';
@@ -41,7 +43,6 @@ export function useAvatarPhoto() {
 
 /** Width of the player-card column: phone-sized on every screen, like the reference. */
 export const COL = 520;
-const nice = (s) => String(s).replace(/_/g, ' ');
 /** Whole years from a YYYY-MM-DD date of birth (the signed-in user's own record). */
 export const ageOf = (dob) => {
   const d = dob ? new Date(dob) : null;
@@ -84,9 +85,9 @@ export function PlayerHero({ user, profile, onBell, onAvatar, pad = 16 }) {
       <View style={{ width: '100%', maxWidth: COL, alignSelf: 'center', minHeight: H, paddingHorizontal: pad }}>
         {profile ? <Text pointerEvents="none" style={{ position: 'absolute', left: -40, top: 60, fontSize: 250, opacity: 0.07 }}>{profile.sport_emoji}</Text> : null}
         <View style={{ position: 'absolute', right: 0, top: 8, bottom: 0, width: side }}>
-          <Pressable accessibilityRole="button" accessibilityLabel="Open my profile" onPress={onAvatar} style={{ width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' }}>
+          <Pressable accessibilityRole="button" accessibilityLabel={t('hero.open_profile')} onPress={onAvatar} style={{ width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' }}>
             {user.avatar_url
-              ? <Image source={{ uri: mediaUrl(user.avatar_url) }} resizeMode={user.avatar_cutout ? 'contain' : 'cover'} accessibilityLabel={`${user.display_name} photo`} style={{ width: '100%', height: '100%', ...(Platform.OS === 'web' ? { objectPosition: user.avatar_cutout ? 'right bottom' : 'top' } : null) }} />
+              ? <Image source={{ uri: mediaUrl(user.avatar_url) }} resizeMode={user.avatar_cutout ? 'contain' : 'cover'} accessibilityLabel={t('hero.photo_of', { name: user.display_name })} style={{ width: '100%', height: '100%', ...(Platform.OS === 'web' ? { objectPosition: user.avatar_cutout ? 'right bottom' : 'top' } : null) }} />
               : <Text style={{ fontSize: side * 0.6, marginTop: 20 }}>{user.avatar_emoji ?? '😎'}</Text>}
           </Pressable>
           {user.avatar_url && !user.avatar_cutout ? (
@@ -97,12 +98,12 @@ export function PlayerHero({ user, profile, onBell, onAvatar, pad = 16 }) {
               <LinearGradient pointerEvents="none" colors={[c.paper, c.paper + '00']} style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 36 }} />
             </>
           ) : null}
-          <Pressable accessibilityRole="button" accessibilityLabel="Change profile photo" disabled={photo.busy} onPress={photo.change} hitSlop={8} style={({ pressed }) => ({ position: 'absolute', right: pad, bottom: 64, width: 36, height: 36, borderRadius: 18, backgroundColor: c.paper, borderWidth: 1, borderColor: c.line, alignItems: 'center', justifyContent: 'center', opacity: photo.busy ? 0.5 : pressed ? 0.8 : 1, ...lift })}>
+          <Pressable accessibilityRole="button" accessibilityLabel={t('hero.change_photo')} disabled={photo.busy} onPress={photo.change} hitSlop={8} style={({ pressed }) => ({ position: 'absolute', right: pad, bottom: 64, width: 36, height: 36, borderRadius: 18, backgroundColor: c.paper, borderWidth: 1, borderColor: c.line, alignItems: 'center', justifyContent: 'center', opacity: photo.busy ? 0.5 : pressed ? 0.8 : 1, ...lift })}>
             <T size={16}>📷</T>
           </Pressable>
         </View>
         {onBell ? <View style={{ position: 'absolute', right: pad, top: 14 }}>
-          <RoundBtn icon="Bell" label="Inbox" onPress={onBell} />
+          <RoundBtn icon="Bell" label={t('hero.inbox')} onPress={onBell} />
         </View> : null}
         <View style={{ width: '58%', paddingTop: 64, paddingBottom: 62 }}>
           <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -116,11 +117,11 @@ export function PlayerHero({ user, profile, onBell, onAvatar, pad = 16 }) {
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 14 }}>
             {profile && profile.jersey_no !== null && profile.jersey_no !== undefined ? <View style={{ minWidth: 30, height: 30, borderRadius: 9, backgroundColor: tone[0], alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 }}><T size={14} weight="800" color="#fff">{profile.jersey_no}</T></View> : null}
-            <T size={11} weight="700" color={c.mute} style={{ letterSpacing: 1.6 }}>{(profile?.position ?? (user.roles?.[0] ? roleLabel(user.roles[0]) : 'Athlete')).toUpperCase()}</T>
+            <T size={11} weight="700" color={c.mute} style={{ letterSpacing: 1.6 }}>{(profile?.position ?? (user.roles?.[0] ? roleLabel(user.roles[0]) : t('role.athlete'))).toUpperCase()}</T>
           </View>
           {about.length || user.bio ? (
-            <View style={{ marginTop: 14 }} accessibilityLabel="About">
-              <T size={11} weight="800" color={c.mute} style={{ letterSpacing: 1.6 }}>ABOUT</T>
+            <View style={{ marginTop: 14 }} accessibilityLabel={t('hero.about')}>
+              <T size={11} weight="800" color={c.mute} style={{ letterSpacing: 1.6 }}>{t('hero.about').toUpperCase()}</T>
               {user.bio ? <T size={13} color={c.ink} numberOfLines={4} style={{ lineHeight: 19, marginTop: 4 }}>{user.bio}</T> : null}
               {about.length ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>{about.map(([k, v]) => <Chip key={k}><T size={12} color={c.mute} weight="600">{k}</T><T size={12} weight="800">{v}</T></Chip>)}</View> : null}
             </View>
@@ -154,7 +155,7 @@ export function NowStrip({ title, sub, date, onPress, pad = 16 }) {
     <View style={{ width: '100%', maxWidth: COL, alignSelf: 'center', paddingHorizontal: pad, marginTop: 20 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
         <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: c.pink, alignItems: 'center', justifyContent: 'center' }}><View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#fff' }} /></View>
-        <T size={13} weight="700" color={c.pink}>Now discussing</T>
+        <T size={13} weight="700" color={c.pink}>{t('hero.now_discussing')}</T>
       </View>
       <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => ({ flexDirection: 'row', gap: 14, backgroundColor: c.paper, borderRadius: 20, borderWidth: 1, borderColor: c.line, padding: 14, opacity: pressed ? 0.9 : 1, ...lift })}>
         {date ? <View style={{ alignItems: 'center', minWidth: 34 }}><T size={20} weight="800" color={c.mute} style={{ lineHeight: 22 }}>{date[0]}</T><T size={12} weight="600" color={c.mute}>{date[1]}</T></View> : null}
@@ -167,27 +168,30 @@ export function NowStrip({ title, sub, date, onPress, pad = 16 }) {
   );
 }
 
+/** A sport-profile role (coach, athlete, ...): the translated role name, else the stored value tidied. */
+const roleLabelOf = (r) => (!r ? null : hasKey(`role.${r}`) ? t(`role.${r}`) : tEnum(r));
+
 /** The facts shown under "About" in the banner: only what is known, no placeholders. */
 export function aboutFacts(user, profile) {
   return [
-    ['Role', profile ? nice(profile.role) : null], ['Level', profile ? nice(profile.level) : null],
-    ['Experience', profile?.experience_years ? `${profile.experience_years} yrs` : null],
-    ['Name', user.full_name && user.full_name !== user.display_name ? user.full_name : null],
+    [t('hero.f_role'), profile ? roleLabelOf(profile.role) : null], [t('hero.f_level'), profile ? tEnum(profile.level) : null],
+    [t('hero.f_experience'), profile?.experience_years ? t('hero.yrs', { n: profile.experience_years }) : null],
+    [t('hero.f_name'), user.full_name && user.full_name !== user.display_name ? user.full_name : null],
   ].filter(([, v]) => v);
 }
 
 /** "ABOUT": the facts on the player card. Rows with no value are left out (no placeholders). */
 export function AboutCard({ user, profile }) {
   const rows = [
-    ['Full name', user.full_name], ['Sport', profile ? `${profile.sport_emoji} ${profile.sport}` : null], ['Role', profile ? nice(profile.role) : null],
-    ['Level', profile ? nice(profile.level) : null], ['Position', profile?.position], ['Club / team', profile?.club],
-    ['Jersey', profile?.jersey_no !== null && profile?.jersey_no !== undefined ? `#${profile.jersey_no}` : null],
-    ['Experience', profile?.experience_years ? `${profile.experience_years} yrs` : null],
+    [t('hero.f_full_name'), user.full_name], [t('cs.sport'), profile ? `${profile.sport_emoji} ${profile.sport}` : null], [t('hero.f_role'), profile ? roleLabelOf(profile.role) : null],
+    [t('hero.f_level'), profile ? tEnum(profile.level) : null], [t('hero.f_position'), profile?.position], [t('hero.f_club'), profile?.club],
+    [t('hero.f_jersey'), profile?.jersey_no !== null && profile?.jersey_no !== undefined ? `#${profile.jersey_no}` : null],
+    [t('hero.f_experience'), profile?.experience_years ? t('hero.yrs', { n: profile.experience_years }) : null],
   ].filter(([, v]) => v);
   if (!rows.length && !user.bio) return null;
   return (
     <View>
-      <T size={19} weight="700" style={{ letterSpacing: -0.3, marginBottom: 12 }}>About</T>
+      <T size={19} weight="700" style={{ letterSpacing: -0.3, marginBottom: 12 }}>{t('hero.about')}</T>
       <View style={{ backgroundColor: c.paper, borderRadius: 20, borderWidth: 1, borderColor: c.line, padding: 16, gap: 12, ...lift }}>
         {user.bio ? <T size={14} color={c.mute} style={{ lineHeight: 20 }}>{user.bio}</T> : null}
         {rows.map(([k, v]) => (
