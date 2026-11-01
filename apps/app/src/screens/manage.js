@@ -20,9 +20,11 @@ import { Calendar } from '../pickers';
 import { SubjectPanel } from './insurance';
 import { locale } from '../locale';
 import { BallotsManager } from './ballots';
+import { VenueCoachesPanel } from './venue-coaches';
+import { t } from '../i18n';
 
 const AMENITIES = ['Parking', 'Changing rooms', 'Showers', 'Lockers', 'Café', 'Floodlights', 'Equipment hire', 'Coaching', 'First aid', 'Seating', 'WiFi', 'Wheelchair access'];
-const TABS = [['schedule', 'Today'], ['frontdesk', 'Front desk'], ['timetable', 'Timetable & prices'], ['blocks', 'Block slots'], ['ballots', 'Slot ballots'], ['payments', 'Invoices'], ['plans', 'Passes, packages & memberships'], ['discounts', 'Offers'], ['pricing', 'Courts & special rates'], ['media', 'Photos & videos'], ['lockers', 'Lockers'], ['access', 'Doors & attendance'], ['maintenance', 'Maintenance'], ['vendors', 'Vendors & contracts'], ['reviews', 'Reviews'], ['reports', 'Reports'], ['docs', 'Documents & insurance'], ['setup', 'Settings']];
+const TABS = [['schedule', 'Today'], ['frontdesk', 'Front desk'], ['timetable', 'Timetable & prices'], ['blocks', 'Block slots'], ['ballots', 'Slot ballots'], ['coaches', t('vc.title')], ['payments', 'Invoices'], ['plans', 'Passes, packages & memberships'], ['discounts', 'Offers'], ['pricing', 'Courts & special rates'], ['media', 'Photos & videos'], ['lockers', 'Lockers'], ['access', 'Doors & attendance'], ['maintenance', 'Maintenance'], ['vendors', 'Vendors & contracts'], ['reviews', 'Reviews'], ['reports', 'Reports'], ['docs', 'Documents & insurance'], ['setup', 'Settings']];
 const num = (x) => (x === undefined || x === '' ? undefined : Number(x));
 
 export function Manage({ id, wizard: startWizard, tab: startTab, desk }) {
@@ -49,7 +51,7 @@ export function Manage({ id, wizard: startWizard, tab: startTab, desk }) {
       {wizard ? <SetupWizard v={x} onExit={() => { setWizard(false); v.reload(); }} goTab={setTab} /> : tab === 'frontdesk' ? null : <><SetupChecklist venueId={x.id} go={setTab} onWizard={() => setWizard(true)} /><OpsAttention venueId={x.id} go={setTab} /></>}
       {wizard ? null : <>
       <View style={{ marginTop: 10 }}><Seg options={TABS.map(([value, label]) => ({ value, label }))} value={tab} onChange={setTab} color={c.violet} /></View>
-      {tab === 'schedule' ? <DayBoard {...P} /> : tab === 'frontdesk' ? <FrontDesk {...P} /> : tab === 'timetable' ? <Timetable {...P} /> : tab === 'blocks' ? <Blocks {...P} /> : tab === 'ballots' ? <BallotsManager {...P} /> : tab === 'pricing' ? <Pricing {...P} /> : tab === 'discounts' ? <Discounts {...P} /> : tab === 'payments' ? <Payments {...P} /> : tab === 'plans' ? <PlansManager {...P} /> : tab === 'lockers' ? <Lockers {...P} /> : tab === 'access' ? <AccessTab {...P} /> : tab === 'maintenance' ? <Maintenance {...P} /> : tab === 'vendors' ? <VendorsContracts {...P} /> : tab === 'media' ? <Section title="Photos & videos" color={c.cyan}><MediaManager venue={x} /></Section> : tab === 'reviews' ? <Section title="Reviews" color={c.pink}><VenueReviews venueId={x.id} /></Section> : tab === 'reports' ? <Reports {...P} /> : tab === 'docs' ? <SubjectPanel type="venue" id={x.id} name={x.name} /> : <Setup {...P} />}
+      {tab === 'schedule' ? <DayBoard {...P} /> : tab === 'frontdesk' ? <FrontDesk {...P} /> : tab === 'timetable' ? <Timetable {...P} /> : tab === 'blocks' ? <Blocks {...P} /> : tab === 'coaches' ? <VenueCoachesPanel venue={x} /> : tab === 'ballots' ? <BallotsManager {...P} /> : tab === 'pricing' ? <Pricing {...P} /> : tab === 'discounts' ? <Discounts {...P} /> : tab === 'payments' ? <Payments {...P} /> : tab === 'plans' ? <PlansManager {...P} /> : tab === 'lockers' ? <Lockers {...P} /> : tab === 'access' ? <AccessTab {...P} /> : tab === 'maintenance' ? <Maintenance {...P} /> : tab === 'vendors' ? <VendorsContracts {...P} /> : tab === 'media' ? <Section title="Photos & videos" color={c.cyan}><MediaManager venue={x} /></Section> : tab === 'reviews' ? <Section title="Reviews" color={c.pink}><VenueReviews venueId={x.id} /></Section> : tab === 'reports' ? <Reports {...P} /> : tab === 'docs' ? <SubjectPanel type="venue" id={x.id} name={x.name} /> : <Setup {...P} />}
       </>}
     </Screen>
   );
