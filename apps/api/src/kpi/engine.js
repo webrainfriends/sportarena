@@ -8,7 +8,9 @@ import { isAdmin } from '../helpers.js';
 import { orgRole, hasOrgGrant } from '../org-access.js';
 import { canManageTeam, canCoachTeam } from '../capabilities/teams.js';
 import { sponsorAccess, SPONSOR_ACTIONS } from '../sponsor-access.js';
-import { AUDIENCES, METRICS, byKey, describeMetric, hashOf } from './catalogue.js';
+import { blindIndex } from '../crypto.js';
+import { authority, can, lineage, subtree } from '../federation.js';
+import { AUDIENCES, METRICS, byKey, describeMetric, hashOf, AGE_BANDS, GENDERS, STANDING_LABELS } from './catalogue.js';
 
 export const MAX_SPAN_DAYS = 731;
 export const STALE_AFTER_DAYS = 45;
@@ -21,6 +23,13 @@ export const DIMENSIONS = {
   channel: { expr: 'f.channel' },
   // where it happened: the venue's city, else the event's city. Free text in the source, so it is trimmed and capitalised to group "mumbai " with "Mumbai".
   city: { expr: "initcap(btrim(coalesce((SELECT cv.city FROM venues cv WHERE cv.id = f.venue_id), (SELECT ce.city FROM events ce WHERE ce.id = f.event_id))))" },
+  // census dimensions (#703): only the federation census metrics list them
+  body: { expr: 'f.body_id', lookup: 'SELECT b.id::text AS id, o.name AS name FROM governing_bodies b JOIN organisations o ON o.id=b.organisation_id WHERE b.id = ANY($1::uuid[])' },
+  club: { expr: 'f.org_id', table: 'organisations', name: 'name' },
+  region: { expr: 'f.region' },
+  age_band: { expr: 'f.age_band' },
+  gender: { expr: 'f.gender' },
+  status: { expr: 'f.status' },
 };
 const CHANNELS = { venue_booking: 'Venue bookings', academy: 'Academy fees', team: 'Team dues', marketplace: 'Marketplace', services: 'Services', pos: 'Point of sale', other: 'Other',
   // how a person arrived (activation, first activity)
@@ -29,6 +38,9 @@ const CHANNELS = { venue_booking: 'Venue bookings', academy: 'Academy fees', tea
   coach_hire: 'Coaching sessions', marketplace_engagement: 'Marketplace engagements', shop_order: 'Shop orders', shop_checkout: 'Shop checkout', insurance_policy: 'Insurance', venue_invoice: 'Venue invoices', wallet_topup: 'Wallet top-ups',
   gift_card: 'Gift cards', venue_plan: 'Venue plans', appointment: 'Appointments', physio_package: 'Physio packages', sponsorship_payment: 'Sponsorship', academy_charge: 'Academy fees', service_invoice: 'Service invoices',
   media_rights_fee: 'Media rights', pos_sale: 'Point of sale', team_charge: 'Team dues', team_contribution: 'Team contributions', ad_funding: 'Advertising' };
+// Labels for dimensions whose values are codes. The gender value is a keyed blind index, so a census can group by it without decrypting anything.
+const genderLabels = () => ({ ...Object.fromEntries(GENDERS.map((g) => [blindIndex(`gender|${g.key}`), g.label])), not_stated: 'Not stated' });
+const labelsFor = (dim) => (dim === 'channel' ? CHANNELS : dim === 'age_band' ? AGE_BANDS : dim === 'status' ? STANDING_LABELS : dim === 'gender' ? genderLabels() : null);
 const today = () => new Date().toISOString().slice(0, 10);
 const addDays = (d, n) => new Date(new Date(`${d}T00:00:00Z`).getTime() + n * 864e5).toISOString().slice(0, 10);
 
@@ -82,7 +94,7 @@ const VENUE_FINANCE = ['manager'];
  * @returns {Promise<{type:string,id:string|null,label:string,filters:object}>}
  */
 export async function resolveScope(user, scope, metric) {
-  const none = { events: [], venues: [], teams: [], org: null, all: false, sponsors: [], providers: [] };
+  const none = { events: [], venues: [], teams: [], org: null, all: false, sponsors: [], providers: [], bodies: [] };
   const type = scope?.type;
   if (!metric.scopes.includes(type)) throw unprocessable(`"${metric.label}" cannot be reported for a ${type ?? 'missing'} scope. It can be reported for: ${metric.scopes.join(', ')}.`, { scopes: metric.scopes });
   const roles = AUDIENCES[metric.audience];
@@ -138,7 +150,21 @@ export async function resolveScope(user, scope, metric) {
     }
     return { type, id: sp.id, label: sp.name, filters: { ...none, sponsors: [sp.id] } };
   }
+  if (type === 'federation') {
+    const a = await authority(user, scope.id, { optional: true });
+    if (!a) throw notFound('Governing body');
+    // census figures are person-level counts: they need a body-wide reports role (not limited to a sport or a jurisdiction), read live, held on this body
+    // or on a body above it (whoever may read a federation may read any part of it)
+    if (!(await censusRole(user, a.body.id))) throw forbidden(`${metric.label} needs a reports role on ${a.body.name}, or on a body above it, that covers every sport and jurisdiction. Ask the body's administrator for it.`);
+    return { type, id: a.body.id, label: a.body.name, filters: { ...none, bodies: await subtree(a.body.id) } };
+  }
   throw unprocessable('Unknown scope type');
+}
+const NO_SPORT = '00000000-0000-0000-0000-000000000000';   // a sport no role is limited to: only a role that covers every sport passes can() with it
+/** Does the caller hold a body-wide reports role on this body or any body above it? Read live, one authority check per body on the path up. */
+async function censusRole(user, bodyId) {
+  for (const id of await lineage(bodyId)) { const a = await authority(user, id, { optional: true }); if (a && !a.viaAncestor && can(a, 'reports', NO_SPORT)) return true; }
+  return false;
 }
 
 /** Everything the caller could pick in the scope picker, for any metric. A scope is listed when at least one governed metric is readable there. */
@@ -165,15 +191,25 @@ export async function listScopes(user) {
     const acc = await sponsorAccess(user, await one('SELECT * FROM sponsors WHERE id=$1', [b.id]));
     if (acc && !acc.departmentId && SPONSOR_ACTIONS.report.includes(acc.role)) out.push({ type: 'sponsor', id: b.id, label: b.name, sub: `Brand · ${acc.repRole}` });
   }
+  // governing bodies where the caller holds a census-capable reports role (checked live with the same rule as resolveScope)
+  const bodies = await many(
+    `SELECT b.id, o.name FROM governing_bodies b JOIN organisations o ON o.id=b.organisation_id
+      WHERE EXISTS (SELECT 1 FROM organisation_members m WHERE m.organisation_id=b.organisation_id AND m.user_id=$1 AND m.status='active' AND m.role IN ('owner','admin'))
+         OR EXISTS (SELECT 1 FROM governing_body_roles r WHERE r.body_id=b.id AND r.user_id=$1 AND r.status='active')
+         OR EXISTS (SELECT 1 FROM fed_delegations d WHERE d.body_id=b.id AND d.user_id=$1 AND d.status='active')
+      ORDER BY o.name LIMIT 100`, [user.id]);
+  for (const b of bodies) { if (await censusRole(user, b.id)) out.push({ type: 'federation', id: b.id, label: b.name, sub: 'Governing body' }); }
   return out;
 }
 
 // ---------------------------------------------------------------- SQL
-// $10 is the provider scope; only a metric whose facts carry provider_id (the provider's own earnings) may match on it, so other metrics' SQL is unchanged.
-const PRED_BASE = `($5::boolean OR f.event_id = ANY($1::uuid[]) OR f.venue_id = ANY($2::uuid[]) OR f.team_id = ANY($3::uuid[]) OR f.org_id = $4::uuid OR f.sponsor_id = ANY($9::uuid[])`;
-const predFor = (m) => `${PRED_BASE}${m.facts().includes('AS provider_id') ? ' OR f.provider_id = ANY($10::uuid[])' : ''})
-  AND ($8::uuid[] IS NULL OR f.sport_id = ANY($8::uuid[])) AND $6::date IS NOT NULL AND $7::date IS NOT NULL AND $10::uuid[] IS NOT NULL`;
-const params = (scope, range, sportIds) => [scope.filters.events, scope.filters.venues, scope.filters.teams, scope.filters.org, scope.filters.all, range.from, range.to, sportIds?.length ? sportIds : null, scope.filters.sponsors, scope.filters.providers];
+// $10 is the governing-body scope (census metrics); $11 the provider scope, used only by a metric whose facts carry provider_id (the provider's own earnings), so other metrics' SQL is unchanged.
+const PRED_BASE = `($5::boolean OR f.event_id = ANY($1::uuid[]) OR f.venue_id = ANY($2::uuid[]) OR f.team_id = ANY($3::uuid[]) OR f.org_id = $4::uuid OR f.sponsor_id = ANY($9::uuid[]) OR f.body_id = ANY($10::uuid[])`;
+const predFor = (m) => `${PRED_BASE}${m.facts().includes('AS provider_id') ? ' OR f.provider_id = ANY($11::uuid[])' : ''})
+  AND ($8::uuid[] IS NULL OR f.sport_id = ANY($8::uuid[])) AND $6::date IS NOT NULL AND $7::date IS NOT NULL AND $11::uuid[] IS NOT NULL`;
+const params = (scope, range, sportIds) => [scope.filters.events, scope.filters.venues, scope.filters.teams, scope.filters.org, scope.filters.all, range.from, range.to, sportIds?.length ? sportIds : null, scope.filters.sponsors, scope.filters.bodies, scope.filters.providers];
+/** Every metric's facts get a body_id column; only the census metrics fill it, so a body scope never reaches another metric's rows (and no existing definition changes). */
+const factsOf = (m) => (m.census ? m.facts() : `SELECT x.*, NULL::uuid AS body_id FROM (${m.facts()}) x`);
 
 function aggSql(m) {
   if (m.aggregation === 'distinct_count') return 'count(DISTINCT subject)::int AS value';
@@ -184,8 +220,8 @@ function aggSql(m) {
 
 async function nameOf(dim, ids) {
   const d = DIMENSIONS[dim];
-  if (!d?.table) return new Map();
-  const rows = await many(`SELECT id::text AS id, ${d.name} AS name FROM ${d.table} WHERE id = ANY($1::uuid[])`, [ids.filter(Boolean)]);
+  if (!d?.table && !d?.lookup) return new Map();
+  const rows = await many(d.lookup ?? `SELECT id::text AS id, ${d.name} AS name FROM ${d.table} WHERE id = ANY($1::uuid[])`, [ids.filter(Boolean)]);
   return new Map(rows.map((r) => [r.id, r.name]));
 }
 const round1 = (n) => Math.round(n * 10) / 10;
@@ -211,7 +247,7 @@ export async function computeKpi(user, key, q) {
   const money = m.aggregation === 'sum_money';
   const cur = money ? ', f.currency AS currency' : '';
   const agg = aggSql(m);
-  const sql = `WITH f AS MATERIALIZED (${m.facts()}), s AS MATERIALIZED (SELECT f.* FROM f WHERE ${predFor(m)})
+  const sql = `WITH f AS MATERIALIZED (${factsOf(m)}), s AS MATERIALIZED (SELECT f.* FROM f WHERE ${predFor(m)})
     SELECT 'total' AS k, to_jsonb(x) AS j FROM (SELECT ${money ? 'currency, ' : ''}${agg}, count(*)::int AS records FROM s ${money ? 'GROUP BY currency' : ''}) x
     ${g ? `UNION ALL SELECT 'group', to_jsonb(y) FROM (SELECT ${g.replaceAll('f.', 's.')} AS g${money ? ', currency' : ''}, ${agg}, count(*)::int AS records FROM s GROUP BY 1${money ? ', 2' : ''}) y` : ''}
     UNION ALL SELECT 'src', to_jsonb(z) FROM (SELECT rec_kind, count(*)::int AS n, max(at) AS latest FROM s GROUP BY rec_kind) z
@@ -230,15 +266,32 @@ export async function computeKpi(user, key, q) {
     }
     return { value: rs[0]?.value ?? 0, records: rs[0]?.records ?? 0 };
   };
-  const total = shape(of('total'));
+  let total = shape(of('total'));
 
   let groups;
   if (g) {
     const byG = new Map();
     for (const r of of('group')) (byG.get(r.g ?? null) ?? byG.set(r.g ?? null, []).get(r.g ?? null)).push(r);
-    const names = await nameOf(q.group_by, [...byG.keys()]);
-    groups = [...byG.entries()].map(([k, rs]) => ({ key: k, label: k == null ? 'Not attributed' : q.group_by === 'channel' ? CHANNELS[k] ?? k : q.group_by === 'month' || q.group_by === 'city' ? k : names.get(String(k)) ?? 'Unavailable', ...shape(rs) }))
+    const names = await nameOf(q.group_by, [...byG.keys()]), labels = labelsFor(q.group_by);
+    groups = [...byG.entries()].map(([k, rs]) => ({ key: k, label: k == null ? 'Not attributed' : labels ? labels[k] ?? 'Not stated' : q.group_by === 'month' || q.group_by === 'region' || q.group_by === 'city' ? k : names.get(String(k)) ?? 'Unavailable', ...shape(rs) }))
       .sort((a, b) => (q.group_by === 'month' ? String(a.key).localeCompare(String(b.key)) : (b.value ?? b.amounts?.[0]?.cents ?? 0) - (a.value ?? a.amounts?.[0]?.cents ?? 0)));
+  }
+
+  // Small-cell suppression for person counts (#703): a count of 1 to minCell-1 is hidden, and when exactly one group is hidden the smallest visible one goes
+  // with it, so a hidden figure cannot be recovered by subtraction. Federation staff see aggregates only, so this applies in every scope.
+  let anySuppressed = false;
+  if (m.minCell && m.aggregation === 'distinct_count') {
+    const hide = (x) => ({ ...x, value: null, records: null, suppressed: true });
+    const small = (x) => x.value > 0 && x.value < m.minCell;
+    if (small(total)) total = hide(total);
+    if (groups) {
+      groups = groups.map((x) => (small(x) ? hide(x) : x));
+      if (groups.filter((x) => x.suppressed).length === 1 && !total.suppressed) {
+        const next = groups.filter((x) => !x.suppressed && x.value > 0).sort((a, b) => a.value - b.value)[0];
+        if (next) groups[groups.indexOf(next)] = hide(next);
+      }
+    }
+    anySuppressed = !!total.suppressed || !!groups?.some((x) => x.suppressed);
   }
 
   const now = Date.now();
@@ -248,7 +301,7 @@ export async function computeKpi(user, key, q) {
     const age = latest ? Math.floor((now - new Date(latest).getTime()) / 864e5) : null;
     const open = range.to >= addDays(today(), -1);
     const status = !r ? 'no_records' : open && age > STALE_AFTER_DAYS ? 'stale' : 'current';
-    return { key: s.key, label: s.label, records: r?.n ?? 0, latest_at: latest, age_days: age, status };
+    return { key: s.key, label: s.label, records: m.minCell && total.suppressed ? null : r?.n ?? 0, latest_at: m.minCell && total.suppressed ? null : latest, age_days: m.minCell && total.suppressed ? null : age, status };
   });
   const warnings = [];
   if (!sources.some((s) => s.records)) warnings.push({ code: 'no_records', severity: 'info', text: m.pointInTime ? 'There are no records for this scope yet.' : 'No source records fall in this period for this scope, so the figure is a true zero or the data has not been entered.' });
@@ -256,7 +309,7 @@ export async function computeKpi(user, key, q) {
   for (const f of of('flag')) warnings.push({ code: f.flag, severity: 'warn', text: `${f.n} ${f.n === 1 ? 'record is' : 'records are'} ${m.flags[f.flag] ?? f.flag}.`, records: f.n });
   if (money && of('cur').length > 1) warnings.push({ code: 'multiple_currencies', severity: 'info', text: `${of('cur').length} currencies are present. They are shown apart and never added together.` });
   if (g && m.aggregation === 'distinct_count' && q.group_by !== 'month') warnings.push({ code: 'groups_overlap', severity: 'info', text: 'A person or game in more than one group is counted in each, so the groups can add up to more than the total.' });
-  if (total.suppressed || groups?.some((x) => x.suppressed)) warnings.push({ code: 'suppressed', severity: 'info', text: `Groups with fewer than ${m.minGroup} athletes are hidden to protect individuals. Open a team you manage to see its squad.` });
+  if (total.suppressed || groups?.some((x) => x.suppressed)) warnings.push({ code: 'suppressed', severity: 'info', text: m.minCell ? `Counts of fewer than ${m.minCell} people are hidden, and the next smallest figure with them, so no one can be picked out.` : `Groups with fewer than ${m.minGroup} athletes are hidden to protect individuals. Open a team you manage to see its squad.` });
   if (m.pointInTime) warnings.push({ code: 'point_in_time', severity: 'info', text: 'This is a position as of now; the period filter does not apply.' });
 
   const evidence = {
@@ -276,7 +329,7 @@ export const kpiValue = computeKpi;
 export async function kpiRecords(user, key, q, { limit = 25, offset = 0 } = {}) {
   const m = byKey(key);
   if (!m) throw notFound('Metric');
-  if (m.drillScopes && !m.drillScopes.includes(q.scope?.type)) throw forbidden(`Individual records for "${m.label}" are only available inside a team you manage; elsewhere it is an aggregate.`);
+  if (m.drillScopes && !m.drillScopes.includes(q.scope?.type)) throw forbidden(m.drillNote ?? `Individual records for "${m.label}" are only available inside a team you manage; elsewhere it is an aggregate.`);
   if (q.group_by && !m.dimensions.includes(q.group_by)) throw unprocessable(`"${m.label}" cannot be split by ${q.group_by}`);
   const scope = await resolveScope(user, q.scope, m);
   const range = m.pointInTime ? { from: today(), to: today() } : resolveRange(q.range, q.as_of);
@@ -284,7 +337,7 @@ export async function kpiRecords(user, key, q, { limit = 25, offset = 0 } = {}) 
   const g = q.group_by ? DIMENSIONS[q.group_by].expr.replaceAll('f.', 's.') : null;
   const where = [g && q.group_key !== undefined ? (q.group_key === null || q.group_key === '' ? `${g} IS NULL` : `${g}::text = $13`) : null, q.currency ? '(s.currency = $14)' : null].filter(Boolean);
   const args = [...p, limit, offset, ...(g && q.group_key ? [q.group_key] : [null]), q.currency ?? null];
-  const sql = `WITH f AS MATERIALIZED (${m.facts()}), s AS MATERIALIZED (SELECT f.* FROM f WHERE ${predFor(m)}), t AS (SELECT s.* FROM s ${where.length ? `WHERE ${where.join(' AND ')}` : ''})
+  const sql = `WITH f AS MATERIALIZED (${factsOf(m)}), s AS MATERIALIZED (SELECT f.* FROM f WHERE ${predFor(m)}), t AS (SELECT s.* FROM s ${where.length ? `WHERE ${where.join(' AND ')}` : ''})
     SELECT 'row' AS k, to_jsonb(r) AS j FROM (SELECT rec_id, rec_kind, label, at, currency, amount, num, den, flag, channel, link_kind, link_id FROM t ORDER BY at DESC NULLS LAST, rec_id LIMIT $11 OFFSET $12) r
     UNION ALL SELECT 'sum', to_jsonb(q) FROM (SELECT count(*)::int AS records, count(DISTINCT subject)::int AS distinct_subjects, sum(num)::float8 AS num, sum(den)::float8 AS den FROM t) q
     UNION ALL SELECT 'money', to_jsonb(c) FROM (SELECT currency, sum(amount)::bigint AS cents FROM t WHERE currency IS NOT NULL GROUP BY currency ORDER BY currency) c

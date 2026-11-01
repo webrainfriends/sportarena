@@ -11,12 +11,11 @@ import { FormSheet } from '../FormSheet';
 import { c } from '../theme';
 import { moneyIn } from '../vtime';
 import { locale } from '../locale';
+import { PayoutBatches } from './payout-batches';
 
 const cash = (cents, cur) => moneyIn(Number(cents ?? 0), cur);
 const label = (s) => String(s ?? '').replace(/_/g, ' ');
-const BLOCKER = { no_account: 'No bank account yet', account_pending: 'Bank account not verified', payout_in_progress: 'A payout is already on its way', payouts_off: 'Payouts are switched off (SETTLEMENT_PAYOUTS)', currency_unsupported: 'Currency not supported for payouts' };
 const KIND = { paid_without_ledger: 'Paid but not in the ledger', amount_mismatch: 'Provider amount did not match', refund_unrecorded: 'Refund made at the provider, not recorded', provider_dispute: 'Customer disputed the payment', payout_failed: 'Payout failed', ledger_drift: 'Ledger does not match the payment', share_mismatch: 'Seller shares do not add up' };
-const FAILS = ['invalid_account', 'account_closed', 'bank_rejected', 'name_mismatch', 'other'];
 
 const Block = ({ state, children, empty }) => (state.loading && !state.data ? <Loading /> : state.error ? <ErrorBox error={state.error} onRetry={state.reload} /> : state.data?.length === 0 && empty ? <T size={13} color={c.mute}>{empty}</T> : children);
 
@@ -64,20 +63,16 @@ function AccountSheet({ account, onClose, onChanged }) {
 }
 
 export function ProviderPayouts() {
-  const due = useLoad(() => api.get('/admin/provider-payouts/due', { limit: 50 }), []);
   const accounts = useLoad(() => api.get('/admin/payout-accounts', { status: 'pending', limit: 50 }), []);
-  const flight = useLoad(() => api.get('/admin/provider-payouts', { status: 'processing', limit: 50 }), []);
   const ex = useLoad(() => api.get('/admin/settlement/exceptions', { status: 'open', limit: 50 }), []);
   const [acc, setAcc] = useState(null);
-  const [result, setResult] = useState(null);
-  const [resolve, setResolve] = useState(null);
-  const reloadAll = () => { due.reload(); accounts.reload(); flight.reload(); ex.reload(); };
+    const [resolve, setResolve] = useState(null);
+  const reloadAll = () => { accounts.reload(); ex.reload(); };
   const act = useAct(reloadAll);
-  const start = (r) => act(() => api.post('/admin/provider-payouts', { seller_id: r.seller_id, currency: r.currency, idempotency_key: `ui-${r.seller_id}-${r.currency}-${Date.now()}` }), 'Payout started — send the transfer, then record the result');
 
   return (
     <>
-      <T size={13} color={c.mute}>Pay coaches, physios, doctors and shop sellers what customers paid for. Customer payments land with the platform; a seller is paid only when a payout is recorded as sent.</T>
+      <T size={13} color={c.mute}>Pay officials, venues, coaches, physios, doctors and shop sellers from one place. Nobody is paid until a payout is recorded as sent.</T>
       <Reconciliation onChanged={reloadAll} />
 
       <Section title="Bank accounts to verify" color={c.violet}>
@@ -86,20 +81,7 @@ export function ProviderPayouts() {
         </Block>
       </Section>
 
-      <Section title="Ready to pay" color={c.lime}>
-        <Block state={due} empty="Nobody has anything available right now.">
-          {(due.data ?? []).map((r) => (
-            <Row key={`${r.seller_id}${r.currency}`} title={`${r.seller} · ${cash(r.available_cents, r.currency)}`} sub={r.blocker ? BLOCKER[r.blocker] : `Account …${r.last4} verified`}
-              right={r.blocker ? (r.blocker === 'account_pending' ? <Btn small title="Review" color={c.violet} onPress={() => setAcc({ id: r.account_id, owner: r.seller, currency: r.currency, status: 'pending' })} /> : <Tag label="blocked" color={c.orangeSoft} />) : <Btn small title="Start payout" onPress={() => start(r)} />} />
-          ))}
-        </Block>
-      </Section>
-
-      <Section title="On its way" color={c.sun}>
-        <Block state={flight} empty="No payouts in progress.">
-          {(flight.data ?? []).map((p) => <Row key={p.id} onPress={() => setResult(p)} title={`${p.seller} · ${cash(p.amount_cents, p.currency)}`} sub={`Started ${new Date(p.created_at).toLocaleString(locale)} · tap to record the result`} right={<Tag label="processing" color={c.sunSoft} />} />)}
-        </Block>
-      </Section>
+      <PayoutBatches />
 
       <Section title="Exceptions" color={c.orange}>
         <Block state={ex} empty="No open exceptions.">
@@ -108,16 +90,6 @@ export function ProviderPayouts() {
       </Section>
 
       <AccountSheet account={acc} onClose={() => setAcc(null)} onChanged={reloadAll} />
-
-      <FormSheet visible={!!result} onClose={() => setResult(null)} title={result ? `Payout ${cash(result.amount_cents, result.currency)} to ${result.seller}` : ''} submitLabel="Record result"
-        initial={{ outcome: 'paid' }}
-        fields={[
-          { key: 'outcome', label: 'What happened?', type: 'choice', options: [{ value: 'paid', label: 'Transfer sent' }, { value: 'failed', label: 'Transfer failed' }] },
-          { key: 'reference', label: 'Transfer reference (bank UTR / transaction id)', show: (v) => v.outcome === 'paid' },
-          { key: 'failure_code', label: 'Why did it fail?', type: 'chips', options: FAILS.map((f) => ({ value: f, label: label(f) })), show: (v) => v.outcome === 'failed' },
-          { key: 'reason', label: 'Explanation the seller will see', type: 'multiline', show: (v) => v.outcome === 'failed' },
-        ]}
-        onSubmit={async (v) => { await api.post(`/admin/provider-payouts/${result.id}/result`, v.outcome === 'paid' ? { outcome: 'paid', reference: v.reference } : { outcome: 'failed', failure_code: v.failure_code, reason: v.reason }); reloadAll(); return 'Recorded'; }} />
 
       <FormSheet visible={!!resolve} onClose={() => setResolve(null)} title={resolve ? (KIND[resolve.kind] ?? 'Exception') : ''} submitLabel="Close exception"
         initial={{ action: resolve?.kind === 'provider_dispute' ? 'release' : 'note' }}

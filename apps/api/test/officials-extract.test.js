@@ -64,11 +64,15 @@ test('fee and payment: organiser records, official confirms or disputes, paid is
   assert.equal((await api('POST', `/official-assignments/${a.id}/fee`, { token: org.token, body })).status, 400, 'cannot go back to agreed');
   const d = must(await api('POST', `/official-assignments/${a.id}/payment-response`, { token: ref.token, body: { response: 'dispute', note: 'Amount differs from our agreement' } }));
   assert.equal(d.pay_status, 'disputed');
-  must(await api('POST', `/official-assignments/${a.id}/fee`, { token: org.token, body: { ...body, fee_minor: 6000, status: 'paid' } }));
-  assert.equal((await api('POST', `/official-assignments/${a.id}/fee`, { token: org.token, body: { ...body, status: 'paid' } })).status, 409, 'paid is final');
+  must(await api('POST', `/official-assignments/${a.id}/fee`, { token: org.token, body: { ...body, fee_minor: 6000, status: 'due' } }));
+  assert.equal((await api('POST', `/official-assignments/${a.id}/fee`, { token: org.token, body: { ...body, status: 'paid' } })).status, 409, 'paid is set only by a payout (#701)');
+  // a payout batch settles it (the real path is covered in payouts.test.js); here we only need the settled state
+  await pool.query("UPDATE fixture_officials SET pay_status='paid' WHERE id=$1", [a.id]);
+  await pool.query("INSERT INTO fixture_official_pay_log(fixture_official_id, actor_id, fee_minor, fee_currency, from_status, to_status) SELECT id, user_id, fee_minor, fee_currency, 'due', 'paid' FROM fixture_officials WHERE id=$1", [a.id]);
+  assert.equal((await api('POST', `/official-assignments/${a.id}/fee`, { token: org.token, body: { ...body, status: 'due' } })).status, 409, 'paid is final');
   assert.equal(must(await api('POST', `/official-assignments/${a.id}/payment-response`, { token: ref.token, body: { response: 'confirm' } })).pay_confirmed_at !== null, true);
   const log = must(await api('GET', `/official-assignments/${a.id}/payment-log`, { token: ref.token }));
-  assert.deepEqual(log.map((l) => l.to_status), ['agreed', 'due', 'disputed', 'paid', 'paid']);
+  assert.deepEqual(log.map((l) => l.to_status), ['agreed', 'due', 'disputed', 'due', 'paid', 'paid']);
   assert.equal((await api('GET', `/official-assignments/${a.id}/payment-log`, { token: stranger.token })).status, 404);
   // another crew member sees no fee on the briefing; the organiser and the official do
   const lines = await signup(['referee']); must(await api('POST', '/me/sport-profiles', { token: lines.token, body: { sport: 'football', role: 'referee' } }), 201);
@@ -119,7 +123,8 @@ test('extract: frozen PDF with assignments, closure forms, fees, feedback; owner
   const { org, ref, fx, assign, caps } = await world();
   const f1 = await fx(at(1, 9)), f2 = await fx(at(3, 9));
   const a1 = await assign(f1); await assign(f2);
-  must(await api('POST', `/official-assignments/${a1.id}/fee`, { token: org.token, body: { fee_minor: 7500, currency: 'INR', status: 'paid' } }));
+  must(await api('POST', `/official-assignments/${a1.id}/fee`, { token: org.token, body: { fee_minor: 7500, currency: 'INR', status: 'due' } }));
+  await pool.query("UPDATE fixture_officials SET pay_status='paid' WHERE id=$1", [a1.id]);
   must(await api('POST', `/fixtures/${f1.id}/result`, { token: org.token, body: { home_score: 2, away_score: 2, winner_team_id: undefined } }));
   must(await api('POST', `/fixtures/${f1.id}/reports`, { token: ref.token, body: { category: 'match_report', summary: 'Heated but fair finish', note: 'Two bookings in the second half, both for dissent.' } }), 201);
   const t = (await pool.query('SELECT id FROM official_reports WHERE fixture_id=$1', [f1.id])).rows[0];

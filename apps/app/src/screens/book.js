@@ -8,7 +8,7 @@ import { useSession } from '../session';
 import { useNav } from '../nav';
 import { useBasket } from '../basket';
 import { useLayout } from '../layout';
-import { Bubble, Btn, Card, Empty, ErrorBox, Field, H1, Loading, Row, Screen, Seg, Section, Sheet, T, Tag } from '../ui';
+import { Bubble, Btn, Card, Empty, ErrorBox, Field, H1, ListScreen, Loading, Row, Screen, Seg, Section, Sheet, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
 import { Gallery, VenueReviews } from './venue-media';
 import { VenuePlans } from './plans';
@@ -104,12 +104,19 @@ export function Book() {
   const canLocate = Platform.OS === 'web' && typeof navigator !== 'undefined' && !!navigator.geolocation;
   const locate = () => navigator.geolocation.getCurrentPosition((p) => { setNear({ lat: p.coords.latitude, lng: p.coords.longitude }); setSort('distance'); }, () => {});
   const cols = L.tablet ? (L.width >= 1100 ? 3 : 2) : 1;
-  const cardW = cols === 1 ? '100%' : `${(100 - (cols - 1) * 2) / cols}%`;
   const activeFilters = [amenity, sort !== 'name' && sort, date].filter(Boolean).length;
   const todayStr = new Date().toISOString().slice(0, 10);
 
+  // Venues are a virtualized grid: only the cards on screen are built. Short rows are padded so a lone last card keeps its column width.
+  const rows = venues.data ?? [];
+  const padded = cols > 1 && rows.length % cols ? [...rows, ...Array.from({ length: cols - (rows.length % cols) }, (_, i) => ({ id: `pad${i}`, pad: true }))] : rows;
+  const renderVenue = ({ item: v }) => (v.pad ? <View style={{ flex: 1 }} /> : <View style={{ flex: 1 }}><VenueCard key={v.id} v={v} width="100%" onFav={() => toggleFav(v)} onOpen={() => push('Venue', { id: v.id, date: date ?? undefined })} picked={compare.includes(v.id)} onPick={() => toggleCompare(v.id)} /></View>);
+
   return (
-    <Screen wide>
+    <>
+    <ListScreen wide data={padded} renderItem={renderVenue} keyExtractor={(v) => String(v.id)} numColumns={cols} gap={12} extraData={compare}
+      empty={venues.loading && !venues.data ? <Loading /> : venues.error ? <ErrorBox error={venues.error} onRetry={venues.reload} /> : <Empty emoji="🔎" title="No venues match" sub={date && hour != null ? 'Nothing is free at that time — try another hour or day.' : has('venue_manager', 'organizer') ? 'Register yours below.' : 'Try another sport or clear the filters.'} />}
+      header={<>
       <H1 style={{ marginTop: 8 }}>Book a venue</H1>
       <T color={c.mute} weight="600">Find a venue, check live availability, book several slots at once.</T>
       <BasketBar />
@@ -141,16 +148,12 @@ export function Book() {
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{favs.data.map((f) => <Pressable key={f.id} onPress={() => push('Venue', { id: f.id })} style={{ borderRadius: 999, borderWidth: 1, borderColor: c.line, backgroundColor: c.paper, paddingHorizontal: 14, paddingVertical: 8, flexDirection: 'row', gap: 6, alignItems: 'center' }}><T size={14}>{f.emoji}</T><T weight="700" size={13}>{f.name}</T>{f.offers ? <T size={11} color={c.lime} weight="700">🏷️ {f.offers}</T> : null}</Pressable>)}</View>
         </Section>
       ) : null}
-      <View style={{ marginTop: 14, gap: 12 }}>
+      <View style={{ marginTop: 14, marginBottom: 12, gap: 12 }}>
         <AdSlot placement="featured_venue" sport={sport || undefined} />
         <AdSlot placement="search_sponsored" q={q} sport={sport || undefined} />
-        {venues.loading && !venues.data ? <Loading /> : venues.error ? <ErrorBox error={venues.error} onRetry={venues.reload} /> : venues.data?.length ? (
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
-            {venues.data.map((v) => <VenueCard key={v.id} v={v} width={cardW} onFav={() => toggleFav(v)} onOpen={() => push('Venue', { id: v.id, date: date ?? undefined })} picked={compare.includes(v.id)} onPick={() => toggleCompare(v.id)} />)}
-          </View>
-        ) : <Empty emoji="🔎" title="No venues match" sub={date && hour != null ? 'Nothing is free at that time — try another hour or day.' : has('venue_manager', 'organizer') ? 'Register yours below.' : 'Try another sport or clear the filters.'} />}
       </View>
-
+      </>}
+      footer={<>
       <Section title="Your upcoming bookings" color={c.lime}>
         {mine.loading && !mine.data ? <Loading /> : mine.error ? <ErrorBox error={mine.error} onRetry={mine.reload} /> : mine.data.length ? mine.data.map((r) => {
           const active = r.bookings.filter((b) => b.status === 'confirmed');
@@ -164,6 +167,7 @@ export function Book() {
         }) : <Empty emoji="🗓️" title="No upcoming bookings" sub="Pick a venue above." />}
       </Section>
 
+      </>} />
       <Sheet visible={filters} onClose={() => setFilters(false)} title="Filters & sort">
         <T weight="700">Sort by</T>
         <Seg options={[['name', 'A–Z'], ['rating', 'Top rated'], ['price', 'Lowest price'], ...(near ? [['distance', 'Nearest']] : [])].map(([value, label]) => ({ value, label }))} value={sort} onChange={setSort} color={c.violet} />
@@ -176,7 +180,7 @@ export function Book() {
         <Calendar month={month} onMonth={setMonth} value={date} minDate={todayStr} onChange={(d) => { setDate(d); setPickDate(false); }} />
         {date ? <Btn small title="Any day" color={c.paper} onPress={() => { setDate(null); setHour(null); setPickDate(false); }} /> : null}
       </Sheet>
-    </Screen>
+    </>
   );
 }
 

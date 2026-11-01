@@ -58,10 +58,10 @@ after(async () => { server.close(); await pool.end(); });
 
 test('the catalogue governs every shared KPI once, with owner, formula, version and provenance, and is on REST + OpenAPI + MCP', async () => {
   const cat = must(await api('GET', '/analytics/metrics', { token: owner.token }));
-  assert.deepEqual(cat.map((m) => m.key).sort(), ['activation_rate', 'active_athletes', 'athlete_availability', 'attendees', 'booking_failure_rate', 'first_completed_activity', 'matches_played', 'payment_failure_rate', 'provider_earnings', 'receivable', 'registered_participants', 'repeat_participants', 'revenue', 'sponsor_fulfilment', 'sponsor_value', 'vacancy_fill_rate', 'venue_utilisation']);
+  assert.deepEqual(cat.map((m) => m.key).sort(), ['activation_rate', 'active_athletes', 'athlete_availability', 'attendees', 'booking_failure_rate', 'first_completed_activity', 'licence_renewals', 'matches_played', 'members', 'new_members', 'payment_failure_rate', 'provider_earnings', 'receivable', 'registered_participants', 'renewal_rate', 'repeat_participants', 'revenue', 'sponsor_fulfilment', 'sponsor_value', 'vacancy_fill_rate', 'venue_utilisation']);
   for (const m of cat) {
     assert.ok(m.version >= 1 && m.formula.length > 40 && m.owner && m.scopes.length && m.provenance.length && m.definition_hash.length === 64, m.key);
-    assert.ok(m.dimensions.every((d) => ['sport', 'event', 'venue', 'team', 'city', 'month', 'channel'].includes(d)), m.key);
+    assert.ok(m.dimensions.every((d) => ['age_band', 'body', 'channel', 'city', 'club', 'event', 'gender', 'month', 'region', 'sport', 'status', 'team', 'venue'].includes(d)), m.key);
   }
   const names = capabilities.filter((c) => c.tag === 'Analytics').map((c) => c.name);
   for (const x of ['list_kpi_catalogue', 'get_kpi_definition', 'list_kpi_scopes', 'get_kpi_value', 'list_kpi_records', 'create_kpi_dashboard', 'list_kpi_dashboards', 'get_kpi_dashboard', 'update_kpi_dashboard', 'archive_kpi_dashboard', 'export_kpi_report', 'create_kpi_report_schedule', 'update_kpi_report_schedule', 'get_kpi_report_run']) assert.ok(names.includes(x), x);
@@ -321,7 +321,7 @@ test('every sport in the catalogue can be reported on: no sport falls back to a 
 });
 
 test('no other module defines a governed KPI of its own: the names are only produced by the semantic layer', () => {
-  const GOVERNED = /\b(active_athletes|registered_participants|matches_played|venue_utilisation|athlete_availability|sponsor_fulfilment|sponsor_value|first_completed_activity|repeat_participants|activation_rate|vacancy_fill_rate|booking_failure_rate|payment_failure_rate|provider_earnings)\b/;
+  const GOVERNED = /\b(activation_rate|active_athletes|athlete_availability|booking_failure_rate|first_completed_activity|licence_renewals|matches_played|new_members|payment_failure_rate|provider_earnings|registered_participants|renewal_rate|repeat_participants|sponsor_fulfilment|sponsor_value|vacancy_fill_rate|venue_utilisation)\b/;
   // an entitlement meter key that is persisted in plan data (renaming it would rewrite stored plans); it is a billing gauge, not a KPI
   const ALLOWED = new Set(['commercial/engine.js']);
   const walk = (d) => readdirSync(d).flatMap((f) => (statSync(join(d, f)).isDirectory() ? walk(join(d, f)) : f.endsWith('.js') ? [join(d, f)] : []));

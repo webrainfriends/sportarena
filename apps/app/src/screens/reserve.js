@@ -574,6 +574,18 @@ export function Notifications() {
           </Card>
         ) : <Loading />}
       </Section>
+      <Section title={t('community.notify_title')} color={c.pink}>
+        {p?.social_categories ? (
+          <Card>
+            {['people', 'communities', 'comments'].map((k) => (
+              <View key={k}>
+                <Line k={t(`community.notify_${k}`)} v="" />
+                <Seg options={[{ value: true, label: t('common.on') }, { value: false, label: t('common.off') }]} value={p.social_categories[k]} onChange={(v) => setPref({ social_categories: { [k]: v } })} color={c.pink} />
+              </View>
+            ))}
+          </Card>
+        ) : <Loading />}
+      </Section>
       <Section title="Quiet hours and urgent notices" color={c.violet}>{p ? <QuietHoursCard prefs={p} onChange={setPref} /> : <Loading />}</Section>
       <Section title="Push" color={c.violet}><PushCard /></Section>
       <Section title="WhatsApp" color={c.lime}><WhatsAppCard onChanged={prefs.reload} /></Section>

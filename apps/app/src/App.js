@@ -1,11 +1,14 @@
 import { isSsoCallback, SsoCallbackScreen } from './sso';
 import { OfflineSync } from './screens/offline-sync';
-import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Linking, Platform, Pressable, StatusBar, Text, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Linking, Platform, Pressable, StatusBar, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SessionProvider, useSession } from './session';
-import { NavProvider, useNav } from './nav';
+import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { NavProvider, NavBridge, FocusScope, flushNavigation, navRef, syncActiveTab, useActiveTab, useNav } from './nav';
 import { Btn, Loading } from './ui';
 import { Icon } from './icons';
 import { useLayout } from './layout';
@@ -41,6 +44,7 @@ import { BookFlow } from './screens/bookflow';
 import { Billboard, Insure } from './screens/marketplace';
 import { FindGames } from './screens/find-games';
 import Network from './screens/network';
+import Communities, { Appeal, CommunityDetail } from './screens/communities';
 import { OpenGame } from './screens/open-game';
 import { TenderNotice, SupplierEntities, TenderZonePage } from './screens/tender-zone';
 import { TenderProposal, TenderProposals } from './screens/tender-proposal';
@@ -91,6 +95,7 @@ import { Support } from './screens/cases';
 import { Family } from './screens/family';
 import { Orgs, Org } from './screens/org';
 import { Federations, FederationHome, FederationRecord, VerifyLicence } from './screens/federation';
+import { SharedLicenceCard } from './screens/licence-card';
 import { MediaWorkspace } from './screens/media-workspace';
 import { OrgAffiliations, MyLicences } from './screens/federation-club';
 import { IntegrityCase, MyIntegrity } from './screens/integrity';
@@ -149,6 +154,7 @@ import { Analytics } from './screens/analytics';
 import { RecruiterHome, RecruiterAccess } from './screens/recruiter';
 import { MoreWheel } from './screens/more-wheel';
 import { Glass } from './glass';
+import { tapped } from './haptics';
 import { t } from './i18n';
 
 // https hosts that open this app as a universal / app link (set EXPO_PUBLIC_APP_HOSTS, comma separated); the sportarena:// scheme always works
@@ -156,6 +162,9 @@ const APP_HOSTS = (process.env.EXPO_PUBLIC_APP_HOSTS ?? '').split(',').map((h) =
 
 // A coach or scout opening a passport link (web) sees the athlete's CV without signing in.
 const PASSPORT_TOKEN = Platform.OS === 'web' && typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('passport') : null;
+// A licence QR or shared card link (web): the public check, and a shared card, open without signing in.
+const WEB_QUERY = Platform.OS === 'web' && typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+const VERIFY_VALUE = WEB_QUERY?.get('verify') ?? null, LICENCE_CARD_TOKEN = WEB_QUERY?.get('licence_card') ?? null;
 
 // A shared event or game link (web): signed-out visitors see the public page; signed-in people are taken to the same screens inside the app.
 const PUBLIC_LINK = (() => {
@@ -170,9 +179,9 @@ const PUBLIC_LINK = (() => {
 // Work hosts the active role's own workspace screen, so it needs the page registry below (resolved when it renders).
 const WorkPage = () => <WorkTab pages={PAGES} />;
 const TABS = [['Home', RoleHome], ['Explore', Explore], ['Schedule', Schedule], ['Player', PlayerHome], ['Work', WorkPage], ['Inbox', Inbox], ['Me', Me]];
-const PAGES = { Network, IntegrationHub, IntegrationRequests, EventsWorkspace, Finance, Analytics, Community, Inbox, Marketplace: MarketplaceHub, MarketplaceEngagement, MyCompliance, SportsGraph, Athlete360, Organisation360, Representation, IntegrityCase, MyIntegrity, AcademyPage, SupplierPage, Advertising, AdCampaign, Trips: TripsHome, Trip, Cover, OfficialsHome, OfficialMatch, Rewards, RewardsConsole, MyPasses: MyPassesPage, MyCards: MyCardsPage, CommercialConsole, FindGames, OpenGame, Following, LiveCentre, GateScan, MyAccreditations, OfficialsDevelopment, OfficialAssessment, AssessmentEditor, MediaWorkspace, Federations, FederationHome, FederationRecord, VerifyLicence, OrgAffiliations, MyLicences, SupplierWorkspace, VenueWorkspace, ServicesBuyer, SeasonReports, ChildSeasonReports, SharedSeasonReports, PlayerFunding, SharedWellness, ChildWellnessSharing, PlayerContracts, OfflineSync, PathwayPlan, SharedPathway, SponsorIdentity, OpportunityMatches, ToolsHome, ScoringTool, SportRules, MyApplications, RecruitmentApplication, RecruitmentPipeline, Trials, RecruiterHome, RecruiterAccess, AcademySession, AcademyAgenda, CareerTimeline, SponsorReports, SponsorRoi, SponsorBudgets, SponsorBudget, BrandedDocuments, Billboard, Shop, ShopProduct, ShopCart, ShopOrders, Insure, Pathways, Programme, Institution, Enquiry, Passport: MyPassport, PassportDesk, Event, PartnerConsole, MyPartner, Team, TeamManage, TeamWorkspace, TeamChat, TeamDues, Person, Venue, Wallet, Earnings, BookFlow, Invoice, Basket, Reservation, Compare, Notifications, Manage, OwnerSummary, Leaderboard, Awards, Health, DoctorHome, Legal: LegalHome, Insurance, InsurerPage, InsurerDesk, Sponsors, SponsorDeal, SponsorOffer, SponsorPortfolio, PortfolioEntry, SponsorPrograms, SponsorProgram, FundingOpportunities, SponsorCall, ApplicationForm, FormBuilder, Supply, SportProfile, ImportMatches, Support, Family, CoachHome, CoachAthletes, CoachPlan, CoachCalendar, MyPlans, PerformanceStudio, CoachSession, CoachJournal, CoachGoals, MyDevelopment, PlayerAssistant, CoachCopilot, CoachReports, CoachReport, CoachReportView, CoachMatch, CoachProgrammes, CoachRubrics, Orgs, Org, AcademyFamily, Games, RaceDesk, RaceLive, EventInbox, Openings, CoachProfile, CoachRequest, CoachBoard, CoachDesk, CoachSetup, CoachRates, CoachCommitments, CoachReviews, CoachAnalytics, TrainingVenue, RecurringVenue, EventCommand, MatchCentre, SessionPad, ScoreSheet, TenderNotice, SupplierEntities, TenderProposal, TenderProposals, TenderBuilder, TenderConsole, TenderHome, TenderOrders, TenderOrder, TenderReports, TenderZone: TenderZonePage, RegistrationHome, RegistrationApply, RegistrationEntry, RegistrationManage, RegistrationSetup, RegistrationForm, PlatformSecurity, CoachGroups, CoachDrills, HistorySources, Migrate, Setup, Conversation, Competitions, VenuePayouts, CoachClasses, MyTickets, Tickets: TicketShop, Copilots };
-// Screen titles follow the chosen language: one key per route (nav.title.<Route>), read once at load like the rest of the language.
-const TITLE_ROUTES = ['Network', 'IntegrationHub', 'IntegrationRequests', 'EventsWorkspace', 'Finance', 'Analytics', 'Community', 'Inbox', 'Marketplace', 'MarketplaceEngagement', 'MyCompliance', 'SportsGraph', 'Athlete360', 'Organisation360', 'Representation', 'IntegrityCase', 'MyIntegrity', 'AcademyPage', 'SupplierPage', 'Advertising', 'AdCampaign', 'Trips', 'Trip', 'Cover', 'OfficialsHome', 'OfficialMatch', 'Rewards', 'RewardsConsole', 'MyPasses', 'MyCards', 'CommercialConsole', 'FindGames', 'OpenGame', 'Following', 'LiveCentre', 'GateScan', 'MyAccreditations', 'OfficialsDevelopment', 'OfficialAssessment', 'AssessmentEditor', 'MediaWorkspace', 'Federations', 'FederationHome', 'FederationRecord', 'VerifyLicence', 'OrgAffiliations', 'MyLicences', 'VenueWorkspace', 'SupplierWorkspace', 'ServicesBuyer', 'SeasonReports', 'ChildSeasonReports', 'SharedSeasonReports', 'PlayerFunding', 'SharedWellness', 'ChildWellnessSharing', 'PlayerContracts', 'OfflineSync', 'PathwayPlan', 'SharedPathway', 'SponsorIdentity', 'OpportunityMatches', 'PassportDesk', 'ToolsHome', 'ScoringTool', 'SportRules', 'MyApplications', 'RecruitmentApplication', 'RecruitmentPipeline', 'Trials', 'RecruiterHome', 'RecruiterAccess', 'AcademySession', 'AcademyAgenda', 'CareerTimeline', 'SponsorReports', 'SponsorRoi', 'SponsorBudgets', 'SponsorBudget', 'BrandedDocuments', 'Billboard', 'Shop', 'ShopProduct', 'ShopCart', 'ShopOrders', 'Insure', 'Pathways', 'Programme', 'Institution', 'Enquiry', 'Passport', 'Event', 'PartnerConsole', 'MyPartner', 'Team', 'TeamManage', 'TeamWorkspace', 'TeamChat', 'TeamDues', 'Person', 'Venue', 'Wallet', 'Earnings', 'BookFlow', 'Invoice', 'Basket', 'Reservation', 'Compare', 'Notifications', 'Manage', 'OwnerSummary', 'Leaderboard', 'Awards', 'Health', 'DoctorHome', 'Legal', 'Insurance', 'InsurerPage', 'InsurerDesk', 'Sponsors', 'SponsorDeal', 'SponsorOffer', 'SponsorPortfolio', 'PortfolioEntry', 'SponsorPrograms', 'SponsorProgram', 'FundingOpportunities', 'SponsorCall', 'ApplicationForm', 'FormBuilder', 'Supply', 'SportProfile', 'ImportMatches', 'Support', 'Family', 'CoachHome', 'CoachAthletes', 'CoachPlan', 'CoachCalendar', 'PerformanceStudio', 'CoachSession', 'CoachJournal', 'CoachGoals', 'MyDevelopment', 'PlayerAssistant', 'CoachCopilot', 'CoachReports', 'CoachReport', 'CoachReportView', 'CoachMatch', 'CoachProgrammes', 'CoachRubrics', 'MyPlans', 'Orgs', 'Org', 'AcademyFamily', 'Games', 'RaceDesk', 'RaceLive', 'EventInbox', 'Openings', 'CoachProfile', 'CoachRequest', 'CoachBoard', 'CoachDesk', 'CoachSetup', 'CoachRates', 'CoachCommitments', 'CoachReviews', 'CoachAnalytics', 'TrainingVenue', 'RecurringVenue', 'EventCommand', 'MatchCentre', 'SessionPad', 'ScoreSheet', 'TenderNotice', 'SupplierEntities', 'TenderProposal', 'TenderProposals', 'TenderBuilder', 'TenderConsole', 'TenderHome', 'TenderOrders', 'TenderOrder', 'TenderReports', 'TenderZone', 'RegistrationHome', 'RegistrationApply', 'RegistrationEntry', 'RegistrationManage', 'RegistrationSetup', 'RegistrationForm', 'PlatformSecurity', 'CoachGroups', 'CoachDrills', 'HistorySources', 'Migrate', 'Setup', 'Conversation', 'Competitions', 'VenuePayouts', 'CoachClasses', 'MyTickets', 'Tickets', 'Copilots'];
+const PAGES = { Communities, CommunityDetail, Appeal, Network, IntegrationHub, IntegrationRequests, EventsWorkspace, Finance, Analytics, Community, Inbox, Marketplace: MarketplaceHub, MarketplaceEngagement, MyCompliance, SportsGraph, Athlete360, Organisation360, Representation, IntegrityCase, MyIntegrity, AcademyPage, SupplierPage, Advertising, AdCampaign, Trips: TripsHome, Trip, Cover, OfficialsHome, OfficialMatch, Rewards, RewardsConsole, MyPasses: MyPassesPage, MyCards: MyCardsPage, CommercialConsole, FindGames, OpenGame, Following, LiveCentre, GateScan, MyAccreditations, OfficialsDevelopment, OfficialAssessment, AssessmentEditor, MediaWorkspace, Federations, FederationHome, FederationRecord, VerifyLicence, OrgAffiliations, MyLicences, SupplierWorkspace, VenueWorkspace, ServicesBuyer, SeasonReports, ChildSeasonReports, SharedSeasonReports, PlayerFunding, SharedWellness, ChildWellnessSharing, PlayerContracts, OfflineSync, PathwayPlan, SharedPathway, SponsorIdentity, OpportunityMatches, ToolsHome, ScoringTool, SportRules, MyApplications, RecruitmentApplication, RecruitmentPipeline, Trials, RecruiterHome, RecruiterAccess, AcademySession, AcademyAgenda, CareerTimeline, SponsorReports, SponsorRoi, SponsorBudgets, SponsorBudget, BrandedDocuments, Billboard, Shop, ShopProduct, ShopCart, ShopOrders, Insure, Pathways, Programme, Institution, Enquiry, Passport: MyPassport, PassportDesk, Event, PartnerConsole, MyPartner, Team, TeamManage, TeamWorkspace, TeamChat, TeamDues, Person, Venue, Wallet, Earnings, BookFlow, Invoice, Basket, Reservation, Compare, Notifications, Manage, OwnerSummary, Leaderboard, Awards, Health, DoctorHome, Legal: LegalHome, Insurance, InsurerPage, InsurerDesk, Sponsors, SponsorDeal, SponsorOffer, SponsorPortfolio, PortfolioEntry, SponsorPrograms, SponsorProgram, FundingOpportunities, SponsorCall, ApplicationForm, FormBuilder, Supply, SportProfile, ImportMatches, Support, Family, CoachHome, CoachAthletes, CoachPlan, CoachCalendar, MyPlans, PerformanceStudio, CoachSession, CoachJournal, CoachGoals, MyDevelopment, PlayerAssistant, CoachCopilot, CoachReports, CoachReport, CoachReportView, CoachMatch, CoachProgrammes, CoachRubrics, Orgs, Org, AcademyFamily, Games, RaceDesk, RaceLive, EventInbox, Openings, CoachProfile, CoachRequest, CoachBoard, CoachDesk, CoachSetup, CoachRates, CoachCommitments, CoachReviews, CoachAnalytics, TrainingVenue, RecurringVenue, EventCommand, MatchCentre, SessionPad, ScoreSheet, TenderNotice, SupplierEntities, TenderProposal, TenderProposals, TenderBuilder, TenderConsole, TenderHome, TenderOrders, TenderOrder, TenderReports, TenderZone: TenderZonePage, RegistrationHome, RegistrationApply, RegistrationEntry, RegistrationManage, RegistrationSetup, RegistrationForm, PlatformSecurity, CoachGroups, CoachDrills, HistorySources, Migrate, Setup, Conversation, Competitions, VenuePayouts, CoachClasses, MyTickets, Tickets: TicketShop, Copilots };
+// Screen titles follow the chosen language: one key per route (nav.title.ROUTE_NAME), read once at load like the rest of the language.
+const TITLE_ROUTES = ['Communities', 'CommunityDetail', 'Appeal', 'Network', 'IntegrationHub', 'IntegrationRequests', 'EventsWorkspace', 'Finance', 'Analytics', 'Community', 'Inbox', 'Marketplace', 'MarketplaceEngagement', 'MyCompliance', 'SportsGraph', 'Athlete360', 'Organisation360', 'Representation', 'IntegrityCase', 'MyIntegrity', 'AcademyPage', 'SupplierPage', 'Advertising', 'AdCampaign', 'Trips', 'Trip', 'Cover', 'OfficialsHome', 'OfficialMatch', 'Rewards', 'RewardsConsole', 'MyPasses', 'MyCards', 'CommercialConsole', 'FindGames', 'OpenGame', 'Following', 'LiveCentre', 'GateScan', 'MyAccreditations', 'OfficialsDevelopment', 'OfficialAssessment', 'AssessmentEditor', 'MediaWorkspace', 'Federations', 'FederationHome', 'FederationRecord', 'VerifyLicence', 'OrgAffiliations', 'MyLicences', 'VenueWorkspace', 'SupplierWorkspace', 'ServicesBuyer', 'SeasonReports', 'ChildSeasonReports', 'SharedSeasonReports', 'PlayerFunding', 'SharedWellness', 'ChildWellnessSharing', 'PlayerContracts', 'OfflineSync', 'PathwayPlan', 'SharedPathway', 'SponsorIdentity', 'OpportunityMatches', 'PassportDesk', 'ToolsHome', 'ScoringTool', 'SportRules', 'MyApplications', 'RecruitmentApplication', 'RecruitmentPipeline', 'Trials', 'RecruiterHome', 'RecruiterAccess', 'AcademySession', 'AcademyAgenda', 'CareerTimeline', 'SponsorReports', 'SponsorRoi', 'SponsorBudgets', 'SponsorBudget', 'BrandedDocuments', 'Billboard', 'Shop', 'ShopProduct', 'ShopCart', 'ShopOrders', 'Insure', 'Pathways', 'Programme', 'Institution', 'Enquiry', 'Passport', 'Event', 'PartnerConsole', 'MyPartner', 'Team', 'TeamManage', 'TeamWorkspace', 'TeamChat', 'TeamDues', 'Person', 'Venue', 'Wallet', 'Earnings', 'BookFlow', 'Invoice', 'Basket', 'Reservation', 'Compare', 'Notifications', 'Manage', 'OwnerSummary', 'Leaderboard', 'Awards', 'Health', 'DoctorHome', 'Legal', 'Insurance', 'InsurerPage', 'InsurerDesk', 'Sponsors', 'SponsorDeal', 'SponsorOffer', 'SponsorPortfolio', 'PortfolioEntry', 'SponsorPrograms', 'SponsorProgram', 'FundingOpportunities', 'SponsorCall', 'ApplicationForm', 'FormBuilder', 'Supply', 'SportProfile', 'ImportMatches', 'Support', 'Family', 'CoachHome', 'CoachAthletes', 'CoachPlan', 'CoachCalendar', 'PerformanceStudio', 'CoachSession', 'CoachJournal', 'CoachGoals', 'MyDevelopment', 'PlayerAssistant', 'CoachCopilot', 'CoachReports', 'CoachReport', 'CoachReportView', 'CoachMatch', 'CoachProgrammes', 'CoachRubrics', 'MyPlans', 'Orgs', 'Org', 'AcademyFamily', 'Games', 'RaceDesk', 'RaceLive', 'EventInbox', 'Openings', 'CoachProfile', 'CoachRequest', 'CoachBoard', 'CoachDesk', 'CoachSetup', 'CoachRates', 'CoachCommitments', 'CoachReviews', 'CoachAnalytics', 'TrainingVenue', 'RecurringVenue', 'EventCommand', 'MatchCentre', 'SessionPad', 'ScoreSheet', 'TenderNotice', 'SupplierEntities', 'TenderProposal', 'TenderProposals', 'TenderBuilder', 'TenderConsole', 'TenderHome', 'TenderOrders', 'TenderOrder', 'TenderReports', 'TenderZone', 'RegistrationHome', 'RegistrationApply', 'RegistrationEntry', 'RegistrationManage', 'RegistrationSetup', 'RegistrationForm', 'PlatformSecurity', 'CoachGroups', 'CoachDrills', 'HistorySources', 'Migrate', 'Setup', 'Conversation', 'Competitions', 'VenuePayouts', 'CoachClasses', 'MyTickets', 'Tickets', 'Copilots'];
 const TITLES = Object.fromEntries(TITLE_ROUTES.map((n) => [n, t(`nav.title.${n}`)]));
 
 // The bar follows what a person does, not the platform's modules: Home (today and what needs me), Calendar, More (the raised centre button: the swivel of every
@@ -182,7 +191,8 @@ const BAR = ['Home', 'Schedule', 'Hub', 'Work', 'Me'];
 
 /** Bottom tab bar. Phone: edge-to-edge bar. Tablet / large screens: a floating pill, like an iPad app. */
 function TabBar() {
-  const { tab, goTab, menu, toggleMenu } = useNav();
+  const { goTab, menu, toggleMenu } = useNav();
+  const tab = useActiveTab();
   const ins = useSafeAreaInsets();
   const { tablet, width } = useLayout();
   const ws = useWorkspace();
@@ -193,7 +203,7 @@ function TabBar() {
     const label = TAB_LABEL[name] ?? name;
     const n = badge[name] ?? 0;
     return (
-      <Pressable key={name} accessibilityRole="tab" accessibilityLabel={centre && menu ? 'Close More' : n ? `${label}, ${n} waiting` : label} accessibilityState={{ selected: on, expanded: centre ? menu : undefined }} onPress={() => (centre ? toggleMenu() : goTab(name, name === 'Schedule' ? { section: 'agenda' } : {}))} style={({ pressed }) => ({ flex: 1, alignItems: 'center', justifyContent: 'flex-end', minHeight: 56, opacity: pressed ? 0.6 : 1 })}>
+      <Pressable key={name} accessibilityRole="tab" accessibilityLabel={centre && menu ? 'Close More' : n ? `${label}, ${n} waiting` : label} accessibilityState={{ selected: on, expanded: centre ? menu : undefined }} onPress={tapped(() => (centre ? toggleMenu() : goTab(name, name === 'Schedule' ? { section: 'agenda' } : {})))} style={({ pressed }) => ({ flex: 1, alignItems: 'center', justifyContent: 'flex-end', minHeight: 56, opacity: pressed ? 0.6 : 1 })}>
         {centre ? (
           <View style={{ width: 56, height: 56, marginTop: -24, borderRadius: 28, ...(Platform.OS === 'web' ? { boxShadow: '0 10px 24px rgba(132,88,179,0.45), inset 1.5px 1.5px 0 rgba(255,255,255,0.7), inset -1px -1px 0 rgba(255,255,255,0.25)' } : { shadowColor: '#8458B3', shadowOpacity: 0.45, shadowRadius: 14, shadowOffset: { width: 0, height: 8 }, elevation: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.6)' }) }}>
             <LinearGradient colors={['#9B72C6', '#494D5F']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
@@ -277,20 +287,6 @@ function TopBar() {
   );
 }
 
-/** Screen change: tabs cross-fade, pushed screens slide in from the right (like a native stack). */
-function Transition({ id, push, children }) {
-  const v = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    v.setValue(0);
-    Animated.timing(v, { toValue: 1, duration: push ? 260 : 160, easing: Easing.out(Easing.cubic), useNativeDriver: Platform.OS !== 'web' }).start();
-  }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
-  return (
-    <Animated.View style={{ flex: 1, opacity: v, transform: [{ translateX: push ? v.interpolate({ inputRange: [0, 1], outputRange: [36, 0] }) : 0 }, { translateY: push ? 0 : v.interpolate({ inputRange: [0, 1], outputRange: [6, 0] }) }] }}>
-      {children}
-    </Animated.View>
-  );
-}
-
 /** Shown when the API says this role must set up (or confirm) two-step verification before a health/admin action. */
 function MfaNotice({ info, onGo, onClose }) {
   const { gutter, contentMax } = useLayout();
@@ -310,16 +306,81 @@ function MfaNotice({ info, onGo, onClose }) {
 }
 
 
-function Shell() {
-  const { ready, user, toast } = useSession();
-  const { tab, stack, back, goTab, push, menu } = useNav();
-  const ins = useSafeAreaInsets();
-  const [mfa, setMfa] = useState(null);
+// ---------------------------------------------------------------- the native stack and tabs
+// Pushed pages sit on a native stack (swipe back on iOS, the platform's own transition, the Android back button) and the tab roots on a tab
+// navigator that keeps each tab alive, so scroll position and typed text survive a switch. The look is unchanged: our own back bar and top bar are
+// drawn inside each screen, and the floating tab bar sits above both (TabBar).
+const Stack = createNativeStackNavigator();
+const Tab = createBottomTabNavigator();
+const NAV_THEME = { ...DefaultTheme, colors: { ...DefaultTheme.colors, background: c.bg, card: c.bg, border: c.line, text: c.ink, primary: c.pink } };
+const tabOf = (r) => (r?.state ? r.state.routes[r.state.index]?.name : r?.params?.screen) ?? 'Home';
+
+/** A pushed page: the back bar on top and the page below it. */
+function PushedPage({ name, Page, route, navigation }) {
+  const { back } = useNav();
+  const routes = navigation.getState().routes;
+  const before = routes[routes.findIndex((r) => r.key === route.key) - 1];
+  const prev = before?.name === 'Tabs' ? TAB_LABEL[tabOf(before)] ?? tabOf(before) : TITLES[before?.name] ?? '';
+  const hero = HERO_ROUTES.has(name);
+  const Body = Page;
+  return (
+    <FocusScope navigation={navigation}>
+      <View style={{ flex: 1, backgroundColor: c.bg }}>
+        {hero ? null : <NavBar title={TITLES[name]} backLabel={prev} onBack={back} />}
+        <View style={{ flex: 1 }}>
+          <Body {...(route.params ?? {})} />
+          {hero ? <NavOverlay backLabel={prev} onBack={back} /> : null}
+        </View>
+      </View>
+    </FocusScope>
+  );
+}
+const PUSHED = Object.entries(PAGES).map(([name, Page]) => [name, (props) => <PushedPage name={name} Page={Page} {...props} />]);
+
+/** A tab root: the top bar (logo, Inbox, account) and the tab's screen. goTab('Schedule', { section }) arrives as the screen's props. */
+function TabPage({ Page, route, navigation }) {
+  const Body = Page;
+  return (
+    <FocusScope navigation={navigation}>
+      <View style={{ flex: 1, backgroundColor: c.bg }}>
+        <TopBar />
+        <Body {...(route.params ?? {})} />
+      </View>
+    </FocusScope>
+  );
+}
+const TAB_SCREENS = TABS.map(([name, Page]) => [name, (props) => <TabPage Page={Page} {...props} />]);
+
+function Tabs() {
+  return (
+    <Tab.Navigator initialRouteName="Home" backBehavior="none" tabBar={() => null} screenOptions={{ headerShown: false, lazy: true, sceneStyle: { backgroundColor: c.bg } }}>
+      {TAB_SCREENS.map(([name, component]) => <Tab.Screen key={name} name={name} component={component} />)}
+    </Tab.Navigator>
+  );
+}
+
+/** Everything between the banner and the tab bar: the notice, the stack and the More wheel. */
+function Chrome({ mfa, onMfaClose }) {
+  const { menu, goTab } = useNav();
+  return (
+    <View style={{ flex: 1 }}>
+      {mfa ? <MfaNotice info={mfa} onGo={() => { onMfaClose(); goTab('Me'); }} onClose={onMfaClose} /> : null}
+      <View style={{ flex: 1 }}>
+        <Stack.Navigator initialRouteName="Tabs" screenOptions={{ headerShown: false, contentStyle: { backgroundColor: c.bg }, fullScreenGestureEnabled: true }}>
+          <Stack.Screen name="Tabs" component={Tabs} options={{ gestureEnabled: false }} />
+          {PUSHED.map(([name, component]) => <Stack.Screen key={name} name={name} component={component} />)}
+        </Stack.Navigator>
+        {menu ? <MoreWheel /> : null}
+      </View>
+    </View>
+  );
+}
+
+/** What happens when a link, a tapped notification or a payment return opens the app. It lives inside the navigators, so push / goTab reach them. */
+function NavEffects() {
+  const { user, toast } = useSession();
+  const { goTab, push } = useNav();
   const nativeEvent = usePublicEvent();
-  useEffect(() => { setMfaRequiredHandler(setMfa); return () => setMfaRequiredHandler(() => {}); }, []);
-  useEffect(() => { if (!user) setMfa(null); }, [user]);
-  // Logging out (from any screen) starts the next session from Home, not from a leftover pushed screen.
-  useEffect(() => { if (ready && !user) goTab('Home'); }, [ready, user]); // eslint-disable-line react-hooks/exhaustive-deps
   // Back from Stripe/PayPal checkout (web): ?payment=<id>&result=success|cancel
   useEffect(() => {
     if (Platform.OS !== 'web' || !user) return;
@@ -373,27 +434,37 @@ function Shell() {
     }).catch(() => {});
     return () => { sub?.remove(); link.remove(); };
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
+  return null;
+}
+
+function Shell() {
+  const { ready, user, toast } = useSession();
+  const { goTab } = useNav();
+  const ins = useSafeAreaInsets();
+  const [mfa, setMfa] = useState(null);
+  const nativeEvent = usePublicEvent();
+  useEffect(() => { setMfaRequiredHandler(setMfa); return () => setMfaRequiredHandler(() => {}); }, []);
+  useEffect(() => { if (!user) setMfa(null); }, [user]);
+  // Logging out (from any screen) starts the next session from Home, not from a leftover pushed screen.
+  useEffect(() => { if (ready && !user) goTab('Home'); }, [ready, user]); // eslint-disable-line react-hooks/exhaustive-deps
   if (PASSPORT_TOKEN) return <View style={{ flex: 1, backgroundColor: c.bg, paddingTop: ins.top }}><PassportPublic token={PASSPORT_TOKEN} /></View>;
+  if (VERIFY_VALUE) return <View style={{ flex: 1, backgroundColor: c.bg, paddingTop: ins.top }}><VerifyLicence code={VERIFY_VALUE} /></View>;
+  if (LICENCE_CARD_TOKEN) return <View style={{ flex: 1, backgroundColor: c.bg, paddingTop: ins.top }}><SharedLicenceCard token={LICENCE_CARD_TOKEN} /></View>;
   if (!ready) return <View style={{ flex: 1, backgroundColor: c.bg, justifyContent: 'center', padding: 24 }}><Loading /></View>;
   // back from an organisation's identity provider (web): finish the sign-in, whether or not someone is already signed in
   if (isSsoCallback()) return <View style={{ flex: 1, backgroundColor: c.bg, paddingTop: ins.top }}><SsoCallbackScreen /></View>;
   if (!user && (PUBLIC_LINK || nativeEvent)) return <View style={{ flex: 1, backgroundColor: c.bg, paddingTop: ins.top }}><PublicShell eventId={PUBLIC_LINK?.event ?? nativeEvent} fixtureId={PUBLIC_LINK?.fixture} onExit={PUBLIC_LINK ? undefined : () => showPublicEvent(null)} renderEvent={(params) => <Event {...params} />} /></View>;
   if (!user) return <View style={{ flex: 1, backgroundColor: c.bg, paddingTop: ins.top }}><BetaBanner /><View style={{ flex: 1 }}><Landing /></View></View>;
-  const top = stack[stack.length - 1];
-  const Page = top ? PAGES[top.name] : TABS.find((t) => t[0] === tab)[1];
-  const prev = stack.length > 1 ? TITLES[stack[stack.length - 2].name] : TAB_LABEL[tab] ?? tab;
-  const pageKey = top ? `${top.name}:${stack.length}:${top.params?.id ?? ''}` : tab;
   return (
     <View style={{ flex: 1, backgroundColor: c.bg, paddingTop: ins.top, paddingLeft: ins.left, paddingRight: ins.right }}>
       <BetaBanner />
-      {top ? (HERO_ROUTES.has(top.name) ? null : <NavBar title={TITLES[top.name]} backLabel={prev} onBack={back} />) : <TopBar />}
-      {mfa ? <MfaNotice info={mfa} onGo={() => { setMfa(null); goTab('Me'); }} onClose={() => setMfa(null)} /> : null}
-      <View style={{ flex: 1 }}>
-        <Transition id={pageKey} push={!!top}><Page key={pageKey} {...(top?.params ?? {})} /></Transition>
-        {top && HERO_ROUTES.has(top.name) ? <NavOverlay backLabel={prev} onBack={back} /> : null}
-        {menu ? <MoreWheel /> : null}
-      </View>
-      <TabBar />
+      <NavigationContainer ref={navRef} theme={NAV_THEME} documentTitle={{ enabled: false }} onReady={() => { flushNavigation(); syncActiveTab(); }} onStateChange={syncActiveTab}>
+        <NavBridge>
+          <NavEffects />
+          <Chrome mfa={mfa} onMfaClose={() => setMfa(null)} />
+          <TabBar />
+        </NavBridge>
+      </NavigationContainer>
     </View>
   );
 }

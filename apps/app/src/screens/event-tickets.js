@@ -1,7 +1,7 @@
 // Spectator ticketing (#480), one file for its three audiences. Everyone: TicketShop (buy) and MyTickets (QR, transfer, refund). The organiser: TicketsTab
 // inside the event console (products, capacity and rules, complimentary allocations, find, report). Gate staff scan with the existing GateScan, which now
 // understands ticket QR codes as well as badges. All rules live in the API (src/capabilities/ticketing.js); this only calls it.
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Platform, Pressable, Share, TextInput, View } from 'react-native';
 import { api } from '../api';
 import { useLoad } from '../hooks';
@@ -22,6 +22,7 @@ import { QrCode } from './passport';
 import { PRICE_POINTS, POINT_COLOUR } from './venue-seating';
 import { CameraScan, hasCamera } from '../camera-scan';
 import { makeStore } from '../offline-store';
+import { AddonPanel, AddonPicker, CommerceReport, MyAddons, MyWaitlist, PolicyHistory, PromoBox, PromoPanel, WaitlistJoin, WaitlistPanel, resaleLine, ruleBody, ruleFields, ruleInitial } from './event-tickets-commerce';
 
 const stamp = (d) => (d ? new Date(d).toLocaleString(locale, { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '');
 const key = () => `tix-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
@@ -110,6 +111,7 @@ export function TicketShop({ id }) {
   const offer = useLoad(() => api.get(`/public/events/${id}/tickets`), [id]);
   const plan = useLoad(() => api.get(`/public/events/${id}/tickets/seat-map`).catch(() => ({ zones: [] })), [id]);
   const [qty, setQty] = useState({}), [seats, setSeats] = useState({}), [zone, setZone] = useState(null), [pay, setPay] = useState(null), [busy, setBusy] = useState(false);
+  const [addonQty, setAddonQty] = useState({}), [codes, setCodes] = useState([]), [promoError, setPromoError] = useState(''), [quote, setQuote] = useState(null), [checking, setChecking] = useState(false);
   const idem = useRef(key());
   const zones = plan.data?.zones ?? [];
   const seated = new Set(zones.flatMap((z) => z.products.map((p) => p.id)));
@@ -119,12 +121,30 @@ export function TicketShop({ id }) {
   const lines = [...Object.keys(qty).filter((k) => qty[k] > 0 && !seated.has(k)).map((k) => ({ p: byId[k], n: qty[k], seats: undefined })), ...Object.keys(seats).filter((k) => seats[k].length).map((k) => ({ p: byId[k], n: seats[k].length, seats: seats[k] }))].filter((l) => l.p);
   const cur = lines[0]?.p.currency;
   const total = lines.reduce((n, l) => n + l.p.price_minor * l.n, 0);
+  const addons = (offer.data?.addons ?? []).filter((a) => !cur || a.currency === cur);
+  const addonLines = Object.keys(addonQty).filter((k) => addonQty[k] > 0).map((k) => ({ addon_id: k, quantity: addonQty[k] }));
+  const orderBody = () => ({ lines: lines.map((l) => ({ product_id: l.p.id, quantity: l.n, seats: l.seats })), promo_codes: codes.length ? codes : undefined, addons: addonLines.length ? addonLines : undefined });
+  // the total shown is the server's own quote (same maths as the order, rolled back), so the price on screen is the price charged
+  const sig = JSON.stringify([lines.map((l) => [l.p.id, l.n, l.seats]), codes, addonLines]);
+  useEffect(() => {
+    if (!lines.length) { setQuote(null); return undefined; }
+    let live = true;
+    const h = setTimeout(async () => {
+      setChecking(true);
+      try { const q = await api.post(`/events/${id}/ticket-orders/quote`, orderBody()); if (live) { setQuote(q); setPromoError(''); } }
+      catch (x) { if (live) { setQuote(null); if (codes.length && /promo|code|combined|used/i.test(String(x.message))) { setPromoError('' + x.message); setCodes([]); } } }
+      finally { if (live) setChecking(false); }
+    }, 350);
+    return () => { live = false; clearTimeout(h); };
+  }, [sig]);
+  const addCode = (code) => { const up = code.toUpperCase(); if (!codes.includes(up)) { idem.current = key(); setPromoError(''); setCodes((x) => [...x, up]); } };
   const set = (p, n) => { idem.current = key(); setQty((q) => ({ ...q, [p.id]: n })); };
+  const setAddon = (a, n) => { idem.current = key(); setAddonQty((q) => ({ ...q, [a.id]: n })); };
   const pick = (pid, labels) => { idem.current = key(); setSeats((s) => ({ ...s, [pid]: labels })); };
   const reserve = async () => {
     setBusy(true);
     try {
-      const o = await api.post(`/events/${id}/ticket-orders`, { idempotency_key: idem.current, lines: lines.map((l) => ({ product_id: l.p.id, quantity: l.n, seats: l.seats })) });
+      const o = await api.post(`/events/${id}/ticket-orders`, { idempotency_key: idem.current, ...orderBody() });
       if (o.pay) setPay({ id: o.id, type: 'ticket_order', label: `${page.data?.event?.name ?? ''} · ${t('tix.tickets')}`, amount: o.total_minor, currency: o.currency });
       else { toast(t('tix.ready')); push('MyTickets', {}); }
     } catch (x) { toast('' + x.message); offer.reload(); plan.reload(); } finally { setBusy(false); }
@@ -162,19 +182,24 @@ export function TicketShop({ id }) {
                 {clash ? <T size={12} color={c.mute}>{t('tix.one_currency')}</T> : null}
               </View>
             ) : null}
+            {p.availability === 'sold_out' ? <WaitlistJoin product={p} onJoined={() => { offer.reload(); }} /> : null}
           </Card>
         );
       })}
+      {lines.length ? <AddonPicker addons={addons} qty={addonQty} onChange={setAddon} /> : null}
+      {lines.length ? <PromoBox applied={codes} error={promoError} busy={checking} onApply={addCode} onRemove={(code) => { idem.current = key(); setCodes((x) => x.filter((y) => y !== code)); }} /> : null}
       {lines.length ? (
         <Card style={{ gap: 8 }}>
           {lines.map((l) => <View key={l.p.id} style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}><T size={13} style={{ flex: 1 }}>{l.n} × {l.p.name}{l.seats ? ` (${l.seats.join(', ')})` : ''}</T><T size={13} weight="700">{moneyIn(l.p.price_minor * l.n, l.p.currency)}</T></View>)}
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><T size={15} weight="800">{t('tix.total')}</T><T size={20} weight="800">{total ? moneyIn(total, cur) : t('tix.free')}</T></View>
+          {(quote?.addons ?? []).map((a) => <View key={a.addon_id} style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}><T size={13} style={{ flex: 1 }}>{a.quantity} × {a.name}</T><T size={13} weight="700">{moneyIn(a.price_minor * a.quantity, cur)}</T></View>)}
+          {(quote?.promos ?? []).map((p) => <View key={p.code} style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}><T size={13} color={c.lime} style={{ flex: 1 }}>{t('tix2.discount', { code: p.code })}</T><T size={13} weight="700" color={c.lime}>−{moneyIn(p.amount_minor, cur)}</T></View>)}
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><T size={15} weight="800">{t('tix.total')}</T><T size={20} weight="800">{(quote ? quote.total_minor : total) ? moneyIn(quote ? quote.total_minor : total, cur) : t('tix.free')}</T></View>
           <T size={12} color={c.mute}>{t('tix.hold_note')}</T>
-          <Btn title={total ? t('tix.reserve_pay') : t('tix.get_free')} onPress={reserve} loading={busy} accessibilityLabel={t('tix.reserve_pay')} />
+          <Btn title={(quote ? quote.total_minor : total) ? t('tix.reserve_pay') : t('tix.get_free')} onPress={reserve} loading={busy || checking} accessibilityLabel={t('tix.reserve_pay')} />
         </Card>
       ) : null}
       <ZoneSheet zone={zone} value={seats} onChange={pick} onClose={() => setZone(null)} />
-      {pay ? <PaySheet target={pay} onClose={() => { setPay(null); offer.reload(); plan.reload(); }} onDone={() => { setQty({}); setSeats({}); push('MyTickets', {}); }} /> : null}
+      {pay ? <PaySheet target={pay} onClose={() => { setPay(null); offer.reload(); plan.reload(); }} onDone={() => { setQty({}); setSeats({}); setAddonQty({}); setCodes([]); push('MyTickets', {}); }} /> : null}
     </Screen>
   );
 }
@@ -221,9 +246,10 @@ function TicketCard({ k, onChanged }) {
           { key: 'to', label: t('tix.recipient'), type: 'entity', entityKind: 'person', noun: t('tix.recipient'), show: (v) => v.mode === 'account' },
           { key: 'guest_name', label: t('tix.guest_name'), show: (v) => v.mode === 'guest' },
           { key: 'guest_email', label: t('tix.guest_email'), type: 'email', optional: true, show: (v) => v.mode === 'guest', hint: t('tix.guest_private') },
+          { key: 'price', label: t('tix2.resale_price'), type: 'money', currency: () => k.currency, optional: true, show: (v) => v.mode === 'account' && !!k.resale, hint: k.resale ? t('tix2.resale_hint', { cap: moneyIn(k.resale.cap_minor, k.currency), fee: Math.round(k.resale.fee_bp / 100) }) : undefined },
         ]}
         onSubmit={async (v) => {
-          const r = await api.post(`/tickets/${k.id}/transfer`, v.mode === 'account' ? { to_user_id: v.to } : { guest: { name: v.guest_name, email: v.guest_email || undefined } });
+          const r = await api.post(`/tickets/${k.id}/transfer`, v.mode === 'account' ? { to_user_id: v.to, ...(Number(v.price) > 0 ? { resale_price_minor: Number(v.price) } : {}) } : { guest: { name: v.guest_name, email: v.guest_email || undefined } });
           onChanged(); if (r.claim_code) setShare(r.claim_code); else toast(t('tix.transferred'));
           return null;
         }} />
@@ -241,17 +267,21 @@ function TicketCard({ k, onChanged }) {
 
 export function MyTickets() {
   const mine = useLoad(() => api.get('/me/tickets', { scope: 'all', limit: 100 }), []);
-  const [claim, setClaim] = useState(false);
+  const [claim, setClaim] = useState(false), [pay, setPay] = useState(null), [version, setVersion] = useState(0);
   const items = mine.data?.items ?? [];
+  const changed = () => { mine.reload(); setVersion((x) => x + 1); };
   return (
-    <Screen refreshing={false} onRefresh={mine.reload}>
+    <Screen refreshing={false} onRefresh={changed}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
         <T size={26} weight="800">{t('tix.my_tickets')}</T>
         <Btn small title={t('tix.have_code')} color={c.paper} ink={c.ink} onPress={() => setClaim(true)} accessibilityLabel={t('tix.have_code')} />
       </View>
+      <MyWaitlist key={`w${version}`} onPay={setPay} onChanged={mine.reload} />
       {mine.error ? <ErrorBox error={mine.error} onRetry={mine.reload} /> : !mine.data ? <Loading /> : items.length
-        ? items.map((k) => <TicketCard key={k.id} k={k} onChanged={mine.reload} />)
+        ? items.map((k) => <TicketCard key={k.id} k={k} onChanged={changed} />)
         : <Empty emoji="🎟️" title={t('tix.no_tickets')} sub={t('tix.no_tickets_sub')} />}
+      <MyAddons key={`a${version}`} onChanged={mine.reload} />
+      {pay ? <PaySheet target={pay} onClose={() => { setPay(null); changed(); }} onDone={changed} /> : null}
       <FormSheet visible={claim} onClose={() => setClaim(false)} title={t('tix.have_code')} submitLabel={t('tix.claim')} fields={[{ key: 'code', label: t('tix.claim_code'), hint: t('tix.claim_hint') }]}
         onSubmit={async (v) => { await api.post('/tickets/claim', { code: v.code }); mine.reload(); return null; }} />
     </Screen>
@@ -260,7 +290,7 @@ export function MyTickets() {
 
 // ---- organiser: the Tickets tab ---------------------------------------------------------------------------------------------------------------
 
-const SUBS = ['overview', 'products', 'rules', 'comps', 'find'];
+const SUBS = ['overview', 'products', 'promos', 'addons', 'waitlist', 'rules', 'comps', 'find'];
 
 function ProductForm({ visible, onClose, p, id, e, fixtures, sections, onDone }) {
   const edit = !!p?.id;
@@ -332,7 +362,7 @@ export function TicketsTab({ id, e, isOrg }) {
   const S = settings.data, R = report.data;
   return (
     <>
-      <ATabs value={sub} onChange={setSub} tabs={SUBS.map((k) => ({ key: k, label: t(`tix.sub.${k}`) }))} />
+      <ATabs value={sub} onChange={setSub} tabs={SUBS.map((k) => ({ key: k, label: t(k === 'promos' || k === 'addons' || k === 'waitlist' ? `tix2.sub.${k}` : `tix.sub.${k}`) }))} />
 
       {sub === 'overview' ? (
         <>
@@ -353,6 +383,7 @@ export function TicketsTab({ id, e, isOrg }) {
           )) : <AEmpty emoji="🏟️" title={t('tix.no_fixtures')} />}
           <ASection title={t('tix.gates_title')} sub={t('tix.gates_sub')} />
           {(R?.gates ?? []).map((g) => <ARow key={g.gate} title={g.gate} sub={t('tix.gate_line', { dup: g.duplicates, refused: g.refused })} right={<AT size={20} weight="900" num color={A.green}>{g.admitted}</AT>} />)}
+          <CommerceReport R={R?.commerce} />
           <ABtn title={t('tix.open_gate')} tone="lime" small onPress={() => push('GateScan', { id })} />
         </>
       ) : null}
@@ -382,6 +413,9 @@ export function TicketsTab({ id, e, isOrg }) {
           <ARow title={t('tix.sales')} sub={S.sales_open ? t('tix.sales_open') : t('tix.sales_paused')} right={<ABtn small tone={S.sales_open ? 'ghost' : 'hero'} title={S.sales_open ? t('tix.pause') : t('tix.reopen')} onPress={() => act(() => api.patch(`/events/${id}/tickets/settings`, { sales_open: !S.sales_open }), S.sales_open ? t('tix.paused') : t('tix.on_sale'))} />} />
           <ARow title={t('tix.refund_policy')} sub={t(`tix.policy.${S.refund_policy}`, { h: S.refund_cutoff_hours })} />
           <ARow title={t('tix.transfers')} sub={S.transfer_allowed ? t('tix.transfer_until', { h: S.transfer_cutoff_hours }) : t('tix.transfer_off')} />
+          <ARow title={t('tix2.resale_mode')} sub={resaleLine(S)} />
+          <ARow title={t('tix2.sub.waitlist')} sub={S.waitlist_enabled ? t('tix2.wl_offer_line', { m: S.waitlist_offer_minutes }) : t('tix2.wl_off')} />
+          <PolicyHistory id={id} version={S.updated_at} />
           <ASection title={t('tix.sections')} sub={t('tix.sections_sub')} action={t('tix.add_section')} onAction={() => setSecForm(true)} />
           <ABtn small tone="lime" title={t('seat.use_venue_map')} onPress={() => act(async () => { const r = await api.post(`/events/${id}/ticket-sections/from-venue`, { create_products: true }); return r; }, (r) => (r?.sections?.length ? t('seat.imported', { n: r.sections.length }) : t('seat.nothing_new')))} accessibilityLabel={t('seat.use_venue_map')} />
           <AT size={12} color={A.mute}>{t('seat.use_venue_map_sub')}</AT>
@@ -390,6 +424,10 @@ export function TicketsTab({ id, e, isOrg }) {
           <AccessPoints eventId={id} zones={[]} />
         </>
       ) : null}
+
+      {sub === 'promos' ? <PromoPanel id={id} products={products.data} /> : null}
+      {sub === 'addons' ? <AddonPanel id={id} products={products.data} /> : null}
+      {sub === 'waitlist' ? <WaitlistPanel id={id} /> : null}
 
       {sub === 'comps' ? (
         <>
@@ -422,7 +460,7 @@ export function TicketsTab({ id, e, isOrg }) {
       ) : null}
 
       <ProductForm visible={!!form} onClose={() => setForm(null)} p={form} id={id} e={e} fixtures={fixtureOpts} sections={sectionOpts} onDone={reload} />
-      <FormSheet visible={rules} onClose={() => setRules(false)} title={t('tix.edit_rules')} initial={S ?? {}} submitLabel={t('common.save')}
+      <FormSheet visible={rules} onClose={() => setRules(false)} title={t('tix.edit_rules')} initial={S ? ruleInitial(S) : {}} submitLabel={t('common.save')}
         fields={[
           { key: 'spectator_capacity', label: t('tix.spectator_capacity'), type: 'number', optional: true, hint: t('tix.spectator_capacity_sub') },
           { key: 'safety_capacity', label: t('tix.safety_capacity'), type: 'number', optional: true, hint: t('tix.safety_capacity_sub') },
@@ -432,8 +470,9 @@ export function TicketsTab({ id, e, isOrg }) {
           { key: 'refund_cutoff_hours', label: t('tix.refund_cutoff'), type: 'stepper', min: 0, max: 720, step: 1, suffix: ' h', show: (v) => v.refund_policy === 'until_cutoff' },
           { key: 'transfer_allowed', label: t('tix.transfers'), type: 'switch' },
           { key: 'transfer_cutoff_hours', label: t('tix.transfer_cutoff'), type: 'stepper', min: 0, max: 720, step: 1, suffix: ' h', show: (v) => v.transfer_allowed },
+          ...ruleFields(),
         ]}
-        onSubmit={async (v) => { await api.patch(`/events/${id}/tickets/settings`, { spectator_capacity: v.spectator_capacity === '' || v.spectator_capacity == null ? null : Number(v.spectator_capacity), safety_capacity: v.safety_capacity === '' || v.safety_capacity == null ? null : Number(v.safety_capacity), count_participants: !!v.count_participants, count_accreditations: !!v.count_accreditations, hold_minutes: v.hold_minutes, refund_policy: v.refund_policy, refund_cutoff_hours: v.refund_cutoff_hours, transfer_allowed: !!v.transfer_allowed, transfer_cutoff_hours: v.transfer_cutoff_hours }); reload(); return null; }} />
+        onSubmit={async (v) => { await api.patch(`/events/${id}/tickets/settings`, { spectator_capacity: v.spectator_capacity === '' || v.spectator_capacity == null ? null : Number(v.spectator_capacity), safety_capacity: v.safety_capacity === '' || v.safety_capacity == null ? null : Number(v.safety_capacity), count_participants: !!v.count_participants, count_accreditations: !!v.count_accreditations, hold_minutes: v.hold_minutes, refund_policy: v.refund_policy, refund_cutoff_hours: v.refund_cutoff_hours, transfer_allowed: !!v.transfer_allowed, transfer_cutoff_hours: v.transfer_cutoff_hours, ...ruleBody(v) }); reload(); return null; }} />
       <FormSheet visible={secForm} onClose={() => setSecForm(false)} title={t('tix.add_section')} submitLabel={t('tix.create')} initial={{ rows_count: 10, seats_per_row: 20, price_point: 'standard' }}
         fields={[{ key: 'name', label: t('tix.section_name') }, { key: 'price_point', label: t('seat.price_point'), type: 'chips', options: PRICE_POINTS.map((x) => ({ value: x, label: t(`seat.point.${x}`) })) }, { key: 'rows_count', label: t('tix.rows'), type: 'stepper', min: 1, max: 100 }, { key: 'seats_per_row', label: t('tix.seats_per_row'), type: 'stepper', min: 1, max: 200 }]}
         onSubmit={async (v) => { await api.post(`/events/${id}/ticket-sections`, { ...v, colour: v.price_point ? POINT_COLOUR[v.price_point] : undefined }); reload(); return null; }} />
@@ -480,7 +519,7 @@ function TicketDetail({ k, onVoid }) {
 
 // ---- the gate: spectator tickets (shown inside the existing Gate scanner, next to badges) --------------------------------------------------
 
-const VERDICT_TONE = { valid: 'ok', re_entry: 'ok', exit: 'ok', duplicate: 'warn', replaced: 'warn', wrong_date: 'warn', wrong_gate: 'warn', wrong_fixture: 'warn', not_issued: 'warn', no_reentry: 'warn', not_inside: 'warn', transferred: 'warn' };
+const VERDICT_TONE = { collected: 'ok', already_collected: 'warn', valid: 'ok', re_entry: 'ok', exit: 'ok', duplicate: 'warn', replaced: 'warn', wrong_date: 'warn', wrong_gate: 'warn', wrong_fixture: 'warn', not_issued: 'warn', no_reentry: 'warn', not_inside: 'warn', transferred: 'warn' };
 const toneColor = (r) => ({ ok: A.green, warn: A.sun }[VERDICT_TONE[r]] ?? A.red);
 const gateStore = makeStore({ db: 'sa_gate', prefix: 'sa_gt' });
 const OFFLINE_KEY = (id) => `tm_${id}`, QUEUE_KEY = (id) => `tq_${id}`;
@@ -499,6 +538,7 @@ export function TicketGatePanel({ id }) {
   const { toast } = useSession();
   const points = useLoad(() => api.get('/access/points', { event_id: id }).catch(() => []), [id]);
   const fixtures = useLoad(() => api.get('/fixtures', { event_id: id, limit: 100 }).catch(() => []), [id]);
+  const [mode, setMode] = useState('ticket');
   const [gate, setGate] = useState(''), [fixture, setFixture] = useState(''), [dir, setDir] = useState('in'), [code, setCode] = useState(''), [res, setRes] = useState(null), [busy, setBusy] = useState(false), [cam, setCam] = useState(false), [recent, setRecent] = useState([]);
   const [manifest, setManifest] = useState(null), [queue, setQueue] = useState([]), [offline, setOffline] = useState(false);
   const seen = useRef(new Set());
@@ -537,6 +577,14 @@ export function TicketGatePanel({ id }) {
     if (!v || busy) return;
     setBusy(true);
     const ref = key();
+    if (mode === 'addon' || v.startsWith('GT1.ADD-')) {
+      // parking and merchandise: one atomic hand-over, no offline mode (the stock and the collected state live on the server)
+      try {
+        const r = await api.post(`/events/${id}/ticket-addons/collect`, v.startsWith('GT1.') ? { token: v } : { code: v });
+        setRes({ result: r.result, admitted: r.result === 'collected', addon: r }); setRecent((p) => [{ result: r.result, ticket_id: r.name, at: new Date().toISOString() }, ...p].slice(0, 8)); setCode('');
+      } catch (x) { toast('' + x.message); } finally { setBusy(false); setTimeout(() => input.current?.focus?.(), 50); }
+      return;
+    }
     const body = { ...(v.startsWith('GT1.') ? { token: v } : { code: v }), fixture_id: fixture || undefined, access_point_id: gate || undefined, direction: dir, method: v.startsWith('GT1.') ? 'camera' : 'manual', client_ref: ref };
     try {
       let r;
@@ -566,6 +614,7 @@ export function TicketGatePanel({ id }) {
         <Chip label={t('tix.any_gate')} active={!gate} onPress={() => setGate('')} />
         {gates.map((g) => <Chip key={g.id} label={g.name} active={gate === g.id} onPress={() => setGate(g.id)} />)}
       </View>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}><Chip label={t('tix2.mode_tickets')} active={mode === 'ticket'} onPress={() => setMode('ticket')} /><Chip label={t('tix2.mode_addons')} active={mode === 'addon'} onPress={() => setMode('addon')} /></View>
       <T size={13} weight="800" color={c.mute}>{t('tix.gate_match')}</T>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
         <Chip label={t('tix.auto_match')} active={!fixture} onPress={() => setFixture('')} />
@@ -584,6 +633,7 @@ export function TicketGatePanel({ id }) {
         <View accessibilityRole="alert" accessibilityLiveRegion="assertive" style={{ borderRadius: 28, backgroundColor: toneColor(res.result), padding: 22, gap: 8 }}>
           <T size={32} weight="800" color="#fff" style={{ letterSpacing: 1 }}>{res.admitted ? '✓ ' : '✕ '}{t(`tix.v.${res.result}`)}</T>
           <T size={15} weight="700" color="#fff">{t(`tix.vh.${res.result}`)}{res.lookup ? ` · ${t('tix.not_recorded')}` : ''}{res.offline ? ` · ${t('tix.queued')}` : ''}</T>
+          {res.addon?.name ? <T size={16} weight="800" color="#fff">{res.addon.name}{res.addon.collect_note ? ` · ${res.addon.collect_note}` : ''}</T> : null}
           {res.class ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
             <View style={chipStyle}><T size={14} weight="800" color="#fff">{className(res.class, res.class_label)}</T></View>
             {res.section ? <View style={chipStyle}><T size={14} weight="800" color="#fff">{res.section}</T></View> : null}

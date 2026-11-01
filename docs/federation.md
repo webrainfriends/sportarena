@@ -106,3 +106,35 @@ Extends the same hierarchy, roles, policies and history; nothing is copied. Migr
 - UI: the Governance tab of Federation Home (no separate console).
 
 Limits: data-exchange profiles depend on #483, which is not built yet; finance/settlement approval is not applicable (fees are only recorded); delegation covers governing-body levels, clubs stay leaf organisations.
+
+## Federation extras (#703): licence card, background-check adapter, census
+Reuse map. Nothing here is a second licence, compliance or analytics system.
+
+| Need | Reused | Added |
+|---|---|---|
+| Licence ID card / pass | `fed_licences` + `LIC_STATUS` (live standing), `verify_licence`, `QrCode`/`CameraScan`, `guardianLink`/`guardianCan`, `saveExport`, pdfkit + `fonts()` | `fed_licence_card_shares` (hashed share tokens); `licence-card.js` (rotating signed QR `LC1.…`, SVG→PNG, PDF); capabilities `get_licence_card`, `create_/revoke_licence_card_share`, `view_shared_licence_card`, `get_licence_card_file`; `verify_licence` also takes a card QR |
+| Background-check adapter | `comp_records.outcome`, `decide_compliance_record`, `audit`, `comms-providers.js` pattern (adapters, HMAC webhook, encrypted credentials), `compliance-sweeps` | `comp_check_consents` (append-only), `comp_check_vendor` (state + encrypted ref + blind index), `comp_vendor_credentials`, `comp_vendor_events`; `background-checks.js`; capabilities in `compliance-background-checks.js` |
+| Census | KPI layer (`kpi/catalogue.js`, `engine.js`), `authority()`/`subtree()`, `exportReport`, `list_federation_metric_definitions` | `federation` scope; dimensions `body, region, club, age_band, gender, status`; metrics `members, new_members, licence_renewals, renewal_rate`; count suppression with complementary hiding; `users.birth_year`; `person_demographics` |
+
+**Licence card.** The QR carries a signed code that changes every minute (accepted for about four minutes), so a screenshot of it stops working; the printed
+12-character code and share links resolve live too. Revoked, suspended and expired licences fail the check at once. A young person's card is opened by their
+verified guardian (`calendar` scope to view, `register` to share or export); their name never appears on a share link, PDF or PNG. A licence that is not in
+force offers no sharing.
+
+**Background-check adapter.** Order: consent (person, or guardian with `consent` scope) → order from a linked provider → provider reports `clear` / `not_clear`
+/ `pending` (signed webhook or poll sweep) → a reviewer confirms with `decide_compliance_record`. Anything that is not an exact `clear` or `not_clear` is
+`pending` (fail closed). A reviewer cannot approve until the provider says clear; they can always reject. Only our reference and the person's name are sent to
+the provider; the report is never requested or stored. `stub` exists for tests and is refused in production. Add a vendor by adding an adapter to the map in
+`background-checks.js` (`start`, `status`, `verifyWebhook`, `parseWebhook`) and its fields to `CONFIG_FIELDS`.
+
+**Census.** Read through the governed KPI layer, so the figure, definition (public in `list_federation_metric_definitions`, with version and hash), drill and
+export are the same everywhere. It needs a reports role on the body (or a body above it) that is not limited to a sport or jurisdiction. Figures reconcile to the
+licence register: *members* is the number of distinct people with a licence in force on at least one day of the period (the register lists licences, so a
+person with two licences is two rows there and one here). Region is the issuing body's region; the age band is the year difference to the end of the period (a
+year of birth is derived whenever a date of birth is saved and backfilled at start-up; the date of birth is never decrypted at query time); *standing* is as of
+today. Gender is held only if the person chose to give it (`person_demographics`, encrypted, withdrawable, guardian for a young person); everyone else is "not
+stated". Counts of 1 to 4 people are hidden, and the next smallest figure with them. The census is aggregate-only: there is no person-level drill-down.
+
+**Sports.** The census and card are sport-neutral (a licence belongs to one sport) and a test walks the whole catalogue.
+
+**Migration and rollback.** `137_federation_extras.sql` is additive only (new tables, `users.birth_year`). Rollback is deploying the previous code.

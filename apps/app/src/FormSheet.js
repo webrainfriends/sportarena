@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Switch, View } from 'react-native';
 import { Btn, Chip, Field, Sheet, T, Seg } from './ui';
 import { c } from './theme';
+import { select } from './haptics';
 import { Counter, DateField, DateRangeField, DateTimeField, TimeField } from './pickers';
 import { SportPicker, SportsMulti } from './sportpicker';
 import { RegionPicker } from './region-picker';
@@ -156,7 +157,7 @@ export function FormSheet({ visible, onClose, title, fields, initial = {}, submi
     switch (f.type) {
       case 'section': return <T weight="800" size={15} style={{ marginTop: 8 }}>{f.label}</T>;
       case 'date': return <DateField label={f.label} value={v[f.key]} onChange={(x) => set(f.key, x)} optional={f.optional} min={f.min} max={f.max} hint={f.hint} />;
-      case 'time': return <TimeField label={f.label} value={v[f.key]} onChange={(x) => set(f.key, x)} optional={f.optional} step={f.step} hint={f.hint} />;
+      case 'time': return <TimeField label={f.label} value={v[f.key]} onChange={(x) => set(f.key, x)} optional={f.optional} step={f.step} hint={f.hint} endOfDay={f.endOfDay} />;
       case 'timezone': return <ZonePicker label={f.label} value={v[f.key]} onChange={(x) => set(f.key, x)} />;
       case 'currency': return <CurrencyDropdown label={f.label} value={v[f.key]} onChange={(x) => set(f.key, x)} hint={f.hint} suggest={!f.optional} endpoint={f.endpoint} disabled={f.disabled} />;
       case 'location': return <LocationPicker f={f} v={v} set={set} />;
@@ -178,7 +179,7 @@ export function FormSheet({ visible, onClose, title, fields, initial = {}, submi
       case 'stepper': return (
         <View style={{ gap: 6 }}><View style={{ flexDirection: 'row', alignItems: 'center' }}><View style={{ flex: 1 }}>{lab(f)}</View><Counter value={v[f.key]} onChange={(x) => set(f.key, x)} min={f.min ?? 0} max={f.max ?? 999} step={f.step ?? 1} suffix={f.suffix} /></View>{hint(f)}</View>);
       case 'switch': return (
-        <View style={{ gap: 4 }}><View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}><View style={{ flex: 1 }}>{lab(f)}</View><Switch accessibilityLabel={f.label} value={!!v[f.key]} onValueChange={(x) => set(f.key, x)} trackColor={{ true: c.pink }} /></View>{hint(f)}</View>);
+        <View style={{ gap: 4 }}><View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}><View style={{ flex: 1 }}>{lab(f)}</View><Switch accessibilityLabel={f.label} value={!!v[f.key]} onValueChange={(x) => { select(); set(f.key, x); }} trackColor={{ true: c.pink }} /></View>{hint(f)}</View>);
       case 'money': return (
         <View style={{ gap: 6 }}><Field label={`${f.label}${f.optional ? ` (${t('form.optional')})` : ''}`} value={String(v[f.key] ?? '')} onChangeText={(x) => set(f.key, x.replace(/[^0-9.,]/g, ''))} keyboardType="decimal-pad" placeholder={`${curOf(f, v) ?? ''} ${f.placeholder ?? '0'}`.trim()} hint={f.hint} /></View>);
       case 'weekdays': return (
