@@ -171,8 +171,8 @@ const PUBLIC_LINK = (() => {
   if (Platform.OS !== 'web' || typeof window === 'undefined') return null;
   const q = new URLSearchParams(window.location.search);
   const ok = (v) => (v && /^[0-9a-f-]{36}$/i.test(v) ? v : null);
-  const event = ok(q.get('event')), fixture = ok(q.get('fixture'));
-  return event || fixture ? { event, fixture } : null;
+  const event = ok(q.get('event')), fixture = ok(q.get('fixture')), clip = ok(q.get('clip'));
+  return event || fixture || clip ? { event, fixture, clip } : null;
 })();
 
 // Tabs: the five on the bar are Home, Calendar (Schedule), More (the centre swivel, not a page), Workbench (route Work) and Me; Inbox sits in the top bar; Explore and Player stay reachable by name (goTab) from Home, Work and the swivel.
@@ -408,7 +408,7 @@ function NavEffects() {
     setTimeout(() => push('Event', { id }), 0);
   }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
-    if (!user || !PUBLIC_LINK) return;
+    if (!user || !PUBLIC_LINK || PUBLIC_LINK.clip) return;
     window.history.replaceState({}, '', window.location.pathname);
     goTab('Explore');
     setTimeout(() => push(PUBLIC_LINK.fixture ? 'LiveCentre' : 'Event', { id: PUBLIC_LINK.fixture ?? PUBLIC_LINK.event }), 0);
@@ -453,7 +453,7 @@ function Shell() {
   if (!ready) return <View style={{ flex: 1, backgroundColor: c.bg, justifyContent: 'center', padding: 24 }}><Loading /></View>;
   // back from an organisation's identity provider (web): finish the sign-in, whether or not someone is already signed in
   if (isSsoCallback()) return <View style={{ flex: 1, backgroundColor: c.bg, paddingTop: ins.top }}><SsoCallbackScreen /></View>;
-  if (!user && (PUBLIC_LINK || nativeEvent)) return <View style={{ flex: 1, backgroundColor: c.bg, paddingTop: ins.top }}><PublicShell eventId={PUBLIC_LINK?.event ?? nativeEvent} fixtureId={PUBLIC_LINK?.fixture} onExit={PUBLIC_LINK ? undefined : () => showPublicEvent(null)} renderEvent={(params) => <Event {...params} />} /></View>;
+  if ((!user && (PUBLIC_LINK || nativeEvent)) || PUBLIC_LINK?.clip) return <View style={{ flex: 1, backgroundColor: c.bg, paddingTop: ins.top }}><PublicShell eventId={PUBLIC_LINK?.event ?? nativeEvent} fixtureId={PUBLIC_LINK?.fixture} clipId={PUBLIC_LINK?.clip} onExit={PUBLIC_LINK ? undefined : () => showPublicEvent(null)} renderEvent={(params) => <Event {...params} />} /></View>;
   if (!user) return <View style={{ flex: 1, backgroundColor: c.bg, paddingTop: ins.top }}><BetaBanner /><View style={{ flex: 1 }}><Landing /></View></View>;
   return (
     <View style={{ flex: 1, backgroundColor: c.bg, paddingTop: ins.top, paddingLeft: ins.left, paddingRight: ins.right }}>

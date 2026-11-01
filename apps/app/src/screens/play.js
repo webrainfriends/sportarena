@@ -1,3 +1,4 @@
+import { PlayerClips } from './clip-gallery';
 import { VerifiedBadges } from './verification';
 import { SanctionBadge } from './federation-club';
 import { SubjectPanel } from './insurance';
@@ -253,6 +254,7 @@ export function Person({ id }) {
       </View>
       {x.sport_profiles.length ? <Section title="Sports" color={c.cyan}>{x.sport_profiles.map((s, i) => <Row key={i} left={<Bubble emoji={s.emoji} color={c.cyanSoft} />} title={`${s.sport} · ${s.role}`} sub={`${s.level}${s.position ? ' · ' + s.position : ''}`} />)}</Section> : null}
       {x.teams.length ? <Section title="Teams" color={c.violet}>{x.teams.map((t) => <Row key={t.id} onPress={() => push('Team', { id: t.id })} left={<Bubble emoji={t.emoji} color={t.color} />} title={t.name} sub={t.role} />)}</Section> : null}
+      <PlayerClips userId={id} own={user?.id === id} />
       {stats.data?.by_metric?.length ? <Section title="Stats" color={c.mint}>
         <Card color={c.mintSoft}>{stats.data.by_metric.map((m, i) => <View key={i} style={{ paddingVertical: 4 }}><View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><T weight="800">{m.emoji} {m.metric.replace(/_/g, ' ')}</T><T weight="900">{withUnit(m.unit === 's' ? m.lowest : m.best, m.unit)} <T size={12} color={c.mute}>best · {m.entries} {m.entries === 1 ? 'entry' : 'entries'}</T></T></View><T size={11} color={c.mute}>{m.evidence_label}</T></View>)}</Card>
       </Section> : null}
