@@ -9,6 +9,7 @@
 // stay readable forever (kpi_definition_versions is append-only), so a figure quoted last quarter can always be traced to the formula that produced it.
 import { createHash } from 'node:crypto';
 import { YOUTH_SQL } from '../youth.js';
+import { LIC_STATUS } from '../federation.js';
 
 /** Parameters every facts query receives: $1 event ids, $2 venue ids, $3 team ids, $4 organisation id, $5 unrestricted, $6 from (date), $7 to (date, inclusive), $9 sponsor ids. */
 const FROM = '$6::date';
@@ -26,7 +27,27 @@ export const AUDIENCES = {
   finance: ['owner', 'admin', 'finance', 'auditor'],
   squad: ['owner', 'admin', 'manager', 'coach'],
 };
-export const SCOPE_TYPES = ['platform', 'organisation', 'venue', 'event', 'team', 'sponsor'];
+export const SCOPE_TYPES = ['platform', 'organisation', 'venue', 'event', 'team', 'sponsor', 'federation'];
+
+// ---- federation census (#703): codes the census dimensions use, and the facts columns only census metrics carry
+export const AGE_BANDS = { under_13: 'Under 13', '13_17': '13 to 17', '18_24': '18 to 24', '25_34': '25 to 34', '35_44': '35 to 44', '45_54': '45 to 54', '55_64': '55 to 64', '65_plus': '65 and over', unknown: 'Not stated' };
+/** Gender is held only when the person chose to give it (person_demographics); `key` is what is stored (encrypted, with a blind index of `gender|key`). */
+export const GENDERS = [{ key: 'female', label: 'Female' }, { key: 'male', label: 'Male' }, { key: 'non_binary', label: 'Non-binary' }, { key: 'self_described', label: 'Self-described' }];
+export const STANDING_LABELS = { active: 'In good standing', suspended: 'Suspended', expired: 'Expired' };
+const CENSUS_TYPES = { body_id: 'uuid', region: 'text', age_band: 'text', gender: 'text', status: 'text' };
+const censusFact = (o) => `${fact(o)}, ${Object.entries(CENSUS_TYPES).map(([k, t]) => `${o[k] ?? 'NULL'}::${t} AS ${k}`).join(', ')}`;
+/** Year of birth is kept coarse (users.birth_year), so an age band is the difference of years at the end of the period: never a decrypt, accurate to a year. */
+const AGE_BAND_SQL = `CASE WHEN u.birth_year IS NULL THEN 'unknown' WHEN extract(year FROM $7::date) - u.birth_year < 13 THEN 'under_13' WHEN extract(year FROM $7::date) - u.birth_year < 18 THEN '13_17'
+  WHEN extract(year FROM $7::date) - u.birth_year < 25 THEN '18_24' WHEN extract(year FROM $7::date) - u.birth_year < 35 THEN '25_34' WHEN extract(year FROM $7::date) - u.birth_year < 45 THEN '35_44'
+  WHEN extract(year FROM $7::date) - u.birth_year < 55 THEN '45_54' WHEN extract(year FROM $7::date) - u.birth_year < 65 THEN '55_64' ELSE '65_plus' END`;
+const CENSUS_FROM = `fed_licences l JOIN fed_licence_types t ON t.id=l.type_id JOIN governing_bodies gb ON gb.id=l.body_id JOIN users u ON u.id=l.holder_id
+        LEFT JOIN fed_affiliations af ON af.id=l.affiliation_id LEFT JOIN person_demographics pd ON pd.user_id=u.id AND pd.withdrawn_at IS NULL`;
+const CENSUS_COLS = (at, subject) => ({ rec_id: 'l.id::text', rec_kind: "'licence'", label: "'Licence'", at, subject, sport_id: 't.sport_id', org_id: 'af.organisation_id', body_id: 'l.body_id',
+  region: "coalesce(gb.region, gb.state, gb.country, 'Not stated')", age_band: AGE_BAND_SQL, gender: "coalesce(pd.gender_idx, 'not_stated')", status: LIC_STATUS('l'), link_kind: "'Licence'", link_id: 'l.id' });
+const HELD = "l.status IN ('active','suspended','expired')";   // a licence that was issued; drafts, rejections, withdrawals and revocations are never members
+const CENSUS = { census: true, minCell: 5, scopes: ['federation', 'platform'], audience: 'ops', owner: 'Federation Governance', domain: 'Federation', pointInTime: false,
+  drillScopes: [], drillNote: 'The census is an aggregate: it is read by body, region, club, sport, age band, gender and standing, never person by person. Use the licence register for individual records.',
+  dimensions: ['body', 'region', 'sport', 'club', 'age_band', 'gender', 'status', 'month'] };
 
 const CHANNEL = `CASE WHEN i.academy_charge_id IS NOT NULL THEN 'academy' WHEN i.team_charge_id IS NOT NULL THEN 'team' WHEN i.marketplace_engagement_id IS NOT NULL THEN 'marketplace'
   WHEN i.svc_order_id IS NOT NULL THEN 'services' WHEN i.pos_sale_id IS NOT NULL THEN 'pos' WHEN i.venue_id IS NOT NULL THEN 'venue_booking' ELSE 'other' END`;
@@ -198,6 +219,47 @@ export const METRICS = [
         FROM team_members m JOIN teams t ON t.id=m.team_id AND t.archived_at IS NULL JOIN users u ON u.id=m.user_id
        WHERE m.status='active' AND m.role IN ('player','captain')`,
   },
+  {
+    ...CENSUS, key: 'members', version: 1, label: 'Federation members', unit: 'count', aggregation: 'distinct_count',
+    formula: 'Distinct people holding a federation licence that was in force on at least one day of the period: issued on or before the end, expiring on or after the start, and not revoked, rejected or withdrawn. A person with several licences counts once. Region is the issuing body\'s region; the age band is the year difference to the end of the period; gender is only counted for people who chose to give it. Counts below 5 are hidden.',
+    sources: [{ key: 'licence', label: 'Federation licences' }], flags: {},
+    drilldown: 'Aggregate only: split by body, region, sport, club, age band, gender and standing',
+    facts: () => `
+      SELECT ${censusFact(CENSUS_COLS('l.issued_on::timestamptz', 'l.holder_id::text'))}
+        FROM ${CENSUS_FROM}
+       WHERE ${HELD} AND l.issued_on <= $7::date AND l.expires_on >= $6::date`,
+  },
+  {
+    ...CENSUS, key: 'new_members', version: 1, label: 'New federation members', unit: 'count', aggregation: 'distinct_count',
+    formula: 'Distinct people whose first licence with the issuing body was issued in the period (a renewal, or a person who held a licence with that body before, is not new). Grouped by month this is the membership growth. Counts below 5 are hidden.',
+    sources: [{ key: 'licence', label: 'Federation licences' }], flags: {},
+    drilldown: 'Aggregate only: split by body, region, sport, club, age band, gender and month',
+    facts: () => `
+      SELECT ${censusFact(CENSUS_COLS('l.issued_on::timestamptz', 'l.holder_id::text'))}
+        FROM ${CENSUS_FROM}
+       WHERE ${HELD} AND l.issued_on BETWEEN $6::date AND $7::date
+         AND NOT EXISTS (SELECT 1 FROM fed_licences p WHERE p.body_id=l.body_id AND p.holder_id=l.holder_id AND p.id <> l.id AND p.issued_on < l.issued_on AND p.status IN ('active','suspended','expired','revoked'))`,
+  },
+  {
+    ...CENSUS, key: 'licence_renewals', version: 1, label: 'Licence renewals', unit: 'count', aggregation: 'distinct_count',
+    formula: 'Licences issued in the period as the renewal of an earlier licence (they point at the licence they renew). Counts below 5 are hidden.',
+    sources: [{ key: 'licence', label: 'Federation licences' }], flags: {},
+    drilldown: 'Aggregate only: split by body, region, sport, club, age band, gender and month',
+    facts: () => `
+      SELECT ${censusFact(CENSUS_COLS('l.issued_on::timestamptz', 'l.id::text'))}
+        FROM ${CENSUS_FROM}
+       WHERE ${HELD} AND l.previous_id IS NOT NULL AND l.issued_on BETWEEN $6::date AND $7::date`,
+  },
+  {
+    ...CENSUS, key: 'renewal_rate', version: 1, label: 'Licence renewal rate', unit: 'percent', aggregation: 'ratio',
+    formula: 'Of the licences that ran out in the period (expiry date in the period; revoked ones are not a lapse), the share that have been renewed by a later licence. A licence still inside its renewal notice period counts as not renewed yet. Groups of fewer than 5 licences are hidden.',
+    sources: [{ key: 'licence', label: 'Federation licences' }], flags: {}, minGroup: 5, minCell: undefined,
+    drilldown: 'Aggregate only: split by body, region, sport, club, age band, gender and month',
+    facts: () => `
+      SELECT ${censusFact({ ...CENSUS_COLS('l.expires_on::timestamptz', 'l.id::text'), num: "(EXISTS (SELECT 1 FROM fed_licences n WHERE n.previous_id=l.id AND n.status IN ('active','suspended','expired')))::int", den: '1' })}
+        FROM ${CENSUS_FROM}
+       WHERE ${HELD} AND l.expires_on BETWEEN $6::date AND $7::date`,
+  },
 ];
 
 export const byKey = (key) => METRICS.find((m) => m.key === key);
@@ -210,5 +272,5 @@ export function describeMetric(m) {
 
 /** Hash of everything that changes what a number means (the formula text, the SQL and the shape); a change forces a version bump. */
 export function hashOf(m) {
-  return createHash('sha256').update(JSON.stringify([m.key, m.unit, m.aggregation, m.formula, m.dimensions, m.scopes, m.sources, m.flags, m.pointInTime ?? false, m.minGroup ?? 0, m.facts()])).digest('hex');
+  return createHash('sha256').update(JSON.stringify([m.key, m.unit, m.aggregation, m.formula, m.dimensions, m.scopes, m.sources, m.flags, m.pointInTime ?? false, m.minGroup ?? 0, ...(m.minCell ? [m.minCell] : []), m.facts()])).digest('hex');
 }

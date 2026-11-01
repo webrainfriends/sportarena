@@ -31,7 +31,9 @@ export const COPILOTS = {
 };
 
 const rows = (x) => (Array.isArray(x) ? x : x?.items ?? x?.rows ?? []);
-const day = (v) => (v ? String(v).slice(0, 10) : null);
+// readers are called in-process, so a date column can arrive as a Date (read with the server's local midnight) or as text
+const pad = (x) => String(x).padStart(2, '0');
+const day = (v) => (!v ? null : v instanceof Date ? `${v.getFullYear()}-${pad(v.getMonth() + 1)}-${pad(v.getDate())}` : String(v).slice(0, 10));
 const name = (r) => r.title ?? r.name ?? r.label ?? r.display_name ?? r.holder_name ?? r.organisation_name ?? r.sponsor_name ?? r.ref ?? 'Record';
 const sev = (s) => (['critical', 'urgent', 'high', 'bad'].includes(s) ? 'high' : ['medium', 'warn'].includes(s) ? 'medium' : 'low');
 const it = (o) => ({ severity: 'low', ...o });
@@ -73,12 +75,12 @@ export const TASKS = {
   federation: {
     expiring_affiliations: {
       reads: [{ key: 'affiliations', cap: 'list_affiliations', input: (s) => ({ body_id: s.id, expiring_within_days: 90, include_descendants: true }) }],
-      derive: ({ affiliations: r }) => rows(r).slice(0, 25).map((x) => it({ key: `aff-${x.id}`, title: name(x), detail: `Affiliation ${x.status ?? ''} · ends ${day(x.ends_on ?? x.end_date ?? x.valid_to) ?? 'soon'}`, severity: 'medium', ref: 'affiliations' })),
+      derive: ({ affiliations: r }) => rows(r).slice(0, 25).map((x) => it({ key: `aff-${x.id}`, title: name(x), detail: `Affiliation ${x.status ?? ''} · ends ${day(x.effective_to) ?? 'soon'}${x.days_to_expiry != null ? ` (${x.days_to_expiry} days)` : ''}`, severity: 'medium', ref: 'affiliations' })),
       headline: (items) => `${items.length} affiliation${items.length === 1 ? '' : 's'} expiring within 90 days`,
     },
     expiring_licences: {
       reads: [{ key: 'licences', cap: 'list_licences', input: (s) => ({ body_id: s.id, expiring_within_days: 90, include_descendants: true }) }],
-      derive: ({ licences: r }) => rows(r).slice(0, 25).map((x) => it({ key: `lic-${x.id}`, title: name(x), detail: `Licence ${x.status ?? ''} · expires ${day(x.expires_on ?? x.expiry_date ?? x.valid_to) ?? 'soon'}`, severity: 'medium', ref: 'licences' })),
+      derive: ({ licences: r }) => rows(r).slice(0, 25).map((x) => it({ key: `lic-${x.id}`, title: name(x), detail: `Licence ${x.status ?? ''} · expires ${day(x.expires_on) ?? 'soon'}${x.days_to_expiry != null ? ` (${x.days_to_expiry} days)` : ''}`, severity: 'medium', ref: 'licences' })),
       headline: (items) => `${items.length} licence${items.length === 1 ? '' : 's'} expiring within 90 days`,
     },
     registration_exceptions: {
@@ -99,31 +101,31 @@ export const TASKS = {
     fulfilment: {
       reads: [{ key: 'obligations', cap: 'list_sponsorship_obligations', input: () => ({ state: 'overdue' }) }, { key: 'upcoming', cap: 'list_sponsorship_obligations', input: () => ({ state: 'upcoming' }) }],
       derive: ({ obligations: o, upcoming: u }) => [
-        ...rows(o).slice(0, 15).map((x) => it({ key: `ob-${x.id}`, title: name(x), detail: `Overdue${x.due_on ? ` since ${day(x.due_on)}` : ''}`, severity: 'high', ref: 'obligations' })),
-        ...rows(u).slice(0, 15).map((x) => it({ key: `ob-${x.id}`, title: name(x), detail: `Due ${day(x.due_on) ?? 'soon'}`, severity: 'low', ref: 'upcoming' })),
+        ...rows(o?.obligations).slice(0, 15).map((x) => it({ key: `ob-${x.id}`, title: name(x), detail: `Overdue${x.due_on ? ` since ${day(x.due_on)}` : ''}`, severity: 'high', ref: 'obligations' })),
+        ...rows(u?.obligations).slice(0, 15).map((x) => it({ key: `up-${x.id}`, title: name(x), detail: `Due ${day(x.due_on) ?? 'soon'}`, severity: 'low', ref: 'upcoming' })),
       ],
       headline: (items) => `${items.filter((i) => i.severity === 'high').length} overdue, ${items.filter((i) => i.severity === 'low').length} upcoming obligations`,
     },
     expiring_rights: {
       reads: [{ key: 'deals', cap: 'list_sponsorships', input: () => ({ status: 'active' }) }],
-      derive: ({ deals: r }) => rows(r).filter((x) => { const e = x.ends_on ?? x.end_date ?? x.term_end; return e && new Date(e) - Date.now() < 90 * 864e5; }).slice(0, 25).map((x) => it({ key: `deal-${x.id}`, title: name(x), detail: `Ends ${day(x.ends_on ?? x.end_date ?? x.term_end)}`, severity: 'medium', ref: 'deals' })),
+      derive: ({ deals: r }) => rows(r).filter((x) => { const e = x.ends_on; return e && new Date(e) - Date.now() < 90 * 864e5 && new Date(e) >= Date.now() - 864e5; }).slice(0, 25).map((x) => it({ key: `deal-${x.id}`, title: x.target_name ?? x.agreement_ref ?? name(x), detail: `${x.agreement_ref ? `${x.agreement_ref} · ` : ''}ends ${day(x.ends_on)}`, severity: 'medium', ref: 'deals' })),
       headline: (items) => `${items.length} sponsorship${items.length === 1 ? '' : 's'} ending within 90 days`,
     },
     renewal_prep: {
       reads: [{ key: 'renewals', cap: 'list_sponsorship_renewals', input: () => ({ as: 'sponsor' }) }],
-      derive: ({ renewals: r }) => rows(r).slice(0, 25).map((x) => it({ key: `ren-${x.id}`, title: name(x), detail: `Renewal ${String(x.status ?? 'open').replace(/_/g, ' ')}`, severity: 'medium', ref: 'renewals' })),
+      derive: ({ renewals: r }) => rows(r).slice(0, 25).map((x) => it({ key: `ren-${x.id}`, title: x.agreement_ref ?? name(x), detail: `Renewal ${String(x.status ?? 'open').replace(/_/g, ' ')}${x.days_left != null ? ` · ${x.days_left} days left` : ''}${x.open_dues ? ` · ${x.open_dues} open dues` : ''}`, severity: x.days_left != null && x.days_left < 30 ? 'high' : 'medium', ref: 'renewals' })),
       headline: (items) => `${items.length} renewal${items.length === 1 ? '' : 's'} to prepare`,
     },
   },
   supplier: {
     opportunities: {
       reads: [{ key: 'rfqs', cap: 'list_my_rfq_invitations', input: () => ({ status: 'invited' }) }],
-      derive: ({ rfqs: r }) => rows(r).slice(0, 25).map((x) => it({ key: `rfq-${x.id}`, title: name(x), detail: `Invited${x.respond_by ? `, respond by ${day(x.respond_by)}` : ''}`, severity: 'medium', ref: 'rfqs' })),
+      derive: ({ rfqs: r }) => rows(r).slice(0, 25).map((x) => it({ key: `rfq-${x.id}`, title: name(x), detail: `Invited${x.buyer_name ? ` by ${x.buyer_name}` : ''}${x.quote_deadline ? `, quote by ${day(x.quote_deadline)}` : ''}`, severity: 'medium', ref: 'rfqs' })),
       headline: (items) => `${items.length} open RFQ invitation${items.length === 1 ? '' : 's'}`,
     },
     delivery_obligations: {
       reads: [{ key: 'proposals', cap: 'list_my_tender_proposals', input: () => ({}) }],
-      derive: ({ proposals: r }) => rows(r).filter((x) => x.status === 'draft').slice(0, 25).map((x) => it({ key: `prop-${x.id}`, title: name(x), detail: `Draft proposal${x.deadline ? `, deadline ${day(x.deadline)}` : ''}`, severity: 'medium', ref: 'proposals' })),
+      derive: ({ proposals: r }) => rows(r).filter((x) => x.status === 'draft').slice(0, 25).map((x) => it({ key: `prop-${x.id}`, title: name(x), detail: `Draft proposal${x.closes_at ? `, tender closes ${day(x.closes_at)}` : ''}`, severity: 'medium', ref: 'proposals' })),
       headline: (items) => `${items.length} draft proposal${items.length === 1 ? '' : 's'} not yet submitted`,
     },
   },
@@ -135,7 +137,7 @@ export const TASKS = {
     },
     operations: {
       reads: [{ key: 'ops', cap: 'venue_operations_overview', input: (s) => ({ id: s.id }) }],
-      derive: ({ ops: r }) => rows(r?.alerts ?? r?.attention).slice(0, 25).map((x, n) => it({ key: `ops-${x.id ?? n}`, title: name(x), detail: x.detail ?? x.summary ?? '', severity: sev(x.severity), ref: 'ops' })),
+      derive: ({ ops: r }) => rows(r?.attention).slice(0, 25).map((x, n) => it({ key: `ops-${x.key ?? n}`, title: x.text ?? name(x), detail: String(x.key ?? '').replace(/_/g, ' '), severity: ['maintenance_overdue', 'maintenance_urgent'].includes(x.key) ? 'high' : 'medium', ref: 'ops' })),
       headline: (items) => `${items.length} item${items.length === 1 ? '' : 's'} need attention at this venue`,
     },
   },
@@ -149,8 +151,7 @@ export const TASKS = {
   organisation: {
     attention: {
       reads: [{ key: 'centre', cap: 'get_org_command_centre', input: (s) => ({ id: s.id }) }],
-      derive: ({ centre: r }) => [...rows(r?.alerts).map((x, n) => it({ key: `al-${x.id ?? n}`, title: name(x), detail: x.detail ?? x.summary ?? '', severity: sev(x.severity), ref: 'centre' })),
-        ...rows(r?.tiles).filter((x) => x.severity && x.severity !== 'ok').map((x) => it({ key: `tile-${x.key ?? x.area}`, title: name(x), detail: x.summary ?? '', severity: sev(x.severity), ref: 'centre' }))].slice(0, 25),
+      derive: ({ centre: r }) => rows(r?.alerts).slice(0, 25).map((x, n) => it({ key: `al-${x.key ?? n}`, title: name(x), detail: x.summary ?? '', severity: sev(x.severity), ref: 'centre' })),
       headline: (items) => `${items.length} area${items.length === 1 ? '' : 's'} need attention`,
     },
   },

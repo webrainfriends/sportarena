@@ -33,51 +33,9 @@ export const Pill = ({ label, fg = c.mute, bg = c.violetSoft }) => (
 const STATUS = { expired: [c.mute, c.violetSoft], awaiting_payment: [c.sun, c.sunSoft], pending_payment: [c.sun, c.sunSoft], unpaid: [c.sun, c.sunSoft], paid: [c.lime, c.limeSoft], refunded: [c.mute, c.violetSoft], pending: [c.sun, c.sunSoft], accepted: [c.lime, c.limeSoft], declined: [c.red, c.redSoft], requested: [c.sun, c.sunSoft], confirmed: [c.lime, c.limeSoft], completed: [c.mute, c.violetSoft], cancelled: [c.red, c.redSoft], placed: [c.sun, c.sunSoft], shipped: [c.cyan, c.cyanSoft], delivered: [c.lime, c.limeSoft], active: [c.lime, c.limeSoft], open: [c.lime, c.limeSoft], filled: [c.mute, c.violetSoft], pay_direct: [c.mute, c.violetSoft], proposed: [c.sun, c.sunSoft], on_hold: [c.cyan, c.cyanSoft] };
 export const StatusPill = ({ s }) => <Pill label={nice(s).toUpperCase()} fg={(STATUS[s] ?? [c.mute])[0]} bg={(STATUS[s] ?? [0, c.violetSoft])[1]} />;
 
-/** Hosted checkout: pick Stripe or PayPal, go to the provider, then confirm. Card details never touch Gotmygame. */
-export function PaySheet({ target, onClose, onDone }) {
-  const { toast } = useSession();
-  const methods = useLoad(() => api.get('/payments/methods'), []);
-  const [pay, setPay] = useState(null);
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState(null);
-  const go = async (provider) => {
-    setBusy(true); setErr(null);
-    try {
-      const p = await api.post('/payments', { purpose_type: target.type, purpose_id: target.id, provider, return_url: Platform.OS === 'web' ? `${window.location.origin}${window.location.pathname}` : undefined });
-      setPay(p);
-      if (Platform.OS === 'web') window.location.assign(p.checkout_url); else await Linking.openURL(p.checkout_url);
-    } catch (e) { setErr(e.message); } finally { setBusy(false); }
-  };
-  const check = async () => {
-    setBusy(true); setErr(null);
-    try {
-      const r = await api.post(`/payments/${pay.id}/confirm`);
-      if (r.status === 'paid') { toast('Payment received ✓'); await onDone(); onClose(); } else setErr('Not paid yet — finish the checkout, then check again.');
-    } catch (e) { setErr(e.message); } finally { setBusy(false); }
-  };
-  const m = methods.data;
-  return (
-    <Sheet visible onClose={onClose} title="Pay securely">
-      <T size={14} color={c.mute}>{target.label} · <T weight="800" size={14}>{money(target.amount, target.currency ?? m?.currency)}</T>{(target.currency ?? m?.currency) ? ` (${target.currency ?? m.currency})` : ''}</T>
-      {methods.loading && !m ? <Loading /> : !m?.providers.length ? (
-        <T weight="700" color={c.red}>Online payments aren't switched on for this server yet. Ask the administrator to add Stripe or PayPal keys.</T>
-      ) : pay ? (
-        <View style={{ gap: 10 }}>
-          <T size={14}>Checkout opened in {pay.provider === 'stripe' ? 'Stripe' : 'PayPal'}. When you're done, come back and check.</T>
-          <Btn title="I've paid — check payment" onPress={check} loading={busy} />
-          <Btn title="Reopen checkout" color={c.paper} onPress={() => (Platform.OS === 'web' ? window.location.assign(pay.checkout_url) : Linking.openURL(pay.checkout_url))} />
-        </View>
-      ) : (
-        <View style={{ gap: 10 }}>
-          {m.providers.includes('stripe') ? <Btn title="Pay with card (Stripe)" onPress={() => go('stripe')} loading={busy} /> : null}
-          {m.providers.includes('paypal') ? <Btn title="Pay with PayPal" color={c.paper} onPress={() => go('paypal')} loading={busy} /> : null}
-          <T size={12} color={c.mute}>You'll be taken to the provider's secure page. Your card details never reach Gotmygame.</T>
-        </View>
-      )}
-      {err ? <T color={c.red} weight="700">{err}</T> : null}
-    </Sheet>
-  );
-}
+// One checkout sheet for the whole app (country-aware, data-driven): see ../PaySheet.js. Re-exported so existing imports keep working.
+import { PaySheet } from '../PaySheet';
+export { PaySheet };
 
 const Head = ({ eyebrow, title, sub, right }) => (
   <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, marginTop: 6 }}>

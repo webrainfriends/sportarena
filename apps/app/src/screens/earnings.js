@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { Platform, View } from 'react-native';
 import { api } from '../api';
+import { saveExport } from '../open-file';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { Btn, Card, Empty, ErrorBox, H1, Loading, Row, Screen, Section, Seg, StatPill, T, Tag } from '../ui';
@@ -10,6 +11,8 @@ import { FormSheet } from '../FormSheet';
 import { DateRangeField } from '../pickers';
 import { c } from '../theme';
 import { moneyIn } from '../vtime';
+import { openPdf } from '../open-file';
+import { t } from '../i18n';
 import { locale } from '../locale';
 
 const cash = (cents, cur) => moneyIn(Number(cents ?? 0), cur);
@@ -17,12 +20,7 @@ const when = (d) => (d ? new Date(d).toLocaleDateString(locale) : '');
 const TONE = { processing: c.sunSoft, paid: c.lime, failed: c.pinkSoft, pending: c.sunSoft, verified: c.lime, rejected: c.pinkSoft };
 const PAGE = 25;
 
-function download(name, text) {
-  if (Platform.OS !== 'web') return false;
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([text], { type: 'text/csv' })); a.download = name; a.click();
-  return true;
-}
+const download = (name, text) => saveExport({ filename: name, content_type: 'text/csv', encoding: 'utf8', content: text });
 
 const Line = ({ t, v, strong, sub }) => (
   <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
@@ -68,6 +66,7 @@ export function Earnings() {
   const e = useLoad(() => api.get('/me/earnings'), []);
   const accounts = useLoad(() => api.get('/me/payout-accounts'), []);
   const payouts = useLoad(() => api.get('/me/payouts', { limit: 10 }), []);
+  const items = useLoad(() => api.get('/me/payout-items', { limit: 20 }), []);
   const [cur, setCur] = useState(null);
   const [offset, setOffset] = useState(0);
   const [more, setMore] = useState([]);
@@ -126,6 +125,15 @@ export function Earnings() {
         )) : <T size={13} color={c.mute}>No payouts yet.</T>}
       </Section>
 
+      {(items.data ?? []).filter((i) => i.source_type !== 'provider_balance').length ? (
+        <Section title={t('payout.to_you')} color={c.mint}>
+          {(items.data ?? []).filter((i) => i.source_type !== 'provider_balance').map((i) => (
+            <Row key={i.id} title={cash(i.net_minor, i.currency)} sub={`${t(`payout.source_${i.source_type}`)} · ${t('payout.gross')} ${cash(i.gross_minor, i.currency)}${Number(i.tax_minor) ? ` · ${t('payout.withheld')} ${cash(i.tax_minor, i.currency)}` : ''}${i.reference ? ` · ${i.reference}` : ''}`}
+              right={i.status === 'paid' ? <Btn small title={t('payout.statement')} color={c.violet} accessibilityLabel={t('payout.statement')} onPress={() => openPdf(`/payout-items/${i.id}/statement.pdf`, 'payout-statement').catch((x) => toast(x.message))} /> : <Tag label={t(`payout.status_${i.status}`)} color={TONE[i.status]} />} />
+          ))}
+        </Section>
+      ) : null}
+
       <Section title="Statement" color={c.sun} action="Export CSV" onAction={() => setRange(true)}>
         {d.currencies.length > 1 ? <Seg options={[{ value: null, label: 'All' }, ...d.currencies.map((x) => ({ value: x.currency, label: x.currency }))]} value={cur} onChange={(v) => { setCur(v); setMore([]); setOffset(0); }} /> : null}
         {entries.loading && !entries.data ? <Loading /> : entries.error ? <ErrorBox error={entries.error} onRetry={entries.reload} /> : rows.length ? rows.map((l) => (
@@ -148,7 +156,7 @@ export function Earnings() {
         fields={[{ key: 'from', toKey: 'to', label: 'Period', type: 'daterange', optional: true }]}
         onSubmit={async (v) => {
           const r = await api.get('/me/earnings/export', { ...(v.from ? { from: v.from } : {}), ...(v.to ? { to: v.to } : {}), ...(cur ? { currency: cur } : {}) });
-          return download(r.filename, r.csv) ? `${r.rows} lines exported` : `${r.rows} lines ready — open this on the web app to download`;
+          await download(r.filename, r.csv); return `${r.rows} lines exported`;
         }} />
     </Screen>
   );

@@ -75,7 +75,9 @@ export function PlayerHero({ user, profile, onBell, onAvatar, pad = 16 }) {
   const W = Math.min(L.width, COL);
   const H = 330;
   const side = Math.round(W * 0.62);
-  const nameSize = W < 400 ? 36 : 40;
+  // adjustsFontSizeToFit does nothing on web, so a long name ran under the photo: size it to the text column (58% of the card, less padding)
+  const longest = Math.max(...String(user.display_name).trim().split(/\s+/).map((w) => w.length), 1);
+  const nameSize = Math.max(22, Math.min(W < 400 ? 36 : 40, Math.floor((W * 0.58 - pad) / (0.58 * longest))));
   const about = aboutFacts(user, profile);
   return (
     <View style={{ backgroundColor: c.paper, overflow: 'hidden' }}>
@@ -99,9 +101,9 @@ export function PlayerHero({ user, profile, onBell, onAvatar, pad = 16 }) {
             <T size={16}>📷</T>
           </Pressable>
         </View>
-        <View style={{ position: 'absolute', right: pad, top: 14 }}>
+        {onBell ? <View style={{ position: 'absolute', right: pad, top: 14 }}>
           <RoundBtn icon="Bell" label="Inbox" onPress={onBell} />
-        </View>
+        </View> : null}
         <View style={{ width: '58%', paddingTop: 64, paddingBottom: 62 }}>
           <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             {profile ? <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: tone[1], alignItems: 'center', justifyContent: 'center' }}><T size={22}>{profile.sport_emoji}</T></View> : null}

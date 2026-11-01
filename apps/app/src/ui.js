@@ -1,11 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Image, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, ActivityIndicator } from 'react-native';
+import { Animated, Easing, FlatList, Image, Keyboard, Modal, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View, ActivityIndicator } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { c, dark, grad, r, accentFor, fam } from './theme';
 import { useLayout } from './layout';
 import { mediaUrl } from './api';
 import { t } from './i18n';
+import { Icon } from './icons';
+import { tapped } from './haptics';
 // The native animation driver does not exist on the web; asking for it logs a warning and falls back to JS anyway.
 const NATIVE = Platform.OS !== 'web';
 
@@ -22,7 +24,7 @@ const lift = Platform.OS === 'web'
 export function Card({ children, color = c.paper, style, onPress, pad = 16, accessibilityLabel }) {
   const body = <View style={[s.card, { backgroundColor: surface(color), padding: pad }]}>{children}</View>;
   return onPress
-    ? <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={accessibilityLabel} style={({ pressed }) => [style, pressed ? { opacity: 0.92, transform: [{ scale: 0.985 }] } : null]}>{body}</Pressable>
+    ? <Pressable onPress={tapped(onPress)} accessibilityRole="button" accessibilityLabel={accessibilityLabel} style={({ pressed }) => [style, pressed ? { opacity: 0.92, transform: [{ scale: 0.985 }] } : null]}>{body}</Pressable>
     : <View style={style}>{body}</View>;
 }
 
@@ -37,7 +39,7 @@ export function GradCard({ children, colors = grad.hero, style, pad = 22, onPres
       </LinearGradient>
     </View>
   );
-  return onPress ? <Pressable onPress={onPress} style={style}>{body}</Pressable> : body;
+  return onPress ? <Pressable onPress={tapped(onPress)} style={style}>{body}</Pressable> : body;
 }
 
 export const T = ({ children, style, size = 15, color = c.ink, weight = '500', ...p }) => <Text {...p} style={[fam, { fontSize: size, color, fontWeight: normW(weight) }, style]}>{children}</Text>;
@@ -53,7 +55,7 @@ export function Section({ title, action, onAction, children, color = c.pink }) {
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 1 }}>
           <H2>{title}</H2>
         </View>
-        {action ? <Pressable onPress={onAction}><T weight="700" size={13} color={c.pink}>{action}  ›</T></Pressable> : null}
+        {action ? <Pressable onPress={tapped(onAction)}><T weight="700" size={13} color={c.pink}>{action}  ›</T></Pressable> : null}
       </View>
       <View style={{ gap: 10, marginTop: 12 }}>{children}</View>
     </View>
@@ -65,7 +67,7 @@ export function Btn({ title, onPress, color: want = c.pink, ink = '#fff', style,
   const plain = color === c.paper;
   const fg = plain ? (ink === '#fff' ? c.ink : ink) : color === c.pink ? c.onAccent : '#fff';
   return (
-    <Pressable disabled={disabled || loading} onPress={onPress} accessibilityRole="button" accessibilityLabel={accessibilityLabel ?? title} accessibilityState={{ disabled: !!(disabled || loading), busy: !!loading }}
+    <Pressable disabled={disabled || loading} onPress={tapped(onPress)} accessibilityRole="button" accessibilityLabel={accessibilityLabel ?? title} accessibilityState={{ disabled: !!(disabled || loading), busy: !!loading }}
       hitSlop={small ? 4 : 0} style={({ pressed }) => [{ opacity: disabled ? 0.4 : pressed ? 0.85 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] }, style]}>
       <View style={[s.btn, { backgroundColor: color, borderWidth: plain ? 1 : 0, borderColor: c.line, paddingVertical: small ? 10 : 15, paddingHorizontal: small ? 18 : 24, minHeight: small ? 44 : 50 }]}>
         {loading ? <ActivityIndicator color={fg} /> : <T weight="700" size={small ? 13 : 15} color={fg} style={{ letterSpacing: 0.2 }}>{title}</T>}
@@ -76,7 +78,7 @@ export function Btn({ title, onPress, color: want = c.pink, ink = '#fff', style,
 
 export function Chip({ label, active, onPress }) {
   return (
-    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ selected: !!active }} hitSlop={6} style={[s.chip, active ? { backgroundColor: c.ink, borderColor: c.ink } : null]}>
+    <Pressable onPress={tapped(onPress)} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ selected: !!active }} hitSlop={6} style={[s.chip, active ? { backgroundColor: c.ink, borderColor: c.ink } : null]}>
       <T weight="600" size={13} color={active ? c.inkOn : c.mute}>{label}</T>
     </Pressable>
   );
@@ -122,12 +124,21 @@ export const Bubble = ({ emoji, color = c.sun, size = 46 }) => (
 
 export function Field({ label, value, onChangeText, secure, multiline, keyboardType, placeholder, hint, maxLength, accessibilityLabel, minHeight }) {
   const [focus, setFocus] = useState(false);
+  const [reveal, setReveal] = useState(false);
   return (
     <View style={{ gap: 6 }}>
       {label ? <T weight="600" size={12} color={c.mute} style={{ letterSpacing: 0.4 }}>{label.toUpperCase()}</T> : null}
-      <TextInput value={value ?? ''} onChangeText={onChangeText} accessibilityLabel={accessibilityLabel ?? label ?? placeholder} maxLength={maxLength} secureTextEntry={secure} multiline={multiline} keyboardType={keyboardType} placeholder={placeholder}
-        onFocus={() => setFocus(true)} onBlur={() => setFocus(false)}
-        autoCapitalize="none" placeholderTextColor={c.mute} style={[fam, s.input, focus && { borderColor: c.ink }, multiline && { minHeight: minHeight ?? 80, textAlignVertical: 'top' }, Platform.OS === 'web' && { outlineStyle: 'none' }]} />
+      <View>
+        <TextInput value={value ?? ''} onChangeText={onChangeText} accessibilityLabel={accessibilityLabel ?? label ?? placeholder} maxLength={maxLength} secureTextEntry={secure && !reveal} multiline={multiline} keyboardType={keyboardType} placeholder={placeholder}
+          onFocus={() => setFocus(true)} onBlur={() => setFocus(false)}
+          autoCapitalize="none" placeholderTextColor={c.mute} style={[fam, s.input, focus && { borderColor: c.ink }, multiline && { minHeight: minHeight ?? 80, textAlignVertical: 'top' }, secure && { paddingEnd: 52 }, Platform.OS === 'web' && { outlineStyle: 'none' }]} />
+        {secure ? (
+          <Pressable onPress={() => setReveal((x) => !x)} accessibilityRole="button" accessibilityLabel={reveal ? t('auth.hide_password') : t('auth.show_password')} accessibilityState={{ selected: reveal }}
+            hitSlop={4} style={{ position: 'absolute', end: 0, top: 0, bottom: 0, width: 48, alignItems: 'center', justifyContent: 'center' }}>
+            <Icon name={reveal ? 'EyeOff' : 'Eye'} size={22} color={c.mute} />
+          </Pressable>
+        ) : null}
+      </View>
       {hint ? <T size={12} color={c.mute}>{hint}</T> : null}
     </View>
   );
@@ -180,17 +191,47 @@ export const Seg = ({ options, value, onChange, color = c.violet }) => (
 const HeaderCtx = React.createContext(null);
 export const ScreenHeaderProvider = HeaderCtx.Provider;
 
-export function Screen({ children, scroll = true, refreshing, onRefresh, padBottom, style, wide }) {
+/** What every scrolling screen shares: the gutter and max width, the keyboard behaviour, the pull-to-refresh control and the header a host screen hands down. */
+function useScreenFrame({ onRefresh, refreshing, padBottom, wide, scroll = true }) {
   const L = useLayout();
   const header = React.useContext(HeaderCtx);
-  const Inner = scroll ? ScrollView : View;
   const bottom = padBottom ?? L.bottomPad;
+  // Pull down to reload. The spinner stays up while the screen's own reload runs (at least a moment, so a quick reload is still seen).
+  const [pulling, setPulling] = useState(false);
+  const pull = async () => {
+    setPulling(true);
+    try { await Promise.all([Promise.resolve(onRefresh()), new Promise((done) => setTimeout(done, 600))]); } catch { /* the screen shows its own error */ } finally { setPulling(false); }
+  };
+  const refreshControl = scroll && onRefresh ? <RefreshControl refreshing={pulling || !!refreshing} onRefresh={pull} tintColor={c.mute} colors={[c.pink]} progressBackgroundColor={c.paper} /> : undefined;
+  const content = { paddingHorizontal: L.gutter, paddingTop: 8, paddingBottom: bottom, maxWidth: wide ? L.contentMax : Math.min(L.contentMax, L.tablet ? 860 : 760), width: '100%', alignSelf: 'center' };
+  const scroller = { style: { flex: 1 }, showsVerticalScrollIndicator: false, keyboardShouldPersistTaps: 'handled', automaticallyAdjustKeyboardInsets: true, refreshControl };
+  return { L, header, content, scroller };
+}
+
+export function Screen({ children, scroll = true, refreshing, onRefresh, padBottom, style, wide }) {
+  const { L, header, content, scroller } = useScreenFrame({ onRefresh, refreshing, padBottom, wide, scroll });
+  const Inner = scroll ? ScrollView : View;
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
-      <Inner style={{ flex: 1 }} contentContainerStyle={scroll ? { paddingHorizontal: L.gutter, paddingTop: 8, paddingBottom: bottom, maxWidth: wide ? L.contentMax : Math.min(L.contentMax, L.tablet ? 860 : 760), width: '100%', alignSelf: 'center' } : undefined}
-        showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
+      <Inner {...(scroll ? scroller : { style: { flex: 1 } })} contentContainerStyle={scroll ? content : undefined}>
         {scroll ? <>{header}{children}</> : <View style={[{ flex: 1, padding: L.gutter }, style]}>{children}</View>}
       </Inner>
+    </View>
+  );
+}
+
+/** A screen whose main content is a long list: the same frame as Screen, but the list is the scroller, so only the rows on screen are built.
+ *  Put everything above the rows in `header` and anything below them in `footer` (pass elements, not components, so a search box keeps focus).
+ *  `onEndReached` loads the next page; keep a visible "Show more" in `footer` as well, because a short list may never reach the end. */
+export function ListScreen({ data, renderItem, keyExtractor, header, footer, empty, onEndReached, gap = 8, numColumns = 1, refreshing, onRefresh, padBottom, wide, extraData }) {
+  const { header: host, content, scroller } = useScreenFrame({ onRefresh, refreshing, padBottom, wide });
+  return (
+    <View style={{ flex: 1, backgroundColor: c.bg }}>
+      <FlatList key={numColumns} data={data} renderItem={renderItem} keyExtractor={keyExtractor} extraData={extraData} numColumns={numColumns}
+        {...scroller} contentContainerStyle={content} columnWrapperStyle={numColumns > 1 ? { gap } : undefined}
+        ListHeaderComponent={<>{host}{header}</>} ListFooterComponent={footer} ListEmptyComponent={empty}
+        ItemSeparatorComponent={() => <View style={{ height: gap }} />} onEndReached={onEndReached} onEndReachedThreshold={0.6}
+        initialNumToRender={10} windowSize={7} removeClippedSubviews={Platform.OS === 'android'} />
     </View>
   );
 }
@@ -229,10 +270,24 @@ export const ErrorBox = ({ error, onRetry }) => (
   <Card color={c.orangeSoft}><T weight="700">{error?.message ?? t('error.generic')}</T>{onRetry ? <Btn small title={t('common.retry')} onPress={onRetry} style={{ marginTop: 10, alignSelf: 'flex-start' }} color={c.violet} /> : null}</Card>
 );
 
+/** Android only: how tall the keyboard is. A sheet lives in its own window, which Android does not shrink for the keyboard, so the sheet is lifted by this much.
+ *  iOS lifts scrolling content itself (automaticallyAdjustKeyboardInsets) and the web resizes the page, so both report 0. */
+function useKeyboardHeight() {
+  const [h, setH] = useState(0);
+  useEffect(() => {
+    if (Platform.OS !== 'android') return undefined;
+    const a = Keyboard.addListener('keyboardDidShow', (e) => setH(e.endCoordinates?.height ?? 0));
+    const b = Keyboard.addListener('keyboardDidHide', () => setH(0));
+    return () => { a.remove(); b.remove(); };
+  }, []);
+  return h;
+}
+
 /** Phone: bottom sheet that rises from the edge. Tablet: centred form sheet, like an iPad modal. */
 export function Sheet({ visible, onClose, title, children, footer }) {
   const L = useLayout();
   const ins = useSafeAreaInsets();
+  const kb = useKeyboardHeight();
   const sheet = L.tablet
     ? { alignSelf: 'center', width: 580, maxWidth: '92%', maxHeight: '86%', borderRadius: 28, marginBottom: 'auto', marginTop: 'auto' }
     : { width: '100%', maxHeight: '92%', borderTopLeftRadius: 28, borderTopRightRadius: 28 };
@@ -240,7 +295,7 @@ export function Sheet({ visible, onClose, title, children, footer }) {
     <Modal visible={visible} transparent animationType={L.tablet ? 'fade' : 'slide'} onRequestClose={onClose} statusBarTranslucent>
       <View style={[s.scrim, L.tablet && { justifyContent: 'center' }]}>
         <Pressable style={L.tablet ? StyleSheet.absoluteFill : { flex: 1 }} onPress={onClose} />
-        <View style={[s.sheet, sheet]}>
+        <View style={[s.sheet, sheet, kb && L.phone ? { marginBottom: kb, maxHeight: '80%' } : null]}>
           {L.phone ? <View style={{ alignSelf: 'center', width: 40, height: 5, borderRadius: 3, backgroundColor: c.line, marginTop: 8 }} /> : null}
           <ScrollView style={footer ? { flexShrink: 1 } : undefined} contentContainerStyle={{ padding: 20, paddingBottom: 20 + (L.phone && !footer ? ins.bottom : 0), gap: 14 }} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>

@@ -20,6 +20,11 @@ export function targetFromUrl(url, hosts = []) {
     const t = new URLSearchParams(query).get('target');
     return t && /^[a-z0-9:_-]{1,120}$/i.test(t) ? t : null;
   }
-  if (!parts.length || !parts.every((p) => /^[a-z0-9_-]{1,80}$/i.test(p))) return null;
+  // a licence card QR opens the public check: the root of the app's own host with ?verify=<12-character code | signed card code> (nothing else is accepted there)
+  if (!parts.length) {
+    const v = new URLSearchParams(query).get('verify');
+    return v && /^([A-Fa-f0-9]{12}|LC1\.[0-9a-f-]{36}\.\d{1,10}\.[0-9a-f]{24})$/.test(v) ? `verify:${v}` : null;
+  }
+  if (!parts.every((p) => /^[a-z0-9_-]{1,80}$/i.test(p))) return null;
   return parts.join(':');
 }

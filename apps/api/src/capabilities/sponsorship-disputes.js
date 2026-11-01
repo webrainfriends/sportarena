@@ -1,6 +1,7 @@
 // Sponsorship disputes, complaints and risk controls (#308). One canonical case per dispute (see ../cases.js) linked to the exact agreement,
 // payment, delivery or evidence it is about, with contested status, scoped evidence, reasoned risk flags, reviewers, resolutions that use the
 // canonical obligation concession, and an appeal. The rules live in ../sponsor-disputes.js. Opening a dispute never changes a debt or evidence.
+import { B64_MAX_CHARS, documentMaxBytes } from '../platform-settings.js';
 import { z } from 'zod';
 import { cap, id, page } from '../registry.js';
 import { one, many, tx, pool } from '../db.js';
@@ -19,7 +20,7 @@ const rev = z.coerce.number().int().positive().describe('the revision you review
 const stale = () => conflict('This dispute changed while you were looking; reload it and try again', { code: 'stale_version' });
 const evidenceIn = z.object({
   label: z.string().max(120).optional(), reference: z.string().min(2).max(500).optional().describe('https link or reference number'),
-  file_name: z.string().max(120).optional(), data: z.string().max(7_200_000).optional().describe('base64 file: PDF, JPEG, PNG or WebP, up to 5 MB'),
+  file_name: z.string().max(120).optional(), data: z.string().max(B64_MAX_CHARS).optional().describe('base64 file: PDF, JPEG, PNG or WebP, up to the platform document limit'),
 }).refine((e) => e.reference || e.data, 'Give a reference or attach a file');
 
 const hidden = (ctx) => ctx.role === 'recipient' && ['pending', 'rejected'].includes(ctx.d.budget_approval);

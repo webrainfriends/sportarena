@@ -5,6 +5,7 @@ import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { Btn, Card, Empty, ErrorBox, Field, H1, Loading, Row, Screen, Seg, Section, Sheet, StatPill, T, Tag } from '../ui';
 import { FormSheet } from '../FormSheet';
+import { GstProfileCard } from './gst-profile';
 import { c } from '../theme';
 import { KIND } from './book';
 import { MediaManager, VenueReviews } from './venue-media';
@@ -138,7 +139,7 @@ function Pricing({ v, reload }) {
         fields={[{ key: 'name', label: 'What is it', type: 'chips', options: ['Holiday rate', 'Tournament', 'Festival', 'Happy hour', 'Special event'] },
           { key: 'resource_id', label: 'Applies to', type: 'chips', blank: true, options: [{ value: '', label: 'All courts' }, ...v.resources.map((r) => ({ value: r.id, label: `${r.sport_emoji ?? ''} ${r.name}`.trim() }))] },
           { key: 'hourly_rate_cents', label: 'Rate per hour', type: 'money', currency: v.currency },
-          { key: 'start', label: 'From', type: 'time', default: '00:00' }, { key: 'end', label: 'Until', type: 'time', default: '24:00' },
+          { key: 'start', label: 'From', type: 'time', default: '00:00' }, { key: 'end', label: 'Until', type: 'time', default: '24:00', endOfDay: true },
           { key: 'weekdays', label: 'Days', type: 'weekdays', optional: true, hint: 'Leave empty for every day' },
           { key: 'valid_from', label: 'Starts on', type: 'date', optional: true }, { key: 'valid_to', label: 'Ends on', type: 'date', optional: true }]}
         onSubmit={async (f) => { await api.post(`/venues/${v.id}/price-rules`, { ...f, start: f.start ?? '00:00', end: f.end ?? '24:00', resource_id: f.resource_id || undefined }); done(); return 'Special rate added'; }} />
@@ -289,6 +290,7 @@ function Setup({ v, reload }) {
           <T size={12} color={c.mute}>Invoice numbers start {v.invoice_prefix ?? 'with an automatic prefix'}-{new Date().getFullYear()}-000001. Online payment needs Stripe or PayPal switched on for the server.</T>
           <Btn small title="Edit money settings" color={c.violet} onPress={() => setMoney(true)} style={{ marginTop: 10, alignSelf: 'flex-start' }} />
         </Card>
+        <GstProfileCard venueId={v.id} currency={v.currency} />
       </Section>
       <Section title="Opening hours" color={c.lime}>
         <Card><T weight="700">🕒 {hoursSummary(v.hours)}</T><Btn small title="Edit hours" color={c.violet} onPress={() => setHrs(true)} style={{ marginTop: 10, alignSelf: 'flex-start' }} /></Card>

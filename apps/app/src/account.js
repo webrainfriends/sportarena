@@ -9,6 +9,7 @@ import { storage } from './storage';
 import { useNav } from './nav';
 import { useWorkspace } from './workspace';
 import { t, languageMeta } from './i18n';
+import { CensusInfoSheet } from './census-info';
 
 // Theme and language are read when the app loads (screens bake the tokens in), so a change is stored and the app restarts.
 async function restart() {
@@ -24,6 +25,7 @@ export function AccountSheet({ visible, onClose }) {
   const { user, signOut } = useSession();
   const [q, setQ] = useState('');
   const [open, setOpen] = useState(false);
+  const [census, setCensus] = useState(false);
   const pickTheme = async (m) => { if (m === themeMode) return; await remember(THEME_KEY, m === 'system' ? null : m); restart(); };
   const pickLocale = async (tag) => { if (tag === locale && !followsDevice) return; await remember(LOCALE_KEY, tag); restart(); };
   const list = LOCALES.filter((t) => localeSearchText(t).includes(q.trim().toLowerCase())).slice(0, 40);
@@ -56,7 +58,9 @@ export function AccountSheet({ visible, onClose }) {
         ) : null}
         <T size={12} color={c.mute}>{t('account.format_note')} {languageMeta.reviewed ? '' : t('account.review_note')}</T>
       </View>
+      {user ? <Btn title={t('fedx.demo.title')} color={c.paper} ink={c.ink} onPress={() => setCensus(true)} accessibilityLabel={t('fedx.demo.title')} /> : null}
       <Btn title={t('account.logout')} color={c.ink} onPress={() => { onClose(); signOut(); }} />
+      {user ? <CensusInfoSheet visible={census} onClose={() => setCensus(false)} /> : null}
     </Sheet>
   );
 }

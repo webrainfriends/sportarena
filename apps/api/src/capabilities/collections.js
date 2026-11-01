@@ -22,8 +22,8 @@ import {
 const TAG = 'Collections';
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a calendar date (YYYY-MM-DD)');
 const cur = z.string().regex(/^[A-Z]{3}$/);
-const owner = { organisation_id: id.optional(), venue_id: id.optional(), team_id: id.optional() };
-const oneOwner = (i) => { if ([i.organisation_id, i.venue_id, i.team_id].filter(Boolean).length !== 1) throw badRequest('Give exactly one of organisation_id, venue_id or team_id'); };
+const owner = { organisation_id: id.optional(), venue_id: id.optional(), team_id: id.optional(), coach_id: id.optional() };
+const oneOwner = (i) => { if ([i.organisation_id, i.venue_id, i.team_id, i.coach_id].filter(Boolean).length !== 1) throw badRequest('Give exactly one of organisation_id, venue_id, team_id or coach_id'); };
 
 /** The finance desk of an organisation (owner / admin / finance) or of a venue (its owner and staff). Anyone else gets a 404. */
 async function deskFor(user, i, { write = false, c } = {}) {
@@ -34,11 +34,16 @@ async function deskFor(user, i, { write = false, c } = {}) {
     if (!t || !(isAdmin(user) || (await financeStaff(user, t)))) throw notFound('Team');   // the team's owner, managers and finance staff; anyone else gets a 404
     return { type: 'team', id: t.id };
   }
+  if (i.coach_id) {
+    // a coach's own desk for late subscription months: only that coach (or a platform admin); anyone else gets a 404
+    if (!(user.id === i.coach_id || isAdmin(user))) throw notFound('Coach');
+    return { type: 'coach', id: i.coach_id };
+  }
   const v = (await (c ?? pool).query('SELECT id FROM venues WHERE id=$1', [i.venue_id])).rows[0];
   if (!v || !(isAdmin(user) || (await venueTeam(c ?? null, v.id)).includes(user.id))) throw notFound('Venue');
   return { type: 'venue', id: v.id };
 }
-const deskOfCase = async (user, cs, opts) => deskFor(user, { [{ organisation: 'organisation_id', venue: 'venue_id', team: 'team_id' }[cs.owner_type]]: cs.owner_id }, opts);
+const deskOfCase = async (user, cs, opts) => deskFor(user, { [{ organisation: 'organisation_id', venue: 'venue_id', team: 'team_id', coach: 'coach_id' }[cs.owner_type]]: cs.owner_id }, opts);
 
 // ---------------------------------------------------------------------------------------------------- policy
 cap({
@@ -57,8 +62,8 @@ cap({
     late_fee_after_days: z.number().int().min(1).max(365).optional(), late_fee_basis: z.string().trim().min(10).max(300).optional(), suspension_enabled: z.boolean().optional(), suspend_after_days: z.number().int().min(1).max(365).optional() }),
   handler: ({ user }, i) => tx(async (c) => {
     const d = await deskFor(user, i, { write: true, c });
-    const { organisation_id, venue_id, team_id, ...patch } = i;
-    if (d.type !== 'organisation' && (patch.late_fee_enabled || patch.suspension_enabled)) throw unprocessable('Late fees and suspension apply to academy and club charges, not to venue memberships or team dues');
+    const { organisation_id, venue_id, team_id, coach_id, ...patch } = i;
+    if (d.type !== 'organisation' && (patch.late_fee_enabled || patch.suspension_enabled)) throw unprocessable('Late fees and suspension apply to academy and club charges, not to venue memberships, team dues or coach subscriptions');
     const cur_ = await policyFor(c, d.type, d.id);
     const next = { ...cur_, ...patch };
     next.reminder_offsets = [...new Set(next.reminder_offsets)].sort((a, b) => a - b);
@@ -68,7 +73,7 @@ cap({
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,now())
        ON CONFLICT (owner_type, owner_id) DO UPDATE SET reminder_offsets=$3, grace_days=$4, retry_days=$5, escalate_after_days=$6, late_fee_enabled=$7, late_fee_minor=$8, late_fee_currency=$9, late_fee_after_days=$10, late_fee_basis=$11, suspension_enabled=$12, suspend_after_days=$13, updated_by=$14, updated_at=now()`,
       [d.type, d.id, next.reminder_offsets, next.grace_days, next.retry_days, next.escalate_after_days, next.late_fee_enabled, next.late_fee_minor, next.late_fee_currency, next.late_fee_after_days, next.late_fee_basis, next.suspension_enabled, next.suspend_after_days, user.id]);
-    await audit(c, user.id, 'set_collection_policy', { organisation: 'organisations', venue: 'venues', team: 'teams' }[d.type], d.id);
+    await audit(c, user.id, 'set_collection_policy', { organisation: 'organisations', venue: 'venues', team: 'teams', coach: 'users' }[d.type], d.id);
     return { ...(await policyFor(c, d.type, d.id)), defaults: DEFAULT_POLICY };
   }),
 });
@@ -109,6 +114,14 @@ cap({
            FROM collection_cases cs JOIN team_charges ch ON ch.id=cs.source_id JOIN team_charge_batches b ON b.id=ch.batch_id JOIN users pu ON pu.id=cs.payer_id JOIN users mu ON mu.id=ch.member_id
           WHERE ${filter} AND ($5::text IS NULL OR pu.display_name ILIKE $5 OR mu.display_name ILIKE $5)
           ORDER BY (cs.state IN ('escalated','overdue')) DESC, cs.due_on, cs.id LIMIT $7 OFFSET $8`, [...args, i.limit, i.offset])
+      : d.type === 'coach'
+      ? await many(
+        `SELECT ${CASE_COLS}, 'coach_subscription' AS kind, up.price_cents AS amount_minor, 0 AS settled_minor, 0 AS adjusted_minor, CASE WHEN up.status='awaiting_payment' THEN up.price_cents ELSE 0 END AS balance_minor,
+                pu.display_name AS payer_name, au.display_name AS athlete_name, au.id AS athlete_id, sub.title AS programme, false AS has_plan, false AS suspended, NULL::text AS invoice_number,
+                up.period_no, sub.grace_days
+           FROM collection_cases cs JOIN user_plans up ON up.id=cs.source_id JOIN coach_subscriptions sub ON sub.id=up.subscription_id JOIN users pu ON pu.id=cs.payer_id JOIN users au ON au.id=sub.athlete_id
+          WHERE ${filter} AND ($5::text IS NULL OR pu.display_name ILIKE $5 OR au.display_name ILIKE $5)
+          ORDER BY (cs.state IN ('escalated','overdue')) DESC, cs.due_on, cs.id LIMIT $7 OFFSET $8`, [...args, i.limit, i.offset])
       : await many(
         `SELECT ${CASE_COLS}, 'membership' AS kind, up.price_cents AS amount_minor, 0 AS settled_minor, 0 AS adjusted_minor, CASE WHEN up.status='awaiting_payment' THEN up.price_cents ELSE 0 END AS balance_minor,
                 pu.display_name AS payer_name, pu.display_name AS athlete_name, pu.id AS athlete_id, up.name AS programme, false AS has_plan, false AS suspended, NULL::text AS invoice_number
@@ -125,7 +138,7 @@ cap({
                   coalesce(sum(ch.amount_minor - ch.settled_minor - ch.adjusted_minor) FILTER (WHERE cs.state IN ('overdue','escalated')),0)::bigint AS overdue_minor
              FROM collection_cases cs JOIN team_charges ch ON ch.id=cs.source_id WHERE cs.owner_type='team' AND cs.owner_id=$1 AND cs.state = ANY($2) GROUP BY 1 ORDER BY 1`
         : `SELECT cs.currency, count(*)::int AS cases, coalesce(sum(up.price_cents),0)::bigint AS balance_minor, coalesce(sum(up.price_cents) FILTER (WHERE cs.state IN ('overdue','escalated')),0)::bigint AS overdue_minor
-             FROM collection_cases cs JOIN user_plans up ON up.id=cs.source_id WHERE cs.owner_type='venue' AND cs.owner_id=$1 AND cs.state = ANY($2) GROUP BY 1 ORDER BY 1`, [d.id, OPEN_STATES]);
+             FROM collection_cases cs JOIN user_plans up ON up.id=cs.source_id WHERE cs.owner_type='${d.type === 'coach' ? 'coach' : 'venue'}' AND cs.owner_id=$1 AND cs.state = ANY($2) GROUP BY 1 ORDER BY 1`, [d.id, OPEN_STATES]);
     const states = await many('SELECT state, count(*)::int AS n FROM collection_cases WHERE owner_type=$1 AND owner_id=$2 GROUP BY 1 ORDER BY 1', [d.type, d.id]);
     return { items, totals, states: Object.fromEntries(states.map((s) => [s.state, s.n])), owner: d };
   },
@@ -167,6 +180,11 @@ cap({
       receipts = await many("SELECT id, amount_minor, method, payment_id, created_at FROM team_charge_entries WHERE charge_id=$1 AND kind='receipt' ORDER BY created_at, id", [cs.source_id]);
       adjustments = (await many("SELECT x.id, x.kind, x.amount_minor, x.reason_enc, x.created_at, u.display_name AS actor FROM team_charge_entries x JOIN users u ON u.id=x.actor_id WHERE x.charge_id=$1 AND x.kind IN ('reduction','waiver') ORDER BY x.created_at, x.id", [cs.source_id]))
         .map(({ reason_enc, ...x }) => ({ ...x, reason: openTeamReason(reason_enc) }));
+    } else if (cs.source_type === 'coach_subscription_period') {
+      source = await one(
+        `SELECT up.id, up.name, up.currency, up.price_cents AS amount_minor, up.status, up.period_no, up.due_on::text AS due_on, up.expires_at, sub.id AS subscription_id, sub.title AS programme, sub.grace_days, sub.status AS subscription_status,
+                pu.display_name AS payer_name, au.display_name AS athlete_name, au.id AS athlete_id
+           FROM user_plans up JOIN coach_subscriptions sub ON sub.id=up.subscription_id JOIN users pu ON pu.id=sub.payer_id JOIN users au ON au.id=sub.athlete_id WHERE up.id=$1`, [cs.source_id]);
     } else {
       source = await one("SELECT up.id, up.name, up.currency, up.price_cents AS amount_minor, up.status, up.expires_at FROM user_plans up WHERE up.id=$1", [cs.source_id]);
     }

@@ -13,6 +13,7 @@ import { t } from '../i18n';
 import { useCols } from './marketplace';
 import { HostGameSheet } from './host-game';
 import { ClassSheet } from './coach-classes';
+import { DiscoverPanel, BoardsPanel } from './discover';
 
 /** A card whose content is spaced, so a title never touches the line under it. */
 const Card = ({ children, gap = 6, ...p }) => <BaseCard {...p}><View style={{ gap }}>{children}</View></BaseCard>;
@@ -128,6 +129,7 @@ export function FindGames() {
   const { user, toast } = useSession();
   const { push } = useNav();
   const { w, gap } = useCols();
+  const [mode, setMode] = useState('play'); // play (open games) | map (map and list of venues, games, classes) | boards (city and venue leaderboards)
   const [tab, setTab] = useState('find');
   const [whenKey, setWhen] = useState('week');
   const [sport, setSport] = useState(null);
@@ -160,14 +162,17 @@ export function FindGames() {
 
   return (
     <Screen wide>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, marginTop: 6 }}>
+      {mode !== 'play' ? <View style={{ marginTop: 6 }}><T weight="700" size={12} color={c.pink} style={{ letterSpacing: 1.2 }}>{t('disc.title').toUpperCase()}</T><T size={13} color={c.mute}>{t('disc.sub')}</T></View> : null}
+      {mode === 'play' ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, marginTop: 6 }}>
         <View style={{ flexShrink: 1 }}>
           <T weight="700" size={12} color={c.pink} style={{ letterSpacing: 1.2 }}>FIND A GAME</T>
           <H1 style={{ fontSize: 28 }}>Where can I play?</H1>
           <T size={14} color={c.mute} style={{ marginTop: 2 }}>Open games at real venues. Your location is used for this search only.</T>
         </View>
         <Btn small title="+ Host a game" onPress={() => (user ? setHost(true) : toast('Sign in to host a game'))} accessibilityLabel="Host a game" />
-      </View>
+      </View> : null}
+      <View style={{ marginTop: 14 }}><Seg options={[{ value: 'play', label: t('disc.mode_play') }, { value: 'map', label: t('disc.mode_map') }, { value: 'boards', label: t('disc.mode_boards') }]} value={mode} onChange={setMode} /></View>
+      {mode === 'map' ? <DiscoverPanel /> : mode === 'boards' ? <BoardsPanel /> : (<>
       {user ? <View style={{ marginTop: 14 }}><Seg options={[{ value: 'find', label: 'Find games' }, { value: 'mine', label: 'My games' }]} value={tab} onChange={setTab} /></View> : null}
       {user ? <GuardianRequests /> : null}
       {tab === 'find' ? (
@@ -206,6 +211,7 @@ export function FindGames() {
         </View>
       )}
       {host ? <HostGameSheet onClose={() => setHost(false)} onDone={(g) => { setHost(false); games.reload(); push('OpenGame', { id: g.id }); }} /> : null}
+      </>)}
       {Platform.OS === 'web' ? null : <View style={{ height: 8 }} />}
     </Screen>
   );

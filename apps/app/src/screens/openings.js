@@ -1,8 +1,10 @@
 // Open positions: the public job board for tournaments (crew and vendor places). Anyone can browse; applying needs a login.
 // Applicants and organisers exchange documents on the application; the organiser accepts and issues a contract, the applicant signs it.
+import { docMaxMb } from '../upload-limits';
 import React, { useRef, useState } from 'react';
 import { Platform, View } from 'react-native';
 import { api } from '../api';
+import { openProtected } from '../open-file';
 import { useLoad } from '../hooks';
 import { useSession } from '../session';
 import { useNav } from '../nav';
@@ -41,14 +43,13 @@ export function PositionDocs({ assignmentId, title, onClose, onChanged }) {
   };
   const open = async (d) => {
     try {
-      if (Platform.OS === 'web') { const url = URL.createObjectURL(await api.download(`/staff-documents/${d.id}/file`)); window.open(url, '_blank', 'noopener'); setTimeout(() => URL.revokeObjectURL(url), 120000); }
-      else toast('Open documents in the web app');
+      await openProtected(`/staff-documents/${d.id}/file`, d.file_name ?? `document-${d.id}`);
     } catch (e) { toast(e.message); }
   };
   const remove = async (d) => { try { await api.del(`/staff-documents/${d.id}`); await docs.reload(); onChanged?.(); } catch (e) { toast(e.message); } };
   return (
     <Sheet visible onClose={onClose} title={title ?? 'Documents'}>
-      <T size={12} color={c.mute}>Share licences, certificates, insurance, menus, briefs — anything the other side needs. PDF or photo, up to 10 MB. Only you and the other party can open them; files are encrypted. Removing one only hides it.</T>
+      <T size={12} color={c.mute}>Share licences, certificates, insurance, menus, briefs — anything the other side needs. PDF or photo, up to {docMaxMb()} MB. Only you and the other party can open them; files are encrypted. Removing one only hides it.</T>
       {docs.loading ? <Loading /> : docs.error ? <ErrorBox error={docs.error} onRetry={docs.reload} /> : docs.data?.length ? docs.data.map((d) => (
         <Card key={d.id} pad={12}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>

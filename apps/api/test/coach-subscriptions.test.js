@@ -9,6 +9,7 @@ const { signToken } = await import('../src/auth.js');
 const { config } = await import('../src/config.js');
 const { settle } = await import('../src/payments/service.js');
 const { syncCoachSubscriptions } = await import('../src/coach-subscriptions.js');
+const { runCollections } = await import('../src/collections.js');
 const { capabilities } = await import('../src/capabilities/index.js');
 
 let server, base, n = 0, admin;
@@ -119,8 +120,11 @@ test('failed payment: past due with notices, grace, then the entitlement lapses 
   await ageBy(a.subscription.id, 25); await syncCoachSubscriptions();
   await ageBy(a.subscription.id, 6);                        // month one ended a day ago: due, in grace
   await syncCoachSubscriptions(); await syncCoachSubscriptions();
+  await runCollections({ ownerId: coach.id }); await runCollections({ ownerId: coach.id });
   assert.equal((await subRow(a.subscription.id)).status, 'past_due');
-  assert.ok((await pool.query("SELECT 1 FROM notifications WHERE kind='coach_sub_past_due' AND user_id=$1", [athlete.id])).rowCount, 'payer told');
+  // the payer's reminder now comes from the collections engine, once, and the old sweep reminder is gone (no double notices)
+  assert.equal((await pool.query("SELECT count(*)::int AS n FROM notifications WHERE kind='collections_reminder' AND user_id=$1", [athlete.id])).rows[0].n, 1, 'payer told once');
+  assert.equal((await pool.query("SELECT count(*)::int AS n FROM notifications WHERE kind='coach_sub_past_due' AND user_id=$1", [athlete.id])).rows[0].n, 0, 'sweep no longer sends its own');
   assert.ok((await pool.query("SELECT 1 FROM notifications WHERE kind='coach_sub_past_due_coach' AND user_id=$1", [coach.id])).rowCount, 'coach told');
   const open = (await periods(a.subscription.id))[1];
   await pay(open.id, athlete);                              // paying inside grace restores good standing
@@ -237,4 +241,70 @@ test('the coach sees subscribers and MRR, and revenue reconciles to canonical pa
   const fin = await pool.query("SELECT coalesce(sum(amount_cents),0)::bigint AS s FROM payments WHERE purpose_type='coach_subscription_period' AND status='paid' AND payer_id = ANY($1)", [[a1.id, a2.id]]);
   assert.equal(String(fin.rows[0].s), '800000', 'the report equals the canonical payments');
   assert.equal((await api('GET', '/coach/subscriptions', { token: a1.token })).status, 403, 'coach only');
+});
+
+test('a late subscription month is a case in the collections desk: same states, one reminder, coach-only, closes on payment (issue #681)', async () => {
+  const coach = await signup(['coach']); const athlete = await signup(); const other = await signup(['coach']);
+  const a = await subscribe(coach, athlete);
+  await pay(a.period.id, athlete);
+  await ageBy(a.subscription.id, 25); await syncCoachSubscriptions();
+  await ageBy(a.subscription.id, 6);                                  // month one ended yesterday: month two is due, inside the card's 3 grace days
+  await syncCoachSubscriptions();
+  for (let i = 0; i < 3; i++) { await runCollections({ ownerId: coach.id }); await syncCoachSubscriptions(); }   // repeated runs add nothing
+  const q = (token, extra = '') => api('GET', `/collections/cases?coach_id=${coach.id}${extra}`, { token });
+  const list = must(await q(coach.token));
+  assert.equal(list.owner.type, 'coach'); assert.equal(list.items.length, 1);
+  const it = list.items[0];
+  assert.equal(it.source_type, 'coach_subscription_period'); assert.equal(it.kind, 'coach_subscription'); assert.equal(it.state, 'due');
+  assert.equal(it.programme, 'Monthly mentoring'); assert.equal(Number(it.balance_minor), 400000); assert.equal(list.totals[0].balance_minor, 400000);
+  // only that coach (or an admin) sees the desk; everyone else gets a 404
+  assert.equal((await q(athlete.token)).status, 404); assert.equal((await q(other.token)).status, 404); must(await q(admin.token));
+  // no double notifications: the engine sends one reminder, the old sweep reminder is gone
+  const count = async (kind) => (await pool.query('SELECT count(*)::int AS n FROM notifications WHERE kind=$1 AND user_id=$2', [kind, athlete.id])).rows[0].n;
+  assert.equal(await count('collections_reminder'), 1); assert.equal(await count('coach_sub_past_due'), 0);
+  // detail, promise and note work; access pausing does not apply
+  const detail = must(await api('GET', `/collections/cases/${it.id}`, { token: coach.token }));
+  assert.equal(detail.source.period_no, 2); assert.equal(detail.source.grace_days, 3);
+  assert.equal((await api('GET', `/collections/cases/${it.id}`, { token: other.token })).status, 404);
+  const day = (n) => new Date(Date.now() + n * 864e5).toISOString().slice(0, 10);
+  must(await api('POST', `/collections/cases/${it.id}/actions`, { token: coach.token, body: { action: 'promise', promised_on: day(2) } }));
+  assert.equal((await api('POST', `/collections/cases/${it.id}/actions`, { token: coach.token, body: { action: 'suspend', reason: 'not for subscriptions' } })).status, 422);
+  assert.equal((await api('POST', `/collections/cases/${it.id}/actions`, { token: other.token, body: { action: 'note', note: 'hi there' } })).status, 404);
+  assert.equal((await api('PATCH', '/collections/policy', { token: coach.token, body: { coach_id: coach.id, late_fee_enabled: true, late_fee_minor: 1000, late_fee_currency: 'INR', late_fee_basis: 'Written subscription terms' } })).status, 422);
+  // paying the month closes the case, and nothing is deleted
+  await pay((await periods(a.subscription.id))[1].id, athlete);
+  await runCollections({ ownerId: coach.id });
+  assert.equal(must(await q(coach.token)).items.length, 0);
+  const closed = must(await q(coach.token, '&state=closed'));
+  assert.equal(closed.items.length, 1); assert.ok(['paid', 'resolved'].includes(closed.items[0].state));
+});
+
+test('a young athlete\'s late month reminder goes to the guardian who pays, never to the child (issue #681)', async () => {
+  const coach = await signup(['coach']); const parent = await signup();
+  const kid = await signup(['athlete'], { dob: yearsAgo(12) });
+  const card = await monthly(coach);
+  await verifiedGuardian(parent, kid);
+  must(await api('POST', `/youth/children/${kid.id}/consents`, { token: parent.token, body: { purpose: 'coaching' } }), 201);
+  const r = must(await api('POST', '/coach-subscriptions', { token: parent.token, body: { rate_card_id: card.id, athlete_id: kid.id } }), 201);
+  await pay(r.period.id, parent);
+  await ageBy(r.subscription.id, 25); await syncCoachSubscriptions();
+  await ageBy(r.subscription.id, 6); await syncCoachSubscriptions();
+  for (let i = 0; i < 2; i++) await runCollections({ ownerId: coach.id });
+  const count = async (uid) => (await pool.query("SELECT count(*)::int AS n FROM notifications WHERE kind='collections_reminder' AND user_id=$1", [uid])).rows[0].n;
+  assert.equal(await count(parent.id), 1, 'the guardian is reminded once');
+  assert.equal(await count(kid.id), 0, 'the child is never chased for money');
+});
+
+test('a month past the card grace lapses once: the case closes as cancelled, rows are kept, no extra reminders', async () => {
+  const coach = await signup(['coach']); const athlete = await signup();
+  const a = await subscribe(coach, athlete, { card: await monthly(coach, { grace_days: 1 }) });
+  await pay(a.period.id, athlete);
+  await ageBy(a.subscription.id, 25); await syncCoachSubscriptions();
+  await ageBy(a.subscription.id, 6);
+  await syncCoachSubscriptions(); await runCollections({ ownerId: coach.id });
+  await ageBy(a.subscription.id, 3);                                  // now well past the one grace day
+  await syncCoachSubscriptions(); await runCollections({ ownerId: coach.id }); await runCollections({ ownerId: coach.id });
+  assert.equal((await subRow(a.subscription.id)).status, 'lapsed');
+  const cs = (await pool.query("SELECT state FROM collection_cases WHERE owner_type='coach' AND owner_id=$1", [coach.id])).rows;
+  assert.equal(cs.length, 1); assert.equal(cs[0].state, 'cancelled');
 });

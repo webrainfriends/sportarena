@@ -31,7 +31,8 @@ cap({
   summary: 'The role copilots available to you and the tasks each one can do, with the kind of record each task needs (an event, a federation body, a venue or an organisation, picked from what you manage). A copilot is workflow help grounded in records you may already read: it never takes a consequential decision. Federation and organisation copilots are listed for everyone; what they can read is decided by your access to the body or organisation you name.',
   input: z.object({}),
   async handler({ user }) {
-    return Object.entries(COPILOTS).filter(([k]) => entitled(user, k)).map(([k, d]) => ({ copilot: k, scope: d.scope, tasks: taskNames(k) }));
+    const guardian = !!(await one("SELECT 1 AS x FROM guardian_links WHERE guardian_id=$1 AND status='active' AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now()) LIMIT 1", [user.id]));
+    return Object.entries(COPILOTS).filter(([k]) => entitled(user, k) || (k === 'athlete' && guardian)).map(([k, d]) => ({ copilot: k, scope: d.scope, tasks: taskNames(k) }));
   },
 });
 
@@ -48,7 +49,8 @@ cap({
   }),
   async handler({ user }, i) {
     const def = COPILOTS[i.copilot];
-    if (!entitled(user, i.copilot)) throw notFound('Copilot');
+    // an athlete copilot may also be run by a guardian for a young person; the assistant itself proves the link and consent (404 if none)
+    if (!entitled(user, i.copilot) && !(i.copilot === 'athlete' && i.athlete_id)) throw notFound('Copilot');
     if (!taskNames(i.copilot).includes(i.task)) throw badRequest(`Unknown task for the ${i.copilot} copilot. Use one of: ${taskNames(i.copilot).join(', ')}`);
     if (i.client_key) {
       const prior = await one('SELECT * FROM copilot_runs WHERE requested_by=$1 AND client_key=$2', [user.id, i.client_key]);
@@ -66,7 +68,7 @@ cap({
       let d;
       try {
         d = i.copilot === 'athlete'
-          ? await through('ask_player_assistant', user, { task })
+          ? await through('ask_player_assistant', user, { task, athlete_id: i.athlete_id })
           : await through('draft_ai_coaching_assist', user, { task, athlete_id: i.athlete_id, team_id: i.team_id, session_record_id: i.session_record_id });
       } catch (e) { throw hidden(e) ? notFound('Record') : e; } // never reveal that a team or athlete exists
       const out = d.output ?? d;

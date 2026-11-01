@@ -148,6 +148,16 @@ export async function recordPayout(c, po, status = 'open') {
   return id;
 }
 
+/** A payout item that settles an officials fee or a venue settlement (provider balances post through recordPayout). Open until the transfer is recorded. */
+export async function recordPayoutItem(c, it, status = 'open', batchRail = 'bank_file') {
+  const key = `payout_item:${it.id}:${it.attempt}`;
+  const id = await insert(c, { kind: 'payout', status, module: it.source_type === 'official_fee' ? 'officials' : 'venue', sourceType: 'payout_item', sourceId: it.id, payeeId: it.payee_id, currency: it.currency,
+    gross: n(it.gross_minor), tax: n(it.tax_minor), fee: n(it.fee_minor), net: n(it.net_minor), provider: batchRail === 'stripe' ? 'stripe' : 'manual_transfer', providerRef: it.reference ?? null, key,
+    meta: { batch_id: it.batch_id, source_type: it.source_type, source_id: it.source_id } });
+  if (!id) await setStatus(c, key, status);
+  return id;
+}
+
 // ------------------------------------------------------------------------------------------------ reconciliation
 
 /**
